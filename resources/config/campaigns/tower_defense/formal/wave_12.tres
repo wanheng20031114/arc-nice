@@ -1,0 +1,98 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_basic"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="3_fast"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="4_shell"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="5_bomber"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_purple_bomber.tres" id="6_purple"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="7_fire"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_green_shell.tres" id="8_green"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_guardian.tres" id="9_guardian"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_ak47.tres" id="10_ak47"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_knight.tres" id="11_knight"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_mage.tres" id="12_mage"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_rpg.tres" id="13_rpg"]
+[ext_resource type="Resource" path="res://resources/config/enemies/stone_golem.tres" id="14_golem"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_town_combat.ogg" id="15_music"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_town_intermission.ogg" id="16_rest"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="17_wave"]
+
+[sub_resource type="Resource" id="Entry_basic"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("2_basic")
+count = 53
+
+[sub_resource type="Resource" id="Entry_fast"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("3_fast")
+count = 24
+
+[sub_resource type="Resource" id="Entry_shell"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("4_shell")
+count = 24
+
+[sub_resource type="Resource" id="Entry_bomber"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("5_bomber")
+count = 20
+
+[sub_resource type="Resource" id="Entry_purple"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("6_purple")
+count = 16
+
+[sub_resource type="Resource" id="Entry_fire"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("7_fire")
+count = 20
+
+[sub_resource type="Resource" id="Entry_green"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("8_green")
+count = 20
+
+[sub_resource type="Resource" id="Entry_guardian"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("9_guardian")
+count = 16
+
+[sub_resource type="Resource" id="Entry_ak47"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("10_ak47")
+count = 2
+
+[sub_resource type="Resource" id="Entry_knight"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("11_knight")
+count = 2
+
+[sub_resource type="Resource" id="Entry_mage"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("12_mage")
+count = 1
+
+[sub_resource type="Resource" id="Entry_rpg"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("13_rpg")
+count = 1
+
+[sub_resource type="Resource" id="Entry_golem"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("14_golem")
+count = 1
+
+[resource]
+script = ExtResource("17_wave")
+wave_name = "第12波 城镇决战"
+enemy_entries = Array[ExtResource("1_entry")]([SubResource("Entry_basic"), SubResource("Entry_fast"), SubResource("Entry_shell"), SubResource("Entry_bomber"), SubResource("Entry_purple"), SubResource("Entry_fire"), SubResource("Entry_green"), SubResource("Entry_guardian"), SubResource("Entry_ak47"), SubResource("Entry_knight"), SubResource("Entry_mage"), SubResource("Entry_rpg"), SubResource("Entry_golem")])
+spawn_point_mask = 63
+spawn_interval = 0.22
+spawn_count_per_tick = 1
+max_alive_enemies = 96
+music = ExtResource("15_music")
+post_wave_music = ExtResource("16_rest")
+step_id = &"wave_12"
+display_name = "第12波 城镇决战"
+editor_position = Vector2(1200, 320)

@@ -350,7 +350,17 @@ func _refresh_recipe_rows() -> void:
 			recipe.duration_seconds,
 		]
 		row.button_pressed = building.active_recipe_id == recipe.recipe_id
-		row.disabled = _is_multiplayer_control_locked()
+		var recipe_unlocked := building.is_recipe_unlocked(recipe)
+		if not recipe_unlocked:
+			var research_config := GlobalResearchRegistry.get_config(
+				recipe.required_global_research_id
+			)
+			row.tooltip_text += "\n需要完成科研：%s" % (
+				research_config.display_name
+				if research_config != null
+				else String(recipe.required_global_research_id)
+			)
+		row.disabled = _is_multiplayer_control_locked() or not recipe_unlocked
 
 
 func _refresh_material_rows() -> void:
@@ -426,6 +436,17 @@ func _refresh_status() -> void:
 				status_label.text = "水面持续供水；每轮完成后自动向全场仓库存入 1 个水瓶。"
 		return
 	if building.get_active_recipe() == null:
+		var display_recipe := building.get_display_recipe()
+		if display_recipe != null and not building.is_recipe_unlocked(display_recipe):
+			var research_config := GlobalResearchRegistry.get_config(
+				display_recipe.required_global_research_id
+			)
+			status_label.text = "该配方需要先完成科研：%s。" % (
+				research_config.display_name
+				if research_config != null
+				else String(display_recipe.required_global_research_id)
+			)
+			return
 		status_label.text = "点击右侧配方后开始生产；高亮项为当前方案。"
 		return
 	if not building.production_enabled:
@@ -579,6 +600,8 @@ func _on_multiplayer_production_result(success: bool, reason: StringName) -> voi
 			_show_transient_status("加工站已被移除。")
 		ProductionBuildingProtocol.RESULT_INVALID_RECIPE:
 			_show_transient_status("配方无效，操作未执行。")
+		ProductionBuildingProtocol.RESULT_RESEARCH_LOCKED:
+			_show_transient_status("对应科研尚未完成，主机拒绝了该配方。")
 		ProductionBuildingProtocol.RESULT_INVALID_PLAYER:
 			_show_transient_status("当前玩家无法操作加工站。")
 		ProductionBuildingProtocol.RESULT_OUTPUT_EMPTY:

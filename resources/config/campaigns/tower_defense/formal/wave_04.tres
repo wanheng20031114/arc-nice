@@ -1,0 +1,56 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_basic"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="3_fast"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="4_shell"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="5_bomber"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="6_fire"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="7_exit"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_combat.ogg" id="8_music"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_intermission.ogg" id="9_rest"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="10_wave"]
+
+[sub_resource type="Resource" id="Entry_basic"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("2_basic")
+count = 24
+
+[sub_resource type="Resource" id="Entry_fast"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("3_fast")
+count = 16
+
+[sub_resource type="Resource" id="Entry_shell"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("4_shell")
+count = 12
+
+[sub_resource type="Resource" id="Entry_bomber"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("5_bomber")
+count = 8
+
+[sub_resource type="Resource" id="Entry_fire"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("6_fire")
+count = 4
+
+[sub_resource type="Resource" id="Exit_next"]
+script = ExtResource("7_exit")
+target_step_id = &"wave_05"
+
+[resource]
+script = ExtResource("10_wave")
+wave_name = "第4波 林地合围"
+enemy_entries = Array[ExtResource("1_entry")]([SubResource("Entry_basic"), SubResource("Entry_fast"), SubResource("Entry_shell"), SubResource("Entry_bomber"), SubResource("Entry_fire")])
+spawn_point_mask = 63
+spawn_interval = 0.5
+spawn_count_per_tick = 1
+max_alive_enemies = 40
+music = ExtResource("8_music")
+post_wave_music = ExtResource("9_rest")
+step_id = &"wave_04"
+display_name = "第4波 林地合围"
+exits = Array[ExtResource("7_exit")]([SubResource("Exit_next")])
+editor_position = Vector2(1200, -120)

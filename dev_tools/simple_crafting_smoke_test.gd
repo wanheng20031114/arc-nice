@@ -296,9 +296,8 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		and bamboo_mortar_recipe.output_items == [BAMBOO_MORTAR_ITEM]
 		and bamboo_mortar_recipe.output_amounts == [1]
 		and is_equal_approx(bamboo_mortar_recipe.duration_seconds, 0.1)
-		and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
-			bamboo_mortar_recipe.recipe_id
-		) == GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID,
+		and bamboo_mortar_recipe.required_global_research_id
+		== GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID,
 		"竹筒迫击炮简易配方必须消耗1木制核心和10木板，并由对应全局科研解锁。"
 	)
 	_expect(
@@ -309,9 +308,8 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		and hydrangea_recipe.output_items == [HYDRANGEA_RAIN_TOWER_ITEM]
 		and hydrangea_recipe.output_amounts == [1]
 		and is_equal_approx(hydrangea_recipe.duration_seconds, 0.1)
-		and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
-			hydrangea_recipe.recipe_id
-		) == GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID,
+		and hydrangea_recipe.required_global_research_id
+		== GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID,
 		"紫阳花雨幕塔简易配方必须消耗2木制核心和1卡普蓝晶粉，并由对应全局科研解锁。"
 	)
 	_expect(

@@ -58,21 +58,13 @@ const CAMPAIGNS := [
 	},
 	{
 		"mode": "tower_defense",
-		"players": "singleplayer",
-		"campaign_id": &"tower_defense_singleplayer",
-		"display_name": "塔防模式 / 单人",
+		"players": "performance",
+		"campaign_id": &"tower_defense_performance",
+		"display_name": "塔防模式 / 1200 敌人性能测试",
 		"spawn_point_mask": WaveConfig.ALL_SPAWN_POINT_MASK,
 		"boss_config": null,
 		"tower_defense_stress_test": true,
-	},
-	{
-		"mode": "tower_defense",
-		"players": "multiplayer",
-		"campaign_id": &"tower_defense_multiplayer",
-		"display_name": "塔防模式 / 多人",
-		"spawn_point_mask": WaveConfig.ALL_SPAWN_POINT_MASK,
-		"boss_config": null,
-		"tower_defense_stress_test": true,
+		"wave_subdirectory": "waves",
 	},
 ]
 
@@ -80,7 +72,7 @@ const CAMPAIGNS := [
 func _init() -> void:
 	if not OS.get_cmdline_user_args().has(FORCE_ARGUMENT):
 		push_error(
-			"该工具会覆写四套 Campaign 快照。确认后请使用 -- --force 显式运行。"
+			"该工具会覆写两套标准快照和独立性能战役。确认后请使用 -- --force 显式运行。"
 		)
 		quit(2)
 		return
@@ -108,6 +100,19 @@ func _generate_campaign(definition: Dictionary, failures: PackedStringArray) -> 
 	if directory_error != OK:
 		failures.append("无法创建 Campaign 目录 %s：%s" % [directory, error_string(directory_error)])
 		return
+	var wave_directory := directory
+	var wave_subdirectory := String(definition.get("wave_subdirectory", ""))
+	if not wave_subdirectory.is_empty():
+		wave_directory = "%s/%s" % [directory, wave_subdirectory]
+		var wave_directory_error := DirAccess.make_dir_recursive_absolute(
+			ProjectSettings.globalize_path(wave_directory)
+		)
+		if wave_directory_error != OK:
+			failures.append(
+				"无法创建波次目录 %s：%s"
+				% [wave_directory, error_string(wave_directory_error)]
+			)
+			return
 
 	var campaign_waves: Array[WaveConfig] = []
 	for wave_number in range(1, 13):
@@ -126,7 +131,7 @@ func _generate_campaign(definition: Dictionary, failures: PackedStringArray) -> 
 			)
 		elif bool(definition["tower_defense_stress_test"]):
 			_configure_tower_defense_stress_wave(campaign_wave, wave_number)
-		var wave_path := "%s/wave_%02d.tres" % [directory, wave_number]
+		var wave_path := "%s/wave_%02d.tres" % [wave_directory, wave_number]
 		var wave_error := ResourceSaver.save(campaign_wave, wave_path)
 		if wave_error != OK:
 			failures.append("无法保存 %s：%s" % [wave_path, error_string(wave_error)])

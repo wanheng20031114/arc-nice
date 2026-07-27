@@ -13,6 +13,9 @@ const RED_GATE_CELLS: Array[Vector2i] = [
 	Vector2i(15, 8),
 ]
 const DEBUG_DESTROY_PLANT_RADIUS_CELLS := 3.0
+const FORMAL_PROGRESSION := preload(
+	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
+)
 
 @onready var test_controls_hint: Label = $TestControlsHint/Hint
 
@@ -21,6 +24,10 @@ var _nearby_plant_destroy_scratch: Array[PlantDefense] = []
 
 
 func _ready() -> void:
+	progression_config = FORMAL_PROGRESSION.duplicate(true)
+	progression_config.initial_preparation_seconds = 1.0
+	progression_config.wave_intermission_seconds = 1.0
+	progression_config.new_day_preparation_seconds = 1.0
 	super._ready()
 	manual_night_enabled = false
 	day_night_controller.set_night_factor_immediate(0.0)

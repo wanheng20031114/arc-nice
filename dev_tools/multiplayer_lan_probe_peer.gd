@@ -2543,9 +2543,21 @@ func _configure_probe_wave_flow(game: Variant) -> void:
 	if not flow_graph.steps.is_empty():
 		flow_graph.start_step = flow_graph.steps[0]
 	game.flow_graph = flow_graph
-	# The probe starts wave one directly, but still needs a non-zero rest duration
-	# so clearing it can be observed in INTERMISSION before wave two begins.
-	game.pre_wave_duration = 30.0
+	# The probe starts wave one directly, but still needs a non-zero ordinary
+	# intermission so clearing it can be observed before wave two begins. Keep
+	# this one-enemy transport fixture independent from formal player scaling;
+	# the progression smoke test covers exact 1/2/4/8-player totals.
+	if bool(game.call("supports_tower_defense")):
+		var wave_progression := (
+			game.progression_config.duplicate(true)
+			as TowerDefenseProgressionConfig
+		)
+		wave_progression.wave_intermission_seconds = 30.0
+		wave_progression.new_day_preparation_seconds = 30.0
+		wave_progression.enemy_count_per_extra_player_ratio = 0.0
+		game.progression_config = wave_progression
+	else:
+		game.pre_wave_duration = 30.0
 	game.current_wave_index = 0
 	game.current_wave_total = 0
 	game.current_wave_spawned = 0
@@ -2562,7 +2574,17 @@ func _configure_probe_boss_flow(game: Variant) -> void:
 	var flow_steps: Array[FlowStepConfig] = [LINGLAN_BOSS_ENTRY]
 	flow_graph.steps = flow_steps
 	game.flow_graph = flow_graph
-	game.pre_wave_duration = 0.0
+	if bool(game.call("supports_tower_defense")):
+		var boss_progression := (
+			game.progression_config.duplicate(true)
+			as TowerDefenseProgressionConfig
+		)
+		boss_progression.initial_preparation_seconds = 0.0
+		boss_progression.wave_intermission_seconds = 0.0
+		boss_progression.new_day_preparation_seconds = 0.0
+		game.progression_config = boss_progression
+	else:
+		game.pre_wave_duration = 0.0
 	game.current_flow_step = null
 	game.next_flow_step_after_rest = null
 	game.linglan_boss_started = false

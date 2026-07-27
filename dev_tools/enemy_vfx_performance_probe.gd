@@ -14,10 +14,10 @@ const GUARDIAN_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_guardian.tres"
 )
 const TOWER_WAVE_04 := preload(
-	"res://resources/config/campaigns/tower_defense/singleplayer/wave_04.tres"
+	"res://resources/config/campaigns/tower_defense/performance/waves/wave_04.tres"
 )
 const TOWER_WAVE_05 := preload(
-	"res://resources/config/campaigns/tower_defense/singleplayer/wave_05.tres"
+	"res://resources/config/campaigns/tower_defense/performance/waves/wave_05.tres"
 )
 
 const DEFAULT_ENEMY_COUNT := 300

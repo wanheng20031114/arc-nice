@@ -53,7 +53,7 @@ func _run() -> void:
 
 	_test_resource_independence_and_stats()
 	_test_pixel_contract()
-	await _test_core_touch_damage()
+	await _test_contact_does_not_bypass_slam()
 	await _test_shorter_windup_and_slam()
 
 	current_scene = null
@@ -321,24 +321,27 @@ func _test_pixel_contract() -> void:
 	)
 
 
-func _test_core_touch_damage() -> void:
+func _test_contact_does_not_bypass_slam() -> void:
 	var plant := _spawn_test_plant(Vector2.ZERO, 50)
 	var enemy := _spawn_elite(Vector2.ZERO)
 	enemy.set_physics_process(false)
 	await _wait_physics_frames(2)
 	_expect(
-		plant.current_health == TEST_HEALTH - 100,
-		"150 physical core damage must become 100 against 50 defense."
+		enemy.touching_plants.has(plant.get_instance_id()),
+		"Elite stone-golem contact fixture must register the plant."
 	)
-	enemy.call("_physics_process", enemy.touch_damage_interval - 0.01)
 	_expect(
-		plant.current_health == TEST_HEALTH - 100,
-		"Elite core damage must respect the shared contact interval."
+		not bool(enemy.call("_uses_inherited_touch_damage"))
+		and plant.current_health == TEST_HEALTH
+		and is_zero_approx(enemy.touch_damage_cooldown_left),
+		"Elite stone golems must reserve damage for their authored slam."
 	)
-	enemy.call("_physics_process", 0.02)
+	enemy.call("_try_deal_touch_damage")
+	enemy.call("_try_deal_touch_damage")
 	_expect(
-		plant.current_health == TEST_HEALTH - 200,
-		"Elite core damage must repeat after the contact interval."
+		plant.current_health == TEST_HEALTH
+		and is_zero_approx(enemy.touch_damage_cooldown_left),
+		"Elite contact dispatch must not bypass the slam state machine."
 	)
 	enemy.queue_free()
 	plant.queue_free()

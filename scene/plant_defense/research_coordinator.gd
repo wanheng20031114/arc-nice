@@ -178,6 +178,14 @@ func get_completed_global_research_ids() -> Array[StringName]:
 	return completed_ids
 
 
+func is_global_research_completed(research_id: StringName) -> bool:
+	return (
+		GlobalResearchRegistry.get_config(research_id) != null
+		and get_global_research_state(research_id)
+		== GlobalResearchState.COMPLETED
+	)
+
+
 func get_global_material_total(item: PickupConfig) -> int:
 	if production_coordinator == null:
 		return 0

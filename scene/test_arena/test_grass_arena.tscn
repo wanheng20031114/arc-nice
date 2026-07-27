@@ -8,7 +8,6 @@
 position = Vector2(0, 0)
 script = ExtResource("2_script")
 singleplayer_campaign = ExtResource("3_campaign")
-pre_wave_duration = 1.0
 
 [node name="DayNightController" parent="." index="1"]
 transition_duration = 0.6

@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="FlowGraphConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/flow/flow_graph_config.gd" id="1_graph"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_step_config.gd" id="2_step"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_01.tres" id="3_wave01"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_02.tres" id="4_wave02"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_03.tres" id="5_wave03"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_04.tres" id="6_wave04"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_05.tres" id="7_wave05"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_06.tres" id="8_wave06"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_07.tres" id="9_wave07"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_08.tres" id="10_wave08"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_09.tres" id="11_wave09"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_10.tres" id="12_wave10"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_11.tres" id="13_wave11"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/waves/wave_12.tres" id="14_wave12"]
+
+[resource]
+script = ExtResource("1_graph")
+graph_name = "塔防模式 / 1200 敌人性能测试流程"
+start_step = ExtResource("3_wave01")
+steps = Array[ExtResource("2_step")]([ExtResource("3_wave01"), ExtResource("4_wave02"), ExtResource("5_wave03"), ExtResource("6_wave04"), ExtResource("7_wave05"), ExtResource("8_wave06"), ExtResource("9_wave07"), ExtResource("10_wave08"), ExtResource("11_wave09"), ExtResource("12_wave10"), ExtResource("13_wave11"), ExtResource("14_wave12")])

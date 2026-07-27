@@ -32,6 +32,7 @@ enum PanelTheme {
 
 var production_coordinator: ProductionCoordinator = null
 var production_panel: ProductionBuildingPanel = null
+var recipe_unlock_checker := Callable()
 var nearby_player: Player = null
 var is_interaction_target := false
 var production_enabled := true
@@ -114,6 +115,7 @@ func _on_setup_completed() -> void:
 			if (
 				recipe != null
 				and recipe.is_valid()
+				and is_recipe_unlocked(recipe)
 				and not recipe.outputs_to_player_inventory()
 			):
 				active_recipe_id = recipe.recipe_id
@@ -161,6 +163,26 @@ func set_shared_production_panel(shared_panel: ProductionBuildingPanel) -> void:
 		return
 	close_production_panel()
 	production_panel = shared_panel
+
+
+func set_recipe_unlock_checker(checker: Callable) -> void:
+	recipe_unlock_checker = checker
+	notify_recipe_unlocks_changed()
+
+
+func notify_recipe_unlocks_changed() -> void:
+	production_state_changed.emit(false)
+
+
+func is_recipe_unlocked(recipe: ProductionRecipe) -> bool:
+	if recipe == null or not recipe.is_valid():
+		return false
+	if not recipe.requires_global_research():
+		return true
+	return (
+		recipe_unlock_checker.is_valid()
+		and bool(recipe_unlock_checker.call(recipe.required_global_research_id))
+	)
 
 
 func close_production_panel() -> void:
@@ -268,7 +290,7 @@ func is_multiplayer_production_ready() -> bool:
 
 func request_multiplayer_recipe_selection(recipe_id: StringName) -> bool:
 	var recipe := get_recipe(recipe_id)
-	if not is_multiplayer_production_ready() or recipe == null or not recipe.is_valid():
+	if not is_multiplayer_production_ready() or not is_recipe_unlocked(recipe):
 		return false
 	var command := ProductionBuildingProtocol.make_select_recipe_command(
 		next_multiplayer_production_request_id,
@@ -354,7 +376,7 @@ func select_recipe(
 	if is_multiplayer_proxy:
 		return false
 	var recipe := get_recipe(recipe_id)
-	if recipe == null or not recipe.is_valid():
+	if not is_recipe_unlocked(recipe):
 		return false
 	if has_buffered_output() and active_recipe_id != recipe_id:
 		return false
@@ -428,6 +450,8 @@ func apply_authoritative_multiplayer_production_command(
 			var recipe := get_recipe(recipe_id)
 			if recipe == null or not recipe.is_valid():
 				return ProductionBuildingProtocol.RESULT_INVALID_RECIPE
+			if not is_recipe_unlocked(recipe):
+				return ProductionBuildingProtocol.RESULT_RESEARCH_LOCKED
 			return (
 				ProductionBuildingProtocol.RESULT_SUCCESS
 				if select_recipe(
@@ -474,7 +498,7 @@ func advance_shared_production_tick(delta_seconds: float) -> void:
 		# local-output collection. Keep the one-second simulation tick O(1).
 		return
 	var recipe := get_active_recipe()
-	if recipe == null or not recipe.is_valid():
+	if not is_recipe_unlocked(recipe):
 		return
 	if recipe.outputs_to_local_slot() and has_buffered_output():
 		completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
@@ -503,8 +527,7 @@ func try_complete_ready_production() -> bool:
 		return false
 	var recipe := get_active_recipe()
 	if (
-		recipe == null
-		or not recipe.is_valid()
+		not is_recipe_unlocked(recipe)
 		or progress_elapsed_seconds + 0.0001 < recipe.duration_seconds
 	):
 		return false

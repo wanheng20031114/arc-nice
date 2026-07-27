@@ -1,0 +1,334 @@
+extends SceneTree
+
+const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const CULTIVATION_CENTER_SCENE := preload(
+	"res://scene/plant_defense/plant_cultivation_center.tscn"
+)
+const PRODUCTION_COORDINATOR_SCENE := preload(
+	"res://scene/plant_defense/production_coordinator.tscn"
+)
+const PROGRESSION: TowerDefenseProgressionConfig = preload(
+	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
+)
+const FORMAL_CAMPAIGN: WaveCampaignConfig = preload(
+	"res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres"
+)
+const WOOD_TO_PLANK: ProductionRecipe = preload(
+	"res://resources/config/production/wood_to_plank.tres"
+)
+const WATER_COLLECTOR_ASSEMBLY: ProductionRecipe = preload(
+	"res://resources/config/production/water_collector_assembly.tres"
+)
+const SIMPLE_BAMBOO: ProductionRecipe = preload(
+	"res://resources/config/production/simple_bamboo_mortar.tres"
+)
+const SIMPLE_HYDRANGEA: ProductionRecipe = preload(
+	"res://resources/config/production/simple_hydrangea_rain_tower.tres"
+)
+const CULTIVATION_BAMBOO: ProductionRecipe = preload(
+	"res://resources/config/production/wooden_core_to_bamboo_mortar.tres"
+)
+const CULTIVATION_HYDRANGEA: ProductionRecipe = preload(
+	"res://resources/config/production/wooden_core_to_hydrangea_rain_tower.tres"
+)
+const FORMAL_SCALED_TOTALS := {
+	1: [24, 36, 48, 64, 80, 96, 112, 128, 144, 160, 176, 200],
+	2: [31, 46, 60, 80, 100, 120, 140, 160, 181, 201, 223, 254],
+	4: [43, 64, 84, 112, 140, 168, 196, 224, 253, 281, 310, 352],
+	8: [67, 100, 132, 176, 220, 264, 308, 352, 397, 441, 486, 552],
+}
+const EXPECTED_DAILY_XIRANG: Array[int] = [196, 528, 1401]
+
+var failures: Array[String] = []
+
+
+class ResearchUnlockProbe:
+	extends RefCounted
+
+	var completed_ids: Dictionary[StringName, bool] = {}
+
+	func is_completed(research_id: StringName) -> bool:
+		return completed_ids.has(research_id)
+
+	func complete(research_id: StringName) -> void:
+		completed_ids[research_id] = true
+
+
+func _init() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
+	_test_progression_resource()
+	_test_player_count_scaling()
+	_test_formal_economy()
+	await _test_research_gates()
+	await _test_singleplayer_starting_package()
+	for player_count in [2, 4, 8]:
+		await _test_multiplayer_starting_package(player_count)
+	await _cleanup_runtime()
+	if failures.is_empty():
+		print("TOWER_DEFENSE_PROGRESSION_SMOKE_TEST_OK")
+		quit()
+		return
+	for failure in failures:
+		push_error(failure)
+	quit(1)
+
+
+func _test_progression_resource() -> void:
+	_expect(PROGRESSION != null and PROGRESSION.is_valid(), "Progression config must validate.")
+	_expect(
+		PROGRESSION.initial_preparation_seconds == 90.0
+		and PROGRESSION.wave_intermission_seconds == 30.0
+		and PROGRESSION.new_day_preparation_seconds == 60.0,
+		"Initial, ordinary and new-day preparations must be explicit 90/30/60 values."
+	)
+	_expect(
+		PROGRESSION.initial_preparation_seconds
+		!= PROGRESSION.wave_intermission_seconds
+		and PROGRESSION.wave_intermission_seconds
+		!= PROGRESSION.new_day_preparation_seconds,
+		"The three preparation phases must remain independently configured."
+	)
+	var minimum_water_chain_seconds := (
+		ceili(
+			float(WATER_COLLECTOR_ASSEMBLY.input_amounts[0])
+			/ float(WOOD_TO_PLANK.output_amounts[0])
+		) * WOOD_TO_PLANK.duration_seconds
+		+ WATER_COLLECTOR_ASSEMBLY.duration_seconds
+	)
+	_expect(
+		RunStateStore.STARTING_WOOD_COUNT
+		>= WATER_COLLECTOR_ASSEMBLY.input_amounts[0]
+		/ WOOD_TO_PLANK.output_amounts[0]
+		and minimum_water_chain_seconds
+		<= PROGRESSION.initial_preparation_seconds,
+		"The deterministic starter route must bring a water collector online before wave 1."
+	)
+
+
+func _test_player_count_scaling() -> void:
+	var waves := FORMAL_CAMPAIGN.get_waves()
+	_expect(waves.size() == 12, "Formal campaign must expose 12 waves for scaling checks.")
+	for player_count_variant in FORMAL_SCALED_TOTALS:
+		var player_count := int(player_count_variant)
+		var expected_totals := FORMAL_SCALED_TOTALS[player_count_variant] as Array
+		var actual_totals: Array[int] = []
+		for wave in waves:
+			var total := 0
+			for entry in wave.enemy_entries:
+				total += PROGRESSION.get_scaled_enemy_count(entry.count, player_count)
+			actual_totals.append(total)
+		_expect(
+			actual_totals == expected_totals,
+			"Formal %d-player wave totals changed: %s" % [player_count, actual_totals]
+		)
+	_expect(
+		int((FORMAL_SCALED_TOTALS[8] as Array)[11]) == 552,
+		"Eight-player finale must stay far below the retired fixed-1200 stress wave."
+	)
+
+
+func _test_formal_economy() -> void:
+	var daily_rewards: Array[int] = [0, 0, 0]
+	var waves := FORMAL_CAMPAIGN.get_waves()
+	for wave_index in waves.size():
+		for entry in waves[wave_index].enemy_entries:
+			daily_rewards[floori(float(wave_index) / 4.0)] += (
+				entry.count * entry.enemy_config.xirang_kill_reward
+			)
+	_expect(
+		daily_rewards == EXPECTED_DAILY_XIRANG,
+		"Formal daily Xirang baseline changed: %s" % [str(daily_rewards)]
+	)
+	_expect(
+		daily_rewards[1] <= daily_rewards[0] * 3
+		and daily_rewards[2] <= daily_rewards[1] * 3,
+		"Daily Xirang growth must remain bounded to at most 3x per day."
+	)
+
+
+func _test_research_gates() -> void:
+	var bamboo_research := GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
+	var hydrangea_research := GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
+	_expect(
+		SIMPLE_BAMBOO.required_global_research_id == bamboo_research
+		and CULTIVATION_BAMBOO.required_global_research_id == bamboo_research,
+		"Bamboo simple-crafting and cultivation must share one research gate."
+	)
+	_expect(
+		SIMPLE_HYDRANGEA.required_global_research_id == hydrangea_research
+		and CULTIVATION_HYDRANGEA.required_global_research_id == hydrangea_research,
+		"Hydrangea simple-crafting and cultivation must share one research gate."
+	)
+	var run_state := RunStateStore.new()
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.get_simple_crafting_result(SIMPLE_BAMBOO)
+		== RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED
+		and run_state.get_simple_crafting_result(SIMPLE_HYDRANGEA)
+		== RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED,
+		"Simple crafting must reject both gated towers before research."
+	)
+	_expect(
+		run_state.get_simple_crafting_result(SIMPLE_BAMBOO, [bamboo_research])
+		!= RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED
+		and run_state.get_simple_crafting_result(
+			SIMPLE_HYDRANGEA,
+			[hydrangea_research]
+		) != RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED,
+		"Completed research must remove the simple-crafting lock."
+	)
+	run_state.free()
+
+	var coordinator := PRODUCTION_COORDINATOR_SCENE.instantiate() as ProductionCoordinator
+	root.add_child(coordinator)
+	coordinator.configure_multiplayer_output_peers([1])
+	var cultivation := CULTIVATION_CENTER_SCENE.instantiate() as ProductionBuilding
+	cultivation.set_production_coordinator(coordinator)
+	var unlock_probe := ResearchUnlockProbe.new()
+	cultivation.set_recipe_unlock_checker(Callable(unlock_probe, "is_completed"))
+	_expect(
+		not cultivation.select_recipe(CULTIVATION_BAMBOO.recipe_id, 1)
+		and not cultivation.select_recipe(CULTIVATION_HYDRANGEA.recipe_id, 1),
+		"Cultivation center must reject gated tower selection before research."
+	)
+	unlock_probe.complete(bamboo_research)
+	_expect(
+		cultivation.select_recipe(CULTIVATION_BAMBOO.recipe_id, 1),
+		"Cultivation center must accept bamboo after its research completes."
+	)
+	unlock_probe.complete(hydrangea_research)
+	_expect(
+		cultivation.select_recipe(CULTIVATION_HYDRANGEA.recipe_id, 1),
+		"Cultivation center must accept hydrangea after its research completes."
+	)
+	cultivation.free()
+	coordinator.queue_free()
+	await process_frame
+
+
+func _test_singleplayer_starting_package() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier")
+	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	game.auto_start_waves = false
+	root.add_child(game)
+	await process_frame
+	_expect(game.starting_package_granted, "Singleplayer starter package must be granted.")
+	_expect(
+		run_state.get_inventory_item_total(
+			BuildingItemRegistry.get_item(PlantDefenseRegistry.AGAVE_CANNON_ID)
+		) == 1,
+		"Singleplayer must start with one basic defense tower item."
+	)
+	_expect(
+		run_state.get_inventory_item_total(
+			BuildingItemRegistry.get_item(PlantDefenseRegistry.OAK_WAREHOUSE_ID)
+		) == 1
+		and run_state.get_inventory_item_total(
+			BuildingItemRegistry.get_item(
+				PlantDefenseRegistry.WOOD_PROCESSING_STATION_ID
+			)
+		) == 1,
+		"Singleplayer team package must include storage and wood processing."
+	)
+	_expect(
+		game.call("_get_initial_preparation_seconds") == 90
+		and game.call("_get_wave_intermission_seconds") == 30
+		and game.call("_get_new_day_preparation_seconds") == 60,
+		"Runtime must source all three countdowns from progression config."
+	)
+	var metrics := game.get_progression_metrics_snapshot()
+	_expect(
+		metrics.has("first_defense_tower_seconds")
+		and metrics.has("water_chain_online_seconds")
+		and metrics.has("first_day_building_count")
+		and metrics.has("daily_xirang_rewards")
+		and metrics.has("day_records"),
+		"Runtime must expose the complete progression telemetry contract."
+	)
+	game.queue_free()
+	await _wait_for_freed(game)
+
+
+func _test_multiplayer_starting_package(player_count: int) -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier")
+	var names := {}
+	var characters := {}
+	for peer_id in range(1, player_count + 1):
+		names[peer_id] = "Player %d" % peer_id
+		characters[peer_id] = &"weishidaier"
+	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	game.auto_start_waves = false
+	game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		1,
+		names,
+		characters
+	)
+	root.add_child(game)
+	await process_frame
+	_expect(
+		game.starting_package_granted,
+		"%d-player starter package must be granted." % player_count
+	)
+	var agave := BuildingItemRegistry.get_item(PlantDefenseRegistry.AGAVE_CANNON_ID)
+	var warehouse := BuildingItemRegistry.get_item(PlantDefenseRegistry.OAK_WAREHOUSE_ID)
+	var station := BuildingItemRegistry.get_item(
+		PlantDefenseRegistry.WOOD_PROCESSING_STATION_ID
+	)
+	for peer_id in range(1, player_count + 1):
+		_expect(
+			run_state.get_inventory_item_total_for_peer(peer_id, agave) == 1,
+			"Every player must receive exactly one basic tower in %d-player mode."
+			% player_count
+		)
+		_expect(
+			run_state.get_inventory_item_total_for_peer(peer_id, warehouse)
+			== (1 if peer_id == 1 else 0)
+			and run_state.get_inventory_item_total_for_peer(peer_id, station)
+			== (1 if peer_id == 1 else 0),
+			"Only the host-owned team package may contain shared facilities."
+		)
+	if player_count == 2:
+		game.call("_enter_pre_flow_step", game.call("_get_start_flow_step"))
+		_expect(
+			not game.request_tower_defense_wave_start(2),
+			"A non-host player must not end multiplayer preparation."
+		)
+		_expect(
+			game.request_tower_defense_wave_start(1),
+			"The host must be able to confirm an early wave start."
+		)
+		_expect(
+			game.current_wave_total == int((FORMAL_SCALED_TOTALS[2] as Array)[0]),
+			"Host runtime must apply the two-player wave scaling contract."
+		)
+	game.queue_free()
+	await _wait_for_freed(game)
+
+
+func _wait_for_freed(node: Node) -> void:
+	for _frame in range(8):
+		if not is_instance_valid(node):
+			return
+		await process_frame
+		await physics_frame
+
+
+func _cleanup_runtime() -> void:
+	var current := current_scene
+	current_scene = null
+	if current != null and is_instance_valid(current):
+		current.queue_free()
+	for _frame in range(4):
+		await process_frame
+		await physics_frame
+
+
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		failures.append(message)

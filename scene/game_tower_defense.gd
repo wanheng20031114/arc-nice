@@ -59,7 +59,6 @@ const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
 const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
 const COUNTDOWN_FINAL_SECONDS := 3
-const REST_DURATION_SECONDS := 300
 const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
 const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
 const SPECTATOR_CAMERA_SPEED := 180.0
@@ -100,6 +99,9 @@ const SINGLEPLAYER_CAMPAIGN_PATH := (
 )
 const MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
+)
+const FORMAL_PROGRESSION_CONFIG_PATH := (
+	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
 const ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME := 16
 # Target priority is evaluated in logical tile units so it remains stable if a
@@ -159,7 +161,7 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @export var multiplayer_campaign: WaveCampaignConfig = null
 
 @export_group("战斗流程")
-@export_range(0.0, 3600.0, 1.0, "or_greater") var pre_wave_duration: float = REST_DURATION_SECONDS
+@export var progression_config: TowerDefenseProgressionConfig = null
 @export var auto_start_waves: bool = true
 @export var linglan_boss_enabled: bool = false
 
@@ -286,6 +288,12 @@ var fate_player_max_health_multiplier := 1.0
 var fate_player_move_speed_multiplier := 1.0
 var fate_hurt_speed_penalty_enabled := false
 var pending_fate_stone_peer_ids: Array[int] = []
+var starting_package_granted := false
+var progression_started_msec := 0
+var first_defense_tower_seconds := -1.0
+var water_chain_online_seconds := -1.0
+var daily_xirang_rewards: Dictionary[int, int] = {}
+var progression_day_records: Array[Dictionary] = []
 
 
 func _enter_tree() -> void:
@@ -441,9 +449,24 @@ func _ready() -> void:
 	research_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
+	if not research_coordinator.research_state_changed.is_connected(
+		_on_research_recipe_unlocks_changed
+	):
+		research_coordinator.research_state_changed.connect(
+			_on_research_recipe_unlocks_changed
+		)
 	_register_research_players()
 	_configure_minimap()
 	_apply_initial_player_xirang()
+	_start_progression_metrics()
+	if (
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+		and not _grant_tower_defense_starting_package()
+	):
+		push_error("GameTowerDefense: 无法原子发放正式塔防起步包，停止初始化。")
+		set_process(false)
+		set_physics_process(false)
+		return
 	currency_hud.bind_player(player)
 	player_profile_panel.set_research_coordinator(research_coordinator)
 	player_profile_panel.bind_player(player)
@@ -474,7 +497,7 @@ func _ready() -> void:
 		_start_client_flow_countdown(
 			WaveState.PRE_WAVE,
 			_get_flow_step_id(_get_start_flow_step()),
-			_get_rest_duration_seconds()
+			_get_initial_preparation_seconds()
 		)
 	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
 		_enter_pre_flow_step(_get_start_flow_step())
@@ -686,6 +709,13 @@ func get_fixed_multiplayer_respawn_position(peer_id: int) -> Variant:
 
 
 func _configure_active_campaign() -> bool:
+	if progression_config == null:
+		progression_config = load(
+			FORMAL_PROGRESSION_CONFIG_PATH
+		) as TowerDefenseProgressionConfig
+	if progression_config == null or not progression_config.is_valid():
+		push_error("GameTowerDefense: 正式成长配置缺失或无效。")
+		return false
 	active_campaign = (
 		singleplayer_campaign
 		if runtime_mode == RuntimeMode.SINGLEPLAYER
@@ -1041,6 +1071,7 @@ func _on_plant_placement_mode_changed(active: bool) -> void:
 func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
+	_track_progression_plant_placement(plant)
 	var hydrangea := plant as HydrangeaRainTower
 	if hydrangea != null:
 		hydrangea.set_plant_system(plant_system)
@@ -1061,6 +1092,9 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	production_coordinator.register_plant(plant)
 	var production_building := plant as ProductionBuilding
 	if production_building != null:
+		production_building.set_recipe_unlock_checker(
+			Callable(research_coordinator, "is_global_research_completed")
+		)
 		production_building.set_shared_production_panel(production_building_panel)
 	var research_center := plant as ResearchCenter
 	if research_center != null:
@@ -1084,6 +1118,27 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 			construction_callback,
 			CONNECT_ONE_SHOT
 		)
+
+
+func _track_progression_plant_placement(plant: PlantDefense) -> void:
+	if (
+		runtime_mode == RuntimeMode.CLIENT_VIEW
+		or plant == null
+		or plant.config == null
+	):
+		return
+	var elapsed_seconds := _get_progression_elapsed_seconds()
+	if (
+		first_defense_tower_seconds < 0.0
+		and plant.config.building_category
+		== PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER
+	):
+		first_defense_tower_seconds = elapsed_seconds
+	if (
+		water_chain_online_seconds < 0.0
+		and plant.config.plant_id == PlantDefenseRegistry.WATER_COLLECTOR_ID
+	):
+		water_chain_online_seconds = elapsed_seconds
 
 
 func _on_vegetation_stake_construction_finished(vegetation_stake: VegetationStake) -> void:
@@ -2064,6 +2119,75 @@ func _apply_initial_player_xirang() -> void:
 		player_instance.xirang_changed.emit(player_instance.current_xirang, 0)
 
 
+func _grant_tower_defense_starting_package() -> bool:
+	if starting_package_granted:
+		return true
+	if run_state == null or progression_config == null:
+		return false
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return false
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		var items := progression_config.get_starting_items(true)
+		var amounts := progression_config.get_starting_amounts(true)
+		if not run_state.can_add_item_counts(items, amounts):
+			return false
+		if not run_state.try_add_item_counts_if_revision(
+			items,
+			amounts,
+			run_state.get_inventory_revision()
+		):
+			return false
+		starting_package_granted = true
+		return true
+
+	var peer_ids: Array[int] = []
+	for peer_id_variant in peer_players:
+		peer_ids.append(int(peer_id_variant))
+	peer_ids.sort()
+	if (
+		peer_ids.is_empty()
+		or multiplayer_local_peer_id <= 0
+		or not peer_players.has(multiplayer_local_peer_id)
+	):
+		return false
+	for peer_id in peer_ids:
+		run_state.ensure_multiplayer_peer_state(peer_id)
+		var include_team_items := peer_id == multiplayer_local_peer_id
+		if not run_state.can_add_item_counts_for_peer(
+			peer_id,
+			progression_config.get_starting_items(include_team_items),
+			progression_config.get_starting_amounts(include_team_items)
+		):
+			return false
+	for peer_id in peer_ids:
+		var include_team_items := peer_id == multiplayer_local_peer_id
+		if not run_state.try_add_item_counts_for_peer_if_revision(
+			peer_id,
+			progression_config.get_starting_items(include_team_items),
+			progression_config.get_starting_amounts(include_team_items),
+			run_state.get_inventory_revision_for_peer(peer_id),
+			false
+		):
+			return false
+	starting_package_granted = true
+	run_state.notify_inventory_snapshot_committed()
+	return true
+
+
+func _start_progression_metrics() -> void:
+	if progression_started_msec <= 0:
+		progression_started_msec = Time.get_ticks_msec()
+
+
+func _get_progression_elapsed_seconds() -> float:
+	if progression_started_msec <= 0:
+		return 0.0
+	return maxf(
+		float(Time.get_ticks_msec() - progression_started_msec) / 1000.0,
+		0.0
+	)
+
+
 func _register_research_players() -> void:
 	if research_coordinator == null:
 		return
@@ -2074,6 +2198,13 @@ func _register_research_players() -> void:
 		var player_instance := player_variant as Player
 		if player_instance != null:
 			research_coordinator.register_player(player_instance)
+
+
+func _on_research_recipe_unlocks_changed() -> void:
+	for plant_variant in get_tree().get_nodes_in_group(&"plant_defense"):
+		var production_building := plant_variant as ProductionBuilding
+		if production_building != null:
+			production_building.notify_recipe_unlocks_changed()
 
 
 func _on_currency_hud_settings_requested() -> void:
@@ -2590,8 +2721,10 @@ func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
 		return false
 	if (
 		runtime_mode == RuntimeMode.HOST_AUTHORITY
-		and requester_peer_id > 0
-		and not peer_players.has(requester_peer_id)
+		and (
+			requester_peer_id != multiplayer_local_peer_id
+			or not peer_players.has(requester_peer_id)
+		)
 	):
 		return false
 	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
@@ -2905,8 +3038,29 @@ func _configure_timers() -> void:
 		plant_terrain_decay_timer.start()
 
 
-func _get_rest_duration_seconds() -> int:
-	return maxi(ceili(pre_wave_duration), 0)
+func _get_initial_preparation_seconds() -> int:
+	return maxi(ceili(progression_config.initial_preparation_seconds), 0)
+
+
+func _get_wave_intermission_seconds() -> int:
+	return maxi(ceili(progression_config.wave_intermission_seconds), 0)
+
+
+func _get_new_day_preparation_seconds() -> int:
+	return maxi(ceili(progression_config.new_day_preparation_seconds), 0)
+
+
+func _get_current_intermission_seconds() -> int:
+	var completed_wave_number := maxi(current_wave_index + 1, 1)
+	return (
+		_get_new_day_preparation_seconds()
+		if completed_wave_number % WAVES_PER_DAY == 0
+		else _get_wave_intermission_seconds()
+	)
+
+
+func _can_local_player_start_wave_early() -> bool:
+	return runtime_mode != RuntimeMode.CLIENT_VIEW
 
 
 func _prewarm_enemy_navigation_grids() -> void:
@@ -3900,7 +4054,13 @@ func grant_xirang_kill_reward(amount: int) -> bool:
 	var rewarded_amount := amount
 	if _is_fate_double_xirang_reward_active():
 		rewarded_amount *= 2
-	return super.grant_xirang_kill_reward(rewarded_amount)
+	var accepted := super.grant_xirang_kill_reward(rewarded_amount)
+	if accepted:
+		var day_number := _get_day_number_for_wave(current_wave_index + 1)
+		daily_xirang_rewards[day_number] = (
+			int(daily_xirang_rewards.get(day_number, 0)) + rewarded_amount
+		)
+	return accepted
 
 
 func _is_fate_double_xirang_reward_active() -> bool:
@@ -3922,9 +4082,9 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 		current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
 	enemy_spawn_timer.stop()
 	_set_merchant_active(true)
-	countdown_seconds = _get_rest_duration_seconds()
+	countdown_seconds = _get_initial_preparation_seconds()
 	_update_post_wave_music(flow_step)
-	wave_hud.show_countdown(countdown_seconds, true)
+	wave_hud.show_countdown(countdown_seconds, _can_local_player_start_wave_early())
 	_schedule_enemy_navigation_prewarm()
 	_emit_multiplayer_flow_state(WaveState.PRE_WAVE)
 
@@ -3943,9 +4103,9 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 	enemy_spawn_timer.stop()
 	_set_merchant_active(true)
 	next_flow_step_after_rest = next_step
-	countdown_seconds = _get_rest_duration_seconds()
+	countdown_seconds = _get_current_intermission_seconds()
 	_update_post_wave_music(current_flow_step)
-	wave_hud.show_countdown(countdown_seconds, true)
+	wave_hud.show_countdown(countdown_seconds, _can_local_player_start_wave_early())
 	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
 	_force_revive_dead_players()
 
@@ -4020,7 +4180,11 @@ func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 	for entry in wave_config.enemy_entries:
 		if entry == null or entry.enemy_config == null:
 			continue
-		for _enemy_index in range(maxi(entry.count, 0)):
+		var scaled_count := progression_config.get_scaled_enemy_count(
+			maxi(entry.count, 0),
+			_get_progression_player_count()
+		)
+		for _enemy_index in range(scaled_count):
 			pending_enemy_configs.append(
 				_resolve_fate_enemy_config(entry.enemy_config)
 			)
@@ -4030,6 +4194,12 @@ func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 		var temporary := pending_enemy_configs[source_index]
 		pending_enemy_configs[source_index] = pending_enemy_configs[target_index]
 		pending_enemy_configs[target_index] = temporary
+
+
+func _get_progression_player_count() -> int:
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		return 1
+	return maxi(peer_players.size(), 1)
 
 
 func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
@@ -4080,7 +4250,10 @@ func _on_state_timer_timeout() -> void:
 
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
 	if countdown_seconds > 0:
-		wave_hud.show_countdown(countdown_seconds, true)
+		wave_hud.show_countdown(
+			countdown_seconds,
+			_can_local_player_start_wave_early()
+		)
 		if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
 			_play_countdown_tick()
 		return
@@ -4107,7 +4280,10 @@ func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds
 		_set_local_merchants_active(true)
 		_update_post_wave_music(flow_step)
 	countdown_seconds = maxi(seconds, 0)
-	wave_hud.show_countdown(countdown_seconds, true)
+	wave_hud.show_countdown(
+		countdown_seconds,
+		_can_local_player_start_wave_early()
+	)
 	if countdown_seconds <= 0:
 		state_timer.stop()
 		return
@@ -4119,7 +4295,10 @@ func _update_client_flow_countdown() -> void:
 		state_timer.stop()
 		return
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	wave_hud.show_countdown(countdown_seconds, true)
+	wave_hud.show_countdown(
+		countdown_seconds,
+		_can_local_player_start_wave_early()
+	)
 	if countdown_seconds <= 0:
 		state_timer.stop()
 		return
@@ -4594,12 +4773,97 @@ func _complete_current_step() -> void:
 		completed_wave != null
 		and _get_wave_number_for_step(completed_wave) % WAVES_PER_DAY == 0
 	):
+		_record_progression_day(
+			_get_day_number_for_wave(_get_wave_number_for_step(completed_wave))
+		)
 		_enter_xiaocong_fate_interlude(next_step)
 		return
 	if next_step == null:
 		_enter_victory()
 		return
 	_enter_intermission(next_step)
+
+
+func _record_progression_day(day_number: int) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW or day_number <= 0:
+		return
+	for record in progression_day_records:
+		if int(record.get("day", 0)) == day_number:
+			return
+	var inventory_materials := _get_tracked_inventory_material_totals()
+	var shared_materials := _get_tracked_shared_material_totals()
+	var combined_materials := inventory_materials.duplicate()
+	for config_path_variant in shared_materials:
+		var config_path := String(config_path_variant)
+		combined_materials[config_path] = (
+			int(combined_materials.get(config_path, 0))
+			+ int(shared_materials[config_path_variant])
+		)
+	progression_day_records.append({
+		"day": day_number,
+		"elapsed_seconds": _get_progression_elapsed_seconds(),
+		"building_count": _get_active_progression_building_count(),
+		"daily_xirang": int(daily_xirang_rewards.get(day_number, 0)),
+		"inventory_materials": inventory_materials,
+		"shared_storage_materials": shared_materials,
+		"combined_materials": combined_materials,
+	})
+
+
+func _get_active_progression_building_count() -> int:
+	var building_count := 0
+	for plant_variant in get_tree().get_nodes_in_group(&"plant_defense"):
+		var plant := plant_variant as PlantDefense
+		if (
+			plant != null
+			and is_instance_valid(plant)
+			and not plant.is_dead
+			and not plant.is_removing
+		):
+			building_count += 1
+	return building_count
+
+
+func _get_tracked_inventory_material_totals() -> Dictionary:
+	var totals := {}
+	if progression_config == null or run_state == null:
+		return totals
+	for item in progression_config.tracked_materials:
+		var total := 0
+		if runtime_mode == RuntimeMode.SINGLEPLAYER:
+			total = run_state.get_inventory_item_total(item)
+		else:
+			for peer_id_variant in peer_players:
+				total += run_state.get_inventory_item_total_for_peer(
+					int(peer_id_variant),
+					item
+				)
+		totals[item.resource_path] = total
+	return totals
+
+
+func _get_tracked_shared_material_totals() -> Dictionary:
+	var totals := {}
+	if progression_config == null or production_coordinator == null:
+		return totals
+	for item in progression_config.tracked_materials:
+		totals[item.resource_path] = production_coordinator.get_total_item_count(item)
+	return totals
+
+
+func get_progression_metrics_snapshot() -> Dictionary:
+	var first_day_building_count := -1
+	for record in progression_day_records:
+		if int(record.get("day", 0)) == 1:
+			first_day_building_count = int(record.get("building_count", -1))
+			break
+	return {
+		"first_defense_tower_seconds": first_defense_tower_seconds,
+		"water_chain_online_seconds": water_chain_online_seconds,
+		"first_day_building_count": first_day_building_count,
+		"daily_xirang_rewards": daily_xirang_rewards.duplicate(true),
+		"day_records": progression_day_records.duplicate(true),
+	}
 
 
 func _enter_victory(emit_multiplayer: bool = true) -> void:

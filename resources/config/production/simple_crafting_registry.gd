@@ -44,18 +44,6 @@ const RECIPES := {
 	BAMBOO_MORTAR_ID: BAMBOO_MORTAR_RECIPE,
 	HYDRANGEA_RAIN_TOWER_ID: HYDRANGEA_RAIN_TOWER_RECIPE,
 }
-const BASE_RECIPE_IDS := {
-	HERBAL_HEALTH_POTION_ID: true,
-	WOOD_PROCESSING_STATION_ID: true,
-	OAK_WAREHOUSE_ID: true,
-	VEGETATION_STAKE_ID: true,
-	STONE_MILL_ID: true,
-	SIMPLE_FENCE_ID: true,
-}
-const RESEARCH_GATED_RECIPE_IDS := {
-	BAMBOO_MORTAR_ID: true,
-	HYDRANGEA_RAIN_TOWER_ID: true,
-}
 const MAX_WIRE_RECIPE_ID_LENGTH := 64
 
 
@@ -108,19 +96,9 @@ static func is_recipe_unlocked(
 ) -> bool:
 	if not is_simple_crafting_recipe(recipe):
 		return false
-	if BASE_RECIPE_IDS.has(recipe.recipe_id):
+	if not recipe.requires_global_research():
 		return true
-	if not RESEARCH_GATED_RECIPE_IDS.has(recipe.recipe_id):
-		return false
-	var required_research_id := (
-		GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
-			recipe.recipe_id
-		)
-	)
-	return (
-		required_research_id != &""
-		and required_research_id in completed_global_research_ids
-	)
+	return recipe.required_global_research_id in completed_global_research_ids
 
 
 static func is_simple_crafting_recipe(recipe: ProductionRecipe) -> bool:

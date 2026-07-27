@@ -10,6 +10,7 @@
 script = ExtResource("1_script")
 recipe_id = &"bamboo_mortar"
 display_name = "竹筒迫击炮"
+required_global_research_id = &"bamboo_mortar_crafting"
 input_items = Array[ExtResource("5_pickup_script")]([ExtResource("2_core"), ExtResource("3_plank")])
 input_amounts = Array[int]([1, 10])
 input_source = 1

@@ -1,22 +1,22 @@
-[gd_resource type="Resource" script_class="FlowGraphConfig" format=3 uid="uid://rywlya20qqu5"]
+[gd_resource type="Resource" script_class="FlowGraphConfig" format=3]
 
-[ext_resource type="Script" uid="uid://behn2jijtub3x" path="res://resources/config/flow/flow_graph_config.gd" id="1_hqo5q"]
-[ext_resource type="Resource" uid="uid://c2slcq1w5u33j" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_01.tres" id="2_w1cwq"]
-[ext_resource type="Script" uid="uid://gxc7u74nabp2" path="res://resources/config/flow/flow_step_config.gd" id="3_nbqvt"]
-[ext_resource type="Resource" uid="uid://cauprjw1y8se" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_02.tres" id="4_etcvd"]
-[ext_resource type="Resource" uid="uid://b486vw7j31kl4" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_03.tres" id="5_bxbkh"]
-[ext_resource type="Resource" uid="uid://brpdjx1086ojh" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_04.tres" id="6_pqbiy"]
-[ext_resource type="Resource" uid="uid://coh47n1sdwcq7" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_05.tres" id="7_4cauh"]
-[ext_resource type="Resource" uid="uid://cqmvx8yjhkgk" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_06.tres" id="8_jnd5c"]
-[ext_resource type="Resource" uid="uid://dpkmphx3fs7mp" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_07.tres" id="9_nehh2"]
-[ext_resource type="Resource" uid="uid://mpnhm5oym1k6" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_08.tres" id="10_yew5v"]
-[ext_resource type="Resource" uid="uid://coqdhonaduw17" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_09.tres" id="11_djiy8"]
-[ext_resource type="Resource" uid="uid://d2bdm6201x64m" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_10.tres" id="12_txn5n"]
-[ext_resource type="Resource" uid="uid://bahakly266dgd" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_11.tres" id="13_tbatp"]
-[ext_resource type="Resource" uid="uid://c85ypl3qvf37n" path="res://resources/config/campaigns/tower_defense/singleplayer/wave_12.tres" id="14_eaq87"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_graph_config.gd" id="1_graph"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_step_config.gd" id="2_step"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_01.tres" id="3_wave01"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_02.tres" id="4_wave02"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_03.tres" id="5_wave03"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_04.tres" id="6_wave04"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_05.tres" id="7_wave05"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_06.tres" id="8_wave06"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_07.tres" id="9_wave07"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_08.tres" id="10_wave08"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_09.tres" id="11_wave09"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_10.tres" id="12_wave10"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_11.tres" id="13_wave11"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_12.tres" id="14_wave12"]
 
 [resource]
-script = ExtResource("1_hqo5q")
-graph_name = "塔防模式 / 单人战斗流程"
-start_step = ExtResource("2_w1cwq")
-steps = Array[ExtResource("3_nbqvt")]([ExtResource("2_w1cwq"), ExtResource("4_etcvd"), ExtResource("5_bxbkh"), ExtResource("6_pqbiy"), ExtResource("7_4cauh"), ExtResource("8_jnd5c"), ExtResource("9_nehh2"), ExtResource("10_yew5v"), ExtResource("11_djiy8"), ExtResource("12_txn5n"), ExtResource("13_tbatp"), ExtResource("14_eaq87")])
+script = ExtResource("1_graph")
+graph_name = "塔防模式 / 正式单人战斗流程"
+start_step = ExtResource("3_wave01")
+steps = Array[ExtResource("2_step")]([ExtResource("3_wave01"), ExtResource("4_wave02"), ExtResource("5_wave03"), ExtResource("6_wave04"), ExtResource("7_wave05"), ExtResource("8_wave06"), ExtResource("9_wave07"), ExtResource("10_wave08"), ExtResource("11_wave09"), ExtResource("12_wave10"), ExtResource("13_wave11"), ExtResource("14_wave12")])

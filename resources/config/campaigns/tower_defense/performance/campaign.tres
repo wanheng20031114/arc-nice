@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="WaveCampaignConfig" format=3]
+
+[ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/performance/flow.tres" id="1_flow"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_campaign_config.gd" id="2_campaign"]
+
+[resource]
+script = ExtResource("2_campaign")
+campaign_id = &"tower_defense_performance"
+flow_graph = ExtResource("1_flow")

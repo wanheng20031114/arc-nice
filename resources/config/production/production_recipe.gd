@@ -18,6 +18,7 @@ enum OutputDestination {
 @export_group("基础信息")
 @export var recipe_id: StringName = &""
 @export var display_name: String = "生产配方"
+@export var required_global_research_id: StringName = &""
 
 @export_group("投入")
 @export var input_items: Array[PickupConfig] = []
@@ -49,6 +50,10 @@ func is_valid() -> bool:
 		or output_destination > OutputDestination.LOCAL_OUTPUT_SLOT
 		or not is_finite(duration_seconds)
 		or duration_seconds <= 0.0
+		or (
+			required_global_research_id != &""
+			and GlobalResearchRegistry.get_config(required_global_research_id) == null
+		)
 	):
 		return false
 	var environment_source_count := 0
@@ -73,6 +78,10 @@ func is_valid() -> bool:
 	):
 		return false
 	return true
+
+
+func requires_global_research() -> bool:
+	return required_global_research_id != &""
 
 
 func uses_environment_source() -> bool:

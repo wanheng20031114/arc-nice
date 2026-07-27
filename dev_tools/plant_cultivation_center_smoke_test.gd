@@ -78,6 +78,11 @@ class PlacementRollbackPlantSystem:
 
 
 var failures: PackedStringArray = []
+var completed_research_ids: Dictionary[StringName, bool] = {}
+
+
+func _is_research_completed(research_id: StringName) -> bool:
+	return completed_research_ids.has(research_id)
 
 
 func _initialize() -> void:
@@ -149,6 +154,7 @@ func _run() -> void:
 	)
 	coordinator.register_plant(warehouse)
 	coordinator.register_plant(center)
+	center.set_recipe_unlock_checker(Callable(self, "_is_research_completed"))
 	center.set_shared_production_panel(panel)
 
 	_expect(
@@ -283,6 +289,14 @@ func _run() -> void:
 		"玉米机枪塔必须作为独立且不可叠加的建筑物品进入背包。"
 	)
 	_expect(
+		not center.select_recipe(&"wooden_core_to_bamboo_mortar")
+		and not center.select_recipe(&"wooden_core_to_hydrangea_rain_tower"),
+		"竹筒与紫阳花培育必须在对应科研完成前保持锁定。"
+	)
+	completed_research_ids[
+		GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
+	] = true
+	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
 		and center.select_recipe(&"wooden_core_to_bamboo_mortar"),
 		"培育测试必须能切换至竹筒迫击炮配方。"
@@ -300,6 +314,13 @@ func _run() -> void:
 		and is_zero_approx(center.progress_elapsed_seconds),
 		"迫击炮必须在累计30秒时完成并进入独立背包槽位。"
 	)
+	_expect(
+		not center.select_recipe(&"wooden_core_to_hydrangea_rain_tower"),
+		"完成竹筒科研不得顺带解锁紫阳花培育。"
+	)
+	completed_research_ids[
+		GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
+	] = true
 	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
 		and center.select_recipe(&"wooden_core_to_hydrangea_rain_tower"),

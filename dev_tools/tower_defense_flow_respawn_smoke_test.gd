@@ -40,15 +40,20 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	await physics_frame
 
 	_expect(game.tower_defense_status_hud.visible, "Tower-defense runtime must explicitly enable its status HUD.")
-	_expect(is_equal_approx(game.pre_wave_duration, 300.0), "Tower-defense rest limit must default to five minutes.")
+	_expect(
+		is_equal_approx(game.progression_config.initial_preparation_seconds, 90.0)
+		and is_equal_approx(game.progression_config.wave_intermission_seconds, 30.0)
+		and is_equal_approx(game.progression_config.new_day_preparation_seconds, 60.0),
+		"Tower-defense flow must use separate 90/30/60 preparation durations."
+	)
 	_expect(game.player.current_xirang == 1000, "The player must enter tower defense with 1000 Xirang.")
 	var first_step := game.current_flow_step
 	_expect(game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE, "The first wave must wait in PRE_WAVE instead of starting immediately.")
-	_expect(game.countdown_seconds == 300, "The first preparation period must start at 300 seconds.")
+	_expect(game.countdown_seconds == 90, "The first preparation period must start at 90 seconds.")
 	_expect(game.wave_hud.start_wave_button.visible and not game.wave_hud.start_wave_button.disabled, "The rest HUD must expose an enabled early-start button.")
 	_expect(
 		game.wave_hud.stage_banner.visible
-		and game.wave_hud.stage_label.text.contains("05:00"),
+		and game.wave_hud.stage_label.text.contains("01:30"),
 		"The tower-defense rest banner must use MM:SS formatting."
 	)
 	_expect(
@@ -119,7 +124,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	game.luoxi_merchant.dialogue_bubble.show()
 	game.call("_enter_intermission", first_step)
 	_expect(game.wave_state == GameRuntimeBase.WaveState.INTERMISSION, "Every cleared wave must enter a rest state.")
-	_expect(game.countdown_seconds == 300, "Every between-wave rest must start at 300 seconds.")
+	_expect(game.countdown_seconds == 30, "Every ordinary between-wave rest must start at 30 seconds.")
 	_expect(
 		game.music_player.stream.resource_path
 		== "res://resources/audio/shenmu_forest_intermission.ogg",
@@ -430,7 +435,8 @@ func _test_singleplayer_transition_revive_policy() -> void:
 			zero_rest_revives["count"] = int(zero_rest_revives["count"]) + 1
 	)
 	zero_rest_game.player.call("_die")
-	zero_rest_game.pre_wave_duration = 0.0
+	zero_rest_game.progression_config = zero_rest_game.progression_config.duplicate(true)
+	zero_rest_game.progression_config.wave_intermission_seconds = 0.0
 	zero_rest_game.call("_enter_intermission", zero_rest_step)
 	zero_rest_game.enemy_spawn_timer.stop()
 	_expect(
@@ -548,7 +554,8 @@ func _test_host_transition_revive_signal_policy() -> void:
 	for peer_id in [1, 2]:
 		intermission_game.get_player_for_peer(peer_id).apply_multiplayer_death_state()
 	var intermission_step := intermission_game.call("_get_start_flow_step") as FlowStepConfig
-	intermission_game.pre_wave_duration = 0.0
+	intermission_game.progression_config = intermission_game.progression_config.duplicate(true)
+	intermission_game.progression_config.wave_intermission_seconds = 0.0
 	intermission_game.call("_enter_intermission", intermission_step)
 	intermission_game.enemy_spawn_timer.stop()
 	_expect(
@@ -814,6 +821,10 @@ func _test_client_gate_warning_replication() -> void:
 	current_scene = game
 	await process_frame
 	await physics_frame
+	_expect(
+		not game.wave_hud.start_wave_button.visible,
+		"A multiplayer client must not see an early-start control reserved for the host."
+	)
 	game.apply_remote_base_health(9, 10, 1)
 	_expect(game.current_base_health == 9, "A client must apply the authoritative blue-gate health loss.")
 	_expect(
@@ -876,8 +887,15 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	var first_step := game.call("_get_start_flow_step") as FlowStepConfig
 	game.call("_enter_pre_flow_step", first_step)
 	_expect(not game.request_tower_defense_wave_start(99), "The Host must reject an early-start request from an unknown peer.")
-	_expect(game.request_tower_defense_wave_start(2), "A connected multiplayer client must be allowed to request early combat.")
-	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "The Host must authoritatively start combat after a valid client request.")
+	_expect(
+		not game.request_tower_defense_wave_start(2),
+		"A connected non-host player must not end preparation for the team."
+	)
+	_expect(
+		game.request_tower_defense_wave_start(1),
+		"The Host must be able to confirm early combat for the team."
+	)
+	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "The Host confirmation must authoritatively start combat.")
 	game.enemy_spawn_timer.stop()
 	for peer_id in [1, 2]:
 		var player_instance := game.get_player_for_peer(peer_id)

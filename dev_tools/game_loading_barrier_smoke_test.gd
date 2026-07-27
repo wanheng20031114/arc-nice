@@ -9,7 +9,7 @@ const STANDARD_BOSS_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/boss/linglan/boss_health_hud.tscn",
 ]
 const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
-	"res://resources/config/campaigns/tower_defense/singleplayer/wave_01.tres",
+	"res://resources/config/campaigns/tower_defense/formal/wave_01.tres",
 	"res://resources/config/enemies/yuanshi_insect_basic.tres",
 	"res://resources/config/enemies/yuanshi_insect_shell.tres",
 	"res://resources/config/enemies/capoo_ak47.tres",

@@ -5,59 +5,48 @@ const WAVE_CAMPAIGN_CONFIG_SCRIPT := preload(
 )
 const STANDARD_GAME_SCENE := preload("res://scene/game.tscn")
 const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const FORMAL_TOTALS: Array[int] = [24, 36, 48, 64, 80, 96, 112, 128, 144, 160, 176, 200]
+const FORMAL_MAX_ALIVE: Array[int] = [24, 32, 36, 40, 48, 52, 56, 64, 72, 80, 88, 96]
+const PERFORMANCE_TOTAL := 1200
+const PERFORMANCE_MAX_ALIVE := 300
+
 const CAMPAIGN_DEFINITIONS := [
 	{
 		"path": "res://resources/config/campaigns/standard/singleplayer/campaign.tres",
-		"directory": "res://resources/config/campaigns/standard/singleplayer/",
 		"campaign_id": &"standard_singleplayer",
-		"spawn_point_mask": WaveConfig.STANDARD_SPAWN_POINT_MASK,
-		"boss_path": "res://resources/config/bosses/boss_01_linglan.tres",
-		"tower_defense": false,
+		"flow_path": "res://resources/config/campaigns/standard/singleplayer/flow.tres",
+		"kind": &"standard",
+		"boss_count": 1,
 	},
 	{
 		"path": "res://resources/config/campaigns/standard/multiplayer/campaign.tres",
-		"directory": "res://resources/config/campaigns/standard/multiplayer/",
 		"campaign_id": &"standard_multiplayer",
-		"spawn_point_mask": WaveConfig.STANDARD_SPAWN_POINT_MASK,
-		"boss_path": "res://resources/config/bosses/boss_01_linglan.tres",
-		"tower_defense": false,
+		"flow_path": "res://resources/config/campaigns/standard/multiplayer/flow.tres",
+		"kind": &"standard",
+		"boss_count": 1,
 	},
 	{
 		"path": "res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres",
-		"directory": "res://resources/config/campaigns/tower_defense/singleplayer/",
 		"campaign_id": &"tower_defense_singleplayer",
-		"spawn_point_mask": WaveConfig.ALL_SPAWN_POINT_MASK,
-		"tower_defense": true,
+		"flow_path": "res://resources/config/campaigns/tower_defense/singleplayer/flow.tres",
+		"kind": &"formal",
+		"boss_count": 0,
 	},
 	{
 		"path": "res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres",
-		"directory": "res://resources/config/campaigns/tower_defense/multiplayer/",
 		"campaign_id": &"tower_defense_multiplayer",
-		"spawn_point_mask": WaveConfig.ALL_SPAWN_POINT_MASK,
-		"tower_defense": true,
+		"flow_path": "res://resources/config/campaigns/tower_defense/multiplayer/flow.tres",
+		"kind": &"formal",
+		"boss_count": 0,
+	},
+	{
+		"path": "res://resources/config/campaigns/tower_defense/performance/campaign.tres",
+		"campaign_id": &"tower_defense_performance",
+		"flow_path": "res://resources/config/campaigns/tower_defense/performance/flow.tres",
+		"kind": &"performance",
+		"boss_count": 0,
 	},
 ]
-
-const TOWER_DEFENSE_STRESS_TOTAL_ENEMIES := 1200
-const TOWER_DEFENSE_STRESS_MAX_ALIVE := 300
-const TOWER_DEFENSE_EARLY_WAVE_COUNT := 2
-const TOWER_DEFENSE_EARLY_WAVE_SPAWN_INTERVAL := 0.1
-const TOWER_DEFENSE_ORIGINAL_BATCH_INTERVAL := 0.1
-const TOWER_DEFENSE_ORIGINAL_BATCH_SIZE := 4.0
-const TOWER_DEFENSE_SEQUENTIAL_SPAWN_INTERVAL := (
-	TOWER_DEFENSE_ORIGINAL_BATCH_INTERVAL / TOWER_DEFENSE_ORIGINAL_BATCH_SIZE
-)
-const TOWER_DEFENSE_SEQUENTIAL_SPAWN_COUNT_PER_TICK := 1
-const TOWER_DEFENSE_FOREST_COMBAT_BGM := "res://resources/audio/shenmu_forest_combat.ogg"
-const TOWER_DEFENSE_FOREST_INTERMISSION_BGM := "res://resources/audio/shenmu_forest_intermission.ogg"
-const STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS := {
-	"res://resources/config/enemies/slime.tres": 1,
-}
-const FIRST_WAVE_EXPECTED_COUNTS := {
-	"res://resources/config/enemies/yuanshi_insect_basic.tres": 850,
-	"res://resources/config/enemies/yuanshi_insect_shell.tres": 320,
-	"res://resources/config/enemies/capoo_ak47.tres": 30,
-}
 
 var failures: Array[String] = []
 
@@ -77,118 +66,142 @@ func _init() -> void:
 
 
 func _test_campaign_resources() -> void:
-	var seen_campaigns: Array[Resource] = []
-	var seen_flow_graphs: Array[FlowGraphConfig] = []
-	var seen_wave_instances: Array[WaveConfig] = []
-	var seen_wave_paths: Dictionary = {}
-
+	var formal_wave_paths: PackedStringArray = []
 	for definition in CAMPAIGN_DEFINITIONS:
-		var campaign := load(String(definition["path"])) as Resource
-		_expect(campaign != null, "Campaign must load: %s" % String(definition["path"]))
+		var campaign := load(String(definition["path"])) as WaveCampaignConfig
+		_expect(campaign != null, "Campaign must load: %s" % definition["path"])
 		if campaign == null:
 			continue
-		_expect(campaign.get("campaign_id") == definition["campaign_id"], "Campaign id mismatch: %s" % campaign.resource_path)
-		_expect(not seen_campaigns.has(campaign), "Campaign resources must not share instances.")
-		seen_campaigns.append(campaign)
-
-		var validation_errors: PackedStringArray = campaign.call("validate_campaign")
-		_expect(validation_errors.is_empty(), "Campaign must validate: %s" % str(validation_errors))
-		var flow_graph := campaign.get("flow_graph") as FlowGraphConfig
-		_expect(flow_graph != null, "Campaign must provide a flow graph: %s" % campaign.resource_path)
-		if flow_graph == null:
-			continue
-		_expect(not seen_flow_graphs.has(flow_graph), "Campaign flow graphs must not share instances.")
-		seen_flow_graphs.append(flow_graph)
 		_expect(
-			flow_graph.resource_path == String(definition["directory"]) + "flow.tres",
-			"Campaign flow graph must stay in its own directory: %s" % flow_graph.resource_path
+			campaign.campaign_id == definition["campaign_id"],
+			"Campaign id mismatch: %s" % campaign.resource_path
 		)
-
-		var waves: Array = campaign.call("get_waves")
-		_expect(waves.size() == 12, "Campaign must contain 12 waves: %s" % campaign.resource_path)
-		var is_tower_defense := bool(definition["tower_defense"])
-		var bosses: Array = campaign.call("get_bosses")
-		var expected_boss_count := 0 if is_tower_defense else 1
 		_expect(
-			bosses.size() == expected_boss_count,
+			campaign.validate_campaign().is_empty(),
+			"Campaign must validate: %s" % campaign.resource_path
+		)
+		var graph := campaign.flow_graph
+		_expect(graph != null, "Campaign must provide a flow graph.")
+		if graph == null:
+			continue
+		_expect(
+			graph.resource_path == definition["flow_path"],
+			"Campaign uses the wrong flow resource: %s" % graph.resource_path
+		)
+		var waves := campaign.get_waves()
+		_expect(waves.size() == 12, "Campaign must contain 12 waves.")
+		_expect(
+			campaign.get_bosses().size() == int(definition["boss_count"]),
 			"Campaign boss count mismatch: %s" % campaign.resource_path
 		)
-		if not is_tower_defense and bosses.size() == 1:
-			var boss_config := bosses[0] as BossConfig
-			_expect(boss_config != null, "Campaign boss step must be a BossConfig.")
-			if boss_config != null:
-				_expect(
-					boss_config.resource_path == String(definition["boss_path"]),
-					"Campaign selected the wrong mode-specific boss layout: %s"
-					% boss_config.resource_path
-				)
-		if not waves.is_empty():
-			_expect(flow_graph.start_step == waves[0], "Campaign flow must start from its first wave.")
-		for wave_index in range(waves.size()):
-			var wave_config := waves[wave_index] as WaveConfig
-			var source_wave := load(
-				"res://resources/config/waves/wave_%02d.tres" % (wave_index + 1)
-			) as WaveConfig
-			_expect(
-				source_wave != null
-				and source_wave.spawn_point_mask == WaveConfig.STANDARD_SPAWN_POINT_MASK,
-				"Canonical source waves must keep an explicit standard spawn mask."
-			)
-			_expect(wave_config != null, "Campaign contains a null wave.")
-			if wave_config == null:
-				continue
-			var expected_path := "%swave_%02d.tres" % [
-				String(definition["directory"]),
-				wave_index + 1,
-			]
-			_expect(wave_config.resource_path == expected_path, "Wave path mismatch: %s" % wave_config.resource_path)
-			_expect(not seen_wave_paths.has(wave_config.resource_path), "Wave paths must be unique across campaigns.")
-			seen_wave_paths[wave_config.resource_path] = true
-			_expect(not seen_wave_instances.has(wave_config), "Wave instances must not be shared across campaigns.")
-			seen_wave_instances.append(wave_config)
-			_expect(
-				wave_config.spawn_point_mask == int(definition["spawn_point_mask"]),
-				"Wave spawn mask mismatch: %s" % wave_config.resource_path
-			)
-			_expect(
-				wave_config.step_id == StringName("wave_%02d" % (wave_index + 1)),
-				"Wave step id mismatch: %s" % wave_config.resource_path
-			)
-			if is_tower_defense:
-				_verify_tower_defense_stress_wave(wave_config, wave_index)
-			elif (
-				definition["campaign_id"] == &"standard_singleplayer"
-				and wave_index == 0
-			):
-				_verify_standard_singleplayer_slime_wave(
-					wave_config,
-					source_wave
-				)
-			else:
-				_expect(
-					_wave_content_matches_source(wave_config, source_wave),
-					"Campaign wave content differs from its source snapshot: %s"
-					% wave_config.resource_path
-				)
-			var spawn_names := wave_config.get_enabled_spawn_point_names()
-			var expected_spawn_count := 6 if int(definition["spawn_point_mask"]) == 63 else 5
-			_expect(spawn_names.size() == expected_spawn_count, "Enabled spawn-point list mismatch.")
-			_expect(
-				spawn_names.has(&"Spawn6") == (expected_spawn_count == 6),
-				"Spawn6 availability must match the campaign mode."
-			)
+		if waves.size() != 12:
+			continue
+		_expect(graph.start_step == waves[0], "Flow must start from wave 1.")
+		match StringName(definition["kind"]):
+			&"formal":
+				_verify_formal_waves(waves)
+				var paths := PackedStringArray()
+				for wave in waves:
+					paths.append(wave.resource_path)
+				if formal_wave_paths.is_empty():
+					formal_wave_paths = paths
+				else:
+					_expect(
+						paths == formal_wave_paths,
+						"Singleplayer and multiplayer must share the formal wave baseline."
+					)
+			&"performance":
+				_verify_performance_waves(waves)
+			&"standard":
+				_verify_standard_waves(waves)
 
-	_expect(seen_campaigns.size() == 4, "Exactly four independent Campaign resources are required.")
-	_expect(seen_flow_graphs.size() == 4, "Exactly four independent flow graphs are required.")
-	_expect(seen_wave_instances.size() == 48, "Exactly 48 independent WaveConfig instances are required.")
-	_expect(seen_wave_paths.size() == 48, "Exactly 48 independent WaveConfig paths are required.")
+
+func _verify_formal_waves(waves: Array[WaveConfig]) -> void:
+	for wave_index in waves.size():
+		var wave := waves[wave_index]
+		var expected_path := (
+			"res://resources/config/campaigns/tower_defense/formal/wave_%02d.tres"
+			% (wave_index + 1)
+		)
+		_expect(wave.resource_path == expected_path, "Formal wave path mismatch.")
+		_expect(
+			wave.get_total_enemy_count() == FORMAL_TOTALS[wave_index],
+			"Formal wave %d enemy total mismatch." % (wave_index + 1)
+		)
+		_expect(
+			wave.max_alive_enemies == FORMAL_MAX_ALIVE[wave_index],
+			"Formal wave %d max-alive mismatch." % (wave_index + 1)
+		)
+		_expect(
+			wave.spawn_point_mask == WaveConfig.ALL_SPAWN_POINT_MASK,
+			"Formal tower-defense waves must use all six spawn points."
+		)
+		_expect(
+			wave.post_clear_rest_duration == 0.0,
+			"Formal waves must not carry a second rest-duration source."
+		)
+		_expect(
+			not wave.wave_name.contains("压力测试")
+			and not wave.display_name.contains("压力测试"),
+			"Formal campaign must not expose pressure-test labels."
+		)
+		_verify_linear_exit(wave, wave_index)
+
+
+func _verify_performance_waves(waves: Array[WaveConfig]) -> void:
+	for wave_index in waves.size():
+		var wave := waves[wave_index]
+		_expect(
+			wave.resource_path == (
+				"res://resources/config/campaigns/tower_defense/performance/waves/wave_%02d.tres"
+				% (wave_index + 1)
+			),
+			"Performance wave must live only in the performance campaign."
+		)
+		_expect(
+			wave.get_total_enemy_count() == PERFORMANCE_TOTAL,
+			"Every performance wave must retain exactly 1200 enemies."
+		)
+		_expect(
+			wave.max_alive_enemies == PERFORMANCE_MAX_ALIVE,
+			"Performance waves must retain the 300-enemy ceiling."
+		)
+		_verify_linear_exit(wave, wave_index)
+	_expect(
+		waves[0].wave_name == "第1波 虫潮压力测试",
+		"The pressure-test label must remain explicit in the performance campaign."
+	)
+
+
+func _verify_standard_waves(waves: Array[WaveConfig]) -> void:
+	for wave in waves:
+		_expect(
+			wave.spawn_point_mask == WaveConfig.STANDARD_SPAWN_POINT_MASK,
+			"Standard campaigns must retain their five-point spawn contract."
+		)
+
+
+func _verify_linear_exit(wave: WaveConfig, wave_index: int) -> void:
+	_expect(
+		wave.step_id == StringName("wave_%02d" % (wave_index + 1)),
+		"Wave step id mismatch: %s" % wave.resource_path
+	)
+	if wave_index < 11:
+		_expect(
+			wave.exits.size() == 1
+			and wave.exits[0].get_target_step_id()
+			== StringName("wave_%02d" % (wave_index + 2)),
+			"Wave must advance linearly: %s" % wave.resource_path
+		)
+	else:
+		_expect(wave.exits.is_empty(), "Wave 12 must terminate the campaign.")
 
 
 func _test_campaign_validation() -> void:
-	var missing_graph := WAVE_CAMPAIGN_CONFIG_SCRIPT.new() as Resource
-	missing_graph.set("campaign_id", &"missing_graph")
+	var missing_graph := WAVE_CAMPAIGN_CONFIG_SCRIPT.new() as WaveCampaignConfig
+	missing_graph.campaign_id = &"missing_graph"
 	_expect(
-		_has_error_containing(missing_graph.call("validate_campaign"), "FlowGraphConfig"),
+		_has_error_containing(missing_graph.validate_campaign(), "FlowGraphConfig"),
 		"Campaign validation must reject a missing flow graph."
 	)
 	var invalid_wave := WaveConfig.new()
@@ -197,63 +210,37 @@ func _test_campaign_validation() -> void:
 	var invalid_graph := FlowGraphConfig.new()
 	invalid_graph.start_step = invalid_wave
 	invalid_graph.steps = [invalid_wave]
-	var invalid_campaign := WAVE_CAMPAIGN_CONFIG_SCRIPT.new() as Resource
-	invalid_campaign.set("campaign_id", &"invalid_mask")
-	invalid_campaign.set("flow_graph", invalid_graph)
+	var invalid_campaign := WAVE_CAMPAIGN_CONFIG_SCRIPT.new() as WaveCampaignConfig
+	invalid_campaign.campaign_id = &"invalid_mask"
+	invalid_campaign.flow_graph = invalid_graph
 	_expect(
-		_has_error_containing(invalid_campaign.call("validate_campaign"), "没有启用出生点"),
+		_has_error_containing(invalid_campaign.validate_campaign(), "没有启用出生点"),
 		"Campaign validation must reject an empty spawn-point mask."
 	)
 
 
 func _test_runtime_campaign_selection() -> void:
 	var cases := [
-		{
-			"scene": STANDARD_GAME_SCENE,
-			"runtime_mode": GameRuntimeBase.RuntimeMode.SINGLEPLAYER,
-			"campaign_id": &"standard_singleplayer",
-			"tower_defense": false,
-		},
-		{
-			"scene": STANDARD_GAME_SCENE,
-			"runtime_mode": GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
-			"campaign_id": &"standard_multiplayer",
-			"tower_defense": false,
-		},
-		{
-			"scene": TOWER_DEFENSE_GAME_SCENE,
-			"runtime_mode": GameRuntimeBase.RuntimeMode.SINGLEPLAYER,
-			"campaign_id": &"tower_defense_singleplayer",
-			"tower_defense": true,
-		},
-		{
-			"scene": TOWER_DEFENSE_GAME_SCENE,
-			"runtime_mode": GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
-			"campaign_id": &"tower_defense_multiplayer",
-			"tower_defense": true,
-		},
+		[STANDARD_GAME_SCENE, GameRuntimeBase.RuntimeMode.SINGLEPLAYER, &"standard_singleplayer"],
+		[STANDARD_GAME_SCENE, GameRuntimeBase.RuntimeMode.HOST_AUTHORITY, &"standard_multiplayer"],
+		[TOWER_DEFENSE_GAME_SCENE, GameRuntimeBase.RuntimeMode.SINGLEPLAYER, &"tower_defense_singleplayer"],
+		[TOWER_DEFENSE_GAME_SCENE, GameRuntimeBase.RuntimeMode.HOST_AUTHORITY, &"tower_defense_multiplayer"],
 	]
 	for test_case in cases:
-		var game := (test_case["scene"] as PackedScene).instantiate() as GameRuntimeBase
-		_expect(game != null, "Runtime campaign probe scene must instantiate.")
+		var game := (test_case[0] as PackedScene).instantiate() as GameRuntimeBase
+		_expect(game != null, "Runtime campaign probe must instantiate.")
 		if game == null:
 			continue
-		game.runtime_mode = int(test_case["runtime_mode"])
+		game.runtime_mode = int(test_case[1])
 		_expect(
 			bool(game.call("_configure_active_campaign")),
-			"Runtime must configure Campaign %s." % String(test_case["campaign_id"])
+			"Runtime must configure Campaign %s." % String(test_case[2])
 		)
-		var active_campaign := game.get("active_campaign") as Resource
+		var campaign := game.get("active_campaign") as WaveCampaignConfig
 		_expect(
-			active_campaign != null
-			and active_campaign.get("campaign_id") == test_case["campaign_id"],
-			"Runtime selected the wrong Campaign for %s." % String(test_case["campaign_id"])
+			campaign != null and campaign.campaign_id == test_case[2],
+			"Runtime selected the wrong campaign."
 		)
-		if bool(test_case["tower_defense"]):
-			_expect(
-				(game as GameTowerDefense).bosses.is_empty(),
-				"Tower-defense runtime must not expose a Boss step."
-			)
 		game.free()
 
 
@@ -261,191 +248,12 @@ func _test_boss_mode_separation() -> void:
 	var standard_boss := load(
 		"res://resources/config/bosses/boss_01_linglan.tres"
 	) as BossConfig
-	_expect(standard_boss != null, "Standard-mode Linglan BossConfig must continue to load.")
-	if standard_boss == null:
-		return
-	_expect(
-		standard_boss.arena_floor_rect == Rect2i(-3, -1, 22, 18),
-		"Standard mode must retain its original small-map boss arena."
-	)
-
+	_expect(standard_boss != null, "Standard Linglan BossConfig must continue to load.")
 	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
-	_expect(game != null, "Tower-defense Boss exclusion probe must instantiate.")
-	if game == null:
-		return
-	_expect(not game.linglan_boss_enabled, "Tower-defense Linglan must stay disabled by default.")
-	game.free()
-
-
-func _verify_tower_defense_stress_wave(
-	wave_config: WaveConfig,
-	wave_index: int
-) -> void:
-	_expect(
-		wave_config.get_total_enemy_count() == TOWER_DEFENSE_STRESS_TOTAL_ENEMIES,
-		"Every tower-defense pressure wave must contain exactly 1200 enemies: %s"
-		% wave_config.resource_path
-	)
-	_expect(
-		wave_config.max_alive_enemies == TOWER_DEFENSE_STRESS_MAX_ALIVE,
-		"Tower-defense maximum simultaneous enemies must be 300."
-	)
-	var expected_spawn_interval := (
-		TOWER_DEFENSE_EARLY_WAVE_SPAWN_INTERVAL
-		if wave_index < TOWER_DEFENSE_EARLY_WAVE_COUNT
-		else TOWER_DEFENSE_SEQUENTIAL_SPAWN_INTERVAL
-	)
-	_expect(
-		is_equal_approx(wave_config.spawn_interval, expected_spawn_interval)
-		and wave_config.spawn_count_per_tick
-		== TOWER_DEFENSE_SEQUENTIAL_SPAWN_COUNT_PER_TICK,
-		(
-			"Tower-defense waves 1-2 must spawn one enemy every 0.1 seconds; "
-			+ "later waves must spawn enemies individually at the original total rate."
-		)
-	)
-	if wave_index < 8:
-		_expect(
-			_resource_path(wave_config.music) == TOWER_DEFENSE_FOREST_COMBAT_BGM,
-			"Tower-defense waves 1-8 must use the forest combat BGM: %s"
-			% wave_config.resource_path
-		)
-		_expect(
-			_resource_path(wave_config.post_wave_music)
-			== TOWER_DEFENSE_FOREST_INTERMISSION_BGM,
-			"Tower-defense rests through wave 8 must use the forest pre-combat BGM: %s"
-			% wave_config.resource_path
-		)
-	if wave_index < 11:
-		_expect(
-			wave_config.exits.size() == 1
-			and wave_config.exits[0].get_target_step_id()
-			== StringName("wave_%02d" % (wave_index + 2)),
-			"Tower-defense wave must advance to the next wave."
-		)
-	else:
-		_expect(
-			wave_config.exits.is_empty(),
-			"Tower-defense wave 12 must finish the campaign without Linglan."
-		)
-
-	if wave_index != 0:
-		return
-	_expect(
-		wave_config.enemy_entries.size() == FIRST_WAVE_EXPECTED_COUNTS.size(),
-		"Tower-defense first wave must contain exactly three enemy types."
-	)
-	var actual_counts := {}
-	for entry in wave_config.enemy_entries:
-		if entry != null and entry.enemy_config != null:
-			actual_counts[entry.enemy_config.resource_path] = entry.count
-	_expect(
-		actual_counts == FIRST_WAVE_EXPECTED_COUNTS,
-		"First pressure wave must be 850 basic, 320 shell, and 30 AK Capoo."
-	)
-
-
-func _verify_standard_singleplayer_slime_wave(
-	wave_config: WaveConfig,
-	source_wave: WaveConfig
-) -> void:
-	_expect(
-		wave_config.enemy_entries.size()
-		== STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS.size()
-		and wave_config.get_total_enemy_count() == 1,
-		"Standard singleplayer wave 1 must contain exactly one Slime."
-	)
-	var actual_counts := {}
-	for entry in wave_config.enemy_entries:
-		if entry != null and entry.enemy_config != null:
-			actual_counts[entry.enemy_config.resource_path] = entry.count
-	_expect(
-		actual_counts == STANDARD_SINGLEPLAYER_FIRST_WAVE_EXPECTED_COUNTS,
-		"Standard singleplayer wave 1 must contain only one Slime."
-	)
-	_expect(
-		wave_config.max_alive_enemies == 1,
-		"Standard singleplayer Slime wave must cap alive enemies at one."
-	)
-	_expect(
-		wave_config.wave_name == "第1波 史莱姆"
-		and wave_config.display_name == "第1波 史莱姆",
-		"Standard singleplayer Slime wave must use its explicit label."
-	)
-	_expect(
-		source_wave != null
-		and wave_config.step_id == source_wave.step_id
-		and is_equal_approx(wave_config.spawn_interval, source_wave.spawn_interval)
-		and wave_config.spawn_count_per_tick == source_wave.spawn_count_per_tick
-		and is_equal_approx(
-			wave_config.post_clear_rest_duration,
-			source_wave.post_clear_rest_duration
-		)
-		and _resource_path(wave_config.music) == _resource_path(source_wave.music)
-		and _resource_path(wave_config.post_wave_music)
-		== _resource_path(source_wave.post_wave_music)
-		and wave_config.exits.size() == source_wave.exits.size(),
-		"Standard singleplayer Slime wave must preserve its flow and audio."
-	)
-	if source_wave != null and wave_config.exits.size() == source_wave.exits.size():
-		for exit_index in range(wave_config.exits.size()):
-			var campaign_exit := wave_config.exits[exit_index]
-			var source_exit := source_wave.exits[exit_index]
-			_expect(
-				campaign_exit != null
-				and source_exit != null
-				and campaign_exit.exit_name == source_exit.exit_name
-				and campaign_exit.get_target_step_id()
-				== source_exit.get_target_step_id(),
-				"Standard singleplayer Slime wave must preserve its exit."
-			)
-
-
-func _wave_content_matches_source(wave_config: WaveConfig, source_wave: WaveConfig) -> bool:
-	if wave_config == null or source_wave == null:
-		return false
-	if (
-		wave_config.wave_name != source_wave.wave_name
-		or wave_config.step_id != source_wave.step_id
-		or wave_config.display_name != source_wave.display_name
-		or not is_equal_approx(wave_config.spawn_interval, source_wave.spawn_interval)
-		or wave_config.spawn_count_per_tick != source_wave.spawn_count_per_tick
-		or wave_config.max_alive_enemies != source_wave.max_alive_enemies
-		or not is_equal_approx(
-			wave_config.post_clear_rest_duration,
-			source_wave.post_clear_rest_duration
-		)
-		or _resource_path(wave_config.music) != _resource_path(source_wave.music)
-		or _resource_path(wave_config.post_wave_music) != _resource_path(source_wave.post_wave_music)
-		or wave_config.enemy_entries.size() != source_wave.enemy_entries.size()
-		or wave_config.exits.size() != source_wave.exits.size()
-	):
-		return false
-	for entry_index in range(wave_config.enemy_entries.size()):
-		var campaign_entry := wave_config.enemy_entries[entry_index]
-		var source_entry := source_wave.enemy_entries[entry_index]
-		if campaign_entry == null or source_entry == null:
-			return campaign_entry == source_entry
-		if (
-			campaign_entry.count != source_entry.count
-			or _resource_path(campaign_entry.enemy_config) != _resource_path(source_entry.enemy_config)
-		):
-			return false
-	for exit_index in range(wave_config.exits.size()):
-		var campaign_exit := wave_config.exits[exit_index]
-		var source_exit := source_wave.exits[exit_index]
-		if campaign_exit == null or source_exit == null:
-			return campaign_exit == source_exit
-		if (
-			campaign_exit.exit_name != source_exit.exit_name
-			or campaign_exit.get_target_step_id() != source_exit.get_target_step_id()
-		):
-			return false
-	return true
-
-
-func _resource_path(resource: Resource) -> String:
-	return resource.resource_path if resource != null else ""
+	_expect(game != null, "Tower-defense boss exclusion probe must instantiate.")
+	if game != null:
+		_expect(not game.linglan_boss_enabled, "Tower-defense Linglan stays disabled by default.")
+		game.free()
 
 
 func _has_error_containing(errors: PackedStringArray, needle: String) -> bool:

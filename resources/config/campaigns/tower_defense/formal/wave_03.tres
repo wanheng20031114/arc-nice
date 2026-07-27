@@ -1,0 +1,50 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_basic"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="3_fast"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="4_bomber"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="5_fire"]
+[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="6_exit"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_combat.ogg" id="7_music"]
+[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_intermission.ogg" id="8_rest"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="9_wave"]
+
+[sub_resource type="Resource" id="Entry_basic"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("2_basic")
+count = 24
+
+[sub_resource type="Resource" id="Entry_fast"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("3_fast")
+count = 12
+
+[sub_resource type="Resource" id="Entry_bomber"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("4_bomber")
+count = 8
+
+[sub_resource type="Resource" id="Entry_fire"]
+script = ExtResource("1_entry")
+enemy_config = ExtResource("5_fire")
+count = 4
+
+[sub_resource type="Resource" id="Exit_next"]
+script = ExtResource("6_exit")
+target_step_id = &"wave_04"
+
+[resource]
+script = ExtResource("9_wave")
+wave_name = "第3波 火线初现"
+enemy_entries = Array[ExtResource("1_entry")]([SubResource("Entry_basic"), SubResource("Entry_fast"), SubResource("Entry_bomber"), SubResource("Entry_fire")])
+spawn_point_mask = 63
+spawn_interval = 0.6
+spawn_count_per_tick = 1
+max_alive_enemies = 36
+music = ExtResource("7_music")
+post_wave_music = ExtResource("8_rest")
+step_id = &"wave_03"
+display_name = "第3波 火线初现"
+exits = Array[ExtResource("6_exit")]([SubResource("Exit_next")])
+editor_position = Vector2(840, -120)

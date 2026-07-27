@@ -22,26 +22,26 @@ const CAMPAIGN_LATE_WAVES := [
 		"res://resources/config/campaigns/standard/multiplayer/wave_12.tres"
 	),
 	preload(
-		"res://resources/config/campaigns/tower_defense/singleplayer/wave_11.tres"
+		"res://resources/config/campaigns/tower_defense/formal/wave_11.tres"
 	),
 	preload(
-		"res://resources/config/campaigns/tower_defense/singleplayer/wave_12.tres"
+		"res://resources/config/campaigns/tower_defense/formal/wave_12.tres"
 	),
 	preload(
-		"res://resources/config/campaigns/tower_defense/multiplayer/wave_11.tres"
+		"res://resources/config/campaigns/tower_defense/performance/waves/wave_11.tres"
 	),
 	preload(
-		"res://resources/config/campaigns/tower_defense/multiplayer/wave_12.tres"
+		"res://resources/config/campaigns/tower_defense/performance/waves/wave_12.tres"
 	),
 ]
-const EXPECTED_CAMPAIGN_GOLEM_COUNTS := [6, 8, 6, 8, 15, 17, 15, 17]
+const EXPECTED_CAMPAIGN_GOLEM_COUNTS := [6, 8, 6, 8, 1, 1, 15, 17]
 const EXPECTED_CAMPAIGN_TOTALS := [
 	480,
 	560,
 	480,
 	560,
-	1200,
-	1200,
+	176,
+	200,
 	1200,
 	1200,
 ]
@@ -100,7 +100,7 @@ func _run() -> void:
 	_test_resource_contract()
 	_test_wave_integration()
 	await _test_defense_contract()
-	await _test_core_touch_damage()
+	await _test_contact_does_not_bypass_slam()
 	await _test_windup_and_physical_slam()
 	await _test_committed_slam_preserves_cooldown_and_impact()
 	await _test_radial_range_and_single_hit()
@@ -421,34 +421,27 @@ func _test_defense_contract() -> void:
 	await process_frame
 
 
-func _test_core_touch_damage() -> void:
+func _test_contact_does_not_bypass_slam() -> void:
 	var plant := _spawn_test_plant(Vector2.ZERO, 30, 0)
 	var enemy := _spawn_golem(Vector2.ZERO, null)
 	enemy.set_physics_process(false)
 	await _wait_physics_frames(2)
 	_expect(
-		plant.current_health == TEST_HEALTH - 70,
-		"Core contact must deal 100 physical damage minus plant defense."
+		enemy.touching_plants.has(plant.get_instance_id()),
+		"Stone-golem contact fixture must register the overlapping plant."
 	)
 	_expect(
-		is_equal_approx(
-			enemy.touch_damage_cooldown_left,
-			enemy.touch_damage_interval
-		),
-		"Core contact must start the shared touch-damage interval."
+		not bool(enemy.call("_uses_inherited_touch_damage"))
+		and plant.current_health == TEST_HEALTH
+		and is_zero_approx(enemy.touch_damage_cooldown_left),
+		"Stone golems must reserve damage for their authored slam, not contact."
 	)
-	enemy.call(
-		"_physics_process",
-		enemy.touch_damage_interval - 0.01
-	)
+	enemy.call("_try_deal_touch_damage")
+	enemy.call("_try_deal_touch_damage")
 	_expect(
-		plant.current_health == TEST_HEALTH - 70,
-		"Core contact must not repeat before its 0.5 second interval."
-	)
-	enemy.call("_physics_process", 0.02)
-	_expect(
-		plant.current_health == TEST_HEALTH - 140,
-		"Sustained core contact must repeat at the authored interval."
+		plant.current_health == TEST_HEALTH
+		and is_zero_approx(enemy.touch_damage_cooldown_left),
+		"Repeated contact dispatch must not bypass the stone-golem slam state machine."
 	)
 	enemy.queue_free()
 	plant.queue_free()
@@ -459,9 +452,15 @@ func _test_core_touch_damage() -> void:
 	player_enemy.set_physics_process(false)
 	await _wait_physics_frames(2)
 	_expect(
-		player.current_health == TEST_HEALTH - GOLEM_CONFIG.attack_damage
-		and player.last_damage_taken == GOLEM_CONFIG.attack_damage,
-		"Player core contact must deal the configured 100 physical damage."
+		player_enemy.touching_players.has(player.get_instance_id()),
+		"Stone-golem contact fixture must register the overlapping player."
+	)
+	player_enemy.call("_try_deal_touch_damage")
+	_expect(
+		player.current_health == TEST_HEALTH
+		and player.last_damage_taken == 0
+		and is_zero_approx(player_enemy.touch_damage_cooldown_left),
+		"Player contact must not bypass the stone-golem slam state machine."
 	)
 	player_enemy.queue_free()
 	player.queue_free()

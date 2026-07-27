@@ -9,6 +9,7 @@
 script = ExtResource("1_script")
 recipe_id = &"wooden_core_to_hydrangea_rain_tower"
 display_name = "培育紫阳花雨幕塔"
+required_global_research_id = &"hydrangea_rain_tower_crafting"
 input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_core")])
 input_amounts = Array[int]([1])
 output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_building")])
