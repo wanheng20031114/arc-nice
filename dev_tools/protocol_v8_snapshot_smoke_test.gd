@@ -97,6 +97,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_channel_contract()
+	_test_v25_high_value_player_snapshot_contract()
 	_test_terrain_payload_contract()
 	_test_terrain_delta_revision_repair_contract()
 	_test_terrain_snapshot_repair_watchdog_contract()
@@ -111,7 +112,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V24_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V25_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -120,7 +121,12 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 24, "Protocol must be v24.")
+	_expect(NetConstants.PROTOCOL_VERSION == 25, "Protocol must be v25.")
+	_expect(
+		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
+		and NetConstants.NETWORK_COMBAT_VALUE_MAX == 0x7FFFFFFF,
+		"Fixed-width network combat values must use the signed-int32 nonnegative range."
+	)
 	_expect(NetConstants.CHANNEL_COUNT == 8, "ENet must provision eight channels.")
 	_expect(NetConstants.MAX_PLAYERS == 8, "Protocol capacity must accept an eight-player roster.")
 	_expect(
@@ -132,8 +138,74 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v24 channel assignments must remain stable."
+		"Protocol v25 channel assignments must remain stable."
 	)
+
+
+func _test_v25_high_value_player_snapshot_contract() -> void:
+	var health_boundaries: Array[int] = [
+		32767,
+		32768,
+		65535,
+		100000,
+		NetConstants.NETWORK_COMBAT_VALUE_MAX,
+	]
+	for health_value in health_boundaries:
+		var state := SnapshotManager.PlayerState.new()
+		state.peer_id = 2
+		state.sequence = health_boundaries.find(health_value) + 1
+		state.position = Vector2(8192.0, 8192.0)
+		state.current_health = health_value
+		state.max_health = health_value
+		var packet := SnapshotManager.new().encode_all_player_snapshots([state])
+		var decoded := SnapshotManager.decode_all_player_snapshots(packet)
+		_expect(
+			decoded.size() == 1
+			and decoded[0].current_health == health_value
+			and decoded[0].max_health == health_value,
+			"Player health %d must round-trip as signed int32." % health_value
+		)
+		_expect(
+			decoded.size() == 1
+			and decoded[0].position == Vector2(8192.0, 8192.0),
+			"Xiaocong-room player positions must round-trip without int16 saturation."
+		)
+
+	var full_roster: Array[SnapshotManager.PlayerState] = []
+	for peer_id in range(1, NetConstants.MAX_PLAYERS + 1):
+		var roster_state := SnapshotManager.PlayerState.new()
+		roster_state.peer_id = peer_id
+		roster_state.sequence = 1
+		roster_state.position = Vector2(8192.0 + peer_id, 8192.0 - peer_id)
+		roster_state.current_health = 100000
+		roster_state.max_health = 100000
+		full_roster.append(roster_state)
+	var full_packet := SnapshotManager.new().encode_all_player_snapshots(full_roster)
+	_expect(
+		full_packet.size() == 553,
+		"Eight full v25 player snapshots must use exactly 553 bytes. actual=%d"
+		% full_packet.size()
+	)
+
+	var invalid_negative := SnapshotManager.PlayerState.new()
+	invalid_negative.current_health = -1
+	invalid_negative.max_health = 100
+	var invalid_overflow := SnapshotManager.PlayerState.new()
+	invalid_overflow.current_health = 100
+	invalid_overflow.max_health = NetConstants.NETWORK_COMBAT_VALUE_MAX + 1
+	_expect(
+		not SnapshotManager.is_player_snapshot_state_serializable(invalid_negative)
+		and not SnapshotManager.is_player_snapshot_state_serializable(invalid_overflow),
+		"Player snapshot serialization must reject negative and signed-int32-overflow health."
+	)
+	var invalid_enemy := SnapshotManager.EnemyState.new()
+	invalid_enemy.health = NetConstants.NETWORK_COMBAT_VALUE_MAX + 1
+	_expect(
+		not SnapshotManager.is_enemy_snapshot_state_serializable(invalid_enemy),
+		"Enemy snapshot serialization must reject signed-int32-overflow health."
+	)
+
+
 func _test_terrain_delta_revision_repair_contract() -> void:
 	var mp_game := TerrainRepairMpGame.new()
 	var runtime := TerrainRuntimeStub.new()
@@ -1238,7 +1310,7 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 	var keyframe := sender.encode_enemy_snapshots_for_peer(8, states, true)
 	_expect(
 		keyframe.size() == 1106,
-		"A v24 46-enemy keyframe must use 1106 bytes and stay within the 1200-byte budget."
+		"A v25 46-enemy keyframe must use 1106 bytes and stay within the 1200-byte budget."
 	)
 	var decoded_keyframe := receiver.decode_enemy_snapshots_with_baseline(keyframe)
 	_expect(decoded_keyframe.size() == 46, "The complete 46-enemy keyframe must decode.")

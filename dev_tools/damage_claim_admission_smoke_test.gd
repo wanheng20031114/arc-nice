@@ -1,6 +1,6 @@
 extends SceneTree
 
-## Security contract for player damage ingress. Protocol v24 retains a
+## Security contract for player damage ingress. Protocol v25 retains a
 ## five-field RPC compatibility shell, but both the client sender and Host
 ## receiver are fail-closed: canonical hits come only from Host simulation.
 
@@ -121,7 +121,7 @@ func _test_player_hit_claim_lane_is_disabled() -> void:
 	)
 	_expect(
 		signature == expected_signature,
-		"The protocol-v24 compatibility RPC must remain exactly five fields. actual=%s"
+		"The protocol-v25 compatibility RPC must remain exactly five fields. actual=%s"
 		% signature
 	)
 	var request_body := _get_function_body(
@@ -189,7 +189,7 @@ func _test_enemy_hit_claim_lane_is_disabled() -> void:
 	)
 	_expect(
 		signature == expected_signature,
-		"The protocol-v24 enemy-hit compatibility RPC must retain its exact shape. actual=%s"
+		"The protocol-v25 enemy-hit compatibility RPC must retain its exact shape. actual=%s"
 		% signature
 	)
 	var request_body := _get_function_body(

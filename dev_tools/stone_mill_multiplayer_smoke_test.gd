@@ -126,8 +126,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 24,
-		"科研解锁配方、扩展后的科研目录、围栏网络目录与命运 RPC 必须由多人协议v24隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 25,
+		"int32 玩家生命/位置与现有目录必须由多人协议v25隔离旧客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

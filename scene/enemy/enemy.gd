@@ -1058,7 +1058,7 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 
 
 func apply_damage_batch(
-	damage_amounts: PackedInt32Array,
+	damage_amounts: PackedInt64Array,
 	hit_counts: PackedInt32Array,
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,

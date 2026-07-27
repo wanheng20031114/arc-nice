@@ -157,7 +157,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v24 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v25 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 # A full enemy keyframe is 24 bytes after adding health_revision. Forty-six
@@ -1678,7 +1678,7 @@ func queue_bamboo_mortar_explosion(
 func apply_authoritative_plant_enemy_damage_batch(
 	_damage_source_id: int,
 	enemy: Enemy,
-	damage_amounts: PackedInt32Array,
+	damage_amounts: PackedInt64Array,
 	hit_counts: PackedInt32Array,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType
@@ -3099,6 +3099,8 @@ func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
 		states,
 		force_keyframe
 	)
+	if data.is_empty():
+		return
 	_player_snapshot_encode_count += 1
 	_commit_snapshot_cohort_send(
 		_player_snapshot_cohort_peers,
@@ -3137,6 +3139,9 @@ func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
 	if client_peer_ids.is_empty():
 		return
 	var states: Array[SnapshotManager.EnemyState] = game.collect_enemy_snapshot_states()
+	if not SnapshotManager.are_enemy_snapshot_states_serializable(states):
+		push_error("MpGame: 敌人快照含越界战斗值，已拒绝整个发送批次。")
+		return
 	var snapshot_time := _get_net_time()
 	var snapshot_interval_frames := _get_enemy_snapshot_interval_frames()
 	var snapshot_hz := maxi(
@@ -4708,6 +4713,9 @@ func register_local_projectile(
 		return
 	if net_manager == null or not net_manager.is_multiplayer_active():
 		return
+	if not _NetConstants.is_valid_network_combat_value(damage):
+		push_error("MpGame: 投射物伤害超出网络 signed int32 契约，已拒绝发送。")
+		return
 	var projectile_id := _register_local_projectile_identity(
 		projectile,
 		projectile_type,
@@ -4774,6 +4782,7 @@ func register_local_linglan_skill1_ring(
 		or not net_manager.is_host()
 		or owner_peer_id <= 0
 		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
+		or not _NetConstants.is_valid_network_combat_value(damage)
 	):
 		return
 	# Validate every projectile lease before mutating the registries so malformed
@@ -4921,6 +4930,8 @@ func _rpc_projectile_fired_from_client(
 ) -> void:
 	if not net_manager.is_host():
 		return
+	if not _NetConstants.is_valid_network_combat_value(damage):
+		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if not _try_accept_client_projectile_request_identity(
 		sender_id,
@@ -4956,6 +4967,9 @@ func _rpc_projectile_fired_from_client(
 	if not _is_finite_vector2(accepted_spawn_position):
 		return
 	var accepted_damage := int(accepted_parameters["damage"])
+	if not _NetConstants.is_valid_network_combat_value(accepted_damage):
+		push_error("MpGame: 权威投射物伤害超出网络 signed int32 契约，已拒绝发送。")
+		return
 	var accepted_speed := float(accepted_parameters["speed"])
 	var accepted_lifetime := float(accepted_parameters["lifetime"])
 	var accepted_pierces_enemies := bool(
@@ -5031,6 +5045,8 @@ func net_projectile_fired(
 	host_fire_timestamp: float = -1.0,
 	target_enemy_net_id: int = 0
 ) -> void:
+	if not _NetConstants.is_valid_network_combat_value(damage):
+		return
 	if _known_projectiles.has(projectile_id):
 		_reconcile_predicted_projectile(
 			projectile_id,
@@ -6273,7 +6289,7 @@ func _is_valid_linglan_skill1_ring_payload(
 		or spawn_positions.size() != projectile_count
 		or directions.size() != projectile_count
 		or owner_peer_id <= 0
-		or damage < 0
+		or not _NetConstants.is_valid_network_combat_value(damage)
 		or not is_finite(speed)
 		or speed < 0.0
 		or not is_finite(lifetime)
@@ -6504,7 +6520,7 @@ func _rpc_enemy_hit_report(
 	_damage: int,
 	_impact_direction: Vector2
 ) -> void:
-	# Protocol-v24 compatibility shell. Client-selected enemy IDs are not
+	# Protocol-v25 compatibility shell. Client-selected enemy IDs are not
 	# collision evidence, so even an old or malicious client cannot settle here.
 	return
 
@@ -6701,7 +6717,7 @@ func _apply_confirmed_enemy_damage(
 func _apply_confirmed_enemy_damage_batch(
 	enemy_net_id: int,
 	enemy: Enemy,
-	damage_amounts: PackedInt32Array,
+	damage_amounts: PackedInt64Array,
 	hit_counts: PackedInt32Array,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
@@ -6759,6 +6775,13 @@ func _queue_enemy_damage_feedback(
 ) -> void:
 	if not is_inside_tree() or not net_manager.is_host() or enemy_net_id <= 0:
 		return
+	if (
+		not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+	):
+		push_error("MpGame: 敌人战斗反馈含越界 int32 值，已拒绝入队。")
+		return
 	var feedback := _pending_enemy_damage_feedback.get(enemy_net_id, {}) as Dictionary
 	if feedback.is_empty():
 		feedback = {
@@ -6771,7 +6794,11 @@ func _queue_enemy_damage_feedback(
 		}
 	feedback["current_health"] = current_health
 	feedback["health_revision"] = health_revision
-	feedback["damage"] = int(feedback.get("damage", 0)) + maxi(confirmed_damage, 0)
+	var combined_damage := int(feedback.get("damage", 0)) + confirmed_damage
+	if not _NetConstants.is_valid_network_combat_value(combined_damage):
+		push_error("MpGame: 敌人战斗反馈聚合值超过 signed int32，已拒绝入队。")
+		return
+	feedback["damage"] = combined_damage
 	feedback["impact_direction"] = impact_direction
 	feedback["damage_type"] = int(damage_type)
 	feedback["show_hit_particles"] = (
@@ -6948,13 +6975,26 @@ func _flush_enemy_damage_feedback() -> void:
 		for record_index in range(chunk_start, chunk_end):
 			var enemy_id := enemy_ids[record_index]
 			var feedback := _pending_enemy_damage_feedback.get(enemy_id, {}) as Dictionary
+			var current_health := int(feedback.get("current_health", 0))
+			var health_revision := int(feedback.get("health_revision", 0))
+			var confirmed_damage := int(feedback.get("damage", 0))
+			if (
+				not _NetConstants.is_valid_network_combat_value(enemy_id)
+				or not _NetConstants.is_valid_network_combat_value(current_health)
+				or not _NetConstants.is_valid_network_combat_value(health_revision)
+				or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+			):
+				push_error("MpGame: 拒绝序列化越界敌人战斗反馈。")
+				continue
 			net_ids.append(enemy_id)
-			health_values.append(int(feedback.get("current_health", 0)))
-			health_revisions.append(int(feedback.get("health_revision", 0)))
-			damage_values.append(int(feedback.get("damage", 0)))
+			health_values.append(current_health)
+			health_revisions.append(health_revision)
+			damage_values.append(confirmed_damage)
 			directions.append(feedback.get("impact_direction", Vector2.ZERO) as Vector2)
 			damage_types.append(int(feedback.get("damage_type", 0)))
 			particle_flags.append(1 if bool(feedback.get("show_hit_particles", false)) else 0)
+		if net_ids.is_empty():
+			continue
 		_rpc_to_connected_clients(
 			&"net_enemy_damage_feedback_batch",
 			[
@@ -6973,16 +7013,21 @@ func _flush_enemy_damage_feedback() -> void:
 func _flush_plant_health_updates() -> void:
 	if _pending_plant_health_updates.is_empty():
 		return
-	var net_ids := PackedInt32Array()
+	var net_ids: Array[int] = []
 	for net_id_variant in _pending_plant_health_updates.keys():
-		net_ids.append(int(net_id_variant))
+		var net_id := int(net_id_variant)
+		if not _NetConstants.is_valid_network_combat_value(net_id):
+			push_error("MpGame: 拒绝序列化越界植物 net_id。")
+			_pending_plant_health_updates.erase(net_id_variant)
+			continue
+		net_ids.append(net_id)
 	net_ids.sort()
 	_send_pending_plant_health_updates(net_ids)
 	for net_id in net_ids:
 		_pending_plant_health_updates.erase(net_id)
 
 
-func _send_pending_plant_health_updates(net_ids: PackedInt32Array) -> void:
+func _send_pending_plant_health_updates(net_ids: Array[int]) -> void:
 	for chunk_start in range(0, net_ids.size(), PLANT_HEALTH_MAX_RECORDS_PER_PACKET):
 		var chunk_end := mini(
 			chunk_start + PLANT_HEALTH_MAX_RECORDS_PER_PACKET,
@@ -7002,12 +7047,27 @@ func _send_pending_plant_health_updates(net_ids: PackedInt32Array) -> void:
 			var update := _pending_plant_health_updates.get(net_id, {}) as Dictionary
 			if update.is_empty():
 				continue
+			var current_health := int(update.get("current_health", 0))
+			var maximum_health := int(update.get("maximum_health", 1))
+			var health_revision := int(update.get("health_revision", 0))
+			var applied_damage := int(update.get("damage", 0))
+			var applied_healing := int(update.get("healing", 0))
+			if (
+				not _NetConstants.is_valid_network_combat_value(net_id)
+				or not _NetConstants.is_valid_network_combat_value(current_health)
+				or not _NetConstants.is_valid_network_combat_value(maximum_health)
+				or not _NetConstants.is_valid_network_combat_value(health_revision)
+				or not _NetConstants.is_valid_network_combat_value(applied_damage)
+				or not _NetConstants.is_valid_network_combat_value(applied_healing)
+			):
+				push_error("MpGame: 拒绝序列化越界植物战斗值。")
+				continue
 			chunk_ids.append(net_id)
-			health_values.append(int(update.get("current_health", 0)))
-			maximum_values.append(int(update.get("maximum_health", 1)))
-			revisions.append(int(update.get("health_revision", 0)))
-			damage_values.append(int(update.get("damage", 0)))
-			healing_values.append(int(update.get("healing", 0)))
+			health_values.append(current_health)
+			maximum_values.append(maximum_health)
+			revisions.append(health_revision)
+			damage_values.append(applied_damage)
+			healing_values.append(applied_healing)
 			directions.append(update.get("impact_direction", Vector2.ZERO) as Vector2)
 			damage_types.append(int(update.get("damage_type", EnemyConfig.DamageType.PHYSICAL)))
 			world_positions.append(update.get("world_position", Vector2.ZERO) as Vector2)
@@ -7068,6 +7128,23 @@ func net_plant_health_batch(
 	for record_index in range(record_count):
 		var net_id := net_ids[record_index]
 		var health_revision := revisions[record_index]
+		if (
+			net_id <= 0
+			or not _NetConstants.is_valid_network_combat_value(
+				health_values[record_index]
+			)
+			or not _NetConstants.is_valid_network_combat_value(
+				maximum_values[record_index]
+			)
+			or not _NetConstants.is_valid_network_combat_value(health_revision)
+			or not _NetConstants.is_valid_network_combat_value(
+				damage_values[record_index]
+			)
+			or not _NetConstants.is_valid_network_combat_value(
+				healing_values[record_index]
+			)
+		):
+			continue
 		var live_plant_before := game.get_multiplayer_plant_node(net_id)
 		var stale_for_live_plant := (
 			live_plant_before != null
@@ -7278,6 +7355,19 @@ func net_enemy_damage_feedback_batch(
 		)
 	)
 	for record_index in range(record_count):
+		if (
+			net_ids[record_index] <= 0
+			or not _NetConstants.is_valid_network_combat_value(
+				health_values[record_index]
+			)
+			or not _NetConstants.is_valid_network_combat_value(
+				health_revisions[record_index]
+			)
+			or not _NetConstants.is_valid_network_combat_value(
+				damage_values[record_index]
+			)
+		):
+			continue
 		var enemy := _get_client_enemy_for_net_id(net_ids[record_index])
 		if enemy == null or not is_instance_valid(enemy):
 			continue
@@ -7309,6 +7399,13 @@ func net_enemy_damage_applied(
 	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
 	show_hit_particles: bool = true
 ) -> void:
+	if (
+		enemy_net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+	):
+		return
 	var enemy := _get_client_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
@@ -7569,7 +7666,7 @@ func request_player_hit_report(
 	_impact_direction: Vector2,
 	_damage_flags: int
 ) -> void:
-	# Protocol-v24 compatibility shell. Client hit claims are intentionally
+	# Protocol-v25 compatibility shell. Client hit claims are intentionally
 	# disabled: every eligible attack already has a live Host simulation, and a
 	# proximity-only client hint is not proof of collision.
 	return
@@ -7736,6 +7833,13 @@ func _apply_player_hit_report(
 	var health_revision := _next_player_health_revision(player_peer_id)
 	if confirmed_dead:
 		_schedule_player_revive(player_peer_id)
+	if (
+		not _NetConstants.is_valid_network_combat_value(result.health_after)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+	):
+		push_error("MpGame: 玩家伤害结果超出网络 signed int32 契约，已拒绝发送。")
+		return result
 	_rpc_to_connected_clients(
 		&"net_player_damage_applied",
 		[
@@ -7779,7 +7883,12 @@ func net_player_damage_applied(
 	apply_confirmed_cold: bool = false,
 	combat_outcome: int = 0
 ) -> void:
-	if player_peer_id <= 0:
+	if (
+		player_peer_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+	):
 		return
 	var player_node: Player = null
 	if game != null:
@@ -7884,6 +7993,13 @@ func report_multiplayer_player_healing(
 	if confirmed_healing <= 0 or target_player.peer_id <= 0 or target_player.is_dead:
 		return
 	var health_revision := _next_player_health_revision(target_player.peer_id)
+	if (
+		not _NetConstants.is_valid_network_combat_value(target_player.current_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+		or not _NetConstants.is_valid_network_combat_value(confirmed_healing)
+	):
+		push_error("MpGame: 玩家治疗结果超出网络 signed int32 契约，已拒绝发送。")
+		return
 	target_player.queue_healing_number(confirmed_healing)
 	_rpc_to_connected_clients(
 		&"net_player_healed",
@@ -7907,7 +8023,12 @@ func net_player_healed(
 	health_revision: int,
 	confirmed_healing: int
 ) -> void:
-	if peer_id <= 0:
+	if (
+		peer_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+		or not _NetConstants.is_valid_network_combat_value(confirmed_healing)
+	):
 		return
 	var player_node: Player = null
 	if game != null:
@@ -7929,7 +8050,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Protocol v24 retains these compatibility shells for older relay deployments.
+# Protocol v25 retains these compatibility shells for older relay deployments.
 # Xirang orbs no longer exist; all annotated endpoints remain deliberate no-ops.
 @rpc("authority", "call_remote", "reliable", 5)
 func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -> void:
@@ -8328,6 +8449,12 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 		player_node.max_health,
 		PLAYER_REVIVE_INVINCIBILITY_SECONDS
 	)
+	if (
+		not _NetConstants.is_valid_network_combat_value(player_node.current_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+	):
+		push_error("MpGame: 玩家复活生命值超出网络 signed int32 契约，已拒绝发送。")
+		return
 	if peer_id != _get_host_peer_id():
 		_remember_latest_client_player_snapshot_state(
 			peer_id,
@@ -8396,7 +8523,11 @@ func net_player_revived(
 	invincible_seconds: float,
 	health_revision: int
 ) -> void:
-	if peer_id <= 0:
+	if (
+		peer_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+	):
 		return
 	var player_node: Player = null
 	if game != null:
@@ -8508,6 +8639,19 @@ func _broadcast_enemy_terminal(net_id: int, reason: int, event_position: Vector2
 		if reason == ENEMY_TERMINAL_DEFEATED
 		else {}
 	)
+	if (
+		not _NetConstants.is_valid_network_combat_value(
+			int(terminal_feedback.get("current_health", 0))
+		)
+		or not _NetConstants.is_valid_network_combat_value(
+			int(terminal_feedback.get("health_revision", 0))
+		)
+		or not _NetConstants.is_valid_network_combat_value(
+			int(terminal_feedback.get("damage", 0))
+		)
+	):
+		push_error("MpGame: 敌人终结事件超出网络 signed int32 契约，已拒绝发送。")
+		return
 	_rpc_to_connected_clients(
 		&"net_enemy_terminal",
 		[
@@ -8624,6 +8768,13 @@ func _on_host_base_health_changed(
 ) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
+	if (
+		not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(revision)
+	):
+		push_error("MpGame: 基地生命快照超出网络 signed int32 契约，已拒绝发送。")
+		return
 	_rpc_to_connected_clients(
 		&"net_base_health_changed",
 		[current_health, maximum_health, revision]
@@ -8717,6 +8868,14 @@ func _on_host_plant_spawned(
 ) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
+	if (
+		net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+	):
+		push_error("MpGame: 植物生成生命值超出网络 signed int32 契约，已拒绝发送。")
+		return
 	var plant := game.get_multiplayer_plant_node(net_id)
 	_configure_warehouse_network(plant, true)
 	_configure_production_network(plant, true)
@@ -8780,6 +8939,14 @@ func _on_host_plant_health_changed(
 	health_revision: int
 ) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
+		return
+	if (
+		net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+	):
+		push_error("MpGame: 植物生命更新超出网络 signed int32 契约，已拒绝入队。")
 		return
 	var previous := _pending_plant_health_updates.get(net_id, {}) as Dictionary
 	if int(previous.get("health_revision", -1)) > health_revision:
@@ -8881,7 +9048,8 @@ func _on_host_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
 	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
 		return
 	if _pending_plant_health_updates.has(net_id):
-		_send_pending_plant_health_updates(PackedInt32Array([net_id]))
+		var removed_net_ids: Array[int] = [net_id]
+		_send_pending_plant_health_updates(removed_net_ids)
 	_pending_plant_health_updates.erase(net_id)
 	_pending_authoritative_warehouse_snapshots.erase(net_id)
 	_pending_production_state_updates.erase(net_id)
@@ -10177,7 +10345,14 @@ func net_enemy_terminal(
 	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
 	show_hit_particles: bool = false
 ) -> void:
-	if game == null or net_manager.is_host() or net_id <= 0:
+	if (
+		game == null
+		or net_manager.is_host()
+		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+	):
 		return
 	_mark_client_enemy_terminal(net_id)
 	match reason:
@@ -10243,7 +10418,13 @@ func net_base_health_changed(
 	maximum_health: int,
 	revision: int
 ) -> void:
-	if game == null or net_manager.is_host():
+	if (
+		game == null
+		or net_manager.is_host()
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(revision)
+	):
 		return
 	game.apply_remote_base_health(current_health, maximum_health, revision)
 
@@ -10309,7 +10490,14 @@ func net_plant_spawned(
 	runtime_state: Dictionary,
 	host_sample_time: float
 ) -> void:
-	if game == null or net_manager.is_host():
+	if (
+		game == null
+		or net_manager.is_host()
+		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+	):
 		return
 	_clear_remote_plant_removed_marker(net_id)
 	game.apply_remote_plant_spawn(
@@ -10350,7 +10538,14 @@ func net_plant_health_changed(
 	maximum_health: int,
 	health_revision: int
 ) -> void:
-	if game == null or net_manager.is_host():
+	if (
+		game == null
+		or net_manager.is_host()
+		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(health_revision)
+	):
 		return
 	_apply_or_defer_remote_plant_health(
 		net_id,

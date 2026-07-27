@@ -1,10 +1,12 @@
 extends RefCounted
 class_name SnapshotManager
 
+const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+
 ## 快照管理器：负责在 Host 端构建快照数据；
 ## 以及在 Client 端解析收到的快照。
 
-## 位置精度系数 (× 10)，int16 覆盖 ±3276.7 像素
+## 位置精度系数 (× 10)。玩家使用 int32，敌人继续使用 int16。
 const POSITION_SCALE := 10.0
 ## 速度精度系数
 const VELOCITY_SCALE := 10.0
@@ -27,11 +29,12 @@ const ENEMY_LOCOMOTION_MOVING := 1
 
 const PLAYER_SNAPSHOT_HEADER_BYTES := 9
 const ENEMY_SNAPSHOT_HEADER_BYTES := 5
-const PACKED_VECTOR2_BYTES := 4
+const PACKED_VECTOR2_I16_BYTES := 4
+const PACKED_VECTOR2_I32_BYTES := 8
 const PACKED_U8_BYTES := 1
 const PACKED_U16_BYTES := 2
 const PACKED_U32_BYTES := 4
-const PLAYER_META_BYTES := 42
+const PLAYER_META_BYTES := 46
 const MOVE_MULTIPLIER_SCALE := 1000.0
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 const HOE_CAT_CHARACTER_ID := &"hoe_cat"
@@ -41,6 +44,8 @@ const CHARACTER_CODE_HOE_CAT := 1
 const CHARACTER_CODE_TIYI := 2
 const PACKED_I16_MIN := -32768
 const PACKED_I16_MAX := 32767
+const PACKED_I32_MIN := -0x80000000
+const PACKED_I32_MAX := 0x7FFFFFFF
 const FULL_PLAYER_MASK := (
 	MASK_POSITION
 	| MASK_VELOCITY
@@ -117,6 +122,16 @@ static func encode_player_snapshot(
 	current: PlayerState,
 	previous: PlayerState,
 ) -> PackedByteArray:
+	if not is_player_snapshot_state_serializable(current):
+		push_error(
+			"SnapshotManager: 拒绝序列化非法玩家快照 peer=%d health=%d/%d。"
+			% [
+				current.peer_id if current != null else 0,
+				current.current_health if current != null else -1,
+				current.max_health if current != null else -1,
+			]
+		)
+		return PackedByteArray()
 	var buf := StreamPeerBuffer.new()
 
 	# 1) peer_id + sequence (int32)
@@ -144,8 +159,8 @@ static func encode_player_snapshot(
 
 	# 4) 按掩码写入变化字段
 	if mask & MASK_POSITION:
-		buf.put_16(_pack_scaled_i16(current.position.x, POSITION_SCALE))
-		buf.put_16(_pack_scaled_i16(current.position.y, POSITION_SCALE))
+		buf.put_32(_pack_scaled_i32(current.position.x, POSITION_SCALE))
+		buf.put_32(_pack_scaled_i32(current.position.y, POSITION_SCALE))
 	if mask & MASK_VELOCITY:
 		buf.put_16(_pack_scaled_i16(current.velocity.x, VELOCITY_SCALE))
 		buf.put_16(_pack_scaled_i16(current.velocity.y, VELOCITY_SCALE))
@@ -154,9 +169,9 @@ static func encode_player_snapshot(
 	if mask & MASK_ANIM_STATE:
 		buf.put_u8(current.anim_state)
 	if mask & MASK_PLAYER_META:
-		buf.put_16(current.current_health)
-		buf.put_16(current.max_health)
-		buf.put_u32(maxi(current.health_revision, 0))
+		buf.put_32(current.current_health)
+		buf.put_32(current.max_health)
+		buf.put_u32(current.health_revision)
 		buf.put_32(current.current_xirang)
 		buf.put_u8(1 if current.is_dead else 0)
 		buf.put_float(current.invincibility_time_left)
@@ -178,6 +193,28 @@ static func encode_player_snapshot(
 		))
 
 	return buf.data_array
+
+
+static func is_player_snapshot_state_serializable(state: PlayerState) -> bool:
+	return (
+		state != null
+		and state.position.is_finite()
+		and state.velocity.is_finite()
+		and NetConstants.is_valid_network_combat_value(state.current_health)
+		and NetConstants.is_valid_network_combat_value(state.max_health)
+		and NetConstants.is_valid_network_combat_value(state.health_revision)
+	)
+
+
+static func are_player_snapshot_states_serializable(
+	players: Array[PlayerState]
+) -> bool:
+	if players.size() > 255:
+		return false
+	for state in players:
+		if not is_player_snapshot_state_serializable(state):
+			return false
+	return true
 
 
 ## 解码玩家快照数据，将变化应用到 target 上
@@ -229,8 +266,8 @@ static func decode_player_snapshot(
 	var mask: int = buf.get_u8()
 
 	if mask & MASK_POSITION:
-		target.position.x = buf.get_16() / POSITION_SCALE
-		target.position.y = buf.get_16() / POSITION_SCALE
+		target.position.x = buf.get_32() / POSITION_SCALE
+		target.position.y = buf.get_32() / POSITION_SCALE
 	if mask & MASK_VELOCITY:
 		target.velocity.x = buf.get_16() / VELOCITY_SCALE
 		target.velocity.y = buf.get_16() / VELOCITY_SCALE
@@ -239,8 +276,8 @@ static func decode_player_snapshot(
 	if mask & MASK_ANIM_STATE:
 		target.anim_state = buf.get_u8()
 	if mask & MASK_PLAYER_META:
-		target.current_health = buf.get_16()
-		target.max_health = buf.get_16()
+		target.current_health = buf.get_32()
+		target.max_health = buf.get_32()
 		target.health_revision = buf.get_u32()
 		target.current_xirang = buf.get_32()
 		target.is_dead = buf.get_u8() != 0
@@ -270,9 +307,9 @@ static func _get_player_snapshot_size(data: PackedByteArray, offset: int) -> int
 	var mask := int(data[offset + PLAYER_SNAPSHOT_HEADER_BYTES - 1])
 	var size := PLAYER_SNAPSHOT_HEADER_BYTES
 	if mask & MASK_POSITION:
-		size += PACKED_VECTOR2_BYTES
+		size += PACKED_VECTOR2_I32_BYTES
 	if mask & MASK_VELOCITY:
-		size += PACKED_VECTOR2_BYTES
+		size += PACKED_VECTOR2_I16_BYTES
 	if mask & MASK_FACING:
 		size += PACKED_U8_BYTES
 	if mask & MASK_ANIM_STATE:
@@ -305,9 +342,39 @@ static func encode_enemy_snapshot(
 	current: EnemyState,
 	previous: EnemyState,
 ) -> PackedByteArray:
+	if not is_enemy_snapshot_state_serializable(current):
+		push_error(
+			"SnapshotManager: 拒绝序列化非法敌人快照 net_id=%d health=%d。"
+			% [
+				current.net_id if current != null else 0,
+				current.health if current != null else -1,
+			]
+		)
+		return PackedByteArray()
 	var buf := StreamPeerBuffer.new()
 	_write_enemy_snapshot(buf, current, previous)
 	return buf.data_array
+
+
+static func is_enemy_snapshot_state_serializable(state: EnemyState) -> bool:
+	return (
+		state != null
+		and state.position.is_finite()
+		and state.velocity.is_finite()
+		and NetConstants.is_valid_network_combat_value(state.health)
+		and NetConstants.is_valid_network_combat_value(state.health_revision)
+	)
+
+
+static func are_enemy_snapshot_states_serializable(
+	enemies: Array[EnemyState]
+) -> bool:
+	if enemies.size() > 65535:
+		return false
+	for state in enemies:
+		if not is_enemy_snapshot_state_serializable(state):
+			return false
+	return true
 
 
 static func _get_enemy_change_mask(current: EnemyState, previous: EnemyState) -> int:
@@ -365,7 +432,7 @@ static func _write_enemy_snapshot(
 		buf.put_u8(_normalize_enemy_locomotion_state(current.locomotion_state))
 	if mask & MASK_HEALTH:
 		buf.put_32(current.health)
-		buf.put_u32(maxi(current.health_revision, 0))
+		buf.put_u32(current.health_revision)
 	if mask & MASK_IS_DEAD:
 		buf.put_u8(1 if current.is_dead else 0)
 	if mask & MASK_ENEMY_VISUAL_STATUS:
@@ -415,9 +482,9 @@ static func _get_enemy_snapshot_size(data: PackedByteArray, offset: int) -> int:
 	var mask := int(data[offset + ENEMY_SNAPSHOT_HEADER_BYTES - 1])
 	var size := ENEMY_SNAPSHOT_HEADER_BYTES
 	if mask & MASK_POSITION:
-		size += PACKED_VECTOR2_BYTES
+		size += PACKED_VECTOR2_I16_BYTES
 	if mask & MASK_VELOCITY:
-		size += PACKED_VECTOR2_BYTES
+		size += PACKED_VECTOR2_I16_BYTES
 	if mask & MASK_ENEMY_LOCOMOTION:
 		size += PACKED_U8_BYTES
 	if mask & MASK_HEALTH:
@@ -455,6 +522,10 @@ static func _pack_ratio_u8(value: float) -> int:
 
 static func _pack_scaled_i16(value: float, scale: float) -> int:
 	return clampi(roundi(value * scale), PACKED_I16_MIN, PACKED_I16_MAX)
+
+
+static func _pack_scaled_i32(value: float, scale: float) -> int:
+	return clampi(roundi(value * scale), PACKED_I32_MIN, PACKED_I32_MAX)
 
 
 static func _pack_scaled_u16(value: float, scale: float) -> int:
@@ -626,6 +697,9 @@ func _get_enemy_send_baseline(receiver_peer_id: int) -> Dictionary:
 
 ## 编码一批玩家快照。格式: [count:u8] [snapshot_0] [snapshot_1] ...
 func encode_all_player_snapshots(players: Array[PlayerState]) -> PackedByteArray:
+	if not are_player_snapshot_states_serializable(players):
+		push_error("SnapshotManager: 拒绝序列化包含非法状态的玩家快照批次。")
+		return PackedByteArray()
 	var buf := PackedByteArray()
 	buf.append(players.size())
 	for player_state: PlayerState in players:
@@ -639,6 +713,9 @@ func encode_player_snapshots_for_peer(
 	players: Array[PlayerState],
 	force_keyframe: bool = false
 ) -> PackedByteArray:
+	if not are_player_snapshot_states_serializable(players):
+		push_error("SnapshotManager: 拒绝序列化包含非法状态的玩家 delta 批次。")
+		return PackedByteArray()
 	var buf := PackedByteArray()
 	buf.append(players.size())
 	var baseline := _get_player_send_baseline(receiver_peer_id)
@@ -743,6 +820,9 @@ func decode_player_snapshots_with_baseline(data: PackedByteArray) -> Array[Playe
 
 ## 编码一批敌人快照
 func encode_all_enemy_snapshots(enemies: Array[EnemyState]) -> PackedByteArray:
+	if not are_enemy_snapshot_states_serializable(enemies):
+		push_error("SnapshotManager: 拒绝序列化包含非法状态的敌人快照批次。")
+		return PackedByteArray()
 	var stream := StreamPeerBuffer.new()
 	# 敌人数量用 uint16 表示（最多 65535）
 	stream.put_u16(enemies.size())
@@ -814,6 +894,12 @@ func _encode_enemy_snapshot_range_for_peer(
 ) -> PackedByteArray:
 	var resolved_start := clampi(start_index, 0, enemies.size())
 	var resolved_count := clampi(entity_count, 0, enemies.size() - resolved_start)
+	for state_index in range(resolved_start, resolved_start + resolved_count):
+		if not is_enemy_snapshot_state_serializable(enemies[state_index]):
+			push_error(
+				"SnapshotManager: 拒绝序列化包含非法状态的敌人 delta 批次。"
+			)
+			return PackedByteArray()
 	var stream := StreamPeerBuffer.new()
 	stream.put_u16(resolved_count)
 

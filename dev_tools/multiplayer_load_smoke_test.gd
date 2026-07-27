@@ -207,8 +207,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 24, "The multiplayer protocol version must be 24.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v24 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 25, "The multiplayer protocol version must be 25.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v25 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -4243,9 +4243,9 @@ func _test_snapshot_round_trip() -> void:
 	_expect(distant_player_states.size() == 1, "Out-of-range player snapshot must still decode one state.")
 	if distant_player_states.size() == 1:
 		_expect(
-			is_equal_approx(distant_player_states[0].position.x, 3276.7)
-			and is_equal_approx(distant_player_states[0].position.y, -3276.8),
-			"Out-of-range player positions must saturate to the packed int16 range."
+			is_equal_approx(distant_player_states[0].position.x, 99999.0)
+			and is_equal_approx(distant_player_states[0].position.y, -99999.0),
+			"Player positions must round-trip through the dedicated scaled int32 fields."
 		)
 		_expect(
 			is_equal_approx(distant_player_states[0].velocity.x, 3276.7)

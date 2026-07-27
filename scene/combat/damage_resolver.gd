@@ -122,9 +122,9 @@ static func _resolve_batch(
 		)
 		if resolved_per_hit <= 0:
 			continue
-		var hits_until_lethal := ceili(
-			float(remaining_health) / float(resolved_per_hit)
-		)
+		# 两个正整数直接做向上整除，避免高生命/高伤害在 float 中丢失精度。
+		@warning_ignore("integer_division")
+		var hits_until_lethal := 1 + (remaining_health - 1) / resolved_per_hit
 		var accepted_count := mini(requested_count, hits_until_lethal)
 		result.accepted_hit_count += accepted_count
 		result.adjusted_amount += adjusted_per_hit * accepted_count

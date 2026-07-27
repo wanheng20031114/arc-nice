@@ -25,6 +25,7 @@ func _run() -> void:
 	_test_seeded_legacy_equivalence_matrix()
 	_test_health_delta_and_overkill_contract()
 	_test_batch_table_contract()
+	_test_signed_int64_batch_contract()
 	_test_seeded_batch_sequential_equivalence()
 
 	if failures.is_empty():
@@ -278,7 +279,7 @@ func _test_batch_table_contract() -> void:
 	var cases: Array[Dictionary] = [
 		{
 			"label": "invalid groups are skipped without reordering valid hits",
-			"amounts": PackedInt32Array([-4, 10, 0, 8]),
+			"amounts": PackedInt64Array([-4, 10, 0, 8]),
 			"counts": PackedInt32Array([3, 2, 5, 0]),
 			"health": 100,
 			"physical_defense": 2,
@@ -290,7 +291,7 @@ func _test_batch_table_contract() -> void:
 		},
 		{
 			"label": "lethal hit stops later groups",
-			"amounts": PackedInt32Array([8, 50]),
+			"amounts": PackedInt64Array([8, 50]),
 			"counts": PackedInt32Array([10, 2]),
 			"health": 20,
 			"physical_defense": 0,
@@ -302,7 +303,7 @@ func _test_batch_table_contract() -> void:
 		},
 		{
 			"label": "array length mismatch uses paired prefix",
-			"amounts": PackedInt32Array([5, 7, 100]),
+			"amounts": PackedInt64Array([5, 7, 100]),
 			"counts": PackedInt32Array([2, 1]),
 			"health": 100,
 			"physical_defense": 1,
@@ -314,7 +315,7 @@ func _test_batch_table_contract() -> void:
 		},
 		{
 			"label": "all invalid groups reject",
-			"amounts": PackedInt32Array([0, -5, 12]),
+			"amounts": PackedInt64Array([0, -5, 12]),
 			"counts": PackedInt32Array([3, 1, 0]),
 			"health": 100,
 			"physical_defense": 0,
@@ -326,7 +327,7 @@ func _test_batch_table_contract() -> void:
 		},
 		{
 			"label": "dead target rejects before reading groups",
-			"amounts": PackedInt32Array([10]),
+			"amounts": PackedInt64Array([10]),
 			"counts": PackedInt32Array([1]),
 			"health": 0,
 			"physical_defense": 0,
@@ -353,7 +354,7 @@ func _test_batch_table_contract() -> void:
 		)
 	)
 	var zero_minimum_request := DamageBatchRequest.new(
-		PackedInt32Array([5]),
+		PackedInt64Array([5]),
 		PackedInt32Array([2]),
 		CombatTypes.DamageType.PHYSICAL
 	)
@@ -374,7 +375,7 @@ func _test_batch_table_contract() -> void:
 	)
 
 	var early_heavy := {
-		"amounts": PackedInt32Array([20, 3]),
+		"amounts": PackedInt64Array([20, 3]),
 		"counts": PackedInt32Array([1, 10]),
 		"health": 25,
 		"physical_defense": 0,
@@ -385,7 +386,7 @@ func _test_batch_table_contract() -> void:
 		"rounding": CombatTypes.RoundingMode.NEAREST,
 	}
 	var early_light := early_heavy.duplicate(true)
-	early_light["amounts"] = PackedInt32Array([3, 20])
+	early_light["amounts"] = PackedInt64Array([3, 20])
 	early_light["counts"] = PackedInt32Array([10, 1])
 	var heavy_result := _resolve_batch_case(early_heavy)
 	var light_result := _resolve_batch_case(early_light)
@@ -398,6 +399,42 @@ func _test_batch_table_contract() -> void:
 	_compare_batch_case(early_light, "table_batch/order_light_first")
 
 
+func _test_signed_int64_batch_contract() -> void:
+	var runtime_request := DamageBatchRequest.new(
+		PackedInt64Array([3_000_000_000]),
+		PackedInt32Array([2]),
+		CombatTypes.DamageType.PHYSICAL
+	)
+	_expect(
+		runtime_request.damage_amounts is PackedInt64Array
+		and runtime_request.damage_amounts[0] == 3_000_000_000
+		and runtime_request.get_requested_amount() == 6_000_000_000,
+		"Runtime damage batches must retain signed-int64 amounts without PackedInt32 wrapping."
+	)
+	var runtime_result := DamageResolver.resolve(
+		runtime_request,
+		DamageTargetProfile.new(6_000_000_000, 0, 0)
+	)
+	_expect(
+		runtime_result.accepted
+		and runtime_result.requested_amount == 6_000_000_000
+		and runtime_result.resolved_damage == 6_000_000_000
+		and runtime_result.applied_damage == 6_000_000_000
+		and runtime_result.health_after == 0,
+		"Damage settlement intermediates and runtime health must remain signed int64."
+	)
+
+	var int32_boundary_request := DamageBatchRequest.new(
+		PackedInt64Array([0x7FFFFFFF]),
+		PackedInt32Array([0x7FFFFFFF]),
+		CombatTypes.DamageType.PHYSICAL
+	)
+	_expect(
+		int32_boundary_request.get_requested_amount() == 4_611_686_014_132_420_609,
+		"The maximum fixed-width damage and hit-count product must remain positive int64."
+	)
+
+
 func _test_seeded_batch_sequential_equivalence() -> void:
 	for sample_index in range(RANDOM_BATCH_CASES):
 		if failures.size() >= MAX_REPORTED_FAILURES:
@@ -406,7 +443,7 @@ func _test_seeded_batch_sequential_equivalence() -> void:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = replay_seed
 		var group_count := rng.randi_range(0, 8)
-		var amounts := PackedInt32Array()
+		var amounts := PackedInt64Array()
 		var counts := PackedInt32Array()
 		for _group_index in range(group_count):
 			amounts.append(rng.randi_range(-4, 160))
@@ -531,7 +568,7 @@ func _compare_batch_case(case_data: Dictionary, context: String) -> void:
 
 func _resolve_batch_case(case_data: Dictionary) -> DamageResult:
 	var request := DamageBatchRequest.new(
-		case_data["amounts"] as PackedInt32Array,
+		case_data["amounts"] as PackedInt64Array,
 		case_data["counts"] as PackedInt32Array,
 		int(case_data["damage_type"])
 	)
@@ -611,7 +648,7 @@ func _legacy_scalar(case_data: Dictionary) -> Dictionary:
 
 func _legacy_batch(case_data: Dictionary) -> Dictionary:
 	var health_before := maxi(int(case_data["health"]), 0)
-	var amounts := case_data["amounts"] as PackedInt32Array
+	var amounts := case_data["amounts"] as PackedInt64Array
 	var counts := case_data["counts"] as PackedInt32Array
 	var group_count := mini(amounts.size(), counts.size())
 	var requested_amount := 0

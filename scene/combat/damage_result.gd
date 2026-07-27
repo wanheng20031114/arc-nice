@@ -1,7 +1,7 @@
 extends RefCounted
 class_name DamageResult
 
-## Complete, side-effect-free answer from DamageResolver. `resolved_damage` is
+## Complete, side-effect-free signed-int64 answer from DamageResolver. `resolved_damage` is
 ## the post-defense value of the hit; `applied_damage` is the actual health
 ## delta and is therefore capped at the target's remaining health.
 var request: DamageRequest = null

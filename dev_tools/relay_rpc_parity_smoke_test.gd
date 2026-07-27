@@ -6,6 +6,7 @@ const MAIN_NET_MANAGER_PATH := "res://scene/multiplayer/net_manager.gd"
 const RELAY_NET_MANAGER_PATH := "res://relay_servers/relay_godot_project/relay_net_manager_stub.gd"
 const RELAY_SERVER_PATH := "res://relay_servers/relay_godot_project/relay_server.gd"
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 
 var failures: Array[String] = []
 
@@ -127,10 +128,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 24,
-		"Combined v23 crafting/fence and Xiaocong fate RPCs require protocol v24."
+		NetConstants.PROTOCOL_VERSION == 25,
+		"Int32 player health/position snapshots require protocol v25."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v24 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v25 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -163,6 +164,13 @@ func _compare_rpc_surfaces(label: String, main_rpcs: Dictionary, relay_rpcs: Dic
 
 
 func _test_registration_protocol_handshake_source() -> void:
+	var net_manager := NetManagerScript.new()
+	_expect(
+		net_manager._is_protocol_version_compatible(25)
+		and not net_manager._is_protocol_version_compatible(24),
+		"Protocol v25 hosts must accept exactly v25 and reject v24."
+	)
+	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
 	_expect(not source.is_empty(), "Main NetManager source must be readable for protocol checks.")
 	if source.is_empty():
@@ -222,8 +230,9 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
+		and relay_source.contains("const PROTOCOL_VERSION := 25")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v24 clients."
+		"Relay server must declare v25 and provision the same eight ENet channels as clients."
 	)
 
 
@@ -282,7 +291,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v24 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v25 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	_expect(
 		mp_game_source.contains(
@@ -297,7 +306,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
 		),
-		"Protocol v24 research commands must use schema2 and resolve a Host-owned research whitelist."
+		"Protocol v25 research commands must use schema2 and resolve a Host-owned research whitelist."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",
@@ -371,7 +380,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 			not String(rpcs[confirmation_method]).contains(
 				"inventory_snapshot:Dictionary={}"
 			),
-			"Protocol v24 inventory confirmations must require an authoritative snapshot."
+			"Protocol v25 inventory confirmations must require an authoritative snapshot."
 		)
 		_expect_rpc_signature_contains(
 			rpcs,

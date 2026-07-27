@@ -84,8 +84,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 24,
-		"简易围栏网络目录、客户端派生连接图与命运 RPC 必须由协议v24隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 25,
+		"int32 玩家生命/位置与现有目录必须由协议v25隔离旧客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

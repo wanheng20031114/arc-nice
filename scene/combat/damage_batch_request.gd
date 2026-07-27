@@ -4,12 +4,12 @@ class_name DamageBatchRequest
 ## Ordered multi-hit input. The paired arrays live on the request so a
 ## DamageResult always retains enough intent to audit or deterministically
 ## replay the settlement, including rejected batches.
-var damage_amounts: PackedInt32Array = PackedInt32Array()
+var damage_amounts: PackedInt64Array = PackedInt64Array()
 var hit_counts: PackedInt32Array = PackedInt32Array()
 
 
 func _init(
-	initial_damage_amounts: PackedInt32Array = PackedInt32Array(),
+	initial_damage_amounts: PackedInt64Array = PackedInt64Array(),
 	initial_hit_counts: PackedInt32Array = PackedInt32Array(),
 	initial_damage_type: int = CombatTypes.DamageType.PHYSICAL
 ) -> void:

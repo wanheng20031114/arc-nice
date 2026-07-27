@@ -17,7 +17,7 @@ func _init() -> void:
 		metrics.call("record_transaction_latency_ms", latency)
 	var summary := metrics.call("get_summary") as Dictionary
 	var channels := summary.get("channels", []) as Array
-	_expect(channels.size() == 8, "Protocol v24 telemetry must expose all eight channels.")
+	_expect(channels.size() == 8, "Protocol v25 telemetry must expose all eight channels.")
 	if channels.size() == 8:
 		var enemy_channel := channels[3] as Dictionary
 		_expect(

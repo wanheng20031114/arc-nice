@@ -521,7 +521,7 @@ func _process_explosion_batch() -> void:
 		)
 		_apply_enemy_damage_batch(
 			enemy,
-			hit_record.get("damage_amounts") as PackedInt32Array,
+			hit_record.get("damage_amounts") as PackedInt64Array,
 			hit_record.get("hit_counts") as PackedInt32Array,
 			impact_direction
 		)
@@ -562,7 +562,7 @@ func _apply_single_dense_group_exact(group: Dictionary) -> void:
 	explosion_index_queries_total += 1
 	var inner_radius_squared := inner_radius * inner_radius
 	var outer_radius_squared := outer_radius * outer_radius
-	var damage_amounts := PackedInt32Array()
+	var damage_amounts := PackedInt64Array()
 	var inner_slot := -1
 	var outer_slot := -1
 	if inner_damage > 0:
@@ -711,7 +711,7 @@ func _try_apply_single_cluster_profile_exact(
 	)
 	var inner_radius_squared := inner_radius * inner_radius
 	var outer_radius_squared := outer_radius * outer_radius
-	var damage_amounts := PackedInt32Array()
+	var damage_amounts := PackedInt64Array()
 	var inner_slot := -1
 	var outer_slot := -1
 	if inner_damage > 0:
@@ -1416,7 +1416,7 @@ func _accumulate_profile_hits(
 						* position_multiplicities[enemy_index]
 					)
 	if apply_directly:
-		var damage_amounts := PackedInt32Array()
+		var damage_amounts := PackedInt64Array()
 		var inner_slot := -1
 		var outer_slot := -1
 		if inner_damage > 0:
@@ -1593,12 +1593,12 @@ func _append_accumulated_hit(
 	if record.is_empty():
 		record = {
 			"enemy": enemy,
-			"damage_amounts": PackedInt32Array(),
+			"damage_amounts": PackedInt64Array(),
 			"hit_counts": PackedInt32Array(),
 			"direction_sum": Vector2.ZERO,
 		}
 	var damage_amounts := (
-		record.get("damage_amounts") as PackedInt32Array
+		record.get("damage_amounts") as PackedInt64Array
 	)
 	var hit_counts := record.get("hit_counts") as PackedInt32Array
 	var last_index := damage_amounts.size() - 1
@@ -1617,7 +1617,7 @@ func _append_accumulated_hit(
 
 func _apply_enemy_damage_batch(
 	enemy: Enemy,
-	damage_amounts: PackedInt32Array,
+	damage_amounts: PackedInt64Array,
 	hit_counts: PackedInt32Array,
 	impact_direction: Vector2
 ) -> bool:

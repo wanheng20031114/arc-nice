@@ -67,7 +67,7 @@ var heal_target_candidates: Array[PlantDefense] = []
 var enemy_candidates: Array[Enemy] = []
 var plant_candidates: Array[PlantDefense] = []
 var player_candidates: Array[Player] = []
-var damage_amounts := PackedInt32Array()
+var damage_amounts := PackedInt64Array()
 var damage_hit_counts := PackedInt32Array()
 
 var rain_active := false
@@ -107,7 +107,7 @@ func _on_setup_completed() -> void:
 	rain_end_timer.wait_time = rain_config.rain_duration_seconds
 	effect_end_timer.wait_time = rain_config.effect_duration_seconds
 	ground_effect_end_timer.wait_time = _get_action_timeline_duration_seconds()
-	damage_amounts = PackedInt32Array([rain_config.magic_damage_per_tick])
+	damage_amounts = PackedInt64Array([rain_config.magic_damage_per_tick])
 	damage_hit_counts = PackedInt32Array([1])
 	rain_field.scale = Vector2.ONE * (
 		rain_config.rain_radius / AUTHORED_RAIN_RADIUS

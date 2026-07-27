@@ -123,7 +123,7 @@ class MortarStressRuntime:
 	func apply_authoritative_plant_enemy_damage_batch(
 		_source_id: int,
 		enemy: Enemy,
-		damage_amounts: PackedInt32Array,
+		damage_amounts: PackedInt64Array,
 		hit_counts: PackedInt32Array,
 		impact_direction: Vector2,
 		damage_type: EnemyConfig.DamageType

@@ -1,7 +1,7 @@
 extends RefCounted
 class_name DamageTargetProfile
 
-## Target-owned numeric inputs. Entity-specific rules (directional modifiers,
+## Target-owned signed-int64 numeric inputs. Entity-specific rules (directional modifiers,
 ## strongest reduction, status multipliers) are reduced to these explicit
 ## stages before the pure resolver runs.
 var current_health: int = 0

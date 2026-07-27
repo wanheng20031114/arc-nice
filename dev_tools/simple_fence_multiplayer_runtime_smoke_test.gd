@@ -54,8 +54,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 24,
-		"叠加塔防命运 RPC 后的多人运行时目录必须使用协议 v24。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 25,
+		"int32 玩家生命/位置要求多人运行时目录使用协议 v25。"
 	)
 	host_game = TOWER_DEFENSE_SCENE.instantiate() as GameTowerDefense
 	_expect(host_game != null, "围栏多人运行时测试必须能实例化真实塔防场景。")

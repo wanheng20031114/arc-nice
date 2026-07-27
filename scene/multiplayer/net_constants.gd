@@ -2,7 +2,18 @@ extends RefCounted
 
 ## 协议与版本
 ## v24：在 v23 制作/围栏协议上合入塔防命运投票与序列化权威传送。
-const PROTOCOL_VERSION := 24
+## v25：玩家生命升级为 signed int32，玩家位置升级为 signed int32 × 10，
+## 并统一固定宽度网络战斗值的合法范围。
+const PROTOCOL_VERSION := 25
+
+## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
+## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。
+const NETWORK_COMBAT_VALUE_MIN := 0
+const NETWORK_COMBAT_VALUE_MAX := 0x7FFFFFFF
+
+
+static func is_valid_network_combat_value(value: int) -> bool:
+	return value >= NETWORK_COMBAT_VALUE_MIN and value <= NETWORK_COMBAT_VALUE_MAX
 
 ## 玩家限制
 const MAX_PLAYERS := 8

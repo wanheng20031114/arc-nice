@@ -52,7 +52,7 @@ class CombatRuntimeStub:
 	func apply_authoritative_plant_enemy_damage_batch(
 		_source_id: int,
 		enemy: Enemy,
-		damage_amounts: PackedInt32Array,
+		damage_amounts: PackedInt64Array,
 		hit_counts: PackedInt32Array,
 		impact_direction: Vector2,
 		damage_type: EnemyConfig.DamageType
@@ -546,7 +546,7 @@ func _test_batch_damage_semantics() -> void:
 		)
 	var expected_damage := sequential_health_before - sequential.current_health
 	var accepted := batched.apply_damage_batch(
-		PackedInt32Array([100, 50]),
+		PackedInt64Array([100, 50]),
 		PackedInt32Array([3, 2]),
 		Vector2.UP,
 		EnemyConfig.DamageType.PHYSICAL,
@@ -579,7 +579,7 @@ func _test_batch_damage_semantics() -> void:
 			false
 		)
 	batched_lethal.apply_damage_batch(
-		PackedInt32Array([20]),
+		PackedInt64Array([20]),
 		PackedInt32Array([3]),
 		Vector2.UP,
 		EnemyConfig.DamageType.PHYSICAL,
@@ -605,14 +605,14 @@ func _test_batch_damage_semantics() -> void:
 	order_a.current_health = 25
 	order_b.current_health = 25
 	order_a.apply_damage_batch(
-		PackedInt32Array([20, 50]),
+		PackedInt64Array([20, 50]),
 		PackedInt32Array([1, 1]),
 		Vector2.UP,
 		EnemyConfig.DamageType.PHYSICAL,
 		false
 	)
 	order_b.apply_damage_batch(
-		PackedInt32Array([50, 20]),
+		PackedInt64Array([50, 20]),
 		PackedInt32Array([1, 1]),
 		Vector2.UP,
 		EnemyConfig.DamageType.PHYSICAL,
@@ -649,7 +649,7 @@ func _test_multiplayer_batch_bridge() -> void:
 	var accepted := mp_game.apply_authoritative_plant_enemy_damage_batch(
 		77,
 		enemy,
-		PackedInt32Array([100]),
+		PackedInt64Array([100]),
 		PackedInt32Array([2]),
 		Vector2.RIGHT,
 		EnemyConfig.DamageType.PHYSICAL
@@ -666,7 +666,7 @@ func _test_multiplayer_batch_bridge() -> void:
 		not mp_game.apply_authoritative_plant_enemy_damage_batch(
 			77,
 			enemy,
-			PackedInt32Array([100]),
+			PackedInt64Array([100]),
 			PackedInt32Array([1]),
 			Vector2.RIGHT,
 			EnemyConfig.DamageType.PHYSICAL
@@ -679,7 +679,7 @@ func _test_multiplayer_batch_bridge() -> void:
 		not bridge_game.apply_authoritative_plant_enemy_damage_batch(
 			77,
 			enemy,
-			PackedInt32Array([100]),
+			PackedInt64Array([100]),
 			PackedInt32Array([1]),
 			Vector2.RIGHT,
 			EnemyConfig.DamageType.PHYSICAL
@@ -694,7 +694,7 @@ func _test_multiplayer_batch_bridge() -> void:
 		not mp_game.apply_authoritative_plant_enemy_damage_batch(
 			77,
 			enemy,
-			PackedInt32Array([100]),
+			PackedInt64Array([100]),
 			PackedInt32Array([1]),
 			Vector2.RIGHT,
 			EnemyConfig.DamageType.PHYSICAL

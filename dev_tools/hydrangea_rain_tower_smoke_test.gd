@@ -72,7 +72,7 @@ class RainTickRuntime:
 	var combat_query_centers: Array[Vector2] = []
 	var combat_query_radii: Array[float] = []
 	var last_damage_source_id := 0
-	var last_damage_amounts := PackedInt32Array()
+	var last_damage_amounts := PackedInt64Array()
 	var last_damage_hit_counts := PackedInt32Array()
 	var last_damage_type := -1
 	var last_player_heal_amount := 0
@@ -107,7 +107,7 @@ class RainTickRuntime:
 	func apply_authoritative_plant_enemy_damage_batch(
 		damage_source_id: int,
 		enemy: Enemy,
-		damage_amounts: PackedInt32Array,
+		damage_amounts: PackedInt64Array,
 		hit_counts: PackedInt32Array,
 		impact_direction: Vector2,
 		damage_type: EnemyConfig.DamageType
@@ -1126,7 +1126,7 @@ func _test_one_authoritative_rain_tick() -> void:
 	_expect(
 		fixture.damage_call_count == damage_count_before + 1
 		and fixture.last_damage_source_id == effect_source_id
-		and fixture.last_damage_amounts == PackedInt32Array([EXPECTED_MAGIC_DAMAGE])
+		and fixture.last_damage_amounts == PackedInt64Array([EXPECTED_MAGIC_DAMAGE])
 		and fixture.last_damage_hit_counts == PackedInt32Array([1])
 		and fixture.last_damage_type == EnemyConfig.DamageType.MAGIC
 		and enemy.current_health == enemy_health_before - EXPECTED_MAGIC_DAMAGE,

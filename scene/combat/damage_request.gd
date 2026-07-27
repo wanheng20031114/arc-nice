@@ -1,8 +1,9 @@
 extends RefCounted
 class_name DamageRequest
 
-## Immutable-by-convention input to every authoritative damage sink. Gameplay
-## code may construct it locally; only the compact scalar fields cross the wire.
+## Immutable-by-convention input to every authoritative damage sink. GDScript
+## int is signed int64 and remains the runtime combat representation; fixed-width
+## network boundaries validate separately before serialization.
 var amount: int = 0
 var damage_type: int = CombatTypes.DamageType.PHYSICAL
 var source: Node = null

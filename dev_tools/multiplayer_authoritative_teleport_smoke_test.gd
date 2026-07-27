@@ -1,6 +1,9 @@
 extends SceneTree
 
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
+const DEFAULT_PLAYER_SCENE := preload(
+	"res://scene/player/weishidaier/player_weishidaier.tscn"
+)
 
 var failures: Array[String] = []
 
@@ -103,7 +106,8 @@ func _test_client_teleport_resets_remote_interpolation() -> void:
 	var multiplayer_game := MP_GAME_SCRIPT.new()
 	var tower_defense_game := GameTowerDefense.new()
 	var local_player := Player.new()
-	var remote_player := Player.new()
+	var remote_player := DEFAULT_PLAYER_SCENE.instantiate() as Player
+	root.add_child(remote_player)
 	tower_defense_game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
 	tower_defense_game.multiplayer_local_peer_id = 3
 	tower_defense_game.peer_players = {2: remote_player, 3: local_player}
@@ -146,6 +150,44 @@ func _test_client_teleport_resets_remote_interpolation() -> void:
 		multiplayer_game._accept_player_snapshot_motion_after_teleport(2, 8),
 		"The first newer Host snapshot must release the teleport motion barrier."
 	)
+	# Re-arm the exact production barrier, then traverse the complete v25 path:
+	# reliable teleport S -> ordinary player snapshot S+1 -> remote interpolator.
+	multiplayer_game.net_player_authoritative_teleported(2, fate_position, 7)
+	var post_snapshot_position := Vector2(8192.4, 8191.6)
+	var post_teleport_state := SnapshotManager.PlayerState.new()
+	post_teleport_state.peer_id = 2
+	post_teleport_state.sequence = 8
+	post_teleport_state.character_id = remote_player.get_character_id()
+	post_teleport_state.position = post_snapshot_position
+	post_teleport_state.velocity = Vector2.ZERO
+	post_teleport_state.current_health = 100000
+	post_teleport_state.max_health = 100000
+	var snapshot_sender := SnapshotManager.new()
+	var post_teleport_packet := snapshot_sender.encode_player_snapshots_for_peer(
+		3,
+		[post_teleport_state],
+		true
+	)
+	multiplayer_game._rpc_receive_player_snapshot(
+		multiplayer_game._get_net_time(),
+		post_teleport_packet
+	)
+	var post_snapshot_interpolator := (
+		multiplayer_game.player_visual_interpolators.get(2) as NetInterpolator
+	)
+	_expect(
+		post_snapshot_interpolator != null
+		and post_snapshot_interpolator.get_buffer_size() >= 1
+		and post_snapshot_interpolator.get_latest_state().position == post_snapshot_position,
+		"Snapshot S+1 must reach the interpolator at the Xiaocong-room position."
+	)
+	if post_snapshot_interpolator != null:
+		_expect(
+			post_snapshot_interpolator.get_interpolated_position(
+				post_snapshot_interpolator.get_latest_timestamp() + 1.0
+			) == post_snapshot_position,
+			"The interpolator must not pull a teleported player back to the int16 boundary."
+		)
 
 	tower_defense_game.peer_players.clear()
 	local_player.free()
