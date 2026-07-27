@@ -3,7 +3,7 @@ render_mode unshaded, blend_mix;
 
 // GPUParticles2D writes normalized lifetime progress into INSTANCE_CUSTOM.y.
 // Each sub-particle therefore expands one procedural circular water ripple.
-uniform float visible_ratio : hint_range(0.0, 1.0) = 0.16;
+uniform float visible_ratio : hint_range(0.0, 1.0) = 0.18;
 uniform float ripple_opacity : hint_range(0.0, 1.0) = 0.52;
 varying float particle_phase;
 varying float particle_selector;

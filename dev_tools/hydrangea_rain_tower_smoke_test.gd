@@ -405,7 +405,7 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 		and ripple_draw_material.shader.code.contains("length(centered)")
 		and ripple_draw_material.shader.code.contains("ring_radius")
 		and ripple_draw_material.shader.code.contains("fade_out")
-		and is_equal_approx(visible_ripple_ratio, 0.16)
+		and is_equal_approx(visible_ripple_ratio, 0.18)
 		and target_drop_rate * visible_ripple_ratio < 60.0
 		and not tower.target_rain_ripples.emitting
 		and not tower.target_rain_ripples.one_shot

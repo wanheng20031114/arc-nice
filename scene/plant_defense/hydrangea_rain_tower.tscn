@@ -51,7 +51,7 @@ fill_to = Vector2(0.5, 1)
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_ripple"]
 shader = ExtResource("9_ripple_shader")
-shader_parameter/visible_ratio = 0.16
+shader_parameter/visible_ratio = 0.18
 shader_parameter/ripple_opacity = 0.52
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_ground_emission"]
