@@ -666,8 +666,8 @@ func net_xiaocong_interaction_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_xiaocong_fate_vote_requested(
-	option_index: int,
-	permanent_buff_id: int
+	option_id: String,
+	permanent_buff_id: String
 ) -> void:
 	pass
 

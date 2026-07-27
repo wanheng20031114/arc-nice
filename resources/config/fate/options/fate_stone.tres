@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=3 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate_stone.png" id="2"]
+[resource]
+script = ExtResource("1")
+option_id = &"fate_stone"
+menu_order = 40
+display_name = "小葱展示了？？？"
+description = "每名玩家的背包获得不可移动、不可删除的神秘核心石。"
+effect_type = 3
+icon = ExtResource("2")

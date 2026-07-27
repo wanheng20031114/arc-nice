@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+option_id = &"double_xirang"
+menu_order = 90
+display_name = "清空息壤 · 次日双倍掉落"
+description = "清空所有玩家持有的息壤；下一日敌人掉落的息壤数量翻倍。"
+effect_type = 8
+primary_amount = 2.0

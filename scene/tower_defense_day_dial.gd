@@ -6,10 +6,11 @@ const NIGHT_SEGMENT_COLOR := Color(0.42, 0.68, 0.96, 1.0)
 const INACTIVE_SEGMENT_COLOR := Color(0.22, 0.31, 0.28, 0.72)
 const INNER_TRACK_COLOR := Color(0.07, 0.12, 0.105, 0.95)
 const GAP_RADIANS := 0.13
-const PHASE_COUNT := 4
 const PROGRESS_TWEEN_SECONDS := 0.22
 
 var phase_index := 0
+var phase_count := 4
+var night_start_phase_index := 2
 var wave_progress := 0.0:
 	set(value):
 		wave_progress = clampf(value, 0.0, 1.0)
@@ -18,18 +19,41 @@ var target_wave_progress := 0.0
 var progress_tween: Tween = null
 
 
-func set_day_progress(new_phase_index: int, resolved: int, total: int) -> void:
-	var next_phase_index := clampi(new_phase_index, 0, PHASE_COUNT - 1)
+func set_day_progress(
+	new_phase_index: int,
+	new_phase_count: int,
+	new_night_start_phase_index: int,
+	resolved: int,
+	total: int
+) -> void:
+	var safe_phase_count := maxi(new_phase_count, 1)
+	var safe_night_start := clampi(
+		new_night_start_phase_index,
+		0,
+		safe_phase_count - 1
+	)
+	var next_phase_index := clampi(new_phase_index, 0, safe_phase_count - 1)
 	var next_progress := (
 		clampf(float(resolved) / float(total), 0.0, 1.0)
 		if total > 0
 		else 0.0
 	)
-	if next_phase_index == phase_index and is_equal_approx(next_progress, target_wave_progress):
+	if (
+		next_phase_index == phase_index
+		and safe_phase_count == phase_count
+		and safe_night_start == night_start_phase_index
+		and is_equal_approx(next_progress, target_wave_progress)
+	):
 		return
 
-	var phase_changed := next_phase_index != phase_index
+	var phase_changed := (
+		next_phase_index != phase_index
+		or safe_phase_count != phase_count
+		or safe_night_start != night_start_phase_index
+	)
 	phase_index = next_phase_index
+	phase_count = safe_phase_count
+	night_start_phase_index = safe_night_start
 	target_wave_progress = next_progress
 	if progress_tween != null:
 		progress_tween.kill()
@@ -53,19 +77,31 @@ func set_day_progress(new_phase_index: int, resolved: int, total: int) -> void:
 func _draw() -> void:
 	var center := size * 0.5
 	var outer_radius := maxf(minf(size.x, size.y) * 0.5 - 3.0, 2.0)
-	var quarter := TAU / 4.0
-	for segment_index in range(PHASE_COUNT):
-		var start_angle := -PI * 0.5 + float(segment_index) * quarter + GAP_RADIANS
-		var end_angle := start_angle + quarter - GAP_RADIANS * 2.0
+	var segment_radians := TAU / float(phase_count)
+	for segment_index in range(phase_count):
+		var start_angle := (
+			-PI * 0.5
+			+ float(segment_index) * segment_radians
+			+ GAP_RADIANS
+		)
+		var end_angle := start_angle + segment_radians - GAP_RADIANS * 2.0
 		var color := INACTIVE_SEGMENT_COLOR
 		if segment_index <= phase_index:
-			color = DAY_SEGMENT_COLOR if segment_index < 2 else NIGHT_SEGMENT_COLOR
+			color = (
+				DAY_SEGMENT_COLOR
+				if segment_index < night_start_phase_index
+				else NIGHT_SEGMENT_COLOR
+			)
 		draw_arc(center, outer_radius, start_angle, end_angle, 12, color, 3.0, true)
 
 	var inner_radius := maxf(outer_radius - 6.0, 1.0)
 	draw_arc(center, inner_radius, -PI * 0.5, PI * 1.5, 28, INNER_TRACK_COLOR, 2.0, true)
 	if wave_progress > 0.0:
-		var active_color := DAY_SEGMENT_COLOR if phase_index < 2 else NIGHT_SEGMENT_COLOR
+		var active_color := (
+			DAY_SEGMENT_COLOR
+			if phase_index < night_start_phase_index
+			else NIGHT_SEGMENT_COLOR
+		)
 		draw_arc(
 			center,
 			inner_radius,

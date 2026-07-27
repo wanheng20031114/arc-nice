@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+option_id = &"dangerous_speed"
+menu_order = 100
+display_name = "危险的疾行"
+description = "所有玩家移动速度增加 30%；受伤后速度降至基础值的 20%，持续 1 秒。"
+effect_type = 9
+primary_amount = 0.3
+secondary_amount = 0.2
+duration_seconds = 1.0

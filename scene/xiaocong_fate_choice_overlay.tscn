@@ -165,39 +165,30 @@ layout_mode = 2
 
 [node name="Choice1" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 1
 
 [node name="Choice2" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 2
 
 [node name="Choice3" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 3
 
 [node name="Choice4" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 4
 
 [node name="Choice5" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 5
 
 [node name="Choice6" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 6
 
 [node name="Choice7" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 7
 
 [node name="Choice8" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 8
 
 [node name="Choice9" parent="Root/Center/Panel/Margin/Content/ChoiceScroll/ChoiceGrid" instance=ExtResource("2_card")]
 layout_mode = 2
-option_index = 9
 
 [node name="BuffModal" type="CenterContainer" parent="Root"]
 layout_mode = 1

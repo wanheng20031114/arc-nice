@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+option_id = &"permanent_contract"
+menu_order = 10
+display_name = "永久增益 · 精英契约"
+description = "从本次展示的 3 项永久增益中选择 1 项；下一日更容易出现精英敌人。"
+effect_type = 0
+secondary_amount = 0.25

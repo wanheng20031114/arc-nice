@@ -2,7 +2,7 @@ extends Node2D
 class_name XiaocongFateInterlude
 
 signal interaction_requested
-signal fate_choice_submitted(option_index: int, permanent_buff_id: int)
+signal fate_choice_submitted(option_id: StringName, permanent_buff_id: StringName)
 signal collectible_choice_submitted(choice_index: int)
 
 const PLAYER_OFFSETS: Array[Vector2] = [
@@ -29,7 +29,12 @@ var local_peer_id := 0
 var nearby_local_player := false
 var local_interaction_sent := false
 var character_ids_by_peer: Dictionary = {}
-var current_stage := &"wait_interactions"
+var current_stage := TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS
+var eligible_player_count := 0
+var interacted_player_count := 0
+var timeout_seconds_left := 0
+var timeout_recovery_available := false
+var local_is_host := false
 
 
 func _ready() -> void:
@@ -59,7 +64,12 @@ func set_active(active: bool, day_number: int = 1) -> void:
 	interaction_area.set_deferred("monitoring", active)
 	nearby_local_player = false
 	local_interaction_sent = false
-	current_stage = &"wait_interactions"
+	current_stage = TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS
+	eligible_player_count = 0
+	interacted_player_count = 0
+	timeout_seconds_left = 0
+	timeout_recovery_available = false
+	local_is_host = false
 	prompt_label.visible = false
 	dialogue_bubble.hide_bubble()
 	if not active:
@@ -73,9 +83,20 @@ func apply_fate_state(state: Dictionary) -> void:
 	if not active:
 		return
 	completed_day = maxi(int(state.get("completed_day", completed_day)), 1)
-	var interacted := state.get("interacted_peer_ids", []) as Array
+	var interacted := _to_int_array(state.get("interacted_peer_ids", []))
 	local_interaction_sent = interacted.has(local_peer_id)
-	current_stage = StringName(state.get("stage", &"wait_interactions"))
+	current_stage = StringName(
+		state.get("stage", TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS)
+	)
+	eligible_player_count = _to_int_array(
+		state.get("eligible_peer_ids", [])
+	).size()
+	interacted_player_count = interacted.size()
+	timeout_seconds_left = ceili(float(state.get("stage_time_remaining", 0.0)))
+	timeout_recovery_available = bool(
+		state.get("timeout_recovery_available", false)
+	)
+	local_is_host = int(state.get("host_peer_id", -1)) == local_peer_id
 	choice_overlay.apply_state(state, local_peer_id, character_ids_by_peer)
 	_refresh_prompt()
 
@@ -97,8 +118,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	dialogue_bubble.say(
 		"你已经通过了第%d天，该决定接下来的命运了" % completed_day
 	)
-	if not local_interaction_sent:
+	if (
+		current_stage == TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS
+		and not local_interaction_sent
+	):
 		local_interaction_sent = true
+		interaction_requested.emit()
+	elif timeout_recovery_available and local_is_host:
 		interaction_requested.emit()
 	_refresh_prompt()
 
@@ -120,15 +146,33 @@ func _on_body_exited(body: Node2D) -> void:
 
 func _refresh_prompt() -> void:
 	prompt_label.visible = is_active and nearby_local_player
-	if current_stage == &"voting":
-		prompt_label.text = "命运选择已经开启"
-	elif current_stage == &"resolving":
+	if current_stage == TowerDefenseFateManager.STAGE_VOTING:
+		prompt_label.text = (
+			"等待超时 · F 由房主继续结算"
+			if timeout_recovery_available and local_is_host
+			else "命运选择已经开启 · 剩余 %d 秒" % timeout_seconds_left
+		)
+	elif current_stage == TowerDefenseFateManager.STAGE_RESOLVING:
 		prompt_label.text = "小葱正在改写命运"
-	elif current_stage == &"resolved":
+	elif current_stage == TowerDefenseFateManager.STAGE_RESOLVED:
 		prompt_label.text = "命运已经决定"
-	elif current_stage == &"collectible_reward":
+	elif current_stage == TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD:
 		prompt_label.text = "请完成你的收藏品选择"
+	elif timeout_recovery_available and local_is_host:
+		prompt_label.text = "等待超时 · F 由房主继续流程"
 	elif local_interaction_sent:
-		prompt_label.text = "已与小葱交互 · 等待所有玩家"
+		prompt_label.text = "已交互 %d/%d · 剩余 %d 秒" % [
+			interacted_player_count,
+			eligible_player_count,
+			timeout_seconds_left,
+		]
 	else:
 		prompt_label.text = "F  与小葱交互"
+
+
+func _to_int_array(value: Variant) -> Array[int]:
+	var result: Array[int] = []
+	if value is Array or value is PackedInt32Array:
+		for entry in value:
+			result.append(int(entry))
+	return result

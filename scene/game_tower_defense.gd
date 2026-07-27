@@ -38,23 +38,6 @@ const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 )
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
-const XIAOCONG_FATE_STONE_CONFIG: PickupConfig = preload(
-	"res://resources/config/pickups/xiaocong_fate_stone.tres"
-)
-const ELITE_ENEMY_CONFIG_BY_BASE_PATH: Dictionary = {
-	"res://resources/config/enemies/capoo_knight.tres": preload(
-		"res://resources/config/enemies/capoo_knight_elite.tres"
-	),
-	"res://resources/config/enemies/stone_golem.tres": preload(
-		"res://resources/config/enemies/stone_golem_elite.tres"
-	),
-	"res://resources/config/enemies/fire_sorcerer.tres": preload(
-		"res://resources/config/enemies/fire_sorcerer_elite.tres"
-	),
-	"res://resources/config/enemies/frost_sorcerer.tres": preload(
-		"res://resources/config/enemies/frost_sorcerer_elite.tres"
-	),
-}
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
 const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
@@ -79,16 +62,6 @@ const BOSS_INTRO_CAMERA_RESTORE_SECONDS := 0.25
 const DEFEAT_CAMERA_TRAVEL_SECONDS := 0.55
 const INITIAL_PLAYER_XIRANG := 1000
 const DEFAULT_BASE_HEALTH := 100
-const WAVES_PER_DAY := 4
-const NIGHT_START_WAVE_IN_DAY := 3
-const FATE_PERIODIC_TICK_SECONDS := 1.0
-const FATE_BUILDING_HEAL_PER_SECOND := 10
-const FATE_PLAYER_HEAL_MAX_RATIO_PER_SECOND := 0.05
-const FATE_ELITE_REPLACEMENT_CHANCE := 0.25
-const FATE_YUANSHI_ATTACK_SOURCE_ID := 880001
-const FATE_ARTIFICIAL_DEFENSE_SOURCE_ID := 880002
-const FATE_SLIME_SPEED_SOURCE_ID := 880003
-const FATE_ALL_ENEMY_SPEED_SOURCE_ID := 880004
 const XIAOCONG_INTERACTION_DISTANCE := 220.0
 # A full background sweep only needs to keep long-lived objectives reasonably
 # fresh. Topology changes and player availability changes request an immediate
@@ -127,6 +100,7 @@ const PLANT_PLACEMENT_REJECT_INVALID_POSITION := &"invalid_position"
 const PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM := &"invalid_inventory_item"
 const PLANT_PLACEMENT_REJECT_STALE_INVENTORY := &"stale_inventory"
 const PLANT_PLACEMENT_REJECT_FREE_DISABLED := &"free_placement_disabled"
+const PLANT_PLACEMENT_REJECT_FLOW_LOCKED := &"flow_locked"
 const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
 const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
@@ -163,6 +137,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 
 @export_group("战斗流程")
 @export var progression_config: TowerDefenseProgressionConfig = null
+@export var day_cycle_config: DayCycleConfig = preload(
+	"res://resources/config/day_cycle/tower_defense_day_cycle.tres"
+)
 @export var auto_start_waves: bool = true
 @export var linglan_boss_enabled: bool = false
 
@@ -195,7 +172,10 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
-@onready var fate_manager: TowerDefenseFateManager = $TowerDefenseFateManager
+@onready var fate_coordinator: FateCoordinator = $FateCoordinator
+@onready var fate_manager: TowerDefenseFateManager = (
+	$FateCoordinator/TowerDefenseFateManager
+)
 @onready var xiaocong_fate_interlude: XiaocongFateInterlude = $XiaocongFateInterlude
 @onready var boss_container: Node2D = $BossContainer
 @onready var guardian_aura_system: GuardianAuraSystem = $GuardianAuraSystem
@@ -284,14 +264,7 @@ var singleplayer_respawn_time_left := -1.0
 var singleplayer_respawn_last_seconds := -1
 var spectator_camera_active := false
 var projectile_pool_registration_ms := 0.0
-var fate_periodic_tick_accumulator := 0.0
-var fate_elite_bias_day := 0
-var fate_double_xirang_day := 0
-var fate_player_dash_cooldown_reduction := 0.0
-var fate_player_max_health_multiplier := 1.0
-var fate_player_move_speed_multiplier := 1.0
-var fate_hurt_speed_penalty_enabled := false
-var pending_fate_stone_peer_ids: Array[int] = []
+var fate_frozen_terrain_decay_time_left := 0.0
 var starting_package_granted := false
 var progression_started_msec := 0
 var first_defense_tower_seconds := -1.0
@@ -316,6 +289,11 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	random_generator.randomize()
 	LuoxiMerchant.reset_runtime_choice_count()
+	if day_cycle_config == null or not day_cycle_config.is_valid():
+		push_error("GameTowerDefense: DayCycleConfig 无效，停止初始化。")
+		set_process(false)
+		set_physics_process(false)
+		return
 	bamboo_mortar_combat_system.setup(self)
 	bamboo_mortar_combat_system.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
@@ -437,7 +415,11 @@ func _ready() -> void:
 	)
 	tower_defense_status_hud.show()
 	_attach_camera_to_local_player()
-	wave_hud.configure_tower_defense(current_base_health, maximum_base_health)
+	wave_hud.configure_tower_defense(
+		current_base_health,
+		maximum_base_health,
+		day_cycle_config
+	)
 	_configure_home_defense()
 	_configure_plant_defense_system()
 	production_coordinator.set_authoritative_processing_enabled(
@@ -491,8 +473,8 @@ func _ready() -> void:
 		player.died.connect(_on_player_died)
 		player.revived.connect(_on_player_revived.bind(0))
 	_set_merchant_active(false)
+	fate_coordinator.setup(self, day_cycle_config)
 	_configure_xiaocong_fate_flow()
-	_apply_player_fate_modifiers_to_all()
 	_configure_linglan_boss()
 	call_deferred("_deferred_request_boss_runtime_scene_loads")
 
@@ -526,7 +508,6 @@ func _on_runtime_activated() -> void:
 func _physics_process(delta: float) -> void:
 	_update_local_spectator_camera(delta)
 	_update_singleplayer_respawn(delta)
-	_update_fate_periodic_effects(delta)
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		_update_tower_defense_enemy_targets(delta)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
@@ -569,23 +550,18 @@ func _apply_wave_start_lighting(wave_number: int) -> void:
 
 
 func _apply_intermission_lighting(completed_wave_number: int) -> void:
-	# Wave 3 begins the night, which remains through the rest before wave 4.
-	# Every other ordinary rest is daylight; the day-end fate room also resets
-	# the CanvasModulate so Xiaocong is not darkened by the previous combat.
-	var wave_in_day := posmod(maxi(completed_wave_number, 1) - 1, WAVES_PER_DAY) + 1
-	if wave_in_day == NIGHT_START_WAVE_IN_DAY:
+	if day_cycle_config.is_night_intermission_after_wave(completed_wave_number):
 		transition_world_to_night()
 	else:
 		transition_world_to_day()
 
 
 func _is_night_wave(wave_number: int) -> bool:
-	var wave_in_day := posmod(maxi(wave_number, 1) - 1, WAVES_PER_DAY) + 1
-	return wave_in_day >= NIGHT_START_WAVE_IN_DAY
+	return day_cycle_config.is_night_wave(wave_number)
 
 
 func _get_day_number_for_wave(wave_number: int) -> int:
-	return floori(float(maxi(wave_number, 1) - 1) / float(WAVES_PER_DAY)) + 1
+	return day_cycle_config.get_day_number(wave_number)
 
 
 func supports_multiplayer_terrain_state() -> bool:
@@ -1298,9 +1274,14 @@ func _update_plant_placement_input_state() -> void:
 	var input_enabled := (
 		player != null
 		and not player.is_dead
-		and wave_state not in [WaveState.VICTORY, WaveState.DEFEAT]
+		and wave_state not in [
+			WaveState.VICTORY,
+			WaveState.DEFEAT,
+			WaveState.FATE_INTERLUDE,
+		]
 		and not _has_exclusive_modal_open()
 	)
+	plant_placement_controller.set_placement_input_enabled(input_enabled)
 	plant_placement_controller.set_process_unhandled_input(input_enabled)
 
 
@@ -1318,6 +1299,7 @@ func begin_inventory_building_placement(
 		or plant_system == null
 		or player == null
 		or player.is_dead
+		or wave_state == WaveState.FATE_INTERLUDE
 		or _has_exclusive_modal_open()
 	):
 		return false
@@ -1405,6 +1387,11 @@ func _request_singleplayer_inventory_plant_placement(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
+	if wave_state == WaveState.FATE_INTERLUDE:
+		plant_placement_controller.notify_multiplayer_placement_rejected(
+			request_id
+		)
+		return
 	var stored_item := run_state.get_item(slot_index)
 	var config := plant_system.get_config(plant_id) if plant_system != null else null
 	if (
@@ -1481,6 +1468,13 @@ func request_multiplayer_plant_placement(
 ) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
+	if wave_state == WaveState.FATE_INTERLUDE:
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_FLOW_LOCKED
+		)
+		return
 	if not sandbox_free_building_enabled:
 		_reject_multiplayer_plant_placement(
 			request_id,
@@ -1534,6 +1528,13 @@ func request_multiplayer_inventory_plant_placement(
 	item_config_path: String
 ) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if wave_state == WaveState.FATE_INTERLUDE:
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_FLOW_LOCKED
+		)
 		return
 	if (
 		request_id <= 0
@@ -2382,6 +2383,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
+	_set_fate_interlude_systems_frozen(typed_state == WaveState.FATE_INTERLUDE)
 	match typed_state:
 		WaveState.PRE_WAVE:
 			transition_world_to_day()
@@ -2435,6 +2437,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			apply_remote_victory()
 		WaveState.DEFEAT:
 			apply_remote_defeat()
+	_update_plant_placement_input_state()
 
 func get_flow_state_snapshot() -> Dictionary:
 	return {
@@ -3077,7 +3080,7 @@ func _get_current_intermission_seconds() -> int:
 	var completed_wave_number := maxi(current_wave_index + 1, 1)
 	return (
 		_get_new_day_preparation_seconds()
-		if completed_wave_number % WAVES_PER_DAY == 0
+		if day_cycle_config.is_day_end_wave(completed_wave_number)
 		else _get_wave_intermission_seconds()
 	)
 
@@ -3378,12 +3381,6 @@ func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
 func _configure_xiaocong_fate_flow() -> void:
 	if not fate_manager.state_changed.is_connected(_on_xiaocong_fate_state_changed):
 		fate_manager.state_changed.connect(_on_xiaocong_fate_state_changed)
-	if not fate_manager.resolution_requested.is_connected(
-		_on_xiaocong_fate_resolution_requested
-	):
-		fate_manager.resolution_requested.connect(
-			_on_xiaocong_fate_resolution_requested
-		)
 	if not fate_manager.interlude_completed.is_connected(
 		_on_xiaocong_fate_interlude_completed
 	):
@@ -3452,13 +3449,13 @@ func _on_local_xiaocong_interaction_requested() -> void:
 
 
 func _on_local_xiaocong_fate_choice_submitted(
-	option_index: int,
-	permanent_buff_id: int
+	option_id: StringName,
+	permanent_buff_id: StringName
 ) -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		request_xiaocong_fate_vote(0, option_index, permanent_buff_id)
+		request_xiaocong_fate_vote(0, option_id, permanent_buff_id)
 	else:
-		multiplayer_xiaocong_vote_requested.emit(option_index, permanent_buff_id)
+		multiplayer_xiaocong_vote_requested.emit(option_id, permanent_buff_id)
 
 
 func _on_local_xiaocong_collectible_choice_submitted(choice_index: int) -> void:
@@ -3480,64 +3477,28 @@ func request_xiaocong_interaction(peer_id: int) -> void:
 		) > XIAOCONG_INTERACTION_DISTANCE
 	):
 		return
-	fate_manager.record_interaction(peer_id)
+	if not fate_manager.record_interaction(peer_id):
+		fate_manager.request_timeout_recovery(peer_id)
 
 
 func request_xiaocong_fate_vote(
 	peer_id: int,
-	option_index: int,
-	permanent_buff_id: int
+	option_id: StringName,
+	permanent_buff_id: StringName
 ) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != WaveState.FATE_INTERLUDE:
 		return
-	fate_manager.submit_vote(peer_id, option_index, permanent_buff_id)
+	fate_manager.submit_vote(peer_id, option_id, permanent_buff_id)
 
 
 func request_xiaocong_collectible_choice(peer_id: int, choice_index: int) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != WaveState.FATE_INTERLUDE:
 		return
-	if not _is_fate_collectible_choice_pending_for_peer(peer_id):
-		return
-	var offer_variant: Variant = fate_manager.collectible_offers.get(peer_id, [])
-	if not (offer_variant is Array) or choice_index < 0 or choice_index >= offer_variant.size():
-		return
-	var config_path := str(offer_variant[choice_index])
-	var item := LuoxiMerchant.get_collectible_for_path(config_path)
-	var player_instance := _get_fate_player(peer_id)
-	if player_instance == null or not is_instance_valid(player_instance):
-		_remove_fate_eligible_peer(peer_id)
-		return
-	if (
-		item == null
-		or not player_instance.is_collectible_compatible(item)
-		or not LuoxiMerchant.is_collectible_available_for_inventory(
-			item,
-			run_state,
-			peer_id
-		)
-	):
-		fate_manager.record_collectible_result(peer_id, false, "该收藏品当前无法获得")
-		return
-	if not _try_store_fate_item(peer_id, item):
-		fate_manager.record_collectible_result(
-			peer_id,
-			false,
-			"背包已满，请先清出一个空位后再次选择"
-		)
-		return
-	player_instance.refresh_collectible_stats()
-	_notify_fate_inventory_changed(peer_id)
-	fate_manager.record_collectible_result(peer_id, true, "收藏品已放入背包")
+	fate_coordinator.request_collectible_choice(peer_id, choice_index)
 
 
 func _is_fate_collectible_choice_pending_for_peer(peer_id: int) -> bool:
-	return (
-		fate_manager != null
-		and fate_manager.active
-		and fate_manager.stage == TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD
-		and fate_manager.eligible_peer_ids.has(peer_id)
-		and not fate_manager.collectible_claimed_peer_ids.has(peer_id)
-	)
+	return fate_coordinator.is_collectible_choice_pending_for_peer(peer_id)
 
 
 func get_xiaocong_fate_state_snapshot() -> Dictionary:
@@ -3549,55 +3510,20 @@ func apply_remote_xiaocong_fate_state(state: Dictionary) -> void:
 		return
 	if int(state.get("revision", 0)) < fate_manager.state_revision:
 		return
-	_apply_remote_fate_runtime_values(state)
+	fate_coordinator.apply_remote_runtime_state(state)
 	fate_manager.apply_remote_state(state)
 
 
 func _build_xiaocong_fate_state_snapshot() -> Dictionary:
 	var state := fate_manager.export_state()
-	state["elite_bias_day"] = fate_elite_bias_day
-	state["double_xirang_day"] = fate_double_xirang_day
-	state["player_dash_cooldown_reduction"] = fate_player_dash_cooldown_reduction
-	state["player_max_health_multiplier"] = fate_player_max_health_multiplier
-	state["player_move_speed_multiplier"] = fate_player_move_speed_multiplier
-	state["hurt_speed_penalty_enabled"] = fate_hurt_speed_penalty_enabled
-	state["pending_stone_peer_ids"] = pending_fate_stone_peer_ids.duplicate()
+	state.merge(fate_coordinator.export_runtime_state(), true)
 	return state
-
-
-func _apply_remote_fate_runtime_values(state: Dictionary) -> void:
-	fate_elite_bias_day = maxi(int(state.get("elite_bias_day", 0)), 0)
-	fate_double_xirang_day = maxi(int(state.get("double_xirang_day", 0)), 0)
-	fate_player_dash_cooldown_reduction = maxf(
-		float(state.get("player_dash_cooldown_reduction", 0.0)),
-		0.0
-	)
-	fate_player_max_health_multiplier = maxf(
-		float(state.get("player_max_health_multiplier", 1.0)),
-		0.01
-	)
-	fate_player_move_speed_multiplier = maxf(
-		float(state.get("player_move_speed_multiplier", 1.0)),
-		0.0
-	)
-	fate_hurt_speed_penalty_enabled = bool(
-		state.get("hurt_speed_penalty_enabled", false)
-	)
-	pending_fate_stone_peer_ids = _variant_to_sorted_peer_ids(
-		state.get("pending_stone_peer_ids", [])
-	)
 
 
 func _on_xiaocong_fate_state_changed(_state: Dictionary) -> void:
 	var snapshot := _build_xiaocong_fate_state_snapshot()
 	_configure_xiaocong_local_context()
 	xiaocong_fate_interlude.apply_fate_state(snapshot)
-	_apply_player_fate_modifiers_to_all()
-	_apply_fate_modifiers_to_existing_enemies()
-	if fate_manager.has_permanent_buff(8):
-		LuoxiMerchant.set_runtime_choice_count(4)
-	else:
-		LuoxiMerchant.reset_runtime_choice_count()
 	if fate_manager.active:
 		_present_fate_interlude_locally(fate_manager.completed_day)
 	elif wave_state == WaveState.FATE_INTERLUDE:
@@ -3605,20 +3531,8 @@ func _on_xiaocong_fate_state_changed(_state: Dictionary) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_xiaocong_fate_state_changed.emit(snapshot)
 
-
-func _variant_to_sorted_peer_ids(value: Variant) -> Array[int]:
-	var result: Array[int] = []
-	if value is Array or value is PackedInt32Array:
-		for entry in value:
-			var peer_id := int(entry)
-			if peer_id >= 0 and not result.has(peer_id):
-				result.append(peer_id)
-	result.sort()
-	return result
-
-
 func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
-	_cancel_plant_placement()
+	_set_fate_interlude_systems_frozen(true)
 	wave_state = WaveState.FATE_INTERLUDE
 	next_flow_step_after_rest = next_step
 	countdown_seconds = 0
@@ -3631,10 +3545,11 @@ func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
 	_present_fate_interlude_locally(completed_day)
 	_teleport_authoritative_players_to_fate_room()
 	_emit_multiplayer_flow_state(WaveState.FATE_INTERLUDE)
-	fate_manager.begin_interlude(
+	fate_coordinator.begin_interlude(
 		completed_day,
 		_get_flow_step_id(next_step),
-		_get_fate_peer_ids()
+		_get_fate_peer_ids(),
+		_get_local_fate_peer_id()
 	)
 
 
@@ -3652,12 +3567,42 @@ func _present_fate_interlude_locally(day_number: int) -> void:
 
 func _leave_fate_interlude_presentation() -> void:
 	xiaocong_fate_interlude.set_active(false)
+	_set_fate_interlude_systems_frozen(false)
 	if tower_defense_status_hud != null:
 		tower_defense_status_hud.show()
 	if tower_defense_minimap != null:
 		tower_defense_minimap.show()
 	_set_fate_player_controls_locked(false)
 	_refresh_player_modal_ui_lock()
+	_update_plant_placement_input_state()
+
+
+func _set_fate_interlude_systems_frozen(frozen: bool) -> void:
+	if plant_placement_controller != null:
+		plant_placement_controller.set_placement_input_enabled(not frozen)
+		plant_placement_controller.set_process_unhandled_input(not frozen)
+	if frozen:
+		_cancel_plant_placement()
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	if production_coordinator != null:
+		production_coordinator.set_authoritative_processing_enabled(not frozen)
+	if research_coordinator != null:
+		research_coordinator.set_authoritative_processing_enabled(not frozen)
+	if plant_terrain_decay_timer == null:
+		return
+	if frozen:
+		if not plant_terrain_decay_timer.is_stopped():
+			fate_frozen_terrain_decay_time_left = plant_terrain_decay_timer.time_left
+			plant_terrain_decay_timer.stop()
+		return
+	if plant_terrain_decay_timer.is_stopped():
+		plant_terrain_decay_timer.start(
+			fate_frozen_terrain_decay_time_left
+			if fate_frozen_terrain_decay_time_left > 0.0
+			else plant_terrain_decay_timer.wait_time
+		)
+	fate_frozen_terrain_decay_time_left = 0.0
 
 
 func _set_fate_player_controls_locked(locked: bool) -> void:
@@ -3733,7 +3678,7 @@ func _teleport_fate_player_authoritatively(
 func _on_xiaocong_fate_interlude_completed(next_step_id: StringName) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
-	pending_fate_stone_peer_ids.clear()
+	fate_coordinator.clear_pending_rewards()
 	_leave_fate_interlude_presentation()
 	_restore_authoritative_players_from_fate_room()
 	var next_step := _get_flow_step_by_id(next_step_id)
@@ -3743,334 +3688,27 @@ func _on_xiaocong_fate_interlude_completed(next_step_id: StringName) -> void:
 	_enter_intermission(next_step)
 
 
-func _on_xiaocong_fate_resolution_requested(
-	option_index: int,
-	permanent_buff_id: int
-) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	match option_index:
-		0:
-			if not _activate_fate_permanent_buff(permanent_buff_id):
-				fate_manager.force_finish()
-				return
-			fate_elite_bias_day = fate_manager.completed_day + 1
-			fate_manager.finalize_resolution()
-		1:
-			_set_base_health_from_fate(maximum_base_health + 50, -1)
-			fate_manager.finalize_resolution()
-		2:
-			_begin_fate_collectible_reward()
-		3:
-			_grant_fate_stone_to_all()
-		4:
-			_for_each_fate_player(
-				func(_peer_id: int, player_instance: Player) -> void:
-					player_instance.grant_xirang_reward(8000)
-			)
-			fate_manager.finalize_resolution()
-		5:
-			fate_player_dash_cooldown_reduction += 0.4
-			_apply_player_fate_modifiers_to_all()
-			fate_manager.finalize_resolution()
-		6:
-			fate_player_max_health_multiplier += 0.2
-			_apply_player_fate_modifiers_to_all()
-			fate_manager.finalize_resolution()
-		7:
-			_set_base_health_from_fate(maximum_base_health, 1)
-			var random_buff_id := fate_manager.choose_random_available_permanent_buff()
-			if random_buff_id <= 0 or not _activate_fate_permanent_buff(random_buff_id):
-				fate_manager.force_finish()
-				return
-			fate_manager.winning_permanent_buff_id = random_buff_id
-			fate_manager.finalize_resolution()
-		8:
-			_for_each_fate_player(
-				func(_peer_id: int, player_instance: Player) -> void:
-					if player_instance.current_xirang > 0:
-						player_instance.try_spend_xirang(player_instance.current_xirang)
-			)
-			fate_double_xirang_day = fate_manager.completed_day + 1
-			fate_manager.finalize_resolution()
-		9:
-			fate_player_move_speed_multiplier += 0.3
-			fate_hurt_speed_penalty_enabled = true
-			_apply_player_fate_modifiers_to_all()
-			fate_manager.finalize_resolution()
-		_:
-			fate_manager.force_finish()
-
-
-func _activate_fate_permanent_buff(buff_id: int) -> bool:
-	if not fate_manager.activate_permanent_buff(buff_id):
-		return false
-	if buff_id == 8:
-		LuoxiMerchant.set_runtime_choice_count(4)
-	_apply_player_fate_modifiers_to_all()
-	_apply_fate_modifiers_to_existing_enemies()
-	return true
-
-
-func _apply_player_fate_modifiers_to_all() -> void:
-	var low_health_reduction_enabled := fate_manager.has_permanent_buff(9)
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		if player != null and is_instance_valid(player):
-			player.configure_tower_defense_fate_modifiers(
-				fate_player_max_health_multiplier,
-				fate_player_move_speed_multiplier,
-				fate_player_dash_cooldown_reduction,
-				low_health_reduction_enabled,
-				fate_hurt_speed_penalty_enabled
-			)
-		return
-	for player_variant in peer_players.values():
-		var player_instance := player_variant as Player
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		player_instance.configure_tower_defense_fate_modifiers(
-			fate_player_max_health_multiplier,
-			fate_player_move_speed_multiplier,
-			fate_player_dash_cooldown_reduction,
-			low_health_reduction_enabled,
-			fate_hurt_speed_penalty_enabled
-		)
-
-
-func _for_each_fate_player(callback: Callable) -> void:
-	for peer_id in fate_manager.eligible_peer_ids:
-		var player_instance := _get_fate_player(peer_id)
-		if player_instance != null and is_instance_valid(player_instance):
-			callback.call(peer_id, player_instance)
-
-
-func _set_base_health_from_fate(new_maximum: int, new_current: int) -> void:
-	maximum_base_health = maxi(new_maximum, 1)
-	current_base_health = (
-		maximum_base_health
-		if new_current < 0
-		else clampi(new_current, 0, maximum_base_health)
-	)
-	base_health_revision += 1
-	_update_base_health_display(false)
-	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_base_health_changed.emit(
-			current_base_health,
-			maximum_base_health,
-			base_health_revision
-		)
-
-
 func _begin_fate_collectible_reward() -> void:
-	_prune_missing_fate_players()
-	if (
-		not fate_manager.active
-		or fate_manager.stage != TowerDefenseFateManager.STAGE_RESOLVING
-	):
-		return
-	var offers_by_peer: Dictionary = {}
-	var eligible_snapshot := fate_manager.eligible_peer_ids.duplicate()
-	for peer_id in eligible_snapshot:
-		var player_instance := _get_fate_player(peer_id)
-		if player_instance == null or not is_instance_valid(player_instance):
-			_remove_fate_eligible_peer(peer_id)
-			continue
-		var offer_paths := luoxi_merchant.build_authoritative_offer_paths(
-			player_instance,
-			[],
-			random_generator,
-			LuoxiMerchant.DEFAULT_CHOICE_COUNT
-		)
-		if offer_paths.size() != LuoxiMerchant.DEFAULT_CHOICE_COUNT:
-			push_error("小葱收藏品奖励无法为玩家 %d 生成完整选项。" % peer_id)
-			fate_manager.force_finish()
-			return
-		var wire_paths: Array = []
-		for config_path in offer_paths:
-			wire_paths.append(str(config_path))
-		offers_by_peer[peer_id] = wire_paths
-	if (
-		not fate_manager.active
-		or fate_manager.stage != TowerDefenseFateManager.STAGE_RESOLVING
-	):
-		return
-	if offers_by_peer.size() != fate_manager.eligible_peer_ids.size():
-		push_error("小葱收藏品奖励的玩家选项未完整生成。")
-		fate_manager.force_finish()
-		return
-	fate_manager.begin_collectible_reward(offers_by_peer)
-
-
-func _grant_fate_stone_to_all() -> void:
-	pending_fate_stone_peer_ids.clear()
-	for peer_id in fate_manager.eligible_peer_ids:
-		if _fate_peer_has_item(peer_id, XIAOCONG_FATE_STONE_CONFIG):
-			continue
-		if not _try_store_fate_item(peer_id, XIAOCONG_FATE_STONE_CONFIG):
-			pending_fate_stone_peer_ids.append(peer_id)
-			continue
-		_notify_fate_inventory_changed(peer_id)
-	if not _finalize_fate_stone_resolution_if_ready():
-		fate_manager.notify_external_state_changed()
-
-
-func _retry_pending_fate_stones() -> void:
-	if (
-		pending_fate_stone_peer_ids.is_empty()
-		or not fate_manager.active
-		or fate_manager.stage != TowerDefenseFateManager.STAGE_RESOLVING
-	):
-		return
-	var previous_pending := pending_fate_stone_peer_ids.duplicate()
-	var still_pending: Array[int] = []
-	for peer_id in pending_fate_stone_peer_ids:
-		if not fate_manager.eligible_peer_ids.has(peer_id):
-			continue
-		if (
-			_fate_peer_has_item(peer_id, XIAOCONG_FATE_STONE_CONFIG)
-			or _try_store_fate_item(peer_id, XIAOCONG_FATE_STONE_CONFIG)
-		):
-			_notify_fate_inventory_changed(peer_id)
-		else:
-			still_pending.append(peer_id)
-	pending_fate_stone_peer_ids = still_pending
-	var finalized := _finalize_fate_stone_resolution_if_ready()
-	if not finalized and pending_fate_stone_peer_ids != previous_pending:
-		fate_manager.notify_external_state_changed()
-
-
-func _finalize_fate_stone_resolution_if_ready() -> bool:
-	if not pending_fate_stone_peer_ids.is_empty():
-		return false
-	if (
-		fate_manager == null
-		or not fate_manager.active
-		or fate_manager.stage != TowerDefenseFateManager.STAGE_RESOLVING
-		or fate_manager.winning_option_index != 3
-	):
-		return false
-	fate_manager.finalize_resolution()
-	return true
+	if fate_coordinator != null:
+		fate_coordinator._begin_collectible_reward()
 
 
 func _remove_fate_eligible_peer(peer_id: int) -> void:
-	pending_fate_stone_peer_ids.erase(peer_id)
-	if fate_manager == null:
-		return
-	fate_manager.remove_eligible_peer(peer_id)
-	_finalize_fate_stone_resolution_if_ready()
+	if fate_coordinator != null:
+		fate_coordinator.remove_eligible_peer(peer_id)
 
 
 func _prune_missing_fate_players() -> void:
-	if fate_manager == null or not fate_manager.active:
-		return
-	var eligible_snapshot := fate_manager.eligible_peer_ids.duplicate()
-	for peer_id in eligible_snapshot:
-		var player_instance := _get_fate_player(peer_id)
-		if player_instance == null or not is_instance_valid(player_instance):
-			_remove_fate_eligible_peer(peer_id)
-
-
-func _try_store_fate_item(peer_id: int, item: PickupConfig) -> bool:
-	if peer_id > 0:
-		return run_state.try_add_item_for_peer(peer_id, item)
-	return run_state.try_add_item(item)
-
-
-func _fate_peer_has_item(peer_id: int, item: PickupConfig) -> bool:
-	return (
-		run_state.get_inventory_item_total_for_peer(peer_id, item) > 0
-		if peer_id > 0
-		else run_state.get_inventory_item_total(item) > 0
-	)
-
-
-func _notify_fate_inventory_changed(peer_id: int) -> void:
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id > 0:
-		multiplayer_inventory_changed.emit(peer_id)
+	if fate_coordinator != null:
+		fate_coordinator._prune_missing_players()
 
 
 func _resolve_fate_enemy_config(enemy_config: EnemyConfig) -> EnemyConfig:
-	if enemy_config == null:
-		return null
-	var current_day := _get_day_number_for_wave(current_wave_index + 1)
-	if (
-		current_day != fate_elite_bias_day
-		or random_generator.randf() >= FATE_ELITE_REPLACEMENT_CHANCE
-	):
-		return enemy_config
-	return ELITE_ENEMY_CONFIG_BY_BASE_PATH.get(
-		enemy_config.resource_path,
-		enemy_config
-	) as EnemyConfig
-
-
-func _apply_fate_modifiers_to_existing_enemies() -> void:
-	for container in [enemy_container, boss_container]:
-		if container == null:
-			continue
-		for child in container.get_children():
-			var enemy_instance := child as Enemy
-			if enemy_instance != null and is_instance_valid(enemy_instance):
-				configure_runtime_enemy_modifiers(enemy_instance)
-
-
-func _update_fate_periodic_effects(delta: float) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	_prune_missing_fate_players()
-	_retry_pending_fate_stones()
-	var player_regeneration_active := fate_manager.has_permanent_buff(4)
-	var building_regeneration_active := (
-		fate_manager.has_permanent_buff(1)
-		and wave_state in [WaveState.WAVE_ACTIVE, WaveState.BOSS_ACTIVE]
+	return (
+		fate_coordinator.resolve_enemy_config(enemy_config)
+		if fate_coordinator != null
+		else enemy_config
 	)
-	if not player_regeneration_active and not building_regeneration_active:
-		fate_periodic_tick_accumulator = 0.0
-		return
-	fate_periodic_tick_accumulator += maxf(delta, 0.0)
-	while fate_periodic_tick_accumulator >= FATE_PERIODIC_TICK_SECONDS:
-		fate_periodic_tick_accumulator -= FATE_PERIODIC_TICK_SECONDS
-		if player_regeneration_active:
-			_apply_fate_player_regeneration_tick()
-		if building_regeneration_active:
-			_apply_fate_building_regeneration_tick()
-
-
-func _apply_fate_player_regeneration_tick() -> void:
-	var target_players: Array[Player] = []
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		if player != null and is_instance_valid(player):
-			target_players.append(player)
-	else:
-		for player_variant in peer_players.values():
-			var player_instance := player_variant as Player
-			if player_instance != null and is_instance_valid(player_instance):
-				target_players.append(player_instance)
-	for player_instance in target_players:
-		if player_instance.is_dead:
-			continue
-		player_instance.heal(
-			ceili(
-				float(player_instance.max_health)
-				* FATE_PLAYER_HEAL_MAX_RATIO_PER_SECOND
-			)
-		)
-
-
-func _apply_fate_building_regeneration_tick() -> void:
-	for plant_variant in get_tree().get_nodes_in_group(&"plant_defense"):
-		var plant := plant_variant as PlantDefense
-		if (
-			plant == null
-			or not is_instance_valid(plant)
-			or plant.is_dead
-			or plant.is_removing
-			or plant.is_multiplayer_proxy
-		):
-			continue
-		plant.receive_healing(FATE_BUILDING_HEAL_PER_SECOND, self)
 
 
 func grant_xirang_kill_reward(amount: int) -> bool:
@@ -4087,10 +3725,7 @@ func grant_xirang_kill_reward(amount: int) -> bool:
 
 
 func _is_fate_double_xirang_reward_active() -> bool:
-	return (
-		wave_state in [WaveState.WAVE_ACTIVE, WaveState.BOSS_ACTIVE]
-		and _get_day_number_for_wave(current_wave_index + 1) == fate_double_xirang_day
-	)
+	return fate_coordinator != null and fate_coordinator.is_double_xirang_reward_active()
 
 
 func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
@@ -4606,36 +4241,8 @@ func _finalize_authoritative_enemy_spawn(
 
 
 func configure_runtime_enemy_modifiers(enemy_instance: Enemy) -> void:
-	if (
-		enemy_instance == null
-		or not is_instance_valid(enemy_instance)
-		or enemy_instance.config == null
-	):
-		return
-	var enemy_config := enemy_instance.config
-	if fate_manager.has_permanent_buff(2) and enemy_config.has_category_tag(
-		EnemyConfig.CATEGORY_YUANSHI_INSECT
-	):
-		enemy_instance.add_outgoing_attack_damage_multiplier_modifier(
-			FATE_YUANSHI_ATTACK_SOURCE_ID,
-			0.65
-		)
-	if fate_manager.has_permanent_buff(3) and enemy_config.has_category_tag(
-		EnemyConfig.CATEGORY_ARTIFICIAL_CREATION
-	):
-		var reduced_defense := floori(float(enemy_config.physical_defense) * 0.5)
-		enemy_instance.add_physical_defense_modifier(
-			FATE_ARTIFICIAL_DEFENSE_SOURCE_ID,
-			reduced_defense - enemy_config.physical_defense
-		)
-	if fate_manager.has_permanent_buff(5) and enemy_config.has_category_tag(
-		EnemyConfig.CATEGORY_SLIME
-	):
-		enemy_instance.add_move_speed_modifier(FATE_SLIME_SPEED_SOURCE_ID, 0.6)
-	if fate_manager.has_permanent_buff(6):
-		enemy_instance.set_runtime_max_health_multiplier(0.9)
-	if fate_manager.has_permanent_buff(7):
-		enemy_instance.add_move_speed_modifier(FATE_ALL_ENEMY_SPEED_SOURCE_ID, 0.8)
+	if fate_coordinator != null:
+		fate_coordinator.configure_enemy_modifiers(enemy_instance)
 
 
 func _register_multiplayer_enemy_instance(
@@ -4792,17 +4399,22 @@ func _check_wave_completion() -> void:
 func _complete_current_step() -> void:
 	var next_step := _get_default_next_flow_step(current_flow_step)
 	var completed_wave := current_flow_step as WaveConfig
-	if (
+	var completed_wave_number := (
+		_get_wave_number_for_step(completed_wave)
+		if completed_wave != null
+		else 0
+	)
+	var completed_day := (
 		completed_wave != null
-		and _get_wave_number_for_step(completed_wave) % WAVES_PER_DAY == 0
-	):
-		_record_progression_day(
-			_get_day_number_for_wave(_get_wave_number_for_step(completed_wave))
-		)
-		_enter_xiaocong_fate_interlude(next_step)
-		return
+		and day_cycle_config.is_day_end_wave(completed_wave_number)
+	)
+	if completed_day:
+		_record_progression_day(_get_day_number_for_wave(completed_wave_number))
 	if next_step == null:
 		_enter_victory()
+		return
+	if completed_day:
+		_enter_xiaocong_fate_interlude(next_step)
 		return
 	_enter_intermission(next_step)
 

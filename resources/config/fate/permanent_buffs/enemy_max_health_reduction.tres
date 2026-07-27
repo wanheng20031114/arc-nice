@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefensePermanentBuffConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_permanent_buff_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+buff_id = &"enemy_max_health_reduction"
+menu_order = 60
+display_name = "生命削弱"
+description = "所有敌人的生命值上限降低 10%"
+effect_type = 5
+magnitude = 0.1

@@ -146,10 +146,6 @@ const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
-const TOWER_DEFENSE_FATE_LOW_HEALTH_RATIO := 0.25
-const TOWER_DEFENSE_FATE_LOW_HEALTH_DAMAGE_REDUCTION := 0.8
-const TOWER_DEFENSE_FATE_HURT_MOVE_SPEED_MULTIPLIER := 0.2
-const TOWER_DEFENSE_FATE_HURT_MOVE_SPEED_DURATION := 1.0
 const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
 const STATUS_EFFECT_EXPIRY_SCHEDULER_PATH := NodePath("/root/StatusEffectExpiryScheduler")
@@ -212,8 +208,10 @@ var network_effective_move_speed_multiplier_override: float = 0.0
 var tower_defense_fate_max_health_multiplier: float = 1.0
 var tower_defense_fate_move_speed_multiplier: float = 1.0
 var tower_defense_fate_dash_cooldown_reduction: float = 0.0
-var tower_defense_fate_low_health_damage_reduction_enabled := false
-var tower_defense_fate_hurt_speed_penalty_enabled := false
+var tower_defense_fate_low_health_ratio := 0.0
+var tower_defense_fate_low_health_damage_reduction := 0.0
+var tower_defense_fate_hurt_move_speed_multiplier := 1.0
+var tower_defense_fate_hurt_move_speed_duration := 0.0
 var tower_defense_fate_hurt_speed_time_left := 0.0
 var collectible_physical_damage_bonus: int = 0
 var collectible_magic_damage_bonus: int = 0
@@ -814,7 +812,7 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	last_damage_taken = result.applied_damage
 	if (
 		last_damage_taken > 0
-		and tower_defense_fate_hurt_speed_penalty_enabled
+		and tower_defense_fate_hurt_move_speed_duration > 0.0
 	):
 		_activate_tower_defense_fate_hurt_speed_penalty()
 	if peer_id <= 0:
@@ -1227,14 +1225,15 @@ func _create_damage_target_profile(request: DamageRequest) -> DamageTargetProfil
 	for reduction in damage_reduction_modifiers.values():
 		strongest_reduction = maxf(strongest_reduction, float(reduction))
 	if (
-		tower_defense_fate_low_health_damage_reduction_enabled
+		tower_defense_fate_low_health_damage_reduction > 0.0
+		and tower_defense_fate_low_health_ratio > 0.0
 		and current_health > 0
 		and float(current_health)
-			< float(maxi(max_health, 1)) * TOWER_DEFENSE_FATE_LOW_HEALTH_RATIO
+			< float(maxi(max_health, 1)) * tower_defense_fate_low_health_ratio
 	):
 		strongest_reduction = maxf(
 			strongest_reduction,
-			TOWER_DEFENSE_FATE_LOW_HEALTH_DAMAGE_REDUCTION
+			tower_defense_fate_low_health_damage_reduction
 		)
 	profile.post_mitigation_multiplier = (
 		1.0 - clampf(strongest_reduction, 0.0, 0.95)
@@ -1390,8 +1389,10 @@ func configure_tower_defense_fate_modifiers(
 	max_health_multiplier: float,
 	move_speed_multiplier: float,
 	dash_cooldown_reduction: float,
-	low_health_damage_reduction_enabled: bool,
-	hurt_speed_penalty_enabled: bool
+	low_health_ratio: float,
+	low_health_damage_reduction: float,
+	hurt_move_speed_multiplier: float,
+	hurt_move_speed_duration: float
 ) -> void:
 	var safe_max_health_multiplier := maxf(max_health_multiplier, 0.01)
 	var safe_move_speed_multiplier := maxf(move_speed_multiplier, 0.0)
@@ -1409,11 +1410,21 @@ func configure_tower_defense_fate_modifiers(
 	tower_defense_fate_max_health_multiplier = safe_max_health_multiplier
 	tower_defense_fate_move_speed_multiplier = safe_move_speed_multiplier
 	tower_defense_fate_dash_cooldown_reduction = safe_dash_cooldown_reduction
-	tower_defense_fate_low_health_damage_reduction_enabled = (
-		low_health_damage_reduction_enabled
+	tower_defense_fate_low_health_ratio = clampf(low_health_ratio, 0.0, 1.0)
+	tower_defense_fate_low_health_damage_reduction = clampf(
+		low_health_damage_reduction,
+		0.0,
+		0.95
 	)
-	tower_defense_fate_hurt_speed_penalty_enabled = hurt_speed_penalty_enabled
-	if not tower_defense_fate_hurt_speed_penalty_enabled:
+	tower_defense_fate_hurt_move_speed_multiplier = maxf(
+		hurt_move_speed_multiplier,
+		0.0
+	)
+	tower_defense_fate_hurt_move_speed_duration = maxf(
+		hurt_move_speed_duration,
+		0.0
+	)
+	if tower_defense_fate_hurt_move_speed_duration <= 0.0:
 		tower_defense_fate_hurt_speed_time_left = 0.0
 
 	if _base_stats_initialized:
@@ -1425,7 +1436,15 @@ func configure_tower_defense_fate_modifiers(
 
 
 func clear_tower_defense_fate_modifiers() -> void:
-	configure_tower_defense_fate_modifiers(1.0, 1.0, 0.0, false, false)
+	configure_tower_defense_fate_modifiers(
+		1.0,
+		1.0,
+		0.0,
+		0.0,
+		0.0,
+		1.0,
+		0.0
+	)
 
 
 func set_controls_locked(locked: bool) -> void:
@@ -4231,7 +4250,7 @@ func get_authoritative_move_speed_multiplier() -> float:
 			return 0.0
 		return (
 			maxf(_base_move_speed, 0.0)
-			* TOWER_DEFENSE_FATE_HURT_MOVE_SPEED_MULTIPLIER
+			* tower_defense_fate_hurt_move_speed_multiplier
 			/ move_speed
 		)
 	return (
@@ -4244,7 +4263,7 @@ func get_authoritative_move_speed_multiplier() -> float:
 
 func _activate_tower_defense_fate_hurt_speed_penalty() -> void:
 	tower_defense_fate_hurt_speed_time_left = (
-		TOWER_DEFENSE_FATE_HURT_MOVE_SPEED_DURATION
+		tower_defense_fate_hurt_move_speed_duration
 	)
 	_update_movement_status_visuals(Vector2.ZERO)
 

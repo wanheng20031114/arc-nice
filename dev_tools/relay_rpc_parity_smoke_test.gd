@@ -423,12 +423,12 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 	_expect_rpc_signature_contains(
 		rpcs,
 		"net_xiaocong_fate_vote_requested",
-		"option_index:int"
+		"option_id:String"
 	)
 	_expect_rpc_signature_contains(
 		rpcs,
 		"net_xiaocong_fate_vote_requested",
-		"permanent_buff_id:int"
+		"permanent_buff_id:String"
 	)
 	_expect_rpc_signature_contains(
 		rpcs,

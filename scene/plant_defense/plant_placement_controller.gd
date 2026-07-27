@@ -60,6 +60,7 @@ var inventory_expected_revision := -1
 var inventory_item_config_path := ""
 var run_state: RunStateStore = null
 var inventory_peer_id := 0
+var placement_input_enabled := true
 
 
 func _ready() -> void:
@@ -112,6 +113,12 @@ func set_free_placement_enabled(enabled: bool) -> void:
 		cancel_placement()
 
 
+func set_placement_input_enabled(enabled: bool) -> void:
+	placement_input_enabled = enabled
+	if not enabled:
+		cancel_placement()
+
+
 func notify_multiplayer_placement_rejected(_request_id: int) -> void:
 	selection_unavailable.emit()
 
@@ -129,7 +136,11 @@ func is_placing() -> bool:
 
 
 func open_selection() -> bool:
-	if placement_state != PlacementState.IDLE or plant_system == null:
+	if (
+		not placement_input_enabled
+		or placement_state != PlacementState.IDLE
+		or plant_system == null
+	):
 		return false
 	if owner_player != null and owner_player.is_dead:
 		return false
@@ -162,7 +173,8 @@ func begin_inventory_placement(
 		placement_state == PlacementState.SELECTING
 	)
 	if (
-		placement_state not in [PlacementState.IDLE, PlacementState.SELECTING]
+		not placement_input_enabled
+		or placement_state not in [PlacementState.IDLE, PlacementState.SELECTING]
 		or plant_system == null
 		or config == null
 		or not config.is_valid()
@@ -232,6 +244,8 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not placement_input_enabled:
+		return
 	if event.is_action_pressed(&"plant"):
 		if placement_state == PlacementState.IDLE:
 			open_selection()

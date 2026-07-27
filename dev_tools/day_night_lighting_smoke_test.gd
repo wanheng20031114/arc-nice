@@ -381,15 +381,15 @@ func _test_authored_scene_contracts() -> void:
 		and vegetation_ring_gradient.sample(0.0).r < 0.43
 		and vegetation_ring_gradient.sample(0.083).r > 0.69
 		and vegetation_ring_gradient.sample(0.083).r < 0.71
-		and vegetation_ring_gradient.sample(0.167).r > 0.99
-		and vegetation_ring_gradient.sample(0.25).r > 0.63
-		and vegetation_ring_gradient.sample(0.25).r < 0.65
-		and vegetation_ring_gradient.sample(0.375).r > 0.33
-		and vegetation_ring_gradient.sample(0.375).r < 0.35
-		and vegetation_ring_gradient.sample(0.583).r > 0.17
-		and vegetation_ring_gradient.sample(0.583).r < 0.19
-		and vegetation_ring_gradient.sample(0.792).r > 0.07
-		and vegetation_ring_gradient.sample(0.792).r < 0.09
+		and vegetation_ring_gradient.sample(0.167).g > 0.99
+		and vegetation_ring_gradient.sample(0.26726726).r > 0.63
+		and vegetation_ring_gradient.sample(0.26726726).r < 0.65
+		and vegetation_ring_gradient.sample(0.5675676).r > 0.33
+		and vegetation_ring_gradient.sample(0.5675676).r < 0.35
+		and vegetation_ring_gradient.sample(0.7217217).r > 0.17
+		and vegetation_ring_gradient.sample(0.7217217).r < 0.19
+		and vegetation_ring_gradient.sample(0.8378378).r > 0.07
+		and vegetation_ring_gradient.sample(0.8378378).r < 0.09
 		and vegetation_ring_gradient.sample(0.917).r > 0.015
 		and vegetation_ring_gradient.sample(0.917).r < 0.025
 		and vegetation_ring_gradient.sample(1.0).r < 0.001,
@@ -676,11 +676,9 @@ func _test_tower_wave_lighting() -> void:
 	tower.enemy_spawn_timer.stop()
 	await create_timer(0.18).timeout
 	_expect(
-		controller.is_night()
-		and controller.color.is_equal_approx(
-			DayNightController.REFERENCE_NIGHT_COLOR
-		),
-		"塔防第一波开始后也必须渐变至参考黑夜亮度。"
+		is_zero_approx(controller.night_factor)
+		and controller.color.is_equal_approx(Color.WHITE),
+		"塔防第一波必须按 DayCycleConfig 保持白昼。"
 	)
 
 	var next_wave := (
@@ -776,12 +774,19 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 				0
 			)
 			await create_timer(0.18).timeout
-			_expect(
-				controller.is_night()
-				and _all_lights_enabled(player_lights),
-				"%s客户端收到第一波激活状态时必须同步黑夜和玩家灯。"
-				% label
-			)
+			if game is GameTowerDefense:
+				_expect(
+					is_zero_approx(controller.night_factor)
+					and controller.color.is_equal_approx(Color.WHITE)
+					and _all_lights_disabled(player_lights),
+					"塔防客户端第一波必须按 DayCycleConfig 同步白昼。"
+				)
+			else:
+				_expect(
+					controller.is_night()
+					and _all_lights_enabled(player_lights),
+					"普通模式客户端收到第一波激活状态时必须同步黑夜和玩家灯。"
+				)
 			game.call(
 				"apply_remote_flow_state",
 				first_wave.step_id,

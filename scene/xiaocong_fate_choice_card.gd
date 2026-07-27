@@ -3,9 +3,7 @@ class_name XiaocongFateChoiceCard
 
 const VOTE_PORTRAIT_SCENE := preload("res://scene/xiaocong_vote_portrait.tscn")
 
-signal selected(option_index: int)
-
-@export_range(0, 9, 1) var option_index := 0
+signal selected(option_id: StringName)
 
 @onready var button: Button = $Button
 @onready var number_label: Label = $Content/Margin/Rows/Header/Number
@@ -14,22 +12,28 @@ signal selected(option_index: int)
 @onready var description_label: Label = $Content/Margin/Rows/Description
 @onready var vote_row: HBoxContainer = $Content/Margin/Rows/VoteRow
 
+var option_id: StringName = &""
+var display_index := 0
+
 
 func _ready() -> void:
-	button.pressed.connect(selected.emit.bind(option_index))
+	button.pressed.connect(_on_button_pressed)
 
 
 func configure(
-	title: String,
-	description: String,
-	icon: Texture2D = null,
+	config: TowerDefenseFateOptionConfig,
+	new_display_index: int,
 	is_disabled: bool = false
 ) -> void:
-	number_label.text = "%02d" % (option_index + 1)
-	title_label.text = title
-	description_label.text = description
-	icon_rect.texture = icon
-	icon_rect.visible = icon != null
+	if config == null:
+		return
+	option_id = config.option_id
+	display_index = maxi(new_display_index, 0)
+	number_label.text = "%02d" % (display_index + 1)
+	title_label.text = config.display_name
+	description_label.text = config.description
+	icon_rect.texture = config.icon
+	icon_rect.visible = config.icon != null
 	button.disabled = is_disabled
 	self_modulate = Color(0.55, 0.59, 0.56, 0.72) if is_disabled else Color.WHITE
 
@@ -56,3 +60,8 @@ func set_voters(peer_ids: Array[int], character_ids_by_peer: Dictionary) -> void
 		texture_rect.texture = load(config.portrait_texture) as Texture2D
 		portrait.tooltip_text = config.display_name
 		vote_row.add_child(portrait)
+
+
+func _on_button_pressed() -> void:
+	if not option_id.is_empty():
+		selected.emit(option_id)

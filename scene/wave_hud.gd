@@ -57,6 +57,9 @@ var _cached_wave_number := -1
 var _cached_wave_resolved := -1
 var _cached_wave_total := -1
 var _last_noticed_wave := -1
+var day_cycle_config: DayCycleConfig = preload(
+	"res://resources/config/day_cycle/tower_defense_day_cycle.tres"
+)
 
 
 func _ready() -> void:
@@ -70,7 +73,13 @@ func set_return_button_text(button_text: String) -> void:
 		return_button.text = return_button_label
 
 
-func configure_tower_defense(current_core_health: int, max_core_health: int) -> void:
+func configure_tower_defense(
+	current_core_health: int,
+	max_core_health: int,
+	new_day_cycle_config: DayCycleConfig = null
+) -> void:
+	if new_day_cycle_config != null and new_day_cycle_config.is_valid():
+		day_cycle_config = new_day_cycle_config
 	tower_defense_mode = true
 	_apply_tower_defense_layout()
 	status_label.visible = false
@@ -155,17 +164,34 @@ func set_tower_defense_wave_progress(wave_number: int, resolved: int, total: int
 	_cached_wave_number = safe_wave
 	_cached_wave_resolved = safe_resolved
 	_cached_wave_total = safe_total
-	var phase_index := posmod(safe_wave - 1, 4)
-	var day_number := floori(float(safe_wave - 1) / 4.0) + 1
-	var phase_names := ["白昼前半", "白昼后半", "黑夜前半", "黑夜后半"]
+	var wave_in_day := day_cycle_config.get_wave_in_day(safe_wave)
+	var phase_index := wave_in_day - 1
+	var day_number := day_cycle_config.get_day_number(safe_wave)
+	var is_night := day_cycle_config.is_night_wave(safe_wave)
+	var phase_start := day_cycle_config.night_start_wave_in_day if is_night else 1
+	var phase_end := (
+		day_cycle_config.waves_per_day
+		if is_night
+		else day_cycle_config.night_start_wave_in_day - 1
+	)
 	day_label.text = "第 %d 日" % day_number
-	phase_label.text = phase_names[phase_index]
+	phase_label.text = "%s %d/%d" % [
+		"黑夜" if is_night else "白昼",
+		wave_in_day - phase_start + 1,
+		maxi(phase_end - phase_start + 1, 1),
+	]
 	phase_label.self_modulate = (
 		Color(1.0, 0.88, 0.54, 1.0)
-		if phase_index < 2
+		if not is_night
 		else Color(0.62, 0.78, 1.0, 1.0)
 	)
-	day_dial.set_day_progress(phase_index, safe_resolved, safe_total)
+	day_dial.set_day_progress(
+		phase_index,
+		day_cycle_config.waves_per_day,
+		day_cycle_config.night_start_wave_in_day - 1,
+		safe_resolved,
+		safe_total
+	)
 	var progress_percent := (
 		roundi(float(safe_resolved) / float(safe_total) * 100.0)
 		if safe_total > 0

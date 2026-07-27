@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefensePermanentBuffConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_permanent_buff_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+buff_id = &"slime_speed_reduction"
+menu_order = 50
+display_name = "黏液迟滞"
+description = "史莱姆的移动速度降低 40%"
+effect_type = 4
+magnitude = 0.4

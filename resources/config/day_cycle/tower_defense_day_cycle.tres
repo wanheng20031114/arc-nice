@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="DayCycleConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/config/day_cycle/day_cycle_config.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+waves_per_day = 4
+night_start_wave_in_day = 3

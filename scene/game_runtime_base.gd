@@ -116,7 +116,10 @@ signal multiplayer_inventory_plant_placement_requested(
 )
 signal multiplayer_inventory_changed(peer_id: int)
 signal multiplayer_xiaocong_interaction_requested
-signal multiplayer_xiaocong_vote_requested(option_index: int, permanent_buff_id: int)
+signal multiplayer_xiaocong_vote_requested(
+	option_id: StringName,
+	permanent_buff_id: StringName
+)
 signal multiplayer_xiaocong_collectible_requested(choice_index: int)
 signal multiplayer_xiaocong_fate_state_changed(state: Dictionary)
 signal multiplayer_player_teleport_requested(peer_id: int, target_position: Vector2)
@@ -248,8 +251,8 @@ func request_xiaocong_interaction(_peer_id: int) -> void:
 
 func request_xiaocong_fate_vote(
 	_peer_id: int,
-	_option_index: int,
-	_permanent_buff_id: int
+	_option_id: StringName,
+	_permanent_buff_id: StringName
 ) -> void:
 	pass
 

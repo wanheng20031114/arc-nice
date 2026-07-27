@@ -861,26 +861,26 @@ func _on_local_xiaocong_interaction_requested() -> void:
 
 
 func _on_local_xiaocong_vote_requested(
-	option_index: int,
-	permanent_buff_id: int
+	option_id: StringName,
+	permanent_buff_id: StringName
 ) -> void:
 	if (
 		game == null
 		or not game.supports_tower_defense()
-		or not _is_valid_xiaocong_vote_payload(option_index, permanent_buff_id)
+		or not _is_valid_xiaocong_vote_payload(option_id, permanent_buff_id)
 	):
 		return
 	if net_manager.is_host():
 		game.request_xiaocong_fate_vote(
 			_get_local_peer_id(),
-			option_index,
+			option_id,
 			permanent_buff_id
 		)
 	elif net_manager.is_client():
 		net_xiaocong_fate_vote_requested.rpc_id(
 			_get_host_peer_id(),
-			option_index,
-			permanent_buff_id
+			String(option_id),
+			String(permanent_buff_id)
 		)
 
 
@@ -905,14 +905,17 @@ func _on_local_xiaocong_collectible_requested(choice_index: int) -> void:
 
 
 func _is_valid_xiaocong_vote_payload(
-	option_index: int,
-	permanent_buff_id: int
+	option_id: StringName,
+	permanent_buff_id: StringName
 ) -> bool:
-	if option_index < 0 or option_index > 9:
+	if TowerDefenseFateRegistry.get_option_config(option_id) == null:
 		return false
-	if option_index == 0:
-		return permanent_buff_id >= 1 and permanent_buff_id <= 9
-	return permanent_buff_id == 0
+	if option_id == TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT:
+		return (
+			TowerDefenseFateRegistry.get_permanent_buff_config(permanent_buff_id)
+			!= null
+		)
+	return permanent_buff_id.is_empty()
 
 
 func notify_local_player_dash_started(direction: Vector2, start_move_input: Vector2) -> void:
@@ -11440,14 +11443,18 @@ func net_xiaocong_interaction_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_xiaocong_fate_vote_requested(
-	option_index: int,
-	permanent_buff_id: int
+	option_id: String,
+	permanent_buff_id: String
 ) -> void:
+	var typed_option_id := StringName(option_id)
+	var typed_buff_id := StringName(permanent_buff_id)
 	if (
 		not net_manager.is_host()
 		or game == null
 		or not game.supports_tower_defense()
-		or not _is_valid_xiaocong_vote_payload(option_index, permanent_buff_id)
+		or option_id.length() > TowerDefenseFateRegistry.MAX_WIRE_ID_LENGTH
+		or permanent_buff_id.length() > TowerDefenseFateRegistry.MAX_WIRE_ID_LENGTH
+		or not _is_valid_xiaocong_vote_payload(typed_option_id, typed_buff_id)
 	):
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
@@ -11455,8 +11462,8 @@ func net_xiaocong_fate_vote_requested(
 		return
 	game.request_xiaocong_fate_vote(
 		sender_id,
-		option_index,
-		permanent_buff_id
+		typed_option_id,
+		typed_buff_id
 	)
 
 

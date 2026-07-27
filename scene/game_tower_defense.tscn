@@ -47,8 +47,9 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="48_day_night"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="49_night_light"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="50_night_vfx_flash_pool"]
-[ext_resource type="Script" path="res://scene/tower_defense_fate_manager.gd" id="51_fate_manager"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/fate_coordinator.tscn" id="51_fate_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/xiaocong_fate_interlude.tscn" id="52_xiaocong_interlude"]
+[ext_resource type="Resource" path="res://resources/config/day_cycle/tower_defense_day_cycle.tres" id="53_day_cycle"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -146,6 +147,7 @@ sources/0 = SubResource("TileSetAtlasSource_fc0e3")
 physics_interpolation_mode = 2
 position = Vector2(2, 0)
 script = ExtResource("1_17rxn")
+day_cycle_config = ExtResource("53_day_cycle")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")
@@ -349,8 +351,7 @@ position = Vector2(96, 81)
 [node name="LuoxiMerchant" parent="." unique_id=146965342 instance=ExtResource("20_luoxi")]
 position = Vector2(154, 82)
 
-[node name="TowerDefenseFateManager" type="Node" parent="."]
-script = ExtResource("51_fate_manager")
+[node name="FateCoordinator" parent="." instance=ExtResource("51_fate_coordinator")]
 
 [node name="XiaocongFateInterlude" parent="." instance=ExtResource("52_xiaocong_interlude")]
 

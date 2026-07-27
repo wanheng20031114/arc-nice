@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+option_id = &"dash_cooldown"
+menu_order = 60
+display_name = "缩短冲刺冷却"
+description = "所有玩家的冲刺冷却时间永久减少 0.4 秒。"
+effect_type = 5
+primary_amount = 0.4

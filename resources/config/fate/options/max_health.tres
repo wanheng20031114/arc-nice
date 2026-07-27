@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+option_id = &"max_health"
+menu_order = 70
+display_name = "提升生命上限"
+description = "所有玩家的生命值上限永久增加 20%。"
+effect_type = 6
+primary_amount = 0.2

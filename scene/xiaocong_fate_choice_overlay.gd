@@ -1,54 +1,10 @@
 extends CanvasLayer
 class_name XiaocongFateChoiceOverlay
 
-const STAGE_WAIT_INTERACTIONS := &"wait_interactions"
-const STAGE_VOTING := &"voting"
-const STAGE_RESOLVING := &"resolving"
-const STAGE_RESOLVED := &"resolved"
-const STAGE_COLLECTIBLE_REWARD := &"collectible_reward"
-const FATE_STONE_ICON := preload("res://resources/texture/xiaocong_fate_stone.png")
 const DEFAULT_CANVAS_LAYER := 24
 const INVENTORY_ACCESS_CANVAS_LAYER := 19
 
-const OPTION_TITLES := [
-	"永久增益 · 精英契约",
-	"重铸基地核心",
-	"全员收藏品选择",
-	"小葱展示了？？？",
-	"息壤馈赠",
-	"缩短冲刺冷却",
-	"提升生命上限",
-	"濒危核心 · 全局增益",
-	"清空息壤 · 次日双倍掉落",
-	"危险的疾行",
-]
-
-const OPTION_DESCRIPTIONS := [
-	"从本次展示的 3 项永久增益中选择 1 项；下一日更容易出现精英敌人。",
-	"基地最大生命值提升 50 点，并立刻恢复至上限。",
-	"每名玩家分别获得一次收藏品选择。",
-	"每名玩家的背包获得不可移动、不可删除的神秘核心石。",
-	"所有玩家获得 8000 息壤。",
-	"所有玩家的冲刺冷却时间永久减少 0.4 秒。",
-	"所有玩家的生命值上限永久增加 20%。",
-	"基地当前生命值降至 1 点（上限不变），获得一项尚未生效的全局增益。",
-	"清空所有玩家持有的息壤；下一日敌人掉落的息壤数量翻倍。",
-	"所有玩家移动速度增加 30%；受伤后速度降至基础值的 20%，持续 1 秒。",
-]
-
-const PERMANENT_BUFF_TEXT := {
-	1: "战斗中所有建筑每秒恢复 10 点生命值",
-	2: "源石虫的攻击力降低 35%",
-	3: "人工造物的物理防御降低 50%",
-	4: "玩家每秒恢复 5% 最大生命值",
-	5: "史莱姆的移动速度降低 40%",
-	6: "所有敌人的生命值上限降低 10%",
-	7: "所有敌人的移动速度降低 20%",
-	8: "洛曦每轮展示 4 个可选收藏品",
-	9: "玩家生命值低于 25% 时，受到的伤害减少 80%",
-}
-
-signal choice_submitted(option_index: int, permanent_buff_id: int)
+signal choice_submitted(option_id: StringName, permanent_buff_id: StringName)
 signal collectible_submitted(choice_index: int)
 
 @onready var title_label: Label = $Root/Center/Panel/Margin/Content/Header/Title
@@ -72,25 +28,23 @@ signal collectible_submitted(choice_index: int)
 ]
 
 var choice_cards: Array[XiaocongFateChoiceCard] = []
-var permanent_buff_offer: Array[int] = []
+var option_configs: Array[TowerDefenseFateOptionConfig] = []
+var permanent_buff_offer: Array[StringName] = []
 var local_peer_id := 0
 var show_tween: Tween = null
 var rendered_stage: StringName = &""
 
 
 func _ready() -> void:
+	option_configs = TowerDefenseFateRegistry.get_all_option_configs()
 	for child in choice_grid.get_children():
 		var card := child as XiaocongFateChoiceCard
 		if card == null:
 			continue
 		choice_cards.append(card)
 		card.selected.connect(_on_card_selected)
-	for card_index in range(choice_cards.size()):
-		choice_cards[card_index].configure(
-			OPTION_TITLES[card_index],
-			OPTION_DESCRIPTIONS[card_index],
-			FATE_STONE_ICON if card_index == 3 else null
-		)
+	for card_index in range(mini(choice_cards.size(), option_configs.size())):
+		choice_cards[card_index].configure(option_configs[card_index], card_index)
 	for button_index in range(buff_buttons.size()):
 		buff_buttons[button_index].pressed.connect(
 			_on_buff_selected.bind(button_index)
@@ -114,15 +68,17 @@ func apply_state(
 		return
 	var day_number := maxi(int(state.get("completed_day", 1)), 1)
 	title_label.text = "第 %d 日已经通过 · 决定接下来的命运" % day_number
-	var stage := StringName(state.get("stage", STAGE_WAIT_INTERACTIONS))
-	if stage == STAGE_WAIT_INTERACTIONS:
+	var stage := StringName(
+		state.get("stage", TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS)
+	)
+	if stage == TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS:
 		hide_overlay()
 		return
 	if stage not in [
-		STAGE_VOTING,
-		STAGE_RESOLVING,
-		STAGE_RESOLVED,
-		STAGE_COLLECTIBLE_REWARD,
+		TowerDefenseFateManager.STAGE_VOTING,
+		TowerDefenseFateManager.STAGE_RESOLVING,
+		TowerDefenseFateManager.STAGE_RESOLVED,
+		TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD,
 	]:
 		hide_overlay()
 		return
@@ -131,18 +87,24 @@ func apply_state(
 	rendered_stage = stage
 	_set_inventory_access_mode(false)
 	var eligible_peers := _to_int_array(state.get("eligible_peer_ids", []))
-	permanent_buff_offer = _to_int_array(state.get("permanent_buff_offer", []))
-	choice_scroll.visible = stage in [STAGE_VOTING, STAGE_RESOLVING, STAGE_RESOLVED]
-	collectible_panel.visible = stage == STAGE_COLLECTIBLE_REWARD
-	if stage == STAGE_VOTING:
+	permanent_buff_offer = _to_buff_id_array(state.get("permanent_buff_offer", []))
+	choice_scroll.visible = stage in [
+		TowerDefenseFateManager.STAGE_VOTING,
+		TowerDefenseFateManager.STAGE_RESOLVING,
+		TowerDefenseFateManager.STAGE_RESOLVED,
+	]
+	collectible_panel.visible = (
+		stage == TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD
+	)
+	if stage == TowerDefenseFateManager.STAGE_VOTING:
 		_apply_vote_state(state, eligible_peers, character_ids_by_peer)
-	elif stage == STAGE_COLLECTIBLE_REWARD:
+	elif stage == TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD:
 		_apply_collectible_state(state, eligible_peers)
 		_hide_buff_modal()
-	elif stage == STAGE_RESOLVING:
+	elif stage == TowerDefenseFateManager.STAGE_RESOLVING:
 		_apply_resolution_state(state, character_ids_by_peer, false)
 		_hide_buff_modal()
-	elif stage == STAGE_RESOLVED:
+	elif stage == TowerDefenseFateManager.STAGE_RESOLVED:
 		_apply_resolution_state(state, character_ids_by_peer, true)
 		_hide_buff_modal()
 	if should_animate:
@@ -166,36 +128,44 @@ func _apply_vote_state(
 	character_ids_by_peer: Dictionary
 ) -> void:
 	var votes := state.get("votes", {}) as Dictionary
-	var local_vote := int(votes.get(local_peer_id, -1))
-	var available_buff_count := int(state.get("available_permanent_buff_count", 0))
+	var local_vote := StringName(votes.get(local_peer_id, ""))
+	var available_options := _to_option_id_array(
+		state.get("available_option_ids", [])
+	)
 	var local_is_eligible := eligible_peers.has(local_peer_id)
+	var recovery_available := bool(state.get("timeout_recovery_available", false))
+	var local_is_host := int(state.get("host_peer_id", -1)) == local_peer_id
 	if local_is_eligible:
 		status_label.text = "已投票 %d/%d · 可重新选择，全部完成后由多数票决定" % [
 			votes.size(),
 			eligible_peers.size(),
 		]
+		if recovery_available:
+			status_label.text += (
+				" · 等待超时，按 F 继续结算"
+				if local_is_host
+				else " · 等待房主继续结算"
+			)
+		else:
+			status_label.text += " · 剩余 %d 秒" % ceili(
+				float(state.get("stage_time_remaining", 0.0))
+			)
 	else:
 		status_label.text = "本日旁观 · 不参与本次命运选择"
 		_hide_buff_modal()
-	for card_index in range(choice_cards.size()):
+	for card_index in range(mini(choice_cards.size(), option_configs.size())):
+		var card := choice_cards[card_index]
+		var config := option_configs[card_index]
 		var voters: Array[int] = []
 		for peer_variant in votes:
 			var peer_id := int(peer_variant)
-			if int(votes[peer_variant]) == card_index:
+			if StringName(votes[peer_variant]) == config.option_id:
 				voters.append(peer_id)
 		voters.sort()
-		var disabled := (
-			not local_is_eligible
-			or (available_buff_count <= 0 and card_index in [0, 7])
-		)
-		choice_cards[card_index].configure(
-			OPTION_TITLES[card_index],
-			OPTION_DESCRIPTIONS[card_index],
-			FATE_STONE_ICON if card_index == 3 else null,
-			disabled
-		)
-		choice_cards[card_index].set_selected(local_vote == card_index)
-		choice_cards[card_index].set_voters(voters, character_ids_by_peer)
+		card.visible = available_options.has(config.option_id)
+		card.configure(config, card_index, not local_is_eligible)
+		card.set_selected(local_vote == config.option_id)
+		card.set_voters(voters, character_ids_by_peer)
 
 
 func _apply_collectible_state(state: Dictionary, eligible_peers: Array[int]) -> void:
@@ -246,25 +216,23 @@ func _apply_resolution_state(
 	character_ids_by_peer: Dictionary,
 	is_complete: bool
 ) -> void:
-	var winning_option := int(state.get("winning_option_index", -1))
-	var winning_buff := int(state.get("winning_permanent_buff_id", 0))
+	var winning_option := StringName(state.get("winning_option_id", ""))
+	var winning_buff := StringName(state.get("winning_permanent_buff_id", ""))
+	var option_config := TowerDefenseFateRegistry.get_option_config(winning_option)
+	var buff_config := TowerDefenseFateRegistry.get_permanent_buff_config(winning_buff)
 	var status_prefix := "命运已决定" if is_complete else "正在兑现命运"
-	var resolution_status := (
-		"%s：%s · %s" % [
-			status_prefix,
-			OPTION_TITLES[winning_option],
-			str(PERMANENT_BUFF_TEXT.get(winning_buff, "")),
-		]
-		if winning_option in [0, 7] and winning_buff > 0
-		else "%s：%s" % [
-			status_prefix,
-			OPTION_TITLES[clampi(winning_option, 0, 9)],
-		]
+	status_label.text = "%s：%s" % [
+		status_prefix,
+		option_config.display_name if option_config != null else "未知命运",
+	]
+	if buff_config != null:
+		status_label.text += " · %s" % buff_config.description
+	var pending_stone_peers := _to_int_array(
+		state.get("pending_stone_peer_ids", [])
 	)
-	var pending_stone_peers := _to_int_array(state.get("pending_stone_peer_ids", []))
 	var local_stone_pending := (
 		not is_complete
-		and winning_option == 3
+		and winning_option == TowerDefenseFateRegistry.OPTION_FATE_STONE
 		and pending_stone_peers.has(local_peer_id)
 	)
 	_set_inventory_access_mode(local_stone_pending)
@@ -273,24 +241,24 @@ func _apply_resolution_state(
 			"背包已满 · 按背包键打开背包并丢弃一件可删除物品；"
 			+ "腾出空位后将自动获得神秘核心石"
 		)
-	elif not is_complete and winning_option == 3 and not pending_stone_peers.is_empty():
+	elif (
+		not is_complete
+		and winning_option == TowerDefenseFateRegistry.OPTION_FATE_STONE
+		and not pending_stone_peers.is_empty()
+	):
 		status_label.text = "等待 %d 名玩家为神秘核心石腾出背包空位" % pending_stone_peers.size()
-	else:
-		status_label.text = resolution_status
 	var votes := state.get("votes", {}) as Dictionary
-	for card_index in range(choice_cards.size()):
+	for card_index in range(mini(choice_cards.size(), option_configs.size())):
+		var card := choice_cards[card_index]
+		var config := option_configs[card_index]
 		var voters: Array[int] = []
 		for peer_variant in votes:
-			if int(votes[peer_variant]) == card_index:
+			if StringName(votes[peer_variant]) == config.option_id:
 				voters.append(int(peer_variant))
-		choice_cards[card_index].configure(
-			OPTION_TITLES[card_index],
-			OPTION_DESCRIPTIONS[card_index],
-			FATE_STONE_ICON if card_index == 3 else null,
-			true
-		)
-		choice_cards[card_index].set_selected(card_index == winning_option)
-		choice_cards[card_index].set_voters(voters, character_ids_by_peer)
+		card.visible = true
+		card.configure(config, card_index, true)
+		card.set_selected(config.option_id == winning_option)
+		card.set_voters(voters, character_ids_by_peer)
 
 
 func _set_inventory_access_mode(enabled: bool) -> void:
@@ -300,11 +268,11 @@ func _set_inventory_access_mode(enabled: bool) -> void:
 	)
 
 
-func _on_card_selected(option_index: int) -> void:
-	if option_index == 0:
+func _on_card_selected(option_id: StringName) -> void:
+	if option_id == TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT:
 		_show_buff_modal()
 		return
-	choice_submitted.emit(option_index, 0)
+	choice_submitted.emit(option_id, &"")
 
 
 func _show_buff_modal() -> void:
@@ -315,8 +283,10 @@ func _show_buff_modal() -> void:
 		var button := buff_buttons[button_index]
 		button.visible = button_index < permanent_buff_offer.size()
 		if button.visible:
-			var buff_id := permanent_buff_offer[button_index]
-			button.text = str(PERMANENT_BUFF_TEXT.get(buff_id, "未知增益"))
+			var buff_config := TowerDefenseFateRegistry.get_permanent_buff_config(
+				permanent_buff_offer[button_index]
+			)
+			button.text = buff_config.description if buff_config != null else "未知增益"
 
 
 func _hide_buff_modal() -> void:
@@ -328,7 +298,10 @@ func _on_buff_selected(button_index: int) -> void:
 		return
 	var buff_id := permanent_buff_offer[button_index]
 	_hide_buff_modal()
-	choice_submitted.emit(0, buff_id)
+	choice_submitted.emit(
+		TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT,
+		buff_id
+	)
 
 
 func _on_collectible_selected(choice_index: int) -> void:
@@ -354,4 +327,26 @@ func _to_int_array(value: Variant) -> Array[int]:
 	if value is Array or value is PackedInt32Array:
 		for entry in value:
 			result.append(int(entry))
+	return result
+
+
+func _to_option_id_array(value: Variant) -> Array[StringName]:
+	var result: Array[StringName] = []
+	if value is Array or value is PackedStringArray:
+		for entry in value:
+			var config := TowerDefenseFateRegistry.get_option_config_by_wire_id(str(entry))
+			if config != null:
+				result.append(config.option_id)
+	return result
+
+
+func _to_buff_id_array(value: Variant) -> Array[StringName]:
+	var result: Array[StringName] = []
+	if value is Array or value is PackedStringArray:
+		for entry in value:
+			var config := TowerDefenseFateRegistry.get_permanent_buff_config_by_wire_id(
+				str(entry)
+			)
+			if config != null:
+				result.append(config.buff_id)
 	return result

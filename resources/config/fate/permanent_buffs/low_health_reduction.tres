@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="TowerDefensePermanentBuffConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_permanent_buff_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+buff_id = &"low_health_reduction"
+menu_order = 90
+display_name = "濒危庇护"
+description = "玩家生命值低于 25% 时，受到的伤害减少 80%"
+effect_type = 8
+magnitude = 0.8
+secondary_magnitude = 0.25

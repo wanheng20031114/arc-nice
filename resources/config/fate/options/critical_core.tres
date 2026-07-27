@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+option_id = &"critical_core"
+menu_order = 80
+display_name = "濒危核心 · 全局增益"
+description = "基地当前生命值降至 1 点（上限不变），获得一项尚未生效的全局增益。"
+effect_type = 7
+primary_amount = 1.0

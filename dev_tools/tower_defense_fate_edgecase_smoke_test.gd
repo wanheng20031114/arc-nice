@@ -1,5 +1,9 @@
 extends SceneTree
 
+const FATE_COORDINATOR_SCENE := preload(
+	"res://scene/plant_defense/fate_coordinator.tscn"
+)
+
 var failures: Array[String] = []
 
 
@@ -8,20 +12,24 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var manager := TowerDefenseFateManager.new()
-	root.add_child(manager)
-	var game := GameTowerDefense.new()
-	game.fate_manager = manager
+	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
+	root.add_child(coordinator)
 	await process_frame
+	var manager := coordinator.manager
+	var game := GameTowerDefense.new()
+	game.fate_coordinator = coordinator
+	game.fate_manager = manager
+	coordinator.setup(game, game.day_cycle_config)
+	manager.resolution_requested.disconnect(coordinator._on_resolution_requested)
 
-	_test_stone_pending_disconnect(game, manager)
-	_test_partial_stone_delivery_revision(game, manager)
-	_test_collectible_missing_player(game, manager)
-	_test_remote_revision_guard(game, manager)
+	_test_stone_pending_disconnect(coordinator, manager)
+	_test_partial_stone_delivery_revision(coordinator, manager)
+	_test_collectible_missing_player(game, coordinator, manager)
+	_test_remote_revision_guard(game, coordinator, manager)
 	await _test_stone_inventory_access_overlay()
 	await create_timer(TowerDefenseFateManager.RESULT_DISPLAY_SECONDS + 0.1).timeout
 
-	manager.queue_free()
+	coordinator.queue_free()
 	game.free()
 	await process_frame
 	if failures.is_empty():
@@ -34,12 +42,16 @@ func _run() -> void:
 
 
 func _test_stone_pending_disconnect(
-	game: GameTowerDefense,
+	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:
-	_begin_resolving_vote(manager, [1, 2], 3)
-	game.pending_fate_stone_peer_ids = [2]
-	game.call("_remove_fate_eligible_peer", 2)
+	_begin_resolving_vote(
+		manager,
+		[1, 2],
+		TowerDefenseFateRegistry.OPTION_FATE_STONE
+	)
+	coordinator.pending_stone_peer_ids = [2]
+	coordinator.remove_eligible_peer(2)
 	_expect(
 		manager.stage == TowerDefenseFateManager.STAGE_RESOLVED,
 		"Removing the final stone-pending peer must finalize RESOLVING."
@@ -52,13 +64,17 @@ func _test_stone_pending_disconnect(
 
 
 func _test_partial_stone_delivery_revision(
-	game: GameTowerDefense,
+	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:
-	_begin_resolving_vote(manager, [1, 2], 3)
-	game.pending_fate_stone_peer_ids = [1, 2]
+	_begin_resolving_vote(
+		manager,
+		[1, 2],
+		TowerDefenseFateRegistry.OPTION_FATE_STONE
+	)
+	coordinator.pending_stone_peer_ids = [1, 2]
 	var revision_before := manager.state_revision
-	game.pending_fate_stone_peer_ids = [2]
+	coordinator.pending_stone_peer_ids = [2]
 	manager.notify_external_state_changed()
 	_expect(
 		manager.state_revision == revision_before + 1,
@@ -68,28 +84,34 @@ func _test_partial_stone_delivery_revision(
 		manager.stage == TowerDefenseFateManager.STAGE_RESOLVING,
 		"Partial stone delivery must keep resolving until every remaining peer is done."
 	)
-	game.pending_fate_stone_peer_ids.clear()
+	coordinator.pending_stone_peer_ids.clear()
 	manager.force_finish()
 
 
 func _test_collectible_missing_player(
 	game: GameTowerDefense,
+	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:
-	_begin_resolving_vote(manager, [1, 2], 2)
+	_begin_resolving_vote(
+		manager,
+		[1, 2],
+		TowerDefenseFateRegistry.OPTION_COLLECTIBLE_REWARD
+	)
 	manager.begin_collectible_reward({1: ["a"], 2: ["b"]})
 	manager.record_collectible_result(1, true, "done")
 	_expect(
-		not bool(game.call("_is_fate_collectible_choice_pending_for_peer", 1)),
+		not coordinator.is_collectible_choice_pending_for_peer(1),
 		"A peer that already claimed a collectible must be rejected before another write."
 	)
 	_expect(
-		bool(game.call("_is_fate_collectible_choice_pending_for_peer", 2)),
+		coordinator.is_collectible_choice_pending_for_peer(2),
 		"An unclaimed eligible peer must remain able to choose its collectible."
 	)
 	var remaining_player := Player.new()
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	game.peer_players = {1: remaining_player}
-	game.call("_prune_missing_fate_players")
+	coordinator._prune_missing_players()
 	_expect(
 		manager.stage == TowerDefenseFateManager.STAGE_RESOLVED,
 		"A missing final collectible recipient must not deadlock the reward stage."
@@ -105,15 +127,16 @@ func _test_collectible_missing_player(
 
 func _test_remote_revision_guard(
 	game: GameTowerDefense,
+	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.fate_elite_bias_day = 4
+	coordinator.elite_bias_day = 4
 	manager.state_revision = 10
 	game.apply_remote_xiaocong_fate_state({"revision": 9, "elite_bias_day": 99})
 	_expect(
-		game.fate_elite_bias_day == 4,
-		"A stale fate snapshot must not overwrite extra runtime values before rejection."
+		coordinator.elite_bias_day == 4,
+		"A stale fate snapshot must not overwrite coordinator runtime values."
 	)
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
 
@@ -136,14 +159,18 @@ func _test_stone_inventory_access_overlay() -> void:
 	var state := {
 		"active": true,
 		"completed_day": 1,
-		"stage": TowerDefenseFateManager.STAGE_VOTING,
+		"stage": String(TowerDefenseFateManager.STAGE_VOTING),
+		"host_peer_id": 1,
 		"eligible_peer_ids": [1, 2],
-		"permanent_buff_offer": [],
+		"available_option_ids": _option_wire_ids(),
+		"permanent_buff_offer": PackedStringArray(),
 		"available_permanent_buff_count": 9,
 		"votes": {},
-		"winning_option_index": -1,
-		"winning_permanent_buff_id": 0,
+		"winning_option_id": "",
+		"winning_permanent_buff_id": "",
 		"pending_stone_peer_ids": [],
+		"stage_time_remaining": 30.0,
+		"timeout_recovery_available": false,
 	}
 	overlay.apply_state(state, 3, {})
 	_expect(
@@ -166,7 +193,7 @@ func _test_stone_inventory_access_overlay() -> void:
 		"A vote tally update in the same stage must not replay the show tween."
 	)
 
-	state["stage"] = TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD
+	state["stage"] = String(TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD)
 	state["collectible_offers"] = {1: []}
 	state["collectible_claimed_peer_ids"] = []
 	state["collectible_status_by_peer"] = {
@@ -179,9 +206,12 @@ func _test_stone_inventory_access_overlay() -> void:
 		"A full collectible inventory must expose the profile panel and explain how to retry."
 	)
 
-	state["stage"] = TowerDefenseFateManager.STAGE_RESOLVING
-	state["votes"] = {1: 3, 2: 3}
-	state["winning_option_index"] = 3
+	state["stage"] = String(TowerDefenseFateManager.STAGE_RESOLVING)
+	state["votes"] = {
+		1: String(TowerDefenseFateRegistry.OPTION_FATE_STONE),
+		2: String(TowerDefenseFateRegistry.OPTION_FATE_STONE),
+	}
+	state["winning_option_id"] = String(TowerDefenseFateRegistry.OPTION_FATE_STONE)
 	state["pending_stone_peer_ids"] = [1]
 	overlay.apply_state(state, 1, {})
 	_expect(
@@ -202,14 +232,16 @@ func _test_stone_inventory_access_overlay() -> void:
 		overlay.layer == XiaocongFateChoiceOverlay.DEFAULT_CANVAS_LAYER,
 		"A player who is only waiting for another peer must keep the normal overlay layer."
 	)
-	state["stage"] = TowerDefenseFateManager.STAGE_RESOLVED
-	state["winning_option_index"] = 7
-	state["winning_permanent_buff_id"] = 5
+	state["stage"] = String(TowerDefenseFateManager.STAGE_RESOLVED)
+	state["winning_option_id"] = String(TowerDefenseFateRegistry.OPTION_CRITICAL_CORE)
+	state["winning_permanent_buff_id"] = String(
+		TowerDefenseFateRegistry.BUFF_SLIME_SPEED_REDUCTION
+	)
 	state["pending_stone_peer_ids"] = []
 	overlay.apply_state(state, 1, {})
 	_expect(
 		"史莱姆" in overlay.status_label.text,
-		"Option 8 resolution text must name the random permanent buff actually awarded."
+		"Critical-core resolution text must name the permanent buff actually awarded."
 	)
 	state["active"] = false
 	overlay.apply_state(state, 1, {})
@@ -225,20 +257,34 @@ func _test_stone_inventory_access_overlay() -> void:
 func _begin_resolving_vote(
 	manager: TowerDefenseFateManager,
 	peer_ids: Array,
-	option_index: int
+	option_id: StringName
 ) -> void:
 	var typed_peer_ids: Array[int] = []
 	for peer_id in peer_ids:
 		typed_peer_ids.append(int(peer_id))
-	manager.begin_interlude(1, &"next", typed_peer_ids)
+	manager.begin_interlude(
+		1,
+		&"next",
+		typed_peer_ids,
+		typed_peer_ids[0],
+		TowerDefenseFateRegistry.get_all_option_ids(),
+		TowerDefenseFateRegistry.get_all_permanent_buff_ids()
+	)
 	for peer_id in typed_peer_ids:
 		manager.record_interaction(peer_id)
 	for peer_id in typed_peer_ids:
-		manager.submit_vote(peer_id, option_index, 0)
+		manager.submit_vote(peer_id, option_id, &"")
 	_expect(
 		manager.stage == TowerDefenseFateManager.STAGE_RESOLVING,
 		"Test setup must reach RESOLVING."
 	)
+
+
+func _option_wire_ids() -> PackedStringArray:
+	var result := PackedStringArray()
+	for option_id in TowerDefenseFateRegistry.get_all_option_ids():
+		result.append(String(option_id))
+	return result
 
 
 func _expect(condition: bool, message: String) -> void:

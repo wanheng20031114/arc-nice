@@ -2,7 +2,7 @@ extends Node
 class_name TowerDefenseFateManager
 
 signal state_changed(state: Dictionary)
-signal resolution_requested(option_index: int, permanent_buff_id: int)
+signal resolution_requested(option_id: StringName, permanent_buff_id: StringName)
 signal interlude_completed(next_step_id: StringName)
 
 const STAGE_WAIT_INTERACTIONS := &"wait_interactions"
@@ -10,24 +10,30 @@ const STAGE_VOTING := &"voting"
 const STAGE_RESOLVING := &"resolving"
 const STAGE_RESOLVED := &"resolved"
 const STAGE_COLLECTIBLE_REWARD := &"collectible_reward"
-const PERMANENT_BUFF_IDS: Array[int] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 const RESULT_DISPLAY_SECONDS := 1.15
+
+@export_range(5.0, 300.0, 1.0) var interaction_timeout_seconds := 45.0
+@export_range(5.0, 300.0, 1.0) var voting_timeout_seconds := 60.0
 
 var active := false
 var completed_day := 0
 var next_step_id: StringName = &""
 var stage: StringName = STAGE_WAIT_INTERACTIONS
+var host_peer_id := 0
 var eligible_peer_ids: Array[int] = []
 var interacted_peer_ids: Array[int] = []
 var votes: Dictionary = {}
 var permanent_buff_votes: Dictionary = {}
-var permanent_buff_offer: Array[int] = []
-var active_permanent_buff_ids: Array[int] = []
+var available_option_ids: Array[StringName] = []
+var available_permanent_buff_ids: Array[StringName] = []
+var permanent_buff_offer: Array[StringName] = []
 var collectible_offers: Dictionary = {}
 var collectible_claimed_peer_ids: Array[int] = []
 var collectible_status_by_peer: Dictionary = {}
-var winning_option_index := -1
-var winning_permanent_buff_id := 0
+var winning_option_id: StringName = &""
+var winning_permanent_buff_id: StringName = &""
+var stage_time_remaining := 0.0
+var timeout_recovery_available := false
 var state_revision := 0
 var random_generator := RandomNumberGenerator.new()
 var _finish_generation := 0
@@ -40,24 +46,30 @@ func _ready() -> void:
 func begin_interlude(
 	day_number: int,
 	resume_step_id: StringName,
-	peer_ids: Array[int]
+	peer_ids: Array[int],
+	new_host_peer_id: int,
+	option_ids: Array[StringName],
+	permanent_buff_ids: Array[StringName]
 ) -> void:
 	active = true
 	completed_day = maxi(day_number, 1)
 	next_step_id = resume_step_id
-	stage = STAGE_WAIT_INTERACTIONS
+	host_peer_id = new_host_peer_id
 	eligible_peer_ids = _normalized_peer_ids(peer_ids)
+	available_option_ids = _normalized_option_ids(option_ids)
+	available_permanent_buff_ids = _normalized_buff_ids(permanent_buff_ids)
 	interacted_peer_ids.clear()
 	votes.clear()
 	permanent_buff_votes.clear()
 	collectible_offers.clear()
 	collectible_claimed_peer_ids.clear()
 	collectible_status_by_peer.clear()
-	winning_option_index = -1
-	winning_permanent_buff_id = 0
+	winning_option_id = &""
+	winning_permanent_buff_id = &""
 	_finish_generation += 1
 	_roll_permanent_buff_offer()
-	if eligible_peer_ids.is_empty():
+	_set_stage(STAGE_WAIT_INTERACTIONS)
+	if eligible_peer_ids.is_empty() or available_option_ids.is_empty():
 		force_finish()
 		return
 	_emit_state()
@@ -72,8 +84,44 @@ func record_interaction(peer_id: int) -> bool:
 		interacted_peer_ids.append(peer_id)
 		interacted_peer_ids.sort()
 	if interacted_peer_ids.size() >= eligible_peer_ids.size():
-		stage = STAGE_VOTING
+		_set_stage(STAGE_VOTING)
 	_emit_state()
+	return true
+
+
+func advance_stage_timeout(delta: float) -> void:
+	if not active or stage not in [STAGE_WAIT_INTERACTIONS, STAGE_VOTING]:
+		return
+	if timeout_recovery_available:
+		return
+	var previous_display_seconds := ceili(stage_time_remaining)
+	stage_time_remaining = maxf(stage_time_remaining - maxf(delta, 0.0), 0.0)
+	if stage_time_remaining <= 0.0:
+		timeout_recovery_available = true
+	if timeout_recovery_available or ceili(stage_time_remaining) != previous_display_seconds:
+		_emit_state()
+
+
+func can_host_recover(peer_id: int) -> bool:
+	return (
+		active
+		and timeout_recovery_available
+		and peer_id == host_peer_id
+		and stage in [STAGE_WAIT_INTERACTIONS, STAGE_VOTING]
+	)
+
+
+func request_timeout_recovery(peer_id: int) -> bool:
+	if not can_host_recover(peer_id):
+		return false
+	match stage:
+		STAGE_WAIT_INTERACTIONS:
+			interacted_peer_ids = eligible_peer_ids.duplicate()
+			_set_stage(STAGE_VOTING)
+			_emit_state()
+		STAGE_VOTING:
+			_fill_missing_votes_for_host_recovery()
+			_resolve_vote()
 	return true
 
 
@@ -95,7 +143,7 @@ func remove_eligible_peer(peer_id: int) -> bool:
 	match stage:
 		STAGE_WAIT_INTERACTIONS:
 			if interacted_peer_ids.size() >= eligible_peer_ids.size():
-				stage = STAGE_VOTING
+				_set_stage(STAGE_VOTING)
 			_emit_state()
 		STAGE_VOTING:
 			if votes.size() >= eligible_peer_ids.size():
@@ -112,22 +160,34 @@ func remove_eligible_peer(peer_id: int) -> bool:
 	return true
 
 
-func submit_vote(peer_id: int, option_index: int, permanent_buff_id: int) -> bool:
+func submit_vote(
+	peer_id: int,
+	option_id: StringName,
+	permanent_buff_id: StringName
+) -> bool:
 	if not active or stage != STAGE_VOTING:
 		return false
 	if not eligible_peer_ids.has(peer_id) or not interacted_peer_ids.has(peer_id):
 		return false
-	if option_index < 0 or option_index >= 10:
+	if not available_option_ids.has(option_id):
 		return false
-	if option_index in [0, 7] and get_available_permanent_buff_ids().is_empty():
+	var option_config := TowerDefenseFateRegistry.get_option_config(option_id)
+	if option_config == null:
 		return false
-	if option_index == 0:
+	if (
+		option_config.requires_available_permanent_buff()
+		and available_permanent_buff_ids.is_empty()
+	):
+		return false
+	if option_id == TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT:
 		if not permanent_buff_offer.has(permanent_buff_id):
 			return false
 		permanent_buff_votes[peer_id] = permanent_buff_id
 	else:
+		if permanent_buff_id != &"":
+			return false
 		permanent_buff_votes.erase(peer_id)
-	votes[peer_id] = option_index
+	votes[peer_id] = option_id
 	_emit_state()
 	if votes.size() >= eligible_peer_ids.size():
 		_resolve_vote()
@@ -140,7 +200,7 @@ func begin_collectible_reward(offers_by_peer: Dictionary) -> void:
 	collectible_offers = offers_by_peer.duplicate(true)
 	collectible_claimed_peer_ids.clear()
 	collectible_status_by_peer.clear()
-	stage = STAGE_COLLECTIBLE_REWARD
+	_set_stage(STAGE_COLLECTIBLE_REWARD)
 	_emit_state()
 
 
@@ -159,47 +219,23 @@ func record_collectible_result(peer_id: int, success: bool, status: String) -> b
 	return true
 
 
-func activate_permanent_buff(buff_id: int) -> bool:
-	if not PERMANENT_BUFF_IDS.has(buff_id):
-		return false
-	if active_permanent_buff_ids.has(buff_id):
-		return false
-	active_permanent_buff_ids.append(buff_id)
-	active_permanent_buff_ids.sort()
-	return true
-
-
-func get_available_permanent_buff_ids() -> Array[int]:
-	var result: Array[int] = []
-	for buff_id in PERMANENT_BUFF_IDS:
-		if not active_permanent_buff_ids.has(buff_id):
-			result.append(buff_id)
-	return result
-
-
-func has_permanent_buff(buff_id: int) -> bool:
-	return active_permanent_buff_ids.has(buff_id)
-
-
-## The game wrapper owns a few fate payload fields (for example pending stone
-## recipients). Bump the same authoritative revision when one of those fields
-## changes so clients never retain an older partial-resolution UI.
 func notify_external_state_changed() -> void:
 	if active:
 		_emit_state()
 
 
-func choose_random_available_permanent_buff() -> int:
-	var available := get_available_permanent_buff_ids()
-	if available.is_empty():
-		return 0
-	return available[random_generator.randi_range(0, available.size() - 1)]
+func choose_random_available_permanent_buff() -> StringName:
+	if available_permanent_buff_ids.is_empty():
+		return &""
+	return available_permanent_buff_ids[
+		random_generator.randi_range(0, available_permanent_buff_ids.size() - 1)
+	]
 
 
 func finalize_resolution() -> void:
 	if not active or stage not in [STAGE_RESOLVING, STAGE_COLLECTIBLE_REWARD]:
 		return
-	stage = STAGE_RESOLVED
+	_set_stage(STAGE_RESOLVED)
 	_emit_state()
 	_finish_generation += 1
 	var generation := _finish_generation
@@ -212,7 +248,7 @@ func force_finish() -> void:
 	_finish_generation += 1
 	var resume_step_id := next_step_id
 	active = false
-	stage = STAGE_WAIT_INTERACTIONS
+	_set_stage(STAGE_WAIT_INTERACTIONS)
 	_emit_state()
 	interlude_completed.emit(resume_step_id)
 
@@ -221,44 +257,66 @@ func export_state() -> Dictionary:
 	return {
 		"active": active,
 		"completed_day": completed_day,
-		"next_step_id": next_step_id,
-		"stage": stage,
+		"next_step_id": String(next_step_id),
+		"stage": String(stage),
+		"host_peer_id": host_peer_id,
 		"eligible_peer_ids": eligible_peer_ids.duplicate(),
 		"interacted_peer_ids": interacted_peer_ids.duplicate(),
-		"votes": votes.duplicate(true),
-		"permanent_buff_votes": permanent_buff_votes.duplicate(true),
-		"permanent_buff_offer": permanent_buff_offer.duplicate(),
-		"active_permanent_buff_ids": active_permanent_buff_ids.duplicate(),
-		"available_permanent_buff_count": get_available_permanent_buff_ids().size(),
+		"votes": _string_name_values_to_wire(votes),
+		"permanent_buff_votes": _string_name_values_to_wire(permanent_buff_votes),
+		"available_option_ids": _string_names_to_wire(available_option_ids),
+		"available_permanent_buff_ids": _string_names_to_wire(
+			available_permanent_buff_ids
+		),
+		"permanent_buff_offer": _string_names_to_wire(permanent_buff_offer),
+		"available_permanent_buff_count": available_permanent_buff_ids.size(),
 		"collectible_offers": collectible_offers.duplicate(true),
 		"collectible_claimed_peer_ids": collectible_claimed_peer_ids.duplicate(),
 		"collectible_status_by_peer": collectible_status_by_peer.duplicate(true),
-		"winning_option_index": winning_option_index,
-		"winning_permanent_buff_id": winning_permanent_buff_id,
+		"winning_option_id": String(winning_option_id),
+		"winning_permanent_buff_id": String(winning_permanent_buff_id),
+		"stage_time_remaining": stage_time_remaining,
+		"timeout_recovery_available": timeout_recovery_available,
 		"revision": state_revision,
 	}
 
 
 func apply_remote_state(state: Dictionary) -> void:
-	var incoming_revision := int(state.get("revision", 0))
+	var incoming_revision := int(state.get("revision", -1))
 	if incoming_revision < state_revision:
+		return
+	var incoming_options := _variant_to_registered_option_ids(
+		state.get("available_option_ids", [])
+	)
+	var incoming_buffs := _variant_to_registered_buff_ids(
+		state.get("available_permanent_buff_ids", [])
+	)
+	var incoming_offer := _variant_to_registered_buff_ids(
+		state.get("permanent_buff_offer", [])
+	)
+	var incoming_winner := StringName(state.get("winning_option_id", ""))
+	var incoming_winning_buff := StringName(
+		state.get("winning_permanent_buff_id", "")
+	)
+	if (
+		(not incoming_winner.is_empty() and TowerDefenseFateRegistry.get_option_config(incoming_winner) == null)
+		or (not incoming_winning_buff.is_empty() and TowerDefenseFateRegistry.get_permanent_buff_config(incoming_winning_buff) == null)
+	):
 		return
 	active = bool(state.get("active", false))
 	completed_day = maxi(int(state.get("completed_day", 0)), 0)
-	next_step_id = StringName(state.get("next_step_id", &""))
+	next_step_id = StringName(state.get("next_step_id", ""))
 	stage = StringName(state.get("stage", STAGE_WAIT_INTERACTIONS))
+	host_peer_id = int(state.get("host_peer_id", 0))
 	eligible_peer_ids = _variant_to_int_array(state.get("eligible_peer_ids", []))
 	interacted_peer_ids = _variant_to_int_array(state.get("interacted_peer_ids", []))
-	votes = (state.get("votes", {}) as Dictionary).duplicate(true)
-	permanent_buff_votes = (
-		state.get("permanent_buff_votes", {}) as Dictionary
-	).duplicate(true)
-	permanent_buff_offer = _variant_to_int_array(
-		state.get("permanent_buff_offer", [])
+	votes = _wire_values_to_option_ids(state.get("votes", {}))
+	permanent_buff_votes = _wire_values_to_buff_ids(
+		state.get("permanent_buff_votes", {})
 	)
-	active_permanent_buff_ids = _variant_to_int_array(
-		state.get("active_permanent_buff_ids", [])
-	)
+	available_option_ids = incoming_options
+	available_permanent_buff_ids = incoming_buffs
+	permanent_buff_offer = incoming_offer
 	collectible_offers = (
 		state.get("collectible_offers", {}) as Dictionary
 	).duplicate(true)
@@ -268,23 +326,27 @@ func apply_remote_state(state: Dictionary) -> void:
 	collectible_status_by_peer = (
 		state.get("collectible_status_by_peer", {}) as Dictionary
 	).duplicate(true)
-	winning_option_index = int(state.get("winning_option_index", -1))
-	winning_permanent_buff_id = int(state.get("winning_permanent_buff_id", 0))
+	winning_option_id = incoming_winner
+	winning_permanent_buff_id = incoming_winning_buff
+	stage_time_remaining = maxf(float(state.get("stage_time_remaining", 0.0)), 0.0)
+	timeout_recovery_available = bool(
+		state.get("timeout_recovery_available", false)
+	)
 	state_revision = incoming_revision
 	state_changed.emit(export_state())
 
 
 func _resolve_vote() -> void:
-	stage = STAGE_RESOLVING
-	winning_option_index = _choose_majority_value(votes, range(10))
-	winning_permanent_buff_id = 0
-	if winning_option_index == 0:
+	_set_stage(STAGE_RESOLVING)
+	winning_option_id = _choose_majority_value(votes, available_option_ids)
+	winning_permanent_buff_id = &""
+	if winning_option_id == TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT:
 		var eligible_buff_votes: Dictionary = {}
 		for peer_variant in votes:
-			if int(votes[peer_variant]) != 0:
+			if StringName(votes[peer_variant]) != winning_option_id:
 				continue
 			if permanent_buff_votes.has(peer_variant):
-				eligible_buff_votes[peer_variant] = int(
+				eligible_buff_votes[peer_variant] = StringName(
 					permanent_buff_votes[peer_variant]
 				)
 		winning_permanent_buff_id = _choose_majority_value(
@@ -292,18 +354,20 @@ func _resolve_vote() -> void:
 			permanent_buff_offer
 		)
 	_emit_state()
-	resolution_requested.emit(winning_option_index, winning_permanent_buff_id)
+	resolution_requested.emit(winning_option_id, winning_permanent_buff_id)
 
 
-func _choose_majority_value(source_votes: Dictionary, ordered_values: Variant) -> int:
+func _choose_majority_value(
+	source_votes: Dictionary,
+	ordered_values: Array[StringName]
+) -> StringName:
 	var counts: Dictionary = {}
 	for value_variant in source_votes.values():
-		var value := int(value_variant)
+		var value := StringName(value_variant)
 		counts[value] = int(counts.get(value, 0)) + 1
-	var best_value := -1
+	var best_value: StringName = &""
 	var best_count := -1
-	for value_variant in ordered_values:
-		var value := int(value_variant)
+	for value in ordered_values:
 		var count := int(counts.get(value, 0))
 		if count > best_count:
 			best_count = count
@@ -312,15 +376,53 @@ func _choose_majority_value(source_votes: Dictionary, ordered_values: Variant) -
 
 
 func _roll_permanent_buff_offer() -> void:
-	var available := get_available_permanent_buff_ids()
+	var available: Array[StringName] = available_permanent_buff_ids.duplicate()
 	for source_index in range(available.size() - 1, 0, -1):
 		var target_index := random_generator.randi_range(0, source_index)
-		var temporary := available[source_index]
+		var temporary: StringName = available[source_index]
 		available[source_index] = available[target_index]
 		available[target_index] = temporary
 	permanent_buff_offer.clear()
 	for buff_index in range(mini(3, available.size())):
 		permanent_buff_offer.append(available[buff_index])
+
+
+func _fill_missing_votes_for_host_recovery() -> void:
+	var fallback_option := StringName(votes.get(host_peer_id, &""))
+	if not available_option_ids.has(fallback_option):
+		fallback_option = available_option_ids[0]
+	var fallback_config := TowerDefenseFateRegistry.get_option_config(fallback_option)
+	if (
+		fallback_config != null
+		and fallback_config.requires_available_permanent_buff()
+		and available_permanent_buff_ids.is_empty()
+	):
+		for option_id in available_option_ids:
+			var option_config := TowerDefenseFateRegistry.get_option_config(option_id)
+			if option_config != null and not option_config.requires_available_permanent_buff():
+				fallback_option = option_id
+				break
+	var fallback_buff := StringName(permanent_buff_votes.get(host_peer_id, &""))
+	if not permanent_buff_offer.has(fallback_buff):
+		fallback_buff = permanent_buff_offer[0] if not permanent_buff_offer.is_empty() else &""
+	for peer_id in eligible_peer_ids:
+		if votes.has(peer_id):
+			continue
+		votes[peer_id] = fallback_option
+		if fallback_option == TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT:
+			permanent_buff_votes[peer_id] = fallback_buff
+
+
+func _set_stage(new_stage: StringName) -> void:
+	stage = new_stage
+	timeout_recovery_available = false
+	match stage:
+		STAGE_WAIT_INTERACTIONS:
+			stage_time_remaining = interaction_timeout_seconds
+		STAGE_VOTING:
+			stage_time_remaining = voting_timeout_seconds
+		_:
+			stage_time_remaining = 0.0
 
 
 func _normalized_peer_ids(peer_ids: Array[int]) -> Array[int]:
@@ -333,12 +435,98 @@ func _normalized_peer_ids(peer_ids: Array[int]) -> Array[int]:
 	return result
 
 
+func _normalized_option_ids(option_ids: Array[StringName]) -> Array[StringName]:
+	var result: Array[StringName] = []
+	for option_id in option_ids:
+		if (
+			TowerDefenseFateRegistry.get_option_config(option_id) != null
+			and not result.has(option_id)
+		):
+			result.append(option_id)
+	return result
+
+
+func _normalized_buff_ids(buff_ids: Array[StringName]) -> Array[StringName]:
+	var result: Array[StringName] = []
+	for buff_id in buff_ids:
+		if (
+			TowerDefenseFateRegistry.get_permanent_buff_config(buff_id) != null
+			and not result.has(buff_id)
+		):
+			result.append(buff_id)
+	return result
+
+
 func _variant_to_int_array(value: Variant) -> Array[int]:
 	var result: Array[int] = []
 	if value is Array or value is PackedInt32Array:
 		for entry in value:
-			result.append(int(entry))
+			var parsed := int(entry)
+			if parsed >= 0 and not result.has(parsed):
+				result.append(parsed)
 	result.sort()
+	return result
+
+
+func _variant_to_registered_option_ids(value: Variant) -> Array[StringName]:
+	var result: Array[StringName] = []
+	if value is Array or value is PackedStringArray:
+		for entry in value:
+			var config := TowerDefenseFateRegistry.get_option_config_by_wire_id(str(entry))
+			if config != null and not result.has(config.option_id):
+				result.append(config.option_id)
+	return result
+
+
+func _variant_to_registered_buff_ids(value: Variant) -> Array[StringName]:
+	var result: Array[StringName] = []
+	if value is Array or value is PackedStringArray:
+		for entry in value:
+			var config := TowerDefenseFateRegistry.get_permanent_buff_config_by_wire_id(
+				str(entry)
+			)
+			if config != null and not result.has(config.buff_id):
+				result.append(config.buff_id)
+	return result
+
+
+func _wire_values_to_option_ids(value: Variant) -> Dictionary:
+	var result := {}
+	if not (value is Dictionary):
+		return result
+	for peer_variant in value:
+		var config := TowerDefenseFateRegistry.get_option_config_by_wire_id(
+			str(value[peer_variant])
+		)
+		if config != null:
+			result[int(peer_variant)] = config.option_id
+	return result
+
+
+func _wire_values_to_buff_ids(value: Variant) -> Dictionary:
+	var result := {}
+	if not (value is Dictionary):
+		return result
+	for peer_variant in value:
+		var config := TowerDefenseFateRegistry.get_permanent_buff_config_by_wire_id(
+			str(value[peer_variant])
+		)
+		if config != null:
+			result[int(peer_variant)] = config.buff_id
+	return result
+
+
+func _string_names_to_wire(values: Array[StringName]) -> PackedStringArray:
+	var result := PackedStringArray()
+	for value in values:
+		result.append(String(value))
+	return result
+
+
+func _string_name_values_to_wire(source: Dictionary) -> Dictionary:
+	var result := {}
+	for key_variant in source:
+		result[int(key_variant)] = String(StringName(source[key_variant]))
 	return result
 
 

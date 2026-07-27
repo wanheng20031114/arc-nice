@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+option_id = &"xirang_gift"
+menu_order = 50
+display_name = "息壤馈赠"
+description = "所有玩家获得 8000 息壤。"
+effect_type = 4
+primary_amount = 8000.0

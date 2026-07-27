@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefensePermanentBuffConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_permanent_buff_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+buff_id = &"artificial_defense_reduction"
+menu_order = 30
+display_name = "构装破甲"
+description = "人工造物的物理防御降低 50%"
+effect_type = 2
+magnitude = 0.5

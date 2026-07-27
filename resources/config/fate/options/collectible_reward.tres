@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="TowerDefenseFateOptionConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_fate_option_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+option_id = &"collectible_reward"
+menu_order = 30
+display_name = "全员收藏品选择"
+description = "每名玩家分别获得一次收藏品选择。"
+effect_type = 2

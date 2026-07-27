@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefensePermanentBuffConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_permanent_buff_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+buff_id = &"luoxi_extra_choice"
+menu_order = 80
+display_name = "洛曦洞见"
+description = "洛曦每轮展示 4 个可选收藏品"
+effect_type = 7
+magnitude = 4.0

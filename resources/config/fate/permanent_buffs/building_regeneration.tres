@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TowerDefensePermanentBuffConfig" load_steps=2 format=3]
+[ext_resource type="Script" path="res://resources/config/fate/tower_defense_permanent_buff_config.gd" id="1"]
+[resource]
+script = ExtResource("1")
+buff_id = &"building_regeneration"
+menu_order = 10
+display_name = "建筑再生"
+description = "战斗中所有建筑每秒恢复 10 点生命值"
+effect_type = 0
+magnitude = 10.0
