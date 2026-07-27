@@ -5,6 +5,15 @@ const GAME_TOWER_DEFENSE_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 const TEST_GRASS_ARENA_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena.tscn"
 )
+const TEST_GRASS_ARENA_P2_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena_p2.tscn"
+)
+const TEST_ARENA_P1_ID := &"p1"
+const TEST_ARENA_P2_ID := &"p2"
+const TEST_ARENA_SCENE_PATHS := {
+	TEST_ARENA_P1_ID: TEST_GRASS_ARENA_SCENE_PATH,
+	TEST_ARENA_P2_ID: TEST_GRASS_ARENA_P2_SCENE_PATH,
+}
 
 enum SingleplayerDestination {
 	STANDARD,
@@ -16,12 +25,16 @@ enum SingleplayerDestination {
 @onready var singleplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer
 @onready var tower_defense_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense
 @onready var test_arena_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena
+@onready var test_arena_choice_overlay: TestArenaChoiceOverlay = $TestArenaChoiceOverlay
 @onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
 
 var pending_singleplayer_destination := SingleplayerDestination.STANDARD
+var pending_test_arena_id: StringName = TEST_ARENA_P1_ID
 
 
 func _ready() -> void:
+	test_arena_choice_overlay.arena_selected.connect(_on_test_arena_selected)
+	test_arena_choice_overlay.selection_closed.connect(_on_test_arena_selection_closed)
 	character_choice_overlay.character_confirmed.connect(_on_character_confirmed)
 	character_choice_overlay.selection_closed.connect(_on_character_selection_closed)
 
@@ -35,7 +48,19 @@ func _on_tower_defense_pressed() -> void:
 
 
 func _on_test_arena_pressed() -> void:
+	test_arena_choice_overlay.open(pending_test_arena_id)
+
+
+func _on_test_arena_selected(arena_id: StringName) -> void:
+	if not TEST_ARENA_SCENE_PATHS.has(arena_id):
+		push_error("Main menu received an invalid test arena: %s" % arena_id)
+		return
+	pending_test_arena_id = arena_id
 	_open_singleplayer_character_selection(SingleplayerDestination.TEST_ARENA)
+
+
+func _on_test_arena_selection_closed() -> void:
+	test_arena_button.grab_focus()
 
 
 func _open_singleplayer_character_selection(destination: SingleplayerDestination) -> void:
@@ -62,7 +87,12 @@ func _get_pending_singleplayer_scene_path() -> String:
 		SingleplayerDestination.TOWER_DEFENSE:
 			return GAME_TOWER_DEFENSE_SCENE_PATH
 		SingleplayerDestination.TEST_ARENA:
-			return TEST_GRASS_ARENA_SCENE_PATH
+			return str(
+				TEST_ARENA_SCENE_PATHS.get(
+					pending_test_arena_id,
+					TEST_GRASS_ARENA_SCENE_PATH
+				)
+			)
 		_:
 			return GAME_SCENE_PATH
 
@@ -72,7 +102,7 @@ func _on_character_selection_closed() -> void:
 		SingleplayerDestination.TOWER_DEFENSE:
 			tower_defense_button.grab_focus()
 		SingleplayerDestination.TEST_ARENA:
-			test_arena_button.grab_focus()
+			test_arena_choice_overlay.open(pending_test_arena_id)
 		_:
 			singleplayer_button.grab_focus()
 

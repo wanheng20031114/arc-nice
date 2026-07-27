@@ -1,0 +1,448 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scene/test_arena/test_arena_choice_overlay.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.035, 0.058, 0.052, 0.985)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.68, 0.57, 0.31, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.48)
+shadow_size = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_panel"]
+content_margin_left = 18.0
+content_margin_top = 20.0
+content_margin_right = 18.0
+content_margin_bottom = 18.0
+bg_color = Color(0.055, 0.09, 0.078, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.24, 0.42, 0.34, 1)
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_selected"]
+content_margin_left = 28.0
+content_margin_top = 9.0
+content_margin_right = 28.0
+content_margin_bottom = 9.0
+bg_color = Color(0.16, 0.3, 0.245, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_color = Color(0.8, 0.67, 0.36, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_unselected"]
+content_margin_left = 28.0
+content_margin_top = 9.0
+content_margin_right = 28.0
+content_margin_bottom = 9.0
+bg_color = Color(0.065, 0.09, 0.082, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_color = Color(0.2, 0.3, 0.26, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_hovered"]
+content_margin_left = 28.0
+content_margin_top = 9.0
+content_margin_right = 28.0
+content_margin_bottom = 9.0
+bg_color = Color(0.11, 0.2, 0.17, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_color = Color(0.48, 0.48, 0.3, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_normal"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.15, 0.28, 0.225, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.54, 0.5, 0.28, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.22, 0.4, 0.32, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.79, 0.42, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_pressed"]
+content_margin_left = 18.0
+content_margin_top = 11.0
+content_margin_right = 18.0
+content_margin_bottom = 9.0
+bg_color = Color(0.105, 0.21, 0.17, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.84, 0.46, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_back_normal"]
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+bg_color = Color(0.055, 0.07, 0.067, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.36, 0.32, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_back_hover"]
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+bg_color = Color(0.1, 0.14, 0.125, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.67, 0.59, 0.35, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.84, 0.46, 0.95)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_label_padding"]
+content_margin_left = 2.0
+content_margin_top = 2.0
+content_margin_right = 2.0
+content_margin_bottom = 2.0
+
+[node name="TestArenaChoiceOverlay" type="CanvasLayer"]
+visible = false
+layer = 42
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.008, 0.014, 0.012, 0.9)
+
+[node name="Center" type="CenterContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Root/Center"]
+custom_minimum_size = Vector2(640, 480)
+layout_mode = 2
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="PanelMargin" type="MarginContainer" parent="Root/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 25
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 22
+
+[node name="Layout" type="VBoxContainer" parent="Root/Center/Panel/PanelMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Heading" type="VBoxContainer" parent="Root/Center/Panel/PanelMargin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="Overline" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Heading"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.78, 0.67, 0.39, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "TEST BUILD · 场景入口"
+horizontal_alignment = 1
+
+[node name="Title" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Heading"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.94, 0.83, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 30
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "选择测试场景"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Heading"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.62, 0.71, 0.65, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "选择要验证的流程，再进入角色选择"
+horizontal_alignment = 1
+
+[node name="Divider" type="ColorRect" parent="Root/Center/Panel/PanelMargin/Layout"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.62, 0.53, 0.31, 0.42)
+
+[node name="Tabs" type="TabContainer" parent="Root/Center/Panel/PanelMargin/Layout"]
+custom_minimum_size = Vector2(580, 270)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_selected_color = Color(1, 0.88, 0.55, 1)
+theme_override_colors/font_unselected_color = Color(0.56, 0.65, 0.59, 1)
+theme_override_colors/font_hovered_color = Color(0.9, 0.82, 0.58, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 17
+theme_override_styles/panel = SubResource("StyleBoxFlat_tab_panel")
+theme_override_styles/tab_selected = SubResource("StyleBoxFlat_tab_selected")
+theme_override_styles/tab_unselected = SubResource("StyleBoxFlat_tab_unselected")
+theme_override_styles/tab_hovered = SubResource("StyleBoxFlat_tab_hovered")
+
+[node name="P1" type="MarginContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 4
+
+[node name="PageMargin" type="MarginContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1"]
+layout_mode = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 2
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 2
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ModeTitle" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.7, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "P1 · 综合压力测试"
+
+[node name="Description" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.82, 0.86, 0.79, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "沿用当前测试草地，保留完整刷怪压力、自由建造与昼夜调试。"
+autowrap_mode = 2
+
+[node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.52, 0.68, 0.59, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "适合验证：建筑、伤害、刷怪、路径与持续战斗"
+
+[node name="Spacer" type="Control" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content"]
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="EnterButton" type="Button" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.94, 0.79, 1)
+theme_override_colors/font_hover_color = Color(1, 0.97, 0.84, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.97, 0.84, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
+text = "进入 P1 综合测试"
+
+[node name="P2" type="MarginContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 4
+
+[node name="PageMargin" type="MarginContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P2"]
+layout_mode = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 2
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 2
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ModeTitle" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.7, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "P2 · 单日流程测试"
+
+[node name="Description" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.82, 0.86, 0.79, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "仅有一只普通史莱姆。击败后按完成一整天结算，并进入小葱黑暗区域。"
+autowrap_mode = 2
+
+[node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.52, 0.68, 0.59, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "适合验证：日结、命运选择与场景衔接"
+
+[node name="Spacer" type="Control" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content"]
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="EnterButton" type="Button" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.94, 0.79, 1)
+theme_override_colors/font_hover_color = Color(1, 0.97, 0.84, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.97, 0.84, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
+text = "进入 P2 单日流程"
+
+[node name="Footer" type="HBoxContainer" parent="Root/Center/Panel/PanelMargin/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="BackButton" type="Button" parent="Root/Center/Panel/PanelMargin/Layout/Footer"]
+custom_minimum_size = Vector2(156, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.74, 1)
+theme_override_colors/font_hover_color = Color(0.94, 0.9, 0.72, 1)
+theme_override_colors/font_pressed_color = Color(0.94, 0.9, 0.72, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_back_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_back_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_back_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
+text = "返回主菜单"
+
+[node name="Hint" type="Label" parent="Root/Center/Panel/PanelMargin/Layout"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.42, 0.52, 0.46, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "切换 P1 / P2 标签查看说明  ·  Esc 返回"
+horizontal_alignment = 1
+
+[connection signal="tab_changed" from="Root/Center/Panel/PanelMargin/Layout/Tabs" to="." method="_on_tab_changed"]
+[connection signal="pressed" from="Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content/EnterButton" to="." method="_on_p1_pressed"]
+[connection signal="pressed" from="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton" to="." method="_on_p2_pressed"]
+[connection signal="pressed" from="Root/Center/Panel/PanelMargin/Layout/Footer/BackButton" to="." method="_on_back_pressed"]

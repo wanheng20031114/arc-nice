@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="WaveConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime.tres" id="2_slime"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="3_wave_script"]
+
+[sub_resource type="Resource" id="Resource_slime_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("2_slime")
+count = 1
+
+[resource]
+script = ExtResource("3_wave_script")
+wave_name = "P2 唯一波：普通史莱姆"
+enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_slime_entry")])
+spawn_point_mask = 1
+spawn_interval = 0.25
+spawn_count_per_tick = 1
+max_alive_enemies = 1
+step_id = &"wave_01"
+display_name = "P2 唯一波：击败普通史莱姆"

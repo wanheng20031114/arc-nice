@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="FlowGraphConfig" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://resources/config/flow/flow_graph_config.gd" id="1_flow_script"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/p2/singleplayer/wave_01.tres" id="2_wave"]
+
+[resource]
+script = ExtResource("1_flow_script")
+graph_name = "草地测试场景 P2 / 单人流程"
+start_step = ExtResource("2_wave")
+steps = Array[Resource]([ExtResource("2_wave")])

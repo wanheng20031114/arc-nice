@@ -109,6 +109,7 @@ func _test_loading_scene_contract() -> void:
 	coordinator.call("_append_character_scene", manifest, &"weishidaier")
 	_expect(manifest.size() == 1, "Loading manifest must deduplicate player scenes.")
 	var test_scene_path := "res://scene/test_arena/test_grass_arena.tscn"
+	var test_p2_scene_path := "res://scene/test_arena/test_grass_arena_p2.tscn"
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_scene_path))
 		== "res://resources/config/campaigns/test_arena/singleplayer/campaign.tres",
@@ -117,6 +118,19 @@ func _test_loading_scene_contract() -> void:
 	_expect(
 		bool(coordinator.call("_uses_tower_defense_runtime", test_scene_path)),
 		"Test-arena loading must include tower-defense runtime resources."
+	)
+	_expect(
+		str(coordinator.call("_get_singleplayer_campaign_path", test_p2_scene_path))
+		== "res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres",
+		"Test-arena P2 loading must use its one-slime campaign."
+	)
+	_expect(
+		bool(coordinator.call("_uses_tower_defense_runtime", test_p2_scene_path)),
+		"Test-arena P2 loading must include tower-defense runtime resources."
+	)
+	_expect(
+		float(coordinator.call("_get_resource_weight", test_p2_scene_path)) == 7.0,
+		"Test-arena P2 scene must use the tower-defense scene loading weight."
 	)
 
 
@@ -342,6 +356,28 @@ func _test_singleplayer_coordinator_flow() -> void:
 			not ResourceLoader.has_cached(path),
 			"Tower-defense loading must not retain standard Boss resource: %s" % path
 		)
+
+	load_errors.clear()
+	coordinator.loading_failed.connect(failure_callback)
+	coordinator.begin_singleplayer("res://scene/test_arena/test_grass_arena_p2.tscn")
+	deadline_msec = Time.get_ticks_msec() + 30000
+	while Time.get_ticks_msec() < deadline_msec:
+		if not coordinator.is_loading():
+			break
+		await process_frame
+	coordinator.loading_failed.disconnect(failure_callback)
+	_expect(load_errors.is_empty(), "Test-arena P2 coordinator flow must not report a load error.")
+	var p2_runtime := current_scene as TestGrassArenaP2
+	_expect(
+		p2_runtime != null
+		and p2_runtime.scene_file_path
+		== "res://scene/test_arena/test_grass_arena_p2.tscn"
+		and p2_runtime.supports_tower_defense()
+		and p2_runtime.is_runtime_preparation_complete()
+		and p2_runtime.runtime_activated
+		and p2_runtime.active_campaign == p2_runtime.singleplayer_campaign,
+		"P2 loading must retain its dedicated Campaign and activate the inherited tower runtime."
+	)
 
 
 func _test_mp_game_preparation_barrier() -> void:

@@ -8,6 +8,9 @@ const MULTIPLAYER_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
 const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_GRASS_ARENA_P2_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena_p2.tscn"
+)
 const STANDARD_SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
 )
@@ -19,6 +22,9 @@ const TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH := (
 )
 const TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/singleplayer/campaign.tres"
+)
+const TEST_ARENA_P2_SINGLEPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres"
 )
 const TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
@@ -130,6 +136,8 @@ func _get_singleplayer_campaign_path(scene_path: String) -> String:
 			return TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH
 		TEST_GRASS_ARENA_SCENE_PATH:
 			return TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH
+		TEST_GRASS_ARENA_P2_SCENE_PATH:
+			return TEST_ARENA_P2_SINGLEPLAYER_CAMPAIGN_PATH
 		_:
 			return STANDARD_SINGLEPLAYER_CAMPAIGN_PATH
 
@@ -138,6 +146,7 @@ func _uses_tower_defense_runtime(scene_path: String) -> bool:
 	return (
 		scene_path == TOWER_DEFENSE_GAME_SCENE_PATH
 		or scene_path == TEST_GRASS_ARENA_SCENE_PATH
+		or scene_path == TEST_GRASS_ARENA_P2_SCENE_PATH
 	)
 
 
@@ -640,6 +649,7 @@ func _get_resource_weight(path: String) -> float:
 		path == STANDARD_GAME_SCENE_PATH
 		or path == TOWER_DEFENSE_GAME_SCENE_PATH
 		or path == TEST_GRASS_ARENA_SCENE_PATH
+		or path == TEST_GRASS_ARENA_P2_SCENE_PATH
 	):
 		return 7.0
 	if path == MULTIPLAYER_SCENE_PATH:

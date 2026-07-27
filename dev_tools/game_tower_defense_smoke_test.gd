@@ -3,6 +3,9 @@ extends SceneTree
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
 const GAME_TOWER_DEFENSE_SCENE := preload("res://scene/game_tower_defense.tscn")
 const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_GRASS_ARENA_P2_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena_p2.tscn"
+)
 
 var failures: Array[String] = []
 
@@ -104,25 +107,85 @@ func _test_main_menu_entry() -> void:
 	var character_overlay := main_menu.get_node_or_null(
 		"PlayerCharacterChoiceOverlay"
 	) as PlayerCharacterChoiceOverlay
+	var test_choice_overlay := main_menu.get_node_or_null(
+		"TestArenaChoiceOverlay"
+	) as TestArenaChoiceOverlay
+	_expect(
+		test_choice_overlay != null
+		and test_choice_overlay.arena_selected.is_connected(
+			Callable(main_menu, "_on_test_arena_selected")
+		),
+		"Main menu must own and connect the P1/P2 test-arena selector."
+	)
+	if test_choice_overlay == null or character_overlay == null:
+		return
 	test_arena_button.pressed.emit()
 	await process_frame
 	_expect(
-		character_overlay != null and character_overlay.is_open(),
-		"Test-arena entry must open character selection before starting the run."
+		test_choice_overlay.is_open() and not character_overlay.is_open(),
+		"Test-arena entry must open P1/P2 selection before character selection."
 	)
+	var p1_button := test_choice_overlay.get_node(
+		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content/EnterButton"
+	) as Button
+	var p2_button := test_choice_overlay.get_node(
+		"Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton"
+	) as Button
 	_expect(
-		str(main_menu.call("_get_pending_singleplayer_scene_path"))
-		== TEST_GRASS_ARENA_SCENE_PATH,
-		"Test-arena entry must resolve to test_grass_arena.tscn."
+		p1_button.text == "进入 P1 综合测试"
+		and p2_button.text == "进入 P2 单日流程",
+		"Test selector must expose authored P1 and P2 actions."
 	)
-	_expect(not run_state.run_started, "Opening test-arena selection must not start the run yet.")
-	if character_overlay == null:
-		return
+	p1_button.pressed.emit()
+	await process_frame
+	_expect(
+		not test_choice_overlay.is_open()
+		and character_overlay.is_open()
+		and str(main_menu.call("_get_pending_singleplayer_scene_path"))
+		== TEST_GRASS_ARENA_SCENE_PATH,
+		"Selecting P1 must continue to character selection and preserve the original arena."
+	)
+	_expect(not run_state.run_started, "Selecting P1 must not start the run before character confirmation.")
 	character_overlay.close()
 	await process_frame
 	_expect(
+		test_choice_overlay.is_open(),
+		"Backing out of test-arena character selection must return to the P1/P2 selector."
+	)
+	test_choice_overlay.close()
+	await process_frame
+	_expect(
 		test_arena_button.has_focus(),
-		"Closing test-arena character selection must restore focus to its entry button."
+		"Closing the P1/P2 selector must restore focus to the test-arena entry."
+	)
+
+	test_arena_button.pressed.emit()
+	await process_frame
+	var tabs := test_choice_overlay.tabs
+	tabs.current_tab = TestArenaChoiceOverlay.P2_TAB_INDEX
+	await process_frame
+	p2_button.pressed.emit()
+	await process_frame
+	_expect(
+		character_overlay.is_open()
+		and str(main_menu.call("_get_pending_singleplayer_scene_path"))
+		== TEST_GRASS_ARENA_P2_SCENE_PATH,
+		"Selecting P2 must route character confirmation to test_grass_arena_p2.tscn."
+	)
+	_expect(not run_state.run_started, "Selecting P2 must not start the run before character confirmation.")
+	character_overlay.close()
+	await process_frame
+	_expect(
+		test_choice_overlay.is_open()
+		and test_choice_overlay.tabs.current_tab == TestArenaChoiceOverlay.P2_TAB_INDEX,
+		"Backing out of P2 character selection must restore the P2 tab."
+	)
+	test_choice_overlay.close()
+	await process_frame
+	_expect(
+		str(main_menu.call("_get_pending_singleplayer_scene_path"))
+		== TEST_GRASS_ARENA_P2_SCENE_PATH,
+		"The selected P2 destination must remain stable after returning to the menu."
 	)
 
 	tower_defense_button.pressed.emit()

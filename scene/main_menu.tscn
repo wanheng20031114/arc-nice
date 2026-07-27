@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://01h4g7s3b8oo" path="res://scene/settings/settings_gear_icon.gd" id="4_settings_icon"]
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="5_settings_panel"]
 [ext_resource type="PackedScene" path="res://scene/character_selection/player_character_choice_overlay.tscn" id="6_character_choice"]
+[ext_resource type="PackedScene" path="res://scene/test_arena/test_arena_choice_overlay.tscn" id="7_test_arena_choice"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.09, 0.095, 0.105, 0.92)
@@ -236,6 +237,9 @@ text = "结束游戏"
 
 [node name="SettingsPanel" parent="." unique_id=838437475 instance=ExtResource("5_settings_panel")]
 layout_mode = 1
+
+[node name="TestArenaChoiceOverlay" parent="." instance=ExtResource("7_test_arena_choice")]
+visible = false
 
 [node name="PlayerCharacterChoiceOverlay" parent="." unique_id=626649155 instance=ExtResource("6_character_choice")]
 visible = false
