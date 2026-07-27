@@ -35,6 +35,10 @@ enum PlacementSurface {
 @export var plant_scene: PackedScene
 @export var supports_multiplayer: bool = false
 
+@export_group("放置预览")
+@export var placement_preview_display_size := Vector2(32.0, 32.0)
+@export var placement_preview_offset := Vector2.ZERO
+
 @export_group("建筑目录")
 @export var building_category: BuildingCategory = BuildingCategory.UNSPECIFIED
 @export var placement_surface: PlacementSurface = PlacementSurface.UNSPECIFIED
@@ -70,6 +74,10 @@ func is_valid() -> bool:
 		and not display_name.is_empty()
 		and icon != null
 		and plant_scene != null
+		and placement_preview_display_size.is_finite()
+		and placement_preview_display_size.x > 0.0
+		and placement_preview_display_size.y > 0.0
+		and placement_preview_offset.is_finite()
 		and max_health > 0
 		and attack_burst_count > 0
 		and is_finite(attack_burst_shot_interval)

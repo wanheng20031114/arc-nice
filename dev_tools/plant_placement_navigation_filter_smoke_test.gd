@@ -4,6 +4,9 @@ const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon
 const VEGETATION_STAKE_CONFIG := preload(
 	"res://resources/config/plant_defense/vegetation_stake.tres"
 )
+const SIMPLE_FENCE_CONFIG := preload(
+	"res://resources/config/plant_defense/simple_fence.tres"
+)
 const PLACEMENT_PREVIEW_SCENE := preload(
 	"res://scene/plant_defense/plant_placement_preview.tscn"
 )
@@ -38,6 +41,12 @@ func _test_footprint_validation() -> void:
 	_expect(not config.is_valid(), "A footprint with zero height must be invalid.")
 	config.footprint_size = Vector2i(-1, 1)
 	_expect(not config.is_valid(), "A footprint with negative width must be invalid.")
+	config.footprint_size = Vector2i(2, 2)
+	config.placement_preview_display_size = Vector2.ZERO
+	_expect(not config.is_valid(), "A zero-sized placement preview must be invalid.")
+	config.placement_preview_display_size = Vector2(32.0, 32.0)
+	config.placement_preview_offset = Vector2(INF, 0.0)
+	_expect(not config.is_valid(), "A non-finite placement preview offset must be invalid.")
 
 
 func _test_footprint_preview_and_hint() -> void:
@@ -47,8 +56,18 @@ func _test_footprint_preview_and_hint() -> void:
 
 	preview.configure(VEGETATION_STAKE_CONFIG, Vector2(16.0, 16.0))
 	_expect(
-		preview.footprint_size == Vector2(16.0, 16.0),
-		"The 1x1 vegetation-stake preview must cover one 16x16 terrain tile."
+		preview.footprint_size == Vector2(16.0, 16.0)
+		and preview.ghost_sprite.texture.get_size()
+		* preview.ghost_sprite.scale == Vector2(32.0, 32.0),
+		"The 1x1 vegetation stake must retain its intentional 32x32 visual overhang."
+	)
+	preview.configure(SIMPLE_FENCE_CONFIG, Vector2(16.0, 16.0))
+	_expect(
+		preview.footprint_size == Vector2(16.0, 16.0)
+		and preview.ghost_sprite.texture.get_size()
+		* preview.ghost_sprite.scale == Vector2(16.0, 16.0)
+		and preview.ghost_sprite.position == Vector2.ZERO,
+		"The 1x1 fence ghost must match its placed 16x16 world canvas without offset."
 	)
 	preview.configure(AGAVE_CONFIG, Vector2(16.0, 16.0))
 	_expect(

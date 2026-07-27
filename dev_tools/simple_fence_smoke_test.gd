@@ -61,6 +61,9 @@ func _test_config_scene_and_all_frames() -> void:
 		and SIMPLE_FENCE_CONFIG.physical_defense == 0
 		and SIMPLE_FENCE_CONFIG.magic_defense == 0
 		and SIMPLE_FENCE_CONFIG.footprint_size == Vector2i.ONE
+		and SIMPLE_FENCE_CONFIG.placement_preview_display_size
+		== Vector2(16.0, 16.0)
+		and SIMPLE_FENCE_CONFIG.placement_preview_offset == Vector2.ZERO
 		and SIMPLE_FENCE_CONFIG.supports_multiplayer
 		and SIMPLE_FENCE_CONFIG.enemy_engagement_mode
 		== PlantDefenseConfig.EnemyEngagementMode.CONTACT_ONLY
@@ -148,8 +151,11 @@ func _test_config_scene_and_all_frames() -> void:
 		and sprite.vframes == 4
 		and sprite.texture != null
 		and sprite.texture.get_size() == Vector2(128, 128)
+		and sprite.scale == Vector2(0.5, 0.5)
+		and sprite.position == Vector2.ZERO
+		and Vector2(32.0, 32.0) * sprite.scale == Vector2(16.0, 16.0)
 		and sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
-		"围栏精灵必须使用最近邻128×128四乘四图集，每帧严格32×32。"
+		"围栏精灵必须使用最近邻128×128四乘四图集，并把32×32帧严格映射为单格16×16。"
 	)
 	if sprite != null and sprite.texture != null:
 		var atlas_image := sprite.texture.get_image()

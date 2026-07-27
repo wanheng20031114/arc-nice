@@ -2,7 +2,6 @@ extends Node2D
 class_name PlantPlacementPreview
 
 const DEFAULT_TILE_SIZE := Vector2(16.0, 16.0)
-const PREVIEW_DISPLAY_SIZE := Vector2(32.0, 32.0)
 const RANGE_FILL_COLOR := Color(0.3, 0.92, 0.48, 0.075)
 const RANGE_EDGE_COLOR := Color(0.46, 1.0, 0.6, 0.7)
 const FOOTPRINT_FILL_COLOR := Color(0.32, 1.0, 0.48, 0.12)
@@ -25,18 +24,18 @@ func configure(
 	if config == null:
 		ghost_sprite.texture = null
 		ghost_sprite.scale = Vector2.ONE
+		ghost_sprite.position = Vector2.ZERO
 		attack_range = 0.0
 		footprint_size = Vector2.ZERO
 		queue_redraw()
 		return
 	ghost_sprite.texture = config.icon
+	ghost_sprite.position = config.placement_preview_offset
 	var texture_size := config.icon.get_size()
 	if texture_size.x > 0.0 and texture_size.y > 0.0:
-		# Placement previews share the same 32 px canvas as placed buildings.
-		# Legacy 64 px art remains at 0.5; native 128 px art uses 0.25.
 		ghost_sprite.scale = Vector2(
-			PREVIEW_DISPLAY_SIZE.x / texture_size.x,
-			PREVIEW_DISPLAY_SIZE.y / texture_size.y
+			config.placement_preview_display_size.x / texture_size.x,
+			config.placement_preview_display_size.y / texture_size.y
 		)
 	else:
 		ghost_sprite.scale = Vector2.ONE
