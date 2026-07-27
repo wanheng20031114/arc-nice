@@ -202,6 +202,16 @@ func _apply_wave_start_lighting(_wave_number: int) -> void:
 @abstract func get_enemy_for_net_id(net_id: int) -> Enemy
 @abstract func get_pickup_for_net_id(net_id: int) -> Pickup
 @abstract func remove_multiplayer_player(peer_id: int) -> void
+func restore_multiplayer_player(
+	_old_peer_id: int,
+	_new_peer_id: int,
+	_player_name: String,
+	_character_id: StringName,
+	_state: SnapshotManager.PlayerState,
+	_spawn_slot_index: int,
+	_reconnect_state: Dictionary = {}
+) -> Player:
+	return null
 @abstract func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]
 @abstract func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]
 @abstract func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void

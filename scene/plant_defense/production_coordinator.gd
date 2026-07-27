@@ -145,6 +145,13 @@ func is_personal_output_peer_available(peer_id: int) -> bool:
 	return peer_id > 0 and _active_personal_output_peers.has(peer_id)
 
 
+func activate_personal_output_peer(peer_id: int) -> bool:
+	if not _multiplayer_output_validation_enabled or peer_id <= 0:
+		return false
+	_active_personal_output_peers[peer_id] = true
+	return true
+
+
 func deactivate_personal_output_peer(peer_id: int) -> void:
 	if peer_id <= 0 or not _active_personal_output_peers.has(peer_id):
 		return

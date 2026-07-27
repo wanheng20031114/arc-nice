@@ -8,6 +8,11 @@ const PLANK_MATERIAL := preload("res://resources/config/materials/material_plank
 const AGAVE_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_agave_cannon.tres"
 )
+const RECONNECT_PLAYER_NAME := "client4"
+const RECONNECT_WOOD_BONUS := 7
+const RECONNECT_XIRANG_BONUS := 4321
+const RECONNECT_HEALTH_DAMAGE := 11
+const RECONNECT_TARGET_POSITION := Vector2(384.0, 256.0)
 
 const STATE_HOSTING_LAN := 1
 const STATE_LOADING_GAME := 4
@@ -24,6 +29,7 @@ const PROBE_SCENARIO_WAVE := "wave"
 const PROBE_SCENARIO_BOSS := "boss"
 const PROBE_SCENARIO_TOWER_DEFENSE := "tower_defense"
 const PROBE_SCENARIO_DEATH_REVIVE := "death_revive"
+const PROBE_SCENARIO_RECONNECT := "reconnect"
 const PROBE_OWNED_ROOT_NODE_NAMES := {
 	"MpGame": true,
 	"Game": true,
@@ -36,6 +42,7 @@ var probe_scenario := PROBE_SCENARIO_FULL
 var probe_game_mode := "standard"
 var probe_transport_mode := PROBE_MODE_LAN
 var tower_defense_warehouse_transaction_submitted := false
+var probe_reconnect_attempt := false
 
 
 func _init() -> void:
@@ -56,6 +63,10 @@ func _run() -> void:
 	probe_transport_mode = mode
 	var relay_host_peer_id := int(options.get("relay_host_peer_id", "0"))
 	var player_name := str(options.get("name", "Probe%s" % role.capitalize()))
+	var reconnect_token := str(options.get("reconnect_token", ""))
+	probe_reconnect_attempt = _parse_bool(
+		str(options.get("reconnect_attempt", "false"))
+	)
 	probe_scenario = str(options.get("scenario", PROBE_SCENARIO_FULL)).strip_edges().to_lower()
 	if probe_scenario.is_empty():
 		probe_scenario = PROBE_SCENARIO_FULL
@@ -64,7 +75,10 @@ func _run() -> void:
 		_fail("Unsupported probe game mode: %s" % probe_game_mode)
 		_finish()
 		return
-	if probe_scenario == PROBE_SCENARIO_TOWER_DEFENSE and probe_game_mode != "tower_defense":
+	if (
+		probe_scenario in [PROBE_SCENARIO_TOWER_DEFENSE, PROBE_SCENARIO_RECONNECT]
+		and probe_game_mode != "tower_defense"
+	):
 		_fail("Tower-defense runtime scenario requires --probe-game_mode=tower_defense.")
 		_finish()
 		return
@@ -75,6 +89,13 @@ func _run() -> void:
 		_finish()
 		return
 	net_manager.local_player_name = player_name
+	if (
+		not reconnect_token.is_empty()
+		and not bool(net_manager.call("set_local_reconnect_token", reconnect_token))
+	):
+		_fail("Probe received an invalid reconnect token.")
+		_finish()
+		return
 	if probe_game_mode == "tower_defense":
 		var character_id := _get_tower_defense_probe_character_id(role, player_name)
 		if not bool(net_manager.call("set_local_character_id", character_id, true)):
@@ -278,6 +299,19 @@ func _run_mp_game_probe(
 		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
 		await _cleanup_probe_game(net_manager, mp_game)
 		return
+	if probe_scenario == PROBE_SCENARIO_RECONNECT:
+		await _run_tower_defense_reconnect_probe(
+			net_manager,
+			mp_game,
+			game,
+			is_host_probe,
+			probe_reconnect_attempt
+		)
+		if is_host_probe and mp_game != null and is_instance_valid(mp_game):
+			_validate_and_print_runtime_metrics(mp_game, true, expected_players)
+		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
+		await _cleanup_probe_game(net_manager, mp_game)
+		return
 	if probe_scenario == PROBE_SCENARIO_DEATH_REVIVE:
 		await _run_death_revive_scenario(net_manager, mp_game, game, is_host_probe)
 		_validate_and_print_runtime_metrics(mp_game, is_host_probe, expected_players)
@@ -399,6 +433,222 @@ func _run_leave_probe(
 		return
 	print("LAN_PROBE_EVENT client_peer_left_confirmed peer=%d" % leaving_peer_id)
 	await _wait_seconds(4.0)
+
+
+func _run_tower_defense_reconnect_probe(
+	net_manager: Node,
+	mp_game: Node,
+	game: GameTowerDefense,
+	is_host_probe: bool,
+	is_reconnect_attempt: bool
+) -> void:
+	if is_host_probe:
+		await _run_host_tower_defense_reconnect_probe(net_manager, mp_game, game)
+		return
+	if is_reconnect_attempt:
+		await _run_rejoined_tower_defense_client_probe(net_manager, game)
+		return
+	await _run_existing_tower_defense_client_reconnect_probe(
+		net_manager,
+		game
+	)
+
+
+func _run_host_tower_defense_reconnect_probe(
+	net_manager: Node,
+	mp_game: Node,
+	game: GameTowerDefense
+) -> void:
+	var old_peer_id := _get_peer_id_by_name(net_manager, RECONNECT_PLAYER_NAME)
+	var player_instance := game.get_player_for_peer(old_peer_id) as Player
+	var run_state := root.get_node("RunState") as RunStateStore
+	if old_peer_id <= 0 or player_instance == null or not is_instance_valid(player_instance):
+		_fail("Host reconnect probe could not resolve the original client4 player.")
+		return
+	var original_wood_total := run_state.get_inventory_item_total_for_peer(
+		old_peer_id,
+		WOOD_MATERIAL
+	)
+	if not run_state.try_add_item_count_for_peer(
+		old_peer_id,
+		WOOD_MATERIAL,
+		RECONNECT_WOOD_BONUS
+	):
+		_fail("Host reconnect probe could not seed the preserved inventory fixture.")
+		return
+	player_instance.grant_xirang_reward(RECONNECT_XIRANG_BONUS)
+	player_instance.set_multiplayer_health_state(
+		player_instance.max_health - RECONNECT_HEALTH_DAMAGE,
+		false
+	)
+	if not bool(
+		mp_game.call(
+			"_commit_authoritative_player_teleport",
+			old_peer_id,
+			RECONNECT_TARGET_POSITION
+		)
+	):
+		_fail("Host reconnect probe could not commit the preserved position fixture.")
+		return
+	mp_game.call("_broadcast_inventory_snapshot", old_peer_id)
+	var expected_wood_total := original_wood_total + RECONNECT_WOOD_BONUS
+	var expected_xirang := player_instance.current_xirang
+	var expected_health := player_instance.current_health
+	await _wait_seconds(1.0)
+	print(
+		(
+			"LAN_PROBE_EVENT reconnect_fixture old_peer=%d wood=%d "
+			+ "xirang=%d health=%d"
+		)
+		% [old_peer_id, expected_wood_total, expected_xirang, expected_health]
+	)
+	if not await _wait_for_peer_removed_from_host(
+		net_manager,
+		game,
+		old_peer_id,
+		12.0
+	):
+		_fail("Host did not observe the reconnect fixture client disconnect.")
+		return
+	print("LAN_PROBE_EVENT reconnect_slot_open old_peer=%d" % old_peer_id)
+	var new_peer_id := await _wait_for_reconnected_player(
+		net_manager,
+		game,
+		old_peer_id,
+		15.0
+	)
+	if new_peer_id <= 0:
+		_fail("Host did not restore client4 through its reconnect identity.")
+		return
+	var restored_player := game.get_player_for_peer(new_peer_id) as Player
+	if (
+		run_state.has_multiplayer_peer_state(old_peer_id)
+		or not run_state.has_multiplayer_peer_state(new_peer_id)
+		or run_state.get_inventory_item_total_for_peer(new_peer_id, WOOD_MATERIAL)
+		!= expected_wood_total
+		or restored_player == null
+		or not is_instance_valid(restored_player)
+		or restored_player.current_xirang != expected_xirang
+		or restored_player.current_health != expected_health
+		or restored_player.global_position.distance_to(RECONNECT_TARGET_POSITION) > 1.0
+	):
+		_fail("Host reconnect restore lost inventory, combat state, or position.")
+		return
+	print(
+		"LAN_PROBE_EVENT host_td_reconnect_restored old_peer=%d new_peer=%d"
+		% [old_peer_id, new_peer_id]
+	)
+	await _wait_seconds(2.0)
+
+
+func _run_existing_tower_defense_client_reconnect_probe(
+	net_manager: Node,
+	game: GameTowerDefense
+) -> void:
+	var old_peer_id := _get_peer_id_by_name(net_manager, RECONNECT_PLAYER_NAME)
+	if old_peer_id <= 0:
+		_fail("Existing client could not resolve the original reconnect peer.")
+		return
+	var run_state := root.get_node("RunState") as RunStateStore
+	var expected_wood_total := (
+		RunStateStore.STARTING_WOOD_COUNT + RECONNECT_WOOD_BONUS
+	)
+	var local_name := str(net_manager.get("local_player_name"))
+	if local_name == RECONNECT_PLAYER_NAME:
+		if not await _wait_for_peer_item_total(
+			run_state,
+			old_peer_id,
+			WOOD_MATERIAL,
+			expected_wood_total,
+			8.0
+		):
+			_fail("Disconnecting client did not receive its authoritative inventory fixture.")
+			return
+		print("LAN_PROBE_EVENT reconnect_client_disconnect peer=%d" % old_peer_id)
+		net_manager.disconnect_from_game()
+		return
+	if not await _wait_for_peer_removed_from_client(game, old_peer_id, 12.0):
+		_fail("Existing client did not remove the disconnected reconnect peer.")
+		return
+	var new_peer_id := await _wait_for_reconnected_player(
+		net_manager,
+		game,
+		old_peer_id,
+		15.0
+	)
+	if new_peer_id <= 0:
+		_fail("Existing client did not observe the restored reconnect peer.")
+		return
+	if (
+		run_state.has_multiplayer_peer_state(old_peer_id)
+		or run_state.get_inventory_item_total_for_peer(new_peer_id, WOOD_MATERIAL)
+		!= expected_wood_total
+	):
+		_fail("Existing client did not remap the reconnected player's inventory.")
+		return
+	print(
+		"LAN_PROBE_EVENT client_td_reconnect_observed old_peer=%d new_peer=%d"
+		% [old_peer_id, new_peer_id]
+	)
+	await _wait_seconds(2.0)
+
+
+func _run_rejoined_tower_defense_client_probe(
+	net_manager: Node,
+	game: GameTowerDefense
+) -> void:
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	var local_player := game.get_player_for_peer(local_peer_id) as Player
+	var run_state := root.get_node("RunState") as RunStateStore
+	if local_player == null or not is_instance_valid(local_player):
+		_fail("Rejoined client did not create its local player runtime.")
+		return
+	var expected_wood_total := RunStateStore.STARTING_WOOD_COUNT + RECONNECT_WOOD_BONUS
+	if not await _wait_for_peer_item_total(
+		run_state,
+		local_peer_id,
+		WOOD_MATERIAL,
+		expected_wood_total,
+		10.0
+	):
+		_fail("Rejoined client did not receive its preserved inventory snapshot.")
+		return
+	var deadline := Time.get_ticks_msec() + 10_000
+	while Time.get_ticks_msec() < deadline:
+		if (
+			local_player.current_xirang == 1000 + RECONNECT_XIRANG_BONUS
+			and local_player.current_health
+			== local_player.max_health - RECONNECT_HEALTH_DAMAGE
+			and local_player.global_position.distance_to(RECONNECT_TARGET_POSITION) <= 1.0
+		):
+			print(
+				"LAN_PROBE_EVENT rejoined_td_state_restored peer=%d"
+				% local_peer_id
+			)
+			await _wait_seconds(2.0)
+			return
+		await process_frame
+	_fail("Rejoined client did not converge on its preserved combat state and position.")
+
+
+func _wait_for_reconnected_player(
+	net_manager: Node,
+	game: GameTowerDefense,
+	old_peer_id: int,
+	timeout_seconds: float
+) -> int:
+	var deadline := Time.get_ticks_msec() + roundi(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		for peer_id_variant in net_manager.connected_players:
+			var peer_id := int(peer_id_variant)
+			if (
+				peer_id != old_peer_id
+				and str(net_manager.connected_players[peer_id]) == RECONNECT_PLAYER_NAME
+				and game.get_player_for_peer(peer_id) != null
+			):
+				return peer_id
+		await process_frame
+	return 0
 
 
 func _run_wave_probe(
@@ -773,6 +1023,7 @@ func _run_host_tower_defense_runtime_probe(
 	game.plant_system.remove_plant_by_net_id(3)
 	game.plant_system.remove_plant_by_net_id(2)
 	await _wait_seconds(0.75)
+	await _run_host_tower_defense_fate_probe(net_manager, mp_game, game)
 
 
 func _run_client_tower_defense_runtime_probe(
@@ -893,6 +1144,9 @@ func _run_client_tower_defense_runtime_probe(
 	if warehouse == null:
 		_fail("Client did not spawn the authoritative shared warehouse replica.")
 		return
+	if not await _wait_for_plant_operational(warehouse, 3.0):
+		_fail("Client shared warehouse did not finish construction before interaction.")
+		return
 	if local_player == null or not is_instance_valid(local_player):
 		_fail("Client could not resolve its local player before warehouse interaction.")
 		return
@@ -957,6 +1211,9 @@ func _run_client_tower_defense_runtime_probe(
 	var station := station_plant as ProductionBuilding
 	if station == null:
 		_fail("Client did not spawn the authoritative wood-station replica.")
+		return
+	if not await _wait_for_plant_operational(station, 3.0):
+		_fail("Client wood station did not finish construction before interaction.")
 		return
 	# Capture the shared pre-command revision before any peer may submit. Relay
 	# peers can otherwise receive the first result while still repairing their
@@ -1037,6 +1294,9 @@ func _run_client_tower_defense_runtime_probe(
 		_fail("Client did not remove the shared warehouse after Host teardown.")
 		return
 	print("LAN_PROBE_EVENT client_td_production_atomic station=3 warehouse=2")
+	await _run_client_tower_defense_fate_probe(net_manager, mp_game, game)
+	if not failures.is_empty():
+		return
 	_validate_and_print_runtime_metrics(
 		mp_game,
 		false,
@@ -1045,6 +1305,187 @@ func _run_client_tower_defense_runtime_probe(
 	# Keep the RPC node alive until the Host finishes its final reliable event
 	# and shuts down, avoiding a test-only disconnect/send race.
 	await _wait_seconds(2.0)
+
+
+func _run_host_tower_defense_fate_probe(
+	net_manager: Node,
+	mp_game: Node,
+	game: GameTowerDefense
+) -> void:
+	var fate_manager := game.fate_manager
+	var resume_step := game.call("_get_start_flow_step") as FlowStepConfig
+	if fate_manager == null or resume_step == null:
+		_fail("Host fate probe could not resolve its authored coordinator or resume step.")
+		return
+	var xirang_before_by_peer := {}
+	for peer_id_variant in game.peer_players:
+		var peer_id := int(peer_id_variant)
+		var player_instance := game.get_player_for_peer(peer_id) as Player
+		if player_instance != null and is_instance_valid(player_instance):
+			xirang_before_by_peer[peer_id] = player_instance.current_xirang
+	game.call("_enter_xiaocong_fate_interlude", resume_step)
+	if not await _wait_for_game_wave_state(
+		game,
+		GameRuntimeBase.WaveState.FATE_INTERLUDE,
+		5.0
+	):
+		_fail("Host did not enter the Xiaocong fate interlude.")
+		return
+	if (
+		game.production_coordinator.authoritative_processing_enabled
+		or game.research_coordinator.authoritative_processing_enabled
+		or not game.plant_terrain_decay_timer.is_stopped()
+		or game.plant_placement_controller.placement_input_enabled
+	):
+		_fail("Host fate interlude did not freeze production, research, terrain decay, and building input.")
+		return
+	for player_variant in game.peer_players.values():
+		var player_instance := player_variant as Player
+		if (
+			player_instance == null
+			or not is_instance_valid(player_instance)
+			or player_instance.global_position.x < 7000.0
+			or player_instance.global_position.y < 7000.0
+		):
+			_fail("Host did not reliably teleport every player into the Xiaocong room.")
+			return
+	mp_game.call("_on_local_xiaocong_interaction_requested")
+	if not await _wait_for_fate_stage(
+		fate_manager,
+		TowerDefenseFateManager.STAGE_VOTING,
+		12.0
+	):
+		_fail("Host did not receive every player's Xiaocong interaction confirmation.")
+		return
+	mp_game.call(
+		"_on_local_xiaocong_vote_requested",
+		TowerDefenseFateRegistry.OPTION_XIRANG_GIFT,
+		&""
+	)
+	if not await _wait_for_game_wave_state(
+		game,
+		GameRuntimeBase.WaveState.INTERMISSION,
+		15.0
+	):
+		_fail("Host did not resume the campaign after the all-player fate vote.")
+		return
+	if (
+		fate_manager.active
+		or not game.production_coordinator.authoritative_processing_enabled
+		or not game.research_coordinator.authoritative_processing_enabled
+		or game.plant_terrain_decay_timer.is_stopped()
+	):
+		_fail("Host did not restore the frozen Xiaocong interlude systems.")
+		return
+	for peer_id_variant in xirang_before_by_peer:
+		var peer_id := int(peer_id_variant)
+		var player_instance := game.get_player_for_peer(peer_id) as Player
+		if (
+			player_instance == null
+			or not is_instance_valid(player_instance)
+			or player_instance.current_xirang
+			!= int(xirang_before_by_peer[peer_id]) + 8000
+			or player_instance.global_position.x > 4096.0
+			or player_instance.global_position.y > 4096.0
+		):
+			_fail("Host fate resolution did not grant rewards and restore every player to the battlefield.")
+			return
+	print(
+		"LAN_PROBE_EVENT host_td_fate_vote_resumed players=%d"
+		% _get_connected_player_count(net_manager)
+	)
+
+
+func _run_client_tower_defense_fate_probe(
+	net_manager: Node,
+	mp_game: Node,
+	game: GameTowerDefense
+) -> void:
+	if not await _wait_for_game_wave_state(
+		game,
+		GameRuntimeBase.WaveState.FATE_INTERLUDE,
+		10.0
+	):
+		_fail("Client did not receive the Xiaocong fate flow state.")
+		return
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	var local_player := game.get_player_for_peer(local_peer_id) as Player
+	if (
+		local_player == null
+		or not is_instance_valid(local_player)
+		or local_player.global_position.x < 7000.0
+		or local_player.global_position.y < 7000.0
+		or game.plant_placement_controller.placement_input_enabled
+	):
+		_fail("Client did not apply the reliable Xiaocong teleport and building-input freeze.")
+		return
+	var xirang_before := local_player.current_xirang
+	mp_game.call("_on_local_xiaocong_interaction_requested")
+	if not await _wait_for_fate_stage(
+		game.fate_manager,
+		TowerDefenseFateManager.STAGE_VOTING,
+		12.0
+	):
+		_fail("Client did not receive the all-player interaction barrier release.")
+		return
+	mp_game.call(
+		"_on_local_xiaocong_vote_requested",
+		TowerDefenseFateRegistry.OPTION_XIRANG_GIFT,
+		&""
+	)
+	if not await _wait_for_game_wave_state(
+		game,
+		GameRuntimeBase.WaveState.INTERMISSION,
+		15.0
+	):
+		_fail("Client did not resume from the completed fate vote.")
+		return
+	if not await _wait_for_player_xirang(local_player, xirang_before + 8000, 5.0):
+		_fail("Client did not converge on the authoritative fate reward.")
+		return
+	if (
+		game.fate_manager.active
+		or local_player.global_position.x > 4096.0
+		or local_player.global_position.y > 4096.0
+	):
+		_fail("Client did not clear the fate state and return to the battlefield.")
+		return
+	print("LAN_PROBE_EVENT client_td_fate_vote_resumed peer=%d" % local_peer_id)
+
+
+func _wait_for_fate_stage(
+	fate_manager: TowerDefenseFateManager,
+	expected_stage: StringName,
+	timeout_seconds: float
+) -> bool:
+	var deadline := Time.get_ticks_msec() + roundi(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		if (
+			fate_manager != null
+			and is_instance_valid(fate_manager)
+			and fate_manager.active
+			and fate_manager.stage == expected_stage
+		):
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_player_xirang(
+	player_instance: Player,
+	expected_xirang: int,
+	timeout_seconds: float
+) -> bool:
+	var deadline := Time.get_ticks_msec() + roundi(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		if (
+			player_instance != null
+			and is_instance_valid(player_instance)
+			and player_instance.current_xirang == expected_xirang
+		):
+			return true
+		await process_frame
+	return false
 
 
 func _run_host_wave_probe(game: Variant) -> void:

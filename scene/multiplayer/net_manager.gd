@@ -6,6 +6,12 @@ const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 signal connection_state_changed(new_state: ConnectionState)
 signal player_joined(peer_id: int, player_name: String)
 signal player_left(peer_id: int)
+signal player_reconnected(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName
+)
 signal player_list_changed
 signal player_character_changed(peer_id: int, character_id: StringName, confirmed: bool)
 signal connection_failed(reason: String)
@@ -13,6 +19,10 @@ signal game_mode_changed(new_game_mode: GameMode)
 signal game_load_progress_changed(ready_count: int, total_count: int)
 
 const DEFAULT_CHARACTER_ID := &"weishidaier"
+const RECONNECT_TOKEN_HEX_LENGTH := 32
+const RECONNECT_GRACE_MILLISECONDS := 90_000
+const RECONNECT_LOAD_TIMEOUT_MILLISECONDS := 30_000
+const LATE_REGISTRATION_TIMEOUT_MILLISECONDS := 5_000
 
 enum NetRole { NONE, HOST, CLIENT }
 enum ConnMode { DIRECT, RELAY }
@@ -45,6 +55,7 @@ var public_host_token: String = ""
 var public_is_host: bool = false
 var current_game_mode: GameMode = GameMode.STANDARD
 var loading_session_id: int = 0
+var local_reconnect_token: String = ""
 
 var _physics_frame_count: int = 0
 var _enet_peer: ENetMultiplayerPeer = null
@@ -58,17 +69,52 @@ var _expected_game_load_peers: Dictionary = {}
 var _ready_game_load_peers: Dictionary = {}
 var _reported_game_load_ready_count: int = 0
 var _reported_game_load_total_count: int = 0
+var _peer_reconnect_tokens: Dictionary[int, String] = {}
+var _disconnected_reconnect_slots: Dictionary[String, Dictionary] = {}
+var _pending_reconnect_loads: Dictionary[int, Dictionary] = {}
+var _late_registration_deadlines: Dictionary[int, int] = {}
+
+
+func _ready() -> void:
+	_ensure_local_reconnect_token()
 
 
 func _physics_process(_delta: float) -> void:
 	_physics_frame_count += 1
 	_poll_pending_connection()
+	_poll_reconnect_deadlines()
 	if _relay_register_pending:
 		_try_send_relay_registration()
 
 
 func get_physics_frame_count() -> int:
 	return _physics_frame_count
+
+
+func set_local_reconnect_token(token: String) -> bool:
+	if is_multiplayer_active():
+		return false
+	var normalized := token.strip_edges().to_lower()
+	if not _is_valid_reconnect_token(normalized):
+		return false
+	local_reconnect_token = normalized
+	return true
+
+
+func _ensure_local_reconnect_token() -> void:
+	if _is_valid_reconnect_token(local_reconnect_token):
+		return
+	local_reconnect_token = Crypto.new().generate_random_bytes(16).hex_encode()
+	if not _is_valid_reconnect_token(local_reconnect_token):
+		push_error("NetManager: 无法生成有效的重连身份令牌。")
+
+
+func _is_valid_reconnect_token(token: String) -> bool:
+	return (
+		token.length() == RECONNECT_TOKEN_HEX_LENGTH
+		and token == token.to_lower()
+		and token.is_valid_hex_number(false)
+	)
 
 
 func set_public_room_context(room_id: String, host_token: String, is_public_host: bool) -> void:
@@ -164,6 +210,7 @@ func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error
 	connected_players.clear()
 	connected_player_characters.clear()
 	confirmed_character_peers.clear()
+	_clear_reconnect_session_state()
 	host_peer_id = get_local_peer_id()
 	if host_peer_id <= 0:
 		host_peer_id = 1
@@ -184,6 +231,7 @@ func host_create_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
 
 
 func client_connect_lan(host_ip: String, port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
+	_ensure_local_reconnect_token()
 	var pending_game_mode := current_game_mode
 	if _enet_peer != null:
 		disconnect_from_game()
@@ -253,6 +301,7 @@ func host_create_relay_room(target_relay_ip: String, target_relay_port: int) -> 
 	connected_players.clear()
 	connected_player_characters.clear()
 	confirmed_character_peers.clear()
+	_clear_reconnect_session_state()
 	host_peer_id = 0
 	set_multiplayer_authority(1)
 	_relay_register_pending = false
@@ -273,6 +322,7 @@ func client_join_relay_room(
 	target_relay_port: int,
 	target_host_peer_id: int
 ) -> Error:
+	_ensure_local_reconnect_token()
 	var pending_game_mode := current_game_mode
 	if _enet_peer != null:
 		disconnect_from_game()
@@ -329,6 +379,7 @@ func disconnect_from_game() -> void:
 	connected_players.clear()
 	connected_player_characters.clear()
 	confirmed_character_peers.clear()
+	_clear_reconnect_session_state()
 	host_peer_id = 1
 	set_multiplayer_authority(host_peer_id)
 	host_game_ready = false
@@ -481,7 +532,11 @@ func get_host_peer_id() -> int:
 
 
 func is_peer_send_ready(peer_id: int) -> bool:
-	if peer_id <= 0 or _disconnect_in_progress:
+	if (
+		peer_id <= 0
+		or _disconnect_in_progress
+		or _pending_reconnect_loads.has(peer_id)
+	):
 		return false
 	if _enet_peer == null or not multiplayer.has_multiplayer_peer():
 		return false
@@ -532,7 +587,9 @@ func _cleanup_multiplayer_signals() -> void:
 func _on_peer_connected(peer_id: int) -> void:
 	_debug_log("NetManager: Peer 已连接, id=%d" % peer_id)
 	if is_host() and not _is_registration_open() and peer_id != get_host_peer_id():
-		call_deferred("_reject_late_connected_peer", peer_id)
+		_late_registration_deadlines[peer_id] = (
+			Time.get_ticks_msec() + LATE_REGISTRATION_TIMEOUT_MILLISECONDS
+		)
 		return
 	if _relay_register_pending:
 		_try_send_relay_registration()
@@ -546,16 +603,48 @@ func _reject_late_connected_peer(peer_id: int) -> void:
 	if is_peer_send_ready(peer_id):
 		_rpc_join_rejected.rpc_id(
 			peer_id,
-			"房间已经开始加载，暂不支持中途加入或断线重连。"
+			"房间已经开始；未提供有效的断线重连身份。"
 		)
 	call_deferred("_disconnect_incompatible_peer", peer_id)
 
 
 func _on_peer_disconnected(peer_id: int) -> void:
 	var player_name: String = connected_players.get(peer_id, "Unknown")
+	var character_id := get_player_character_id(peer_id)
+	var character_confirmed := is_player_character_confirmed(peer_id)
+	var pending_reconnect := (
+		_pending_reconnect_loads.get(peer_id, {}) as Dictionary
+	)
+	var reconnect_token := str(
+		pending_reconnect.get(
+			"token",
+			_peer_reconnect_tokens.get(peer_id, "")
+		)
+	)
+	var reconnect_old_peer_id := int(
+		pending_reconnect.get("old_peer_id", peer_id)
+	)
+	if (
+		is_host()
+		and connection_state == ConnectionState.IN_GAME
+		and _is_valid_reconnect_token(reconnect_token)
+		and player_name != "Unknown"
+	):
+		_disconnected_reconnect_slots[reconnect_token] = {
+			"old_peer_id": reconnect_old_peer_id,
+			"player_name": player_name,
+			"character_id": character_id,
+			"character_confirmed": character_confirmed,
+			"expires_msec": (
+				Time.get_ticks_msec() + RECONNECT_GRACE_MILLISECONDS
+			),
+		}
 	connected_players.erase(peer_id)
 	connected_player_characters.erase(peer_id)
 	confirmed_character_peers.erase(peer_id)
+	_peer_reconnect_tokens.erase(peer_id)
+	_pending_reconnect_loads.erase(peer_id)
+	_late_registration_deadlines.erase(peer_id)
 	if is_host() and connection_state == ConnectionState.LOADING_GAME:
 		_expected_game_load_peers.erase(peer_id)
 		_ready_game_load_peers.erase(peer_id)
@@ -612,7 +701,8 @@ func _handle_connected_to_server() -> void:
 		_get_safe_local_name(),
 		String(local_character_id),
 		local_character_confirmed,
-		NetConstants.PROTOCOL_VERSION
+		NetConstants.PROTOCOL_VERSION,
+		local_reconnect_token
 	)
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 已连接到 LAN Host")
@@ -690,7 +780,8 @@ func _try_send_relay_registration() -> void:
 		_get_safe_local_name(),
 		String(local_character_id),
 		local_character_confirmed,
-		NetConstants.PROTOCOL_VERSION
+		NetConstants.PROTOCOL_VERSION,
+		local_reconnect_token
 	)
 	_set_connection_state(ConnectionState.CONNECTED_IN_LOBBY)
 	_debug_log("NetManager: 已连接到 Relay Host %d" % target_host_id)
@@ -701,7 +792,8 @@ func _rpc_register_player(
 	player_name: String,
 	character_id: String = "weishidaier",
 	character_confirmed: bool = true,
-	protocol_version: int = -1
+	protocol_version: int = -1,
+	reconnect_token: String = ""
 ) -> void:
 	if not is_host():
 		return
@@ -717,15 +809,34 @@ func _rpc_register_player(
 		_rpc_protocol_rejected.rpc_id(sender_id, NetConstants.PROTOCOL_VERSION)
 		call_deferred("_disconnect_incompatible_peer", sender_id)
 		return
+	var normalized_reconnect_token := reconnect_token.strip_edges().to_lower()
+	if not _is_valid_reconnect_token(normalized_reconnect_token):
+		_rpc_join_rejected.rpc_id(sender_id, "无效的联机重连身份。")
+		call_deferred("_disconnect_incompatible_peer", sender_id)
+		return
+	_late_registration_deadlines.erase(sender_id)
 	# A delayed or replayed reliable registration from a member of the frozen roster
 	# is idempotent. It must not eject an already accepted player from the running game.
 	if connected_players.has(sender_id) and not _is_registration_open():
 		return
 	if not _is_registration_open():
+		if (
+			connection_state == ConnectionState.IN_GAME
+			and _begin_peer_reconnect(
+				sender_id,
+				player_name,
+				normalized_reconnect_token
+			)
+		):
+			return
 		_rpc_join_rejected.rpc_id(
 			sender_id,
-			"房间已经开始加载，暂不支持中途加入或断线重连。"
+			"房间已经开始；该身份没有可恢复的断线席位。"
 		)
+		call_deferred("_disconnect_incompatible_peer", sender_id)
+		return
+	if _peer_reconnect_tokens.values().has(normalized_reconnect_token):
+		_rpc_join_rejected.rpc_id(sender_id, "该联机身份已在房间中使用。")
 		call_deferred("_disconnect_incompatible_peer", sender_id)
 		return
 	if connected_players.size() >= NetConstants.MAX_PLAYERS:
@@ -741,10 +852,71 @@ func _rpc_register_player(
 		requested_character_id if character_is_valid else DEFAULT_CHARACTER_ID,
 		character_confirmed and character_is_valid
 	)
+	_peer_reconnect_tokens[sender_id] = normalized_reconnect_token
 	player_joined.emit(sender_id, connected_players[sender_id])
 	player_list_changed.emit()
 	_broadcast_player_list_to_clients()
 	_debug_log("NetManager: 玩家注册, id=%d, name=%s" % [sender_id, connected_players[sender_id]])
+
+
+func _begin_peer_reconnect(
+	new_peer_id: int,
+	requested_player_name: String,
+	reconnect_token: String
+) -> bool:
+	if (
+		new_peer_id <= 0
+		or loading_session_id <= 0
+		or not _disconnected_reconnect_slots.has(reconnect_token)
+	):
+		return false
+	var slot := _disconnected_reconnect_slots[reconnect_token] as Dictionary
+	if slot.is_empty() or int(slot.get("expires_msec", 0)) < Time.get_ticks_msec():
+		_disconnected_reconnect_slots.erase(reconnect_token)
+		return false
+	if (
+		_sanitize_player_name(requested_player_name)
+		!= str(slot.get("player_name", ""))
+	):
+		return false
+	var old_peer_id := int(slot.get("old_peer_id", 0))
+	var player_name := str(slot.get("player_name", "Player"))
+	var character_id := _sanitize_character_id(
+		StringName(slot.get("character_id", DEFAULT_CHARACTER_ID))
+	)
+	if old_peer_id <= 0 or connected_players.has(new_peer_id):
+		return false
+	_disconnected_reconnect_slots.erase(reconnect_token)
+	connected_players[new_peer_id] = player_name
+	connected_player_characters[new_peer_id] = character_id
+	confirmed_character_peers[new_peer_id] = bool(
+		slot.get("character_confirmed", true)
+	)
+	_peer_reconnect_tokens[new_peer_id] = reconnect_token
+	_pending_reconnect_loads[new_peer_id] = {
+		"old_peer_id": old_peer_id,
+		"token": reconnect_token,
+		"deadline_msec": (
+			Time.get_ticks_msec() + RECONNECT_LOAD_TIMEOUT_MILLISECONDS
+		),
+	}
+	_rpc_sync_player_list.rpc_id(
+		new_peer_id,
+		_build_player_list_array(),
+		get_host_peer_id(),
+		int(current_game_mode)
+	)
+	_rpc_start_game.rpc_id(
+		new_peer_id,
+		int(current_game_mode),
+		loading_session_id
+	)
+	player_list_changed.emit()
+	_debug_log(
+		"NetManager: 玩家开始重连, old_peer=%d new_peer=%d name=%s"
+		% [old_peer_id, new_peer_id, player_name]
+	)
+	return true
 
 
 func _is_protocol_version_compatible(protocol_version: int) -> bool:
@@ -753,6 +925,40 @@ func _is_protocol_version_compatible(protocol_version: int) -> bool:
 
 func _is_registration_open() -> bool:
 	return connection_state < ConnectionState.LOADING_GAME
+
+
+func _poll_reconnect_deadlines() -> void:
+	if not is_host():
+		return
+	var now_msec := Time.get_ticks_msec()
+	for peer_id in _late_registration_deadlines.keys():
+		if now_msec < int(_late_registration_deadlines[peer_id]):
+			continue
+		_late_registration_deadlines.erase(peer_id)
+		_reject_late_connected_peer(int(peer_id))
+	for reconnect_token in _disconnected_reconnect_slots.keys():
+		var slot := _disconnected_reconnect_slots[reconnect_token] as Dictionary
+		if now_msec >= int(slot.get("expires_msec", 0)):
+			_disconnected_reconnect_slots.erase(reconnect_token)
+	for peer_id in _pending_reconnect_loads.keys():
+		var pending := _pending_reconnect_loads[peer_id] as Dictionary
+		if now_msec < int(pending.get("deadline_msec", 0)):
+			continue
+		pending["deadline_msec"] = 0x7FFFFFFFFFFFFFFF
+		_pending_reconnect_loads[peer_id] = pending
+		if multiplayer.has_multiplayer_peer():
+			_rpc_join_rejected.rpc_id(
+				int(peer_id),
+				"断线重连加载超时，请重新连接。"
+			)
+		call_deferred("_disconnect_incompatible_peer", int(peer_id))
+
+
+func _clear_reconnect_session_state() -> void:
+	_peer_reconnect_tokens.clear()
+	_disconnected_reconnect_slots.clear()
+	_pending_reconnect_loads.clear()
+	_late_registration_deadlines.clear()
 
 
 func _disconnect_incompatible_peer(peer_id: int) -> void:
@@ -910,10 +1116,92 @@ func _rpc_host_game_ready(session_id: int = 0) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_report_game_loaded(session_id: int) -> void:
-	if not is_host() or connection_state != ConnectionState.LOADING_GAME:
+	if not is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
+	if (
+		connection_state == ConnectionState.IN_GAME
+		and session_id == loading_session_id
+		and _pending_reconnect_loads.has(sender_id)
+	):
+		_complete_peer_reconnect(sender_id)
+		return
+	if connection_state != ConnectionState.LOADING_GAME:
+		return
 	_mark_peer_game_loaded(sender_id, session_id)
+
+
+func _complete_peer_reconnect(new_peer_id: int) -> void:
+	var pending := _pending_reconnect_loads.get(new_peer_id, {}) as Dictionary
+	if pending.is_empty():
+		return
+	var old_peer_id := int(pending.get("old_peer_id", 0))
+	if old_peer_id <= 0 or not connected_players.has(new_peer_id):
+		return
+	_pending_reconnect_loads.erase(new_peer_id)
+	var player_name := str(connected_players[new_peer_id])
+	var character_id := get_player_character_id(new_peer_id)
+	player_reconnected.emit(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id
+	)
+	var host_id := get_host_peer_id()
+	for peer_id_variant in connected_players:
+		var peer_id := int(peer_id_variant)
+		if (
+			peer_id <= 0
+			or peer_id == host_id
+			or peer_id == new_peer_id
+			or not is_peer_send_ready(peer_id)
+		):
+			continue
+		_rpc_player_reconnected.rpc_id(
+			peer_id,
+			old_peer_id,
+			new_peer_id,
+			player_name,
+			String(character_id)
+		)
+	_broadcast_player_list_to_clients()
+	_rpc_host_game_ready.rpc_id(new_peer_id, loading_session_id)
+	player_list_changed.emit()
+	_debug_log(
+		"NetManager: 玩家重连完成, old_peer=%d new_peer=%d name=%s"
+		% [old_peer_id, new_peer_id, player_name]
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_player_reconnected(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: String
+) -> void:
+	if (
+		is_host()
+		or multiplayer.get_remote_sender_id() != get_host_peer_id()
+		or old_peer_id <= 0
+		or new_peer_id <= 0
+		or new_peer_id == get_host_peer_id()
+	):
+		return
+	connected_players.erase(old_peer_id)
+	connected_player_characters.erase(old_peer_id)
+	confirmed_character_peers.erase(old_peer_id)
+	connected_players[new_peer_id] = _sanitize_player_name(player_name)
+	var resolved_character_id := _sanitize_character_id(StringName(character_id))
+	connected_player_characters[new_peer_id] = resolved_character_id
+	confirmed_character_peers[new_peer_id] = true
+	player_reconnected.emit(
+		old_peer_id,
+		new_peer_id,
+		connected_players[new_peer_id],
+		resolved_character_id
+	)
+	player_list_changed.emit()
 
 
 @rpc("authority", "call_remote", "reliable", 0)

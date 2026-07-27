@@ -323,6 +323,7 @@ var _player_health_revisions: Dictionary = {}
 # Highest revision whose health/dead/invincibility state was applied, whether
 # it arrived through a realtime snapshot or a reliable life event.
 var _player_applied_health_revisions: Dictionary = {}
+var _disconnected_player_reconnect_states: Dictionary[int, Dictionary] = {}
 var _dead_player_revive_times: Dictionary = {}
 var _dead_player_revive_last_seconds: Dictionary = {}
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
@@ -506,6 +507,8 @@ func _ready() -> void:
 		net_manager.connection_state_changed.connect(_on_connection_state_changed)
 	if not net_manager.player_left.is_connected(_on_net_player_left):
 		net_manager.player_left.connect(_on_net_player_left)
+	if not net_manager.player_reconnected.is_connected(_on_net_player_reconnected):
+		net_manager.player_reconnected.connect(_on_net_player_reconnected)
 	if not public_room_keepalive_request.request_completed.is_connected(_on_public_room_keepalive_completed):
 		public_room_keepalive_request.request_completed.connect(_on_public_room_keepalive_completed)
 	if net_manager.is_host():
@@ -531,6 +534,11 @@ func _exit_tree() -> void:
 		net_manager.connection_state_changed.disconnect(_on_connection_state_changed)
 	if net_manager != null and net_manager.player_left.is_connected(_on_net_player_left):
 		net_manager.player_left.disconnect(_on_net_player_left)
+	if (
+		net_manager != null
+		and net_manager.player_reconnected.is_connected(_on_net_player_reconnected)
+	):
+		net_manager.player_reconnected.disconnect(_on_net_player_reconnected)
 	if game != null and game.return_to_lobby_requested.is_connected(_on_game_return_to_lobby_requested):
 		game.return_to_lobby_requested.disconnect(_on_game_return_to_lobby_requested)
 	if public_room_keepalive_request != null:
@@ -12555,9 +12563,156 @@ func _on_connection_state_changed(new_state: int) -> void:
 func _on_net_player_left(peer_id: int) -> void:
 	if peer_id <= 0:
 		return
+	_capture_disconnected_player_reconnect_state(peer_id)
 	_clear_peer_network_state(peer_id)
 	if game != null and game.has_method("remove_multiplayer_player"):
 		game.call("remove_multiplayer_player", peer_id)
+
+
+func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
+	if game == null or peer_id <= 0:
+		return
+	var player_state: SnapshotManager.PlayerState = null
+	for state in game.collect_player_snapshot_states():
+		if state != null and state.peer_id == peer_id:
+			player_state = state
+			break
+	var spawn_slot_index := 0
+	var wave_death_count := 0
+	if game.supports_tower_defense():
+		var spawn_slots := game.get("multiplayer_spawn_slot_indices") as Dictionary
+		spawn_slot_index = int(spawn_slots.get(peer_id, 0))
+		var wave_death_counts := game.get("player_wave_death_counts") as Dictionary
+		wave_death_count = int(wave_death_counts.get(peer_id, 0))
+	var owned_plant_net_ids: Array[int] = []
+	if game.supports_tower_defense():
+		for plant_snapshot in game.get_multiplayer_plant_snapshots():
+			if int(plant_snapshot.get("owner_peer_id", 0)) == peer_id:
+				owned_plant_net_ids.append(int(plant_snapshot.get("net_id", 0)))
+	_disconnected_player_reconnect_states[peer_id] = {
+		"state": player_state,
+		"spawn_slot_index": spawn_slot_index,
+		"wave_death_count": wave_death_count,
+		"owned_plant_net_ids": owned_plant_net_ids,
+		"revive_at": float(_dead_player_revive_times.get(peer_id, -1.0)),
+		"revive_last_seconds": int(
+			_dead_player_revive_last_seconds.get(peer_id, -1)
+		),
+		"luoxi_offer_state": (
+			(_luoxi_offer_states_by_peer.get(peer_id, {}) as Dictionary).duplicate(true)
+		),
+		"luoxi_offer_revision": int(
+			_luoxi_offer_revision_counters.get(peer_id, -1)
+		),
+		"health_revision": int(_player_health_revisions.get(peer_id, 0)),
+		"applied_health_revision": int(
+			_player_applied_health_revisions.get(peer_id, 0)
+		),
+	}
+
+
+func _on_net_player_reconnected(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName
+) -> void:
+	if (
+		game == null
+		or old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+	):
+		return
+	var reconnect_state := (
+		_disconnected_player_reconnect_states.get(old_peer_id, {}) as Dictionary
+	)
+	if run_state.has_multiplayer_peer_state(old_peer_id):
+		if not run_state.remap_multiplayer_peer_state(old_peer_id, new_peer_id):
+			push_error(
+				"MpGame: 无法迁移重连玩家 %d -> %d 的背包状态。"
+				% [old_peer_id, new_peer_id]
+			)
+			return
+	else:
+		run_state.ensure_multiplayer_peer_state(new_peer_id)
+	var player_state := reconnect_state.get("state") as SnapshotManager.PlayerState
+	if player_state != null:
+		player_state.peer_id = new_peer_id
+	var player_node := game.restore_multiplayer_player(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id,
+		player_state,
+		int(reconnect_state.get("spawn_slot_index", 0)),
+		reconnect_state
+	)
+	if player_node == null or not is_instance_valid(player_node):
+		push_error(
+			"MpGame: 无法恢复重连玩家 %d -> %d 的运行时节点。"
+			% [old_peer_id, new_peer_id]
+		)
+		return
+	_player_health_revisions[new_peer_id] = int(
+		reconnect_state.get("health_revision", 0)
+	)
+	_player_applied_health_revisions[new_peer_id] = int(
+		reconnect_state.get("applied_health_revision", 0)
+	)
+	var revive_at := float(reconnect_state.get("revive_at", -1.0))
+	if net_manager.is_host() and revive_at >= 0.0:
+		_dead_player_revive_times[new_peer_id] = revive_at
+		_dead_player_revive_last_seconds[new_peer_id] = int(
+			reconnect_state.get("revive_last_seconds", -1)
+		)
+	var luoxi_offer_state := (
+		reconnect_state.get("luoxi_offer_state", {}) as Dictionary
+	)
+	if not luoxi_offer_state.is_empty():
+		_luoxi_offer_states_by_peer[new_peer_id] = luoxi_offer_state.duplicate(true)
+	var luoxi_offer_revision := int(
+		reconnect_state.get("luoxi_offer_revision", -1)
+	)
+	if luoxi_offer_revision >= 0:
+		_luoxi_offer_revision_counters[new_peer_id] = luoxi_offer_revision
+	if player_state != null:
+		player_node.apply_multiplayer_snapshot_motion(
+			player_state.position,
+			player_state.velocity,
+			player_state.facing,
+			player_state.anim_state
+		)
+		_apply_player_primary_cooldown_ratio(
+			player_node,
+			player_state.primary_cooldown_ratio
+		)
+		_apply_player_realtime_snapshot(player_node, player_state)
+		if net_manager.is_host():
+			_accepted_player_state_positions[new_peer_id] = player_state.position
+			_accepted_player_state_times[new_peer_id] = _get_net_time()
+			_host_latest_client_player_snapshot_states[new_peer_id] = {
+				"position": player_state.position,
+				"velocity": player_state.velocity,
+				"facing": player_state.facing,
+				"anim_state": player_state.anim_state,
+			}
+		else:
+			var interpolator := _create_player_interpolator()
+			interpolator.push_snapshot(
+				_get_net_time(),
+				player_state.position,
+				player_state.velocity,
+				player_state.facing,
+				player_state.anim_state
+			)
+			player_visual_interpolators[new_peer_id] = interpolator
+	var owned_plant_ids := reconnect_state.get("owned_plant_net_ids", []) as Array
+	for plant_net_id_variant in owned_plant_ids:
+		var plant := game.get_multiplayer_plant_node(int(plant_net_id_variant))
+		if plant != null and is_instance_valid(plant):
+			plant.owner_player = player_node
+	_disconnected_player_reconnect_states.erase(old_peer_id)
 
 
 func _clear_peer_network_state(peer_id: int) -> void:
@@ -12661,6 +12816,7 @@ func _clear_projectile_records_for_peer(peer_id: int) -> void:
 
 func _return_to_lobby() -> void:
 	snapshot_mgr.reset_delta_cache()
+	_disconnected_player_reconnect_states.clear()
 	_player_snapshot_cohort_peers.clear()
 	_enemy_snapshot_cohort_peers.clear()
 	_player_snapshot_encode_count = 0

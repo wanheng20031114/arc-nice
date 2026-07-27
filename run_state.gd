@@ -655,6 +655,35 @@ func has_multiplayer_peer_state(peer_id: int) -> bool:
 	)
 
 
+func remap_multiplayer_peer_state(old_peer_id: int, new_peer_id: int) -> bool:
+	if (
+		old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+		or not has_multiplayer_peer_state(old_peer_id)
+		or has_multiplayer_peer_state(new_peer_id)
+	):
+		return false
+	multiplayer_inventories[new_peer_id] = multiplayer_inventories[old_peer_id]
+	multiplayer_inventory_stack_counts[new_peer_id] = (
+		multiplayer_inventory_stack_counts[old_peer_id]
+	)
+	multiplayer_inventory_revisions[new_peer_id] = (
+		multiplayer_inventory_revisions[old_peer_id]
+	)
+	if multiplayer_upgrade_levels.has(old_peer_id):
+		multiplayer_upgrade_levels[new_peer_id] = multiplayer_upgrade_levels[old_peer_id]
+	multiplayer_inventories.erase(old_peer_id)
+	multiplayer_inventory_stack_counts.erase(old_peer_id)
+	multiplayer_inventory_revisions.erase(old_peer_id)
+	multiplayer_upgrade_levels.erase(old_peer_id)
+	if active_multiplayer_peer_id == old_peer_id:
+		active_multiplayer_peer_id = new_peer_id
+	inventory_changed.emit()
+	upgrade_changed.emit()
+	return true
+
+
 func get_inventory_slot_state(slot_index: int) -> Dictionary:
 	_ensure_local_inventory_shape()
 	return _make_inventory_slot_state(

@@ -7,7 +7,8 @@ func _rpc_register_player(
 	player_name: String,
 	character_id: String = "weishidaier",
 	character_confirmed: bool = true,
-	protocol_version: int = -1
+	protocol_version: int = -1,
+	reconnect_token: String = ""
 ) -> void:
 	pass
 
@@ -52,4 +53,14 @@ func _rpc_report_game_loaded(session_id: int) -> void:
 
 @rpc("authority", "call_remote", "reliable", 0)
 func _rpc_game_load_progress(session_id: int, ready_count: int, total_count: int) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func _rpc_player_reconnected(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: String
+) -> void:
 	pass

@@ -5081,6 +5081,98 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	_remove_fate_eligible_peer(peer_id)
 
 
+func restore_multiplayer_player(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	state: SnapshotManager.PlayerState,
+	spawn_slot_index: int,
+	reconnect_state: Dictionary = {}
+) -> Player:
+	if (
+		new_peer_id <= 0
+		or peer_players.has(new_peer_id)
+		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
+	):
+		return null
+	multiplayer_player_names.erase(old_peer_id)
+	multiplayer_player_character_ids.erase(old_peer_id)
+	multiplayer_spawn_slot_indices.erase(old_peer_id)
+	multiplayer_player_names[new_peer_id] = player_name
+	multiplayer_player_character_ids[new_peer_id] = character_id
+	multiplayer_spawn_slot_indices[new_peer_id] = maxi(spawn_slot_index, 0)
+	if luoxi_collectible_claim_counts.has(old_peer_id):
+		luoxi_collectible_claim_counts[new_peer_id] = (
+			luoxi_collectible_claim_counts[old_peer_id]
+		)
+		luoxi_collectible_claim_counts.erase(old_peer_id)
+	var wave_death_count := int(reconnect_state.get("wave_death_count", 0))
+	if wave_death_count > 0:
+		player_wave_death_counts[new_peer_id] = wave_death_count
+	var player_instance := _instantiate_player_character(character_id)
+	if player_instance == null:
+		return null
+	player_instance.name = "Player_%d" % new_peer_id
+	player_instance.position = (
+		state.position
+		if state != null
+		else player_spawn.position + _get_multiplayer_spawn_offset(spawn_slot_index)
+	)
+	add_child(player_instance)
+	var accepts_local_input := new_peer_id == multiplayer_local_peer_id
+	var predicts_local_movement := (
+		runtime_mode == RuntimeMode.CLIENT_VIEW
+		and new_peer_id == multiplayer_local_peer_id
+	)
+	player_instance.configure_multiplayer_control(
+		new_peer_id,
+		accepts_local_input,
+		player_name,
+		predicts_local_movement,
+		new_peer_id == multiplayer_local_peer_id
+	)
+	player_instance.set_multiplayer_visual_smoothing_enabled(
+		runtime_mode == RuntimeMode.HOST_AUTHORITY
+		and new_peer_id != multiplayer_local_peer_id
+	)
+	player_instance.physics_interpolation_mode = (
+		Node.PHYSICS_INTERPOLATION_MODE_ON
+		if accepts_local_input or predicts_local_movement
+		else Node.PHYSICS_INTERPOLATION_MODE_OFF
+	)
+	player_instance.reset_physics_interpolation()
+	if (
+		(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
+		or (runtime_mode == RuntimeMode.HOST_AUTHORITY and new_peer_id != multiplayer_local_peer_id)
+	):
+		player_instance.set_physics_process(false)
+	if not player_instance.died.is_connected(
+		_on_multiplayer_player_died.bind(new_peer_id)
+	):
+		player_instance.died.connect(_on_multiplayer_player_died.bind(new_peer_id))
+	if not player_instance.revived.is_connected(_on_player_revived.bind(new_peer_id)):
+		player_instance.revived.connect(_on_player_revived.bind(new_peer_id))
+	peer_players[new_peer_id] = player_instance
+	if research_coordinator != null:
+		if research_coordinator.player_technology_levels.has(old_peer_id):
+			if not research_coordinator.remap_player_peer_state(
+				old_peer_id,
+				new_peer_id
+			):
+				push_error(
+					"GameTowerDefense: 无法迁移重连玩家 %d -> %d 的个人科研状态。"
+					% [old_peer_id, new_peer_id]
+				)
+		research_coordinator.register_player(player_instance)
+	if production_coordinator != null:
+		production_coordinator.activate_personal_output_peer(new_peer_id)
+	if fate_coordinator != null:
+		fate_coordinator.apply_player_modifiers_to_all()
+	_request_enemy_retarget_after_objective_change()
+	return player_instance
+
+
 func get_player_for_peer(peer_id: int) -> Player:
 	return peer_players.get(peer_id) as Player
 

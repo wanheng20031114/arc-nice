@@ -2,14 +2,22 @@ param(
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 40230,
     [int]$TimeoutSeconds = 130,
-    [ValidateSet("full", "leave", "wave", "tower_defense")]
+    [ValidateSet("full", "leave", "wave", "tower_defense", "reconnect")]
     [string]$Scenario = "full",
     [ValidateSet("standard", "tower_defense")]
     [string]$GameMode = "standard",
+    [ValidateRange(2, 8)]
+    [int]$PlayerCount = 4,
     [switch]$GodotVerbose
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Scenario -eq "reconnect" -and $PlayerCount -ne 4) {
+    throw "The reconnect probe currently requires -PlayerCount 4."
+}
+
+$reconnectToken = "44444444444444444444444444444444"
 
 $projectPath = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $relayProjectPath = Join-Path $projectPath "relay_servers\relay_godot_project"
@@ -62,7 +70,7 @@ try {
         "--probe-host=127.0.0.1",
         "--probe-port=$Port",
         "--probe-relay_host_peer_id=0",
-        "--probe-expected_players=4",
+        "--probe-expected_players=$PlayerCount",
         "--probe-timeout_seconds=20",
         "--probe-run_seconds=3",
         "--probe-linger_seconds=0",
@@ -114,7 +122,7 @@ try {
         "--probe-host=127.0.0.1",
         "--probe-port=$Port",
         "--probe-relay_host_peer_id=$hostPeerId",
-        "--probe-expected_players=4",
+        "--probe-expected_players=$PlayerCount",
         "--probe-timeout_seconds=20",
         "--probe-run_seconds=2",
         "--probe-linger_seconds=6",
@@ -122,11 +130,15 @@ try {
         "--probe-game_mode=$GameMode"
     )
 
-    foreach ($clientSpec in @(
-        @{ Name = "client2"; DelayMs = 0; Events = "True" },
-        @{ Name = "client3"; DelayMs = 150; Events = "False" },
-        @{ Name = "client4"; DelayMs = 150; Events = "False" }
-    )) {
+    $clientSpecs = @()
+    for ($clientIndex = 2; $clientIndex -le $PlayerCount; $clientIndex++) {
+        $clientSpecs += @{
+            Name = "client$clientIndex"
+            DelayMs = if ($clientIndex -eq 2) { 0 } else { 150 }
+            Events = if ($clientIndex -eq 2) { "True" } else { "False" }
+        }
+    }
+    foreach ($clientSpec in $clientSpecs) {
         if ($clientSpec.DelayMs -gt 0) {
             Start-Sleep -Milliseconds $clientSpec.DelayMs
         }
@@ -137,6 +149,12 @@ try {
             "--probe-name=$clientName",
             "--probe-events=$($clientSpec.Events)"
         )
+        if ($Scenario -eq "reconnect" -and $clientName -eq "client4") {
+            $clientArgs += @(
+                "--probe-reconnect_token=$reconnectToken",
+                "--probe-reconnect_attempt=False"
+            )
+        }
         Set-Content -Path (Join-Path $logRoot "$clientName.args.txt") -Encoding UTF8 -Value ($clientArgs -join "`n")
         $clientProcess = Start-Process `
             -FilePath $GodotExe `
@@ -151,6 +169,53 @@ try {
             Process = $clientProcess
             Stdout = $clientStdout
             Stderr = $clientStderr
+        }
+    }
+
+    if ($Scenario -eq "reconnect") {
+        $reconnectReadyDeadline = (Get-Date).AddSeconds(90)
+        $reconnectSlotReady = $false
+        while ((Get-Date) -lt $reconnectReadyDeadline) {
+            $hostText = ""
+            if (Test-Path $hostStdout) {
+                $hostText = Get-Content $hostStdout -Raw
+            }
+            if ($hostText -match "LAN_PROBE_EVENT reconnect_slot_open old_peer=\d+") {
+                $reconnectSlotReady = $true
+                break
+            }
+            if ($hostProcess.HasExited) {
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not $reconnectSlotReady) {
+            throw "Host did not open a reconnect slot. logRoot=$logRoot"
+        }
+
+        $rejoinName = "client4_rejoin"
+        $rejoinStdout = Join-Path $logRoot "$rejoinName.out.log"
+        $rejoinStderr = Join-Path $logRoot "$rejoinName.err.log"
+        $rejoinArgs = $clientBaseArgs + @(
+            "--probe-name=client4",
+            "--probe-events=False",
+            "--probe-reconnect_token=$reconnectToken",
+            "--probe-reconnect_attempt=True"
+        )
+        Set-Content -Path (Join-Path $logRoot "$rejoinName.args.txt") -Encoding UTF8 -Value ($rejoinArgs -join "`n")
+        $rejoinProcess = Start-Process `
+            -FilePath $GodotExe `
+            -ArgumentList $rejoinArgs `
+            -WorkingDirectory $projectPath `
+            -RedirectStandardOutput $rejoinStdout `
+            -RedirectStandardError $rejoinStderr `
+            -WindowStyle Hidden `
+            -PassThru
+        $entries += [pscustomobject]@{
+            Name = $rejoinName
+            Process = $rejoinProcess
+            Stdout = $rejoinStdout
+            Stderr = $rejoinStderr
         }
     }
 
@@ -225,7 +290,7 @@ try {
         exit 1
     }
 
-    Write-Host "MULTIPLAYER_RELAY_PROBE_OK scenario=$Scenario gameMode=$GameMode port=$Port hostPeerId=$hostPeerId logRoot=$logRoot"
+    Write-Host "MULTIPLAYER_RELAY_PROBE_OK scenario=$Scenario gameMode=$GameMode players=$PlayerCount port=$Port hostPeerId=$hostPeerId logRoot=$logRoot"
     exit 0
 }
 finally {

@@ -113,6 +113,23 @@ func register_player(player: Player) -> void:
 	)
 
 
+func remap_player_peer_state(old_peer_id: int, new_peer_id: int) -> bool:
+	if (
+		old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+		or not player_technology_levels.has(old_peer_id)
+		or player_technology_levels.has(new_peer_id)
+	):
+		return false
+	player_technology_levels[new_peer_id] = player_technology_levels[old_peer_id]
+	player_technology_levels.erase(old_peer_id)
+	registered_players.erase(old_peer_id)
+	research_revision += 1
+	research_state_changed.emit()
+	return true
+
+
 func get_global_research_configs() -> Array[GlobalResearchConfig]:
 	return GlobalResearchRegistry.get_all_configs()
 

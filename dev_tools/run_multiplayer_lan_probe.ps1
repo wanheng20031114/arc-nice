@@ -1,11 +1,13 @@
 param(
-    [string]$GodotExe = "C:\Users\wh\Downloads\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe",
+    [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 29270,
     [int]$TimeoutSeconds = 65,
     [ValidateSet("full", "leave", "wave", "boss", "tower_defense", "death_revive")]
     [string]$Scenario = "full",
     [ValidateSet("standard", "tower_defense")]
     [string]$GameMode = "standard",
+    [ValidateRange(2, 8)]
+    [int]$PlayerCount = 4,
     [switch]$GodotVerbose
 )
 
@@ -46,7 +48,7 @@ function Start-ProbePeer {
         "--probe-name=$Name",
         "--probe-host=127.0.0.1",
         "--probe-port=$Port",
-        "--probe-expected_players=4",
+        "--probe-expected_players=$PlayerCount",
         "--probe-timeout_seconds=12",
         "--probe-run_seconds=$RunSeconds",
         "--probe-linger_seconds=$LingerSeconds",
@@ -75,9 +77,16 @@ function Start-ProbePeer {
 
 try {
     $processes += Start-ProbePeer -Role "host" -Name "host" -RunSeconds 3.0
-    $processes += Start-ProbePeer -Role "client" -Name "client2" -StartDelayMs 350 -RunSeconds 2.0 -LingerSeconds 6.0 -Events ($Scenario -eq "full")
-    $processes += Start-ProbePeer -Role "client" -Name "client3" -StartDelayMs 150 -RunSeconds 2.0 -LingerSeconds 6.0
-    $processes += Start-ProbePeer -Role "client" -Name "client4" -StartDelayMs 150 -RunSeconds 2.0 -LingerSeconds 6.0
+    for ($clientIndex = 2; $clientIndex -le $PlayerCount; $clientIndex++) {
+        $delayMs = if ($clientIndex -eq 2) { 350 } else { 150 }
+        $processes += Start-ProbePeer `
+            -Role "client" `
+            -Name "client$clientIndex" `
+            -StartDelayMs $delayMs `
+            -RunSeconds 2.0 `
+            -LingerSeconds 6.0 `
+            -Events ($Scenario -eq "full" -and $clientIndex -eq 2)
+    }
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
@@ -128,7 +137,7 @@ try {
         exit 1
     }
 
-    Write-Host "MULTIPLAYER_LAN_PROBE_OK scenario=$Scenario gameMode=$GameMode logRoot=$logRoot"
+    Write-Host "MULTIPLAYER_LAN_PROBE_OK scenario=$Scenario gameMode=$GameMode players=$PlayerCount logRoot=$logRoot"
     exit 0
 }
 finally {

@@ -103,6 +103,7 @@ func _run() -> void:
 		"_rpc_host_game_ready",
 		"_rpc_report_game_loaded",
 		"_rpc_game_load_progress",
+		"_rpc_player_reconnected",
 	]:
 		_expect(
 			main_net_manager_rpcs.has(required_method),
@@ -112,8 +113,11 @@ func _run() -> void:
 		_expect(
 			String(main_net_manager_rpcs["_rpc_register_player"]).contains(
 				"protocol_version:int=-1"
+			)
+			and String(main_net_manager_rpcs["_rpc_register_player"]).contains(
+				"reconnect_token:String=\"\""
 			),
-			"Player registration must carry a protocol version and reject legacy omitted values."
+			"Player registration must carry protocol and private reconnect identity fields."
 		)
 	if main_net_manager_rpcs.has("_rpc_sync_player_list"):
 		_expect(
@@ -177,7 +181,10 @@ func _test_registration_protocol_handshake_source() -> void:
 		return
 	var registration_call_regex := RegEx.new()
 	var compile_error := registration_call_regex.compile(
-		"(?ms)_rpc_register_player\\.rpc_id\\s*\\(.*?NetConstants\\.PROTOCOL_VERSION\\s*\\)"
+		(
+			"(?ms)_rpc_register_player\\.rpc_id\\s*\\(.*?"
+			+ "NetConstants\\.PROTOCOL_VERSION\\s*,\\s*local_reconnect_token\\s*\\)"
+		)
 	)
 	if compile_error != OK:
 		failures.append("Unable to compile registration protocol parser regex.")
@@ -207,8 +214,9 @@ func _test_registration_protocol_handshake_source() -> void:
 	)
 	_expect(
 		compact_source.contains("ifnot_is_registration_open():")
+		and compact_source.contains("and_begin_peer_reconnect(")
 		and compact_source.contains("_rpc_join_rejected.rpc_id("),
-		"Host registration must reject peers after the frozen loading roster begins."
+		"A locked Host must admit only token-matched reconnects and reject every other late registration."
 	)
 	_expect(
 		compact_source.contains(
@@ -220,8 +228,9 @@ func _test_registration_protocol_handshake_source() -> void:
 		compact_source.contains(
 			"ifis_host()andnot_is_registration_open()andpeer_id!=get_host_peer_id():"
 		)
-		and compact_source.contains("call_deferred(\"_reject_late_connected_peer\",peer_id)"),
-		"The Host must reject a newly connected transport peer as soon as loading locks the room."
+		and compact_source.contains("_late_registration_deadlines[peer_id]=(")
+		and compact_source.contains("_reject_late_connected_peer(int(peer_id))"),
+		"A locked Host must give a transport peer only a bounded window to prove its reconnect identity."
 	)
 
 
