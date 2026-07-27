@@ -53,6 +53,15 @@ const FULL_PLAYER_MASK := (
 	| MASK_ANIM_STATE
 	| MASK_PLAYER_META
 )
+## 玩家状态走 unreliable_ordered。位置、速度、朝向和动画若只在变化帧发送，
+## 丢失一次停止/转向帧后，发送端基线已经前进，而接收端会保留旧运动直到关键帧。
+## 因此轻量的运动表现字段每帧绝对发送；体积较大的 meta 仍保留 delta。
+const PLAYER_REALTIME_MOTION_MASK := (
+	MASK_POSITION
+	| MASK_VELOCITY
+	| MASK_FACING
+	| MASK_ANIM_STATE
+)
 const FULL_ENEMY_MASK := (
 	MASK_POSITION
 	| MASK_VELOCITY
@@ -143,14 +152,7 @@ static func encode_player_snapshot(
 	if previous == null:
 		mask = FULL_PLAYER_MASK
 	else:
-		if not current.position.is_equal_approx(previous.position):
-			mask |= MASK_POSITION
-		if not current.velocity.is_equal_approx(previous.velocity):
-			mask |= MASK_VELOCITY
-		if current.facing != previous.facing:
-			mask |= MASK_FACING
-		if current.anim_state != previous.anim_state:
-			mask |= MASK_ANIM_STATE
+		mask = PLAYER_REALTIME_MOTION_MASK
 		if _player_meta_changed(current, previous):
 			mask |= MASK_PLAYER_META
 

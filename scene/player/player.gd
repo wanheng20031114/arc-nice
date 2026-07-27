@@ -111,7 +111,9 @@ const HOMING_TARGET_HALF_ANGLE := PI / 3.0
 const HOMING_QUERY_MAX_RESULTS := 64
 const THUNDER_LOCAL_TARGET_RADIUS := 256.0
 const MIN_SKILL_ACTIVATION_INTERVAL_MSEC := 100
-const MULTIPLAYER_VISUAL_OFFSET_LERP_RATE := 36.0
+## 指数衰减常数。45/s 保留原实现约 67ms 的 60Hz 5% 收敛时间，
+## 同时避免 delta * rate 在 30 FPS 时钳到 1 而退化成单帧跳变。
+const MULTIPLAYER_VISUAL_OFFSET_DECAY_RATE := 45.0
 const MULTIPLAYER_VISUAL_OFFSET_EPSILON := 0.05
 const MULTIPLAYER_VISUAL_SNAP_DISTANCE := 96.0
 const WORLD_COLLISION_MASK := 1
@@ -1578,7 +1580,9 @@ func _update_multiplayer_visual_smoothing(delta: float) -> void:
 		if multiplayer_visual_offset != Vector2.ZERO:
 			_set_multiplayer_visual_offset(Vector2.ZERO)
 		return
-	var blend := clampf(delta * MULTIPLAYER_VISUAL_OFFSET_LERP_RATE, 0.0, 1.0)
+	var blend := 1.0 - exp(
+		-MULTIPLAYER_VISUAL_OFFSET_DECAY_RATE * maxf(delta, 0.0)
+	)
 	_set_multiplayer_visual_offset(multiplayer_visual_offset.lerp(Vector2.ZERO, blend))
 
 

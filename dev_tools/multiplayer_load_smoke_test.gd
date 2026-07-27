@@ -4206,8 +4206,8 @@ func _test_snapshot_round_trip() -> void:
 	moved_player_state.primary_cooldown_ratio = 0.37
 	var moved_player_delta := delta_player_mgr.encode_player_snapshots_for_peer(10, [moved_player_state], false)
 	_expect(
-		moved_player_delta.size() < player_keyframe.size(),
-		"Moved player snapshot must still be smaller than a keyframe."
+		moved_player_delta.size() == player_keyframe.size(),
+		"A player snapshot with changed meta must carry a full-sized payload."
 	)
 	var moved_player_states := delta_player_mgr.decode_player_snapshots_with_baseline(moved_player_delta)
 	_expect(moved_player_states.size() == 1, "Moved player delta must decode through baseline.")
@@ -4230,7 +4230,9 @@ func _test_snapshot_round_trip() -> void:
 		"A different receiver peer must get a player keyframe until it has its own baseline."
 	)
 	var missing_player_baseline_mgr := SnapshotManager.new()
-	var skipped_player_delta := missing_player_baseline_mgr.decode_player_snapshots_with_baseline(moved_player_delta)
+	var skipped_player_delta := missing_player_baseline_mgr.decode_player_snapshots_with_baseline(
+		repeated_player_delta
+	)
 	_expect(skipped_player_delta.is_empty(), "Player delta without receive baseline must be skipped.")
 	var recovered_player_keyframe := missing_player_baseline_mgr.decode_player_snapshots_with_baseline(player_keyframe)
 	_expect(recovered_player_keyframe.size() == 1, "Player keyframe must recover after a skipped delta.")
