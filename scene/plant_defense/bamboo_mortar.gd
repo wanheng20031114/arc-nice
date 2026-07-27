@@ -16,9 +16,9 @@ const SPLIT_LIFECYCLE_MATERIAL := preload(
 const AUDIO_LIMITER := preload(
 	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
 )
-const DEFAULT_ATTACK_DAMAGE := 100
-const OUTER_ATTACK_DAMAGE := 50
-const DEFAULT_ATTACK_RANGE := 192.0
+const DEFAULT_ATTACK_DAMAGE := 140
+const OUTER_ATTACK_DAMAGE := 70
+const DEFAULT_ATTACK_RANGE := 224.0
 const MINIMUM_ATTACK_RANGE := 64.0
 const TARGET_RETRY_INTERVAL_SECONDS := 2.0
 const WINDUP_DURATION_SECONDS := 4.0

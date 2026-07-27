@@ -205,14 +205,24 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and MORTAR_CONFIG.max_health == 2000
 		and MORTAR_CONFIG.physical_defense == 10
 		and MORTAR_CONFIG.magic_defense == 20
-		and MORTAR_CONFIG.attack_damage == 100
+		and MORTAR_CONFIG.attack_damage == 140
 		and is_zero_approx(MORTAR_CONFIG.get_attack_interval())
-		and is_equal_approx(MORTAR_CONFIG.attack_range, 192.0)
+		and is_equal_approx(MORTAR_CONFIG.attack_range, 224.0)
+		and MORTAR_CONFIG.description.contains("4至14格")
+		and MORTAR_CONFIG.description.contains("140点")
+		and MORTAR_CONFIG.description.contains("70点")
+		and mortar.configured_attack_damage == 140
+		and is_equal_approx(mortar.configured_attack_range, 224.0)
+		and BambooMortar.DEFAULT_ATTACK_DAMAGE == 140
+		and BambooMortar.OUTER_ATTACK_DAMAGE == 70
+		and is_equal_approx(BambooMortar.DEFAULT_ATTACK_RANGE, 224.0)
+		and BambooMortarShell.DEFAULT_INNER_DAMAGE == 140
+		and BambooMortarShell.DEFAULT_OUTER_DAMAGE == 70
 		and MORTAR_CONFIG.footprint_size == Vector2i(2, 2)
 		and MORTAR_CONFIG.placement_surface
 		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY
 		and MORTAR_CONFIG.supports_multiplayer,
-		"迫击炮数值必须为2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、192范围、草地2×2且支持多人。"
+		"迫击炮数值必须为2000生命、10物防、20法防、140/70伤害、无额外攻击间隔、224范围、草地2×2且支持多人。"
 	)
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")
@@ -888,15 +898,15 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 	var too_close := _spawn_enemy(Vector2(64.0, 0.0))
 	var nearest_valid := _spawn_enemy(Vector2(64.25, 0.0))
 	var farther_valid := _spawn_enemy(Vector2(120.0, 0.0))
-	var outer_edge := _spawn_enemy(Vector2(192.0, 0.0))
-	var outside := _spawn_enemy(Vector2(192.25, 0.0))
+	var outer_edge := _spawn_enemy(Vector2(224.0, 0.0))
+	var outside := _spawn_enemy(Vector2(224.25, 0.0))
 	runtime.candidates.assign(enemies)
 	var selected := mortar.call(
 		"_select_nearest_target_in_ring"
 	) as Enemy
 	_expect(
 		selected == nearest_valid,
-		"索敌必须排除64像素边界并选择(64,192]内最近敌人。"
+		"索敌必须排除64像素边界并选择(64,224]内最近敌人。"
 	)
 	nearest_valid.is_dead = true
 	selected = mortar.call("_select_nearest_target_in_ring") as Enemy
@@ -912,7 +922,7 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 		mortar.last_valid_target_position == Vector2(100.0, 0.0),
 		"有效目标的位置必须按0.5秒采样更新。"
 	)
-	farther_valid.global_position = Vector2(200.0, 0.0)
+	farther_valid.global_position = Vector2(225.0, 0.0)
 	mortar.call("_update_last_valid_target_position")
 	farther_valid.is_dead = true
 	mortar.call("_update_last_valid_target_position")
@@ -935,8 +945,8 @@ func _test_target_ring_and_tracking(mortar: BambooMortar) -> void:
 		too_close != null
 		and outer_edge != null
 		and outside != null
-		and is_equal_approx(runtime.last_query_radius, 192.0),
-		"边界样本与192像素共享索引查询必须完整建立。"
+		and is_equal_approx(runtime.last_query_radius, 224.0),
+		"边界样本与224像素共享索引查询必须完整建立。"
 	)
 	var saved_candidates: Array[Enemy] = []
 	saved_candidates.assign(runtime.candidates)
@@ -1128,8 +1138,8 @@ func _test_shell_duration_and_late_join(
 		short_shell.setup(
 			start,
 			short_landing,
-			100,
-			50,
+			BambooMortarShell.DEFAULT_INNER_DAMAGE,
+			BambooMortarShell.DEFAULT_OUTER_DAMAGE,
 			false,
 			0,
 			0.0
@@ -1172,8 +1182,8 @@ func _test_shell_duration_and_late_join(
 		far_shell.setup(
 			start,
 			far_landing,
-			100,
-			50,
+			BambooMortarShell.DEFAULT_INNER_DAMAGE,
+			BambooMortarShell.DEFAULT_OUTER_DAMAGE,
 			false,
 			0,
 			0.0
@@ -1207,8 +1217,8 @@ func _test_shell_duration_and_late_join(
 		late_shell.setup(
 			start,
 			late_landing,
-			100,
-			50,
+			BambooMortarShell.DEFAULT_INNER_DAMAGE,
+			BambooMortarShell.DEFAULT_OUTER_DAMAGE,
 			false,
 			0,
 			late_elapsed
@@ -1308,7 +1318,7 @@ func _test_explosion_damage_boundaries() -> void:
 	_expect(shell != null, "爆炸边界测试必须能从共享对象池租用炮弹。")
 	if shell == null:
 		return
-	shell.setup(Vector2.ZERO, Vector2.ZERO, 100, 50, true, 9001, 0.0)
+	shell.setup(Vector2.ZERO, Vector2.ZERO, 140, 70, true, 9001, 0.0)
 	shell.call("_impact")
 	_expect(
 		runtime.query_count == queries_before + 1,
@@ -1327,12 +1337,12 @@ func _test_explosion_damage_boundaries() -> void:
 			"迫击炮所有爆炸伤害必须标记为物理伤害。"
 		)
 	_expect(
-		damage_by_enemy.get(inner_edge.get_instance_id(), 0) == 100
-		and damage_by_enemy.get(outer_start.get_instance_id(), 0) == 50
-		and damage_by_enemy.get(outer_edge.get_instance_id(), 0) == 50
+		damage_by_enemy.get(inner_edge.get_instance_id(), 0) == 140
+		and damage_by_enemy.get(outer_start.get_instance_id(), 0) == 70
+		and damage_by_enemy.get(outer_edge.get_instance_id(), 0) == 70
 		and not damage_by_enemy.has(outside.get_instance_id())
 		and damage_by_enemy.size() == 3,
-		"0至16像素必须造成100伤害，(16,32]造成50伤害，32外不得受伤。"
+		"0至16像素必须造成140伤害，(16,32]造成70伤害，32外不得受伤。"
 	)
 	_finish_shell_effect(shell)
 	await physics_frame
@@ -1368,23 +1378,23 @@ func _test_physical_defense_settlement() -> void:
 		shell.setup(
 			Vector2.ZERO,
 			Vector2.ZERO,
-			100,
-			50,
+			140,
+			70,
 			true,
 			9100,
 			0.0
 		)
 		shell.call("_impact")
 	_expect(
-		armored.current_health == ARMORED_ENEMY_CONFIG.max_health - 97
-		and armored.last_damage_taken == 97
+		armored.current_health == ARMORED_ENEMY_CONFIG.max_health - 137
+		and armored.last_damage_taken == 137
 		and runtime.damage_records.size() == 1
 		and int(
 			runtime.damage_records[0].get("damage_type", -1)
 			if not runtime.damage_records.is_empty()
 			else -1
 		) == EnemyConfig.DamageType.PHYSICAL,
-		"100点中心物理伤害命中3点物防敌人时必须且只能扣除97点生命。"
+		"140点中心物理伤害命中3点物防敌人时必须且只能扣除137点生命。"
 	)
 	runtime.apply_real_damage = false
 	if shell != null:
@@ -1571,7 +1581,7 @@ func _test_pool_reuse() -> void:
 	if first == null:
 		return
 	var first_id := first.get_instance_id()
-	first.setup(Vector2.ZERO, Vector2(80.0, 0.0), 100, 50, false, 0, 0.0)
+	first.setup(Vector2.ZERO, Vector2(80.0, 0.0), 140, 70, false, 0, 0.0)
 	first.call("_impact")
 	_finish_shell_effect(first)
 	await physics_frame
@@ -1581,12 +1591,12 @@ func _test_pool_reuse() -> void:
 		second != null
 		and second.get_instance_id() == first_id
 		and not second.get("_has_impacted")
-		and second.inner_damage == 100
-		and second.outer_damage == 50,
+		and second.inner_damage == 140
+		and second.outer_damage == 70,
 		"炮弹租约必须复用同一实例并完整复位命中、伤害和动画状态。"
 	)
 	if second != null:
-		second.setup(Vector2.ZERO, Vector2(80.0, 0.0), 100, 50, false, 0, 0.0)
+		second.setup(Vector2.ZERO, Vector2(80.0, 0.0), 140, 70, false, 0, 0.0)
 		second.call("_impact")
 		_finish_shell_effect(second)
 	await physics_frame

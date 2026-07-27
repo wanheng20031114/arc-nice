@@ -29,8 +29,8 @@ const INNER_RADIUS := 16.0
 const OUTER_RADIUS := 32.0
 const INNER_RADIUS_SQUARED := INNER_RADIUS * INNER_RADIUS
 const OUTER_RADIUS_SQUARED := OUTER_RADIUS * OUTER_RADIUS
-const DEFAULT_INNER_DAMAGE := 100
-const DEFAULT_OUTER_DAMAGE := 50
+const DEFAULT_INNER_DAMAGE := 140
+const DEFAULT_OUTER_DAMAGE := 70
 
 @onready var visual: AnimatedSprite2D = $Visual
 @onready var projectile_halo: Sprite2D = $Visual/ProjectileHalo
