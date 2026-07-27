@@ -1406,6 +1406,29 @@ func _test_projectile_time_compensation() -> void:
 			"Client projectile visuals must reduce remaining lifetime by network age."
 		)
 		projectile.free()
+	var expired_projectile_id := int(mp_game.call("_encode_projectile_id", 2, 2))
+	mp_game.call(
+		"_spawn_network_projectile",
+		expired_projectile_id,
+		&"player_bullet",
+		2,
+		spawn_position,
+		direction,
+		7,
+		320.0,
+		0.1,
+		false,
+		0,
+		now - 0.5
+	)
+	_expect(
+		not known_projectiles.has(expired_projectile_id),
+		"A view-bounded player projectile that expired in transit must not gain a 0.05s visual extension."
+	)
+	_expect(
+		(mp_game.get("_projectile_records") as Dictionary).has(expired_projectile_id),
+		"An in-transit expiry must retain its multiplayer de-duplication record."
+	)
 	mp_game.free()
 
 
@@ -2214,6 +2237,27 @@ func _test_multiplayer_character_scene_registry() -> void:
 	if tiyi_player != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
 		mp_game.set("game", game)
+		var weishidaier_player := host_player as AmmoRangedPlayer
+		if weishidaier_player != null:
+			var weishidaier_ammo_before := weishidaier_player.current_ammo
+			var bullet_parameters := mp_game.call(
+				"_get_authoritative_client_projectile_parameters",
+				&"player_bullet",
+				1
+			) as Dictionary
+			_expect(
+				is_equal_approx(float(bullet_parameters.get("speed", 0.0)), 320.0)
+				and is_equal_approx(
+					float(bullet_parameters.get("lifetime", 0.0)),
+					1.083
+				),
+				"Host must rebuild Weishidaier bullets with the shared view-bounded envelope."
+			)
+			_expect(
+				weishidaier_player.current_ammo == weishidaier_ammo_before - 1,
+				"Host view-bounded bullet validation must consume exactly one round."
+			)
+			weishidaier_player.shooting_timer.stop()
 		_expect(
 			int(mp_game.call(
 				"_get_player_projectile_damage_type",
@@ -2251,7 +2295,7 @@ func _test_multiplayer_character_scene_registry() -> void:
 		_expect(
 			int(sniper_parameters.get("damage", 0)) == 100
 			and is_equal_approx(float(sniper_parameters.get("speed", 0.0)), 1920.0)
-			and is_equal_approx(float(sniper_parameters.get("lifetime", 0.0)), 0.35),
+			and is_equal_approx(float(sniper_parameters.get("lifetime", 0.0)), 0.181),
 			"Host must replace client-reported Tiyi sniper stats with authoritative values."
 		)
 		_expect(

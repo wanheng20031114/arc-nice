@@ -165,13 +165,12 @@ func _verify_player_bullet_lifetime() -> void:
 	bullet.set_physics_process(false)
 	root.add_child(bullet)
 	_expect(
-		is_equal_approx(bullet.max_lifetime, 2.0)
+		is_equal_approx(bullet.max_lifetime, 1.083)
 		and is_equal_approx(bullet.speed, 320.0)
-		and is_equal_approx(bullet.max_lifetime * bullet.speed, 640.0),
-		"Player bullets must keep a bounded 2s / 640-world-pixel flight envelope."
+		and is_equal_approx(bullet.max_lifetime * bullet.speed, 346.56),
+		"Player bullets must keep a 1.083s / 346.56-world-pixel view-bounded envelope."
 	)
-	for _step in range(4):
-		bullet._physics_process(0.5)
+	bullet._physics_process(bullet.max_lifetime)
 	_expect(
 		bullet.is_queued_for_deletion(),
 		"Player bullets must deterministically release when their lifetime reaches zero."

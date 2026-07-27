@@ -39,7 +39,7 @@ monitoring = false
 monitorable = false
 script = ExtResource("1_script")
 speed = 1920.0
-max_lifetime = 0.35
+max_lifetime = 0.181
 
 [node name="BulletSprite" type="AnimatedSprite2D" parent="." unique_id=2114218884]
 sprite_frames = SubResource("SpriteFrames_bullet")

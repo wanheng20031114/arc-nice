@@ -334,7 +334,10 @@ func _verify_player_bullet_reuse() -> void:
 	if reused == null:
 		return
 	_expect(reused.pool_active, "Reacquired player bullet must be active.")
-	_expect(reused.speed == 320.0 and reused.max_lifetime == 2.0, "Player bullet authored timing must reset.")
+	_expect(
+		reused.speed == 320.0 and reused.max_lifetime == 1.083,
+		"Player bullet authored view-bounded timing must reset."
+	)
 	_expect(reused.remaining_lifetime == reused.max_lifetime, "Player bullet lifetime must reset.")
 	_expect(reused.direction == Vector2.RIGHT and reused.damage == 1, "Player bullet direction and damage must reset.")
 	_expect(not reused.pierces_enemies and not reused.is_homing, "Player bullet modifiers must reset.")

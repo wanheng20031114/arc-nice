@@ -4,12 +4,16 @@ const PROJECTILE_CASES := [
 	{
 		"label": "player_bullet",
 		"scene": preload("res://scene/bullet.tscn"),
-		"expected_lifetime": 2.0,
+		"expected_lifetime": 1.083,
+		"expected_speed": 320.0,
+		"view_bounded": true,
 	},
 	{
 		"label": "tiyi_sniper_bullet",
 		"scene": preload("res://scene/player/tiyi/tiyi_sniper_bullet.tscn"),
-		"expected_lifetime": 0.35,
+		"expected_lifetime": 0.181,
+		"expected_speed": 1920.0,
+		"view_bounded": true,
 	},
 	{
 		"label": "weishidaier_skill1_bomb",
@@ -110,6 +114,30 @@ func _run() -> void:
 				"%s speed must remain explicitly authored at %.1fpx/s."
 				% [label, expected_speed]
 			)
+		if bool(case_data.get("view_bounded", false)):
+			var required_distance := Bullet.get_view_exit_distance()
+			var configured_distance := configured_speed * configured_lifetime
+			var calculated_lifetime := Bullet.calculate_view_bounded_lifetime(
+				configured_speed
+			)
+			_expect(
+				is_equal_approx(configured_lifetime, calculated_lifetime),
+				(
+					"%s lifetime must be derived from the tower-defense design "
+					+ "viewport, camera zoom, one-tile exit margin, and projectile speed."
+				) % label
+			)
+			_expect(
+				configured_distance >= required_distance
+				and configured_distance
+				< required_distance
+				+ configured_speed * Bullet.VIEW_BOUNDED_LIFETIME_PRECISION_SECONDS
+				+ 0.001,
+				(
+					"%s must expire within one lifetime-precision step after "
+					+ "crossing the farthest viewport corner plus its one-tile margin."
+				) % label
+			)
 		envelope_parts.append(
 			"%s=%.2fs/%.1fpx" % [
 				label,
@@ -117,7 +145,22 @@ func _run() -> void:
 				configured_lifetime * configured_speed,
 			]
 		)
+		var start_position := projectile.global_position
 		projectile.call("_physics_process", configured_lifetime + 0.1)
+		if bool(case_data.get("view_bounded", false)):
+			var travelled_distance := projectile.global_position.distance_to(
+				start_position
+			)
+			_expect(
+				is_equal_approx(
+					travelled_distance,
+					configured_lifetime * configured_speed
+				),
+				(
+					"%s must clamp its final physics step to remaining_lifetime "
+					+ "instead of overshooting the authored view envelope."
+				) % label
+			)
 		if (
 			not projectile.is_queued_for_deletion()
 			and retire_visual_delay > 0.0

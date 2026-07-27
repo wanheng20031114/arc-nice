@@ -5242,7 +5242,12 @@ func _spawn_network_projectile(
 		projectile.global_position += (
 			direction.normalized() * maxf(speed, 0.0) * compensation_age
 		)
-	_apply_projectile_lifetime_compensation(projectile, lifetime, compensation_age)
+	_apply_projectile_lifetime_compensation(
+		projectile,
+		lifetime,
+		compensation_age,
+		projectile_type
+	)
 
 
 func _get_projectile_time_compensation_age(host_fire_timestamp: float, lifetime: float) -> float:
@@ -5258,11 +5263,25 @@ func _get_projectile_time_compensation_age(host_fire_timestamp: float, lifetime:
 func _apply_projectile_lifetime_compensation(
 	projectile: Node,
 	lifetime: float,
-	compensation_age: float
+	compensation_age: float,
+	projectile_type: StringName = &""
 ) -> void:
 	if projectile == null or compensation_age <= 0.0:
 		return
-	var remaining := maxf(lifetime - compensation_age, 0.05)
+	var is_view_bounded_player_projectile := (
+		projectile_type == &"player_bullet"
+		or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
+	)
+	var minimum_remaining := 0.0 if is_view_bounded_player_projectile else 0.05
+	var remaining := maxf(lifetime - compensation_age, minimum_remaining)
+	# 远端表现弹不能因网络补偿被强制延长权威射程。记录仍保留至原有的
+	# lifetime + retention 窗口，用于去重与迟到消息防护。
+	if is_view_bounded_player_projectile and remaining <= 0.0:
+		if projectile.has_method("retire"):
+			projectile.call("retire")
+		else:
+			projectile.queue_free()
+		return
 	var bullet := projectile as Bullet
 	if bullet != null:
 		bullet.remaining_lifetime = remaining

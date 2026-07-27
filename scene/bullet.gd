@@ -11,10 +11,20 @@ const PIERCING_TINT := Color(1.0, 0.36, 0.34, 1.0)
 const HOMING_TINT := Color(0.48, 1.0, 0.62, 1.0)
 const PIERCING_HOMING_TINT := Color(1.0, 0.72, 0.26, 1.0)
 
+# 玩家普通投射物以塔防设计视口为固定的权威射程合同，不能读取本机实际窗口：
+# 多人模式下各端宽高比与镜头位置不同，而 Host 必须为所有玩家结算同一射程。
+const TOWER_DEFENSE_DESIGN_VIEWPORT_SIZE := Vector2(1152.0, 648.0)
+const TOWER_DEFENSE_DESIGN_CAMERA_ZOOM := 2.0
+const VIEW_EXIT_MARGIN_WORLD_PIXELS := 16.0
+const VIEW_BOUNDED_LIFETIME_PRECISION_SECONDS := 0.001
+const DEFAULT_SPEED := 320.0
+# ceil((length(Vector2(288, 162)) + 16) / 320 / 0.001) * 0.001
+const DEFAULT_MAX_LIFETIME := 1.083
+
 # 子弹飞行速度
-@export var speed:float = 320.0
+@export var speed: float = DEFAULT_SPEED
 # 子弹最大存活时间（秒）
-@export var max_lifetime: float = 2.0
+@export var max_lifetime: float = DEFAULT_MAX_LIFETIME
 
 # 子弹当前的飞行方向
 var direction : Vector2 = Vector2.RIGHT
@@ -31,8 +41,8 @@ var collectible_owner: Player = null
 var homing_target: Enemy = null
 var is_homing: bool = false
 var pool_active: bool = true
-var _authored_speed: float = 320.0
-var _authored_max_lifetime: float = 2.0
+var _authored_speed: float = DEFAULT_SPEED
+var _authored_max_lifetime: float = DEFAULT_MAX_LIFETIME
 var _authored_collision_layer: int = 16
 var _authored_collision_mask: int = 4
 var world_collision_query := PhysicsRayQueryParameters2D.create(
@@ -139,13 +149,40 @@ func get_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.PHYSICAL
 
 
+static func get_view_exit_distance() -> float:
+	var visible_world_half_extent := (
+		TOWER_DEFENSE_DESIGN_VIEWPORT_SIZE
+		/ TOWER_DEFENSE_DESIGN_CAMERA_ZOOM
+		* 0.5
+	)
+	return visible_world_half_extent.length() + VIEW_EXIT_MARGIN_WORLD_PIXELS
+
+
+static func calculate_view_bounded_lifetime(projectile_speed: float) -> float:
+	if projectile_speed <= 0.0:
+		return 0.0
+	return (
+		ceilf(
+			get_view_exit_distance()
+			/ projectile_speed
+			/ VIEW_BOUNDED_LIFETIME_PRECISION_SECONDS
+		)
+		* VIEW_BOUNDED_LIFETIME_PRECISION_SECONDS
+	)
+
+
 # 物理帧更新逻辑，处理子弹移动和碰撞检测
 func _physics_process(delta: float) -> void:
 	if not pool_active:
 		return
-	_update_homing(delta)
+	if remaining_lifetime <= 0.0:
+		retire()
+		return
+	var safe_delta := maxf(delta, 0.0)
+	var simulated_delta := minf(safe_delta, remaining_lifetime)
+	_update_homing(simulated_delta)
 	var current_position: Vector2 = global_position
-	var next_position: Vector2 = current_position + direction * speed * delta
+	var next_position: Vector2 = current_position + direction * speed * simulated_delta
 	
 	# 检查这一帧移动路径是否撞到世界
 	if _will_hit_world(current_position, next_position):
@@ -155,7 +192,7 @@ func _physics_process(delta: float) -> void:
 	global_position = next_position
 	
 	# 生命周期结束后自动删除
-	remaining_lifetime -= delta
+	remaining_lifetime -= safe_delta
 	if remaining_lifetime <= 0.0:
 		retire()
 

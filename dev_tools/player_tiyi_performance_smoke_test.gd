@@ -47,7 +47,7 @@ func _run() -> void:
 				test_root.add_child(bullet)
 				bullet.global_position = player.global_position
 				bullet.set_physics_process(false)
-				bullet.call("_physics_process", 0.35)
+				bullet.call("_physics_process", bullet.max_lifetime)
 		await process_frame
 		await physics_frame
 		_expect(
