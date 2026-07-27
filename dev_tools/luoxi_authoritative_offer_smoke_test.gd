@@ -41,6 +41,7 @@ func _run() -> void:
 	_test_compatible_pool_rarity_capacity(merchant, player, "维斯戴尔")
 	_test_compatible_pool_rarity_capacity(merchant, hoe_cat_player, "锄头猫")
 	_test_compatible_pool_rarity_capacity(merchant, tiyi_player, "缇伊")
+	_test_explicit_choice_count_isolation(merchant, player)
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x4C554F5849
@@ -322,6 +323,35 @@ func _test_compatible_pool_rarity_capacity(
 			"%s rarity %d pool must survive a three-card refresh exclusion."
 			% [player_name, rarity]
 		)
+
+
+func _test_explicit_choice_count_isolation(
+	merchant: LuoxiMerchant,
+	player: Player
+) -> void:
+	LuoxiMerchant.set_runtime_choice_count(LuoxiMerchant.MAX_CHOICE_COUNT)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0x5849414F434F4E47
+	var luoxi_paths := merchant.build_authoritative_offer_paths(player, [], rng)
+	_expect(
+		luoxi_paths.size() == LuoxiMerchant.MAX_CHOICE_COUNT,
+		"Default authoritative offers must continue to follow Luoxi's runtime upgrade."
+	)
+	var xiaocong_paths := merchant.build_authoritative_offer_paths(
+		player,
+		[],
+		rng,
+		LuoxiMerchant.DEFAULT_CHOICE_COUNT
+	)
+	_expect(
+		xiaocong_paths.size() == LuoxiMerchant.DEFAULT_CHOICE_COUNT,
+		"An explicit Xiaocong offer must stay at three cards while Luoxi shows four."
+	)
+	_expect(
+		_is_supported_offer_rarity_pattern(_get_path_rarity_pattern(xiaocong_paths)),
+		"An explicit three-card offer must preserve Luoxi's original rarity rules."
+	)
+	LuoxiMerchant.reset_runtime_choice_count()
 
 
 func _get_path_rarity_pattern(paths: Array[String]) -> Array[int]:

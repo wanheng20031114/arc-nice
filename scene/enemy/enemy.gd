@@ -157,6 +157,7 @@ var pathfinder: Node = null
 var projectile_motion_system: Node = null
 var current_health: int = 1
 var health_revision: int = 0
+var runtime_max_health_multiplier: float = 1.0
 var is_dead: bool = false
 var last_damage_result: DamageResult = null
 var touch_damage_cooldown_left: float = 0.0
@@ -516,6 +517,7 @@ func _refresh_status_process_enabled() -> void:
 func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
 	clear_cold_status()
 	clear_collectible_statuses()
+	runtime_max_health_multiplier = 1.0
 	config = enemy_config
 	target_player = player
 	objective_target = player
@@ -912,11 +914,52 @@ func restore_health(amount: int) -> int:
 	if amount <= 0 or is_dead or is_multiplayer_proxy or config == null:
 		return 0
 	var health_before := current_health
-	current_health = mini(current_health + amount, config.max_health)
+	current_health = mini(current_health + amount, get_runtime_max_health())
 	var restored_amount := current_health - health_before
 	if restored_amount > 0:
 		health_revision += 1
 	return restored_amount
+
+
+## Scales this instance's health without mutating its shared EnemyConfig.
+## With preserve_health_ratio disabled, decreases still clamp a fresh enemy to
+## the new cap while already-damaged enemies retain their absolute health.
+func set_runtime_max_health_multiplier(
+	multiplier: float,
+	preserve_health_ratio: bool = false
+) -> void:
+	var previous_max_health := get_runtime_max_health()
+	var safe_multiplier := maxf(multiplier, 0.01)
+	if is_equal_approx(runtime_max_health_multiplier, safe_multiplier):
+		return
+	runtime_max_health_multiplier = safe_multiplier
+	if config == null:
+		return
+
+	var new_max_health := get_runtime_max_health()
+	var previous_health := current_health
+	if preserve_health_ratio and previous_max_health > 0:
+		var health_ratio := clampf(
+			float(current_health) / float(previous_max_health),
+			0.0,
+			1.0
+		)
+		current_health = roundi(float(new_max_health) * health_ratio)
+		if not is_dead and previous_health > 0:
+			current_health = maxi(current_health, 1)
+	else:
+		current_health = mini(current_health, new_max_health)
+	if current_health != previous_health:
+		health_revision += 1
+
+
+func get_runtime_max_health() -> int:
+	if config == null:
+		return 0
+	return maxi(
+		roundi(float(config.max_health) * runtime_max_health_multiplier),
+		1
+	)
 
 
 func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
@@ -2049,7 +2092,7 @@ func _apply_config() -> void:
 	terrain_traversal_types = config.terrain_traversal_types
 	navigation_agent_profile = null
 	_apply_terrain_collision_profile()
-	current_health = config.max_health
+	current_health = get_runtime_max_health()
 	health_revision = 0
 	_refresh_effective_physical_defense_cache()
 	_refresh_effective_move_speed_cache()

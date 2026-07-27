@@ -47,6 +47,8 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="48_day_night"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="49_night_light"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="50_night_vfx_flash_pool"]
+[ext_resource type="Script" path="res://scene/tower_defense_fate_manager.gd" id="51_fate_manager"]
+[ext_resource type="PackedScene" path="res://scene/xiaocong_fate_interlude.tscn" id="52_xiaocong_interlude"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -346,6 +348,11 @@ position = Vector2(96, 81)
 
 [node name="LuoxiMerchant" parent="." unique_id=146965342 instance=ExtResource("20_luoxi")]
 position = Vector2(154, 82)
+
+[node name="TowerDefenseFateManager" type="Node" parent="."]
+script = ExtResource("51_fate_manager")
+
+[node name="XiaocongFateInterlude" parent="." instance=ExtResource("52_xiaocong_interlude")]
 
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 

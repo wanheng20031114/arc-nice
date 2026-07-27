@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="PickupConfig" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate_stone.png" id="2_icon"]
+
+[resource]
+script = ExtResource("1_script")
+pickup_type = 5
+display_name = "？？？"
+description = "小葱展示的沉重核心石。它拒绝离开你的背包。"
+can_store_in_inventory = true
+stackable = false
+inventory_locked = true
+icon_texture = ExtResource("2_icon")

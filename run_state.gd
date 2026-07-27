@@ -275,6 +275,8 @@ func try_use_item(slot_index: int, player: Player) -> bool:
 	var item := inventory[slot_index]
 	if item == null:
 		return false
+	if item.inventory_locked:
+		return false
 	if not player.apply_pickup(item):
 		return false
 
@@ -293,7 +295,8 @@ func discard_item(slot_index: int) -> bool:
 		return discard_item_for_peer(active_multiplayer_peer_id, slot_index)
 	if slot_index < 0 or slot_index >= inventory.size():
 		return false
-	if inventory[slot_index] == null:
+	var item := inventory[slot_index] as PickupConfig
+	if item == null or item.inventory_locked:
 		return false
 
 	inventory[slot_index] = null
@@ -582,6 +585,8 @@ func try_use_item_for_peer(peer_id: int, slot_index: int, player: Player) -> boo
 	var item := peer_inventory[slot_index] as PickupConfig
 	if item == null:
 		return false
+	if item.inventory_locked:
+		return false
 	if not player.apply_pickup(item):
 		return false
 
@@ -601,7 +606,8 @@ func discard_item_for_peer(peer_id: int, slot_index: int) -> bool:
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	if slot_index < 0 or slot_index >= peer_inventory.size():
 		return false
-	if peer_inventory[slot_index] == null:
+	var item := peer_inventory[slot_index] as PickupConfig
+	if item == null or item.inventory_locked:
 		return false
 
 	peer_inventory[slot_index] = null
@@ -752,7 +758,7 @@ func take_item_stack_if_revision(
 	if slot_index < 0 or slot_index >= inventory.size():
 		return {"success": false}
 	var item := inventory[slot_index]
-	if item == null:
+	if item == null or item.inventory_locked:
 		return {"success": false}
 	var count := maxi(inventory_stack_counts[slot_index], 1)
 	inventory[slot_index] = null
@@ -780,7 +786,7 @@ func take_item_count_at_slot_if_revision(
 	if slot_index < 0 or slot_index >= inventory.size() or count <= 0:
 		return {"success": false}
 	var item := inventory[slot_index]
-	if item == null:
+	if item == null or item.inventory_locked:
 		return {"success": false}
 	var stored_count := maxi(inventory_stack_counts[slot_index], 1)
 	if count > stored_count:
@@ -930,7 +936,7 @@ func take_item_stack_for_peer_if_revision(
 	if slot_index < 0 or slot_index >= peer_inventory.size():
 		return {"success": false}
 	var item := peer_inventory[slot_index] as PickupConfig
-	if item == null:
+	if item == null or item.inventory_locked:
 		return {"success": false}
 	var count := maxi(int(peer_counts[slot_index]), 1)
 	peer_inventory[slot_index] = null
@@ -961,7 +967,7 @@ func take_item_count_at_slot_for_peer_if_revision(
 	if slot_index < 0 or slot_index >= peer_inventory.size() or count <= 0:
 		return {"success": false}
 	var item := peer_inventory[slot_index] as PickupConfig
-	if item == null:
+	if item == null or item.inventory_locked:
 		return {"success": false}
 	var stored_count := maxi(int(peer_counts[slot_index]), 1)
 	if count > stored_count:
@@ -1255,11 +1261,16 @@ func _can_consume_expected_item(
 	slot_index: int,
 	expected_item: PickupConfig
 ) -> bool:
+	var stored_item := (
+		items[slot_index] as PickupConfig
+		if slot_index >= 0 and slot_index < items.size()
+		else null
+	)
 	return (
-		slot_index >= 0
-		and slot_index < items.size()
+		stored_item != null
+		and not stored_item.inventory_locked
 		and PickupConfig.inventory_identity_matches(
-			items[slot_index] as PickupConfig,
+			stored_item,
 			expected_item
 		)
 	)
@@ -1366,7 +1377,7 @@ func _can_move_item_stack_between_slots(
 	):
 		return false
 	var source_item := items[source_slot_index] as PickupConfig
-	if source_item == null:
+	if source_item == null or source_item.inventory_locked:
 		return false
 	return _can_add_item_count_to_slot_in_arrays(
 		items,
@@ -1507,8 +1518,11 @@ func _consume_item_count_from_arrays(
 		return false
 	var remaining := count
 	for slot_index in items.size():
+		var stored_item := items[slot_index] as PickupConfig
+		if stored_item == null or stored_item.inventory_locked:
+			continue
 		if not PickupConfig.inventory_identity_matches(
-			items[slot_index] as PickupConfig,
+			stored_item,
 			item
 		):
 			continue

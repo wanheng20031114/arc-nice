@@ -158,4 +158,4 @@ func _try_apply_explosion_damage() -> void:
 
 		var hit_enemy := collider as Enemy
 		if hit_enemy != null:
-			hit_enemy.apply_damage(config.explosion_damage)
+			hit_enemy.apply_damage(outgoing_explosion_damage_snapshot)

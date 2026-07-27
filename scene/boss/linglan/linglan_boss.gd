@@ -195,7 +195,7 @@ func play_multiplayer_death_sequence() -> void:
 
 
 func get_max_health() -> int:
-	return config.max_health if config != null else 0
+	return get_runtime_max_health()
 
 
 func _emit_health_changed() -> void:

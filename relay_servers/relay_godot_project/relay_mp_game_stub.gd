@@ -105,6 +105,14 @@ func net_tiyi_high_noon_cancelled(peer_id: int, activation_id: int) -> void:
 func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
 	pass
 
+@rpc("authority", "call_remote", "reliable", 5)
+func net_player_authoritative_teleported(
+	peer_id: int,
+	target_position: Vector2,
+	snapshot_sequence_cutoff: int
+) -> void:
+	pass
+
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_projectile_fired_from_client(
 	projectile_id: int,
@@ -389,6 +397,10 @@ func net_tower_defense_wave_progress_keyframe(
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
+func net_xiaocong_fate_state_changed(state: Dictionary) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
 func net_plant_spawned(
 	request_id: int,
 	owner_peer_id: int,
@@ -643,6 +655,21 @@ func net_skill1_purchase_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tower_defense_start_wave_requested() -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_xiaocong_interaction_requested() -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_xiaocong_fate_vote_requested(
+	option_index: int,
+	permanent_buff_id: int
+) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_xiaocong_collectible_choice_requested(choice_index: int) -> void:
 	pass
 
 @rpc("any_peer", "call_remote", "reliable", 6)

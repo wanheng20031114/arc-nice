@@ -115,6 +115,11 @@ signal multiplayer_inventory_plant_placement_requested(
 	item_config_path: String
 )
 signal multiplayer_inventory_changed(peer_id: int)
+signal multiplayer_xiaocong_interaction_requested
+signal multiplayer_xiaocong_vote_requested(option_index: int, permanent_buff_id: int)
+signal multiplayer_xiaocong_collectible_requested(choice_index: int)
+signal multiplayer_xiaocong_fate_state_changed(state: Dictionary)
+signal multiplayer_player_teleport_requested(peer_id: int, target_position: Vector2)
 signal return_to_lobby_requested
 signal runtime_preparation_progress_changed(stage: String, completed: int, total: int)
 signal runtime_preparation_completed
@@ -133,6 +138,7 @@ enum WaveState {
 	DEFEAT,
 	BOSS_INTRO,
 	BOSS_ACTIVE,
+	FATE_INTERLUDE,
 }
 
 @export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
@@ -232,6 +238,44 @@ func _apply_wave_start_lighting(_wave_number: int) -> void:
 	current_xirang: int
 ) -> void
 @abstract func show_debug_collectible_grant_result(config_path: String, success: bool) -> void
+
+
+## Tower-defense-only fate hooks stay concrete so regular game runtimes do not
+## need empty implementations merely because MPGame shares this base contract.
+func request_xiaocong_interaction(_peer_id: int) -> void:
+	pass
+
+
+func request_xiaocong_fate_vote(
+	_peer_id: int,
+	_option_index: int,
+	_permanent_buff_id: int
+) -> void:
+	pass
+
+
+func request_xiaocong_collectible_choice(
+	_peer_id: int,
+	_choice_index: int
+) -> void:
+	pass
+
+
+func apply_remote_xiaocong_fate_state(_state: Dictionary) -> void:
+	pass
+
+
+func get_xiaocong_fate_state_snapshot() -> Dictionary:
+	return {}
+
+
+## Called after Enemy.setup() on every runtime path, before a remote enemy is
+## converted into a multiplayer proxy. Tower defense overrides this to apply
+## permanent fate modifiers identically on the host and all clients.
+func configure_runtime_enemy_modifiers(_enemy: Enemy) -> void:
+	pass
+
+
 func show_simple_crafting_result(
 	_recipe_id: StringName,
 	_result: StringName,

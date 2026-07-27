@@ -10,31 +10,37 @@ signal refresh_requested
 	$Root/Center/Content/CardRow/Card0,
 	$Root/Center/Content/CardRow/Card1,
 	$Root/Center/Content/CardRow/Card2,
+	$Root/Center/Content/CardRow/Card3,
 ]
 @onready var card_fronts: Array[Control] = [
 	$Root/Center/Content/CardRow/Card0/Margin,
 	$Root/Center/Content/CardRow/Card1/Margin,
 	$Root/Center/Content/CardRow/Card2/Margin,
+	$Root/Center/Content/CardRow/Card3/Margin,
 ]
 @onready var icons: Array[TextureRect] = [
 	$Root/Center/Content/CardRow/Card0/Margin/Content/Icon,
 	$Root/Center/Content/CardRow/Card1/Margin/Content/Icon,
 	$Root/Center/Content/CardRow/Card2/Margin/Content/Icon,
+	$Root/Center/Content/CardRow/Card3/Margin/Content/Icon,
 ]
 @onready var titles: Array[Label] = [
 	$Root/Center/Content/CardRow/Card0/Margin/Content/Title,
 	$Root/Center/Content/CardRow/Card1/Margin/Content/Title,
 	$Root/Center/Content/CardRow/Card2/Margin/Content/Title,
+	$Root/Center/Content/CardRow/Card3/Margin/Content/Title,
 ]
 @onready var descriptions: Array[RichTextLabel] = [
 	$Root/Center/Content/CardRow/Card0/Margin/Content/Description,
 	$Root/Center/Content/CardRow/Card1/Margin/Content/Description,
 	$Root/Center/Content/CardRow/Card2/Margin/Content/Description,
+	$Root/Center/Content/CardRow/Card3/Margin/Content/Description,
 ]
 @onready var buttons: Array[Button] = [
 	$Root/Center/Content/CardRow/Card0/Margin/Content/SelectButton,
 	$Root/Center/Content/CardRow/Card1/Margin/Content/SelectButton,
 	$Root/Center/Content/CardRow/Card2/Margin/Content/SelectButton,
+	$Root/Center/Content/CardRow/Card3/Margin/Content/SelectButton,
 ]
 @onready var refresh_button: Button = $Root/Center/Content/RefreshPanel/Margin/Layout/RefreshButton
 @onready var refresh_status: Label = $Root/Center/Content/RefreshPanel/Margin/Layout/Info/RefreshStatus
@@ -243,6 +249,7 @@ func _update_cards() -> void:
 		if index < choices.size():
 			item = choices[index] as PickupConfig
 		var has_item := item != null
+		cards[index].visible = has_item
 		icons[index].texture = item.icon_texture if has_item else null
 		titles[index].text = item.display_name if has_item else ""
 		descriptions[index].text = _build_description_text(item) if has_item else ""

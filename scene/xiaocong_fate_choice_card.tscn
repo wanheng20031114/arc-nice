@@ -1,0 +1,145 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scene/xiaocong_fate_choice_card.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.07, 0.105, 0.09, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.52, 0.67, 0.57, 0.62)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+shadow_color = Color(0, 0, 0, 0.42)
+shadow_size = 4
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hover"]
+bg_color = Color(0.11, 0.17, 0.14, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.9, 0.76, 0.94)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pressed"]
+bg_color = Color(0.13, 0.21, 0.17, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.88, 1, 0.9, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="LabelSettings" id="LabelSettings_number"]
+font = ExtResource("2_font")
+font_size = 11
+font_color = Color(0.62, 0.78, 0.66, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("2_font")
+font_size = 14
+font_color = Color(0.94, 0.99, 0.95, 1)
+outline_size = 1
+outline_color = Color(0.01, 0.02, 0.016, 0.9)
+
+[sub_resource type="LabelSettings" id="LabelSettings_description"]
+font = ExtResource("2_font")
+font_size = 10
+font_color = Color(0.74, 0.82, 0.76, 1)
+
+[node name="XiaocongFateChoiceCard" type="PanelContainer"]
+custom_minimum_size = Vector2(416, 126)
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+script = ExtResource("1_script")
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_default_cursor_shape = 2
+toggle_mode = true
+theme_override_styles/normal = SubResource("StyleBoxFlat_card")
+theme_override_styles/hover = SubResource("StyleBoxFlat_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_pressed")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_pressed")
+
+[node name="Content" type="Control" parent="."]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Margin" type="MarginContainer" parent="Content"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 9
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="Rows" type="VBoxContainer" parent="Content/Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Header" type="HBoxContainer" parent="Content/Margin/Rows"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 7
+
+[node name="Number" type="Label" parent="Content/Margin/Rows/Header"]
+custom_minimum_size = Vector2(22, 0)
+layout_mode = 2
+text = "01"
+label_settings = SubResource("LabelSettings_number")
+vertical_alignment = 1
+
+[node name="Title" type="Label" parent="Content/Margin/Rows/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "命运选项"
+label_settings = SubResource("LabelSettings_title")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Icon" type="TextureRect" parent="Content/Margin/Rows/Header"]
+visible = false
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Description" type="Label" parent="Content/Margin/Rows"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+size_flags_vertical = 3
+text = "选项说明"
+label_settings = SubResource("LabelSettings_description")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="VoteRow" type="HBoxContainer" parent="Content/Margin/Rows"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4

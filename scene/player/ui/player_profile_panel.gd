@@ -271,6 +271,9 @@ func _try_use_slot(slot_index: int) -> void:
 		return
 	selected_slot_index = slot_index
 	var item := run_state.get_item(slot_index)
+	if item.inventory_locked:
+		_refresh_item_detail()
+		return
 	if item.pickup_type == PickupConfig.PickupType.BUILDING:
 		_try_begin_building_placement(slot_index)
 		return
@@ -502,6 +505,7 @@ func _refresh_item_detail() -> void:
 	var is_consumable := _is_consumable_item(item)
 	var is_material := item.pickup_type == PickupConfig.PickupType.MATERIAL
 	var is_building := item.pickup_type == PickupConfig.PickupType.BUILDING
+	var is_inventory_locked := item.inventory_locked
 	var stack_count := run_state.get_item_count(selected_slot_index)
 	item_detail_title.text = (
 		"%s ×%d" % [item.display_name, stack_count]
@@ -515,15 +519,18 @@ func _refresh_item_detail() -> void:
 		else ITEM_CATEGORY_COLLECTIBLE_TEXTURE
 	)
 	item_detail_description.text = item.description if not item.description.is_empty() else "暂无描述"
-	item_detail_hint.visible = is_consumable
-	item_detail_hint.text = (
-		"也可以双击槽位进入建造模式"
-		if is_building
-		else "也可以双击槽位使用"
-	)
-	item_detail_use_button.visible = is_consumable
+	item_detail_hint.visible = is_inventory_locked or is_consumable
+	if is_inventory_locked:
+		item_detail_hint.text = "命运物品 · 无法使用、移动或删除"
+	else:
+		item_detail_hint.text = (
+			"也可以双击槽位进入建造模式"
+			if is_building
+			else "也可以双击槽位使用"
+		)
+	item_detail_use_button.visible = is_consumable and not is_inventory_locked
 	item_detail_use_button.text = "建造" if is_building else "使用"
-	item_detail_discard_button.visible = true
+	item_detail_discard_button.visible = not is_inventory_locked
 	item_detail_discard_button.text = (
 		"销毁"
 		if is_building
@@ -567,6 +574,10 @@ func _on_detail_use_pressed() -> void:
 
 func _on_detail_discard_pressed() -> void:
 	if selected_slot_index < 0:
+		return
+	var item := run_state.get_item(selected_slot_index)
+	if item == null or item.inventory_locked:
+		_refresh_item_detail()
 		return
 	if _request_multiplayer_inventory_item_discard(selected_slot_index):
 		return

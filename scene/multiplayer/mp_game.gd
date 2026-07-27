@@ -157,7 +157,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v20 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v21 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 # A full enemy keyframe is 24 bytes after adding health_revision. Forty-six
@@ -216,6 +216,8 @@ const INVENTORY_COMMAND_RATE_PER_SECOND := 12.0
 const INVENTORY_COMMAND_RATE_BURST := 20.0
 const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
 const LUOXI_TRANSACTION_RATE_BURST := 6.0
+const XIAOCONG_TRANSACTION_RATE_PER_SECOND := 6.0
+const XIAOCONG_TRANSACTION_RATE_BURST := 10.0
 const RUNTIME_STATE_REQUEST_RATE_PER_SECOND := 0.5
 const RUNTIME_STATE_REQUEST_RATE_BURST := 2.0
 const PLANT_ID_WIRE_MAX_LENGTH := 128
@@ -267,6 +269,8 @@ var _linglan_skill4_orb_scene: PackedScene = null
 var _linglan_skill4_orb_script: Script = null
 # Client-view only: remote player visual timeline. Host gameplay never reads this.
 var player_visual_interpolators: Dictionary = {}
+var _player_snapshot_teleport_cutoff_sequences: Dictionary = {}
+var _pending_authoritative_player_teleports: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
 var _stale_enemy_interpolator_ids: Array[int] = []
 var game: GameRuntimeBase = null
@@ -352,6 +356,7 @@ var _warehouse_transaction_rate_buckets: Dictionary = {}
 var _player_transaction_ingress_rate_buckets: Dictionary = {}
 var _inventory_command_rate_buckets: Dictionary = {}
 var _luoxi_transaction_rate_buckets: Dictionary = {}
+var _xiaocong_transaction_rate_buckets: Dictionary = {}
 var _runtime_state_request_rate_buckets: Dictionary = {}
 var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
 var _terrain_snapshot_request_rate_buckets: Dictionary = {}
@@ -574,6 +579,7 @@ func _exit_tree() -> void:
 	_player_transaction_ingress_rate_buckets.clear()
 	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
+	_xiaocong_transaction_rate_buckets.clear()
 	_runtime_state_request_rate_buckets.clear()
 	_public_room_keepalive_in_flight = false
 
@@ -843,6 +849,70 @@ func request_multiplayer_start_wave() -> void:
 		game.request_tower_defense_wave_start(_get_local_peer_id())
 	else:
 		net_tower_defense_start_wave_requested.rpc_id(_get_host_peer_id())
+
+
+func _on_local_xiaocong_interaction_requested() -> void:
+	if game == null or not game.supports_tower_defense():
+		return
+	if net_manager.is_host():
+		game.request_xiaocong_interaction(_get_local_peer_id())
+	elif net_manager.is_client():
+		net_xiaocong_interaction_requested.rpc_id(_get_host_peer_id())
+
+
+func _on_local_xiaocong_vote_requested(
+	option_index: int,
+	permanent_buff_id: int
+) -> void:
+	if (
+		game == null
+		or not game.supports_tower_defense()
+		or not _is_valid_xiaocong_vote_payload(option_index, permanent_buff_id)
+	):
+		return
+	if net_manager.is_host():
+		game.request_xiaocong_fate_vote(
+			_get_local_peer_id(),
+			option_index,
+			permanent_buff_id
+		)
+	elif net_manager.is_client():
+		net_xiaocong_fate_vote_requested.rpc_id(
+			_get_host_peer_id(),
+			option_index,
+			permanent_buff_id
+		)
+
+
+func _on_local_xiaocong_collectible_requested(choice_index: int) -> void:
+	if (
+		game == null
+		or not game.supports_tower_defense()
+		or choice_index < 0
+		or choice_index > 3
+	):
+		return
+	if net_manager.is_host():
+		game.request_xiaocong_collectible_choice(
+			_get_local_peer_id(),
+			choice_index
+		)
+	elif net_manager.is_client():
+		net_xiaocong_collectible_choice_requested.rpc_id(
+			_get_host_peer_id(),
+			choice_index
+		)
+
+
+func _is_valid_xiaocong_vote_payload(
+	option_index: int,
+	permanent_buff_id: int
+) -> bool:
+	if option_index < 0 or option_index > 9:
+		return false
+	if option_index == 0:
+		return permanent_buff_id >= 1 and permanent_buff_id <= 9
+	return permanent_buff_id == 0
 
 
 func notify_local_player_dash_started(direction: Vector2, start_move_input: Vector2) -> void:
@@ -2552,6 +2622,12 @@ func _setup_game(mode: int) -> bool:
 		game.multiplayer_tower_defense_wave_progress_changed.connect(
 			_on_host_tower_defense_wave_progress_changed
 		)
+		game.multiplayer_xiaocong_fate_state_changed.connect(
+			_on_host_xiaocong_fate_state_changed
+		)
+		game.multiplayer_player_teleport_requested.connect(
+			_on_host_player_teleport_requested
+		)
 		game.multiplayer_plant_spawned.connect(_on_host_plant_spawned)
 		game.multiplayer_plant_placement_rejected.connect(
 			_on_host_plant_placement_rejected
@@ -2572,6 +2648,15 @@ func _setup_game(mode: int) -> bool:
 	)
 	game.multiplayer_inventory_plant_placement_requested.connect(
 		_on_local_inventory_plant_placement_requested
+	)
+	game.multiplayer_xiaocong_interaction_requested.connect(
+		_on_local_xiaocong_interaction_requested
+	)
+	game.multiplayer_xiaocong_vote_requested.connect(
+		_on_local_xiaocong_vote_requested
+	)
+	game.multiplayer_xiaocong_collectible_requested.connect(
+		_on_local_xiaocong_collectible_requested
 	)
 	game.return_to_lobby_requested.connect(_on_game_return_to_lobby_requested)
 	add_child(game)
@@ -2646,6 +2731,14 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 				int(progress_snapshot.get("resolved", 0)),
 				int(progress_snapshot.get("total", 0))
 			)
+		var fate_snapshot := game.get_xiaocong_fate_state_snapshot()
+		if not fate_snapshot.is_empty():
+			net_xiaocong_fate_state_changed.rpc_id(
+				peer_id,
+				fate_snapshot.duplicate(true)
+			)
+		if game.wave_state == GameRuntimeBase.WaveState.FATE_INTERLUDE:
+			_send_authoritative_player_positions_to_peer(peer_id)
 	if include_flow_state:
 		var flow_snapshot := game.get_flow_state_snapshot()
 		if not flow_snapshot.is_empty():
@@ -2656,6 +2749,26 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 				int(flow_snapshot.get("countdown_seconds", 0))
 			)
 	_send_runtime_world_manifest_to_peer(peer_id)
+
+
+func _send_authoritative_player_positions_to_peer(target_peer_id: int) -> void:
+	if game == null or target_peer_id <= 0:
+		return
+	for state_peer_id_variant in game.peer_players.keys():
+		var state_peer_id := int(state_peer_id_variant)
+		var player_node := game.get_player_for_peer(state_peer_id)
+		if (
+			state_peer_id <= 0
+			or player_node == null
+			or not is_instance_valid(player_node)
+		):
+			continue
+		net_player_authoritative_teleported.rpc_id(
+			target_peer_id,
+			state_peer_id,
+			player_node.global_position,
+			_host_player_snapshot_sequence
+		)
 
 
 func _send_live_plant_roster_to_peer(peer_id: int) -> void:
@@ -3544,6 +3657,13 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 		seen_player_ids[player_state.peer_id] = true
 		var player_node: Player = game.get_player_for_peer(player_state.peer_id)
 		if player_node != null and is_instance_valid(player_node):
+			_try_apply_pending_authoritative_player_teleport(player_state.peer_id)
+			player_node = game.get_player_for_peer(player_state.peer_id)
+		var accept_motion := _accept_player_snapshot_motion_after_teleport(
+			player_state.peer_id,
+			player_state.sequence
+		)
+		if player_node != null and is_instance_valid(player_node):
 			if player_node.get_character_id() != player_state.character_id:
 				_warn_player_character_snapshot_mismatch(
 					player_state.peer_id,
@@ -3557,6 +3677,10 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 			)
 		if is_client_view_runtime() and player_state.peer_id == _get_client_view_local_peer_id():
 			_apply_player_realtime_snapshot(player_node, player_state)
+			continue
+		if not accept_motion:
+			if player_node != null and is_instance_valid(player_node):
+				_apply_player_realtime_snapshot(player_node, player_state)
 			continue
 		if not player_visual_interpolators.has(player_state.peer_id):
 			player_visual_interpolators[player_state.peer_id] = _create_player_interpolator()
@@ -4326,6 +4450,69 @@ func net_player_state_corrected(corrected_position: Vector2, corrected_velocity:
 	game.player.velocity = corrected_velocity
 
 
+@rpc("authority", "call_remote", "reliable", 5)
+func net_player_authoritative_teleported(
+	peer_id: int,
+	target_position: Vector2,
+	snapshot_sequence_cutoff: int
+) -> void:
+	if (
+		peer_id <= 0
+		or snapshot_sequence_cutoff < 0
+		or not _is_finite_vector2(target_position)
+	):
+		return
+	_player_snapshot_teleport_cutoff_sequences[peer_id] = maxi(
+		snapshot_sequence_cutoff,
+		int(_player_snapshot_teleport_cutoff_sequences.get(peer_id, -1))
+	)
+	_pending_authoritative_player_teleports[peer_id] = {
+		"position": target_position,
+		"snapshot_sequence_cutoff": snapshot_sequence_cutoff,
+	}
+	_try_apply_pending_authoritative_player_teleport(peer_id)
+
+
+func _try_apply_pending_authoritative_player_teleport(peer_id: int) -> bool:
+	if game == null or peer_id <= 0:
+		return false
+	var pending := (
+		_pending_authoritative_player_teleports.get(peer_id, {}) as Dictionary
+	)
+	if pending.is_empty():
+		return false
+	var player_node := game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	var target_position := pending.get("position", Vector2.ZERO) as Vector2
+	_apply_player_authoritative_teleport(player_node, target_position)
+	if is_client_view_runtime() and peer_id != _get_client_view_local_peer_id():
+		_reset_player_visual_interpolator_to_state(
+			peer_id,
+			target_position,
+			Vector2.ZERO,
+			player_node.get_multiplayer_facing_id(),
+			player_node.get_multiplayer_anim_state()
+		)
+	_pending_authoritative_player_teleports.erase(peer_id)
+	return true
+
+
+func _accept_player_snapshot_motion_after_teleport(
+	peer_id: int,
+	snapshot_sequence: int
+) -> bool:
+	var cutoff := int(
+		_player_snapshot_teleport_cutoff_sequences.get(peer_id, -1)
+	)
+	if cutoff < 0:
+		return true
+	if snapshot_sequence <= cutoff:
+		return false
+	_player_snapshot_teleport_cutoff_sequences.erase(peer_id)
+	return true
+
+
 func _reset_player_visual_interpolator_to_state(
 	peer_id: int,
 	player_position: Vector2,
@@ -4350,6 +4537,43 @@ func _reset_player_visual_interpolator_to_state(
 		0,
 		false
 	)
+
+
+func _apply_player_authoritative_teleport(
+	player_node: Player,
+	target_position: Vector2
+) -> void:
+	var smoothing_was_enabled := player_node.is_multiplayer_visual_smoothing_enabled()
+	if smoothing_was_enabled:
+		player_node.set_multiplayer_visual_smoothing_enabled(false)
+	player_node.global_position = target_position
+	player_node.velocity = Vector2.ZERO
+	player_node.reset_physics_interpolation()
+	if smoothing_was_enabled:
+		player_node.set_multiplayer_visual_smoothing_enabled(true)
+
+
+func _commit_authoritative_player_teleport(
+	peer_id: int,
+	target_position: Vector2
+) -> bool:
+	if game == null or peer_id <= 0 or not _is_finite_vector2(target_position):
+		return false
+	var player_node := game.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	_apply_player_authoritative_teleport(player_node, target_position)
+	if peer_id != game.multiplayer_local_peer_id:
+		var now := _get_net_time()
+		_accepted_player_state_positions[peer_id] = target_position
+		_accepted_player_state_times[peer_id] = now
+		_host_latest_client_player_snapshot_states[peer_id] = {
+			"position": target_position,
+			"velocity": Vector2.ZERO,
+			"facing": player_node.get_multiplayer_facing_id(),
+			"anim_state": player_node.get_multiplayer_anim_state(),
+		}
+	return true
 
 
 func _remember_latest_client_player_snapshot_state(
@@ -6233,7 +6457,7 @@ func _rpc_enemy_hit_report(
 	_damage: int,
 	_impact_direction: Vector2
 ) -> void:
-	# Protocol-v20 compatibility shell. Client-selected enemy IDs are not
+	# Protocol-v21 compatibility shell. Client-selected enemy IDs are not
 	# collision evidence, so even an old or malicious client cannot settle here.
 	return
 
@@ -7298,7 +7522,7 @@ func request_player_hit_report(
 	_impact_direction: Vector2,
 	_damage_flags: int
 ) -> void:
-	# Protocol-v20 compatibility shell. Client hit claims are intentionally
+	# Protocol-v21 compatibility shell. Client hit claims are intentionally
 	# disabled: every eligible attack already has a live Host simulation, and a
 	# proximity-only client hint is not proof of collision.
 	return
@@ -7658,7 +7882,7 @@ func net_player_healed(
 	player_node.queue_healing_number(confirmed_healing)
 
 
-# Legacy compatibility shells retained in protocol v20. Xirang orbs no longer exist, but keeping the
+# Legacy compatibility shells retained in protocol v21. Xirang orbs no longer exist, but keeping the
 # annotated signatures avoids a partial wire-protocol break until the next
 # coordinated protocol-version upgrade.
 @rpc("authority", "call_remote", "reliable", 5)
@@ -8376,6 +8600,34 @@ func _on_host_tower_defense_wave_progress_changed(
 		"resolved": resolved,
 		"total": total,
 	}
+
+
+func _on_host_xiaocong_fate_state_changed(state: Dictionary) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or game == null
+		or not game.supports_tower_defense()
+	):
+		return
+	_rpc_to_connected_clients(
+		&"net_xiaocong_fate_state_changed",
+		[state.duplicate(true)]
+	)
+
+
+func _on_host_player_teleport_requested(
+	peer_id: int,
+	target_position: Vector2
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	if not _commit_authoritative_player_teleport(peer_id, target_position):
+		return
+	_rpc_to_connected_clients(
+		&"net_player_authoritative_teleported",
+		[peer_id, target_position, _host_player_snapshot_sequence]
+	)
 
 
 func _flush_wave_progress() -> void:
@@ -9674,6 +9926,7 @@ func net_enemy_spawned(
 	_enemy_spawn_snapshot_times[net_id] = mapped_spawn_time
 	enemy.global_position = _get_buffered_enemy_position(net_id, spawn_position)
 	enemy.setup(enemy_config, game.player, game.grid_pathfinder)
+	game.configure_runtime_enemy_modifiers(enemy)
 	enemy.configure_multiplayer_proxy()
 	enemy.set_meta("net_id", net_id)
 	enemy.tree_exited.connect(_on_client_enemy_tree_exited.bind(net_id, enemy))
@@ -9824,6 +10077,18 @@ func net_tower_defense_wave_progress_keyframe(
 		resolved,
 		total
 	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_xiaocong_fate_state_changed(state: Dictionary) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or not game.supports_tower_defense()
+		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
+	):
+		return
+	game.apply_remote_xiaocong_fate_state(state)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -10760,6 +11025,72 @@ func net_tower_defense_start_wave_requested() -> void:
 	if game.get_player_for_peer(sender_id) == null:
 		return
 	game.request_tower_defense_wave_start(sender_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_xiaocong_interaction_requested() -> void:
+	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if not _admit_remote_xiaocong_request(sender_id):
+		return
+	game.request_xiaocong_interaction(sender_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_xiaocong_fate_vote_requested(
+	option_index: int,
+	permanent_buff_id: int
+) -> void:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or not game.supports_tower_defense()
+		or not _is_valid_xiaocong_vote_payload(option_index, permanent_buff_id)
+	):
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if not _admit_remote_xiaocong_request(sender_id):
+		return
+	game.request_xiaocong_fate_vote(
+		sender_id,
+		option_index,
+		permanent_buff_id
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_xiaocong_collectible_choice_requested(choice_index: int) -> void:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or not game.supports_tower_defense()
+		or choice_index < 0
+		or choice_index > 3
+	):
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if not _admit_remote_xiaocong_request(sender_id):
+		return
+	game.request_xiaocong_collectible_choice(sender_id, choice_index)
+
+
+func _admit_remote_xiaocong_request(sender_id: int) -> bool:
+	if (
+		sender_id <= 0
+		or game == null
+		or game.get_player_for_peer(sender_id) == null
+	):
+		return false
+	return (
+		_consume_remote_transaction_admission(sender_id)
+		and _consume_peer_rate_token(
+			_xiaocong_transaction_rate_buckets,
+			sender_id,
+			XIAOCONG_TRANSACTION_RATE_PER_SECOND,
+			XIAOCONG_TRANSACTION_RATE_BURST
+		)
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -11838,6 +12169,8 @@ func _clear_peer_network_state(peer_id: int) -> void:
 		snapshot_mgr.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
 	_last_plant_placement_request_ids.erase(peer_id)
 	player_visual_interpolators.erase(peer_id)
+	_player_snapshot_teleport_cutoff_sequences.erase(peer_id)
+	_pending_authoritative_player_teleports.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
 	_last_dash_request_sequences.erase(peer_id)
 	_last_dash_confirmed_sequences.erase(peer_id)
@@ -11864,6 +12197,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_player_transaction_ingress_rate_buckets.erase(peer_id)
 	_inventory_command_rate_buckets.erase(peer_id)
 	_luoxi_transaction_rate_buckets.erase(peer_id)
+	_xiaocong_transaction_rate_buckets.erase(peer_id)
 	_runtime_state_request_rate_buckets.erase(peer_id)
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
 	_last_simple_crafting_request_ids.erase(peer_id)
@@ -11960,6 +12294,7 @@ func _return_to_lobby() -> void:
 	_player_transaction_ingress_rate_buckets.clear()
 	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
+	_xiaocong_transaction_rate_buckets.clear()
 	_runtime_state_request_rate_buckets.clear()
 	_local_simple_crafting_request_id = 0
 	_clear_local_simple_crafting_request_tracking()

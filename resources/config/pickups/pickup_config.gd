@@ -121,6 +121,9 @@ const MAX_DASH_COOLDOWN_REDUCTION_PER_COLLECTIBLE := 0.5
 @export_multiline var description: String = ""
 @export var can_store_in_inventory: bool = false
 @export var stackable: bool = false
+## Locked fate items remain visible in the normal backpack but cannot be used,
+## consumed, discarded, moved, or selected as crafting input.
+@export var inventory_locked: bool = false
 # 可叠加物品在单个背包槽位中的数量上限；不可叠加物品固定视为 1。
 @export_range(1, 999, 1) var inventory_stack_limit: int = 1
 

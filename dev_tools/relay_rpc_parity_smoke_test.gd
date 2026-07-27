@@ -48,6 +48,10 @@ func _run() -> void:
 		"net_terrain_snapshot_chunk",
 		"net_terrain_delta",
 		"net_tower_defense_wave_progress_changed",
+		"net_xiaocong_interaction_requested",
+		"net_xiaocong_fate_vote_requested",
+		"net_xiaocong_collectible_choice_requested",
+		"net_xiaocong_fate_state_changed",
 		"net_inventory_item_use_requested",
 		"net_inventory_item_discard_requested",
 		"net_inventory_item_used",
@@ -123,10 +127,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 20,
-		"Host-authoritative damage claims require protocol version 20."
+		NetConstants.PROTOCOL_VERSION == 21,
+		"Host-authoritative damage claims require protocol version 21."
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v20 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v21 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -219,7 +223,7 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must provision the same eight ENet channels as protocol v20 clients."
+		"Relay server must provision the same eight ENet channels as protocol v21 clients."
 	)
 
 
@@ -268,11 +272,17 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		"Late-join plant runtime snapshots must carry and apply revisioned damage-status masks."
 	)
 	_expect(
+		mp_game_source.contains("game.get_xiaocong_fate_state_snapshot()")
+		and mp_game_source.contains("game.apply_remote_xiaocong_fate_state(state)")
+		and mp_game_source.contains("_admit_remote_xiaocong_request(sender_id)"),
+		"Xiaocong fate state must participate in runtime repair and all remote choices must pass Host admission."
+	)
+	_expect(
 		mp_game_source.contains("const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96")
 		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
 		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
-		"Protocol v20 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
+		"Protocol v21 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	_expect(
 		mp_game_source.contains(
@@ -287,7 +297,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		and mp_game_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
 		),
-		"Protocol v20 research commands must use schema2 and resolve a Host-owned research whitelist."
+		"Protocol v21 research commands must use schema2 and resolve a Host-owned research whitelist."
 	)
 	for signature_fragment in [
 		"plant_net_ids:PackedInt32Array",
@@ -394,6 +404,26 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		rpcs,
 		"net_pickup_collected",
 		"inventory_snapshot:Dictionary={}"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_xiaocong_fate_vote_requested",
+		"option_index:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_xiaocong_fate_vote_requested",
+		"permanent_buff_id:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_xiaocong_collectible_choice_requested",
+		"choice_index:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_xiaocong_fate_state_changed",
+		"state:Dictionary"
 	)
 	_expect_rpc_signature_contains(
 		rpcs,
@@ -526,6 +556,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_base_health_changed",
 		"net_terrain_snapshot_chunk",
 		"net_terrain_delta",
+		"net_xiaocong_fate_state_changed",
 	]:
 		_expect_rpc_channel(rpcs, world_event_method, NetConstants.CH_WORLD_EVENT)
 	for transaction_method in [
@@ -537,6 +568,9 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_simple_crafting_requested",
 		"net_simple_crafting_result",
 		"net_pickup_collected",
+		"net_xiaocong_interaction_requested",
+		"net_xiaocong_fate_vote_requested",
+		"net_xiaocong_collectible_choice_requested",
 		"net_luoxi_collectible_offer_requested",
 		"net_luoxi_collectible_offer_state",
 		"net_luoxi_collectible_choice_requested",

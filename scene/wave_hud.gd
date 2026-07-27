@@ -14,6 +14,9 @@ signal start_wave_requested
 @onready var top_bar_margin: MarginContainer = $WaveInfoBar/Margin
 @onready var status_label: Label = $WaveInfoBar/Margin/Status
 @onready var tower_defense_stats: HBoxContainer = $WaveInfoBar/Margin/TowerDefenseStats
+@onready var day_dial: TowerDefenseDayDial = $WaveInfoBar/Margin/TowerDefenseStats/DayCycleStat/DayDial
+@onready var day_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/DayCycleStat/DayText/DayLabel
+@onready var phase_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/DayCycleStat/DayText/PhaseLabel
 @onready var core_stat: VBoxContainer = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat
 @onready var core_title_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreRow/CoreTitle
 @onready var core_value_label: Label = $WaveInfoBar/Margin/TowerDefenseStats/CoreStat/CoreRow/CoreValue
@@ -35,11 +38,14 @@ signal start_wave_requested
 @onready var result_title: Label = $ResultOverlay/Center/Panel/Margin/Content/ResultTitle
 @onready var result_subtitle: Label = $ResultOverlay/Center/Panel/Margin/Content/ResultSubtitle
 @onready var return_button: Button = $ResultOverlay/Center/Panel/Margin/Content/ReturnButton
+@onready var global_wave_notice: PanelContainer = $GlobalWaveNotice
+@onready var global_wave_label: Label = $GlobalWaveNotice/Margin/Label
 
 var pulse_tween: Tween = null
 var core_pulse_tween: Tween = null
 var stage_pulse_tween: Tween = null
 var result_tween: Tween = null
+var global_wave_tween: Tween = null
 var return_button_label: String = "返回大厅"
 var early_start_pending := false
 var early_start_request_generation := 0
@@ -50,6 +56,7 @@ var _cached_enemy_count := -1
 var _cached_wave_number := -1
 var _cached_wave_resolved := -1
 var _cached_wave_total := -1
+var _last_noticed_wave := -1
 
 
 func _ready() -> void:
@@ -75,25 +82,25 @@ func configure_tower_defense(current_core_health: int, max_core_health: int) -> 
 
 
 func _apply_tower_defense_layout() -> void:
-	top_bar.custom_minimum_size = Vector2(390.0, 44.0)
-	top_bar.offset_left = -195.0
+	top_bar.custom_minimum_size = Vector2(404.0, 50.0)
+	top_bar.offset_left = -202.0
 	top_bar.offset_top = 6.0
-	top_bar.offset_right = 195.0
-	top_bar.offset_bottom = 50.0
+	top_bar.offset_right = 202.0
+	top_bar.offset_bottom = 56.0
 	top_bar_margin.add_theme_constant_override("margin_left", 10)
 	top_bar_margin.add_theme_constant_override("margin_top", 3)
 	top_bar_margin.add_theme_constant_override("margin_right", 10)
 	top_bar_margin.add_theme_constant_override("margin_bottom", 3)
 	stage_banner.custom_minimum_size = Vector2(190.0, 26.0)
-	stage_banner.offset_left = -195.0
-	stage_banner.offset_top = 54.0
+	stage_banner.offset_left = -202.0
+	stage_banner.offset_top = 60.0
 	stage_banner.offset_right = -5.0
-	stage_banner.offset_bottom = 80.0
+	stage_banner.offset_bottom = 86.0
 	start_wave_button.custom_minimum_size = Vector2(190.0, 26.0)
 	start_wave_button.offset_left = 5.0
-	start_wave_button.offset_top = 54.0
-	start_wave_button.offset_right = 195.0
-	start_wave_button.offset_bottom = 80.0
+	start_wave_button.offset_top = 60.0
+	start_wave_button.offset_right = 202.0
+	start_wave_button.offset_bottom = 86.0
 	start_wave_button.add_theme_font_size_override("font_size", 11)
 
 
@@ -148,6 +155,17 @@ func set_tower_defense_wave_progress(wave_number: int, resolved: int, total: int
 	_cached_wave_number = safe_wave
 	_cached_wave_resolved = safe_resolved
 	_cached_wave_total = safe_total
+	var phase_index := posmod(safe_wave - 1, 4)
+	var day_number := floori(float(safe_wave - 1) / 4.0) + 1
+	var phase_names := ["白昼前半", "白昼后半", "黑夜前半", "黑夜后半"]
+	day_label.text = "第 %d 日" % day_number
+	phase_label.text = phase_names[phase_index]
+	phase_label.self_modulate = (
+		Color(1.0, 0.88, 0.54, 1.0)
+		if phase_index < 2
+		else Color(0.62, 0.78, 1.0, 1.0)
+	)
+	day_dial.set_day_progress(phase_index, safe_resolved, safe_total)
 	var progress_percent := (
 		roundi(float(safe_resolved) / float(safe_total) * 100.0)
 		if safe_total > 0
@@ -156,6 +174,26 @@ func set_tower_defense_wave_progress(wave_number: int, resolved: int, total: int
 	wave_title_label.text = "第 %d 波" % safe_wave
 	wave_value_label.text = "%d%%" % progress_percent
 	wave_progress_bar.value = float(progress_percent)
+	_show_global_wave_notice(safe_wave)
+
+
+func _show_global_wave_notice(wave_number: int) -> void:
+	var safe_wave := maxi(wave_number, 1)
+	global_wave_label.text = "全局第 %d 波" % safe_wave
+	global_wave_notice.visible = true
+	if safe_wave == _last_noticed_wave:
+		return
+	_last_noticed_wave = safe_wave
+	if global_wave_tween != null:
+		global_wave_tween.kill()
+	global_wave_notice.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	global_wave_tween = create_tween()
+	global_wave_tween.tween_property(
+		global_wave_notice,
+		"modulate",
+		Color(1.0, 1.0, 1.0, 0.92),
+		0.22
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 func show_wave_progress(wave_number: int, defeated: int, total: int) -> void:
 	_stop_result_tween()
@@ -292,6 +330,7 @@ func hide_all() -> void:
 	_stop_result_tween()
 	top_bar.visible = false
 	_hide_stage_banner()
+	_hide_global_wave_notice()
 	result_overlay.visible = false
 	_hide_start_wave_button()
 
@@ -340,6 +379,7 @@ func _play_result_sequence(title: String, subtitle: String, title_color: Color) 
 	_stop_result_tween()
 	top_bar.visible = false
 	_hide_stage_banner()
+	_hide_global_wave_notice()
 	result_overlay.visible = true
 	result_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	result_title.text = title
@@ -425,3 +465,12 @@ func _reset_stage_banner_pulse() -> void:
 func _hide_stage_banner() -> void:
 	_reset_stage_banner_pulse()
 	stage_banner.visible = false
+
+
+func _hide_global_wave_notice() -> void:
+	if global_wave_tween != null:
+		global_wave_tween.kill()
+		global_wave_tween = null
+	global_wave_notice.visible = false
+	global_wave_notice.modulate = Color(1.0, 1.0, 1.0, 0.92)
+	_last_noticed_wave = -1

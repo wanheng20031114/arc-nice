@@ -321,6 +321,60 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
 text = "选择"
 
+[node name="Card3" type="PanelContainer" parent="Root/Center/Content/CardRow"]
+material = SubResource("ShaderMaterial_card_aura")
+custom_minimum_size = Vector2(216, 310)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card3"]
+layout_mode = 2
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card3/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card3/Margin/Content"]
+custom_minimum_size = Vector2(70, 70)
+layout_mode = 2
+stretch_mode = 5
+
+[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card3/Margin/Content"]
+custom_minimum_size = Vector2(0, 31)
+layout_mode = 2
+text = "苹果"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card3/Margin/Content"]
+custom_minimum_size = Vector2(186, 112)
+layout_mode = 2
+theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
+theme_override_fonts/normal_font = ExtResource("2_font")
+theme_override_font_sizes/normal_font_size = 14
+theme_override_constants/line_separation = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_description_padding")
+bbcode_enabled = true
+scroll_active = true
+autowrap_mode = 1
+
+[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card3/Margin/Content"]
+custom_minimum_size = Vector2(174, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "选择"
+
 [node name="RefreshPanel" type="PanelContainer" parent="Root/Center/Content"]
 custom_minimum_size = Vector2(0, 88)
 layout_mode = 2

@@ -146,6 +146,10 @@ const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
 const ATTACK_SPEED_UPGRADE_INTERVAL_MULTIPLIER := 0.95
 const DODGE_UPGRADE_CHANCE_STEP := 0.02
 const DEFAULT_MAGIC_DEFENSE_LIMIT := 100
+const TOWER_DEFENSE_FATE_LOW_HEALTH_RATIO := 0.25
+const TOWER_DEFENSE_FATE_LOW_HEALTH_DAMAGE_REDUCTION := 0.8
+const TOWER_DEFENSE_FATE_HURT_MOVE_SPEED_MULTIPLIER := 0.2
+const TOWER_DEFENSE_FATE_HURT_MOVE_SPEED_DURATION := 1.0
 const RANGED_DIRECTION_SIDE_THRESHOLD := 0.35
 const DEFAULT_SKILL1_DISPLAY_NAME := "技能"
 const STATUS_EFFECT_EXPIRY_SCHEDULER_PATH := NodePath("/root/StatusEffectExpiryScheduler")
@@ -205,6 +209,12 @@ var collectible_swift_move_speed_multiplier: float = 1.0
 var cold_stack_count := 0
 var cold_move_speed_multiplier := 1.0
 var network_effective_move_speed_multiplier_override: float = 0.0
+var tower_defense_fate_max_health_multiplier: float = 1.0
+var tower_defense_fate_move_speed_multiplier: float = 1.0
+var tower_defense_fate_dash_cooldown_reduction: float = 0.0
+var tower_defense_fate_low_health_damage_reduction_enabled := false
+var tower_defense_fate_hurt_speed_penalty_enabled := false
+var tower_defense_fate_hurt_speed_time_left := 0.0
 var collectible_physical_damage_bonus: int = 0
 var collectible_magic_damage_bonus: int = 0
 var collectible_dash_distance_bonus: float = 0.0
@@ -491,6 +501,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	_update_invincibility(delta)
 	_update_pickup_effects(delta)
+	_update_tower_defense_fate_effects(delta)
 	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
 	_update_character_resources(delta)
@@ -801,6 +812,11 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 
 	current_health = result.health_after
 	last_damage_taken = result.applied_damage
+	if (
+		last_damage_taken > 0
+		and tower_defense_fate_hurt_speed_penalty_enabled
+	):
+		_activate_tower_defense_fate_hurt_speed_penalty()
 	if peer_id <= 0:
 		show_damage_number(
 			result.applied_damage,
@@ -1210,6 +1226,16 @@ func _create_damage_target_profile(request: DamageRequest) -> DamageTargetProfil
 	var strongest_reduction := 0.0
 	for reduction in damage_reduction_modifiers.values():
 		strongest_reduction = maxf(strongest_reduction, float(reduction))
+	if (
+		tower_defense_fate_low_health_damage_reduction_enabled
+		and current_health > 0
+		and float(current_health)
+			< float(maxi(max_health, 1)) * TOWER_DEFENSE_FATE_LOW_HEALTH_RATIO
+	):
+		strongest_reduction = maxf(
+			strongest_reduction,
+			TOWER_DEFENSE_FATE_LOW_HEALTH_DAMAGE_REDUCTION
+		)
 	profile.post_mitigation_multiplier = (
 		1.0 - clampf(strongest_reduction, 0.0, 0.95)
 	)
@@ -1356,6 +1382,50 @@ func add_damage_reduction_modifier(source_id: int, reduction: float) -> void:
 
 func remove_damage_reduction_modifier(source_id: int) -> void:
 	damage_reduction_modifiers.erase(source_id)
+
+
+## Applies the tower-defense fate modifiers as absolute run state. Calling this
+## repeatedly is idempotent and never mutates the shared character resource.
+func configure_tower_defense_fate_modifiers(
+	max_health_multiplier: float,
+	move_speed_multiplier: float,
+	dash_cooldown_reduction: float,
+	low_health_damage_reduction_enabled: bool,
+	hurt_speed_penalty_enabled: bool
+) -> void:
+	var safe_max_health_multiplier := maxf(max_health_multiplier, 0.01)
+	var safe_move_speed_multiplier := maxf(move_speed_multiplier, 0.0)
+	var safe_dash_cooldown_reduction := maxf(dash_cooldown_reduction, 0.0)
+	var profile_values_changed := (
+		not is_equal_approx(
+			tower_defense_fate_move_speed_multiplier,
+			safe_move_speed_multiplier
+		)
+		or not is_equal_approx(
+			tower_defense_fate_dash_cooldown_reduction,
+			safe_dash_cooldown_reduction
+		)
+	)
+	tower_defense_fate_max_health_multiplier = safe_max_health_multiplier
+	tower_defense_fate_move_speed_multiplier = safe_move_speed_multiplier
+	tower_defense_fate_dash_cooldown_reduction = safe_dash_cooldown_reduction
+	tower_defense_fate_low_health_damage_reduction_enabled = (
+		low_health_damage_reduction_enabled
+	)
+	tower_defense_fate_hurt_speed_penalty_enabled = hurt_speed_penalty_enabled
+	if not tower_defense_fate_hurt_speed_penalty_enabled:
+		tower_defense_fate_hurt_speed_time_left = 0.0
+
+	if _base_stats_initialized:
+		_refresh_collectible_stats()
+		_update_movement_status_visuals(Vector2.ZERO)
+		_refresh_dash_ready_visual()
+		if profile_values_changed:
+			profile_display_changed.emit()
+
+
+func clear_tower_defense_fate_modifiers() -> void:
+	configure_tower_defense_fate_modifiers(1.0, 1.0, 0.0, false, false)
 
 
 func set_controls_locked(locked: bool) -> void:
@@ -1557,6 +1627,7 @@ func update_multiplayer_authority_passive_state(delta: float) -> void:
 	_update_invincibility(delta)
 	_update_multiplayer_dash_protection(delta)
 	_update_pickup_effects(delta)
+	_update_tower_defense_fate_effects(delta)
 	_update_collectible_runtime_effects(delta)
 	_update_skill1_charge(delta)
 	_update_character_resources(delta)
@@ -1848,6 +1919,7 @@ func apply_multiplayer_death_state() -> void:
 	_finish_dash()
 	_stop_remote_dash_visual()
 	multiplayer_dash_protection_time_left = 0.0
+	tower_defense_fate_hurt_speed_time_left = 0.0
 	mouse_fire_held = false
 	network_move_input = Vector2.ZERO
 	network_shoot_input = Vector2.ZERO
@@ -2215,6 +2287,14 @@ func _try_heal(amount: int, report_multiplayer: bool = true) -> bool:
 	return true
 
 
+## Public authoritative healing entry point. Returns the amount actually
+## restored so periodic fate effects can account for maximum-health clamping.
+func heal(amount: int, report_multiplayer: bool = true) -> int:
+	if not _try_heal(amount, report_multiplayer):
+		return 0
+	return last_healing_received
+
+
 func try_consume_authoritative_player_bullet_ammo() -> bool:
 	return false
 
@@ -2462,7 +2542,13 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		),
 		1
 	)
-	max_health = maxi(_base_max_health + max_health_bonus, 1)
+	max_health = maxi(
+		roundi(
+			float(_base_max_health + max_health_bonus)
+			* tower_defense_fate_max_health_multiplier
+		),
+		1
+	)
 	move_speed = maxf(
 		_base_move_speed
 		+ move_speed_bonus
@@ -2527,7 +2613,10 @@ func _get_collectible_health_condition_maximum(
 	var result := _base_max_health
 	for item in active_items:
 		result += item.collectible_max_health_bonus
-	return maxi(result, 1)
+	return maxi(
+		roundi(float(result) * tower_defense_fate_max_health_multiplier),
+		1
+	)
 
 
 func _rebuild_active_collectible_items_cache() -> void:
@@ -2929,7 +3018,7 @@ func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, _hit_dam
 			_add_collectible_skill_charge(item.on_hit_skill_charge)
 			_spawn_collectible_area_at(global_position, 18.0, Color(0.42, 0.88, 1.0, 0.32), 0.22)
 		PickupConfig.HIT_EFFECT_EXECUTE:
-			var max_enemy_health := enemy.config.max_health if enemy.config != null else enemy.current_health
+			var max_enemy_health := enemy.get_runtime_max_health()
 			var threshold := float(max_enemy_health) * item.on_hit_execute_health_ratio
 			if threshold > 0.0 and float(enemy.current_health) <= threshold:
 				_apply_authoritative_collectible_enemy_damage(
@@ -3894,7 +3983,12 @@ func get_dash_distance() -> float:
 
 
 func get_dash_cooldown() -> float:
-	return maxf(_get_character_dash_cooldown() - collectible_dash_cooldown_reduction, 0.0)
+	return maxf(
+		_get_character_dash_cooldown()
+		- collectible_dash_cooldown_reduction
+		- tower_defense_fate_dash_cooldown_reduction,
+		0.0
+	)
 
 
 func _get_character_dash_distance() -> float:
@@ -4129,11 +4223,41 @@ func _get_effective_move_speed() -> float:
 
 
 func get_authoritative_move_speed_multiplier() -> float:
+	if tower_defense_fate_hurt_speed_time_left > 0.0:
+		# Snapshot replication carries this multiplier. Expressing the absolute
+		# starting-speed target as a ratio keeps local and remote movement equal
+		# even when collectibles have changed the current move_speed value.
+		if move_speed <= 0.0:
+			return 0.0
+		return (
+			maxf(_base_move_speed, 0.0)
+			* TOWER_DEFENSE_FATE_HURT_MOVE_SPEED_MULTIPLIER
+			/ move_speed
+		)
 	return (
 		current_move_speed_multiplier
 		* collectible_swift_move_speed_multiplier
 		* cold_move_speed_multiplier
+		* tower_defense_fate_move_speed_multiplier
 	)
+
+
+func _activate_tower_defense_fate_hurt_speed_penalty() -> void:
+	tower_defense_fate_hurt_speed_time_left = (
+		TOWER_DEFENSE_FATE_HURT_MOVE_SPEED_DURATION
+	)
+	_update_movement_status_visuals(Vector2.ZERO)
+
+
+func _update_tower_defense_fate_effects(delta: float) -> void:
+	if tower_defense_fate_hurt_speed_time_left <= 0.0:
+		return
+	tower_defense_fate_hurt_speed_time_left = maxf(
+		tower_defense_fate_hurt_speed_time_left - maxf(delta, 0.0),
+		0.0
+	)
+	if tower_defense_fate_hurt_speed_time_left <= 0.0:
+		_update_movement_status_visuals(Vector2.ZERO)
 
 
 func apply_multiplayer_effective_move_speed_multiplier(multiplier: float) -> void:
@@ -4259,7 +4383,8 @@ func _update_character_pickup_effects(_delta: float) -> void:
 # 更新临时移速增减的视觉反馈
 func _update_movement_status_visuals(move_direction: Vector2) -> void:
 	var is_slowed := (
-		cold_stack_count > 0
+		tower_defense_fate_hurt_speed_time_left > 0.0
+		or cold_stack_count > 0
 		or (
 			speed_buff_time_left > 0.0
 			and current_move_speed_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
@@ -4635,6 +4760,7 @@ func _die() -> void:
 	_finish_dash()
 	_stop_remote_dash_visual()
 	multiplayer_dash_protection_time_left = 0.0
+	tower_defense_fate_hurt_speed_time_left = 0.0
 	mouse_fire_held = false
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals(Vector2.ZERO)

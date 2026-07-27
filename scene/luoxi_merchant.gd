@@ -7,7 +7,10 @@ const DIALOGUE_LINES := [
 	"我是终末地的爪牙！",
 	"我能为你提供收藏品来强化自己。",
 ]
-const CHOICE_COUNT := 3
+const DEFAULT_CHOICE_COUNT := 3
+const MAX_CHOICE_COUNT := 4
+# Kept as an alias for code that treats the original offer size as a constant.
+const CHOICE_COUNT := DEFAULT_CHOICE_COUNT
 const OFFER_ALL_COMMON_WEIGHT := 50
 const OFFER_ALL_RARE_WEIGHT := 30
 const OFFER_ALL_EPIC_WEIGHT := 12
@@ -80,10 +83,31 @@ var _authoritative_request_kind := AuthoritativeRequestKind.NONE
 static var _collectible_pool_cache: Array[PickupConfig] = []
 static var _collectible_by_path_cache: Dictionary = {}
 static var _collectible_cache_ready := false
+static var _runtime_choice_count := DEFAULT_CHOICE_COUNT
 
 
 static func get_choice_count() -> int:
-	return CHOICE_COUNT
+	return _runtime_choice_count
+
+
+static func set_runtime_choice_count(choice_count: int) -> void:
+	_runtime_choice_count = clampi(
+		choice_count,
+		DEFAULT_CHOICE_COUNT,
+		MAX_CHOICE_COUNT
+	)
+
+
+static func reset_runtime_choice_count() -> void:
+	_runtime_choice_count = DEFAULT_CHOICE_COUNT
+
+
+static func _resolve_offer_choice_count(choice_count: int) -> int:
+	if choice_count < 0:
+		return get_choice_count()
+	if choice_count < DEFAULT_CHOICE_COUNT or choice_count > MAX_CHOICE_COUNT:
+		return 0
+	return choice_count
 
 
 static func get_refresh_limit() -> int:
@@ -172,26 +196,40 @@ static func is_collectible_available_for_inventory(
 
 static func get_collectible_offer_rarity_pattern_for_roll(
 	roll: int,
-	mixed_rarity_position: int = 0
+	mixed_rarity_position: int = 0,
+	choice_count: int = -1
 ) -> Array[int]:
+	var resolved_choice_count := _resolve_offer_choice_count(choice_count)
+	if resolved_choice_count <= 0:
+		return []
 	var normalized_roll := posmod(roll, COLLECTIBLE_OFFER_ROLL_TOTAL)
 	var roll_end := OFFER_ALL_COMMON_WEIGHT
 	if normalized_roll < roll_end:
-		return _build_uniform_rarity_pattern(PickupConfig.CollectibleRarity.COMMON)
+		return _build_uniform_rarity_pattern(
+			PickupConfig.CollectibleRarity.COMMON,
+			resolved_choice_count
+		)
 
 	roll_end += OFFER_ALL_RARE_WEIGHT
 	if normalized_roll < roll_end:
-		return _build_uniform_rarity_pattern(PickupConfig.CollectibleRarity.RARE)
+		return _build_uniform_rarity_pattern(
+			PickupConfig.CollectibleRarity.RARE,
+			resolved_choice_count
+		)
 
 	roll_end += OFFER_ALL_EPIC_WEIGHT
 	if normalized_roll < roll_end:
-		return _build_uniform_rarity_pattern(PickupConfig.CollectibleRarity.EPIC)
+		return _build_uniform_rarity_pattern(
+			PickupConfig.CollectibleRarity.EPIC,
+			resolved_choice_count
+		)
 
-	var featured_position := posmod(mixed_rarity_position, CHOICE_COUNT)
+	var featured_position := posmod(mixed_rarity_position, resolved_choice_count)
 	roll_end += OFFER_ONE_LEGENDARY_WEIGHT
 	if normalized_roll < roll_end:
 		var one_legendary := _build_uniform_rarity_pattern(
-			PickupConfig.CollectibleRarity.EPIC
+			PickupConfig.CollectibleRarity.EPIC,
+			resolved_choice_count
 		)
 		one_legendary[featured_position] = PickupConfig.CollectibleRarity.LEGENDARY
 		return one_legendary
@@ -199,28 +237,48 @@ static func get_collectible_offer_rarity_pattern_for_roll(
 	roll_end += OFFER_TWO_LEGENDARY_WEIGHT
 	if normalized_roll < roll_end:
 		var two_legendary := _build_uniform_rarity_pattern(
-			PickupConfig.CollectibleRarity.LEGENDARY
+			PickupConfig.CollectibleRarity.EPIC,
+			resolved_choice_count
 		)
-		two_legendary[featured_position] = PickupConfig.CollectibleRarity.EPIC
+		if resolved_choice_count == DEFAULT_CHOICE_COUNT:
+			# Preserve the original three-card layout: the mixed position is epic.
+			for index in range(resolved_choice_count):
+				if index != featured_position:
+					two_legendary[index] = PickupConfig.CollectibleRarity.LEGENDARY
+		else:
+			two_legendary[featured_position] = PickupConfig.CollectibleRarity.LEGENDARY
+			two_legendary[(featured_position + 1) % resolved_choice_count] = (
+				PickupConfig.CollectibleRarity.LEGENDARY
+			)
 		return two_legendary
 
-	return _build_uniform_rarity_pattern(PickupConfig.CollectibleRarity.LEGENDARY)
-
-
-static func roll_collectible_offer_rarity_pattern(
-	rng: RandomNumberGenerator
-) -> Array[int]:
-	if rng == null:
-		return []
-	return get_collectible_offer_rarity_pattern_for_roll(
-		rng.randi_range(0, COLLECTIBLE_OFFER_ROLL_TOTAL - 1),
-		rng.randi_range(0, CHOICE_COUNT - 1)
+	return _build_uniform_rarity_pattern(
+		PickupConfig.CollectibleRarity.LEGENDARY,
+		resolved_choice_count
 	)
 
 
-static func _build_uniform_rarity_pattern(rarity: int) -> Array[int]:
+static func roll_collectible_offer_rarity_pattern(
+	rng: RandomNumberGenerator,
+	choice_count: int = -1
+) -> Array[int]:
+	var resolved_choice_count := _resolve_offer_choice_count(choice_count)
+	if rng == null or resolved_choice_count <= 0:
+		return []
+	return get_collectible_offer_rarity_pattern_for_roll(
+		rng.randi_range(0, COLLECTIBLE_OFFER_ROLL_TOTAL - 1),
+		rng.randi_range(0, resolved_choice_count - 1),
+		resolved_choice_count
+	)
+
+
+static func _build_uniform_rarity_pattern(
+	rarity: int,
+	choice_count: int = -1
+) -> Array[int]:
+	var resolved_choice_count := _resolve_offer_choice_count(choice_count)
 	var result: Array[int] = []
-	for _choice_index in range(CHOICE_COUNT):
+	for _choice_index in range(resolved_choice_count):
 		result.append(rarity)
 	return result
 
@@ -407,6 +465,12 @@ func apply_authoritative_offer_state(
 		return false
 	if offer_revision < authoritative_offer_revision:
 		return false
+	# Fate state and merchant offers use independent reliable channels. A late
+	# joiner can therefore receive the authoritative four-card offer first.
+	# Promote only on an explicit four-path payload; a normal three-card offer
+	# must never erase an already active permanent upgrade.
+	if config_paths.size() == MAX_CHOICE_COUNT:
+		set_runtime_choice_count(MAX_CHOICE_COUNT)
 
 	var choices: Array = []
 	var normalized_paths: Array[String] = []
@@ -417,7 +481,7 @@ func apply_authoritative_offer_state(
 			return false
 		normalized_paths.append(config_path)
 		choices.append(item)
-	if choices.size() != CHOICE_COUNT:
+	if choices.size() != get_choice_count():
 		return false
 	if (
 		offer_revision == authoritative_offer_revision
@@ -441,7 +505,7 @@ func apply_authoritative_offer_state(
 		active_player.current_xirang = maxi(confirmed_current_xirang, 0)
 		active_player.xirang_changed.emit(active_player.current_xirang, xirang_delta)
 
-	selected_choice_index = clampi(selected_choice_index, 0, CHOICE_COUNT - 1)
+	selected_choice_index = clampi(selected_choice_index, 0, get_choice_count() - 1)
 	choice_visible = true
 	dialogue_bubble.hide_bubble()
 	var status := _get_authoritative_refresh_status(refresh_result_code)
@@ -457,9 +521,11 @@ func get_authoritative_offer_revision() -> int:
 func build_authoritative_offer_paths(
 	player: Player,
 	excluded_paths: Array[String],
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	choice_count: int = -1
 ) -> Array[String]:
-	if player == null or rng == null:
+	var resolved_choice_count := _resolve_offer_choice_count(choice_count)
+	if player == null or rng == null or resolved_choice_count <= 0:
 		return []
 	var pool := _get_collectible_pool_for_player(player)
 	if not excluded_paths.is_empty():
@@ -468,13 +534,17 @@ func build_authoritative_offer_paths(
 			var item := item_variant as PickupConfig
 			if item != null and not excluded_paths.has(item.resource_path):
 				filtered_pool.append(item)
-		if filtered_pool.size() >= CHOICE_COUNT:
+		if filtered_pool.size() >= resolved_choice_count:
 			pool = filtered_pool
-	if pool.size() < CHOICE_COUNT:
+	if pool.size() < resolved_choice_count:
 		return []
 
-	var selected_items := _build_collectible_choices_from_pool(pool, rng)
-	if selected_items.size() != CHOICE_COUNT:
+	var selected_items := _build_collectible_choices_from_pool(
+		pool,
+		rng,
+		resolved_choice_count
+	)
+	if selected_items.size() != resolved_choice_count:
 		return []
 	var result: Array[String] = []
 	for item_variant in selected_items:
@@ -494,7 +564,7 @@ func _get_authoritative_refresh_status(result_code: int) -> String:
 		REFRESH_RESULT_INSUFFICIENT_XIRANG:
 			return "息壤不足，无法支付本次刷新费用"
 		REFRESH_RESULT_STALE_OFFER:
-			return "报价已更新，已同步主机上的最新三张卡"
+			return "报价已更新，已同步主机上的最新%d张卡" % get_choice_count()
 		_:
 			return ""
 
@@ -545,11 +615,19 @@ func _handle_choice_input(event: InputEvent) -> bool:
 			selected_choice_index = 2
 			_try_claim_selected_collectible()
 			return true
+		KEY_4:
+			if get_choice_count() < 4:
+				return false
+			if choice_overlay.is_confirmation_locked():
+				return true
+			selected_choice_index = 3
+			_try_claim_selected_collectible()
+			return true
 	return false
 
 
 func _select_choice(choice_index: int) -> void:
-	selected_choice_index = wrapi(choice_index, 0, CHOICE_COUNT)
+	selected_choice_index = wrapi(choice_index, 0, get_choice_count())
 	choice_overlay.select_choice(selected_choice_index)
 
 
@@ -635,7 +713,7 @@ func _build_random_collectible_choices(excluded_paths: Array[String] = []) -> Ar
 			var item := item_variant as PickupConfig
 			if item != null and not excluded_paths.has(item.resource_path):
 				filtered_pool.append(item)
-		if filtered_pool.size() >= mini(CHOICE_COUNT, pool.size()):
+		if filtered_pool.size() >= mini(get_choice_count(), pool.size()):
 			pool = filtered_pool
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
@@ -700,11 +778,16 @@ func _request_collectible_refresh() -> void:
 
 func _build_collectible_choices_from_pool(
 	pool: Array,
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	choice_count: int = -1
 ) -> Array:
-	if pool.size() < CHOICE_COUNT or rng == null:
+	var resolved_choice_count := _resolve_offer_choice_count(choice_count)
+	if pool.size() < resolved_choice_count or rng == null or resolved_choice_count <= 0:
 		return []
-	var rarity_pattern := roll_collectible_offer_rarity_pattern(rng)
+	var rarity_pattern := roll_collectible_offer_rarity_pattern(
+		rng,
+		resolved_choice_count
+	)
 	var result: Array = []
 	for rarity in rarity_pattern:
 		var pool_index := _pick_collectible_index_for_rarity(pool, rarity, rng)
@@ -732,6 +815,8 @@ func _pick_collectible_index_for_rarity(
 
 func _get_collectible_pool_for_player(player: Player) -> Array:
 	var pool := get_collectible_pool()
+	if not is_inside_tree():
+		return pool
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if player == null or run_state == null:
 		return pool
@@ -748,6 +833,8 @@ func _get_collectible_pool_for_player(player: Player) -> Array:
 
 
 func _are_collectible_choices_available_for_player(choices: Array, player: Player) -> bool:
+	if not is_inside_tree():
+		return true
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if player == null or run_state == null:
 		return true
@@ -774,7 +861,7 @@ static func _get_collectible_config_paths() -> Array[String]:
 
 
 func _get_current_choice_item(choice_index: int) -> PickupConfig:
-	if choice_index < 0 or choice_index >= CHOICE_COUNT:
+	if choice_index < 0 or choice_index >= get_choice_count():
 		return null
 	if authoritative_offer_revision > 0 and choice_index < authoritative_offer_paths.size():
 		return get_collectible_for_path(authoritative_offer_paths[choice_index])

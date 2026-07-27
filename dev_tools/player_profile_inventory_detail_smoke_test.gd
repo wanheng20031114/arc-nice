@@ -4,6 +4,9 @@ const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier
 const PROFILE_PANEL_SCENE := preload("res://scene/player/ui/player_profile_panel.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
+const XIAOCONG_FATE_STONE := preload(
+	"res://resources/config/pickups/xiaocong_fate_stone.tres"
+)
 const ITEM_DETAIL_PANEL_BG := preload("res://resources/texture/item_detail_panel_bg.png")
 const ITEM_CATEGORY_BADGE_COLLECTIBLE := preload("res://resources/texture/item_category_badge_collectible.png")
 const ITEM_CATEGORY_BADGE_ITEM := preload("res://resources/texture/item_category_badge_item.png")
@@ -209,6 +212,37 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	await process_frame
 	_expect(run_state.get_item(1) == null, "Double-clicking a consumable slot must still use and remove the item.")
 	_expect(player.current_health == player.max_health, "Double-clicking a health bottle must still heal the player.")
+
+	_expect(
+		run_state.try_add_item(XIAOCONG_FATE_STONE),
+		"The Xiaocong fate stone must fit in an available backpack slot."
+	)
+	var stone_slot_index := -1
+	for slot_index in range(profile_panel.slots.size()):
+		if run_state.get_item(slot_index) == XIAOCONG_FATE_STONE:
+			stone_slot_index = slot_index
+			break
+	_expect(stone_slot_index >= 0, "The fate stone must remain visible in the backpack.")
+	if stone_slot_index >= 0:
+		profile_panel.slots[stone_slot_index].emit_signal("pressed")
+		await process_frame
+		_expect(
+			profile_panel.item_detail_hint.visible
+			and "无法使用、移动或删除" in profile_panel.item_detail_hint.text,
+			"A locked fate item must explain all of its backpack restrictions."
+		)
+		_expect(
+			not profile_panel.item_detail_use_button.visible
+			and not profile_panel.item_detail_discard_button.visible,
+			"A locked fate item must not expose use or discard actions."
+		)
+		_simulate_double_click(profile_panel.slots[stone_slot_index])
+		await process_frame
+		_expect(
+			run_state.get_item(stone_slot_index) == XIAOCONG_FATE_STONE
+			and not run_state.discard_item(stone_slot_index),
+			"Double-click and direct discard attempts must not remove the fate stone."
+		)
 
 	_stop_audio_players(test_root)
 	profile_panel.close()

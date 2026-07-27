@@ -24,7 +24,7 @@ enum RoundingMode {
 	CEIL,
 }
 
-## Serialized as `combat_outcome` in protocol v20. Never renumber in place;
+## Serialized as `combat_outcome` in protocol v21. Never renumber in place;
 ## additions require a new explicit value and a protocol compatibility review.
 enum DamageRejectionReason {
 	NONE = 0,

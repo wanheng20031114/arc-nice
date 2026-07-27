@@ -4,6 +4,9 @@ const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
+const XIAOCONG_FATE_STONE := preload(
+	"res://resources/config/pickups/xiaocong_fate_stone.tres"
+)
 
 var failures: Array[String] = []
 
@@ -19,6 +22,7 @@ func _run() -> void:
 	_test_peer_slot_state_and_snapshot(run_state)
 	_test_collectible_effect_cap_does_not_limit_carrying(run_state)
 	await _test_stacked_item_use(run_state)
+	_test_inventory_locked_fate_stone(run_state)
 	_test_starting_inventory_opt_out(run_state)
 	run_state.begin_new_run(&"weishidaier")
 
@@ -155,6 +159,56 @@ func _test_collectible_effect_cap_does_not_limit_carrying(run_state: RunStateSto
 	_expect(
 		run_state.get_item_for_peer(PEER_ID, APPLE.collectible_max_copies + 1) == APPLE,
 		"第6份苹果必须真实写入新的Peer背包槽，而不是被效果上限吞掉。"
+	)
+
+
+func _test_inventory_locked_fate_stone(run_state: RunStateStore) -> void:
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(run_state.try_add_item(XIAOCONG_FATE_STONE), "命运石必须能写入空背包。")
+	var local_revision := run_state.get_inventory_revision()
+	_expect(
+		not run_state.try_use_item(0, null)
+		and not run_state.discard_item(0)
+		and not run_state.move_item_stack_to_slot(0, 1)
+		and not bool(
+			run_state.take_item_stack_if_revision(0, local_revision).get("success", false)
+		),
+		"本地命运石必须拒绝使用、删除、移动与事务取出。"
+	)
+	_expect(
+		run_state.get_item(0) == XIAOCONG_FATE_STONE
+		and run_state.get_inventory_revision() == local_revision,
+		"被拒绝的命运石操作不得改变物品或背包revision。"
+	)
+
+	const PEER_ID := 7
+	run_state.ensure_multiplayer_peer_state(PEER_ID)
+	_expect(
+		run_state.try_add_item_for_peer(PEER_ID, XIAOCONG_FATE_STONE),
+		"Host必须能把命运石写入Peer背包。"
+	)
+	var peer_revision := run_state.get_inventory_revision_for_peer(PEER_ID)
+	_expect(
+		not run_state.discard_item_for_peer(PEER_ID, 0)
+		and not run_state.move_item_stack_to_slot_for_peer_if_revision(
+			PEER_ID,
+			0,
+			1,
+			peer_revision
+		)
+		and not bool(
+			run_state.take_item_stack_for_peer_if_revision(
+				PEER_ID,
+				0,
+				peer_revision
+			).get("success", false)
+		),
+		"Peer命运石必须拒绝删除、移动与Host事务取出。"
+	)
+	_expect(
+		run_state.get_item_for_peer(PEER_ID, 0) == XIAOCONG_FATE_STONE
+		and run_state.get_inventory_revision_for_peer(PEER_ID) == peer_revision,
+		"被拒绝的Peer命运石操作不得改变物品或revision。"
 	)
 
 
