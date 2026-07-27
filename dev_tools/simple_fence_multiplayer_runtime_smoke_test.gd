@@ -72,6 +72,14 @@ func _run() -> void:
 	host_game.next_multiplayer_plant_net_id = FIRST_FENCE_NET_ID
 	var owner_peer_id := maxi(host_game.player.peer_id, 1)
 	host_game.peer_players[owner_peer_id] = host_game.player
+	var run_state := root.get_node("RunState") as RunStateStore
+	var fence_item := BuildingItemRegistry.get_item(SIMPLE_FENCE_CONFIG.plant_id)
+	run_state.ensure_multiplayer_peer_state(owner_peer_id)
+	_expect(
+		fence_item != null
+		and run_state.try_add_item_count_for_peer(owner_peer_id, fence_item, 3),
+		"围栏多人运行时夹具必须为权威玩家准备三件正式建筑物品。"
+	)
 
 	var connected_anchors := _find_connected_anchor_triple(
 		host_game.plant_system.get_valid_anchors_for_player(
@@ -144,11 +152,22 @@ func _run() -> void:
 	host_game.enemy_retarget_time_left = RETARGET_TIME_SENTINEL
 	host_game.enemy_retarget_sweep_remaining = RETARGET_SWEEP_SENTINEL
 	for placement_index in range(connected_anchors.size()):
-		host_game.request_multiplayer_plant_placement(
+		var slot_index := _find_peer_item_slot(
+			run_state,
+			owner_peer_id,
+			fence_item
+		)
+		_expect(slot_index >= 0, "每次正式围栏放置前必须能解析建筑物品槽位。")
+		if slot_index < 0:
+			continue
+		host_game.request_multiplayer_inventory_plant_placement(
 			owner_peer_id,
 			placement_index + 1,
 			SIMPLE_FENCE_CONFIG.plant_id,
-			connected_anchors[placement_index]
+			connected_anchors[placement_index],
+			slot_index,
+			run_state.get_inventory_revision_for_peer(owner_peer_id),
+			fence_item.resource_path
 		)
 		_expect(
 			host_game.enemy_retarget_time_left == RETARGET_TIME_SENTINEL
@@ -158,8 +177,9 @@ func _run() -> void:
 		)
 
 	_expect(
-		spawn_records.size() == 3,
-		"Host 正式多人放置入口必须生成并广播三份围栏 spawn。"
+		spawn_records.size() == 3
+		and run_state.get_inventory_item_total_for_peer(owner_peer_id, fence_item) == 0,
+		"Host 正式多人库存入口必须生成三份围栏 spawn 并原子扣除三件物品。"
 	)
 	var enemy_index_count_after := int(
 		host_game.plant_system.get_enemy_target_spatial_index_metrics().get(
@@ -557,6 +577,25 @@ func _is_any_fence_target(target: Node2D, net_ids: Array[int]) -> bool:
 		if host_game.get_multiplayer_plant_node(net_id) == target:
 			return true
 	return false
+
+
+func _find_peer_item_slot(
+	run_state: RunStateStore,
+	peer_id: int,
+	item: PickupConfig
+) -> int:
+	if run_state == null or peer_id <= 0 or item == null:
+		return -1
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		if (
+			run_state.get_item_count_for_peer(peer_id, slot_index) > 0
+			and PickupConfig.inventory_identity_matches(
+				run_state.get_item_for_peer(peer_id, slot_index),
+				item
+			)
+		):
+			return slot_index
+	return -1
 
 
 func _cleanup() -> void:

@@ -1466,6 +1466,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	var controller := PLACEMENT_CONTROLLER_SCENE.instantiate() as PlantPlacementController
 	test_root.add_child(controller)
 	controller.setup(plant_system, player)
+	controller.set_free_placement_enabled(true)
 	var lock_events: Array[bool] = []
 	controller.player_lock_requested.connect(func(locked: bool) -> void: lock_events.append(locked))
 	var was_paused := paused
@@ -1765,6 +1766,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	var controller := PLACEMENT_CONTROLLER_SCENE.instantiate() as PlantPlacementController
 	test_root.add_child(controller)
 	controller.setup(plant_system, requesting_player)
+	controller.set_free_placement_enabled(true)
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(

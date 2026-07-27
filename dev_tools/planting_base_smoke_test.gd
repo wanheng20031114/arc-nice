@@ -791,7 +791,7 @@ func _test_hud_follow_focus(
 	test_root.add_child(hud)
 	await process_frame
 	var card_scroll := hud.get_node_or_null(
-		"Root/Center/Content/Margin/Layout/CardScroll"
+		"Root/ScreenMargin/Content/Margin/Layout/CatalogScroll"
 	) as ScrollContainer
 	var configs := PlantDefenseRegistry.get_all_configs()
 	var planting_base_index := configs.find(config)
@@ -806,18 +806,17 @@ func _test_hud_follow_focus(
 		and planting_base_index >= 0
 		and hud.cards.size() == 15
 		and hud.cards[planting_base_index].plant_config == config,
-		"15张植物卡必须包含挖土装置、石磨台、简易围栏和语义定位的种植基地，CardScroll须启用follow_focus。"
+		"15张建筑卡必须包含挖土装置、石磨台、简易围栏和语义定位的种植基地，外层目录须启用follow_focus。"
 	)
 	if card_scroll == null or not hud.is_open():
 		return
-	for _step in range(planting_base_index):
-		hud.call("_select_relative", 1)
+	hud.call("_select_config", config)
 	await process_frame
 	await process_frame
 	_expect(
 		hud.selected_config == config
 		and card_scroll.follow_focus,
-		"键盘按语义顺序移动到种植基地时，CardScroll必须持续启用follow_focus。"
+		"切换到种植基地时，外层目录必须持续启用follow_focus。"
 	)
 	hud.close()
 

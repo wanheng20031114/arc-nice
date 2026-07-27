@@ -12388,7 +12388,7 @@ func _apply_debug_collectible_for_peer(peer_id: int, config_path: String) -> voi
 		return
 	var item := LuoxiMerchant.get_collectible_for_path(config_path)
 	var success := false
-	if item != null:
+	if item != null and game.allows_debug_collectible_grants():
 		success = run_state.try_add_item_for_peer(peer_id, item)
 	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
 	_rpc_to_connected_clients(

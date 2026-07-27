@@ -5,6 +5,9 @@ const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_inse
 const LINGLAN_BOSS_ENTRY := preload("res://resources/config/bosses/boss_01_linglan.tres")
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
 const PLANK_MATERIAL := preload("res://resources/config/materials/material_plank.tres")
+const AGAVE_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_agave_cannon.tres"
+)
 
 const STATE_HOSTING_LAN := 1
 const STATE_LOADING_GAME := 4
@@ -439,6 +442,11 @@ func _run_tower_defense_runtime_probe(
 		_fail("Tower-defense peers could not resolve a shared valid grass anchor.")
 		return
 	var run_state := root.get_node("RunState") as RunStateStore
+	var agave_total_before_placement := _count_peer_item_total(
+		run_state,
+		net_manager.connected_players,
+		AGAVE_BUILDING_ITEM
+	)
 	var wood_total_before_warehouse_competition := _count_peer_item_total(
 		run_state,
 		net_manager.connected_players,
@@ -450,6 +458,7 @@ func _run_tower_defense_runtime_probe(
 			mp_game,
 			game,
 			shared_plant_anchor,
+			agave_total_before_placement,
 			wood_total_before_warehouse_competition
 		)
 	else:
@@ -458,6 +467,7 @@ func _run_tower_defense_runtime_probe(
 			mp_game,
 			game,
 			shared_plant_anchor,
+			agave_total_before_placement,
 			wood_total_before_warehouse_competition
 		)
 
@@ -526,8 +536,10 @@ func _run_host_tower_defense_runtime_probe(
 	mp_game: Node,
 	game: Variant,
 	shared_plant_anchor: Vector2i,
+	agave_total_before_placement: int,
 	wood_total_before_warehouse_competition: int
 ) -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
 	game.call("_apply_base_damage", 7)
 	if int(game.current_base_health) != 93:
 		_fail("Host base damage did not update tower-defense health to 93.")
@@ -573,6 +585,17 @@ func _run_host_tower_defense_runtime_probe(
 	if plant.footprint_cells.is_empty() or plant.footprint_cells[0] != shared_plant_anchor:
 		_fail("Authoritative plant did not use the clients' shared requested anchor.")
 		return
+	if (
+		_count_peer_item_total(
+			run_state,
+			net_manager.connected_players,
+			AGAVE_BUILDING_ITEM
+		)
+		!= agave_total_before_placement - 1
+	):
+		_fail("Competing formal placements did not consume exactly one Agave building item.")
+		return
+	print("LAN_PROBE_EVENT host_td_inventory_placement_atomic plant=agave_cannon")
 	for peer_id_variant in net_manager.connected_players:
 		var peer_id := int(peer_id_variant)
 		if peer_id != int(net_manager.get_local_peer_id()):
@@ -620,12 +643,22 @@ func _run_host_tower_defense_runtime_probe(
 	await _wait_seconds(0.75)
 	print("LAN_PROBE_EVENT host_td_plant_removed net_id=1")
 
-	if not await _wait_for_host_plant_requests(mp_game, net_manager, 102, 5.0):
-		_fail("Host did not receive every client's shared-warehouse placement request.")
+	if not _submit_local_inventory_plant_request(
+		net_manager,
+		mp_game,
+		run_state,
+		102,
+		&"oak_warehouse",
+		shared_plant_anchor
+	):
+		_fail("Host could not submit its formal shared-warehouse inventory placement.")
 		return
 	var warehouse := game.plant_system.get_plant_by_net_id(2) as OakWarehouse
 	if warehouse == null or not is_instance_valid(warehouse):
 		_fail("Competing warehouse placement did not create authoritative net_id 2.")
+		return
+	if not await _wait_for_plant_operational(warehouse, 3.0):
+		_fail("Formal shared warehouse did not finish construction.")
 		return
 	if not _prepare_host_clients_for_building_interaction(
 		mp_game,
@@ -643,22 +676,16 @@ func _run_host_tower_defense_runtime_probe(
 	# the new automatic warehouse broadcast path.
 	mp_game.call("_broadcast_warehouse_snapshot", warehouse)
 	await _wait_seconds(0.75)
-	# A one-item shared stack is an intentionally transient revision: a faster
-	# client may consume it before another client observes that intermediate
-	# snapshot. Request 103 is therefore the phase-completion barrier; every
-	# client emits it only after seeing either the seeded revision or the newer
-	# authoritative empty revision and converging its inventory view.
-	if not await _wait_for_host_plant_requests(mp_game, net_manager, 103, 8.0):
-		_fail("Host did not receive every client's warehouse phase completion marker.")
-		return
-	if not await _wait_for_host_warehouse_transactions(mp_game, 1, 1.0):
+	# A one-item shared stack is intentionally transient. Some clients can observe
+	# the already-consumed revision directly, so the authoritative transaction is
+	# the phase barrier instead of another placement-shaped marker RPC.
+	if not await _wait_for_host_warehouse_transactions(mp_game, 1, 8.0):
 		_fail("Host did not settle the authoritative warehouse retrieval transaction.")
 		return
 	var warehouse_transaction_count := _count_host_warehouse_transactions(mp_game)
 	if warehouse.get_storage_item(0) != null:
 		_fail("Competing shared-warehouse retrieval must consume its only source stack once.")
 		return
-	var run_state := root.get_node("RunState") as RunStateStore
 	if (
 		_count_peer_item_total(run_state, net_manager.connected_players, WOOD_MATERIAL)
 		!= wood_total_before_warehouse_competition + 1
@@ -670,9 +697,27 @@ func _run_host_tower_defense_runtime_probe(
 		% warehouse_transaction_count
 	)
 
+	var station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
+	var station_anchor := _find_shared_multiplayer_plant_anchor(game, station_config)
+	if station_anchor == Vector2i.MAX:
+		_fail("Host could not resolve a valid formal wood-station anchor.")
+		return
+	if not _submit_local_inventory_plant_request(
+		net_manager,
+		mp_game,
+		run_state,
+		103,
+		&"wood_processing_station",
+		station_anchor
+	):
+		_fail("Host could not submit its formal wood-station inventory placement.")
+		return
 	var station := game.plant_system.get_plant_by_net_id(3) as ProductionBuilding
 	if station == null or not is_instance_valid(station):
 		_fail("Competing wood-station placement did not create authoritative net_id 3.")
+		return
+	if not await _wait_for_plant_operational(station, 3.0):
+		_fail("Formal wood station did not finish construction.")
 		return
 	if not _prepare_host_clients_for_building_interaction(
 		mp_game,
@@ -735,6 +780,7 @@ func _run_client_tower_defense_runtime_probe(
 	mp_game: Node,
 	game: Variant,
 	shared_plant_anchor: Vector2i,
+	agave_total_before_placement: int,
 	wood_total_before_warehouse_competition: int
 ) -> void:
 	if not await _wait_for_int_property(game, &"current_base_health", 93, 5.0):
@@ -759,17 +805,38 @@ func _run_client_tower_defense_runtime_probe(
 	game.plant_placement_controller.selection_unavailable.connect(
 		func() -> void: rejection_state[&"received"] = true
 	)
+	# Formal servers must reject the legacy free-placement RPC even when its
+	# plant id and anchor are otherwise valid.
 	mp_game.call(
 		"_on_local_plant_placement_requested",
-		101,
+		100,
 		&"agave_cannon",
 		shared_plant_anchor
 	)
+	if not await _wait_for_dictionary_flag(rejection_state, &"received", 3.0):
+		_fail("Formal Host did not reject the legacy free-placement RPC.")
+		return
+	var run_state := root.get_node("RunState") as RunStateStore
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	if _get_peer_item_total(run_state, local_peer_id, AGAVE_BUILDING_ITEM) != 1:
+		_fail("Formal free-placement rejection changed the client's Agave inventory.")
+		return
+	rejection_state[&"received"] = false
+	if not _submit_local_inventory_plant_request(
+		net_manager,
+		mp_game,
+		run_state,
+		101,
+		&"agave_cannon",
+		shared_plant_anchor
+	):
+		_fail("Client could not submit its formal Agave inventory placement.")
+		return
 	var plant := await _wait_for_client_plant(game, 1, 5.0)
 	if plant == null:
 		_fail("Client did not spawn the authoritative plant replica.")
 		return
-	var local_player := game.get_player_for_peer(int(net_manager.get_local_peer_id())) as Player
+	var local_player := game.get_player_for_peer(local_peer_id) as Player
 	var won_competition := plant.owner_player == local_player
 	if not won_competition:
 		if not await _wait_for_dictionary_flag(rejection_state, &"received", 3.0):
@@ -777,6 +844,19 @@ func _run_client_tower_defense_runtime_probe(
 			return
 	elif bool(rejection_state[&"received"]):
 		_fail("Winning client unexpectedly received a placement rejection.")
+		return
+	var expected_agave_count := 0 if won_competition else 1
+	if not await _wait_for_peer_item_total(
+		run_state,
+		local_peer_id,
+		AGAVE_BUILDING_ITEM,
+		expected_agave_count,
+		3.0
+	):
+		_fail("Client inventory did not converge after formal placement competition.")
+		return
+	if agave_total_before_placement <= 0:
+		_fail("Tower-defense formal probe did not observe the starter Agave items.")
 		return
 	await _wait_seconds(0.75)
 	if game.plant_system.plants_by_net_id.size() != 1:
@@ -808,12 +888,6 @@ func _run_client_tower_defense_runtime_probe(
 		_fail("Client did not remove the authoritative plant replica.")
 		return
 	print("LAN_PROBE_EVENT client_td_plant_lifecycle net_id=1")
-	mp_game.call(
-		"_on_local_plant_placement_requested",
-		102,
-		&"oak_warehouse",
-		shared_plant_anchor
-	)
 	var warehouse_plant: PlantDefense = await _wait_for_client_plant(game, 2, 5.0)
 	var warehouse := warehouse_plant as OakWarehouse
 	if warehouse == null:
@@ -821,14 +895,6 @@ func _run_client_tower_defense_runtime_probe(
 		return
 	if local_player == null or not is_instance_valid(local_player):
 		_fail("Client could not resolve its local player before warehouse interaction.")
-		return
-	# Resolve the common station anchor before any peer can advance past the
-	# warehouse phase and place it. This keeps all competing request 103 payloads
-	# identical even when one peer observes the winning warehouse revision first.
-	var station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
-	var station_anchor := _find_shared_multiplayer_plant_anchor(game, station_config)
-	if station_anchor == Vector2i.MAX:
-		_fail("Client could not resolve a valid shared wood-station anchor.")
 		return
 	var approach_direction := warehouse.global_position.direction_to(local_player.global_position)
 	if approach_direction == Vector2.ZERO:
@@ -881,20 +947,13 @@ func _run_client_tower_defense_runtime_probe(
 	if not await _wait_for_warehouse_storage_count(warehouse, 0, 0, 5.0):
 		_fail("Client warehouse state did not converge after competing retrievals.")
 		return
-	var run_state := root.get_node("RunState") as RunStateStore
 	if (
 		_count_peer_item_total(run_state, net_manager.connected_players, WOOD_MATERIAL)
 		!= wood_total_before_warehouse_competition + 1
 	):
 		_fail("Client inventory snapshots did not converge on one warehouse winner.")
 		return
-	mp_game.call(
-		"_on_local_plant_placement_requested",
-		103,
-		&"wood_processing_station",
-		station_anchor
-	)
-	var station_plant: PlantDefense = await _wait_for_client_plant(game, 3, 5.0)
+	var station_plant: PlantDefense = await _wait_for_client_plant(game, 3, 8.0)
 	var station := station_plant as ProductionBuilding
 	if station == null:
 		_fail("Client did not spawn the authoritative wood-station replica.")
@@ -2066,6 +2125,20 @@ func _wait_for_warehouse_storage_count(
 	return false
 
 
+func _wait_for_plant_operational(
+	plant: PlantDefense,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if plant == null or not is_instance_valid(plant):
+			return false
+		if plant.is_operational:
+			return true
+		await process_frame
+	return false
+
+
 func _wait_for_warehouse_item_total(
 	warehouse: OakWarehouse,
 	item: PickupConfig,
@@ -2196,6 +2269,73 @@ func _count_peer_item_total(
 			if PickupConfig.inventory_identity_matches(stored_item, item):
 				total += run_state.get_item_count_for_peer(peer_id, slot_index)
 	return total
+
+
+func _get_peer_item_total(
+	run_state: RunStateStore,
+	peer_id: int,
+	item: PickupConfig
+) -> int:
+	if run_state == null or peer_id <= 0 or item == null:
+		return 0
+	return run_state.get_inventory_item_total_for_peer(peer_id, item)
+
+
+func _find_peer_item_slot(
+	run_state: RunStateStore,
+	peer_id: int,
+	item: PickupConfig
+) -> int:
+	if run_state == null or peer_id <= 0 or item == null:
+		return -1
+	for slot_index in range(RunStateStore.INVENTORY_CAPACITY):
+		var stored_item := run_state.get_item_for_peer(peer_id, slot_index)
+		if (
+			run_state.get_item_count_for_peer(peer_id, slot_index) > 0
+			and PickupConfig.inventory_identity_matches(stored_item, item)
+		):
+			return slot_index
+	return -1
+
+
+func _submit_local_inventory_plant_request(
+	net_manager: Node,
+	mp_game: Node,
+	run_state: RunStateStore,
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i
+) -> bool:
+	var local_peer_id := int(net_manager.get_local_peer_id())
+	var item := BuildingItemRegistry.get_item(plant_id)
+	var slot_index := _find_peer_item_slot(run_state, local_peer_id, item)
+	if item == null or slot_index < 0:
+		return false
+	mp_game.call(
+		"_on_local_inventory_plant_placement_requested",
+		request_id,
+		plant_id,
+		anchor,
+		slot_index,
+		run_state.get_inventory_revision_for_peer(local_peer_id),
+		item.resource_path
+	)
+	return true
+
+
+func _wait_for_peer_item_total(
+	run_state: RunStateStore,
+	peer_id: int,
+	item: PickupConfig,
+	expected_count: int,
+	timeout_seconds: float
+) -> bool:
+	var end_time := _now_seconds() + timeout_seconds
+	while _now_seconds() <= end_time:
+		if _get_peer_item_total(run_state, peer_id, item) == expected_count:
+			return true
+		await process_frame
+	return false
 
 
 func _wait_for_dictionary_flag(
@@ -2700,6 +2840,14 @@ func _spawn_host_probe_enemy(game: Variant) -> int:
 	for net_id_variant in game.multiplayer_enemies_by_net_id:
 		var net_id := int(net_id_variant)
 		if net_id > 0 and not previous_ids.has(net_id):
+			# The probe owns this authoritative instance. Keep its network config id
+			# intact while preventing an unrelated random pickup drop on forced exit.
+			var spawned_enemy := game.get_enemy_for_net_id(net_id) as Enemy
+			if spawned_enemy != null and spawned_enemy.config != null:
+				var drop_free_config := spawned_enemy.config.duplicate(true) as EnemyConfig
+				if drop_free_config != null:
+					drop_free_config.drop_table = null
+					spawned_enemy.config = drop_free_config
 			return net_id
 	_fail("Host probe spawned enemy without a new net id.")
 	return 0

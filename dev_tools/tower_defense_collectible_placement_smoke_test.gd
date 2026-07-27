@@ -22,6 +22,7 @@ func _run() -> void:
 		run_state.begin_new_run(character_id)
 		var game := GAME_SCENE.instantiate() as GameTowerDefense
 		game.auto_start_waves = false
+		game.sandbox_free_building_enabled = true
 		test_root.add_child(game)
 		await process_frame
 		await physics_frame

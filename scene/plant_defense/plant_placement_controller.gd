@@ -24,7 +24,7 @@ enum PlacementState {
 }
 
 enum PlacementSource {
-	DEBUG_FREE,
+	SANDBOX_FREE,
 	INVENTORY_ITEM,
 }
 
@@ -34,6 +34,7 @@ const PLACEMENT_MARKER_SCENE := preload(
 
 @export_range(1.0, 16.0, 0.5) var click_tolerance_world := 6.0
 @export_range(0.05, 1.0, 0.05) var marker_refresh_interval := 0.2
+@export var free_placement_enabled := false
 
 @onready var marker_container: Node2D = $MarkerContainer
 @onready var preview: PlantPlacementPreview = $PlantPlacementPreview
@@ -53,10 +54,12 @@ var has_hovered_anchor := false
 var marker_refresh_time_left := 0.0
 var multiplayer_request_mode := false
 var next_multiplayer_request_id := 1
-var placement_source := PlacementSource.DEBUG_FREE
+var placement_source := PlacementSource.SANDBOX_FREE
 var inventory_slot_index := -1
 var inventory_expected_revision := -1
 var inventory_item_config_path := ""
+var run_state: RunStateStore = null
+var inventory_peer_id := 0
 
 
 func _ready() -> void:
@@ -85,6 +88,28 @@ func configure(new_plant_system: PlantSystem, new_owner_player: Player = null) -
 
 func set_multiplayer_request_mode(enabled: bool) -> void:
 	multiplayer_request_mode = enabled
+
+
+func configure_inventory_catalog(
+	new_run_state: RunStateStore,
+	new_inventory_peer_id: int,
+	allow_free_placement: bool
+) -> void:
+	_disconnect_inventory_state()
+	run_state = new_run_state
+	inventory_peer_id = maxi(new_inventory_peer_id, 0)
+	free_placement_enabled = allow_free_placement
+	if (
+		run_state != null
+		and not run_state.inventory_changed.is_connected(_on_inventory_changed)
+	):
+		run_state.inventory_changed.connect(_on_inventory_changed)
+
+
+func set_free_placement_enabled(enabled: bool) -> void:
+	free_placement_enabled = enabled
+	if selection_hud.is_open():
+		cancel_placement()
 
 
 func notify_multiplayer_placement_rejected(_request_id: int) -> void:
@@ -116,7 +141,11 @@ func open_selection() -> bool:
 	_set_placement_state(PlacementState.SELECTING)
 	placement_mode_changed.emit(true)
 	player_lock_requested.emit(true)
-	if selection_hud.open(configs):
+	if selection_hud.open(
+		configs,
+		_get_catalog_item_counts(configs),
+		free_placement_enabled
+	):
 		return true
 	cancel_placement()
 	selection_unavailable.emit()
@@ -129,8 +158,11 @@ func begin_inventory_placement(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> bool:
+	var continuing_catalog_selection := (
+		placement_state == PlacementState.SELECTING
+	)
 	if (
-		placement_state != PlacementState.IDLE
+		placement_state not in [PlacementState.IDLE, PlacementState.SELECTING]
 		or plant_system == null
 		or config == null
 		or not config.is_valid()
@@ -147,9 +179,12 @@ func begin_inventory_placement(
 	inventory_slot_index = slot_index
 	inventory_expected_revision = expected_inventory_revision
 	inventory_item_config_path = item_config_path
+	if continuing_catalog_selection:
+		selection_hud.close()
 	_set_placement_state(PlacementState.PLACING)
-	placement_mode_changed.emit(true)
-	player_lock_requested.emit(true)
+	if not continuing_catalog_selection:
+		placement_mode_changed.emit(true)
+		player_lock_requested.emit(true)
 	_start_placing(config)
 	return true
 
@@ -230,10 +265,31 @@ func _unhandled_input(event: InputEvent) -> void:
 func _begin_placing(config: PlantDefenseConfig) -> void:
 	if placement_state != PlacementState.SELECTING or config == null:
 		return
+	if not free_placement_enabled:
+		_begin_catalog_inventory_placement(config)
+		return
 	selection_hud.close()
 	_set_placement_state(PlacementState.PLACING)
-	placement_source = PlacementSource.DEBUG_FREE
+	placement_source = PlacementSource.SANDBOX_FREE
 	_start_placing(config)
+
+
+func _begin_catalog_inventory_placement(config: PlantDefenseConfig) -> void:
+	var item := BuildingItemRegistry.get_item(config.plant_id)
+	var slot_index := _find_inventory_item_slot(item)
+	if item == null or slot_index < 0:
+		_refresh_open_catalog_counts()
+		selection_unavailable.emit()
+		return
+	var revision := _get_inventory_revision()
+	if not begin_inventory_placement(
+		config,
+		slot_index,
+		revision,
+		item.resource_path
+	):
+		_refresh_open_catalog_counts()
+		selection_unavailable.emit()
 
 
 func _start_placing(config: PlantDefenseConfig) -> void:
@@ -417,10 +473,74 @@ func _set_placement_state(next_state: PlacementState) -> void:
 
 
 func _clear_inventory_placement_source() -> void:
-	placement_source = PlacementSource.DEBUG_FREE
+	placement_source = PlacementSource.SANDBOX_FREE
 	inventory_slot_index = -1
 	inventory_expected_revision = -1
 	inventory_item_config_path = ""
+
+
+func _get_catalog_item_counts(
+	configs: Array[PlantDefenseConfig]
+) -> Dictionary:
+	var counts := {}
+	for config in configs:
+		var item := BuildingItemRegistry.get_item(config.plant_id)
+		counts[config.plant_id] = _get_inventory_item_total(item)
+	return counts
+
+
+func _get_inventory_item_total(item: PickupConfig) -> int:
+	if run_state == null or item == null:
+		return 0
+	return (
+		run_state.get_inventory_item_total_for_peer(inventory_peer_id, item)
+		if inventory_peer_id > 0
+		else run_state.get_inventory_item_total(item)
+	)
+
+
+func _get_inventory_revision() -> int:
+	if run_state == null:
+		return -1
+	return (
+		run_state.get_inventory_revision_for_peer(inventory_peer_id)
+		if inventory_peer_id > 0
+		else run_state.get_inventory_revision()
+	)
+
+
+func _find_inventory_item_slot(item: PickupConfig) -> int:
+	if run_state == null or item == null:
+		return -1
+	for slot_index in RunStateStore.INVENTORY_CAPACITY:
+		var stored_item := (
+			run_state.get_item_for_peer(inventory_peer_id, slot_index)
+			if inventory_peer_id > 0
+			else run_state.get_item(slot_index)
+		)
+		var stored_count := (
+			run_state.get_item_count_for_peer(inventory_peer_id, slot_index)
+			if inventory_peer_id > 0
+			else run_state.get_item_count(slot_index)
+		)
+		if (
+			stored_count > 0
+			and PickupConfig.inventory_identity_matches(stored_item, item)
+		):
+			return slot_index
+	return -1
+
+
+func _refresh_open_catalog_counts() -> void:
+	if not selection_hud.is_open():
+		return
+	selection_hud.refresh_item_counts(
+		_get_catalog_item_counts(_get_available_configs_for_current_mode())
+	)
+
+
+func _on_inventory_changed() -> void:
+	_refresh_open_catalog_counts()
 
 
 func _disconnect_owner_player() -> void:
@@ -432,11 +552,21 @@ func _disconnect_owner_player() -> void:
 		owner_player.tree_exiting.disconnect(_on_owner_player_unavailable)
 
 
+func _disconnect_inventory_state() -> void:
+	if (
+		run_state != null
+		and is_instance_valid(run_state)
+		and run_state.inventory_changed.is_connected(_on_inventory_changed)
+	):
+		run_state.inventory_changed.disconnect(_on_inventory_changed)
+
+
 func _on_owner_player_unavailable() -> void:
 	cancel_placement()
 
 
 func _exit_tree() -> void:
 	_disconnect_owner_player()
+	_disconnect_inventory_state()
 	if placement_state != PlacementState.IDLE:
 		player_lock_requested.emit(false)

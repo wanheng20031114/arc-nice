@@ -1033,6 +1033,10 @@ func supports_tower_defense() -> bool:
 	return false
 
 
+func allows_debug_collectible_grants() -> bool:
+	return true
+
+
 func request_tower_defense_wave_start(_requester_peer_id: int = 0) -> bool:
 	return false
 

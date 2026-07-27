@@ -41,7 +41,7 @@ func _run() -> void:
 	_verify_base_dirt_texture_matches_atlas()
 	_verify_terrain_semantics(game)
 	_verify_reachable_grass_placement(game)
-	_verify_runtime_placement_visibility(game)
+	await _verify_runtime_placement_visibility(game)
 	var refresh_start_msec := Time.get_ticks_msec()
 	game.dual_grid_terrain.refresh_all_tiles()
 	print("Cached dual-grid refresh completed in %d ms." % (Time.get_ticks_msec() - refresh_start_msec))
@@ -518,7 +518,17 @@ func _verify_runtime_placement_visibility(game: GameTowerDefense) -> void:
 		_expect(instructions != null and instructions.visible, "Placement instructions must show after selection.")
 		_expect(controller.placement_hint_root.visible, "Placement instruction content must show after selection.")
 	controller.cancel_placement()
-	_expect(not controller.selection_hud.visible, "Plant selection CanvasLayer must hide after cancellation.")
+	_expect(
+		not controller.selection_hud.is_open(),
+		"Plant selection must stop accepting input immediately after cancellation."
+	)
+	# The heavy terrain scene can finish a frame just after the wall-clock timer;
+	# leave one generous scheduling margin while the authored tween stays 120 ms.
+	await create_timer(PlantSelectionHUD.TRANSITION_SECONDS + 0.10).timeout
+	_expect(
+		not controller.selection_hud.visible,
+		"Plant selection CanvasLayer must hide after its authored close fade."
+	)
 	_expect(instructions != null and not instructions.visible, "Placement instructions must hide after cancellation.")
 
 

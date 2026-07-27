@@ -126,6 +126,7 @@ const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := &"invalid_config"
 const PLANT_PLACEMENT_REJECT_INVALID_POSITION := &"invalid_position"
 const PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM := &"invalid_inventory_item"
 const PLANT_PLACEMENT_REJECT_STALE_INVENTORY := &"stale_inventory"
+const PLANT_PLACEMENT_REJECT_FREE_DISABLED := &"free_placement_disabled"
 const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
 const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
@@ -164,6 +165,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @export var progression_config: TowerDefenseProgressionConfig = null
 @export var auto_start_waves: bool = true
 @export var linglan_boss_enabled: bool = false
+
+@export_group("沙盒调试")
+@export var sandbox_free_building_enabled := false
 
 @onready var player_spawn: Marker2D = $PlayerSpawn
 @onready var ground_tile_map_layer: TileMapLayer = $GroundTileMapLayer
@@ -536,7 +540,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event.is_action_pressed("cheat_collectibles"):
-		_toggle_debug_collectible_window()
+		if sandbox_free_building_enabled:
+			_toggle_debug_collectible_window()
 		get_viewport().set_input_as_handled()
 
 
@@ -1028,6 +1033,11 @@ func _configure_plant_defense_system() -> void:
 	plant_placement_controller.set_multiplayer_request_mode(
 		runtime_mode != RuntimeMode.SINGLEPLAYER
 	)
+	plant_placement_controller.configure_inventory_catalog(
+		run_state,
+		multiplayer_local_peer_id if runtime_mode != RuntimeMode.SINGLEPLAYER else 0,
+		sandbox_free_building_enabled
+	)
 	if not plant_placement_controller.player_lock_requested.is_connected(
 		_on_plant_player_lock_requested
 	):
@@ -1470,6 +1480,13 @@ func request_multiplayer_plant_placement(
 	anchor: Vector2i
 ) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
+		return
+	if not sandbox_free_building_enabled:
+		_reject_multiplayer_plant_placement(
+			request_id,
+			requester_peer_id,
+			PLANT_PLACEMENT_REJECT_FREE_DISABLED
+		)
 		return
 	if request_id <= 0 or requester_peer_id <= 0:
 		_reject_multiplayer_plant_placement(
@@ -2285,7 +2302,7 @@ func _toggle_full_screen() -> void:
 
 
 func _toggle_debug_collectible_window() -> void:
-	if debug_collectible_window == null:
+	if debug_collectible_window == null or not sandbox_free_building_enabled:
 		return
 	if not debug_collectible_window.is_open():
 		_cancel_plant_placement()
@@ -2298,7 +2315,7 @@ func _toggle_debug_collectible_window() -> void:
 
 
 func _on_debug_collectible_requested(config_path: String) -> void:
-	if config_path.is_empty():
+	if config_path.is_empty() or not sandbox_free_building_enabled:
 		return
 	var current_scene := get_tree().current_scene
 	if (
@@ -2312,6 +2329,8 @@ func _on_debug_collectible_requested(config_path: String) -> void:
 
 
 func grant_debug_collectible(config_path: String) -> bool:
+	if not sandbox_free_building_enabled:
+		return false
 	var item := LuoxiMerchant.get_collectible_for_path(config_path)
 	if item == null:
 		return false
@@ -2324,6 +2343,10 @@ func show_debug_collectible_grant_result(config_path: String, success: bool) -> 
 	if debug_collectible_window == null:
 		return
 	debug_collectible_window.show_grant_result(config_path, success)
+
+
+func allows_debug_collectible_grants() -> bool:
+	return sandbox_free_building_enabled
 
 
 func show_simple_crafting_result(
