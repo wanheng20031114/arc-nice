@@ -305,8 +305,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golem configs must carry the artificial_creation category tag."
 	)
 	_expect(
-		int(category_counts["slime"]) == 4,
-		"Exactly the four Slime configs must carry the slime category tag."
+		int(category_counts["slime"]) == 5,
+		"Exactly the five Slime configs must carry the slime category tag."
 	)
 	_expect_exact_category(YUANSHI_CATEGORY_CONFIGS, "yuanshi_insect")
 	_expect_exact_category(CAPOO_CATEGORY_CONFIGS, "capoo")
