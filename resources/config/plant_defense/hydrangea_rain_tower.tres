@@ -18,3 +18,5 @@ magic_defense = 40
 attack_damage = 5
 attack_speed = 16.666666666666668
 attack_range = 192.0
+requires_grass = true
+requires_water_source = false

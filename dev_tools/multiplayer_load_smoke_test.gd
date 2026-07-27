@@ -207,14 +207,18 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 21, "The multiplayer protocol version must be 21.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v21 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 24, "The multiplayer protocol version must be 24.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v24 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 16))
+		not bool(net_manager.call("_is_protocol_version_compatible", 23))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 22))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 21))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 20))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 16))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 15))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 14))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 13))
@@ -2045,12 +2049,40 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		peer_two.is_dead = false
 		_expect(run_state.try_add_item_for_peer(3, HEALTH_PICKUP), "Peer 3 health pickup must fit for inventory use confirmation testing.")
 		peer_three.current_health = maxi(peer_three.max_health - HEALTH_PICKUP.heal_amount, 1)
-		mp_game.call("net_inventory_item_used", 3, 0, HEALTH_PICKUP.resource_path, true)
-		_expect(run_state.get_item_for_peer(3, 0) == null, "Inventory use confirm must remove the confirmed peer item.")
-		_expect(peer_three.current_health == peer_three.max_health, "Inventory use confirm must apply the pickup effect to the confirmed peer.")
+		var inventory_before_missing_use: Dictionary = (
+			run_state.export_inventory_snapshot_for_peer(3)
+		)
+		var health_before_missing_use := peer_three.current_health
+		mp_game.call(
+			"net_inventory_item_used",
+			3,
+			0,
+			HEALTH_PICKUP.resource_path,
+			true,
+			{}
+		)
+		_expect(
+			run_state.export_inventory_snapshot_for_peer(3) == inventory_before_missing_use
+			and peer_three.current_health == health_before_missing_use,
+			"Inventory use confirmations missing an authoritative snapshot must not mutate inventory or apply an item effect."
+		)
+		_expect(
+			run_state.discard_item_for_peer(3, 0),
+			"Missing-use-snapshot coverage must clean up its inventory fixture."
+		)
 		_expect(run_state.try_add_item_for_peer(3, APPLE_COLLECTIBLE), "Peer 3 apple must fit for inventory discard confirmation testing.")
-		mp_game.call("net_inventory_item_discarded", 3, 0, true)
-		_expect(run_state.get_item_for_peer(3, 0) == null, "Inventory discard confirm must remove the confirmed peer item.")
+		var inventory_before_missing_discard: Dictionary = (
+			run_state.export_inventory_snapshot_for_peer(3)
+		)
+		mp_game.call("net_inventory_item_discarded", 3, 0, true, {})
+		_expect(
+			run_state.export_inventory_snapshot_for_peer(3) == inventory_before_missing_discard,
+			"Inventory discard confirmations missing an authoritative snapshot must not mutate inventory."
+		)
+		_expect(
+			run_state.discard_item_for_peer(3, 0),
+			"Missing-discard-snapshot coverage must clean up its inventory fixture."
+		)
 		_expect(
 			run_state.try_add_item_count_for_peer(3, WOOD_MATERIAL, 3),
 			"Peer 3 stacked material must fit for authoritative inventory snapshot testing."
@@ -2102,14 +2134,29 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			== int(host_repair_snapshot.get("revision", -1)),
 			"Revision conflicts must force-apply the Host inventory snapshot without performing the rejected action."
 		)
-		mp_game.call("net_inventory_item_discarded", 3, 0, true)
+		var inventory_before_second_missing_discard: Dictionary = (
+			run_state.export_inventory_snapshot_for_peer(3)
+		)
+		mp_game.call("net_inventory_item_discarded", 3, 0, true, {})
 		_expect(
-			run_state.get_item_for_peer(3, 0) == null,
-			"Legacy inventory confirmations without snapshots must remain compatible."
+			run_state.export_inventory_snapshot_for_peer(3)
+			== inventory_before_second_missing_discard,
+			"A successful discard confirmation without an authoritative snapshot must leave inventory unchanged."
+		)
+		_expect(
+			run_state.discard_item_for_peer(3, 0),
+			"Second missing-discard-snapshot coverage must clean up its inventory fixture."
 		)
 		var peer_inventories := run_state.get("multiplayer_inventories") as Dictionary
-		mp_game.call("net_inventory_item_used", 99, 0, HEALTH_PICKUP.resource_path, true)
-		mp_game.call("net_inventory_item_discarded", 99, 0, true)
+		mp_game.call(
+			"net_inventory_item_used",
+			99,
+			0,
+			HEALTH_PICKUP.resource_path,
+			true,
+			{}
+		)
+		mp_game.call("net_inventory_item_discarded", 99, 0, true, {})
 		_expect(not peer_inventories.has(99), "Inventory confirms for missing peers must not create peer run state.")
 		mp_game.call(
 			"net_luoxi_collectible_confirmed",

@@ -19,6 +19,11 @@ const BUILDING_SCENES: Array[Dictionary] = [
 		"plant_id": &"wood_processing_station",
 		"border_path": NodePath("ProductionBorder"),
 	},
+	{
+		"label": "石磨台",
+		"plant_id": &"stone_mill",
+		"border_path": NodePath("ProductionBorder"),
+	},
 ]
 
 var failures: PackedStringArray = []
@@ -67,7 +72,7 @@ func _run() -> void:
 	await process_frame
 	_expect(
 		borders.size() == BUILDING_SCENES.size(),
-		"三种生产/科研建筑必须全部参与夜间底色控制。"
+		"四种生产/科研建筑必须全部参与夜间底色控制。"
 	)
 
 	for border in borders:

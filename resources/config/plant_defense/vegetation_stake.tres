@@ -19,3 +19,5 @@ attack_damage = 0
 attack_speed = 0.0
 attack_range = 0.0
 footprint_size = Vector2i(1, 1)
+requires_grass = true
+requires_water_source = false

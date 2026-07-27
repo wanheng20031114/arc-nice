@@ -19,6 +19,7 @@ var attack_cooldown_left: float = 0.0
 var attack_has_fired: bool = false
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
+var committed_attack_target: Node2D = null
 
 
 func _ready() -> void:
@@ -37,19 +38,23 @@ func _physics_process(delta: float) -> void:
 	if is_dead:
 		velocity = Vector2.ZERO
 		return
-	if combat_state == CombatState.ATTACK and not has_attackable_objective():
+	if (
+		combat_state == CombatState.ATTACK
+		and not _is_ranged_combat_target_valid(committed_attack_target)
+	):
 		_finish_ranged_attack()
-
-	if not has_attackable_objective():
-		super._physics_process(delta)
-		return
 
 	if combat_state == CombatState.ATTACK:
 		_update_touch_damage(delta)
 		velocity = Vector2.ZERO
 		return
 
-	if _is_combat_sense_refresh_due() and _try_start_ranged_attack():
+	var combat_target := _get_preferred_ranged_combat_target()
+	if (
+		_is_combat_sense_refresh_due()
+		and combat_target != null
+		and _try_start_ranged_attack(combat_target)
+	):
 		_update_touch_damage(delta)
 		velocity = Vector2.ZERO
 		return
@@ -62,6 +67,7 @@ func _apply_config() -> void:
 	combat_state = CombatState.CHASE
 	attack_cooldown_left = 0.0
 	attack_has_fired = false
+	committed_attack_target = null
 
 	var fire_config := config as FireConfig
 	if fire_config != null:
@@ -71,6 +77,7 @@ func _apply_config() -> void:
 func _die() -> void:
 	combat_state = CombatState.CHASE
 	attack_has_fired = true
+	committed_attack_target = null
 	super._die()
 
 
@@ -80,38 +87,44 @@ func _update_attack_cooldown(delta: float) -> void:
 	attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
 
 
-func _try_start_ranged_attack() -> bool:
+func _try_start_ranged_attack(candidate_target: Node2D = null) -> bool:
 	var fire_config := config as FireConfig
 	if fire_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+	if candidate_target == null:
+		candidate_target = _get_preferred_ranged_combat_target()
+	if not _is_ranged_combat_target_valid(candidate_target):
 		return false
 	if fire_config.projectile_scene == null:
 		return false
 	if not _has_scene_animation(fire_config.attack_animation_name):
 		return false
-	if not is_attackable_objective_in_range(fire_config.attack_range):
+	if not _is_ranged_combat_target_in_range(
+		candidate_target,
+		fire_config.attack_range
+	):
 		return false
-	if not _has_clear_world_line_to_target():
+	if not _has_clear_world_line_to_target(candidate_target):
 		return false
 
+	committed_attack_target = candidate_target
 	combat_state = CombatState.ATTACK
 	attack_has_fired = false
 	attack_cooldown_left = maxf(fire_config.attack_interval, 0.01)
 	_clear_navigation_path()
-	var attack_direction := global_position.direction_to(attack_target.global_position)
+	var attack_direction := global_position.direction_to(
+		committed_attack_target.global_position
+	)
 	_update_facing(attack_direction)
 	_play_scene_animation(fire_config.attack_animation_name)
 	_broadcast_enemy_action(&"attack", attack_direction)
 	return true
 
 
-func _has_clear_world_line_to_target() -> bool:
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+func _has_clear_world_line_to_target(attack_target: Node2D) -> bool:
+	if not _is_ranged_combat_target_valid(attack_target):
 		return false
 
 	return _has_throttled_world_line_of_sight(attack_target, WORLD_COLLISION_MASK)
@@ -123,13 +136,14 @@ func _try_fire_ranged_projectile() -> bool:
 		return false
 	if fire_config.projectile_scene == null:
 		return false
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+	if not _is_ranged_combat_target_valid(committed_attack_target):
 		return false
-	if not _has_clear_world_line_to_target():
+	if not _has_clear_world_line_to_target(committed_attack_target):
 		return false
 
-	var shoot_direction := global_position.direction_to(attack_target.global_position)
+	var shoot_direction := global_position.direction_to(
+		committed_attack_target.global_position
+	)
 	if shoot_direction == Vector2.ZERO:
 		return false
 
@@ -191,6 +205,7 @@ func _try_fire_ranged_projectile() -> bool:
 func _finish_ranged_attack() -> void:
 	combat_state = CombatState.CHASE
 	attack_has_fired = false
+	committed_attack_target = null
 	var fire_config := config as FireConfig
 	if fire_config == null:
 		return
@@ -249,3 +264,7 @@ func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> voi
 			global_position,
 			action_sequence
 		)
+
+
+func _uses_inherited_touch_damage() -> bool:
+	return false

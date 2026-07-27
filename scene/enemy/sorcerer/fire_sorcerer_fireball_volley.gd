@@ -13,7 +13,7 @@ const IMPACT_VISUAL_DURATION := 4.0 / 12.0
 const EXPIRE_VISUAL_DURATION := 4.0 / 12.0
 const COMPENSATION_STEP := 1.0 / 60.0
 const TARGET_REFRESH_INTERVAL := 0.35
-const TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target"
+const TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"
 const PROJECTILE_SHAPE_SWEEP_2D_SCRIPT := preload(
 	"res://scene/projectile_shape_sweep_2d.gd"
 )

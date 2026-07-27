@@ -17,12 +17,44 @@ const VEGETATION_STAKE_ID: StringName = &"vegetation_stake"
 const VEGETATION_STAKE_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_vegetation_stake.tres"
 )
+const STONE_MILL_ID: StringName = &"stone_mill"
+const STONE_MILL_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_stone_mill.tres"
+)
+const SIMPLE_FENCE_ID: StringName = &"simple_fence"
+const SIMPLE_FENCE_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_simple_fence.tres"
+)
+const BAMBOO_MORTAR_ID: StringName = &"bamboo_mortar"
+const BAMBOO_MORTAR_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_bamboo_mortar.tres"
+)
+const HYDRANGEA_RAIN_TOWER_ID: StringName = &"hydrangea_rain_tower"
+const HYDRANGEA_RAIN_TOWER_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/simple_hydrangea_rain_tower.tres"
+)
 
 const RECIPES := {
 	HERBAL_HEALTH_POTION_ID: HERBAL_HEALTH_POTION_RECIPE,
 	WOOD_PROCESSING_STATION_ID: WOOD_PROCESSING_STATION_RECIPE,
 	OAK_WAREHOUSE_ID: OAK_WAREHOUSE_RECIPE,
 	VEGETATION_STAKE_ID: VEGETATION_STAKE_RECIPE,
+	STONE_MILL_ID: STONE_MILL_RECIPE,
+	SIMPLE_FENCE_ID: SIMPLE_FENCE_RECIPE,
+	BAMBOO_MORTAR_ID: BAMBOO_MORTAR_RECIPE,
+	HYDRANGEA_RAIN_TOWER_ID: HYDRANGEA_RAIN_TOWER_RECIPE,
+}
+const BASE_RECIPE_IDS := {
+	HERBAL_HEALTH_POTION_ID: true,
+	WOOD_PROCESSING_STATION_ID: true,
+	OAK_WAREHOUSE_ID: true,
+	VEGETATION_STAKE_ID: true,
+	STONE_MILL_ID: true,
+	SIMPLE_FENCE_ID: true,
+}
+const RESEARCH_GATED_RECIPE_IDS := {
+	BAMBOO_MORTAR_ID: true,
+	HYDRANGEA_RAIN_TOWER_ID: true,
 }
 const MAX_WIRE_RECIPE_ID_LENGTH := 64
 
@@ -44,11 +76,51 @@ static func get_recipe_by_wire_id(recipe_id: String) -> ProductionRecipe:
 
 static func get_all_recipes() -> Array[ProductionRecipe]:
 	var recipes: Array[ProductionRecipe] = []
-	for recipe in RECIPES.values():
-		var crafting_recipe := recipe as ProductionRecipe
+	for recipe_id in [
+		HERBAL_HEALTH_POTION_ID,
+		WOOD_PROCESSING_STATION_ID,
+		OAK_WAREHOUSE_ID,
+		VEGETATION_STAKE_ID,
+		STONE_MILL_ID,
+		SIMPLE_FENCE_ID,
+		BAMBOO_MORTAR_ID,
+		HYDRANGEA_RAIN_TOWER_ID,
+	]:
+		var crafting_recipe := get_recipe(recipe_id)
 		if _has_simple_crafting_contract(crafting_recipe):
 			recipes.append(crafting_recipe)
 	return recipes
+
+
+static func get_available_recipes(
+	completed_global_research_ids: Array[StringName] = []
+) -> Array[ProductionRecipe]:
+	var recipes: Array[ProductionRecipe] = []
+	for recipe in get_all_recipes():
+		if is_recipe_unlocked(recipe, completed_global_research_ids):
+			recipes.append(recipe)
+	return recipes
+
+
+static func is_recipe_unlocked(
+	recipe: ProductionRecipe,
+	completed_global_research_ids: Array[StringName] = []
+) -> bool:
+	if not is_simple_crafting_recipe(recipe):
+		return false
+	if BASE_RECIPE_IDS.has(recipe.recipe_id):
+		return true
+	if not RESEARCH_GATED_RECIPE_IDS.has(recipe.recipe_id):
+		return false
+	var required_research_id := (
+		GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
+			recipe.recipe_id
+		)
+	)
+	return (
+		required_research_id != &""
+		and required_research_id in completed_global_research_ids
+	)
 
 
 static func is_simple_crafting_recipe(recipe: ProductionRecipe) -> bool:

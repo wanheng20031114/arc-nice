@@ -409,9 +409,31 @@ func _verify_dynamic_markers(
 	game.enemy_container.add_child(enemy)
 	enemy.global_position = game.player.global_position + Vector2(-48.0, -32.0)
 
-	var plant := PlantDefense.new()
-	game.plant_container.add_child(plant)
-	plant.global_position = game.player.global_position + Vector2(24.0, 48.0)
+	var fence_config := game.plant_system.get_config(&"simple_fence")
+	var valid_fence_anchors := game.plant_system.get_valid_anchors_for_player(
+		fence_config,
+		game.player
+	)
+	_expect(
+		not valid_fence_anchors.is_empty(),
+		"Minimap fixture must expose a valid formally registered plant anchor."
+	)
+	var plant: PlantDefense = null
+	if not valid_fence_anchors.is_empty():
+		plant = game.plant_system.spawn_multiplayer_replica(
+			&"simple_fence",
+			valid_fence_anchors[0],
+			null,
+			91_001,
+			500,
+			500,
+			0,
+			false
+		)
+	_expect(
+		plant != null,
+		"Minimap fixture plant must be created through the production PlantSystem index."
+	)
 	await process_frame
 
 	canvas._sample_world_entities()
@@ -424,7 +446,8 @@ func _verify_dynamic_markers(
 		"A sampled living enemy must enter the red-marker data layer."
 	)
 	_expect(
-		canvas.dynamic_layer.plant_world_positions.has(plant.global_position),
+		plant != null
+		and canvas.dynamic_layer.plant_world_positions.has(plant.global_position),
 		"A sampled plant must enter the light-green square data layer."
 	)
 	_expect(
@@ -450,6 +473,14 @@ func _verify_dynamic_markers(
 		"An unchanged entity snapshot must not request another dynamic redraw."
 	)
 	_verify_enemy_marker_aggregation(canvas.dynamic_layer, enemy.global_position)
+	if plant != null:
+		_expect(
+			game.plant_system.remove_plant_by_net_id(
+				91_001,
+				PlantDefense.RemovalMode.SILENT
+			),
+			"Minimap fixture plant cleanup must use PlantSystem authoritative removal."
+		)
 
 
 func _verify_enemy_marker_aggregation(

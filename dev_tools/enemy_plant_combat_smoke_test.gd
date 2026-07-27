@@ -110,6 +110,8 @@ func _verify_ranged_enemy_target_contract() -> void:
 	)
 	smg.set_objective_target(plant)
 	await physics_frame
+	if smg.touching_players.has(player.get_instance_id()):
+		smg.call("_on_touch_damage_area_body_exited", player)
 	var plant_health_before_smg := plant.current_health
 	_expect(
 		bool(smg.call("_try_fire_scatter", Vector2.ZERO)),
@@ -160,6 +162,8 @@ func _verify_melee_enemy_plant_attack_contract() -> void:
 		var plant := _spawn_agave(Vector2(42.0, 0.0))
 		var enemy := _spawn_enemy(melee_config, player) as CapooKnight
 		await physics_frame
+		if enemy.touching_players.has(player.get_instance_id()):
+			enemy.call("_on_touch_damage_area_body_exited", player)
 		_expect(
 			not enemy.can_target_water_plant_objectives(),
 			"%s must remain a land-only melee objective selector."
@@ -212,6 +216,7 @@ func _verify_melee_enemy_plant_attack_contract() -> void:
 			"%s must not apply its committed slash to the same plant twice."
 			% melee_config.display_name
 		)
+		enemy.call("_on_touch_damage_area_body_exited", plant)
 		enemy.call("_cancel_attack")
 		enemy.set_objective_target(gate)
 		_expect(
@@ -411,8 +416,8 @@ func _verify_sniper_plant_damage_contract() -> void:
 
 func _spawn_enemy(enemy_config: EnemyConfig, player: Player) -> Enemy:
 	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
+	enemy.position = Vector2.ZERO
 	test_root.add_child(enemy)
-	enemy.global_position = Vector2.ZERO
 	enemy.setup(enemy_config, player)
 	enemy.set_physics_process(false)
 	return enemy
@@ -420,15 +425,15 @@ func _spawn_enemy(enemy_config: EnemyConfig, player: Player) -> Enemy:
 
 func _spawn_player(position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
+	player.position = position
 	test_root.add_child(player)
-	player.global_position = position
 	return player
 
 
 func _spawn_agave(position: Vector2) -> AgaveCannon:
 	var plant := AGAVE_SCENE.instantiate() as AgaveCannon
+	plant.position = position
 	test_root.add_child(plant)
-	plant.global_position = position
 	plant.setup(AGAVE_CONFIG, null, [Vector2i.ZERO])
 	plant.attack_timer.stop()
 	return plant

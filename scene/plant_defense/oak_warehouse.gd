@@ -328,7 +328,8 @@ func set_multiplayer_storage_snapshot_ready(is_ready: bool) -> void:
 
 func is_multiplayer_storage_ready() -> bool:
 	return (
-		is_operational
+		is_inside_tree()
+		and is_operational
 		and not is_removing
 		and multiplayer_storage_enabled
 		and multiplayer_storage_snapshot_ready
@@ -337,7 +338,14 @@ func is_multiplayer_storage_ready() -> bool:
 
 
 func request_multiplayer_storage_snapshot() -> bool:
-	if not multiplayer_storage_enabled or warehouse_net_id <= 0:
+	if (
+		not is_inside_tree()
+		or not is_operational
+		or is_dead
+		or is_removing
+		or not multiplayer_storage_enabled
+		or warehouse_net_id <= 0
+	):
 		return false
 	set_multiplayer_storage_snapshot_ready(false)
 	multiplayer_storage_request_timer.start(MULTIPLAYER_STORAGE_REQUEST_TIMEOUT_SECONDS)
@@ -1099,16 +1107,105 @@ func export_storage_snapshot() -> Dictionary:
 	}
 
 
+## Applies one authoritative CH6 packet as a single observable transaction.
+## Every payload is decoded and revision-checked before the first warehouse is
+## written. Signals are published only after all warehouse arrays have changed,
+## so listeners can never observe half of a cross-warehouse production commit.
+static func apply_storage_snapshot_batch(
+	warehouses: Array[OakWarehouse],
+	snapshots: Array
+) -> bool:
+	if warehouses.is_empty() or warehouses.size() != snapshots.size():
+		return false
+	var prepared_snapshots: Array[Dictionary] = []
+	prepared_snapshots.resize(warehouses.size())
+	var seen_warehouse_ids: Dictionary = {}
+	for index in warehouses.size():
+		var warehouse := warehouses[index]
+		if warehouse == null or not is_instance_valid(warehouse):
+			return false
+		var instance_id := warehouse.get_instance_id()
+		if seen_warehouse_ids.has(instance_id):
+			return false
+		seen_warehouse_ids[instance_id] = true
+		if typeof(snapshots[index]) != TYPE_DICTIONARY:
+			return false
+		var prepared := warehouse.prepare_storage_snapshot(
+			snapshots[index] as Dictionary
+		)
+		if prepared.is_empty():
+			return false
+		prepared_snapshots[index] = prepared
+	# Recheck every base revision before committing. There is no await or signal
+	# between this pass and the writes below.
+	for index in warehouses.size():
+		if not warehouses[index]._is_prepared_storage_snapshot_current(
+			prepared_snapshots[index]
+		):
+			return false
+	for index in warehouses.size():
+		warehouses[index]._commit_prepared_storage_snapshot(
+			prepared_snapshots[index]
+		)
+	for warehouse in warehouses:
+		warehouse.notify_storage_snapshot_committed()
+	return true
+
+
+static func is_storage_snapshot_payload_valid(
+	snapshot: Dictionary,
+	expected_warehouse_net_id: int
+) -> bool:
+	return not _decode_storage_snapshot_payload(
+		snapshot,
+		expected_warehouse_net_id
+	).is_empty()
+
+
+func prepare_storage_snapshot(snapshot: Dictionary) -> Dictionary:
+	var decoded := _decode_storage_snapshot_payload(snapshot, warehouse_net_id)
+	if decoded.is_empty() or int(decoded.get("revision", -1)) < storage_revision:
+		return {}
+	decoded["expected_current_revision"] = storage_revision
+	return decoded
+
+
 func apply_storage_snapshot(snapshot: Dictionary) -> bool:
-	var snapshot_net_id := int(snapshot.get("warehouse_net_id", warehouse_net_id))
-	if warehouse_net_id > 0 and snapshot_net_id != warehouse_net_id:
+	var prepared := prepare_storage_snapshot(snapshot)
+	return commit_prepared_storage_snapshot(prepared)
+
+
+func commit_prepared_storage_snapshot(
+	prepared: Dictionary,
+	emit_change_signal: bool = true
+) -> bool:
+	if prepared.is_empty() or not _is_prepared_storage_snapshot_current(prepared):
 		return false
+	_commit_prepared_storage_snapshot(prepared)
+	if emit_change_signal:
+		notify_storage_snapshot_committed()
+	return true
+
+
+func notify_storage_snapshot_committed() -> void:
+	storage_changed.emit()
+
+
+static func _decode_storage_snapshot_payload(
+	snapshot: Dictionary,
+	expected_warehouse_net_id: int
+) -> Dictionary:
+	if expected_warehouse_net_id <= 0:
+		return {}
+	var snapshot_net_id := int(snapshot.get("warehouse_net_id", -1))
+	if snapshot_net_id != expected_warehouse_net_id:
+		return {}
 	var new_revision := int(snapshot.get("revision", -1))
-	if new_revision < storage_revision:
-		return false
+	if new_revision < 0:
+		return {}
 	var raw_slots := snapshot.get("slots", []) as Array
 	if raw_slots.size() != STORAGE_CAPACITY:
-		return false
+		return {}
 	var decoded_items: Array[PickupConfig] = []
 	var decoded_counts: Array[int] = []
 	decoded_items.resize(STORAGE_CAPACITY)
@@ -1122,13 +1219,13 @@ func apply_storage_snapshot(snapshot: Dictionary) -> bool:
 			or slot_index >= STORAGE_CAPACITY
 			or seen_slots.has(slot_index)
 		):
-			return false
+			return {}
 		seen_slots[slot_index] = true
 		var path := str(raw_slot.get("config_path", ""))
 		var count := int(raw_slot.get("stack_count", 0))
 		if path.is_empty():
 			if count != 0:
-				return false
+				return {}
 			continue
 		var item := load(path) as PickupConfig
 		if (
@@ -1137,18 +1234,52 @@ func apply_storage_snapshot(snapshot: Dictionary) -> bool:
 			or count <= 0
 			or count > PickupConfig.get_inventory_stack_limit(item)
 		):
-			return false
+			return {}
 		decoded_items[slot_index] = item
 		decoded_counts[slot_index] = count
-	storage_items.assign(decoded_items)
-	storage_stack_counts.assign(decoded_counts)
-	storage_revision = new_revision
+	return {
+		"warehouse_net_id": snapshot_net_id,
+		"revision": new_revision,
+		"items": decoded_items,
+		"counts": decoded_counts,
+	}
+
+
+func _is_prepared_storage_snapshot_current(prepared: Dictionary) -> bool:
+	if not (
+		int(prepared.get("warehouse_net_id", -1)) == warehouse_net_id
+		and int(prepared.get("expected_current_revision", -1)) == storage_revision
+		and int(prepared.get("revision", -1)) >= storage_revision
+		and (prepared.get("items", []) as Array).size() == STORAGE_CAPACITY
+		and (prepared.get("counts", []) as Array).size() == STORAGE_CAPACITY
+	):
+		return false
+	var prepared_items := prepared.get("items", []) as Array
+	var prepared_counts := prepared.get("counts", []) as Array
+	for slot_index in STORAGE_CAPACITY:
+		var item := prepared_items[slot_index] as PickupConfig
+		var count := int(prepared_counts[slot_index])
+		if item == null:
+			if count != 0:
+				return false
+			continue
+		if (
+			not item.can_store_in_inventory
+			or count <= 0
+			or count > PickupConfig.get_inventory_stack_limit(item)
+		):
+			return false
+	return true
+
+
+func _commit_prepared_storage_snapshot(prepared: Dictionary) -> void:
+	storage_items.assign(prepared.get("items", []) as Array)
+	storage_stack_counts.assign(prepared.get("counts", []) as Array)
+	storage_revision = int(prepared.get("revision", storage_revision))
 	multiplayer_storage_snapshot_ready = true
 	if not multiplayer_storage_request_pending:
 		multiplayer_storage_request_timer.stop()
 	_sync_bound_storage_panel_state()
-	storage_changed.emit()
-	return true
 
 
 func _add_storage_item_count_unchecked(item: PickupConfig, count: int) -> void:

@@ -1,0 +1,178 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/excavator.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/excavator/excavator.png" id="2_sprite"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle_material"]
+[ext_resource type="Resource" path="res://resources/config/production/excavator_cycle.tres" id="6_recipe"]
+[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="7_recipe_script"]
+[ext_resource type="Shader" path="res://resources/shader/excavator_border.gdshader" id="8_border_shader"]
+[ext_resource type="Script" path="res://scene/plant_defense/day_night_progress_border.gd" id="9_night_border"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
+shader = ExtResource("8_border_shader")
+shader_parameter/idle_copper = Color(0.48, 0.27, 0.105, 1)
+shader_parameter/idle_shadow = Color(0.145, 0.15, 0.15, 1)
+shader_parameter/progress_amber = Color(1, 0.58, 0.18, 1)
+shader_parameter/pulse_speed = 1.35
+
+[sub_resource type="QuadMesh" id="QuadMesh_production_border"]
+size = Vector2(32, 32)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(28, 28)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 7.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
+resource_local_to_scene = true
+radius = 28.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_prompt"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.11, 0.085, 0.065, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.86, 0.49, 0.15, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(0.025, 0.02, 0.015, 0.55)
+shadow_size = 2
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_keycap"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.92, 0.58, 0.22, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.82, 0.45, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="LabelSettings" id="LabelSettings_keycap"]
+font = ExtResource("4_font")
+font_size = 12
+font_color = Color(0.12, 0.08, 0.04, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_action"]
+font = ExtResource("4_font")
+font_size = 13
+font_color = Color(0.96, 0.88, 0.72, 1)
+outline_size = 1
+outline_color = Color(0.04, 0.03, 0.02, 1)
+
+[node name="Excavator" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+recipes = Array[ExtResource("7_recipe_script")]([ExtResource("6_recipe")])
+auto_select_first_recipe = true
+enemy_approach_depth = 6.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite")])
+lifecycle_effect_top_y = -10.0
+lifecycle_effect_bottom_y = 16.0
+lifecycle_particle_scale = 1.0
+
+[node name="ProductionBorder" type="MeshInstance2D" parent="."]
+z_index = -1
+texture_filter = 1
+material = SubResource("ShaderMaterial_production_border")
+mesh = SubResource("QuadMesh_production_border")
+script = ExtResource("9_night_border")
+
+[node name="MainSprite" type="Sprite2D" parent="."]
+z_index = 1
+texture_filter = 1
+material = ExtResource("5_lifecycle_material")
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_sprite")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 6)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+shape = SubResource("CircleShape2D_player_core")
+
+[node name="InteractionArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+shape = SubResource("CircleShape2D_interaction")
+
+[node name="InteractionPrompt" type="PanelContainer" parent="."]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(112, 26)
+offset_left = -28.0
+offset_top = -32.0
+offset_right = 84.0
+offset_bottom = -6.0
+scale = Vector2(0.5, 0.5)
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
+
+[node name="PromptMargin" type="MarginContainer" parent="InteractionPrompt"]
+layout_mode = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 3
+
+[node name="PromptRow" type="HBoxContainer" parent="InteractionPrompt/PromptMargin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="Keycap" type="PanelContainer" parent="InteractionPrompt/PromptMargin/PromptRow"]
+custom_minimum_size = Vector2(18, 18)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
+
+[node name="KeyLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow/Keycap"]
+layout_mode = 2
+text = "F"
+label_settings = SubResource("LabelSettings_keycap")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ActionLabel" type="Label" parent="InteractionPrompt/PromptMargin/PromptRow"]
+layout_mode = 2
+text = "打开挖土装置"
+label_settings = SubResource("LabelSettings_action")
+vertical_alignment = 1
+
+[node name="HealthBar" parent="." instance=ExtResource("3_health_bar")]
+offset_left = -16.0
+offset_top = -18.0
+offset_right = 16.0
+offset_bottom = -13.0
+
+[node name="MultiplayerProductionRequestTimer" type="Timer" parent="."]
+wait_time = 4.0
+one_shot = true

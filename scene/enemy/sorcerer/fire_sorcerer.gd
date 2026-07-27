@@ -8,7 +8,7 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/enemy_attack_audio_limiter.gd"
 )
 const ATTACK_TARGET_REFRESH_INTERVAL := 0.35
-const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target"
+const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"
 
 enum CombatState {
 	CHASE,
@@ -52,32 +52,6 @@ func _ready() -> void:
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.MAGIC
-
-
-func _get_preferred_ranged_combat_target() -> Node2D:
-	var objective_candidate := get_attackable_objective()
-	var player_candidate: Player = null
-	if (
-		target_player != null
-		and is_instance_valid(target_player)
-		and not target_player.is_dead
-	):
-		player_candidate = target_player
-	if objective_candidate == null:
-		return player_candidate
-	if player_candidate == null or objective_candidate == player_candidate:
-		return objective_candidate
-	var objective_distance_squared := global_position.distance_squared_to(
-		objective_candidate.global_position
-	)
-	var player_distance_squared := global_position.distance_squared_to(
-		player_candidate.global_position
-	)
-	return (
-		objective_candidate
-		if objective_distance_squared <= player_distance_squared
-		else player_candidate
-	)
 
 
 func _select_nearest_attack_target(
@@ -152,14 +126,15 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var fire_config := config as FireConfig
-	var combat_target := _get_preferred_ranged_combat_target()
-	if fire_config != null:
-		combat_target = _select_nearest_attack_target(
-			combat_target,
+	var combat_target := get_resolved_combat_target()
+	if combat_target == null and fire_config != null:
+		var family_target := _select_nearest_attack_target(
+			_get_family_proactive_ranged_combat_target(),
 			fire_config,
 			initial_attack_stagger_left <= 0.0
 				and attack_cooldown_left <= 0.0
 		)
+		combat_target = get_resolved_combat_target(family_target)
 	if (
 		combat_target != null
 		and fire_config != null
@@ -277,11 +252,17 @@ func _try_start_summon(
 ) -> bool:
 	if attack_cooldown_left > 0.0:
 		return false
-	attack_target = _select_nearest_attack_target(
-		attack_target,
-		fire_config,
-		true
-	)
+	var priority_target := get_resolved_combat_target()
+	if priority_target != null:
+		attack_target = priority_target
+	else:
+		attack_target = get_resolved_combat_target(
+			_select_nearest_attack_target(
+				attack_target,
+				fire_config,
+				true
+			)
+		)
 	if not _is_ranged_combat_target_in_range(
 		attack_target,
 		fire_config.attack_range

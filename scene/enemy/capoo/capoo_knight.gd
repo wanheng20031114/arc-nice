@@ -34,6 +34,7 @@ var slash_damage_done := false
 var action_sequence: int = 0
 var latest_proxy_action_id: int = 0
 var slash_query_shape := CircleShape2D.new()
+var committed_attack_target: Node2D = null
 
 
 func _ready() -> void:
@@ -47,7 +48,14 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_update_attack_cooldown(delta)
-	if combat_state != CombatState.CHASE and not has_attackable_objective():
+	if (
+		combat_state != CombatState.CHASE
+		and not (
+			combat_state == CombatState.SLASH
+			and slash_damage_done
+		)
+		and not _is_ranged_combat_target_valid(committed_attack_target)
+	):
 		_cancel_attack()
 
 	match combat_state:
@@ -58,19 +66,19 @@ func _physics_process(delta: float) -> void:
 			_update_slash(delta)
 			return
 
-	if not is_instance_valid(objective_target):
-		velocity = Vector2.ZERO
-		_move_until_player_contact()
-		return
-
+	var combat_target := _get_preferred_ranged_combat_target()
 	if (
 		_is_combat_sense_refresh_due()
-		and has_attackable_objective()
-		and _try_start_windup()
+		and combat_target != null
+		and _try_start_windup(combat_target)
 	):
 		return
 	if _has_player_contact():
 		velocity = Vector2.ZERO
+		return
+	if not is_instance_valid(objective_target):
+		velocity = Vector2.ZERO
+		_move_until_player_contact()
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -87,6 +95,7 @@ func _apply_config() -> void:
 	slash_time_left = 0.0
 	slash_damage_time_left = 0.0
 	slash_damage_done = false
+	committed_attack_target = null
 
 	var knight_config := config as CapooKnightConfigScript
 	if knight_config != null:
@@ -118,23 +127,30 @@ func _update_attack_cooldown(delta: float) -> void:
 	attack_cooldown_left = maxf(attack_cooldown_left - delta, 0.0)
 
 
-func _try_start_windup() -> bool:
+func _try_start_windup(candidate_target: Node2D = null) -> bool:
 	var knight_config := config as CapooKnightConfigScript
 	if knight_config == null:
 		return false
 	if attack_cooldown_left > 0.0:
 		return false
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+	if candidate_target == null:
+		candidate_target = _get_preferred_ranged_combat_target()
+	if not _is_ranged_combat_target_valid(candidate_target):
 		return false
-	if not is_attackable_objective_in_range(knight_config.attack_range):
+	if not _is_ranged_combat_target_in_range(
+		candidate_target,
+		knight_config.attack_range
+	):
 		return false
-	if not _has_clear_world_line_to_target():
+	if not _has_clear_world_line_to_target(candidate_target):
 		return false
 
+	committed_attack_target = candidate_target
 	combat_state = CombatState.WINDUP
 	windup_time_left = maxf(knight_config.attack_windup, 0.0)
-	slash_direction = global_position.direction_to(attack_target.global_position)
+	slash_direction = global_position.direction_to(
+		committed_attack_target.global_position
+	)
 	if slash_direction == Vector2.ZERO:
 		slash_direction = Vector2.RIGHT
 	velocity = Vector2.ZERO
@@ -148,13 +164,17 @@ func _try_start_windup() -> bool:
 
 func _update_windup(delta: float) -> void:
 	var knight_config := config as CapooKnightConfigScript
-	var attack_target := get_attackable_objective()
-	if knight_config == null or attack_target == null:
+	if (
+		knight_config == null
+		or not _is_ranged_combat_target_valid(committed_attack_target)
+	):
 		_cancel_attack()
 		return
 
 	velocity = Vector2.ZERO
-	slash_direction = global_position.direction_to(attack_target.global_position)
+	slash_direction = global_position.direction_to(
+		committed_attack_target.global_position
+	)
 	if slash_direction == Vector2.ZERO:
 		slash_direction = Vector2.RIGHT
 	_update_facing(slash_direction)
@@ -192,6 +212,17 @@ func _start_slash(direction: Vector2) -> void:
 
 func _update_slash(delta: float) -> void:
 	if is_dead:
+		_cancel_attack()
+		return
+	# Once the authored damage frame has executed, the remainder of the slash no
+	# longer reads its target.  Let the committed animation/cooldown finish even
+	# when that hit removed the target; validating a freed target here would both
+	# abort the action and, for long slam animations, strand derived families in
+	# SLASH forever.
+	if (
+		not slash_damage_done
+		and not _is_ranged_combat_target_valid(committed_attack_target)
+	):
 		_cancel_attack()
 		return
 
@@ -270,6 +301,7 @@ func _apply_slash_damage() -> void:
 
 func _finish_slash() -> void:
 	combat_state = CombatState.CHASE
+	committed_attack_target = null
 	slash_time_left = 0.0
 	slash_damage_time_left = 0.0
 	slash_damage_done = false
@@ -281,6 +313,7 @@ func _finish_slash() -> void:
 
 func _cancel_attack() -> void:
 	combat_state = CombatState.CHASE
+	committed_attack_target = null
 	slash_time_left = 0.0
 	slash_damage_time_left = 0.0
 	slash_damage_done = false
@@ -423,9 +456,8 @@ func _get_multiplayer_damage_source_id(source_suffix: int) -> int:
 	return maxi(net_id, 1) * 1000000 + maxi(source_suffix, 0)
 
 
-func _has_clear_world_line_to_target() -> bool:
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+func _has_clear_world_line_to_target(attack_target: Node2D) -> bool:
+	if not _is_ranged_combat_target_valid(attack_target):
 		return false
 	return _has_throttled_world_line_of_sight(attack_target, WORLD_COLLISION_MASK)
 

@@ -68,7 +68,8 @@ func _run() -> void:
 		and config.physical_defense == 5
 		and config.magic_defense == 10
 		and config.footprint_size == Vector2i(2, 2)
-		and config.placement_surface == PlantDefenseConfig.PlacementSurface.GRASS,
+		and config.requires_grass
+		and not config.requires_water_source,
 		"种植基地必须是支持联机的2×2草地建筑，并具有2000生命、5物防和10法防。"
 	)
 	if config == null or not config.is_valid():
@@ -797,11 +798,14 @@ func _test_hud_follow_focus(
 		card_scroll != null
 		and card_scroll.follow_focus
 		and hud.open(configs)
-		and configs.size() == 12
+		and configs.size() == 15
+		and configs.has(PlantDefenseRegistry.get_config(&"excavator"))
+		and configs.has(PlantDefenseRegistry.get_config(&"stone_mill"))
+		and configs.has(PlantDefenseRegistry.get_config(&"simple_fence"))
 		and configs.back() == config
-		and hud.cards.size() == 12
+		and hud.cards.size() == 15
 		and hud.cards.back().plant_config == config,
-		"12张植物卡必须把种植基地放在末位，CardScroll须启用follow_focus。"
+		"15张植物卡必须包含挖土装置、石磨台与简易围栏，并把种植基地放在末位，CardScroll须启用follow_focus。"
 	)
 	if card_scroll == null or not hud.is_open():
 		return

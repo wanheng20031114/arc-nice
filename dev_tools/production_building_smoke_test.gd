@@ -28,6 +28,9 @@ const PLANT_CULTIVATION_CENTER_ITEM := preload(
 const RESEARCH_CENTER_ITEM := preload(
 	"res://resources/config/buildings/building_research_center.tres"
 )
+const EXCAVATOR_ITEM := preload(
+	"res://resources/config/buildings/building_excavator.tres"
+)
 
 var failures: PackedStringArray = []
 
@@ -207,14 +210,16 @@ func _run() -> void:
 		and panel.recipe_rows[3].icon == PLANTING_BASE_ITEM.icon_texture
 		and panel.recipe_rows[4].icon == PLANT_CULTIVATION_CENTER_ITEM.icon_texture
 		and panel.recipe_rows[5].icon == RESEARCH_CENTER_ITEM.icon_texture
+		and panel.recipe_rows[6].icon == EXCAVATOR_ITEM.icon_texture
 		and panel.recipe_rows.all(func(row: Button) -> bool: return row.visible)
 		and panel.recipe_rows[2].text.contains("水源采集器组装")
 		and panel.recipe_rows[3].text.contains("种植基地组装")
 		and panel.recipe_rows[4].text.contains("植物培育中心组装")
 		and panel.recipe_rows[5].text.contains("科研中心组装")
+		and panel.recipe_rows[6].text.contains("挖土装置组装")
 		and panel.recipe_rows[2].text.contains("30秒")
-		and panel.recipe_rows[5].text.contains("30秒"),
-		"右侧六条配方必须显示正确产物图标，四种功能建筑统一标明30秒。"
+		and panel.recipe_rows[6].text.contains("30秒"),
+		"右侧七条配方必须显示正确产物图标，五种功能建筑统一标明30秒。"
 	)
 	_expect(
 		panel.input_slots[0].visible
@@ -302,7 +307,7 @@ func _run() -> void:
 		"所有建筑面板必须通过统一关闭规则支持第二次交互键关闭。"
 	)
 	_expect(
-		station.recipes.size() == 6
+		station.recipes.size() == 7
 		and _recipe_matches(
 			station.recipes[0],
 			&"wood_to_plank",
@@ -362,8 +367,18 @@ func _run() -> void:
 			1,
 			30.0,
 			true
+		)
+		and _recipe_matches(
+			station.recipes[6],
+			&"excavator_assembly",
+			[PLANK],
+			[10],
+			EXCAVATOR_ITEM,
+			1,
+			30.0,
+			true
 		),
-		"加工站必须按固定顺序提供两条材料配方与四条30秒功能建筑配方。"
+		"加工站必须按固定顺序提供两条材料配方与五条30秒功能建筑配方。"
 	)
 	_expect(
 		_is_valid_building_item(WATER_COLLECTOR_ITEM, &"water_collector")
@@ -372,8 +387,9 @@ func _run() -> void:
 			PLANT_CULTIVATION_CENTER_ITEM,
 			&"plant_cultivation_center"
 		)
-		and _is_valid_building_item(RESEARCH_CENTER_ITEM, &"research_center"),
-		"四种新增功能建筑物品必须复用原图、缩放至32×32且指向有效建筑配置。"
+		and _is_valid_building_item(RESEARCH_CENTER_ITEM, &"research_center")
+		and _is_valid_building_item(EXCAVATOR_ITEM, &"excavator"),
+		"五种功能建筑物品必须复用原图、缩放至32×32且指向有效建筑配置。"
 	)
 
 	station.set_production_enabled(false)
@@ -776,6 +792,19 @@ func _test_multiplayer_production_contract(
 		}),
 		"生产协议必须严格拒绝类型非法的配方ID。"
 	)
+	var collect_output_command := (
+		ProductionBuildingProtocol.make_collect_output_command(7, 8, 2, 3)
+	)
+	_expect(
+		ProductionBuildingProtocol.is_valid_command(collect_output_command)
+		and ProductionBuildingProtocol.get_operation(collect_output_command)
+		== ProductionBuildingProtocol.OPERATION_COLLECT_OUTPUT
+		and ProductionBuildingProtocol.canonicalize_command(
+			collect_output_command,
+			2
+		) == collect_output_command,
+		"领取产物命令必须可构造、通过严格校验并完整通过Host白名单规范化。"
+	)
 	var authority := config.plant_scene.instantiate() as ProductionBuilding
 	test_root.add_child(authority)
 	await process_frame
@@ -979,6 +1008,8 @@ func _test_multiplayer_production_contract(
 		"active_recipe_id": "wood_to_plank",
 		"progress_elapsed_seconds": 4.0,
 		"wait_reason": "",
+		"buffered_output_config_path": "",
+		"buffered_output_count": 0,
 		"personal_output_peer_id": 0,
 		"revision": 1,
 		"projection_duration_seconds": 0.5,

@@ -58,17 +58,17 @@ func _physics_process(delta: float) -> void:
 	elif muzzle_flash.visible:
 		_set_muzzle_flash(0.0, last_move_direction)
 
-	if not is_instance_valid(objective_target):
-		velocity = Vector2.ZERO
-		_move_until_player_contact()
-		return
+	var combat_target := _get_preferred_ranged_combat_target()
 	if _has_player_contact():
 		velocity = Vector2.ZERO
 		if fire_time_left <= 0.0:
-			var attack_target := get_attackable_objective()
-			if attack_target == null:
+			if combat_target == null:
 				return
-			_try_fire_scatter(last_move_direction, attack_target)
+			_try_fire_scatter(last_move_direction, combat_target)
+		return
+	if not is_instance_valid(objective_target):
+		velocity = Vector2.ZERO
+		_move_until_player_contact()
 		return
 
 	var move_direction := _get_navigation_move_direction(delta)
@@ -78,7 +78,8 @@ func _physics_process(delta: float) -> void:
 	velocity = move_direction * _get_move_speed()
 	_move_until_player_contact()
 	_try_fire_scatter(
-		last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO
+		last_move_direction if move_direction != Vector2.ZERO else Vector2.ZERO,
+		combat_target
 	)
 
 
@@ -193,12 +194,16 @@ func _try_fire_scatter(
 	):
 		return false
 	if attack_target == null:
-		attack_target = get_attackable_objective()
+		attack_target = _get_preferred_ranged_combat_target()
 		if attack_target == null:
 			return false
 
 	var aim_direction := base_direction
-	if CapooSMG.short_range_targeting_enabled:
+	var contact_target := get_contact_combat_target()
+	if (
+		CapooSMG.short_range_targeting_enabled
+		or attack_target == contact_target
+	):
 		var target_offset := attack_target.global_position - global_position
 		if target_offset.length_squared() > attack_range_squared:
 			return false

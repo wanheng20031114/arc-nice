@@ -14,6 +14,7 @@
 [ext_resource type="Resource" path="res://resources/config/production/plant_cultivation_center_assembly.tres" id="12_cultivation_center_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/research_center_assembly.tres" id="13_research_center_recipe"]
 [ext_resource type="Script" path="res://scene/plant_defense/day_night_progress_border.gd" id="14_night_border"]
+[ext_resource type="Resource" path="res://resources/config/production/excavator_assembly.tres" id="15_excavator_recipe"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
@@ -88,7 +89,7 @@ outline_color = Color(0.055, 0.027, 0.012, 1)
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
-recipes = Array[ExtResource("7_recipe_script")]([ExtResource("6_recipe"), ExtResource("9_core_recipe"), ExtResource("10_water_collector_recipe"), ExtResource("11_planting_base_recipe"), ExtResource("12_cultivation_center_recipe"), ExtResource("13_research_center_recipe")])
+recipes = Array[ExtResource("7_recipe_script")]([ExtResource("6_recipe"), ExtResource("9_core_recipe"), ExtResource("10_water_collector_recipe"), ExtResource("11_planting_base_recipe"), ExtResource("12_cultivation_center_recipe"), ExtResource("13_research_center_recipe"), ExtResource("15_excavator_recipe")])
 enemy_approach_depth = 2.0
 lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite")])
 lifecycle_effect_top_y = -9.0

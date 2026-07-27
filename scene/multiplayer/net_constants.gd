@@ -1,7 +1,8 @@
 extends RefCounted
 
 ## 协议与版本
-const PROTOCOL_VERSION := 21
+## v24：在 v23 制作/围栏协议上合入塔防命运投票与序列化权威传送。
+const PROTOCOL_VERSION := 24
 
 ## 玩家限制
 const MAX_PLAYERS := 8

@@ -20,6 +20,9 @@ const PLANT_LIFECYCLE_SHADER := preload(
 const AGAVE_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_agave_cannon.tres"
 )
+const SIMPLE_FENCE_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_simple_fence.tres"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -180,6 +183,8 @@ func _test_config_and_scene_contracts() -> void:
 	_expect(oak_config != null and oak_config.is_valid(), "橡木仓库配置必须有效。")
 	var wood_station_config := PlantDefenseRegistry.get_config(&"wood_processing_station")
 	_expect(wood_station_config != null and wood_station_config.is_valid(), "木头加工站配置必须有效。")
+	var stone_mill_config := PlantDefenseRegistry.get_config(&"stone_mill")
+	_expect(stone_mill_config != null and stone_mill_config.is_valid(), "石磨台配置必须有效。")
 	var water_collector_config := PlantDefenseRegistry.get_config(&"water_collector")
 	_expect(water_collector_config != null and water_collector_config.is_valid(), "水源采集器配置必须有效。")
 	var research_center_config := PlantDefenseRegistry.get_config(&"research_center")
@@ -208,35 +213,54 @@ func _test_config_and_scene_contracts() -> void:
 		grape_arc_config != null and grape_arc_config.is_valid(),
 		"葡萄电弧塔配置必须有效。"
 	)
+	var excavator_config := PlantDefenseRegistry.get_config(&"excavator")
+	_expect(
+		excavator_config != null and excavator_config.is_valid(),
+		"挖土装置配置必须有效。"
+	)
+	var simple_fence_config := PlantDefenseRegistry.get_config(&"simple_fence")
+	_expect(
+		simple_fence_config != null and simple_fence_config.is_valid(),
+		"简易围栏配置必须有效。"
+	)
 	if (
 		oak_config == null
 		or wood_station_config == null
+		or stone_mill_config == null
 		or water_collector_config == null
 		or research_center_config == null
 		or cultivation_center_config == null
 		or planting_base_config == null
 		or hydrangea_config == null
 		or grape_arc_config == null
+		or excavator_config == null
+		or simple_fence_config == null
 	):
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 12
+		registered_configs.size() == 15
 		and registered_configs.has(agave_config)
 		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
 		and registered_configs.has(oak_config)
 		and registered_configs.has(vegetation_stake_config)
 		and registered_configs.has(wood_station_config)
+		and registered_configs.has(stone_mill_config)
 		and registered_configs.has(water_collector_config)
 		and registered_configs.has(research_center_config)
 		and registered_configs.has(cultivation_center_config)
 		and registered_configs.has(planting_base_config)
 		and registered_configs.has(hydrangea_config)
 		and registered_configs.has(grape_arc_config)
+		and registered_configs.has(excavator_config)
+		and registered_configs.has(simple_fence_config)
 		and registered_configs[8] == bamboo_mortar_config
+		and registered_configs[11] == stone_mill_config
+		and registered_configs[12] == excavator_config
+		and registered_configs[13] == simple_fence_config
 		and registered_configs.back() == planting_base_config,
-		"植物注册表必须公开全部12种建筑，包括植物培育中心、竹筒迫击炮、紫阳花雨幕塔与葡萄电弧塔。"
+		"植物注册表必须公开全部15种建筑，并在不改变竹筒迫击炮索引和种植基地末位的前提下加入石磨台、挖土装置与简易围栏。"
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
@@ -251,8 +275,8 @@ func _test_config_and_scene_contracts() -> void:
 			192.0
 		)
 		and bamboo_mortar_config.footprint_size == Vector2i(2, 2)
-		and bamboo_mortar_config.placement_surface
-		== PlantDefenseConfig.PlacementSurface.GRASS
+		and bamboo_mortar_config.requires_grass
+		and not bamboo_mortar_config.requires_water_source
 		and bamboo_mortar_config.supports_multiplayer,
 		"竹筒迫击炮必须拥有2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、192范围并占草地2×2格。"
 	)
@@ -275,8 +299,8 @@ func _test_config_and_scene_contracts() -> void:
 		and water_collector_config.physical_defense == 10
 		and water_collector_config.magic_defense == 0
 		and water_collector_config.footprint_size == Vector2i(2, 2)
-		and water_collector_config.placement_surface
-		== PlantDefenseConfig.PlacementSurface.WATER,
+		and not water_collector_config.requires_grass
+		and water_collector_config.requires_water_source,
 		"水源采集器必须拥有2000生命、10物防、0法防、占2×2格且仅支持水面。"
 	)
 	_expect(
@@ -408,11 +432,15 @@ func _test_config_and_scene_contracts() -> void:
 		var expected_icon_size := (
 			Vector2(128, 128)
 			if config.plant_id == &"hydrangea_rain_tower"
-			else Vector2(64, 64)
+			else (
+				Vector2(32, 32)
+				if config.plant_id == &"simple_fence"
+				else Vector2(64, 64)
+			)
 		)
 		_expect(
 			config.icon != null and config.icon.get_size() == expected_icon_size,
-			"紫阳花雨幕塔必须保持128×128图标，其余植物必须限制为64×64。"
+			"紫阳花雨幕塔须为128×128、简易围栏须为32×32，其余建筑图标须为64×64。"
 		)
 
 	var vegetation_stake := vegetation_stake_config.plant_scene.instantiate() as PlantDefense
@@ -1176,14 +1204,14 @@ func _test_grid_and_occupancy_rules() -> void:
 		plant_local_position - Vector2(tile_width * 8.0, 0.0)
 	)
 	_expect(
-		plant_system.find_nearest_living_plant(exactly_eight_cells_away, 8.0) == plant,
+		plant_system.find_nearest_enemy_objective(exactly_eight_cells_away, 8.0) == plant,
 		"植物空间索引必须包含恰好8格的半径边界。"
 	)
 	var outside_eight_cells := tile_map.to_global(
 		plant_local_position - Vector2(tile_width * 8.01, 0.0)
 	)
 	_expect(
-		plant_system.find_nearest_living_plant(outside_eight_cells, 8.0) == null,
+		plant_system.find_nearest_enemy_objective(outside_eight_cells, 8.0) == null,
 		"植物空间索引不得返回8格半径外的目标。"
 	)
 	plant.set_meta(&"batch1_test_anchor", anchor)
@@ -1235,25 +1263,25 @@ func _test_event_driven_plant_spatial_index() -> void:
 	var center_world := tile_map.to_global(tile_map.map_to_local(center_cell))
 	var tile_width := float(tile_map.tile_set.tile_size.x)
 	var indexed_cell_count_before_query := cache_system.get_spatial_bucket_count()
-	var initial_target := cache_system.find_nearest_living_plant(center_world, 8.0)
+	var initial_target := cache_system.find_nearest_enemy_objective(center_world, 8.0)
 	_expect(initial_target == left_stake, "事件驱动索引首次查询必须返回真实最近植物。")
 	var left_world_distance := center_world.distance_to(
 		left_stake.global_position
 	)
 	_expect(
-		cache_system.find_nearest_living_plant_world(
+		cache_system.find_nearest_enemy_attack_target_world(
 			center_world,
 			left_world_distance
 		) == left_stake
-		and cache_system.find_nearest_living_plant_world(
+		and cache_system.find_nearest_enemy_attack_target_world(
 			center_world,
 			maxf(left_world_distance - 0.01, 0.0)
 		) == null
-		and cache_system.find_nearest_living_plant_world(
+		and cache_system.find_nearest_enemy_attack_target_world(
 			center_world,
 			NAN
 		) == null
-		and cache_system.find_nearest_living_plant_world(
+		and cache_system.find_nearest_enemy_attack_target_world(
 			center_world,
 			INF
 		) == null
@@ -1265,20 +1293,20 @@ func _test_event_driven_plant_spatial_index() -> void:
 		cache_system.get_spatial_candidate_count(center_cell, 9) == 2,
 		"2×2植物必须按锚点去重为一个空间索引成员。"
 	)
-	var repeated_target := cache_system.find_nearest_living_plant(center_world, 8.0)
+	var repeated_target := cache_system.find_nearest_enemy_objective(center_world, 8.0)
 	_expect(
 		repeated_target == left_stake
 		and cache_system.get_spatial_bucket_count() == indexed_cell_count_before_query,
 		"重复查询必须只读事件索引，不得按敌人中心格新增缓存状态。"
 	)
-	var short_radius_target := cache_system.find_nearest_living_plant(center_world, 4.0)
+	var short_radius_target := cache_system.find_nearest_enemy_objective(center_world, 4.0)
 	_expect(
 		short_radius_target == left_stake
 		and cache_system.get_spatial_membership_count() == 2
 		and cache_system.get_spatial_candidate_count(center_cell, 5) == 1,
 		"较小半径必须复用同一个常驻空间索引且只返回局部AABB候选。"
 	)
-	var oversized_radius_target := cache_system.find_nearest_living_plant(
+	var oversized_radius_target := cache_system.find_nearest_enemy_objective(
 		center_world,
 		100000.0
 	)
@@ -1291,7 +1319,7 @@ func _test_event_driven_plant_spatial_index() -> void:
 		var radius := float(radius_variant)
 		var expected_target: PlantDefense = left_stake if radius >= 1.0 else null
 		_expect(
-			cache_system.find_nearest_living_plant(center_world, radius)
+			cache_system.find_nearest_enemy_objective(center_world, radius)
 				== expected_target
 			and cache_system.get_spatial_membership_count() == 2,
 			(
@@ -1300,8 +1328,8 @@ func _test_event_driven_plant_spatial_index() -> void:
 			)
 		)
 	_expect(
-		cache_system.find_nearest_living_plant(center_world, NAN) == null
-		and cache_system.find_nearest_living_plant(center_world, INF) == null
+		cache_system.find_nearest_enemy_objective(center_world, NAN) == null
+		and cache_system.find_nearest_enemy_objective(center_world, INF) == null
 		and cache_system.get_spatial_membership_count() == 2,
 		"NaN/INF 半径必须被拒绝，且不能污染常驻空间索引。"
 	)
@@ -1326,13 +1354,13 @@ func _test_event_driven_plant_spatial_index() -> void:
 		return
 	var indexed_cell_count_after_topology_change := cache_system.get_spatial_bucket_count()
 
-	var tied_target := cache_system.find_nearest_living_plant(center_world, 8.0)
+	var tied_target := cache_system.find_nearest_enemy_objective(center_world, 8.0)
 	_expect(
 		tied_target == left_stake,
 		"事件索引必须保持旧19×19行优先扫描的等距目标顺序。"
 	)
 	_expect(
-		cache_system.find_nearest_living_plant_world(
+		cache_system.find_nearest_enemy_attack_target_world(
 			center_world,
 			tile_width * 8.0
 		) == left_stake,
@@ -1344,7 +1372,7 @@ func _test_event_driven_plant_spatial_index() -> void:
 	)
 	for _repeat_index in range(4):
 		_expect(
-			cache_system.find_nearest_living_plant(center_world, 8.0) == left_stake,
+			cache_system.find_nearest_enemy_objective(center_world, 8.0) == left_stake,
 			"等距最近目标在连续事件索引查询间必须保持确定性。"
 		)
 
@@ -1360,8 +1388,8 @@ func _test_event_driven_plant_spatial_index() -> void:
 		"实际位置变化回归的两个采样点必须处于同一中心瓦片。"
 	)
 	_expect(
-		cache_system.find_nearest_living_plant(left_biased_world, 8.0) == left_stake
-		and cache_system.find_nearest_living_plant(right_biased_world, 8.0) == right_stake,
+		cache_system.find_nearest_enemy_objective(left_biased_world, 8.0) == left_stake
+		and cache_system.find_nearest_enemy_objective(right_biased_world, 8.0) == right_stake,
 		"空间索引候选集合可以复用，但每次查询必须用真实世界位置重新选择最近植物。"
 	)
 	_expect(
@@ -1370,13 +1398,13 @@ func _test_event_driven_plant_spatial_index() -> void:
 	)
 
 	_expect(
-		cache_system.find_nearest_living_plant(center_world, 4.0) == left_stake
+		cache_system.find_nearest_enemy_objective(center_world, 4.0) == left_stake
 		and cache_system.get_spatial_membership_count() == 3
 		and cache_system.get_spatial_candidate_count(center_cell, 5) == 2,
 		"非默认小半径必须复用常驻空间索引并保持精确距离语义。"
 	)
 	_expect(
-		cache_system.find_nearest_living_plant(center_world, 8.0) == left_stake
+		cache_system.find_nearest_enemy_objective(center_world, 8.0) == left_stake
 		and cache_system.get_spatial_membership_count() == 3,
 		"任意半径查询后，默认常驻索引必须保持可用且不重复物化。"
 	)
@@ -1389,7 +1417,7 @@ func _test_event_driven_plant_spatial_index() -> void:
 		"植物死亡释放footprint时必须立即更新常驻索引及其小半径查询。"
 	)
 	_expect(
-		cache_system.find_nearest_living_plant(right_biased_world, 8.0) == left_stake
+		cache_system.find_nearest_enemy_objective(right_biased_world, 8.0) == left_stake
 		and cache_system.get_spatial_membership_count() == 2,
 		"死亡后的查询不得返回已移除植物，也不得触发索引重建。"
 	)
@@ -1399,7 +1427,7 @@ func _test_event_driven_plant_spatial_index() -> void:
 		cache_system.get_spatial_membership_count() == 0
 		and cache_system.get_spatial_bucket_count(9) == 0
 		and cache_system.get_spatial_bucket_count(5) == 0
-		and cache_system.find_nearest_living_plant(center_world, 8.0) == null,
+		and cache_system.find_nearest_enemy_objective(center_world, 8.0) == null,
 		"清空全部植物必须清空默认bucket且不能创建非默认常驻索引。"
 	)
 
@@ -1411,7 +1439,7 @@ func _test_event_driven_plant_spatial_index() -> void:
 	)
 	_expect(
 		restored_stake != null
-		and cache_system.find_nearest_living_plant(center_world, 8.0) == restored_stake
+		and cache_system.find_nearest_enemy_objective(center_world, 8.0) == restored_stake
 		and cache_system.get_spatial_candidate_count(center_cell, 9) == 1
 		and cache_system.get_spatial_candidate_count(center_cell, 5) == 1,
 		"清理后重新放置必须增量恢复默认索引和临时候选查询。"
@@ -1447,7 +1475,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 12
+		controller.selection_hud.available_configs.size() == 15
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1459,6 +1487,9 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(vegetation_stake_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"wood_processing_station")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"water_collector")
@@ -1478,8 +1509,14 @@ func _test_realtime_selection_and_cancel() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"grape_arc_tower")
 		)
-		and controller.selection_hud.cards.size() == 12,
-		"单人T键调试界面必须显示全部12种建筑，包括紫阳花雨幕塔与葡萄电弧塔。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"excavator")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"simple_fence")
+		)
+		and controller.selection_hud.cards.size() == 15,
+		"单人T键调试界面必须显示包括石磨台、挖土装置与简易围栏在内的全部15种建筑。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var bamboo_mortar_card: PlantSelectionCard = null
@@ -1728,7 +1765,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 12
+		controller.selection_hud.available_configs.size() == 15
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1740,6 +1777,9 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(vegetation_stake_config)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"wood_processing_station")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"water_collector")
@@ -1759,8 +1799,14 @@ func _test_multiplayer_authority_contracts() -> void:
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"grape_arc_tower")
 		)
-		and controller.selection_hud.cards.size() == 12,
-		"多人T键调试界面必须显示全部12种支持联机的建筑。"
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"excavator")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"simple_fence")
+		)
+		and controller.selection_hud.cards.size() == 15,
+		"多人T键调试界面必须显示包括石磨台、挖土装置与简易围栏在内的全部15种支持联机建筑。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []
@@ -1812,6 +1858,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	host_game.next_multiplayer_plant_net_id = 5101
 	var spawned_building_records: Array[Dictionary] = []
 	var changed_inventory_peers: Array[int] = []
+	var placement_rejections: Array[Dictionary] = []
 	host_game.multiplayer_plant_spawned.connect(
 		func(
 			request_id: int,
@@ -1833,6 +1880,18 @@ func _test_multiplayer_authority_contracts() -> void:
 	)
 	host_game.multiplayer_inventory_changed.connect(
 		func(peer_id: int) -> void: changed_inventory_peers.append(peer_id)
+	)
+	host_game.multiplayer_plant_placement_rejected.connect(
+		func(
+			request_id: int,
+			requester_peer_id: int,
+			reason: StringName
+		) -> void:
+			placement_rejections.append({
+				"request_id": request_id,
+				"peer_id": requester_peer_id,
+				"reason": reason,
+			})
 	)
 	host_game.request_multiplayer_inventory_plant_placement(
 		2,
@@ -1859,6 +1918,182 @@ func _test_multiplayer_authority_contracts() -> void:
 		plant_system.remove_plant_by_net_id(5101),
 		"权威背包建造测试结束时必须释放已生成建筑。"
 	)
+	await physics_frame
+
+	var simple_fence_config := PlantDefenseRegistry.get_config(&"simple_fence")
+	_expect(
+		simple_fence_config != null
+		and run_state.try_add_item_count_for_peer(
+			2,
+			SIMPLE_FENCE_BUILDING_ITEM,
+			3
+		),
+		"权威围栏逐个放置夹具必须能在远端玩家同一槽加入3个围栏。"
+	)
+	var fence_item_slot := -1
+	for slot_index in RunStateStore.INVENTORY_CAPACITY:
+		if PickupConfig.inventory_identity_matches(
+			run_state.get_item_for_peer(2, slot_index),
+			SIMPLE_FENCE_BUILDING_ITEM
+		):
+			fence_item_slot = slot_index
+			break
+	var fence_anchors: Array[Vector2i] = []
+	if simple_fence_config != null:
+		for y in range(
+			plant_system.placement_area.position.y,
+			plant_system.placement_area.end.y
+		):
+			for x in range(
+				plant_system.placement_area.position.x,
+				plant_system.placement_area.end.x
+			):
+				var candidate := Vector2i(x, y)
+				if plant_system.is_placement_valid_for_player(
+					candidate,
+					simple_fence_config,
+					requesting_player
+				):
+					fence_anchors.append(candidate)
+					if fence_anchors.size() == 3:
+						break
+			if fence_anchors.size() == 3:
+				break
+	_expect(
+		fence_item_slot >= 0
+		and run_state.get_item_count_for_peer(2, fence_item_slot) == 3
+		and fence_anchors.size() == 3,
+		"围栏逐个放置夹具必须保留单个3数量堆栈并找到3个Host合法位置。"
+	)
+	if fence_item_slot >= 0 and fence_anchors.size() == 3:
+		spawned_building_records.clear()
+		changed_inventory_peers.clear()
+		placement_rejections.clear()
+		var fence_revision_before := (
+			run_state.get_inventory_revision_for_peer(2)
+		)
+		host_game.request_multiplayer_inventory_plant_placement(
+			2,
+			10,
+			&"simple_fence",
+			fence_anchors[0],
+			fence_item_slot,
+			fence_revision_before,
+			SIMPLE_FENCE_BUILDING_ITEM.resource_path
+		)
+		var revision_after_first := run_state.get_inventory_revision_for_peer(2)
+		_expect(
+			run_state.get_item_for_peer(2, fence_item_slot)
+			== SIMPLE_FENCE_BUILDING_ITEM
+			and run_state.get_item_count_for_peer(2, fence_item_slot) == 2
+			and revision_after_first == fence_revision_before + 1
+			and spawned_building_records.size() == 1
+			and changed_inventory_peers == [2],
+			"同槽3个围栏首次Host权威放置必须只减1，保留同槽2个并仅推进一次revision。"
+		)
+
+		var rejection_count_before := placement_rejections.size()
+		host_game.request_multiplayer_inventory_plant_placement(
+			2,
+			11,
+			&"simple_fence",
+			fence_anchors[0],
+			fence_item_slot,
+			revision_after_first,
+			SIMPLE_FENCE_BUILDING_ITEM.resource_path
+		)
+		_expect(
+			placement_rejections.size() == rejection_count_before + 1
+			and placement_rejections.back().get("reason") == &"invalid_position"
+			and run_state.get_item_count_for_peer(2, fence_item_slot) == 2
+			and run_state.get_inventory_revision_for_peer(2)
+			== revision_after_first
+			and changed_inventory_peers == [2],
+			"围栏位置失败必须在扣栈前原子拒绝，不得减少数量、推进revision或发送背包变更。"
+		)
+
+		host_game.request_multiplayer_inventory_plant_placement(
+			2,
+			12,
+			&"simple_fence",
+			fence_anchors[1],
+			fence_item_slot,
+			fence_revision_before,
+			SIMPLE_FENCE_BUILDING_ITEM.resource_path
+		)
+		_expect(
+			placement_rejections.back().get("reason") == &"stale_inventory"
+			and run_state.get_item_count_for_peer(2, fence_item_slot) == 2
+			and run_state.get_inventory_revision_for_peer(2)
+			== revision_after_first,
+			"围栏旧背包revision必须在位置校验和扣栈前原子拒绝。"
+		)
+
+		host_game.request_multiplayer_inventory_plant_placement(
+			2,
+			13,
+			&"simple_fence",
+			fence_anchors[1],
+			fence_item_slot,
+			revision_after_first,
+			AGAVE_BUILDING_ITEM.resource_path
+		)
+		host_game.request_multiplayer_inventory_plant_placement(
+			2,
+			14,
+			&"agave_cannon",
+			fence_anchors[1],
+			fence_item_slot,
+			revision_after_first,
+			SIMPLE_FENCE_BUILDING_ITEM.resource_path
+		)
+		_expect(
+			placement_rejections.size() >= 4
+			and placement_rejections[-2].get("reason")
+			== &"invalid_inventory_item"
+			and placement_rejections[-1].get("reason")
+			== &"invalid_inventory_item"
+			and run_state.get_item_count_for_peer(2, fence_item_slot) == 2
+			and run_state.get_inventory_revision_for_peer(2)
+			== revision_after_first,
+			"伪造围栏item path或plant id必须原子拒绝且不得触碰堆栈。"
+		)
+
+		for success_index in range(1, 3):
+			var current_revision := run_state.get_inventory_revision_for_peer(2)
+			host_game.request_multiplayer_inventory_plant_placement(
+				2,
+				15 + success_index,
+				&"simple_fence",
+				fence_anchors[success_index],
+				fence_item_slot,
+				current_revision,
+				SIMPLE_FENCE_BUILDING_ITEM.resource_path
+			)
+			_expect(
+				run_state.get_item_count_for_peer(2, fence_item_slot)
+				== 2 - success_index,
+				"围栏第%d次成功放置必须仅减少1个堆栈数量。"
+				% (success_index + 1)
+			)
+		_expect(
+			run_state.get_item_for_peer(2, fence_item_slot) == null
+			and run_state.get_item_count_for_peer(2, fence_item_slot) == 0
+			and spawned_building_records.size() == 3
+			and changed_inventory_peers == [2, 2, 2]
+			and run_state.get_inventory_revision_for_peer(2)
+			== fence_revision_before + 3,
+			"连续放置3个围栏必须到数量0时才清槽，三次成功各广播一次且拒绝请求不推进revision。"
+		)
+		for fence_net_id in range(5102, 5105):
+			_expect(
+				plant_system.remove_plant_by_net_id(
+					fence_net_id,
+					PlantDefense.RemovalMode.SILENT
+				),
+				"围栏逐个放置夹具必须清理权威围栏net id %d。"
+				% fence_net_id
+			)
 	host_game.free()
 	controller.queue_free()
 	requesting_player.queue_free()

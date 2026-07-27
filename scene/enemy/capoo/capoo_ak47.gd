@@ -71,6 +71,11 @@ func _physics_process(delta: float) -> void:
 
 	_update_touch_damage(delta)
 	_update_attack_cooldown(delta)
+	if (
+		combat_state != CombatState.CHASE
+		and not _is_ranged_combat_target_valid(attack_target)
+	):
+		_cancel_attack()
 
 	match combat_state:
 		CombatState.WINDUP:
@@ -80,9 +85,6 @@ func _physics_process(delta: float) -> void:
 			_update_burst(delta)
 			return
 
-	if _has_player_contact():
-		velocity = Vector2.ZERO
-		return
 	var capoo_config := config as CapooConfig
 	if _is_combat_sense_refresh_due():
 		var preferred_target := _get_preferred_ranged_combat_target()
@@ -432,11 +434,18 @@ func _play_proxy_muzzle_heat(direction: Vector2, duration: float, action_id: int
 
 
 func _has_clear_world_line_to_target() -> bool:
-	var attack_target := get_attackable_objective()
-	if attack_target == null:
+	var resolved_target := _get_preferred_ranged_combat_target()
+	if resolved_target == null:
 		return false
 
-	return _has_throttled_world_line_of_sight(attack_target, WORLD_COLLISION_MASK)
+	return _has_throttled_world_line_of_sight(
+		resolved_target,
+		WORLD_COLLISION_MASK
+	)
+
+
+func _uses_inherited_touch_damage() -> bool:
+	return false
 
 
 func _get_move_speed() -> float:

@@ -20,7 +20,7 @@
 [ext_resource type="PackedScene" uid="uid://cvh5s1gowuh0r" path="res://scene/luoxi_merchant.tscn" id="20_luoxi"]
 [ext_resource type="PackedScene" path="res://scene/debug_collectible_window.tscn" id="21_debug_collectibles"]
 [ext_resource type="Script" uid="uid://jvlyxxwk5co0" path="res://scene/plant_defense/plant_system.gd" id="22_plant_system"]
-[ext_resource type="PackedScene" uid="uid://b43m8ktg7sfho" path="res://scene/plant_defense/plant_placement_controller.tscn" id="23_plant_placement"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/plant_placement_controller.tscn" id="23_plant_placement"]
 [ext_resource type="Texture2D" uid="uid://b1vmulk2tbn72" path="res://resources/terrain/dual_grid/tilled_soil_full_tile_16.png" id="24_base_dirt_texture"]
 [ext_resource type="TileSet" uid="uid://baax8oj0cmaw1" path="res://resources/terrain/dual_grid/terrain_dual_grid_tileset_16.tres" id="24_dual_grid_tileset"]
 [ext_resource type="Script" uid="uid://10rnkne5bliy" path="res://scene/terrain/dual_grid_tilemap.gd" id="25_dual_grid_script"]

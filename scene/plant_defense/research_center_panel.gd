@@ -12,6 +12,18 @@ enum Page {
 const DESIGN_SIZE := Vector2(728.0, 544.0)
 const BUILDING_DEFENSE_RESEARCH_ID := GlobalResearchRegistry.BUILDING_DEFENSE_ID
 const PLAYER_MOVE_SPEED_RESEARCH_ID := GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
+const BAMBOO_MORTAR_CRAFTING_RESEARCH_ID := (
+	GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
+)
+const HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID := (
+	GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
+)
+const GLOBAL_RESEARCH_IDS: Array[StringName] = [
+	BUILDING_DEFENSE_RESEARCH_ID,
+	PLAYER_MOVE_SPEED_RESEARCH_ID,
+	BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
+	HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
+]
 const DEFAULT_RESEARCH_ID := BUILDING_DEFENSE_RESEARCH_ID
 const MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
 	Vector2(258.0, 259.0),
@@ -19,6 +31,10 @@ const MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
 	Vector2(490.0, 259.0),
 ]
 const SINGLE_MATERIAL_SLOT_POSITION := Vector2(374.0, 259.0)
+const DOUBLE_MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
+	Vector2(316.0, 259.0),
+	Vector2(432.0, 259.0),
+]
 const NODE_OFF_COLOR := Color(0.32, 0.43, 0.56, 0.82)
 const NODE_ON_COLORS := [
 	Color(0.25, 0.8, 1.35, 1.0),
@@ -35,12 +51,27 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 @onready var player_tab: Button = $Overlay/PanelRoot/PlayerTab
 @onready var close_button: Button = $Overlay/PanelRoot/CloseButton
 @onready var global_page: Control = $Overlay/PanelRoot/GlobalPage
+@onready var global_research_scroll: ScrollContainer = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll
+)
 @onready var defense_research_button: Button = (
 	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/DefenseResearchButton
 )
 @onready var move_speed_research_button: Button = (
 	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/MoveSpeedResearchButton
 )
+@onready var bamboo_mortar_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/BambooMortarResearchButton
+)
+@onready var hydrangea_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/HydrangeaResearchButton
+)
+@onready var global_research_buttons: Array[Button] = [
+	defense_research_button,
+	move_speed_research_button,
+	bamboo_mortar_research_button,
+	hydrangea_research_button,
+]
 @onready var global_research_name: Label = (
 	$Overlay/PanelRoot/GlobalPage/ResearchName
 )
@@ -98,12 +129,10 @@ var pending_multiplayer_player_level := -1
 func _ready() -> void:
 	global_tab.pressed.connect(_switch_page.bind(Page.GLOBAL_TECH))
 	player_tab.pressed.connect(_switch_page.bind(Page.PLAYER_TECH))
-	defense_research_button.pressed.connect(
-		_select_global_research.bind(BUILDING_DEFENSE_RESEARCH_ID)
-	)
-	move_speed_research_button.pressed.connect(
-		_select_global_research.bind(PLAYER_MOVE_SPEED_RESEARCH_ID)
-	)
+	for index in mini(GLOBAL_RESEARCH_IDS.size(), global_research_buttons.size()):
+		global_research_buttons[index].pressed.connect(
+			_select_global_research.bind(GLOBAL_RESEARCH_IDS[index])
+		)
 	close_button.pressed.connect(close)
 	action_button.pressed.connect(_on_action_pressed)
 	get_viewport().size_changed.connect(_update_panel_transform)
@@ -126,6 +155,7 @@ func open_for(new_building: ResearchCenter, player: Player) -> void:
 	tracked_player = player
 	active_page = Page.GLOBAL_TECH
 	selected_global_research_id = DEFAULT_RESEARCH_ID
+	global_research_scroll.scroll_vertical = 0
 	transient_status = ""
 	pending_multiplayer_player_level = -1
 	_bind_runtime_signals()
@@ -230,11 +260,11 @@ func _apply_global_research_presentation() -> void:
 		var item := config.input_items[index]
 		var required := config.input_amounts[index]
 		material_slots[index].set_item(item, required)
-		var slot_position := (
-			SINGLE_MATERIAL_SLOT_POSITION
-			if config.input_items.size() == 1
-			else MATERIAL_SLOT_POSITIONS[index]
-		)
+		var slot_position := MATERIAL_SLOT_POSITIONS[index]
+		if config.input_items.size() == 1:
+			slot_position = SINGLE_MATERIAL_SLOT_POSITION
+		elif config.input_items.size() == 2:
+			slot_position = DOUBLE_MATERIAL_SLOT_POSITIONS[index]
 		material_slots[index].position = slot_position
 		material_labels[index].position = Vector2(
 			slot_position.x - 14.0,
@@ -244,12 +274,10 @@ func _apply_global_research_presentation() -> void:
 
 
 func _refresh_global_research_buttons() -> void:
-	defense_research_button.button_pressed = (
-		selected_global_research_id == BUILDING_DEFENSE_RESEARCH_ID
-	)
-	move_speed_research_button.button_pressed = (
-		selected_global_research_id == PLAYER_MOVE_SPEED_RESEARCH_ID
-	)
+	for index in mini(GLOBAL_RESEARCH_IDS.size(), global_research_buttons.size()):
+		global_research_buttons[index].button_pressed = (
+			selected_global_research_id == GLOBAL_RESEARCH_IDS[index]
+		)
 
 
 func _get_selected_research_config() -> GlobalResearchConfig:
@@ -339,20 +367,10 @@ func _refresh_global_page(coordinator: ResearchCoordinator) -> void:
 func _refresh_global_research_entry_statuses(
 	coordinator: ResearchCoordinator
 ) -> void:
-	var entries := [
-		{
-			"id": BUILDING_DEFENSE_RESEARCH_ID,
-			"button": defense_research_button,
-		},
-		{
-			"id": PLAYER_MOVE_SPEED_RESEARCH_ID,
-			"button": move_speed_research_button,
-		},
-	]
-	for entry in entries:
-		var research_id := entry["id"] as StringName
+	for index in mini(GLOBAL_RESEARCH_IDS.size(), global_research_buttons.size()):
+		var research_id := GLOBAL_RESEARCH_IDS[index]
 		var config := coordinator.get_global_research_config(research_id)
-		var button := entry["button"] as Button
+		var button := global_research_buttons[index]
 		if config == null:
 			button.visible = false
 			continue

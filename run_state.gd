@@ -15,6 +15,7 @@ const CRAFT_RESULT_INVALID_RECIPE := &"invalid_recipe"
 const CRAFT_RESULT_MISSING_INPUT := &"missing_input"
 const CRAFT_RESULT_INVENTORY_FULL := &"inventory_full"
 const CRAFT_RESULT_STALE_REVISION := &"stale_revision"
+const CRAFT_RESULT_RESEARCH_LOCKED := &"research_locked"
 
 enum StatType {
 	ATTACK,
@@ -181,23 +182,33 @@ func try_add_item_counts_if_revision(
 	return true
 
 
-func get_simple_crafting_result(recipe: ProductionRecipe) -> StringName:
+func get_simple_crafting_result(
+	recipe: ProductionRecipe,
+	completed_global_research_ids: Array[StringName] = []
+) -> StringName:
 	ensure_run_started()
 	if active_multiplayer_peer_id > 0:
 		return get_simple_crafting_result_for_peer(
 			active_multiplayer_peer_id,
-			recipe
+			recipe,
+			completed_global_research_ids
 		)
 	_ensure_local_inventory_shape()
 	return _get_crafting_simulation_result(
-		_simulate_simple_crafting(inventory, inventory_stack_counts, recipe)
+		_simulate_simple_crafting(
+			inventory,
+			inventory_stack_counts,
+			recipe,
+			completed_global_research_ids
+		)
 	)
 
 
 func try_craft_inventory_recipe_if_revision(
 	recipe: ProductionRecipe,
 	expected_revision: int,
-	emit_change: bool = true
+	emit_change: bool = true,
+	completed_global_research_ids: Array[StringName] = []
 ) -> StringName:
 	ensure_run_started()
 	if active_multiplayer_peer_id > 0:
@@ -205,7 +216,8 @@ func try_craft_inventory_recipe_if_revision(
 			active_multiplayer_peer_id,
 			recipe,
 			expected_revision,
-			emit_change
+			emit_change,
+			completed_global_research_ids
 		)
 	_ensure_local_inventory_shape()
 	if expected_revision != inventory_revision:
@@ -213,7 +225,8 @@ func try_craft_inventory_recipe_if_revision(
 	var simulation := _simulate_simple_crafting(
 		inventory,
 		inventory_stack_counts,
-		recipe
+		recipe,
+		completed_global_research_ids
 	)
 	var result := _get_crafting_simulation_result(simulation)
 	if result != CRAFT_RESULT_SUCCESS:
@@ -494,7 +507,8 @@ func try_add_item_counts_for_peer_if_revision(
 
 func get_simple_crafting_result_for_peer(
 	peer_id: int,
-	recipe: ProductionRecipe
+	recipe: ProductionRecipe,
+	completed_global_research_ids: Array[StringName] = []
 ) -> StringName:
 	ensure_run_started()
 	ensure_multiplayer_peer_state(peer_id)
@@ -502,7 +516,8 @@ func get_simple_crafting_result_for_peer(
 		_simulate_simple_crafting(
 			multiplayer_inventories[peer_id] as Array,
 			multiplayer_inventory_stack_counts[peer_id] as Array,
-			recipe
+			recipe,
+			completed_global_research_ids
 		)
 	)
 
@@ -511,7 +526,8 @@ func try_craft_inventory_recipe_for_peer_if_revision(
 	peer_id: int,
 	recipe: ProductionRecipe,
 	expected_revision: int,
-	emit_change: bool = true
+	emit_change: bool = true,
+	completed_global_research_ids: Array[StringName] = []
 ) -> StringName:
 	ensure_run_started()
 	ensure_multiplayer_peer_state(peer_id)
@@ -522,7 +538,8 @@ func try_craft_inventory_recipe_for_peer_if_revision(
 	var simulation := _simulate_simple_crafting(
 		peer_inventory,
 		peer_counts,
-		recipe
+		recipe,
+		completed_global_research_ids
 	)
 	var result := _get_crafting_simulation_result(simulation)
 	if result != CRAFT_RESULT_SUCCESS:
@@ -694,21 +711,86 @@ func apply_inventory_snapshot_for_peer(
 	snapshot: Dictionary,
 	allow_revision_rewind: bool = false
 ) -> bool:
+	var prepared := prepare_inventory_snapshot_for_peer(
+		peer_id,
+		snapshot,
+		allow_revision_rewind
+	)
+	return commit_prepared_inventory_snapshot_for_peer(prepared)
+
+
+## Decodes an authoritative peer inventory snapshot without publishing or
+## mutating its arrays. Network transactions can preflight inventory and
+## warehouse payloads together before either side becomes observable.
+func prepare_inventory_snapshot_for_peer(
+	peer_id: int,
+	snapshot: Dictionary,
+	allow_revision_rewind: bool = false
+) -> Dictionary:
+	if peer_id <= 0:
+		return {}
 	ensure_multiplayer_peer_state(peer_id)
+	var current_revision := get_inventory_revision_for_peer(peer_id)
 	var decoded := _decode_inventory_snapshot(
 		snapshot,
 		peer_id,
-		-1 if allow_revision_rewind else get_inventory_revision_for_peer(peer_id)
+		-1 if allow_revision_rewind else current_revision
 	)
 	if decoded.is_empty():
+		return {}
+	decoded["peer_id"] = peer_id
+	decoded["expected_current_revision"] = current_revision
+	decoded["allow_revision_rewind"] = allow_revision_rewind
+	return decoded
+
+
+func commit_prepared_inventory_snapshot_for_peer(
+	prepared: Dictionary,
+	emit_change_signal: bool = true
+) -> bool:
+	var peer_id := int(prepared.get("peer_id", 0))
+	if (
+		peer_id <= 0
+		or not has_multiplayer_peer_state(peer_id)
+		or int(prepared.get("expected_current_revision", -1))
+		!= get_inventory_revision_for_peer(peer_id)
+		or (prepared.get("items", []) as Array).size() != INVENTORY_CAPACITY
+		or (prepared.get("counts", []) as Array).size() != INVENTORY_CAPACITY
+		or int(prepared.get("revision", -1)) < 0
+		or (
+			not bool(prepared.get("allow_revision_rewind", false))
+			and int(prepared.get("revision", -1))
+			< int(prepared.get("expected_current_revision", -1))
+		)
+	):
 		return false
+	var prepared_items := prepared["items"] as Array
+	var prepared_counts := prepared["counts"] as Array
+	for slot_index in INVENTORY_CAPACITY:
+		var item := prepared_items[slot_index] as PickupConfig
+		var count := int(prepared_counts[slot_index])
+		if item == null:
+			if count != 0:
+				return false
+			continue
+		if (
+			not item.can_store_in_inventory
+			or count <= 0
+			or count > PickupConfig.get_inventory_stack_limit(item)
+		):
+			return false
 	var peer_inventory := multiplayer_inventories[peer_id] as Array
 	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
-	peer_inventory.assign(decoded["items"] as Array)
-	peer_counts.assign(decoded["counts"] as Array)
-	multiplayer_inventory_revisions[peer_id] = int(decoded["revision"])
-	inventory_changed.emit()
+	peer_inventory.assign(prepared_items)
+	peer_counts.assign(prepared_counts)
+	multiplayer_inventory_revisions[peer_id] = int(prepared["revision"])
+	if emit_change_signal:
+		notify_inventory_snapshot_committed()
 	return true
+
+
+func notify_inventory_snapshot_committed() -> void:
+	inventory_changed.emit()
 
 
 func apply_inventory_slot_state_for_peer(peer_id: int, slot_state: Dictionary) -> bool:
@@ -1479,10 +1561,16 @@ func _simulate_add_item_counts(
 func _simulate_simple_crafting(
 	current_items: Array,
 	current_counts: Array,
-	recipe: ProductionRecipe
+	recipe: ProductionRecipe,
+	completed_global_research_ids: Array[StringName] = []
 ) -> Dictionary:
 	if not SimpleCraftingRegistry.is_simple_crafting_recipe(recipe):
 		return {"result": CRAFT_RESULT_INVALID_RECIPE}
+	if not SimpleCraftingRegistry.is_recipe_unlocked(
+		recipe,
+		completed_global_research_ids
+	):
+		return {"result": CRAFT_RESULT_RESEARCH_LOCKED}
 	var simulated_items := current_items.duplicate()
 	var simulated_counts := current_counts.duplicate()
 	for input_index in recipe.input_items.size():

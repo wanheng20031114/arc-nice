@@ -28,7 +28,7 @@ class TargetRuntime:
 	var candidates: Array[Node2D] = []
 	var query_count := 0
 
-	func find_nearest_enemy_attack_target(
+	func find_nearest_enemy_attack_target_world(
 		from_position: Vector2,
 		max_distance: float,
 		excluded_instance_ids: Dictionary = {}

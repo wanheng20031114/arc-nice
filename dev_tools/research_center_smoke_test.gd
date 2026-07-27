@@ -21,11 +21,20 @@ const SAPLING := preload("res://resources/config/materials/material_sapling.tres
 const WATER_BOTTLE := preload(
 	"res://resources/config/materials/material_water_bottle.tres"
 )
+const WOODEN_CORE := preload(
+	"res://resources/config/materials/material_wooden_core.tres"
+)
 const BUILDING_DEFENSE_RESEARCH_ID := (
 	GlobalResearchRegistry.BUILDING_DEFENSE_ID
 )
 const PLAYER_MOVE_SPEED_RESEARCH_ID := (
 	GlobalResearchRegistry.PLAYER_MOVE_SPEED_ID
+)
+const BAMBOO_MORTAR_CRAFTING_RESEARCH_ID := (
+	GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
+)
+const HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID := (
+	GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
 )
 
 var failures: PackedStringArray = []
@@ -214,6 +223,14 @@ func _run() -> void:
 		[weishidaier, tiyi, hoe_cat],
 		test_root
 	)
+	await _test_simple_crafting_unlock_research(
+		research,
+		center,
+		production,
+		warehouse,
+		plant_system,
+		test_root
+	)
 	await _test_player_technology(research, center, panel, weishidaier, tiyi, hoe_cat)
 	_test_multiplayer_request_contract(config, research, panel, test_root)
 	_finish(test_root)
@@ -230,6 +247,23 @@ func _test_config_and_scene(
 	)
 	var move_speed_research := GlobalResearchRegistry.get_config(
 		PLAYER_MOVE_SPEED_RESEARCH_ID
+	)
+	var bamboo_mortar_research := GlobalResearchRegistry.get_config(
+		BAMBOO_MORTAR_CRAFTING_RESEARCH_ID
+	)
+	var hydrangea_research := GlobalResearchRegistry.get_config(
+		HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID
+	)
+	var registered_research_projects := GlobalResearchRegistry.get_all_configs()
+	_expect(
+		registered_research_projects == [
+			defense_research,
+			move_speed_research,
+			bamboo_mortar_research,
+			hydrangea_research,
+		]
+		and ResearchCoordinator.RUNTIME_STATE_SCHEMA == 3,
+		"全局科研注册表必须按固定顺序公开四个合法项目，并使用runtime schema3。"
 	)
 	_expect(
 		defense_research != null
@@ -252,6 +286,38 @@ func _test_config_and_scene(
 		and move_speed_research.input_items == [WATER_BOTTLE]
 		and move_speed_research.input_amounts == [50],
 		"全员移动训练必须消耗50水瓶、持续60秒并提供全员移速+15。"
+	)
+	_expect(
+		bamboo_mortar_research != null
+		and bamboo_mortar_research.is_valid()
+		and bamboo_mortar_research.input_items == [WOODEN_CORE, SAPLING]
+		and bamboo_mortar_research.input_amounts == [2, 5]
+		and is_equal_approx(bamboo_mortar_research.duration_seconds, 30.0)
+		and bamboo_mortar_research.effect_type
+		== GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK
+		and is_zero_approx(bamboo_mortar_research.effect_amount)
+		and bamboo_mortar_research.unlocked_simple_crafting_recipe_id
+		== SimpleCraftingRegistry.BAMBOO_MORTAR_ID
+		and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
+			SimpleCraftingRegistry.BAMBOO_MORTAR_ID
+		) == BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
+		"迫击炮简易装配必须是消耗2木制核心和5树苗、持续30秒的合法配方解锁研究。"
+	)
+	_expect(
+		hydrangea_research != null
+		and hydrangea_research.is_valid()
+		and hydrangea_research.input_items == [WOODEN_CORE, SAPLING]
+		and hydrangea_research.input_amounts == [2, 5]
+		and is_equal_approx(hydrangea_research.duration_seconds, 30.0)
+		and hydrangea_research.effect_type
+		== GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK
+		and is_zero_approx(hydrangea_research.effect_amount)
+		and hydrangea_research.unlocked_simple_crafting_recipe_id
+		== SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
+		and GlobalResearchRegistry.get_unlock_research_id_for_simple_crafting_recipe(
+			SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
+		) == HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
+		"紫阳花简易培育必须是消耗2木制核心和5树苗、持续30秒的合法配方解锁研究。"
 	)
 	_expect(
 		config != null
@@ -472,6 +538,13 @@ func _test_config_and_scene(
 		and panel.has_node(
 			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/MoveSpeedResearchButton"
 		)
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/BambooMortarResearchButton"
+		)
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/HydrangeaResearchButton"
+		)
+		and panel.global_research_buttons.size() == 4
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/PlankSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/SaplingSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/WaterBottleSlot")
@@ -479,7 +552,7 @@ func _test_config_and_scene(
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode2")
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode3")
 		and not panel.has_node("Overlay/PanelRoot/ToggleButton"),
-		"科研UI必须原生包含双页与三处技术节点，并且不能有开关。"
+		"科研UI必须原生包含四项全局研究、双页与三处技术节点，并且不能有开关。"
 	)
 	_expect(
 		is_equal_approx(
@@ -644,6 +717,32 @@ func _test_panel_mouse_navigation(
 		and not panel.player_page.visible
 		and panel.global_tab.button_pressed,
 		"真实点击全局科技页签必须命中按钮并切回全局科技页。"
+	)
+
+	await _click_panel_control(panel.bamboo_mortar_research_button)
+	_expect(
+		root.gui_get_hovered_control() == panel.bamboo_mortar_research_button
+		and panel.selected_global_research_id
+		== BAMBOO_MORTAR_CRAFTING_RESEARCH_ID
+		and panel.bamboo_mortar_research_button.button_pressed
+		and panel.material_slots[0].visible
+		and panel.material_slots[1].visible
+		and not panel.material_slots[2].visible
+		and panel.material_slots[0].position
+		== ResearchCenterPanel.DOUBLE_MATERIAL_SLOT_POSITIONS[0]
+		and panel.material_slots[1].position
+		== ResearchCenterPanel.DOUBLE_MATERIAL_SLOT_POSITIONS[1]
+		and panel.material_labels[0].position
+		== Vector2(
+			ResearchCenterPanel.DOUBLE_MATERIAL_SLOT_POSITIONS[0].x - 14.0,
+			327.0
+		)
+		and panel.material_labels[1].position
+		== Vector2(
+			ResearchCenterPanel.DOUBLE_MATERIAL_SLOT_POSITIONS[1].x - 14.0,
+			327.0
+		),
+		"选择迫击炮研发后必须使用居中的双材料槽布局，并保持第三槽隐藏。"
 	)
 
 	await _click_panel_control(panel.close_button)
@@ -878,6 +977,137 @@ func _test_global_move_speed_research(
 		"移动研究完成后注册的新玩家必须立即获得15点移速。"
 	)
 
+func _test_simple_crafting_unlock_research(
+	research: ResearchCoordinator,
+	center: ResearchCenter,
+	production: ProductionCoordinator,
+	warehouse: OakWarehouse,
+	plant_system: PlantSystem,
+	test_root: Node
+) -> void:
+	var simple_fence_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.SIMPLE_FENCE_ID
+	)
+	var bamboo_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.BAMBOO_MORTAR_ID
+	)
+	var hydrangea_recipe := SimpleCraftingRegistry.get_recipe(
+		SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
+	)
+	var completed_ids := research.get_completed_global_research_ids()
+	var available_recipes := SimpleCraftingRegistry.get_available_recipes(
+		completed_ids
+	)
+	_expect(
+		completed_ids == [
+			BUILDING_DEFENSE_RESEARCH_ID,
+			PLAYER_MOVE_SPEED_RESEARCH_ID,
+		]
+		and available_recipes.size() == 6
+		and available_recipes.has(simple_fence_recipe)
+		and not available_recipes.has(bamboo_recipe)
+		and not available_recipes.has(hydrangea_recipe),
+		"两项配方研究开始前，简易围栏必须直接可用且两条研究配方保持锁定。"
+	)
+	_expect(
+		production.get_total_item_count(SAPLING) == 10
+		and warehouse.try_add_storage_item_count(WOODEN_CORE, 4),
+		"配方解锁研究测试必须准备恰好4木制核心和10树苗。"
+	)
+
+	_expect(
+		center.try_start_global_research(BAMBOO_MORTAR_CRAFTING_RESEARCH_ID)
+		== ResearchCoordinator.RESULT_SUCCESS
+		and production.get_total_item_count(WOODEN_CORE) == 2
+		and production.get_total_item_count(SAPLING) == 5,
+		"迫击炮研发启动时必须原子扣除2木制核心和5树苗。"
+	)
+	research.advance_global_research(29.9)
+	completed_ids = research.get_completed_global_research_ids()
+	_expect(
+		research.get_global_research_state(BAMBOO_MORTAR_CRAFTING_RESEARCH_ID)
+		== ResearchCoordinator.GlobalResearchState.RESEARCHING
+		and is_equal_approx(
+			research.get_global_elapsed_seconds(
+				BAMBOO_MORTAR_CRAFTING_RESEARCH_ID
+			),
+			29.9
+		)
+		and BAMBOO_MORTAR_CRAFTING_RESEARCH_ID not in completed_ids
+		and not SimpleCraftingRegistry.is_recipe_unlocked(
+			bamboo_recipe,
+			completed_ids
+		),
+		"迫击炮研发进行29.9秒时不得提前完成或解锁简易制作配方。"
+	)
+	research.advance_global_research(0.1)
+	completed_ids = research.get_completed_global_research_ids()
+	available_recipes = SimpleCraftingRegistry.get_available_recipes(completed_ids)
+	_expect(
+		research.get_global_research_state(BAMBOO_MORTAR_CRAFTING_RESEARCH_ID)
+		== ResearchCoordinator.GlobalResearchState.COMPLETED
+		and research.get_active_global_research_id().is_empty()
+		and completed_ids == [
+			BUILDING_DEFENSE_RESEARCH_ID,
+			PLAYER_MOVE_SPEED_RESEARCH_ID,
+			BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
+		]
+		and available_recipes.size() == 7
+		and available_recipes.has(simple_fence_recipe)
+		and available_recipes.has(bamboo_recipe)
+		and not available_recipes.has(hydrangea_recipe),
+		"迫击炮研发满30秒后必须导出完成ID并只解锁迫击炮简易配方。"
+	)
+
+	_expect(
+		center.try_start_global_research(
+			HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS
+		and production.get_total_item_count(WOODEN_CORE) == 0
+		and production.get_total_item_count(SAPLING) == 0,
+		"紫阳花研发启动时必须原子扣除剩余2木制核心和5树苗。"
+	)
+	research.advance_global_research(29.9)
+	completed_ids = research.get_completed_global_research_ids()
+	_expect(
+		research.get_global_research_state(
+			HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID
+		) == ResearchCoordinator.GlobalResearchState.RESEARCHING
+		and is_equal_approx(
+			research.get_global_elapsed_seconds(
+				HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID
+			),
+			29.9
+		)
+		and HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID not in completed_ids
+		and not SimpleCraftingRegistry.is_recipe_unlocked(
+			hydrangea_recipe,
+			completed_ids
+		),
+		"紫阳花研发进行29.9秒时不得提前完成或解锁简易制作配方。"
+	)
+	research.advance_global_research(0.1)
+	completed_ids = research.get_completed_global_research_ids()
+	available_recipes = SimpleCraftingRegistry.get_available_recipes(completed_ids)
+	var expected_completed_ids: Array[StringName] = [
+		BUILDING_DEFENSE_RESEARCH_ID,
+		PLAYER_MOVE_SPEED_RESEARCH_ID,
+		BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
+		HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
+	]
+	_expect(
+		research.get_global_research_state(
+			HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID
+		) == ResearchCoordinator.GlobalResearchState.COMPLETED
+		and research.get_active_global_research_id().is_empty()
+		and completed_ids == expected_completed_ids
+		and available_recipes.size() == 8
+		and available_recipes.has(simple_fence_recipe)
+		and available_recipes.has(bamboo_recipe)
+		and available_recipes.has(hydrangea_recipe),
+		"紫阳花研发满30秒后必须导出四项完成ID，并让全部八条简易配方可用。"
+	)
+
 	var remote_research := (
 		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator
 	)
@@ -895,44 +1125,73 @@ func _test_global_move_speed_research(
 	remote_research.register_player(remote_player)
 	var snapshot := research.export_runtime_state()
 	remote_research.apply_multiplayer_runtime_state(snapshot)
+	var snapshot_states := snapshot.get("global_states", {}) as Dictionary
+	var snapshot_elapsed := snapshot.get("global_elapsed", {}) as Dictionary
 	_expect(
-		int(snapshot.get("schema", 0))
-		== ResearchCoordinator.RUNTIME_STATE_SCHEMA
-		and remote_research.get_global_research_state(
-			BUILDING_DEFENSE_RESEARCH_ID
-		) == ResearchCoordinator.GlobalResearchState.COMPLETED
-		and remote_research.get_global_research_state(
-			PLAYER_MOVE_SPEED_RESEARCH_ID
-		) == ResearchCoordinator.GlobalResearchState.COMPLETED
+		int(snapshot.get("schema", 0)) == 3
+		and snapshot_states.size() == 4
+		and snapshot_elapsed.size() == 4
+		and remote_research.get_completed_global_research_ids()
+		== expected_completed_ids
 		and remote_plant_system.get_global_physical_defense_bonus() == 10
 		and is_equal_approx(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
 		),
-		"多人科研快照必须同时同步两项全局效果。"
+		"schema3多人科研快照必须完整同步四个项目、数值效果与两项配方解锁。"
 	)
 	var replayed_snapshot := snapshot.duplicate(true)
 	replayed_snapshot["revision"] = int(snapshot["revision"]) + 1
 	remote_research.apply_multiplayer_runtime_state(replayed_snapshot)
 	_expect(
-		is_equal_approx(
-			remote_player.move_speed,
-			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
-		),
-		"重复应用更高revision的完成态快照也不得重复叠加移速。"
-	)
-	var accepted_revision := remote_research.research_revision
-	var forged_snapshot := replayed_snapshot.duplicate(true)
-	forged_snapshot["revision"] = accepted_revision + 1
-	forged_snapshot["active_global_research_id"] = "forged_research"
-	remote_research.apply_multiplayer_runtime_state(forged_snapshot)
-	_expect(
-		remote_research.research_revision == accepted_revision
+		remote_research.get_completed_global_research_ids()
+		== expected_completed_ids
 		and is_equal_approx(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
 		),
-		"客户端必须拒绝未知研究ID的多人快照且不能污染既有效果。"
+		"重复应用更高revision的四项目完成态快照不得重复叠加数值效果。"
+	)
+
+	var accepted_revision := remote_research.research_revision
+	var invalid_snapshots: Array[Dictionary] = []
+	var wrong_schema := replayed_snapshot.duplicate(true)
+	wrong_schema["schema"] = 2
+	wrong_schema["revision"] = accepted_revision + 1
+	invalid_snapshots.append(wrong_schema)
+	var unknown_active_id := replayed_snapshot.duplicate(true)
+	unknown_active_id["revision"] = accepted_revision + 1
+	unknown_active_id["active_global_research_id"] = "forged_research"
+	invalid_snapshots.append(unknown_active_id)
+	var missing_project_state := replayed_snapshot.duplicate(true)
+	missing_project_state["revision"] = accepted_revision + 1
+	var missing_states := missing_project_state["global_states"] as Dictionary
+	missing_states.erase(String(HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID))
+	invalid_snapshots.append(missing_project_state)
+	var wrong_elapsed_type := replayed_snapshot.duplicate(true)
+	wrong_elapsed_type["revision"] = accepted_revision + 1
+	var typed_elapsed := wrong_elapsed_type["global_elapsed"] as Dictionary
+	typed_elapsed[String(BAMBOO_MORTAR_CRAFTING_RESEARCH_ID)] = "30.0"
+	invalid_snapshots.append(wrong_elapsed_type)
+	var incomplete_completed_elapsed := replayed_snapshot.duplicate(true)
+	incomplete_completed_elapsed["revision"] = accepted_revision + 1
+	var incomplete_elapsed := (
+		incomplete_completed_elapsed["global_elapsed"] as Dictionary
+	)
+	incomplete_elapsed[String(HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID)] = 29.9
+	invalid_snapshots.append(incomplete_completed_elapsed)
+	for invalid_snapshot in invalid_snapshots:
+		remote_research.apply_multiplayer_runtime_state(invalid_snapshot)
+	_expect(
+		remote_research.research_revision == accepted_revision
+		and remote_research.get_completed_global_research_ids()
+		== expected_completed_ids
+		and remote_plant_system.get_global_physical_defense_bonus() == 10
+		and is_equal_approx(
+			remote_player.move_speed,
+			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
+		),
+		"客户端必须拒绝错误schema、未知ID、缺失项目、错误类型与矛盾进度字段。"
 	)
 
 

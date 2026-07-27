@@ -143,8 +143,8 @@ func _test_config_and_assets(collector: WaterCollector) -> void:
 		and WATER_COLLECTOR_CONFIG.physical_defense == 10
 		and WATER_COLLECTOR_CONFIG.magic_defense == 0
 		and WATER_COLLECTOR_CONFIG.footprint_size == Vector2i(2, 2)
-		and WATER_COLLECTOR_CONFIG.placement_surface
-		== PlantDefenseConfig.PlacementSurface.WATER,
+		and not WATER_COLLECTOR_CONFIG.requires_grass
+		and WATER_COLLECTOR_CONFIG.requires_water_source,
 		"采集器必须为2000生命、10物防、0法防、2×2占格且只支持水面。"
 	)
 	_expect(
@@ -281,6 +281,8 @@ func _test_multiplayer_water_collector_contract(test_root: Node) -> void:
 		"active_recipe_id": "water_to_bottle",
 		"progress_elapsed_seconds": 0.0,
 		"wait_reason": "",
+		"buffered_output_config_path": "",
+		"buffered_output_count": 0,
 		"personal_output_peer_id": 0,
 		"revision": 1,
 		"projection_duration_seconds": 0.5,
@@ -382,7 +384,50 @@ func _test_four_water_cell_support(test_root: Node) -> void:
 		)),
 		"同一格改为草地后普通植物应恢复支持，证明水上建筑不依赖草地判定。"
 	)
+	terrain.set_tile(changed_cell, DualGridTilemap.TerrainType.DIRT)
+	var non_vegetation_building_ids: Array[StringName] = [
+		&"wood_processing_station",
+		&"excavator",
+		&"oak_warehouse",
+		&"stone_mill",
+	]
+	var all_support_dirt := true
+	for plant_id in non_vegetation_building_ids:
+		all_support_dirt = all_support_dirt and bool(
+			plant_system.call(
+				"_is_terrain_supported_for_config",
+				changed_cell,
+				PlantDefenseRegistry.get_config(plant_id)
+			)
+		)
+	_expect(
+		all_support_dirt
+		and not bool(plant_system.call(
+			"_is_terrain_supported_for_config",
+			changed_cell,
+			PlantDefenseRegistry.get_config(&"agave_cannon")
+		))
+		and not bool(plant_system.call(
+			"_is_terrain_supported_for_config",
+			changed_cell,
+			WATER_COLLECTOR_CONFIG
+		)),
+		"木头加工站、挖土装置、橡木仓库和石磨台必须支持非植被泥地；草地建筑与水源建筑仍须拒绝。"
+	)
 	terrain.set_tile(changed_cell, DualGridTilemap.TerrainType.WATER)
+	var all_reject_water := true
+	for plant_id in non_vegetation_building_ids:
+		all_reject_water = all_reject_water and not bool(
+			plant_system.call(
+				"_is_terrain_supported_for_config",
+				changed_cell,
+				PlantDefenseRegistry.get_config(plant_id)
+			)
+		)
+	_expect(
+		all_reject_water,
+		"不依赖草地的四种陆地建筑仍必须拒绝水面，避免两个布尔依赖退化成任意地形。"
+	)
 	_stop_audio_players(game)
 	game.queue_free()
 	await process_frame

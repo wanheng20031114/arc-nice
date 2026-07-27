@@ -4,6 +4,9 @@ const TILE_SIZE := 16.0
 const CHAIN_RADIUS_CELLS := 3.0
 const ATTACK_RADIUS_CELLS := 7.0
 const FAR_PLANT_COUNT := 256
+const PROACTIVE_CONFIG := preload(
+	"res://resources/config/plant_defense/agave_cannon.tres"
+)
 
 var failures: Array[String] = []
 var fixture: Node2D = null
@@ -19,7 +22,7 @@ class QueryProbePlantSystem:
 		plant: PlantDefense,
 		cell: Vector2i
 	) -> void:
-		_register_plant_footprint(plant, [cell])
+		_register_plant_footprint(plant, [cell], PROACTIVE_CONFIG)
 
 	func get_world_aabb_candidate_count(
 		center_world: Vector2,
@@ -98,7 +101,7 @@ func _build_fixture() -> void:
 		plant_container,
 		Rect2i(-2048, -2048, 4096, 4096)
 	)
-	plant_system.set_plant_target_query_metrics_enabled(true)
+	plant_system.set_enemy_target_query_metrics_enabled(true)
 
 
 func _test_local_radii_and_exclusions(
@@ -112,14 +115,14 @@ func _test_local_radii_and_exclusions(
 		nearest_plant.get_instance_id(): true,
 	}
 	_expect(
-		plant_system.find_nearest_living_plant(
+		plant_system.find_nearest_enemy_objective(
 			center_world,
 			CHAIN_RADIUS_CELLS
 		) == nearest_plant,
 		"3格查询必须返回最近植物。"
 	)
 	_expect(
-		plant_system.find_nearest_living_plant(
+		plant_system.find_nearest_enemy_objective(
 			center_world,
 			CHAIN_RADIUS_CELLS,
 			true,
@@ -129,7 +132,7 @@ func _test_local_radii_and_exclusions(
 	)
 	excluded[second_plant.get_instance_id()] = true
 	_expect(
-		plant_system.find_nearest_living_plant(
+		plant_system.find_nearest_enemy_objective(
 			center_world,
 			ATTACK_RADIUS_CELLS,
 			true,
@@ -138,7 +141,7 @@ func _test_local_radii_and_exclusions(
 		"7格查询必须精确包含半径边界并排除全部已命中目标。"
 	)
 	_expect(
-		plant_system.find_nearest_living_plant_world(
+		plant_system.find_nearest_enemy_attack_target_world(
 			center_world,
 			CHAIN_RADIUS_CELLS * TILE_SIZE,
 			{nearest_plant.get_instance_id(): true}
@@ -181,11 +184,11 @@ func _test_distant_population_does_not_expand_local_candidates(
 		center_world,
 		CHAIN_RADIUS_CELLS * TILE_SIZE
 	)
-	var selected := plant_system.find_nearest_living_plant_world(
+	var selected := plant_system.find_nearest_enemy_attack_target_world(
 		center_world,
 		CHAIN_RADIUS_CELLS * TILE_SIZE
 	)
-	var query_metrics := plant_system.get_last_plant_target_query_metrics()
+	var query_metrics := plant_system.get_last_enemy_target_query_metrics()
 	_expect(
 		selected == nearest_plant
 		and candidate_count_before == 2
@@ -204,14 +207,14 @@ func _test_stable_equidistant_selection() -> void:
 	var tie_world := _cell_world(tie_center)
 	for _repeat_index in range(8):
 		_expect(
-			plant_system.find_nearest_living_plant(
+			plant_system.find_nearest_enemy_objective(
 				tie_world,
 				CHAIN_RADIUS_CELLS
 			) == left_plant,
 			"等距植物必须在连续局部查询中保持稳定顺序。"
 		)
 		_expect(
-			plant_system.find_nearest_living_plant_world(
+			plant_system.find_nearest_enemy_attack_target_world(
 				tie_world,
 				CHAIN_RADIUS_CELLS * TILE_SIZE
 			) == left_plant,
@@ -228,7 +231,7 @@ func _test_pending_lifecycle_invalid_nearest() -> void:
 	)
 	dead_nearest.is_dead = true
 	_expect(
-		plant_system.find_nearest_living_plant_world(
+		plant_system.find_nearest_enemy_attack_target_world(
 			_cell_world(center_cell),
 			CHAIN_RADIUS_CELLS * TILE_SIZE
 		) == living_second,
@@ -251,7 +254,7 @@ func _test_runtime_player_plant_merge(
 	runtime.peer_players[2] = peer_player
 	var maximum_distance := ATTACK_RADIUS_CELLS * TILE_SIZE
 	_expect(
-		runtime.find_nearest_enemy_attack_target(
+		runtime.find_nearest_enemy_attack_target_world(
 			center_world,
 			maximum_distance
 		) == local_player,
@@ -259,7 +262,7 @@ func _test_runtime_player_plant_merge(
 	)
 	var excluded: Dictionary = {local_player.get_instance_id(): true}
 	_expect(
-		runtime.find_nearest_enemy_attack_target(
+		runtime.find_nearest_enemy_attack_target_world(
 			center_world,
 			maximum_distance,
 			excluded
@@ -268,7 +271,7 @@ func _test_runtime_player_plant_merge(
 	)
 	excluded[nearest_plant.get_instance_id()] = true
 	_expect(
-		runtime.find_nearest_enemy_attack_target(
+		runtime.find_nearest_enemy_attack_target_world(
 			center_world,
 			maximum_distance,
 			excluded
@@ -277,7 +280,7 @@ func _test_runtime_player_plant_merge(
 	)
 	excluded[peer_player.get_instance_id()] = true
 	_expect(
-		runtime.find_nearest_enemy_attack_target(
+		runtime.find_nearest_enemy_attack_target_world(
 			center_world,
 			maximum_distance,
 			excluded

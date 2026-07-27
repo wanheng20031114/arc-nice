@@ -5,8 +5,13 @@ const FrostConfig := preload(
 	"res://resources/config/enemies/frost_sorcerer_config.gd"
 )
 const ATTACK_TARGET_REFRESH_INTERVAL := 0.35
-const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target"
+const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"
 const ICE_SPIKE_PROJECTILE_TYPE := &"frost_sorcerer_ice_spike"
+# The projectile capsule is authored in front of its node origin.  For a target
+# closer than twice the staff marker distance, placing the origin halfway along
+# the committed line keeps that capsule crossing the target instead of spawning
+# wholly beyond a one-cell contact obstacle.
+const NEAR_TARGET_PROJECTILE_ORIGIN_RATIO := 0.5
 
 enum CombatState {
 	CHASE,
@@ -39,32 +44,6 @@ func _ready() -> void:
 
 func _get_touch_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.MAGIC
-
-
-func _get_preferred_ranged_combat_target() -> Node2D:
-	var objective_candidate := get_attackable_objective()
-	var player_candidate: Player = null
-	if (
-		target_player != null
-		and is_instance_valid(target_player)
-		and not target_player.is_dead
-	):
-		player_candidate = target_player
-	if objective_candidate == null:
-		return player_candidate
-	if player_candidate == null or objective_candidate == player_candidate:
-		return objective_candidate
-	var objective_distance_squared := global_position.distance_squared_to(
-		objective_candidate.global_position
-	)
-	var player_distance_squared := global_position.distance_squared_to(
-		player_candidate.global_position
-	)
-	return (
-		objective_candidate
-		if objective_distance_squared <= player_distance_squared
-		else player_candidate
-	)
 
 
 func _select_nearest_attack_target(
@@ -139,14 +118,15 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var frost_config := config as FrostConfig
-	var combat_target := _get_preferred_ranged_combat_target()
-	if frost_config != null:
-		combat_target = _select_nearest_attack_target(
-			combat_target,
+	var combat_target := get_resolved_combat_target()
+	if combat_target == null and frost_config != null:
+		var family_target := _select_nearest_attack_target(
+			_get_family_proactive_ranged_combat_target(),
 			frost_config,
 			initial_attack_stagger_left <= 0.0
 				and attack_cooldown_left <= 0.0
 		)
+		combat_target = get_resolved_combat_target(family_target)
 	if (
 		combat_target != null
 		and frost_config != null
@@ -255,11 +235,17 @@ func _try_start_summon(
 ) -> bool:
 	if attack_cooldown_left > 0.0:
 		return false
-	attack_target = _select_nearest_attack_target(
-		attack_target,
-		frost_config,
-		true
-	)
+	var priority_target := get_resolved_combat_target()
+	if priority_target != null:
+		attack_target = priority_target
+	else:
+		attack_target = get_resolved_combat_target(
+			_select_nearest_attack_target(
+				attack_target,
+				frost_config,
+				true
+			)
+		)
 	if not _is_ranged_combat_target_in_range(
 		attack_target,
 		frost_config.attack_range
@@ -384,7 +370,7 @@ func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 	)
 	if ice_spike.get_parent() == null:
 		spawn_parent.add_child(ice_spike)
-	ice_spike.global_position = summon_marker.global_position
+	ice_spike.global_position = _get_ice_spike_spawn_position()
 	ice_spike.reset_physics_interpolation()
 	if spawn_parent.has_method("register_local_projectile"):
 		var target_peer_id := 0
@@ -411,6 +397,23 @@ func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 			target_plant_net_id
 		)
 	return true
+
+
+func _get_ice_spike_spawn_position() -> Vector2:
+	var authored_position := summon_marker.global_position
+	var target_offset := summon_target.global_position - global_position
+	var target_distance := target_offset.length()
+	var authored_forward_distance := (
+		authored_position - global_position
+	).dot(summon_direction)
+	if authored_forward_distance < target_distance * NEAR_TARGET_PROJECTILE_ORIGIN_RATIO:
+		return authored_position
+	return (
+		global_position
+		+ summon_direction
+		* target_distance
+		* NEAR_TARGET_PROJECTILE_ORIGIN_RATIO
+	)
 
 
 func _get_ice_spike_projectile_type() -> StringName:

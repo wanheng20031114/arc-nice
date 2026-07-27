@@ -284,7 +284,17 @@ horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
 
-[node name="Recipe0" type="Button" parent="Background/RecipeArea/Margin/Content"]
+[node name="RecipeScroll" type="ScrollContainer" parent="Background/RecipeArea/Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="RecipeList" type="VBoxContainer" parent="Background/RecipeArea/Margin/Content/RecipeScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="Recipe0" type="Button" parent="Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 toggle_mode = true
@@ -300,7 +310,7 @@ text = "配方"
 icon_max_width = 28
 expand_icon = true
 
-[node name="Recipe1" type="Button" parent="Background/RecipeArea/Margin/Content"]
+[node name="Recipe1" type="Button" parent="Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"]
 visible = false
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
@@ -317,7 +327,7 @@ text = "配方"
 icon_max_width = 28
 expand_icon = true
 
-[node name="Recipe2" type="Button" parent="Background/RecipeArea/Margin/Content"]
+[node name="Recipe2" type="Button" parent="Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"]
 visible = false
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
@@ -334,7 +344,7 @@ text = "配方"
 icon_max_width = 28
 expand_icon = true
 
-[node name="Recipe3" type="Button" parent="Background/RecipeArea/Margin/Content"]
+[node name="Recipe3" type="Button" parent="Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"]
 visible = false
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
@@ -351,7 +361,7 @@ text = "配方"
 icon_max_width = 28
 expand_icon = true
 
-[node name="Recipe4" type="Button" parent="Background/RecipeArea/Margin/Content"]
+[node name="Recipe4" type="Button" parent="Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"]
 visible = false
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
@@ -368,7 +378,41 @@ text = "配方"
 icon_max_width = 28
 expand_icon = true
 
-[node name="Recipe5" type="Button" parent="Background/RecipeArea/Margin/Content"]
+[node name="Recipe5" type="Button" parent="Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"]
+visible = false
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+toggle_mode = true
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.9, 0.84, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "配方"
+icon_max_width = 28
+expand_icon = true
+
+[node name="Recipe6" type="Button" parent="Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"]
+visible = false
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+toggle_mode = true
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.9, 0.84, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_selected")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_focus")
+text = "配方"
+icon_max_width = 28
+expand_icon = true
+
+[node name="Recipe7" type="Button" parent="Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"]
 visible = false
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2

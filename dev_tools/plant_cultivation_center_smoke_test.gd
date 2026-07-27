@@ -92,8 +92,17 @@ func _run() -> void:
 		"植物培育中心必须占2×2格，拥有1500生命、10物防、10法防并支持联机。"
 	)
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 12,
-		"公共注册表必须同时包含植物培育中心、竹筒迫击炮、种植基地、紫阳花雨幕塔与葡萄电弧塔，共12种建筑。"
+		PlantDefenseRegistry.get_all_configs().size() == 15
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"excavator")
+		)
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
+		)
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"simple_fence")
+		),
+		"公共注册表必须同时包含挖土装置、石磨台、简易围栏、植物培育中心、竹筒迫击炮、种植基地、紫阳花雨幕塔与葡萄电弧塔，共15种建筑。"
 	)
 	if config == null:
 		_finish(test_root)
@@ -327,7 +336,8 @@ func _run() -> void:
 	)
 	var runtime_state := center.export_multiplayer_runtime_state()
 	_expect(
-		int(runtime_state.get("schema", 0)) == 3
+		int(runtime_state.get("schema", 0))
+		== ProductionBuilding.RUNTIME_STATE_SCHEMA
 		and int(runtime_state.get("personal_output_peer_id", 0)) == 2,
 		"生产权威状态必须同步个人产物接收者。"
 	)
@@ -805,8 +815,17 @@ func _test_inventory_placement_request(
 	)
 	_expect(
 		controller.open_selection()
-		and controller.selection_hud.available_configs.size() == 12,
-		"T键免费调试入口必须继续展示全部12种建筑。"
+		and controller.selection_hud.available_configs.size() == 15
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"excavator")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"stone_mill")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"simple_fence")
+		),
+		"T键免费调试入口必须展示包括挖土装置、石磨台与简易围栏在内的全部15种建筑。"
 	)
 	controller.cancel_placement()
 

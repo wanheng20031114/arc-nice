@@ -709,6 +709,8 @@ func _make_state(revision: int) -> Dictionary:
 		"active_recipe_id": "",
 		"progress_elapsed_seconds": 0.0,
 		"wait_reason": "",
+		"buffered_output_config_path": "",
+		"buffered_output_count": 0,
 		"personal_output_peer_id": 0,
 		"revision": revision,
 		"projection_duration_seconds": 0.1,

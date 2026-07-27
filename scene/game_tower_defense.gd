@@ -445,6 +445,7 @@ func _ready() -> void:
 	_configure_minimap()
 	_apply_initial_player_xirang()
 	currency_hud.bind_player(player)
+	player_profile_panel.set_research_coordinator(research_coordinator)
 	player_profile_panel.bind_player(player)
 	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
 	currency_hud.profile_requested.connect(_on_currency_hud_profile_requested)
@@ -777,7 +778,7 @@ func _configure_minimap() -> void:
 		self,
 		enemy_container,
 		boss_container,
-		plant_container
+		plant_system
 	)
 
 
@@ -1043,7 +1044,8 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	var hydrangea := plant as HydrangeaRainTower
 	if hydrangea != null:
 		hydrangea.set_plant_system(plant_system)
-	_request_enemy_retarget_after_objective_change()
+	if plant.config.is_proactive_enemy_target():
+		_request_enemy_retarget_after_objective_change()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		var damage_callback := _on_authoritative_plant_damage_applied.bind(plant)
 		if not plant.damage_applied.is_connected(damage_callback):
@@ -1714,8 +1716,9 @@ func _on_plant_removed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
 	production_coordinator.unregister_plant(plant)
-	_clear_enemy_references_to_removed_plant(plant)
-	_request_enemy_retarget_after_objective_change()
+	if plant.config.is_proactive_enemy_target():
+		_clear_enemy_references_to_removed_plant(plant)
+		_request_enemy_retarget_after_objective_change()
 	if plant.removal_mode == PlantDefense.RemovalMode.ANIMATED:
 		_spawn_plant_removal_smoke(plant)
 	var oak_warehouse := plant as OakWarehouse
@@ -5449,12 +5452,12 @@ func _pick_enemy_target(from_position: Vector2) -> Player:
 	return best_player
 
 
-func find_nearest_enemy_attack_target(
+func find_nearest_enemy_attack_target_world(
 	from_position: Vector2,
 	max_distance: float,
 	excluded_instance_ids: Dictionary = {}
 ) -> Node2D:
-	var nearest_target := super.find_nearest_enemy_attack_target(
+	var nearest_target := super.find_nearest_enemy_attack_target_world(
 		from_position,
 		max_distance,
 		excluded_instance_ids
@@ -5465,7 +5468,7 @@ func find_nearest_enemy_attack_target(
 		or not is_finite(max_distance)
 	):
 		return nearest_target
-	var nearest_plant := plant_system.find_nearest_living_plant_world(
+	var nearest_plant := plant_system.find_nearest_enemy_attack_target_world(
 		from_position,
 		max_distance,
 		excluded_instance_ids
@@ -5502,7 +5505,7 @@ func _pick_enemy_objective(
 	include_water_plants: bool = false
 ) -> Node2D:
 	if plant_system != null:
-		var nearest_plant := plant_system.find_nearest_living_plant(
+		var nearest_plant := plant_system.find_nearest_enemy_objective(
 			from_position,
 			PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS,
 			include_water_plants

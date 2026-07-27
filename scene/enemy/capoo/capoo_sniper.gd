@@ -49,9 +49,6 @@ func _physics_process(delta: float) -> void:
 		_update_lock(delta)
 		return
 
-	if _has_player_contact():
-		velocity = Vector2.ZERO
-		return
 	var sniper_config := config as SniperConfig
 	var preferred_target := _get_preferred_ranged_combat_target()
 	if (

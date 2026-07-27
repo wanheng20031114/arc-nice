@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="GlobalResearchConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/research/global_research_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_wooden_core.tres" id="2_core"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="3_sapling"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="4_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+research_id = &"hydrangea_rain_tower_crafting"
+display_name = "紫阳花简易培育"
+description = "提交共享仓库材料，完成后本局所有玩家都可在简易制作中培育紫阳花雨幕塔。"
+result_summary = "解锁紫阳花雨幕塔配方"
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_core"), ExtResource("3_sapling")])
+input_amounts = Array[int]([2, 5])
+duration_seconds = 30.0
+effect_type = 2
+unlocked_simple_crafting_recipe_id = &"hydrangea_rain_tower"

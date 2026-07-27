@@ -20,16 +20,19 @@ signal craft_request_cancelled(request_token: int)
 @onready var status_label: Label = $Background/CraftArea/Margin/Content/Status
 @onready var request_timeout: Timer = $RequestTimeout
 @onready var recipe_buttons: Array[Button] = [
-	$Background/RecipeArea/Margin/Content/Recipe0,
-	$Background/RecipeArea/Margin/Content/Recipe1,
-	$Background/RecipeArea/Margin/Content/Recipe2,
-	$Background/RecipeArea/Margin/Content/Recipe3,
-	$Background/RecipeArea/Margin/Content/Recipe4,
-	$Background/RecipeArea/Margin/Content/Recipe5,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe0,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe1,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe2,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe3,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe4,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe5,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe6,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe7,
 ]
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var recipes: Array[ProductionRecipe] = []
+var research_coordinator: ResearchCoordinator = null
 var selected_recipe_id: StringName = &""
 var request_pending := false
 var _next_request_token := 0
@@ -43,6 +46,30 @@ func _ready() -> void:
 		)
 	craft_button.pressed.connect(_on_craft_pressed)
 	request_timeout.timeout.connect(_on_request_timeout)
+	_bind_research_coordinator_signal()
+	_reload_recipes()
+	refresh()
+
+
+func set_research_coordinator(
+	new_research_coordinator: ResearchCoordinator
+) -> void:
+	if research_coordinator == new_research_coordinator:
+		return
+	if (
+		research_coordinator != null
+		and is_instance_valid(research_coordinator)
+		and research_coordinator.research_state_changed.is_connected(
+			_on_research_state_changed
+		)
+	):
+		research_coordinator.research_state_changed.disconnect(
+			_on_research_state_changed
+		)
+	research_coordinator = new_research_coordinator
+	if not is_node_ready():
+		return
+	_bind_research_coordinator_signal()
 	_reload_recipes()
 	refresh()
 
@@ -77,7 +104,7 @@ func show_result(
 		# It is only displayable while idle and can never unlock a newer request.
 		return
 	_clear_pending_request()
-	if SimpleCraftingRegistry.get_recipe(recipe_id) != null:
+	if _get_available_recipe(recipe_id) != null:
 		selected_recipe_id = recipe_id
 	_refresh_recipe_buttons()
 	match result:
@@ -89,6 +116,8 @@ func show_result(
 			status_label.text = "背包剩余空间不足"
 		RunStateStore.CRAFT_RESULT_STALE_REVISION:
 			status_label.text = "背包内容已变化，请重试"
+		RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED:
+			status_label.text = "对应全局科研尚未完成"
 		&"rate_limited":
 			status_label.text = "操作过快，请稍后再试"
 		&"invalid_player":
@@ -111,15 +140,24 @@ func cancel_pending_request() -> void:
 
 
 func get_selected_recipe() -> ProductionRecipe:
-	return SimpleCraftingRegistry.get_recipe(selected_recipe_id)
+	return _get_available_recipe(selected_recipe_id)
+
+
+func _get_available_recipe(recipe_id: StringName) -> ProductionRecipe:
+	for recipe in recipes:
+		if recipe.recipe_id == recipe_id:
+			return recipe
+	return null
 
 
 func _reload_recipes() -> void:
-	recipes = SimpleCraftingRegistry.get_all_recipes()
+	recipes = SimpleCraftingRegistry.get_available_recipes(
+		_get_completed_global_research_ids()
+	)
 	if recipes.is_empty():
 		selected_recipe_id = &""
 		return
-	if SimpleCraftingRegistry.get_recipe(selected_recipe_id) == null:
+	if get_selected_recipe() == null:
 		selected_recipe_id = recipes[0].recipe_id
 
 
@@ -178,7 +216,10 @@ func _refresh_crafting_state(recipe: ProductionRecipe) -> void:
 		status_label.text = "等待主机确认制造结果…"
 		craft_button.disabled = true
 		return
-	var result := run_state.get_simple_crafting_result(recipe)
+	var result := run_state.get_simple_crafting_result(
+		recipe,
+		_get_completed_global_research_ids()
+	)
 	match result:
 		RunStateStore.CRAFT_RESULT_SUCCESS:
 			status_label.text = "材料充足，可立即制造"
@@ -186,6 +227,8 @@ func _refresh_crafting_state(recipe: ProductionRecipe) -> void:
 			status_label.text = "背包材料不足"
 		RunStateStore.CRAFT_RESULT_INVENTORY_FULL:
 			status_label.text = "背包剩余空间不足"
+		RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED:
+			status_label.text = "对应全局科研尚未完成"
 		_:
 			status_label.text = "暂无可用配方"
 	_refresh_button_enabled_state(recipe)
@@ -195,7 +238,10 @@ func _refresh_button_enabled_state(recipe: ProductionRecipe) -> void:
 	craft_button.disabled = (
 		request_pending
 		or recipe == null
-		or run_state.get_simple_crafting_result(recipe)
+		or run_state.get_simple_crafting_result(
+			recipe,
+			_get_completed_global_research_ids()
+		)
 		!= RunStateStore.CRAFT_RESULT_SUCCESS
 	)
 
@@ -216,7 +262,10 @@ func _on_craft_pressed() -> void:
 	if (
 		recipe == null
 		or request_pending
-		or run_state.get_simple_crafting_result(recipe)
+		or run_state.get_simple_crafting_result(
+			recipe,
+			_get_completed_global_research_ids()
+		)
 		!= RunStateStore.CRAFT_RESULT_SUCCESS
 	):
 		_refresh_crafting_state(recipe)
@@ -249,3 +298,28 @@ func _clear_pending_request() -> int:
 	_pending_request_token = 0
 	request_timeout.stop()
 	return request_token
+
+
+func _get_completed_global_research_ids() -> Array[StringName]:
+	if research_coordinator != null and is_instance_valid(research_coordinator):
+		return research_coordinator.get_completed_global_research_ids()
+	var completed_ids: Array[StringName] = []
+	return completed_ids
+
+
+func _bind_research_coordinator_signal() -> void:
+	if (
+		research_coordinator != null
+		and is_instance_valid(research_coordinator)
+		and not research_coordinator.research_state_changed.is_connected(
+			_on_research_state_changed
+		)
+	):
+		research_coordinator.research_state_changed.connect(
+			_on_research_state_changed
+		)
+
+
+func _on_research_state_changed() -> void:
+	_reload_recipes()
+	refresh()

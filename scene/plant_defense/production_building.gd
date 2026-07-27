@@ -6,11 +6,12 @@ signal production_command_requested(command: Dictionary)
 signal production_snapshot_requested(building_net_id: int)
 signal multiplayer_production_result(success: bool, reason: StringName)
 
-const RUNTIME_STATE_SCHEMA := 3
+const RUNTIME_STATE_SCHEMA := 4
 const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
 const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
 const MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS := 4.0
+const MAX_BUFFERED_OUTPUT_PATH_LENGTH := 512
 
 enum PanelTheme {
 	DEFAULT,
@@ -37,6 +38,8 @@ var production_enabled := true
 var active_recipe_id: StringName = &""
 var progress_elapsed_seconds := 0.0
 var completion_wait_reason: StringName = &""
+var buffered_output_item: PickupConfig = null
+var buffered_output_count := 0
 var personal_output_peer_id := 0
 var production_revision := 0
 var building_net_id := 0
@@ -101,6 +104,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _on_setup_completed() -> void:
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = &""
+	buffered_output_item = null
+	buffered_output_count = 0
 	production_enabled = true
 	active_recipe_id = &""
 	personal_output_peer_id = 0
@@ -288,6 +293,18 @@ func request_multiplayer_enabled_change(enabled: bool) -> bool:
 	return _submit_multiplayer_production_command(command)
 
 
+func request_multiplayer_output_collection() -> bool:
+	if not is_multiplayer_production_ready() or not has_buffered_output():
+		return false
+	var command := ProductionBuildingProtocol.make_collect_output_command(
+		next_multiplayer_production_request_id,
+		building_net_id,
+		multiplayer_production_peer_id,
+		production_revision
+	)
+	return _submit_multiplayer_production_command(command)
+
+
 func request_multiplayer_production_snapshot() -> bool:
 	if not multiplayer_production_enabled or building_net_id <= 0:
 		return false
@@ -339,6 +356,8 @@ func select_recipe(
 	var recipe := get_recipe(recipe_id)
 	if recipe == null or not recipe.is_valid():
 		return false
+	if has_buffered_output() and active_recipe_id != recipe_id:
+		return false
 	var next_output_peer_id := 0
 	if recipe.outputs_to_player_inventory():
 		if (
@@ -384,7 +403,11 @@ func set_production_enabled(enabled: bool) -> bool:
 	# Pausing always discards the partial cycle, including a ready-but-blocked
 	# cycle at zero remaining time.
 	progress_elapsed_seconds = 0.0
-	completion_wait_reason = &""
+	completion_wait_reason = (
+		ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
+		if has_buffered_output()
+		else &""
+	)
 	_clear_ready_production_wait_registration()
 	_bump_production_state()
 	return true
@@ -423,6 +446,10 @@ func apply_authoritative_multiplayer_production_command(
 				if set_production_enabled(bool(command["enabled"]))
 				else ProductionBuildingProtocol.RESULT_UNAVAILABLE
 			)
+		ProductionBuildingProtocol.OPERATION_COLLECT_OUTPUT:
+			return try_collect_buffered_output(
+				ProductionBuildingProtocol.get_int_field(command, "peer_id", 0)
+			)
 		_:
 			return ProductionBuildingProtocol.RESULT_INVALID_COMMAND
 
@@ -440,12 +467,17 @@ func advance_shared_production_tick(delta_seconds: float) -> void:
 	if (
 		completion_wait_reason == ProductionCoordinator.RESULT_MISSING_INPUT
 		or completion_wait_reason == ProductionCoordinator.RESULT_STORAGE_FULL
+		or completion_wait_reason
+			== ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
 	):
-		# These waits are parked behind warehouse/inventory change events. Keep
-		# the one-second simulation tick O(1) until an input changes.
+		# These waits are event-driven by storage/inventory changes or an explicit
+		# local-output collection. Keep the one-second simulation tick O(1).
 		return
 	var recipe := get_active_recipe()
 	if recipe == null or not recipe.is_valid():
+		return
+	if recipe.outputs_to_local_slot() and has_buffered_output():
+		completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
 		return
 	var previous_elapsed := progress_elapsed_seconds
 	progress_elapsed_seconds = minf(
@@ -476,6 +508,8 @@ func try_complete_ready_production() -> bool:
 		or progress_elapsed_seconds + 0.0001 < recipe.duration_seconds
 	):
 		return false
+	if recipe.outputs_to_local_slot():
+		return _complete_local_output_cycle(recipe)
 	# Remove this attempt from the parked cohort before the coordinator publishes
 	# transaction signals. A successful output may synchronously wake other
 	# buildings without recursively committing this still-ready cycle twice.
@@ -495,6 +529,93 @@ func try_complete_ready_production() -> bool:
 		completion_wait_reason = result
 		_bump_production_state()
 	return false
+
+
+func has_buffered_output() -> bool:
+	return buffered_output_item != null and buffered_output_count > 0
+
+
+func get_buffered_output_item() -> PickupConfig:
+	return buffered_output_item if has_buffered_output() else null
+
+
+func get_buffered_output_count() -> int:
+	return buffered_output_count if has_buffered_output() else 0
+
+
+func try_collect_buffered_output(output_peer_id: int) -> StringName:
+	if (
+		is_multiplayer_proxy
+		or not is_operational
+		or is_dead
+		or is_removing
+		or production_coordinator == null
+	):
+		return ProductionBuildingProtocol.RESULT_UNAVAILABLE
+	if not has_buffered_output():
+		return ProductionBuildingProtocol.RESULT_OUTPUT_EMPTY
+	var recipe := get_active_recipe()
+	if recipe == null or not recipe.outputs_to_local_slot():
+		return ProductionBuildingProtocol.RESULT_UNAVAILABLE
+	var commit_result := (
+		production_coordinator.try_commit_personal_output_without_notification(
+			buffered_output_item,
+			buffered_output_count,
+			output_peer_id
+		)
+	)
+	match commit_result:
+		ProductionCoordinator.RESULT_SUCCESS:
+			buffered_output_item = null
+			buffered_output_count = 0
+			completion_wait_reason = &""
+			_bump_production_state()
+			production_coordinator.publish_personal_output_commit(output_peer_id)
+			return ProductionBuildingProtocol.RESULT_SUCCESS
+		ProductionCoordinator.RESULT_STORAGE_FULL:
+			return ProductionBuildingProtocol.RESULT_INVENTORY_FULL
+		ProductionCoordinator.RESULT_OUTPUT_PEER_UNAVAILABLE:
+			return ProductionBuildingProtocol.RESULT_INVALID_PLAYER
+		_:
+			return ProductionBuildingProtocol.RESULT_UNAVAILABLE
+
+
+func _complete_local_output_cycle(recipe: ProductionRecipe) -> bool:
+	if has_buffered_output():
+		if completion_wait_reason != ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED:
+			completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
+			_bump_production_state()
+		return false
+	var output := _select_local_output(recipe)
+	var item := output.get("item") as PickupConfig
+	var count := int(output.get("count", 0))
+	if (
+		item == null
+		or not item.can_store_in_inventory
+		or count <= 0
+		or count > PickupConfig.get_inventory_stack_limit(item)
+	):
+		return false
+	buffered_output_item = item
+	buffered_output_count = count
+	progress_elapsed_seconds = 0.0
+	completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
+	_clear_ready_production_wait_registration()
+	_bump_production_state()
+	return true
+
+
+func _select_local_output(recipe: ProductionRecipe) -> Dictionary:
+	if (
+		recipe == null
+		or recipe.output_items.is_empty()
+		or recipe.output_amounts.is_empty()
+	):
+		return {}
+	return {
+		"item": recipe.output_items[0],
+		"count": recipe.output_amounts[0],
+	}
 
 
 func get_progress_ratio() -> float:
@@ -575,6 +696,10 @@ func export_multiplayer_runtime_state() -> Dictionary:
 		"active_recipe_id": String(active_recipe_id),
 		"progress_elapsed_seconds": progress_elapsed_seconds,
 		"wait_reason": String(completion_wait_reason),
+		"buffered_output_config_path": (
+			buffered_output_item.resource_path if has_buffered_output() else ""
+		),
+		"buffered_output_count": get_buffered_output_count(),
 		"personal_output_peer_id": personal_output_peer_id,
 		"revision": production_revision,
 		"projection_duration_seconds": get_visual_projection_duration_seconds(),
@@ -616,6 +741,9 @@ func _apply_multiplayer_runtime_state_sample(
 		or typeof(state.get("active_recipe_id")) not in [TYPE_STRING, TYPE_STRING_NAME]
 		or typeof(state.get("progress_elapsed_seconds")) not in [TYPE_INT, TYPE_FLOAT]
 		or typeof(state.get("wait_reason")) not in [TYPE_STRING, TYPE_STRING_NAME]
+		or typeof(state.get("buffered_output_config_path"))
+			not in [TYPE_STRING, TYPE_STRING_NAME]
+		or typeof(state.get("buffered_output_count")) != TYPE_INT
 		or typeof(state.get("personal_output_peer_id")) != TYPE_INT
 		or typeof(state.get("projection_duration_seconds")) not in [TYPE_INT, TYPE_FLOAT]
 	):
@@ -630,7 +758,17 @@ func _apply_multiplayer_runtime_state_sample(
 		return
 	var received_revision := int(state["revision"])
 	var received_output_peer_id := int(state["personal_output_peer_id"])
-	if received_revision < 0 or received_output_peer_id < 0:
+	var received_buffered_output_count := int(state["buffered_output_count"])
+	var received_buffered_output_path := String(
+		state["buffered_output_config_path"]
+	)
+	if (
+		received_revision < 0
+		or received_output_peer_id < 0
+		or received_buffered_output_count < 0
+		or received_buffered_output_path.length()
+			> MAX_BUFFERED_OUTPUT_PATH_LENGTH
+	):
 		return
 	if (
 		received_revision < production_revision
@@ -646,6 +784,34 @@ func _apply_multiplayer_runtime_state_sample(
 	var received_recipe := get_recipe(received_recipe_id)
 	if received_recipe_id != &"" and received_recipe == null:
 		return
+	var received_buffered_output_item: PickupConfig = null
+	if received_buffered_output_path.is_empty():
+		if received_buffered_output_count != 0:
+			return
+	else:
+		if (
+			received_buffered_output_count <= 0
+			or not received_buffered_output_path.begins_with(
+				"res://resources/config/"
+			)
+			or received_buffered_output_path.get_extension() != "tres"
+			or not ResourceLoader.exists(received_buffered_output_path)
+		):
+			return
+		received_buffered_output_item = load(
+			received_buffered_output_path
+		) as PickupConfig
+		if (
+			received_buffered_output_item == null
+			or not received_buffered_output_item.can_store_in_inventory
+			or received_buffered_output_count
+				> PickupConfig.get_inventory_stack_limit(
+					received_buffered_output_item
+				)
+			or received_recipe == null
+			or not received_recipe.outputs_to_local_slot()
+		):
+			return
 	var received_wait_reason := StringName(state["wait_reason"])
 	if received_recipe != null and received_recipe.outputs_to_player_inventory():
 		if production_coordinator == null:
@@ -666,6 +832,8 @@ func _apply_multiplayer_runtime_state_sample(
 	production_enabled = bool(state["enabled"])
 	active_recipe_id = received_recipe_id
 	personal_output_peer_id = received_output_peer_id
+	buffered_output_item = received_buffered_output_item
+	buffered_output_count = received_buffered_output_count
 	var recipe := get_active_recipe()
 	progress_elapsed_seconds = clampf(
 		received_progress,

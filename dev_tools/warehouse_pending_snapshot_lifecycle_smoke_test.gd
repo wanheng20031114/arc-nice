@@ -178,6 +178,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_remove_then_snapshot_is_rejected()
 	await _test_snapshot_before_spawn_is_consumed()
+	await _test_batch_waits_for_every_spawn()
 	_test_repeated_snapshot_replaces_in_place()
 	_test_bounded_fifo_removal_and_wraparound()
 	_test_session_cleanup_paths()
@@ -209,7 +210,7 @@ func _test_remove_then_snapshot_is_rejected() -> void:
 	mp_game.call(
 		"_apply_warehouse_storage_snapshot",
 		101,
-		{"revision": 1}
+		_make_valid_snapshot(101, 1)
 	)
 	_expect(
 		(mp_game.get("_pending_warehouse_snapshots") as Dictionary).is_empty()
@@ -272,15 +273,70 @@ func _test_snapshot_before_spawn_is_consumed() -> void:
 	mp_game.free()
 
 
+func _test_batch_waits_for_every_spawn() -> void:
+	var mp_game := _new_mp_game()
+	var first_net_id := 104
+	var second_net_id := 105
+	var batch_applied := bool(mp_game.call(
+		"_apply_warehouse_storage_snapshot_batch",
+		PackedInt32Array([first_net_id, second_net_id]),
+		[
+			_make_valid_snapshot(first_net_id, 3),
+			_make_valid_snapshot(second_net_id, 4),
+		]
+	))
+	var first_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
+	var second_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
+	root.add_child(first_warehouse)
+	root.add_child(second_warehouse)
+	await process_frame
+	first_warehouse.set_meta("net_id", first_net_id)
+	second_warehouse.set_meta("net_id", second_net_id)
+	var observed_revision_pairs: Array[Vector2i] = []
+	var record_revisions := func() -> void:
+		observed_revision_pairs.append(Vector2i(
+			first_warehouse.storage_revision,
+			second_warehouse.storage_revision
+		))
+	first_warehouse.storage_changed.connect(record_revisions)
+	second_warehouse.storage_changed.connect(record_revisions)
+	runtime.plants[first_net_id] = first_warehouse
+	mp_game.call("_configure_warehouse_network", first_warehouse, false)
+	_expect(
+		batch_applied
+		and first_warehouse.storage_revision == 0
+		and (mp_game.get("_pending_warehouse_snapshots") as Dictionary).size() == 2
+		and observed_revision_pairs.is_empty(),
+		"仓库批次先于 CH5 spawn 时，第一座仓出现后仍不得提前应用半批状态。"
+	)
+	runtime.plants[second_net_id] = second_warehouse
+	mp_game.call("_configure_warehouse_network", second_warehouse, false)
+	_expect(
+		first_warehouse.storage_revision == 3
+		and second_warehouse.storage_revision == 4
+		and (mp_game.get("_pending_warehouse_snapshots") as Dictionary).is_empty()
+		and observed_revision_pairs == [Vector2i(3, 4), Vector2i(3, 4)],
+		"最后一座仓 spawn 后必须整体提交 pending 批次，且全部监听器只看到最终 revision。"
+	)
+	runtime.plants.erase(first_net_id)
+	runtime.plants.erase(second_net_id)
+	first_warehouse.free()
+	second_warehouse.free()
+	mp_game.free()
+
+
 func _test_repeated_snapshot_replaces_in_place() -> void:
 	var mp_game := _new_mp_game()
-	var first_snapshot := {"revision": 1, "payload": {"value": 10}}
+	var first_snapshot := _make_valid_snapshot(103, 1)
+	first_snapshot["payload"] = {"value": 10}
 	mp_game.call("_apply_warehouse_storage_snapshot", 103, first_snapshot)
 	first_snapshot["payload"]["value"] = 99
+	var second_snapshot := _make_valid_snapshot(103, 2)
+	second_snapshot["payload"] = {"value": 20}
 	mp_game.call(
 		"_apply_warehouse_storage_snapshot",
 		103,
-		{"revision": 2, "payload": {"value": 20}}
+		second_snapshot
 	)
 	var pending := mp_game.get("_pending_warehouse_snapshots") as Dictionary
 	var stored := pending.get(103, {}) as Dictionary

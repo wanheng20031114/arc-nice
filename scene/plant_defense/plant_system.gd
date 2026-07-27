@@ -26,6 +26,21 @@ const UNSUPPORTED_TERRAIN_MIN_DAMAGE: int = 50
 # and wins the complete-chain workload. Every stationary plant owns one member;
 # longer attacks reuse the same index instead of adding radius-specific tiers.
 const PLANT_TARGET_SPATIAL_BUCKET_SIZE_PIXELS := 48.0
+const CARDINAL_REFRESH_OFFSETS := [
+	Vector2i.ZERO,
+	Vector2i.UP,
+	Vector2i.RIGHT,
+	Vector2i.DOWN,
+	Vector2i.LEFT,
+]
+const CARDINAL_NEIGHBOR_OFFSETS := [
+	Vector2i.UP,
+	Vector2i.RIGHT,
+	Vector2i.DOWN,
+	Vector2i.LEFT,
+]
+# Sprite frame equals this mask: up=1, right=2, down=4, left=8.
+const CARDINAL_NEIGHBOR_BITS := [1, 2, 4, 8]
 
 @export_range(0, 64, 1) var max_placement_manhattan_distance: int = (
 	MAX_PLACEMENT_MANHATTAN_DISTANCE
@@ -42,10 +57,36 @@ var occupied_cells: Dictionary = {}
 var plant_footprints: Dictionary = {}
 var reserved_cells: Dictionary = {}
 var plants_by_net_id: Dictionary[int, PlantDefense] = {}
+# All plants stay in this index for friendly auras and building interaction.
 var _plant_target_spatial_index = PlantTargetSpatialIndexScript.new(
 	PLANT_TARGET_SPATIAL_BUCKET_SIZE_PIXELS
 )
 var _plant_target_query_scratch: Array = []
+# Enemy objective/attack queries only see plants admitted as PROACTIVE at
+# registration. CONTACT_ONLY plants therefore add no membership or query work.
+var _enemy_target_spatial_index = PlantTargetSpatialIndexScript.new(
+	PLANT_TARGET_SPATIAL_BUCKET_SIZE_PIXELS
+)
+var _enemy_target_plants: Dictionary = {}
+var _enemy_target_query_scratch: Array = []
+var _registered_plant_configs: Dictionary = {}
+var _unsupported_terrain_plants: Dictionary = {}
+var _terrain_support_plants_by_cell: Dictionary = {}
+var _terrain_support_cells_by_plant: Dictionary = {}
+var _last_unsupported_terrain_tick_metrics := {
+	"plants_visited": 0,
+	"plants_damaged": 0,
+}
+var _last_terrain_support_change_metrics := {
+	"affected_candidates": 0,
+	"plants_recomputed": 0,
+}
+var _last_terrain_support_rebuild_plants_visited := 0
+var _last_cardinal_connection_refresh_metrics := {
+	"cells_visited": 0,
+	"plants_updated": 0,
+	"masks_changed": 0,
+}
 
 
 func setup(
@@ -55,12 +96,23 @@ func setup(
 	new_placement_area: Rect2i = DEFAULT_PLACEMENT_AREA,
 	new_terrain_map: DualGridTilemap = null
 ) -> void:
+	_disconnect_terrain_changed_signal()
 	ground_tile_map = new_ground_tile_map
 	terrain_map = new_terrain_map
 	owner_player = new_owner_player
 	plant_container = new_plant_container
 	placement_area = new_placement_area
+	_connect_terrain_changed_signal()
 	_rebuild_plant_target_spatial_index()
+	_rebuild_unsupported_terrain_plants()
+
+
+func _exit_tree() -> void:
+	_disconnect_terrain_changed_signal()
+	terrain_map = null
+	_unsupported_terrain_plants.clear()
+	_terrain_support_plants_by_cell.clear()
+	_terrain_support_cells_by_plant.clear()
 
 
 func configure(
@@ -281,6 +333,13 @@ func _instantiate_registered_plant(
 		push_error("Plant scene root must inherit PlantDefense: %s" % config.plant_id)
 		instance.free()
 		return null
+	if config.uses_cardinal_connections() and not plant is CardinalConnectedPlant:
+		push_error(
+			"Cardinal-connected plant scene root must inherit CardinalConnectedPlant: %s"
+			% config.plant_id
+		)
+		instance.free()
+		return null
 
 	var cells := get_footprint_cells(top_left_cell, config)
 	plant.name = (
@@ -293,7 +352,7 @@ func _instantiate_registered_plant(
 	if net_id > 0:
 		plant.set_meta(&"net_id", net_id)
 		plants_by_net_id[net_id] = plant
-	_register_plant_footprint(plant, cells)
+	_register_plant_footprint(plant, cells, config)
 	plant.removal_started.connect(
 		_on_plant_removal_started.bind(plant),
 		CONNECT_ONE_SHOT
@@ -309,6 +368,7 @@ func _instantiate_registered_plant(
 		initial_maximum_health,
 		play_placement_effect
 	)
+	_register_plant_terrain_support(plant)
 	plant.set_global_physical_defense_bonus(global_physical_defense_bonus)
 	if plant.is_dead:
 		return null
@@ -346,14 +406,18 @@ static func calculate_unsupported_terrain_damage(current_health: int) -> int:
 
 
 func apply_unsupported_terrain_damage_tick() -> int:
-	if terrain_map == null or plant_footprints.is_empty():
+	_last_unsupported_terrain_tick_metrics["plants_visited"] = 0
+	_last_unsupported_terrain_tick_metrics["plants_damaged"] = 0
+	if terrain_map == null or _unsupported_terrain_plants.is_empty():
 		return 0
 
-	# Resolve support from a single terrain snapshot before applying damage.
-	# A dying vegetation stake can restore more cells synchronously, so collecting
-	# first keeps this tick independent of Dictionary traversal order.
-	var unsupported_plants: Array[PlantDefense] = []
-	for plant_variant in plant_footprints.keys():
+	# Keep the unsupported membership snapshot stable for the complete tick. A
+	# dying vegetation stake can synchronously restore terrain and update the live
+	# set, but every plant unsupported at tick start must receive the same result
+	# regardless of Dictionary traversal order.
+	var unsupported_plants := _unsupported_terrain_plants.keys()
+	_last_unsupported_terrain_tick_metrics["plants_visited"] = unsupported_plants.size()
+	for plant_variant in unsupported_plants:
 		var plant := plant_variant as PlantDefense
 		if (
 			plant == null
@@ -364,29 +428,34 @@ func apply_unsupported_terrain_damage_tick() -> int:
 			or plant.is_queued_for_deletion()
 		):
 			continue
-		var footprint: Array = plant_footprints.get(plant, [])
-		for cell_variant in footprint:
-			var cell: Vector2i = cell_variant
-			if not _is_terrain_supported_for_config(cell, plant.config):
-				unsupported_plants.append(plant)
-				break
-
-	var damaged_plant_count := 0
-	for plant in unsupported_plants:
-		if (
-			not is_instance_valid(plant)
-			or plant.is_dead
-			or plant.is_removing
-			or plant.is_queued_for_deletion()
-		):
-			continue
 		var damage := calculate_unsupported_terrain_damage(plant.current_health)
 		if plant.receive_unmitigated_damage(damage, self):
-			damaged_plant_count += 1
-	return damaged_plant_count
+			_last_unsupported_terrain_tick_metrics["plants_damaged"] += 1
+	return int(_last_unsupported_terrain_tick_metrics["plants_damaged"])
 
 
-func find_nearest_living_plant(
+func get_unsupported_terrain_metrics() -> Dictionary:
+	return {
+		"unsupported_plant_count": _unsupported_terrain_plants.size(),
+		"tracked_plant_count": _terrain_support_cells_by_plant.size(),
+		"tracked_terrain_cell_count": _terrain_support_plants_by_cell.size(),
+		"last_tick_plants_visited": int(
+			_last_unsupported_terrain_tick_metrics["plants_visited"]
+		),
+		"last_tick_plants_damaged": int(
+			_last_unsupported_terrain_tick_metrics["plants_damaged"]
+		),
+		"last_change_affected_candidates": int(
+			_last_terrain_support_change_metrics["affected_candidates"]
+		),
+		"last_change_plants_recomputed": int(
+			_last_terrain_support_change_metrics["plants_recomputed"]
+		),
+		"last_rebuild_plants_visited": _last_terrain_support_rebuild_plants_visited,
+	}
+
+
+func find_nearest_enemy_objective(
 	from_global_position: Vector2,
 	max_radius_cells: float,
 	include_water_plants: bool = true,
@@ -395,7 +464,6 @@ func find_nearest_living_plant(
 	if (
 		ground_tile_map == null
 		or ground_tile_map.tile_set == null
-		or occupied_cells.is_empty()
 		or not from_global_position.is_finite()
 		or max_radius_cells < 0.0
 		or not is_finite(max_radius_cells)
@@ -407,14 +475,14 @@ func find_nearest_living_plant(
 		return null
 	var from_local := ground_tile_map.to_local(from_global_position)
 	var center_cell := ground_tile_map.local_to_map(from_local)
-	var search_radius := _get_bounded_plant_candidate_search_radius(
+	var search_radius := _get_bounded_enemy_candidate_search_radius(
 		center_cell,
 		max_radius_cells
 	)
 	var maximum_distance_squared := max_radius_cells * max_radius_cells
 	var nearest_plant: PlantDefense = null
 	var nearest_distance_squared := INF
-	var candidates := _query_plant_targets_for_logical_radius(
+	var candidates := _query_enemy_targets_for_logical_radius(
 		from_global_position,
 		tile_size,
 		max_radius_cells
@@ -435,8 +503,7 @@ func find_nearest_living_plant(
 		if (
 			not include_water_plants
 			and plant.config != null
-			and plant.config.placement_surface
-				== PlantDefenseConfig.PlacementSurface.WATER
+			and plant.config.requires_water_source
 		):
 			continue
 		# Eligibility and distance stay in the typed exact pass. The shared spatial
@@ -508,21 +575,45 @@ func query_living_plants_in_logical_radius_into(
 			result.append(plant)
 
 
+## Fills caller-owned storage with living buildings whose authoritative anchors
+## are inside the exact closed world AABB. This is the allocation-free viewport
+## query for systems such as the minimap: distant stationary populations remain
+## in the complete building index without being copied into each local sample.
+func query_living_plants_in_world_aabb_into(
+	world_aabb: Rect2,
+	result: Array[PlantDefense]
+) -> void:
+	result.clear()
+	if (
+		not world_aabb.position.is_finite()
+		or not world_aabb.size.is_finite()
+	):
+		return
+	_plant_target_spatial_index.query_world_aabb_into(
+		world_aabb,
+		_plant_target_query_scratch,
+		true
+	)
+	for candidate_variant in _plant_target_query_scratch:
+		var plant := candidate_variant as PlantDefense
+		if _is_living_plant_target(plant):
+			result.append(plant)
+
+
 ## Exact world-space query for enemy attacks. All finite radii share the same
 ## one-membership anchor index; only the number of covered coarse buckets varies.
-func find_nearest_living_plant_world(
+func find_nearest_enemy_attack_target_world(
 	from_global_position: Vector2,
 	max_world_distance: float,
 	excluded_instance_ids: Dictionary = {}
 ) -> PlantDefense:
 	if (
-		plant_footprints.is_empty()
-		or not from_global_position.is_finite()
+		not from_global_position.is_finite()
 		or max_world_distance < 0.0
 		or not is_finite(max_world_distance)
 	):
 		return null
-	var nearest_plant := _plant_target_spatial_index.find_nearest_world_anchor(
+	var nearest_plant := _enemy_target_spatial_index.find_nearest_world_anchor(
 		from_global_position,
 		max_world_distance,
 		excluded_instance_ids
@@ -540,7 +631,7 @@ func find_nearest_living_plant_world(
 	var retry_exclusions: Dictionary = excluded_instance_ids.duplicate()
 	while nearest_plant != null and is_instance_valid(nearest_plant):
 		retry_exclusions[nearest_plant.get_instance_id()] = true
-		nearest_plant = _plant_target_spatial_index.find_nearest_world_anchor(
+		nearest_plant = _enemy_target_spatial_index.find_nearest_world_anchor(
 			from_global_position,
 			max_world_distance,
 			retry_exclusions
@@ -632,7 +723,7 @@ func _is_living_plant_target(plant: PlantDefense) -> bool:
 	)
 
 
-func _get_bounded_plant_candidate_search_radius(
+func _get_bounded_enemy_candidate_search_radius(
 	center_cell: Vector2i,
 	max_radius_cells: float
 ) -> int:
@@ -642,13 +733,16 @@ func _get_bounded_plant_candidate_search_radius(
 	if max_radius_cells <= 1024.0:
 		return ceili(max_radius_cells) + 1
 	var maximum_relevant_radius := 1
-	for occupied_cell_variant in occupied_cells:
-		var occupied_cell := occupied_cell_variant as Vector2i
-		var delta := (occupied_cell - center_cell).abs()
-		maximum_relevant_radius = maxi(
-			maximum_relevant_radius,
-			maxi(delta.x, delta.y) + 1
-		)
+	for plant_variant in _enemy_target_plants:
+		var plant := plant_variant as PlantDefense
+		var footprint: Array = plant_footprints.get(plant, [])
+		for footprint_cell_variant in footprint:
+			var footprint_cell := footprint_cell_variant as Vector2i
+			var delta := (footprint_cell - center_cell).abs()
+			maximum_relevant_radius = maxi(
+				maximum_relevant_radius,
+				maxi(delta.x, delta.y) + 1
+			)
 	if max_radius_cells >= float(maximum_relevant_radius):
 		return maximum_relevant_radius
 	return ceili(max_radius_cells) + 1
@@ -684,6 +778,33 @@ func _query_plant_targets_for_logical_radius(
 	)
 
 
+func _query_enemy_targets_for_logical_radius(
+	from_global_position: Vector2,
+	tile_size: Vector2,
+	max_radius_cells: float
+) -> Array:
+	var local_half_extent := tile_size * max_radius_cells
+	if not local_half_extent.is_finite():
+		return _collect_all_enemy_targets_into_scratch()
+	var world_origin := ground_tile_map.to_global(Vector2.ZERO)
+	var projected_x := (
+		ground_tile_map.to_global(Vector2(local_half_extent.x, 0.0))
+		- world_origin
+	)
+	var projected_y := (
+		ground_tile_map.to_global(Vector2(0.0, local_half_extent.y))
+		- world_origin
+	)
+	var world_half_extent := Vector2(
+		absf(projected_x.x) + absf(projected_y.x),
+		absf(projected_x.y) + absf(projected_y.y)
+	)
+	return _query_enemy_targets_in_world_aabb(
+		from_global_position,
+		world_half_extent
+	)
+
+
 func _query_plant_targets_in_world_aabb(
 	center: Vector2,
 	half_extent: Vector2
@@ -706,6 +827,28 @@ func _query_plant_targets_in_world_aabb(
 	return _plant_target_query_scratch
 
 
+func _query_enemy_targets_in_world_aabb(
+	center: Vector2,
+	half_extent: Vector2
+) -> Array:
+	if (
+		not center.is_finite()
+		or not half_extent.is_finite()
+		or half_extent.x < 0.0
+		or half_extent.y < 0.0
+	):
+		return _collect_all_enemy_targets_into_scratch()
+	var minimum := center - half_extent
+	var size := half_extent * 2.0
+	if not minimum.is_finite() or not size.is_finite():
+		return _collect_all_enemy_targets_into_scratch()
+	_enemy_target_spatial_index.query_world_aabb_into(
+		Rect2(minimum, size),
+		_enemy_target_query_scratch
+	)
+	return _enemy_target_query_scratch
+
+
 func _collect_all_plant_targets_into_scratch() -> Array:
 	_plant_target_query_scratch.clear()
 	for plant_variant in plant_footprints:
@@ -713,15 +856,34 @@ func _collect_all_plant_targets_into_scratch() -> Array:
 	return _plant_target_query_scratch
 
 
+func _collect_all_enemy_targets_into_scratch() -> Array:
+	_enemy_target_query_scratch.clear()
+	for plant_variant in _enemy_target_plants:
+		_enemy_target_query_scratch.append(plant_variant)
+	return _enemy_target_query_scratch
+
+
 func _rebuild_plant_target_spatial_index() -> void:
 	_plant_target_spatial_index.clear()
+	_enemy_target_spatial_index.clear()
 	_plant_target_query_scratch.clear()
+	_enemy_target_query_scratch.clear()
+	_enemy_target_plants.clear()
 	for plant_variant in plant_footprints:
 		var plant := plant_variant as PlantDefense
 		if plant == null or not is_instance_valid(plant):
 			continue
 		if not _plant_target_spatial_index.register(plant, plant.global_position):
 			push_error("PlantSystem failed to rebuild a plant target spatial entry.")
+		var config := _registered_plant_configs.get(plant) as PlantDefenseConfig
+		if config == null:
+			push_error("PlantSystem is missing a registered plant config during index rebuild.")
+			continue
+		if not config.is_proactive_enemy_target():
+			continue
+		_enemy_target_plants[plant] = true
+		if not _enemy_target_spatial_index.register(plant, plant.global_position):
+			push_error("PlantSystem failed to rebuild an enemy target spatial entry.")
 
 
 func set_plant_target_query_metrics_enabled(enabled: bool) -> void:
@@ -734,6 +896,22 @@ func get_plant_target_spatial_index_metrics() -> Dictionary:
 
 func get_last_plant_target_query_metrics() -> Dictionary:
 	return _plant_target_spatial_index.get_last_query_metrics()
+
+
+func set_enemy_target_query_metrics_enabled(enabled: bool) -> void:
+	_enemy_target_spatial_index.set_query_metrics_enabled(enabled)
+
+
+func get_enemy_target_spatial_index_metrics() -> Dictionary:
+	return _enemy_target_spatial_index.get_structure_metrics()
+
+
+func get_last_enemy_target_query_metrics() -> Dictionary:
+	return _enemy_target_spatial_index.get_last_query_metrics()
+
+
+func get_last_cardinal_connection_refresh_metrics() -> Dictionary:
+	return _last_cardinal_connection_refresh_metrics.duplicate()
 
 
 func _is_plant_candidate_before(
@@ -912,13 +1090,161 @@ func _is_floor_cell_available(
 		return (
 			tile_data != null
 			and config != null
-			and config.placement_surface == PlantDefenseConfig.PlacementSurface.GRASS
+			and not config.requires_water_source
 		)
-	var world_cell_center := ground_tile_map.to_global(ground_tile_map.map_to_local(cell))
+	return _is_ground_cell_terrain_supported_for_config(cell, config)
+
+
+func _is_ground_cell_terrain_supported_for_config(
+	ground_cell: Vector2i,
+	config: PlantDefenseConfig
+) -> bool:
+	if ground_tile_map == null or terrain_map == null:
+		return false
+	var world_cell_center := ground_tile_map.to_global(
+		ground_tile_map.map_to_local(ground_cell)
+	)
 	return _is_terrain_supported_for_config(
 		terrain_map.world_to_map(world_cell_center),
 		config
 	)
+
+
+func _connect_terrain_changed_signal() -> void:
+	if terrain_map == null or not is_instance_valid(terrain_map):
+		return
+	var callback := Callable(self, "_on_terrain_changed")
+	if terrain_map.terrain_changed.is_connected(callback):
+		push_error("PlantSystem terrain_changed signal was already connected.")
+		return
+	terrain_map.terrain_changed.connect(callback)
+
+
+func _disconnect_terrain_changed_signal() -> void:
+	if terrain_map == null or not is_instance_valid(terrain_map):
+		return
+	var callback := Callable(self, "_on_terrain_changed")
+	if terrain_map.terrain_changed.is_connected(callback):
+		terrain_map.terrain_changed.disconnect(callback)
+
+
+func _on_terrain_changed(
+	terrain_cell: Vector2i,
+	_previous_terrain: int,
+	_current_terrain: int
+) -> void:
+	_last_terrain_support_change_metrics["affected_candidates"] = 0
+	_last_terrain_support_change_metrics["plants_recomputed"] = 0
+	if terrain_map == null:
+		return
+	var affected_plants := (
+		_terrain_support_plants_by_cell.get(terrain_cell, {}) as Dictionary
+	)
+	if affected_plants.is_empty():
+		return
+	var affected_snapshot := affected_plants.keys()
+	_last_terrain_support_change_metrics["affected_candidates"] = (
+		affected_snapshot.size()
+	)
+	for plant_variant in affected_snapshot:
+		_last_terrain_support_change_metrics["plants_recomputed"] += 1
+		_refresh_plant_terrain_support(plant_variant as PlantDefense)
+
+
+func _rebuild_unsupported_terrain_plants() -> void:
+	_unsupported_terrain_plants.clear()
+	_terrain_support_plants_by_cell.clear()
+	_terrain_support_cells_by_plant.clear()
+	_last_terrain_support_rebuild_plants_visited = 0
+	if (
+		terrain_map == null
+		or terrain_map.world_map_layer == null
+		or ground_tile_map == null
+	):
+		return
+	for plant_variant in plant_footprints:
+		_last_terrain_support_rebuild_plants_visited += 1
+		_register_plant_terrain_support(plant_variant as PlantDefense)
+
+
+func _register_plant_terrain_support(plant: PlantDefense) -> void:
+	_unregister_plant_terrain_support(plant)
+	if (
+		plant == null
+		or not is_instance_valid(plant)
+		or not plant_footprints.has(plant)
+		or plant.is_dead
+		or plant.is_removing
+		or plant.is_multiplayer_proxy
+		or plant.is_queued_for_deletion()
+		or terrain_map == null
+		or terrain_map.world_map_layer == null
+		or ground_tile_map == null
+	):
+		return
+	var terrain_cells_set: Dictionary = {}
+	var footprint: Array = plant_footprints[plant]
+	for cell_variant in footprint:
+		var ground_cell: Vector2i = cell_variant
+		var world_position := ground_tile_map.to_global(
+			ground_tile_map.map_to_local(ground_cell)
+		)
+		terrain_cells_set[terrain_map.world_to_map(world_position)] = true
+	var terrain_cells := terrain_cells_set.keys()
+	_terrain_support_cells_by_plant[plant] = terrain_cells
+	for cell_variant in terrain_cells:
+		var terrain_cell: Vector2i = cell_variant
+		var affected_plants := (
+			_terrain_support_plants_by_cell.get(terrain_cell, {}) as Dictionary
+		)
+		affected_plants[plant] = true
+		_terrain_support_plants_by_cell[terrain_cell] = affected_plants
+	_refresh_plant_terrain_support(plant)
+
+
+func _unregister_plant_terrain_support(plant: PlantDefense) -> void:
+	_unsupported_terrain_plants.erase(plant)
+	var terrain_cells: Array = _terrain_support_cells_by_plant.get(plant, [])
+	_terrain_support_cells_by_plant.erase(plant)
+	for cell_variant in terrain_cells:
+		var terrain_cell: Vector2i = cell_variant
+		var affected_plants := (
+			_terrain_support_plants_by_cell.get(terrain_cell, {}) as Dictionary
+		)
+		affected_plants.erase(plant)
+		if affected_plants.is_empty():
+			_terrain_support_plants_by_cell.erase(terrain_cell)
+		else:
+			_terrain_support_plants_by_cell[terrain_cell] = affected_plants
+
+
+func _refresh_plant_terrain_support(plant: PlantDefense) -> void:
+	if (
+		plant == null
+		or not is_instance_valid(plant)
+		or not plant_footprints.has(plant)
+		or plant.is_dead
+		or plant.is_removing
+		or plant.is_multiplayer_proxy
+		or plant.is_queued_for_deletion()
+		or terrain_map == null
+		or terrain_map.world_map_layer == null
+		or ground_tile_map == null
+	):
+		_unregister_plant_terrain_support(plant)
+		return
+	var config := _registered_plant_configs.get(plant) as PlantDefenseConfig
+	if config == null:
+		push_error("PlantSystem is missing a config during terrain support refresh.")
+		_unsupported_terrain_plants.erase(plant)
+		return
+	var footprint: Array = plant_footprints[plant]
+	for cell_variant in footprint:
+		var cell: Vector2i = cell_variant
+		if not _is_ground_cell_terrain_supported_for_config(cell, config):
+			_unsupported_terrain_plants[plant] = true
+			return
+	_unsupported_terrain_plants.erase(plant)
 
 
 func _is_terrain_supported_for_config(
@@ -927,14 +1253,16 @@ func _is_terrain_supported_for_config(
 ) -> bool:
 	if terrain_map == null or config == null:
 		return false
-	match config.placement_surface:
-		PlantDefenseConfig.PlacementSurface.WATER:
-			return (
-				terrain_map.get_terrain_type(cell)
-				== DualGridTilemap.TerrainType.WATER
-			)
-		_:
-			return terrain_map.is_cell_plantable(cell)
+	if config.requires_grass and config.requires_water_source:
+		return false
+	if config.requires_water_source:
+		return (
+			terrain_map.get_terrain_type(cell)
+			== DualGridTilemap.TerrainType.WATER
+		)
+	if config.requires_grass:
+		return terrain_map.is_cell_plantable(cell)
+	return terrain_map.get_terrain_type(cell) != DualGridTilemap.TerrainType.WATER
 
 
 func _is_entity_space_clear(
@@ -957,12 +1285,79 @@ func _is_entity_space_clear(
 	return ground_tile_map.get_world_2d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
-func _register_plant_footprint(plant: PlantDefense, cells: Array[Vector2i]) -> void:
+func _refresh_cardinal_connections_around(changed_cell: Vector2i) -> void:
+	_last_cardinal_connection_refresh_metrics["cells_visited"] = 0
+	_last_cardinal_connection_refresh_metrics["plants_updated"] = 0
+	_last_cardinal_connection_refresh_metrics["masks_changed"] = 0
+	for offset in CARDINAL_REFRESH_OFFSETS:
+		_last_cardinal_connection_refresh_metrics["cells_visited"] += 1
+		var cell: Vector2i = changed_cell + offset
+		var plant := occupied_cells.get(cell) as PlantDefense
+		if plant == null:
+			continue
+		var config := _registered_plant_configs.get(plant) as PlantDefenseConfig
+		if config == null:
+			push_error("PlantSystem is missing a config during cardinal refresh.")
+			continue
+		if not config.uses_cardinal_connections():
+			continue
+		var cardinal_plant := plant as CardinalConnectedPlant
+		if cardinal_plant == null:
+			push_error(
+				"Cardinal connection config requires CardinalConnectedPlant: %s"
+				% config.plant_id
+			)
+			continue
+		var new_mask := _calculate_cardinal_connection_mask(cell, config)
+		if new_mask != cardinal_plant.get_cardinal_connection_mask():
+			_last_cardinal_connection_refresh_metrics["masks_changed"] += 1
+		cardinal_plant.set_cardinal_connection_mask(new_mask)
+		_last_cardinal_connection_refresh_metrics["plants_updated"] += 1
+
+
+func _calculate_cardinal_connection_mask(
+	cell: Vector2i,
+	config: PlantDefenseConfig
+) -> int:
+	var mask := 0
+	for neighbor_index in range(CARDINAL_NEIGHBOR_OFFSETS.size()):
+		var neighbor_cell: Vector2i = cell + CARDINAL_NEIGHBOR_OFFSETS[neighbor_index]
+		var neighbor := occupied_cells.get(neighbor_cell) as PlantDefense
+		if neighbor == null:
+			continue
+		var neighbor_config := (
+			_registered_plant_configs.get(neighbor) as PlantDefenseConfig
+		)
+		if neighbor_config == null:
+			push_error("PlantSystem is missing a neighbor config during cardinal refresh.")
+			continue
+		if (
+			neighbor_config.cardinal_connection_group
+			!= config.cardinal_connection_group
+		):
+			continue
+		mask |= CARDINAL_NEIGHBOR_BITS[neighbor_index]
+	return mask
+
+
+func _register_plant_footprint(
+	plant: PlantDefense,
+	cells: Array[Vector2i],
+	config: PlantDefenseConfig
+) -> void:
+	_unregister_plant_terrain_support(plant)
+	_registered_plant_configs[plant] = config
 	plant_footprints[plant] = cells.duplicate()
 	for cell in cells:
 		occupied_cells[cell] = plant
 	if not _plant_target_spatial_index.register(plant, plant.global_position):
 		push_error("PlantSystem failed to register a plant target spatial entry.")
+	if config.is_proactive_enemy_target():
+		_enemy_target_plants[plant] = true
+		if not _enemy_target_spatial_index.register(plant, plant.global_position):
+			push_error("PlantSystem failed to register an enemy target spatial entry.")
+	if config.uses_cardinal_connections():
+		_refresh_cardinal_connections_around(cells[0])
 	occupancy_changed.emit()
 
 
@@ -971,9 +1366,18 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 		return
 
 	var cells: Array = plant_footprints[plant]
+	var config := _registered_plant_configs.get(plant) as PlantDefenseConfig
+	if config == null:
+		push_error("PlantSystem is missing the explicit config for a registered plant.")
+		return
 	if not _plant_target_spatial_index.unregister(plant):
 		push_error("PlantSystem failed to unregister a plant target spatial entry.")
+	if _enemy_target_plants.erase(plant):
+		if not _enemy_target_spatial_index.unregister(plant):
+			push_error("PlantSystem failed to unregister an enemy target spatial entry.")
+	_unregister_plant_terrain_support(plant)
 	plant_footprints.erase(plant)
+	_registered_plant_configs.erase(plant)
 	var net_id := int(plant.get_meta(&"net_id", 0)) if is_instance_valid(plant) else 0
 	if net_id > 0 and plants_by_net_id.get(net_id) == plant:
 		plants_by_net_id.erase(net_id)
@@ -981,6 +1385,8 @@ func _release_plant_footprint(plant: PlantDefense) -> void:
 		var cell: Vector2i = cell_variant
 		if occupied_cells.get(cell) == plant:
 			occupied_cells.erase(cell)
+	if config.uses_cardinal_connections():
+		_refresh_cardinal_connections_around(cells[0])
 	occupancy_changed.emit()
 	plant_removed.emit(plant)
 

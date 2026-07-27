@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ProductionRecipe" format=3]
+
+[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_white_crystal.tres" id="2_crystal"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_white_crystal_powder.tres" id="3_powder"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="4_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+recipe_id = &"white_crystal_to_powder"
+display_name = "白晶研磨"
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_crystal")])
+input_amounts = Array[int]([1])
+output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_powder")])
+output_amounts = Array[int]([1])
+duration_seconds = 30.0

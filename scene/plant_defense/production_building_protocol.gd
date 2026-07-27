@@ -3,6 +3,7 @@ class_name ProductionBuildingProtocol
 
 const OPERATION_SELECT_RECIPE := &"select_recipe"
 const OPERATION_SET_ENABLED := &"set_enabled"
+const OPERATION_COLLECT_OUTPUT := &"collect_output"
 
 const RESULT_SUCCESS := &"success"
 const RESULT_INVALID_COMMAND := &"invalid_command"
@@ -13,6 +14,8 @@ const RESULT_INVALID_PLAYER := &"invalid_player"
 const RESULT_OUT_OF_RANGE := &"out_of_range"
 const RESULT_RATE_LIMITED := &"rate_limited"
 const RESULT_UNAVAILABLE := &"unavailable"
+const RESULT_OUTPUT_EMPTY := &"output_empty"
+const RESULT_INVENTORY_FULL := &"inventory_full"
 const MAX_RECIPE_ID_WIRE_LENGTH := 128
 
 
@@ -50,6 +53,21 @@ static func make_set_enabled_command(
 	}
 
 
+static func make_collect_output_command(
+	request_id: int,
+	building_net_id: int,
+	peer_id: int,
+	expected_production_revision: int
+) -> Dictionary:
+	return {
+		"operation": OPERATION_COLLECT_OUTPUT,
+		"request_id": request_id,
+		"building_net_id": building_net_id,
+		"peer_id": peer_id,
+		"expected_production_revision": expected_production_revision,
+	}
+
+
 static func is_valid_command(command: Dictionary) -> bool:
 	if not _has_strict_positive_int(command, "request_id"):
 		return false
@@ -69,6 +87,8 @@ static func is_valid_command(command: Dictionary) -> bool:
 			)
 		OPERATION_SET_ENABLED:
 			return typeof(command.get("enabled")) == TYPE_BOOL
+		OPERATION_COLLECT_OUTPUT:
+			return true
 		_:
 			return false
 
@@ -120,6 +140,8 @@ static func canonicalize_command(
 			return {}
 		command["operation"] = OPERATION_SET_ENABLED
 		command["enabled"] = bool(raw_command["enabled"])
+	elif operation_wire == String(OPERATION_COLLECT_OUTPUT):
+		command["operation"] = OPERATION_COLLECT_OUTPUT
 	else:
 		return {}
 	return command if is_valid_command(command) else {}

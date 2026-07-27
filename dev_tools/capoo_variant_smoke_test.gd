@@ -591,8 +591,14 @@ func _test_smg_scatter_fire() -> void:
 	smg.fire_time_left = 0.0
 	smg.set_objective_target(null)
 	_expect(
+		bool(smg.call("_try_fire_scatter", Vector2.RIGHT)),
+		"Without a contact or objective, SMG must still use its live player family target."
+	)
+	smg.fire_time_left = 0.0
+	smg.set_target_player(null)
+	_expect(
 		not bool(smg.call("_try_fire_scatter", Vector2.RIGHT)),
-		"SMG Capoo must not fire without a determined combat target."
+		"SMG must not fire only after contact, objective and family player targets are all absent."
 	)
 	smg.queue_free()
 	player.queue_free()
