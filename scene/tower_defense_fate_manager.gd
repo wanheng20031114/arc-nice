@@ -10,6 +10,7 @@ const STAGE_VOTING := &"voting"
 const STAGE_RESOLVING := &"resolving"
 const STAGE_RESOLVED := &"resolved"
 const STAGE_COLLECTIBLE_REWARD := &"collectible_reward"
+const FATE_OPTION_OFFER_COUNT := 3
 const RESULT_DISPLAY_SECONDS := 1.15
 
 @export_range(5.0, 300.0, 1.0) var interaction_timeout_seconds := 45.0
@@ -56,8 +57,10 @@ func begin_interlude(
 	next_step_id = resume_step_id
 	host_peer_id = new_host_peer_id
 	eligible_peer_ids = _normalized_peer_ids(peer_ids)
-	available_option_ids = _normalized_option_ids(option_ids)
 	available_permanent_buff_ids = _normalized_buff_ids(permanent_buff_ids)
+	available_option_ids = _roll_fate_option_offer(
+		_normalized_option_ids(option_ids)
+	)
 	interacted_peer_ids.clear()
 	votes.clear()
 	permanent_buff_votes.clear()
@@ -377,14 +380,41 @@ func _choose_majority_value(
 
 func _roll_permanent_buff_offer() -> void:
 	var available: Array[StringName] = available_permanent_buff_ids.duplicate()
-	for source_index in range(available.size() - 1, 0, -1):
-		var target_index := random_generator.randi_range(0, source_index)
-		var temporary: StringName = available[source_index]
-		available[source_index] = available[target_index]
-		available[target_index] = temporary
+	_shuffle_string_names(available)
 	permanent_buff_offer.clear()
 	for buff_index in range(mini(3, available.size())):
 		permanent_buff_offer.append(available[buff_index])
+
+
+func _roll_fate_option_offer(
+	candidate_option_ids: Array[StringName]
+) -> Array[StringName]:
+	var candidates: Array[StringName] = []
+	for option_id in candidate_option_ids:
+		var config := TowerDefenseFateRegistry.get_option_config(option_id)
+		if config == null:
+			continue
+		if (
+			config.requires_available_permanent_buff()
+			and available_permanent_buff_ids.is_empty()
+		):
+			continue
+		candidates.append(option_id)
+	_shuffle_string_names(candidates)
+	var offer: Array[StringName] = []
+	for option_index in range(
+		mini(FATE_OPTION_OFFER_COUNT, candidates.size())
+	):
+		offer.append(candidates[option_index])
+	return offer
+
+
+func _shuffle_string_names(values: Array[StringName]) -> void:
+	for source_index in range(values.size() - 1, 0, -1):
+		var target_index := random_generator.randi_range(0, source_index)
+		var temporary: StringName = values[source_index]
+		values[source_index] = values[target_index]
+		values[target_index] = temporary
 
 
 func _fill_missing_votes_for_host_recovery() -> void:

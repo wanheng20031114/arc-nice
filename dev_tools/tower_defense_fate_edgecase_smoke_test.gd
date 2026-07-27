@@ -151,18 +151,138 @@ func _test_stone_inventory_access_overlay() -> void:
 	)
 	root.add_child(overlay)
 	await process_frame
-	var main_panel := overlay.get_node("Root/Center/Panel") as PanelContainer
+	var portrait_stage := overlay.get_node(
+		"Root/ScreenMargin/MainRow/PortraitStage"
+	) as Control
+	var portrait_frame := overlay.get_node(
+		"Root/ScreenMargin/MainRow/PortraitStage/PortraitFrame"
+	) as Control
+	var decision_column := overlay.get_node(
+		"Root/ScreenMargin/MainRow/DecisionColumn"
+	) as Control
+	var overlay_root := overlay.get_node("Root") as Control
+	var backdrop := overlay.get_node("Root/Backdrop") as TextureRect
+	var entrance_back_buffer := overlay.get_node(
+		"Root/EntranceBackBuffer"
+	) as BackBufferCopy
+	var entrance_reveal_cover := overlay.get_node(
+		"Root/EntranceRevealCover"
+	) as ColorRect
+	var entrance_reveal_material := (
+		entrance_reveal_cover.material as ShaderMaterial
+	)
+	var xiaocong_portrait := overlay.get_node(
+		"Root/ScreenMargin/MainRow/PortraitStage/PortraitFrame/Xiaocong"
+	) as TextureRect
+	var portrait_source_size := xiaocong_portrait.texture.get_size()
 	_expect(
-		main_panel.custom_minimum_size.y <= 620.0,
-		"The fate choice panel must fit inside the default 648px viewport with margin."
+		entrance_back_buffer.copy_mode == BackBufferCopy.COPY_MODE_VIEWPORT
+		and not entrance_back_buffer.visible
+		and entrance_back_buffer.get_index() < backdrop.get_index()
+		and not entrance_reveal_cover.visible
+		and entrance_reveal_cover.get_index()
+		== overlay_root.get_child_count() - 1
+		and entrance_reveal_cover.z_index >= 100
+		and entrance_reveal_cover.mouse_filter == Control.MOUSE_FILTER_STOP,
+		"The entrance reveal must save the old frame and block input above the UI."
+	)
+	_expect(
+		entrance_reveal_material != null
+		and entrance_reveal_material.resource_local_to_scene
+		and entrance_reveal_material.shader.code.contains(
+			"hint_screen_texture"
+		)
+		and entrance_reveal_material.shader.code.contains("reveal_progress")
+		and entrance_reveal_material.get_shader_parameter(
+			&"reveal_noise"
+		) != null,
+		"The Xiaocong entrance shader must combine the saved screen with organic noise."
+	)
+	_expect(
+		portrait_source_size == Vector2(1098, 1433)
+		and portrait_stage.custom_minimum_size == Vector2(390, 520)
+		and portrait_frame.custom_minimum_size == Vector2(330, 450)
+		and xiaocong_portrait.stretch_mode
+		== TextureRect.STRETCH_KEEP_ASPECT_CENTERED,
+		"The left stage must use the full-resolution Xiaocong portrait without offline resizing."
+	)
+	_expect(
+		portrait_stage.get_global_rect().get_center().x
+		< decision_column.get_global_rect().get_center().x,
+		"The Xiaocong portrait must remain to the left of the decision column."
+	)
+	_expect(
+		overlay.choice_cards.size()
+		== TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT
+		and overlay.choice_list.get_child_count()
+		== TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT,
+		"The decision column must contain exactly three fate cards."
+	)
+	var cards_preserve_art_and_rounding := true
+	for card in overlay.choice_cards:
+		var card_ratio := (
+			card.background.texture.get_width()
+			/ float(card.background.texture.get_height())
+		)
+		var mask_style := card.get_theme_stylebox("panel") as StyleBoxFlat
+		var normal_style := (
+			card.button.get_theme_stylebox("normal") as StyleBoxFlat
+		)
+		var hover_style := (
+			card.button.get_theme_stylebox("hover") as StyleBoxFlat
+		)
+		var pressed_style := (
+			card.button.get_theme_stylebox("pressed") as StyleBoxFlat
+		)
+		var focus_style := (
+			card.button.get_theme_stylebox("focus") as StyleBoxFlat
+		)
+		var styles: Array[StyleBoxFlat] = [
+			mask_style,
+			normal_style,
+			hover_style,
+			pressed_style,
+			focus_style,
+		]
+		var styles_share_radius := true
+		for style in styles:
+			styles_share_radius = (
+				styles_share_radius
+				and style != null
+				and style.corner_radius_top_left == 8
+				and style.corner_radius_top_right == 8
+				and style.corner_radius_bottom_right == 8
+				and style.corner_radius_bottom_left == 8
+			)
+		cards_preserve_art_and_rounding = (
+			cards_preserve_art_and_rounding
+			and card_ratio >= 4.2
+			and card_ratio <= 4.3
+			and card.background.stretch_mode
+			== TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			and card.clip_children == CanvasItem.CLIP_CHILDREN_ONLY
+			and styles_share_radius
+			and mask_style.bg_color.a >= 0.99
+			and normal_style.border_width_left == 1
+			and hover_style.border_width_left == 2
+			and pressed_style.border_width_left == 3
+			and focus_style != pressed_style
+		)
+	_expect(
+		cards_preserve_art_and_rounding,
+		"All three card artworks and interaction states must share one rounded frame."
 	)
 	var state := {
 		"active": true,
-		"completed_day": 1,
+		"completed_day": 6,
 		"stage": String(TowerDefenseFateManager.STAGE_VOTING),
 		"host_peer_id": 1,
 		"eligible_peer_ids": [1, 2],
-		"available_option_ids": _option_wire_ids(),
+		"available_option_ids": _option_wire_ids([
+			TowerDefenseFateRegistry.OPTION_FATE_STONE,
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+		]),
 		"permanent_buff_offer": PackedStringArray(),
 		"available_permanent_buff_count": 9,
 		"votes": {},
@@ -178,6 +298,16 @@ func _test_stone_inventory_access_overlay() -> void:
 		"An active voting state must reveal the editor-hidden fate choice overlay."
 	)
 	_expect(
+		entrance_back_buffer.visible
+		and entrance_reveal_cover.visible
+		and is_zero_approx(float(
+			entrance_reveal_cover.get_instance_shader_parameter(
+				&"reveal_progress"
+			)
+		)),
+		"Opening the fate UI must start a fully covered edge-to-center reveal."
+	)
+	_expect(
 		"旁观" in overlay.status_label.text,
 		"A late non-eligible peer must be told that it is observing this day."
 	)
@@ -185,12 +315,81 @@ func _test_stone_inventory_access_overlay() -> void:
 	for card in overlay.choice_cards:
 		all_cards_disabled = all_cards_disabled and card.button.disabled
 	_expect(all_cards_disabled, "A non-eligible observer must not have clickable fate cards.")
-	await create_timer(0.3).timeout
-	_expect(overlay.show_tween == null, "The initial overlay tween must finish during setup.")
+	await create_timer(0.14).timeout
+	var mid_reveal_progress := float(
+		entrance_reveal_cover.get_instance_shader_parameter(
+			&"reveal_progress"
+		)
+	)
+	_expect(
+		mid_reveal_progress > 0.0 and mid_reveal_progress < 1.0,
+		"The entrance shader must advance through a visible growth phase."
+	)
+	await create_timer(0.47).timeout
+	var all_cards_fully_visible := true
+	for card in overlay.choice_cards:
+		all_cards_fully_visible = (
+			all_cards_fully_visible
+			and is_equal_approx(card.modulate.a, 1.0)
+		)
+	_expect(
+		overlay.show_tween == null
+		and not entrance_back_buffer.visible
+		and not entrance_reveal_cover.visible
+		and all_cards_fully_visible,
+		"The reveal must finish quickly on three fully visible cards and disable its overhead."
+	)
 	overlay.apply_state(state, 3, {})
 	_expect(
 		overlay.show_tween == null,
 		"A vote tally update in the same stage must not replay the show tween."
+	)
+
+	state["votes"] = {
+		1: String(TowerDefenseFateRegistry.OPTION_FATE_STONE),
+		2: String(TowerDefenseFateRegistry.OPTION_FATE_STONE),
+	}
+	overlay.apply_state(state, 3, {
+		1: &"hoe_cat",
+		2: &"weishidaier",
+	})
+	await process_frame
+	var vote_row := overlay.choice_cards[0].vote_row
+	var hoe_cat_texture: TextureRect = null
+	var default_texture: TextureRect = null
+	for vote_portrait in vote_row.get_children():
+		var texture_rect := vote_portrait.get_node(
+			"PortraitLayer/TextureRect"
+		) as TextureRect
+		if int(vote_portrait.get_meta(&"peer_id", -1)) == 1:
+			hoe_cat_texture = texture_rect
+		elif int(vote_portrait.get_meta(&"peer_id", -1)) == 2:
+			default_texture = texture_rect
+	_expect(
+		hoe_cat_texture != null
+		and default_texture != null
+		and is_equal_approx(hoe_cat_texture.position.x, 2.0)
+		and is_zero_approx(default_texture.position.x),
+		"The Hoe Cat vote portrait must keep its two-pixel right compensation."
+	)
+
+	var submitted_option_ids: Array[StringName] = []
+	overlay.choice_submitted.connect(
+		func(option_id: StringName, permanent_buff_id: StringName) -> void:
+			if permanent_buff_id.is_empty():
+				submitted_option_ids.append(option_id)
+	)
+	state["votes"] = {}
+	overlay.apply_state(state, 1, {})
+	for card in overlay.choice_cards:
+		card.button.pressed.emit()
+	_expect(
+		submitted_option_ids == [
+			TowerDefenseFateRegistry.OPTION_FATE_STONE,
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+		],
+		"Display slots one through three must submit the host's named offer order."
 	)
 
 	state["stage"] = String(TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD)
@@ -213,9 +412,12 @@ func _test_stone_inventory_access_overlay() -> void:
 	}
 	state["winning_option_id"] = String(TowerDefenseFateRegistry.OPTION_FATE_STONE)
 	state["pending_stone_peer_ids"] = [1]
+	var submission_count_before_resolution := submitted_option_ids.size()
 	overlay.apply_state(state, 1, {})
+	overlay.choice_cards[0].button.pressed.emit()
 	_expect(
-		overlay.layer == XiaocongFateChoiceOverlay.INVENTORY_ACCESS_CANVAS_LAYER,
+		overlay.layer == XiaocongFateChoiceOverlay.INVENTORY_ACCESS_CANVAS_LAYER
+		and submitted_option_ids.size() == submission_count_before_resolution,
 		"A local full inventory must place the fate overlay below the profile panel."
 	)
 	_expect(
@@ -246,8 +448,11 @@ func _test_stone_inventory_access_overlay() -> void:
 	state["active"] = false
 	overlay.apply_state(state, 1, {})
 	_expect(
-		not overlay.visible,
-		"An inactive fate state must hide the overlay again."
+		not overlay.visible
+		and not entrance_back_buffer.visible
+		and not entrance_reveal_cover.visible
+		and overlay.show_tween == null,
+		"An inactive fate state must hide the overlay and stop reveal resources."
 	)
 	await create_timer(0.3).timeout
 	overlay.queue_free()
@@ -270,6 +475,7 @@ func _begin_resolving_vote(
 		TowerDefenseFateRegistry.get_all_option_ids(),
 		TowerDefenseFateRegistry.get_all_permanent_buff_ids()
 	)
+	manager.available_option_ids = _ordered_offer_containing(option_id)
 	for peer_id in typed_peer_ids:
 		manager.record_interaction(peer_id)
 	for peer_id in typed_peer_ids:
@@ -280,9 +486,20 @@ func _begin_resolving_vote(
 	)
 
 
-func _option_wire_ids() -> PackedStringArray:
+func _ordered_offer_containing(option_id: StringName) -> Array[StringName]:
+	var offer: Array[StringName] = [option_id]
+	for candidate in TowerDefenseFateRegistry.get_all_option_ids():
+		if candidate == option_id:
+			continue
+		offer.append(candidate)
+		if offer.size() == TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT:
+			break
+	return offer
+
+
+func _option_wire_ids(option_ids: Array[StringName]) -> PackedStringArray:
 	var result := PackedStringArray()
-	for option_id in TowerDefenseFateRegistry.get_all_option_ids():
+	for option_id in option_ids:
 		result.append(String(option_id))
 	return result
 

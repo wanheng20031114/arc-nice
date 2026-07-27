@@ -1,69 +1,148 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scene/xiaocong_fate_choice_card.gd" id="1_script"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_body_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate/choice_panel_moon.png" id="4_default_bg"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
-bg_color = Color(0.07, 0.105, 0.09, 0.98)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card_mask"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_normal"]
+bg_color = Color(0, 0, 0, 0)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.52, 0.67, 0.57, 0.62)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-shadow_color = Color(0, 0, 0, 0.42)
-shadow_size = 4
-shadow_offset = Vector2(0, 2)
+border_color = Color(0.47, 0.68, 0.56, 0.58)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+draw_center = false
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hover"]
-bg_color = Color(0.11, 0.17, 0.14, 1)
+bg_color = Color(0.62, 0.82, 0.69, 0.1)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.72, 0.9, 0.76, 0.94)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
+border_color = Color(0.68, 0.9, 0.78, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pressed"]
-bg_color = Color(0.13, 0.21, 0.17, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.88, 1, 0.9, 1)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
+bg_color = Color(0.84, 0.96, 0.88, 0.14)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.93, 0.82, 0.45, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disabled"]
+bg_color = Color(0.01, 0.025, 0.02, 0.26)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.48, 0.42, 0.42)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.86, 0.94, 0.8, 0.82)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+draw_center = false
+
+[sub_resource type="FontVariation" id="FontVariation_emphasis"]
+base_font = ExtResource("2_body_font")
+variation_embolden = 0.68
+spacing_top = 2
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("2_body_font")
+variation_embolden = 0.42
+spacing_top = 1
+
+[sub_resource type="FontVariation" id="FontVariation_number"]
+base_font = ExtResource("2_body_font")
+variation_embolden = 0.82
+spacing_top = 2
+
+[sub_resource type="Gradient" id="Gradient_readability_scrim"]
+offsets = PackedFloat32Array(0, 0.82, 1)
+colors = PackedColorArray(0.0235, 0.1059, 0.0863, 0.5, 0.0235, 0.1059, 0.0863, 0.34, 0.0235, 0.1059, 0.0863, 0.08)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_readability_scrim"]
+gradient = SubResource("Gradient_readability_scrim")
+width = 256
+height = 1
+fill_from = Vector2(0, 0.5)
+fill_to = Vector2(1, 0.5)
 
 [sub_resource type="LabelSettings" id="LabelSettings_number"]
-font = ExtResource("2_font")
-font_size = 11
-font_color = Color(0.62, 0.78, 0.66, 1)
+font = SubResource("FontVariation_number")
+font_size = 22
+font_color = Color(1, 0.855, 0.44, 1)
+outline_size = 2
+outline_color = Color(0.015, 0.035, 0.028, 0.95)
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
-font = ExtResource("2_font")
-font_size = 14
-font_color = Color(0.94, 0.99, 0.95, 1)
-outline_size = 1
-outline_color = Color(0.01, 0.02, 0.016, 0.9)
+font = SubResource("FontVariation_emphasis")
+font_size = 23
+font_color = Color(0.9725, 0.9804, 0.9373, 1)
+outline_size = 2
+outline_color = Color(0.012, 0.03, 0.024, 0.98)
 
 [sub_resource type="LabelSettings" id="LabelSettings_description"]
-font = ExtResource("2_font")
-font_size = 10
-font_color = Color(0.74, 0.82, 0.76, 1)
+font = SubResource("FontVariation_body")
+font_size = 18
+font_color = Color(0.9412, 0.9569, 0.9176, 1)
+outline_size = 1
+outline_color = Color(0.012, 0.028, 0.022, 0.94)
 
 [node name="XiaocongFateChoiceCard" type="PanelContainer"]
-custom_minimum_size = Vector2(416, 126)
+texture_filter = 1
+custom_minimum_size = Vector2(520, 148)
+pivot_offset = Vector2(260, 74)
 mouse_filter = 1
-theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+clip_children = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_card_mask")
 script = ExtResource("1_script")
+background_texture = ExtResource("4_default_bg")
+
+[node name="Background" type="TextureRect" parent="."]
+modulate = Color(1, 1, 1, 0.94)
+texture_filter = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("4_default_bg")
+expand_mode = 1
+stretch_mode = 6
 
 [node name="Button" type="Button" parent="."]
 layout_mode = 1
@@ -74,10 +153,28 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_default_cursor_shape = 2
 toggle_mode = true
-theme_override_styles/normal = SubResource("StyleBoxFlat_card")
+theme_override_styles/normal = SubResource("StyleBoxFlat_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_pressed")
 theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_disabled")
+
+[node name="ReadabilityScrim" type="TextureRect" parent="."]
+texture_filter = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = -4.0
+offset_bottom = -32.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_readability_scrim")
+expand_mode = 1
 
 [node name="Content" type="Control" parent="."]
 layout_mode = 2
@@ -91,29 +188,31 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 9
-theme_override_constants/margin_right = 12
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 22
 theme_override_constants/margin_bottom = 8
 
 [node name="Rows" type="VBoxContainer" parent="Content/Margin"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 3
 
 [node name="Header" type="HBoxContainer" parent="Content/Margin/Rows"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 7
+theme_override_constants/separation = 10
 
 [node name="Number" type="Label" parent="Content/Margin/Rows/Header"]
-custom_minimum_size = Vector2(22, 0)
+texture_filter = 2
+custom_minimum_size = Vector2(40, 0)
 layout_mode = 2
 text = "01"
 label_settings = SubResource("LabelSettings_number")
 vertical_alignment = 1
 
 [node name="Title" type="Label" parent="Content/Margin/Rows/Header"]
+texture_filter = 2
 layout_mode = 2
 size_flags_horizontal = 3
 text = "命运选项"
@@ -123,14 +222,15 @@ autowrap_mode = 2
 
 [node name="Icon" type="TextureRect" parent="Content/Margin/Rows/Header"]
 visible = false
-custom_minimum_size = Vector2(28, 28)
+custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
 [node name="Description" type="Label" parent="Content/Margin/Rows"]
-custom_minimum_size = Vector2(0, 38)
+texture_filter = 2
+custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 size_flags_vertical = 3
 text = "选项说明"
@@ -143,3 +243,4 @@ custom_minimum_size = Vector2(0, 28)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
+alignment = 2

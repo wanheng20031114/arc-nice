@@ -23,6 +23,9 @@ const PLANT_REMOVAL_SCENE := preload(
 const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchant_dialogue_bubble.tscn")
 const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const UPGRADE_ROW_SCENE := preload("res://scene/upgrade_row.tscn")
+const XIAOCONG_FATE_CHOICE_OVERLAY_SCENE := preload(
+	"res://scene/xiaocong_fate_choice_overlay.tscn"
+)
 
 const AK_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
@@ -529,6 +532,40 @@ func _test_ui_click_audio() -> void:
 		await process_frame
 		_expect(not click_audio.playing, "Upgrade buttons must not trigger UI click audio over the upgrade success cue.")
 		upgrade_row.queue_free()
+
+	var fate_overlay := XIAOCONG_FATE_CHOICE_OVERLAY_SCENE.instantiate()
+	_expect(fate_overlay != null, "Xiaocong fate overlay must instantiate for click audio coverage.")
+	if fate_overlay != null:
+		root.add_child(fate_overlay)
+		await process_frame
+		var fate_button_nodes := fate_overlay.find_children(
+			"*",
+			"BaseButton",
+			true,
+			false
+		)
+		_expect(
+			fate_button_nodes.size() == 11,
+			"Xiaocong fate UI must expose exactly eleven audible buttons."
+		)
+		for button_node in fate_button_nodes:
+			var fate_button := button_node as BaseButton
+			_expect(
+				fate_button != null
+				and not bool(fate_button.get_meta(&"skip_ui_click_audio", false)),
+				"Every Xiaocong fate button must use the global UI click sound."
+			)
+			if fate_button == null:
+				continue
+			click_audio.stop()
+			fate_button.pressed.emit()
+			await process_frame
+			_expect(
+				click_audio.playing,
+				"A Xiaocong fate button did not trigger the global click sound."
+			)
+		click_audio.stop()
+		fate_overlay.queue_free()
 	await _drain_cleanup_frames()
 
 

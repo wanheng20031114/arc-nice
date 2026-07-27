@@ -13,6 +13,11 @@ func _run() -> void:
 	await process_frame
 	_test_named_config_contract()
 	_test_empty_interlude_finishes(manager)
+	_test_authoritative_offer_contract(manager)
+	_test_unoffered_vote_is_rejected(manager)
+	_test_offer_order_survives_remote_state(manager)
+	_test_empty_buff_pool_filters_options(manager)
+	_test_tied_votes_follow_offer_order(manager)
 	_test_waiting_disconnect(manager)
 	_test_voting_disconnect(manager)
 	_test_collectible_disconnect(manager)
@@ -59,6 +64,122 @@ func _test_empty_interlude_finishes(manager: TowerDefenseFateManager) -> void:
 	)
 
 
+func _test_authoritative_offer_contract(
+	manager: TowerDefenseFateManager
+) -> void:
+	manager.random_generator.seed = 7102026
+	_begin(manager, 1, [1])
+	var seen_option_ids: Dictionary = {}
+	var all_options_are_registered := true
+	for option_id in manager.available_option_ids:
+		seen_option_ids[option_id] = true
+		all_options_are_registered = (
+			all_options_are_registered
+			and TowerDefenseFateRegistry.get_option_config(option_id) != null
+		)
+	_expect(
+		manager.available_option_ids.size()
+		== TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT,
+		"Every fate round must authoritatively offer exactly three options."
+	)
+	_expect(
+		seen_option_ids.size() == manager.available_option_ids.size(),
+		"The authoritative option offer must not contain duplicates."
+	)
+	_expect(
+		all_options_are_registered,
+		"Every offered option must use a registered named fate id."
+	)
+	manager.force_finish()
+
+
+func _test_unoffered_vote_is_rejected(
+	manager: TowerDefenseFateManager
+) -> void:
+	_begin(manager, 1, [1])
+	manager.record_interaction(1)
+	var unoffered_option_id: StringName = &""
+	for option_id in TowerDefenseFateRegistry.get_all_option_ids():
+		if not manager.available_option_ids.has(option_id):
+			unoffered_option_id = option_id
+			break
+	_expect(
+		not unoffered_option_id.is_empty(),
+		"The rejection fixture must find a registered option outside the offer."
+	)
+	_expect(
+		not manager.submit_vote(1, unoffered_option_id, &""),
+		"A registered option must be rejected when the host did not offer it."
+	)
+	_expect(
+		manager.votes.is_empty()
+		and manager.stage == TowerDefenseFateManager.STAGE_VOTING,
+		"Rejecting an unoffered option must not record a vote or resolve."
+	)
+	manager.force_finish()
+
+
+func _test_offer_order_survives_remote_state(
+	manager: TowerDefenseFateManager
+) -> void:
+	_begin(manager, 1, [1])
+	var host_offer := manager.available_option_ids.duplicate()
+	var remote_manager := TowerDefenseFateManager.new()
+	remote_manager.apply_remote_state(manager.export_state())
+	_expect(
+		remote_manager.available_option_ids == host_offer,
+		"Exporting and applying fate state must preserve host offer order."
+	)
+	remote_manager.free()
+	manager.force_finish()
+
+
+func _test_empty_buff_pool_filters_options(
+	manager: TowerDefenseFateManager
+) -> void:
+	manager.begin_interlude(
+		1,
+		&"next",
+		_peers([1]),
+		1,
+		TowerDefenseFateRegistry.get_all_option_ids(),
+		[]
+	)
+	var every_offer_is_usable := true
+	for option_id in manager.available_option_ids:
+		var config := TowerDefenseFateRegistry.get_option_config(option_id)
+		every_offer_is_usable = (
+			every_offer_is_usable
+			and config != null
+			and not config.requires_available_permanent_buff()
+		)
+	_expect(
+		manager.available_option_ids.size()
+		== TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT
+		and every_offer_is_usable,
+		"An empty buff pool must still yield three immediately usable options."
+	)
+	manager.force_finish()
+
+
+func _test_tied_votes_follow_offer_order(
+	manager: TowerDefenseFateManager
+) -> void:
+	_begin(manager, 1, [1, 2])
+	var first_option := manager.available_option_ids[0]
+	var second_option := manager.available_option_ids[1]
+	manager.record_interaction(1)
+	manager.record_interaction(2)
+	manager.submit_vote(1, first_option, &"")
+	manager.submit_vote(2, second_option, &"")
+	_expect(
+		manager.stage == TowerDefenseFateManager.STAGE_RESOLVING
+		and manager.winning_option_id == first_option,
+		"A tied vote must resolve to the earliest option in host offer order."
+	)
+	manager.force_finish()
+
+
 func _test_waiting_disconnect(manager: TowerDefenseFateManager) -> void:
 	_begin(manager, 1, [1, 2])
 	_expect(manager.record_interaction(1), "The first interaction must be accepted.")
@@ -75,6 +196,11 @@ func _test_waiting_disconnect(manager: TowerDefenseFateManager) -> void:
 
 func _test_voting_disconnect(manager: TowerDefenseFateManager) -> void:
 	_begin(manager, 2, [1, 2, 3])
+	_set_offer(manager, [
+		TowerDefenseFateRegistry.OPTION_XIRANG_GIFT,
+		TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+		TowerDefenseFateRegistry.OPTION_DASH_COOLDOWN,
+	])
 	for peer_id in [1, 2, 3]:
 		manager.record_interaction(peer_id)
 	manager.submit_vote(1, TowerDefenseFateRegistry.OPTION_XIRANG_GIFT, &"")
@@ -93,6 +219,11 @@ func _test_voting_disconnect(manager: TowerDefenseFateManager) -> void:
 
 func _test_collectible_disconnect(manager: TowerDefenseFateManager) -> void:
 	_begin(manager, 3, [1, 2])
+	_set_offer(manager, [
+		TowerDefenseFateRegistry.OPTION_COLLECTIBLE_REWARD,
+		TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+		TowerDefenseFateRegistry.OPTION_DASH_COOLDOWN,
+	])
 	manager.record_interaction(1)
 	manager.record_interaction(2)
 	manager.submit_vote(1, TowerDefenseFateRegistry.OPTION_COLLECTIBLE_REWARD, &"")
@@ -115,6 +246,11 @@ func _test_last_peer_disconnect(manager: TowerDefenseFateManager) -> void:
 
 func _test_host_timeout_recovery(manager: TowerDefenseFateManager) -> void:
 	_begin(manager, 5, [1, 2], 1)
+	_set_offer(manager, [
+		TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+		TowerDefenseFateRegistry.OPTION_DASH_COOLDOWN,
+		TowerDefenseFateRegistry.OPTION_XIRANG_GIFT,
+	])
 	manager.record_interaction(1)
 	manager.advance_stage_timeout(999.0)
 	_expect(
@@ -154,6 +290,13 @@ func _begin(
 		TowerDefenseFateRegistry.get_all_option_ids(),
 		TowerDefenseFateRegistry.get_all_permanent_buff_ids()
 	)
+
+
+func _set_offer(
+	manager: TowerDefenseFateManager,
+	option_ids: Array[StringName]
+) -> void:
+	manager.available_option_ids = option_ids.duplicate()
 
 
 func _peers(values: Array) -> Array[int]:
