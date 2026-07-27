@@ -96,6 +96,20 @@ func _run() -> void:
 
 	_expect(TOWER_CONFIG.is_valid(), "葡萄电弧塔配置必须有效。")
 	_expect(
+		TOWER_CONFIG.attack_damage == 96
+		and is_equal_approx(TOWER_CONFIG.attack_speed, 100.0 / 1.4)
+		and is_equal_approx(TOWER_CONFIG.get_attack_interval(), 1.4)
+		and TOWER_CONFIG.description.contains("每1.4秒")
+		and TOWER_CONFIG.description.contains("96点")
+		and tower.configured_attack_damage == 96
+		and is_equal_approx(
+			tower.attack_timer.wait_time,
+			GrapeArcTower.calculate_initial_attack_delay_seconds(1.4, 71001)
+		)
+		and is_equal_approx(GrapeArcTower.DEFAULT_ATTACK_INTERVAL, 1.4),
+		"葡萄塔必须以96点法术伤害和1.4秒完整周期运行，配置、场景与fallback不得分叉。"
+	)
+	_expect(
 		PlantDefenseRegistry.get_config(&"grape_arc_tower") == TOWER_CONFIG,
 		"公共植物注册表必须返回葡萄电弧塔。"
 	)
@@ -242,6 +256,12 @@ func _run() -> void:
 	tower.call("_on_attack_timer_timeout")
 	_expect(tower.attack_locked, "发现目标后必须进入逐颗充能阶段。")
 	_expect(
+		is_equal_approx(tower.attack_timer.wait_time, 1.4)
+		and tower.attack_timer.time_left > 0.0
+		and tower.attack_timer.time_left <= 1.4,
+		"每次成功锁敌后必须立即按1.4秒完整周期安排下一次攻击。"
+	)
+	_expect(
 		not tower.idle_scan_active
 		and tower.idle_scan_tween == null
 		and tower.idle_scan_timer.is_stopped()
@@ -267,7 +287,7 @@ func _run() -> void:
 		"连锁电弧不能在单一目标上重复弹射。"
 	)
 	for amount in runtime.damage_amounts:
-		_expect(amount == 72, "每次电弧命中必须造成配置中的72点伤害。")
+		_expect(amount == 96, "每次电弧命中必须造成配置中的96点伤害。")
 	for damage_type in runtime.damage_types:
 		_expect(
 			damage_type == EnemyConfig.DamageType.MAGIC,

@@ -4,7 +4,7 @@ class_name GrapeArcTower
 const AUDIO_LIMITER := preload(
 	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
 )
-const DEFAULT_ATTACK_INTERVAL := 1.6
+const DEFAULT_ATTACK_INTERVAL := 1.4
 const TARGET_RETRY_SECONDS := 0.18
 const INITIAL_ATTACK_DELAY_MIN_SECONDS := 0.08
 const ATTACK_PHASE_GOLDEN_RATIO := 0.61803398875
