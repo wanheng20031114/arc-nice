@@ -122,6 +122,10 @@ func _test_stone_inventory_access_overlay() -> void:
 	var overlay := preload(
 		"res://scene/xiaocong_fate_choice_overlay.tscn"
 	).instantiate() as XiaocongFateChoiceOverlay
+	_expect(
+		not overlay.visible,
+		"The fate choice overlay must be hidden in the editor until runtime state opens it."
+	)
 	root.add_child(overlay)
 	await process_frame
 	var main_panel := overlay.get_node("Root/Center/Panel") as PanelContainer
@@ -142,6 +146,10 @@ func _test_stone_inventory_access_overlay() -> void:
 		"pending_stone_peer_ids": [],
 	}
 	overlay.apply_state(state, 3, {})
+	_expect(
+		overlay.visible,
+		"An active voting state must reveal the editor-hidden fate choice overlay."
+	)
 	_expect(
 		"旁观" in overlay.status_label.text,
 		"A late non-eligible peer must be told that it is observing this day."
@@ -202,6 +210,12 @@ func _test_stone_inventory_access_overlay() -> void:
 	_expect(
 		"史莱姆" in overlay.status_label.text,
 		"Option 8 resolution text must name the random permanent buff actually awarded."
+	)
+	state["active"] = false
+	overlay.apply_state(state, 1, {})
+	_expect(
+		not overlay.visible,
+		"An inactive fate state must hide the overlay again."
 	)
 	await create_timer(0.3).timeout
 	overlay.queue_free()
