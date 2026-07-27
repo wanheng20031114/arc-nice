@@ -143,8 +143,8 @@ func _test_config_and_assets(collector: WaterCollector) -> void:
 		and WATER_COLLECTOR_CONFIG.physical_defense == 10
 		and WATER_COLLECTOR_CONFIG.magic_defense == 0
 		and WATER_COLLECTOR_CONFIG.footprint_size == Vector2i(2, 2)
-		and not WATER_COLLECTOR_CONFIG.requires_grass
-		and WATER_COLLECTOR_CONFIG.requires_water_source,
+		and WATER_COLLECTOR_CONFIG.placement_surface
+		== PlantDefenseConfig.PlacementSurface.WATER_ONLY,
 		"采集器必须为2000生命、10物防、0法防、2×2占格且只支持水面。"
 	)
 	_expect(

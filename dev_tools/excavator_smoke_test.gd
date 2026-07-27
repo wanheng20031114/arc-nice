@@ -103,9 +103,9 @@ func _test_config_and_scene(excavator: Excavator) -> void:
 	)
 	_expect(
 		EXCAVATOR_CONFIG.footprint_size == Vector2i(2, 2)
-		and not EXCAVATOR_CONFIG.requires_grass
-		and not EXCAVATOR_CONFIG.requires_water_source,
-		"挖土装置必须占2×2格，且既不依赖草地也不依赖水源。"
+		and EXCAVATOR_CONFIG.placement_surface
+		== PlantDefenseConfig.PlacementSurface.ANY_LAND,
+		"挖土装置必须占2×2格，并显式支持任意陆地。"
 	)
 	_expect(
 		excavator != null

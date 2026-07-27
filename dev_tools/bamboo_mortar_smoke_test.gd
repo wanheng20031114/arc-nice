@@ -209,8 +209,8 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and is_zero_approx(MORTAR_CONFIG.get_attack_interval())
 		and is_equal_approx(MORTAR_CONFIG.attack_range, 192.0)
 		and MORTAR_CONFIG.footprint_size == Vector2i(2, 2)
-		and MORTAR_CONFIG.requires_grass
-		and not MORTAR_CONFIG.requires_water_source
+		and MORTAR_CONFIG.placement_surface
+		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY
 		and MORTAR_CONFIG.supports_multiplayer,
 		"迫击炮数值必须为2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、192范围、草地2×2且支持多人。"
 	)
@@ -227,8 +227,8 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		)
-		and PlantDefenseRegistry.get_all_configs()[8] == MORTAR_CONFIG,
-		"迫击炮必须保留为第九种植物，并与挖土装置、石磨台、简易围栏、种植基地、紫阳花雨幕塔、葡萄电弧塔共同进入15项公共注册表。"
+		and PlantDefenseRegistry.get_all_configs().has(MORTAR_CONFIG),
+		"迫击炮必须按防御塔语义注册，并与其余14种建筑共同进入公共注册表。"
 	)
 	_expect(
 		mortar.main_sprite.sprite_frames.get_frame_count(&"charge") == 8

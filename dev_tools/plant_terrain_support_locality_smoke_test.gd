@@ -468,8 +468,7 @@ func _make_grass_config() -> PlantDefenseConfig:
 	var config := PlantDefenseConfig.new()
 	config.plant_id = &"terrain_support_probe"
 	config.footprint_size = Vector2i.ONE
-	config.requires_grass = true
-	config.requires_water_source = false
+	config.placement_surface = PlantDefenseConfig.PlacementSurface.GRASS_ONLY
 	return config
 
 

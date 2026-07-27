@@ -33,6 +33,15 @@ const BAMBOO_MORTAR_BUILDING_ITEM := preload(
 const HYDRANGEA_RAIN_TOWER_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_hydrangea_rain_tower.tres"
 )
+const GRAPE_ARC_TOWER_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_grape_arc_tower.tres"
+)
+const DIRT_BLOCK := preload(
+	"res://resources/config/materials/material_dirt_block.tres"
+)
+const WHITE_CRYSTAL_POWDER := preload(
+	"res://resources/config/materials/material_white_crystal_powder.tres"
+)
 const HOTSPOT_LIGHT_TEXTURE := preload(
 	"res://resources/lighting/plant_cultivation_center_hotspots.svg"
 )
@@ -143,7 +152,7 @@ func _run() -> void:
 	center.set_shared_production_panel(panel)
 
 	_expect(
-		center.recipes.size() == 4
+		center.recipes.size() == 5
 		and center.recipes[0].input_items == [WOODEN_CORE]
 		and center.recipes[0].input_amounts == [1]
 		and center.recipes[0].output_items == [AGAVE_BUILDING_ITEM]
@@ -169,8 +178,15 @@ func _run() -> void:
 		== [HYDRANGEA_RAIN_TOWER_BUILDING_ITEM]
 		and center.recipes[3].output_amounts == [1]
 		and is_equal_approx(center.recipes[3].duration_seconds, 30.0)
-		and center.recipes[3].outputs_to_player_inventory(),
-		"培育中心必须提供四个消耗1个木制核心的个人背包配方，并使用20、20、30、30秒培育时间。"
+		and center.recipes[3].outputs_to_player_inventory()
+		and center.recipes[4].input_items
+		== [WOODEN_CORE, DIRT_BLOCK, WHITE_CRYSTAL_POWDER]
+		and center.recipes[4].input_amounts == [1, 2, 1]
+		and center.recipes[4].output_items == [GRAPE_ARC_TOWER_BUILDING_ITEM]
+		and center.recipes[4].output_amounts == [1]
+		and is_equal_approx(center.recipes[4].duration_seconds, 40.0)
+		and center.recipes[4].outputs_to_player_inventory(),
+		"培育中心必须提供五种塔配方，并让葡萄路线真实消费木制核心、土块与白晶粉。"
 	)
 	_expect(
 		AGAVE_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
@@ -192,8 +208,14 @@ func _run() -> void:
 		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.placeable_plant_id
 		== &"hydrangea_rain_tower"
 		and not HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.stackable
-		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.inventory_stack_limit == 1,
-		"四种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
+		and HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.inventory_stack_limit == 1
+		and GRAPE_ARC_TOWER_BUILDING_ITEM.pickup_type
+		== PickupConfig.PickupType.BUILDING
+		and GRAPE_ARC_TOWER_BUILDING_ITEM.placeable_plant_id
+		== &"grape_arc_tower"
+		and not GRAPE_ARC_TOWER_BUILDING_ITEM.stackable
+		and GRAPE_ARC_TOWER_BUILDING_ITEM.inventory_stack_limit == 1,
+		"五种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
 	)
 
 	var border := center.get_node_or_null("ProductionBorder") as MeshInstance2D
@@ -369,7 +391,8 @@ func _run() -> void:
 		and panel.recipe_rows[2].tooltip_text.contains("约 30.0 秒")
 		and panel.recipe_rows[3].visible
 		and panel.recipe_rows[3].tooltip_text.contains("约 30.0 秒")
-		and not panel.recipe_rows[4].visible
+		and panel.recipe_rows[4].visible
+		and panel.recipe_rows[4].tooltip_text.contains("约 40.0 秒")
 		and progress_fill != null
 		and progress_fill.bg_color.g > 0.75,
 		"培育中心UI必须使用植物面板、嫩绿进度条，显示四条正确耗时的1投入1产物配方。"
@@ -422,7 +445,9 @@ func _run() -> void:
 		and panel.recipe_rows[1].text
 			== "培育玉米机枪塔\n木制核心 ×1 · 20秒"
 		and panel.recipe_rows[2].text
-			== "培育竹筒迫击炮\n木制核心 ×1 · 30秒",
+			== "培育竹筒迫击炮\n木制核心 ×1 · 30秒"
+		and panel.recipe_rows[4].text
+			== "培育葡萄电弧塔\n3 种原料 · 40秒",
 		"背包产物配方摘要必须只显示投入与耗时，避免在窄栏重复长产物名。"
 	)
 	_expect(

@@ -503,7 +503,7 @@ func find_nearest_enemy_objective(
 		if (
 			not include_water_plants
 			and plant.config != null
-			and plant.config.requires_water_source
+			and plant.config.is_water_building()
 		):
 			continue
 		# Eligibility and distance stay in the typed exact pass. The shared spatial
@@ -1090,7 +1090,7 @@ func _is_floor_cell_available(
 		return (
 			tile_data != null
 			and config != null
-			and not config.requires_water_source
+			and not config.is_water_building()
 		)
 	return _is_ground_cell_terrain_supported_for_config(cell, config)
 
@@ -1253,16 +1253,23 @@ func _is_terrain_supported_for_config(
 ) -> bool:
 	if terrain_map == null or config == null:
 		return false
-	if config.requires_grass and config.requires_water_source:
-		return false
-	if config.requires_water_source:
-		return (
-			terrain_map.get_terrain_type(cell)
-			== DualGridTilemap.TerrainType.WATER
-		)
-	if config.requires_grass:
-		return terrain_map.is_cell_plantable(cell)
-	return terrain_map.get_terrain_type(cell) != DualGridTilemap.TerrainType.WATER
+	match config.placement_surface:
+		PlantDefenseConfig.PlacementSurface.GRASS_ONLY:
+			return terrain_map.is_cell_plantable(cell)
+		PlantDefenseConfig.PlacementSurface.ANY_LAND:
+			var terrain_type := terrain_map.get_terrain_type(cell)
+			return (
+				terrain_type == DualGridTilemap.TerrainType.GRASS
+				or terrain_type == DualGridTilemap.TerrainType.DIRT
+				or terrain_type == DualGridTilemap.TerrainType.METAL
+			)
+		PlantDefenseConfig.PlacementSurface.WATER_ONLY:
+			return (
+				terrain_map.get_terrain_type(cell)
+				== DualGridTilemap.TerrainType.WATER
+			)
+		_:
+			return false
 
 
 func _is_entity_space_clear(

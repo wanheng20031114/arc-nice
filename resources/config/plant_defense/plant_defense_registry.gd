@@ -87,23 +87,24 @@ static func get_config(plant_id: StringName) -> PlantDefenseConfig:
 
 
 static func get_all_configs() -> Array[PlantDefenseConfig]:
-	return [
-		AGAVE_CANNON_CONFIG,
-		CORN_MACHINE_GUN_CONFIG,
-		OAK_WAREHOUSE_CONFIG,
-		VEGETATION_STAKE_CONFIG,
-		WOOD_PROCESSING_STATION_CONFIG,
-		WATER_COLLECTOR_CONFIG,
-		RESEARCH_CENTER_CONFIG,
-		PLANT_CULTIVATION_CENTER_CONFIG,
-		BAMBOO_MORTAR_CONFIG,
-		HYDRANGEA_RAIN_TOWER_CONFIG,
-		GRAPE_ARC_TOWER_CONFIG,
-		STONE_MILL_CONFIG,
-		EXCAVATOR_CONFIG,
-		SIMPLE_FENCE_CONFIG,
-		PLANTING_BASE_CONFIG,
-	]
+	var configs: Array[PlantDefenseConfig] = []
+	for config_variant in PLANT_CONFIGS.values():
+		var config := config_variant as PlantDefenseConfig
+		if config != null:
+			configs.append(config)
+	configs.sort_custom(_config_precedes)
+	return configs
+
+
+static func _config_precedes(
+	left: PlantDefenseConfig,
+	right: PlantDefenseConfig
+) -> bool:
+	if left.building_category != right.building_category:
+		return left.building_category < right.building_category
+	if left.menu_order != right.menu_order:
+		return left.menu_order < right.menu_order
+	return String(left.plant_id) < String(right.plant_id)
 
 
 static func is_valid_plant_id(plant_id: StringName) -> bool:

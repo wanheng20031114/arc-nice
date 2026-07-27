@@ -68,8 +68,8 @@ func _run() -> void:
 		and config.physical_defense == 5
 		and config.magic_defense == 10
 		and config.footprint_size == Vector2i(2, 2)
-		and config.requires_grass
-		and not config.requires_water_source,
+		and config.placement_surface
+		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 		"种植基地必须是支持联机的2×2草地建筑，并具有2000生命、5物防和10法防。"
 	)
 	if config == null or not config.is_valid():
@@ -794,6 +794,7 @@ func _test_hud_follow_focus(
 		"Root/Center/Content/Margin/Layout/CardScroll"
 	) as ScrollContainer
 	var configs := PlantDefenseRegistry.get_all_configs()
+	var planting_base_index := configs.find(config)
 	_expect(
 		card_scroll != null
 		and card_scroll.follow_focus
@@ -802,21 +803,21 @@ func _test_hud_follow_focus(
 		and configs.has(PlantDefenseRegistry.get_config(&"excavator"))
 		and configs.has(PlantDefenseRegistry.get_config(&"stone_mill"))
 		and configs.has(PlantDefenseRegistry.get_config(&"simple_fence"))
-		and configs.back() == config
+		and planting_base_index >= 0
 		and hud.cards.size() == 15
-		and hud.cards.back().plant_config == config,
-		"15张植物卡必须包含挖土装置、石磨台与简易围栏，并把种植基地放在末位，CardScroll须启用follow_focus。"
+		and hud.cards[planting_base_index].plant_config == config,
+		"15张植物卡必须包含挖土装置、石磨台、简易围栏和语义定位的种植基地，CardScroll须启用follow_focus。"
 	)
 	if card_scroll == null or not hud.is_open():
 		return
-	for _step in range(configs.size() - 1):
+	for _step in range(planting_base_index):
 		hud.call("_select_relative", 1)
 	await process_frame
 	await process_frame
 	_expect(
 		hud.selected_config == config
 		and card_scroll.follow_focus,
-		"键盘移动到末位种植基地时，CardScroll必须持续启用follow_focus。"
+		"键盘按语义顺序移动到种植基地时，CardScroll必须持续启用follow_focus。"
 	)
 	hud.close()
 

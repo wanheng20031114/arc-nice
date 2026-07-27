@@ -255,12 +255,15 @@ func _test_config_and_scene_contracts() -> void:
 		and registered_configs.has(grape_arc_config)
 		and registered_configs.has(excavator_config)
 		and registered_configs.has(simple_fence_config)
-		and registered_configs[8] == bamboo_mortar_config
-		and registered_configs[11] == stone_mill_config
-		and registered_configs[12] == excavator_config
-		and registered_configs[13] == simple_fence_config
-		and registered_configs.back() == planting_base_config,
-		"植物注册表必须公开全部15种建筑，并在不改变竹筒迫击炮索引和种植基地末位的前提下加入石磨台、挖土装置与简易围栏。"
+		and bamboo_mortar_config.building_category
+		== PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER
+		and stone_mill_config.building_category
+		== PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING
+		and excavator_config.building_category
+		== PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING
+		and simple_fence_config.building_category
+		== PlantDefenseConfig.BuildingCategory.FENCE,
+		"植物注册表必须公开全部15种建筑，并以显式语义分类取代历史数组下标契约。"
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
@@ -275,8 +278,8 @@ func _test_config_and_scene_contracts() -> void:
 			192.0
 		)
 		and bamboo_mortar_config.footprint_size == Vector2i(2, 2)
-		and bamboo_mortar_config.requires_grass
-		and not bamboo_mortar_config.requires_water_source
+		and bamboo_mortar_config.placement_surface
+		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY
 		and bamboo_mortar_config.supports_multiplayer,
 		"竹筒迫击炮必须拥有2000生命、10物防、20法防、100中心伤害、无额外攻击间隔、192范围并占草地2×2格。"
 	)
@@ -299,8 +302,8 @@ func _test_config_and_scene_contracts() -> void:
 		and water_collector_config.physical_defense == 10
 		and water_collector_config.magic_defense == 0
 		and water_collector_config.footprint_size == Vector2i(2, 2)
-		and not water_collector_config.requires_grass
-		and water_collector_config.requires_water_source,
+		and water_collector_config.placement_surface
+		== PlantDefenseConfig.PlacementSurface.WATER_ONLY,
 		"水源采集器必须拥有2000生命、10物防、0法防、占2×2格且仅支持水面。"
 	)
 	_expect(
