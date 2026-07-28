@@ -691,6 +691,21 @@ func net_luoxi_collectible_refresh_requested(offer_revision: int = 0) -> void:
 	pass
 
 @rpc("any_peer", "call_remote", "reliable", 6)
+func net_luoxi_special_game_start_requested() -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_luoxi_special_game_card_reveal_requested(
+	session_revision: int,
+	card_index: int
+) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_luoxi_special_game_finish_requested(session_revision: int) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 6)
 func net_cheat_xirang_requested() -> void:
 	pass
 
@@ -780,6 +795,29 @@ func net_luoxi_collectible_refresh_confirmed(
 	result_code: int,
 	refresh_count: int,
 	current_xirang: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_luoxi_special_game_started(
+	peer_id: int,
+	result: Dictionary,
+	inventory_snapshot: Dictionary = {}
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_luoxi_special_game_card_revealed(
+	peer_id: int,
+	result: Dictionary
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_luoxi_special_game_finished(
+	peer_id: int,
+	result: Dictionary,
+	inventory_snapshot: Dictionary = {}
 ) -> void:
 	pass
 

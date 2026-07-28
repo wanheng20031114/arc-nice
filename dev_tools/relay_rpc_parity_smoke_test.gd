@@ -65,6 +65,12 @@ func _run() -> void:
 		"net_luoxi_collectible_offer_state",
 		"net_luoxi_collectible_choice_requested",
 		"net_luoxi_collectible_confirmed",
+		"net_luoxi_special_game_start_requested",
+		"net_luoxi_special_game_card_reveal_requested",
+		"net_luoxi_special_game_finish_requested",
+		"net_luoxi_special_game_started",
+		"net_luoxi_special_game_card_revealed",
+		"net_luoxi_special_game_finished",
 		"net_warehouse_command_requested",
 		"net_warehouse_snapshot_requested",
 		"net_warehouse_command_result",
@@ -466,6 +472,42 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 	)
 	_expect_rpc_signature_contains(
 		rpcs,
+		"net_luoxi_special_game_card_reveal_requested",
+		"session_revision:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_luoxi_special_game_card_reveal_requested",
+		"card_index:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_luoxi_special_game_finish_requested",
+		"session_revision:int"
+	)
+	for special_result_method in [
+		"net_luoxi_special_game_started",
+		"net_luoxi_special_game_finished",
+	]:
+		_expect_rpc_signature_contains(rpcs, special_result_method, "peer_id:int")
+		_expect_rpc_signature_contains(rpcs, special_result_method, "result:Dictionary")
+		_expect_rpc_signature_contains(
+			rpcs,
+			special_result_method,
+			"inventory_snapshot:Dictionary={}"
+		)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_luoxi_special_game_card_revealed",
+		"peer_id:int"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
+		"net_luoxi_special_game_card_revealed",
+		"result:Dictionary"
+	)
+	_expect_rpc_signature_contains(
+		rpcs,
 		"net_warehouse_command_requested",
 		"command:Dictionary"
 	)
@@ -608,6 +650,12 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_luoxi_collectible_offer_state",
 		"net_luoxi_collectible_choice_requested",
 		"net_luoxi_collectible_confirmed",
+		"net_luoxi_special_game_start_requested",
+		"net_luoxi_special_game_card_reveal_requested",
+		"net_luoxi_special_game_finish_requested",
+		"net_luoxi_special_game_started",
+		"net_luoxi_special_game_card_revealed",
+		"net_luoxi_special_game_finished",
 		"net_warehouse_command_requested",
 		"net_warehouse_snapshot_requested",
 		"net_warehouse_command_result",

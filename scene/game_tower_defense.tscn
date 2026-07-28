@@ -50,6 +50,7 @@
 [ext_resource type="PackedScene" path="res://scene/plant_defense/fate_coordinator.tscn" id="51_fate_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/xiaocong_fate_interlude.tscn" id="52_xiaocong_interlude"]
 [ext_resource type="Resource" path="res://resources/config/day_cycle/tower_defense_day_cycle.tres" id="53_day_cycle"]
+[ext_resource type="Script" path="res://scene/luoxi_special_game_coordinator.gd" id="54_luoxi_special_game"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -350,6 +351,9 @@ position = Vector2(96, 81)
 
 [node name="LuoxiMerchant" parent="." unique_id=146965342 instance=ExtResource("20_luoxi")]
 position = Vector2(154, 82)
+
+[node name="LuoxiSpecialGameCoordinator" type="Node" parent="."]
+script = ExtResource("54_luoxi_special_game")
 
 [node name="FateCoordinator" parent="." instance=ExtResource("51_fate_coordinator")]
 

@@ -172,6 +172,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
+@onready var luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator = (
+	$LuoxiSpecialGameCoordinator
+)
 @onready var fate_coordinator: FateCoordinator = $FateCoordinator
 @onready var fate_manager: TowerDefenseFateManager = (
 	$FateCoordinator/TowerDefenseFateManager
@@ -476,6 +479,13 @@ func _ready() -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		player.died.connect(_on_player_died)
 		player.revived.connect(_on_player_revived.bind(0))
+	luoxi_special_game_coordinator.setup(
+		self,
+		run_state,
+		luoxi_merchant,
+		random_generator,
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+	)
 	_set_merchant_active(false)
 	fate_coordinator.setup(self, day_cycle_config)
 	_configure_xiaocong_fate_flow()
@@ -2638,6 +2648,173 @@ func show_local_skill1_purchase_result(result_code: int) -> void:
 	merchant.show_purchase_result(result_code)
 
 
+func player_has_luoxi_special_ticket(player_instance: Player) -> bool:
+	if player_instance == null or luoxi_special_game_coordinator == null:
+		return false
+	return luoxi_special_game_coordinator.player_has_ticket(
+		player_instance.peer_id if player_instance.peer_id > 0 else 0
+	)
+
+
+func supports_luoxi_special_game() -> bool:
+	return wave_state not in [WaveState.VICTORY, WaveState.DEFEAT]
+
+
+func request_luoxi_special_game_start() -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	var peer_id := (
+		multiplayer_local_peer_id
+		if runtime_mode != RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	show_local_luoxi_special_game_started(
+		try_start_luoxi_special_game_for_peer(peer_id)
+	)
+
+
+func request_luoxi_special_game_card_reveal(
+	session_revision: int,
+	card_index: int
+) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	var peer_id := (
+		multiplayer_local_peer_id
+		if runtime_mode != RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	show_local_luoxi_special_game_card_revealed(
+		try_reveal_luoxi_special_game_card_for_peer(
+			peer_id,
+			session_revision,
+			card_index
+		)
+	)
+
+
+func request_luoxi_special_game_finish(session_revision: int) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	var peer_id := (
+		multiplayer_local_peer_id
+		if runtime_mode != RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	show_local_luoxi_special_game_finished(
+		try_finish_luoxi_special_game_for_peer(peer_id, session_revision)
+	)
+
+
+func try_start_luoxi_special_game_for_peer(peer_id: int) -> Dictionary:
+	if luoxi_special_game_coordinator == null:
+		return {
+			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
+		}
+	return luoxi_special_game_coordinator.start_for_peer(peer_id)
+
+
+func try_reveal_luoxi_special_game_card_for_peer(
+	peer_id: int,
+	session_revision: int,
+	card_index: int
+) -> Dictionary:
+	if luoxi_special_game_coordinator == null:
+		return {
+			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
+		}
+	return luoxi_special_game_coordinator.reveal_for_peer(
+		peer_id,
+		session_revision,
+		card_index
+	)
+
+
+func try_finish_luoxi_special_game_for_peer(
+	peer_id: int,
+	session_revision: int
+) -> Dictionary:
+	if luoxi_special_game_coordinator == null:
+		return {
+			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
+		}
+	return luoxi_special_game_coordinator.finish_for_peer(
+		peer_id,
+		session_revision
+	)
+
+
+func cancel_luoxi_special_game_for_peer(peer_id: int) -> void:
+	if luoxi_special_game_coordinator != null:
+		luoxi_special_game_coordinator.cancel_for_peer(peer_id)
+
+
+func show_local_luoxi_special_game_started(result: Dictionary) -> void:
+	if luoxi_merchant != null:
+		luoxi_merchant.apply_special_game_started(result)
+
+
+func show_local_luoxi_special_game_card_revealed(result: Dictionary) -> void:
+	if luoxi_merchant != null:
+		luoxi_merchant.apply_special_game_card_revealed(result)
+
+
+func show_local_luoxi_special_game_finished(result: Dictionary) -> void:
+	if luoxi_merchant != null:
+		luoxi_merchant.apply_special_game_finished(result)
+
+
+func get_luoxi_damageable_players() -> Array[Player]:
+	var result: Array[Player] = []
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		if player != null and is_instance_valid(player):
+			result.append(player)
+		return result
+	for player_variant in peer_players.values():
+		var player_instance := player_variant as Player
+		if player_instance != null and is_instance_valid(player_instance):
+			result.append(player_instance)
+	return result
+
+
+func apply_luoxi_player_health_loss(
+	target_player: Player,
+	amount: int,
+	minimum_health: int = 0
+) -> int:
+	if (
+		target_player == null
+		or not is_instance_valid(target_player)
+		or target_player.is_dead
+		or amount <= 0
+		or runtime_mode == RuntimeMode.CLIENT_VIEW
+	):
+		return 0
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		return target_player.apply_direct_health_loss(amount, minimum_health)
+	var current_scene := get_tree().current_scene
+	if (
+		current_scene == null
+		or not current_scene.has_method("apply_luoxi_direct_health_loss")
+	):
+		push_error("GameTowerDefense: 多人洛茜直接扣血缺少主机复制入口。")
+		return 0
+	return int(current_scene.call(
+		"apply_luoxi_direct_health_loss",
+		target_player,
+		amount,
+		minimum_health
+	))
+
+
+func apply_luoxi_core_health_loss(amount: int) -> int:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW or amount <= 0:
+		return 0
+	var previous_health := current_base_health
+	_apply_base_damage(amount)
+	return previous_health - current_base_health
+
+
 func request_luoxi_collectible_choice(choice_index: int, config_path: String = "") -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
@@ -2816,6 +2993,8 @@ func _set_local_merchants_active(active: bool) -> bool:
 			changed = true
 		if entering_new_intermission:
 			luoxi_collectible_claim_counts.clear()
+			if luoxi_special_game_coordinator != null:
+				luoxi_special_game_coordinator.cancel_all()
 			luoxi_merchant.reset_intermission_state()
 	return changed
 
@@ -4596,6 +4775,10 @@ func get_progression_metrics_snapshot() -> Dictionary:
 
 
 func _enter_victory(emit_multiplayer: bool = true) -> void:
+	if luoxi_special_game_coordinator != null:
+		luoxi_special_game_coordinator.cancel_all()
+	if luoxi_merchant != null:
+		luoxi_merchant.abort_special_game()
 	_cancel_plant_placement()
 	if defeat_camera_tween != null:
 		defeat_camera_tween.kill()
@@ -4623,6 +4806,10 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 func _enter_defeat(emit_multiplayer: bool = true) -> void:
 	if wave_state == WaveState.DEFEAT:
 		return
+	if luoxi_special_game_coordinator != null:
+		luoxi_special_game_coordinator.cancel_all()
+	if luoxi_merchant != null:
+		luoxi_merchant.abort_special_game()
 	_cancel_plant_placement()
 	wave_state = WaveState.DEFEAT
 	transition_world_to_day()
@@ -4878,6 +5065,7 @@ func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
 
 
 func _on_player_died() -> void:
+	cancel_luoxi_special_game_for_peer(0)
 	_request_enemy_retarget_after_objective_change()
 	_cancel_plant_placement()
 	_update_plant_placement_input_state()
@@ -4892,6 +5080,7 @@ func _on_player_died() -> void:
 
 
 func _on_multiplayer_player_died(peer_id: int) -> void:
+	cancel_luoxi_special_game_for_peer(peer_id)
 	_request_enemy_retarget_after_objective_change()
 	var dead_player := get_player_for_peer(peer_id)
 	if dead_player != null and is_instance_valid(dead_player):
@@ -5161,6 +5350,7 @@ func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
 func remove_multiplayer_player(peer_id: int) -> void:
 	if peer_id <= 0 or peer_id == multiplayer_local_peer_id:
 		return
+	cancel_luoxi_special_game_for_peer(peer_id)
 	production_coordinator.deactivate_personal_output_peer(peer_id)
 	var player_instance := peer_players.get(peer_id) as Player
 	peer_players.erase(peer_id)

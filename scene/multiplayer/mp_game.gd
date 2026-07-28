@@ -19,6 +19,9 @@ const TRANSACTION_RPC_METHODS := {
 	&"net_luoxi_collectible_confirmed": true,
 	&"net_luoxi_collectible_offer_state": true,
 	&"net_luoxi_collectible_refresh_confirmed": true,
+	&"net_luoxi_special_game_started": true,
+	&"net_luoxi_special_game_card_revealed": true,
+	&"net_luoxi_special_game_finished": true,
 	&"net_warehouse_command_result": true,
 	&"net_warehouse_storage_snapshot_batch": true,
 	&"net_production_command_result": true,
@@ -1160,6 +1163,48 @@ func request_luoxi_collectible_refresh(offer_revision: int = 0) -> void:
 		net_luoxi_collectible_refresh_requested.rpc_id(
 			_get_host_peer_id(),
 			offer_revision
+		)
+
+
+func request_luoxi_special_game_start() -> void:
+	if net_manager.is_host():
+		_apply_luoxi_special_game_start_for_peer(_get_local_peer_id())
+	elif net_manager.is_client():
+		net_luoxi_special_game_start_requested.rpc_id(_get_host_peer_id())
+
+
+func supports_luoxi_special_game() -> bool:
+	return game != null and game.supports_luoxi_special_game()
+
+
+func request_luoxi_special_game_card_reveal(
+	session_revision: int,
+	card_index: int
+) -> void:
+	if net_manager.is_host():
+		_apply_luoxi_special_game_card_reveal_for_peer(
+			_get_local_peer_id(),
+			session_revision,
+			card_index
+		)
+	elif net_manager.is_client():
+		net_luoxi_special_game_card_reveal_requested.rpc_id(
+			_get_host_peer_id(),
+			session_revision,
+			card_index
+		)
+
+
+func request_luoxi_special_game_finish(session_revision: int) -> void:
+	if net_manager.is_host():
+		_apply_luoxi_special_game_finish_for_peer(
+			_get_local_peer_id(),
+			session_revision
+		)
+	elif net_manager.is_client():
+		net_luoxi_special_game_finish_requested.rpc_id(
+			_get_host_peer_id(),
+			session_revision
 		)
 
 
@@ -7686,6 +7731,74 @@ func request_multiplayer_player_damage_over_time_tick(
 	return true
 
 
+## Host-only replication path for Luoxi's explicit HP-loss card effects.
+## The Player method deliberately bypasses ordinary combat mitigation; this
+## wrapper only publishes the already-applied authoritative health result.
+func apply_luoxi_direct_health_loss(
+	target_player: Player,
+	amount: int,
+	minimum_health: int = 0
+) -> int:
+	if (
+		net_manager == null
+		or not net_manager.is_host()
+		or target_player == null
+		or not is_instance_valid(target_player)
+		or target_player.peer_id <= 0
+		or target_player.is_dead
+		or amount <= 0
+	):
+		return 0
+	var applied_loss := target_player.apply_direct_health_loss(
+		amount,
+		minimum_health
+	)
+	if applied_loss <= 0:
+		return 0
+	_show_confirmed_player_damage_number(
+		target_player,
+		applied_loss,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL
+	)
+	var confirmed_dead := target_player.is_dead
+	if confirmed_dead and _is_valid_tiyi_player(target_player):
+		_clear_projectiles_for_peer(target_player.peer_id)
+		_clear_projectile_records_for_peer(target_player.peer_id)
+	var health_revision := _next_player_health_revision(target_player.peer_id)
+	if confirmed_dead:
+		_schedule_player_revive(target_player.peer_id)
+	var event_arguments := [
+		target_player.peer_id,
+		target_player.current_health,
+		confirmed_dead,
+		health_revision,
+		applied_loss,
+		Vector2.ZERO,
+		int(EnemyConfig.DamageType.PHYSICAL),
+		false,
+		false,
+		CombatTypes.DamageRejectionReason.NONE,
+	]
+	_rpc_to_connected_clients(
+		&"net_player_damage_applied",
+		event_arguments
+	)
+	net_player_damage_applied(
+		target_player.peer_id,
+		target_player.current_health,
+		confirmed_dead,
+		health_revision,
+		applied_loss,
+		Vector2.ZERO,
+		int(EnemyConfig.DamageType.PHYSICAL),
+		false,
+		false,
+		CombatTypes.DamageRejectionReason.NONE
+	)
+	return applied_loss
+
+
 func _build_player_damage_request(
 	damage: int,
 	damage_type: int,
@@ -11610,6 +11723,76 @@ func net_luoxi_collectible_refresh_requested(offer_revision: int = 0) -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
+func net_luoxi_special_game_start_requested() -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	if (
+		not _consume_remote_transaction_admission(sender_id)
+		or not _consume_peer_rate_token(
+			_luoxi_transaction_rate_buckets,
+			sender_id,
+			LUOXI_TRANSACTION_RATE_PER_SECOND,
+			LUOXI_TRANSACTION_RATE_BURST
+		)
+	):
+		return
+	_apply_luoxi_special_game_start_for_peer(sender_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_luoxi_special_game_card_reveal_requested(
+	session_revision: int,
+	card_index: int
+) -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	if (
+		not _consume_remote_transaction_admission(sender_id)
+		or not _consume_peer_rate_token(
+			_luoxi_transaction_rate_buckets,
+			sender_id,
+			LUOXI_TRANSACTION_RATE_PER_SECOND,
+			LUOXI_TRANSACTION_RATE_BURST
+		)
+	):
+		return
+	_apply_luoxi_special_game_card_reveal_for_peer(
+		sender_id,
+		session_revision,
+		card_index
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_luoxi_special_game_finish_requested(session_revision: int) -> void:
+	if not net_manager.is_host():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	if (
+		not _consume_remote_transaction_admission(sender_id)
+		or not _consume_peer_rate_token(
+			_luoxi_transaction_rate_buckets,
+			sender_id,
+			LUOXI_TRANSACTION_RATE_PER_SECOND,
+			LUOXI_TRANSACTION_RATE_BURST
+		)
+	):
+		return
+	_apply_luoxi_special_game_finish_for_peer(
+		sender_id,
+		session_revision
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
 func net_cheat_xirang_requested() -> void:
 	if not net_manager.is_host():
 		return
@@ -11892,6 +12075,60 @@ func net_luoxi_collectible_refresh_confirmed(
 			player_node.xirang_changed.emit(player_node.current_xirang, xirang_delta)
 	if peer_id == _get_local_peer_id():
 		game.show_local_luoxi_refresh_result(result_code, refresh_count, current_xirang)
+
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_luoxi_special_game_started(
+	peer_id: int,
+	result: Dictionary,
+	inventory_snapshot: Dictionary = {}
+) -> void:
+	if game == null or peer_id <= 0:
+		return
+	if not inventory_snapshot.is_empty():
+		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
+	if peer_id == _get_local_peer_id():
+		game.show_local_luoxi_special_game_started(result)
+
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_luoxi_special_game_card_revealed(
+	peer_id: int,
+	result: Dictionary
+) -> void:
+	if game == null or peer_id <= 0:
+		return
+	if peer_id == _get_local_peer_id():
+		game.show_local_luoxi_special_game_card_revealed(result)
+
+
+@rpc("authority", "call_remote", "reliable", 6)
+func net_luoxi_special_game_finished(
+	peer_id: int,
+	result: Dictionary,
+	inventory_snapshot: Dictionary = {}
+) -> void:
+	if game == null or peer_id <= 0:
+		return
+	if not inventory_snapshot.is_empty():
+		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
+	var player_node := game.get_player_for_peer(peer_id)
+	if player_node != null and is_instance_valid(player_node):
+		var confirmed_xirang := int(
+			result.get("current_xirang", player_node.current_xirang)
+		)
+		var already_applied_on_host: bool = (
+			net_manager.is_host() and peer_id == _get_local_peer_id()
+		)
+		if not already_applied_on_host and confirmed_xirang != player_node.current_xirang:
+			var xirang_delta := confirmed_xirang - player_node.current_xirang
+			player_node.current_xirang = maxi(confirmed_xirang, 0)
+			player_node.xirang_changed.emit(
+				player_node.current_xirang,
+				xirang_delta
+			)
+	if peer_id == _get_local_peer_id():
+		game.show_local_luoxi_special_game_finished(result)
 
 
 @rpc("authority", "call_remote", "unreliable", 7)
@@ -12216,6 +12453,66 @@ func _send_luoxi_offer_state_to_peer(
 		player_node.current_xirang,
 		refresh_result_code
 	)
+
+
+func _apply_luoxi_special_game_start_for_peer(peer_id: int) -> void:
+	if game == null or peer_id <= 0 or not net_manager.is_host():
+		return
+	var result := game.try_start_luoxi_special_game_for_peer(peer_id)
+	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
+	_rpc_to_connected_clients(
+		&"net_luoxi_special_game_started",
+		[peer_id, result, inventory_snapshot]
+	)
+	if peer_id == _get_local_peer_id():
+		net_luoxi_special_game_started(
+			peer_id,
+			result,
+			inventory_snapshot
+		)
+
+
+func _apply_luoxi_special_game_card_reveal_for_peer(
+	peer_id: int,
+	session_revision: int,
+	card_index: int
+) -> void:
+	if game == null or peer_id <= 0 or not net_manager.is_host():
+		return
+	var result := game.try_reveal_luoxi_special_game_card_for_peer(
+		peer_id,
+		session_revision,
+		card_index
+	)
+	_rpc_to_connected_clients(
+		&"net_luoxi_special_game_card_revealed",
+		[peer_id, result]
+	)
+	if peer_id == _get_local_peer_id():
+		net_luoxi_special_game_card_revealed(peer_id, result)
+
+
+func _apply_luoxi_special_game_finish_for_peer(
+	peer_id: int,
+	session_revision: int
+) -> void:
+	if game == null or peer_id <= 0 or not net_manager.is_host():
+		return
+	var result := game.try_finish_luoxi_special_game_for_peer(
+		peer_id,
+		session_revision
+	)
+	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
+	_rpc_to_connected_clients(
+		&"net_luoxi_special_game_finished",
+		[peer_id, result, inventory_snapshot]
+	)
+	if peer_id == _get_local_peer_id():
+		net_luoxi_special_game_finished(
+			peer_id,
+			result,
+			inventory_snapshot
+		)
 
 
 func _apply_luoxi_collectible_choice_for_peer(

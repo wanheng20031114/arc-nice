@@ -44,6 +44,7 @@ const DEFAULT_PANEL_BACKGROUND := preload(
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow5,
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow6,
 	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow7,
+	$Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow8,
 ]
 @onready var status_label: Label = $Overlay/PanelRoot/StatusLabel
 @onready var close_button: Button = $Overlay/PanelRoot/CloseButton

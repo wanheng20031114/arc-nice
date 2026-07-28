@@ -254,6 +254,48 @@ func get_inventory_item_total(item: PickupConfig) -> int:
 	)
 
 
+## 原子地按物品身份消耗一批库存。调用方用 revision 把“检查拥有数量”与
+## “实际扣除”绑定到同一份库存快照，适用于需要在服务端确认后才消费的事务。
+func try_consume_item_count_if_revision(
+	item: PickupConfig,
+	count: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	ensure_run_started()
+	if active_multiplayer_peer_id > 0:
+		return try_consume_item_count_for_peer_if_revision(
+			active_multiplayer_peer_id,
+			item,
+			count,
+			expected_revision,
+			emit_change
+		)
+	_ensure_local_inventory_shape()
+	if (
+		expected_revision != inventory_revision
+		or item == null
+		or count <= 0
+		or _get_item_total_in_arrays(
+			inventory,
+			inventory_stack_counts,
+			item
+		) < count
+	):
+		return false
+	if not _consume_item_count_from_arrays(
+		inventory,
+		inventory_stack_counts,
+		item,
+		count
+	):
+		return false
+	_bump_local_inventory_revision()
+	if emit_change:
+		inventory_changed.emit()
+	return true
+
+
 func try_consume_item_at_slot_if_revision(
 	slot_index: int,
 	expected_item: PickupConfig,
@@ -563,6 +605,38 @@ func get_inventory_item_total_for_peer(
 		multiplayer_inventory_stack_counts[peer_id] as Array,
 		item
 	)
+
+
+func try_consume_item_count_for_peer_if_revision(
+	peer_id: int,
+	item: PickupConfig,
+	count: int,
+	expected_revision: int,
+	emit_change: bool = true
+) -> bool:
+	ensure_run_started()
+	ensure_multiplayer_peer_state(peer_id)
+	if (
+		expected_revision != get_inventory_revision_for_peer(peer_id)
+		or item == null
+		or count <= 0
+	):
+		return false
+	var peer_inventory := multiplayer_inventories[peer_id] as Array
+	var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+	if _get_item_total_in_arrays(peer_inventory, peer_counts, item) < count:
+		return false
+	if not _consume_item_count_from_arrays(
+		peer_inventory,
+		peer_counts,
+		item,
+		count
+	):
+		return false
+	_bump_inventory_revision_for_peer(peer_id)
+	if emit_change:
+		inventory_changed.emit()
+	return true
 
 
 func try_consume_item_at_slot_for_peer_if_revision(

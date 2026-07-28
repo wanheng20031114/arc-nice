@@ -774,6 +774,33 @@ func apply_damage(
 	return apply_combat_damage(request).accepted
 
 
+## 直接生命损失用于规则明确要求“扣除精确生命”的非战斗事务。
+## 它不经过防御、减伤、闪避、无敌帧或受击触发，但仍复用玩家的血条、
+## 属性条件刷新与死亡生命周期。minimum_health 可用于“只保留 1 HP”。
+func apply_direct_health_loss(amount: int, minimum_health: int = 0) -> int:
+	if is_dead or amount <= 0:
+		return 0
+	var health_floor := clampi(minimum_health, 0, current_health)
+	var next_health := maxi(current_health - amount, health_floor)
+	var applied_loss := current_health - next_health
+	if applied_loss <= 0:
+		return 0
+	current_health = next_health
+	last_damage_taken = applied_loss
+	if peer_id <= 0:
+		show_damage_number(
+			applied_loss,
+			Vector2.ZERO,
+			EnemyConfig.DamageType.PHYSICAL
+		)
+	health_bar.set_health(current_health, max_health)
+	health_changed.emit(current_health, max_health)
+	_refresh_collectible_stats(false)
+	if current_health <= 0:
+		_die()
+	return applied_loss
+
+
 ## Unified damage sink. Avoidance remains target-owned because it depends on
 ## live dash, invincibility, facing and collectible state; all numeric stages
 ## after acceptance are delegated to DamageResolver.

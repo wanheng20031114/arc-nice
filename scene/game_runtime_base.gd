@@ -250,6 +250,45 @@ func restore_multiplayer_player(
 	refresh_count: int,
 	current_xirang: int
 ) -> void
+
+
+## 洛茜券牌局只在塔防运行时启用。这里保留完整的共享多人契约，其他
+## GameRuntimeBase 实现无需伪造玩法，也不会因 MPGame 的强类型调用失败。
+func supports_luoxi_special_game() -> bool:
+	return false
+
+
+func try_start_luoxi_special_game_for_peer(_peer_id: int) -> Dictionary:
+	return {"result_code": 1}
+
+
+func try_reveal_luoxi_special_game_card_for_peer(
+	_peer_id: int,
+	_session_revision: int,
+	_card_index: int
+) -> Dictionary:
+	return {"result_code": 1}
+
+
+func try_finish_luoxi_special_game_for_peer(
+	_peer_id: int,
+	_session_revision: int
+) -> Dictionary:
+	return {"result_code": 1}
+
+
+func show_local_luoxi_special_game_started(_result: Dictionary) -> void:
+	pass
+
+
+func show_local_luoxi_special_game_card_revealed(_result: Dictionary) -> void:
+	pass
+
+
+func show_local_luoxi_special_game_finished(_result: Dictionary) -> void:
+	pass
+
+
 @abstract func show_debug_collectible_grant_result(config_path: String, success: bool) -> void
 
 

@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://c1ykm22bhdrww" path="res://scene/luoxi_collectible_choice_overlay.tscn" id="4_choice_overlay"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="5_night_light"]
 [ext_resource type="Texture2D" uid="uid://clffculwmxi7k" path="res://resources/lighting/soft_player_point_light.tres" id="6_player_light_texture"]
+[ext_resource type="PackedScene" path="res://scene/luoxi_special_game_overlay.tscn" id="7_special_game"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
 radius = 8.0
@@ -52,3 +53,5 @@ ignore_time_scale = true
 [node name="MerchantDialogueBubble" parent="." unique_id=120003080 instance=ExtResource("3_dialogue")]
 
 [node name="LuoxiCollectibleChoiceOverlay" parent="." unique_id=602010511 instance=ExtResource("4_choice_overlay")]
+
+[node name="LuoxiSpecialGameOverlay" parent="." instance=ExtResource("7_special_game")]

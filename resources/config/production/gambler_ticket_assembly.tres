@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ProductionRecipe" format=3]
+
+[ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_dirt_block.tres" id="2_dirt"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_gambler_ticket.tres" id="3_ticket"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="4_pickup_script"]
+
+[resource]
+script = ExtResource("1_script")
+recipe_id = &"gambler_ticket_assembly"
+display_name = "赌怪专用券制作"
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_dirt")])
+input_amounts = Array[int]([20])
+output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_ticket")])
+output_amounts = Array[int]([1])
+duration_seconds = 10.0

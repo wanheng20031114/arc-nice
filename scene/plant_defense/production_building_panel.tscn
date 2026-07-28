@@ -498,6 +498,23 @@ alignment = 0
 autowrap_mode = 3
 clip_text = true
 
+[node name="RecipeRow8" type="Button" parent="Overlay/PanelRoot/RecipeScroll/RecipeRows"]
+visible = false
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+theme_override_colors/font_color = Color(0.92, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_recipe")
+theme_override_styles/hover = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_recipe_active")
+theme_override_styles/focus = SubResource("StyleBoxFlat_recipe_active")
+icon_max_width = 34
+alignment = 0
+autowrap_mode = 3
+clip_text = true
+
 [node name="StatusLabel" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 61.0

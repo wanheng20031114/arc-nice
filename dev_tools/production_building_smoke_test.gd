@@ -8,6 +8,9 @@ const PANEL_SCENE := preload("res://scene/plant_defense/production_building_pane
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
+const DIRT_BLOCK := preload(
+	"res://resources/config/materials/material_dirt_block.tres"
+)
 const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
 const PLANK := preload("res://resources/config/materials/material_plank.tres")
 const WATER_BOTTLE := preload(
@@ -15,6 +18,9 @@ const WATER_BOTTLE := preload(
 )
 const WOODEN_CORE := preload(
 	"res://resources/config/materials/material_wooden_core.tres"
+)
+const GAMBLER_TICKET := preload(
+	"res://resources/config/materials/material_gambler_ticket.tres"
 )
 const WATER_COLLECTOR_ITEM := preload(
 	"res://resources/config/buildings/building_water_collector.tres"
@@ -189,7 +195,8 @@ func _run() -> void:
 		and panel.has_node("Overlay/PanelRoot/OutputSlot2")
 		and panel.has_node("Overlay/PanelRoot/OutputSlot3")
 		and panel.has_node("Overlay/PanelRoot/MaterialList")
-		and panel.has_node("Overlay/PanelRoot/ToggleButton"),
+		and panel.has_node("Overlay/PanelRoot/ToggleButton")
+		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow8"),
 		"生产面板必须原生搭建左右各3个候选槽位、物资列表与右上角开关。"
 	)
 	_expect(
@@ -206,20 +213,22 @@ func _run() -> void:
 		panel.recipe_rows[0].icon == PLANK.icon_texture
 		and panel.recipe_rows[0].icon != WOOD.icon_texture
 		and panel.recipe_rows[1].icon == WOODEN_CORE.icon_texture
-		and panel.recipe_rows[2].icon == WATER_COLLECTOR_ITEM.icon_texture
-		and panel.recipe_rows[3].icon == PLANTING_BASE_ITEM.icon_texture
-		and panel.recipe_rows[4].icon == PLANT_CULTIVATION_CENTER_ITEM.icon_texture
-		and panel.recipe_rows[5].icon == RESEARCH_CENTER_ITEM.icon_texture
-		and panel.recipe_rows[6].icon == EXCAVATOR_ITEM.icon_texture
+		and panel.recipe_rows[2].icon == GAMBLER_TICKET.icon_texture
+		and panel.recipe_rows[3].icon == WATER_COLLECTOR_ITEM.icon_texture
+		and panel.recipe_rows[4].icon == PLANTING_BASE_ITEM.icon_texture
+		and panel.recipe_rows[5].icon == PLANT_CULTIVATION_CENTER_ITEM.icon_texture
+		and panel.recipe_rows[6].icon == RESEARCH_CENTER_ITEM.icon_texture
+		and panel.recipe_rows[7].icon == EXCAVATOR_ITEM.icon_texture
 		and panel.recipe_rows.all(func(row: Button) -> bool: return row.visible)
-		and panel.recipe_rows[2].text.contains("水源采集器组装")
-		and panel.recipe_rows[3].text.contains("种植基地组装")
-		and panel.recipe_rows[4].text.contains("植物培育中心组装")
-		and panel.recipe_rows[5].text.contains("科研中心组装")
-		and panel.recipe_rows[6].text.contains("挖土装置组装")
-		and panel.recipe_rows[2].text.contains("30秒")
-		and panel.recipe_rows[6].text.contains("30秒"),
-		"右侧七条配方必须显示正确产物图标，五种功能建筑统一标明30秒。"
+		and panel.recipe_rows[2].text.contains("赌怪专用券制作")
+		and panel.recipe_rows[3].text.contains("水源采集器组装")
+		and panel.recipe_rows[4].text.contains("种植基地组装")
+		and panel.recipe_rows[5].text.contains("植物培育中心组装")
+		and panel.recipe_rows[6].text.contains("科研中心组装")
+		and panel.recipe_rows[7].text.contains("挖土装置组装")
+		and panel.recipe_rows[3].text.contains("30秒")
+		and panel.recipe_rows[7].text.contains("30秒"),
+		"右侧八条配方必须显示正确产物图标，五种功能建筑统一标明30秒。"
 	)
 	_expect(
 		panel.input_slots[0].visible
@@ -307,7 +316,7 @@ func _run() -> void:
 		"所有建筑面板必须通过统一关闭规则支持第二次交互键关闭。"
 	)
 	_expect(
-		station.recipes.size() == 7
+		station.recipes.size() == 8
 		and _recipe_matches(
 			station.recipes[0],
 			&"wood_to_plank",
@@ -330,6 +339,16 @@ func _run() -> void:
 		)
 		and _recipe_matches(
 			station.recipes[2],
+			&"gambler_ticket_assembly",
+			[DIRT_BLOCK],
+			[20],
+			GAMBLER_TICKET,
+			1,
+			10.0,
+			false
+		)
+		and _recipe_matches(
+			station.recipes[3],
 			&"water_collector_assembly",
 			[PLANK],
 			[10],
@@ -339,7 +358,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[3],
+			station.recipes[4],
 			&"planting_base_assembly",
 			[PLANK, SAPLING, WATER_BOTTLE],
 			[20, 5, 5],
@@ -349,7 +368,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[4],
+			station.recipes[5],
 			&"plant_cultivation_center_assembly",
 			[PLANK, WATER_BOTTLE],
 			[30, 10],
@@ -359,7 +378,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[5],
+			station.recipes[6],
 			&"research_center_assembly",
 			[PLANK, WATER_BOTTLE],
 			[30, 10],
@@ -369,7 +388,7 @@ func _run() -> void:
 			true
 		)
 		and _recipe_matches(
-			station.recipes[6],
+			station.recipes[7],
 			&"excavator_assembly",
 			[PLANK],
 			[10],
@@ -378,7 +397,7 @@ func _run() -> void:
 			30.0,
 			true
 		),
-		"加工站必须按固定顺序提供两条材料配方与五条30秒功能建筑配方。"
+		"加工站必须按固定顺序提供三条材料配方与五条30秒功能建筑配方。"
 	)
 	_expect(
 		_is_valid_building_item(WATER_COLLECTOR_ITEM, &"water_collector")
@@ -547,6 +566,21 @@ func _run() -> void:
 		and is_zero_approx(station.progress_elapsed_seconds),
 		"三种投入跨仓凑齐时必须在同一事务中扣除10/1/5并产出1个木制核心。"
 	)
+	_expect(
+		second_warehouse.try_add_storage_item_count(DIRT_BLOCK, 20),
+		"券配方必须能从共享仓库准备20个土块。"
+	)
+	_expect(
+		station.select_recipe(&"gambler_ticket_assembly"),
+		"玩家必须能选择赌怪专用券制作配方。"
+	)
+	station.advance_shared_production_tick(10.0)
+	_expect(
+		coordinator.get_total_item_count(DIRT_BLOCK) == 0
+		and coordinator.get_total_item_count(GAMBLER_TICKET) == 1
+		and run_state.get_inventory_item_total(GAMBLER_TICKET) == 0,
+		"第10秒必须原子扣除共享仓库20土块、向共享仓库产出1张券，不能直接写入玩家背包。"
+	)
 	_test_utility_building_recipe_transactions(
 		station,
 		warehouse,
@@ -559,6 +593,7 @@ func _run() -> void:
 	) as Texture2D
 	var plank_texture := PLANK.icon_texture
 	var wooden_core_texture := WOODEN_CORE.icon_texture
+	var gambler_ticket_texture := GAMBLER_TICKET.icon_texture
 	var panel_texture := load(
 		"res://resources/texture/production/production_panel_background.png"
 	) as Texture2D
@@ -568,6 +603,14 @@ func _run() -> void:
 		wooden_core_texture != null
 		and wooden_core_texture.get_size() == Vector2(32, 32),
 		"木制核心必须使用32×32物资图标。"
+	)
+	_expect(
+		gambler_ticket_texture != null
+		and gambler_ticket_texture.get_size() == Vector2(32, 32)
+		and GAMBLER_TICKET.description == "可以用于和洛茜进行特殊游戏"
+		and GAMBLER_TICKET.stackable
+		and GAMBLER_TICKET.inventory_stack_limit == 999,
+		"赌怪专用券必须使用32×32图标、精确说明文字并支持999堆叠。"
 	)
 	_expect(panel_texture != null and panel_texture.get_size() == Vector2(728, 544), "通用生产面板背景必须为728×544。")
 	var game_scene := load("res://scene/game_tower_defense.tscn") as PackedScene
