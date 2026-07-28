@@ -1349,6 +1349,9 @@ func _run_host_tower_defense_fate_probe(
 		):
 			_fail("Host did not reliably teleport every player into the Xiaocong room.")
 			return
+	if not _inject_xirang_fate_probe_offer(fate_manager):
+		_fail("Host could not prepare the deterministic Xiaocong fate offer.")
+		return
 	mp_game.call("_on_local_xiaocong_interaction_requested")
 	if not await _wait_for_fate_stage(
 		fate_manager,
@@ -1357,9 +1360,13 @@ func _run_host_tower_defense_fate_probe(
 	):
 		_fail("Host did not receive every player's Xiaocong interaction confirmation.")
 		return
+	var selected_option_id := _get_synced_xirang_fate_option(fate_manager)
+	if selected_option_id.is_empty():
+		_fail("Host fate vote did not resolve the injected option from the active offer.")
+		return
 	mp_game.call(
 		"_on_local_xiaocong_vote_requested",
-		TowerDefenseFateRegistry.OPTION_XIRANG_GIFT,
+		selected_option_id,
 		&""
 	)
 	if not await _wait_for_game_wave_state(
@@ -1428,9 +1435,13 @@ func _run_client_tower_defense_fate_probe(
 	):
 		_fail("Client did not receive the all-player interaction barrier release.")
 		return
+	var selected_option_id := _get_synced_xirang_fate_option(game.fate_manager)
+	if selected_option_id.is_empty():
+		_fail("Client did not receive the Host-authoritative Xiaocong fate offer.")
+		return
 	mp_game.call(
 		"_on_local_xiaocong_vote_requested",
-		TowerDefenseFateRegistry.OPTION_XIRANG_GIFT,
+		selected_option_id,
 		&""
 	)
 	if not await _wait_for_game_wave_state(
@@ -1451,6 +1462,40 @@ func _run_client_tower_defense_fate_probe(
 		_fail("Client did not clear the fate state and return to the battlefield.")
 		return
 	print("LAN_PROBE_EVENT client_td_fate_vote_resumed peer=%d" % local_peer_id)
+
+
+func _inject_xirang_fate_probe_offer(
+	fate_manager: TowerDefenseFateManager
+) -> bool:
+	if (
+		fate_manager == null
+		or not is_instance_valid(fate_manager)
+		or not fate_manager.active
+		or fate_manager.available_option_ids.size()
+		!= TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT
+	):
+		return false
+	if not fate_manager.available_option_ids.has(
+		TowerDefenseFateRegistry.OPTION_XIRANG_GIFT
+	):
+		var injected_offer := fate_manager.available_option_ids.duplicate()
+		injected_offer[injected_offer.size() - 1] = (
+			TowerDefenseFateRegistry.OPTION_XIRANG_GIFT
+		)
+		fate_manager.available_option_ids = injected_offer
+		fate_manager.notify_external_state_changed()
+	return not _get_synced_xirang_fate_option(fate_manager).is_empty()
+
+
+func _get_synced_xirang_fate_option(
+	fate_manager: TowerDefenseFateManager
+) -> StringName:
+	if fate_manager == null or not is_instance_valid(fate_manager):
+		return &""
+	for option_id in fate_manager.available_option_ids:
+		if option_id == TowerDefenseFateRegistry.OPTION_XIRANG_GIFT:
+			return option_id
+	return &""
 
 
 func _wait_for_fate_stage(

@@ -1,5 +1,7 @@
 extends SceneTree
 
+const FATE_OPTION_COVERAGE_SEED_COUNT := 128
+
 var failures: Array[String] = []
 
 
@@ -14,6 +16,7 @@ func _run() -> void:
 	_test_named_config_contract()
 	_test_empty_interlude_finishes(manager)
 	_test_authoritative_offer_contract(manager)
+	_test_authoritative_offer_pool_coverage(manager)
 	_test_unoffered_vote_is_rejected(manager)
 	_test_offer_order_survives_remote_state(manager)
 	_test_empty_buff_pool_filters_options(manager)
@@ -91,6 +94,46 @@ func _test_authoritative_offer_contract(
 		"Every offered option must use a registered named fate id."
 	)
 	manager.force_finish()
+
+
+func _test_authoritative_offer_pool_coverage(
+	manager: TowerDefenseFateManager
+) -> void:
+	var expected_option_ids := TowerDefenseFateRegistry.get_all_option_ids()
+	var seen_option_ids: Dictionary = {}
+	var every_offer_is_valid := true
+	for seed_offset in range(FATE_OPTION_COVERAGE_SEED_COUNT):
+		manager.random_generator.seed = 7102000 + seed_offset
+		_begin(manager, 1, [1])
+		var round_option_ids: Dictionary = {}
+		for option_id in manager.available_option_ids:
+			round_option_ids[option_id] = true
+			seen_option_ids[option_id] = true
+			every_offer_is_valid = (
+				every_offer_is_valid
+				and expected_option_ids.has(option_id)
+			)
+		every_offer_is_valid = (
+			every_offer_is_valid
+			and manager.available_option_ids.size()
+			== TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT
+			and round_option_ids.size() == manager.available_option_ids.size()
+		)
+		manager.force_finish()
+	var missing_option_ids: Array[StringName] = []
+	for option_id in expected_option_ids:
+		if not seen_option_ids.has(option_id):
+			missing_option_ids.append(option_id)
+	_expect(
+		every_offer_is_valid,
+		"Every deterministic fate offer must contain exactly three unique registered options."
+	)
+	_expect(
+		missing_option_ids.is_empty()
+		and seen_option_ids.size() == expected_option_ids.size(),
+		"The deterministic seed sweep must reach the complete registered fate pool; missing=%s."
+		% [missing_option_ids]
+	)
 
 
 func _test_unoffered_vote_is_rejected(
