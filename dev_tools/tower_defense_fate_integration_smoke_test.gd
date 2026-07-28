@@ -320,6 +320,40 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		and game.day_cycle_config.is_valid(),
 		"The game scene must author one FateCoordinator and one valid DayCycleConfig."
 	)
+	var interlude := game.xiaocong_fate_interlude
+	var xiaocong_sprite := interlude.get_node(
+		"RoomRoot/Xiaocong"
+	) as AnimatedSprite2D
+	var scene_transition_layer := interlude.get_node(
+		"SceneTransitionLayer"
+	) as CanvasLayer
+	var scene_transition_cover := interlude.get_node(
+		"SceneTransitionLayer/Cover"
+	) as ColorRect
+	var scene_transition_material := (
+		scene_transition_cover.material as ShaderMaterial
+	)
+	_expect(
+		xiaocong_sprite.scale == Vector2(0.25, 0.25)
+		and xiaocong_sprite.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and scene_transition_layer.layer
+		> interlude.choice_overlay.layer
+		and not scene_transition_layer.visible
+		and scene_transition_material != null
+		and scene_transition_material.resource_local_to_scene
+		and scene_transition_material.shader.code.contains("cover_progress")
+		and scene_transition_material.get_shader_parameter(
+			&"transition_noise"
+		) != null,
+		"The fate room must use NPC-scale nearest-neighbor Xiaocong pixels and an authored full-screen shader transition."
+	)
+	_expect(
+		XiaocongFateInterlude.DEFAULT_OUTCOME_TEXT == "落子无悔"
+		and XiaocongFateInterlude.FATE_STONE_OUTCOME_TEXT
+		== "世界发生了改变",
+		"Only the fate stone branch may replace the normal no-regrets outcome line."
+	)
 	game.fate_coordinator.active_permanent_buff_ids = [
 		TowerDefenseFateRegistry.BUFF_LOW_HEALTH_REDUCTION,
 	]

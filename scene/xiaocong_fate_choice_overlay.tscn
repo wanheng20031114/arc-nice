@@ -170,22 +170,20 @@ size_flags_stretch_ratio = 0.82
 mouse_filter = 2
 
 [node name="PortraitFrame" type="Control" parent="Root/ScreenMargin/MainRow/PortraitStage"]
-custom_minimum_size = Vector2(330, 450)
+custom_minimum_size = Vector2(366, 478)
 layout_mode = 2
 mouse_filter = 2
 
 [node name="Xiaocong" type="TextureRect" parent="Root/ScreenMargin/MainRow/PortraitStage/PortraitFrame"]
-texture_filter = 2
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+texture_filter = 1
+layout_mode = 0
+offset_right = 1098.0
+offset_bottom = 1433.0
+scale = Vector2(0.333333, 0.333333)
 mouse_filter = 2
 texture = ExtResource("9_xiaocong_portrait")
 expand_mode = 1
-stretch_mode = 5
+stretch_mode = 0
 
 [node name="DecisionColumn" type="VBoxContainer" parent="Root/ScreenMargin/MainRow"]
 custom_minimum_size = Vector2(560, 0)

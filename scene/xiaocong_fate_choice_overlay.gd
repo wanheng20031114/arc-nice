@@ -4,6 +4,7 @@ class_name XiaocongFateChoiceOverlay
 const DEFAULT_CANVAS_LAYER := 24
 const INVENTORY_ACCESS_CANVAS_LAYER := 19
 const ENTRANCE_REVEAL_DURATION_SECONDS := 0.46
+const RETURN_TO_ROOM_DURATION_SECONDS := 0.52
 const XIAOCONG_PORTRAIT_POSITION := Vector2.ZERO
 
 signal choice_submitted(option_id: StringName, permanent_buff_id: StringName)
@@ -150,6 +151,33 @@ func hide_overlay() -> void:
 	_set_inventory_access_mode(false)
 	buff_modal.visible = false
 	collectible_panel.visible = false
+
+
+func play_return_to_room() -> void:
+	if not visible:
+		return
+	if show_tween != null:
+		show_tween.kill()
+		show_tween = null
+	get_viewport().gui_release_focus()
+	_hide_buff_modal()
+	collectible_panel.visible = false
+	entrance_back_buffer.visible = true
+	entrance_reveal_cover.visible = true
+	_set_entrance_reveal_progress(1.0)
+	var return_tween := create_tween()
+	show_tween = return_tween
+	return_tween.tween_method(
+		_set_entrance_reveal_progress,
+		1.0,
+		0.0,
+		RETURN_TO_ROOM_DURATION_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await return_tween.finished
+	if show_tween != return_tween:
+		return
+	show_tween = null
+	hide_overlay()
 
 
 func _apply_vote_state(

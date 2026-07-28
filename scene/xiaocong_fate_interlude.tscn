@@ -1,10 +1,12 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scene/xiaocong_fate_interlude.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/xiaocong.tres" id="2_frames"]
 [ext_resource type="PackedScene" path="res://scene/xiaocong_dialogue_bubble.tscn" id="3_dialogue"]
 [ext_resource type="PackedScene" path="res://scene/xiaocong_fate_choice_overlay.tscn" id="4_overlay"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
+[ext_resource type="Shader" path="res://resources/shader/xiaocong_fate_scene_transition.gdshader" id="6_scene_transition"]
+[ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="7_transition_noise"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
 radius = 220.0
@@ -32,61 +34,81 @@ shadow_offset = Vector2(0, 2)
 font = ExtResource("5_font")
 font_size = 10
 font_color = Color(1, 1, 1, 1)
-outline_size = 2
+outline_size = 1
 outline_color = Color(0.02, 0.035, 0.025, 0.94)
 
+[sub_resource type="LabelSettings" id="LabelSettings_outcome"]
+font = ExtResource("5_font")
+font_size = 30
+font_color = Color(0.91, 0.95, 0.89, 1)
+outline_size = 1
+outline_color = Color(0.005, 0.012, 0.009, 0.96)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_scene_transition"]
+resource_local_to_scene = true
+shader = ExtResource("6_scene_transition")
+shader_parameter/transition_noise = ExtResource("7_transition_noise")
+shader_parameter/chamber_color = Color(0.001, 0.003, 0.002, 1)
+shader_parameter/growth_edge_color = Color(0.22, 0.52, 0.34, 0.72)
+shader_parameter/growth_core_color = Color(0.94, 0.76, 0.36, 0.9)
+shader_parameter/growth_edge_width = 0.045
+
 [node name="XiaocongFateInterlude" type="Node2D"]
-visible = false
-process_mode = 4
 position = Vector2(8192, 8192)
 z_index = 20
 script = ExtResource("1_script")
 
-[node name="BlackChamber" type="Polygon2D" parent="."]
+[node name="RoomRoot" type="Node2D" parent="."]
+visible = false
+
+[node name="BlackChamber" type="Polygon2D" parent="RoomRoot"]
 z_index = -100
 polygon = PackedVector2Array(-960, -560, 960, -560, 960, 560, -960, 560)
 color = Color(0.001, 0.002, 0.0015, 1)
 
-[node name="GroundHalo" type="Polygon2D" parent="."]
+[node name="GroundHalo" type="Polygon2D" parent="RoomRoot"]
 z_index = -2
-polygon = PackedVector2Array(-70, 20, -54, 6, -22, 0, 22, 0, 54, 6, 70, 20, 54, 31, 22, 36, -22, 36, -54, 31)
-color = Color(0.18, 0.24, 0.2, 0.2)
+polygon = PackedVector2Array(-34, 15, -27, 8, -11, 4, 11, 4, 27, 8, 34, 15, 27, 21, 11, 24, -11, 24, -27, 21)
+color = Color(0.18, 0.24, 0.2, 0.22)
 
-[node name="Xiaocong" type="AnimatedSprite2D" parent="."]
+[node name="Xiaocong" type="AnimatedSprite2D" parent="RoomRoot"]
 texture_filter = 1
-scale = Vector2(0.5, 0.5)
+scale = Vector2(0.25, 0.25)
 sprite_frames = ExtResource("2_frames")
 animation = &"idle"
 autoplay = "idle"
 
-[node name="StaticBody2D" type="StaticBody2D" parent="."]
+[node name="StaticBody2D" type="StaticBody2D" parent="RoomRoot"]
 collision_layer = 1
 collision_mask = 0
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RoomRoot/StaticBody2D"]
 position = Vector2(0, 3)
 shape = SubResource("CapsuleShape2D_body")
+disabled = true
 
-[node name="InteractionArea" type="Area2D" parent="."]
+[node name="InteractionArea" type="Area2D" parent="RoomRoot"]
 collision_layer = 0
 collision_mask = 2
+monitoring = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RoomRoot/InteractionArea"]
 shape = SubResource("CircleShape2D_interaction")
+disabled = true
 
-[node name="InteractionPrompt" type="Label" parent="."]
+[node name="InteractionPrompt" type="Label" parent="RoomRoot"]
 visible = false
 offset_left = -65.0
-offset_top = 43.0
+offset_top = 25.0
 offset_right = 65.0
-offset_bottom = 63.0
+offset_bottom = 45.0
 mouse_filter = 2
 text = "F  与小葱交互"
 label_settings = SubResource("LabelSettings_prompt")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="PromptBackground" type="PanelContainer" parent="InteractionPrompt"]
+[node name="PromptBackground" type="PanelContainer" parent="RoomRoot/InteractionPrompt"]
 show_behind_parent = true
 layout_mode = 1
 anchors_preset = 15
@@ -101,6 +123,58 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
 
-[node name="XiaocongDialogueBubble" parent="." instance=ExtResource("3_dialogue")]
+[node name="XiaocongDialogueBubble" parent="RoomRoot" instance=ExtResource("3_dialogue")]
 
 [node name="XiaocongFateChoiceOverlay" parent="." instance=ExtResource("4_overlay")]
+
+[node name="OutcomeLayer" type="CanvasLayer" parent="."]
+visible = false
+layer = 70
+
+[node name="Root" type="Control" parent="OutcomeLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Shade" type="ColorRect" parent="OutcomeLayer/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.001, 0.004, 0.002, 0.62)
+
+[node name="Message" type="Label" parent="OutcomeLayer/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+text = "落子无悔"
+label_settings = SubResource("LabelSettings_outcome")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SceneTransitionLayer" type="CanvasLayer" parent="."]
+process_mode = 3
+visible = false
+layer = 80
+
+[node name="Cover" type="ColorRect" parent="SceneTransitionLayer"]
+material = SubResource("ShaderMaterial_scene_transition")
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(1, 1, 1, 1)

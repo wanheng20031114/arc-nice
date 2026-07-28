@@ -265,6 +265,10 @@ var singleplayer_respawn_last_seconds := -1
 var spectator_camera_active := false
 var projectile_pool_registration_ms := 0.0
 var fate_frozen_terrain_decay_time_left := 0.0
+var remote_fate_entry_in_progress := false
+var remote_fate_departure_in_progress := false
+var remote_fate_departure_covered := false
+var pending_remote_fate_flow_state: Dictionary = {}
 var starting_package_granted := false
 var progression_started_msec := 0
 var first_defense_tower_seconds := -1.0
@@ -2379,6 +2383,24 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			% String(step_id)
 		)
 		return
+	if (
+		wave_state == WaveState.FATE_INTERLUDE
+		and typed_state != WaveState.FATE_INTERLUDE
+		and xiaocong_fate_interlude.is_active
+		and not remote_fate_departure_covered
+	):
+		pending_remote_fate_flow_state = {
+			"step_id": step_id,
+			"state": state,
+			"seconds": seconds,
+		}
+		_begin_remote_fate_departure()
+		return
+	var leaving_fate_interlude := (
+		wave_state == WaveState.FATE_INTERLUDE
+		and typed_state != WaveState.FATE_INTERLUDE
+		and xiaocong_fate_interlude.is_active
+	)
 	if flow_step != null:
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
@@ -2428,15 +2450,23 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			state_timer.stop()
 			enemy_spawn_timer.stop()
 			wave_state = WaveState.FATE_INTERLUDE
-			transition_world_to_day()
-			_set_local_merchants_active(false)
-			_present_fate_interlude_locally(
-				_get_day_number_for_wave(maxi(current_wave_index + 1, 1))
-			)
+			_set_fate_player_controls_locked(true)
+			if not remote_fate_entry_in_progress:
+				if xiaocong_fate_interlude.is_active:
+					_present_fate_interlude_locally(
+						_get_day_number_for_wave(maxi(current_wave_index + 1, 1))
+					)
+				else:
+					_begin_remote_fate_entry(
+						_get_day_number_for_wave(maxi(current_wave_index + 1, 1))
+					)
 		WaveState.VICTORY:
 			apply_remote_victory()
 		WaveState.DEFEAT:
 			apply_remote_defeat()
+	if leaving_fate_interlude:
+		_leave_fate_interlude_presentation()
+		_finish_remote_fate_return()
 	_update_plant_placement_input_state()
 
 func get_flow_state_snapshot() -> Dictionary:
@@ -3525,26 +3555,40 @@ func _on_xiaocong_fate_state_changed(_state: Dictionary) -> void:
 	_configure_xiaocong_local_context()
 	xiaocong_fate_interlude.apply_fate_state(snapshot)
 	if fate_manager.active:
-		_present_fate_interlude_locally(fate_manager.completed_day)
-	elif wave_state == WaveState.FATE_INTERLUDE:
-		_leave_fate_interlude_presentation()
+		if not (
+			runtime_mode == RuntimeMode.CLIENT_VIEW
+			and remote_fate_entry_in_progress
+		):
+			_present_fate_interlude_locally(fate_manager.completed_day)
+	elif (
+		wave_state == WaveState.FATE_INTERLUDE
+		and runtime_mode == RuntimeMode.CLIENT_VIEW
+	):
+		_begin_remote_fate_departure()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_xiaocong_fate_state_changed.emit(snapshot)
 
 func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
 	_set_fate_interlude_systems_frozen(true)
 	wave_state = WaveState.FATE_INTERLUDE
+	_set_fate_player_controls_locked(true)
 	next_flow_step_after_rest = next_step
 	countdown_seconds = 0
 	enemy_spawn_timer.stop()
 	state_timer.stop()
+	var completed_day := _get_day_number_for_wave(current_wave_index + 1)
+	_emit_multiplayer_flow_state(WaveState.FATE_INTERLUDE)
+	await xiaocong_fate_interlude.cover_scene_for_transfer()
+	if wave_state != WaveState.FATE_INTERLUDE:
+		return
 	_set_merchant_active(false)
 	transition_world_to_day()
 	_force_revive_dead_players()
-	var completed_day := _get_day_number_for_wave(current_wave_index + 1)
 	_present_fate_interlude_locally(completed_day)
 	_teleport_authoritative_players_to_fate_room()
-	_emit_multiplayer_flow_state(WaveState.FATE_INTERLUDE)
+	await xiaocong_fate_interlude.play_room_reveal()
+	if wave_state != WaveState.FATE_INTERLUDE:
+		return
 	fate_coordinator.begin_interlude(
 		completed_day,
 		_get_flow_step_id(next_step),
@@ -3563,6 +3607,52 @@ func _present_fate_interlude_locally(day_number: int) -> void:
 	if tower_defense_minimap != null:
 		tower_defense_minimap.hide()
 	_set_fate_player_controls_locked(true)
+
+
+func _begin_remote_fate_entry(day_number: int) -> void:
+	if remote_fate_entry_in_progress:
+		return
+	remote_fate_entry_in_progress = true
+	remote_fate_departure_in_progress = false
+	remote_fate_departure_covered = false
+	pending_remote_fate_flow_state.clear()
+	await xiaocong_fate_interlude.cover_scene_for_transfer()
+	if runtime_mode != RuntimeMode.CLIENT_VIEW or wave_state != WaveState.FATE_INTERLUDE:
+		remote_fate_entry_in_progress = false
+		return
+	transition_world_to_day()
+	_set_local_merchants_active(false)
+	_present_fate_interlude_locally(day_number)
+	await xiaocong_fate_interlude.play_room_reveal()
+	remote_fate_entry_in_progress = false
+
+
+func _begin_remote_fate_departure() -> void:
+	if remote_fate_departure_in_progress:
+		return
+	remote_fate_departure_in_progress = true
+	await xiaocong_fate_interlude.play_outcome_message(
+		fate_manager.winning_option_id
+	)
+	await xiaocong_fate_interlude.cover_scene_for_transfer()
+	remote_fate_departure_covered = true
+	if pending_remote_fate_flow_state.is_empty():
+		return
+	var deferred_flow_state := pending_remote_fate_flow_state.duplicate()
+	pending_remote_fate_flow_state.clear()
+	apply_remote_flow_state(
+		StringName(deferred_flow_state.get("step_id", "")),
+		int(deferred_flow_state.get("state", int(WaveState.INTERMISSION))),
+		int(deferred_flow_state.get("seconds", 0))
+	)
+
+
+func _finish_remote_fate_return() -> void:
+	await xiaocong_fate_interlude.reveal_world_after_transfer()
+	remote_fate_entry_in_progress = false
+	remote_fate_departure_in_progress = false
+	remote_fate_departure_covered = false
+	pending_remote_fate_flow_state.clear()
 
 
 func _leave_fate_interlude_presentation() -> void:
@@ -3678,14 +3768,19 @@ func _teleport_fate_player_authoritatively(
 func _on_xiaocong_fate_interlude_completed(next_step_id: StringName) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
+	var winning_option_id := fate_manager.winning_option_id
+	await xiaocong_fate_interlude.play_outcome_message(winning_option_id)
+	await xiaocong_fate_interlude.cover_scene_for_transfer()
 	fate_coordinator.clear_pending_rewards()
 	_leave_fate_interlude_presentation()
 	_restore_authoritative_players_from_fate_room()
 	var next_step := _get_flow_step_by_id(next_step_id)
 	if next_step == null:
 		_enter_victory()
+		await xiaocong_fate_interlude.reveal_world_after_transfer()
 		return
 	_enter_intermission(next_step)
+	await xiaocong_fate_interlude.reveal_world_after_transfer()
 
 
 func _begin_fate_collectible_reward() -> void:

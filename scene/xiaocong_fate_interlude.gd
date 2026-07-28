@@ -15,12 +15,36 @@ const PLAYER_OFFSETS: Array[Vector2] = [
 	Vector2(-154, 104),
 	Vector2(154, 104),
 ]
+const XIAOCONG_WORLD_SCALE := Vector2(0.25, 0.25)
+const XIAOCONG_ENTRANCE_SCALE := Vector2(0.215, 0.215)
+const SCENE_COVER_DURATION_SECONDS := 0.58
+const ROOM_REVEAL_DURATION_SECONDS := 0.72
+const OUTCOME_FADE_SECONDS := 0.34
+const OUTCOME_HOLD_SECONDS := 1.08
+const DEFAULT_OUTCOME_TEXT := "落子无悔"
+const FATE_STONE_OUTCOME_TEXT := "世界发生了改变"
 
-@onready var interaction_area: Area2D = $InteractionArea
-@onready var interaction_shape: CollisionShape2D = $InteractionArea/CollisionShape2D
-@onready var dialogue_bubble: MerchantDialogueBubble = $XiaocongDialogueBubble
-@onready var prompt_label: Label = $InteractionPrompt
-@onready var choice_overlay: XiaocongFateChoiceOverlay = $XiaocongFateChoiceOverlay
+@onready var room_root: Node2D = $RoomRoot
+@onready var xiaocong_sprite: AnimatedSprite2D = $RoomRoot/Xiaocong
+@onready var body_shape: CollisionShape2D = (
+	$RoomRoot/StaticBody2D/CollisionShape2D
+)
+@onready var interaction_area: Area2D = $RoomRoot/InteractionArea
+@onready var interaction_shape: CollisionShape2D = (
+	$RoomRoot/InteractionArea/CollisionShape2D
+)
+@onready var dialogue_bubble: MerchantDialogueBubble = (
+	$RoomRoot/XiaocongDialogueBubble
+)
+@onready var prompt_label: Label = $RoomRoot/InteractionPrompt
+@onready var choice_overlay: XiaocongFateChoiceOverlay = (
+	$XiaocongFateChoiceOverlay
+)
+@onready var outcome_layer: CanvasLayer = $OutcomeLayer
+@onready var outcome_root: Control = $OutcomeLayer/Root
+@onready var outcome_label: Label = $OutcomeLayer/Root/Message
+@onready var scene_transition_layer: CanvasLayer = $SceneTransitionLayer
+@onready var scene_transition_cover: ColorRect = $SceneTransitionLayer/Cover
 
 var is_active := false
 var completed_day := 1
@@ -35,6 +59,11 @@ var interacted_player_count := 0
 var timeout_seconds_left := 0
 var timeout_recovery_available := false
 var local_is_host := false
+var last_winning_option_id: StringName = &""
+var is_concluding := false
+var scene_transition_progress := 0.0
+var scene_transition_tween: Tween = null
+var outcome_tween: Tween = null
 
 
 func _ready() -> void:
@@ -42,6 +71,7 @@ func _ready() -> void:
 	interaction_area.body_exited.connect(_on_body_exited)
 	choice_overlay.choice_submitted.connect(fate_choice_submitted.emit)
 	choice_overlay.collectible_submitted.connect(collectible_choice_submitted.emit)
+	_set_scene_transition_progress(0.0)
 	set_active(false)
 
 
@@ -58,8 +88,8 @@ func configure_local_player(
 func set_active(active: bool, day_number: int = 1) -> void:
 	is_active = active
 	completed_day = maxi(day_number, 1)
-	visible = active
-	process_mode = Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
+	room_root.visible = active
+	body_shape.set_deferred("disabled", not active)
 	interaction_shape.set_deferred("disabled", not active)
 	interaction_area.set_deferred("monitoring", active)
 	nearby_local_player = false
@@ -70,18 +100,31 @@ func set_active(active: bool, day_number: int = 1) -> void:
 	timeout_seconds_left = 0
 	timeout_recovery_available = false
 	local_is_host = false
+	is_concluding = false
 	prompt_label.visible = false
 	dialogue_bubble.hide_bubble()
-	if not active:
+	xiaocong_sprite.position = Vector2.ZERO
+	xiaocong_sprite.scale = XIAOCONG_WORLD_SCALE
+	xiaocong_sprite.modulate = Color.WHITE
+	_hide_outcome_immediately()
+	if active:
+		last_winning_option_id = &""
+		xiaocong_sprite.play(&"idle")
+	else:
 		choice_overlay.hide_overlay()
 
 
 func apply_fate_state(state: Dictionary) -> void:
-	var active := bool(state.get("active", false))
-	if active != is_active:
-		set_active(active, int(state.get("completed_day", completed_day)))
-	if not active:
+	var state_is_active := bool(state.get("active", false))
+	last_winning_option_id = StringName(
+		state.get("winning_option_id", last_winning_option_id)
+	)
+	if not state_is_active:
+		if is_active:
+			_prepare_conclusion()
 		return
+	if not is_active:
+		set_active(true, int(state.get("completed_day", completed_day)))
 	completed_day = maxi(int(state.get("completed_day", completed_day)), 1)
 	var interacted := _to_int_array(state.get("interacted_peer_ids", []))
 	local_interaction_sent = interacted.has(local_peer_id)
@@ -106,8 +149,138 @@ func get_player_spawn_position(slot_index: int) -> Vector2:
 	return global_position + PLAYER_OFFSETS[safe_index]
 
 
+func cover_scene_for_transfer() -> void:
+	_stop_scene_transition_tween()
+	scene_transition_layer.visible = true
+	scene_transition_cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	if scene_transition_progress >= 0.999:
+		_set_scene_transition_progress(1.0)
+		return
+	var duration := maxf(
+		SCENE_COVER_DURATION_SECONDS * (1.0 - scene_transition_progress),
+		0.12
+	)
+	var tween := scene_transition_layer.create_tween()
+	scene_transition_tween = tween
+	tween.tween_method(
+		_set_scene_transition_progress,
+		scene_transition_progress,
+		1.0,
+		duration
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await tween.finished
+	if scene_transition_tween != tween:
+		return
+	scene_transition_tween = null
+	_set_scene_transition_progress(1.0)
+
+
+func play_room_reveal() -> void:
+	_stop_scene_transition_tween()
+	scene_transition_layer.visible = true
+	scene_transition_cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	_set_scene_transition_progress(1.0)
+	xiaocong_sprite.position = Vector2(0, 4)
+	xiaocong_sprite.scale = XIAOCONG_ENTRANCE_SCALE
+	xiaocong_sprite.modulate = Color(1, 1, 1, 0)
+	var tween := scene_transition_layer.create_tween().set_parallel(true)
+	scene_transition_tween = tween
+	tween.tween_method(
+		_set_scene_transition_progress,
+		1.0,
+		0.0,
+		ROOM_REVEAL_DURATION_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(
+		xiaocong_sprite,
+		"modulate",
+		Color.WHITE,
+		0.34
+	).set_delay(0.14)
+	tween.tween_property(
+		xiaocong_sprite,
+		"position",
+		Vector2.ZERO,
+		0.44
+	).set_delay(0.1).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+		xiaocong_sprite,
+		"scale",
+		XIAOCONG_WORLD_SCALE,
+		0.46
+	).set_delay(0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	await tween.finished
+	if scene_transition_tween != tween:
+		return
+	scene_transition_tween = null
+	_finish_scene_reveal()
+
+
+func reveal_world_after_transfer() -> void:
+	_stop_scene_transition_tween()
+	scene_transition_layer.visible = true
+	scene_transition_cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	_set_scene_transition_progress(1.0)
+	var tween := scene_transition_layer.create_tween()
+	scene_transition_tween = tween
+	tween.tween_method(
+		_set_scene_transition_progress,
+		1.0,
+		0.0,
+		ROOM_REVEAL_DURATION_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await tween.finished
+	if scene_transition_tween != tween:
+		return
+	scene_transition_tween = null
+	_finish_scene_reveal()
+
+
+func play_outcome_message(winning_option_id: StringName = &"") -> void:
+	if not is_active:
+		return
+	_prepare_conclusion()
+	await choice_overlay.play_return_to_room()
+	if not is_inside_tree() or not is_active:
+		return
+	var resolved_option := (
+		winning_option_id
+		if not winning_option_id.is_empty()
+		else last_winning_option_id
+	)
+	outcome_label.text = (
+		FATE_STONE_OUTCOME_TEXT
+		if resolved_option == TowerDefenseFateRegistry.OPTION_FATE_STONE
+		else DEFAULT_OUTCOME_TEXT
+	)
+	outcome_root.modulate = Color(1, 1, 1, 0)
+	outcome_layer.visible = true
+	if outcome_tween != null:
+		outcome_tween.kill()
+	var tween := outcome_layer.create_tween()
+	outcome_tween = tween
+	tween.tween_property(
+		outcome_root,
+		"modulate:a",
+		1.0,
+		OUTCOME_FADE_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(OUTCOME_HOLD_SECONDS)
+	tween.tween_property(
+		outcome_root,
+		"modulate:a",
+		0.0,
+		OUTCOME_FADE_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	await tween.finished
+	if outcome_tween != tween:
+		return
+	outcome_tween = null
+	outcome_layer.visible = false
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if not is_active or not nearby_local_player:
+	if not is_active or is_concluding or not nearby_local_player:
 		return
 	if not event.is_action_pressed(&"interact"):
 		return
@@ -130,7 +303,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
-	if not is_active or body != local_player:
+	if not is_active or is_concluding or body != local_player:
 		return
 	nearby_local_player = true
 	_refresh_prompt()
@@ -145,7 +318,7 @@ func _on_body_exited(body: Node2D) -> void:
 
 
 func _refresh_prompt() -> void:
-	prompt_label.visible = is_active and nearby_local_player
+	prompt_label.visible = is_active and not is_concluding and nearby_local_player
 	if current_stage == TowerDefenseFateManager.STAGE_VOTING:
 		prompt_label.text = (
 			"等待超时 · F 由房主继续结算"
@@ -168,6 +341,46 @@ func _refresh_prompt() -> void:
 		]
 	else:
 		prompt_label.text = "F  与小葱交互"
+
+
+func _prepare_conclusion() -> void:
+	if is_concluding:
+		return
+	is_concluding = true
+	nearby_local_player = false
+	prompt_label.visible = false
+	dialogue_bubble.hide_bubble()
+	interaction_shape.set_deferred("disabled", true)
+	interaction_area.set_deferred("monitoring", false)
+
+
+func _hide_outcome_immediately() -> void:
+	if outcome_tween != null:
+		outcome_tween.kill()
+		outcome_tween = null
+	outcome_root.modulate = Color.WHITE
+	outcome_layer.visible = false
+
+
+func _stop_scene_transition_tween() -> void:
+	if scene_transition_tween == null:
+		return
+	scene_transition_tween.kill()
+	scene_transition_tween = null
+
+
+func _set_scene_transition_progress(progress: float) -> void:
+	scene_transition_progress = clampf(progress, 0.0, 1.0)
+	scene_transition_cover.set_instance_shader_parameter(
+		&"cover_progress",
+		scene_transition_progress
+	)
+
+
+func _finish_scene_reveal() -> void:
+	_set_scene_transition_progress(0.0)
+	scene_transition_cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scene_transition_layer.visible = false
 
 
 func _to_int_array(value: Variant) -> Array[int]:

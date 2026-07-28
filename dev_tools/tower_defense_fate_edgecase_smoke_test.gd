@@ -201,10 +201,15 @@ func _test_stone_inventory_access_overlay() -> void:
 	_expect(
 		portrait_source_size == Vector2(1098, 1433)
 		and portrait_stage.custom_minimum_size == Vector2(390, 520)
-		and portrait_frame.custom_minimum_size == Vector2(330, 450)
+		and portrait_frame.custom_minimum_size == Vector2(366, 478)
+		and xiaocong_portrait.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and xiaocong_portrait.scale.is_equal_approx(
+			Vector2.ONE / 3.0
+		)
 		and xiaocong_portrait.stretch_mode
-		== TextureRect.STRETCH_KEEP_ASPECT_CENTERED,
-		"The left stage must use the full-resolution Xiaocong portrait without offline resizing."
+		== TextureRect.STRETCH_SCALE,
+		"The left stage must display the full-resolution Xiaocong portrait at an exact nearest-neighbor 1/3 scale."
 	)
 	_expect(
 		portrait_stage.get_global_rect().get_center().x
@@ -217,6 +222,24 @@ func _test_stone_inventory_access_overlay() -> void:
 		and overlay.choice_list.get_child_count()
 		== TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT,
 		"The decision column must contain exactly three fate cards."
+	)
+	var first_card := overlay.choice_cards[0]
+	var card_title_font := (
+		first_card.title_label.label_settings.font as FontVariation
+	)
+	var card_body_font := (
+		first_card.description_label.label_settings.font as FontVariation
+	)
+	_expect(
+		card_title_font != null
+		and card_body_font != null
+		and is_zero_approx(card_title_font.variation_embolden)
+		and is_zero_approx(card_body_font.variation_embolden)
+		and first_card.title_label.label_settings.font_size == 21
+		and first_card.title_label.label_settings.outline_size == 1
+		and first_card.description_label.label_settings.font_size == 16
+		and first_card.description_label.label_settings.outline_size == 0,
+		"The three fate cards must use normal-weight readable type instead of heavy emboldening."
 	)
 	var cards_preserve_art_and_rounding := true
 	for card in overlay.choice_cards:
