@@ -502,6 +502,15 @@ func _test_shared_panel_rebinding(
 
 
 func _test_detail_layout(panel: OakWarehousePanel) -> void:
+	var storage_title := panel.get_node("Overlay/PanelRoot/StorageTitle") as Label
+	var player_title := panel.get_node("Overlay/PanelRoot/PlayerTitle") as Label
+	_expect(
+		Rect2(storage_title.position, storage_title.size)
+		== Rect2(45.0, 78.0, 285.0, 30.0)
+		and Rect2(player_title.position, player_title.size)
+		== Rect2(394.0, 78.0, 285.0, 30.0),
+		"仓库与背包标题必须同步下移3像素，并保持栏内水平对齐。"
+	)
 	var item_detail := panel.get_node("Overlay/PanelRoot/ItemDetail") as Control
 	var item_title := item_detail.get_node("ItemTitle") as Label
 	var item_category := item_detail.get_node("ItemCategory") as Label
@@ -544,8 +553,13 @@ func _test_detail_layout(panel: OakWarehousePanel) -> void:
 			"仓库按钮点击区域必须精确贴合底图中的像素按钮框：%s。" % spec["path"]
 		)
 		for style_name in [&"normal", &"hover", &"pressed", &"focus", &"disabled"]:
+			var button_style := button.get_theme_stylebox(style_name)
 			_expect(
-				button.get_theme_stylebox(style_name) is StyleBoxEmpty,
+				button_style is StyleBoxEmpty
+				and is_equal_approx(
+					button_style.get_content_margin(SIDE_BOTTOM),
+					4.0
+				),
 				"仓库按钮不得在底图像素按钮框上重复绘制圆角边框：%s/%s。" % [
 					spec["path"],
 					style_name,

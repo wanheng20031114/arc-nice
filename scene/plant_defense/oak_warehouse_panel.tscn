@@ -6,6 +6,7 @@
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
+content_margin_bottom = 4.0
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font = ExtResource("4_font")
@@ -127,9 +128,9 @@ texture = ExtResource("2_background")
 [node name="StorageTitle" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 45.0
-offset_top = 75.0
+offset_top = 78.0
 offset_right = 330.0
-offset_bottom = 105.0
+offset_bottom = 108.0
 text = "橡木仓库"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
@@ -137,9 +138,9 @@ horizontal_alignment = 1
 [node name="PlayerTitle" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
 offset_left = 394.0
-offset_top = 75.0
+offset_top = 78.0
 offset_right = 679.0
-offset_bottom = 105.0
+offset_bottom = 108.0
 text = "玩家背包"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
