@@ -6,6 +6,9 @@ const DIALOGUE_SCENE_PATHS: PackedStringArray = [
 ]
 const XIAOCONG_DIALOGUE_SCENE_PATH := "res://scene/xiaocong_dialogue_bubble.tscn"
 const BOSS_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
+const AMBIENT_VFX_SCENE_PATH := "res://scene/vfx/tower_defense_ambient_vfx.tscn"
+const PLAYER_PROFILE_SCENE_PATH := "res://scene/player/ui/player_profile_panel.tscn"
+const DIALOGUE_CONTENT_ROOT := "DialogueLayer/Anchor"
 
 var failures: Array[String] = []
 
@@ -15,9 +18,11 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	_test_dialogue_layer_contract()
 	for scene_path in DIALOGUE_SCENE_PATHS:
 		_test_high_resolution_dialogue(scene_path)
 	_test_native_xiaocong_dialogue()
+	await _test_dialogue_runtime_canvas_anchor()
 	_test_high_resolution_boss_nameplate()
 	await _test_wave_hud_feedback()
 	await _test_currency_hud_feedback()
@@ -31,6 +36,19 @@ func _run() -> void:
 	quit(1)
 
 
+func _test_dialogue_layer_contract() -> void:
+	var ambient := (load(AMBIENT_VFX_SCENE_PATH) as PackedScene).instantiate()
+	var ambient_layer := ambient.get_node("ScreenSpaceParticles") as CanvasLayer
+	var profile := (load(PLAYER_PROFILE_SCENE_PATH) as PackedScene).instantiate() as CanvasLayer
+	_expect(
+		ambient_layer.layer < MerchantDialogueBubble.CANVAS_LAYER
+		and MerchantDialogueBubble.CANVAS_LAYER < profile.layer,
+		"Dialogue must render above ambient world effects and below player UI."
+	)
+	ambient.free()
+	profile.free()
+
+
 func _test_high_resolution_dialogue(scene_path: String) -> void:
 	var packed_scene := load(scene_path) as PackedScene
 	_expect(packed_scene != null, "%s must load for the font contract test." % scene_path)
@@ -40,12 +58,23 @@ func _test_high_resolution_dialogue(scene_path: String) -> void:
 	_expect(bubble != null, "%s must instantiate as a world-space dialogue bubble." % scene_path)
 	if bubble == null:
 		return
-	var panel := bubble.get_node_or_null("BubblePanel") as Control
-	var dialogue_text := bubble.get_node_or_null("BubblePanel/Margin/Content/Text") as RichTextLabel
-	var name_label := bubble.get_node_or_null("NamePlate/Name") as Label
-	var keyboard_prompt := bubble.get_node_or_null(
-		"BubblePanel/Margin/Content/PromptRow/KeyboardPrompt"
+	var dialogue_layer := bubble.get_node_or_null("DialogueLayer") as CanvasLayer
+	var panel := bubble.get_node_or_null(DIALOGUE_CONTENT_ROOT + "/BubblePanel") as Control
+	var dialogue_text := bubble.get_node_or_null(
+		DIALOGUE_CONTENT_ROOT + "/BubblePanel/Margin/Content/Text"
+	) as RichTextLabel
+	var name_label := bubble.get_node_or_null(
+		DIALOGUE_CONTENT_ROOT + "/NamePlate/Name"
 	) as Label
+	var keyboard_prompt := bubble.get_node_or_null(
+		DIALOGUE_CONTENT_ROOT
+		+ "/BubblePanel/Margin/Content/PromptRow/KeyboardPrompt"
+	) as Label
+	_expect(
+		dialogue_layer != null
+		and dialogue_layer.layer == MerchantDialogueBubble.CANVAS_LAYER,
+		"%s must keep every visual on the shared dialogue canvas layer." % scene_path
+	)
 	_expect(
 		bubble.scale.is_equal_approx(Vector2(0.5, 0.5)),
 		"%s must retain its authored high-resolution half-scale transform." % scene_path
@@ -77,15 +106,20 @@ func _test_native_xiaocong_dialogue() -> void:
 	if packed_scene == null:
 		return
 	var bubble := packed_scene.instantiate() as Node2D
-	var panel := bubble.get_node_or_null("BubblePanel") as Control
+	var dialogue_layer := bubble.get_node_or_null("DialogueLayer") as CanvasLayer
+	var panel := bubble.get_node_or_null(DIALOGUE_CONTENT_ROOT + "/BubblePanel") as Control
 	var dialogue_text := bubble.get_node_or_null(
-		"BubblePanel/Margin/Content/Text"
+		DIALOGUE_CONTENT_ROOT + "/BubblePanel/Margin/Content/Text"
 	) as RichTextLabel
-	var name_label := bubble.get_node_or_null("NamePlate/Name") as Label
+	var name_label := bubble.get_node_or_null(
+		DIALOGUE_CONTENT_ROOT + "/NamePlate/Name"
+	) as Label
 	var blip_audio := bubble.get_node_or_null("BlipAudio") as AudioStreamPlayer
 	_expect(
 		bubble.scale == Vector2.ONE
 		and bubble.position == bubble.position.round()
+		and dialogue_layer != null
+		and dialogue_layer.layer == MerchantDialogueBubble.CANVAS_LAYER
 		and panel != null
 		and panel.custom_minimum_size == Vector2(308, 122),
 		"Xiaocong dialogue must use an integer-positioned native screen-space layout."
@@ -99,6 +133,53 @@ func _test_native_xiaocong_dialogue() -> void:
 		"Xiaocong dialogue text and audio must stay native-resolution and non-positional."
 	)
 	bubble.free()
+
+
+func _test_dialogue_runtime_canvas_anchor() -> void:
+	var host := Node2D.new()
+	host.position = Vector2(73.25, 91.75)
+	root.add_child(host)
+	var bubble := (
+		(load(DIALOGUE_SCENE_PATHS[0]) as PackedScene).instantiate()
+		as MerchantDialogueBubble
+	)
+	host.add_child(bubble)
+	await process_frame
+	bubble.say("图层测试。")
+	await process_frame
+	var expected_transform := bubble.get_global_transform_with_canvas()
+	expected_transform.origin = expected_transform.origin.round()
+	_expect(
+		bubble.dialogue_layer.visible
+		and bubble.is_processing()
+		and bubble.canvas_anchor.transform.is_equal_approx(expected_transform),
+		"Visible dialogue must mirror its complete world-to-viewport transform on layer 4."
+	)
+	bubble.finish_line()
+	await process_frame
+	_expect(
+		bubble.is_processing(),
+		"A finished but visible dialogue must keep following camera and window transforms."
+	)
+	host.hide()
+	await process_frame
+	_expect(
+		not bubble.dialogue_layer.visible and not bubble.is_processing(),
+		"Dialogue visuals must disappear when their world owner is hidden."
+	)
+	host.show()
+	await process_frame
+	_expect(
+		bubble.dialogue_layer.visible and bubble.is_processing(),
+		"Dialogue visuals must resume with their visible world owner."
+	)
+	bubble.hide_bubble()
+	_expect(
+		not bubble.dialogue_layer.visible and not bubble.is_processing(),
+		"Hidden dialogue must also hide its canvas layer and stop anchor updates."
+	)
+	host.queue_free()
+	await process_frame
 
 
 func _test_high_resolution_boss_nameplate() -> void:
