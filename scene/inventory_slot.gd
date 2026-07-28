@@ -40,14 +40,21 @@ func _ready() -> void:
 	gui_input.connect(_on_gui_input)
 
 
-func set_item(new_item: PickupConfig, new_stack_count: int = 1) -> void:
+func set_item(
+	new_item: PickupConfig,
+	new_stack_count: int = 1,
+	icon_scale_multiplier: Vector2 = Vector2.ONE
+) -> void:
 	item = new_item
 	stack_count = maxi(new_stack_count, 0) if item != null else 0
+	item_icon.position = size * 0.5
 	item_icon.texture = null
 	item_icon.scale = Vector2.ONE
 	if item != null:
 		item_icon.texture = item.icon_texture
-		item_icon.scale = item.get_inventory_icon_scale()
+		item_icon.scale = (
+			item.get_inventory_icon_scale() * icon_scale_multiplier
+		)
 	stack_count_label.visible = item != null and stack_count > 1
 	stack_count_label.text = str(stack_count)
 	tooltip_text = _get_tooltip_text()

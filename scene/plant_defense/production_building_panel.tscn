@@ -210,6 +210,7 @@ offset_bottom = 224.0
 text = "原材料"
 label_settings = SubResource("LabelSettings_section")
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="OutputTitle" type="Label" parent="Overlay/PanelRoot"]
 layout_mode = 0
@@ -220,6 +221,7 @@ offset_bottom = 224.0
 text = "产物"
 label_settings = SubResource("LabelSettings_section")
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="InputSlot1" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
 layout_mode = 0
@@ -269,7 +271,6 @@ label_settings = SubResource("LabelSettings_small")
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
-clip_text = true
 
 [node name="OutputSlot1" parent="Overlay/PanelRoot" instance=ExtResource("3_slot")]
 layout_mode = 0

@@ -62,6 +62,12 @@ night_energy = 0.8
 [node name="Muzzle" type="Marker2D" parent="VisualRoot" unique_id=2013561457]
 position = Vector2(10, -24)
 
+[node name="MuzzleGlow" parent="VisualRoot/Muzzle" instance=ExtResource("7_night_light")]
+color = Color(1, 0.48, 0.08, 1)
+texture_scale = 0.2
+night_energy = 0.0
+starts_emitting = false
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1893333299]
 position = Vector2(0, 3.5)
 shape = SubResource("RectangleShape2D_body")

@@ -76,6 +76,7 @@ func _run() -> void:
 
 	excavator.setup(EXCAVATOR_CONFIG, null, FOOTPRINT_CELLS)
 	coordinator.register_plant(excavator)
+	_test_automatic_panel_layout(panel, excavator)
 	await _test_local_output_slot_and_runtime_state(
 		test_root,
 		coordinator,
@@ -84,6 +85,43 @@ func _run() -> void:
 		run_state
 	)
 	_finish(test_root)
+
+
+func _test_automatic_panel_layout(
+	panel: ProductionBuildingPanel,
+	excavator: Excavator
+) -> void:
+	excavator.buffered_output_item = DIRT_BLOCK
+	excavator.buffered_output_count = 2
+	panel.bind_building(excavator, null)
+	var output_slot := panel.output_slots[0]
+	_expect(
+		panel.building_title.size == Vector2(412, 50)
+		and panel.input_title.size == Vector2(290, 40)
+		and panel.output_title.size == Vector2(186, 40)
+		and panel.progress_label.size == Vector2(320, 40)
+		and panel.status_label.size == Vector2(372, 70)
+		and panel.input_title.vertical_alignment
+		== VERTICAL_ALIGNMENT_CENTER
+		and panel.output_title.vertical_alignment
+		== VERTICAL_ALIGNMENT_CENTER
+		and not panel.progress_label.clip_text,
+		"挖土装置自动面板的描边文字区域必须保留足够的水平和垂直余量。"
+	)
+	_expect(
+		output_slot.size == Vector2(64, 70)
+		and output_slot.item == DIRT_BLOCK
+		and output_slot.item_icon.position == output_slot.size * 0.5
+		and output_slot.item_icon.scale == Vector2(2, 2)
+		and output_slot.item_icon.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and output_slot.stack_count_label.visible
+		and output_slot.stack_count_label.text == "2",
+		"挖土装置产物格必须把土块以整数2倍清晰缩放并严格居中。"
+	)
+	panel.bind_building(null, null)
+	excavator.buffered_output_item = null
+	excavator.buffered_output_count = 0
 
 
 func _test_config_and_scene(excavator: Excavator) -> void:
@@ -421,10 +459,10 @@ func _test_runtime_state_and_collect_protocol(
 		and not panel.output_slots[0].disabled
 		and panel.output_slots[0].position == Vector2(561, 246)
 		and panel.output_slots[0].size == Vector2(64, 70)
-		and panel.building_title.position == Vector2(65, 112)
-		and panel.building_title.size == Vector2(400, 38)
-		and panel.status_label.position == Vector2(70, 372)
-		and panel.status_label.size == Vector2(360, 62),
+		and panel.building_title.position == Vector2(59, 106)
+		and panel.building_title.size == Vector2(412, 50)
+		and panel.status_label.position == Vector2(64, 368)
+		and panel.status_label.size == Vector2(372, 70),
 		"本地产物格必须位于右侧面板并接收鼠标点击，状态文字必须限制在左侧内容框内。"
 	)
 	panel.output_slots[0].pressed.emit()

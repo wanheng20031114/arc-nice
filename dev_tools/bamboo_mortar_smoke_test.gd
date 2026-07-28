@@ -1,5 +1,8 @@
 extends SceneTree
 
+# Match production bootstrap order before loading the standalone mortar graph;
+# this keeps Enemy, runtime and registry global classes out of a preload cycle.
+const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const MORTAR_SCENE := preload(
 	"res://scene/plant_defense/bamboo_mortar.tscn"
 )
@@ -24,6 +27,9 @@ const SPLIT_LIFECYCLE_MATERIAL := preload(
 )
 const SOFT_MICRO_LIGHT_TEXTURE := preload(
 	"res://resources/lighting/soft_micro_point_light.tres"
+)
+const SOFT_WHITE_LIGHT_TEXTURE := preload(
+	"res://resources/lighting/soft_white_point_light.tres"
 )
 const MORTAR_FIRE_AUDIO := preload(
 	"res://resources/audio/capoo_rpg_launch.wav"
@@ -158,6 +164,7 @@ func _run() -> void:
 	var proxy := _create_mortar(true, 702)
 	if authority != null and proxy != null:
 		_test_config_and_scene_contract(authority)
+		_test_muzzle_night_light_curve(authority)
 		_test_semantic_layers_and_z_order(authority)
 		await _test_split_lifecycle_transition_contract()
 		await _test_target_ring_and_tracking(authority)
@@ -198,7 +205,10 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 	var fire_audio := (
 		mortar.get_node_or_null("FireAudio") as AudioStreamPlayer2D
 	)
-	_expect(MORTAR_CONFIG.is_valid(), "竹筒迫击炮配置必须有效。")
+	_expect(
+		TOWER_SCENE != null and MORTAR_CONFIG.is_valid(),
+		"塔防场景与竹筒迫击炮配置必须有效。"
+	)
 	_expect(
 		MORTAR_CONFIG.plant_id == &"bamboo_mortar"
 		and MORTAR_CONFIG.display_name == "竹筒迫击炮"
@@ -261,6 +271,9 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 	_expect(
 		mortar.get_node_or_null("TargetingArea") == null
 		and mortar.get_node_or_null("VisualRoot/Muzzle") is Marker2D
+		and mortar.get_node_or_null(
+			"VisualRoot/Muzzle/MuzzleGlow"
+		) is NightPointLight2D
 		and mortar.get_node_or_null("VisualRoot/StatusLight") is Polygon2D
 		and mortar.get_node_or_null(
 			"VisualRoot/StatusLight/MicroGlow"
@@ -275,7 +288,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and is_equal_approx(fire_audio.volume_db, -10.0)
 		and is_equal_approx(fire_audio.max_distance, 300.0)
 		and fire_audio.max_polyphony == 2,
-		"迫击炮必须用预建Marker、独立方形状态灯及其原生微光、Timer与音效节点，且不能常驻TargetingArea。"
+		"迫击炮必须用预建炮口Marker及炮口夜灯、独立方形状态灯及其原生微光、Timer与音效节点，且不能常驻TargetingArea。"
 	)
 	_expect(
 		mortar.status_glow_light.texture == SOFT_MICRO_LIGHT_TEXTURE
@@ -297,6 +310,38 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and not mortar.status_glow_light.shadow_enabled
 		and mortar.status_glow_light.get_parent() == mortar.status_light,
 		"攻击状态方格必须拥有随可见性继承、线性采样且径向衰减的小半径PointLight2D微光。"
+	)
+	var muzzle_light_texture := (
+		mortar.muzzle_glow_light.texture as GradientTexture2D
+	)
+	_expect(
+		mortar.muzzle_glow_light.get_parent() == mortar.muzzle
+		and mortar.muzzle_glow_light.position == Vector2.ZERO
+		and is_equal_approx(
+			absf(mortar.muzzle_glow_light.global_scale.x),
+			absf(mortar.muzzle_glow_light.global_scale.y)
+		)
+		and mortar.muzzle_glow_light.texture == SOFT_WHITE_LIGHT_TEXTURE
+		and muzzle_light_texture != null
+		and muzzle_light_texture.width == 256
+		and muzzle_light_texture.height == 256
+		and muzzle_light_texture.fill
+		== GradientTexture2D.FILL_RADIAL
+		and is_equal_approx(
+			mortar.muzzle_glow_light.texture_scale,
+			BambooMortar.MUZZLE_CHARGE_TEXTURE_SCALE_MIN
+		)
+		and is_zero_approx(mortar.muzzle_glow_light.night_energy)
+		and not mortar.muzzle_glow_light.starts_emitting
+		and not mortar.muzzle_glow_light.enabled
+		and not mortar.muzzle_glow_light.shadow_enabled
+		and mortar.muzzle_glow_light.texture_filter
+		== CanvasItem.TEXTURE_FILTER_LINEAR
+		and mortar.muzzle_glow_light.blend_mode
+		== Light2D.BLEND_MODE_ADD
+		and not mortar.muzzle_glow_light.is_processing()
+		and not mortar.muzzle_glow_light.is_physics_processing(),
+		"炮口必须预建默认关闭、无阴影且无逐帧回调的柔和径向夜灯，并严格跟随规范Muzzle锚点。"
 	)
 	_expect(
 		mortar.attack_timer.one_shot
@@ -423,6 +468,148 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and is_zero_approx(mortar.status_glow_light.energy),
 		"白天必须关闭状态格PointLight2D，只保留中心方格本身。"
 	)
+
+
+func _test_muzzle_night_light_curve(mortar: BambooMortar) -> void:
+	var light := mortar.muzzle_glow_light
+	var light_instance_id := light.get_instance_id()
+	var muzzle_child_count := mortar.muzzle.get_child_count()
+	light.set_night_factor(1.0)
+
+	mortar.call(
+		"_apply_muzzle_light_state",
+		BambooMortar.MuzzleLightPhase.CHARGE,
+		0
+	)
+	var charge_start_energy := light.night_energy
+	var charge_start_scale := light.texture_scale
+	mortar.call(
+		"_apply_muzzle_light_state",
+		BambooMortar.MuzzleLightPhase.CHARGE,
+		3
+	)
+	var charge_mid_energy := light.night_energy
+	var charge_mid_scale := light.texture_scale
+	mortar.call(
+		"_apply_muzzle_light_state",
+		BambooMortar.MuzzleLightPhase.CHARGE,
+		BambooMortar.WINDUP_FRAME_COUNT - 1
+	)
+	var charge_end_energy := light.night_energy
+	var charge_end_scale := light.texture_scale
+	var inherited_scale := absf(light.global_scale.x)
+	var charge_start_radius := (
+		float(light.texture.get_width())
+		* charge_start_scale
+		* inherited_scale
+		* 0.5
+	)
+	var charge_end_radius := (
+		float(light.texture.get_width())
+		* charge_end_scale
+		* inherited_scale
+		* 0.5
+	)
+	_expect(
+		light.color.is_equal_approx(
+			BambooMortar.MUZZLE_CHARGE_LIGHT_COLOR
+		)
+		and light.is_emission_allowed()
+		and light.enabled
+		and is_equal_approx(
+			charge_start_energy,
+			BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MIN
+		)
+		and charge_start_energy < charge_mid_energy
+		and charge_mid_energy < charge_end_energy
+		and is_equal_approx(
+			charge_end_energy,
+			BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MAX
+		)
+		and is_equal_approx(
+			charge_start_scale,
+			BambooMortar.MUZZLE_CHARGE_TEXTURE_SCALE_MIN
+		)
+		and charge_start_scale < charge_mid_scale
+		and charge_mid_scale < charge_end_scale
+		and is_equal_approx(
+			charge_end_scale,
+			BambooMortar.MUZZLE_CHARGE_TEXTURE_SCALE_MAX
+		)
+		and absf(charge_start_radius - 12.8) <= 0.01
+		and absf(charge_end_radius - 32.0) <= 0.01,
+		"夜间炮口预热光必须按现有8帧事件平滑增强，并把实际半径从约13像素扩散到32像素。"
+	)
+
+	light.set_night_factor(0.0)
+
+	_expect(
+		not light.enabled
+		and is_zero_approx(light.energy)
+		and is_equal_approx(
+			light.night_energy,
+			BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MAX
+		),
+		"同一预热状态切到白天时必须关闭真实炮口灯，但保留可在夜幕恢复的阶段强度。"
+	)
+	light.set_night_factor(1.0)
+
+	var fire_energies: Array[float] = []
+	var fire_scales: Array[float] = []
+	for frame_index in range(BambooMortar.FIRE_FRAME_COUNT):
+		mortar.call(
+			"_apply_muzzle_light_state",
+			BambooMortar.MuzzleLightPhase.FIRE,
+			frame_index
+		)
+		fire_energies.append(light.night_energy)
+		fire_scales.append(light.texture_scale)
+	var launch_radius := (
+		float(light.texture.get_width())
+		* fire_scales[BambooMortar.FIRE_LAUNCH_FRAME]
+		* inherited_scale
+		* 0.5
+	)
+	_expect(
+		light.color.is_equal_approx(BambooMortar.MUZZLE_FIRE_LIGHT_COLOR)
+		and fire_energies[0] > charge_end_energy
+		and fire_energies[1] > fire_energies[0]
+		and fire_energies[1] > fire_energies[2]
+		and fire_energies[2] > fire_energies[3]
+		and is_equal_approx(
+			fire_energies[BambooMortar.FIRE_LAUNCH_FRAME],
+			float(BambooMortar.MUZZLE_FIRE_LIGHT_ENERGIES[
+				BambooMortar.FIRE_LAUNCH_FRAME
+			])
+		)
+		and fire_scales[1] > fire_scales[0]
+		and fire_scales[1] > fire_scales[2]
+		and fire_scales[2] > fire_scales[3]
+		and absf(launch_radius - 46.08) <= 0.01,
+		"出膛光必须在fire_1规范发射帧达到1.55峰值与约46像素半径，随后两帧快速收束。"
+	)
+
+	mortar.call(
+		"_apply_muzzle_light_state",
+		BambooMortar.MuzzleLightPhase.OFF,
+		0
+	)
+	_expect(
+		light.get_instance_id() == light_instance_id
+		and mortar.muzzle.get_child_count() == muzzle_child_count
+		and not light.is_emission_allowed()
+		and not light.enabled
+		and is_zero_approx(light.energy)
+		and is_zero_approx(light.night_energy)
+		and is_equal_approx(
+			light.texture_scale,
+			BambooMortar.MUZZLE_CHARGE_TEXTURE_SCALE_MIN
+		)
+		and not light.is_processing()
+		and not light.is_physics_processing(),
+		"炮口光结束后必须复用同一预建节点并立即完全归零，禁止动态节点、常驻Tween或逐帧处理。"
+	)
+	light.set_night_factor(0.0)
 
 
 func _test_semantic_layers_and_z_order(mortar: BambooMortar) -> void:
@@ -846,6 +1033,7 @@ func _test_split_lifecycle_transition_contract() -> void:
 	)
 	mortar.attack_timer.stop()
 	mortar.target_track_timer.stop()
+	mortar.muzzle_glow_light.set_night_factor(1.0)
 	var build_material := mortar.lower_body.material as ShaderMaterial
 	var build_state: Vector4 = build_material.get_shader_parameter(
 		&"lifecycle_state"
@@ -854,6 +1042,8 @@ func _test_split_lifecycle_transition_contract() -> void:
 		not mortar.is_operational
 		and mortar.is_construction_visual_active()
 		and not mortar.status_light.visible
+		and not mortar.muzzle_glow_light.enabled
+		and is_zero_approx(mortar.muzzle_glow_light.energy)
 		and build_material != SPLIT_LIFECYCLE_MATERIAL
 		and mortar.main_sprite.material == build_material
 		and is_zero_approx(build_state.x)
@@ -867,11 +1057,21 @@ func _test_split_lifecycle_transition_contract() -> void:
 		mortar.is_operational
 		and not mortar.is_construction_visual_active()
 		and mortar.status_light.visible
+		and not mortar.muzzle_glow_light.enabled
 		and mortar.lower_body.material == SPLIT_LIFECYCLE_MATERIAL
 		and mortar.main_sprite.material == SPLIT_LIFECYCLE_MATERIAL,
 		"构建完成后必须释放临时材质并恢复上下层共享运行态材质。"
 	)
 
+	mortar.call(
+		"_apply_muzzle_light_state",
+		BambooMortar.MuzzleLightPhase.CHARGE,
+		BambooMortar.WINDUP_FRAME_COUNT - 1
+	)
+	_expect(
+		mortar.muzzle_glow_light.enabled,
+		"移除夹具必须先建立一盏真实活跃炮口灯，防止关闭断言伪通过。"
+	)
 	mortar.begin_removal(PlantDefense.RemovalMode.ANIMATED)
 	var removal_material := mortar.lower_body.material as ShaderMaterial
 	var removal_state: Vector4 = removal_material.get_shader_parameter(
@@ -880,6 +1080,9 @@ func _test_split_lifecycle_transition_contract() -> void:
 	_expect(
 		mortar.is_removing
 		and not mortar.status_light.visible
+		and not mortar.muzzle_glow_light.enabled
+		and is_zero_approx(mortar.muzzle_glow_light.energy)
+		and is_zero_approx(mortar.muzzle_glow_light.night_energy)
 		and removal_material != SPLIT_LIFECYCLE_MATERIAL
 		and mortar.main_sprite.material == removal_material
 		and is_zero_approx(removal_state.z),
@@ -995,10 +1198,16 @@ func _test_windup_fire_and_fixed_landing(
 	var target := enemies[2]
 	target.is_dead = false
 	target.global_position = Vector2(96.0, 0.0)
+	mortar.muzzle_glow_light.set_night_factor(1.0)
 	mortar.call("_begin_authoritative_windup", target)
 	_expect(
 		mortar.combat_phase == BambooMortar.CombatPhase.WINDUP
 		and mortar.main_sprite.animation == &"charge"
+		and mortar.muzzle_glow_light.enabled
+		and is_equal_approx(
+			mortar.muzzle_glow_light.night_energy,
+			BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MIN
+		)
 		and not mortar.target_track_timer.is_stopped()
 		and runtime.queued_visuals.size() == 1
 		and int(runtime.queued_visuals[0].get("stage", -1))
@@ -1015,6 +1224,13 @@ func _test_windup_fire_and_fixed_landing(
 		== BambooMortar.FIRE_LAUNCH_FRAME
 		and mortar.main_sprite.position
 		== BambooMortar.FIRE_RECOIL_OFFSET
+		and mortar.muzzle_glow_light.enabled
+		and is_equal_approx(
+			mortar.muzzle_glow_light.night_energy,
+			float(BambooMortar.MUZZLE_FIRE_LIGHT_ENERGIES[
+				BambooMortar.FIRE_LAUNCH_FRAME
+			])
+		)
 		and mortar.attack_timer.is_stopped()
 		and mortar.fire_audio.playing
 		and runtime.queued_visuals.size() == 2
@@ -1107,14 +1323,22 @@ func _test_windup_fire_and_fixed_landing(
 		runtime.query_count == query_count_before_fire_finished
 		and mortar.combat_phase == BambooMortar.CombatPhase.IDLE
 		and mortar.main_sprite.animation == &"idle"
-		and mortar.main_sprite.position == Vector2.ZERO,
-		"开火动画结束时必须先完整复位主体，并把下一轮索敌放到安全的延迟调用点。"
+		and mortar.main_sprite.position == Vector2.ZERO
+		and not mortar.muzzle_glow_light.enabled
+		and is_zero_approx(mortar.muzzle_glow_light.energy)
+		and is_zero_approx(mortar.muzzle_glow_light.night_energy),
+		"开火动画结束时必须先完整复位主体和炮口光，并把下一轮索敌放到安全的延迟调用点。"
 	)
 	await process_frame
 	_expect(
 		runtime.query_count == query_count_before_fire_finished + 1
 		and mortar.combat_phase == BambooMortar.CombatPhase.WINDUP
 		and mortar.main_sprite.animation == &"charge"
+		and mortar.muzzle_glow_light.enabled
+		and is_equal_approx(
+			mortar.muzzle_glow_light.night_energy,
+			BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MIN
+		)
 		and mortar.attack_timer.is_stopped(),
 		"安全延迟调用必须立即开始下一次4秒前摇，不能再插入2秒攻击间隔。"
 	)
@@ -1123,6 +1347,12 @@ func _test_windup_fire_and_fixed_landing(
 	mortar.combat_phase = BambooMortar.CombatPhase.IDLE
 	mortar.main_sprite.play(&"idle")
 	mortar.call("_set_glow_state", false, 0)
+	mortar.call(
+		"_apply_muzzle_light_state",
+		BambooMortar.MuzzleLightPhase.OFF,
+		0
+	)
+	mortar.muzzle_glow_light.set_night_factor(0.0)
 	await _finish_active_shells()
 
 
@@ -1407,6 +1637,7 @@ func _test_proxy_actions_and_runtime_state(
 	authority: BambooMortar,
 	proxy: BambooMortar
 ) -> void:
+	proxy.muzzle_glow_light.set_night_factor(1.0)
 	proxy.main_sprite.position = BambooMortar.FIRE_RECOIL_OFFSET
 	proxy.play_multiplayer_action(
 		BambooMortar.NETWORK_STAGE_WINDUP,
@@ -1416,6 +1647,16 @@ func _test_proxy_actions_and_runtime_state(
 		1.25
 	)
 	var first_frame := proxy.main_sprite.frame
+	var first_charge_progress := smoothstep(
+		0.0,
+		1.0,
+		float(first_frame) / float(BambooMortar.WINDUP_FRAME_COUNT - 1)
+	)
+	var expected_first_charge_energy := lerpf(
+		BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MIN,
+		BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MAX,
+		first_charge_progress
+	)
 	proxy.play_multiplayer_action(
 		BambooMortar.NETWORK_STAGE_WINDUP,
 		17,
@@ -1428,6 +1669,11 @@ func _test_proxy_actions_and_runtime_state(
 		and proxy.main_sprite.frame == first_frame
 		and proxy.main_sprite.position
 		== BambooMortar.MAIN_SPRITE_REST_POSITION
+		and proxy.muzzle_glow_light.enabled
+		and is_equal_approx(
+			proxy.muzzle_glow_light.night_energy,
+			expected_first_charge_energy
+		)
 		and proxy.latest_proxy_action_id == 17,
 		"客户端必须复位旧后坐位移、按Host时间快进至对应蓄热帧，并拒绝重复阶段回滚。"
 	)
@@ -1435,6 +1681,10 @@ func _test_proxy_actions_and_runtime_state(
 	_expect(
 		proxy.main_sprite.animation == &"fire"
 		and proxy.main_sprite.frame == 0
+		and is_equal_approx(
+			proxy.muzzle_glow_light.night_energy,
+			float(BambooMortar.MUZZLE_FIRE_LIGHT_ENERGIES[0])
+		)
 		and proxy.combat_phase == BambooMortar.CombatPhase.FIRING,
 		"客户端蓄热结束后必须先显示与Host一致的fire_0预备帧，不能停在charge末帧等待出膛事件。"
 	)
@@ -1450,6 +1700,12 @@ func _test_proxy_actions_and_runtime_state(
 		proxy.main_sprite.animation == &"fire"
 		and proxy.main_sprite.frame
 		== BambooMortar.FIRE_LAUNCH_FRAME
+		and is_equal_approx(
+			proxy.muzzle_glow_light.night_energy,
+			float(BambooMortar.MUZZLE_FIRE_LIGHT_ENERGIES[
+				BambooMortar.FIRE_LAUNCH_FRAME
+			])
+		)
 		and proxy.combat_phase == BambooMortar.CombatPhase.FIRING,
 		"客户端收到出膛事件时必须显示对应爆闪/后坐帧，不能直接跳回idle。"
 	)
@@ -1490,6 +1746,7 @@ func _test_proxy_actions_and_runtime_state(
 	var overlapping_shell_count := _count_active_shells()
 	var fresh_proxy := _create_mortar(true, 703)
 	if fresh_proxy != null:
+		fresh_proxy.muzzle_glow_light.set_night_factor(1.0)
 		fresh_proxy.apply_multiplayer_runtime_state(
 			snapshot,
 			Time.get_ticks_msec() / 1000.0
@@ -1499,6 +1756,9 @@ func _test_proxy_actions_and_runtime_state(
 			and fresh_proxy.combat_phase
 			== BambooMortar.CombatPhase.WINDUP
 			and fresh_proxy.main_sprite.frame >= 2
+			and fresh_proxy.muzzle_glow_light.enabled
+			and fresh_proxy.muzzle_glow_light.night_energy
+			> BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MIN
 			and int(
 				fresh_proxy.get("_latest_proxy_shell_action_id")
 			) == 22
@@ -1508,6 +1768,7 @@ func _test_proxy_actions_and_runtime_state(
 		)
 	var dropped_fire_proxy := _create_mortar(true, 704)
 	if dropped_fire_proxy != null:
+		dropped_fire_proxy.muzzle_glow_light.set_night_factor(1.0)
 		dropped_fire_proxy.play_multiplayer_action(
 			BambooMortar.NETWORK_STAGE_WINDUP,
 			23,
@@ -1530,9 +1791,12 @@ func _test_proxy_actions_and_runtime_state(
 				)
 			) == 22
 			and dropped_fire_proxy.main_sprite.animation == &"charge"
+			and dropped_fire_proxy.muzzle_glow_light.enabled
+			and dropped_fire_proxy.muzzle_glow_light.night_energy
+			> BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MIN
 			and _count_active_shells()
 			== dropped_fire_shell_count + 1,
-			"已收到新前摇但漏收旧出膛事件的客户端，必须由快照补回旧炮弹且不能回滚主体。"
+			"已收到新前摇但漏收旧出膛事件的客户端，必须由快照补回旧炮弹且不能回滚主体和炮口光。"
 		)
 		dropped_fire_proxy.apply_multiplayer_runtime_state(
 			snapshot,
