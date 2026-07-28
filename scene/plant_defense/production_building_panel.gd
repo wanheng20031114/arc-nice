@@ -262,8 +262,8 @@ func _refresh_progress_text() -> void:
 	if not building.production_enabled:
 		progress_label.text = "已暂停 · 本轮进度已清空"
 		return
-	if recipe.outputs_to_local_slot() and building.has_buffered_output():
-		progress_label.text = "产物格已满 · 领取后继续"
+	if recipe.outputs_to_local_slot() and building.is_local_output_slot_full():
+		progress_label.text = "产物格已存满 · 领取后继续"
 		return
 	var remaining := ceili(building.get_visual_remaining_seconds())
 	if remaining <= 0:
@@ -410,14 +410,27 @@ func _refresh_status() -> void:
 		return
 	var active_recipe := building.get_active_recipe()
 	if active_recipe != null and active_recipe.outputs_to_local_slot():
+		var output_item := active_recipe.output_items[0]
+		var output_capacity := active_recipe.get_local_output_capacity()
 		if not building.production_enabled:
 			status_label.text = "挖土装置已暂停；已有产物仍可领取。"
+		elif building.is_local_output_slot_full():
+			status_label.text = "产物格已存满%d个%s；点击领取后自动开始下一轮。" % [
+				output_capacity,
+				output_item.display_name,
+			]
 		elif building.has_buffered_output():
-			status_label.text = "产物格已堵塞；点击产物领取后自动开始下一轮。"
+			status_label.text = "产物格暂存%d/%d个%s，装置仍在继续生产。" % [
+				building.get_buffered_output_count(),
+				output_capacity,
+				output_item.display_name,
+			]
 		else:
-			status_label.text = (
-				"无需材料；每20秒产出土块、木板、生命药瓶或随机收藏品。"
-			)
+			status_label.text = "无需材料；每%.0f秒固定产出1个%s，最多暂存%d个。" % [
+				active_recipe.duration_seconds,
+				output_item.display_name,
+				output_capacity,
+			]
 		return
 	if building.uses_environment_source():
 		if building.get_active_recipe() == null:
@@ -696,20 +709,37 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 			input_slots[input_index].disabled = false
 		for output_index in output_slots.size():
 			output_slots[output_index].visible = output_index == 0
+			output_slots[output_index].mouse_filter = (
+				Control.MOUSE_FILTER_STOP
+				if recipe.outputs_to_local_slot() and output_index == 0
+				else Control.MOUSE_FILTER_IGNORE
+			)
 		input_title.text = "水源" if recipe.uses_environment_source() else "无需材料"
 		output_title.text = (
 			"产物格（点击领取）"
 			if recipe.outputs_to_local_slot()
 			else "采集产物"
 		)
-		_set_control_rect(building_title, Rect2(128, 112, 472, 38))
-		_set_control_rect(input_title, Rect2(126, 190, 128, 28))
-		_set_control_rect(output_title, Rect2(478, 190, 128, 28))
-		_set_control_rect(input_slots[0], Rect2(160, 247, 64, 70))
-		_set_control_rect(progress_bar, Rect2(254, 268, 220, 28))
-		_set_control_rect(progress_label, Rect2(240, 306, 248, 28))
-		_set_control_rect(output_slots[0], Rect2(508, 247, 64, 70))
-		_set_control_rect(status_label, Rect2(120, 386, 488, 54))
+		if recipe.outputs_to_local_slot():
+			# 默认背景是左右分栏：所有生产状态留在左框，产物格独占右框。
+			_set_control_rect(building_title, Rect2(65, 112, 400, 38))
+			_set_control_rect(input_title, Rect2(105, 190, 290, 28))
+			_set_control_rect(output_title, Rect2(508, 190, 170, 28))
+			_set_control_rect(input_slots[0], Rect2(218, 246, 64, 70))
+			_set_control_rect(progress_bar, Rect2(100, 270, 300, 28))
+			_set_control_rect(progress_label, Rect2(100, 310, 300, 30))
+			_set_control_rect(output_slots[0], Rect2(561, 246, 64, 70))
+			_set_control_rect(status_label, Rect2(70, 372, 360, 62))
+		else:
+			# 环境采集器使用单大框专属背景，保留其原有居中构图。
+			_set_control_rect(building_title, Rect2(128, 112, 472, 38))
+			_set_control_rect(input_title, Rect2(126, 190, 128, 28))
+			_set_control_rect(output_title, Rect2(478, 190, 128, 28))
+			_set_control_rect(input_slots[0], Rect2(160, 247, 64, 70))
+			_set_control_rect(progress_bar, Rect2(254, 268, 220, 28))
+			_set_control_rect(progress_label, Rect2(240, 306, 248, 28))
+			_set_control_rect(output_slots[0], Rect2(508, 247, 64, 70))
+			_set_control_rect(status_label, Rect2(120, 386, 488, 54))
 		_set_control_rect(close_button, Rect2(660, 480, 48, 48))
 		close_button.text = ""
 		close_button.tooltip_text = "关闭"
@@ -718,6 +748,8 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 
 	recipe_title.show()
 	recipe_scroll.show()
+	for output_slot in output_slots:
+		output_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	input_title.text = "原材料"
 	output_title.text = (
 		"背包产物"

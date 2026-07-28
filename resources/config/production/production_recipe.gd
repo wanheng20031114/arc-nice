@@ -30,6 +30,8 @@ enum OutputDestination {
 @export var output_items: Array[PickupConfig] = []
 @export var output_amounts: Array[int] = []
 @export var output_destination: OutputDestination = OutputDestination.SHARED_STORAGE
+# 仅用于建筑本地产物格：达到该数量后才暂停生产，领取时整批转入背包。
+@export_range(1, 999, 1) var local_output_capacity: int = 1
 
 @export_group("生产")
 @export_range(0.1, 3600.0, 0.1, "or_greater") var duration_seconds: float = 10.0
@@ -73,6 +75,9 @@ func is_valid() -> bool:
 			return false
 	if outputs_to_local_slot() and (
 		output_items.size() != 1
+		or local_output_capacity < output_amounts[0]
+		or local_output_capacity
+			> PickupConfig.get_inventory_stack_limit(output_items[0])
 		or output_amounts[0]
 			> PickupConfig.get_inventory_stack_limit(output_items[0])
 	):
@@ -98,6 +103,15 @@ func outputs_to_player_inventory() -> bool:
 
 func outputs_to_local_slot() -> bool:
 	return output_destination == OutputDestination.LOCAL_OUTPUT_SLOT
+
+
+func get_local_output_capacity() -> int:
+	if not outputs_to_local_slot() or output_items.size() != 1:
+		return 0
+	return mini(
+		local_output_capacity,
+		PickupConfig.get_inventory_stack_limit(output_items[0])
+	)
 
 
 func inputs_from_player_inventory() -> bool:

@@ -427,7 +427,7 @@ func set_production_enabled(enabled: bool) -> bool:
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = (
 		ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
-		if has_buffered_output()
+		if is_local_output_slot_full()
 		else &""
 	)
 	_clear_ready_production_wait_registration()
@@ -500,7 +500,7 @@ func advance_shared_production_tick(delta_seconds: float) -> void:
 	var recipe := get_active_recipe()
 	if not is_recipe_unlocked(recipe):
 		return
-	if recipe.outputs_to_local_slot() and has_buffered_output():
+	if recipe.outputs_to_local_slot() and is_local_output_slot_full():
 		completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
 		return
 	var previous_elapsed := progress_elapsed_seconds
@@ -566,6 +566,18 @@ func get_buffered_output_count() -> int:
 	return buffered_output_count if has_buffered_output() else 0
 
 
+func get_local_output_capacity() -> int:
+	var recipe := get_active_recipe()
+	return recipe.get_local_output_capacity() if recipe != null else 0
+
+
+func is_local_output_slot_full() -> bool:
+	if not has_buffered_output():
+		return false
+	var capacity := get_local_output_capacity()
+	return capacity <= 0 or buffered_output_count >= capacity
+
+
 func try_collect_buffered_output(output_peer_id: int) -> StringName:
 	if (
 		is_multiplayer_proxy
@@ -604,25 +616,37 @@ func try_collect_buffered_output(output_peer_id: int) -> StringName:
 
 
 func _complete_local_output_cycle(recipe: ProductionRecipe) -> bool:
-	if has_buffered_output():
-		if completion_wait_reason != ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED:
-			completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
-			_bump_production_state()
-		return false
 	var output := _select_local_output(recipe)
 	var item := output.get("item") as PickupConfig
 	var count := int(output.get("count", 0))
+	var capacity := recipe.get_local_output_capacity()
 	if (
 		item == null
 		or not item.can_store_in_inventory
 		or count <= 0
-		or count > PickupConfig.get_inventory_stack_limit(item)
+		or capacity <= 0
+		or count > capacity
 	):
 		return false
-	buffered_output_item = item
-	buffered_output_count = count
+	if has_buffered_output():
+		if (
+			not PickupConfig.inventory_items_can_stack(buffered_output_item, item)
+			or buffered_output_count + count > capacity
+		):
+			if completion_wait_reason != ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED:
+				completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
+				_bump_production_state()
+			return false
+		buffered_output_count += count
+	else:
+		buffered_output_item = item
+		buffered_output_count = count
 	progress_elapsed_seconds = 0.0
-	completion_wait_reason = ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
+	completion_wait_reason = (
+		ProductionCoordinator.RESULT_OUTPUT_SLOT_OCCUPIED
+		if buffered_output_count >= capacity
+		else &""
+	)
 	_clear_ready_production_wait_registration()
 	_bump_production_state()
 	return true
@@ -825,14 +849,16 @@ func _apply_multiplayer_runtime_state_sample(
 			received_buffered_output_path
 		) as PickupConfig
 		if (
-			received_buffered_output_item == null
-			or not received_buffered_output_item.can_store_in_inventory
-			or received_buffered_output_count
-				> PickupConfig.get_inventory_stack_limit(
-					received_buffered_output_item
-				)
-			or received_recipe == null
+			received_recipe == null
 			or not received_recipe.outputs_to_local_slot()
+			or received_buffered_output_item == null
+			or not received_buffered_output_item.can_store_in_inventory
+			or not PickupConfig.inventory_identity_matches(
+				received_recipe.output_items[0],
+				received_buffered_output_item
+			)
+			or received_buffered_output_count
+				> received_recipe.get_local_output_capacity()
 		):
 			return
 	var received_wait_reason := StringName(state["wait_reason"])

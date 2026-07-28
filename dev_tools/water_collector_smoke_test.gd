@@ -113,7 +113,16 @@ func _run() -> void:
 		and not panel.input_slots[2].visible
 		and panel.output_slots[0].item == WATER_BOTTLE
 		and not panel.output_slots[1].visible
-		and not panel.output_slots[2].visible,
+		and not panel.output_slots[2].visible
+		and panel.input_slots[0].position == Vector2(160, 247)
+		and panel.progress_bar.position == Vector2(254, 268)
+		and panel.output_slots[0].position == Vector2(508, 247)
+		and not panel.input_slots[0].get_rect().intersects(
+			panel.progress_bar.get_rect()
+		)
+		and not panel.progress_bar.get_rect().intersects(
+			panel.output_slots[0].get_rect()
+		),
 		"采集器面板左侧必须显示水瓦片，右侧只显示1个水瓶产物槽。"
 	)
 	_expect(
