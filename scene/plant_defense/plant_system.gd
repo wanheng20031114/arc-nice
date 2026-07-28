@@ -39,7 +39,7 @@ const CARDINAL_NEIGHBOR_OFFSETS := [
 	Vector2i.DOWN,
 	Vector2i.LEFT,
 ]
-# Sprite frame equals this mask: up=1, right=2, down=4, left=8.
+# Cardinal topology bits: up=1, right=2, down=4, left=8.
 const CARDINAL_NEIGHBOR_BITS := [1, 2, 4, 8]
 
 @export_range(0, 64, 1) var max_placement_manhattan_distance: int = (
@@ -1316,8 +1316,9 @@ func _refresh_cardinal_connections_around(changed_cell: Vector2i) -> void:
 			)
 			continue
 		var new_mask := _calculate_cardinal_connection_mask(cell, config)
-		if new_mask != cardinal_plant.get_cardinal_connection_mask():
-			_last_cardinal_connection_refresh_metrics["masks_changed"] += 1
+		if new_mask == cardinal_plant.get_cardinal_connection_mask():
+			continue
+		_last_cardinal_connection_refresh_metrics["masks_changed"] += 1
 		cardinal_plant.set_cardinal_connection_mask(new_mask)
 		_last_cardinal_connection_refresh_metrics["plants_updated"] += 1
 

@@ -1,20 +1,25 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/cardinal_connected_plant.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/simple_fence/simple_fence_atlas.png" id="2_sprite"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/simple_fence/simple_fence_atlas.png" id="2_sprite_atlas"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="3_health_bar"]
 [ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/simple_fence/simple_fence_connector.png" id="5_connector"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
 size = Vector2(15, 15)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_body"]
+atlas = ExtResource("2_sprite_atlas")
+region = Rect2(0, 0, 32, 32)
 
 [node name="SimpleFence" type="StaticBody2D"]
 collision_layer = 1536
 collision_mask = 2
 script = ExtResource("1_script")
 enemy_approach_depth = 0.0
-lifecycle_visual_paths = Array[NodePath]([NodePath("Sprite2D")])
+lifecycle_visual_paths = Array[NodePath]([NodePath("Sprite2D"), NodePath("ConnectorRight"), NodePath("ConnectorDown")])
 lifecycle_effect_top_y = -8.0
 lifecycle_effect_bottom_y = 8.0
 lifecycle_particle_scale = 0.65
@@ -24,9 +29,26 @@ z_index = 1
 texture_filter = 1
 material = ExtResource("4_lifecycle_material")
 scale = Vector2(0.5, 0.5)
-texture = ExtResource("2_sprite")
-hframes = 4
-vframes = 4
+texture = SubResource("AtlasTexture_body")
+
+[node name="ConnectorRight" type="Sprite2D" parent="."]
+visible = false
+z_index = 0
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+position = Vector2(8, 0)
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("5_connector")
+
+[node name="ConnectorDown" type="Sprite2D" parent="."]
+visible = false
+z_index = 0
+texture_filter = 1
+material = ExtResource("4_lifecycle_material")
+position = Vector2(0, 8)
+rotation = 1.5707963267948966
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("5_connector")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_body")
