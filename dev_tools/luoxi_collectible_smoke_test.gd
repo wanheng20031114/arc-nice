@@ -133,7 +133,9 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 	_expect(bubble.visible, "Luoxi dialogue bubble must appear when the player enters range.")
 	_expect(_dialogue_text(bubble) == "我是终末地的爪牙！", "Luoxi dialogue must start at the requested first line.")
 
-	var bubble_panel := bubble.get_node("BubblePanel") as PanelContainer
+	var bubble_panel := bubble.get_node(
+		"DialogueLayer/Anchor/BubblePanel"
+	) as PanelContainer
 	var bubble_style := bubble_panel.get_theme_stylebox("panel") as StyleBoxFlat
 	_expect(bubble.scale.is_equal_approx(Vector2(0.5, 0.5)), "Luoxi dialogue bubble must retain its high-resolution half-scale rendering root.")
 	_expect(bubble_panel.size.is_equal_approx(Vector2(300.0, 116.0)), "Luoxi dialogue bubble must retain its doubled internal geometry.")
@@ -143,7 +145,9 @@ func _test_luoxi_dialogue_choice_and_inventory() -> void:
 		bubble_style != null and is_equal_approx(bubble_style.bg_color.r, 0.98),
 		"Luoxi dialogue bubble must keep the same warm background as Zhuangfangyi."
 	)
-	var name_plate := bubble.get_node("NamePlate") as PanelContainer
+	var name_plate := bubble.get_node(
+		"DialogueLayer/Anchor/NamePlate"
+	) as PanelContainer
 	var name_style := name_plate.get_theme_stylebox("panel") as StyleBoxFlat
 	_expect(
 		name_style != null and name_style.bg_color.r > 0.9 and name_style.bg_color.g < 0.25,

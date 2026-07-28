@@ -3,6 +3,8 @@ extends SceneTree
 const GRID_SIZE := 4
 const FRAME_SIZE := 32
 const GENERATED_CELL_SCALE_SIZE := 60
+const FIXED_BODY_FRAME := 0
+const FIXED_BODY_VISIBLE_SIZE := Vector2i(30, 28)
 const CONNECTION_UP := 1
 const CONNECTION_RIGHT := 2
 const CONNECTION_DOWN := 4
@@ -92,6 +94,8 @@ func _init() -> void:
 		frame = frame.get_region(
 			Rect2i(crop_offset, crop_offset, FRAME_SIZE, FRAME_SIZE)
 		)
+		if frame_index == FIXED_BODY_FRAME:
+			frame = _normalize_fixed_body(frame)
 		_enforce_cardinal_edge_contract(frame, frame_index)
 		atlas.blit_rect(
 			frame,
@@ -123,6 +127,36 @@ func _init() -> void:
 		% [output_path, atlas.get_size(), _count_visible_colors(atlas)]
 	)
 	quit(0)
+
+
+## The runtime keeps frame 0 as its stable body and draws connections with
+## separate sprites. Normalize that body's visible silhouette inside the 32px
+## cell so square world-grid spacing does not make vertical rows look loose.
+func _normalize_fixed_body(frame: Image) -> Image:
+	var visible_rect := frame.get_used_rect()
+	var subject := frame.get_region(visible_rect)
+	subject.resize(
+		FIXED_BODY_VISIBLE_SIZE.x,
+		FIXED_BODY_VISIBLE_SIZE.y,
+		Image.INTERPOLATE_NEAREST
+	)
+	var normalized := Image.create(
+		FRAME_SIZE,
+		FRAME_SIZE,
+		false,
+		Image.FORMAT_RGBA8
+	)
+	normalized.fill(Color(0.0, 0.0, 0.0, 0.0))
+	var target_origin := Vector2i(
+		(FRAME_SIZE - FIXED_BODY_VISIBLE_SIZE.x) / 2,
+		(FRAME_SIZE - FIXED_BODY_VISIBLE_SIZE.y) / 2
+	)
+	normalized.blit_rect(
+		subject,
+		Rect2i(Vector2i.ZERO, FIXED_BODY_VISIBLE_SIZE),
+		target_origin
+	)
+	return normalized
 
 
 func _enforce_cardinal_edge_contract(frame: Image, connection_mask: int) -> void:
@@ -197,6 +231,14 @@ func _validate_atlas(atlas: Image) -> String:
 		if maximum.x < minimum.x or maximum.y < minimum.y:
 			return "Simple fence atlas contains an empty frame: %d" % connection_mask
 		var subject_size := maximum - minimum + Vector2i.ONE
+		if (
+			connection_mask == FIXED_BODY_FRAME
+			and subject_size != FIXED_BODY_VISIBLE_SIZE
+		):
+			return (
+				"Simple fence fixed body must be %s, got %s."
+				% [FIXED_BODY_VISIBLE_SIZE, subject_size]
+			)
 		if maxi(subject_size.x, subject_size.y) < 28:
 			return (
 				"Simple fence frame %d does not nearly fill its 32x32 cell: %s"

@@ -7,8 +7,14 @@ const PUNCTUATION_TIME := 0.22
 const NO_BREAK_MARK := "⁠" # U+2060 WORD JOINER，避免句号等标点孤立换行。
 const NO_BREAK_PUNCTUATION := "，。？！、,.?!；：;:"
 const SILENT_CHARACTERS := " ，。？！、,.?![]◆"
+# World and ambient effects occupy layers 0-1; player-facing UI starts at 5.
+const CANVAS_LAYER := 4
 
-@onready var text_label: RichTextLabel = $BubblePanel/Margin/Content/Text
+@onready var dialogue_layer: CanvasLayer = $DialogueLayer
+@onready var canvas_anchor: Node2D = $DialogueLayer/Anchor
+@onready var text_label: RichTextLabel = (
+	$DialogueLayer/Anchor/BubblePanel/Margin/Content/Text
+)
 @onready var blip_audio: AudioStreamPlayer = $BlipAudio
 
 var reveal_serial: int = 0
@@ -19,12 +25,15 @@ var reveal_delay_left: float = 0.0
 
 
 func _ready() -> void:
-	set_process(false)
+	visibility_changed.connect(_on_visibility_changed)
+	dialogue_layer.visible = is_visible_in_tree()
+	_sync_canvas_anchor()
+	set_process(is_visible_in_tree())
 
 
 func _process(delta: float) -> void:
+	_sync_canvas_anchor()
 	if not is_revealing:
-		set_process(false)
 		return
 
 	reveal_delay_left = maxf(reveal_delay_left - delta, 0.0)
@@ -34,7 +43,6 @@ func _process(delta: float) -> void:
 	if reveal_index >= current_text.length():
 		text_label.visible_characters = -1
 		is_revealing = false
-		set_process(false)
 		return
 
 	var character := current_text.substr(reveal_index, 1)
@@ -63,12 +71,25 @@ func finish_line() -> void:
 	reveal_serial += 1
 	text_label.visible_characters = -1
 	is_revealing = false
-	set_process(false)
 
 
 func hide_bubble() -> void:
 	finish_line()
 	visible = false
+
+
+func _on_visibility_changed() -> void:
+	var should_show := is_visible_in_tree()
+	dialogue_layer.visible = should_show
+	set_process(should_show)
+	if should_show:
+		_sync_canvas_anchor()
+
+
+func _sync_canvas_anchor() -> void:
+	var viewport_transform := get_global_transform_with_canvas()
+	viewport_transform.origin = viewport_transform.origin.round()
+	canvas_anchor.transform = viewport_transform
 
 
 func _get_character_delay(character: String) -> float:

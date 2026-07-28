@@ -180,6 +180,12 @@ func _test_config_scene_and_component_visuals() -> void:
 		and sprite.z_index == 1,
 		"围栏主体必须固定使用building_simple_fence的32×32首帧，以最近邻缩放为16×16且位于连接件上层。"
 	)
+	var body_image := sprite.texture.get_image() if sprite != null else null
+	_expect(
+		body_image != null
+		and body_image.get_used_rect().size == Vector2i(30, 28),
+		"围栏固定主体的可见像素必须接近方形，不能继续使用30×23的扁平轮廓。"
+	)
 	_expect(
 		sprite != null
 		and connector_right != null
@@ -189,7 +195,7 @@ func _test_config_scene_and_component_visuals() -> void:
 		and connector_right.texture != null
 		and connector_right.texture.resource_path == CONNECTOR_TEXTURE_PATH
 		and connector_down.texture == connector_right.texture
-		and connector_right.texture.get_size() == Vector2(10, 10)
+		and connector_right.texture.get_size() == Vector2(14, 10)
 		and connector_right.scale == Vector2(0.5, 0.5)
 		and connector_down.scale == Vector2(0.5, 0.5)
 		and connector_right.position == Vector2(8.0, 0.0)
@@ -200,7 +206,7 @@ func _test_config_scene_and_component_visuals() -> void:
 		and connector_down.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 		and connector_right.z_index < sprite.z_index
 		and connector_down.z_index < sprite.z_index,
-		"围栏必须预建同一张10×10最近邻连接图：右连接位于(8,0)，下连接位于(0,8)并旋转90度，且均绘制在主体下层。"
+		"围栏必须预建同一张14×10最近邻连接图：右连接位于(8,0)，下连接位于(0,8)并旋转90度，且均绘制在主体下层。"
 	)
 	_expect(
 		plant.lifecycle_visual_paths.has(NodePath("Sprite2D"))
@@ -219,17 +225,30 @@ func _test_config_scene_and_component_visuals() -> void:
 		var connector_image := connector_right.texture.get_image()
 		_expect(
 			connector_image != null
-			and connector_image.get_size() == Vector2i(10, 10)
+			and connector_image.get_size() == Vector2i(14, 10)
 			and not connector_image.has_mipmaps()
 			and _image_has_visible_pixel(connector_image)
 			and _image_uses_binary_alpha(connector_image),
-			"围栏连接图必须为10×10、包含可见像素、使用二值alpha且不得生成mipmap。"
+			"围栏连接图必须为14×10、包含可见像素、使用二值alpha且不得生成mipmap。"
 		)
 		_expect(
 			connector_image != null
 			and _image_is_horizontally_symmetric(connector_image)
 			and _image_is_vertically_symmetric(connector_image),
 			"同一张围栏连接图必须在水平轴和垂直轴上逐像素对称，确保旋转复用后接缝一致。"
+		)
+		_expect(
+			_connection_has_no_transparent_seam(
+				body_image,
+				connector_image,
+				false
+			)
+			and _connection_has_no_transparent_seam(
+				body_image,
+				connector_image,
+				true
+			),
+			"围栏横向与纵向的相邻主体之间都必须由连接木段连续跨过，不能留下透明行或透明列。"
 		)
 	var original_texture := sprite.texture if sprite != null else null
 	var original_frame := sprite.frame if sprite != null else -1
@@ -701,6 +720,63 @@ func _image_is_vertically_symmetric(image: Image) -> bool:
 			):
 				return false
 	return true
+
+
+func _connection_has_no_transparent_seam(
+	body: Image,
+	connector: Image,
+	vertical: bool
+) -> bool:
+	if body == null or connector == null:
+		return false
+	var bridge := _rotate_image_clockwise(connector) if vertical else connector
+	var pair_size := Vector2i(32, 64) if vertical else Vector2i(64, 32)
+	var pair := Image.create(
+		pair_size.x,
+		pair_size.y,
+		false,
+		Image.FORMAT_RGBA8
+	)
+	pair.fill(Color(0.0, 0.0, 0.0, 0.0))
+	var seam_center := Vector2i(16, 32) if vertical else Vector2i(32, 16)
+	var bridge_origin := seam_center - bridge.get_size() / 2
+	pair.blend_rect(
+		bridge,
+		Rect2i(Vector2i.ZERO, bridge.get_size()),
+		bridge_origin
+	)
+	pair.blend_rect(body, Rect2i(Vector2i.ZERO, body.get_size()), Vector2i.ZERO)
+	var second_origin := Vector2i(0, 32) if vertical else Vector2i(32, 0)
+	pair.blend_rect(body, Rect2i(Vector2i.ZERO, body.get_size()), second_origin)
+	for seam_offset in range(-8, 9):
+		var seam_coordinate := 32 + seam_offset
+		var line_has_pixel := false
+		var line_length := pair.get_width() if vertical else pair.get_height()
+		for cross_coordinate in range(line_length):
+			var point := (
+				Vector2i(cross_coordinate, seam_coordinate)
+				if vertical
+				else Vector2i(seam_coordinate, cross_coordinate)
+			)
+			if pair.get_pixelv(point).a > 0.0:
+				line_has_pixel = true
+				break
+		if not line_has_pixel:
+			return false
+	return true
+
+
+func _rotate_image_clockwise(source: Image) -> Image:
+	var rotated := Image.create(
+		source.get_height(),
+		source.get_width(),
+		false,
+		Image.FORMAT_RGBA8
+	)
+	for y in range(source.get_height()):
+		for x in range(source.get_width()):
+			rotated.set_pixel(source.get_height() - 1 - y, x, source.get_pixel(x, y))
+	return rotated
 
 
 func _count_nodes_by_class(node: Node, class_name_value: StringName) -> int:
