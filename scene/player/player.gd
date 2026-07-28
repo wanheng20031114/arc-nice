@@ -93,6 +93,7 @@ const NORMAL_ANIMATION_PREFIX := &"normal"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
 const CHEAT_XIRANG_AMOUNT := 1000
+const BASE_SKILL1_CHARGE_PER_SECOND := 1.0
 const SKILL1_UPGRADE_CHARGE_REDUCTION := 2.0
 const SKILL1_UPGRADE_COSTS := [200, 500, 1000, 5000, 10000, 20000]
 const SKILL1_MAX_UPGRADE_LEVEL := 6
@@ -226,6 +227,8 @@ var collectible_ammo_capacity_bonus_ratio: float = 0.0
 var collectible_reload_time_reduction: float = 0.0
 var collectible_skill_charge_bonus_per_second: float = 0.0
 var collectible_skill_charge_preserve_chance: float = 0.0
+var _skill_charge_rate_modifiers: Dictionary[int, float] = {}
+var _skill_charge_rate_modifier_total: float = 0.0
 var collectible_base_upgrade_free_chance: float = 0.0
 var collectible_damage_against_burning_multiplier: float = 1.0
 var collectible_damage_against_bleeding_multiplier: float = 1.0
@@ -1428,6 +1431,55 @@ func remove_damage_reduction_modifier(source_id: int) -> void:
 	damage_reduction_modifiers.erase(source_id)
 
 
+## Sets one external source's additive skill-charge bonus per second. Reusing a
+## source id replaces its previous value, so moving in and out of an aura cannot
+## accidentally stack the same source more than once.
+func set_skill_charge_rate_modifier(source_id: int, bonus_per_second: float) -> bool:
+	if source_id <= 0 or not is_finite(bonus_per_second):
+		return false
+	if bonus_per_second <= 0.0:
+		return remove_skill_charge_rate_modifier(source_id)
+
+	var previous_bonus := float(_skill_charge_rate_modifiers.get(source_id, 0.0))
+	if is_equal_approx(previous_bonus, bonus_per_second):
+		return false
+	_skill_charge_rate_modifiers[source_id] = bonus_per_second
+	_skill_charge_rate_modifier_total = maxf(
+		_skill_charge_rate_modifier_total + bonus_per_second - previous_bonus,
+		0.0
+	)
+	return true
+
+
+func remove_skill_charge_rate_modifier(source_id: int) -> bool:
+	if not _skill_charge_rate_modifiers.has(source_id):
+		return false
+	var previous_bonus := float(_skill_charge_rate_modifiers[source_id])
+	_skill_charge_rate_modifiers.erase(source_id)
+	_skill_charge_rate_modifier_total = (
+		0.0
+		if _skill_charge_rate_modifiers.is_empty()
+		else maxf(_skill_charge_rate_modifier_total - previous_bonus, 0.0)
+	)
+	return true
+
+
+func get_skill_charge_rate_modifier(source_id: int) -> float:
+	return float(_skill_charge_rate_modifiers.get(source_id, 0.0))
+
+
+func get_skill_charge_rate_modifier_total() -> float:
+	return _skill_charge_rate_modifier_total
+
+
+func get_skill1_charge_rate_per_second() -> float:
+	return (
+		BASE_SKILL1_CHARGE_PER_SECOND
+		+ maxf(collectible_skill_charge_bonus_per_second, 0.0)
+		+ _skill_charge_rate_modifier_total
+	)
+
+
 ## Applies the tower-defense fate modifiers as absolute run state. Calling this
 ## repeatedly is idempotent and never mutates the shared character resource.
 func configure_tower_defense_fate_modifiers(
@@ -2399,7 +2451,7 @@ func _update_skill1_charge(delta: float) -> void:
 	if skill1_charge >= skill1_charge_duration:
 		return
 
-	var charge_rate := 1.0 + maxf(collectible_skill_charge_bonus_per_second, 0.0)
+	var charge_rate := get_skill1_charge_rate_per_second()
 	skill1_charge = minf(skill1_charge + delta * charge_rate, skill1_charge_duration)
 	_update_skill1_charge_bar()
 

@@ -25,12 +25,15 @@ const WINDUP_DURATION_SECONDS := 4.0
 const TARGET_TRACK_INTERVAL_SECONDS := 0.5
 const WINDUP_FRAME_COUNT := 8
 const WINDUP_FPS := 2.0
+const MIN_COMMITTED_WINDUP_DURATION_SECONDS := (
+	WINDUP_DURATION_SECONDS * PlantDefense.MIN_ATTACK_INTERVAL_MULTIPLIER
+)
 const FIRE_FRAME_COUNT := 4
 const FIRE_FPS := 12.0
 const FIRE_LAUNCH_FRAME := 1
 const FIRE_DURATION_SECONDS := FIRE_FRAME_COUNT / FIRE_FPS
 const FIRE_LAUNCH_LEAD_SECONDS := FIRE_LAUNCH_FRAME / FIRE_FPS
-const RUNTIME_STATE_SCHEMA := 1
+const RUNTIME_STATE_SCHEMA := 2
 const NETWORK_STAGE_WINDUP := 0
 const NETWORK_STAGE_FIRE := 1
 const IDLE_GLOW_COLOR := Color(0.34, 1.65, 0.18, 1.0)
@@ -88,6 +91,7 @@ var next_authoritative_action_id := 0
 var latest_proxy_action_id := 0
 var latest_proxy_stage := -1
 var completed_authoritative_launch_count := 0
+var committed_windup_duration_seconds := WINDUP_DURATION_SECONDS
 
 var _combat_runtime: Node = null
 var _target_candidates: Array[Enemy] = []
@@ -117,10 +121,12 @@ func _on_setup_completed() -> void:
 	_combat_runtime = get_tree().current_scene
 	configured_attack_damage = maxi(config.attack_damage, 0)
 	configured_attack_range = maxf(config.attack_range, 0.0)
+	committed_windup_duration_seconds = WINDUP_DURATION_SECONDS
 	health_bar.call("setup", max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
 	main_sprite.play(&"idle")
+	main_sprite.speed_scale = 1.0
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	_set_glow_state(false, 0)
 	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
@@ -156,6 +162,7 @@ func _disable_proxy_combat_runtime() -> void:
 	_target_candidates.clear()
 	combat_phase = CombatPhase.IDLE
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	main_sprite.speed_scale = 1.0
 	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 
 
@@ -169,6 +176,7 @@ func _on_removal_started(mode: RemovalMode) -> void:
 	_target_candidates.clear()
 	main_sprite.stop()
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	main_sprite.speed_scale = 1.0
 	status_light.visible = false
 	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 	fire_audio.stop()
@@ -386,10 +394,16 @@ func _begin_authoritative_windup(target: Enemy) -> void:
 	next_authoritative_action_id += 1
 	combat_phase = CombatPhase.WINDUP
 	_authoritative_fire_action_id = 0
+	committed_windup_duration_seconds = get_effective_attack_interval(
+		WINDUP_DURATION_SECONDS
+	)
 	_windup_started_at_seconds = _now_seconds()
 	attack_timer.stop()
 	target_track_timer.start(TARGET_TRACK_INTERVAL_SECONDS)
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	main_sprite.speed_scale = (
+		WINDUP_DURATION_SECONDS / committed_windup_duration_seconds
+	)
 	main_sprite.play(&"charge")
 	main_sprite.set_frame_and_progress(0, 0.0)
 	_set_glow_state(true, 0)
@@ -472,6 +486,7 @@ func _on_main_sprite_animation_finished() -> void:
 			# then let the event correct them to the projectile timeline.
 			combat_phase = CombatPhase.FIRING
 			main_sprite.position = MAIN_SPRITE_REST_POSITION
+			main_sprite.speed_scale = 1.0
 			main_sprite.play(&"fire")
 			main_sprite.set_frame_and_progress(0, 0.0)
 			_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
@@ -501,6 +516,7 @@ func _begin_authoritative_fire_animation() -> void:
 	):
 		return
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	main_sprite.speed_scale = 1.0
 	main_sprite.play(&"fire")
 	main_sprite.set_frame_and_progress(0, 0.0)
 	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
@@ -520,6 +536,7 @@ func _fire_authoritative_shell() -> void:
 	combat_phase = CombatPhase.FIRING
 	_update_last_valid_target_position()
 	target_track_timer.stop()
+	main_sprite.speed_scale = 1.0
 	if main_sprite.animation != &"fire":
 		main_sprite.play(&"fire")
 		main_sprite.set_frame_and_progress(
@@ -558,6 +575,7 @@ func _fire_authoritative_shell() -> void:
 
 func _finish_fire_visual() -> void:
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	main_sprite.speed_scale = 1.0
 	main_sprite.play(&"idle")
 	_set_glow_state(false, 0)
 	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
@@ -720,7 +738,8 @@ func _queue_network_visual(
 		action_id,
 		stage,
 		spawn_position,
-		landing_position
+		landing_position,
+		committed_windup_duration_seconds
 	)
 
 
@@ -729,7 +748,8 @@ func play_multiplayer_action(
 	action_id: int,
 	spawn_position: Vector2,
 	landing_position: Vector2,
-	elapsed_seconds: float
+	elapsed_seconds: float,
+	action_windup_duration_seconds: float
 ) -> void:
 	if (
 		not is_multiplayer_proxy
@@ -741,19 +761,38 @@ func play_multiplayer_action(
 		or not spawn_position.is_finite()
 		or not landing_position.is_finite()
 		or not is_finite(elapsed_seconds)
+		or not _is_valid_committed_windup_duration(
+			action_windup_duration_seconds
+		)
 	):
 		return
 	if action_id < latest_proxy_action_id:
 		return
 	if action_id == latest_proxy_action_id and stage <= latest_proxy_stage:
 		return
+	if (
+		action_id == latest_proxy_action_id
+		and latest_proxy_stage == NETWORK_STAGE_WINDUP
+		and stage == NETWORK_STAGE_FIRE
+		and not is_equal_approx(
+			action_windup_duration_seconds,
+			committed_windup_duration_seconds
+		)
+	):
+		# One action commits its wind-up duration at stage 0. A later stage may
+		# recover a missing event, but it may never rewrite that same action.
+		return
 	if action_id > latest_proxy_action_id:
 		latest_proxy_action_id = action_id
 		latest_proxy_stage = -1
 	latest_proxy_stage = stage
 	if stage == NETWORK_STAGE_WINDUP:
-		_play_proxy_windup(elapsed_seconds)
+		_play_proxy_windup(
+			elapsed_seconds,
+			action_windup_duration_seconds
+		)
 		return
+	committed_windup_duration_seconds = action_windup_duration_seconds
 	_play_proxy_fire(elapsed_seconds)
 	AUDIO_LIMITER.play_burst(fire_audio, elapsed_seconds)
 	_spawn_proxy_shell_once(
@@ -764,13 +803,21 @@ func play_multiplayer_action(
 	)
 
 
-func _play_proxy_windup(elapsed_seconds: float) -> void:
+func _play_proxy_windup(
+	elapsed_seconds: float,
+	action_windup_duration_seconds: float
+) -> void:
+	committed_windup_duration_seconds = action_windup_duration_seconds
 	var safe_elapsed := clampf(
 		elapsed_seconds,
 		0.0,
-		WINDUP_DURATION_SECONDS
+		committed_windup_duration_seconds
 	)
-	var frame_position := safe_elapsed * WINDUP_FPS
+	var frame_position := (
+		safe_elapsed
+		* float(WINDUP_FRAME_COUNT)
+		/ committed_windup_duration_seconds
+	)
 	var frame_index := clampi(
 		floori(frame_position),
 		0,
@@ -778,6 +825,9 @@ func _play_proxy_windup(elapsed_seconds: float) -> void:
 	)
 	combat_phase = CombatPhase.WINDUP
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	main_sprite.speed_scale = (
+		WINDUP_DURATION_SECONDS / committed_windup_duration_seconds
+	)
 	main_sprite.play(&"charge")
 	main_sprite.set_frame_and_progress(
 		frame_index,
@@ -788,6 +838,7 @@ func _play_proxy_windup(elapsed_seconds: float) -> void:
 
 
 func _play_proxy_fire(projectile_elapsed_seconds: float) -> void:
+	main_sprite.speed_scale = 1.0
 	var fire_elapsed := (
 		maxf(projectile_elapsed_seconds, 0.0)
 		+ FIRE_LAUNCH_LEAD_SECONDS
@@ -856,12 +907,15 @@ func export_multiplayer_runtime_state() -> Dictionary:
 		"schema": RUNTIME_STATE_SCHEMA,
 		"combat_phase": int(combat_phase),
 		"action_id": next_authoritative_action_id,
+		"committed_windup_duration_seconds": (
+			committed_windup_duration_seconds
+		),
 	}
 	if combat_phase == CombatPhase.WINDUP:
 		state["windup_elapsed_seconds"] = clampf(
 			now - _windup_started_at_seconds,
 			0.0,
-			WINDUP_DURATION_SECONDS
+			committed_windup_duration_seconds
 		)
 		state["windup_target_position"] = last_valid_target_position
 	var projectile_elapsed := now - _last_projectile_started_at_seconds
@@ -892,8 +946,16 @@ func apply_multiplayer_runtime_state(
 	if (
 		not is_multiplayer_proxy
 		or int(state.get("schema", 0)) != RUNTIME_STATE_SCHEMA
+		or typeof(state.get("committed_windup_duration_seconds"))
+			not in [TYPE_INT, TYPE_FLOAT]
 	):
 		return
+	var received_windup_duration := float(
+		state["committed_windup_duration_seconds"]
+	)
+	if not _is_valid_committed_windup_duration(received_windup_duration):
+		return
+	committed_windup_duration_seconds = received_windup_duration
 	var action_id := maxi(int(state.get("action_id", 0)), 0)
 	var phase := clampi(
 		int(state.get("combat_phase", CombatPhase.IDLE)),
@@ -946,7 +1008,8 @@ func apply_multiplayer_runtime_state(
 					projectile_action_id,
 					spawn_position,
 					landing_position,
-					projectile_elapsed
+					projectile_elapsed,
+					committed_windup_duration_seconds
 				)
 	if phase == CombatPhase.WINDUP:
 		if action_id > 0:
@@ -967,7 +1030,8 @@ func apply_multiplayer_runtime_state(
 						)
 					),
 					0.0
-				)
+				),
+				committed_windup_duration_seconds
 			)
 		return
 	if projectile_action_id > 0:
@@ -983,6 +1047,7 @@ func apply_multiplayer_runtime_state(
 		latest_proxy_stage = NETWORK_STAGE_FIRE
 		combat_phase = phase
 		main_sprite.position = MAIN_SPRITE_REST_POSITION
+		main_sprite.speed_scale = 1.0
 		main_sprite.play(&"idle")
 		_set_glow_state(false, 0)
 		_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
@@ -1079,3 +1144,12 @@ func _apply_muzzle_light_state(phase: int, frame_index: int) -> void:
 
 func _now_seconds() -> float:
 	return Time.get_ticks_msec() / 1000.0
+
+
+func _is_valid_committed_windup_duration(duration_seconds: float) -> bool:
+	return (
+		is_finite(duration_seconds)
+		and duration_seconds
+		>= MIN_COMMITTED_WINDUP_DURATION_SECONDS - 0.0001
+		and duration_seconds <= WINDUP_DURATION_SECONDS + 0.0001
+	)

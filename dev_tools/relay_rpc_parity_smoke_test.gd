@@ -138,10 +138,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 25,
-		"Int32 player health/position snapshots require protocol v25."
+		NetConstants.PROTOCOL_VERSION == 26,
+		"竹迫击炮提交式蓄力时长载荷要求协议v26。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v25 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v26 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -176,9 +176,9 @@ func _compare_rpc_surfaces(label: String, main_rpcs: Dictionary, relay_rpcs: Dic
 func _test_registration_protocol_handshake_source() -> void:
 	var net_manager := NetManagerScript.new()
 	_expect(
-		net_manager._is_protocol_version_compatible(25)
-		and not net_manager._is_protocol_version_compatible(24),
-		"Protocol v25 hosts must accept exactly v25 and reject v24."
+		net_manager._is_protocol_version_compatible(26)
+		and not net_manager._is_protocol_version_compatible(25),
+		"Protocol v26 hosts must accept exactly v26 and reject v25."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -245,9 +245,9 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 25")
+		and relay_source.contains("const PROTOCOL_VERSION := 26")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must declare v25 and provision the same eight ENet channels as clients."
+		"Relay server must declare v26 and provision the same eight ENet channels as clients."
 	)
 
 
@@ -329,6 +329,7 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		"stages:PackedByteArray",
 		"spawn_positions:PackedVector2Array",
 		"landing_positions:PackedVector2Array",
+		"committed_windup_durations:PackedFloat32Array",
 		"host_action_times:PackedFloat64Array",
 	]:
 		_expect_rpc_signature_contains(

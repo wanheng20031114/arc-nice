@@ -112,7 +112,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V25_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V26_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -121,7 +121,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 25, "Protocol must be v25.")
+	_expect(NetConstants.PROTOCOL_VERSION == 26, "Protocol must be v26.")
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
 		and NetConstants.NETWORK_COMBAT_VALUE_MAX == 0x7FFFFFFF,
@@ -138,7 +138,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v25 channel assignments must remain stable."
+		"Protocol v26 channel assignments must remain stable."
 	)
 
 
@@ -687,6 +687,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 				Vector2(80.0, 0.0),
 				Vector2(96.0, 8.0),
 			]),
+			PackedFloat32Array([4.0, 3.2]),
 			PackedFloat64Array([0.0, 1.25])
 		)),
 		"Bamboo mortar payloads must accept equal-length finite windup/fire records."
@@ -699,6 +700,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 			PackedByteArray([0, 1]),
 			PackedVector2Array([Vector2.ZERO, Vector2.ZERO]),
 			PackedVector2Array([Vector2.ZERO, Vector2.ZERO]),
+			PackedFloat32Array([4.0, 4.0]),
 			PackedFloat64Array([0.0, 1.25])
 		))
 		and not bool(mp_game.call(
@@ -708,6 +710,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 			PackedByteArray([2]),
 			PackedVector2Array([Vector2.ZERO]),
 			PackedVector2Array([Vector2.ZERO]),
+			PackedFloat32Array([4.0]),
 			PackedFloat64Array([0.0])
 		))
 		and not bool(mp_game.call(
@@ -717,15 +720,27 @@ func _test_bamboo_mortar_payload_contract() -> void:
 			PackedByteArray([1]),
 			PackedVector2Array([Vector2(NAN, 0.0)]),
 			PackedVector2Array([Vector2.ZERO]),
+			PackedFloat32Array([4.0]),
+			PackedFloat64Array([0.0])
+		))
+		and not bool(mp_game.call(
+			"_is_valid_bamboo_mortar_visual_payload",
+			PackedInt32Array([11]),
+			PackedInt32Array([21]),
+			PackedByteArray([0]),
+			PackedVector2Array([Vector2.ZERO]),
+			PackedVector2Array([Vector2.ZERO]),
+			PackedFloat32Array([0.0]),
 			PackedFloat64Array([0.0])
 		)),
-		"Bamboo mortar payloads must reject length mismatches, unknown stages, and non-finite coordinates."
+		"Bamboo mortar payloads must reject mismatched, unknown, non-finite, or invalid-duration records."
 	)
 	var oversized_ids := PackedInt32Array()
 	var oversized_actions := PackedInt32Array()
 	var oversized_stages := PackedByteArray()
 	var oversized_spawns := PackedVector2Array()
 	var oversized_landings := PackedVector2Array()
+	var oversized_windup_durations := PackedFloat32Array()
 	var oversized_times := PackedFloat64Array()
 	for record_index in range(25):
 		oversized_ids.append(record_index + 1)
@@ -733,6 +748,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		oversized_stages.append(record_index % 2)
 		oversized_spawns.append(Vector2.ZERO)
 		oversized_landings.append(Vector2(96.0, 0.0))
+		oversized_windup_durations.append(4.0)
 		oversized_times.append(float(record_index))
 	_expect(
 		not bool(mp_game.call(
@@ -742,6 +758,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 			oversized_stages,
 			oversized_spawns,
 			oversized_landings,
+			oversized_windup_durations,
 			oversized_times
 		)),
 		"Bamboo mortar visual packets must reject a 25th record."
@@ -759,6 +776,7 @@ func _test_bamboo_mortar_payload_contract() -> void:
 	var stages := PackedByteArray()
 	var spawn_positions := PackedVector2Array()
 	var landing_positions := PackedVector2Array()
+	var windup_durations := PackedFloat32Array()
 	var host_times := PackedFloat64Array()
 	for record_index in range(record_count):
 		plant_ids.append(record_index + 1)
@@ -766,12 +784,14 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		stages.append(record_index % 2)
 		spawn_positions.append(Vector2(record_index, 0.0))
 		landing_positions.append(Vector2(96.0, record_index))
+		windup_durations.append(3.2 if record_index % 2 == 0 else 4.0)
 		host_times.append(float(record_index))
 	recorder.set("_pending_bamboo_mortar_visuals", plant_ids)
 	recorder.set("_pending_bamboo_mortar_action_ids", action_ids)
 	recorder.set("_pending_bamboo_mortar_stages", stages)
 	recorder.set("_pending_bamboo_mortar_spawn_positions", spawn_positions)
 	recorder.set("_pending_bamboo_mortar_landing_positions", landing_positions)
+	recorder.set("_pending_bamboo_mortar_windup_durations", windup_durations)
 	recorder.set("_pending_bamboo_mortar_host_times", host_times)
 	recorder.call("_flush_bamboo_mortar_visuals")
 	var first_args := (
@@ -790,8 +810,8 @@ func _test_bamboo_mortar_payload_contract() -> void:
 		== &"net_bamboo_mortar_visual_batch"
 		and recorder.outbound_calls.back().get("method_name")
 		== &"net_bamboo_mortar_visual_batch"
-		and first_args.size() == 6
-		and last_args.size() == 6
+		and first_args.size() == 7
+		and last_args.size() == 7
 		and (first_args[0] as PackedInt32Array).size() == 24
 		and (last_args[0] as PackedInt32Array).size() == 12
 		and (

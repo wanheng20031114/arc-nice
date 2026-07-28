@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 25,
-		"Int32 player health/position snapshots require protocol v25."
+		NetConstants.PROTOCOL_VERSION == 26,
+		"竹迫击炮提交式蓄力时长载荷要求协议v26。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

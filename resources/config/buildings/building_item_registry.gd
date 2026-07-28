@@ -16,6 +16,9 @@ const GRAPE_ARC_TOWER_ITEM: PickupConfig = preload(
 const HYDRANGEA_RAIN_TOWER_ITEM: PickupConfig = preload(
 	"res://resources/config/buildings/building_hydrangea_rain_tower.tres"
 )
+const ORANGE_CHARGING_TOWER_ITEM: PickupConfig = preload(
+	"res://resources/config/buildings/building_orange_charging_tower.tres"
+)
 const WOOD_PROCESSING_STATION_ITEM: PickupConfig = preload(
 	"res://resources/config/buildings/building_wood_processing_station.tres"
 )
@@ -62,6 +65,9 @@ const GRAPE_ARC_TOWER_RECIPE: ProductionRecipe = preload(
 const HYDRANGEA_RAIN_TOWER_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/wooden_core_to_hydrangea_rain_tower.tres"
 )
+const ORANGE_CHARGING_TOWER_RECIPE: ProductionRecipe = preload(
+	"res://resources/config/production/wooden_core_to_orange_charging_tower.tres"
+)
 const WOOD_PROCESSING_STATION_RECIPE: ProductionRecipe = preload(
 	"res://resources/config/production/simple_wood_processing_station.tres"
 )
@@ -99,6 +105,7 @@ const BUILDING_ITEMS := {
 	&"corn_machine_gun": CORN_MACHINE_GUN_ITEM,
 	&"grape_arc_tower": GRAPE_ARC_TOWER_ITEM,
 	&"hydrangea_rain_tower": HYDRANGEA_RAIN_TOWER_ITEM,
+	&"orange_charging_tower": ORANGE_CHARGING_TOWER_ITEM,
 	&"wood_processing_station": WOOD_PROCESSING_STATION_ITEM,
 	&"water_collector": WATER_COLLECTOR_ITEM,
 	&"planting_base": PLANTING_BASE_ITEM,
@@ -119,6 +126,7 @@ const PRIMARY_ACQUISITION_RECIPES := {
 	&"corn_machine_gun": CORN_MACHINE_GUN_RECIPE,
 	&"grape_arc_tower": GRAPE_ARC_TOWER_RECIPE,
 	&"hydrangea_rain_tower": HYDRANGEA_RAIN_TOWER_RECIPE,
+	&"orange_charging_tower": ORANGE_CHARGING_TOWER_RECIPE,
 	&"wood_processing_station": WOOD_PROCESSING_STATION_RECIPE,
 	&"water_collector": WATER_COLLECTOR_RECIPE,
 	&"planting_base": PLANTING_BASE_RECIPE,

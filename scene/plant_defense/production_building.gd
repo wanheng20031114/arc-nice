@@ -5,6 +5,10 @@ signal production_state_changed(replicate: bool)
 signal production_command_requested(command: Dictionary)
 signal production_snapshot_requested(building_net_id: int)
 signal multiplayer_production_result(success: bool, reason: StringName)
+signal production_duration_multiplier_changed(
+	previous_multiplier: float,
+	current_multiplier: float
+)
 
 const RUNTIME_STATE_SCHEMA := 4
 const INTERACTION_GROUP := PlantDefense.BUILDING_INTERACTION_GROUP
@@ -12,6 +16,7 @@ const INTERACTION_SELECTION_REFRESH_SECONDS := 0.08
 const VISUAL_PROJECTION_WINDOW_SECONDS := 1.0
 const MULTIPLAYER_PRODUCTION_REQUEST_TIMEOUT_SECONDS := 4.0
 const MAX_BUFFERED_OUTPUT_PATH_LENGTH := 512
+const MIN_PRODUCTION_DURATION_MULTIPLIER := 0.05
 
 enum PanelTheme {
 	DEFAULT,
@@ -50,6 +55,8 @@ var multiplayer_production_snapshot_ready := true
 var multiplayer_production_request_pending := false
 var multiplayer_production_pending_request_id := 0
 var next_multiplayer_production_request_id := 1
+var production_duration_multiplier_modifiers: Dictionary[int, float] = {}
+var cached_production_duration_multiplier := 1.0
 var interaction_selection_refresh_left := 0.0
 var prompt_rest_position := Vector2.ZERO
 var prompt_tween: Tween = null
@@ -103,6 +110,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _on_setup_completed() -> void:
+	production_duration_multiplier_modifiers.clear()
+	cached_production_duration_multiplier = 1.0
 	progress_elapsed_seconds = 0.0
 	completion_wait_reason = &""
 	buffered_output_item = null
@@ -505,7 +514,8 @@ func advance_shared_production_tick(delta_seconds: float) -> void:
 		return
 	var previous_elapsed := progress_elapsed_seconds
 	progress_elapsed_seconds = minf(
-		progress_elapsed_seconds + delta_seconds,
+		progress_elapsed_seconds
+		+ delta_seconds / get_production_duration_multiplier(),
 		recipe.duration_seconds
 	)
 	if progress_elapsed_seconds + 0.0001 >= recipe.duration_seconds:
@@ -665,6 +675,83 @@ func _select_local_output(recipe: ProductionRecipe) -> Dictionary:
 	}
 
 
+## Registers one production-duration source. Concurrent sources use only the
+## shortest duration multiplier, so overlapping support fields never compound.
+func add_production_duration_multiplier_modifier(
+	source_id: int,
+	multiplier: float
+) -> bool:
+	if source_id == 0 or not is_finite(multiplier) or multiplier <= 0.0:
+		return false
+	var safe_multiplier := clampf(
+		multiplier,
+		MIN_PRODUCTION_DURATION_MULTIPLIER,
+		1.0
+	)
+	if is_equal_approx(safe_multiplier, 1.0):
+		return remove_production_duration_multiplier_modifier(source_id)
+	if (
+		production_duration_multiplier_modifiers.has(source_id)
+		and is_equal_approx(
+			float(production_duration_multiplier_modifiers[source_id]),
+			safe_multiplier
+		)
+	):
+		return false
+	production_duration_multiplier_modifiers[source_id] = safe_multiplier
+	_refresh_production_duration_multiplier_cache()
+	return true
+
+
+func remove_production_duration_multiplier_modifier(source_id: int) -> bool:
+	if not production_duration_multiplier_modifiers.has(source_id):
+		return false
+	production_duration_multiplier_modifiers.erase(source_id)
+	_refresh_production_duration_multiplier_cache()
+	return true
+
+
+func get_production_duration_multiplier() -> float:
+	return cached_production_duration_multiplier
+
+
+func get_effective_production_duration_seconds(recipe: ProductionRecipe) -> float:
+	if recipe == null or not is_finite(recipe.duration_seconds):
+		return 0.0
+	return maxf(
+		recipe.duration_seconds * cached_production_duration_multiplier,
+		0.0
+	)
+
+
+func _refresh_production_duration_multiplier_cache() -> void:
+	var previous_multiplier := cached_production_duration_multiplier
+	var strongest_multiplier := 1.0
+	for source_id in production_duration_multiplier_modifiers:
+		strongest_multiplier = minf(
+			strongest_multiplier,
+			clampf(
+				float(production_duration_multiplier_modifiers[source_id]),
+				MIN_PRODUCTION_DURATION_MULTIPLIER,
+				1.0
+			)
+		)
+	cached_production_duration_multiplier = strongest_multiplier
+	if is_equal_approx(previous_multiplier, cached_production_duration_multiplier):
+		return
+	# Shared production advances in one-second authoritative quanta. Restart the
+	# display-only projection from authoritative work so the rest of this quantum
+	# previews exactly the multiplier that the next shared tick will consume.
+	_sync_visual_progress_clock()
+	production_duration_multiplier_changed.emit(
+		previous_multiplier,
+		cached_production_duration_multiplier
+	)
+	# Aura membership is derived runtime state. Refresh local UI without changing
+	# production_revision or producing a multiplayer state packet.
+	production_state_changed.emit(false)
+
+
 func get_progress_ratio() -> float:
 	var recipe := get_active_recipe()
 	if recipe == null or recipe.duration_seconds <= 0.0:
@@ -695,7 +782,8 @@ func get_visual_progress_elapsed_seconds() -> float:
 			1.0
 		)
 		visual_elapsed += minf(
-			VISUAL_PROJECTION_WINDOW_SECONDS,
+			VISUAL_PROJECTION_WINDOW_SECONDS
+			/ get_production_duration_multiplier(),
 			maxf(
 				recipe.duration_seconds - visual_elapsed,
 				0.0
@@ -722,7 +810,7 @@ func get_visual_remaining_seconds() -> float:
 	return maxf(
 		recipe.duration_seconds - get_visual_progress_elapsed_seconds(),
 		0.0
-	)
+	) * get_production_duration_multiplier()
 
 
 func get_visual_projection_duration_seconds() -> float:
@@ -733,7 +821,10 @@ func get_remaining_seconds() -> float:
 	var recipe := get_active_recipe()
 	if recipe == null:
 		return 0.0
-	return maxf(recipe.duration_seconds - progress_elapsed_seconds, 0.0)
+	return maxf(
+		recipe.duration_seconds - progress_elapsed_seconds,
+		0.0
+	) * get_production_duration_multiplier()
 
 
 func export_multiplayer_runtime_state() -> Dictionary:

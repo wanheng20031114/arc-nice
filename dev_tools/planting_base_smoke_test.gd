@@ -799,14 +799,14 @@ func _test_hud_follow_focus(
 		card_scroll != null
 		and card_scroll.follow_focus
 		and hud.open(configs)
-		and configs.size() == 15
+		and configs.size() == 16
 		and configs.has(PlantDefenseRegistry.get_config(&"excavator"))
 		and configs.has(PlantDefenseRegistry.get_config(&"stone_mill"))
 		and configs.has(PlantDefenseRegistry.get_config(&"simple_fence"))
 		and planting_base_index >= 0
-		and hud.cards.size() == 15
+		and hud.cards.size() == 16
 		and hud.cards[planting_base_index].plant_config == config,
-		"15张建筑卡必须包含挖土装置、石磨台、简易围栏和语义定位的种植基地，外层目录须启用follow_focus。"
+		"16张建筑卡必须包含橘充能塔、挖土装置、石磨台、简易围栏和语义定位的种植基地，外层目录须启用follow_focus。"
 	)
 	if card_scroll == null or not hud.is_open():
 		return

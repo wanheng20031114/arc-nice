@@ -19,6 +19,10 @@ signal died
 signal modal_ui_visibility_changed(is_open: bool)
 signal construction_finished
 signal removal_started(mode: RemovalMode)
+signal attack_interval_multiplier_changed(
+	previous_multiplier: float,
+	current_multiplier: float
+)
 
 const CONSTRUCTION_DURATION_SECONDS: float = 0.7
 const REMOVAL_DURATION_SECONDS: float = 0.7
@@ -37,6 +41,7 @@ const BLEED_DAMAGE_STATUS_MASK := 2
 const VALID_DAMAGE_STATUS_MASK := (
 	BURN_DAMAGE_STATUS_MASK | BLEED_DAMAGE_STATUS_MASK
 )
+const MIN_ATTACK_INTERVAL_MULTIPLIER := 0.05
 
 @export_range(0.0, 12.0, 0.5, "or_greater") var enemy_approach_depth: float = 3.0
 
@@ -63,6 +68,8 @@ var damage_status_revision: int = 0
 var is_operational: bool = false
 var is_removing: bool = false
 var removal_mode: RemovalMode = RemovalMode.SILENT
+var attack_interval_multiplier_modifiers: Dictionary[int, float] = {}
+var cached_attack_interval_multiplier := 1.0
 
 var _lifecycle_visuals: Array[CanvasItem] = []
 var _burn_overlay_strength := 0.0
@@ -107,6 +114,8 @@ func setup(
 	config = new_config
 	owner_player = new_owner_player
 	footprint_cells.assign(new_footprint_cells)
+	attack_interval_multiplier_modifiers.clear()
+	cached_attack_interval_multiplier = 1.0
 	max_health = initial_maximum_health if initial_maximum_health > 0 else config.max_health
 	current_health = clampi(initial_health, 0, max_health) if initial_health >= 0 else max_health
 	physical_defense = maxi(config.physical_defense, 0)
@@ -511,6 +520,110 @@ func set_global_physical_defense_bonus(bonus: int) -> void:
 
 func get_effective_magic_defense() -> int:
 	return clampi(magic_defense, 0, 100)
+
+
+## Registers one attack-cycle interval source. Concurrent sources use only the
+## shortest interval multiplier, so overlapping support fields never compound.
+func add_attack_interval_multiplier_modifier(
+	source_id: int,
+	multiplier: float
+) -> bool:
+	if source_id == 0 or not is_finite(multiplier) or multiplier <= 0.0:
+		return false
+	var safe_multiplier := clampf(
+		multiplier,
+		MIN_ATTACK_INTERVAL_MULTIPLIER,
+		1.0
+	)
+	if is_equal_approx(safe_multiplier, 1.0):
+		return remove_attack_interval_multiplier_modifier(source_id)
+	if (
+		attack_interval_multiplier_modifiers.has(source_id)
+		and is_equal_approx(
+			float(attack_interval_multiplier_modifiers[source_id]),
+			safe_multiplier
+		)
+	):
+		return false
+	attack_interval_multiplier_modifiers[source_id] = safe_multiplier
+	_refresh_attack_interval_multiplier_cache()
+	return true
+
+
+func remove_attack_interval_multiplier_modifier(source_id: int) -> bool:
+	if not attack_interval_multiplier_modifiers.has(source_id):
+		return false
+	attack_interval_multiplier_modifiers.erase(source_id)
+	_refresh_attack_interval_multiplier_cache()
+	return true
+
+
+func get_attack_interval_multiplier() -> float:
+	return cached_attack_interval_multiplier
+
+
+func get_effective_attack_interval(base_interval_seconds: float = -1.0) -> float:
+	var base_interval := base_interval_seconds
+	if base_interval < 0.0:
+		base_interval = config.get_attack_interval() if config != null else 0.0
+	if not is_finite(base_interval) or base_interval <= 0.0:
+		return 0.0
+	return maxf(
+		base_interval * cached_attack_interval_multiplier,
+		0.001
+	)
+
+
+## Re-times one attack-cycle timer without losing its completed fraction. Fixed
+## retry/wind-up timers must not call this helper.
+static func retime_attack_cycle_timer(
+	timer: Timer,
+	previous_interval_seconds: float,
+	current_interval_seconds: float
+) -> void:
+	if (
+		timer == null
+		or not is_finite(previous_interval_seconds)
+		or not is_finite(current_interval_seconds)
+		or previous_interval_seconds <= 0.0
+		or current_interval_seconds <= 0.0
+	):
+		return
+	var safe_current_interval := maxf(current_interval_seconds, 0.001)
+	if timer.is_stopped():
+		if not timer.one_shot:
+			timer.wait_time = safe_current_interval
+		return
+	var remaining_seconds := maxf(
+		timer.time_left
+		* safe_current_interval
+		/ maxf(previous_interval_seconds, 0.001),
+		0.001
+	)
+	timer.start(remaining_seconds)
+	if not timer.one_shot:
+		timer.wait_time = safe_current_interval
+
+
+func _refresh_attack_interval_multiplier_cache() -> void:
+	var previous_multiplier := cached_attack_interval_multiplier
+	var strongest_multiplier := 1.0
+	for source_id in attack_interval_multiplier_modifiers:
+		strongest_multiplier = minf(
+			strongest_multiplier,
+			clampf(
+				float(attack_interval_multiplier_modifiers[source_id]),
+				MIN_ATTACK_INTERVAL_MULTIPLIER,
+				1.0
+			)
+		)
+	cached_attack_interval_multiplier = strongest_multiplier
+	if is_equal_approx(previous_multiplier, cached_attack_interval_multiplier):
+		return
+	attack_interval_multiplier_changed.emit(
+		previous_multiplier,
+		cached_attack_interval_multiplier
+	)
 
 
 func get_enemy_approach_depth() -> float:

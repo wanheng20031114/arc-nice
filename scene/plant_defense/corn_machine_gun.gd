@@ -107,6 +107,12 @@ func _on_setup_completed() -> void:
 	health_bar.call("setup", max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
+	if not attack_interval_multiplier_changed.is_connected(
+		_on_attack_interval_multiplier_changed
+	):
+		attack_interval_multiplier_changed.connect(
+			_on_attack_interval_multiplier_changed
+		)
 
 	body_sprite.play(&"idle")
 	turret_sprite.play(&"idle")
@@ -120,9 +126,7 @@ func _on_operational_started() -> void:
 		_disable_proxy_combat_runtime()
 		return
 
-	var attack_interval := config.get_attack_interval()
-	if attack_interval <= 0.0:
-		attack_interval = DEFAULT_ATTACK_INTERVAL
+	var attack_interval := _get_effective_attack_interval()
 	var initial_attack_delay := calculate_initial_attack_delay_seconds(
 		attack_interval,
 		_get_attack_phase_identity()
@@ -154,9 +158,7 @@ static func calculate_initial_attack_delay_seconds(
 
 
 func get_initial_attack_delay_seconds() -> float:
-	var attack_interval := config.get_attack_interval()
-	if attack_interval <= 0.0:
-		attack_interval = DEFAULT_ATTACK_INTERVAL
+	var attack_interval := _get_effective_attack_interval()
 	return calculate_initial_attack_delay_seconds(
 		attack_interval,
 		_get_attack_phase_identity()
@@ -206,6 +208,29 @@ func _on_removal_started(_mode: RemovalMode) -> void:
 
 func _on_health_changed(new_health: int, new_max_health: int) -> void:
 	health_bar.call("set_health", new_health, new_max_health)
+
+
+func _get_authored_attack_interval() -> float:
+	var authored_interval := config.get_attack_interval() if config != null else 0.0
+	return authored_interval if authored_interval > 0.0 else DEFAULT_ATTACK_INTERVAL
+
+
+func _get_effective_attack_interval() -> float:
+	return get_effective_attack_interval(_get_authored_attack_interval())
+
+
+func _on_attack_interval_multiplier_changed(
+	previous_multiplier: float,
+	current_multiplier: float
+) -> void:
+	if is_multiplayer_proxy or not is_operational or is_dead or is_removing:
+		return
+	var authored_interval := _get_authored_attack_interval()
+	PlantDefense.retime_attack_cycle_timer(
+		attack_timer,
+		authored_interval * previous_multiplier,
+		authored_interval * current_multiplier
+	)
 
 
 func _on_attack_timer_timeout() -> void:

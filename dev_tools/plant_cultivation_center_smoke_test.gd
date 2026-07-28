@@ -36,6 +36,9 @@ const HYDRANGEA_RAIN_TOWER_BUILDING_ITEM := preload(
 const GRAPE_ARC_TOWER_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_grape_arc_tower.tres"
 )
+const ORANGE_CHARGING_TOWER_BUILDING_ITEM := preload(
+	"res://resources/config/buildings/building_orange_charging_tower.tres"
+)
 const DIRT_BLOCK := preload(
 	"res://resources/config/materials/material_dirt_block.tres"
 )
@@ -106,7 +109,7 @@ func _run() -> void:
 		"植物培育中心必须占2×2格，拥有1500生命、10物防、10法防并支持联机。"
 	)
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 15
+		PlantDefenseRegistry.get_all_configs().size() == 16
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -116,7 +119,7 @@ func _run() -> void:
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		),
-		"公共注册表必须同时包含挖土装置、石磨台、简易围栏、植物培育中心、竹筒迫击炮、种植基地、紫阳花雨幕塔与葡萄电弧塔，共15种建筑。"
+		"公共注册表必须同时包含挖土装置、石磨台、简易围栏、植物培育中心、竹筒迫击炮、种植基地、紫阳花雨幕塔、葡萄电弧塔与橘充能塔，共16种建筑。"
 	)
 	if config == null:
 		_finish(test_root)
@@ -158,7 +161,7 @@ func _run() -> void:
 	center.set_shared_production_panel(panel)
 
 	_expect(
-		center.recipes.size() == 5
+		center.recipes.size() == 6
 		and center.recipes[0].input_items == [WOODEN_CORE]
 		and center.recipes[0].input_amounts == [1]
 		and center.recipes[0].output_items == [AGAVE_BUILDING_ITEM]
@@ -191,8 +194,15 @@ func _run() -> void:
 		and center.recipes[4].output_items == [GRAPE_ARC_TOWER_BUILDING_ITEM]
 		and center.recipes[4].output_amounts == [1]
 		and is_equal_approx(center.recipes[4].duration_seconds, 40.0)
-		and center.recipes[4].outputs_to_player_inventory(),
-		"培育中心必须提供五种塔配方，并让葡萄路线真实消费木制核心、土块与白晶粉。"
+		and center.recipes[4].outputs_to_player_inventory()
+		and center.recipes[5].input_items == [WOODEN_CORE]
+		and center.recipes[5].input_amounts == [1]
+		and center.recipes[5].output_items
+		== [ORANGE_CHARGING_TOWER_BUILDING_ITEM]
+		and center.recipes[5].output_amounts == [1]
+		and is_equal_approx(center.recipes[5].duration_seconds, 30.0)
+		and center.recipes[5].outputs_to_player_inventory(),
+		"培育中心必须提供六种塔配方；葡萄路线消费木制核心、土块与白晶粉，橘充能塔消耗一个木制核心并培育30秒。"
 	)
 	_expect(
 		AGAVE_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
@@ -220,8 +230,14 @@ func _run() -> void:
 		and GRAPE_ARC_TOWER_BUILDING_ITEM.placeable_plant_id
 		== &"grape_arc_tower"
 		and not GRAPE_ARC_TOWER_BUILDING_ITEM.stackable
-		and GRAPE_ARC_TOWER_BUILDING_ITEM.inventory_stack_limit == 1,
-		"五种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
+		and GRAPE_ARC_TOWER_BUILDING_ITEM.inventory_stack_limit == 1
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.pickup_type
+		== PickupConfig.PickupType.BUILDING
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.placeable_plant_id
+		== &"orange_charging_tower"
+		and not ORANGE_CHARGING_TOWER_BUILDING_ITEM.stackable
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.inventory_stack_limit == 1,
+		"六种产物必须是不可叠加且指向正确建筑配置的建筑物品。"
 	)
 
 	var border := center.get_node_or_null("ProductionBorder") as MeshInstance2D
@@ -476,7 +492,7 @@ func _run() -> void:
 		and panel.progress_label.size == Vector2(180.0, 34.0)
 		and panel.progress_label.autowrap_mode
 			== TextServer.AUTOWRAP_WORD_SMART
-		and panel.progress_label.clip_text
+		and not panel.progress_label.clip_text
 		and panel.status_label.position == Vector2(61.0, 420.0)
 		and panel.status_label.size == Vector2(392.0, 48.0)
 		and panel.status_label.position.y + panel.status_label.size.y <= 468.0
@@ -753,6 +769,23 @@ func _test_asset_contracts() -> void:
 			== Vector2(32, 32),
 			"2×2建筑物品必须复用64×64原图，并以0.5缩放符合32×32显示规范。"
 		)
+	var orange_config := PlantDefenseRegistry.get_config(
+		&"orange_charging_tower"
+	)
+	_expect(
+		orange_config != null
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_texture != null
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_texture.resource_path
+		== orange_config.icon.resource_path
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_texture.get_size()
+		== Vector2(128, 128)
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_scale
+		== Vector2(0.25, 0.25)
+		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_texture.get_size()
+		* ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_scale
+		== Vector2(32, 32),
+		"橘充能塔建筑物品必须复用128×128像素原图，并以0.25整数倍缩放到32×32。"
+	)
 	var image_path := ProjectSettings.globalize_path(
 		"res://resources/texture/plant_defense/plant_cultivation_center/plant_cultivation_center.png"
 	)
@@ -861,7 +894,7 @@ func _test_inventory_placement_request(
 	)
 	_expect(
 		controller.open_selection()
-		and controller.selection_hud.available_configs.size() == 15
+		and controller.selection_hud.available_configs.size() == 16
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -871,7 +904,7 @@ func _test_inventory_placement_request(
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		),
-		"T键免费调试入口必须展示包括挖土装置、石磨台与简易围栏在内的全部15种建筑。"
+		"T键免费调试入口必须展示包括橘充能塔、挖土装置、石磨台与简易围栏在内的全部16种建筑。"
 	)
 	controller.cancel_placement()
 

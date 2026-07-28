@@ -128,7 +128,7 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 	)
 	_expect(config.supports_multiplayer, "共享仓库权威事务就绪后，橡木仓库必须允许多人放置。")
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 15
+		PlantDefenseRegistry.get_all_configs().size() == 16
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -138,7 +138,7 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		),
-		"植物选择必须包含全部15种建筑，包括挖土装置、石磨台、简易围栏、植物培育中心、竹筒迫击炮、紫阳花雨幕塔与葡萄电弧塔。"
+		"植物选择必须包含全部16种建筑，包括挖土装置、石磨台、简易围栏、植物培育中心、竹筒迫击炮、紫阳花雨幕塔、葡萄电弧塔与橘充能塔。"
 	)
 	_expect(warehouse.storage_items.size() == 20, "仓库必须拥有20个物品格。")
 	_expect(

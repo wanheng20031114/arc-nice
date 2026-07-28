@@ -97,7 +97,8 @@ class MortarRuntimeStub:
 		action_id: int,
 		stage: int,
 		spawn_position: Vector2,
-		landing_position: Vector2
+		landing_position: Vector2,
+		committed_windup_duration_seconds: float
 	) -> void:
 		queued_visuals.append({
 			"plant_net_id": plant_net_id,
@@ -105,6 +106,7 @@ class MortarRuntimeStub:
 			"stage": stage,
 			"spawn_position": spawn_position,
 			"landing_position": landing_position,
+			"committed_windup_duration_seconds": committed_windup_duration_seconds,
 		})
 
 	func apply_authoritative_plant_enemy_damage(
@@ -237,7 +239,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")
 		== MORTAR_CONFIG
-		and PlantDefenseRegistry.get_all_configs().size() == 15
+		and PlantDefenseRegistry.get_all_configs().size() == 16
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -248,7 +250,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		)
 		and PlantDefenseRegistry.get_all_configs().has(MORTAR_CONFIG),
-		"迫击炮必须按防御塔语义注册，并与其余14种建筑共同进入公共注册表。"
+		"迫击炮必须按防御塔语义注册，并与其余15种建筑共同进入公共注册表。"
 	)
 	_expect(
 		mortar.main_sprite.sprite_frames.get_frame_count(&"charge") == 8
@@ -1199,10 +1201,19 @@ func _test_windup_fire_and_fixed_landing(
 	target.is_dead = false
 	target.global_position = Vector2(96.0, 0.0)
 	mortar.muzzle_glow_light.set_night_factor(1.0)
+	mortar.add_attack_interval_multiplier_modifier(9001, 0.8)
 	mortar.call("_begin_authoritative_windup", target)
+	var committed_supported_windup := (
+		BambooMortar.WINDUP_DURATION_SECONDS * 0.8
+	)
 	_expect(
 		mortar.combat_phase == BambooMortar.CombatPhase.WINDUP
 		and mortar.main_sprite.animation == &"charge"
+		and is_equal_approx(
+			mortar.committed_windup_duration_seconds,
+			committed_supported_windup
+		)
+		and is_equal_approx(mortar.main_sprite.speed_scale, 1.25)
 		and mortar.muzzle_glow_light.enabled
 		and is_equal_approx(
 			mortar.muzzle_glow_light.night_energy,
@@ -1211,8 +1222,24 @@ func _test_windup_fire_and_fixed_landing(
 		and not mortar.target_track_timer.is_stopped()
 		and runtime.queued_visuals.size() == 1
 		and int(runtime.queued_visuals[0].get("stage", -1))
-		== BambooMortar.NETWORK_STAGE_WINDUP,
-		"开始攻击必须进入4秒蓄热、启用0.5秒采样并只排队一次蓄热网络事件。"
+		== BambooMortar.NETWORK_STAGE_WINDUP
+		and is_equal_approx(
+			float(runtime.queued_visuals[0].get(
+				"committed_windup_duration_seconds",
+				0.0
+			)),
+			committed_supported_windup
+		),
+		"开始攻击必须提交当前3.2秒支援蓄热、同步动画倍率并只排队一次携带提交时长的网络事件。"
+	)
+	mortar.remove_attack_interval_multiplier_modifier(9001)
+	_expect(
+		is_equal_approx(
+			mortar.committed_windup_duration_seconds,
+			committed_supported_windup
+		)
+		and is_equal_approx(mortar.main_sprite.speed_scale, 1.25),
+		"蓄热轮次一旦开始，途中离开支援范围不得改写本轮已提交时长。"
 	)
 	mortar.last_valid_target_position = Vector2(96.0, 0.0)
 	target.is_dead = true
@@ -1239,7 +1266,14 @@ func _test_windup_fire_and_fixed_landing(
 		and runtime.queued_visuals[1].get(
 			"landing_position",
 			Vector2.ZERO
-		) == Vector2(96.0, 0.0),
+		) == Vector2(96.0, 0.0)
+		and is_equal_approx(
+			float(runtime.queued_visuals[1].get(
+				"committed_windup_duration_seconds",
+				0.0
+			)),
+			committed_supported_windup
+		),
 		"目标死亡后仍须伴随砰声在可见爆闪/后坐帧向最后有效位置出膛，且出膛时不能启动额外攻击冷却。"
 	)
 	var active_shell := _find_active_shell()
@@ -1334,6 +1368,11 @@ func _test_windup_fire_and_fixed_landing(
 		runtime.query_count == query_count_before_fire_finished + 1
 		and mortar.combat_phase == BambooMortar.CombatPhase.WINDUP
 		and mortar.main_sprite.animation == &"charge"
+		and is_equal_approx(
+			mortar.committed_windup_duration_seconds,
+			BambooMortar.WINDUP_DURATION_SECONDS
+		)
+		and is_equal_approx(mortar.main_sprite.speed_scale, 1.0)
 		and mortar.muzzle_glow_light.enabled
 		and is_equal_approx(
 			mortar.muzzle_glow_light.night_energy,
@@ -1644,7 +1683,8 @@ func _test_proxy_actions_and_runtime_state(
 		17,
 		proxy.muzzle.global_position,
 		Vector2(88.0, 0.0),
-		1.25
+		1.0,
+		BambooMortar.WINDUP_DURATION_SECONDS * 0.8
 	)
 	var first_frame := proxy.main_sprite.frame
 	var first_charge_progress := smoothstep(
@@ -1662,13 +1702,19 @@ func _test_proxy_actions_and_runtime_state(
 		17,
 		proxy.muzzle.global_position,
 		Vector2(120.0, 0.0),
-		0.0
+		0.0,
+		BambooMortar.WINDUP_DURATION_SECONDS * 0.8
 	)
 	_expect(
 		first_frame == 2
 		and proxy.main_sprite.frame == first_frame
 		and proxy.main_sprite.position
 		== BambooMortar.MAIN_SPRITE_REST_POSITION
+		and is_equal_approx(proxy.main_sprite.speed_scale, 1.25)
+		and is_equal_approx(
+			proxy.committed_windup_duration_seconds,
+			BambooMortar.WINDUP_DURATION_SECONDS * 0.8
+		)
 		and proxy.muzzle_glow_light.enabled
 		and is_equal_approx(
 			proxy.muzzle_glow_light.night_energy,
@@ -1688,12 +1734,31 @@ func _test_proxy_actions_and_runtime_state(
 		and proxy.combat_phase == BambooMortar.CombatPhase.FIRING,
 		"客户端蓄热结束后必须先显示与Host一致的fire_0预备帧，不能停在charge末帧等待出膛事件。"
 	)
+	var pre_fire_shell_count := _count_active_shells()
 	proxy.play_multiplayer_action(
 		BambooMortar.NETWORK_STAGE_FIRE,
 		17,
 		proxy.muzzle.global_position,
 		Vector2(88.0, 0.0),
-		0.0
+		0.0,
+		BambooMortar.WINDUP_DURATION_SECONDS
+	)
+	_expect(
+		proxy.latest_proxy_stage == BambooMortar.NETWORK_STAGE_WINDUP
+		and _count_active_shells() == pre_fire_shell_count
+		and is_equal_approx(
+			proxy.committed_windup_duration_seconds,
+			BambooMortar.WINDUP_DURATION_SECONDS * 0.8
+		),
+		"同一多人动作的出膛阶段不得改写前摇阶段已提交的3.2秒时长。"
+	)
+	proxy.play_multiplayer_action(
+		BambooMortar.NETWORK_STAGE_FIRE,
+		17,
+		proxy.muzzle.global_position,
+		Vector2(88.0, 0.0),
+		0.0,
+		BambooMortar.WINDUP_DURATION_SECONDS * 0.8
 	)
 	var proxy_shell_count := _count_active_shells()
 	_expect(
@@ -1714,7 +1779,8 @@ func _test_proxy_actions_and_runtime_state(
 		17,
 		proxy.muzzle.global_position,
 		Vector2(88.0, 0.0),
-		0.0
+		0.0,
+		BambooMortar.WINDUP_DURATION_SECONDS
 	)
 	_expect(
 		_count_active_shells() == proxy_shell_count
@@ -1724,6 +1790,9 @@ func _test_proxy_actions_and_runtime_state(
 	)
 	authority.combat_phase = BambooMortar.CombatPhase.WINDUP
 	authority.next_authoritative_action_id = 23
+	authority.committed_windup_duration_seconds = (
+		BambooMortar.WINDUP_DURATION_SECONDS * 0.8
+	)
 	authority.last_valid_target_position = Vector2(112.0, 8.0)
 	authority.set(
 		"_windup_started_at_seconds",
@@ -1756,6 +1825,11 @@ func _test_proxy_actions_and_runtime_state(
 			and fresh_proxy.combat_phase
 			== BambooMortar.CombatPhase.WINDUP
 			and fresh_proxy.main_sprite.frame >= 2
+			and is_equal_approx(fresh_proxy.main_sprite.speed_scale, 1.25)
+			and is_equal_approx(
+				fresh_proxy.committed_windup_duration_seconds,
+				BambooMortar.WINDUP_DURATION_SECONDS * 0.8
+			)
 			and fresh_proxy.muzzle_glow_light.enabled
 			and fresh_proxy.muzzle_glow_light.night_energy
 			> BambooMortar.MUZZLE_CHARGE_LIGHT_ENERGY_MIN
@@ -1774,7 +1848,8 @@ func _test_proxy_actions_and_runtime_state(
 			23,
 			dropped_fire_proxy.muzzle.global_position,
 			Vector2(112.0, 8.0),
-			1.5
+			1.5,
+			BambooMortar.WINDUP_DURATION_SECONDS * 0.8
 		)
 		var dropped_fire_shell_count := _count_active_shells()
 		dropped_fire_proxy.apply_multiplayer_runtime_state(
@@ -1814,7 +1889,8 @@ func _test_proxy_actions_and_runtime_state(
 			24,
 			newer_action_proxy.muzzle.global_position,
 			Vector2(128.0, 8.0),
-			0.5
+			0.5,
+			BambooMortar.WINDUP_DURATION_SECONDS
 		)
 		var stale_snapshot_shell_count := _count_active_shells()
 		newer_action_proxy.apply_multiplayer_runtime_state(

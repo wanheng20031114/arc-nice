@@ -142,7 +142,8 @@ class MortarStressRuntime:
 		_action_id: int,
 		_stage: int,
 		_spawn_position: Vector2,
-		_landing_position: Vector2
+		_landing_position: Vector2,
+		_committed_windup_duration_seconds: float
 	) -> void:
 		visual_record_count += 1
 
@@ -811,14 +812,16 @@ func _measure_proxy_visual_batch() -> float:
 			action_id,
 			proxy.muzzle.global_position,
 			TARGET_POSITION,
-			1.25
+			1.25,
+			BambooMortar.WINDUP_DURATION_SECONDS
 		)
 		proxy.play_multiplayer_action(
 			BambooMortar.NETWORK_STAGE_FIRE,
 			action_id,
 			proxy.muzzle.global_position,
 			TARGET_POSITION,
-			0.0
+			0.0,
+			BambooMortar.WINDUP_DURATION_SECONDS
 		)
 	return float(Time.get_ticks_usec() - started) / 1000.0
 

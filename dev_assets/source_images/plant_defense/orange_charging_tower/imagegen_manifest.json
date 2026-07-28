@@ -1,0 +1,13 @@
+{
+  "tool": "OpenAI imagegen",
+  "purpose": "橘充能塔像素画定稿与职责拆层源素材",
+  "selected_source": "orange_charging_tower_refined_imagegen.png",
+  "runtime_master": "orange_charging_tower_master_active_128.png",
+  "prompt_summary": "在用户选定的矮宽六边形柱状容器方向上精修为硬边像素画：仅四层横切橘片、自下而上单层点亮语义、加宽并向中心延伸的半透明青色玻璃侧面、橘片透过玻璃可见、植物根系与柑橘果实构成的稳重基座、128×128逻辑画布、纯洋红便于抠图。",
+  "processing": [
+    "connected_background_remover.py 移除连通洋红背景",
+    "pixel_crop_tool.py 按128×128逻辑像素压缩并保留透明边距",
+    "orange_charging_tower_asset_pipeline.py 拆分静态塔体、四层橘片和玻璃循环发光层"
+  ],
+  "review_preview": "orange_charging_tower_preview_32.png"
+}

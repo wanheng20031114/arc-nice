@@ -540,6 +540,7 @@ func net_bamboo_mortar_visual_batch(
 	stages: PackedByteArray,
 	spawn_positions: PackedVector2Array,
 	landing_positions: PackedVector2Array,
+	committed_windup_durations: PackedFloat32Array,
 	host_action_times: PackedFloat64Array
 ) -> void:
 	pass

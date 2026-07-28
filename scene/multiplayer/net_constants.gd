@@ -4,7 +4,9 @@ extends RefCounted
 ## v24：在 v23 制作/围栏协议上合入塔防命运投票与序列化权威传送。
 ## v25：玩家生命升级为 signed int32，玩家位置升级为 signed int32 × 10，
 ## 并统一固定宽度网络战斗值的合法范围。
-const PROTOCOL_VERSION := 25
+## v26：竹筒迫击炮视觉动作携带本轮已提交的蓄热时长，确保攻击间隔支援
+## 在Host、实时事件与中途加入快照之间保持一致。
+const PROTOCOL_VERSION := 26
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

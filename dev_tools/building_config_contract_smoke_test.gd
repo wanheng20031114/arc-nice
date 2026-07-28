@@ -6,6 +6,7 @@ const EXPECTED_SORTED_IDS: Array[StringName] = [
 	&"bamboo_mortar",
 	&"grape_arc_tower",
 	&"hydrangea_rain_tower",
+	&"orange_charging_tower",
 	&"wood_processing_station",
 	&"water_collector",
 	&"planting_base",
@@ -23,6 +24,7 @@ const EXPECTED_CATEGORY_BY_ID := {
 	&"bamboo_mortar": PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER,
 	&"grape_arc_tower": PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER,
 	&"hydrangea_rain_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
+	&"orange_charging_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
 	&"wood_processing_station": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
 	&"water_collector": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
 	&"planting_base": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
@@ -40,6 +42,7 @@ const EXPECTED_SURFACE_BY_ID := {
 	&"bamboo_mortar": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"grape_arc_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"hydrangea_rain_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
+	&"orange_charging_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"wood_processing_station": PlantDefenseConfig.PlacementSurface.ANY_LAND,
 	&"water_collector": PlantDefenseConfig.PlacementSurface.WATER_ONLY,
 	&"planting_base": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
@@ -57,6 +60,7 @@ const EXPECTED_MENU_ORDER_BY_ID := {
 	&"bamboo_mortar": 30,
 	&"grape_arc_tower": 40,
 	&"hydrangea_rain_tower": 10,
+	&"orange_charging_tower": 20,
 	&"wood_processing_station": 10,
 	&"water_collector": 20,
 	&"planting_base": 30,
@@ -70,7 +74,7 @@ const EXPECTED_MENU_ORDER_BY_ID := {
 }
 const EXPECTED_CATEGORY_COUNTS := {
 	PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER: 4,
-	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 1,
+	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 2,
 	PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING: 6,
 	PlantDefenseConfig.BuildingCategory.TECHNOLOGY_BUILDING: 1,
 	PlantDefenseConfig.BuildingCategory.FENCE: 1,
@@ -89,6 +93,9 @@ const DIRT_BLOCK: PickupConfig = preload(
 )
 const WHITE_CRYSTAL_POWDER: PickupConfig = preload(
 	"res://resources/config/materials/material_white_crystal_powder.tres"
+)
+const WOODEN_CORE: PickupConfig = preload(
+	"res://resources/config/materials/material_wooden_core.tres"
 )
 
 var failures: Array[String] = []
@@ -155,14 +162,14 @@ func _test_registry_semantics() -> void:
 			config.menu_order == int(EXPECTED_MENU_ORDER_BY_ID.get(config.plant_id, 0)),
 			"类内菜单顺序不符合10步长契约：%s。" % config.plant_id
 		)
-	_expect(configs.size() == 15, "正式建筑注册表必须恰好包含15项。")
+	_expect(configs.size() == 16, "正式建筑注册表必须恰好包含16项。")
 	_expect(
 		actual_ids == EXPECTED_SORTED_IDS,
 		"注册表必须按类别、类内顺序、ID确定性排序。actual=%s" % [actual_ids]
 	)
 	_expect(
 		category_counts == EXPECTED_CATEGORY_COUNTS,
-		"七类建筑数量必须固定为4/1/6/1/1/1/1。actual=%s" % [category_counts]
+		"七类建筑数量必须固定为4/2/6/1/1/1/1。actual=%s" % [category_counts]
 	)
 
 
@@ -227,11 +234,11 @@ func _test_surface_semantics() -> void:
 func _test_building_item_and_acquisition_closure() -> void:
 	_expect(
 		BuildingItemRegistry.validate_contract(),
-		"建筑物品必须与15个plant_id形成一一对应，且每项至少有一条获取路线。"
+		"建筑物品必须与16个plant_id形成一一对应，且每项至少有一条获取路线。"
 	)
 	_expect(
-		BuildingItemRegistry.get_all_items().size() == 15,
-		"建筑物品Registry必须恰好公开15项。"
+		BuildingItemRegistry.get_all_items().size() == 16,
+		"建筑物品Registry必须恰好公开16项。"
 	)
 	var reachable_recipe_paths := {}
 	for recipe in SimpleCraftingRegistry.get_all_recipes():
@@ -263,6 +270,20 @@ func _test_building_item_and_acquisition_closure() -> void:
 		and grape_recipe.input_items.has(DIRT_BLOCK)
 		and grape_recipe.input_items.has(WHITE_CRYSTAL_POWDER),
 		"葡萄培育路线必须为土块和白晶粉提供真实消费端。"
+	)
+	var orange_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
+		&"orange_charging_tower"
+	)
+	_expect(
+		orange_recipe != null
+		and orange_recipe.input_items == [WOODEN_CORE]
+		and orange_recipe.input_amounts == [1]
+		and orange_recipe.output_items
+		== [BuildingItemRegistry.ORANGE_CHARGING_TOWER_ITEM]
+		and orange_recipe.output_amounts == [1]
+		and is_equal_approx(orange_recipe.duration_seconds, 30.0)
+		and orange_recipe.outputs_to_player_inventory(),
+		"橘充能塔必须在植物培育中心以1个木制核心、30秒的克制默认成本获取。"
 	)
 
 

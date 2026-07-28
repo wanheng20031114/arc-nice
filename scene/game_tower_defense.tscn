@@ -51,6 +51,7 @@
 [ext_resource type="PackedScene" path="res://scene/xiaocong_fate_interlude.tscn" id="52_xiaocong_interlude"]
 [ext_resource type="Resource" path="res://resources/config/day_cycle/tower_defense_day_cycle.tres" id="53_day_cycle"]
 [ext_resource type="Script" path="res://scene/luoxi_special_game_coordinator.gd" id="54_luoxi_special_game"]
+[ext_resource type="Script" path="res://scene/plant_defense/orange_charging_aura_coordinator.gd" id="55_orange_aura"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -285,6 +286,12 @@ terrain_map_path = NodePath("../DualGridTerrain")
 
 [node name="ProductionCoordinator" parent="." unique_id=1845180523 instance=ExtResource("39_production_coordinator")]
 
+[node name="OrangeChargingAuraCoordinator" type="Node" parent="."]
+script = ExtResource("55_orange_aura")
+
+[node name="ReconcileTimer" type="Timer" parent="OrangeChargingAuraCoordinator"]
+wait_time = 2.0
+
 [node name="ResearchCoordinator" parent="." instance=ExtResource("43_research_coordinator")]
 
 [node name="OverlayTileMapLayer" type="TileMapLayer" parent="." unique_id=852138298]
@@ -460,3 +467,5 @@ night_energy = 0.3
 
 [node name="PlantTerrainDecayTimer" type="Timer" parent="." unique_id=1432322583]
 process_callback = 0
+
+[connection signal="timeout" from="OrangeChargingAuraCoordinator/ReconcileTimer" to="OrangeChargingAuraCoordinator" method="_on_reconcile_timer_timeout"]

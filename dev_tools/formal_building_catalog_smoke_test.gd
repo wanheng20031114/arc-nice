@@ -6,7 +6,7 @@ const DEFAULT_VIEWPORT := Vector2i(1152, 648)
 const SMALL_VIEWPORT := Vector2i(800, 480)
 const EXPECTED_CATEGORY_COUNTS := {
 	PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER: 4,
-	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 1,
+	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 2,
 	PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING: 6,
 	PlantDefenseConfig.BuildingCategory.TECHNOLOGY_BUILDING: 1,
 	PlantDefenseConfig.BuildingCategory.FENCE: 1,
@@ -56,10 +56,10 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	await _wait_layout_frames(3)
 	_expect(
 		hud.is_open()
-		and hud.available_configs.size() == 15
-		and hud.cards.size() == 15
+		and hud.available_configs.size() == 16
+		and hud.cards.size() == 16
 		and not hud.free_placement_mode,
-		"Formal catalog must show all 15 buildings in inventory mode."
+		"Formal catalog must show all 16 buildings in inventory mode."
 	)
 	for category_variant in EXPECTED_CATEGORY_COUNTS:
 		var category := int(category_variant)

@@ -1,0 +1,14 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://resources/shader/orange_charging_tower_cycle.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="2_noise"]
+
+[resource]
+resource_local_to_scene = true
+shader = ExtResource("1_shader")
+shader_parameter/lifecycle_noise = ExtResource("2_noise")
+shader_parameter/visual_role = 0.0
+shader_parameter/orange_emission = Color(1, 0.34, 0.035, 1)
+shader_parameter/glass_emission = Color(1, 0.55, 0.12, 1)
+shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)

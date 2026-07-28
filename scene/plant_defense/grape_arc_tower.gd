@@ -23,6 +23,12 @@ const SIDE_GRAPE_UV_BOTTOM := 36.0 / 64.0
 const FIRING_GRAPE_UV_TOP := 39.0 / 64.0
 const FIRING_GRAPE_UV_BOTTOM := 53.0 / 64.0
 
+enum AttackTimerMode {
+	NONE,
+	ATTACK_CYCLE,
+	TARGET_RETRY,
+}
+
 @onready var support_sprite: Sprite2D = $VisualRoot/SupportSprite
 @onready var grape_cluster_root: Node2D = $VisualRoot/GrapeClusterRoot
 @onready var side_grapes_sprite: Sprite2D = (
@@ -56,6 +62,7 @@ var configured_attack_range := 0.0
 var configured_chain_jump_range := 0.0
 var configured_max_chain_targets := 1
 var attack_locked := false
+var attack_timer_mode := AttackTimerMode.NONE
 var attack_action_id := 0
 var pending_primary_target: Enemy = null
 var charge_tween: Tween = null
@@ -128,6 +135,12 @@ func _on_setup_completed() -> void:
 	health_bar.setup(max_health, current_health)
 	if not health_changed.is_connected(_on_health_changed):
 		health_changed.connect(_on_health_changed)
+	if not attack_interval_multiplier_changed.is_connected(
+		_on_attack_interval_multiplier_changed
+	):
+		attack_interval_multiplier_changed.connect(
+			_on_attack_interval_multiplier_changed
+		)
 	_cancel_idle_scan()
 	_reset_attack_visuals()
 
@@ -150,9 +163,8 @@ func _on_construction_finished(_was_animated: bool) -> void:
 func _on_operational_started() -> void:
 	if arc_config == null:
 		return
-	var attack_interval := arc_config.get_attack_interval()
-	if attack_interval <= 0.0:
-		attack_interval = DEFAULT_ATTACK_INTERVAL
+	var attack_interval := _get_effective_attack_interval()
+	attack_timer_mode = AttackTimerMode.ATTACK_CYCLE
 	attack_timer.wait_time = attack_interval
 	attack_timer.start(calculate_initial_attack_delay_seconds(
 		attack_interval,
@@ -170,6 +182,7 @@ func _on_multiplayer_proxy_configured() -> void:
 
 func _on_removal_started(_mode: RemovalMode) -> void:
 	attack_timer.stop()
+	attack_timer_mode = AttackTimerMode.NONE
 	release_timer.stop()
 	_cancel_idle_scan()
 	_stop_charge_tween()
@@ -230,7 +243,43 @@ func _on_health_changed(new_health: int, new_max_health: int) -> void:
 	health_bar.set_health(new_health, new_max_health)
 
 
+func _get_authored_attack_interval() -> float:
+	var authored_interval := (
+		arc_config.get_attack_interval() if arc_config != null else 0.0
+	)
+	return authored_interval if authored_interval > 0.0 else DEFAULT_ATTACK_INTERVAL
+
+
+func _get_effective_attack_interval() -> float:
+	return get_effective_attack_interval(_get_authored_attack_interval())
+
+
+func _on_attack_interval_multiplier_changed(
+	previous_multiplier: float,
+	current_multiplier: float
+) -> void:
+	if (
+		not is_operational
+		or is_dead
+		or is_removing
+		or attack_timer_mode != AttackTimerMode.ATTACK_CYCLE
+	):
+		return
+	var authored_interval := _get_authored_attack_interval()
+	var current_interval := authored_interval * current_multiplier
+	PlantDefense.retime_attack_cycle_timer(
+		attack_timer,
+		authored_interval * previous_multiplier,
+		current_interval
+	)
+	# This timer is one-shot; keep its authored cycle visible separately from the
+	# scaled current time_left, matching the normal post-lock scheduling state.
+	if not attack_timer.is_stopped():
+		attack_timer.wait_time = current_interval
+
+
 func _on_attack_timer_timeout() -> void:
+	attack_timer_mode = AttackTimerMode.NONE
 	if (
 		not is_operational
 		or is_dead
@@ -239,15 +288,18 @@ func _on_attack_timer_timeout() -> void:
 	):
 		return
 	if attack_locked:
+		attack_timer_mode = AttackTimerMode.TARGET_RETRY
 		attack_timer.start(TARGET_RETRY_SECONDS)
 		return
 	var target := _select_primary_target()
 	if target == null:
+		attack_timer_mode = AttackTimerMode.TARGET_RETRY
 		attack_timer.start(TARGET_RETRY_SECONDS)
 		return
 	pending_primary_target = target
 	_begin_charge()
-	attack_timer.start(maxf(arc_config.get_attack_interval(), 0.01))
+	attack_timer_mode = AttackTimerMode.ATTACK_CYCLE
+	attack_timer.start(_get_effective_attack_interval())
 
 
 func _begin_charge() -> void:

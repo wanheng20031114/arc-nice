@@ -160,7 +160,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v25 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 协议 v26 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 # A full enemy keyframe is 24 bytes after adding health_revision. Forty-six
@@ -433,6 +433,7 @@ var _pending_bamboo_mortar_action_ids := PackedInt32Array()
 var _pending_bamboo_mortar_stages := PackedByteArray()
 var _pending_bamboo_mortar_spawn_positions := PackedVector2Array()
 var _pending_bamboo_mortar_landing_positions := PackedVector2Array()
+var _pending_bamboo_mortar_windup_durations := PackedFloat32Array()
 var _pending_bamboo_mortar_host_times := PackedFloat64Array()
 var _bamboo_mortar_visual_flush_time_left: float = (
 	BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS
@@ -1503,7 +1504,8 @@ func queue_bamboo_mortar_visual(
 	action_id: int,
 	stage: int,
 	spawn_position: Vector2,
-	landing_position: Vector2
+	landing_position: Vector2,
+	committed_windup_duration_seconds: float
 ) -> void:
 	if (
 		not is_inside_tree()
@@ -1515,6 +1517,11 @@ func queue_bamboo_mortar_visual(
 		or stage > 1
 		or not _is_finite_vector2(spawn_position)
 		or not _is_finite_vector2(landing_position)
+		or not is_finite(committed_windup_duration_seconds)
+		or committed_windup_duration_seconds
+			< BAMBOO_MORTAR_SCRIPT.MIN_COMMITTED_WINDUP_DURATION_SECONDS
+		or committed_windup_duration_seconds
+			> BAMBOO_MORTAR_SCRIPT.WINDUP_DURATION_SECONDS
 	):
 		return
 	var mortar := game.get_multiplayer_plant_node(plant_net_id)
@@ -1529,6 +1536,9 @@ func queue_bamboo_mortar_visual(
 	_pending_bamboo_mortar_stages.append(stage)
 	_pending_bamboo_mortar_spawn_positions.append(spawn_position)
 	_pending_bamboo_mortar_landing_positions.append(landing_position)
+	_pending_bamboo_mortar_windup_durations.append(
+		committed_windup_duration_seconds
+	)
 	_pending_bamboo_mortar_host_times.append(_get_net_time())
 
 
@@ -1538,6 +1548,7 @@ func _clear_bamboo_mortar_visuals() -> void:
 	_pending_bamboo_mortar_stages.clear()
 	_pending_bamboo_mortar_spawn_positions.clear()
 	_pending_bamboo_mortar_landing_positions.clear()
+	_pending_bamboo_mortar_windup_durations.clear()
 	_pending_bamboo_mortar_host_times.clear()
 
 
@@ -6410,6 +6421,7 @@ func _is_valid_bamboo_mortar_visual_payload(
 	stages: PackedByteArray,
 	spawn_positions: PackedVector2Array,
 	landing_positions: PackedVector2Array,
+	committed_windup_durations: PackedFloat32Array,
 	host_action_times: PackedFloat64Array
 ) -> bool:
 	var record_count := plant_net_ids.size()
@@ -6420,6 +6432,7 @@ func _is_valid_bamboo_mortar_visual_payload(
 		or stages.size() != record_count
 		or spawn_positions.size() != record_count
 		or landing_positions.size() != record_count
+		or committed_windup_durations.size() != record_count
 		or host_action_times.size() != record_count
 	):
 		return false
@@ -6434,6 +6447,11 @@ func _is_valid_bamboo_mortar_visual_payload(
 			or not _is_finite_vector2(
 				landing_positions[record_index]
 			)
+			or not is_finite(committed_windup_durations[record_index])
+			or committed_windup_durations[record_index]
+				< BAMBOO_MORTAR_SCRIPT.MIN_COMMITTED_WINDUP_DURATION_SECONDS
+			or committed_windup_durations[record_index]
+				> BAMBOO_MORTAR_SCRIPT.WINDUP_DURATION_SECONDS
 			or not is_finite(host_action_times[record_index])
 			or host_action_times[record_index] < 0.0
 		):
@@ -6936,6 +6954,8 @@ func _flush_bamboo_mortar_visuals() -> void:
 		== _pending_bamboo_mortar_visuals.size()
 		and _pending_bamboo_mortar_landing_positions.size()
 		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_windup_durations.size()
+		== _pending_bamboo_mortar_visuals.size()
 		and _pending_bamboo_mortar_host_times.size()
 		== _pending_bamboo_mortar_visuals.size()
 	)
@@ -6968,6 +6988,10 @@ func _flush_bamboo_mortar_visuals() -> void:
 					chunk_end
 				),
 				_pending_bamboo_mortar_landing_positions.slice(
+					chunk_start,
+					chunk_end
+				),
+				_pending_bamboo_mortar_windup_durations.slice(
 					chunk_start,
 					chunk_end
 				),
@@ -10784,6 +10808,7 @@ func net_bamboo_mortar_visual_batch(
 	stages: PackedByteArray,
 	spawn_positions: PackedVector2Array,
 	landing_positions: PackedVector2Array,
+	committed_windup_durations: PackedFloat32Array,
 	host_action_times: PackedFloat64Array
 ) -> void:
 	if (
@@ -10795,6 +10820,7 @@ func net_bamboo_mortar_visual_batch(
 			stages,
 			spawn_positions,
 			landing_positions,
+			committed_windup_durations,
 			host_action_times
 		)
 	):
@@ -10825,7 +10851,8 @@ func net_bamboo_mortar_visual_batch(
 			action_ids[record_index],
 			spawn_positions[record_index],
 			landing_positions[record_index],
-			elapsed
+			elapsed,
+			committed_windup_durations[record_index]
 		)
 
 

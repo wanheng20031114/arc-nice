@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="OrangeChargingTowerConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/plant_defense/orange_charging_tower_config.gd" id="1_config"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/orange_charging_tower/icon.png" id="2_icon"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/orange_charging_tower.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_config")
+plant_id = &"orange_charging_tower"
+display_name = "橘充能塔"
+description = "为周围4×4格范围内的玩家持续提供每秒0.5点额外技力充能；同时使范围内的其他防御塔攻击间隔与生产建筑用时缩短20%。玩家充能可由多座塔叠加，建筑加速不可叠加，且不会作用于自身。"
+icon = ExtResource("2_icon")
+plant_scene = ExtResource("3_scene")
+supports_multiplayer = true
+building_category = 2
+placement_surface = 1
+menu_order = 20
+max_health = 3000
+physical_defense = 10
+magic_defense = 20
+footprint_size = Vector2i(2, 2)
+aura_margin_cells = 1
+player_skill_charge_bonus_per_second = 0.5
+defense_attack_interval_multiplier = 0.8
+production_duration_multiplier = 0.8

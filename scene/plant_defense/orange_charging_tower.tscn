@@ -1,0 +1,155 @@
+[gd_scene load_steps=19 format=3]
+
+[ext_resource type="Script" path="res://scene/plant_defense/orange_charging_tower.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/orange_charging_tower/body.png" id="2_body"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/orange_charging_tower/orange_layers_glow.png" id="3_orange"]
+[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/orange_charging_tower/glass_cycle_glow.png" id="4_glass"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="5_lifecycle"]
+[ext_resource type="Material" path="res://resources/shader/orange_charging_tower_orange_cycle.tres" id="6_orange_cycle"]
+[ext_resource type="Material" path="res://resources/shader/orange_charging_tower_glass_cycle.tres" id="7_glass_cycle"]
+[ext_resource type="PackedScene" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="8_health_bar"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="9_night_light"]
+[ext_resource type="Shader" path="res://resources/shader/orange_charging_ground_ring.gdshader" id="10_ring_shader"]
+[ext_resource type="Script" path="res://scene/lighting/night_self_emission_particles_2d.gd" id="11_ring_script"]
+
+[sub_resource type="Gradient" id="Gradient_ring_texture"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_ring"]
+gradient = SubResource("Gradient_ring_texture")
+width = 16
+height = 16
+fill_from = Vector2(0, 0)
+fill_to = Vector2(1, 1)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ring"]
+resource_local_to_scene = true
+shader = ExtResource("10_ring_shader")
+shader_parameter/ripple_opacity = 0.58
+shader_parameter/night_emission_strength = 1.42
+shader_parameter/night_emission_tint = Color(1, 0.48, 0.08, 1)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_ring"]
+resource_local_to_scene = true
+particle_flag_disable_z = true
+emission_shape = 6
+emission_ring_axis = Vector3(0, 0, 1)
+emission_ring_height = 0.0
+emission_ring_radius = 29.0
+emission_ring_inner_radius = 18.0
+emission_ring_cone_angle = 90.0
+direction = Vector3(0, 0, 0)
+spread = 0.0
+gravity = Vector3(0, 0, 0)
+scale_min = 0.65
+scale_max = 1.15
+color = Color(1, 0.42, 0.07, 0.72)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(28, 27)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
+resource_local_to_scene = true
+radius = 7.0
+height = 16.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_player_aura"]
+resource_local_to_scene = true
+size = Vector2(64, 64)
+
+[node name="OrangeChargingTower" type="StaticBody2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_script")
+enemy_approach_depth = 7.0
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/Body"), NodePath("VisualRoot/OrangeLayers"), NodePath("VisualRoot/GlassCycleGlow")])
+lifecycle_effect_top_y = -16.0
+lifecycle_effect_bottom_y = 16.0
+lifecycle_particle_scale = 1.1
+
+[node name="GroundRings" type="GPUParticles2D" parent="."]
+z_index = 0
+texture_filter = 1
+material = SubResource("ShaderMaterial_ring")
+emitting = false
+amount = 8
+lifetime = 1.15
+randomness = 0.6
+local_coords = true
+fixed_fps = 30
+interpolate = true
+fract_delta = true
+visibility_rect = Rect2(-40, -40, 80, 80)
+texture = SubResource("GradientTexture2D_ring")
+process_material = SubResource("ParticleProcessMaterial_ring")
+script = ExtResource("11_ring_script")
+
+[node name="VisualRoot" type="Node2D" parent="."]
+position = Vector2(0, -1)
+scale = Vector2(0.25, 0.25)
+
+[node name="Body" type="Sprite2D" parent="VisualRoot"]
+z_index = 1
+texture_filter = 1
+material = ExtResource("5_lifecycle")
+texture = ExtResource("2_body")
+
+[node name="OrangeLayers" type="Sprite2D" parent="VisualRoot"]
+z_index = 2
+texture_filter = 1
+material = ExtResource("6_orange_cycle")
+texture = ExtResource("3_orange")
+
+[node name="GlassCycleGlow" type="Sprite2D" parent="VisualRoot"]
+z_index = 3
+texture_filter = 1
+material = ExtResource("7_glass_cycle")
+texture = ExtResource("4_glass")
+
+[node name="ChamberNightLight" parent="." instance=ExtResource("9_night_light")]
+position = Vector2(0, -5)
+color = Color(1, 0.42, 0.08, 1)
+texture_scale = 0.26
+night_energy = 0.68
+starts_emitting = false
+
+[node name="RingVisibilityNotifier" type="VisibleOnScreenNotifier2D" parent="."]
+rect = Rect2(-48, -48, 96, 96)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 1.5)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="PlayerCoreBody" type="StaticBody2D" parent="."]
+position = Vector2(0, 1)
+collision_layer = 1024
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerCoreBody"]
+position = Vector2(0, 2)
+shape = SubResource("CapsuleShape2D_player_core")
+
+[node name="PlayerAuraArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PlayerAuraArea"]
+shape = SubResource("RectangleShape2D_player_aura")
+
+[node name="PlayerReconcileTimer" type="Timer" parent="."]
+wait_time = 0.1
+
+[node name="HealthBar" parent="." instance=ExtResource("8_health_bar")]
+offset_left = -16.0
+offset_top = -19.0
+offset_right = 16.0
+offset_bottom = -14.0
+damage_trail_color = Color(1, 0.43, 0.08, 1)
+
+[connection signal="body_entered" from="PlayerAuraArea" to="." method="_on_player_aura_body_entered"]
+[connection signal="body_exited" from="PlayerAuraArea" to="." method="_on_player_aura_body_exited"]
+[connection signal="timeout" from="PlayerReconcileTimer" to="." method="_on_player_reconcile_timer_timeout"]
+[connection signal="screen_entered" from="RingVisibilityNotifier" to="." method="_on_ring_visibility_screen_entered"]
+[connection signal="screen_exited" from="RingVisibilityNotifier" to="." method="_on_ring_visibility_screen_exited"]

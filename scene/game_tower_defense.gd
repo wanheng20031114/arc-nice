@@ -186,6 +186,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var plant_system: PlantSystem = $PlantSystem
 @onready var vegetation_spread_system: VegetationSpreadSystem = $VegetationSpreadSystem
 @onready var production_coordinator: ProductionCoordinator = $ProductionCoordinator
+@onready var orange_charging_aura_coordinator: OrangeChargingAuraCoordinator = (
+	$OrangeChargingAuraCoordinator
+)
 @onready var research_coordinator: ResearchCoordinator = $ResearchCoordinator
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
 @onready var plant_lifecycle_shader_prewarm: Sprite2D = $PlantLifecycleShaderPrewarm
@@ -1003,6 +1006,7 @@ func _configure_plant_defense_system() -> void:
 		placement_rect,
 		dual_grid_terrain
 	)
+	orange_charging_aura_coordinator.setup(plant_system)
 	_configure_vegetation_spread_system(placement_rect)
 	plant_system.clear_reserved_cells()
 	for spawn_offset in MULTIPLAYER_SPAWN_OFFSETS:
@@ -1075,6 +1079,9 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	var hydrangea := plant as HydrangeaRainTower
 	if hydrangea != null:
 		hydrangea.set_plant_system(plant_system)
+	var orange_charging_tower := plant as OrangeChargingTower
+	if orange_charging_tower != null:
+		orange_charging_tower.set_plant_system(plant_system)
 	if plant.config.is_proactive_enemy_target():
 		_request_enemy_retarget_after_objective_change()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:

@@ -18,6 +18,7 @@
 [ext_resource type="Script" path="res://scene/plant_defense/day_night_progress_border.gd" id="16_night_border"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_hydrangea_rain_tower.tres" id="17_hydrangea_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_grape_arc_tower.tres" id="18_grape_recipe"]
+[ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_orange_charging_tower.tres" id="19_orange_recipe"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("10_border_shader")
@@ -115,7 +116,7 @@ outline_color = Color(0.01, 0.045, 0.018, 1)
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
-recipes = Array[ExtResource("8_recipe_script")]([ExtResource("6_agave_recipe"), ExtResource("7_corn_recipe"), ExtResource("12_bamboo_mortar_recipe"), ExtResource("17_hydrangea_recipe"), ExtResource("18_grape_recipe")])
+recipes = Array[ExtResource("8_recipe_script")]([ExtResource("6_agave_recipe"), ExtResource("7_corn_recipe"), ExtResource("12_bamboo_mortar_recipe"), ExtResource("17_hydrangea_recipe"), ExtResource("18_grape_recipe"), ExtResource("19_orange_recipe")])
 production_panel_background_override = ExtResource("9_panel_background")
 production_panel_theme = 1
 enemy_approach_depth = 7.0
