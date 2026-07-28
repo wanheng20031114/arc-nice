@@ -8,6 +8,7 @@ const DESIGN_SIZE := Vector2(728.0, 544.0)
 const DEFAULT_PANEL_BACKGROUND := preload(
 	"res://resources/texture/production/production_panel_background.png"
 )
+const LOCAL_OUTPUT_ICON_SCALE := Vector2(2.0, 2.0)
 
 @onready var overlay: Control = $Overlay
 @onready var panel_root: Control = $Overlay/PanelRoot
@@ -224,7 +225,8 @@ func _refresh_all(_replicate: bool = false) -> void:
 			var buffered_item := building.get_buffered_output_item()
 			output_slots[0].set_item(
 				buffered_item,
-				building.get_buffered_output_count()
+				building.get_buffered_output_count(),
+				LOCAL_OUTPUT_ICON_SCALE
 			)
 			output_slots[0].disabled = (
 				buffered_item == null or _is_multiplayer_control_locked()
@@ -722,14 +724,14 @@ func _apply_panel_layout(recipe: ProductionRecipe) -> void:
 		)
 		if recipe.outputs_to_local_slot():
 			# 默认背景是左右分栏：所有生产状态留在左框，产物格独占右框。
-			_set_control_rect(building_title, Rect2(65, 112, 400, 38))
-			_set_control_rect(input_title, Rect2(105, 190, 290, 28))
-			_set_control_rect(output_title, Rect2(508, 190, 170, 28))
+			_set_control_rect(building_title, Rect2(59, 106, 412, 50))
+			_set_control_rect(input_title, Rect2(105, 184, 290, 40))
+			_set_control_rect(output_title, Rect2(500, 184, 186, 40))
 			_set_control_rect(input_slots[0], Rect2(218, 246, 64, 70))
 			_set_control_rect(progress_bar, Rect2(100, 270, 300, 28))
-			_set_control_rect(progress_label, Rect2(100, 310, 300, 30))
+			_set_control_rect(progress_label, Rect2(90, 305, 320, 40))
 			_set_control_rect(output_slots[0], Rect2(561, 246, 64, 70))
-			_set_control_rect(status_label, Rect2(70, 372, 360, 62))
+			_set_control_rect(status_label, Rect2(64, 368, 372, 70))
 		else:
 			# 环境采集器使用单大框专属背景，保留其原有居中构图。
 			_set_control_rect(building_title, Rect2(128, 112, 472, 38))
