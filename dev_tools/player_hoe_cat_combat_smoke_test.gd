@@ -123,7 +123,7 @@ func _run() -> void:
 	_test_free_attack_direction_preservation()
 	await _test_generic_collectible_hooks_for_both_characters()
 	await _test_primary_cone_attack()
-	_test_skill_purchase_and_upgrades()
+	_test_starting_skill_and_upgrades()
 	await _test_whirlwind_interrupts_pending_primary_attack()
 	await _test_whirlwind_damage_and_heal()
 	await _test_primary_attack_through_real_input()
@@ -741,23 +741,21 @@ func _test_primary_attack_through_real_input() -> void:
 	await process_frame
 
 
-func _test_skill_purchase_and_upgrades() -> void:
-	player.current_xirang = 200
-	_expect(player.try_purchase_skill1(200), "Hoe Cat whirlwind must be purchasable for 200 Xirang.")
-	_expect(player.current_xirang == 0, "Whirlwind purchase must consume exactly 200 Xirang.")
-	_expect(is_equal_approx(player.skill1_charge_duration, 18.0), "Whirlwind base charge duration must be 18 seconds.")
-	var upgrade_costs := [500, 750, 1000, 2000]
-	var expected_durations := [16.0, 14.0, 12.0, 10.0]
+func _test_starting_skill_and_upgrades() -> void:
+	_expect(player.has_skill1(), "Hoe Cat must start with whirlwind unlocked.")
+	_expect(is_equal_approx(player.skill1_charge_duration, 16.0), "Whirlwind base charge duration must be 16 seconds.")
+	var upgrade_costs := [200, 500, 1000, 5000, 10000, 20000]
+	var expected_durations := [14.0, 12.0, 10.0, 8.0, 6.0, 4.0]
 	for index in range(upgrade_costs.size()):
 		player.current_xirang = upgrade_costs[index]
-		_expect(player.get_skill1_upgrade_cost() == upgrade_costs[index], "Whirlwind upgrade cost must match the configured four-level sequence.")
-		_expect(player.try_upgrade_skill1(), "Each of the four whirlwind upgrades must succeed with enough Xirang.")
+		_expect(player.get_skill1_upgrade_cost() == upgrade_costs[index], "Whirlwind upgrade cost must match the configured six-level sequence.")
+		_expect(player.try_upgrade_skill1(), "Each of the six whirlwind upgrades must succeed with enough Xirang.")
 		_expect(
 			is_equal_approx(player.skill1_charge_duration, expected_durations[index]),
-			"Whirlwind charge duration must progress through 16/14/12/10 seconds."
+			"Whirlwind charge duration must progress through 14/12/10/8/6/4 seconds."
 		)
-	_expect(player.is_skill1_upgrade_maxed(), "Whirlwind must report maxed after four upgrades.")
-	_expect(not player.try_upgrade_skill1_free(), "Whirlwind must reject a fifth upgrade, including a free one.")
+	_expect(player.is_skill1_upgrade_maxed(), "Whirlwind must report maxed after six upgrades.")
+	_expect(not player.try_upgrade_skill1_free(), "Whirlwind must reject a seventh upgrade, including a free one.")
 
 
 func _test_whirlwind_interrupts_pending_primary_attack() -> void:

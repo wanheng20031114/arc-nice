@@ -288,12 +288,11 @@ func _test_profile_upgrade_levels_and_skill_details() -> void:
 	_expect(attack_row.upgrade_button.text == "已满", "Maxed upgrade row button must read 已满.")
 
 	var skill_info := profile_panel.get_node("Overlay/PanelRoot/SkillInfo") as Control
-	_expect(not skill_info.visible, "Skill details must stay hidden before skill1 is purchased.")
-
-	player.unlock_skill1()
+	_expect(player.has_skill1(), "Player must start with skill1 unlocked.")
+	_expect(skill_info.visible, "Starting skill details must be visible when the profile opens.")
 	player.skill1_charge = 4.0
 	await process_frame
-	_expect(skill_info.visible, "Skill details must show after skill1 is purchased.")
+	_expect(skill_info.visible, "Starting skill details must remain visible after charge changes.")
 	var skill_description := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillDescription") as Label
 	var skill_icon := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillIcon") as TextureRect
 	var skill_name := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillName") as Label

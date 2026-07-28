@@ -45,9 +45,10 @@ func _test_stats_ammo_and_animation() -> void:
 	_expect(is_equal_approx(player.move_speed, 120.0), "Tiyi must start at 120 move speed.")
 	_expect(player.attack_damage == 100, "Tiyi must start at 100 attack damage.")
 	_expect(player.get_ammo_capacity() == 5 and player.current_ammo == 5, "Tiyi must start at 5/5 ammo.")
+	_expect(player.has_skill1(), "Tiyi must start with High Noon unlocked.")
 	_expect(
-		is_equal_approx(player.skill1_charge_duration, 28.0),
-		"Tiyi High Noon must require 28 charge at upgrade level zero."
+		is_equal_approx(player.skill1_charge_duration, 24.0),
+		"Tiyi High Noon must require 24 charge at upgrade level zero."
 	)
 	_expect(
 		int(player.call("_get_primary_attack_damage_type"))
@@ -302,7 +303,7 @@ func _test_sniper_sweep() -> void:
 
 
 func _test_high_noon() -> void:
-	var expected_charge_durations := [28.0, 26.0, 24.0, 22.0, 20.0]
+	var expected_charge_durations := [24.0, 22.0, 20.0, 18.0, 16.0, 14.0, 12.0]
 	for upgrade_level in range(expected_charge_durations.size()):
 		player.apply_skill1_upgrade_state(upgrade_level)
 		_expect(
@@ -310,7 +311,7 @@ func _test_high_noon() -> void:
 				player.skill1_charge_duration,
 				float(expected_charge_durations[upgrade_level])
 			),
-			"High Noon charge must remain 28 minus two per upgrade level (level %d)."
+			"High Noon charge must remain 24 minus two per upgrade level (level %d)."
 			% upgrade_level
 		)
 	player.apply_skill1_upgrade_state(0)
@@ -319,7 +320,6 @@ func _test_high_noon() -> void:
 	for enemy_index in range(26):
 		enemies.append(_spawn_enemy(Vector2(20.0 + float(enemy_index) * 15.0, -10.0)))
 	await physics_frame
-	player.unlock_skill1()
 	player.skill1_charge = player.skill1_charge_duration
 	_expect(bool(player.call("_try_use_skill1")), "A fully charged Tiyi must start High Noon.")
 	_expect(player.is_high_noon_active(), "High Noon must become active immediately.")

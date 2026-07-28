@@ -2005,15 +2005,19 @@ func _run_client_reliable_event_probe(mp_game: Node, game: Variant) -> void:
 		% [player.attack_damage, player.current_xirang]
 	)
 
-	var xirang_before_skill := player.current_xirang
+	var xirang_before_skill_upgrade := player.current_xirang
+	var skill1_upgrade_level_before := player.skill1_upgrade_level
 	mp_game.call("request_multiplayer_skill1_purchase")
-	if not await _wait_for_player_skill1(player, 5.0):
-		_fail("Reliable event probe timed out waiting for skill1 purchase confirm.")
+	if not await _wait_for_player_skill1_upgrade(player, skill1_upgrade_level_before, 5.0):
+		_fail("Reliable event probe timed out waiting for skill1 upgrade confirm.")
 		return
-	if player.current_xirang >= xirang_before_skill:
-		_fail("Reliable event probe skill1 purchase did not deduct xirang.")
+	if player.current_xirang >= xirang_before_skill_upgrade:
+		_fail("Reliable event probe skill1 upgrade did not deduct xirang.")
 		return
-	print("LAN_PROBE_EVENT skill1_confirmed current_xirang=%d" % player.current_xirang)
+	print(
+		"LAN_PROBE_EVENT skill1_upgrade_confirmed level=%d current_xirang=%d"
+		% [player.skill1_upgrade_level, player.current_xirang]
+	)
 
 
 func _run_client_death_revive_probe(mp_game: Node, game: Variant) -> void:
@@ -2121,10 +2125,18 @@ func _wait_for_player_attack_above(player: Player, previous_attack: int, timeout
 	return false
 
 
-func _wait_for_player_skill1(player: Player, timeout_seconds: float) -> bool:
+func _wait_for_player_skill1_upgrade(
+	player: Player,
+	previous_level: int,
+	timeout_seconds: float
+) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
-		if player != null and is_instance_valid(player) and player.has_skill1():
+		if (
+			player != null
+			and is_instance_valid(player)
+			and player.skill1_upgrade_level > previous_level
+		):
 			return true
 		await process_frame
 	return false

@@ -126,6 +126,7 @@ collision_layer = 2
 collision_mask = 3329
 script = ExtResource("1_onrkg")
 character_id = &"weishidaier"
+skill1_charge_duration = 18.0
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=2014942495]
 z_index = 1

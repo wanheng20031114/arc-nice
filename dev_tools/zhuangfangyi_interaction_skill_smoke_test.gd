@@ -1,6 +1,8 @@
 extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const TIYI_PLAYER_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
+const HOE_CAT_PLAYER_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const MERCHANT_SCENE := preload("res://scene/zhuangfangyi_merchant.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
@@ -21,7 +23,8 @@ func _run() -> void:
 	current_scene = test_root
 
 	await _test_merchant_collision_is_solid_on_spawn()
-	await _test_dialogue_purchase()
+	await _test_players_start_with_skill1_and_charge_requirements()
+	await _test_dialogue_first_upgrade()
 	await _test_dialogue_skill1_upgrade()
 	await _test_skill1_upgrade_costs_and_charge_duration()
 	await _test_skill_charge_and_bomb_direction()
@@ -75,7 +78,50 @@ func _test_merchant_collision_is_solid_on_spawn() -> void:
 	await physics_frame
 
 
-func _test_dialogue_purchase() -> void:
+func _test_players_start_with_skill1_and_charge_requirements() -> void:
+	var character_cases := [
+		{
+			"scene": PLAYER_SCENE,
+			"name": "Weishidaier",
+			"charge_duration": 18.0,
+		},
+		{
+			"scene": TIYI_PLAYER_SCENE,
+			"name": "Tiyi",
+			"charge_duration": 24.0,
+		},
+		{
+			"scene": HOE_CAT_PLAYER_SCENE,
+			"name": "Hoe Cat",
+			"charge_duration": 16.0,
+		},
+	]
+	for character_case in character_cases:
+		var packed_scene := character_case["scene"] as PackedScene
+		var player := packed_scene.instantiate() as Player
+		test_root.add_child(player)
+		await process_frame
+		_expect(
+			player.has_skill1(),
+			"%s must start with skill1 unlocked." % character_case["name"]
+		)
+		_expect(
+			is_equal_approx(
+				player.skill1_charge_duration,
+				float(character_case["charge_duration"])
+			),
+			"%s must start with the configured skill1 charge requirement."
+			% character_case["name"]
+		)
+		_expect(
+			(player.get_node("Skill1ChargeBar") as Skill1ChargeBar).visible,
+			"%s must show the starting skill1 charge bar." % character_case["name"]
+		)
+		player.queue_free()
+		await process_frame
+
+
+func _test_dialogue_first_upgrade() -> void:
 	var merchant := MERCHANT_SCENE.instantiate() as ZhuangfangyiMerchant
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(merchant)
@@ -88,7 +134,10 @@ func _test_dialogue_purchase() -> void:
 	merchant.call("_on_interaction_area_body_entered", player)
 	var bubble := merchant.get_node("MerchantDialogueBubble") as MerchantDialogueBubble
 	_expect(bubble.visible, "Dialogue bubble must appear when the player enters interaction range.")
-	_expect(_dialogue_text(bubble) == "你好，我是终末地的庄方宜。", "Dialogue did not start at the first line.")
+	_expect(
+		_dialogue_text(bubble) == "如果有足够的息壤，我可以为你提供全新的升级。",
+		"Starting skill1 dialogue must directly introduce the upgrade service."
+	)
 	_expect(
 		bubble.text_label.autowrap_mode == TextServer.AUTOWRAP_ARBITRARY,
 		"Dialogue text must wrap Chinese and BBCode icon lines inside the bubble."
@@ -105,23 +154,25 @@ func _test_dialogue_purchase() -> void:
 	var event := InputEventAction.new()
 	event.action = "interact"
 	event.pressed = true
-	for _index in range(3):
-		bubble.finish_line()
-		merchant._unhandled_input(event)
-	_expect(bubble.text_label.text.contains("[img=22]"), "Purchase dialogue must show the skill icon inline.")
+	bubble.finish_line()
+	merchant._unhandled_input(event)
+	_expect(bubble.text_label.text.contains("200息壤"), "First skill1 upgrade must cost 200 xirang.")
+	_expect(bubble.text_label.text.contains("[img=22]"), "Upgrade dialogue must show the skill icon inline.")
 
 	bubble.finish_line()
 	merchant._unhandled_input(event)
 
-	_expect(player.has_skill1(), "Purchasing the dialogue skill must unlock player skill1.")
-	_expect(player.current_xirang == 50, "Purchasing skill1 must cost exactly 200 xirang.")
-	_expect(player.get_node("Skill1ChargeBar").visible, "Skill1 charge bar must appear after purchase.")
+	_expect(player.has_skill1(), "Merchant upgrades must preserve the player's starting skill1.")
+	_expect(player.skill1_upgrade_level == 1, "First merchant transaction must apply upgrade level one.")
+	_expect(player.current_xirang == 50, "First skill1 upgrade must cost exactly 200 xirang.")
+	_expect(is_equal_approx(player.skill1_charge_duration, 16.0), "First upgrade must reduce Weishidaier's charge requirement to 16.")
+	_expect(player.get_node("Skill1ChargeBar").visible, "Starting skill1 charge bar must remain visible after an upgrade.")
 	_expect(not player.get_node("Skill1ChargeBar").has_node("Icon"), "Skill1 charge bar must not include the dialogue skill icon.")
 
 	var current_xirang := player.current_xirang
 	bubble.finish_line()
 	merchant._unhandled_input(event)
-	_expect(player.current_xirang == current_xirang, "Purchase result line must close without a second transaction.")
+	_expect(player.current_xirang == current_xirang, "Upgrade result line must close without a second transaction.")
 
 	merchant.queue_free()
 	player.queue_free()
@@ -134,8 +185,7 @@ func _test_dialogue_skill1_upgrade() -> void:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(merchant)
 	test_root.add_child(player)
-	player.current_xirang = 800
-	player.unlock_skill1()
+	player.current_xirang = 400
 	var base_charge_duration := player.skill1_charge_duration
 	merchant.set_active(true)
 	await process_frame
@@ -153,7 +203,7 @@ func _test_dialogue_skill1_upgrade() -> void:
 	event.pressed = true
 	bubble.finish_line()
 	merchant._unhandled_input(event)
-	_expect(bubble.text_label.text.contains("500息壤"), "First skill1 upgrade offer must cost 500 xirang.")
+	_expect(bubble.text_label.text.contains("200息壤"), "First skill1 upgrade offer must cost 200 xirang.")
 	_expect(bubble.text_label.text.contains("[img=22]"), "Skill1 upgrade offer must show the skill icon inline.")
 
 	bubble.finish_line()
@@ -163,13 +213,13 @@ func _test_dialogue_skill1_upgrade() -> void:
 		is_equal_approx(player.skill1_charge_duration, base_charge_duration - 2.0),
 		"First dialogue upgrade must reduce skill1 charge duration by 2 seconds."
 	)
-	_expect(player.current_xirang == 300, "First dialogue upgrade must cost exactly 500 xirang.")
+	_expect(player.current_xirang == 200, "First dialogue upgrade must cost exactly 200 xirang.")
 
 	bubble.finish_line()
 	merchant._unhandled_input(event)
 	_expect(not bubble.visible, "Closing a skill1 upgrade result must hide the dialogue bubble.")
 	_expect(player.skill1_upgrade_level == 1, "Closing the upgrade result must not trigger another upgrade.")
-	_expect(player.current_xirang == 300, "Closing the upgrade result must not spend more xirang.")
+	_expect(player.current_xirang == 200, "Closing the upgrade result must not spend more xirang.")
 
 	merchant._unhandled_input(event)
 	_expect(
@@ -178,7 +228,7 @@ func _test_dialogue_skill1_upgrade() -> void:
 	)
 	bubble.finish_line()
 	merchant._unhandled_input(event)
-	_expect(bubble.text_label.text.contains("750息壤"), "Second skill1 upgrade offer must cost 750 xirang.")
+	_expect(bubble.text_label.text.contains("500息壤"), "Second skill1 upgrade offer must cost 500 xirang.")
 	var xirang_before_failed_upgrade := player.current_xirang
 	var duration_before_failed_upgrade := player.skill1_charge_duration
 	bubble.finish_line()
@@ -202,9 +252,8 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 	await process_frame
 	await physics_frame
 
-	player.current_xirang = 4250
-	player.unlock_skill1()
-	var expected_costs := [500, 750, 1000, 2000]
+	player.current_xirang = 36700
+	var expected_costs := [200, 500, 1000, 5000, 10000, 20000]
 	var expected_duration := player.skill1_charge_duration
 	for index in range(expected_costs.size()):
 		_expect(
@@ -226,9 +275,9 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 
 	var xirang_after_max := player.current_xirang
 	var duration_after_max := player.skill1_charge_duration
-	_expect(player.is_skill1_upgrade_maxed(), "Skill1 must be maxed after four upgrades.")
+	_expect(player.is_skill1_upgrade_maxed(), "Skill1 must be maxed after six upgrades.")
 	_expect(player.get_skill1_upgrade_cost() == -1, "Maxed skill1 must not expose another upgrade cost.")
-	_expect(not player.try_upgrade_skill1(), "Skill1 must not upgrade beyond level 4.")
+	_expect(not player.try_upgrade_skill1(), "Skill1 must not upgrade beyond level 6.")
 	_expect(player.current_xirang == xirang_after_max, "Maxed skill1 upgrade attempt must not spend xirang.")
 	_expect(
 		is_equal_approx(player.skill1_charge_duration, duration_after_max),
@@ -236,14 +285,14 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 	)
 	player.skill1_charge_duration = 18.0
 	player.skill1_charge = 0.0
-	player.call("_update_skill1_charge", 10.0)
+	player.call("_update_skill1_charge", 6.0)
 	_expect(
-		is_equal_approx(player.skill1_charge_duration, 10.0),
+		is_equal_approx(player.skill1_charge_duration, 6.0),
 		"Maxed skill1 charge duration must be derived from the upgrade level, not a stale 18 second value."
 	)
 	_expect(
-		is_equal_approx(player.skill1_charge, 10.0),
-		"Maxed skill1 must become ready after 10 seconds even if duration was stale."
+		is_equal_approx(player.skill1_charge, 6.0),
+		"Maxed skill1 must become ready after 6 seconds even if duration was stale."
 	)
 	player.apply_multiplayer_realtime_state(
 		player.current_health,
@@ -256,16 +305,16 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 		18.0,
 		player.get_multiplayer_form_mode(),
 		player.get_multiplayer_shot_pattern(),
-		4
+		6
 	)
 	_expect(
-		is_equal_approx(player.skill1_charge_duration, 10.0),
-		"Authoritative upgrade level 4 must override stale multiplayer charge duration."
+		is_equal_approx(player.skill1_charge_duration, 6.0),
+		"Authoritative upgrade level 6 must override stale multiplayer charge duration."
 	)
-	player.apply_skill1_upgrade_state(4, 18.0)
+	player.apply_skill1_upgrade_state(6, 18.0)
 	_expect(
-		is_equal_approx(player.skill1_charge_duration, 10.0),
-		"Skill1 upgrade state must use upgrade level 4 instead of stale charge duration."
+		is_equal_approx(player.skill1_charge_duration, 6.0),
+		"Skill1 upgrade state must use upgrade level 6 instead of stale charge duration."
 	)
 	player.apply_multiplayer_realtime_state(
 		player.current_health,
@@ -280,7 +329,7 @@ func _test_skill1_upgrade_costs_and_charge_duration() -> void:
 		player.get_multiplayer_shot_pattern()
 	)
 	_expect(
-		is_equal_approx(player.skill1_charge_duration, 10.0),
+		is_equal_approx(player.skill1_charge_duration, 6.0),
 		"Realtime state without a new level must not rebuild maxed skill1 duration from stale 18 seconds."
 	)
 
@@ -445,8 +494,8 @@ func _test_skill_charge_and_bomb_direction() -> void:
 	await process_frame
 	await physics_frame
 
-	_expect(not player.call("_try_use_skill1"), "Skill1 must not fire before it is unlocked.")
-	player.unlock_skill1()
+	_expect(player.has_skill1(), "Weishidaier must enter the scene with skill1 unlocked.")
+	_expect(not player.call("_try_use_skill1"), "Starting skill1 must not fire before it is charged.")
 	player.call("_update_skill1_charge", 18.0)
 	player.last_attack_direction = Vector2.UP
 	_expect(player.call("_try_use_skill1"), "Skill1 must fire after charging to 18 seconds.")

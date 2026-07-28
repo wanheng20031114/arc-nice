@@ -6122,7 +6122,7 @@ func _get_bounded_player_projectile_damage(
 		owner_player.attack_damage,
 		_get_player_projectile_damage_type(projectile_type)
 	)
-	if owner_player.has_skill1():
+	if projectile_type == &"skill1_bomb" and owner_player.has_skill1():
 		max_authoritative_damage = maxi(
 			max_authoritative_damage,
 			owner_player.get_skill1_projectile_damage()

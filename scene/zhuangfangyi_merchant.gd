@@ -1,20 +1,11 @@
 extends Node2D
 class_name ZhuangfangyiMerchant
 
-const DIALOGUE_INTRO_LINES := [
-	"你好，我是终末地的庄方宜。",
-	"终末地的鹈鹕已经被我发配到北部禁区。",
-	"我可以使用息壤帮助你强化能力。",
-]
-const SKILL1_PURCHASE_OFFER_FORMAT := "是否要花费[color=#1a8a3e]%d息壤[/color]购买 %s ？"
 const SKILL1_UPGRADE_INTRO_LINE := "如果有足够的息壤，我可以为你提供全新的升级。"
 const SKILL1_UPGRADE_OFFER_FORMAT := "是否要花费[color=#1a8a3e]%d息壤[/color]升级 %s ？"
 const ADMIN_DOLL_UPGRADE_INTRO_LINE := "听说你有管理员人偶，我可以帮你升级技能。"
 const ADMIN_DOLL_UPGRADE_OFFER_FORMAT := "是否要[color=#55e68a]免费[/color]升级 %s ？"
-const PURCHASE_COST := 200
 const INSUFFICIENT_XIRANG_LINE := "息壤不足。"
-const ALREADY_PURCHASED_LINE := "你已经掌握这个技能了。"
-const PURCHASED_LINE := "交易完成，技能已经交给你了。"
 const UPGRADED_LINE := "升级完成，所需技力降低了。"
 const MAX_UPGRADED_LINE := "这个技能已经升级到最高等级了。"
 const PLAYER_COLLISION_MASK := 2
@@ -97,10 +88,10 @@ func _advance_dialogue() -> void:
 		dialogue_bubble.say(dialogue_lines[dialogue_index])
 		return
 
-	_try_purchase_skill()
+	_try_upgrade_skill()
 
 
-func _try_purchase_skill() -> void:
+func _try_upgrade_skill() -> void:
 	if active_player == null:
 		return
 	var net_manager := get_node_or_null("/root/NetManager")
@@ -112,14 +103,6 @@ func _try_purchase_skill() -> void:
 		and current_scene.has_method("request_multiplayer_skill1_purchase")
 	):
 		current_scene.call("request_multiplayer_skill1_purchase")
-		return
-	if not active_player.has_skill1():
-		if not active_player.try_purchase_skill1(PURCHASE_COST):
-			dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
-			purchase_result_visible = true
-			return
-		dialogue_bubble.say(PURCHASED_LINE)
-		purchase_result_visible = true
 		return
 	if active_player.is_skill1_upgrade_maxed():
 		dialogue_bubble.say(MAX_UPGRADED_LINE)
@@ -137,12 +120,8 @@ func _try_purchase_skill() -> void:
 
 func show_purchase_result(result_code: int) -> void:
 	match result_code:
-		Game.PURCHASE_RESULT_SUCCESS:
-			dialogue_bubble.say(PURCHASED_LINE)
 		Game.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS:
 			dialogue_bubble.say(UPGRADED_LINE)
-		Game.PURCHASE_RESULT_ALREADY_OWNED:
-			dialogue_bubble.say(ALREADY_PURCHASED_LINE)
 		Game.PURCHASE_RESULT_SKILL1_UPGRADE_MAXED:
 			dialogue_bubble.say(MAX_UPGRADED_LINE)
 		Game.PURCHASE_RESULT_INSUFFICIENT_XIRANG:
@@ -153,15 +132,8 @@ func show_purchase_result(result_code: int) -> void:
 
 
 func _build_dialogue_lines(player: Player) -> Array:
-	if player == null or not player.has_skill1():
-		var purchase_lines := DIALOGUE_INTRO_LINES.duplicate()
-		purchase_lines.append(
-			SKILL1_PURCHASE_OFFER_FORMAT % [
-				PURCHASE_COST,
-				_get_skill1_icon_bbcode(player),
-			]
-		)
-		return purchase_lines
+	if player == null:
+		return []
 	if player.is_skill1_upgrade_maxed():
 		return [MAX_UPGRADED_LINE]
 	if player.has_collectible_effect(PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL):

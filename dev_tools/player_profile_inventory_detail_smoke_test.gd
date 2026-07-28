@@ -121,10 +121,10 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 		profile_panel.physical_defense_value.text == str(player.physical_defense),
 		"Profile panel defense text must update from the player state-change signal."
 	)
-	_expect(player.unlock_skill1(), "The profile event test must unlock skill 1 once.")
+	_expect(player.has_skill1(), "The profile event test player must start with skill 1.")
 	_expect(
 		profile_panel.skill_info.visible,
-		"Profile panel skill presentation must update when the skill is unlocked."
+		"Profile panel must present the player's starting skill."
 	)
 	var previous_skill_cost_text := profile_panel.skill_cost_label.text
 	_expect(player.try_upgrade_skill1_free(), "The profile event test must upgrade skill 1 once.")

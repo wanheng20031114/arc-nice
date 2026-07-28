@@ -2599,18 +2599,16 @@ func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	var player_instance := get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
 		return PURCHASE_RESULT_INVALID_PLAYER
-	if player_instance.has_skill1():
-		if player_instance.is_skill1_upgrade_maxed():
-			return PURCHASE_RESULT_SKILL1_UPGRADE_MAXED
-		var free_upgrade := player_instance.has_collectible_effect(
-			PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL
-		)
-		if not player_instance.try_upgrade_skill1(free_upgrade):
-			return PURCHASE_RESULT_INSUFFICIENT_XIRANG
-		return PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS
-	if not player_instance.try_purchase_skill1(ZhuangfangyiMerchant.PURCHASE_COST):
+	if not player_instance.has_skill1():
+		return PURCHASE_RESULT_INVALID_PLAYER
+	if player_instance.is_skill1_upgrade_maxed():
+		return PURCHASE_RESULT_SKILL1_UPGRADE_MAXED
+	var free_upgrade := player_instance.has_collectible_effect(
+		PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL
+	)
+	if not player_instance.try_upgrade_skill1(free_upgrade):
 		return PURCHASE_RESULT_INSUFFICIENT_XIRANG
-	return PURCHASE_RESULT_SUCCESS
+	return PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS
 
 
 func apply_skill1_purchase_state(

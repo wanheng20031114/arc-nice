@@ -1885,16 +1885,16 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		_expect(peer_four.attack_damage == base_attack + 4, "Upgrade confirm must apply to the selected peer.")
 		_expect(peer_four.current_xirang == 75, "Upgrade confirm must update the selected peer's xirang.")
 		mp_game.call("net_skill1_purchase_confirmed", 4, 25, true, 0)
-		_expect(peer_four.has_skill1(), "Skill1 purchase confirm must unlock the selected peer.")
-		_expect(peer_four.current_xirang == 25, "Skill1 purchase confirm must update xirang.")
-		peer_four.current_xirang = 525
+		_expect(peer_four.has_skill1(), "Skill1 state confirm must preserve the selected peer's starting skill.")
+		_expect(peer_four.current_xirang == 25, "Skill1 state confirm must update xirang.")
+		peer_four.current_xirang = 225
 		var skill1_duration_before_upgrade := peer_four.skill1_charge_duration
 		var skill1_upgrade_result := game.try_purchase_skill1_for_peer(4)
 		_expect(
 			skill1_upgrade_result == Game.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS,
 			"Owned skill1 transaction must upgrade skill1 on host."
 		)
-		_expect(peer_four.current_xirang == 25, "Skill1 upgrade must deduct the first 500 xirang cost.")
+		_expect(peer_four.current_xirang == 25, "Skill1 upgrade must deduct the first 200 xirang cost.")
 		_expect(peer_four.skill1_upgrade_level == 1, "Skill1 upgrade must increment the player level.")
 		_expect(
 			is_equal_approx(peer_four.skill1_charge_duration, skill1_duration_before_upgrade - 2.0),
@@ -2676,10 +2676,10 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 	)
 
 	_expect(
-		is_equal_approx(tiyi_player.skill1_charge_duration, 28.0),
-		"Tiyi must enter multiplayer with a default skill charge requirement of 28."
+		is_equal_approx(tiyi_player.skill1_charge_duration, 24.0),
+		"Tiyi must enter multiplayer with a default skill charge requirement of 24."
 	)
-	tiyi_player.unlock_skill1()
+	_expect(tiyi_player.has_skill1(), "Tiyi must enter multiplayer with High Noon unlocked.")
 	tiyi_player.skill1_charge = tiyi_player.skill1_charge_duration
 	_expect(
 		bool(mp_game.call("_apply_authoritative_tiyi_high_noon_request", 1, 1)),

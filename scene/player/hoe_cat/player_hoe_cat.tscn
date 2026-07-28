@@ -101,6 +101,7 @@ basic_attack_query_shape = SubResource("CircleShape2D_basic_attack")
 whirlwind_query_shape = SubResource("CircleShape2D_whirlwind")
 character_id = &"hoe_cat"
 dash_cooldown = 1.8
+skill1_charge_duration = 16.0
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=1137619000]
 z_index = 1
