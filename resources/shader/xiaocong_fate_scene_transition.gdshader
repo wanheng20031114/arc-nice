@@ -3,10 +3,10 @@ render_mode unshaded, blend_mix;
 
 uniform sampler2D transition_noise : repeat_enable, filter_linear;
 instance uniform float cover_progress : hint_range(0.0, 1.0) = 0.0;
-uniform vec4 chamber_color : source_color = vec4(0.001, 0.003, 0.002, 1.0);
-uniform vec4 growth_edge_color : source_color = vec4(0.22, 0.52, 0.34, 0.72);
-uniform vec4 growth_core_color : source_color = vec4(0.94, 0.76, 0.36, 0.9);
-uniform float growth_edge_width : hint_range(0.01, 0.16) = 0.045;
+uniform vec4 chamber_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform vec4 growth_edge_color : source_color = vec4(0.13, 0.135, 0.14, 0.22);
+uniform vec4 growth_core_color : source_color = vec4(0.54, 0.55, 0.56, 0.34);
+uniform float growth_edge_width : hint_range(0.01, 0.16) = 0.024;
 
 
 void fragment() {

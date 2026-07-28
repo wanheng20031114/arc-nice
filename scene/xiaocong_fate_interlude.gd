@@ -17,11 +17,14 @@ const PLAYER_OFFSETS: Array[Vector2] = [
 ]
 const XIAOCONG_WORLD_SCALE := Vector2(0.25, 0.25)
 const XIAOCONG_ENTRANCE_SCALE := Vector2(0.215, 0.215)
-const SCENE_COVER_DURATION_SECONDS := 0.58
-const ROOM_REVEAL_DURATION_SECONDS := 0.72
-const OUTCOME_FADE_SECONDS := 0.34
-const OUTCOME_HOLD_SECONDS := 1.08
-const DEFAULT_OUTCOME_TEXT := "落子无悔"
+const SCENE_COVER_DURATION_SECONDS := 0.32
+const ROOM_REVEAL_DURATION_SECONDS := 0.38
+const OUTCOME_BLACKOUT_SECONDS := 0.14
+const OUTCOME_TEXT_FADE_IN_SECONDS := 0.3
+const OUTCOME_TEXT_HOLD_SECONDS := 0.9
+const OUTCOME_TEXT_FADE_OUT_SECONDS := 0.24
+const OUTCOME_ROOM_RESTORE_SECONDS := 0.14
+const DEFAULT_OUTCOME_TEXT := "队伍做出了一个选择..."
 const FATE_STONE_OUTCOME_TEXT := "世界发生了改变"
 
 @onready var room_root: Node2D = $RoomRoot
@@ -42,6 +45,7 @@ const FATE_STONE_OUTCOME_TEXT := "世界发生了改变"
 )
 @onready var outcome_layer: CanvasLayer = $OutcomeLayer
 @onready var outcome_root: Control = $OutcomeLayer/Root
+@onready var outcome_shade: ColorRect = $OutcomeLayer/Root/Shade
 @onready var outcome_label: Label = $OutcomeLayer/Root/Message
 @onready var scene_transition_layer: CanvasLayer = $SceneTransitionLayer
 @onready var scene_transition_cover: ColorRect = $SceneTransitionLayer/Cover
@@ -158,7 +162,7 @@ func cover_scene_for_transfer() -> void:
 		return
 	var duration := maxf(
 		SCENE_COVER_DURATION_SECONDS * (1.0 - scene_transition_progress),
-		0.12
+		0.07
 	)
 	var tween := scene_transition_layer.create_tween()
 	scene_transition_tween = tween
@@ -195,20 +199,20 @@ func play_room_reveal() -> void:
 		xiaocong_sprite,
 		"modulate",
 		Color.WHITE,
-		0.34
-	).set_delay(0.14)
+		0.2
+	).set_delay(0.08)
 	tween.tween_property(
 		xiaocong_sprite,
 		"position",
 		Vector2.ZERO,
-		0.44
-	).set_delay(0.1).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		0.26
+	).set_delay(0.06).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(
 		xiaocong_sprite,
 		"scale",
 		XIAOCONG_WORLD_SCALE,
-		0.46
-	).set_delay(0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		0.28
+	).set_delay(0.06).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
 	if scene_transition_tween != tween:
 		return
@@ -253,25 +257,39 @@ func play_outcome_message(winning_option_id: StringName = &"") -> void:
 		if resolved_option == TowerDefenseFateRegistry.OPTION_FATE_STONE
 		else DEFAULT_OUTCOME_TEXT
 	)
-	outcome_root.modulate = Color(1, 1, 1, 0)
+	outcome_root.modulate = Color.WHITE
+	outcome_shade.modulate = Color(1, 1, 1, 0)
+	outcome_label.modulate = Color(0.72, 0.78, 0.82, 0)
 	outcome_layer.visible = true
 	if outcome_tween != null:
 		outcome_tween.kill()
 	var tween := outcome_layer.create_tween()
 	outcome_tween = tween
 	tween.tween_property(
-		outcome_root,
+		outcome_shade,
 		"modulate:a",
 		1.0,
-		OUTCOME_FADE_SECONDS
-	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.tween_interval(OUTCOME_HOLD_SECONDS)
+		OUTCOME_BLACKOUT_SECONDS
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(
-		outcome_root,
+		outcome_label,
+		"modulate",
+		Color.WHITE,
+		OUTCOME_TEXT_FADE_IN_SECONDS
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(OUTCOME_TEXT_HOLD_SECONDS)
+	tween.tween_property(
+		outcome_label,
 		"modulate:a",
 		0.0,
-		OUTCOME_FADE_SECONDS
+		OUTCOME_TEXT_FADE_OUT_SECONDS
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tween.tween_property(
+		outcome_shade,
+		"modulate:a",
+		0.0,
+		OUTCOME_ROOM_RESTORE_SECONDS
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tween.finished
 	if outcome_tween != tween:
 		return
@@ -359,6 +377,8 @@ func _hide_outcome_immediately() -> void:
 		outcome_tween.kill()
 		outcome_tween = null
 	outcome_root.modulate = Color.WHITE
+	outcome_shade.modulate = Color.WHITE
+	outcome_label.modulate = Color.WHITE
 	outcome_layer.visible = false
 
 

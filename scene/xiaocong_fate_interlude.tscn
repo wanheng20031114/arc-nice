@@ -39,19 +39,17 @@ outline_color = Color(0.02, 0.035, 0.025, 0.94)
 
 [sub_resource type="LabelSettings" id="LabelSettings_outcome"]
 font = ExtResource("5_font")
-font_size = 30
-font_color = Color(0.91, 0.95, 0.89, 1)
-outline_size = 1
-outline_color = Color(0.005, 0.012, 0.009, 0.96)
+font_size = 26
+font_color = Color(0.9, 0.92, 0.93, 1)
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_scene_transition"]
 resource_local_to_scene = true
 shader = ExtResource("6_scene_transition")
 shader_parameter/transition_noise = ExtResource("7_transition_noise")
-shader_parameter/chamber_color = Color(0.001, 0.003, 0.002, 1)
-shader_parameter/growth_edge_color = Color(0.22, 0.52, 0.34, 0.72)
-shader_parameter/growth_core_color = Color(0.94, 0.76, 0.36, 0.9)
-shader_parameter/growth_edge_width = 0.045
+shader_parameter/chamber_color = Color(0, 0, 0, 1)
+shader_parameter/growth_edge_color = Color(0.13, 0.135, 0.14, 0.22)
+shader_parameter/growth_core_color = Color(0.54, 0.55, 0.56, 0.34)
+shader_parameter/growth_edge_width = 0.024
 
 [node name="XiaocongFateInterlude" type="Node2D"]
 position = Vector2(8192, 8192)
@@ -64,7 +62,7 @@ visible = false
 [node name="BlackChamber" type="Polygon2D" parent="RoomRoot"]
 z_index = -100
 polygon = PackedVector2Array(-960, -560, 960, -560, 960, 560, -960, 560)
-color = Color(0.001, 0.002, 0.0015, 1)
+color = Color(0, 0, 0, 1)
 
 [node name="GroundHalo" type="Polygon2D" parent="RoomRoot"]
 z_index = -2
@@ -148,7 +146,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.001, 0.004, 0.002, 0.62)
+color = Color(0, 0, 0, 1)
 
 [node name="Message" type="Label" parent="OutcomeLayer/Root"]
 layout_mode = 1
@@ -158,7 +156,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-text = "落子无悔"
+text = "队伍做出了一个选择..."
 label_settings = SubResource("LabelSettings_outcome")
 horizontal_alignment = 1
 vertical_alignment = 1

@@ -4,9 +4,9 @@ render_mode unshaded, blend_mix;
 uniform sampler2D scene_before_overlay : hint_screen_texture, repeat_disable, filter_nearest;
 uniform sampler2D reveal_noise : repeat_enable, filter_linear;
 instance uniform float reveal_progress : hint_range(0.0, 1.0) = 1.0;
-uniform vec4 growth_edge_color : source_color = vec4(0.34, 0.62, 0.43, 0.46);
-uniform vec4 growth_core_color : source_color = vec4(0.96, 0.78, 0.39, 0.62);
-uniform float growth_edge_width : hint_range(0.01, 0.12) = 0.028;
+uniform vec4 growth_edge_color : source_color = vec4(0.14, 0.145, 0.15, 0.2);
+uniform vec4 growth_core_color : source_color = vec4(0.56, 0.57, 0.58, 0.3);
+uniform float growth_edge_width : hint_range(0.01, 0.12) = 0.02;
 
 
 void fragment() {

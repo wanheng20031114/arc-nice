@@ -333,6 +333,12 @@ func _test_scene_config_and_interlude_freeze() -> void:
 	var scene_transition_material := (
 		scene_transition_cover.material as ShaderMaterial
 	)
+	var outcome_shade := interlude.get_node(
+		"OutcomeLayer/Root/Shade"
+	) as ColorRect
+	var outcome_label := interlude.get_node(
+		"OutcomeLayer/Root/Message"
+	) as Label
 	_expect(
 		xiaocong_sprite.scale == Vector2(0.25, 0.25)
 		and xiaocong_sprite.texture_filter
@@ -349,10 +355,32 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		"The fate room must use NPC-scale nearest-neighbor Xiaocong pixels and an authored full-screen shader transition."
 	)
 	_expect(
-		XiaocongFateInterlude.DEFAULT_OUTCOME_TEXT == "落子无悔"
+		XiaocongFateInterlude.DEFAULT_OUTCOME_TEXT
+		== "队伍做出了一个选择..."
 		and XiaocongFateInterlude.FATE_STONE_OUTCOME_TEXT
-		== "世界发生了改变",
-		"Only the fate stone branch may replace the normal no-regrets outcome line."
+		== "世界发生了改变"
+		and outcome_shade.color == Color.BLACK
+		and outcome_label.label_settings.outline_size == 0,
+		"The normal outcome must use the team-choice line on pure black, while only the fate stone branch may replace it."
+	)
+	var transition_edge_color := Color(
+		scene_transition_material.get_shader_parameter(
+			&"growth_edge_color"
+		)
+	)
+	var transition_core_color := Color(
+		scene_transition_material.get_shader_parameter(
+			&"growth_core_color"
+		)
+	)
+	_expect(
+		XiaocongFateInterlude.SCENE_COVER_DURATION_SECONDS <= 0.32
+		and XiaocongFateInterlude.ROOM_REVEAL_DURATION_SECONDS <= 0.38
+		and XiaocongFateChoiceOverlay.RETURN_TO_ROOM_DURATION_SECONDS <= 0.32
+		and transition_edge_color.g - transition_edge_color.r <= 0.01
+		and transition_core_color.g - transition_core_color.r <= 0.02
+		and transition_core_color.r > transition_edge_color.r,
+		"Fate scene transitions must stay brisk and use a restrained neutral-cool edge instead of yellow-green."
 	)
 	game.fate_coordinator.active_permanent_buff_ids = [
 		TowerDefenseFateRegistry.BUFF_LOW_HEALTH_REDUCTION,

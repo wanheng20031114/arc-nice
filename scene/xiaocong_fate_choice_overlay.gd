@@ -3,8 +3,8 @@ class_name XiaocongFateChoiceOverlay
 
 const DEFAULT_CANVAS_LAYER := 24
 const INVENTORY_ACCESS_CANVAS_LAYER := 19
-const ENTRANCE_REVEAL_DURATION_SECONDS := 0.46
-const RETURN_TO_ROOM_DURATION_SECONDS := 0.52
+const ENTRANCE_REVEAL_DURATION_SECONDS := 0.36
+const RETURN_TO_ROOM_DURATION_SECONDS := 0.32
 const XIAOCONG_PORTRAIT_POSITION := Vector2.ZERO
 
 signal choice_submitted(option_id: StringName, permanent_buff_id: StringName)
