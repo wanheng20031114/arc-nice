@@ -13,6 +13,7 @@ const RED_GATE_CELLS: Array[Vector2i] = [
 	Vector2i(15, 8),
 ]
 const DEBUG_DESTROY_PLANT_RADIUS_CELLS := 3.0
+const TEST_BASE_HEALTH := 1000
 const FORMAL_PROGRESSION := preload(
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
@@ -32,6 +33,14 @@ func _ready() -> void:
 	manual_night_enabled = false
 	day_night_controller.set_night_factor_immediate(0.0)
 	_update_test_controls_hint()
+
+
+## P1 用于综合压力测试，扩大核心血量以避免长时间测试被过早中断。
+func _configure_home_defense() -> void:
+	super._configure_home_defense()
+	maximum_base_health = TEST_BASE_HEALTH
+	current_base_health = TEST_BASE_HEALTH
+	_update_base_health_display(false)
 
 
 ## 测试场景的昼夜只接受玩家手动控制，忽略正式流程的自动入夜请求。

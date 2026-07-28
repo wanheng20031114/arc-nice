@@ -164,6 +164,27 @@ func _test_arena_layout() -> void:
 	_expect(spawn1.position == Vector2(248, 120), "Spawn1 必须位于右侧上方红门。")
 	_expect(spawn2.position == Vector2(248, 136), "Spawn2 必须位于右侧下方红门。")
 
+	var zhuangfangyi := arena.get_node("ZhuangfangyiMerchant") as ZhuangfangyiMerchant
+	var luoxi := arena.get_node("LuoxiMerchant") as LuoxiMerchant
+	_expect(
+		zhuangfangyi != null
+		and zhuangfangyi.visible
+		and zhuangfangyi.position == Vector2(96, 224),
+		"P1 必须在草地底部放置可见的庄方宜。"
+	)
+	_expect(
+		luoxi != null
+		and luoxi.visible
+		and luoxi.position == Vector2(154, 224),
+		"P1 必须按正式场景的横向布局在庄方宜右侧放置洛茜。"
+	)
+	_expect(
+		arena.maximum_base_health == TestGrassArena.TEST_BASE_HEALTH
+		and arena.current_base_health == TestGrassArena.TEST_BASE_HEALTH
+		and arena.current_base_health == 1000,
+		"P1 核心必须以1000/1000生命进入测试。"
+	)
+
 
 func _test_navigation() -> void:
 	_expect(arena.grid_pathfinder.is_built, "16×16测试场景必须成功构建寻路网格。")

@@ -42,12 +42,10 @@ position = Vector2(128, 128)
 position = Vector2(128, 128)
 
 [node name="ZhuangfangyiMerchant" parent="." index="32"]
-visible = false
-position = Vector2(-1000, -1000)
+position = Vector2(96, 224)
 
 [node name="LuoxiMerchant" parent="." index="33"]
-visible = false
-position = Vector2(-1000, -1000)
+position = Vector2(154, 224)
 
 [node name="Spawn1" parent="EnemySpawnPoints" index="0"]
 position = Vector2(248, 120)
