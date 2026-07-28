@@ -40,6 +40,14 @@ const CHARGE_LIGHT_COLOR := Color(1.0, 0.2755556, 0.0444444, 1.0)
 const IDLE_LIGHT_ENERGY := 0.8
 const CHARGE_LIGHT_ENERGY_MIN := 0.85
 const CHARGE_LIGHT_ENERGY_MAX := 1.1
+const MUZZLE_CHARGE_LIGHT_COLOR := Color(1.0, 0.48, 0.08, 1.0)
+const MUZZLE_FIRE_LIGHT_COLOR := Color(1.0, 0.62, 0.20, 1.0)
+const MUZZLE_CHARGE_LIGHT_ENERGY_MIN := 0.16
+const MUZZLE_CHARGE_LIGHT_ENERGY_MAX := 0.82
+const MUZZLE_CHARGE_TEXTURE_SCALE_MIN := 0.20
+const MUZZLE_CHARGE_TEXTURE_SCALE_MAX := 0.50
+const MUZZLE_FIRE_LIGHT_ENERGIES := [0.95, 1.55, 0.52, 0.12]
+const MUZZLE_FIRE_TEXTURE_SCALES := [0.56, 0.72, 0.44, 0.22]
 const MAIN_SPRITE_REST_POSITION := Vector2.ZERO
 const FIRE_RECOIL_OFFSET := Vector2(-1.0, 1.0)
 
@@ -50,6 +58,12 @@ enum CombatPhase {
 	FIRING,
 }
 
+enum MuzzleLightPhase {
+	OFF,
+	CHARGE,
+	FIRE,
+}
+
 @onready var main_sprite: AnimatedSprite2D = $VisualRoot/MainSprite
 @onready var lower_body: Sprite2D = $VisualRoot/LowerBody
 @onready var status_light: Polygon2D = $VisualRoot/StatusLight
@@ -57,6 +71,9 @@ enum CombatPhase {
 	$VisualRoot/StatusLight/MicroGlow
 )
 @onready var muzzle: Marker2D = $VisualRoot/Muzzle
+@onready var muzzle_glow_light: NightPointLight2D = (
+	$VisualRoot/Muzzle/MuzzleGlow
+)
 @onready var attack_timer: Timer = $AttackTimer
 @onready var target_track_timer: Timer = $TargetTrackTimer
 @onready var health_bar: Control = $HealthBar
@@ -106,11 +123,13 @@ func _on_setup_completed() -> void:
 	main_sprite.play(&"idle")
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	_set_glow_state(false, 0)
+	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 
 
 func _on_construction_started() -> void:
 	_activate_transition_lifecycle_material()
 	status_light.visible = false
+	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 
 
 func _on_construction_finished(_was_animated: bool) -> void:
@@ -137,6 +156,7 @@ func _disable_proxy_combat_runtime() -> void:
 	_target_candidates.clear()
 	combat_phase = CombatPhase.IDLE
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
+	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 
 
 func _on_removal_started(mode: RemovalMode) -> void:
@@ -150,6 +170,7 @@ func _on_removal_started(mode: RemovalMode) -> void:
 	main_sprite.stop()
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	status_light.visible = false
+	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 	fire_audio.stop()
 	health_bar.hide()
 
@@ -372,6 +393,7 @@ func _begin_authoritative_windup(target: Enemy) -> void:
 	main_sprite.play(&"charge")
 	main_sprite.set_frame_and_progress(0, 0.0)
 	_set_glow_state(true, 0)
+	_apply_muzzle_light_state(MuzzleLightPhase.CHARGE, 0)
 	_queue_network_visual(
 		NETWORK_STAGE_WINDUP,
 		next_authoritative_action_id,
@@ -407,10 +429,15 @@ func _update_last_valid_target_position() -> void:
 func _on_main_sprite_frame_changed() -> void:
 	if main_sprite.animation == &"charge":
 		_set_glow_state(true, main_sprite.frame)
+		_apply_muzzle_light_state(
+			MuzzleLightPhase.CHARGE,
+			main_sprite.frame
+		)
 		return
 	if main_sprite.animation != &"fire":
 		return
 	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
+	_apply_muzzle_light_state(MuzzleLightPhase.FIRE, main_sprite.frame)
 	_set_fire_recoil_for_frame(main_sprite.frame)
 	if (
 		main_sprite.frame == FIRE_LAUNCH_FRAME
@@ -448,6 +475,7 @@ func _on_main_sprite_animation_finished() -> void:
 			main_sprite.play(&"fire")
 			main_sprite.set_frame_and_progress(0, 0.0)
 			_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
+			_apply_muzzle_light_state(MuzzleLightPhase.FIRE, 0)
 			return
 		_begin_authoritative_fire_animation()
 		return
@@ -476,6 +504,7 @@ func _begin_authoritative_fire_animation() -> void:
 	main_sprite.play(&"fire")
 	main_sprite.set_frame_and_progress(0, 0.0)
 	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
+	_apply_muzzle_light_state(MuzzleLightPhase.FIRE, 0)
 
 
 func _fire_authoritative_shell() -> void:
@@ -499,6 +528,10 @@ func _fire_authoritative_shell() -> void:
 		)
 	_set_fire_recoil_for_frame(FIRE_LAUNCH_FRAME)
 	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
+	_apply_muzzle_light_state(
+		MuzzleLightPhase.FIRE,
+		FIRE_LAUNCH_FRAME
+	)
 	var action_id := next_authoritative_action_id
 	var spawn_position := muzzle.global_position
 	var landing_position := last_valid_target_position
@@ -527,6 +560,7 @@ func _finish_fire_visual() -> void:
 	main_sprite.position = MAIN_SPRITE_REST_POSITION
 	main_sprite.play(&"idle")
 	_set_glow_state(false, 0)
+	_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 	if combat_phase != CombatPhase.FIRING:
 		return
 	if is_multiplayer_proxy:
@@ -750,6 +784,7 @@ func _play_proxy_windup(elapsed_seconds: float) -> void:
 		clampf(frame_position - float(frame_index), 0.0, 0.999)
 	)
 	_set_glow_state(true, frame_index)
+	_apply_muzzle_light_state(MuzzleLightPhase.CHARGE, frame_index)
 
 
 func _play_proxy_fire(projectile_elapsed_seconds: float) -> void:
@@ -761,6 +796,7 @@ func _play_proxy_fire(projectile_elapsed_seconds: float) -> void:
 		main_sprite.position = MAIN_SPRITE_REST_POSITION
 		main_sprite.play(&"idle")
 		_set_glow_state(false, 0)
+		_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 		combat_phase = CombatPhase.COOLDOWN
 		return
 	var frame_position := fire_elapsed * FIRE_FPS
@@ -776,6 +812,7 @@ func _play_proxy_fire(projectile_elapsed_seconds: float) -> void:
 		clampf(frame_position - float(frame_index), 0.0, 0.999)
 	)
 	_set_glow_state(true, WINDUP_FRAME_COUNT - 1)
+	_apply_muzzle_light_state(MuzzleLightPhase.FIRE, frame_index)
 	_set_fire_recoil_for_frame(frame_index)
 
 
@@ -948,6 +985,7 @@ func apply_multiplayer_runtime_state(
 		main_sprite.position = MAIN_SPRITE_REST_POSITION
 		main_sprite.play(&"idle")
 		_set_glow_state(false, 0)
+		_apply_muzzle_light_state(MuzzleLightPhase.OFF, 0)
 
 
 func _set_glow_state(charging: bool, frame_index: int) -> void:
@@ -985,6 +1023,58 @@ func _set_glow_state(charging: bool, frame_index: int) -> void:
 		if charging
 		else IDLE_LIGHT_ENERGY
 	)
+
+
+func _apply_muzzle_light_state(phase: int, frame_index: int) -> void:
+	match phase:
+		MuzzleLightPhase.OFF:
+			muzzle_glow_light.set_emission_allowed(false)
+			muzzle_glow_light.set_night_energy(0.0)
+			muzzle_glow_light.texture_scale = (
+				MUZZLE_CHARGE_TEXTURE_SCALE_MIN
+			)
+		MuzzleLightPhase.CHARGE:
+			var safe_frame := clampi(
+				frame_index,
+				0,
+				WINDUP_FRAME_COUNT - 1
+			)
+			var charge_progress := (
+				float(safe_frame) / float(WINDUP_FRAME_COUNT - 1)
+			)
+			var eased_progress := smoothstep(
+				0.0,
+				1.0,
+				charge_progress
+			)
+			muzzle_glow_light.color = MUZZLE_CHARGE_LIGHT_COLOR
+			muzzle_glow_light.texture_scale = lerpf(
+				MUZZLE_CHARGE_TEXTURE_SCALE_MIN,
+				MUZZLE_CHARGE_TEXTURE_SCALE_MAX,
+				eased_progress
+			)
+			muzzle_glow_light.set_night_energy(lerpf(
+				MUZZLE_CHARGE_LIGHT_ENERGY_MIN,
+				MUZZLE_CHARGE_LIGHT_ENERGY_MAX,
+				eased_progress
+			))
+			muzzle_glow_light.set_emission_allowed(true)
+		MuzzleLightPhase.FIRE:
+			var safe_frame := clampi(
+				frame_index,
+				0,
+				FIRE_FRAME_COUNT - 1
+			)
+			muzzle_glow_light.color = MUZZLE_FIRE_LIGHT_COLOR
+			muzzle_glow_light.texture_scale = float(
+				MUZZLE_FIRE_TEXTURE_SCALES[safe_frame]
+			)
+			muzzle_glow_light.set_night_energy(float(
+				MUZZLE_FIRE_LIGHT_ENERGIES[safe_frame]
+			))
+			muzzle_glow_light.set_emission_allowed(true)
+		_:
+			push_error("BambooMortar received an invalid muzzle light phase.")
 
 
 func _now_seconds() -> float:
