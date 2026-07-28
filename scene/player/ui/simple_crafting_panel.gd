@@ -28,6 +28,7 @@ signal craft_request_cancelled(request_token: int)
 	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe5,
 	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe6,
 	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe7,
+	$Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList/Recipe8,
 ]
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 

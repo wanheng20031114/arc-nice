@@ -20,6 +20,7 @@ const CAPOO_BLUE_CRYSTAL := preload(
 const SORCERER_VIOLET_POWDER := preload(
 	"res://resources/config/materials/material_sorcerer_violet_powder.tres"
 )
+const GEL := preload("res://resources/config/materials/material_gel.tres")
 const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
 	"res://resources/config/enemies/default_enemy_drop_table.tres"
 )
@@ -32,6 +33,7 @@ const ALL_MATERIALS: Array[PickupConfig] = [
 	WHITE_CRYSTAL,
 	CAPOO_BLUE_CRYSTAL,
 	SORCERER_VIOLET_POWDER,
+	GEL,
 ]
 const GLOBAL_DROP_CONFIGS: Array[PickupConfig] = [
 	WOOD,
@@ -172,6 +174,13 @@ func _test_material_config_and_icons() -> void:
 		true,
 		"violet"
 	)
+	_expect(
+		GEL.icon_texture != null
+		and GEL.icon_texture.resource_path
+		== "res://resources/texture/materials/gel.png",
+		"Gel must use its dedicated generated material icon."
+	)
+	_audit_material_icon(GEL, 32, 65.0, true, "blue")
 	_audit_refined_generated_icon(
 		CAPOO_BLUE_CRYSTAL,
 		Rect2i(10, 3, 12, 25)
@@ -274,7 +283,8 @@ func _test_deterministic_independent_drop_resolution() -> void:
 	_expect(
 		capoo_drops.size() == 9
 		and CAPOO_BLUE_CRYSTAL in capoo_drops
-		and SORCERER_VIOLET_POWDER not in capoo_drops,
+		and SORCERER_VIOLET_POWDER not in capoo_drops
+		and GEL not in capoo_drops,
 		"Capoo tags must add only the independent blue-crystal rule."
 	)
 	var sorcerer_drops := (
@@ -286,22 +296,59 @@ func _test_deterministic_independent_drop_resolution() -> void:
 	_expect(
 		sorcerer_drops.size() == 9
 		and SORCERER_VIOLET_POWDER in sorcerer_drops
-		and CAPOO_BLUE_CRYSTAL not in sorcerer_drops,
+		and CAPOO_BLUE_CRYSTAL not in sorcerer_drops
+		and GEL not in sorcerer_drops,
 		"Sorcerer tags must add only the independent violet-powder rule."
+	)
+	var slime_tags := PackedStringArray(["slime"])
+	var slime_drops := DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+		slime_tags,
+		_zero_rolls(9)
+	)
+	_expect(
+		slime_drops.size() == 9
+		and GEL in slime_drops
+		and CAPOO_BLUE_CRYSTAL not in slime_drops
+		and SORCERER_VIOLET_POWDER not in slime_drops,
+		"Slime tags must add only the independent gel rule."
+	)
+	var gel_only_rolls: Array[float] = []
+	var gel_boundary_rolls: Array[float] = []
+	for rule in DEFAULT_ENEMY_DROP_TABLE.get_eligible_rules(slime_tags):
+		var is_gel_rule := rule.pickup_config == GEL
+		gel_only_rolls.append(0.0 if is_gel_rule else 1.0)
+		gel_boundary_rolls.append(rule.chance if is_gel_rule else 1.0)
+	_expect(
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			slime_tags,
+			gel_only_rolls
+		) == [GEL],
+		"The slime gel roll must succeed independently of every other eligible rule."
+	)
+	_expect(
+		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+			slime_tags,
+			gel_boundary_rolls
+		).is_empty(),
+		"A gel roll equal to its 2% chance must fail the strict probability boundary."
 	)
 	_expect(
 		CAPOO_BLUE_CRYSTAL not in simultaneous_drops
-		and SORCERER_VIOLET_POWDER not in simultaneous_drops,
-		"Untagged enemies must not receive either tag-exclusive material rule."
+		and SORCERER_VIOLET_POWDER not in simultaneous_drops
+		and GEL not in simultaneous_drops,
+		"Untagged enemies must not receive any tag-exclusive material rule."
 	)
 	var all_tagged_drops := (
 		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
-			PackedStringArray(["capoo", "sorcerer"]),
-			_zero_rolls(10)
+			PackedStringArray(["capoo", "sorcerer", "slime"]),
+			_zero_rolls(11)
 		)
 	)
 	_expect(
-		all_tagged_drops.size() == 10,
+		all_tagged_drops.size() == 11
+		and CAPOO_BLUE_CRYSTAL in all_tagged_drops
+		and SORCERER_VIOLET_POWDER in all_tagged_drops
+		and GEL in all_tagged_drops,
 		"Tag filters must remain composable without turning the table into a weighted choice."
 	)
 
@@ -311,6 +358,13 @@ func _test_deterministic_independent_drop_resolution() -> void:
 		and is_equal_approx(violet_rule.chance, 0.01)
 		and violet_rule.required_tags == PackedStringArray(["sorcerer"]),
 		"The documented assumption must keep violet powder at a sorcerer-only 1% chance."
+	)
+	var gel_rule = _find_drop_rule(GEL)
+	_expect(
+		gel_rule != null
+		and is_equal_approx(gel_rule.chance, 0.02)
+		and gel_rule.required_tags == PackedStringArray(["slime"]),
+		"Gel must remain an independent slime-only 2% drop."
 	)
 	var powder_rule_count := 0
 	for rule in DEFAULT_ENEMY_DROP_TABLE.rules:
@@ -384,6 +438,7 @@ func _test_material_drop_batch_spawn() -> void:
 		WHITE_CRYSTAL,
 		CAPOO_BLUE_CRYSTAL,
 		SORCERER_VIOLET_POWDER,
+		GEL,
 	]
 	enemy.call("_spawn_dropped_pickups", drop_configs, spawn_position)
 	await process_frame

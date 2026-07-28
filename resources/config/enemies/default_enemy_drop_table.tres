@@ -7,6 +7,7 @@
 [ext_resource type="Resource" uid="uid://dtf2p26npy2pd" path="res://resources/config/materials/material_sapling.tres" id="5_sapling"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_capoo_blue_crystal.tres" id="6_blue"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sorcerer_violet_powder.tres" id="7_violet"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_gel.tres" id="13_gel"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="8_speed"]
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="9_rapid"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="10_tenpura"]
@@ -43,6 +44,12 @@ pickup_config = ExtResource("7_violet")
 chance = 0.01
 required_tags = PackedStringArray("sorcerer")
 
+[sub_resource type="Resource" id="EnemyDropRule_gel"]
+script = ExtResource("2_rule")
+pickup_config = ExtResource("13_gel")
+chance = 0.02
+required_tags = PackedStringArray("slime")
+
 [sub_resource type="Resource" id="EnemyDropRule_speed"]
 script = ExtResource("2_rule")
 pickup_config = ExtResource("8_speed")
@@ -75,4 +82,4 @@ required_tags = null
 
 [resource]
 script = ExtResource("1_table")
-rules = Array[ExtResource("2_rule")]([SubResource("EnemyDropRule_wood"), SubResource("EnemyDropRule_white"), SubResource("EnemyDropRule_sapling"), SubResource("EnemyDropRule_blue"), SubResource("EnemyDropRule_violet"), SubResource("EnemyDropRule_speed"), SubResource("EnemyDropRule_rapid"), SubResource("EnemyDropRule_tenpura"), SubResource("EnemyDropRule_health"), SubResource("EnemyDropRule_spiral")])
+rules = Array[ExtResource("2_rule")]([SubResource("EnemyDropRule_wood"), SubResource("EnemyDropRule_white"), SubResource("EnemyDropRule_sapling"), SubResource("EnemyDropRule_blue"), SubResource("EnemyDropRule_violet"), SubResource("EnemyDropRule_gel"), SubResource("EnemyDropRule_speed"), SubResource("EnemyDropRule_rapid"), SubResource("EnemyDropRule_tenpura"), SubResource("EnemyDropRule_health"), SubResource("EnemyDropRule_spiral")])

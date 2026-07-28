@@ -1003,7 +1003,7 @@ func _test_simple_crafting_unlock_research(
 			BUILDING_DEFENSE_RESEARCH_ID,
 			PLAYER_MOVE_SPEED_RESEARCH_ID,
 		]
-		and available_recipes.size() == 6
+		and available_recipes.size() == 7
 		and available_recipes.has(simple_fence_recipe)
 		and not available_recipes.has(bamboo_recipe)
 		and not available_recipes.has(hydrangea_recipe),
@@ -1052,7 +1052,7 @@ func _test_simple_crafting_unlock_research(
 			PLAYER_MOVE_SPEED_RESEARCH_ID,
 			BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
 		]
-		and available_recipes.size() == 7
+		and available_recipes.size() == 8
 		and available_recipes.has(simple_fence_recipe)
 		and available_recipes.has(bamboo_recipe)
 		and not available_recipes.has(hydrangea_recipe),
@@ -1101,11 +1101,11 @@ func _test_simple_crafting_unlock_research(
 		) == ResearchCoordinator.GlobalResearchState.COMPLETED
 		and research.get_active_global_research_id().is_empty()
 		and completed_ids == expected_completed_ids
-		and available_recipes.size() == 8
+		and available_recipes.size() == 9
 		and available_recipes.has(simple_fence_recipe)
 		and available_recipes.has(bamboo_recipe)
 		and available_recipes.has(hydrangea_recipe),
-		"紫阳花研发满30秒后必须导出四项完成ID，并让全部八条简易配方可用。"
+		"紫阳花研发满30秒后必须导出四项完成ID，并让全部九条简易配方可用。"
 	)
 
 	var remote_research := (
