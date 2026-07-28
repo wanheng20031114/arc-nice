@@ -15,8 +15,7 @@ const PLAYER_OFFSETS: Array[Vector2] = [
 	Vector2(-154, 104),
 	Vector2(154, 104),
 ]
-const XIAOCONG_WORLD_SCALE := Vector2(0.25, 0.25)
-const XIAOCONG_ENTRANCE_SCALE := Vector2(0.215, 0.215)
+const XIAOCONG_WORLD_SCALE := Vector2.ONE
 const SCENE_COVER_DURATION_SECONDS := 0.32
 const ROOM_REVEAL_DURATION_SECONDS := 0.38
 const OUTCOME_BLACKOUT_SECONDS := 0.14
@@ -32,14 +31,24 @@ const FATE_STONE_OUTCOME_TEXT := "世界发生了改变"
 @onready var body_shape: CollisionShape2D = (
 	$RoomRoot/StaticBody2D/CollisionShape2D
 )
+@onready var room_boundary_shapes: Array[CollisionShape2D] = [
+	$RoomRoot/RoomBounds/TopWall,
+	$RoomRoot/RoomBounds/BottomWall,
+	$RoomRoot/RoomBounds/LeftWall,
+	$RoomRoot/RoomBounds/RightWall,
+]
 @onready var interaction_area: Area2D = $RoomRoot/InteractionArea
 @onready var interaction_shape: CollisionShape2D = (
 	$RoomRoot/InteractionArea/CollisionShape2D
 )
 @onready var dialogue_bubble: MerchantDialogueBubble = (
-	$RoomRoot/XiaocongDialogueBubble
+	$InteractionUILayer/Anchor/XiaocongDialogueBubble
 )
-@onready var prompt_label: Label = $RoomRoot/InteractionPrompt
+@onready var interaction_ui_layer: CanvasLayer = $InteractionUILayer
+@onready var interaction_ui_anchor: Node2D = $InteractionUILayer/Anchor
+@onready var prompt_label: Label = (
+	$InteractionUILayer/Anchor/InteractionPrompt
+)
 @onready var choice_overlay: XiaocongFateChoiceOverlay = (
 	$XiaocongFateChoiceOverlay
 )
@@ -49,6 +58,8 @@ const FATE_STONE_OUTCOME_TEXT := "世界发生了改变"
 @onready var outcome_label: Label = $OutcomeLayer/Root/Message
 @onready var scene_transition_layer: CanvasLayer = $SceneTransitionLayer
 @onready var scene_transition_cover: ColorRect = $SceneTransitionLayer/Cover
+@onready var transition_cover_audio: AudioStreamPlayer = $TransitionCoverAudio
+@onready var transition_reveal_audio: AudioStreamPlayer = $TransitionRevealAudio
 
 var is_active := false
 var completed_day := 1
@@ -79,6 +90,11 @@ func _ready() -> void:
 	set_active(false)
 
 
+func _process(_delta: float) -> void:
+	if is_active:
+		_update_interaction_ui_position()
+
+
 func configure_local_player(
 	player_node: Player,
 	peer_id: int,
@@ -93,7 +109,10 @@ func set_active(active: bool, day_number: int = 1) -> void:
 	is_active = active
 	completed_day = maxi(day_number, 1)
 	room_root.visible = active
+	interaction_ui_layer.visible = active
 	body_shape.set_deferred("disabled", not active)
+	for boundary_shape in room_boundary_shapes:
+		boundary_shape.set_deferred("disabled", not active)
 	interaction_shape.set_deferred("disabled", not active)
 	interaction_area.set_deferred("monitoring", active)
 	nearby_local_player = false
@@ -114,7 +133,10 @@ func set_active(active: bool, day_number: int = 1) -> void:
 	if active:
 		last_winning_option_id = &""
 		xiaocong_sprite.play(&"idle")
+		_update_interaction_ui_position()
 	else:
+		transition_cover_audio.stop()
+		transition_reveal_audio.stop()
 		choice_overlay.hide_overlay()
 
 
@@ -160,6 +182,7 @@ func cover_scene_for_transfer() -> void:
 	if scene_transition_progress >= 0.999:
 		_set_scene_transition_progress(1.0)
 		return
+	transition_cover_audio.play()
 	var duration := maxf(
 		SCENE_COVER_DURATION_SECONDS * (1.0 - scene_transition_progress),
 		0.07
@@ -184,8 +207,9 @@ func play_room_reveal() -> void:
 	scene_transition_layer.visible = true
 	scene_transition_cover.mouse_filter = Control.MOUSE_FILTER_STOP
 	_set_scene_transition_progress(1.0)
-	xiaocong_sprite.position = Vector2(0, 4)
-	xiaocong_sprite.scale = XIAOCONG_ENTRANCE_SCALE
+	transition_reveal_audio.play()
+	xiaocong_sprite.position = Vector2.ZERO
+	xiaocong_sprite.scale = XIAOCONG_WORLD_SCALE
 	xiaocong_sprite.modulate = Color(1, 1, 1, 0)
 	var tween := scene_transition_layer.create_tween().set_parallel(true)
 	scene_transition_tween = tween
@@ -201,18 +225,6 @@ func play_room_reveal() -> void:
 		Color.WHITE,
 		0.2
 	).set_delay(0.08)
-	tween.tween_property(
-		xiaocong_sprite,
-		"position",
-		Vector2.ZERO,
-		0.26
-	).set_delay(0.06).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(
-		xiaocong_sprite,
-		"scale",
-		XIAOCONG_WORLD_SCALE,
-		0.28
-	).set_delay(0.06).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tween.finished
 	if scene_transition_tween != tween:
 		return
@@ -225,6 +237,7 @@ func reveal_world_after_transfer() -> void:
 	scene_transition_layer.visible = true
 	scene_transition_cover.mouse_filter = Control.MOUSE_FILTER_STOP
 	_set_scene_transition_progress(1.0)
+	transition_reveal_audio.play()
 	var tween := scene_transition_layer.create_tween()
 	scene_transition_tween = tween
 	tween.tween_method(
@@ -336,7 +349,12 @@ func _on_body_exited(body: Node2D) -> void:
 
 
 func _refresh_prompt() -> void:
-	prompt_label.visible = is_active and not is_concluding and nearby_local_player
+	prompt_label.visible = (
+		is_active
+		and not is_concluding
+		and nearby_local_player
+		and not dialogue_bubble.visible
+	)
 	if current_stage == TowerDefenseFateManager.STAGE_VOTING:
 		prompt_label.text = (
 			"等待超时 · F 由房主继续结算"
@@ -401,6 +419,12 @@ func _finish_scene_reveal() -> void:
 	_set_scene_transition_progress(0.0)
 	scene_transition_cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	scene_transition_layer.visible = false
+
+
+func _update_interaction_ui_position() -> void:
+	interaction_ui_anchor.position = (
+		xiaocong_sprite.get_global_transform_with_canvas().origin.round()
+	)
 
 
 func _to_int_array(value: Variant) -> Array[int]:

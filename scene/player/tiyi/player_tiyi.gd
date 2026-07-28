@@ -91,6 +91,11 @@ func set_controls_locked(locked: bool) -> void:
 		_cancel_high_noon(true)
 
 
+func _on_combat_actions_lock_changed(locked: bool) -> void:
+	if locked:
+		_cancel_high_noon(true)
+
+
 func _exit_tree() -> void:
 	_cancel_high_noon(true)
 	_clear_owned_sniper_bullets()
@@ -112,7 +117,12 @@ func _set_character_visual_offset(offset: Vector2) -> void:
 
 
 func _try_use_skill1() -> bool:
-	if not skill1_unlocked or is_dead or controls_locked or _high_noon_active:
+	if (
+		not skill1_unlocked
+		or is_dead
+		or are_combat_actions_locked()
+		or _high_noon_active
+	):
 		return false
 	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge < skill1_charge_duration:
@@ -277,7 +287,7 @@ func _update_high_noon(delta: float) -> void:
 			_high_noon_remote_resolve_attempts += 1
 			_resolve_remote_high_noon_targets()
 		return
-	if is_dead or controls_locked or not is_inside_tree():
+	if is_dead or are_combat_actions_locked() or not is_inside_tree():
 		_cancel_high_noon(true)
 		return
 

@@ -22,7 +22,7 @@ func _get_skill1_direction() -> Vector2:
 func _try_use_skill1() -> bool:
 	if not skill1_unlocked:
 		return false
-	if is_dead or controls_locked:
+	if is_dead or are_combat_actions_locked():
 		return false
 	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge < skill1_charge_duration:
@@ -71,7 +71,7 @@ func can_request_multiplayer_projectile(projectile_type: StringName) -> bool:
 		or (
 			projectile_type == &"skill1_bomb"
 			and not is_dead
-			and not controls_locked
+			and not are_combat_actions_locked()
 		)
 	)
 

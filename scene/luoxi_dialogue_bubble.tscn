@@ -130,7 +130,7 @@ label_settings = SubResource("LabelSettings_name")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="BlipAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="BlipAudio" type="AudioStreamPlayer" parent="."]
 bus = &"SFX"
 stream = ExtResource("3_blip")
 volume_db = 4.0

@@ -2276,7 +2276,6 @@ func _refresh_player_modal_ui_lock() -> void:
 		return
 	if (
 		_has_exclusive_modal_open()
-		or wave_state == WaveState.FATE_INTERLUDE
 		or (
 			plant_placement_controller != null
 			and plant_placement_controller.is_active()
@@ -2450,7 +2449,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			state_timer.stop()
 			enemy_spawn_timer.stop()
 			wave_state = WaveState.FATE_INTERLUDE
-			_set_fate_player_controls_locked(true)
+			_set_fate_player_combat_locked(true)
 			if not remote_fate_entry_in_progress:
 				if xiaocong_fate_interlude.is_active:
 					_present_fate_interlude_locally(
@@ -3569,7 +3568,7 @@ func _on_xiaocong_fate_state_changed(_state: Dictionary) -> void:
 func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
 	_set_fate_interlude_systems_frozen(true)
 	wave_state = WaveState.FATE_INTERLUDE
-	_set_fate_player_controls_locked(true)
+	_set_fate_player_combat_locked(true)
 	next_flow_step_after_rest = next_step
 	countdown_seconds = 0
 	enemy_spawn_timer.stop()
@@ -3604,7 +3603,7 @@ func _present_fate_interlude_locally(day_number: int) -> void:
 		tower_defense_status_hud.hide()
 	if tower_defense_minimap != null:
 		tower_defense_minimap.hide()
-	_set_fate_player_controls_locked(true)
+	_set_fate_player_combat_locked(true)
 
 
 func _begin_remote_fate_entry(day_number: int) -> void:
@@ -3660,7 +3659,7 @@ func _leave_fate_interlude_presentation() -> void:
 		tower_defense_status_hud.show()
 	if tower_defense_minimap != null:
 		tower_defense_minimap.show()
-	_set_fate_player_controls_locked(false)
+	_set_fate_player_combat_locked(false)
 	_refresh_player_modal_ui_lock()
 	_update_plant_placement_input_state()
 
@@ -3693,10 +3692,11 @@ func _set_fate_interlude_systems_frozen(frozen: bool) -> void:
 	fate_frozen_terrain_decay_time_left = 0.0
 
 
-func _set_fate_player_controls_locked(locked: bool) -> void:
+func _set_fate_player_combat_locked(locked: bool) -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		if player != null and is_instance_valid(player) and not player.is_dead:
-			player.set_controls_locked(locked)
+			player.set_combat_actions_locked(locked)
+			player.set_controls_locked(false)
 		return
 	for player_variant in peer_players.values():
 		var player_instance := player_variant as Player
@@ -3705,7 +3705,8 @@ func _set_fate_player_controls_locked(locked: bool) -> void:
 			and is_instance_valid(player_instance)
 			and not player_instance.is_dead
 		):
-			player_instance.set_controls_locked(locked)
+			player_instance.set_combat_actions_locked(locked)
+			player_instance.set_controls_locked(false)
 
 
 func _teleport_authoritative_players_to_fate_room() -> void:

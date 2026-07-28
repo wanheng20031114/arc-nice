@@ -4,6 +4,7 @@ const DIALOGUE_SCENE_PATHS: PackedStringArray = [
 	"res://scene/luoxi_dialogue_bubble.tscn",
 	"res://scene/merchant_dialogue_bubble.tscn",
 ]
+const XIAOCONG_DIALOGUE_SCENE_PATH := "res://scene/xiaocong_dialogue_bubble.tscn"
 const BOSS_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
 
 var failures: Array[String] = []
@@ -16,6 +17,7 @@ func _initialize() -> void:
 func _run() -> void:
 	for scene_path in DIALOGUE_SCENE_PATHS:
 		_test_high_resolution_dialogue(scene_path)
+	_test_native_xiaocong_dialogue()
 	_test_high_resolution_boss_nameplate()
 	await _test_wave_hud_feedback()
 	await _test_currency_hud_feedback()
@@ -65,6 +67,36 @@ func _test_high_resolution_dialogue(scene_path: String) -> void:
 		keyboard_prompt != null and keyboard_prompt.label_settings != null
 		and keyboard_prompt.label_settings.font_size == 11,
 		"%s prompt text must rasterize at the authored 11 px size before half-scaling." % scene_path
+	)
+	bubble.free()
+
+
+func _test_native_xiaocong_dialogue() -> void:
+	var packed_scene := load(XIAOCONG_DIALOGUE_SCENE_PATH) as PackedScene
+	_expect(packed_scene != null, "Xiaocong dialogue must load for the font contract test.")
+	if packed_scene == null:
+		return
+	var bubble := packed_scene.instantiate() as Node2D
+	var panel := bubble.get_node_or_null("BubblePanel") as Control
+	var dialogue_text := bubble.get_node_or_null(
+		"BubblePanel/Margin/Content/Text"
+	) as RichTextLabel
+	var name_label := bubble.get_node_or_null("NamePlate/Name") as Label
+	var blip_audio := bubble.get_node_or_null("BlipAudio") as AudioStreamPlayer
+	_expect(
+		bubble.scale == Vector2.ONE
+		and bubble.position == bubble.position.round()
+		and panel != null
+		and panel.custom_minimum_size == Vector2(308, 122),
+		"Xiaocong dialogue must use an integer-positioned native screen-space layout."
+	)
+	_expect(
+		dialogue_text != null
+		and dialogue_text.get_theme_font_size("normal_font_size") == 17
+		and name_label != null
+		and name_label.label_settings.font_size == 18
+		and blip_audio != null,
+		"Xiaocong dialogue text and audio must stay native-resolution and non-positional."
 	)
 	bubble.free()
 

@@ -339,10 +339,50 @@ func _test_scene_config_and_interlude_freeze() -> void:
 	var outcome_label := interlude.get_node(
 		"OutcomeLayer/Root/Message"
 	) as Label
+	var interaction_ui_layer := interlude.get_node(
+		"InteractionUILayer"
+	) as CanvasLayer
+	var interaction_anchor := interlude.get_node(
+		"InteractionUILayer/Anchor"
+	) as Node2D
+	var prompt_label := interlude.get_node(
+		"InteractionUILayer/Anchor/InteractionPrompt"
+	) as Label
+	var dialogue_bubble := interlude.get_node(
+		"InteractionUILayer/Anchor/XiaocongDialogueBubble"
+	) as MerchantDialogueBubble
+	var transition_cover_audio := interlude.get_node(
+		"TransitionCoverAudio"
+	) as AudioStreamPlayer
+	var transition_reveal_audio := interlude.get_node(
+		"TransitionRevealAudio"
+	) as AudioStreamPlayer
+	var top_room_wall := interlude.get_node(
+		"RoomRoot/RoomBounds/TopWall"
+	) as CollisionShape2D
+	var right_room_wall := interlude.get_node(
+		"RoomRoot/RoomBounds/RightWall"
+	) as CollisionShape2D
+	var first_xiaocong_frame := xiaocong_sprite.sprite_frames.get_frame_texture(
+		&"idle",
+		0
+	)
 	_expect(
-		xiaocong_sprite.scale == Vector2(0.25, 0.25)
+		xiaocong_sprite.scale == Vector2.ONE
 		and xiaocong_sprite.texture_filter
 		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and first_xiaocong_frame.get_size() == Vector2(27, 41)
+		and xiaocong_sprite.sprite_frames.get_frame_count(&"idle") == 12
+		and interaction_ui_layer.layer > interlude.z_index
+		and prompt_label.get_parent() == interaction_anchor
+		and dialogue_bubble.get_parent() == interaction_anchor
+		and dialogue_bubble.scale == Vector2.ONE
+		and dialogue_bubble.position == dialogue_bubble.position.round()
+		and prompt_label.label_settings.font_size >= 15
+		and transition_cover_audio.stream != null
+		and transition_reveal_audio.stream != null
+		and (top_room_wall.shape as RectangleShape2D).size == Vector2(368, 16)
+		and (right_room_wall.shape as RectangleShape2D).size == Vector2(16, 264)
 		and scene_transition_layer.layer
 		> interlude.choice_overlay.layer
 		and not scene_transition_layer.visible
@@ -352,8 +392,44 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		and scene_transition_material.get_shader_parameter(
 			&"transition_noise"
 		) != null,
-		"The fate room must use NPC-scale nearest-neighbor Xiaocong pixels and an authored full-screen shader transition."
+		"The fate room must use a native 27x41 nearest-neighbor Xiaocong sprite, crisp screen-space interaction UI, authored transition audio, and a full-screen shader transition."
 	)
+	game._set_fate_player_combat_locked(true)
+	_expect(
+		game.player.combat_actions_locked
+		and not game.player.controls_locked,
+		"The fate room must lock combat actions without locking player movement."
+	)
+	var original_player_position := game.player.global_position
+	interlude.set_active(true, 1)
+	await physics_frame
+	game.player.global_position = interlude.get_player_spawn_position(0)
+	game.player.reset_physics_interpolation()
+	var movement_start := game.player.global_position
+	var previous_local_input := game.player.uses_local_input
+	game.player.uses_local_input = false
+	game.player.network_move_input = Vector2.RIGHT
+	await physics_frame
+	await physics_frame
+	_expect(
+		game.player.global_position.x > movement_start.x,
+		"A combat-locked fate-room player must still move from directional input."
+	)
+	game.player.global_position = interlude.global_position + Vector2(160, 0)
+	game.player.reset_physics_interpolation()
+	for _frame in range(24):
+		await physics_frame
+	_expect(
+		game.player.global_position.x <= interlude.global_position.x + 176.0,
+		"The authored fate-room walls must contain a moving player inside the chamber."
+	)
+	game.player.network_move_input = Vector2.ZERO
+	game.player.uses_local_input = previous_local_input
+	game.player.global_position = original_player_position
+	game.player.reset_physics_interpolation()
+	interlude.set_active(false)
+	await physics_frame
+	game._set_fate_player_combat_locked(false)
 	_expect(
 		XiaocongFateInterlude.DEFAULT_OUTCOME_TEXT
 		== "队伍做出了一个选择..."

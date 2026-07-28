@@ -3564,12 +3564,18 @@ func _client_physics_tick(frame: int) -> void:
 
 func _client_send_input_if_needed(buttons: int) -> void:
 	var move_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	var shoot_input := _get_client_shoot_input()
 	var player_node: Player = null
 	if game != null:
 		player_node = game.player
 	if player_node == null:
 		return
+	var shoot_input := (
+		Vector2.ZERO
+		if player_node.are_combat_actions_locked()
+		else _get_client_shoot_input()
+	)
+	if player_node.are_combat_actions_locked():
+		buttons &= ~INPUT_BUTTON_RELOAD
 	if player_node.is_dead:
 		_last_sent_move_input = Vector2.ZERO
 		_last_sent_shoot_input = Vector2.ZERO
@@ -4032,7 +4038,13 @@ func _rpc_client_player_state(
 	if not _accept_client_player_state(sender_id, sequence, reported_position, reported_velocity):
 		net_player_state_corrected.rpc_id(sender_id, player_node.global_position, player_node.velocity)
 		return
-	var use_reload: bool = (buttons & INPUT_BUTTON_RELOAD) != 0
+	var combat_actions_locked := player_node.are_combat_actions_locked()
+	if combat_actions_locked:
+		shoot_input = Vector2.ZERO
+	var use_reload: bool = (
+		(buttons & INPUT_BUTTON_RELOAD) != 0
+		and not combat_actions_locked
+	)
 	var use_dash: bool = (buttons & INPUT_BUTTON_DASH) != 0
 	if use_dash:
 		var dash_movement_evidence := dash_start_move_input

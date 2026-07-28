@@ -152,7 +152,7 @@ func _perform_primary_attack(attack_direction: Vector2) -> bool:
 func try_authoritative_hoe_primary_attack(attack_direction: Vector2) -> bool:
 	if (
 		is_dead
-		or controls_locked
+		or are_combat_actions_locked()
 		or _whirlwind_visual_time_left > 0.0
 		or _pending_whirlwind_attack
 		or _pending_primary_attack
@@ -177,7 +177,7 @@ func _try_use_skill1() -> bool:
 		return false
 	if (
 		is_dead
-		or controls_locked
+		or are_combat_actions_locked()
 		or _whirlwind_visual_time_left > 0.0
 		or _pending_whirlwind_attack
 	):
@@ -194,7 +194,7 @@ func _try_use_skill1() -> bool:
 func try_authoritative_hoe_whirlwind() -> bool:
 	if (
 		is_dead
-		or controls_locked
+		or are_combat_actions_locked()
 		or _whirlwind_visual_time_left > 0.0
 		or _pending_whirlwind_attack
 	):
@@ -215,7 +215,7 @@ func play_remote_hoe_action(
 	if sequence <= _latest_remote_action_sequence:
 		return
 	_latest_remote_action_sequence = sequence
-	if is_dead or controls_locked:
+	if is_dead or are_combat_actions_locked():
 		return
 	match action_kind:
 		&"primary":
@@ -231,7 +231,11 @@ func play_predicted_hoe_action(
 	attack_direction: Vector2,
 	request_id: int
 ) -> void:
-	if request_id <= _latest_predicted_action_request_id or is_dead or controls_locked:
+	if (
+		request_id <= _latest_predicted_action_request_id
+		or is_dead
+		or are_combat_actions_locked()
+	):
 		return
 	_latest_predicted_action_request_id = request_id
 	match action_kind:
@@ -507,7 +511,7 @@ func _on_primary_impact_timer_timeout() -> void:
 	_pending_primary_attack = false
 	_pending_primary_direction = Vector2.ZERO
 	_pending_primary_damage = 0
-	if is_dead or controls_locked:
+	if is_dead or are_combat_actions_locked():
 		return
 	_apply_hoe_attack_damage(
 		basic_attack_query_shape,
@@ -525,7 +529,7 @@ func _on_whirlwind_impact_timer_timeout() -> void:
 	var impact_damage := _pending_whirlwind_damage
 	_pending_whirlwind_attack = false
 	_pending_whirlwind_damage = 0
-	if is_dead or controls_locked:
+	if is_dead or are_combat_actions_locked():
 		return
 	_apply_hoe_attack_damage(
 		whirlwind_query_shape,

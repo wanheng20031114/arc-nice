@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Build Xiaocong's native pixel assets from reviewed ImageGen source art.
 
-The source files are chroma-keyed before this script is run.  This stage only
-performs hard-alpha normalization, nearest-neighbour logical-grid reduction,
-palette reduction without dithering, and exact integer-pixel animation edits.
+The Xiaocong source is already chroma-keyed.  Its generated pixel grid is
+measured before any reduction; this stage then samples each detected logical
+cell once, applies a small non-dithered palette, and performs only integer-pixel
+animation edits.  Runtime frames are kept at their native size in Godot.
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from statistics import median
 
 from PIL import Image
 
@@ -19,113 +19,54 @@ from pixel_crop_tool import (
     crop_to_square,
     normalize_transparency,
 )
+from pixel_grid_analyzer import analyze_image, find_subject_bbox
 
 
-LOGICAL_FRAME_SIZE = (52, 68)
-ASSET_SCALE = 2
-ASSET_FRAME_SIZE = tuple(dimension * ASSET_SCALE for dimension in LOGICAL_FRAME_SIZE)
+SOURCE_SUBJECT_GRID_SIZE = (23, 37)
+RUNTIME_FRAME_SIZE = (27, 41)
+RUNTIME_SUBJECT_OFFSET = (2, 2)
+SOURCE_MIN_GRID_CONFIDENCE = 0.9
+RUNTIME_PALETTE_COLORS = 28
 FRAME_COUNT = 12
-SOURCE_PADDING = 32
-
-
-def _is_magenta_spill(pixel: tuple[int, int, int, int]) -> bool:
-    red, green, blue, alpha = pixel
-    return (
-        alpha > 0
-        and red >= 80
-        and blue >= 70
-        and green <= 80
-        and red - green >= 55
-        and blue - green >= 45
-    )
-
-
-def _despill_magenta_edges(image: Image.Image) -> Image.Image:
-    """Replace keyed magenta fringe with neighbouring opaque foreground color."""
-    cleaned = image.copy().convert("RGBA")
-    pixels = cleaned.load()
-    remaining = {
-        (x, y)
-        for y in range(cleaned.height)
-        for x in range(cleaned.width)
-        if _is_magenta_spill(pixels[x, y])
-    }
-    neighbour_offsets = (
-        (-1, -1), (0, -1), (1, -1),
-        (-1, 0),           (1, 0),
-        (-1, 1),  (0, 1),  (1, 1),
-    )
-
-    # Work from clean foreground into each fringe component.  Updating one
-    # frontier per pass preserves the existing opaque silhouette while avoiding
-    # a transparent notch at the chroma boundary.
-    while remaining:
-        replacements: dict[tuple[int, int], tuple[int, int, int, int]] = {}
-        for x, y in remaining:
-            neighbours: list[tuple[int, int, int, int]] = []
-            for offset_x, offset_y in neighbour_offsets:
-                sample_x = x + offset_x
-                sample_y = y + offset_y
-                if not (0 <= sample_x < cleaned.width and 0 <= sample_y < cleaned.height):
-                    continue
-                if (sample_x, sample_y) in remaining:
-                    continue
-                sample = pixels[sample_x, sample_y]
-                if sample[3] > 0:
-                    neighbours.append(sample)
-            if neighbours:
-                replacements[(x, y)] = (
-                    round(median(sample[0] for sample in neighbours)),
-                    round(median(sample[1] for sample in neighbours)),
-                    round(median(sample[2] for sample in neighbours)),
-                    255,
-                )
-
-        if not replacements:
-            # This should not occur for a chroma fringe attached to the subject.
-            # Keep any isolated authored color instead of erasing opaque pixels.
-            break
-        for (x, y), replacement in replacements.items():
-            pixels[x, y] = replacement
-        remaining.difference_update(replacements)
-
-    return cleaned
 
 
 def _hard_palette(image: Image.Image, colors: int) -> Image.Image:
-    alpha = image.getchannel("A")
-    rgb = image.convert("RGB").quantize(
+    return image.convert("RGBA").quantize(
         colors=colors,
-        method=Image.Quantize.MEDIANCUT,
+        method=Image.Quantize.FASTOCTREE,
         dither=Image.Dither.NONE,
-    ).convert("RGB")
-    rgba = rgb.convert("RGBA")
-    rgba.putalpha(alpha.point(lambda value: 255 if value > 0 else 0))
-    return rgba
-
-
-def _center_crop(image: Image.Image, size: tuple[int, int]) -> Image.Image:
-    width, height = size
-    left = (image.width - width) // 2
-    top = (image.height - height) // 2
-    return image.crop((left, top, left + width, top + height))
+    ).convert("RGBA")
 
 
 def build_xiaocong_base(source: Path) -> Image.Image:
-    keyed = _despill_magenta_edges(normalize_transparency(Image.open(source)))
-    square = crop_to_square(keyed, padding=SOURCE_PADDING, align_to_grid=True)
-    # The v2 ImageGen source was manually reviewed at 1:1 and enlarged views:
-    # its silhouette is clean and deliberately pixel-styled, but the generated
-    # cell widths vary enough that automatic grid confidence is low.  The
-    # explicit unsafe flag is therefore intentional.  Reduction happens once,
-    # directly to the 68-pixel logical canvas with nearest-neighbour sampling.
-    logical, _analysis = compress_to_logical_grid(
-        square,
-        logical_size=68,
-        allow_unsafe_grid_compression=True,
+    keyed = normalize_transparency(Image.open(source), alpha_threshold=127)
+    analysis = analyze_image(keyed)
+    detected_size = (
+        int(analysis["subject_grid_width"]),
+        int(analysis["subject_grid_height"]),
     )
-    base = _center_crop(logical, LOGICAL_FRAME_SIZE)
-    return _hard_palette(base, 64)
+    if float(analysis["confidence"]) < SOURCE_MIN_GRID_CONFIDENCE:
+        raise ValueError(
+            "Xiaocong source grid confidence is too low: "
+            f"{analysis['confidence']:.3f}"
+        )
+    if detected_size != SOURCE_SUBJECT_GRID_SIZE:
+        raise ValueError(
+            "Xiaocong source logical subject changed: "
+            f"expected {SOURCE_SUBJECT_GRID_SIZE}, detected {detected_size}"
+        )
+
+    # The measured subject bounds are exactly 23x37 generated logical cells.
+    # Nearest-neighbour center sampling maps one detected cell to one runtime
+    # pixel; it is not an arbitrary visual resize.
+    subject = keyed.crop(find_subject_bbox(keyed)).resize(
+        SOURCE_SUBJECT_GRID_SIZE,
+        Image.Resampling.NEAREST,
+    )
+    subject = _hard_palette(subject, RUNTIME_PALETTE_COLORS)
+    base = Image.new("RGBA", RUNTIME_FRAME_SIZE, (0, 0, 0, 0))
+    base.alpha_composite(subject, RUNTIME_SUBJECT_OFFSET)
+    return base
 
 
 def _shift_opaque_pixels(image: Image.Image, y_offset: int) -> Image.Image:
@@ -135,23 +76,22 @@ def _shift_opaque_pixels(image: Image.Image, y_offset: int) -> Image.Image:
 
 
 def _replace_eye_row(frame: Image.Image, mode: str) -> None:
-    """Apply the reviewed 52x68 eye edit; coordinates are logical pixels."""
+    """Animate the reviewed native eye clusters without resampling the frame."""
     pixels = frame.load()
-    # Measured from the v2 logical frame: the visible two-pixel irises occupy
-    # x=22..23 / x=28..29 and y=19..20.  The four-pixel edit boxes below include
-    # the lashes but do not touch the fringe or the cheek highlights.
-    eye_clusters = ((20, 23), (28, 31))
-    skin_color = (253, 236, 211, 255)
-    lid_color = (61, 42, 38, 255)
+    eye_clusters = ((9, 11), (16, 18))
+    skin_color = (233, 229, 207, 255)
+    lid_color = (35, 30, 25, 255)
     if mode == "half":
         for x0, x1 in eye_clusters:
             for x in range(x0, x1 + 1):
-                pixels[x, 19] = lid_color
+                pixels[x, 21] = lid_color
+                pixels[x, 22] = skin_color
     elif mode == "closed":
         for x0, x1 in eye_clusters:
             for x in range(x0, x1 + 1):
-                pixels[x, 19] = skin_color
-                pixels[x, 20] = lid_color
+                for y in range(19, 23):
+                    pixels[x, y] = skin_color
+                pixels[x, 21] = lid_color
 
 
 def build_xiaocong_sheet(base: Image.Image) -> Image.Image:
@@ -162,25 +102,25 @@ def build_xiaocong_sheet(base: Image.Image) -> Image.Image:
                  "open", "open", "half", "closed", "half", "open")
     logical_sheet = Image.new(
         "RGBA",
-        (LOGICAL_FRAME_SIZE[0] * FRAME_COUNT, LOGICAL_FRAME_SIZE[1]),
+        (
+            RUNTIME_FRAME_SIZE[0] * FRAME_COUNT,
+            RUNTIME_FRAME_SIZE[1],
+        ),
         (0, 0, 0, 0),
     )
     for index, (y_offset, eye_mode) in enumerate(zip(y_offsets, eye_modes)):
-        frame = _shift_opaque_pixels(base, y_offset)
+        frame = base.copy()
         _replace_eye_row(frame, eye_mode)
+        frame = _shift_opaque_pixels(frame, y_offset)
         logical_sheet.alpha_composite(
             frame,
-            (index * LOGICAL_FRAME_SIZE[0], 0),
+            (index * RUNTIME_FRAME_SIZE[0], 0),
         )
 
-    # Keep the animation authored on the 52x68 logical grid, then duplicate
-    # every logical pixel into an exact 2x2 block.  Godot displays the resulting
-    # 104x136 frames at scale 0.5, recovering the logical frame exactly without
-    # sampling away independently generated high-resolution detail.
-    return logical_sheet.resize(
-        (ASSET_FRAME_SIZE[0] * FRAME_COUNT, ASSET_FRAME_SIZE[1]),
-        Image.Resampling.NEAREST,
-    )
+    # Runtime frames remain native 27x41 pixels and are displayed at scale 1.
+    # All animation changes are whole-pixel edits, so camera movement cannot
+    # introduce fractional sprite sampling.
+    return logical_sheet
 
 
 def build_fate_stone(source: Path) -> Image.Image:

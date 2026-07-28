@@ -9,7 +9,7 @@ const NO_BREAK_PUNCTUATION := "，。？！、,.?!；：;:"
 const SILENT_CHARACTERS := " ，。？！、,.?![]◆"
 
 @onready var text_label: RichTextLabel = $BubblePanel/Margin/Content/Text
-@onready var blip_audio: AudioStreamPlayer2D = $BlipAudio
+@onready var blip_audio: AudioStreamPlayer = $BlipAudio
 
 var reveal_serial: int = 0
 var is_revealing: bool = false

@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scene/xiaocong_fate_interlude.gd" id="1_script"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/xiaocong.tres" id="2_frames"]
@@ -7,6 +7,8 @@
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
 [ext_resource type="Shader" path="res://resources/shader/xiaocong_fate_scene_transition.gdshader" id="6_scene_transition"]
 [ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="7_transition_noise"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/xiaocong_transition_cover.wav" id="8_transition_cover"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/xiaocong_transition_reveal.wav" id="9_transition_reveal"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
 radius = 220.0
@@ -14,6 +16,12 @@ radius = 220.0
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
 radius = 8.0
 height = 25.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_room_horizontal"]
+size = Vector2(368, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_room_vertical"]
+size = Vector2(16, 264)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_prompt"]
 bg_color = Color(0.44, 0.55, 0.48, 0.92)
@@ -32,9 +40,9 @@ shadow_offset = Vector2(0, 2)
 
 [sub_resource type="LabelSettings" id="LabelSettings_prompt"]
 font = ExtResource("5_font")
-font_size = 10
+font_size = 15
 font_color = Color(1, 1, 1, 1)
-outline_size = 1
+outline_size = 2
 outline_color = Color(0.02, 0.035, 0.025, 0.94)
 
 [sub_resource type="LabelSettings" id="LabelSettings_outcome"]
@@ -71,7 +79,6 @@ color = Color(0.18, 0.24, 0.2, 0.22)
 
 [node name="Xiaocong" type="AnimatedSprite2D" parent="RoomRoot"]
 texture_filter = 1
-scale = Vector2(0.25, 0.25)
 sprite_frames = ExtResource("2_frames")
 animation = &"idle"
 autoplay = "idle"
@@ -85,6 +92,30 @@ position = Vector2(0, 3)
 shape = SubResource("CapsuleShape2D_body")
 disabled = true
 
+[node name="RoomBounds" type="StaticBody2D" parent="RoomRoot"]
+collision_layer = 1
+collision_mask = 0
+
+[node name="TopWall" type="CollisionShape2D" parent="RoomRoot/RoomBounds"]
+position = Vector2(0, -132)
+shape = SubResource("RectangleShape2D_room_horizontal")
+disabled = true
+
+[node name="BottomWall" type="CollisionShape2D" parent="RoomRoot/RoomBounds"]
+position = Vector2(0, 132)
+shape = SubResource("RectangleShape2D_room_horizontal")
+disabled = true
+
+[node name="LeftWall" type="CollisionShape2D" parent="RoomRoot/RoomBounds"]
+position = Vector2(-184, 0)
+shape = SubResource("RectangleShape2D_room_vertical")
+disabled = true
+
+[node name="RightWall" type="CollisionShape2D" parent="RoomRoot/RoomBounds"]
+position = Vector2(184, 0)
+shape = SubResource("RectangleShape2D_room_vertical")
+disabled = true
+
 [node name="InteractionArea" type="Area2D" parent="RoomRoot"]
 collision_layer = 0
 collision_mask = 2
@@ -94,34 +125,50 @@ monitoring = false
 shape = SubResource("CircleShape2D_interaction")
 disabled = true
 
-[node name="InteractionPrompt" type="Label" parent="RoomRoot"]
+[node name="InteractionUILayer" type="CanvasLayer" parent="."]
 visible = false
-offset_left = -65.0
-offset_top = 25.0
-offset_right = 65.0
-offset_bottom = 45.0
+layer = 22
+
+[node name="Anchor" type="Node2D" parent="InteractionUILayer"]
+
+[node name="XiaocongDialogueBubble" parent="InteractionUILayer/Anchor" instance=ExtResource("3_dialogue")]
+
+[node name="InteractionPrompt" type="Label" parent="InteractionUILayer/Anchor"]
+visible = false
+offset_left = -94.0
+offset_top = -74.0
+offset_right = 94.0
+offset_bottom = -42.0
 mouse_filter = 2
 text = "F  与小葱交互"
 label_settings = SubResource("LabelSettings_prompt")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="PromptBackground" type="PanelContainer" parent="RoomRoot/InteractionPrompt"]
+[node name="PromptBackground" type="PanelContainer" parent="InteractionUILayer/Anchor/InteractionPrompt"]
 show_behind_parent = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -6.0
-offset_top = -3.0
-offset_right = 6.0
-offset_bottom = 3.0
+offset_left = -7.0
+offset_top = -4.0
+offset_right = 7.0
+offset_bottom = 4.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_prompt")
 
-[node name="XiaocongDialogueBubble" parent="RoomRoot" instance=ExtResource("3_dialogue")]
+[node name="TransitionCoverAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("8_transition_cover")
+volume_db = -8.0
+bus = &"SFX"
+
+[node name="TransitionRevealAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("9_transition_reveal")
+volume_db = -7.0
+bus = &"SFX"
 
 [node name="XiaocongFateChoiceOverlay" parent="." instance=ExtResource("4_overlay")]
 

@@ -72,6 +72,8 @@ func _update_character_visual_state() -> void:
 
 
 func _handle_primary_attack_input(shoot_input: Vector2) -> void:
+	if are_combat_actions_locked():
+		return
 	if current_shot_pattern == PickupConfig.ShotPattern.SPIRAL:
 		_try_auto_spiral_shoot()
 		return
@@ -184,7 +186,7 @@ func try_consume_authoritative_player_bullet_ammo() -> bool:
 func try_accept_authoritative_primary_shot(projectile_type: StringName) -> bool:
 	if projectile_type != _get_primary_projectile_type():
 		return false
-	if is_dead or controls_locked:
+	if is_dead or are_combat_actions_locked():
 		return false
 	var now_msec := Time.get_ticks_msec()
 	if (
@@ -278,7 +280,7 @@ func _get_inventory_ammo_free_shot_chance() -> float:
 
 
 func _try_start_reload() -> bool:
-	if is_dead or controls_locked:
+	if is_dead or are_combat_actions_locked():
 		return false
 	if is_reloading:
 		return false
@@ -442,7 +444,7 @@ func _try_auto_spiral_shoot() -> void:
 
 
 func can_request_multiplayer_projectile(projectile_type: StringName) -> bool:
-	if is_dead or controls_locked:
+	if is_dead or are_combat_actions_locked():
 		return false
 	return projectile_type == _get_primary_projectile_type()
 

@@ -50,8 +50,7 @@ font_color = Color(0.2, 0.29, 0.23, 1)
 
 [node name="XiaocongDialogueBubble" type="Node2D"]
 visible = false
-position = Vector2(-77, -112)
-scale = Vector2(0.5, 0.5)
+position = Vector2(-154, -224)
 script = ExtResource("1_script")
 
 [node name="BubblePanel" type="PanelContainer" parent="."]
@@ -129,7 +128,7 @@ label_settings = SubResource("LabelSettings_name")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="BlipAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="BlipAudio" type="AudioStreamPlayer" parent="."]
 bus = &"SFX"
 stream = ExtResource("3_blip")
 volume_db = 2.0

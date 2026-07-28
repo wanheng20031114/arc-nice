@@ -37,6 +37,7 @@ var multiplayer_dash_protection_time_left: float = 0.0
 var remote_dash_visual_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
+var combat_actions_locked: bool = false
 var tower_defense_death_presentation_active: bool = false
 var peer_id: int = 0
 var uses_local_input: bool = true
@@ -492,7 +493,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if mouse_event == null or mouse_event.button_index != MOUSE_BUTTON_LEFT:
 		return
 
-	mouse_fire_held = mouse_event.pressed and not controls_locked and not is_dead
+	mouse_fire_held = (
+		mouse_event.pressed
+		and not are_combat_actions_locked()
+		and not is_dead
+	)
 	if mouse_fire_held:
 		get_viewport().set_input_as_handled()
 
@@ -521,15 +526,21 @@ func _physics_process(delta: float) -> void:
 		return
 	
 	var move_input := _get_current_move_input()
-	var shoot_input := _get_current_shoot_input()
+	var combat_input_locked := are_combat_actions_locked()
+	var shoot_input := (
+		Vector2.ZERO
+		if combat_input_locked
+		else _get_current_shoot_input()
+	)
 	_refresh_wall_overlap_probe_gate()
 	if uses_local_input and Input.is_action_just_pressed(&"dash"):
 		_try_start_dash(move_input)
-	if uses_local_input and mouse_fire_held:
+	if uses_local_input and mouse_fire_held and not combat_input_locked:
 		shoot_input = _get_mouse_shoot_direction()
 	if not uses_local_input and network_reload_requested:
 		network_reload_requested = false
-		_try_start_reload()
+		if not combat_input_locked:
+			_try_start_reload()
 
 	var dash_was_active := is_dashing()
 	var movement_visual_direction := dash_direction if dash_was_active else move_input
@@ -557,7 +568,8 @@ func _physics_process(delta: float) -> void:
 	_update_movement_status_visuals(movement_visual_direction)
 	_update_footstep_audio(delta, Vector2.ZERO if dash_was_active else move_input)
 
-	_handle_primary_attack_input(shoot_input)
+	if not combat_input_locked:
+		_handle_primary_attack_input(shoot_input)
 
 	_update_facing(movement_visual_direction, shoot_input)
 	_update_animation()
@@ -581,6 +593,8 @@ func _update_character_visual_state() -> void:
 
 
 func _handle_primary_attack_input(shoot_input: Vector2) -> void:
+	if are_combat_actions_locked():
+		return
 	if shoot_input != Vector2.ZERO:
 		_try_shoot(shoot_input)
 
@@ -602,6 +616,8 @@ func _update_animation() -> void:
 
 # 尝试进行一次常规射击
 func _try_shoot(shoot_input: Vector2) -> void:
+	if are_combat_actions_locked():
+		return
 	if not shooting_timer.is_stopped():
 		return
 	if not _can_perform_primary_attack():
@@ -1459,6 +1475,23 @@ func set_controls_locked(locked: bool) -> void:
 	_refresh_dash_ready_visual()
 
 
+func set_combat_actions_locked(locked: bool) -> void:
+	combat_actions_locked = locked
+	if combat_actions_locked:
+		mouse_fire_held = false
+		network_shoot_input = Vector2.ZERO
+		network_reload_requested = false
+	_on_combat_actions_lock_changed(combat_actions_locked)
+
+
+func are_combat_actions_locked() -> bool:
+	return controls_locked or combat_actions_locked
+
+
+func _on_combat_actions_lock_changed(_locked: bool) -> void:
+	pass
+
+
 func configure_multiplayer_control(
 	new_peer_id: int,
 	use_local_input: bool,
@@ -1638,8 +1671,12 @@ func apply_remote_multiplayer_view_state(
 	use_reload: bool = false
 ) -> void:
 	velocity = remote_velocity
-	network_shoot_input = shoot_input.limit_length(1.0)
-	if use_reload:
+	network_shoot_input = (
+		Vector2.ZERO
+		if are_combat_actions_locked()
+		else shoot_input.limit_length(1.0)
+	)
+	if use_reload and not are_combat_actions_locked():
 		_try_start_reload()
 	_update_facing(remote_velocity, network_shoot_input)
 	_update_animation()
@@ -1668,7 +1705,7 @@ func consume_multiplayer_skill1_charge() -> bool:
 func try_begin_skill1_activation(authoritative_preserve_roll: bool = true) -> bool:
 	if not skill1_unlocked:
 		return false
-	if is_dead or controls_locked:
+	if is_dead or are_combat_actions_locked():
 		return false
 	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge < skill1_charge_duration:
