@@ -167,6 +167,17 @@ position = Vector2(-72, 0)
 rotation = -1.5708
 texture = ExtResource("23_sword_texture")
 
+[node name="SwordC" type="Sprite2D" parent="SnowWolfSwordOrbit/VisualRoot"]
+texture_filter = 1
+position = Vector2(0, 72)
+rotation = 3.14159
+texture = ExtResource("23_sword_texture")
+
+[node name="SwordD" type="Sprite2D" parent="SnowWolfSwordOrbit/VisualRoot"]
+texture_filter = 1
+position = Vector2(0, -72)
+texture = ExtResource("23_sword_texture")
+
 [node name="SwordAShape" type="CollisionShape2D" parent="SnowWolfSwordOrbit"]
 position = Vector2(72, 0)
 rotation = 1.5708
@@ -176,6 +187,17 @@ disabled = true
 [node name="SwordBShape" type="CollisionShape2D" parent="SnowWolfSwordOrbit"]
 position = Vector2(-72, 0)
 rotation = -1.5708
+shape = SubResource("RectangleShape2D_snow_wolf_sword")
+disabled = true
+
+[node name="SwordCShape" type="CollisionShape2D" parent="SnowWolfSwordOrbit"]
+position = Vector2(0, 72)
+rotation = 3.14159
+shape = SubResource("RectangleShape2D_snow_wolf_sword")
+disabled = true
+
+[node name="SwordDShape" type="CollisionShape2D" parent="SnowWolfSwordOrbit"]
+position = Vector2(0, -72)
 shape = SubResource("RectangleShape2D_snow_wolf_sword")
 disabled = true
 

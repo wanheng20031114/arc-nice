@@ -232,61 +232,99 @@ func _test_snow_wolf_sword_pickup() -> void:
 	var sword_b := player.get_node_or_null(
 		"SnowWolfSwordOrbit/VisualRoot/SwordB"
 	) as Sprite2D
+	var sword_c := player.get_node_or_null(
+		"SnowWolfSwordOrbit/VisualRoot/SwordC"
+	) as Sprite2D
+	var sword_d := player.get_node_or_null(
+		"SnowWolfSwordOrbit/VisualRoot/SwordD"
+	) as Sprite2D
 	var shape_a_node := player.get_node_or_null(
 		"SnowWolfSwordOrbit/SwordAShape"
 	) as CollisionShape2D
 	var shape_b_node := player.get_node_or_null(
 		"SnowWolfSwordOrbit/SwordBShape"
 	) as CollisionShape2D
+	var shape_c_node := player.get_node_or_null(
+		"SnowWolfSwordOrbit/SwordCShape"
+	) as CollisionShape2D
+	var shape_d_node := player.get_node_or_null(
+		"SnowWolfSwordOrbit/SwordDShape"
+	) as CollisionShape2D
 	_expect(orbit != null, "Snow Wolf Po Jun orbit must be prebuilt in the Hoe Cat scene.")
 	_expect(visual_root != null, "Snow Wolf Po Jun must use a separate visual root.")
-	_expect(sword_a != null and sword_b != null, "Snow Wolf Po Jun must prebuild two sword sprites.")
 	_expect(
-		shape_a_node != null and shape_b_node != null,
-		"Snow Wolf Po Jun must prebuild two sword collision shapes."
+		sword_a != null and sword_b != null and sword_c != null and sword_d != null,
+		"Snow Wolf Po Jun must prebuild four sword sprites."
+	)
+	_expect(
+		shape_a_node != null
+		and shape_b_node != null
+		and shape_c_node != null
+		and shape_d_node != null,
+		"Snow Wolf Po Jun must prebuild four sword collision shapes."
 	)
 	if (
 		orbit == null
 		or visual_root == null
 		or sword_a == null
 		or sword_b == null
+		or sword_c == null
+		or sword_d == null
 		or shape_a_node == null
 		or shape_b_node == null
+		or shape_c_node == null
+		or shape_d_node == null
 	):
 		return
 	var shape_a := shape_a_node.shape as RectangleShape2D
 	var shape_b := shape_b_node.shape as RectangleShape2D
+	var shape_c := shape_c_node.shape as RectangleShape2D
+	var shape_d := shape_d_node.shape as RectangleShape2D
 	_expect(orbit.collision_layer == 0, "Orbit swords must not occupy a collision layer.")
 	_expect(orbit.collision_mask == 4, "Orbit swords must only scan EnemyBody layer 4.")
 	_expect(not orbit.monitorable, "Orbit swords must not be monitorable by other areas.")
 	_expect(
 		shape_a != null
 		and shape_b != null
+		and shape_c != null
+		and shape_d != null
 		and shape_a.size == Vector2(22.0, 6.0)
-		and shape_b.size == Vector2(22.0, 6.0),
-		"Both sword hitboxes must use the authored 22x6 footprint."
+		and shape_b.size == Vector2(22.0, 6.0)
+		and shape_c.size == Vector2(22.0, 6.0)
+		and shape_d.size == Vector2(22.0, 6.0),
+		"All four sword hitboxes must use the authored 22x6 footprint."
 	)
 	_expect(
 		is_equal_approx(sword_a.position.length(), 72.0)
-		and sword_b.position.is_equal_approx(-sword_a.position),
-		"The two swords must sit opposite each other on a radius-72 orbit."
+		and is_equal_approx(sword_b.position.length(), 72.0)
+		and is_equal_approx(sword_c.position.length(), 72.0)
+		and is_equal_approx(sword_d.position.length(), 72.0)
+		and sword_a.position.is_equal_approx(Vector2(72.0, 0.0))
+		and sword_c.position.is_equal_approx(Vector2(0.0, 72.0))
+		and sword_b.position.is_equal_approx(Vector2(-72.0, 0.0))
+		and sword_d.position.is_equal_approx(Vector2(0.0, -72.0)),
+		"The four swords must sit 90 degrees apart on a radius-72 orbit."
 	)
 	_expect(
-		is_equal_approx(
-			absf(wrapf(sword_a.rotation - sword_b.rotation, -PI, PI)),
-			PI
-		),
-		"The two sword tips must remain 180 degrees apart."
+		is_equal_approx(sword_a.rotation, PI / 2.0)
+		and is_equal_approx(sword_c.rotation, PI)
+		and is_equal_approx(sword_b.rotation, -PI / 2.0)
+		and is_equal_approx(sword_d.rotation, 0.0),
+		"The four sword tips must follow the orbit tangent at 90-degree intervals."
 	)
 	_expect(
 		sword_a.texture != null
 		and sword_a.texture.get_size() == Vector2(24.0, 24.0)
-		and sword_a.texture == sword_b.texture,
-		"Both swords must reuse the same native 24x24 pixel texture."
+		and sword_a.texture == sword_b.texture
+		and sword_a.texture == sword_c.texture
+		and sword_a.texture == sword_d.texture,
+		"All four swords must reuse the same native 24x24 pixel texture."
 	)
 	_expect(
 		sword_a.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
-		and sword_b.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		and sword_b.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and sword_c.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and sword_d.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 		"Orbit sword textures must use nearest-neighbor sampling."
 	)
 	_expect(
@@ -315,10 +353,13 @@ func _test_snow_wolf_sword_pickup() -> void:
 	_expect(ground_pickup.is_queued_for_deletion(), "Consumed Snow Wolf Po Jun must leave the ground.")
 	await process_frame
 	await physics_frame
-	_expect(orbit.is_active() and orbit.visible, "Snow Wolf Po Jun must reveal the two orbit swords.")
+	_expect(orbit.is_active() and orbit.visible, "Snow Wolf Po Jun must reveal the four orbit swords.")
 	_expect(orbit.monitoring, "Single-player orbit swords must enable authoritative collision.")
 	_expect(
-		not shape_a_node.disabled and not shape_b_node.disabled,
+		not shape_a_node.disabled
+		and not shape_b_node.disabled
+		and not shape_c_node.disabled
+		and not shape_d_node.disabled,
 		"Authoritative orbit sword hitboxes must be enabled while the pickup is active."
 	)
 	_expect(
@@ -338,7 +379,7 @@ func _test_snow_wolf_sword_pickup() -> void:
 	orbit.rotation = 0.0
 	await physics_frame
 	var authored_contact_enemy := _spawn_authored_test_enemy(
-		Vector2(72.0, 0.0),
+		Vector2(0.0, 72.0),
 		5
 	)
 	await physics_frame
@@ -348,7 +389,7 @@ func _test_snow_wolf_sword_pickup() -> void:
 		sword_overlaps.has(authored_contact_enemy),
 		(
 			"The authored sword Area2D must physically overlap the authored Enemy scene "
-			+ "at its radius-72 center."
+			+ "at the added vertical sword's radius-72 center."
 		)
 	)
 	_expect(
@@ -431,7 +472,10 @@ func _test_snow_wolf_sword_pickup() -> void:
 	_expect(not orbit.is_active() and not orbit.visible, "Orbit swords must disappear when the pickup expires.")
 	_expect(not orbit.monitoring, "Expired orbit swords must stop collision monitoring.")
 	_expect(
-		shape_a_node.disabled and shape_b_node.disabled,
+		shape_a_node.disabled
+		and shape_b_node.disabled
+		and shape_c_node.disabled
+		and shape_d_node.disabled,
 		"Expired orbit sword shapes must leave the physics broad phase."
 	)
 	_expect(
@@ -453,8 +497,11 @@ func _test_snow_wolf_sword_pickup() -> void:
 		"A remote ARMED/NORMAL snapshot must restore visual-only orbit swords."
 	)
 	_expect(
-		shape_a_node.disabled and shape_b_node.disabled,
-		"Remote visual-only orbit swords must keep both physics shapes disabled."
+		shape_a_node.disabled
+		and shape_b_node.disabled
+		and shape_c_node.disabled
+		and shape_d_node.disabled,
+		"Remote visual-only orbit swords must keep all four physics shapes disabled."
 	)
 	var damage_before_visual_only_contact := contact_enemy.total_damage_taken
 	orbit.call("_on_body_entered", contact_enemy)

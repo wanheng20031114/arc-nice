@@ -61,6 +61,8 @@ func _test_pixel_render_settings() -> void:
 		NodePath("WhirlwindBodyEffect"),
 		NodePath("SnowWolfSwordOrbit/VisualRoot/SwordA"),
 		NodePath("SnowWolfSwordOrbit/VisualRoot/SwordB"),
+		NodePath("SnowWolfSwordOrbit/VisualRoot/SwordC"),
+		NodePath("SnowWolfSwordOrbit/VisualRoot/SwordD"),
 	]:
 		var sprite := player.get_node(node_path) as CanvasItem
 		_expect(sprite != null, "%s must be a CanvasItem." % node_path)
@@ -338,19 +340,37 @@ func _test_scene_action_node_contract() -> void:
 	var sword_b := player.get_node_or_null(
 		"SnowWolfSwordOrbit/VisualRoot/SwordB"
 	) as Sprite2D
+	var sword_c := player.get_node_or_null(
+		"SnowWolfSwordOrbit/VisualRoot/SwordC"
+	) as Sprite2D
+	var sword_d := player.get_node_or_null(
+		"SnowWolfSwordOrbit/VisualRoot/SwordD"
+	) as Sprite2D
 	var sword_a_shape_node := player.get_node_or_null(
 		"SnowWolfSwordOrbit/SwordAShape"
 	) as CollisionShape2D
 	var sword_b_shape_node := player.get_node_or_null(
 		"SnowWolfSwordOrbit/SwordBShape"
 	) as CollisionShape2D
+	var sword_c_shape_node := player.get_node_or_null(
+		"SnowWolfSwordOrbit/SwordCShape"
+	) as CollisionShape2D
+	var sword_d_shape_node := player.get_node_or_null(
+		"SnowWolfSwordOrbit/SwordDShape"
+	) as CollisionShape2D
 	_expect(primary_timer != null, "PrimaryImpactTimer must be prebuilt in the Hoe Cat scene.")
 	_expect(whirlwind_timer != null, "WhirlwindImpactTimer must be prebuilt in the Hoe Cat scene.")
 	_expect(sword_orbit != null, "SnowWolfSwordOrbit must be prebuilt in the Hoe Cat scene.")
-	_expect(sword_a != null and sword_b != null, "SnowWolfSwordOrbit must prebuild two sword sprites.")
 	_expect(
-		sword_a_shape_node != null and sword_b_shape_node != null,
-		"SnowWolfSwordOrbit must prebuild two collision shapes."
+		sword_a != null and sword_b != null and sword_c != null and sword_d != null,
+		"SnowWolfSwordOrbit must prebuild four sword sprites."
+	)
+	_expect(
+		sword_a_shape_node != null
+		and sword_b_shape_node != null
+		and sword_c_shape_node != null
+		and sword_d_shape_node != null,
+		"SnowWolfSwordOrbit must prebuild four collision shapes."
 	)
 	if primary_timer != null:
 		_expect(primary_timer.one_shot, "PrimaryImpactTimer must be one-shot.")
@@ -369,21 +389,41 @@ func _test_scene_action_node_contract() -> void:
 			and not sword_orbit.monitorable,
 			"SnowWolfSwordOrbit must only query EnemyBody layer 4."
 		)
-	if sword_a != null and sword_b != null:
+	if sword_a != null and sword_b != null and sword_c != null and sword_d != null:
 		_expect(
 			sword_a.position == Vector2(72.0, 0.0)
-			and sword_b.position == Vector2(-72.0, 0.0),
-			"The authored sword sprites must be opposite on the radius-72 orbit."
+			and sword_c.position == Vector2(0.0, 72.0)
+			and sword_b.position == Vector2(-72.0, 0.0)
+			and sword_d.position == Vector2(0.0, -72.0),
+			"The four authored sword sprites must be 90 degrees apart on the radius-72 orbit."
 		)
-	if sword_a_shape_node != null and sword_b_shape_node != null:
+		_expect(
+			is_equal_approx(sword_a.rotation, PI / 2.0)
+			and is_equal_approx(sword_c.rotation, PI)
+			and is_equal_approx(sword_b.rotation, -PI / 2.0)
+			and is_equal_approx(sword_d.rotation, 0.0),
+			"The four authored sword tips must follow the orbit tangent at 90-degree intervals."
+		)
+	if (
+		sword_a_shape_node != null
+		and sword_b_shape_node != null
+		and sword_c_shape_node != null
+		and sword_d_shape_node != null
+	):
 		var sword_a_shape := sword_a_shape_node.shape as RectangleShape2D
 		var sword_b_shape := sword_b_shape_node.shape as RectangleShape2D
+		var sword_c_shape := sword_c_shape_node.shape as RectangleShape2D
+		var sword_d_shape := sword_d_shape_node.shape as RectangleShape2D
 		_expect(
 			sword_a_shape != null
 			and sword_b_shape != null
+			and sword_c_shape != null
+			and sword_d_shape != null
 			and sword_a_shape.size == Vector2(22.0, 6.0)
-			and sword_b_shape.size == Vector2(22.0, 6.0),
-			"Both sword collision shapes must use the authored 22x6 size."
+			and sword_b_shape.size == Vector2(22.0, 6.0)
+			and sword_c_shape.size == Vector2(22.0, 6.0)
+			and sword_d_shape.size == Vector2(22.0, 6.0),
+			"All four sword collision shapes must use the authored 22x6 size."
 		)
 
 

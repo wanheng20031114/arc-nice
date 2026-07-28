@@ -2339,6 +2339,8 @@ func _test_multiplayer_character_scene_registry() -> void:
 		) as HoeCatSnowWolfSwordOrbit
 		var remote_shape_a := remote_orbit.get_node("SwordAShape") as CollisionShape2D
 		var remote_shape_b := remote_orbit.get_node("SwordBShape") as CollisionShape2D
+		var remote_shape_c := remote_orbit.get_node("SwordCShape") as CollisionShape2D
+		var remote_shape_d := remote_orbit.get_node("SwordDShape") as CollisionShape2D
 		local_hoe_player.apply_multiplayer_realtime_state(
 			local_hoe_player.current_health,
 			local_hoe_player.max_health,
@@ -2357,7 +2359,9 @@ func _test_multiplayer_character_scene_registry() -> void:
 			and remote_orbit.visible
 			and not remote_orbit.monitoring
 			and remote_shape_a.disabled
-			and remote_shape_b.disabled,
+			and remote_shape_b.disabled
+			and remote_shape_c.disabled
+			and remote_shape_d.disabled,
 			"A client Hoe Cat ARMED/NORMAL snapshot must show visual-only orbit swords."
 		)
 		remote_orbit.duration_left = 2.5
@@ -2467,6 +2471,8 @@ func _test_host_authoritative_hoe_actions() -> void:
 	) as HoeCatSnowWolfSwordOrbit
 	var host_shape_a := host_orbit.get_node("SwordAShape") as CollisionShape2D
 	var host_shape_b := host_orbit.get_node("SwordBShape") as CollisionShape2D
+	var host_shape_c := host_orbit.get_node("SwordCShape") as CollisionShape2D
+	var host_shape_d := host_orbit.get_node("SwordDShape") as CollisionShape2D
 	_expect(
 		hoe_player.apply_pickup(PICKUP_SPIRAL_CONFIG),
 		"Host Hoe Cat must apply Snow Wolf Po Jun through the public pickup path."
@@ -2477,7 +2483,9 @@ func _test_host_authoritative_hoe_actions() -> void:
 		host_orbit.is_active()
 		and host_orbit.monitoring
 		and not host_shape_a.disabled
-		and not host_shape_b.disabled,
+		and not host_shape_b.disabled
+		and not host_shape_c.disabled
+		and not host_shape_d.disabled,
 		"Host Hoe Cat Snow Wolf Po Jun must enable authoritative sword collision."
 	)
 	var host_hoe_snapshot: SnapshotManager.PlayerState = null

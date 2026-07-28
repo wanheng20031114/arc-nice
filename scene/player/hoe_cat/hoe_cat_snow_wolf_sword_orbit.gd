@@ -14,6 +14,8 @@ const COOLDOWN_PRUNE_INTERVAL := 0.1
 @onready var damage_shapes: Array[CollisionShape2D] = [
 	$SwordAShape,
 	$SwordBShape,
+	$SwordCShape,
+	$SwordDShape,
 ]
 
 var owner_player: Player = null
