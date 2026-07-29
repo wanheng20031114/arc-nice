@@ -58,6 +58,11 @@ const SOURCE_LAYER_BANDS := [
 	Vector2i(49, 59),
 	Vector2i(37, 49),
 ]
+const GLASS_STRIP_BANDS := [
+	Vector2i(61, 69),
+	Vector2i(51, 59),
+	Vector2i(40, 48),
+]
 
 var failures: Array[String] = []
 var fixture: Node2D = null
@@ -742,10 +747,30 @@ func _test_cycle_shader_render_contract() -> void:
 		"三层shader必须使用单一活动层、0.78后的严格黑场与零alpha关闭契约。"
 	)
 	_expect(
-		shader_code.contains("float glass_perspective_rise(float pixel_x)")
-		and shader_code.contains("4.0 * step(9.0, center_distance)")
+		shader_code.contains("float glass_bent_band_mask(vec2 local_position)")
+		and shader_code.contains(
+			"vec2(-27.0, -12.0)"
+		)
+		and shader_code.contains(
+			"vec2(-9.0, -3.0)"
+		)
+		and shader_code.contains(
+			"vec2(-12.0, 4.0)"
+		)
+		and shader_code.contains(
+			"vec2(-30.0, -5.0)"
+		)
 		and shader_code.contains(
 			"authored_glass_layer_from_position(pixel_position)"
+		)
+		and shader_code.contains(
+			"pixel_position - vec2(64.0, 64.0)"
+		)
+		and shader_code.contains(
+			"pixel_position - vec2(64.0, 54.0)"
+		)
+		and shader_code.contains(
+			"pixel_position - vec2(64.0, 43.0)"
 		)
 		and shader_code.contains(
 			"authored_layer_from_y(pixel_position.y)"
@@ -753,26 +778,27 @@ func _test_cycle_shader_render_contract() -> void:
 		and shader_code.contains(
 			"0.16 + glass_layer_match * 0.84"
 		),
-		"玻璃强光必须复刻橘片中央平台与上扬肩部，且不得扭曲橘片原像素。"
+		"玻璃强光必须由中央水平段与两侧斜矩形连续斜切相接，且不得扭曲橘片原像素。"
 	)
 	_expect(
-		is_zero_approx(_glass_perspective_rise(55.5))
-		and is_zero_approx(_glass_perspective_rise(72.5))
-		and is_equal_approx(_glass_perspective_rise(54.5), 4.0)
-		and is_equal_approx(_glass_perspective_rise(73.5), 4.0)
-		and is_equal_approx(_glass_perspective_rise(46.5), 4.0)
-		and is_equal_approx(_glass_perspective_rise(81.5), 4.0),
-		"玻璃透视曲线必须保持x=55..72中央平直，并让两侧对称上扬一个显示像素。"
+		_glass_bent_band_contains(Vector2(64.0, 64.0), 64.0)
+		and _glass_bent_band_contains(Vector2(44.5, 60.0), 64.0)
+		and _glass_bent_band_contains(Vector2(35.5, 57.5), 64.0)
+		and _glass_bent_band_contains(Vector2(83.5, 60.0), 64.0)
+		and _glass_bent_band_contains(Vector2(92.5, 57.5), 64.0)
+		and not _glass_bent_band_contains(Vector2(44.5, 65.0), 64.0)
+		and not _glass_bent_band_contains(Vector2(83.5, 65.0), 64.0),
+		"玻璃折带必须保持中央水平、左右1:2连续斜臂及斜切接缝，旧水平肩部不得仍属强光。"
 	)
 	_expect(
-		_glass_layer_at(Vector2(64.0, 48.5)) == 2
-		and _glass_layer_at(Vector2(46.5, 44.5)) == 2
-		and _glass_layer_at(Vector2(64.0, 58.5)) == 1
-		and _glass_layer_at(Vector2(46.5, 54.5)) == 1
-		and _glass_layer_at(Vector2(64.0, 68.5)) == 0
-		and _glass_layer_at(Vector2(46.5, 64.5)) == 0
-		and _glass_layer_at(Vector2(46.5, 48.5)) == 1,
-		"三道玻璃强光必须表达同一空间高度：中央水平、两侧上折，而不是水平矩形。"
+		_glass_layer_at(Vector2(64.0, 44.0)) == 2
+		and _glass_layer_at(Vector2(44.5, 39.0)) == 2
+		and _glass_layer_at(Vector2(64.0, 55.0)) == 1
+		and _glass_layer_at(Vector2(44.5, 50.0)) == 1
+		and _glass_layer_at(Vector2(64.0, 65.0)) == 0
+		and _glass_layer_at(Vector2(44.5, 60.0)) == 0
+		and _glass_layer_at(Vector2(44.5, 65.0)) == -8,
+		"三道玻璃强光必须表达同一空间高度：中央水平、两侧连续斜升，而不是错层矩形。"
 	)
 	var rendering_driver := RenderingServer.get_current_rendering_driver_name()
 	if (
@@ -819,18 +845,60 @@ func _test_cycle_shader_render_contract() -> void:
 	await process_frame
 
 
-func _glass_perspective_rise(pixel_x: float) -> float:
-	var center_distance := absf(pixel_x - 64.0)
-	return 4.0 * float(center_distance >= 9.0)
+func _cross_2d(first: Vector2, second: Vector2) -> float:
+	return first.x * second.y - first.y * second.x
+
+
+func _inside_ccw_quad(
+	point: Vector2,
+	corner_a: Vector2,
+	corner_b: Vector2,
+	corner_c: Vector2,
+	corner_d: Vector2
+) -> bool:
+	return (
+		_cross_2d(corner_b - corner_a, point - corner_a) >= 0.0
+		and _cross_2d(corner_c - corner_b, point - corner_b) >= 0.0
+		and _cross_2d(corner_d - corner_c, point - corner_c) >= 0.0
+		and _cross_2d(corner_a - corner_d, point - corner_d) >= 0.0
+	)
+
+
+func _glass_bent_band_contains(
+	pixel_position: Vector2,
+	center_y: float
+) -> bool:
+	var local_position := pixel_position - Vector2(64.0, center_y)
+	var left_arm := _inside_ccw_quad(
+		local_position,
+		Vector2(-27.0, -12.0),
+		Vector2(-9.0, -3.0),
+		Vector2(-12.0, 4.0),
+		Vector2(-30.0, -5.0)
+	)
+	var center := (
+		local_position.x >= -12.0
+		and local_position.x <= 12.0
+		and local_position.y >= -3.0
+		and local_position.y <= 4.0
+	)
+	var right_arm := _inside_ccw_quad(
+		local_position,
+		Vector2(9.0, -3.0),
+		Vector2(27.0, -12.0),
+		Vector2(30.0, -5.0),
+		Vector2(12.0, 4.0)
+	)
+	return left_arm or center or right_arm
 
 
 func _glass_layer_at(pixel_position: Vector2) -> int:
-	var projected_y := (
-		pixel_position.y + _glass_perspective_rise(pixel_position.x)
-	)
-	for layer_index in SOURCE_LAYER_BANDS.size():
-		var band: Vector2i = SOURCE_LAYER_BANDS[layer_index]
-		if projected_y >= band.x and projected_y < band.y:
+	var center_heights: Array[float] = [64.0, 54.0, 43.0]
+	for layer_index in center_heights.size():
+		if _glass_bent_band_contains(
+			pixel_position,
+			center_heights[layer_index]
+		):
 			return layer_index
 	return -8
 
@@ -877,11 +945,16 @@ func _verify_rendered_responsibility_cycle(
 	)
 	for layer_index in 3:
 		var active_image := active_frames[layer_index]
+		var role_layer_band: Vector2i = (
+			GLASS_STRIP_BANDS[layer_index]
+			if role_name == "玻璃"
+			else SOURCE_LAYER_BANDS[layer_index]
+		)
 		var own_delta := (
 			_maximum_center_glass_band_luminance_delta(
 				active_image,
 				black_frame,
-				SOURCE_LAYER_BANDS[layer_index]
+				role_layer_band
 			)
 			if role_name == "玻璃"
 			else _maximum_band_luminance_delta(
@@ -894,13 +967,18 @@ func _verify_rendered_responsibility_cycle(
 		for other_index in 3:
 			if other_index == layer_index:
 				continue
+			var other_role_layer_band: Vector2i = (
+				GLASS_STRIP_BANDS[other_index]
+				if role_name == "玻璃"
+				else SOURCE_LAYER_BANDS[other_index]
+			)
 			strongest_other_delta = maxf(
 				strongest_other_delta,
 				(
 					_maximum_center_glass_band_luminance_delta(
 						active_image,
 						black_frame,
-						SOURCE_LAYER_BANDS[other_index]
+						other_role_layer_band
 					)
 					if role_name == "玻璃"
 					else _maximum_band_luminance_delta(
@@ -923,34 +1001,46 @@ func _verify_rendered_responsibility_cycle(
 			"%s真实shader渲染不得把透明角落扩成矩形色带。" % role_name
 		)
 	if role_name == "玻璃":
-		_verify_rendered_glass_perspective(active_frames)
+		_verify_rendered_glass_bent_bands(active_frames)
 	return true
 
 
-func _verify_rendered_glass_perspective(
+func _verify_rendered_glass_bent_bands(
 	active_frames: Array[Image]
 ) -> void:
-	var curved_rows: Array[int] = [56, 46, 35]
-	var flat_rows: Array[int] = [59, 49, 37]
+	var outer_rows: Array[int] = [58, 48, 37]
+	var middle_rows: Array[int] = [60, 50, 39]
+	var flat_rows: Array[int] = [65, 55, 44]
 	for layer_index in 3:
 		var active_image := active_frames[layer_index]
 		var left_outer_alpha := _source_alpha(
 			active_image,
-			Vector2i(35, curved_rows[layer_index])
+			Vector2i(35, outer_rows[layer_index])
 		)
 		var right_outer_alpha := _source_alpha(
 			active_image,
-			Vector2i(93, curved_rows[layer_index])
+			Vector2i(93, outer_rows[layer_index])
 		)
 		var outer_alpha := (left_outer_alpha + right_outer_alpha) * 0.5
-		var inner_alpha := (
+		var left_middle_alpha := _source_alpha(
+			active_image,
+			Vector2i(44, middle_rows[layer_index])
+		)
+		var right_middle_alpha := _source_alpha(
+			active_image,
+			Vector2i(84, middle_rows[layer_index])
+		)
+		var middle_alpha := (
+			left_middle_alpha + right_middle_alpha
+		) * 0.5
+		var old_horizontal_alpha := (
 			_source_alpha(
 				active_image,
-				Vector2i(58, curved_rows[layer_index])
+				Vector2i(44, flat_rows[layer_index])
 			)
 			+ _source_alpha(
 				active_image,
-				Vector2i(70, curved_rows[layer_index])
+				Vector2i(84, flat_rows[layer_index])
 			)
 		) * 0.5
 		var flat_inner_alpha := (
@@ -964,14 +1054,21 @@ func _verify_rendered_glass_perspective(
 			)
 		) * 0.5
 		_expect(
-			outer_alpha >= inner_alpha + 0.15
+			outer_alpha >= old_horizontal_alpha + 0.15
+			and middle_alpha >= old_horizontal_alpha + 0.15
 			and flat_inner_alpha >= 0.20
 			and absf(left_outer_alpha - right_outer_alpha) <= 0.05,
 			(
-				"玻璃第%d层必须真实渲染为中央平直、左右对称上折的强光带"
-				+ "（肩部%.3f，中央%.3f，平段%.3f）。"
+				"玻璃第%d层必须真实渲染为中央平直、左右斜臂连续的强光带"
+				+ "（外端%.3f，中段%.3f，旧水平位%.3f，平段%.3f）。"
 			)
-			% [layer_index + 1, outer_alpha, inner_alpha, flat_inner_alpha]
+			% [
+				layer_index + 1,
+				outer_alpha,
+				middle_alpha,
+				old_horizontal_alpha,
+				flat_inner_alpha,
+			]
 		)
 
 

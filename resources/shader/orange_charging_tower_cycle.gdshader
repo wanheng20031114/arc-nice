@@ -55,22 +55,68 @@ float authored_layer_from_y(float pixel_y) {
 }
 
 
-float glass_perspective_rise(float pixel_x) {
-	// The approved top orange slice provides the chamber's projection: its
-	// center is level while both shoulders recede upward by one displayed pixel.
-	// UV * 128.0 lands on texel centers, so x=55..72 remains the flat platform;
-	// four source pixels keep the two bent shoulders aligned to the 0.25 scale.
-	float center_distance = abs(pixel_x - 64.0);
-	return 4.0 * step(9.0, center_distance);
+float cross_2d(vec2 first, vec2 second) {
+	return first.x * second.y - first.y * second.x;
+}
+
+
+float inside_ccw_quad(
+	vec2 point,
+	vec2 corner_a,
+	vec2 corner_b,
+	vec2 corner_c,
+	vec2 corner_d
+) {
+	return (
+		step(0.0, cross_2d(corner_b - corner_a, point - corner_a))
+		* step(0.0, cross_2d(corner_c - corner_b, point - corner_b))
+		* step(0.0, cross_2d(corner_d - corner_c, point - corner_c))
+		* step(0.0, cross_2d(corner_a - corner_d, point - corner_d))
+	);
+}
+
+
+float glass_bent_band_mask(vec2 local_position) {
+	// The user's reference is one continuous thick strip: two 1:2 sloped quads
+	// meet a horizontal center through mitered joints. The outer ends sit 9px
+	// above the center in the actual 128px chamber coordinate system.
+	float left_arm = inside_ccw_quad(
+		local_position,
+		vec2(-27.0, -12.0),
+		vec2(-9.0, -3.0),
+		vec2(-12.0, 4.0),
+		vec2(-30.0, -5.0)
+	);
+	float center = (
+		step(-12.0, local_position.x)
+		* step(local_position.x, 12.0)
+		* step(-3.0, local_position.y)
+		* step(local_position.y, 4.0)
+	);
+	float right_arm = inside_ccw_quad(
+		local_position,
+		vec2(9.0, -3.0),
+		vec2(27.0, -12.0),
+		vec2(30.0, -5.0),
+		vec2(12.0, 4.0)
+	);
+	return max(max(left_arm, center), right_arm);
 }
 
 
 float authored_glass_layer_from_position(vec2 pixel_position) {
-	// Raising the sampled y at the sides projects one spatial height as a
-	// center-flat band whose two ends bend upward along the hexagonal pane.
-	return authored_layer_from_y(
-		pixel_position.y + glass_perspective_rise(pixel_position.x)
-	);
+	// All three planes share one spatial cross-section and differ only in
+	// height, so the sloped arms remain parallel throughout the charge cycle.
+	if (glass_bent_band_mask(pixel_position - vec2(64.0, 64.0)) > 0.5) {
+		return 0.0;
+	}
+	if (glass_bent_band_mask(pixel_position - vec2(64.0, 54.0)) > 0.5) {
+		return 1.0;
+	}
+	if (glass_bent_band_mask(pixel_position - vec2(64.0, 43.0)) > 0.5) {
+		return 2.0;
+	}
+	return -8.0;
 }
 
 
@@ -97,8 +143,8 @@ void fragment() {
 	float active_layer = 0.0;
 	float strength = cycle_strength(active_layer);
 	vec2 pixel_position = UV * 128.0;
-	// Orange slices retain their authored curved alpha. Only the glass band
-	// needs projection; warping both roles would misclassify adjacent slices.
+	// Orange slices retain their authored curved alpha. Only the glass band uses
+	// the analytic cross-section; reshaping both roles would mix adjacent slices.
 	float orange_layer = authored_layer_from_y(pixel_position.y);
 	float glass_layer = authored_glass_layer_from_position(pixel_position);
 	float orange_layer_match = 1.0 - step(
