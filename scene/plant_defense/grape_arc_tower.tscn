@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/grape_arc_tower.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/grape_arc_tower/support.png" id="2_support"]
@@ -14,6 +14,14 @@
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_charge"]
 shader = ExtResource("6_charge_shader")
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_support_lower"]
+atlas = ExtResource("2_support")
+region = Rect2(0, 40, 64, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_support_upper"]
+atlas = ExtResource("2_support")
+region = Rect2(0, 0, 64, 40)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 size = Vector2(28, 27)
@@ -113,7 +121,7 @@ collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 enemy_approach_depth = 7.0
-lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/SupportSprite"), NodePath("VisualRoot/GrapeClusterRoot/SideGrapesSprite"), NodePath("VisualRoot/GrapeClusterRoot/FiringGrapeRoot/FiringGrapesSprite")])
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/SupportSprite"), NodePath("VisualRoot/UpperTrellisSprite"), NodePath("VisualRoot/GrapeClusterRoot/SideGrapesSprite"), NodePath("VisualRoot/GrapeClusterRoot/FiringGrapeRoot/FiringGrapesSprite")])
 lifecycle_effect_top_y = -14.0
 lifecycle_effect_bottom_y = 14.0
 
@@ -125,7 +133,15 @@ scale = Vector2(0.5, 0.5)
 z_index = 1
 texture_filter = 1
 material = ExtResource("4_lifecycle")
-texture = ExtResource("2_support")
+position = Vector2(0, 20)
+texture = SubResource("AtlasTexture_support_lower")
+
+[node name="UpperTrellisSprite" type="Sprite2D" parent="VisualRoot"]
+z_index = 4
+texture_filter = 1
+material = ExtResource("4_lifecycle")
+position = Vector2(0, -12)
+texture = SubResource("AtlasTexture_support_upper")
 
 [node name="GrapeClusterRoot" type="Node2D" parent="VisualRoot"]
 

@@ -116,9 +116,43 @@ func _run() -> void:
 		PlantDefenseRegistry.get_config(&"grape_arc_tower") == TOWER_CONFIG,
 		"公共植物注册表必须返回葡萄电弧塔。"
 	)
+	var lower_trellis_region := tower.support_sprite.texture as AtlasTexture
+	var upper_trellis := tower.get_node_or_null(
+		"VisualRoot/UpperTrellisSprite"
+	) as Sprite2D
+	var upper_trellis_region := (
+		upper_trellis.texture as AtlasTexture
+		if upper_trellis != null
+		else null
+	)
 	_expect(
-		tower.support_sprite.texture.get_size() == Vector2(64, 64),
-		"葡萄架支架必须严格限制在64×64原生画布。"
+		lower_trellis_region != null
+		and upper_trellis != null
+		and upper_trellis_region != null
+		and lower_trellis_region.atlas == upper_trellis_region.atlas
+		and lower_trellis_region.atlas.get_size() == Vector2(64, 64)
+		and lower_trellis_region.region == Rect2(0, 40, 64, 24)
+		and upper_trellis_region.region == Rect2(0, 0, 64, 40)
+		and tower.support_sprite.position == Vector2(0, 20)
+		and upper_trellis.position == Vector2(0, -12)
+		and tower.support_sprite.z_index == 1
+		and upper_trellis.z_index == 4
+		and tower.support_sprite.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and upper_trellis.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and upper_trellis.material == tower.support_sprite.material
+		and tower.lifecycle_visual_paths
+		== [
+			NodePath("VisualRoot/SupportSprite"),
+			NodePath("VisualRoot/UpperTrellisSprite"),
+			NodePath("VisualRoot/GrapeClusterRoot/SideGrapesSprite"),
+			NodePath(
+				"VisualRoot/GrapeClusterRoot/FiringGrapeRoot/"
+				+ "FiringGrapesSprite"
+			),
+		],
+		"葡萄架必须由无重叠的上下切片组成，红圈内上层固定以z=4遮挡玩家与敌人，并同步生命周期视觉。"
 	)
 	_expect(
 		tower.side_grapes_sprite.texture.get_size() == Vector2(64, 64)
