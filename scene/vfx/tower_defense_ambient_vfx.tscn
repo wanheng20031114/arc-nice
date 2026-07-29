@@ -124,7 +124,7 @@ process_material = SubResource("ParticleProcessMaterial_wind")
 
 [node name="AmbientMotes" type="GPUParticles2D" parent="ScreenSpaceParticles/ViewportCenter"]
 texture_filter = 1
-amount = 24
+amount = 30
 lifetime = 3.2
 preprocess = 3.2
 randomness = 0.9

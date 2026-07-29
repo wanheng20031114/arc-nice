@@ -16,13 +16,14 @@ const MINIMUM_WIND_TRAIL_SECTIONS := 4
 const MINIMUM_WIND_TRAIL_SUBDIVISIONS := 2
 const MAXIMUM_WIND_DIRECTION_SPREAD := 10.0
 const MAXIMUM_WIND_VERTICAL_GRAVITY := 12.0
+const MINIMUM_AMBIENT_MOTE_AMOUNT := 30
 const MAXIMUM_AMBIENT_MOTE_AMOUNT := 32
 const MINIMUM_AMBIENT_MOTE_LIFETIME := 2.0
 const MINIMUM_SMOOTH_FIXED_FPS := 24
 const MAXIMUM_AMBIENT_MOTE_SPEED := 15.0
 const MINIMUM_AMBIENT_MOTE_SPREAD := 35.0
 const MAXIMUM_AMBIENT_MOTE_SPREAD := 120.0
-const MAXIMUM_TOTAL_GPU_PARTICLES := 32
+const MAXIMUM_TOTAL_GPU_PARTICLES := 36
 const MAXIMUM_PARTICLE_FIXED_FPS := 30
 const MAXIMUM_WIND_TRAIL_COMPLEXITY := 240
 
@@ -261,8 +262,9 @@ func _test_ambient_mote_contract(particles: GPUParticles2D) -> void:
 	if process_material == null:
 		return
 	_expect(
-		particles.amount > 0 and particles.amount <= MAXIMUM_AMBIENT_MOTE_AMOUNT,
-		"氛围微粒必须保持少量，不能形成密集粒子层。"
+		particles.amount >= MINIMUM_AMBIENT_MOTE_AMOUNT
+		and particles.amount <= MAXIMUM_AMBIENT_MOTE_AMOUNT,
+		"氛围微粒必须至少比原24粒增加25%，同时保持轻量上限。"
 	)
 	_expect(
 		particles.lifetime >= MINIMUM_AMBIENT_MOTE_LIFETIME,
