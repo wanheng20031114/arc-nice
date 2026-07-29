@@ -232,7 +232,7 @@ func _handle_collision_body(body: Node2D) -> void:
 				direction,
 				EnemyConfig.DamageType.MAGIC
 			)
-		# 建筑只受到本次魔法伤害，不附加寒冷状态。
+		# 建筑只受到本次法术伤害，不附加寒冷状态。
 		_begin_retire_effect(&"impact")
 		return
 

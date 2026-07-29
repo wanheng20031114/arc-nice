@@ -20,7 +20,7 @@ const COLLECTIBLE_ACCENTS: Array[Color] = [
 	Color("#f0e3c2"),
 	Color("#68d8ff"),
 	Color("#c987ff"),
-	Color("#ffd75a"),
+	Color("#ffae32"),
 ]
 const ENEMY_NORMAL_ACCENT := Color("#6fd4bd")
 const ENEMY_ELITE_ACCENT := Color("#c58aff")
@@ -229,7 +229,7 @@ func _build_enemy_stats(
 		CodexStatRow.new("生命", str(enemy.max_health)),
 		CodexStatRow.new("单次伤害", str(enemy.attack_damage)),
 		CodexStatRow.new("物理防御", "%d 点" % enemy.physical_defense),
-		CodexStatRow.new("魔法防御", "%d%%" % enemy.magic_defense),
+		CodexStatRow.new("法术防御", str(enemy.magic_defense)),
 		CodexStatRow.new("移动速度", _format_number(enemy.move_speed)),
 		CodexStatRow.new("基地伤害", str(enemy.home_damage)),
 		CodexStatRow.new("击杀息壤", str(enemy.xirang_kill_reward)),
@@ -408,7 +408,7 @@ func _build_building_stats(config: PlantDefenseConfig) -> Array[CodexStatRow]:
 	var stats: Array[CodexStatRow] = [
 		CodexStatRow.new("生命", str(config.max_health)),
 		CodexStatRow.new("物理防御", "%d 点" % config.physical_defense),
-		CodexStatRow.new("魔法防御", "%d%%" % config.magic_defense),
+		CodexStatRow.new("法术防御", str(config.magic_defense)),
 		CodexStatRow.new(
 			"占地",
 			"%d × %d 格" % [config.footprint_size.x, config.footprint_size.y]

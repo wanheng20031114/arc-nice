@@ -65,7 +65,7 @@ func _test_vegetation_stake_scene_contract() -> void:
 	_expect(config.supports_multiplayer, "植被桩必须声明完整多人支持。")
 	_expect(config.max_health == 4000, "植被桩生命值必须为4000。")
 	_expect(config.physical_defense == 10, "植被桩物理防御必须为10。")
-	_expect(config.magic_defense == 50, "植被桩魔法防御必须为50。")
+	_expect(config.magic_defense == 50, "植被桩法术防御必须为50。")
 	_expect(config.attack_damage == 0, "植被桩不能造成攻击伤害。")
 	_expect(config.plant_scene != null, "植被桩配置必须引用可实例化场景。")
 	if config.plant_scene == null:

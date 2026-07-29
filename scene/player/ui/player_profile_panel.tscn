@@ -375,7 +375,7 @@ offset_left = 48.0
 offset_top = 420.0
 offset_right = 150.0
 offset_bottom = 444.0
-text = "魔法防御"
+text = "法术防御"
 label_settings = SubResource("LabelSettings_stat_small")
 vertical_alignment = 1
 

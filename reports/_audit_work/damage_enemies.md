@@ -26,7 +26,7 @@
 | P1 | 自爆原石虫的目标层和减攻语义不一致 | 爆炸掩码为玩家层 + 敌人层，不伤植物却会伤友军；玩家吃减攻快照，敌人吃原始伤害。友军死亡还会触发奖励、掉落、波次结算和可能的连锁自爆。证据：`scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn:76-82`、`scene/enemy/yuanshi_insect/yuanshi_insect_exploder.gd:97-161`。 |
 | P1 | 击杀归属不在伤害/死亡事件中 | 敌人死亡无论来源都给全队息壤并投掉落；玩家收藏品击杀效果则只由“某次玩家命中之后”的调用点触发。DoT、植物、友伤、自爆造成的死亡没有统一 killer/cause。证据：`scene/enemy/enemy.gd:3781-3828`、`scene/game_runtime_base.gd:914-920,971-984`、`scene/player/player.gd:2749-2764`。 |
 | P1 | 元素/状态协议重复硬编码 | 火术士燃烧、火史莱姆燃烧及冰系 source type、时长、等级在敌人配置/脚本和 `MPGame` 中分别维护；资源数值改动可能让联机 DoT 校验拒绝合法跳伤。证据：`scene/multiplayer/mp_game.gd:136-152,5570-5623,7234-7276`。 |
-| P2 | `request_multiplayer_player_damage()` 使用 `Variant` 重载参数 | 第 5/6 参数可分别解释为伤害类型、方向或 ranged 布尔，编译期无法发现错位；铃兰技能 2 等调用只传方向，未来若改成魔法伤害，联机路径仍会默认物理。证据：`scene/multiplayer/mp_game.gd:7076-7100`、`scene/boss/linglan/linglan_skill2_sakura_rocket.gd:402-415`。 |
+| P2 | `request_multiplayer_player_damage()` 使用 `Variant` 重载参数 | 第 5/6 参数可分别解释为伤害类型、方向或 ranged 布尔，编译期无法发现错位；铃兰技能 2 等调用只传方向，未来若改成法术伤害，联机路径仍会默认物理。证据：`scene/multiplayer/mp_game.gd:7076-7100`、`scene/boss/linglan/linglan_skill2_sakura_rocket.gd:402-415`。 |
 | P2 | 攻击类型、状态和返回值语义分散 | `bool` 有时表示“实际扣血”，有时表示“请求已处理/已去重/目标不归本端”，投射物据此销毁；状态附加又依赖调用点是否理解这一差异。 |
 
 源码中不存在敌方攻击暴击、暴击倍率、护甲/魔抗穿透或防御忽略。搜索到的“穿透”是玩家普通子弹穿过多个敌人的投射物行为，不是防御穿透。敌方攻击的随机性来自玩家闪避、枪械散布或目标选择，而不是暴击。
@@ -86,7 +86,7 @@
 3. 通用闪避随机判定；成功后仍开启 1 秒全局无敌；
 4. 仅远程攻击的收藏品闪避；成功后同样开启全局无敌；
 5. 若 `damage_context.is_ranged`，按面对来源的前/后方向倍率修正原始伤害；
-6. 按物理/魔法防御减伤；
+6. 按物理/法术防御减伤；
 7. 取所有 `damage_reduction_modifiers` 中最强的一项，最多 95% 额外减伤；
 8. 扣血、伤害数字、生命信号、刷新生命阈值收藏品；
 9. 死亡则 `_die()`；否则触发受伤收藏品效果，并开启默认 1 秒全局无敌。
@@ -105,7 +105,7 @@
 
 入口：`scene/player/player.gd:781-807`。
 
-它故意绕过：冲刺/受击无敌、通用闪避、远程闪避、方向倍率，也不会授予普通受击无敌；但仍使用物理/魔法防御和最强额外减伤，并触发受伤收藏品效果。燃烧/流血回调最终进入这里，见 `scene/player/player.gd:981-1030`。
+它故意绕过：冲刺/受击无敌、通用闪避、远程闪避、方向倍率，也不会授予普通受击无敌；但仍使用物理/法术防御和最强额外减伤，并触发受伤收藏品效果。燃烧/流血回调最终进入这里，见 `scene/player/player.gd:981-1030`。
 
 这意味着“同一个数值的直伤”和“同一个数值的 DoT”在玩家端具有不同的命中许可策略，而现有参数中没有明确的 `hit_policy` 字段。
 
@@ -121,7 +121,7 @@
 
 另有 `receive_unmitigated_damage()`，绕过双防但保留生命 revision、信号和死亡生命周期；当前用于环境/地形规则，不是敌方攻击入口，见 `scene/plant_defense/plant_defense.gd:412-427`。
 
-同一帧的植物物理/魔法伤害数字会分别累积后合成一个总数，并采用数值更大的伤害类型/方向显示；混合伤害因此不会逐类型展示，见 `scene/plant_defense/plant_defense.gd:621-702`。
+同一帧的植物物理/法术伤害数字会分别累积后合成一个总数，并采用数值更大的伤害类型/方向显示；混合伤害因此不会逐类型展示，见 `scene/plant_defense/plant_defense.gd:621-702`。
 
 ### 3.4 敌人
 

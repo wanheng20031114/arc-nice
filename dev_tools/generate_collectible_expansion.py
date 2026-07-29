@@ -277,7 +277,7 @@ EXISTING_BALANCE_OVERRIDES: dict[str, dict[str, Any]] = {
         "attack_speed_bonus_per_xirang_step": 5.0,
     },
     "collectible_tianshi_stake.tres": {
-        "description": "身上每持有2000息壤，物理防御和魔法防御各+1。",
+        "description": "身上每持有2000息壤，物理防御和法术防御各+1。",
         "defense_xirang_step": 2000,
         "defense_bonus_per_xirang_step": 1,
     },
@@ -339,7 +339,7 @@ CONDITIONAL_BONUS_PROFILES = (
     ("conditional_max_health_bonus", "生命上限", "flat"),
     ("conditional_move_speed_bonus", "移动速度", "flat"),
     ("conditional_physical_defense_bonus", "物理防御", "flat"),
-    ("conditional_magic_defense_bonus", "魔法防御", "flat"),
+    ("conditional_magic_defense_bonus", "法术防御", "flat"),
     ("conditional_physical_damage_bonus", "造成物理伤害", "flat"),
     ("conditional_magic_damage_bonus", "造成法术伤害", "flat"),
     ("conditional_skill_charge_bonus_per_second", "每秒技能充能", "flat"),
@@ -535,7 +535,7 @@ DESIGN_ROWS = [
     design("candle_stub", "烛火命中", "普通子弹有概率附着每秒5点伤害的短火。", hit="burn", hit_chance=0.12, hit_damage=5, hit_duration=1.5, hit_tick=1.0),
     design("apprentice_scroll", "技能充能", "每秒技能充能+0.2。", stack=True, charge=0.2),
     design("tin_ring", "轻巧步伐", "移动速度+3。", stack=True, move=3.0),
-    design("river_shell", "魔法防御", "魔法防御+1。", stack=True, mdef=1),
+    design("river_shell", "法术防御", "法术防御+1。", stack=True, mdef=1),
     design("salt_charm", "易伤标记", "普通子弹有概率标记敌人，使其短时承受更多伤害。", hit="mark", hit_chance=0.12, hit_duration=1.8, hit_taken=1.1),
     design("rusty_helm", "物理防御", "物理防御+2。", stack=True, pdef=2),
     design(
@@ -559,7 +559,7 @@ DESIGN_ROWS = [
     design("rain_bead", "雨气缓速", "普通子弹有概率让敌人被雨气减速。", hit="chill", hit_chance=0.14, hit_duration=1.4, hit_slow=0.76),
     design("copper_gear", "息壤攻速", "每持有600息壤，攻击速度+1。", atk_step=600, atk_step_bonus=1.0),
     design("ember_leaf", "灰叶火种", "普通子弹有概率施加每秒10点伤害的短燃烧。", hit="burn", hit_chance=0.12, hit_damage=10, hit_duration=1.6, hit_tick=1.0),
-    design("stone_tablet", "息壤防御", "每持有2500息壤，物理防御和魔法防御各+1。", def_step=2500, def_step_bonus=1),
+    design("stone_tablet", "息壤防御", "每持有2500息壤，物理防御和法术防御各+1。", def_step=2500, def_step_bonus=1),
     design("steel_longsword", "基础攻击", "攻击力+4。", stack=True, attack=4),
     design("hunters_bow", "周期射箭", "每12秒向近处2名敌人射箭。", periodic="archer", interval=12.0, radius=280.0, multiplier=1.2, targets=2),
     design("sapphire_ring", "寒冷命中", "普通子弹有概率施加寒冷。", hit="chill", hit_chance=0.16, hit_duration=1.8, hit_slow=0.7),
@@ -1244,7 +1244,7 @@ def build_description(config: dict[str, Any]) -> str:
         ("collectible_max_health_bonus", "生命上限"),
         ("collectible_move_speed_bonus", "移动速度"),
         ("collectible_physical_defense_bonus", "物理防御"),
-        ("collectible_magic_defense_bonus", "魔法防御"),
+        ("collectible_magic_defense_bonus", "法术防御"),
         ("collectible_physical_damage_bonus", "造成物理伤害"),
         ("collectible_magic_damage_bonus", "造成法术伤害"),
         ("collectible_skill_charge_bonus_per_second", "每秒技力"),
@@ -1275,7 +1275,7 @@ def build_description(config: dict[str, Any]) -> str:
         )
     if fields.get("defense_xirang_step", 0):
         segments.append(
-            "身上每持有%s息壤，物理防御和魔法防御各+%s。"
+            "身上每持有%s息壤，物理防御和法术防御各+%s。"
             % (num(fields["defense_xirang_step"]), num(fields["defense_bonus_per_xirang_step"]))
         )
 

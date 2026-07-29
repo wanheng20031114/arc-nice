@@ -8,6 +8,12 @@ const REVEALED_BACKGROUND := Color(0.075, 0.09, 0.095, 0.96)
 const UNKNOWN_BACKGROUND := Color(0.065, 0.07, 0.075, 0.96)
 const RESTING_EDGE_ALPHA := 0.34
 const ACTIVE_EDGE_ALPHA := 0.92
+const COLLECTIBLE_RARITY_COLORS := {
+	"普通": Color("f0e3c2"),
+	"稀有": Color("68d8ff"),
+	"史诗": Color("c987ff"),
+	"传说": Color("ffae32"),
+}
 
 @onready var artwork_frame: PanelContainer = $Margin/Content/ArtworkFrame
 @onready var icon_rect: TextureRect = $Margin/Content/ArtworkFrame/Icon
@@ -96,14 +102,16 @@ func _apply_palette() -> void:
 	if entry_data == null:
 		return
 	var is_unknown := entry_data.visibility_state == CodexVisibilityState.UNKNOWN
-	var accent := Color(0.45, 0.48, 0.49) if is_unknown else entry_data.accent_color
+	var accent := Color(0.45, 0.48, 0.49) if is_unknown else _entry_accent()
 	var is_active := _is_hovered or _is_focused
+	var is_legendary := not is_unknown and entry_data.primary_badge == "传说"
+	var edge_width := 2 if is_legendary else 1
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = UNKNOWN_BACKGROUND if is_unknown else REVEALED_BACKGROUND
-	panel_style.border_width_left = 1
-	panel_style.border_width_top = 1
-	panel_style.border_width_right = 1
-	panel_style.border_width_bottom = 1
+	panel_style.border_width_left = edge_width
+	panel_style.border_width_top = edge_width
+	panel_style.border_width_right = edge_width
+	panel_style.border_width_bottom = edge_width
 	panel_style.border_color = Color(
 		accent.r,
 		accent.g,
@@ -114,6 +122,15 @@ func _apply_palette() -> void:
 	panel_style.corner_radius_top_right = 5
 	panel_style.corner_radius_bottom_right = 5
 	panel_style.corner_radius_bottom_left = 5
+	if is_legendary:
+		panel_style.shadow_color = Color(
+			accent.r,
+			accent.g,
+			accent.b,
+			0.4 if is_active else 0.22
+		)
+		panel_style.shadow_size = 7 if is_active else 5
+		panel_style.shadow_offset = Vector2(0.0, 2.0)
 	panel_style.content_margin_left = 0.0
 	panel_style.content_margin_top = 0.0
 	panel_style.content_margin_right = 0.0
@@ -129,7 +146,12 @@ func _apply_palette() -> void:
 	artwork_frame.add_theme_stylebox_override(&"panel", artwork_style)
 
 	var badge_style := StyleBoxFlat.new()
-	badge_style.bg_color = Color(accent.r, accent.g, accent.b, 0.13)
+	badge_style.bg_color = Color(
+		accent.r,
+		accent.g,
+		accent.b,
+		0.24 if is_legendary else 0.13
+	)
 	badge_style.corner_radius_top_left = 2
 	badge_style.corner_radius_top_right = 2
 	badge_style.corner_radius_bottom_left = 2
@@ -144,6 +166,12 @@ func _apply_palette() -> void:
 		Color(0.94, 0.92, 0.84) if not is_unknown else Color(0.5, 0.52, 0.53)
 	)
 	unknown_glyph.add_theme_color_override(&"font_color", accent)
+
+
+func _entry_accent() -> Color:
+	if COLLECTIBLE_RARITY_COLORS.has(entry_data.primary_badge):
+		return COLLECTIBLE_RARITY_COLORS[entry_data.primary_badge]
+	return entry_data.accent_color
 
 
 func _focus_path_to(control: Control) -> NodePath:

@@ -6,6 +6,7 @@ const ENCYCLOPEDIA_SCENE := preload(
 const ENTRY_CARD_SCENE := preload("res://scene/encyclopedia/entry_card.tscn")
 const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn")
 const BASE_VIEWPORT := Vector2i(1152, 648)
+const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
 	CodexSection.ENEMY: 29,
 	CodexSection.COLLECTIBLE: 123,
@@ -248,7 +249,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				"生命",
 				"单次伤害",
 				"物理防御",
-				"魔法防御",
+				"法术防御",
 				"移动速度",
 				"基地伤害",
 				"击杀息壤",
@@ -269,8 +270,8 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 			"Enemy %s physical defense must use points." % entry.entry_id
 		)
 		_expect(
-			String(stats.get("魔法防御", "")) == "%d%%" % config.magic_defense,
-			"Enemy %s magic defense must use percent." % entry.entry_id
+			String(stats.get("法术防御", "")) == str(config.magic_defense),
+			"Enemy %s spell defense must use a plain value." % entry.entry_id
 		)
 		_expect(
 			entry.preview_frames == source.preview_frames,
@@ -342,8 +343,8 @@ func _test_building_stat_contract(catalog: CodexCatalog) -> void:
 		_expect(
 			String(stats.get("生命", "")) == str(config.max_health)
 			and String(stats.get("物理防御", "")) == "%d 点" % config.physical_defense
-			and String(stats.get("魔法防御", "")) == "%d%%" % config.magic_defense,
-			"Building %s defenses must match PlantDefenseConfig with correct units."
+			and String(stats.get("法术防御", "")) == str(config.magic_defense),
+			"Building %s defenses must match PlantDefenseConfig display values."
 			% entry.entry_id
 		)
 		_expect(
@@ -475,6 +476,11 @@ func _test_scene_contract() -> void:
 		and screen.building_button.text == "建筑物  16",
 		"Sidebar must display all three section totals."
 	)
+	var nav_style := screen.enemy_button.get_theme_stylebox(&"normal") as StyleBoxFlat
+	_expect(
+		nav_style != null and nav_style.content_margin_left >= 12.0,
+		"Sidebar section labels must keep at least 12 px of left breathing room."
+	)
 	_expect(
 		int(screen.get("_current_section")) == CodexSection.ENEMY
 		and screen.section_title.text == "敌人档案"
@@ -511,6 +517,10 @@ func _test_scene_contract() -> void:
 		"Page entrance must finish with focus on the enemy section button."
 	)
 	await _test_detail_layout_regression(screen, cards)
+	await _test_compact_detail_layout(screen)
+	await _test_short_filter_anchor(screen)
+	await _test_detail_section_switch_race(screen)
+	await _test_collectible_filter_visuals(screen)
 	await _test_search_filter_and_section_state(screen)
 	current_scene = null
 	screen.queue_free()
@@ -524,28 +534,56 @@ func _test_detail_layout_regression(
 	_expect(not cards.is_empty(), "Detail layout fixture requires at least one card.")
 	if cards.is_empty():
 		return
-	var first_card := cards[0] as EncyclopediaEntryCard
-	_expect(first_card != null, "First grid entry must be an EncyclopediaEntryCard.")
-	if first_card == null:
-		return
-	var first_focus := first_card.get_focus_control()
-	first_focus.grab_focus()
-	await _wait_frames(2)
 	var closed_columns := screen.entry_grid.columns
 	var closed_scroll := screen.grid_scroll.scroll_vertical
 	_expect(
 		closed_columns > 1,
 		"Closed 1152×648 grid must expose multiple columns."
 	)
+	var selected_index := mini(maxi(closed_columns - 1, 0), cards.size() - 1)
+	var selected_card := cards[selected_index] as EncyclopediaEntryCard
+	_expect(
+		selected_card != null,
+		"Responsive-grid fixture must select a valid card near the first-row edge."
+	)
+	if selected_card == null:
+		return
+	var selected_focus := selected_card.get_focus_control()
+	selected_focus.grab_focus()
+	await _wait_frames(2)
+	var closed_anchor_y := selected_card.global_position.y
+	_expect_grid_row_fill(screen, cards, closed_columns, "Closed grid")
 
-	first_focus.pressed.emit()
+	selected_focus.pressed.emit()
+	await create_timer(EncyclopediaScreen.DETAIL_TRANSITION_DURATION * 0.22).timeout
+	var opening_grid_progress := clampf(
+		absf(screen.grid_pane.offset_right)
+		/ (EncyclopediaScreen.DETAIL_WIDTH + EncyclopediaScreen.DETAIL_GAP),
+		0.0,
+		1.0
+	)
+	var opening_detail_progress := clampf(
+		absf(screen.detail_panel.offset_left) / EncyclopediaScreen.DETAIL_WIDTH,
+		0.0,
+		1.0
+	)
+	_expect(
+		opening_grid_progress > 0.05
+		and opening_grid_progress < 0.98
+		and absf(opening_grid_progress - opening_detail_progress) <= 0.08,
+		(
+			"Grid pane and detail inspector must narrow in sync; "
+			+ "grid=%.3f detail=%.3f."
+		)
+		% [opening_grid_progress, opening_detail_progress]
+	)
 	await create_timer(
 		EncyclopediaScreen.DETAIL_TRANSITION_DURATION + 0.06
 	).timeout
 	await _wait_frames(3)
 	var open_columns := screen.entry_grid.columns
 	var workspace_rect := screen.workspace.get_global_rect()
-	var first_card_rect := first_card.get_global_rect()
+	var first_card_rect := (cards[0] as EncyclopediaEntryCard).get_global_rect()
 	var detail_rect := screen.detail_panel.get_global_rect()
 	_expect(
 		open_columns < closed_columns,
@@ -567,8 +605,42 @@ func _test_detail_layout_regression(
 		"Detail inspector width must remain approximately 344 px; got %.2f px."
 		% detail_rect.size.x
 	)
+	_expect(
+		absf(selected_card.global_position.y - closed_anchor_y) <= 3.0,
+		"Grid reflow must preserve the selected card's screen-space Y anchor."
+	)
+	_expect(
+		selected_focus.has_focus(),
+		"Opening details must retain focus on the selected card."
+	)
+	_expect_grid_row_fill(screen, cards, open_columns, "Open grid")
 
 	screen.detail_panel.get_close_button().pressed.emit()
+	await create_timer(EncyclopediaScreen.DETAIL_TRANSITION_DURATION * 0.22).timeout
+	var closing_grid_progress := clampf(
+		1.0
+		- absf(screen.grid_pane.offset_right)
+		/ (EncyclopediaScreen.DETAIL_WIDTH + EncyclopediaScreen.DETAIL_GAP),
+		0.0,
+		1.0
+	)
+	var closing_detail_progress := clampf(
+		1.0
+		- absf(screen.detail_panel.offset_left)
+		/ EncyclopediaScreen.DETAIL_WIDTH,
+		0.0,
+		1.0
+	)
+	_expect(
+		closing_grid_progress > 0.05
+		and closing_grid_progress < 0.98
+		and absf(closing_grid_progress - closing_detail_progress) <= 0.08,
+		(
+			"Grid pane and detail inspector must widen in sync; "
+			+ "grid=%.3f detail=%.3f."
+		)
+		% [closing_grid_progress, closing_detail_progress]
+	)
 	await create_timer(
 		EncyclopediaScreen.DETAIL_TRANSITION_DURATION + 0.06
 	).timeout
@@ -582,9 +654,260 @@ func _test_detail_layout_regression(
 		"Closing details must restore the prior grid scroll position."
 	)
 	_expect(
-		first_focus.has_focus(),
-		"Closing details must restore focus to the first selected card."
+		absf(selected_card.global_position.y - closed_anchor_y) <= 3.0,
+		"Closing details must restore the selected card's screen-space anchor."
 	)
+	_expect(
+		selected_focus.has_focus(),
+		"Closing details must restore focus to the selected card."
+	)
+	_expect_grid_row_fill(screen, cards, closed_columns, "Restored grid")
+
+
+func _expect_grid_row_fill(
+	screen: EncyclopediaScreen,
+	cards: Array,
+	columns: int,
+	context: String
+) -> void:
+	if cards.is_empty() or columns <= 0:
+		_expect(false, "%s requires cards and at least one column." % context)
+		return
+	var right_index := mini(columns - 1, cards.size() - 1)
+	var right_card := cards[right_index] as EncyclopediaEntryCard
+	if right_card == null:
+		_expect(false, "%s right-edge card is invalid." % context)
+		return
+	var right_gap := (
+		screen.grid_scroll.get_global_rect().end.x
+		- right_card.get_global_rect().end.x
+	)
+	_expect(
+		right_gap >= 8.0 and right_gap <= 40.0,
+		"%s must distribute its first row across the available width; gap=%.2f px."
+		% [context, right_gap]
+	)
+
+
+func _test_compact_detail_layout(screen: EncyclopediaScreen) -> void:
+	var compact_viewport := Vector2i(1024, 640)
+	root.content_scale_size = compact_viewport
+	root.size = compact_viewport
+	await _wait_frames(4)
+	var cards: Array = screen.get("_cards")
+	_expect(not cards.is_empty(), "Compact detail fixture requires at least one card.")
+	if cards.is_empty():
+		root.content_scale_size = BASE_VIEWPORT
+		root.size = BASE_VIEWPORT
+		await _wait_frames(4)
+		return
+	var selected_index := mini(maxi(screen.entry_grid.columns - 1, 0), cards.size() - 1)
+	var selected_card := cards[selected_index] as EncyclopediaEntryCard
+	var selected_anchor_y := selected_card.global_position.y
+	selected_card.get_focus_control().pressed.emit()
+	await create_timer(
+		EncyclopediaScreen.DETAIL_TRANSITION_DURATION + 0.06
+	).timeout
+	await _wait_frames(3)
+	var workspace_rect := screen.workspace.get_global_rect()
+	var grid_rect := screen.grid_pane.get_global_rect()
+	var detail_rect := screen.detail_panel.get_global_rect()
+	_expect(
+		grid_rect.position.x >= workspace_rect.position.x - 1.0
+		and detail_rect.position.x - grid_rect.end.x >= 8.0,
+		(
+			"Compact 1024×640 layout must keep the grid pane inside its animated region; "
+			+ "workspace=%s grid=%s detail=%s."
+		)
+		% [workspace_rect, grid_rect, detail_rect]
+	)
+	_expect(
+		screen.grid_pane.get_combined_minimum_size().x <= screen.grid_pane.size.x + 1.0,
+		"Compact detail toolbar must not force the grid pane wider than its viewport."
+	)
+	for control in [screen.section_title, screen.search_edit, screen.filter_button]:
+		var control_rect: Rect2 = control.get_global_rect()
+		_expect(
+			control_rect.position.x >= grid_rect.position.x - 1.0
+			and control_rect.end.x <= grid_rect.end.x + 1.0,
+			"Compact detail header and toolbar controls must not be clipped by reflow."
+		)
+	_expect(
+		absf(selected_card.global_position.y - selected_anchor_y) <= 3.0,
+		"Compact detail reflow must preserve the selected card's screen-space Y anchor."
+	)
+	screen.detail_panel.get_close_button().pressed.emit()
+	await create_timer(
+		EncyclopediaScreen.DETAIL_TRANSITION_DURATION + 0.06
+	).timeout
+	root.content_scale_size = BASE_VIEWPORT
+	root.size = BASE_VIEWPORT
+	await _wait_frames(4)
+
+
+func _test_short_filter_anchor(screen: EncyclopediaScreen) -> void:
+	_expect(
+		_select_filter(screen, &"sorcerer"),
+		"Enemy toolbar must expose the five-entry sorcerer filter."
+	)
+	await _wait_frames(4)
+	var cards: Array = screen.get("_cards")
+	_expect(
+		cards.size() == 5,
+		"Short anchor regression requires exactly five sorcerer cards."
+	)
+	if cards.size() != 5:
+		_select_filter(screen, &"")
+		await _wait_frames(3)
+		return
+	var selected_card := cards[4] as EncyclopediaEntryCard
+	var selected_anchor_y := selected_card.global_position.y
+	selected_card.get_focus_control().pressed.emit()
+	await create_timer(
+		EncyclopediaScreen.DETAIL_TRANSITION_DURATION + 0.08
+	).timeout
+	await _wait_frames(4)
+	_expect(
+		absf(selected_card.global_position.y - selected_anchor_y) <= 3.0,
+		(
+			"A short filtered grid must preserve the selected card anchor even when "
+			+ "its original content has no scroll range."
+		)
+	)
+	_expect(
+		int(screen.get("_grid_anchor_extra_bottom")) > 0,
+		"Short filtered reflow must reserve temporary scroll capacity for anchoring."
+	)
+	_expect(
+		_select_filter(screen, &""),
+		"Changing filters while details are open must remain available."
+	)
+	await _wait_frames(4)
+	_expect(
+		int(screen.get("_grid_anchor_extra_bottom")) == 0
+		and screen.grid_margin.get_theme_constant(&"margin_bottom")
+		== EncyclopediaScreen.GRID_BASE_BOTTOM_MARGIN,
+		"Rebuilding an open detail grid must remove stale anchor padding."
+	)
+	screen.detail_panel.get_close_button().pressed.emit()
+	await create_timer(
+		EncyclopediaScreen.DETAIL_TRANSITION_DURATION + 0.08
+	).timeout
+	await _wait_frames(5)
+	_expect(
+		int(screen.get("_grid_anchor_extra_bottom")) == 0,
+		"Temporary anchor padding must be removed after the inspector closes."
+	)
+
+
+func _test_detail_section_switch_race(screen: EncyclopediaScreen) -> void:
+	var cards: Array = screen.get("_cards")
+	_expect(not cards.is_empty(), "Detail race fixture requires an enemy card.")
+	if cards.is_empty():
+		return
+	(cards[0] as EncyclopediaEntryCard).get_focus_control().pressed.emit()
+	await create_timer(
+		EncyclopediaScreen.DETAIL_TRANSITION_DURATION + 0.05
+	).timeout
+	screen.detail_panel.get_close_button().pressed.emit()
+	await create_timer(0.03).timeout
+	screen.collectible_button.pressed.emit()
+	await create_timer(
+		EncyclopediaScreen.DETAIL_TRANSITION_DURATION
+		+ EncyclopediaScreen.SECTION_TRANSITION_DURATION
+		+ 0.08
+	).timeout
+	await _wait_frames(4)
+	_expect(
+		int(screen.get("_current_section")) == CodexSection.COLLECTIBLE
+		and not screen.detail_panel.visible
+		and is_zero_approx(screen.grid_pane.offset_right)
+		and is_equal_approx(screen.grid_area.modulate.a, 1.0),
+		"Switching sections during detail close must settle on a clean catalog layout."
+	)
+	_expect(
+		screen.get("_detail_tween") == null
+		and screen.get("_grid_reflow_tween") == null
+		and not bool(screen.get("_layout_transition_active")),
+		"A section switch must cancel stale detail and grid-reflow tweens."
+	)
+	await _switch_section(screen, screen.enemy_button)
+
+
+func _test_collectible_filter_visuals(screen: EncyclopediaScreen) -> void:
+	await _switch_section(screen, screen.collectible_button)
+	_expect(
+		screen.filter_button.item_count
+		== EXPECTED_COLLECTIBLE_RARITY_COUNTS.size() + 2,
+		"Collectible filters must include all, four rarities and stackable."
+	)
+	for key_variant in EXPECTED_COLLECTIBLE_RARITY_COUNTS:
+		var key := StringName(key_variant)
+		var index := _find_filter_index(screen, key)
+		_expect(index >= 0, "Collectible filter must expose %s." % key)
+		if index < 0:
+			continue
+		var icon := screen.filter_button.get_item_icon(index) as GradientTexture2D
+		_expect(
+			icon != null
+			and icon.width == 12
+			and icon.height == 12
+			and icon.gradient != null,
+			"Collectible rarity %s must have a visible 12 px color swatch." % key
+		)
+		if icon != null and icon.gradient != null and key == &"legendary":
+			_expect(
+				icon.gradient.get_color(0).is_equal_approx(
+					EXPECTED_LEGENDARY_COLOR
+				),
+				"Legendary filter swatch must use the vivid amber-gold palette."
+			)
+
+	var catalog: CodexCatalog = screen.get("_catalog")
+	var stackable_count := 0
+	for entry in catalog.get_entries(CodexSection.COLLECTIBLE):
+		if entry.secondary_badge == "可叠加":
+			stackable_count += 1
+		if entry.filter_key == &"legendary":
+			_expect(
+				entry.accent_color.is_equal_approx(EXPECTED_LEGENDARY_COLOR),
+				"Legendary cards and details must share the vivid amber-gold accent."
+			)
+	var stackable_index := _find_filter_index(
+		screen,
+		EncyclopediaScreen.STACKABLE_FILTER_KEY
+	)
+	_expect(stackable_index >= 0, "Collectible filters must expose stackable.")
+	if stackable_index >= 0:
+		_expect(
+			screen.filter_button.get_item_text(stackable_index)
+			== "可叠加  %d" % stackable_count,
+			"Stackable filter must display its authoritative result count."
+		)
+		_expect(
+			screen.filter_button.get_item_icon(stackable_index) != null,
+			"Stackable filter must have a dedicated visual marker."
+		)
+		_expect(
+			_select_filter(screen, EncyclopediaScreen.STACKABLE_FILTER_KEY),
+			"Stackable filter must be selectable."
+		)
+		await _wait_frames(3)
+		var stackable_cards: Array = screen.get("_cards")
+		_expect(
+			stackable_cards.size() == stackable_count,
+			"Stackable filter result count must match catalog metadata."
+		)
+		for card_variant in stackable_cards:
+			var card := card_variant as EncyclopediaEntryCard
+			_expect(
+				card != null and card.entry_data.secondary_badge == "可叠加",
+				"Stackable filter must exclude unique-effect collectibles."
+			)
+
+	_expect(_select_filter(screen, &""), "Collectible filters must reset to all.")
+	await _wait_frames(3)
+	await _switch_section(screen, screen.enemy_button)
 
 
 func _test_search_filter_and_section_state(
@@ -777,14 +1100,23 @@ func _set_search_query(screen: EncyclopediaScreen, query: String) -> void:
 	screen.search_edit.text_changed.emit(query)
 
 
-func _select_filter(screen: EncyclopediaScreen, filter_key: StringName) -> bool:
+func _find_filter_index(
+	screen: EncyclopediaScreen,
+	filter_key: StringName
+) -> int:
 	for index in screen.filter_button.item_count:
-		if StringName(screen.filter_button.get_item_metadata(index)) != filter_key:
-			continue
-		screen.filter_button.select(index)
-		screen.filter_button.item_selected.emit(index)
-		return true
-	return false
+		if StringName(screen.filter_button.get_item_metadata(index)) == filter_key:
+			return index
+	return -1
+
+
+func _select_filter(screen: EncyclopediaScreen, filter_key: StringName) -> bool:
+	var index := _find_filter_index(screen, filter_key)
+	if index < 0:
+		return false
+	screen.filter_button.select(index)
+	screen.filter_button.item_selected.emit(index)
+	return true
 
 
 func _get_selected_filter_key(screen: EncyclopediaScreen) -> StringName:

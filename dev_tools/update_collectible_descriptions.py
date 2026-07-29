@@ -70,7 +70,7 @@ def stat_parts(data: dict[str, Any], prefix: str = "") -> list[str]:
         ("move_speed_bonus", "移动速度"),
         ("attack_speed_bonus", "攻击速度"),
         ("physical_defense_bonus", "物理防御"),
-        ("magic_defense_bonus", "魔法防御"),
+        ("magic_defense_bonus", "法术防御"),
         ("physical_damage_bonus", "物理伤害"),
         ("magic_damage_bonus", "法术伤害"),
     )
@@ -371,7 +371,7 @@ def generate_description(data: dict[str, Any]) -> str:
     defense_step = int(data.get("defense_xirang_step", 0))
     if defense_step:
         parts.append(
-            f"每持有{fmt_num(defense_step)}息壤，物理防御和魔法防御各+"
+            f"每持有{fmt_num(defense_step)}息壤，物理防御和法术防御各+"
             f"{fmt_num(data.get('defense_bonus_per_xirang_step', 0))}"
         )
 

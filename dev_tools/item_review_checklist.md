@@ -20,7 +20,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [ ] | `admin_doll` | 管理员人偶 | 传说 | 唯一 | 庄方宜为你升级技能时不消耗息壤。 | `resources/config/collectibles/collectible_admin_doll.tres` |  |
 | [ ] | `alchemist_vial` | 炼金小瓶 | 稀有 | 唯一 | 升级基础属性时，8%概率不消耗息壤。 | `resources/config/collectibles/collectible_alchemist_vial.tres` |  |
-| [ ] | `amethyst` | 紫宝石 | 稀有 | 可叠加 | 魔法防御+1（可叠加）。 | `resources/config/collectibles/collectible_amethyst.tres` |  |
+| [ ] | `amethyst` | 紫宝石 | 稀有 | 可叠加 | 法术防御+1（可叠加）。 | `resources/config/collectibles/collectible_amethyst.tres` |  |
 | [ ] | `apple` | 苹果 | 普通 | 唯一 | 普通子弹有20%概率穿透敌人。 | `resources/config/collectibles/collectible_apple.tres` |  |
 | [ ] | `apprentice_scroll` | 学徒卷轴 | 普通 | 可叠加 | 技力充能+0.2/秒（可叠加）。 | `resources/config/collectibles/collectible_apprentice_scroll.tres` |  |
 | [ ] | `archer` | 弓箭手 | 史诗 | 唯一 | 每8秒向360范围内最近3名敌人射箭，每支造成攻击力200%的物理伤害。 | `resources/config/collectibles/collectible_archer.tres` |  |
@@ -65,7 +65,7 @@
 | [ ] | `life_crystal` | 生命水晶 | 史诗 | 唯一 | 每15秒治疗56范围友方10生命。 | `resources/config/collectibles/collectible_life_crystal.tres` |  |
 | [ ] | `life_ring` | 生命戒指 | 稀有 | 可叠加 | 生命上限+20（可叠加）。 | `resources/config/collectibles/collectible_life_ring.tres` |  |
 | [ ] | `lucky_gem` | 幸运宝石 | 稀有 | 唯一 | 升级基础属性时，20%概率不消耗息壤。 | `resources/config/collectibles/collectible_lucky_gem.tres` |  |
-| [ ] | `magic_ring` | 魔法戒指 | 稀有 | 可叠加 | 魔法防御+1；法术伤害+1（可叠加）。 | `resources/config/collectibles/collectible_magic_ring.tres` |  |
+| [ ] | `magic_ring` | 魔法戒指 | 稀有 | 可叠加 | 法术防御+1；法术伤害+1（可叠加）。 | `resources/config/collectibles/collectible_magic_ring.tres` |  |
 | [ ] | `medieval_shield` | 中世纪盾牌 | 稀有 | 唯一 | 受到远程攻击时，额外20%概率闪避。 | `resources/config/collectibles/collectible_medieval_shield.tres` |  |
 | [ ] | `mirror_shield` | 镜面盾 | 史诗 | 唯一 | 受伤时释放58范围寒霜，造成18法术伤害，并减速42%，持续1.8秒，冷却6秒。 | `resources/config/collectibles/collectible_mirror_shield.tres` |  |
 | [ ] | `moon_amulet` | 月亮护符 | 史诗 | 唯一 | 使用技能时生成半径64的月盾，持续8秒，月盾内友方受到伤害减半。 | `resources/config/collectibles/collectible_moon_amulet.tres` |  |
@@ -85,7 +85,7 @@
 | [ ] | `quick_feather` | 轻羽 | 普通 | 可叠加 | 移动速度+6（可叠加）。 | `resources/config/collectibles/collectible_quick_feather.tres` |  |
 | [ ] | `rain_bead` | 雨珠 | 普通 | 唯一 | 普通子弹命中时，14%概率使敌人寒冷1.4秒，移速-24%。 | `resources/config/collectibles/collectible_rain_bead.tres` |  |
 | [ ] | `red_mushroom` | 红蘑菇 | 普通 | 唯一 | 普通子弹命中时，10%概率回复自身2生命，冷却0.8秒。 | `resources/config/collectibles/collectible_red_mushroom.tres` |  |
-| [ ] | `river_shell` | 河贝壳 | 普通 | 可叠加 | 魔法防御+1（可叠加）。 | `resources/config/collectibles/collectible_river_shell.tres` |  |
+| [ ] | `river_shell` | 河贝壳 | 普通 | 可叠加 | 法术防御+1（可叠加）。 | `resources/config/collectibles/collectible_river_shell.tres` |  |
 | [ ] | `royal_goblet` | 王家圣杯 | 史诗 | 唯一 | 每持有1000息壤，攻击速度+2。 | `resources/config/collectibles/collectible_royal_goblet.tres` |  |
 | [ ] | `ruby` | 红宝石 | 普通 | 可叠加 | 攻击力+3（可叠加）。 | `resources/config/collectibles/collectible_ruby.tres` |  |
 | [ ] | `ruby_crown` | 红玉小冠 | 稀有 | 可叠加 | 攻击力+5（可叠加）。 | `resources/config/collectibles/collectible_ruby_crown.tres` |  |
@@ -99,7 +99,7 @@
 | [ ] | `speed_ring` | 速度戒指 | 稀有 | 可叠加 | 移动速度+15（可叠加）。 | `resources/config/collectibles/collectible_speed_ring.tres` |  |
 | [ ] | `spellblade` | 咒刃 | 史诗 | 唯一 | 普通子弹命中时，20%概率标记敌人2.5秒，使其受到伤害x1.18。 | `resources/config/collectibles/collectible_spellblade.tres` |  |
 | [ ] | `steel_longsword` | 钢长剑 | 稀有 | 可叠加 | 攻击力+4（可叠加）。 | `resources/config/collectibles/collectible_steel_longsword.tres` |  |
-| [ ] | `stone_tablet` | 石刻片 | 普通 | 唯一 | 每持有2500息壤，物理防御和魔法防御各+1。 | `resources/config/collectibles/collectible_stone_tablet.tres` |  |
+| [ ] | `stone_tablet` | 石刻片 | 普通 | 唯一 | 每持有2500息壤，物理防御和法术防御各+1。 | `resources/config/collectibles/collectible_stone_tablet.tres` |  |
 | [ ] | `storm_core` | 风暴核心 | 史诗 | 唯一 | 每9秒随机雷击1名敌人，对击中点48范围敌人造成55法术伤害。 | `resources/config/collectibles/collectible_storm_core.tres` |  |
 | [ ] | `sun_brooch` | 日纹胸针 | 稀有 | 唯一 | 每18秒治疗56范围友方8生命。 | `resources/config/collectibles/collectible_sun_brooch.tres` |  |
 | [ ] | `sun_moon_relic` | 日月遗物 | 传说 | 唯一 | 使用技能时生成半径96的月盾，持续10秒，月盾内友方受到伤害减半。 | `resources/config/collectibles/collectible_sun_moon_relic.tres` |  |
@@ -110,7 +110,7 @@
 | [ ] | `thunder_crown` | 雷冠 | 史诗 | 唯一 | 使用技能时随机雷击1名敌人，对击中点58范围敌人造成32法术伤害。 | `resources/config/collectibles/collectible_thunder_crown.tres` |  |
 | [ ] | `thunder_crystal` | 雷鸣水晶 | 史诗 | 唯一 | 每10秒随机雷击1名敌人，对击中点48范围敌人造成50法术伤害。 | `resources/config/collectibles/collectible_thunder_crystal.tres` |  |
 | [ ] | `thunder_god_idol` | 雷神像 | 传说 | 唯一 | 每6秒随机雷击1名敌人，对击中点72范围敌人造成75法术伤害。 | `resources/config/collectibles/collectible_thunder_god_idol.tres` |  |
-| [ ] | `tianshi_stake` | 天师桩 | 史诗 | 唯一 | 每持有2000息壤，物理防御和魔法防御各+1。 | `resources/config/collectibles/collectible_tianshi_stake.tres` |  |
+| [ ] | `tianshi_stake` | 天师桩 | 史诗 | 唯一 | 每持有2000息壤，物理防御和法术防御各+1。 | `resources/config/collectibles/collectible_tianshi_stake.tres` |  |
 | [ ] | `tin_ring` | 锡戒指 | 普通 | 可叠加 | 移动速度+3（可叠加）。 | `resources/config/collectibles/collectible_tin_ring.tres` |  |
 | [ ] | `tiny_bell` | 小铃铛 | 普通 | 唯一 | 击败敌人时补充0.2秒技力，冷却0.6秒。 | `resources/config/collectibles/collectible_tiny_bell.tres` |  |
 | [ ] | `titan_helm` | 泰坦头盔 | 史诗 | 唯一 | 生命上限+35。 | `resources/config/collectibles/collectible_titan_helm.tres` |  |

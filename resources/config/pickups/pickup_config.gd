@@ -353,6 +353,6 @@ static func get_collectible_rarity_bbcode_color(rarity: int) -> String:
 		CollectibleRarity.EPIC:
 			return "#c987ff"
 		CollectibleRarity.LEGENDARY:
-			return "#ffd75a"
+			return "#ffae32"
 		_:
 			return "#f0e3c2"

@@ -13,7 +13,7 @@
 3. `DamageResolver`：无节点、无随机、无表现、无网络副作用的纯结算器；
 4. `DamageResult`：统一返回接纳状态、拒绝原因、各阶段数值、真实生命差和致死结果。
 
-`Player`、`Enemy`、`PlantDefense` 现在都公开同名的 `apply_combat_damage(request)`，基地也直接调用同一解析器。旧的 `apply_damage`、`receive_damage` 等接口保留为兼容适配器，但不再各自重建物理/魔法防御公式。
+`Player`、`Enemy`、`PlantDefense` 现在都公开同名的 `apply_combat_damage(request)`，基地也直接调用同一解析器。旧的 `apply_damage`、`receive_damage` 等接口保留为兼容适配器，但不再各自重建物理/法术防御公式。
 
 多人玩家受伤也从“客户端上报伤害、扣血后生命和死亡结果”改为“客户端只维护本地弹体表现，Host live simulation 独占命中、闪避、生命和死亡结算”。客户端 player-hit 与 enemy-hit claim 均已完全禁用；本地假阳性接触只让对应视觉弹体退场，不再预测生命、死亡、无敌或闪避结果。这样同时关闭了权威漏洞，并把两条命中声明的生产上行流量降为零。
 
@@ -254,7 +254,7 @@ Player meta 从 38 增加到 42 bytes，即每个快照实体增加 4 bytes。�
 下列语义由自动 A/B 锁定：
 
 - 物理伤害：`max(amount - physical_defense, 1)`；
-- 魔法伤害：`max(floor(amount * (100 - magic_defense) / 100), 1)`；
+- 法术伤害：`max(floor(amount * (100 - magic_defense) / 100), 1)`；
 - 玩家远程方向倍率：防御前 `roundi`；
 - 玩家额外减伤：防御后 `floori`，多个来源只取最强，最高 95%；
 - 敌人承伤倍率：防御后 `roundi`；

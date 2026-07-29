@@ -27,7 +27,7 @@ enum DamageType {
 @export_range(0, 999, 1, "or_greater") var attack_damage: int = 1
 # 物理防御直接抵消物理伤害，最终伤害最低为 1。
 @export_range(0, 999, 1, "or_greater") var physical_defense: int = 0
-# 魔法防御按百分比降低魔法伤害，最终伤害最低为 1。
+# 法术防御按百分比降低法术伤害，最终伤害最低为 1。
 @export_range(0, 100, 1) var magic_defense: int = 0
 # 移动速度，单位通常为像素/秒。
 @export_range(0.0, 1000.0, 1.0, "or_greater") var move_speed: float = 60.0

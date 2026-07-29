@@ -47,8 +47,8 @@ def _fixed_damage_formula(damage_type: str) -> str:
         defense_rule = "命中后先计算max(出手值-目标有效物理防御,1)"
     elif damage_type == "法术":
         defense_rule = (
-            "命中后先将目标有效魔法防御钳制在0至100，再计算"
-            "max(floor(出手值×(100-有效魔法防御)/100),1)"
+            "命中后先将目标有效法术防御钳制在0至100，再计算"
+            "max(floor(出手值×(100-有效法术防御)/100),1)"
         )
     else:
         raise ValueError(f"unknown damage type: {damage_type}")
@@ -74,7 +74,7 @@ def _static_stat_rule(data: dict[str, Any]) -> list[str]:
         ("collectible_attack_speed_bonus", "攻击速度"),
         ("collectible_dash_distance_bonus", "冲刺距离"),
         ("collectible_physical_defense_bonus", "物理防御"),
-        ("collectible_magic_defense_bonus", "魔法防御"),
+        ("collectible_magic_defense_bonus", "法术防御"),
         ("collectible_physical_damage_bonus", "物理伤害"),
         ("collectible_magic_damage_bonus", "法术伤害"),
     )
@@ -116,7 +116,7 @@ def _static_stat_rule(data: dict[str, Any]) -> list[str]:
     if float(data.get("collectible_dash_distance_bonus", 0.0)) != 0.0:
         rules.append("冲刺距离与角色基础冲刺距离加算，结果不低于0")
     if int(data.get("collectible_magic_defense_bonus", 0)) != 0:
-        rules.append("角色总魔法防御最终钳制在0至100之间")
+        rules.append("角色总法术防御最终钳制在0至100之间")
     if int(data.get("collectible_physical_defense_bonus", 0)) != 0:
         rules.append("角色总物理防御为基础物理防御加所有有效加成，结果不低于0")
     if skill_charge != 0.0:
@@ -260,8 +260,8 @@ def _xirang_rules(data: dict[str, Any]) -> list[str]:
     if defense_step:
         bonus = int(data.get("defense_bonus_per_xirang_step", 0))
         rules.append(
-            f"按floor(当前息壤/{defense_step})计算完整档数，每档物理防御和魔法防御各+{bonus}；"
-            "息壤数量变化时重新计算，魔法防御最终钳制在0至100之间"
+            f"按floor(当前息壤/{defense_step})计算完整档数，每档物理防御和法术防御各+{bonus}；"
+            "息壤数量变化时重新计算，法术防御最终钳制在0至100之间"
         )
     return rules
 
@@ -291,7 +291,7 @@ def _conditional_rule(data: dict[str, Any]) -> list[str]:
         ("conditional_max_health_bonus", "生命上限"),
         ("conditional_move_speed_bonus", "移动速度"),
         ("conditional_physical_defense_bonus", "物理防御"),
-        ("conditional_magic_defense_bonus", "魔法防御"),
+        ("conditional_magic_defense_bonus", "法术防御"),
         ("conditional_physical_damage_bonus", "物理伤害"),
         ("conditional_magic_damage_bonus", "法术伤害"),
         ("conditional_skill_charge_bonus_per_second", "技力充能/秒"),

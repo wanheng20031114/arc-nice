@@ -25,6 +25,7 @@ shadow_size = 16
 shadow_offset = Vector2(0, 5)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nav_normal"]
+content_margin_left = 12.0
 bg_color = Color(0.045, 0.052, 0.052, 0.18)
 corner_radius_top_left = 3
 corner_radius_top_right = 3
@@ -32,6 +33,7 @@ corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nav_hover"]
+content_margin_left = 12.0
 bg_color = Color(0.18, 0.17, 0.12, 0.72)
 border_width_left = 1
 border_width_top = 1
@@ -397,7 +399,7 @@ layout_mode = 2
 theme_override_constants/separation = 10
 
 [node name="Search" type="LineEdit" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Toolbar"]
-custom_minimum_size = Vector2(150, 38)
+custom_minimum_size = Vector2(100, 38)
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 2
@@ -410,7 +412,7 @@ placeholder_text = "搜索名称"
 clear_button_enabled = true
 
 [node name="Filter" type="OptionButton" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Toolbar"]
-custom_minimum_size = Vector2(142, 38)
+custom_minimum_size = Vector2(140, 38)
 layout_mode = 2
 focus_mode = 2
 mouse_default_cursor_shape = 2
@@ -428,7 +430,7 @@ popup/item_0/text = "全部分类"
 popup/item_0/id = 0
 
 [node name="ResultCount" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Toolbar"]
-custom_minimum_size = Vector2(92, 38)
+custom_minimum_size = Vector2(88, 38)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.48, 0.72, 0.65, 1)
 theme_override_font_sizes/font_size = 12

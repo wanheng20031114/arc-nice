@@ -65,7 +65,7 @@ FIELD_LABELS = {
     "collectible_max_health_bonus": "生命上限加值", "collectible_move_speed_bonus": "移动速度加值",
     "collectible_attack_speed_bonus": "攻击速度加值",
     "collectible_dash_distance_bonus": "冲刺距离加值", "collectible_dash_cooldown_reduction": "冲刺冷却缩减",
-    "collectible_physical_defense_bonus": "物理防御加值", "collectible_magic_defense_bonus": "魔法防御加值",
+    "collectible_physical_defense_bonus": "物理防御加值", "collectible_magic_defense_bonus": "法术防御加值",
     "collectible_physical_damage_bonus": "物理伤害加值", "collectible_magic_damage_bonus": "法术伤害加值",
     "collectible_skill_charge_bonus_per_second": "每秒技力充能加值", "base_upgrade_free_chance": "基础升级免费概率",
     "incoming_ranged_front_damage_multiplier": "受到正面远程伤害倍率", "incoming_ranged_back_damage_multiplier": "受到背面远程伤害倍率",

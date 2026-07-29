@@ -134,7 +134,7 @@ Player profile 在 scene/player/player.gd:1219-1236：
 - attack_damage=ceil((round(base_attack)+通用攻击加值)×临时攻击倍率)，至少 1；
 - 物防=基础物防+收藏品+息壤动态防御+研究临时防御，至少 0；
 - 魔防=基础魔防+收藏品，钳制 0..100；
-- 物理/魔法伤害加值不并入 attack_damage，而是保留为类型专属 flat；
+- 物理/法术伤害加值不并入 attack_damage，而是保留为类型专属 flat；
 - 远程正/背倍率相乘，远程闪避率相加后钳制 0..1；
 - 对燃烧/流血目标的倍率分别相乘后缓存。
 
@@ -467,7 +467,7 @@ PlantDefense.receive_healing 语义相同，但额外拒绝 proxy/removing，并
 - 4.68s：第 4 跳，治疗、减攻；
 - 5.68s：玩法结束，不再额外跳一次。
 
-实现依据：效果启动立即执行 current_tick_index，然后按绝对动作时间安排后续跳点（scene/plant_defense/hydrangea_rain_tower.gd:450-509）。法伤窗口为 rain_duration 1.5 - 发射延迟 0.24 = 1.26s，所以只有效果相对时间 0s 和 1s 的两跳造成 5 点魔法伤害（:538-559,1094-1100）。
+实现依据：效果启动立即执行 current_tick_index，然后按绝对动作时间安排后续跳点（scene/plant_defense/hydrangea_rain_tower.gd:450-509）。法伤窗口为 rain_duration 1.5 - 发射延迟 0.24 = 1.26s，所以只有效果相对时间 0s 和 1s 的两跳造成 5 点法术伤害（:538-559,1094-1100）。
 
 地面粒子匹配正确：
 
@@ -618,7 +618,7 @@ Player 收藏品稳定来源 ID 使用 abs(hash(runtime key))+salt+player instan
 
 后续迁移或重构至少需要把以下行为写成测试：
 
-1. 物理与魔法防御后始终至少 1 点，除非请求本身无效。
+1. 物理与法术防御后始终至少 1 点，除非请求本身无效。
 2. 玩家 RANGED 正/背倍率在防御前、roundi；玩家最强减伤在防御后、floori。
 3. Enemy damage_taken_multiplier 在防御后相乘、roundi。
 4. Player/Enemy/Plant 最终 applied_damage 封顶到剩余生命，生命不为负。
