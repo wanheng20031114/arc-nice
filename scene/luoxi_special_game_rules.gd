@@ -20,7 +20,17 @@ enum OutcomeKind {
 	MATERIAL = 2,
 	CORE_DAMAGE = 3,
 	XIRANG = 4,
+	BLANK = 5,
 }
+
+const CATEGORY_WEIGHTS: Array[int] = [
+	22, # 收藏品
+	15, # 玩家扣血
+	22, # 普通材料
+	10, # 核心扣血
+	16, # 息壤
+	15, # 空白牌
+]
 
 enum HealthEffect {
 	SELF_FIXED = 0,
@@ -33,15 +43,12 @@ enum HealthEffect {
 static func classify_kind(roll: int) -> int:
 	if not _is_valid_roll(roll):
 		return INVALID_CLASSIFICATION
-	if roll < 25:
-		return OutcomeKind.COLLECTIBLE
-	if roll < 45:
-		return OutcomeKind.HEALTH_DAMAGE
-	if roll < 70:
-		return OutcomeKind.MATERIAL
-	if roll < 80:
-		return OutcomeKind.CORE_DAMAGE
-	return OutcomeKind.XIRANG
+	var cumulative_weight := 0
+	for kind in range(CATEGORY_WEIGHTS.size()):
+		cumulative_weight += CATEGORY_WEIGHTS[kind]
+		if roll < cumulative_weight:
+			return kind
+	return INVALID_CLASSIFICATION
 
 
 static func classify_collectible_rarity(roll: int) -> int:
@@ -150,6 +157,10 @@ static func classify_xirang(roll: int) -> Dictionary:
 	return _make_outcome(OutcomeKind.XIRANG, 0, amount)
 
 
+static func make_blank_outcome() -> Dictionary:
+	return _make_outcome(OutcomeKind.BLANK, 0, 0)
+
+
 static func roll_cards(
 	rng: RandomNumberGenerator,
 	collectible_pool: Array
@@ -228,6 +239,13 @@ static func is_valid_outcome(outcome: Dictionary) -> bool:
 				and item_path.is_empty()
 				and rarity == -1
 			)
+		OutcomeKind.BLANK:
+			return (
+				effect == 0
+				and amount == 0
+				and item_path.is_empty()
+				and rarity == -1
+			)
 	return false
 
 
@@ -250,6 +268,8 @@ static func _roll_outcome(
 			return classify_core_damage(rng.randi_range(0, ROLL_TOTAL - 1))
 		OutcomeKind.XIRANG:
 			return classify_xirang(rng.randi_range(0, ROLL_TOTAL - 1))
+		OutcomeKind.BLANK:
+			return make_blank_outcome()
 	return {}
 
 

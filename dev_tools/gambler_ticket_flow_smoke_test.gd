@@ -340,12 +340,32 @@ func _test_overlay_copy_and_xirang_icon_contract() -> void:
 		and overlay.card_icons[0].texture != null,
 		"该奖励卡必须只使用图标与数量，不得写出名称。"
 	)
-	for card_index in range(1, 4):
+	overlay.reveal_card(1, LuoxiSpecialGameRules.make_blank_outcome())
+	_expect(
+		overlay.card_blank_messages[1].visible
+		and not overlay.card_contents[1].visible
+		and overlay.card_blank_messages[1].text == "什么都没有"
+		and overlay.card_icons[1].texture == null
+		and overlay.card_titles[1].text.is_empty()
+		and overlay.card_descriptions[1].text.is_empty(),
+		"空白牌正面必须只显示一行“什么都没有”。"
+	)
+	_expect(
+		overlay.status_label.text == "这张牌什么都没有；你可以继续翻牌或结束",
+		"空白牌不得被描述为已经暂存奖励。"
+	)
+	for card_index in range(2, 4):
 		overlay.reveal_card(
 			card_index,
 			_outcome(LuoxiSpecialGameRules.OutcomeKind.CORE_DAMAGE, 0, 1)
 		)
 	_expect(overlay.finish_button.text == "结束", "四张全翻按钮文案必须精确匹配。")
+	overlay.show_game(42)
+	_expect(
+		not overlay.card_blank_messages[1].visible
+		and overlay.card_contents[1].visible,
+		"开启下一局时必须恢复空白牌占用的普通卡牌内容区。"
+	)
 	overlay.queue_free()
 	await process_frame
 

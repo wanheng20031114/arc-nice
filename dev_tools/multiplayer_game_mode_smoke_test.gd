@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 26,
-		"竹迫击炮提交式蓄力时长载荷要求协议v26。"
+		NetConstants.PROTOCOL_VERSION == 27,
+		"洛茜空白牌结果类型要求协议v27。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

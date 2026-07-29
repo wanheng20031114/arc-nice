@@ -6,7 +6,8 @@ extends RefCounted
 ## 并统一固定宽度网络战斗值的合法范围。
 ## v26：竹筒迫击炮视觉动作携带本轮已提交的蓄热时长，确保攻击间隔支援
 ## 在Host、实时事件与中途加入快照之间保持一致。
-const PROTOCOL_VERSION := 26
+## v27：洛茜赌怪券牌局新增空白牌结果类型，隔离无法识别 kind=5 的旧客户端。
+const PROTOCOL_VERSION := 27
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

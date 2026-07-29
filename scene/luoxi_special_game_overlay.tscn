@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scene/luoxi_special_game_overlay.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
@@ -143,6 +143,11 @@ font_color = Color(0.98, 0.86, 0.58, 1)
 font = ExtResource("2_font")
 font_size = 19
 font_color = Color(0.29, 0.16, 0.08, 1)
+
+[sub_resource type="LabelSettings" id="Label_blank_message"]
+font = ExtResource("2_font")
+font_size = 21
+font_color = Color(0.36, 0.33, 0.3, 1)
 
 [node name="LuoxiSpecialGameOverlay" type="CanvasLayer"]
 layer = 25
@@ -303,6 +308,15 @@ theme_override_constants/line_separation = 3
 scroll_active = false
 autowrap_mode = 2
 
+[node name="BlankMessage" type="Label" parent="Root/Center/Window/Margin/Layout/CardRow/Card0/Front"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+text = "什么都没有"
+label_settings = SubResource("Label_blank_message")
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="RevealButton" type="Button" parent="Root/Center/Window/Margin/Layout/CardRow/Card0"]
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -404,6 +418,15 @@ theme_override_font_sizes/normal_font_size = 14
 theme_override_constants/line_separation = 3
 scroll_active = false
 autowrap_mode = 2
+
+[node name="BlankMessage" type="Label" parent="Root/Center/Window/Margin/Layout/CardRow/Card1/Front"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+text = "什么都没有"
+label_settings = SubResource("Label_blank_message")
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="RevealButton" type="Button" parent="Root/Center/Window/Margin/Layout/CardRow/Card1"]
 layout_mode = 2
@@ -507,6 +530,15 @@ theme_override_constants/line_separation = 3
 scroll_active = false
 autowrap_mode = 2
 
+[node name="BlankMessage" type="Label" parent="Root/Center/Window/Margin/Layout/CardRow/Card2/Front"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+text = "什么都没有"
+label_settings = SubResource("Label_blank_message")
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="RevealButton" type="Button" parent="Root/Center/Window/Margin/Layout/CardRow/Card2"]
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -608,6 +640,15 @@ theme_override_font_sizes/normal_font_size = 14
 theme_override_constants/line_separation = 3
 scroll_active = false
 autowrap_mode = 2
+
+[node name="BlankMessage" type="Label" parent="Root/Center/Window/Margin/Layout/CardRow/Card3/Front"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+text = "什么都没有"
+label_settings = SubResource("Label_blank_message")
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="RevealButton" type="Button" parent="Root/Center/Window/Margin/Layout/CardRow/Card3"]
 layout_mode = 2

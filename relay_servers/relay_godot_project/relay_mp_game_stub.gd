@@ -620,6 +620,16 @@ func net_boss_started(net_id: int, boss_config_path: String, spawn_position: Vec
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
+func net_linglan_airdrop_started(
+	enemy_config_path: String,
+	landing_position: Vector2,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
 func net_game_defeated() -> void:
 	pass
 

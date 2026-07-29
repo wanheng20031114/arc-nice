@@ -26,6 +26,7 @@ func _initialize() -> void:
 	_test_material_distribution()
 	_test_core_damage_distribution()
 	_test_xirang_distribution()
+	_test_blank_outcome()
 	_test_roll_cards_protocol()
 	_test_session_reveal_and_pending_rewards()
 
@@ -39,24 +40,27 @@ func _initialize() -> void:
 
 
 func _test_category_distribution() -> void:
-	var counts: Array[int] = [0, 0, 0, 0, 0]
+	var counts: Array[int] = [0, 0, 0, 0, 0, 0]
 	for roll in range(Rules.ROLL_TOTAL):
 		var kind := Rules.classify_kind(roll)
 		counts[kind] += 1
 	_expect(
-		counts == [25, 20, 25, 10, 20],
-		"五大结果分类必须精确为25/20/25/10/20。"
+		counts == [22, 15, 22, 10, 16, 15],
+		"六类结果必须精确为22/15/22/10/16/15。"
 	)
 	_expect(
-		Rules.classify_kind(24) == Rules.OutcomeKind.COLLECTIBLE
-		and Rules.classify_kind(25) == Rules.OutcomeKind.HEALTH_DAMAGE
-		and Rules.classify_kind(44) == Rules.OutcomeKind.HEALTH_DAMAGE
-		and Rules.classify_kind(45) == Rules.OutcomeKind.MATERIAL
-		and Rules.classify_kind(69) == Rules.OutcomeKind.MATERIAL
-		and Rules.classify_kind(70) == Rules.OutcomeKind.CORE_DAMAGE
-		and Rules.classify_kind(79) == Rules.OutcomeKind.CORE_DAMAGE
-		and Rules.classify_kind(80) == Rules.OutcomeKind.XIRANG,
-		"五大结果的整数边界必须连续且无重叠。"
+		Rules.classify_kind(21) == Rules.OutcomeKind.COLLECTIBLE
+		and Rules.classify_kind(22) == Rules.OutcomeKind.HEALTH_DAMAGE
+		and Rules.classify_kind(36) == Rules.OutcomeKind.HEALTH_DAMAGE
+		and Rules.classify_kind(37) == Rules.OutcomeKind.MATERIAL
+		and Rules.classify_kind(58) == Rules.OutcomeKind.MATERIAL
+		and Rules.classify_kind(59) == Rules.OutcomeKind.CORE_DAMAGE
+		and Rules.classify_kind(68) == Rules.OutcomeKind.CORE_DAMAGE
+		and Rules.classify_kind(69) == Rules.OutcomeKind.XIRANG
+		and Rules.classify_kind(84) == Rules.OutcomeKind.XIRANG
+		and Rules.classify_kind(85) == Rules.OutcomeKind.BLANK
+		and Rules.classify_kind(99) == Rules.OutcomeKind.BLANK,
+		"六类结果的整数边界必须连续且无重叠。"
 	)
 	_expect(
 		Rules.classify_kind(-1) == Rules.INVALID_CLASSIFICATION
@@ -231,6 +235,39 @@ func _test_xirang_distribution() -> void:
 		Rules.classify_xirang(-1).is_empty()
 		and Rules.classify_xirang(100).is_empty(),
 		"息壤分类必须拒绝0..99以外的整数。"
+	)
+
+
+func _test_blank_outcome() -> void:
+	var blank := Rules.make_blank_outcome()
+	_expect(
+		blank == {
+			"kind": Rules.OutcomeKind.BLANK,
+			"effect": 0,
+			"amount": 0,
+			"item_path": "",
+			"rarity": -1,
+		}
+		and Rules.is_valid_outcome(blank),
+		"空白牌必须使用固定、无奖励、无代价的网络结果。"
+	)
+	var invalid_blank := blank.duplicate(true)
+	invalid_blank["amount"] = 1
+	_expect(
+		not Rules.is_valid_outcome(invalid_blank),
+		"空白牌不得携带任何数量或隐藏奖励。"
+	)
+	var session := Session.new()
+	var blanks: Array[Dictionary] = [blank, blank, blank, blank]
+	_expect(session.setup(11, blanks), "四张空白牌必须能建立合法会话。")
+	for card_index in range(Rules.CARD_COUNT):
+		session.reveal(card_index)
+	_expect(
+		session.get_revealed_count() == Rules.CARD_COUNT
+		and session.get_pending_item_paths().is_empty()
+		and session.get_pending_item_counts().is_empty()
+		and session.get_pending_xirang() == 0,
+		"空白牌翻开后不得进入任何延迟奖励清单。"
 	)
 
 

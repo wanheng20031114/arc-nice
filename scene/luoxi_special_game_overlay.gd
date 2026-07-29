@@ -15,6 +15,7 @@ const CARD_FLIP_CLOSE_DURATION := 0.13
 const CARD_FLIP_OPEN_DURATION := 0.22
 const DEFAULT_STATUS := "选择一张卡牌翻开；奖励会在结束时统一结算"
 const CARD_BACK_BORDER_COLOR := Color(0.91, 0.70, 0.27, 1.0)
+const BLANK_CARD_BORDER_COLOR := Color(0.58, 0.55, 0.51, 1.0)
 
 @onready var root_control: Control = $Root
 @onready var cards: Array[PanelContainer] = [
@@ -34,6 +35,18 @@ const CARD_BACK_BORDER_COLOR := Color(0.91, 0.70, 0.27, 1.0)
 	$Root/Center/Window/Margin/Layout/CardRow/Card1/Front,
 	$Root/Center/Window/Margin/Layout/CardRow/Card2/Front,
 	$Root/Center/Window/Margin/Layout/CardRow/Card3/Front,
+]
+@onready var card_contents: Array[Control] = [
+	$Root/Center/Window/Margin/Layout/CardRow/Card0/Front/Margin,
+	$Root/Center/Window/Margin/Layout/CardRow/Card1/Front/Margin,
+	$Root/Center/Window/Margin/Layout/CardRow/Card2/Front/Margin,
+	$Root/Center/Window/Margin/Layout/CardRow/Card3/Front/Margin,
+]
+@onready var card_blank_messages: Array[Label] = [
+	$Root/Center/Window/Margin/Layout/CardRow/Card0/Front/BlankMessage,
+	$Root/Center/Window/Margin/Layout/CardRow/Card1/Front/BlankMessage,
+	$Root/Center/Window/Margin/Layout/CardRow/Card2/Front/BlankMessage,
+	$Root/Center/Window/Margin/Layout/CardRow/Card3/Front/BlankMessage,
 ]
 @onready var card_icons: Array[TextureRect] = [
 	$Root/Center/Window/Margin/Layout/CardRow/Card0/Front/Margin/Content/Icon,
@@ -96,6 +109,8 @@ func show_game(new_session_revision: int) -> void:
 		cards[index].pivot_offset = _get_card_size(cards[index]) * 0.5
 		card_backs[index].show()
 		card_fronts[index].hide()
+		card_contents[index].show()
+		card_blank_messages[index].hide()
 		card_icons[index].texture = null
 		card_titles[index].text = ""
 		card_descriptions[index].text = ""
@@ -227,6 +242,10 @@ func _populate_card_front(card_index: int, outcome: Dictionary) -> void:
 			card_titles[card_index].text = "+%d" % amount
 			card_descriptions[card_index].text = "结束本局后统一结算"
 			_apply_card_color(card_index, Color(0.42, 0.85, 1.0, 1.0))
+		Rules.OutcomeKind.BLANK:
+			card_contents[card_index].hide()
+			card_blank_messages[card_index].show()
+			_apply_card_color(card_index, BLANK_CARD_BORDER_COLOR)
 		_:
 			push_error("洛茜特殊游戏收到未知结果类型：%d" % kind)
 
@@ -311,6 +330,8 @@ func _update_status_after_reveal(kind: int) -> void:
 		or kind == Rules.OutcomeKind.CORE_DAMAGE
 	):
 		set_status("代价已经立即生效；你仍可继续翻牌或结束")
+	elif kind == Rules.OutcomeKind.BLANK:
+		set_status("这张牌什么都没有；你可以继续翻牌或结束")
 	else:
 		set_status("奖励已暂存；你可以继续翻牌或结束")
 

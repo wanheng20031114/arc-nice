@@ -160,7 +160,7 @@ const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 协议 v26 仍使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
+## 自协议 v26 起使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
 const SHARED_SNAPSHOT_COHORT_ID := -1
 # A full enemy keyframe is 24 bytes after adding health_revision. Forty-six

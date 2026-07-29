@@ -54,8 +54,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 26,
-		"竹迫击炮提交式蓄力时长要求多人运行时目录使用协议v26。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 27,
+		"洛茜空白牌结果类型要求多人运行时目录使用协议v27。"
 	)
 	host_game = TOWER_DEFENSE_SCENE.instantiate() as GameTowerDefense
 	_expect(host_game != null, "围栏多人运行时测试必须能实例化真实塔防场景。")
