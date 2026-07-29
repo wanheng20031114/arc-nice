@@ -1126,6 +1126,9 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	var recipe_scroll := crafting_panel.get_node_or_null(
 		"Background/RecipeArea/Margin/Content/RecipeScroll"
 	) as ScrollContainer
+	var recipe_margin := crafting_panel.get_node_or_null(
+		"Background/RecipeArea/Margin"
+	) as MarginContainer
 	var recipe_list := crafting_panel.get_node_or_null(
 		"Background/RecipeArea/Margin/Content/RecipeScroll/RecipeList"
 	) as VBoxContainer
@@ -1167,10 +1170,30 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	_expect(
 		crafting_panel.recipe_buttons.size() == 9
 		and recipe_scroll != null
+		and recipe_margin != null
 		and recipe_list != null
 		and recipe_list.get_child_count() == 9,
 		"九条注册配方必须由场景原生预建九个按钮，并放在可滚动列表中。"
 	)
+	if recipe_scroll != null and recipe_margin != null:
+		var recipe_scrollbar := recipe_scroll.get_v_scroll_bar()
+		var first_recipe_button := crafting_panel.recipe_buttons[0]
+		var left_gap := (
+			recipe_scrollbar.global_position.x
+			- first_recipe_button.get_global_rect().end.x
+		)
+		var right_gap := (
+			recipe_area.get_global_rect().end.x
+			- recipe_scrollbar.get_global_rect().end.x
+		)
+		_expect(
+			recipe_margin.get_theme_constant(&"margin_right") == 4
+			and recipe_scroll.get_theme_constant(&"scrollbar_h_separation") == 4
+			and recipe_scrollbar.visible
+			and left_gap >= 4.0
+			and absf(left_gap - right_gap) <= 1.0,
+			"建议配方滚动条必须位于配方按钮与右侧边框空档的中央。"
+		)
 
 	var research := (
 		RESEARCH_COORDINATOR_SCENE.instantiate() as ResearchCoordinator

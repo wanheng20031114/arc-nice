@@ -256,7 +256,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_section")
 layout_mode = 2
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 10
-theme_override_constants/margin_right = 8
+theme_override_constants/margin_right = 4
 theme_override_constants/margin_bottom = 10
 
 [node name="Content" type="VBoxContainer" parent="Background/RecipeArea/Margin"]
@@ -287,6 +287,7 @@ autowrap_mode = 2
 [node name="RecipeScroll" type="ScrollContainer" parent="Background/RecipeArea/Margin/Content"]
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_constants/scrollbar_h_separation = 4
 horizontal_scroll_mode = 0
 
 [node name="RecipeList" type="VBoxContainer" parent="Background/RecipeArea/Margin/Content/RecipeScroll"]
