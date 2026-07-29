@@ -16,6 +16,13 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 	&"terrain_building",
 	&"storage_building",
 ]
+## Authored catalog contract used by navigation before any section is materialized.
+## The encyclopedia smoke test verifies these counts against the full registries.
+const REGISTERED_ENTRY_COUNTS := {
+	CodexSection.ENEMY: 50,
+	CodexSection.COLLECTIBLE: 123,
+	CodexSection.BUILDING: 16,
+}
 const COLLECTIBLE_ACCENTS: Array[Color] = [
 	Color("#f0e3c2"),
 	Color("#68d8ff"),
@@ -40,15 +47,18 @@ const LINGLAN_SKILL_4: LinglanSkill4Config = preload(
 )
 
 var _visibility_provider: CodexVisibilityProvider
+var _uses_default_visibility_provider: bool
 var _entries_by_section: Dictionary = {}
 var _filter_options_by_section: Dictionary = {}
 
 
 func _init(provider: CodexVisibilityProvider = null) -> void:
+	_uses_default_visibility_provider = provider == null
 	_visibility_provider = provider if provider != null else CodexVisibilityProvider.new()
 
 
 func set_visibility_provider(provider: CodexVisibilityProvider) -> void:
+	_uses_default_visibility_provider = provider == null
 	_visibility_provider = provider if provider != null else CodexVisibilityProvider.new()
 	clear_cache()
 
@@ -73,12 +83,32 @@ func get_filter_options(section: int) -> Array[Dictionary]:
 	return options.duplicate(true)
 
 
+## Returns the visible navigation total. The production provider reveals every
+## authored entry, so its fast path can use the manifest without materializing
+## a section. Custom providers retain the original HIDDEN-aware semantics.
 func get_total_count(section: int) -> int:
+	if _uses_default_visibility_provider:
+		return get_registered_count(section)
+	return get_visible_count(section)
+
+
+## Returns the number of records exposed by the current visibility provider.
+## Unlike the lightweight registered count, this intentionally materializes
+## the requested section so custom HIDDEN states are reflected exactly.
+func get_visible_count(section: int) -> int:
 	if not CodexSection.is_valid(section):
 		return 0
 	_ensure_section(section)
 	var entries: Array[CodexEntryViewData] = _entries_by_section.get(section, [])
 	return entries.size()
+
+
+## Returns the raw number of registered records, independent of visibility.
+## This method never materializes a catalog section or loads collectible configs.
+func get_registered_count(section: int) -> int:
+	if not CodexSection.is_valid(section):
+		return 0
+	return int(REGISTERED_ENTRY_COUNTS[section])
 
 
 func clear_cache(section: int = -1) -> void:
@@ -242,7 +272,12 @@ func _build_enemy_stats(
 
 func _build_enemy_specific_stats(enemy: EnemyConfig) -> Array[CodexStatRow]:
 	var stats: Array[CodexStatRow] = []
-	if enemy is CapooAK47Config:
+	# StoneGolemConfig inherits CapooKnightConfig, so it must be handled before
+	# the broader knight branch to expose its ground-slam data.
+	if enemy is StoneGolemConfig:
+		var config := enemy as StoneGolemConfig
+		stats.append(CodexStatRow.new("砸地半径", _format_number(config.slam_radius)))
+	elif enemy is CapooAK47Config:
 		var config := enemy as CapooAK47Config
 		stats.append(CodexStatRow.new("攻击距离", _format_number(config.attack_range)))
 		stats.append(CodexStatRow.new("每轮射击", "%d 发" % config.burst_count))
@@ -323,9 +358,6 @@ func _build_enemy_specific_stats(enemy: EnemyConfig) -> Array[CodexStatRow]:
 		var config := enemy as YuanshiInsectGuardianConfig
 		stats.append(CodexStatRow.new("光环半径", _format_number(config.aura_radius)))
 		stats.append(CodexStatRow.new("物防增益", "+%d 点" % config.aura_physical_defense_bonus))
-	elif enemy is StoneGolemConfig:
-		var config := enemy as StoneGolemConfig
-		stats.append(CodexStatRow.new("砸地半径", _format_number(config.slam_radius)))
 	elif enemy is SlimeConfig:
 		var config := enemy as SlimeConfig
 		if config.variant == SlimeConfig.Variant.GREEN:

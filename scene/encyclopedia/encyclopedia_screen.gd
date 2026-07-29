@@ -1,6 +1,8 @@
 extends Control
 class_name EncyclopediaScreen
 
+signal grid_build_completed(generation: int)
+
 const ENTRY_CARD_SCENE := preload("res://scene/encyclopedia/entry_card.tscn")
 const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
 const CARD_WIDTH := 112.0
@@ -13,6 +15,9 @@ const PAGE_ENTRANCE_DURATION := 0.18
 const SECTION_TRANSITION_DURATION := 0.12
 const DETAIL_TRANSITION_DURATION := 0.22
 const GRID_REFLOW_FADE_DURATION := 0.07
+const INITIAL_GRID_ROWS := 2
+const GRID_BUILD_BATCH_SIZE := 10
+const CARD_BATCH_FADE_DURATION := 0.08
 const STACKABLE_FILTER_KEY := &"stackable"
 const RARITY_COLORS := {
 	&"common": Color("f0e3c2"),
@@ -49,8 +54,15 @@ var _current_section: int = CodexSection.ENEMY
 var _section_states: Dictionary = {}
 var _section_buttons: Array[Button] = []
 var _cards: Array[EncyclopediaEntryCard] = []
+var _card_pool: Array[EncyclopediaEntryCard] = []
+var _pending_grid_entries: Array[CodexEntryViewData] = []
+var _pending_grid_index := 0
+var _pending_scroll_value := 0
+var _pending_scroll_restore := false
+var _card_batch_tweens: Array[Tween] = []
 var _grid_columns := 1
 var _grid_generation := 0
+var _completed_grid_generation := -1
 var _suppress_toolbar_signals := false
 var _section_initialized := false
 var _detail_open := false
@@ -112,6 +124,9 @@ func _connect_controls() -> void:
 	filter_button.item_selected.connect(_on_filter_selected)
 	detail_panel.close_requested.connect(_on_detail_close_requested)
 	grid_pane.resized.connect(_on_grid_pane_resized)
+	grid_scroll.get_v_scroll_bar().value_changed.connect(
+		_on_grid_scroll_value_changed
+	)
 
 
 func _update_sidebar_counts() -> void:
@@ -226,15 +241,14 @@ func _refresh_grid(reset_scroll: bool) -> void:
 	_grid_generation += 1
 	_set_grid_anchor_extra_bottom(0)
 	var generation := _grid_generation
-	for card in _cards:
-		entry_grid.remove_child(card)
-		card.queue_free()
-	_cards.clear()
+	_cancel_card_batch_tweens()
+	_recycle_active_cards()
+	_pending_grid_entries.clear()
+	_pending_grid_index = 0
 
 	var state: Dictionary = _section_states[_current_section]
 	var query := String(state["query"]).strip_edges().to_lower()
 	var filter_key := StringName(state["filter"])
-	var visible_entries: Array[CodexEntryViewData] = []
 	for entry in _catalog.get_entries(_current_section):
 		if entry.visibility_state == CodexVisibilityState.HIDDEN:
 			continue
@@ -248,36 +262,140 @@ func _refresh_grid(reset_scroll: bool) -> void:
 				continue
 			if not entry.display_name.to_lower().contains(query):
 				continue
-		visible_entries.append(entry)
-
-	for entry in visible_entries:
-		var card := ENTRY_CARD_SCENE.instantiate() as EncyclopediaEntryCard
-		entry_grid.add_child(card)
-		card.setup(entry)
-		card.entry_pressed.connect(_on_card_pressed)
-		card.entry_focused.connect(_on_card_focused)
-		_cards.append(card)
+		_pending_grid_entries.append(entry)
 
 	var total_count := _catalog.get_entries(_current_section).size()
-	result_count.text = "显示 %d / %d" % [visible_entries.size(), total_count]
-	empty_state.visible = visible_entries.is_empty()
-	grid_scroll.visible = not visible_entries.is_empty()
-	var scroll_value := 0 if reset_scroll else int(state["scroll"])
-	call_deferred("_finish_grid_refresh", generation, scroll_value)
+	result_count.text = "显示 %d / %d" % [_pending_grid_entries.size(), total_count]
+	empty_state.visible = _pending_grid_entries.is_empty()
+	grid_scroll.visible = not _pending_grid_entries.is_empty()
+	_pending_scroll_value = 0 if reset_scroll else int(state["scroll"])
+	_pending_scroll_restore = not reset_scroll and _pending_scroll_value > 0
+	grid_scroll.scroll_vertical = 0
+	call_deferred("_begin_grid_build", generation)
 
 
-func _finish_grid_refresh(generation: int, scroll_value: int) -> void:
+func _begin_grid_build(generation: int) -> void:
 	if generation != _grid_generation:
 		return
 	_update_grid_columns()
-	_rebuild_card_focus_neighbours()
-	await get_tree().process_frame
+	if _pending_grid_entries.is_empty():
+		_pending_scroll_restore = false
+		_prepare_focus_navigation()
+		_mark_grid_build_complete(generation)
+		return
+	var initial_row_count := maxi(
+		INITIAL_GRID_ROWS,
+		int(ceil(float(GRID_BUILD_BATCH_SIZE) / float(_grid_columns)))
+	)
+	var initial_card_count := mini(
+		_pending_grid_entries.size(),
+		_grid_columns * initial_row_count
+	)
+	_append_grid_batch(generation, initial_card_count)
+	_build_remaining_grid_entries(generation)
+
+
+func _build_remaining_grid_entries(generation: int) -> void:
+	while (
+		generation == _grid_generation
+		and _pending_grid_index < _pending_grid_entries.size()
+	):
+		await get_tree().process_frame
+		if generation != _grid_generation:
+			return
+		_append_grid_batch(generation, GRID_BUILD_BATCH_SIZE)
 	if generation != _grid_generation:
 		return
-	grid_scroll.scroll_vertical = scroll_value
+	await get_tree().process_frame
+	if generation == _grid_generation and _pending_scroll_restore:
+		_pending_scroll_restore = false
+		grid_scroll.scroll_vertical = mini(
+			_pending_scroll_value,
+			_maximum_grid_scroll()
+		)
+	if generation == _grid_generation:
+		_mark_grid_build_complete(generation)
+
+
+func _append_grid_batch(generation: int, batch_size: int) -> void:
+	if generation != _grid_generation or batch_size <= 0:
+		return
+	var batch: Array[EncyclopediaEntryCard] = []
+	var batch_end := mini(
+		_pending_grid_index + batch_size,
+		_pending_grid_entries.size()
+	)
+	while _pending_grid_index < batch_end:
+		var entry := _pending_grid_entries[_pending_grid_index]
+		var card := _obtain_card()
+		entry_grid.move_child(card, _cards.size())
+		card.setup(entry)
+		card.modulate.a = 0.0
+		card.visible = true
+		_cards.append(card)
+		batch.append(card)
+		_pending_grid_index += 1
+	_rebuild_card_focus_neighbours()
+	_fade_in_card_batch(batch)
+
+
+func _obtain_card() -> EncyclopediaEntryCard:
+	if not _card_pool.is_empty():
+		var reused_card := _card_pool.pop_back() as EncyclopediaEntryCard
+		reused_card.reset_interaction_state()
+		return reused_card
+	var card := ENTRY_CARD_SCENE.instantiate() as EncyclopediaEntryCard
+	entry_grid.add_child(card)
+	card.entry_pressed.connect(_on_card_pressed)
+	card.entry_focused.connect(_on_card_focused)
+	return card
+
+
+func _recycle_active_cards() -> void:
+	var focused_control := get_viewport().gui_get_focus_owner()
+	for card in _cards:
+		if focused_control == card.get_focus_control():
+			card.get_focus_control().release_focus()
+		card.visible = false
+		card.modulate.a = 1.0
+		_card_pool.append(card)
+	_cards.clear()
+
+
+func _fade_in_card_batch(batch: Array[EncyclopediaEntryCard]) -> void:
+	if batch.is_empty():
+		return
+	var fade_tween := create_tween().set_parallel(true)
+	for card in batch:
+		fade_tween.tween_property(
+			card,
+			"modulate:a",
+			1.0,
+			CARD_BATCH_FADE_DURATION
+		).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_card_batch_tweens.append(fade_tween)
+
+
+func _cancel_card_batch_tweens() -> void:
+	for tween in _card_batch_tweens:
+		if tween != null and tween.is_valid():
+			tween.kill()
+	_card_batch_tweens.clear()
+
+
+func is_grid_build_complete() -> bool:
+	return _completed_grid_generation == _grid_generation
+
+
+func _mark_grid_build_complete(generation: int) -> void:
+	if generation != _grid_generation:
+		return
+	_completed_grid_generation = generation
+	grid_build_completed.emit(generation)
 
 
 func _on_card_focused(entry: CodexEntryViewData) -> void:
+	_cancel_pending_scroll_restore()
 	var state: Dictionary = _section_states[_current_section]
 	state["selected_id"] = entry.entry_id
 
@@ -285,9 +403,19 @@ func _on_card_focused(entry: CodexEntryViewData) -> void:
 func _on_card_pressed(entry: CodexEntryViewData) -> void:
 	if entry.visibility_state != CodexVisibilityState.REVEALED:
 		return
+	_cancel_pending_scroll_restore()
 	var state: Dictionary = _section_states[_current_section]
 	state["selected_id"] = entry.entry_id
 	_open_detail(entry)
+
+
+func _on_grid_scroll_value_changed(value: float) -> void:
+	if _pending_scroll_restore and not is_zero_approx(value):
+		_cancel_pending_scroll_restore()
+
+
+func _cancel_pending_scroll_restore() -> void:
+	_pending_scroll_restore = false
 
 
 func _open_detail(entry: CodexEntryViewData) -> void:

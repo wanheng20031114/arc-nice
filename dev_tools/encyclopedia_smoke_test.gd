@@ -469,6 +469,7 @@ func _test_scene_contract() -> void:
 	root.add_child(screen)
 	current_scene = screen
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
 
 	_expect(
 		screen.enemy_button.text == "敌人  50"
@@ -751,6 +752,7 @@ func _test_short_filter_anchor(screen: EncyclopediaScreen) -> void:
 		"Enemy toolbar must expose the five-entry sorcerer filter."
 	)
 	await _wait_frames(4)
+	await _wait_for_grid_build(screen)
 	var cards: Array = screen.get("_cards")
 	_expect(
 		cards.size() == 5,
@@ -759,6 +761,7 @@ func _test_short_filter_anchor(screen: EncyclopediaScreen) -> void:
 	if cards.size() != 5:
 		_select_filter(screen, &"")
 		await _wait_frames(3)
+		await _wait_for_grid_build(screen)
 		return
 	var selected_card := cards[4] as EncyclopediaEntryCard
 	var selected_anchor_y := selected_card.global_position.y
@@ -783,6 +786,7 @@ func _test_short_filter_anchor(screen: EncyclopediaScreen) -> void:
 		"Changing filters while details are open must remain available."
 	)
 	await _wait_frames(4)
+	await _wait_for_grid_build(screen)
 	_expect(
 		int(screen.get("_grid_anchor_extra_bottom")) == 0
 		and screen.grid_margin.get_theme_constant(&"margin_bottom")
@@ -893,6 +897,7 @@ func _test_collectible_filter_visuals(screen: EncyclopediaScreen) -> void:
 			"Stackable filter must be selectable."
 		)
 		await _wait_frames(3)
+		await _wait_for_grid_build(screen)
 		var stackable_cards: Array = screen.get("_cards")
 		_expect(
 			stackable_cards.size() == stackable_count,
@@ -907,6 +912,7 @@ func _test_collectible_filter_visuals(screen: EncyclopediaScreen) -> void:
 
 	_expect(_select_filter(screen, &""), "Collectible filters must reset to all.")
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
 	await _switch_section(screen, screen.enemy_button)
 
 
@@ -915,6 +921,7 @@ func _test_search_filter_and_section_state(
 ) -> void:
 	_set_search_query(screen, "铃兰")
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
 	var search_cards: Array = screen.get("_cards")
 	_expect(
 		not search_cards.is_empty() and search_cards.size() < 50,
@@ -934,14 +941,17 @@ func _test_search_filter_and_section_state(
 
 	_set_search_query(screen, "")
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
 	var enemy_filter_key := &"yuanshi_insect"
 	_expect(
 		_select_filter(screen, enemy_filter_key),
 		"Enemy toolbar must expose the yuanshi_insect family filter."
 	)
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
 	_set_search_query(screen, "原石虫")
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
 	var enemy_cards: Array = screen.get("_cards")
 	_expect(
 		not enemy_cards.is_empty()
@@ -979,9 +989,11 @@ func _test_search_filter_and_section_state(
 		"Collectible toolbar must expose the rare filter."
 	)
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
 	var collectible_query := "指"
 	_set_search_query(screen, collectible_query)
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
 	var collectible_cards: Array = screen.get("_cards")
 	_expect(
 		not collectible_cards.is_empty()
@@ -1149,6 +1161,15 @@ func _switch_section(screen: EncyclopediaScreen, button: Button) -> void:
 		EncyclopediaScreen.SECTION_TRANSITION_DURATION + 0.06
 	).timeout
 	await _wait_frames(3)
+	await _wait_for_grid_build(screen)
+
+
+func _wait_for_grid_build(screen: EncyclopediaScreen) -> void:
+	for _frame in 180:
+		if screen.is_grid_build_complete():
+			return
+		await process_frame
+	_expect(false, "Encyclopedia grid build did not finish within 180 frames.")
 
 
 func _find_entry(

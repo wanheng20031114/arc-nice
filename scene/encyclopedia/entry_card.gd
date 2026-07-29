@@ -53,6 +53,12 @@ func get_focus_control() -> Button:
 	return select_button
 
 
+func reset_interaction_state() -> void:
+	_is_hovered = false
+	_is_focused = false
+	select_button.release_focus()
+
+
 func set_focus_neighbours(
 	left: Control,
 	right: Control,
