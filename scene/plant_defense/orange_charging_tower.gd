@@ -3,6 +3,7 @@ class_name OrangeChargingTower
 
 const PLAYER_CHARGE_SOURCE_NAMESPACE := 6_400_000_000
 const PLAYER_RECONCILE_SECONDS := 0.10
+const VISUAL_CYCLE_DURATION_SECONDS := 2.4
 
 @onready var orange_layers: Sprite2D = $VisualRoot/OrangeLayers
 @onready var glass_cycle_glow: Sprite2D = $VisualRoot/GlassCycleGlow
@@ -45,7 +46,9 @@ func _on_setup_completed() -> void:
 		return
 	player_charge_source_id = _make_player_charge_source_id()
 	var cycle_offset := (
-		float(posmod(player_charge_source_id, 997)) / 997.0 * 3.2
+		float(posmod(player_charge_source_id, 997))
+		/ 997.0
+		* VISUAL_CYCLE_DURATION_SECONDS
 	)
 	orange_layers.set_instance_shader_parameter(
 		&"cycle_offset_seconds",

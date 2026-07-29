@@ -32,6 +32,9 @@ const GLASS_TEXTURE := preload(
 const ORANGE_CYCLE_MATERIAL := preload(
 	"res://resources/shader/orange_charging_tower_orange_cycle.tres"
 )
+const GLASS_CYCLE_MATERIAL := preload(
+	"res://resources/shader/orange_charging_tower_glass_cycle.tres"
+)
 const CYCLE_SHADER := preload(
 	"res://resources/shader/orange_charging_tower_cycle.gdshader"
 )
@@ -47,10 +50,9 @@ const RENDER_SIZE := Vector2i(160, 160)
 const RENDER_SPRITE_CENTER := Vector2(80.0, 80.0)
 const SOURCE_TOP_LEFT := Vector2i(16, 16)
 const SOURCE_LAYER_BANDS := [
-	Vector2i(73, 85),
-	Vector2i(59, 73),
-	Vector2i(47, 59),
-	Vector2i(34, 47),
+	Vector2i(59, 69),
+	Vector2i(49, 59),
+	Vector2i(37, 49),
 ]
 
 var failures: Array[String] = []
@@ -79,6 +81,7 @@ func _run() -> void:
 	_test_config_scene_and_asset_contracts()
 	await _test_player_exact_range_stacking_and_lifecycle()
 	await _test_building_aura_index_and_cleanup()
+	await _test_source_first_target_event_order()
 	await _test_proxy_derived_player_state()
 	await _test_cycle_shader_render_contract()
 
@@ -190,6 +193,7 @@ func _test_config_scene_and_asset_contracts() -> void:
 	var body_image := BODY_TEXTURE.get_image()
 	var orange_image := ORANGE_TEXTURE.get_image()
 	var glass_image := GLASS_TEXTURE.get_image()
+	var body_rect := body_image.get_used_rect()
 	_expect(
 		_count_visible_pixels(body_image, 0.01) > 1800
 		and _count_visible_pixels(orange_image, 0.01) > 120
@@ -200,6 +204,30 @@ func _test_config_scene_and_asset_contracts() -> void:
 		< _count_visible_pixels(body_image, 0.01),
 		"动画必须使用从单塔拆出的橘片/玻璃责任层，不能塞入多帧完整塔图。"
 	)
+	_expect(
+		body_rect.size.y <= 106
+		and body_rect.size.x >= body_rect.size.y
+		and _count_visible_pixels_in_rect(
+			glass_image,
+			Rect2i(52, 35, 24, 34),
+			0.01
+		) > 400
+		and _count_visible_pixels_in_rect(
+			glass_image,
+			Rect2i(34, 59, 61, 10),
+			0.01
+		) > 450,
+		"三层定稿必须真正压低为宽体轮廓；两侧玻璃必须向中心延伸并完整覆盖最底层。"
+	)
+	for source_band in SOURCE_LAYER_BANDS:
+		_expect(
+			_count_visible_pixels_in_rect(
+				orange_image,
+				Rect2i(28, source_band.x, 72, source_band.y - source_band.x),
+				0.01
+			) > 80,
+			"每个橘片责任带都必须保留足够的128像素细节。"
+		)
 	_expect(
 		tower.get_aura_cell_rect() == EXPECTED_AURA_RECT
 		and aura_rectangle.size == Vector2(64.0, 64.0),
@@ -453,6 +481,64 @@ func _test_building_aura_index_and_cleanup() -> void:
 	await process_frame
 
 
+func _test_source_first_target_event_order() -> void:
+	var source := _make_tower(_footprint(Vector2i(30, 30)))
+	_register_fixture_plant(source, source.footprint_cells)
+	var source_id := source.get_support_source_id()
+
+	var late_defense := PlantDefense.new()
+	late_defense.name = "LateDefense"
+	plant_container.add_child(late_defense)
+	var defense_cells := _footprint(Vector2i(31, 31))
+	late_defense.setup(AGAVE_CONFIG, null, defense_cells)
+	_register_fixture_plant(late_defense, defense_cells)
+
+	var late_production := WOOD_STATION_SCENE.instantiate() as ProductionBuilding
+	late_production.name = "LateProduction"
+	plant_container.add_child(late_production)
+	var production_cells := _footprint(Vector2i(29, 31))
+	late_production.setup(WOOD_STATION_CONFIG, null, production_cells)
+	_register_fixture_plant(late_production, production_cells)
+
+	var tracked_targets: Dictionary = aura_coordinator.source_targets.get(
+		source_id,
+		{}
+	)
+	_expect(
+		is_equal_approx(
+			late_defense.get_attack_interval_multiplier(),
+			BUILDING_INTERVAL_MULTIPLIER
+		)
+		and is_equal_approx(
+			late_production.get_production_duration_multiplier(),
+			BUILDING_INTERVAL_MULTIPLIER
+		)
+		and tracked_targets.has(late_defense)
+		and tracked_targets.has(late_production),
+		"来源先放置时，后续建筑必须仅凭plant_placed事件立即接入既有4×4格索引。"
+	)
+
+	_unregister_fixture_plant(late_defense)
+	_unregister_fixture_plant(late_production)
+	tracked_targets = aura_coordinator.source_targets.get(source_id, {})
+	_expect(
+		is_equal_approx(late_defense.get_attack_interval_multiplier(), 1.0)
+		and is_equal_approx(
+			late_production.get_production_duration_multiplier(),
+			1.0
+		)
+		and not tracked_targets.has(late_defense)
+		and not tracked_targets.has(late_production),
+		"目标单独移除时必须立即清理来源反向索引和全部倍率。"
+	)
+
+	_unregister_fixture_plant(source)
+	for plant in [late_defense, late_production, source]:
+		if is_instance_valid(plant):
+			plant.queue_free()
+	await process_frame
+
+
 func _test_proxy_derived_player_state() -> void:
 	var local_player := await _make_player()
 	local_player.uses_local_input = true
@@ -497,15 +583,17 @@ func _test_proxy_derived_player_state() -> void:
 func _test_cycle_shader_render_contract() -> void:
 	var shader_code := CYCLE_SHADER.code
 	_expect(
-		shader_code.contains("LAYER_SECONDS * 4.0")
+		shader_code.contains("LAYER_SECONDS * 3.0")
 		and shader_code.contains(
 			"active_layer = floor(sequence_time / LAYER_SECONDS)"
 		)
+		and shader_code.contains("cycle_time_override_seconds >= 0.0")
+		and shader_code.contains("0.16 + layer_match * 0.84")
 		and shader_code.contains("smoothstep(0.56, 0.78")
 		and shader_code.contains(
 			"result.a *= clamp(visible_strength, 0.0, 1.0)"
 		),
-		"四层shader必须使用单一活动层、0.78后的严格黑场与零alpha关闭契约。"
+		"三层shader必须使用单一活动层、0.78后的严格黑场与零alpha关闭契约。"
 	)
 	var rendering_driver := RenderingServer.get_current_rendering_driver_name()
 	if (
@@ -532,11 +620,35 @@ func _test_cycle_shader_render_contract() -> void:
 	sprite.material = ORANGE_CYCLE_MATERIAL.duplicate()
 	viewport.add_child(sprite)
 
-	# TIME and get_ticks_msec share engine uptime closely enough to pin a phase;
-	# refresh the offset before each capture so shader compilation cannot drift it.
+	var orange_rendered := await _verify_rendered_responsibility_cycle(
+		sprite,
+		viewport,
+		"橘片",
+		0.18
+	)
+	if orange_rendered:
+		sprite.texture = GLASS_TEXTURE
+		sprite.material = GLASS_CYCLE_MATERIAL.duplicate()
+		await _verify_rendered_responsibility_cycle(
+			sprite,
+			viewport,
+			"玻璃",
+			0.35
+		)
+
+	viewport.queue_free()
+	await process_frame
+
+
+func _verify_rendered_responsibility_cycle(
+	sprite: Sprite2D,
+	viewport: SubViewport,
+	role_name: String,
+	maximum_other_delta_ratio: float
+) -> bool:
 	var black_frame := await _capture_cycle_phase(sprite, viewport, 0.79)
 	var active_frames: Array[Image] = []
-	for layer_index in 4:
+	for layer_index in 3:
 		active_frames.append(
 			await _capture_cycle_phase(
 				sprite,
@@ -547,7 +659,7 @@ func _test_cycle_shader_render_contract() -> void:
 	var render_readback_available := (
 		black_frame != null
 		and not black_frame.is_empty()
-		and active_frames.size() == 4
+		and active_frames.size() == 3
 	)
 	for active_image in active_frames:
 		render_readback_available = (
@@ -557,49 +669,49 @@ func _test_cycle_shader_render_contract() -> void:
 		)
 	if not render_readback_available:
 		print(
-			"ORANGE_CYCLE_RENDER_SKIPPED: viewport readback unavailable; "
+			"ORANGE_CYCLE_RENDER_SKIPPED: %s viewport readback unavailable; "
+			% role_name
 			+ "static shader and source-alpha contracts passed."
 		)
-	else:
-		var black_visible := _count_visible_pixels(black_frame, 0.01)
-		_expect(
-			black_visible == 0,
-			"0.79相位必须是严格透明黑场，当前仍有%d个可见像素。"
-			% black_visible
+		return false
+	var black_visible := _count_visible_pixels(black_frame, 0.01)
+	_expect(
+		black_visible == 0,
+		"%s责任层的0.79相位必须是严格透明黑场，当前仍有%d个可见像素。"
+		% [role_name, black_visible]
+	)
+	for layer_index in 3:
+		var active_image := active_frames[layer_index]
+		var own_delta := _maximum_band_luminance_delta(
+			active_image,
+			black_frame,
+			SOURCE_LAYER_BANDS[layer_index]
 		)
-		for layer_index in 4:
-			var active_image := active_frames[layer_index]
-			var own_delta := _maximum_band_luminance_delta(
-				active_image,
-				black_frame,
-				SOURCE_LAYER_BANDS[layer_index]
-			)
-			var strongest_other_delta := 0.0
-			for other_index in 4:
-				if other_index == layer_index:
-					continue
-				strongest_other_delta = maxf(
-					strongest_other_delta,
-					_maximum_band_luminance_delta(
-						active_image,
-						black_frame,
-						SOURCE_LAYER_BANDS[other_index]
-					)
+		var strongest_other_delta := 0.0
+		for other_index in 3:
+			if other_index == layer_index:
+				continue
+			strongest_other_delta = maxf(
+				strongest_other_delta,
+				_maximum_band_luminance_delta(
+					active_image,
+					black_frame,
+					SOURCE_LAYER_BANDS[other_index]
 				)
-			_expect(
-				own_delta >= 0.08
-				and strongest_other_delta <= own_delta * 0.18,
-				"激活第%d层时必须只有该橘片层明显发亮（自身%.3f，其他%.3f）。"
-				% [layer_index + 1, own_delta, strongest_other_delta]
 			)
-			_expect(
-				active_image.get_pixel(0, 0).a <= 0.001
-				and active_image.get_pixel(159, 159).a <= 0.001,
-				"真实shader渲染不得把责任贴图透明角落扩成矩形色带。"
-			)
-
-	viewport.queue_free()
-	await process_frame
+		_expect(
+			own_delta >= 0.08
+			and strongest_other_delta
+			<= own_delta * maximum_other_delta_ratio,
+			"%s激活第%d层时必须以该层为主发亮（自身%.3f，其他%.3f）。"
+			% [role_name, layer_index + 1, own_delta, strongest_other_delta]
+		)
+		_expect(
+			active_image.get_pixel(0, 0).a <= 0.001
+			and active_image.get_pixel(159, 159).a <= 0.001,
+			"%s真实shader渲染不得把透明角落扩成矩形色带。" % role_name
+		)
+	return true
 
 
 func _capture_cycle_phase(
@@ -607,10 +719,9 @@ func _capture_cycle_phase(
 	viewport: SubViewport,
 	sequence_seconds: float
 ) -> Image:
-	var uptime_seconds := float(Time.get_ticks_msec()) / 1000.0
 	sprite.set_instance_shader_parameter(
-		&"cycle_offset_seconds",
-		sequence_seconds - uptime_seconds
+		&"cycle_time_override_seconds",
+		sequence_seconds
 	)
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	await process_frame
@@ -716,6 +827,22 @@ func _count_visible_pixels(image: Image, alpha_threshold: float) -> int:
 	var count := 0
 	for y in image.get_height():
 		for x in image.get_width():
+			if image.get_pixel(x, y).a > alpha_threshold:
+				count += 1
+	return count
+
+
+func _count_visible_pixels_in_rect(
+	image: Image,
+	rect: Rect2i,
+	alpha_threshold: float
+) -> int:
+	if image == null or image.is_empty():
+		return 0
+	var clipped := rect.intersection(Rect2i(Vector2i.ZERO, image.get_size()))
+	var count := 0
+	for y in range(clipped.position.y, clipped.end.y):
+		for x in range(clipped.position.x, clipped.end.x):
 			if image.get_pixel(x, y).a > alpha_threshold:
 				count += 1
 	return count

@@ -5,6 +5,9 @@ render_mode unshaded, blend_mix;
 // instance offset derived from the tower's stable id, so many towers do not
 // peak on the same rendered frame.
 instance uniform float cycle_offset_seconds = 0.0;
+// Runtime keeps this negative and follows TIME. Deterministic render audits can
+// inject an exact sequence time instead of guessing the renderer's clock.
+instance uniform float cycle_time_override_seconds = -1.0;
 
 // Keep the complete PlantDefense lifecycle contract on emissive overlays.
 instance uniform float construction_progress : hint_range(0.0, 1.0) = 1.0;
@@ -38,18 +41,15 @@ void vertex() {
 
 
 float authored_layer_from_y(float pixel_y) {
-	// Source-space bands, ordered from bottom (0) to top (3).
-	if (pixel_y >= 73.0 && pixel_y < 85.0) {
+	// Source-space bands, ordered from bottom (0) to top (2).
+	if (pixel_y >= 59.0 && pixel_y < 69.0) {
 		return 0.0;
 	}
-	if (pixel_y >= 59.0 && pixel_y < 73.0) {
+	if (pixel_y >= 49.0 && pixel_y < 59.0) {
 		return 1.0;
 	}
-	if (pixel_y >= 47.0 && pixel_y < 59.0) {
+	if (pixel_y >= 37.0 && pixel_y < 49.0) {
 		return 2.0;
-	}
-	if (pixel_y >= 34.0 && pixel_y < 47.0) {
-		return 3.0;
 	}
 	return -8.0;
 }
@@ -57,7 +57,11 @@ float authored_layer_from_y(float pixel_y) {
 
 float cycle_strength(out float active_layer) {
 	const float LAYER_SECONDS = 0.80;
-	float sequence_time = mod(TIME + cycle_offset_seconds, LAYER_SECONDS * 4.0);
+	float authored_time = TIME + cycle_offset_seconds;
+	if (cycle_time_override_seconds >= 0.0) {
+		authored_time = cycle_time_override_seconds;
+	}
+	float sequence_time = mod(authored_time, LAYER_SECONDS * 3.0);
 	active_layer = floor(sequence_time / LAYER_SECONDS);
 	float local_phase = mod(sequence_time, LAYER_SECONDS) / LAYER_SECONDS;
 	float fade_in = smoothstep(0.0, 0.18, local_phase);

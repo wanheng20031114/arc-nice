@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build the layered 128 px Orange Charging Tower runtime textures.
 
-The image generator supplies one approved, composited 128x128 source.  Runtime
+The image generator supplies one approved, composited 128x128 source. Runtime
 animation reuses transparent responsibility layers instead of swapping complete
-tower frames: a dormant body, the four orange slices, and the two glass panes.
+tower frames: a dormant body, the three orange slices, and the two glass panes.
 """
 
 from __future__ import annotations
@@ -17,14 +17,13 @@ from PIL import Image, ImageDraw
 CANVAS_SIZE = (128, 128)
 TRANSPARENT = (0, 0, 0, 0)
 SLICE_RECTS = (
-    (38, 35, 91, 47),
-    (38, 47, 91, 59),
-    (36, 59, 93, 73),
-    (38, 73, 91, 84),
+    (45, 37, 83, 49),
+    (44, 49, 84, 60),
+    (31, 59, 97, 69),
 )
 GLASS_POLYGONS = (
-    ((34, 32), (48, 36), (48, 75), (35, 72)),
-    ((80, 36), (94, 32), (93, 72), (80, 75)),
+    ((34, 34), (59, 35), (59, 69), (34, 67)),
+    ((69, 35), (94, 34), (94, 67), (69, 69)),
 )
 
 
@@ -134,17 +133,6 @@ def build_layers(
                     pixel[2],
                     max(78, min(188, round(pixel[3] * 0.58))),
                 )
-            elif _is_orange(pixel) and (x < 42 or x > 86):
-                # Remove the baked active orange band from the static glass;
-                # the dedicated glass shader will recreate it for every layer.
-                luminance = max(pixel[0], pixel[1])
-                body_pixels[x, y] = (
-                    34,
-                    min(112, 54 + luminance // 5),
-                    min(118, 62 + luminance // 5),
-                    116,
-                )
-
             glass_glow_pixels[x, y] = (255, 170, 72, mask_alpha)
 
     output_dir.mkdir(parents=True, exist_ok=True)
