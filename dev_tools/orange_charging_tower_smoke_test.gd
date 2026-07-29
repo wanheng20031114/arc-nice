@@ -20,6 +20,10 @@ const WOOD_STATION_CONFIG := preload(
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
+const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
+const LINGLAN_BOSS_SCENE := preload(
+	"res://scene/boss/linglan/linglan_boss.tscn"
+)
 const BODY_TEXTURE := preload(
 	"res://resources/texture/plant_defense/orange_charging_tower/body.png"
 )
@@ -161,6 +165,18 @@ func _test_config_scene_and_asset_contracts() -> void:
 	var tower := _make_tower(_footprint(Vector2i(10, 10)))
 	var visual_root := tower.get_node("VisualRoot") as Node2D
 	var body := tower.get_node("VisualRoot/Body") as Sprite2D
+	var lower_body_left := tower.get_node(
+		"VisualRoot/LowerBodyLeft"
+	) as Sprite2D
+	var lower_body_right := tower.get_node(
+		"VisualRoot/LowerBodyRight"
+	) as Sprite2D
+	var upper_chamber := tower.get_node(
+		"VisualRoot/UpperChamber"
+	) as Sprite2D
+	var upper_chamber_rim := tower.get_node(
+		"VisualRoot/UpperChamberRim"
+	) as Sprite2D
 	var orange_layers := tower.get_node(
 		"VisualRoot/OrangeLayers"
 	) as Sprite2D
@@ -175,16 +191,100 @@ func _test_config_scene_and_asset_contracts() -> void:
 	var night_light := tower.get_node(
 		"ChamberNightLight"
 	) as NightPointLight2D
+	var lower_body_region := body.texture as AtlasTexture
+	var lower_body_left_region := lower_body_left.texture as AtlasTexture
+	var lower_body_right_region := lower_body_right.texture as AtlasTexture
+	var upper_chamber_region := upper_chamber.texture as AtlasTexture
+	var upper_chamber_rim_region := upper_chamber_rim.texture as AtlasTexture
 
 	_expect(
 		visual_root.scale.is_equal_approx(EXPECTED_VISUAL_SCALE)
 		and Vector2(BODY_TEXTURE.get_size()) * visual_root.scale
 		== EXPECTED_DISPLAY_SIZE
+		and not visual_root.y_sort_enabled
 		and body.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and lower_body_left.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and lower_body_right.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and upper_chamber.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
+		and upper_chamber_rim.texture_filter
+		== CanvasItem.TEXTURE_FILTER_NEAREST
 		and orange_layers.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
-		and glass_layers.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		and glass_layers.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and body.centered
+		and lower_body_left.centered
+		and lower_body_right.centered
+		and upper_chamber.centered
+		and upper_chamber_rim.centered,
 		"128×128主视觉必须仅通过0.25整数比例显示为32×32，并保持最近邻采样。"
 	)
+	_expect(
+		lower_body_region != null
+		and lower_body_left_region != null
+		and lower_body_right_region != null
+		and upper_chamber_region != null
+		and upper_chamber_rim_region != null
+		and lower_body_region.atlas == BODY_TEXTURE
+		and lower_body_left_region.atlas == BODY_TEXTURE
+		and lower_body_right_region.atlas == BODY_TEXTURE
+		and upper_chamber_region.atlas == BODY_TEXTURE
+		and upper_chamber_rim_region.atlas == BODY_TEXTURE
+		and lower_body_region.region == Rect2(0, 80, 128, 48)
+		and lower_body_left_region.region == Rect2(0, 74, 27, 6)
+		and lower_body_right_region.region == Rect2(101, 74, 27, 6)
+		and upper_chamber_region.region == Rect2(0, 0, 128, 74)
+		and upper_chamber_rim_region.region == Rect2(27, 74, 74, 6)
+		and body.offset == Vector2(0, 40)
+		and lower_body_left.offset == Vector2(-50.5, 13)
+		and lower_body_right.offset == Vector2(50.5, 13)
+		and upper_chamber.offset == Vector2(0, -27)
+		and upper_chamber_rim.offset == Vector2(0, 13)
+		and body.position == Vector2.ZERO
+		and lower_body_left.position == Vector2.ZERO
+		and lower_body_right.position == Vector2.ZERO
+		and upper_chamber.position == Vector2.ZERO
+		and upper_chamber_rim.position == Vector2.ZERO
+		and orange_layers.texture == ORANGE_TEXTURE
+		and glass_layers.texture == GLASS_TEXTURE
+		and orange_layers.position == Vector2.ZERO
+		and glass_layers.position == Vector2.ZERO
+		and orange_layers.offset == Vector2.ZERO
+		and glass_layers.offset == Vector2.ZERO,
+		"橘充能塔必须用无重叠互补Atlas保留圈外底座，并把蓝圈中央舱体无损复原到原坐标。"
+	)
+	var player_z_fixture := PLAYER_SCENE.instantiate()
+	var enemy_z_fixture := ENEMY_SCENE.instantiate()
+	var boss_z_fixture := LINGLAN_BOSS_SCENE.instantiate()
+	var player_sprite := player_z_fixture.get_node_or_null(
+		"BodySprite"
+	) as CanvasItem
+	var enemy_sprite := enemy_z_fixture.get_node_or_null(
+		"AnimatedSprite2D"
+	) as CanvasItem
+	var boss_sprite := boss_z_fixture.get_node_or_null(
+		"AnimatedSprite2D"
+	) as CanvasItem
+	_expect(
+		player_sprite != null
+		and _effective_z_index(player_sprite) == 1
+		and enemy_sprite != null
+		and _effective_z_index(enemy_sprite) == 2
+		and boss_sprite != null
+		and _effective_z_index(boss_sprite) == 3
+		and _effective_z_index(body) == 1
+		and _effective_z_index(lower_body_left) == 1
+		and _effective_z_index(lower_body_right) == 1
+		and _effective_z_index(upper_chamber) == 4
+		and _effective_z_index(upper_chamber_rim) == 4
+		and _effective_z_index(orange_layers) == 5
+		and _effective_z_index(glass_layers) == 6,
+		"橘充能塔必须严格保持玩家1 < 敌人2 < 首领3 < 蓝圈舱体4 < 橘片5 < 玻璃6。"
+	)
+	player_z_fixture.free()
+	enemy_z_fixture.free()
+	boss_z_fixture.free()
 	for texture in [BODY_TEXTURE, ORANGE_TEXTURE, GLASS_TEXTURE]:
 		_expect(
 			texture.get_size() == Vector2(EXPECTED_SOURCE_SIZE),
@@ -248,13 +348,59 @@ func _test_config_scene_and_asset_contracts() -> void:
 		and not night_light.shadow_enabled,
 		"夜间扩散光必须是低开销无阴影橘光，并保持审定强度与范围。"
 	)
-	var lifecycle_paths: Array[NodePath] = tower.lifecycle_visual_paths
 	_expect(
-		lifecycle_paths.has(NodePath("VisualRoot/Body"))
-		and lifecycle_paths.has(NodePath("VisualRoot/OrangeLayers"))
-		and lifecycle_paths.has(NodePath("VisualRoot/GlassCycleGlow")),
-		"塔身、橘片与玻璃层必须一起参加施工、受伤状态和拆除生命周期。"
+		tower.lifecycle_visual_paths.size() == 7
+		and tower.lifecycle_visual_paths.has(NodePath("VisualRoot/Body"))
+		and tower.lifecycle_visual_paths.has(
+			NodePath("VisualRoot/LowerBodyLeft")
+		)
+		and tower.lifecycle_visual_paths.has(
+			NodePath("VisualRoot/LowerBodyRight")
+		)
+		and tower.lifecycle_visual_paths.has(
+			NodePath("VisualRoot/UpperChamber")
+		)
+		and tower.lifecycle_visual_paths.has(
+			NodePath("VisualRoot/UpperChamberRim")
+		)
+		and tower.lifecycle_visual_paths.has(
+			NodePath("VisualRoot/OrangeLayers")
+		)
+		and tower.lifecycle_visual_paths.has(
+			NodePath("VisualRoot/GlassCycleGlow")
+		)
+		and body.material == lower_body_left.material
+		and body.material == lower_body_right.material
+		and body.material == upper_chamber.material
+		and body.material == upper_chamber_rim.material,
+		"互补塔身、前景舱体、橘片与玻璃层必须一起参加施工、受伤状态和拆除生命周期。"
 	)
+	tower.call("_set_lifecycle_parameter", &"construction_progress", 0.375)
+	_expect(
+		is_equal_approx(float(body.get_instance_shader_parameter(
+			&"construction_progress"
+		)), 0.375)
+		and is_equal_approx(float(lower_body_left.get_instance_shader_parameter(
+			&"construction_progress"
+		)), 0.375)
+		and is_equal_approx(float(lower_body_right.get_instance_shader_parameter(
+			&"construction_progress"
+		)), 0.375)
+		and is_equal_approx(float(upper_chamber.get_instance_shader_parameter(
+			&"construction_progress"
+		)), 0.375)
+		and is_equal_approx(float(upper_chamber_rim.get_instance_shader_parameter(
+			&"construction_progress"
+		)), 0.375)
+		and is_equal_approx(float(orange_layers.get_instance_shader_parameter(
+			&"construction_progress"
+		)), 0.375)
+		and is_equal_approx(float(glass_layers.get_instance_shader_parameter(
+			&"construction_progress"
+		)), 0.375),
+		"后层、蓝圈前景与动态责任层必须同步接收同一生命周期进度。"
+	)
+	tower.call("_set_lifecycle_parameter", &"construction_progress", 1.0)
 	tower.queue_free()
 
 
@@ -866,6 +1012,17 @@ func _maximum_band_luminance_delta(
 				- black_image.get_pixel(x, y).get_luminance()
 			)
 	return maximum_delta
+
+
+func _effective_z_index(item: CanvasItem) -> int:
+	var effective_z := 0
+	var current: CanvasItem = item
+	while current != null:
+		effective_z += current.z_index
+		if not current.z_as_relative:
+			break
+		current = current.get_parent() as CanvasItem
+	return effective_z
 
 
 func _stop_audio_players(node: Node) -> void:

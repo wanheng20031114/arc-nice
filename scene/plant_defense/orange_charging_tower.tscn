@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=24 format=3]
 
 [ext_resource type="Script" path="res://scene/plant_defense/orange_charging_tower.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/plant_defense/orange_charging_tower/body.png" id="2_body"]
@@ -45,6 +45,26 @@ scale_min = 0.65
 scale_max = 1.15
 color = Color(1, 0.42, 0.07, 0.72)
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_body_lower"]
+atlas = ExtResource("2_body")
+region = Rect2(0, 80, 128, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_body_lower_left"]
+atlas = ExtResource("2_body")
+region = Rect2(0, 74, 27, 6)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_body_lower_right"]
+atlas = ExtResource("2_body")
+region = Rect2(101, 74, 27, 6)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_body_upper_chamber"]
+atlas = ExtResource("2_body")
+region = Rect2(0, 0, 128, 74)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_body_upper_rim"]
+atlas = ExtResource("2_body")
+region = Rect2(27, 74, 74, 6)
+
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 resource_local_to_scene = true
 size = Vector2(28, 27)
@@ -63,7 +83,7 @@ collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
 enemy_approach_depth = 7.0
-lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/Body"), NodePath("VisualRoot/OrangeLayers"), NodePath("VisualRoot/GlassCycleGlow")])
+lifecycle_visual_paths = Array[NodePath]([NodePath("VisualRoot/Body"), NodePath("VisualRoot/LowerBodyLeft"), NodePath("VisualRoot/LowerBodyRight"), NodePath("VisualRoot/UpperChamber"), NodePath("VisualRoot/UpperChamberRim"), NodePath("VisualRoot/OrangeLayers"), NodePath("VisualRoot/GlassCycleGlow")])
 lifecycle_effect_top_y = -16.0
 lifecycle_effect_bottom_y = 16.0
 lifecycle_particle_scale = 1.1
@@ -93,16 +113,45 @@ scale = Vector2(0.25, 0.25)
 z_index = 1
 texture_filter = 1
 material = ExtResource("5_lifecycle")
-texture = ExtResource("2_body")
+offset = Vector2(0, 40)
+texture = SubResource("AtlasTexture_body_lower")
+
+[node name="LowerBodyLeft" type="Sprite2D" parent="VisualRoot"]
+z_index = 1
+texture_filter = 1
+material = ExtResource("5_lifecycle")
+offset = Vector2(-50.5, 13)
+texture = SubResource("AtlasTexture_body_lower_left")
+
+[node name="LowerBodyRight" type="Sprite2D" parent="VisualRoot"]
+z_index = 1
+texture_filter = 1
+material = ExtResource("5_lifecycle")
+offset = Vector2(50.5, 13)
+texture = SubResource("AtlasTexture_body_lower_right")
+
+[node name="UpperChamber" type="Sprite2D" parent="VisualRoot"]
+z_index = 4
+texture_filter = 1
+material = ExtResource("5_lifecycle")
+offset = Vector2(0, -27)
+texture = SubResource("AtlasTexture_body_upper_chamber")
+
+[node name="UpperChamberRim" type="Sprite2D" parent="VisualRoot"]
+z_index = 4
+texture_filter = 1
+material = ExtResource("5_lifecycle")
+offset = Vector2(0, 13)
+texture = SubResource("AtlasTexture_body_upper_rim")
 
 [node name="OrangeLayers" type="Sprite2D" parent="VisualRoot"]
-z_index = 2
+z_index = 5
 texture_filter = 1
 material = ExtResource("6_orange_cycle")
 texture = ExtResource("3_orange")
 
 [node name="GlassCycleGlow" type="Sprite2D" parent="VisualRoot"]
-z_index = 3
+z_index = 6
 texture_filter = 1
 material = ExtResource("7_glass_cycle")
 texture = ExtResource("4_glass")
