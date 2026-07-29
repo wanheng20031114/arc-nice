@@ -27,6 +27,9 @@ const LINGLAN_BOSS_SCENE := preload(
 const BODY_TEXTURE := preload(
 	"res://resources/texture/plant_defense/orange_charging_tower/body.png"
 )
+const ICON_TEXTURE := preload(
+	"res://resources/texture/plant_defense/orange_charging_tower/icon.png"
+)
 const ORANGE_TEXTURE := preload(
 	"res://resources/texture/plant_defense/orange_charging_tower/orange_layers_glow.png"
 )
@@ -53,6 +56,7 @@ const BUILDING_INTERVAL_MULTIPLIER := 0.8
 const RENDER_SIZE := Vector2i(160, 160)
 const RENDER_SPRITE_CENTER := Vector2(80.0, 80.0)
 const SOURCE_TOP_LEFT := Vector2i(16, 16)
+const EXPECTED_MIGRATED_BOTTOM_HIGHLIGHTS := 29
 const SOURCE_LAYER_BANDS := [
 	Vector2i(59, 69),
 	Vector2i(49, 59),
@@ -296,6 +300,7 @@ func _test_config_scene_and_asset_contracts() -> void:
 			"塔身、橘片与玻璃责任贴图必须全部保持128×128源尺寸。"
 		)
 	var body_image := BODY_TEXTURE.get_image()
+	var icon_image := ICON_TEXTURE.get_image()
 	var orange_image := ORANGE_TEXTURE.get_image()
 	var glass_image := GLASS_TEXTURE.get_image()
 	var body_rect := body_image.get_used_rect()
@@ -323,6 +328,28 @@ func _test_config_scene_and_asset_contracts() -> void:
 			0.01
 		) > 450,
 		"三层定稿必须真正压低为宽体轮廓；两侧玻璃必须向中心延伸并完整覆盖最底层。"
+	)
+	var migrated_bottom_highlights := 0
+	var migrated_bottom_contract_valid := true
+	for y in range(64, 69):
+		for x in range(48, 80):
+			var source_color := icon_image.get_pixel(x, y)
+			if not _is_baked_bottom_highlight_color(source_color):
+				continue
+			migrated_bottom_highlights += 1
+			var body_color := body_image.get_pixel(x, y)
+			var responsibility_color := orange_image.get_pixel(x, y)
+			migrated_bottom_contract_valid = (
+				migrated_bottom_contract_valid
+				and responsibility_color.is_equal_approx(source_color)
+				and body_color.a >= 0.99
+				and body_color.get_luminance() <= 0.42
+			)
+	_expect(
+		migrated_bottom_highlights
+		== EXPECTED_MIGRATED_BOTTOM_HIGHLIGHTS
+		and migrated_bottom_contract_valid,
+		"最底层29个烘焙高光必须从常驻body迁入活动橘片，并补为同排暗态颜色。"
 	)
 	for source_band in SOURCE_LAYER_BANDS:
 		_expect(
@@ -1204,6 +1231,32 @@ func _count_visible_pixels_in_rect(
 			if image.get_pixel(x, y).a > alpha_threshold:
 				count += 1
 	return count
+
+
+func _is_pipeline_orange_color(color: Color) -> bool:
+	var red := roundi(color.r * 255.0)
+	var green := roundi(color.g * 255.0)
+	var blue := roundi(color.b * 255.0)
+	return (
+		color.a > 0.0
+		and red >= 82
+		and float(red) >= float(green) * 1.18
+		and float(green) >= float(blue) * 0.95
+		and red - blue >= 34
+	)
+
+
+func _is_baked_bottom_highlight_color(color: Color) -> bool:
+	var red := roundi(color.r * 255.0)
+	var green := roundi(color.g * 255.0)
+	var blue := roundi(color.b * 255.0)
+	return (
+		not _is_pipeline_orange_color(color)
+		and color.a > 0.0
+		and red >= 240
+		and green >= 210
+		and blue <= 135
+	)
 
 
 func _maximum_band_luminance_delta(

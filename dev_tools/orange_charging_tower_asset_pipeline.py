@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from statistics import median
 
 from PIL import Image, ImageDraw
 
@@ -25,6 +26,8 @@ GLASS_POLYGONS = (
     ((34, 34), (59, 35), (59, 69), (34, 67)),
     ((69, 35), (94, 34), (94, 67), (69, 69)),
 )
+BOTTOM_BAKED_HIGHLIGHT_RECT = (48, 64, 80, 69)
+EXPECTED_BOTTOM_BAKED_HIGHLIGHT_COUNT = 29
 
 
 def _is_orange(pixel: tuple[int, int, int, int]) -> bool:
@@ -55,6 +58,42 @@ def _darken_orange(pixel: tuple[int, int, int, int]) -> tuple[int, int, int, int
         max(30, round(green * 0.48)),
         max(13, round(blue * 0.62)),
         alpha,
+    )
+
+
+def _is_baked_bottom_highlight(
+    x: int,
+    y: int,
+    pixel: tuple[int, int, int, int],
+) -> bool:
+    left, top, right, bottom = BOTTOM_BAKED_HIGHLIGHT_RECT
+    if not (left <= x < right and top <= y < bottom):
+        return False
+    red, green, blue, alpha = pixel
+    return (
+        not _is_orange(pixel)
+        and alpha > 0
+        and red >= 240
+        and green >= 210
+        and blue <= 135
+    )
+
+
+def _bottom_dormant_row_color(
+    source_pixels,
+    y: int,
+) -> tuple[int, int, int]:
+    left, _, right, _ = BOTTOM_BAKED_HIGHLIGHT_RECT
+    darkened_neighbors = [
+        _darken_orange(source_pixels[x, y])
+        for x in range(left, right)
+        if _is_orange(source_pixels[x, y])
+    ]
+    if not darkened_neighbors:
+        raise ValueError(f"Bottom orange slice row {y} has no dormant colors.")
+    return tuple(
+        int(median(pixel[channel] for pixel in darkened_neighbors))
+        for channel in range(3)
     )
 
 
@@ -98,18 +137,49 @@ def build_layers(
     source_pixels = source.load()
     body_pixels = body.load()
     orange_pixels = orange_layers.load()
+    _, highlight_top, _, highlight_bottom = BOTTOM_BAKED_HIGHLIGHT_RECT
+    bottom_dormant_row_colors = {
+        y: _bottom_dormant_row_color(source_pixels, y)
+        for y in range(highlight_top, highlight_bottom)
+    }
+    migrated_baked_highlights = 0
 
     for left, top, right, bottom in SLICE_RECTS:
         for y in range(top, bottom):
             for x in range(left, right):
                 pixel = source_pixels[x, y]
-                if not _is_orange(pixel):
+                is_orange = _is_orange(pixel)
+                is_baked_highlight = _is_baked_bottom_highlight(
+                    x,
+                    y,
+                    pixel,
+                )
+                if not is_orange and not is_baked_highlight:
                     continue
                 orange_pixels[x, y] = pixel
                 # Every dormant layer must share one dark baseline. The runtime
                 # shader restores exactly one authored slice at a time instead
                 # of inheriting the generator's single baked highlight.
-                body_pixels[x, y] = _darken_orange(pixel)
+                if is_baked_highlight:
+                    dormant_red, dormant_green, dormant_blue = (
+                        bottom_dormant_row_colors[y]
+                    )
+                    body_pixels[x, y] = (
+                        dormant_red,
+                        dormant_green,
+                        dormant_blue,
+                        pixel[3],
+                    )
+                    migrated_baked_highlights += 1
+                else:
+                    body_pixels[x, y] = _darken_orange(pixel)
+
+    if migrated_baked_highlights != EXPECTED_BOTTOM_BAKED_HIGHLIGHT_COUNT:
+        raise ValueError(
+            "Expected to migrate "
+            f"{EXPECTED_BOTTOM_BAKED_HIGHLIGHT_COUNT} baked bottom highlights, "
+            f"got {migrated_baked_highlights}."
+        )
 
     glass_mask = _make_polygon_mask(CANVAS_SIZE)
     glass_mask_pixels = glass_mask.load()
