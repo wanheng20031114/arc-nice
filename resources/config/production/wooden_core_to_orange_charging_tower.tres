@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="1_script"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_wooden_core.tres" id="2_core"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_sorcerer_violet_powder.tres" id="3_violet"]
 [ext_resource type="Resource" path="res://resources/config/buildings/building_orange_charging_tower.tres" id="3_building"]
 [ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="4_pickup_script"]
 
@@ -9,8 +10,8 @@
 script = ExtResource("1_script")
 recipe_id = &"wooden_core_to_orange_charging_tower"
 display_name = "培育橘充能塔"
-input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_core")])
-input_amounts = Array[int]([1])
+input_items = Array[ExtResource("4_pickup_script")]([ExtResource("2_core"), ExtResource("3_violet")])
+input_amounts = Array[int]([1, 1])
 output_items = Array[ExtResource("4_pickup_script")]([ExtResource("3_building")])
 output_amounts = Array[int]([1])
 output_destination = 1

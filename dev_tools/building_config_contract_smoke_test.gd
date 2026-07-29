@@ -105,6 +105,12 @@ const WHITE_CRYSTAL_POWDER: PickupConfig = preload(
 const WOODEN_CORE: PickupConfig = preload(
 	"res://resources/config/materials/material_wooden_core.tres"
 )
+const WATER_BOTTLE: PickupConfig = preload(
+	"res://resources/config/materials/material_water_bottle.tres"
+)
+const SORCERER_VIOLET_POWDER: PickupConfig = preload(
+	"res://resources/config/materials/material_sorcerer_violet_powder.tres"
+)
 
 var failures: Array[String] = []
 
@@ -285,19 +291,33 @@ func _test_building_item_and_acquisition_closure() -> void:
 		and grape_recipe.input_items.has(WHITE_CRYSTAL_POWDER),
 		"葡萄培育路线必须为土块和白晶粉提供真实消费端。"
 	)
+	var hydrangea_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
+		&"hydrangea_rain_tower"
+	)
+	_expect(
+		hydrangea_recipe != null
+		and hydrangea_recipe.input_items == [WOODEN_CORE, WATER_BOTTLE]
+		and hydrangea_recipe.input_amounts == [2, 2]
+		and hydrangea_recipe.output_items
+		== [BuildingItemRegistry.HYDRANGEA_RAIN_TOWER_ITEM]
+		and hydrangea_recipe.output_amounts == [1]
+		and is_equal_approx(hydrangea_recipe.duration_seconds, 30.0)
+		and hydrangea_recipe.outputs_to_player_inventory(),
+		"紫阳花雨幕塔必须在植物培育中心消耗2个木制核心和2个水瓶，并培育30秒。"
+	)
 	var orange_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
 		&"orange_charging_tower"
 	)
 	_expect(
 		orange_recipe != null
-		and orange_recipe.input_items == [WOODEN_CORE]
-		and orange_recipe.input_amounts == [1]
+		and orange_recipe.input_items == [WOODEN_CORE, SORCERER_VIOLET_POWDER]
+		and orange_recipe.input_amounts == [1, 1]
 		and orange_recipe.output_items
 		== [BuildingItemRegistry.ORANGE_CHARGING_TOWER_ITEM]
 		and orange_recipe.output_amounts == [1]
 		and is_equal_approx(orange_recipe.duration_seconds, 30.0)
 		and orange_recipe.outputs_to_player_inventory(),
-		"橘充能塔必须在植物培育中心以1个木制核心、30秒的克制默认成本获取。"
+		"橘充能塔必须在植物培育中心消耗1个木制核心和1份术士紫晶粉，并培育30秒。"
 	)
 
 

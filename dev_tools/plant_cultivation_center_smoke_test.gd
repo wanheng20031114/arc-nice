@@ -21,6 +21,12 @@ const PROFILE_PANEL_SCENE := preload(
 const WOODEN_CORE := preload(
 	"res://resources/config/materials/material_wooden_core.tres"
 )
+const WATER_BOTTLE := preload(
+	"res://resources/config/materials/material_water_bottle.tres"
+)
+const SORCERER_VIOLET_POWDER := preload(
+	"res://resources/config/materials/material_sorcerer_violet_powder.tres"
+)
 const AGAVE_BUILDING_ITEM := preload(
 	"res://resources/config/buildings/building_agave_cannon.tres"
 )
@@ -181,8 +187,8 @@ func _run() -> void:
 		and center.recipes[2].output_amounts == [1]
 		and is_equal_approx(center.recipes[2].duration_seconds, 30.0)
 		and center.recipes[2].outputs_to_player_inventory()
-		and center.recipes[3].input_items == [WOODEN_CORE]
-		and center.recipes[3].input_amounts == [1]
+		and center.recipes[3].input_items == [WOODEN_CORE, WATER_BOTTLE]
+		and center.recipes[3].input_amounts == [2, 2]
 		and center.recipes[3].output_items
 		== [HYDRANGEA_RAIN_TOWER_BUILDING_ITEM]
 		and center.recipes[3].output_amounts == [1]
@@ -195,14 +201,15 @@ func _run() -> void:
 		and center.recipes[4].output_amounts == [1]
 		and is_equal_approx(center.recipes[4].duration_seconds, 40.0)
 		and center.recipes[4].outputs_to_player_inventory()
-		and center.recipes[5].input_items == [WOODEN_CORE]
-		and center.recipes[5].input_amounts == [1]
+		and center.recipes[5].input_items
+		== [WOODEN_CORE, SORCERER_VIOLET_POWDER]
+		and center.recipes[5].input_amounts == [1, 1]
 		and center.recipes[5].output_items
 		== [ORANGE_CHARGING_TOWER_BUILDING_ITEM]
 		and center.recipes[5].output_amounts == [1]
 		and is_equal_approx(center.recipes[5].duration_seconds, 30.0)
 		and center.recipes[5].outputs_to_player_inventory(),
-		"培育中心必须提供六种塔配方；葡萄路线消费木制核心、土块与白晶粉，橘充能塔消耗一个木制核心并培育30秒。"
+		"培育中心必须提供六种塔配方；紫阳花消耗2个木制核心和2个水瓶，橘充能塔消耗1个木制核心和1份术士紫晶粉。"
 	)
 	_expect(
 		AGAVE_BUILDING_ITEM.pickup_type == PickupConfig.PickupType.BUILDING
@@ -338,9 +345,10 @@ func _run() -> void:
 		GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
 	] = true
 	_expect(
-		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
+		warehouse.try_add_storage_item_count(WOODEN_CORE, 2)
+		and warehouse.try_add_storage_item_count(WATER_BOTTLE, 2)
 		and center.select_recipe(&"wooden_core_to_hydrangea_rain_tower"),
-		"培育测试必须能切换至紫阳花雨幕塔配方。"
+		"培育测试必须能准备2个木制核心和2个水瓶并切换至紫阳花雨幕塔配方。"
 	)
 	center.advance_shared_production_tick(29.0)
 	_expect(
@@ -352,8 +360,31 @@ func _run() -> void:
 	_expect(
 		run_state.get_item(5) == HYDRANGEA_RAIN_TOWER_BUILDING_ITEM
 		and run_state.get_item_count(5) == 1
+		and warehouse.get_storage_item_total(WOODEN_CORE) == 0
+		and warehouse.get_storage_item_total(WATER_BOTTLE) == 0
 		and is_zero_approx(center.progress_elapsed_seconds),
-		"紫阳花雨幕塔必须在累计30秒时完成并进入独立背包槽位。"
+		"紫阳花雨幕塔必须在累计30秒时原子消费两种材料并进入独立背包槽位。"
+	)
+	_expect(
+		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
+		and warehouse.try_add_storage_item_count(SORCERER_VIOLET_POWDER, 1)
+		and center.select_recipe(&"wooden_core_to_orange_charging_tower"),
+		"培育测试必须能准备木制核心和术士紫晶粉并切换至橘充能塔配方。"
+	)
+	center.advance_shared_production_tick(29.0)
+	_expect(
+		run_state.get_item(6) == null
+		and is_equal_approx(center.progress_elapsed_seconds, 29.0),
+		"橘充能塔培育到29秒时不得提前完成。"
+	)
+	center.advance_shared_production_tick(1.0)
+	_expect(
+		run_state.get_item(6) == ORANGE_CHARGING_TOWER_BUILDING_ITEM
+		and run_state.get_item_count(6) == 1
+		and warehouse.get_storage_item_total(WOODEN_CORE) == 0
+		and warehouse.get_storage_item_total(SORCERER_VIOLET_POWDER) == 0
+		and is_zero_approx(center.progress_elapsed_seconds),
+		"橘充能塔必须在累计30秒时原子消费两种材料并进入独立背包槽位。"
 	)
 	var profile_panel := (
 		PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
@@ -430,9 +461,11 @@ func _run() -> void:
 		and panel.recipe_rows[3].tooltip_text.contains("约 30.0 秒")
 		and panel.recipe_rows[4].visible
 		and panel.recipe_rows[4].tooltip_text.contains("约 40.0 秒")
+		and panel.recipe_rows[5].visible
+		and panel.recipe_rows[5].tooltip_text.contains("约 30.0 秒")
 		and progress_fill != null
 		and progress_fill.bg_color.g > 0.75,
-		"培育中心UI必须使用植物面板、嫩绿进度条，显示四条正确耗时的1投入1产物配方。"
+		"培育中心UI必须使用植物面板、嫩绿进度条，并显示六条耗时正确的培育配方。"
 	)
 	_expect(
 		panel.building_title.position == Vector2(96.0, 23.0)
@@ -476,6 +509,28 @@ func _run() -> void:
 			"培育中心第%d条配方必须换行收缩且不得越出滚动区。"
 			% (row_index + 1)
 		)
+	for row_index in center.recipes.size():
+		var row := panel.recipe_rows[row_index]
+		var recipe := center.recipes[row_index]
+		_expect(
+			row.get_theme_constant("icon_max_width") == 34
+			and row.icon == recipe.output_items[0].icon_texture,
+			"培育中心第%d条配方必须使用原生主题上限将产物图标限制为34像素宽。"
+			% (row_index + 1)
+		)
+	var icon_size_probe_row := panel.recipe_rows[0]
+	var original_probe_icon := icon_size_probe_row.icon
+	icon_size_probe_row.icon = AGAVE_BUILDING_ITEM.icon_texture
+	await process_frame
+	var icon_64_row_minimum := icon_size_probe_row.get_minimum_size()
+	icon_size_probe_row.icon = HYDRANGEA_RAIN_TOWER_BUILDING_ITEM.icon_texture
+	await process_frame
+	var icon_128_row_minimum := icon_size_probe_row.get_minimum_size()
+	icon_size_probe_row.icon = original_probe_icon
+	_expect(
+		icon_128_row_minimum == icon_64_row_minimum,
+		"128×128的紫阳花与橘充能塔图标必须额外二分之一缩放，不得撑大配方行。"
+	)
 	_expect(
 		panel.recipe_rows[0].text
 			== "培育龙舌兰加农炮\n木制核心 ×1 · 20秒"
@@ -483,8 +538,12 @@ func _run() -> void:
 			== "培育玉米机枪塔\n木制核心 ×1 · 20秒"
 		and panel.recipe_rows[2].text
 			== "培育竹筒迫击炮\n木制核心 ×1 · 30秒"
+		and panel.recipe_rows[3].text
+			== "培育紫阳花雨幕塔\n2 种原料 · 30秒"
 		and panel.recipe_rows[4].text
-			== "培育葡萄电弧塔\n3 种原料 · 40秒",
+			== "培育葡萄电弧塔\n3 种原料 · 40秒"
+		and panel.recipe_rows[5].text
+			== "培育橘充能塔\n2 种原料 · 30秒",
 		"背包产物配方摘要必须只显示投入与耗时，避免在窄栏重复长产物名。"
 	)
 	_expect(
@@ -769,23 +828,24 @@ func _test_asset_contracts() -> void:
 			== Vector2(32, 32),
 			"2×2建筑物品必须复用64×64原图，并以0.5缩放符合32×32显示规范。"
 		)
-	var orange_config := PlantDefenseRegistry.get_config(
-		&"orange_charging_tower"
-	)
-	_expect(
-		orange_config != null
-		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_texture != null
-		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_texture.resource_path
-		== orange_config.icon.resource_path
-		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_texture.get_size()
-		== Vector2(128, 128)
-		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_scale
-		== Vector2(0.25, 0.25)
-		and ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_texture.get_size()
-		* ORANGE_CHARGING_TOWER_BUILDING_ITEM.icon_scale
-		== Vector2(32, 32),
-		"橘充能塔建筑物品必须复用128×128像素原图，并以0.25整数倍缩放到32×32。"
-	)
+	for item in [
+		HYDRANGEA_RAIN_TOWER_BUILDING_ITEM,
+		ORANGE_CHARGING_TOWER_BUILDING_ITEM,
+	]:
+		var plant_config := PlantDefenseRegistry.get_config(
+			item.placeable_plant_id
+		)
+		_expect(
+			plant_config != null
+			and item.icon_texture != null
+			and item.icon_texture.resource_path
+			== plant_config.icon.resource_path
+			and item.icon_texture.get_size() == Vector2(128, 128)
+			and item.icon_scale == Vector2(0.25, 0.25)
+			and item.icon_texture.get_size() * item.icon_scale
+			== Vector2(32, 32),
+			"128×128建筑物品必须复用原图，并以0.25整数倍缩放到32×32。"
+		)
 	var image_path := ProjectSettings.globalize_path(
 		"res://resources/texture/plant_defense/plant_cultivation_center/plant_cultivation_center.png"
 	)
