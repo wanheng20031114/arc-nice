@@ -71,24 +71,14 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 		)
 
 	var agave := PlantDefenseRegistry.get_config(PlantDefenseRegistry.AGAVE_CANNON_ID)
-	var warehouse := PlantDefenseRegistry.get_config(PlantDefenseRegistry.OAK_WAREHOUSE_ID)
-	var station := PlantDefenseRegistry.get_config(
-		PlantDefenseRegistry.WOOD_PROCESSING_STATION_ID
-	)
 	var corn := PlantDefenseRegistry.get_config(PlantDefenseRegistry.CORN_MACHINE_GUN_ID)
 	var stone_mill := PlantDefenseRegistry.get_config(PlantDefenseRegistry.STONE_MILL_ID)
-	var agave_card := _find_card(hud, agave)
-	var warehouse_card := _find_card(hud, warehouse)
-	var station_card := _find_card(hud, station)
 	var corn_card := _find_card(hud, corn)
 	_expect(
-		agave_card != null
-		and agave_card.owned_count == 1
-		and warehouse_card != null
-		and warehouse_card.owned_count == 1
-		and station_card != null
-		and station_card.owned_count == 1,
-		"The starter package must be visible as 1/1/1 in the formal catalog."
+		hud.cards.all(
+			func(card: PlantSelectionCard) -> bool: return card.owned_count == 0
+		),
+		"Formal tower defense must not grant any building item at startup."
 	)
 	_expect(
 		corn_card != null
@@ -139,6 +129,13 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 		"HUD-local selection and outer vertical position must survive reopen."
 	)
 
+	_expect(
+		run_state.try_add_item(
+			BuildingItemRegistry.get_item(PlantDefenseRegistry.AGAVE_CANNON_ID)
+		),
+		"Placement fixture must explicitly add one agave after validating the empty building catalog."
+	)
+	await process_frame
 	hud.call("_select_config", agave)
 	hud.call("_confirm_selection")
 	await process_frame
@@ -151,7 +148,7 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	)
 	_expect(
 		not controller.valid_anchors.is_empty(),
-		"Starter agave must have at least one valid formal placement anchor."
+		"Explicitly injected agave fixture must have a valid formal placement anchor."
 	)
 	if not controller.valid_anchors.is_empty():
 		var anchor := controller.valid_anchors[0]

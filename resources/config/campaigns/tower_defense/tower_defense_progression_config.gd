@@ -38,43 +38,26 @@ func is_valid() -> bool:
 		or per_player_items.size() != per_player_amounts.size()
 		or team_items.size() != team_amounts.size()
 		or per_player_items.is_empty()
-		or team_items.is_empty()
 		or tracked_materials.is_empty()
 	):
 		return false
-	var has_per_player_defense_tower := false
+	var starting_item_paths := {}
 	for item_index in per_player_items.size():
 		var item := per_player_items[item_index]
-		if not _is_valid_starting_item(item, per_player_amounts[item_index]):
-			return false
-		var plant_config := PlantDefenseRegistry.get_config(item.placeable_plant_id)
 		if (
-			plant_config != null
-			and plant_config.building_category
-			== PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER
+			not _is_valid_starting_item(item, per_player_amounts[item_index])
+			or starting_item_paths.has(item.resource_path)
 		):
-			has_per_player_defense_tower = true
-	if not has_per_player_defense_tower:
-		return false
-	var has_team_production := false
-	var has_team_storage := false
+			return false
+		starting_item_paths[item.resource_path] = true
 	for item_index in team_items.size():
 		var item := team_items[item_index]
-		if not _is_valid_starting_item(item, team_amounts[item_index]):
+		if (
+			not _is_valid_starting_item(item, team_amounts[item_index])
+			or starting_item_paths.has(item.resource_path)
+		):
 			return false
-		var plant_config := PlantDefenseRegistry.get_config(item.placeable_plant_id)
-		if plant_config == null:
-			return false
-		has_team_production = has_team_production or (
-			plant_config.building_category
-			== PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING
-		)
-		has_team_storage = has_team_storage or (
-			plant_config.building_category
-			== PlantDefenseConfig.BuildingCategory.STORAGE_BUILDING
-		)
-	if not has_team_production or not has_team_storage:
-		return false
+		starting_item_paths[item.resource_path] = true
 	var tracked_paths := {}
 	for item in tracked_materials:
 		if (
@@ -117,5 +100,6 @@ func _is_valid_starting_item(item: PickupConfig, amount: int) -> bool:
 	return (
 		item != null
 		and amount > 0
-		and BuildingItemRegistry.get_plant_id(item) != &""
+		and item.can_store_in_inventory
+		and not item.resource_path.is_empty()
 	)

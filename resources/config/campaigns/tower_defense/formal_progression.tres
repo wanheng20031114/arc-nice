@@ -2,9 +2,6 @@
 
 [ext_resource type="Script" path="res://resources/config/campaigns/tower_defense/tower_defense_progression_config.gd" id="1_script"]
 [ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_pickup_script"]
-[ext_resource type="Resource" path="res://resources/config/buildings/building_agave_cannon.tres" id="3_agave"]
-[ext_resource type="Resource" path="res://resources/config/buildings/building_oak_warehouse.tres" id="4_warehouse"]
-[ext_resource type="Resource" path="res://resources/config/buildings/building_wood_processing_station.tres" id="5_station"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_wood.tres" id="6_wood"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="7_plank"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="8_sapling"]
@@ -22,8 +19,8 @@ initial_preparation_seconds = 90.0
 wave_intermission_seconds = 30.0
 new_day_preparation_seconds = 60.0
 enemy_count_per_extra_player_ratio = 0.25
-per_player_items = Array[ExtResource("2_pickup_script")]([ExtResource("3_agave")])
-per_player_amounts = Array[int]([1])
-team_items = Array[ExtResource("2_pickup_script")]([ExtResource("4_warehouse"), ExtResource("5_station")])
-team_amounts = Array[int]([1, 1])
+per_player_items = Array[ExtResource("2_pickup_script")]([ExtResource("8_sapling")])
+per_player_amounts = Array[int]([3])
+team_items = Array[ExtResource("2_pickup_script")]([])
+team_amounts = Array[int]([])
 tracked_materials = Array[ExtResource("2_pickup_script")]([ExtResource("6_wood"), ExtResource("7_plank"), ExtResource("8_sapling"), ExtResource("9_water"), ExtResource("10_core"), ExtResource("11_dirt"), ExtResource("12_white_crystal"), ExtResource("13_white_powder"), ExtResource("14_blue_crystal"), ExtResource("15_blue_powder")])

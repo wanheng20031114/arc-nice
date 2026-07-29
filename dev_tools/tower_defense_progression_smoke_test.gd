@@ -19,6 +19,12 @@ const WOOD_TO_PLANK: ProductionRecipe = preload(
 const WATER_COLLECTOR_ASSEMBLY: ProductionRecipe = preload(
 	"res://resources/config/production/water_collector_assembly.tres"
 )
+const WOOD: PickupConfig = preload(
+	"res://resources/config/materials/material_wood.tres"
+)
+const SAPLING: PickupConfig = preload(
+	"res://resources/config/materials/material_sapling.tres"
+)
 const SIMPLE_BAMBOO: ProductionRecipe = preload(
 	"res://resources/config/production/simple_bamboo_mortar.tres"
 )
@@ -81,6 +87,13 @@ func _run() -> void:
 
 func _test_progression_resource() -> void:
 	_expect(PROGRESSION != null and PROGRESSION.is_valid(), "Progression config must validate.")
+	_expect(
+		PROGRESSION.per_player_items == [SAPLING]
+		and PROGRESSION.per_player_amounts == [3]
+		and PROGRESSION.team_items.is_empty()
+		and PROGRESSION.team_amounts.is_empty(),
+		"Formal tower defense must add only three saplings per player and no team package."
+	)
 	_expect(
 		PROGRESSION.initial_preparation_seconds == 90.0
 		and PROGRESSION.wave_intermission_seconds == 30.0
@@ -235,23 +248,12 @@ func _test_singleplayer_starting_package() -> void:
 	root.add_child(game)
 	await process_frame
 	_expect(game.starting_package_granted, "Singleplayer starter package must be granted.")
+	_expect_exact_starting_inventory(run_state, 0, "Singleplayer")
 	_expect(
-		run_state.get_inventory_item_total(
-			BuildingItemRegistry.get_item(PlantDefenseRegistry.AGAVE_CANNON_ID)
-		) == 1,
-		"Singleplayer must start with one basic defense tower item."
+		bool(game.call("_grant_tower_defense_starting_package")),
+		"Repeated starter-package requests must report the existing completed grant."
 	)
-	_expect(
-		run_state.get_inventory_item_total(
-			BuildingItemRegistry.get_item(PlantDefenseRegistry.OAK_WAREHOUSE_ID)
-		) == 1
-		and run_state.get_inventory_item_total(
-			BuildingItemRegistry.get_item(
-				PlantDefenseRegistry.WOOD_PROCESSING_STATION_ID
-			)
-		) == 1,
-		"Singleplayer team package must include storage and wood processing."
-	)
+	_expect_exact_starting_inventory(run_state, 0, "Repeated singleplayer grant")
 	_expect(
 		game.call("_get_initial_preparation_seconds") == 90
 		and game.call("_get_wave_intermission_seconds") == 30
@@ -293,23 +295,11 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 		game.starting_package_granted,
 		"%d-player starter package must be granted." % player_count
 	)
-	var agave := BuildingItemRegistry.get_item(PlantDefenseRegistry.AGAVE_CANNON_ID)
-	var warehouse := BuildingItemRegistry.get_item(PlantDefenseRegistry.OAK_WAREHOUSE_ID)
-	var station := BuildingItemRegistry.get_item(
-		PlantDefenseRegistry.WOOD_PROCESSING_STATION_ID
-	)
 	for peer_id in range(1, player_count + 1):
-		_expect(
-			run_state.get_inventory_item_total_for_peer(peer_id, agave) == 1,
-			"Every player must receive exactly one basic tower in %d-player mode."
-			% player_count
-		)
-		_expect(
-			run_state.get_inventory_item_total_for_peer(peer_id, warehouse)
-			== (1 if peer_id == 1 else 0)
-			and run_state.get_inventory_item_total_for_peer(peer_id, station)
-			== (1 if peer_id == 1 else 0),
-			"Only the host-owned team package may contain shared facilities."
+		_expect_exact_starting_inventory(
+			run_state,
+			peer_id,
+			"%d-player peer %d" % [player_count, peer_id]
 		)
 	if player_count == 2:
 		game.call("_enter_pre_flow_step", game.call("_get_start_flow_step"))
@@ -327,6 +317,45 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 		)
 	game.queue_free()
 	await _wait_for_freed(game)
+
+
+func _expect_exact_starting_inventory(
+	run_state: RunStateStore,
+	peer_id: int,
+	context: String
+) -> void:
+	var occupied_slot_count := 0
+	var has_unexpected_item := false
+	for slot_index in RunStateStore.INVENTORY_CAPACITY:
+		var item := (
+			run_state.get_item_for_peer(peer_id, slot_index)
+			if peer_id > 0
+			else run_state.get_item(slot_index)
+		)
+		if item == null:
+			continue
+		occupied_slot_count += 1
+		has_unexpected_item = has_unexpected_item or (
+			not PickupConfig.inventory_identity_matches(item, WOOD)
+			and not PickupConfig.inventory_identity_matches(item, SAPLING)
+		)
+	var wood_total := (
+		run_state.get_inventory_item_total_for_peer(peer_id, WOOD)
+		if peer_id > 0
+		else run_state.get_inventory_item_total(WOOD)
+	)
+	var sapling_total := (
+		run_state.get_inventory_item_total_for_peer(peer_id, SAPLING)
+		if peer_id > 0
+		else run_state.get_inventory_item_total(SAPLING)
+	)
+	_expect(
+		wood_total == RunStateStore.STARTING_WOOD_COUNT
+		and sapling_total == 3
+		and occupied_slot_count == 2
+		and not has_unexpected_item,
+		"%s must start with only five wood and three saplings." % context
+	)
 
 
 func _wait_for_freed(node: Node) -> void:
