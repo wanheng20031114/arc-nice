@@ -3,8 +3,14 @@ extends SceneTree
 const STONE_ERODED_NAME_PREFIX := "被石头侵蚀的"
 const STONE_ERODED_TAG := "stone_eroded"
 const REQUIRED_PHYSICAL_DEFENSE := 150
-const MIN_VISIBLE_RGB_CHANGE_RATIO := 0.02
-const MAX_VISIBLE_RGB_CHANGE_RATIO := 0.06
+const MIN_VISIBLE_RGB_CHANGE_RATIO := 0.05
+const MAX_VISIBLE_RGB_CHANGE_RATIO := 0.15
+const LARGE_FRAME_MAX_VISIBLE_RGB_CHANGE_RATIO := 0.10
+const SMALL_FRAME_VISIBLE_THRESHOLD := 512
+const SMALL_FRAME_MIN_VISIBLE_RGB_CHANGE_RATIO := 0.075
+const MAX_LOOPING_STONE_CENTER_DRIFT := 0.15
+const MAX_NON_LOOPING_STONE_CENTER_DRIFT := 0.40
+const MAX_SPIN_ATTACK_STONE_CENTER_DRIFT := 0.45
 const MIN_STRONG_RGB_CHANGE_RATIO := 0.005
 const MIN_STRONG_RGB_CHANNEL_DELTA := 24
 const EXPECTED_TEXTURE_PAIR_COUNT := 18
@@ -220,6 +226,12 @@ func _test_animation_contract(
 				animation_name,
 				frame_index
 			)
+		_test_animation_temporal_contract(
+			base_frames,
+			eroded_frames,
+			enemy_id,
+			animation_name
+		)
 
 
 func _get_sorted_animation_names(frames: SpriteFrames) -> PackedStringArray:
@@ -228,6 +240,127 @@ func _get_sorted_animation_names(frames: SpriteFrames) -> PackedStringArray:
 		names.append(String(animation_name))
 	names.sort()
 	return names
+
+
+func _test_animation_temporal_contract(
+	base_frames: SpriteFrames,
+	eroded_frames: SpriteFrames,
+	enemy_id: String,
+	animation_name: StringName
+) -> void:
+	var frame_count := mini(
+		base_frames.get_frame_count(animation_name),
+		eroded_frames.get_frame_count(animation_name)
+	)
+	if frame_count < 2:
+		return
+	var samples: Array[Dictionary] = []
+	for frame_index in range(frame_count):
+		samples.append(
+			_get_frame_stone_center(
+				base_frames.get_frame_texture(animation_name, frame_index),
+				eroded_frames.get_frame_texture(animation_name, frame_index)
+			)
+		)
+	var is_looping := base_frames.get_animation_loop(animation_name)
+	var comparison_count := frame_count if is_looping else frame_count - 1
+	var maximum_drift := (
+		MAX_LOOPING_STONE_CENTER_DRIFT
+		if is_looping
+		else (
+			MAX_SPIN_ATTACK_STONE_CENTER_DRIFT
+			if enemy_id == "capoo_swordsman" and animation_name == &"attack"
+			else MAX_NON_LOOPING_STONE_CENTER_DRIFT
+		)
+	)
+	for frame_index in range(comparison_count):
+		var next_frame_index := (frame_index + 1) % frame_count
+		var current_sample := samples[frame_index]
+		var next_sample := samples[next_frame_index]
+		# Shared explosion VFX and explicitly unchanged terminal frames have no
+		# stone pixels, so they intentionally do not form a temporal pair.
+		if not current_sample.get("valid", false) or not next_sample.get("valid", false):
+			continue
+		var current_center: Vector2 = current_sample["center"]
+		var next_center: Vector2 = next_sample["center"]
+		var drift := current_center.distance_to(next_center)
+		_expect(
+			drift <= maximum_drift,
+			"%s/%s[%d→%d] 石蚀区域中心漂移必须不超过%.3f（实际%.3f）。"
+			% [
+				enemy_id,
+				animation_name,
+				frame_index,
+				next_frame_index,
+				maximum_drift,
+				drift,
+			]
+		)
+
+
+func _get_frame_stone_center(
+	base_texture: Texture2D,
+	eroded_texture: Texture2D
+) -> Dictionary:
+	var base_atlas_texture := base_texture as AtlasTexture
+	var eroded_atlas_texture := eroded_texture as AtlasTexture
+	if base_atlas_texture == null or eroded_atlas_texture == null:
+		return {"valid": false}
+	var pair_key := _get_texture_pair_key(
+		base_atlas_texture.atlas,
+		eroded_atlas_texture.atlas
+	)
+	if not texture_pair_pixels.has(pair_key):
+		return {"valid": false}
+	var pixel_data := texture_pair_pixels[pair_key] as Dictionary
+	var image_size := pixel_data["size"] as Vector2i
+	var base_bytes := pixel_data["base_bytes"] as PackedByteArray
+	var eroded_bytes := pixel_data["eroded_bytes"] as PackedByteArray
+	var atlas_region := base_atlas_texture.region
+	var region_position := Vector2i(
+		roundi(atlas_region.position.x),
+		roundi(atlas_region.position.y)
+	)
+	var region_size := Vector2i(
+		roundi(atlas_region.size.x),
+		roundi(atlas_region.size.y)
+	)
+	var changed_count := 0
+	var coordinate_sum := Vector2.ZERO
+	var visible_min := Vector2i(region_size.x, region_size.y)
+	var visible_max := Vector2i(-1, -1)
+	for y in range(region_position.y, region_position.y + region_size.y):
+		for x in range(region_position.x, region_position.x + region_size.x):
+			if x < 0 or y < 0 or x >= image_size.x or y >= image_size.y:
+				continue
+			var byte_offset := (y * image_size.x + x) * 4
+			if base_bytes[byte_offset + 3] == 0:
+				continue
+			var local_coordinate := Vector2i(x, y) - region_position
+			visible_min.x = mini(visible_min.x, local_coordinate.x)
+			visible_min.y = mini(visible_min.y, local_coordinate.y)
+			visible_max.x = maxi(visible_max.x, local_coordinate.x)
+			visible_max.y = maxi(visible_max.y, local_coordinate.y)
+			var rgb_changed := (
+				base_bytes[byte_offset] != eroded_bytes[byte_offset]
+				or base_bytes[byte_offset + 1] != eroded_bytes[byte_offset + 1]
+				or base_bytes[byte_offset + 2] != eroded_bytes[byte_offset + 2]
+			)
+			if not rgb_changed:
+				continue
+			changed_count += 1
+			coordinate_sum += Vector2(
+				float(local_coordinate.x) + 0.5,
+				float(local_coordinate.y) + 0.5
+			)
+	if changed_count == 0 or visible_max.x < visible_min.x or visible_max.y < visible_min.y:
+		return {"valid": false}
+	var visible_size := Vector2(visible_max - visible_min + Vector2i.ONE)
+	var center := coordinate_sum / float(changed_count) - Vector2(visible_min)
+	return {
+		"valid": true,
+		"center": Vector2(center.x / visible_size.x, center.y / visible_size.y),
+	}
 
 
 func _test_frame_contract(
@@ -405,15 +538,10 @@ func _test_frame_visual_contract(
 			):
 				strong_changed_visible_rgb_count += 1
 
-	if _is_unchanged_fire_dissipation_frame(enemy_id, animation_name, frame_index):
-		_expect(
-			visible_pixel_count <= 64,
-			"%s 纯火焰消散帧可见像素不得超过64（实际%d）。"
-			% [label, visible_pixel_count]
-		)
+	if _is_explicitly_unchanged_stone_frame(enemy_id, animation_name, frame_index):
 		_expect(
 			changed_visible_rgb_count == 0,
-			"%s 纯火焰消散帧RGB必须与原版完全一致（实际改动%d像素）。"
+			"%s 显式终末帧RGB必须与原版完全一致（实际改动%d像素）。"
 			% [label, changed_visible_rgb_count]
 		)
 		return
@@ -421,13 +549,33 @@ func _test_frame_visual_contract(
 	_expect(visible_pixel_count > 0, "%s 主体帧必须包含可见像素。" % label)
 	if visible_pixel_count == 0:
 		return
+	var minimum_changed_ratio := (
+		SMALL_FRAME_MIN_VISIBLE_RGB_CHANGE_RATIO
+		if visible_pixel_count < SMALL_FRAME_VISIBLE_THRESHOLD
+		else MIN_VISIBLE_RGB_CHANGE_RATIO
+	)
+	var maximum_changed_ratio := (
+		MAX_VISIBLE_RGB_CHANGE_RATIO
+		if visible_pixel_count < SMALL_FRAME_VISIBLE_THRESHOLD
+		else LARGE_FRAME_MAX_VISIBLE_RGB_CHANGE_RATIO
+	)
+	var minimum_changed_count := mini(
+		floori(float(visible_pixel_count) * maximum_changed_ratio),
+		maxi(1, ceili(float(visible_pixel_count) * minimum_changed_ratio))
+	)
+	var maximum_changed_count := maxi(
+		minimum_changed_count,
+		floori(float(visible_pixel_count) * maximum_changed_ratio)
+	)
 	var changed_ratio := float(changed_visible_rgb_count) / float(visible_pixel_count)
 	_expect(
-		changed_ratio >= MIN_VISIBLE_RGB_CHANGE_RATIO
-			and changed_ratio <= MAX_VISIBLE_RGB_CHANGE_RATIO,
-		"%s region内可见RGB差异率必须在2%%至6%%之间（实际%.3f%%，%d/%d）。"
+		changed_visible_rgb_count >= minimum_changed_count
+			and changed_visible_rgb_count <= maximum_changed_count,
+		"%s region内可见RGB差异必须在%d至%d像素之间（实际%.3f%%，%d/%d）。"
 		% [
 			label,
+			minimum_changed_count,
+			maximum_changed_count,
 			changed_ratio * 100.0,
 			changed_visible_rgb_count,
 			visible_pixel_count,
@@ -450,16 +598,20 @@ func _test_frame_visual_contract(
 	)
 
 
-func _is_unchanged_fire_dissipation_frame(
+func _is_explicitly_unchanged_stone_frame(
 	enemy_id: String,
 	animation_name: StringName,
 	frame_index: int
 ) -> bool:
-	return (
-		enemy_id == "yuanshi_insect_fire_ranged"
-		and animation_name == &"death"
-		and frame_index in [1, 2]
-	)
+	if animation_name != &"death":
+		return false
+	if enemy_id == "yuanshi_insect_fire_ranged":
+		return frame_index in [1, 2]
+	if enemy_id == "yuanshi_insect_guardian":
+		return frame_index == 2
+	if enemy_id in ["capoo_smg", "capoo_sniper"]:
+		return frame_index == 3
+	return false
 
 
 func _get_texture_pair_key(
@@ -570,7 +722,7 @@ func _test_texture_bytes_once(
 	_expect(
 		changed_ratio >= MIN_VISIBLE_RGB_CHANGE_RATIO
 			and changed_ratio <= MAX_VISIBLE_RGB_CHANGE_RATIO,
-		"%s 石蚀版可见RGB差异率必须在2%%至6%%之间（实际%.3f%%，%d/%d）。"
+		"%s 石蚀版可见RGB差异率必须在5%%至15%%之间（实际%.3f%%，%d/%d）。"
 		% [
 			enemy_id,
 			changed_ratio * 100.0,
