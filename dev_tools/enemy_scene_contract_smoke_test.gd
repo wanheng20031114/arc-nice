@@ -29,18 +29,47 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/slime_fire.tres"),
 	preload("res://resources/config/enemies/slime_frost.tres"),
 	preload("res://resources/config/enemies/slime_green.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_basic.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_fast.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_bomber.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_shell.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_purple_bomber.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_green_shell.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_guardian.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_fire_ranged.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_ak47.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_knight.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_knight_elite.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_swordsman.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_rpg.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_mage.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_sniper.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_smg.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime_golden.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime_fire.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime_frost.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime_green.tres"),
 ]
 const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_bomber.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_basic.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_fast.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_bomber.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_fire_ranged.tres"),
 ]
 const ADVANCED_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_shell.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_purple_bomber.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_shell.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_purple_bomber.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_green_shell.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_guardian.tres"),
 ]
 const YUANSHI_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
@@ -51,6 +80,14 @@ const YUANSHI_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_green_shell.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_guardian.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_basic.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_fast.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_bomber.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_shell.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_purple_bomber.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_green_shell.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_guardian.tres"),
+	preload("res://resources/config/enemies/stone_eroded_yuanshi_insect_fire_ranged.tres"),
 ]
 const CAPOO_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_ak47.tres"),
@@ -61,6 +98,14 @@ const CAPOO_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_mage.tres"),
 	preload("res://resources/config/enemies/capoo_sniper.tres"),
 	preload("res://resources/config/enemies/capoo_smg.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_ak47.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_knight.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_knight_elite.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_swordsman.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_rpg.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_mage.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_sniper.tres"),
+	preload("res://resources/config/enemies/stone_eroded_capoo_smg.tres"),
 ]
 const SORCERER_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
@@ -79,6 +124,11 @@ const SLIME_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/slime_fire.tres"),
 	preload("res://resources/config/enemies/slime_frost.tres"),
 	preload("res://resources/config/enemies/slime_green.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime_golden.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime_fire.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime_frost.tres"),
+	preload("res://resources/config/enemies/stone_eroded_slime_green.tres"),
 ]
 const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
 	"res://resources/config/enemies/default_enemy_drop_table.tres"
@@ -268,6 +318,7 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"sorcerer": 0,
 		"artificial_creation": 0,
 		"slime": 0,
+		"stone_eroded": 0,
 	}
 	for enemy_config in all_drop_configs:
 		_expect(
@@ -289,18 +340,32 @@ func _test_enemy_drop_and_category_contract() -> void:
 				"Linglan must remain outside the five regular enemy categories."
 			)
 		else:
+			var regular_category_count := 0
+			for category_tag in enemy_config.category_tags:
+				if category_tag != EnemyConfig.CATEGORY_STONE_ERODED:
+					regular_category_count += 1
 			_expect(
-				enemy_config.category_tags.size() == 1,
-				"%s must carry exactly one regular enemy category tag."
+				regular_category_count == 1,
+				"%s must carry exactly one regular enemy family category tag."
+				% enemy_config.resource_path
+			)
+			var expected_tag_count := (
+				2
+				if enemy_config.has_category_tag(EnemyConfig.CATEGORY_STONE_ERODED)
+				else 1
+			)
+			_expect(
+				enemy_config.category_tags.size() == expected_tag_count,
+				"%s must carry one family tag and only the optional stone-eroded feature tag."
 				% enemy_config.resource_path
 			)
 	_expect(
-		int(category_counts["yuanshi_insect"]) == 8,
-		"Exactly the eight Yuanshi insect configs must carry the yuanshi_insect category tag."
+		int(category_counts["yuanshi_insect"]) == 16,
+		"Exactly the sixteen original and stone-eroded Yuanshi insect configs must carry the yuanshi_insect category tag."
 	)
 	_expect(
-		int(category_counts["capoo"]) == 8,
-		"Exactly the eight Capoo configs must carry the capoo category tag."
+		int(category_counts["capoo"]) == 16,
+		"Exactly the sixteen original and stone-eroded Capoo configs must carry the capoo category tag."
 	)
 	_expect(
 		int(category_counts["sorcerer"]) == 5,
@@ -311,8 +376,12 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golem configs must carry the artificial_creation category tag."
 	)
 	_expect(
-		int(category_counts["slime"]) == 5,
-		"Exactly the five Slime configs must carry the slime category tag."
+		int(category_counts["slime"]) == 10,
+		"Exactly the ten original and stone-eroded Slime configs must carry the slime category tag."
+	)
+	_expect(
+		int(category_counts["stone_eroded"]) == 21,
+		"Exactly the twenty-one new variants must carry the stone_eroded feature tag."
 	)
 	_expect_exact_category(YUANSHI_CATEGORY_CONFIGS, "yuanshi_insect")
 	_expect_exact_category(CAPOO_CATEGORY_CONFIGS, "capoo")
@@ -330,11 +399,15 @@ func _expect_exact_category(
 ) -> void:
 	var expected_tags := PackedStringArray([expected_tag])
 	for enemy_config in enemy_configs:
+		if enemy_config.has_category_tag(EnemyConfig.CATEGORY_STONE_ERODED):
+			expected_tags.append(EnemyConfig.CATEGORY_STONE_ERODED)
 		_expect(
 			enemy_config.category_tags == expected_tags,
-			"%s must carry only the %s category tag."
+			"%s must carry only the %s family tag and its optional stone-eroded feature tag."
 			% [enemy_config.resource_path, expected_tag]
 		)
+		if expected_tags.size() > 1:
+			expected_tags.resize(1)
 
 
 func _get_authored_enemy_config_paths() -> Array[String]:

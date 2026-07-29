@@ -1,19 +1,19 @@
 extends RefCounted
 class_name EnemyCodexRegistry
 
-const ENTRY_COUNT := 29
+const ENTRY_COUNT := 50
 const SORCERER_ENTRY_COUNT := 5
 const EXPECTED_FAMILY_COUNTS := {
-	&"yuanshi_insect": 8,
-	&"slime": 5,
-	&"capoo": 8,
+	&"yuanshi_insect": 16,
+	&"slime": 10,
+	&"capoo": 16,
 	&"sorcerer": 5,
 	&"artificial_creation": 2,
 	&"boss": 1,
 }
 const EXPECTED_RANK_COUNTS := {
-	EnemyCodexEntryConfig.Rank.NORMAL: 24,
-	EnemyCodexEntryConfig.Rank.ELITE: 4,
+	EnemyCodexEntryConfig.Rank.NORMAL: 44,
+	EnemyCodexEntryConfig.Rank.ELITE: 5,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
 
@@ -26,11 +26,24 @@ const ENTRIES: Array[EnemyCodexEntryConfig] = [
 	preload("res://resources/config/encyclopedia/enemies/yuanshi_insect_green_shell.tres"),
 	preload("res://resources/config/encyclopedia/enemies/yuanshi_insect_fire_ranged.tres"),
 	preload("res://resources/config/encyclopedia/enemies/yuanshi_insect_guardian.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_yuanshi_insect_basic.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_yuanshi_insect_shell.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_yuanshi_insect_fast.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_yuanshi_insect_bomber.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_yuanshi_insect_purple_bomber.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_yuanshi_insect_green_shell.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_yuanshi_insect_fire_ranged.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_yuanshi_insect_guardian.tres"),
 	preload("res://resources/config/encyclopedia/enemies/slime_basic.tres"),
 	preload("res://resources/config/encyclopedia/enemies/slime_fire.tres"),
 	preload("res://resources/config/encyclopedia/enemies/slime_frost.tres"),
 	preload("res://resources/config/encyclopedia/enemies/slime_green.tres"),
 	preload("res://resources/config/encyclopedia/enemies/slime_golden.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_slime.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_slime_fire.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_slime_frost.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_slime_green.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_slime_golden.tres"),
 	preload("res://resources/config/encyclopedia/enemies/capoo_knight.tres"),
 	preload("res://resources/config/encyclopedia/enemies/capoo_knight_elite.tres"),
 	preload("res://resources/config/encyclopedia/enemies/capoo_swordsman.tres"),
@@ -39,6 +52,14 @@ const ENTRIES: Array[EnemyCodexEntryConfig] = [
 	preload("res://resources/config/encyclopedia/enemies/capoo_rpg.tres"),
 	preload("res://resources/config/encyclopedia/enemies/capoo_mage.tres"),
 	preload("res://resources/config/encyclopedia/enemies/capoo_sniper.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_capoo_knight.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_capoo_knight_elite.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_capoo_swordsman.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_capoo_smg.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_capoo_ak47.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_capoo_rpg.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_capoo_mage.tres"),
+	preload("res://resources/config/encyclopedia/enemies/stone_eroded_capoo_sniper.tres"),
 	preload("res://resources/config/encyclopedia/enemies/fire_sorcerer.tres"),
 	preload("res://resources/config/encyclopedia/enemies/fire_sorcerer_elite.tres"),
 	preload("res://resources/config/encyclopedia/enemies/frost_sorcerer.tres"),

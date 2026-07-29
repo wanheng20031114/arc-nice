@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/stone_eroded_slime_green.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/stone_eroded_slime_green.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"stone_eroded_slime_green"
+enemy_config = ExtResource("2_config")
+family_id = &"slime"
+family_label = "史莱姆"
+rank = 0
+sort_order = 253
+visible_in_codex = true
+description = "充满再生活性的绿色史莱姆很难被普通火力磨损。它同时具备较高的物理与魔法防御，并会每隔短暂时间恢复生命。 石质侵蚀使它的生命提升至原版两倍，并赋予150点物理防御。"
+traits = PackedStringArray("再生", "高物防", "高魔防", "被石头侵蚀", "150物理防御", "双倍生命")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

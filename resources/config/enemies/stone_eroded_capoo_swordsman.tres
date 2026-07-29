@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="CapooSwordsmanConfig" format=3]
+
+[ext_resource type="Script" uid="uid://cre3hul67afql" path="res://resources/config/enemies/capoo_swordsman_config.gd" id="1_script"]
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_b4330"]
+[ext_resource type="PackedScene" path="res://scene/enemy/stone_eroded/stone_eroded_capoo_swordsman.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://brxwxwvrrbp6m" path="res://scene/enemy/capoo/capoo_swordsman_slash_effect.tscn" id="4_slash"]
+[ext_resource type="AudioStream" uid="uid://druowpv8vg1x0" path="res://resources/audio/capoo_sword_slash_light.wav" id="11_slash_audio"]
+
+[resource]
+script = ExtResource("1_script")
+attack_range = 64.0
+attack_interval = 3.0
+slash_outer_radius = 64.0
+slash_angle_degrees = 80.0
+slash_effect_scene = ExtResource("4_slash")
+attack_audio_stream = ExtResource("11_slash_audio")
+display_name = "被石头侵蚀的剑客猫猫虫"
+category_tags = PackedStringArray("capoo", "stone_eroded")
+enemy_scene = ExtResource("2_scene")
+max_health = 800
+attack_damage = 24
+physical_defense = 150
+move_speed = 38.0
+home_damage = 5
+xirang_kill_reward = 20

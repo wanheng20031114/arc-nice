@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SlimeConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/slime_config.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy/stone_eroded/stone_eroded_slime_frost.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_script")
+variant = 3
+display_name = "被石头侵蚀的寒冰史莱姆"
+category_tags = PackedStringArray("slime", "stone_eroded")
+enemy_scene = ExtResource("2_scene")
+max_health = 400
+attack_damage = 10
+physical_defense = 150
+magic_defense = 0
+move_speed = 20.0

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/stone_eroded_yuanshi_insect_purple_bomber.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/stone_eroded_yuanshi_insect_purple_bomber.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"stone_eroded_yuanshi_insect_purple_bomber"
+enemy_config = ExtResource("2_config")
+family_id = &"yuanshi_insect"
+family_label = "原石虫"
+rank = 0
+sort_order = 184
+visible_in_codex = true
+description = "紫晶核心让这只自爆原石虫变得更加躁动和危险。它冲锋更快，死亡爆炸的覆盖范围也更大，应在靠近核心建筑前优先处理。 石质侵蚀使它的生命提升至原版两倍，并赋予150点物理防御。"
+traits = PackedStringArray("高速", "死亡自爆", "大范围伤害", "被石头侵蚀", "150物理防御", "双倍生命")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

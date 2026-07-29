@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 29,
+	CodexSection.ENEMY: 50,
 	CodexSection.COLLECTIBLE: 123,
 	CodexSection.BUILDING: 16,
 }
@@ -28,9 +28,9 @@ const EXPECTED_BUILDING_CATEGORY_COUNTS := {
 	&"storage_building": 1,
 }
 const EXPECTED_ENEMY_FAMILY_COUNTS := {
-	&"yuanshi_insect": 8,
-	&"slime": 5,
-	&"capoo": 8,
+	&"yuanshi_insect": 16,
+	&"slime": 10,
+	&"capoo": 16,
 	&"sorcerer": 5,
 	&"artificial_creation": 2,
 	&"boss": 1,
@@ -104,7 +104,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 29 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 50 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -471,7 +471,7 @@ func _test_scene_contract() -> void:
 	await _wait_frames(3)
 
 	_expect(
-		screen.enemy_button.text == "敌人  29"
+		screen.enemy_button.text == "敌人  50"
 		and screen.collectible_button.text == "收藏品  123"
 		and screen.building_button.text == "建筑物  16",
 		"Sidebar must display all three section totals."
@@ -484,15 +484,15 @@ func _test_scene_contract() -> void:
 	_expect(
 		int(screen.get("_current_section")) == CodexSection.ENEMY
 		and screen.section_title.text == "敌人档案"
-		and screen.archive_index.text == "029 条记录",
+		and screen.archive_index.text == "050 条记录",
 		"Encyclopedia must open on the enemy section."
 	)
 	var cards: Array = screen.get("_cards")
 	_expect(
-		cards.size() == 29
-		and screen.entry_grid.get_child_count() == 29
-		and screen.result_count.text == "显示 29 / 29",
-		"Initial enemy grid must render all 29 entries."
+		cards.size() == 50
+		and screen.entry_grid.get_child_count() == 50
+		and screen.result_count.text == "显示 50 / 50",
+		"Initial enemy grid must render all 50 entries."
 	)
 	_expect(
 		screen.search_edit.text.is_empty()
@@ -917,11 +917,11 @@ func _test_search_filter_and_section_state(
 	await _wait_frames(3)
 	var search_cards: Array = screen.get("_cards")
 	_expect(
-		not search_cards.is_empty() and search_cards.size() < 29,
+		not search_cards.is_empty() and search_cards.size() < 50,
 		"Enemy name search must narrow the visible result set."
 	)
 	_expect(
-		screen.result_count.text == "显示 %d / 29" % search_cards.size(),
+		screen.result_count.text == "显示 %d / 50" % search_cards.size(),
 		"Result count must stay synchronized with name-search results."
 	)
 	for card_variant in search_cards:

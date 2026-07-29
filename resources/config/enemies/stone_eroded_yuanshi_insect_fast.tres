@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="YuanshiInsectConfig" format=3]
+
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="1_dg63q"]
+[ext_resource type="Script" uid="uid://cxt041wfb1usj" path="res://resources/config/enemies/yuanshi_insect_config.gd" id="5_w8bw6"]
+[ext_resource type="PackedScene" path="res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_fast.tscn" id="enemy_scene"]
+
+[resource]
+script = ExtResource("5_w8bw6")
+variant = 2
+display_name = "被石头侵蚀的迅捷原石虫"
+category_tags = PackedStringArray("yuanshi_insect", "stone_eroded")
+enemy_scene = ExtResource("enemy_scene")
+max_health = 70
+attack_damage = 10
+physical_defense = 150
+move_speed = 40.0
+metadata/_custom_type_script = "uid://cxt041wfb1usj"

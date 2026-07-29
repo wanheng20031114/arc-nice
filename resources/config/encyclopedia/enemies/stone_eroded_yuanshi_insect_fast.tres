@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/stone_eroded_yuanshi_insect_fast.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/stone_eroded_yuanshi_insect_fast.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"stone_eroded_yuanshi_insect_fast"
+enemy_config = ExtResource("2_config")
+family_id = &"yuanshi_insect"
+family_label = "原石虫"
+rank = 0
+sort_order = 182
+visible_in_codex = true
+description = "体型小巧的迅捷原石虫会借助轻盈甲壳飞快穿过战场。它生命较低，却拥有同族中突出的移动速度，容易从火力空档中溜走。 石质侵蚀使它的生命提升至原版两倍，并赋予150点物理防御。"
+traits = PackedStringArray("近战", "高速", "低生命", "被石头侵蚀", "150物理防御", "双倍生命")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, -3)

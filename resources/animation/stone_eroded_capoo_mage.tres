@@ -1,0 +1,170 @@
+[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/stone_eroded/capoo_mage.png" id="1_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_attack_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 561, 350, 281)
+margin = Rect2(0, 7, 24, 19)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_attack_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(350, 561, 351, 281)
+margin = Rect2(18, 18, 23, 19)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_attack_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(701, 561, 337, 281)
+margin = Rect2(37, 7, 37, 19)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_attack_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(1052, 561, 317, 281)
+margin = Rect2(57, 18, 57, 19)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(24, 842, 326, 259)
+margin = Rect2(0, 41, 48, 41)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(350, 842, 351, 259)
+margin = Rect2(4, 41, 23, 41)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(701, 842, 347, 262)
+margin = Rect2(27, 38, 27, 38)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_death_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(1052, 842, 323, 262)
+margin = Rect2(51, 38, 51, 38)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(42, 7, 308, 273)
+margin = Rect2(0, 0, 66, 27)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(376, 8, 325, 272)
+margin = Rect2(0, 0, 49, 28)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(702, 7, 350, 273)
+margin = Rect2(0, 0, 24, 27)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(1052, 7, 350, 273)
+margin = Rect2(24, 0, 24, 27)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(38, 291, 312, 270)
+margin = Rect2(0, 0, 62, 30)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(372, 291, 329, 270)
+margin = Rect2(0, 0, 45, 30)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(709, 291, 343, 270)
+margin = Rect2(0, 0, 31, 30)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(1052, 291, 346, 270)
+margin = Rect2(28, 0, 28, 30)
+filter_clip = true
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_attack_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_attack_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_attack_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_attack_3")
+}],
+"loop": true,
+"name": &"attack",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_3")
+}],
+"loop": false,
+"name": &"death",
+"speed": 7.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_3")
+}],
+"loop": true,
+"name": &"move",
+"speed": 6.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_windup_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_windup_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_windup_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_windup_3")
+}],
+"loop": true,
+"name": &"windup",
+"speed": 4.0
+}]
