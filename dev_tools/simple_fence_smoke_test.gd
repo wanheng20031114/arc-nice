@@ -195,18 +195,18 @@ func _test_config_scene_and_component_visuals() -> void:
 		and connector_right.texture != null
 		and connector_right.texture.resource_path == CONNECTOR_TEXTURE_PATH
 		and connector_down.texture == connector_right.texture
-		and connector_right.texture.get_size() == Vector2(14, 10)
+		and connector_right.texture.get_size() == Vector2(18, 10)
 		and connector_right.scale == Vector2(0.5, 0.5)
 		and connector_down.scale == Vector2(0.5, 0.5)
-		and connector_right.position == Vector2(8.0, 0.0)
-		and connector_down.position == Vector2(0.0, 8.0)
+		and connector_right.position == Vector2(9.0, 0.0)
+		and connector_down.position == Vector2(0.0, 9.0)
 		and is_zero_approx(connector_right.rotation)
 		and is_equal_approx(connector_down.rotation, PI * 0.5)
 		and connector_right.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 		and connector_down.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 		and connector_right.z_index < sprite.z_index
-		and connector_down.z_index < sprite.z_index,
-		"围栏必须预建同一张14×10最近邻连接图：右连接位于(8,0)，下连接位于(0,8)并旋转90度，且均绘制在主体下层。"
+		and connector_down.z_index > sprite.z_index,
+		"围栏必须预建同一张18×10最近邻连接图：右连接位于(9,0)并保持底层，下连接位于(0,9)、旋转90度并覆盖邻居上尖桩。"
 	)
 	_expect(
 		plant.lifecycle_visual_paths.has(NodePath("Sprite2D"))
@@ -225,11 +225,11 @@ func _test_config_scene_and_component_visuals() -> void:
 		var connector_image := connector_right.texture.get_image()
 		_expect(
 			connector_image != null
-			and connector_image.get_size() == Vector2i(14, 10)
+			and connector_image.get_size() == Vector2i(18, 10)
 			and not connector_image.has_mipmaps()
 			and _image_has_visible_pixel(connector_image)
 			and _image_uses_binary_alpha(connector_image),
-			"围栏连接图必须为14×10、包含可见像素、使用二值alpha且不得生成mipmap。"
+			"围栏连接图必须为18×10、包含可见像素、使用二值alpha且不得生成mipmap。"
 		)
 		_expect(
 			connector_image != null
@@ -249,6 +249,10 @@ func _test_config_scene_and_component_visuals() -> void:
 				true
 			),
 			"围栏横向与纵向的相邻主体之间都必须由连接木段连续跨过，不能留下透明行或透明列。"
+		)
+		_expect(
+			_vertical_connector_covers_lower_tip(body_image, connector_image),
+			"纵向连接件必须按生产层级覆盖下方围栏原有的向上尖桩，不能露出异质接缝。"
 		)
 	var original_texture := sprite.texture if sprite != null else null
 	var original_frame := sprite.frame if sprite != null else -1
@@ -762,6 +766,37 @@ func _connection_has_no_transparent_seam(
 				line_has_pixel = true
 				break
 		if not line_has_pixel:
+			return false
+	return true
+
+
+func _vertical_connector_covers_lower_tip(body: Image, connector: Image) -> bool:
+	if body == null or connector == null:
+		return false
+	var bridge := _rotate_image_clockwise(connector)
+	var pair := Image.create(32, 64, false, Image.FORMAT_RGBA8)
+	pair.fill(Color(0.0, 0.0, 0.0, 0.0))
+	pair.blend_rect(body, Rect2i(Vector2i.ZERO, body.get_size()), Vector2i.ZERO)
+	pair.blend_rect(body, Rect2i(Vector2i.ZERO, body.get_size()), Vector2i(0, 32))
+	# ConnectorDown is positioned at y=9 with a 0.5 scale. In source-pixel
+	# coordinates its center is therefore y=34, keeping the old top edge at 25
+	# while extending the lower edge through the neighbor's center tip.
+	var bridge_origin := Vector2i(16, 34) - bridge.get_size() / 2
+	pair.blend_rect(
+		bridge,
+		Rect2i(Vector2i.ZERO, bridge.get_size()),
+		bridge_origin
+	)
+	for body_y in range(2, 9):
+		var pair_point := Vector2i(16, 32 + body_y)
+		var bridge_point := pair_point - bridge_origin
+		if not Rect2i(Vector2i.ZERO, bridge.get_size()).has_point(bridge_point):
+			return false
+		var body_color := body.get_pixel(16, body_y)
+		var bridge_color := bridge.get_pixelv(bridge_point)
+		if body_color.a <= 0.0 or bridge_color.a <= 0.0:
+			return false
+		if pair.get_pixelv(pair_point).to_rgba32() != bridge_color.to_rgba32():
 			return false
 	return true
 

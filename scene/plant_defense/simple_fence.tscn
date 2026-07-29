@@ -36,16 +36,16 @@ visible = false
 z_index = 0
 texture_filter = 1
 material = ExtResource("4_lifecycle_material")
-position = Vector2(8, 0)
+position = Vector2(9, 0)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("5_connector")
 
 [node name="ConnectorDown" type="Sprite2D" parent="."]
 visible = false
-z_index = 0
+z_index = 2
 texture_filter = 1
 material = ExtResource("4_lifecycle_material")
-position = Vector2(0, 8)
+position = Vector2(0, 9)
 rotation = 1.5707963267948966
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("5_connector")

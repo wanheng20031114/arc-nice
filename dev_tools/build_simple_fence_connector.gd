@@ -11,8 +11,8 @@ const SOURCE_RIGHT_FRAME := 2
 const SOURCE_TIP_ORIGIN := Vector2i(27, 17)
 const SOURCE_QUADRANT_SIZE := 5
 const BASE_CONNECTOR_SIZE := 10
-const CONNECTOR_SIZE := Vector2i(14, 10)
-const CONNECTOR_CENTER_EXTENSION := 4
+const CONNECTOR_SIZE := Vector2i(18, 10)
+const CONNECTOR_CENTER_EXTENSION := 8
 const EDGE_INSETS := [2, 1, 0, 0, 0, 0, 0, 0, 1, 2]
 
 
@@ -80,9 +80,9 @@ func _extract_symmetric_connector(atlas: Image) -> Image:
 	return connector
 
 
-## The old 10px square bridge spans horizontal neighbors, but after rotation it
-## leaves a transparent row between vertical neighbors. Extend only the middle
-## grain columns so every output pixel stays on the original 1px art grid.
+## Extend only the middle grain columns so every output pixel stays on the
+## original 1px art grid. The scene keeps the near edge fixed and places the
+## added length toward the right/down neighbor, covering its upward tip.
 func _extend_connector_horizontally(base: Image) -> Image:
 	var connector := Image.create(
 		CONNECTOR_SIZE.x,
@@ -121,6 +121,6 @@ func _validate_connector(connector: Image) -> String:
 				return "Simple fence connector must be horizontally symmetric."
 			if color != connector.get_pixel(x, CONNECTOR_SIZE.y - 1 - y):
 				return "Simple fence connector must be vertically symmetric."
-	if visible_pixels != 128:
+	if visible_pixels != 168:
 		return "Simple fence connector silhouette changed unexpectedly: %d pixels." % visible_pixels
 	return ""
