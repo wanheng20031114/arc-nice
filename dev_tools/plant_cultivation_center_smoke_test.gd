@@ -192,6 +192,8 @@ func _run() -> void:
 		and center.recipes[3].output_items
 		== [HYDRANGEA_RAIN_TOWER_BUILDING_ITEM]
 		and center.recipes[3].output_amounts == [1]
+		and center.recipes[3].required_global_research_id
+		== GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
 		and is_equal_approx(center.recipes[3].duration_seconds, 30.0)
 		and center.recipes[3].outputs_to_player_inventory()
 		and center.recipes[4].input_items
@@ -207,6 +209,8 @@ func _run() -> void:
 		and center.recipes[5].output_items
 		== [ORANGE_CHARGING_TOWER_BUILDING_ITEM]
 		and center.recipes[5].output_amounts == [1]
+		and center.recipes[5].required_global_research_id
+		== GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
 		and is_equal_approx(center.recipes[5].duration_seconds, 30.0)
 		and center.recipes[5].outputs_to_player_inventory(),
 		"培育中心必须提供六种塔配方；紫阳花消耗2个木制核心和2个水瓶，橘充能塔消耗1个木制核心和1份术士紫晶粉。"
@@ -313,8 +317,9 @@ func _run() -> void:
 	)
 	_expect(
 		not center.select_recipe(&"wooden_core_to_bamboo_mortar")
-		and not center.select_recipe(&"wooden_core_to_hydrangea_rain_tower"),
-		"竹筒与紫阳花培育必须在对应科研完成前保持锁定。"
+		and not center.select_recipe(&"wooden_core_to_hydrangea_rain_tower")
+		and not center.select_recipe(&"wooden_core_to_orange_charging_tower"),
+		"竹筒、紫阳花与橘充能塔培育必须在各自科研完成前保持锁定。"
 	)
 	completed_research_ids[
 		GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
@@ -338,8 +343,9 @@ func _run() -> void:
 		"迫击炮必须在累计30秒时完成并进入独立背包槽位。"
 	)
 	_expect(
-		not center.select_recipe(&"wooden_core_to_hydrangea_rain_tower"),
-		"完成竹筒科研不得顺带解锁紫阳花培育。"
+		not center.select_recipe(&"wooden_core_to_hydrangea_rain_tower")
+		and not center.select_recipe(&"wooden_core_to_orange_charging_tower"),
+		"完成竹筒科研不得顺带解锁紫阳花或橘充能塔培育。"
 	)
 	completed_research_ids[
 		GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
@@ -365,6 +371,13 @@ func _run() -> void:
 		and is_zero_approx(center.progress_elapsed_seconds),
 		"紫阳花雨幕塔必须在累计30秒时原子消费两种材料并进入独立背包槽位。"
 	)
+	_expect(
+		not center.select_recipe(&"wooden_core_to_orange_charging_tower"),
+		"完成紫阳花科研不得顺带解锁橘充能塔培育。"
+	)
+	completed_research_ids[
+		GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
+	] = true
 	_expect(
 		warehouse.try_add_storage_item_count(WOODEN_CORE, 1)
 		and warehouse.try_add_storage_item_count(SORCERER_VIOLET_POWDER, 1)

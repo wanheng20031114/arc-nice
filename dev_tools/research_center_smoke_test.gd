@@ -36,6 +36,9 @@ const BAMBOO_MORTAR_CRAFTING_RESEARCH_ID := (
 const HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID := (
 	GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
 )
+const ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID := (
+	GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
+)
 
 var failures: PackedStringArray = []
 
@@ -223,7 +226,7 @@ func _run() -> void:
 		[weishidaier, tiyi, hoe_cat],
 		test_root
 	)
-	await _test_simple_crafting_unlock_research(
+	await _test_recipe_unlock_research(
 		research,
 		center,
 		production,
@@ -254,6 +257,9 @@ func _test_config_and_scene(
 	var hydrangea_research := GlobalResearchRegistry.get_config(
 		HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID
 	)
+	var orange_research := GlobalResearchRegistry.get_config(
+		ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID
+	)
 	var registered_research_projects := GlobalResearchRegistry.get_all_configs()
 	_expect(
 		registered_research_projects == [
@@ -261,9 +267,10 @@ func _test_config_and_scene(
 			move_speed_research,
 			bamboo_mortar_research,
 			hydrangea_research,
+			orange_research,
 		]
 		and ResearchCoordinator.RUNTIME_STATE_SCHEMA == 3,
-		"全局科研注册表必须按固定顺序公开四个合法项目，并使用runtime schema3。"
+		"全局科研注册表必须按固定顺序公开五个合法项目，并使用runtime schema3。"
 	)
 	_expect(
 		defense_research != null
@@ -318,6 +325,23 @@ func _test_config_and_scene(
 			SimpleCraftingRegistry.HYDRANGEA_RAIN_TOWER_ID
 		) == HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
 		"紫阳花简易培育必须是消耗2木制核心和5树苗、持续30秒的合法配方解锁研究。"
+	)
+	_expect(
+		orange_research != null
+		and orange_research.is_valid()
+		and orange_research.input_items == [WOODEN_CORE, SAPLING]
+		and orange_research.input_amounts == [2, 5]
+		and is_equal_approx(orange_research.duration_seconds, 30.0)
+		and orange_research.effect_type
+		== GlobalResearchConfig.EffectType.PRODUCTION_RECIPE_UNLOCK
+		and is_zero_approx(orange_research.effect_amount)
+		and orange_research.unlocked_simple_crafting_recipe_id == &""
+		and orange_research.unlocked_production_recipe_id
+		== &"wooden_core_to_orange_charging_tower"
+		and GlobalResearchRegistry.get_unlock_research_id_for_production_recipe(
+			&"wooden_core_to_orange_charging_tower"
+		) == ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID,
+		"橘充能塔培育研究必须与紫阳花同为2木制核心、5树苗和30秒，但只解锁培育中心配方。"
 	)
 	_expect(
 		config != null
@@ -544,7 +568,10 @@ func _test_config_and_scene(
 		and panel.has_node(
 			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/HydrangeaResearchButton"
 		)
-		and panel.global_research_buttons.size() == 4
+		and panel.has_node(
+			"Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/OrangeChargingTowerResearchButton"
+		)
+		and panel.global_research_buttons.size() == 5
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/PlankSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/SaplingSlot")
 		and panel.has_node("Overlay/PanelRoot/GlobalPage/WaterBottleSlot")
@@ -552,7 +579,7 @@ func _test_config_and_scene(
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode2")
 		and panel.has_node("Overlay/PanelRoot/PlayerPage/TechNode3")
 		and not panel.has_node("Overlay/PanelRoot/ToggleButton"),
-		"科研UI必须原生包含四项全局研究、双页与三处技术节点，并且不能有开关。"
+		"科研UI必须原生包含五项全局研究、双页与三处技术节点，并且不能有开关。"
 	)
 	_expect(
 		is_equal_approx(
@@ -743,6 +770,24 @@ func _test_panel_mouse_navigation(
 			327.0
 		),
 		"选择迫击炮研发后必须使用居中的双材料槽布局，并保持第三槽隐藏。"
+	)
+	panel.global_research_scroll.ensure_control_visible(
+		panel.orange_charging_tower_research_button
+	)
+	await process_frame
+	await _click_panel_control(panel.orange_charging_tower_research_button)
+	_expect(
+		root.gui_get_hovered_control()
+		== panel.orange_charging_tower_research_button
+		and panel.selected_global_research_id
+		== ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID
+		and panel.orange_charging_tower_research_button.button_pressed
+		and panel.material_slots[0].visible
+		and panel.material_slots[1].visible
+		and not panel.material_slots[2].visible
+		and panel.material_slots[0].item == WOODEN_CORE
+		and panel.material_slots[1].item == SAPLING,
+		"滚动后点击橘充能塔研究必须选中独立项目，并展示与紫阳花相同的双材料需求。"
 	)
 
 	await _click_panel_control(panel.close_button)
@@ -977,7 +1022,7 @@ func _test_global_move_speed_research(
 		"移动研究完成后注册的新玩家必须立即获得15点移速。"
 	)
 
-func _test_simple_crafting_unlock_research(
+func _test_recipe_unlock_research(
 	research: ResearchCoordinator,
 	center: ResearchCenter,
 	production: ProductionCoordinator,
@@ -1011,15 +1056,16 @@ func _test_simple_crafting_unlock_research(
 	)
 	_expect(
 		production.get_total_item_count(SAPLING) == 10
-		and warehouse.try_add_storage_item_count(WOODEN_CORE, 4),
-		"配方解锁研究测试必须准备恰好4木制核心和10树苗。"
+		and warehouse.try_add_storage_item_count(SAPLING, 5)
+		and warehouse.try_add_storage_item_count(WOODEN_CORE, 6),
+		"配方解锁研究测试必须为三项塔研究准备恰好6木制核心和15树苗。"
 	)
 
 	_expect(
 		center.try_start_global_research(BAMBOO_MORTAR_CRAFTING_RESEARCH_ID)
 		== ResearchCoordinator.RESULT_SUCCESS
-		and production.get_total_item_count(WOODEN_CORE) == 2
-		and production.get_total_item_count(SAPLING) == 5,
+		and production.get_total_item_count(WOODEN_CORE) == 4
+		and production.get_total_item_count(SAPLING) == 10,
 		"迫击炮研发启动时必须原子扣除2木制核心和5树苗。"
 	)
 	research.advance_global_research(29.9)
@@ -1063,9 +1109,9 @@ func _test_simple_crafting_unlock_research(
 		center.try_start_global_research(
 			HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID
 		) == ResearchCoordinator.RESULT_SUCCESS
-		and production.get_total_item_count(WOODEN_CORE) == 0
-		and production.get_total_item_count(SAPLING) == 0,
-		"紫阳花研发启动时必须原子扣除剩余2木制核心和5树苗。"
+		and production.get_total_item_count(WOODEN_CORE) == 2
+		and production.get_total_item_count(SAPLING) == 5,
+		"紫阳花研发启动时必须原子扣除2木制核心和5树苗。"
 	)
 	research.advance_global_research(29.9)
 	completed_ids = research.get_completed_global_research_ids()
@@ -1089,7 +1135,7 @@ func _test_simple_crafting_unlock_research(
 	research.advance_global_research(0.1)
 	completed_ids = research.get_completed_global_research_ids()
 	available_recipes = SimpleCraftingRegistry.get_available_recipes(completed_ids)
-	var expected_completed_ids: Array[StringName] = [
+	var completed_before_orange: Array[StringName] = [
 		BUILDING_DEFENSE_RESEARCH_ID,
 		PLAYER_MOVE_SPEED_RESEARCH_ID,
 		BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
@@ -1100,12 +1146,58 @@ func _test_simple_crafting_unlock_research(
 			HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID
 		) == ResearchCoordinator.GlobalResearchState.COMPLETED
 		and research.get_active_global_research_id().is_empty()
-		and completed_ids == expected_completed_ids
+		and completed_ids == completed_before_orange
 		and available_recipes.size() == 9
 		and available_recipes.has(simple_fence_recipe)
 		and available_recipes.has(bamboo_recipe)
 		and available_recipes.has(hydrangea_recipe),
 		"紫阳花研发满30秒后必须导出四项完成ID，并让全部九条简易配方可用。"
+	)
+	_expect(
+		center.try_start_global_research(
+			ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID
+		) == ResearchCoordinator.RESULT_SUCCESS
+		and production.get_total_item_count(WOODEN_CORE) == 0
+		and production.get_total_item_count(SAPLING) == 0,
+		"橘充能塔研发启动时必须按紫阳花相同成本原子扣除2木制核心和5树苗。"
+	)
+	research.advance_global_research(29.9)
+	completed_ids = research.get_completed_global_research_ids()
+	_expect(
+		research.get_global_research_state(
+			ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID
+		) == ResearchCoordinator.GlobalResearchState.RESEARCHING
+		and is_equal_approx(
+			research.get_global_elapsed_seconds(
+				ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID
+			),
+			29.9
+		)
+		and ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID not in completed_ids
+		and SimpleCraftingRegistry.get_available_recipes(completed_ids).size() == 9,
+		"橘充能塔研发进行29.9秒时不得提前完成，也不得改变简易制作配方集合。"
+	)
+	research.advance_global_research(0.1)
+	completed_ids = research.get_completed_global_research_ids()
+	available_recipes = SimpleCraftingRegistry.get_available_recipes(completed_ids)
+	var expected_completed_ids: Array[StringName] = [
+		BUILDING_DEFENSE_RESEARCH_ID,
+		PLAYER_MOVE_SPEED_RESEARCH_ID,
+		BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
+		HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
+		ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID,
+	]
+	_expect(
+		research.get_global_research_state(
+			ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID
+		) == ResearchCoordinator.GlobalResearchState.COMPLETED
+		and research.get_active_global_research_id().is_empty()
+		and completed_ids == expected_completed_ids
+		and available_recipes.size() == 9
+		and available_recipes.has(simple_fence_recipe)
+		and available_recipes.has(bamboo_recipe)
+		and available_recipes.has(hydrangea_recipe),
+		"橘充能塔研发满30秒后必须仅新增独立完成ID，不得污染简易制作解锁。"
 	)
 
 	var remote_research := (
@@ -1129,8 +1221,8 @@ func _test_simple_crafting_unlock_research(
 	var snapshot_elapsed := snapshot.get("global_elapsed", {}) as Dictionary
 	_expect(
 		int(snapshot.get("schema", 0)) == 3
-		and snapshot_states.size() == 4
-		and snapshot_elapsed.size() == 4
+		and snapshot_states.size() == 5
+		and snapshot_elapsed.size() == 5
 		and remote_research.get_completed_global_research_ids()
 		== expected_completed_ids
 		and remote_plant_system.get_global_physical_defense_bonus() == 10
@@ -1138,7 +1230,7 @@ func _test_simple_crafting_unlock_research(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
 		),
-		"schema3多人科研快照必须完整同步四个项目、数值效果与两项配方解锁。"
+		"schema3多人科研快照必须完整同步五个项目、数值效果与三项配方解锁。"
 	)
 	var replayed_snapshot := snapshot.duplicate(true)
 	replayed_snapshot["revision"] = int(snapshot["revision"]) + 1
@@ -1150,7 +1242,7 @@ func _test_simple_crafting_unlock_research(
 			remote_player.move_speed,
 			remote_base_speed + ResearchCoordinator.GLOBAL_PLAYER_MOVE_SPEED_BONUS
 		),
-		"重复应用更高revision的四项目完成态快照不得重复叠加数值效果。"
+		"重复应用更高revision的五项目完成态快照不得重复叠加数值效果。"
 	)
 
 	var accepted_revision := remote_research.research_revision
@@ -1166,7 +1258,7 @@ func _test_simple_crafting_unlock_research(
 	var missing_project_state := replayed_snapshot.duplicate(true)
 	missing_project_state["revision"] = accepted_revision + 1
 	var missing_states := missing_project_state["global_states"] as Dictionary
-	missing_states.erase(String(HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID))
+	missing_states.erase(String(ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID))
 	invalid_snapshots.append(missing_project_state)
 	var wrong_elapsed_type := replayed_snapshot.duplicate(true)
 	wrong_elapsed_type["revision"] = accepted_revision + 1
@@ -1178,7 +1270,7 @@ func _test_simple_crafting_unlock_research(
 	var incomplete_elapsed := (
 		incomplete_completed_elapsed["global_elapsed"] as Dictionary
 	)
-	incomplete_elapsed[String(HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID)] = 29.9
+	incomplete_elapsed[String(ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID)] = 29.9
 	invalid_snapshots.append(incomplete_completed_elapsed)
 	for invalid_snapshot in invalid_snapshots:
 		remote_research.apply_multiplayer_runtime_state(invalid_snapshot)

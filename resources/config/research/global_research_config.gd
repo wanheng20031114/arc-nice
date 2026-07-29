@@ -7,6 +7,7 @@ enum EffectType {
 	BUILDING_PHYSICAL_DEFENSE,
 	PLAYER_MOVE_SPEED,
 	SIMPLE_CRAFTING_RECIPE_UNLOCK,
+	PRODUCTION_RECIPE_UNLOCK,
 }
 
 @export_group("基础信息")
@@ -24,6 +25,7 @@ enum EffectType {
 @export var effect_type: EffectType = EffectType.BUILDING_PHYSICAL_DEFENSE
 @export var effect_amount: float = 0.0
 @export var unlocked_simple_crafting_recipe_id: StringName = &""
+@export var unlocked_production_recipe_id: StringName = &""
 
 
 func is_valid() -> bool:
@@ -39,14 +41,31 @@ func is_valid() -> bool:
 		or duration_seconds <= 0.0
 		or not is_finite(effect_amount)
 		or effect_type < EffectType.BUILDING_PHYSICAL_DEFENSE
-		or effect_type > EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK
+		or effect_type > EffectType.PRODUCTION_RECIPE_UNLOCK
 	):
 		return false
-	if effect_type == EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK:
-		if unlocked_simple_crafting_recipe_id == &"" or effect_amount != 0.0:
-			return false
-	elif effect_amount <= 0.0 or unlocked_simple_crafting_recipe_id != &"":
-		return false
+	match effect_type:
+		EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK:
+			if (
+				unlocked_simple_crafting_recipe_id == &""
+				or unlocked_production_recipe_id != &""
+				or effect_amount != 0.0
+			):
+				return false
+		EffectType.PRODUCTION_RECIPE_UNLOCK:
+			if (
+				unlocked_production_recipe_id == &""
+				or unlocked_simple_crafting_recipe_id != &""
+				or effect_amount != 0.0
+			):
+				return false
+		_:
+			if (
+				effect_amount <= 0.0
+				or unlocked_simple_crafting_recipe_id != &""
+				or unlocked_production_recipe_id != &""
+			):
+				return false
 	for input_index in input_items.size():
 		if input_items[input_index] == null or input_amounts[input_index] <= 0:
 			return false

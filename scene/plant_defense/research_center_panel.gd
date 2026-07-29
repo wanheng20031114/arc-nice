@@ -18,11 +18,15 @@ const BAMBOO_MORTAR_CRAFTING_RESEARCH_ID := (
 const HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID := (
 	GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
 )
+const ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID := (
+	GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
+)
 const GLOBAL_RESEARCH_IDS: Array[StringName] = [
 	BUILDING_DEFENSE_RESEARCH_ID,
 	PLAYER_MOVE_SPEED_RESEARCH_ID,
 	BAMBOO_MORTAR_CRAFTING_RESEARCH_ID,
 	HYDRANGEA_RAIN_TOWER_CRAFTING_RESEARCH_ID,
+	ORANGE_CHARGING_TOWER_CRAFTING_RESEARCH_ID,
 ]
 const DEFAULT_RESEARCH_ID := BUILDING_DEFENSE_RESEARCH_ID
 const MATERIAL_SLOT_POSITIONS: Array[Vector2] = [
@@ -66,11 +70,15 @@ const LINE_ON_COLOR := Color(0.18, 0.88, 1.35, 1.0)
 @onready var hydrangea_research_button: Button = (
 	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/HydrangeaResearchButton
 )
+@onready var orange_charging_tower_research_button: Button = (
+	$Overlay/PanelRoot/GlobalPage/ResearchListFrame/ResearchScroll/ResearchList/OrangeChargingTowerResearchButton
+)
 @onready var global_research_buttons: Array[Button] = [
 	defense_research_button,
 	move_speed_research_button,
 	bamboo_mortar_research_button,
 	hydrangea_research_button,
+	orange_charging_tower_research_button,
 ]
 @onready var global_research_name: Label = (
 	$Overlay/PanelRoot/GlobalPage/ResearchName

@@ -7,11 +7,15 @@ const BAMBOO_MORTAR_CRAFTING_ID: StringName = &"bamboo_mortar_crafting"
 const HYDRANGEA_RAIN_TOWER_CRAFTING_ID: StringName = (
 	&"hydrangea_rain_tower_crafting"
 )
+const ORANGE_CHARGING_TOWER_CRAFTING_ID: StringName = (
+	&"orange_charging_tower_crafting"
+)
 const RESEARCH_ORDER: Array[StringName] = [
 	BUILDING_DEFENSE_ID,
 	PLAYER_MOVE_SPEED_ID,
 	BAMBOO_MORTAR_CRAFTING_ID,
 	HYDRANGEA_RAIN_TOWER_CRAFTING_ID,
+	ORANGE_CHARGING_TOWER_CRAFTING_ID,
 ]
 const MAX_WIRE_RESEARCH_ID_LENGTH := 64
 
@@ -27,12 +31,16 @@ const BAMBOO_MORTAR_CRAFTING: GlobalResearchConfig = preload(
 const HYDRANGEA_RAIN_TOWER_CRAFTING: GlobalResearchConfig = preload(
 	"res://resources/config/research/hydrangea_rain_tower_crafting.tres"
 )
+const ORANGE_CHARGING_TOWER_CRAFTING: GlobalResearchConfig = preload(
+	"res://resources/config/research/orange_charging_tower_crafting.tres"
+)
 
 const RESEARCH_PROJECTS := {
 	BUILDING_DEFENSE_ID: BUILDING_DEFENSE,
 	PLAYER_MOVE_SPEED_ID: PLAYER_MOVE_SPEED,
 	BAMBOO_MORTAR_CRAFTING_ID: BAMBOO_MORTAR_CRAFTING,
 	HYDRANGEA_RAIN_TOWER_CRAFTING_ID: HYDRANGEA_RAIN_TOWER_CRAFTING,
+	ORANGE_CHARGING_TOWER_CRAFTING_ID: ORANGE_CHARGING_TOWER_CRAFTING,
 }
 
 
@@ -82,6 +90,23 @@ static func get_unlock_research_id_for_simple_crafting_recipe(
 			and config.effect_type
 			== GlobalResearchConfig.EffectType.SIMPLE_CRAFTING_RECIPE_UNLOCK
 			and config.unlocked_simple_crafting_recipe_id == recipe_id
+		):
+			return research_id
+	return &""
+
+
+static func get_unlock_research_id_for_production_recipe(
+	recipe_id: StringName
+) -> StringName:
+	if recipe_id == &"":
+		return &""
+	for research_id in RESEARCH_ORDER:
+		var config := RESEARCH_PROJECTS.get(research_id) as GlobalResearchConfig
+		if (
+			config != null
+			and config.effect_type
+			== GlobalResearchConfig.EffectType.PRODUCTION_RECIPE_UNLOCK
+			and config.unlocked_production_recipe_id == recipe_id
 		):
 			return research_id
 	return &""

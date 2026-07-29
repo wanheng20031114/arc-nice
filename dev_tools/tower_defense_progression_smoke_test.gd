@@ -31,6 +31,9 @@ const CULTIVATION_BAMBOO: ProductionRecipe = preload(
 const CULTIVATION_HYDRANGEA: ProductionRecipe = preload(
 	"res://resources/config/production/wooden_core_to_hydrangea_rain_tower.tres"
 )
+const CULTIVATION_ORANGE: ProductionRecipe = preload(
+	"res://resources/config/production/wooden_core_to_orange_charging_tower.tres"
+)
 const FORMAL_SCALED_TOTALS := {
 	1: [24, 36, 48, 64, 80, 96, 112, 128, 144, 160, 176, 200],
 	2: [31, 46, 60, 80, 100, 120, 140, 160, 181, 201, 223, 254],
@@ -152,6 +155,7 @@ func _test_formal_economy() -> void:
 func _test_research_gates() -> void:
 	var bamboo_research := GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
 	var hydrangea_research := GlobalResearchRegistry.HYDRANGEA_RAIN_TOWER_CRAFTING_ID
+	var orange_research := GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
 	_expect(
 		SIMPLE_BAMBOO.required_global_research_id == bamboo_research
 		and CULTIVATION_BAMBOO.required_global_research_id == bamboo_research,
@@ -161,6 +165,13 @@ func _test_research_gates() -> void:
 		SIMPLE_HYDRANGEA.required_global_research_id == hydrangea_research
 		and CULTIVATION_HYDRANGEA.required_global_research_id == hydrangea_research,
 		"Hydrangea simple-crafting and cultivation must share one research gate."
+	)
+	_expect(
+		CULTIVATION_ORANGE.required_global_research_id == orange_research
+		and GlobalResearchRegistry.get_unlock_research_id_for_production_recipe(
+			CULTIVATION_ORANGE.recipe_id
+		) == orange_research,
+		"Orange cultivation must use its dedicated production-recipe research gate."
 	)
 	var run_state := RunStateStore.new()
 	run_state.begin_new_run(&"weishidaier", false)
@@ -191,7 +202,8 @@ func _test_research_gates() -> void:
 	cultivation.set_recipe_unlock_checker(Callable(unlock_probe, "is_completed"))
 	_expect(
 		not cultivation.select_recipe(CULTIVATION_BAMBOO.recipe_id, 1)
-		and not cultivation.select_recipe(CULTIVATION_HYDRANGEA.recipe_id, 1),
+		and not cultivation.select_recipe(CULTIVATION_HYDRANGEA.recipe_id, 1)
+		and not cultivation.select_recipe(CULTIVATION_ORANGE.recipe_id, 1),
 		"Cultivation center must reject gated tower selection before research."
 	)
 	unlock_probe.complete(bamboo_research)
@@ -201,8 +213,14 @@ func _test_research_gates() -> void:
 	)
 	unlock_probe.complete(hydrangea_research)
 	_expect(
-		cultivation.select_recipe(CULTIVATION_HYDRANGEA.recipe_id, 1),
-		"Cultivation center must accept hydrangea after its research completes."
+		cultivation.select_recipe(CULTIVATION_HYDRANGEA.recipe_id, 1)
+		and not cultivation.select_recipe(CULTIVATION_ORANGE.recipe_id, 1),
+		"Hydrangea research must unlock hydrangea without unlocking orange cultivation."
+	)
+	unlock_probe.complete(orange_research)
+	_expect(
+		cultivation.select_recipe(CULTIVATION_ORANGE.recipe_id, 1),
+		"Cultivation center must accept orange after its dedicated research completes."
 	)
 	cultivation.free()
 	coordinator.queue_free()

@@ -312,12 +312,17 @@ func _test_building_item_and_acquisition_closure() -> void:
 		orange_recipe != null
 		and orange_recipe.input_items == [WOODEN_CORE, SORCERER_VIOLET_POWDER]
 		and orange_recipe.input_amounts == [1, 1]
+		and orange_recipe.required_global_research_id
+		== GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
+		and GlobalResearchRegistry.get_unlock_research_id_for_production_recipe(
+			orange_recipe.recipe_id
+		) == GlobalResearchRegistry.ORANGE_CHARGING_TOWER_CRAFTING_ID
 		and orange_recipe.output_items
 		== [BuildingItemRegistry.ORANGE_CHARGING_TOWER_ITEM]
 		and orange_recipe.output_amounts == [1]
 		and is_equal_approx(orange_recipe.duration_seconds, 30.0)
 		and orange_recipe.outputs_to_player_inventory(),
-		"橘充能塔必须在植物培育中心消耗1个木制核心和1份术士紫晶粉，并培育30秒。"
+		"橘充能塔必须在独立科研完成后，才能于植物培育中心消耗1个木制核心和1份术士紫晶粉培育。"
 	)
 
 
