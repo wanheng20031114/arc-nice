@@ -734,12 +734,45 @@ func _test_cycle_shader_render_contract() -> void:
 			"active_layer = floor(sequence_time / LAYER_SECONDS)"
 		)
 		and shader_code.contains("cycle_time_override_seconds >= 0.0")
-		and shader_code.contains("0.16 + layer_match * 0.84")
+		and shader_code.contains("0.16 + glass_layer_match * 0.84")
 		and shader_code.contains("smoothstep(0.56, 0.78")
 		and shader_code.contains(
 			"result.a *= clamp(visible_strength, 0.0, 1.0)"
 		),
 		"三层shader必须使用单一活动层、0.78后的严格黑场与零alpha关闭契约。"
+	)
+	_expect(
+		shader_code.contains("float glass_perspective_rise(float pixel_x)")
+		and shader_code.contains("4.0 * step(9.0, center_distance)")
+		and shader_code.contains(
+			"authored_glass_layer_from_position(pixel_position)"
+		)
+		and shader_code.contains(
+			"authored_layer_from_y(pixel_position.y)"
+		)
+		and shader_code.contains(
+			"0.16 + glass_layer_match * 0.84"
+		),
+		"玻璃强光必须复刻橘片中央平台与上扬肩部，且不得扭曲橘片原像素。"
+	)
+	_expect(
+		is_zero_approx(_glass_perspective_rise(55.5))
+		and is_zero_approx(_glass_perspective_rise(72.5))
+		and is_equal_approx(_glass_perspective_rise(54.5), 4.0)
+		and is_equal_approx(_glass_perspective_rise(73.5), 4.0)
+		and is_equal_approx(_glass_perspective_rise(46.5), 4.0)
+		and is_equal_approx(_glass_perspective_rise(81.5), 4.0),
+		"玻璃透视曲线必须保持x=55..72中央平直，并让两侧对称上扬一个显示像素。"
+	)
+	_expect(
+		_glass_layer_at(Vector2(64.0, 48.5)) == 2
+		and _glass_layer_at(Vector2(46.5, 44.5)) == 2
+		and _glass_layer_at(Vector2(64.0, 58.5)) == 1
+		and _glass_layer_at(Vector2(46.5, 54.5)) == 1
+		and _glass_layer_at(Vector2(64.0, 68.5)) == 0
+		and _glass_layer_at(Vector2(46.5, 64.5)) == 0
+		and _glass_layer_at(Vector2(46.5, 48.5)) == 1,
+		"三道玻璃强光必须表达同一空间高度：中央水平、两侧上折，而不是水平矩形。"
 	)
 	var rendering_driver := RenderingServer.get_current_rendering_driver_name()
 	if (
@@ -786,6 +819,22 @@ func _test_cycle_shader_render_contract() -> void:
 	await process_frame
 
 
+func _glass_perspective_rise(pixel_x: float) -> float:
+	var center_distance := absf(pixel_x - 64.0)
+	return 4.0 * float(center_distance >= 9.0)
+
+
+func _glass_layer_at(pixel_position: Vector2) -> int:
+	var projected_y := (
+		pixel_position.y + _glass_perspective_rise(pixel_position.x)
+	)
+	for layer_index in SOURCE_LAYER_BANDS.size():
+		var band: Vector2i = SOURCE_LAYER_BANDS[layer_index]
+		if projected_y >= band.x and projected_y < band.y:
+			return layer_index
+	return -8
+
+
 func _verify_rendered_responsibility_cycle(
 	sprite: Sprite2D,
 	viewport: SubViewport,
@@ -828,10 +877,18 @@ func _verify_rendered_responsibility_cycle(
 	)
 	for layer_index in 3:
 		var active_image := active_frames[layer_index]
-		var own_delta := _maximum_band_luminance_delta(
-			active_image,
-			black_frame,
-			SOURCE_LAYER_BANDS[layer_index]
+		var own_delta := (
+			_maximum_center_glass_band_luminance_delta(
+				active_image,
+				black_frame,
+				SOURCE_LAYER_BANDS[layer_index]
+			)
+			if role_name == "玻璃"
+			else _maximum_band_luminance_delta(
+				active_image,
+				black_frame,
+				SOURCE_LAYER_BANDS[layer_index]
+			)
 		)
 		var strongest_other_delta := 0.0
 		for other_index in 3:
@@ -839,10 +896,18 @@ func _verify_rendered_responsibility_cycle(
 				continue
 			strongest_other_delta = maxf(
 				strongest_other_delta,
-				_maximum_band_luminance_delta(
-					active_image,
-					black_frame,
-					SOURCE_LAYER_BANDS[other_index]
+				(
+					_maximum_center_glass_band_luminance_delta(
+						active_image,
+						black_frame,
+						SOURCE_LAYER_BANDS[other_index]
+					)
+					if role_name == "玻璃"
+					else _maximum_band_luminance_delta(
+						active_image,
+						black_frame,
+						SOURCE_LAYER_BANDS[other_index]
+					)
 				)
 			)
 		_expect(
@@ -857,7 +922,57 @@ func _verify_rendered_responsibility_cycle(
 			and active_image.get_pixel(159, 159).a <= 0.001,
 			"%s真实shader渲染不得把透明角落扩成矩形色带。" % role_name
 		)
+	if role_name == "玻璃":
+		_verify_rendered_glass_perspective(active_frames)
 	return true
+
+
+func _verify_rendered_glass_perspective(
+	active_frames: Array[Image]
+) -> void:
+	var curved_rows: Array[int] = [56, 46, 35]
+	var flat_rows: Array[int] = [59, 49, 37]
+	for layer_index in 3:
+		var active_image := active_frames[layer_index]
+		var left_outer_alpha := _source_alpha(
+			active_image,
+			Vector2i(35, curved_rows[layer_index])
+		)
+		var right_outer_alpha := _source_alpha(
+			active_image,
+			Vector2i(93, curved_rows[layer_index])
+		)
+		var outer_alpha := (left_outer_alpha + right_outer_alpha) * 0.5
+		var inner_alpha := (
+			_source_alpha(
+				active_image,
+				Vector2i(58, curved_rows[layer_index])
+			)
+			+ _source_alpha(
+				active_image,
+				Vector2i(70, curved_rows[layer_index])
+			)
+		) * 0.5
+		var flat_inner_alpha := (
+			_source_alpha(
+				active_image,
+				Vector2i(58, flat_rows[layer_index])
+			)
+			+ _source_alpha(
+				active_image,
+				Vector2i(70, flat_rows[layer_index])
+			)
+		) * 0.5
+		_expect(
+			outer_alpha >= inner_alpha + 0.15
+			and flat_inner_alpha >= 0.20
+			and absf(left_outer_alpha - right_outer_alpha) <= 0.05,
+			(
+				"玻璃第%d层必须真实渲染为中央平直、左右对称上折的强光带"
+				+ "（肩部%.3f，中央%.3f，平段%.3f）。"
+			)
+			% [layer_index + 1, outer_alpha, inner_alpha, flat_inner_alpha]
+		)
 
 
 func _capture_cycle_phase(
@@ -1012,6 +1127,35 @@ func _maximum_band_luminance_delta(
 				- black_image.get_pixel(x, y).get_luminance()
 			)
 	return maximum_delta
+
+
+func _maximum_center_glass_band_luminance_delta(
+	active_image: Image,
+	black_image: Image,
+	source_y_band: Vector2i
+) -> float:
+	var maximum_delta := 0.0
+	var center_x_ranges: Array[Vector2i] = [
+		Vector2i(56, 60),
+		Vector2i(69, 73),
+	]
+	var y_start := SOURCE_TOP_LEFT.y + source_y_band.x
+	var y_end := SOURCE_TOP_LEFT.y + source_y_band.y
+	for source_x_range in center_x_ranges:
+		var x_start := SOURCE_TOP_LEFT.x + source_x_range.x
+		var x_end := SOURCE_TOP_LEFT.x + source_x_range.y
+		for y in range(y_start, y_end):
+			for x in range(x_start, x_end):
+				maximum_delta = maxf(
+					maximum_delta,
+					active_image.get_pixel(x, y).get_luminance()
+					- black_image.get_pixel(x, y).get_luminance()
+				)
+	return maximum_delta
+
+
+func _source_alpha(image: Image, source_position: Vector2i) -> float:
+	return image.get_pixelv(SOURCE_TOP_LEFT + source_position).a
 
 
 func _effective_z_index(item: CanvasItem) -> int:

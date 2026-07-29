@@ -55,6 +55,25 @@ float authored_layer_from_y(float pixel_y) {
 }
 
 
+float glass_perspective_rise(float pixel_x) {
+	// The approved top orange slice provides the chamber's projection: its
+	// center is level while both shoulders recede upward by one displayed pixel.
+	// UV * 128.0 lands on texel centers, so x=55..72 remains the flat platform;
+	// four source pixels keep the two bent shoulders aligned to the 0.25 scale.
+	float center_distance = abs(pixel_x - 64.0);
+	return 4.0 * step(9.0, center_distance);
+}
+
+
+float authored_glass_layer_from_position(vec2 pixel_position) {
+	// Raising the sampled y at the sides projects one spatial height as a
+	// center-flat band whose two ends bend upward along the hexagonal pane.
+	return authored_layer_from_y(
+		pixel_position.y + glass_perspective_rise(pixel_position.x)
+	);
+}
+
+
 float cycle_strength(out float active_layer) {
 	const float LAYER_SECONDS = 0.80;
 	float authored_time = TIME + cycle_offset_seconds;
@@ -77,13 +96,28 @@ void fragment() {
 	vec4 result = COLOR;
 	float active_layer = 0.0;
 	float strength = cycle_strength(active_layer);
-	float authored_layer = authored_layer_from_y(UV.y * 128.0);
-	float layer_match = 1.0 - step(0.1, abs(authored_layer - active_layer));
+	vec2 pixel_position = UV * 128.0;
+	// Orange slices retain their authored curved alpha. Only the glass band
+	// needs projection; warping both roles would misclassify adjacent slices.
+	float orange_layer = authored_layer_from_y(pixel_position.y);
+	float glass_layer = authored_glass_layer_from_position(pixel_position);
+	float orange_layer_match = 1.0 - step(
+		0.1,
+		abs(orange_layer - active_layer)
+	);
+	float glass_layer_match = 1.0 - step(
+		0.1,
+		abs(glass_layer - active_layer)
+	);
 	float is_glass = step(0.5, visual_role);
-	float orange_strength = strength * layer_match * (1.0 - is_glass);
+	float orange_strength = (
+		strength * orange_layer_match * (1.0 - is_glass)
+	);
 	// The whole pane catches a restrained glow while the pane beside the active
 	// slice receives the strong band.  This remains readable in daylight.
-	float glass_strength = strength * is_glass * (0.16 + layer_match * 0.84);
+	float glass_strength = (
+		strength * is_glass * (0.16 + glass_layer_match * 0.84)
+	);
 	float visible_strength = orange_strength + glass_strength;
 	vec3 emission_color = mix(orange_emission.rgb, glass_emission.rgb, is_glass);
 
