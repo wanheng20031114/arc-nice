@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_rpg.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_rpg.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"capoo_rpg"
+enemy_config = ExtResource("2_config")
+family_id = &"capoo"
+family_label = "猫猫虫"
+rank = 0
+sort_order = 350
+visible_in_codex = true
+description = "扛着火箭筒的 RPG 猫猫虫总在远处寻找成片目标。它发射的火箭伤害不算密集，却会在命中后爆炸并波及周围单位。"
+traits = PackedStringArray("远程", "爆炸范围", "低频重击")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(0.31, 0.31)
+preview_offset = Vector2(0, 0)

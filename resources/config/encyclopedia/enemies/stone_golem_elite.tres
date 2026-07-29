@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/stone_golem_elite.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/stone_golem_elite.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"stone_golem_elite"
+enemy_config = ExtResource("2_config")
+family_id = &"artificial_creation"
+family_label = "人工造物"
+rank = 1
+sort_order = 510
+visible_in_codex = true
+description = "精英石头人的岩体经过进一步压缩与强化，几乎像一座移动堡垒。它保留范围砸地攻击，并以更高生命、物防和伤害正面撕开阵地。"
+traits = PackedStringArray("精英", "范围重击", "重装")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, -6)

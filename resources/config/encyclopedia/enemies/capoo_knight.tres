@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_knight.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_knight.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"capoo_knight"
+enemy_config = ExtResource("2_config")
+family_id = &"capoo"
+family_label = "猫猫虫"
+rank = 0
+sort_order = 300
+visible_in_codex = true
+description = "披甲的骑士猫猫虫会举剑稳步逼近阵地。进入近距离后，它会蓄力挥出扇形斩击，并凭借物理防御承受正面火力。"
+traits = PackedStringArray("近战扇形", "物理防御")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(0.31, 0.31)
+preview_offset = Vector2(0, 0)

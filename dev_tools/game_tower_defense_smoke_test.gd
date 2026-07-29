@@ -100,6 +100,33 @@ func _test_main_menu_entry() -> void:
 		multiplayer_button.pressed.is_connected(Callable(main_menu, "_on_multiplayer_pressed")),
 		"Existing multiplayer menu connection must remain intact."
 	)
+	var encyclopedia_button := main_menu.get_node_or_null(
+		"MenuCenter/MenuPanel/MarginContainer/MenuStack/Encyclopedia"
+	) as Button
+	var settings_button := main_menu.get_node(
+		"MenuCenter/MenuPanel/MarginContainer/MenuStack/Settings"
+	) as Button
+	_expect(encyclopedia_button != null, "Main menu must include the Encyclopedia button.")
+	if encyclopedia_button == null:
+		return
+	_expect(encyclopedia_button.text == "图鉴", "Encyclopedia button text is incorrect.")
+	_expect(
+		encyclopedia_button.pressed.is_connected(
+			Callable(main_menu, "_on_encyclopedia_pressed")
+		),
+		"Encyclopedia button must be connected to its menu handler."
+	)
+	_expect(
+		multiplayer_button.get_index() < encyclopedia_button.get_index()
+		and encyclopedia_button.get_index() < settings_button.get_index(),
+		"Encyclopedia must sit between Multiplayer and Settings."
+	)
+	MainMenu.request_focus_after_return(MainMenu.FOCUS_ENCYCLOPEDIA)
+	main_menu.call("_apply_requested_focus")
+	_expect(
+		encyclopedia_button.has_focus(),
+		"Returning from the encyclopedia must restore focus to its menu button."
+	)
 
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.run_started = false

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/linglan_boss.tres" id="2_config"]
+[ext_resource type="Resource" path="res://resources/config/bosses/boss_01_linglan.tres" id="3_boss"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/linglan.tres" id="4_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"linglan_boss"
+enemy_config = ExtResource("2_config")
+boss_config = ExtResource("3_boss")
+family_id = &"boss"
+family_label = "Boss"
+rank = 2
+sort_order = 600
+visible_in_codex = true
+description = "铃兰以轻盈身姿操纵足以覆盖整片战场的樱色能量。她会依次展开旋转环形弹幕、追踪火箭与援军召唤、延时膨胀光球，以及从场地边缘向内收缩的激光与光球夹击。"
+traits = PackedStringArray("环形弹幕", "追踪火箭与召唤", "膨胀光球", "收缩激光场")
+preview_frames = ExtResource("4_frames")
+preview_animation = &"idle"
+preview_scale = Vector2(0.148, 0.148)
+preview_offset = Vector2(0, -8)

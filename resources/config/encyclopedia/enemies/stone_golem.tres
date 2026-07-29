@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/stone_golem.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/stone_golem.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"stone_golem"
+enemy_config = ExtResource("2_config")
+family_id = &"artificial_creation"
+family_label = "人工造物"
+rank = 0
+sort_order = 500
+visible_in_codex = true
+description = "被赋予行动意志的石头人以沉重步伐碾向防线。它拥有厚重生命与物理防御，近身后会蓄力砸地产生范围伤害。"
+traits = PackedStringArray("范围重击", "高物防", "高生命")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, -6)

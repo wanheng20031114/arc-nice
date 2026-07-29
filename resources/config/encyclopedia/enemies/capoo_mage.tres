@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/capoo_mage.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/capoo_mage.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"capoo_mage"
+enemy_config = ExtResource("2_config")
+family_id = &"capoo"
+family_label = "猫猫虫"
+rank = 0
+sort_order = 360
+visible_in_codex = true
+description = "法师 Capoo 会从极远距离吟唱并凝聚火球。火球具有有限追踪能力，在开阔视野中能持续锁住移动目标并施加法术伤害。"
+traits = PackedStringArray("超远程", "追踪火球", "法术伤害")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(0.1, 0.1)
+preview_offset = Vector2(3, -2)

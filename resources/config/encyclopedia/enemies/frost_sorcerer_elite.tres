@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/frost_sorcerer_elite.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/frost_sorcerer_elite.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"frost_sorcerer_elite"
+enemy_config = ExtResource("2_config")
+family_id = &"sorcerer"
+family_label = "术士"
+rank = 1
+sort_order = 430
+visible_in_codex = true
+description = "精英冰霜术士能更快地塑造出高压冰锥。它的弹体速度、伤害与施法频率全面提升，会连续以寒冷压制远处目标。"
+traits = PackedStringArray("精英", "高速冰锥", "高频寒冷")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(3, -7)

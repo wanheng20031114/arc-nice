@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/yuanshi_insect_bomber.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"yuanshi_insect_bomber"
+enemy_config = ExtResource("2_config")
+family_id = &"yuanshi_insect"
+family_label = "原石虫"
+rank = 0
+sort_order = 130
+visible_in_codex = true
+description = "不稳定能量在自爆原石虫的躯壳内不断膨胀。它被击败时会立刻引爆，对周围玩家与建筑造成范围伤害，密集防线尤其需要提防。"
+traits = PackedStringArray("近战", "死亡自爆", "范围伤害")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

@@ -1,0 +1,503 @@
+[gd_scene load_steps=16 format=3]
+
+[ext_resource type="Script" path="res://scene/encyclopedia/encyclopedia_screen.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/menu_rooftop_garden_background.png" id="2_background"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+[ext_resource type="PackedScene" path="res://scene/encyclopedia/detail_panel.tscn" id="4_detail"]
+
+[sub_resource type="Theme" id="Theme_codex"]
+default_font = ExtResource("3_font")
+default_font_size = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_archive"]
+bg_color = Color(0.035, 0.043, 0.045, 0.955)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.69, 0.58, 0.32, 0.72)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+shadow_color = Color(0, 0, 0, 0.36)
+shadow_size = 16
+shadow_offset = Vector2(0, 5)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nav_normal"]
+bg_color = Color(0.045, 0.052, 0.052, 0.18)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nav_hover"]
+bg_color = Color(0.18, 0.17, 0.12, 0.72)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.76, 0.65, 0.37, 0.48)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_back"]
+bg_color = Color(0.075, 0.085, 0.085, 0.8)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.42, 0.4, 0.48)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_back_hover"]
+bg_color = Color(0.14, 0.16, 0.15, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.61, 0.72, 0.67, 0.68)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_input"]
+content_margin_left = 13.0
+content_margin_top = 8.0
+content_margin_right = 13.0
+content_margin_bottom = 8.0
+bg_color = Color(0.025, 0.034, 0.035, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.28, 0.4, 0.37, 0.58)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_input_focus"]
+content_margin_left = 13.0
+content_margin_top = 8.0
+content_margin_right = 13.0
+content_margin_bottom = 8.0
+bg_color = Color(0.035, 0.05, 0.05, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.43, 0.79, 0.69, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_filter"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 28.0
+content_margin_bottom = 8.0
+bg_color = Color(0.025, 0.034, 0.035, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.47, 0.4, 0.24, 0.56)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_filter_hover"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 28.0
+content_margin_bottom = 8.0
+bg_color = Color(0.1, 0.095, 0.065, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.83, 0.69, 0.35, 0.78)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_count"]
+bg_color = Color(0.08, 0.1, 0.095, 0.68)
+border_width_left = 1
+border_color = Color(0.31, 0.55, 0.49, 0.46)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_focus"]
+
+[node name="EncyclopediaScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("Theme_codex")
+script = ExtResource("1_script")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.035, 0.042, 0.043, 1)
+
+[node name="TilePattern" type="TextureRect" parent="."]
+texture_filter = 1
+texture_repeat = 1
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("2_background")
+stretch_mode = 6
+
+[node name="Shade" type="ColorRect" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.006, 0.012, 0.012, 0.52)
+
+[node name="Page" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PageMargin" type="MarginContainer" parent="Page"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 28
+
+[node name="ArchiveSurface" type="PanelContainer" parent="Page/PageMargin"]
+custom_minimum_size = Vector2(900, 520)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_archive")
+
+[node name="SurfaceMargin" type="MarginContainer" parent="Page/PageMargin/ArchiveSurface"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="PageRow" type="HBoxContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Sidebar" type="VBoxContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow"]
+custom_minimum_size = Vector2(176, 0)
+layout_mode = 2
+theme_override_constants/separation = 13
+
+[node name="TitleStack" type="VBoxContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ArchiveMark" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/TitleStack"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.39, 0.76, 0.67, 1)
+theme_override_font_sizes/font_size = 12
+text = "ROOFTOP ARCHIVE"
+
+[node name="Title" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/TitleStack"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.84, 0.52, 1)
+theme_override_font_sizes/font_size = 31
+text = "图 鉴"
+
+[node name="Subtitle" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/TitleStack"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.51, 0.49, 1)
+theme_override_font_sizes/font_size = 11
+text = "屋顶生态与威胁资料库"
+
+[node name="TopRule" type="ColorRect" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.66, 0.56, 0.33, 0.44)
+
+[node name="SectionNav" type="Control" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]
+custom_minimum_size = Vector2(176, 148)
+layout_mode = 2
+
+[node name="SelectionIndicator" type="ColorRect" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav"]
+layout_mode = 0
+offset_right = 3.0
+offset_bottom = 44.0
+mouse_filter = 2
+color = Color(0.97, 0.78, 0.35, 1)
+
+[node name="Buttons" type="VBoxContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 8
+
+[node name="Enemy" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
+custom_minimum_size = Vector2(164, 44)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.97, 0.84, 0.5, 1)
+theme_override_colors/font_hover_color = Color(0.98, 0.87, 0.58, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
+text = "敌人  29"
+alignment = 0
+
+[node name="Collectible" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
+custom_minimum_size = Vector2(164, 44)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.72, 0.73, 0.69, 1)
+theme_override_colors/font_hover_color = Color(0.98, 0.87, 0.58, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
+text = "收藏品  123"
+alignment = 0
+
+[node name="Building" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar/SectionNav/Buttons"]
+custom_minimum_size = Vector2(164, 44)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.72, 0.73, 0.69, 1)
+theme_override_colors/font_hover_color = Color(0.98, 0.87, 0.58, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_nav_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_nav_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_nav_hover")
+text = "建筑物  16"
+alignment = 0
+
+[node name="SidebarSpacer" type="Control" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="ControlHint" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43, 0.46, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "方向键浏览  ·  Esc 返回"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="BackButton" type="Button" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Sidebar"]
+custom_minimum_size = Vector2(176, 40)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.76, 0.78, 0.73, 1)
+theme_override_colors/font_hover_color = Color(0.94, 0.94, 0.86, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_back")
+theme_override_styles/hover = SubResource("StyleBoxFlat_back_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_back_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_back_hover")
+text = "返回主菜单"
+
+[node name="Divider" type="ColorRect" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow"]
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.51, 0.47, 0.34, 0.34)
+
+[node name="Workspace" type="Control" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+clip_contents = true
+
+[node name="GridPane" type="VBoxContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 13
+
+[node name="Header" type="VBoxContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="SectionKicker" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Header"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.39, 0.76, 0.67, 1)
+theme_override_font_sizes/font_size = 11
+text = "THREAT ARCHIVE  ·  目标情报"
+
+[node name="TitleRow" type="HBoxContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Header"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SectionTitle" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Header/TitleRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.94, 0.91, 0.79, 1)
+theme_override_font_sizes/font_size = 27
+text = "敌人档案"
+
+[node name="ArchiveIndex" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Header/TitleRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.49, 0.56, 0.53, 1)
+theme_override_font_sizes/font_size = 12
+text = "029 条记录"
+vertical_alignment = 1
+
+[node name="SectionDescription" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Header"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.61, 0.58, 1)
+theme_override_font_sizes/font_size = 13
+text = "查阅已归档敌人的数值、特性与行动方式。"
+
+[node name="Toolbar" type="HBoxContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Search" type="LineEdit" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Toolbar"]
+custom_minimum_size = Vector2(150, 38)
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.89, 0.83, 1)
+theme_override_colors/font_placeholder_color = Color(0.43, 0.48, 0.46, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_input")
+theme_override_styles/focus = SubResource("StyleBoxFlat_input_focus")
+placeholder_text = "搜索名称"
+clear_button_enabled = true
+
+[node name="Filter" type="OptionButton" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Toolbar"]
+custom_minimum_size = Vector2(142, 38)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.84, 0.79, 0.65, 1)
+theme_override_colors/font_hover_color = Color(0.96, 0.87, 0.57, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_filter")
+theme_override_styles/hover = SubResource("StyleBoxFlat_filter_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_filter_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_filter_hover")
+fit_to_longest_item = false
+item_count = 1
+selected = 0
+popup/item_0/text = "全部分类"
+popup/item_0/id = 0
+
+[node name="ResultCount" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/Toolbar"]
+custom_minimum_size = Vector2(92, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.72, 0.65, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_count")
+text = "显示 29 / 29"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="WorkspaceRule" type="ColorRect" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.32, 0.48, 0.43, 0.34)
+
+[node name="GridArea" type="Control" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="GridScroll" type="ScrollContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/GridArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+follow_focus = true
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="GridMargin" type="MarginContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/GridArea/GridScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="EntryGrid" type="GridContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/GridArea/GridScroll/GridMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 14
+columns = 6
+
+[node name="EmptyState" type="CenterContainer" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/GridArea"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Message" type="Label" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace/GridPane/GridArea/EmptyState"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.46, 0.5, 0.48, 1)
+theme_override_font_sizes/font_size = 15
+text = "没有符合条件的档案"
+
+[node name="DetailPanel" parent="Page/PageMargin/ArchiveSurface/SurfaceMargin/PageRow/Workspace" instance=ExtResource("4_detail")]
+visible = false
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 344.0
+offset_bottom = 0.0
+grow_horizontal = 0
+grow_vertical = 2

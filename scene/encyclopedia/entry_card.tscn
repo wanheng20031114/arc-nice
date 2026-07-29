@@ -1,0 +1,80 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scene/encyclopedia/entry_card.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
+
+[node name="EntryCard" type="PanelContainer"]
+custom_minimum_size = Vector2(112, 124)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+mouse_filter = 1
+script = ExtResource("1_script")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="Content" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="ArtworkFrame" type="PanelContainer" parent="Margin/Content"]
+custom_minimum_size = Vector2(100, 62)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Icon" type="TextureRect" parent="Margin/Content/ArtworkFrame"]
+texture_filter = 1
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="UnknownGlyph" type="Label" parent="Margin/Content/ArtworkFrame"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 34
+text = "?"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Name" type="Label" parent="Margin/Content"]
+custom_minimum_size = Vector2(100, 28)
+layout_mode = 2
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+text = "条目名称"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+text_overrun_behavior = 3
+
+[node name="Badge" type="Label" parent="Margin/Content"]
+custom_minimum_size = Vector2(100, 16)
+layout_mode = 2
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 10
+text = "类别"
+horizontal_alignment = 1
+vertical_alignment = 1
+text_overrun_behavior = 3
+
+[node name="SelectButton" type="Button" parent="."]
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button")

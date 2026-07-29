@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/fire_sorcerer.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/fire_sorcerer.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"fire_sorcerer"
+enemy_config = ExtResource("2_config")
+family_id = &"sorcerer"
+family_label = "术士"
+rank = 0
+sort_order = 400
+visible_in_codex = true
+description = "掌控炽焰的术士会在防线之外完成从容施法。它一次召出三枚转向能力极强的火球，命中后还会留下持续灼烧。"
+traits = PackedStringArray("三重火球", "强追踪", "灼烧")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(3, -7)

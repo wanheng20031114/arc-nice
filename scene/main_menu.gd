@@ -1,7 +1,9 @@
 extends Control
+class_name MainMenu
 
 const GAME_SCENE_PATH := "res://scene/game.tscn"
 const GAME_TOWER_DEFENSE_SCENE_PATH := "res://scene/game_tower_defense.tscn"
+const ENCYCLOPEDIA_SCENE_PATH := "res://scene/encyclopedia/encyclopedia_screen.tscn"
 const TEST_GRASS_ARENA_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena.tscn"
 )
@@ -14,6 +16,8 @@ const TEST_ARENA_SCENE_PATHS := {
 	TEST_ARENA_P1_ID: TEST_GRASS_ARENA_SCENE_PATH,
 	TEST_ARENA_P2_ID: TEST_GRASS_ARENA_P2_SCENE_PATH,
 }
+const FOCUS_DEFAULT: StringName = &"singleplayer"
+const FOCUS_ENCYCLOPEDIA: StringName = &"encyclopedia"
 
 enum SingleplayerDestination {
 	STANDARD,
@@ -25,8 +29,11 @@ enum SingleplayerDestination {
 @onready var singleplayer_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/SinglePlayer
 @onready var tower_defense_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TowerDefense
 @onready var test_arena_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/TestArena
+@onready var encyclopedia_button: Button = $MenuCenter/MenuPanel/MarginContainer/MenuStack/Encyclopedia
 @onready var test_arena_choice_overlay: TestArenaChoiceOverlay = $TestArenaChoiceOverlay
 @onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
+
+static var _requested_focus_id: StringName = FOCUS_DEFAULT
 
 var pending_singleplayer_destination := SingleplayerDestination.STANDARD
 var pending_test_arena_id: StringName = TEST_ARENA_P1_ID
@@ -37,6 +44,22 @@ func _ready() -> void:
 	test_arena_choice_overlay.selection_closed.connect(_on_test_arena_selection_closed)
 	character_choice_overlay.character_confirmed.connect(_on_character_confirmed)
 	character_choice_overlay.selection_closed.connect(_on_character_selection_closed)
+	call_deferred("_apply_requested_focus")
+
+
+static func request_focus_after_return(focus_id: StringName) -> void:
+	_requested_focus_id = focus_id
+
+
+func _apply_requested_focus() -> void:
+	var target := (
+		encyclopedia_button
+		if _requested_focus_id == FOCUS_ENCYCLOPEDIA
+		else singleplayer_button
+	)
+	_requested_focus_id = FOCUS_DEFAULT
+	if target != null and target.is_visible_in_tree() and not target.disabled:
+		target.grab_focus()
 
 
 func _on_singleplayer_pressed() -> void:
@@ -109,6 +132,10 @@ func _on_character_selection_closed() -> void:
 
 func _on_multiplayer_pressed() -> void:
 	get_tree().change_scene_to_file("res://scene/multiplayer/multiplayer_lobby.tscn")
+
+
+func _on_encyclopedia_pressed() -> void:
+	get_tree().change_scene_to_file(ENCYCLOPEDIA_SCENE_PATH)
 
 
 func _on_settings_pressed() -> void:

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/slime_fire.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/slime_fire.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"slime_fire"
+enemy_config = ExtResource("2_config")
+family_id = &"slime"
+family_label = "史莱姆"
+rank = 0
+sort_order = 210
+visible_in_codex = true
+description = "高温黏液在火焰史莱姆体内不停翻滚。它的接触攻击属于魔法伤害，并会让玩家或建筑陷入持续灼烧。"
+traits = PackedStringArray("魔法接触", "灼烧")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

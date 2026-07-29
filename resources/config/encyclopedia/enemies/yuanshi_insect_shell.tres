@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_shell.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/yuanshi_insect_shell.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"yuanshi_insect_shell"
+enemy_config = ExtResource("2_config")
+family_id = &"yuanshi_insect"
+family_label = "原石虫"
+rank = 0
+sort_order = 110
+visible_in_codex = true
+description = "厚重甲壳包裹着这只原石虫，使它像一块缓慢移动的矿石。更高的生命和物理防御让它能顶住火力，为后方虫群争取推进空间。"
+traits = PackedStringArray("近战", "硬壳", "物理防御")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

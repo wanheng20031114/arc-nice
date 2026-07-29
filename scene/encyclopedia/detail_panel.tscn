@@ -1,0 +1,213 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scene/encyclopedia/detail_panel.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.043, 0.052, 0.055, 0.985)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.69, 0.62, 0.62)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_preview"]
+bg_color = Color(0.018, 0.026, 0.028, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.52, 0.48, 0.42)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_close"]
+bg_color = Color(0.1, 0.12, 0.12, 0.8)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_close_hover"]
+bg_color = Color(0.2, 0.25, 0.24, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.49, 0.81, 0.72, 0.72)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_focus"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_description"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+
+[node name="DetailPanel" type="PanelContainer"]
+custom_minimum_size = Vector2(344, 0)
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+clip_contents = true
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+script = ExtResource("1_script")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 18
+
+[node name="Content" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 13
+
+[node name="Header" type="HBoxContainer" parent="Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SectionLabel" type="Label" parent="Margin/Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+text = "敌人档案"
+vertical_alignment = 1
+
+[node name="CloseButton" type="Button" parent="Margin/Content/Header"]
+custom_minimum_size = Vector2(34, 32)
+layout_mode = 2
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.76, 0.8, 0.78, 1)
+theme_override_colors/font_hover_color = Color(0.94, 0.96, 0.92, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_close")
+theme_override_styles/hover = SubResource("StyleBoxFlat_close_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_close_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_close_hover")
+text = "×"
+
+[node name="PreviewFrame" type="PanelContainer" parent="Margin/Content"]
+custom_minimum_size = Vector2(304, 154)
+layout_mode = 2
+clip_contents = true
+theme_override_styles/panel = SubResource("StyleBoxFlat_preview")
+
+[node name="PreviewCanvas" type="Control" parent="Margin/Content/PreviewFrame"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Icon" type="TextureRect" parent="Margin/Content/PreviewFrame/PreviewCanvas"]
+texture_filter = 1
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -58.0
+offset_top = -58.0
+offset_right = 58.0
+offset_bottom = 58.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="EnemyPreview" type="AnimatedSprite2D" parent="Margin/Content/PreviewFrame/PreviewCanvas"]
+texture_filter = 1
+
+[node name="DetailsScroll" type="ScrollContainer" parent="Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+focus_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="Body" type="MarginContainer" parent="Margin/Content/DetailsScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_right = 8
+
+[node name="Details" type="VBoxContainer" parent="Margin/Content/DetailsScroll/Body"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 11
+
+[node name="Badges" type="HBoxContainer" parent="Margin/Content/DetailsScroll/Body/Details"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="PrimaryBadge" type="Label" parent="Margin/Content/DetailsScroll/Body/Details/Badges"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 11
+text = "家族"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SecondaryBadge" type="Label" parent="Margin/Content/DetailsScroll/Body/Details/Badges"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 11
+text = "等级"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Name" type="Label" parent="Margin/Content/DetailsScroll/Body/Details"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 25
+text = "条目名称"
+autowrap_mode = 2
+
+[node name="Description" type="RichTextLabel" parent="Margin/Content/DetailsScroll/Body/Details"]
+custom_minimum_size = Vector2(0, 62)
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/default_color = Color(0.78, 0.79, 0.74, 1)
+theme_override_fonts/normal_font = ExtResource("2_font")
+theme_override_font_sizes/normal_font_size = 13
+theme_override_constants/line_separation = 3
+theme_override_styles/normal = SubResource("StyleBoxEmpty_description")
+fit_content = true
+text = "条目描述"
+
+[node name="StatsHeading" type="Label" parent="Margin/Content/DetailsScroll/Body/Details"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+text = "数值资料"
+
+[node name="StatsRows" type="VBoxContainer" parent="Margin/Content/DetailsScroll/Body/Details"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="NotesHeading" type="Label" parent="Margin/Content/DetailsScroll/Body/Details"]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+text = "档案备注"
+
+[node name="NotesRows" type="VBoxContainer" parent="Margin/Content/DetailsScroll/Body/Details"]
+layout_mode = 2
+theme_override_constants/separation = 7

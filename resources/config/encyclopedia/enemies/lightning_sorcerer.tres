@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/lightning_sorcerer.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/lightning_sorcerer.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"lightning_sorcerer"
+enemy_config = ExtResource("2_config")
+family_id = &"sorcerer"
+family_label = "术士"
+rank = 0
+sort_order = 440
+visible_in_codex = true
+description = "雷电术士擅长惩罚聚集在一起的防守单位。蓄力完成后，闪电会从首个目标继续跳向附近目标，单次攻击最多命中五个不同单位。"
+traits = PackedStringArray("链式闪电", "最多五目标", "魔法伤害")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(3, -7)

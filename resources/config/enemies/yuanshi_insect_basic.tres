@@ -6,6 +6,7 @@
 
 [resource]
 script = ExtResource("5_mboub")
+display_name = "普通原石虫"
 category_tags = PackedStringArray("yuanshi_insect")
 enemy_scene = ExtResource("enemy_scene")
 max_health = 40
