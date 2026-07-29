@@ -17,6 +17,7 @@
 [ext_resource type="AudioStream" path="res://resources/audio/shenmu_town_combat.ogg" id="15_music"]
 [ext_resource type="AudioStream" path="res://resources/audio/shenmu_town_intermission.ogg" id="16_rest"]
 [ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="17_wave"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="18_exit"]
 
 [sub_resource type="Resource" id="Entry_basic"]
 script = ExtResource("1_entry")
@@ -83,6 +84,10 @@ script = ExtResource("1_entry")
 enemy_config = ExtResource("14_golem")
 count = 1
 
+[sub_resource type="Resource" id="Exit_boss"]
+script = ExtResource("18_exit")
+target_step_id = &"boss_01_linglan"
+
 [resource]
 script = ExtResource("17_wave")
 wave_name = "第12波 城镇决战"
@@ -95,4 +100,5 @@ music = ExtResource("15_music")
 post_wave_music = ExtResource("16_rest")
 step_id = &"wave_12"
 display_name = "第12波 城镇决战"
+exits = Array[ExtResource("18_exit")]([SubResource("Exit_boss")])
 editor_position = Vector2(1200, 320)

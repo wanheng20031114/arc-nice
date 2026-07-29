@@ -237,7 +237,24 @@ func _test_skill4_lifetime() -> void:
 	_expect(is_equal_approx(orb.get_damage_radius(), 9.0), "Skill4 damage radius configuration changed.")
 	orb.call("_physics_process", 0.26)
 	await process_frame
-	_expect(not is_instance_valid(orb), "Skill4 event-driven orb lifetime cleanup changed.")
+	_expect(
+		is_instance_valid(orb)
+		and orb.is_lifetime_despawning
+		and orb.collision_layer == 0
+		and orb.collision_mask == 0
+		and is_zero_approx(orb.speed),
+		"Skill4 expiry must disable damage and begin a stationary shrink."
+	)
+	if not is_instance_valid(orb):
+		return
+	orb.call("_physics_process", 0.2)
+	_expect(
+		orb.scale.x > 0.0 and orb.scale.x < 1.0,
+		"Skill4 orb must visibly shrink during its 0.4s despawn."
+	)
+	orb.call("_physics_process", 0.21)
+	await process_frame
+	_expect(not is_instance_valid(orb), "Skill4 orb must disappear after its 0.4s shrink.")
 
 
 func _test_multiplayer_proxy_identity_and_deduplication() -> void:

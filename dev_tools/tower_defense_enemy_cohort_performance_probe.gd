@@ -511,22 +511,18 @@ func _prepare_runtime() -> void:
 	game.player.is_dead = false
 	game.player.reset_physics_interpolation()
 	if phase == ProbePhase.BOSS:
-		# Tower-defense currently ships with Linglan disabled, but its campaign
-		# resource and production arena hooks remain present. Enable those exact
-		# hooks for the explicit per-enemy probe; otherwise target cells are
-		# interpreted against the full map and the synthetic boss can appear to
-		# stall while moving to a non-arena coordinate.
+		# Exercise the same far-right red-gate entry point as the formal tower-
+		# defense campaign so Boss movement and skill anchors stay representative.
 		active_boss_config = load(LINGLAN_BOSS_CONFIG_PATH) as BossConfig
 		_expect(active_boss_config != null, "Linglan BossConfig must load.")
 		if active_boss_config != null:
 			game.linglan_boss_enabled = true
 			game.active_boss_config = active_boss_config
-			game.call("_prepare_linglan_boss_arena", active_boss_config)
-			var arena_center := game.call(
-				"_get_boss_arena_center",
+			var boss_spawn_position := game.call(
+				"_get_linglan_spawn_global_position",
 				active_boss_config
 			) as Vector2
-			game.player.global_position = arena_center + Vector2(120.0, 80.0)
+			game.player.global_position = boss_spawn_position + Vector2(120.0, 80.0)
 			game.player.reset_physics_interpolation()
 	if game.map_camera != null:
 		game.map_camera.position = Vector2.ZERO
@@ -1083,7 +1079,7 @@ func _build_candidate_positions() -> PackedVector2Array:
 	var candidates := PackedVector2Array()
 	if phase == ProbePhase.BOSS and active_boss_config != null:
 		candidates.append(game.call(
-			"_get_boss_arena_center",
+			"_get_linglan_spawn_global_position",
 			active_boss_config
 		) as Vector2)
 		return candidates

@@ -1,6 +1,9 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const PERFORMANCE_CAMPAIGN := preload(
+	"res://resources/config/campaigns/tower_defense/performance/campaign.tres"
+)
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
 const EXPECTED_EARLY_WAVE_INTERVAL := 0.1
@@ -23,12 +26,13 @@ func _run() -> void:
 		return
 
 	game.auto_start_waves = false
+	game.singleplayer_campaign = PERFORMANCE_CAMPAIGN
 	root.add_child(game)
 	await process_frame
 	await physics_frame
 
-	_expect(not game.linglan_boss_enabled, "Pressure Campaign must keep Linglan disabled.")
-	_expect(game.bosses.is_empty(), "Pressure Campaign must not contain a Boss step.")
+	_expect(game.linglan_boss_enabled, "Tower-defense runtime must enable Linglan.")
+	_expect(game.bosses.is_empty(), "Performance Campaign must remain free of Boss steps.")
 	_expect(game.waves.size() == 12, "Pressure Campaign must contain twelve waves.")
 	if game.waves.is_empty():
 		game.queue_free()

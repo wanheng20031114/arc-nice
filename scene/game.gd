@@ -31,6 +31,7 @@ const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
 const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
+const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := "res://resources/config/enemies/capoo_sniper.tres"
 const COUNTDOWN_FINAL_SECONDS := 3
 const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
 const PURCHASE_RESULT_SUCCESS := 0
@@ -119,6 +120,8 @@ var linglan_boss: LinglanBoss = null
 var linglan_boss_intro_vfx: LinglanBossIntroVFX = null
 var boss_health_hud: BossHealthHUD = null
 var boss_runtime_scene_loads_requested: bool = false
+var linglan_enrage_sniper_config: EnemyConfig = null
+var boss_runtime_resources_by_path: Dictionary[String, Resource] = {}
 var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
 
@@ -855,18 +858,62 @@ func _request_boss_runtime_scene_loads() -> void:
 	if not linglan_boss_enabled:
 		return
 	boss_runtime_scene_loads_requested = true
+	for resource_path in _get_boss_runtime_resource_paths():
+		ResourceLoader.load_threaded_request(resource_path)
+
+
+func _get_boss_runtime_resource_paths() -> Array[String]:
+	var paths: Array[String] = []
 	for boss_config in _get_configured_bosses():
 		if not _boss_config_has_required_data(boss_config):
 			continue
 		var enemy_config_path := _get_boss_enemy_config_path(boss_config)
-		if not enemy_config_path.is_empty():
-			ResourceLoader.load_threaded_request(enemy_config_path)
+		if not enemy_config_path.is_empty() and not paths.has(enemy_config_path):
+			paths.append(enemy_config_path)
 		var intro_path := _get_boss_intro_vfx_scene_path(boss_config)
-		if not intro_path.is_empty():
-			ResourceLoader.load_threaded_request(intro_path)
+		if not intro_path.is_empty() and not paths.has(intro_path):
+			paths.append(intro_path)
 		var hud_path := _get_boss_hud_scene_path(boss_config)
-		if not hud_path.is_empty():
-			ResourceLoader.load_threaded_request(hud_path)
+		if not hud_path.is_empty() and not paths.has(hud_path):
+			paths.append(hud_path)
+	paths.append(LINGLAN_ENRAGE_SNIPER_CONFIG_PATH)
+	return paths
+
+
+func _prewarm_boss_runtime_resources() -> void:
+	if not linglan_boss_enabled:
+		return
+	_request_boss_runtime_scene_loads()
+	for resource_path in _get_boss_runtime_resource_paths():
+		if boss_runtime_resources_by_path.has(resource_path):
+			continue
+		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			await get_tree().process_frame
+			if not is_inside_tree():
+				return
+			status = ResourceLoader.load_threaded_get_status(resource_path)
+		var runtime_resource := (
+			ResourceLoader.load_threaded_get(resource_path)
+			if status == ResourceLoader.THREAD_LOAD_LOADED
+			else load(resource_path)
+		)
+		if runtime_resource != null:
+			boss_runtime_resources_by_path[resource_path] = runtime_resource
+
+
+func prewarm_shared_runtime_data() -> void:
+	await super.prewarm_shared_runtime_data()
+	if is_inside_tree():
+		await _prewarm_boss_runtime_resources()
+
+
+func get_linglan_enrage_sniper_config() -> EnemyConfig:
+	if linglan_enrage_sniper_config == null:
+		linglan_enrage_sniper_config = (
+			_load_threaded_or_direct(LINGLAN_ENRAGE_SNIPER_CONFIG_PATH) as EnemyConfig
+		)
+	return linglan_enrage_sniper_config
 
 
 func _deferred_request_boss_runtime_scene_loads() -> void:
@@ -1023,6 +1070,10 @@ func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 	if not _ensure_boss_health_hud_runtime_node(boss_config):
 		return false
 
+	if get_linglan_enrage_sniper_config() == null:
+		push_error("无法加载铃兰半血空降狙击手配置。")
+		return false
+
 	_configure_linglan_boss()
 	return true
 
@@ -1049,6 +1100,9 @@ func _ensure_boss_health_hud_runtime_node(boss_config: Resource) -> bool:
 func _load_threaded_or_direct(path: String) -> Resource:
 	if path.is_empty():
 		return null
+	var retained_resource := boss_runtime_resources_by_path.get(path) as Resource
+	if retained_resource != null:
+		return retained_resource
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status == ResourceLoader.THREAD_LOAD_LOADED:
 		return ResourceLoader.load_threaded_get(path)
@@ -1590,6 +1644,14 @@ func spawn_linglan_airdrop_sniper(
 	if enemy_config == null or enemy_config.enemy_scene == null:
 		return
 	var landing_position := _get_random_linglan_boss_arena_position()
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_linglan_airdrop_started.emit(
+			enemy_config,
+			landing_position,
+			warning_duration,
+			drop_height,
+			drop_duration
+		)
 	_spawn_linglan_airdrop_warning(warning_scene, landing_position, warning_duration)
 	_finish_linglan_airdrop_sniper_spawn(
 		enemy_config,

@@ -18,6 +18,9 @@ const CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE := preload(
 const LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
+const LINGLAN_AIRDROP_WARNING_SCENE := preload(
+	"res://scene/boss/linglan/linglan_airdrop_warning_marker.tscn"
+)
 
 const ENEMY_SPAWN_EFFECT_PREWARM_COUNT := 16
 const ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY := 32
@@ -43,6 +46,13 @@ signal multiplayer_pickup_removed(net_id: int)
 signal multiplayer_merchant_active_changed(active: bool)
 signal multiplayer_flow_state_changed(step_id: StringName, state: int, countdown_seconds: int)
 signal multiplayer_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2)
+signal multiplayer_linglan_airdrop_started(
+	enemy_config: EnemyConfig,
+	landing_position: Vector2,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+)
 signal multiplayer_defeat_started
 signal multiplayer_victory_started
 signal multiplayer_revive_all_requested
@@ -221,6 +231,77 @@ func restore_multiplayer_player(
 	boss_config: BossConfig,
 	spawn_position: Vector2
 ) -> void
+
+
+func apply_remote_linglan_airdrop_started(
+	enemy_config: EnemyConfig,
+	landing_position: Vector2,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+) -> void:
+	if (
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+		or enemy_config == null
+		or enemy_config.enemy_scene == null
+		or not landing_position.is_finite()
+		or wave_state == WaveState.VICTORY
+		or wave_state == WaveState.DEFEAT
+	):
+		return
+	var safe_warning_duration := clampf(warning_duration, 0.0, 5.0)
+	var safe_drop_height := clampf(drop_height, 0.0, 512.0)
+	var safe_drop_duration := clampf(drop_duration, 0.01, 5.0)
+	var warning := LINGLAN_AIRDROP_WARNING_SCENE.instantiate() as Node2D
+	if warning != null:
+		add_child(warning)
+		warning.top_level = true
+		warning.global_position = landing_position
+		warning.call("start", maxf(safe_warning_duration, 0.05))
+	_play_remote_linglan_airdrop_visual(
+		enemy_config,
+		landing_position,
+		safe_warning_duration,
+		safe_drop_height,
+		safe_drop_duration
+	)
+
+
+func _play_remote_linglan_airdrop_visual(
+	enemy_config: EnemyConfig,
+	landing_position: Vector2,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+) -> void:
+	if warning_duration > 0.0:
+		await get_tree().create_timer(warning_duration).timeout
+	if (
+		not is_inside_tree()
+		or wave_state == WaveState.VICTORY
+		or wave_state == WaveState.DEFEAT
+	):
+		return
+	var visual := enemy_config.enemy_scene.instantiate() as Enemy
+	if visual == null:
+		return
+	visual.name = "LinglanAirdropSniperVisual"
+	enemy_container.add_child(visual)
+	visual.global_position = landing_position + Vector2.UP * drop_height
+	visual.setup(enemy_config, null, null)
+	visual.configure_multiplayer_proxy()
+	visual.collision_layer = 0
+	visual.collision_mask = 0
+	visual.add_to_group(&"linglan_airdrop_visual")
+	var tween := visual.create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.set_ease(Tween.EASE_IN)
+	tween.tween_property(visual, "global_position", landing_position, drop_duration)
+	await tween.finished
+	if is_instance_valid(visual):
+		visual.queue_free()
+
+
 @abstract func apply_remote_defeat() -> void
 @abstract func apply_remote_victory() -> void
 @abstract func apply_remote_enemy_count(alive_count: int) -> void

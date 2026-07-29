@@ -252,7 +252,7 @@ func _test_boss_single_and_host_spawn_path() -> void:
 		)
 		and is_equal_approx(
 			float(runtime.local_projectile_records[0].get("lifetime", -1.0)),
-			2.0
+			1.2
 		),
 		"Host registration must receive the same pooled node and unchanged Skill1 payload."
 	)
@@ -326,9 +326,33 @@ func _test_damage_trajectory_and_hit_effect_semantics() -> void:
 		expiry_bullet.setup(Vector2.DOWN, 50, 0.0, 0.01)
 		expiry_bullet.call("_physics_process", 0.02)
 		_expect(
-			not expiry_bullet.pool_active and _find_active_sakura_hit_effect() == null,
-			"Natural expiry must return the lease without inventing an impact effect."
+			expiry_bullet.pool_active
+			and expiry_bullet.is_lifetime_despawning
+			and expiry_bullet.collision_layer == 0
+			and expiry_bullet.collision_mask == 0
+			and _find_active_sakura_hit_effect() == null,
+			"Natural expiry must disable damage and begin its visual shrink without an impact effect."
 		)
+		expiry_bullet.call("_physics_process", 0.1)
+		_expect(
+			expiry_bullet.scale.x > 0.0 and expiry_bullet.scale.x < 1.0,
+			"Natural expiry must visibly shrink before returning the pooled lease."
+		)
+		expiry_bullet.call("_physics_process", 0.11)
+		_expect(
+			not expiry_bullet.pool_active,
+			"Natural expiry must return the lease after the 0.2s shrink."
+		)
+	await _wait_for_quarantine()
+	var reset_bullet := pool.acquire(SAKURA_BULLET_SCENE) as LinglanSakuraBullet
+	_expect(
+		reset_bullet != null
+		and reset_bullet.scale.is_equal_approx(Vector2.ONE)
+		and not reset_bullet.is_lifetime_despawning,
+		"A reused Skill1 bullet must restore its authored scale and active lifecycle state."
+	)
+	if reset_bullet != null:
+		reset_bullet.retire()
 	await _wait_for_quarantine()
 	player.queue_free()
 	await process_frame

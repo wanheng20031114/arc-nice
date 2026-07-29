@@ -36,11 +36,19 @@ const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
 const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
 )
+const LINGLAN_SLIME_CONFIG_PATHS: Array[String] = [
+	"res://resources/config/enemies/slime.tres",
+	"res://resources/config/enemies/slime_green.tres",
+	"res://resources/config/enemies/slime_golden.tres",
+	"res://resources/config/enemies/slime_frost.tres",
+	"res://resources/config/enemies/slime_fire.tres",
+]
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
 const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
+const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := "res://resources/config/enemies/capoo_sniper.tres"
 const COUNTDOWN_FINAL_SECONDS := 3
 const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
 const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
@@ -56,9 +64,10 @@ const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
 const MUSIC_FADE_IN_SECONDS := 3.0
 const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
-const BOSS_INTRO_CAMERA_LOOK_AHEAD_DISTANCE := 96.0
-const BOSS_INTRO_CAMERA_FOCUS_SECONDS := 0.35
-const BOSS_INTRO_CAMERA_RESTORE_SECONDS := 0.25
+const LINGLAN_SPAWN_LEFT_OFFSET := 96.0
+const LINGLAN_SKILL4_AUTHORED_TARGET_CENTER := Vector2(6.5, 2.0)
+const BOSS_INTRO_CAMERA_FOCUS_SECONDS := 0.9
+const LINGLAN_AIRDROP_NEARBY_RADIUS := Vector2(96.0, 80.0)
 const DEFEAT_CAMERA_TRAVEL_SECONDS := 0.55
 const INITIAL_PLAYER_XIRANG := 1000
 const DEFAULT_BASE_HEALTH := 100
@@ -258,7 +267,13 @@ var active_boss_config: Resource
 var linglan_boss: LinglanBoss = null
 var linglan_boss_intro_vfx: LinglanBossIntroVFX = null
 var boss_health_hud: BossHealthHUD = null
+var linglan_skill4_orb_anchor_global_position := Vector2.ZERO
+var linglan_skill4_orb_authored_center := LINGLAN_SKILL4_AUTHORED_TARGET_CENTER
+var linglan_skill4_orb_anchor_valid := false
+var linglan_slime_configs: Array[EnemyConfig] = []
+var linglan_enrage_sniper_config: EnemyConfig = null
 var boss_runtime_scene_loads_requested: bool = false
+var boss_runtime_resources_by_path: Dictionary[String, Resource] = {}
 var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
 var plant_lifecycle_shader_prewarmed: bool = false
@@ -796,6 +811,19 @@ func get_home_objective_targets() -> Array[Node2D]:
 	return home_objective_targets.duplicate()
 
 
+func get_linglan_home_objective_target(from_position: Vector2) -> Node2D:
+	var nearest_target: Node2D = null
+	var nearest_distance_squared := INF
+	for target in home_objective_targets:
+		if target == null or not is_instance_valid(target):
+			continue
+		var distance_squared := from_position.distance_squared_to(target.global_position)
+		if distance_squared < nearest_distance_squared:
+			nearest_distance_squared = distance_squared
+			nearest_target = target
+	return nearest_target
+
+
 func _configure_minimap() -> void:
 	tower_defense_minimap.setup(
 		player,
@@ -887,7 +915,11 @@ func _on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 		current_wave_resolved = mini(current_wave_resolved + 1, current_wave_total)
 		active_wave_enemy_ids.erase(enemy_id)
 
-	var home_damage := enemy.config.home_damage if enemy.config != null else 1
+	var home_damage := (
+		current_base_health
+		if resolves_boss_step
+		else enemy.config.home_damage if enemy.config != null else 1
+	)
 	_remove_hud_alive_enemy(enemy_id)
 	_emit_multiplayer_enemy_escaped(enemy)
 	enemy.remove_for_home_escape()
@@ -2455,9 +2487,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			wave_state = WaveState.BOSS_ACTIVE
 			_set_local_merchants_active(false)
 			wave_hud.show_tower_defense_boss_progress(0, 1)
-			if linglan_boss_intro_vfx != null:
-				linglan_boss_intro_vfx.stop_intro()
-			_restore_camera_after_boss_intro()
+			_restore_remote_camera_if_boss_intro_complete()
 			var active_config := flow_step as BossConfig
 			if active_config != null:
 				active_boss_config = active_config
@@ -2500,9 +2530,7 @@ func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_posit
 		or boss_config == null
 	):
 		return
-	if linglan_boss_intro_vfx != null:
-		linglan_boss_intro_vfx.stop_intro()
-	_restore_camera_after_boss_intro()
+	_restore_remote_camera_if_boss_intro_complete()
 	active_boss_config = boss_config
 	current_flow_step = boss_config
 	wave_state = WaveState.BOSS_ACTIVE
@@ -3012,7 +3040,7 @@ func _configure_linglan_boss() -> void:
 	var boss_config := active_boss_config if active_boss_config != null else _get_first_boss_config()
 	if boss_config != null:
 		linglan_boss.config = _get_boss_enemy_config(boss_config)
-		linglan_boss.global_position = _get_boss_arena_center(boss_config)
+		linglan_boss.global_position = _get_linglan_spawn_global_position(boss_config)
 	linglan_boss.set_active(false)
 	if not linglan_boss.defeated.is_connected(_on_linglan_boss_defeated):
 		linglan_boss.defeated.connect(_on_linglan_boss_defeated)
@@ -3030,18 +3058,69 @@ func _request_boss_runtime_scene_loads() -> void:
 	if not linglan_boss_enabled:
 		return
 	boss_runtime_scene_loads_requested = true
+	for resource_path in _get_boss_runtime_resource_paths():
+		ResourceLoader.load_threaded_request(resource_path)
+
+
+func _get_boss_runtime_resource_paths() -> Array[String]:
+	var paths: Array[String] = []
 	for boss_config in _get_configured_bosses():
 		if not _boss_config_has_required_data(boss_config):
 			continue
 		var enemy_config_path := _get_boss_enemy_config_path(boss_config)
-		if not enemy_config_path.is_empty():
-			ResourceLoader.load_threaded_request(enemy_config_path)
+		if not enemy_config_path.is_empty() and not paths.has(enemy_config_path):
+			paths.append(enemy_config_path)
 		var intro_path := _get_boss_intro_vfx_scene_path(boss_config)
-		if not intro_path.is_empty():
-			ResourceLoader.load_threaded_request(intro_path)
+		if not intro_path.is_empty() and not paths.has(intro_path):
+			paths.append(intro_path)
 		var hud_path := _get_boss_hud_scene_path(boss_config)
-		if not hud_path.is_empty():
-			ResourceLoader.load_threaded_request(hud_path)
+		if not hud_path.is_empty() and not paths.has(hud_path):
+			paths.append(hud_path)
+	for slime_config_path in LINGLAN_SLIME_CONFIG_PATHS:
+		if not paths.has(slime_config_path):
+			paths.append(slime_config_path)
+	paths.append(LINGLAN_ENRAGE_SNIPER_CONFIG_PATH)
+	return paths
+
+
+func _prewarm_boss_runtime_resources() -> void:
+	if not linglan_boss_enabled:
+		return
+	_request_boss_runtime_scene_loads()
+	for resource_path in _get_boss_runtime_resource_paths():
+		if boss_runtime_resources_by_path.has(resource_path):
+			continue
+		var status := ResourceLoader.load_threaded_get_status(resource_path)
+		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			await get_tree().process_frame
+			if not is_inside_tree():
+				return
+			status = ResourceLoader.load_threaded_get_status(resource_path)
+		var runtime_resource := (
+			ResourceLoader.load_threaded_get(resource_path)
+			if status == ResourceLoader.THREAD_LOAD_LOADED
+			else load(resource_path)
+		)
+		if runtime_resource != null:
+			boss_runtime_resources_by_path[resource_path] = runtime_resource
+
+
+func _cache_linglan_slime_configs() -> void:
+	if linglan_slime_configs.size() == LINGLAN_SLIME_CONFIG_PATHS.size():
+		return
+	linglan_slime_configs.clear()
+	for config_path in LINGLAN_SLIME_CONFIG_PATHS:
+		var slime_config := _load_threaded_or_direct(config_path) as EnemyConfig
+		if slime_config != null:
+			linglan_slime_configs.append(slime_config)
+
+
+func get_linglan_enrage_sniper_config() -> EnemyConfig:
+	if linglan_enrage_sniper_config == null:
+		linglan_enrage_sniper_config = (
+			_load_threaded_or_direct(LINGLAN_ENRAGE_SNIPER_CONFIG_PATH) as EnemyConfig
+		)
+	return linglan_enrage_sniper_config
 
 
 func _deferred_request_boss_runtime_scene_loads() -> void:
@@ -3114,6 +3193,17 @@ func _get_boss_enemy_config_path(boss_config: Resource) -> String:
 
 func _get_boss_arena_center(boss_config: Resource) -> Vector2:
 	return boss_config.get("arena_center")
+
+
+func _get_linglan_spawn_global_position(boss_config: Resource) -> Vector2:
+	var upper_gate_spawn := _get_enemy_spawn_marker(&"Spawn5")
+	var lower_gate_spawn := _get_enemy_spawn_marker(&"Spawn6")
+	if upper_gate_spawn != null and lower_gate_spawn != null:
+		return (
+			(upper_gate_spawn.global_position + lower_gate_spawn.global_position) * 0.5
+			+ Vector2.LEFT * LINGLAN_SPAWN_LEFT_OFFSET
+		).round()
+	return _get_boss_arena_center(boss_config) if boss_config != null else Vector2.ZERO
 
 
 func _get_boss_arena_floor_rect(boss_config: Resource) -> Rect2i:
@@ -3198,6 +3288,10 @@ func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 	if not _ensure_boss_health_hud_runtime_node(boss_config):
 		return false
 
+	_cache_linglan_slime_configs()
+	if get_linglan_enrage_sniper_config() == null:
+		push_error("无法加载铃兰半血空降狙击手配置。")
+		return false
 	_configure_linglan_boss()
 	return true
 
@@ -3224,6 +3318,9 @@ func _ensure_boss_health_hud_runtime_node(boss_config: Resource) -> bool:
 func _load_threaded_or_direct(path: String) -> Resource:
 	if path.is_empty():
 		return null
+	var retained_resource := boss_runtime_resources_by_path.get(path) as Resource
+	if retained_resource != null:
+		return retained_resource
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status == ResourceLoader.THREAD_LOAD_LOADED:
 		return ResourceLoader.load_threaded_get(path)
@@ -3362,12 +3459,23 @@ func _prewarm_enemy_navigation_grids() -> void:
 
 
 func prepare_shared_runtime_data_and_complete() -> void:
-	await prewarm_shared_runtime_data()
+	await _prewarm_tower_shared_runtime_data()
 	if not is_inside_tree():
 		return
 	await _prewarm_plant_lifecycle_shader()
 	if is_inside_tree():
 		mark_runtime_preparation_complete()
+
+
+func _prewarm_tower_shared_runtime_data() -> void:
+	await prewarm_shared_runtime_data()
+	if not is_inside_tree():
+		return
+	await _prewarm_boss_runtime_resources()
+	if not is_inside_tree():
+		return
+	if fate_coordinator != null:
+		await fate_coordinator.prewarm_elite_enemy_configs()
 
 
 func _prewarm_plant_lifecycle_shader() -> void:
@@ -3458,7 +3566,7 @@ func _run_scheduled_enemy_navigation_prewarm() -> void:
 		return
 	navigation_prewarm_requested = false
 	if navigation_prewarmed:
-		await prewarm_shared_runtime_data()
+		await _prewarm_tower_shared_runtime_data()
 		if not is_inside_tree():
 			return
 		await _prewarm_plant_lifecycle_shader()
@@ -3470,7 +3578,7 @@ func _run_scheduled_enemy_navigation_prewarm() -> void:
 	if not is_inside_tree():
 		return
 	navigation_prewarmed = true
-	await prewarm_shared_runtime_data()
+	await _prewarm_tower_shared_runtime_data()
 	if not is_inside_tree():
 		return
 	await _prewarm_plant_lifecycle_shader()
@@ -4329,6 +4437,20 @@ func spawn_linglan_skill2_enemies(
 		_try_spawn_boss_add_at_marker(enemy_config, marker_name)
 
 
+func spawn_linglan_random_slime(spawn_position: Vector2) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != WaveState.BOSS_ACTIVE:
+		return
+	if not spawn_position.is_finite():
+		return
+	_cache_linglan_slime_configs()
+	if linglan_slime_configs.is_empty():
+		return
+	var slime_config := linglan_slime_configs[
+		random_generator.randi_range(0, linglan_slime_configs.size() - 1)
+	]
+	_try_spawn_boss_add_at_position(slime_config, spawn_position)
+
+
 func spawn_linglan_airdrop_sniper(
 	enemy_config: EnemyConfig,
 	warning_scene: PackedScene,
@@ -4343,6 +4465,14 @@ func spawn_linglan_airdrop_sniper(
 	if enemy_config == null or enemy_config.enemy_scene == null:
 		return
 	var landing_position := _get_random_linglan_boss_arena_position()
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		multiplayer_linglan_airdrop_started.emit(
+			enemy_config,
+			landing_position,
+			warning_duration,
+			drop_height,
+			drop_duration
+		)
 	_spawn_linglan_airdrop_warning(warning_scene, landing_position, warning_duration)
 	_finish_linglan_airdrop_sniper_spawn(
 		enemy_config,
@@ -4436,26 +4566,31 @@ func _set_enemy_collision_shapes_disabled_recursive(root: Node, disabled: bool) 
 
 
 func _get_random_linglan_boss_arena_position() -> Vector2:
-	if active_boss_config == null or ground_tile_map_layer == null:
-		return linglan_boss.global_position if linglan_boss != null else Vector2.ZERO
-	var arena_rect := _get_boss_arena_floor_rect(active_boss_config)
-	if arena_rect.size.x <= 0 or arena_rect.size.y <= 0:
-		return _get_boss_arena_center(active_boss_config)
-	var min_cell_x := arena_rect.position.x
-	var max_cell_x := arena_rect.position.x + arena_rect.size.x - 1
-	var min_cell_y := arena_rect.position.y
-	var max_cell_y := arena_rect.position.y + arena_rect.size.y - 1
-	if arena_rect.size.x > 2:
-		min_cell_x += 1
-		max_cell_x -= 1
-	if arena_rect.size.y > 2:
-		min_cell_y += 1
-		max_cell_y -= 1
-	var target_cell := Vector2i(
-		random_generator.randi_range(min_cell_x, max_cell_x),
-		random_generator.randi_range(min_cell_y, max_cell_y)
+	var front_center := (
+		linglan_boss.global_position
+		if linglan_boss != null and is_instance_valid(linglan_boss)
+		else _get_linglan_spawn_global_position(active_boss_config)
 	)
-	return _get_tile_cell_global_position(target_cell)
+	var tower_pathfinder := grid_pathfinder as GridPathfinder
+	for _attempt in range(8):
+		var candidate := front_center + Vector2(
+			random_generator.randf_range(
+				-LINGLAN_AIRDROP_NEARBY_RADIUS.x,
+				LINGLAN_AIRDROP_NEARBY_RADIUS.x
+			),
+			random_generator.randf_range(
+				-LINGLAN_AIRDROP_NEARBY_RADIUS.y,
+				LINGLAN_AIRDROP_NEARBY_RADIUS.y
+			)
+		)
+		candidate = _clamp_spectator_camera_position(candidate).round()
+		if (
+			tower_pathfinder == null
+			or not tower_pathfinder.is_built
+			or tower_pathfinder.is_navigation_segment_walkable(front_center, candidate)
+		):
+			return candidate
+	return front_center.round()
 
 
 func _try_spawn_boss_add_at_marker(enemy_config: EnemyConfig, marker_name: StringName) -> bool:
@@ -4928,15 +5063,17 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	wave_hud.show_tower_defense_boss_progress(0, 1)
 	_update_boss_music(boss_config)
 	_prepare_linglan_boss_arena(boss_config)
+	var boss_spawn_position := _get_linglan_spawn_global_position(boss_config)
+	linglan_skill4_orb_anchor_valid = false
 	linglan_boss.config = _get_boss_enemy_config(boss_config)
-	linglan_boss.global_position = _get_boss_arena_center(boss_config)
+	linglan_boss.global_position = boss_spawn_position
 	linglan_boss.set_active(false)
-	_focus_camera_on_boss_intro(_get_boss_arena_center(boss_config))
+	_focus_camera_on_boss_intro(boss_spawn_position)
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
 	_emit_multiplayer_flow_state(WaveState.BOSS_INTRO)
 	if linglan_boss_intro_vfx != null:
-		linglan_boss_intro_vfx.play_intro(_get_boss_arena_center(boss_config))
+		linglan_boss_intro_vfx.play_intro(boss_spawn_position)
 	else:
 		_on_linglan_boss_intro_finished()
 
@@ -4959,9 +5096,10 @@ func _activate_linglan_boss() -> void:
 		return
 	wave_state = WaveState.BOSS_ACTIVE
 	linglan_boss.config = _get_boss_enemy_config(boss_config)
-	linglan_boss.global_position = _get_boss_arena_center(boss_config)
+	linglan_boss.global_position = _get_linglan_spawn_global_position(boss_config)
 	linglan_boss.activate_boss(player, grid_pathfinder)
-	_assign_enemy_targets(linglan_boss, linglan_boss.global_position)
+	if not linglan_boss.is_advancing_to_home():
+		_assign_enemy_targets(linglan_boss, linglan_boss.global_position)
 	var boss_instance_id := linglan_boss.get_instance_id()
 	active_wave_enemy_ids[boss_instance_id] = true
 	if not linglan_boss.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(boss_instance_id)):
@@ -5047,28 +5185,11 @@ func _remove_remaining_boss_adds() -> void:
 	_clear_hud_alive_enemies()
 
 
-func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
-	if boss_config == null:
-		return
-	if ground_tile_map_layer == null:
-		return
-	var arena_rect := _get_boss_arena_floor_rect(boss_config)
-	if arena_rect.size.x <= 0 or arena_rect.size.y <= 0:
-		return
-	for cell_x in range(arena_rect.position.x, arena_rect.position.x + arena_rect.size.x):
-		for cell_y in range(arena_rect.position.y, arena_rect.position.y + arena_rect.size.y):
-			ground_tile_map_layer.set_cell(
-				Vector2i(cell_x, cell_y),
-				_get_boss_floor_source_id(boss_config),
-				_get_boss_floor_atlas_coords(boss_config),
-				0
-			)
-	if _should_clear_boss_inner_overlay_cells(boss_config) and overlay_tile_map_layer != null:
-		for cell in overlay_tile_map_layer.get_used_cells():
-			if arena_rect.has_point(cell):
-				overlay_tile_map_layer.erase_cell(cell)
-	if grid_pathfinder != null and grid_pathfinder.has_method("rebuild"):
-		grid_pathfinder.call("rebuild")
+func _prepare_linglan_boss_arena(_boss_config: Resource) -> void:
+	# Tower defense keeps its authored terrain, gates and player-built front line.
+	# The shared Linglan BossConfig still describes the compact standard arena;
+	# applying it here would overwrite the tower-defense map's upper-left corner.
+	return
 
 
 func _on_player_died() -> void:
@@ -5672,7 +5793,12 @@ func _update_tower_defense_enemy_targets(delta: float) -> void:
 	if enemy_retarget_time_left <= 0.0 and enemy_retarget_sweep_remaining <= 0:
 		enemy_retarget_time_left = ENEMY_RETARGET_INTERVAL_SECONDS
 		enemy_retarget_sweep_remaining = enemy_container.get_child_count()
-		if linglan_boss != null and is_instance_valid(linglan_boss) and not linglan_boss.is_dead:
+		if (
+			linglan_boss != null
+			and is_instance_valid(linglan_boss)
+			and not linglan_boss.is_dead
+			and not linglan_boss.is_advancing_to_home()
+		):
 			_assign_enemy_targets(linglan_boss, linglan_boss.global_position)
 
 	_process_enemy_retarget_budget()
@@ -5845,34 +5971,36 @@ func _request_enemy_retarget_after_objective_change() -> void:
 	enemy_retarget_time_left = 0.0
 
 
-func get_linglan_skill2_target_global_position(target_cell: Vector2i) -> Vector2:
-	if ground_tile_map_layer != null:
-		return _get_tile_cell_global_position(_map_linglan_skill_cell_to_active_arena(target_cell))
-	if active_boss_config != null:
-		return _get_boss_arena_center(active_boss_config)
-	return Vector2.ZERO
+func get_linglan_skill2_target_global_position(_target_cell: Vector2i) -> Vector2:
+	return (
+		linglan_boss.global_position
+		if linglan_boss != null and is_instance_valid(linglan_boss)
+		else _get_linglan_spawn_global_position(active_boss_config)
+	)
 
 
-func get_linglan_skill3_target_global_position(target_cell: Vector2i) -> Vector2:
-	if ground_tile_map_layer != null:
-		return _get_tile_cell_global_position(_map_linglan_skill_cell_to_active_arena(target_cell))
-	if active_boss_config != null:
-		return _get_boss_arena_center(active_boss_config)
-	return Vector2.ZERO
+func get_linglan_skill3_target_global_position(_target_cell: Vector2i) -> Vector2:
+	return (
+		linglan_boss.global_position
+		if linglan_boss != null and is_instance_valid(linglan_boss)
+		else _get_linglan_spawn_global_position(active_boss_config)
+	)
 
 
 func get_linglan_skill4_target_global_position(
 	target_cell_a: Vector2i,
 	target_cell_b: Vector2i
 ) -> Vector2:
-	if ground_tile_map_layer != null:
-		return (
-			_get_tile_cell_global_position(_map_linglan_skill_cell_to_active_arena(target_cell_a))
-			+ _get_tile_cell_global_position(_map_linglan_skill_cell_to_active_arena(target_cell_b))
-		) * 0.5
-	if active_boss_config != null:
-		return _get_boss_arena_center(active_boss_config)
-	return Vector2.ZERO
+	linglan_skill4_orb_anchor_global_position = (
+		linglan_boss.global_position
+		if linglan_boss != null and is_instance_valid(linglan_boss)
+		else _get_linglan_spawn_global_position(active_boss_config)
+	)
+	linglan_skill4_orb_authored_center = (
+		Vector2(target_cell_a) + Vector2(target_cell_b)
+	) * 0.5
+	linglan_skill4_orb_anchor_valid = true
+	return linglan_skill4_orb_anchor_global_position
 
 
 func get_linglan_skill4_laser_bounds(
@@ -5913,17 +6041,28 @@ func get_linglan_skill4_laser_bounds(
 
 
 func get_linglan_skill4_orb_spawn_global_position(x_cell: int, y_cell: int) -> Vector2:
-	if ground_tile_map_layer != null:
-		return _get_tile_cell_global_position(
-			_map_linglan_skill_cell_to_active_arena(Vector2i(x_cell, y_cell))
+	var anchor_position := linglan_skill4_orb_anchor_global_position
+	if not linglan_skill4_orb_anchor_valid:
+		anchor_position = (
+			linglan_boss.global_position
+			if linglan_boss != null and is_instance_valid(linglan_boss)
+			else _get_linglan_spawn_global_position(active_boss_config)
 		)
-	if active_boss_config != null:
-		return _get_boss_arena_center(active_boss_config)
-	return Vector2.ZERO
+	var authored_offset := Vector2(x_cell, y_cell) - linglan_skill4_orb_authored_center
+	return anchor_position + _get_tile_cell_global_offset(authored_offset)
 
 
 func _get_tile_cell_global_position(cell: Vector2i) -> Vector2:
 	return ground_tile_map_layer.to_global(ground_tile_map_layer.map_to_local(cell))
+
+
+func _get_tile_cell_global_offset(cell_offset: Vector2) -> Vector2:
+	if ground_tile_map_layer == null:
+		return cell_offset * AUTHORED_LOGICAL_TILE_SIZE
+	var origin := _get_tile_cell_global_position(Vector2i.ZERO)
+	var right_step := _get_tile_cell_global_position(Vector2i.RIGHT) - origin
+	var down_step := _get_tile_cell_global_position(Vector2i.DOWN) - origin
+	return right_step * cell_offset.x + down_step * cell_offset.y
 
 
 func _map_linglan_skill_cell_to_active_arena(authored_cell: Vector2i) -> Vector2i:
@@ -6017,7 +6156,8 @@ func _emit_multiplayer_flow_state(state: WaveState) -> void:
 
 
 func _play_remote_boss_intro(boss_config: BossConfig) -> void:
-	_focus_camera_on_boss_intro(_get_boss_arena_center(boss_config))
+	var boss_spawn_position := _get_linglan_spawn_global_position(boss_config)
+	_focus_camera_on_boss_intro(boss_spawn_position)
 	var intro_scene := _load_threaded_or_direct(_get_boss_intro_vfx_scene_path(boss_config)) as PackedScene
 	if intro_scene == null:
 		return
@@ -6027,52 +6167,69 @@ func _play_remote_boss_intro(boss_config: BossConfig) -> void:
 			return
 		linglan_boss_intro_vfx.name = "LinglanBossIntroVFX"
 		add_child(linglan_boss_intro_vfx)
-	linglan_boss_intro_vfx.play_intro(_get_boss_arena_center(boss_config))
+	if not linglan_boss_intro_vfx.intro_finished.is_connected(
+		_on_remote_linglan_boss_intro_finished
+	):
+		linglan_boss_intro_vfx.intro_finished.connect(
+			_on_remote_linglan_boss_intro_finished
+		)
+	linglan_boss_intro_vfx.play_intro(boss_spawn_position)
+
+
+func _on_remote_linglan_boss_intro_finished() -> void:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		return
+	if linglan_boss_intro_vfx != null:
+		linglan_boss_intro_vfx.stop_intro()
+	_restore_camera_after_boss_intro()
+
+
+func _restore_remote_camera_if_boss_intro_complete() -> void:
+	if (
+		linglan_boss_intro_vfx != null
+		and linglan_boss_intro_vfx.intro_tween != null
+	):
+		return
+	if linglan_boss_intro_vfx != null:
+		linglan_boss_intro_vfx.stop_intro()
+	_restore_camera_after_boss_intro()
 
 
 func _focus_camera_on_boss_intro(boss_position: Vector2) -> void:
-	if map_camera == null or player == null or map_camera.get_parent() != player:
-		return
-	var player_to_boss := boss_position - player.global_position
-	if player_to_boss == Vector2.ZERO:
-		return
-	var target_offset := (
-		player_to_boss.normalized()
-		* minf(player_to_boss.length(), BOSS_INTRO_CAMERA_LOOK_AHEAD_DISTANCE)
-	).round()
-	_tween_map_camera_offset(target_offset, BOSS_INTRO_CAMERA_FOCUS_SECONDS)
-
-
-func _restore_camera_after_boss_intro() -> void:
-	if map_camera == null:
-		return
-	_tween_map_camera_offset(Vector2.ZERO, BOSS_INTRO_CAMERA_RESTORE_SECONDS)
-
-
-func _tween_map_camera_offset(target_offset: Vector2, duration: float) -> void:
 	if boss_intro_camera_tween != null:
 		boss_intro_camera_tween.kill()
 		boss_intro_camera_tween = null
 	if map_camera == null:
 		return
-	var rounded_target := target_offset.round()
-	if map_camera.position.is_equal_approx(rounded_target) or not is_inside_tree():
-		map_camera.position = rounded_target
+	spectator_camera_active = false
+	if map_camera.get_parent() != self:
+		map_camera.reparent(self, true)
+	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_IDLE
+	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	map_camera.reset_physics_interpolation()
+	var rounded_target := boss_position.round()
+	if map_camera.global_position.is_equal_approx(rounded_target) or not is_inside_tree():
+		map_camera.global_position = rounded_target
 		return
 	boss_intro_camera_tween = create_tween()
 	boss_intro_camera_tween.set_trans(Tween.TRANS_SINE)
 	boss_intro_camera_tween.set_ease(Tween.EASE_IN_OUT)
 	boss_intro_camera_tween.tween_method(
-		_set_map_camera_rounded_position,
-		map_camera.position,
+		_set_map_camera_rounded_global_position,
+		map_camera.global_position,
 		rounded_target,
-		maxf(duration, 0.0)
+		BOSS_INTRO_CAMERA_FOCUS_SECONDS
 	)
 
 
-func _set_map_camera_rounded_position(camera_position: Vector2) -> void:
-	if map_camera != null:
-		map_camera.position = camera_position.round()
+func _restore_camera_after_boss_intro() -> void:
+	if boss_intro_camera_tween != null:
+		boss_intro_camera_tween.kill()
+		boss_intro_camera_tween = null
+	if map_camera == null or player == null:
+		return
+	spectator_camera_active = false
+	_attach_camera_to_local_player()
 
 
 func _is_spawn_system_ready() -> bool:

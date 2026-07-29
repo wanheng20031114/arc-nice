@@ -429,10 +429,10 @@ func _test_linglan_health_signal_contract() -> void:
 	))
 	_expect(
 		result.accepted
-		and result.applied_damage == 105
+		and result.applied_damage == 95
 		and observations.size() == 1
 		and observations[0] == Vector2i(
-			LINGLAN_CONFIG.max_health - 105,
+			LINGLAN_CONFIG.max_health - 95,
 			LINGLAN_CONFIG.max_health
 		),
 		"Linglan _on_combat_damage_applied must preserve one accurate boss health signal."

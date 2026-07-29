@@ -14,9 +14,10 @@
 [ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_10.tres" id="12_wave10"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_11.tres" id="13_wave11"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/tower_defense/formal/wave_12.tres" id="14_wave12"]
+[ext_resource type="Resource" uid="uid://cind5qjo33b70" path="res://resources/config/bosses/boss_01_linglan.tres" id="15_boss"]
 
 [resource]
 script = ExtResource("1_graph")
 graph_name = "塔防模式 / 正式单人战斗流程"
 start_step = ExtResource("3_wave01")
-steps = Array[ExtResource("2_step")]([ExtResource("3_wave01"), ExtResource("4_wave02"), ExtResource("5_wave03"), ExtResource("6_wave04"), ExtResource("7_wave05"), ExtResource("8_wave06"), ExtResource("9_wave07"), ExtResource("10_wave08"), ExtResource("11_wave09"), ExtResource("12_wave10"), ExtResource("13_wave11"), ExtResource("14_wave12")])
+steps = Array[ExtResource("2_step")]([ExtResource("3_wave01"), ExtResource("4_wave02"), ExtResource("5_wave03"), ExtResource("6_wave04"), ExtResource("7_wave05"), ExtResource("8_wave06"), ExtResource("9_wave07"), ExtResource("10_wave08"), ExtResource("11_wave09"), ExtResource("12_wave10"), ExtResource("13_wave11"), ExtResource("14_wave12"), ExtResource("15_boss")])

@@ -9,7 +9,7 @@ class_name LinglanSkillConfig
 @export_range(0.0, 60.0, 0.1, "or_greater") var rotating_fire_duration: float = 15.0
 @export_range(-360.0, 360.0, 0.1) var rotation_speed_degrees_per_second: float = 6.0
 @export_range(0.0, 2000.0, 1.0, "or_greater") var projectile_speed: float = 300.0
-@export_range(0.0, 10.0, 0.1, "or_greater") var projectile_lifetime: float = 2.0
+@export_range(0.0, 10.0, 0.1, "or_greater") var projectile_lifetime: float = 1.2
 @export_range(0, 999, 1, "or_greater") var projectile_damage: int = 50
 @export_range(0.0, 128.0, 0.5, "or_greater") var projectile_spawn_distance: float = 18.0
 @export var projectile_scene: PackedScene

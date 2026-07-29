@@ -93,7 +93,7 @@ func _test_skill3_config() -> void:
 	_expect(is_equal_approx(SKILL3_CONFIG.fire_interval, 0.2), "Skill3 fire interval mismatch.")
 	_expect(SKILL3_CONFIG.get_shot_count() == 50, "Skill3 must fire 50 orbs.")
 	_expect(is_equal_approx(SKILL3_CONFIG.direction_min_degrees, 0.0), "Skill3 direction min mismatch.")
-	_expect(is_equal_approx(SKILL3_CONFIG.direction_max_degrees, 90.0), "Skill3 direction max mismatch.")
+	_expect(is_equal_approx(SKILL3_CONFIG.direction_max_degrees, 360.0), "Skill3 must fire across the full 360-degree range.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_speed, 90.0), "Skill3 orb speed mismatch.")
 	_expect(SKILL3_CONFIG.orb_damage == 50, "Skill3 orb damage mismatch.")
 	_expect(is_equal_approx(SKILL3_CONFIG.orb_base_radius, 15.0), "Skill3 orb base radius mismatch.")
@@ -316,6 +316,7 @@ func _test_boss_skill3_schedule() -> void:
 	boss.global_position = Vector2(180.0, -72.0)
 	boss.config = LINGLAN_CONFIG
 	boss.activate_boss(player, null)
+	boss.skill3_random.seed = 12345
 	boss.boss_skill_phase = LinglanBoss.BossSkillPhase.SKILL2
 	boss.skill2_elapsed = SKILL2_CONFIG.get_total_duration()
 	boss.skill2_shots_fired = SKILL2_CONFIG.attack_count
@@ -359,13 +360,29 @@ func _test_boss_skill3_schedule() -> void:
 		or boss.boss_skill_phase == LinglanBoss.BossSkillPhase.SKILL4,
 		"Post-skill idle must hand off to Skill4 movement."
 	)
+	var saw_right_down := false
+	var saw_left_down := false
+	var saw_left_up := false
+	var saw_right_up := false
 	for record in host.projectile_records:
 		var direction: Vector2 = record.get("direction", Vector2.ZERO)
 		_expect(record.get("projectile_type") == &"linglan_skill3_orb", "Skill3 registered wrong projectile type.")
 		_expect(int(record.get("damage", 0)) == 50, "Skill3 registered wrong orb damage.")
 		_expect(is_equal_approx(float(record.get("speed", 0.0)), 90.0), "Skill3 registered wrong orb speed.")
 		_expect(float(record.get("lifetime", 0.0)) >= 2.2 and float(record.get("lifetime", 0.0)) <= 3.6, "Skill3 registered grow delay outside range.")
-		_expect(direction.length() > 0.99 and direction.x >= -0.001 and direction.y >= -0.001, "Skill3 orb direction must stay in right-to-down quadrant.")
+		_expect(is_equal_approx(direction.length(), 1.0), "Skill3 orb direction must stay normalized.")
+		if direction.x >= 0.0 and direction.y >= 0.0:
+			saw_right_down = true
+		elif direction.x < 0.0 and direction.y >= 0.0:
+			saw_left_down = true
+		elif direction.x < 0.0 and direction.y < 0.0:
+			saw_left_up = true
+		else:
+			saw_right_up = true
+	_expect(
+		saw_right_down and saw_left_down and saw_left_up and saw_right_up,
+		"Skill3's deterministic 0-360 degree volley must cover all four quadrants."
+	)
 
 	host.queue_free()
 	current_scene = test_root

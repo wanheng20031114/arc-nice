@@ -61,6 +61,7 @@ func _run() -> void:
 	_test_elite_bias_day_window()
 	_test_double_xirang_day_combat_states()
 	_test_boss_runtime_health_cap()
+	await _test_elite_config_prewarm()
 	await _test_wave_hud_uses_day_cycle_config()
 	await _test_xiaocong_collectible_offer_count()
 	await _test_scene_config_and_interlude_freeze()
@@ -72,6 +73,37 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_elite_config_prewarm() -> void:
+	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
+	root.add_child(coordinator)
+	await process_frame
+	coordinator.request_elite_enemy_config_loads()
+	coordinator.request_elite_enemy_config_loads()
+	_expect(
+		coordinator.elite_enemy_config_loads_requested,
+		"Fate elite threaded loads must use one idempotent request lifecycle."
+	)
+	await coordinator.prewarm_elite_enemy_configs()
+	_expect(
+		coordinator.elite_enemy_config_by_base_path.size()
+		== coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size(),
+		"All fate elite enemy configs must be cached before combat activation."
+	)
+	for base_path_value in coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH:
+		var base_path := str(base_path_value)
+		var elite_config := (
+			coordinator.elite_enemy_config_by_base_path.get(base_path) as EnemyConfig
+		)
+		_expect(
+			elite_config != null
+			and elite_config.resource_path
+			== str(coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH[base_path_value]),
+			"Fate elite prewarm must retain the configured replacement for %s." % base_path
+		)
+	coordinator.queue_free()
+	await process_frame
 
 
 func _test_day_and_lighting_boundaries() -> void:

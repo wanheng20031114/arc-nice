@@ -215,7 +215,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		MORTAR_CONFIG.plant_id == &"bamboo_mortar"
 		and MORTAR_CONFIG.display_name == "竹筒迫击炮"
 		and MORTAR_CONFIG.max_health == 2000
-		and MORTAR_CONFIG.physical_defense == 10
+		and MORTAR_CONFIG.physical_defense == 20
 		and MORTAR_CONFIG.magic_defense == 20
 		and MORTAR_CONFIG.attack_damage == 140
 		and is_zero_approx(MORTAR_CONFIG.get_attack_interval())
@@ -234,7 +234,7 @@ func _test_config_and_scene_contract(mortar: BambooMortar) -> void:
 		and MORTAR_CONFIG.placement_surface
 		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY
 		and MORTAR_CONFIG.supports_multiplayer,
-		"迫击炮数值必须为2000生命、10物防、20法防、140/70伤害、无额外攻击间隔、224范围、草地2×2且支持多人。"
+		"迫击炮数值必须为2000生命、20物防、20法防、140/70伤害、无额外攻击间隔、224范围、草地2×2且支持多人。"
 	)
 	_expect(
 		PlantDefenseRegistry.get_config(&"bamboo_mortar")

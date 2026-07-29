@@ -30,14 +30,14 @@ const CAMPAIGN_DEFINITIONS := [
 		"campaign_id": &"tower_defense_singleplayer",
 		"flow_path": "res://resources/config/campaigns/tower_defense/singleplayer/flow.tres",
 		"kind": &"formal",
-		"boss_count": 0,
+		"boss_count": 1,
 	},
 	{
 		"path": "res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres",
 		"campaign_id": &"tower_defense_multiplayer",
 		"flow_path": "res://resources/config/campaigns/tower_defense/multiplayer/flow.tres",
 		"kind": &"formal",
-		"boss_count": 0,
+		"boss_count": 1,
 	},
 	{
 		"path": "res://resources/config/campaigns/tower_defense/performance/campaign.tres",
@@ -90,10 +90,21 @@ func _test_campaign_resources() -> void:
 		)
 		var waves := campaign.get_waves()
 		_expect(waves.size() == 12, "Campaign must contain 12 waves.")
+		var campaign_bosses := campaign.get_bosses()
 		_expect(
-			campaign.get_bosses().size() == int(definition["boss_count"]),
+			campaign_bosses.size() == int(definition["boss_count"]),
 			"Campaign boss count mismatch: %s" % campaign.resource_path
 		)
+		if int(definition["boss_count"]) == 1 and campaign_bosses.size() == 1:
+			var linglan_boss := campaign_bosses[0]
+			var linglan_enemy_config := linglan_boss.get_enemy_config()
+			_expect(
+				linglan_boss.step_id == &"boss_01_linglan"
+				and linglan_enemy_config != null
+				and linglan_enemy_config.resource_path
+				== "res://resources/config/enemies/linglan_boss.tres",
+				"Campaign Boss step must resolve the authored Linglan enemy config."
+			)
 		if waves.size() != 12:
 			continue
 		_expect(graph.start_step == waves[0], "Flow must start from wave 1.")
@@ -145,7 +156,7 @@ func _verify_formal_waves(waves: Array[WaveConfig]) -> void:
 			and not wave.display_name.contains("压力测试"),
 			"Formal campaign must not expose pressure-test labels."
 		)
-		_verify_linear_exit(wave, wave_index)
+		_verify_linear_exit(wave, wave_index, &"boss_01_linglan")
 
 
 func _verify_performance_waves(waves: Array[WaveConfig]) -> void:
@@ -166,7 +177,7 @@ func _verify_performance_waves(waves: Array[WaveConfig]) -> void:
 			wave.max_alive_enemies == PERFORMANCE_MAX_ALIVE,
 			"Performance waves must retain the 300-enemy ceiling."
 		)
-		_verify_linear_exit(wave, wave_index)
+		_verify_linear_exit(wave, wave_index, &"")
 	_expect(
 		waves[0].wave_name == "第1波 虫潮压力测试",
 		"The pressure-test label must remain explicit in the performance campaign."
@@ -181,7 +192,11 @@ func _verify_standard_waves(waves: Array[WaveConfig]) -> void:
 		)
 
 
-func _verify_linear_exit(wave: WaveConfig, wave_index: int) -> void:
+func _verify_linear_exit(
+	wave: WaveConfig,
+	wave_index: int,
+	final_target_step_id: StringName
+) -> void:
 	_expect(
 		wave.step_id == StringName("wave_%02d" % (wave_index + 1)),
 		"Wave step id mismatch: %s" % wave.resource_path
@@ -193,8 +208,15 @@ func _verify_linear_exit(wave: WaveConfig, wave_index: int) -> void:
 			== StringName("wave_%02d" % (wave_index + 2)),
 			"Wave must advance linearly: %s" % wave.resource_path
 		)
-	else:
+	elif final_target_step_id == &"":
 		_expect(wave.exits.is_empty(), "Wave 12 must terminate the campaign.")
+	else:
+		_expect(
+			wave.exits.size() == 1
+			and wave.exits[0].get_target_step_id() == final_target_step_id,
+			"Wave 12 must advance to %s: %s"
+			% [final_target_step_id, wave.resource_path]
+		)
 
 
 func _test_campaign_validation() -> void:
@@ -250,9 +272,9 @@ func _test_boss_mode_separation() -> void:
 	) as BossConfig
 	_expect(standard_boss != null, "Standard Linglan BossConfig must continue to load.")
 	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
-	_expect(game != null, "Tower-defense boss exclusion probe must instantiate.")
+	_expect(game != null, "Tower-defense boss integration probe must instantiate.")
 	if game != null:
-		_expect(not game.linglan_boss_enabled, "Tower-defense Linglan stays disabled by default.")
+		_expect(game.linglan_boss_enabled, "Tower-defense Linglan must be enabled by the authored scene.")
 		game.free()
 
 

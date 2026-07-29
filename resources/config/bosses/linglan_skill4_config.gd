@@ -13,7 +13,7 @@ class_name LinglanSkill4Config
 @export_range(0, 32, 1, "or_greater") var laser_inward_cell_distance: int = 5
 @export_range(0.0, 10.0, 0.05, "or_greater") var laser_warning_duration: float = 1.6
 @export_range(0.01, 30.0, 0.05, "or_greater") var laser_shrink_duration: float = 3.0
-@export_range(0.0, 10.0, 0.05, "or_greater") var orb_start_delay_after_laser: float = 0.5
+@export_range(0.0, 10.0, 0.05, "or_greater") var orb_start_delay: float = 0.5
 @export_range(1.0, 64.0, 0.5, "or_greater") var laser_core_width: float = 6.0
 @export_range(0, 999, 1, "or_greater") var laser_damage: int = 50
 @export_range(-99, 99, 1) var orb_candidate_min_y: int = 0
@@ -22,7 +22,7 @@ class_name LinglanSkill4Config
 @export_range(0.05, 30.0, 0.05, "or_greater") var orb_spawn_interval: float = 2.0
 @export_range(0.05, 60.0, 0.05, "or_greater") var orb_spawn_duration: float = 14.0
 @export_range(0.0, 2000.0, 1.0, "or_greater") var orb_speed: float = 40.0
-@export_range(0.01, 30.0, 0.05, "or_greater") var orb_lifetime: float = 10.0
+@export_range(0.01, 30.0, 0.05, "or_greater") var orb_lifetime: float = 12.0
 @export_range(0, 999, 1, "or_greater") var orb_damage: int = 50
 @export_range(1.0, 128.0, 0.5, "or_greater") var orb_radius: float = 8.0
 @export_range(1.0, 128.0, 0.5, "or_greater") var orb_damage_radius: float = 6.0
@@ -31,11 +31,7 @@ class_name LinglanSkill4Config
 
 
 func get_orb_start_time() -> float:
-	return (
-		maxf(laser_warning_duration, 0.0)
-		+ maxf(laser_shrink_duration, 0.0)
-		+ maxf(orb_start_delay_after_laser, 0.0)
-	)
+	return maxf(orb_start_delay, 0.0)
 
 
 func get_total_duration() -> float:

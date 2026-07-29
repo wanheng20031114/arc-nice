@@ -2710,6 +2710,9 @@ func _setup_game(mode: int) -> bool:
 		game.multiplayer_merchant_active_changed.connect(_on_host_merchant_active_changed)
 		game.multiplayer_flow_state_changed.connect(_on_host_flow_state_changed)
 		game.multiplayer_boss_started.connect(_on_host_boss_started)
+		game.multiplayer_linglan_airdrop_started.connect(
+			_on_host_linglan_airdrop_started
+		)
 		game.multiplayer_defeat_started.connect(_on_host_defeat_started)
 		game.multiplayer_victory_started.connect(_on_host_victory_started)
 		game.multiplayer_revive_all_requested.connect(_on_host_revive_all_requested)
@@ -9457,6 +9460,32 @@ func _on_host_boss_started(
 	)
 
 
+func _on_host_linglan_airdrop_started(
+	enemy_config: EnemyConfig,
+	landing_position: Vector2,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or enemy_config == null
+		or enemy_config.resource_path.is_empty()
+	):
+		return
+	_rpc_to_connected_clients(
+		&"net_linglan_airdrop_started",
+		[
+			enemy_config.resource_path,
+			landing_position,
+			warning_duration,
+			drop_height,
+			drop_duration,
+		]
+	)
+
+
 func _on_host_defeat_started() -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
@@ -11469,6 +11498,28 @@ func net_boss_started(net_id: int, boss_config_path: String, spawn_position: Vec
 			boss_enemy.tree_exited.connect(_on_client_enemy_tree_exited.bind(net_id, boss_enemy))
 		_clear_client_enemy_terminal_marker(net_id)
 		_consume_pending_enemy_action(net_id)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_linglan_airdrop_started(
+	enemy_config_path: String,
+	landing_position: Vector2,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+) -> void:
+	if game == null or net_manager.is_host() or enemy_config_path.is_empty():
+		return
+	var enemy_config := load(enemy_config_path) as EnemyConfig
+	if enemy_config == null:
+		return
+	game.apply_remote_linglan_airdrop_started(
+		enemy_config,
+		landing_position,
+		warning_duration,
+		drop_height,
+		drop_duration
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)

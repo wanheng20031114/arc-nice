@@ -3,10 +3,18 @@ extends SceneTree
 const GAME_SCENE := preload("res://scene/game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const TEST_PORT := 29279
-const STANDARD_BOSS_RUNTIME_RESOURCE_PATHS: Array[String] = [
+const LINGLAN_BOSS_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://resources/config/enemies/linglan_boss.tres",
 	"res://scene/boss/linglan/linglan_boss_intro_vfx.tscn",
 	"res://scene/boss/linglan/boss_health_hud.tscn",
+	"res://resources/config/enemies/capoo_sniper.tres",
+]
+const LINGLAN_TOWER_SLIME_RESOURCE_PATHS: Array[String] = [
+	"res://resources/config/enemies/slime.tres",
+	"res://resources/config/enemies/slime_green.tres",
+	"res://resources/config/enemies/slime_golden.tres",
+	"res://resources/config/enemies/slime_frost.tres",
+	"res://resources/config/enemies/slime_fire.tres",
 ]
 const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/config/campaigns/tower_defense/formal/wave_01.tres",
@@ -20,6 +28,10 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
+	"res://resources/config/enemies/capoo_knight_elite.tres",
+	"res://resources/config/enemies/stone_golem_elite.tres",
+	"res://resources/config/enemies/fire_sorcerer_elite.tres",
+	"res://resources/config/enemies/frost_sorcerer_elite.tres",
 	"res://resources/animation/yuanshi_insect_basic.tres",
 	"res://resources/animation/capoo_ak47.tres",
 	"res://resources/audio/capoo_ak47_fire.wav",
@@ -316,7 +328,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 		and runtime.process_mode == Node.PROCESS_MODE_INHERIT,
 		"Single-player loading must prepare, activate, and reveal the selected runtime."
 	)
-	for path in STANDARD_BOSS_RUNTIME_RESOURCE_PATHS:
+	for path in LINGLAN_BOSS_RUNTIME_RESOURCE_PATHS:
 		_expect(
 			ResourceLoader.has_cached(path),
 			"Standard loading must retain delayed Boss runtime resource: %s" % path
@@ -351,10 +363,15 @@ func _test_singleplayer_coordinator_flow() -> void:
 			ResourceLoader.has_cached(path),
 			"Tower-defense preparation must cache first-use resource: %s" % path
 		)
-	for path in STANDARD_BOSS_RUNTIME_RESOURCE_PATHS:
+	for path in LINGLAN_BOSS_RUNTIME_RESOURCE_PATHS:
 		_expect(
-			not ResourceLoader.has_cached(path),
-			"Tower-defense loading must not retain standard Boss resource: %s" % path
+			ResourceLoader.has_cached(path),
+			"Tower-defense loading must retain its Linglan Boss runtime resource: %s" % path
+		)
+	for path in LINGLAN_TOWER_SLIME_RESOURCE_PATHS:
+		_expect(
+			ResourceLoader.has_cached(path),
+			"Tower-defense loading must retain Linglan's random-slime resource: %s" % path
 		)
 
 	load_errors.clear()

@@ -6,9 +6,10 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 const WORLD_COLLISION_MASK := 1
 const HIT_EFFECT_SCENE := preload("res://scene/boss/linglan/linglan_sakura_hit_effect.tscn")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
+const LIFETIME_DESPAWN_SHRINK_DURATION := 0.2
 
 @export var speed: float = 300.0
-@export var max_lifetime: float = 2.0
+@export var max_lifetime: float = 1.2
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var emission_overlay: AnimatedSprite2D = (
@@ -23,11 +24,15 @@ var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill1"
 var pool_active: bool = true
+var is_lifetime_despawning: bool = false
+var lifetime_despawn_time_left: float = 0.0
+var lifetime_despawn_start_scale := Vector2.ONE
 var _authored_speed: float = 300.0
-var _authored_max_lifetime: float = 2.0
+var _authored_max_lifetime: float = 1.2
 var _authored_damage: int = 50
 var _authored_collision_layer: int = 128
 var _authored_collision_mask: int = 3
+var _authored_scale := Vector2.ONE
 var world_collision_exclude: Array[RID] = []
 var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
@@ -42,6 +47,7 @@ func _ready() -> void:
 	_authored_damage = damage
 	_authored_collision_layer = collision_layer
 	_authored_collision_mask = collision_mask
+	_authored_scale = scale
 	remaining_lifetime = maxf(max_lifetime, 0.01)
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 	world_collision_exclude.clear()
@@ -65,6 +71,9 @@ func _ready() -> void:
 func on_pool_acquired(_generation: int) -> void:
 	pool_active = true
 	has_hit = false
+	is_lifetime_despawning = false
+	lifetime_despawn_time_left = 0.0
+	lifetime_despawn_start_scale = _authored_scale
 	direction = Vector2.RIGHT
 	damage = _authored_damage
 	speed = _authored_speed
@@ -75,6 +84,7 @@ func on_pool_acquired(_generation: int) -> void:
 	source_type = &"linglan_skill1"
 	position = Vector2.ZERO
 	rotation = 0.0
+	scale = _authored_scale
 	modulate = Color.WHITE
 	self_modulate = Color.WHITE
 	collision_layer = _authored_collision_layer
@@ -98,6 +108,9 @@ func on_pool_acquired(_generation: int) -> void:
 func on_pool_released(_generation: int) -> void:
 	pool_active = false
 	has_hit = true
+	is_lifetime_despawning = false
+	lifetime_despawn_time_left = 0.0
+	scale = _authored_scale
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
@@ -127,6 +140,10 @@ func setup(
 ) -> void:
 	pool_active = true
 	has_hit = false
+	is_lifetime_despawning = false
+	lifetime_despawn_time_left = 0.0
+	lifetime_despawn_start_scale = _authored_scale
+	scale = _authored_scale
 	if initial_direction != Vector2.ZERO:
 		direction = initial_direction.normalized()
 		rotation = direction.angle()
@@ -147,7 +164,12 @@ func setup_multiplayer(
 
 
 func _physics_process(delta: float) -> void:
-	if has_hit or not pool_active:
+	if not pool_active:
+		return
+	if is_lifetime_despawning:
+		_update_lifetime_despawn(delta)
+		return
+	if has_hit:
 		return
 
 	var current_position := global_position
@@ -159,7 +181,47 @@ func _physics_process(delta: float) -> void:
 	global_position = next_position
 	remaining_lifetime = maxf(remaining_lifetime - delta, 0.0)
 	if remaining_lifetime <= 0.0:
-		_consume()
+		_begin_lifetime_despawn()
+
+
+func _begin_lifetime_despawn() -> void:
+	if has_hit or not pool_active or is_lifetime_despawning:
+		return
+	has_hit = true
+	is_lifetime_despawning = true
+	lifetime_despawn_time_left = LIFETIME_DESPAWN_SHRINK_DURATION
+	lifetime_despawn_start_scale = scale
+	remaining_lifetime = 0.0
+	collision_layer = 0
+	collision_mask = 0
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	projectile_finished.emit(projectile_id, self)
+
+
+func _update_lifetime_despawn(delta: float) -> void:
+	lifetime_despawn_time_left = maxf(lifetime_despawn_time_left - maxf(delta, 0.0), 0.0)
+	var shrink_progress := clampf(
+		lifetime_despawn_time_left / LIFETIME_DESPAWN_SHRINK_DURATION,
+		0.0,
+		1.0
+	)
+	scale = lifetime_despawn_start_scale * shrink_progress
+	if lifetime_despawn_time_left <= 0.0:
+		_finish_lifetime_despawn()
+
+
+func _finish_lifetime_despawn() -> void:
+	if not pool_active:
+		return
+	is_lifetime_despawning = false
+	pool_active = false
+	set_physics_process(false)
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+	if SessionObjectPool.release_to_owner(self):
+		return
+	queue_free()
 
 
 func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
@@ -195,7 +257,12 @@ func _on_body_entered(body: Node2D) -> void:
 
 
 func _consume() -> void:
-	if has_hit or not pool_active:
+	if not pool_active:
+		return
+	if is_lifetime_despawning:
+		_finish_lifetime_despawn()
+		return
+	if has_hit:
 		return
 	has_hit = true
 	pool_active = false

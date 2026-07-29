@@ -4,19 +4,15 @@ class_name FateCoordinator
 const FATE_STONE_CONFIG: PickupConfig = preload(
 	"res://resources/config/pickups/xiaocong_fate_stone.tres"
 )
-const ELITE_ENEMY_CONFIG_BY_BASE_PATH: Dictionary = {
-	"res://resources/config/enemies/capoo_knight.tres": preload(
-		"res://resources/config/enemies/capoo_knight_elite.tres"
-	),
-	"res://resources/config/enemies/stone_golem.tres": preload(
-		"res://resources/config/enemies/stone_golem_elite.tres"
-	),
-	"res://resources/config/enemies/fire_sorcerer.tres": preload(
-		"res://resources/config/enemies/fire_sorcerer_elite.tres"
-	),
-	"res://resources/config/enemies/frost_sorcerer.tres": preload(
-		"res://resources/config/enemies/frost_sorcerer_elite.tres"
-	),
+const ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH: Dictionary = {
+	"res://resources/config/enemies/capoo_knight.tres":
+		"res://resources/config/enemies/capoo_knight_elite.tres",
+	"res://resources/config/enemies/stone_golem.tres":
+		"res://resources/config/enemies/stone_golem_elite.tres",
+	"res://resources/config/enemies/fire_sorcerer.tres":
+		"res://resources/config/enemies/fire_sorcerer_elite.tres",
+	"res://resources/config/enemies/frost_sorcerer.tres":
+		"res://resources/config/enemies/frost_sorcerer_elite.tres",
 }
 const YUANSHI_ATTACK_SOURCE_ID := 880001
 const ARTIFICIAL_DEFENSE_SOURCE_ID := 880002
@@ -37,6 +33,8 @@ var player_move_speed_multiplier := 1.0
 var hurt_speed_penalty_enabled := false
 var pending_stone_peer_ids: Array[int] = []
 var random_generator := RandomNumberGenerator.new()
+var elite_enemy_config_by_base_path: Dictionary = {}
+var elite_enemy_config_loads_requested := false
 
 
 func _ready() -> void:
@@ -49,7 +47,40 @@ func _ready() -> void:
 func setup(new_game: GameTowerDefense, new_day_cycle_config: DayCycleConfig) -> void:
 	game = new_game
 	day_cycle_config = new_day_cycle_config
+	request_elite_enemy_config_loads()
 	_apply_runtime_state_to_world()
+
+
+func request_elite_enemy_config_loads() -> void:
+	if elite_enemy_config_loads_requested:
+		return
+	elite_enemy_config_loads_requested = true
+	for elite_path_value in ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.values():
+		var elite_path := str(elite_path_value)
+		if not elite_path.is_empty():
+			ResourceLoader.load_threaded_request(elite_path)
+
+
+func prewarm_elite_enemy_configs() -> void:
+	request_elite_enemy_config_loads()
+	for base_path_value in ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH:
+		var base_path := str(base_path_value)
+		if elite_enemy_config_by_base_path.has(base_path):
+			continue
+		var elite_path := str(ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH[base_path_value])
+		var status := ResourceLoader.load_threaded_get_status(elite_path)
+		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			await get_tree().process_frame
+			if not is_inside_tree():
+				return
+			status = ResourceLoader.load_threaded_get_status(elite_path)
+		var elite_config := (
+			ResourceLoader.load_threaded_get(elite_path) as EnemyConfig
+			if status == ResourceLoader.THREAD_LOAD_LOADED
+			else load(elite_path) as EnemyConfig
+		)
+		if elite_config != null:
+			elite_enemy_config_by_base_path[base_path] = elite_config
 
 
 func begin_interlude(
@@ -197,10 +228,23 @@ func resolve_enemy_config(enemy_config: EnemyConfig) -> EnemyConfig:
 	var replacement_chance := contract.secondary_amount if contract != null else 0.0
 	if current_day != elite_bias_day or random_generator.randf() >= replacement_chance:
 		return enemy_config
-	return ELITE_ENEMY_CONFIG_BY_BASE_PATH.get(
-		enemy_config.resource_path,
-		enemy_config
-	) as EnemyConfig
+	var base_path := enemy_config.resource_path
+	var elite_config := elite_enemy_config_by_base_path.get(base_path) as EnemyConfig
+	if elite_config != null:
+		return elite_config
+	var elite_path := str(ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(base_path, ""))
+	if elite_path.is_empty():
+		return enemy_config
+	var status := ResourceLoader.load_threaded_get_status(elite_path)
+	elite_config = (
+		ResourceLoader.load_threaded_get(elite_path) as EnemyConfig
+		if status == ResourceLoader.THREAD_LOAD_LOADED
+		else load(elite_path) as EnemyConfig
+	)
+	if elite_config == null:
+		return enemy_config
+	elite_enemy_config_by_base_path[base_path] = elite_config
+	return elite_config
 
 
 func configure_enemy_modifiers(enemy_instance: Enemy) -> void:

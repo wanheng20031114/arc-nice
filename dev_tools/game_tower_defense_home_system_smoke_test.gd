@@ -4,6 +4,7 @@ const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
+const LINGLAN_SKILL4_CONFIG := preload("res://resources/config/bosses/linglan_skill4.tres")
 const WATER_COLLECTOR_CONFIG := preload(
 	"res://resources/config/plant_defense/water_collector.tres"
 )
@@ -23,6 +24,7 @@ const EXPECTED_HOME_DAMAGE := {
 	"capoo_smg": 2,
 	"capoo_sniper": 2,
 	"capoo_swordsman": 5,
+	"linglan_boss": 100,
 	"yuanshi_insect_basic": 1,
 	"yuanshi_insect_bomber": 1,
 	"yuanshi_insect_fast": 1,
@@ -56,7 +58,7 @@ func _run() -> void:
 	root.snap_2d_transforms_to_pixel = false
 	root.snap_2d_vertices_to_pixel = true
 	game.auto_start_waves = false
-	_expect(not game.linglan_boss_enabled, "Tower-defense Linglan must be disabled by default.")
+	_expect(game.linglan_boss_enabled, "Tower-defense Linglan must be enabled by the authored scene.")
 	root.add_child(game)
 	current_scene = game
 	await process_frame
@@ -72,13 +74,14 @@ func _run() -> void:
 	_verify_equal_directional_player_speed(game)
 	_verify_spawn_mask_resolution(game)
 	_verify_home_gate_areas(game)
+	await _verify_linglan_tower_contract(game)
 	await _verify_physical_home_gate_trigger(game)
 	await _verify_far_linear_enemy_reaches_home(game)
 	_verify_target_selection(game)
 	await _verify_singleplayer_combat_target_index_and_agave(game)
 	_verify_enemy_contract(game)
 	_verify_home_damage_resources()
-	_expect(game.bosses.is_empty(), "Tower-defense Campaign must not contain a Boss step.")
+	_expect(game.bosses.size() == 1, "Tower-defense Campaign must contain the Linglan Boss step.")
 	await _verify_escape_resolution(game)
 
 	game.queue_free()
@@ -243,6 +246,213 @@ func _verify_home_gate_areas(game: GameTowerDefense) -> void:
 		var shape_node := area.get_node_or_null("CollisionShape2D") as CollisionShape2D
 		var rectangle := shape_node.shape as RectangleShape2D if shape_node != null else null
 		_expect(rectangle != null and rectangle.size == Vector2(16, 16), "Home trigger must match one logical 16x16 cell.")
+
+
+func _verify_linglan_tower_contract(game: GameTowerDefense) -> void:
+	var spawn5 := game.enemy_spawn_points_by_name.get(&"Spawn5") as Marker2D
+	var spawn6 := game.enemy_spawn_points_by_name.get(&"Spawn6") as Marker2D
+	_expect(spawn5 != null and spawn6 != null, "Linglan spawn anchors Spawn5/6 must exist.")
+	if spawn5 == null or spawn6 == null or game.bosses.is_empty():
+		return
+	var expected_spawn := (
+		(spawn5.global_position + spawn6.global_position) * 0.5
+		+ Vector2.LEFT * 96.0
+	).round()
+	var boss_config := game.bosses[0] as BossConfig
+	var resolved_spawn: Vector2 = game.call(
+		"_get_linglan_spawn_global_position",
+		boss_config
+	)
+	_expect(
+		resolved_spawn.is_equal_approx(expected_spawn),
+		"Linglan must spawn in the clearing 96px before the two far-right red gates."
+	)
+	var home_target := game.get_linglan_home_objective_target(resolved_spawn)
+	_expect(
+		home_target != null
+		and home_target.global_position.is_equal_approx(Vector2(50.0, 368.0)),
+		"Linglan's forced advance must resolve the authored blue-gate objective."
+	)
+	game.call("_cache_linglan_slime_configs")
+	var sniper_config := game.get_linglan_enrage_sniper_config()
+	_expect(
+		sniper_config != null
+		and sniper_config.resource_path
+		== "res://resources/config/enemies/capoo_sniper.tres",
+		"Linglan's half-health sniper config must be cached by the tower runtime."
+	)
+	if sniper_config != null:
+		await _verify_remote_linglan_airdrop_visual(
+			game,
+			sniper_config,
+			resolved_spawn + Vector2(-24.0, 12.0)
+		)
+	var expected_slime_paths := {
+		"res://resources/config/enemies/slime.tres": true,
+		"res://resources/config/enemies/slime_green.tres": true,
+		"res://resources/config/enemies/slime_golden.tres": true,
+		"res://resources/config/enemies/slime_frost.tres": true,
+		"res://resources/config/enemies/slime_fire.tres": true,
+	}
+	var actual_slime_paths := {}
+	for slime_config in game.linglan_slime_configs:
+		if slime_config != null:
+			actual_slime_paths[slime_config.resource_path] = true
+	_expect(
+		actual_slime_paths == expected_slime_paths,
+		"Linglan's random summon pool must contain all five authored slime variants."
+	)
+	var existing_enemy_ids := {}
+	for enemy_child in game.enemy_container.get_children():
+		existing_enemy_ids[enemy_child.get_instance_id()] = true
+	var original_wave_state := game.wave_state
+	var original_random_state := game.random_generator.state
+	game.wave_state = GameTowerDefense.WaveState.BOSS_ACTIVE
+	var slime_spawn_position := resolved_spawn + Vector2(-12.0, 8.0)
+	game.spawn_linglan_random_slime(slime_spawn_position)
+	var spawned_slime: Enemy = null
+	for enemy_child in game.enemy_container.get_children():
+		var enemy := enemy_child as Enemy
+		if enemy != null and not existing_enemy_ids.has(enemy.get_instance_id()):
+			spawned_slime = enemy
+			break
+	_expect(
+		spawned_slime != null
+		and spawned_slime.global_position.is_equal_approx(slime_spawn_position)
+		and spawned_slime.config != null
+		and expected_slime_paths.has(spawned_slime.config.resource_path),
+		"Linglan must spawn one configured random slime at her exact position."
+	)
+	if spawned_slime != null:
+		spawned_slime.queue_free()
+		await process_frame
+	game.wave_state = original_wave_state
+	game.random_generator.state = original_random_state
+	_expect(
+		game.get_linglan_skill2_target_global_position(Vector2i.ZERO).is_equal_approx(
+			resolved_spawn
+		)
+		and game.get_linglan_skill3_target_global_position(Vector2i.ZERO).is_equal_approx(
+			resolved_spawn
+		),
+		"Linglan Skills 2/3 must stay on the current tower-defense front line."
+	)
+	var skill4_anchor := game.get_linglan_skill4_target_global_position(
+		Vector2i(6, 2),
+		Vector2i(7, 2)
+	)
+	var left_orb_spawn := game.get_linglan_skill4_orb_spawn_global_position(-3, 2)
+	var right_orb_spawn := game.get_linglan_skill4_orb_spawn_global_position(18, 2)
+	_expect(
+		skill4_anchor.is_equal_approx(resolved_spawn)
+		and left_orb_spawn.is_equal_approx(resolved_spawn + Vector2(-152.0, 0.0))
+		and right_orb_spawn.is_equal_approx(resolved_spawn + Vector2(184.0, 0.0)),
+		"Skill4 orb columns must retain their authored offsets around Linglan's front-line anchor."
+	)
+	var visible_half_width := 1152.0 / (2.0 * game.map_camera.zoom.x)
+	var orb_travel_distance := (
+		LINGLAN_SKILL4_CONFIG.orb_speed * LINGLAN_SKILL4_CONFIG.orb_lifetime
+	)
+	var left_orb_final_offset := left_orb_spawn.x - resolved_spawn.x + orb_travel_distance
+	var right_orb_final_offset := right_orb_spawn.x - resolved_spawn.x - orb_travel_distance
+	_expect(
+		left_orb_final_offset > visible_half_width
+		and left_orb_final_offset <= visible_half_width + 64.0
+		and right_orb_final_offset < -visible_half_width
+		and right_orb_final_offset >= -visible_half_width - 64.0,
+		"Skill4 orbs must cross each zoom-2 screen edge only slightly before shrinking."
+	)
+
+	var camera_start := game.map_camera.global_position
+	game.call("_focus_camera_on_boss_intro", resolved_spawn)
+	_expect(
+		game.map_camera.get_parent() == game
+		and game.boss_intro_camera_tween != null
+		and not camera_start.is_equal_approx(resolved_spawn),
+		"Boss intro camera must detach from the moving player and start a focus tween."
+	)
+	if game.boss_intro_camera_tween != null:
+		game.boss_intro_camera_tween.custom_step(0.45)
+		var halfway_position := game.map_camera.global_position
+		_expect(
+			halfway_position.distance_to(camera_start) > 1.0
+			and halfway_position.distance_to(resolved_spawn) > 1.0,
+			"Boss intro camera must move smoothly between the player and Linglan."
+		)
+		game.boss_intro_camera_tween.custom_step(0.46)
+		_expect(
+			game.map_camera.global_position.is_equal_approx(resolved_spawn),
+			"Boss intro camera must finish at Linglan's red-gate spawn position."
+		)
+	game.call("_restore_camera_after_boss_intro")
+	_expect(
+		game.map_camera.get_parent() == game.player
+		and game.map_camera.position.is_equal_approx(Vector2.ZERO),
+		"Boss intro completion must instantly reattach the camera at the local player."
+	)
+
+	var original_runtime_mode := game.runtime_mode
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.call("_play_remote_boss_intro", boss_config)
+	game.call("_restore_remote_camera_if_boss_intro_complete")
+	_expect(
+		game.linglan_boss_intro_vfx != null
+		and game.linglan_boss_intro_vfx.intro_tween != null
+		and game.map_camera.get_parent() == game,
+		"A remote BOSS_ACTIVE event must not cut short the local birth animation."
+	)
+	if game.linglan_boss_intro_vfx != null:
+		game.linglan_boss_intro_vfx.stop_intro()
+		game.linglan_boss_intro_vfx.intro_finished.emit()
+	_expect(
+		game.map_camera.get_parent() == game.player
+		and game.map_camera.position.is_equal_approx(Vector2.ZERO),
+		"The remote camera must snap back on the local birth-animation completion signal."
+	)
+	game.runtime_mode = original_runtime_mode
+
+
+func _verify_remote_linglan_airdrop_visual(
+	game: GameTowerDefense,
+	sniper_config: EnemyConfig,
+	landing_position: Vector2
+) -> void:
+	var original_runtime_mode := game.runtime_mode
+	var original_wave_state := game.wave_state
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.wave_state = GameTowerDefense.WaveState.BOSS_ACTIVE
+	game.apply_remote_linglan_airdrop_started(
+		sniper_config,
+		landing_position,
+		0.25,
+		48.0,
+		0.40
+	)
+	await process_frame
+	var warning_found := false
+	for child in game.get_children():
+		if child is LinglanAirdropWarningMarker:
+			warning_found = true
+			break
+	_expect(warning_found, "A remote Linglan airdrop must show its warning marker immediately.")
+	await create_timer(0.30).timeout
+	var active_visuals := get_nodes_in_group(&"linglan_airdrop_visual")
+	var visual := active_visuals[0] as Enemy if not active_visuals.is_empty() else null
+	_expect(
+		visual != null
+		and visual.is_multiplayer_proxy
+		and visual.collision_layer == 0
+		and visual.global_position.y < landing_position.y,
+		"A remote Linglan airdrop must show a non-colliding sniper descending before spawn replication."
+	)
+	await create_timer(0.45).timeout
+	await process_frame
+	_expect(
+		get_nodes_in_group(&"linglan_airdrop_visual").is_empty(),
+		"The remote airdrop visual must retire when the authoritative enemy proxy takes over."
+	)
+	game.runtime_mode = original_runtime_mode
+	game.wave_state = original_wave_state
 
 
 func _verify_physical_home_gate_trigger(game: GameTowerDefense) -> void:
@@ -560,7 +770,12 @@ func _register_target_probe_plant(
 		game.ground_tile_map_layer.to_local(global_position)
 	)
 	var footprint: Array[Vector2i] = [cell]
-	game.plant_system.call("_register_plant_footprint", plant, footprint)
+	game.plant_system.call(
+		"_register_plant_footprint",
+		plant,
+		footprint,
+		plant_config
+	)
 	return plant
 
 
@@ -872,6 +1087,35 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 
 	game.call("_apply_base_damage", game.current_base_health)
 	_expect(game.wave_state == GameTowerDefense.WaveState.DEFEAT, "Base health reaching zero must cause defeat.")
+
+	var linglan_config := load(
+		"res://resources/config/enemies/linglan_boss.tres"
+	) as EnemyConfig
+	var linglan := linglan_config.enemy_scene.instantiate() as LinglanBoss
+	_expect(linglan != null, "Linglan must instantiate for Boss escape verification.")
+	if linglan != null:
+		game.boss_container.add_child(linglan)
+		linglan.config = linglan_config
+		game.linglan_boss = linglan
+		game.maximum_base_health = 250
+		game.current_base_health = 250
+		game.wave_state = GameTowerDefense.WaveState.BOSS_ACTIVE
+		game.current_wave_total = 1
+		game.current_wave_spawned = 1
+		game.current_wave_escaped = 0
+		game.current_wave_resolved = 0
+		game.resolved_home_enemy_ids.clear()
+		game.active_wave_enemy_ids.clear()
+		game.active_wave_enemy_ids[linglan.get_instance_id()] = true
+		game.call("_on_enemy_reached_home", linglan, Vector2i(2, 22))
+		_expect(
+			game.current_base_health == 0
+			and game.wave_state == GameTowerDefense.WaveState.DEFEAT,
+			"An escaped Linglan must destroy even an upgraded core instead of completing the Boss step."
+		)
+		await process_frame
+		await process_frame
+		game.linglan_boss = null
 
 	game.current_base_health = game.maximum_base_health
 	game.wave_state = GameTowerDefense.WaveState.WAVE_ACTIVE

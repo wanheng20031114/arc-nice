@@ -27,8 +27,8 @@ func _run() -> void:
 
 	var pathfinder := game.get_node_or_null("GridPathfinder") as GridPathfinder
 	_expect(pathfinder != null and pathfinder.is_built, "Tower defense must provide a built GridPathfinder.")
-	_expect(not game.linglan_boss_enabled, "Tower-defense Linglan must remain disabled.")
-	_expect(game.bosses.is_empty(), "Tower-defense Campaign must not expose a BossConfig.")
+	_expect(game.linglan_boss_enabled, "Tower-defense Linglan must be enabled.")
+	_expect(game.bosses.size() == 1, "Tower-defense Campaign must expose the Linglan BossConfig.")
 	var spawn_points: Array[Marker2D] = game.enemy_spawn_points
 	var targets: Array[Node2D] = []
 	if game.player != null:

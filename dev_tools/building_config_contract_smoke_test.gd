@@ -72,6 +72,14 @@ const EXPECTED_MENU_ORDER_BY_ID := {
 	&"vegetation_stake": 10,
 	&"oak_warehouse": 10,
 }
+const EXPECTED_TOWER_PHYSICAL_DEFENSE_BY_ID := {
+	&"agave_cannon": 10,
+	&"corn_machine_gun": 10,
+	&"bamboo_mortar": 20,
+	&"grape_arc_tower": 10,
+	&"hydrangea_rain_tower": 10,
+	&"orange_charging_tower": 10,
+}
 const EXPECTED_CATEGORY_COUNTS := {
 	PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER: 4,
 	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 2,
@@ -162,6 +170,12 @@ func _test_registry_semantics() -> void:
 			config.menu_order == int(EXPECTED_MENU_ORDER_BY_ID.get(config.plant_id, 0)),
 			"类内菜单顺序不符合10步长契约：%s。" % config.plant_id
 		)
+		if EXPECTED_TOWER_PHYSICAL_DEFENSE_BY_ID.has(config.plant_id):
+			_expect(
+				config.physical_defense
+				== int(EXPECTED_TOWER_PHYSICAL_DEFENSE_BY_ID[config.plant_id]),
+				"炮台基础物防不符合数值契约：%s。" % config.plant_id
+			)
 	_expect(configs.size() == 16, "正式建筑注册表必须恰好包含16项。")
 	_expect(
 		actual_ids == EXPECTED_SORTED_IDS,

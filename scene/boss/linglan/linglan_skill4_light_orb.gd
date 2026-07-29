@@ -3,24 +3,28 @@ class_name LinglanSkill4LightOrb
 
 const GPU_PULSE_FREQUENCY := 3.5
 const SHADER_TIME_ROLLOVER_SECONDS := 3600.0
+const LIFETIME_DESPAWN_SHRINK_DURATION := 0.4
 
 @export var speed: float = 40.0
 @export var damage: int = 50
 @export var orb_radius: float = 8.0
 @export var damage_radius: float = 6.0
-@export var max_lifetime: float = 10.0
+@export var max_lifetime: float = 12.0
 
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var visual_root: Node2D = $VisualRoot
 
 var direction := Vector2.RIGHT
-var remaining_lifetime: float = 10.0
+var remaining_lifetime: float = 12.0
 var damaged_player_ids: Dictionary = {}
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill4_orb"
 var gpu_pulse_phase: float = 0.0
 var gpu_pulse_origin_msec: int = 0
+var is_lifetime_despawning: bool = false
+var lifetime_despawn_time_left: float = 0.0
+var lifetime_despawn_start_scale := Vector2.ONE
 
 
 func _ready() -> void:
@@ -42,6 +46,10 @@ func setup(
 	speed = maxf(initial_speed, 0.0)
 	max_lifetime = maxf(initial_lifetime, 0.01)
 	remaining_lifetime = max_lifetime
+	is_lifetime_despawning = false
+	lifetime_despawn_time_left = 0.0
+	lifetime_despawn_start_scale = Vector2.ONE
+	scale = Vector2.ONE
 	orb_radius = maxf(initial_radius, 1.0)
 	damage_radius = clampf(initial_damage_radius, 1.0, orb_radius)
 	rotation = direction.angle()
@@ -69,11 +77,40 @@ func get_damage_radius() -> float:
 
 func _physics_process(delta: float) -> void:
 	var safe_delta := maxf(delta, 0.0)
+	if is_lifetime_despawning:
+		_update_lifetime_despawn(safe_delta)
+		return
 	remaining_lifetime = maxf(remaining_lifetime - safe_delta, 0.0)
 	if remaining_lifetime <= 0.0:
-		queue_free()
+		_begin_lifetime_despawn()
 		return
 	global_position += direction * speed * safe_delta
+
+
+func _begin_lifetime_despawn() -> void:
+	if is_lifetime_despawning:
+		return
+	is_lifetime_despawning = true
+	lifetime_despawn_time_left = LIFETIME_DESPAWN_SHRINK_DURATION
+	lifetime_despawn_start_scale = scale
+	remaining_lifetime = 0.0
+	speed = 0.0
+	collision_layer = 0
+	collision_mask = 0
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
+
+
+func _update_lifetime_despawn(delta: float) -> void:
+	lifetime_despawn_time_left = maxf(lifetime_despawn_time_left - delta, 0.0)
+	var shrink_progress := clampf(
+		lifetime_despawn_time_left / LIFETIME_DESPAWN_SHRINK_DURATION,
+		0.0,
+		1.0
+	)
+	scale = lifetime_despawn_start_scale * shrink_progress
+	if lifetime_despawn_time_left <= 0.0:
+		queue_free()
 
 
 func _apply_current_radius() -> void:
@@ -106,7 +143,7 @@ func _on_body_entered(body: Node2D) -> void:
 
 
 func _apply_player_damage(player: Player) -> void:
-	if player == null or player.is_dead:
+	if is_lifetime_despawning or player == null or player.is_dead:
 		return
 	var player_id := player.get_instance_id()
 	if damaged_player_ids.has(player_id):

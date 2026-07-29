@@ -96,7 +96,10 @@ func _run() -> void:
 
 	_expect(TOWER_CONFIG.is_valid(), "葡萄电弧塔配置必须有效。")
 	_expect(
-		TOWER_CONFIG.attack_damage == 96
+		TOWER_CONFIG.max_health == 2600
+		and TOWER_CONFIG.physical_defense == 10
+		and TOWER_CONFIG.magic_defense == 30
+		and TOWER_CONFIG.attack_damage == 96
 		and is_equal_approx(TOWER_CONFIG.attack_speed, 100.0 / 1.4)
 		and is_equal_approx(TOWER_CONFIG.get_attack_interval(), 1.4)
 		and TOWER_CONFIG.description.contains("每1.4秒")
@@ -107,7 +110,7 @@ func _run() -> void:
 			GrapeArcTower.calculate_initial_attack_delay_seconds(1.4, 71001)
 		)
 		and is_equal_approx(GrapeArcTower.DEFAULT_ATTACK_INTERVAL, 1.4),
-		"葡萄塔必须以96点法术伤害和1.4秒完整周期运行，配置、场景与fallback不得分叉。"
+		"葡萄塔必须拥有2600生命、10物防、30法防，并以96点法术伤害和1.4秒完整周期运行。"
 	)
 	_expect(
 		PlantDefenseRegistry.get_config(&"grape_arc_tower") == TOWER_CONFIG,

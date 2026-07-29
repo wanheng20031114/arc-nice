@@ -301,7 +301,7 @@ func _test_config_and_scene_contracts() -> void:
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
-		and bamboo_mortar_config.physical_defense == 10
+		and bamboo_mortar_config.physical_defense == 20
 		and bamboo_mortar_config.magic_defense == 20
 		and bamboo_mortar_config.attack_damage == 140
 		and is_zero_approx(
@@ -315,7 +315,7 @@ func _test_config_and_scene_contracts() -> void:
 		and bamboo_mortar_config.placement_surface
 		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY
 		and bamboo_mortar_config.supports_multiplayer,
-		"竹筒迫击炮必须拥有2000生命、10物防、20法防、140中心伤害、无额外攻击间隔、224范围并占草地2×2格。"
+		"竹筒迫击炮必须拥有2000生命、20物防、20法防、140中心伤害、无额外攻击间隔、224范围并占草地2×2格。"
 	)
 	_expect(
 		cultivation_center_config.max_health == 1500

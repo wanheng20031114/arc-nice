@@ -48,7 +48,8 @@ func _test_skill1_config() -> void:
 	_expect(is_equal_approx(SKILL1_CONFIG.attack_speed, 1800.0), "Skill1 attack speed mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.get_fire_interval(), 1.0 / 18.0), "Skill1 fire interval mismatch.")
 	_expect(is_equal_approx(SKILL1_CONFIG.projectile_speed, 300.0), "Skill1 projectile speed mismatch.")
-	_expect(is_equal_approx(SKILL1_CONFIG.get_projectile_travel_distance(), 600.0), "Skill1 projectile travel distance mismatch.")
+	_expect(is_equal_approx(SKILL1_CONFIG.projectile_lifetime, 1.2), "Skill1 active projectile lifetime mismatch.")
+	_expect(is_equal_approx(SKILL1_CONFIG.get_projectile_travel_distance(), 360.0), "Skill1 projectile travel distance mismatch.")
 	_expect(SKILL1_CONFIG.projectile_damage == 50, "Skill1 projectile damage mismatch.")
 	_expect(SKILL1_CONFIG.projectile_scene != null, "Skill1 projectile scene missing.")
 	_expect(SKILL1_CONFIG.warning_ray_scene == WARNING_RAY_SCENE, "Skill1 warning ray scene mismatch.")
@@ -161,7 +162,7 @@ func _test_skill1_fire_schedule() -> void:
 		var first_bullet := first_ring[0]
 		_expect(is_equal_approx(first_bullet.speed, 300.0), "Sakura bullet speed mismatch.")
 		_expect(first_bullet.damage == 50, "Sakura bullet damage mismatch.")
-		_expect(is_equal_approx(first_bullet.max_lifetime, 2.0), "Sakura bullet lifetime mismatch.")
+		_expect(is_equal_approx(first_bullet.max_lifetime, 1.2), "Sakura bullet active lifetime mismatch.")
 		_expect(first_bullet.direction.dot(Vector2.RIGHT) > 0.99, "First ring must start from the unrotated right direction.")
 	_clear_sakura_bullets()
 

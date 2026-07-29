@@ -8,10 +8,12 @@ const SKILL2_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const LinglanSkill4ConfigScript := preload("res://resources/config/bosses/linglan_skill4_config.gd")
 const LinglanSkill4LaserFieldScript := preload("res://scene/boss/linglan/linglan_skill4_laser_field.gd")
 const LinglanSkill4LightOrbScript := preload("res://scene/boss/linglan/linglan_skill4_light_orb.gd")
-const ENRAGE_SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres")
 const AIRDROP_WARNING_SCENE := preload("res://scene/boss/linglan/linglan_airdrop_warning_marker.tscn")
 const OPENING_SKILL_ORDER := [1, 2, 3, 4]
 const POST_SKILL_IDLE_DURATION := 2.0
+const TOWER_ADVANCE_DURATION := 8.0
+const TOWER_SLIME_SUMMON_INTERVAL := 5.0
+const TOWER_ADVANCE_ARRIVAL_DISTANCE := 8.0
 const ENRAGE_SNIPER_HEALTH_RATIO := 0.5
 const ENRAGE_SNIPER_INTERVAL := 10.0
 const ENRAGE_SNIPER_WARNING_DURATION := 1.2
@@ -36,6 +38,7 @@ enum BossSkillPhase {
 	MOVE_TO_SKILL4,
 	SKILL4,
 	POST_SKILL_IDLE,
+	ADVANCE_TO_HOME,
 	DONE,
 }
 
@@ -49,9 +52,13 @@ var boss_skill_phase: BossSkillPhase = BossSkillPhase.SKILL1
 var opening_skill_order_index: int = 0
 var queued_skill_number: int = 0
 var post_skill_idle_elapsed: float = 0.0
+var tower_defense_mode: bool = false
+var tower_advance_elapsed: float = 0.0
+var tower_slime_summon_timer: float = TOWER_SLIME_SUMMON_INTERVAL
 var random_skill_use_counts: Dictionary = {}
 var enrage_sniper_active: bool = false
 var enrage_sniper_timer: float = ENRAGE_SNIPER_INTERVAL
+var enrage_sniper_config: EnemyConfig = null
 var skill1_elapsed: float = 0.0
 var skill1_fire_time_left: float = 0.0
 var skill1_finished: bool = false
@@ -122,8 +129,14 @@ func apply_multiplayer_proxy_motion(
 func activate_boss(player: Player, shared_pathfinder: Node = null) -> void:
 	setup(config, player, shared_pathfinder)
 	_reset_skill_state()
+	tower_defense_mode = (
+		_find_parent_with_method(&"get_linglan_home_objective_target") != null
+	)
 	set_active(true)
-	_begin_skill_number(1)
+	if tower_defense_mode:
+		_begin_tower_advance(1)
+	else:
+		_begin_skill_number(1)
 
 
 func set_active(active: bool) -> void:
@@ -151,6 +164,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_touch_damage(delta)
 	_update_enrage_sniper_airdrops(delta)
+	_update_tower_slime_summoning(delta)
 	match boss_skill_phase:
 		BossSkillPhase.SKILL1:
 			_update_skill1(delta)
@@ -171,6 +185,8 @@ func _physics_process(delta: float) -> void:
 			_update_skill4(delta)
 		BossSkillPhase.POST_SKILL_IDLE:
 			_update_post_skill_idle(delta)
+		BossSkillPhase.ADVANCE_TO_HOME:
+			_update_tower_advance(delta)
 		_:
 			velocity = Vector2.ZERO
 			_play_idle_animation()
@@ -219,6 +235,9 @@ func _reset_skill_state() -> void:
 	opening_skill_order_index = 0
 	queued_skill_number = 0
 	post_skill_idle_elapsed = 0.0
+	tower_defense_mode = false
+	tower_advance_elapsed = 0.0
+	tower_slime_summon_timer = TOWER_SLIME_SUMMON_INTERVAL
 	_reset_random_skill_use_counts()
 	enrage_sniper_active = false
 	enrage_sniper_timer = ENRAGE_SNIPER_INTERVAL
@@ -268,6 +287,9 @@ func _finish_skill(skill_number: int) -> void:
 	post_skill_idle_elapsed = 0.0
 	velocity = Vector2.ZERO
 	_play_idle_animation()
+	if tower_defense_mode:
+		_begin_tower_advance(queued_skill_number)
+		return
 	if queued_skill_number <= 0:
 		boss_skill_phase = BossSkillPhase.DONE
 		return
@@ -342,6 +364,89 @@ func _update_post_skill_idle(delta: float) -> void:
 	_begin_skill_number(next_skill)
 
 
+func _begin_tower_advance(next_skill_number: int) -> void:
+	queued_skill_number = next_skill_number
+	tower_advance_elapsed = 0.0
+	boss_skill_phase = BossSkillPhase.ADVANCE_TO_HOME
+	velocity = Vector2.ZERO
+	_play_move_animation()
+
+
+func _update_tower_advance(delta: float) -> void:
+	tower_advance_elapsed += maxf(delta, 0.0)
+	if tower_advance_elapsed >= TOWER_ADVANCE_DURATION:
+		velocity = Vector2.ZERO
+		var next_skill := queued_skill_number
+		queued_skill_number = 0
+		if next_skill > 0:
+			_begin_skill_number(next_skill)
+		else:
+			boss_skill_phase = BossSkillPhase.DONE
+			_play_idle_animation()
+		return
+
+	var home_target := _resolve_tower_home_objective_target()
+	if home_target == null:
+		velocity = Vector2.ZERO
+		_play_idle_animation()
+		return
+	set_objective_target(home_target)
+	var offset := home_target.global_position - global_position
+	if offset.length_squared() <= TOWER_ADVANCE_ARRIVAL_DISTANCE * TOWER_ADVANCE_ARRIVAL_DISTANCE:
+		velocity = Vector2.ZERO
+		_play_idle_animation()
+		return
+
+	var move_direction := Vector2.ZERO
+	if pathfinder != null and bool(pathfinder.get("is_built")):
+		move_direction = _get_safe_navigation_move_direction(
+			home_target,
+			pathfinder,
+			TOWER_ADVANCE_ARRIVAL_DISTANCE
+		)
+	else:
+		move_direction = offset.normalized()
+	if move_direction == Vector2.ZERO:
+		velocity = Vector2.ZERO
+		_play_idle_animation()
+		return
+
+	_set_facing_from_direction(move_direction)
+	_play_move_animation()
+	velocity = move_direction * get_effective_move_speed()
+	_move_until_player_contact()
+
+
+func _resolve_tower_home_objective_target() -> Node2D:
+	var host := _find_parent_with_method(&"get_linglan_home_objective_target")
+	if host == null:
+		return null
+	return host.call(
+		"get_linglan_home_objective_target",
+		global_position
+	) as Node2D
+
+
+func is_advancing_to_home() -> bool:
+	return boss_skill_phase == BossSkillPhase.ADVANCE_TO_HOME
+
+
+func _update_tower_slime_summoning(delta: float) -> void:
+	if not tower_defense_mode:
+		return
+	tower_slime_summon_timer -= maxf(delta, 0.0)
+	while tower_slime_summon_timer <= 0.0:
+		tower_slime_summon_timer += TOWER_SLIME_SUMMON_INTERVAL
+		_request_tower_random_slime()
+
+
+func _request_tower_random_slime() -> void:
+	var host := _find_parent_with_method(&"spawn_linglan_random_slime")
+	if host == null:
+		return
+	host.call("spawn_linglan_random_slime", global_position)
+
+
 func _update_enrage_sniper_airdrops(delta: float) -> void:
 	var maximum_health := get_max_health()
 	if maximum_health <= 0:
@@ -363,9 +468,15 @@ func _request_enrage_sniper_airdrop() -> void:
 	var host := _find_parent_with_method(&"spawn_linglan_airdrop_sniper")
 	if host == null:
 		return
+	if enrage_sniper_config == null:
+		if not host.has_method(&"get_linglan_enrage_sniper_config"):
+			return
+		enrage_sniper_config = host.call("get_linglan_enrage_sniper_config") as EnemyConfig
+	if enrage_sniper_config == null:
+		return
 	host.call(
 		"spawn_linglan_airdrop_sniper",
-		ENRAGE_SNIPER_CONFIG,
+		enrage_sniper_config,
 		AIRDROP_WARNING_SCENE,
 		ENRAGE_SNIPER_WARNING_DURATION,
 		ENRAGE_SNIPER_DROP_HEIGHT,
@@ -694,9 +805,6 @@ func _is_skill2_ready() -> bool:
 
 
 func _update_skill2_move(delta: float) -> void:
-	if _has_player_contact():
-		velocity = Vector2.ZERO
-		return
 	var offset := skill2_target_global_position - global_position
 	var distance := offset.length()
 	var move_speed := (
@@ -707,6 +815,9 @@ func _update_skill2_move(delta: float) -> void:
 		global_position = skill2_target_global_position
 		velocity = Vector2.ZERO
 		_begin_skill2_attack()
+		return
+	if _has_player_contact():
+		velocity = Vector2.ZERO
 		return
 
 	var move_direction := offset / distance
@@ -969,9 +1080,6 @@ func _is_skill3_ready() -> bool:
 
 
 func _update_skill3_move(delta: float) -> void:
-	if _has_player_contact():
-		velocity = Vector2.ZERO
-		return
 	var offset := skill3_target_global_position - global_position
 	var distance := offset.length()
 	var move_speed := (
@@ -982,6 +1090,9 @@ func _update_skill3_move(delta: float) -> void:
 		global_position = skill3_target_global_position
 		velocity = Vector2.ZERO
 		_begin_skill3_attack()
+		return
+	if _has_player_contact():
+		velocity = Vector2.ZERO
 		return
 
 	var move_direction := offset / distance
@@ -1116,7 +1227,6 @@ func _is_skill4_ready() -> bool:
 	var config4 := _get_skill4_config()
 	return (
 		config4 != null
-		and config4.laser_field_scene != null
 		and config4.orb_scene != null
 	)
 
@@ -1125,9 +1235,6 @@ func _update_skill4_move(delta: float) -> void:
 	var config4 := _get_skill4_config()
 	if config4 == null:
 		boss_skill_phase = BossSkillPhase.DONE
-		return
-	if _has_player_contact():
-		velocity = Vector2.ZERO
 		return
 	var offset := skill4_target_global_position - global_position
 	var distance := offset.length()
@@ -1139,6 +1246,9 @@ func _update_skill4_move(delta: float) -> void:
 		global_position = skill4_target_global_position
 		velocity = Vector2.ZERO
 		_begin_skill4_attack()
+		return
+	if _has_player_contact():
+		velocity = Vector2.ZERO
 		return
 
 	var move_direction := offset / distance
@@ -1155,7 +1265,6 @@ func _begin_skill4_attack() -> void:
 	skill4_orb_spawn_ticks_completed = 0
 	velocity = Vector2.ZERO
 	_play_attack_animation()
-	_spawn_skill4_laser_field(true)
 	_broadcast_enemy_action(&"linglan_skill4_start", Vector2.ZERO)
 
 
@@ -1374,9 +1483,6 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 		_clear_skill1_warning_rays()
 		_set_facing_from_direction(direction)
 	elif action_name == &"linglan_skill4_start":
-		var config4 := _get_skill4_config()
-		if config4 != null:
-			_spawn_skill4_laser_field(false)
 		_set_facing_from_direction(direction)
 	elif String(action_name).begins_with("linglan_skill"):
 		_set_facing_from_direction(direction)
@@ -1486,6 +1592,15 @@ func _play_idle_animation() -> void:
 		return
 	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"idle"):
 		animated_sprite.play(&"idle")
+
+
+func _play_move_animation() -> void:
+	if animated_sprite == null:
+		return
+	if animated_sprite.animation == &"move" and animated_sprite.is_playing():
+		return
+	if animated_sprite.sprite_frames != null and animated_sprite.sprite_frames.has_animation(&"move"):
+		animated_sprite.play(&"move")
 
 
 func _play_attack_animation() -> void:

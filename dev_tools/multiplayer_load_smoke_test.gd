@@ -10,6 +10,13 @@ const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bo
 const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const SNIPER_CONFIG := preload("res://resources/config/enemies/capoo_sniper.tres")
+const LINGLAN_SLIME_CONFIG_PATHS: Array[String] = [
+	"res://resources/config/enemies/slime.tres",
+	"res://resources/config/enemies/slime_green.tres",
+	"res://resources/config/enemies/slime_golden.tres",
+	"res://resources/config/enemies/slime_frost.tres",
+	"res://resources/config/enemies/slime_fire.tres",
+]
 const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
 const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
@@ -68,6 +75,7 @@ func _run() -> void:
 	await _test_multiplayer_revive_resets_remote_visual_interpolator()
 	await _test_client_local_damage_confirm_starts_hurt_blink()
 	await _test_linglan_boss_registration_uses_boss_event_only()
+	await _test_linglan_airdrop_replication_contract()
 	await _test_linglan_boss_proxy_keeps_body_hit_collision()
 	await _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy()
 	await _test_multiplayer_cheat_xirang_confirm()
@@ -3472,7 +3480,7 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 	}
 	game.configure_multiplayer(GameRuntimeBase.RuntimeMode.HOST_AUTHORITY, 1, player_names)
 	game.auto_start_waves = false
-	_expect(not game.linglan_boss_enabled, "Tower-defense Linglan must be disabled by default.")
+	_expect(game.linglan_boss_enabled, "Tower-defense Linglan must be enabled by the authored scene.")
 	root.add_child(game)
 	await process_frame
 	await physics_frame
@@ -3761,6 +3769,107 @@ func _test_linglan_boss_registration_uses_boss_event_only() -> void:
 			"Linglan boss registration must still index the boss by net id."
 		)
 
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
+
+
+func _test_linglan_airdrop_replication_contract() -> void:
+	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
+	_expect(game != null, "Tower game must instantiate for Linglan airdrop replication.")
+	if game == null:
+		return
+	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
+	game.auto_start_waves = false
+	root.add_child(game)
+	await process_frame
+	game.wave_state = GameRuntimeBase.WaveState.BOSS_ACTIVE
+	var replicated_events: Array[Dictionary] = []
+	var spawned_events: Array[Dictionary] = []
+	game.multiplayer_linglan_airdrop_started.connect(
+		func(
+			enemy_config: EnemyConfig,
+			landing_position: Vector2,
+			warning_duration: float,
+			drop_height: float,
+			drop_duration: float
+		) -> void:
+			replicated_events.append({
+				"enemy_config": enemy_config,
+				"landing_position": landing_position,
+				"warning_duration": warning_duration,
+				"drop_height": drop_height,
+				"drop_duration": drop_duration,
+			})
+	)
+	game.multiplayer_enemy_spawned.connect(
+		func(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2) -> void:
+			spawned_events.append({
+				"net_id": net_id,
+				"enemy_config": enemy_config,
+				"spawn_position": spawn_position,
+			})
+	)
+	var warning_scene := load(
+		"res://scene/boss/linglan/linglan_airdrop_warning_marker.tscn"
+	) as PackedScene
+	game.spawn_linglan_airdrop_sniper(
+		SNIPER_CONFIG,
+		warning_scene,
+		0.01,
+		48.0,
+		0.02
+	)
+	_expect(
+		replicated_events.size() == 1,
+		"A host Linglan airdrop must emit one reliable presentation event before landing."
+	)
+	if not replicated_events.is_empty():
+		var event := replicated_events[0]
+		_expect(
+			event.get("enemy_config") == SNIPER_CONFIG
+			and (event.get("landing_position") as Vector2).is_finite()
+			and is_equal_approx(float(event.get("warning_duration", -1.0)), 0.01)
+			and is_equal_approx(float(event.get("drop_height", -1.0)), 48.0)
+			and is_equal_approx(float(event.get("drop_duration", -1.0)), 0.02),
+			"The airdrop event must preserve config, landing point, warning, and drop timing."
+		)
+	await create_timer(0.20).timeout
+	_expect(
+		spawned_events.size() == 1,
+		"A landed Linglan sniper airdrop must enter the normal multiplayer enemy-spawn stream."
+	)
+	if not spawned_events.is_empty() and not replicated_events.is_empty():
+		var sniper_spawn := spawned_events[0]
+		_expect(
+			int(sniper_spawn.get("net_id", 0)) > 0
+			and sniper_spawn.get("enemy_config") == SNIPER_CONFIG
+			and (sniper_spawn.get("spawn_position") as Vector2).is_equal_approx(
+				replicated_events[0].get("landing_position") as Vector2
+			),
+			"The authoritative sniper spawn must preserve its config and announced landing point."
+		)
+
+	var slime_spawn_position := Vector2(512.0, 320.0)
+	var spawn_count_before_slime := spawned_events.size()
+	game.spawn_linglan_random_slime(slime_spawn_position)
+	_expect(
+		spawned_events.size() == spawn_count_before_slime + 1,
+		"A Linglan random slime must enter the normal multiplayer enemy-spawn stream."
+	)
+	if spawned_events.size() > spawn_count_before_slime:
+		var slime_spawn := spawned_events[spawn_count_before_slime]
+		var slime_config := slime_spawn.get("enemy_config") as EnemyConfig
+		_expect(
+			int(slime_spawn.get("net_id", 0)) > 0
+			and slime_config != null
+			and LINGLAN_SLIME_CONFIG_PATHS.has(slime_config.resource_path)
+			and (slime_spawn.get("spawn_position") as Vector2).is_equal_approx(
+				slime_spawn_position
+			),
+			"The random slime spawn must preserve one configured slime type and Linglan's position."
+		)
 	_stop_audio_players(game)
 	game.queue_free()
 	await process_frame

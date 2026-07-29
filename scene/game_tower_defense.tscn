@@ -150,6 +150,7 @@ physics_interpolation_mode = 2
 position = Vector2(2, 0)
 script = ExtResource("1_17rxn")
 day_cycle_config = ExtResource("53_day_cycle")
+linglan_boss_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")

@@ -144,7 +144,7 @@ func _run() -> void:
 	await _test_game_helpers()
 	await _test_skill_rotation_policy()
 	await _test_boss_skill4_schedule()
-	await _test_multiplayer_proxy_skill4_laser_cleanup()
+	await _test_multiplayer_proxy_skill4_has_no_laser()
 	_test_multiplayer_projectile_instantiation()
 
 	test_root.queue_free()
@@ -175,7 +175,7 @@ func _test_skill4_config() -> void:
 	_expect(SKILL4_CONFIG.laser_inward_cell_distance == 5, "Skill4 inward distance mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.laser_warning_duration, 1.6), "Skill4 laser warning duration mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.laser_shrink_duration, 3.0), "Skill4 laser shrink duration mismatch.")
-	_expect(is_equal_approx(SKILL4_CONFIG.orb_start_delay_after_laser, 0.5), "Skill4 orb delay mismatch.")
+	_expect(is_equal_approx(SKILL4_CONFIG.orb_start_delay, 0.5), "Skill4 orb start delay mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.laser_core_width, 6.0), "Skill4 laser core width mismatch.")
 	_expect(SKILL4_CONFIG.laser_damage == 50, "Skill4 laser damage mismatch.")
 	_expect(SKILL4_CONFIG.orb_candidate_min_y == 0, "Skill4 orb min row mismatch.")
@@ -184,14 +184,14 @@ func _test_skill4_config() -> void:
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_spawn_interval, 2.0), "Skill4 orb interval mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_spawn_duration, 14.0), "Skill4 orb duration mismatch.")
 	_expect(SKILL4_CONFIG.get_orb_wave_count() == 7, "Skill4 must spawn seven orb waves.")
-	_expect(is_equal_approx(SKILL4_CONFIG.get_orb_start_time(), 5.1), "Skill4 orb phase start mismatch.")
-	_expect(is_equal_approx(SKILL4_CONFIG.get_total_duration(), 19.1), "Skill4 total duration mismatch.")
+	_expect(is_equal_approx(SKILL4_CONFIG.get_orb_start_time(), 0.5), "Skill4 orb delay must be measured from skill start.")
+	_expect(is_equal_approx(SKILL4_CONFIG.get_total_duration(), 14.5), "Skill4 total duration mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_speed, 40.0), "Skill4 orb speed mismatch.")
-	_expect(is_equal_approx(SKILL4_CONFIG.orb_lifetime, 10.0), "Skill4 orb lifetime mismatch.")
+	_expect(is_equal_approx(SKILL4_CONFIG.orb_lifetime, 12.0), "Skill4 orb active lifetime mismatch.")
 	_expect(SKILL4_CONFIG.orb_damage == 50, "Skill4 orb damage mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_radius, 8.0), "Skill4 orb radius mismatch.")
 	_expect(is_equal_approx(SKILL4_CONFIG.orb_damage_radius, 6.0), "Skill4 orb damage radius mismatch.")
-	_expect(SKILL4_CONFIG.laser_field_scene == LASER_FIELD_SCENE, "Skill4 laser scene mismatch.")
+	_expect(SKILL4_CONFIG.laser_field_scene == null, "Skill4 must not configure a laser field scene.")
 	_expect(SKILL4_CONFIG.orb_scene == ORB_SCENE, "Skill4 orb scene mismatch.")
 
 	var random_generator := RandomNumberGenerator.new()
@@ -745,14 +745,14 @@ func _test_boss_skill4_schedule() -> void:
 	_expect(saw_move_animation, "Skill4 movement phase must play Linglan move animation.")
 	_expect(boss.boss_skill_phase == LinglanBoss.BossSkillPhase.SKILL4, "Linglan must enter Skill4 after reaching target.")
 	_expect(boss.global_position.distance_to(host.target_position) <= 2.0, "Linglan did not arrive at Skill4 target.")
-	_expect(host.laser_bounds_calls.size() == 1, "Skill4 must request laser bounds once at attack start.")
-	_expect(_count_skill4_laser_fields(host) == 1, "Skill4 must spawn one laser field at attack start.")
+	_expect(host.laser_bounds_calls.is_empty(), "Skill4 must not request obsolete laser bounds.")
+	_expect(_count_skill4_laser_fields(host) == 0, "Skill4 must not spawn a laser field.")
 	_expect(host.action_records.size() == 1, "Skill4 must broadcast one start action.")
 	if sprite != null:
 		_expect(sprite.animation == &"attack", "Skill4 attack phase must play Linglan attack animation.")
 
-	boss.call("_physics_process", 5.09)
-	_expect(host.projectile_records.is_empty(), "Skill4 must wait for warning, shrink, and 0.5s before orb waves.")
+	boss.call("_physics_process", 0.49)
+	_expect(host.projectile_records.is_empty(), "Skill4 must wait 0.5s from skill start before orb waves.")
 	boss.call("_physics_process", 0.02)
 	_expect(host.projectile_records.size() == 14, "Skill4 first wave must spawn 7 orbs per side.")
 	_expect(_first_wave_rows_are_unique_per_side(host), "Skill4 first wave rows must be unique per side.")
@@ -768,14 +768,14 @@ func _test_boss_skill4_schedule() -> void:
 	_expect(host.projectile_records.size() == expected_projectile_total, "Skill4 must spawn exactly seven two-sided waves.")
 	_expect(
 		boss.boss_skill_phase == LinglanBoss.BossSkillPhase.POST_SKILL_IDLE,
-		"Skill4 must enter post-skill idle after its 19.1s cycle."
+		"Skill4 must enter post-skill idle after its 14.5s cycle."
 	)
 	_expect(boss.skill4_laser_field == null, "Skill4 must clear the laser field when the skill ends.")
 	for record in host.projectile_records:
 		_expect(record.get("projectile_type") == &"linglan_skill4_orb", "Skill4 registered wrong projectile type.")
 		_expect(int(record.get("damage", 0)) == 50, "Skill4 registered wrong orb damage.")
 		_expect(is_equal_approx(float(record.get("speed", 0.0)), 40.0), "Skill4 registered wrong orb speed.")
-		_expect(is_equal_approx(float(record.get("lifetime", 0.0)), 10.0), "Skill4 registered wrong orb lifetime.")
+		_expect(is_equal_approx(float(record.get("lifetime", 0.0)), 12.0), "Skill4 registered wrong orb active lifetime.")
 
 	host.queue_free()
 	current_scene = test_root
@@ -783,10 +783,10 @@ func _test_boss_skill4_schedule() -> void:
 	await physics_frame
 
 
-func _test_multiplayer_proxy_skill4_laser_cleanup() -> void:
+func _test_multiplayer_proxy_skill4_has_no_laser() -> void:
 	current_scene = test_root
 	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
-	_expect(boss != null, "Linglan scene did not instantiate for proxy Skill4 cleanup.")
+	_expect(boss != null, "Linglan scene did not instantiate for proxy Skill4 laser-removal contract.")
 	if boss == null:
 		return
 	test_root.add_child(boss)
@@ -795,42 +795,13 @@ func _test_multiplayer_proxy_skill4_laser_cleanup() -> void:
 
 	boss.play_multiplayer_enemy_action(&"linglan_skill4_start", Vector2.ZERO, 1)
 	await process_frame
-	var laser_fields := _get_skill4_laser_fields(test_root)
-	_expect(laser_fields.size() == 1, "Proxy Skill4 start must spawn one visual laser field.")
-	if not laser_fields.is_empty():
-		var field := laser_fields[0] as LASER_FIELD_SCRIPT
-		_expect(field != null and field.damage_enabled == false, "Proxy Skill4 laser must be visual-only.")
-		field.call("_physics_process", SKILL4_CONFIG.get_total_duration() + 0.1)
-		await process_frame
-		_expect(
-			_get_skill4_laser_fields(test_root).is_empty(),
-			"Proxy Skill4 laser field must auto-clean after the skill duration."
-		)
-
-	boss.queue_free()
-	await process_frame
-	await physics_frame
-
-	var death_boss := LINGLAN_SCENE.instantiate() as LinglanBoss
-	_expect(death_boss != null, "Linglan scene did not instantiate for proxy Skill4 death cleanup.")
-	if death_boss == null:
-		return
-	test_root.add_child(death_boss)
-	await process_frame
-	death_boss.configure_multiplayer_proxy()
-
-	death_boss.play_multiplayer_enemy_action(&"linglan_skill4_start", Vector2.ZERO, 1)
-	await process_frame
-	_expect(_get_skill4_laser_fields(test_root).size() == 1, "Proxy Skill4 death cleanup test must spawn one laser field first.")
-	death_boss.play_multiplayer_death_sequence()
-	await process_frame
 	_expect(
 		_get_skill4_laser_fields(test_root).is_empty(),
-		"Proxy Skill4 death must clear the visual laser field."
+		"Proxy Skill4 actions must not recreate the removed laser field."
 	)
 
-	if is_instance_valid(death_boss):
-		death_boss.queue_free()
+	if is_instance_valid(boss):
+		boss.queue_free()
 	await process_frame
 	await physics_frame
 
@@ -851,7 +822,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		Vector2.LEFT,
 		50,
 		40.0,
-		10.0,
+		12.0,
 		false,
 		0
 	) as ORB_SCRIPT
@@ -860,7 +831,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		_expect(projectile.direction.is_equal_approx(Vector2.LEFT), "Registry Skill4 orb direction mismatch.")
 		_expect(projectile.damage == 50, "Registry Skill4 orb damage mismatch.")
 		_expect(is_equal_approx(projectile.speed, 40.0), "Registry Skill4 orb speed mismatch.")
-		_expect(is_equal_approx(projectile.remaining_lifetime, 10.0), "Registry Skill4 orb lifetime mismatch.")
+		_expect(is_equal_approx(projectile.remaining_lifetime, 12.0), "Registry Skill4 orb active lifetime mismatch.")
 		_expect(is_equal_approx(projectile.orb_radius, 11.0), "Registry Skill4 orb must read radius from config.")
 		_expect(is_equal_approx(projectile.damage_radius, 9.0), "Registry Skill4 orb must read damage radius from config.")
 		projectile.free()
