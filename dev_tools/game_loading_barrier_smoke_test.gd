@@ -32,6 +32,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/config/enemies/stone_golem_elite.tres",
 	"res://resources/config/enemies/fire_sorcerer_elite.tres",
 	"res://resources/config/enemies/frost_sorcerer_elite.tres",
+	"res://resources/config/enemies/lightning_sorcerer_elite.tres",
 	"res://resources/animation/yuanshi_insect_basic.tres",
 	"res://resources/animation/capoo_ak47.tres",
 	"res://resources/audio/capoo_ak47_fire.wav",

@@ -87,9 +87,16 @@ func _test_elite_config_prewarm() -> void:
 	)
 	await coordinator.prewarm_elite_enemy_configs()
 	_expect(
-		coordinator.elite_enemy_config_by_base_path.size()
-		== coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size(),
-		"All fate elite enemy configs must be cached before combat activation."
+		coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 5
+		and coordinator.elite_enemy_config_by_base_path.size() == 5,
+		"All five fate elite enemy configs must be cached before combat activation."
+	)
+	_expect(
+		str(coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(
+			"res://resources/config/enemies/lightning_sorcerer.tres",
+			""
+		)) == "res://resources/config/enemies/lightning_sorcerer_elite.tres",
+		"Fate elite replacement map must include the Elite Lightning Sorcerer."
 	)
 	for base_path_value in coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH:
 		var base_path := str(base_path_value)

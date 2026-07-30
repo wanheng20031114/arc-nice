@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 50,
+	CodexSection.ENEMY: 51,
 	CodexSection.COLLECTIBLE: 123,
 	CodexSection.BUILDING: 16,
 }
@@ -31,9 +31,14 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"yuanshi_insect": 16,
 	&"slime": 10,
 	&"capoo": 16,
-	&"sorcerer": 5,
+	&"sorcerer": 6,
 	&"artificial_creation": 2,
 	&"boss": 1,
+}
+const EXPECTED_ENEMY_RANK_COUNTS := {
+	EnemyCodexEntryConfig.Rank.NORMAL: 44,
+	EnemyCodexEntryConfig.Rank.ELITE: 6,
+	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
 const ATTACK_STAT_LABELS := [
 	"攻击伤害",
@@ -83,6 +88,7 @@ func _run() -> void:
 	var catalog := CodexCatalog.new()
 	_test_catalog_counts_and_unique_ids(catalog)
 	_test_filter_counts(catalog)
+	_test_enemy_rank_counts(catalog)
 	_test_entry_content(catalog)
 	_test_enemy_stat_contract(catalog)
 	_test_building_stat_contract(catalog)
@@ -104,7 +110,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 50 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 51 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -181,6 +187,19 @@ func _expect_filter_counts(
 		option_counts == expected_counts,
 		"%s filter options must match the catalog entries: %s."
 		% [contract_name, option_counts]
+	)
+
+
+func _test_enemy_rank_counts(catalog: CodexCatalog) -> void:
+	var actual_counts: Dictionary = {}
+	for entry in catalog.get_entries(CodexSection.ENEMY):
+		var source := entry.source_resource as EnemyCodexEntryConfig
+		if source == null:
+			continue
+		actual_counts[source.rank] = int(actual_counts.get(source.rank, 0)) + 1
+	_expect(
+		actual_counts == EXPECTED_ENEMY_RANK_COUNTS,
+		"Enemy ranks must contain 44 normal, six elite, and one Boss entry."
 	)
 
 
@@ -472,7 +491,7 @@ func _test_scene_contract() -> void:
 	await _wait_for_grid_build(screen)
 
 	_expect(
-		screen.enemy_button.text == "敌人  50"
+		screen.enemy_button.text == "敌人  51"
 		and screen.collectible_button.text == "收藏品  123"
 		and screen.building_button.text == "建筑物  16",
 		"Sidebar must display all three section totals."
@@ -485,15 +504,15 @@ func _test_scene_contract() -> void:
 	_expect(
 		int(screen.get("_current_section")) == CodexSection.ENEMY
 		and screen.section_title.text == "敌人档案"
-		and screen.archive_index.text == "050 条记录",
+		and screen.archive_index.text == "051 条记录",
 		"Encyclopedia must open on the enemy section."
 	)
 	var cards: Array = screen.get("_cards")
 	_expect(
-		cards.size() == 50
-		and screen.entry_grid.get_child_count() == 50
-		and screen.result_count.text == "显示 50 / 50",
-		"Initial enemy grid must render all 50 entries."
+		cards.size() == 51
+		and screen.entry_grid.get_child_count() == 51
+		and screen.result_count.text == "显示 51 / 51",
+		"Initial enemy grid must render all 51 entries."
 	)
 	_expect(
 		screen.search_edit.text.is_empty()
@@ -749,21 +768,21 @@ func _test_compact_detail_layout(screen: EncyclopediaScreen) -> void:
 func _test_short_filter_anchor(screen: EncyclopediaScreen) -> void:
 	_expect(
 		_select_filter(screen, &"sorcerer"),
-		"Enemy toolbar must expose the five-entry sorcerer filter."
+		"Enemy toolbar must expose the six-entry sorcerer filter."
 	)
 	await _wait_frames(4)
 	await _wait_for_grid_build(screen)
 	var cards: Array = screen.get("_cards")
 	_expect(
-		cards.size() == 5,
-		"Short anchor regression requires exactly five sorcerer cards."
+		cards.size() == 6,
+		"Short anchor regression requires exactly six sorcerer cards."
 	)
-	if cards.size() != 5:
+	if cards.size() != 6:
 		_select_filter(screen, &"")
 		await _wait_frames(3)
 		await _wait_for_grid_build(screen)
 		return
-	var selected_card := cards[4] as EncyclopediaEntryCard
+	var selected_card := cards[5] as EncyclopediaEntryCard
 	var selected_anchor_y := selected_card.global_position.y
 	selected_card.get_focus_control().pressed.emit()
 	await create_timer(
@@ -924,11 +943,11 @@ func _test_search_filter_and_section_state(
 	await _wait_for_grid_build(screen)
 	var search_cards: Array = screen.get("_cards")
 	_expect(
-		not search_cards.is_empty() and search_cards.size() < 50,
+		not search_cards.is_empty() and search_cards.size() < 51,
 		"Enemy name search must narrow the visible result set."
 	)
 	_expect(
-		screen.result_count.text == "显示 %d / 50" % search_cards.size(),
+		screen.result_count.text == "显示 %d / 51" % search_cards.size(),
 		"Result count must stay synchronized with name-search results."
 	)
 	for card_variant in search_cards:

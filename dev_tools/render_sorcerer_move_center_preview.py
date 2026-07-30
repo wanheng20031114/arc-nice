@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the three eight-frame sorcerer walks with center/ground guides."""
+"""Render the four eight-frame sorcerer walks with center/ground guides."""
 
 from __future__ import annotations
 
@@ -35,6 +35,10 @@ TRACKS = (
     (
         "LIGHTNING",
         ROOT / "resources/texture/lightning_sorcerer_move.png",
+    ),
+    (
+        "LIGHTNING ELITE",
+        ROOT / "resources/texture/lightning_sorcerer_elite_move.png",
     ),
 )
 PHASES = (

@@ -13,6 +13,8 @@ const ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH: Dictionary = {
 		"res://resources/config/enemies/fire_sorcerer_elite.tres",
 	"res://resources/config/enemies/frost_sorcerer.tres":
 		"res://resources/config/enemies/frost_sorcerer_elite.tres",
+	"res://resources/config/enemies/lightning_sorcerer.tres":
+		"res://resources/config/enemies/lightning_sorcerer_elite.tres",
 }
 const YUANSHI_ATTACK_SOURCE_ID := 880001
 const ARTIFICIAL_DEFENSE_SOURCE_ID := 880002

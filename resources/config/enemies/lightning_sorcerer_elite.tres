@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="LightningSorcererEliteConfig" format=3]
+
+[ext_resource type="Script" uid="uid://c3l8v2qx7n4kp" path="res://resources/config/enemies/lightning_sorcerer_elite_config.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/enemy/sorcerer/lightning_sorcerer_elite.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_script")
+attack_range = 112.0
+chain_range = 64.0
+max_chain_bounces = 4
+windup_duration = 0.6
+attack_interval = 2.0
+display_name = "精英雷电术士"
+category_tags = PackedStringArray("sorcerer")
+enemy_scene = ExtResource("2_scene")
+max_health = 300
+attack_damage = 80
+physical_defense = 20
+magic_defense = 80
+move_speed = 24.0
+home_damage = 5
+xirang_kill_reward = 35

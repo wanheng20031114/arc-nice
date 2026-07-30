@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/lightning_sorcerer_elite.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/lightning_sorcerer_elite.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"lightning_sorcerer_elite"
+enemy_config = ExtResource("2_config")
+family_id = &"sorcerer"
+family_label = "术士"
+rank = 1
+sort_order = 450
+visible_in_codex = true
+description = "精英雷电术士将雷霆导入紫晶纹路，施法更频繁且链路更长。每次闪电可在更远的目标间连续跳跃，仍可最多命中五个不同单位。"
+traits = PackedStringArray("精英", "紫晶雷纹", "强化链式闪电")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(3, -7)

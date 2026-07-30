@@ -24,6 +24,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/lightning_sorcerer.tres"),
+	preload("res://resources/config/enemies/lightning_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/slime.tres"),
 	preload("res://resources/config/enemies/slime_golden.tres"),
 	preload("res://resources/config/enemies/slime_fire.tres"),
@@ -113,6 +114,7 @@ const SORCERER_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/lightning_sorcerer.tres"),
+	preload("res://resources/config/enemies/lightning_sorcerer_elite.tres"),
 ]
 const ARTIFICIAL_CREATION_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
@@ -368,8 +370,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the sixteen original and stone-eroded Capoo configs must carry the capoo category tag."
 	)
 	_expect(
-		int(category_counts["sorcerer"]) == 5,
-		"Exactly the five fire, frost, and lightning configs must carry the sorcerer category tag."
+		int(category_counts["sorcerer"]) == 6,
+		"Exactly the six normal and elite fire, frost, and lightning configs must carry the sorcerer category tag."
 	)
 	_expect(
 		int(category_counts["artificial_creation"]) == 2,

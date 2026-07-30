@@ -1,0 +1,2 @@
+extends LightningSorcererConfig
+class_name LightningSorcererEliteConfig

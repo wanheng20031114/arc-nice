@@ -45,7 +45,7 @@ F5 单帧放大编辑后确定性合回；每轮都保持上半身和中心点�
 移动栅格化后每帧为 40×40，姿态中心统一为 `(17, 27)`，共同地线为
 `y = 38`，八帧横向可见像素质心的峰峰值不超过 1 像素。运行时以 12 fps
 播放，`8 / 12 = 0.667` 秒，保持旧四帧 6 fps 的完整循环时长。
-带红色中心点、绿色地线和洋红质心的三角色对照图保存在
+带红色中心点、绿色地线和洋红质心的四角色对照图保存在
 `dev_assets/generated_previews/sorcerer_move_center_audit.png`，循环动图保存在
 `dev_assets/generated_previews/sorcerer_move_cycle_preview.gif`。
 
