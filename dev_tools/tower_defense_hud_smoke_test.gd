@@ -97,7 +97,9 @@ func _verify_tower_defense_layout_and_updates() -> void:
 	_expect(
 		hud.day_dial.custom_minimum_size == Vector2(38.0, 38.0)
 		and is_equal_approx(hud.day_dial.size.x, hud.day_dial.size.y)
-		and TowerDefenseDayDial.PHASE_COUNT == 4
+		and hud.day_dial.phase_count == hud.day_cycle_config.waves_per_day
+		and hud.day_dial.night_start_phase_index
+			== hud.day_cycle_config.night_start_wave_in_day - 1
 		and not hud.wave_stat.visible,
 		"The old linear wave column must be replaced by a square four-segment day dial."
 	)
@@ -132,11 +134,11 @@ func _verify_tower_defense_layout_and_updates() -> void:
 	)
 	_expect(
 		hud.day_label.text == "第 1 日"
-		and hud.phase_label.text == "白昼前半"
+		and hud.phase_label.text == "白昼 1/2"
 		and hud.core_title_label.text == "核心生命"
 		and hud.enemy_title_label.text == "场上敌人"
 		and hud.day_dial.phase_index == 0,
-		"The initial tower-defense display must be day one, daytime first half."
+		"The initial tower-defense display must be day one, daytime wave one of two."
 	)
 	_expect(
 		hud.core_value_label.text == "100/100"
@@ -156,7 +158,13 @@ func _verify_tower_defense_layout_and_updates() -> void:
 	var first_notice_tween := hud.global_wave_tween
 	hud.set_tower_defense_wave_progress(1, 1, 4)
 	var first_dial_tween := hud.day_dial.progress_tween
-	hud.day_dial.set_day_progress(0, 1, 4)
+	hud.day_dial.set_day_progress(
+		0,
+		hud.day_cycle_config.waves_per_day,
+		hud.day_cycle_config.night_start_wave_in_day - 1,
+		1,
+		4
+	)
 	_expect(
 		hud.global_wave_tween == first_notice_tween
 		and hud.day_dial.progress_tween == first_dial_tween
@@ -170,21 +178,34 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		"Moving to a new global wave must create exactly one fresh notice Tween."
 	)
 
-	var phase_names := ["白昼前半", "白昼后半", "黑夜前半", "黑夜后半"]
 	for wave_number in range(1, 9):
 		hud.set_tower_defense_wave_progress(wave_number, 1, 4)
-		var expected_day := floori(float(wave_number - 1) / 4.0) + 1
-		var expected_phase := posmod(wave_number - 1, 4)
+		var wave_in_day := hud.day_cycle_config.get_wave_in_day(wave_number)
+		var is_night := hud.day_cycle_config.is_night_wave(wave_number)
+		var phase_start := (
+			hud.day_cycle_config.night_start_wave_in_day if is_night else 1
+		)
+		var phase_end := (
+			hud.day_cycle_config.waves_per_day
+			if is_night
+			else hud.day_cycle_config.night_start_wave_in_day - 1
+		)
+		var expected_phase_label := "%s %d/%d" % [
+			"黑夜" if is_night else "白昼",
+			wave_in_day - phase_start + 1,
+			maxi(phase_end - phase_start + 1, 1),
+		]
 		_expect(
-			hud.day_label.text == "第 %d 日" % expected_day
-			and hud.phase_label.text == phase_names[expected_phase]
-			and hud.day_dial.phase_index == expected_phase
+			hud.day_label.text
+				== "第 %d 日" % hud.day_cycle_config.get_day_number(wave_number)
+			and hud.phase_label.text == expected_phase_label
+			and hud.day_dial.phase_index == wave_in_day - 1
 			and is_equal_approx(hud.day_dial.target_wave_progress, 0.25),
-			"Each global wave must map to the correct day and day/night half."
+			"Each global wave must map through the shared day-cycle configuration."
 		)
 	_expect(
 		hud.global_wave_label.text == "全局第 8 波"
-		and hud.phase_label.text == "黑夜后半",
+		and hud.phase_label.text == "黑夜 2/2",
 		"The lower-left notice must keep the absolute wave number across day boundaries."
 	)
 
@@ -201,7 +222,7 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		hud.core_value_label.text == "80/100"
 		and hud.enemy_value_label.text == "9"
 		and hud.day_label.text == "第 1 日"
-		and hud.phase_label.text == "黑夜前半",
+		and hud.phase_label.text == "黑夜 1/2",
 		"Independent tower-defense setters must not overwrite sibling stats or phase labels."
 	)
 	_expect(
@@ -236,7 +257,7 @@ func _verify_tower_defense_layout_and_updates() -> void:
 	)
 	hud.set_tower_defense_wave_progress(4, 7, 0)
 	_expect(
-		hud.phase_label.text == "黑夜后半"
+		hud.phase_label.text == "黑夜 2/2"
 		and is_zero_approx(hud.day_dial.target_wave_progress)
 		and is_zero_approx(hud.day_dial.wave_progress),
 		"A zero-total wave must retain its phase while displaying safe zero circular progress."
@@ -271,7 +292,7 @@ func _verify_tower_defense_layout_and_updates() -> void:
 	)
 	_expect(
 		is_equal_approx(hud.day_dial.target_wave_progress, 0.75)
-		and hud.phase_label.text == "黑夜后半",
+		and hud.phase_label.text == "黑夜 2/2",
 		"The compatibility wave method must forward to the circular phase-progress setter."
 	)
 

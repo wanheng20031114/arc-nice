@@ -48,6 +48,12 @@ class HostNetManagerStub:
 
 	signal connection_state_changed
 	signal player_left
+	signal player_reconnected(
+		old_peer_id: int,
+		new_peer_id: int,
+		player_name: String,
+		character_id: StringName
+	)
 
 	func is_host() -> bool:
 		return true
@@ -327,15 +333,16 @@ func _test_reliable_terminal_feedback_payload() -> void:
 	)
 	var args := mp_game.last_terminal_args
 	_expect(
-		args.size() == 8
+		args.size() == 9
 		and int(args[0]) == net_id
 		and int(args[1]) == ENEMY_TERMINAL_DEFEATED
 		and args[2] == Vector2(12.0, 8.0)
 		and int(args[3]) == 0
-		and int(args[4]) == 40
-		and args[5] == Vector2.RIGHT
-		and int(args[6]) == int(EnemyConfig.DamageType.PHYSICAL)
-		and bool(args[7]),
+		and int(args[4]) == enemy.health_revision
+		and int(args[5]) == 40
+		and args[6] == Vector2.RIGHT
+		and int(args[7]) == int(EnemyConfig.DamageType.PHYSICAL)
+		and bool(args[8]),
 		"可靠终结事件必须合并未发送的15点反馈与最后25点致死伤害，并携带最终方向、类型和粒子标记。"
 	)
 	_expect(
@@ -391,7 +398,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		mp_game.apply_authoritative_plant_enemy_damage_batch(
 			9901,
 			enemy,
-			PackedInt32Array([40]),
+			PackedInt64Array([40]),
 			PackedInt32Array([1]),
 			Vector2.RIGHT,
 			EnemyConfig.DamageType.PHYSICAL
@@ -401,13 +408,14 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	_expect(
 		accepted
 		and enemy.is_dead
-		and args.size() == 8
+		and args.size() == 9
 		and int(args[0]) == net_id
 		and int(args[1]) == ENEMY_TERMINAL_DEFEATED
 		and int(args[3]) == 0
-		and int(args[4]) == 40
-		and args[5] == Vector2.RIGHT
-		and int(args[6]) == int(EnemyConfig.DamageType.PHYSICAL),
+		and int(args[4]) == enemy.health_revision
+		and int(args[5]) == 40
+		and args[6] == Vector2.RIGHT
+		and int(args[7]) == int(EnemyConfig.DamageType.PHYSICAL),
 		"真实apply_damage_batch→defeated信号→可靠terminal链必须携带最后40点致死反馈。"
 	)
 	_expect(
@@ -443,7 +451,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		and damage_recorder.impact_direction == Vector2.RIGHT
 		and damage_recorder.damage_type
 		== int(EnemyConfig.DamageType.PHYSICAL),
-		"客户端消费八参数可靠terminal时必须先显示最后40点伤害、应用0生命，再执行死亡移除。"
+		"客户端消费九参数可靠terminal时必须先显示最后40点伤害、应用0生命，再执行死亡移除。"
 	)
 	runtime.multiplayer_enemies_by_net_id.clear()
 	runtime.multiplayer_enemy_ids_by_instance.clear()
