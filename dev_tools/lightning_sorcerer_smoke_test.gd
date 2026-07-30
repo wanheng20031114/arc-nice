@@ -485,6 +485,7 @@ func _expect_character_animation_contract(
 		)
 		var centroid_x_values: Array[float] = []
 		var frame_zero_metrics: Dictionary = {}
+		var move_frame_metrics: Array[Dictionary] = []
 		for frame_index in range(frames.get_frame_count(&"move")):
 			var texture := frames.get_frame_texture(
 				&"move",
@@ -513,6 +514,7 @@ func _expect_character_animation_contract(
 			if texture == null or texture.atlas == null:
 				continue
 			var metrics := _atlas_alpha_metrics(texture)
+			move_frame_metrics.append(metrics)
 			_expect(
 				int(metrics.get("visible_pixels", 0)) > 0,
 				"%s move frame %d must not be empty." % [label, frame_index]
@@ -553,6 +555,35 @@ func _expect_character_animation_contract(
 				(
 					"%s move frame 0 must be a naturally grounded contact pose "
 					+ "with two separated feet."
+				)
+				% label
+			)
+		if move_frame_metrics.size() == MOVE_FRAME_COUNT:
+			var pass_right_contacts: PackedInt32Array = move_frame_metrics[2].get(
+				"ground_contact_lengths",
+				PackedInt32Array()
+			)
+			var down_left_contacts: PackedInt32Array = move_frame_metrics[5].get(
+				"ground_contact_lengths",
+				PackedInt32Array()
+			)
+			var pass_left_contacts: PackedInt32Array = move_frame_metrics[6].get(
+				"ground_contact_lengths",
+				PackedInt32Array()
+			)
+			_expect(
+				pass_right_contacts.size() == 1
+				and pass_left_contacts.size() == 1,
+				"%s passing poses F2/F6 must each have one planted sole."
+				% label
+			)
+			_expect(
+				down_left_contacts.size() == 2
+				and down_left_contacts[0] >= 5
+				and down_left_contacts[1] <= 3,
+				(
+					"%s F5 must transfer weight to the screen-left sole "
+					+ "while the screen-right foot keeps toe contact only."
 				)
 				% label
 			)
@@ -633,6 +664,8 @@ func _atlas_alpha_metrics(texture: AtlasTexture) -> Dictionary:
 	var ground_min_x := region.size.x
 	var ground_max_x := -1
 	var previous_was_visible := false
+	var current_contact_length := 0
+	var ground_contact_lengths := PackedInt32Array()
 	for local_x in range(region.size.x):
 		var is_visible := atlas_image.get_pixel(
 			region.position.x + local_x,
@@ -640,11 +673,17 @@ func _atlas_alpha_metrics(texture: AtlasTexture) -> Dictionary:
 		).a > 0.0
 		if is_visible:
 			ground_contact_pixels += 1
+			current_contact_length += 1
 			ground_min_x = mini(ground_min_x, local_x)
 			ground_max_x = maxi(ground_max_x, local_x)
 			if not previous_was_visible:
 				ground_contact_groups += 1
+		elif previous_was_visible:
+			ground_contact_lengths.append(current_contact_length)
+			current_contact_length = 0
 		previous_was_visible = is_visible
+	if previous_was_visible:
+		ground_contact_lengths.append(current_contact_length)
 	return {
 		"visible_pixels": visible_pixels,
 		"centroid_x": weighted_x / alpha_total,
@@ -654,6 +693,7 @@ func _atlas_alpha_metrics(texture: AtlasTexture) -> Dictionary:
 		"ground_contact_span": (
 			ground_max_x - ground_min_x + 1 if ground_max_x >= 0 else 0
 		),
+		"ground_contact_lengths": ground_contact_lengths,
 	}
 
 
