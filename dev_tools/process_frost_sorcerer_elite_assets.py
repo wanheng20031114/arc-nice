@@ -7,10 +7,17 @@ from pathlib import Path
 
 from PIL import Image
 
+from process_frost_sorcerer_assets import (
+    MOVE_FRAME_COUNT,
+    _assert_move_strip_contract,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_CHARACTER = ROOT / "resources/texture/frost_sorcerer.png"
+BASE_MOVE = ROOT / "resources/texture/frost_sorcerer_move.png"
 CHARACTER_OUTPUT = ROOT / "resources/texture/frost_sorcerer_elite.png"
+MOVE_OUTPUT = ROOT / "resources/texture/frost_sorcerer_elite_move.png"
 ANIMATION_OUTPUT = ROOT / "resources/animation/frost_sorcerer_elite.tres"
 
 CHARACTER_SIZE = (160, 160)
@@ -28,6 +35,7 @@ ELITE_RGBA_SHA256 = (
     "e9760aa252ae498be826db57027b0aeab7bdbbe7689b53271dbc8469414a78dc"
 )
 EXPECTED_CHANGED_PIXELS = 1594
+EXPECTED_MOVE_CHANGED_PIXELS = 755
 
 # The ordinary Frost Sorcerer's approved geometry is authoritative. Only six
 # internal blue highlight ramps become the brighter cyan/pale-cyan elite ramp.
@@ -42,7 +50,7 @@ CYAN_PALETTE_MAP = {
 
 ANIMATIONS = OrderedDict(
     [
-        ("move", (0, 6.0, True)),
+        ("move", (0, 12.0, True)),
         ("windup", (1, 6.0, False)),
         ("attack", (2, 8.0, False)),
         ("death", (3, 7.0, False)),
@@ -98,7 +106,7 @@ def _load_base() -> Image.Image:
     return image
 
 
-def _build_elite(base: Image.Image) -> Image.Image:
+def _apply_cyan_palette(base: Image.Image) -> tuple[Image.Image, int]:
     result = base.copy()
     changed_pixels = 0
     source_pixels = base.load()
@@ -110,6 +118,12 @@ def _build_elite(base: Image.Image) -> Image.Image:
                 continue
             result_pixels[x, y] = mapped
             changed_pixels += 1
+
+    return result, changed_pixels
+
+
+def _build_elite(base: Image.Image) -> Image.Image:
+    result, changed_pixels = _apply_cyan_palette(base)
 
     if changed_pixels != EXPECTED_CHANGED_PIXELS:
         raise EliteAssetContractError(
@@ -131,13 +145,36 @@ def _build_elite(base: Image.Image) -> Image.Image:
     return result
 
 
+def _build_elite_move() -> Image.Image:
+    if not BASE_MOVE.is_file():
+        raise FileNotFoundError(f"Missing Frost Sorcerer move strip: {BASE_MOVE}")
+    base = Image.open(BASE_MOVE).convert("RGBA")
+    expected_size = (FRAME_SIZE * MOVE_FRAME_COUNT, FRAME_SIZE)
+    if base.size != expected_size:
+        raise EliteAssetContractError(
+            f"Base move strip is {base.size}, expected {expected_size}"
+        )
+    _assert_move_strip_contract(base, "base frost sorcerer move")
+    result, changed_pixels = _apply_cyan_palette(base)
+    if changed_pixels != EXPECTED_MOVE_CHANGED_PIXELS:
+        raise EliteAssetContractError(
+            "Elite move cyan pixel count changed: "
+            f"{changed_pixels}, expected {EXPECTED_MOVE_CHANGED_PIXELS}"
+        )
+    if result.getchannel("A").tobytes() != base.getchannel("A").tobytes():
+        raise EliteAssetContractError("Elite move alpha changed")
+    _assert_move_strip_contract(result, "elite frost sorcerer move")
+    return result
+
+
 def _animation_entry(name: str, speed: float, loop: bool) -> str:
+    frame_count = MOVE_FRAME_COUNT if name == "move" else GRID_COLUMNS
     frames = [
         "{\n"
         '"duration": 1.0,\n'
         f'"texture": SubResource("AtlasTexture_{name}_{column}")\n'
         "}"
-        for column in range(GRID_COLUMNS)
+        for column in range(frame_count)
     ]
     return (
         "{\n"
@@ -151,28 +188,40 @@ def _animation_entry(name: str, speed: float, loop: bool) -> str:
 
 def _sprite_frames_text() -> str:
     lines = [
-        '[gd_resource type="SpriteFrames" format=3]',
+        (
+            '[gd_resource type="SpriteFrames" format=3 '
+            'uid="uid://f15kjgju8fib"]'
+        ),
         "",
         (
             '[ext_resource type="Texture2D" '
+            'uid="uid://dy0ko2yfl3e3l" '
             'path="res://resources/texture/frost_sorcerer_elite.png" '
             'id="1_texture"]'
+        ),
+        (
+            '[ext_resource type="Texture2D" '
+            'path="res://resources/texture/frost_sorcerer_elite_move.png" '
+            'id="2_move"]'
         ),
         "",
     ]
     for name in sorted(ANIMATIONS):
         row = ANIMATIONS[name][0]
-        for column in range(GRID_COLUMNS):
+        frame_count = MOVE_FRAME_COUNT if name == "move" else GRID_COLUMNS
+        texture_id = "2_move" if name == "move" else "1_texture"
+        for column in range(frame_count):
             lines.extend(
                 [
                     (
                         '[sub_resource type="AtlasTexture" '
                         f'id="AtlasTexture_{name}_{column}"]'
                     ),
-                    'atlas = ExtResource("1_texture")',
+                    f'atlas = ExtResource("{texture_id}")',
                     (
                         f"region = Rect2({column * FRAME_SIZE}, "
-                        f"{row * FRAME_SIZE}, {FRAME_SIZE}, {FRAME_SIZE})"
+                        f"{0 if name == 'move' else row * FRAME_SIZE}, "
+                        f"{FRAME_SIZE}, {FRAME_SIZE})"
                     ),
                     "filter_clip = true",
                     "",
@@ -192,7 +241,11 @@ def _sprite_frames_text() -> str:
     return "\n".join(lines)
 
 
-def _validate_outputs(elite: Image.Image, expected_animation: str) -> None:
+def _validate_outputs(
+    elite: Image.Image,
+    elite_move: Image.Image,
+    expected_animation: str,
+) -> None:
     if not CHARACTER_OUTPUT.is_file():
         raise EliteAssetContractError(
             f"Missing generated elite atlas: {CHARACTER_OUTPUT}"
@@ -200,6 +253,13 @@ def _validate_outputs(elite: Image.Image, expected_animation: str) -> None:
     existing = Image.open(CHARACTER_OUTPUT).convert("RGBA")
     if existing.tobytes() != elite.tobytes():
         raise EliteAssetContractError("Generated elite atlas is stale")
+    if not MOVE_OUTPUT.is_file():
+        raise EliteAssetContractError(
+            f"Missing generated elite move strip: {MOVE_OUTPUT}"
+        )
+    existing_move = Image.open(MOVE_OUTPUT).convert("RGBA")
+    if existing_move.tobytes() != elite_move.tobytes():
+        raise EliteAssetContractError("Generated elite move strip is stale")
     if not ANIMATION_OUTPUT.is_file():
         raise EliteAssetContractError(
             f"Missing generated SpriteFrames: {ANIMATION_OUTPUT}"
@@ -221,18 +281,21 @@ def main() -> None:
 
     base = _load_base()
     elite = _build_elite(base)
+    elite_move = _build_elite_move()
     animation_text = _sprite_frames_text()
     if args.check_only:
-        _validate_outputs(elite, animation_text)
+        _validate_outputs(elite, elite_move, animation_text)
         print(
             "FROST_SORCERER_ELITE_ASSETS_CHECK_OK "
-            f"changed_pixels={EXPECTED_CHANGED_PIXELS}"
+            f"changed_pixels={EXPECTED_CHANGED_PIXELS} "
+            f"move_changed_pixels={EXPECTED_MOVE_CHANGED_PIXELS}"
         )
         return
 
     CHARACTER_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     ANIMATION_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     elite.save(CHARACTER_OUTPUT, optimize=True)
+    elite_move.save(MOVE_OUTPUT, optimize=True)
     ANIMATION_OUTPUT.write_text(
         animation_text,
         encoding="utf-8",
@@ -242,6 +305,7 @@ def main() -> None:
         "FROST_SORCERER_ELITE_ASSETS_OK "
         f"character={elite.width}x{elite.height} "
         f"changed_pixels={EXPECTED_CHANGED_PIXELS} "
+        f"move_changed_pixels={EXPECTED_MOVE_CHANGED_PIXELS} "
         f"rgba_sha256={ELITE_RGBA_SHA256} "
         "alpha_and_frame_bounds=base_identical"
     )

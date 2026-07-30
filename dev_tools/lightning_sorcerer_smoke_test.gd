@@ -20,6 +20,13 @@ const TargetWarningScript := preload(
 const TEST_HEALTH := 1000
 const EXPECTED_ATTACK_RANGE := 7.0 * 16.0
 const EXPECTED_CHAIN_RANGE := 3.0 * 16.0
+const LIGHTNING_MOVE_TEXTURE_PATH := (
+	"res://resources/texture/lightning_sorcerer_move.png"
+)
+const MOVE_FRAME_COUNT := 8
+const MOVE_ANIMATION_SPEED := 12.0
+const MOVE_GROUND_Y := 38
+const MAX_MOVE_CENTROID_X_DRIFT := 1.0
 
 
 class TargetRuntime:
@@ -162,18 +169,10 @@ func _test_resource_and_scene_contract() -> void:
 				"Lightning sprite must reuse the Sorcerer pixel placement and nearest filter."
 			)
 			var frames := sprite.sprite_frames
-			for animation_name in [&"move", &"windup", &"attack", &"death"]:
-				_expect(
-					frames.has_animation(animation_name)
-					and frames.get_frame_count(animation_name) == 4,
-					"Every Lightning Sorcerer animation must contain four 40 px frames."
-				)
-			var texture := frames.get_frame_texture(&"move", 0) as AtlasTexture
-			_expect(
-				texture != null
-				and texture.region.size == Vector2(40.0, 40.0)
-				and texture.atlas.get_size() == Vector2(160.0, 160.0),
-				"Lightning character atlas must be 160x160 with native 40x40 cells."
+			_expect_character_animation_contract(
+				frames,
+				LIGHTNING_MOVE_TEXTURE_PATH,
+				"Lightning Sorcerer"
 			)
 		if pivot != null and marker != null:
 			_expect(
@@ -459,6 +458,203 @@ func _spawn_plant(runtime: TargetRuntime, position: Vector2) -> PlantDefense:
 	runtime.add_child(plant)
 	plant.global_position = position
 	return plant
+
+
+func _expect_character_animation_contract(
+	frames: SpriteFrames,
+	move_texture_path: String,
+	label: String
+) -> void:
+	_expect(frames != null, "%s SpriteFrames resource is missing." % label)
+	if frames == null:
+		return
+
+	_expect(frames.has_animation(&"move"), "%s move animation is missing." % label)
+	if frames.has_animation(&"move"):
+		_expect(
+			frames.get_frame_count(&"move") == MOVE_FRAME_COUNT,
+			"%s move animation must contain eight authored frames." % label
+		)
+		_expect(
+			is_equal_approx(
+				frames.get_animation_speed(&"move"),
+				MOVE_ANIMATION_SPEED
+			)
+			and frames.get_animation_loop(&"move"),
+			"%s move animation must loop at 12 fps." % label
+		)
+		var centroid_x_values: Array[float] = []
+		var frame_zero_metrics: Dictionary = {}
+		for frame_index in range(frames.get_frame_count(&"move")):
+			var texture := frames.get_frame_texture(
+				&"move",
+				frame_index
+			) as AtlasTexture
+			var has_unit_duration := is_equal_approx(
+				frames.get_frame_duration(&"move", frame_index),
+				1.0
+			)
+			_expect(
+				texture != null
+				and texture.get_size() == Vector2(40.0, 40.0)
+				and texture.atlas != null
+				and texture.atlas.get_size() == Vector2(320.0, 40.0)
+				and texture.atlas.resource_path == move_texture_path
+				and texture.region == Rect2(
+					float(frame_index * 40),
+					0.0,
+					40.0,
+					40.0
+				)
+				and has_unit_duration,
+				"%s move frame %d must use cell %d of the independent 320x40 strip."
+				% [label, frame_index, frame_index]
+			)
+			if texture == null or texture.atlas == null:
+				continue
+			var metrics := _atlas_alpha_metrics(texture)
+			_expect(
+				int(metrics.get("visible_pixels", 0)) > 0,
+				"%s move frame %d must not be empty." % [label, frame_index]
+			)
+			_expect(
+				int(metrics.get("bottom_y", -1)) == MOVE_GROUND_Y,
+				"%s move frame %d must share foot baseline y=%d."
+				% [label, frame_index, MOVE_GROUND_Y]
+			)
+			if int(metrics.get("visible_pixels", 0)) > 0:
+				centroid_x_values.append(float(metrics["centroid_x"]))
+			if frame_index == 0:
+				frame_zero_metrics = metrics
+		if centroid_x_values.size() == MOVE_FRAME_COUNT:
+			var minimum_centroid_x := centroid_x_values[0]
+			var maximum_centroid_x := centroid_x_values[0]
+			for centroid_x in centroid_x_values:
+				minimum_centroid_x = minf(minimum_centroid_x, centroid_x)
+				maximum_centroid_x = maxf(maximum_centroid_x, centroid_x)
+			_expect(
+				maximum_centroid_x - minimum_centroid_x
+				<= MAX_MOVE_CENTROID_X_DRIFT + 0.001,
+				(
+					"%s move alpha centroid must drift no more than %.1f px "
+					+ "horizontally; saw %.3f px."
+				)
+				% [
+					label,
+					MAX_MOVE_CENTROID_X_DRIFT,
+					maximum_centroid_x - minimum_centroid_x,
+				]
+			)
+		if not frame_zero_metrics.is_empty():
+			_expect(
+				int(frame_zero_metrics.get("ground_contact_groups", 0)) >= 2
+				and int(frame_zero_metrics.get("ground_contact_pixels", 0)) >= 6
+				and int(frame_zero_metrics.get("ground_contact_span", 0)) >= 8,
+				(
+					"%s move frame 0 must be a naturally grounded contact pose "
+					+ "with two separated feet."
+				)
+				% label
+			)
+
+	for animation_name in [&"windup", &"attack", &"death"]:
+		_expect(
+			frames.has_animation(animation_name)
+			and frames.get_frame_count(animation_name) == 4,
+			"%s %s animation must contain four frames."
+			% [label, String(animation_name)]
+		)
+		if not frames.has_animation(animation_name):
+			continue
+		for frame_index in range(frames.get_frame_count(animation_name)):
+			var texture := frames.get_frame_texture(
+				animation_name,
+				frame_index
+			) as AtlasTexture
+			_expect(
+				texture != null
+				and texture.get_size() == Vector2(40.0, 40.0)
+				and texture.atlas != null
+				and texture.atlas.get_size() == Vector2(160.0, 160.0)
+				and _atlas_alpha_metrics(texture).get("visible_pixels", 0) > 0,
+				(
+					"%s %s frame %d must remain a nonempty native 40x40 "
+					+ "cell in the 160x160 character atlas."
+				)
+				% [label, String(animation_name), frame_index]
+			)
+
+
+func _atlas_alpha_metrics(texture: AtlasTexture) -> Dictionary:
+	var atlas_image := texture.atlas.get_image()
+	if atlas_image == null:
+		return {}
+	var region := Rect2i(
+		Vector2i(
+			roundi(texture.region.position.x),
+			roundi(texture.region.position.y)
+		),
+		Vector2i(
+			roundi(texture.region.size.x),
+			roundi(texture.region.size.y)
+		)
+	)
+	if (
+		region.position.x < 0
+		or region.position.y < 0
+		or region.end.x > atlas_image.get_width()
+		or region.end.y > atlas_image.get_height()
+	):
+		return {}
+	var alpha_total := 0.0
+	var weighted_x := 0.0
+	var visible_pixels := 0
+	var bottom_y := -1
+	for local_y in range(region.size.y):
+		for local_x in range(region.size.x):
+			var alpha := atlas_image.get_pixel(
+				region.position.x + local_x,
+				region.position.y + local_y
+			).a
+			if alpha <= 0.0:
+				continue
+			visible_pixels += 1
+			alpha_total += alpha
+			weighted_x += float(local_x) * alpha
+			bottom_y = maxi(bottom_y, local_y)
+	if alpha_total <= 0.0:
+		return {
+			"visible_pixels": 0,
+			"bottom_y": -1,
+		}
+
+	var ground_contact_groups := 0
+	var ground_contact_pixels := 0
+	var ground_min_x := region.size.x
+	var ground_max_x := -1
+	var previous_was_visible := false
+	for local_x in range(region.size.x):
+		var is_visible := atlas_image.get_pixel(
+			region.position.x + local_x,
+			region.position.y + bottom_y
+		).a > 0.0
+		if is_visible:
+			ground_contact_pixels += 1
+			ground_min_x = mini(ground_min_x, local_x)
+			ground_max_x = maxi(ground_max_x, local_x)
+			if not previous_was_visible:
+				ground_contact_groups += 1
+		previous_was_visible = is_visible
+	return {
+		"visible_pixels": visible_pixels,
+		"centroid_x": weighted_x / alpha_total,
+		"bottom_y": bottom_y,
+		"ground_contact_groups": ground_contact_groups,
+		"ground_contact_pixels": ground_contact_pixels,
+		"ground_contact_span": (
+			ground_max_x - ground_min_x + 1 if ground_max_x >= 0 else 0
+		),
+	}
 
 
 func _expect(condition: bool, message: String) -> void:

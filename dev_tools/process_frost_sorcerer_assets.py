@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Build native Frost Sorcerer textures from accepted imagegen sources.
 
-The character is authored as four independently generated horizontal strips.
-Those sources deliberately use fewer, coarser visual pixel clusters than the
-rejected oversized sprite.  This script rasterizes the accepted redraws into
-40x40 runtime frames and places every frame in the exact alpha bounds of the
-matching Fire Sorcerer frame.  It therefore cannot silently reintroduce the
-former 38 px-tall Frost silhouette while the scene nodes remain unchanged.
+Windup, attack, and death retain the original 4x4 atlas contract.  Movement is
+authored separately as an eight-pose 4x2 imagegen sheet and built into a 320x40
+strip.  The walk builder preserves aspect ratio, registers every pose around
+the frame-space body marker at (17, 27), and shares the y=38 foot baseline.
+This avoids the old per-frame non-uniform fit to Fire Sorcerer bounds, which
+made the body center and line weight pulse during movement.
 
 The ice-spike pipeline is independent and retains its reviewed fixed scale.
 All runtime output uses binary alpha and zero RGB in transparent pixels.
@@ -34,13 +34,22 @@ CHARACTER_ROW_SOURCES = (
     SOURCE_DIR / "frost_sorcerer_attack_fire_scale_alpha.png",
     SOURCE_DIR / "frost_sorcerer_death_fire_scale_alpha.png",
 )
+MOVE_SOURCE = SOURCE_DIR / "frost_sorcerer_move_8pose_v3_alpha.png"
 FIRE_REFERENCE = TEXTURE_DIR / "fire_sorcerer.png"
 ICE_SPIKE_SOURCE = SOURCE_DIR / "frost_sorcerer_ice_spike_alpha.png"
 CHARACTER_OUTPUT = TEXTURE_DIR / "frost_sorcerer.png"
+MOVE_OUTPUT = TEXTURE_DIR / "frost_sorcerer_move.png"
 ICE_SPIKE_OUTPUT = TEXTURE_DIR / "frost_sorcerer_ice_spike.png"
 
 GRID_SIZE = 4
 CHARACTER_FRAME_SIZE = 40
+MOVE_SOURCE_COLUMNS = 4
+MOVE_SOURCE_ROWS = 2
+MOVE_FRAME_COUNT = 8
+MOVE_TARGET_HEIGHTS = (29, 28, 29, 30, 29, 28, 29, 30)
+MOVE_BODY_MARKER = (17, 27)
+MOVE_GROUND_Y = 38
+MOVE_MAX_CENTROID_DRIFT = 1.0
 ICE_SPIKE_FRAME_SIZE = 32
 ICE_SPIKE_MAX_WIDTH = 18
 ICE_SPIKE_MAX_HEIGHT = 14
@@ -141,6 +150,295 @@ def _load_character_strip(path: Path, row: int) -> list[Image.Image]:
             _subject_crop(cell, f"character_{row}_{column}")
         )
     return subjects
+
+
+def _load_move_subjects(path: Path, label: str) -> list[Image.Image]:
+    """Read the 4x2 imagegen contact sheet in animation playback order."""
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    sheet = Image.open(path).convert("RGBA")
+    if (
+        sheet.width % MOVE_SOURCE_COLUMNS != 0
+        or sheet.height % MOVE_SOURCE_ROWS != 0
+    ):
+        raise AssetContractError(
+            f"{label}: source {sheet.size} is not divisible by "
+            f"{MOVE_SOURCE_COLUMNS}x{MOVE_SOURCE_ROWS}"
+        )
+
+    cell_width = sheet.width // MOVE_SOURCE_COLUMNS
+    cell_height = sheet.height // MOVE_SOURCE_ROWS
+    subjects: list[Image.Image] = []
+    for row in range(MOVE_SOURCE_ROWS):
+        for column in range(MOVE_SOURCE_COLUMNS):
+            cell = _normalize_alpha(
+                sheet.crop(
+                    (
+                        column * cell_width,
+                        row * cell_height,
+                        (column + 1) * cell_width,
+                        (row + 1) * cell_height,
+                    )
+                )
+            )
+            bbox = cell.getchannel("A").getbbox()
+            if bbox is None:
+                raise AssetContractError(
+                    f"{label}: source frame {row}:{column} is empty"
+                )
+            if (
+                bbox[0] < SOURCE_EDGE_PADDING
+                or bbox[1] < SOURCE_EDGE_PADDING
+                or bbox[2] > cell.width - SOURCE_EDGE_PADDING
+                or bbox[3] > cell.height - SOURCE_EDGE_PADDING
+            ):
+                raise AssetContractError(
+                    f"{label}: source frame {row}:{column} touches its cell edge"
+                )
+            subjects.append(
+                _subject_crop(cell, f"{label}_{row}_{column}")
+            )
+    if len(subjects) != MOVE_FRAME_COUNT:
+        raise AssetContractError(
+            f"{label}: expected {MOVE_FRAME_COUNT} frames, saw {len(subjects)}"
+        )
+    return subjects
+
+
+def _resize_move_subject(subject: Image.Image, target_height: int) -> Image.Image:
+    """Downsample one generated pose without per-frame aspect distortion."""
+    target_width = max(
+        1,
+        round(subject.width * target_height / float(subject.height)),
+    )
+    return _normalize_alpha(
+        subject.resize(
+            (target_width, target_height),
+            Image.Resampling.NEAREST,
+        )
+    )
+
+
+def _move_body_anchor_x(native: Image.Image, label: str) -> float:
+    """Estimate the belt/torso center while excluding feet and the staff tip."""
+    alpha = np.asarray(native.getchannel("A"), dtype=np.uint8)
+    y_coordinates, x_coordinates = np.indices(alpha.shape)
+    body_mask = (
+        (alpha == 255)
+        & (y_coordinates >= round(native.height * 0.43))
+        & (y_coordinates <= round(native.height * 0.75))
+        & (x_coordinates <= round(native.width * 0.68))
+    )
+    if not np.any(body_mask):
+        raise AssetContractError(f"{label}: body-center sample is empty")
+    return float(np.median(x_coordinates[body_mask]))
+
+
+def _place_move_subject(
+    subject: Image.Image,
+    target_height: int,
+    horizontal_nudge: int,
+    label: str,
+) -> Image.Image:
+    native = _resize_move_subject(subject, target_height)
+    anchor_x = _move_body_anchor_x(native, label)
+    left = round(MOVE_BODY_MARKER[0] - anchor_x) + horizontal_nudge
+    top = MOVE_GROUND_Y + 1 - native.height
+    if (
+        left < 0
+        or top < 0
+        or left + native.width > CHARACTER_FRAME_SIZE
+        or top + native.height > CHARACTER_FRAME_SIZE
+    ):
+        raise AssetContractError(
+            f"{label}: registered pose {native.size} at ({left}, {top}) "
+            "does not fit the 40x40 frame"
+        )
+    frame = Image.new(
+        "RGBA",
+        (CHARACTER_FRAME_SIZE, CHARACTER_FRAME_SIZE),
+        (0, 0, 0, 0),
+    )
+    frame.alpha_composite(native, (left, top))
+    return frame
+
+
+def _assemble_horizontal_strip(frames: list[Image.Image]) -> Image.Image:
+    if len(frames) != MOVE_FRAME_COUNT:
+        raise AssetContractError(
+            f"expected {MOVE_FRAME_COUNT} move frames, received {len(frames)}"
+        )
+    strip = Image.new(
+        "RGBA",
+        (CHARACTER_FRAME_SIZE * MOVE_FRAME_COUNT, CHARACTER_FRAME_SIZE),
+        (0, 0, 0, 0),
+    )
+    for index, frame in enumerate(frames):
+        strip.alpha_composite(frame, (index * CHARACTER_FRAME_SIZE, 0))
+    return strip
+
+
+def _quantize_to_reference_palette(
+    image: Image.Image,
+    reference: Image.Image,
+) -> Image.Image:
+    """Map generated colors to an approved runtime palette deterministically."""
+    rgba = np.asarray(image.convert("RGBA"), dtype=np.uint8)
+    reference_rgba = np.asarray(reference.convert("RGBA"), dtype=np.uint8)
+    visible = rgba[:, :, 3] == 255
+    reference_visible = reference_rgba[:, :, 3] == 255
+    if not np.any(visible) or not np.any(reference_visible):
+        raise AssetContractError("move palette mapping requires visible pixels")
+
+    palette = np.unique(
+        reference_rgba[:, :, :3][reference_visible],
+        axis=0,
+    ).astype(np.int32)
+    source_colors = rgba[:, :, :3][visible].astype(np.int32)
+    distances = np.sum(
+        (source_colors[:, np.newaxis, :] - palette[np.newaxis, :, :]) ** 2,
+        axis=2,
+    )
+    nearest = palette[np.argmin(distances, axis=1)].astype(np.uint8)
+    result = rgba.copy()
+    result[:, :, :3][visible] = nearest
+    result[~visible] = (0, 0, 0, 0)
+    return Image.fromarray(result)
+
+
+def _move_frame_centers(frame: Image.Image, label: str) -> tuple[float, float]:
+    alpha = np.asarray(frame.getchannel("A"), dtype=np.uint8)
+    y_coordinates, x_coordinates = np.indices(alpha.shape)
+    visible = alpha == 255
+    if not np.any(visible):
+        raise AssetContractError(f"{label}: move frame is empty")
+    body_mask = (
+        visible
+        & (y_coordinates >= 19)
+        & (y_coordinates <= 29)
+        & (x_coordinates <= 23)
+    )
+    if not np.any(body_mask):
+        raise AssetContractError(f"{label}: native body-center sample is empty")
+    return (
+        float(np.mean(x_coordinates[visible])),
+        float(np.mean(x_coordinates[body_mask])),
+    )
+
+
+def _assert_move_strip_contract(strip: Image.Image, label: str) -> None:
+    expected_size = (
+        CHARACTER_FRAME_SIZE * MOVE_FRAME_COUNT,
+        CHARACTER_FRAME_SIZE,
+    )
+    if strip.size != expected_size:
+        raise AssetContractError(
+            f"{label}: move strip is {strip.size}, expected {expected_size}"
+        )
+    rgba = np.asarray(strip.convert("RGBA"), dtype=np.uint8)
+    alpha_values = set(int(value) for value in np.unique(rgba[:, :, 3]))
+    if not alpha_values.issubset({0, 255}):
+        raise AssetContractError(f"{label}: move alpha is not binary")
+    if np.any(rgba[:, :, :3][rgba[:, :, 3] == 0] != 0):
+        raise AssetContractError(f"{label}: move transparent RGB is not zero")
+
+    centroid_x_values: list[float] = []
+    body_x_values: list[float] = []
+    alpha_masks: list[np.ndarray] = []
+    for index in range(MOVE_FRAME_COUNT):
+        frame = strip.crop(
+            (
+                index * CHARACTER_FRAME_SIZE,
+                0,
+                (index + 1) * CHARACTER_FRAME_SIZE,
+                CHARACTER_FRAME_SIZE,
+            )
+        )
+        bbox = frame.getchannel("A").getbbox()
+        if bbox is None:
+            raise AssetContractError(f"{label}: move frame {index} is empty")
+        if bbox[3] != MOVE_GROUND_Y + 1:
+            raise AssetContractError(
+                f"{label}: move frame {index} ground is y={bbox[3] - 1}, "
+                f"expected y={MOVE_GROUND_Y}"
+            )
+        if bbox[2] - bbox[0] > 30 or bbox[3] - bbox[1] > 30:
+            raise AssetContractError(
+                f"{label}: move frame {index} bounds {bbox} exceed 30x30"
+            )
+        frame_alpha = np.asarray(frame.getchannel("A"), dtype=np.uint8) == 255
+        if not frame_alpha[MOVE_BODY_MARKER[1], MOVE_BODY_MARKER[0]]:
+            raise AssetContractError(
+                f"{label}: move frame {index} misses body marker {MOVE_BODY_MARKER}"
+            )
+        centroid_x, body_x = _move_frame_centers(
+            frame,
+            f"{label} frame {index}",
+        )
+        centroid_x_values.append(centroid_x)
+        body_x_values.append(body_x)
+        alpha_masks.append(frame_alpha)
+
+    if len({mask.tobytes() for mask in alpha_masks}) != MOVE_FRAME_COUNT:
+        raise AssetContractError(f"{label}: duplicate alpha poses in move cycle")
+    centroid_span = max(centroid_x_values) - min(centroid_x_values)
+    body_span = max(body_x_values) - min(body_x_values)
+    if centroid_span > MOVE_MAX_CENTROID_DRIFT + 1e-9:
+        raise AssetContractError(
+            f"{label}: alpha centroid drift {centroid_span:.3f}px exceeds "
+            f"{MOVE_MAX_CENTROID_DRIFT:.1f}px"
+        )
+    if body_span > MOVE_MAX_CENTROID_DRIFT + 1e-9:
+        raise AssetContractError(
+            f"{label}: torso center drift {body_span:.3f}px exceeds "
+            f"{MOVE_MAX_CENTROID_DRIFT:.1f}px"
+        )
+
+    half_cycle_ious: list[float] = []
+    for index in range(MOVE_FRAME_COUNT // 2):
+        first = alpha_masks[index]
+        opposite = alpha_masks[index + MOVE_FRAME_COUNT // 2]
+        intersection = int(np.logical_and(first, opposite).sum())
+        union = int(np.logical_or(first, opposite).sum())
+        half_cycle_ious.append(intersection / float(union))
+    if max(half_cycle_ious) >= 0.92:
+        raise AssetContractError(
+            f"{label}: opposite gait phases are too similar: {half_cycle_ious}"
+        )
+    print(
+        "MOVE_CENTER_ANALYSIS "
+        f"{label} marker={MOVE_BODY_MARKER} ground_y={MOVE_GROUND_Y} "
+        f"centroid_span={centroid_span:.3f} body_span={body_span:.3f} "
+        f"half_cycle_iou_max={max(half_cycle_ious):.3f}"
+    )
+
+
+def _build_move_strip(
+    source: Path,
+    palette_reference: Image.Image,
+    label: str,
+    horizontal_nudges: tuple[int, ...] = (0,) * MOVE_FRAME_COUNT,
+) -> Image.Image:
+    if len(horizontal_nudges) != MOVE_FRAME_COUNT:
+        raise AssetContractError(
+            f"{label}: expected {MOVE_FRAME_COUNT} horizontal nudges"
+        )
+    subjects = _load_move_subjects(source, label)
+    frames = [
+        _place_move_subject(
+            subject,
+            MOVE_TARGET_HEIGHTS[index],
+            horizontal_nudges[index],
+            f"{label}_{index}",
+        )
+        for index, subject in enumerate(subjects)
+    ]
+    strip = _quantize_to_reference_palette(
+        _assemble_horizontal_strip(frames),
+        palette_reference,
+    )
+    _assert_move_strip_contract(strip, label)
+    return strip
 
 
 def _frame_bbox(sheet: Image.Image, row: int, column: int) -> tuple[int, int, int, int]:
@@ -435,10 +733,16 @@ def _assert_existing_ice_spike_contract(
 
 def main(check_only: bool = False) -> None:
     character_sheet, _reference = _build_character_sheet()
+    move_strip = _build_move_strip(
+        MOVE_SOURCE,
+        character_sheet,
+        "frost sorcerer move",
+    )
     ice_spike_sheet, ice_spike_scale = _build_ice_spike_sheet()
 
     if check_only:
         _assert_existing_matches(CHARACTER_OUTPUT, character_sheet)
+        _assert_existing_matches(MOVE_OUTPUT, move_strip)
         # Pillow palette quantizers can choose an equivalent darkest color
         # across library versions.  Ice-spike geometry/alpha remains exact;
         # the character output added by this fix is compared pixel-for-pixel.
@@ -448,13 +752,16 @@ def main(check_only: bool = False) -> None:
 
     TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
     character_sheet.save(CHARACTER_OUTPUT, optimize=True)
+    move_strip.save(MOVE_OUTPUT, optimize=True)
     ice_spike_sheet.save(ICE_SPIKE_OUTPUT, optimize=True)
     print(
         "FROST_SORCERER_ASSETS_OK "
-        "character_contract=fire_frame_bounds "
+        "move_contract=8_frames_center_registered "
+        "other_character_actions=fire_frame_bounds "
         f"ice_spike_scale={ice_spike_scale:.5f}"
     )
     print(f"WROTE {CHARACTER_OUTPUT}")
+    print(f"WROTE {MOVE_OUTPUT}")
     print(f"WROTE {ICE_SPIKE_OUTPUT}")
 
 

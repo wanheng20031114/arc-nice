@@ -1,6 +1,7 @@
 [gd_resource type="SpriteFrames" format=3 uid="uid://m3uy0cd1iifi"]
 
 [ext_resource type="Texture2D" uid="uid://nmxq26y4pypb" path="res://resources/texture/frost_sorcerer.png" id="1_texture"]
+[ext_resource type="Texture2D" path="res://resources/texture/frost_sorcerer_move.png" id="2_move"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_attack_0"]
 atlas = ExtResource("1_texture")
@@ -43,23 +44,43 @@ region = Rect2(120, 120, 40, 40)
 filter_clip = true
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
-atlas = ExtResource("1_texture")
+atlas = ExtResource("2_move")
 region = Rect2(0, 0, 40, 40)
 filter_clip = true
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_move_1"]
-atlas = ExtResource("1_texture")
+atlas = ExtResource("2_move")
 region = Rect2(40, 0, 40, 40)
 filter_clip = true
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_move_2"]
-atlas = ExtResource("1_texture")
+atlas = ExtResource("2_move")
 region = Rect2(80, 0, 40, 40)
 filter_clip = true
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_move_3"]
-atlas = ExtResource("1_texture")
+atlas = ExtResource("2_move")
 region = Rect2(120, 0, 40, 40)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_4"]
+atlas = ExtResource("2_move")
+region = Rect2(160, 0, 40, 40)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_5"]
+atlas = ExtResource("2_move")
+region = Rect2(200, 0, 40, 40)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_6"]
+atlas = ExtResource("2_move")
+region = Rect2(240, 0, 40, 40)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_7"]
+atlas = ExtResource("2_move")
+region = Rect2(280, 0, 40, 40)
 filter_clip = true
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_windup_0"]
@@ -130,10 +151,22 @@ animations = [{
 }, {
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_move_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_7")
 }],
 "loop": true,
 "name": &"move",
-"speed": 6.0
+"speed": 12.0
 }, {
 "frames": [{
 "duration": 1.0,
