@@ -102,6 +102,12 @@ const DASH_INPUT_REDUNDANCY_PACKETS := 3
 const DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS := 0.35
 const HOE_ACTION_PRIMARY := &"primary"
 const HOE_ACTION_WHIRLWIND := &"whirlwind"
+const TANGO_CHARGE_MINIMUM_SECONDS := 0.2
+const TANGO_CHARGE_MAXIMUM_SECONDS := 2.5
+const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
+const TANGO_CHARGE_PHASE_START := "start"
+const TANGO_CHARGE_PHASE_RELEASE := "release"
+const TANGO_CHARGE_PHASE_CANCEL := "cancel"
 const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
@@ -294,6 +300,9 @@ var _pending_dash_start_move_input: Vector2 = Vector2.ZERO
 var _pending_dash_input_packets: int = 0
 var _local_tiyi_activation_request_id: int = 0
 var _local_hoe_action_request_id: int = 0
+var _local_tango_charge_request_id: int = 0
+var _local_tango_active_request_id: int = 0
+var _local_tango_release_pending: bool = false
 var _last_player_state_sequences: Dictionary = {}
 var _last_dash_request_sequences: Dictionary = {}
 var _last_dash_confirmed_sequences: Dictionary = {}
@@ -301,6 +310,9 @@ var _last_dash_accepted_times: Dictionary = {}
 var _player_character_mismatch_warnings: Dictionary = {}
 var _hoe_action_sequences_by_peer: Dictionary = {}
 var _last_hoe_action_request_ids: Dictionary = {}
+var _tango_charge_sequences_by_peer: Dictionary = {}
+var _last_tango_charge_request_ids: Dictionary = {}
+var _active_tango_charges_by_peer: Dictionary = {}
 var _tiyi_activation_sequences_by_peer: Dictionary = {}
 var _active_tiyi_activations_by_peer: Dictionary = {}
 var _tiyi_target_ids_by_peer: Dictionary = {}
@@ -604,6 +616,7 @@ func _physics_process(delta: float) -> void:
 	_update_batched_network_events(delta)
 	var frame: int = net_manager.get_physics_frame_count()
 	if net_manager.is_host():
+		_update_authoritative_tango_charge_lifecycle()
 		_host_physics_tick(frame, delta)
 	elif net_manager.is_client():
 		_client_physics_tick(frame)
@@ -1012,6 +1025,98 @@ func request_hoe_whirlwind() -> bool:
 		_local_hoe_action_request_id
 	)
 	net_hoe_whirlwind_requested.rpc_id(_get_host_peer_id(), _local_hoe_action_request_id)
+	return true
+
+
+func request_tango_charge_started(direction: Vector2) -> bool:
+	if game == null or not _client_host_game_ready or _local_tango_active_request_id > 0:
+		return false
+	var peer_id := _get_local_peer_id()
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tango_player(player_node):
+		return false
+	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
+	_local_tango_charge_request_id += 1
+	var request_id := _local_tango_charge_request_id
+	if net_manager.is_host():
+		var accepted := _apply_authoritative_tango_charge_started(
+			peer_id,
+			safe_direction,
+			request_id
+		)
+		if accepted:
+			_local_tango_active_request_id = request_id
+		return accepted
+	if not net_manager.is_client():
+		return false
+	_local_tango_active_request_id = request_id
+	_local_tango_release_pending = false
+	net_tango_charge_started_requested.rpc_id(
+		_get_host_peer_id(),
+		safe_direction,
+		request_id
+	)
+	return true
+
+
+func request_tango_charge_released(direction: Vector2) -> bool:
+	if (
+		game == null
+		or not _client_host_game_ready
+		or _local_tango_active_request_id <= 0
+		or _local_tango_release_pending
+	):
+		return false
+	var peer_id := _get_local_peer_id()
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tango_player(player_node):
+		return false
+	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
+	var request_id := _local_tango_active_request_id
+	_local_tango_release_pending = true
+	if net_manager.is_host():
+		var handled := _apply_authoritative_tango_charge_released(
+			peer_id,
+			safe_direction,
+			request_id
+		)
+		_local_tango_active_request_id = 0
+		_local_tango_release_pending = false
+		return handled
+	if not net_manager.is_client():
+		_local_tango_release_pending = false
+		return false
+	net_tango_charge_released_requested.rpc_id(
+		_get_host_peer_id(),
+		safe_direction,
+		request_id
+	)
+	return true
+
+
+func request_tango_charge_cancelled() -> bool:
+	if (
+		game == null
+		or not _client_host_game_ready
+		or _local_tango_active_request_id <= 0
+		or _local_tango_release_pending
+	):
+		return false
+	var peer_id := _get_local_peer_id()
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tango_player(player_node):
+		return false
+	var request_id := _local_tango_active_request_id
+	_local_tango_release_pending = true
+	if net_manager.is_host():
+		var handled := _apply_authoritative_tango_charge_cancelled(peer_id, request_id)
+		if not handled:
+			_local_tango_release_pending = false
+		return handled
+	if not net_manager.is_client():
+		_local_tango_release_pending = false
+		return false
+	net_tango_charge_cancelled_requested.rpc_id(_get_host_peer_id(), request_id)
 	return true
 
 
@@ -3149,14 +3254,15 @@ func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
 	var states: Array[SnapshotManager.PlayerState] = game.collect_player_snapshot_states()
 	if states.is_empty():
 		return
+	var snapshot_time := _get_net_time()
 	_apply_latest_client_player_snapshot_states(states)
+	_apply_authoritative_tango_charge_snapshot_ratios(states, snapshot_time)
 	_host_player_snapshot_sequence += 1
 	for state in states:
 		state.sequence = _host_player_snapshot_sequence
 		state.health_revision = int(
 			_player_health_revisions.get(state.peer_id, 0)
 		)
-	var snapshot_time := _get_net_time()
 	var force_keyframe := _snapshot_cohort_requires_keyframe(
 		_player_snapshot_cohort_peers,
 		_last_player_keyframe_time_by_peer,
@@ -3182,6 +3288,25 @@ func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
 	for peer_id in client_peer_ids:
 		_record_snapshot_packet_size(&"player", data.size(), states.size())
 		_rpc_receive_player_snapshot.rpc_id(peer_id, snapshot_time, data)
+
+
+func _apply_authoritative_tango_charge_snapshot_ratios(
+	states: Array[SnapshotManager.PlayerState],
+	sample_time: float
+) -> void:
+	for state in states:
+		if state == null or state.character_id != &"tango":
+			continue
+		state.primary_cooldown_ratio = 0.0
+		var charge := _active_tango_charges_by_peer.get(state.peer_id, {}) as Dictionary
+		if charge.is_empty():
+			continue
+		var started_at := float(charge.get("started_at", sample_time))
+		state.primary_cooldown_ratio = clampf(
+			maxf(sample_time - started_at, 0.0) / TANGO_CHARGE_MAXIMUM_SECONDS,
+			0.0,
+			1.0
+		)
 
 
 func _apply_latest_client_player_snapshot_states(states: Array[SnapshotManager.PlayerState]) -> void:
@@ -3801,7 +3926,8 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 				continue
 			_apply_player_primary_cooldown_ratio(
 				player_node,
-				player_state.primary_cooldown_ratio
+				player_state.primary_cooldown_ratio,
+				player_state.facing
 			)
 		if is_client_view_runtime() and player_state.peer_id == _get_client_view_local_peer_id():
 			_apply_player_realtime_snapshot(player_node, player_state)
@@ -3828,8 +3954,27 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 		_reconcile_player_roster(seen_player_ids)
 
 
-func _apply_player_primary_cooldown_ratio(player_node: Player, ratio: float) -> void:
+func _apply_player_primary_cooldown_ratio(
+	player_node: Player,
+	ratio: float,
+	facing_id: int = -1
+) -> void:
 	if player_node == null or not player_node.has_method("apply_multiplayer_primary_cooldown_ratio"):
+		return
+	if (
+		is_client_view_runtime()
+		and player_node.peer_id == _get_client_view_local_peer_id()
+		and _local_tango_active_request_id > 0
+		and player_node.has_method("is_tango")
+		and bool(player_node.call("is_tango"))
+	):
+		return
+	if player_node.has_method("apply_multiplayer_tango_charge_snapshot"):
+		player_node.call(
+			"apply_multiplayer_tango_charge_snapshot",
+			clampf(ratio, 0.0, 1.0),
+			facing_id
+		)
 		return
 	player_node.call("apply_multiplayer_primary_cooldown_ratio", clampf(ratio, 0.0, 1.0))
 
@@ -4367,6 +4512,315 @@ func net_hoe_action_confirmed(
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
+func net_tango_charge_started_requested(direction: Vector2, request_id: int) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or request_id <= 0:
+		return
+	_apply_authoritative_tango_charge_started(sender_id, direction, request_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 5)
+func net_tango_charge_released_requested(direction: Vector2, request_id: int) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or request_id <= 0:
+		return
+	_apply_authoritative_tango_charge_released(sender_id, direction, request_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 5)
+func net_tango_charge_cancelled_requested(request_id: int) -> void:
+	if not net_manager.is_host() or game == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or request_id <= 0:
+		return
+	_apply_authoritative_tango_charge_cancelled(sender_id, request_id)
+
+
+func _apply_authoritative_tango_charge_started(
+	peer_id: int,
+	direction: Vector2,
+	request_id: int
+) -> bool:
+	if not net_manager.is_host() or game == null or peer_id <= 0 or request_id <= 0:
+		return false
+	var last_request_id := int(_last_tango_charge_request_ids.get(peer_id, 0))
+	if request_id <= last_request_id:
+		return false
+	_last_tango_charge_request_ids[peer_id] = request_id
+	if not _is_finite_vector2(direction) or _active_tango_charges_by_peer.has(peer_id):
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_START)
+		return false
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tango_player(player_node):
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_START)
+		return false
+	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
+	if not bool(player_node.call("try_authoritative_tango_charge_started", safe_direction)):
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_START)
+		return false
+	var charge_sequence := int(_tango_charge_sequences_by_peer.get(peer_id, 0)) + 1
+	_tango_charge_sequences_by_peer[peer_id] = charge_sequence
+	_active_tango_charges_by_peer[peer_id] = {
+		"request_id": request_id,
+		"sequence": charge_sequence,
+		"started_at": _get_net_time(),
+	}
+	_rpc_to_connected_clients(
+		&"net_tango_charge_started",
+		[peer_id, safe_direction, charge_sequence, request_id]
+	)
+	return true
+
+
+func _apply_authoritative_tango_charge_released(
+	peer_id: int,
+	direction: Vector2,
+	request_id: int
+) -> bool:
+	if not net_manager.is_host() or game == null or peer_id <= 0 or request_id <= 0:
+		return false
+	var charge := _active_tango_charges_by_peer.get(peer_id, {}) as Dictionary
+	if charge.is_empty() or int(charge.get("request_id", 0)) != request_id:
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
+		return false
+	var charge_sequence := int(charge.get("sequence", 0))
+	if not _is_finite_vector2(direction) or charge_sequence <= 0:
+		_cancel_authoritative_tango_charge(peer_id, true, request_id)
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
+		return false
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tango_player(player_node):
+		_cancel_authoritative_tango_charge(peer_id, true, request_id)
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
+		return false
+	var elapsed := maxf(_get_net_time() - float(charge.get("started_at", 0.0)), 0.0)
+	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_CHARGE_MINIMUM_SECONDS:
+		_cancel_authoritative_tango_charge(peer_id, true, request_id)
+		return true
+	var charge_ratio := clampf(
+		(elapsed - TANGO_CHARGE_MINIMUM_SECONDS)
+		/ (TANGO_CHARGE_MAXIMUM_SECONDS - TANGO_CHARGE_MINIMUM_SECONDS),
+		0.0,
+		1.0
+	)
+	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
+	var result_variant: Variant = player_node.call(
+		"try_authoritative_tango_charge_released",
+		safe_direction,
+		charge_ratio
+	)
+	if not (result_variant is Dictionary):
+		_cancel_authoritative_tango_charge(peer_id, true, request_id)
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
+		return false
+	var result := result_variant as Dictionary
+	if not bool(result.get("accepted", false)) or not bool(result.get("fired", false)):
+		_cancel_authoritative_tango_charge(peer_id, true, request_id)
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
+		return false
+	_active_tango_charges_by_peer.erase(peer_id)
+	_rpc_to_connected_clients(
+		&"net_tango_charge_released",
+		[peer_id, safe_direction, charge_ratio, charge_sequence, request_id]
+	)
+	return true
+
+
+func _apply_authoritative_tango_charge_cancelled(peer_id: int, request_id: int) -> bool:
+	if not net_manager.is_host() or game == null or peer_id <= 0 or request_id <= 0:
+		return false
+	var charge := _active_tango_charges_by_peer.get(peer_id, {}) as Dictionary
+	if charge.is_empty() or int(charge.get("request_id", 0)) != request_id:
+		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_CANCEL)
+		return false
+	_cancel_authoritative_tango_charge(peer_id, true, request_id)
+	return true
+
+
+func _cancel_authoritative_tango_charge(
+	peer_id: int,
+	broadcast_cancel: bool,
+	request_id: int = 0
+) -> void:
+	var charge := _active_tango_charges_by_peer.get(peer_id, {}) as Dictionary
+	if charge.is_empty():
+		return
+	var charge_sequence := int(charge.get("sequence", 0))
+	var resolved_request_id := int(charge.get("request_id", request_id))
+	_active_tango_charges_by_peer.erase(peer_id)
+	if peer_id == _get_local_peer_id() and resolved_request_id == _local_tango_active_request_id:
+		_local_tango_active_request_id = 0
+		_local_tango_release_pending = false
+	var player_node := game.get_player_for_peer(peer_id) if game != null else null
+	if _is_valid_tango_player(player_node):
+		player_node.call("cancel_authoritative_tango_charge")
+	if broadcast_cancel and charge_sequence > 0:
+		_rpc_to_connected_clients(
+			&"net_tango_charge_cancelled",
+			[peer_id, charge_sequence, resolved_request_id]
+		)
+
+
+func _update_authoritative_tango_charge_lifecycle() -> void:
+	if _active_tango_charges_by_peer.is_empty() or game == null:
+		return
+	var cancelled_peer_ids: Array[int] = []
+	for peer_id_variant in _active_tango_charges_by_peer.keys():
+		var peer_id := int(peer_id_variant)
+		var player_node := game.get_player_for_peer(peer_id)
+		if (
+			_is_valid_tango_player(player_node)
+			and bool(player_node.call("is_tango_charge_active"))
+		):
+			continue
+		cancelled_peer_ids.append(peer_id)
+	for peer_id in cancelled_peer_ids:
+		_cancel_authoritative_tango_charge(peer_id, true)
+
+
+func _send_tango_charge_rejected(peer_id: int, request_id: int, phase_text: String) -> void:
+	if peer_id <= 0 or request_id <= 0 or peer_id == _get_host_peer_id():
+		return
+	net_tango_charge_rejected.rpc_id(peer_id, peer_id, request_id, phase_text)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_charge_started(
+	peer_id: int,
+	direction: Vector2,
+	charge_sequence: int,
+	request_id: int
+) -> void:
+	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
+		return
+	if peer_id <= 0 or charge_sequence <= 0 or request_id <= 0 or not _is_finite_vector2(direction):
+		return
+	if charge_sequence <= int(_tango_charge_sequences_by_peer.get(peer_id, 0)):
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tango_player(player_node):
+		return
+	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
+	_tango_charge_sequences_by_peer[peer_id] = charge_sequence
+	if peer_id == _get_client_view_local_peer_id():
+		if request_id != _local_tango_active_request_id:
+			return
+		if player_node.has_method("confirm_predicted_tango_charge_started"):
+			player_node.call("confirm_predicted_tango_charge_started", charge_sequence)
+		return
+	player_node.call("play_remote_tango_charge_started", safe_direction, charge_sequence)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_charge_released(
+	peer_id: int,
+	direction: Vector2,
+	charge_ratio: float,
+	charge_sequence: int,
+	request_id: int
+) -> void:
+	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
+		return
+	var last_charge_sequence := int(_tango_charge_sequences_by_peer.get(peer_id, 0))
+	if (
+		peer_id <= 0
+		or charge_sequence <= 0
+		or request_id <= 0
+		or not _is_finite_vector2(direction)
+		or not is_finite(charge_ratio)
+		or charge_ratio < 0.0
+		or charge_ratio > 1.0
+		or charge_sequence < last_charge_sequence
+	):
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tango_player(player_node):
+		return
+	if charge_sequence > last_charge_sequence:
+		_tango_charge_sequences_by_peer[peer_id] = charge_sequence
+	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
+	if peer_id == _get_client_view_local_peer_id():
+		if request_id != _local_tango_active_request_id:
+			return
+		player_node.call(
+			"reconcile_predicted_tango_laser_fired",
+			safe_direction,
+			charge_ratio,
+			charge_sequence
+		)
+		_local_tango_active_request_id = 0
+		_local_tango_release_pending = false
+		return
+	player_node.call(
+		"play_remote_tango_laser_fired",
+		safe_direction,
+		charge_ratio,
+		charge_sequence
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_charge_cancelled(
+	peer_id: int,
+	charge_sequence: int,
+	request_id: int
+) -> void:
+	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
+		return
+	var last_charge_sequence := int(_tango_charge_sequences_by_peer.get(peer_id, 0))
+	if (
+		peer_id <= 0
+		or charge_sequence <= 0
+		or request_id <= 0
+		or charge_sequence < last_charge_sequence
+	):
+		return
+	var player_node := game.get_player_for_peer(peer_id)
+	if not _is_valid_tango_player(player_node):
+		return
+	if charge_sequence > last_charge_sequence:
+		_tango_charge_sequences_by_peer[peer_id] = charge_sequence
+	if peer_id == _get_client_view_local_peer_id():
+		if request_id != _local_tango_active_request_id:
+			return
+		player_node.call("play_remote_tango_charge_cancelled", charge_sequence)
+		_local_tango_active_request_id = 0
+		_local_tango_release_pending = false
+		return
+	player_node.call("play_remote_tango_charge_cancelled", charge_sequence)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_charge_rejected(peer_id: int, request_id: int, phase_text: String) -> void:
+	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
+		return
+	if (
+		peer_id != _get_client_view_local_peer_id()
+		or request_id <= 0
+		or (
+			phase_text != TANGO_CHARGE_PHASE_START
+			and phase_text != TANGO_CHARGE_PHASE_RELEASE
+			and phase_text != TANGO_CHARGE_PHASE_CANCEL
+		)
+	):
+		return
+	# A rejection can arrive after the request it belongs to was already cancelled.
+	# Never let that stale terminal tear down a newer local prediction.
+	if request_id != _local_tango_active_request_id:
+		return
+	_local_tango_active_request_id = 0
+	_local_tango_release_pending = false
+	var player_node := game.get_player_for_peer(peer_id)
+	if _is_valid_tango_player(player_node) and player_node.has_method("reject_predicted_tango_charge"):
+		player_node.call("reject_predicted_tango_charge")
+
+
+@rpc("any_peer", "call_remote", "reliable", 5)
 func net_tiyi_high_noon_requested(activation_id: int) -> void:
 	if not net_manager.is_host() or game == null:
 		return
@@ -4559,6 +5013,39 @@ func _is_valid_hoe_cat_player(player_node: Player) -> bool:
 		and player_node.has_method("is_hoe_cat")
 		and bool(player_node.call("is_hoe_cat"))
 	)
+
+
+func _is_valid_tango_player(player_node: Player) -> bool:
+	return (
+		player_node != null
+		and is_instance_valid(player_node)
+		and player_node.has_method("is_tango")
+		and bool(player_node.call("is_tango"))
+		and player_node.has_method("try_authoritative_tango_charge_started")
+		and player_node.has_method("try_authoritative_tango_charge_released")
+		and player_node.has_method("cancel_authoritative_tango_charge")
+		and player_node.has_method("is_tango_charge_active")
+		and player_node.has_method("play_remote_tango_charge_started")
+		and player_node.has_method("play_remote_tango_laser_fired")
+		and player_node.has_method("play_remote_tango_charge_cancelled")
+		and player_node.has_method("reconcile_predicted_tango_laser_fired")
+	)
+
+
+func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -> Vector2:
+	if _is_finite_vector2(direction) and direction.length_squared() > 0.0001:
+		return direction.normalized()
+	if player_node == null:
+		return Vector2.RIGHT
+	match player_node.get_multiplayer_facing_id():
+		1:
+			return Vector2.LEFT
+		2:
+			return Vector2.UP
+		3:
+			return Vector2.DOWN
+		_:
+			return Vector2.RIGHT
 
 
 func _sanitize_hoe_action_direction(player_node: Player, direction: Vector2) -> Vector2:
@@ -8523,6 +9010,8 @@ func _mark_player_health_revision_applied(peer_id: int, health_revision: int) ->
 func _schedule_player_revive(peer_id: int) -> void:
 	if peer_id <= 0 or _dead_player_revive_times.has(peer_id):
 		return
+	if _active_tango_charges_by_peer.has(peer_id):
+		_cancel_authoritative_tango_charge(peer_id, true)
 	if game == null or game.wave_state in [
 		GameRuntimeBase.WaveState.VICTORY,
 		GameRuntimeBase.WaveState.DEFEAT,
@@ -8620,6 +9109,8 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 	var active_tiyi_activation_id := int(_active_tiyi_activations_by_peer.get(peer_id, 0))
 	if active_tiyi_activation_id > 0:
 		_cancel_authoritative_tiyi_high_noon(peer_id, active_tiyi_activation_id, true)
+	if _active_tango_charges_by_peer.has(peer_id):
+		_cancel_authoritative_tango_charge(peer_id, true)
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
 	var now: float = _get_net_time()
@@ -13091,7 +13582,8 @@ func _on_net_player_reconnected(
 		)
 		_apply_player_primary_cooldown_ratio(
 			player_node,
-			player_state.primary_cooldown_ratio
+			player_state.primary_cooldown_ratio,
+			player_state.facing
 		)
 		_apply_player_realtime_snapshot(player_node, player_state)
 		if net_manager.is_host():
@@ -13125,6 +13617,12 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	var active_tiyi_activation_id := int(_active_tiyi_activations_by_peer.get(peer_id, 0))
 	if active_tiyi_activation_id > 0 and net_manager != null and net_manager.is_host():
 		_cancel_authoritative_tiyi_high_noon(peer_id, active_tiyi_activation_id, true)
+	if (
+		_active_tango_charges_by_peer.has(peer_id)
+		and net_manager != null
+		and net_manager.is_host()
+	):
+		_cancel_authoritative_tango_charge(peer_id, true)
 	snapshot_mgr.clear_peer_delta_cache(peer_id)
 	_player_snapshot_cohort_peers.erase(peer_id)
 	_enemy_snapshot_cohort_peers.erase(peer_id)
@@ -13145,6 +13643,9 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_player_character_mismatch_warnings.erase(peer_id)
 	_hoe_action_sequences_by_peer.erase(peer_id)
 	_last_hoe_action_request_ids.erase(peer_id)
+	_tango_charge_sequences_by_peer.erase(peer_id)
+	_last_tango_charge_request_ids.erase(peer_id)
+	_active_tango_charges_by_peer.erase(peer_id)
 	_tiyi_activation_sequences_by_peer.erase(peer_id)
 	_active_tiyi_activations_by_peer.erase(peer_id)
 	_tiyi_target_ids_by_peer.erase(peer_id)
@@ -13281,6 +13782,11 @@ func _return_to_lobby() -> void:
 	_last_enemy_keyframe_time_by_peer.clear()
 	_player_character_mismatch_warnings.clear()
 	_hoe_action_sequences_by_peer.clear()
+	_tango_charge_sequences_by_peer.clear()
+	_last_tango_charge_request_ids.clear()
+	_active_tango_charges_by_peer.clear()
+	_local_tango_active_request_id = 0
+	_local_tango_release_pending = false
 	var tree: SceneTree = get_tree()
 	if tree == null:
 		return

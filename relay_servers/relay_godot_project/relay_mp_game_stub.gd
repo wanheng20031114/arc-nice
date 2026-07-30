@@ -73,6 +73,49 @@ func net_hoe_action_confirmed(
 	pass
 
 @rpc("any_peer", "call_remote", "reliable", 5)
+func net_tango_charge_started_requested(direction: Vector2, request_id: int) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 5)
+func net_tango_charge_released_requested(direction: Vector2, request_id: int) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 5)
+func net_tango_charge_cancelled_requested(request_id: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_charge_started(
+	peer_id: int,
+	direction: Vector2,
+	charge_sequence: int,
+	request_id: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_charge_released(
+	peer_id: int,
+	direction: Vector2,
+	charge_ratio: float,
+	charge_sequence: int,
+	request_id: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_charge_cancelled(
+	peer_id: int,
+	charge_sequence: int,
+	request_id: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_charge_rejected(peer_id: int, request_id: int, phase_text: String) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 5)
 func net_tiyi_high_noon_requested(activation_id: int) -> void:
 	pass
 

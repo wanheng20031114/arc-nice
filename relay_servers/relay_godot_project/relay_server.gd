@@ -9,7 +9,7 @@ const DEFAULT_IDLE_TIMEOUT_SEC := 10.0 * 60.0 * 60.0
 const EMPTY_AFTER_CONNECTION_TIMEOUT_SEC := 1.0
 const MAX_CLIENTS := 8
 const CHANNEL_COUNT := 8
-const PROTOCOL_VERSION := 27
+const PROTOCOL_VERSION := 28
 
 var _port: int = DEFAULT_PORT
 var _idle_timeout_sec: float = DEFAULT_IDLE_TIMEOUT_SEC

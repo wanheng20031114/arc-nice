@@ -39,9 +39,11 @@ const MOVE_MULTIPLIER_SCALE := 1000.0
 const DEFAULT_CHARACTER_ID := &"weishidaier"
 const HOE_CAT_CHARACTER_ID := &"hoe_cat"
 const TIYI_CHARACTER_ID := &"tiyi"
+const TANGO_CHARACTER_ID := &"tango"
 const CHARACTER_CODE_WEISHIDAIER := 0
 const CHARACTER_CODE_HOE_CAT := 1
 const CHARACTER_CODE_TIYI := 2
+const CHARACTER_CODE_TANGO := 3
 const PACKED_I16_MIN := -32768
 const PACKED_I16_MAX := 32767
 const PACKED_I32_MIN := -0x80000000
@@ -504,6 +506,8 @@ static func _encode_character_id(character_id: StringName) -> int:
 			return CHARACTER_CODE_HOE_CAT
 		TIYI_CHARACTER_ID:
 			return CHARACTER_CODE_TIYI
+		TANGO_CHARACTER_ID:
+			return CHARACTER_CODE_TANGO
 		_:
 			return CHARACTER_CODE_WEISHIDAIER
 
@@ -514,6 +518,8 @@ static func _decode_character_id(character_code: int) -> StringName:
 			return HOE_CAT_CHARACTER_ID
 		CHARACTER_CODE_TIYI:
 			return TIYI_CHARACTER_ID
+		CHARACTER_CODE_TANGO:
+			return TANGO_CHARACTER_ID
 		_:
 			return DEFAULT_CHARACTER_ID
 

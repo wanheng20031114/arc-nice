@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 27,
-		"洛茜空白牌结果类型要求协议v27。"
+		NetConstants.PROTOCOL_VERSION == 28,
+		"Tango角色编码与宿主蓄力协议要求协议v28。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

@@ -112,7 +112,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V27_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V28_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -121,7 +121,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 27, "Protocol must be v27.")
+	_expect(NetConstants.PROTOCOL_VERSION == 28, "Protocol must be v28.")
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
 		and NetConstants.NETWORK_COMBAT_VALUE_MAX == 0x7FFFFFFF,
@@ -138,7 +138,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v27 channel assignments must remain stable."
+		"Protocol v28 channel assignments must remain stable."
 	)
 
 
@@ -392,14 +392,16 @@ func _test_player_codec_and_reuse() -> void:
 		"Authoritative movement multiplier must round-trip at 0.001 precision."
 	)
 	state.sequence = 2
+	state.character_id = &"tango"
 	state.position.x += 1.0
 	var delta := sender.encode_player_snapshots_for_peer(8, [state], false)
 	var decoded_delta := receiver.decode_player_snapshots_with_baseline(delta)
 	_expect(
 		decoded_delta.size() == 1
 		and is_same(decoded_keyframe[0], decoded_delta[0])
+		and decoded_delta[0].character_id == &"tango"
 		and decoded_delta[0].position.distance_to(state.position) <= 0.11,
-		"Player delta output must reuse the per-peer object and preserve its baseline."
+		"Tango's character code must round-trip while the player delta reuses its baseline object."
 	)
 	receiver.reset_delta_cache()
 	_expect(

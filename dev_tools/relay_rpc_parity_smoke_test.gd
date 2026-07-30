@@ -5,6 +5,8 @@ const RELAY_MP_GAME_PATH := "res://relay_servers/relay_godot_project/relay_mp_ga
 const MAIN_NET_MANAGER_PATH := "res://scene/multiplayer/net_manager.gd"
 const RELAY_NET_MANAGER_PATH := "res://relay_servers/relay_godot_project/relay_net_manager_stub.gd"
 const RELAY_SERVER_PATH := "res://relay_servers/relay_godot_project/relay_server.gd"
+const STANDARD_GAME_PATH := "res://scene/game.gd"
+const TOWER_DEFENSE_GAME_PATH := "res://scene/game_tower_defense.gd"
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 
@@ -20,6 +22,13 @@ func _run() -> void:
 	var relay_rpcs := _extract_rpc_surface(RELAY_MP_GAME_PATH)
 	_compare_rpc_surfaces("MpGame", main_rpcs, relay_rpcs)
 	for required_method in [
+		"net_tango_charge_started_requested",
+		"net_tango_charge_released_requested",
+		"net_tango_charge_cancelled_requested",
+		"net_tango_charge_started",
+		"net_tango_charge_released",
+		"net_tango_charge_cancelled",
+		"net_tango_charge_rejected",
 		"net_tiyi_high_noon_requested",
 		"net_tiyi_high_noon_started",
 		"net_tiyi_high_noon_targets",
@@ -89,6 +98,35 @@ func _run() -> void:
 			String(main_rpcs["net_tiyi_high_noon_requested"]).contains("activation_id:int"),
 			"High-noon requests must carry their monotonic activation id."
 		)
+	for tango_request_method in [
+		"net_tango_charge_started_requested",
+		"net_tango_charge_released_requested",
+	]:
+		_expect_rpc_signature_contains(main_rpcs, tango_request_method, "direction:Vector2")
+		_expect_rpc_signature_contains(main_rpcs, tango_request_method, "request_id:int")
+		_expect(
+			not String(main_rpcs.get(tango_request_method, "")).contains("charge_ratio")
+			and not String(main_rpcs.get(tango_request_method, "")).contains("damage"),
+			"Tango requests must not accept client-authored charge ratio or damage."
+		)
+	_expect_rpc_signature_contains(
+		main_rpcs,
+		"net_tango_charge_cancelled_requested",
+		"request_id:int"
+	)
+	_expect(
+		not String(main_rpcs.get("net_tango_charge_cancelled_requested", "")).contains(
+			"direction"
+		)
+		and not String(main_rpcs.get("net_tango_charge_cancelled_requested", "")).contains(
+			"charge_ratio"
+		)
+		and not String(main_rpcs.get("net_tango_charge_cancelled_requested", "")).contains(
+			"damage"
+		),
+		"Tango cancellation requests may carry only their active request id."
+	)
+	_test_tango_charge_authority_source()
 	_expect(
 		not main_rpcs.has("net_wave_started"),
 		"Legacy wave-index RPC must stay removed; flow step_id is the sole lifecycle source."
@@ -138,10 +176,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 27,
-		"洛茜空白牌结果类型要求协议v27。"
+		NetConstants.PROTOCOL_VERSION == 28,
+		"Tango角色编码与宿主蓄力协议要求协议v28。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v27 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v28 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -176,9 +214,9 @@ func _compare_rpc_surfaces(label: String, main_rpcs: Dictionary, relay_rpcs: Dic
 func _test_registration_protocol_handshake_source() -> void:
 	var net_manager := NetManagerScript.new()
 	_expect(
-		net_manager._is_protocol_version_compatible(27)
-		and not net_manager._is_protocol_version_compatible(26),
-		"Protocol v27 hosts must accept exactly v27 and reject v26."
+		net_manager._is_protocol_version_compatible(28)
+		and not net_manager._is_protocol_version_compatible(27),
+		"Protocol v28 hosts must accept exactly v28 and reject v27."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -245,10 +283,99 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 27")
+		and relay_source.contains("const PROTOCOL_VERSION := 28")
 		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must declare v27 and provision the same eight ENet channels as clients."
+		"Relay server must declare v28 and provision the same eight ENet channels as clients."
 	)
+
+
+func _test_tango_charge_authority_source() -> void:
+	var source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
+	_expect(not source.is_empty(), "MpGame source must be readable for Tango authority checks.")
+	if source.is_empty():
+		return
+	var whitespace_regex := RegEx.new()
+	if whitespace_regex.compile("\\s+") != OK:
+		failures.append("Unable to compile Tango authority whitespace regex.")
+		return
+	var compact_source := whitespace_regex.sub(source, "", true)
+	_expect(
+		compact_source.contains(
+			"varelapsed:=maxf(_get_net_time()-float(charge.get(\"started_at\",0.0)),0.0)"
+		)
+		and compact_source.contains(
+			"ifelapsed+TANGO_CHARGE_THRESHOLD_EPSILON<TANGO_CHARGE_MINIMUM_SECONDS:"
+		)
+		and compact_source.contains(
+			"(elapsed-TANGO_CHARGE_MINIMUM_SECONDS)/(TANGO_CHARGE_MAXIMUM_SECONDS-TANGO_CHARGE_MINIMUM_SECONDS)"
+		),
+		"MpGame must derive Tango charge duration and ratio from its Host clock."
+	)
+	_expect(
+		compact_source.contains(
+			"player_node.call(\"try_authoritative_tango_charge_released\",safe_direction,charge_ratio)"
+		),
+		"Only the Host-derived Tango charge ratio may enter authoritative release."
+	)
+	_expect(
+		compact_source.contains(
+			"func_apply_authoritative_tango_charge_cancelled(peer_id:int,request_id:int)->bool:"
+		)
+		and compact_source.contains(
+			"int(charge.get(\"request_id\",0))!=request_id:"
+		)
+		and compact_source.contains(
+			"_cancel_authoritative_tango_charge(peer_id,true,request_id)"
+		),
+		"Host Tango cancellation must match the sender's active request before broadcasting."
+	)
+	_expect(
+		compact_source.contains(
+			"player_node.call(\"reconcile_predicted_tango_laser_fired\",safe_direction,charge_ratio,charge_sequence)"
+		),
+		"The owning client must reconcile its predicted Tango laser instead of restarting it."
+	)
+	_expect(
+		compact_source.contains(
+			"func_apply_authoritative_tango_charge_snapshot_ratios("
+		)
+		and compact_source.contains(
+			"state.primary_cooldown_ratio=clampf(maxf(sample_time-started_at,0.0)/TANGO_CHARGE_MAXIMUM_SECONDS,0.0,1.0)"
+		),
+		"Host snapshots must derive Tango's charging bar from the authoritative start time."
+	)
+	_expect(
+		compact_source.contains("and_local_tango_active_request_id>0"),
+		"A local Tango prediction must not be overwritten by an older zero-ratio snapshot."
+	)
+	_expect(
+		compact_source.count("orcharge_sequence<last_charge_sequence") == 2
+		and compact_source.count(
+			"ifcharge_sequence>last_charge_sequence:_tango_charge_sequences_by_peer[peer_id]=charge_sequence"
+		) == 2,
+		"Tango release and cancel terminals must accept a newer sequence when started was missed."
+	)
+	var reject_start := compact_source.find("funcnet_tango_charge_rejected(")
+	var reject_end := compact_source.find("@rpc(", reject_start + 1)
+	var reject_source := (
+		compact_source.substr(reject_start, reject_end - reject_start)
+		if reject_start >= 0 and reject_end > reject_start
+		else ""
+	)
+	_expect(
+		reject_source.contains(
+			"ifrequest_id!=_local_tango_active_request_id:return"
+		),
+		"A stale Tango rejection must not cancel a newer local prediction."
+	)
+	for game_path in [STANDARD_GAME_PATH, TOWER_DEFENSE_GAME_PATH]:
+		var game_source := FileAccess.get_file_as_string(game_path)
+		_expect(
+			game_source.contains("func request_tango_charge_started(direction: Vector2) -> bool:")
+			and game_source.contains("func request_tango_charge_released(direction: Vector2) -> bool:")
+			and game_source.contains("func request_tango_charge_cancelled() -> bool:"),
+			"%s must expose the singleplayer Tango charge bridge." % game_path
+		)
 
 
 func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
@@ -624,6 +751,13 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		NetConstants.CH_PROJECTILE
 	)
 	for world_event_method in [
+		"net_tango_charge_started_requested",
+		"net_tango_charge_released_requested",
+		"net_tango_charge_cancelled_requested",
+		"net_tango_charge_started",
+		"net_tango_charge_released",
+		"net_tango_charge_cancelled",
+		"net_tango_charge_rejected",
 		"net_enemy_spawned_batch",
 		"net_enemy_terminal",
 		"net_plant_spawned",

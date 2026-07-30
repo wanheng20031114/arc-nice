@@ -215,8 +215,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 27, "The multiplayer protocol version must be 27.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v27 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 28, "The multiplayer protocol version must be 28.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v28 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -4281,6 +4281,20 @@ func _test_snapshot_round_trip() -> void:
 		and tiyi_states[0].ammo_capacity == 5
 		and tiyi_states[0].current_ammo == 4,
 		"Player snapshot character code 2 must round-trip Tiyi without changing legacy codes."
+	)
+	var tango_state := SnapshotManager.PlayerState.new()
+	tango_state.peer_id = 4
+	tango_state.character_id = &"tango"
+	tango_state.current_health = 60
+	tango_state.max_health = 60
+	var tango_data := snapshot_mgr.encode_all_player_snapshots([tango_state])
+	var tango_states := snapshot_mgr.decode_all_player_snapshots(tango_data)
+	_expect(
+		tango_states.size() == 1
+		and tango_states[0].peer_id == 4
+		and tango_states[0].character_id == &"tango"
+		and tango_states[0].current_health == 60,
+		"Player snapshot character code 3 must round-trip Tango."
 	)
 	var player_data_2 := snapshot_mgr.encode_all_player_snapshots([player_state])
 	var player_states_2 := SnapshotManager.decode_all_player_snapshots(player_data_2)
