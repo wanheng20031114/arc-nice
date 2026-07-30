@@ -288,6 +288,8 @@ func advance_global_research(delta: float) -> void:
 func try_purchase_player_technology(player: Player) -> StringName:
 	if not authoritative_processing_enabled or player == null or player.is_dead:
 		return RESULT_UNAVAILABLE
+	if not player.supports_research_technology():
+		return RESULT_UNAVAILABLE
 	register_player(player)
 	var key := _get_player_key(player)
 	var current_level := int(player_technology_levels.get(key, 0))

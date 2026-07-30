@@ -401,6 +401,20 @@ func _refresh_global_research_entry_statuses(
 
 
 func _refresh_player_page(coordinator: ResearchCoordinator) -> void:
+	if not tracked_player.supports_research_technology():
+		player_tech_name.text = "个人技术暂未开放"
+		player_tech_description.text = "该角色的技能1与个人科研分支将在后续版本中一并接入。"
+		xirang_label.text = "个人息壤：%d" % tracked_player.get_xirang()
+		for index in tech_nodes.size():
+			tech_nodes[index].modulate = NODE_OFF_COLOR
+			branch_lines[index].default_color = LINE_OFF_COLOR
+			node_effect_labels[index].text = "待开放"
+			node_effect_labels[index].modulate = Color(0.45, 0.58, 0.7, 1.0)
+		root_core.modulate = NODE_OFF_COLOR
+		action_button.text = "个人技术暂未开放"
+		action_button.disabled = true
+		_set_status("该角色当前没有可购买的个人技术。")
+		return
 	var level := coordinator.get_player_technology_level(tracked_player)
 	var effects := _get_player_effect_texts()
 	player_tech_name.text = _get_player_technology_name()
@@ -512,6 +526,8 @@ func _animate_unlocked_level(previous_level: int) -> void:
 
 func _get_player_technology_name() -> String:
 	match tracked_player.get_character_id():
+		&"tango":
+			return "个人技术暂未开放"
 		&"tiyi":
 			return "凝滞锁定"
 		&"hoe_cat":
@@ -522,6 +538,8 @@ func _get_player_technology_name() -> String:
 
 func _get_player_technology_description() -> String:
 	match tracked_player.get_character_id():
+		&"tango":
+			return "该角色的技能1与个人科研分支将在后续版本中一并接入。"
 		&"tiyi":
 			return "技能锁定敌人期间持续施加减速；技能结束或目标移除时效果立刻解除。"
 		&"hoe_cat":
@@ -532,6 +550,8 @@ func _get_player_technology_description() -> String:
 
 func _get_player_effect_texts() -> Array[String]:
 	match tracked_player.get_character_id():
+		&"tango":
+			return ["待开放", "待开放", "待开放"]
 		&"tiyi":
 			return ["减速25%", "减速50%", "减速80%"]
 		&"hoe_cat":

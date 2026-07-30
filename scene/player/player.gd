@@ -2199,6 +2199,10 @@ func get_research_technology_level() -> int:
 	return research_technology_level
 
 
+func supports_research_technology() -> bool:
+	return true
+
+
 func set_research_technology_level(level: int) -> void:
 	var resolved_level := clampi(level, 0, RESEARCH_TECHNOLOGY_MAX_LEVEL)
 	if research_technology_level == resolved_level:
@@ -2216,6 +2220,8 @@ func set_research_global_move_speed_bonus(bonus: float) -> void:
 
 
 func get_next_research_technology_cost() -> int:
+	if not supports_research_technology():
+		return 0
 	if research_technology_level >= RESEARCH_TECHNOLOGY_MAX_LEVEL:
 		return 0
 	return int(RESEARCH_TECHNOLOGY_COSTS[research_technology_level])
