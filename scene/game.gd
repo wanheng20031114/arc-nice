@@ -29,6 +29,9 @@ const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 )
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
+const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
+const TANGO_MAXIMUM_CHARGE_SECONDS := 2.5
+const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
 const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
 const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := "res://resources/config/enemies/capoo_sniper.tres"
@@ -125,6 +128,7 @@ var linglan_enrage_sniper_config: EnemyConfig = null
 var boss_runtime_resources_by_path: Dictionary[String, Resource] = {}
 var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
+var _singleplayer_tango_charge_started_at: float = -1.0
 
 
 func _ready() -> void:
@@ -276,6 +280,88 @@ func configure_multiplayer(
 	multiplayer_local_peer_id = local_peer_id
 	multiplayer_player_names = player_names.duplicate()
 	multiplayer_player_character_ids = player_character_ids.duplicate()
+
+
+func request_tango_charge_started(direction: Vector2) -> bool:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return false
+	if not _is_valid_singleplayer_tango_player(player):
+		return false
+	var safe_direction := _sanitize_tango_charge_direction(player, direction)
+	if not bool(player.call("try_authoritative_tango_charge_started", safe_direction)):
+		return false
+	_singleplayer_tango_charge_started_at = Time.get_ticks_usec() / 1000000.0
+	return true
+
+
+func request_tango_charge_released(direction: Vector2) -> bool:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER or _singleplayer_tango_charge_started_at < 0.0:
+		return false
+	var started_at := _singleplayer_tango_charge_started_at
+	_singleplayer_tango_charge_started_at = -1.0
+	if not _is_valid_singleplayer_tango_player(player):
+		return false
+	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
+	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_MINIMUM_CHARGE_SECONDS:
+		player.call("cancel_authoritative_tango_charge")
+		return true
+	var charge_ratio := clampf(
+		(elapsed - TANGO_MINIMUM_CHARGE_SECONDS)
+		/ (TANGO_MAXIMUM_CHARGE_SECONDS - TANGO_MINIMUM_CHARGE_SECONDS),
+		0.0,
+		1.0
+	)
+	var safe_direction := _sanitize_tango_charge_direction(player, direction)
+	var result_variant: Variant = player.call(
+		"try_authoritative_tango_charge_released",
+		safe_direction,
+		charge_ratio
+	)
+	if not (result_variant is Dictionary):
+		player.call("cancel_authoritative_tango_charge")
+		return false
+	var result := result_variant as Dictionary
+	var succeeded := bool(result.get("accepted", false)) and bool(result.get("fired", false))
+	if not succeeded:
+		player.call("cancel_authoritative_tango_charge")
+	return succeeded
+
+
+func request_tango_charge_cancelled() -> bool:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return false
+	var had_active_charge := _singleplayer_tango_charge_started_at >= 0.0
+	_singleplayer_tango_charge_started_at = -1.0
+	if not _is_valid_singleplayer_tango_player(player):
+		return false
+	player.call("cancel_authoritative_tango_charge")
+	return had_active_charge
+
+
+func _is_valid_singleplayer_tango_player(player_node: Player) -> bool:
+	return (
+		player_node != null
+		and is_instance_valid(player_node)
+		and player_node.has_method("is_tango")
+		and bool(player_node.call("is_tango"))
+		and player_node.has_method("try_authoritative_tango_charge_started")
+		and player_node.has_method("try_authoritative_tango_charge_released")
+		and player_node.has_method("cancel_authoritative_tango_charge")
+	)
+
+
+func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -> Vector2:
+	if is_finite(direction.x) and is_finite(direction.y) and direction.length_squared() > 0.0001:
+		return direction.normalized()
+	match player_node.get_multiplayer_facing_id():
+		1:
+			return Vector2.LEFT
+		2:
+			return Vector2.UP
+		3:
+			return Vector2.DOWN
+		_:
+			return Vector2.RIGHT
 
 
 func _configure_active_campaign() -> bool:

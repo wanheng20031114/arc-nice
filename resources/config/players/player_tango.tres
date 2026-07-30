@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="PlayerCharacterConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/players/player_character_config.gd" id="1_config"]
+
+[resource]
+script = ExtResource("1_config")
+character_id = &"tango"
+display_name = "探戈"
+english_name = "Tango"
+title = "瓦砾中的具身机器人"
+description = "由三台释术单元伴飞的机械生命。长按蓄能，松开后聚合单元并发射贯穿战场的物理激光。"
+playstyle = "远程 · 蓄力光束"
+player_scene = "res://scene/player/tango/player_tango.tscn"
+portrait_texture = "res://resources/texture/player/tango/portrait.png"
+starting_max_health = 60
+starting_attack_damage = 10
+starting_attack_speed = 40.0
+attack_speed_units_per_attack = 100.0
+attack_damage_per_upgrade = 4.0
+card_background_color = Color(0.065, 0.085, 0.105, 0.98)
+card_edge_color = Color(0.29, 0.72, 0.75, 1)
+card_hover_edge_color = Color(0.38, 0.93, 0.95, 1)
+card_accent_color = Color(0.22, 0.86, 0.89, 1)
+card_button_color = Color(0.16, 0.38, 0.41, 1)
+card_text_color = Color(0.91, 0.96, 0.96, 1)

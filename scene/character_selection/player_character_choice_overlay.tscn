@@ -148,7 +148,7 @@ color = Color(0.78, 0.8, 0.84, 0.2)
 
 [node name="CardRow" type="HBoxContainer" parent="Root/Center/Content"]
 layout_mode = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 16
 alignment = 1
 
 [node name="Footer" type="HBoxContainer" parent="Root/Center/Content"]

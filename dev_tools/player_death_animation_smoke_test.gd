@@ -4,8 +4,9 @@ const PLAYER_SCENES: Array[PackedScene] = [
 	preload("res://scene/player/weishidaier/player_weishidaier.tscn"),
 	preload("res://scene/player/tiyi/player_tiyi.tscn"),
 	preload("res://scene/player/hoe_cat/player_hoe_cat.tscn"),
+	preload("res://scene/player/tango/player_tango.tscn"),
 ]
-const CHARACTER_NAMES: Array[String] = ["Weishidaier", "Tiyi", "HoeCat"]
+const CHARACTER_NAMES: Array[String] = ["Weishidaier", "Tiyi", "HoeCat", "Tango"]
 
 var failures: Array[String] = []
 var test_root: Node2D = null
@@ -57,7 +58,7 @@ func _test_plain_multiplayer_death() -> void:
 			body.visible and body.animation == &"death" and body.is_playing(),
 			"%s multiplayer death must start the authored non-looping death animation." % label
 		)
-	await create_timer(0.62).timeout
+	await create_timer(0.72).timeout
 	for index in players.size():
 		var player := players[index]
 		var body := player.body_sprite
@@ -108,7 +109,7 @@ func _test_tower_defense_death_presentation() -> void:
 	for index in players.size():
 		var player := players[index]
 		_expect(player.collision_shape.disabled, "%s tower-defense death must disable collision immediately." % CHARACTER_NAMES[index])
-	await create_timer(0.62).timeout
+	await create_timer(0.72).timeout
 	for index in players.size():
 		var player := players[index]
 		var body := player.body_sprite
@@ -147,7 +148,7 @@ func _test_revive_before_death_animation_finishes() -> void:
 			and player.body_sprite.animation != &"death",
 			"%s revive must atomically replace an unfinished death presentation." % CHARACTER_NAMES[index]
 		)
-	await create_timer(0.62).timeout
+	await create_timer(0.72).timeout
 	for index in players.size():
 		var player := players[index]
 		_expect(

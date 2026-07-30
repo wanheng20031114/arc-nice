@@ -103,13 +103,14 @@ func _run() -> void:
 
 func _test_registry_and_run_state() -> void:
 	var configs := PlayerCharacterRegistry.get_all_configs()
-	_expect(configs.size() == 3, "Character registry must expose exactly three launch characters.")
+	_expect(configs.size() == 4, "Character registry must expose exactly four launch characters.")
 	_expect(
-		configs.size() == 3
+		configs.size() == 4
 		and configs[0].character_id == PlayerCharacterRegistry.WEISHIDAIER_ID
 		and configs[1].character_id == PlayerCharacterRegistry.HOE_CAT_ID
-		and configs[2].character_id == PlayerCharacterRegistry.TIYI_ID,
-		"Character card order must remain Weishidaier, Hoe Cat, then Tiyi."
+		and configs[2].character_id == PlayerCharacterRegistry.TIYI_ID
+		and configs[3].character_id == PlayerCharacterRegistry.TANGO_ID,
+		"Character card order must remain Weishidaier, Hoe Cat, Tiyi, then Tango."
 	)
 	_expect(
 		PlayerCharacterRegistry.is_valid_character_id(PlayerCharacterRegistry.WEISHIDAIER_ID),
@@ -122,6 +123,10 @@ func _test_registry_and_run_state() -> void:
 	_expect(
 		PlayerCharacterRegistry.is_valid_character_id(PlayerCharacterRegistry.TIYI_ID),
 		"Tiyi character id must be registered."
+	)
+	_expect(
+		PlayerCharacterRegistry.is_valid_character_id(PlayerCharacterRegistry.TANGO_ID),
+		"Tango character id must be registered."
 	)
 	_expect(
 		PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).starting_max_health == 80,
@@ -138,14 +143,23 @@ func _test_registry_and_run_state() -> void:
 	_expect(
 		PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).english_name == "Hoe Cat"
 		and PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.WEISHIDAIER_ID).english_name == "Weishidaier"
-		and PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TIYI_ID).english_name == "Tiyi",
+		and PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TIYI_ID).english_name == "Tiyi"
+		and PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TANGO_ID).english_name == "Tango",
 		"Character configs must expose all characters' English names."
 	)
 	_expect(
 		is_equal_approx(PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.HOE_CAT_ID).attack_speed_units_per_attack, 200.0)
 		and is_equal_approx(PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.WEISHIDAIER_ID).attack_speed_units_per_attack, 100.0)
-		and is_equal_approx(PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TIYI_ID).attack_speed_units_per_attack, 250.0),
+		and is_equal_approx(PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TIYI_ID).attack_speed_units_per_attack, 250.0)
+		and is_equal_approx(PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TANGO_ID).attack_speed_units_per_attack, 100.0),
 		"Character configs must expose each character's attack-speed conversion scale."
+	)
+	var tango_config := PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TANGO_ID)
+	_expect(
+		tango_config.starting_max_health == 60
+		and tango_config.starting_attack_damage == 10
+		and tango_config.player_scene == "res://scene/player/tango/player_tango.tscn",
+		"Tango config must expose 60 health, 10 attack, and its authored player scene."
 	)
 	var tiyi_config := PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TIYI_ID)
 	_expect(
@@ -204,6 +218,15 @@ func _test_registry_and_run_state() -> void:
 		run_state.selected_character_id == PlayerCharacterRegistry.TIYI_ID,
 		"Starting a run must preserve the confirmed Tiyi id."
 	)
+	_expect(
+		run_state.set_selected_character(PlayerCharacterRegistry.TANGO_ID),
+		"RunState must accept the registered Tango id."
+	)
+	run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID)
+	_expect(
+		run_state.selected_character_id == PlayerCharacterRegistry.TANGO_ID,
+		"Starting a run must preserve the confirmed Tango id."
+	)
 
 
 func _test_choice_overlay() -> void:
@@ -222,7 +245,7 @@ func _test_choice_overlay() -> void:
 		overlay.visible and overlay.is_open(),
 		"Character choice overlay must become visible when opened."
 	)
-	_expect(overlay.cards.size() == 3, "Character choice overlay must build three character cards.")
+	_expect(overlay.cards.size() == 4, "Character choice overlay must build four character cards.")
 	_expect(
 		overlay.root_control.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
 		"Character choice text must use linear filtering instead of the pixel-art default."
@@ -241,30 +264,39 @@ func _test_choice_overlay() -> void:
 		content.size.x <= overlay.root_control.size.x and content.size.y <= overlay.root_control.size.y,
 		"Character choice content must fit inside the launch viewport."
 	)
-	if overlay.cards.size() == 3:
+	if overlay.cards.size() == 4:
 		var first_style := overlay.cards[0].get_theme_stylebox(&"panel") as StyleBoxFlat
 		var second_style := overlay.cards[1].get_theme_stylebox(&"panel") as StyleBoxFlat
 		var third_style := overlay.cards[2].get_theme_stylebox(&"panel") as StyleBoxFlat
+		var fourth_style := overlay.cards[3].get_theme_stylebox(&"panel") as StyleBoxFlat
 		_expect(
-			first_style != null and second_style != null and third_style != null,
+			first_style != null
+			and second_style != null
+			and third_style != null
+			and fourth_style != null,
 			"Each character card must own a panel style."
 		)
-		if first_style != null and second_style != null and third_style != null:
+		if first_style != null and second_style != null and third_style != null and fourth_style != null:
 			_expect(
 				not first_style.border_color.is_equal_approx(second_style.border_color)
 				and not first_style.border_color.is_equal_approx(third_style.border_color)
-				and not second_style.border_color.is_equal_approx(third_style.border_color),
+				and not first_style.border_color.is_equal_approx(fourth_style.border_color)
+				and not second_style.border_color.is_equal_approx(third_style.border_color)
+				and not second_style.border_color.is_equal_approx(fourth_style.border_color)
+				and not third_style.border_color.is_equal_approx(fourth_style.border_color),
 				"Character cards must use different character-specific edge colors."
 			)
 			_expect(
 				is_zero_approx(first_style.get_content_margin(SIDE_TOP))
 				and is_zero_approx(second_style.get_content_margin(SIDE_TOP))
-				and is_zero_approx(third_style.get_content_margin(SIDE_TOP)),
+				and is_zero_approx(third_style.get_content_margin(SIDE_TOP))
+				and is_zero_approx(fourth_style.get_content_margin(SIDE_TOP)),
 				"Character card border state must not alter its content margins."
 			)
 		_expect(
 			overlay.cards[0].size.is_equal_approx(overlay.cards[1].size)
-			and overlay.cards[1].size.is_equal_approx(overlay.cards[2].size),
+			and overlay.cards[1].size.is_equal_approx(overlay.cards[2].size)
+			and overlay.cards[2].size.is_equal_approx(overlay.cards[3].size),
 			"Selected and unselected character cards must keep identical layout dimensions."
 		)
 		for card in overlay.cards:

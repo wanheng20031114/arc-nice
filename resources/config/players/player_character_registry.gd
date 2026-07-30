@@ -4,6 +4,7 @@ class_name PlayerCharacterRegistry
 const WEISHIDAIER_ID: StringName = &"weishidaier"
 const HOE_CAT_ID: StringName = &"hoe_cat"
 const TIYI_ID: StringName = &"tiyi"
+const TANGO_ID: StringName = &"tango"
 const DEFAULT_CHARACTER_ID: StringName = WEISHIDAIER_ID
 
 const WEISHIDAIER_CONFIG: PlayerCharacterConfig = preload(
@@ -15,11 +16,15 @@ const HOE_CAT_CONFIG: PlayerCharacterConfig = preload(
 const TIYI_CONFIG: PlayerCharacterConfig = preload(
 	"res://resources/config/players/player_tiyi.tres"
 )
+const TANGO_CONFIG: PlayerCharacterConfig = preload(
+	"res://resources/config/players/player_tango.tres"
+)
 
 const CHARACTER_CONFIGS := {
 	WEISHIDAIER_ID: WEISHIDAIER_CONFIG,
 	HOE_CAT_ID: HOE_CAT_CONFIG,
 	TIYI_ID: TIYI_CONFIG,
+	TANGO_ID: TANGO_CONFIG,
 }
 
 
@@ -28,7 +33,7 @@ static func get_config(character_id: StringName) -> PlayerCharacterConfig:
 
 
 static func get_all_configs() -> Array[PlayerCharacterConfig]:
-	return [WEISHIDAIER_CONFIG, HOE_CAT_CONFIG, TIYI_CONFIG]
+	return [WEISHIDAIER_CONFIG, HOE_CAT_CONFIG, TIYI_CONFIG, TANGO_CONFIG]
 
 
 static func get_default_character_id() -> StringName:
