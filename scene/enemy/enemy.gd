@@ -154,6 +154,7 @@ static var _performance_metrics := {
 var target_player: Player = null
 var objective_target: Node2D = null
 var pathfinder: Node = null
+var _xirang_kill_reward_override: int = -1
 var projectile_motion_system: Node = null
 var current_health: int = 1
 var health_revision: int = 0
@@ -519,6 +520,7 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	clear_cold_status()
 	clear_collectible_statuses()
 	runtime_max_health_multiplier = 1.0
+	_xirang_kill_reward_override = -1
 	config = enemy_config
 	target_player = player
 	objective_target = player
@@ -539,6 +541,20 @@ func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = 
 	if navigation_flow_context != null:
 		navigation_flow_context.invalidate()
 	_apply_config()
+
+
+func set_xirang_kill_reward_override(amount: int) -> void:
+	_xirang_kill_reward_override = maxi(amount, -1)
+
+
+func get_xirang_kill_reward_override() -> int:
+	return _xirang_kill_reward_override
+
+
+func get_effective_xirang_kill_reward() -> int:
+	if _xirang_kill_reward_override >= 0:
+		return _xirang_kill_reward_override
+	return config.xirang_kill_reward if config != null else 0
 
 
 func set_target_player(player: Player) -> void:
@@ -3993,12 +4009,13 @@ func _die() -> void:
 
 
 func _queue_configured_xirang_kill_reward() -> void:
-	if is_multiplayer_proxy or config == null or config.xirang_kill_reward <= 0:
+	var reward_amount := get_effective_xirang_kill_reward()
+	if is_multiplayer_proxy or reward_amount <= 0:
 		return
 	var current_scene := get_tree().current_scene
 	if current_scene == null or not current_scene.has_method("grant_xirang_kill_reward"):
 		return
-	current_scene.call("grant_xirang_kill_reward", config.xirang_kill_reward)
+	current_scene.call("grant_xirang_kill_reward", reward_amount)
 
 
 func _queue_configured_pickup_drops() -> void:

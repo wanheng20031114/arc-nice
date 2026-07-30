@@ -95,6 +95,7 @@ var enemy_spawn_points_by_name: Dictionary[StringName, Marker2D] = {}
 var active_wave_spawn_points: Array[Marker2D] = []
 var spawn_point_configuration_valid := true
 var pending_enemy_configs: Array[EnemyConfig] = []
+var pending_enemy_xirang_kill_rewards: Array[int] = []
 var pending_enemy_config_index: int = 0
 var active_wave_enemy_ids: Dictionary = {}
 
@@ -1438,18 +1439,27 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 
 func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 	pending_enemy_configs.clear()
+	pending_enemy_xirang_kill_rewards.clear()
 	pending_enemy_config_index = 0
 	for entry in wave_config.enemy_entries:
 		if entry == null or entry.enemy_config == null:
 			continue
 		for _enemy_index in range(maxi(entry.count, 0)):
 			pending_enemy_configs.append(entry.enemy_config)
+			pending_enemy_xirang_kill_rewards.append(
+				entry.resolve_xirang_kill_reward(entry.enemy_config)
+			)
 
 	for source_index in range(pending_enemy_configs.size() - 1, 0, -1):
 		var target_index := random_generator.randi_range(0, source_index)
-		var temporary := pending_enemy_configs[source_index]
+		var temporary_config := pending_enemy_configs[source_index]
 		pending_enemy_configs[source_index] = pending_enemy_configs[target_index]
-		pending_enemy_configs[target_index] = temporary
+		pending_enemy_configs[target_index] = temporary_config
+		var temporary_reward := pending_enemy_xirang_kill_rewards[source_index]
+		pending_enemy_xirang_kill_rewards[source_index] = (
+			pending_enemy_xirang_kill_rewards[target_index]
+		)
+		pending_enemy_xirang_kill_rewards[target_index] = temporary_reward
 
 
 func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
@@ -1567,7 +1577,10 @@ func _spawn_wave_batch() -> void:
 			break
 
 		var enemy_config := pending_enemy_configs[pending_enemy_config_index]
-		if not _try_spawn_enemy(enemy_config):
+		var xirang_kill_reward := pending_enemy_xirang_kill_rewards[
+			pending_enemy_config_index
+		]
+		if not _try_spawn_enemy(enemy_config, xirang_kill_reward):
 			break
 
 		pending_enemy_config_index += 1
@@ -1586,10 +1599,14 @@ func _has_pending_enemy_configs() -> bool:
 
 func _clear_pending_enemy_spawn_queue() -> void:
 	pending_enemy_configs.clear()
+	pending_enemy_xirang_kill_rewards.clear()
 	pending_enemy_config_index = 0
 
 
-func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
+func _try_spawn_enemy(
+	enemy_config: EnemyConfig,
+	xirang_kill_reward_override: int = -1
+) -> bool:
 	if not _is_spawn_system_ready() or enemy_config == null:
 		return false
 
@@ -1609,6 +1626,7 @@ func _try_spawn_enemy(enemy_config: EnemyConfig) -> bool:
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = spawn_point.global_position
 	enemy_instance.setup(enemy_config, _pick_enemy_target(spawn_point.global_position), grid_pathfinder)
+	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
 	var enemy_id := enemy_instance.get_instance_id()
 	active_wave_enemy_ids[enemy_id] = true
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)

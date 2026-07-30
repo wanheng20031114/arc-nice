@@ -1123,8 +1123,7 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 	game.current_wave_total = 1
 	game.current_wave_spawned = 1
 	game.current_wave_resolved = 1
-	game.pending_enemy_configs.clear()
-	game.pending_enemy_config_index = 0
+	game.call("_clear_pending_enemy_spawn_queue")
 	game.active_wave_enemy_ids.clear()
 	game.call("_check_wave_completion")
 	_expect(game.wave_state == GameTowerDefense.WaveState.VICTORY, "Wave completion must use resolved, allowing escaped enemies to finish a wave.")

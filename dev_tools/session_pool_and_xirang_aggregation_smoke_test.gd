@@ -352,6 +352,35 @@ func _test_direct_xirang_kill_reward() -> void:
 		== xirang_before + BASIC_ENEMY_CONFIG.xirang_kill_reward,
 		"Duplicate enemy death resolution must not grant Xirang twice."
 	)
+	var zero_reward_enemy := BASIC_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(zero_reward_enemy != null, "Zero-reward override fixture must instantiate an enemy.")
+	if zero_reward_enemy != null:
+		runtime.enemy_container.add_child(zero_reward_enemy)
+		zero_reward_enemy.setup(BASIC_ENEMY_CONFIG, runtime.player, runtime.grid_pathfinder)
+		zero_reward_enemy.set_xirang_kill_reward_override(0)
+		zero_reward_enemy.call("_die")
+		await process_frame
+		_expect(
+			runtime.player.current_xirang
+			== xirang_before + BASIC_ENEMY_CONFIG.xirang_kill_reward,
+			"An explicit zero wave reward must grant no Xirang."
+		)
+	const OVERRIDDEN_REWARD := 37
+	var overridden_enemy := BASIC_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
+	_expect(overridden_enemy != null, "Positive-reward override fixture must instantiate an enemy.")
+	if overridden_enemy != null:
+		runtime.enemy_container.add_child(overridden_enemy)
+		overridden_enemy.setup(BASIC_ENEMY_CONFIG, runtime.player, runtime.grid_pathfinder)
+		overridden_enemy.set_xirang_kill_reward_override(OVERRIDDEN_REWARD)
+		overridden_enemy.call("_die")
+		await process_frame
+		_expect(
+			runtime.player.current_xirang
+			== xirang_before
+			+ BASIC_ENEMY_CONFIG.xirang_kill_reward
+			+ OVERRIDDEN_REWARD,
+			"A positive wave reward override must replace the configured amount."
+		)
 	var boss := LINGLAN_ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(boss != null, "Linglan reward regression requires the configured boss scene.")
 	if boss != null:
@@ -363,6 +392,7 @@ func _test_direct_xirang_kill_reward() -> void:
 			runtime.player.current_xirang
 			== xirang_before
 			+ BASIC_ENEMY_CONFIG.xirang_kill_reward
+			+ OVERRIDDEN_REWARD
 			+ LINGLAN_ENEMY_CONFIG.xirang_kill_reward,
 			"Linglan death must now grant its configured 500 Xirang reward."
 		)
@@ -388,9 +418,9 @@ func _test_multiplayer_forwarding_contract() -> void:
 	_expect(
 		enemy_source.contains('current_scene.has_method("grant_xirang_kill_reward")')
 		and enemy_source.contains(
-			'current_scene.call("grant_xirang_kill_reward", config.xirang_kill_reward)'
+			'current_scene.call("grant_xirang_kill_reward", reward_amount)'
 		),
-		"Enemy death rewards must route their configured value through the active root scene."
+		"Enemy death rewards must route their effective value through the active root scene."
 	)
 	for reward_owner_path in [
 		"res://scene/enemy/yuanshi_insect/yuanshi_insect.gd",
