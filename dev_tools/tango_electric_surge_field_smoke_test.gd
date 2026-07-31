@@ -84,8 +84,14 @@ func _test_authored_scene_contract() -> void:
 
 	var circle := field.collision_shape.shape as CircleShape2D
 	var material := field.field_visual.material as ShaderMaterial
+	var boundary_shadow := field.get_node_or_null(
+		"RangeBoundaryShadow"
+	) as Line2D
+	var boundary := field.get_node_or_null("RangeBoundary") as Line2D
 	_expect(
 		field.top_level
+		and field.is_visible_in_tree()
+		and field.field_visual.is_visible_in_tree()
 		and circle != null
 		and is_equal_approx(circle.radius, 72.0)
 		and is_equal_approx(field.damage_tick_timer.wait_time, 1.0)
@@ -104,10 +110,38 @@ func _test_authored_scene_contract() -> void:
 		and material.shader != null
 		and material.shader.code.contains("outward_wave")
 		and material.shader.code.contains("render_mode unshaded, blend_add")
-		and material.shader.code.contains("boundary * 0.28")
-		and material.shader.code.contains("alpha = min(alpha, 0.42)")
+		and material.shader.code.contains("boundary * 0.38")
+		and material.shader.code.contains("alpha = min(alpha, 0.46)")
 		and field.field_visual.polygon.size() == 4,
 		"地面电涌必须由单 draw Shader 保持高透明，同时提供可辨识的72像素边界。"
+	)
+	_expect(
+		boundary_shadow != null
+		and boundary != null
+		and boundary_shadow.is_visible_in_tree()
+		and boundary.is_visible_in_tree()
+		and boundary_shadow.closed
+		and boundary.closed
+		and not boundary_shadow.antialiased
+		and not boundary.antialiased
+		and boundary_shadow.points.size() == 32
+		and boundary.points.size() == 32
+		and _line_points_have_radius(boundary_shadow, 72.0)
+		and _line_points_have_radius(boundary, 72.0)
+		and is_equal_approx(boundary_shadow.width, 3.5)
+		and is_equal_approx(boundary.width, 1.5)
+		and boundary_shadow.material is CanvasItemMaterial
+		and boundary.material is CanvasItemMaterial
+		and (
+			boundary_shadow.material as CanvasItemMaterial
+		).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and (
+			boundary.material as CanvasItemMaterial
+		).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and (
+			boundary.material as CanvasItemMaterial
+		).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD,
+		"场域必须作者化双层非抗锯齿Line2D：深色底边与青色亮边均闭合、unshaded且精确落在半径72。"
 	)
 	_expect(
 		field.night_light != null
@@ -277,6 +311,13 @@ func _make_enemy() -> Enemy:
 
 func _on_field_finished(field: Node) -> void:
 	finished_fields.append(field)
+
+
+func _line_points_have_radius(line: Line2D, expected_radius: float) -> bool:
+	for point in line.points:
+		if not is_equal_approx(point.length(), expected_radius):
+			return false
+	return true
 
 
 func _expect(condition: bool, message: String) -> void:

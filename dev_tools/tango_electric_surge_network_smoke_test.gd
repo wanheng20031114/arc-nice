@@ -83,7 +83,7 @@ func _run() -> void:
 	root.add_child(fixture)
 	current_scene = fixture
 
-	await _test_host_authority_and_instant_barrage()
+	await _test_host_authority_and_auto_barrage()
 	await _test_client_recovery_visual()
 
 	fixture.queue_free()
@@ -97,7 +97,7 @@ func _run() -> void:
 	quit(1)
 
 
-func _test_host_authority_and_instant_barrage() -> void:
+func _test_host_authority_and_auto_barrage() -> void:
 	var player := TANGO_SCENE.instantiate() as PlayerTango
 	player.peer_id = 7
 	fixture.add_child(player)
@@ -121,6 +121,20 @@ func _test_host_authority_and_instant_barrage() -> void:
 	await process_frame
 	mp_game.set("net_manager", host_net)
 
+	var old_charge_accepted := bool(mp_game.call(
+		"_apply_authoritative_tango_charge_started",
+		7,
+		Vector2.LEFT,
+		1
+	))
+	var active_charges := mp_game.get("_active_tango_charges_by_peer") as Dictionary
+	_expect(
+		old_charge_accepted
+		and active_charges.has(7)
+		and mp_game.sent_methods == [&"net_tango_charge_started"],
+		"技能接管测试必须先建立一个Host认可的普通充能。"
+	)
+	mp_game.clear_recording()
 	var accepted := bool(mp_game.call(
 		"_apply_authoritative_tango_electric_surge_request",
 		7,
@@ -132,23 +146,36 @@ func _test_host_authority_and_instant_barrage() -> void:
 	_expect(
 		accepted
 		and player.is_electric_surge_active()
+		and player.is_electric_surge_auto_fire_active()
+		and player.is_tango_barrage_active()
+		and is_equal_approx(player.get_tango_release_ratio(), 1.0)
+		and player.get_tango_barrage_damage() == 15
 		and player.electric_surge_audio.playing
 		and is_zero_approx(player.skill1_charge)
 		and records.has(7)
-		and mp_game.sent_methods == [&"net_tango_electric_surge_started"],
-		"Host必须验证并消费Tango技能充能，再记录并可靠广播电涌。"
+		and active_charges.is_empty()
+		and int((mp_game.get("_tango_charge_sequences_by_peer") as Dictionary).get(7, 0)) == 2
+		and mp_game.sent_methods == [
+			&"net_tango_charge_cancelled",
+			&"net_tango_electric_surge_started",
+		],
+		"Host必须终止旧充能、分配独立弹幕序列，并让技能直接进入满充自动射击。"
 	)
-	if not mp_game.sent_arguments.is_empty():
-		var payload := mp_game.sent_arguments[0]
+	if mp_game.sent_arguments.size() >= 2:
+		var cancel_payload := mp_game.sent_arguments[0]
+		var payload := mp_game.sent_arguments[1]
 		_expect(
-			int(payload[0]) == 7
+			int(cancel_payload[0]) == 7
+			and int(cancel_payload[1]) == 1
+			and int(cancel_payload[2]) == 1
+			and int(payload[0]) == 7
 			and int(payload[1]) == 1
 			and payload[2] == Vector2(120.0, 76.0)
 			and is_equal_approx(float(payload[3]), 8.0)
 			and is_finite(float(payload[4]))
 			and bool(payload[5])
 			and int(payload[6]) == 1,
-			"开始包必须携带Host位置、剩余8秒、发送时刻与权威序列。"
+			"旧充能终端必须先送达，开始包随后携带Host位置、剩余8秒与技能序列。"
 		)
 	_expect(
 		not bool(mp_game.call(
@@ -172,31 +199,6 @@ func _test_host_authority_and_instant_barrage() -> void:
 		and host_field.global_position == Vector2(120.0, 76.0),
 		"玩家移动后电涌场域不得跟随。"
 	)
-
-	mp_game.clear_recording()
-	var instant_attack_accepted := bool(mp_game.call(
-		"_apply_authoritative_tango_charge_started",
-		7,
-		Vector2.UP,
-		1
-	))
-	var active_charges := mp_game.get("_active_tango_charges_by_peer") as Dictionary
-	_expect(
-		instant_attack_accepted
-		and player.is_tango_barrage_active()
-		and is_equal_approx(player.get_tango_release_ratio(), 1.0)
-		and player.get_tango_barrage_damage() == 15
-		and active_charges.is_empty()
-		and mp_game.sent_methods == [&"net_tango_charge_released"],
-		"技能期间攻击必须由Host直接进入满充弹幕并复用既有release终端。"
-	)
-	if not mp_game.sent_arguments.is_empty():
-		var attack_payload := mp_game.sent_arguments[0]
-		_expect(
-			attack_payload[1] == Vector2.UP
-			and is_equal_approx(float(attack_payload[2]), 1.0),
-			"技能期release包必须锁定Host确认的方向与100%充能比例。"
-		)
 
 	mp_game.clear_recording()
 	mp_game.call("_clear_peer_network_state", 7)
@@ -261,6 +263,9 @@ func _test_client_recovery_visual() -> void:
 	var visual_field := _find_field(false, 5)
 	_expect(
 		remote_player.is_electric_surge_active()
+		and remote_player.is_electric_surge_auto_fire_active()
+		and remote_player.is_tango_barrage_active()
+		and is_equal_approx(remote_player.get_tango_release_ratio(), 1.0)
 		and not remote_player.electric_surge_audio.playing
 		and not bool(mp_game.get("_has_host_time_offset"))
 		and remaining > 4.7
@@ -302,6 +307,7 @@ func _test_client_recovery_visual() -> void:
 	mp_game.call("net_tango_electric_surge_finished", 7, 5)
 	_expect(
 		not remote_player.is_electric_surge_active()
+		and not remote_player.is_electric_surge_auto_fire_active()
 		and visual_field != null
 		and visual_field.is_active(),
 		"结束事件应清理玩家强化；独立场域视觉按自身剩余时长完成。"

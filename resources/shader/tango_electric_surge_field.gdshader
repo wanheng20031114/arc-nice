@@ -61,12 +61,12 @@ void fragment() {
 		center_falloff * 0.035 * pulse
 		+ outward_wave * 0.12
 		+ broken_arcs * 0.09
-		+ boundary * 0.28
+		+ boundary * 0.38
 		+ soft_halo * 0.045
 	);
 	// Keep the exact 72-pixel edge readable on busy daytime terrain while the
 	// overlapping waves remain transparent enough to preserve combat clarity.
-	alpha = min(alpha, 0.42);
+	alpha = min(alpha, 0.46);
 	vec3 color = mix(field_color.rgb, arc_color.rgb, outward_wave * 0.68);
 	color = mix(color, core_color.rgb, broken_arcs * 0.58 + boundary * 0.18);
 	COLOR = vec4(color, alpha);

@@ -102,6 +102,26 @@ func _run() -> void:
 	host_mp.add_child(host_net)
 	host_mp.set("net_manager", host_net)
 	(host_mp.get("_tango_charge_sequences_by_peer") as Dictionary)[owner_peer_id] = 3
+	var ordinary_overflow_rejected := not bool(host_mp.call(
+		"register_local_tango_laser_volley",
+		projectiles,
+		spawn_positions,
+		Vector2.RIGHT,
+		owner_peer_id,
+		15,
+		480.0,
+		0.722,
+		1.0,
+		7.5
+	))
+	_expect(
+		ordinary_overflow_rejected and host_mp.sent_methods.is_empty(),
+		"非技能弹幕不得借由满充比例突破既有5秒网络上限。"
+	)
+	(host_mp.get("_active_tango_electric_surges_by_peer") as Dictionary)[owner_peer_id] = {
+		"activation_id": 1,
+		"charge_sequence": 3,
+	}
 	var registered := bool(host_mp.call(
 		"register_local_tango_laser_volley",
 		projectiles,
@@ -112,7 +132,7 @@ func _run() -> void:
 		480.0,
 		0.722,
 		1.0,
-		4.0
+		7.5
 	))
 	_expect(
 		registered
@@ -147,12 +167,12 @@ func _run() -> void:
 		and payload_owner == owner_peer_id
 		and charge_sequence == 3
 		and is_equal_approx(charge_ratio, 1.0)
-		and is_equal_approx(barrage_remaining, 4.0)
+		and is_equal_approx(barrage_remaining, 5.0)
 		and damage == 15
 		and is_equal_approx(speed, 480.0)
 		and is_equal_approx(lifetime, 0.722)
 		and host_fire_timestamp >= 0.0,
-		"Batch payload must preserve three IDs plus authoritative barrage metadata."
+		"技能弹幕可接收8秒内部寿命，但批处理包必须维持5秒协议上限。"
 	)
 	for projectile_id in projectile_ids:
 		_expect(

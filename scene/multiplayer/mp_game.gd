@@ -4748,6 +4748,19 @@ func _apply_authoritative_tango_electric_surge_request(
 		origin
 	)):
 		return false
+	# A successful surge owns Tango's firing state for its complete lifetime. Retire
+	# an ordinary charge first so its later release/cancel cannot overwrite the
+	# automatic barrage. Both terminal and surge events use reliable channel 5,
+	# preserving this order for replicas.
+	if _active_tango_charges_by_peer.has(peer_id):
+		_cancel_authoritative_tango_charge(peer_id, true)
+	# Automatic volleys still use the established projectile protocol. Allocate a
+	# fresh charge sequence without manufacturing a synthetic input request so Host
+	# registration and client de-duplication share one activation-owned identity.
+	var auto_fire_charge_sequence := int(
+		_tango_charge_sequences_by_peer.get(peer_id, 0)
+	) + 1
+	_tango_charge_sequences_by_peer[peer_id] = auto_fire_charge_sequence
 	var started_at := _get_net_time()
 	var buff_active := bool(player_node.call("is_electric_surge_active"))
 	_tango_electric_surge_sequences_by_peer[peer_id] = activation_id
@@ -4757,6 +4770,7 @@ func _apply_authoritative_tango_electric_surge_request(
 		"started_at": started_at,
 		"duration": TANGO_ELECTRIC_SURGE_DURATION_SECONDS,
 		"request_id": request_id,
+		"charge_sequence": auto_fire_charge_sequence,
 	}
 	_rpc_to_connected_clients(
 		&"net_tango_electric_surge_started",
@@ -5783,12 +5797,29 @@ func register_local_tango_laser_volley(
 	charge_ratio: float,
 	barrage_remaining_seconds: float
 ) -> bool:
+	var active_surge_record := _active_tango_electric_surges_by_peer.get(
+		owner_peer_id,
+		{}
+	) as Dictionary
+	var charge_sequence := int(
+		_tango_charge_sequences_by_peer.get(owner_peer_id, 0)
+	)
+	var maximum_internal_barrage_seconds := TANGO_BARRAGE_MAXIMUM_SECONDS
+	if (
+		not active_surge_record.is_empty()
+		and charge_sequence > 0
+		and int(active_surge_record.get("charge_sequence", 0))
+			== charge_sequence
+		and charge_ratio >= 1.0 - TANGO_CHARGE_THRESHOLD_EPSILON
+	):
+		maximum_internal_barrage_seconds = TANGO_ELECTRIC_SURGE_DURATION_SECONDS
 	if (
 		projectiles.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
 		or spawn_positions.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
 		or net_manager == null
 		or not net_manager.is_multiplayer_active()
 		or not net_manager.is_host()
+		or charge_sequence <= 0
 		or owner_peer_id <= 0
 		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
 		or not _NetConstants.is_valid_network_combat_value(damage)
@@ -5803,13 +5834,8 @@ func register_local_tango_laser_volley(
 		or charge_ratio > 1.0
 		or not is_finite(barrage_remaining_seconds)
 		or barrage_remaining_seconds < 0.0
-		or barrage_remaining_seconds > TANGO_BARRAGE_MAXIMUM_SECONDS
+		or barrage_remaining_seconds > maximum_internal_barrage_seconds
 	):
-		return false
-	var charge_sequence := int(
-		_tango_charge_sequences_by_peer.get(owner_peer_id, 0)
-	)
-	if charge_sequence <= 0:
 		return false
 	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
 		var projectile := projectiles[projectile_index]
@@ -5847,6 +5873,13 @@ func register_local_tango_laser_volley(
 			false
 		)
 	var host_fire_timestamp := _get_net_time()
+	# The reliable Electric Surge event owns the eight-second automatic-fire
+	# lifetime. Keep the established volley payload within its ordinary five-second
+	# contract; surge-aware replicas use batches only to reconcile aim/cadence.
+	var network_barrage_remaining_seconds := minf(
+		barrage_remaining_seconds,
+		TANGO_BARRAGE_MAXIMUM_SECONDS
+	)
 	_rpc_to_connected_clients(
 		&"net_tango_laser_volley",
 		[
@@ -5856,7 +5889,7 @@ func register_local_tango_laser_volley(
 			owner_peer_id,
 			charge_sequence,
 			charge_ratio,
-			barrage_remaining_seconds,
+			network_barrage_remaining_seconds,
 			damage,
 			speed,
 			lifetime,

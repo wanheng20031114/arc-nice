@@ -96,6 +96,8 @@ var _electric_surge_authoritative := false
 var _electric_surge_activation_id := 0
 var _electric_surge_last_seen_activation_id := 0
 var _electric_surge_origin := Vector2.ZERO
+var _electric_surge_auto_fire_activation_id := 0
+var _electric_surge_finished_barrage_sequence := 0
 
 
 func _init() -> void:
@@ -247,6 +249,15 @@ func is_electric_surge_active() -> bool:
 	return _electric_surge_active
 
 
+func is_electric_surge_auto_fire_active() -> bool:
+	return (
+		_electric_surge_active
+		and _electric_surge_auto_fire_activation_id
+			== _electric_surge_activation_id
+		and is_tango_barrage_active()
+	)
+
+
 func get_electric_surge_activation_id() -> int:
 	return _electric_surge_activation_id
 
@@ -294,6 +305,65 @@ func _begin_electric_surge(
 	_refresh_electric_surge_research_defense()
 	_refresh_shooting_timer_wait_time()
 	_set_electric_surge_visual_state(true)
+	_start_electric_surge_auto_fire(activation_id, authoritative)
+
+
+func _start_electric_surge_auto_fire(
+	activation_id: int,
+	authoritative: bool
+) -> void:
+	if (
+		activation_id <= 0
+		or not _electric_surge_active
+		or activation_id != _electric_surge_activation_id
+		or is_dead
+		or are_combat_actions_locked()
+	):
+		return
+	if (
+		_electric_surge_auto_fire_activation_id == activation_id
+		and is_tango_barrage_active()
+	):
+		return
+	_electric_surge_auto_fire_activation_id = activation_id
+	var initial_direction := _get_electric_surge_auto_fire_direction()
+	_start_barrage_sequence(initial_direction, 1.0, authoritative)
+	# The skill timer is the hard deadline. Keeping the barrage window at least as
+	# long as the remaining buff prevents the ordinary five-second profile from
+	# returning the units to orbit while Electric Surge is still active.
+	_barrage_duration = maxf(
+		get_electric_surge_remaining_seconds(),
+		BARRAGE_EPSILON
+	)
+
+
+func _get_electric_surge_auto_fire_direction() -> Vector2:
+	var directional_input := _get_current_shoot_input()
+	if directional_input.length_squared() > 0.001:
+		if uses_local_input:
+			_attack_aim_uses_mouse = false
+		return _get_safe_tango_direction(directional_input)
+	if uses_local_input:
+		# Mouse aim owns the automatic barrage even with no fire button held.
+		_attack_aim_uses_mouse = true
+		var mouse_direction := _get_mouse_shoot_direction()
+		if mouse_direction.length_squared() > 0.001:
+			return _get_safe_tango_direction(mouse_direction)
+	else:
+		_attack_aim_uses_mouse = false
+	return _get_safe_tango_direction(last_attack_direction)
+
+
+func _stop_electric_surge_auto_fire(activation_id: int) -> void:
+	if (
+		activation_id <= 0
+		or activation_id != _electric_surge_auto_fire_activation_id
+	):
+		return
+	_electric_surge_auto_fire_activation_id = 0
+	_barrage_is_authoritative = false
+	if _casting_state in [CastingState.CONVERGING, CastingState.FIRING]:
+		_begin_return_to_orbit()
 
 
 func _spawn_authoritative_electric_surge_field(
@@ -356,8 +426,15 @@ func _finish_electric_surge_state() -> void:
 
 
 func _clear_electric_surge_state() -> void:
+	var ending_activation_id := _electric_surge_activation_id
+	if ending_activation_id == _electric_surge_auto_fire_activation_id:
+		_electric_surge_finished_barrage_sequence = maxi(
+			_electric_surge_finished_barrage_sequence,
+			_latest_remote_action_sequence
+		)
 	if electric_surge_duration_timer != null:
 		electric_surge_duration_timer.stop()
+	_stop_electric_surge_auto_fire(ending_activation_id)
 	_electric_surge_active = false
 	_electric_surge_authoritative = false
 	_electric_surge_activation_id = 0
@@ -638,14 +715,12 @@ func try_authoritative_tango_charge_started(direction: Vector2) -> bool:
 	if (
 		is_dead
 		or are_combat_actions_locked()
+		or _electric_surge_active
 		or _casting_state != CastingState.ORBIT
 	):
 		return false
 	var safe_direction := _get_safe_tango_direction(direction)
-	if _electric_surge_active:
-		_start_barrage_sequence(safe_direction, 1.0, true)
-	else:
-		_begin_charge_visual(safe_direction)
+	_begin_charge_visual(safe_direction)
 	return true
 
 
@@ -697,10 +772,10 @@ func play_remote_tango_charge_started(direction: Vector2, sequence: int) -> void
 	if is_dead or are_combat_actions_locked():
 		return
 	var safe_direction := _get_safe_tango_direction(direction)
-	if _electric_surge_active:
-		_start_barrage_sequence(safe_direction, 1.0, false)
-	else:
-		_begin_charge_visual(safe_direction)
+	if is_electric_surge_auto_fire_active():
+		_set_barrage_direction(safe_direction)
+		return
+	_begin_charge_visual(safe_direction)
 
 
 func play_remote_tango_barrage_started(
@@ -711,6 +786,9 @@ func play_remote_tango_barrage_started(
 	if not _accept_remote_tango_charge_terminal(sequence):
 		return
 	if is_dead or are_combat_actions_locked() or not is_finite(charge_ratio):
+		return
+	if is_electric_surge_auto_fire_active():
+		_set_barrage_direction(direction)
 		return
 	_start_barrage_sequence(
 		_get_safe_tango_direction(direction),
@@ -727,10 +805,14 @@ func reconcile_predicted_tango_barrage_started(
 	if not _accept_remote_tango_charge_terminal(sequence):
 		return
 	if is_dead or are_combat_actions_locked() or not is_finite(charge_ratio):
-		_cancel_charge_visual()
+		if not is_electric_surge_auto_fire_active():
+			_cancel_charge_visual()
 		return
 	var safe_direction := _get_safe_tango_direction(direction)
 	var safe_ratio := clampf(charge_ratio, 0.0, 1.0)
+	if is_electric_surge_auto_fire_active():
+		_set_barrage_direction(safe_direction)
+		return
 	if _casting_state in [CastingState.CONVERGING, CastingState.FIRING]:
 		_set_barrage_direction(safe_direction)
 		_apply_barrage_release_profile(safe_ratio)
@@ -753,6 +835,8 @@ func reconcile_predicted_tango_barrage_started(
 
 func play_remote_tango_charge_cancelled(sequence: int) -> void:
 	if not _accept_remote_tango_charge_terminal(sequence):
+		return
+	if is_electric_surge_auto_fire_active():
 		return
 	_cancel_charge_visual()
 
@@ -781,6 +865,8 @@ func reconcile_predicted_tango_charge_started(
 	if is_dead or are_combat_actions_locked():
 		reject_predicted_tango_charge()
 		return
+	if is_electric_surge_auto_fire_active():
+		return
 	if _casting_state == CastingState.CHARGING:
 		return
 	if _casting_state not in [CastingState.CONVERGING, CastingState.FIRING]:
@@ -795,6 +881,8 @@ func reconcile_predicted_tango_charge_started(
 
 func reject_predicted_tango_charge() -> void:
 	_local_charge_input_active = false
+	if is_electric_surge_auto_fire_active():
+		return
 	_cancel_charge_visual()
 
 
@@ -858,7 +946,11 @@ func _start_barrage_sequence(
 	authoritative: bool
 ) -> void:
 	var safe_ratio := clampf(charge_ratio, 0.0, 1.0)
-	if uses_local_input and _electric_surge_active:
+	if (
+		uses_local_input
+		and _electric_surge_active
+		and _electric_surge_auto_fire_activation_id <= 0
+	):
 		_attack_aim_uses_mouse = mouse_fire_held
 	_barrage_direction = _get_safe_tango_direction(direction)
 	_apply_barrage_release_profile(safe_ratio)
@@ -969,6 +1061,7 @@ func apply_remote_tango_barrage_snapshot(
 ) -> void:
 	if (
 		charge_sequence <= 0
+		or charge_sequence <= _electric_surge_finished_barrage_sequence
 		or charge_sequence < _latest_remote_action_sequence
 		or not is_finite(charge_ratio)
 		or not is_finite(barrage_remaining_seconds)
@@ -981,11 +1074,22 @@ func apply_remote_tango_barrage_snapshot(
 		return
 	_set_barrage_direction(direction)
 	_apply_barrage_release_profile(clampf(charge_ratio, 0.0, 1.0))
+	var surge_auto_fire_active := is_electric_surge_auto_fire_active()
+	if surge_auto_fire_active:
+		_barrage_duration = maxf(
+			get_electric_surge_remaining_seconds(),
+			BARRAGE_EPSILON
+		)
 	var signed_remaining := clampf(
 		barrage_remaining_seconds,
 		-UNIT_RETURN_DURATION,
 		_barrage_duration
 	)
+	if surge_auto_fire_active:
+		# The reliable skill timer owns the replica's lifetime. Volley snapshots only
+		# reconcile aim while the automatic barrage is active, so cross-channel
+		# packet order cannot shorten it back to the ordinary five-second profile.
+		signed_remaining = _barrage_duration
 	# Remote replicas never emit gameplay bullets. The Host batch itself is the
 	# cadence source, so skip their local predicted volley schedule after a sync.
 	_barrage_next_volley_time = _barrage_duration
@@ -1383,6 +1487,7 @@ func _reset_tango_combat_state(show_units: bool) -> void:
 	_barrage_damage_snapshot = 0
 	_barrage_is_authoritative = false
 	_barrage_volley_count = 0
+	_electric_surge_auto_fire_activation_id = 0
 	_attack_aim_uses_mouse = false
 	_requires_neutral_before_charge = false
 	_unit_converge_elapsed = 0.0
