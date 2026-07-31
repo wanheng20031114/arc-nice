@@ -43,10 +43,6 @@ shader_parameter/revive_glow_strength = 0.0
 shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_beam"]
-resource_local_to_scene = true
-size = Vector2(48, 6)
-
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_d5fwl"]
 resource_local_to_scene = true
 shader = ExtResource("11_dash_shader")
@@ -101,39 +97,6 @@ position = Vector2(-7, -7)
 sprite_frames = ExtResource("4_unit_frames")
 animation = &"orbit"
 autoplay = "orbit"
-
-[node name="BeamArea" type="Area2D" parent="." unique_id=1794456778]
-z_index = 4
-collision_layer = 0
-collision_mask = 4
-monitoring = false
-monitorable = false
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="BeamArea" unique_id=1810073652]
-position = Vector2(24, 0)
-shape = SubResource("RectangleShape2D_beam")
-disabled = true
-
-[node name="VisualRoot" type="Node2D" parent="BeamArea" unique_id=727576226]
-visible = false
-
-[node name="Glow" type="Line2D" parent="BeamArea/VisualRoot" unique_id=2013451202]
-z_index = 4
-points = PackedVector2Array(0, 0, 48, 0)
-width = 8.0
-default_color = Color(0.15, 0.92, 0.96, 0.22)
-
-[node name="Body" type="Line2D" parent="BeamArea/VisualRoot" unique_id=753402004]
-z_index = 5
-points = PackedVector2Array(0, 0, 48, 0)
-width = 4.0
-default_color = Color(0.219608, 0.92549, 0.952941, 0.92)
-
-[node name="Core" type="Line2D" parent="BeamArea/VisualRoot" unique_id=469789846]
-z_index = 6
-points = PackedVector2Array(0, 0, 48, 0)
-width = 2.0
-default_color = Color(0.88, 1, 1, 1)
 
 [node name="MoveSpeedTrailEffect" parent="." unique_id=1904055585 instance=ExtResource("13_speed_trail")]
 

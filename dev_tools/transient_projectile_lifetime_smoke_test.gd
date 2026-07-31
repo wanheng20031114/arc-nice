@@ -16,6 +16,13 @@ const PROJECTILE_CASES := [
 		"view_bounded": true,
 	},
 	{
+		"label": "tango_laser_bullet",
+		"scene": preload("res://scene/player/tango/tango_laser_bullet.tscn"),
+		"expected_lifetime": 0.722,
+		"expected_speed": 480.0,
+		"view_bounded": true,
+	},
+	{
 		"label": "weishidaier_skill1_bomb",
 		"scene": preload("res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn"),
 		"expected_lifetime": 1.4,

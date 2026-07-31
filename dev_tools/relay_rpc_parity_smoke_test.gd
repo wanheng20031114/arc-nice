@@ -51,6 +51,7 @@ func _run() -> void:
 		"net_bamboo_mortar_visual_batch",
 		"net_hydrangea_rain_visual",
 		"net_corn_machine_gun_burst_batch",
+		"net_tango_laser_volley",
 		"net_linglan_skill1_ring_batch",
 		"net_enemy_lightning_chain",
 		"net_runtime_state_requested",
@@ -180,10 +181,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 28,
-		"Tango角色编码、宿主蓄力、四种游戏模式与房间容量同步要求协议v28。"
+		NetConstants.PROTOCOL_VERSION == 29,
+		"Tango三炮齐射、持续瞄准、四种游戏模式与房间容量同步要求协议v29。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v28 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v29 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -222,7 +223,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v28 hosts must accept exactly v28 and reject v27."
+		"Protocol v29 hosts must accept exactly v29 and reject v28."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -289,11 +290,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 28")
+		and relay_source.contains("const PROTOCOL_VERSION := 29")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v28, accept the room capacity, and provision "
+			"Relay server must declare v29, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)
@@ -341,9 +342,32 @@ func _test_tango_charge_authority_source() -> void:
 	)
 	_expect(
 		compact_source.contains(
-			"player_node.call(\"reconcile_predicted_tango_laser_fired\",safe_direction,charge_ratio,charge_sequence)"
+			"player_node.call(\"reconcile_predicted_tango_barrage_started\",safe_direction,charge_ratio,charge_sequence)"
 		),
-		"The owning client must reconcile its predicted Tango laser instead of restarting it."
+		"The owning client must reconcile its predicted Tango barrage instead of restarting it."
+	)
+	_expect(
+		compact_source.contains("funcregister_local_tango_laser_volley(")
+		and compact_source.contains("projectiles.size()!=TANGO_LASER_VOLLEY_PROJECTILE_COUNT")
+		and compact_source.contains("&\"net_tango_laser_volley\"")
+		and compact_source.contains("_allocate_projectile_id(owner_peer_id,true)"),
+		"Tango's three projectiles must be allocated and broadcast as one Host-origin volley."
+	)
+	_expect(
+		compact_source.contains("_last_tango_volley_visual_state_by_peer")
+		and compact_source.contains("charge_sequence>current_charge_sequence")
+		and compact_source.contains(
+			"host_fire_timestamp>previous_visual_timestamp"
+		)
+		and compact_source.contains("func_get_unbounded_host_event_age("),
+		"Tango volley visuals must reject stale sequences/timestamps and use unbounded event age."
+	)
+	_expect(
+		compact_source.contains("uses_passive_tango_mouse_aim")
+		and compact_source.contains(
+			"andnotuses_passive_tango_mouse_aim):returnVector2.ZERO"
+		),
+		"Tango's released barrage must continue sending passive mouse aim input."
 	)
 	_expect(
 		compact_source.contains(
@@ -498,6 +522,24 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		_expect_rpc_signature_contains(
 			rpcs,
 			"net_linglan_skill1_ring_batch",
+			signature_fragment
+		)
+	for signature_fragment in [
+		"projectile_ids:PackedInt64Array",
+		"spawn_positions:PackedVector2Array",
+		"direction:Vector2",
+		"owner_peer_id:int",
+		"charge_sequence:int",
+		"charge_ratio:float",
+		"barrage_remaining_seconds:float",
+		"damage:int",
+		"speed:float",
+		"lifetime:float",
+		"host_fire_timestamp:float",
+	]:
+		_expect_rpc_signature_contains(
+			rpcs,
+			"net_tango_laser_volley",
 			signature_fragment
 		)
 	_expect_rpc_signature_contains(
@@ -755,11 +797,15 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_corn_machine_gun_burst_batch",
 		NetConstants.CH_PROJECTILE
 	)
-	_expect_rpc_channel(
-		rpcs,
+	for projectile_batch_method in [
+		"net_tango_laser_volley",
 		"net_linglan_skill1_ring_batch",
-		NetConstants.CH_PROJECTILE
-	)
+	]:
+		_expect_rpc_channel(
+			rpcs,
+			projectile_batch_method,
+			NetConstants.CH_PROJECTILE
+		)
 	for world_event_method in [
 		"net_tango_charge_started_requested",
 		"net_tango_charge_released_requested",

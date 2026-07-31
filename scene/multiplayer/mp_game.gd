@@ -59,6 +59,9 @@ const HYDRANGEA_RAIN_TOWER_SCRIPT := preload(
 const CORN_MACHINE_GUN_SCRIPT := preload("res://scene/plant_defense/corn_machine_gun.gd")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const BULLET_SCENE_PATH := "res://scene/bullet.tscn"
+const TANGO_LASER_BULLET_SCENE_PATH := (
+	"res://scene/player/tango/tango_laser_bullet.tscn"
+)
 const TIYI_SNIPER_BULLET_SCENE_PATH := "res://scene/player/tiyi/tiyi_sniper_bullet.tscn"
 const TIYI_SNIPER_HIT_EFFECT_SCENE_PATH := (
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn"
@@ -107,7 +110,8 @@ const DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS := 0.35
 const HOE_ACTION_PRIMARY := &"primary"
 const HOE_ACTION_WHIRLWIND := &"whirlwind"
 const TANGO_CHARGE_MINIMUM_SECONDS := 0.2
-const TANGO_CHARGE_MAXIMUM_SECONDS := 2.5
+const TANGO_CHARGE_MAXIMUM_SECONDS := 2.4
+const TANGO_BARRAGE_MAXIMUM_SECONDS := 5.0
 const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
 const TANGO_CHARGE_PHASE_START := "start"
 const TANGO_CHARGE_PHASE_RELEASE := "release"
@@ -162,6 +166,8 @@ const LIGHTNING_SORCERER_CHAIN_MIN_POINTS := 2
 const LIGHTNING_SORCERER_CHAIN_MAX_POINTS := 6
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
+const TANGO_LASER_PROJECTILE_TYPE: StringName = &"tango_laser_bullet"
+const TANGO_LASER_VOLLEY_PROJECTILE_COUNT := 3
 const TIYI_HIGH_NOON_MAX_TARGETS := 25
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
 const SNAPSHOT_PACKET_WARN_BYTES := 1200
@@ -315,6 +321,7 @@ var _player_character_mismatch_warnings: Dictionary = {}
 var _hoe_action_sequences_by_peer: Dictionary = {}
 var _last_hoe_action_request_ids: Dictionary = {}
 var _tango_charge_sequences_by_peer: Dictionary = {}
+var _last_tango_volley_visual_state_by_peer: Dictionary = {}
 var _last_tango_charge_request_ids: Dictionary = {}
 var _active_tango_charges_by_peer: Dictionary = {}
 var _tiyi_activation_sequences_by_peer: Dictionary = {}
@@ -3567,6 +3574,7 @@ func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
 func _get_rpc_traffic_channel(method_name: StringName) -> int:
 	if (
 		method_name == &"net_projectile_fired"
+		or method_name == &"net_tango_laser_volley"
 		or method_name == &"net_linglan_skill1_ring_batch"
 		or method_name == &"net_plant_projectile_visual"
 		or method_name == &"net_corn_machine_gun_burst_batch"
@@ -3824,7 +3832,14 @@ func _get_client_shoot_input() -> Vector2:
 		return shoot_input
 	if game == null or game.player == null:
 		return Vector2.ZERO
-	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+	var uses_passive_tango_mouse_aim := (
+		game.player.has_method("uses_passive_tango_mouse_aim")
+		and bool(game.player.call("uses_passive_tango_mouse_aim"))
+	)
+	if (
+		not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		and not uses_passive_tango_mouse_aim
+	):
 		return Vector2.ZERO
 	return game.player.global_position.direction_to(game.player.get_global_mouse_position())
 
@@ -4768,7 +4783,7 @@ func net_tango_charge_released(
 		if request_id != _local_tango_active_request_id:
 			return
 		player_node.call(
-			"reconcile_predicted_tango_laser_fired",
+			"reconcile_predicted_tango_barrage_started",
 			safe_direction,
 			charge_ratio,
 			charge_sequence
@@ -4777,7 +4792,7 @@ func net_tango_charge_released(
 		_local_tango_release_pending = false
 		return
 	player_node.call(
-		"play_remote_tango_laser_fired",
+		"play_remote_tango_barrage_started",
 		safe_direction,
 		charge_ratio,
 		charge_sequence
@@ -5046,9 +5061,10 @@ func _is_valid_tango_player(player_node: Player) -> bool:
 		and player_node.has_method("cancel_authoritative_tango_charge")
 		and player_node.has_method("is_tango_charge_active")
 		and player_node.has_method("play_remote_tango_charge_started")
-		and player_node.has_method("play_remote_tango_laser_fired")
+		and player_node.has_method("play_remote_tango_barrage_started")
+		and player_node.has_method("apply_remote_tango_barrage_snapshot")
 		and player_node.has_method("play_remote_tango_charge_cancelled")
-		and player_node.has_method("reconcile_predicted_tango_laser_fired")
+		and player_node.has_method("reconcile_predicted_tango_barrage_started")
 	)
 
 
@@ -5350,6 +5366,100 @@ func register_local_projectile(
 			host_fire_timestamp,
 			target_enemy_net_id
 		)
+
+
+func register_local_tango_laser_volley(
+	projectiles: Array[Node],
+	spawn_positions: PackedVector2Array,
+	direction: Vector2,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	charge_ratio: float,
+	barrage_remaining_seconds: float
+) -> bool:
+	if (
+		projectiles.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
+		or spawn_positions.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
+		or net_manager == null
+		or not net_manager.is_multiplayer_active()
+		or not net_manager.is_host()
+		or owner_peer_id <= 0
+		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
+		or not _NetConstants.is_valid_network_combat_value(damage)
+		or not _is_finite_vector2(direction)
+		or direction.length_squared() <= 0.001
+		or not is_finite(speed)
+		or speed <= 0.0
+		or not is_finite(lifetime)
+		or lifetime <= 0.0
+		or not is_finite(charge_ratio)
+		or charge_ratio < 0.0
+		or charge_ratio > 1.0
+		or not is_finite(barrage_remaining_seconds)
+		or barrage_remaining_seconds < 0.0
+		or barrage_remaining_seconds > TANGO_BARRAGE_MAXIMUM_SECONDS
+	):
+		return false
+	var charge_sequence := int(
+		_tango_charge_sequences_by_peer.get(owner_peer_id, 0)
+	)
+	if charge_sequence <= 0:
+		return false
+	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
+		var projectile := projectiles[projectile_index]
+		if (
+			projectile == null
+			or not is_instance_valid(projectile)
+			or not _is_finite_vector2(spawn_positions[projectile_index])
+		):
+			return false
+
+	# Allocate the complete Host-origin triplet before touching either registry,
+	# so a failed allocation cannot leave a half-registered three-cannon volley.
+	var projectile_ids := PackedInt64Array()
+	for _projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
+		var projectile_id := _allocate_projectile_id(owner_peer_id, true)
+		if projectile_id <= 0:
+			return false
+		projectile_ids.append(projectile_id)
+	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
+		var projectile := projectiles[projectile_index]
+		var projectile_id := int(projectile_ids[projectile_index])
+		_setup_projectile_network_identity(
+			projectile,
+			projectile_id,
+			owner_peer_id,
+			TANGO_LASER_PROJECTILE_TYPE
+		)
+		_known_projectiles[projectile_id] = projectile
+		_remember_projectile_record(
+			projectile_id,
+			owner_peer_id,
+			TANGO_LASER_PROJECTILE_TYPE,
+			damage,
+			lifetime,
+			false
+		)
+	var host_fire_timestamp := _get_net_time()
+	_rpc_to_connected_clients(
+		&"net_tango_laser_volley",
+		[
+			projectile_ids,
+			spawn_positions,
+			direction.normalized(),
+			owner_peer_id,
+			charge_sequence,
+			charge_ratio,
+			barrage_remaining_seconds,
+			damage,
+			speed,
+			lifetime,
+			host_fire_timestamp,
+		]
+	)
+	return true
 
 
 func register_local_linglan_skill1_ring(
@@ -5690,6 +5800,101 @@ func _try_accept_client_projectile_request_identity(
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
+func net_tango_laser_volley(
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	direction: Vector2,
+	owner_peer_id: int,
+	charge_sequence: int,
+	charge_ratio: float,
+	barrage_remaining_seconds: float,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float
+) -> void:
+	if not _is_valid_tango_laser_volley_payload(
+		projectile_ids,
+		spawn_positions,
+		direction,
+		owner_peer_id,
+		charge_sequence,
+		charge_ratio,
+		barrage_remaining_seconds,
+		damage,
+		speed,
+		lifetime,
+		host_fire_timestamp
+	):
+		return
+	var current_charge_sequence := int(
+		_tango_charge_sequences_by_peer.get(owner_peer_id, 0)
+	)
+	var previous_visual_state := (
+		_last_tango_volley_visual_state_by_peer.get(owner_peer_id, {})
+		as Dictionary
+	)
+	var previous_visual_sequence := int(
+		previous_visual_state.get("sequence", 0)
+	)
+	var previous_visual_timestamp := float(
+		previous_visual_state.get("host_fire_timestamp", -1.0)
+	)
+	var should_apply_visual_state := (
+		charge_sequence > current_charge_sequence
+		or (
+			charge_sequence == current_charge_sequence
+			and (
+				charge_sequence > previous_visual_sequence
+				or host_fire_timestamp > previous_visual_timestamp
+			)
+		)
+	)
+	if charge_sequence > current_charge_sequence:
+		_tango_charge_sequences_by_peer[owner_peer_id] = charge_sequence
+	var barrage_age := _get_unbounded_host_event_age(host_fire_timestamp)
+	var visual_remaining := barrage_remaining_seconds - barrage_age
+	if should_apply_visual_state:
+		_last_tango_volley_visual_state_by_peer[owner_peer_id] = {
+			"sequence": charge_sequence,
+			"host_fire_timestamp": host_fire_timestamp,
+		}
+		var owner_player: Player = null
+		if game != null:
+			owner_player = game.get_player_for_peer(owner_peer_id)
+		if (
+			owner_player != null
+			and is_instance_valid(owner_player)
+			and owner_player.has_method("apply_remote_tango_barrage_snapshot")
+		):
+			owner_player.call(
+				"apply_remote_tango_barrage_snapshot",
+				direction,
+				charge_ratio,
+				charge_sequence,
+				visual_remaining
+			)
+	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
+		var projectile_id := int(projectile_ids[projectile_index])
+		if _known_projectiles.has(projectile_id) or _projectile_records.has(projectile_id):
+			continue
+		_spawn_network_projectile(
+			projectile_id,
+			TANGO_LASER_PROJECTILE_TYPE,
+			owner_peer_id,
+			spawn_positions[projectile_index],
+			direction,
+			damage,
+			speed,
+			lifetime,
+			false,
+			0,
+			host_fire_timestamp,
+			0
+		)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 4)
 func net_linglan_skill1_ring_batch(
 	projectile_ids: PackedInt64Array,
 	spawn_positions: PackedVector2Array,
@@ -5831,11 +6036,24 @@ func _spawn_network_projectile(
 func _get_projectile_time_compensation_age(host_fire_timestamp: float, lifetime: float) -> float:
 	if host_fire_timestamp < 0.0:
 		return 0.0
-	var mapped_fire_time := host_fire_timestamp
+	var age := _get_unbounded_host_event_age(host_fire_timestamp)
+	return clampf(
+		age,
+		0.0,
+		minf(PROJECTILE_TIME_COMPENSATION_MAX_SECONDS, maxf(lifetime, 0.0))
+	)
+
+
+func _get_unbounded_host_event_age(host_event_timestamp: float) -> float:
+	if host_event_timestamp < 0.0:
+		return 0.0
+	var mapped_fire_time := host_event_timestamp
 	if net_manager == null or not net_manager.is_host():
-		mapped_fire_time = _map_host_timestamp_to_client_time(host_fire_timestamp, false)
-	var age := _get_net_time() - mapped_fire_time
-	return clampf(age, 0.0, minf(PROJECTILE_TIME_COMPENSATION_MAX_SECONDS, maxf(lifetime, 0.0)))
+		mapped_fire_time = _map_host_timestamp_to_client_time(
+			host_event_timestamp,
+			false
+		)
+	return maxf(_get_net_time() - mapped_fire_time, 0.0)
 
 
 func _apply_projectile_lifetime_compensation(
@@ -5849,6 +6067,7 @@ func _apply_projectile_lifetime_compensation(
 	var is_view_bounded_player_projectile := (
 		projectile_type == &"player_bullet"
 		or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
+		or projectile_type == TANGO_LASER_PROJECTILE_TYPE
 	)
 	var minimum_remaining := 0.0 if is_view_bounded_player_projectile else 0.05
 	var remaining := maxf(lifetime - compensation_age, minimum_remaining)
@@ -5975,6 +6194,27 @@ func _instantiate_projectile(
 			bullet.max_lifetime = lifetime
 			bullet.remaining_lifetime = lifetime
 			return bullet
+		TANGO_LASER_PROJECTILE_TYPE:
+			var tango_laser_scene := _get_runtime_packed_scene(
+				TANGO_LASER_BULLET_SCENE_PATH
+			)
+			if tango_laser_scene == null:
+				return null
+			var tango_laser := _acquire_or_instantiate_projectile(
+				tango_laser_scene
+			) as Bullet
+			if tango_laser == null:
+				return null
+			tango_laser.top_level = true
+			tango_laser.setup(direction, damage, false)
+			tango_laser.speed = speed
+			tango_laser.max_lifetime = lifetime
+			tango_laser.remaining_lifetime = lifetime
+			if game != null:
+				tango_laser.setup_collectible_owner(
+					game.get_player_for_peer(owner_peer_id)
+				)
+			return tango_laser
 		TIYI_SNIPER_PROJECTILE_TYPE:
 			var sniper_scene := _get_runtime_packed_scene(TIYI_SNIPER_BULLET_SCENE_PATH)
 			if sniper_scene == null:
@@ -6880,6 +7120,57 @@ func _is_valid_enemy_lightning_chain_points(points: PackedVector2Array) -> bool:
 	return true
 
 
+func _is_valid_tango_laser_volley_payload(
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	direction: Vector2,
+	owner_peer_id: int,
+	charge_sequence: int,
+	charge_ratio: float,
+	barrage_remaining_seconds: float,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float
+) -> bool:
+	if (
+		projectile_ids.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
+		or spawn_positions.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
+		or owner_peer_id <= 0
+		or charge_sequence <= 0
+		or not is_finite(charge_ratio)
+		or charge_ratio < 0.0
+		or charge_ratio > 1.0
+		or not is_finite(barrage_remaining_seconds)
+		or barrage_remaining_seconds < 0.0
+		or barrage_remaining_seconds > TANGO_BARRAGE_MAXIMUM_SECONDS
+		or not _NetConstants.is_valid_network_combat_value(damage)
+		or not _is_finite_vector2(direction)
+		or direction.length_squared() <= 0.001
+		or not is_finite(speed)
+		or speed <= 0.0
+		or not is_finite(lifetime)
+		or lifetime <= 0.0
+		or not is_finite(host_fire_timestamp)
+		or host_fire_timestamp < 0.0
+	):
+		return false
+	var seen_projectile_ids: Dictionary[int, bool] = {}
+	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
+		var projectile_id := int(projectile_ids[projectile_index])
+		if (
+			seen_projectile_ids.has(projectile_id)
+			or not _is_projectile_id_valid_for_host_owner(
+				projectile_id,
+				owner_peer_id
+			)
+			or not _is_finite_vector2(spawn_positions[projectile_index])
+		):
+			return false
+		seen_projectile_ids[projectile_id] = true
+	return true
+
+
 func _is_valid_linglan_skill1_ring_payload(
 	projectile_ids: PackedInt64Array,
 	spawn_positions: PackedVector2Array,
@@ -7159,7 +7450,11 @@ func _apply_enemy_hit_report(
 		return
 	var projectile_type := StringName(projectile_record.get("projectile_type", &""))
 	var consumes_first_confirmed_hit := (
-		(projectile_type == &"player_bullet" or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE)
+		(
+			projectile_type == &"player_bullet"
+			or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
+			or projectile_type == TANGO_LASER_PROJECTILE_TYPE
+		)
 		and not bool(projectile_record.get("pierces_enemies", false))
 	)
 	if consumes_first_confirmed_hit and bool(projectile_record.get("confirmed_hit_consumed", false)):
@@ -7188,6 +7483,7 @@ func _apply_enemy_hit_report(
 		and (
 			projectile_type == &"player_bullet"
 			or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
+			or projectile_type == TANGO_LASER_PROJECTILE_TYPE
 			or projectile_type == &"skill1_bomb"
 		)
 	):
@@ -7238,6 +7534,7 @@ func _apply_enemy_hit_report(
 		(
 			projectile_type == &"player_bullet"
 			or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
+			or projectile_type == TANGO_LASER_PROJECTILE_TYPE
 		)
 		and owner_player != null
 		and is_instance_valid(owner_player)
@@ -13690,6 +13987,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_hoe_action_sequences_by_peer.erase(peer_id)
 	_last_hoe_action_request_ids.erase(peer_id)
 	_tango_charge_sequences_by_peer.erase(peer_id)
+	_last_tango_volley_visual_state_by_peer.erase(peer_id)
 	_last_tango_charge_request_ids.erase(peer_id)
 	_active_tango_charges_by_peer.erase(peer_id)
 	_tiyi_activation_sequences_by_peer.erase(peer_id)
@@ -13829,6 +14127,7 @@ func _return_to_lobby() -> void:
 	_player_character_mismatch_warnings.clear()
 	_hoe_action_sequences_by_peer.clear()
 	_tango_charge_sequences_by_peer.clear()
+	_last_tango_volley_visual_state_by_peer.clear()
 	_last_tango_charge_request_ids.clear()
 	_active_tango_charges_by_peer.clear()
 	_local_tango_active_request_id = 0

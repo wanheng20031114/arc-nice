@@ -4,6 +4,12 @@ const TANGO_SCENE := preload("res://scene/player/tango/player_tango.tscn")
 const TANGO_IDLE_TEXTURE_PATH := (
 	"res://resources/texture/player/tango/tango_idle_front_32.png"
 )
+const TANGO_LASER_BULLET_SCENE := preload(
+	"res://scene/player/tango/tango_laser_bullet.tscn"
+)
+const TANGO_LASER_MATERIAL := preload(
+	"res://resources/shader/tango_laser_bullet_single_pass.tres"
+)
 const TANGO_MOVE_BOB_OFFSETS := [0, 1, 1, 0, 0, 1, 1, 0]
 const TANGO_DOWN_BODY_X_OFFSETS := [0, -1, -1, -1, 0, 1, 1, 1]
 const TANGO_DOWN_EXPECTED_CONTACTS := [
@@ -19,22 +25,27 @@ const TANGO_DOWN_EXPECTED_CONTACTS := [
 const TANGO_FIXED_BODY_BOTTOM := 23
 
 
-class TangoTickProbe:
+class TangoScheduleProbe:
 	extends PlayerTango
 
-	var damage_tick_count := 0
+	var emitted_volley_count := 0
 
 
-	func _apply_beam_damage_tick() -> int:
-		damage_tick_count += 1
-		return 0
+	func _emit_tango_volley() -> void:
+		emitted_volley_count += 1
+		_barrage_volley_count += 1
 
 
-class TangoBeamEnemy:
+	func _get_effective_fire_interval() -> float:
+		return 100.0 / 240.0
+
+
+class TangoBulletEnemy:
 	extends Enemy
 
 	var total_damage_taken := 0
 	var last_damage_type := EnemyConfig.DamageType.MAGIC
+	var last_source_type := StringName()
 
 
 	func _ready() -> void:
@@ -48,6 +59,7 @@ class TangoBeamEnemy:
 	func _on_combat_damage_applied(result: DamageResult) -> void:
 		total_damage_taken += result.applied_damage
 		last_damage_type = result.request.damage_type as EnemyConfig.DamageType
+		last_source_type = result.request.source_type
 
 
 var failures: Array[String] = []
@@ -83,8 +95,8 @@ func _run() -> void:
 		_test_character_contract()
 		_test_authored_casting_units_and_orbit()
 		await _test_charge_release_contract()
-		_test_full_charge_damage_tick_schedule()
-		await _test_authored_beam_overlap_and_damage()
+		_test_barrage_tier_and_schedule_contract()
+		await _test_laser_bullet_scene_and_damage()
 	_test_animation_and_pixel_contract()
 	await _finish()
 
@@ -96,12 +108,25 @@ func _test_character_contract() -> void:
 		_expect(config.starting_max_health == 60, "Tango config must start at 60 health.")
 		_expect(config.starting_attack_damage == 10, "Tango config must start at 10 attack.")
 		_expect(
+			is_equal_approx(config.starting_attack_speed, 240.0)
+			and is_equal_approx(config.attack_speed_units_per_attack, 100.0),
+			"Tango must start at 240 attack speed with 100 units per volley."
+		)
+		_expect(
 			config.player_scene == "res://scene/player/tango/player_tango.tscn",
 			"Tango config must point to the authored Tango scene."
 		)
 	_expect(player.get_character_id() == PlayerCharacterRegistry.TANGO_ID, "Tango must keep its explicit character id.")
 	_expect(player.max_health == 60 and player.current_health == 60, "Tango must enter play at 60/60 health.")
 	_expect(player.attack_damage == 10, "Tango must enter play with 10 base attack.")
+	_expect(
+		is_equal_approx(player.call("_get_effective_fire_interval"), 100.0 / 240.0),
+		"Tango's default interval must be 0.4167 seconds per three-shot volley."
+	)
+	_expect(
+		not player.supports_projectile_attack_patterns(),
+		"Tango must not advertise unsynchronised piercing/homing shot patterns."
+	)
 	_expect(not player.has_skill1(), "Tango skill1 must remain locked until it is implemented.")
 	_expect(
 		not player.supports_research_technology()
@@ -113,14 +138,18 @@ func _test_character_contract() -> void:
 		"Tango's unavailable skill1 bar must remain hidden."
 	)
 
-	# Distinct bonuses make the damage snapshot prove that the beam selects the
-	# physical channel rather than merely matching the unmodified base attack.
+	# Distinct bonuses prove that the barrage snapshots the physical channel.
 	player.collectible_physical_damage_bonus = 3
 	player.collectible_magic_damage_bonus = 100
-	player.call("_start_beam_sequence", Vector2.RIGHT, 0.0, true)
+	player.call(
+		"_start_barrage_sequence",
+		Vector2.RIGHT,
+		_charge_seconds_to_release_ratio(0.5),
+		true
+	)
 	_expect(
-		int(player.get("_beam_damage_snapshot")) == 13,
-		"Tango beam damage must snapshot the physical attack channel."
+		player.get_tango_barrage_damage() == 13,
+		"Tango barrage damage must snapshot the physical attack channel."
 	)
 	player.collectible_physical_damage_bonus = 0
 	player.collectible_magic_damage_bonus = 0
@@ -146,6 +175,10 @@ func _test_authored_casting_units_and_orbit() -> void:
 				unit.sprite_frames.has_animation(animation_name),
 				"%s must provide the %s animation." % [unit_name, animation_name]
 			)
+		_expect(
+			is_equal_approx(unit.sprite_frames.get_animation_speed(&"orbit"), 5.0),
+			"The idle casting-unit flash must run at the slower 5 FPS cadence."
+		)
 	_expect(units.size() == 3, "Tango must own exactly three authored casting units.")
 
 	var phase_step := PlayerTango.UNIT_PHASE_STEP
@@ -178,6 +211,18 @@ func _test_authored_casting_units_and_orbit() -> void:
 			"Casting unit %d must occupy its pixel-rounded 120-degree orbit position."
 			% index
 		)
+	_expect(
+		player.get_node_or_null("BeamArea") == null,
+		"The deprecated continuous BeamArea/Line2D attack must be absent."
+	)
+	var fire_positions := player.call(
+		"_get_unit_fire_positions",
+		Vector2.RIGHT
+	) as Array[Vector2]
+	_expect(
+		fire_positions == [Vector2(19, 0), Vector2(17, 5), Vector2(18, -5)],
+		"Three units must form a parallel lane with deliberate forward staggering."
+	)
 
 
 func _test_charge_release_contract() -> void:
@@ -204,9 +249,8 @@ func _test_charge_release_contract() -> void:
 	player.call("_handle_primary_attack_input", Vector2.ZERO)
 	_expect(
 		player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT
-		and is_zero_approx(player.get_tango_beam_length())
-		and is_zero_approx(player.get_tango_beam_duration()),
-		"Releasing at 0.19 seconds must cancel without creating a beam."
+		and is_zero_approx(player.get_tango_barrage_duration()),
+		"Releasing at 0.19 seconds must cancel without starting a barrage."
 	)
 
 	player.call("_handle_primary_attack_input", Vector2.RIGHT)
@@ -218,41 +262,65 @@ func _test_charge_release_contract() -> void:
 	)
 	_expect(
 		is_zero_approx(player.get_tango_release_ratio())
-		and is_equal_approx(player.get_tango_beam_length(), 48.0)
-		and is_equal_approx(player.get_tango_beam_duration(), 0.1),
-		"Minimum legal charge must produce a 48px beam lasting 0.1 seconds."
+		and is_equal_approx(player.get_tango_release_charge_seconds(), 0.2)
+		and is_equal_approx(player.get_tango_barrage_duration(), 2.0)
+		and player.get_tango_barrage_damage() == 8,
+		"Minimum legal charge must create a two-second 75% physical barrage."
 	)
+	player.call("_set_character_visual_offset", Vector2(30, 20))
+	player.call("_update_character_combat_state", PlayerTango.UNIT_CONVERGE_DURATION)
+	var first_volley := _get_live_tango_laser_bullets()
+	_expect(first_volley.size() == 3, "The first firing tick must emit exactly three bullets.")
+	var expected_spawn_positions := [
+		Vector2(25, 0), Vector2(23, 5), Vector2(24, -5)
+	]
+	for bullet_index in first_volley.size():
+		var bullet := first_volley[bullet_index]
+		_expect(
+			bullet.direction == Vector2.RIGHT
+			and bullet.damage == 8
+			and bullet.global_position == expected_spawn_positions[bullet_index],
+			(
+				"Volley bullet %d must preserve its parallel staggered muzzle contract; "
+				+ "got %s, expected %s."
+			)
+			% [
+				bullet_index,
+				bullet.global_position,
+				expected_spawn_positions[bullet_index],
+			]
+		)
+		bullet.retire()
+	player.call("_set_character_visual_offset", Vector2.ZERO)
+	await process_frame
 
 	player.call("_reset_tango_combat_state", true)
-	player.call("_start_beam_sequence", Vector2.RIGHT, 0.5, false)
+	player.call("_start_barrage_sequence", Vector2.RIGHT, 0.5, false)
 	player.call("_update_character_combat_state", PlayerTango.UNIT_CONVERGE_DURATION)
-	await process_frame
 	_expect(
-		player.beam_area.monitoring and player.beam_visual_root.visible,
-		"A predicted Tango beam must enable its authored Area2D and Line2D visuals."
+		player.get_tango_casting_state() == PlayerTango.CastingState.FIRING
+		and _get_live_tango_laser_bullets().is_empty(),
+		"A predicted barrage must animate locally without spawning damaging bullets."
 	)
 	player.reject_predicted_tango_charge()
-	await process_frame
 	_expect(
-		not player.beam_area.monitoring
-		and player.beam_collision.disabled
-		and not player.beam_visual_root.visible
-		and player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT,
-		"A Host rejection/cancellation must unconditionally stop a predicted beam."
+		player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT,
+		"A Host rejection must unconditionally stop a predicted barrage."
 	)
 
-	player.call("_start_beam_sequence", Vector2.RIGHT, 0.4, false)
+	player.call("_start_barrage_sequence", Vector2.RIGHT, 0.4, false)
 	player.confirm_predicted_tango_charge_started(7)
 	player.call("_update_character_combat_state", PlayerTango.UNIT_CONVERGE_DURATION * 0.5)
 	var converge_elapsed_before := float(player.get("_unit_converge_elapsed"))
-	player.reconcile_predicted_tango_laser_fired(Vector2.RIGHT, 0.8, 7)
+	player.reconcile_predicted_tango_barrage_started(Vector2.RIGHT, 0.8, 7)
 	_expect(
 		player.get_tango_casting_state() == PlayerTango.CastingState.CONVERGING
 		and is_equal_approx(
 			float(player.get("_unit_converge_elapsed")),
 			converge_elapsed_before
 		)
-		and is_equal_approx(player.get_tango_beam_length(), 86.4),
+		and is_equal_approx(player.get_tango_release_ratio(), 0.8)
+		and player.get_tango_barrage_duration() > 4.0,
 		"A local Host confirmation must correct prediction values without restarting convergence."
 	)
 	player.call("_reset_tango_combat_state", true)
@@ -283,76 +351,286 @@ func _test_charge_release_contract() -> void:
 	)
 	player.set_combat_actions_locked(false)
 	player.call("_handle_primary_attack_input", Vector2.RIGHT)
-	player.call("_update_character_resources", 2.5)
+	player.call("_update_character_resources", 2.4)
 	player.call("_handle_primary_attack_input", Vector2.ZERO)
 	_expect(
 		is_equal_approx(player.get_tango_release_ratio(), 1.0)
-		and is_equal_approx(player.get_tango_beam_length(), 96.0)
-		and is_equal_approx(player.get_tango_beam_duration(), 1.0),
-		"A 2.5-second full charge must produce a 96px beam lasting one second."
+		and is_equal_approx(player.get_tango_release_charge_seconds(), 2.4)
+		and is_equal_approx(player.get_tango_barrage_duration(), 5.0)
+		and player.get_tango_barrage_damage() == 15,
+		"A 2.4-second full charge must produce a five-second 150% barrage."
 	)
 	player.call("_reset_tango_combat_state", true)
 
-
-func _test_full_charge_damage_tick_schedule() -> void:
-	var probe := TangoTickProbe.new()
-	probe.set("_casting_state", PlayerTango.CastingState.FIRING)
-	probe.set("_beam_duration", 1.0)
-	probe.set("_beam_elapsed", 0.0)
-	probe.set("_beam_next_damage_time", PlayerTango.BEAM_DAMAGE_INTERVAL)
-	probe.set("_beam_is_authoritative", true)
-	probe.set("_beam_damage_snapshot", 10)
-	probe.call("_update_active_beam", 1.0)
-	_expect(
-		probe.damage_tick_count == 10,
-		"A full one-second beam must resolve exactly ten 0.1-second damage ticks."
-	)
-	_expect(
-		int(probe.get("_casting_state")) == PlayerTango.CastingState.ORBIT,
-		"The full-charge beam must return to orbit after its tenth tick."
-	)
-	probe.free()
-
-
-func _test_authored_beam_overlap_and_damage() -> void:
-	var inside_enemy := _spawn_beam_enemy(Vector2(50.0, 0.0))
-	var outside_enemy := _spawn_beam_enemy(Vector2(116.0, 0.0))
-	player.call("_reset_tango_combat_state", true)
-	_expect(
-		player.try_authoritative_tango_charge_started(Vector2.RIGHT),
-		"The authored beam overlap test must begin an authoritative charge."
-	)
-	var release_result := player.try_authoritative_tango_charge_released(
+	player.call(
+		"_start_barrage_sequence",
 		Vector2.RIGHT,
-		1.0
-	)
-	_expect(
-		bool(release_result.get("accepted", false)),
-		"The authored beam overlap test must accept a full-charge release."
+		_charge_seconds_to_release_ratio(0.5),
+		false
 	)
 	player.call("_update_character_combat_state", PlayerTango.UNIT_CONVERGE_DURATION)
+	player.set("_attack_aim_uses_mouse", true)
+	Input.action_press("shoot_up")
+	player.call("_update_local_barrage_aim")
+	Input.action_release("shoot_up")
+	_expect(
+		Vector2(player.get("_barrage_direction")) == Vector2.UP
+		and not player.uses_passive_tango_mouse_aim()
+		and player.unit_a.position == Vector2(0, -19)
+		and player.unit_b.position == Vector2(5, -17)
+		and player.unit_c.position == Vector2(-5, -18),
+		"The real stick-input path must take live aim and preserve the three-lane formation."
+	)
+	player.call("_handle_primary_attack_input", Vector2.ZERO)
+	_expect(
+		Vector2(player.get("_barrage_direction")) == Vector2.UP,
+		"A centred stick must preserve the last valid firing direction."
+	)
+	var mouse_motion := InputEventMouseMotion.new()
+	mouse_motion.position = Vector2(-100, 0)
+	player.call("_input", mouse_motion)
+	player.call("_update_local_barrage_aim")
+	_expect(
+		player.uses_passive_tango_mouse_aim()
+		and Vector2(player.get("_barrage_direction")) == Vector2.LEFT
+		and Vector2(player.call("_get_current_shoot_input")) == Vector2.LEFT,
+		"Mouse motion must retake live aim after release and after a stick adjustment."
+	)
+	player.call("_update_character_combat_state", player.get_tango_barrage_duration())
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.RETURNING,
+		"A completed barrage must enter the authored quick return state first."
+	)
+	player.call("_update_character_combat_state", PlayerTango.UNIT_RETURN_DURATION * 0.5)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.RETURNING,
+		"The return animation must not teleport directly back to orbit."
+	)
+	player.call("_update_character_combat_state", PlayerTango.UNIT_RETURN_DURATION * 0.5)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT,
+		"The units must resume their 120-degree orbit after the return animation."
+	)
+	player.call("_handle_primary_attack_input", Vector2.RIGHT)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT,
+		"A held controller aim must not auto-start a new charge after firing."
+	)
+	player.call("_handle_primary_attack_input", Vector2.ZERO)
+	player.call("_handle_primary_attack_input", Vector2.RIGHT)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.CHARGING,
+		"Returning the controller aim to neutral must re-arm the next charge."
+	)
+	player.call("_reset_tango_combat_state", true)
+	player.set("_latest_remote_action_sequence", 0)
+	player.set("_latest_remote_action_phase", 0)
+	player.apply_remote_tango_barrage_snapshot(Vector2.RIGHT, 1.0, 20, 4.0)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.FIRING
+		and is_equal_approx(float(player.get("_barrage_elapsed")), 1.0)
+		and player.unit_a.position == Vector2(19, 0),
+		"A volley that beats the reliable release must recover the current firing visual."
+	)
+	player.apply_remote_tango_barrage_snapshot(Vector2.LEFT, 1.0, 19, 4.0)
+	_expect(
+		Vector2(player.get("_barrage_direction")) == Vector2.RIGHT,
+		"A delayed volley from an older charge sequence must not turn the cannons."
+	)
+	player.apply_remote_tango_barrage_snapshot(Vector2.UP, 1.0, 20, 3.0)
+	_expect(
+		Vector2(player.get("_barrage_direction")) == Vector2.UP
+		and is_equal_approx(float(player.get("_barrage_elapsed")), 2.0),
+		"A newer snapshot from the same barrage must advance time and live aim."
+	)
+	player.apply_remote_tango_barrage_snapshot(Vector2.UP, 1.0, 20, -0.09)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.RETURNING
+		and is_equal_approx(float(player.get("_unit_return_elapsed")), 0.09),
+		"A slightly late final volley must reconstruct the quick return phase."
+	)
+	player.apply_remote_tango_barrage_snapshot(Vector2.UP, 1.0, 20, -0.2)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.ORBIT,
+		"A volley older than the return animation must leave the units in orbit."
+	)
+	player.call("_reset_tango_combat_state", true)
+	player.set("_latest_remote_action_sequence", 0)
+	player.set("_latest_remote_action_phase", 0)
+
+
+func _test_barrage_tier_and_schedule_contract() -> void:
+	var tier_cases := [
+		{"seconds": 0.2, "damage": 8, "duration": 2.0},
+		{"seconds": 0.499, "damage": 8, "duration": 2.0},
+		{"seconds": 0.5, "damage": 10, "duration": 2.0},
+		{
+			"seconds": 2.399,
+			"damage": 10,
+			"duration": _expected_barrage_duration(2.399),
+		},
+		{"seconds": 2.4, "damage": 15, "duration": 5.0},
+	]
+	for tier_case in tier_cases:
+		player.call("_reset_tango_combat_state", true)
+		var charge_seconds := float(tier_case["seconds"])
+		player.call(
+			"_start_barrage_sequence",
+			Vector2.RIGHT,
+			_charge_seconds_to_release_ratio(charge_seconds),
+			false
+		)
+		_expect(
+			player.get_tango_barrage_damage() == int(tier_case["damage"])
+			and is_equal_approx(
+				player.get_tango_barrage_duration(),
+				float(tier_case["duration"])
+			),
+			"Charge %.3f must resolve the expected damage tier and duration."
+			% charge_seconds
+		)
+
+	var two_second_probe := _run_schedule_probe(2.0, [2.0])
+	_expect(
+		two_second_probe.emitted_volley_count == 5,
+		"A two-second barrage must emit five three-shot volleys."
+	)
+	two_second_probe.free()
+	var full_big_step_probe := _run_schedule_probe(5.0, [5.0])
+	var small_steps: Array[float] = []
+	for _step in range(60):
+		small_steps.append(5.0 / 60.0)
+	var full_small_step_probe := _run_schedule_probe(5.0, small_steps)
+	_expect(
+		full_big_step_probe.emitted_volley_count == 12
+		and full_small_step_probe.emitted_volley_count == 12,
+		"A five-second full charge must emit 12 volleys under both large and small steps."
+	)
+	full_big_step_probe.free()
+	full_small_step_probe.free()
+	player.call("_reset_tango_combat_state", true)
+
+
+func _run_schedule_probe(duration: float, steps: Array[float]) -> TangoScheduleProbe:
+	var probe := TangoScheduleProbe.new()
+	probe.set("_casting_state", PlayerTango.CastingState.FIRING)
+	probe.set("_barrage_duration", duration)
+	probe.set("_barrage_elapsed", 0.0)
+	probe.set("_barrage_next_volley_time", 0.0)
+	for step in steps:
+		probe.call("_update_active_barrage", step)
+	return probe
+
+
+func _test_laser_bullet_scene_and_damage() -> void:
+	var bullet := TANGO_LASER_BULLET_SCENE.instantiate() as TangoLaserBullet
+	_expect(bullet != null, "Tango's independent laser-bullet scene must instantiate.")
+	if bullet == null:
+		return
+	var sprite := bullet.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	var sweep := bullet.get_node_or_null("ShapeCast2D") as ShapeCast2D
+	_expect(
+		is_equal_approx(bullet.speed, 480.0)
+		and is_equal_approx(bullet.max_lifetime, 0.722),
+		"Tango's small laser bullet must keep its authored speed and view-bounded lifetime."
+	)
+	_expect(
+		sprite != null
+		and sprite.sprite_frames.get_frame_count(&"fly") == 4
+		and sprite.material == TANGO_LASER_MATERIAL,
+		"The bullet must use four ImageGen-derived frames and the shared cyan single-pass glow."
+	)
+	_expect(
+		sweep != null and not sweep.enabled and sweep.collision_mask == 5,
+		"The bullet must use only explicit ShapeCast sweeps against world and enemy layers."
+	)
+	_expect(
+		_count_point_lights(bullet) == 0
+		and bullet.find_child("ProjectileHalo", true, false) == null
+		and bullet.find_child("EmissionOverlay", true, false) == null,
+		"High-frequency Tango bullets must keep diffusion in one draw without per-shot lights."
+	)
+	if sprite != null:
+		for frame_index in sprite.sprite_frames.get_frame_count(&"fly"):
+			var frame_image := _extract_frame_image(
+				sprite.sprite_frames.get_frame_texture(&"fly", frame_index)
+			)
+			var used_rect := frame_image.get_used_rect() if frame_image != null else Rect2i()
+			_expect(
+				frame_image != null
+				and frame_image.get_size() == Vector2i(24, 8)
+				and used_rect.size.x <= 20
+				and used_rect.size.y <= 5,
+				"Laser frame %d must remain a compact native 24x8 line projectile."
+				% frame_index
+			)
+
+	var enemy := _spawn_bullet_enemy(Vector2(32, 0))
+	bullet.set_physics_process(false)
+	bullet.setup(Vector2.RIGHT, 8, false)
+	bullet.source_type = &"tango_laser_bullet"
+	bullet.setup_collectible_owner(player)
+	test_root.add_child(bullet)
+	await physics_frame
+	bullet.call("_physics_process", 0.1)
+	_expect(
+		not bullet.pool_active,
+		"The disabled automatic ShapeCast must still sweep and consume a high-speed bullet."
+	)
+	_expect(
+		enemy.total_damage_taken == 8
+		and enemy.last_damage_type == EnemyConfig.DamageType.PHYSICAL
+		and enemy.last_source_type == &"tango_laser_bullet",
+		"A swept low-charge bullet must deal one physical Tango-source 8-damage hit."
+	)
+	enemy.queue_free()
 	await process_frame
+
+	var blocked_enemy := _spawn_bullet_enemy(Vector2(32, 64))
+	var wall := _spawn_sweep_wall(Vector2(16, 64))
+	var blocked_bullet := TANGO_LASER_BULLET_SCENE.instantiate() as TangoLaserBullet
+	blocked_bullet.set_physics_process(false)
+	blocked_bullet.setup(Vector2.RIGHT, 15, false)
+	blocked_bullet.global_position = Vector2(0, 64)
+	test_root.add_child(blocked_bullet)
 	await physics_frame
-	await physics_frame
-	for _tick in range(10):
-		player.call("_update_character_combat_state", PlayerTango.BEAM_DAMAGE_INTERVAL)
+	blocked_bullet.call("_physics_process", 0.1)
 	_expect(
-		inside_enemy.total_damage_taken == 100
-		and inside_enemy.last_damage_type == EnemyConfig.DamageType.PHYSICAL,
-		"An enemy inside the authored full beam must receive ten physical 10-damage ticks (got %d)."
-		% inside_enemy.total_damage_taken
+		not blocked_bullet.pool_active and blocked_enemy.total_damage_taken == 0,
+		"A nearer world body must consume the sweep before an enemy behind it."
+	)
+	blocked_enemy.queue_free()
+	wall.queue_free()
+	await process_frame
+
+	var muzzle_blocked_enemy := _spawn_bullet_enemy(Vector2(32, 128))
+	var muzzle_wall := _spawn_sweep_wall(Vector2(16, 128))
+	var muzzle_bullet := TANGO_LASER_BULLET_SCENE.instantiate() as TangoLaserBullet
+	muzzle_bullet.set_physics_process(false)
+	muzzle_bullet.setup(Vector2.RIGHT, 15, false)
+	test_root.add_child(muzzle_bullet)
+	await physics_frame
+	var clamped_spawn := muzzle_bullet.clamp_spawn_position_to_clear_path(
+		Vector2(0, 128),
+		Vector2(25, 128)
 	)
 	_expect(
-		outside_enemy.total_damage_taken == 0,
-		"An enemy beyond the authored six-grid beam must receive no damage."
+		clamped_spawn.x < 20.0,
+		"A real 25px Tango muzzle path must clamp before a close wall instead of spawning beyond it."
 	)
-	inside_enemy.queue_free()
-	outside_enemy.queue_free()
+	muzzle_bullet.global_position = clamped_spawn
+	muzzle_bullet.call("_physics_process", 0.1)
+	_expect(
+		not muzzle_bullet.pool_active and muzzle_blocked_enemy.total_damage_taken == 0,
+		"A muzzle-path wall must consume the bullet before the enemy behind it."
+	)
+	muzzle_blocked_enemy.queue_free()
+	muzzle_wall.queue_free()
 	await process_frame
 
 
-func _spawn_beam_enemy(spawn_position: Vector2) -> TangoBeamEnemy:
-	var enemy := TangoBeamEnemy.new()
+func _spawn_bullet_enemy(spawn_position: Vector2) -> TangoBulletEnemy:
+	var enemy := TangoBulletEnemy.new()
 	enemy.current_health = 1000
 	enemy.collision_layer = 4
 	enemy.collision_mask = 0
@@ -382,6 +660,61 @@ func _spawn_beam_enemy(spawn_position: Vector2) -> TangoBeamEnemy:
 	test_root.add_child(enemy)
 	enemy.position = spawn_position
 	return enemy
+
+
+func _spawn_sweep_wall(spawn_position: Vector2) -> StaticBody2D:
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	var collision := CollisionShape2D.new()
+	var rectangle := RectangleShape2D.new()
+	rectangle.size = Vector2(8, 16)
+	collision.shape = rectangle
+	wall.add_child(collision)
+	test_root.add_child(wall)
+	wall.position = spawn_position
+	return wall
+
+
+func _charge_seconds_to_release_ratio(seconds: float) -> float:
+	return clampf(
+		(seconds - PlayerTango.MIN_CHARGE_DURATION)
+		/ (PlayerTango.MAX_CHARGE_DURATION - PlayerTango.MIN_CHARGE_DURATION),
+		0.0,
+		1.0
+	)
+
+
+func _expected_barrage_duration(seconds: float) -> float:
+	return lerpf(
+		PlayerTango.MIN_BARRAGE_DURATION,
+		PlayerTango.MAX_BARRAGE_DURATION,
+		clampf(
+			(seconds - PlayerTango.LOW_CHARGE_DAMAGE_THRESHOLD)
+			/ (
+				PlayerTango.MAX_CHARGE_DURATION
+				- PlayerTango.LOW_CHARGE_DAMAGE_THRESHOLD
+			),
+			0.0,
+			1.0
+		)
+	)
+
+
+func _get_live_tango_laser_bullets() -> Array[TangoLaserBullet]:
+	var bullets: Array[TangoLaserBullet] = []
+	for child in test_root.get_children():
+		var bullet := child as TangoLaserBullet
+		if bullet != null and bullet.pool_active:
+			bullets.append(bullet)
+	return bullets
+
+
+func _count_point_lights(node: Node) -> int:
+	var count := 1 if node is PointLight2D else 0
+	for child in node.get_children():
+		count += _count_point_lights(child)
+	return count
 
 
 func _test_animation_and_pixel_contract() -> void:

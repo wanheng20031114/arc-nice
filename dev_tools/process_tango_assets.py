@@ -195,8 +195,8 @@ UNIT_HOT = PALETTE[11]
 UNIT_DIM_CYAN = PALETTE[12]
 
 # Rows remain orbit / charge / fire, four frames each.  The imagegen design supplies
-# the shape; these native-cell energy changes make it usable for a 2.5-second charge
-# and a one-second firing loop without introducing subpixel details.
+# the shape; these native-cell energy changes make it usable for a 2.4-second charge
+# and a sustained 2-to-5-second barrage loop without introducing subpixel details.
 UNIT_FRAME_SPECS = (
     # orbit: calm core and a restrained alternating thruster pulse
     (UNIT_HIGHLIGHT, UNIT_POD_STEEL, EYE_CYAN, UNIT_DIM_CYAN),

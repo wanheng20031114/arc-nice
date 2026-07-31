@@ -1,7 +1,13 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const PERFORMANCE_CAMPAIGN := preload(
+	"res://resources/config/campaigns/tower_defense/performance/campaign.tres"
+)
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const TANGO_LASER_BULLET_SCENE := preload(
+	"res://scene/player/tango/tango_laser_bullet.tscn"
+)
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
@@ -37,6 +43,7 @@ func _run() -> void:
 		return
 
 	game.auto_start_waves = false
+	game.singleplayer_campaign = PERFORMANCE_CAMPAIGN
 	root.add_child(game)
 	await process_frame
 	await physics_frame
@@ -86,11 +93,23 @@ func _run() -> void:
 	game.call("_begin_flow_step", first_wave)
 	game.enemy_spawn_timer.stop()
 	telemetry.sample_runtime_counts(game)
-	while game.current_wave_spawned < EXPECTED_MAX_ALIVE:
+	var pressure_spawn_frames := 0
+	while (
+		game.current_wave_spawned < EXPECTED_MAX_ALIVE
+		and pressure_spawn_frames < 600
+	):
 		var batch_started_usec: int = telemetry.begin_enemy_spawn_batch()
 		game.call("_spawn_wave_batch")
 		telemetry.end_enemy_spawn_batch(batch_started_usec)
 		await process_frame
+		pressure_spawn_frames += 1
+	_expect(
+		game.current_wave_spawned == EXPECTED_MAX_ALIVE,
+		(
+			"Pressure fixture must reach the 300-enemy cap within 600 frames; "
+			+ "spawned %d."
+		) % game.current_wave_spawned
+	)
 
 	var counts: Dictionary = telemetry.sample_runtime_counts(game)
 	var summary: Dictionary = telemetry.get_summary()
@@ -185,6 +204,14 @@ func _verify_runtime_classification() -> void:
 
 	bullet.set_physics_process(false)
 	game.add_child(bullet)
+	var tango_laser_bullet := TANGO_LASER_BULLET_SCENE.instantiate()
+	_expect(
+		tango_laser_bullet != null,
+		"Telemetry classifier requires a Tango laser-bullet fixture."
+	)
+	if tango_laser_bullet != null:
+		tango_laser_bullet.set_physics_process(false)
+		game.add_child(tango_laser_bullet)
 	var fire_sorcerer_volley := FIRE_SORCERER_FIREBALL_VOLLEY_SCENE.instantiate()
 	_expect(
 		fire_sorcerer_volley != null,
@@ -219,13 +246,15 @@ func _verify_runtime_classification() -> void:
 		frost_sorcerer_ice_spike.remove_from_group(&"runtime_projectiles")
 	var counts: Dictionary = telemetry.sample_runtime_counts(game)
 	_expect(
-		int(counts["active_projectiles"]) == 4,
+		int(counts["active_projectiles"]) == 5,
 		(
-			"Telemetry must recognize player, normal and elite Fire Sorcerer "
-			+ "projectiles plus the Frost Sorcerer ice spike."
+			"Telemetry must recognize player and Tango bullets, normal and elite "
+			+ "Fire Sorcerer projectiles, plus the Frost Sorcerer ice spike."
 		)
 	)
 	bullet.queue_free()
+	if tango_laser_bullet != null:
+		tango_laser_bullet.queue_free()
 	if fire_sorcerer_volley != null:
 		fire_sorcerer_volley.queue_free()
 	if elite_fire_sorcerer_volley != null:

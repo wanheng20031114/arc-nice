@@ -1,0 +1,12 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://resources/shader/rapid_projectile_single_pass.gdshader" id="1_shader"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/highlight_threshold = 0.3
+shader_parameter/highlight_softness = 0.18
+shader_parameter/emission_strength = 0.68
+shader_parameter/emission_tint = Color(0.22, 0.92549, 0.952941, 1)
+shader_parameter/quad_expansion = 1.65
+shader_parameter/halo_opacity = 0.072

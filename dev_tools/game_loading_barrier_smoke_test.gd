@@ -38,6 +38,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/audio/capoo_ak47_fire.wav",
 	"res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3",
 	"res://scene/bullet.tscn",
+	"res://scene/player/tango/tango_laser_bullet.tscn",
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn",
 	"res://resources/audio/Cowboy_gunshot.wav",
 	"res://resources/config/plant_defense/agave_cannon.tres",
@@ -374,6 +375,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 			ResourceLoader.has_cached(path),
 			"Standard loading must retain delayed Boss runtime resource: %s" % path
 		)
+	_expect_tango_projectile_pool(runtime)
 
 	load_errors.clear()
 	coordinator.loading_failed.connect(failure_callback)
@@ -396,6 +398,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 		"Tower-defense loading must finish staged preparation before activation."
 	)
 	_expect_sorcerer_projectile_pools(tower_runtime, 48, 704)
+	_expect_tango_projectile_pool(tower_runtime)
 	await physics_frame
 	await physics_frame
 	_expect_lifecycle_prewarm_pool_released(tower_runtime)
@@ -586,6 +589,27 @@ func _expect_sorcerer_projectile_pools(
 				]
 			)
 		)
+
+
+func _expect_tango_projectile_pool(runtime: GameRuntimeBase) -> void:
+	if runtime == null:
+		return
+	var object_pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
+	_expect(object_pool != null, "Runtime must expose Tango's projectile object pool.")
+	if object_pool == null:
+		return
+	var scene_path := "res://scene/player/tango/tango_laser_bullet.tscn"
+	var metrics := object_pool.get_metrics(scene_path)
+	_expect(
+		int(metrics.get("created", -1)) == 64
+		and int(metrics.get("inactive", -1)) == 64
+		and int(metrics.get("in_use", -1)) == 0
+		and int(metrics.get("pending_release", -1)) == 0
+		and int(metrics.get("overflow", -1)) == 0
+		and int(metrics.get("dropped", -1)) == 0
+		and int(metrics.get("retained_capacity", -1)) == 768,
+		"Tango laser pool must prewarm 64 leases with retained capacity 768."
+	)
 
 
 func _finish() -> void:

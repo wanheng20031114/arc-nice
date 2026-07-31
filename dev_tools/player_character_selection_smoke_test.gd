@@ -158,8 +158,10 @@ func _test_registry_and_run_state() -> void:
 	_expect(
 		tango_config.starting_max_health == 60
 		and tango_config.starting_attack_damage == 10
+		and is_equal_approx(tango_config.starting_attack_speed, 240.0)
+		and is_equal_approx(tango_config.attack_speed_units_per_attack, 100.0)
 		and tango_config.player_scene == "res://scene/player/tango/player_tango.tscn",
-		"Tango config must expose 60 health, 10 attack, and its authored player scene."
+		"Tango config must expose 60 health, 10 attack, 240 speed, and its authored scene."
 	)
 	var tiyi_config := PlayerCharacterRegistry.get_config(PlayerCharacterRegistry.TIYI_ID)
 	_expect(

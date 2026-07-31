@@ -10,7 +10,9 @@ extends RefCounted
 ## v28：新增 Tango 角色快照编码与由 Host 独立计时的可靠蓄力/释放/取消协议；
 ## 多人房间同步总人数容量，并新增测试场景 P1 / P2 模式与测试场景权威昼夜切换事件。
 ## 旧客户端无法安全解释新增模式、RPC 参数与角色状态。
-const PROTOCOL_VERSION := 28
+## v29：Tango 废除持续光束，改为 Host 权威的三炮原子齐射批包，并在既有
+## 输入流中同步松键后的持续瞄准。
+const PROTOCOL_VERSION := 29
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

@@ -2,6 +2,9 @@ extends GameRuntimeBase
 class_name Game
 
 const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
+const TANGO_LASER_BULLET_POOL_SCENE := preload(
+	"res://scene/player/tango/tango_laser_bullet.tscn"
+)
 const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
 const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const CAPOO_RPG_ROCKET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
@@ -30,7 +33,7 @@ const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
-const TANGO_MAXIMUM_CHARGE_SECONDS := 2.5
+const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
 const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
 const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
@@ -149,6 +152,7 @@ func _ready() -> void:
 	_prewarm_enemy_visual_resources()
 	GameRuntimeBase.register_common_visual_effect_pools(session_object_pool)
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
+	session_object_pool.register_scene(TANGO_LASER_BULLET_POOL_SCENE, 64, 768)
 	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 12, 96)

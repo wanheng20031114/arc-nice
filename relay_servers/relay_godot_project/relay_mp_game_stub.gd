@@ -191,6 +191,22 @@ func net_projectile_fired(
 	pass
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
+func net_tango_laser_volley(
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	direction: Vector2,
+	owner_peer_id: int,
+	charge_sequence: int,
+	charge_ratio: float,
+	barrage_remaining_seconds: float,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "unreliable_ordered", 4)
 func net_linglan_skill1_ring_batch(
 	projectile_ids: PackedInt64Array,
 	spawn_positions: PackedVector2Array,

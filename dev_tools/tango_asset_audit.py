@@ -29,6 +29,17 @@ from process_tango_assets import (
     UNIT_NATIVE_SOURCE_PATH,
     UNIT_OUTPUT_PATH,
 )
+from process_tango_laser_bullet import (
+    EXPECTED_IMAGEGEN_SOURCE_SHA256 as LASER_EXPECTED_IMAGEGEN_SOURCE_SHA256,
+    EXPECTED_SOURCE_SHA256 as LASER_EXPECTED_SOURCE_SHA256,
+    FRAME_SIZE as LASER_FRAME_SIZE,
+    IMAGEGEN_SOURCE_PATH as LASER_IMAGEGEN_SOURCE_PATH,
+    LOGICAL_COMPONENT_WIDTHS as LASER_FRAME_WIDTHS,
+    NOSE_X as LASER_NOSE_X,
+    OUTPUT_PATH as LASER_OUTPUT_PATH,
+    PALETTE as LASER_PALETTE,
+    SOURCE_PATH as LASER_SOURCE_PATH,
+)
 
 
 FRAME_SIZE = 32
@@ -69,6 +80,59 @@ def _assert_palette(image: Image.Image, label: str) -> None:
     unexpected = colors - allowed
     if unexpected:
         raise AssertionError(f"{label}: unexpected colors {sorted(unexpected)}")
+
+
+def _assert_laser_asset() -> Image.Image:
+    imagegen_source_hash = _sha256(LASER_IMAGEGEN_SOURCE_PATH)
+    if imagegen_source_hash != LASER_EXPECTED_IMAGEGEN_SOURCE_SHA256:
+        raise AssertionError(
+            "laser original ImageGen source hash changed: "
+            f"{imagegen_source_hash} != {LASER_EXPECTED_IMAGEGEN_SOURCE_SHA256}"
+        )
+    source_hash = _sha256(LASER_SOURCE_PATH)
+    if source_hash != LASER_EXPECTED_SOURCE_SHA256:
+        raise AssertionError(
+            "laser ImageGen alpha source hash changed: "
+            f"{source_hash} != {LASER_EXPECTED_SOURCE_SHA256}"
+        )
+    laser = Image.open(LASER_OUTPUT_PATH).convert("RGBA")
+    expected_size = (
+        LASER_FRAME_SIZE[0] * len(LASER_FRAME_WIDTHS),
+        LASER_FRAME_SIZE[1],
+    )
+    if laser.size != expected_size:
+        raise AssertionError(
+            f"laser sheet size is {laser.size}, expected {expected_size}"
+        )
+    _assert_binary_clean_alpha(laser, "laser")
+    colors = {pixel for pixel in laser.getdata() if pixel[3] > 0}
+    unexpected = colors - set(LASER_PALETTE)
+    if unexpected:
+        raise AssertionError(
+            f"laser: unexpected colors {sorted(unexpected)}"
+        )
+    for frame_index, expected_width in enumerate(LASER_FRAME_WIDTHS):
+        frame = laser.crop(
+            (
+                frame_index * LASER_FRAME_SIZE[0],
+                0,
+                (frame_index + 1) * LASER_FRAME_SIZE[0],
+                LASER_FRAME_SIZE[1],
+            )
+        )
+        bbox = frame.getchannel("A").getbbox()
+        expected_bbox = (
+            LASER_NOSE_X - expected_width + 1,
+            1,
+            LASER_NOSE_X + 1,
+            6,
+        )
+        if bbox != expected_bbox:
+            raise AssertionError(
+                f"laser frame {frame_index}: bbox {bbox}, expected {expected_bbox}"
+            )
+        _assert_single_component(frame, f"laser frame {frame_index}")
+    return laser
 
 
 def _frame_bboxes(
@@ -329,13 +393,14 @@ def _assert_animation_resources() -> None:
             raise AssertionError(f"unit animation contract mismatch: {animation_name}")
     if unit_text.count('[sub_resource type="AtlasTexture"') != 12:
         raise AssertionError("unit SpriteFrames must contain 3 states x 4 frames")
-    for speed in (6.0, 8.0, 12.0):
+    for speed in (5.0, 8.0, 12.0):
         if unit_text.count(f'"speed": {speed}') != 1:
             raise AssertionError(f"unit animation speed contract mismatch: {speed}")
 
 
 def main() -> None:
     _assert_animation_resources()
+    laser = _assert_laser_asset()
     reference = Image.open(REFERENCE_PATH).convert("RGBA")
     direction_references = [
         Image.open(path).convert("RGBA") for path in DIRECTION_REFERENCE_PATHS
@@ -439,6 +504,7 @@ def main() -> None:
         DEATH_OUTPUT_PATH,
         UNIT_OUTPUT_PATH,
         UNIT_NATIVE_SOURCE_PATH,
+        LASER_OUTPUT_PATH,
     ):
         analysis = analyze_image(Image.open(path))
         print(

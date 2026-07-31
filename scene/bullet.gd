@@ -284,7 +284,7 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 		request.with_source(
 			collectible_owner if collectible_owner != null else self,
 			projectile_id,
-			&"player_bullet"
+			source_type
 		)
 		request.with_directions(-direction)
 		hit_registered = enemy.apply_combat_damage(request).accepted

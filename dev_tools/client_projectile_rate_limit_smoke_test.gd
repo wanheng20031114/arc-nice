@@ -196,13 +196,27 @@ func _test_remote_entry_scope_and_order() -> void:
 		source,
 		"func register_local_linglan_skill1_ring("
 	)
+	var tango_body := _get_function_body(
+		source,
+		"func register_local_tango_laser_volley("
+	)
 	var broadcast_body := _get_function_body(source, "func net_projectile_fired(")
+	var client_parameters_body := _get_function_body(
+		source,
+		"func _get_authoritative_client_projectile_parameters("
+	)
 	var return_to_lobby_body := _get_function_body(source, "func _return_to_lobby(")
 	_expect(
 		not local_body.contains("_client_projectile_request_rate_buckets")
 		and not linglan_body.contains("_client_projectile_request_rate_buckets")
+		and not tango_body.contains("_client_projectile_request_rate_buckets")
 		and not broadcast_body.contains("_client_projectile_request_rate_buckets"),
-		"Host-local registration, Linglan rings, and projectile broadcasts must bypass the client request bucket."
+		"Host-local registration, Host batches, and projectile broadcasts must bypass the client request bucket."
+	)
+	_expect(
+		not client_parameters_body.contains("TANGO_LASER_PROJECTILE_TYPE")
+		and not client_parameters_body.contains("tango_laser_bullet"),
+		"Clients must not author Tango laser bullets through the generic projectile request RPC."
 	)
 	_expect(
 		return_to_lobby_body.contains(

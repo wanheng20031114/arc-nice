@@ -45,8 +45,12 @@ const RAPID_PROJECTILE_MATERIAL_PATH := (
 const FROST_PROJECTILE_MATERIAL_PATH := (
 	"res://resources/shader/frost_projectile_single_pass.tres"
 )
+const TANGO_LASER_PROJECTILE_MATERIAL_PATH := (
+	"res://resources/shader/tango_laser_bullet_single_pass.tres"
+)
 const SINGLE_PASS_PROJECTILE_SCENE_MATERIALS := {
 	"res://scene/bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
+	"res://scene/player/tango/tango_laser_bullet.tscn": TANGO_LASER_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn": FROST_PROJECTILE_MATERIAL_PATH,

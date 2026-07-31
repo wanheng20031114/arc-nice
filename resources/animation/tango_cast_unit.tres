@@ -101,5 +101,5 @@ animations = [{
 }],
 "loop": true,
 "name": &"orbit",
-"speed": 6.0
+"speed": 5.0
 }]

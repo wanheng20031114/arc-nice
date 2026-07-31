@@ -1,6 +1,9 @@
 extends SceneTree
 
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const TANGO_LASER_BULLET_SCENE := preload(
+	"res://scene/player/tango/tango_laser_bullet.tscn"
+)
 const AK_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
@@ -51,6 +54,7 @@ func _run() -> void:
 	fixture.add_child(pool)
 
 	pool.register_scene(BULLET_SCENE, 1, 2)
+	pool.register_scene(TANGO_LASER_BULLET_SCENE, 1, 2)
 	pool.register_scene(AK_BULLET_SCENE, 1, 2)
 	pool.register_scene(SMG_BULLET_SCENE, 1, 2)
 	pool.register_scene(RPG_ROCKET_SCENE, 1, 2)
@@ -74,6 +78,7 @@ func _run() -> void:
 	_verify_world_collision_query_reuse()
 	await _verify_real_reused_query_semantics()
 	await _verify_player_bullet_reuse()
+	await _verify_tango_laser_bullet_reuse()
 	await _verify_real_collision_callback_release()
 	await _verify_capoo_bullet_reuse()
 	await _verify_linglan_skill1_reuse()
@@ -350,6 +355,98 @@ func _verify_player_bullet_reuse() -> void:
 	reused.setup_multiplayer(42, 9, &"player_bullet")
 	reused.retire()
 	_expect(finished_ids == [41, 42], "A reused bullet must not accumulate duplicate lifecycle callbacks.")
+	await _wait_for_quarantine()
+
+
+func _verify_tango_laser_bullet_reuse() -> void:
+	var exception_wall := StaticBody2D.new()
+	exception_wall.collision_layer = 1
+	exception_wall.collision_mask = 0
+	exception_wall.position = Vector2(16, 2000)
+	var exception_collision := CollisionShape2D.new()
+	var exception_shape := RectangleShape2D.new()
+	exception_shape.size = Vector2(8, 16)
+	exception_collision.shape = exception_shape
+	exception_wall.add_child(exception_collision)
+	fixture.add_child(exception_wall)
+	await physics_frame
+
+	var bullet := pool.acquire(TANGO_LASER_BULLET_SCENE) as TangoLaserBullet
+	_expect(bullet != null, "Tango laser pool must acquire its prewarmed instance.")
+	if bullet == null:
+		exception_wall.queue_free()
+		return
+	var first_id := bullet.get_instance_id()
+	bullet.speed = 999.0
+	bullet.max_lifetime = 9.0
+	bullet.remaining_lifetime = 7.0
+	bullet.setup(Vector2.DOWN, 77, true)
+	bullet.setup_multiplayer(61, 8, &"contaminated")
+	bullet.hit_enemy_instance_ids[123] = true
+	bullet.modulate = Color.RED
+	bullet.collision_layer = 0
+	bullet.collision_mask = 7
+	bullet.bullet_sprite.stop()
+	bullet.bullet_sprite.frame = 3
+	bullet.sweep_cast.add_exception(exception_wall)
+	bullet.retire()
+	await _wait_for_quarantine()
+
+	var reused := pool.acquire(TANGO_LASER_BULLET_SCENE) as TangoLaserBullet
+	_expect(
+		reused != null and reused.get_instance_id() == first_id,
+		"Tango laser bullets must reuse the retained instance."
+	)
+	if reused == null:
+		exception_wall.queue_free()
+		return
+	_expect(
+		is_equal_approx(reused.speed, 480.0)
+		and is_equal_approx(reused.max_lifetime, 0.722)
+		and is_equal_approx(reused.remaining_lifetime, 0.722),
+		"Tango laser reuse must restore its authored view-bounded timing."
+	)
+	_expect(
+		reused.direction == Vector2.RIGHT
+		and reused.damage == 1
+		and not reused.pierces_enemies
+		and reused.hit_enemy_instance_ids.is_empty(),
+		"Tango laser reuse must clear direction, damage, piercing, and hit state."
+	)
+	_expect(
+		reused.projectile_id == 0
+		and reused.owner_peer_id == 0
+		and reused.source_type == &"player_bullet",
+		"Tango laser reuse must clear the previous multiplayer identity."
+	)
+	_expect(
+		reused.collision_layer == 16
+		and reused.collision_mask == 0
+		and not reused.monitoring
+		and not reused.monitorable
+		and not reused.sweep_cast.enabled
+		and reused.sweep_cast.collision_mask == 5,
+		"Tango laser reuse must preserve the ShapeCast-only collision profile."
+	)
+	_expect(
+		reused.modulate == Color.WHITE
+		and is_zero_approx(reused.rotation)
+		and reused.bullet_sprite.frame == 0
+		and is_zero_approx(reused.bullet_sprite.frame_progress)
+		and reused.bullet_sprite.is_playing(),
+		"Tango laser reuse must restart the clean four-frame flight visual."
+	)
+	var clamped_spawn := reused.clamp_spawn_position_to_clear_path(
+		Vector2(0, 2000),
+		Vector2(25, 2000)
+	)
+	_expect(
+		clamped_spawn.x < 20.0,
+		"Tango laser reuse must clear stale ShapeCast exceptions from the prior lease."
+	)
+	reused.setup_multiplayer(62, 9, &"tango_laser_bullet")
+	reused.retire()
+	exception_wall.queue_free()
 	await _wait_for_quarantine()
 
 
