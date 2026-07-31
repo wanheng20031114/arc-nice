@@ -1,65 +1,100 @@
-# 精英雷电术士紫纹素材记录
+# 精英雷电术士干净紫色镶边素材记录
 
-精英雷电术士保留普通版的金黄闪电识别，只在既有服装内部加入深紫、亮紫和
-少量淡紫色织纹。两张运行时贴图严格从普通雷电术士逐像素派生，因此主图的
-16 个动作、独立移动横条的 8 个步态、轮廓、中心点、地线和后脚交替全部不变。
+本次恢复沿用火焰术士精英化的视觉思路：普通雷电术士的金黄闪电、法杖、
+轮廓与动作继续作为主体，只在兜帽带、袖口、腰带和下摆等既有衣料区域加入
+少量紫色镶边。旧版大面积八阶紫纹被移除，运行时只保留深紫、中紫和极少亮紫
+三阶颜色，不再使用淡紫白、高频棋盘纹、散点和逐帧漂移的符文。
 
 ## 文件
 
-- `lightning_sorcerer_elite_purple_texture_imagegen_reference.png`：使用 Codex
-  内置 `imagegen` 生成的 4×4 主图紫纹设计参考，不直接进入运行时。
-- `lightning_sorcerer_elite_move_8pose_imagegen_reference.png`：使用内置
-  `imagegen` 生成的八相位步态紫纹设计参考，不直接进入运行时。
-- `lightning_sorcerer_elite_purple_texture_overlay.png`：按主图设计参考在
-  原生 160×160 像素层级验收的紫纹透明叠加层。
-- `lightning_sorcerer_elite_move_purple_texture_overlay.png`：按移动设计参考
-  在原生 320×40 像素层级验收的八帧紫纹透明叠加层。
-- `resources/texture/lightning_sorcerer_elite.png`：从普通版 160×160 主图
-  确定性派生的精英运行时贴图。
-- `resources/texture/lightning_sorcerer_elite_move.png`：从任务 1 修复后的
-  320×40 普通移动横条确定性派生的精英八帧贴图。
-- `resources/animation/lightning_sorcerer_elite.tres`：独立 SpriteFrames。
+- `lightning_sorcerer_elite_clean_trim_v2_imagegen_reference.png`：Codex 内置
+  `imagegen` 生成的 4×4 干净主图设计参考。
+- `lightning_sorcerer_elite_clean_trim_v2_alpha_reference.png`：主图参考去除统一
+  绿幕后得到的透明设计输入。
+- `lightning_sorcerer_elite_move_8pose_clean_trim_v2_imagegen_reference.png`：内置
+  `imagegen` 生成的 4×2 八相位移动设计参考。
+- `lightning_sorcerer_elite_move_8pose_clean_trim_v2_alpha_reference.png`：移动参考
+  去除统一绿幕后得到的透明设计输入。
+- `lightning_sorcerer_elite_purple_texture_overlay.png`：脚本从主图设计参考投影
+  到普通版 160×160 原生衣料像素后生成的受控镶边层。
+- `lightning_sorcerer_elite_move_purple_texture_overlay.png`：脚本从八相位参考投影
+  到修复后 320×40 普通移动横条的受控镶边层。
+- `resources/texture/lightning_sorcerer_elite.png`、
+  `resources/texture/lightning_sorcerer_elite_move.png`：最终运行时贴图。
+- `resources/animation/lightning_sorcerer_elite.tres`：八帧、12 fps 的独立移动
+  SpriteFrames；其余动作仍使用 4×4 主图。
+
+旧的 `lightning_sorcerer_elite_purple_texture_imagegen_reference.png` 与
+`lightning_sorcerer_elite_move_8pose_imagegen_reference.png` 只作为问题版本的
+历史记录，不再参与构建。
 
 ## 最终生图提示词
 
 生成模式：Codex 内置 `imagegen`，`precise-object-edit`。主图与移动图分别调用，
-运行时素材没有使用 CLI/API 回退。
+没有使用 CLI/API 回退。
 
-主图核心提示词：
-
-```text
-Create the ELITE LIGHTNING SORCERER visual variant while preserving all sixteen
-poses, silhouette, staff, gold lightning identity, scale and 4x4 order. Add
-restrained purple textile accents inside existing garment areas only: deep
-royal purple #44146D, mid purple #6D27AF, bright violet #A944ED and sparse pale
-lavender #F7E9FC. Use hat-band stitching, sleeve cuffs, waist sash, lower robe
-insets and tiny angular lightning-rune/chevron motifs. Purple occupies roughly
-15-25% of costume pixels and never replaces gold metal or spell pixels. Keep
-strict hard-edged pixel art on uniform #00FF00; no silhouette or pose changes.
-```
-
-移动核心提示词：
+主图提示词：
 
 ```text
-Preserve the authoritative repaired eight-frame Lightning Sorcerer walk cycle,
-including exact phase order, rear-leg alternation, contacts, root and ground
-line. Keep gold lightning dominant and add the same restrained purple woven
-accents inside existing cloth only. Do not collapse, duplicate, reorder,
-mirror or redraw any gait pose. Exactly eight separated frames in one row on
-uniform #00FF00; strict hard-edged pixel art, no effects, text or grid.
+Use case: precise-object-edit
+Asset type: 4x4 elite Lightning Sorcerer animation-sheet design reference
+Input images: Image 1 is authoritative Lightning Sorcerer identity, sixteen poses,
+exact 4x4 order, silhouette, gold lightning armor, staff, scale, green layout;
+edit target. Image 2 only clean elite garment-accent design reference from fire elite.
+Primary request: remove dirty mottled purple texture/checker/scattered speckles/
+alternating rune noise/broad purple fills. Replace with small clean repeatable
+purple accents.
+Approved placement: narrow deep-purple hood band beneath gold crown; narrow
+collar/shoulder-underlay stripe; compact sleeve cuffs; stable waist sash/belt
+inset; narrow lower-robe inner seam/hem. Same body-relative location all 16 poses;
+omit if occluded.
+Palette: #44146D dominant, #6D27AF one-pixel lit edge, #A944ED very sparse. No
+pale lavender/white-purple. 6–10% visible pixels per normal full-body frame.
+Preserve exact poses/order/gold/yellow magic/face/staff/anatomy/scale/baseline/
+silhouette. Do not recolor metal/lightning/magic/staff/face/boots/gloves/outline.
+No geometry change.
+Cross-frame purple construction stable; no blinking dots/checker/migrating
+highlights/motifs.
+Strict hard pixel art, no dither/AA/gradient/blur/noise, flat #00FF00.
 ```
 
-## 确定性构建
+移动提示词：
+
+```text
+Use case: precise-object-edit
+Image 1 is the authoritative repaired eight-phase Lightning Sorcerer move and
+layout. Image 2 is the new clean main elite visual language. Apply the same small
+purple bands and seams. Highest priority: the same body-relative topology and
+thickness across all eight frames; omit when occluded. Use #44146D, #6D27AF and
+very sparse #A944ED, occupying 6–10% per frame with stable coverage. Preserve the
+exact eight gait poses, playback order, gold lightning, staff, face, anatomy,
+root and ground line. Do not recolor other parts. Avoid broad panels, checker
+patterns, dither, speckles, blinking or migrating highlights, and pale lavender.
+Strict hard-edged pixel art on flat #00FF00.
+```
+
+两张透明参考通过以下命令去除绿幕：
+
+```powershell
+python C:/Users/wanheng/.codex/skills/.system/imagegen/scripts/remove_chroma_key.py `
+  <imagegen-reference.png> <alpha-reference.png> --auto-key border --soft-matte `
+  --transparent-threshold 12 --opaque-threshold 220 --despill
+```
+
+## 确定性构建与防闪烁契约
 
 ```powershell
 python dev_tools/process_lightning_sorcerer_elite_assets.py
 python dev_tools/process_lightning_sorcerer_elite_assets.py --check-only
 ```
 
-脚本只在两张透明叠加层指定的位置，把普通版既有的深棕布料换成八阶紫纹；叠加
-层以外的 RGBA 逐字节保持普通版不变，金黄金属、法杖水晶和闪电像素保持原色。
-主图有 1216 个原生像素变化，移动横条有 729 个原生像素变化，分别占可见像素
-约 18.7% 与 23.4%。构建锁定普通版输入、叠加层与精英输出的解码后 RGBA
-SHA-256，并验证叠加层只覆盖普通版可见棕色像素、逐帧数量固定、二值 alpha
-完全一致。移动输出还复用普通雷电的中心/地线契约及 F2、F5、F6 脚底相位
-契约，确保精英版继承任务 1 修好的真实双脚交替。
+脚本只把设计参考中的紫色位置意图投影到普通版既有棕色衣料，最终 alpha、轮廓、
+金属、法杖、闪电、步态中心和地线均与普通版逐字节一致。主图变化 521 个原生
+像素，移动横条变化 248 个原生像素；每一帧的紫色覆盖率都锁定在可见像素的
+8%±0.2%，因此不会因姿势变化出现紫色总量闪烁。深/中/亮三阶色在每帧按固定
+60%/35%/5% 预算分配，亮紫只占约 1–2 个像素。脚本同时锁定设计参考、覆盖层、
+普通版输入和精英输出的解码后 RGBA SHA-256，并验证覆盖层距离参考紫色区域不
+超过 2 个原生像素。
+
+移动输出继续复用普通雷电术士的八帧中心/地线契约，以及 F2、F5、F6 脚底
+相位契约，保留已修复的真实双脚交替。
