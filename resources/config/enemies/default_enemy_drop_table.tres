@@ -7,13 +7,13 @@
 [ext_resource type="Resource" uid="uid://dtf2p26npy2pd" path="res://resources/config/materials/material_sapling.tres" id="5_sapling"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_capoo_blue_crystal.tres" id="6_blue"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sorcerer_violet_powder.tres" id="7_violet"]
-[ext_resource type="Resource" path="res://resources/config/materials/material_gel.tres" id="13_gel"]
-[ext_resource type="Resource" path="res://resources/config/materials/material_small_stone.tres" id="14_small_stone"]
 [ext_resource type="Resource" uid="uid://8sy5nxjqxkjy" path="res://resources/config/pickups/pickup_speed.tres" id="8_speed"]
 [ext_resource type="Resource" uid="uid://b60ao8gyqdxhc" path="res://resources/config/pickups/pickup_rapid.tres" id="9_rapid"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="10_tenpura"]
 [ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/pickups/pickup_health.tres" id="11_health"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="12_spiral"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_gel.tres" id="13_gel"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_small_stone.tres" id="14_small_stone"]
 
 [sub_resource type="Resource" id="EnemyDropRule_wood"]
 script = ExtResource("2_rule")

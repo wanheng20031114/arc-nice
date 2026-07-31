@@ -1,6 +1,6 @@
-[gd_resource type="SpriteFrames" format=3]
+[gd_resource type="SpriteFrames" format=3 uid="uid://bxek7gvcpgg4v"]
 
-[ext_resource type="Texture2D" path="res://resources/texture/stone_eroded/yuanshi_insect.png" id="1_jf1kb"]
+[ext_resource type="Texture2D" uid="uid://crwq4xenq5llx" path="res://resources/texture/stone_eroded/yuanshi_insect.png" id="1_jf1kb"]
 [ext_resource type="Texture2D" uid="uid://cjxva0exdfnxv" path="res://resources/texture/爆炸特效.png" id="2_yk6et"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_oyqew"]
