@@ -94,6 +94,7 @@ func _run() -> void:
 	if not pixel_only:
 		_test_character_contract()
 		_test_authored_casting_units_and_orbit()
+		_test_electric_surge_character_contract()
 		await _test_charge_release_contract()
 		_test_barrage_tier_and_schedule_contract()
 		await _test_laser_bullet_scene_and_damage()
@@ -116,6 +117,16 @@ func _test_character_contract() -> void:
 			config.player_scene == "res://scene/player/tango/player_tango.tscn",
 			"Tango config must point to the authored Tango scene."
 		)
+		_expect(
+			config.skill_display_name == "电能涌动"
+			and config.skill_description.contains("8秒")
+			and config.skill_description.contains("半径72")
+			and config.skill_description.contains("20点固定法术伤害")
+			and config.skill_icon_texture == (
+				"res://resources/texture/player/tango/skill1_icon.png"
+			),
+			"Tango config must publish the complete Electric Surge skill contract."
+		)
 	_expect(player.get_character_id() == PlayerCharacterRegistry.TANGO_ID, "Tango must keep its explicit character id.")
 	_expect(player.max_health == 60 and player.current_health == 60, "Tango must enter play at 60/60 health.")
 	_expect(player.attack_damage == 10, "Tango must enter play with 10 base attack.")
@@ -127,15 +138,27 @@ func _test_character_contract() -> void:
 		not player.supports_projectile_attack_patterns(),
 		"Tango must not advertise unsynchronised piercing/homing shot patterns."
 	)
-	_expect(not player.has_skill1(), "Tango skill1 must remain locked until it is implemented.")
+	_expect(player.has_skill1(), "Tango Electric Surge must be unlocked at character start.")
+	_expect(
+		is_equal_approx(player.skill1_charge_duration, 18.0),
+		"Tango Electric Surge must use an 18-second base recharge."
+	)
 	_expect(
 		not player.supports_research_technology()
 		and player.get_next_research_technology_cost() == 0,
-		"Tango must not sell an inert personal research branch before skill1 exists."
+		"Tango must not sell a personal research branch before it is designed."
 	)
 	_expect(
-		player.skill1_charge_bar == null or not player.skill1_charge_bar.visible,
-		"Tango's unavailable skill1 bar must remain hidden."
+		player.skill1_charge_bar != null and player.skill1_charge_bar.visible,
+		"Tango's unlocked Electric Surge charge bar must be visible."
+	)
+	var surge_timer := player.get_node_or_null("ElectricSurgeDurationTimer") as Timer
+	_expect(
+		surge_timer != null
+		and surge_timer.owner == player
+		and surge_timer.one_shot
+		and is_equal_approx(surge_timer.wait_time, 8.0),
+		"Electric Surge must own an authored one-shot eight-second lifetime timer."
 	)
 
 	# Distinct bonuses prove that the barrage snapshots the physical channel.
@@ -154,6 +177,149 @@ func _test_character_contract() -> void:
 	player.collectible_physical_damage_bonus = 0
 	player.collectible_magic_damage_bonus = 0
 	player.call("_reset_tango_combat_state", true)
+
+
+func _test_electric_surge_character_contract() -> void:
+	player.call("_reset_tango_combat_state", true)
+	var base_interval := float(player.call("_get_effective_fire_interval"))
+	var unattached_enemy := TangoBulletEnemy.new()
+	var attached_enemy := TangoBulletEnemy.new()
+	attached_enemy.elemental_attachment_mask = Enemy.ELEMENTAL_ATTACHMENT_ELECTRIC
+	player.skill1_charge = player.skill1_charge_duration
+	var activation_origin := Vector2(64, 48)
+	_expect(
+		player.try_start_authoritative_electric_surge(41, activation_origin),
+		"A fully charged authoritative Electric Surge activation must succeed."
+	)
+	_expect(
+		player.is_electric_surge_active()
+		and player.get_electric_surge_activation_id() == 41
+		and player.get_electric_surge_origin() == activation_origin
+		and player.get_electric_surge_remaining_seconds() > 7.9,
+		"Electric Surge must expose a recoverable eight-second active state."
+	)
+	_expect(
+		is_zero_approx(player.skill1_charge),
+		"Authoritative Electric Surge must consume the ready skill charge."
+	)
+	_expect(
+		is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			base_interval / 1.5
+		),
+		"Electric Surge must raise Tango's attack cadence by exactly 50%."
+	)
+	_expect(
+		player.resolve_attack_damage_against_enemy(100, unattached_enemy) == 100
+		and player.resolve_attack_damage_against_enemy(100, attached_enemy) == 120,
+		"Electric Surge must add 20% attack damage only against electric-attached enemies."
+	)
+
+	_expect(
+		player.try_authoritative_tango_charge_started(Vector2.UP),
+		"Electric Surge must accept an attack immediately without entering charge."
+	)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.CONVERGING
+		and is_equal_approx(player.get_tango_release_ratio(), 1.0)
+		and is_equal_approx(player.get_tango_barrage_duration(), 5.0)
+		and player.get_tango_barrage_damage() == 15,
+		"Electric Surge attacks must start as authoritative full-charge barrages."
+	)
+	player.call("_reset_tango_combat_state", true)
+	player.set("_latest_remote_action_sequence", 0)
+	player.set("_latest_remote_action_phase", 0)
+	player.play_remote_tango_charge_started(Vector2.LEFT, 1)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.CONVERGING
+		and is_equal_approx(player.get_tango_release_ratio(), 1.0),
+		"A remote Electric Surge attack must predict the same full-charge barrage."
+	)
+	player.reconcile_predicted_tango_charge_started(Vector2.DOWN, 2)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.CHARGING
+		and bool(player.get("_local_charge_input_active"))
+		and Vector2(player.get("_charge_direction")) == Vector2.DOWN
+		and is_zero_approx(player.get_tango_barrage_duration())
+		and int(player.get("_latest_remote_action_sequence")) == 2
+		and int(player.get("_latest_remote_action_phase")) == 1,
+		(
+			"A Host ordinary-charge confirmation at the eight-second boundary must "
+			+ "fully replace the client's instant full-charge barrage prediction."
+		)
+	)
+	player.call("_update_character_resources", 0.3)
+	var confirmed_charge_elapsed := float(player.get("_charge_elapsed"))
+	player.reconcile_predicted_tango_charge_started(Vector2.LEFT, 3)
+	_expect(
+		player.get_tango_casting_state() == PlayerTango.CastingState.CHARGING
+		and is_equal_approx(
+			float(player.get("_charge_elapsed")),
+			confirmed_charge_elapsed
+		)
+		and Vector2(player.get("_charge_direction")) == Vector2.DOWN
+		and int(player.get("_latest_remote_action_sequence")) == 3,
+		"Confirming an existing ordinary charge must not restart or redirect it."
+	)
+	player.call("_reset_tango_combat_state", true)
+	player.set("_latest_remote_action_sequence", 0)
+	player.set("_latest_remote_action_phase", 0)
+
+	player.call("_on_electric_surge_duration_timer_timeout")
+	_expect(
+		not player.is_electric_surge_active()
+		and is_equal_approx(
+			float(player.call("_get_effective_fire_interval")),
+			base_interval
+		)
+		and player.resolve_attack_damage_against_enemy(100, attached_enemy) == 100,
+		"Electric Surge expiry must remove both its fire-rate and marked-target bonuses."
+	)
+	for child in test_root.get_children():
+		if child is TangoElectricSurgeField:
+			child.free()
+
+	player.play_remote_electric_surge_started(42, Vector2(8, 12), 3.0)
+	_expect(
+		player.is_electric_surge_active()
+		and player.get_electric_surge_activation_id() == 42
+		and player.get_electric_surge_remaining_seconds() <= 3.0,
+		"A joining replica must restore Electric Surge from its remaining duration."
+	)
+	var recovered_visual_found := false
+	for child in test_root.get_children():
+		if (
+			child is TangoElectricSurgeField
+			and child.global_position == Vector2(8, 12)
+		):
+			recovered_visual_found = true
+			break
+	_expect(
+		recovered_visual_found,
+		"A joining replica must rebuild the visual-only field at its fixed origin."
+	)
+	player.cancel_remote_electric_surge(41)
+	_expect(
+		player.is_electric_surge_active(),
+		"A stale remote cancellation must not end the current Electric Surge."
+	)
+	player.cancel_remote_electric_surge(42)
+	_expect(
+		not player.is_electric_surge_active(),
+		"The matching remote cancellation must clear Electric Surge immediately."
+	)
+	player.play_remote_electric_surge_started(43, Vector2.ZERO, 3.0)
+	player.set_controls_locked(true)
+	_expect(
+		not player.is_electric_surge_active(),
+		"Locking Tango's controls must clear the active Electric Surge buff."
+	)
+	player.set_controls_locked(false)
+	for child in test_root.get_children():
+		if child is TangoElectricSurgeField:
+			child.free()
+	unattached_enemy.free()
+	attached_enemy.free()
 
 
 func _test_authored_casting_units_and_orbit() -> void:

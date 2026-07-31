@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 29,
-		"Tango三炮齐射、持续瞄准、四种游戏模式与房间容量同步要求协议v29。"
+		NetConstants.PROTOCOL_VERSION == 30,
+		"Tango电能涌动、三炮齐射、持续瞄准、四种游戏模式与房间容量同步要求协议v30。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

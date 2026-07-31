@@ -255,8 +255,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 29, "The multiplayer protocol version must be 29.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v29 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 30, "The multiplayer protocol version must be 30.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v30 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -4571,14 +4571,14 @@ func _test_snapshot_round_trip() -> void:
 	enemy_state.velocity = Vector2.LEFT
 	enemy_state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 	enemy_state.health = 3
-	enemy_state.visual_status_mask = 0b1101
+	enemy_state.visual_status_mask = 0b11101
 	var enemy_data := snapshot_mgr.encode_all_enemy_snapshots([enemy_state])
 	var enemy_states := SnapshotManager.decode_all_enemy_snapshots(enemy_data)
 	_expect(enemy_states.size() == 1, "Enemy snapshot count mismatch.")
 	if enemy_states.size() == 1:
 		_expect(enemy_states[0].net_id == 7, "Enemy snapshot net_id mismatch.")
 		_expect(enemy_states[0].health == 3, "Enemy snapshot health mismatch.")
-		_expect(enemy_states[0].visual_status_mask == 0b1101, "Enemy visual status mask mismatch.")
+		_expect(enemy_states[0].visual_status_mask == 0b11101, "Enemy visual status mask mismatch.")
 		_expect(
 			enemy_states[0].locomotion_state == SnapshotManager.ENEMY_LOCOMOTION_MOVING,
 			"Enemy locomotion state mismatch."
@@ -4609,7 +4609,7 @@ func _test_snapshot_round_trip() -> void:
 	if repeated_enemy_states.size() == 1:
 		_expect(repeated_enemy_states[0].health == 3, "Enemy delta must preserve health through baseline.")
 		_expect(
-			repeated_enemy_states[0].visual_status_mask == 0b1101,
+			repeated_enemy_states[0].visual_status_mask == 0b11101,
 			"Enemy delta must preserve the visual status mask through baseline."
 		)
 		_expect(

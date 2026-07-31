@@ -1,0 +1,6 @@
+{
+  "tool_mode": "built-in image_gen",
+  "source_file": "tango_electric_surge_skill1_icon_imagegen_magenta.png",
+  "runtime_file": "res://resources/texture/player/tango/skill1_icon.png",
+  "prompt": "Create a single square game UI skill icon for a 2D action game. Subject: Tango robot's skill “Electric Surge”. A bold centered circular surge field viewed straight-on: one compact mechanical cyan-white energy core, three evenly spaced electric arc segments chasing around the ring, and a few short radial pulses expanding outward. Chunky hand-authored pixel-art / Minecraft-adjacent cartoon style, crisp hard pixel clusters, strong readable silhouette at 32px and 64px, palette of bright cyan, pale ice-blue, white highlights, and very dark navy internal shadows. The composition must match an established action-game skill icon: centered, generous padding, no frame, no border, no character, no letters, no numerals, no text, no UI mockup, no watermark. Keep the artwork wholly inside the center 82% so nothing is cropped. Use a perfectly flat solid #FF00FF magenta chroma-key background with no gradient, no magenta reflections, no magenta in the icon itself. Square 1:1 raster output."
+}

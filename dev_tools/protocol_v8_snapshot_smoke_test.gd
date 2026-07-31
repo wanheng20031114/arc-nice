@@ -112,7 +112,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V29_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V30_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -121,7 +121,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 29, "Protocol must be v29.")
+	_expect(NetConstants.PROTOCOL_VERSION == 30, "Protocol must be v30.")
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
 		and NetConstants.NETWORK_COMBAT_VALUE_MAX == 0x7FFFFFFF,
@@ -138,7 +138,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v29 channel assignments must remain stable."
+		"Protocol v30 channel assignments must remain stable."
 	)
 
 
@@ -1327,7 +1327,7 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index
 		state.health_revision = enemy_index + 3
-		state.visual_status_mask = 0b1101 if enemy_index == 0 else 0
+		state.visual_status_mask = 0b11101 if enemy_index == 0 else 0
 		states.append(state)
 	var keyframe := sender.encode_enemy_snapshots_for_peer(8, states, true)
 	_expect(
@@ -1339,21 +1339,21 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 	if decoded_keyframe.is_empty():
 		return
 	_expect(
-		decoded_keyframe[0].visual_status_mask == 0b1101
+		decoded_keyframe[0].visual_status_mask == 0b11101
 		and decoded_keyframe[0].locomotion_state
 			== SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		and decoded_keyframe[0].health_revision == 3,
 		"Enemy visual status, locomotion and health revision must round-trip in a keyframe."
 	)
 	states[0].position.x += 2.0
-	states[0].visual_status_mask = 0b0100
+	states[0].visual_status_mask = 0b10100
 	states[0].locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_IDLE
 	var delta := sender.encode_enemy_snapshots_for_peer(8, states, false)
 	var decoded_delta := receiver.decode_enemy_snapshots_with_baseline(delta)
 	_expect(
 		decoded_delta.size() == 46
 		and is_same(decoded_keyframe[0], decoded_delta[0])
-		and decoded_delta[0].visual_status_mask == 0b0100
+		and decoded_delta[0].visual_status_mask == 0b10100
 		and decoded_delta[0].locomotion_state
 			== SnapshotManager.ENEMY_LOCOMOTION_IDLE,
 		"Enemy delta output must reuse objects and update visual and locomotion bits."

@@ -12,6 +12,9 @@ enum CastingState {
 const LASER_BULLET_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
+const ELECTRIC_SURGE_FIELD_SCENE := preload(
+	"res://scene/player/tango/tango_electric_surge_field.tscn"
+)
 const LASER_BULLET_TYPE: StringName = &"tango_laser_bullet"
 const MIN_CHARGE_DURATION := 0.2
 const MAX_CHARGE_DURATION := 2.4
@@ -33,11 +36,15 @@ const UNIT_FIRE_LATERAL_OFFSETS := [0.0, 5.0, -5.0]
 const PROJECTILE_MUZZLE_DISTANCE := 6.0
 const PROJECTILES_PER_VOLLEY := 3
 const BARRAGE_EPSILON := 0.0001
+const ELECTRIC_SURGE_DURATION := 8.0
+const ELECTRIC_SURGE_FIRE_RATE_MULTIPLIER := 1.5
+const ELECTRIC_SURGE_ATTACHED_DAMAGE_MULTIPLIER := 1.2
 
 @onready var casting_units: Node2D = $CastingUnits
 @onready var unit_a: AnimatedSprite2D = $CastingUnits/UnitA
 @onready var unit_b: AnimatedSprite2D = $CastingUnits/UnitB
 @onready var unit_c: AnimatedSprite2D = $CastingUnits/UnitC
+@onready var electric_surge_duration_timer: Timer = $ElectricSurgeDurationTimer
 @onready var primary_attack_audio: AudioStreamPlayer2D = get_node_or_null(
 	"PrimaryAttackAudio"
 ) as AudioStreamPlayer2D
@@ -69,11 +76,16 @@ var _requires_neutral_before_charge := false
 var _latest_remote_action_sequence := 0
 var _latest_remote_action_phase := 0
 var _casting_units_base_position := Vector2.ZERO
+var _electric_surge_active := false
+var _electric_surge_authoritative := false
+var _electric_surge_activation_id := 0
+var _electric_surge_last_seen_activation_id := 0
+var _electric_surge_origin := Vector2.ZERO
 
 
 func _init() -> void:
 	character_id = &"tango"
-	skill1_unlocked = false
+	skill1_unlocked = true
 
 
 func is_tango() -> bool:
@@ -93,6 +105,265 @@ func supports_projectile_attack_patterns() -> bool:
 
 func supports_research_technology() -> bool:
 	return false
+
+
+func _try_use_skill1() -> bool:
+	if (
+		not skill1_unlocked
+		or is_dead
+		or are_combat_actions_locked()
+		or _electric_surge_active
+	):
+		return false
+	_sync_skill1_charge_duration_to_upgrade_level()
+	if skill1_charge < skill1_charge_duration:
+		return false
+
+	var current_scene := get_tree().current_scene
+	if (
+		multiplayer.has_multiplayer_peer()
+		and current_scene != null
+		and current_scene.has_method("request_tango_electric_surge")
+	):
+		return bool(current_scene.call("request_tango_electric_surge"))
+	return try_start_authoritative_electric_surge(
+		_electric_surge_last_seen_activation_id + 1,
+		global_position
+	)
+
+
+func try_start_authoritative_electric_surge(
+	activation_id: int,
+	origin: Vector2
+) -> bool:
+	if (
+		activation_id <= _electric_surge_last_seen_activation_id
+		or _electric_surge_active
+		or not is_finite(origin.x)
+		or not is_finite(origin.y)
+		or get_tree().current_scene == null
+	):
+		return false
+	if not try_begin_skill1_activation(true):
+		return false
+	var previous_last_seen_activation_id := _electric_surge_last_seen_activation_id
+	_begin_electric_surge(
+		activation_id,
+		origin,
+		ELECTRIC_SURGE_DURATION,
+		true
+	)
+	if not _spawn_authoritative_electric_surge_field(activation_id, origin):
+		# Field creation is part of the authoritative transaction. Restore a usable
+		# charge and activation sequence instead of leaving the player on cooldown
+		# or making the Host retry the same id forever without the skill effect.
+		_clear_electric_surge_state()
+		_electric_surge_last_seen_activation_id = previous_last_seen_activation_id
+		skill1_charge = skill1_charge_duration
+		_update_skill1_charge_bar()
+		return false
+	_activate_collectible_skill_effects()
+	return true
+
+
+func play_remote_electric_surge_started(
+	activation_id: int,
+	origin: Vector2,
+	remaining_seconds: float,
+	spawn_visual: bool = true
+) -> void:
+	if (
+		activation_id <= 0
+		or not is_finite(origin.x)
+		or not is_finite(origin.y)
+		or not is_finite(remaining_seconds)
+	):
+		return
+	var safe_remaining := clampf(
+		remaining_seconds,
+		0.0,
+		ELECTRIC_SURGE_DURATION
+	)
+	if _electric_surge_active:
+		if activation_id != _electric_surge_activation_id:
+			return
+		# A duplicate/recovery snapshot may shorten stale local time, but must never
+		# extend an already-running replica when reliable packets are reordered.
+		if (
+			safe_remaining > 0.0
+			and electric_surge_duration_timer.time_left > safe_remaining
+		):
+			electric_surge_duration_timer.start(safe_remaining)
+		return
+	if activation_id <= _electric_surge_last_seen_activation_id:
+		return
+	_electric_surge_last_seen_activation_id = activation_id
+	if safe_remaining <= 0.0:
+		return
+	if spawn_visual:
+		_spawn_remote_electric_surge_visual_field(
+			activation_id,
+			origin,
+			safe_remaining
+		)
+	if is_dead or are_combat_actions_locked():
+		return
+	_begin_electric_surge(
+		activation_id,
+		origin,
+		safe_remaining,
+		false
+	)
+
+
+func is_electric_surge_active() -> bool:
+	return _electric_surge_active
+
+
+func get_electric_surge_activation_id() -> int:
+	return _electric_surge_activation_id
+
+
+func get_electric_surge_remaining_seconds() -> float:
+	if not _electric_surge_active or electric_surge_duration_timer == null:
+		return 0.0
+	return electric_surge_duration_timer.time_left
+
+
+func get_electric_surge_origin() -> Vector2:
+	return _electric_surge_origin
+
+
+func cancel_remote_electric_surge(activation_id: int) -> void:
+	if (
+		not _electric_surge_active
+		or _electric_surge_authoritative
+		or activation_id != _electric_surge_activation_id
+	):
+		return
+	_clear_electric_surge_state()
+
+
+func _begin_electric_surge(
+	activation_id: int,
+	origin: Vector2,
+	duration: float,
+	authoritative: bool
+) -> void:
+	_electric_surge_active = true
+	_electric_surge_authoritative = authoritative
+	_electric_surge_activation_id = activation_id
+	_electric_surge_last_seen_activation_id = maxi(
+		_electric_surge_last_seen_activation_id,
+		activation_id
+	)
+	_electric_surge_origin = origin
+	if _casting_state == CastingState.CHARGING:
+		_local_charge_input_active = false
+		_cancel_charge_visual()
+	electric_surge_duration_timer.start(
+		clampf(duration, 0.01, ELECTRIC_SURGE_DURATION)
+	)
+	_refresh_shooting_timer_wait_time()
+
+
+func _spawn_authoritative_electric_surge_field(
+	activation_id: int,
+	origin: Vector2
+) -> bool:
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return false
+	if spawn_parent.has_method("spawn_authoritative_tango_electric_surge_field"):
+		return bool(spawn_parent.call(
+			"spawn_authoritative_tango_electric_surge_field",
+			self,
+			activation_id,
+			origin
+		))
+	var field := ELECTRIC_SURGE_FIELD_SCENE.instantiate() as TangoElectricSurgeField
+	if field == null:
+		return false
+	field.top_level = true
+	spawn_parent.add_child(field)
+	field.global_position = origin
+	field.setup(self, activation_id, ELECTRIC_SURGE_DURATION, true)
+	return true
+
+
+func _spawn_remote_electric_surge_visual_field(
+	activation_id: int,
+	origin: Vector2,
+	remaining_seconds: float
+) -> void:
+	var spawn_parent := get_tree().current_scene
+	if spawn_parent == null:
+		return
+	if spawn_parent.has_method("spawn_remote_tango_electric_surge_visual_field"):
+		spawn_parent.call(
+			"spawn_remote_tango_electric_surge_visual_field",
+			activation_id,
+			origin,
+			remaining_seconds
+		)
+		return
+	var field := ELECTRIC_SURGE_FIELD_SCENE.instantiate() as TangoElectricSurgeField
+	if field == null:
+		return
+	field.top_level = true
+	spawn_parent.add_child(field)
+	field.global_position = origin
+	field.setup_multiplayer_visual_only(activation_id, remaining_seconds)
+
+
+func _on_electric_surge_duration_timer_timeout() -> void:
+	_finish_electric_surge_state()
+
+
+func _finish_electric_surge_state() -> void:
+	if not _electric_surge_active:
+		return
+	_clear_electric_surge_state()
+
+
+func _clear_electric_surge_state() -> void:
+	if electric_surge_duration_timer != null:
+		electric_surge_duration_timer.stop()
+	_electric_surge_active = false
+	_electric_surge_authoritative = false
+	_electric_surge_activation_id = 0
+	_electric_surge_origin = Vector2.ZERO
+	if is_node_ready():
+		_refresh_shooting_timer_wait_time()
+
+
+func _get_character_fire_rate_multiplier() -> float:
+	var multiplier := super._get_character_fire_rate_multiplier()
+	if _electric_surge_active:
+		multiplier *= ELECTRIC_SURGE_FIRE_RATE_MULTIPLIER
+	return multiplier
+
+
+func resolve_attack_damage_against_enemy(base_damage: int, enemy: Enemy) -> int:
+	var resolved_damage := super.resolve_attack_damage_against_enemy(
+		base_damage,
+		enemy
+	)
+	if (
+		resolved_damage <= 0
+		or not _electric_surge_active
+		or enemy == null
+		or not is_instance_valid(enemy)
+		or not enemy.has_electric_element_attachment()
+	):
+		return resolved_damage
+	return maxi(
+		roundi(
+			float(resolved_damage)
+			* ELECTRIC_SURGE_ATTACHED_DAMAGE_MULTIPLIER
+		),
+		1
+	)
 
 
 func get_tango_max_charge_duration() -> float:
@@ -154,6 +425,9 @@ func get_primary_cooldown_ratio() -> float:
 
 
 func apply_multiplayer_tango_charge_snapshot(ratio: float, facing_id: int) -> void:
+	if _electric_surge_active:
+		super.apply_multiplayer_primary_cooldown_ratio(0.0)
+		return
 	var safe_ratio := clampf(ratio, 0.0, 1.0)
 	if safe_ratio > 0.0 and _latest_remote_action_phase >= 2:
 		# A realtime snapshot can cross the reliable terminal on another ENet
@@ -248,6 +522,7 @@ func _handle_primary_attack_input(shoot_input: Vector2) -> void:
 
 
 func _begin_local_charge_request(direction: Vector2) -> void:
+	var uses_instant_full_charge := _electric_surge_active
 	var accepted := false
 	var current_scene := get_tree().current_scene
 	if current_scene != null and current_scene.has_method("request_tango_charge_started"):
@@ -256,6 +531,14 @@ func _begin_local_charge_request(direction: Vector2) -> void:
 		accepted = try_authoritative_tango_charge_started(direction)
 	if not accepted:
 		_local_charge_input_active = false
+		return
+	if uses_instant_full_charge:
+		_local_charge_input_active = false
+		# A local Host already entered the authoritative sequence inside the request
+		# bridge. A client starts the same full-charge visual immediately and is
+		# reconciled by the existing reliable barrage-start confirmation.
+		if _casting_state == CastingState.ORBIT:
+			_start_barrage_sequence(direction, 1.0, false)
 		return
 	_local_charge_input_active = true
 	if _casting_state == CastingState.ORBIT:
@@ -300,7 +583,11 @@ func try_authoritative_tango_charge_started(direction: Vector2) -> bool:
 		or _casting_state != CastingState.ORBIT
 	):
 		return false
-	_begin_charge_visual(_get_safe_tango_direction(direction))
+	var safe_direction := _get_safe_tango_direction(direction)
+	if _electric_surge_active:
+		_start_barrage_sequence(safe_direction, 1.0, true)
+	else:
+		_begin_charge_visual(safe_direction)
 	return true
 
 
@@ -351,7 +638,11 @@ func play_remote_tango_charge_started(direction: Vector2, sequence: int) -> void
 		return
 	if is_dead or are_combat_actions_locked():
 		return
-	_begin_charge_visual(_get_safe_tango_direction(direction))
+	var safe_direction := _get_safe_tango_direction(direction)
+	if _electric_surge_active:
+		_start_barrage_sequence(safe_direction, 1.0, false)
+	else:
+		_begin_charge_visual(safe_direction)
 
 
 func play_remote_tango_barrage_started(
@@ -412,6 +703,36 @@ func confirm_predicted_tango_charge_started(sequence: int) -> void:
 	if sequence > _latest_remote_action_sequence:
 		_latest_remote_action_sequence = sequence
 		_latest_remote_action_phase = 1
+
+
+func reconcile_predicted_tango_charge_started(
+	direction: Vector2,
+	sequence: int
+) -> void:
+	if (
+		sequence <= 0
+		or sequence < _latest_remote_action_sequence
+		or (
+			sequence == _latest_remote_action_sequence
+			and _latest_remote_action_phase >= 1
+		)
+	):
+		return
+	_latest_remote_action_sequence = sequence
+	_latest_remote_action_phase = 1
+	if is_dead or are_combat_actions_locked():
+		reject_predicted_tango_charge()
+		return
+	if _casting_state == CastingState.CHARGING:
+		return
+	if _casting_state not in [CastingState.CONVERGING, CastingState.FIRING]:
+		return
+	# The client predicted an instant full-charge surge attack, while the Host's
+	# eight-second clock had already expired. Remove every predicted barrage field
+	# before rebuilding the ordinary held-charge state for the same input request.
+	_cancel_charge_visual()
+	_local_charge_input_active = true
+	_begin_charge_visual(_get_safe_tango_direction(direction))
 
 
 func reject_predicted_tango_charge() -> void:
@@ -476,6 +797,8 @@ func _start_barrage_sequence(
 	authoritative: bool
 ) -> void:
 	var safe_ratio := clampf(charge_ratio, 0.0, 1.0)
+	if uses_local_input and _electric_surge_active:
+		_attack_aim_uses_mouse = mouse_fire_held
 	_barrage_direction = _get_safe_tango_direction(direction)
 	_apply_barrage_release_profile(safe_ratio)
 	_barrage_elapsed = 0.0
@@ -935,9 +1258,16 @@ func _update_animation() -> void:
 	super._update_animation()
 
 
+func set_controls_locked(locked: bool) -> void:
+	super.set_controls_locked(locked)
+	if locked:
+		_finish_electric_surge_state()
+
+
 func _on_combat_actions_lock_changed(locked: bool) -> void:
 	super._on_combat_actions_lock_changed(locked)
 	if locked:
+		_finish_electric_surge_state()
 		if _casting_state == CastingState.CHARGING and uses_local_input:
 			_request_local_charge_cancel()
 		_reset_tango_combat_state(not is_dead)
@@ -945,6 +1275,7 @@ func _on_combat_actions_lock_changed(locked: bool) -> void:
 
 func _cleanup_character_combat_on_death() -> void:
 	super._cleanup_character_combat_on_death()
+	_finish_electric_surge_state()
 	_reset_tango_combat_state(false)
 	if casting_units != null:
 		casting_units.hide()
@@ -952,6 +1283,7 @@ func _cleanup_character_combat_on_death() -> void:
 
 func _reset_character_resources_on_revive() -> void:
 	super._reset_character_resources_on_revive()
+	_clear_electric_surge_state()
 	_reset_tango_combat_state(true)
 	if casting_units != null:
 		casting_units.show()

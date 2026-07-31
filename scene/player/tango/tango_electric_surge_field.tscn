@@ -1,0 +1,60 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scene/player/tango/tango_electric_surge_field.gd" id="1_script"]
+[ext_resource type="Shader" path="res://resources/shader/tango_electric_surge_field.gdshader" id="2_shader"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="3_night_light"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_field"]
+resource_local_to_scene = true
+shader = ExtResource("2_shader")
+shader_parameter/field_color = Color(0.08, 0.82, 0.92, 1)
+shader_parameter/arc_color = Color(0.48, 1, 0.96, 1)
+shader_parameter/core_color = Color(0.82, 1, 1, 1)
+shader_parameter/gameplay_radius_ratio = 0.75
+shader_parameter/animation_speed = 0.72
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_field"]
+resource_local_to_scene = true
+radius = 72.0
+
+[node name="TangoElectricSurgeField" type="Area2D"]
+top_level = true
+z_index = 4
+visible = false
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+script = ExtResource("1_script")
+
+[node name="FieldVisual" type="Polygon2D" parent="."]
+texture_filter = 1
+material = SubResource("ShaderMaterial_field")
+polygon = PackedVector2Array(-96, -96, 96, -96, 96, 96, -96, 96)
+uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
+
+[node name="NightPointLight" parent="." instance=ExtResource("3_night_light")]
+color = Color(0.12, 0.9, 1, 1)
+texture_scale = 0.68
+night_energy = 0.34
+starts_emitting = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+disabled = true
+shape = SubResource("CircleShape2D_field")
+
+[node name="DamageTickTimer" type="Timer" parent="."]
+process_callback = 0
+wait_time = 1.0
+one_shot = true
+
+[node name="LifetimeTimer" type="Timer" parent="."]
+process_physics_priority = -1
+process_callback = 0
+wait_time = 8.0
+one_shot = true
+
+[connection signal="body_entered" from="." to="." method="_on_body_entered"]
+[connection signal="body_exited" from="." to="." method="_on_body_exited"]
+[connection signal="timeout" from="DamageTickTimer" to="." method="_on_damage_tick_timeout"]
+[connection signal="timeout" from="LifetimeTimer" to="." method="_on_lifetime_timeout"]

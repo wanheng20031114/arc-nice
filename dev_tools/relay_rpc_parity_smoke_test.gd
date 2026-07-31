@@ -22,6 +22,9 @@ func _run() -> void:
 	var relay_rpcs := _extract_rpc_surface(RELAY_MP_GAME_PATH)
 	_compare_rpc_surfaces("MpGame", main_rpcs, relay_rpcs)
 	for required_method in [
+		"net_tango_electric_surge_requested",
+		"net_tango_electric_surge_started",
+		"net_tango_electric_surge_finished",
 		"net_tango_charge_started_requested",
 		"net_tango_charge_released_requested",
 		"net_tango_charge_cancelled_requested",
@@ -128,7 +131,36 @@ func _run() -> void:
 		),
 		"Tango cancellation requests may carry only their active request id."
 	)
+	_expect_rpc_signature_contains(
+		main_rpcs,
+		"net_tango_electric_surge_requested",
+		"request_id:int"
+	)
+	_expect(
+		not String(main_rpcs.get("net_tango_electric_surge_requested", "")).contains(
+			"origin"
+		)
+		and not String(main_rpcs.get("net_tango_electric_surge_requested", "")).contains(
+			"duration"
+		),
+		"Electric Surge requests must not accept client-authored origin or duration."
+	)
+	for field_name in [
+		"peer_id:int",
+		"activation_id:int",
+		"origin:Vector2",
+		"remaining_seconds_at_send:float",
+		"host_sent_at:float",
+		"buff_active:bool",
+		"request_id:int",
+	]:
+		_expect_rpc_signature_contains(
+			main_rpcs,
+			"net_tango_electric_surge_started",
+			field_name
+		)
 	_test_tango_charge_authority_source()
+	_test_tango_electric_surge_authority_source()
 	_expect(
 		not main_rpcs.has("net_wave_started"),
 		"Legacy wave-index RPC must stay removed; flow step_id is the sole lifecycle source."
@@ -181,10 +213,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 29,
-		"Tango三炮齐射、持续瞄准、四种游戏模式与房间容量同步要求协议v29。"
+		NetConstants.PROTOCOL_VERSION == 30,
+		"Tango电能涌动、三炮齐射、持续瞄准、四种游戏模式与房间容量同步要求协议v30。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v29 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v30 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -223,7 +255,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v29 hosts must accept exactly v29 and reject v28."
+		"Protocol v30 hosts must accept exactly v30 and reject v29."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -290,11 +322,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 29")
+		and relay_source.contains("const PROTOCOL_VERSION := 30")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v29, accept the room capacity, and provision "
+			"Relay server must declare v30, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)
@@ -410,6 +442,48 @@ func _test_tango_charge_authority_source() -> void:
 			and game_source.contains("func request_tango_charge_cancelled() -> bool:"),
 			"%s must expose the singleplayer Tango charge bridge." % game_path
 		)
+
+
+func _test_tango_electric_surge_authority_source() -> void:
+	var source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
+	_expect(not source.is_empty(), "MpGame source must be readable for Electric Surge checks.")
+	if source.is_empty():
+		return
+	var whitespace_regex := RegEx.new()
+	if whitespace_regex.compile("\\s+") != OK:
+		failures.append("Unable to compile Electric Surge authority whitespace regex.")
+		return
+	var compact_source := whitespace_regex.sub(source, "", true)
+	_expect(
+		compact_source.contains("varorigin:=player_node.global_position")
+		and compact_source.contains(
+			"player_node.call(\"try_start_authoritative_electric_surge\",activation_id,origin)"
+		)
+		and compact_source.contains(
+			"_active_tango_electric_surges_by_peer[peer_id]={"
+		),
+		"Only the Host player's position and readiness may start an Electric Surge."
+	)
+	_expect(
+		compact_source.contains("func_send_active_tango_electric_surges_to_peer(")
+		and compact_source.contains("remaining_seconds_at_send:float")
+		and compact_source.contains("host_sent_at:float")
+		and compact_source.contains(
+			"_map_host_timestamp_to_client_time(host_sent_at,false)"
+		)
+		and compact_source.contains(
+			"player_node.call(\"play_remote_electric_surge_started\",activation_id,origin,remaining,false)"
+		),
+		"Electric Surge recovery must use Host remaining time without poisoning clock offset."
+	)
+	_expect(
+		compact_source.contains("bool(player_node.call(\"is_electric_surge_active\"))")
+		and compact_source.contains("bool(player_node.call(\"is_tango_barrage_active\"))")
+		and compact_source.contains(
+			"[peer_id,safe_direction,1.0,charge_sequence,request_id]"
+		),
+		"The Host must convert a surge-period attack into the existing full-charge barrage terminal."
+	)
 
 
 func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
@@ -807,6 +881,9 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 			NetConstants.CH_PROJECTILE
 		)
 	for world_event_method in [
+		"net_tango_electric_surge_requested",
+		"net_tango_electric_surge_started",
+		"net_tango_electric_surge_finished",
 		"net_tango_charge_started_requested",
 		"net_tango_charge_released_requested",
 		"net_tango_charge_cancelled_requested",

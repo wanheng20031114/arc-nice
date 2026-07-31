@@ -84,8 +84,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 29,
-		"Tango三炮齐射、持续瞄准、房间容量与测试场景模式同步必须由协议v29隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 30,
+		"Tango电能涌动、三炮齐射、持续瞄准、房间容量与测试场景模式同步必须由协议v30隔离旧客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

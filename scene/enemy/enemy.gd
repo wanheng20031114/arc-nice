@@ -6,6 +6,9 @@ signal defeated(enemy: Enemy)
 const SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_STRENGTH_SHADER_PARAMETER := &"burn_overlay_strength"
 const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
+const ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER := (
+	&"electric_attachment_overlay_strength"
+)
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 # Home objectives are static, so distant enemies can approach them with a cheap,
 # collision-tested normalized step instead of requesting the shared flow field
@@ -41,6 +44,7 @@ const ENEMY_DROP_OUTER_RING_RADIUS := 20.0
 const SLOW_OVERLAY_ACTIVE_STRENGTH := 0.36
 const BURN_OVERLAY_ACTIVE_STRENGTH := 0.26
 const BLEED_OVERLAY_ACTIVE_STRENGTH := 0.42
+const ELECTRIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH := 0.38
 const BURN_STATUS_TICK_INTERVAL := 1.0
 const DEFAULT_BLEED_TICK_INTERVAL_SECONDS := 0.5
 const BURN_STATUS_ID := &"burn"
@@ -52,6 +56,11 @@ const COLLECTIBLE_STATUS_SCHEDULER_PATH := NodePath(
 const COLLECTIBLE_STATUS_DEADLINE_CALLBACK := &"_on_collectible_status_deadline"
 const COLLECTIBLE_STATUS_DEADLINE_EPSILON := 0.000001
 const COLD_MOVE_SPEED_SOURCE_ID := -2_147_400_001
+const ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID := -2_147_400_002
+const ELECTRIC_SURGE_MOVE_SPEED_MULTIPLIER := 0.65
+const ELEMENTAL_ATTACHMENT_ELECTRIC := 1 << 0
+const ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK := 1 << 4
+const NETWORK_VISUAL_STATUS_MASK := 0x1f
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
 const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 6
@@ -174,6 +183,8 @@ var physical_defense_modifiers: Dictionary = {}
 var physical_defense_modifier_total := 0
 var move_speed_modifiers: Dictionary = {}
 var cold_stack_count := 0
+var elemental_attachment_mask := 0
+var electric_surge_slow_sources: Dictionary[int, bool] = {}
 var damage_taken_multiplier_modifiers: Dictionary = {}
 var outgoing_attack_damage_multiplier_modifiers: Dictionary = {}
 var collectible_status_effects: Dictionary = {}
@@ -252,6 +263,7 @@ var status_visual_material: ShaderMaterial = null
 var slow_overlay_strength := 0.0
 var burn_overlay_strength := 0.0
 var bleed_overlay_strength := 0.0
+var electric_attachment_overlay_strength := 0.0
 var speed_trail_effect: Node2D = null
 var speed_trail_owner_pool: SessionObjectPool = null
 var combat_target_index_binding: CombatTargetIndex = null
@@ -348,7 +360,7 @@ func _ready() -> void:
 		status_visual_material = animated_sprite.material as ShaderMaterial
 		# The default status shader is visually neutral but would split the normal
 		# horde into extra CanvasItem batches. Attach the shared material only while
-		# an enemy actually has a slow, burn or bleed overlay.
+		# an enemy actually has a slow, burn, bleed or electric overlay.
 		animated_sprite.material = null
 	_apply_sprite_facing()
 	_apply_facing_mirror()
@@ -519,6 +531,7 @@ func _refresh_status_process_enabled() -> void:
 func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
 	clear_cold_status()
 	clear_collectible_statuses()
+	clear_electric_surge_state()
 	runtime_max_health_multiplier = 1.0
 	_xirang_kill_reward_override = -1
 	config = enemy_config
@@ -861,6 +874,7 @@ func set_pathfinder(shared_pathfinder: Node) -> void:
 func configure_multiplayer_proxy() -> void:
 	clear_cold_status()
 	clear_collectible_statuses()
+	clear_electric_surge_state()
 	is_multiplayer_proxy = true
 	multiplayer_proxy_locomotion_state = LocomotionState.IDLE
 	# Proxy transforms are already interpolated from network snapshots during
@@ -901,6 +915,7 @@ func remove_for_home_escape() -> bool:
 	is_dead = true
 	clear_cold_status()
 	clear_collectible_statuses()
+	clear_electric_surge_state()
 	velocity = Vector2.ZERO
 	set_process(false)
 	set_physics_process(false)
@@ -1123,6 +1138,7 @@ func play_multiplayer_death_sequence() -> void:
 	is_dead = true
 	clear_cold_status()
 	clear_collectible_statuses()
+	clear_electric_surge_state()
 	velocity = Vector2.ZERO
 	_update_movement_status_visuals()
 	set_process(false)
@@ -1328,6 +1344,68 @@ func _apply_cold_runtime_state(stack_count: int, multiplier: float) -> void:
 	add_move_speed_modifier(COLD_MOVE_SPEED_SOURCE_ID, safe_multiplier)
 
 
+## Permanently marks this enemy as electrically attached for its current life.
+## Repeated surges are idempotent, so an infinite attachment stays O(1) instead
+## of accumulating one scheduler entry per Tango or per zone activation.
+func apply_electric_element_attachment() -> bool:
+	if is_dead or is_multiplayer_proxy or is_queued_for_deletion():
+		return false
+	if has_electric_element_attachment():
+		return false
+	elemental_attachment_mask |= ELEMENTAL_ATTACHMENT_ELECTRIC
+	_update_movement_status_visuals()
+	_play_collectible_status_feedback(&"electric_attachment")
+	return true
+
+
+func has_electric_element_attachment() -> bool:
+	return (
+		elemental_attachment_mask & ELEMENTAL_ATTACHMENT_ELECTRIC
+	) != 0
+
+
+## Tracks every overlapping surge zone while exposing one non-stacking 35% slow
+## to the generic movement modifier cache. Dictionary insert/erase and the common
+## membership checks are O(1); only the first/last source mutates movement state.
+func add_electric_surge_slow_source(zone_id: int) -> bool:
+	if (
+		zone_id == 0
+		or is_dead
+		or is_multiplayer_proxy
+		or is_queued_for_deletion()
+		or electric_surge_slow_sources.has(zone_id)
+	):
+		return false
+	electric_surge_slow_sources[zone_id] = true
+	if electric_surge_slow_sources.size() == 1:
+		add_move_speed_modifier(
+			ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID,
+			ELECTRIC_SURGE_MOVE_SPEED_MULTIPLIER
+		)
+	return true
+
+
+func remove_electric_surge_slow_source(zone_id: int) -> bool:
+	if zone_id == 0 or not electric_surge_slow_sources.has(zone_id):
+		return false
+	electric_surge_slow_sources.erase(zone_id)
+	if electric_surge_slow_sources.is_empty():
+		remove_move_speed_modifier(ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID)
+	return true
+
+
+func get_electric_surge_slow_source_count() -> int:
+	return electric_surge_slow_sources.size()
+
+
+func clear_electric_surge_state() -> void:
+	electric_surge_slow_sources.clear()
+	remove_move_speed_modifier(ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID)
+	elemental_attachment_mask &= ~ELEMENTAL_ATTACHMENT_ELECTRIC
+	network_visual_status_mask &= ~ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK
+	_set_electric_attachment_overlay_strength(0.0)
+
+
 func add_move_speed_modifier(source_id: int, multiplier: float) -> void:
 	if source_id == 0:
 		return
@@ -1373,6 +1451,7 @@ func _update_movement_status_visuals() -> void:
 		_set_slow_overlay_strength(0.0)
 		_set_burn_overlay_strength(0.0)
 		_set_bleed_overlay_strength(0.0)
+		_set_electric_attachment_overlay_strength(0.0)
 		_release_speed_trail_effect()
 		return
 
@@ -1380,6 +1459,11 @@ func _update_movement_status_visuals() -> void:
 	_set_slow_overlay_strength(SLOW_OVERLAY_ACTIVE_STRENGTH if is_slowed else 0.0)
 	_set_burn_overlay_strength(BURN_OVERLAY_ACTIVE_STRENGTH if _has_collectible_status(&"burn") else 0.0)
 	_set_bleed_overlay_strength(BLEED_OVERLAY_ACTIVE_STRENGTH if _has_collectible_status(&"bleed") else 0.0)
+	_set_electric_attachment_overlay_strength(
+		ELECTRIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
+		if has_electric_element_attachment()
+		else 0.0
+	)
 
 	var is_temporarily_hasted := _has_move_speed_modifier_above_default()
 	var is_moving := velocity.length_squared() > 0.001
@@ -1439,6 +1523,7 @@ func _release_speed_trail_effect() -> void:
 func _exit_tree() -> void:
 	clear_cold_status()
 	clear_collectible_statuses()
+	clear_electric_surge_state()
 	_clear_touching_players()
 	if combat_target_index_binding != null and combat_target_index_net_id > 0:
 		var bound_index := combat_target_index_binding
@@ -1478,6 +1563,13 @@ func _set_burn_overlay_strength(strength: float) -> void:
 func _set_bleed_overlay_strength(strength: float) -> void:
 	_set_visual_shader_parameter(
 		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		clampf(strength, 0.0, 1.0)
+	)
+
+
+func _set_electric_attachment_overlay_strength(strength: float) -> void:
+	_set_visual_shader_parameter(
+		ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER,
 		clampf(strength, 0.0, 1.0)
 	)
 
@@ -1633,13 +1725,15 @@ func get_collectible_visual_status_mask() -> int:
 		result |= 4
 	if _has_collectible_status(&"mark"):
 		result |= 8
+	if has_electric_element_attachment():
+		result |= ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK
 	return result
 
 
 func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
 	if not is_multiplayer_proxy:
 		return
-	var safe_mask := status_mask & 0x0f
+	var safe_mask := status_mask & NETWORK_VISUAL_STATUS_MASK
 	if safe_mask == network_visual_status_mask:
 		return
 	var added_mask := safe_mask & ~network_visual_status_mask
@@ -1656,8 +1750,18 @@ func apply_multiplayer_visual_status_mask(status_mask: int) -> void:
 		BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER,
 		BLEED_OVERLAY_ACTIVE_STRENGTH if (safe_mask & 2) != 0 else 0.0
 	)
+	_set_visual_shader_parameter(
+		ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		(
+			ELECTRIC_ATTACHMENT_OVERLAY_ACTIVE_STRENGTH
+			if (safe_mask & ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK) != 0
+			else 0.0
+		)
+	)
 	if (added_mask & 8) != 0:
 		_play_collectible_status_feedback(&"mark")
+	if (added_mask & ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK) != 0:
+		_play_collectible_status_feedback(&"electric_attachment")
 
 
 func set_multiplayer_proxy_visual_active(active: bool) -> void:
@@ -1693,6 +1797,10 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 			if is_equal_approx(bleed_overlay_strength, strength):
 				return
 			bleed_overlay_strength = strength
+		ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER:
+			if is_equal_approx(electric_attachment_overlay_strength, strength):
+				return
+			electric_attachment_overlay_strength = strength
 		_:
 			if animated_sprite.material == null:
 				animated_sprite.material = status_visual_material
@@ -1703,6 +1811,7 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 		slow_overlay_strength > 0.0
 		or burn_overlay_strength > 0.0
 		or bleed_overlay_strength > 0.0
+		or electric_attachment_overlay_strength > 0.0
 	)
 	if has_status_overlay and animated_sprite.material == null:
 		animated_sprite.material = status_visual_material
@@ -2126,6 +2235,8 @@ func _play_collectible_status_feedback(status_id: StringName) -> void:
 			flash_color = Color(1.2, 0.8, 1.6, 1.0)
 		&"crack":
 			flash_color = Color(1.35, 1.22, 0.72, 1.0)
+		&"electric_attachment":
+			flash_color = Color(0.42, 1.35, 1.45, 1.0)
 	if collectible_status_tween != null:
 		collectible_status_tween.kill()
 	collectible_status_tween = create_tween()
@@ -3992,6 +4103,7 @@ func _die() -> void:
 	is_dead = true
 	clear_cold_status()
 	clear_collectible_statuses()
+	clear_electric_surge_state()
 	_queue_configured_xirang_kill_reward()
 	_queue_configured_pickup_drops()
 	defeated.emit(self)

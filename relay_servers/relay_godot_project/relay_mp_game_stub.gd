@@ -73,6 +73,26 @@ func net_hoe_action_confirmed(
 	pass
 
 @rpc("any_peer", "call_remote", "reliable", 5)
+func net_tango_electric_surge_requested(request_id: int) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_electric_surge_started(
+	peer_id: int,
+	activation_id: int,
+	origin: Vector2,
+	remaining_seconds_at_send: float,
+	host_sent_at: float,
+	buff_active: bool,
+	request_id: int
+) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_tango_electric_surge_finished(peer_id: int, activation_id: int) -> void:
+	pass
+
+@rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_charge_started_requested(direction: Vector2, request_id: int) -> void:
 	pass
 

@@ -12,7 +12,9 @@ extends RefCounted
 ## 旧客户端无法安全解释新增模式、RPC 参数与角色状态。
 ## v29：Tango 废除持续光束，改为 Host 权威的三炮原子齐射批包，并在既有
 ## 输入流中同步松键后的持续瞄准。
-const PROTOCOL_VERSION := 29
+## v30：Tango 新增 Host 权威的“电能涌动”固定区域、8 秒强化状态与中途加入
+## 重放；敌人状态快照 bit16 表示永久电元素附着。
+const PROTOCOL_VERSION := 30
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。
