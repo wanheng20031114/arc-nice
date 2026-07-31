@@ -16,6 +16,7 @@ const WEISHIDAIER_SCENE := preload(
 )
 const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
+const TANGO_SCENE := preload("res://scene/player/tango/player_tango.tscn")
 const PLANK := preload("res://resources/config/materials/material_plank.tres")
 const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
 const WATER_BOTTLE := preload(
@@ -66,6 +67,7 @@ func _run() -> void:
 	var weishidaier := WEISHIDAIER_SCENE.instantiate() as Player
 	var tiyi := TIYI_SCENE.instantiate() as Player
 	var hoe_cat := HOE_CAT_SCENE.instantiate() as Player
+	var tango := TANGO_SCENE.instantiate() as PlayerTango
 	var config := PlantDefenseRegistry.get_config(&"research_center")
 	var center := (
 		config.plant_scene.instantiate() as ResearchCenter
@@ -83,6 +85,7 @@ func _run() -> void:
 		weishidaier,
 		tiyi,
 		hoe_cat,
+		tango,
 		center,
 	]:
 		if node != null:
@@ -109,6 +112,7 @@ func _run() -> void:
 	weishidaier.peer_id = 1
 	tiyi.peer_id = 2
 	hoe_cat.peer_id = 3
+	tango.peer_id = 4
 	center.setup(
 		config,
 		weishidaier,
@@ -126,6 +130,7 @@ func _run() -> void:
 	research.register_player(weishidaier)
 	research.register_player(tiyi)
 	research.register_player(hoe_cat)
+	research.register_player(tango)
 	center.set_research_services(research, panel)
 	await _test_panel_mouse_navigation(panel, center, weishidaier)
 	plant_system.plant_footprints[center] = center.footprint_cells.duplicate()
@@ -223,7 +228,7 @@ func _run() -> void:
 		warehouse,
 		second_warehouse,
 		plant_system,
-		[weishidaier, tiyi, hoe_cat],
+		[weishidaier, tiyi, hoe_cat, tango],
 		test_root
 	)
 	await _test_recipe_unlock_research(
@@ -234,7 +239,15 @@ func _run() -> void:
 		plant_system,
 		test_root
 	)
-	await _test_player_technology(research, center, panel, weishidaier, tiyi, hoe_cat)
+	await _test_player_technology(
+		research,
+		center,
+		panel,
+		weishidaier,
+		tiyi,
+		hoe_cat,
+		tango
+	)
 	_test_multiplayer_request_contract(config, research, panel, test_root)
 	_finish(test_root)
 
@@ -1011,7 +1024,7 @@ func _test_global_move_speed_research(
 	var late_player := WEISHIDAIER_SCENE.instantiate() as Player
 	test_root.add_child(late_player)
 	await process_frame
-	late_player.peer_id = 4
+	late_player.peer_id = 5
 	var late_base_speed := late_player.move_speed
 	research.register_player(late_player)
 	_expect(
@@ -1293,9 +1306,10 @@ func _test_player_technology(
 	panel: ResearchCenterPanel,
 	weishidaier: Player,
 	tiyi: Player,
-	hoe_cat: Player
+	hoe_cat: Player,
+	tango: PlayerTango
 ) -> void:
-	for player in [weishidaier, tiyi, hoe_cat]:
+	for player in [weishidaier, tiyi, hoe_cat, tango]:
 		_expect(player.grant_cheat_xirang(22000), "角色必须能获得技术测试息壤。")
 
 	panel.open_for(center, weishidaier)
@@ -1362,6 +1376,52 @@ func _test_player_technology(
 	_expect(
 		hoe_cat.physical_defense == defense_before,
 		"锄头猫猫的科研临时物防必须在2秒计时结束时完全移除。"
+	)
+
+	var tango_research_costs := [2000, 5000, 15000]
+	for expected_cost in tango_research_costs:
+		_expect(
+			tango.get_next_research_technology_cost() == int(expected_cost)
+			and research.try_purchase_player_technology(tango)
+			== ResearchCoordinator.RESULT_SUCCESS,
+			"探戈的三次玩家技术升级必须复用提伊的2000/5000/15000息壤成本。"
+		)
+	_expect(
+		tango.get_xirang() == 0
+		and tango.get_research_technology_level() == 3
+		and tango.get_research_tango_defense_bonus() == 50,
+		"探戈三级电涌装甲必须总计花费22000息壤并提供50点双防参数。"
+	)
+	panel.open_for(center, tango)
+	panel.call("_switch_page", ResearchCenterPanel.Page.PLAYER_TECH)
+	_expect(
+		panel.player_tech_name.text == "电涌装甲"
+		and panel.player_tech_description.text.contains("8秒")
+		and panel.node_effect_labels[0].text == "双防+10"
+		and panel.node_effect_labels[1].text == "双防+25"
+		and panel.node_effect_labels[2].text == "双防+50",
+		"科研中心必须完整显示探戈的技术说明与三档双防增益。"
+	)
+	panel.close()
+	var tango_physical_defense_before := tango.physical_defense
+	var tango_magic_defense_before := tango.magic_defense
+	tango.call("_begin_electric_surge", 91, Vector2.ZERO, 8.0, true)
+	_expect(
+		tango.physical_defense == tango_physical_defense_before + 50
+		and tango.magic_defense == tango_magic_defense_before + 50,
+		"探戈三级科研必须在电能涌动强化期间同时增加50点物防和法防。"
+	)
+	tango.call("_refresh_collectible_stats", false)
+	_expect(
+		tango.physical_defense == tango_physical_defense_before + 50
+		and tango.magic_defense == tango_magic_defense_before + 50,
+		"探戈科研双防不得被收藏品属性重算覆盖。"
+	)
+	tango.call("_on_electric_surge_duration_timer_timeout")
+	_expect(
+		tango.physical_defense == tango_physical_defense_before
+		and tango.magic_defense == tango_magic_defense_before,
+		"探戈科研双防必须随8秒技能强化状态一同结束。"
 	)
 
 

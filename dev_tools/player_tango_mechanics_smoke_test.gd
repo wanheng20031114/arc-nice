@@ -141,14 +141,23 @@ func _test_character_contract() -> void:
 	)
 	_expect(player.has_skill1(), "Tango Electric Surge must be unlocked at character start.")
 	_expect(
-		is_equal_approx(player.skill1_charge_duration, 18.0),
-		"Tango Electric Surge must use an 18-second base recharge."
+		is_equal_approx(player.skill1_charge_duration, 24.0),
+		"Tango Electric Surge must use a 24-point base skill charge."
 	)
 	_expect(
-		not player.supports_research_technology()
-		and player.get_next_research_technology_cost() == 0,
-		"Tango must not sell a personal research branch before it is designed."
+		player.supports_research_technology()
+		and player.get_next_research_technology_cost() == 2000,
+		"Tango must expose the shared three-tier personal research branch."
 	)
+	var expected_research_bonuses := [10, 25, 50]
+	for level in range(1, Player.RESEARCH_TECHNOLOGY_MAX_LEVEL + 1):
+		player.set_research_technology_level(level)
+		_expect(
+			player.get_research_tango_defense_bonus()
+			== int(expected_research_bonuses[level - 1]),
+			"Tango research tier %d must publish its matching dual-defense bonus." % level
+		)
+	player.set_research_technology_level(0)
 	_expect(
 		player.skill1_charge_bar != null and player.skill1_charge_bar.visible,
 		"Tango's unlocked Electric Surge charge bar must be visible."
@@ -183,10 +192,13 @@ func _test_character_contract() -> void:
 func _test_electric_surge_character_contract() -> void:
 	player.call("_reset_tango_combat_state", true)
 	var base_interval := float(player.call("_get_effective_fire_interval"))
+	var base_physical_defense := player.physical_defense
+	var base_magic_defense := player.magic_defense
 	var attack_bar := player.attack_interval_bar as PlayerAttackIntervalBar
 	var unattached_enemy := TangoBulletEnemy.new()
 	var attached_enemy := TangoBulletEnemy.new()
 	attached_enemy.elemental_attachment_mask = Enemy.ELEMENTAL_ATTACHMENT_ELECTRIC
+	player.set_research_technology_level(1)
 	player.skill1_charge = player.skill1_charge_duration
 	var activation_origin := Vector2(64, 48)
 	_expect(
@@ -203,6 +215,17 @@ func _test_electric_surge_character_contract() -> void:
 	_expect(
 		is_zero_approx(player.skill1_charge),
 		"Authoritative Electric Surge must consume the ready skill charge."
+	)
+	_expect(
+		player.physical_defense == base_physical_defense + 10
+		and player.magic_defense == base_magic_defense + 10,
+		"Tier-one Tango research must add 10 physical and 10 magic defense for the surge."
+	)
+	player.call("_refresh_collectible_stats", false)
+	_expect(
+		player.physical_defense == base_physical_defense + 10
+		and player.magic_defense == base_magic_defense + 10,
+		"Collectible stat refreshes must preserve Tango's active research defense."
 	)
 	_expect(
 		player.electric_surge_audio.playing,
@@ -291,8 +314,10 @@ func _test_electric_surge_character_contract() -> void:
 			float(player.call("_get_effective_fire_interval")),
 			base_interval
 		)
+		and player.physical_defense == base_physical_defense
+		and player.magic_defense == base_magic_defense
 		and player.resolve_attack_damage_against_enemy(100, attached_enemy) == 100,
-		"Electric Surge expiry must remove both its fire-rate and marked-target bonuses."
+		"Electric Surge expiry must remove its fire-rate, damage and research-defense bonuses."
 	)
 	_expect(
 		attack_bar == null or not attack_bar.empowered_active,
@@ -313,12 +338,21 @@ func _test_electric_surge_character_contract() -> void:
 		if child is TangoElectricSurgeField:
 			child.free()
 
+	player.set_research_technology_level(0)
 	player.play_remote_electric_surge_started(42, Vector2(8, 12), 3.0)
 	_expect(
 		player.is_electric_surge_active()
 		and player.get_electric_surge_activation_id() == 42
-		and player.get_electric_surge_remaining_seconds() <= 3.0,
+		and player.get_electric_surge_remaining_seconds() <= 3.0
+		and player.physical_defense == base_physical_defense
+		and player.magic_defense == base_magic_defense,
 		"A joining replica must restore Electric Surge from its remaining duration."
+	)
+	player.set_research_technology_level(3)
+	_expect(
+		player.physical_defense == base_physical_defense + 50
+		and player.magic_defense == base_magic_defense + 50,
+		"A late research snapshot must refresh both defenses during a restored surge."
 	)
 	var recovered_visual_found := false
 	for child in test_root.get_children():
@@ -339,16 +373,21 @@ func _test_electric_surge_character_contract() -> void:
 	)
 	player.cancel_remote_electric_surge(42)
 	_expect(
-		not player.is_electric_surge_active(),
-		"The matching remote cancellation must clear Electric Surge immediately."
+		not player.is_electric_surge_active()
+		and player.physical_defense == base_physical_defense
+		and player.magic_defense == base_magic_defense,
+		"The matching remote cancellation must clear the surge and research defenses."
 	)
 	player.play_remote_electric_surge_started(43, Vector2.ZERO, 3.0)
 	player.set_controls_locked(true)
 	_expect(
-		not player.is_electric_surge_active(),
-		"Locking Tango's controls must clear the active Electric Surge buff."
+		not player.is_electric_surge_active()
+		and player.physical_defense == base_physical_defense
+		and player.magic_defense == base_magic_defense,
+		"Locking Tango's controls must clear the surge and both research defenses."
 	)
 	player.set_controls_locked(false)
+	player.set_research_technology_level(0)
 	for child in test_root.get_children():
 		if child is TangoElectricSurgeField:
 			child.free()

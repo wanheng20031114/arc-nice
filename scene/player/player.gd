@@ -102,6 +102,7 @@ const RESEARCH_TECHNOLOGY_COSTS := [2000, 5000, 15000]
 const RESEARCH_WEISHIDAIER_BURN_DAMAGE := [10, 20, 30]
 const RESEARCH_TIYI_SLOW_MULTIPLIERS := [0.75, 0.5, 0.2]
 const RESEARCH_HOE_DEFENSE_BONUSES := [15, 30, 50]
+const RESEARCH_TANGO_DEFENSE_BONUSES := [10, 25, 50]
 const MAX_MULTIPLAYER_NAME_LENGTH := 12
 const NAMEPLATE_SIZE := Vector2(160.0, 30.0)
 const NAMEPLATE_WORLD_OFFSET := Vector2(0.0, -19.0)
@@ -194,6 +195,7 @@ var skill1_upgrade_level: int = 0
 var research_technology_level: int = 0
 var research_global_move_speed_bonus: float = 0.0
 var research_temporary_physical_defense_bonus: int = 0
+var research_temporary_magic_defense_bonus: int = 0
 var skill1_base_charge_duration: float = 0.0
 var last_attack_direction: Vector2 = Vector2.RIGHT
 var dodge_feedback_tween: Tween = null
@@ -2245,8 +2247,32 @@ func get_research_hoe_physical_defense_bonus() -> int:
 	return int(RESEARCH_HOE_DEFENSE_BONUSES[research_technology_level - 1])
 
 
+func get_research_tango_defense_bonus() -> int:
+	if character_id != &"tango" or research_technology_level <= 0:
+		return 0
+	return int(RESEARCH_TANGO_DEFENSE_BONUSES[research_technology_level - 1])
+
+
 func set_research_temporary_physical_defense_bonus(bonus: int) -> void:
-	research_temporary_physical_defense_bonus = maxi(bonus, 0)
+	set_research_temporary_defense_bonuses(
+		bonus,
+		research_temporary_magic_defense_bonus
+	)
+
+
+func set_research_temporary_defense_bonuses(
+	physical_bonus: int,
+	magic_bonus: int
+) -> void:
+	var resolved_physical_bonus := maxi(physical_bonus, 0)
+	var resolved_magic_bonus := maxi(magic_bonus, 0)
+	if (
+		research_temporary_physical_defense_bonus == resolved_physical_bonus
+		and research_temporary_magic_defense_bonus == resolved_magic_bonus
+	):
+		return
+	research_temporary_physical_defense_bonus = resolved_physical_bonus
+	research_temporary_magic_defense_bonus = resolved_magic_bonus
 	_refresh_collectible_stats(false)
 
 
@@ -2706,7 +2732,13 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		+ research_temporary_physical_defense_bonus,
 		0
 	)
-	magic_defense = clampi(_base_magic_defense + magic_defense_bonus, 0, DEFAULT_MAGIC_DEFENSE_LIMIT)
+	magic_defense = clampi(
+		_base_magic_defense
+		+ magic_defense_bonus
+		+ research_temporary_magic_defense_bonus,
+		0,
+		DEFAULT_MAGIC_DEFENSE_LIMIT
+	)
 	fire_interval = maxf(_base_fire_interval, 0.01)
 	collectible_physical_damage_bonus = physical_damage_bonus
 	collectible_magic_damage_bonus = magic_damage_bonus

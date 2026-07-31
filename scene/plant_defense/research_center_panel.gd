@@ -527,7 +527,7 @@ func _animate_unlocked_level(previous_level: int) -> void:
 func _get_player_technology_name() -> String:
 	match tracked_player.get_character_id():
 		&"tango":
-			return "个人技术暂未开放"
+			return "电涌装甲"
 		&"tiyi":
 			return "凝滞锁定"
 		&"hoe_cat":
@@ -539,7 +539,7 @@ func _get_player_technology_name() -> String:
 func _get_player_technology_description() -> String:
 	match tracked_player.get_character_id():
 		&"tango":
-			return "该角色的技能1与个人科研分支将在后续版本中一并接入。"
+			return "释放电能涌动后，在8秒技能强化期间同步提升物理防御和法术防御。"
 		&"tiyi":
 			return "技能锁定敌人期间持续施加减速；技能结束或目标移除时效果立刻解除。"
 		&"hoe_cat":
@@ -551,7 +551,7 @@ func _get_player_technology_description() -> String:
 func _get_player_effect_texts() -> Array[String]:
 	match tracked_player.get_character_id():
 		&"tango":
-			return ["待开放", "待开放", "待开放"]
+			return ["双防+10", "双防+25", "双防+50"]
 		&"tiyi":
 			return ["减速25%", "减速50%", "减速80%"]
 		&"hoe_cat":

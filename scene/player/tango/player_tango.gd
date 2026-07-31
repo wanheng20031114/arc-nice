@@ -119,7 +119,13 @@ func supports_projectile_attack_patterns() -> bool:
 
 
 func supports_research_technology() -> bool:
-	return false
+	return true
+
+
+func set_research_technology_level(level: int) -> void:
+	super.set_research_technology_level(level)
+	if _electric_surge_active:
+		_refresh_electric_surge_research_defense()
 
 
 func _try_use_skill1() -> bool:
@@ -285,6 +291,7 @@ func _begin_electric_surge(
 	electric_surge_duration_timer.start(
 		clampf(duration, 0.01, ELECTRIC_SURGE_DURATION)
 	)
+	_refresh_electric_surge_research_defense()
 	_refresh_shooting_timer_wait_time()
 	_set_electric_surge_visual_state(true)
 
@@ -355,11 +362,17 @@ func _clear_electric_surge_state() -> void:
 	_electric_surge_authoritative = false
 	_electric_surge_activation_id = 0
 	_electric_surge_origin = Vector2.ZERO
+	_refresh_electric_surge_research_defense()
 	if electric_surge_audio != null:
 		electric_surge_audio.stop()
 	if is_node_ready():
 		_refresh_shooting_timer_wait_time()
 	_set_electric_surge_visual_state(false)
+
+
+func _refresh_electric_surge_research_defense() -> void:
+	var bonus := get_research_tango_defense_bonus() if _electric_surge_active else 0
+	set_research_temporary_defense_bonuses(bonus, bonus)
 
 
 func _set_electric_surge_visual_state(active: bool) -> void:

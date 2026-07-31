@@ -71,6 +71,7 @@ collision_layer = 2
 collision_mask = 3329
 script = ExtResource("1_script")
 character_id = &"tango"
+skill1_charge_duration = 24.0
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=1791286676]
 z_index = 1
