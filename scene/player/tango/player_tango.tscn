@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" uid="uid://b48syuls2by2e" path="res://scene/player/tango/player_tango.gd" id="1_script"]
 [ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_status_shader"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/player_tango.tres" id="3_player_frames"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/tango_cast_unit.tres" id="4_unit_frames"]
+[ext_resource type="SpriteFrames" uid="uid://kmbt0gwv3150" path="res://resources/animation/player_tango.tres" id="3_player_frames"]
+[ext_resource type="SpriteFrames" uid="uid://bj584fdvw5xvj" path="res://resources/animation/tango_cast_unit.tres" id="4_unit_frames"]
 [ext_resource type="AudioStream" uid="uid://brmwioaechoqc" path="res://resources/audio/Cowboy_Footstep.wav" id="5_footstep_audio"]
 [ext_resource type="AudioStream" uid="uid://cutwkun6hroo5" path="res://resources/audio/cowboy_dead.wav" id="6_death_audio"]
 [ext_resource type="AudioStream" uid="uid://vc2m1l0d1rov" path="res://resources/audio/cowboy_powerup.wav" id="7_powerup_audio"]
@@ -39,6 +39,7 @@ shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
 shader_parameter/burn_edge_width = 2.0
 shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
 shader_parameter/bleed_outline_width = 2.0
+shader_parameter/electric_attachment_overlay_color = Color(0.2, 1.18, 1.32, 0.72)
 shader_parameter/revive_glow_strength = 0.0
 shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
@@ -60,7 +61,6 @@ collision_layer = 2
 collision_mask = 3329
 script = ExtResource("1_script")
 character_id = &"tango"
-skill1_charge_duration = 18.0
 
 [node name="BodySprite" type="AnimatedSprite2D" parent="." unique_id=1791286676]
 z_index = 1
@@ -118,7 +118,7 @@ process_callback = 0
 wait_time = 2.2
 one_shot = true
 
-[node name="ElectricSurgeDurationTimer" type="Timer" parent="."]
+[node name="ElectricSurgeDurationTimer" type="Timer" parent="." unique_id=64807918]
 process_callback = 0
 wait_time = 8.0
 one_shot = true
@@ -135,9 +135,8 @@ offset_top = -15.0
 offset_bottom = -10.0
 
 [node name="Skill1ChargeBar" parent="." unique_id=748984718 instance=ExtResource("10_skill_bar")]
-visible = false
-offset_top = 16.0
-offset_bottom = 18.0
+offset_top = 14.0
+offset_bottom = 16.0
 
 [node name="NameLabel" type="Label" parent="." unique_id=1639465293]
 visible = false
