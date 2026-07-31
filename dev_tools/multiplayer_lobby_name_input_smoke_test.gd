@@ -40,10 +40,14 @@ func _run() -> void:
 	var username_panel := lobby.get_node_or_null("LobbyCenter/UsernamePanel") as PanelContainer
 	var tile_pattern := lobby.get_node_or_null("TilePattern") as TextureRect
 	var game_mode_selector := lobby.get_node_or_null(
-		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector"
+		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/"
+		+ "BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/"
+		+ "SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector"
 	) as OptionButton
 	var max_players_spin := lobby.get_node_or_null(
-		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow/MaxPlayersSpinBox"
+		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/"
+		+ "BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/"
+		+ "SettingsMargin/SettingsVBox/PlayerCountRow/MaxPlayersSpinBox"
 	) as SpinBox
 	var room_mode_label := lobby.get_node_or_null(
 		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomModeLabel"

@@ -63,26 +63,27 @@ enum PublicRequest {
 @onready var mode_back_btn: Button = $LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer/BackToMenuButton
 @onready var room_browser_panel: PanelContainer = $LobbyCenter/RoomBrowserPanel
 @onready var browser_title: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserTitle
-@onready var room_settings_card: PanelContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard
-@onready var room_settings_hint: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/SettingsHint
-@onready var game_mode_selector: OptionButton = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector
-@onready var max_players_spin: SpinBox = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow/MaxPlayersSpinBox
-@onready var tab_container: TabContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer
-@onready var room_list_vbox: VBoxContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/ScrollContainer/RoomListVBox
-@onready var refresh_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/RefreshButton
-@onready var room_name_input: LineEdit = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab/RoomNameInput
-@onready var create_room_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab/CreateRoomButton
-@onready var quick_match_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/QuickMatchTab/QuickMatchButton
+@onready var browser_body_scroll: ScrollContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll
+@onready var room_settings_card: PanelContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard
+@onready var room_settings_hint: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox/SettingsHint
+@onready var game_mode_selector: OptionButton = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector
+@onready var max_players_spin: SpinBox = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow/MaxPlayersSpinBox
+@onready var tab_container: TabContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer
+@onready var room_list_vbox: VBoxContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/RoomListTab/ScrollContainer/RoomListVBox
+@onready var refresh_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/RoomListTab/RefreshButton
+@onready var room_name_input: LineEdit = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/CreateRoomTab/RoomNameInput
+@onready var create_room_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/CreateRoomTab/CreateRoomButton
+@onready var quick_match_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/QuickMatchTab/QuickMatchButton
 @onready var browser_status_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserStatusLabel
 @onready var browser_back_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BackButton
-@onready var lan_panel: VBoxContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel
-@onready var host_ip_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/HostIpLabel
-@onready var join_ip_input: LineEdit = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/JoinIpInput
-@onready var port_spin: SpinBox = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/PortRow/PortSpinBox
-@onready var lan_status_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/LanStatusLabel
-@onready var host_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/HostButton
-@onready var join_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/JoinButton
-@onready var back_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/BackButton
+@onready var lan_panel: VBoxContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel
+@onready var host_ip_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel/HostIpLabel
+@onready var join_ip_input: LineEdit = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel/JoinIpInput
+@onready var port_spin: SpinBox = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel/PortRow/PortSpinBox
+@onready var lan_status_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanStatusLabel
+@onready var host_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel/HostButton
+@onready var join_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel/JoinButton
+@onready var back_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanBackButton
 @onready var room_wait_panel: PanelContainer = $LobbyCenter/RoomWaitPanel
 @onready var room_code_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCodeLabel
 @onready var room_mode_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomModeLabel
@@ -336,6 +337,8 @@ func _show_view(view: LobbyView) -> void:
 	mode_select_panel.visible = view == LobbyView.MODE_SELECT
 	room_browser_panel.visible = view == LobbyView.PUBLIC_BROWSER or view == LobbyView.LAN_DIRECT
 	room_wait_panel.visible = view == LobbyView.ROOM_WAIT
+	if room_browser_panel.visible:
+		browser_body_scroll.set_deferred("scroll_vertical", 0)
 	_refresh_game_mode_selector_state()
 	if view != LobbyView.USERNAME_INPUT:
 		username_caret.visible = false
@@ -456,6 +459,8 @@ func _apply_public_browser_state() -> void:
 	browser_status_label.visible = true
 	browser_back_button.visible = true
 	lan_panel.visible = false
+	lan_status_label.visible = false
+	back_button.visible = false
 
 
 func _apply_lan_browser_state() -> void:
@@ -465,6 +470,8 @@ func _apply_lan_browser_state() -> void:
 	browser_status_label.visible = false
 	browser_back_button.visible = false
 	lan_panel.visible = true
+	lan_status_label.visible = true
+	back_button.visible = true
 	_refresh_lan_info()
 
 

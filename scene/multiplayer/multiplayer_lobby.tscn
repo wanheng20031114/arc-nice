@@ -558,20 +558,21 @@ text = "返回菜单"
 
 [node name="RoomBrowserPanel" type="PanelContainer" parent="LobbyCenter"]
 visible = false
-custom_minimum_size = Vector2(640, 620)
+custom_minimum_size = Vector2(680, 600)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
 [node name="MarginContainer" type="MarginContainer" parent="LobbyCenter/RoomBrowserPanel"]
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/margin_left = 24
-theme_override_constants/margin_top = 20
+theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 24
-theme_override_constants/margin_bottom = 20
+theme_override_constants/margin_bottom = 12
 
 [node name="VBoxContainer" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 8
 
 [node name="BrowserTitle" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -581,55 +582,70 @@ theme_override_font_sizes/font_size = 26
 text = "多人模式"
 horizontal_alignment = 1
 
-[node name="RoomSettingsCard" type="PanelContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+; 仅正文滚动，标题、状态与返回键始终保留在面板可视范围内。
+[node name="BrowserBodyScroll" type="ScrollContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+follow_focus = true
+horizontal_scroll_mode = 0
+scroll_vertical_custom_step = 48.0
+scroll_deadzone = 12
+scroll_hint_mode = 1
+
+[node name="BrowserBodyVBox" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="RoomSettingsCard" type="PanelContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox"]
 custom_minimum_size = Vector2(0, 165)
 layout_mode = 2
 theme_type_variation = &"SettingsCard"
 
-[node name="SettingsMargin" type="MarginContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard"]
+[node name="SettingsMargin" type="MarginContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard"]
 layout_mode = 2
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 10
 
-[node name="SettingsVBox" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin"]
+[node name="SettingsVBox" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="SettingsTitle" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox"]
+[node name="SettingsTitle" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.96, 0.82, 0.46, 1)
 theme_override_font_sizes/font_size = 17
 text = "房间设置 · 创建前确认"
 
-[node name="GameModeRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox"]
+[node name="GameModeRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="GameModeLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow"]
+[node name="GameModeLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow"]
 custom_minimum_size = Vector2(142, 0)
 layout_mode = 2
 text = "游玩模式"
 vertical_alignment = 1
 
-[node name="GameModeSelector" type="OptionButton" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow"]
+[node name="GameModeSelector" type="OptionButton" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow"]
 texture_filter = 1
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="PlayerCountRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox"]
+[node name="PlayerCountRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="PlayerCountLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow"]
+[node name="PlayerCountLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow"]
 custom_minimum_size = Vector2(142, 0)
 layout_mode = 2
 text = "游玩人数上限"
 vertical_alignment = 1
 
-[node name="MaxPlayersSpinBox" type="SpinBox" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow"]
+[node name="MaxPlayersSpinBox" type="SpinBox" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow"]
 custom_minimum_size = Vector2(180, 40)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -638,7 +654,7 @@ max_value = 8.0
 value = 4.0
 suffix = " 人（含房主）"
 
-[node name="SettingsHint" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox"]
+[node name="SettingsHint" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/SettingsMargin/SettingsVBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.66, 0.58, 1)
 theme_override_font_sizes/font_size = 12
@@ -646,40 +662,43 @@ text = "以下选项用于创建房间。"
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="TabContainer" type="TabContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 270)
+[node name="TabContainer" type="TabContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox"]
+custom_minimum_size = Vector2(0, 240)
 layout_mode = 2
 
-[node name="RoomListTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
+[node name="RoomListTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="ScrollContainer" type="ScrollContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab"]
-custom_minimum_size = Vector2(0, 220)
+[node name="ScrollContainer" type="ScrollContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/RoomListTab"]
+custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
 size_flags_vertical = 3
+follow_focus = true
+horizontal_scroll_mode = 0
+scroll_vertical_custom_step = 40.0
 
-[node name="RoomListVBox" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/ScrollContainer"]
+[node name="RoomListVBox" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/RoomListTab/ScrollContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
-[node name="RefreshButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab"]
+[node name="RefreshButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/RoomListTab"]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 text = "刷新列表"
 
-[node name="CreateRoomTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
+[node name="CreateRoomTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer"]
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="RoomNameLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
+[node name="RoomNameLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/CreateRoomTab"]
 layout_mode = 2
 text = "房间名称"
 
-[node name="RoomNameInput" type="LineEdit" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
+[node name="RoomNameInput" type="LineEdit" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/CreateRoomTab"]
 custom_minimum_size = Vector2(0, 32)
 layout_mode = 2
 theme_override_fonts/font = ExtResource("3_font")
@@ -687,37 +706,36 @@ theme_override_font_sizes/font_size = 14
 placeholder_text = "留空则使用默认名"
 max_length = 32
 
-[node name="CreateRoomButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
+[node name="CreateRoomButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/CreateRoomTab"]
 texture_filter = 1
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 icon = ExtResource("11_create_icon")
 text = "创建房间"
 
-[node name="QuickMatchTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
+[node name="QuickMatchTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer"]
 visible = false
 layout_mode = 2
 alignment = 1
 
-[node name="QuickMatchButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/QuickMatchTab"]
+[node name="QuickMatchButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/TabContainer/QuickMatchTab"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 text = "快速匹配"
 
-[node name="LanDirectPanel" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+[node name="LanDirectPanel" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox"]
 visible = false
-custom_minimum_size = Vector2(0, 348)
 layout_mode = 2
 theme_override_constants/separation = 9
 
-[node name="LanTitle" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="LanTitle" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.96, 0.82, 0.46, 1)
 theme_override_font_sizes/font_size = 18
 text = "局域网直连"
 horizontal_alignment = 1
 
-[node name="LanHint" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="LanHint" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.66, 0.7, 0.63, 1)
 theme_override_font_sizes/font_size = 13
@@ -725,24 +743,24 @@ text = "房主先创建房间；其他玩家输入房主 IP 与相同端口加�
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="HostIpLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="HostIpLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.78, 0.66, 1)
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="PortRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="PortRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="PortLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/PortRow"]
+[node name="PortLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel/PortRow"]
 custom_minimum_size = Vector2(142, 0)
 layout_mode = 2
 text = "连接端口"
 vertical_alignment = 1
 
-[node name="PortSpinBox" type="SpinBox" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/PortRow"]
+[node name="PortSpinBox" type="SpinBox" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel/PortRow"]
 custom_minimum_size = Vector2(180, 40)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -750,37 +768,39 @@ min_value = 1024.0
 max_value = 65535.0
 value = 29170.0
 
-[node name="HostButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="HostButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 texture_filter = 1
 custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 icon = ExtResource("11_create_icon")
 text = "使用上方设置创建局域网房间"
 
-[node name="LanSeparator" type="HSeparator" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="LanSeparator" type="HSeparator" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 layout_mode = 2
 
-[node name="JoinIpInput" type="LineEdit" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="JoinIpInput" type="LineEdit" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 placeholder_text = "房主 IP，例如 192.168.1.23"
 text = "127.0.0.1"
 
-[node name="JoinButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="JoinButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserBodyScroll/BrowserBodyVBox/LanDirectPanel"]
 texture_filter = 1
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 icon = ExtResource("10_lan_icon")
 text = "加入局域网房间"
 
-[node name="LanStatusLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="LanStatusLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+visible = false
 layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.72, 0.6, 1)
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="BackButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+[node name="LanBackButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+visible = false
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 text = "返回联机方式"
@@ -791,6 +811,7 @@ theme_override_colors/font_color = Color(0.7, 0.7, 0.65, 1)
 theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="BackButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 40)
