@@ -4,6 +4,8 @@
 `resources/texture/fire_sorcerer.png`；蓝火球严格派生自
 `resources/texture/fire_sorcerer_fireball.png`。两张原版贴图是唯一的
 几何、姿势、中心锚点、逐帧边界和透明轮廓来源，不能用旧版生图素材替换。
+八帧 move 同样以 `resources/texture/fire_sorcerer_move.png` 为唯一运行时几何
+来源；独立生图只负责提供金边和蓝色杖火的配色设计。
 
 ## 文件
 
@@ -15,6 +17,11 @@
   逐帧验收的三阶金色透明叠加层。
 - `fire_sorcerer_elite_blue_spell_overlay.png`：在原生 160×160 像素层级
   逐帧验收的角色杖端蓝火与攻击蓝焰透明叠加层。
+- `fire_sorcerer_elite_move_8pose_imagegen_reference.png`：4×2 八相位 move
+  的金边与蓝色杖火设计参考。
+- `fire_sorcerer_elite_move_8pose_alpha_reference.png`：上述参考的透明版本。
+- `resources/texture/fire_sorcerer_elite_move.png`：普通版几何与精英设计配色
+  合成得到的 320×40、8×1 运行时横条。
 
 ## 角色设计参考
 
@@ -48,6 +55,19 @@ Layout: exactly four columns by four rows of equal square cells, same spacing an
 Backdrop: perfectly flat uniform #00ff00 chroma-key green, no shadow, floor, grid lines, labels, text, border or watermark. Do not use #00ff00 inside the fire.
 ```
 
+## 八相位移动设计参考
+
+生成模式：Codex 内置 `imagegen`，`precise-object-edit`。
+
+```text
+Use case: precise-object-edit
+Asset type: elite game enemy movement sprite design reference
+Input images: Image 1 is the authoritative newly generated 4x2 eight-phase Fire Sorcerer movement sheet and the edit target. Image 2 is the authoritative Elite Fire Sorcerer color and trim reference only.
+Primary request: Convert Image 1 into the ELITE FIRE SORCERER visual variant while preserving all eight movement poses and the exact 4 columns by 2 rows layout. Change only internal costume trim and the existing staff-tip fire colors.
+Color palette: add restrained gold trim using deep ochre, warm gold and pale gold along existing garment construction such as hat band, collar/shoulder edge, robe opening, belt and lower hem. Convert only the already-present orange-yellow staff-tip flame crystal to a compact blue/cyan/white fire ramp. Retain the original charcoal-purple hat, dark iron closed visor, ember-red robe, dark outline, wooden staff and shadow colors everywhere else.
+Constraints: preserve all eight complete poses exactly in row-major order; preserve character identity, apparent body size, outer silhouette, anatomy, clothing construction, staff geometry, common ground line, cell placement and pixel density. Keep the face fully concealed with no visible eyes, mouth or skin. Do not move, enlarge, shrink, rotate, mirror, crop, add or remove any character or flame pixels. No new armor, particles, objects, detached fireballs, text, labels, grid lines, border or watermark. Strict hard-edged low-resolution pixel art with square pixel clusters only; no antialiasing, gradients, blur or glow haze. Keep the background perfectly flat uniform #00FF00 with no shadows, texture or lighting variation, and do not use #00FF00 inside the subject.
+```
+
 ## 确定性运行时构建
 
 ```powershell
@@ -61,10 +81,14 @@ python dev_tools/process_fire_sorcerer_elite_assets.py
 2. 金边只允许深金、暖金和淡金三阶固定色表，不覆盖外轮廓。
 3. 蓝火球逐像素把暖色 HSV 色相映射到蓝/青色域，同时保持 alpha 与
    HSV value 不变。
-4. 角色和火球的二值 alpha、16 帧包围盒、画布尺寸及动画区域必须与原版
+4. 八帧 move 参考先按普通版相同尺度栅格化，再只把重叠区域的精英配色投影
+   到普通版 move；最终 alpha、逐帧包围盒、锚点和步态姿势与普通版逐像素相同。
+5. 角色和火球的二值 alpha、16 帧包围盒、画布尺寸及动画区域必须与原版
    完全一致。
-5. 输入、叠加层和最终输出均由解码后 RGBA SHA-256 锁定。
+6. 输入、叠加层和最终输出均由解码后 RGBA SHA-256 锁定。
 
 当前角色共改动 924 个原生像素，其中金边 560 个、角色蓝火 364 个；
 最终角色仍为 160×160、每帧 40×40。蓝火球仍为 128×128、每帧
 32×32，体积与原版完全一致。
+精英 move 仍为 320×40、8×1、12 fps，完整循环 0.667 秒；与普通版的
+alpha 和逐帧边界完全一致。

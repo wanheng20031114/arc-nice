@@ -21,6 +21,9 @@ const PLAYER_CONFIG := preload(
 
 const CHARACTER_FRAME_LIMIT := Vector2(40.0, 40.0)
 const FIREBALL_FRAME_LIMIT := Vector2(40.0, 40.0)
+const MOVE_TEXTURE_PATH := "res://resources/texture/fire_sorcerer_move.png"
+const MOVE_FRAME_COUNT := 8
+const MOVE_ANIMATION_SPEED := 12.0
 const TEST_HEALTH := 1000
 const TEST_DELTA := 1.0 / 60.0
 
@@ -960,11 +963,23 @@ func _expect_animation_frames_within_limit(
 		)
 		if not frames.has_animation(animation_name):
 			continue
-		_expect(
-			frames.get_frame_count(animation_name) == 4,
-			"%s animation %s must contain four authored frames."
-			% [label, animation_name]
+		var expected_frame_count := (
+			MOVE_FRAME_COUNT if animation_name == &"move" else 4
 		)
+		_expect(
+			frames.get_frame_count(animation_name) == expected_frame_count,
+			"%s animation %s must contain %d authored frames."
+			% [label, animation_name, expected_frame_count]
+		)
+		if animation_name == &"move":
+			_expect(
+				is_equal_approx(
+					frames.get_animation_speed(&"move"),
+					MOVE_ANIMATION_SPEED
+				)
+				and frames.get_animation_loop(&"move"),
+				"Fire Sorcerer move must loop at 12 fps."
+			)
 		for frame_index in range(frames.get_frame_count(animation_name)):
 			var frame_texture := frames.get_frame_texture(
 				animation_name,
@@ -982,6 +997,18 @@ func _expect_animation_frames_within_limit(
 				"%s %s frame %d exceeds the 40x40 limit: %s."
 				% [label, animation_name, frame_index, frame_size]
 			)
+			if animation_name == &"move" and frame_texture is AtlasTexture:
+				var atlas_texture := frame_texture as AtlasTexture
+				_expect(
+					atlas_texture.atlas != null
+					and atlas_texture.atlas.get_size() == Vector2(320.0, 40.0)
+					and atlas_texture.atlas.resource_path == MOVE_TEXTURE_PATH
+					and atlas_texture.region == Rect2(
+						float(frame_index * 40), 0.0, 40.0, 40.0
+					),
+					"Fire Sorcerer move frame %d must use the independent strip."
+					% frame_index
+				)
 
 
 func _spawn_player(position: Vector2) -> Player:

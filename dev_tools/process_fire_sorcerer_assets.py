@@ -5,13 +5,15 @@ The raw imagegen files are intentionally retained under
 ``dev_assets/source_images/fire_sorcerer``.  This pipeline removes their
 connected green screen, validates every source cell with
 ``pixel_grid_analyzer.analyze_image``, and only then samples the detected
-logical grid.  The visually approved move row is supplied as a separate native
-160x40 strip; this script validates it without resampling and replaces row zero
-with an unmasked paste so transparent pixels cannot retain stale artwork.
+logical grid.  The legacy four-frame move row remains in the 4x4 atlas for
+source continuity. Runtime movement is authored separately as an eight-pose
+4x2 imagegen sheet, built into a 320x40 strip, and registered to the same
+center/ground contract as the Frost Sorcerer walk.
 
 Output contracts:
 
 * fire_sorcerer.png: 4x4 cells, exactly 40x40 pixels per cell.
+* fire_sorcerer_move.png: 8x1 cells, exactly 40x40 pixels per cell.
 * fire_sorcerer_fireball.png: 4x4 cells, exactly 32x32 pixels per cell.
 * all output alpha values are binary (0 or 255).
 * character frames share one last-visible-pixel foot baseline.
@@ -29,6 +31,11 @@ import numpy as np
 from PIL import Image
 
 from pixel_grid_analyzer import analyze_image
+from process_frost_sorcerer_assets import (
+    MOVE_FRAME_COUNT,
+    _assert_move_strip_contract,
+    _build_move_strip,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,8 +51,10 @@ FIREBALL_SOURCE = SOURCE_DIR / "fire_sorcerer_fireball_generated_v1.png"
 CHARACTER_MOVE_NATIVE_SOURCE = (
     SOURCE_DIR / "fire_sorcerer_move_native_v1.png"
 )
+CHARACTER_MOVE_SOURCE = SOURCE_DIR / "fire_sorcerer_move_8pose_alpha.png"
 
 CHARACTER_OUTPUT = TEXTURE_DIR / "fire_sorcerer.png"
+CHARACTER_MOVE_OUTPUT = TEXTURE_DIR / "fire_sorcerer_move.png"
 FIREBALL_OUTPUT = TEXTURE_DIR / "fire_sorcerer_fireball.png"
 CHARACTER_ANIMATION_OUTPUT = ANIMATION_DIR / "fire_sorcerer.tres"
 FIREBALL_ANIMATION_OUTPUT = ANIMATION_DIR / "fire_sorcerer_fireball.tres"
@@ -66,16 +75,20 @@ OPTIONAL_EMPTY_CHARACTER_CELL = (3, 3)
 OPTIONAL_EMPTY_FIREBALL_CELL = (3, 3)
 CHARACTER_FOOT_BASELINE_Y = 38
 CHARACTER_WAIST_ROWS = (22, 23)
+CHARACTER_MOVE_TARGET_HEIGHTS = (29, 28, 29, 30, 30, 28, 29, 30)
 STATIC_CHARACTER_ROWS_RGBA_SHA256 = (
     "aae16cb9b2c06bf23af3737668fa59476aff1392fde46cfbd5b8c4b1e435c75a"
 )
 CHARACTER_MOVE_RGBA_SHA256 = (
     "4ca274bcfdaedb1c0b26418d131cc850401fdd61fee8c5b611a6c51ca7069c21"
 )
+CHARACTER_MOVE_8POSE_RGBA_SHA256 = (
+    "ddf3cf3acec35e60f14c0393a8209bd3d257147f95f801f3264afafc2f20900b"
+)
 
 CHARACTER_ANIMATIONS = OrderedDict(
     [
-        ("move", (0, 6.0, True)),
+        ("move", (0, 12.0, True)),
         ("windup", (1, 6.0, False)),
         ("attack", (2, 8.0, False)),
         ("death", (3, 7.0, False)),
@@ -103,6 +116,7 @@ def _require_sources() -> None:
             CHARACTER_REPLACEMENT_SOURCE,
             FIREBALL_SOURCE,
             CHARACTER_MOVE_NATIVE_SOURCE,
+            CHARACTER_MOVE_SOURCE,
         )
         if not source.is_file()
     ]
@@ -664,6 +678,7 @@ def _write_sprite_frames(
     animations: OrderedDict[str, tuple[int, float, bool]],
     resource_uid: str,
     texture_uid: str,
+    move_texture_path: str | None = None,
 ) -> None:
     if frame_size > MAX_LOGICAL_SUBJECT_SIZE:
         raise AssetContractError(
@@ -681,20 +696,34 @@ def _write_sprite_frames(
         ),
         "",
     ]
+    if move_texture_path is not None:
+        lines.extend(
+            [
+                (
+                    '[ext_resource type="Texture2D" '
+                    f'path="{move_texture_path}" id="2_move"]'
+                ),
+                "",
+            ]
+        )
     animation_names = sorted(animations)
     for name in animation_names:
         row, _speed, _loop = animations[name]
-        for column in range(GRID_COLUMNS):
+        uses_move_strip = name == "move" and move_texture_path is not None
+        frame_count = MOVE_FRAME_COUNT if uses_move_strip else GRID_COLUMNS
+        texture_id = "2_move" if uses_move_strip else "1_texture"
+        for column in range(frame_count):
             lines.extend(
                 [
                     (
                         '[sub_resource type="AtlasTexture" '
                         f'id="AtlasTexture_{name}_{column}"]'
                     ),
-                    'atlas = ExtResource("1_texture")',
+                    f'atlas = ExtResource("{texture_id}")',
                     (
                         f"region = Rect2({column * frame_size}, "
-                        f"{row * frame_size}, {frame_size}, {frame_size})"
+                        f"{0 if uses_move_strip else row * frame_size}, "
+                        f"{frame_size}, {frame_size})"
                     ),
                     "filter_clip = true",
                     "",
@@ -705,7 +734,11 @@ def _write_sprite_frames(
             name,
             animations[name][1],
             animations[name][2],
-            GRID_COLUMNS,
+            (
+                MOVE_FRAME_COUNT
+                if name == "move" and move_texture_path is not None
+                else GRID_COLUMNS
+            ),
         )
         for name in animation_names
     ]
@@ -729,6 +762,14 @@ def _assert_binary_alpha(image: Image.Image, label: str) -> None:
         raise AssetContractError(
             f"{label}: output alpha is not binary: {sorted(alpha_values)}"
         )
+
+
+def _save_if_decoded_changed(image: Image.Image, path: Path) -> None:
+    if path.is_file():
+        existing = Image.open(path).convert("RGBA")
+        if existing.size == image.size and existing.tobytes() == image.tobytes():
+            return
+    image.save(path, optimize=True)
 
 
 def _audit_character_output(sheet: Image.Image) -> None:
@@ -835,12 +876,26 @@ def main() -> None:
         replacement_source,
         move_strip_source,
     )
+    move_strip = _build_move_strip(
+        CHARACTER_MOVE_SOURCE,
+        character_sheet,
+        "fire sorcerer move",
+        target_heights=CHARACTER_MOVE_TARGET_HEIGHTS,
+    )
+    _assert_move_strip_contract(move_strip, "fire sorcerer move")
+    move_hash = _decoded_rgba_sha256(move_strip)
+    if move_hash != CHARACTER_MOVE_8POSE_RGBA_SHA256:
+        raise AssetContractError(
+            "Eight-pose move strip fingerprint changed without approval: "
+            f"{move_hash}"
+        )
     fireball_sheet = _build_fireball_sheet(fireball_source)
     _audit_character_output(character_sheet)
     _audit_fireball_output(fireball_sheet)
 
-    character_sheet.save(CHARACTER_OUTPUT, optimize=True)
-    fireball_sheet.save(FIREBALL_OUTPUT, optimize=True)
+    _save_if_decoded_changed(character_sheet, CHARACTER_OUTPUT)
+    _save_if_decoded_changed(move_strip, CHARACTER_MOVE_OUTPUT)
+    _save_if_decoded_changed(fireball_sheet, FIREBALL_OUTPUT)
     _write_sprite_frames(
         CHARACTER_ANIMATION_OUTPUT,
         "res://resources/texture/fire_sorcerer.png",
@@ -848,6 +903,7 @@ def main() -> None:
         CHARACTER_ANIMATIONS,
         CHARACTER_ANIMATION_UID,
         CHARACTER_TEXTURE_UID,
+        "res://resources/texture/fire_sorcerer_move.png",
     )
     _write_sprite_frames(
         FIREBALL_ANIMATION_OUTPUT,
@@ -863,7 +919,8 @@ def main() -> None:
         f"character={character_sheet.width}x{character_sheet.height} "
         f"frame={CHARACTER_FRAME_SIZE}x{CHARACTER_FRAME_SIZE} "
         f"foot_baseline={CHARACTER_FOOT_BASELINE_Y} "
-        f"move_rgba_sha256={CHARACTER_MOVE_RGBA_SHA256} "
+        f"move={move_strip.width}x{move_strip.height} "
+        f"move_rgba_sha256={CHARACTER_MOVE_8POSE_RGBA_SHA256} "
         f"fireball={fireball_sheet.width}x{fireball_sheet.height} "
         f"fireball_frame={FIREBALL_FRAME_SIZE}x{FIREBALL_FRAME_SIZE} "
         "alpha=binary sampling=nearest unsafe_compression=false"

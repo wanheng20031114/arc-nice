@@ -6,10 +6,8 @@
 
 - `fire_sorcerer_generated_v2.png`
 - `fire_sorcerer_attack_1_generated_v1.png`
-- `fire_sorcerer_move_generated_v1.png`
-- `fire_sorcerer_move_opposite_contact_generated_v1.png`
-- `fire_sorcerer_move_opposite_generated_v1.png`
-- `fire_sorcerer_move_native_v1.png`（由上述三项移动源图逐帧视觉验收后生成）
+- `fire_sorcerer_move_8pose_imagegen_source.png`
+- `fire_sorcerer_move_8pose_alpha.png`
 - `fire_sorcerer_fireball_generated_v1.png`
 
 `fire_sorcerer_generated_v1.png` 是首次生成但被像素网格硬门槛拒绝的留档，
@@ -17,7 +15,13 @@
 `dev_tools/process_fire_sorcerer_assets.py` 做绿幕移除、逐帧逻辑网格分析和
 整数像素采样。
 
-移动条带的生图源是三张 1983×793 横条，近似网格置信度不足以进入通用压缩
+2026-08-01 起，运行时 move 不再读取主图第一行的旧四帧。新 move 使用独立
+`resources/texture/fire_sorcerer_move.png`，规格为 320×40、8×1 帧、12 fps；
+八帧完整周期仍为 `8 / 12 = 0.667` 秒，与旧四帧 6 fps 的周期一致。
+`fire_sorcerer_move_generated_v1.png`、两张 opposite 重绘和
+`fire_sorcerer_move_native_v1.png` 仅保留为历史原稿及主图第一行兼容来源。
+
+旧移动条带的生图源是三张 1983×793 横条，近似网格置信度不足以进入通用压缩
 入口，因此由 `dev_tools/process_fire_sorcerer_move_asset.py` 锁定每张原图的
 SHA-256、验收格边界和目标原生尺寸，并使用最近邻采样。第 0/1 帧取自主横条
 中的完整“接触/通过”人物，第 2 帧取自反相接触重绘的完整人物，第 3 帧取自
@@ -26,6 +30,27 @@ SHA-256、验收格边界和目标原生尺寸，并使用最近邻采样。第 
 脚本验证二值 alpha、单一四邻接连通块、相邻腰线的中心/重叠连续性、`y=38`
 基线、质心漂移、落地段数量、接触/通过姿势的落地宽度和 RGBA 指纹。安装时
 只无掩码覆盖角色表第一行，其余三行由解码后 RGBA 哈希保护。
+
+## 当前八相位移动（最终运行时来源）
+
+```text
+Use case: stylized-concept
+Asset type: production pixel-art game enemy movement sprite source sheet
+Input images: Image 1 is the authoritative Fire Sorcerer identity, scale, palette, right-facing silhouette, hat, closed helmet, robe, boots and staff reference. Image 2 is only the authoritative eight-phase locomotion timing and 4x2 layout reference; do not copy its Frost Sorcerer clothing, crown, colors or staff.
+Primary request: Create one exact 4 columns by 2 rows sheet containing a coherent eight-phase right-facing walk cycle for the SAME Fire Sorcerer from Image 1.
+Animation order, row-major: frame 0 right-foot contact, frame 1 right-foot down/compression, frame 2 right-foot passing, frame 3 right-foot up; frame 4 left-foot contact, frame 5 left-foot down/compression, frame 6 left-foot passing, frame 7 left-foot up.
+Subject: compact faceless Fire Sorcerer with fully closed dark iron helmet/visor, absolutely no visible eyes, mouth or skin; crooked broad-brim charcoal-purple wizard hat with scorched-orange band; ember-red robe with orange trim; armored gloves and heavy boots; short wooden fire staff tipped with a small compact orange-yellow flame crystal.
+Style/medium: strict low-resolution pixel art, coarse deliberate square pixel clusters, hard edges, globally consistent logical pixel density, at most 18 opaque subject colors, one-logical-pixel near-black outline.
+Composition/framing: exact 4x2 layout with eight equal roomy cells, one stable body root and common ground line. Keep unchanged apparent body scale and proportions across all eight frames. Every pose must be a genuine locomotion phase, never a translated or duplicated idle pose. Staff remains carried diagonally forward; robe hem and hat tip move subtly. Keep subjects clearly separated and centered inside their cells.
+Scene/backdrop: perfectly flat solid #00FF00 chroma-key background.
+Constraints: preserve Image 1 character identity; use Image 2 only for gait semantics and phase ordering. Background must be one uniform #00FF00 with no shadows, gradients, texture, reflections, floor plane or lighting variation. Do not use #00FF00 in the character. No cast shadow, contact shadow, antialiasing, blur, gradients, glow haze, labels, text, grid lines, borders, watermark, detached fireballs, extra characters or objects. Nothing may cross a cell boundary.
+```
+
+生成稿通过 imagegen 技能的 `remove_chroma_key.py` 去背，再由
+`dev_tools/process_fire_sorcerer_assets.py` 按行优先拆成八帧。每帧保持原始
+宽高比，以 `(17, 27)` 为身体锚点、`y=38` 为共同地线；目标高度依次为
+`29, 28, 29, 30, 30, 28, 29, 30`。输出强制二值 alpha、透明 RGB 清零、
+角色既有调色板与不超过 1 像素的横向质心漂移。
 
 ## 角色初稿（已拒绝）
 

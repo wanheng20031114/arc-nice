@@ -31,6 +31,14 @@ const BASE_CHARACTER_TEXTURE_PATH := (
 const ELITE_CHARACTER_TEXTURE_PATH := (
 	"res://resources/texture/fire_sorcerer_elite.png"
 )
+const BASE_MOVE_TEXTURE_PATH := (
+	"res://resources/texture/fire_sorcerer_move.png"
+)
+const ELITE_MOVE_TEXTURE_PATH := (
+	"res://resources/texture/fire_sorcerer_elite_move.png"
+)
+const MOVE_FRAME_COUNT := 8
+const MOVE_ANIMATION_SPEED := 12.0
 const BASE_FIREBALL_TEXTURE_PATH := (
 	"res://resources/texture/fire_sorcerer_fireball.png"
 )
@@ -208,14 +216,41 @@ func _test_enemy_scene_and_defenses() -> void:
 			"Elite character must use independent SpriteFrames."
 		)
 		for animation_name in [&"move", &"windup", &"attack", &"death"]:
+			var expected_frame_count := (
+				MOVE_FRAME_COUNT if animation_name == &"move" else 4
+			)
 			_expect(
 				sprite.sprite_frames.has_animation(animation_name)
 				and sprite.sprite_frames.get_frame_count(
 					animation_name
-				) == 4,
-				"Elite character animation %s must contain four frames."
-				% String(animation_name)
+				) == expected_frame_count,
+				"Elite character animation %s must contain %d frames."
+				% [String(animation_name), expected_frame_count]
 			)
+		if sprite.sprite_frames.has_animation(&"move"):
+			_expect(
+				is_equal_approx(
+					sprite.sprite_frames.get_animation_speed(&"move"),
+					MOVE_ANIMATION_SPEED
+				)
+				and sprite.sprite_frames.get_animation_loop(&"move"),
+				"Elite move must loop at 12 fps."
+			)
+			for frame_index in range(MOVE_FRAME_COUNT):
+				var move_texture := sprite.sprite_frames.get_frame_texture(
+					&"move", frame_index
+				) as AtlasTexture
+				_expect(
+					move_texture != null
+					and move_texture.atlas != null
+					and move_texture.atlas.get_size() == Vector2(320.0, 40.0)
+					and move_texture.atlas.resource_path == ELITE_MOVE_TEXTURE_PATH
+					and move_texture.region == Rect2(
+						float(frame_index * 40), 0.0, 40.0, 40.0
+					),
+					"Elite move frame %d must use the independent strip."
+					% frame_index
+				)
 
 	var body_shape := (
 		enemy.get_node("CollisionShape2D") as CollisionShape2D
@@ -434,6 +469,12 @@ func _test_pixel_contract() -> void:
 	var elite_character := Image.load_from_file(
 		ProjectSettings.globalize_path(ELITE_CHARACTER_TEXTURE_PATH)
 	)
+	var base_move := Image.load_from_file(
+		ProjectSettings.globalize_path(BASE_MOVE_TEXTURE_PATH)
+	)
+	var elite_move := Image.load_from_file(
+		ProjectSettings.globalize_path(ELITE_MOVE_TEXTURE_PATH)
+	)
 	var base_fireball := Image.load_from_file(
 		ProjectSettings.globalize_path(BASE_FIREBALL_TEXTURE_PATH)
 	)
@@ -448,6 +489,13 @@ func _test_pixel_contract() -> void:
 		"Elite character sheet must remain 160×160."
 	)
 	_expect(
+		base_move != null
+		and elite_move != null
+		and base_move.get_size() == Vector2i(320, 40)
+		and elite_move.get_size() == Vector2i(320, 40),
+		"Base and Elite move strips must remain independent 320×40 textures."
+	)
+	_expect(
 		base_fireball != null
 		and elite_fireball != null
 		and base_fireball.get_size() == Vector2i(128, 128)
@@ -457,6 +505,8 @@ func _test_pixel_contract() -> void:
 	if (
 		base_character == null
 		or elite_character == null
+		or base_move == null
+		or elite_move == null
 		or base_fireball == null
 		or elite_fireball == null
 	):
@@ -487,6 +537,22 @@ func _test_pixel_contract() -> void:
 		and gold_pixels == EXPECTED_GOLD_PIXEL_COUNT
 		and blue_spell_pixels == EXPECTED_BLUE_SPELL_PIXEL_COUNT,
 		"Elite character changes must equal the approved gold/blue overlays."
+	)
+
+	var changed_move_pixels := 0
+	for y in range(40):
+		for x in range(320):
+			var base_move_pixel := base_move.get_pixel(x, y)
+			var elite_move_pixel := elite_move.get_pixel(x, y)
+			_expect(
+				is_equal_approx(base_move_pixel.a, elite_move_pixel.a),
+				"Elite move alpha changed at %d,%d." % [x, y]
+			)
+			if base_move_pixel != elite_move_pixel:
+				changed_move_pixels += 1
+	_expect(
+		changed_move_pixels > 0,
+		"Elite move must retain visible gold/blue differentiation."
 	)
 
 	var fireball_opaque_pixels := 0

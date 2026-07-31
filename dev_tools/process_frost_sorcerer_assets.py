@@ -418,16 +418,21 @@ def _build_move_strip(
     palette_reference: Image.Image,
     label: str,
     horizontal_nudges: tuple[int, ...] = (0,) * MOVE_FRAME_COUNT,
+    target_heights: tuple[int, ...] = MOVE_TARGET_HEIGHTS,
 ) -> Image.Image:
     if len(horizontal_nudges) != MOVE_FRAME_COUNT:
         raise AssetContractError(
             f"{label}: expected {MOVE_FRAME_COUNT} horizontal nudges"
         )
+    if len(target_heights) != MOVE_FRAME_COUNT:
+        raise AssetContractError(
+            f"{label}: expected {MOVE_FRAME_COUNT} target heights"
+        )
     subjects = _load_move_subjects(source, label)
     frames = [
         _place_move_subject(
             subject,
-            MOVE_TARGET_HEIGHTS[index],
+            target_heights[index],
             horizontal_nudges[index],
             f"{label}_{index}",
         )
