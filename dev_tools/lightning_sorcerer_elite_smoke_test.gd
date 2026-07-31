@@ -37,23 +37,29 @@ const EXPECTED_ATTACK_RANGE := 7.0 * 16.0
 const EXPECTED_CHAIN_RANGE := 4.0 * 16.0
 const MOVE_FRAME_COUNT := 8
 const MOVE_ANIMATION_SPEED := 12.0
-const EXPECTED_ATLAS_CHANGED_PIXELS := 521
-const EXPECTED_MOVE_CHANGED_PIXELS := 248
+const EXPECTED_ATLAS_CHANGED_PIXELS := 762
+const EXPECTED_MOVE_CHANGED_PIXELS := 327
 const EXPECTED_ATLAS_CHANGED_PER_FRAME: Array[int] = [
-	37, 33, 37, 33,
-	32, 31, 27, 33,
-	40, 31, 34, 37,
-	29, 31, 37, 19,
+	49, 43, 58, 48,
+	48, 52, 65, 48,
+	49, 27, 37, 48,
+	44, 39, 69, 38,
 ]
 const EXPECTED_MOVE_CHANGED_PER_FRAME: Array[int] = [
-	33, 30, 29, 35, 31, 29, 28, 33,
+	54, 42, 41, 48, 41, 24, 31, 46,
 ]
-const PURPLE_COVERAGE_TARGET := 0.08
-const PURPLE_COVERAGE_TOLERANCE := 0.002
 const APPROVED_PURPLE_RGB := {
 	0x44146D: true,
 	0x6D27AF: true,
-	0xA944ED: true,
+}
+const APPROVED_YELLOW_EDGE_RGB := {
+	0x9A7121: true,
+	0xDFB82A: true,
+	0xF8D838: true,
+	0xFBE246: true,
+	0xFDEC50: true,
+	0xF8EFAB: true,
+	0xFDF9AD: true,
 }
 
 
@@ -376,12 +382,12 @@ func _test_pixel_contract() -> void:
 		"Elite move strip must contain exactly %d approved purple pixels."
 		% EXPECTED_MOVE_CHANGED_PIXELS
 	)
-	_expect_stable_purple_coverage(
+	_expect_edge_frame_contract(
 		atlas_metrics,
 		EXPECTED_ATLAS_CHANGED_PER_FRAME,
 		"character atlas"
 	)
-	_expect_stable_purple_coverage(
+	_expect_edge_frame_contract(
 		move_metrics,
 		EXPECTED_MOVE_CHANGED_PER_FRAME,
 		"move strip"
@@ -415,17 +421,13 @@ func _compare_texture_pair(
 	var frame_columns := int(expected_size.x / 40)
 	var frame_rows := int(expected_size.y / 40)
 	var changed_per_frame: Array[int] = []
-	var visible_per_frame: Array[int] = []
 	changed_per_frame.resize(frame_columns * frame_rows)
-	visible_per_frame.resize(frame_columns * frame_rows)
 	var changed_pixels := 0
 	for y in range(expected_size.y):
 		for x in range(expected_size.x):
 			var base_pixel := base.get_pixel(x, y)
 			var elite_pixel := elite.get_pixel(x, y)
 			var frame_index := int(y / 40) * frame_columns + int(x / 40)
-			if base_pixel.a > 0.0:
-				visible_per_frame[frame_index] += 1
 			_expect(
 				is_equal_approx(base_pixel.a, elite_pixel.a),
 				"Elite %s alpha changed at %d,%d." % [label, x, y]
@@ -435,6 +437,11 @@ func _compare_texture_pair(
 			changed_pixels += 1
 			changed_per_frame[frame_index] += 1
 			_expect(
+				APPROVED_YELLOW_EDGE_RGB.has(_rgb_key(base_pixel)),
+				"Elite %s purple must replace an existing yellow garment-edge pixel at %d,%d."
+				% [label, x, y]
+			)
+			_expect(
 				APPROVED_PURPLE_RGB.has(_rgb_key(elite_pixel)),
 				"Elite %s escaped the approved purple palette at %d,%d."
 				% [label, x, y]
@@ -442,11 +449,10 @@ func _compare_texture_pair(
 	return {
 		"changed_pixels": changed_pixels,
 		"changed_per_frame": changed_per_frame,
-		"visible_per_frame": visible_per_frame,
 	}
 
 
-func _expect_stable_purple_coverage(
+func _expect_edge_frame_contract(
 	metrics: Dictionary,
 	expected_changed_per_frame: Array[int],
 	label: String
@@ -454,28 +460,11 @@ func _expect_stable_purple_coverage(
 	var changed_per_frame := (
 		metrics.get("changed_per_frame", []) as Array[int]
 	)
-	var visible_per_frame := (
-		metrics.get("visible_per_frame", []) as Array[int]
-	)
 	_expect(
 		changed_per_frame == expected_changed_per_frame,
-		"Elite %s purple count changed in at least one animation frame."
+		"Elite %s yellow-edge replacement changed in at least one animation frame."
 		% label
 	)
-	if changed_per_frame.size() != visible_per_frame.size():
-		_expect(false, "Elite %s frame metrics are incomplete." % label)
-		return
-	for frame_index in range(changed_per_frame.size()):
-		var coverage := (
-			float(changed_per_frame[frame_index])
-			/ float(visible_per_frame[frame_index])
-		)
-		_expect(
-			absf(coverage - PURPLE_COVERAGE_TARGET)
-			<= PURPLE_COVERAGE_TOLERANCE,
-			"Elite %s frame %d purple coverage %.3f is unstable."
-			% [label, frame_index, coverage]
-		)
 
 
 func _rgb_key(color: Color) -> int:

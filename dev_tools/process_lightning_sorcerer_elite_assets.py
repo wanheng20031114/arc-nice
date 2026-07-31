@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Build the clean-trim Elite Lightning Sorcerer deterministically.
+"""Build the yellow-edge Elite Lightning Sorcerer deterministically.
 
-The accepted imagegen sheets contribute garment-placement intent only.  Their
-purple areas are registered against the ordinary Lightning Sorcerer's locked
-40px geometry, then reduced to a stable eight-percent in-frame budget.  This
-keeps gold lightning dominant and prevents purple coverage or brightness from
-pulsing between animation frames.
+Purple is derived only from continuous yellow garment-edge components in a
+fixed body-relative region.  Brown cloth, the crown, staff and lightning magic
+remain untouched, so no independently authored purple pixels can blink between
+animation frames.
 """
 
 from __future__ import annotations
@@ -15,17 +14,11 @@ import hashlib
 from collections import OrderedDict
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 from process_frost_sorcerer_assets import (
     MOVE_FRAME_COUNT,
-    MOVE_TARGET_HEIGHTS,
     _assert_move_strip_contract,
-    _frame_bbox,
-    _load_grid_subjects,
-    _load_move_subjects,
-    _place_move_subject,
 )
 from process_lightning_sorcerer_assets import (
     _assert_lightning_gait_contract,
@@ -44,13 +37,6 @@ CHARACTER_OVERLAY = (
 )
 MOVE_OVERLAY = (
     SOURCE_DIR / "lightning_sorcerer_elite_move_purple_texture_overlay.png"
-)
-CHARACTER_DESIGN_REFERENCE = (
-    SOURCE_DIR / "lightning_sorcerer_elite_clean_trim_v2_alpha_reference.png"
-)
-MOVE_DESIGN_REFERENCE = (
-    SOURCE_DIR
-    / "lightning_sorcerer_elite_move_8pose_clean_trim_v2_alpha_reference.png"
 )
 CHARACTER_OUTPUT = TEXTURE_DIR / "lightning_sorcerer_elite.png"
 MOVE_OUTPUT = TEXTURE_DIR / "lightning_sorcerer_elite_move.png"
@@ -75,64 +61,59 @@ BASE_MOVE_ALPHA_SHA256 = (
     "0013a1deb45af87c9e5984ae3b8d96f5bbcfbef8117ff941f2f8bf33983f7662"
 )
 ELITE_CHARACTER_RGBA_SHA256 = (
-    "2d7e02195beed074c97f296eb646bc88d6a79f11416293387efae4126a74d572"
+    "ed4093c1dc27cd0177927cc83382e5d10aeadfb1a7a378007fc4a71fc37dfdb1"
 )
 ELITE_MOVE_RGBA_SHA256 = (
-    "6bcecb2031bde9dfdf323dbf75b819d8d332f3349a131247185da46426c9b180"
+    "21d02156ce08cfddf0f36b00cba074a593b30923dd8075e4cc3c6dbad629fa3b"
 )
-EXPECTED_CHARACTER_CHANGED_PIXELS = 521
-EXPECTED_MOVE_CHANGED_PIXELS = 248
+EXPECTED_CHARACTER_CHANGED_PIXELS = 762
+EXPECTED_MOVE_CHANGED_PIXELS = 327
 CHARACTER_OVERLAY_RGBA_SHA256 = (
-    "c68847de3ed103157eed095ce1f566db494d1d6fc9c0e089b39e7878b3ba081e"
+    "a4d7d928fc614f88af2954a338e8f9c869390a88e3d13bcae69bdda2b342ab78"
 )
 MOVE_OVERLAY_RGBA_SHA256 = (
-    "231b9e000b995398e4a96a77f7a371d41853779000c16dcad75d0b5672179a58"
-)
-CHARACTER_DESIGN_REFERENCE_SIZE = (1254, 1254)
-MOVE_DESIGN_REFERENCE_SIZE = (1536, 1024)
-CHARACTER_DESIGN_REFERENCE_RGBA_SHA256 = (
-    "25b3522f790674fe1f03e14f5aaa2f74bfae8cbdba73bfa1090a6ea351be930a"
-)
-MOVE_DESIGN_REFERENCE_RGBA_SHA256 = (
-    "bd9ff51283900e293e8e55d430f26390109a7e059360f0e8e0961bb812762263"
+    "4b9ca500d8895ab3f62981ba978ee899fcc3662e427cd93791d9bbe1d8c164d5"
 )
 EXPECTED_CHARACTER_CHANGED_PER_FRAME = (
-    37,
-    33,
-    37,
-    33,
-    32,
-    31,
+    49,
+    43,
+    58,
+    48,
+    48,
+    52,
+    65,
+    48,
+    49,
     27,
-    33,
-    40,
-    31,
-    34,
     37,
-    29,
-    31,
-    37,
-    19,
+    48,
+    44,
+    39,
+    69,
+    38,
 )
-EXPECTED_MOVE_CHANGED_PER_FRAME = (33, 30, 29, 35, 31, 29, 28, 33)
-PURPLE_COVERAGE_TARGET = 0.08
-PURPLE_COVERAGE_TOLERANCE = 0.002
-MAX_REFERENCE_DISTANCE = 2
-BASE_BROWN_COLORS = {
-    (25, 12, 8, 255),
-    (33, 21, 15, 255),
-    (52, 28, 20, 255),
-    (64, 38, 26, 255),
-    (80, 53, 35, 255),
-    (97, 57, 40, 255),
-    (102, 67, 40, 255),
+EXPECTED_MOVE_CHANGED_PER_FRAME = (54, 42, 41, 48, 41, 24, 31, 46)
+GARMENT_EDGE_RECT = (7, 18, 18, 36)
+MIN_EDGE_COMPONENT_PIXELS = 3
+YELLOW_EDGE_COLORS = {
+    (154, 113, 33, 255),
+    (223, 184, 42, 255),
+    (248, 216, 56, 255),
+    (251, 226, 70, 255),
+    (253, 236, 80, 255),
+    (248, 239, 171, 255),
+    (253, 249, 173, 255),
 }
 PURPLE_COLORS = {
     (68, 20, 109, 255),
     (109, 39, 175, 255),
-    (169, 68, 237, 255),
 }
-PURPLE_PALETTE = tuple(sorted(PURPLE_COLORS, key=lambda color: sum(color[:3])))
+YELLOW_TO_PURPLE = {
+    color: (68, 20, 109, 255)
+    if sum(color[:3]) < 500
+    else (109, 39, 175, 255)
+    for color in YELLOW_EDGE_COLORS
+}
 
 ANIMATIONS = OrderedDict(
     [
@@ -185,210 +166,83 @@ def _require_base(
     return image
 
 
-def _require_design_reference(
-    path: Path,
-    expected_size: tuple[int, int],
-    expected_rgba_sha256: str,
-    label: str,
-) -> None:
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    image = Image.open(path).convert("RGBA")
-    if image.size != expected_size:
-        raise EliteAssetContractError(
-            f"{label} is {image.size}, expected {expected_size}"
-        )
-    rgba_hash = _rgba_sha256(image)
-    if rgba_hash != expected_rgba_sha256:
-        raise EliteAssetContractError(
-            f"{label} RGBA fingerprint changed: {rgba_hash}"
-        )
+def _connected_components(
+    positions: set[tuple[int, int]],
+) -> list[set[tuple[int, int]]]:
+    remaining = set(positions)
+    components: list[set[tuple[int, int]]] = []
+    while remaining:
+        seed = remaining.pop()
+        component = {seed}
+        frontier = [seed]
+        while frontier:
+            x, y = frontier.pop()
+            for offset_y in (-1, 0, 1):
+                for offset_x in (-1, 0, 1):
+                    neighbour = (x + offset_x, y + offset_y)
+                    if neighbour not in remaining:
+                        continue
+                    remaining.remove(neighbour)
+                    component.add(neighbour)
+                    frontier.append(neighbour)
+        components.append(component)
+    return components
 
 
-def _purple_reference_mask(image: Image.Image) -> np.ndarray:
-    """Extract saturated violet intent without accepting brown or gold pixels."""
-    rgba = np.asarray(image.convert("RGBA"), dtype=np.uint8)
-    red = rgba[:, :, 0].astype(np.int32)
-    green = rgba[:, :, 1].astype(np.int32)
-    blue = rgba[:, :, 2].astype(np.int32)
-    alpha = rgba[:, :, 3]
-    return (
-        (alpha == 255)
-        & (blue * 100 > red * 108)
-        & (blue * 100 > green * 145)
-        & (red * 100 > green * 105)
-        & (blue - green > 20)
-    )
-
-
-def _frame_cloth_mask(rgba: np.ndarray) -> np.ndarray:
-    mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=bool)
-    for color in BASE_BROWN_COLORS:
-        mask |= np.all(
-            rgba == np.asarray(color, dtype=np.uint8),
-            axis=2,
-        )
-    return mask
-
-
-def _build_frame_overlay(
-    base_frame: Image.Image,
-    reference_mask: np.ndarray,
-    label: str,
-) -> tuple[Image.Image, int, int]:
-    """Project clean design intent onto locked cloth with a stable color budget."""
-    rgba = np.asarray(base_frame.convert("RGBA"), dtype=np.uint8)
-    visible_pixels = int(np.count_nonzero(rgba[:, :, 3]))
-    target_pixels = round(visible_pixels * PURPLE_COVERAGE_TARGET)
-    reference_positions = np.argwhere(reference_mask)
-    cloth_positions = np.argwhere(_frame_cloth_mask(rgba))
-    if reference_positions.size == 0:
-        raise EliteAssetContractError(f"{label} has no purple design reference")
-    if len(cloth_positions) < target_pixels:
-        raise EliteAssetContractError(
-            f"{label} has {len(cloth_positions)} cloth pixels, "
-            f"below the {target_pixels}-pixel purple target"
-        )
-
-    ranked_positions: list[tuple[int, int, int, int]] = []
-    for y_value, x_value in cloth_positions:
-        y = int(y_value)
-        x = int(x_value)
-        delta = np.abs(reference_positions - np.asarray((y, x)))
-        chebyshev_distance = int(np.max(delta, axis=1).min())
-        squared_distance = int(np.sum(delta * delta, axis=1).min())
-        ranked_positions.append((chebyshev_distance, squared_distance, y, x))
-    ranked_positions.sort()
-    selected = ranked_positions[:target_pixels]
-    max_distance = selected[-1][0]
-    if max_distance > MAX_REFERENCE_DISTANCE:
-        raise EliteAssetContractError(
-            f"{label} needs purple pixels {max_distance}px from the accepted "
-            f"design; maximum is {MAX_REFERENCE_DISTANCE}px"
-        )
-
-    selected_positions = [(y, x) for _, _, y, x in selected]
-    selected_positions.sort(
-        key=lambda position: (
-            int(rgba[position[0], position[1], :3].sum()),
-            position[0],
-            position[1],
+def _build_frame_edge_overlay(base_frame: Image.Image) -> Image.Image:
+    left, top, right, bottom = GARMENT_EDGE_RECT
+    edge_positions = {
+        (x, y)
+        for y in range(top, bottom)
+        for x in range(left, right)
+        if base_frame.getpixel((x, y)) in YELLOW_EDGE_COLORS
+    }
+    accepted_positions = set().union(
+        *(
+            component
+            for component in _connected_components(edge_positions)
+            if len(component) >= MIN_EDGE_COMPONENT_PIXELS
         )
     )
-    bright_count = max(1, round(target_pixels * 0.05))
-    mid_count = round(target_pixels * 0.35)
-    deep_count = target_pixels - mid_count - bright_count
     overlay = Image.new(
         "RGBA",
         (FRAME_SIZE, FRAME_SIZE),
         (0, 0, 0, 0),
     )
-    for index, (y, x) in enumerate(selected_positions):
-        if index < deep_count:
-            color = PURPLE_PALETTE[0]
-        elif index < deep_count + mid_count:
-            color = PURPLE_PALETTE[1]
-        else:
-            color = PURPLE_PALETTE[2]
-        overlay.putpixel((x, y), color)
-    return overlay, target_pixels, max_distance
-
-
-def _build_character_overlay(base: Image.Image) -> Image.Image:
-    _require_design_reference(
-        CHARACTER_DESIGN_REFERENCE,
-        CHARACTER_DESIGN_REFERENCE_SIZE,
-        CHARACTER_DESIGN_REFERENCE_RGBA_SHA256,
-        "elite Lightning Sorcerer character design reference",
-    )
-    subjects = _load_grid_subjects(
-        CHARACTER_DESIGN_REFERENCE,
-        "elite_lightning_clean_character",
-    )
-    overlay = Image.new("RGBA", CHARACTER_SIZE, (0, 0, 0, 0))
-    frame_counts: list[int] = []
-    reference_distances: list[int] = []
-    for index, subject in enumerate(subjects):
-        row, column = divmod(index, GRID_COLUMNS)
-        bbox = _frame_bbox(base, row, column)
-        width = bbox[2] - bbox[0]
-        height = bbox[3] - bbox[1]
-        fitted_reference = subject.resize(
-            (width, height),
-            Image.Resampling.NEAREST,
+    for position in accepted_positions:
+        overlay.putpixel(
+            position,
+            YELLOW_TO_PURPLE[base_frame.getpixel(position)],
         )
-        reference_mask = np.zeros((FRAME_SIZE, FRAME_SIZE), dtype=bool)
-        reference_mask[bbox[1] : bbox[3], bbox[0] : bbox[2]] = (
-            _purple_reference_mask(fitted_reference)
-        )
-        frame = base.crop(
-            (
-                column * FRAME_SIZE,
-                row * FRAME_SIZE,
-                (column + 1) * FRAME_SIZE,
-                (row + 1) * FRAME_SIZE,
-            )
-        )
-        frame_overlay, changed, max_distance = _build_frame_overlay(
-            frame,
-            reference_mask,
-            f"elite Lightning Sorcerer character frame {row}:{column}",
-        )
-        overlay.alpha_composite(
-            frame_overlay,
-            (column * FRAME_SIZE, row * FRAME_SIZE),
-        )
-        frame_counts.append(changed)
-        reference_distances.append(max_distance)
-    print(
-        "ELITE_PURPLE_PLACEMENT character "
-        f"counts={tuple(frame_counts)} "
-        f"max_reference_distance={max(reference_distances)}"
-    )
     return overlay
 
 
-def _build_move_overlay(base: Image.Image) -> Image.Image:
-    _require_design_reference(
-        MOVE_DESIGN_REFERENCE,
-        MOVE_DESIGN_REFERENCE_SIZE,
-        MOVE_DESIGN_REFERENCE_RGBA_SHA256,
-        "elite Lightning Sorcerer move design reference",
-    )
-    subjects = _load_move_subjects(
-        MOVE_DESIGN_REFERENCE,
-        "elite_lightning_clean_move",
-    )
-    overlay = Image.new("RGBA", MOVE_SIZE, (0, 0, 0, 0))
+def _build_edge_overlay(base: Image.Image, label: str) -> Image.Image:
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     frame_counts: list[int] = []
-    reference_distances: list[int] = []
-    for index, subject in enumerate(subjects):
-        registered_reference = _place_move_subject(
-            subject,
-            MOVE_TARGET_HEIGHTS[index],
-            0,
-            f"elite_lightning_clean_move_{index}",
-        )
-        frame = base.crop(
-            (
-                index * FRAME_SIZE,
-                0,
-                (index + 1) * FRAME_SIZE,
-                FRAME_SIZE,
+    frame_rows = base.height // FRAME_SIZE
+    frame_columns = base.width // FRAME_SIZE
+    for row in range(frame_rows):
+        for column in range(frame_columns):
+            frame = base.crop(
+                (
+                    column * FRAME_SIZE,
+                    row * FRAME_SIZE,
+                    (column + 1) * FRAME_SIZE,
+                    (row + 1) * FRAME_SIZE,
+                )
             )
-        )
-        frame_overlay, changed, max_distance = _build_frame_overlay(
-            frame,
-            _purple_reference_mask(registered_reference),
-            f"elite Lightning Sorcerer move frame {index}",
-        )
-        overlay.alpha_composite(frame_overlay, (index * FRAME_SIZE, 0))
-        frame_counts.append(changed)
-        reference_distances.append(max_distance)
+            frame_overlay = _build_frame_edge_overlay(frame)
+            overlay.alpha_composite(
+                frame_overlay,
+                (column * FRAME_SIZE, row * FRAME_SIZE),
+            )
+            frame_counts.append(len(_overlay_positions(frame_overlay)))
     print(
-        "ELITE_PURPLE_PLACEMENT move "
-        f"counts={tuple(frame_counts)} "
-        f"max_reference_distance={max(reference_distances)}"
+        "ELITE_PURPLE_EDGE_PLACEMENT "
+        f"{label} counts={tuple(frame_counts)} "
+        f"region={GARMENT_EDGE_RECT} "
+        f"minimum_component={MIN_EDGE_COMPONENT_PIXELS}"
     )
     return overlay
 
@@ -476,9 +330,9 @@ def _build_elite(
     for position in positions:
         source_pixel = base.getpixel(position)
         purple_pixel = overlay.getpixel(position)
-        if source_pixel not in BASE_BROWN_COLORS:
+        if source_pixel not in YELLOW_EDGE_COLORS:
             raise EliteAssetContractError(
-                f"{label} overlay covered non-cloth color at {position}: "
+                f"{label} overlay covered non-yellow-edge color at {position}: "
                 f"{source_pixel}"
             )
         if purple_pixel not in PURPLE_COLORS:
@@ -500,51 +354,11 @@ def _build_elite(
         raise EliteAssetContractError(
             f"{label} changes escaped the approved overlay"
         )
-    visible_pixels = sum(
-        1 for alpha in base.getchannel("A").getdata() if alpha
-    )
-    coverage = changed_pixels / float(visible_pixels)
-    if abs(coverage - PURPLE_COVERAGE_TARGET) > PURPLE_COVERAGE_TOLERANCE:
-        raise EliteAssetContractError(
-            f"{label} purple coverage {coverage:.3f} escaped "
-            f"{PURPLE_COVERAGE_TARGET:.1%}±"
-            f"{PURPLE_COVERAGE_TOLERANCE:.1%}"
-        )
-    frame_rows = base.height // FRAME_SIZE
-    frame_columns = base.width // FRAME_SIZE
-    frame_index = 0
-    frame_coverages: list[float] = []
-    for row in range(frame_rows):
-        for column in range(frame_columns):
-            frame = base.crop(
-                (
-                    column * FRAME_SIZE,
-                    row * FRAME_SIZE,
-                    (column + 1) * FRAME_SIZE,
-                    (row + 1) * FRAME_SIZE,
-                )
-            )
-            frame_visible = sum(
-                1 for alpha in frame.getchannel("A").getdata() if alpha
-            )
-            frame_coverage = expected_per_frame[frame_index] / float(
-                frame_visible
-            )
-            if (
-                abs(frame_coverage - PURPLE_COVERAGE_TARGET)
-                > PURPLE_COVERAGE_TOLERANCE
-            ):
-                raise EliteAssetContractError(
-                    f"{label} frame {frame_index} purple coverage "
-                    f"{frame_coverage:.3f} is unstable"
-                )
-            frame_coverages.append(frame_coverage)
-            frame_index += 1
     print(
-        "ELITE_PURPLE_STABILITY "
-        f"{label} coverage_min={min(frame_coverages):.4f} "
-        f"coverage_max={max(frame_coverages):.4f} "
-        f"palette_colors={len(PURPLE_COLORS)}"
+        "ELITE_PURPLE_EDGE_CONTRACT "
+        f"{label} changed={changed_pixels} "
+        f"palette_colors={len(PURPLE_COLORS)} "
+        "source=continuous_yellow_garment_edges"
     )
     rgba_hash = _rgba_sha256(result)
     if rgba_hash != expected_rgba_sha256:
@@ -671,14 +485,20 @@ def main(check_only: bool = False) -> None:
         BASE_MOVE_ALPHA_SHA256,
         "base Lightning Sorcerer move",
     )
-    character_overlay = _build_character_overlay(base_character)
+    character_overlay = _build_edge_overlay(
+        base_character,
+        "character",
+    )
     _assert_overlay_contract(
         character_overlay,
         CHARACTER_SIZE,
         CHARACTER_OVERLAY_RGBA_SHA256,
         "elite Lightning Sorcerer character overlay",
     )
-    move_overlay = _build_move_overlay(base_move)
+    move_overlay = _build_edge_overlay(
+        base_move,
+        "move",
+    )
     _assert_overlay_contract(
         move_overlay,
         MOVE_SIZE,

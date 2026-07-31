@@ -1,24 +1,24 @@
 # 精英雷电术士干净紫色镶边素材记录
 
 本次恢复沿用火焰术士精英化的视觉思路：普通雷电术士的金黄闪电、法杖、
-轮廓与动作继续作为主体，只在兜帽带、袖口、腰带和下摆等既有衣料区域加入
-少量紫色镶边。旧版大面积八阶紫纹被移除，运行时只保留深紫、中紫和极少亮紫
-三阶颜色，不再使用淡紫白、高频棋盘纹、散点和逐帧漂移的符文。
+轮廓与动作继续作为主体。紫色不再投影到棕色衣料，而是直接替换角色左侧
+领口、袖口和下摆中原本存在的连续黄色服装包边。运行时只保留深紫和中紫
+两阶颜色，不再使用淡紫白、高频棋盘纹、散点或逐帧独立摆放的紫色区域。
 
 ## 文件
 
 - `lightning_sorcerer_elite_clean_trim_v2_imagegen_reference.png`：Codex 内置
-  `imagegen` 生成的 4×4 干净主图设计参考。
+  `imagegen` 生成的 4×4 干净主图设计记录，不再参与运行时构建。
 - `lightning_sorcerer_elite_clean_trim_v2_alpha_reference.png`：主图参考去除统一
-  绿幕后得到的透明设计输入。
+  绿幕后得到的透明存档。
 - `lightning_sorcerer_elite_move_8pose_clean_trim_v2_imagegen_reference.png`：内置
-  `imagegen` 生成的 4×2 八相位移动设计参考。
+  `imagegen` 生成的 4×2 八相位移动设计记录，不再参与运行时构建。
 - `lightning_sorcerer_elite_move_8pose_clean_trim_v2_alpha_reference.png`：移动参考
-  去除统一绿幕后得到的透明设计输入。
-- `lightning_sorcerer_elite_purple_texture_overlay.png`：脚本从主图设计参考投影
-  到普通版 160×160 原生衣料像素后生成的受控镶边层。
-- `lightning_sorcerer_elite_move_purple_texture_overlay.png`：脚本从八相位参考投影
-  到修复后 320×40 普通移动横条的受控镶边层。
+  去除统一绿幕后得到的透明存档。
+- `lightning_sorcerer_elite_purple_texture_overlay.png`：脚本从普通版主图现有
+  黄色服装包边确定性派生的紫色替换层。
+- `lightning_sorcerer_elite_move_purple_texture_overlay.png`：脚本从修复后的
+  普通移动横条现有黄色服装包边确定性派生的八帧替换层。
 - `resources/texture/lightning_sorcerer_elite.png`、
   `resources/texture/lightning_sorcerer_elite_move.png`：最终运行时贴图。
 - `resources/animation/lightning_sorcerer_elite.tres`：八帧、12 fps 的独立移动
@@ -28,10 +28,10 @@
 `lightning_sorcerer_elite_move_8pose_imagegen_reference.png` 只作为问题版本的
 历史记录，不再参与构建。
 
-## 最终生图提示词
+## 设计存档的生图提示词
 
 生成模式：Codex 内置 `imagegen`，`precise-object-edit`。主图与移动图分别调用，
-没有使用 CLI/API 回退。
+没有使用 CLI/API 回退。这些提示词仅记录视觉探索，当前运行时不读取生图结果。
 
 主图提示词：
 
@@ -88,13 +88,16 @@ python dev_tools/process_lightning_sorcerer_elite_assets.py
 python dev_tools/process_lightning_sorcerer_elite_assets.py --check-only
 ```
 
-脚本只把设计参考中的紫色位置意图投影到普通版既有棕色衣料，最终 alpha、轮廓、
-金属、法杖、闪电、步态中心和地线均与普通版逐字节一致。主图变化 521 个原生
-像素，移动横条变化 248 个原生像素；每一帧的紫色覆盖率都锁定在可见像素的
-8%±0.2%，因此不会因姿势变化出现紫色总量闪烁。深/中/亮三阶色在每帧按固定
-60%/35%/5% 预算分配，亮紫只占约 1–2 个像素。脚本同时锁定设计参考、覆盖层、
-普通版输入和精英输出的解码后 RGBA SHA-256，并验证覆盖层距离参考紫色区域不
-超过 2 个原生像素。
+脚本不再按“每帧凑足固定紫色比例”寻找棕色像素，因为那会把颜色补到不同衣料
+块上，造成视觉上的随机闪现。现在每个 40×40 帧都只读取普通版在固定角色区域
+`x=7..17, y=18..35` 中已经存在的黄色服装包边，并把其中至少连续 3 像素的
+八邻域组件替换成深紫或中紫。孤立的一两个黄色高光不会变紫，皇冠、法杖、
+闪电、棕色衣料和区域右侧的金色结构也完全不变。
+
+主图变化 762 个原生黄色包边像素，移动横条变化 327 个；数量随真实遮挡自然
+变化，不再通过随机补点维持比例。脚本锁定普通版输入、覆盖层和精英输出的
+解码后 RGBA SHA-256，并逐像素验证每一个紫色输出的源像素都属于批准的黄色
+包边色板。运行时紫色只有 `#44146D` 与 `#6D27AF` 两色。
 
 移动输出继续复用普通雷电术士的八帧中心/地线契约，以及 F2、F5、F6 脚底
 相位契约，保留已修复的真实双脚交替。
