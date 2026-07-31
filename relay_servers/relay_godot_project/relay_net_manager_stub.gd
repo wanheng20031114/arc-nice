@@ -31,7 +31,8 @@ func _rpc_set_player_character(character_id: String, confirmed: bool) -> void:
 func _rpc_sync_player_list(
 	player_list: Array,
 	new_host_peer_id: int = 0,
-	game_mode: int = 0
+	game_mode: int = 0,
+	max_players: int = 8
 ) -> void:
 	pass
 

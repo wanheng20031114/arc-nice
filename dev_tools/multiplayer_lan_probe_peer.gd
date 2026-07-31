@@ -1,6 +1,22 @@
 extends SceneTree
 
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
+const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
+const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
+const TEST_ARENA_P1_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_ARENA_P2_SCENE_PATH := "res://scene/test_arena/test_grass_arena_p2.tscn"
+const STANDARD_MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
+)
+const TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
+)
+const TEST_ARENA_P1_MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres"
+)
+const TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
+)
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const LINGLAN_BOSS_ENTRY := preload("res://resources/config/bosses/boss_01_linglan.tres")
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
@@ -30,6 +46,7 @@ const PROBE_SCENARIO_BOSS := "boss"
 const PROBE_SCENARIO_TOWER_DEFENSE := "tower_defense"
 const PROBE_SCENARIO_DEATH_REVIVE := "death_revive"
 const PROBE_SCENARIO_RECONNECT := "reconnect"
+const PROBE_SCENARIO_MODE_CONTRACT := "mode_contract"
 const PROBE_OWNED_ROOT_NODE_NAMES := {
 	"MpGame": true,
 	"Game": true,
@@ -71,7 +88,12 @@ func _run() -> void:
 	if probe_scenario.is_empty():
 		probe_scenario = PROBE_SCENARIO_FULL
 	probe_game_mode = str(options.get("game_mode", "standard")).strip_edges().to_lower()
-	if probe_game_mode not in ["standard", "tower_defense"]:
+	if probe_game_mode not in [
+		"standard",
+		"tower_defense",
+		"test_arena_p1",
+		"test_arena_p2",
+	]:
 		_fail("Unsupported probe game mode: %s" % probe_game_mode)
 		_finish()
 		return
@@ -96,7 +118,7 @@ func _run() -> void:
 		_fail("Probe received an invalid reconnect token.")
 		_finish()
 		return
-	if probe_game_mode == "tower_defense":
+	if _uses_tower_defense_runtime():
 		var character_id := _get_tower_defense_probe_character_id(role, player_name)
 		if not bool(net_manager.call("set_local_character_id", character_id, true)):
 			_fail("Failed to select tower-defense probe character: %s" % character_id)
@@ -158,9 +180,9 @@ func _run_host(
 		return
 	var err: Error = OK
 	if mode == PROBE_MODE_RELAY:
-		err = net_manager.host_create_relay_room(host_ip, port)
+		err = net_manager.host_create_relay_room(host_ip, port, expected_players)
 	else:
-		err = net_manager.host_create_lan_server(port)
+		err = net_manager.host_create_lan_server(port, expected_players)
 	if err != OK:
 		_fail("Host failed to create %s connection: %s" % [mode, error_string(err)])
 		return
@@ -178,6 +200,12 @@ func _run_host(
 		_fail(
 			"Host timed out waiting for %d players; saw %d."
 			% [expected_players, _get_connected_player_count(net_manager)]
+		)
+		return
+	if int(net_manager.call("get_room_max_players")) != expected_players:
+		_fail(
+			"Host expected room capacity %d, saw %d."
+			% [expected_players, int(net_manager.call("get_room_max_players"))]
 		)
 		return
 	net_manager.host_start_game()
@@ -216,6 +244,12 @@ func _run_client(
 			% [expected_players, _get_connected_player_count(net_manager)]
 		)
 		return
+	if int(net_manager.call("get_room_max_players")) != expected_players:
+		_fail(
+			"Client expected synchronized room capacity %d, saw %d."
+			% [expected_players, int(net_manager.call("get_room_max_players"))]
+		)
+		return
 	if not await _wait_for_connection_state(net_manager, STATE_LOADING_GAME, timeout_seconds):
 		_fail("Client did not receive Host start-game event.")
 		return
@@ -243,7 +277,7 @@ func _run_mp_game_probe(
 		return
 	root.add_child(mp_game)
 	current_scene = mp_game
-	var runtime_load_timeout := 30.0 if probe_game_mode == "tower_defense" else 10.0
+	var runtime_load_timeout := 30.0 if _uses_tower_defense_runtime() else 10.0
 	if not await _wait_for_connection_state(
 		net_manager,
 		STATE_IN_GAME,
@@ -257,9 +291,10 @@ func _run_mp_game_probe(
 		_fail("MpGame did not create a GameRuntimeBase.")
 		mp_game.queue_free()
 		return
-	var expects_tower_defense := probe_game_mode == "tower_defense"
+	var expects_tower_defense := _uses_tower_defense_runtime()
 	if bool(game.call("supports_tower_defense")) != expects_tower_defense:
 		_fail("MpGame instantiated the wrong runtime for mode %s." % probe_game_mode)
+	_validate_exact_mode_runtime(game)
 	if expects_tower_defense:
 		var local_player := game.get_player_for_peer(int(net_manager.get_local_peer_id())) as Player
 		var map_camera := game.get("map_camera") as Camera2D
@@ -277,6 +312,11 @@ func _run_mp_game_probe(
 			"Game expected %d peer players, saw %d."
 			% [expected_players, game.peer_players.size()]
 		)
+	if probe_scenario == PROBE_SCENARIO_MODE_CONTRACT:
+		await _run_mode_contract_probe(game, is_host_probe)
+		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
+		await _cleanup_probe_game(net_manager, mp_game)
+		return
 	if probe_scenario == PROBE_SCENARIO_LEAVE:
 		await _run_leave_probe(net_manager, mp_game, game, is_host_probe)
 		_detach_probe_scene_disconnect_handlers(net_manager, mp_game, game)
@@ -354,6 +394,143 @@ func _run_mp_game_probe(
 		mp_game.queue_free()
 		await _wait_cleanup_frames(8)
 	await _cleanup_current_scene()
+
+
+func _uses_tower_defense_runtime() -> bool:
+	return probe_game_mode in [
+		"tower_defense",
+		"test_arena_p1",
+		"test_arena_p2",
+	]
+
+
+func _get_expected_runtime_scene_path() -> String:
+	match probe_game_mode:
+		"tower_defense":
+			return TOWER_DEFENSE_GAME_SCENE_PATH
+		"test_arena_p1":
+			return TEST_ARENA_P1_SCENE_PATH
+		"test_arena_p2":
+			return TEST_ARENA_P2_SCENE_PATH
+		_:
+			return STANDARD_GAME_SCENE_PATH
+
+
+func _get_expected_multiplayer_campaign_path() -> String:
+	match probe_game_mode:
+		"tower_defense":
+			return TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH
+		"test_arena_p1":
+			return TEST_ARENA_P1_MULTIPLAYER_CAMPAIGN_PATH
+		"test_arena_p2":
+			return TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH
+		_:
+			return STANDARD_MULTIPLAYER_CAMPAIGN_PATH
+
+
+func _validate_exact_mode_runtime(game: GameRuntimeBase) -> void:
+	var expected_scene_path := _get_expected_runtime_scene_path()
+	var expected_campaign_path := _get_expected_multiplayer_campaign_path()
+	if game.scene_file_path != expected_scene_path:
+		_fail(
+			"Mode %s expected runtime scene %s, saw %s."
+			% [probe_game_mode, expected_scene_path, game.scene_file_path]
+		)
+	var active_campaign := game.get("active_campaign") as WaveCampaignConfig
+	if active_campaign == null:
+		_fail("Mode %s runtime has no active Campaign." % probe_game_mode)
+	elif active_campaign.resource_path != expected_campaign_path:
+		_fail(
+			"Mode %s expected Campaign %s, saw %s."
+			% [probe_game_mode, expected_campaign_path, active_campaign.resource_path]
+		)
+	var has_exact_runtime_type := false
+	match probe_game_mode:
+		"tower_defense":
+			has_exact_runtime_type = (
+				game is GameTowerDefense
+				and not (game is TestGrassArena)
+			)
+		"test_arena_p1":
+			has_exact_runtime_type = (
+				game is TestGrassArena
+				and not (game is TestGrassArenaP2)
+			)
+		"test_arena_p2":
+			has_exact_runtime_type = game is TestGrassArenaP2
+		_:
+			has_exact_runtime_type = game is Game
+	_expect_mode_contract(
+		has_exact_runtime_type,
+		"Mode %s instantiated an unexpected runtime class." % probe_game_mode
+	)
+	if probe_game_mode not in ["test_arena_p1", "test_arena_p2"]:
+		return
+	var test_arena := game as TestGrassArena
+	if test_arena == null or active_campaign == null:
+		return
+	var expected_enemy_count := 1000 if probe_game_mode == "test_arena_p1" else 1
+	var campaign_waves := active_campaign.get_waves()
+	_expect_mode_contract(
+		campaign_waves.size() == 1
+		and campaign_waves[0].get_total_enemy_count() == expected_enemy_count,
+		"Mode %s must retain the authored %d-enemy test Campaign."
+		% [probe_game_mode, expected_enemy_count]
+	)
+	_expect_mode_contract(
+		is_zero_approx(
+			test_arena.progression_config.enemy_count_per_extra_player_ratio
+		)
+		and test_arena.progression_config.get_scaled_enemy_count(
+			expected_enemy_count,
+			8
+		) == expected_enemy_count,
+		"Mode %s must not scale test enemies with player count." % probe_game_mode
+	)
+
+
+func _run_mode_contract_probe(
+	game: GameRuntimeBase,
+	is_host_probe: bool
+) -> void:
+	if probe_game_mode in ["test_arena_p1", "test_arena_p2"]:
+		var test_arena := game as TestGrassArena
+		if test_arena == null:
+			return
+		if is_host_probe:
+			test_arena.set_manual_night_enabled(true, 0.0)
+			await _wait_seconds(1.0)
+			if not test_arena.get_test_arena_manual_night_enabled():
+				_fail("Test-arena Host failed to enable manual night.")
+		else:
+			var deadline := _now_seconds() + 6.0
+			while (
+				_now_seconds() < deadline
+				and not test_arena.get_test_arena_manual_night_enabled()
+			):
+				await process_frame
+			if not test_arena.get_test_arena_manual_night_enabled():
+				_fail("Test-arena Client did not receive Host manual-night state.")
+	else:
+		await _wait_seconds(0.5)
+	print(
+		"LAN_PROBE_EVENT mode_contract role=%s mode=%s scene=%s campaign=%s"
+		% [
+			"host" if is_host_probe else "client",
+			probe_game_mode,
+			_get_expected_runtime_scene_path(),
+			_get_expected_multiplayer_campaign_path(),
+		]
+	)
+	# P2 initializes additional fate/day-cycle resources. Let both peers finish
+	# their deferred startup work before the probe tears down the scene, otherwise
+	# the headless runner can report in-flight resource RIDs as exit leaks.
+	await _wait_seconds(2.0)
+
+
+func _expect_mode_contract(condition: bool, message: String) -> void:
+	if not condition:
+		_fail(message)
 
 
 func _validate_and_print_runtime_metrics(

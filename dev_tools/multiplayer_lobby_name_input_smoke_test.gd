@@ -40,10 +40,16 @@ func _run() -> void:
 	var username_panel := lobby.get_node_or_null("LobbyCenter/UsernamePanel") as PanelContainer
 	var tile_pattern := lobby.get_node_or_null("TilePattern") as TextureRect
 	var game_mode_selector := lobby.get_node_or_null(
-		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow/GameModeSelector"
+		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector"
 	) as OptionButton
+	var max_players_spin := lobby.get_node_or_null(
+		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow/MaxPlayersSpinBox"
+	) as SpinBox
 	var room_mode_label := lobby.get_node_or_null(
 		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomModeLabel"
+	) as Label
+	var room_capacity_label := lobby.get_node_or_null(
+		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel"
 	) as Label
 
 	_expect(
@@ -52,14 +58,26 @@ func _run() -> void:
 	)
 	_expect(username_panel != null, "UsernamePanel must exist.")
 	_expect(game_mode_selector != null, "Lobby must expose a native game-mode selector.")
+	_expect(max_players_spin != null, "Lobby must expose a shared room-capacity selector.")
 	_expect(room_mode_label != null, "Room wait panel must expose the synchronized mode label.")
+	_expect(room_capacity_label != null, "Room wait panel must expose synchronized room capacity.")
 	if game_mode_selector != null:
-		_expect(game_mode_selector.item_count == 2, "Game-mode selector must contain standard and tower defense.")
+		_expect(game_mode_selector.item_count == 4, "Game-mode selector must contain all four supported modes.")
 		_expect(
 			game_mode_selector.get_item_id(0) == NetManagerStore.GameMode.STANDARD
 			and game_mode_selector.get_item_id(1) == NetManagerStore.GameMode.TOWER_DEFENSE,
-			"Game-mode selector ids must match the network enum."
+			"Formal game-mode selector ids must match the network enum."
 		)
+		_expect(
+			game_mode_selector.get_item_id(2) == NetManagerStore.GameMode.TEST_ARENA_P1
+			and game_mode_selector.get_item_id(3) == NetManagerStore.GameMode.TEST_ARENA_P2,
+			"Test-arena selector ids must match the network enum."
+		)
+		for item_index in range(game_mode_selector.item_count):
+			_expect(
+				game_mode_selector.get_item_icon(item_index) != null,
+				"Every game mode must have a readable pixel-art icon."
+			)
 		game_mode_selector.select(1)
 		lobby.call("_on_game_mode_selected", 1)
 		_expect(
@@ -71,6 +89,13 @@ func _run() -> void:
 		_expect(
 			room_mode_label != null and room_mode_label.text.contains("塔防模式"),
 			"Room wait mode label must reflect NetManager authority."
+		)
+	if max_players_spin != null:
+		_expect(
+			int(max_players_spin.min_value) == 2
+			and int(max_players_spin.max_value) == 8
+			and int(max_players_spin.value) == 4,
+			"Room capacity selector must default to four total players within the 2..8 contract."
 		)
 	if username_panel != null:
 		_expect(username_panel.scale == Vector2.ONE, "UsernamePanel intro must never scale its text subtree.")

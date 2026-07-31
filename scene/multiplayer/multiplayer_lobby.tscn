@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=24 format=3]
 
 [ext_resource type="Script" path="res://scene/multiplayer/multiplayer_lobby.gd" id="1_lobby"]
 [ext_resource type="Texture2D" uid="uid://q1v73vx6yokg" path="res://resources/texture/ui/menu_rooftop_garden_background.png" id="2_tile"]
@@ -7,18 +7,25 @@
 [ext_resource type="Script" path="res://scene/multiplayer/bouncy_name_display.gd" id="5_name_display"]
 [ext_resource type="Script" path="res://scene/multiplayer/bouncy_name_letter.gd" id="6_name_letter"]
 [ext_resource type="PackedScene" path="res://scene/character_selection/player_character_choice_overlay.tscn" id="7_character_choice"]
+[ext_resource type="Theme" path="res://resources/ui/multiplayer_lobby_theme.tres" id="8_theme"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/multiplayer/network_public.png" id="9_public_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/multiplayer/network_lan.png" id="10_lan_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/multiplayer/action_create_room.png" id="11_create_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/multiplayer/action_start_game.png" id="12_start_icon"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
-bg_color = Color(0.09, 0.095, 0.105, 0.92)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.72, 0.64, 0.42, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
+bg_color = Color(0.035, 0.071, 0.059, 0.97)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.58, 0.46, 0.24, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+corner_detail = 1
+anti_aliasing = false
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_username_panel"]
 bg_color = Color(0, 0, 0, 0)
@@ -98,64 +105,72 @@ content_margin_left = 12.0
 content_margin_top = 8.0
 content_margin_right = 12.0
 content_margin_bottom = 8.0
-bg_color = Color(0.18, 0.19, 0.2, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.58, 0.51, 0.34, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+bg_color = Color(0.075, 0.145, 0.118, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.38, 0.22, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 1
+anti_aliasing = false
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
 content_margin_left = 12.0
 content_margin_top = 8.0
 content_margin_right = 12.0
 content_margin_bottom = 8.0
-bg_color = Color(0.24, 0.23, 0.2, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.95, 0.82, 0.48, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+bg_color = Color(0.15, 0.278, 0.224, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.79, 0.42, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 1
+anti_aliasing = false
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pressed"]
 content_margin_left = 12.0
 content_margin_top = 8.0
 content_margin_right = 12.0
 content_margin_bottom = 8.0
-bg_color = Color(0.14, 0.14, 0.15, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
+bg_color = Color(0.035, 0.071, 0.059, 1)
+border_width_left = 2
+border_width_top = 3
+border_width_right = 2
 border_width_bottom = 1
-border_color = Color(0.95, 0.82, 0.48, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+border_color = Color(0.95, 0.79, 0.42, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 1
+anti_aliasing = false
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_disabled"]
 content_margin_left = 12.0
 content_margin_top = 8.0
 content_margin_right = 12.0
 content_margin_bottom = 8.0
-bg_color = Color(0.1, 0.105, 0.115, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.25, 0.25, 0.25, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+bg_color = Color(0.055, 0.082, 0.071, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.18, 0.22, 0.19, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+corner_detail = 1
+anti_aliasing = false
 
 [node name="MultiplayerLobby" type="Control"]
 layout_mode = 3
@@ -164,6 +179,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("8_theme")
 script = ExtResource("1_lobby")
 
 [node name="Background" type="ColorRect" parent="."]
@@ -464,7 +480,7 @@ bus = &"SFX"
 
 [node name="ModeSelectPanel" type="PanelContainer" parent="LobbyCenter"]
 visible = false
-custom_minimum_size = Vector2(380, 320)
+custom_minimum_size = Vector2(560, 360)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -489,8 +505,10 @@ text = "选择联机方式"
 horizontal_alignment = 1
 
 [node name="PublicGameButton" type="Button" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(280, 42)
+texture_filter = 1
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
+icon = ExtResource("9_public_icon")
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 18
@@ -501,8 +519,10 @@ theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "公网游戏"
 
 [node name="LanGameButton" type="Button" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(280, 42)
+texture_filter = 1
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
+icon = ExtResource("10_lan_icon")
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_fonts/font = ExtResource("3_font")
 theme_override_font_sizes/font_size = 18
@@ -521,7 +541,7 @@ horizontal_alignment = 1
 autowrap_mode = 2
 
 [node name="BackToMenuButton" type="Button" parent="LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(280, 36)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
 theme_override_fonts/font = ExtResource("3_font")
@@ -538,16 +558,16 @@ text = "返回菜单"
 
 [node name="RoomBrowserPanel" type="PanelContainer" parent="LobbyCenter"]
 visible = false
-custom_minimum_size = Vector2(480, 480)
+custom_minimum_size = Vector2(640, 620)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
 [node name="MarginContainer" type="MarginContainer" parent="LobbyCenter/RoomBrowserPanel"]
 layout_mode = 2
 theme_override_constants/margin_left = 24
-theme_override_constants/margin_top = 24
+theme_override_constants/margin_top = 20
 theme_override_constants/margin_right = 24
-theme_override_constants/margin_bottom = 24
+theme_override_constants/margin_bottom = 20
 
 [node name="VBoxContainer" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer"]
 layout_mode = 2
@@ -561,33 +581,73 @@ theme_override_font_sizes/font_size = 26
 text = "多人模式"
 horizontal_alignment = 1
 
-[node name="GameModeRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+[node name="RoomSettingsCard" type="PanelContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 165)
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_type_variation = &"SettingsCard"
 
-[node name="GameModeLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow"]
-custom_minimum_size = Vector2(112, 0)
+[node name="SettingsMargin" type="MarginContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.82, 0.8, 0.7, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 14
-text = "游戏模式"
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 10
+
+[node name="SettingsVBox" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="SettingsTitle" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.82, 0.46, 1)
+theme_override_font_sizes/font_size = 17
+text = "房间设置 · 创建前确认"
+
+[node name="GameModeRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="GameModeLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow"]
+custom_minimum_size = Vector2(142, 0)
+layout_mode = 2
+text = "游玩模式"
 vertical_alignment = 1
 
-[node name="GameModeSelector" type="OptionButton" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow"]
-custom_minimum_size = Vector2(0, 34)
+[node name="GameModeSelector" type="OptionButton" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow"]
+texture_filter = 1
+custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+
+[node name="PlayerCountRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PlayerCountLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow"]
+custom_minimum_size = Vector2(142, 0)
+layout_mode = 2
+text = "游玩人数上限"
+vertical_alignment = 1
+
+[node name="MaxPlayersSpinBox" type="SpinBox" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow"]
+custom_minimum_size = Vector2(180, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 2.0
+max_value = 8.0
+value = 4.0
+suffix = " 人（含房主）"
+
+[node name="SettingsHint" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.66, 0.58, 1)
+theme_override_font_sizes/font_size = 12
+text = "以下选项用于创建房间。"
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="TabContainer" type="TabContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 300)
+custom_minimum_size = Vector2(0, 270)
 layout_mode = 2
 
 [node name="RoomListTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
@@ -605,14 +665,8 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
 [node name="RefreshButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab"]
-custom_minimum_size = Vector2(0, 32)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 text = "刷新列表"
 
 [node name="CreateRoomTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
@@ -623,9 +677,7 @@ alignment = 1
 
 [node name="RoomNameLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
 layout_mode = 2
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 14
-text = "房间名称:"
+text = "房间名称"
 
 [node name="RoomNameInput" type="LineEdit" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
 custom_minimum_size = Vector2(0, 32)
@@ -635,27 +687,11 @@ theme_override_font_sizes/font_size = 14
 placeholder_text = "留空则使用默认名"
 max_length = 32
 
-[node name="MaxPlayersLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
-layout_mode = 2
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 14
-text = "最大人数:"
-
-[node name="MaxPlayersSpinBox" type="SpinBox" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
-layout_mode = 2
-min_value = 2.0
-max_value = 8.0
-value = 4.0
-
 [node name="CreateRoomButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab"]
-custom_minimum_size = Vector2(0, 40)
+texture_filter = 1
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 16
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
+icon = ExtResource("11_create_icon")
 text = "创建房间"
 
 [node name="QuickMatchTab" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer"]
@@ -666,13 +702,88 @@ alignment = 1
 [node name="QuickMatchButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/QuickMatchTab"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 18
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 text = "快速匹配"
+
+[node name="LanDirectPanel" type="VBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(0, 348)
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="LanTitle" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.82, 0.46, 1)
+theme_override_font_sizes/font_size = 18
+text = "局域网直连"
+horizontal_alignment = 1
+
+[node name="LanHint" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.66, 0.7, 0.63, 1)
+theme_override_font_sizes/font_size = 13
+text = "房主先创建房间；其他玩家输入房主 IP 与相同端口加入。"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="HostIpLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.78, 0.66, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="PortRow" type="HBoxContainer" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PortLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/PortRow"]
+custom_minimum_size = Vector2(142, 0)
+layout_mode = 2
+text = "连接端口"
+vertical_alignment = 1
+
+[node name="PortSpinBox" type="SpinBox" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/PortRow"]
+custom_minimum_size = Vector2(180, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1024.0
+max_value = 65535.0
+value = 29170.0
+
+[node name="HostButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+texture_filter = 1
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+icon = ExtResource("11_create_icon")
+text = "使用上方设置创建局域网房间"
+
+[node name="LanSeparator" type="HSeparator" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+layout_mode = 2
+
+[node name="JoinIpInput" type="LineEdit" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+placeholder_text = "房主 IP，例如 192.168.1.23"
+text = "127.0.0.1"
+
+[node name="JoinButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+texture_filter = 1
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+icon = ExtResource("10_lan_icon")
+text = "加入局域网房间"
+
+[node name="LanStatusLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.72, 0.6, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="BackButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+text = "返回联机方式"
 
 [node name="BrowserStatusLabel" type="Label" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -682,15 +793,9 @@ theme_override_font_sizes/font_size = 13
 horizontal_alignment = 1
 
 [node name="BackButton" type="Button" parent="LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 36)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
-text = "返回主菜单"
+text = "返回联机方式"
 
 ; ═══════════════════════════════════════════
 ; 房间等待面板
@@ -698,7 +803,7 @@ text = "返回主菜单"
 
 [node name="RoomWaitPanel" type="PanelContainer" parent="LobbyCenter"]
 visible = false
-custom_minimum_size = Vector2(420, 400)
+custom_minimum_size = Vector2(600, 550)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -737,6 +842,13 @@ theme_override_font_sizes/font_size = 14
 text = "模式: 普通模式"
 horizontal_alignment = 1
 
+[node name="RoomCapacityLabel" type="Label" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.82, 0.46, 1)
+theme_override_font_sizes/font_size = 14
+text = "游玩人数：0 / 4（总人数含房主）"
+horizontal_alignment = 1
+
 [node name="PlayerListLabel" type="Label" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("3_font")
@@ -762,41 +874,24 @@ text = "等待中…"
 horizontal_alignment = 1
 
 [node name="ChooseCharacterButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 16
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
 text = "选择并确认角色"
 
 [node name="StartGameButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
 visible = false
-custom_minimum_size = Vector2(0, 40)
+texture_filter = 1
+custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 16
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
+icon = ExtResource("12_start_icon")
 text = "开始游戏"
 
 [node name="LeaveButton" type="Button" parent="LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 36)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.93, 0.9, 0.78, 1)
-theme_override_fonts/font = ExtResource("3_font")
-theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("StyleBoxFlat_btn_normal")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_btn_hover")
 text = "离开房间"
 
 [node name="PublicLobbyRequest" type="HTTPRequest" parent="."]
+timeout = 12.0
 
 [node name="PlayerCharacterChoiceOverlay" parent="." instance=ExtResource("7_character_choice")]

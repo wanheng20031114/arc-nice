@@ -29,6 +29,12 @@ const TEST_ARENA_P2_SINGLEPLAYER_CAMPAIGN_PATH := (
 const TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
 )
+const TEST_ARENA_MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres"
+)
+const TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
+)
 const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
 const MULTIPLAYER_LOBBY_SCENE_PATH := "res://scene/multiplayer/multiplayer_lobby.tscn"
 const RESOURCE_PROGRESS_END := 0.82
@@ -38,6 +44,9 @@ const MINIMUM_VISIBLE_SECONDS := 0.35
 const LOAD_TIMEOUT_SECONDS := 120.0
 const MULTIPLAYER_STATE_DISCONNECTED := 0
 const MULTIPLAYER_STATE_IN_GAME := 5
+const GAME_MODE_TOWER_DEFENSE := 1
+const GAME_MODE_TEST_ARENA_P1 := 2
+const GAME_MODE_TEST_ARENA_P2 := 3
 const CAMPAIGN_RUNTIME_RESOURCES_META := &"_game_load_runtime_resources"
 const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/plant_defense/agave_cannon.tscn",
@@ -158,15 +167,9 @@ func begin_multiplayer() -> void:
 		_is_multiplayer_load = true
 		_show_error("无法读取多人会话。")
 		return
-	var tower_defense := int(net_manager.get("current_game_mode")) == 1
-	var runtime_path := (
-		TOWER_DEFENSE_GAME_SCENE_PATH if tower_defense else STANDARD_GAME_SCENE_PATH
-	)
-	var campaign_path := (
-		TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH
-		if tower_defense
-		else STANDARD_MULTIPLAYER_CAMPAIGN_PATH
-	)
+	var game_mode := int(net_manager.get("current_game_mode"))
+	var runtime_path := _get_multiplayer_runtime_path(game_mode)
+	var campaign_path := _get_multiplayer_campaign_path(game_mode)
 	var manifest: Array[String] = [MULTIPLAYER_SCENE_PATH, runtime_path, campaign_path]
 	var character_map: Dictionary = net_manager.call("get_player_character_map") as Dictionary
 	for character_id_variant in character_map.values():
@@ -174,9 +177,33 @@ func begin_multiplayer() -> void:
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:
 		_append_inventory_runtime_resources(manifest, run_state)
-	if tower_defense:
+	if _uses_tower_defense_runtime(runtime_path):
 		_append_tower_defense_runtime_resources(manifest, true)
 	_begin_load(MULTIPLAYER_SCENE_PATH, manifest, true)
+
+
+func _get_multiplayer_runtime_path(game_mode: int) -> String:
+	match game_mode:
+		GAME_MODE_TOWER_DEFENSE:
+			return TOWER_DEFENSE_GAME_SCENE_PATH
+		GAME_MODE_TEST_ARENA_P1:
+			return TEST_GRASS_ARENA_SCENE_PATH
+		GAME_MODE_TEST_ARENA_P2:
+			return TEST_GRASS_ARENA_P2_SCENE_PATH
+		_:
+			return STANDARD_GAME_SCENE_PATH
+
+
+func _get_multiplayer_campaign_path(game_mode: int) -> String:
+	match game_mode:
+		GAME_MODE_TOWER_DEFENSE:
+			return TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH
+		GAME_MODE_TEST_ARENA_P1:
+			return TEST_ARENA_MULTIPLAYER_CAMPAIGN_PATH
+		GAME_MODE_TEST_ARENA_P2:
+			return TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH
+		_:
+			return STANDARD_MULTIPLAYER_CAMPAIGN_PATH
 
 
 func is_loading() -> bool:

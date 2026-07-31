@@ -24,6 +24,8 @@ class RoomStatus(str, Enum):
 class GameMode(str, Enum):
     STANDARD = "standard"
     TOWER_DEFENSE = "tower_defense"
+    TEST_ARENA_P1 = "test_arena_p1"
+    TEST_ARENA_P2 = "test_arena_p2"
 
 
 @dataclass

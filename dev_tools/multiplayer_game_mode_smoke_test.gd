@@ -20,7 +20,7 @@ func _run() -> void:
 	net_manager.disconnect_from_game()
 	_expect(
 		NetConstants.PROTOCOL_VERSION == 28,
-		"Tango角色编码与宿主蓄力协议要求协议v28。"
+		"Tango角色编码、宿主蓄力、四种游戏模式与房间容量同步要求协议v28。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
@@ -35,14 +35,33 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	var selector := lobby.get_node_or_null(
-		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow/GameModeSelector"
+		(
+			"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/"
+			+ "RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector"
+		)
 	) as OptionButton
 	var room_mode_label := lobby.get_node_or_null(
 		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomModeLabel"
 	) as Label
-	_expect(selector != null and selector.item_count == 2, "Lobby must expose both native mode options.")
+	var room_capacity_label := lobby.get_node_or_null(
+		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel"
+	) as Label
+	_expect(selector != null and selector.item_count == 4, "Lobby must expose all four native mode options.")
 	_expect(room_mode_label != null, "Room wait panel must display the synchronized mode.")
+	_expect(room_capacity_label != null, "Room wait panel must display synchronized room capacity.")
 	if selector != null:
+		var selector_ids: Array[int] = []
+		for item_index in selector.item_count:
+			selector_ids.append(selector.get_item_id(item_index))
+		_expect(
+			selector_ids == [
+				NetManagerStore.GameMode.STANDARD,
+				NetManagerStore.GameMode.TOWER_DEFENSE,
+				NetManagerStore.GameMode.TEST_ARENA_P1,
+				NetManagerStore.GameMode.TEST_ARENA_P2,
+			],
+			"Lobby selector ids must preserve the complete protocol mode order."
+		)
 		_expect(
 			selector.get_item_id(selector.selected) == NetManagerStore.GameMode.TOWER_DEFENSE,
 			"Lobby selector must follow NetManager state."
@@ -68,13 +87,31 @@ func _run() -> void:
 			"max_players": 4,
 			"game_mode": "tower_defense",
 		},
+		{
+			"id": "test-p1-room",
+			"name": "Test P1",
+			"host_name": "C",
+			"player_count": 3,
+			"max_players": 6,
+			"game_mode": "test_arena_p1",
+		},
+		{
+			"id": "test-p2-room",
+			"name": "Test P2",
+			"host_name": "D",
+			"player_count": 2,
+			"max_players": 3,
+			"game_mode": "test_arena_p2",
+		},
 	])
-	_expect(room_list.get_child_count() == 2, "Room list must retain both valid game modes.")
-	if room_list.get_child_count() == 2:
+	_expect(room_list.get_child_count() == 4, "Room list must retain all four valid game modes.")
+	if room_list.get_child_count() == 4:
 		_expect(
 			(room_list.get_child(0) as Button).text.contains("普通模式")
-			and (room_list.get_child(1) as Button).text.contains("塔防模式"),
-			"Room buttons must visibly identify their game mode."
+			and (room_list.get_child(1) as Button).text.contains("塔防模式")
+			and (room_list.get_child(2) as Button).text.contains("测试场景 P1")
+			and (room_list.get_child(3) as Button).text.contains("测试场景 P2"),
+			"Room buttons must visibly identify every game mode."
 		)
 
 	net_manager.disconnect_from_game()
@@ -88,11 +125,16 @@ func _run() -> void:
 			"character_confirmed": true,
 		}],
 		1,
-		NetManagerStore.GameMode.TOWER_DEFENSE
+		NetManagerStore.GameMode.TEST_ARENA_P1,
+		3
 	)
 	_expect(
-		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TOWER_DEFENSE,
-		"Reliable Host roster sync must make a client follow tower-defense mode."
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TEST_ARENA_P1,
+		"Reliable Host roster sync must make a client follow the selected test-arena mode."
+	)
+	_expect(
+		net_manager.get_room_max_players() == 3,
+		"Reliable Host roster sync must carry the room capacity together with the mode."
 	)
 
 	lobby.queue_free()

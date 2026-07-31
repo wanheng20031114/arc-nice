@@ -16,6 +16,7 @@ signal player_list_changed
 signal player_character_changed(peer_id: int, character_id: StringName, confirmed: bool)
 signal connection_failed(reason: String)
 signal game_mode_changed(new_game_mode: GameMode)
+signal room_capacity_changed(current_players: int, max_players: int)
 signal game_load_progress_changed(ready_count: int, total_count: int)
 
 const DEFAULT_CHARACTER_ID := &"weishidaier"
@@ -26,7 +27,12 @@ const LATE_REGISTRATION_TIMEOUT_MILLISECONDS := 5_000
 
 enum NetRole { NONE, HOST, CLIENT }
 enum ConnMode { DIRECT, RELAY }
-enum GameMode { STANDARD, TOWER_DEFENSE }
+enum GameMode {
+	STANDARD,
+	TOWER_DEFENSE,
+	TEST_ARENA_P1,
+	TEST_ARENA_P2,
+}
 enum ConnectionState {
 	DISCONNECTED,
 	HOSTING_LAN,
@@ -54,6 +60,8 @@ var public_room_id: String = ""
 var public_host_token: String = ""
 var public_is_host: bool = false
 var current_game_mode: GameMode = GameMode.STANDARD
+## 房间允许的总人数，包含房主。
+var room_max_players: int = NetConstants.MAX_PLAYERS
 var loading_session_id: int = 0
 var local_reconnect_token: String = ""
 
@@ -154,19 +162,53 @@ func get_current_game_mode() -> GameMode:
 
 
 static func game_mode_to_key(game_mode: GameMode) -> String:
-	return "tower_defense" if game_mode == GameMode.TOWER_DEFENSE else "standard"
+	match game_mode:
+		GameMode.TOWER_DEFENSE:
+			return "tower_defense"
+		GameMode.TEST_ARENA_P1:
+			return "test_arena_p1"
+		GameMode.TEST_ARENA_P2:
+			return "test_arena_p2"
+		_:
+			return "standard"
 
 
 static func game_mode_from_key(game_mode_key: String) -> GameMode:
-	return (
-		GameMode.TOWER_DEFENSE
-		if game_mode_key.strip_edges().to_lower() == "tower_defense"
-		else GameMode.STANDARD
-	)
+	match game_mode_key.strip_edges().to_lower():
+		"tower_defense":
+			return GameMode.TOWER_DEFENSE
+		"test_arena_p1":
+			return GameMode.TEST_ARENA_P1
+		"test_arena_p2":
+			return GameMode.TEST_ARENA_P2
+		_:
+			return GameMode.STANDARD
 
 
 static func get_game_mode_display_name(game_mode: GameMode) -> String:
-	return "塔防模式" if game_mode == GameMode.TOWER_DEFENSE else "普通模式"
+	match game_mode:
+		GameMode.TOWER_DEFENSE:
+			return "塔防模式"
+		GameMode.TEST_ARENA_P1:
+			return "测试场景 P1"
+		GameMode.TEST_ARENA_P2:
+			return "测试场景 P2"
+		_:
+			return "普通模式"
+
+
+func set_pending_room_max_players(max_players: int) -> bool:
+	if not _is_valid_room_max_players(max_players):
+		return false
+	if is_multiplayer_active() or net_role != NetRole.NONE:
+		return false
+	room_max_players = max_players
+	_emit_room_capacity_changed()
+	return true
+
+
+func get_room_max_players() -> int:
+	return room_max_players
 
 
 func is_multiplayer_active() -> bool:
@@ -185,17 +227,27 @@ func is_client() -> bool:
 	return not _disconnect_in_progress and net_role == NetRole.CLIENT
 
 
-func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
+func host_create_lan_server(
+	port: int = NetConstants.ENET_PORT_DEFAULT,
+	max_players: int = NetConstants.MAX_PLAYERS
+) -> Error:
+	if not _is_valid_room_max_players(max_players):
+		connection_failed.emit(
+			"房间人数必须在 %d 到 %d 之间"
+			% [NetConstants.MIN_ROOM_PLAYERS, NetConstants.MAX_PLAYERS]
+		)
+		return ERR_INVALID_PARAMETER
 	var configured_game_mode := current_game_mode
 	if _enet_peer != null:
 		disconnect_from_game()
 	_set_current_game_mode(configured_game_mode)
+	room_max_players = max_players
 
 	lan_port = port
 	_enet_peer = ENetMultiplayerPeer.new()
 	var err: Error = _enet_peer.create_server(
 		port,
-		NetConstants.MAX_PLAYERS,
+		room_max_players - 1,
 		NetConstants.CHANNEL_COUNT
 	)
 	if err != OK:
@@ -222,20 +274,29 @@ func host_create_lan_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error
 	_set_connection_state(ConnectionState.HOSTING_LAN)
 	player_joined.emit(host_peer_id, connected_players[host_peer_id])
 	player_list_changed.emit()
-	_debug_log("NetManager: LAN Host 已创建, port=%d" % port)
+	_emit_room_capacity_changed()
+	_debug_log(
+		"NetManager: LAN Host 已创建, port=%d, max_players=%d"
+		% [port, room_max_players]
+	)
 	return OK
 
 
-func host_create_server(port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
-	return host_create_lan_server(port)
+func host_create_server(
+	port: int = NetConstants.ENET_PORT_DEFAULT,
+	max_players: int = NetConstants.MAX_PLAYERS
+) -> Error:
+	return host_create_lan_server(port, max_players)
 
 
 func client_connect_lan(host_ip: String, port: int = NetConstants.ENET_PORT_DEFAULT) -> Error:
 	_ensure_local_reconnect_token()
 	var pending_game_mode := current_game_mode
+	var pending_room_max_players := room_max_players
 	if _enet_peer != null:
 		disconnect_from_game()
 	_set_current_game_mode(pending_game_mode)
+	room_max_players = pending_room_max_players
 
 	var trimmed_ip := host_ip.strip_edges()
 	if trimmed_ip.is_empty():
@@ -273,11 +334,22 @@ func client_connect_direct(host_ip: String, port: int = NetConstants.ENET_PORT_D
 	return client_connect_lan(host_ip, port)
 
 
-func host_create_relay_room(target_relay_ip: String, target_relay_port: int) -> Error:
+func host_create_relay_room(
+	target_relay_ip: String,
+	target_relay_port: int,
+	max_players: int = NetConstants.MAX_PLAYERS
+) -> Error:
+	if not _is_valid_room_max_players(max_players):
+		connection_failed.emit(
+			"房间人数必须在 %d 到 %d 之间"
+			% [NetConstants.MIN_ROOM_PLAYERS, NetConstants.MAX_PLAYERS]
+		)
+		return ERR_INVALID_PARAMETER
 	var configured_game_mode := current_game_mode
 	if _enet_peer != null:
 		disconnect_from_game()
 	_set_current_game_mode(configured_game_mode)
+	room_max_players = max_players
 
 	var trimmed_ip := target_relay_ip.strip_edges()
 	if trimmed_ip.is_empty():
@@ -324,9 +396,11 @@ func client_join_relay_room(
 ) -> Error:
 	_ensure_local_reconnect_token()
 	var pending_game_mode := current_game_mode
+	var pending_room_max_players := room_max_players
 	if _enet_peer != null:
 		disconnect_from_game()
 	_set_current_game_mode(pending_game_mode)
+	room_max_players = pending_room_max_players
 
 	var trimmed_ip := target_relay_ip.strip_edges()
 	if trimmed_ip.is_empty():
@@ -390,11 +464,13 @@ func disconnect_from_game() -> void:
 	_reported_game_load_total_count = 0
 	clear_public_room_context()
 	_set_current_game_mode(GameMode.STANDARD)
+	room_max_players = NetConstants.MAX_PLAYERS
 	_relay_register_pending = false
 	_clear_connection_attempt()
 	_physics_frame_count = 0
 	_set_connection_state(ConnectionState.DISCONNECTED)
 	player_list_changed.emit()
+	_emit_room_capacity_changed()
 	_debug_log("NetManager: 已断开连接")
 	_disconnect_in_progress = false
 
@@ -653,6 +729,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 		_try_finish_game_loading()
 	player_left.emit(peer_id)
 	player_list_changed.emit()
+	_emit_room_capacity_changed()
 	if conn_mode == ConnMode.RELAY and net_role == NetRole.CLIENT and peer_id == get_host_peer_id():
 		connection_failed.emit("主机已断开")
 		disconnect_from_game()
@@ -687,6 +764,7 @@ func _handle_connected_to_server() -> void:
 		confirmed_character_peers[host_peer_id] = local_character_confirmed
 		player_joined.emit(host_peer_id, connected_players[host_peer_id])
 		player_list_changed.emit()
+		_emit_room_capacity_changed()
 		_set_connection_state(ConnectionState.HOSTING_LAN)
 		_debug_log("NetManager: Host 已连接到 Relay, host_peer_id=%d" % host_peer_id)
 		return
@@ -839,9 +917,12 @@ func _rpc_register_player(
 		_rpc_join_rejected.rpc_id(sender_id, "该联机身份已在房间中使用。")
 		call_deferred("_disconnect_incompatible_peer", sender_id)
 		return
-	if connected_players.size() >= NetConstants.MAX_PLAYERS:
-		if _enet_peer != null:
-			_enet_peer.get_peer(sender_id).peer_disconnect()
+	if connected_players.size() >= room_max_players:
+		_rpc_join_rejected.rpc_id(
+			sender_id,
+			"房间已满（%d/%d）。" % [connected_players.size(), room_max_players]
+		)
+		call_deferred("_disconnect_incompatible_peer", sender_id)
 		return
 
 	connected_players[sender_id] = _sanitize_player_name(player_name)
@@ -855,6 +936,7 @@ func _rpc_register_player(
 	_peer_reconnect_tokens[sender_id] = normalized_reconnect_token
 	player_joined.emit(sender_id, connected_players[sender_id])
 	player_list_changed.emit()
+	_emit_room_capacity_changed()
 	_broadcast_player_list_to_clients()
 	_debug_log("NetManager: 玩家注册, id=%d, name=%s" % [sender_id, connected_players[sender_id]])
 
@@ -904,7 +986,8 @@ func _begin_peer_reconnect(
 		new_peer_id,
 		_build_player_list_array(),
 		get_host_peer_id(),
-		int(current_game_mode)
+		int(current_game_mode),
+		room_max_players
 	)
 	_rpc_start_game.rpc_id(
 		new_peer_id,
@@ -1014,7 +1097,8 @@ func _rpc_set_player_character(character_id: String, confirmed: bool) -> void:
 func _rpc_sync_player_list(
 	player_list: Array,
 	new_host_peer_id: int = 0,
-	game_mode: int = 0
+	game_mode: int = 0,
+	max_players: int = 8
 ) -> void:
 	if is_host():
 		return
@@ -1049,9 +1133,12 @@ func _rpc_sync_player_list(
 		return
 	if not _is_valid_game_mode(game_mode):
 		return
+	if not _is_valid_room_max_players(max_players):
+		return
 	host_peer_id = resolved_host_id
 	set_multiplayer_authority(host_peer_id)
 	_set_current_game_mode(game_mode as GameMode)
+	room_max_players = max_players
 	connected_players = synced_players
 	connected_player_characters = synced_characters
 	confirmed_character_peers = synced_confirmations
@@ -1080,6 +1167,7 @@ func _rpc_sync_player_list(
 		):
 			player_character_changed.emit(peer_id, character_id, character_confirmed)
 	player_list_changed.emit()
+	_emit_room_capacity_changed()
 
 
 @rpc("authority", "call_remote", "reliable", 0)
@@ -1246,7 +1334,13 @@ func _broadcast_player_list_to_clients() -> void:
 			continue
 		if not is_peer_send_ready(peer_id):
 			continue
-		_rpc_sync_player_list.rpc_id(peer_id, player_list, host_id, int(current_game_mode))
+		_rpc_sync_player_list.rpc_id(
+			peer_id,
+			player_list,
+			host_id,
+			int(current_game_mode),
+			room_max_players
+		)
 
 
 func _send_start_game_to_clients() -> void:
@@ -1341,7 +1435,23 @@ func _set_current_game_mode(game_mode: GameMode) -> void:
 
 
 func _is_valid_game_mode(game_mode: int) -> bool:
-	return game_mode == GameMode.STANDARD or game_mode == GameMode.TOWER_DEFENSE
+	return (
+		game_mode == GameMode.STANDARD
+		or game_mode == GameMode.TOWER_DEFENSE
+		or game_mode == GameMode.TEST_ARENA_P1
+		or game_mode == GameMode.TEST_ARENA_P2
+	)
+
+
+func _is_valid_room_max_players(max_players: int) -> bool:
+	return (
+		max_players >= NetConstants.MIN_ROOM_PLAYERS
+		and max_players <= NetConstants.MAX_PLAYERS
+	)
+
+
+func _emit_room_capacity_changed() -> void:
+	room_capacity_changed.emit(connected_players.size(), room_max_players)
 
 
 func _get_safe_local_name() -> String:

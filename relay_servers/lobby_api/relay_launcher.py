@@ -14,6 +14,10 @@ from typing import IO, Optional
 from . import config
 
 
+MIN_RELAY_CLIENTS = 2
+MAX_RELAY_CLIENTS = 8
+
+
 class RelayLauncher:
     """管理 Godot Headless Relay 进程的生命周期。"""
 
@@ -31,11 +35,22 @@ class RelayLauncher:
                     return port
         return None
 
-    def start_relay(self, port: int) -> Optional[int]:
+    def start_relay(self, port: int, max_clients: int) -> Optional[int]:
         """
         启动一个 Relay 实例，返回进程 PID。
         失败返回 None。
         """
+        if (
+            max_clients < MIN_RELAY_CLIENTS
+            or max_clients > MAX_RELAY_CLIENTS
+        ):
+            print(
+                "[RelayLauncher] Relay 最大连接数超出允许范围 "
+                f"(max_clients={max_clients}, "
+                f"allowed={MIN_RELAY_CLIENTS}..{MAX_RELAY_CLIENTS})"
+            )
+            return None
+
         godot_path = config.GODOT_SERVER_PATH
         project_path = config.RELAY_PROJECT_PATH
 
@@ -54,6 +69,7 @@ class RelayLauncher:
             "--",
             f"--port={port}",
             f"--idle-timeout={config.RELAY_IDLE_TIMEOUT}",
+            f"--max-clients={max_clients}",
         ]
 
         log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
@@ -81,7 +97,8 @@ class RelayLauncher:
             self._log_files[port] = (stdout_file, stderr_file)
 
         print(
-            f"[RelayLauncher] Relay 已启动 port={port}, pid={proc.pid}, "
+            f"[RelayLauncher] Relay 已启动 port={port}, max_clients={max_clients}, "
+            f"pid={proc.pid}, "
             f"stdout={stdout_path}, stderr={stderr_path}"
         )
         return proc.pid

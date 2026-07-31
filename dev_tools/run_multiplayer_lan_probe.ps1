@@ -2,9 +2,9 @@ param(
     [string]$GodotExe = "C:\Program Files\Godot\Godot_console.exe",
     [int]$Port = 29270,
     [int]$TimeoutSeconds = 65,
-    [ValidateSet("full", "leave", "wave", "boss", "tower_defense", "death_revive")]
+    [ValidateSet("full", "leave", "wave", "boss", "tower_defense", "death_revive", "mode_contract")]
     [string]$Scenario = "full",
-    [ValidateSet("standard", "tower_defense")]
+    [ValidateSet("standard", "tower_defense", "test_arena_p1", "test_arena_p2")]
     [string]$GameMode = "standard",
     [ValidateRange(2, 8)]
     [int]$PlayerCount = 4,
@@ -35,6 +35,7 @@ function Start-ProbePeer {
 
     $stdout = Join-Path $logRoot "$Name.out.log"
     $stderr = Join-Path $logRoot "$Name.err.log"
+    $engineLog = Join-Path $logRoot "$Name.godot.log"
     $args = @()
     if ($GodotVerbose) {
         $args += "--verbose"
@@ -42,6 +43,7 @@ function Start-ProbePeer {
     $args += @(
         "--headless",
         "--path", $projectPath,
+        "--log-file", $engineLog,
         "--script", "dev_tools/multiplayer_lan_probe_peer.gd",
         "--",
         "--probe-role=$Role",
@@ -72,6 +74,7 @@ function Start-ProbePeer {
         Process = $process
         Stdout = $stdout
         Stderr = $stderr
+        EngineLog = $engineLog
     }
 }
 

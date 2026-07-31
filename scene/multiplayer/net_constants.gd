@@ -7,7 +7,9 @@ extends RefCounted
 ## v26：竹筒迫击炮视觉动作携带本轮已提交的蓄热时长，确保攻击间隔支援
 ## 在Host、实时事件与中途加入快照之间保持一致。
 ## v27：洛茜赌怪券牌局新增空白牌结果类型，隔离无法识别 kind=5 的旧客户端。
-## v28：新增 Tango 角色快照编码，以及由 Host 独立计时的可靠蓄力/释放/取消协议。
+## v28：新增 Tango 角色快照编码与由 Host 独立计时的可靠蓄力/释放/取消协议；
+## 多人房间同步总人数容量，并新增测试场景 P1 / P2 模式与测试场景权威昼夜切换事件。
+## 旧客户端无法安全解释新增模式、RPC 参数与角色状态。
 const PROTOCOL_VERSION := 28
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
@@ -20,6 +22,8 @@ static func is_valid_network_combat_value(value: int) -> bool:
 	return value >= NETWORK_COMBAT_VALUE_MIN and value <= NETWORK_COMBAT_VALUE_MAX
 
 ## 玩家限制
+const MIN_ROOM_PLAYERS := 2
+const DEFAULT_ROOM_MAX_PLAYERS := 4
 const MAX_PLAYERS := 8
 const MAX_PLAYER_NAME_LENGTH := 12
 

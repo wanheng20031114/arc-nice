@@ -4,6 +4,14 @@ const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game.tscn")
 const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TEST_ARENA_SCENE := preload("res://scene/test_arena/test_grass_arena.tscn")
+const TEST_ARENA_P2_SCENE := preload("res://scene/test_arena/test_grass_arena_p2.tscn")
+const TEST_ARENA_MULTIPLAYER_CAMPAIGN := preload(
+	"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres"
+)
+const TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN := preload(
+	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
+)
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const BOMBER_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bomber.tres")
@@ -93,6 +101,7 @@ func _run() -> void:
 	await _test_host_authoritative_tiyi_protocol()
 	await _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm()
 	await _test_game_runtime_modes()
+	await _test_test_arena_multiplayer_runtime_modes()
 	_test_snapshot_round_trip()
 	for _cleanup_frame in range(4):
 		await process_frame
@@ -138,6 +147,33 @@ func _test_scene_instantiation() -> void:
 		_stop_audio_players(game)
 		game.free()
 
+	for arena_contract in [
+		{
+			"scene": TEST_ARENA_SCENE,
+			"campaign": TEST_ARENA_MULTIPLAYER_CAMPAIGN,
+			"name": "P1",
+		},
+		{
+			"scene": TEST_ARENA_P2_SCENE,
+			"campaign": TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN,
+			"name": "P2",
+		},
+	]:
+		var arena_scene := arena_contract["scene"] as PackedScene
+		var arena := arena_scene.instantiate() as TestGrassArena
+		_expect(
+			arena != null,
+			"Test arena %s must instantiate as the tower-defense test runtime."
+			% arena_contract["name"]
+		)
+		if arena != null:
+			_expect(
+				arena.multiplayer_campaign == arena_contract["campaign"],
+				"Test arena %s must bind its dedicated multiplayer Campaign."
+				% arena_contract["name"]
+			)
+			arena.free()
+
 	var player := PLAYER_SCENE.instantiate() as Player
 	_expect(player != null, "Player scene must instantiate for collision layer contract.")
 	if player != null:
@@ -166,13 +202,17 @@ func _test_net_manager_lan_lifecycle() -> void:
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
 		"LAN Host must be able to choose tower-defense mode before creating the server."
 	)
-	var err: Error = net_manager.host_create_lan_server(29171)
+	var err: Error = net_manager.host_create_lan_server(29171, 3)
 	_expect(err == OK, "NetManager must create a LAN host on test port.")
 	_expect(net_manager.is_host(), "NetManager must enter host role.")
 	_expect(net_manager.connected_players.has(1), "Host peer must be registered.")
 	_expect(
 		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TOWER_DEFENSE,
 		"Creating a LAN server must preserve the Host-selected game mode."
+	)
+	_expect(
+		net_manager.get_room_max_players() == 3,
+		"Creating a LAN server must preserve the selected total room capacity."
 	)
 	_expect(
 		net_manager.get_player_character_id(1) == &"weishidaier"
@@ -222,7 +262,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 26))
+		not bool(net_manager.call("_is_protocol_version_compatible", 27))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 26))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 25))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 24))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 23))
@@ -323,6 +364,20 @@ func _test_net_manager_game_mode_authority() -> void:
 		== "tower_defense",
 		"Tower-defense mode must expose a stable API key."
 	)
+	for mode_contract in [
+		[NetManagerStore.GameMode.STANDARD, "standard", "普通模式"],
+		[NetManagerStore.GameMode.TOWER_DEFENSE, "tower_defense", "塔防模式"],
+		[NetManagerStore.GameMode.TEST_ARENA_P1, "test_arena_p1", "测试场景 P1"],
+		[NetManagerStore.GameMode.TEST_ARENA_P2, "test_arena_p2", "测试场景 P2"],
+	]:
+		var mode := int(mode_contract[0]) as NetManagerStore.GameMode
+		var key := str(mode_contract[1])
+		_expect(
+			NetManagerStore.game_mode_to_key(mode) == key
+			and NetManagerStore.game_mode_from_key(key) == mode
+			and NetManagerStore.get_game_mode_display_name(mode) == str(mode_contract[2]),
+			"Every multiplayer mode must round-trip through its stable key and display name."
+		)
 	net_manager.set("net_role", NetManagerStore.NetRole.CLIENT)
 	net_manager.set("connection_state", NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY)
 	_expect(
@@ -408,7 +463,8 @@ func _test_net_manager_player_list_sync_diff() -> void:
 			{"id": 4, "name": "New", "character_id": "hoe_cat", "character_confirmed": false},
 		],
 		1,
-		NetManagerStore.GameMode.TOWER_DEFENSE
+		NetManagerStore.GameMode.TEST_ARENA_P2,
+		5
 	)
 	net_manager.player_left.disconnect(left_callback)
 	net_manager.player_joined.disconnect(joined_callback)
@@ -432,8 +488,12 @@ func _test_net_manager_player_list_sync_diff() -> void:
 		"Player list sync must preserve an unconfirmed character choice."
 	)
 	_expect(
-		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TOWER_DEFENSE,
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TEST_ARENA_P2,
 		"Reliable player-list sync must make clients follow the Host game mode."
+	)
+	_expect(
+		net_manager.get_room_max_players() == 5,
+		"Reliable player-list sync must make clients follow the Host room capacity."
 	)
 	net_manager.disconnect_from_game()
 
@@ -4211,6 +4271,70 @@ func _test_game_runtime_modes() -> void:
 	_stop_audio_players(tower_client_game)
 	tower_client_game.queue_free()
 	await process_frame
+
+
+func _test_test_arena_multiplayer_runtime_modes() -> void:
+	for arena_contract in [
+		{
+			"scene": TEST_ARENA_SCENE,
+			"campaign": TEST_ARENA_MULTIPLAYER_CAMPAIGN,
+			"runtime_class": "TestGrassArena",
+			"enemy_count": 1000,
+		},
+		{
+			"scene": TEST_ARENA_P2_SCENE,
+			"campaign": TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN,
+			"runtime_class": "TestGrassArenaP2",
+			"enemy_count": 1,
+		},
+	]:
+		var arena_scene := arena_contract["scene"] as PackedScene
+		var arena := arena_scene.instantiate() as TestGrassArena
+		_expect(
+			arena != null,
+			"%s multiplayer runtime must instantiate." % arena_contract["runtime_class"]
+		)
+		if arena == null:
+			continue
+		arena.configure_multiplayer(
+			GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+			1,
+			{1: "Host", 2: "Client"},
+			{1: &"weishidaier", 2: &"weishidaier"}
+		)
+		arena.auto_start_waves = false
+		root.add_child(arena)
+		await process_frame
+		await physics_frame
+		var waves := arena.active_campaign.get_waves()
+		_expect(
+			arena.active_campaign == arena_contract["campaign"]
+			and arena.multiplayer_campaign == arena_contract["campaign"],
+			"%s must select its exact multiplayer Campaign."
+			% arena_contract["runtime_class"]
+		)
+		_expect(
+			waves.size() == 1
+			and waves[0].get_total_enemy_count() == int(arena_contract["enemy_count"]),
+			"%s multiplayer Campaign must retain its authored enemy count."
+			% arena_contract["runtime_class"]
+		)
+		_expect(
+			is_zero_approx(
+				arena.progression_config.enemy_count_per_extra_player_ratio
+			),
+			"%s must not scale test enemy counts with extra players."
+			% arena_contract["runtime_class"]
+		)
+		_expect(
+			arena.supports_tower_defense()
+			and arena.supports_test_arena_manual_night_sync(),
+			"%s must expose tower-defense and manual day/night multiplayer contracts."
+			% arena_contract["runtime_class"]
+		)
+		_stop_audio_players(arena)
+		arena.queue_free()
+		await process_frame
 
 
 func _test_snapshot_round_trip() -> void:

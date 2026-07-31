@@ -4,6 +4,9 @@ const ARENA_SCENE := preload("res://scene/test_arena/test_grass_arena_p2.tscn")
 const TEST_CAMPAIGN := preload(
 	"res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres"
 )
+const MULTIPLAYER_TEST_CAMPAIGN := preload(
+	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
+)
 const SLIME_CONFIG := preload("res://resources/config/enemies/slime.tres")
 
 var failures: Array[String] = []
@@ -43,6 +46,10 @@ func _test_campaign_contract() -> void:
 		"P2 必须绑定独立的单史莱姆 Campaign。"
 	)
 	_expect(
+		arena.multiplayer_campaign == MULTIPLAYER_TEST_CAMPAIGN,
+		"P2 必须绑定独立的多人单史莱姆 Campaign。"
+	)
+	_expect(
 		TEST_CAMPAIGN.validate_campaign().is_empty(),
 		"P2 Campaign 必须通过流程校验。"
 	)
@@ -60,6 +67,20 @@ func _test_campaign_contract() -> void:
 			"P2 敌人必须精确为一只普通史莱姆。"
 		)
 	_expect(wave.max_alive_enemies == 1, "P2 场上敌人上限必须为一只。")
+	var multiplayer_waves := MULTIPLAYER_TEST_CAMPAIGN.get_waves()
+	_expect(
+		MULTIPLAYER_TEST_CAMPAIGN.validate_campaign().is_empty()
+		and multiplayer_waves.size() == 1
+		and multiplayer_waves[0].get_total_enemy_count() == 1,
+		"P2 多人 Campaign 必须通过校验并精确保留一只普通史莱姆。"
+	)
+	_expect(
+		is_zero_approx(
+			arena.progression_config.enemy_count_per_extra_player_ratio
+		)
+		and arena.progression_config.get_scaled_enemy_count(1, 8) == 1,
+		"P2 测试敌人数不得随多人房间人数缩放。"
+	)
 	arena.call("_build_wave_spawn_queue", wave)
 	_expect(
 		arena.pending_enemy_configs == [SLIME_CONFIG],
@@ -97,7 +118,7 @@ func _test_one_kill_completes_day() -> void:
 	arena.call("_clear_pending_enemy_spawn_queue")
 	arena.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
 	arena.call("_check_wave_completion")
-	await _wait_frames(2)
+	var fate_interlude_ready := await _wait_for_fate_interlude(5.0)
 
 	var hint_layer := arena.get_node("TestControlsHint") as CanvasLayer
 	_expect(
@@ -110,7 +131,8 @@ func _test_one_kill_completes_day() -> void:
 		"P2 完成唯一敌人后必须记录第 1 天完整进度。"
 	)
 	_expect(
-		arena.fate_manager.active
+		fate_interlude_ready
+		and arena.fate_manager.active
 		and arena.fate_manager.completed_day == 1
 		and arena.xiaocong_fate_interlude.is_active,
 		"P2 必须启动正式的小葱命运管理与暗室交互。"
@@ -123,11 +145,34 @@ func _test_one_kill_completes_day() -> void:
 	)
 
 	arena.call("_on_xiaocong_fate_interlude_completed", &"")
-	await process_frame
+	var entered_victory := await _wait_for_wave_state(
+		GameRuntimeBase.WaveState.VICTORY,
+		5.0
+	)
 	_expect(
-		arena.wave_state == GameRuntimeBase.WaveState.VICTORY,
+		entered_victory,
 		"P2 小葱日结完成且无后续波次时必须进入胜利。"
 	)
+
+
+func _wait_for_fate_interlude(timeout_seconds: float) -> bool:
+	var deadline_msec := Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline_msec:
+		if arena.fate_manager.active and arena.xiaocong_fate_interlude.is_active:
+			return true
+		await process_frame
+		await physics_frame
+	return false
+
+
+func _wait_for_wave_state(target_state: int, timeout_seconds: float) -> bool:
+	var deadline_msec := Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline_msec:
+		if arena.wave_state == target_state:
+			return true
+		await process_frame
+		await physics_frame
+	return false
 
 
 func _wait_frames(frame_count: int) -> void:

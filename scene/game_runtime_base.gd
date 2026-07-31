@@ -45,6 +45,7 @@ signal multiplayer_pickup_collected(
 signal multiplayer_pickup_removed(net_id: int)
 signal multiplayer_merchant_active_changed(active: bool)
 signal multiplayer_flow_state_changed(step_id: StringName, state: int, countdown_seconds: int)
+signal test_arena_manual_night_changed(enabled: bool)
 signal multiplayer_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2)
 signal multiplayer_linglan_airdrop_started(
 	enemy_config: EnemyConfig,
@@ -225,6 +226,22 @@ func restore_multiplayer_player(
 @abstract func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]
 @abstract func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]
 @abstract func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void
+
+
+## Test arenas opt in to an explicit host-authoritative manual day/night
+## contract. Formal runtimes keep the zero-cost default.
+func supports_test_arena_manual_night_sync() -> bool:
+	return false
+
+
+func get_test_arena_manual_night_enabled() -> bool:
+	return false
+
+
+func apply_remote_test_arena_manual_night(_enabled: bool) -> void:
+	pass
+
+
 @abstract func get_flow_state_snapshot() -> Dictionary
 @abstract func apply_remote_boss_started(
 	net_id: int,

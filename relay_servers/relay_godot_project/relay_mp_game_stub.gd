@@ -444,6 +444,10 @@ func net_xiaocong_fate_state_changed(state: Dictionary) -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
+func net_test_arena_manual_night_changed(enabled: bool) -> void:
+	pass
+
+@rpc("authority", "call_remote", "reliable", 5)
 func net_plant_spawned(
 	request_id: int,
 	owner_peer_id: int,

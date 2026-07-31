@@ -62,6 +62,7 @@ func _run() -> void:
 		"net_xiaocong_fate_vote_requested",
 		"net_xiaocong_collectible_choice_requested",
 		"net_xiaocong_fate_state_changed",
+		"net_test_arena_manual_night_changed",
 		"net_inventory_item_use_requested",
 		"net_inventory_item_discard_requested",
 		"net_inventory_item_used",
@@ -165,8 +166,11 @@ func _run() -> void:
 		)
 	if main_net_manager_rpcs.has("_rpc_sync_player_list"):
 		_expect(
-			String(main_net_manager_rpcs["_rpc_sync_player_list"]).contains("game_mode:int=0"),
-			"Player-list sync must carry the Host-authoritative game mode."
+			String(main_net_manager_rpcs["_rpc_sync_player_list"]).contains("game_mode:int=0")
+			and String(main_net_manager_rpcs["_rpc_sync_player_list"]).contains(
+				"max_players:int=8"
+			),
+			"Player-list sync must carry the Host-authoritative game mode and room capacity."
 		)
 	if main_net_manager_rpcs.has("_rpc_start_game"):
 		_expect(
@@ -177,7 +181,7 @@ func _run() -> void:
 	_test_registration_protocol_handshake_source()
 	_expect(
 		NetConstants.PROTOCOL_VERSION == 28,
-		"Tango角色编码与宿主蓄力协议要求协议v28。"
+		"Tango角色编码、宿主蓄力、四种游戏模式与房间容量同步要求协议v28。"
 	)
 	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v28 must provision eight ENet channels.")
 	_test_relay_channel_count()
@@ -214,8 +218,10 @@ func _compare_rpc_surfaces(label: String, main_rpcs: Dictionary, relay_rpcs: Dic
 func _test_registration_protocol_handshake_source() -> void:
 	var net_manager := NetManagerScript.new()
 	_expect(
-		net_manager._is_protocol_version_compatible(28)
-		and not net_manager._is_protocol_version_compatible(27),
+		net_manager._is_protocol_version_compatible(NetConstants.PROTOCOL_VERSION)
+		and not net_manager._is_protocol_version_compatible(
+			NetConstants.PROTOCOL_VERSION - 1
+		),
 		"Protocol v28 hosts must accept exactly v28 and reject v27."
 	)
 	net_manager.free()
@@ -284,8 +290,12 @@ func _test_relay_channel_count() -> void:
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
 		and relay_source.contains("const PROTOCOL_VERSION := 28")
-		and relay_source.contains("create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)"),
-		"Relay server must declare v28 and provision the same eight ENet channels as clients."
+		and relay_source.contains("--max-clients=")
+		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
+		(
+			"Relay server must declare v28, accept the room capacity, and provision "
+			+ "the same eight ENet channels as clients."
+		)
 	)
 
 
@@ -767,6 +777,7 @@ func _test_gameplay_channel_contract(rpcs: Dictionary) -> void:
 		"net_terrain_snapshot_chunk",
 		"net_terrain_delta",
 		"net_xiaocong_fate_state_changed",
+		"net_test_arena_manual_night_changed",
 	]:
 		_expect_rpc_channel(rpcs, world_event_method, NetConstants.CH_WORLD_EVENT)
 	for transaction_method in [

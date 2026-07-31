@@ -94,7 +94,7 @@ async def _ensure_room_relay(room) -> dict:
         room_mgr.destroy_room(room.id, room.host_token)
         raise HTTPException(status_code=503, detail="无可用 Relay 端口")
 
-    pid = relay_launcher.start_relay(port)
+    pid = relay_launcher.start_relay(port, room.max_players)
     if pid is None:
         room_mgr.destroy_room(room.id, room.host_token)
         raise HTTPException(status_code=500, detail="启动 Relay 失败")
@@ -232,7 +232,7 @@ async def request_relay(room_id: str, req: HostTokenRequest) -> dict:
         raise HTTPException(status_code=503, detail="无可用 Relay 端口")
 
     # 启动 Relay 进程
-    pid = relay_launcher.start_relay(port)
+    pid = relay_launcher.start_relay(port, room.max_players)
     if pid is None:
         raise HTTPException(status_code=500, detail="启动 Relay 失败")
 

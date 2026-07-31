@@ -4,6 +4,9 @@ const ARENA_SCENE := preload("res://scene/test_arena/test_grass_arena.tscn")
 const TEST_CAMPAIGN := preload(
 	"res://resources/config/campaigns/test_arena/singleplayer/campaign.tres"
 )
+const MULTIPLAYER_TEST_CAMPAIGN := preload(
+	"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres"
+)
 const SLIME_CONFIG := preload("res://resources/config/enemies/slime.tres")
 const GOLDEN_SLIME_CONFIG := preload(
 	"res://resources/config/enemies/slime_golden.tres"
@@ -66,8 +69,16 @@ func _run() -> void:
 func _test_campaign() -> void:
 	_expect(arena.singleplayer_campaign == TEST_CAMPAIGN, "测试场景必须绑定独立单人 Campaign。")
 	_expect(
+		arena.multiplayer_campaign == MULTIPLAYER_TEST_CAMPAIGN,
+		"测试场景必须绑定独立多人 Campaign。"
+	)
+	_expect(
 		TEST_CAMPAIGN.validate_campaign().is_empty(),
 		"草地测试 Campaign 必须通过流程校验。"
+	)
+	_expect(
+		MULTIPLAYER_TEST_CAMPAIGN.validate_campaign().is_empty(),
+		"草地测试多人 Campaign 必须通过流程校验。"
 	)
 	var waves := TEST_CAMPAIGN.get_waves()
 	_expect(waves.size() == 1, "测试 Campaign 当前必须只包含第一波。")
@@ -91,6 +102,23 @@ func _test_campaign() -> void:
 	_expect(
 		wave.get_enabled_spawn_point_names() == [&"Spawn1", &"Spawn2"],
 		"第一波出生点必须精确解析为 Spawn1 和 Spawn2。"
+	)
+	var multiplayer_waves := MULTIPLAYER_TEST_CAMPAIGN.get_waves()
+	_expect(
+		multiplayer_waves.size() == 1
+		and multiplayer_waves[0].get_total_enemy_count() == 1000,
+		"P1 多人 Campaign 必须保持精确1000只敌人的测试压力。"
+	)
+	_expect(
+		is_zero_approx(
+			arena.progression_config.enemy_count_per_extra_player_ratio
+		)
+		and arena.progression_config.get_scaled_enemy_count(1000, 8) == 1000,
+		"P1 测试敌人数不得随多人房间人数缩放。"
+	)
+	_expect(
+		arena.supports_test_arena_manual_night_sync(),
+		"P1 必须声明多人手动昼夜同步能力。"
 	)
 
 	arena.random_generator.seed = 0x5A17

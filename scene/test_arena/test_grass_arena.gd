@@ -1,8 +1,6 @@
 extends GameTowerDefense
 class_name TestGrassArena
 
-signal manual_day_night_changed(is_night: bool)
-
 const GRASS_RECT := Rect2i(0, 0, 16, 16)
 const BLUE_GATE_CELLS: Array[Vector2i] = [
 	Vector2i(0, 7),
@@ -29,6 +27,7 @@ func _ready() -> void:
 	progression_config.initial_preparation_seconds = 1.0
 	progression_config.wave_intermission_seconds = 1.0
 	progression_config.new_day_preparation_seconds = 1.0
+	progression_config.enemy_count_per_extra_player_ratio = 0.0
 	super._ready()
 	manual_night_enabled = false
 	day_night_controller.set_night_factor_immediate(0.0)
@@ -62,11 +61,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	):
 		match key_event.physical_keycode:
 			KEY_DELETE:
-				_destroy_plants_near_player()
+				if runtime_mode != RuntimeMode.CLIENT_VIEW:
+					_destroy_plants_near_player()
 				get_viewport().set_input_as_handled()
 				return
 			KEY_L:
-				set_manual_night_enabled(not manual_night_enabled)
+				if runtime_mode != RuntimeMode.CLIENT_VIEW:
+					set_manual_night_enabled(not manual_night_enabled)
 				get_viewport().set_input_as_handled()
 				return
 	super._unhandled_input(event)
@@ -104,17 +105,50 @@ func set_manual_night_enabled(
 	enabled: bool,
 	duration_seconds: float = -1.0
 ) -> void:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+		return
+	_apply_manual_night_enabled(enabled, duration_seconds)
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		test_arena_manual_night_changed.emit(manual_night_enabled)
+
+
+func supports_test_arena_manual_night_sync() -> bool:
+	return true
+
+
+func get_test_arena_manual_night_enabled() -> bool:
+	return manual_night_enabled
+
+
+func apply_remote_test_arena_manual_night(enabled: bool) -> void:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+		return
+	_apply_manual_night_enabled(enabled)
+
+
+func _apply_manual_night_enabled(
+	enabled: bool,
+	duration_seconds: float = -1.0
+) -> void:
 	manual_night_enabled = enabled
 	if manual_night_enabled:
 		day_night_controller.transition_to_night(duration_seconds)
 	else:
 		day_night_controller.transition_to_day(duration_seconds)
 	_update_test_controls_hint()
-	manual_day_night_changed.emit(manual_night_enabled)
 
 
 func _update_test_controls_hint() -> void:
+	var controls_text := (
+		"T：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"
+		if runtime_mode == RuntimeMode.SINGLEPLAYER
+		else (
+			"T：自由放置植物　L/Del：仅房主可用"
+			if runtime_mode == RuntimeMode.CLIENT_VIEW
+			else "T：自由放置植物　L：切换昼夜（房主）　Del：摧毁周围3格植物（房主）"
+		)
+	)
 	test_controls_hint.text = (
 		"草地测试场景｜当前：%s\n"
-		+ "T：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"
+		+ controls_text
 	) % ("夜晚" if manual_night_enabled else "白天")

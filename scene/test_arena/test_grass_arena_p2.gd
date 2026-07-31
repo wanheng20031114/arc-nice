@@ -9,7 +9,7 @@ class_name TestGrassArenaP2
 ## 因此这里显式进入同一套小葱命运间奏，并以空后继节点表示间奏后胜利。
 func _complete_current_step() -> void:
 	var completed_wave := current_flow_step as WaveConfig
-	var campaign_waves := singleplayer_campaign.get_waves()
+	var campaign_waves := active_campaign.get_waves()
 	var is_only_terminal_wave := (
 		completed_wave != null
 		and campaign_waves.size() == 1
@@ -30,10 +30,30 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 	super._enter_victory(emit_multiplayer)
 
 
+func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
+	super.apply_remote_flow_state(step_id, state, seconds)
+	var typed_state := state as WaveState
+	if typed_state in [
+		WaveState.FATE_INTERLUDE,
+		WaveState.VICTORY,
+		WaveState.DEFEAT,
+	]:
+		_set_test_controls_hint_visible(false)
+
+
 func _update_test_controls_hint() -> void:
+	var controls_text := (
+		"T：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"
+		if runtime_mode == RuntimeMode.SINGLEPLAYER
+		else (
+			"T：自由放置植物　L/Del：仅房主可用"
+			if runtime_mode == RuntimeMode.CLIENT_VIEW
+			else "T：自由放置植物　L：切换昼夜（房主）　Del：摧毁周围3格植物（房主）"
+		)
+	)
 	test_controls_hint.text = (
 		"草地测试场景 P2｜击败普通史莱姆即完成一天\n"
-		+ "T：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"
+		+ controls_text
 	)
 
 

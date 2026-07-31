@@ -1,13 +1,15 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="PackedScene" path="res://scene/game_tower_defense.tscn" id="1_base"]
 [ext_resource type="Script" path="res://scene/test_arena/test_grass_arena.gd" id="2_script"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/singleplayer/campaign.tres" id="3_campaign"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/multiplayer/campaign.tres" id="4_multiplayer_campaign"]
 
 [node name="TestGrassArena" instance=ExtResource("1_base")]
 position = Vector2(0, 0)
 script = ExtResource("2_script")
 singleplayer_campaign = ExtResource("3_campaign")
+multiplayer_campaign = ExtResource("4_multiplayer_campaign")
 sandbox_free_building_enabled = true
 
 [node name="DayNightController" parent="." index="1"]
@@ -82,7 +84,7 @@ theme_override_colors/font_color = Color(0.94, 1, 0.92, 1)
 theme_override_colors/font_outline_color = Color(0.035, 0.07, 0.04, 0.95)
 theme_override_constants/outline_size = 4
 theme_override_font_sizes/font_size = 16
-text = "草地测试场景｜当前：白天\nT：自由放置植物　L：切换昼夜"
+text = "草地测试场景｜当前：白天\nT：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"
 horizontal_alignment = 1
 
 [editable path="TestControlsHint"]

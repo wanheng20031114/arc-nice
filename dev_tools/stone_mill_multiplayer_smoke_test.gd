@@ -127,7 +127,7 @@ func _init() -> void:
 func _run() -> void:
 	_expect(
 		NET_CONSTANTS.PROTOCOL_VERSION == 28,
-		"Tango角色编码与宿主蓄力协议要求多人协议v28隔离旧客户端。"
+		"Tango角色编码、宿主蓄力、房间容量与测试场景模式同步必须由多人协议v28隔离旧客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

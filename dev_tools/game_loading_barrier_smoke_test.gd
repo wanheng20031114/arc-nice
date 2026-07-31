@@ -145,6 +145,46 @@ func _test_loading_scene_contract() -> void:
 		float(coordinator.call("_get_resource_weight", test_p2_scene_path)) == 7.0,
 		"Test-arena P2 scene must use the tower-defense scene loading weight."
 	)
+	for multiplayer_contract in [
+		[
+			NetManagerStore.GameMode.STANDARD,
+			"res://scene/game.tscn",
+			"res://resources/config/campaigns/standard/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TOWER_DEFENSE,
+			"res://scene/game_tower_defense.tscn",
+			"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P1,
+			test_scene_path,
+			"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P2,
+			test_p2_scene_path,
+			"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres",
+		],
+	]:
+		var game_mode := int(multiplayer_contract[0])
+		var runtime_path := str(multiplayer_contract[1])
+		var campaign_path := str(multiplayer_contract[2])
+		_expect(
+			str(coordinator.call("_get_multiplayer_runtime_path", game_mode))
+			== runtime_path,
+			"Multiplayer mode %d must preload its exact runtime scene." % game_mode
+		)
+		_expect(
+			str(coordinator.call("_get_multiplayer_campaign_path", game_mode))
+			== campaign_path,
+			"Multiplayer mode %d must preload its exact Campaign." % game_mode
+		)
+		_expect(
+			ResourceLoader.exists(runtime_path)
+			and ResourceLoader.exists(campaign_path),
+			"Multiplayer mode %d loading manifest resources must exist." % game_mode
+		)
 
 
 func _test_runtime_activation_gate() -> void:
@@ -435,6 +475,64 @@ func _test_mp_game_preparation_barrier() -> void:
 	mp_game.queue_free()
 	await process_frame
 	net_manager.disconnect_from_game()
+
+	var test_arena_contracts := [
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P1,
+			"res://scene/test_arena/test_grass_arena.tscn",
+			"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P2,
+			"res://scene/test_arena/test_grass_arena_p2.tscn",
+			"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres",
+		],
+	]
+	for contract_index in test_arena_contracts.size():
+		var contract: Array = test_arena_contracts[contract_index]
+		var game_mode := int(contract[0]) as NetManagerStore.GameMode
+		var expected_scene_path := str(contract[1])
+		var expected_campaign_path := str(contract[2])
+		_expect(
+			net_manager.set_host_game_mode(game_mode),
+			"Test-arena MpGame preparation smoke must select mode %d." % game_mode
+		)
+		error = net_manager.host_create_lan_server(TEST_PORT + 2 + contract_index, 2)
+		_expect(
+			error == OK,
+			"Test-arena MpGame preparation smoke must create a two-player-capacity Host."
+		)
+		if error != OK:
+			continue
+		net_manager.host_start_game()
+		var test_mp_game := MP_GAME_SCENE.instantiate()
+		root.add_child(test_mp_game)
+		deadline_msec = Time.get_ticks_msec() + 30000
+		while Time.get_ticks_msec() < deadline_msec:
+			if net_manager.connection_state == NetManagerStore.ConnectionState.IN_GAME:
+				break
+			await process_frame
+		var test_runtime := test_mp_game.get("game") as TestGrassArena
+		_expect(
+			net_manager.connection_state == NetManagerStore.ConnectionState.IN_GAME
+			and net_manager.get_room_max_players() == 2
+			and test_runtime != null
+			and test_runtime.scene_file_path == expected_scene_path
+			and test_runtime.active_campaign != null
+			and test_runtime.active_campaign.resource_path == expected_campaign_path
+			and test_runtime.is_runtime_preparation_complete()
+			and test_runtime.runtime_activated
+			and is_zero_approx(
+				test_runtime.progression_config.enemy_count_per_extra_player_ratio
+			),
+			(
+				"MpGame mode %d must prepare and activate its exact test scene/Campaign "
+				+ "without player-count enemy scaling."
+			) % game_mode
+		)
+		test_mp_game.queue_free()
+		await process_frame
+		net_manager.disconnect_from_game()
 
 
 func _expect_lifecycle_prewarm_pool_released(runtime: GameRuntimeBase) -> void:

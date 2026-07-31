@@ -2,24 +2,31 @@ extends Node
 
 ## Godot Headless Relay Server。
 ## 以无头模式运行，仅做 ENet 包转发（利用 Godot 内置 server_relay）。
-## 命令行参数: --port=40001
+## 命令行参数: --port=40001 --max-clients=4
 
 const DEFAULT_PORT := 40001
 const DEFAULT_IDLE_TIMEOUT_SEC := 10.0 * 60.0 * 60.0
 const EMPTY_AFTER_CONNECTION_TIMEOUT_SEC := 1.0
+const MIN_CLIENTS := 2
 const MAX_CLIENTS := 8
+const DEFAULT_MAX_CLIENTS := MAX_CLIENTS
 const CHANNEL_COUNT := 8
 const PROTOCOL_VERSION := 28
 
 var _port: int = DEFAULT_PORT
 var _idle_timeout_sec: float = DEFAULT_IDLE_TIMEOUT_SEC
+var _max_clients: int = DEFAULT_MAX_CLIENTS
 var _idle_timer: float = 0.0
 var _has_had_connections: bool = false
 var _host_peer_id: int = 0
+var _has_invalid_argument: bool = false
 
 
 func _ready() -> void:
 	_parse_command_line()
+	if _has_invalid_argument:
+		get_tree().quit(2)
+		return
 	_start_server()
 
 
@@ -36,11 +43,27 @@ func _parse_command_line() -> void:
 			if timeout_str.is_valid_float():
 				_idle_timeout_sec = maxf(timeout_str.to_float(), DEFAULT_IDLE_TIMEOUT_SEC)
 				print("[Relay] 空闲超时参数: %d 秒" % int(_idle_timeout_sec))
+		elif arg.begins_with("--max-clients="):
+			var max_clients_str := arg.substr(14)
+			if not max_clients_str.is_valid_int():
+				push_error("[Relay] 最大连接数参数不是整数: %s" % max_clients_str)
+				_has_invalid_argument = true
+				continue
+			var parsed_max_clients := max_clients_str.to_int()
+			if parsed_max_clients < MIN_CLIENTS or parsed_max_clients > MAX_CLIENTS:
+				push_error(
+					"[Relay] 最大连接数必须在 %d..%d 之间: %d"
+					% [MIN_CLIENTS, MAX_CLIENTS, parsed_max_clients]
+				)
+				_has_invalid_argument = true
+				continue
+			_max_clients = parsed_max_clients
+			print("[Relay] 最大连接数参数: %d" % _max_clients)
 
 
 func _start_server() -> void:
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(_port, MAX_CLIENTS, CHANNEL_COUNT)
+	var err := peer.create_server(_port, _max_clients, CHANNEL_COUNT)
 	if err != OK:
 		push_error("[Relay] 创建服务器失败 (port=%d): %s" % [_port, error_string(err)])
 		get_tree().quit(1)
@@ -54,8 +77,8 @@ func _start_server() -> void:
 	multiplayer.multiplayer_peer = peer
 
 	print(
-		"[Relay] 服务器已启动, port=%d, protocol=v%d, server_relay=true"
-		% [_port, PROTOCOL_VERSION]
+		"[Relay] 服务器已启动, port=%d, max_clients=%d, protocol=v%d, server_relay=true"
+		% [_port, _max_clients, PROTOCOL_VERSION]
 	)
 
 

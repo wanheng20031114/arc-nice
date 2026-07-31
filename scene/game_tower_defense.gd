@@ -301,15 +301,18 @@ var first_defense_tower_seconds := -1.0
 var water_chain_online_seconds := -1.0
 var daily_xirang_rewards: Dictionary[int, int] = {}
 var progression_day_records: Array[Dictionary] = []
+var runtime_prewarm_tearing_down := false
 
 
 func _enter_tree() -> void:
+	runtime_prewarm_tearing_down = false
 	_previous_physics_interpolation_enabled = get_tree().physics_interpolation
 	get_tree().physics_interpolation = true
 	_owns_physics_interpolation_override = true
 
 
 func _exit_tree() -> void:
+	runtime_prewarm_tearing_down = true
 	LuoxiMerchant.reset_runtime_choice_count()
 	if _owns_physics_interpolation_override:
 		get_tree().physics_interpolation = _previous_physics_interpolation_enabled
@@ -3171,7 +3174,7 @@ func _get_boss_runtime_resource_paths() -> Array[String]:
 
 
 func _prewarm_boss_runtime_resources() -> void:
-	if not linglan_boss_enabled:
+	if not linglan_boss_enabled or not _can_continue_runtime_prewarm():
 		return
 	_request_boss_runtime_scene_loads()
 	for resource_path in _get_boss_runtime_resource_paths():
@@ -3180,7 +3183,7 @@ func _prewarm_boss_runtime_resources() -> void:
 		var status := ResourceLoader.load_threaded_get_status(resource_path)
 		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
-			if not is_inside_tree():
+			if not _can_continue_runtime_prewarm():
 				return
 			status = ResourceLoader.load_threaded_get_status(resource_path)
 		var runtime_resource := (
@@ -3214,8 +3217,10 @@ func _deferred_request_boss_runtime_scene_loads() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	await get_tree().process_frame
+	if not _can_continue_runtime_prewarm():
+		return
 	await get_tree().process_frame
-	if not is_inside_tree():
+	if not _can_continue_runtime_prewarm():
 		return
 	_request_boss_runtime_scene_loads()
 
@@ -3547,27 +3552,32 @@ func _prewarm_enemy_navigation_grids() -> void:
 
 func prepare_shared_runtime_data_and_complete() -> void:
 	await _prewarm_tower_shared_runtime_data()
-	if not is_inside_tree():
+	if not _can_continue_runtime_prewarm():
 		return
 	await _prewarm_plant_lifecycle_shader()
-	if is_inside_tree():
+	if _can_continue_runtime_prewarm():
 		mark_runtime_preparation_complete()
 
 
 func _prewarm_tower_shared_runtime_data() -> void:
 	await prewarm_shared_runtime_data()
-	if not is_inside_tree():
+	if not _can_continue_runtime_prewarm():
 		return
 	await _prewarm_boss_runtime_resources()
-	if not is_inside_tree():
+	if not _can_continue_runtime_prewarm():
 		return
 	if fate_coordinator != null:
 		await fate_coordinator.prewarm_elite_enemy_configs()
 
 
+func _can_continue_runtime_prewarm() -> bool:
+	return not runtime_prewarm_tearing_down and is_inside_tree()
+
+
 func _prewarm_plant_lifecycle_shader() -> void:
 	if (
-		plant_lifecycle_shader_prewarmed
+		not _can_continue_runtime_prewarm()
+		or plant_lifecycle_shader_prewarmed
 		or not runtime_activation_deferred
 		or plant_lifecycle_shader_prewarm == null
 		or bamboo_mortar_lifecycle_shader_prewarm == null
@@ -3621,6 +3631,8 @@ func _prewarm_plant_lifecycle_shader() -> void:
 		await get_tree().process_frame
 	else:
 		await RenderingServer.frame_post_draw
+	if not _can_continue_runtime_prewarm():
+		return
 	plant_lifecycle_shader_prewarm.hide()
 	bamboo_mortar_lifecycle_shader_prewarm.hide()
 	bamboo_mortar_glow_shader_prewarm.hide()
@@ -3648,28 +3660,30 @@ func _schedule_enemy_navigation_prewarm() -> void:
 
 func _run_scheduled_enemy_navigation_prewarm() -> void:
 	await get_tree().process_frame
+	if not _can_continue_runtime_prewarm():
+		return
 	await get_tree().process_frame
-	if not is_inside_tree():
+	if not _can_continue_runtime_prewarm():
 		return
 	navigation_prewarm_requested = false
 	if navigation_prewarmed:
 		await _prewarm_tower_shared_runtime_data()
-		if not is_inside_tree():
+		if not _can_continue_runtime_prewarm():
 			return
 		await _prewarm_plant_lifecycle_shader()
-		if not is_inside_tree():
+		if not _can_continue_runtime_prewarm():
 			return
 		mark_runtime_preparation_complete()
 		return
 	await _prewarm_enemy_navigation_grids_staged()
-	if not is_inside_tree():
+	if not _can_continue_runtime_prewarm():
 		return
 	navigation_prewarmed = true
 	await _prewarm_tower_shared_runtime_data()
-	if not is_inside_tree():
+	if not _can_continue_runtime_prewarm():
 		return
 	await _prewarm_plant_lifecycle_shader()
-	if not is_inside_tree():
+	if not _can_continue_runtime_prewarm():
 		return
 	mark_runtime_preparation_complete()
 
@@ -3678,7 +3692,8 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 	update_runtime_preparation_progress("分析塔防敌人体型…", 0, 1)
 	await get_tree().process_frame
 	if (
-		grid_pathfinder == null
+		not _can_continue_runtime_prewarm()
+		or grid_pathfinder == null
 		or not grid_pathfinder.has_method("prewarm_agent_grid")
 		or not bool(grid_pathfinder.get("is_built"))
 	):
@@ -3704,7 +3719,9 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 			seen_scene_keys[scene_key] = true
 			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
 			await get_tree().process_frame
-			if not is_inside_tree() or body_half_extents == Vector2.ZERO:
+			if not _can_continue_runtime_prewarm():
+				return
+			if body_half_extents == Vector2.ZERO:
 				continue
 			var traversal_types := enemy_config.terrain_traversal_types
 			var extent_key := "%d:%d:%d" % [
@@ -3736,12 +3753,14 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 				half_extents,
 				traversal_types
 			)
+			if not _can_continue_runtime_prewarm():
+				return
 		else:
 			grid_pathfinder.call("prewarm_agent_grid", half_extents, traversal_types)
 		completed_steps += 1
 		update_runtime_preparation_progress("预热塔防寻路网格…", completed_steps, total_steps)
 		await get_tree().process_frame
-		if not is_inside_tree():
+		if not _can_continue_runtime_prewarm():
 			return
 		if not grid_pathfinder.has_method("prewarm_flow_navigation_target"):
 			continue
@@ -3756,6 +3775,8 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 					half_extents,
 					traversal_types
 				)
+				if not _can_continue_runtime_prewarm():
+					return
 			else:
 				grid_pathfinder.call(
 					"prewarm_flow_navigation_target",
@@ -3766,6 +3787,8 @@ func _prewarm_enemy_navigation_grids_staged() -> void:
 			completed_steps += 1
 			update_runtime_preparation_progress("预热 Home 防线…", completed_steps, total_steps)
 			await get_tree().process_frame
+			if not _can_continue_runtime_prewarm():
+				return
 
 
 func _prewarm_enemy_visual_resources() -> void:

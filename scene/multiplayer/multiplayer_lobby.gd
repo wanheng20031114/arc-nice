@@ -12,6 +12,20 @@ const STATE_CONNECTED_IN_LOBBY := NetManagerStore.ConnectionState.CONNECTED_IN_L
 const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
 const GAME_MODE_STANDARD_KEY := "standard"
 const GAME_MODE_TOWER_DEFENSE_KEY := "tower_defense"
+const GAME_MODE_TEST_ARENA_P1_KEY := "test_arena_p1"
+const GAME_MODE_TEST_ARENA_P2_KEY := "test_arena_p2"
+const GAME_MODE_STANDARD_ICON: Texture2D = preload(
+	"res://resources/texture/ui/multiplayer/mode_standard.png"
+)
+const GAME_MODE_TOWER_DEFENSE_ICON: Texture2D = preload(
+	"res://resources/texture/ui/multiplayer/mode_tower_defense.png"
+)
+const GAME_MODE_TEST_ARENA_P1_ICON: Texture2D = preload(
+	"res://resources/texture/ui/multiplayer/mode_test_p1.png"
+)
+const GAME_MODE_TEST_ARENA_P2_ICON: Texture2D = preload(
+	"res://resources/texture/ui/multiplayer/mode_test_p2.png"
+)
 
 enum LobbyView {
 	USERNAME_INPUT,
@@ -49,20 +63,30 @@ enum PublicRequest {
 @onready var mode_back_btn: Button = $LobbyCenter/ModeSelectPanel/MarginContainer/VBoxContainer/BackToMenuButton
 @onready var room_browser_panel: PanelContainer = $LobbyCenter/RoomBrowserPanel
 @onready var browser_title: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserTitle
-@onready var game_mode_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow/GameModeLabel
-@onready var game_mode_selector: OptionButton = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/GameModeRow/GameModeSelector
+@onready var room_settings_card: PanelContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard
+@onready var room_settings_hint: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/SettingsHint
+@onready var game_mode_selector: OptionButton = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector
+@onready var max_players_spin: SpinBox = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/RoomSettingsCard/SettingsMargin/SettingsVBox/PlayerCountRow/MaxPlayersSpinBox
 @onready var tab_container: TabContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer
 @onready var room_list_vbox: VBoxContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/ScrollContainer/RoomListVBox
 @onready var refresh_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/RefreshButton
 @onready var room_name_input: LineEdit = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab/RoomNameInput
-@onready var max_players_spin: SpinBox = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab/MaxPlayersSpinBox
 @onready var create_room_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/CreateRoomTab/CreateRoomButton
 @onready var quick_match_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/QuickMatchTab/QuickMatchButton
 @onready var browser_status_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BrowserStatusLabel
 @onready var browser_back_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/BackButton
+@onready var lan_panel: VBoxContainer = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel
+@onready var host_ip_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/HostIpLabel
+@onready var join_ip_input: LineEdit = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/JoinIpInput
+@onready var port_spin: SpinBox = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/PortRow/PortSpinBox
+@onready var lan_status_label: Label = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/LanStatusLabel
+@onready var host_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/HostButton
+@onready var join_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/JoinButton
+@onready var back_button: Button = $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/LanDirectPanel/BackButton
 @onready var room_wait_panel: PanelContainer = $LobbyCenter/RoomWaitPanel
 @onready var room_code_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCodeLabel
 @onready var room_mode_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomModeLabel
+@onready var room_capacity_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel
 @onready var wait_player_list_vbox: VBoxContainer = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/PlayerListScroll/PlayerListVBox
 @onready var choose_character_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/ChooseCharacterButton
 @onready var start_game_btn: Button = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/StartGameButton
@@ -74,14 +98,6 @@ enum PublicRequest {
 @onready var run_state: Node = get_node_or_null("/root/RunState")
 
 var current_view: LobbyView = LobbyView.USERNAME_INPUT
-var lan_panel: VBoxContainer
-var host_ip_label: Label
-var join_ip_input: LineEdit
-var port_spin: SpinBox
-var lan_status_label: Label
-var host_button: Button
-var join_button: Button
-var back_button: Button
 var is_starting_game: bool = false
 var pending_public_request: PublicRequest = PublicRequest.NONE
 var current_public_room_id: String = ""
@@ -92,6 +108,10 @@ var current_public_room_game_mode: NetManagerStore.GameMode = NetManagerStore.Ga
 var relay_host_ready_sent: bool = false
 var pending_start_after_public_status: bool = false
 var keep_room_view_after_connection_failure: bool = false
+var public_cleanup_in_progress: bool = false
+var public_cleanup_pending_dispatch: bool = false
+var public_cleanup_status_message: String = ""
+var current_room_max_players: int = _NetConstants.DEFAULT_ROOM_MAX_PLAYERS
 var _username_panel_intro_tween: Tween
 var _username_panel_intro_target_position := Vector2.ZERO
 var _username_panel_intro_active := false
@@ -101,7 +121,10 @@ var _username_caret_blink_elapsed := 0.0
 func _ready() -> void:
 	_sync_local_character_selection()
 	_configure_game_mode_selector()
-	_build_lan_direct_panel()
+	max_players_spin.min_value = _NetConstants.MIN_ROOM_PLAYERS
+	max_players_spin.max_value = _NetConstants.MAX_PLAYERS
+	max_players_spin.value = _NetConstants.DEFAULT_ROOM_MAX_PLAYERS
+	port_spin.value = _NetConstants.ENET_PORT_DEFAULT
 	username_input.max_length = _NetConstants.MAX_PLAYER_NAME_LENGTH
 	username_name_display.set("max_length", _NetConstants.MAX_PLAYER_NAME_LENGTH)
 	username_name_display.set("input_audio", username_type_audio)
@@ -120,7 +143,7 @@ func _ready() -> void:
 	mode_back_btn.pressed.connect(_on_back_to_main_menu)
 	host_button.pressed.connect(_on_host_lan_pressed)
 	join_button.pressed.connect(_on_join_lan_pressed)
-	back_button.pressed.connect(_on_back_to_main_menu)
+	back_button.pressed.connect(_on_back_to_mode_select)
 	refresh_button.pressed.connect(_request_public_rooms)
 	create_room_button.pressed.connect(_on_create_public_room_pressed)
 	quick_match_button.pressed.connect(_on_quick_match_pressed)
@@ -162,6 +185,8 @@ func _connect_net_manager_signals() -> void:
 		net_manager.connection_state_changed.connect(_on_net_state_changed)
 	if not net_manager.game_mode_changed.is_connected(_on_net_game_mode_changed):
 		net_manager.game_mode_changed.connect(_on_net_game_mode_changed)
+	if not net_manager.room_capacity_changed.is_connected(_on_net_room_capacity_changed):
+		net_manager.room_capacity_changed.connect(_on_net_room_capacity_changed)
 
 
 func _disconnect_net_manager_signals() -> void:
@@ -181,12 +206,32 @@ func _disconnect_net_manager_signals() -> void:
 		net_manager.connection_state_changed.disconnect(_on_net_state_changed)
 	if net_manager.game_mode_changed.is_connected(_on_net_game_mode_changed):
 		net_manager.game_mode_changed.disconnect(_on_net_game_mode_changed)
+	if net_manager.room_capacity_changed.is_connected(_on_net_room_capacity_changed):
+		net_manager.room_capacity_changed.disconnect(_on_net_room_capacity_changed)
 
 
 func _configure_game_mode_selector() -> void:
 	game_mode_selector.clear()
-	game_mode_selector.add_item("普通模式", NetManagerStore.GameMode.STANDARD)
-	game_mode_selector.add_item("塔防模式", NetManagerStore.GameMode.TOWER_DEFENSE)
+	game_mode_selector.add_icon_item(
+		GAME_MODE_STANDARD_ICON,
+		"普通冒险",
+		NetManagerStore.GameMode.STANDARD
+	)
+	game_mode_selector.add_icon_item(
+		GAME_MODE_TOWER_DEFENSE_ICON,
+		"塔防模式",
+		NetManagerStore.GameMode.TOWER_DEFENSE
+	)
+	game_mode_selector.add_icon_item(
+		GAME_MODE_TEST_ARENA_P1_ICON,
+		"测试场 P1",
+		NetManagerStore.GameMode.TEST_ARENA_P1
+	)
+	game_mode_selector.add_icon_item(
+		GAME_MODE_TEST_ARENA_P2_ICON,
+		"测试场 P2",
+		NetManagerStore.GameMode.TEST_ARENA_P2
+	)
 	_select_game_mode_in_selector(
 		net_manager.get_current_game_mode() as NetManagerStore.GameMode
 	)
@@ -208,9 +253,15 @@ func _get_selected_game_mode() -> NetManagerStore.GameMode:
 	if item_index < 0 or item_index >= game_mode_selector.item_count:
 		return NetManagerStore.GameMode.STANDARD
 	var item_id := game_mode_selector.get_item_id(item_index)
-	if item_id == NetManagerStore.GameMode.TOWER_DEFENSE:
-		return NetManagerStore.GameMode.TOWER_DEFENSE
-	return NetManagerStore.GameMode.STANDARD
+	match item_id:
+		NetManagerStore.GameMode.TOWER_DEFENSE:
+			return NetManagerStore.GameMode.TOWER_DEFENSE
+		NetManagerStore.GameMode.TEST_ARENA_P1:
+			return NetManagerStore.GameMode.TEST_ARENA_P1
+		NetManagerStore.GameMode.TEST_ARENA_P2:
+			return NetManagerStore.GameMode.TEST_ARENA_P2
+		_:
+			return NetManagerStore.GameMode.STANDARD
 
 
 func _get_selected_game_mode_key() -> String:
@@ -236,7 +287,12 @@ func _get_room_game_mode_key(room_data: Dictionary) -> String:
 	var game_mode_key := str(
 		room_data.get("game_mode", GAME_MODE_STANDARD_KEY)
 	).strip_edges().to_lower()
-	if game_mode_key == GAME_MODE_STANDARD_KEY or game_mode_key == GAME_MODE_TOWER_DEFENSE_KEY:
+	if game_mode_key in [
+		GAME_MODE_STANDARD_KEY,
+		GAME_MODE_TOWER_DEFENSE_KEY,
+		GAME_MODE_TEST_ARENA_P1_KEY,
+		GAME_MODE_TEST_ARENA_P2_KEY,
+	]:
 		return game_mode_key
 	return ""
 
@@ -269,62 +325,9 @@ func _update_room_mode_label() -> void:
 
 
 func _refresh_game_mode_selector_state() -> void:
-	game_mode_selector.disabled = net_manager.is_multiplayer_active()
-
-
-func _build_lan_direct_panel() -> void:
-	var browser_vbox := $LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer as VBoxContainer
-	lan_panel = VBoxContainer.new()
-	lan_panel.name = "LanDirectPanel"
-	lan_panel.add_theme_constant_override("separation", 12)
-	browser_vbox.add_child(lan_panel)
-
-	var title := Label.new()
-	title.text = "局域网合作"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 26)
-	lan_panel.add_child(title)
-
-	var hint := Label.new()
-	hint.text = "一台设备创建主机，另一台输入主机 IP 加入。"
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lan_panel.add_child(hint)
-
-	host_ip_label = Label.new()
-	host_ip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	host_ip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lan_panel.add_child(host_ip_label)
-
-	port_spin = SpinBox.new()
-	port_spin.min_value = 1024.0
-	port_spin.max_value = 65535.0
-	port_spin.value = _NetConstants.ENET_PORT_DEFAULT
-	port_spin.step = 1.0
-	port_spin.prefix = "端口 "
-	lan_panel.add_child(port_spin)
-
-	host_button = Button.new()
-	host_button.text = "创建局域网主机"
-	lan_panel.add_child(host_button)
-
-	join_ip_input = LineEdit.new()
-	join_ip_input.placeholder_text = "输入主机 IP，例如 192.168.1.23"
-	join_ip_input.text = "127.0.0.1"
-	lan_panel.add_child(join_ip_input)
-
-	join_button = Button.new()
-	join_button.text = "加入局域网主机"
-	lan_panel.add_child(join_button)
-
-	lan_status_label = Label.new()
-	lan_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lan_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lan_panel.add_child(lan_status_label)
-
-	back_button = Button.new()
-	back_button.text = "返回主菜单"
-	lan_panel.add_child(back_button)
+	var is_room_active: bool = bool(net_manager.is_multiplayer_active())
+	game_mode_selector.disabled = is_room_active
+	max_players_spin.editable = not is_room_active
 
 
 func _show_view(view: LobbyView) -> void:
@@ -448,7 +451,7 @@ func _finish_username_panel_intro() -> void:
 
 func _apply_public_browser_state() -> void:
 	browser_title.text = "公网游戏"
-	game_mode_label.text = "匹配 / 建房模式"
+	room_settings_hint.text = "以下选项用于创建房间；快速匹配仅使用所选模式。"
 	tab_container.visible = true
 	browser_status_label.visible = true
 	browser_back_button.visible = true
@@ -457,7 +460,7 @@ func _apply_public_browser_state() -> void:
 
 func _apply_lan_browser_state() -> void:
 	browser_title.text = "局域网游戏"
-	game_mode_label.text = "建房模式"
+	room_settings_hint.text = "以下选项由房主在创建局域网房间前确定。"
 	tab_container.visible = false
 	browser_status_label.visible = false
 	browser_back_button.visible = false
@@ -517,7 +520,8 @@ func _on_host_lan_pressed() -> void:
 		lan_status_label.text = "当前连接状态不能更改游戏模式。"
 		return
 	var port: int = int(port_spin.value)
-	var err: Error = net_manager.host_create_lan_server(port)
+	var max_players := int(max_players_spin.value)
+	var err: Error = net_manager.host_create_lan_server(port, max_players)
 	if err != OK:
 		lan_status_label.text = "创建主机失败: %s" % error_string(err)
 		return
@@ -527,6 +531,7 @@ func _on_host_lan_pressed() -> void:
 		"name": "%s 的局域网房间" % net_manager.local_player_name,
 		"id": "LAN:%d" % port,
 		"game_mode": _get_selected_game_mode_key(),
+		"max_players": max_players,
 	}
 	_enter_room_wait(room_data)
 
@@ -549,6 +554,7 @@ func _on_join_lan_pressed() -> void:
 	}
 	_enter_room_wait(room_data)
 	room_mode_label.text = "模式: 等待主机同步…"
+	room_capacity_label.text = "游玩人数：等待主机同步…"
 
 
 func _request_public_health() -> void:
@@ -639,6 +645,8 @@ func _on_public_lobby_request_completed(
 	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
 		_cancel_public_request_side_effect(action)
 		_show_public_error(_format_public_request_error(response_code, body_text))
+		if public_cleanup_pending_dispatch:
+			call_deferred("_dispatch_failed_public_membership_cleanup")
 		return
 
 	var parsed: Variant = null
@@ -674,12 +682,18 @@ func _on_public_lobby_request_completed(
 				else:
 					wait_status_label.text = "开局已取消：仍有玩家尚未确认角色。"
 		PublicRequest.LEAVE_ROOM, PublicRequest.DESTROY_ROOM:
+			var cleanup_message := public_cleanup_status_message
+			var was_failure_cleanup := public_cleanup_in_progress
 			_clear_public_room_state()
 			if current_view != LobbyView.USERNAME_INPUT:
 				_show_view(LobbyView.PUBLIC_BROWSER)
 				_request_public_rooms()
+				if was_failure_cleanup:
+					browser_status_label.text = "%s；目录房间占位已释放，正在刷新列表…" % cleanup_message
 		_:
 			pass
+	if public_cleanup_pending_dispatch:
+		call_deferred("_dispatch_failed_public_membership_cleanup")
 
 
 func _format_public_request_error(response_code: int, body_text: String) -> String:
@@ -705,6 +719,13 @@ func _show_public_error(message: String) -> void:
 func _cancel_public_request_side_effect(action: PublicRequest) -> void:
 	if action == PublicRequest.UPDATE_ROOM:
 		pending_start_after_public_status = false
+	if (
+		public_cleanup_in_progress
+		and action in [PublicRequest.LEAVE_ROOM, PublicRequest.DESTROY_ROOM]
+	):
+		_clear_public_room_state()
+		if current_view != LobbyView.USERNAME_INPUT:
+			_show_view(LobbyView.PUBLIC_BROWSER)
 
 
 func _render_public_rooms(rooms: Array) -> void:
@@ -730,13 +751,16 @@ func _render_public_rooms(rooms: Array) -> void:
 			continue
 		var game_mode := NetManagerStore.game_mode_from_key(game_mode_key)
 		var button := Button.new()
-		button.text = "[%s] %s  %d/%d  Host: %s" % [
+		button.text = "[%s] %s  %d/%d  房主：%s" % [
 			NetManagerStore.get_game_mode_display_name(game_mode),
 			str(room.get("name", "房间")),
 			int(room.get("player_count", 0)),
 			int(room.get("max_players", 0)),
 			str(room.get("host_name", "")),
 		]
+		button.icon = _get_game_mode_icon(game_mode)
+		button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.pressed.connect(_on_public_room_selected.bind(room_id, game_mode_key))
 		room_list_vbox.add_child(button)
 	browser_status_label.text = "房间列表已刷新。"
@@ -750,11 +774,6 @@ func _begin_public_host_room(data: Dictionary) -> void:
 	var relay_port := int(data.get("relay_port", 0))
 	var room_id := _get_public_room_id(data)
 	var host_token := str(data.get("host_token", ""))
-	if relay_ip.is_empty() or relay_port <= 0 or room_id.is_empty() or host_token.is_empty():
-		_show_public_error("创建公网房间失败：Relay 信息不完整")
-		return
-	if not _apply_room_game_mode(data, true):
-		return
 
 	current_public_room_id = room_id
 	current_public_host_token = host_token
@@ -762,10 +781,18 @@ func _begin_public_host_room(data: Dictionary) -> void:
 	current_public_is_host = true
 	relay_host_ready_sent = false
 
-	var err: Error = net_manager.host_create_relay_room(relay_ip, relay_port)
+	if relay_ip.is_empty() or relay_port <= 0 or room_id.is_empty() or host_token.is_empty():
+		_cleanup_failed_public_membership("创建公网房间失败：Relay 信息不完整")
+		return
+	if not _apply_room_game_mode(data, true):
+		_cleanup_failed_public_membership("创建公网房间失败：游戏模式无效")
+		return
+
+	var max_players := _get_room_max_players(data)
+	var err: Error = net_manager.host_create_relay_room(relay_ip, relay_port, max_players)
 	if err != OK:
 		net_manager.clear_public_room_context()
-		_show_public_error("连接 Relay 失败: %s" % error_string(err))
+		_cleanup_failed_public_membership("连接 Relay 失败: %s" % error_string(err))
 		return
 	net_manager.set_public_room_context(room_id, host_token, true)
 	_enter_room_wait(data)
@@ -780,11 +807,6 @@ func _begin_public_client_room(data: Dictionary) -> void:
 	var relay_port := int(data.get("relay_port", 0))
 	var host_peer_id := int(data.get("host_peer_id", 0))
 	var room_id := _get_public_room_id(data)
-	if relay_ip.is_empty() or relay_port <= 0 or host_peer_id <= 0 or room_id.is_empty():
-		_show_public_error("加入公网房间失败：Relay 信息不完整")
-		return
-	if not _apply_room_game_mode(data, false):
-		return
 
 	current_public_room_id = room_id
 	current_public_host_token = ""
@@ -792,10 +814,21 @@ func _begin_public_client_room(data: Dictionary) -> void:
 	current_public_is_host = false
 	relay_host_ready_sent = false
 
+	if relay_ip.is_empty() or relay_port <= 0 or host_peer_id <= 0 or room_id.is_empty():
+		_cleanup_failed_public_membership("加入公网房间失败：Relay 信息不完整")
+		return
+	if not _apply_room_game_mode(data, false):
+		_cleanup_failed_public_membership("加入公网房间失败：游戏模式无效")
+		return
+	var max_players := _get_room_max_players(data)
+	if not net_manager.set_pending_room_max_players(max_players):
+		_cleanup_failed_public_membership("加入公网房间失败：无法应用房间人数上限")
+		return
+
 	var err: Error = net_manager.client_join_relay_room(relay_ip, relay_port, host_peer_id)
 	if err != OK:
 		net_manager.clear_public_room_context()
-		_show_public_error("连接 Relay 失败: %s" % error_string(err))
+		_cleanup_failed_public_membership("连接 Relay 失败: %s" % error_string(err))
 		return
 	net_manager.set_public_room_context(room_id, "", false)
 	_enter_room_wait(data)
@@ -844,7 +877,9 @@ func _enter_room_wait(room_data: Dictionary) -> void:
 	var room_name: String = str(room_data.get("name", "房间"))
 	var room_id: String = _get_public_room_id(room_data)
 	room_code_label.text = "房间: %s (%s)" % [room_name, room_id]
+	current_room_max_players = _get_room_max_players(room_data)
 	_update_room_mode_label()
+	_update_room_capacity_label()
 	start_game_btn.visible = net_manager.is_host()
 	wait_status_label.text = "等待玩家加入..."
 	_refresh_wait_player_list()
@@ -874,6 +909,7 @@ func _refresh_wait_player_list() -> void:
 		]
 		wait_player_list_vbox.add_child(label)
 
+	_update_room_capacity_label()
 	if net_manager.is_host():
 		start_game_btn.disabled = (
 			net_manager.connected_players.size() < 2
@@ -881,6 +917,17 @@ func _refresh_wait_player_list() -> void:
 			or (current_public_is_host and not relay_host_ready_sent)
 		)
 	_update_choose_character_button()
+
+
+func _update_room_capacity_label(current_players: int = -1) -> void:
+	if room_capacity_label == null:
+		return
+	if current_players < 0:
+		current_players = net_manager.connected_players.size()
+	room_capacity_label.text = "游玩人数：%d / %d（总人数含房主）" % [
+		current_players,
+		current_room_max_players,
+	]
 
 
 func _open_character_choice_if_needed() -> void:
@@ -933,6 +980,16 @@ func _on_net_player_list_changed() -> void:
 		_refresh_wait_player_list()
 
 
+func _on_net_room_capacity_changed(current_players: int, max_players: int) -> void:
+	current_room_max_players = clampi(
+		max_players,
+		_NetConstants.MIN_ROOM_PLAYERS,
+		_NetConstants.MAX_PLAYERS
+	)
+	if current_view == LobbyView.ROOM_WAIT:
+		_update_room_capacity_label(current_players)
+
+
 func _on_net_game_mode_changed(new_game_mode: NetManagerStore.GameMode) -> void:
 	_select_game_mode_in_selector(new_game_mode)
 	_update_room_mode_label()
@@ -943,6 +1000,8 @@ func _on_net_connection_failed(reason: String) -> void:
 	if current_view == LobbyView.ROOM_WAIT:
 		keep_room_view_after_connection_failure = true
 		wait_status_label.text = "连接失败: %s" % reason
+		if not current_public_room_id.is_empty():
+			_cleanup_failed_public_membership("连接失败: %s" % reason)
 	else:
 		lan_status_label.text = "连接失败: %s" % reason
 
@@ -1047,6 +1106,62 @@ func _on_leave_room() -> void:
 		lan_status_label.text = "已离开房间。"
 
 
+func _cleanup_failed_public_membership(message: String) -> void:
+	if public_cleanup_in_progress:
+		return
+	if current_view == LobbyView.ROOM_WAIT:
+		wait_status_label.text = "%s；正在释放公网房间占位…" % message
+
+	if current_public_room_id.is_empty():
+		_clear_public_room_state()
+		if current_view != LobbyView.USERNAME_INPUT:
+			_show_view(LobbyView.PUBLIC_BROWSER)
+			browser_status_label.text = message
+		return
+
+	if current_public_is_host:
+		if current_public_host_token.is_empty():
+			_clear_public_room_state()
+			if current_view != LobbyView.USERNAME_INPUT:
+				_show_view(LobbyView.PUBLIC_BROWSER)
+				browser_status_label.text = "%s；响应缺少房主令牌，无法自动释放目录房间。" % message
+			return
+
+	public_cleanup_in_progress = true
+	public_cleanup_pending_dispatch = true
+	public_cleanup_status_message = message
+	pending_start_after_public_status = false
+	_dispatch_failed_public_membership_cleanup()
+
+
+func _dispatch_failed_public_membership_cleanup() -> void:
+	if (
+		not public_cleanup_in_progress
+		or not public_cleanup_pending_dispatch
+		or pending_public_request != PublicRequest.NONE
+	):
+		return
+
+	public_cleanup_pending_dispatch = false
+	var cleanup_action := PublicRequest.LEAVE_ROOM
+	var cleanup_path := "/rooms/%s/leave" % current_public_room_id
+	var cleanup_body := {"player_name": str(net_manager.local_player_name)}
+	if current_public_is_host:
+		cleanup_action = PublicRequest.DESTROY_ROOM
+		cleanup_path = "/rooms/%s" % current_public_room_id
+		cleanup_body = {"host_token": current_public_host_token}
+
+	var cleanup_method := HTTPClient.METHOD_POST
+	if cleanup_action == PublicRequest.DESTROY_ROOM:
+		cleanup_method = HTTPClient.METHOD_DELETE
+	_send_public_request(
+		cleanup_action,
+		cleanup_path,
+		cleanup_method,
+		cleanup_body
+	)
+
+
 func _on_back_to_main_menu() -> void:
 	net_manager.disconnect_from_game()
 	get_tree().change_scene_to_file("res://scene/main_menu.tscn")
@@ -1061,6 +1176,10 @@ func _clear_public_room_state() -> void:
 	relay_host_ready_sent = false
 	pending_start_after_public_status = false
 	keep_room_view_after_connection_failure = false
+	public_cleanup_in_progress = false
+	public_cleanup_pending_dispatch = false
+	public_cleanup_status_message = ""
+	current_room_max_players = _NetConstants.DEFAULT_ROOM_MAX_PLAYERS
 	if net_manager != null:
 		net_manager.clear_public_room_context()
 
@@ -1070,6 +1189,26 @@ func _get_public_room_id(room_data: Dictionary) -> String:
 	if room_id.is_empty():
 		room_id = str(room_data.get("id", ""))
 	return room_id
+
+
+func _get_room_max_players(room_data: Dictionary) -> int:
+	return clampi(
+		int(room_data.get("max_players", _NetConstants.DEFAULT_ROOM_MAX_PLAYERS)),
+		_NetConstants.MIN_ROOM_PLAYERS,
+		_NetConstants.MAX_PLAYERS
+	)
+
+
+func _get_game_mode_icon(game_mode: NetManagerStore.GameMode) -> Texture2D:
+	match game_mode:
+		NetManagerStore.GameMode.TOWER_DEFENSE:
+			return GAME_MODE_TOWER_DEFENSE_ICON
+		NetManagerStore.GameMode.TEST_ARENA_P1:
+			return GAME_MODE_TEST_ARENA_P1_ICON
+		NetManagerStore.GameMode.TEST_ARENA_P2:
+			return GAME_MODE_TEST_ARENA_P2_ICON
+		_:
+			return GAME_MODE_STANDARD_ICON
 
 
 func _sync_local_character_selection() -> void:

@@ -45,6 +45,10 @@ const FEEDBACK_RPC_METHODS := {
 }
 const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
+const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_GRASS_ARENA_P2_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena_p2.tscn"
+)
 const AGAVE_CANNONBALL_SCENE_PATH := "res://scene/plant_defense/agave_cannonball.tscn"
 const BAMBOO_MORTAR_SCRIPT := preload(
 	"res://scene/plant_defense/bamboo_mortar.gd"
@@ -2780,11 +2784,7 @@ func is_client_view_runtime() -> bool:
 
 func _setup_game(mode: int) -> bool:
 	var game_mode := int(net_manager.get("current_game_mode"))
-	var game_scene_path := (
-		TOWER_DEFENSE_GAME_SCENE_PATH
-		if game_mode == NetManagerStore.GameMode.TOWER_DEFENSE
-		else STANDARD_GAME_SCENE_PATH
-	)
+	var game_scene_path := _get_game_scene_path_for_mode(game_mode)
 	var game_scene := load(game_scene_path) as PackedScene
 	if game_scene == null:
 		push_error("MpGame: 无法加载所选多人游戏场景：%s" % game_scene_path)
@@ -2828,6 +2828,9 @@ func _setup_game(mode: int) -> bool:
 		game.multiplayer_xiaocong_fate_state_changed.connect(
 			_on_host_xiaocong_fate_state_changed
 		)
+		game.test_arena_manual_night_changed.connect(
+			_on_host_test_arena_manual_night_changed
+		)
 		game.multiplayer_player_teleport_requested.connect(
 			_on_host_player_teleport_requested
 		)
@@ -2869,6 +2872,18 @@ func _setup_game(mode: int) -> bool:
 	if net_manager.is_host() and game.supports_tower_defense():
 		_broadcast_base_health_snapshot()
 	return true
+
+
+func _get_game_scene_path_for_mode(game_mode: int) -> String:
+	match game_mode:
+		NetManagerStore.GameMode.TOWER_DEFENSE:
+			return TOWER_DEFENSE_GAME_SCENE_PATH
+		NetManagerStore.GameMode.TEST_ARENA_P1:
+			return TEST_GRASS_ARENA_SCENE_PATH
+		NetManagerStore.GameMode.TEST_ARENA_P2:
+			return TEST_GRASS_ARENA_P2_SCENE_PATH
+		_:
+			return STANDARD_GAME_SCENE_PATH
 
 
 func _request_runtime_state_from_host() -> void:
@@ -2942,6 +2957,11 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 			)
 		if game.wave_state == GameRuntimeBase.WaveState.FATE_INTERLUDE:
 			_send_authoritative_player_positions_to_peer(peer_id)
+	if game.supports_test_arena_manual_night_sync():
+		net_test_arena_manual_night_changed.rpc_id(
+			peer_id,
+			game.get_test_arena_manual_night_enabled()
+		)
 	if include_flow_state:
 		var flow_snapshot := game.get_flow_state_snapshot()
 		if not flow_snapshot.is_empty():
@@ -9486,6 +9506,20 @@ func _on_host_xiaocong_fate_state_changed(state: Dictionary) -> void:
 	)
 
 
+func _on_host_test_arena_manual_night_changed(enabled: bool) -> void:
+	if (
+		not is_inside_tree()
+		or not net_manager.is_host()
+		or game == null
+		or not game.supports_test_arena_manual_night_sync()
+	):
+		return
+	_rpc_to_connected_clients(
+		&"net_test_arena_manual_night_changed",
+		[enabled]
+	)
+
+
 func _on_host_player_teleport_requested(
 	peer_id: int,
 	target_position: Vector2
@@ -11174,6 +11208,18 @@ func net_xiaocong_fate_state_changed(state: Dictionary) -> void:
 	):
 		return
 	game.apply_remote_xiaocong_fate_state(state)
+
+
+@rpc("authority", "call_remote", "reliable", 5)
+func net_test_arena_manual_night_changed(enabled: bool) -> void:
+	if (
+		game == null
+		or net_manager.is_host()
+		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
+		or not game.supports_test_arena_manual_night_sync()
+	):
+		return
+	game.apply_remote_test_arena_manual_night(enabled)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
