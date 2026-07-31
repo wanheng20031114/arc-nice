@@ -66,7 +66,7 @@ func _run() -> void:
 
 	_test_character_contract()
 	_test_authored_casting_units_and_orbit()
-	_test_charge_release_contract()
+	await _test_charge_release_contract()
 	_test_full_charge_damage_tick_schedule()
 	await _test_authored_beam_overlap_and_damage()
 	_test_animation_and_pixel_contract()
@@ -210,11 +210,13 @@ func _test_charge_release_contract() -> void:
 	player.call("_reset_tango_combat_state", true)
 	player.call("_start_beam_sequence", Vector2.RIGHT, 0.5, false)
 	player.call("_update_character_combat_state", PlayerTango.UNIT_CONVERGE_DURATION)
+	await process_frame
 	_expect(
 		player.beam_area.monitoring and player.beam_visual_root.visible,
 		"A predicted Tango beam must enable its authored Area2D and Line2D visuals."
 	)
 	player.reject_predicted_tango_charge()
+	await process_frame
 	_expect(
 		not player.beam_area.monitoring
 		and player.beam_collision.disabled
@@ -313,6 +315,7 @@ func _test_authored_beam_overlap_and_damage() -> void:
 		"The authored beam overlap test must accept a full-charge release."
 	)
 	player.call("_update_character_combat_state", PlayerTango.UNIT_CONVERGE_DURATION)
+	await process_frame
 	await physics_frame
 	await physics_frame
 	for _tick in range(10):
@@ -320,7 +323,8 @@ func _test_authored_beam_overlap_and_damage() -> void:
 	_expect(
 		inside_enemy.total_damage_taken == 100
 		and inside_enemy.last_damage_type == EnemyConfig.DamageType.PHYSICAL,
-		"An enemy inside the authored full beam must receive ten physical 10-damage ticks."
+		"An enemy inside the authored full beam must receive ten physical 10-damage ticks (got %d)."
+		% inside_enemy.total_damage_taken
 	)
 	_expect(
 		outside_enemy.total_damage_taken == 0,

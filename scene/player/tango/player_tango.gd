@@ -484,8 +484,8 @@ func _update_unit_convergence(delta: float) -> void:
 func _begin_beam_fire() -> void:
 	_casting_state_to(CastingState.FIRING)
 	_set_units_to_fire_positions()
-	beam_area.monitoring = true
-	beam_collision.disabled = false
+	beam_area.set_deferred(&"monitoring", true)
+	beam_collision.set_deferred(&"disabled", false)
 	beam_visual_root.show()
 	_play_primary_attack_audio()
 
@@ -564,8 +564,8 @@ func _configure_beam_geometry() -> void:
 func _stop_beam_visual() -> void:
 	if beam_area == null:
 		return
-	beam_area.monitoring = false
-	beam_collision.disabled = true
+	beam_area.set_deferred(&"monitoring", false)
+	beam_collision.set_deferred(&"disabled", true)
 	beam_visual_root.hide()
 
 
@@ -574,12 +574,12 @@ func _update_orbit_visuals(_delta: float) -> void:
 		return
 	for index in _casting_unit_sprites.size():
 		var angle := _unit_orbit_phase + float(index) * UNIT_PHASE_STEP
-		var position := Vector2(
+		var orbit_position := Vector2(
 			cos(angle) * UNIT_ORBIT_RADIUS.x,
 			sin(angle) * UNIT_ORBIT_RADIUS.y
 		)
 		var unit := _casting_unit_sprites[index]
-		unit.position = _round_vector(position)
+		unit.position = _round_vector(orbit_position)
 		unit.z_index = 0 if unit.position.y < 0.0 else 2
 
 

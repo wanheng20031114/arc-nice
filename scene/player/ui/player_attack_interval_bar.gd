@@ -15,9 +15,9 @@ func _ready() -> void:
 	queue_redraw()
 
 
-func set_cooldown_progress(progress: float, ready: bool) -> void:
+func set_cooldown_progress(progress: float, ready_state: bool) -> void:
 	cooldown_progress = clampf(progress, 0.0, 1.0)
-	is_ready = ready
+	is_ready = ready_state
 	queue_redraw()
 
 
