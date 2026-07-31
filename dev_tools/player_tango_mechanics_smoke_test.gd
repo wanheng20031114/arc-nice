@@ -4,6 +4,19 @@ const TANGO_SCENE := preload("res://scene/player/tango/player_tango.tscn")
 const TANGO_IDLE_TEXTURE_PATH := (
 	"res://resources/texture/player/tango/tango_idle_front_32.png"
 )
+const TANGO_MOVE_BOB_OFFSETS := [0, 1, 1, 0, 0, 1, 1, 0]
+const TANGO_DOWN_BODY_X_OFFSETS := [0, -1, -1, -1, 0, 1, 1, 1]
+const TANGO_DOWN_EXPECTED_CONTACTS := [
+	[10, 11, 12, 13, 14, 17, 18, 19, 20],
+	[10, 11, 12, 13, 14, 17],
+	[11, 12, 13, 14, 15],
+	[14, 15, 20, 21],
+	[14, 15, 18, 19, 20, 21, 22],
+	[15, 18, 19, 20, 21, 22],
+	[17, 18, 19, 20, 21],
+	[11, 12, 17, 18],
+]
+const TANGO_FIXED_BODY_BOTTOM := 23
 
 
 class TangoTickProbe:
@@ -40,6 +53,7 @@ class TangoBeamEnemy:
 var failures: Array[String] = []
 var test_root: Node2D = null
 var player: PlayerTango = null
+var pixel_only := false
 
 
 func _init() -> void:
@@ -64,11 +78,13 @@ func _run() -> void:
 	player.set_process(false)
 	player.set_physics_process(false)
 
-	_test_character_contract()
-	_test_authored_casting_units_and_orbit()
-	await _test_charge_release_contract()
-	_test_full_charge_damage_tick_schedule()
-	await _test_authored_beam_overlap_and_damage()
+	pixel_only = OS.get_cmdline_user_args().has("--pixel-only")
+	if not pixel_only:
+		_test_character_contract()
+		_test_authored_casting_units_and_orbit()
+		await _test_charge_release_contract()
+		_test_full_charge_damage_tick_schedule()
+		await _test_authored_beam_overlap_and_damage()
 	_test_animation_and_pixel_contract()
 	await _finish()
 
@@ -418,17 +434,175 @@ func _test_animation_and_pixel_contract() -> void:
 				% [animation_name, frame_index, used_rect.size.y]
 			)
 
+	var stable_move_animations: Array[StringName] = [
+		&"normal_down", &"normal_up", &"normal_right", &"normal_left"
+	]
+	for animation_name in stable_move_animations:
+		var canonical_image := _extract_frame_image(
+			frames.get_frame_texture(animation_name, 0)
+		)
+		if canonical_image == null:
+			continue
+		for frame_index in range(1, frames.get_frame_count(animation_name)):
+			var frame_image := _extract_frame_image(
+				frames.get_frame_texture(animation_name, frame_index)
+			)
+			if frame_image == null:
+				continue
+			var body_x: int = (
+				TANGO_DOWN_BODY_X_OFFSETS[frame_index]
+				if animation_name == &"normal_down"
+				else 0
+			)
+			_expect(
+				_image_matches_rigid_body(
+					canonical_image,
+					frame_image,
+					Vector2i(
+						body_x,
+						TANGO_MOVE_BOB_OFFSETS[frame_index]
+					)
+				),
+				"Tango %s frame %d must preserve and rigidly bob its canonical body."
+				% [animation_name, frame_index]
+			)
+
+	var down_images: Array[Image] = []
+	for frame_index in range(frames.get_frame_count(&"normal_down")):
+		down_images.append(
+			_extract_frame_image(
+				frames.get_frame_texture(&"normal_down", frame_index)
+			)
+		)
+	if not down_images.has(null) and down_images.size() == 8:
+		var down_alpha_changes: Array[int] = []
+		for frame_index in range(8):
+			down_alpha_changes.append(
+				_count_alpha_changes(
+					down_images[frame_index],
+					down_images[(frame_index + 1) % 8],
+					Rect2i(0, 24, 32, 8)
+				)
+			)
+		_expect(
+			down_alpha_changes.min() >= 5 and down_alpha_changes.max() <= 15,
+			"Tango's down gait must distribute leg movement across all eight frames."
+		)
+		for frame_index in range(8):
+			var contacts: Array[int] = []
+			for x in range(32):
+				if not is_zero_approx(down_images[frame_index].get_pixel(x, 27).a):
+					contacts.append(x)
+			_expect(
+				contacts == TANGO_DOWN_EXPECTED_CONTACTS[frame_index],
+				"Tango down frame %d must preserve its contact/load/roll/push footprint."
+				% frame_index
+			)
+		_expect(
+			_count_alpha_changes(
+				down_images[1], down_images[2], Rect2i(9, 24, 8, 4)
+			) == 5,
+			"Tango's planted left leg must deform from load to roll."
+		)
+		_expect(
+			_count_alpha_changes(
+				down_images[5], down_images[6], Rect2i(16, 24, 8, 4)
+			) == 6,
+			"Tango's planted right leg must deform from load to roll."
+		)
+
 	var idle_texture := load(TANGO_IDLE_TEXTURE_PATH) as Texture2D
 	var idle_image := idle_texture.get_image() if idle_texture != null else null
 	_expect(idle_image != null, "Tango's corrected idle texture must be readable.")
 	if idle_image != null:
 		var active_cyan := Color8(56, 236, 243, 255)
-		for y in [9, 10]:
+		for y in [11, 12]:
+			var eye_columns: Array[int] = []
+			for x in range(idle_image.get_width()):
+				if idle_image.get_pixel(x, y) == active_cyan:
+					eye_columns.append(x)
 			_expect(
-				idle_image.get_pixel(15, y) == active_cyan
-				and idle_image.get_pixel(18, y) == active_cyan,
-				"Tango's left and right eye pixels must share the same bright cyan."
+				eye_columns == [15, 18],
+				"Tango's front eyes must be two equally bright, one-pixel columns."
 			)
+		var down_contact := _extract_frame_image(
+			frames.get_frame_texture(&"normal_down", 0)
+		)
+		_expect(
+			down_contact != null
+			and _images_match_visible_pixels(
+				idle_image, down_contact, Rect2i(0, 0, 32, 32)
+			),
+			"Tango's down contact frame must exactly match the repaired front frame."
+		)
+
+
+func _images_match_visible_pixels(left: Image, right: Image, region: Rect2i) -> bool:
+	for y in range(region.position.y, region.end.y):
+		for x in range(region.position.x, region.end.x):
+			var left_pixel := left.get_pixel(x, y)
+			var right_pixel := right.get_pixel(x, y)
+			# Godot's alpha-border import may assign RGB values to fully transparent
+			# cells. Those values cannot render and are not sprite-pixel changes.
+			if is_zero_approx(left_pixel.a) and is_zero_approx(right_pixel.a):
+				continue
+			if left_pixel != right_pixel:
+				return false
+	return true
+
+
+func _image_matches_rigid_body(
+	canonical: Image, frame: Image, body_offset: Vector2i
+) -> bool:
+	# First verify every visible canonical pixel at its translated location.
+	for y in range(TANGO_FIXED_BODY_BOTTOM):
+		for x in range(32):
+			var expected_pixel := canonical.get_pixel(x, y)
+			if is_zero_approx(expected_pixel.a):
+				continue
+			var actual_position := Vector2i(x, y) + body_offset
+			if (
+				actual_position.x < 0
+				or actual_position.x >= frame.get_width()
+				or actual_position.y < 0
+				or actual_position.y >= frame.get_height()
+				or expected_pixel
+				!= frame.get_pixel(actual_position.x, actual_position.y)
+			):
+				return false
+
+	# Above the hip seam there may be no unowned pixels or stale body remnants.
+	for y in range(TANGO_FIXED_BODY_BOTTOM):
+		for x in range(32):
+			var source_position := Vector2i(x, y) - body_offset
+			var expected_pixel := Color(0, 0, 0, 0)
+			if (
+				source_position.x >= 0
+				and source_position.x < canonical.get_width()
+				and source_position.y >= 0
+				and source_position.y < TANGO_FIXED_BODY_BOTTOM
+			):
+				expected_pixel = canonical.get_pixel(
+					source_position.x, source_position.y
+				)
+			var actual_pixel := frame.get_pixel(x, y)
+			if is_zero_approx(expected_pixel.a):
+				if not is_zero_approx(actual_pixel.a):
+					return false
+			elif expected_pixel != actual_pixel:
+				return false
+	return true
+
+
+func _count_alpha_changes(left: Image, right: Image, region: Rect2i) -> int:
+	var changes := 0
+	for y in range(region.position.y, region.end.y):
+		for x in range(region.position.x, region.end.x):
+			var left_visible := not is_zero_approx(left.get_pixel(x, y).a)
+			var right_visible := not is_zero_approx(right.get_pixel(x, y).a)
+			if left_visible != right_visible:
+				changes += 1
+	return changes
 
 
 func _extract_frame_image(texture: Texture2D) -> Image:
@@ -471,7 +645,11 @@ func _finish() -> void:
 		await process_frame
 		await physics_frame
 	if failures.is_empty():
-		print("PLAYER_TANGO_MECHANICS_SMOKE_TEST_OK")
+		print(
+			"PLAYER_TANGO_PIXEL_SMOKE_TEST_OK"
+			if pixel_only
+			else "PLAYER_TANGO_MECHANICS_SMOKE_TEST_OK"
+		)
 		quit(0)
 		return
 	for failure in failures:

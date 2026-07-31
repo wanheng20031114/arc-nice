@@ -24,7 +24,14 @@ SOURCE_DIR = ROOT / "dev_assets" / "source_images" / "tango"
 TEXTURE_DIR = ROOT / "resources" / "texture" / "player" / "tango"
 PREVIEW_DIR = ROOT / "dev_assets" / "generated_previews"
 
-REFERENCE_PATH = SOURCE_DIR / "tango_idle_front_32_v2.png"
+USER_FRONT_FIX_PATH = SOURCE_DIR / "tango_front_user_fix_v3.png"
+REFERENCE_PATH = SOURCE_DIR / "tango_idle_front_32_v3.png"
+DIRECTION_REFERENCE_PATHS = (
+    REFERENCE_PATH,
+    SOURCE_DIR / "tango_move_up_frame0_user_fix_v3.png",
+    SOURCE_DIR / "tango_move_right_frame0_user_fix_v3.png",
+    SOURCE_DIR / "tango_move_left_frame0_user_fix_v3.png",
+)
 MOVE_BOARD_PATH = SOURCE_DIR / "tango_move_board_v1_imagegen.png"
 DEATH_BOARD_PATH = SOURCE_DIR / "tango_death_board_v1_imagegen.png"
 UNIT_IMAGEGEN_DESIGN_PATH = (
@@ -38,17 +45,99 @@ UNIT_OUTPUT_PATH = TEXTURE_DIR / "tango_cast_unit.png"
 IDLE_OUTPUT_PATH = TEXTURE_DIR / "tango_idle_front_32.png"
 PORTRAIT_OUTPUT_PATH = TEXTURE_DIR / "portrait.png"
 
-MOVE_PREVIEW_PATH = PREVIEW_DIR / "tango_move_v1_preview.png"
+MOVE_PREVIEW_PATH = PREVIEW_DIR / "tango_move_v5_weighted_gait_preview.png"
+MOVE_ANIMATED_PREVIEW_PATH = PREVIEW_DIR / "tango_move_v5_weighted_gait_preview.gif"
+DOWN_MOVE_PREVIEW_PATH = PREVIEW_DIR / "tango_move_down_v5_weighted_gait_preview.png"
+DOWN_MOVE_ANIMATED_PREVIEW_PATH = (
+    PREVIEW_DIR / "tango_move_down_v5_weighted_gait_preview.gif"
+)
 DEATH_PREVIEW_PATH = PREVIEW_DIR / "tango_death_v1_preview.png"
 UNIT_PREVIEW_PATH = PREVIEW_DIR / "tango_cast_unit_v2_preview.png"
-OVERVIEW_PREVIEW_PATH = PREVIEW_DIR / "tango_animation_overview_v1.png"
+OVERVIEW_PREVIEW_PATH = PREVIEW_DIR / "tango_animation_overview_v5.png"
 
 FRAME_SIZE = 32
 UNIT_FRAME_SIZE = 8
 MOVE_BASELINE = 28
 DEATH_BASELINE = 28
 EYE_CYAN = (56, 236, 243, 255)
-EYE_COORDINATES = ((18, 9), (18, 10))
+EYE_COORDINATES = ((15, 11), (15, 12), (18, 11), (18, 12))
+USER_EYE_COORDINATES = ((8, 6), (8, 7), (11, 6), (11, 7))
+MOVE_STABLE_BODY_BOTTOM = 23
+# Two low poses per four-frame step create a restrained one-pixel body bob. The
+# body is translated as one rigid bitmap; its internal pixels are never redrawn.
+MOVE_BOB_OFFSETS = (0, 1, 1, 0, 0, 1, 1, 0)
+# During each single-support half-cycle the unchanged torso shifts one pixel over
+# the planted leg. This is a deliberate weight transfer, not regenerated noise.
+DOWN_BODY_X_OFFSETS = (0, -1, -1, -1, 0, 1, 1, 1)
+
+# The repaired frame remains the first/contact frame. The other seven lower-body
+# patches are authored on Tango's final one-pixel grid. Unlike the former rigid
+# leg-block offsets, every support phase changes the knee, ankle, and footprint:
+# contact -> load/compress -> heel roll/passing -> toe push-off, then swaps sides.
+DOWN_GAIT_PATCH_ORIGIN = (8, 23)
+DOWN_GAIT_PATCH_SIZE = (16, 5)
+DOWN_GAIT_PHASES = (
+    "contact_left",
+    "load_left",
+    "pass_left",
+    "push_left",
+    "contact_right",
+    "load_right",
+    "pass_right",
+    "push_right",
+)
+DOWN_GAIT_PATCH_ROWS = (
+    None,  # Frame zero is the user's exact repaired 32x32 frame.
+    (
+        "................",
+        "...#SmS#..#gG#..",
+        "..#mdsd#.#mG#...",
+        "..#mSSm##GG#....",
+        "..#@@@#..#......",
+    ),
+    (
+        "................",
+        "...#SmS#..#gG#..",
+        "...#mdsd##mGG#..",
+        "...#mSSm##GGG#..",
+        "...#@@@#........",
+    ),
+    (
+        "...#SmS#.#####..",
+        "...#mds#..#gG#..",
+        "....#mSS##mGG#..",
+        "....######GGG#..",
+        "......##....##..",
+    ),
+    (
+        "...#SmS#.#####..",
+        "....#mds#.#gGG#.",
+        ".....#mS#.#mGG#.",
+        ".....###..#####.",
+        "......##..#####.",
+    ),
+    (
+        "................",
+        "...#SmS#..#gG#..",
+        "....#mds#.#mGG#.",
+        ".....####.#GGG#.",
+        ".......#..#####.",
+    ),
+    (
+        "................",
+        "...#SmS#..#gG#..",
+        "...#mds#.#mGGG#.",
+        "...#mSS#.#GGGG#.",
+        ".........#####..",
+    ),
+    (
+        "...#SmS#.#####..",
+        "..#mds#...#gG#..",
+        "...#mSS#.#mGG#..",
+        "...#####.#GG#...",
+        "...##....##.....",
+    ),
+)
 
 # Compact palette derived from the approved 32x32 Tango.  All runtime sprites use
 # this exact palette so imagegen frame-to-frame color drift cannot shimmer in game.
@@ -68,6 +157,21 @@ PALETTE = (
     (43, 110, 116, 255),     # unlit cyan glass
     EYE_CYAN,                 # active cyan
 )
+
+DOWN_GAIT_COLORS = {
+    "#": PALETTE[0],
+    "@": PALETTE[1],
+    "d": PALETTE[2],
+    "s": PALETTE[3],
+    "S": PALETTE[4],
+    "m": PALETTE[5],
+    "j": PALETTE[6],
+    "g": PALETTE[7],
+    "G": PALETTE[8],
+    "h": PALETTE[9],
+    "H": PALETTE[10],
+    "W": PALETTE[11],
+}
 
 # This compact silhouette is transcribed from UNIT_IMAGEGEN_DESIGN_PATH directly
 # onto the final logical grid.  Static chassis pixels never change between states;
@@ -256,23 +360,285 @@ def _place_on_frame(
     return normalize_transparency(frame)
 
 
-def _correct_reference_eye() -> Image.Image:
-    before = Image.open(REFERENCE_PATH).convert("RGBA")
-    after = before.copy()
+def _build_reference_from_user_fix() -> Image.Image:
+    """Place the approved 18x23 front frame without scaling it.
+
+    The supplied repair uses pure black for nine outline cells.  They represent
+    the existing outline ramp rather than a new material color, so normalize
+    only those cells and preserve every other RGBA value.
+    """
+    source = Image.open(USER_FRONT_FIX_PATH).convert("RGBA")
+    if source.size != (18, 23):
+        raise AssertionError(
+            f"approved front fix must be 18x23, got {source.size}"
+        )
+    if source.getchannel("A").getbbox() != (0, 0, 18, 23):
+        raise AssertionError("approved front fix bounds changed")
+    for coordinate in USER_EYE_COORDINATES:
+        if source.getpixel(coordinate) != EYE_CYAN:
+            raise AssertionError(
+                f"approved front eye {coordinate} is not one-pixel bright cyan"
+            )
+
+    normalized = source.copy()
+    pixels = normalized.load()
+    for y in range(normalized.height):
+        for x in range(normalized.width):
+            if pixels[x, y] == (0, 0, 0, 255):
+                pixels[x, y] = PALETTE[0]
+    normalized = normalize_transparency(normalized)
+    reference = _place_on_frame(
+        normalized,
+        frame_size=FRAME_SIZE,
+        baseline=MOVE_BASELINE,
+    )
+    if reference.getchannel("A").getbbox() != (7, 5, 25, 28):
+        raise AssertionError("approved front fix placement drifted")
     for coordinate in EYE_COORDINATES:
-        after.putpixel(coordinate, EYE_CYAN)
-
-    for y in range(before.height):
-        for x in range(before.width):
-            if (x, y) not in EYE_COORDINATES and before.getpixel((x, y)) != after.getpixel((x, y)):
-                raise AssertionError(f"unexpected reference edit at {(x, y)}")
-
-    after = normalize_transparency(after)
-    after.save(REFERENCE_PATH, optimize=True)
-    return after
+        if reference.getpixel(coordinate) != EYE_CYAN:
+            raise AssertionError(f"runtime front eye {coordinate} drifted")
+    REFERENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    reference.save(REFERENCE_PATH, optimize=True)
+    return reference
 
 
-def _build_move_sheet(reference: Image.Image) -> tuple[Image.Image, list[dict]]:
+def _frame_from_sheet(sheet: Image.Image, row: int, column: int) -> Image.Image:
+    return sheet.crop(
+        (
+            column * FRAME_SIZE,
+            row * FRAME_SIZE,
+            (column + 1) * FRAME_SIZE,
+            (row + 1) * FRAME_SIZE,
+        )
+    )
+
+
+def _load_direction_references(front_reference: Image.Image) -> list[Image.Image]:
+    references = [front_reference]
+    for path in DIRECTION_REFERENCE_PATHS[1:]:
+        reference = normalize_transparency(Image.open(path).convert("RGBA"))
+        if reference.size != (FRAME_SIZE, FRAME_SIZE):
+            raise AssertionError(
+                f"direction reference {path.name} must be 32x32, got {reference.size}"
+            )
+        bbox = reference.getchannel("A").getbbox()
+        if bbox is None or bbox[3] != MOVE_BASELINE or bbox[3] - bbox[1] > 24:
+            raise AssertionError(
+                f"direction reference {path.name} violates geometry: {bbox}"
+            )
+        unexpected = {
+            pixel for pixel in reference.getdata()
+            if pixel[3] > 0 and pixel not in PALETTE
+        }
+        if unexpected:
+            raise AssertionError(
+                f"direction reference {path.name} has unexpected colors: "
+                f"{sorted(unexpected)}"
+            )
+        references.append(reference)
+    return references
+
+
+def _render_down_gait_patch(column: int) -> Image.Image:
+    rows = DOWN_GAIT_PATCH_ROWS[column]
+    if rows is None:
+        raise AssertionError("the repaired contact frame has no generated patch")
+    if len(rows) != DOWN_GAIT_PATCH_SIZE[1]:
+        raise AssertionError(
+            f"down gait frame {column} has {len(rows)} patch rows"
+        )
+    patch = Image.new("RGBA", DOWN_GAIT_PATCH_SIZE, (0, 0, 0, 0))
+    for y, row in enumerate(rows):
+        if len(row) != DOWN_GAIT_PATCH_SIZE[0]:
+            raise AssertionError(
+                f"down gait frame {column} row {y} has width {len(row)}"
+            )
+        for x, token in enumerate(row):
+            if token == ".":
+                continue
+            color = DOWN_GAIT_COLORS.get(token)
+            if color is None:
+                raise AssertionError(
+                    f"down gait frame {column} uses unknown token {token!r}"
+                )
+            patch.putpixel((x, y), color)
+    return normalize_transparency(patch)
+
+
+def _build_weighted_down_gait(
+    sheet: Image.Image,
+    front_reference: Image.Image,
+) -> Image.Image:
+    """Author a real contact/load/pass/push cycle below the fixed torso.
+
+    Frame zero remains exactly the user's repair. Each later frame starts from a
+    clean canvas, draws a native-resolution lower-body patch, then places the
+    unchanged torso over the hip seam. This prevents both generated texture boil
+    and stale leg pixels while allowing the planted leg itself to compress, roll,
+    and push off instead of acting as an immobile prop.
+    """
+    if len(DOWN_GAIT_PHASES) != 8 or len(DOWN_GAIT_PATCH_ROWS) != 8:
+        raise AssertionError("the down gait must contain exactly eight phases")
+
+    weighted = sheet.copy()
+    canonical_upper = front_reference.crop(
+        (0, 0, FRAME_SIZE, MOVE_STABLE_BODY_BOTTOM)
+    )
+    for column, (body_x, bob_offset) in enumerate(
+        zip(DOWN_BODY_X_OFFSETS, MOVE_BOB_OFFSETS, strict=True)
+    ):
+        if column == 0:
+            frame = front_reference.copy()
+        else:
+            frame = Image.new(
+                "RGBA",
+                (FRAME_SIZE, FRAME_SIZE),
+                (0, 0, 0, 0),
+            )
+            frame.alpha_composite(
+                _render_down_gait_patch(column),
+                DOWN_GAIT_PATCH_ORIGIN,
+            )
+            # The torso owns the hip seam, so any leg pixel under it is hidden in
+            # the same deterministic order in every frame.
+            frame.alpha_composite(canonical_upper, (body_x, bob_offset))
+        weighted.paste(frame, (column * FRAME_SIZE, 0))
+    return normalize_transparency(weighted)
+
+
+def _stabilize_move_sheet(
+    sheet: Image.Image,
+    direction_references: list[Image.Image],
+) -> Image.Image:
+    """Transplant one rigid, one-pixel-bobbing body per direction.
+
+    The lower rows retain the generated gait. Head shell, face, eyes, torso,
+    highlights and arms come from the user's repaired first frame for each
+    direction. The complete body moves down by at most one pixel, eliminating
+    texture boil without flattening the walk cycle's vertical weight shift.
+    """
+    stabilized = Image.new("RGBA", sheet.size, (0, 0, 0, 0))
+    for row, canonical in enumerate(direction_references):
+        fixed_upper = canonical.crop(
+            (0, 0, FRAME_SIZE, MOVE_STABLE_BODY_BOTTOM)
+        )
+        for column, bob_offset in enumerate(MOVE_BOB_OFFSETS):
+            frame = _frame_from_sheet(sheet, row, column)
+            original_lower = frame.crop(
+                (0, MOVE_STABLE_BODY_BOTTOM + 1, FRAME_SIZE, FRAME_SIZE)
+            ).tobytes()
+            frame.paste(
+                (0, 0, 0, 0),
+                (0, 0, FRAME_SIZE, MOVE_STABLE_BODY_BOTTOM),
+            )
+            frame.alpha_composite(fixed_upper, (0, bob_offset))
+            if column == 0:
+                # Preserve every user's repaired first frame in full, including
+                # its authored legs, as the idle/contact pose for that direction.
+                frame = canonical.copy()
+            elif frame.crop(
+                (0, MOVE_STABLE_BODY_BOTTOM + 1, FRAME_SIZE, FRAME_SIZE)
+            ).tobytes() != original_lower:
+                raise AssertionError(
+                    f"move row {row} frame {column} changed the core gait rows"
+                )
+            stabilized.alpha_composite(
+                normalize_transparency(frame),
+                (column * FRAME_SIZE, row * FRAME_SIZE),
+            )
+    return normalize_transparency(stabilized)
+
+
+def _assert_stable_move_contract(
+    sheet: Image.Image,
+    direction_references: list[Image.Image],
+) -> None:
+    for row in range(4):
+        frames = [_frame_from_sheet(sheet, row, column) for column in range(8)]
+        canonical = direction_references[row]
+        expected_upper = canonical.crop(
+            (0, 0, FRAME_SIZE, MOVE_STABLE_BODY_BOTTOM)
+        )
+        if frames[0].tobytes() != canonical.tobytes():
+            raise AssertionError(
+                f"move row {row} frame 0 must match its repaired reference"
+            )
+        for column, (frame, bob_offset) in enumerate(
+            zip(frames, MOVE_BOB_OFFSETS, strict=True)
+        ):
+            body_x = DOWN_BODY_X_OFFSETS[column] if row == 0 else 0
+            bbox = frame.getchannel("A").getbbox()
+            if bbox is None or bbox[3] != MOVE_BASELINE:
+                raise AssertionError(
+                    f"move row {row} frame {column} baseline drift: {bbox}"
+                )
+            if bbox[3] - bbox[1] > 24:
+                raise AssertionError(
+                    f"move row {row} frame {column} exceeds 24px: {bbox}"
+                )
+            expected_body = Image.new(
+                "RGBA", (FRAME_SIZE, FRAME_SIZE), (0, 0, 0, 0)
+            )
+            expected_body.alpha_composite(
+                expected_upper,
+                (body_x, bob_offset),
+            )
+            for y in range(MOVE_STABLE_BODY_BOTTOM + bob_offset):
+                for x in range(FRAME_SIZE):
+                    expected_pixel = expected_body.getpixel((x, y))
+                    actual_pixel = frame.getpixel((x, y))
+                    if expected_pixel[3] > 0 and actual_pixel != expected_pixel:
+                        raise AssertionError(
+                            f"move row {row} frame {column} body changed at "
+                            f"{(x, y)} with offset={(body_x, bob_offset)}"
+                        )
+                    if (
+                        expected_pixel[3] == 0
+                        and y < MOVE_STABLE_BODY_BOTTOM
+                        and actual_pixel[3] != 0
+                    ):
+                        raise AssertionError(
+                            f"move row {row} frame {column} left a body remnant at "
+                            f"{(x, y)}"
+                        )
+            for y in range(bob_offset):
+                if frame.crop((0, y, FRAME_SIZE, y + 1)).getchannel("A").getbbox():
+                    raise AssertionError(
+                        f"move row {row} frame {column} did not vacate bob row {y}"
+                    )
+        lower_hashes = {
+            frame.crop(
+                (0, MOVE_STABLE_BODY_BOTTOM + 1, FRAME_SIZE, FRAME_SIZE)
+            ).tobytes()
+            for frame in frames
+        }
+        if len(lower_hashes) < 4:
+            raise AssertionError(
+                f"move row {row} lost its gait variation: {len(lower_hashes)}"
+            )
+
+    for column, bob_offset in enumerate(MOVE_BOB_OFFSETS):
+        down_frame = _frame_from_sheet(sheet, 0, column)
+        for base_y in (11, 12):
+            eye_y = base_y + bob_offset
+            bright_x = [
+                x for x in range(FRAME_SIZE)
+                if down_frame.getpixel((x, eye_y)) == EYE_CYAN
+            ]
+            expected_eye_x = [
+                15 + DOWN_BODY_X_OFFSETS[column],
+                18 + DOWN_BODY_X_OFFSETS[column],
+            ]
+            if bright_x != expected_eye_x:
+                raise AssertionError(
+                    f"front frame {column} eyes must each be one pixel wide: "
+                    f"y={eye_y}, x={bright_x}"
+                )
+
+
+def _build_move_sheet(
+    direction_references: list[Image.Image],
+) -> tuple[Image.Image, list[dict]]:
     source_rows = _extract_board(MOVE_BOARD_PATH, columns=8, rows=4)
     # Imagegen board rows are down, left, right, up. Runtime contract is
     # down, up, right, left.
@@ -295,9 +661,6 @@ def _build_move_sheet(reference: Image.Image) -> tuple[Image.Image, list[dict]]:
                 frame_size=FRAME_SIZE,
                 baseline=MOVE_BASELINE,
             )
-            if output_row == 0 and column == 0:
-                # The approved front pose is the canonical idle/down contact frame.
-                frame = reference.copy()
             sheet.alpha_composite(frame, (column * FRAME_SIZE, output_row * FRAME_SIZE))
             bbox = frame.getchannel("A").getbbox()
             report.append(
@@ -308,7 +671,22 @@ def _build_move_sheet(reference: Image.Image) -> tuple[Image.Image, list[dict]]:
                     "source_bbox": extracted.source_bbox,
                 }
             )
-    return normalize_transparency(sheet), report
+    sheet = _stabilize_move_sheet(
+        normalize_transparency(sheet),
+        direction_references,
+    )
+    sheet = _build_weighted_down_gait(
+        sheet,
+        direction_references[0],
+    )
+    _assert_stable_move_contract(sheet, direction_references)
+    for item in report:
+        item["bbox"] = _frame_from_sheet(
+            sheet,
+            int(item["row"]),
+            int(item["column"]),
+        ).getchannel("A").getbbox()
+    return sheet, report
 
 
 def _build_death_sheet() -> tuple[Image.Image, list[dict]]:
@@ -425,11 +803,47 @@ def _save_outputs(
     portrait.save(PORTRAIT_OUTPUT_PATH, optimize=True)
 
     move_preview = _preview(move, 4)
+    down_move = move.crop((0, 0, FRAME_SIZE * 8, FRAME_SIZE))
+    down_move_preview = _preview(down_move, 8)
     death_preview = _preview(death, 4)
     unit_preview = _preview(unit, 12)
     move_preview.save(MOVE_PREVIEW_PATH, optimize=True)
+    down_move_preview.save(DOWN_MOVE_PREVIEW_PATH, optimize=True)
     death_preview.save(DEATH_PREVIEW_PATH, optimize=True)
     unit_preview.save(UNIT_PREVIEW_PATH, optimize=True)
+
+    animated_frames: list[Image.Image] = []
+    for column in range(8):
+        strip = Image.new("RGBA", (FRAME_SIZE * 4, FRAME_SIZE), (20, 28, 44, 255))
+        for row in range(4):
+            strip.alpha_composite(
+                _frame_from_sheet(move, row, column),
+                (row * FRAME_SIZE, 0),
+            )
+        animated_frames.append(
+            strip.resize((FRAME_SIZE * 16, FRAME_SIZE * 4), Image.Resampling.NEAREST)
+        )
+    animated_frames[0].save(
+        MOVE_ANIMATED_PREVIEW_PATH,
+        save_all=True,
+        append_images=animated_frames[1:],
+        duration=71,
+        loop=0,
+        disposal=2,
+    )
+
+    down_animated_frames = [
+        _preview(_frame_from_sheet(move, 0, column), 8)
+        for column in range(8)
+    ]
+    down_animated_frames[0].save(
+        DOWN_MOVE_ANIMATED_PREVIEW_PATH,
+        save_all=True,
+        append_images=down_animated_frames[1:],
+        duration=71,
+        loop=0,
+        disposal=2,
+    )
 
     gap = 24
     overview_width = max(move_preview.width, death_preview.width, unit_preview.width)
@@ -445,8 +859,9 @@ def _save_outputs(
 
 
 def main() -> None:
-    reference = _correct_reference_eye()
-    move, move_report = _build_move_sheet(reference)
+    reference = _build_reference_from_user_fix()
+    direction_references = _load_direction_references(reference)
+    move, move_report = _build_move_sheet(direction_references)
     death, death_report = _build_death_sheet()
     unit, unit_report, unit_native = _build_unit_sheet()
     _save_outputs(reference, move, death, unit, unit_native)

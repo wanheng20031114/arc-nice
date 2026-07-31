@@ -5,17 +5,24 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from statistics import pstdev
 
 from PIL import Image
 
 from pixel_grid_analyzer import analyze_image
 from process_tango_assets import (
+    DEATH_BASELINE,
     DEATH_OUTPUT_PATH,
+    DIRECTION_REFERENCE_PATHS,
+    DOWN_BODY_X_OFFSETS,
+    DOWN_GAIT_PHASES,
     EYE_COORDINATES,
     EYE_CYAN,
     IDLE_OUTPUT_PATH,
     MOVE_BASELINE,
+    MOVE_BOB_OFFSETS,
     MOVE_OUTPUT_PATH,
+    MOVE_STABLE_BODY_BOTTOM,
     PALETTE,
     PORTRAIT_OUTPUT_PATH,
     REFERENCE_PATH,
@@ -29,6 +36,17 @@ UNIT_FRAME_SIZE = 8
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PLAYER_ANIMATION_PATH = PROJECT_ROOT / "resources" / "animation" / "player_tango.tres"
 UNIT_ANIMATION_PATH = PROJECT_ROOT / "resources" / "animation" / "tango_cast_unit.tres"
+
+EXPECTED_DOWN_CONTACTS = (
+    (10, 11, 12, 13, 14, 17, 18, 19, 20),
+    (10, 11, 12, 13, 14, 17),
+    (11, 12, 13, 14, 15),
+    (14, 15, 20, 21),
+    (14, 15, 18, 19, 20, 21, 22),
+    (15, 18, 19, 20, 21, 22),
+    (17, 18, 19, 20, 21),
+    (11, 12, 17, 18),
+)
 
 
 def _sha256(path: Path) -> str:
@@ -78,6 +96,208 @@ def _frame_bboxes(
     return result
 
 
+def _frame_at(image: Image.Image, row: int, column: int) -> Image.Image:
+    return image.crop(
+        (
+            column * FRAME_SIZE,
+            row * FRAME_SIZE,
+            (column + 1) * FRAME_SIZE,
+            (row + 1) * FRAME_SIZE,
+        )
+    )
+
+
+def _assert_single_component(frame: Image.Image, label: str) -> None:
+    opaque = {
+        (x, y)
+        for y in range(frame.height)
+        for x in range(frame.width)
+        if frame.getpixel((x, y))[3] > 0
+    }
+    if not opaque:
+        raise AssertionError(f"{label}: empty frame")
+    pending = [next(iter(opaque))]
+    visited: set[tuple[int, int]] = set()
+    while pending:
+        point = pending.pop()
+        if point in visited:
+            continue
+        visited.add(point)
+        x, y = point
+        for neighbor in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if neighbor in opaque and neighbor not in visited:
+                pending.append(neighbor)
+    if visited != opaque:
+        raise AssertionError(
+            f"{label}: {len(opaque - visited)} opaque pixels are disconnected"
+        )
+
+
+def _assert_move_stability(
+    move: Image.Image,
+    direction_references: list[Image.Image],
+) -> None:
+    if MOVE_BOB_OFFSETS != (0, 1, 1, 0, 0, 1, 1, 0):
+        raise AssertionError(f"unexpected rigid bob sequence: {MOVE_BOB_OFFSETS}")
+    if DOWN_BODY_X_OFFSETS != (0, -1, -1, -1, 0, 1, 1, 1):
+        raise AssertionError(
+            f"unexpected down-facing weight transfer: {DOWN_BODY_X_OFFSETS}"
+        )
+    if len(DOWN_GAIT_PHASES) != 8:
+        raise AssertionError(f"unexpected down gait phases: {DOWN_GAIT_PHASES}")
+
+    for row in range(4):
+        frames = [_frame_at(move, row, column) for column in range(8)]
+        canonical = direction_references[row]
+        canonical_upper = canonical.crop(
+            (0, 0, FRAME_SIZE, MOVE_STABLE_BODY_BOTTOM)
+        )
+        if frames[0].tobytes() != canonical.tobytes():
+            raise AssertionError(
+                f"move row {row}: frame 0 differs from the repaired reference"
+            )
+        for column, (frame, bob_offset) in enumerate(
+            zip(frames, MOVE_BOB_OFFSETS, strict=True)
+        ):
+            _assert_single_component(frame, f"move row {row} frame {column}")
+            body_x = DOWN_BODY_X_OFFSETS[column] if row == 0 else 0
+            expected_body = Image.new(
+                "RGBA", (FRAME_SIZE, FRAME_SIZE), (0, 0, 0, 0)
+            )
+            expected_body.alpha_composite(
+                canonical_upper,
+                (body_x, bob_offset),
+            )
+            for y in range(MOVE_STABLE_BODY_BOTTOM + bob_offset):
+                for x in range(FRAME_SIZE):
+                    expected_pixel = expected_body.getpixel((x, y))
+                    actual_pixel = frame.getpixel((x, y))
+                    if expected_pixel[3] > 0 and actual_pixel != expected_pixel:
+                        raise AssertionError(
+                            f"move row {row} frame {column}: rigid body changed "
+                            f"at {(x, y)}, offset={(body_x, bob_offset)}"
+                        )
+                    if (
+                        expected_pixel[3] == 0
+                        and y < MOVE_STABLE_BODY_BOTTOM
+                        and actual_pixel[3] != 0
+                    ):
+                        raise AssertionError(
+                            f"move row {row} frame {column}: body remnant at "
+                            f"{(x, y)}"
+                        )
+            for y in range(bob_offset):
+                vacated_row = frame.crop((0, y, FRAME_SIZE, y + 1))
+                if vacated_row.getchannel("A").getbbox() is not None:
+                    raise AssertionError(
+                        f"move row {row} frame {column}: bob row {y} is not empty"
+                    )
+        lower_bodies = {
+            frame.crop(
+                (0, MOVE_STABLE_BODY_BOTTOM + 1, FRAME_SIZE, FRAME_SIZE)
+            ).tobytes()
+            for frame in frames
+        }
+        if len(lower_bodies) < 4:
+            raise AssertionError(
+                f"move row {row}: gait has only {len(lower_bodies)} lower-body poses"
+            )
+
+    for column, bob_offset in enumerate(MOVE_BOB_OFFSETS):
+        down_frame = _frame_at(move, 0, column)
+        expected_eye_x = [
+            15 + DOWN_BODY_X_OFFSETS[column],
+            18 + DOWN_BODY_X_OFFSETS[column],
+        ]
+        for base_y in (11, 12):
+            eye_y = base_y + bob_offset
+            bright_x = [
+                x for x in range(FRAME_SIZE)
+                if down_frame.getpixel((x, eye_y)) == EYE_CYAN
+            ]
+            if bright_x != expected_eye_x:
+                raise AssertionError(
+                    f"down frame {column}: eyes at y={eye_y} must be two "
+                    f"1px columns, got x={bright_x}"
+                )
+
+    down_frames = [_frame_at(move, 0, column) for column in range(8)]
+    alpha_changes: list[int] = []
+    rgba_changes: list[int] = []
+    for column in range(8):
+        current = down_frames[column].crop((0, 24, FRAME_SIZE, FRAME_SIZE))
+        following = down_frames[(column + 1) % 8].crop(
+            (0, 24, FRAME_SIZE, FRAME_SIZE)
+        )
+        current_pixels = list(current.getdata())
+        following_pixels = list(following.getdata())
+        alpha_changes.append(
+            sum(
+                (left[3] > 0) != (right[3] > 0)
+                for left, right in zip(current_pixels, following_pixels, strict=True)
+            )
+        )
+        rgba_changes.append(
+            sum(
+                left != right
+                for left, right in zip(current_pixels, following_pixels, strict=True)
+            )
+        )
+    mean_alpha_change = sum(alpha_changes) / len(alpha_changes)
+    alpha_cv = pstdev(alpha_changes) / mean_alpha_change
+    if min(alpha_changes) < 5 or max(alpha_changes) > 15 or alpha_cv > 0.35:
+        raise AssertionError(
+            "down gait timing is uneven: "
+            f"alpha={alpha_changes}, cv={alpha_cv:.3f}"
+        )
+    if max(rgba_changes) > 32:
+        raise AssertionError(f"down gait has a color jump: {rgba_changes}")
+
+    actual_contacts = tuple(
+        tuple(
+            x for x in range(FRAME_SIZE)
+            if frame.getpixel((x, MOVE_BASELINE - 1))[3] > 0
+        )
+        for frame in down_frames
+    )
+    if actual_contacts != EXPECTED_DOWN_CONTACTS:
+        raise AssertionError(
+            "down gait lost its contact/load/roll/push footprints: "
+            f"{actual_contacts}"
+        )
+
+    # A walking support leg must deform while it bears weight. These checks are
+    # intentionally confined to the planted side, so moving only the swing leg
+    # can never satisfy them again.
+    support_transitions = (
+        (1, 2, (9, 24, 17, 28), "left load-to-roll"),
+        (5, 6, (16, 24, 24, 28), "right load-to-roll"),
+    )
+    for first, second, bounds, label in support_transitions:
+        first_silhouette = down_frames[first].crop(bounds).getchannel("A")
+        second_silhouette = down_frames[second].crop(bounds).getchannel("A")
+        if first_silhouette.tobytes() == second_silhouette.tobytes():
+            raise AssertionError(f"down gait {label} leaves the support leg static")
+
+    left_load_center = sum(EXPECTED_DOWN_CONTACTS[1][:5]) / 5.0
+    left_roll_center = sum(EXPECTED_DOWN_CONTACTS[2]) / 5.0
+    right_load_center = sum(EXPECTED_DOWN_CONTACTS[5][1:]) / 5.0
+    right_roll_center = sum(EXPECTED_DOWN_CONTACTS[6]) / 5.0
+    if left_roll_center <= left_load_center or right_roll_center >= right_load_center:
+        raise AssertionError(
+            "down gait support feet must roll one pixel toward the center line"
+        )
+
+    down_core_poses = {
+        frame.crop((0, 24, FRAME_SIZE, FRAME_SIZE)).tobytes()
+        for frame in down_frames
+    }
+    if len(down_core_poses) != 8:
+        raise AssertionError(
+            f"down gait must keep eight distinct leg poses, got {len(down_core_poses)}"
+        )
+
+
 def _assert_animation_resources() -> None:
     player_text = PLAYER_ANIMATION_PATH.read_text(encoding="utf-8")
     expected_player_animations = {
@@ -117,6 +337,9 @@ def _assert_animation_resources() -> None:
 def main() -> None:
     _assert_animation_resources()
     reference = Image.open(REFERENCE_PATH).convert("RGBA")
+    direction_references = [
+        Image.open(path).convert("RGBA") for path in DIRECTION_REFERENCE_PATHS
+    ]
     for coordinate in EYE_COORDINATES:
         if reference.getpixel(coordinate) != EYE_CYAN:
             raise AssertionError(
@@ -152,6 +375,7 @@ def main() -> None:
         )
     if list(unit.crop((0, 0, 8, 8)).getdata()) != list(unit_native.getdata()):
         raise AssertionError("first orbit frame must match the native 8x8 unit source")
+    _assert_move_stability(move, direction_references)
 
     for image, label in (
         (idle, "idle"),
@@ -160,6 +384,10 @@ def main() -> None:
         (death, "death"),
         (unit, "unit"),
         (unit_native, "unit_native"),
+        *(
+            (direction_reference, f"direction_reference_{index}")
+            for index, direction_reference in enumerate(direction_references)
+        ),
     ):
         _assert_binary_clean_alpha(image, label)
         _assert_palette(image, label)
@@ -178,6 +406,8 @@ def main() -> None:
             raise AssertionError(f"death frame exceeds 24px: {bbox}")
         if bbox[2] - bbox[0] > 30:
             raise AssertionError(f"death frame exceeds 30px width: {bbox}")
+        if bbox[3] != DEATH_BASELINE:
+            raise AssertionError(f"death frame baseline drift: {bbox}")
     for bbox in unit_bboxes:
         if bbox[2] - bbox[0] > 8 or bbox[3] - bbox[1] > 8:
             raise AssertionError(f"unit frame exceeds native 8x8: {bbox}")
