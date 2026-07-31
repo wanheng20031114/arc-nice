@@ -182,6 +182,7 @@ func _test_character_contract() -> void:
 func _test_electric_surge_character_contract() -> void:
 	player.call("_reset_tango_combat_state", true)
 	var base_interval := float(player.call("_get_effective_fire_interval"))
+	var attack_bar := player.attack_interval_bar as PlayerAttackIntervalBar
 	var unattached_enemy := TangoBulletEnemy.new()
 	var attached_enemy := TangoBulletEnemy.new()
 	attached_enemy.elemental_attachment_mask = Enemy.ELEMENTAL_ATTACHMENT_ELECTRIC
@@ -202,6 +203,19 @@ func _test_electric_surge_character_contract() -> void:
 		is_zero_approx(player.skill1_charge),
 		"Authoritative Electric Surge must consume the ready skill charge."
 	)
+	_expect(
+		attack_bar != null
+		and attack_bar.empowered_active
+		and attack_bar.empowered_animation_player.is_playing(),
+		"Electric Surge must switch the full attack bar into its authored yellow-white flash."
+	)
+	for unit in player.get("_casting_unit_sprites") as Array[AnimatedSprite2D]:
+		_expect(
+			is_equal_approx(float(unit.get_instance_shader_parameter(
+				&"electric_surge_strength"
+			)), 1.0),
+			"Every casting unit must replace its cyan energy with surge yellow for the buff."
+		)
 	_expect(
 		is_equal_approx(
 			float(player.call("_get_effective_fire_interval")),
@@ -275,6 +289,17 @@ func _test_electric_surge_character_contract() -> void:
 		and player.resolve_attack_damage_against_enemy(100, attached_enemy) == 100,
 		"Electric Surge expiry must remove both its fire-rate and marked-target bonuses."
 	)
+	_expect(
+		attack_bar == null or not attack_bar.empowered_active,
+		"Electric Surge expiry must restore the ordinary attack-bar presentation."
+	)
+	for unit in player.get("_casting_unit_sprites") as Array[AnimatedSprite2D]:
+		_expect(
+			is_zero_approx(float(unit.get_instance_shader_parameter(
+				&"electric_surge_strength"
+			))),
+			"Electric Surge expiry must restore every casting unit's cyan palette."
+		)
 	for child in test_root.get_children():
 		if child is TangoElectricSurgeField:
 			child.free()
@@ -345,6 +370,13 @@ func _test_authored_casting_units_and_orbit() -> void:
 			is_equal_approx(unit.sprite_frames.get_animation_speed(&"orbit"), 5.0),
 			"The idle casting-unit flash must run at the slower 5 FPS cadence."
 		)
+		_expect(
+			unit.material is ShaderMaterial
+			and (unit.material as ShaderMaterial).shader.code.contains(
+				"instance uniform float electric_surge_strength"
+			),
+			"Each authored casting unit must share the instance-safe surge palette shader."
+		)
 	_expect(units.size() == 3, "Tango must own exactly three authored casting units.")
 
 	var phase_step := PlayerTango.UNIT_PHASE_STEP
@@ -405,6 +437,27 @@ func _test_charge_release_contract() -> void:
 			is_zero_approx(attack_bar.cooldown_progress) and not attack_bar.is_ready,
 			"Tango's visible primary bar must rest at zero instead of showing ready/full."
 		)
+
+	player.call("_handle_primary_attack_input", Vector2.RIGHT)
+	var initial_charge_flash_speed := player.unit_a.speed_scale
+	player.call("_update_character_resources", 1.2)
+	var middle_charge_flash_speed := player.unit_a.speed_scale
+	player.call("_update_character_resources", 1.2)
+	var full_charge_flash_speed := player.unit_a.speed_scale
+	_expect(
+		initial_charge_flash_speed < middle_charge_flash_speed
+		and middle_charge_flash_speed < full_charge_flash_speed
+		and is_equal_approx(
+			full_charge_flash_speed,
+			PlayerTango.UNIT_CHARGE_MAX_SPEED_SCALE
+		),
+		"Casting-unit charge flashes must progressively accelerate through the 2.4-second hold."
+	)
+	player.cancel_authoritative_tango_charge()
+	_expect(
+		is_equal_approx(player.unit_a.speed_scale, 1.0),
+		"Leaving charge must reset casting-unit animation speed before orbit/fire playback."
+	)
 
 	player.call("_handle_primary_attack_input", Vector2.RIGHT)
 	player.call("_update_character_resources", 0.19)

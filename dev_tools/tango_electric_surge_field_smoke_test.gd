@@ -104,8 +104,10 @@ func _test_authored_scene_contract() -> void:
 		and material.shader != null
 		and material.shader.code.contains("outward_wave")
 		and material.shader.code.contains("render_mode unshaded, blend_add")
+		and material.shader.code.contains("boundary * 0.28")
+		and material.shader.code.contains("alpha = min(alpha, 0.42)")
 		and field.field_visual.polygon.size() == 4,
-		"地面电涌必须由一个高透明、向外扩散的单 draw Polygon2D shader 表现。"
+		"地面电涌必须由单 draw Shader 保持高透明，同时提供可辨识的72像素边界。"
 	)
 	_expect(
 		field.night_light != null

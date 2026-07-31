@@ -31,6 +31,8 @@ const UNIT_CONVERGE_DURATION := 0.14
 const UNIT_RETURN_DURATION := 0.18
 const UNIT_PHASE_STEP := TAU / 3.0
 const UNIT_FORWARD_ROTATION_OFFSET := PI / 2.0
+const UNIT_CHARGE_MIN_SPEED_SCALE := 0.55
+const UNIT_CHARGE_MAX_SPEED_SCALE := 2.25
 const UNIT_FIRE_FORWARD_OFFSETS := [19.0, 17.0, 18.0]
 const UNIT_FIRE_LATERAL_OFFSETS := [0.0, 5.0, -5.0]
 const PROJECTILE_MUZZLE_DISTANCE := 6.0
@@ -265,6 +267,7 @@ func _begin_electric_surge(
 		clampf(duration, 0.01, ELECTRIC_SURGE_DURATION)
 	)
 	_refresh_shooting_timer_wait_time()
+	_set_electric_surge_visual_state(true)
 
 
 func _spawn_authoritative_electric_surge_field(
@@ -335,6 +338,21 @@ func _clear_electric_surge_state() -> void:
 	_electric_surge_origin = Vector2.ZERO
 	if is_node_ready():
 		_refresh_shooting_timer_wait_time()
+	_set_electric_surge_visual_state(false)
+
+
+func _set_electric_surge_visual_state(active: bool) -> void:
+	var tango_attack_bar := attack_interval_bar as PlayerAttackIntervalBar
+	if tango_attack_bar != null:
+		tango_attack_bar.set_empowered_active(active)
+	var surge_strength := 1.0 if active else 0.0
+	for unit in _casting_unit_sprites:
+		unit.set_instance_shader_parameter(
+			&"electric_surge_strength",
+			surge_strength
+		)
+	if is_node_ready():
+		_update_attack_interval_bar()
 
 
 func _get_character_fire_rate_multiplier() -> float:
@@ -447,6 +465,7 @@ func apply_multiplayer_tango_charge_snapshot(ratio: float, facing_id: int) -> vo
 		_begin_charge_visual(_multiplayer_facing_id_to_direction(facing_id))
 	if _casting_state == CastingState.CHARGING:
 		_charge_elapsed = safe_ratio * MAX_CHARGE_DURATION
+		_update_charge_animation_speed()
 
 
 func _initialize_character_resources() -> void:
@@ -495,6 +514,7 @@ func _update_character_resources(delta: float) -> void:
 			_charge_elapsed + maxf(delta, 0.0),
 			MAX_CHARGE_DURATION
 		)
+		_update_charge_animation_speed()
 
 
 func _handle_primary_attack_input(shoot_input: Vector2) -> void:
@@ -770,6 +790,7 @@ func _begin_charge_visual(direction: Vector2) -> void:
 	last_attack_direction = direction
 	_update_facing(Vector2.ZERO, direction)
 	_set_casting_unit_animation(&"charge")
+	_update_charge_animation_speed()
 
 
 func _cancel_charge_visual() -> void:
@@ -1194,8 +1215,22 @@ func _set_casting_unit_animation(animation_name: StringName) -> void:
 	for unit in _casting_unit_sprites:
 		if not unit.sprite_frames.has_animation(animation_name):
 			continue
+		if animation_name != &"charge":
+			unit.speed_scale = 1.0
 		if unit.animation != animation_name or not unit.is_playing():
 			unit.play(animation_name)
+
+
+func _update_charge_animation_speed() -> void:
+	var charge_ratio := get_tango_charge_ratio()
+	var eased_ratio := charge_ratio * charge_ratio * (3.0 - 2.0 * charge_ratio)
+	var speed_scale := lerpf(
+		UNIT_CHARGE_MIN_SPEED_SCALE,
+		UNIT_CHARGE_MAX_SPEED_SCALE,
+		eased_ratio
+	)
+	for unit in _casting_unit_sprites:
+		unit.speed_scale = speed_scale
 
 
 func _charge_elapsed_to_release_ratio(elapsed: float) -> float:

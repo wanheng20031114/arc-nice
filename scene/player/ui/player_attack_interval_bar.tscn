@@ -2,6 +2,46 @@
 
 [ext_resource type="Script" uid="uid://rc6khukb74bl" path="res://scene/player/ui/player_attack_interval_bar.gd" id="1_script"]
 
+[sub_resource type="Animation" id="Animation_empowered_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:empowered_flash_phase")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [0.0]
+}
+
+[sub_resource type="Animation" id="Animation_empowered_flash"]
+resource_name = "empowered_flash"
+length = 0.24
+loop_mode = 1
+step = 0.12
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:empowered_flash_phase")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.12),
+"transitions": PackedFloat32Array(1, 1),
+"update": 1,
+"values": [0.0, 1.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_empowered"]
+_data = {
+&"RESET": SubResource("Animation_empowered_reset"),
+&"empowered_flash": SubResource("Animation_empowered_flash")
+}
+
 [node name="AttackIntervalBar" type="Control" unique_id=1348048826]
 custom_minimum_size = Vector2(20, 2)
 layout_mode = 3
@@ -14,3 +54,6 @@ mouse_filter = 2
 script = ExtResource("1_script")
 cooldown_color = Color(0.92941177, 0.7254902, 0.3372549, 1)
 ready_color = Color(0.39412376, 0.9497338, 0.7687436, 1)
+
+[node name="EmpoweredAnimationPlayer" type="AnimationPlayer" parent="."]
+libraries/ = SubResource("AnimationLibrary_empowered")

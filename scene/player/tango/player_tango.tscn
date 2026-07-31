@@ -18,6 +18,7 @@
 [ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="16_dash_ready"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="17_night_light"]
 [ext_resource type="Texture2D" uid="uid://clffculwmxi7k" path="res://resources/lighting/soft_player_point_light.tres" id="18_light_texture"]
+[ext_resource type="Shader" path="res://resources/shader/tango_cast_unit_overdrive.gdshader" id="19_unit_overdrive_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
 resource_local_to_scene = true
@@ -53,6 +54,10 @@ shader_parameter/glow_opacity = 0.18
 shader_parameter/pulse_speed = 2.2
 shader_parameter/pulse_amount = 0.1
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_unit_overdrive"]
+resource_local_to_scene = true
+shader = ExtResource("19_unit_overdrive_shader")
+
 [sub_resource type="CircleShape2D" id="CircleShape2D_player"]
 radius = 7.5
 
@@ -80,6 +85,7 @@ night_energy = 0.56
 [node name="UnitA" type="AnimatedSprite2D" parent="CastingUnits" unique_id=1771538510]
 z_index = 2
 texture_filter = 1
+material = SubResource("ShaderMaterial_unit_overdrive")
 position = Vector2(14, 0)
 sprite_frames = ExtResource("4_unit_frames")
 animation = &"orbit"
@@ -87,6 +93,7 @@ autoplay = "orbit"
 
 [node name="UnitB" type="AnimatedSprite2D" parent="CastingUnits" unique_id=1817120883]
 texture_filter = 1
+material = SubResource("ShaderMaterial_unit_overdrive")
 position = Vector2(-7, 7)
 sprite_frames = ExtResource("4_unit_frames")
 animation = &"orbit"
@@ -94,6 +101,7 @@ autoplay = "orbit"
 
 [node name="UnitC" type="AnimatedSprite2D" parent="CastingUnits" unique_id=408447637]
 texture_filter = 1
+material = SubResource("ShaderMaterial_unit_overdrive")
 position = Vector2(-7, -7)
 sprite_frames = ExtResource("4_unit_frames")
 animation = &"orbit"
