@@ -37,7 +37,8 @@ func _run() -> void:
 	var selector := lobby.get_node_or_null(
 		(
 			"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/"
-			+ "RoomSettingsCard/SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector"
+			+ "BrowserBodyScroll/BrowserBodyVBox/RoomSettingsCard/"
+			+ "SettingsMargin/SettingsVBox/GameModeRow/GameModeSelector"
 		)
 	) as OptionButton
 	var room_mode_label := lobby.get_node_or_null(
@@ -68,7 +69,9 @@ func _run() -> void:
 		)
 
 	var room_list := lobby.get_node(
-		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/TabContainer/RoomListTab/ScrollContainer/RoomListVBox"
+		"LobbyCenter/RoomBrowserPanel/MarginContainer/VBoxContainer/"
+		+ "BrowserBodyScroll/BrowserBodyVBox/TabContainer/"
+		+ "RoomListTab/ScrollContainer/RoomListVBox"
 	) as VBoxContainer
 	lobby.call("_render_public_rooms", [
 		{
