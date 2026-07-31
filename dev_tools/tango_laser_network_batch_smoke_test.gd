@@ -203,17 +203,23 @@ func _run() -> void:
 		and Vector2(player.get("_barrage_direction")) == Vector2.RIGHT,
 		"A CH4 batch arriving first must recover the current barrage visual."
 	)
+	_expect(
+		player.primary_attack_audio.playing,
+		"A newly accepted remote three-cannon batch must play exactly one volley cue."
+	)
 
 	var created_before_duplicate := int(
 		runtime.pool.get_metrics(TANGO_LASER_SCENE.resource_path).get("created", 0)
 	)
+	player.primary_attack_audio.stop()
 	client_mp.callv("net_tango_laser_volley", client_payload)
 	_expect(
 		client_known.size() == 3
 		and int(runtime.pool.get_metrics(
 			TANGO_LASER_SCENE.resource_path
-		).get("created", 0)) == created_before_duplicate,
-		"A duplicate batch must not lease any additional bullets."
+		).get("created", 0)) == created_before_duplicate
+		and not player.primary_attack_audio.playing,
+		"A duplicate batch must neither lease bullets nor replay its volley cue."
 	)
 
 	var old_sequence_payload := client_payload.duplicate()
@@ -222,16 +228,18 @@ func _run() -> void:
 	old_sequence_payload[10] = client_host_timestamp + 0.01
 	client_mp.callv("net_tango_laser_volley", old_sequence_payload)
 	_expect(
-		Vector2(player.get("_barrage_direction")) == Vector2.RIGHT,
-		"An older charge sequence may not overwrite the current cannon aim."
+		Vector2(player.get("_barrage_direction")) == Vector2.RIGHT
+		and not player.primary_attack_audio.playing,
+		"An older charge sequence may not overwrite aim or replay audio."
 	)
 	var old_timestamp_payload := client_payload.duplicate()
 	old_timestamp_payload[2] = Vector2.DOWN
 	old_timestamp_payload[10] = client_host_timestamp - 0.01
 	client_mp.callv("net_tango_laser_volley", old_timestamp_payload)
 	_expect(
-		Vector2(player.get("_barrage_direction")) == Vector2.RIGHT,
-		"An older timestamp in the same sequence may not rewind cannon aim."
+		Vector2(player.get("_barrage_direction")) == Vector2.RIGHT
+		and not player.primary_attack_audio.playing,
+		"An older timestamp in the same sequence may not rewind aim or replay audio."
 	)
 	var newer_payload := client_payload.duplicate()
 	newer_payload[2] = Vector2.UP
@@ -239,9 +247,11 @@ func _run() -> void:
 	newer_payload[10] = client_host_timestamp + 0.02
 	client_mp.callv("net_tango_laser_volley", newer_payload)
 	_expect(
-		Vector2(player.get("_barrage_direction")) == Vector2.UP,
-		"A newer same-sequence batch must update live cannon aim."
+		Vector2(player.get("_barrage_direction")) == Vector2.UP
+		and player.primary_attack_audio.playing,
+		"A newer same-sequence batch must update live aim and play one new volley cue."
 	)
+	player.primary_attack_audio.stop()
 	var next_sequence_payload := client_payload.duplicate()
 	next_sequence_payload[2] = Vector2.LEFT
 	next_sequence_payload[4] = 4
@@ -253,11 +263,12 @@ func _run() -> void:
 	player.reconcile_predicted_tango_barrage_started(Vector2.LEFT, 0.0, 4)
 	_expect(
 		Vector2(player.get("_barrage_direction")) == Vector2.LEFT
+		and player.primary_attack_audio.playing
 		and is_equal_approx(
 			float(player.get("_barrage_elapsed")),
 			elapsed_before_release
 		),
-		"A later same-sequence reliable release must not restart batch-first recovery."
+		"A new sequence must play once, and its later reliable release must not restart recovery."
 	)
 
 	_expect(

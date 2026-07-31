@@ -6278,6 +6278,13 @@ func net_tango_laser_volley(
 				charge_sequence,
 				visual_remaining
 			)
+		if (
+			owner_player != null
+			and is_instance_valid(owner_player)
+			and barrage_age <= lifetime
+			and owner_player.has_method("play_remote_tango_volley_audio")
+		):
+			owner_player.call("play_remote_tango_volley_audio")
 	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
 		var projectile_id := int(projectile_ids[projectile_index])
 		if _known_projectiles.has(projectile_id) or _projectile_records.has(projectile_id):

@@ -94,6 +94,7 @@ func _run() -> void:
 	if not pixel_only:
 		_test_character_contract()
 		_test_authored_casting_units_and_orbit()
+		_test_authored_audio_contract()
 		_test_electric_surge_character_contract()
 		await _test_charge_release_contract()
 		_test_barrage_tier_and_schedule_contract()
@@ -204,6 +205,10 @@ func _test_electric_surge_character_contract() -> void:
 		"Authoritative Electric Surge must consume the ready skill charge."
 	)
 	_expect(
+		player.electric_surge_audio.playing,
+		"A fresh authoritative Electric Surge must play its authored cast cue."
+	)
+	_expect(
 		attack_bar != null
 		and attack_bar.empowered_active
 		and attack_bar.empowered_animation_player.is_playing(),
@@ -292,6 +297,10 @@ func _test_electric_surge_character_contract() -> void:
 	_expect(
 		attack_bar == null or not attack_bar.empowered_active,
 		"Electric Surge expiry must restore the ordinary attack-bar presentation."
+	)
+	_expect(
+		not player.electric_surge_audio.playing,
+		"Ending Electric Surge early or on timeout must stop any remaining cast tail."
 	)
 	for unit in player.get("_casting_unit_sprites") as Array[AnimatedSprite2D]:
 		_expect(
@@ -420,6 +429,55 @@ func _test_authored_casting_units_and_orbit() -> void:
 	_expect(
 		fire_positions == [Vector2(19, 0), Vector2(17, 5), Vector2(18, -5)],
 		"Three units must form a parallel lane with deliberate forward staggering."
+	)
+
+
+func _test_authored_audio_contract() -> void:
+	var audio_specs := {
+		"PrimaryAttackAudio": [-10.0, 2, 0.18],
+		"ChargeAudio": [-14.0, 1, 2.4],
+		"UnitConvergeAudio": [-12.0, 1, 0.14],
+		"UnitReturnAudio": [-13.0, 1, 0.18],
+		"ElectricSurgeAudio": [-9.0, 1, 0.58],
+	}
+	for node_name in audio_specs:
+		var audio := player.get_node_or_null(node_name) as AudioStreamPlayer2D
+		var spec := audio_specs[node_name] as Array
+		_expect(
+			audio != null
+			and audio.owner == player
+			and audio.stream != null
+			and audio.bus == &"SFX"
+			and is_equal_approx(audio.volume_db, float(spec[0]))
+			and audio.max_polyphony == int(spec[1])
+			and is_equal_approx(audio.stream.get_length(), float(spec[2])),
+			"%s must use its authored mono SFX stream, duration, voice cap, and mix level."
+			% node_name
+		)
+
+	player.call("_reset_tango_combat_state", true)
+	player.call("_begin_charge_visual", Vector2.RIGHT)
+	_expect(player.charge_audio.playing, "Starting an ordinary charge must start the 2.4-second charge cue.")
+	player.call("_cancel_charge_visual")
+	_expect(not player.charge_audio.playing, "Cancelling below threshold must stop the charge cue immediately.")
+	player.call("_start_barrage_sequence", Vector2.RIGHT, 1.0, false)
+	_expect(
+		player.unit_converge_audio.playing and not player.charge_audio.playing,
+		"Releasing charge must replace the hum with one unit-convergence cue."
+	)
+	player.call("_begin_barrage_fire")
+	_expect(
+		not player.unit_converge_audio.playing,
+		"The convergence cue must not leak into the sustained firing state."
+	)
+	player.call("_begin_return_to_orbit")
+	_expect(player.unit_return_audio.playing, "Barrage completion must play one quick unit-return cue.")
+	player.call("_reset_tango_combat_state", true)
+	_expect(
+		not player.charge_audio.playing
+		and not player.unit_converge_audio.playing
+		and not player.unit_return_audio.playing,
+		"Resetting Tango combat must stop every casting-transition voice."
 	)
 
 

@@ -132,6 +132,7 @@ func _test_host_authority_and_instant_barrage() -> void:
 	_expect(
 		accepted
 		and player.is_electric_surge_active()
+		and player.electric_surge_audio.playing
 		and is_zero_approx(player.skill1_charge)
 		and records.has(7)
 		and mp_game.sent_methods == [&"net_tango_electric_surge_started"],
@@ -260,6 +261,7 @@ func _test_client_recovery_visual() -> void:
 	var visual_field := _find_field(false, 5)
 	_expect(
 		remote_player.is_electric_surge_active()
+		and not remote_player.electric_surge_audio.playing
 		and not bool(mp_game.get("_has_host_time_offset"))
 		and remaining > 4.7
 		and remaining <= 5.3
@@ -268,7 +270,7 @@ func _test_client_recovery_visual() -> void:
 		and visual_field.collision_mask == 0
 		and visual_field.global_position == Vector2(44.0, 88.0),
 		(
-			"无时钟样本的恢复客户端必须直接采用Host剩余约5秒，且不得污染全局时钟偏移。"
+			"无时钟样本的恢复客户端必须采用Host剩余约5秒、不重放施法音，且不得污染时钟偏移。"
 			+ " active=%s remaining=%.3f field=%s valid=%s records=%s"
 			% [
 				remote_player.is_electric_surge_active(),

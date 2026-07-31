@@ -2,6 +2,7 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const TANGO_SCENE := preload("res://scene/player/tango/player_tango.tscn")
 const ENEMY_BASE_SCENE := preload("res://scene/enemy/enemy.tscn")
 const YUANSHI_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn")
 const YUANSHI_PURPLE_BOMBER_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn")
@@ -51,6 +52,7 @@ func _init() -> void:
 func _run() -> void:
 	await _test_game_mix()
 	await _test_player_mix()
+	await _test_tango_mix()
 	await _test_enemy_mix()
 	_test_bamboo_mortar_mix()
 	await _test_plant_placement_mix()
@@ -110,6 +112,38 @@ func _test_player_mix() -> void:
 
 	_stop_audio_players(player)
 	player.queue_free()
+	await _drain_cleanup_frames()
+
+
+func _test_tango_mix() -> void:
+	var tango := TANGO_SCENE.instantiate() as PlayerTango
+	_expect(tango != null, "Tango scene must instantiate for audio mix test.")
+	if tango == null:
+		return
+	root.add_child(tango)
+	await process_frame
+
+	var audio_specs := {
+		"PrimaryAttackAudio": [-10.0, 2],
+		"ChargeAudio": [-14.0, 1],
+		"UnitConvergeAudio": [-12.0, 1],
+		"UnitReturnAudio": [-13.0, 1],
+		"ElectricSurgeAudio": [-9.0, 1],
+	}
+	for node_name in audio_specs:
+		var audio := tango.get_node_or_null(node_name) as AudioStreamPlayer2D
+		var spec := audio_specs[node_name] as Array
+		_expect(
+			audio != null
+			and audio.stream != null
+			and audio.bus == &"SFX"
+			and _float_close(audio.volume_db, float(spec[0]))
+			and audio.max_polyphony == int(spec[1]),
+			"Tango %s mix, stream, SFX route, or voice cap mismatch." % node_name
+		)
+
+	_stop_audio_players(tango)
+	tango.queue_free()
 	await _drain_cleanup_frames()
 
 

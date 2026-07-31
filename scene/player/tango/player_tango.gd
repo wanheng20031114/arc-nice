@@ -41,6 +41,7 @@ const BARRAGE_EPSILON := 0.0001
 const ELECTRIC_SURGE_DURATION := 8.0
 const ELECTRIC_SURGE_FIRE_RATE_MULTIPLIER := 1.5
 const ELECTRIC_SURGE_ATTACHED_DAMAGE_MULTIPLIER := 1.2
+const ELECTRIC_SURGE_REMOTE_CAST_AUDIO_WINDOW := 1.0
 
 @onready var casting_units: Node2D = $CastingUnits
 @onready var unit_a: AnimatedSprite2D = $CastingUnits/UnitA
@@ -49,6 +50,18 @@ const ELECTRIC_SURGE_ATTACHED_DAMAGE_MULTIPLIER := 1.2
 @onready var electric_surge_duration_timer: Timer = $ElectricSurgeDurationTimer
 @onready var primary_attack_audio: AudioStreamPlayer2D = get_node_or_null(
 	"PrimaryAttackAudio"
+) as AudioStreamPlayer2D
+@onready var charge_audio: AudioStreamPlayer2D = get_node_or_null(
+	"ChargeAudio"
+) as AudioStreamPlayer2D
+@onready var unit_converge_audio: AudioStreamPlayer2D = get_node_or_null(
+	"UnitConvergeAudio"
+) as AudioStreamPlayer2D
+@onready var unit_return_audio: AudioStreamPlayer2D = get_node_or_null(
+	"UnitReturnAudio"
+) as AudioStreamPlayer2D
+@onready var electric_surge_audio: AudioStreamPlayer2D = get_node_or_null(
+	"ElectricSurgeAudio"
 ) as AudioStreamPlayer2D
 
 var _casting_state := CastingState.ORBIT
@@ -164,6 +177,7 @@ func try_start_authoritative_electric_surge(
 		skill1_charge = skill1_charge_duration
 		_update_skill1_charge_bar()
 		return false
+	_play_electric_surge_audio()
 	_activate_collectible_skill_effects()
 	return true
 
@@ -216,6 +230,11 @@ func play_remote_electric_surge_started(
 		safe_remaining,
 		false
 	)
+	if (
+		safe_remaining
+		>= ELECTRIC_SURGE_DURATION - ELECTRIC_SURGE_REMOTE_CAST_AUDIO_WINDOW
+	):
+		_play_electric_surge_audio()
 
 
 func is_electric_surge_active() -> bool:
@@ -336,6 +355,8 @@ func _clear_electric_surge_state() -> void:
 	_electric_surge_authoritative = false
 	_electric_surge_activation_id = 0
 	_electric_surge_origin = Vector2.ZERO
+	if electric_surge_audio != null:
+		electric_surge_audio.stop()
 	if is_node_ready():
 		_refresh_shooting_timer_wait_time()
 	_set_electric_surge_visual_state(false)
@@ -458,14 +479,18 @@ func apply_multiplayer_tango_charge_snapshot(ratio: float, facing_id: int) -> vo
 	# A joining client can receive the active charge bar before its reliable
 	# `started` event. Reconstruct the visual from the snapshot's facing field;
 	# a later reliable event still supplies the exact aim direction and sequence.
+	var reconstructed_charge_visual := false
 	if (
 		_casting_state == CastingState.ORBIT
 		and _latest_remote_action_phase < 2
 	):
 		_begin_charge_visual(_multiplayer_facing_id_to_direction(facing_id))
+		reconstructed_charge_visual = true
 	if _casting_state == CastingState.CHARGING:
 		_charge_elapsed = safe_ratio * MAX_CHARGE_DURATION
 		_update_charge_animation_speed()
+		if reconstructed_charge_visual:
+			_sync_charge_audio_to_elapsed()
 
 
 func _initialize_character_resources() -> void:
@@ -791,9 +816,11 @@ func _begin_charge_visual(direction: Vector2) -> void:
 	_update_facing(Vector2.ZERO, direction)
 	_set_casting_unit_animation(&"charge")
 	_update_charge_animation_speed()
+	_play_charge_audio()
 
 
 func _cancel_charge_visual() -> void:
+	_stop_charge_audio()
 	_charge_elapsed = 0.0
 	_barrage_charge_ratio = 0.0
 	_barrage_charge_seconds = 0.0
@@ -835,6 +862,8 @@ func _start_barrage_sequence(
 	_unit_converge_elapsed = 0.0
 	_casting_state_to(CastingState.CONVERGING)
 	_set_casting_unit_animation(&"fire")
+	_stop_charge_audio()
+	_play_unit_converge_audio()
 
 
 func _apply_barrage_release_profile(charge_ratio: float) -> void:
@@ -1016,6 +1045,8 @@ func _update_unit_convergence(delta: float) -> void:
 
 
 func _begin_barrage_fire() -> void:
+	if unit_converge_audio != null:
+		unit_converge_audio.stop()
 	_casting_state_to(CastingState.FIRING)
 	_set_units_to_fire_positions()
 	_barrage_elapsed = 0.0
@@ -1138,6 +1169,7 @@ func _begin_return_to_orbit() -> void:
 		_unit_return_start_rotations.append(unit.rotation)
 	_casting_state_to(CastingState.RETURNING)
 	_set_casting_unit_animation(&"orbit")
+	_play_unit_return_audio()
 
 
 func _update_unit_return(delta: float) -> void:
@@ -1326,6 +1358,7 @@ func _reset_character_resources_on_revive() -> void:
 
 
 func _reset_tango_combat_state(show_units: bool) -> void:
+	_stop_tango_casting_audio()
 	_local_charge_input_active = false
 	_charge_elapsed = 0.0
 	_barrage_charge_ratio = 0.0
@@ -1357,3 +1390,58 @@ func _play_primary_attack_audio() -> void:
 	if primary_attack_audio != null and primary_attack_audio.stream != null:
 		primary_attack_audio.pitch_scale = randf_range(0.97, 1.03)
 		primary_attack_audio.play()
+
+
+func play_remote_tango_volley_audio() -> void:
+	_play_primary_attack_audio()
+
+
+func _play_charge_audio() -> void:
+	if charge_audio == null or charge_audio.stream == null:
+		return
+	charge_audio.pitch_scale = 1.0
+	charge_audio.play()
+
+
+func _sync_charge_audio_to_elapsed() -> void:
+	if charge_audio == null or charge_audio.stream == null:
+		return
+	var stream_length := charge_audio.stream.get_length()
+	if _charge_elapsed >= stream_length:
+		charge_audio.stop()
+		return
+	charge_audio.play(clampf(_charge_elapsed, 0.0, stream_length))
+
+
+func _stop_charge_audio() -> void:
+	if charge_audio != null:
+		charge_audio.stop()
+
+
+func _play_unit_converge_audio() -> void:
+	if unit_converge_audio == null or unit_converge_audio.stream == null:
+		return
+	unit_converge_audio.pitch_scale = randf_range(0.98, 1.02)
+	unit_converge_audio.play()
+
+
+func _play_unit_return_audio() -> void:
+	if unit_return_audio == null or unit_return_audio.stream == null:
+		return
+	unit_return_audio.pitch_scale = randf_range(0.98, 1.02)
+	unit_return_audio.play()
+
+
+func _play_electric_surge_audio() -> void:
+	if electric_surge_audio == null or electric_surge_audio.stream == null:
+		return
+	electric_surge_audio.pitch_scale = randf_range(0.99, 1.01)
+	electric_surge_audio.play()
+
+
+func _stop_tango_casting_audio() -> void:
+	_stop_charge_audio()
+	if unit_converge_audio != null:
+		unit_converge_audio.stop()
+	if unit_return_audio != null:
+		unit_return_audio.stop()

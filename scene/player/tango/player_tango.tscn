@@ -19,6 +19,11 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="17_night_light"]
 [ext_resource type="Texture2D" uid="uid://clffculwmxi7k" path="res://resources/lighting/soft_player_point_light.tres" id="18_light_texture"]
 [ext_resource type="Shader" path="res://resources/shader/tango_cast_unit_overdrive.gdshader" id="19_unit_overdrive_shader"]
+[ext_resource type="AudioStream" uid="uid://btlqoao4ouajx" path="res://resources/audio/tango_charge.wav" id="20_charge_audio"]
+[ext_resource type="AudioStream" uid="uid://d1mi8elwinpi7" path="res://resources/audio/tango_laser_fire.wav" id="21_laser_audio"]
+[ext_resource type="AudioStream" uid="uid://da7rccly7tpev" path="res://resources/audio/tango_unit_converge.wav" id="22_converge_audio"]
+[ext_resource type="AudioStream" uid="uid://b2sfjhc0wel7y" path="res://resources/audio/tango_unit_return.wav" id="23_return_audio"]
+[ext_resource type="AudioStream" uid="uid://cb83g10246056" path="res://resources/audio/tango_electric_surge_cast.wav" id="24_surge_audio"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
 resource_local_to_scene = true
@@ -172,8 +177,33 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="PrimaryAttackAudio" type="AudioStreamPlayer2D" parent="." unique_id=281406012]
-volume_db = -8.0
+stream = ExtResource("21_laser_audio")
+volume_db = -10.0
 max_polyphony = 2
+bus = &"SFX"
+
+[node name="ChargeAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("20_charge_audio")
+volume_db = -14.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="UnitConvergeAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("22_converge_audio")
+volume_db = -12.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="UnitReturnAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("23_return_audio")
+volume_db = -13.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="ElectricSurgeAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("24_surge_audio")
+volume_db = -9.0
+max_polyphony = 1
 bus = &"SFX"
 
 [node name="FootstepAudio" type="AudioStreamPlayer2D" parent="." unique_id=1842550316]
