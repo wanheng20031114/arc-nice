@@ -16,6 +16,8 @@ enum DamageType {
 @export_group("基础信息")
 
 @export var display_name: String = "敌人"
+# Boss 身份是战斗规则的一部分，不复用碰撞层或家族标签。
+@export var is_boss: bool = false
 # 稳定的敌人类别标签，供掉落、全局增益和收藏品等系统统一筛选。
 @export var category_tags: PackedStringArray = PackedStringArray()
 # 当前敌人的完整场景，包含碰撞体积、接触伤害体积和本体动画。

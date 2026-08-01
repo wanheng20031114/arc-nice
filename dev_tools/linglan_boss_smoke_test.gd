@@ -103,6 +103,7 @@ func _test_boss_entry_resource() -> void:
 	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_volume_db, 0.0), "Linglan boss music must use the louder boss-specific volume.")
 	_expect(is_equal_approx(LINGLAN_BOSS_ENTRY.music_loop_offset, 1.0), "Linglan boss music must expose the configured loop offset.")
 	_expect(LINGLAN_BOSS_ENTRY.get_enemy_config() == LINGLAN_CONFIG, "Linglan boss entry must resolve the Linglan enemy config on demand.")
+	_expect(LINGLAN_CONFIG.is_boss, "Linglan enemy config must carry the authoritative Boss identity.")
 	_expect(LINGLAN_CONFIG.max_health == 300000, "Linglan boss health must be configured to 300000.")
 	_expect(LINGLAN_CONFIG.physical_defense == 30, "Linglan boss physical defense must be configured to 30.")
 	_expect(LINGLAN_CONFIG.magic_defense == 25, "Linglan boss magic defense must be configured to 25.")
@@ -130,6 +131,7 @@ func _test_boss_scene_contract() -> void:
 	linglan.activate_boss(null, null)
 	await process_frame
 	await physics_frame
+	_expect(linglan.is_boss_enemy(), "Linglan runtime must expose its configured Boss identity.")
 
 	var sprite := linglan.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 	_expect(sprite != null, "Linglan scene must include AnimatedSprite2D.")

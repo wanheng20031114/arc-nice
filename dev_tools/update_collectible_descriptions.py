@@ -243,7 +243,7 @@ def describe_on_hit(data: dict[str, Any]) -> str:
     if effect_id == "execute":
         return (
             f"攻击命中时，{chance}概率处决生命不高于"
-            f"{percent(float(data.get('on_hit_execute_health_ratio', 0.0)))}的敌人{cooldown}"
+            f"{percent(float(data.get('on_hit_execute_health_ratio', 0.0)))}的非Boss敌人{cooldown}"
         )
     if effect_id == "bloom":
         return (

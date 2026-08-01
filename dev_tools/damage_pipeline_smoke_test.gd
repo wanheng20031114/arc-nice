@@ -23,6 +23,15 @@ const LINGLAN_SCENE := preload(
 const LINGLAN_CONFIG := preload(
 	"res://resources/config/enemies/linglan_boss.tres"
 )
+const GOAT_HORN := preload(
+	"res://resources/config/collectibles/collectible_goat_horn.tres"
+)
+const EXECUTE_COLLECTIBLES := [
+	GOAT_HORN,
+	preload("res://resources/config/collectibles/collectible_obsidian_key.tres"),
+	preload("res://resources/config/collectibles/collectible_kingslayer_blade.tres"),
+	preload("res://resources/config/collectibles/collectible_void_crown.tres"),
+]
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -43,6 +52,7 @@ func _run() -> void:
 	await _test_player_numeric_and_periodic_contract()
 	await _test_plant_authority_revision_and_bypass_contract()
 	await _test_overkill_and_single_lethal_contract()
+	await _test_collectible_execute_contract()
 	await _test_linglan_health_signal_contract()
 
 	test_root.queue_free()
@@ -438,6 +448,80 @@ func _test_linglan_health_signal_contract() -> void:
 		"Linglan _on_combat_damage_applied must preserve one accurate boss health signal."
 	)
 	linglan.queue_free()
+	await process_frame
+
+
+func _test_collectible_execute_contract() -> void:
+	_expect(
+		GOAT_HORN.collectible_rarity == PickupConfig.CollectibleRarity.COMMON
+		and is_equal_approx(GOAT_HORN.on_hit_chance, 0.14)
+		and is_equal_approx(GOAT_HORN.on_hit_execute_health_ratio, 0.03),
+		"Goat Horn must remain common with a 14% proc chance and an exact 3% execute threshold."
+	)
+
+	var player := await _spawn_player()
+	var normal_enemy := _spawn_enemy(_make_enemy_config(100, 0, 0))
+	_expect(not normal_enemy.is_boss_enemy(), "A regular enemy must not be classified as a Boss.")
+	var goat_probe := GOAT_HORN.duplicate() as PickupConfig
+	goat_probe.on_hit_chance = 1.0
+	var goat_cooldown_key := str(player.call(
+		"_get_collectible_aux_key",
+		goat_probe,
+		"hit:%s" % goat_probe.on_hit_effect_id
+	))
+	normal_enemy.current_health = 4
+	player.collectible_trigger_deadlines.erase(goat_cooldown_key)
+	player.call("_apply_collectible_on_hit_effect", goat_probe, normal_enemy, 1)
+	_expect(
+		normal_enemy.current_health == 4 and not normal_enemy.is_dead,
+		"Goat Horn must not execute a regular enemy above the 3% health threshold."
+	)
+	normal_enemy.current_health = 3
+	player.collectible_trigger_deadlines.erase(goat_cooldown_key)
+	player.call("_apply_collectible_on_hit_effect", goat_probe, normal_enemy, 1)
+	_expect(
+		normal_enemy.is_dead,
+		"Goat Horn must still execute a regular enemy at the exact 3% health threshold."
+	)
+
+	var linglan := LINGLAN_SCENE.instantiate() as LinglanBoss
+	_expect(linglan != null, "Linglan must instantiate for execute-immunity coverage.")
+	if linglan != null:
+		test_root.add_child(linglan)
+		linglan.config = LINGLAN_CONFIG
+		linglan.activate_boss(null, null)
+		linglan.set_process(false)
+		linglan.set_physics_process(false)
+		_expect(linglan.is_boss_enemy(), "Linglan must expose the authoritative Boss identity.")
+		for source_variant in EXECUTE_COLLECTIBLES:
+			var source := source_variant as PickupConfig
+			var execute_probe := source.duplicate() as PickupConfig
+			execute_probe.on_hit_chance = 1.0
+			var cooldown_key := str(player.call(
+				"_get_collectible_aux_key",
+				execute_probe,
+				"hit:%s" % execute_probe.on_hit_effect_id
+			))
+			player.collectible_trigger_deadlines.erase(cooldown_key)
+			linglan.current_health = 1
+			linglan.last_damage_taken = 0
+			var revision_before := linglan.health_revision
+			player.call("_apply_collectible_on_hit_effect", execute_probe, linglan, 1)
+			_expect(
+				linglan.current_health == 1
+				and not linglan.is_dead
+				and linglan.last_damage_taken == 0
+				and linglan.health_revision == revision_before,
+				"%s must not execute or damage a Boss." % source.display_name
+			)
+			_expect(
+				not player.collectible_trigger_deadlines.has(cooldown_key),
+				"%s must not roll or consume its execute cooldown on a Boss." % source.display_name
+			)
+		linglan.queue_free()
+
+	player.queue_free()
+	normal_enemy.queue_free()
 	await process_frame
 
 

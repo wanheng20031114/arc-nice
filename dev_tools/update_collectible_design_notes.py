@@ -450,13 +450,16 @@ def _on_hit_rule(data: dict[str, Any]) -> list[str]:
     chance = percent(float(data.get("on_hit_chance", 0.0)))
     duration = fmt_num(data.get("on_hit_duration", 0.0))
     cooldown = float(data.get("on_hit_cooldown", 0.0))
+    target_prefix = "攻击命中基础伤害后仍存活的敌人时，"
+    if effect_id == "execute":
+        target_prefix += "Boss目标不会进行概率判定、不会触发处决且不会消耗冷却；其余敌人"
     if cooldown > 0.0:
         prefix = (
-            f"攻击命中基础伤害后仍存活的敌人时，先以{chance}概率判定；"
+            f"{target_prefix}先以{chance}概率判定；"
             f"判定成功且不在冷却时先启动{fmt_num(cooldown)}秒冷却，再"
         )
     else:
-        prefix = f"攻击命中基础伤害后仍存活的敌人时，先以{chance}概率判定；判定成功时"
+        prefix = f"{target_prefix}先以{chance}概率判定；判定成功时"
     if effect_id == "burn":
         damage = int(data.get("on_hit_damage", 0))
         tick = fmt_num(data.get("on_hit_tick_interval", 0.5))
@@ -512,7 +515,7 @@ def _on_hit_rule(data: dict[str, Any]) -> list[str]:
         threshold = percent(float(data.get("on_hit_execute_health_ratio", 0.0)))
         action = (
             f"仅在目标当前生命不高于其配置生命上限的{threshold}时，额外提交“目标当前生命+目标配置生命上限”的原始物理伤害；"
-            "目标没有配置时，生命上限项改取判定时的当前生命；"
+            "目标没有配置或运行时生命上限无效时不会触发处决；"
             "该额外伤害仍会先减去目标有效物理防御并至少取1，再乘目标承伤倍率、四舍五入并至少取1；"
             "因此极高物理防御下不保证击杀"
         )

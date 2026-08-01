@@ -95,6 +95,13 @@ func _test_campaign_resources() -> void:
 			campaign_bosses.size() == int(definition["boss_count"]),
 			"Campaign boss count mismatch: %s" % campaign.resource_path
 		)
+		for campaign_boss in campaign_bosses:
+			var boss_enemy_config := campaign_boss.get_enemy_config()
+			_expect(
+				boss_enemy_config != null and boss_enemy_config.is_boss,
+				"Every BossConfig must resolve an EnemyConfig marked as Boss: %s"
+				% campaign_boss.resource_path
+			)
 		if int(definition["boss_count"]) == 1 and campaign_bosses.size() == 1:
 			var linglan_boss := campaign_bosses[0]
 			var linglan_enemy_config := linglan_boss.get_enemy_config()

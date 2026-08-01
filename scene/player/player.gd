@@ -3108,6 +3108,11 @@ func apply_collectible_bullet_hit_effects(enemy: Enemy, hit_damage: int) -> void
 func _apply_collectible_on_hit_effect(item: PickupConfig, enemy: Enemy, _hit_damage: int) -> void:
 	if item == null or enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
 		return
+	if (
+		item.on_hit_effect_id == PickupConfig.HIT_EFFECT_EXECUTE
+		and enemy.is_boss_enemy()
+	):
+		return
 	var on_hit_chance := clampf(item.on_hit_chance, 0.0, 1.0)
 	if on_hit_chance <= 0.0 or randf() > on_hit_chance:
 		return

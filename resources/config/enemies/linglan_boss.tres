@@ -6,6 +6,7 @@
 [resource]
 script = ExtResource("1_config")
 display_name = "铃兰"
+is_boss = true
 enemy_scene = ExtResource("2_scene")
 max_health = 300000
 attack_damage = 20

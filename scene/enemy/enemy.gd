@@ -570,6 +570,10 @@ func get_effective_xirang_kill_reward() -> int:
 	return config.xirang_kill_reward if config != null else 0
 
 
+func is_boss_enemy() -> bool:
+	return config != null and config.is_boss
+
+
 func set_target_player(player: Player) -> void:
 	if target_player == player:
 		if objective_target == null:

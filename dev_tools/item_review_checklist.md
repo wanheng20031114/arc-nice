@@ -49,7 +49,7 @@
 | [ ] | `frost_totem` | 寒霜图腾 | 稀有 | 唯一 | 每13秒释放56范围寒霜，造成8法术伤害，并减速35%，持续1.5秒。 | `resources/config/collectibles/collectible_frost_totem.tres` |  |
 | [ ] | `glacier_orb` | 冰川宝珠 | 史诗 | 唯一 | 每10秒释放72范围寒霜，造成16法术伤害，并减速50%，持续2.5秒。 | `resources/config/collectibles/collectible_glacier_orb.tres` |  |
 | [ ] | `glass_marble` | 玻璃弹珠 | 普通 | 唯一 | 普通子弹有6%概率穿透敌人。 | `resources/config/collectibles/collectible_glass_marble.tres` |  |
-| [ ] | `goat_horn` | 山羊角 | 普通 | 唯一 | 普通子弹命中时，14%概率处决生命不高于14%的敌人，冷却0.8秒。 | `resources/config/collectibles/collectible_goat_horn.tres` |  |
+| [ ] | `goat_horn` | 山羊角 | 普通 | 唯一 | 普通子弹命中时，14%概率处决生命不高于3%的非Boss敌人，冷却0.8秒。 | `resources/config/collectibles/collectible_goat_horn.tres` |  |
 | [ ] | `gold_apple` | 金苹果 | 稀有 | 唯一 | 击败敌人时回复7生命，冷却0.8秒。 | `resources/config/collectibles/collectible_gold_apple.tres` |  |
 | [ ] | `gold_wine_cup` | 金酒之杯 | 史诗 | 唯一 | 每持有1000息壤，攻击速度+5。 | `resources/config/collectibles/collectible_gold_wine_cup.tres` |  |
 | [ ] | `gray_gem` | 灰宝石 | 普通 | 可叠加 | 物理防御+1（可叠加）。 | `resources/config/collectibles/collectible_gray_gem.tres` |  |
@@ -60,7 +60,7 @@
 | [ ] | `iron_dagger` | 铁匕首 | 普通 | 唯一 | 普通子弹命中时，18%概率使敌人流血2秒，每0.5秒受1物理伤害。 | `resources/config/collectibles/collectible_iron_dagger.tres` |  |
 | [ ] | `ironwood_seed` | 铁木种子 | 稀有 | 可叠加 | 生命上限+25（可叠加）。 | `resources/config/collectibles/collectible_ironwood_seed.tres` |  |
 | [ ] | `jade_fish` | 玉鱼 | 稀有 | 唯一 | 击败敌人时补充0.35秒技力，冷却0.7秒。 | `resources/config/collectibles/collectible_jade_fish.tres` |  |
-| [ ] | `kingslayer_blade` | 弑王刃 | 传说 | 唯一 | 普通子弹命中时，24%概率处决生命不高于28%的敌人，冷却0.5秒。 | `resources/config/collectibles/collectible_kingslayer_blade.tres` |  |
+| [ ] | `kingslayer_blade` | 弑王刃 | 传说 | 唯一 | 普通子弹命中时，24%概率处决生命不高于28%的非Boss敌人，冷却0.5秒。 | `resources/config/collectibles/collectible_kingslayer_blade.tres` |  |
 | [ ] | `leaf_cloak` | 叶片披风 | 普通 | 唯一 | 击败敌人后移动速度+16%，持续1秒，冷却0.8秒。 | `resources/config/collectibles/collectible_leaf_cloak.tres` |  |
 | [ ] | `life_crystal` | 生命水晶 | 史诗 | 唯一 | 每15秒治疗56范围友方10生命。 | `resources/config/collectibles/collectible_life_crystal.tres` |  |
 | [ ] | `life_ring` | 生命戒指 | 稀有 | 可叠加 | 生命上限+20（可叠加）。 | `resources/config/collectibles/collectible_life_ring.tres` |  |
@@ -72,7 +72,7 @@
 | [ ] | `moon_pin` | 月纹胸针 | 稀有 | 唯一 | 使用技能时生成半径48的月盾，持续4秒，月盾内友方受到伤害减半。 | `resources/config/collectibles/collectible_moon_pin.tres` |  |
 | [ ] | `moss_agate` | 苔纹玛瑙 | 普通 | 可叠加 | 生命上限+8（可叠加）。 | `resources/config/collectibles/collectible_moss_agate.tres` |  |
 | [ ] | `nine_eleven` | 911 | 传说 | 唯一 | 正面远程伤害+30%；背面远程伤害-50%。 | `resources/config/collectibles/collectible_nine_eleven.tres` |  |
-| [ ] | `obsidian_key` | 黑曜钥匙 | 稀有 | 唯一 | 普通子弹命中时，16%概率处决生命不高于16%的敌人，冷却0.8秒。 | `resources/config/collectibles/collectible_obsidian_key.tres` |  |
+| [ ] | `obsidian_key` | 黑曜钥匙 | 稀有 | 唯一 | 普通子弹命中时，16%概率处决生命不高于16%的非Boss敌人，冷却0.8秒。 | `resources/config/collectibles/collectible_obsidian_key.tres` |  |
 | [ ] | `oil_lamp` | 油灯 | 稀有 | 唯一 | 普通子弹命中时，14%概率使敌人燃烧2.6秒，每1秒受15法术伤害。 | `resources/config/collectibles/collectible_oil_lamp.tres` |  |
 | [ ] | `oracle_cube` | 先知方块 | 传说 | 唯一 | 普通子弹命中时，24%概率标记敌人3秒，使其受到伤害x1.22。 | `resources/config/collectibles/collectible_oracle_cube.tres` |  |
 | [ ] | `pebble_shield` | 卵石小盾 | 普通 | 可叠加 | 物理防御+1（可叠加）。 | `resources/config/collectibles/collectible_pebble_shield.tres` |  |
@@ -117,7 +117,7 @@
 | [ ] | `topaz` | 黄宝石 | 普通 | 可叠加 | 移动速度+8（可叠加）。 | `resources/config/collectibles/collectible_topaz.tres` |  |
 | [ ] | `topaz_chip` | 黄玉碎片 | 普通 | 可叠加 | 移动速度+7（可叠加）。 | `resources/config/collectibles/collectible_topaz_chip.tres` |  |
 | [ ] | `training_arrow` | 练习箭 | 普通 | 唯一 | 普通子弹命中时，12%概率标记敌人1.6秒，使其受到伤害x1.1。 | `resources/config/collectibles/collectible_training_arrow.tres` |  |
-| [ ] | `void_crown` | 虚空王冠 | 传说 | 唯一 | 普通子弹命中时，22%概率处决生命不高于22%的敌人，冷却0.6秒。 | `resources/config/collectibles/collectible_void_crown.tres` |  |
+| [ ] | `void_crown` | 虚空王冠 | 传说 | 唯一 | 普通子弹命中时，22%概率处决生命不高于22%的非Boss敌人，冷却0.6秒。 | `resources/config/collectibles/collectible_void_crown.tres` |  |
 | [ ] | `warm_bread` | 烤面包 | 普通 | 唯一 | 击败敌人时回复2生命，冷却0.5秒。 | `resources/config/collectibles/collectible_warm_bread.tres` |  |
 | [ ] | `wind_charm` | 风行符 | 稀有 | 唯一 | 使用技能后移动速度+20%，持续3秒。 | `resources/config/collectibles/collectible_wind_charm.tres` |  |
 | [ ] | `wooden_buckler` | 木圆盾 | 普通 | 唯一 | 受到远程攻击时，额外5%概率闪避。 | `resources/config/collectibles/collectible_wooden_buckler.tres` |  |
