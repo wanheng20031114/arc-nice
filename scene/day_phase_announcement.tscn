@@ -50,7 +50,7 @@ vertical_alignment = 1
 
 [node name="AnnouncementAudio" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("3_dong")
-volume_db = -2.0
+volume_db = 0.0
 bus = &"SFX"
 max_polyphony = 1
 

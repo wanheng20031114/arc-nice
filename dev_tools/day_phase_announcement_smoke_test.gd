@@ -85,11 +85,12 @@ func _test_scene_contract(announcement: DayPhaseAnnouncement) -> void:
 		and audio.stream.resource_path.ends_with(
 			"resources/audio/ui/day_phase_announcement_dong.wav"
 		)
+		and is_equal_approx(audio.stream.get_length(), 0.48)
 		and audio.bus == &"SFX"
-		and is_equal_approx(audio.volume_db, -2.0)
+		and is_zero_approx(audio.volume_db)
 		and is_equal_approx(audio.pitch_scale, 1.0)
 		and audio.max_polyphony == 1,
-		"低沉dong必须通过独立的单声部SFX播放器，以原速和-2dB播放。"
+		"0.48秒关门式低沉dong必须通过独立的单声部SFX播放器，以原速和0dB播放。"
 	)
 
 
