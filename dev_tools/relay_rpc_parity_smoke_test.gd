@@ -185,12 +185,30 @@ func _run() -> void:
 		"net_request_route_full_snapshot",
 		"net_route_full_snapshot",
 		"net_route_move_delta",
+		"net_route_avatar_input",
+		"net_route_avatar_snapshot",
+		"net_route_avatar_corrected",
 	]:
 		_expect(
 			main_rogue_route_rpcs.has(required_method),
 			"P3 route RPC %s must be registered in main and Relay projects."
 			% required_method
 		)
+	_expect_rpc_channel(
+		main_rogue_route_rpcs,
+		"net_route_avatar_input",
+		NetConstants.CH_INPUT
+	)
+	_expect_rpc_channel(
+		main_rogue_route_rpcs,
+		"net_route_avatar_snapshot",
+		NetConstants.CH_PLAYER_STATE
+	)
+	_expect_rpc_channel(
+		main_rogue_route_rpcs,
+		"net_route_avatar_corrected",
+		NetConstants.CH_AUTH
+	)
 
 	var main_net_manager_rpcs := _extract_rpc_surface(MAIN_NET_MANAGER_PATH)
 	var relay_net_manager_rpcs := _extract_rpc_surface(RELAY_NET_MANAGER_PATH)
@@ -237,10 +255,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 32,
-		"P3肉鸽路线新增wire模式值与可靠同步协议要求协议v32。"
+		NetConstants.PROTOCOL_VERSION == 33,
+		"P3路线自由移动同步要求协议v33。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v32 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v33 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -279,7 +297,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v32 hosts must accept exactly v32 and reject v31."
+		"Protocol v33 hosts must accept exactly v33 and reject v32."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -347,11 +365,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 32")
+		and relay_source.contains("const PROTOCOL_VERSION := 33")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v32, accept the room capacity, and provision "
+			"Relay server must declare v33, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)

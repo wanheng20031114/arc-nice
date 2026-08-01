@@ -255,8 +255,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 32, "The multiplayer protocol version must be 32.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v32 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 33, "The multiplayer protocol version must be 33.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v33 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."

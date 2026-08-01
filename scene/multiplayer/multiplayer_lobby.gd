@@ -905,8 +905,7 @@ func _enter_room_wait(room_data: Dictionary) -> void:
 	start_game_btn.visible = net_manager.is_host()
 	wait_status_label.text = "等待玩家加入..."
 	_refresh_wait_player_list()
-	if not _is_rogue_route_mode():
-		call_deferred("_open_character_choice_if_needed")
+	call_deferred("_open_character_choice_if_needed")
 
 
 func _refresh_wait_player_list() -> void:
@@ -919,35 +918,29 @@ func _refresh_wait_player_list() -> void:
 		var label := Label.new()
 		var is_host_marker := " (Host)" if peer_id == net_manager.get_host_peer_id() else ""
 		var is_local_marker: String = " <- 你" if peer_id == net_manager.get_local_peer_id() else ""
-		if _is_rogue_route_mode():
-			label.text = "%s%s%s" % [player_name, is_host_marker, is_local_marker]
-		else:
-			var character_id := StringName(
-				net_manager.call("get_player_character_id", peer_id)
-			)
-			var character_name := _get_character_display_name(character_id)
-			var character_confirmed := bool(
-				net_manager.call("is_player_character_confirmed", peer_id)
-			)
-			var confirmation_marker := " ✓" if character_confirmed else "（角色未确认）"
-			label.text = "%s · %s%s%s%s" % [
-				player_name,
-				character_name,
-				confirmation_marker,
-				is_host_marker,
-				is_local_marker,
-			]
+		var character_id := StringName(
+			net_manager.call("get_player_character_id", peer_id)
+		)
+		var character_name := _get_character_display_name(character_id)
+		var character_confirmed := bool(
+			net_manager.call("is_player_character_confirmed", peer_id)
+		)
+		var confirmation_marker := " ✓" if character_confirmed else "（角色未确认）"
+		label.text = "%s · %s%s%s%s" % [
+			player_name,
+			character_name,
+			confirmation_marker,
+			is_host_marker,
+			is_local_marker,
+		]
 		wait_player_list_vbox.add_child(label)
 
 	_update_room_capacity_label()
 	if net_manager.is_host():
 		start_game_btn.disabled = (
 			net_manager.connected_players.size() < 2
-			or (
-				not _is_rogue_route_mode()
-				and not bool(
-					net_manager.call("are_all_player_characters_confirmed")
-				)
+			or not bool(
+				net_manager.call("are_all_player_characters_confirmed")
 			)
 			or (current_public_is_host and not relay_host_ready_sent)
 		)
@@ -966,7 +959,7 @@ func _update_room_capacity_label(current_players: int = -1) -> void:
 
 
 func _open_character_choice_if_needed() -> void:
-	if current_view != LobbyView.ROOM_WAIT or _is_rogue_route_mode():
+	if current_view != LobbyView.ROOM_WAIT:
 		return
 	var local_peer_id := int(net_manager.call("get_local_peer_id"))
 	if local_peer_id > 0 and bool(net_manager.call("is_player_character_confirmed", local_peer_id)):
@@ -975,8 +968,6 @@ func _open_character_choice_if_needed() -> void:
 
 
 func _on_choose_character_pressed() -> void:
-	if _is_rogue_route_mode():
-		return
 	var selected_character_id := _get_local_selected_character_id()
 	character_choice_overlay.open(selected_character_id)
 
@@ -998,9 +989,7 @@ func _on_character_selection_closed() -> void:
 
 
 func _update_choose_character_button() -> void:
-	choose_character_btn.visible = not _is_rogue_route_mode()
-	if _is_rogue_route_mode():
-		return
+	choose_character_btn.visible = true
 	var character_id := _get_local_selected_character_id()
 	var character_name := _get_character_display_name(character_id)
 	var local_peer_id := int(net_manager.call("get_local_peer_id"))
@@ -1034,12 +1023,6 @@ func _on_net_game_mode_changed(new_game_mode: NetManagerStore.GameMode) -> void:
 	_select_game_mode_in_selector(new_game_mode)
 	_update_room_mode_label()
 	_refresh_game_mode_selector_state()
-	if (
-		new_game_mode == NetManagerStore.GameMode.TEST_ARENA_P3
-		and character_choice_overlay != null
-		and character_choice_overlay.is_open()
-	):
-		character_choice_overlay.close()
 	if current_view == LobbyView.ROOM_WAIT:
 		_refresh_wait_player_list()
 
@@ -1088,10 +1071,7 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 func _on_start_game() -> void:
 	if not net_manager.is_host():
 		return
-	if (
-		not _is_rogue_route_mode()
-		and not bool(net_manager.call("are_all_player_characters_confirmed"))
-	):
+	if not bool(net_manager.call("are_all_player_characters_confirmed")):
 		wait_status_label.text = "请等待所有玩家确认角色。"
 		_refresh_wait_player_list()
 		return
@@ -1118,12 +1098,12 @@ func _change_to_multiplayer_game() -> void:
 	var tree := get_tree()
 	if tree == null:
 		return
-	if (
-		not _is_rogue_route_mode()
-		and run_state != null
-		and run_state.has_method("begin_new_run")
-	):
-		run_state.call("begin_new_run", _get_local_selected_character_id())
+	if run_state != null and run_state.has_method("begin_new_run"):
+		run_state.call(
+			"begin_new_run",
+			_get_local_selected_character_id(),
+			not _is_rogue_route_mode()
+		)
 	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 	if load_coordinator != null and load_coordinator.has_method("begin_multiplayer"):
 		load_coordinator.call("begin_multiplayer")

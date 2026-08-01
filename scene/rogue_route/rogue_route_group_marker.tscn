@@ -3,7 +3,7 @@
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/party_marker.png" id="1_marker"]
 
 [node name="RogueRouteGroupMarker" type="Control"]
-z_index = 20
+z_index = 4
 mouse_filter = 2
 
 [node name="PartyMarker" type="TextureRect" parent="."]

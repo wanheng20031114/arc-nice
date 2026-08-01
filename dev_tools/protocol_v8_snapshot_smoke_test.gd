@@ -112,7 +112,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V32_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V33_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -121,7 +121,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 32, "Protocol must be v32.")
+	_expect(NetConstants.PROTOCOL_VERSION == 33, "Protocol must be v33.")
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
 		and NetConstants.NETWORK_COMBAT_VALUE_MAX == 0x7FFFFFFF,
@@ -138,7 +138,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v32 channel assignments must remain stable."
+		"Protocol v33 channel assignments must remain stable."
 	)
 
 

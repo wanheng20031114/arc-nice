@@ -58,8 +58,8 @@ func _test_lightweight_manifest(coordinator: Node) -> void:
 		P3_SCENE_PATH
 	) as Array
 	_expect(
-		p3_manifest == [P3_SCENE_PATH],
-		"P3必须使用仅包含自身场景的轻量加载清单。"
+		p3_manifest == [P3_SCENE_PATH, WEISHIDAIER_SCENE_PATH],
+		"P3轻量加载清单必须仅追加当前选择的角色场景。"
 	)
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", P3_SCENE_PATH)).is_empty(),
@@ -117,6 +117,9 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 	var p3_title := selector.get_node_or_null(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content/ModeTitle"
 	) as Label
+	var entry_subtitle := selector.get_node_or_null(
+		"Root/Center/Panel/PanelMargin/Layout/Heading/Subtitle"
+	) as Label
 	var p3_description := selector.get_node_or_null(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content/Description"
 	) as Label
@@ -126,13 +129,20 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 	_expect(
 		p3_title != null
 		and p3_title.text == "P3 · 肉鸽路线框架"
+		and entry_subtitle != null
+		and entry_subtitle.text.contains("P1 / P2 / P3")
+		and entry_subtitle.text.contains("均先选择角色")
 		and p3_description != null
 		and p3_description.text.contains("正中心")
 		and p3_description.text.contains("稀疏路线")
 		and p3_description.text.contains("房主")
 		and p3_description.text.contains("行动力")
+		and p3_description.text.contains("大尺度世界")
+		and p3_description.text.contains("自由移动")
+		and p3_description.text.contains("镜头跟随")
+		and p3_description.text.contains("HUD")
 		and p3_button != null,
-		"P3页必须完整说明中心起点、稀疏路线与房主行动力。"
+		"入口与P3页必须完整说明选角、探索尺度、镜头、HUD及房主行动力。"
 	)
 	if p3_button == null:
 		main_menu.queue_free()
@@ -162,16 +172,28 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 	p3_button.pressed.emit()
 	await process_frame
 	_expect(
-		load_probe.requested_scene_path == P3_SCENE_PATH
+		load_probe.requested_scene_path.is_empty()
 		and not selector.is_open()
-		and not character_selector.is_open()
+		and character_selector.is_open()
 		and str(main_menu.call("_get_pending_singleplayer_scene_path")) == P3_SCENE_PATH,
-		"选择P3必须跳过角色选择并直接把固定P3路径交给加载器。"
+		"选择P3必须先进入角色选择，并保留固定P3场景路径。"
+	)
+	main_menu.call(
+		"_on_character_confirmed",
+		PlayerCharacterRegistry.WEISHIDAIER_ID
 	)
 	_expect(
-		run_state == null or not run_state.run_started,
-		"进入P3路线框架不得伪造一个角色战斗Run。"
+		load_probe.requested_scene_path == P3_SCENE_PATH
+		and (
+			run_state == null
+			or (
+				run_state.run_started
+				and not bool(run_state.get("_include_starting_inventory_for_new_peers"))
+			)
+		),
+		"确认P3角色后必须建立无初始库存的Run并开始轻量加载。"
 	)
+	character_selector.close()
 
 	root.remove_child(load_probe)
 	load_probe.free()

@@ -34,6 +34,7 @@ func _run() -> void:
 	_test_manual_reload_starts_from_empty()
 	_test_free_shot_chance_never_consumes_at_100_percent()
 	_test_spiral_shot_ignores_ammo_and_reload()
+	_test_world_movement_mode_suppresses_ammo_hud()
 	_test_death_hides_and_revive_refills_ammo()
 
 	await _finish()
@@ -192,6 +193,56 @@ func _test_spiral_shot_ignores_ammo_and_reload() -> void:
 
 	player.current_shot_pattern = PickupConfig.ShotPattern.NORMAL
 	player.current_form_mode = PickupConfig.PlayerFormMode.NORMAL
+
+
+func _test_world_movement_mode_suppresses_ammo_hud() -> void:
+	player.is_reloading = false
+	player.reload_progress = 0.0
+	player.ammo_bar.show()
+	player.set_world_movement_mode(true, false)
+	_expect(
+		not player.ammo_bar.visible,
+		"World movement mode must hide AmmoRangedPlayer's authored ammunition HUD."
+	)
+
+	player.call("_update_ammo_bar")
+	_expect(
+		not player.ammo_bar.visible,
+		"Ammo refresh must not show the ammunition HUD during world movement mode."
+	)
+	player.current_ammo = 0
+	player.is_reloading = true
+	player.call("_update_reload", player.reload_duration * 0.5)
+	_expect(
+		not player.ammo_bar.visible,
+		"Reload progress refresh must keep the ammunition HUD suppressed."
+	)
+
+	player.set_world_movement_mode(true, true)
+	player.call("_update_ammo_bar")
+	_expect(
+		not player.ammo_bar.visible,
+		"Changing world-mode dash permission must not overwrite the saved HUD state."
+	)
+	player.set_world_movement_mode(false)
+	_expect(
+		player.ammo_bar.visible,
+		"Leaving world movement mode must restore the ammunition HUD's saved visibility."
+	)
+
+	player.ammo_bar.hide()
+	player.set_world_movement_mode(true, false)
+	player.call("_update_ammo_bar")
+	player.set_world_movement_mode(false)
+	_expect(
+		not player.ammo_bar.visible,
+		"A pre-hidden ammunition HUD must remain hidden after leaving world movement mode."
+	)
+	player.call("_update_ammo_bar")
+	_expect(
+		player.ammo_bar.visible,
+		"Normal ammunition refresh must resume after world movement mode ends."
+	)
 
 
 func _test_death_hides_and_revive_refills_ammo() -> void:

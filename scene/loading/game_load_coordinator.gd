@@ -141,6 +141,12 @@ func begin_singleplayer(scene_path: String) -> void:
 func _build_singleplayer_manifest(scene_path: String) -> Array[String]:
 	var manifest: Array[String] = [scene_path]
 	if scene_path == TEST_ROGUE_ROUTE_P3_SCENE_PATH:
+		var rogue_run_state := get_node_or_null("/root/RunState") as RunStateStore
+		if rogue_run_state != null:
+			_append_character_scene(
+				manifest,
+				rogue_run_state.get_selected_character_id()
+			)
 		return manifest
 	var campaign_path := _get_singleplayer_campaign_path(scene_path)
 	manifest.append(campaign_path)
@@ -195,13 +201,13 @@ func _build_multiplayer_manifest(game_mode: int, net_manager: Node) -> Array[Str
 	var manifest: Array[String] = [entry_path]
 	if runtime_path != entry_path:
 		manifest.append(runtime_path)
+	var character_map: Dictionary = net_manager.call("get_player_character_map") as Dictionary
+	for character_id_variant in character_map.values():
+		_append_character_scene(manifest, StringName(character_id_variant))
 	if game_mode == GAME_MODE_TEST_ARENA_P3:
 		return manifest
 	var campaign_path := _get_multiplayer_campaign_path(game_mode)
 	manifest.append(campaign_path)
-	var character_map: Dictionary = net_manager.call("get_player_character_map") as Dictionary
-	for character_id_variant in character_map.values():
-		_append_character_scene(manifest, StringName(character_id_variant))
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:
 		_append_inventory_runtime_resources(manifest, run_state)

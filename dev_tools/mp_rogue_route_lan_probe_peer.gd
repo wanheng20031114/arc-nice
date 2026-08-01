@@ -4,6 +4,8 @@ const WRAPPER_SCENE := preload("res://scene/multiplayer/mp_rogue_route.tscn")
 const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
 const STATE_IN_GAME := NetManagerStore.ConnectionState.IN_GAME
 const TIMEOUT_SECONDS := 12.0
+const AVATAR_SYNC_TIMEOUT_SECONDS := 5.0
+const AVATAR_TEST_MOVE_DISTANCE := 24.0
 
 var failures: Array[String] = []
 
@@ -66,7 +68,32 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	if not route.is_route_ready():
 		_fail("Host route was not generated")
 		return
-	await create_timer(0.35).timeout
+	var host_peer_id := net_manager.get_host_peer_id()
+	var client_peer_id := _find_other_peer_id(
+		net_manager.connected_players,
+		host_peer_id
+	)
+	var host_player := route.get_player_for_peer(host_peer_id)
+	var client_player := route.get_player_for_peer(client_peer_id)
+	if host_player == null or client_player == null:
+		_fail("Host route did not instantiate both avatars")
+		return
+	var client_start := client_player.global_position
+	if not await _wait_until(
+		func() -> bool:
+			return client_player.global_position.distance_to(client_start) > 8.0,
+		AVATAR_SYNC_TIMEOUT_SECONDS
+	):
+		_fail("Host did not receive the client's avatar movement")
+		return
+	var host_start := host_player.global_position
+	host_player.global_position = route.clamp_avatar_position(
+		host_start + Vector2(AVATAR_TEST_MOVE_DISTANCE, 0.0)
+	)
+	host_player.velocity = Vector2.ZERO
+	# Give the client time to observe Host movement and then exercise reliable
+	# out-of-bounds correction before the route move teleports the party.
+	await create_timer(1.5).timeout
 	var state := route.export_state_snapshot()
 	var target_node_id := _find_first_neighbor(
 		route.export_layout_snapshot(),
@@ -107,6 +134,35 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	var route := wrapper.get_node("RogueRoute") as TestRogueRouteP3
 	if not await _wait_until(route.is_route_ready, TIMEOUT_SECONDS):
 		_fail("Client did not receive reliable full snapshot")
+		return
+	var local_peer_id := get_multiplayer().get_unique_id()
+	var host_peer_id := net_manager.get_host_peer_id()
+	var local_player := route.get_player_for_peer(local_peer_id)
+	var host_player := route.get_player_for_peer(host_peer_id)
+	if local_player == null or host_player == null:
+		_fail("Client route did not instantiate both avatars")
+		return
+	var local_start := local_player.global_position
+	var host_start := host_player.global_position
+	local_player.global_position = route.clamp_avatar_position(
+		local_start + Vector2(AVATAR_TEST_MOVE_DISTANCE, 0.0)
+	)
+	local_player.velocity = Vector2.ZERO
+	if not await _wait_until(
+		func() -> bool:
+			return host_player.global_position.distance_to(host_start) > 8.0,
+		AVATAR_SYNC_TIMEOUT_SECONDS
+	):
+		_fail("Client did not converge on the Host avatar broadcast")
+		return
+	local_player.global_position = Vector2(999999.0, 999999.0)
+	local_player.velocity = Vector2.ZERO
+	if not await _wait_until(
+		func() -> bool:
+			return route.is_avatar_position_in_world(local_player.global_position),
+		AVATAR_SYNC_TIMEOUT_SECONDS
+	):
+		_fail("Client did not receive reliable out-of-bounds correction")
 		return
 	var initial_state := route.export_state_snapshot()
 	var initial_revision := int(initial_state.get("revision", -1))
@@ -153,6 +209,14 @@ func _find_first_neighbor(layout: Dictionary, node_id: int) -> int:
 		if second == node_id:
 			return first
 	return -1
+
+
+func _find_other_peer_id(players: Dictionary, excluded_peer_id: int) -> int:
+	for peer_id_variant in players:
+		var peer_id := int(peer_id_variant)
+		if peer_id > 0 and peer_id != excluded_peer_id:
+			return peer_id
+	return 0
 
 
 func _wait_for_state(

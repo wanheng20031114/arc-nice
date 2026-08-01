@@ -33,6 +33,7 @@ var spiral_phase: float = 0.0
 
 var _armed_effect_sprite_base_position: Vector2 = Vector2.ZERO
 var _ammo_bar_base_position: Vector2 = Vector2.ZERO
+var _ammo_bar_visibility_before_world_movement: bool = true
 var _authoritative_spiral_partner_pending: bool = false
 var _authoritative_spiral_partner_deadline_msec: int = 0
 
@@ -319,7 +320,7 @@ func _complete_reload() -> void:
 func _update_ammo_bar() -> void:
 	if ammo_bar == null:
 		return
-	ammo_bar.visible = not is_dead
+	ammo_bar.visible = not is_dead and not world_movement_mode
 	if is_dead:
 		return
 	ammo_bar.set_ammo_state(
@@ -328,6 +329,14 @@ func _update_ammo_bar() -> void:
 		is_reloading,
 		get_reload_progress_ratio()
 	)
+
+
+func _set_character_combat_hud_suppressed(suppressed: bool) -> void:
+	if suppressed:
+		_ammo_bar_visibility_before_world_movement = ammo_bar.visible
+		ammo_bar.hide()
+		return
+	ammo_bar.visible = _ammo_bar_visibility_before_world_movement and not is_dead
 
 
 func _play_reload_audio() -> void:

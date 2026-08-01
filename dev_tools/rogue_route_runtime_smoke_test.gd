@@ -361,6 +361,9 @@ func _test_board_contract(
 	var empty_cell := board.get_cell(empty_neighbor_id)
 	var far_node_id := _find_non_neighbor(graph, graph.start_node_id)
 	var far_cell := board.get_cell(far_node_id)
+	board.update_local_player_global_position(
+		board.get_node_global_position(empty_neighbor_id)
+	)
 	_expect(
 		start_cell != null
 		and empty_cell != null

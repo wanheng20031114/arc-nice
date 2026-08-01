@@ -8,7 +8,9 @@ const CELL_SCENE: PackedScene = preload(
 )
 const INVALID_NODE_ID := -1
 const CELL_ANCHOR_FALLBACK := Vector2(32.0, 28.0)
-const BOARD_MARGIN := Vector2(48.0, 48.0)
+const CELL_SPACING := Vector2(256.0, 192.0)
+const BOARD_MARGIN := Vector2(320.0, 192.0)
+const NODE_INTERACTION_RADIUS := 88.0
 const MARKER_MOVE_SECONDS := 0.24
 
 @onready var connections: RogueRouteConnections = $Connections
@@ -27,11 +29,13 @@ var _authority_enabled := true
 var _interaction_locked := false
 var _cells: Dictionary[int, RogueRouteCell] = {}
 var _node_positions: Dictionary[int, Vector2] = {}
+var _local_player_position := Vector2.ZERO
+var _has_local_player_position := false
+var _nodes_in_player_range: Dictionary[int, bool] = {}
 var _marker_tween: Tween = null
 
 
 func _ready() -> void:
-	resized.connect(_on_board_resized)
 	group_marker.hide()
 	waiting_label.hide()
 
@@ -158,27 +162,72 @@ func get_node_position(node_id: int) -> Vector2:
 	return _node_positions.get(node_id, Vector2.ZERO)
 
 
+func get_node_global_position(node_id: int) -> Vector2:
+	return get_global_transform() * get_node_position(node_id)
+
+
+func get_world_bounds() -> Rect2:
+	return Rect2(get_global_transform() * Vector2.ZERO, size)
+
+
+func get_default_spawn_global_position(
+	target_config: RogueRouteGenerationConfig = null
+) -> Vector2:
+	var width := target_config.width if target_config != null else 11
+	var height := target_config.height if target_config != null else 9
+	var center_coord := Vector2i(width / 2, height / 2)
+	return get_global_transform() * (
+		BOARD_MARGIN
+		+ Vector2(center_coord.x, center_coord.y) * CELL_SPACING
+	)
+
+
+func update_local_player_global_position(player_global_position: Vector2) -> void:
+	_local_player_position = (
+		get_global_transform().affine_inverse() * player_global_position
+	)
+	_has_local_player_position = true
+	_refresh_player_range_interactions()
+
+
+func clear_local_player_position() -> void:
+	_has_local_player_position = false
+	_nodes_in_player_range.clear()
+	_refresh_neighbor_click_states()
+
+
+func can_interact_with_node(node_id: int) -> bool:
+	return (
+		graph != null
+		and _authority_enabled
+		and not _interaction_locked
+		and action_points >= move_action_cost
+		and graph.has_edge(current_node_id, node_id)
+		and _nodes_in_player_range.has(node_id)
+	)
+
+
+func is_node_in_player_range(node_id: int) -> bool:
+	return _nodes_in_player_range.has(node_id)
+
+
 func get_cell(node_id: int) -> RogueRouteCell:
 	return _cells.get(node_id) as RogueRouteCell
 
 
 func _layout_cells() -> void:
-	if graph == null or _cells.is_empty() or size.x <= 1.0 or size.y <= 1.0:
+	if graph == null or _cells.is_empty():
 		return
 	_node_positions.clear()
-	var usable_size := Vector2(
-		maxf(size.x - BOARD_MARGIN.x * 2.0, 1.0),
-		maxf(size.y - BOARD_MARGIN.y * 2.0, 1.0)
-	)
-	var step := Vector2(
-		usable_size.x / float(maxi(graph.width - 1, 1)),
-		usable_size.y / float(maxi(graph.height - 1, 1))
+	size = Vector2(
+		BOARD_MARGIN.x * 2.0 + CELL_SPACING.x * float(maxi(graph.width - 1, 0)),
+		BOARD_MARGIN.y * 2.0 + CELL_SPACING.y * float(maxi(graph.height - 1, 0))
 	)
 	for node_id in range(graph.get_node_count()):
 		var coord := graph.id_to_coord(node_id)
 		var anchor := (
 			BOARD_MARGIN
-			+ Vector2(float(coord.x) * step.x, float(coord.y) * step.y)
+			+ Vector2(float(coord.x), float(coord.y)) * CELL_SPACING
 			+ graph.get_visual_offset(node_id)
 		)
 		var cell := _cells[node_id]
@@ -186,6 +235,7 @@ func _layout_cells() -> void:
 		_node_positions[node_id] = anchor
 	connections.set_node_positions(_node_positions)
 	_position_marker_immediately()
+	_refresh_player_range_interactions()
 
 
 func _update_cell_states(animate_marker: bool) -> void:
@@ -204,6 +254,7 @@ func _update_cell_states(animate_marker: bool) -> void:
 			and not _interaction_locked
 			and has_action_points
 			and neighbors.has(node_id)
+			and _nodes_in_player_range.has(node_id)
 		)
 		cell.set_near(near_lookup.has(node_id))
 		cell.set_selected(node_id == selected_node_id)
@@ -257,6 +308,7 @@ func _clear_cells() -> void:
 		(cell as RogueRouteCell).queue_free()
 	_cells.clear()
 	_node_positions.clear()
+	_nodes_in_player_range.clear()
 	graph = null
 	generation_config = null
 	current_node_id = INVALID_NODE_ID
@@ -267,19 +319,47 @@ func _clear_cells() -> void:
 
 
 func _on_cell_pressed(node_id: int) -> void:
-	if (
-		graph == null
-		or not _authority_enabled
-		or _interaction_locked
-		or action_points < move_action_cost
-		or not graph.has_edge(current_node_id, node_id)
-	):
+	if not can_interact_with_node(node_id):
 		return
 	node_pressed.emit(node_id)
 
 
-func _on_board_resized() -> void:
-	_layout_cells()
+func _refresh_player_range_interactions() -> void:
+	var next_nodes_in_range: Dictionary[int, bool] = {}
+	if graph != null and _has_local_player_position:
+		for neighbor_id in graph.get_neighbors(current_node_id):
+			var target_id := int(neighbor_id)
+			if (
+				_node_positions.has(target_id)
+				and _local_player_position.distance_to(
+					_node_positions[target_id]
+				) <= NODE_INTERACTION_RADIUS
+			):
+				next_nodes_in_range[target_id] = true
+	if next_nodes_in_range == _nodes_in_player_range:
+		return
+	var affected_ids: Dictionary[int, bool] = {}
+	for node_id in _nodes_in_player_range:
+		affected_ids[node_id] = true
+	for node_id in next_nodes_in_range:
+		affected_ids[node_id] = true
+	_nodes_in_player_range = next_nodes_in_range
+	for node_id in affected_ids:
+		_refresh_cell_click_state(node_id)
+
+
+func _refresh_neighbor_click_states() -> void:
+	if graph == null:
+		return
+	for neighbor_id in graph.get_neighbors(current_node_id):
+		_refresh_cell_click_state(int(neighbor_id))
+
+
+func _refresh_cell_click_state(node_id: int) -> void:
+	var cell := _cells.get(node_id) as RogueRouteCell
+	if cell == null:
+		return
+	cell.set_click_enabled(can_interact_with_node(node_id))
 
 
 func _is_valid_runtime_view(

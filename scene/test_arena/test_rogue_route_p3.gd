@@ -1,4 +1,4 @@
-extends Control
+extends Node2D
 class_name TestRogueRouteP3
 
 signal host_layout_committed(
@@ -11,6 +11,17 @@ signal return_requested
 const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
 const INVALID_NODE_ID := -1
 const AUTO_SEED := 0
+const CAMERA_ZOOM := Vector2(2.0, 2.0)
+const AVATAR_SPAWN_OFFSETS := [
+	Vector2.ZERO,
+	Vector2(12.0, 0.0),
+	Vector2(-12.0, 0.0),
+	Vector2(0.0, 12.0),
+	Vector2(0.0, -12.0),
+	Vector2(12.0, 12.0),
+	Vector2(-12.0, 12.0),
+	Vector2(12.0, -12.0),
+]
 
 @export var generation_config: RogueRouteGenerationConfig
 @export var auto_initialize := true
@@ -18,39 +29,42 @@ const AUTO_SEED := 0
 ## 0 表示每次进入时生成新 seed；非零值便于复现指定地图。
 @export var initial_generation_seed := AUTO_SEED
 
-@onready var route_board: RogueRouteBoard = $Page/Layout/Main/RouteBoard
+@onready var world: Node2D = $World
+@onready var route_board: RogueRouteBoard = $World/RouteBoard
+@onready var player_container: Node2D = $World/Players
+@onready var map_camera: Camera2D = $World/Camera2D
 @onready var role_value: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats/RoleValue
+	$HUD/Root/RightPanel/PanelMargin/Content/RoleValue
 )
 @onready var character_value: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats/CharacterValue
+	$HUD/Root/RightPanel/PanelMargin/Content/CharacterValue
 )
 @onready var action_points_value: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats/ActionPointsValue
+	$HUD/Root/RightPanel/PanelMargin/Content/Stats/ActionPoints/Value
 )
 @onready var seed_value: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats/SeedValue
+	$HUD/Root/RightPanel/PanelMargin/Content/Stats/Seed/Value
 )
 @onready var position_value: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats/PositionValue
+	$HUD/Root/RightPanel/PanelMargin/Content/Stats/Position/Value
 )
 @onready var content_overline: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/ContentOverline
+	$HUD/Root/RightPanel/PanelMargin/Content/ContentOverline
 )
 @onready var content_title: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/ContentTitle
+	$HUD/Root/RightPanel/PanelMargin/Content/ContentTitle
 )
 @onready var content_body: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/ContentBody
+	$HUD/Root/RightPanel/PanelMargin/Content/ContentBody
 )
 @onready var content_meta: Label = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/ContentMeta
+	$HUD/Root/RightPanel/PanelMargin/Content/ContentMeta
 )
 @onready var regenerate_button: Button = (
-	$Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/RegenerateButton
+	$HUD/Root/RightPanel/PanelMargin/Content/RegenerateButton
 )
-@onready var hint_label: Label = $Page/Layout/Footer/Hint
-@onready var status_message: Label = $Page/Layout/Footer/StatusMessage
+@onready var hint_label: Label = $HUD/Root/BottomDock/DockMargin/Layout/Hint
+@onready var status_message: Label = $HUD/Root/BottomDock/DockMargin/Layout/StatusMessage
 @onready var move_confirmation: ConfirmationDialog = $MoveConfirmation
 
 var _route_graph: RogueRouteGraph = null
@@ -59,10 +73,16 @@ var _authority_enabled := true
 var _route_ready := false
 var _pending_node_id := INVALID_NODE_ID
 var _pending_revision := -1
+var player: Player = null
+var peer_players: Dictionary[int, Player] = {}
+var _local_peer_id := 0
+var _multiplayer_avatar_mode := false
 
 
 func _ready() -> void:
 	route_board.show_waiting_for_host()
+	if manage_return_locally:
+		_configure_singleplayer_player()
 	_update_character_display()
 	_update_authority_ui()
 	_update_route_hud()
@@ -71,6 +91,11 @@ func _ready() -> void:
 		call_deferred("_initialize_default_session")
 	else:
 		_set_status("等待外部会话初始化。", false)
+
+
+func _physics_process(_delta: float) -> void:
+	if player != null and is_instance_valid(player):
+		route_board.update_local_player_global_position(player.global_position)
 
 
 func start_authoritative_session(
@@ -117,9 +142,11 @@ func start_authoritative_session(
 		return false
 	_bind_runtime_state(generated_graph, generated_state)
 	_route_ready = true
+	_configure_camera_world_bounds()
+	_place_all_players_at_current_node()
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
-	_set_status("路线已生成。点击青色相邻节点规划下一步。", false)
+	_set_status("路线世界已生成。移动角色探索，并走近青色相邻节点。", false)
 	if announce_full_snapshot:
 		host_layout_committed.emit(
 			export_layout_snapshot(),
@@ -175,6 +202,8 @@ func apply_full_snapshot(
 		return false
 	_bind_runtime_state(imported_graph, imported_state)
 	_route_ready = true
+	_configure_camera_world_bounds()
+	_place_all_players_at_current_node()
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("已同步房主路线。当前为只读模式。", false)
@@ -206,6 +235,10 @@ func export_state_snapshot() -> Dictionary:
 	if not is_route_ready():
 		return {}
 	return _runtime_state.export_state().duplicate(true)
+
+
+func get_route_revision() -> int:
+	return _runtime_state.state_revision if is_route_ready() else -1
 
 
 func is_route_ready() -> bool:
@@ -278,6 +311,9 @@ func _disconnect_runtime_state() -> void:
 func _on_route_board_node_pressed(node_id: int) -> void:
 	if not _authority_enabled or not is_route_ready():
 		return
+	if not route_board.can_interact_with_node(node_id):
+		_set_status("请先走近目标节点，再确认路线移动。", true)
+		return
 	var rejection_reason := _runtime_state.get_move_rejection_reason(
 		node_id,
 		generation_config.move_action_cost,
@@ -290,6 +326,7 @@ func _on_route_board_node_pressed(node_id: int) -> void:
 	_pending_revision = _runtime_state.state_revision
 	route_board.select_node(node_id)
 	route_board.set_interaction_locked(true)
+	_set_local_player_controls_locked(true)
 	_show_node_content(node_id, true)
 	move_confirmation.dialog_text = (
 		"移动至「%s」？\n本次消耗 %d 行动力，确认后剩余 %d。"
@@ -308,6 +345,10 @@ func _on_move_confirmation_confirmed() -> void:
 	_pending_node_id = INVALID_NODE_ID
 	_pending_revision = -1
 	if not _authority_enabled or not is_route_ready():
+		_finish_pending_move()
+		return
+	if not route_board.is_node_in_player_range(target_node_id):
+		_set_status("你已离开目标节点范围，本次移动未执行。", true)
 		_finish_pending_move()
 		return
 	var rejection_reason := _runtime_state.get_move_rejection_reason(
@@ -345,6 +386,7 @@ func _on_runtime_state_changed(_snapshot: Dictionary) -> void:
 	):
 		_set_status("路线视觉层拒绝了最新状态。", true)
 		return
+	_place_all_players_at_current_node()
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 
@@ -384,6 +426,327 @@ func _return_to_main_menu() -> void:
 		_set_status("无法返回主菜单：%s" % error_string(error), true)
 
 
+func configure_multiplayer_players(
+	local_peer_id: int,
+	player_names: Dictionary,
+	player_character_ids: Dictionary
+) -> bool:
+	_clear_player_instances()
+	_multiplayer_avatar_mode = true
+	_local_peer_id = local_peer_id
+	var peer_ids: Array[int] = []
+	for peer_id_variant in player_names:
+		var peer_id := int(peer_id_variant)
+		if peer_id > 0:
+			peer_ids.append(peer_id)
+	peer_ids.sort()
+	for index in range(peer_ids.size()):
+		var peer_id := peer_ids[index]
+		var character_id := StringName(
+			player_character_ids.get(
+				peer_id,
+				PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+			)
+		)
+		_add_multiplayer_player(
+			peer_id,
+			str(player_names.get(peer_id, "Player %d" % peer_id)),
+			character_id,
+			_get_avatar_spawn_position(index)
+		)
+	if player == null:
+		push_error("TestRogueRouteP3: 多人路线场景缺少本地角色。")
+		return false
+	_attach_camera_to_local_player()
+	if is_route_ready():
+		_place_all_players_at_current_node()
+	_update_character_display()
+	return true
+
+
+func add_multiplayer_player(
+	peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	spawn_position: Vector2
+) -> bool:
+	if (
+		not _multiplayer_avatar_mode
+		or peer_id <= 0
+		or peer_players.has(peer_id)
+		or not spawn_position.is_finite()
+	):
+		return false
+	return _add_multiplayer_player(
+		peer_id,
+		player_name,
+		character_id,
+		clamp_avatar_position(spawn_position)
+	)
+
+
+func migrate_multiplayer_player(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName
+) -> bool:
+	if (
+		not _multiplayer_avatar_mode
+		or old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+		or peer_players.has(new_peer_id)
+	):
+		return false
+	var player_instance := get_player_for_peer(old_peer_id)
+	if (
+		player_instance == null
+		or player_instance.get_character_id() != character_id
+	):
+		return false
+	var preserved_position := player_instance.global_position
+	var preserved_velocity := player_instance.velocity
+	peer_players.erase(old_peer_id)
+	peer_players[new_peer_id] = player_instance
+	player_instance.name = "RoutePlayer_%d" % new_peer_id
+	if old_peer_id == _local_peer_id:
+		_local_peer_id = new_peer_id
+	_configure_multiplayer_player_node(
+		player_instance,
+		new_peer_id,
+		player_name
+	)
+	player_instance.global_position = preserved_position
+	player_instance.velocity = preserved_velocity
+	return true
+
+
+func _add_multiplayer_player(
+	peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	spawn_position: Vector2
+) -> bool:
+	var player_instance := _instantiate_route_player(character_id)
+	if player_instance == null:
+		return false
+	player_instance.name = "RoutePlayer_%d" % peer_id
+	player_instance.global_position = spawn_position
+	player_container.add_child(player_instance)
+	peer_players[peer_id] = player_instance
+	_configure_multiplayer_player_node(player_instance, peer_id, player_name)
+	return true
+
+
+func _configure_multiplayer_player_node(
+	player_instance: Player,
+	peer_id: int,
+	player_name: String
+) -> void:
+	var accepts_local_input := peer_id == _local_peer_id
+	player_instance.configure_multiplayer_control(
+		peer_id,
+		accepts_local_input,
+		player_name,
+		accepts_local_input,
+		accepts_local_input
+	)
+	player_instance.set_world_movement_mode(true, false)
+	player_instance.set_multiplayer_visual_smoothing_enabled(
+		not accepts_local_input
+	)
+	player_instance.physics_interpolation_mode = (
+		Node.PHYSICS_INTERPOLATION_MODE_ON
+		if accepts_local_input
+		else Node.PHYSICS_INTERPOLATION_MODE_OFF
+	)
+	player_instance.set_physics_process(accepts_local_input)
+	if accepts_local_input:
+		player = player_instance
+
+
+func get_player_for_peer(peer_id: int) -> Player:
+	return peer_players.get(peer_id) as Player
+
+
+func get_local_avatar_snapshot() -> Dictionary:
+	if player == null or not is_instance_valid(player):
+		return {}
+	return {
+		"position": player.global_position,
+		"velocity": player.velocity,
+		"facing": player.get_multiplayer_facing_id(),
+		"anim_state": player.get_multiplayer_anim_state(),
+	}
+
+
+func apply_avatar_snapshot(
+	peer_id: int,
+	remote_position: Vector2,
+	remote_velocity: Vector2,
+	facing_id: int,
+	anim_state: int,
+	correct_local_player: bool = false
+) -> bool:
+	var player_instance := get_player_for_peer(peer_id)
+	if (
+		player_instance == null
+		or not remote_position.is_finite()
+		or not remote_velocity.is_finite()
+	):
+		return false
+	if peer_id == _local_peer_id and not correct_local_player:
+		return true
+	player_instance.apply_world_movement_snapshot(
+		clamp_avatar_position(remote_position),
+		remote_velocity,
+		clampi(facing_id, 0, 3),
+		maxi(anim_state, 0)
+	)
+	return true
+
+
+func clamp_avatar_position(candidate: Vector2) -> Vector2:
+	var bounds := route_board.get_world_bounds().grow(-10.0)
+	return Vector2(
+		clampf(candidate.x, bounds.position.x, bounds.end.x),
+		clampf(candidate.y, bounds.position.y, bounds.end.y)
+	)
+
+
+func is_avatar_position_in_world(candidate: Vector2) -> bool:
+	return candidate.is_finite() and route_board.get_world_bounds().grow(-8.0).has_point(
+		candidate
+	)
+
+
+func remove_multiplayer_player(peer_id: int) -> void:
+	var player_instance := peer_players.get(peer_id) as Player
+	if player_instance == null:
+		return
+	peer_players.erase(peer_id)
+	if player_instance == player:
+		player = null
+	if map_camera.get_parent() == player_instance:
+		map_camera.reparent(world, true)
+	player_container.remove_child(player_instance)
+	player_instance.queue_free()
+
+
+func _configure_singleplayer_player() -> void:
+	if player != null and is_instance_valid(player):
+		return
+	var character_id := PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state != null:
+		character_id = run_state.get_selected_character_id()
+	var player_instance := _instantiate_route_player(character_id)
+	if player_instance == null:
+		return
+	player_instance.name = "Player"
+	player_instance.global_position = _get_avatar_spawn_position(0)
+	player_container.add_child(player_instance)
+	player_instance.set_world_movement_mode(true, false)
+	player_instance.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	player_instance.reset_physics_interpolation()
+	player = player_instance
+	_attach_camera_to_local_player()
+
+
+func _instantiate_route_player(character_id: StringName) -> Player:
+	var resolved_id := character_id
+	if not PlayerCharacterRegistry.is_valid_character_id(resolved_id):
+		resolved_id = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+	var player_instance := PlayerCharacterRegistry.instantiate_character(resolved_id)
+	if player_instance == null:
+		push_error("TestRogueRouteP3: 无法实例化路线角色 %s。" % resolved_id)
+	return player_instance
+
+
+func _get_avatar_spawn_position(index: int) -> Vector2:
+	var offset: Vector2 = AVATAR_SPAWN_OFFSETS[
+		index % AVATAR_SPAWN_OFFSETS.size()
+	]
+	return route_board.get_default_spawn_global_position(generation_config) + offset
+
+
+func _attach_camera_to_local_player() -> void:
+	if map_camera == null or player == null:
+		return
+	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
+	player.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	if map_camera.get_parent() != player:
+		map_camera.reparent(player)
+	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_INHERIT
+	map_camera.position = Vector2.ZERO
+	map_camera.zoom = CAMERA_ZOOM
+	map_camera.position_smoothing_enabled = false
+	map_camera.enabled = true
+	_configure_camera_world_bounds()
+	player.reset_physics_interpolation()
+	map_camera.reset_physics_interpolation()
+
+
+func _configure_camera_world_bounds() -> void:
+	if map_camera == null:
+		return
+	var bounds := route_board.get_world_bounds()
+	map_camera.limit_left = floori(bounds.position.x)
+	map_camera.limit_top = floori(bounds.position.y)
+	map_camera.limit_right = ceili(bounds.end.x)
+	map_camera.limit_bottom = ceili(bounds.end.y)
+
+
+func _place_all_players_at_current_node() -> void:
+	if not is_route_ready():
+		return
+	var anchor := route_board.get_node_global_position(
+		_runtime_state.current_node_id
+	)
+	if _multiplayer_avatar_mode:
+		var peer_ids: Array[int] = []
+		for peer_id_variant in peer_players:
+			peer_ids.append(int(peer_id_variant))
+		peer_ids.sort()
+		for index in range(peer_ids.size()):
+			var player_instance := peer_players[peer_ids[index]] as Player
+			_teleport_route_player(
+				player_instance,
+				anchor + AVATAR_SPAWN_OFFSETS[index % AVATAR_SPAWN_OFFSETS.size()]
+			)
+	else:
+		_teleport_route_player(player, anchor)
+	if player != null:
+		route_board.update_local_player_global_position(player.global_position)
+
+
+func _teleport_route_player(player_instance: Player, target_position: Vector2) -> void:
+	if player_instance == null or not is_instance_valid(player_instance):
+		return
+	var smoothing_enabled := player_instance.is_multiplayer_visual_smoothing_enabled()
+	player_instance.set_multiplayer_visual_smoothing_enabled(false)
+	player_instance.global_position = clamp_avatar_position(target_position)
+	player_instance.velocity = Vector2.ZERO
+	player_instance.reset_physics_interpolation()
+	player_instance.set_multiplayer_visual_smoothing_enabled(smoothing_enabled)
+
+
+func _set_local_player_controls_locked(locked: bool) -> void:
+	if player != null and is_instance_valid(player):
+		player.set_controls_locked(locked)
+
+
+func _clear_player_instances() -> void:
+	if map_camera != null and map_camera.get_parent() != world:
+		map_camera.reparent(world, true)
+	for child in player_container.get_children():
+		player_container.remove_child(child)
+		child.queue_free()
+	peer_players.clear()
+	player = null
+
+
 func _clear_pending_move(hide_dialog: bool) -> void:
 	_pending_node_id = INVALID_NODE_ID
 	_pending_revision = -1
@@ -393,6 +756,7 @@ func _clear_pending_move(hide_dialog: bool) -> void:
 		move_confirmation.hide()
 	route_board.set_interaction_locked(false)
 	route_board.clear_selection()
+	_set_local_player_controls_locked(false)
 
 
 func _finish_pending_move() -> void:
@@ -400,6 +764,7 @@ func _finish_pending_move() -> void:
 	_pending_revision = -1
 	route_board.set_interaction_locked(false)
 	route_board.clear_selection()
+	_set_local_player_controls_locked(false)
 
 
 func _update_route_hud() -> void:
@@ -432,15 +797,23 @@ func _update_authority_ui() -> void:
 	)
 	regenerate_button.disabled = not _authority_enabled
 	hint_label.text = (
-		"点击发光的相邻节点并确认；每次移动消耗 %d AP，可沿连线自由往返。"
+		"WASD / 左摇杆探索；走近发光节点后点击确认，每次消耗 %d AP。"
 		% generation_config.move_action_cost
 		if _authority_enabled and generation_config != null
-		else "路线由房主操作；你可以查看邻近节点名称与队伍当前位置。"
+		else "WASD / 左摇杆自由探索；路线节点与行动力由房主统一确认。"
 	)
 
 
 func _update_character_display() -> void:
-	character_value.text = "共享小队"
+	if player == null or not is_instance_valid(player):
+		character_value.text = "等待角色"
+		return
+	var config := PlayerCharacterRegistry.get_config(player.get_character_id())
+	character_value.text = (
+		config.display_name
+		if config != null and not config.display_name.is_empty()
+		else str(player.get_character_id())
+	)
 
 
 func _show_node_content(node_id: int, is_preview: bool) -> void:

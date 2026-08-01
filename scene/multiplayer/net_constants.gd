@@ -18,7 +18,9 @@ extends RefCounted
 ## 重新拉起；无按键的鼠标被动瞄准改为变化即时发送与6帧保活。
 ## v32：新增 P3 肉鸽路线多人模式与 Host 权威的完整路线/移动增量协议。
 ## 旧客户端无法识别新增 wire 游戏模式值 4。
-const PROTOCOL_VERSION := 32
+## v33：P3 路线世界新增约 12Hz 的轻量角色姿态上报、Host 校验/广播、
+## 跨信道路线 revision 隔离与可靠位置纠正。
+const PROTOCOL_VERSION := 33
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。
@@ -78,6 +80,13 @@ const INPUT_SEND_INTERVAL_FRAMES := 1
 const INPUT_KEEPALIVE_INTERVAL_FRAMES := 6
 const PLAYER_SNAPSHOT_INTERVAL_FRAMES := 1
 const ENEMY_SNAPSHOT_INTERVAL_FRAMES := 2
+
+## P3 路线世界只同步移动姿态，不携带塔防战斗状态；12Hz 足以配合角色侧
+## 的像素视觉平滑，同时显著低于标准战场的 60Hz 玩家快照带宽。
+const ROGUE_ROUTE_AVATAR_SYNC_HZ := 12
+const ROGUE_ROUTE_AVATAR_SYNC_INTERVAL_SECONDS := (
+	1.0 / float(ROGUE_ROUTE_AVATAR_SYNC_HZ)
+)
 
 ## 插值
 const INTERPOLATION_BUFFER_SIZE := 6

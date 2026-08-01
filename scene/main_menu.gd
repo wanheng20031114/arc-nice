@@ -149,10 +149,6 @@ func _on_test_arena_selected(arena_id: StringName) -> void:
 		push_error("Main menu received an invalid test arena: %s" % arena_id)
 		return
 	pending_test_arena_id = arena_id
-	if arena_id == TEST_ARENA_P3_ID:
-		pending_singleplayer_destination = SingleplayerDestination.TEST_ARENA
-		_begin_singleplayer_load(TEST_ROGUE_ROUTE_P3_SCENE_PATH)
-		return
 	_open_singleplayer_character_selection(SingleplayerDestination.TEST_ARENA)
 
 
@@ -171,8 +167,9 @@ func _on_character_confirmed(character_id: StringName) -> void:
 	if not run_state.set_selected_character(character_id):
 		push_error("Main menu received an invalid character selection: %s" % character_id)
 		return
-	run_state.begin_new_run(character_id)
-	_begin_singleplayer_load(_get_pending_singleplayer_scene_path())
+	var scene_path := _get_pending_singleplayer_scene_path()
+	run_state.begin_new_run(character_id, scene_path != TEST_ROGUE_ROUTE_P3_SCENE_PATH)
+	_begin_singleplayer_load(scene_path)
 
 
 func _begin_singleplayer_load(scene_path: String) -> void:

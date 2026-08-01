@@ -487,10 +487,7 @@ func host_start_game() -> void:
 		return
 	if connection_state >= ConnectionState.LOADING_GAME:
 		return
-	if (
-		current_game_mode != GameMode.TEST_ARENA_P3
-		and not are_all_player_characters_confirmed()
-	):
+	if not are_all_player_characters_confirmed():
 		connection_failed.emit("仍有玩家尚未确认角色")
 		return
 	host_game_ready = false

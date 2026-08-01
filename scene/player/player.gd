@@ -38,6 +38,8 @@ var remote_dash_visual_time_left: float = 0.0
 var is_dead: bool = false
 var controls_locked: bool = false
 var combat_actions_locked: bool = false
+var world_movement_mode: bool = false
+var world_movement_dash_enabled: bool = false
 var tower_defense_death_presentation_active: bool = false
 var peer_id: int = 0
 var uses_local_input: bool = true
@@ -51,6 +53,7 @@ var client_movement_prediction_only: bool = false
 var navigation_collision_extent_radius: float = -1.0
 var _pending_healing_number_amount: int = 0
 var _healing_number_flush_queued := false
+var _world_movement_saved_visibility: Dictionary[StringName, bool] = {}
 
 @export var fire_interval: float = 1.0
 @export_range(1.0, 1000.0, 1.0, "or_greater") var attack_speed_units_per_attack: float = 100.0
@@ -459,7 +462,7 @@ func _process(_delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not uses_local_input:
+	if not uses_local_input or world_movement_mode:
 		return
 
 	var mouse_motion := event as InputEventMouseMotion
@@ -476,7 +479,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not uses_local_input:
+	if not uses_local_input or world_movement_mode:
 		return
 
 	if event.is_action_pressed("cheat_xirang"):
@@ -509,6 +512,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # 物理帧更新，处理玩家移动、射击和无敌/增益状态更新
 func _physics_process(delta: float) -> void:
+	if world_movement_mode:
+		_physics_process_world_movement(delta)
+		return
 	_update_invincibility(delta)
 	_update_pickup_effects(delta)
 	_update_tower_defense_fate_effects(delta)
@@ -577,6 +583,55 @@ func _physics_process(delta: float) -> void:
 		_handle_primary_attack_input(shoot_input)
 
 	_update_facing(movement_visual_direction, shoot_input)
+	_update_animation()
+	_update_character_visual_state()
+
+
+## 路线世界只保留角色的移动与像素动画，不运行技能、道具和战斗资源更新。
+func _physics_process_world_movement(delta: float) -> void:
+	if is_dead:
+		velocity = Vector2.ZERO
+		_update_movement_status_visuals(Vector2.ZERO)
+		return
+	if controls_locked:
+		velocity = Vector2.ZERO
+		_update_footstep_audio(delta, Vector2.ZERO)
+		_update_animation()
+		_update_character_visual_state()
+		_update_movement_status_visuals(Vector2.ZERO)
+		return
+
+	var move_input := _get_current_move_input()
+	_refresh_wall_overlap_probe_gate()
+	if (
+		world_movement_dash_enabled
+		and uses_local_input
+		and Input.is_action_just_pressed(&"dash")
+	):
+		_try_start_dash(move_input)
+	var dash_was_active := world_movement_dash_enabled and is_dashing()
+	var movement_visual_direction := dash_direction if dash_was_active else move_input
+	if dash_was_active:
+		_perform_dash_movement(delta)
+		_wall_overlap_probe_required = true
+	else:
+		velocity = move_input * _get_effective_move_speed()
+		var applied_wall_overlap_escape := false
+		if _wall_overlap_probe_required:
+			applied_wall_overlap_escape = _try_apply_wall_overlap_escape(
+				move_input,
+				delta
+			)
+		if applied_wall_overlap_escape:
+			_wall_overlap_probe_required = true
+		else:
+			move_and_slide()
+			if move_input != Vector2.ZERO:
+				_wall_overlap_probe_required = get_slide_collision_count() > 0
+	_wall_overlap_expected_position = global_position
+	_update_movement_status_visuals(movement_visual_direction)
+	_update_footstep_audio(delta, Vector2.ZERO if dash_was_active else move_input)
+	_update_facing(movement_visual_direction, Vector2.ZERO)
 	_update_animation()
 	_update_character_visual_state()
 
@@ -1569,6 +1624,66 @@ func are_combat_actions_locked() -> bool:
 	return controls_locked or combat_actions_locked
 
 
+## 为路线探索等非战斗场景切换轻量移动模式。
+## 该模式保留角色本体、朝向动画、脚步声与角色专属常驻表现，隐藏所有战斗 HUD。
+func set_world_movement_mode(
+	enabled: bool,
+	allow_dash: bool = false
+) -> void:
+	if world_movement_mode == enabled and (
+		not enabled or world_movement_dash_enabled == allow_dash
+	):
+		return
+	var mode_changed := world_movement_mode != enabled
+	if enabled and not world_movement_mode:
+		_world_movement_saved_visibility = {
+			&"health_bar": health_bar.visible,
+			&"skill1_charge_bar": skill1_charge_bar.visible,
+			&"dash_ready_indicator": dash_ready_indicator.visible,
+		}
+		if attack_interval_bar != null:
+			_world_movement_saved_visibility[&"attack_interval_bar"] = (
+				attack_interval_bar.visible
+			)
+	world_movement_mode = enabled
+	world_movement_dash_enabled = enabled and allow_dash
+	if mode_changed and enabled:
+		_set_character_combat_hud_suppressed(true)
+	set_combat_actions_locked(enabled)
+	if enabled:
+		_finish_dash()
+		health_bar.hide()
+		skill1_charge_bar.hide()
+		dash_ready_indicator.hide()
+		if attack_interval_bar != null:
+			attack_interval_bar.hide()
+	else:
+		health_bar.visible = bool(
+			_world_movement_saved_visibility.get(&"health_bar", not is_dead)
+		)
+		skill1_charge_bar.visible = bool(
+			_world_movement_saved_visibility.get(&"skill1_charge_bar", true)
+		)
+		dash_ready_indicator.visible = bool(
+			_world_movement_saved_visibility.get(&"dash_ready_indicator", true)
+		)
+		if attack_interval_bar != null:
+			attack_interval_bar.visible = bool(
+				_world_movement_saved_visibility.get(&"attack_interval_bar", true)
+			)
+		_world_movement_saved_visibility.clear()
+	if mode_changed and not enabled:
+		_set_character_combat_hud_suppressed(false)
+	set_process_input(uses_local_input and not world_movement_mode)
+	set_process_unhandled_input(uses_local_input and not world_movement_mode)
+	_refresh_dash_ready_visual()
+
+
+## 子类通过此钩子保存并隐藏自身专属战斗 HUD；基础类不探测子类节点。
+func _set_character_combat_hud_suppressed(_suppressed: bool) -> void:
+	pass
+
+
 func _on_combat_actions_lock_changed(_locked: bool) -> void:
 	pass
 
@@ -1622,6 +1737,8 @@ func configure_multiplayer_control(
 	_update_nameplate_position()
 	if not uses_local_input:
 		controls_locked = false
+	set_process_input(uses_local_input and not world_movement_mode)
+	set_process_unhandled_input(uses_local_input and not world_movement_mode)
 	_refresh_dash_ready_visual()
 
 
@@ -1821,6 +1938,28 @@ func apply_multiplayer_snapshot_motion(
 	anim_state: int
 ) -> void:
 	global_position = remote_position
+	velocity = remote_velocity
+	if is_dead:
+		return
+	_set_multiplayer_facing_id(facing_id)
+	_apply_multiplayer_character_anim_state(anim_state)
+	_update_animation()
+	_update_character_visual_state()
+
+
+## P3 路线世界使用的紧凑移动快照，不附带任何战斗状态。
+func apply_world_movement_snapshot(
+	remote_position: Vector2,
+	remote_velocity: Vector2,
+	facing_id: int,
+	anim_state: int
+) -> void:
+	var next_visual_offset := _get_multiplayer_visual_offset_after_position_change(
+		remote_position
+	)
+	global_position = remote_position
+	if multiplayer_visual_smoothing_enabled:
+		_set_multiplayer_visual_offset(next_visual_offset)
 	velocity = remote_velocity
 	if is_dead:
 		return
@@ -4342,7 +4481,12 @@ func _set_dash_effect_strength(strength: float) -> void:
 func _refresh_dash_ready_visual() -> void:
 	if dash_ready_indicator == null:
 		return
-	var can_show_indicator := uses_local_input and not is_dead and not controls_locked
+	var can_show_indicator := (
+		uses_local_input
+		and not world_movement_mode
+		and not is_dead
+		and not controls_locked
+	)
 	dash_ready_indicator.visible = can_show_indicator
 	var should_show_ready := can_show_indicator and is_dash_ready()
 	if should_show_ready == _dash_ready_visual_is_ready:

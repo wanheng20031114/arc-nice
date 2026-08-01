@@ -7,6 +7,10 @@ const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const WRAPPER_SCENE_PATH := "res://scene/multiplayer/mp_rogue_route.tscn"
 const ROUTE_SCENE_PATH := "res://scene/test_arena/test_rogue_route_p3.tscn"
+const WEISHIDAIER_SCENE_PATH := (
+	"res://scene/player/weishidaier/player_weishidaier.tscn"
+)
+const TANGO_SCENE_PATH := "res://scene/player/tango/player_tango.tscn"
 
 
 class FakeNetManager:
@@ -33,6 +37,17 @@ class FakeNetManager:
 		return peer_id > 0 and peer_id != host_peer_id
 
 
+class ManifestNetManager:
+	extends Node
+
+
+	func get_player_character_map() -> Dictionary:
+		return {
+			1: PlayerCharacterRegistry.WEISHIDAIER_ID,
+			2: PlayerCharacterRegistry.TANGO_ID,
+		}
+
+
 var failures: Array[String] = []
 
 
@@ -44,12 +59,16 @@ func _run() -> void:
 	_test_mode_and_loading_contract()
 	await _test_lobby_contract()
 	await _test_snapshot_and_delta_contract()
-	_test_host_start_without_character_confirmation()
+	_test_host_requires_character_confirmation()
 	_finish()
 
 
 func _test_mode_and_loading_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 32, "P3 wire 模式必须使用协议 v32。")
+	_expect(NetConstants.PROTOCOL_VERSION == 33, "P3 自由移动同步必须使用协议 v33。")
+	_expect(
+		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
+		"P3 轻量角色姿态同步必须保持约 12Hz。"
+	)
 	_expect(
 		NetManagerStore.game_mode_to_key(NetManagerStore.GameMode.TEST_ARENA_P3)
 		== "test_arena_p3"
@@ -58,18 +77,23 @@ func _test_mode_and_loading_contract() -> void:
 		"P3 多人模式必须稳定往返 wire key。"
 	)
 	var coordinator := root.get_node_or_null("GameLoadCoordinator")
-	var net_manager := root.get_node_or_null("NetManager")
-	_expect(coordinator != null and net_manager != null, "P3 加载测试需要常驻加载器与 NetManager。")
-	if coordinator == null or net_manager == null:
+	_expect(coordinator != null, "P3 加载测试需要常驻加载器。")
+	if coordinator == null:
 		return
+	var manifest_net_manager := ManifestNetManager.new()
 	var manifest := coordinator.call(
 		"_build_multiplayer_manifest",
 		NetManagerStore.GameMode.TEST_ARENA_P3,
-		net_manager
+		manifest_net_manager
 	) as Array
 	_expect(
-		manifest == [WRAPPER_SCENE_PATH, ROUTE_SCENE_PATH],
-		"P3 多人加载清单必须只包含专用包装和路线子场景。"
+		manifest == [
+			WRAPPER_SCENE_PATH,
+			ROUTE_SCENE_PATH,
+			WEISHIDAIER_SCENE_PATH,
+			TANGO_SCENE_PATH,
+		],
+		"P3 多人轻量加载清单必须追加所有已选角色场景。"
 	)
 	_expect(
 		str(coordinator.call(
@@ -85,7 +109,7 @@ func _test_mode_and_loading_contract() -> void:
 			NetManagerStore.GameMode.TEST_ARENA_P3
 		)).is_empty()
 		and not bool(coordinator.call("_uses_tower_defense_runtime", ROUTE_SCENE_PATH)),
-		"P3 必须绕过 campaign、角色、背包和塔防运行时。"
+		"P3 必须绕过 campaign、背包和塔防运行时，但保留角色场景。"
 	)
 
 
@@ -117,7 +141,7 @@ func _test_lobby_contract() -> void:
 		"大厅第五项必须是带图标的 P3 肉鸽路线。"
 	)
 	lobby.call("_update_choose_character_button")
-	_expect(not choose_button.visible, "P3 房间不得要求玩家选择角色。")
+	_expect(choose_button.visible, "P3 房间必须允许玩家选择并确认角色。")
 	net_manager.set_host_game_mode(NetManagerStore.GameMode.TEST_ARENA_P2)
 	character_overlay.open(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID)
 	await process_frame
@@ -134,7 +158,8 @@ func _test_lobby_contract() -> void:
 		"_on_net_game_mode_changed",
 		NetManagerStore.GameMode.TEST_ARENA_P3
 	)
-	_expect(not character_overlay.is_open(), "同步为 P3 时必须关闭已抢先打开的选角层。")
+	_expect(character_overlay.is_open(), "同步为 P3 时必须保留已打开的选角层。")
+	character_overlay.close()
 	lobby.queue_free()
 	await process_frame
 	net_manager.disconnect_from_game()
@@ -175,6 +200,34 @@ func _test_snapshot_and_delta_contract() -> void:
 			and int(config.get("channel", -1)) == 0,
 			"P3 完整快照与移动 delta 必须在可靠有序信道同步。"
 		)
+	var avatar_input_config := rpc_config.get(
+		&"net_route_avatar_input", {}
+	) as Dictionary
+	var avatar_snapshot_config := rpc_config.get(
+		&"net_route_avatar_snapshot", {}
+	) as Dictionary
+	var avatar_correction_config := rpc_config.get(
+		&"net_route_avatar_corrected", {}
+	) as Dictionary
+	_expect(
+		int(avatar_input_config.get("transfer_mode", -1))
+		== MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
+		and int(avatar_input_config.get("channel", -1)) == NetConstants.CH_INPUT,
+		"P3 Client 姿态必须走 CH_INPUT unreliable_ordered。"
+	)
+	_expect(
+		int(avatar_snapshot_config.get("transfer_mode", -1))
+		== MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
+		and int(avatar_snapshot_config.get("channel", -1))
+		== NetConstants.CH_PLAYER_STATE,
+		"P3 Host 姿态广播必须走 CH_PLAYER_STATE unreliable_ordered。"
+	)
+	_expect(
+		int(avatar_correction_config.get("transfer_mode", -1))
+		== MultiplayerPeer.TRANSFER_MODE_RELIABLE
+		and int(avatar_correction_config.get("channel", -1)) == NetConstants.CH_AUTH,
+		"P3 非法姿态纠正必须走可靠认证信道。"
+	)
 
 	var fake_net_manager := FakeNetManager.new()
 	wrapper.set("_route", client_route)
@@ -229,11 +282,183 @@ func _test_snapshot_and_delta_contract() -> void:
 			"只读客户端点击节点不得创建移动确认。"
 		)
 
+	_test_avatar_validation_contract(host_route, wrapper, fake_net_manager)
+
 	wrapper.free()
 	fake_net_manager.free()
 	host_route.queue_free()
 	client_route.queue_free()
 	await process_frame
+
+
+func _test_avatar_validation_contract(
+	host_route: TestRogueRouteP3,
+	wrapper: Node,
+	fake_net_manager: FakeNetManager
+) -> void:
+	var client_peer_id := fake_net_manager.host_peer_id + 1
+	var observer_peer_id := fake_net_manager.host_peer_id + 2
+	_expect(
+		host_route.configure_multiplayer_players(
+			fake_net_manager.host_peer_id,
+			{
+				fake_net_manager.host_peer_id: "Host",
+				client_peer_id: "Client",
+				observer_peer_id: "Observer",
+			},
+			{
+				fake_net_manager.host_peer_id:
+					PlayerCharacterRegistry.WEISHIDAIER_ID,
+				client_peer_id: PlayerCharacterRegistry.TANGO_ID,
+				observer_peer_id:
+					PlayerCharacterRegistry.WEISHIDAIER_ID,
+			}
+		),
+		"P3 Host 测试必须能按房间名称与角色表创建玩家。"
+	)
+	var remote_player := host_route.get_player_for_peer(client_peer_id)
+	if remote_player == null:
+		return
+	wrapper.set("_route", host_route)
+	fake_net_manager.host_role = true
+	var valid_pose := wrapper.call("_encode_avatar_pose", {
+		"position": remote_player.global_position,
+		"velocity": Vector2.ZERO,
+		"facing": remote_player.get_multiplayer_facing_id(),
+		"anim_state": remote_player.get_multiplayer_anim_state(),
+	}) as PackedInt32Array
+	var invalid_pose := wrapper.call("_encode_avatar_pose", {
+		"position": Vector2(999999.0, 999999.0),
+		"velocity": Vector2.ZERO,
+		"facing": 0,
+		"anim_state": 0,
+	}) as PackedInt32Array
+	var route_revision := host_route.get_route_revision()
+	_expect(
+		not bool(wrapper.call(
+			"_accept_client_avatar_pose",
+			client_peer_id,
+			900,
+			route_revision,
+			invalid_pose
+		)),
+		"Host 必须拒绝超出 P3 世界边界的姿态。"
+	)
+	_expect(
+		bool(wrapper.call(
+			"_accept_client_avatar_pose",
+			client_peer_id,
+			1,
+			route_revision,
+			valid_pose
+		)),
+		"非法高 sequence 不得锁死后续合法 P3 姿态。"
+	)
+	_expect(
+		not bool(wrapper.call(
+			"_reserve_avatar_correction",
+			client_peer_id,
+			1,
+			1000
+		)),
+		"已接受或过期的 avatar sequence 必须直接丢弃，不得触发可靠纠正。"
+	)
+	_expect(
+		bool(wrapper.call(
+			"_reserve_avatar_correction",
+			client_peer_id,
+			2,
+			1000
+		))
+		and not bool(wrapper.call(
+			"_reserve_avatar_correction",
+			client_peer_id,
+			2,
+			1100
+		))
+		and not bool(wrapper.call(
+			"_reserve_avatar_correction",
+			client_peer_id,
+			3,
+			1083
+		))
+		and bool(wrapper.call(
+			"_reserve_avatar_correction",
+			client_peer_id,
+			3,
+			1084
+		)),
+		"可靠位置纠正必须按 peer 去重并限制在约 12Hz。"
+	)
+	_test_incremental_avatar_reconnect(
+		host_route,
+		wrapper,
+		client_peer_id,
+		observer_peer_id
+	)
+
+
+func _test_incremental_avatar_reconnect(
+	host_route: TestRogueRouteP3,
+	wrapper: Node,
+	old_peer_id: int,
+	observer_peer_id: int
+) -> void:
+	var old_player := host_route.get_player_for_peer(old_peer_id)
+	var observer_player := host_route.get_player_for_peer(observer_peer_id)
+	if old_player == null or observer_player == null:
+		return
+	old_player.global_position = host_route.clamp_avatar_position(
+		old_player.global_position + Vector2(19.0, 11.0)
+	)
+	observer_player.global_position = host_route.clamp_avatar_position(
+		observer_player.global_position + Vector2(-17.0, 9.0)
+	)
+	var old_position := old_player.global_position
+	var observer_position := observer_player.global_position
+	var migrated_peer_id := old_peer_id + 20
+	_expect(
+		bool(wrapper.call(
+			"_migrate_reconnected_player",
+			old_peer_id,
+			migrated_peer_id,
+			"ClientReconnected",
+			PlayerCharacterRegistry.TANGO_ID
+		))
+		and host_route.get_player_for_peer(old_peer_id) == null
+		and host_route.get_player_for_peer(migrated_peer_id) == old_player
+		and old_player.global_position.is_equal_approx(old_position)
+		and host_route.get_player_for_peer(observer_peer_id) == observer_player
+		and observer_player.global_position.is_equal_approx(observer_position),
+		"仍在场的重连 peer 必须原位迁移节点，且不得重建或传送其他玩家。"
+	)
+	wrapper.call("_on_player_left", migrated_peer_id)
+	_expect(
+		host_route.get_player_for_peer(migrated_peer_id) == null
+		and host_route.get_player_for_peer(observer_peer_id) == observer_player
+		and observer_player.global_position.is_equal_approx(observer_position),
+		"player_left 只能移除离线 peer，并保留其他玩家实例与位置。"
+	)
+	var replacement_peer_id := migrated_peer_id + 1
+	_expect(
+		bool(wrapper.call(
+			"_migrate_reconnected_player",
+			migrated_peer_id,
+			replacement_peer_id,
+			"ClientRestored",
+			PlayerCharacterRegistry.TANGO_ID
+		)),
+		"已收到 player_left 的重连 peer 必须从保存姿态增量补建。"
+	)
+	var replacement := host_route.get_player_for_peer(replacement_peer_id)
+	_expect(
+		replacement != null
+		and replacement != old_player
+		and replacement.global_position.is_equal_approx(old_position)
+		and host_route.get_player_for_peer(observer_peer_id) == observer_player
+		and observer_player.global_position.is_equal_approx(observer_position),
+		"增量补建必须恢复离线玩家原位置，并保持未重连玩家完全不动。"
+	)
 
 
 func _build_first_move_delta(layout: Dictionary, state: Dictionary) -> Dictionary:
@@ -264,7 +489,7 @@ func _build_first_move_delta(layout: Dictionary, state: Dictionary) -> Dictionar
 	}
 
 
-func _test_host_start_without_character_confirmation() -> void:
+func _test_host_requires_character_confirmation() -> void:
 	var net_manager := NetManagerScript.new() as NetManagerStore
 	root.add_child(net_manager)
 	net_manager.net_role = NetManagerStore.NetRole.HOST
@@ -275,8 +500,18 @@ func _test_host_start_without_character_confirmation() -> void:
 	net_manager.confirmed_character_peers = {}
 	net_manager.host_start_game()
 	_expect(
+		net_manager.connection_state == NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY,
+		"P3 Host 必须阻止尚未全员确认角色的房间开始加载。"
+	)
+	net_manager.connected_player_characters = {
+		1: PlayerCharacterRegistry.WEISHIDAIER_ID,
+		2: PlayerCharacterRegistry.TANGO_ID,
+	}
+	net_manager.confirmed_character_peers = {1: true, 2: true}
+	net_manager.host_start_game()
+	_expect(
 		net_manager.connection_state == NetManagerStore.ConnectionState.LOADING_GAME,
-		"P3 Host 必须能在没有角色确认的情况下开始加载。"
+		"P3 Host 必须在全员确认角色后开始加载。"
 	)
 	root.remove_child(net_manager)
 	net_manager.free()

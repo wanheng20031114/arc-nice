@@ -257,7 +257,7 @@ theme_override_colors/font_color = Color(0.62, 0.71, 0.65, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "P1 / P2 进入角色选择，P3 直接进入路线框架"
+text = "P1 / P2 / P3 均先选择角色，再进入对应测试场景"
 horizontal_alignment = 1
 
 [node name="Divider" type="ColorRect" parent="Root/Center/Panel/PanelMargin/Layout"]
@@ -448,7 +448,7 @@ theme_override_colors/font_color = Color(0.82, 0.86, 0.79, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "从地图正中心出发，在随机生成的稀疏路线中自由往返；仅房主可消耗行动力推动队伍位置。"
+text = "选择角色后从地图正中心进入大尺度世界，可自由移动并由镜头跟随探索随机生成的稀疏路线；信息集中显示于 HUD，仅房主可消耗行动力推动队伍位置。"
 autowrap_mode = 2
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content"]
