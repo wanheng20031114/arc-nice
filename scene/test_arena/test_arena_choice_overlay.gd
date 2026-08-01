@@ -6,8 +6,10 @@ signal selection_closed
 
 const ARENA_P1_ID: StringName = &"p1"
 const ARENA_P2_ID: StringName = &"p2"
+const ARENA_P3_ID: StringName = &"p3"
 const P1_TAB_INDEX := 0
 const P2_TAB_INDEX := 1
+const P3_TAB_INDEX := 2
 const OPEN_FADE_DURATION := 0.14
 const OPEN_PANEL_DURATION := 0.18
 
@@ -20,6 +22,9 @@ const OPEN_PANEL_DURATION := 0.18
 )
 @onready var p2_enter_button: Button = (
 	$Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton
+)
+@onready var p3_enter_button: Button = (
+	$Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content/EnterButton
 )
 
 var open_tween: Tween
@@ -68,6 +73,10 @@ func _on_p2_pressed() -> void:
 	_choose_arena(ARENA_P2_ID)
 
 
+func _on_p3_pressed() -> void:
+	_choose_arena(ARENA_P3_ID)
+
+
 func _on_back_pressed() -> void:
 	close()
 
@@ -97,16 +106,25 @@ func _hide_overlay(emit_closed_signal: bool) -> void:
 
 
 func _select_tab(arena_id: StringName) -> void:
-	tabs.current_tab = P2_TAB_INDEX if arena_id == ARENA_P2_ID else P1_TAB_INDEX
+	match arena_id:
+		ARENA_P2_ID:
+			tabs.current_tab = P2_TAB_INDEX
+		ARENA_P3_ID:
+			tabs.current_tab = P3_TAB_INDEX
+		_:
+			tabs.current_tab = P1_TAB_INDEX
 
 
 func _focus_current_action() -> void:
 	if not is_open():
 		return
-	if tabs.current_tab == P2_TAB_INDEX:
-		p2_enter_button.grab_focus()
-	else:
-		p1_enter_button.grab_focus()
+	match tabs.current_tab:
+		P2_TAB_INDEX:
+			p2_enter_button.grab_focus()
+		P3_TAB_INDEX:
+			p3_enter_button.grab_focus()
+		_:
+			p1_enter_button.grab_focus()
 
 
 func _prepare_open_animation() -> void:

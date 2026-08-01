@@ -10,11 +10,16 @@ const TEST_GRASS_ARENA_SCENE_PATH := (
 const TEST_GRASS_ARENA_P2_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena_p2.tscn"
 )
+const TEST_ROGUE_ROUTE_P3_SCENE_PATH := (
+	"res://scene/test_arena/test_rogue_route_p3.tscn"
+)
 const TEST_ARENA_P1_ID := &"p1"
 const TEST_ARENA_P2_ID := &"p2"
+const TEST_ARENA_P3_ID := &"p3"
 const TEST_ARENA_SCENE_PATHS := {
 	TEST_ARENA_P1_ID: TEST_GRASS_ARENA_SCENE_PATH,
 	TEST_ARENA_P2_ID: TEST_GRASS_ARENA_P2_SCENE_PATH,
+	TEST_ARENA_P3_ID: TEST_ROGUE_ROUTE_P3_SCENE_PATH,
 }
 const FOCUS_DEFAULT: StringName = &"singleplayer"
 const FOCUS_ENCYCLOPEDIA: StringName = &"encyclopedia"
@@ -144,6 +149,10 @@ func _on_test_arena_selected(arena_id: StringName) -> void:
 		push_error("Main menu received an invalid test arena: %s" % arena_id)
 		return
 	pending_test_arena_id = arena_id
+	if arena_id == TEST_ARENA_P3_ID:
+		pending_singleplayer_destination = SingleplayerDestination.TEST_ARENA
+		_begin_singleplayer_load(TEST_ROGUE_ROUTE_P3_SCENE_PATH)
+		return
 	_open_singleplayer_character_selection(SingleplayerDestination.TEST_ARENA)
 
 
@@ -163,11 +172,15 @@ func _on_character_confirmed(character_id: StringName) -> void:
 		push_error("Main menu received an invalid character selection: %s" % character_id)
 		return
 	run_state.begin_new_run(character_id)
+	_begin_singleplayer_load(_get_pending_singleplayer_scene_path())
+
+
+func _begin_singleplayer_load(scene_path: String) -> void:
 	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 	if load_coordinator != null and load_coordinator.has_method("begin_singleplayer"):
-		load_coordinator.call("begin_singleplayer", _get_pending_singleplayer_scene_path())
+		load_coordinator.call("begin_singleplayer", scene_path)
 		return
-	get_tree().change_scene_to_file(_get_pending_singleplayer_scene_path())
+	get_tree().change_scene_to_file(scene_path)
 
 
 func _get_pending_singleplayer_scene_path() -> String:

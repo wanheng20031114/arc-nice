@@ -1,0 +1,503 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scene/test_arena/test_rogue_route_p3.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_board.tscn" id="2_board"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/p3_generation_config.tres" id="3_config"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sidebar"]
+bg_color = Color(0.035, 0.058, 0.065, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.35, 0.36, 0.82)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.34)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge"]
+content_margin_left = 14.0
+content_margin_top = 7.0
+content_margin_right = 14.0
+content_margin_bottom = 7.0
+bg_color = Color(0.08, 0.15, 0.16, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.34, 0.72, 0.7, 0.72)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_regenerate_normal"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.075, 0.14, 0.14, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.61, 0.58, 0.9)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_regenerate_hover"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.1, 0.21, 0.2, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.92, 0.84, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_regenerate_pressed"]
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+bg_color = Color(0.055, 0.12, 0.12, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.8, 0.74, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_disabled"]
+content_margin_left = 14.0
+content_margin_top = 9.0
+content_margin_right = 14.0
+content_margin_bottom = 9.0
+bg_color = Color(0.04, 0.055, 0.057, 0.86)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.17, 0.22, 0.22, 0.72)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.94, 0.88, 0.61, 0.96)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_return_normal"]
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+bg_color = Color(0.055, 0.068, 0.07, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.28, 0.34, 0.33, 0.94)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_return_hover"]
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+bg_color = Color(0.11, 0.13, 0.12, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.72, 0.63, 0.37, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="TestRogueRouteP3" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+generation_config = ExtResource("3_config")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.016, 0.029, 0.034, 1)
+
+[node name="HeaderWash" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 116.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.025, 0.072, 0.078, 0.5)
+
+[node name="TopAccent" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 2.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.38, 0.84, 0.78, 0.68)
+
+[node name="Page" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 26
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 26
+theme_override_constants/margin_bottom = 18
+
+[node name="Layout" type="VBoxContainer" parent="Page"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Header" type="HBoxContainer" parent="Page/Layout"]
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleStack" type="VBoxContainer" parent="Page/Layout/Header"]
+layout_mode = 2
+theme_override_constants/separation = -1
+
+[node name="Overline" type="Label" parent="Page/Layout/Header/TitleStack"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.4, 0.78, 0.73, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "TEST SCENE · ROGUE ROUTE"
+
+[node name="Title" type="Label" parent="Page/Layout/Header/TitleStack"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.94, 0.96, 0.9, 1)
+theme_override_colors/font_outline_color = Color(0.01, 0.022, 0.025, 0.9)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 29
+text = "P3 · 肉鸽路线框架"
+
+[node name="Subtitle" type="Label" parent="Page/Layout/Header/TitleStack"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.53, 0.65, 0.62, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 12
+text = "从中心出发 · 共享小队位置 · 房主权威移动"
+
+[node name="HeaderSpacer" type="Control" parent="Page/Layout/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="ModeBadge" type="PanelContainer" parent="Page/Layout/Header"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge")
+
+[node name="Label" type="Label" parent="Page/Layout/Header/ModeBadge"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.68, 0.94, 0.88, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 13
+text = "P3 逻辑地图"
+
+[node name="Main" type="HBoxContainer" parent="Page/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 18
+
+[node name="RouteBoard" parent="Page/Layout/Main" instance=ExtResource("2_board")]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Sidebar" type="PanelContainer" parent="Page/Layout/Main"]
+custom_minimum_size = Vector2(282, 390)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_sidebar")
+
+[node name="SidebarMargin" type="MarginContainer" parent="Page/Layout/Main/Sidebar"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 16
+
+[node name="SidebarContent" type="VBoxContainer" parent="Page/Layout/Main/Sidebar/SidebarMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StatusHeading" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.72, 0.83, 0.79, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 12
+text = "共享小队状态"
+
+[node name="Stats" type="GridContainer" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent"]
+layout_mode = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 5
+columns = 2
+
+[node name="RoleTitle" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.42, 0.53, 0.51, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "权限"
+
+[node name="RoleValue" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.5, 0.91, 0.86, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 12
+text = "单人房主"
+text_overrun_behavior = 3
+
+[node name="CharacterTitle" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.42, 0.53, 0.51, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "队伍"
+
+[node name="CharacterValue" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.78, 0.84, 0.79, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 12
+text = "共享小队"
+text_overrun_behavior = 3
+
+[node name="ActionPointsTitle" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.42, 0.53, 0.51, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "行动力"
+
+[node name="ActionPointsValue" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.83, 0.4, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 20
+text = "—"
+
+[node name="SeedTitle" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.42, 0.53, 0.51, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "Seed"
+
+[node name="SeedValue" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.68, 0.76, 0.73, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "—"
+text_overrun_behavior = 3
+
+[node name="PositionTitle" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.42, 0.53, 0.51, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "位置"
+
+[node name="PositionValue" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/Stats"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.68, 0.76, 0.73, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "等待同步"
+text_overrun_behavior = 3
+
+[node name="Divider" type="ColorRect" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.28, 0.52, 0.5, 0.35)
+
+[node name="ContentOverline" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.42, 0.76, 0.7, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 10
+text = "CONTENT PLACEHOLDER"
+
+[node name="ContentTitle" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.93, 0.94, 0.84, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 20
+text = "等待路线数据"
+text_overrun_behavior = 3
+
+[node name="ContentBody" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.63, 0.71, 0.68, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 12
+text = "房主生成或同步路线后，这里会显示当前节点的占位信息。"
+autowrap_mode = 2
+
+[node name="ContentMeta" type="Label" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.39, 0.49, 0.47, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 10
+text = "尚未载入"
+autowrap_mode = 2
+
+[node name="RegenerateButton" type="Button" parent="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.94, 0.87, 1)
+theme_override_colors/font_hover_color = Color(0.91, 1, 0.96, 1)
+theme_override_colors/font_pressed_color = Color(0.91, 1, 0.96, 1)
+theme_override_colors/font_disabled_color = Color(0.34, 0.4, 0.39, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_regenerate_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_regenerate_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_regenerate_pressed")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_focus")
+text = "重新生成路线"
+
+[node name="Footer" type="HBoxContainer" parent="Page/Layout"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Hint" type="Label" parent="Page/Layout/Footer"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.49, 0.62, 0.59, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "点击发光的相邻节点并确认；每次移动消耗 1 AP，可沿连线自由往返。"
+vertical_alignment = 1
+text_overrun_behavior = 3
+
+[node name="StatusMessage" type="Label" parent="Page/Layout/Footer"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.53, 0.67, 0.64, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 11
+text = "准备路线图…"
+horizontal_alignment = 2
+vertical_alignment = 1
+text_overrun_behavior = 3
+
+[node name="ReturnButton" type="Button" parent="Page/Layout/Footer"]
+custom_minimum_size = Vector2(136, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.74, 0.79, 0.75, 1)
+theme_override_colors/font_hover_color = Color(0.96, 0.9, 0.69, 1)
+theme_override_colors/font_pressed_color = Color(0.96, 0.9, 0.69, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_return_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_return_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_return_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_focus")
+text = "返回主菜单"
+
+[node name="MoveConfirmation" type="ConfirmationDialog" parent="."]
+title = "确认移动"
+initial_position = 2
+size = Vector2i(460, 210)
+unresizable = true
+transient = true
+exclusive = true
+ok_button_text = "确认移动"
+cancel_button_text = "取消"
+
+[connection signal="node_pressed" from="Page/Layout/Main/RouteBoard" to="." method="_on_route_board_node_pressed"]
+[connection signal="pressed" from="Page/Layout/Main/Sidebar/SidebarMargin/SidebarContent/RegenerateButton" to="." method="_on_regenerate_button_pressed"]
+[connection signal="pressed" from="Page/Layout/Footer/ReturnButton" to="." method="_on_return_button_pressed"]
+[connection signal="canceled" from="MoveConfirmation" to="." method="_on_move_confirmation_canceled"]
+[connection signal="confirmed" from="MoveConfirmation" to="." method="_on_move_confirmation_confirmed"]

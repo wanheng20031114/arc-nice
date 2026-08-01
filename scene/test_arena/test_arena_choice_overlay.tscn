@@ -257,7 +257,7 @@ theme_override_colors/font_color = Color(0.62, 0.71, 0.65, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "选择要验证的流程，再进入角色选择"
+text = "P1 / P2 进入角色选择，P3 直接进入路线框架"
 horizontal_alignment = 1
 
 [node name="Divider" type="ColorRect" parent="Root/Center/Panel/PanelMargin/Layout"]
@@ -413,6 +413,73 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
 text = "进入 P2 单日流程"
 
+[node name="P3" type="MarginContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 4
+
+[node name="PageMargin" type="MarginContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3"]
+layout_mode = 2
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 2
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 2
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ModeTitle" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.7, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "P3 · 肉鸽路线框架"
+
+[node name="Description" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.82, 0.86, 0.79, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "从地图正中心出发，在随机生成的稀疏路线中自由往返；仅房主可消耗行动力推动队伍位置。"
+autowrap_mode = 2
+
+[node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.52, 0.68, 0.59, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
+text = "适合验证：节点生成、路线连接、群体位置与行动力交互"
+
+[node name="Spacer" type="Control" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content"]
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="EnterButton" type="Button" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.94, 0.79, 1)
+theme_override_colors/font_hover_color = Color(1, 0.97, 0.84, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.97, 0.84, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
+text = "进入 P3 肉鸽路线"
+
 [node name="Footer" type="HBoxContainer" parent="Root/Center/Panel/PanelMargin/Layout"]
 layout_mode = 2
 theme_override_constants/separation = 12
@@ -439,10 +506,11 @@ theme_override_colors/font_color = Color(0.42, 0.52, 0.46, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 11
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "切换 P1 / P2 标签查看说明  ·  Esc 返回"
+text = "切换 P1 / P2 / P3 标签查看说明  ·  Esc 返回"
 horizontal_alignment = 1
 
 [connection signal="tab_changed" from="Root/Center/Panel/PanelMargin/Layout/Tabs" to="." method="_on_tab_changed"]
 [connection signal="pressed" from="Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content/EnterButton" to="." method="_on_p1_pressed"]
 [connection signal="pressed" from="Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton" to="." method="_on_p2_pressed"]
+[connection signal="pressed" from="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content/EnterButton" to="." method="_on_p3_pressed"]
 [connection signal="pressed" from="Root/Center/Panel/PanelMargin/Layout/Footer/BackButton" to="." method="_on_back_pressed"]
