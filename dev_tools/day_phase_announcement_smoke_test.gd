@@ -70,11 +70,11 @@ func _test_scene_contract(announcement: DayPhaseAnnouncement) -> void:
 		"1152×648基准画布必须使用生成器的Noto黑体、2像素字距且不再模拟加粗。"
 	)
 	_expect(
-		title.label_settings.font_size == 160
+		title.label_settings.font_size == 140
 		and title.label_settings.outline_size == 0
 		and title.label_settings.shadow_size == 0
 		and title.label_settings.font_color == Color.WHITE,
-		"1152×648基准画布必须使用160号纯白字，并移除描边和投影。"
+		"1152×648基准画布必须使用140号纯白字，并移除描边和投影。"
 	)
 	_expect(
 		is_zero_approx(title.offset_top) and is_zero_approx(title.offset_bottom),
@@ -122,12 +122,12 @@ func _test_reference_screenshot_layout(baseline_announcement: DayPhaseAnnounceme
 		baseline_announcement.get_node("PresentationRoot/Title") as Label
 	)
 	_expect(
-		compact_title.label_settings.font_size == 77
+		compact_title.label_settings.font_size == 68
 		and compact_font_variation.spacing_glyph == 2,
-		"1074×313参考画面必须按生成器比例缩放为77号字和2像素字距。"
+		"1074×313参考画面必须按缩小后的比例使用68号字和2像素字距。"
 	)
 	_expect(
-		baseline_title.label_settings.font_size == 160,
+		baseline_title.label_settings.font_size == 140,
 		"不同视口的报幕字体资源必须彼此隔离，不能串改主画布字号。"
 	)
 	compact_announcement.queue_free()

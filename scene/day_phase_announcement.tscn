@@ -12,7 +12,7 @@ spacing_glyph = 2
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 resource_local_to_scene = true
 font = SubResource("FontVariation_title")
-font_size = 160
+font_size = 140
 font_color = Color(1, 1, 1, 1)
 shadow_size = 0
 

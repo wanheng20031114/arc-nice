@@ -5,7 +5,7 @@ signal announcement_started(display_text: String)
 signal announcement_finished(display_text: String)
 
 const PRESENTATION_DURATION_SECONDS := 3.0
-const MAIN_TEXT_HEIGHT_RATIO := 0.2472
+const MAIN_TEXT_HEIGHT_RATIO := 0.21605
 const MAIN_TEXT_BASE_SPACING_RATIO := 0.021875
 const MAIN_TEXT_MINIMUM_SPACING_RATIO := 0.002
 const MAIN_TEXT_SPACING_DECAY_RATE := 1.0

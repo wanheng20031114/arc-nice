@@ -32,6 +32,10 @@ func _run() -> void:
 	await process_frame
 	if day_preview:
 		arena.day_phase_announcement.show_day_phase(1, false)
+	else:
+		arena.day_phase_announcement.show_announcement(
+			arena.test_entry_announcement_text
+		)
 	await process_frame
 	await process_frame
 	var preview := root.get_texture().get_image()
