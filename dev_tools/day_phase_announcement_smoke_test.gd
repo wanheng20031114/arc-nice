@@ -19,6 +19,7 @@ func _run() -> void:
 	await process_frame
 
 	_test_scene_contract(announcement)
+	await _test_reference_screenshot_layout(announcement)
 	_test_text_formatting()
 	_test_presentation(announcement)
 	_test_phase_boundary_deduplication(announcement)
@@ -50,15 +51,23 @@ func _test_scene_contract(announcement: DayPhaseAnnouncement) -> void:
 	)
 	_expect(
 		font_variation != null
-		and is_equal_approx(font_variation.variation_embolden, 1.2)
-		and font_variation.spacing_glyph == 4,
-		"标题必须使用紧凑、加粗的现有中文字体变体。"
+		and font_variation.base_font.resource_path.ends_with(
+			"resources/font/NotoSansHans-Black.otf"
+		)
+		and is_zero_approx(font_variation.variation_embolden)
+		and font_variation.spacing_glyph == 2,
+		"1152×648基准画布必须使用生成器的Noto黑体、2像素字距且不再模拟加粗。"
 	)
 	_expect(
-		title.label_settings.font_size == 100
-		and title.label_settings.outline_size == 1
+		title.label_settings.font_size == 160
+		and title.label_settings.outline_size == 0
+		and title.label_settings.shadow_size == 0
 		and title.label_settings.font_color == Color.WHITE,
-		"1152×648基准画布必须使用100号纯白字和极细暗边。"
+		"1152×648基准画布必须使用160号纯白字，并移除描边和投影。"
+	)
+	_expect(
+		is_zero_approx(title.offset_top) and is_zero_approx(title.offset_bottom),
+		"标题必须严格在屏幕中线居中。"
 	)
 	_expect(
 		audio.stream != null
@@ -72,17 +81,43 @@ func _test_scene_contract(announcement: DayPhaseAnnouncement) -> void:
 
 func _test_text_formatting() -> void:
 	_expect(
-		DayPhaseAnnouncement.format_day_phase_text(1, false) == "第一日　白昼",
+		DayPhaseAnnouncement.format_day_phase_text(1, false) == "第一日 白昼",
 		"第一日白昼文案格式错误。"
 	)
 	_expect(
-		DayPhaseAnnouncement.format_day_phase_text(1, true) == "第一日　黑夜",
+		DayPhaseAnnouncement.format_day_phase_text(1, true) == "第一日 黑夜",
 		"第一日黑夜文案格式错误。"
 	)
 	_expect(
-		DayPhaseAnnouncement.format_day_phase_text(12, false) == "第十二日　白昼",
+		DayPhaseAnnouncement.format_day_phase_text(12, false) == "第十二日 白昼",
 		"两位数日期必须保持中文数字格式。"
 	)
+
+
+func _test_reference_screenshot_layout(baseline_announcement: DayPhaseAnnouncement) -> void:
+	var compact_viewport := SubViewport.new()
+	compact_viewport.size = Vector2i(1074, 313)
+	root.add_child(compact_viewport)
+	var compact_announcement := ANNOUNCEMENT_SCENE.instantiate() as DayPhaseAnnouncement
+	compact_viewport.add_child(compact_announcement)
+	await process_frame
+	var compact_title := compact_announcement.get_node("PresentationRoot/Title") as Label
+	var compact_font_variation := compact_title.label_settings.font as FontVariation
+	var baseline_title := (
+		baseline_announcement.get_node("PresentationRoot/Title") as Label
+	)
+	_expect(
+		compact_title.label_settings.font_size == 77
+		and compact_font_variation.spacing_glyph == 2,
+		"1074×313参考画面必须按生成器比例缩放为77号字和2像素字距。"
+	)
+	_expect(
+		baseline_title.label_settings.font_size == 160,
+		"不同视口的报幕字体资源必须彼此隔离，不能串改主画布字号。"
+	)
+	compact_announcement.queue_free()
+	compact_viewport.queue_free()
+	await process_frame
 
 
 func _test_presentation(announcement: DayPhaseAnnouncement) -> void:
@@ -115,20 +150,20 @@ func _test_phase_boundary_deduplication(
 	game.call("_announce_wave_phase_start", 2)
 	_expect(
 		announcement.presentation_count == baseline_count + 1
-		and announcement.current_text == "第一日　白昼",
+		and announcement.current_text == "第一日 白昼",
 		"同一白昼阶段只能在首波报幕一次。"
 	)
 	game.call("_announce_wave_phase_start", 3)
 	game.call("_announce_wave_phase_start", 4)
 	_expect(
 		announcement.presentation_count == baseline_count + 2
-		and announcement.current_text == "第一日　黑夜",
+		and announcement.current_text == "第一日 黑夜",
 		"黑夜只能在夜段首波报幕一次。"
 	)
 	game.call("_announce_wave_phase_start", 5)
 	_expect(
 		announcement.presentation_count == baseline_count + 3
-		and announcement.current_text == "第二日　白昼",
+		and announcement.current_text == "第二日 白昼",
 		"下一日首波必须显示新的白昼报幕。"
 	)
 	game.free()

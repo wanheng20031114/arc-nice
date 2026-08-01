@@ -1,6 +1,9 @@
 extends SceneTree
 
 const EXPORT_PRESETS_PATH := "res://export_presets.cfg"
+const REQUIRED_PRODUCTION_INCLUDE_FILTERS := [
+	"resources/font/*.txt",
+]
 const REQUIRED_PRODUCTION_FILTERS := [
 	"dev_tools/*",
 	"tmp/*",
@@ -49,9 +52,16 @@ func _validate_export_presets(config: ConfigFile) -> void:
 	for section in preset_sections:
 		var preset_name := String(config.get_value(section, "name", section))
 		var export_filter := String(config.get_value(section, "export_filter", ""))
+		var include_filter := String(config.get_value(section, "include_filter", ""))
 		var exclude_filter := String(config.get_value(section, "exclude_filter", ""))
 		if export_filter != "all_resources":
 			continue
+		for required_filter in REQUIRED_PRODUCTION_INCLUDE_FILTERS:
+			_expect(
+				_has_filter(include_filter, required_filter),
+				"All-resource export preset '%s' must include '%s' in production packages."
+				% [preset_name, required_filter]
+			)
 		for required_filter in REQUIRED_PRODUCTION_FILTERS:
 			_expect(
 				_has_filter(exclude_filter, required_filter),

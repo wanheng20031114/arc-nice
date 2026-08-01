@@ -5,10 +5,12 @@ signal announcement_started(display_text: String)
 signal announcement_finished(display_text: String)
 
 const PRESENTATION_DURATION_SECONDS := 3.5
-const BASELINE_VIEWPORT_HEIGHT := 648.0
-const BASELINE_FONT_SIZE := 100.0
-const MINIMUM_FONT_SIZE := 56
-const MAXIMUM_FONT_SIZE := 100
+const MAIN_TEXT_HEIGHT_RATIO := 0.2472
+const MAIN_TEXT_BASE_SPACING_RATIO := 0.021875
+const MAIN_TEXT_MINIMUM_SPACING_RATIO := 0.002
+const MAIN_TEXT_SPACING_DECAY_RATE := 1.0
+const MINIMUM_FONT_SIZE := 24
+const MINIMUM_HORIZONTAL_PADDING := 24.0
 const CHINESE_DIGITS: PackedStringArray = [
 	"零",
 	"一",
@@ -51,6 +53,7 @@ func show_announcement(display_text: String) -> void:
 		return
 	current_text = normalized_text
 	title_label.text = current_text
+	_update_font_size()
 	presentation_count += 1
 	animation_player.stop()
 	animation_player.play(&"show")
@@ -72,7 +75,7 @@ func is_presenting() -> bool:
 
 
 static func format_day_phase_text(day_number: int, is_night: bool) -> String:
-	return "第%s日　%s" % [
+	return "第%s日 %s" % [
 		_format_chinese_number(maxi(day_number, 1)),
 		"黑夜" if is_night else "白昼",
 	]
@@ -94,18 +97,43 @@ static func _format_chinese_number(value: int) -> String:
 func _update_font_size() -> void:
 	if title_label == null or title_label.label_settings == null:
 		return
-	var viewport_height := BASELINE_VIEWPORT_HEIGHT
+	var viewport_size := Vector2(1152.0, 648.0)
 	var viewport := get_viewport()
 	if viewport != null:
-		viewport_height = maxf(viewport.get_visible_rect().size.y, 1.0)
-	var responsive_size := roundi(
-		BASELINE_FONT_SIZE * viewport_height / BASELINE_VIEWPORT_HEIGHT
-	)
-	title_label.label_settings.font_size = clampi(
-		responsive_size,
+		viewport_size = viewport.get_visible_rect().size
+	viewport_size.x = maxf(viewport_size.x, 1.0)
+	viewport_size.y = maxf(viewport_size.y, 1.0)
+
+	var character_count := maxi(title_label.text.length(), 1)
+	var spacing_ratio := MAIN_TEXT_MINIMUM_SPACING_RATIO + (
+		MAIN_TEXT_BASE_SPACING_RATIO - MAIN_TEXT_MINIMUM_SPACING_RATIO
+	) * exp(-MAIN_TEXT_SPACING_DECAY_RATE * float(character_count - 1))
+	var font_variation := title_label.label_settings.font as FontVariation
+	if font_variation != null:
+		font_variation.spacing_glyph = maxi(1, roundi(viewport_size.x * spacing_ratio))
+
+	var responsive_size := maxi(
 		MINIMUM_FONT_SIZE,
-		MAXIMUM_FONT_SIZE
+		roundi(viewport_size.y * MAIN_TEXT_HEIGHT_RATIO)
 	)
+	var available_width := maxf(
+		viewport_size.x - MINIMUM_HORIZONTAL_PADDING * 2.0,
+		1.0
+	)
+	var title_font := title_label.label_settings.font
+	if title_font != null and not title_label.text.is_empty():
+		var measured_width := title_font.get_string_size(
+			title_label.text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			responsive_size
+		).x
+		if measured_width > available_width:
+			responsive_size = maxi(
+				MINIMUM_FONT_SIZE,
+				floori(float(responsive_size) * available_width / measured_width)
+			)
+	title_label.label_settings.font_size = responsive_size
 
 
 func _on_animation_finished(animation_name: StringName) -> void:

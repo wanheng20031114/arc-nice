@@ -1,23 +1,20 @@
 [gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scene/day_phase_announcement.gd" id="1_script"]
-[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="FontFile" uid="uid://4mguytg8qi1g" path="res://resources/font/NotoSansHans-Black.otf" id="2_font"]
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="3_dong"]
 
 [sub_resource type="FontVariation" id="FontVariation_title"]
+resource_local_to_scene = true
 base_font = ExtResource("2_font")
-variation_embolden = 1.2
-spacing_glyph = 4
+spacing_glyph = 2
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
+resource_local_to_scene = true
 font = SubResource("FontVariation_title")
-font_size = 100
+font_size = 160
 font_color = Color(1, 1, 1, 1)
-outline_size = 1
-outline_color = Color(0.035, 0.055, 0.075, 0.78)
-shadow_size = 3
-shadow_color = Color(0.015, 0.025, 0.04, 0.5)
-shadow_offset = Vector2(3, 4)
+shadow_size = 0
 
 [sub_resource type="Animation" id="Animation_reset"]
 resource_name = "RESET"
@@ -126,13 +123,13 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -48.0
+offset_top = 0.0
 offset_right = -24.0
-offset_bottom = -48.0
+offset_bottom = 0.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-text = "第一日　白昼"
+text = "第一日 白昼"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 vertical_alignment = 1

@@ -3,6 +3,10 @@ extends SceneTree
 const ARCHIVE_ARGUMENT_PREFIX := "--archive="
 const COLLECTIBLE_CONFIG_DIR := "res://resources/config/collectibles"
 const COLLECTIBLE_CONFIG_PREFIX := "collectible_"
+const REQUIRED_ARCHIVE_PATHS := [
+	"resources/font/NotoSansHans-Black-Apache-2.0.txt",
+	"resources/font/ResourceHanRounded-OFL.txt",
+]
 const FORBIDDEN_ARCHIVE_PREFIXES := [
 	"dev_tools/",
 	"tmp/",
@@ -117,6 +121,11 @@ func _validate_entry_is_production_safe(entry: String) -> void:
 
 func _validate_runtime_contract(entry_set: Dictionary) -> void:
 	_expect(entry_set.has("project.binary"), "Production export must contain project.binary.")
+	for required_path in REQUIRED_ARCHIVE_PATHS:
+		_expect(
+			entry_set.has(required_path),
+			"Production export is missing bundled font license: %s" % required_path
+		)
 	_expect(
 		entry_set.has("scene/main_menu.tscn") or entry_set.has("scene/main_menu.tscn.remap"),
 		"Production export must contain the main menu scene mapping."
