@@ -158,6 +158,7 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 )
 @export var auto_start_waves: bool = true
 @export var linglan_boss_enabled: bool = false
+@export var day_phase_announcements_enabled: bool = true
 
 @export_group("沙盒调试")
 @export var sandbox_free_building_enabled := false
@@ -178,6 +179,7 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 @onready var defeat_audio: AudioStreamPlayer = $DefeatAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
 @onready var wave_hud: WaveHUD = $WaveHUD
+@onready var day_phase_announcement: DayPhaseAnnouncement = $DayPhaseAnnouncement
 @onready var tower_defense_status_hud: TowerDefenseStatusHUD = $TowerDefenseStatusHUD
 @onready var tower_defense_minimap: TowerDefenseMinimap = $TowerDefenseMinimap
 @onready var oak_warehouse_panel: OakWarehousePanel = $OakWarehousePanel
@@ -246,6 +248,7 @@ var current_wave_defeated: int = 0
 var current_wave_escaped: int = 0
 var current_wave_resolved: int = 0
 var countdown_seconds: int = 0
+var _last_day_phase_announcement_key: StringName = &""
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
 var music_fade_tween: Tween = null
@@ -688,6 +691,23 @@ func _is_night_wave(wave_number: int) -> bool:
 
 func _get_day_number_for_wave(wave_number: int) -> int:
 	return day_cycle_config.get_day_number(wave_number)
+
+
+func _announce_wave_phase_start(wave_number: int) -> bool:
+	if not day_phase_announcements_enabled or day_phase_announcement == null:
+		return false
+	var safe_wave := maxi(wave_number, 1)
+	var wave_in_day := day_cycle_config.get_wave_in_day(safe_wave)
+	if wave_in_day not in [1, day_cycle_config.night_start_wave_in_day]:
+		return false
+	var is_night := day_cycle_config.is_night_wave(safe_wave)
+	var day_number := day_cycle_config.get_day_number(safe_wave)
+	var announcement_key := StringName("%d:%d" % [day_number, int(is_night)])
+	if announcement_key == _last_day_phase_announcement_key:
+		return false
+	_last_day_phase_announcement_key = announcement_key
+	day_phase_announcement.show_day_phase(day_number, is_night)
+	return true
 
 
 func supports_multiplayer_terrain_state() -> bool:
@@ -2559,12 +2579,16 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			state_timer.stop()
 			wave_state = WaveState.WAVE_ACTIVE
 			_apply_wave_start_lighting(maxi(current_wave_index + 1, 1))
+			var phase_announcement_started := _announce_wave_phase_start(
+				maxi(current_wave_index + 1, 1)
+			)
 			_set_local_merchants_active(false)
 			var wave_config := flow_step as WaveConfig
 			if wave_config != null:
 				_update_wave_music(wave_config)
 			_show_tower_defense_wave_progress()
-			wave_start_audio.play()
+			if not phase_announcement_started:
+				wave_start_audio.play()
 		WaveState.BOSS_INTRO:
 			state_timer.stop()
 			wave_state = WaveState.BOSS_INTRO
@@ -4309,6 +4333,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	_reset_player_wave_death_counts()
 	current_wave_index = _get_wave_number_for_step(wave_config) - 1
 	_apply_wave_start_lighting(current_wave_index + 1)
+	var phase_announcement_started := _announce_wave_phase_start(current_wave_index + 1)
 	state_timer.stop()
 	_set_merchant_active(false)
 	current_wave_spawned = 0
@@ -4322,7 +4347,8 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	current_wave_total = pending_enemy_configs.size()
 	_update_wave_music(wave_config)
 	_show_tower_defense_wave_progress()
-	wave_start_audio.play()
+	if not phase_announcement_started:
+		wave_start_audio.play()
 	_emit_multiplayer_flow_state(WaveState.WAVE_ACTIVE)
 
 	if current_wave_total <= 0:

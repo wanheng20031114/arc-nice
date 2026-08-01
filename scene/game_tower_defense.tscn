@@ -52,6 +52,7 @@
 [ext_resource type="Resource" path="res://resources/config/day_cycle/tower_defense_day_cycle.tres" id="53_day_cycle"]
 [ext_resource type="Script" path="res://scene/luoxi_special_game_coordinator.gd" id="54_luoxi_special_game"]
 [ext_resource type="Script" path="res://scene/plant_defense/orange_charging_aura_coordinator.gd" id="55_orange_aura"]
+[ext_resource type="PackedScene" path="res://scene/day_phase_announcement.tscn" id="56_day_announcement"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -318,6 +319,8 @@ position = Vector2(117, 367)
 [node name="CurrencyHUD" parent="." unique_id=912718684 instance=ExtResource("12_currency_hud")]
 
 [node name="WaveHUD" parent="." unique_id=1126268867 instance=ExtResource("14_wave_hud")]
+
+[node name="DayPhaseAnnouncement" parent="." instance=ExtResource("56_day_announcement")]
 
 [node name="TowerDefenseStatusHUD" parent="." unique_id=1073363921 instance=ExtResource("31_status_hud")]
 visible = false

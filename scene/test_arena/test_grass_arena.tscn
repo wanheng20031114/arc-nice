@@ -10,6 +10,7 @@ position = Vector2(0, 0)
 script = ExtResource("2_script")
 singleplayer_campaign = ExtResource("3_campaign")
 multiplayer_campaign = ExtResource("4_multiplayer_campaign")
+day_phase_announcements_enabled = false
 sandbox_free_building_enabled = true
 
 [node name="DayNightController" parent="." index="1"]

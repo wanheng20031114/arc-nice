@@ -16,10 +16,14 @@ const FORMAL_PROGRESSION := preload(
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
 
+@export var test_entry_announcement_text := "测试场景 P1"
+
 @onready var test_controls_hint: Label = $TestControlsHint/Hint
 
 var manual_night_enabled := false
 var _nearby_plant_destroy_scratch: Array[PlantDefense] = []
+var _test_entry_announcement_queued := false
+var _test_entry_announcement_shown := false
 
 
 func _ready() -> void:
@@ -32,6 +36,54 @@ func _ready() -> void:
 	manual_night_enabled = false
 	day_night_controller.set_night_factor_immediate(0.0)
 	_update_test_controls_hint()
+	_schedule_test_entry_announcement()
+
+
+func _on_runtime_activated() -> void:
+	super._on_runtime_activated()
+	_schedule_test_entry_announcement()
+
+
+func _schedule_test_entry_announcement() -> void:
+	if (
+		test_entry_announcement_text.strip_edges().is_empty()
+		or _test_entry_announcement_queued
+		or _test_entry_announcement_shown
+		or runtime_activation_deferred
+	):
+		return
+	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
+	if (
+		load_coordinator != null
+		and load_coordinator.has_method("is_loading")
+		and bool(load_coordinator.call("is_loading"))
+		and load_coordinator.has_signal(&"loading_finished")
+	):
+		var callback := Callable(self, "_on_game_loading_finished")
+		if not load_coordinator.is_connected(&"loading_finished", callback):
+			load_coordinator.connect(&"loading_finished", callback, CONNECT_ONE_SHOT)
+		_test_entry_announcement_queued = true
+		return
+	_test_entry_announcement_queued = true
+	call_deferred("_play_test_entry_announcement_once")
+
+
+func _on_game_loading_finished(_multiplayer_load: bool) -> void:
+	_test_entry_announcement_queued = false
+	_schedule_test_entry_announcement()
+
+
+func _play_test_entry_announcement_once() -> void:
+	_test_entry_announcement_queued = false
+	if (
+		_test_entry_announcement_shown
+		or test_entry_announcement_text.strip_edges().is_empty()
+		or runtime_activation_deferred
+		or day_phase_announcement == null
+	):
+		return
+	_test_entry_announcement_shown = true
+	day_phase_announcement.show_announcement(test_entry_announcement_text)
 
 
 ## P1 用于综合压力测试，扩大核心血量以避免长时间测试被过早中断。

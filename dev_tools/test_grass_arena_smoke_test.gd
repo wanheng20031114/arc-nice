@@ -55,6 +55,7 @@ func _run() -> void:
 
 	_test_campaign()
 	_test_arena_layout()
+	_test_entry_announcement()
 	_test_navigation()
 	await _test_plant_shortcut()
 	await _test_delete_plant_shortcut()
@@ -63,7 +64,52 @@ func _run() -> void:
 	arena.queue_free()
 	await process_frame
 	await process_frame
+	await _test_deferred_entry_announcement()
 	_finish()
+
+
+func _test_entry_announcement() -> void:
+	var announcement := arena.day_phase_announcement
+	_expect(not arena.day_phase_announcements_enabled, "P1必须禁用正式昼夜阶段报幕。")
+	_expect(
+		announcement != null
+		and arena.test_entry_announcement_text == "测试场景 P1"
+		and announcement.current_text == "测试场景 P1"
+		and announcement.presentation_count == 1
+		and announcement.is_presenting(),
+		"P1直启后必须且只能播放一次“测试场景 P1”报幕。"
+	)
+
+
+func _test_deferred_entry_announcement() -> void:
+	var deferred_arena := ARENA_SCENE.instantiate() as TestGrassArena
+	deferred_arena.auto_start_waves = false
+	deferred_arena.defer_runtime_activation()
+	root.add_child(deferred_arena)
+	await process_frame
+	await process_frame
+	_expect(
+		deferred_arena.day_phase_announcement.presentation_count == 0,
+		"P1加载尚未完成时不得在遮罩后提前播放报幕。"
+	)
+	deferred_arena.activate_runtime()
+	await process_frame
+	await process_frame
+	_expect(
+		deferred_arena.day_phase_announcement.presentation_count == 1
+		and deferred_arena.day_phase_announcement.current_text == "测试场景 P1",
+		"P1运行时激活后必须播放一次入场报幕。"
+	)
+	deferred_arena.activate_runtime()
+	await process_frame
+	_expect(
+		deferred_arena.day_phase_announcement.presentation_count == 1,
+		"重复激活P1运行时不得重播入场报幕。"
+	)
+	deferred_arena.day_phase_announcement.hide_announcement()
+	deferred_arena.queue_free()
+	await process_frame
+	await process_frame
 
 
 func _test_campaign() -> void:

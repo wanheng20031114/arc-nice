@@ -32,12 +32,22 @@ func _run() -> void:
 
 	_test_campaign_contract()
 	_test_inherited_arena_and_interlude()
+	_test_entry_announcement_disabled()
 	await _test_one_kill_completes_day()
 
 	current_scene = null
 	arena.queue_free()
 	await _wait_frames(3)
 	_finish()
+
+
+func _test_entry_announcement_disabled() -> void:
+	_expect(
+		arena.test_entry_announcement_text.is_empty()
+		and not arena.day_phase_announcements_enabled
+		and arena.day_phase_announcement.presentation_count == 0,
+		"P2继承P1时不得误播“测试场景 P1”报幕。"
+	)
 
 
 func _test_campaign_contract() -> void:
