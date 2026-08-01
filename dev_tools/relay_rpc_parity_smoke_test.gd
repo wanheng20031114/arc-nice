@@ -153,6 +153,7 @@ func _run() -> void:
 		"host_sent_at:float",
 		"buff_active:bool",
 		"request_id:int",
+		"auto_fire_charge_sequence:int",
 	]:
 		_expect_rpc_signature_contains(
 			main_rpcs,
@@ -213,10 +214,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 30,
-		"Tango电能涌动、三炮齐射、持续瞄准、四种游戏模式与房间容量同步要求协议v30。"
+		NetConstants.PROTOCOL_VERSION == 31,
+		"Tango电涌弹幕序列、被动瞄准降频、四种游戏模式与房间容量同步要求协议v31。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v30 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v31 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -255,7 +256,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v30 hosts must accept exactly v30 and reject v29."
+		"Protocol v31 hosts must accept exactly v31 and reject v30."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -322,11 +323,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 30")
+		and relay_source.contains("const PROTOCOL_VERSION := 31")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v30, accept the room capacity, and provision "
+			"Relay server must declare v31, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)
@@ -457,7 +458,7 @@ func _test_tango_electric_surge_authority_source() -> void:
 	_expect(
 		compact_source.contains("varorigin:=player_node.global_position")
 		and compact_source.contains(
-			"player_node.call(\"try_start_authoritative_electric_surge\",activation_id,origin)"
+			"player_node.call(\"try_start_authoritative_electric_surge\",activation_id,origin,auto_fire_charge_sequence)"
 		)
 		and compact_source.contains(
 			"_active_tango_electric_surges_by_peer[peer_id]={"
@@ -472,7 +473,7 @@ func _test_tango_electric_surge_authority_source() -> void:
 			"_map_host_timestamp_to_client_time(host_sent_at,false)"
 		)
 		and compact_source.contains(
-			"player_node.call(\"play_remote_electric_surge_started\",activation_id,origin,remaining,false)"
+			"player_node.call(\"play_remote_electric_surge_started\",activation_id,origin,remaining,false,auto_fire_charge_sequence)"
 		),
 		"Electric Surge recovery must use Host remaining time without poisoning clock offset."
 	)

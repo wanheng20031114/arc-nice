@@ -25,9 +25,16 @@ func _ready() -> void:
 
 
 func set_cooldown_progress(progress: float, ready_state: bool) -> void:
-	cooldown_progress = clampf(progress, 0.0, 1.0)
+	var next_progress := clampf(progress, 0.0, 1.0)
+	if is_equal_approx(cooldown_progress, next_progress) and is_ready == ready_state:
+		return
+	cooldown_progress = next_progress
 	is_ready = ready_state
-	queue_redraw()
+	# Electric Surge owns the complete fill and flash colour. Keep the ordinary
+	# value current for the frame where the buff ends, but let the authored flash
+	# animation remain the only redraw source while the empowered visual is active.
+	if not empowered_active:
+		queue_redraw()
 
 
 func set_empowered_active(active: bool) -> void:

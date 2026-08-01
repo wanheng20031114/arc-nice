@@ -594,8 +594,8 @@ func _verify_linglan_skill1_reuse() -> void:
 		reused.direction == Vector2.RIGHT
 		and reused.damage == 50
 		and is_equal_approx(reused.speed, 300.0)
-		and is_equal_approx(reused.max_lifetime, 2.0)
-		and is_equal_approx(reused.remaining_lifetime, 2.0),
+		and is_equal_approx(reused.max_lifetime, 1.2)
+		and is_equal_approx(reused.remaining_lifetime, 1.2),
 		"Reused Sakura bullets must restore authored direction, damage, speed, and lifetime."
 	)
 	_expect(

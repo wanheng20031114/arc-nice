@@ -14,7 +14,9 @@ extends RefCounted
 ## 输入流中同步松键后的持续瞄准。
 ## v30：Tango 新增 Host 权威的“电能涌动”固定区域、8 秒强化状态与中途加入
 ## 重放；敌人状态快照 bit16 表示永久电元素附着。
-const PROTOCOL_VERSION := 30
+## v31：电能涌动可靠事件绑定自动弹幕序列，技能结束后不会被跨信道迟到齐射
+## 重新拉起；无按键的鼠标被动瞄准改为变化即时发送与6帧保活。
+const PROTOCOL_VERSION := 31
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

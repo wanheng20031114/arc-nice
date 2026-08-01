@@ -84,7 +84,8 @@ func net_tango_electric_surge_started(
 	remaining_seconds_at_send: float,
 	host_sent_at: float,
 	buff_active: bool,
-	request_id: int
+	request_id: int,
+	auto_fire_charge_sequence: int
 ) -> void:
 	pass
 

@@ -876,6 +876,10 @@ func _test_laser_bullet_scene_and_damage() -> void:
 		"The bullet must use only explicit ShapeCast sweeps against world and enemy layers."
 	)
 	_expect(
+		TangoLaserBullet.empty_sweep_fast_path_enabled,
+		"Tango's allocation-free empty-sweep path must be enabled in production."
+	)
+	_expect(
 		_count_point_lights(bullet) == 0
 		and bullet.find_child("ProjectileHalo", true, false) == null
 		and bullet.find_child("EmissionOverlay", true, false) == null,
@@ -895,6 +899,34 @@ func _test_laser_bullet_scene_and_damage() -> void:
 				"Laser frame %d must remain a compact native 24x8 line projectile."
 				% frame_index
 			)
+
+	TangoLaserBullet.reset_sweep_performance_metrics()
+	TangoLaserBullet.set_sweep_performance_metrics_enabled(true)
+	var empty_path_bullet := (
+		TANGO_LASER_BULLET_SCENE.instantiate() as TangoLaserBullet
+	)
+	empty_path_bullet.set_physics_process(false)
+	empty_path_bullet.setup(Vector2.RIGHT, 8, false)
+	empty_path_bullet.global_position = Vector2(0, -64)
+	test_root.add_child(empty_path_bullet)
+	await physics_frame
+	empty_path_bullet.call("_physics_process", 0.05)
+	var empty_path_metrics := TangoLaserBullet.get_sweep_performance_metrics()
+	_expect(
+		empty_path_bullet.global_position.is_equal_approx(Vector2(24, -64))
+		and empty_path_bullet.pool_active
+		and int(empty_path_metrics.get("sweep_calls", 0)) == 1
+		and int(empty_path_metrics.get("empty_collision_calls", 0)) == 1
+		and int(empty_path_metrics.get("fast_path_calls", 0)) == 1
+		and int(empty_path_metrics.get("hit_collection_calls", 0)) == 0,
+		(
+			"An empty Tango sweep must preserve exact motion while bypassing all "
+			+ "temporary hit-collection work."
+		)
+	)
+	TangoLaserBullet.set_sweep_performance_metrics_enabled(false)
+	empty_path_bullet.retire()
+	await process_frame
 
 	var enemy := _spawn_bullet_enemy(Vector2(32, 0))
 	bullet.set_physics_process(false)

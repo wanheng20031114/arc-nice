@@ -45,7 +45,9 @@ static func is_cache_ready() -> bool:
 
 static func get_config_paths() -> Array[String]:
 	var paths: Array[String] = []
-	for file_name in DirAccess.get_files_at(CONFIG_DIR):
+	# ResourceLoader preserves editor-visible resource names after text resources
+	# are remapped to binary files in exported PCK/ZIP packages.
+	for file_name in ResourceLoader.list_directory(CONFIG_DIR):
 		if file_name.get_extension() != "tres":
 			continue
 		if not file_name.begins_with(CONFIG_PREFIX):

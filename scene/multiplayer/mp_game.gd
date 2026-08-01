@@ -308,6 +308,7 @@ var _has_sent_input: bool = false
 var _last_sent_move_input: Vector2 = Vector2.ZERO
 var _last_sent_shoot_input: Vector2 = Vector2.ZERO
 var _input_frames_since_last_send: int = _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
+var _client_shoot_input_was_passive_tango_aim := false
 var _local_dash_request_sequence: int = 0
 var _pending_dash_request_sequence: int = 0
 var _pending_dash_direction: Vector2 = Vector2.ZERO
@@ -3142,7 +3143,8 @@ func _send_active_tango_electric_surges_to_peer(target_peer_id: int) -> void:
 			remaining_seconds,
 			now,
 			buff_active,
-			int(record.get("request_id", 1))
+			int(record.get("request_id", 1)),
+			int(record.get("charge_sequence", 0))
 		)
 
 
@@ -3946,11 +3948,13 @@ func _client_send_input_if_needed(buttons: int) -> void:
 		player_node = game.player
 	if player_node == null:
 		return
+	_client_shoot_input_was_passive_tango_aim = false
 	var shoot_input := (
 		Vector2.ZERO
 		if player_node.are_combat_actions_locked()
 		else _get_client_shoot_input()
 	)
+	var uses_passive_tango_mouse_aim := _client_shoot_input_was_passive_tango_aim
 	if player_node.are_combat_actions_locked():
 		buttons &= ~INPUT_BUTTON_RELOAD
 	if player_node.is_dead:
@@ -3965,10 +3969,11 @@ func _client_send_input_if_needed(buttons: int) -> void:
 	var keepalive_due := (
 		_input_frames_since_last_send >= _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
 	)
-	var active_input_state := (
-		move_input != Vector2.ZERO
-		or shoot_input != Vector2.ZERO
-		or player_node.velocity.length_squared() > INPUT_CHANGE_EPSILON
+	var active_input_state := _is_client_input_state_active(
+		move_input,
+		shoot_input,
+		player_node.velocity,
+		uses_passive_tango_mouse_aim
 	)
 	if not input_changed and not keepalive_due and buttons == 0 and not active_input_state:
 		return
@@ -3997,16 +4002,35 @@ func _get_client_shoot_input() -> Vector2:
 		return shoot_input
 	if game == null or game.player == null:
 		return Vector2.ZERO
-	var uses_passive_tango_mouse_aim := (
-		game.player.has_method("uses_passive_tango_mouse_aim")
-		and bool(game.player.call("uses_passive_tango_mouse_aim"))
-	)
+	var uses_passive_tango_mouse_aim := _uses_passive_tango_mouse_aim(game.player)
 	if (
 		not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 		and not uses_passive_tango_mouse_aim
 	):
 		return Vector2.ZERO
+	_client_shoot_input_was_passive_tango_aim = uses_passive_tango_mouse_aim
 	return game.player.global_position.direction_to(game.player.get_global_mouse_position())
+
+
+func _uses_passive_tango_mouse_aim(player_node: Player) -> bool:
+	return (
+		player_node != null
+		and player_node.has_method("uses_passive_tango_mouse_aim")
+		and bool(player_node.call("uses_passive_tango_mouse_aim"))
+	)
+
+
+func _is_client_input_state_active(
+	move_input: Vector2,
+	shoot_input: Vector2,
+	velocity: Vector2,
+	uses_passive_tango_mouse_aim: bool
+) -> bool:
+	return (
+		move_input != Vector2.ZERO
+		or (shoot_input != Vector2.ZERO and not uses_passive_tango_mouse_aim)
+		or velocity.length_squared() > INPUT_CHANGE_EPSILON
+	)
 
 
 func _client_interpolate_entities() -> void:
@@ -4741,11 +4765,15 @@ func _apply_authoritative_tango_electric_surge_request(
 	var activation_id := int(
 		_tango_electric_surge_sequences_by_peer.get(peer_id, 0)
 	) + 1
+	var auto_fire_charge_sequence := int(
+		_tango_charge_sequences_by_peer.get(peer_id, 0)
+	) + 1
 	var origin := player_node.global_position
 	if not bool(player_node.call(
 		"try_start_authoritative_electric_surge",
 		activation_id,
-		origin
+		origin,
+		auto_fire_charge_sequence
 	)):
 		return false
 	# A successful surge owns Tango's firing state for its complete lifetime. Retire
@@ -4757,9 +4785,6 @@ func _apply_authoritative_tango_electric_surge_request(
 	# Automatic volleys still use the established projectile protocol. Allocate a
 	# fresh charge sequence without manufacturing a synthetic input request so Host
 	# registration and client de-duplication share one activation-owned identity.
-	var auto_fire_charge_sequence := int(
-		_tango_charge_sequences_by_peer.get(peer_id, 0)
-	) + 1
 	_tango_charge_sequences_by_peer[peer_id] = auto_fire_charge_sequence
 	var started_at := _get_net_time()
 	var buff_active := bool(player_node.call("is_electric_surge_active"))
@@ -4782,6 +4807,7 @@ func _apply_authoritative_tango_electric_surge_request(
 			started_at,
 			buff_active,
 			request_id,
+			auto_fire_charge_sequence,
 		]
 	)
 	return true
@@ -4795,7 +4821,8 @@ func net_tango_electric_surge_started(
 	remaining_seconds_at_send: float,
 	host_sent_at: float,
 	buff_active: bool,
-	request_id: int
+	request_id: int,
+	auto_fire_charge_sequence: int
 ) -> void:
 	if game == null:
 		return
@@ -4809,6 +4836,7 @@ func net_tango_electric_surge_started(
 		peer_id <= 0
 		or activation_id <= 0
 		or request_id <= 0
+		or auto_fire_charge_sequence <= 0
 		or not _is_finite_vector2(origin)
 		or not is_finite(remaining_seconds_at_send)
 		or not is_finite(host_sent_at)
@@ -4833,6 +4861,10 @@ func net_tango_electric_surge_started(
 		# reported it inactive, an older recovery state must never reactivate it.
 		buff_active = buff_active and bool(recovery_record.get("buff_active", true))
 		recovery_record["buff_active"] = buff_active
+		recovery_record["charge_sequence"] = maxi(
+			int(recovery_record.get("charge_sequence", 0)),
+			auto_fire_charge_sequence
+		)
 		_active_tango_electric_surges_by_peer[peer_id] = recovery_record
 	var remaining := clampf(
 		remaining_seconds_at_send,
@@ -4863,7 +4895,8 @@ func net_tango_electric_surge_started(
 				activation_id,
 				origin,
 				remaining,
-				false
+				false,
+				auto_fire_charge_sequence
 			)
 		elif _is_valid_tango_player(player_node):
 			player_node.call("cancel_remote_electric_surge", activation_id)
@@ -4875,12 +4908,17 @@ func net_tango_electric_surge_started(
 		int(_tango_electric_surge_sequences_by_peer.get(peer_id, 0)),
 		activation_id
 	)
+	_tango_charge_sequences_by_peer[peer_id] = maxi(
+		int(_tango_charge_sequences_by_peer.get(peer_id, 0)),
+		auto_fire_charge_sequence
+	)
 	_active_tango_electric_surges_by_peer[peer_id] = {
 		"activation_id": activation_id,
 		"origin": origin,
 		"remaining_seconds_at_send": remaining_seconds_at_send,
 		"host_sent_at": host_sent_at,
 		"request_id": request_id,
+		"charge_sequence": auto_fire_charge_sequence,
 		"buff_active": buff_active,
 		"owner_disconnected": not _is_valid_tango_player(player_node),
 	}
@@ -4898,7 +4936,8 @@ func net_tango_electric_surge_started(
 			activation_id,
 			origin,
 			remaining,
-			false
+			false,
+			auto_fire_charge_sequence
 		)
 
 

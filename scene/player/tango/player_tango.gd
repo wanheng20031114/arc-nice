@@ -73,6 +73,8 @@ var _unit_converge_start_rotations: Array[float] = []
 var _unit_return_elapsed := 0.0
 var _unit_return_starts: Array[Vector2] = []
 var _unit_return_start_rotations: Array[float] = []
+var _unit_fire_layout_ready := false
+var _unit_fire_layout_direction := Vector2.RIGHT
 var _charge_elapsed := 0.0
 var _charge_direction := Vector2.RIGHT
 var _local_charge_input_active := false
@@ -97,6 +99,7 @@ var _electric_surge_activation_id := 0
 var _electric_surge_last_seen_activation_id := 0
 var _electric_surge_origin := Vector2.ZERO
 var _electric_surge_auto_fire_activation_id := 0
+var _electric_surge_auto_fire_charge_sequence := 0
 var _electric_surge_finished_barrage_sequence := 0
 
 
@@ -157,7 +160,8 @@ func _try_use_skill1() -> bool:
 
 func try_start_authoritative_electric_surge(
 	activation_id: int,
-	origin: Vector2
+	origin: Vector2,
+	auto_fire_charge_sequence: int = 0
 ) -> bool:
 	if (
 		activation_id <= _electric_surge_last_seen_activation_id
@@ -174,7 +178,8 @@ func try_start_authoritative_electric_surge(
 		activation_id,
 		origin,
 		ELECTRIC_SURGE_DURATION,
-		true
+		true,
+		auto_fire_charge_sequence
 	)
 	if not _spawn_authoritative_electric_surge_field(activation_id, origin):
 		# Field creation is part of the authoritative transaction. Restore a usable
@@ -194,7 +199,8 @@ func play_remote_electric_surge_started(
 	activation_id: int,
 	origin: Vector2,
 	remaining_seconds: float,
-	spawn_visual: bool = true
+	spawn_visual: bool = true,
+	auto_fire_charge_sequence: int = 0
 ) -> void:
 	if (
 		activation_id <= 0
@@ -211,6 +217,11 @@ func play_remote_electric_surge_started(
 	if _electric_surge_active:
 		if activation_id != _electric_surge_activation_id:
 			return
+		if auto_fire_charge_sequence > 0:
+			_electric_surge_auto_fire_charge_sequence = maxi(
+				_electric_surge_auto_fire_charge_sequence,
+				auto_fire_charge_sequence
+			)
 		# A duplicate/recovery snapshot may shorten stale local time, but must never
 		# extend an already-running replica when reliable packets are reordered.
 		if (
@@ -236,7 +247,8 @@ func play_remote_electric_surge_started(
 		activation_id,
 		origin,
 		safe_remaining,
-		false
+		false,
+		auto_fire_charge_sequence
 	)
 	if (
 		safe_remaining
@@ -286,7 +298,8 @@ func _begin_electric_surge(
 	activation_id: int,
 	origin: Vector2,
 	duration: float,
-	authoritative: bool
+	authoritative: bool,
+	auto_fire_charge_sequence: int = 0
 ) -> void:
 	_electric_surge_active = true
 	_electric_surge_authoritative = authoritative
@@ -296,6 +309,10 @@ func _begin_electric_surge(
 		activation_id
 	)
 	_electric_surge_origin = origin
+	_electric_surge_auto_fire_charge_sequence = maxi(
+		auto_fire_charge_sequence,
+		0
+	)
 	if _casting_state == CastingState.CHARGING:
 		_local_charge_input_active = false
 		_cancel_charge_visual()
@@ -430,7 +447,10 @@ func _clear_electric_surge_state() -> void:
 	if ending_activation_id == _electric_surge_auto_fire_activation_id:
 		_electric_surge_finished_barrage_sequence = maxi(
 			_electric_surge_finished_barrage_sequence,
-			_latest_remote_action_sequence
+			maxi(
+				_latest_remote_action_sequence,
+				_electric_surge_auto_fire_charge_sequence
+			)
 		)
 	if electric_surge_duration_timer != null:
 		electric_surge_duration_timer.stop()
@@ -439,6 +459,7 @@ func _clear_electric_surge_state() -> void:
 	_electric_surge_authoritative = false
 	_electric_surge_activation_id = 0
 	_electric_surge_origin = Vector2.ZERO
+	_electric_surge_auto_fire_charge_sequence = 0
 	_refresh_electric_surge_research_defense()
 	if electric_surge_audio != null:
 		electric_surge_audio.stop()
@@ -1143,13 +1164,15 @@ func _update_unit_convergence(delta: float) -> void:
 		1.0
 	)
 	var eased_progress := progress * progress * (3.0 - 2.0 * progress)
-	var targets := _get_unit_fire_positions(_barrage_direction)
 	var target_rotation := _get_unit_fire_rotation(_barrage_direction)
 	for index in _casting_unit_sprites.size():
 		var start_position := _unit_converge_starts[index]
 		var unit := _casting_unit_sprites[index]
 		unit.position = _round_vector(
-			start_position.lerp(targets[index], eased_progress)
+			start_position.lerp(
+				_get_unit_fire_position(_barrage_direction, index),
+				eased_progress
+			)
 		)
 		unit.rotation = lerp_angle(
 			_unit_converge_start_rotations[index],
@@ -1205,13 +1228,12 @@ func _spawn_authoritative_tango_volley() -> bool:
 		return false
 	var projectiles: Array[Node] = []
 	var spawn_positions := PackedVector2Array()
-	var fire_positions := _get_unit_fire_positions(_barrage_direction)
+	var uses_registered_pool := (
+		spawn_parent.has_method("has_session_object_pool_scene")
+		and bool(spawn_parent.call("has_session_object_pool_scene", LASER_BULLET_SCENE))
+	)
 	for unit_index in range(_casting_unit_sprites.size()):
 		var bullet: TangoLaserBullet = null
-		var uses_registered_pool := (
-			spawn_parent.has_method("has_session_object_pool_scene")
-			and bool(spawn_parent.call("has_session_object_pool_scene", LASER_BULLET_SCENE))
-		)
 		if uses_registered_pool:
 			bullet = spawn_parent.call(
 				"acquire_session_object",
@@ -1234,7 +1256,7 @@ func _spawn_authoritative_tango_volley() -> bool:
 		# never shift hit detection or push a shot through nearby world geometry.
 		var intended_spawn_position := to_global(
 			_casting_units_base_position
-			+ fire_positions[unit_index]
+			+ _get_unit_fire_position(_barrage_direction, unit_index)
 			+ _barrage_direction * PROJECTILE_MUZZLE_DISTANCE
 		)
 		var spawn_position := bullet.clamp_spawn_position_to_clear_path(
@@ -1296,11 +1318,13 @@ func _update_unit_return(delta: float) -> void:
 	)
 	var progress := clampf(_unit_return_elapsed / UNIT_RETURN_DURATION, 0.0, 1.0)
 	var eased_progress := progress * progress * (3.0 - 2.0 * progress)
-	var orbit_targets := _get_unit_orbit_positions()
 	for index in _casting_unit_sprites.size():
 		var unit := _casting_unit_sprites[index]
 		unit.position = _round_vector(
-			_unit_return_starts[index].lerp(orbit_targets[index], eased_progress)
+			_unit_return_starts[index].lerp(
+				_get_unit_orbit_position(index),
+				eased_progress
+			)
 		)
 		unit.rotation = lerp_angle(
 			_unit_return_start_rotations[index],
@@ -1316,42 +1340,51 @@ func _update_unit_return(delta: float) -> void:
 func _update_orbit_visuals(_delta: float) -> void:
 	if _casting_unit_sprites.is_empty():
 		return
-	var orbit_positions := _get_unit_orbit_positions()
 	for index in _casting_unit_sprites.size():
 		var unit := _casting_unit_sprites[index]
-		unit.position = orbit_positions[index]
+		unit.position = _get_unit_orbit_position(index)
 		unit.rotation = 0.0
 		unit.z_index = 0 if unit.position.y < 0.0 else 2
 
 
-func _get_unit_orbit_positions() -> Array[Vector2]:
-	var positions: Array[Vector2] = []
-	for index in PROJECTILES_PER_VOLLEY:
-		var angle := _unit_orbit_phase + float(index) * UNIT_PHASE_STEP
-		positions.append(_round_vector(Vector2(
-			cos(angle) * UNIT_ORBIT_RADIUS.x,
-			sin(angle) * UNIT_ORBIT_RADIUS.y
-		)))
-	return positions
+func _get_unit_orbit_position(index: int) -> Vector2:
+	var angle := _unit_orbit_phase + float(index) * UNIT_PHASE_STEP
+	return _round_vector(Vector2(
+		cos(angle) * UNIT_ORBIT_RADIUS.x,
+		sin(angle) * UNIT_ORBIT_RADIUS.y
+	))
 
 
-func _get_unit_fire_positions(direction: Vector2) -> Array[Vector2]:
+func _get_unit_fire_position(direction: Vector2, index: int) -> Vector2:
 	var perpendicular := Vector2(-direction.y, direction.x)
+	return _round_vector(
+		direction * float(UNIT_FIRE_FORWARD_OFFSETS[index])
+		+ perpendicular * float(UNIT_FIRE_LATERAL_OFFSETS[index])
+	)
+
+
+# Retained as a compact mechanics/tooling contract. Runtime visual updates use
+# the indexed helper directly and no longer allocate a three-element Array on
+# every rendered frame.
+func _get_unit_fire_positions(direction: Vector2) -> Array[Vector2]:
 	var positions: Array[Vector2] = []
 	for index in PROJECTILES_PER_VOLLEY:
-		positions.append(_round_vector(
-			direction * float(UNIT_FIRE_FORWARD_OFFSETS[index])
-			+ perpendicular * float(UNIT_FIRE_LATERAL_OFFSETS[index])
-		))
+		positions.append(_get_unit_fire_position(direction, index))
 	return positions
 
 
 func _set_units_to_fire_positions() -> void:
-	var targets := _get_unit_fire_positions(_barrage_direction)
+	if (
+		_unit_fire_layout_ready
+		and _unit_fire_layout_direction.is_equal_approx(_barrage_direction)
+	):
+		return
+	_unit_fire_layout_ready = true
+	_unit_fire_layout_direction = _barrage_direction
 	var target_rotation := _get_unit_fire_rotation(_barrage_direction)
 	for index in _casting_unit_sprites.size():
 		var unit := _casting_unit_sprites[index]
-		unit.position = targets[index]
+		unit.position = _get_unit_fire_position(_barrage_direction, index)
 		unit.rotation = target_rotation
 		unit.z_index = 2
 
@@ -1420,6 +1453,8 @@ func _multiplayer_facing_id_to_direction(facing_id: int) -> Vector2:
 
 func _casting_state_to(next_state: CastingState) -> void:
 	_casting_state = next_state
+	if next_state != CastingState.FIRING:
+		_unit_fire_layout_ready = false
 
 
 func _cache_character_visual_base_positions() -> void:
@@ -1488,6 +1523,7 @@ func _reset_tango_combat_state(show_units: bool) -> void:
 	_barrage_is_authoritative = false
 	_barrage_volley_count = 0
 	_electric_surge_auto_fire_activation_id = 0
+	_electric_surge_auto_fire_charge_sequence = 0
 	_attack_aim_uses_mouse = false
 	_requires_neutral_before_charge = false
 	_unit_converge_elapsed = 0.0
@@ -1496,6 +1532,7 @@ func _reset_tango_combat_state(show_units: bool) -> void:
 	_unit_converge_start_rotations.clear()
 	_unit_return_starts.clear()
 	_unit_return_start_rotations.clear()
+	_unit_fire_layout_ready = false
 	_casting_state_to(CastingState.ORBIT)
 	if not _casting_unit_sprites.is_empty():
 		_set_casting_unit_animation(&"orbit")

@@ -4,6 +4,20 @@ const EXPORT_PRESETS_PATH := "res://export_presets.cfg"
 const REQUIRED_PRODUCTION_FILTERS := [
 	"dev_tools/*",
 	"tmp/*",
+	"addons/flow_graph_editor/*",
+	"relay_servers/*",
+	"reports/*",
+	"agent_skills/*",
+	"resources/texture/boss_linglan/attack backup.png",
+	"resources/texture/player/tiyi/24x24_backup.png",
+	"resources/config/campaigns/tower_defense/performance/*",
+	"resources/texture/luoxi_idle_hd.png",
+	"resources/animation/luoxi_hd.tres",
+	"resources/texture/zhuangfangyi_idle_hd.png",
+	"resources/animation/zhuangfangyi_hd.tres",
+	"resources/texture/zhuangfangyi_idle_hd_v2.png",
+	"resources/animation/zhuangfangyi_hd_v2.tres",
+	"resources/terrain/dual_grid/gray_metal_floor_reference_tile_32.png",
 ]
 
 var failures: Array[String] = []

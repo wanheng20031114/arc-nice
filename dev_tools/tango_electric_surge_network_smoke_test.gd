@@ -4,6 +4,7 @@ const TANGO_SCENE := preload("res://scene/player/tango/player_tango.tscn")
 const FIELD_SCENE := preload(
 	"res://scene/player/tango/tango_electric_surge_field.tscn"
 )
+const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 
 
 class HostNetManagerStub:
@@ -85,6 +86,7 @@ func _run() -> void:
 
 	await _test_host_authority_and_auto_barrage()
 	await _test_client_recovery_visual()
+	_test_passive_aim_input_send_gate()
 
 	fixture.queue_free()
 	await process_frame
@@ -174,8 +176,9 @@ func _test_host_authority_and_auto_barrage() -> void:
 			and is_equal_approx(float(payload[3]), 8.0)
 			and is_finite(float(payload[4]))
 			and bool(payload[5])
-			and int(payload[6]) == 1,
-			"旧充能终端必须先送达，开始包随后携带Host位置、剩余8秒与技能序列。"
+			and int(payload[6]) == 1
+			and int(payload[7]) == 2,
+			"旧充能终端必须先送达，开始包随后携带Host位置、剩余8秒与绑定的自动弹幕序列。"
 		)
 	_expect(
 		not bool(mp_game.call(
@@ -257,7 +260,8 @@ func _test_client_recovery_visual() -> void:
 		5.0,
 		host_now,
 		true,
-		11
+		11,
+		42
 	)
 	var remaining := remote_player.get_electric_surge_remaining_seconds()
 	var visual_field := _find_field(false, 5)
@@ -295,7 +299,8 @@ func _test_client_recovery_visual() -> void:
 		7.0,
 		host_now,
 		true,
-		11
+		11,
+		42
 	)
 	_expect(
 		_count_fields(false, 5) == visual_count_before_duplicate
@@ -308,10 +313,33 @@ func _test_client_recovery_visual() -> void:
 	_expect(
 		not remote_player.is_electric_surge_active()
 		and not remote_player.is_electric_surge_auto_fire_active()
+		and int((mp_game.get("_tango_charge_sequences_by_peer") as Dictionary).get(7, 0)) == 42
 		and visual_field != null
 		and visual_field.is_active(),
 		"结束事件应清理玩家强化；独立场域视觉按自身剩余时长完成。"
 	)
+	var state_after_finish := remote_player.get_tango_casting_state()
+	remote_player.apply_remote_tango_barrage_snapshot(
+		Vector2.LEFT,
+		1.0,
+		42,
+		0.1
+	)
+	_expect(
+		remote_player.get_tango_casting_state() == state_after_finish,
+		"可靠结束先到时，绑定序列的迟到尾批不得重新拉起已结束的自动弹幕炮位。"
+	)
+	remote_player.apply_remote_tango_barrage_snapshot(
+		Vector2.UP,
+		1.0,
+		43,
+		0.1
+	)
+	_expect(
+		remote_player.get_tango_casting_state() == PlayerTango.CastingState.FIRING,
+		"结束水位只能拒绝旧自动序列，后续合法普通弹幕序列仍必须可恢复。"
+	)
+	remote_player.call("_reset_tango_combat_state", true)
 	mp_game.call(
 		"net_tango_electric_surge_started",
 		7,
@@ -320,7 +348,8 @@ func _test_client_recovery_visual() -> void:
 		9.0,
 		host_now,
 		true,
-		12
+		12,
+		43
 	)
 	_expect(
 		not remote_player.is_electric_surge_active(),
@@ -335,7 +364,8 @@ func _test_client_recovery_visual() -> void:
 		8.0,
 		host_now,
 		false,
-		13
+		13,
+		44
 	)
 	var dead_owner_visual := _find_field(false, 7)
 	_expect(
@@ -354,7 +384,8 @@ func _test_client_recovery_visual() -> void:
 		6.0,
 		host_now,
 		false,
-		13
+		13,
+		44
 	)
 	_expect(
 		not remote_player.is_electric_surge_active()
@@ -369,6 +400,7 @@ func _test_client_recovery_visual() -> void:
 		4.0,
 		host_now,
 		false,
+		1,
 		1
 	)
 	_expect(
@@ -405,6 +437,101 @@ func _test_client_recovery_visual() -> void:
 	await process_frame
 	mp_game.queue_free()
 	game.free()
+
+
+func _test_passive_aim_input_send_gate() -> void:
+	var mp_game := RecordingMpGame.new()
+	var steady_directions: Array[Vector2] = []
+	for _frame_index in range(480):
+		steady_directions.append(Vector2.RIGHT)
+	var legacy_active_frames := _simulate_input_send_frames(
+		mp_game,
+		steady_directions,
+		false
+	)
+	var passive_frames := _simulate_input_send_frames(
+		mp_game,
+		steady_directions,
+		true
+	)
+	_expect(
+		legacy_active_frames.size() == 480
+		and passive_frames.size() == 80
+		and passive_frames.front() == 0
+		and passive_frames.back() == 474,
+		(
+			"A/B：固定8秒方向下，主动输入必须保持480包；Tango被动瞄准必须"
+			+ "降为首帧加每6帧保活的80包。"
+		)
+	)
+	print(
+		"TANGO_PASSIVE_AIM_INPUT_AB baseline_packets=",
+		legacy_active_frames.size(),
+		" optimized_packets=",
+		passive_frames.size(),
+		" reduction_percent=83.333"
+	)
+
+	var changed_directions: Array[Vector2] = []
+	for frame_index in range(12):
+		if frame_index <= 7:
+			changed_directions.append(Vector2.RIGHT)
+		elif frame_index == 8:
+			changed_directions.append(Vector2.UP)
+		else:
+			changed_directions.append(Vector2.ZERO)
+	var changed_frames := _simulate_input_send_frames(
+		mp_game,
+		changed_directions,
+		true
+	)
+	_expect(
+		changed_frames == [0, 6, 8, 9],
+		"被动瞄准必须在方向变化与归零当帧发送，同时保留6帧静态保活。"
+	)
+	_expect(
+		bool(mp_game.call(
+			"_is_client_input_state_active",
+			Vector2.RIGHT,
+			Vector2.RIGHT,
+			Vector2.ZERO,
+			true
+		)),
+		"移动输入必须继续保持active_input_state，即使Tango同时处于被动瞄准。"
+	)
+	mp_game.free()
+
+
+func _simulate_input_send_frames(
+	mp_game: RecordingMpGame,
+	directions: Array[Vector2],
+	uses_passive_tango_mouse_aim: bool
+) -> Array[int]:
+	var sent_frames: Array[int] = []
+	var has_sent := false
+	var last_direction := Vector2.ZERO
+	var frames_since_last_send := NET_CONSTANTS.INPUT_KEEPALIVE_INTERVAL_FRAMES
+	for frame_index in directions.size():
+		frames_since_last_send += 1
+		var direction := directions[frame_index]
+		var input_changed := not has_sent or direction != last_direction
+		var keepalive_due := (
+			frames_since_last_send >= NET_CONSTANTS.INPUT_KEEPALIVE_INTERVAL_FRAMES
+		)
+		var active := bool(mp_game.call(
+			"_is_client_input_state_active",
+			Vector2.ZERO,
+			direction,
+			Vector2.ZERO,
+			uses_passive_tango_mouse_aim
+		))
+		if not input_changed and not keepalive_due and not active:
+			continue
+		sent_frames.append(frame_index)
+		has_sent = true
+		last_direction = direction
+		frames_since_last_send = 0
+	return sent_frames
 
 
 func _find_field(authoritative: bool, zone_id: int) -> TangoElectricSurgeField:
