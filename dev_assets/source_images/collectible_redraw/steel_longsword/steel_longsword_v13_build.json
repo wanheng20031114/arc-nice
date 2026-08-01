@@ -2,7 +2,7 @@
   "input": "dev_assets/source_images/collectible_redraw/steel_longsword/steel_longsword_v13_alpha.png",
   "output": "resources/texture/collectibles/steel_longsword.png",
   "input_sha256": "756fdc631da0b0e1c696ee2f8a3945c5d58d9c6474ed500c9c17f0a14d1c2630",
-  "output_sha256": "7b5b8ee99c0a976c41410dd2ed25c7183f2e331cd05d4f0a4a7d7d39e9b12425",
+  "output_sha256": "b3b1acd95f6299976afc944fc66411c4c9986bc3e368ef5e147b70a6e1aebe05",
   "source_size": [
     1254,
     1254
@@ -39,6 +39,7 @@
   "cell_alpha_coverage": 0.25,
   "boundary_mode": "authored",
   "palette": [
+    "#000000",
     "#11161B",
     "#26343D",
     "#4B626E",
@@ -50,11 +51,11 @@
   ],
   "final_subject_size": [
     22,
-    25
+    23
   ],
   "final_bbox": [
     4,
-    3,
+    5,
     26,
     28
   ],
@@ -146,12 +147,32 @@
       "pixels_sha256": "98da5ae645cbaa68f7faec52209b1420ed4f6dedc99191e4a88990722afd29f6"
     },
     "changed_pixels_from_user_baseline": 84,
-    "outside_edit_box_changed_pixels": 0
+    "outside_edit_box_changed_pixels": 0,
+    "superseded_output_sha256": "7b5b8ee99c0a976c41410dd2ed25c7183f2e331cd05d4f0a4a7d7d39e9b12425"
+  },
+  "manual_user_revision": {
+    "mode": "user_authored_full_icon_revision",
+    "previous_output_sha256": "7b5b8ee99c0a976c41410dd2ed25c7183f2e331cd05d4f0a4a7d7d39e9b12425",
+    "final_output_sha256": "b3b1acd95f6299976afc944fc66411c4c9986bc3e368ef5e147b70a6e1aebe05",
+    "changed_pixels_from_previous": 137,
+    "change_breakdown": {
+      "removed": 37,
+      "added": 30,
+      "recolored": 70
+    },
+    "changed_bbox_xyxy_exclusive": [
+      5,
+      3,
+      26,
+      26
+    ],
+    "preserved_without_normalization": true
   },
   "final_metrics": {
-    "visible_pixels": 140,
-    "palette_color_count": 8,
+    "visible_pixels": 133,
+    "palette_color_count": 9,
     "palette": [
+      "#000000",
       "#11161B",
       "#17383D",
       "#26343D",
@@ -166,6 +187,6 @@
       255
     ],
     "four_connected_components": 1,
-    "pure_black_pixels": 0
+    "pure_black_pixels": 14
   }
 }

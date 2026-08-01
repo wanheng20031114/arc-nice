@@ -526,8 +526,8 @@
       "alpha": "dev_assets/source_images/collectible_redraw/steel_longsword/steel_longsword_v13_alpha.png",
       "build_manifest": "dev_assets/source_images/collectible_redraw/steel_longsword/steel_longsword_v13_build.json",
       "final": "resources/texture/collectibles/steel_longsword.png",
-      "final_subject_size": [22, 25],
-      "palette_color_count": 8
+      "final_subject_size": [22, 23],
+      "palette_color_count": 9
     },
     {
       "sequence": 41,
