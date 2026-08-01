@@ -1,8 +1,8 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scene/day_phase_announcement.gd" id="1_script"]
 [ext_resource type="FontFile" uid="uid://4mguytg8qi1g" path="res://resources/font/NotoSansHans-Black.otf" id="2_font"]
-[ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="3_dong"]
+[ext_resource type="AudioStream" uid="uid://dr4ok21o1mxke" path="res://resources/audio/ui/day_phase_announcement_dong.wav" id="3_dong"]
 
 [sub_resource type="FontVariation" id="FontVariation_title"]
 resource_local_to_scene = true
@@ -15,92 +15,6 @@ font = SubResource("FontVariation_title")
 font_size = 160
 font_color = Color(1, 1, 1, 1)
 shadow_size = 0
-
-[sub_resource type="Animation" id="Animation_reset"]
-resource_name = "RESET"
-length = 0.001
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath("PresentationRoot:visible")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 1,
-"values": [false]
-}
-tracks/1/type = "value"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath("PresentationRoot:modulate")
-tracks/1/interp = 1
-tracks/1/loop_wrap = true
-tracks/1/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 0,
-"values": [Color(1, 1, 1, 0)]
-}
-tracks/2/type = "value"
-tracks/2/imported = false
-tracks/2/enabled = true
-tracks/2/path = NodePath("PresentationRoot:position")
-tracks/2/interp = 1
-tracks/2/loop_wrap = true
-tracks/2/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 0,
-"values": [Vector2(0, 0)]
-}
-
-[sub_resource type="Animation" id="Animation_show"]
-resource_name = "show"
-length = 3.5
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath("PresentationRoot:visible")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0, 3.5),
-"transitions": PackedFloat32Array(1, 1),
-"update": 1,
-"values": [true, false]
-}
-tracks/1/type = "value"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath("PresentationRoot:modulate")
-tracks/1/interp = 1
-tracks/1/loop_wrap = true
-tracks/1/keys = {
-"times": PackedFloat32Array(0, 0.18, 3.13, 3.5),
-"transitions": PackedFloat32Array(0.35, 1, 1.35, 1),
-"update": 0,
-"values": [Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 0)]
-}
-tracks/2/type = "value"
-tracks/2/imported = false
-tracks/2/enabled = true
-tracks/2/path = NodePath("PresentationRoot:position")
-tracks/2/interp = 1
-tracks/2/loop_wrap = true
-tracks/2/keys = {
-"times": PackedFloat32Array(0, 0.18, 3.5),
-"transitions": PackedFloat32Array(0.3, 1, 1),
-"update": 0,
-"values": [Vector2(0, 8), Vector2(0, 0), Vector2(0, 0)]
-}
-
-[sub_resource type="AnimationLibrary" id="AnimationLibrary_default"]
-_data = {
-&"RESET": SubResource("Animation_reset"),
-&"show": SubResource("Animation_show")
-}
 
 [node name="DayPhaseAnnouncement" type="CanvasLayer"]
 layer = 19
@@ -136,9 +50,13 @@ vertical_alignment = 1
 
 [node name="AnnouncementAudio" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("3_dong")
-volume_db = -10.0
+volume_db = -2.0
 bus = &"SFX"
 max_polyphony = 1
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
-libraries/ = SubResource("AnimationLibrary_default")
+[node name="PresentationTimer" type="Timer" parent="."]
+process_callback = 0
+wait_time = 3.0
+one_shot = true
+
+[connection signal="timeout" from="PresentationTimer" to="." method="_on_presentation_timer_timeout"]

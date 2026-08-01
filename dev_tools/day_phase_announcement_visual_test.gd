@@ -32,10 +32,6 @@ func _run() -> void:
 	await process_frame
 	if day_preview:
 		arena.day_phase_announcement.show_day_phase(1, false)
-	var animation_player := (
-		arena.day_phase_announcement.get_node("AnimationPlayer") as AnimationPlayer
-	)
-	animation_player.seek(0.35, true)
 	await process_frame
 	await process_frame
 	var preview := root.get_texture().get_image()

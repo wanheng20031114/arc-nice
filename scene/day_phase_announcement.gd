@@ -4,7 +4,7 @@ class_name DayPhaseAnnouncement
 signal announcement_started(display_text: String)
 signal announcement_finished(display_text: String)
 
-const PRESENTATION_DURATION_SECONDS := 3.5
+const PRESENTATION_DURATION_SECONDS := 3.0
 const MAIN_TEXT_HEIGHT_RATIO := 0.2472
 const MAIN_TEXT_BASE_SPACING_RATIO := 0.021875
 const MAIN_TEXT_MINIMUM_SPACING_RATIO := 0.002
@@ -27,7 +27,7 @@ const CHINESE_DIGITS: PackedStringArray = [
 @onready var presentation_root: Control = $PresentationRoot
 @onready var title_label: Label = $PresentationRoot/Title
 @onready var announcement_audio: AudioStreamPlayer = $AnnouncementAudio
-@onready var animation_player: AnimationPlayer = $AnimationPlayer
+@onready var presentation_timer: Timer = $PresentationTimer
 
 var current_text := ""
 var presentation_count := 0
@@ -39,8 +39,6 @@ func _ready() -> void:
 	var viewport := get_viewport()
 	if viewport != null and not viewport.size_changed.is_connected(_update_font_size):
 		viewport.size_changed.connect(_update_font_size)
-	if not animation_player.animation_finished.is_connected(_on_animation_finished):
-		animation_player.animation_finished.connect(_on_animation_finished)
 
 
 func show_day_phase(day_number: int, is_night: bool) -> void:
@@ -55,23 +53,22 @@ func show_announcement(display_text: String) -> void:
 	title_label.text = current_text
 	_update_font_size()
 	presentation_count += 1
-	animation_player.stop()
-	animation_player.play(&"show")
-	# Apply time-zero visibility and opacity in the same frame as the audio cue.
-	animation_player.advance(0.0)
+	presentation_timer.stop()
+	presentation_root.show()
+	presentation_timer.start(PRESENTATION_DURATION_SECONDS)
 	announcement_audio.stop()
 	announcement_audio.play()
 	announcement_started.emit(current_text)
 
 
 func hide_announcement() -> void:
-	animation_player.stop()
+	presentation_timer.stop()
 	announcement_audio.stop()
 	presentation_root.hide()
 
 
 func is_presenting() -> bool:
-	return presentation_root.visible and animation_player.is_playing()
+	return presentation_root.visible and not presentation_timer.is_stopped()
 
 
 static func format_day_phase_text(day_number: int, is_night: bool) -> String:
@@ -136,8 +133,7 @@ func _update_font_size() -> void:
 	title_label.label_settings.font_size = responsive_size
 
 
-func _on_animation_finished(animation_name: StringName) -> void:
-	if animation_name != &"show":
-		return
+func _on_presentation_timer_timeout() -> void:
+	presentation_timer.stop()
 	presentation_root.hide()
 	announcement_finished.emit(current_text)

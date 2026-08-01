@@ -34,9 +34,7 @@ func _test_scene_contract(announcement: DayPhaseAnnouncement) -> void:
 	var root_control := announcement.get_node("PresentationRoot") as Control
 	var title := announcement.get_node("PresentationRoot/Title") as Label
 	var audio := announcement.get_node("AnnouncementAudio") as AudioStreamPlayer
-	var animation := (
-		announcement.get_node("AnimationPlayer") as AnimationPlayer
-	).get_animation(&"show")
+	var presentation_timer := announcement.get_node("PresentationTimer") as Timer
 	var font_variation := title.label_settings.font as FontVariation
 	_expect(announcement.layer == 19, "报幕必须位于常规HUD和P1提示之上、模态界面之下。")
 	_expect(
@@ -45,9 +43,22 @@ func _test_scene_contract(announcement: DayPhaseAnnouncement) -> void:
 		"报幕必须完全透传鼠标输入。"
 	)
 	_expect(
-		animation != null
-		and is_equal_approx(animation.length, DayPhaseAnnouncement.PRESENTATION_DURATION_SECONDS),
-		"报幕动画总长必须严格为3.5秒。"
+		is_equal_approx(DayPhaseAnnouncement.PRESENTATION_DURATION_SECONDS, 3.0)
+		and presentation_timer != null
+		and presentation_timer.one_shot
+		and not presentation_timer.ignore_time_scale
+		and presentation_timer.process_callback == Timer.TIMER_PROCESS_PHYSICS
+		and is_equal_approx(
+			presentation_timer.wait_time,
+			DayPhaseAnnouncement.PRESENTATION_DURATION_SECONDS
+		)
+		and not announcement.has_node("AnimationPlayer"),
+		"静态报幕必须由物理帧单次计时器严格保持3秒，且不保留动画节点。"
+	)
+	_expect(
+		root_control.position == Vector2.ZERO
+		and root_control.modulate == Color.WHITE,
+		"报幕必须以零位移和完全不透明状态瞬时出现。"
 	)
 	_expect(
 		font_variation != null
@@ -71,11 +82,14 @@ func _test_scene_contract(announcement: DayPhaseAnnouncement) -> void:
 	)
 	_expect(
 		audio.stream != null
-		and audio.stream.resource_path.ends_with("resources/audio/ui/countdown_tick.wav")
+		and audio.stream.resource_path.ends_with(
+			"resources/audio/ui/day_phase_announcement_dong.wav"
+		)
 		and audio.bus == &"SFX"
-		and is_equal_approx(audio.volume_db, -10.0)
+		and is_equal_approx(audio.volume_db, -2.0)
+		and is_equal_approx(audio.pitch_scale, 1.0)
 		and audio.max_polyphony == 1,
-		"dong提示音必须通过独立的单声部SFX播放器，以-10dB播放。"
+		"低沉dong必须通过独立的单声部SFX播放器，以原速和-2dB播放。"
 	)
 
 
@@ -121,20 +135,30 @@ func _test_reference_screenshot_layout(baseline_announcement: DayPhaseAnnounceme
 
 
 func _test_presentation(announcement: DayPhaseAnnouncement) -> void:
-	var animation_player := announcement.get_node("AnimationPlayer") as AnimationPlayer
+	var presentation_root := announcement.get_node("PresentationRoot") as Control
+	var presentation_timer := announcement.get_node("PresentationTimer") as Timer
 	var title := announcement.get_node("PresentationRoot/Title") as Label
+	var finished_texts: Array[String] = []
+	announcement.announcement_finished.connect(
+		func(display_text: String) -> void: finished_texts.append(display_text)
+	)
 	announcement.show_announcement("测试场景 P1")
 	_expect(
 		announcement.presentation_count == 1
 		and announcement.current_text == "测试场景 P1"
 		and title.text == "测试场景 P1"
+		and presentation_root.visible
+		and presentation_root.modulate == Color.WHITE
+		and presentation_root.position == Vector2.ZERO
 		and announcement.is_presenting(),
-		"自定义报幕必须立即更新文字并开始播放。"
+		"自定义报幕必须立即更新文字，并以完全不透明、零位移状态出现。"
 	)
-	animation_player.seek(DayPhaseAnnouncement.PRESENTATION_DURATION_SECONDS, true)
+	presentation_timer.timeout.emit()
 	_expect(
-		not (announcement.get_node("PresentationRoot") as Control).visible,
-		"3.5秒结束时大字必须完全隐藏。"
+		not presentation_root.visible
+		and not announcement.is_presenting()
+		and finished_texts == ["测试场景 P1"],
+		"3秒结束时大字必须瞬时隐藏并仅发送一次结束信号。"
 	)
 
 

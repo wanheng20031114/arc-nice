@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate racing-style countdown sounds: 登 登 登 滴！"""
+"""Generate wave and announcement UI sounds."""
 
 from __future__ import annotations
 
@@ -107,6 +107,43 @@ def _di_go() -> list[float]:
 
 
 # ---------------------------------------------------------------------------
+#  咚  –  low, weighty day/phase announcement impact
+# ---------------------------------------------------------------------------
+
+def _announcement_dong() -> list[float]:
+    """Centered low-mid impact with a short resonant tail."""
+    duration = 0.62
+    n = round(duration * SAMPLE_RATE)
+    samples: list[float] = []
+
+    for i in range(n):
+        t = i / SAMPLE_RATE
+
+        if t < 0.004:
+            env = _smoothstep(t / 0.004)
+        else:
+            env = math.exp(-4.2 * (t - 0.004))
+        if t > duration - 0.09:
+            env *= _smoothstep((duration - t) / 0.09)
+
+        # The small pitch fall adds weight without turning the cue into an
+        # explosion. Its octave keeps the sound present on small speakers.
+        f = 210.0 * (1.0 - 0.075 * _smoothstep(min(t / 0.24, 1.0)))
+        body = (
+            _sine(f, t) * 0.62
+            + _sine(f * 2.0, t) * 0.20 * math.exp(-2.0 * t)
+            + _sine(f * 3.03, t) * 0.07 * math.exp(-4.0 * t)
+        )
+        sub = _sine(98.0, t) * 0.32 * math.exp(-8.0 * t)
+        strike = (
+            _sine(620.0, t) + _sine(910.0, t) * 0.45
+        ) * 0.09 * math.exp(-55.0 * t)
+        samples.append((body + sub) * env + strike)
+
+    return samples
+
+
+# ---------------------------------------------------------------------------
 #  Output
 # ---------------------------------------------------------------------------
 
@@ -134,7 +171,11 @@ def main() -> None:
     output_directory = Path(args.output_directory)
     _write_sound(output_directory / "countdown_tick.wav", _deng_tick())
     _write_sound(output_directory / "wave_start.wav", _di_go())
-    print(f"Generated racing countdown audio in {output_directory}")
+    _write_sound(
+        output_directory / "day_phase_announcement_dong.wav",
+        _announcement_dong(),
+    )
+    print(f"Generated wave and announcement UI audio in {output_directory}")
 
 
 if __name__ == "__main__":
