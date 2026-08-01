@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="RogueRouteNodeTypeConfig" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_node_type_config.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/magical_encounter.png" id="2_icon"]
+
+[resource]
+script = ExtResource("1_script")
+type_id = &"magical_encounter"
+node_type = 1
+display_name = "神奇遭遇"
+icon = ExtResource("2_icon")
+generation_weight = 1.0
+minimum_count = 1
+content_pool_id = &"magical_encounter"
