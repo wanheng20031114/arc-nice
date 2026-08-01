@@ -112,73 +112,81 @@ def _di_go() -> list[float]:
 # ---------------------------------------------------------------------------
 
 def _announcement_dong() -> list[float]:
-    """Short indoor door-slam impact, not a pitched bell or gong."""
-    duration = 0.48
+    """Muted, low door-close thud without a bright latch or ringing tail."""
+    duration = 0.42
     n = round(duration * SAMPLE_RATE)
     random_source = random.Random(0xD00D)
     samples: list[float] = []
 
-    impact_low_pass = 0.0
-    panel_low_pass = 0.0
+    impact_low_pass_1 = 0.0
+    impact_low_pass_2 = 0.0
+    impact_floor = 0.0
+    panel_low_pass_1 = 0.0
+    panel_low_pass_2 = 0.0
     panel_floor = 0.0
-    edge_low_pass = 0.0
-    edge_floor = 0.0
     pressure_phase = 0.0
     modal_specs = [
-        (86.0, 0.12, 10.0, 0.045),
-        (123.0, 0.22, 11.0, 0.034),
-        (176.0, 0.40, 13.0, 0.026),
-        (247.0, 0.36, 16.5, 0.019),
-        (356.0, 0.25, 22.0, 0.013),
-        (512.0, 0.17, 29.0, 0.009),
-        (742.0, 0.08, 38.0, 0.006),
+        (94.0, 0.18, 19.0, 0.035),
+        (137.0, 0.32, 20.0, 0.030),
+        (191.0, 0.28, 23.0, 0.022),
+        (268.0, 0.14, 31.0, 0.015),
+        (382.0, 0.045, 44.0, 0.008),
     ]
     modal_phases = [
         random_source.uniform(-math.pi, math.pi)
         for _ in modal_specs
     ]
-    impact_alpha = 1.0 - math.exp(-math.tau * 4200.0 / SAMPLE_RATE)
-    panel_alpha = 1.0 - math.exp(-math.tau * 1250.0 / SAMPLE_RATE)
-    panel_floor_alpha = 1.0 - math.exp(-math.tau * 96.0 / SAMPLE_RATE)
-    edge_alpha = 1.0 - math.exp(-math.tau * 3500.0 / SAMPLE_RATE)
-    edge_floor_alpha = 1.0 - math.exp(-math.tau * 610.0 / SAMPLE_RATE)
+    impact_alpha = 1.0 - math.exp(-math.tau * 1500.0 / SAMPLE_RATE)
+    impact_floor_alpha = 1.0 - math.exp(-math.tau * 210.0 / SAMPLE_RATE)
+    panel_alpha = 1.0 - math.exp(-math.tau * 640.0 / SAMPLE_RATE)
+    panel_floor_alpha = 1.0 - math.exp(-math.tau * 48.0 / SAMPLE_RATE)
 
     for i in range(n):
         t = i / SAMPLE_RATE
         white_noise = random_source.uniform(-1.0, 1.0)
-        impact_low_pass += impact_alpha * (white_noise - impact_low_pass)
-        panel_low_pass += panel_alpha * (white_noise - panel_low_pass)
+        impact_low_pass_1 += impact_alpha * (
+            white_noise - impact_low_pass_1
+        )
+        impact_low_pass_2 += impact_alpha * (
+            impact_low_pass_1 - impact_low_pass_2
+        )
+        impact_floor += impact_floor_alpha * (
+            white_noise - impact_floor
+        )
+        panel_low_pass_1 += panel_alpha * (
+            white_noise - panel_low_pass_1
+        )
+        panel_low_pass_2 += panel_alpha * (
+            panel_low_pass_1 - panel_low_pass_2
+        )
         panel_floor += panel_floor_alpha * (white_noise - panel_floor)
-        edge_low_pass += edge_alpha * (white_noise - edge_low_pass)
-        edge_floor += edge_floor_alpha * (white_noise - edge_floor)
 
-        attack = _smoothstep(min(t / 0.0014, 1.0))
-        impact = impact_low_pass * attack * math.exp(-70.0 * t) * 1.30
-        panel_noise = panel_low_pass - panel_floor
-        panel = panel_noise * attack * math.exp(-15.0 * t) * 1.02
+        # Two cascaded low-pass stages keep the initial contact broad enough
+        # to read as a physical door, but remove the bright "啪" of a latch.
+        attack = _smoothstep(min(t / 0.0026, 1.0))
+        impact_noise = impact_low_pass_2 - impact_floor
+        impact = impact_noise * attack * math.exp(-72.0 * t) * 0.34
+        panel_noise = panel_low_pass_2 - panel_floor
+        panel = panel_noise * attack * math.exp(-20.0 * t) * 0.88
 
-        # A door first hits its frame, then the latch/panel follows a few
-        # milliseconds later. This second irregular contact removes the
-        # synthetic single-note character of the previous cue.
         frame_time = t - 0.012
         frame_contact = 0.0
         if frame_time >= 0.0:
-            frame_attack = _smoothstep(min(frame_time / 0.001, 1.0))
-            frame_band = edge_low_pass - edge_floor
+            frame_attack = _smoothstep(min(frame_time / 0.002, 1.0))
             frame_contact = (
-                frame_band
+                impact_noise
                 * frame_attack
-                * math.exp(-82.0 * frame_time)
-                * 0.86
+                * math.exp(-110.0 * frame_time)
+                * 0.12
             )
 
-        pressure_frequency = 69.0 - 14.0 * _smoothstep(min(t / 0.12, 1.0))
+        pressure_frequency = 72.0 - 8.0 * _smoothstep(min(t / 0.09, 1.0))
         pressure_phase += math.tau * pressure_frequency / SAMPLE_RATE
         pressure = (
             math.sin(pressure_phase)
             * attack
-            * math.exp(-18.0 * t)
-            * 0.10
+            * math.exp(-31.0 * t)
+            * 0.035
         )
 
         modes = 0.0
@@ -186,8 +194,8 @@ def _announcement_dong() -> list[float]:
             modal_frequency = frequency * (
                 1.0 - drop * _smoothstep(min(t / 0.19, 1.0))
             )
-            modal_frequency += 0.9 * math.sin(
-                math.tau * (11.0 + mode_index * 2.7) * t
+            modal_frequency += 0.35 * math.sin(
+                math.tau * (9.0 + mode_index * 2.1) * t
                 + mode_index * 0.71
             )
             modal_phases[mode_index] += math.tau * modal_frequency / SAMPLE_RATE
@@ -197,20 +205,20 @@ def _announcement_dong() -> list[float]:
                 * amplitude
                 * mode_envelope
             )
-        modes *= 1.0 + panel_noise * 0.10
+        modes *= 1.0 + panel_noise * 0.05
 
-        dry = impact + panel + frame_contact + pressure + modes
-        samples.append(math.tanh(dry * 1.65) / math.tanh(1.65))
+        # Avoid saturation because it introduces upper harmonics that turn a
+        # low "咚" into "砰". The tiny second contact is the door settling
+        # into its frame, not a separate bright latch click.
+        samples.append(impact + panel + frame_contact + pressure + modes)
 
-    # Sparse, low-level indoor reflections make the hit read as a door in a
-    # room while keeping the cue short and avoiding a reverberant gong tail.
     dry_samples = samples.copy()
-    for delay_seconds, gain in [(0.027, 0.11), (0.049, -0.075), (0.083, 0.045)]:
+    for delay_seconds, gain in [(0.024, 0.035), (0.046, -0.018)]:
         delay_samples = round(delay_seconds * SAMPLE_RATE)
         for i in range(delay_samples, n):
             samples[i] += dry_samples[i - delay_samples] * gain
 
-    release_start = duration - 0.055
+    release_start = duration - 0.05
     for i in range(n):
         t = i / SAMPLE_RATE
         if t > release_start:
@@ -223,14 +231,18 @@ def _announcement_dong() -> list[float]:
 #  Output
 # ---------------------------------------------------------------------------
 
-def _write_sound(path: Path, samples: list[float]) -> None:
+def _write_sound(
+    path: Path,
+    samples: list[float],
+    pcm_peak: int = 24000,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     peak = max((abs(s) for s in samples), default=1.0)
     peak = max(peak, 1e-6)
     pcm = bytearray()
     for s in samples:
         clamped = max(-1.0, min(1.0, s / peak))
-        pcm.extend(struct.pack("<h", round(clamped * 24000)))
+        pcm.extend(struct.pack("<h", round(clamped * pcm_peak)))
 
     with wave.open(str(path), "wb") as out:
         out.setnchannels(1)
@@ -250,6 +262,7 @@ def main() -> None:
     _write_sound(
         output_directory / "day_phase_announcement_dong.wav",
         _announcement_dong(),
+        pcm_peak=21500,
     )
     print(f"Generated wave and announcement UI audio in {output_directory}")
 
