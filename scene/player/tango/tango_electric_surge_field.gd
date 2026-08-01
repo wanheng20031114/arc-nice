@@ -12,8 +12,9 @@ const FIXED_MAGIC_DAMAGE := 20
 const ENEMY_COLLISION_MASK := 4
 const DAMAGE_TYPE := EnemyConfig.DamageType.MAGIC
 const DAMAGE_SOURCE_TYPE: StringName = &"tango_electric_surge"
+const VISUAL_ANIMATION: StringName = &"surge_loop"
 
-@onready var field_visual: Polygon2D = $FieldVisual
+@onready var field_visual: AnimatedSprite2D = $FieldVisual
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var night_light: NightPointLight2D = $NightPointLight
 @onready var damage_tick_timer: Timer = $DamageTickTimer
@@ -107,10 +108,7 @@ func _begin_field() -> void:
 	visible = true
 	completed_damage_tick_count = 0
 	_slow_source_id = get_instance_id()
-	field_visual.set_instance_shader_parameter(
-		&"surge_seed",
-		fposmod(absf(float(zone_id)) * 0.61803398875, 1.0)
-	)
+	_start_field_visual_animation()
 	night_light.set_emission_allowed(true)
 
 	if _authoritative:
@@ -129,6 +127,37 @@ func _begin_field() -> void:
 		_finish_field()
 		return
 	lifetime_timer.start(_requested_duration)
+
+
+func _start_field_visual_animation() -> void:
+	var sprite_frames := field_visual.sprite_frames
+	if (
+		sprite_frames == null
+		or not sprite_frames.has_animation(VISUAL_ANIMATION)
+	):
+		return
+	var frame_count := sprite_frames.get_frame_count(VISUAL_ANIMATION)
+	if frame_count <= 0:
+		return
+	var animation_speed := sprite_frames.get_animation_speed(VISUAL_ANIMATION)
+	var elapsed_seconds := 0.0
+	if not _authoritative:
+		elapsed_seconds = FIELD_DURATION_SECONDS - clampf(
+			_requested_duration,
+			0.0,
+			FIELD_DURATION_SECONDS
+		)
+	var elapsed_frames := elapsed_seconds * animation_speed
+	var seeded_frame := posmod(zone_id, frame_count)
+	var target_frame := posmod(
+		seeded_frame + floori(elapsed_frames),
+		frame_count
+	)
+	field_visual.play(VISUAL_ANIMATION)
+	field_visual.set_frame_and_progress(
+		target_frame,
+		fposmod(elapsed_frames, 1.0)
+	)
 
 
 func _set_authoritative_monitoring(enabled: bool) -> void:
@@ -302,6 +331,7 @@ func _finish_field() -> void:
 	_remove_all_slow_sources()
 	overlapping_enemies.clear()
 	night_light.set_emission_allowed(false)
+	field_visual.stop()
 	visible = false
 	finished.emit(self)
 	queue_free()

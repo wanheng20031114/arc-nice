@@ -83,13 +83,15 @@ func _test_authored_scene_contract() -> void:
 	await process_frame
 
 	var circle := field.collision_shape.shape as CircleShape2D
-	var material := field.field_visual.material as ShaderMaterial
-	var boundary_shadow := field.get_node_or_null(
-		"RangeBoundaryShadow"
-	) as Line2D
-	var boundary := field.get_node_or_null("RangeBoundary") as Line2D
+	var material := field.field_visual.material as CanvasItemMaterial
+	var sprite_frames := field.field_visual.sprite_frames
+	var first_frame := sprite_frames.get_frame_texture(
+		&"surge_loop",
+		0
+	) as AtlasTexture
 	_expect(
 		field.top_level
+		and field.z_index == 0
 		and field.is_visible_in_tree()
 		and field.field_visual.is_visible_in_tree()
 		and circle != null
@@ -106,48 +108,36 @@ func _test_authored_scene_contract() -> void:
 		"场域必须固定在世界坐标、使用半径72，并让共享寿命时钟先于伤害Timer更新。"
 	)
 	_expect(
-		material != null
-		and material.shader != null
-		and material.shader.code.contains("outward_wave")
-		and material.shader.code.contains("render_mode unshaded, blend_add")
-		and material.shader.code.contains("boundary * 0.38")
-		and material.shader.code.contains("alpha = min(alpha, 0.46)")
-		and field.field_visual.polygon.size() == 4,
-		"地面电涌必须由单 draw Shader 保持高透明，同时提供可辨识的72像素边界。"
+		field.field_visual.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and field.field_visual.animation == &"surge_loop"
+		and field.field_visual.is_playing()
+		and sprite_frames != null
+		and sprite_frames.has_animation(&"surge_loop")
+		and sprite_frames.get_frame_count(&"surge_loop") == 16
+		and is_equal_approx(
+			sprite_frames.get_animation_speed(&"surge_loop"),
+			10.0
+		)
+		and sprite_frames.get_animation_loop(&"surge_loop")
+		and first_frame != null
+		and first_frame.region.size == Vector2(192.0, 192.0)
+		and first_frame.atlas.get_size() == Vector2(768.0, 768.0),
+		"地面电涌必须使用16帧、10FPS、192像素原生帧的循环动画图集。"
 	)
 	_expect(
-		boundary_shadow != null
-		and boundary != null
-		and boundary_shadow.is_visible_in_tree()
-		and boundary.is_visible_in_tree()
-		and boundary_shadow.closed
-		and boundary.closed
-		and not boundary_shadow.antialiased
-		and not boundary.antialiased
-		and boundary_shadow.points.size() == 32
-		and boundary.points.size() == 32
-		and _line_points_have_radius(boundary_shadow, 72.0)
-		and _line_points_have_radius(boundary, 72.0)
-		and is_equal_approx(boundary_shadow.width, 3.5)
-		and is_equal_approx(boundary.width, 1.5)
-		and boundary_shadow.material is CanvasItemMaterial
-		and boundary.material is CanvasItemMaterial
-		and (
-			boundary_shadow.material as CanvasItemMaterial
-		).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
-		and (
-			boundary.material as CanvasItemMaterial
-		).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
-		and (
-			boundary.material as CanvasItemMaterial
-		).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD,
-		"场域必须作者化双层非抗锯齿Line2D：深色底边与青色亮边均闭合、unshaded且精确落在半径72。"
+		material != null
+		and material.light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and material.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+		and is_equal_approx(field.field_visual.self_modulate.a, 0.28)
+		and field.get_node_or_null("RangeBoundaryShadow") == null
+		and field.get_node_or_null("RangeBoundary") == null,
+		"场域必须以高透明加法动画替代静态圆边，并放在角色下方避免遮挡。"
 	)
 	_expect(
 		field.night_light != null
 		and is_equal_approx(field.night_light.texture_scale, 0.68)
-		and is_equal_approx(field.night_light.night_energy, 0.34)
-		and field.night_light.color == Color(0.12, 0.9, 1.0, 1.0),
+		and is_equal_approx(field.night_light.night_energy, 0.3)
+		and field.night_light.color == Color(0.12, 0.48, 1.0, 1.0),
 		"场域必须带有低能量青色 NightPointLight2D，并只由夜间系统启用。"
 	)
 	_expect(
@@ -168,6 +158,9 @@ func _test_visual_only_contract() -> void:
 	fixture.add_child(field)
 	await process_frame
 	await physics_frame
+	field.field_visual.pause()
+	field.call("_start_field_visual_animation")
+	field.field_visual.pause()
 
 	var enemy := _make_enemy()
 	field.call("_on_body_entered", enemy)
@@ -178,11 +171,13 @@ func _test_visual_only_contract() -> void:
 		and field.collision_mask == 0
 		and field.collision_shape.disabled
 		and field.get_tracked_enemy_count() == 0
+		and field.field_visual.frame == 7
+		and is_zero_approx(field.field_visual.frame_progress)
 		and not enemy.has_electric_element_attachment()
 		and enemy.get_electric_surge_slow_source_count() == 0
 		and field.lifetime_timer.time_left > 3.0
 		and field.lifetime_timer.time_left <= 3.5,
-		"客户端视觉副本必须停留在生成位置、按剩余时长播放，且完全不能监测或修改敌人。"
+		"客户端视觉副本必须停留在生成位置、从Host剩余时间对应动画相位播放，且完全不能监测或修改敌人。"
 	)
 	field.finish()
 	enemy.queue_free()
@@ -311,13 +306,6 @@ func _make_enemy() -> Enemy:
 
 func _on_field_finished(field: Node) -> void:
 	finished_fields.append(field)
-
-
-func _line_points_have_radius(line: Line2D, expected_radius: float) -> bool:
-	for point in line.points:
-		if not is_equal_approx(point.length(), expected_radius):
-			return false
-	return true
 
 
 func _expect(condition: bool, message: String) -> void:
