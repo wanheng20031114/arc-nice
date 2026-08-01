@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="PlayerCharacterConfig" format=3]
+[gd_resource type="Resource" script_class="PlayerCharacterConfig" format=3 uid="uid://bxr02s1r1ptcy"]
 
-[ext_resource type="Script" path="res://resources/config/players/player_character_config.gd" id="1_config"]
+[ext_resource type="Script" uid="uid://by2j147pm6q40" path="res://resources/config/players/player_character_config.gd" id="1_config"]
 
 [resource]
 script = ExtResource("1_config")
@@ -16,10 +16,7 @@ skill_display_name = "电能涌动"
 skill_description = "以自身为中心生成持续8秒、半径72的电涌区域，每秒造成20点固定法术伤害，使敌人永久附着电元素，并在区域内降低35%移动速度。技能期间无需按下攻击键，Tango会持续以满蓄力状态自动射击，玩家只需控制射击方向；攻击速度提高50%，对电元素附着的敌人额外造成20%伤害。"
 skill_icon_texture = "res://resources/texture/player/tango/skill1_icon.png"
 starting_max_health = 60
-starting_attack_damage = 10
 starting_attack_speed = 240.0
-attack_speed_units_per_attack = 100.0
-attack_damage_per_upgrade = 4.0
 card_background_color = Color(0.065, 0.085, 0.105, 0.98)
 card_edge_color = Color(0.29, 0.72, 0.75, 1)
 card_hover_edge_color = Color(0.38, 0.93, 0.95, 1)

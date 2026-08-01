@@ -18,7 +18,7 @@
 [ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="16_dash_ready"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="17_night_light"]
 [ext_resource type="Texture2D" uid="uid://clffculwmxi7k" path="res://resources/lighting/soft_player_point_light.tres" id="18_light_texture"]
-[ext_resource type="Shader" path="res://resources/shader/tango_cast_unit_overdrive.gdshader" id="19_unit_overdrive_shader"]
+[ext_resource type="Shader" uid="uid://cmn0glw4yvj6e" path="res://resources/shader/tango_cast_unit_overdrive.gdshader" id="19_unit_overdrive_shader"]
 [ext_resource type="AudioStream" uid="uid://btlqoao4ouajx" path="res://resources/audio/tango_charge.wav" id="20_charge_audio"]
 [ext_resource type="AudioStream" uid="uid://d1mi8elwinpi7" path="res://resources/audio/tango_laser_fire.wav" id="21_laser_audio"]
 [ext_resource type="AudioStream" uid="uid://da7rccly7tpev" path="res://resources/audio/tango_unit_converge.wav" id="22_converge_audio"]
@@ -50,7 +50,14 @@ shader_parameter/revive_glow_strength = 0.0
 shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
 shader_parameter/revive_glow_outline_width = 4.5
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_d5fwl"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_unit_overdrive"]
+resource_local_to_scene = true
+shader = ExtResource("19_unit_overdrive_shader")
+shader_parameter/surge_yellow = Color(1, 0.78, 0.08, 1)
+shader_parameter/surge_highlight = Color(1, 1, 0.76, 1)
+shader_parameter/pulse_speed = 8.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_uajji"]
 resource_local_to_scene = true
 shader = ExtResource("11_dash_shader")
 shader_parameter/ready_strength = 0.0
@@ -58,10 +65,6 @@ shader_parameter/glow_color = Color(0.08, 1.55, 1.35, 1)
 shader_parameter/glow_opacity = 0.18
 shader_parameter/pulse_speed = 2.2
 shader_parameter/pulse_amount = 0.1
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_unit_overdrive"]
-resource_local_to_scene = true
-shader = ExtResource("19_unit_overdrive_shader")
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_player"]
 radius = 7.5
@@ -116,7 +119,7 @@ autoplay = "orbit"
 [node name="MoveSpeedTrailEffect" parent="." unique_id=1904055585 instance=ExtResource("13_speed_trail")]
 
 [node name="DashReadyIndicator" parent="." unique_id=2099222769 instance=ExtResource("16_dash_ready")]
-material = SubResource("ShaderMaterial_d5fwl")
+material = SubResource("ShaderMaterial_uajji")
 offset_top = 3.0
 offset_bottom = 11.0
 
@@ -143,6 +146,7 @@ offset_top = 12.0
 offset_bottom = 14.0
 cooldown_color = Color(0.219608, 0.92549, 0.952941, 0.95)
 ready_color = Color(0.88, 1, 1, 1)
+empowered_color_a = Color(0.9409741, 0.8078272, 0.19591078, 1)
 
 [node name="HealthBar" parent="." unique_id=280189914 instance=ExtResource("9_health_bar")]
 offset_top = -15.0
@@ -183,28 +187,24 @@ volume_db = -10.0
 max_polyphony = 2
 bus = &"SFX"
 
-[node name="ChargeAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="ChargeAudio" type="AudioStreamPlayer2D" parent="." unique_id=362653784]
 stream = ExtResource("20_charge_audio")
 volume_db = -14.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="UnitConvergeAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="UnitConvergeAudio" type="AudioStreamPlayer2D" parent="." unique_id=412444370]
 stream = ExtResource("22_converge_audio")
 volume_db = -12.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="UnitReturnAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="UnitReturnAudio" type="AudioStreamPlayer2D" parent="." unique_id=365179327]
 stream = ExtResource("23_return_audio")
 volume_db = -13.0
-max_polyphony = 1
 bus = &"SFX"
 
-[node name="ElectricSurgeAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="ElectricSurgeAudio" type="AudioStreamPlayer2D" parent="." unique_id=1314898657]
 stream = ExtResource("24_surge_audio")
 volume_db = -9.0
-max_polyphony = 1
 bus = &"SFX"
 
 [node name="FootstepAudio" type="AudioStreamPlayer2D" parent="." unique_id=1842550316]
