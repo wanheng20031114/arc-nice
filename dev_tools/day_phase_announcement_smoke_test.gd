@@ -87,10 +87,10 @@ func _test_scene_contract(announcement: DayPhaseAnnouncement) -> void:
 		)
 		and is_equal_approx(audio.stream.get_length(), 0.42)
 		and audio.bus == &"SFX"
-		and is_equal_approx(audio.volume_db, -6.0)
+		and is_equal_approx(audio.volume_db, -4.0)
 		and is_equal_approx(audio.pitch_scale, 1.0)
 		and audio.max_polyphony == 1,
-		"0.42秒低沉关门咚声必须通过独立的单声部SFX播放器，以原速和-6dB播放。"
+		"0.42秒低沉关门咚声必须通过独立的单声部SFX播放器，以原速和-4dB播放。"
 	)
 
 
@@ -170,13 +170,16 @@ func _test_phase_boundary_deduplication(
 	game.day_phase_announcement = announcement
 	game.day_phase_announcements_enabled = true
 	var baseline_count := announcement.presentation_count
-	game.call("_announce_wave_phase_start", 1)
-	game.call("_announce_wave_phase_start", 1)
-	game.call("_announce_wave_phase_start", 2)
+	var first_day_handled := bool(game.call("_announce_wave_phase_start", 1))
+	var duplicate_day_handled := bool(game.call("_announce_wave_phase_start", 1))
+	var ordinary_wave_handled := bool(game.call("_announce_wave_phase_start", 2))
 	_expect(
-		announcement.presentation_count == baseline_count + 1
+		first_day_handled
+		and duplicate_day_handled
+		and not ordinary_wave_handled
+		and announcement.presentation_count == baseline_count + 1
 		and announcement.current_text == "第一日 白昼",
-		"同一白昼阶段只能在首波报幕一次。"
+		"同一白昼阶段只能报幕一次，重复首波状态也必须继续占用开战提示音。"
 	)
 	game.call("_announce_wave_phase_start", 3)
 	game.call("_announce_wave_phase_start", 4)

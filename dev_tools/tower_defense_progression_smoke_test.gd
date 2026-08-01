@@ -309,8 +309,16 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 		)
 		_expect(
 			game.request_tower_defense_wave_start(1),
-			"The host must be able to confirm an early wave start."
+			"The host must be able to confirm the final wave countdown."
 		)
+		_expect(
+			game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+			and game.countdown_seconds == 3,
+			"Host confirmation must preserve a complete 3-second countdown."
+		)
+		for _countdown_step in range(3):
+			game.countdown_audio.stop()
+			game.call("_on_state_timer_timeout")
 		_expect(
 			game.current_wave_total == int((FORMAL_SCALED_TOTALS[2] as Array)[0]),
 			"Host runtime must apply the two-player wave scaling contract."

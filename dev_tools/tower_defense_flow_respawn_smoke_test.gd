@@ -88,7 +88,19 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.luoxi_merchant.is_active and game.luoxi_merchant.visible, "Luoxi must remain visible and interactive during rest.")
 
 	game.wave_hud.start_wave_button.pressed.emit()
-	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "Early-start must enter active combat exactly once.")
+	_expect(
+		game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+		and game.countdown_seconds == 3
+		and game.countdown_audio.playing
+		and not game.wave_hud.start_wave_button.visible,
+		"Early-start must skip preparation to one non-repeatable 3-second final countdown."
+	)
+	_expect(
+		not game.request_tower_defense_wave_start(0),
+		"The final 3-second countdown must reject repeated early-start requests."
+	)
+	_finish_final_countdown(game)
+	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "The third countdown tick must enter active combat exactly once.")
 	_expect(
 		not game.wave_hud.stage_banner.visible
 		and game.wave_hud.tower_defense_stats.visible,
@@ -139,7 +151,17 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	game.luoxi_merchant.refresh_counts_by_player_key[0] = 2
 	game.call("_set_merchant_active", true)
 	_expect(game.luoxi_merchant.get_player_refresh_count(0) == 2, "Repeated state sync in one rest must not reset Luoxi twice.")
-	_expect(game.request_tower_defense_wave_start(0), "The between-wave rest button must also start combat early.")
+	_expect(game.request_tower_defense_wave_start(0), "The between-wave rest button must also start the final countdown.")
+	_expect(
+		game.wave_state == GameRuntimeBase.WaveState.INTERMISSION
+		and game.countdown_seconds == 3,
+		"An intermission early-start must retain the rest state through the final countdown."
+	)
+	_finish_final_countdown(game)
+	_expect(
+		game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE,
+		"The intermission final countdown must enter combat only after all three ticks."
+	)
 	game.enemy_spawn_timer.stop()
 	game.player.call("_die")
 	var death_shader := status_hud.death_screen_effect.material as ShaderMaterial
@@ -781,6 +803,33 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 		_all_multiplayer_players_dead(game, [1, 2]),
 		"A ClientView intermission snapshot must wait for reliable authoritative revive events."
 	)
+	var countdown_audio := game.countdown_audio
+	game.apply_remote_flow_state(
+		flow_step.step_id,
+		GameRuntimeBase.WaveState.INTERMISSION,
+		3
+	)
+	_expect(
+		game.countdown_seconds == 3 and countdown_audio.playing,
+		"A ClientView final-countdown snapshot must immediately play the 3-second tick."
+	)
+	countdown_audio.stop()
+	game.apply_remote_flow_state(
+		flow_step.step_id,
+		GameRuntimeBase.WaveState.INTERMISSION,
+		3
+	)
+	_expect(
+		not countdown_audio.playing,
+		"A repeated ClientView countdown snapshot must not replay the same tick."
+	)
+	for expected_seconds in [2, 1]:
+		game.call("_update_client_flow_countdown")
+		_expect(
+			game.countdown_seconds == expected_seconds and countdown_audio.playing,
+			"ClientView must play each remaining final-countdown tick exactly once."
+		)
+		countdown_audio.stop()
 	game.apply_remote_flow_state(
 		flow_step.step_id,
 		GameRuntimeBase.WaveState.INTERMISSION,
@@ -893,9 +942,15 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	)
 	_expect(
 		game.request_tower_defense_wave_start(1),
-		"The Host must be able to confirm early combat for the team."
+		"The Host must be able to confirm the team's final countdown."
 	)
-	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "The Host confirmation must authoritatively start combat.")
+	_expect(
+		game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+		and game.countdown_seconds == 3,
+		"The Host confirmation must authoritatively enter the final countdown."
+	)
+	_finish_final_countdown(game)
+	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "The Host must start combat after the authoritative 3-second countdown.")
 	game.enemy_spawn_timer.stop()
 	for peer_id in [1, 2]:
 		var player_instance := game.get_player_for_peer(peer_id)
@@ -958,6 +1013,16 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	for _frame in range(4):
 		await process_frame
 		await physics_frame
+
+
+func _finish_final_countdown(game: GameTowerDefense) -> void:
+	for expected_seconds in [2, 1, 0]:
+		game.countdown_audio.stop()
+		game.call("_on_state_timer_timeout")
+		_expect(
+			game.countdown_seconds == expected_seconds,
+			"The authoritative final countdown must advance through 3, 2, 1, then 0."
+		)
 
 
 func _stop_audio_players(node: Node) -> void:

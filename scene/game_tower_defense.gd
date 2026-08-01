@@ -249,6 +249,8 @@ var current_wave_escaped: int = 0
 var current_wave_resolved: int = 0
 var countdown_seconds: int = 0
 var _last_day_phase_announcement_key: StringName = &""
+var _client_countdown_sequence_key: StringName = &""
+var _client_last_countdown_tick_seconds := COUNTDOWN_FINAL_SECONDS + 1
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
 var music_fade_tween: Tween = null
@@ -704,7 +706,7 @@ func _announce_wave_phase_start(wave_number: int) -> bool:
 	var day_number := day_cycle_config.get_day_number(safe_wave)
 	var announcement_key := StringName("%d:%d" % [day_number, int(is_night)])
 	if announcement_key == _last_day_phase_announcement_key:
-		return false
+		return true
 	_last_day_phase_announcement_key = announcement_key
 	day_phase_announcement.show_day_phase(day_number, is_night)
 	return true
@@ -3119,9 +3121,13 @@ func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
 	)
 	if flow_step == null:
 		return false
-	state_timer.stop()
-	countdown_seconds = 0
-	_begin_flow_step(flow_step)
+	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
+		return false
+	countdown_seconds = COUNTDOWN_FINAL_SECONDS
+	wave_hud.show_countdown(countdown_seconds, false)
+	_play_countdown_tick()
+	state_timer.start(1.0)
+	_emit_multiplayer_flow_state(wave_state)
 	return true
 
 
@@ -3516,7 +3522,10 @@ func _get_current_intermission_seconds() -> int:
 
 
 func _can_local_player_start_wave_early() -> bool:
-	return runtime_mode != RuntimeMode.CLIENT_VIEW
+	return (
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+		and countdown_seconds > COUNTDOWN_FINAL_SECONDS
+	)
 
 
 func _prewarm_enemy_navigation_grids() -> void:
@@ -4480,6 +4489,7 @@ func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds
 		countdown_seconds,
 		_can_local_player_start_wave_early()
 	)
+	_play_client_countdown_tick_if_new(state, step_id, countdown_seconds)
 	if countdown_seconds <= 0:
 		state_timer.stop()
 		return
@@ -4498,8 +4508,11 @@ func _update_client_flow_countdown() -> void:
 	if countdown_seconds <= 0:
 		state_timer.stop()
 		return
-	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-		_play_countdown_tick()
+	_play_client_countdown_tick_if_new(
+		wave_state,
+		_get_flow_step_id(current_flow_step),
+		countdown_seconds
+	)
 
 
 func _spawn_wave_batch() -> void:
@@ -6429,6 +6442,25 @@ func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 func _play_countdown_tick() -> void:
 	countdown_audio.pitch_scale = 1.0
 	countdown_audio.play()
+
+
+func _play_client_countdown_tick_if_new(
+	state: WaveState,
+	step_id: StringName,
+	seconds: int
+) -> void:
+	var sequence_key := StringName("%d:%s" % [int(state), String(step_id)])
+	if sequence_key != _client_countdown_sequence_key:
+		_client_countdown_sequence_key = sequence_key
+		_client_last_countdown_tick_seconds = COUNTDOWN_FINAL_SECONDS + 1
+	if (
+		seconds <= 0
+		or seconds > COUNTDOWN_FINAL_SECONDS
+		or seconds >= _client_last_countdown_tick_seconds
+	):
+		return
+	_client_last_countdown_tick_seconds = seconds
+	_play_countdown_tick()
 
 
 func _update_wave_music(wave_config: WaveConfig) -> void:

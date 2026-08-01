@@ -74,10 +74,13 @@ func _test_entry_announcement() -> void:
 	_expect(
 		announcement != null
 		and arena.test_entry_announcement_text == "测试场景 P1"
-		and announcement.current_text == "测试场景 P1"
-		and announcement.presentation_count == 1
-		and announcement.is_presenting(),
-		"P1直启后必须且只能播放一次“测试场景 P1”报幕。"
+		and is_equal_approx(
+			arena.progression_config.initial_preparation_seconds,
+			3.0
+		)
+		and announcement.presentation_count == 0
+		and not announcement.is_presenting(),
+		"P1必须保留完整三秒倒计时，并在波次开始前隐藏入场报幕。"
 	)
 
 
@@ -96,9 +99,43 @@ func _test_deferred_entry_announcement() -> void:
 	await process_frame
 	await process_frame
 	_expect(
-		deferred_arena.day_phase_announcement.presentation_count == 1
-		and deferred_arena.day_phase_announcement.current_text == "测试场景 P1",
-		"P1运行时激活后必须播放一次入场报幕。"
+		deferred_arena.day_phase_announcement.presentation_count == 0,
+		"P1运行时激活后仍必须先等待三声倒计时。"
+	)
+	var first_step := deferred_arena.call("_get_start_flow_step") as FlowStepConfig
+	var countdown_audio := deferred_arena.countdown_audio
+	deferred_arena.call("_enter_pre_flow_step", first_step)
+	_expect(
+		deferred_arena.countdown_seconds == 3
+		and countdown_audio.playing
+		and deferred_arena.day_phase_announcement.presentation_count == 0,
+		"P1倒计时必须从3开始播放第一声，且不得提前显示报幕。"
+	)
+	for expected_seconds in [2, 1]:
+		countdown_audio.stop()
+		deferred_arena.call("_on_state_timer_timeout")
+		_expect(
+			deferred_arena.countdown_seconds == expected_seconds
+			and countdown_audio.playing
+			and deferred_arena.day_phase_announcement.presentation_count == 0,
+			"P1倒计时的3、2、1三声结束前不得显示报幕。"
+		)
+	countdown_audio.stop()
+	deferred_arena.call("_on_state_timer_timeout")
+	_expect(
+		deferred_arena.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
+		and deferred_arena.day_phase_announcement.presentation_count == 1
+		and deferred_arena.day_phase_announcement.current_text == "测试场景 P1"
+		and deferred_arena.day_phase_announcement.is_presenting(),
+		"P1必须在完整三声倒计时后才显示一次入场大字并播放咚声。"
+	)
+	var duplicate_handled := bool(
+		deferred_arena.call("_announce_wave_phase_start", 1)
+	)
+	_expect(
+		duplicate_handled
+		and deferred_arena.day_phase_announcement.presentation_count == 1,
+		"重复的首波状态必须由P1报幕去重，且不得补播普通开战音效。"
 	)
 	deferred_arena.activate_runtime()
 	await process_frame
