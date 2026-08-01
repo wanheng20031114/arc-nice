@@ -1,28 +1,39 @@
 #!/usr/bin/env python3
-"""Build the yellow-edge Elite Lightning Sorcerer deterministically.
+"""Build the fully redesigned Elite Lightning Sorcerer deterministically.
 
-Purple is derived only from continuous yellow garment-edge components in a
-fixed body-relative region.  Brown cloth, the crown, staff and lightning magic
-remain untouched, so no independently authored purple pixels can blink between
-animation frames.
+The runtime sprites are sampled from complete imagegen character redraws.  The
+ordinary Lightning Sorcerer contributes only the established 40x40 frame
+bounds, while purple is kept as coherent garment panels rather than an overlay.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from pathlib import Path
 
 from PIL import Image
 
 from process_frost_sorcerer_assets import (
+    CHARACTER_FRAME_SIZE,
+    MOVE_BODY_MARKER,
     MOVE_FRAME_COUNT,
+    MOVE_GROUND_Y,
+    MOVE_TARGET_HEIGHTS,
+    _assemble_horizontal_strip,
+    _assemble_sheet,
     _assert_move_strip_contract,
+    _frame_bbox,
+    _load_grid_subjects,
+    _normalize_alpha,
+    _place_character_in_reference_bounds,
+    _place_move_subject,
+    _quantize_to_reference_palette,
+    _quantize_visible_colors,
+    _subject_crop,
 )
-from process_lightning_sorcerer_assets import (
-    _assert_lightning_gait_contract,
-)
+from process_lightning_sorcerer_assets import _assert_lightning_gait_contract
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,12 +42,12 @@ ANIMATION_DIR = ROOT / "resources/animation"
 SOURCE_DIR = ROOT / "dev_assets/source_images/lightning_sorcerer_elite"
 
 BASE_CHARACTER = TEXTURE_DIR / "lightning_sorcerer.png"
-BASE_MOVE = TEXTURE_DIR / "lightning_sorcerer_move.png"
-CHARACTER_OVERLAY = (
-    SOURCE_DIR / "lightning_sorcerer_elite_purple_texture_overlay.png"
+CHARACTER_SOURCE = (
+    SOURCE_DIR / "lightning_sorcerer_elite_full_redesign_v3_alpha.png"
 )
-MOVE_OVERLAY = (
-    SOURCE_DIR / "lightning_sorcerer_elite_move_purple_texture_overlay.png"
+MOVE_SOURCE = (
+    SOURCE_DIR
+    / "lightning_sorcerer_elite_move_8pose_full_redesign_v4_alpha.png"
 )
 CHARACTER_OUTPUT = TEXTURE_DIR / "lightning_sorcerer_elite.png"
 MOVE_OUTPUT = TEXTURE_DIR / "lightning_sorcerer_elite_move.png"
@@ -44,76 +55,30 @@ ANIMATION_OUTPUT = ANIMATION_DIR / "lightning_sorcerer_elite.tres"
 
 CHARACTER_SIZE = (160, 160)
 MOVE_SIZE = (320, 40)
-FRAME_SIZE = 40
 GRID_COLUMNS = 4
 GRID_ROWS = 4
+MOVE_SOURCE_COLUMNS = 4
+MOVE_SOURCE_ROWS = 2
+CHARACTER_PALETTE_COLORS = 24
+MIN_PURPLE_COMPONENT_PIXELS = 3
+CHARACTER_PURPLE_RANGE = (45, 100)
+MOVE_PURPLE_RANGE = (55, 100)
 
-BASE_CHARACTER_RGBA_SHA256 = (
-    "ea55cbc6a2bee4b1dd1b907d2b243329c91f1ccc9e34d873832d6d0f5ad1f8e7"
-)
 BASE_CHARACTER_ALPHA_SHA256 = (
     "4e277d4385f7f3169fed9da807b4f57c233aa350b2823ae6c5d1099a3805b073"
 )
-BASE_MOVE_RGBA_SHA256 = (
-    "e23c18b453106180bf334f20ede653336e4ab58780e39b7f55522fdf8f52642f"
+CHARACTER_SOURCE_RGBA_SHA256 = (
+    "9e25caa41272426c44595f435fd253aa6ab132038cfb84bbafa02367319bdce4"
 )
-BASE_MOVE_ALPHA_SHA256 = (
-    "0013a1deb45af87c9e5984ae3b8d96f5bbcfbef8117ff941f2f8bf33983f7662"
+MOVE_SOURCE_RGBA_SHA256 = (
+    "7a946cbc397212976238b1e7cad895c2c3df43547304ad4adc01bba509396ba4"
 )
-ELITE_CHARACTER_RGBA_SHA256 = (
-    "ed4093c1dc27cd0177927cc83382e5d10aeadfb1a7a378007fc4a71fc37dfdb1"
+CHARACTER_OUTPUT_RGBA_SHA256 = (
+    "3252f31e179def073230973afddc93116557353c1e939797ee92d80b4a78ee61"
 )
-ELITE_MOVE_RGBA_SHA256 = (
-    "21d02156ce08cfddf0f36b00cba074a593b30923dd8075e4cc3c6dbad629fa3b"
+MOVE_OUTPUT_RGBA_SHA256 = (
+    "2ec6e135de41eb3343fcd9e00e9d23a169f721676fabd328f0e3d21d1f2b127d"
 )
-EXPECTED_CHARACTER_CHANGED_PIXELS = 762
-EXPECTED_MOVE_CHANGED_PIXELS = 327
-CHARACTER_OVERLAY_RGBA_SHA256 = (
-    "a4d7d928fc614f88af2954a338e8f9c869390a88e3d13bcae69bdda2b342ab78"
-)
-MOVE_OVERLAY_RGBA_SHA256 = (
-    "4b9ca500d8895ab3f62981ba978ee899fcc3662e427cd93791d9bbe1d8c164d5"
-)
-EXPECTED_CHARACTER_CHANGED_PER_FRAME = (
-    49,
-    43,
-    58,
-    48,
-    48,
-    52,
-    65,
-    48,
-    49,
-    27,
-    37,
-    48,
-    44,
-    39,
-    69,
-    38,
-)
-EXPECTED_MOVE_CHANGED_PER_FRAME = (54, 42, 41, 48, 41, 24, 31, 46)
-GARMENT_EDGE_RECT = (7, 18, 18, 36)
-MIN_EDGE_COMPONENT_PIXELS = 3
-YELLOW_EDGE_COLORS = {
-    (154, 113, 33, 255),
-    (223, 184, 42, 255),
-    (248, 216, 56, 255),
-    (251, 226, 70, 255),
-    (253, 236, 80, 255),
-    (248, 239, 171, 255),
-    (253, 249, 173, 255),
-}
-PURPLE_COLORS = {
-    (68, 20, 109, 255),
-    (109, 39, 175, 255),
-}
-YELLOW_TO_PURPLE = {
-    color: (68, 20, 109, 255)
-    if sum(color[:3]) < 500
-    else (109, 39, 175, 255)
-    for color in YELLOW_EDGE_COLORS
-}
 
 ANIMATIONS = OrderedDict(
     [
@@ -126,44 +91,48 @@ ANIMATIONS = OrderedDict(
 
 
 class EliteAssetContractError(RuntimeError):
-    """Raised when elite visuals drift from the approved ordinary assets."""
+    """Raised when the approved full-redesign asset contract drifts."""
 
 
 def _rgba_sha256(image: Image.Image) -> str:
     return hashlib.sha256(image.convert("RGBA").tobytes()).hexdigest()
 
 
-def _alpha_sha256(image: Image.Image) -> str:
-    return hashlib.sha256(
-        image.convert("RGBA").getchannel("A").tobytes()
-    ).hexdigest()
-
-
-def _require_base(
+def _load_pinned_source(
     path: Path,
-    expected_size: tuple[int, int],
-    expected_rgba_sha256: str,
-    expected_alpha_sha256: str,
+    expected_hash: str,
     label: str,
 ) -> Image.Image:
     if not path.is_file():
         raise FileNotFoundError(path)
     image = Image.open(path).convert("RGBA")
-    if image.size != expected_size:
+    actual_hash = _rgba_sha256(image)
+    if actual_hash != expected_hash:
         raise EliteAssetContractError(
-            f"{label} is {image.size}, expected {expected_size}"
-        )
-    rgba_hash = _rgba_sha256(image)
-    if rgba_hash != expected_rgba_sha256:
-        raise EliteAssetContractError(
-            f"{label} RGBA fingerprint changed: {rgba_hash}"
-        )
-    alpha_hash = _alpha_sha256(image)
-    if alpha_hash != expected_alpha_sha256:
-        raise EliteAssetContractError(
-            f"{label} alpha fingerprint changed: {alpha_hash}"
+            f"{label} RGBA fingerprint changed: {actual_hash}"
         )
     return image
+
+
+def _load_base_character() -> Image.Image:
+    if not BASE_CHARACTER.is_file():
+        raise FileNotFoundError(BASE_CHARACTER)
+    image = Image.open(BASE_CHARACTER).convert("RGBA")
+    if image.size != CHARACTER_SIZE:
+        raise EliteAssetContractError(
+            f"base Lightning Sorcerer is {image.size}, expected {CHARACTER_SIZE}"
+        )
+    alpha_hash = hashlib.sha256(image.getchannel("A").tobytes()).hexdigest()
+    if alpha_hash != BASE_CHARACTER_ALPHA_SHA256:
+        raise EliteAssetContractError(
+            f"base Lightning Sorcerer alpha fingerprint changed: {alpha_hash}"
+        )
+    return image
+
+
+def _is_purple(pixel: tuple[int, int, int, int]) -> bool:
+    red, green, blue, alpha = pixel
+    return alpha == 255 and blue >= red + 15 and blue >= green + 40
 
 
 def _connected_components(
@@ -189,184 +158,242 @@ def _connected_components(
     return components
 
 
-def _build_frame_edge_overlay(base_frame: Image.Image) -> Image.Image:
-    left, top, right, bottom = GARMENT_EDGE_RECT
-    edge_positions = {
-        (x, y)
-        for y in range(top, bottom)
-        for x in range(left, right)
-        if base_frame.getpixel((x, y)) in YELLOW_EDGE_COLORS
-    }
-    accepted_positions = set().union(
-        *(
-            component
-            for component in _connected_components(edge_positions)
-            if len(component) >= MIN_EDGE_COMPONENT_PIXELS
-        )
-    )
-    overlay = Image.new(
-        "RGBA",
-        (FRAME_SIZE, FRAME_SIZE),
-        (0, 0, 0, 0),
-    )
-    for position in accepted_positions:
-        overlay.putpixel(
-            position,
-            YELLOW_TO_PURPLE[base_frame.getpixel(position)],
-        )
-    return overlay
+def _replacement_color(
+    frame: Image.Image,
+    component: set[tuple[int, int]],
+) -> tuple[int, int, int, int]:
+    neighbours: list[tuple[int, int, int, int]] = []
+    for radius in range(1, 5):
+        for x, y in component:
+            for candidate_y in range(max(0, y - radius), min(40, y + radius + 1)):
+                for candidate_x in range(
+                    max(0, x - radius), min(40, x + radius + 1)
+                ):
+                    position = (candidate_x, candidate_y)
+                    pixel = frame.getpixel(position)
+                    if position in component or pixel[3] != 255 or _is_purple(pixel):
+                        continue
+                    neighbours.append(pixel)
+        if neighbours:
+            break
+    if not neighbours:
+        raise EliteAssetContractError("isolated purple has no visible neighbour")
+    counts = Counter(neighbours)
+    return sorted(counts, key=lambda color: (-counts[color], color))[0]
 
 
-def _build_edge_overlay(base: Image.Image, label: str) -> Image.Image:
-    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    frame_counts: list[int] = []
-    frame_rows = base.height // FRAME_SIZE
-    frame_columns = base.width // FRAME_SIZE
-    for row in range(frame_rows):
-        for column in range(frame_columns):
-            frame = base.crop(
-                (
-                    column * FRAME_SIZE,
-                    row * FRAME_SIZE,
-                    (column + 1) * FRAME_SIZE,
-                    (row + 1) * FRAME_SIZE,
-                )
-            )
-            frame_overlay = _build_frame_edge_overlay(frame)
-            overlay.alpha_composite(
-                frame_overlay,
-                (column * FRAME_SIZE, row * FRAME_SIZE),
-            )
-            frame_counts.append(len(_overlay_positions(frame_overlay)))
-    print(
-        "ELITE_PURPLE_EDGE_PLACEMENT "
-        f"{label} counts={tuple(frame_counts)} "
-        f"region={GARMENT_EDGE_RECT} "
-        f"minimum_component={MIN_EDGE_COMPONENT_PIXELS}"
-    )
-    return overlay
-
-
-def _overlay_positions(overlay: Image.Image) -> set[tuple[int, int]]:
-    return {
-        (x, y)
-        for y in range(overlay.height)
-        for x in range(overlay.width)
-        if overlay.getpixel((x, y))[3] > 0
-    }
-
-
-def _per_frame_overlay_counts(overlay: Image.Image) -> tuple[int, ...]:
-    counts: list[int] = []
-    frame_rows = overlay.height // FRAME_SIZE
-    frame_columns = overlay.width // FRAME_SIZE
-    for row in range(frame_rows):
-        for column in range(frame_columns):
-            frame = overlay.crop(
-                (
-                    column * FRAME_SIZE,
-                    row * FRAME_SIZE,
-                    (column + 1) * FRAME_SIZE,
-                    (row + 1) * FRAME_SIZE,
-                )
-            )
-            counts.append(
-                sum(1 for alpha in frame.getchannel("A").getdata() if alpha)
-            )
-    return tuple(counts)
-
-
-def _assert_overlay_contract(
-    overlay: Image.Image,
-    expected_size: tuple[int, int],
-    expected_rgba_sha256: str,
+def _remove_isolated_purple(
+    image: Image.Image,
+    columns: int,
+    rows: int,
     label: str,
-) -> None:
-    if overlay.size != expected_size:
+) -> Image.Image:
+    result = image.copy()
+    removed = 0
+    for row in range(rows):
+        for column in range(columns):
+            left = column * CHARACTER_FRAME_SIZE
+            top = row * CHARACTER_FRAME_SIZE
+            frame = result.crop(
+                (left, top, left + CHARACTER_FRAME_SIZE, top + CHARACTER_FRAME_SIZE)
+            )
+            purple = {
+                (x, y)
+                for y in range(CHARACTER_FRAME_SIZE)
+                for x in range(CHARACTER_FRAME_SIZE)
+                if _is_purple(frame.getpixel((x, y)))
+            }
+            for component in _connected_components(purple):
+                if len(component) >= MIN_PURPLE_COMPONENT_PIXELS:
+                    continue
+                replacement = _replacement_color(frame, component)
+                for position in component:
+                    frame.putpixel(position, replacement)
+                    removed += 1
+            result.paste(frame, (left, top))
+    print(f"PURPLE_SPECK_CLEANUP {label} removed={removed}")
+    return result
+
+
+def _assert_binary_alpha(image: Image.Image, label: str) -> None:
+    alpha_values = set(image.getchannel("A").getdata())
+    if not alpha_values.issubset({0, 255}):
         raise EliteAssetContractError(
-            f"{label} is {overlay.size}, expected {expected_size}"
+            f"{label} alpha must be binary, got {sorted(alpha_values)}"
         )
-    _assert_binary_alpha(overlay, label)
     if any(
         pixel[3] == 0 and pixel[:3] != (0, 0, 0)
-        for pixel in overlay.getdata()
+        for pixel in image.getdata()
     ):
         raise EliteAssetContractError(
             f"{label} transparent RGB payload must be zero"
         )
-    overlay_hash = _rgba_sha256(overlay)
-    if overlay_hash != expected_rgba_sha256:
-        raise EliteAssetContractError(
-            f"{label} RGBA fingerprint changed: {overlay_hash}"
-        )
 
 
-def _assert_binary_alpha(image: Image.Image, label: str) -> None:
-    values = set(image.getchannel("A").getdata())
-    if not values.issubset({0, 255}):
-        raise EliteAssetContractError(
-            f"{label} alpha must be binary, got {sorted(values)}"
-        )
-
-
-def _build_elite(
-    base: Image.Image,
-    overlay: Image.Image,
-    expected_per_frame: tuple[int, ...],
-    expected_rgba_sha256: str,
+def _assert_purple_garments(
+    image: Image.Image,
+    columns: int,
+    rows: int,
+    expected_range: tuple[int, int],
     label: str,
-) -> Image.Image:
-    positions = _overlay_positions(overlay)
-    changed_pixels = len(positions)
-    expected_changed_pixels = sum(expected_per_frame)
-    if changed_pixels != expected_changed_pixels:
-        raise EliteAssetContractError(
-            f"{label} changed {changed_pixels} pixels, "
-            f"expected {expected_changed_pixels}"
-        )
-    if _per_frame_overlay_counts(overlay) != expected_per_frame:
-        raise EliteAssetContractError(f"{label} per-frame purple counts changed")
-    result = base.copy()
-    for position in positions:
-        source_pixel = base.getpixel(position)
-        purple_pixel = overlay.getpixel(position)
-        if source_pixel not in YELLOW_EDGE_COLORS:
-            raise EliteAssetContractError(
-                f"{label} overlay covered non-yellow-edge color at {position}: "
-                f"{source_pixel}"
+) -> tuple[int, ...]:
+    counts: list[int] = []
+    for row in range(rows):
+        for column in range(columns):
+            frame = image.crop(
+                (
+                    column * CHARACTER_FRAME_SIZE,
+                    row * CHARACTER_FRAME_SIZE,
+                    (column + 1) * CHARACTER_FRAME_SIZE,
+                    (row + 1) * CHARACTER_FRAME_SIZE,
+                )
             )
-        if purple_pixel not in PURPLE_COLORS:
-            raise EliteAssetContractError(
-                f"{label} overlay used unapproved purple at {position}: "
-                f"{purple_pixel}"
-            )
-        result.putpixel(position, purple_pixel)
+            purple = {
+                (x, y)
+                for y in range(CHARACTER_FRAME_SIZE)
+                for x in range(CHARACTER_FRAME_SIZE)
+                if _is_purple(frame.getpixel((x, y)))
+            }
+            components = _connected_components(purple)
+            if any(len(component) < MIN_PURPLE_COMPONENT_PIXELS for component in components):
+                raise EliteAssetContractError(
+                    f"{label} frame {len(counts)} has an isolated purple speck"
+                )
+            count = len(purple)
+            if not expected_range[0] <= count <= expected_range[1]:
+                raise EliteAssetContractError(
+                    f"{label} frame {len(counts)} has {count} purple pixels, "
+                    f"expected {expected_range[0]}..{expected_range[1]}"
+                )
+            counts.append(count)
+    print(f"PURPLE_GARMENT_CONTRACT {label} counts={tuple(counts)}")
+    return tuple(counts)
 
-    if result.getchannel("A").tobytes() != base.getchannel("A").tobytes():
-        raise EliteAssetContractError(f"{label} alpha changed")
-    actual_changed_positions = {
-        (x, y)
-        for y in range(base.height)
-        for x in range(base.width)
-        if result.getpixel((x, y)) != base.getpixel((x, y))
-    }
-    if actual_changed_positions != positions:
-        raise EliteAssetContractError(
-            f"{label} changes escaped the approved overlay"
-        )
-    print(
-        "ELITE_PURPLE_EDGE_CONTRACT "
-        f"{label} changed={changed_pixels} "
-        f"palette_colors={len(PURPLE_COLORS)} "
-        "source=continuous_yellow_garment_edges"
+
+def _build_character_sheet(base: Image.Image) -> Image.Image:
+    _load_pinned_source(
+        CHARACTER_SOURCE,
+        CHARACTER_SOURCE_RGBA_SHA256,
+        "elite character imagegen source",
     )
-    rgba_hash = _rgba_sha256(result)
-    if rgba_hash != expected_rgba_sha256:
-        raise EliteAssetContractError(
-            f"{label} RGBA fingerprint changed: {rgba_hash}"
+    subjects = _load_grid_subjects(
+        CHARACTER_SOURCE,
+        "elite_lightning_character",
+    )
+    frames: list[Image.Image] = []
+    for index, subject in enumerate(subjects):
+        row, column = divmod(index, GRID_COLUMNS)
+        bbox = _frame_bbox(base, row, column)
+        frames.append(
+            _place_character_in_reference_bounds(
+                subject,
+                bbox,
+                f"elite_lightning_character_{row}_{column}",
+            )
         )
-    _assert_binary_alpha(result, label)
+    sheet = _quantize_visible_colors(
+        _assemble_sheet(frames, CHARACTER_FRAME_SIZE),
+        CHARACTER_PALETTE_COLORS,
+    )
+    sheet = _remove_isolated_purple(sheet, GRID_COLUMNS, GRID_ROWS, "character")
+    _assert_binary_alpha(sheet, "elite Lightning Sorcerer character")
+    for row in range(GRID_ROWS):
+        for column in range(GRID_COLUMNS):
+            if _frame_bbox(sheet, row, column) != _frame_bbox(base, row, column):
+                raise EliteAssetContractError(
+                    f"character frame {row}:{column} escaped ordinary bounds"
+                )
+    _assert_purple_garments(
+        sheet,
+        GRID_COLUMNS,
+        GRID_ROWS,
+        CHARACTER_PURPLE_RANGE,
+        "character",
+    )
+    return sheet
+
+
+def _load_move_subjects() -> list[Image.Image]:
+    sheet = _load_pinned_source(
+        MOVE_SOURCE,
+        MOVE_SOURCE_RGBA_SHA256,
+        "elite move imagegen source",
+    )
+    subjects: list[Image.Image] = []
+    for row in range(MOVE_SOURCE_ROWS):
+        for column in range(MOVE_SOURCE_COLUMNS):
+            left = round(column * sheet.width / MOVE_SOURCE_COLUMNS)
+            right = round((column + 1) * sheet.width / MOVE_SOURCE_COLUMNS)
+            top = round(row * sheet.height / MOVE_SOURCE_ROWS)
+            bottom = round((row + 1) * sheet.height / MOVE_SOURCE_ROWS)
+            cell = _normalize_alpha(sheet.crop((left, top, right, bottom)))
+            bbox = cell.getchannel("A").getbbox()
+            if bbox is None:
+                raise EliteAssetContractError(
+                    f"elite move source frame {row}:{column} is empty"
+                )
+            if bbox[0] < 4 or bbox[1] < 4 or bbox[2] > cell.width - 4 or bbox[3] > cell.height - 4:
+                raise EliteAssetContractError(
+                    f"elite move source frame {row}:{column} touches its cell edge"
+                )
+            subjects.append(
+                _subject_crop(cell, f"elite_lightning_move_{row}_{column}")
+            )
+    if len(subjects) != MOVE_FRAME_COUNT:
+        raise EliteAssetContractError(
+            f"elite move source has {len(subjects)} frames, expected {MOVE_FRAME_COUNT}"
+        )
+    return subjects
+
+
+def _repair_move_contacts(strip: Image.Image) -> Image.Image:
+    """Preserve the authored gait while making F2/F5 ground contacts explicit."""
+    result = strip.copy()
+
+    frame_two = result.crop((80, 0, 120, 40))
+    raised_boot = frame_two.crop((20, 34, 25, 39))
+    for y in range(34, 39):
+        for x in range(20, 25):
+            frame_two.putpixel((x, y), (0, 0, 0, 0))
+    frame_two.alpha_composite(raised_boot, (22, 31))
+    result.paste(frame_two, (80, 0))
+
+    frame_five_left = 5 * CHARACTER_FRAME_SIZE
+    result.putpixel(
+        (frame_five_left + 13, MOVE_GROUND_Y),
+        result.getpixel((frame_five_left + 12, MOVE_GROUND_Y)),
+    )
     return result
+
+
+def _build_move_strip(character: Image.Image) -> Image.Image:
+    subjects = _load_move_subjects()
+    frames = [
+        _place_move_subject(
+            subject,
+            MOVE_TARGET_HEIGHTS[index],
+            0,
+            f"elite_lightning_move_{index}",
+        )
+        for index, subject in enumerate(subjects)
+    ]
+    strip = _quantize_to_reference_palette(
+        _assemble_horizontal_strip(frames),
+        character,
+    )
+    strip = _remove_isolated_purple(strip, MOVE_FRAME_COUNT, 1, "move")
+    strip = _repair_move_contacts(strip)
+    _assert_binary_alpha(strip, "elite Lightning Sorcerer move")
+    _assert_move_strip_contract(strip, "elite lightning sorcerer move")
+    _assert_lightning_gait_contract(strip)
+    _assert_purple_garments(
+        strip,
+        MOVE_FRAME_COUNT,
+        1,
+        MOVE_PURPLE_RANGE,
+        "move",
+    )
+    return strip
 
 
 def _animation_entry(name: str, speed: float, loop: bool) -> str:
@@ -390,23 +417,10 @@ def _animation_entry(name: str, speed: float, loop: bool) -> str:
 
 def _sprite_frames_text() -> str:
     lines = [
-        (
-            '[gd_resource type="SpriteFrames" format=3 '
-            'uid="uid://cwdlo03coum0b"]'
-        ),
+        '[gd_resource type="SpriteFrames" format=3 uid="uid://cwdlo03coum0b"]',
         "",
-        (
-            '[ext_resource type="Texture2D" '
-            'uid="uid://b36yt8ewr3axr" '
-            'path="res://resources/texture/lightning_sorcerer_elite.png" '
-            'id="1_texture"]'
-        ),
-        (
-            '[ext_resource type="Texture2D" '
-            'uid="uid://dql2aoi5h4ivq" '
-            'path="res://resources/texture/lightning_sorcerer_elite_move.png" '
-            'id="2_move"]'
-        ),
+        '[ext_resource type="Texture2D" uid="uid://b36yt8ewr3axr" path="res://resources/texture/lightning_sorcerer_elite.png" id="1_texture"]',
+        '[ext_resource type="Texture2D" uid="uid://dql2aoi5h4ivq" path="res://resources/texture/lightning_sorcerer_elite_move.png" id="2_move"]',
         "",
     ]
     for name in sorted(ANIMATIONS):
@@ -416,16 +430,9 @@ def _sprite_frames_text() -> str:
         for column in range(frame_count):
             lines.extend(
                 [
-                    (
-                        '[sub_resource type="AtlasTexture" '
-                        f'id="AtlasTexture_{name}_{column}"]'
-                    ),
+                    f'[sub_resource type="AtlasTexture" id="AtlasTexture_{name}_{column}"]',
                     f'atlas = ExtResource("{texture_id}")',
-                    (
-                        f"region = Rect2({column * FRAME_SIZE}, "
-                        f"{0 if name == 'move' else row * FRAME_SIZE}, "
-                        f"{FRAME_SIZE}, {FRAME_SIZE})"
-                    ),
+                    f"region = Rect2({column * CHARACTER_FRAME_SIZE}, {0 if name == 'move' else row * CHARACTER_FRAME_SIZE}, {CHARACTER_FRAME_SIZE}, {CHARACTER_FRAME_SIZE})",
                     "filter_clip = true",
                     "",
                 ]
@@ -434,26 +441,16 @@ def _sprite_frames_text() -> str:
         _animation_entry(name, values[1], values[2])
         for name, values in sorted(ANIMATIONS.items())
     ]
-    lines.extend(
-        [
-            "[resource]",
-            f"animations = [{', '.join(entries)}]",
-            "",
-        ]
-    )
+    lines.extend(["[resource]", f"animations = [{', '.join(entries)}]", ""])
     return "\n".join(lines)
 
 
 def _validate_outputs(
     character: Image.Image,
     move: Image.Image,
-    character_overlay: Image.Image,
-    move_overlay: Image.Image,
     animation_text: str,
 ) -> None:
     for path, expected, label in (
-        (CHARACTER_OVERLAY, character_overlay, "elite character overlay"),
-        (MOVE_OVERLAY, move_overlay, "elite move overlay"),
         (CHARACTER_OUTPUT, character, "elite character"),
         (MOVE_OUTPUT, move, "elite move"),
     ):
@@ -463,98 +460,46 @@ def _validate_outputs(
         if actual.tobytes() != expected.tobytes():
             raise EliteAssetContractError(f"Generated {label} is stale")
     if not ANIMATION_OUTPUT.is_file():
-        raise EliteAssetContractError(
-            f"Missing generated SpriteFrames: {ANIMATION_OUTPUT}"
-        )
+        raise EliteAssetContractError(f"Missing SpriteFrames: {ANIMATION_OUTPUT}")
     if ANIMATION_OUTPUT.read_text(encoding="utf-8") != animation_text:
         raise EliteAssetContractError("Generated elite SpriteFrames is stale")
 
 
 def main(check_only: bool = False) -> None:
-    base_character = _require_base(
-        BASE_CHARACTER,
-        CHARACTER_SIZE,
-        BASE_CHARACTER_RGBA_SHA256,
-        BASE_CHARACTER_ALPHA_SHA256,
-        "base Lightning Sorcerer character",
-    )
-    base_move = _require_base(
-        BASE_MOVE,
-        MOVE_SIZE,
-        BASE_MOVE_RGBA_SHA256,
-        BASE_MOVE_ALPHA_SHA256,
-        "base Lightning Sorcerer move",
-    )
-    character_overlay = _build_edge_overlay(
-        base_character,
-        "character",
-    )
-    _assert_overlay_contract(
-        character_overlay,
-        CHARACTER_SIZE,
-        CHARACTER_OVERLAY_RGBA_SHA256,
-        "elite Lightning Sorcerer character overlay",
-    )
-    move_overlay = _build_edge_overlay(
-        base_move,
-        "move",
-    )
-    _assert_overlay_contract(
-        move_overlay,
-        MOVE_SIZE,
-        MOVE_OVERLAY_RGBA_SHA256,
-        "elite Lightning Sorcerer move overlay",
-    )
-    character = _build_elite(
-        base_character,
-        character_overlay,
-        EXPECTED_CHARACTER_CHANGED_PER_FRAME,
-        ELITE_CHARACTER_RGBA_SHA256,
-        "elite Lightning Sorcerer character",
-    )
-    move = _build_elite(
-        base_move,
-        move_overlay,
-        EXPECTED_MOVE_CHANGED_PER_FRAME,
-        ELITE_MOVE_RGBA_SHA256,
-        "elite Lightning Sorcerer move",
-    )
-    _assert_move_strip_contract(move, "elite lightning sorcerer move")
-    _assert_lightning_gait_contract(move)
+    base = _load_base_character()
+    character = _build_character_sheet(base)
+    move = _build_move_strip(character)
+    character_hash = _rgba_sha256(character)
+    move_hash = _rgba_sha256(move)
+    if character_hash != CHARACTER_OUTPUT_RGBA_SHA256:
+        raise EliteAssetContractError(
+            f"elite character fingerprint changed: {character_hash}"
+        )
+    if move_hash != MOVE_OUTPUT_RGBA_SHA256:
+        raise EliteAssetContractError(
+            f"elite move fingerprint changed: {move_hash}"
+        )
     animation_text = _sprite_frames_text()
 
     if check_only:
-        _validate_outputs(
-            character,
-            move,
-            character_overlay,
-            move_overlay,
-            animation_text,
-        )
+        _validate_outputs(character, move, animation_text)
         print(
             "LIGHTNING_SORCERER_ELITE_ASSETS_CHECK_OK "
-            f"character_changed={EXPECTED_CHARACTER_CHANGED_PIXELS} "
-            f"move_changed={EXPECTED_MOVE_CHANGED_PIXELS}"
+            f"character_sha256={character_hash} "
+            f"move_sha256={move_hash}"
         )
         return
 
     TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
     ANIMATION_DIR.mkdir(parents=True, exist_ok=True)
-    SOURCE_DIR.mkdir(parents=True, exist_ok=True)
-    character_overlay.save(CHARACTER_OVERLAY, optimize=True)
-    move_overlay.save(MOVE_OVERLAY, optimize=True)
     character.save(CHARACTER_OUTPUT, optimize=True)
     move.save(MOVE_OUTPUT, optimize=True)
-    ANIMATION_OUTPUT.write_text(
-        animation_text,
-        encoding="utf-8",
-        newline="\n",
-    )
+    ANIMATION_OUTPUT.write_text(animation_text, encoding="utf-8", newline="\n")
     print(
         "LIGHTNING_SORCERER_ELITE_ASSETS_OK "
-        f"character_changed={EXPECTED_CHARACTER_CHANGED_PIXELS} "
-        f"move_changed={EXPECTED_MOVE_CHANGED_PIXELS} "
-        "alpha_and_gait=base_identical"
+        f"character_sha256={character_hash} "
+        f"move_sha256={move_hash} "
+        f"body_marker={MOVE_BODY_MARKER}"
     )
 
 

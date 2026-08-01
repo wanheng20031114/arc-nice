@@ -37,30 +37,16 @@ const EXPECTED_ATTACK_RANGE := 7.0 * 16.0
 const EXPECTED_CHAIN_RANGE := 4.0 * 16.0
 const MOVE_FRAME_COUNT := 8
 const MOVE_ANIMATION_SPEED := 12.0
-const EXPECTED_ATLAS_CHANGED_PIXELS := 762
-const EXPECTED_MOVE_CHANGED_PIXELS := 327
-const EXPECTED_ATLAS_CHANGED_PER_FRAME: Array[int] = [
-	49, 43, 58, 48,
-	48, 52, 65, 48,
-	49, 27, 37, 48,
-	44, 39, 69, 38,
+const EXPECTED_ATLAS_PURPLE_PER_FRAME: Array[int] = [
+	76, 72, 70, 79,
+	60, 54, 57, 80,
+	78, 73, 73, 74,
+	70, 70, 84, 51,
 ]
-const EXPECTED_MOVE_CHANGED_PER_FRAME: Array[int] = [
-	54, 42, 41, 48, 41, 24, 31, 46,
+const EXPECTED_MOVE_PURPLE_PER_FRAME: Array[int] = [
+	74, 64, 69, 87, 77, 77, 71, 64,
 ]
-const APPROVED_PURPLE_RGB := {
-	0x44146D: true,
-	0x6D27AF: true,
-}
-const APPROVED_YELLOW_EDGE_RGB := {
-	0x9A7121: true,
-	0xDFB82A: true,
-	0xF8D838: true,
-	0xFBE246: true,
-	0xFDEC50: true,
-	0xF8EFAB: true,
-	0xFDF9AD: true,
-}
+const MAX_RUNTIME_COLORS := 25
 
 
 class TargetRuntime:
@@ -358,113 +344,77 @@ func _test_windup_and_cooldown() -> void:
 
 
 func _test_pixel_contract() -> void:
-	var atlas_metrics := _compare_texture_pair(
-		BASE_TEXTURE_PATH,
+	_inspect_elite_texture(
 		ELITE_TEXTURE_PATH,
 		Vector2i(160, 160),
+		EXPECTED_ATLAS_PURPLE_PER_FRAME,
 		"character atlas"
 	)
-	var move_metrics := _compare_texture_pair(
-		BASE_MOVE_TEXTURE_PATH,
+	_inspect_elite_texture(
 		ELITE_MOVE_TEXTURE_PATH,
 		Vector2i(320, 40),
-		"move strip"
-	)
-	_expect(
-		int(atlas_metrics.get("changed_pixels", 0))
-		== EXPECTED_ATLAS_CHANGED_PIXELS,
-		"Elite character atlas must contain exactly %d approved purple pixels."
-		% EXPECTED_ATLAS_CHANGED_PIXELS
-	)
-	_expect(
-		int(move_metrics.get("changed_pixels", 0))
-		== EXPECTED_MOVE_CHANGED_PIXELS,
-		"Elite move strip must contain exactly %d approved purple pixels."
-		% EXPECTED_MOVE_CHANGED_PIXELS
-	)
-	_expect_edge_frame_contract(
-		atlas_metrics,
-		EXPECTED_ATLAS_CHANGED_PER_FRAME,
-		"character atlas"
-	)
-	_expect_edge_frame_contract(
-		move_metrics,
-		EXPECTED_MOVE_CHANGED_PER_FRAME,
+		EXPECTED_MOVE_PURPLE_PER_FRAME,
 		"move strip"
 	)
 
 
-func _compare_texture_pair(
-	base_path: String,
+func _inspect_elite_texture(
 	elite_path: String,
 	expected_size: Vector2i,
+	expected_purple_per_frame: Array[int],
 	label: String
-) -> Dictionary:
-	var base := Image.load_from_file(ProjectSettings.globalize_path(base_path))
+) -> void:
 	var elite := Image.load_from_file(ProjectSettings.globalize_path(elite_path))
 	_expect(
-		base != null
-		and elite != null
-		and base.get_size() == expected_size
-		and elite.get_size() == expected_size,
-		"Base and Elite Lightning Sorcerer %s must remain %dx%d."
+		elite != null and elite.get_size() == expected_size,
+		"Elite Lightning Sorcerer %s must remain %dx%d."
 		% [label, expected_size.x, expected_size.y]
 	)
-	if (
-		base == null
-		or elite == null
-		or base.get_size() != expected_size
-		or elite.get_size() != expected_size
-	):
-		return {}
+	if elite == null or elite.get_size() != expected_size:
+		return
 
 	var frame_columns := int(expected_size.x / 40)
 	var frame_rows := int(expected_size.y / 40)
-	var changed_per_frame: Array[int] = []
-	changed_per_frame.resize(frame_columns * frame_rows)
-	var changed_pixels := 0
+	var purple_per_frame: Array[int] = []
+	purple_per_frame.resize(frame_columns * frame_rows)
+	var visible_colors := {}
+	var has_green_residue := false
 	for y in range(expected_size.y):
 		for x in range(expected_size.x):
-			var base_pixel := base.get_pixel(x, y)
 			var elite_pixel := elite.get_pixel(x, y)
-			var frame_index := int(y / 40) * frame_columns + int(x / 40)
-			_expect(
-				is_equal_approx(base_pixel.a, elite_pixel.a),
-				"Elite %s alpha changed at %d,%d." % [label, x, y]
-			)
-			if base_pixel == elite_pixel:
+			if elite_pixel.a < 0.5:
 				continue
-			changed_pixels += 1
-			changed_per_frame[frame_index] += 1
-			_expect(
-				APPROVED_YELLOW_EDGE_RGB.has(_rgb_key(base_pixel)),
-				"Elite %s purple must replace an existing yellow garment-edge pixel at %d,%d."
-				% [label, x, y]
+			visible_colors[_rgb_key(elite_pixel)] = true
+			has_green_residue = has_green_residue or (
+				elite_pixel.g > 0.75
+				and elite_pixel.g > elite_pixel.r * 1.4
+				and elite_pixel.g > elite_pixel.b * 1.4
 			)
-			_expect(
-				APPROVED_PURPLE_RGB.has(_rgb_key(elite_pixel)),
-				"Elite %s escaped the approved purple palette at %d,%d."
-				% [label, x, y]
-			)
-	return {
-		"changed_pixels": changed_pixels,
-		"changed_per_frame": changed_per_frame,
-	}
-
-
-func _expect_edge_frame_contract(
-	metrics: Dictionary,
-	expected_changed_per_frame: Array[int],
-	label: String
-) -> void:
-	var changed_per_frame := (
-		metrics.get("changed_per_frame", []) as Array[int]
-	)
+			if _is_elite_purple(elite_pixel):
+				var frame_index := (
+					int(y / 40) * frame_columns + int(x / 40)
+				)
+				purple_per_frame[frame_index] += 1
 	_expect(
-		changed_per_frame == expected_changed_per_frame,
-		"Elite %s yellow-edge replacement changed in at least one animation frame."
+		purple_per_frame == expected_purple_per_frame,
+		"Elite %s coherent purple garment coverage changed between frames."
 		% label
 	)
+	_expect(
+		visible_colors.size() <= MAX_RUNTIME_COLORS,
+		"Elite %s must keep a compact pixel-art palette." % label
+	)
+	_expect(
+		not has_green_residue,
+		"Elite %s must not retain chroma-key green pixels." % label
+	)
+
+
+func _is_elite_purple(color: Color) -> bool:
+	var red := clampi(roundi(color.r * 255.0), 0, 255)
+	var green := clampi(roundi(color.g * 255.0), 0, 255)
+	var blue := clampi(roundi(color.b * 255.0), 0, 255)
+	return color.a >= 0.5 and blue >= red + 15 and blue >= green + 40
 
 
 func _rgb_key(color: Color) -> int:
