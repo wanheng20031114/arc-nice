@@ -1,84 +1,117 @@
-# 精英雷电术士完整重设计素材记录
+# 精英雷电术士紫色色阶重做记录
 
-当前版本不再从普通雷电术士贴图叠加紫色，也不再读取旧的紫色覆盖层。
-普通版只提供角色身份、动作语义与每个 40×40 帧的稳定边界；精英版角色的
-兜帽、双侧袖片、肩部、腰带和袍身内衬均由 Codex 内置 `imagegen` 重新绘制。
-紫色因此属于完整服装结构，不会在帧间随机变成污渍或散点。
+当前版本严格复用冰霜术士普通/精英之间已经验证过的处理原则：精英图不是
+逐帧绘制装饰，也不要求不同姿势共享相同的画布坐标，而是把普通版中一套固定
+的源色色阶逐像素映射成一套固定的精英色色阶。这样颜色天然附着在衣袍、冠部、
+法杖结晶和法术像素上，随每个原始动作移动，不会出现紫色像素钉在画布上、跨帧
+爬动或闪烁的问题。
+
+## 冰霜术士对照结论
+
+`dev_tools/process_frost_sorcerer_elite_assets.py` 只执行六组固定的蓝色到青色
+映射。它不使用逐帧遮罩，主动画每帧实际改色数量会随姿势从 68 到 191 变化，
+八帧移动会从 85 到 109 变化。这种“源色相同就始终映射到同一目标色”的契约，
+才是冰霜精英动画稳定的原因。
+
+此前雷电精英的 v6 方案反而把同一行动作的紫色坐标和数量强制设为完全相同。
+角色的衣袍和四肢在运动，但紫色坐标不动，因此视觉上仍然会漂移。该构建路径已
+移除。
 
 ## 当前权威文件
 
-- `lightning_sorcerer_elite_full_redesign_v3_imagegen_reference.png`：内置
-  `imagegen` 生成的 4×4 完整主动画设计。
-- `lightning_sorcerer_elite_full_redesign_v3_alpha.png`：主动画去除绿幕后的
-  确定性构建输入。
-- `lightning_sorcerer_elite_move_8pose_full_redesign_v4_imagegen_reference.png`：
-  内置 `imagegen` 第二次逐帧姿势描摹得到的 4×2 八相位移动设计。
-- `lightning_sorcerer_elite_move_8pose_full_redesign_v4_alpha.png`：移动设计去除
-  绿幕后的确定性构建输入。
-- `resources/texture/lightning_sorcerer_elite.png`：160×160 运行时主图。
-- `resources/texture/lightning_sorcerer_elite_move.png`：320×40、八帧运行时移动
-  横条。
-- `resources/animation/lightning_sorcerer_elite.tres`：八帧、12 fps 的独立移动
-  SpriteFrames；蓄力、攻击和死亡仍从 4×4 主图读取。
+- `lightning_sorcerer_elite_palette_swap_v7_imagegen_reference.png`：Codex
+  内置 `imagegen` 生成的 4×4 多级紫色色阶设计参考。
+- `lightning_sorcerer_elite_move_8pose_palette_swap_v7_imagegen_reference.png`：
+  Codex 内置 `imagegen` 生成的八帧移动紫色色阶设计参考。
+- `resources/texture/lightning_sorcerer_elite.png`：160×160 运行时主动画；
+  只由普通版主图执行固定色表映射得到。
+- `resources/texture/lightning_sorcerer_elite_move.png`：320×40 八帧移动横条；
+  只由普通版移动横条执行同一固定色表映射得到。
+- `resources/animation/lightning_sorcerer_elite.tres`：独立 SpriteFrames；移动
+  8 帧、12 fps，蓄力/攻击/死亡各 4 帧。
 
-目录中的 v2、旧移动参考和旧紫色纹理参考只作为问题版本历史记录，不再参与
-构建。旧的 `*_purple_texture_overlay.png` 已删除，以免再次把覆盖层误当成精英
-角色设计。
+目录中 `full_redesign`、`clean_trim`、`edge_trim`、`temporal_topology` 和更早
+版本只保留为历史问题记录，不再参与构建。
 
-## 生图方式与完整提示词
+## 生图模式与提示词
 
-生成模式：Codex 内置 `imagegen`，`precise-object-edit`。未使用 CLI/API 回退。
+生成模式：Codex 内置 `imagegen`，`precise-object-edit`。两张结果只作为配色
+与设计方向参考；其抗锯齿、背景、几何和 RGB 像素都不会进入运行时素材。未使用
+CLI/API 回退。
 
 主动画提示词：
 
 ```text
 Use case: precise-object-edit
-Asset type: production pixel-art 4x4 animation sheet for an elite Lightning Sorcerer enemy
-Input images: Image 1 is the authoritative normal Lightning Sorcerer edit target and pose/layout identity; Image 2 is only a clean elite-design language reference showing coherent costume hierarchy.
-Primary request: completely redesign Image 1 as a polished ELITE LIGHTNING SORCERER. This must be a genuinely new coherent costume design derived from the normal Lightning Sorcerer, not a recolor overlay and not purple marks painted on top.
-Character design: retain the normal sorcerer's golden lightning crown, golden staff crystal, dark face opening, long robe silhouette and lightning-mage identity. Build a balanced elite costume with clean deep-violet garment structures: a continuous hood lining around the face, matching shoulder mantle, both sleeve panels/cuffs, a centered waist sash or clasp, and a symmetrical inner-robe panel visible between gold-trimmed outer robe halves. Purple belongs to complete garment pieces and follows anatomy; gold trim remains continuous and dominant around those pieces. Use dark near-black/brown robe shadows to separate surfaces. Design must read as intentional royal storm regalia, sharp and prestigious.
-Animation/layout: preserve all sixteen pose meanings, exact 4x4 playback order, body scale, facing direction, staff hand, baseline and clear pose progression from Image 1. Row 1 four movement/idle poses; row 2 four windup poses; row 3 four attack poses; row 4 four death poses. Every frame must show the same costume topology and the same purple panels, naturally occluded by the pose rather than changing design.
-Style/medium: strict native pixel art, hard square pixels, about 32px-tall character inside each logical 40x40 frame, consistent 1-pixel outline and line weight, no antialiasing, no soft brushwork.
-Color palette: bright lightning gold and pale-gold highlights; deep violet #44146D, royal violet #6D27AF, tiny controlled #A944ED highlight only on the same garment edges; dark brown/near-black shadows. Flat colors, no gradients.
-Scene/backdrop: perfectly flat solid #00FF00 chroma-key background, one uniform color, no shadows, no floor, no texture, no grid lines.
-Composition/framing: exact 4x4 equal-cell contact sheet, one separated full character per cell, generous padding, no frame may touch another cell.
-Constraints: preserve character identity and animation semantics; maintain costume consistency across all 16 frames; purple must form clean connected garment panels on both sides/center, not random pixels. No text, no labels, no watermark.
-Avoid: the rejected dirty result with a purple blob concentrated on the character's left; mottled stains; random purple speckles; checker patterns; migrating highlights; asymmetrical one-sided purple mass; purple painted over arbitrary pixels; broad featureless purple silhouette; redesigning the staff, face, pose, anatomy or lightning effects; blur, dithering, gradients, antialiasing.
+Asset type: palette-design reference for a production 4x4 pixel-art animation atlas
+Input images: Image 1 is the ordinary Frost Sorcerer; Image 2 is its elite Frost Sorcerer counterpart and defines the exact ordinary-to-elite recoloring principle; Image 3 is the authoritative ordinary Lightning Sorcerer edit target.
+Primary request: create the elite Lightning Sorcerer by applying the SAME KIND OF FRAME-INDEPENDENT PALETTE SWAP seen between Images 1 and 2. Replace the coherent gold/yellow costume-and-element highlight ramp of Image 3 with a coherent deep-violet through bright-magenta-violet ramp. This is a palette swap of existing source colors, not painted trim and not coordinates reused across frames.
+Style/medium: strict native low-resolution pixel art; hard square pixels; flat indexed-looking color ramps; no antialiasing, blur, gradients, dithering, or soft repainting.
+Animation invariants: preserve Image 3's exact 4x4 frame layout, all 16 poses and order, silhouette, anatomy, staff, crown, effects, body scale, frame placement, foot baselines, transparent background, and every pixel coordinate. Each source gold shade must always map to one fixed purple shade everywhere and in every frame so purple naturally follows the moving body and effects.
+Color palette: readable multi-level purple ramp with dark violet shadows, mid royal-purple body tones, and restrained bright lavender highlights; preserve the original dark neutral/brown shadow ramp unless a source pixel belongs to the gold/yellow highlight ramp.
+Constraints: change colors only; no new pixels, no deleted pixels, no trim overlay, no fixed-position decorations, no per-frame artistic variation, no geometry change, no text, no watermark.
+Avoid: sparse purple bands, purple blobs, flicker, crawling pixels, identical purple coordinates across different poses, pose drift, silhouette drift, duplicate frames, purple fill without shading.
 ```
 
-移动动画最终修订提示词：
+移动动画提示词：
 
 ```text
 Use case: precise-object-edit
-Asset type: production pixel-art eight-frame move animation sheet for the redesigned elite Lightning Sorcerer
-Input images: Image 1 is the mandatory exact pose-tracing reference: normal Lightning Sorcerer eight-frame horizontal walk strip, playback order left-to-right. Image 2 is only the authoritative elite costume and color reference.
-Primary request: redraw Image 1 frame by frame as the elite costume from Image 2. Treat every opaque pixel silhouette and every foot/robe/staff location in each Image 1 frame as pose geometry that must be visibly preserved. Do not invent a generic idle sequence. This is a full coherent character redraw, not a purple overlay.
-Mandatory gait differences: output exactly eight visibly unique poses in playback order. F0 and F4 must have clearly different opposite leading legs and robe-hem silhouettes; F1 and F5 must be opposite down/weight-transfer poses; F2 and F6 must be opposite one-foot passing poses with one planted sole and the other leg visibly lifted/hidden; F3 and F7 must be opposite up poses. Make the lower 35 percent of the silhouette clearly alternate left/right exactly like Image 1. Crown, torso and staff may bob subtly but body root remains stable. No duplicate or near-duplicate alpha silhouettes, especially F0 versus F4.
-Elite costume identity in every frame: golden lightning crown and staff crystal; dark face opening; continuous deep-violet hood lining; matching shoulder mantle; both sleeve panels/cuffs; centered waist clasp/sash; symmetrical violet inner-robe panel between gold-trimmed outer robe halves. Gold trim stays continuous and dominant. The purple topology, panel boundaries, shade placement and thickness must remain the same across all eight poses, moving only with the body and being naturally occluded.
-Style: strict native pixel art, hard square pixels, consistent one-pixel dark outline, flat colors, no antialiasing, no blur, no soft brush, no dithering, no gradients. Character should downsample cleanly to about 30 pixels tall in each 40x40 runtime frame.
-Palette: bright lightning gold/pale-gold highlights; deep violet #44146D and royal violet #6D27AF, with extremely sparse #A944ED only on stable garment edges; dark brown/near-black shadows.
-Backdrop: perfectly flat solid #00FF00 chroma-key background, one uniform color, no shadow, floor, texture or grid lines.
-Layout: exact 4 columns x 2 rows equal-cell contact sheet, ordered F0 F1 F2 F3 on row 1 then F4 F5 F6 F7 on row 2. One full separated character per cell with generous padding.
-Avoid: duplicated poses; generic idle frames; collapsing opposite gait phases; identical F0/F4; random purple pixels; purple stains or one-sided blobs; checker patterns; migrating highlights; changing costume panel sizes; broad featureless purple mass; spell effects; text; labels; watermark.
+Asset type: palette-design reference for a production eight-frame pixel-art movement strip
+Input images: Image 1 is the ordinary Frost Sorcerer movement strip; Image 2 is its elite Frost Sorcerer movement strip and defines the exact ordinary-to-elite palette-swap principle; Image 3 is the authoritative ordinary Lightning Sorcerer eight-frame movement edit target.
+Primary request: create the elite Lightning Sorcerer movement strip by applying the SAME fixed source-color-to-target-color palette swap principle. Replace Image 3's coherent gold/yellow costume-and-element highlight ramp with the exact same coherent multi-level purple identity used for the elite Lightning Sorcerer: dark violet, royal purple, bright violet and restrained pale-lavender highlights. Do not paint trim and do not choose purple locations separately per frame.
+Style/medium: strict native low-resolution pixel art; hard square pixels; flat indexed-looking color ramps; no antialiasing, blur, gradients, dithering or soft repainting.
+Animation invariants: preserve Image 3's exact eight frames, frame order, gait phases, silhouettes, anatomy, staff, crown, body bob, foot contacts, frame placement, transparent background, and every pixel coordinate. One source gold shade must always map to one fixed purple shade everywhere in all eight frames, so the purple areas move naturally with the authored gait.
+Constraints: change colors only; preserve dark neutral/brown shadows unless a color is part of the gold/yellow ramp; no new or deleted pixels; no fixed-position overlay; no per-frame variation; no text or watermark.
+Avoid: sparse purple bands, purple blobs, flicker, crawling pixels, identical purple coordinates across different poses, duplicate gait frames, pose drift, silhouette drift, flat two-color purple fill.
 ```
 
-两张透明输入都通过 imagegen 技能自带的 `remove_chroma_key.py` 去除统一绿幕，
-参数为 `--auto-key border --soft-matte --transparent-threshold 12
---opaque-threshold 220 --despill`。
+## 确定性色表映射
 
-## 确定性构建与防闪烁契约
+普通雷电术士的八级金黄/淡黄色阶固定映射到一个 `275°` 色相的八级紫色色阶。
+每一级保持原色的 HSV 饱和度和明度，因此暗紫、皇家紫、亮紫和淡薰衣草高光的
+层次完整保留；深棕/黑色阴影不变。
+
+| 普通色 | 精英色 |
+| --- | --- |
+| `#9A7121` | `#68219A` |
+| `#DFB82A` | `#942ADF` |
+| `#F8D838` | `#A838F8` |
+| `#FBE246` | `#B046FB` |
+| `#FDEC50` | `#B550FD` |
+| `#F8EFAB` | `#D8ABF8` |
+| `#FDF9AD` | `#DCADFD` |
+| `#FDFACB` | `#E8CBFD` |
+
+主图每帧改色数量为：
+
+```text
+(167, 155, 172, 151, 147, 119, 126, 163,
+ 187, 117, 143, 165, 138, 145, 186, 75)
+```
+
+移动每帧改色数量为：
+
+```text
+(178, 150, 154, 175, 165, 144, 146, 169)
+```
+
+数量随姿势自然变化，不再追求错误的“每帧相同坐标/相同数量”。两张运行时图的
+alpha、轮廓、动作、帧位置以及所有未列入映射的像素均与普通版逐字节一致；可见
+色表仍为 23 色。
+
+- 主动画 RGBA SHA-256：
+  `4a8bebf01e2e5aa7c4357329809d31d00b07b9cd6942d48ebf906d28f90d8fd3`
+- 移动 RGBA SHA-256：
+  `b01fecc50a83b526af526688a54f9878a4f96f3bba66c56bbeab1eaabb1f3992`
+
+## 可复现构建
 
 ```powershell
 python dev_tools/process_lightning_sorcerer_elite_assets.py
 python dev_tools/process_lightning_sorcerer_elite_assets.py --check-only
 ```
 
-脚本锁定两张透明生图输入与两张最终运行时输出的解码后 RGBA SHA-256。主动画按普通版每帧边界
-缩放，以保持碰撞和画面占位；移动图按逻辑 4×2 网格读取并生成八个 40×40
-相位。运行时图使用不超过 25 色的统一调色板，并删除每帧少于 3 像素的孤立
-紫色组件。每帧紫色服装像素数量被测试锁定，因此散点重新出现或紫色区域突然
-膨胀都会让构建失败。
-
-移动横条同时执行八帧唯一轮廓、身体中心漂移、半周期差异、地线与脚底接触
-约束。F2/F6 都必须只有一只脚着地，F5 必须显示左脚承重与分离的右脚尖，
-避免角色再次退化成双脚滑行。
+构建脚本锁定普通版和输出图的解码后 RGBA/alpha 指纹，逐像素验证固定色表映射，
+并继续执行八帧移动的轮廓唯一性、身体中心漂移、半周期差异、地线、单脚接触与
+雷电术士步态契约。

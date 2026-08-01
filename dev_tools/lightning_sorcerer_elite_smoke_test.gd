@@ -37,16 +37,26 @@ const EXPECTED_ATTACK_RANGE := 7.0 * 16.0
 const EXPECTED_CHAIN_RANGE := 4.0 * 16.0
 const MOVE_FRAME_COUNT := 8
 const MOVE_ANIMATION_SPEED := 12.0
-const EXPECTED_ATLAS_PURPLE_PER_FRAME: Array[int] = [
-	76, 72, 70, 79,
-	60, 54, 57, 80,
-	78, 73, 73, 74,
-	70, 70, 84, 51,
+const EXPECTED_ATLAS_RECOLORED_PER_FRAME: Array[int] = [
+	167, 155, 172, 151,
+	147, 119, 126, 163,
+	187, 117, 143, 165,
+	138, 145, 186, 75,
 ]
-const EXPECTED_MOVE_PURPLE_PER_FRAME: Array[int] = [
-	74, 64, 69, 87, 77, 77, 71, 64,
+const EXPECTED_MOVE_RECOLORED_PER_FRAME: Array[int] = [
+	178, 150, 154, 175, 165, 144, 146, 169,
 ]
-const MAX_RUNTIME_COLORS := 25
+const MAX_RUNTIME_COLORS := 23
+const VIOLET_PALETTE_RGB_KEY_MAP := {
+	0x9A7121: 0x68219A,
+	0xDFB82A: 0x942ADF,
+	0xF8D838: 0xA838F8,
+	0xFBE246: 0xB046FB,
+	0xFDEC50: 0xB550FD,
+	0xF8EFAB: 0xD8ABF8,
+	0xFDF9AD: 0xDCADFD,
+	0xFDFACB: 0xE8CBFD,
+}
 
 
 class TargetRuntime:
@@ -345,76 +355,105 @@ func _test_windup_and_cooldown() -> void:
 
 func _test_pixel_contract() -> void:
 	_inspect_elite_texture(
+		BASE_TEXTURE_PATH,
 		ELITE_TEXTURE_PATH,
 		Vector2i(160, 160),
-		EXPECTED_ATLAS_PURPLE_PER_FRAME,
+		EXPECTED_ATLAS_RECOLORED_PER_FRAME,
 		"character atlas"
 	)
 	_inspect_elite_texture(
+		BASE_MOVE_TEXTURE_PATH,
 		ELITE_MOVE_TEXTURE_PATH,
 		Vector2i(320, 40),
-		EXPECTED_MOVE_PURPLE_PER_FRAME,
+		EXPECTED_MOVE_RECOLORED_PER_FRAME,
 		"move strip"
 	)
 
 
 func _inspect_elite_texture(
+	base_path: String,
 	elite_path: String,
 	expected_size: Vector2i,
-	expected_purple_per_frame: Array[int],
+	expected_recolored_per_frame: Array[int],
 	label: String
 ) -> void:
+	var base := Image.load_from_file(ProjectSettings.globalize_path(base_path))
 	var elite := Image.load_from_file(ProjectSettings.globalize_path(elite_path))
 	_expect(
-		elite != null and elite.get_size() == expected_size,
+		base != null
+		and elite != null
+		and base.get_size() == expected_size
+		and elite.get_size() == expected_size,
 		"Elite Lightning Sorcerer %s must remain %dx%d."
 		% [label, expected_size.x, expected_size.y]
 	)
-	if elite == null or elite.get_size() != expected_size:
+	if (
+		base == null
+		or elite == null
+		or base.get_size() != expected_size
+		or elite.get_size() != expected_size
+	):
 		return
 
 	var frame_columns := int(expected_size.x / 40)
 	var frame_rows := int(expected_size.y / 40)
-	var purple_per_frame: Array[int] = []
-	purple_per_frame.resize(frame_columns * frame_rows)
+	var recolored_per_frame: Array[int] = []
+	recolored_per_frame.resize(frame_columns * frame_rows)
 	var visible_colors := {}
 	var has_green_residue := false
+	var alpha_drift := false
+	var invalid_palette_swap := false
 	for y in range(expected_size.y):
 		for x in range(expected_size.x):
+			var base_pixel := base.get_pixel(x, y)
 			var elite_pixel := elite.get_pixel(x, y)
+			var base_key := _rgb_key(base_pixel)
+			var elite_key := _rgb_key(elite_pixel)
+			var expected_elite_key := int(
+				VIOLET_PALETTE_RGB_KEY_MAP.get(base_key, base_key)
+			)
+			alpha_drift = alpha_drift or not is_equal_approx(
+				base_pixel.a,
+				elite_pixel.a
+			)
+			invalid_palette_swap = (
+				invalid_palette_swap or elite_key != expected_elite_key
+			)
+			if base_key != elite_key:
+				var frame_index := (
+					int(y / 40) * frame_columns + int(x / 40)
+				)
+				recolored_per_frame[frame_index] += 1
 			if elite_pixel.a < 0.5:
 				continue
-			visible_colors[_rgb_key(elite_pixel)] = true
+			visible_colors[elite_key] = true
 			has_green_residue = has_green_residue or (
 				elite_pixel.g > 0.75
 				and elite_pixel.g > elite_pixel.r * 1.4
 				and elite_pixel.g > elite_pixel.b * 1.4
 			)
-			if _is_elite_purple(elite_pixel):
-				var frame_index := (
-					int(y / 40) * frame_columns + int(x / 40)
-				)
-				purple_per_frame[frame_index] += 1
 	_expect(
-		purple_per_frame == expected_purple_per_frame,
-		"Elite %s coherent purple garment coverage changed between frames."
+		recolored_per_frame == expected_recolored_per_frame,
+		"Elite %s fixed violet palette-swap coverage changed."
 		% label
 	)
 	_expect(
-		visible_colors.size() <= MAX_RUNTIME_COLORS,
-		"Elite %s must keep a compact pixel-art palette." % label
+		not alpha_drift,
+		"Elite %s must preserve the normal sprite alpha pixel-for-pixel." % label
+	)
+	_expect(
+		not invalid_palette_swap,
+		"Elite %s must apply one exact violet target to each approved gold source color."
+		% label
+	)
+	_expect(
+		visible_colors.size() == MAX_RUNTIME_COLORS,
+		"Elite %s must keep the base-sized 23-color pixel-art palette." % label
 	)
 	_expect(
 		not has_green_residue,
 		"Elite %s must not retain chroma-key green pixels." % label
 	)
-
-
-func _is_elite_purple(color: Color) -> bool:
-	var red := clampi(roundi(color.r * 255.0), 0, 255)
-	var green := clampi(roundi(color.g * 255.0), 0, 255)
-	var blue := clampi(roundi(color.b * 255.0), 0, 255)
-	return color.a >= 0.5 and blue >= red + 15 and blue >= green + 40
 
 
 func _rgb_key(color: Color) -> int:
