@@ -1,7 +1,7 @@
 extends RefCounted
 class_name EnemyCodexRegistry
 
-const ENTRY_COUNT := 51
+const ENTRY_COUNT := 52
 const SORCERER_ENTRY_COUNT := 6
 const EXPECTED_FAMILY_COUNTS := {
 	&"yuanshi_insect": 16,
@@ -9,10 +9,11 @@ const EXPECTED_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 2,
+	&"mechanical_life": 1,
 	&"boss": 1,
 }
 const EXPECTED_RANK_COUNTS := {
-	EnemyCodexEntryConfig.Rank.NORMAL: 44,
+	EnemyCodexEntryConfig.Rank.NORMAL: 45,
 	EnemyCodexEntryConfig.Rank.ELITE: 6,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
@@ -68,6 +69,7 @@ const ENTRIES: Array[EnemyCodexEntryConfig] = [
 	preload("res://resources/config/encyclopedia/enemies/lightning_sorcerer_elite.tres"),
 	preload("res://resources/config/encyclopedia/enemies/stone_golem.tres"),
 	preload("res://resources/config/encyclopedia/enemies/stone_golem_elite.tres"),
+	preload("res://resources/config/encyclopedia/enemies/combat_robot.tres"),
 	preload("res://resources/config/encyclopedia/enemies/linglan_boss.tres"),
 ]
 

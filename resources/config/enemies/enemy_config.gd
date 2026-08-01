@@ -6,6 +6,7 @@ const CATEGORY_CAPOO: StringName = &"capoo"
 const CATEGORY_SORCERER: StringName = &"sorcerer"
 const CATEGORY_ARTIFICIAL_CREATION: StringName = &"artificial_creation"
 const CATEGORY_SLIME: StringName = &"slime"
+const CATEGORY_MECHANICAL_LIFE: StringName = &"mechanical_life"
 const CATEGORY_STONE_ERODED: StringName = &"stone_eroded"
 
 enum DamageType {

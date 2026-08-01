@@ -19,7 +19,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 ## Authored catalog contract used by navigation before any section is materialized.
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
-	CodexSection.ENEMY: 51,
+	CodexSection.ENEMY: 52,
 	CodexSection.COLLECTIBLE: 123,
 	CodexSection.BUILDING: 16,
 }
@@ -272,9 +272,16 @@ func _build_enemy_stats(
 
 func _build_enemy_specific_stats(enemy: EnemyConfig) -> Array[CodexStatRow]:
 	var stats: Array[CodexStatRow] = []
+	if enemy is CombatRobotConfig:
+		var config := enemy as CombatRobotConfig
+		stats.append(CodexStatRow.new("锁定范围", _format_number(config.dash_trigger_range)))
+		stats.append(CodexStatRow.new("冲刺前摇", "%s 秒" % _format_number(config.dash_windup)))
+		stats.append(CodexStatRow.new("冲刺速度", _format_number(config.dash_speed)))
+		stats.append(CodexStatRow.new("最长冲刺", "%s 秒" % _format_number(config.dash_duration)))
+		stats.append(CodexStatRow.new("冲刺冷却", "%s 秒" % _format_number(config.dash_cooldown)))
 	# StoneGolemConfig inherits CapooKnightConfig, so it must be handled before
 	# the broader knight branch to expose its ground-slam data.
-	if enemy is StoneGolemConfig:
+	elif enemy is StoneGolemConfig:
 		var config := enemy as StoneGolemConfig
 		stats.append(CodexStatRow.new("砸地半径", _format_number(config.slam_radius)))
 	elif enemy is CapooAK47Config:

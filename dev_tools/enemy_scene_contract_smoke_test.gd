@@ -19,6 +19,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_smg.tres"),
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
+	preload("res://resources/config/enemies/combat_robot.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
@@ -119,6 +120,9 @@ const SORCERER_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 const ARTIFICIAL_CREATION_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
+]
+const MECHANICAL_LIFE_CATEGORY_CONFIGS: Array[EnemyConfig] = [
+	preload("res://resources/config/enemies/combat_robot.tres"),
 ]
 const SLIME_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/slime.tres"),
@@ -319,6 +323,7 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"capoo": 0,
 		"sorcerer": 0,
 		"artificial_creation": 0,
+		"mechanical_life": 0,
 		"slime": 0,
 		"stone_eroded": 0,
 	}
@@ -339,7 +344,7 @@ func _test_enemy_drop_and_category_contract() -> void:
 		if enemy_config == LINGLAN_BOSS_CONFIG:
 			_expect(
 				enemy_config.category_tags.is_empty(),
-				"Linglan must remain outside the five regular enemy categories."
+				"Linglan must remain outside the six regular enemy categories."
 			)
 		else:
 			var regular_category_count := 0
@@ -378,6 +383,10 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golem configs must carry the artificial_creation category tag."
 	)
 	_expect(
+		int(category_counts["mechanical_life"]) == 1,
+		"Exactly the combat robot config must carry the mechanical_life category tag."
+	)
+	_expect(
 		int(category_counts["slime"]) == 10,
 		"Exactly the ten original and stone-eroded Slime configs must carry the slime category tag."
 	)
@@ -392,6 +401,7 @@ func _test_enemy_drop_and_category_contract() -> void:
 		ARTIFICIAL_CREATION_CATEGORY_CONFIGS,
 		"artificial_creation"
 	)
+	_expect_exact_category(MECHANICAL_LIFE_CATEGORY_CONFIGS, "mechanical_life")
 	_expect_exact_category(SLIME_CATEGORY_CONFIGS, "slime")
 
 

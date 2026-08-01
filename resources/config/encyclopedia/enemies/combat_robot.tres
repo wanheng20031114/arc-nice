@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"combat_robot"
+enemy_config = ExtResource("2_config")
+family_id = &"mechanical_life"
+family_label = "机械生命"
+rank = 0
+sort_order = 520
+visible_in_codex = true
+description = "由冷灰装甲盒体与简化线性关节构成的战斗机器人。它会锁定附近的玩家或植物，短暂蓄势后沿固定方向高速突进；冲刺会穿过目标，但在撞上地形或持续时间结束时停止。"
+traits = PackedStringArray("定向冲刺", "冲刺可穿透", "机械生命")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)
