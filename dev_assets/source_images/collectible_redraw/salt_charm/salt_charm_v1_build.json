@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\salt_charm\\salt_charm_v1_alpha.png",
+  "output": "resources\\texture\\collectibles\\salt_charm.png",
+  "input_sha256": "2afb5bfc6b1076d4941e27be58d59b6433220ba5ec1b5dc8f4cb1e5e54e73aef",
+  "output_sha256": "1d31df459f5f3fb71fb4bb7a9cf96c4549c690f30da14673f01a21b4f3c18b52",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    367,
+    204,
+    886,
+    1000
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 30.65,
+  "grid_cell_height": 30.75,
+  "confidence": 0.971,
+  "subject_grid_size": [
+    17,
+    26
+  ],
+  "logical_grid_size": [
+    17,
+    26
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    17,
+    26
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#15121A",
+    "#3A281F",
+    "#76513A",
+    "#6F858C",
+    "#AEBFC1",
+    "#E5E9D8",
+    "#FFF5D4",
+    "#55C8D2"
+  ],
+  "final_subject_size": [
+    17,
+    26
+  ],
+  "final_bbox": [
+    7,
+    3,
+    24,
+    29
+  ]
+}

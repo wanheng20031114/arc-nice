@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\thunder_god_idol\\thunder_god_idol_v4_alpha.png",
+  "output": "resources\\texture\\collectibles\\thunder_god_idol.png",
+  "input_sha256": "3b6c2fd71bb97fe0afdf9f57a068ede455202f8c1d016cf67f5183560838c1a3",
+  "output_sha256": "fa25e626afb29e3602a6e963deb601a982785b33d8a9f4f7c6a84364c989450d",
+  "source_size": [
+    1024,
+    1536
+  ],
+  "source_bbox": [
+    232,
+    177,
+    792,
+    1303
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 44.7,
+  "grid_cell_height": 44.1,
+  "confidence": 0.847,
+  "subject_grid_size": [
+    13,
+    26
+  ],
+  "logical_grid_size": [
+    13,
+    26
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    13,
+    26
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#090E18",
+    "#162537",
+    "#29445B",
+    "#6B8490",
+    "#6B421A",
+    "#D18A1E",
+    "#FFD34A",
+    "#FFF1A1"
+  ],
+  "final_subject_size": [
+    13,
+    26
+  ],
+  "final_bbox": [
+    9,
+    3,
+    22,
+    29
+  ]
+}

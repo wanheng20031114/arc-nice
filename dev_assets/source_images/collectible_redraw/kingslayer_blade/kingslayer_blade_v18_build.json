@@ -1,0 +1,56 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\kingslayer_blade\\kingslayer_blade_v18_alpha.png",
+  "output": "resources\\texture\\collectibles\\kingslayer_blade.png",
+  "input_sha256": "4a2700f66f64744bdcf51128bd72bf8956c1d7d786fcfa6db2ddca62e83c0604",
+  "output_sha256": "90c3e9d628f140f4238ee3ed3e7621e1b897e62609f29351a5339ce722f9ed43",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    229,
+    79,
+    1090,
+    1158
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 47.95,
+  "grid_cell_height": 45.05,
+  "confidence": 0.741,
+  "subject_grid_size": [
+    18,
+    24
+  ],
+  "logical_grid_size": [
+    18,
+    24
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    18,
+    24
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "authored",
+  "palette": [
+    "#100C12",
+    "#25202A",
+    "#4A4650",
+    "#A8ADB2",
+    "#54151D",
+    "#9E2730",
+    "#936026",
+    "#D9AF55"
+  ],
+  "final_subject_size": [
+    19,
+    25
+  ],
+  "final_bbox": [
+    6,
+    3,
+    25,
+    28
+  ]
+}

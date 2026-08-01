@@ -1,0 +1,56 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\red_mushroom\\red_mushroom_v6_alpha.png",
+  "output": "resources\\texture\\collectibles\\red_mushroom.png",
+  "input_sha256": "11961ce166543f46f5c9f81ba0155460ae085b7cd26129260e50014e47fea58a",
+  "output_sha256": "3bca2903aa94e4d8c7a5448fff8bb0b438773dd4de8a86902c3293fe374ce96a",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    118,
+    78,
+    1132,
+    1011
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 40.45,
+  "grid_cell_height": 40.45,
+  "confidence": 0.977,
+  "subject_grid_size": [
+    25,
+    23
+  ],
+  "logical_grid_size": [
+    25,
+    23
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    25,
+    23
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#160D12",
+    "#4B101C",
+    "#7C1822",
+    "#B92B32",
+    "#E65349",
+    "#7A5031",
+    "#C6A06A",
+    "#F3DFB4"
+  ],
+  "final_subject_size": [
+    25,
+    23
+  ],
+  "final_bbox": [
+    3,
+    4,
+    28,
+    27
+  ]
+}

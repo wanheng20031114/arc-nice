@@ -1,0 +1,54 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\wool_charm\\wool_charm_v2_alpha.png",
+  "output": "resources\\texture\\collectibles\\wool_charm.png",
+  "input_sha256": "017adab90041e2f5a863363c303aafe3cc6c57eb3e78cfb212f105f987700701",
+  "output_sha256": "de8521a6a630287079bc2ef95b41440a36bb879852115a5d8afbd23e6f0fc6f2",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    275,
+    197,
+    979,
+    1018
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 39.15,
+  "grid_cell_height": 39.15,
+  "confidence": 0.993,
+  "subject_grid_size": [
+    18,
+    21
+  ],
+  "logical_grid_size": [
+    18,
+    21
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    18,
+    21
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#17130F",
+    "#4A3124",
+    "#8A5A35",
+    "#A9A394",
+    "#D8D1BE",
+    "#FFF3D5",
+    "#C94F4F"
+  ],
+  "final_subject_size": [
+    18,
+    21
+  ],
+  "final_bbox": [
+    7,
+    5,
+    25,
+    26
+  ]
+}

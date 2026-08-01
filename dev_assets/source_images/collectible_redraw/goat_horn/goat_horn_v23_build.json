@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\goat_horn\\goat_horn_v23_alpha.png",
+  "output": "resources\\texture\\collectibles\\goat_horn.png",
+  "input_sha256": "016be574e053e2cd4ce98e6a5803d0a273c37e566296c438ba4e9a24e2655d60",
+  "output_sha256": "684fc3022882afb5fa6e0b6dea19b410fc9534c2ea427f345559146ef902bca2",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    159,
+    159,
+    1056,
+    1056
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 38.95,
+  "grid_cell_height": 39.0,
+  "confidence": 0.991,
+  "subject_grid_size": [
+    23,
+    23
+  ],
+  "logical_grid_size": [
+    23,
+    23
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    23,
+    23
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "authored",
+  "palette": [
+    "#120F0D",
+    "#342720",
+    "#5A4434",
+    "#76644F",
+    "#A89470",
+    "#C9B991",
+    "#E5D9B8"
+  ],
+  "final_subject_size": [
+    23,
+    23
+  ],
+  "final_bbox": [
+    4,
+    4,
+    27,
+    27
+  ]
+}

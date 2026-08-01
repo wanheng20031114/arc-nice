@@ -1,0 +1,56 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\spark_bottle\\spark_bottle_v2_alpha.png",
+  "output": "resources\\texture\\collectibles\\spark_bottle.png",
+  "input_sha256": "ad1562341f6892965b759eb61d0dfebb088cc1236bee2e125f7f767ef99ea92f",
+  "output_sha256": "9ecf8c15b745e286375772462bb96f7c516fa7f863a1001b7345b8ee40c691c2",
+  "source_size": [
+    640,
+    640
+  ],
+  "source_bbox": [
+    32,
+    0,
+    608,
+    640
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    18,
+    20
+  ],
+  "logical_grid_size": [
+    18,
+    20
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    18,
+    20
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#120D16",
+    "#23313C",
+    "#3E6070",
+    "#8FBAC1",
+    "#70442A",
+    "#B87435",
+    "#E39B24",
+    "#FFE36A"
+  ],
+  "final_subject_size": [
+    18,
+    20
+  ],
+  "final_bbox": [
+    7,
+    6,
+    25,
+    26
+  ]
+}

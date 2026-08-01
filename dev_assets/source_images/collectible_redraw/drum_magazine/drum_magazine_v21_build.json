@@ -1,0 +1,93 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\drum_magazine\\drum_magazine_v21_alpha.png",
+  "imagegen_source": "dev_assets\\source_images\\collectible_redraw\\drum_magazine\\drum_magazine_v21_source.png",
+  "imagegen_source_sha256": "1a146842a547a0e574fbb0452ba7129910b97d3bf07976f471944b6227269e8a",
+  "source_chroma_key": "#FF00FF",
+  "source_chroma_removal": {
+    "mode": "border_auto_key",
+    "tolerance": 65,
+    "spill_cleanup": true
+  },
+  "source_grid_analysis": {
+    "source_size": [
+      1254,
+      1254
+    ],
+    "source_alpha_bbox": [
+      239,
+      249,
+      1015,
+      983
+    ],
+    "sampling_bbox": [
+      239,
+      249,
+      1015,
+      983
+    ],
+    "detection_mode": "approximate",
+    "logical_cell_size": [
+      29.8,
+      31.4
+    ],
+    "confidence": 0.899,
+    "logical_subject_size": [
+      26,
+      23
+    ]
+  },
+  "prompt_summary": "Minecraft-like cartoon three-quarter-view firearm drum magazine on flat magenta chroma: a wide stepped steel drum casing with dark lower-right thickness, an offset upper-left feed tower whose two lips grip one brass cartridge, and a dark C-shaped internal ammunition path with three directionally arranged brass segments; one uniform coarse macro-pixel grid, limited flat steel/brass palette, no glow, shadow, text, or loose parts.",
+  "curation": "Built-in ImageGen redraw, hard chroma removal, verified 26x23 visual grid, exact 32px integer-grid normalization, seven-color steel/brass palette quantization, and forced black exterior boundary; no logical subject downscaling.",
+  "output": "resources\\texture\\collectibles\\drum_magazine.png",
+  "input_sha256": "53f52b2706db3cb28db28e71d503584fade6ecb8d169d603ee36d497d86019ac",
+  "output_sha256": "ad983e0b426ff139ed45b96c01f5e9724d23760b0aebb268876c43f74017bed8",
+  "source_size": [
+    1024,
+    1024
+  ],
+  "source_bbox": [
+    96,
+    128,
+    928,
+    864
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    26,
+    23
+  ],
+  "logical_grid_size": [
+    26,
+    23
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    26,
+    23
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#10171D",
+    "#303840",
+    "#66737B",
+    "#B4C0C3",
+    "#9A640A",
+    "#E7A817",
+    "#FFE59A"
+  ],
+  "final_subject_size": [
+    26,
+    23
+  ],
+  "final_bbox": [
+    3,
+    4,
+    29,
+    27
+  ]
+}

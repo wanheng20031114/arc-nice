@@ -1,0 +1,92 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\extended_magazine\\extended_magazine_v8_alpha.png",
+  "imagegen_source": "dev_assets\\source_images\\collectible_redraw\\extended_magazine\\extended_magazine_v8_source.png",
+  "source_chroma_key": "#00FF00",
+  "source_chroma_removal": {
+    "tolerance": 100,
+    "despill": true
+  },
+  "source_grid_analysis": {
+    "source_size": [
+      1254,
+      1254
+    ],
+    "source_alpha_bbox": [
+      446,
+      351,
+      805,
+      979
+    ],
+    "sampling_bbox": [
+      446,
+      351,
+      805,
+      979
+    ],
+    "detection_mode": "pixel_grid_analyzer_approximate_then_manual_verified_visual_grid",
+    "logical_cell_size": [
+      25.7,
+      26.2
+    ],
+    "confidence": 0.976,
+    "logical_subject_size": [
+      14,
+      24
+    ]
+  },
+  "prompt_summary": "Minecraft-like cartoon extended firearm magazine on flat #00FF00 chroma: compact banana-curved steel body, visible brass feed opening, three broad reinforcing ribs, reinforced capacity collar, cyan latch, short extension tail, and thick baseplate; one uniform macro-pixel grid, limited flat palette, no shadow or text.",
+  "curation": "ImageGen redraw, hard chroma removal, visually verified 14x24 source-grid center sampling, semantic eight-color steel/brass/cyan palette quantization, and unified exterior outline; no logical subject downscaling.",
+  "output": "resources\\texture\\collectibles\\extended_magazine.png",
+  "input_sha256": "e92170ce202bd0891fa090da273cdae35811832cdc9ddcbb0d7d1bcbb961c8a3",
+  "output_sha256": "a5ac78a9031149e5d477f80075e93805593f26c1e5e065216a0d51ecbf4fb3e0",
+  "source_size": [
+    1024,
+    1024
+  ],
+  "source_bbox": [
+    288,
+    128,
+    736,
+    896
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    14,
+    24
+  ],
+  "logical_grid_size": [
+    14,
+    24
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    14,
+    24
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#10171D",
+    "#202B34",
+    "#344651",
+    "#536B78",
+    "#8799A1",
+    "#8C512A",
+    "#E1A43B",
+    "#34AEBB"
+  ],
+  "final_subject_size": [
+    14,
+    24
+  ],
+  "final_bbox": [
+    9,
+    4,
+    23,
+    28
+  ]
+}

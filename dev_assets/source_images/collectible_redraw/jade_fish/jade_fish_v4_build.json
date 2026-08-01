@@ -1,0 +1,54 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\jade_fish\\jade_fish_v4_alpha.png",
+  "output": "resources\\texture\\collectibles\\jade_fish.png",
+  "input_sha256": "655176a2d9044bdd7030426250f8cd810ffb37661a6e1ae92420fda237dd4741",
+  "output_sha256": "19c2bca6cca5f04274719e8f787661c587600b1779f76fbea5ad2532788bfbf0",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    144,
+    299,
+    1117,
+    964
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 44.15,
+  "grid_cell_height": 44.75,
+  "confidence": 0.872,
+  "subject_grid_size": [
+    22,
+    15
+  ],
+  "logical_grid_size": [
+    22,
+    15
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    22,
+    15
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#0A1010",
+    "#0B3D2D",
+    "#0E6B45",
+    "#159A5B",
+    "#38C978",
+    "#9AF0B3",
+    "#F2B84B"
+  ],
+  "final_subject_size": [
+    26,
+    18
+  ],
+  "final_bbox": [
+    3,
+    7,
+    29,
+    25
+  ]
+}

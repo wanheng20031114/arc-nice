@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\heavy_gauntlet\\heavy_gauntlet_v14_alpha.png",
+  "output": "resources\\texture\\collectibles\\heavy_gauntlet.png",
+  "input_sha256": "f31229905d45758cb050e925c9ce691a683b0055e262d38e0c7a9ee365ed3468",
+  "output_sha256": "6ec6fd7d91d121ec1f195933c42d6a6f7b34cbfdfd1ef115b2fca634cca08802",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    274,
+    310,
+    1041,
+    1130
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 32.5,
+  "grid_cell_height": 31.4,
+  "confidence": 0.732,
+  "subject_grid_size": [
+    24,
+    26
+  ],
+  "logical_grid_size": [
+    24,
+    26
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    24,
+    26
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#141316",
+    "#30343A",
+    "#59616A",
+    "#858F98",
+    "#C6D1D5",
+    "#3A241B",
+    "#70452D",
+    "#B87333"
+  ],
+  "final_subject_size": [
+    24,
+    26
+  ],
+  "final_bbox": [
+    4,
+    3,
+    28,
+    29
+  ]
+}

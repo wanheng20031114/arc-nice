@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\swift_boot\\swift_boot_v4_alpha.png",
+  "output": "resources\\texture\\collectibles\\swift_boot.png",
+  "input_sha256": "8be794d58b82a51b9bf2f884bb386ab66b1890fc44144b9353d56ab3f14c360e",
+  "output_sha256": "b328d51e7d221fe0d48c1f434fe1acec206df34dabae25365a3279b50e72185e",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    180,
+    248,
+    1128,
+    1066
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 60.25,
+  "grid_cell_height": 48.3,
+  "confidence": 0.909,
+  "subject_grid_size": [
+    16,
+    17
+  ],
+  "logical_grid_size": [
+    16,
+    17
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    16,
+    17
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#171313",
+    "#3A2924",
+    "#6D351D",
+    "#A95320",
+    "#D9873B",
+    "#4B5158",
+    "#F1E4BC",
+    "#B9D7E5"
+  ],
+  "final_subject_size": [
+    24,
+    26
+  ],
+  "final_bbox": [
+    4,
+    3,
+    28,
+    29
+  ]
+}

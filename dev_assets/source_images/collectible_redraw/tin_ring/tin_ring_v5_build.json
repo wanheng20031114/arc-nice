@@ -1,0 +1,53 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\tin_ring\\tin_ring_v5_alpha.png",
+  "output": "resources\\texture\\collectibles\\tin_ring.png",
+  "input_sha256": "f845e3402efb7a00208886140207e1429016bb250da91074d8ed350cfffc3d52",
+  "output_sha256": "ac70be08983c68bfdf8fe06e9630d7f687225243bd449e194c6aeed26c319d09",
+  "source_size": [
+    1310,
+    1200
+  ],
+  "source_bbox": [
+    209,
+    106,
+    1112,
+    1055
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 36.2,
+  "grid_cell_height": 36.5,
+  "confidence": 0.979,
+  "subject_grid_size": [
+    25,
+    26
+  ],
+  "logical_grid_size": [
+    25,
+    26
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    25,
+    26
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#0B101A",
+    "#242B33",
+    "#475159",
+    "#707B82",
+    "#A9B1B5",
+    "#E4E7E8"
+  ],
+  "final_subject_size": [
+    25,
+    26
+  ],
+  "final_bbox": [
+    3,
+    3,
+    28,
+    29
+  ]
+}

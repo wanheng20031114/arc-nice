@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\iron_dagger\\iron_dagger_v6_alpha.png",
+  "output": "resources\\texture\\collectibles\\iron_dagger.png",
+  "input_sha256": "15aaaf5bb22ea13abb789ba85e04a59f9b8e7bb803e65b356869d97f12192958",
+  "output_sha256": "c09bd8ca5b600c09b1bbe76c9821c494e77c9779b56e59c802d92d62d9617079",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    402,
+    309,
+    926,
+    946
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 27.55,
+  "grid_cell_height": 27.7,
+  "confidence": 0.981,
+  "subject_grid_size": [
+    19,
+    23
+  ],
+  "logical_grid_size": [
+    19,
+    23
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    19,
+    23
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "authored",
+  "palette": [
+    "#111116",
+    "#303942",
+    "#66727A",
+    "#B9C2C3",
+    "#3A211A",
+    "#63332B",
+    "#9A5A3A"
+  ],
+  "final_subject_size": [
+    20,
+    24
+  ],
+  "final_bbox": [
+    6,
+    4,
+    26,
+    28
+  ]
+}

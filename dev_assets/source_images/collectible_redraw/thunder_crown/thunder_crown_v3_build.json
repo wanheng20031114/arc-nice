@@ -1,0 +1,56 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\thunder_crown\\thunder_crown_v3_alpha.png",
+  "output": "resources\\texture\\collectibles\\thunder_crown.png",
+  "input_sha256": "5cd819a05e36acbff474a7790b6d821f2a4fbf71c91e78cd10528c1b2ebf1863",
+  "output_sha256": "06a878b5a925e73c2f51c0d9a90a81bcd9988f23ce0efe9f38f58d5177ce7e72",
+  "source_size": [
+    768,
+    768
+  ],
+  "source_bbox": [
+    0,
+    0,
+    768,
+    768
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    24,
+    24
+  ],
+  "logical_grid_size": [
+    24,
+    24
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    24,
+    24
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#120D16",
+    "#172A43",
+    "#244E76",
+    "#4D7F99",
+    "#9BC6D2",
+    "#86561F",
+    "#E2A527",
+    "#FFF174"
+  ],
+  "final_subject_size": [
+    24,
+    24
+  ],
+  "final_bbox": [
+    4,
+    4,
+    28,
+    28
+  ]
+}

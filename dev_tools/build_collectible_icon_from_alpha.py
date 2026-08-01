@@ -194,6 +194,54 @@ def _force_black_exterior_boundary(image: Image.Image) -> Image.Image:
     return result
 
 
+def _parse_palette(raw_palette: str) -> tuple[tuple[int, int, int], ...]:
+    colors: list[tuple[int, int, int]] = []
+    for raw_color in raw_palette.split(","):
+        color = raw_color.strip().removeprefix("#")
+        if len(color) != 6:
+            raise ValueError(
+                "--palette colors must use six hexadecimal digits, for example #C51D2D"
+            )
+        try:
+            parsed = tuple(int(color[index:index + 2], 16) for index in (0, 2, 4))
+        except ValueError as error:
+            raise ValueError(f"Invalid --palette color: {raw_color}") from error
+        if parsed not in colors:
+            colors.append(parsed)
+    if not colors:
+        raise ValueError("--palette must contain at least one color")
+    return tuple(colors)
+
+
+def _quantize_to_palette(
+    image: Image.Image,
+    palette: tuple[tuple[int, int, int], ...],
+) -> Image.Image:
+    """Map every visible logical pixel to one exact flat palette color."""
+    result = image.convert("RGBA")
+    pixels = result.load()
+    for y in range(result.height):
+        for x in range(result.width):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha == 0:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+
+            def distance(color: tuple[int, int, int]) -> int:
+                delta_red = red - color[0]
+                delta_green = green - color[1]
+                delta_blue = blue - color[2]
+                return (
+                    delta_red * delta_red * 2
+                    + delta_green * delta_green * 4
+                    + delta_blue * delta_blue * 3
+                )
+
+            nearest = min(palette, key=distance)
+            pixels[x, y] = (*nearest, 255)
+    return result
+
+
 def build_icon(
     input_path: Path,
     output_path: Path,
@@ -201,6 +249,10 @@ def build_icon(
     min_subject_size: int,
     max_subject_size: int,
     cell_alpha_coverage: float = DEFAULT_CELL_ALPHA_COVERAGE,
+    palette: tuple[tuple[int, int, int], ...] | None = None,
+    force_black_exterior_boundary: bool = True,
+    logical_grid_width: int | None = None,
+    logical_grid_height: int | None = None,
 ) -> dict:
     if min_subject_size > max_subject_size:
         raise ValueError("--min-subject-size cannot exceed --max-subject-size")
@@ -208,6 +260,14 @@ def build_icon(
         raise ValueError(f"--max-subject-size cannot exceed the {CANVAS_SIZE}px canvas")
     if not 0.0 < cell_alpha_coverage <= 1.0:
         raise ValueError("--cell-alpha-coverage must be greater than 0 and at most 1")
+    if (logical_grid_width is None) != (logical_grid_height is None):
+        raise ValueError(
+            "--logical-grid-width and --logical-grid-height must be provided together"
+        )
+    if logical_grid_width is not None and (
+        logical_grid_width <= 0 or logical_grid_height <= 0
+    ):
+        raise ValueError("Explicit logical-grid dimensions must both be positive")
 
     with Image.open(input_path) as opened_source:
         source = opened_source.convert("RGBA")
@@ -225,7 +285,8 @@ def build_icon(
         or float(analysis["grid_cell_width"]) <= 1.0
         or float(analysis["grid_cell_height"]) <= 1.0
     )
-    if source_is_high_resolution and grid_is_unresolved:
+    has_explicit_logical_grid = logical_grid_width is not None
+    if source_is_high_resolution and grid_is_unresolved and not has_explicit_logical_grid:
         raise ValueError(
             "Refusing high-resolution source with an unresolved or low-confidence logical grid: "
             f"source is {source.width}x{source.height}, detection mode is "
@@ -245,8 +306,16 @@ def build_icon(
     if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
         raise ValueError(f"No visible subject found in {input_path}")
 
-    detected_logical_width = max(1, int(analysis["subject_grid_width"]))
-    detected_logical_height = max(1, int(analysis["subject_grid_height"]))
+    detected_logical_width = (
+        int(logical_grid_width)
+        if logical_grid_width is not None
+        else max(1, int(analysis["subject_grid_width"]))
+    )
+    detected_logical_height = (
+        int(logical_grid_height)
+        if logical_grid_height is not None
+        else max(1, int(analysis["subject_grid_height"]))
+    )
     logical_grid = _normalize_to_logical_grid(
         source,
         bbox,
@@ -291,7 +360,10 @@ def build_icon(
     paste_x = (CANVAS_SIZE - logical_width) // 2
     paste_y = (CANVAS_SIZE - logical_height) // 2
     output.alpha_composite(subject, (paste_x, paste_y))
-    output = _force_black_exterior_boundary(output)
+    if force_black_exterior_boundary:
+        output = _force_black_exterior_boundary(output)
+    if palette is not None:
+        output = _quantize_to_palette(output, palette)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output.save(output_path)
 
@@ -307,10 +379,27 @@ def build_icon(
         "grid_cell_width": analysis["grid_cell_width"],
         "grid_cell_height": analysis["grid_cell_height"],
         "confidence": analysis["confidence"],
-        "subject_grid_size": [analysis["subject_grid_width"], analysis["subject_grid_height"]],
+        "analyzer_subject_grid_size": [
+            analysis["subject_grid_width"],
+            analysis["subject_grid_height"],
+        ],
+        "subject_grid_size": [detected_logical_width, detected_logical_height],
+        "grid_selection": (
+            "explicit_reviewed_override"
+            if has_explicit_logical_grid
+            else "analyzer"
+        ),
         "logical_grid_size": [detected_logical_width, detected_logical_height],
         "logical_subject_bbox": logical_bbox,
         "cell_alpha_coverage": cell_alpha_coverage,
+        "boundary_mode": (
+            "forced_black" if force_black_exterior_boundary else "authored"
+        ),
+        "palette": (
+            ["#%02X%02X%02X" % color for color in palette]
+            if palette is not None
+            else []
+        ),
         "final_subject_size": [logical_width, logical_height],
         "final_bbox": output_bbox,
     }
@@ -320,9 +409,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Normalize a generated pixel grid cell-by-cell, crop it in logical "
-            "space, enforce a pure-black exterior boundary, and center it on a "
-            "32x32 transparent canvas. Logical subjects over the maximum size "
-            "fail instead of being downscaled."
+            "space, optionally enforce a pure-black exterior boundary, and "
+            "center it on a 32x32 transparent canvas. Logical subjects over the "
+            "maximum size fail instead of being downscaled."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -353,14 +442,50 @@ def main() -> None:
         help="minimum alpha-weighted coverage required to keep a logical grid cell",
     )
     parser.add_argument(
+        "--logical-grid-width",
+        type=int,
+        default=None,
+        help=(
+            "reviewed logical width override for sources whose internal details "
+            "confuse automatic grid detection; requires --logical-grid-height"
+        ),
+    )
+    parser.add_argument(
+        "--logical-grid-height",
+        type=int,
+        default=None,
+        help=(
+            "reviewed logical height override for sources whose internal details "
+            "confuse automatic grid detection; requires --logical-grid-width"
+        ),
+    )
+    parser.add_argument(
         "--manifest-path",
         type=Path,
         default=None,
         help="optional JSON path for preserving the source-grid analysis and build result",
     )
+    parser.add_argument(
+        "--palette",
+        default="",
+        help=(
+            "optional comma-separated exact RGB palette; every visible logical "
+            "pixel is mapped to the nearest supplied color"
+        ),
+    )
+    parser.add_argument(
+        "--preserve-authored-boundary",
+        action="store_true",
+        help=(
+            "preserve source-authored edge colors instead of repainting every "
+            "visible pixel touching exterior transparency black; use for "
+            "reviewed thin structures such as strings and wires"
+        ),
+    )
     args = parser.parse_args()
 
     try:
+        palette = _parse_palette(args.palette) if args.palette.strip() else None
         result = build_icon(
             args.input_path,
             args.output_path,
@@ -368,6 +493,10 @@ def main() -> None:
             max(1, args.min_subject_size),
             max(1, args.max_subject_size),
             args.cell_alpha_coverage,
+            palette,
+            not args.preserve_authored_boundary,
+            args.logical_grid_width,
+            args.logical_grid_height,
         )
     except Exception as error:
         print(f"error: {error}", file=sys.stderr)

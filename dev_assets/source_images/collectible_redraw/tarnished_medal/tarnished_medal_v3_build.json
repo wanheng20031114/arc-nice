@@ -1,0 +1,56 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\tarnished_medal\\tarnished_medal_v3_alpha.png",
+  "output": "resources\\texture\\collectibles\\tarnished_medal.png",
+  "input_sha256": "6e52367d125522c8142980ae08a4151e0d4a6be2899905c200646aa14b6ac5ba",
+  "output_sha256": "18fc910311816bbf96ae31c122dd3d9fbe8da228218439ebbdb0c5acebc8a98b",
+  "source_size": [
+    832,
+    832
+  ],
+  "source_bbox": [
+    128,
+    0,
+    704,
+    832
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    18,
+    26
+  ],
+  "logical_grid_size": [
+    18,
+    26
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    18,
+    26
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#1A1411",
+    "#3A2A20",
+    "#6B4530",
+    "#9A6338",
+    "#C18A4B",
+    "#7B3134",
+    "#B65443",
+    "#4F7465"
+  ],
+  "final_subject_size": [
+    18,
+    26
+  ],
+  "final_bbox": [
+    7,
+    3,
+    25,
+    29
+  ]
+}

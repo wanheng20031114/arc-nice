@@ -1,0 +1,56 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\ruby_crown\\ruby_crown_v2_alpha.png",
+  "output": "resources\\texture\\collectibles\\ruby_crown.png",
+  "input_sha256": "421ca5039d1dc61e4bee9de137017427f273d31a86dc9b5d544fde0181ec59a4",
+  "output_sha256": "40a0c4fca9acd45d06572d5d436ff060bfcc61d341f701b62c0e7f4fee287b78",
+  "source_size": [
+    704,
+    704
+  ],
+  "source_bbox": [
+    0,
+    96,
+    704,
+    608
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    22,
+    16
+  ],
+  "logical_grid_size": [
+    22,
+    16
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    22,
+    16
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#120D16",
+    "#59351F",
+    "#9A642D",
+    "#D89A35",
+    "#FFE06B",
+    "#681525",
+    "#D52B3D",
+    "#FF745E"
+  ],
+  "final_subject_size": [
+    22,
+    16
+  ],
+  "final_bbox": [
+    5,
+    8,
+    27,
+    24
+  ]
+}

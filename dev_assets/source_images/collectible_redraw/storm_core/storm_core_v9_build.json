@@ -1,0 +1,89 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\storm_core\\storm_core_v9_alpha.png",
+  "imagegen_source": "dev_assets\\source_images\\collectible_redraw\\storm_core\\storm_core_v9_source.png",
+  "source_chroma_key": "#00FF00",
+  "source_chroma_removal": {
+    "tolerance": 100,
+    "despill": true
+  },
+  "source_grid_analysis": {
+    "source_size": [
+      1254,
+      1254
+    ],
+    "source_alpha_bbox": [
+      247,
+      187,
+      1037,
+      1054
+    ],
+    "sampling_bbox": [
+      247,
+      187,
+      1037,
+      1054
+    ],
+    "detection_mode": "manual_verified_visual_grid",
+    "logical_subject_size": [
+      17,
+      19
+    ],
+    "logical_cell_size": [
+      46.4705882353,
+      45.6315789474
+    ]
+  },
+  "curation": "ImageGen redraw, hard chroma removal, visually verified 17x19 source-grid center sampling, semantic seven-color storm palette quantization, and unified exterior outline; no logical subject downscaling.",
+  "output": "resources\\texture\\collectibles\\storm_core.png",
+  "input_sha256": "5cbbe2fd509ead03223898d47b9976c76df83f8103aaa39215e62633b4089a0c",
+  "output_sha256": "0cca362cec876ebdb4eff96f094d85935168eb948413a847468c475a934088bf",
+  "source_size": [
+    1024,
+    1024
+  ],
+  "source_bbox": [
+    224,
+    192,
+    768,
+    800
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    17,
+    19
+  ],
+  "logical_grid_size": [
+    17,
+    19
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    17,
+    19
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#101522",
+    "#202844",
+    "#3B3F6B",
+    "#53688B",
+    "#2DB7D0",
+    "#F2C43E",
+    "#FFF3A6"
+  ],
+  "final_subject_size": [
+    17,
+    19
+  ],
+  "final_bbox": [
+    7,
+    6,
+    24,
+    25
+  ]
+}

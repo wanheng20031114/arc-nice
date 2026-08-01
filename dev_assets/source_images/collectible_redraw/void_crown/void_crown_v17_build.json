@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\void_crown\\void_crown_v17_alpha.png",
+  "output": "resources\\texture\\collectibles\\void_crown.png",
+  "input_sha256": "bdaad3c987f804821e3f0a17ab2b8b4b189df6a1d01ce8f53634cb4d55cb5541",
+  "output_sha256": "9738b4f766bb107449de80413045c99d6201850a4cd14225bd1f8bd6831e4003",
+  "source_size": [
+    736,
+    736
+  ],
+  "source_bbox": [
+    0,
+    32,
+    736,
+    736
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    23,
+    22
+  ],
+  "logical_grid_size": [
+    23,
+    22
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    23,
+    22
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#0A0710",
+    "#120D16",
+    "#251535",
+    "#3E2258",
+    "#654087",
+    "#9B5BC1",
+    "#D08BE7"
+  ],
+  "final_subject_size": [
+    23,
+    22
+  ],
+  "final_bbox": [
+    4,
+    5,
+    27,
+    27
+  ]
+}

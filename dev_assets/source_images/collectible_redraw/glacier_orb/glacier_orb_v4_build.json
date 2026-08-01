@@ -1,0 +1,89 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\glacier_orb\\glacier_orb_v4_alpha.png",
+  "imagegen_source": "dev_assets\\source_images\\collectible_redraw\\glacier_orb\\glacier_orb_v4_source.png",
+  "source_chroma_key": "#FF00FF",
+  "source_chroma_removal": {
+    "tolerance": 100,
+    "despill": true
+  },
+  "source_grid_analysis": {
+    "source_size": [
+      1254,
+      1254
+    ],
+    "source_alpha_bbox": [
+      264,
+      234,
+      983,
+      1003
+    ],
+    "sampling_bbox": [
+      264,
+      234,
+      984,
+      1003
+    ],
+    "detection_mode": "manual_verified_visual_grid",
+    "logical_subject_size": [
+      20,
+      22
+    ],
+    "logical_cell_size": [
+      36.0,
+      34.9545454545
+    ]
+  },
+  "curation": "ImageGen redraw, hard chroma removal, visually verified 20x22 source-grid center sampling, semantic seven-color ice palette quantization, and unified exterior outline; no logical subject downscaling.",
+  "output": "resources\\texture\\collectibles\\glacier_orb.png",
+  "input_sha256": "459e540edc0b3b391266cfee987e7759937adff7d0468b745e9789c49c4f8922",
+  "output_sha256": "95703f862a1e623cdff6dcf8685576fbc9bb0a18d514aef5212d647da68cd600",
+  "source_size": [
+    1024,
+    1024
+  ],
+  "source_bbox": [
+    192,
+    160,
+    832,
+    864
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    20,
+    22
+  ],
+  "logical_grid_size": [
+    20,
+    22
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    20,
+    22
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#0C1325",
+    "#173A64",
+    "#285F98",
+    "#32AFC5",
+    "#6ADDE5",
+    "#B8F3F2",
+    "#F0FFFF"
+  ],
+  "final_subject_size": [
+    20,
+    22
+  ],
+  "final_bbox": [
+    6,
+    5,
+    26,
+    27
+  ]
+}

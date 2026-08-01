@@ -1,0 +1,54 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\frost_totem\\frost_totem_v12_alpha.png",
+  "output": "resources\\texture\\collectibles\\frost_totem.png",
+  "input_sha256": "e64bd1c5ca0c44b3a699c6917eeb18987045dd294bf708dc8ba24f4a526c9847",
+  "output_sha256": "62589fc441bd6cb97ff79fc70d44b33b060d4aaf70ff1b3be66ea5986096773f",
+  "source_size": [
+    978,
+    1608
+  ],
+  "source_bbox": [
+    113,
+    145,
+    861,
+    1459
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 49.6,
+  "grid_cell_height": 54.1,
+  "confidence": 0.943,
+  "subject_grid_size": [
+    15,
+    24
+  ],
+  "logical_grid_size": [
+    15,
+    24
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    15,
+    24
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#0B1730",
+    "#17375A",
+    "#285D80",
+    "#3F8EAD",
+    "#72C8D8",
+    "#BCECF0",
+    "#F5FFFF"
+  ],
+  "final_subject_size": [
+    16,
+    26
+  ],
+  "final_bbox": [
+    8,
+    3,
+    24,
+    29
+  ]
+}

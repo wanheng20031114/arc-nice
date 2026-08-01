@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\silver_mask\\silver_mask_v2_alpha.png",
+  "output": "resources\\texture\\collectibles\\silver_mask.png",
+  "input_sha256": "2f52972a2e11c5af11bcf92108188c9970e949175852ffed4a1639111814b5b0",
+  "output_sha256": "89648bf357f66830a93e377e7151aed8c8b57db626453694a84a7595a01aaacf",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    372,
+    264,
+    923,
+    974
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 43.0,
+  "grid_cell_height": 41.8,
+  "confidence": 0.883,
+  "subject_grid_size": [
+    13,
+    17
+  ],
+  "logical_grid_size": [
+    13,
+    17
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    13,
+    17
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#110F16",
+    "#252B36",
+    "#3D4A5A",
+    "#667686",
+    "#9DABB6",
+    "#D7E0E5",
+    "#F4F8FA",
+    "#5BA3B7"
+  ],
+  "final_subject_size": [
+    20,
+    26
+  ],
+  "final_bbox": [
+    6,
+    3,
+    26,
+    29
+  ]
+}

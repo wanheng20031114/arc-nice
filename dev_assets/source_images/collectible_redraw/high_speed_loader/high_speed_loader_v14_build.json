@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\high_speed_loader\\high_speed_loader_v14_alpha.png",
+  "output": "resources\\texture\\collectibles\\high_speed_loader.png",
+  "input_sha256": "2ba685a043d9cbbe14ee7550f47cf0286574b2df7d452774d00d03c229afdb2a",
+  "output_sha256": "bc16640373cb22c2901b3df1a499761fff93c7930a74feae8908f4422ab0ed48",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    144,
+    277,
+    1131,
+    904
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 39.3,
+  "grid_cell_height": 40.45,
+  "confidence": 0.867,
+  "subject_grid_size": [
+    25,
+    16
+  ],
+  "logical_grid_size": [
+    25,
+    16
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    25,
+    16
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#111419",
+    "#303840",
+    "#66737B",
+    "#B4C0C3",
+    "#6A431C",
+    "#B9782B",
+    "#F0C65A",
+    "#4BC7D3"
+  ],
+  "final_subject_size": [
+    25,
+    16
+  ],
+  "final_bbox": [
+    3,
+    8,
+    28,
+    24
+  ]
+}

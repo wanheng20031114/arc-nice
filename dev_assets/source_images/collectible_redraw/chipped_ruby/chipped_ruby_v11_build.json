@@ -1,0 +1,69 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\chipped_ruby\\chipped_ruby_v11_alpha.png",
+  "imagegen_source": "dev_assets\\source_images\\collectible_redraw\\chipped_ruby\\chipped_ruby_v11_source.png",
+  "source_chroma_key": "#00FF00",
+  "source_grid_analysis": {
+    "detection_mode": "approximate",
+    "grid_cell_width": 21.9,
+    "grid_cell_height": 22.25,
+    "confidence": 0.967,
+    "subject_grid_size": [
+      22,
+      23
+    ]
+  },
+  "curation": "Chroma removal, logical-cell normalization, eight-color quantization, and unified exterior outline; no logical downscaling.",
+  "output": "resources\\texture\\collectibles\\chipped_ruby.png",
+  "input_sha256": "7e70dcd30fa0a3475e5a61f372e30eacc8b8e91ec90bc704ceffe2f3da7d3b51",
+  "output_sha256": "17c66ea326307aa52bfa2ffeb50139c0ab7ccf785f2eaddae819bb741e8c9233",
+  "source_size": [
+    1024,
+    1024
+  ],
+  "source_bbox": [
+    160,
+    128,
+    864,
+    864
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    22,
+    23
+  ],
+  "logical_grid_size": [
+    22,
+    23
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    22,
+    23
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "authored",
+  "palette": [
+    "#120D16",
+    "#700118",
+    "#8C010E",
+    "#BB0122",
+    "#EE0112",
+    "#FC5561",
+    "#F64A02",
+    "#FFD324"
+  ],
+  "final_subject_size": [
+    22,
+    23
+  ],
+  "final_bbox": [
+    5,
+    4,
+    27,
+    27
+  ]
+}

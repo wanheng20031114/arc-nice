@@ -1,0 +1,56 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\titan_helm\\titan_helm_v13_alpha.png",
+  "output": "resources\\texture\\collectibles\\titan_helm.png",
+  "input_sha256": "7ae22d2ff8b41e6fd14473b206b68f3ce615bd0ec62eb6ad892f505f019013dd",
+  "output_sha256": "273c0d1b9ac4e4bcb61fbb9d3dacc496b86ef6257a15778d5ee80a8fdbc46a96",
+  "source_size": [
+    800,
+    800
+  ],
+  "source_bbox": [
+    0,
+    0,
+    800,
+    800
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    25,
+    25
+  ],
+  "logical_grid_size": [
+    25,
+    25
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    25,
+    25
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#120D16",
+    "#293239",
+    "#4A595E",
+    "#7D8F90",
+    "#BBC9C4",
+    "#EAF1E8",
+    "#87542E",
+    "#D89A35"
+  ],
+  "final_subject_size": [
+    25,
+    25
+  ],
+  "final_bbox": [
+    3,
+    3,
+    28,
+    28
+  ]
+}

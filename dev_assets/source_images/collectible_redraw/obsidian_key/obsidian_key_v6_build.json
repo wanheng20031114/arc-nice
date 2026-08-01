@@ -1,0 +1,54 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\obsidian_key\\obsidian_key_v6_alpha.png",
+  "output": "resources\\texture\\collectibles\\obsidian_key.png",
+  "input_sha256": "298b60065b1d5aeea8df5bb055d02438e7e721073123b219ca7cd6bfccf16594",
+  "output_sha256": "6e9fee2ec330f44c52b9f07f051b4a709d0ea210a5b2dce0c2761341919b9a0c",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    96,
+    91,
+    1102,
+    1093
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 39.85,
+  "grid_cell_height": 40.9,
+  "confidence": 0.827,
+  "subject_grid_size": [
+    25,
+    24
+  ],
+  "logical_grid_size": [
+    25,
+    24
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    25,
+    24
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#0E0C12",
+    "#19141F",
+    "#292139",
+    "#3D3159",
+    "#604A83",
+    "#3F6975",
+    "#87B9C1"
+  ],
+  "final_subject_size": [
+    25,
+    24
+  ],
+  "final_bbox": [
+    3,
+    4,
+    28,
+    28
+  ]
+}

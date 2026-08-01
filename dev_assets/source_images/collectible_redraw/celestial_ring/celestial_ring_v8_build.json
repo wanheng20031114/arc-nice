@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\celestial_ring\\celestial_ring_v8_alpha.png",
+  "output": "resources\\texture\\collectibles\\celestial_ring.png",
+  "input_sha256": "f305082e523859c02aae657a1867ff50a2bd813e41e365c75c37b966e42e5ba0",
+  "output_sha256": "5a4837f95bef12107a62a54bb6d79e5805e610b305b3d84826042d9b54f233bd",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    291,
+    183,
+    995,
+    1022
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.25,
+  "confidence": 0.987,
+  "subject_grid_size": [
+    22,
+    26
+  ],
+  "logical_grid_size": [
+    22,
+    26
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    22,
+    26
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#0B0E18",
+    "#202B4A",
+    "#3E4962",
+    "#69748A",
+    "#1B3D6D",
+    "#6B421D",
+    "#F1B62B",
+    "#C8F6FF"
+  ],
+  "final_subject_size": [
+    22,
+    26
+  ],
+  "final_bbox": [
+    5,
+    3,
+    27,
+    29
+  ]
+}

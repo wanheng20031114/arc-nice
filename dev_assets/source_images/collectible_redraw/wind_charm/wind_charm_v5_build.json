@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets/source_images/collectible_redraw/wind_charm/wind_charm_v5_alpha.png",
+  "output": "resources/texture/collectibles/wind_charm.png",
+  "input_sha256": "f31b1e7e41eca7a843b2848b6b166e4a8f966ea748d96a51a0346ccdd7d6b7a8",
+  "output_sha256": "3bde9f3a6321ab16613635a29505d647da9a339804f994f95c79ac6a9cf12f9a",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    214,
+    130,
+    1035,
+    1064
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 42.75,
+  "grid_cell_height": 46.85,
+  "confidence": 0.947,
+  "subject_grid_size": [
+    19,
+    20
+  ],
+  "logical_grid_size": [
+    19,
+    20
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    19,
+    20
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#15131A",
+    "#3A281F",
+    "#76513A",
+    "#174C58",
+    "#277C87",
+    "#55C8D2",
+    "#BCEEF0",
+    "#FFF4CD"
+  ],
+  "final_subject_size": [
+    19,
+    20
+  ],
+  "final_bbox": [
+    6,
+    6,
+    25,
+    26
+  ]
+}

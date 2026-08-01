@@ -1,0 +1,93 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\quick_load_belt\\quick_load_belt_v24_alpha.png",
+  "imagegen_source": "dev_assets\\source_images\\collectible_redraw\\quick_load_belt\\quick_load_belt_v24_source.png",
+  "imagegen_source_sha256": "0834305eed2fbd976cc90ae44533f9c2423a4a5fa44fe1d0d4d5b9114187c15b",
+  "source_chroma_key": "#3DA750",
+  "source_chroma_removal": {
+    "tolerance": 60,
+    "despill": true
+  },
+  "source_grid_analysis": {
+    "source_size": [
+      1536,
+      1024
+    ],
+    "source_alpha_bbox": [
+      318,
+      262,
+      1189,
+      778
+    ],
+    "sampling_bbox": [
+      318,
+      262,
+      1189,
+      778
+    ],
+    "detection_mode": "pixel_grid_analyzer_native_or_unknown_then_manual_verified_visual_grid",
+    "logical_cell_size": [
+      36.291667,
+      36.857143
+    ],
+    "confidence": 0.391,
+    "logical_subject_size": [
+      24,
+      14
+    ]
+  },
+  "prompt_summary": "Minecraft-like cartoon quick-load ammunition belt on flat green chroma: three staggered brass cartridges held by a continuous rising warm-brown flexible belt, a square steel quick-release buckle with a dark opening and two-cell cyan latch, plus a compact shortened pull tab; one uniform coarse macro-pixel grid, limited flat palette, no shadow or text.",
+  "curation": "Built-in ImageGen redraw, hard chroma removal, manually verified 24x14 visual-grid center sampling, semantic eight-color leather/brass/steel/cyan palette quantization, and authored boundary preservation; no logical subject downscaling.",
+  "output": "resources\\texture\\collectibles\\quick_load_belt.png",
+  "input_sha256": "34a7f2228f807a5919973a24e3a04c611f19c785a7a960dd64f8a921deb84e0a",
+  "output_sha256": "df44aa9bc477f1e696244788403167b5b9a43a283e3d2a3cec39fc6b9e5a873b",
+  "source_size": [
+    1024,
+    1024
+  ],
+  "source_bbox": [
+    128,
+    288,
+    896,
+    736
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    24,
+    14
+  ],
+  "logical_grid_size": [
+    24,
+    14
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    24,
+    14
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "authored",
+  "palette": [
+    "#10171D",
+    "#2C1B18",
+    "#5A3528",
+    "#9A640A",
+    "#E7A817",
+    "#FFE59A",
+    "#8B909C",
+    "#34C5D4"
+  ],
+  "final_subject_size": [
+    24,
+    14
+  ],
+  "final_bbox": [
+    4,
+    9,
+    28,
+    23
+  ]
+}

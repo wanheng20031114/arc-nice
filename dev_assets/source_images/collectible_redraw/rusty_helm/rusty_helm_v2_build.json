@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\rusty_helm\\rusty_helm_v2_alpha.png",
+  "output": "resources\\texture\\collectibles\\rusty_helm.png",
+  "input_sha256": "cd61d4e2a5abba38d1cacac6c650223a41168b5e772091d34d9b04aa841295df",
+  "output_sha256": "8d397db50a97c1eda67012bce1681caa5eb39093dc1643298f3131b92f9df5f6",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    251,
+    213,
+    1002,
+    1028
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 46.5,
+  "grid_cell_height": 47.95,
+  "confidence": 0.956,
+  "subject_grid_size": [
+    16,
+    17
+  ],
+  "logical_grid_size": [
+    16,
+    17
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    16,
+    17
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#17191A",
+    "#343A3B",
+    "#626C6A",
+    "#96A19B",
+    "#542C1D",
+    "#854323",
+    "#C26931",
+    "#C5B07D"
+  ],
+  "final_subject_size": [
+    24,
+    26
+  ],
+  "final_bbox": [
+    4,
+    3,
+    28,
+    29
+  ]
+}

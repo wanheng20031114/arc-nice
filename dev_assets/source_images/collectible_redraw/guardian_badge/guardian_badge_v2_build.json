@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\guardian_badge\\guardian_badge_v2_alpha.png",
+  "output": "resources\\texture\\collectibles\\guardian_badge.png",
+  "input_sha256": "3f0a3cdf3d16184264eec64cea937e9723b6452b8a30e452551a667f07e3234f",
+  "output_sha256": "f217d002585087ddeb320eaa221b8220ea63e5bcc4100148a7c65d7ffd42052c",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    359,
+    303,
+    896,
+    933
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 36.3,
+  "grid_cell_height": 35.0,
+  "confidence": 0.901,
+  "subject_grid_size": [
+    15,
+    18
+  ],
+  "logical_grid_size": [
+    15,
+    18
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    15,
+    18
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#130F18",
+    "#2A2032",
+    "#6C4426",
+    "#B97836",
+    "#F2C86E",
+    "#647480",
+    "#C7D5D9",
+    "#51D5E5"
+  ],
+  "final_subject_size": [
+    22,
+    26
+  ],
+  "final_bbox": [
+    5,
+    3,
+    27,
+    29
+  ]
+}

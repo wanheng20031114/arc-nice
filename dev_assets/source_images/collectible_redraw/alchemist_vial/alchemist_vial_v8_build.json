@@ -1,0 +1,56 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\alchemist_vial\\alchemist_vial_v8_alpha.png",
+  "output": "resources\\texture\\collectibles\\alchemist_vial.png",
+  "input_sha256": "e1fda4aeba767092f938763f87f6446a31958f1e48bd0ee4452030db385d6b0a",
+  "output_sha256": "79df3d2db4f97962449292e7c6b9001ebbffec339f6c8290b2a1e08784273d6c",
+  "source_size": [
+    832,
+    832
+  ],
+  "source_bbox": [
+    64,
+    0,
+    768,
+    832
+  ],
+  "detection_mode": "exact_integer",
+  "grid_cell_width": 32.0,
+  "grid_cell_height": 32.0,
+  "confidence": 1.0,
+  "subject_grid_size": [
+    22,
+    26
+  ],
+  "logical_grid_size": [
+    22,
+    26
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    22,
+    26
+  ],
+  "cell_alpha_coverage": 0.25,
+  "boundary_mode": "forced_black",
+  "palette": [
+    "#120D16",
+    "#26323A",
+    "#536873",
+    "#ABC2B5",
+    "#194C3F",
+    "#3D8B5A",
+    "#8C4F26",
+    "#D57717"
+  ],
+  "final_subject_size": [
+    22,
+    26
+  ],
+  "final_bbox": [
+    5,
+    3,
+    27,
+    29
+  ]
+}

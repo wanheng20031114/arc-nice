@@ -1,0 +1,55 @@
+{
+  "input": "dev_assets\\source_images\\collectible_redraw\\gold_apple\\gold_apple_v3_alpha.png",
+  "output": "resources\\texture\\collectibles\\gold_apple.png",
+  "input_sha256": "5662f2c6849bdea8c63e530a75cbdf40efccc496331cd74e5e864b88809e0203",
+  "output_sha256": "fe409b20d1a5d0f980be9a3b3d2350962f96f8f4a6b44d5e0c5761851cc6567f",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_bbox": [
+    274,
+    194,
+    995,
+    1035
+  ],
+  "detection_mode": "approximate",
+  "grid_cell_width": 36.2,
+  "grid_cell_height": 36.6,
+  "confidence": 0.85,
+  "subject_grid_size": [
+    20,
+    23
+  ],
+  "logical_grid_size": [
+    20,
+    23
+  ],
+  "logical_subject_bbox": [
+    0,
+    0,
+    20,
+    23
+  ],
+  "cell_alpha_coverage": 0.25,
+  "palette": [
+    "#160F08",
+    "#6B350A",
+    "#A96A06",
+    "#E1A800",
+    "#FFD233",
+    "#FFF0A0",
+    "#1F5B16",
+    "#69C629"
+  ],
+  "final_subject_size": [
+    23,
+    26
+  ],
+  "final_bbox": [
+    4,
+    3,
+    27,
+    29
+  ]
+}

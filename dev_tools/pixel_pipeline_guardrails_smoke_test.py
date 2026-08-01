@@ -63,6 +63,14 @@ def _make_native_32_source() -> Image.Image:
     return image
 
 
+def _make_thin_feature_grid_source() -> Image.Image:
+    logical = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    pixels = logical.load()
+    for x in range(2, 14):
+        pixels[x, 8] = (216, 208, 180, 255)
+    return logical.resize((64, 64), Image.Resampling.NEAREST)
+
+
 def main() -> None:
     unknown_source = _make_unknown_high_resolution_source()
     unknown_analysis = analyze_image(unknown_source)
@@ -102,13 +110,41 @@ def main() -> None:
         unknown_path = temp_path / "unknown.png"
         regular_path = temp_path / "regular.png"
         native_path = temp_path / "native_32.png"
+        thin_feature_path = temp_path / "thin_feature.png"
         unknown_source.save(unknown_path)
         regular_source.save(regular_path)
         native_source.save(native_path)
+        _make_thin_feature_grid_source().save(thin_feature_path)
 
         _expect_value_error(
             lambda: build_icon(unknown_path, temp_path / "rejected.png", 24, 12, 26),
             "Refusing high-resolution source",
+        )
+        _expect_value_error(
+            lambda: build_icon(
+                unknown_path,
+                temp_path / "incomplete_grid_override.png",
+                24,
+                12,
+                26,
+                logical_grid_width=12,
+            ),
+            "must be provided together",
+        )
+        reviewed_override_result = build_icon(
+            unknown_path,
+            temp_path / "reviewed_grid_override.png",
+            24,
+            12,
+            26,
+            logical_grid_width=12,
+            logical_grid_height=12,
+        )
+        _expect(
+            reviewed_override_result["grid_selection"] == "explicit_reviewed_override"
+            and reviewed_override_result["logical_grid_size"] == [12, 12]
+            and reviewed_override_result["subject_grid_size"] == [12, 12],
+            "A complete reviewed grid override must be recorded and honored",
         )
         regular_result = build_icon(
             regular_path,
@@ -116,6 +152,7 @@ def main() -> None:
             24,
             12,
             26,
+            palette=((11, 9, 13), (197, 29, 45), (255, 148, 0)),
         )
         _expect(
             regular_result["detection_mode"] == "exact_integer",
@@ -125,10 +162,70 @@ def main() -> None:
             (temp_path / "regular_output.png").is_file(),
             "Accepted regular-grid source must produce an output",
         )
+        with Image.open(temp_path / "regular_output.png") as palette_output:
+            visible_colors = {
+                pixel[:3]
+                for pixel in palette_output.convert("RGBA").getdata()
+                if pixel[3] > 0
+            }
+        _expect(
+            visible_colors <= {(11, 9, 13), (197, 29, 45), (255, 148, 0)},
+            f"Palette-locked output leaked colors: {visible_colors}",
+        )
+        _expect(
+            regular_result["palette"] == ["#0B090D", "#C51D2D", "#FF9400"],
+            "Build manifest must preserve the exact palette contract",
+        )
         build_icon(native_path, temp_path / "native_output.png", 24, 12, 26)
         _expect(
             (temp_path / "native_output.png").is_file(),
             "Native 32x32 source must remain supported by the collectible builder",
+        )
+
+        forced_boundary_path = temp_path / "thin_forced_boundary.png"
+        authored_boundary_path = temp_path / "thin_authored_boundary.png"
+        thin_palette = ((11, 13, 12), (216, 208, 180))
+        forced_result = build_icon(
+            thin_feature_path,
+            forced_boundary_path,
+            24,
+            12,
+            26,
+            palette=thin_palette,
+        )
+        authored_result = build_icon(
+            thin_feature_path,
+            authored_boundary_path,
+            24,
+            12,
+            26,
+            palette=thin_palette,
+            force_black_exterior_boundary=False,
+        )
+        with Image.open(forced_boundary_path) as forced_output:
+            forced_visible_colors = {
+                pixel[:3]
+                for pixel in forced_output.convert("RGBA").getdata()
+                if pixel[3] > 0
+            }
+        with Image.open(authored_boundary_path) as authored_output:
+            authored_visible_colors = {
+                pixel[:3]
+                for pixel in authored_output.convert("RGBA").getdata()
+                if pixel[3] > 0
+            }
+        _expect(
+            forced_visible_colors == {(11, 13, 12)},
+            f"Forced boundary mode must still darken a one-cell line: {forced_visible_colors}",
+        )
+        _expect(
+            authored_visible_colors == {(216, 208, 180)},
+            f"Authored boundary mode must preserve a one-cell line: {authored_visible_colors}",
+        )
+        _expect(
+            forced_result["boundary_mode"] == "forced_black"
+            and authored_result["boundary_mode"] == "authored",
+            "Build manifest must record the selected boundary mode",
         )
 
     print("PIXEL_PIPELINE_GUARDRAILS_SMOKE_TEST_OK")
