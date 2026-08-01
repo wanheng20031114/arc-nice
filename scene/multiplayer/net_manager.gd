@@ -32,6 +32,7 @@ enum GameMode {
 	TOWER_DEFENSE,
 	TEST_ARENA_P1,
 	TEST_ARENA_P2,
+	TEST_ARENA_P3,
 }
 enum ConnectionState {
 	DISCONNECTED,
@@ -169,6 +170,8 @@ static func game_mode_to_key(game_mode: GameMode) -> String:
 			return "test_arena_p1"
 		GameMode.TEST_ARENA_P2:
 			return "test_arena_p2"
+		GameMode.TEST_ARENA_P3:
+			return "test_arena_p3"
 		_:
 			return "standard"
 
@@ -181,6 +184,8 @@ static func game_mode_from_key(game_mode_key: String) -> GameMode:
 			return GameMode.TEST_ARENA_P1
 		"test_arena_p2":
 			return GameMode.TEST_ARENA_P2
+		"test_arena_p3":
+			return GameMode.TEST_ARENA_P3
 		_:
 			return GameMode.STANDARD
 
@@ -193,6 +198,8 @@ static func get_game_mode_display_name(game_mode: GameMode) -> String:
 			return "测试场景 P1"
 		GameMode.TEST_ARENA_P2:
 			return "测试场景 P2"
+		GameMode.TEST_ARENA_P3:
+			return "测试场景 P3 · 肉鸽路线"
 		_:
 			return "普通模式"
 
@@ -480,7 +487,10 @@ func host_start_game() -> void:
 		return
 	if connection_state >= ConnectionState.LOADING_GAME:
 		return
-	if not are_all_player_characters_confirmed():
+	if (
+		current_game_mode != GameMode.TEST_ARENA_P3
+		and not are_all_player_characters_confirmed()
+	):
 		connection_failed.emit("仍有玩家尚未确认角色")
 		return
 	host_game_ready = false
@@ -1440,6 +1450,7 @@ func _is_valid_game_mode(game_mode: int) -> bool:
 		or game_mode == GameMode.TOWER_DEFENSE
 		or game_mode == GameMode.TEST_ARENA_P1
 		or game_mode == GameMode.TEST_ARENA_P2
+		or game_mode == GameMode.TEST_ARENA_P3
 	)
 
 

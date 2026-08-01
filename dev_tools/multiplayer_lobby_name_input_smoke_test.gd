@@ -66,7 +66,7 @@ func _run() -> void:
 	_expect(room_mode_label != null, "Room wait panel must expose the synchronized mode label.")
 	_expect(room_capacity_label != null, "Room wait panel must expose synchronized room capacity.")
 	if game_mode_selector != null:
-		_expect(game_mode_selector.item_count == 4, "Game-mode selector must contain all four supported modes.")
+		_expect(game_mode_selector.item_count == 5, "Game-mode selector must contain all five supported modes.")
 		_expect(
 			game_mode_selector.get_item_id(0) == NetManagerStore.GameMode.STANDARD
 			and game_mode_selector.get_item_id(1) == NetManagerStore.GameMode.TOWER_DEFENSE,
@@ -74,7 +74,8 @@ func _run() -> void:
 		)
 		_expect(
 			game_mode_selector.get_item_id(2) == NetManagerStore.GameMode.TEST_ARENA_P1
-			and game_mode_selector.get_item_id(3) == NetManagerStore.GameMode.TEST_ARENA_P2,
+			and game_mode_selector.get_item_id(3) == NetManagerStore.GameMode.TEST_ARENA_P2
+			and game_mode_selector.get_item_id(4) == NetManagerStore.GameMode.TEST_ARENA_P3,
 			"Test-arena selector ids must match the network enum."
 		)
 		for item_index in range(game_mode_selector.item_count):

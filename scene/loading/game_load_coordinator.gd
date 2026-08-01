@@ -5,11 +5,17 @@ signal loading_finished(multiplayer_load: bool)
 signal loading_failed(message: String)
 
 const MULTIPLAYER_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
+const MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH := (
+	"res://scene/multiplayer/mp_rogue_route.tscn"
+)
 const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
 const TEST_GRASS_ARENA_P2_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena_p2.tscn"
+)
+const TEST_ROGUE_ROUTE_P3_SCENE_PATH := (
+	"res://scene/test_arena/test_rogue_route_p3.tscn"
 )
 const STANDARD_SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
@@ -47,6 +53,7 @@ const MULTIPLAYER_STATE_IN_GAME := 5
 const GAME_MODE_TOWER_DEFENSE := 1
 const GAME_MODE_TEST_ARENA_P1 := 2
 const GAME_MODE_TEST_ARENA_P2 := 3
+const GAME_MODE_TEST_ARENA_P3 := 4
 const CAMPAIGN_RUNTIME_RESOURCES_META := &"_game_load_runtime_resources"
 const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/plant_defense/agave_cannon.tscn",
@@ -128,15 +135,22 @@ func _ready() -> void:
 func begin_singleplayer(scene_path: String) -> void:
 	if _state != LoadState.IDLE and _state != LoadState.FAILED:
 		return
+	_begin_load(scene_path, _build_singleplayer_manifest(scene_path), false)
+
+
+func _build_singleplayer_manifest(scene_path: String) -> Array[String]:
+	var manifest: Array[String] = [scene_path]
+	if scene_path == TEST_ROGUE_ROUTE_P3_SCENE_PATH:
+		return manifest
 	var campaign_path := _get_singleplayer_campaign_path(scene_path)
-	var manifest: Array[String] = [scene_path, campaign_path]
+	manifest.append(campaign_path)
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:
 		_append_character_scene(manifest, run_state.get_selected_character_id())
 		_append_inventory_runtime_resources(manifest, run_state)
 	if _uses_tower_defense_runtime(scene_path):
 		_append_tower_defense_runtime_resources(manifest, false)
-	_begin_load(scene_path, manifest, false)
+	return manifest
 
 
 func _get_singleplayer_campaign_path(scene_path: String) -> String:
@@ -147,6 +161,8 @@ func _get_singleplayer_campaign_path(scene_path: String) -> String:
 			return TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH
 		TEST_GRASS_ARENA_P2_SCENE_PATH:
 			return TEST_ARENA_P2_SINGLEPLAYER_CAMPAIGN_PATH
+		TEST_ROGUE_ROUTE_P3_SCENE_PATH:
+			return ""
 		_:
 			return STANDARD_SINGLEPLAYER_CAMPAIGN_PATH
 
@@ -168,9 +184,21 @@ func begin_multiplayer() -> void:
 		_show_error("无法读取多人会话。")
 		return
 	var game_mode := int(net_manager.get("current_game_mode"))
+	var entry_path := _get_multiplayer_entry_path(game_mode)
+	var manifest := _build_multiplayer_manifest(game_mode, net_manager)
+	_begin_load(entry_path, manifest, true)
+
+
+func _build_multiplayer_manifest(game_mode: int, net_manager: Node) -> Array[String]:
 	var runtime_path := _get_multiplayer_runtime_path(game_mode)
+	var entry_path := _get_multiplayer_entry_path(game_mode)
+	var manifest: Array[String] = [entry_path]
+	if runtime_path != entry_path:
+		manifest.append(runtime_path)
+	if game_mode == GAME_MODE_TEST_ARENA_P3:
+		return manifest
 	var campaign_path := _get_multiplayer_campaign_path(game_mode)
-	var manifest: Array[String] = [MULTIPLAYER_SCENE_PATH, runtime_path, campaign_path]
+	manifest.append(campaign_path)
 	var character_map: Dictionary = net_manager.call("get_player_character_map") as Dictionary
 	for character_id_variant in character_map.values():
 		_append_character_scene(manifest, StringName(character_id_variant))
@@ -179,7 +207,13 @@ func begin_multiplayer() -> void:
 		_append_inventory_runtime_resources(manifest, run_state)
 	if _uses_tower_defense_runtime(runtime_path):
 		_append_tower_defense_runtime_resources(manifest, true)
-	_begin_load(MULTIPLAYER_SCENE_PATH, manifest, true)
+	return manifest
+
+
+func _get_multiplayer_entry_path(game_mode: int) -> String:
+	if game_mode == GAME_MODE_TEST_ARENA_P3:
+		return MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH
+	return MULTIPLAYER_SCENE_PATH
 
 
 func _get_multiplayer_runtime_path(game_mode: int) -> String:
@@ -190,6 +224,8 @@ func _get_multiplayer_runtime_path(game_mode: int) -> String:
 			return TEST_GRASS_ARENA_SCENE_PATH
 		GAME_MODE_TEST_ARENA_P2:
 			return TEST_GRASS_ARENA_P2_SCENE_PATH
+		GAME_MODE_TEST_ARENA_P3:
+			return TEST_ROGUE_ROUTE_P3_SCENE_PATH
 		_:
 			return STANDARD_GAME_SCENE_PATH
 
@@ -202,6 +238,8 @@ func _get_multiplayer_campaign_path(game_mode: int) -> String:
 			return TEST_ARENA_MULTIPLAYER_CAMPAIGN_PATH
 		GAME_MODE_TEST_ARENA_P2:
 			return TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH
+		GAME_MODE_TEST_ARENA_P3:
+			return ""
 		_:
 			return STANDARD_MULTIPLAYER_CAMPAIGN_PATH
 

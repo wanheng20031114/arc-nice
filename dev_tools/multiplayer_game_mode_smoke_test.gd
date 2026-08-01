@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 31,
-		"Tango电涌弹幕序列、被动瞄准降频、四种游戏模式与房间容量同步要求协议v31。"
+		NetConstants.PROTOCOL_VERSION == 32,
+		"P3肉鸽路线新增wire模式值与可靠同步协议要求协议v32。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
@@ -47,7 +47,7 @@ func _run() -> void:
 	var room_capacity_label := lobby.get_node_or_null(
 		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel"
 	) as Label
-	_expect(selector != null and selector.item_count == 4, "Lobby must expose all four native mode options.")
+	_expect(selector != null and selector.item_count == 5, "Lobby must expose all five native mode options.")
 	_expect(room_mode_label != null, "Room wait panel must display the synchronized mode.")
 	_expect(room_capacity_label != null, "Room wait panel must display synchronized room capacity.")
 	if selector != null:
@@ -60,6 +60,7 @@ func _run() -> void:
 				NetManagerStore.GameMode.TOWER_DEFENSE,
 				NetManagerStore.GameMode.TEST_ARENA_P1,
 				NetManagerStore.GameMode.TEST_ARENA_P2,
+				NetManagerStore.GameMode.TEST_ARENA_P3,
 			],
 			"Lobby selector ids must preserve the complete protocol mode order."
 		)
@@ -106,14 +107,23 @@ func _run() -> void:
 			"max_players": 3,
 			"game_mode": "test_arena_p2",
 		},
+		{
+			"id": "test-p3-room",
+			"name": "Test P3",
+			"host_name": "E",
+			"player_count": 2,
+			"max_players": 4,
+			"game_mode": "test_arena_p3",
+		},
 	])
-	_expect(room_list.get_child_count() == 4, "Room list must retain all four valid game modes.")
-	if room_list.get_child_count() == 4:
+	_expect(room_list.get_child_count() == 5, "Room list must retain all five valid game modes.")
+	if room_list.get_child_count() == 5:
 		_expect(
 			(room_list.get_child(0) as Button).text.contains("普通模式")
 			and (room_list.get_child(1) as Button).text.contains("塔防模式")
 			and (room_list.get_child(2) as Button).text.contains("测试场景 P1")
-			and (room_list.get_child(3) as Button).text.contains("测试场景 P2"),
+			and (room_list.get_child(3) as Button).text.contains("测试场景 P2")
+			and (room_list.get_child(4) as Button).text.contains("测试场景 P3"),
 			"Room buttons must visibly identify every game mode."
 		)
 

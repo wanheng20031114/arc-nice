@@ -84,8 +84,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 31,
-		"Tango电涌弹幕序列、被动瞄准降频、房间容量与测试场景模式同步必须由协议v31隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 32,
+		"P3路线模式与可靠同步必须由协议v32隔离旧客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

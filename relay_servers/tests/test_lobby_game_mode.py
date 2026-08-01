@@ -22,6 +22,7 @@ class LobbyGameModeTests(unittest.TestCase):
         GameMode.TOWER_DEFENSE,
         GameMode.TEST_ARENA_P1,
         GameMode.TEST_ARENA_P2,
+        GameMode.TEST_ARENA_P3,
     )
 
     def _create_joinable_room(
@@ -117,12 +118,18 @@ class LobbyGameModeTests(unittest.TestCase):
             "TestP2Host",
             GameMode.TEST_ARENA_P2,
         )
+        test_p3_room = self._create_joinable_room(
+            manager,
+            "TestP3Host",
+            GameMode.TEST_ARENA_P3,
+        )
 
         expected_rooms = {
             GameMode.STANDARD: standard_room,
             GameMode.TOWER_DEFENSE: tower_room,
             GameMode.TEST_ARENA_P1: test_p1_room,
             GameMode.TEST_ARENA_P2: test_p2_room,
+            GameMode.TEST_ARENA_P3: test_p3_room,
         }
         for game_mode, expected_room in expected_rooms.items():
             with self.subTest(game_mode=game_mode):
@@ -162,6 +169,17 @@ class LobbyGameModeTests(unittest.TestCase):
             )
             self.assertEqual(test_p2_result["room_id"], test_p2_room.id)
             self.assertEqual(test_p2_result["game_mode"], "test_arena_p2")
+
+            test_p3_result = asyncio.run(
+                lobby_main.quick_match(
+                    QuickMatchRequest(
+                        player_name="TestP3Client",
+                        game_mode=GameMode.TEST_ARENA_P3,
+                    )
+                )
+            )
+            self.assertEqual(test_p3_result["room_id"], test_p3_room.id)
+            self.assertEqual(test_p3_result["game_mode"], "test_arena_p3")
 
             with self.assertRaises(HTTPException):
                 asyncio.run(

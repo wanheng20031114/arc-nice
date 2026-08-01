@@ -2,9 +2,14 @@ extends SceneTree
 
 const MAIN_MP_GAME_PATH := "res://scene/multiplayer/mp_game.gd"
 const RELAY_MP_GAME_PATH := "res://relay_servers/relay_godot_project/relay_mp_game_stub.gd"
+const MAIN_ROGUE_ROUTE_PATH := "res://scene/multiplayer/mp_rogue_route.gd"
+const RELAY_ROGUE_ROUTE_PATH := (
+	"res://relay_servers/relay_godot_project/relay_rogue_route_stub.gd"
+)
 const MAIN_NET_MANAGER_PATH := "res://scene/multiplayer/net_manager.gd"
 const RELAY_NET_MANAGER_PATH := "res://relay_servers/relay_godot_project/relay_net_manager_stub.gd"
 const RELAY_SERVER_PATH := "res://relay_servers/relay_godot_project/relay_server.gd"
+const RELAY_PROJECT_PATH := "res://relay_servers/relay_godot_project/project.godot"
 const STANDARD_GAME_PATH := "res://scene/game.gd"
 const TOWER_DEFENSE_GAME_PATH := "res://scene/game_tower_defense.gd"
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
@@ -169,6 +174,24 @@ func _run() -> void:
 	_test_gameplay_v17_transaction_contract(main_rpcs)
 	_test_gameplay_channel_contract(main_rpcs)
 
+	var main_rogue_route_rpcs := _extract_rpc_surface(MAIN_ROGUE_ROUTE_PATH)
+	var relay_rogue_route_rpcs := _extract_rpc_surface(RELAY_ROGUE_ROUTE_PATH)
+	_compare_rpc_surfaces(
+		"MpRogueRoute",
+		main_rogue_route_rpcs,
+		relay_rogue_route_rpcs
+	)
+	for required_method in [
+		"net_request_route_full_snapshot",
+		"net_route_full_snapshot",
+		"net_route_move_delta",
+	]:
+		_expect(
+			main_rogue_route_rpcs.has(required_method),
+			"P3 route RPC %s must be registered in main and Relay projects."
+			% required_method
+		)
+
 	var main_net_manager_rpcs := _extract_rpc_surface(MAIN_NET_MANAGER_PATH)
 	var relay_net_manager_rpcs := _extract_rpc_surface(RELAY_NET_MANAGER_PATH)
 	_compare_rpc_surfaces("NetManager", main_net_manager_rpcs, relay_net_manager_rpcs)
@@ -214,10 +237,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 31,
-		"Tango电涌弹幕序列、被动瞄准降频、四种游戏模式与房间容量同步要求协议v31。"
+		NetConstants.PROTOCOL_VERSION == 32,
+		"P3肉鸽路线新增wire模式值与可靠同步协议要求协议v32。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v31 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v32 must provision eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -256,7 +279,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v31 hosts must accept exactly v31 and reject v30."
+		"Protocol v32 hosts must accept exactly v32 and reject v31."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -320,16 +343,29 @@ func _test_registration_protocol_handshake_source() -> void:
 
 func _test_relay_channel_count() -> void:
 	var relay_source := FileAccess.get_file_as_string(RELAY_SERVER_PATH)
+	var relay_project_source := FileAccess.get_file_as_string(RELAY_PROJECT_PATH)
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 31")
+		and relay_source.contains("const PROTOCOL_VERSION := 32")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v31, accept the room capacity, and provision "
+			"Relay server must declare v32, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
+	)
+	_expect(
+		relay_project_source.contains(
+			'MpRogueRoute="*res://relay_rogue_route_stub.gd"'
+		)
+		and relay_source.contains(
+			'get_node_or_null("/root/MpRogueRoute")'
+		)
+		and relay_source.contains(
+			"rogue_route_stub.set_multiplayer_authority(_host_peer_id)"
+		),
+		"Relay must mount the P3 stub at /root/MpRogueRoute and assign Host authority."
 	)
 
 

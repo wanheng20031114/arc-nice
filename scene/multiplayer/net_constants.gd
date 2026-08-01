@@ -16,7 +16,9 @@ extends RefCounted
 ## 重放；敌人状态快照 bit16 表示永久电元素附着。
 ## v31：电能涌动可靠事件绑定自动弹幕序列，技能结束后不会被跨信道迟到齐射
 ## 重新拉起；无按键的鼠标被动瞄准改为变化即时发送与6帧保活。
-const PROTOCOL_VERSION := 31
+## v32：新增 P3 肉鸽路线多人模式与 Host 权威的完整路线/移动增量协议。
+## 旧客户端无法识别新增 wire 游戏模式值 4。
+const PROTOCOL_VERSION := 32
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

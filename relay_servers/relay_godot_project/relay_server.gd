@@ -11,7 +11,7 @@ const MIN_CLIENTS := 2
 const MAX_CLIENTS := 8
 const DEFAULT_MAX_CLIENTS := MAX_CLIENTS
 const CHANNEL_COUNT := 8
-const PROTOCOL_VERSION := 31
+const PROTOCOL_VERSION := 32
 
 var _port: int = DEFAULT_PORT
 var _idle_timeout_sec: float = DEFAULT_IDLE_TIMEOUT_SEC
@@ -120,6 +120,9 @@ func _on_peer_connected(peer_id: int) -> void:
 		var mp_game_stub := get_node_or_null("/root/MpGame")
 		if mp_game_stub != null:
 			mp_game_stub.set_multiplayer_authority(_host_peer_id)
+		var rogue_route_stub := get_node_or_null("/root/MpRogueRoute")
+		if rogue_route_stub != null:
+			rogue_route_stub.set_multiplayer_authority(_host_peer_id)
 	var connected_count := multiplayer.get_peers().size()
 	print("[Relay] 玩家连接 peer_id=%d (当前 %d 人)" % [peer_id, connected_count])
 

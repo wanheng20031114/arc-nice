@@ -2,6 +2,9 @@ extends Control
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const MULTIPLAYER_GAME_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
+const MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH := (
+	"res://scene/multiplayer/mp_rogue_route.tscn"
+)
 const PUBLIC_LOBBY_API_BASE_URL := _NetConstants.PUBLIC_LOBBY_API_BASE_URL
 const USERNAME_CARET_SIZE := Vector2(2.0, 34.0)
 const USERNAME_CARET_BLINK_INTERVAL := 0.48
@@ -14,6 +17,7 @@ const GAME_MODE_STANDARD_KEY := "standard"
 const GAME_MODE_TOWER_DEFENSE_KEY := "tower_defense"
 const GAME_MODE_TEST_ARENA_P1_KEY := "test_arena_p1"
 const GAME_MODE_TEST_ARENA_P2_KEY := "test_arena_p2"
+const GAME_MODE_TEST_ARENA_P3_KEY := "test_arena_p3"
 const GAME_MODE_STANDARD_ICON: Texture2D = preload(
 	"res://resources/texture/ui/multiplayer/mode_standard.png"
 )
@@ -25,6 +29,9 @@ const GAME_MODE_TEST_ARENA_P1_ICON: Texture2D = preload(
 )
 const GAME_MODE_TEST_ARENA_P2_ICON: Texture2D = preload(
 	"res://resources/texture/ui/multiplayer/mode_test_p2.png"
+)
+const GAME_MODE_TEST_ARENA_P3_ICON: Texture2D = preload(
+	"res://resources/texture/rogue_route/party_marker.png"
 )
 
 enum LobbyView {
@@ -233,6 +240,11 @@ func _configure_game_mode_selector() -> void:
 		"测试场 P2",
 		NetManagerStore.GameMode.TEST_ARENA_P2
 	)
+	game_mode_selector.add_icon_item(
+		GAME_MODE_TEST_ARENA_P3_ICON,
+		"测试场 P3 · 肉鸽路线",
+		NetManagerStore.GameMode.TEST_ARENA_P3
+	)
 	_select_game_mode_in_selector(
 		net_manager.get_current_game_mode() as NetManagerStore.GameMode
 	)
@@ -261,6 +273,8 @@ func _get_selected_game_mode() -> NetManagerStore.GameMode:
 			return NetManagerStore.GameMode.TEST_ARENA_P1
 		NetManagerStore.GameMode.TEST_ARENA_P2:
 			return NetManagerStore.GameMode.TEST_ARENA_P2
+		NetManagerStore.GameMode.TEST_ARENA_P3:
+			return NetManagerStore.GameMode.TEST_ARENA_P3
 		_:
 			return NetManagerStore.GameMode.STANDARD
 
@@ -293,6 +307,7 @@ func _get_room_game_mode_key(room_data: Dictionary) -> String:
 		GAME_MODE_TOWER_DEFENSE_KEY,
 		GAME_MODE_TEST_ARENA_P1_KEY,
 		GAME_MODE_TEST_ARENA_P2_KEY,
+		GAME_MODE_TEST_ARENA_P3_KEY,
 	]:
 		return game_mode_key
 	return ""
@@ -890,7 +905,8 @@ func _enter_room_wait(room_data: Dictionary) -> void:
 	start_game_btn.visible = net_manager.is_host()
 	wait_status_label.text = "等待玩家加入..."
 	_refresh_wait_player_list()
-	call_deferred("_open_character_choice_if_needed")
+	if not _is_rogue_route_mode():
+		call_deferred("_open_character_choice_if_needed")
 
 
 func _refresh_wait_player_list() -> void:
@@ -900,27 +916,39 @@ func _refresh_wait_player_list() -> void:
 	for peer_id_variant in net_manager.connected_players:
 		var peer_id: int = int(peer_id_variant)
 		var player_name: String = str(net_manager.connected_players[peer_id])
-		var character_id := StringName(net_manager.call("get_player_character_id", peer_id))
-		var character_name := _get_character_display_name(character_id)
-		var character_confirmed := bool(net_manager.call("is_player_character_confirmed", peer_id))
 		var label := Label.new()
 		var is_host_marker := " (Host)" if peer_id == net_manager.get_host_peer_id() else ""
 		var is_local_marker: String = " <- 你" if peer_id == net_manager.get_local_peer_id() else ""
-		var confirmation_marker := " ✓" if character_confirmed else "（角色未确认）"
-		label.text = "%s · %s%s%s%s" % [
-			player_name,
-			character_name,
-			confirmation_marker,
-			is_host_marker,
-			is_local_marker,
-		]
+		if _is_rogue_route_mode():
+			label.text = "%s%s%s" % [player_name, is_host_marker, is_local_marker]
+		else:
+			var character_id := StringName(
+				net_manager.call("get_player_character_id", peer_id)
+			)
+			var character_name := _get_character_display_name(character_id)
+			var character_confirmed := bool(
+				net_manager.call("is_player_character_confirmed", peer_id)
+			)
+			var confirmation_marker := " ✓" if character_confirmed else "（角色未确认）"
+			label.text = "%s · %s%s%s%s" % [
+				player_name,
+				character_name,
+				confirmation_marker,
+				is_host_marker,
+				is_local_marker,
+			]
 		wait_player_list_vbox.add_child(label)
 
 	_update_room_capacity_label()
 	if net_manager.is_host():
 		start_game_btn.disabled = (
 			net_manager.connected_players.size() < 2
-			or not bool(net_manager.call("are_all_player_characters_confirmed"))
+			or (
+				not _is_rogue_route_mode()
+				and not bool(
+					net_manager.call("are_all_player_characters_confirmed")
+				)
+			)
 			or (current_public_is_host and not relay_host_ready_sent)
 		)
 	_update_choose_character_button()
@@ -938,7 +966,7 @@ func _update_room_capacity_label(current_players: int = -1) -> void:
 
 
 func _open_character_choice_if_needed() -> void:
-	if current_view != LobbyView.ROOM_WAIT:
+	if current_view != LobbyView.ROOM_WAIT or _is_rogue_route_mode():
 		return
 	var local_peer_id := int(net_manager.call("get_local_peer_id"))
 	if local_peer_id > 0 and bool(net_manager.call("is_player_character_confirmed", local_peer_id)):
@@ -947,6 +975,8 @@ func _open_character_choice_if_needed() -> void:
 
 
 func _on_choose_character_pressed() -> void:
+	if _is_rogue_route_mode():
+		return
 	var selected_character_id := _get_local_selected_character_id()
 	character_choice_overlay.open(selected_character_id)
 
@@ -968,6 +998,9 @@ func _on_character_selection_closed() -> void:
 
 
 func _update_choose_character_button() -> void:
+	choose_character_btn.visible = not _is_rogue_route_mode()
+	if _is_rogue_route_mode():
+		return
 	var character_id := _get_local_selected_character_id()
 	var character_name := _get_character_display_name(character_id)
 	var local_peer_id := int(net_manager.call("get_local_peer_id"))
@@ -1001,6 +1034,14 @@ func _on_net_game_mode_changed(new_game_mode: NetManagerStore.GameMode) -> void:
 	_select_game_mode_in_selector(new_game_mode)
 	_update_room_mode_label()
 	_refresh_game_mode_selector_state()
+	if (
+		new_game_mode == NetManagerStore.GameMode.TEST_ARENA_P3
+		and character_choice_overlay != null
+		and character_choice_overlay.is_open()
+	):
+		character_choice_overlay.close()
+	if current_view == LobbyView.ROOM_WAIT:
+		_refresh_wait_player_list()
 
 
 func _on_net_connection_failed(reason: String) -> void:
@@ -1047,7 +1088,10 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 func _on_start_game() -> void:
 	if not net_manager.is_host():
 		return
-	if not bool(net_manager.call("are_all_player_characters_confirmed")):
+	if (
+		not _is_rogue_route_mode()
+		and not bool(net_manager.call("are_all_player_characters_confirmed"))
+	):
 		wait_status_label.text = "请等待所有玩家确认角色。"
 		_refresh_wait_player_list()
 		return
@@ -1074,13 +1118,21 @@ func _change_to_multiplayer_game() -> void:
 	var tree := get_tree()
 	if tree == null:
 		return
-	if run_state != null and run_state.has_method("begin_new_run"):
+	if (
+		not _is_rogue_route_mode()
+		and run_state != null
+		and run_state.has_method("begin_new_run")
+	):
 		run_state.call("begin_new_run", _get_local_selected_character_id())
 	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 	if load_coordinator != null and load_coordinator.has_method("begin_multiplayer"):
 		load_coordinator.call("begin_multiplayer")
 		return
-	tree.change_scene_to_file(MULTIPLAYER_GAME_SCENE_PATH)
+	tree.change_scene_to_file(
+		MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH
+		if _is_rogue_route_mode()
+		else MULTIPLAYER_GAME_SCENE_PATH
+	)
 
 
 func _on_leave_room() -> void:
@@ -1214,8 +1266,18 @@ func _get_game_mode_icon(game_mode: NetManagerStore.GameMode) -> Texture2D:
 			return GAME_MODE_TEST_ARENA_P1_ICON
 		NetManagerStore.GameMode.TEST_ARENA_P2:
 			return GAME_MODE_TEST_ARENA_P2_ICON
+		NetManagerStore.GameMode.TEST_ARENA_P3:
+			return GAME_MODE_TEST_ARENA_P3_ICON
 		_:
 			return GAME_MODE_STANDARD_ICON
+
+
+func _is_rogue_route_mode() -> bool:
+	return (
+		net_manager != null
+		and net_manager.get_current_game_mode()
+		== NetManagerStore.GameMode.TEST_ARENA_P3
+	)
 
 
 func _sync_local_character_selection() -> void:

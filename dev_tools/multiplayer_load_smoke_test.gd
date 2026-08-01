@@ -255,8 +255,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 31, "The multiplayer protocol version must be 31.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v31 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 32, "The multiplayer protocol version must be 32.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v32 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -370,6 +370,7 @@ func _test_net_manager_game_mode_authority() -> void:
 		[NetManagerStore.GameMode.TOWER_DEFENSE, "tower_defense", "塔防模式"],
 		[NetManagerStore.GameMode.TEST_ARENA_P1, "test_arena_p1", "测试场景 P1"],
 		[NetManagerStore.GameMode.TEST_ARENA_P2, "test_arena_p2", "测试场景 P2"],
+		[NetManagerStore.GameMode.TEST_ARENA_P3, "test_arena_p3", "测试场景 P3 · 肉鸽路线"],
 	]:
 		var mode := int(mode_contract[0]) as NetManagerStore.GameMode
 		var key := str(mode_contract[1])

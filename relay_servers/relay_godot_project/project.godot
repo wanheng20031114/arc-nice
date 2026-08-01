@@ -13,6 +13,7 @@ config/features=PackedStringArray("4.6")
 
 NetManager="*res://relay_net_manager_stub.gd"
 MpGame="*res://relay_mp_game_stub.gd"
+MpRogueRoute="*res://relay_rogue_route_stub.gd"
 
 [rendering]
 

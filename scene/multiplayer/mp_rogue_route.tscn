@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scene/multiplayer/mp_rogue_route.gd" id="1_wrapper"]
+[ext_resource type="PackedScene" path="res://scene/test_arena/test_rogue_route_p3.tscn" id="2_route"]
+
+[node name="MpRogueRoute" type="Node2D"]
+script = ExtResource("1_wrapper")
+
+[node name="RogueRoute" parent="." instance=ExtResource("2_route")]
+auto_initialize = false
+manage_return_locally = false
