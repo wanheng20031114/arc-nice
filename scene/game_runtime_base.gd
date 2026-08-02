@@ -160,6 +160,9 @@ enum WaveState {
 @onready var enemy_container: Node2D = $EnemyContainer
 @onready var grid_pathfinder: Node = $GridPathfinder
 @onready var capoo_projectile_motion_system: Node = $CapooProjectileMotionSystem
+@onready var combat_robot_drone_motion_system: CombatRobotDroneMotionSystem = (
+	$CombatRobotDroneMotionSystem
+)
 @onready var day_night_controller: DayNightController = $DayNightController
 
 var player: Player = null

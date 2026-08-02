@@ -25,6 +25,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_shell.tscn",
 	"res://scene/enemy/capoo/capoo_ak47.tscn",
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
@@ -245,6 +246,7 @@ func _test_runtime_activation_gate() -> void:
 	)
 	_expect_sorcerer_projectile_pools(game, 48, 704)
 	_expect_gunner_projectile_pool(game)
+	_expect_drone_projectile_pool(game)
 	game.queue_free()
 	await process_frame
 
@@ -397,6 +399,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 		)
 	_expect_tango_projectile_pool(runtime)
 	_expect_gunner_projectile_pool(runtime)
+	_expect_drone_projectile_pool(runtime)
 
 	load_errors.clear()
 	coordinator.loading_failed.connect(failure_callback)
@@ -421,6 +424,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 	_expect_sorcerer_projectile_pools(tower_runtime, 48, 704)
 	_expect_tango_projectile_pool(tower_runtime)
 	_expect_gunner_projectile_pool(tower_runtime)
+	_expect_drone_projectile_pool(tower_runtime)
 	await physics_frame
 	await physics_frame
 	_expect_lifecycle_prewarm_pool_released(tower_runtime)
@@ -656,6 +660,33 @@ func _expect_gunner_projectile_pool(runtime: GameRuntimeBase) -> void:
 		and int(metrics.get("in_use", -1)) == 0
 		and int(metrics.get("retained_capacity", -1)) == 96,
 		"Gunner bullet pool must register lazily with retained capacity 96."
+	)
+
+
+func _expect_drone_projectile_pool(runtime: GameRuntimeBase) -> void:
+	if runtime == null:
+		return
+	var motion_system := runtime.get_node_or_null(
+		"CombatRobotDroneMotionSystem"
+	) as CombatRobotDroneMotionSystem
+	_expect(
+		motion_system != null and not motion_system.is_physics_processing(),
+		"Runtime must expose an idle event-driven suicide-drone motion system."
+	)
+	var object_pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
+	_expect(object_pool != null, "Runtime must expose the suicide-drone object pool.")
+	if object_pool == null:
+		return
+	var scene_path := (
+		"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
+	)
+	var metrics := object_pool.get_metrics(scene_path)
+	_expect(
+		int(metrics.get("created", -1)) == 0
+		and int(metrics.get("inactive", -1)) == 0
+		and int(metrics.get("in_use", -1)) == 0
+		and int(metrics.get("retained_capacity", -1)) == 384,
+		"Suicide-drone pool must register lazily with retained capacity 384."
 	)
 
 

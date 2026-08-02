@@ -1,7 +1,7 @@
 extends SceneTree
 
 const EXPECTED_COUNTS := {
-	CodexSection.ENEMY: 53,
+	CodexSection.ENEMY: 54,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }

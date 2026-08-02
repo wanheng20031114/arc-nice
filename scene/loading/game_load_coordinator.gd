@@ -81,6 +81,7 @@ const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/collectible_sakura_explosion.tscn",
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
 	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",
 	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",

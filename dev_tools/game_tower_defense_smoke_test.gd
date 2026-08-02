@@ -161,6 +161,12 @@ func _test_main_menu_entry() -> void:
 	var p1b_button := test_choice_overlay.get_node(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/EnterButton"
 	) as Button
+	var p1b_description := test_choice_overlay.get_node(
+		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/Description"
+	) as Label
+	var p1b_focus := test_choice_overlay.get_node(
+		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/Focus"
+	) as Label
 	var p2_button := test_choice_overlay.get_node(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton"
 	) as Button
@@ -169,6 +175,13 @@ func _test_main_menu_entry() -> void:
 		and p1b_button.text == "进入 P1B 机器人测试"
 		and p2_button.text == "进入 P2 单日流程",
 		"Test selector must expose authored P1A, P1B and P2 actions."
+	)
+	_expect(
+		p1b_description.text
+		== "持剑、持枪和爆炸无人机操作员按三型轮转出现，沿用 P1A 的刷怪压力、自由建造与昼夜调试。"
+		and p1b_focus.text
+		== "适合验证：定向冲刺、移动连射、定点无人机爆炸与机械生命混合压力",
+		"P1B selector copy must describe the authored three-robot rotation."
 	)
 	p1a_button.pressed.emit()
 	await process_frame

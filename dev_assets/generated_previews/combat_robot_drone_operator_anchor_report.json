@@ -1,0 +1,59 @@
+{
+  "base_anchor": "dev_assets\\source_images\\combat_robot_gunner\\combat_robot_gunner_anchor_b_native32.png",
+  "identity_shift": [
+    4,
+    0
+  ],
+  "runtime_written": false,
+  "candidates": {
+    "a": {
+      "bbox": [
+        10,
+        4,
+        24,
+        28
+      ],
+      "visible_size": [
+        14,
+        24
+      ],
+      "baseline": 28,
+      "palette_colors": 9,
+      "native": "dev_assets\\source_images\\combat_robot_drone_operator\\combat_robot_drone_operator_anchor_a_native32.png",
+      "preview": "dev_assets\\generated_previews\\combat_robot_drone_operator_anchor_a_16x.png"
+    },
+    "b": {
+      "bbox": [
+        10,
+        4,
+        25,
+        28
+      ],
+      "visible_size": [
+        15,
+        24
+      ],
+      "baseline": 28,
+      "palette_colors": 9,
+      "native": "dev_assets\\source_images\\combat_robot_drone_operator\\combat_robot_drone_operator_anchor_b_native32.png",
+      "preview": "dev_assets\\generated_previews\\combat_robot_drone_operator_anchor_b_16x.png"
+    },
+    "c": {
+      "bbox": [
+        10,
+        4,
+        24,
+        28
+      ],
+      "visible_size": [
+        14,
+        24
+      ],
+      "baseline": 28,
+      "palette_colors": 9,
+      "native": "dev_assets\\source_images\\combat_robot_drone_operator\\combat_robot_drone_operator_anchor_c_native32.png",
+      "preview": "dev_assets\\generated_previews\\combat_robot_drone_operator_anchor_c_16x.png"
+    }
+  },
+  "comparison": "dev_assets\\generated_previews\\combat_robot_drone_operator_anchor_comparison.png"
+}

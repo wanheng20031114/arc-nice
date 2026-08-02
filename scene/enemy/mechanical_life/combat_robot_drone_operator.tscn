@@ -1,0 +1,72 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_drone_operator.gd" id="2_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_drone_operator.tres" id="3_frames"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="4_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
+resource_local_to_scene = false
+shader = ExtResource("4_shader")
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(14, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+resource_local_to_scene = true
+size = Vector2(14, 16)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_attack_sense"]
+resource_local_to_scene = true
+radius = 80.0
+
+[node name="CombatRobotDroneOperator" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+path_refresh_interval = 0.25
+waypoint_arrival_distance = 4.0
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+material = SubResource("ShaderMaterial_status")
+texture_filter = 1
+sprite_frames = ExtResource("3_frames")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1"]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_touch")
+
+[node name="AttackSenseArea" type="Area2D" parent="." index="5"]
+collision_layer = 0
+collision_mask = 514
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AttackSenseArea"]
+shape = SubResource("CircleShape2D_attack_sense")
+
+[node name="DeployTimer" type="Timer" parent="." index="6"]
+process_callback = 0
+wait_time = 0.1
+one_shot = true
+
+[node name="CooldownTimer" type="Timer" parent="." index="7"]
+process_callback = 0
+wait_time = 3.0
+one_shot = true
+
+[node name="BlockedRetryTimer" type="Timer" parent="." index="8"]
+process_callback = 0
+wait_time = 0.35
+one_shot = true
+
+[node name="DroneSpawn" type="Marker2D" parent="." index="9"]
+
+[connection signal="body_entered" from="AttackSenseArea" to="." method="_on_attack_sense_area_body_entered"]
+[connection signal="body_exited" from="AttackSenseArea" to="." method="_on_attack_sense_area_body_exited"]
+[connection signal="timeout" from="DeployTimer" to="." method="_on_deploy_timer_timeout"]
+[connection signal="timeout" from="CooldownTimer" to="." method="_on_cooldown_timer_timeout"]
+[connection signal="timeout" from="BlockedRetryTimer" to="." method="_on_blocked_retry_timer_timeout"]

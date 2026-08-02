@@ -20,7 +20,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 ## Authored catalog contract used by navigation before any section is materialized.
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
-	CodexSection.ENEMY: 53,
+	CodexSection.ENEMY: 54,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
@@ -277,7 +277,31 @@ func _build_enemy_stats(
 
 func _build_enemy_specific_stats(enemy: EnemyConfig) -> Array[CodexStatRow]:
 	var stats: Array[CodexStatRow] = []
-	if enemy is CombatRobotGunnerConfig:
+	if enemy is CombatRobotDroneOperatorConfig:
+		var config := enemy as CombatRobotDroneOperatorConfig
+		stats.append(
+			CodexStatRow.new("搜索范围", _format_number(config.attack_range))
+		)
+		stats.append(
+			CodexStatRow.new("停步距离", _format_number(config.stop_distance))
+		)
+		stats.append(
+			CodexStatRow.new(
+				"部署延迟", "%s 秒" % _format_number(config.deploy_delay)
+			)
+		)
+		stats.append(
+			CodexStatRow.new(
+				"攻击冷却", "%s 秒" % _format_number(config.attack_cooldown)
+			)
+		)
+		stats.append(
+			CodexStatRow.new("无人机速度", _format_number(config.drone_speed))
+		)
+		stats.append(
+			CodexStatRow.new("爆炸半径", _format_number(config.explosion_radius))
+		)
+	elif enemy is CombatRobotGunnerConfig:
 		var config := enemy as CombatRobotGunnerConfig
 		stats.append(CodexStatRow.new("攻击距离", _format_number(config.attack_range)))
 		stats.append(CodexStatRow.new("射击前摇", "0 秒"))

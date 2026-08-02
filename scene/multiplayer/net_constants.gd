@@ -28,7 +28,9 @@ extends RefCounted
 ## 但继续保留稳定 key test_arena_p1，旧客户端无法识别 P1B 房间与加载目标。
 ## v37：P3 神奇遭遇新增 Host 权威的逐人对白确认、投票、结算与经济快照；
 ## 路线完整快照同时携带遭遇和经济状态，旧客户端无法解释新的 RPC 参数。
-const PROTOCOL_VERSION := 37
+## v38：新增 Host 权威的爆炸无人机投射物类型；客户端需按固定部署、飞行与
+## 爆炸三阶段合同重建表现，旧客户端无法实例化该类型。
+const PROTOCOL_VERSION := 38
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

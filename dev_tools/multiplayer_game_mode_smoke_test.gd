@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 37,
-		"神奇遭遇网络接线要求协议v37。"
+		NetConstants.PROTOCOL_VERSION == 38,
+		"协议v38必须同时保留v37神奇遭遇接线并隔离爆炸无人机wire类型。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

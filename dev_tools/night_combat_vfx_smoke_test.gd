@@ -53,6 +53,7 @@ const SINGLE_PASS_PROJECTILE_SCENE_MATERIALS := {
 	"res://scene/player/tango/tango_laser_bullet.tscn": TANGO_LASER_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn": FROST_PROJECTILE_MATERIAL_PATH,
 }
@@ -70,6 +71,7 @@ const SHARED_LIGHT_EXPLOSION_SCENES := [
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn",
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn",
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 ]
 const POOLED_ANIMATED_EMISSION_SCENES := [
 	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",
@@ -443,6 +445,8 @@ func _verify_rapid_projectile_single_pass() -> void:
 		var main_sprite := instance.get_node_or_null("AnimatedSprite2D") as CanvasItem
 		if main_sprite == null:
 			main_sprite = instance.get_node_or_null("Sprite2D") as CanvasItem
+		if main_sprite == null:
+			main_sprite = instance.get_node_or_null("DroneSprite") as CanvasItem
 		_expect(main_sprite != null, "高频弹体缺少主体贴图：%s" % scene_path)
 		if main_sprite != null:
 			_expect(

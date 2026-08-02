@@ -113,7 +113,10 @@ func _run() -> void:
 
 
 func _test_mode_and_loading_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 37, "神奇遭遇网络接线必须使用协议 v37。")
+	_expect(
+		NetConstants.PROTOCOL_VERSION == 38,
+		"协议 v38 必须同时保留 v37 神奇遭遇接线并隔离爆炸无人机 wire 类型。"
+	)
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
 		"P3 轻量角色姿态同步必须保持约 12Hz。"

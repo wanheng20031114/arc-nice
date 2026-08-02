@@ -25,6 +25,7 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="27_day_night"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="28_night_light"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="29_night_vfx_flash_pool"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="30_combat_robot_drone_motion"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -191,6 +192,8 @@ script = ExtResource("25_sniper_lock_visuals")
 script = ExtResource("22_session_pool")
 
 [node name="CapooProjectileMotionSystem" parent="." instance=ExtResource("26_capoo_projectile_motion")]
+
+[node name="CombatRobotDroneMotionSystem" parent="." instance=ExtResource("30_combat_robot_drone_motion")]
 
 [node name="ZhuangfangyiMerchant" parent="." unique_id=112812860 instance=ExtResource("15_merchant")]
 position = Vector2(167, 94)

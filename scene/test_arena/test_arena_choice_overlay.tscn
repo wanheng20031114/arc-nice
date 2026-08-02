@@ -381,7 +381,7 @@ theme_override_colors/font_color = Color(0.82, 0.86, 0.79, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "战斗机器人和持枪战斗机器人严格交替出现，沿用 P1A 的刷怪压力、自由建造与昼夜调试。"
+text = "持剑、持枪和爆炸无人机操作员按三型轮转出现，沿用 P1A 的刷怪压力、自由建造与昼夜调试。"
 autowrap_mode = 2
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content"]
@@ -391,7 +391,7 @@ theme_override_colors/font_color = Color(0.52, 0.68, 0.59, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "适合验证：定向冲刺、移动连射、机械生命混合压力与路径"
+text = "适合验证：定向冲刺、移动连射、定点无人机爆炸与机械生命混合压力"
 
 [node name="Spacer" type="Control" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content"]
 custom_minimum_size = Vector2(0, 6)

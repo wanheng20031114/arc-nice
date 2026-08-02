@@ -1,0 +1,557 @@
+{
+  "approved_selection": {
+    "move": "M2",
+    "deploy": "D1",
+    "death": "K1",
+    "drone": "V2",
+    "explosion": "X1",
+    "target_marker": "animated native-16px X2 interpretation"
+  },
+  "runtime_written": false,
+  "ordinary_resize_used": false,
+  "binary_alpha": true,
+  "transparent_rgb_zero": true,
+  "fixed_palette": [
+    [
+      21,
+      22,
+      19,
+      255
+    ],
+    [
+      29,
+      28,
+      30,
+      255
+    ],
+    [
+      55,
+      59,
+      63,
+      255
+    ],
+    [
+      82,
+      88,
+      94,
+      255
+    ],
+    [
+      112,
+      121,
+      128,
+      255
+    ],
+    [
+      151,
+      159,
+      164,
+      255
+    ],
+    [
+      190,
+      196,
+      198,
+      255
+    ],
+    [
+      226,
+      229,
+      226,
+      255
+    ],
+    [
+      102,
+      25,
+      20,
+      255
+    ],
+    [
+      190,
+      48,
+      31,
+      255
+    ],
+    [
+      239,
+      92,
+      34,
+      255
+    ],
+    [
+      255,
+      181,
+      71,
+      255
+    ]
+  ],
+  "operator": {
+    "size": [
+      256,
+      96
+    ],
+    "move": [
+      {
+        "frame": 0,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 1,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 2,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 3,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 4,
+        "bbox": [
+          9,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          15,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 5,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 6,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 7,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      }
+    ],
+    "deploy": [
+      {
+        "frame": 0,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 1,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 2,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      }
+    ],
+    "death": [
+      {
+        "frame": 0,
+        "bbox": [
+          10,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          24
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 1,
+        "bbox": [
+          8,
+          5,
+          25,
+          28
+        ],
+        "visible_size": [
+          17,
+          23
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 2,
+        "bbox": [
+          7,
+          6,
+          26,
+          28
+        ],
+        "visible_size": [
+          19,
+          22
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 3,
+        "bbox": [
+          10,
+          6,
+          24,
+          28
+        ],
+        "visible_size": [
+          14,
+          22
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 4,
+        "bbox": [
+          8,
+          10,
+          25,
+          28
+        ],
+        "visible_size": [
+          17,
+          18
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 5,
+        "bbox": [
+          8,
+          12,
+          27,
+          28
+        ],
+        "visible_size": [
+          19,
+          16
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 6,
+        "bbox": [
+          8,
+          13,
+          27,
+          28
+        ],
+        "visible_size": [
+          19,
+          15
+        ],
+        "baseline_y": 28
+      },
+      {
+        "frame": 7,
+        "bbox": [
+          9,
+          14,
+          27,
+          28
+        ],
+        "visible_size": [
+          18,
+          14
+        ],
+        "baseline_y": 28
+      }
+    ],
+    "empty_deploy_padding_cells": 5
+  },
+  "drone": {
+    "size": [
+      64,
+      16
+    ],
+    "frame_count": 4,
+    "cell_size": [
+      16,
+      16
+    ],
+    "visible_size": [
+      12,
+      9
+    ],
+    "visible_bboxes": [
+      [
+        2,
+        3,
+        14,
+        12
+      ],
+      [
+        2,
+        3,
+        14,
+        12
+      ],
+      [
+        2,
+        3,
+        14,
+        12
+      ],
+      [
+        2,
+        3,
+        14,
+        12
+      ]
+    ],
+    "alpha_mask_identical": true
+  },
+  "target_marker": {
+    "size": [
+      64,
+      16
+    ],
+    "frame_count": 4,
+    "cell_size": [
+      16,
+      16
+    ],
+    "fps": 12,
+    "loop": true,
+    "x2_orthogonal_pulse": true,
+    "center_stable": true,
+    "radius_ring": false,
+    "visible_bboxes": [
+      [
+        6,
+        6,
+        10,
+        10
+      ],
+      [
+        4,
+        4,
+        12,
+        12
+      ],
+      [
+        2,
+        2,
+        14,
+        14
+      ],
+      [
+        3,
+        3,
+        13,
+        13
+      ]
+    ]
+  },
+  "explosion": {
+    "size": [
+      512,
+      64
+    ],
+    "frame_count": 8,
+    "cell_size": [
+      64,
+      64
+    ],
+    "fps": 14,
+    "loop": false,
+    "visible_bboxes": [
+      [
+        29,
+        29,
+        35,
+        35
+      ],
+      [
+        25,
+        25,
+        39,
+        39
+      ],
+      [
+        19,
+        19,
+        45,
+        45
+      ],
+      [
+        11,
+        11,
+        53,
+        53
+      ],
+      [
+        4,
+        4,
+        60,
+        60
+      ],
+      [
+        5,
+        5,
+        59,
+        59
+      ],
+      [
+        10,
+        10,
+        54,
+        54
+      ],
+      [
+        17,
+        17,
+        47,
+        47
+      ]
+    ],
+    "centers": [
+      [
+        31.5,
+        31.5
+      ],
+      [
+        31.5,
+        31.5
+      ],
+      [
+        31.5,
+        31.5
+      ],
+      [
+        31.5,
+        31.5
+      ],
+      [
+        31.5,
+        31.5
+      ],
+      [
+        31.5,
+        31.5
+      ],
+      [
+        31.5,
+        31.5
+      ],
+      [
+        31.5,
+        31.5
+      ]
+    ],
+    "maximum_visible_diameter": 56
+  },
+  "source_hashes": {
+    "combat_robot_drone_operator_move_m2_candidate.png": "1a822675f7103749da50ff25f004e1926db0b47c60faae2f0f31672223a9b534",
+    "combat_robot_drone_operator_deploy_d1_candidate.png": "9d51a8cc17bd2df643a1d442d11ee8f95d064d261b6cf93d314197c8ba83365d",
+    "combat_robot_drone_operator_death_k1_candidate.png": "dae8a94de86266cd95813047ee82c17da2e0dddcdbd335c250df64982f15a91c",
+    "combat_robot_suicide_drone_v2_strip_candidate.png": "af85ef0ef4facfbf51a4513bbbb5e157f528a266b94b549fb00ea62faae2662e",
+    "combat_robot_mechanical_explosion_x1_strip_candidate.png": "61f3b7fe87623c32853f3e96c2615f1a63618d6cbd3287c129606d3398e7b7cf"
+  },
+  "outputs": []
+}

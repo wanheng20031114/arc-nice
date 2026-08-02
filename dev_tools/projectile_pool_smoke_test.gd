@@ -8,6 +8,9 @@ const AK_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn
 const GUNNER_BULLET_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 )
+const SUICIDE_DRONE_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
+)
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
@@ -60,6 +63,7 @@ func _run() -> void:
 	pool.register_scene(TANGO_LASER_BULLET_SCENE, 1, 2)
 	pool.register_scene(AK_BULLET_SCENE, 1, 2)
 	pool.register_scene(GUNNER_BULLET_SCENE, 1, 2)
+	pool.register_scene(SUICIDE_DRONE_SCENE, 1, 2)
 	pool.register_scene(SMG_BULLET_SCENE, 1, 2)
 	pool.register_scene(RPG_ROCKET_SCENE, 1, 2)
 	pool.register_scene(MAGE_FIREBALL_SCENE, 1, 2)
@@ -85,6 +89,7 @@ func _run() -> void:
 	await _verify_tango_laser_bullet_reuse()
 	await _verify_real_collision_callback_release()
 	await _verify_capoo_bullet_reuse()
+	await _verify_suicide_drone_reuse()
 	await _verify_linglan_skill1_reuse()
 	await _verify_extended_projectile_reuse()
 	await _verify_strict_hit_effect_budget()
@@ -589,6 +594,69 @@ func _verify_capoo_bullet_reuse() -> void:
 	_expect(not reused_ak.pool_active, "Natural AK expiry must return to the pool.")
 	_expect(_count_active_hit_effects() == 0, "Natural projectile expiry must not spawn a hit effect.")
 	await _wait_for_quarantine()
+
+
+func _verify_suicide_drone_reuse() -> void:
+	var motion_system := CombatRobotDroneMotionSystem.new()
+	motion_system.name = "CombatRobotDroneMotionSystemFixture"
+	fixture.add_child(motion_system)
+	var drone := pool.acquire(SUICIDE_DRONE_SCENE) as CombatRobotSuicideDrone
+	_expect(drone != null, "Suicide-drone pool must provide its prewarmed lease.")
+	if drone == null:
+		motion_system.queue_free()
+		return
+	var first_instance_id := drone.get_instance_id()
+	var retained_query := drone.explosion_query
+	drone.setup(Vector2(0.6, 0.8), 91, 60.0, 1.0, 28.0, motion_system)
+	drone.setup_multiplayer(1703, 9, &"contaminated")
+	_expect(drone.begin_deployment(), "A pooled suicide drone must enter its fixed deployment contract.")
+	drone.advance_batched(0.35)
+	_expect(
+		drone.deployment_started
+		and drone.flight_started
+		and drone.drone_sprite.visible
+		and drone.target_marker.visible,
+		"Active suicide-drone flight must expose both the drone and animated lock marker."
+	)
+	pool.release(drone)
+	_expect(
+		motion_system.get_active_drone_count() == 0,
+		"Pool release must unregister the suicide drone from the shared batch system."
+	)
+	await _wait_for_quarantine()
+	var reused := pool.acquire(SUICIDE_DRONE_SCENE) as CombatRobotSuicideDrone
+	_expect(
+		reused != null and reused.get_instance_id() == first_instance_id,
+		"Suicide-drone pool must reuse its retained instance."
+	)
+	if reused != null:
+		_expect(
+			reused.pool_active
+			and not reused.deployment_started
+			and not reused.flight_started
+			and not reused.explosion_started
+			and reused.source_type == CombatRobotSuicideDrone.SOURCE_TYPE
+			and reused.projectile_id == 0
+			and reused.owner_peer_id == 0,
+			"Reused suicide drone must clear all phase and network identity fields."
+		)
+		_expect(
+			is_same(reused.explosion_query, retained_query),
+			"Suicide-drone pooling must retain its one reusable explosion query."
+		)
+		_expect(
+			not reused.drone_sprite.visible
+			and not reused.target_marker.visible
+			and not reused.explosion_sprite.visible
+			and reused.drone_sprite.frame == 0
+			and reused.target_marker.frame == 0
+			and reused.explosion_sprite.frame == 0,
+			"Reused suicide-drone visuals must restart hidden on frame zero."
+		)
+		reused.retire()
+	await _wait_for_quarantine()
+	motion_system.queue_free()
+	await process_frame
 
 
 func _verify_linglan_skill1_reuse() -> void:

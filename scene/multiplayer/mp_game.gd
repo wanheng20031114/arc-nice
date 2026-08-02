@@ -85,6 +85,9 @@ const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bul
 const COMBAT_ROBOT_GUNNER_BULLET_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 )
+const COMBAT_ROBOT_SUICIDE_DRONE_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
+)
 const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
@@ -173,6 +176,7 @@ const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
 	&"fire_sorcerer_consumed_source_mask"
 )
 const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
+const COMBAT_ROBOT_SUICIDE_DRONE_TYPE: StringName = &"combat_robot_suicide_drone"
 const LIGHTNING_SORCERER_CHAIN_MIN_POINTS := 2
 const LIGHTNING_SORCERER_CHAIN_MAX_POINTS := 6
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
@@ -6558,7 +6562,11 @@ func _spawn_network_projectile(
 		return
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
 	_known_projectiles[projectile_id] = projectile
-	var compensation_age := _get_projectile_time_compensation_age(host_fire_timestamp, lifetime)
+	var compensation_age := _get_projectile_time_compensation_age(
+		host_fire_timestamp,
+		lifetime,
+		projectile_type
+	)
 	_remember_projectile_record(
 		projectile_id,
 		owner_peer_id,
@@ -6571,7 +6579,13 @@ func _spawn_network_projectile(
 		add_child(projectile)
 	projectile.global_position = spawn_position
 	projectile.reset_physics_interpolation()
-	if compensation_age > 0.0 and projectile.has_method("simulate_compensated_motion"):
+	if (
+		projectile.has_method("simulate_compensated_motion")
+		and (
+			compensation_age > 0.0
+			or projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE
+		)
+	):
 		projectile.call("simulate_compensated_motion", compensation_age)
 	else:
 		projectile.global_position += (
@@ -6585,10 +6599,24 @@ func _spawn_network_projectile(
 	)
 
 
-func _get_projectile_time_compensation_age(host_fire_timestamp: float, lifetime: float) -> float:
+func _get_projectile_time_compensation_age(
+	host_fire_timestamp: float,
+	lifetime: float,
+	projectile_type: StringName = &""
+) -> float:
 	if host_fire_timestamp < 0.0:
 		return 0.0
 	var age := _get_unbounded_host_event_age(host_fire_timestamp)
+	if projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
+		return clampf(
+			age,
+			0.0,
+			(
+				CombatRobotSuicideDrone.DEPLOY_DELAY
+				+ maxf(lifetime, 0.0)
+				+ CombatRobotSuicideDrone.EXPLOSION_DURATION
+			)
+		)
 	return clampf(
 		age,
 		0.0,
@@ -6615,6 +6643,11 @@ func _apply_projectile_lifetime_compensation(
 	projectile_type: StringName = &""
 ) -> void:
 	if projectile == null or compensation_age <= 0.0:
+		return
+	# This projectile owns a fixed deploy -> flight -> explosion timeline. Its
+	# compensated elapsed value is consumed atomically by the projectile instead
+	# of being translated into an ordinary remaining flight lifetime.
+	if projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
 		return
 	var is_view_bounded_player_projectile := (
 		projectile_type == &"player_bullet"
@@ -6843,6 +6876,32 @@ func _instantiate_projectile(
 				game.capoo_projectile_motion_system if game != null else null
 			)
 			return gunner_bullet
+		COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
+			var drone_motion_system: Node = (
+				game.combat_robot_drone_motion_system
+				if game != null
+				else null
+			)
+			if drone_motion_system == null:
+				return null
+			var suicide_drone := (
+				_acquire_or_instantiate_projectile(
+					COMBAT_ROBOT_SUICIDE_DRONE_SCENE
+				)
+				as CombatRobotSuicideDrone
+			)
+			if suicide_drone == null:
+				return null
+			suicide_drone.top_level = true
+			suicide_drone.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				CombatRobotSuicideDrone.DEFAULT_EXPLOSION_RADIUS,
+				drone_motion_system
+			)
+			return suicide_drone
 		&"capoo_rpg_rocket":
 			var rpg_rocket := (
 				_acquire_or_instantiate_projectile(CAPOO_RPG_ROCKET_SCENE)

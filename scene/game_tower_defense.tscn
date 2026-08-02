@@ -53,6 +53,7 @@
 [ext_resource type="Script" path="res://scene/luoxi_special_game_coordinator.gd" id="54_luoxi_special_game"]
 [ext_resource type="Script" path="res://scene/plant_defense/orange_charging_aura_coordinator.gd" id="55_orange_aura"]
 [ext_resource type="PackedScene" path="res://scene/day_phase_announcement.tscn" id="56_day_announcement"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="57_combat_robot_drone_motion"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -354,6 +355,8 @@ script = ExtResource("41_sniper_lock_visuals")
 script = ExtResource("29_session_pool")
 
 [node name="CapooProjectileMotionSystem" parent="." unique_id=1401613609 instance=ExtResource("42_capoo_projectile_motion")]
+
+[node name="CombatRobotDroneMotionSystem" parent="." instance=ExtResource("57_combat_robot_drone_motion")]
 
 [node name="BambooMortarCombatSystem" parent="." instance=ExtResource("45_bamboo_mortar_combat")]
 

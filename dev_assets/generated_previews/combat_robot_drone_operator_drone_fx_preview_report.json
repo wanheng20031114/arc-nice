@@ -1,0 +1,1751 @@
+{
+  "stage": "second_human_review_gate",
+  "preview_only": true,
+  "runtime_written": false,
+  "approved_identity_anchor": "dev_assets/source_images/combat_robot_drone_operator/combat_robot_drone_operator_anchor_c_approved_native32.png",
+  "comparison_references": {
+    "sword_robot_first_frame": {
+      "path": "resources/texture/enemy/mechanical_life/combat_robot.png",
+      "source_cell": [
+        0,
+        0,
+        32,
+        32
+      ],
+      "preview_scale": 4,
+      "resampling": "nearest_integer"
+    },
+    "gunner_robot_first_frame": {
+      "path": "resources/texture/enemy/mechanical_life/combat_robot_gunner.png",
+      "source_cell": [
+        0,
+        0,
+        32,
+        32
+      ],
+      "preview_scale": 4,
+      "resampling": "nearest_integer"
+    },
+    "tango_density_only": {
+      "path": "resources/texture/player/tango/tango_cast_unit.png",
+      "source_cell": [
+        0,
+        0,
+        8,
+        8
+      ],
+      "preview_scale": 16,
+      "resampling": "nearest_integer",
+      "label": "Tango 8x8 density only"
+    }
+  },
+  "palette": [
+    [
+      21,
+      22,
+      19,
+      255
+    ],
+    [
+      29,
+      28,
+      30,
+      255
+    ],
+    [
+      55,
+      59,
+      63,
+      255
+    ],
+    [
+      82,
+      88,
+      94,
+      255
+    ],
+    [
+      112,
+      121,
+      128,
+      255
+    ],
+    [
+      151,
+      159,
+      164,
+      255
+    ],
+    [
+      190,
+      196,
+      198,
+      255
+    ],
+    [
+      226,
+      229,
+      226,
+      255
+    ],
+    [
+      102,
+      25,
+      20,
+      255
+    ],
+    [
+      190,
+      48,
+      31,
+      255
+    ],
+    [
+      239,
+      92,
+      34,
+      255
+    ],
+    [
+      255,
+      181,
+      71,
+      255
+    ]
+  ],
+  "construction": {
+    "native_pixel_authored": true,
+    "source_pixels_resized_into_candidates": false,
+    "pixel_grid_analyzer_used_for_source_audit": true,
+    "pixel_crop_tool_used": false,
+    "pixel_crop_tool_reason": "No source compression is performed; exact native geometry is constructed directly after unsafe source-grid cells are reported."
+  },
+  "audits": {
+    "drone_v1": {
+      "frame_count": 4,
+      "fps": 12,
+      "cell_size": [
+        16,
+        16
+      ],
+      "visible_bboxes": [
+        [
+          2,
+          3,
+          14,
+          12
+        ],
+        [
+          2,
+          3,
+          14,
+          12
+        ],
+        [
+          2,
+          3,
+          14,
+          12
+        ],
+        [
+          2,
+          3,
+          14,
+          12
+        ]
+      ],
+      "visible_size": [
+        12,
+        9
+      ],
+      "alpha_mask_identical": true,
+      "non_light_pixels_identical": true,
+      "changing_light_pixels": [
+        [
+          2,
+          4
+        ],
+        [
+          2,
+          10
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          7,
+          8
+        ],
+        [
+          8,
+          7
+        ],
+        [
+          8,
+          8
+        ]
+      ],
+      "unique_frames": 4,
+      "native_facing": "right",
+      "runtime_rotation_expected": true
+    },
+    "drone_v2": {
+      "frame_count": 4,
+      "fps": 12,
+      "cell_size": [
+        16,
+        16
+      ],
+      "visible_bboxes": [
+        [
+          2,
+          3,
+          14,
+          12
+        ],
+        [
+          2,
+          3,
+          14,
+          12
+        ],
+        [
+          2,
+          3,
+          14,
+          12
+        ],
+        [
+          2,
+          3,
+          14,
+          12
+        ]
+      ],
+      "visible_size": [
+        12,
+        9
+      ],
+      "alpha_mask_identical": true,
+      "non_light_pixels_identical": true,
+      "changing_light_pixels": [
+        [
+          2,
+          4
+        ],
+        [
+          2,
+          10
+        ],
+        [
+          8,
+          7
+        ],
+        [
+          8,
+          8
+        ],
+        [
+          9,
+          7
+        ],
+        [
+          9,
+          8
+        ]
+      ],
+      "unique_frames": 4,
+      "native_facing": "right",
+      "runtime_rotation_expected": true
+    },
+    "target_marker": {
+      "size": [
+        16,
+        16
+      ],
+      "visible_bbox": [
+        2,
+        2,
+        14,
+        14
+      ],
+      "four_broken_corner_brackets": true,
+      "center_dot_bbox": [
+        7,
+        7,
+        9,
+        9
+      ],
+      "radius_ring": false,
+      "animated": false
+    },
+    "explosion_x1": {
+      "frame_count": 8,
+      "fps": 14,
+      "cell_size": [
+        64,
+        64
+      ],
+      "visible_bboxes": [
+        [
+          29,
+          29,
+          35,
+          35
+        ],
+        [
+          25,
+          25,
+          39,
+          39
+        ],
+        [
+          19,
+          19,
+          45,
+          45
+        ],
+        [
+          11,
+          11,
+          53,
+          53
+        ],
+        [
+          4,
+          4,
+          60,
+          60
+        ],
+        [
+          5,
+          5,
+          59,
+          59
+        ],
+        [
+          10,
+          10,
+          54,
+          54
+        ],
+        [
+          17,
+          17,
+          47,
+          47
+        ]
+      ],
+      "visible_sizes": [
+        [
+          6,
+          6
+        ],
+        [
+          14,
+          14
+        ],
+        [
+          26,
+          26
+        ],
+        [
+          42,
+          42
+        ],
+        [
+          56,
+          56
+        ],
+        [
+          54,
+          54
+        ],
+        [
+          44,
+          44
+        ],
+        [
+          30,
+          30
+        ]
+      ],
+      "centers": [
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ]
+      ],
+      "center_stable": true,
+      "maximum_visible_diameter": 56,
+      "unique_frames": 8
+    },
+    "explosion_x2": {
+      "frame_count": 8,
+      "fps": 14,
+      "cell_size": [
+        64,
+        64
+      ],
+      "visible_bboxes": [
+        [
+          29,
+          29,
+          35,
+          35
+        ],
+        [
+          25,
+          25,
+          39,
+          39
+        ],
+        [
+          19,
+          19,
+          45,
+          45
+        ],
+        [
+          11,
+          11,
+          53,
+          53
+        ],
+        [
+          4,
+          4,
+          60,
+          60
+        ],
+        [
+          8,
+          8,
+          56,
+          56
+        ],
+        [
+          15,
+          15,
+          49,
+          49
+        ],
+        [
+          22,
+          22,
+          42,
+          42
+        ]
+      ],
+      "visible_sizes": [
+        [
+          6,
+          6
+        ],
+        [
+          14,
+          14
+        ],
+        [
+          26,
+          26
+        ],
+        [
+          42,
+          42
+        ],
+        [
+          56,
+          56
+        ],
+        [
+          48,
+          48
+        ],
+        [
+          34,
+          34
+        ],
+        [
+          20,
+          20
+        ]
+      ],
+      "centers": [
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ],
+        [
+          31.5,
+          31.5
+        ]
+      ],
+      "center_stable": true,
+      "maximum_visible_diameter": 56,
+      "unique_frames": 8
+    }
+  },
+  "source_grid_reports": {
+    "drone_v1": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator/combat_robot_suicide_drone_fly_v1_imagegen.png",
+      "source_size": [
+        1983,
+        793
+      ],
+      "source_mode": "RGB",
+      "board_grid": [
+        4,
+        1
+      ],
+      "usage": "design_and_timing_language_only",
+      "ordinary_resize_into_native_cells": false,
+      "expected_subject_grid": [
+        12,
+        9
+      ],
+      "cells": [
+        {
+          "frame": 0,
+          "source_cell": [
+            0,
+            0,
+            496,
+            793
+          ],
+          "subject_bbox_in_cell": [
+            145,
+            228,
+            422,
+            528
+          ],
+          "subject_size": [
+            277,
+            300
+          ],
+          "grid_analysis": {
+            "image_width": 277,
+            "image_height": 300,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 22.95,
+            "grid_cell_height": 23.1,
+            "grid_cell_size": 23,
+            "confidence": 0.921,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 277,
+              "bottom": 300
+            },
+            "subject_pixel_width": 277,
+            "subject_pixel_height": 300,
+            "subject_grid_width": 12,
+            "subject_grid_height": 13,
+            "recommended_canvas_grid_width": 12,
+            "recommended_canvas_grid_height": 13
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": true,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 1,
+          "source_cell": [
+            496,
+            0,
+            992,
+            793
+          ],
+          "subject_bbox_in_cell": [
+            141,
+            228,
+            417,
+            528
+          ],
+          "subject_size": [
+            276,
+            300
+          ],
+          "grid_analysis": {
+            "image_width": 276,
+            "image_height": 300,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 22.9,
+            "grid_cell_height": 23.1,
+            "grid_cell_size": 23,
+            "confidence": 0.903,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 276,
+              "bottom": 300
+            },
+            "subject_pixel_width": 276,
+            "subject_pixel_height": 300,
+            "subject_grid_width": 12,
+            "subject_grid_height": 13,
+            "recommended_canvas_grid_width": 12,
+            "recommended_canvas_grid_height": 13
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": true,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 2,
+          "source_cell": [
+            992,
+            0,
+            1487,
+            793
+          ],
+          "subject_bbox_in_cell": [
+            140,
+            228,
+            416,
+            528
+          ],
+          "subject_size": [
+            276,
+            300
+          ],
+          "grid_analysis": {
+            "image_width": 276,
+            "image_height": 300,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 22.9,
+            "grid_cell_height": 23.1,
+            "grid_cell_size": 23,
+            "confidence": 0.903,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 276,
+              "bottom": 300
+            },
+            "subject_pixel_width": 276,
+            "subject_pixel_height": 300,
+            "subject_grid_width": 12,
+            "subject_grid_height": 13,
+            "recommended_canvas_grid_width": 12,
+            "recommended_canvas_grid_height": 13
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": true,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 3,
+          "source_cell": [
+            1487,
+            0,
+            1983,
+            793
+          ],
+          "subject_bbox_in_cell": [
+            143,
+            228,
+            419,
+            528
+          ],
+          "subject_size": [
+            276,
+            300
+          ],
+          "grid_analysis": {
+            "image_width": 276,
+            "image_height": 300,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 22.95,
+            "grid_cell_height": 23.1,
+            "grid_cell_size": 23,
+            "confidence": 0.906,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 276,
+              "bottom": 300
+            },
+            "subject_pixel_width": 276,
+            "subject_pixel_height": 300,
+            "subject_grid_width": 12,
+            "subject_grid_height": 13,
+            "recommended_canvas_grid_width": 12,
+            "recommended_canvas_grid_height": 13
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": true,
+          "unsafe_for_target_contract": true
+        }
+      ],
+      "unsafe_grid_cells": [],
+      "target_contract_mismatch_cells": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "unsafe_for_target_contract_cells": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "drone_v2": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator/combat_robot_suicide_drone_fly_v2_imagegen.png",
+      "source_size": [
+        2172,
+        724
+      ],
+      "source_mode": "RGB",
+      "board_grid": [
+        4,
+        1
+      ],
+      "usage": "design_and_timing_language_only",
+      "ordinary_resize_into_native_cells": false,
+      "expected_subject_grid": [
+        12,
+        9
+      ],
+      "cells": [
+        {
+          "frame": 0,
+          "source_cell": [
+            0,
+            0,
+            543,
+            724
+          ],
+          "subject_bbox_in_cell": [
+            160,
+            227,
+            511,
+            503
+          ],
+          "subject_size": [
+            351,
+            276
+          ],
+          "grid_analysis": {
+            "image_width": 351,
+            "image_height": 276,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 22.45,
+            "grid_cell_height": 25.1,
+            "grid_cell_size": 24,
+            "confidence": 0.876,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 351,
+              "bottom": 276
+            },
+            "subject_pixel_width": 351,
+            "subject_pixel_height": 276,
+            "subject_grid_width": 16,
+            "subject_grid_height": 11,
+            "recommended_canvas_grid_width": 16,
+            "recommended_canvas_grid_height": 11
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": true,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 1,
+          "source_cell": [
+            543,
+            0,
+            1086,
+            724
+          ],
+          "subject_bbox_in_cell": [
+            150,
+            227,
+            501,
+            503
+          ],
+          "subject_size": [
+            351,
+            276
+          ],
+          "grid_analysis": {
+            "image_width": 351,
+            "image_height": 276,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 22.4,
+            "grid_cell_height": 25.1,
+            "grid_cell_size": 24,
+            "confidence": 0.887,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 351,
+              "bottom": 276
+            },
+            "subject_pixel_width": 351,
+            "subject_pixel_height": 276,
+            "subject_grid_width": 16,
+            "subject_grid_height": 11,
+            "recommended_canvas_grid_width": 16,
+            "recommended_canvas_grid_height": 11
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": true,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 2,
+          "source_cell": [
+            1086,
+            0,
+            1629,
+            724
+          ],
+          "subject_bbox_in_cell": [
+            141,
+            227,
+            493,
+            503
+          ],
+          "subject_size": [
+            352,
+            276
+          ],
+          "grid_analysis": {
+            "image_width": 352,
+            "image_height": 276,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 22.25,
+            "grid_cell_height": 25.1,
+            "grid_cell_size": 24,
+            "confidence": 0.915,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 352,
+              "bottom": 276
+            },
+            "subject_pixel_width": 352,
+            "subject_pixel_height": 276,
+            "subject_grid_width": 16,
+            "subject_grid_height": 11,
+            "recommended_canvas_grid_width": 16,
+            "recommended_canvas_grid_height": 11
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": true,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 3,
+          "source_cell": [
+            1629,
+            0,
+            2172,
+            724
+          ],
+          "subject_bbox_in_cell": [
+            132,
+            227,
+            486,
+            503
+          ],
+          "subject_size": [
+            354,
+            276
+          ],
+          "grid_analysis": {
+            "image_width": 354,
+            "image_height": 276,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 22.35,
+            "grid_cell_height": 25.1,
+            "grid_cell_size": 24,
+            "confidence": 0.915,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 354,
+              "bottom": 276
+            },
+            "subject_pixel_width": 354,
+            "subject_pixel_height": 276,
+            "subject_grid_width": 16,
+            "subject_grid_height": 11,
+            "recommended_canvas_grid_width": 16,
+            "recommended_canvas_grid_height": 11
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": true,
+          "unsafe_for_target_contract": true
+        }
+      ],
+      "unsafe_grid_cells": [],
+      "target_contract_mismatch_cells": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "unsafe_for_target_contract_cells": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "explosion_x1": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator/combat_robot_mechanical_explosion_x1_imagegen.png",
+      "source_size": [
+        1659,
+        948
+      ],
+      "source_mode": "RGB",
+      "board_grid": [
+        4,
+        2
+      ],
+      "usage": "design_and_timing_language_only",
+      "ordinary_resize_into_native_cells": false,
+      "expected_subject_grid": null,
+      "cells": [
+        {
+          "frame": 0,
+          "source_cell": [
+            0,
+            0,
+            415,
+            474
+          ],
+          "subject_bbox_in_cell": [
+            191,
+            236,
+            217,
+            262
+          ],
+          "subject_size": [
+            26,
+            26
+          ],
+          "grid_analysis": {
+            "image_width": 26,
+            "image_height": 26,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 2.65,
+            "grid_cell_height": 2.65,
+            "grid_cell_size": 3,
+            "confidence": 0.623,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 26,
+              "bottom": 26
+            },
+            "subject_pixel_width": 26,
+            "subject_pixel_height": 26,
+            "subject_grid_width": 10,
+            "subject_grid_height": 10,
+            "recommended_canvas_grid_width": 10,
+            "recommended_canvas_grid_height": 10
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 1,
+          "source_cell": [
+            415,
+            0,
+            830,
+            474
+          ],
+          "subject_bbox_in_cell": [
+            118,
+            183,
+            245,
+            311
+          ],
+          "subject_size": [
+            127,
+            128
+          ],
+          "grid_analysis": {
+            "image_width": 127,
+            "image_height": 128,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 14.05,
+            "grid_cell_height": 14.1,
+            "grid_cell_size": 14,
+            "confidence": 0.892,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 127,
+              "bottom": 128
+            },
+            "subject_pixel_width": 127,
+            "subject_pixel_height": 128,
+            "subject_grid_width": 9,
+            "subject_grid_height": 9,
+            "recommended_canvas_grid_width": 9,
+            "recommended_canvas_grid_height": 9
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": false
+        },
+        {
+          "frame": 2,
+          "source_cell": [
+            830,
+            0,
+            1244,
+            474
+          ],
+          "subject_bbox_in_cell": [
+            23,
+            110,
+            414,
+            386
+          ],
+          "subject_size": [
+            391,
+            276
+          ],
+          "grid_analysis": {
+            "image_width": 391,
+            "image_height": 276,
+            "image_mode": "RGBA",
+            "detection_mode": "native_or_unknown",
+            "grid_cell_width": 1.0,
+            "grid_cell_height": 1.0,
+            "grid_cell_size": 1,
+            "confidence": 0.271,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 391,
+              "bottom": 276
+            },
+            "subject_pixel_width": 391,
+            "subject_pixel_height": 276,
+            "subject_grid_width": 391,
+            "subject_grid_height": 276,
+            "recommended_canvas_grid_width": 391,
+            "recommended_canvas_grid_height": 276
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 3,
+          "source_cell": [
+            1244,
+            0,
+            1659,
+            474
+          ],
+          "subject_bbox_in_cell": [
+            0,
+            57,
+            365,
+            441
+          ],
+          "subject_size": [
+            365,
+            384
+          ],
+          "grid_analysis": {
+            "image_width": 365,
+            "image_height": 384,
+            "image_mode": "RGBA",
+            "detection_mode": "native_or_unknown",
+            "grid_cell_width": 1.0,
+            "grid_cell_height": 1.0,
+            "grid_cell_size": 1,
+            "confidence": 0.28,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 365,
+              "bottom": 384
+            },
+            "subject_pixel_width": 365,
+            "subject_pixel_height": 384,
+            "subject_grid_width": 365,
+            "subject_grid_height": 384,
+            "recommended_canvas_grid_width": 365,
+            "recommended_canvas_grid_height": 384
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 4,
+          "source_cell": [
+            0,
+            474,
+            415,
+            948
+          ],
+          "subject_bbox_in_cell": [
+            40,
+            38,
+            390,
+            378
+          ],
+          "subject_size": [
+            350,
+            340
+          ],
+          "grid_analysis": {
+            "image_width": 350,
+            "image_height": 340,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 12.85,
+            "grid_cell_height": 5.4,
+            "grid_cell_size": 9,
+            "confidence": 0.456,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 350,
+              "bottom": 340
+            },
+            "subject_pixel_width": 350,
+            "subject_pixel_height": 340,
+            "subject_grid_width": 27,
+            "subject_grid_height": 63,
+            "recommended_canvas_grid_width": 27,
+            "recommended_canvas_grid_height": 63
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 5,
+          "source_cell": [
+            415,
+            474,
+            830,
+            948
+          ],
+          "subject_bbox_in_cell": [
+            31,
+            48,
+            362,
+            379
+          ],
+          "subject_size": [
+            331,
+            331
+          ],
+          "grid_analysis": {
+            "image_width": 331,
+            "image_height": 331,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 14.35,
+            "grid_cell_height": 13.2,
+            "grid_cell_size": 14,
+            "confidence": 0.605,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 331,
+              "bottom": 331
+            },
+            "subject_pixel_width": 331,
+            "subject_pixel_height": 331,
+            "subject_grid_width": 23,
+            "subject_grid_height": 25,
+            "recommended_canvas_grid_width": 23,
+            "recommended_canvas_grid_height": 25
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 6,
+          "source_cell": [
+            830,
+            474,
+            1244,
+            948
+          ],
+          "subject_bbox_in_cell": [
+            71,
+            97,
+            300,
+            331
+          ],
+          "subject_size": [
+            229,
+            234
+          ],
+          "grid_analysis": {
+            "image_width": 229,
+            "image_height": 234,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 4.15,
+            "grid_cell_height": 3.35,
+            "grid_cell_size": 4,
+            "confidence": 0.489,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 229,
+              "bottom": 234
+            },
+            "subject_pixel_width": 229,
+            "subject_pixel_height": 234,
+            "subject_grid_width": 55,
+            "subject_grid_height": 70,
+            "recommended_canvas_grid_width": 55,
+            "recommended_canvas_grid_height": 70
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 7,
+          "source_cell": [
+            1244,
+            474,
+            1659,
+            948
+          ],
+          "subject_bbox_in_cell": [
+            114,
+            168,
+            223,
+            269
+          ],
+          "subject_size": [
+            109,
+            101
+          ],
+          "grid_analysis": {
+            "image_width": 109,
+            "image_height": 101,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 46.15,
+            "grid_cell_height": 42.0,
+            "grid_cell_size": 44,
+            "confidence": 0.618,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 109,
+              "bottom": 101
+            },
+            "subject_pixel_width": 109,
+            "subject_pixel_height": 101,
+            "subject_grid_width": 2,
+            "subject_grid_height": 2,
+            "recommended_canvas_grid_width": 2,
+            "recommended_canvas_grid_height": 2
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        }
+      ],
+      "unsafe_grid_cells": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "target_contract_mismatch_cells": [],
+      "unsafe_for_target_contract_cells": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    "explosion_x2": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator/combat_robot_mechanical_explosion_x2_imagegen.png",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "source_mode": "RGB",
+      "board_grid": [
+        4,
+        2
+      ],
+      "usage": "design_and_timing_language_only",
+      "ordinary_resize_into_native_cells": false,
+      "expected_subject_grid": null,
+      "cells": [
+        {
+          "frame": 0,
+          "source_cell": [
+            0,
+            0,
+            384,
+            512
+          ],
+          "subject_bbox_in_cell": [
+            171,
+            243,
+            207,
+            277
+          ],
+          "subject_size": [
+            36,
+            34
+          ],
+          "grid_analysis": {
+            "image_width": 36,
+            "image_height": 34,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 11.6,
+            "grid_cell_height": 11.2,
+            "grid_cell_size": 11,
+            "confidence": 0.896,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 36,
+              "bottom": 34
+            },
+            "subject_pixel_width": 36,
+            "subject_pixel_height": 34,
+            "subject_grid_width": 3,
+            "subject_grid_height": 3,
+            "recommended_canvas_grid_width": 3,
+            "recommended_canvas_grid_height": 3
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": false
+        },
+        {
+          "frame": 1,
+          "source_cell": [
+            384,
+            0,
+            768,
+            512
+          ],
+          "subject_bbox_in_cell": [
+            107,
+            196,
+            249,
+            329
+          ],
+          "subject_size": [
+            142,
+            133
+          ],
+          "grid_analysis": {
+            "image_width": 142,
+            "image_height": 133,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 9.0,
+            "grid_cell_height": 13.65,
+            "grid_cell_size": 11,
+            "confidence": 0.675,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 142,
+              "bottom": 133
+            },
+            "subject_pixel_width": 142,
+            "subject_pixel_height": 133,
+            "subject_grid_width": 16,
+            "subject_grid_height": 10,
+            "recommended_canvas_grid_width": 16,
+            "recommended_canvas_grid_height": 10
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": false
+        },
+        {
+          "frame": 2,
+          "source_cell": [
+            768,
+            0,
+            1152,
+            512
+          ],
+          "subject_bbox_in_cell": [
+            52,
+            137,
+            384,
+            383
+          ],
+          "subject_size": [
+            332,
+            246
+          ],
+          "grid_analysis": {
+            "image_width": 332,
+            "image_height": 246,
+            "image_mode": "RGBA",
+            "detection_mode": "native_or_unknown",
+            "grid_cell_width": 1.0,
+            "grid_cell_height": 1.0,
+            "grid_cell_size": 1,
+            "confidence": 0.212,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 332,
+              "bottom": 246
+            },
+            "subject_pixel_width": 332,
+            "subject_pixel_height": 246,
+            "subject_grid_width": 332,
+            "subject_grid_height": 246,
+            "recommended_canvas_grid_width": 332,
+            "recommended_canvas_grid_height": 246
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 3,
+          "source_cell": [
+            1152,
+            0,
+            1536,
+            512
+          ],
+          "subject_bbox_in_cell": [
+            0,
+            69,
+            355,
+            450
+          ],
+          "subject_size": [
+            355,
+            381
+          ],
+          "grid_analysis": {
+            "image_width": 355,
+            "image_height": 381,
+            "image_mode": "RGBA",
+            "detection_mode": "native_or_unknown",
+            "grid_cell_width": 1.0,
+            "grid_cell_height": 1.0,
+            "grid_cell_size": 1,
+            "confidence": 0.156,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 355,
+              "bottom": 381
+            },
+            "subject_pixel_width": 355,
+            "subject_pixel_height": 381,
+            "subject_grid_width": 355,
+            "subject_grid_height": 381,
+            "recommended_canvas_grid_width": 355,
+            "recommended_canvas_grid_height": 381
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 4,
+          "source_cell": [
+            0,
+            512,
+            384,
+            1024
+          ],
+          "subject_bbox_in_cell": [
+            67,
+            111,
+            312,
+            347
+          ],
+          "subject_size": [
+            245,
+            236
+          ],
+          "grid_analysis": {
+            "image_width": 245,
+            "image_height": 236,
+            "image_mode": "RGBA",
+            "detection_mode": "native_or_unknown",
+            "grid_cell_width": 1.0,
+            "grid_cell_height": 1.0,
+            "grid_cell_size": 1,
+            "confidence": 0.239,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 245,
+              "bottom": 236
+            },
+            "subject_pixel_width": 245,
+            "subject_pixel_height": 236,
+            "subject_grid_width": 245,
+            "subject_grid_height": 236,
+            "recommended_canvas_grid_width": 245,
+            "recommended_canvas_grid_height": 236
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 5,
+          "source_cell": [
+            384,
+            512,
+            768,
+            1024
+          ],
+          "subject_bbox_in_cell": [
+            81,
+            136,
+            276,
+            321
+          ],
+          "subject_size": [
+            195,
+            185
+          ],
+          "grid_analysis": {
+            "image_width": 195,
+            "image_height": 185,
+            "image_mode": "RGBA",
+            "detection_mode": "native_or_unknown",
+            "grid_cell_width": 1.0,
+            "grid_cell_height": 1.0,
+            "grid_cell_size": 1,
+            "confidence": 0.251,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 195,
+              "bottom": 185
+            },
+            "subject_pixel_width": 195,
+            "subject_pixel_height": 185,
+            "subject_grid_width": 195,
+            "subject_grid_height": 185,
+            "recommended_canvas_grid_width": 195,
+            "recommended_canvas_grid_height": 185
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 6,
+          "source_cell": [
+            768,
+            512,
+            1152,
+            1024
+          ],
+          "subject_bbox_in_cell": [
+            124,
+            178,
+            222,
+            276
+          ],
+          "subject_size": [
+            98,
+            98
+          ],
+          "grid_analysis": {
+            "image_width": 98,
+            "image_height": 98,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 3.9,
+            "grid_cell_height": 3.15,
+            "grid_cell_size": 4,
+            "confidence": 0.63,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 98,
+              "bottom": 98
+            },
+            "subject_pixel_width": 98,
+            "subject_pixel_height": 98,
+            "subject_grid_width": 25,
+            "subject_grid_height": 31,
+            "recommended_canvas_grid_width": 25,
+            "recommended_canvas_grid_height": 31
+          },
+          "unsafe_for_automatic_grid_compression": true,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": true
+        },
+        {
+          "frame": 7,
+          "source_cell": [
+            1152,
+            512,
+            1536,
+            1024
+          ],
+          "subject_bbox_in_cell": [
+            150,
+            211,
+            185,
+            244
+          ],
+          "subject_size": [
+            35,
+            33
+          ],
+          "grid_analysis": {
+            "image_width": 35,
+            "image_height": 33,
+            "image_mode": "RGBA",
+            "detection_mode": "approximate",
+            "grid_cell_width": 3.3,
+            "grid_cell_height": 2.4,
+            "grid_cell_size": 3,
+            "confidence": 0.801,
+            "subject_bbox": {
+              "left": 0,
+              "top": 0,
+              "right": 35,
+              "bottom": 33
+            },
+            "subject_pixel_width": 35,
+            "subject_pixel_height": 33,
+            "subject_grid_width": 11,
+            "subject_grid_height": 14,
+            "recommended_canvas_grid_width": 11,
+            "recommended_canvas_grid_height": 14
+          },
+          "unsafe_for_automatic_grid_compression": false,
+          "target_contract_mismatch": false,
+          "unsafe_for_target_contract": false
+        }
+      ],
+      "unsafe_grid_cells": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "target_contract_mismatch_cells": [],
+      "unsafe_for_target_contract_cells": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    }
+  },
+  "outputs": [
+    "dev_assets/generated_previews/combat_robot_suicide_drone_v1_strip_candidate.png",
+    "dev_assets/generated_previews/combat_robot_suicide_drone_v2_strip_candidate.png",
+    "dev_assets/generated_previews/combat_robot_suicide_drone_v1_strip_16x.png",
+    "dev_assets/generated_previews/combat_robot_suicide_drone_v2_strip_16x.png",
+    "dev_assets/generated_previews/combat_robot_suicide_drone_v1.gif",
+    "dev_assets/generated_previews/combat_robot_suicide_drone_v2.gif",
+    "dev_assets/generated_previews/combat_robot_drone_target_marker_candidate.png",
+    "dev_assets/generated_previews/combat_robot_drone_target_marker_16x.png",
+    "dev_assets/generated_previews/combat_robot_mechanical_explosion_x1_strip_candidate.png",
+    "dev_assets/generated_previews/combat_robot_mechanical_explosion_x2_strip_candidate.png",
+    "dev_assets/generated_previews/combat_robot_mechanical_explosion_x1_strip_4x.png",
+    "dev_assets/generated_previews/combat_robot_mechanical_explosion_x2_strip_4x.png",
+    "dev_assets/generated_previews/combat_robot_mechanical_explosion_x1.gif",
+    "dev_assets/generated_previews/combat_robot_mechanical_explosion_x2.gif",
+    "dev_assets/generated_previews/combat_robot_drone_operator_drone_fx_comparison.png"
+  ]
+}

@@ -84,8 +84,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 37,
-		"神奇遭遇网络接线必须由协议v37隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 38,
+		"协议v38必须同时保留v37神奇遭遇接线并隔离爆炸无人机wire类型。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

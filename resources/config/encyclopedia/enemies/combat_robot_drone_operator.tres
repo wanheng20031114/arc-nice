@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_drone_operator.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_drone_operator.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"combat_robot_drone_operator"
+enemy_config = ExtResource("2_config")
+family_id = &"mechanical_life"
+family_label = "机械生命"
+rank = 0
+sort_order = 540
+visible_in_codex = true
+description = "手持遥控器的冷灰盒体机器人。它会锁定视野内的玩家或植物，在目标位置留下红色标记并放出不可阻挡的自杀式无人机；红标出现后落点不再改变，离开标记范围可以躲避爆炸。"
+traits = PackedStringArray("定点无人机", "锁死落点", "机械生命")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)
