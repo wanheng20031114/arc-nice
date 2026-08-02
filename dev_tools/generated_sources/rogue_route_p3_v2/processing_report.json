@@ -1,0 +1,342 @@
+{
+  "icon_palettes": {
+    "magical_encounter": [
+      "#4FA19C",
+      "#7ECAC5",
+      "#384C47",
+      "#53B3AF",
+      "#303935",
+      "#54B4AF"
+    ],
+    "emergency_combat": [
+      "#723B2D",
+      "#B5402D",
+      "#CC5326",
+      "#25332B",
+      "#2E352D",
+      "#B8412E"
+    ],
+    "normal_combat": [
+      "#83A8B6",
+      "#304143",
+      "#243030",
+      "#BED9E0",
+      "#293636",
+      "#527C8E"
+    ],
+    "wilderness_resource": [
+      "#0E1818",
+      "#303D40",
+      "#5F6767",
+      "#B1AEA8",
+      "#31C7DD",
+      "#AF8038"
+    ],
+    "mystery_black_market": [
+      "#18201F",
+      "#2E3038",
+      "#463A64",
+      "#72568F",
+      "#B78828",
+      "#F1D475"
+    ],
+    "prepare_ahead": [
+      "#B5975B",
+      "#4D4B3C",
+      "#E2BF78",
+      "#997F4E",
+      "#2D3331",
+      "#D4AA55"
+    ],
+    "hud_ap_icon": [
+      "#A0872C",
+      "#FAE058",
+      "#555232",
+      "#FCC514",
+      "#F5BB12",
+      "#333A38"
+    ],
+    "hud_seed_icon": [
+      "#428079",
+      "#91ECE4",
+      "#2D4642",
+      "#B5FCF9",
+      "#4CC3B7",
+      "#1E1F1D"
+    ],
+    "hud_location_icon": [
+      "#9BDAC0",
+      "#305043",
+      "#41A790",
+      "#232820",
+      "#253028",
+      "#40C0A7"
+    ]
+  },
+  "assets": {
+    "underground_ruins_background.png": {
+      "size": [
+        2304,
+        1296
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        255,
+        255
+      ],
+      "transparent_corners": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "visible_rgb_colors": 9501,
+      "visible_bbox": [
+        0,
+        0,
+        2304,
+        1296
+      ]
+    },
+    "empty_node.png": {
+      "size": [
+        32,
+        32
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 3,
+      "visible_bbox": [
+        0,
+        0,
+        32,
+        32
+      ]
+    },
+    "magical_encounter.png": {
+      "size": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        32,
+        20,
+        96,
+        108
+      ]
+    },
+    "emergency_combat.png": {
+      "size": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        32,
+        20,
+        95,
+        108
+      ]
+    },
+    "normal_combat.png": {
+      "size": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        20,
+        28,
+        108,
+        100
+      ]
+    },
+    "wilderness_resource.png": {
+      "size": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        25,
+        20,
+        102,
+        108
+      ]
+    },
+    "mystery_black_market.png": {
+      "size": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        27,
+        20,
+        100,
+        108
+      ]
+    },
+    "prepare_ahead.png": {
+      "size": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        22,
+        20,
+        106,
+        108
+      ]
+    },
+    "hud_ap_icon.png": {
+      "size": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        13,
+        8,
+        35,
+        40
+      ]
+    },
+    "hud_seed_icon.png": {
+      "size": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        10,
+        8,
+        37,
+        40
+      ]
+    },
+    "hud_location_icon.png": {
+      "size": [
+        48,
+        48
+      ],
+      "mode": "RGBA",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "transparent_corners": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "visible_rgb_colors": 6,
+      "visible_bbox": [
+        9,
+        8,
+        38,
+        40
+      ]
+    }
+  }
+}
