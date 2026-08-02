@@ -96,6 +96,14 @@ func _run() -> void:
 		and not overlay.choice_free.button.disabled,
 		"木板不足时购买项应显示但禁用，0元购仍可选择。"
 	)
+	_expect(
+		overlay.choice_purchase.title_label.text == "购买篮球"
+		and overlay.choice_purchase.description_label.text
+		== "花费10个木板购买一个篮球"
+		and overlay.choice_free.description_label.text
+		== "鸡哥有概率被你说服",
+		"鸡哥两个选项必须使用精简后的标题与小字文案。"
+	)
 	overlay.choice_free.button.emit_signal("pressed")
 	_expect(
 		vote_requests.size() == 1
