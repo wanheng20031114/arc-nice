@@ -112,14 +112,14 @@ class RelayCapacityTests(unittest.TestCase):
             self.assertIsNone(launcher.start_relay(40034, 9))
         popen.assert_not_called()
 
-    def test_relay_project_uses_capacity_argument_and_protocol_v33(self) -> None:
+    def test_relay_project_uses_capacity_argument_and_protocol_v34(self) -> None:
         relay_source = (
             Path(__file__).resolve().parents[1]
             / "relay_godot_project"
             / "relay_server.gd"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("const PROTOCOL_VERSION := 33", relay_source)
+        self.assertIn("const PROTOCOL_VERSION := 34", relay_source)
         self.assertIn('arg.begins_with("--max-clients=")', relay_source)
         self.assertIn(
             "peer.create_server(_port, _max_clients, CHANNEL_COUNT)",

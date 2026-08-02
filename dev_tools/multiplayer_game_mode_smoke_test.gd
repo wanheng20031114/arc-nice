@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 33,
-		"P3路线自由移动同步要求协议v33。"
+		NetConstants.PROTOCOL_VERSION == 34,
+		"P3路线运行时契约快照要求协议v34。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

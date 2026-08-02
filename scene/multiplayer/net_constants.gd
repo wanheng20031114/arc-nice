@@ -20,7 +20,9 @@ extends RefCounted
 ## 旧客户端无法识别新增 wire 游戏模式值 4。
 ## v33：P3 路线世界新增约 12Hz 的轻量角色姿态上报、Host 校验/广播、
 ## 跨信道路线 revision 隔离与可靠位置纠正。
-const PROTOCOL_VERSION := 33
+## v34：P3 路线全量快照新增 runtime_contract_hash，防止旧客户端忽略
+## 新字段后继续使用与 Host 不一致的世界几何。
+const PROTOCOL_VERSION := 34
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

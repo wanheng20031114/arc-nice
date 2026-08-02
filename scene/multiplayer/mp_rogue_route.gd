@@ -15,19 +15,24 @@ const AVATAR_MAX_SEQUENCE := 0x7FFFFFFF
 const AVATAR_FACING_MIN := 0
 const AVATAR_FACING_MAX := 3
 const AVATAR_ANIM_STATE_MAX := 15
-const AVATAR_INITIAL_POSITION_TOLERANCE := 48.0
+const AVATAR_INITIAL_POSITION_TOLERANCE := 32.0
 const AVATAR_POSITION_TOLERANCE := 8.0
 const AVATAR_SPEED_TOLERANCE_MULTIPLIER := 1.75
 const AVATAR_VELOCITY_TOLERANCE_MULTIPLIER := 2.5
 const AVATAR_MAX_VALIDATION_SECONDS := 0.5
 const AVATAR_CORRECTION_INTERVAL_MSEC := 84
 const AVATAR_RECONNECT_POSE_RETENTION_MSEC := 90_000
+const SNAPSHOT_REQUEST_RETRY_BASE_MSEC := 250
+const SNAPSHOT_REQUEST_RETRY_MAX_MSEC := 2_000
+const SNAPSHOT_REQUEST_RETRY_MAX_EXPONENT := 3
 
-var _route: Node = null
+var _route: TestRogueRouteP3 = null
 var _net_manager: Node = null
 var _runtime_prepared := false
 var _return_scheduled := false
 var _snapshot_request_pending := false
+var _snapshot_request_retry_at_msec := 0
+var _snapshot_request_retry_exponent := 0
 var _latest_layout_snapshot: Dictionary = {}
 var _latest_state_snapshot: Dictionary = {}
 var _avatar_sync_time_left := 0.0
@@ -43,13 +48,14 @@ var _last_avatar_correction_sequences: Dictionary = {}
 
 
 func _ready() -> void:
-	_route = get_node_or_null("RogueRoute")
+	_route = get_node_or_null("RogueRoute") as TestRogueRouteP3
 	_net_manager = get_node_or_null("/root/NetManager")
-	if _net_manager == null or not _bind_route_contract():
+	if _net_manager == null or _route == null:
 		push_error("MpRogueRoute: P3 多人运行时契约不完整。")
 		call_deferred("_return_to_lobby")
 		return
 
+	_connect_route_signals()
 	set_multiplayer_authority(_get_host_peer_id())
 	_connect_net_manager_signals()
 	if not _configure_route_players():
@@ -57,20 +63,19 @@ func _ready() -> void:
 		call_deferred("_return_to_lobby")
 		return
 	if _is_host():
-		_route.call("set_authority_enabled", true)
-		var start_result: Variant = _route.call(
-			"start_authoritative_session",
+		_route.set_authority_enabled(true)
+		if not _route.start_authoritative_session(
 			_generate_session_seed(),
 			false
-		)
-		if start_result is bool and not bool(start_result):
+		):
 			push_error("MpRogueRoute: Host 无法生成 P3 路线。")
 			call_deferred("_return_to_lobby")
 			return
 		_refresh_authoritative_snapshot_cache()
 	elif _is_client():
-		_route.call("set_authority_enabled", false)
-		_route.call("start_client_waiting")
+		_reset_snapshot_request_state()
+		_route.set_authority_enabled(false)
+		_route.start_client_waiting()
 	else:
 		push_warning("MpRogueRoute: 启动时没有有效多人连接，返回大厅。")
 		call_deferred("_return_to_lobby")
@@ -87,8 +92,11 @@ func _physics_process(delta: float) -> void:
 		not _runtime_prepared
 		or _get_connection_state() != STATE_IN_GAME
 		or _route == null
-		or not bool(_route.call("is_route_ready"))
 	):
+		return
+	if _is_client() and _snapshot_request_pending:
+		_retry_full_snapshot_if_due()
+	if not _route.is_route_ready():
 		return
 	_avatar_sync_time_left -= maxf(delta, 0.0)
 	if _avatar_sync_time_left > 0.0:
@@ -121,62 +129,26 @@ func get_runtime_preparation_progress() -> Dictionary:
 	}
 
 
-func _bind_route_contract() -> bool:
-	if _route == null:
-		return false
-	for method_name in [
-		&"start_authoritative_session",
-		&"start_client_waiting",
-		&"apply_full_snapshot",
-		&"apply_move_delta",
-		&"export_layout_snapshot",
-		&"export_state_snapshot",
-		&"is_route_ready",
-		&"set_authority_enabled",
-		&"configure_multiplayer_players",
-		&"add_multiplayer_player",
-		&"migrate_multiplayer_player",
-		&"get_local_avatar_snapshot",
-		&"apply_avatar_snapshot",
-		&"clamp_avatar_position",
-		&"is_avatar_position_in_world",
-		&"get_player_for_peer",
-		&"remove_multiplayer_player",
-		&"get_route_revision",
-	]:
-		if not _route.has_method(method_name):
-			return false
-	for signal_name in [
-		&"host_layout_committed",
-		&"host_move_committed",
-		&"return_requested",
-	]:
-		if not _route.has_signal(signal_name):
-			return false
-	_route.connect(
-		&"host_layout_committed",
-		Callable(self, "_on_host_layout_committed")
-	)
-	_route.connect(
-		&"host_move_committed",
-		Callable(self, "_on_host_move_committed")
-	)
-	_route.connect(&"return_requested", Callable(self, "_on_return_requested"))
-	return true
+func _connect_route_signals() -> void:
+	if not _route.host_layout_committed.is_connected(
+		_on_host_layout_committed
+	):
+		_route.host_layout_committed.connect(_on_host_layout_committed)
+	if not _route.host_move_committed.is_connected(_on_host_move_committed):
+		_route.host_move_committed.connect(_on_host_move_committed)
+	if not _route.return_requested.is_connected(_on_return_requested):
+		_route.return_requested.connect(_on_return_requested)
 
 
 func _disconnect_route_signals() -> void:
 	if _route == null or not is_instance_valid(_route):
 		return
-	for signal_contract in [
-		[&"host_layout_committed", Callable(self, "_on_host_layout_committed")],
-		[&"host_move_committed", Callable(self, "_on_host_move_committed")],
-		[&"return_requested", Callable(self, "_on_return_requested")],
-	]:
-		var signal_name := signal_contract[0] as StringName
-		var callback := signal_contract[1] as Callable
-		if _route.is_connected(signal_name, callback):
-			_route.disconnect(signal_name, callback)
+	if _route.host_layout_committed.is_connected(_on_host_layout_committed):
+		_route.host_layout_committed.disconnect(_on_host_layout_committed)
+	if _route.host_move_committed.is_connected(_on_host_move_committed):
+		_route.host_move_committed.disconnect(_on_host_move_committed)
+	if _route.return_requested.is_connected(_on_return_requested):
+		_route.return_requested.disconnect(_on_return_requested)
 
 
 func _connect_net_manager_signals() -> void:
@@ -278,16 +250,15 @@ func _migrate_reconnected_player(
 	):
 		return false
 	var preserved_pose := _get_avatar_pose_for_peer(old_peer_id)
-	var old_player: Node = _route.call("get_player_for_peer", old_peer_id) as Node
+	var old_player := _route.get_player_for_peer(old_peer_id)
 	var migrated := false
 	if old_player != null:
-		migrated = bool(_route.call(
-			"migrate_multiplayer_player",
+		migrated = _route.migrate_multiplayer_player(
 			old_peer_id,
 			new_peer_id,
 			player_name,
 			character_id
-		))
+		)
 	else:
 		_prune_disconnected_avatar_poses()
 		preserved_pose = _disconnected_avatar_poses.get(old_peer_id, {}) as Dictionary
@@ -297,18 +268,16 @@ func _migrate_reconnected_player(
 				% old_peer_id
 			)
 			return false
-		migrated = bool(_route.call(
-			"add_multiplayer_player",
+		migrated = _route.add_multiplayer_player(
 			new_peer_id,
 			player_name,
 			character_id,
 			preserved_pose.get("position", Vector2.ZERO) as Vector2
-		))
+		)
 	if not migrated:
 		return false
 	if not preserved_pose.is_empty():
-		_route.call(
-			"apply_avatar_snapshot",
+		_route.apply_avatar_snapshot(
 			new_peer_id,
 			preserved_pose.get("position", Vector2.ZERO) as Vector2,
 			preserved_pose.get("velocity", Vector2.ZERO) as Vector2,
@@ -329,7 +298,7 @@ func _on_player_left(peer_id: int) -> void:
 		if not preserved_pose.is_empty():
 			preserved_pose["stored_at_msec"] = Time.get_ticks_msec()
 			_disconnected_avatar_poses[peer_id] = preserved_pose.duplicate(true)
-		_route.call("remove_multiplayer_player", peer_id)
+		_route.remove_multiplayer_player(peer_id)
 	_clear_avatar_peer_sync_state(peer_id)
 
 
@@ -358,11 +327,11 @@ func _on_host_move_committed(delta: Dictionary) -> void:
 func _refresh_authoritative_snapshot_cache() -> bool:
 	if (
 		_route == null
-		or not bool(_route.call("is_route_ready"))
+		or not _route.is_route_ready()
 	):
 		return false
-	var layout := _route.call("export_layout_snapshot") as Dictionary
-	var state := _route.call("export_state_snapshot") as Dictionary
+	var layout := _route.export_layout_snapshot()
+	var state := _route.export_state_snapshot()
 	if layout.is_empty() or state.is_empty():
 		return false
 	_latest_layout_snapshot = layout.duplicate(true)
@@ -371,9 +340,9 @@ func _refresh_authoritative_snapshot_cache() -> bool:
 
 
 func _refresh_authoritative_state_cache() -> bool:
-	if _route == null or not bool(_route.call("is_route_ready")):
+	if _route == null or not _route.is_route_ready():
 		return false
-	var state := _route.call("export_state_snapshot") as Dictionary
+	var state := _route.export_state_snapshot()
 	if state.is_empty():
 		return false
 	_latest_state_snapshot = state.duplicate(true)
@@ -409,15 +378,59 @@ func _send_full_snapshot_to_peer(peer_id: int) -> void:
 func _request_full_snapshot() -> void:
 	if (
 		not _is_client()
-		or _snapshot_request_pending
 		or not _has_network_peer()
 	):
 		return
 	var host_peer_id := _get_host_peer_id()
-	if host_peer_id <= 0:
+	if host_peer_id <= 0 or not _reserve_full_snapshot_request():
+		return
+	net_request_route_full_snapshot.rpc_id(host_peer_id)
+
+
+func _reserve_full_snapshot_request(now_msec: int = -1) -> bool:
+	var resolved_now_msec := (
+		Time.get_ticks_msec()
+		if now_msec < 0
+		else now_msec
+	)
+	if (
+		_snapshot_request_pending
+		and resolved_now_msec < _snapshot_request_retry_at_msec
+	):
+		return false
+	_snapshot_request_pending = true
+	var retry_delay_msec := mini(
+		SNAPSHOT_REQUEST_RETRY_BASE_MSEC
+		* (1 << _snapshot_request_retry_exponent),
+		SNAPSHOT_REQUEST_RETRY_MAX_MSEC
+	)
+	_snapshot_request_retry_at_msec = resolved_now_msec + retry_delay_msec
+	_snapshot_request_retry_exponent = mini(
+		_snapshot_request_retry_exponent + 1,
+		SNAPSHOT_REQUEST_RETRY_MAX_EXPONENT
+	)
+	return true
+
+
+func _retry_full_snapshot_if_due() -> void:
+	if Time.get_ticks_msec() >= _snapshot_request_retry_at_msec:
+		_request_full_snapshot()
+
+
+func _schedule_full_snapshot_retry() -> void:
+	if _snapshot_request_pending:
 		return
 	_snapshot_request_pending = true
-	net_request_route_full_snapshot.rpc_id(host_peer_id)
+	_snapshot_request_retry_at_msec = (
+		Time.get_ticks_msec() + SNAPSHOT_REQUEST_RETRY_BASE_MSEC
+	)
+	_snapshot_request_retry_exponent = 1
+
+
+func _reset_snapshot_request_state() -> void:
+	_snapshot_request_pending = false
+	_snapshot_request_retry_at_msec = 0
+	_snapshot_request_retry_exponent = 0
 
 
 func _configure_route_players() -> bool:
@@ -430,13 +443,11 @@ func _configure_route_players() -> bool:
 	var local_peer_id := _get_local_peer_id()
 	if local_peer_id <= 0 or not player_names.has(local_peer_id):
 		return false
-	var configured: Variant = _route.call(
-		"configure_multiplayer_players",
+	return _route.configure_multiplayer_players(
 		local_peer_id,
 		player_names.duplicate(),
 		character_ids.duplicate()
 	)
-	return configured is bool and bool(configured)
 
 
 func _send_local_avatar_pose() -> void:
@@ -445,7 +456,7 @@ func _send_local_avatar_pose() -> void:
 	var host_peer_id := _get_host_peer_id()
 	if host_peer_id <= 0 or not _is_peer_send_ready(host_peer_id):
 		return
-	var snapshot := _route.call("get_local_avatar_snapshot") as Dictionary
+	var snapshot := _route.get_local_avatar_snapshot()
 	var packed_pose := _encode_avatar_pose(snapshot)
 	if packed_pose.size() != AVATAR_POSE_FIELD_COUNT:
 		return
@@ -453,7 +464,7 @@ func _send_local_avatar_pose() -> void:
 	net_route_avatar_input.rpc_id(
 		host_peer_id,
 		_client_avatar_sequence,
-		int(_route.call("get_route_revision")),
+		_route.get_route_revision(),
 		packed_pose
 	)
 
@@ -461,7 +472,7 @@ func _send_local_avatar_pose() -> void:
 func _broadcast_avatar_snapshot() -> void:
 	if not _is_host() or not _has_network_peer():
 		return
-	var route_revision := int(_route.call("get_route_revision"))
+	var route_revision := _route.get_route_revision()
 	if route_revision < 0:
 		return
 	var host_peer_id := _get_host_peer_id()
@@ -470,7 +481,7 @@ func _broadcast_avatar_snapshot() -> void:
 	var peer_ids: Array[int] = []
 	for peer_id_variant in player_names:
 		var peer_id := int(peer_id_variant)
-		if peer_id > 0 and _route.call("get_player_for_peer", peer_id) != null:
+		if peer_id > 0 and _route.get_player_for_peer(peer_id) != null:
 			peer_ids.append(peer_id)
 	peer_ids.sort()
 	var packed_states := PackedInt32Array()
@@ -497,14 +508,14 @@ func _broadcast_avatar_snapshot() -> void:
 
 
 func _get_avatar_pose_for_peer(peer_id: int) -> Dictionary:
-	var player_node: Node = _route.call("get_player_for_peer", peer_id) as Node
+	var player_node := _route.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return {}
 	return {
-		"position": player_node.get("global_position") as Vector2,
-		"velocity": player_node.get("velocity") as Vector2,
-		"facing": int(player_node.call("get_multiplayer_facing_id")),
-		"anim_state": int(player_node.call("get_multiplayer_anim_state")),
+		"position": player_node.global_position,
+		"velocity": player_node.velocity,
+		"facing": player_node.get_multiplayer_facing_id(),
+		"anim_state": player_node.get_multiplayer_anim_state(),
 	}
 
 
@@ -513,11 +524,10 @@ func _enforce_host_avatar_bounds(host_peer_id: int) -> void:
 	if pose.is_empty():
 		return
 	var position := pose.get("position", Vector2.ZERO) as Vector2
-	if bool(_route.call("is_avatar_position_in_world", position)):
+	if _route.is_avatar_position_in_world(position):
 		return
-	var safe_position := _route.call("clamp_avatar_position", position) as Vector2
-	_route.call(
-		"apply_avatar_snapshot",
+	var safe_position := _route.clamp_avatar_position(position)
+	_route.apply_avatar_snapshot(
 		host_peer_id,
 		safe_position,
 		Vector2.ZERO,
@@ -628,20 +638,20 @@ func _accept_client_avatar_pose(
 		or sequence <= int(_last_client_avatar_sequences.get(peer_id, 0))
 		or sequence > AVATAR_MAX_SEQUENCE
 		or packed_pose.size() != AVATAR_POSE_FIELD_COUNT
-		or _route.call("get_player_for_peer", peer_id) == null
+		or _route.get_player_for_peer(peer_id) == null
 	):
 		return false
-	if route_revision != int(_route.call("get_route_revision")):
+	if route_revision != _route.get_route_revision():
 		return false
 	var pose := _decode_avatar_pose(packed_pose)
 	if pose.is_empty():
 		return false
 	var position := pose.get("position", Vector2.ZERO) as Vector2
 	var velocity := pose.get("velocity", Vector2.ZERO) as Vector2
-	if not bool(_route.call("is_avatar_position_in_world", position)):
+	if not _route.is_avatar_position_in_world(position):
 		return false
-	var player_node: Node = _route.call("get_player_for_peer", peer_id) as Node
-	var move_speed := maxf(float(player_node.get("move_speed")), 1.0)
+	var player_node := _route.get_player_for_peer(peer_id)
+	var move_speed := maxf(player_node.move_speed, 1.0)
 	if velocity.length() > (
 		move_speed * AVATAR_VELOCITY_TOLERANCE_MULTIPLIER
 		+ AVATAR_POSITION_TOLERANCE
@@ -649,7 +659,7 @@ func _accept_client_avatar_pose(
 		return false
 	var now_msec := Time.get_ticks_msec()
 	if not _accepted_avatar_positions.has(peer_id):
-		var authoritative_position := player_node.get("global_position") as Vector2
+		var authoritative_position := player_node.global_position
 		if authoritative_position.distance_to(position) > AVATAR_INITIAL_POSITION_TOLERANCE:
 			return false
 	else:
@@ -668,14 +678,13 @@ func _accept_client_avatar_pose(
 		)
 		if position.distance_to(previous_position) > allowed_distance:
 			return false
-	var applied := bool(_route.call(
-		"apply_avatar_snapshot",
+	var applied := _route.apply_avatar_snapshot(
 		peer_id,
 		position,
 		velocity,
 		int(pose.get("facing", 0)),
 		int(pose.get("anim_state", 0))
-	))
+	)
 	if applied:
 		_accepted_avatar_positions[peer_id] = position
 		_accepted_avatar_times_msec[peer_id] = now_msec
@@ -702,7 +711,7 @@ func _try_send_avatar_correction(
 		return false
 	net_route_avatar_corrected.rpc_id(
 		peer_id,
-		int(_route.call("get_route_revision")),
+		_route.get_route_revision(),
 		packed_pose
 	)
 	return true
@@ -747,7 +756,7 @@ func net_route_avatar_snapshot(
 		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
 		or snapshot_sequence <= _last_host_avatar_snapshot_sequence
 		or snapshot_sequence > AVATAR_MAX_SEQUENCE
-		or route_revision != int(_route.call("get_route_revision"))
+		or route_revision != _route.get_route_revision()
 		or packed_states.is_empty()
 		or packed_states.size() % AVATAR_SNAPSHOT_FIELD_COUNT != 0
 	):
@@ -761,10 +770,9 @@ func net_route_avatar_snapshot(
 		if pose.is_empty():
 			continue
 		var position := pose.get("position", Vector2.ZERO) as Vector2
-		if not bool(_route.call("is_avatar_position_in_world", position)):
+		if not _route.is_avatar_position_in_world(position):
 			continue
-		_route.call(
-			"apply_avatar_snapshot",
+		_route.apply_avatar_snapshot(
 			peer_id,
 			position,
 			pose.get("velocity", Vector2.ZERO) as Vector2,
@@ -781,15 +789,14 @@ func net_route_avatar_corrected(
 	if (
 		not _is_client()
 		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
-		or route_revision != int(_route.call("get_route_revision"))
+		or route_revision != _route.get_route_revision()
 		or packed_pose.size() != AVATAR_POSE_FIELD_COUNT
 	):
 		return
 	var pose := _decode_avatar_pose(packed_pose)
 	if pose.is_empty():
 		return
-	_route.call(
-		"apply_avatar_snapshot",
+	_route.apply_avatar_snapshot(
 		_get_local_peer_id(),
 		pose.get("position", Vector2.ZERO) as Vector2,
 		pose.get("velocity", Vector2.ZERO) as Vector2,
@@ -861,21 +868,22 @@ func _apply_full_snapshot_from_peer(
 	if (
 		not _is_client()
 		or sender_id != _get_host_peer_id()
-		or layout.is_empty()
-		or state.is_empty()
 		or _route == null
 	):
 		return false
-	var apply_result: Variant = _route.call(
-		"apply_full_snapshot",
+	if layout.is_empty() or state.is_empty():
+		_schedule_full_snapshot_retry()
+		return false
+	if not _route.apply_full_snapshot(
 		layout.duplicate(true),
 		state.duplicate(true)
-	)
-	if apply_result is bool and not bool(apply_result):
+	):
+		_schedule_full_snapshot_retry()
 		return false
-	if not bool(_route.call("is_route_ready")):
+	if not _route.is_route_ready():
+		_schedule_full_snapshot_retry()
 		return false
-	_snapshot_request_pending = false
+	_reset_snapshot_request_state()
 	_reset_avatar_validation_positions()
 	return true
 
@@ -893,13 +901,7 @@ func _apply_move_delta_from_peer(sender_id: int, delta: Dictionary) -> bool:
 		or _route == null
 	):
 		return false
-	var apply_result: Variant = _route.call(
-		"apply_move_delta",
-		delta.duplicate(true)
-	)
-	if apply_result is bool and bool(apply_result):
-		return true
-	if apply_result == null and bool(_route.call("is_route_ready")):
+	if _route.apply_move_delta(delta.duplicate(true)):
 		return true
 	_request_full_snapshot()
 	return false

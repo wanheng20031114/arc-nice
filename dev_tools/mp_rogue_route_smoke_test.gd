@@ -64,7 +64,7 @@ func _run() -> void:
 
 
 func _test_mode_and_loading_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 33, "P3 自由移动同步必须使用协议 v33。")
+	_expect(NetConstants.PROTOCOL_VERSION == 34, "P3 运行时契约快照必须使用协议 v34。")
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
 		"P3 轻量角色姿态同步必须保持约 12Hz。"
@@ -242,6 +242,33 @@ func _test_snapshot_and_delta_contract() -> void:
 		and not client_route.is_route_ready(),
 		"客户端必须拒绝非 Host 发来的完整快照。"
 	)
+	var invalid_state := state.duplicate(true)
+	invalid_state["action_points"] = -1
+	_expect(
+		bool(wrapper.call("_reserve_full_snapshot_request", 1_000)),
+		"客户端首次完整快照请求必须进入等待状态。"
+	)
+	var retry_at_msec := int(
+		wrapper.get("_snapshot_request_retry_at_msec")
+	)
+	_expect(
+		not bool(wrapper.call(
+			"_apply_full_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			layout,
+			invalid_state
+		))
+		and bool(wrapper.get("_snapshot_request_pending"))
+		and not bool(wrapper.call(
+			"_reserve_full_snapshot_request",
+			retry_at_msec - 1
+		))
+		and bool(wrapper.call(
+			"_reserve_full_snapshot_request",
+			retry_at_msec
+		)),
+		"Host 坏快照不得锁死客户端；退避窗口结束后必须允许重新请求。"
+	)
 	_expect(
 		bool(wrapper.call(
 			"_apply_full_snapshot_from_peer",
@@ -249,8 +276,11 @@ func _test_snapshot_and_delta_contract() -> void:
 			layout,
 			state
 		))
-		and client_route.is_route_ready(),
-		"客户端必须接受 NetManager 指定 Host 的完整快照。"
+		and client_route.is_route_ready()
+		and not bool(wrapper.get("_snapshot_request_pending"))
+		and int(wrapper.get("_snapshot_request_retry_at_msec")) == 0
+		and int(wrapper.get("_snapshot_request_retry_exponent")) == 0,
+		"客户端必须在坏快照后接受 Host 的正确快照并重置退避状态。"
 	)
 
 	var move_delta := _build_first_move_delta(layout, state)

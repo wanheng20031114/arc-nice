@@ -126,8 +126,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 33,
-		"P3路线自由移动同步必须由多人协议v33隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 34,
+		"P3路线运行时契约快照必须由多人协议v34隔离 v33 客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()
