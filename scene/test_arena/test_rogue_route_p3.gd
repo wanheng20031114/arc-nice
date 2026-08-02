@@ -153,7 +153,6 @@ func start_authoritative_session(
 	_bind_runtime_state(generated_graph, generated_state)
 	_route_ready = true
 	_configure_camera_world_bounds()
-	_place_all_players_at_current_node(true)
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("路线世界已生成。移动角色探索，并走近青色相邻节点。", false)
@@ -218,7 +217,6 @@ func apply_full_snapshot(
 	_bind_runtime_state(imported_graph, imported_state)
 	_route_ready = true
 	_configure_camera_world_bounds()
-	_place_all_players_at_current_node(true)
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("已同步房主路线。当前为只读模式。", false)
@@ -407,7 +405,6 @@ func _on_runtime_state_changed(_snapshot: Dictionary) -> void:
 	):
 		_set_status("路线视觉层拒绝了最新状态。", true)
 		return
-	_place_all_players_at_current_node()
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 
@@ -479,8 +476,6 @@ func configure_multiplayer_players(
 		push_error("TestRogueRouteP3: 多人路线场景缺少本地角色。")
 		return false
 	_attach_camera_to_local_player()
-	if is_route_ready():
-		_place_all_players_at_current_node(true)
 	_update_character_display()
 	return true
 
@@ -721,42 +716,6 @@ func _recenter_camera_on_player() -> void:
 
 func _on_recenter_button_pressed() -> void:
 	_recenter_camera_on_player()
-
-
-func _place_all_players_at_current_node(recenter_camera: bool = false) -> void:
-	if not is_route_ready():
-		return
-	var anchor := route_board.get_node_global_position(
-		_runtime_state.current_node_id
-	)
-	if _multiplayer_avatar_mode:
-		var peer_ids: Array[int] = []
-		for peer_id_variant in peer_players:
-			peer_ids.append(int(peer_id_variant))
-		peer_ids.sort()
-		for index in range(peer_ids.size()):
-			var player_instance := peer_players[peer_ids[index]] as Player
-			_teleport_route_player(
-				player_instance,
-				anchor + AVATAR_SPAWN_OFFSETS[index % AVATAR_SPAWN_OFFSETS.size()]
-			)
-	else:
-		_teleport_route_player(player, anchor)
-	if player != null:
-		route_board.update_local_player_global_position(player.global_position)
-		if recenter_camera:
-			_recenter_camera_on_player()
-
-
-func _teleport_route_player(player_instance: Player, target_position: Vector2) -> void:
-	if player_instance == null or not is_instance_valid(player_instance):
-		return
-	var smoothing_enabled := player_instance.is_multiplayer_visual_smoothing_enabled()
-	player_instance.set_multiplayer_visual_smoothing_enabled(false)
-	player_instance.global_position = clamp_avatar_position(target_position)
-	player_instance.velocity = Vector2.ZERO
-	player_instance.reset_physics_interpolation()
-	player_instance.set_multiplayer_visual_smoothing_enabled(smoothing_enabled)
 
 
 func _set_local_player_controls_locked(locked: bool) -> void:

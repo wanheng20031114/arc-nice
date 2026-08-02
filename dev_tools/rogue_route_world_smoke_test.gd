@@ -465,24 +465,48 @@ func _audit_player_and_camera(
 		var neighbors := graph.get_neighbors(runtime.current_node_id)
 		if not neighbors.is_empty():
 			target_node_id = int(neighbors[0])
+	if board != null and target_node_id >= 0:
+		local_player.global_position = board.get_node_global_position(target_node_id)
+		local_player.velocity = Vector2.ZERO
+		board.update_local_player_global_position(local_player.global_position)
+	await physics_frame
+	await process_frame
+	_expect(
+		board != null
+		and target_node_id >= 0
+		and board.is_node_in_player_range(target_node_id),
+		"确认移动回归夹具必须先让玩家自由走入目标节点范围。"
+	)
+	route.call(&"_apply_camera_drag", Vector2(-96.0, -48.0))
+	await process_frame
 	var dragged_camera_position := camera.position
+	var player_position_before_route_move := local_player.global_position
+	var camera_global_before_route_move := camera.global_position
+	var screen_center_before_route_move := camera.get_screen_center_position()
 	var state_before_route_move := route.export_state_snapshot()
+	route.call(&"_on_route_board_node_pressed", target_node_id)
 	_expect(
 		runtime != null
 		and target_node_id >= 0
-		and runtime.try_move(
-			target_node_id,
-			route.generation_config.move_action_cost,
-			runtime.state_revision
-		),
-		"镜头回归夹具必须完成一次合法路线移动。"
+		and int(route.get("_pending_node_id")) == target_node_id,
+		"确认移动回归夹具必须通过真实节点点击创建待确认目标。"
 	)
+	route.call(&"_on_move_confirmation_confirmed")
 	await physics_frame
 	await process_frame
 	var state_after_route_move := route.export_state_snapshot()
 	_expect(
-		camera.position.is_equal_approx(dragged_camera_position),
-		"路线移动只应搬移角色，必须保留玩家当前合法 Camera2D 拖拽偏移。"
+		local_player.global_position.is_equal_approx(
+			player_position_before_route_move
+		)
+		and camera.position.is_equal_approx(dragged_camera_position)
+		and camera.global_position.is_equal_approx(
+			camera_global_before_route_move
+		)
+		and camera.get_screen_center_position().is_equal_approx(
+			screen_center_before_route_move
+		),
+		"确认路线只能更新逻辑节点与行动力，不得传送玩家或移动镜头。"
 	)
 	_expect(
 		state_after_route_move.get("revision", -1)
@@ -525,6 +549,27 @@ func _audit_player_and_camera(
 		state_after_route_move,
 		route.export_state_snapshot(),
 		"Home 复位镜头不能额外消耗 AP 或修改 revision。"
+	)
+	var player_position_before_regeneration := local_player.global_position
+	var camera_local_before_regeneration := camera.position
+	var camera_global_before_regeneration := camera.global_position
+	var camera_center_before_regeneration := camera.get_screen_center_position()
+	var regenerated := route.start_authoritative_session(20260802, false)
+	await physics_frame
+	await process_frame
+	_expect(
+		regenerated
+		and local_player.global_position.is_equal_approx(
+			player_position_before_regeneration
+		)
+		and camera.position.is_equal_approx(camera_local_before_regeneration)
+		and camera.global_position.is_equal_approx(
+			camera_global_before_regeneration
+		)
+		and camera.get_screen_center_position().is_equal_approx(
+			camera_center_before_regeneration
+		),
+		"重新生成路线只能替换逻辑地图，不得传送玩家或移动镜头。"
 	)
 
 

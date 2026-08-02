@@ -282,6 +282,85 @@ func _test_snapshot_and_delta_contract() -> void:
 		and int(wrapper.get("_snapshot_request_retry_exponent")) == 0,
 		"客户端必须在坏快照后接受 Host 的正确快照并重置退避状态。"
 	)
+	var client_peer_id := fake_net_manager.host_peer_id + 1
+	_expect(
+		client_route.configure_multiplayer_players(
+			client_peer_id,
+			{
+				fake_net_manager.host_peer_id: "Host",
+				client_peer_id: "Client",
+			},
+			{
+				fake_net_manager.host_peer_id:
+					PlayerCharacterRegistry.WEISHIDAIER_ID,
+				client_peer_id: PlayerCharacterRegistry.TANGO_ID,
+			}
+		),
+		"客户端路线必须能创建本地与远端自由移动角色。"
+	)
+	var client_local_player := client_route.get_player_for_peer(client_peer_id)
+	var client_host_player := client_route.get_player_for_peer(
+		fake_net_manager.host_peer_id
+	)
+	var client_camera := client_route.get("map_camera") as Camera2D
+	if (
+		client_local_player != null
+		and client_host_player != null
+		and client_camera != null
+	):
+		client_local_player.global_position = client_route.clamp_avatar_position(
+			client_local_player.global_position + Vector2(23.0, 13.0)
+		)
+		client_host_player.global_position = client_route.clamp_avatar_position(
+			client_host_player.global_position + Vector2(-19.0, 11.0)
+		)
+		client_route.call(&"_apply_camera_drag", Vector2(-112.0, -56.0))
+	await physics_frame
+	await process_frame
+	var local_position_before_delta := (
+		client_local_player.global_position
+		if client_local_player != null
+		else Vector2.ZERO
+	)
+	var host_position_before_delta := (
+		client_host_player.global_position
+		if client_host_player != null
+		else Vector2.ZERO
+	)
+	var camera_local_before_delta := (
+		client_camera.position if client_camera != null else Vector2.ZERO
+	)
+	var camera_global_before_delta := (
+		client_camera.global_position if client_camera != null else Vector2.ZERO
+	)
+	var camera_center_before_delta := (
+		client_camera.get_screen_center_position()
+		if client_camera != null
+		else Vector2.ZERO
+	)
+	var reapplied_full_snapshot := client_route.apply_full_snapshot(layout, state)
+	await physics_frame
+	await process_frame
+	_expect(
+		reapplied_full_snapshot
+		and client_local_player != null
+		and client_host_player != null
+		and client_camera != null
+		and client_local_player.global_position.is_equal_approx(
+			local_position_before_delta
+		)
+		and client_host_player.global_position.is_equal_approx(
+			host_position_before_delta
+		)
+		and client_camera.position.is_equal_approx(camera_local_before_delta)
+		and client_camera.global_position.is_equal_approx(
+			camera_global_before_delta
+		)
+		and client_camera.get_screen_center_position().is_equal_approx(
+			camera_center_before_delta
+		),
+		"客户端全量重同步只能更新路线数据，不得传送玩家或移动镜头。"
+	)
 
 	var move_delta := _build_first_move_delta(layout, state)
 	var original_client_state := client_route.export_state_snapshot()
@@ -296,15 +375,39 @@ func _test_snapshot_and_delta_contract() -> void:
 			and client_route.export_state_snapshot() == original_client_state,
 			"客户端必须拒绝非 Host 发来的移动 delta。"
 		)
+		var accepted_host_delta := bool(wrapper.call(
+			"_apply_move_delta_from_peer",
+			fake_net_manager.host_peer_id,
+			move_delta
+		))
+		await physics_frame
+		await process_frame
 		_expect(
-			bool(wrapper.call(
-				"_apply_move_delta_from_peer",
-				fake_net_manager.host_peer_id,
-				move_delta
-			))
+			accepted_host_delta
 			and int(client_route.export_state_snapshot().get("current_node_id", -1))
 			== int(move_delta["to_node_id"]),
-			"可靠移动 delta 必须精确推进客户端共享位置。"
+			"可靠移动 delta 必须精确推进客户端共享逻辑节点。"
+		)
+		_expect(
+			client_local_player != null
+			and client_host_player != null
+			and client_camera != null
+			and client_local_player.global_position.is_equal_approx(
+				local_position_before_delta
+			)
+			and client_host_player.global_position.is_equal_approx(
+				host_position_before_delta
+			)
+			and client_camera.position.is_equal_approx(
+				camera_local_before_delta
+			)
+			and client_camera.global_position.is_equal_approx(
+				camera_global_before_delta
+			)
+			and client_camera.get_screen_center_position().is_equal_approx(
+				camera_center_before_delta
+			),
+			"客户端应用路线 delta 时不得传送任何玩家或移动本地镜头。"
 		)
 		client_route.call("_on_route_board_node_pressed", int(move_delta["from_node_id"]))
 		_expect(
