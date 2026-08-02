@@ -366,12 +366,8 @@ func _render_choice_cards() -> void:
 	choice_purchase.configure(
 		OPTION_PURCHASE,
 		0,
+		"购买篮球",
 		"花费10个木板购买一个篮球",
-		(
-			"优先从共享仓库支付，余额由玩家背包补足。"
-			if purchase_enabled
-			else "全队木板不足10个，当前无法购买。"
-		),
 		BASKETBALL_TEXTURE,
 		not purchase_enabled or not local_enabled
 	)
@@ -379,7 +375,7 @@ func _render_choice_cards() -> void:
 		OPTION_FREE,
 		1,
 		"为什么不能0元购？",
-		"鸡哥有50%的概率被你说服。",
+		"鸡哥有概率被你说服",
 		null,
 		not free_enabled or not local_enabled
 	)
