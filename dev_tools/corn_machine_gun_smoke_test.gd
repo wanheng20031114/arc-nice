@@ -1,8 +1,8 @@
 extends SceneTree
 
+const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const CORN_SCENE := preload("res://scene/plant_defense/corn_machine_gun.tscn")
 const CORN_CONFIG := preload("res://resources/config/plant_defense/corn_machine_gun.tres")
-const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const FIRE_STREAM := preload("res://resources/audio/capoo_smg_fire.wav")
 const AUDIO_LIMITER := preload("res://scene/plant_defense/plant_attack_audio_limiter.gd")
 const TEST_SEED := 20260715
@@ -84,6 +84,7 @@ func _run() -> void:
 		await _test_target_and_ray_query_reuse(authority)
 		await _test_blocked_nearest_adaptive_selection(authority)
 		await _test_hitscan_first_collision(authority)
+		await _test_projectile_shield_hitscan_contract(authority, proxy)
 	_test_shared_audio_limiter()
 
 	_stop_fixture_audio(fixture)
@@ -614,8 +615,8 @@ func _test_target_and_ray_query_reuse(tower: CornMachineGun) -> void:
 		and ray_query_after.exclude.size() == 1
 		and ray_query_after.exclude[0] == tower.get_rid()
 		and ray_query_after.collide_with_bodies
-		and not ray_query_after.collide_with_areas,
-		"The reused Corn ray query must retain its mask, exclusion and collision flags."
+		and ray_query_after.collide_with_areas,
+		"The reused Corn ray query must retain its shield-aware mask, exclusion and collision flags."
 	)
 	var source := FileAccess.get_file_as_string(
 		"res://scene/plant_defense/corn_machine_gun.gd"
@@ -716,6 +717,224 @@ func _test_hitscan_first_collision(tower: CornMachineGun) -> void:
 	)
 	first_enemy.queue_free()
 	rear_enemy.queue_free()
+	await physics_frame
+
+
+func _test_projectile_shield_hitscan_contract(
+	authority: CornMachineGun,
+	proxy: CornMachineGun
+) -> void:
+	await _test_shield_front_block_and_tracer(authority)
+	await _test_proxy_shots_do_not_query_or_consume(proxy)
+	await _test_shield_back_is_transparent(authority)
+	await _test_other_shield_bearer_blocks_target(authority)
+	await _test_twentieth_and_same_frame_twenty_first(authority)
+
+
+func _test_shield_front_block_and_tracer(tower: CornMachineGun) -> void:
+	var case_root := _create_case_root(&"CornShieldFrontCase")
+	_prepare_locked_hitscan(tower, Vector2(1000.0, 1000.0), Vector2.RIGHT)
+	var bearer := await _add_real_shield_bearer(
+		case_root,
+		tower.burst_muzzle_position + Vector2(18.0, 0.0),
+		true
+	)
+	_expect(bearer != null, "正面格挡验收必须实例化真实举盾机器人。")
+	if bearer != null:
+		var health_before := bearer.current_health
+		var queries_before := tower.get_hitscan_query_count()
+		tower.call("_fire_locked_hitscan", 0, true)
+		var tracer_length := tower.tracer.get_point_position(1).x
+		_expect(
+			_get_bearer_durability(bearer) == 19
+			and bearer.current_health == health_before,
+			"玉米正面命中真实盾面必须只扣1次盾耐久，且不得直接伤害本体。"
+		)
+		_expect(
+			tower.get_hitscan_query_count() == queries_before + 1
+			and tracer_length > 0.0
+			and tracer_length < CornMachineGun.TRACER_MAX_LENGTH,
+			"有效盾击必须沿用唯一首碰射线，并把Host tracer截断到盾面。"
+		)
+	await _dispose_case_root(case_root)
+
+
+func _test_proxy_shots_do_not_query_or_consume(tower: CornMachineGun) -> void:
+	var case_root := _create_case_root(&"CornShieldProxyCase")
+	_prepare_locked_hitscan(tower, Vector2(1000.0, 1200.0), Vector2.RIGHT)
+	var bearer := await _add_real_shield_bearer(
+		case_root,
+		tower.burst_muzzle_position + Vector2(18.0, 0.0),
+		true
+	)
+	_expect(bearer != null, "代理端验收必须实例化真实举盾机器人。")
+	if bearer != null:
+		var queries_before := tower.get_hitscan_query_count()
+		var durability_before := _get_bearer_durability(bearer)
+		tower.call("_begin_burst", Vector2.RIGHT, 9000, 0.0, false)
+		tower.call("_physics_process", 0.30)
+		_expect(
+			tower.get_hitscan_query_count() == queries_before
+			and _get_bearer_durability(bearer) == durability_before,
+			"非权威客户端完整6发表现必须保持0射线、0盾耐久扣除。"
+		)
+		tower.call("_cancel_burst", false)
+		tower.call("_cancel_aim_return")
+	await _dispose_case_root(case_root)
+
+
+func _test_shield_back_is_transparent(tower: CornMachineGun) -> void:
+	var case_root := _create_case_root(&"CornShieldBackCase")
+	_prepare_locked_hitscan(tower, Vector2(1000.0, 1400.0), Vector2.RIGHT)
+	var bearer := await _add_real_shield_bearer(
+		case_root,
+		tower.burst_muzzle_position + Vector2(18.0, 0.0),
+		false
+	)
+	_expect(bearer != null, "背面透明验收必须实例化真实举盾机器人。")
+	if bearer != null:
+		var health_before := bearer.current_health
+		tower.call("_fire_locked_hitscan", 0, true)
+		_expect(
+			_get_bearer_durability(bearer) == 20
+			and health_before - bearer.current_health == 5,
+			"从盾牌背面射入时盾面必须透明，30点物理伤害应对25物防本体造成5点。"
+		)
+	await _dispose_case_root(case_root)
+
+
+func _test_other_shield_bearer_blocks_target(tower: CornMachineGun) -> void:
+	var case_root := _create_case_root(&"CornOtherShieldBearerCase")
+	tower.global_position = Vector2(1000.0, 1600.0)
+	tower.call("_point_aim_at_direction", Vector2.RIGHT)
+	var ray_origin := tower.aim_pivot.global_position
+	var blocker := await _add_real_shield_bearer(
+		case_root,
+		ray_origin + Vector2(24.0, 0.0),
+		true
+	)
+	var target := ENEMY_SCENE.instantiate() as Enemy
+	case_root.add_child(target)
+	target.global_position = ray_origin + Vector2(56.0, 0.0)
+	target.set_process(false)
+	target.set_physics_process(false)
+	target.is_dead = false
+	var runtime := TargetRuntimeStub.new()
+	case_root.add_child(runtime)
+	runtime.candidate = target
+	tower.set("_combat_runtime", runtime)
+	await physics_frame
+	await physics_frame
+	var selected := tower.call("_select_nearest_visible_enemy") as Enemy
+	_expect(
+		blocker != null
+		and selected == null
+		and _get_bearer_durability(blocker) == 20,
+		"其他举盾机器人位于射线上时必须遮挡后方目标，索敌射线本身不得消耗盾耐久。"
+	)
+	tower.set("_combat_runtime", null)
+	await _dispose_case_root(case_root)
+
+
+func _test_twentieth_and_same_frame_twenty_first(tower: CornMachineGun) -> void:
+	var case_root := _create_case_root(&"CornShieldBreakBoundaryCase")
+	_prepare_locked_hitscan(tower, Vector2(1000.0, 1800.0), Vector2.RIGHT)
+	var bearer := await _add_real_shield_bearer(
+		case_root,
+		tower.burst_muzzle_position + Vector2(18.0, 0.0),
+		true
+	)
+	_expect(bearer != null, "破盾边界验收必须实例化真实举盾机器人。")
+	if bearer != null:
+		var shield := bearer.get_node("ShieldFacingRoot/ProjectileShieldArea")
+		for _hit_index in range(19):
+			shield.call("try_intercept", Vector2.RIGHT)
+		var health_before := bearer.current_health
+		var queries_before := tower.get_hitscan_query_count()
+		tower.call("_fire_locked_hitscan", 19, true)
+		var health_after_twentieth := bearer.current_health
+		tower.call("_fire_locked_hitscan", 20, true)
+		var boundary_query_count := tower.get_hitscan_query_count() - queries_before
+		_expect(
+			_get_bearer_durability(bearer) == 0
+			and health_after_twentieth == health_before,
+			"第20发必须完整被盾牌吸收，并同步把盾耐久降为0。"
+		)
+		_expect(
+			health_before - bearer.current_health == 5
+			and boundary_query_count >= 2
+			and boundary_query_count <= 3,
+			"不跨物理帧的第21发必须穿过失效盾面命中本体，且最多只允许一次旧RID重扫。"
+		)
+	await _dispose_case_root(case_root)
+
+
+func _prepare_locked_hitscan(
+	tower: CornMachineGun,
+	tower_position: Vector2,
+	direction: Vector2
+) -> void:
+	tower.call("_cancel_burst", false)
+	tower.call("_cancel_aim_return")
+	tower.call("_stop_idle_aim")
+	tower.set("_combat_runtime", null)
+	tower.global_position = tower_position
+	tower.call("_point_aim_at_direction", direction)
+	tower.burst_direction = direction.normalized()
+	tower.burst_muzzle_position = tower.muzzle.global_position
+	tower.tracer.global_position = tower.burst_muzzle_position
+	tower.tracer.global_rotation = tower.burst_direction.angle()
+
+
+func _add_real_shield_bearer(
+	parent: Node2D,
+	position: Vector2,
+	facing_left: bool
+) -> Enemy:
+	# Load at fixture time: preloading both the Corn scene and an Enemy-derived
+	# scene in this script creates an artificial test-only registry load cycle.
+	var bearer_scene := load(
+		"res://scene/enemy/mechanical_life/combat_robot_shield_bearer.tscn"
+	) as PackedScene
+	var bearer_config := load(
+		"res://resources/config/enemies/combat_robot_shield_bearer.tres"
+	) as EnemyConfig
+	var bearer := (
+		bearer_scene.instantiate() as Enemy
+		if bearer_scene != null
+		else null
+	)
+	if bearer == null:
+		return null
+	parent.add_child(bearer)
+	bearer.global_position = position
+	bearer.setup(bearer_config, null, null)
+	bearer.set_process(false)
+	bearer.set_physics_process(false)
+	bearer.call("_set_facing_left", facing_left)
+	await physics_frame
+	await physics_frame
+	return bearer
+
+
+func _get_bearer_durability(bearer: Enemy) -> int:
+	if bearer == null or not bearer.has_method("get_shield_remaining_durability"):
+		return -1
+	return int(bearer.call("get_shield_remaining_durability"))
+
+
+func _create_case_root(case_name: StringName) -> Node2D:
+	var case_root := Node2D.new()
+	case_root.name = case_name
+	fixture.add_child(case_root)
+	return case_root
+
+
+func _dispose_case_root(case_root: Node) -> void:
+	if case_root != null and is_instance_valid(case_root):
+		case_root.queue_free()
+	await process_frame
+	await physics_frame
 	await physics_frame
 
 

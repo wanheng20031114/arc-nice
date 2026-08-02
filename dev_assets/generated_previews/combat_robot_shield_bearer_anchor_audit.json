@@ -1,0 +1,85 @@
+{
+  "asset": "combat_robot_shield_bearer_anchor_c",
+  "status": "approved_native32_source",
+  "imagegen_reference": {
+    "path": "dev_assets\\source_images\\combat_robot_shield_bearer\\combat_robot_shield_bearer_anchor_c_imagegen.png",
+    "sha256": "976561ed6b693fc7c46ff8cab19199159305459bc36b915b87c3adbd1e49c7c6",
+    "role": "shield_shape_language_only"
+  },
+  "identity_sources": {
+    "operator": "dev_assets\\source_images\\combat_robot_drone_operator\\combat_robot_drone_operator_anchor_c_approved_native32.png",
+    "gunner": "dev_assets\\source_images\\combat_robot_gunner\\combat_robot_gunner_anchor_b_native32.png",
+    "gunner_shift": [
+      4,
+      0
+    ]
+  },
+  "outputs": {
+    "native32": "dev_assets\\source_images\\combat_robot_shield_bearer\\combat_robot_shield_bearer_anchor_c_approved_native32.png",
+    "preview_16x": "dev_assets\\source_images\\combat_robot_shield_bearer\\combat_robot_shield_bearer_anchor_c_approved_16x.png",
+    "comparison": "dev_assets\\generated_previews\\combat_robot_shield_bearer_anchor_comparison.png"
+  },
+  "audit": {
+    "canvas": [
+      32,
+      32
+    ],
+    "visible_bbox": [
+      8,
+      4,
+      30,
+      28
+    ],
+    "visible_size": [
+      22,
+      24
+    ],
+    "baseline": 28,
+    "registered_center_x": 16,
+    "shield_bbox": [
+      24,
+      8,
+      30,
+      26
+    ],
+    "shield_size": [
+      6,
+      18
+    ],
+    "shield_vertices": 8,
+    "shield_alpha_pixels": 102,
+    "shield_alpha_sha256": "7813d3da97df0b379a6305152b74cf5bffe603b37470592f3ef0c70604ba161b",
+    "grip": {
+      "point": [
+        24,
+        17
+      ],
+      "four_neighbours_opaque": true,
+      "local_color_count": 4
+    },
+    "observation_slit_bbox": [
+      26,
+      12,
+      29,
+      13
+    ],
+    "observation_slit_size": [
+      3,
+      1
+    ],
+    "top_bevel_steel_pixels": 1,
+    "bottom_bevel_steel_pixels": 2,
+    "fixed_palette": true,
+    "opaque_palette_colors": 10,
+    "binary_alpha": true,
+    "alpha_values": [
+      0,
+      255
+    ],
+    "transparent_rgb_clean": true,
+    "immutable_operator_pixels": 110,
+    "shared_operator_gunner_identity_pixels": 97,
+    "imagegen_pixels_resampled": false,
+    "runtime_written": false
+  }
+}

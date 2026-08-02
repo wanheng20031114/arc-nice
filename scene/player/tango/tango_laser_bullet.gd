@@ -3,6 +3,7 @@ class_name TangoLaserBullet
 
 const MAX_COMPENSATION_STEP := 1.0 / 60.0
 const COLLISION_EPSILON := 0.01
+const WORLD_ENEMY_AND_PROJECTILE_SHIELD_MASK := 1 | 4 | (1 << 12)
 
 # Production keeps the zero-contact fast path enabled. The switch and counters
 # let the deterministic performance probe execute both algorithms through this
@@ -17,6 +18,8 @@ static var _sweep_metric_collected_hit_count := 0
 
 @onready var sweep_cast: ShapeCast2D = $ShapeCast2D
 @onready var bullet_sprite: AnimatedSprite2D = $AnimatedSprite2D
+
+var _temporary_shield_exceptions: Array[ProjectileShieldArea] = []
 
 
 static func set_empty_sweep_fast_path_enabled(enabled: bool) -> void:
@@ -47,6 +50,9 @@ static func get_sweep_performance_metrics() -> Dictionary:
 
 func _ready() -> void:
 	super._ready()
+	sweep_cast.collision_mask = WORLD_ENEMY_AND_PROJECTILE_SHIELD_MASK
+	sweep_cast.collide_with_bodies = true
+	sweep_cast.collide_with_areas = true
 	_play_flight_animation()
 
 
@@ -59,12 +65,14 @@ func on_pool_acquired(generation: int) -> void:
 	monitorable = false
 	if sweep_cast != null:
 		sweep_cast.clear_exceptions()
+	_temporary_shield_exceptions.clear()
 	_play_flight_animation()
 
 
 func on_pool_released(generation: int) -> void:
 	if sweep_cast != null:
 		sweep_cast.clear_exceptions()
+	_temporary_shield_exceptions.clear()
 	if bullet_sprite != null:
 		bullet_sprite.stop()
 	super.on_pool_released(generation)
@@ -146,6 +154,7 @@ func _sweep_segment(delta: float) -> void:
 		return
 	rotation = direction.angle()
 	var collision_budget := maxi(sweep_cast.max_results, 1)
+	_clear_temporary_shield_exceptions()
 	while remaining_distance > COLLISION_EPSILON and collision_budget > 0:
 		var sweep_start := global_position
 		sweep_cast.target_position = Vector2(remaining_distance, 0.0)
@@ -159,10 +168,12 @@ func _sweep_segment(delta: float) -> void:
 			if sweep_performance_metrics_enabled:
 				_sweep_metric_fast_path_calls += 1
 			global_position = sweep_start + direction * remaining_distance
+			_clear_temporary_shield_exceptions()
 			return
 		var hits := _collect_sorted_sweep_hits(sweep_start, remaining_distance)
 		if hits.is_empty():
 			global_position = sweep_start + direction * remaining_distance
+			_clear_temporary_shield_exceptions()
 			return
 
 		var nearest_distance := remaining_distance
@@ -171,12 +182,27 @@ func _sweep_segment(delta: float) -> void:
 			var hit_position := hit["position"] as Vector2
 			var forward_distance := float(hit["distance"])
 			nearest_distance = minf(nearest_distance, forward_distance)
+			var shield := collider as ProjectileShieldArea
+			if shield != null:
+				global_position = hit_position
+				if shield.try_intercept(direction):
+					_clear_temporary_shield_exceptions()
+					retire()
+					return
+				if not _temporary_shield_exceptions.has(shield):
+					sweep_cast.add_exception(shield)
+					_temporary_shield_exceptions.append(shield)
+				collision_budget -= 1
+				if collision_budget <= 0:
+					break
+				continue
 			var enemy := collider as Enemy
 			if enemy == null:
 				global_position = sweep_start + direction * maxf(
 					forward_distance - COLLISION_EPSILON,
 					0.0
 				)
+				_clear_temporary_shield_exceptions()
 				retire()
 				return
 
@@ -185,6 +211,7 @@ func _sweep_segment(delta: float) -> void:
 			try_hit_enemy(enemy)
 			collision_budget -= 1
 			if not pool_active:
+				_clear_temporary_shield_exceptions()
 				return
 			if collision_budget <= 0:
 				break
@@ -198,6 +225,14 @@ func _sweep_segment(delta: float) -> void:
 		remaining_distance -= advance_distance
 	if remaining_distance > 0.0 and collision_budget > 0 and pool_active:
 		global_position += direction * remaining_distance
+	_clear_temporary_shield_exceptions()
+
+
+func _clear_temporary_shield_exceptions() -> void:
+	for shield in _temporary_shield_exceptions:
+		if shield != null and is_instance_valid(shield):
+			sweep_cast.remove_exception(shield)
+	_temporary_shield_exceptions.clear()
 
 
 func _collect_sorted_sweep_hits(

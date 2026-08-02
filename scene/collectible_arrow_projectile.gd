@@ -4,6 +4,10 @@ class_name CollectibleArrowProjectile
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const WORLD_COLLISION_MASK := 1
+const PROJECTILE_SHIELD_COLLISION_MASK := 1 << 12
+const WORLD_AND_PROJECTILE_SHIELD_COLLISION_MASK := (
+	WORLD_COLLISION_MASK | PROJECTILE_SHIELD_COLLISION_MASK
+)
 
 @export var speed: float = 360.0
 @export var max_lifetime: float = 1.8
@@ -21,10 +25,11 @@ var _authored_max_lifetime: float = 1.8
 var _authored_collision_layer: int = 16
 var _authored_collision_mask: int = 5
 var world_collision_exclude: Array[RID] = []
+var shield_retry_exclude: Array[RID] = []
 var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
-	WORLD_COLLISION_MASK
+	WORLD_AND_PROJECTILE_SHIELD_COLLISION_MASK
 )
 
 
@@ -38,7 +43,7 @@ func _ready() -> void:
 	world_collision_exclude.append(get_rid())
 	world_collision_query.exclude = world_collision_exclude
 	world_collision_query.collide_with_bodies = true
-	world_collision_query.collide_with_areas = false
+	world_collision_query.collide_with_areas = true
 
 
 func on_pool_acquired(_generation: int) -> void:
@@ -105,7 +110,28 @@ func _physics_process(delta: float) -> void:
 func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
 	world_collision_query.from = from_position
 	world_collision_query.to = to_position
-	return not get_world_2d().direct_space_state.intersect_ray(world_collision_query).is_empty()
+	var space_state := get_world_2d().direct_space_state
+	var hit_result: Dictionary = space_state.intersect_ray(world_collision_query)
+	if hit_result.is_empty():
+		return false
+	var shield := hit_result.get("collider") as ProjectileShieldArea
+	if shield == null:
+		return true
+	if shield.try_intercept(direction):
+		return true
+
+	shield_retry_exclude.assign(world_collision_exclude)
+	shield_retry_exclude.append(shield.get_rid())
+	world_collision_query.exclude = shield_retry_exclude
+	var retry_result: Dictionary = space_state.intersect_ray(world_collision_query)
+	world_collision_query.exclude = world_collision_exclude
+	shield_retry_exclude.clear()
+	if retry_result.is_empty():
+		return false
+	var retry_shield := retry_result.get("collider") as ProjectileShieldArea
+	if retry_shield != null:
+		return retry_shield.try_intercept(direction)
+	return true
 
 
 func _on_body_entered(body: Node2D) -> void:

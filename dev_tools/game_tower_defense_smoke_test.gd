@@ -178,10 +178,10 @@ func _test_main_menu_entry() -> void:
 	)
 	_expect(
 		p1b_description.text
-		== "持剑、持枪和爆炸无人机操作员按三型轮转出现，沿用 P1A 的刷怪压力、自由建造与昼夜调试。"
+		== "持剑、持枪、爆炸无人机操作员和举盾机器人按四型轮转出现，沿用 P1A 的刷怪压力、自由建造与昼夜调试。"
 		and p1b_focus.text
-		== "适合验证：定向冲刺、移动连射、定点无人机爆炸与机械生命混合压力",
-		"P1B selector copy must describe the authored three-robot rotation."
+		== "适合验证：定向冲刺、移动连射、定点无人机爆炸、正面弹体拦截与机械生命混合压力",
+		"P1B selector copy must describe the authored four-robot rotation."
 	)
 	p1a_button.pressed.emit()
 	await process_frame

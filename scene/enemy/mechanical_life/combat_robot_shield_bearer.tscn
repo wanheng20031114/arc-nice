@@ -1,0 +1,68 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_shield_bearer.gd" id="2_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_intact.tres" id="3_intact"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_cracked.tres" id="4_cracked"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_critical.tres" id="5_critical"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_broken.tres" id="6_broken"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_fx.tres" id="7_fx"]
+[ext_resource type="Script" path="res://scene/enemy/projectile_shield_area.gd" id="8_shield_area"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(14, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+resource_local_to_scene = true
+size = Vector2(14, 16)
+
+[sub_resource type="ConvexPolygonShape2D" id="ConvexPolygonShape2D_shield"]
+resource_local_to_scene = true
+points = PackedVector2Array(-1, -9, 1, -9, 2, -8, 2, 7, 1, 8, -2, 8, -3, 7, -3, -7)
+
+[node name="CombatRobotShieldBearer" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+path_refresh_interval = 0.25
+waypoint_arrival_distance = 4.0
+intact_sprite_frames = ExtResource("3_intact")
+cracked_sprite_frames = ExtResource("4_cracked")
+critical_sprite_frames = ExtResource("5_critical")
+broken_sprite_frames = ExtResource("6_broken")
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+texture_filter = 1
+sprite_frames = ExtResource("3_intact")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1"]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_touch")
+
+[node name="ShieldFacingRoot" type="Node2D" parent="." index="5"]
+position = Vector2(11, 1)
+
+[node name="ProjectileShieldArea" type="Area2D" parent="ShieldFacingRoot"]
+collision_layer = 4096
+collision_mask = 0
+monitoring = false
+monitorable = true
+script = ExtResource("8_shield_area")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ShieldFacingRoot/ProjectileShieldArea"]
+shape = SubResource("ConvexPolygonShape2D_shield")
+
+[node name="ShieldFxSprite" type="AnimatedSprite2D" parent="ShieldFacingRoot"]
+visible = false
+z_index = 3
+texture_filter = 1
+sprite_frames = ExtResource("7_fx")
+animation = &"shield_block"
+
+[connection signal="durability_changed" from="ShieldFacingRoot/ProjectileShieldArea" to="." method="_on_projectile_shield_area_durability_changed"]
+[connection signal="shield_broken" from="ShieldFacingRoot/ProjectileShieldArea" to="." method="_on_projectile_shield_area_shield_broken"]
+[connection signal="animation_finished" from="ShieldFacingRoot/ShieldFxSprite" to="." method="_on_shield_fx_sprite_animation_finished"]

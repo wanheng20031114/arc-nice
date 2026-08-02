@@ -114,8 +114,8 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 38,
-		"协议 v38 必须同时保留 v37 神奇遭遇接线并隔离爆炸无人机 wire 类型。"
+		NetConstants.PROTOCOL_VERSION == 39,
+		"协议 v39 必须保留既有 wire 语义并隔离举盾机器人盾牌阶段。"
 	)
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,

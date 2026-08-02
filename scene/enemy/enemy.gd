@@ -60,7 +60,10 @@ const ELECTRIC_SURGE_MOVE_SPEED_SOURCE_ID := -2_147_400_002
 const ELECTRIC_SURGE_MOVE_SPEED_MULTIPLIER := 0.65
 const ELEMENTAL_ATTACHMENT_ELECTRIC := 1 << 0
 const ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK := 1 << 4
-const NETWORK_VISUAL_STATUS_MASK := 0x1f
+# Bits 0..4 remain the common collectible/element overlays. Bits 5..6 are
+# reserved by protocol v39 for enemy-specific visual state (currently the
+# shield bearer's monotonic intact/cracked/critical/broken stage).
+const NETWORK_VISUAL_STATUS_MASK := 0x7f
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
 const DEFAULT_NAVIGATION_UPDATE_INTERVAL_FRAMES := 6

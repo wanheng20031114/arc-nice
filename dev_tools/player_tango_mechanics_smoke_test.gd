@@ -872,8 +872,14 @@ func _test_laser_bullet_scene_and_damage() -> void:
 		"The bullet must use four ImageGen-derived frames and the shared cyan single-pass glow."
 	)
 	_expect(
-		sweep != null and not sweep.enabled and sweep.collision_mask == 5,
-		"The bullet must use only explicit ShapeCast sweeps against world and enemy layers."
+		sweep != null
+		and not sweep.enabled
+		and sweep.collision_mask == 4101
+		and sweep.collide_with_areas,
+		(
+			"The bullet must use only its explicit ShapeCast sweep against World, "
+			+ "EnemyBody and passive ProjectileShield areas."
+		)
 	)
 	_expect(
 		TangoLaserBullet.empty_sweep_fast_path_enabled,

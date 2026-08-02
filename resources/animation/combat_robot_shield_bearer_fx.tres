@@ -1,0 +1,80 @@
+[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/enemy/mechanical_life/combat_robot_shield_bearer_fx.png" id="1_texture"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_shield_block_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 0, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_shield_block_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(32, 0, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_shield_block_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(64, 0, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_shield_break_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(96, 0, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_shield_break_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(128, 0, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_shield_break_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(160, 0, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_shield_break_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(192, 0, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_shield_break_4"]
+atlas = ExtResource("1_texture")
+region = Rect2(224, 0, 32, 32)
+filter_clip = true
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_shield_block_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_shield_block_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_shield_block_2")
+}],
+"loop": false,
+"name": &"shield_block",
+"speed": 24.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_shield_break_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_shield_break_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_shield_break_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_shield_break_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_shield_break_4")
+}],
+"loop": false,
+"name": &"shield_break",
+"speed": 18.0
+}]

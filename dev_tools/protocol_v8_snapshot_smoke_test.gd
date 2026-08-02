@@ -112,7 +112,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V38_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V39_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -121,7 +121,11 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 38, "Protocol must be v38.")
+	_expect(NetConstants.PROTOCOL_VERSION == 39, "Protocol must be v39.")
+	_expect(
+		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
+		"Protocol v39 must reserve enemy visual-status bits 5..6 for shield stages."
+	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
 		and NetConstants.NETWORK_COMBAT_VALUE_MAX == 0x7FFFFFFF,
@@ -138,7 +142,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v38 channel assignments must remain stable."
+		"Protocol v39 channel assignments must remain stable."
 	)
 
 
@@ -1327,7 +1331,9 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index
 		state.health_revision = enemy_index + 3
-		state.visual_status_mask = 0b11101 if enemy_index == 0 else 0
+		# Enemy 1 combines the common low-five status bits with the v39
+		# shield-stage high bits (10 = critical).
+		state.visual_status_mask = 0b1011101 if enemy_index == 0 else 0
 		states.append(state)
 	var keyframe := sender.encode_enemy_snapshots_for_peer(8, states, true)
 	_expect(
@@ -1339,24 +1345,35 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 	if decoded_keyframe.is_empty():
 		return
 	_expect(
-		decoded_keyframe[0].visual_status_mask == 0b11101
+		decoded_keyframe[0].visual_status_mask == 0b1011101
 		and decoded_keyframe[0].locomotion_state
 			== SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		and decoded_keyframe[0].health_revision == 3,
 		"Enemy visual status, locomotion and health revision must round-trip in a keyframe."
 	)
 	states[0].position.x += 2.0
-	states[0].visual_status_mask = 0b10100
+	# Preserve common bits while advancing the shield stage to 11 = broken.
+	states[0].visual_status_mask = 0b1110100
 	states[0].locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_IDLE
 	var delta := sender.encode_enemy_snapshots_for_peer(8, states, false)
 	var decoded_delta := receiver.decode_enemy_snapshots_with_baseline(delta)
 	_expect(
 		decoded_delta.size() == 46
 		and is_same(decoded_keyframe[0], decoded_delta[0])
-		and decoded_delta[0].visual_status_mask == 0b10100
+		and decoded_delta[0].visual_status_mask == 0b1110100
 		and decoded_delta[0].locomotion_state
 			== SnapshotManager.ENEMY_LOCOMOTION_IDLE,
 		"Enemy delta output must reuse objects and update visual and locomotion bits."
+	)
+	var unchanged_delta := sender.encode_enemy_snapshots_for_peer(8, states, false)
+	var decoded_unchanged := receiver.decode_enemy_snapshots_with_baseline(
+		unchanged_delta
+	)
+	_expect(
+		decoded_unchanged.size() == 46
+		and is_same(decoded_delta[0], decoded_unchanged[0])
+		and decoded_unchanged[0].visual_status_mask == 0b1110100,
+		"An unchanged delta must retain combined common and shield-stage status bits."
 	)
 	receiver.prune_enemy_receive_baseline_to_ids({1: true})
 	_expect(

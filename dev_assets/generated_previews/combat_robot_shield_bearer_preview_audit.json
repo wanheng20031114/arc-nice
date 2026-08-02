@@ -1,0 +1,2236 @@
+{
+  "stage": "second_human_review_gate",
+  "preview_only": true,
+  "runtime_written": false,
+  "approved_anchor": {
+    "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_anchor_c_approved_native32.png",
+    "sha256": "38d8b9410c5b74babb6b403ab44c2b668970d6af2af8217b12ba771600ee2149",
+    "identity_and_pixel_source": true
+  },
+  "construction": {
+    "imagegen_source_pixels_imported": false,
+    "imagegen_boards_used_as_motion_language_only": true,
+    "native_anchor_resized": false,
+    "palette": [
+      [
+        21,
+        22,
+        19,
+        255
+      ],
+      [
+        29,
+        28,
+        30,
+        255
+      ],
+      [
+        55,
+        59,
+        63,
+        255
+      ],
+      [
+        82,
+        88,
+        94,
+        255
+      ],
+      [
+        112,
+        121,
+        128,
+        255
+      ],
+      [
+        151,
+        159,
+        164,
+        255
+      ],
+      [
+        190,
+        196,
+        198,
+        255
+      ],
+      [
+        226,
+        229,
+        226,
+        255
+      ],
+      [
+        102,
+        25,
+        20,
+        255
+      ],
+      [
+        190,
+        48,
+        31,
+        255
+      ],
+      [
+        239,
+        92,
+        34,
+        255
+      ],
+      [
+        255,
+        181,
+        71,
+        255
+      ]
+    ],
+    "binary_alpha": true,
+    "transparent_rgb_zero": true,
+    "cell_size": [
+      32,
+      32
+    ],
+    "maximum_visible_bbox": [
+      28,
+      28
+    ],
+    "baseline_y": 28,
+    "shield_bbox": [
+      24,
+      8,
+      30,
+      26
+    ],
+    "shield_arm_roi": [
+      20,
+      7,
+      30,
+      26
+    ],
+    "leg_roi": [
+      7,
+      22,
+      24,
+      28
+    ],
+    "death_transform": "native integer shears and exact quarter-turns"
+  },
+  "animation_audit": {
+    "move_m1": {
+      "frames": [
+        {
+          "label": "move_m1[0]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "70a534827a325aa759354fcc626b4f5187d4ccb5bc68b27c76cd44f1f24be698"
+        },
+        {
+          "label": "move_m1[1]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "b141aceced99981748fa9675f501984641f6f56668375eae9176c86a59b155fe"
+        },
+        {
+          "label": "move_m1[2]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "4040f98d005834d44e7499eeab2e18a8f00f9a4b538a22477fe690fdba2d3b0d"
+        },
+        {
+          "label": "move_m1[3]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "24b9061b7a123877614193d7b1630573febeb3a29013f25e1e6cea75c2295315"
+        },
+        {
+          "label": "move_m1[4]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "55868617bcb5124cd958c92795cbae6301e4aebf497c2d61f4efdaee33194451"
+        },
+        {
+          "label": "move_m1[5]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "7ab52d1fed38d4d14a7f1f0045e6e55f1dd7017899ab986869a14c348c3d34ce"
+        },
+        {
+          "label": "move_m1[6]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "92c295a63dc83e836fce5d7105dadbbed6747d7de2f73759f4d3f157eee27960"
+        },
+        {
+          "label": "move_m1[7]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "728d5fed386138f76118a7e8c25f1dff91ea9457b7d2e01bfadaa9d197531c25"
+        }
+      ],
+      "fixed_upper_sha256": "ff6b920338a85375cbce2d84033b177a7ca190aaa21704e136d7836a04f2ef0b",
+      "unique_leg_phases": 8
+    },
+    "move_m2": {
+      "frames": [
+        {
+          "label": "move_m2[0]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "c6d95268036af87fb70d93d58bc3fff079144369e9451a182667b6b81424aea5"
+        },
+        {
+          "label": "move_m2[1]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "6205aa64ff5b96c00881be6df031e13c87529eb264c2a50b326cac1f3bb1df25"
+        },
+        {
+          "label": "move_m2[2]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "c967f81f527aaace2860a658e214094e2e7d58dcb1d817cf9fa186b986bb6409"
+        },
+        {
+          "label": "move_m2[3]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "ab1c4abc47e0bbafca8e64d2c371e3b9179dc19471915a232d839025fa8f1303"
+        },
+        {
+          "label": "move_m2[4]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "25078a694b3896d91e86d277e879c596ae327ba55de831acd382983042c9c2e6"
+        },
+        {
+          "label": "move_m2[5]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "edf7fa2406c9a6d1ca9160c65537088d8867c287933f0d631525c07f741de4b5"
+        },
+        {
+          "label": "move_m2[6]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "6d70850867479adbe4dc946ae4317ab0c5e557c334f3ef722e23f0573c69df2b"
+        },
+        {
+          "label": "move_m2[7]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "d42a753399dd5b773d2f55f05a7ce17569514f117f9809d2a2956320ff147924"
+        }
+      ],
+      "fixed_upper_sha256": "ff6b920338a85375cbce2d84033b177a7ca190aaa21704e136d7836a04f2ef0b",
+      "unique_leg_phases": 8
+    },
+    "death_d1": {
+      "frames": [
+        {
+          "label": "death_d1[0]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "ab2c14c536a3121662ab6517c7f917d6eb1aa1affa8af0be7806cfb5c3b4efb6"
+        },
+        {
+          "label": "death_d1[1]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "05915b6a079643bb2d42e5649a70ce36d7952d26d302a776a5d90b49eca5d8fc"
+        },
+        {
+          "label": "death_d1[2]",
+          "bbox": [
+            7,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            23,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "f281d5000354c6208550e1750270125a97128637bbb45eeadfa9c6f5766b7a96"
+        },
+        {
+          "label": "death_d1[3]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "04b6233ccbdf2870410c0444d79cab1bf2daf8cc90f8f0f375925e356f9c95ea"
+        },
+        {
+          "label": "death_d1[4]",
+          "bbox": [
+            6,
+            5,
+            31,
+            28
+          ],
+          "visible_size": [
+            25,
+            23
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "3c526c20beeebeb0a4655fa41bc7a5ca29c4b911fc2e8e91cd961a64d3658f43"
+        },
+        {
+          "label": "death_d1[5]",
+          "bbox": [
+            5,
+            7,
+            30,
+            28
+          ],
+          "visible_size": [
+            25,
+            21
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "fca59d74760c23a117362232d082de86a486d8daa6379d88f0c6cdee83cf54c7"
+        },
+        {
+          "label": "death_d1[6]",
+          "bbox": [
+            4,
+            11,
+            29,
+            28
+          ],
+          "visible_size": [
+            25,
+            17
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "ad541281c58a9d15133f804b48ec0342c2abe9dba16062250184ac9912073cf7"
+        },
+        {
+          "label": "death_d1[7]",
+          "bbox": [
+            4,
+            13,
+            28,
+            28
+          ],
+          "visible_size": [
+            24,
+            15
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "3c05134b4ccd65d47ca1ae1e8606c5e233ee4d9b7995f4ddfa07a6fd414e5b14"
+        }
+      ],
+      "component_sizes": [
+        [
+          297
+        ],
+        [
+          279
+        ],
+        [
+          278
+        ],
+        [
+          276
+        ],
+        [
+          276
+        ],
+        [
+          235
+        ],
+        [
+          198,
+          5
+        ],
+        [
+          197
+        ]
+      ],
+      "shield_hand_connected_by_construction": true,
+      "body_and_shield_same_8_connected_component": true,
+      "semantic_component_ids": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "source_board_resized": false
+    },
+    "death_d2": {
+      "frames": [
+        {
+          "label": "death_d2[0]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "ab2c14c536a3121662ab6517c7f917d6eb1aa1affa8af0be7806cfb5c3b4efb6"
+        },
+        {
+          "label": "death_d2[1]",
+          "bbox": [
+            8,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            22,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "05915b6a079643bb2d42e5649a70ce36d7952d26d302a776a5d90b49eca5d8fc"
+        },
+        {
+          "label": "death_d2[2]",
+          "bbox": [
+            6,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            24,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "8cf864d782307d37cbcff9511fd656066b885221de8a8387d926f03a0feb992c"
+        },
+        {
+          "label": "death_d2[3]",
+          "bbox": [
+            6,
+            3,
+            30,
+            28
+          ],
+          "visible_size": [
+            24,
+            25
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "72a6e6b1d9e64eec1237bfda7ec1628cc7d2f1a79a2fadb49e6af8840c501a3a"
+        },
+        {
+          "label": "death_d2[4]",
+          "bbox": [
+            4,
+            3,
+            30,
+            28
+          ],
+          "visible_size": [
+            26,
+            25
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "94b98670d8007e9026b76aeeabeb04fb07d5619e808ed0bf67d50a6936343723"
+        },
+        {
+          "label": "death_d2[5]",
+          "bbox": [
+            4,
+            4,
+            30,
+            28
+          ],
+          "visible_size": [
+            26,
+            24
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "50401746bd9d99bc20ca16b662a9fb94b41388c7cdd3306a47214ea08119fa5f"
+        },
+        {
+          "label": "death_d2[6]",
+          "bbox": [
+            2,
+            9,
+            29,
+            28
+          ],
+          "visible_size": [
+            27,
+            19
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "16b136de0b47adbb139c131d5548d57f48e5e5125187e1653ae929e2714423b6"
+        },
+        {
+          "label": "death_d2[7]",
+          "bbox": [
+            4,
+            15,
+            28,
+            28
+          ],
+          "visible_size": [
+            24,
+            13
+          ],
+          "baseline_y": 28,
+          "rgba_sha256": "e3bf22b2c5bd0633888c47d3c1cbfebd2a1dd56e58be349bdc04c9d61a00e06d"
+        }
+      ],
+      "component_sizes": [
+        [
+          297
+        ],
+        [
+          279
+        ],
+        [
+          279
+        ],
+        [
+          277
+        ],
+        [
+          276
+        ],
+        [
+          259
+        ],
+        [
+          226,
+          11
+        ],
+        [
+          211
+        ]
+      ],
+      "shield_hand_connected_by_construction": true,
+      "body_and_shield_same_8_connected_component": true,
+      "semantic_component_ids": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "source_board_resized": false
+    },
+    "block_b1": {
+      "frames": [
+        {
+          "label": "block_b1[0]",
+          "bbox": [
+            13,
+            13,
+            19,
+            19
+          ],
+          "visible_size": [
+            6,
+            6
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "cf029a95272e809152f11c8f474a583fdedfea7b0563e3466b8d383f7ab6518e"
+        },
+        {
+          "label": "block_b1[1]",
+          "bbox": [
+            11,
+            11,
+            21,
+            21
+          ],
+          "visible_size": [
+            10,
+            10
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "f60fa388b0cde28f075103840bc3bc9909413040e9f6c699889abe1f649d2098"
+        },
+        {
+          "label": "block_b1[2]",
+          "bbox": [
+            11,
+            11,
+            21,
+            21
+          ],
+          "visible_size": [
+            10,
+            10
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "5cbaa5017a365d7c7993b09d44fa7bbba5005af6d3d0ab410e32fe76c16469ad"
+        }
+      ],
+      "centers": [
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ]
+      ],
+      "center_stable": true,
+      "unique_frames": 3,
+      "terminal_frame_contracts": false
+    },
+    "block_b2": {
+      "frames": [
+        {
+          "label": "block_b2[0]",
+          "bbox": [
+            13,
+            14,
+            19,
+            18
+          ],
+          "visible_size": [
+            6,
+            4
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "76b3e05af0d7890b5dbe2b2ee3277f4d27bd3636050e88d0a9d61d761b31f1fb"
+        },
+        {
+          "label": "block_b2[1]",
+          "bbox": [
+            11,
+            11,
+            21,
+            21
+          ],
+          "visible_size": [
+            10,
+            10
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "81cce3114de9954890e3aaa521cf5d50c8e8cc9d27efc1507e2b8544221931bf"
+        },
+        {
+          "label": "block_b2[2]",
+          "bbox": [
+            10,
+            10,
+            22,
+            22
+          ],
+          "visible_size": [
+            12,
+            12
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "d0a1616e551ddb3105644f4252889c288a9d93d78f7f6709e733fb5350d0389d"
+        }
+      ],
+      "centers": [
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ]
+      ],
+      "center_stable": true,
+      "unique_frames": 3,
+      "terminal_frame_contracts": false
+    },
+    "break_x1": {
+      "frames": [
+        {
+          "label": "break_x1[0]",
+          "bbox": [
+            12,
+            6,
+            20,
+            26
+          ],
+          "visible_size": [
+            8,
+            20
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "2c611bdb7fd598f11913daed5b9bd44bb529581c2a160b20451b049df8fa4590"
+        },
+        {
+          "label": "break_x1[1]",
+          "bbox": [
+            12,
+            7,
+            20,
+            25
+          ],
+          "visible_size": [
+            8,
+            18
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "2c6010874535ac4a169ab64dde2ce067f6dd2b3b254d08d1e03b5dfd6e351ae2"
+        },
+        {
+          "label": "break_x1[2]",
+          "bbox": [
+            9,
+            7,
+            23,
+            25
+          ],
+          "visible_size": [
+            14,
+            18
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "6e2799245235b37c3bb56e41324c89a66fe0009dcee480a3444424bab00ab402"
+        },
+        {
+          "label": "break_x1[3]",
+          "bbox": [
+            7,
+            5,
+            25,
+            27
+          ],
+          "visible_size": [
+            18,
+            22
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "7cbefbcd0a76b8667806e76c86a92d7efbf4719a3c98630a6517c28a8f58d39b"
+        },
+        {
+          "label": "break_x1[4]",
+          "bbox": [
+            11,
+            10,
+            21,
+            22
+          ],
+          "visible_size": [
+            10,
+            12
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "4d3858528424a97fdbd0b8b56b1f7a603659a29a847f09c76bd4a1b0b1d2f923"
+        }
+      ],
+      "centers": [
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ]
+      ],
+      "center_stable": true,
+      "unique_frames": 5,
+      "terminal_frame_contracts": true,
+      "critical_origin": {
+        "source_shield_bbox": [
+          24,
+          8,
+          30,
+          26
+        ],
+        "fx_registered_bbox": [
+          13,
+          7,
+          19,
+          25
+        ],
+        "critical_alpha_exact": true,
+        "critical_rgba_exact": true
+      }
+    },
+    "break_x2": {
+      "frames": [
+        {
+          "label": "break_x2[0]",
+          "bbox": [
+            12,
+            6,
+            20,
+            26
+          ],
+          "visible_size": [
+            8,
+            20
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "dd33762340e6fe515908429e8f48ef2e9024bdcb8489d4c81d2421afda7eab6c"
+        },
+        {
+          "label": "break_x2[1]",
+          "bbox": [
+            8,
+            10,
+            24,
+            22
+          ],
+          "visible_size": [
+            16,
+            12
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "ea7cc94be428717d5ca79e360da7417614d3c78ba6051fa54c5370dcdbbbf974"
+        },
+        {
+          "label": "break_x2[2]",
+          "bbox": [
+            6,
+            7,
+            26,
+            25
+          ],
+          "visible_size": [
+            20,
+            18
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "a4709a443eaa468db8259162567c88acf2b529d296bf08943885431bcd422b8f"
+        },
+        {
+          "label": "break_x2[3]",
+          "bbox": [
+            6,
+            6,
+            26,
+            26
+          ],
+          "visible_size": [
+            20,
+            20
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "d089a5e98432719fa9b2d6f8405023fc528aa31027ca5f76ed63d792dcd55879"
+        },
+        {
+          "label": "break_x2[4]",
+          "bbox": [
+            11,
+            10,
+            21,
+            22
+          ],
+          "visible_size": [
+            10,
+            12
+          ],
+          "baseline_y": null,
+          "rgba_sha256": "8937cf6355c6284b8f35e3d02aa19e9a84e5ef48c5006316c654243b90a56036"
+        }
+      ],
+      "centers": [
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ],
+        [
+          15.5,
+          15.5
+        ]
+      ],
+      "center_stable": true,
+      "unique_frames": 5,
+      "terminal_frame_contracts": true,
+      "critical_origin": {
+        "source_shield_bbox": [
+          24,
+          8,
+          30,
+          26
+        ],
+        "fx_registered_bbox": [
+          13,
+          7,
+          19,
+          25
+        ],
+        "critical_alpha_exact": true,
+        "critical_rgba_exact": true
+      }
+    }
+  },
+  "shield_state_audit": {
+    "move_m1": {
+      "s1": {
+        "phase_core_hashes": [
+          "27a88193d2abe0d3857795db920da95fdfd2c93c6550e1bc2be9cc0c0efbdd45",
+          "1b0be8e1e0e3109a28738e540394e5a5524fbe21f74eee237918c521b4b1e0a8",
+          "1d0be987e282994a5196fc150630510dd2ddbf3cace66e9a16f7d3fa2c70a83a",
+          "1928f1ca2b067bb0b0e2e3075e8c9bad3ad1c785d91af1f4ef24dca94d3ba59f",
+          "b44e8ed8eb1b9968b2cb720afbc720d8d924a477fcaf8cb2caecc4d939b9352a",
+          "55ee8cb1250fadaaf43f783ad54d38b56d34037daadd1bda891711665a15fdcf",
+          "674c24aeb55e6e7c8ebf170bbaf4edb6170d1f5dd10d8b4a552efc3d15a615d7",
+          "070860f9dcd51a0442d55905b4126403922ffd26a68a31e92ed07769acf8645a"
+        ],
+        "outside_shield_arm_roi_byte_identical": true,
+        "unbroken_shield_alpha_identical": true,
+        "four_states_share_each_leg_phase": true
+      },
+      "s2": {
+        "phase_core_hashes": [
+          "27a88193d2abe0d3857795db920da95fdfd2c93c6550e1bc2be9cc0c0efbdd45",
+          "1b0be8e1e0e3109a28738e540394e5a5524fbe21f74eee237918c521b4b1e0a8",
+          "1d0be987e282994a5196fc150630510dd2ddbf3cace66e9a16f7d3fa2c70a83a",
+          "1928f1ca2b067bb0b0e2e3075e8c9bad3ad1c785d91af1f4ef24dca94d3ba59f",
+          "b44e8ed8eb1b9968b2cb720afbc720d8d924a477fcaf8cb2caecc4d939b9352a",
+          "55ee8cb1250fadaaf43f783ad54d38b56d34037daadd1bda891711665a15fdcf",
+          "674c24aeb55e6e7c8ebf170bbaf4edb6170d1f5dd10d8b4a552efc3d15a615d7",
+          "070860f9dcd51a0442d55905b4126403922ffd26a68a31e92ed07769acf8645a"
+        ],
+        "outside_shield_arm_roi_byte_identical": true,
+        "unbroken_shield_alpha_identical": true,
+        "four_states_share_each_leg_phase": true
+      }
+    },
+    "move_m2": {
+      "s1": {
+        "phase_core_hashes": [
+          "fff67f46909c12c18ac933a4d021724c6da4c8b8fba08920dfb29b1cff52bb2d",
+          "f09702a04fdfc4dd38cd0aa4df9679511d8634cf647a5f02037f9447918ffef8",
+          "78b31ac83d424afcea9380c17dca90cd8cf00d4c4acbe36367644a4ad517fb3c",
+          "2aed07353fcb5b97e7b8502e0dfba42dafd79630bfe15fd969204c8a32c4d094",
+          "0c58c9f791ab8fdb5a2fc1bfecc5da19a67662d5690002c01f3a9881e94e8f4d",
+          "df39a3b00a4db77ed0db1d86657bbff11e77888f6fb52ae24c5d90054056ff60",
+          "758170d09889e6ce521e55616eacd08d84f340b1fc444313d7b672ce24fc263c",
+          "1d412469f8743270201b8c00c86b9d8efadaab61d8eae78cc61f2e5f1bc14fb4"
+        ],
+        "outside_shield_arm_roi_byte_identical": true,
+        "unbroken_shield_alpha_identical": true,
+        "four_states_share_each_leg_phase": true
+      },
+      "s2": {
+        "phase_core_hashes": [
+          "fff67f46909c12c18ac933a4d021724c6da4c8b8fba08920dfb29b1cff52bb2d",
+          "f09702a04fdfc4dd38cd0aa4df9679511d8634cf647a5f02037f9447918ffef8",
+          "78b31ac83d424afcea9380c17dca90cd8cf00d4c4acbe36367644a4ad517fb3c",
+          "2aed07353fcb5b97e7b8502e0dfba42dafd79630bfe15fd969204c8a32c4d094",
+          "0c58c9f791ab8fdb5a2fc1bfecc5da19a67662d5690002c01f3a9881e94e8f4d",
+          "df39a3b00a4db77ed0db1d86657bbff11e77888f6fb52ae24c5d90054056ff60",
+          "758170d09889e6ce521e55616eacd08d84f340b1fc444313d7b672ce24fc263c",
+          "1d412469f8743270201b8c00c86b9d8efadaab61d8eae78cc61f2e5f1bc14fb4"
+        ],
+        "outside_shield_arm_roi_byte_identical": true,
+        "unbroken_shield_alpha_identical": true,
+        "four_states_share_each_leg_phase": true
+      }
+    }
+  },
+  "source_grid_analysis": {
+    "move_m1": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_move_m1_imagegen.png",
+      "sha256": "67a45329b4bc331b7bf87c9ee24d9a544046a74d9f72fcde60a6ab889e36f414",
+      "board_size": [
+        1774,
+        887
+      ],
+      "declared_reference_grid": [
+        4,
+        2
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            146,
+            264
+          ],
+          "detected_grid_cell": [
+            4.2,
+            9.1
+          ],
+          "confidence": 0.702,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            420,
+            275
+          ],
+          "detected_grid_cell": [
+            8.3,
+            9.15
+          ],
+          "confidence": 0.715,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            371,
+            275
+          ],
+          "detected_grid_cell": [
+            8.3,
+            9.15
+          ],
+          "confidence": 0.661,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 3,
+          "source_crop": [
+            199,
+            274
+          ],
+          "detected_grid_cell": [
+            8.35,
+            9.15
+          ],
+          "confidence": 0.801,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 4,
+          "source_crop": [
+            153,
+            264
+          ],
+          "detected_grid_cell": [
+            8.45,
+            9.1
+          ],
+          "confidence": 0.575,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 5,
+          "source_crop": [
+            420,
+            273
+          ],
+          "detected_grid_cell": [
+            8.25,
+            9.15
+          ],
+          "confidence": 0.706,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 6,
+          "source_crop": [
+            371,
+            273
+          ],
+          "detected_grid_cell": [
+            8.3,
+            4.55
+          ],
+          "confidence": 0.528,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 7,
+          "source_crop": [
+            199,
+            273
+          ],
+          "detected_grid_cell": [
+            8.4,
+            9.15
+          ],
+          "confidence": 0.745,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "move_m2": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_move_m2_imagegen.png",
+      "sha256": "e73568d5faaa159dcc8651faa56a5d6fec37ba99dddc094c9e225d4b228cb51c",
+      "board_size": [
+        1254,
+        1254
+      ],
+      "declared_reference_grid": [
+        4,
+        2
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            234,
+            287
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.268,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            229,
+            285
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.438,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            233,
+            285
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.432,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 3,
+          "source_crop": [
+            219,
+            286
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.145,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 4,
+          "source_crop": [
+            219,
+            285
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.421,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 5,
+          "source_crop": [
+            211,
+            285
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.4,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 6,
+          "source_crop": [
+            226,
+            285
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.4,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 7,
+          "source_crop": [
+            222,
+            284
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.381,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "shield_states_s1": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_shield_states_s1_imagegen.png",
+      "sha256": "b56415ef1da0c3e0dfcdeb0aac3066dd66df1a6e290347cfc715a46c43ecf7b4",
+      "board_size": [
+        1774,
+        887
+      ],
+      "declared_reference_grid": [
+        3,
+        1
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            453,
+            505
+          ],
+          "detected_grid_cell": [
+            15.6,
+            17.0
+          ],
+          "confidence": 0.917,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            453,
+            505
+          ],
+          "detected_grid_cell": [
+            15.65,
+            17.0
+          ],
+          "confidence": 0.886,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            454,
+            505
+          ],
+          "detected_grid_cell": [
+            15.7,
+            5.65
+          ],
+          "confidence": 0.663,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "shield_states_s2": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_shield_states_s2_imagegen.png",
+      "sha256": "bd9a32ccbb319a3ee151e68e4ecc5088489c61d54c8673a535a1305789fe866c",
+      "board_size": [
+        1774,
+        887
+      ],
+      "declared_reference_grid": [
+        3,
+        1
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            513,
+            574
+          ],
+          "detected_grid_cell": [
+            17.7,
+            19.35
+          ],
+          "confidence": 0.912,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            503,
+            574
+          ],
+          "detected_grid_cell": [
+            17.35,
+            19.35
+          ],
+          "confidence": 0.88,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            508,
+            574
+          ],
+          "detected_grid_cell": [
+            17.5,
+            19.35
+          ],
+          "confidence": 0.807,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "death_d1": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_death_d1_imagegen.png",
+      "sha256": "fc6cb57459836ac5413c1ef475050a11bc4845beabcc3eb554824728ab606b7f",
+      "board_size": [
+        1774,
+        887
+      ],
+      "declared_reference_grid": [
+        4,
+        2
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            444,
+            444
+          ],
+          "detected_grid_cell": [
+            7.25,
+            7.85
+          ],
+          "confidence": 0.712,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            443,
+            444
+          ],
+          "detected_grid_cell": [
+            7.45,
+            7.85
+          ],
+          "confidence": 0.617,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            443,
+            444
+          ],
+          "detected_grid_cell": [
+            7.35,
+            8.0
+          ],
+          "confidence": 0.554,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 3,
+          "source_crop": [
+            444,
+            444
+          ],
+          "detected_grid_cell": [
+            7.25,
+            6.7
+          ],
+          "confidence": 0.514,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 4,
+          "source_crop": [
+            444,
+            443
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.352,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 5,
+          "source_crop": [
+            443,
+            443
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.402,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 6,
+          "source_crop": [
+            443,
+            443
+          ],
+          "detected_grid_cell": [
+            7.35,
+            7.15
+          ],
+          "confidence": 0.493,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 7,
+          "source_crop": [
+            444,
+            443
+          ],
+          "detected_grid_cell": [
+            58.9,
+            7.15
+          ],
+          "confidence": 0.562,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "death_d2": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_death_d2_imagegen.png",
+      "sha256": "671bd5e42d2e0fa647ea340fc95164be9ee489b2c1c2aaadfafdaf9a27a7d39b",
+      "board_size": [
+        1684,
+        934
+      ],
+      "declared_reference_grid": [
+        4,
+        2
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            260,
+            289
+          ],
+          "detected_grid_cell": [
+            8.95,
+            9.65
+          ],
+          "confidence": 0.879,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            259,
+            284
+          ],
+          "detected_grid_cell": [
+            8.9,
+            9.55
+          ],
+          "confidence": 0.743,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            379,
+            289
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.131,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 3,
+          "source_crop": [
+            290,
+            273
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.169,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 4,
+          "source_crop": [
+            303,
+            254
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.119,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 5,
+          "source_crop": [
+            317,
+            202
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.062,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 6,
+          "source_crop": [
+            408,
+            138
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.071,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 7,
+          "source_crop": [
+            299,
+            113
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.141,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "block_b1": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_block_fx_b1_imagegen.png",
+      "sha256": "54afdec9f0fc2d566264b4ed5c0326b1b8635bfc89227c2755fee838beea34b0",
+      "board_size": [
+        2172,
+        724
+      ],
+      "declared_reference_grid": [
+        3,
+        1
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            138,
+            145
+          ],
+          "detected_grid_cell": [
+            25.8,
+            23.4
+          ],
+          "confidence": 0.747,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            263,
+            277
+          ],
+          "detected_grid_cell": [
+            22.35,
+            20.7
+          ],
+          "confidence": 0.894,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            161,
+            231
+          ],
+          "detected_grid_cell": [
+            19.25,
+            20.75
+          ],
+          "confidence": 0.848,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "block_b2": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_block_fx_b2_imagegen.png",
+      "sha256": "e5c92dd9a5763095fe2063a058840564626204246743ee80d1668aa4fcbe2dd5",
+      "board_size": [
+        2172,
+        724
+      ],
+      "declared_reference_grid": [
+        3,
+        1
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            122,
+            121
+          ],
+          "detected_grid_cell": [
+            40.2,
+            39.75
+          ],
+          "confidence": 0.982,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            231,
+            298
+          ],
+          "detected_grid_cell": [
+            37.65,
+            37.65
+          ],
+          "confidence": 0.937,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            196,
+            220
+          ],
+          "detected_grid_cell": [
+            39.0,
+            36.25
+          ],
+          "confidence": 0.887,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "break_x1": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_break_fx_x1_imagegen.png",
+      "sha256": "91765b709e8dbe3ea87bb75ec00176f1ae73180ffeea8241657d618863543b27",
+      "board_size": [
+        2172,
+        724
+      ],
+      "declared_reference_grid": [
+        5,
+        1
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            151,
+            379
+          ],
+          "detected_grid_cell": [
+            11.6,
+            12.25
+          ],
+          "confidence": 0.623,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            157,
+            379
+          ],
+          "detected_grid_cell": [
+            11.6,
+            12.2
+          ],
+          "confidence": 0.664,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            194,
+            401
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.184,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 3,
+          "source_crop": [
+            136,
+            361
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.377,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 4,
+          "source_crop": [
+            147,
+            50
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.411,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    },
+    "break_x2": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer/combat_robot_shield_bearer_break_fx_x2_imagegen.png",
+      "sha256": "8b92a742fae4067719c8166eed86ab036cc7dc9db61b57c775b8d30472ff0358",
+      "board_size": [
+        2172,
+        724
+      ],
+      "declared_reference_grid": [
+        5,
+        1
+      ],
+      "frames": [
+        {
+          "frame": 0,
+          "source_crop": [
+            143,
+            435
+          ],
+          "detected_grid_cell": [
+            14.15,
+            15.05
+          ],
+          "confidence": 0.868,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 1,
+          "source_crop": [
+            143,
+            435
+          ],
+          "detected_grid_cell": [
+            14.25,
+            15.05
+          ],
+          "confidence": 0.747,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": false
+        },
+        {
+          "frame": 2,
+          "source_crop": [
+            213,
+            435
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.263,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 3,
+          "source_crop": [
+            260,
+            415
+          ],
+          "detected_grid_cell": [
+            1.0,
+            1.0
+          ],
+          "confidence": 0.19,
+          "detection_mode": "native_or_unknown",
+          "unsafe_for_direct_resize": true
+        },
+        {
+          "frame": 4,
+          "source_crop": [
+            181,
+            55
+          ],
+          "detected_grid_cell": [
+            14.2,
+            2.0
+          ],
+          "confidence": 0.59,
+          "detection_mode": "approximate",
+          "unsafe_for_direct_resize": true
+        }
+      ],
+      "source_pixels_imported_into_preview": false,
+      "use": "motion_or_shape_language_only"
+    }
+  },
+  "outputs": {
+    "move_m1": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_candidate_16x.png",
+      "gif": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_candidate.gif",
+      "native_strip_size": [
+        256,
+        32
+      ],
+      "fps": 14
+    },
+    "move_m2": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_candidate_16x.png",
+      "gif": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_candidate.gif",
+      "native_strip_size": [
+        256,
+        32
+      ],
+      "fps": 14
+    },
+    "death_d1": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_death_d1_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_death_d1_candidate_16x.png",
+      "gif": "dev_assets/generated_previews/combat_robot_shield_bearer_death_d1_candidate.gif",
+      "native_strip_size": [
+        256,
+        32
+      ],
+      "fps": 12
+    },
+    "death_d2": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_death_d2_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_death_d2_candidate_16x.png",
+      "gif": "dev_assets/generated_previews/combat_robot_shield_bearer_death_d2_candidate.gif",
+      "native_strip_size": [
+        256,
+        32
+      ],
+      "fps": 12
+    },
+    "block_b1": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_block_b1_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_block_b1_candidate_16x.png",
+      "gif": "dev_assets/generated_previews/combat_robot_shield_bearer_block_b1_candidate.gif",
+      "native_strip_size": [
+        96,
+        32
+      ],
+      "fps": 24
+    },
+    "block_b2": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_block_b2_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_block_b2_candidate_16x.png",
+      "gif": "dev_assets/generated_previews/combat_robot_shield_bearer_block_b2_candidate.gif",
+      "native_strip_size": [
+        96,
+        32
+      ],
+      "fps": 24
+    },
+    "break_x1": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_break_x1_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_break_x1_candidate_16x.png",
+      "gif": "dev_assets/generated_previews/combat_robot_shield_bearer_break_x1_candidate.gif",
+      "native_strip_size": [
+        160,
+        32
+      ],
+      "fps": 18
+    },
+    "break_x2": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_break_x2_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_break_x2_candidate_16x.png",
+      "gif": "dev_assets/generated_previews/combat_robot_shield_bearer_break_x2_candidate.gif",
+      "native_strip_size": [
+        160,
+        32
+      ],
+      "fps": 18
+    }
+  },
+  "state_outputs": {
+    "move_m1": {
+      "s1": {
+        "native_4x8_atlas": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_s1_states_candidate.png",
+        "integer_8x_atlas": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_s1_states_candidate_8x.png",
+        "four_state_gif": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_s1_states_candidate.gif",
+        "state_order": [
+          "intact",
+          "cracked",
+          "critical",
+          "broken"
+        ],
+        "native_size": [
+          256,
+          128
+        ],
+        "fps": 14
+      },
+      "s2": {
+        "native_4x8_atlas": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_s2_states_candidate.png",
+        "integer_8x_atlas": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_s2_states_candidate_8x.png",
+        "four_state_gif": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m1_s2_states_candidate.gif",
+        "state_order": [
+          "intact",
+          "cracked",
+          "critical",
+          "broken"
+        ],
+        "native_size": [
+          256,
+          128
+        ],
+        "fps": 14
+      }
+    },
+    "move_m2": {
+      "s1": {
+        "native_4x8_atlas": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_s1_states_candidate.png",
+        "integer_8x_atlas": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_s1_states_candidate_8x.png",
+        "four_state_gif": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_s1_states_candidate.gif",
+        "state_order": [
+          "intact",
+          "cracked",
+          "critical",
+          "broken"
+        ],
+        "native_size": [
+          256,
+          128
+        ],
+        "fps": 14
+      },
+      "s2": {
+        "native_4x8_atlas": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_s2_states_candidate.png",
+        "integer_8x_atlas": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_s2_states_candidate_8x.png",
+        "four_state_gif": "dev_assets/generated_previews/combat_robot_shield_bearer_move_m2_s2_states_candidate.gif",
+        "state_order": [
+          "intact",
+          "cracked",
+          "critical",
+          "broken"
+        ],
+        "native_size": [
+          256,
+          128
+        ],
+        "fps": 14
+      }
+    }
+  },
+  "shield_state_outputs": {
+    "s1": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_shield_states_s1_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_shield_states_s1_candidate_16x.png",
+      "review_cycle_gif": "dev_assets/generated_previews/combat_robot_shield_bearer_shield_states_s1_review_cycle.gif",
+      "state_order": [
+        "intact",
+        "cracked",
+        "critical",
+        "broken"
+      ],
+      "review_cycle_only_not_runtime_animation": true
+    },
+    "s2": {
+      "native_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_shield_states_s2_candidate.png",
+      "integer_16x_strip": "dev_assets/generated_previews/combat_robot_shield_bearer_shield_states_s2_candidate_16x.png",
+      "review_cycle_gif": "dev_assets/generated_previews/combat_robot_shield_bearer_shield_states_s2_review_cycle.gif",
+      "state_order": [
+        "intact",
+        "cracked",
+        "critical",
+        "broken"
+      ],
+      "review_cycle_only_not_runtime_animation": true
+    }
+  },
+  "comparison": "dev_assets/generated_previews/combat_robot_shield_bearer_comparison.png"
+}

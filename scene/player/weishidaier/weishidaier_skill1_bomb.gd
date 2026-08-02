@@ -6,7 +6,9 @@ const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd
 const WORLD_MASK := 1
 const ENEMY_BODY_MASK := 4
 const PLAYER_MASK := 2
+const PROJECTILE_SHIELD_MASK := 1 << 12
 const EXPLOSION_QUERY_PAGE_SIZE := 32
+const COLLISION_EPSILON := 0.01
 
 @export var speed: float = 260.0
 @export var max_lifetime: float = 1.4
@@ -14,6 +16,7 @@ const EXPLOSION_QUERY_PAGE_SIZE := 32
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var explosion_shape: CollisionShape2D = $ExplosionShape
+@onready var shield_sweep: ShapeCast2D = $ShieldSweep
 
 var direction: Vector2 = Vector2.RIGHT
 var damage: int = 1
@@ -56,10 +59,79 @@ func _physics_process(delta: float) -> void:
 	if has_exploded:
 		return
 
-	global_position += direction * speed * delta
+	var travel_distance := maxf(speed, 0.0) * maxf(delta, 0.0)
+	var displacement := direction * travel_distance
+	if travel_distance > COLLISION_EPSILON and _sweep_projectile_shield(travel_distance):
+		return
+	global_position += displacement
 	remaining_lifetime = maxf(remaining_lifetime - delta, 0.0)
 	if remaining_lifetime <= 0.0:
 		_explode()
+
+
+func _sweep_projectile_shield(travel_distance: float) -> bool:
+	shield_sweep.target_position = Vector2(travel_distance, 0.0)
+	shield_sweep.force_shapecast_update()
+	var hit := _get_closest_shield_hit(travel_distance)
+	if hit.is_empty():
+		return false
+	var shield := hit.get("collider") as ProjectileShieldArea
+	if shield != null and shield.try_intercept(direction):
+		_move_to_shield_impact(travel_distance)
+		_explode()
+		return true
+	if shield == null:
+		return false
+
+	# The twentieth block can leave one stale physics result in this frame.
+	# Exclude only that RID and repeat this authored sweep once.
+	shield_sweep.add_exception(shield)
+	shield_sweep.force_shapecast_update()
+	var retry_hit := _get_closest_shield_hit(travel_distance)
+	shield_sweep.remove_exception(shield)
+	if retry_hit.is_empty():
+		return false
+	var retry_shield := retry_hit.get("collider") as ProjectileShieldArea
+	if retry_shield == null or not retry_shield.try_intercept(direction):
+		return false
+	_move_to_shield_impact(travel_distance)
+	_explode()
+	return true
+
+
+func _get_closest_shield_hit(travel_distance: float) -> Dictionary:
+	var closest: Dictionary = {}
+	var closest_distance := travel_distance
+	for collision_index in range(shield_sweep.get_collision_count()):
+		var collider := shield_sweep.get_collider(collision_index)
+		if not (collider is ProjectileShieldArea):
+			continue
+		var collision_point := shield_sweep.get_collision_point(collision_index)
+		var forward_distance := clampf(
+			(collision_point - global_position).dot(direction),
+			0.0,
+			travel_distance
+		)
+		if closest.is_empty() or forward_distance < closest_distance:
+			closest_distance = forward_distance
+			closest = {
+				"collider": collider,
+				"position": collision_point,
+				"distance": forward_distance,
+			}
+	return closest
+
+
+func _move_to_shield_impact(travel_distance: float) -> void:
+	var safe_fraction := clampf(
+		shield_sweep.get_closest_collision_safe_fraction(),
+		0.0,
+		1.0
+	)
+	global_position += direction * maxf(
+		travel_distance * safe_fraction - COLLISION_EPSILON,
+		0.0
+	)
 
 
 func _on_body_entered(body: Node2D) -> void:

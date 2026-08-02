@@ -4,7 +4,8 @@ class_name CornMachineGun
 signal burst_shot_emitted(shot_index: int, authoritative: bool)
 
 const AUDIO_LIMITER := preload("res://scene/plant_defense/plant_attack_audio_limiter.gd")
-const WORLD_AND_ENEMY_COLLISION_MASK := 5
+const PROJECTILE_SHIELD_COLLISION_MASK := 1 << 12
+const WORLD_AND_ENEMY_COLLISION_MASK := 5 | PROJECTILE_SHIELD_COLLISION_MASK
 const DEFAULT_ATTACK_DAMAGE := 30
 const DEFAULT_ATTACK_RANGE := 160.0
 const DEFAULT_ATTACK_INTERVAL := 0.9
@@ -61,6 +62,7 @@ var _hitscan_query_count := 0
 var _combat_runtime: Node = null
 var _target_candidates: Array[Enemy] = []
 var _ray_exclude: Array[RID] = []
+var _shield_retry_exclude: Array[RID] = []
 var _ray_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
@@ -365,15 +367,33 @@ func _fire_locked_hitscan(shot_index: int, authoritative: bool) -> void:
 		burst_muzzle_position,
 		burst_direction
 	)
+	var shield := _get_projectile_shield(ray_result)
+	if shield != null:
+		if shield.try_intercept(burst_direction):
+			tracer_length = _get_hit_tracer_length(ray_result, tracer_length)
+			_play_locked_shot_visual(maxf(tracer_length, 0.0))
+			burst_shot_emitted.emit(shot_index, true)
+			return
+		# A broken or back-facing shield is transparent. The twentieth shot disables
+		# the layer synchronously, but a query already in flight can still carry its
+		# old RID; exclude only that area and repeat at most once for this edge case.
+		ray_result = _cast_locked_hitscan_from_excluding_shield(
+			burst_muzzle_position,
+			burst_direction,
+			shield
+		)
+		var retry_shield := _get_projectile_shield(ray_result)
+		if retry_shield != null:
+			if retry_shield.try_intercept(burst_direction):
+				tracer_length = _get_hit_tracer_length(ray_result, tracer_length)
+				_play_locked_shot_visual(maxf(tracer_length, 0.0))
+				burst_shot_emitted.emit(shot_index, true)
+				return
+			# The single stale-RID retry budget is exhausted. A second transparent
+			# shield must not be miscast as an Enemy or receive direct damage.
+			ray_result.clear()
 	if not ray_result.is_empty():
-		var hit_position: Vector2 = ray_result.get(
-			"position",
-			burst_muzzle_position + burst_direction * tracer_length
-		)
-		tracer_length = minf(
-			tracer_length,
-			burst_muzzle_position.distance_to(hit_position)
-		)
+		tracer_length = _get_hit_tracer_length(ray_result, tracer_length)
 	_play_locked_shot_visual(maxf(tracer_length, 0.0))
 	burst_shot_emitted.emit(shot_index, true)
 
@@ -418,6 +438,42 @@ func _cast_locked_hitscan_from(
 	return get_world_2d().direct_space_state.intersect_ray(_ray_query)
 
 
+func _cast_locked_hitscan_from_excluding_shield(
+	ray_start: Vector2,
+	normalized_direction: Vector2,
+	shield: ProjectileShieldArea
+) -> Dictionary:
+	if shield == null or not is_instance_valid(shield):
+		return {}
+	_hitscan_query_count += 1
+	_set_ray_query_segment(
+		ray_start,
+		ray_start + normalized_direction * configured_attack_range
+	)
+	_shield_retry_exclude.clear()
+	_shield_retry_exclude.append(get_rid())
+	_shield_retry_exclude.append(shield.get_rid())
+	_ray_query.exclude = _shield_retry_exclude
+	var result := get_world_2d().direct_space_state.intersect_ray(_ray_query)
+	_ray_query.exclude = _ray_exclude
+	_shield_retry_exclude.clear()
+	return result
+
+
+func _get_projectile_shield(ray_result: Dictionary) -> ProjectileShieldArea:
+	if ray_result.is_empty():
+		return null
+	return ray_result.get("collider") as ProjectileShieldArea
+
+
+func _get_hit_tracer_length(ray_result: Dictionary, fallback_length: float) -> float:
+	var hit_position: Vector2 = ray_result.get(
+		"position",
+		burst_muzzle_position + burst_direction * fallback_length
+	)
+	return minf(fallback_length, burst_muzzle_position.distance_to(hit_position))
+
+
 func _configure_ray_query() -> void:
 	# All invariant fields are private to this tower and remain unchanged across
 	# acquisition and the six synchronous hitscans. Configure them once so the
@@ -425,7 +481,7 @@ func _configure_ray_query() -> void:
 	_ray_query.collision_mask = WORLD_AND_ENEMY_COLLISION_MASK
 	_ray_query.exclude = _ray_exclude
 	_ray_query.collide_with_bodies = true
-	_ray_query.collide_with_areas = false
+	_ray_query.collide_with_areas = true
 	_ray_query.hit_from_inside = false
 
 
@@ -567,7 +623,14 @@ func _is_enemy_first_hitscan_collision(enemy: Enemy) -> bool:
 	if result.is_empty():
 		return false
 	var collider := result.get("collider") as Node
-	return collider == enemy or (collider != null and enemy.is_ancestor_of(collider))
+	if collider == enemy or (collider != null and enemy.is_ancestor_of(collider)):
+		return true
+	var shield := collider as ProjectileShieldArea
+	return (
+		shield != null
+		and shield.is_active()
+		and shield.get_owner_enemy() == enemy
+	)
 
 
 func _is_valid_target(enemy: Enemy) -> bool:

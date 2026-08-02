@@ -185,6 +185,7 @@ plant={
 2d_physics/layer_10="PlantBody"
 2d_physics/layer_11="TowerCore"
 2d_physics/layer_12="WaterTerrain"
+2d_physics/layer_13="ProjectileShield"
 
 [physics]
 

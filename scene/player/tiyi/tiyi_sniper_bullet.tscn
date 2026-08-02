@@ -61,4 +61,5 @@ scale = Vector2(1.3, 1.3)
 shape = SubResource("CircleShape2D_sweep")
 target_position = Vector2(1, 0)
 max_results = 8
-collision_mask = 5
+collision_mask = 4101
+collide_with_areas = true

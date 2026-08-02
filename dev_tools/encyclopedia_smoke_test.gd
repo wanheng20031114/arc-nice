@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 54,
+	CodexSection.ENEMY: 55,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
@@ -34,11 +34,11 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 2,
-	&"mechanical_life": 3,
+	&"mechanical_life": 4,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
-	EnemyCodexEntryConfig.Rank.NORMAL: 47,
+	EnemyCodexEntryConfig.Rank.NORMAL: 48,
 	EnemyCodexEntryConfig.Rank.ELITE: 6,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
@@ -112,7 +112,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 54 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 55 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -201,7 +201,7 @@ func _test_enemy_rank_counts(catalog: CodexCatalog) -> void:
 		actual_counts[source.rank] = int(actual_counts.get(source.rank, 0)) + 1
 	_expect(
 		actual_counts == EXPECTED_ENEMY_RANK_COUNTS,
-		"Enemy ranks must contain 47 normal, six elite, and one Boss entry."
+		"Enemy ranks must contain 48 normal, six elite, and one Boss entry."
 	)
 
 
@@ -259,6 +259,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_combat_robot := false
 	var saw_combat_robot_gunner := false
 	var saw_combat_robot_drone_operator := false
+	var saw_combat_robot_shield_bearer := false
 	var saw_linglan := false
 	for entry in catalog.get_entries(CodexSection.ENEMY):
 		var source := entry.source_resource as EnemyCodexEntryConfig
@@ -433,6 +434,36 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				),
 				"Combat robot gunner must keep its normal-rank mechanical codex contract."
 			)
+		if config is CombatRobotShieldBearerConfig:
+			saw_combat_robot_shield_bearer = true
+			var shield_bearer := config as CombatRobotShieldBearerConfig
+			_expect(
+				String(stats.get("生命", "")) == "180"
+				and String(stats.get("单次伤害", "")) == "30"
+				and String(stats.get("物理防御", "")) == "25 点"
+				and String(stats.get("法术防御", "")) == "10"
+				and String(stats.get("移动速度", "")) == "30"
+				and String(stats.get("基地伤害", "")) == "2"
+				and String(stats.get("击杀息壤", "")) == "10"
+				and String(stats.get("盾牌抵消", ""))
+				== "%d 次" % shield_bearer.shield_max_blocks
+				and String(stats.get("开裂阈值", ""))
+				== "%d 次" % shield_bearer.shield_cracked_remaining
+				and String(stats.get("危急阈值", ""))
+				== "%d 次" % shield_bearer.shield_critical_remaining,
+				"Shield bearer codex must expose its authored attributes and shield stages."
+			)
+			_expect(
+				source.sort_order == 550
+				and source.family_id == &"mechanical_life"
+				and source.rank == EnemyCodexEntryConfig.Rank.NORMAL
+				and entry.primary_badge == "机械生命"
+				and entry.secondary_badge == "普通"
+				and entry.notes == PackedStringArray(
+					["正面盾牌", "20次格挡", "机械生命"]
+				),
+				"Shield bearer must keep its normal-rank mechanical codex contract."
+			)
 		if config is CombatRobotConfig:
 			saw_combat_robot = true
 			var robot := config as CombatRobotConfig
@@ -471,8 +502,9 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 		and saw_combat_robot
 		and saw_combat_robot_gunner
 		and saw_combat_robot_drone_operator
+		and saw_combat_robot_shield_bearer
 		and saw_linglan,
-		"Enemy stat contract must cover regeneration, aura, dash, burst-fire, drone deployment and Boss adapters."
+		"Enemy stat contract must cover regeneration, aura, dash, burst-fire, drone deployment, projectile shields and Boss adapters."
 	)
 
 
@@ -616,7 +648,7 @@ func _test_scene_contract() -> void:
 	await _wait_for_grid_build(screen)
 
 	_expect(
-		screen.enemy_button.text == "敌人  54"
+		screen.enemy_button.text == "敌人  55"
 		and screen.collectible_button.text == "收藏品  124"
 		and screen.building_button.text == "建筑物  16",
 		"Sidebar must display all three section totals."
@@ -629,15 +661,15 @@ func _test_scene_contract() -> void:
 	_expect(
 		int(screen.get("_current_section")) == CodexSection.ENEMY
 		and screen.section_title.text == "敌人档案"
-		and screen.archive_index.text == "054 条记录",
+		and screen.archive_index.text == "055 条记录",
 		"Encyclopedia must open on the enemy section."
 	)
 	var cards: Array = screen.get("_cards")
 	_expect(
-		cards.size() == 54
-		and screen.entry_grid.get_child_count() == 54
-		and screen.result_count.text == "显示 54 / 54",
-		"Initial enemy grid must render all 54 entries."
+		cards.size() == 55
+		and screen.entry_grid.get_child_count() == 55
+		and screen.result_count.text == "显示 55 / 55",
+		"Initial enemy grid must render all 55 entries."
 	)
 	_expect(
 		screen.search_edit.text.is_empty()
@@ -1068,11 +1100,11 @@ func _test_search_filter_and_section_state(
 	await _wait_for_grid_build(screen)
 	var search_cards: Array = screen.get("_cards")
 	_expect(
-		not search_cards.is_empty() and search_cards.size() < 54,
+		not search_cards.is_empty() and search_cards.size() < 55,
 		"Enemy name search must narrow the visible result set."
 	)
 	_expect(
-		screen.result_count.text == "显示 %d / 54" % search_cards.size(),
+		screen.result_count.text == "显示 %d / 55" % search_cards.size(),
 		"Result count must stay synchronized with name-search results."
 	)
 	for card_variant in search_cards:

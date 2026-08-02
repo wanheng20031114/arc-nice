@@ -8,6 +8,7 @@ const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
 const ENEMY_BODY_COLLISION_MASK := 4
 const BOSS_BODY_COLLISION_MASK := 256
+const PROJECTILE_SHIELD_COLLISION_MASK := 1 << 12
 const WEISHIDAIER_SKILL1_EXPLOSION_RADIUS := 44.0
 const COLLECTIBLE_SAKURA_EXPLOSION_RADIUS := WEISHIDAIER_SKILL1_EXPLOSION_RADIUS + 3.0
 const HIT_COLLISION_MASK := (
@@ -25,6 +26,7 @@ const ENEMY_ONLY_HIT_COLLISION_MASK := (
 	WORLD_COLLISION_MASK
 	| ENEMY_BODY_COLLISION_MASK
 	| BOSS_BODY_COLLISION_MASK
+	| PROJECTILE_SHIELD_COLLISION_MASK
 )
 const ENEMY_ONLY_EXPLOSION_DAMAGE_MASK := (
 	ENEMY_BODY_COLLISION_MASK
@@ -67,6 +69,7 @@ var _authored_homing_turn_rate := 1.2
 var _authored_collision_layer := 128
 var _authored_collision_mask := HIT_COLLISION_MASK
 var hit_collision_exclude: Array[RID] = []
+var shield_retry_exclude: Array[RID] = []
 var hit_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
@@ -256,7 +259,31 @@ func _get_hit(from_position: Vector2, to_position: Vector2) -> Dictionary:
 	hit_collision_query.from = from_position
 	hit_collision_query.to = to_position
 	hit_collision_query.collision_mask = _get_hit_collision_mask()
-	return get_world_2d().direct_space_state.intersect_ray(hit_collision_query)
+	# Enemy rockets preserve their original body-only query. Only the friendly
+	# enemies_only variant needs Area hits for ProjectileShield.
+	hit_collision_query.collide_with_areas = enemies_only
+	var space_state := get_world_2d().direct_space_state
+	var hit_result: Dictionary = space_state.intersect_ray(hit_collision_query)
+	if not enemies_only or hit_result.is_empty():
+		return hit_result
+	var shield := hit_result.get("collider") as ProjectileShieldArea
+	if shield == null:
+		return hit_result
+	if shield.try_intercept(direction):
+		return hit_result
+
+	shield_retry_exclude.assign(hit_collision_exclude)
+	shield_retry_exclude.append(shield.get_rid())
+	hit_collision_query.exclude = shield_retry_exclude
+	var retry_result: Dictionary = space_state.intersect_ray(hit_collision_query)
+	hit_collision_query.exclude = hit_collision_exclude
+	shield_retry_exclude.clear()
+	if retry_result.is_empty():
+		return {}
+	var retry_shield := retry_result.get("collider") as ProjectileShieldArea
+	if retry_shield != null and not retry_shield.try_intercept(direction):
+		return {}
+	return retry_result
 
 
 func _on_body_entered(body: Node2D) -> void:

@@ -4,9 +4,14 @@ class_name AgaveCannonball
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const PROJECTILE_SHIELD_COLLISION_MASK := 1 << 12
 const WORLD_AND_ENEMY_COLLISION_MASK := 5
+const WORLD_ENEMY_AND_PROJECTILE_SHIELD_MASK := (
+	WORLD_AND_ENEMY_COLLISION_MASK | PROJECTILE_SHIELD_COLLISION_MASK
+)
 const ENEMY_COLLISION_MASK := 4
 const EXPLOSION_QUERY_BATCH_SIZE := 64
+const COLLISION_EPSILON := 0.01
 
 @export var speed := 180.0
 @export var max_lifetime := 1.25
@@ -33,7 +38,9 @@ var explosion_targets: Dictionary[int, Enemy] = {}
 
 func _ready() -> void:
 	remaining_lifetime = maxf(max_lifetime, 0.01)
-	flight_cast.collision_mask = WORLD_AND_ENEMY_COLLISION_MASK
+	flight_cast.collision_mask = WORLD_ENEMY_AND_PROJECTILE_SHIELD_MASK
+	flight_cast.collide_with_bodies = true
+	flight_cast.collide_with_areas = true
 	explosion_query.collision_mask = ENEMY_COLLISION_MASK
 	explosion_query.collide_with_bodies = true
 	explosion_query.collide_with_areas = false
@@ -53,6 +60,7 @@ func on_pool_acquired(_generation: int) -> void:
 	owner_peer_id = 0
 	source_type = &"agave_cannonball"
 	rotation = 0.0
+	flight_cast.clear_exceptions()
 	flight_cast.enabled = true
 	cannonball_sprite.visible = true
 	impact_audio.stop()
@@ -64,6 +72,7 @@ func on_pool_released(_generation: int) -> void:
 	explosion_targets.clear()
 	has_exploded = true
 	set_physics_process(false)
+	flight_cast.clear_exceptions()
 	flight_cast.set_deferred("enabled", false)
 	cannonball_sprite.visible = false
 	impact_audio.stop()
@@ -81,6 +90,7 @@ func setup(
 	pool_active = true
 	has_exploded = false
 	set_physics_process(true)
+	flight_cast.clear_exceptions()
 	flight_cast.enabled = true
 	cannonball_sprite.visible = true
 	if initial_direction != Vector2.ZERO:
@@ -120,9 +130,16 @@ func _physics_process(delta: float) -> void:
 	flight_cast.force_shapecast_update()
 
 	if flight_cast.is_colliding():
-		var direct_enemy := _get_closest_collision_enemy()
+		var hit := _resolve_closest_flight_hit(travel_distance)
+		if hit.is_empty():
+			global_position += displacement
+			remaining_lifetime = maxf(remaining_lifetime - delta, 0.0)
+			if remaining_lifetime <= 0.0:
+				_retire()
+			return
+		var direct_enemy := hit.get("collider") as Enemy
 		var safe_fraction := clampf(
-			flight_cast.get_closest_collision_safe_fraction(),
+			float(hit.get("safe_fraction", 0.0)),
 			0.0,
 			1.0
 		)
@@ -136,16 +153,71 @@ func _physics_process(delta: float) -> void:
 		_retire()
 
 
-func _get_closest_collision_enemy() -> Enemy:
+func _resolve_closest_flight_hit(travel_distance: float) -> Dictionary:
+	var hit := _get_closest_flight_hit(travel_distance)
+	if hit.is_empty():
+		return {}
+	var shield := hit.get("collider") as ProjectileShieldArea
+	if shield == null:
+		return hit
+	if shield.try_intercept(direction):
+		return hit
+
+	# A shield disabled by the twentieth hit can remain in this ShapeCast result
+	# until the physics server flushes. Exclude that collider and update once.
+	flight_cast.add_exception(shield)
+	flight_cast.force_shapecast_update()
+	var retry_hit := _get_closest_flight_hit(travel_distance)
+	flight_cast.remove_exception(shield)
+	if retry_hit.is_empty():
+		return {}
+	var retry_shield := retry_hit.get("collider") as ProjectileShieldArea
+	if retry_shield != null and not retry_shield.try_intercept(direction):
+		return {}
+	return retry_hit
+
+
+func _get_closest_flight_hit(travel_distance: float) -> Dictionary:
 	var closest_collider: Object = null
-	var closest_distance_squared := INF
+	var closest_position := global_position + direction * travel_distance
+	var closest_forward_distance := INF
+	var closest_priority := 2
 	for collision_index in flight_cast.get_collision_count():
 		var collision_point := flight_cast.get_collision_point(collision_index)
-		var distance_squared := global_position.distance_squared_to(collision_point)
-		if distance_squared < closest_distance_squared:
-			closest_distance_squared = distance_squared
-			closest_collider = flight_cast.get_collider(collision_index)
-	return closest_collider as Enemy
+		var collider := flight_cast.get_collider(collision_index)
+		var forward_distance := clampf(
+			(collision_point - global_position).dot(direction),
+			0.0,
+			travel_distance
+		)
+		# ShapeCast returns an unordered collision set. Resolve travel order along
+		# the authored flight direction, not Euclidean distance to a tangential
+		# contact point. At an exact tie the shield wins over the overlapped enemy
+		# body so one projectile can consume at most one shield block before its
+		# original explosion contract runs.
+		var priority := 0 if collider is ProjectileShieldArea else 1
+		if (
+			forward_distance < closest_forward_distance - COLLISION_EPSILON
+			or (
+				absf(forward_distance - closest_forward_distance) <= COLLISION_EPSILON
+				and priority < closest_priority
+			)
+		):
+			closest_forward_distance = forward_distance
+			closest_priority = priority
+			closest_collider = collider
+			closest_position = collision_point
+	if closest_collider == null:
+		return {}
+	return {
+		"collider": closest_collider,
+		"position": closest_position,
+		"forward_distance": closest_forward_distance,
+		# Capture the safe fraction from this exact ShapeCast update. A stale
+		# shield retry performs another update, so callers must not re-read the
+		# cast after its temporary exception has been removed.
+		"safe_fraction": flight_cast.get_closest_collision_safe_fraction(),
+	}
 
 
 func _explode(direct_enemy: Enemy = null) -> void:

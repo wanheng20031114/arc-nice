@@ -337,7 +337,8 @@ class EnemyState:
 	## 与伤害反馈共用的 Host 单调修订号，允许敌人在同一 net-id 生命周期内治疗。
 	var health_revision: int = 0
 	var is_dead: bool = false
-	## 纯表现状态位：burn=1、bleed=2、chill=4、mark=8；伤害仍只由 Host 结算。
+	## 纯表现状态位：0..4 为通用 burn/bleed/chill/mark/electric，5..6 为
+	## v39 敌人专用盾态；伤害与盾牌耐久仍只由 Host 结算。
 	var visual_status_mask: int = 0
 
 

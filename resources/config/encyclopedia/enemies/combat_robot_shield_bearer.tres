@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_shield_bearer.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_intact.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"combat_robot_shield_bearer"
+enemy_config = ExtResource("2_config")
+family_id = &"mechanical_life"
+family_label = "机械生命"
+rank = 0
+sort_order = 550
+visible_in_codex = true
+description = "在身前举起塔盾的冷灰盒体机器人。盾面可以拦截来自正面的实体弹丸与机枪塔命中，爆炸弹会直接在盾面爆炸；弹丸若绕过盾缘或从侧后方命中，仍会伤害机器人本体。累计格挡20次后盾牌永久破碎并完全失去拦截能力，它会继续徒手追踪并依靠接触攻击。"
+traits = PackedStringArray("正面盾牌", "20次格挡", "机械生命")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

@@ -6,6 +6,10 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 
 # 世界碰撞层的掩码
 const WORLD_COLLISION_MASK := 1
+const PROJECTILE_SHIELD_COLLISION_MASK := 1 << 12
+const WORLD_AND_PROJECTILE_SHIELD_COLLISION_MASK := (
+	WORLD_COLLISION_MASK | PROJECTILE_SHIELD_COLLISION_MASK
+)
 const HOMING_TURN_SPEED := 5.5
 const PIERCING_TINT := Color(1.0, 0.36, 0.34, 1.0)
 const HOMING_TINT := Color(0.48, 1.0, 0.62, 1.0)
@@ -45,10 +49,12 @@ var _authored_speed: float = DEFAULT_SPEED
 var _authored_max_lifetime: float = DEFAULT_MAX_LIFETIME
 var _authored_collision_layer: int = 16
 var _authored_collision_mask: int = 4
+var _empty_world_collision_exclude: Array[RID] = []
+var _shield_retry_exclude: Array[RID] = []
 var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	Vector2.ZERO,
-	WORLD_COLLISION_MASK
+	WORLD_AND_PROJECTILE_SHIELD_COLLISION_MASK
 )
 
 
@@ -60,7 +66,8 @@ func _ready() -> void:
 	remaining_lifetime = max_lifetime
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 	world_collision_query.collide_with_bodies = true
-	world_collision_query.collide_with_areas = false
+	world_collision_query.collide_with_areas = true
+	world_collision_query.exclude = _empty_world_collision_exclude
 
 
 func on_pool_acquired(_generation: int) -> void:
@@ -232,15 +239,36 @@ func _update_collectible_tint() -> void:
 # 检测从当前位置到下一位置之间是否撞到墙体/世界
 func _will_hit_world(from_position: Vector2, to_position: Vector2) -> bool:
 	var space_state := get_world_2d().direct_space_state
-	
+
 	if space_state == null:
 		return false
-	
+
 	world_collision_query.from = from_position
 	world_collision_query.to = to_position
 	var hit_result: Dictionary = space_state.intersect_ray(world_collision_query)
-	
-	return not hit_result.is_empty()
+	if hit_result.is_empty():
+		return false
+	var shield := hit_result.get("collider") as ProjectileShieldArea
+	if shield == null:
+		return true
+	if shield.try_intercept(direction):
+		return true
+
+	# A broken/back-facing shield is transparent. Physics may still return its
+	# stale RID in the same frame that the twentieth hit disabled it, so exclude
+	# that one RID and repeat the existing ray at most once.
+	_shield_retry_exclude.clear()
+	_shield_retry_exclude.append(shield.get_rid())
+	world_collision_query.exclude = _shield_retry_exclude
+	var retry_result: Dictionary = space_state.intersect_ray(world_collision_query)
+	world_collision_query.exclude = _empty_world_collision_exclude
+	_shield_retry_exclude.clear()
+	if retry_result.is_empty():
+		return false
+	var retry_shield := retry_result.get("collider") as ProjectileShieldArea
+	if retry_shield != null:
+		return retry_shield.try_intercept(direction)
+	return true
 
 
 # 撞到其他 Area2D 时

@@ -897,9 +897,9 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 		"MpGame must own the dedicated type and full three-stage elapsed compensation."
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 38
+		NET_CONSTANTS.PROTOCOL_VERSION == 39
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"The projectile wire expansion must use protocol v38 without adding channels."
+		"Shield-state wire semantics must use protocol v39 without adding channels."
 	)
 	for source_path in ["res://scene/game.gd", "res://scene/game_tower_defense.gd"]:
 		var compact_source := FileAccess.get_file_as_string(source_path)

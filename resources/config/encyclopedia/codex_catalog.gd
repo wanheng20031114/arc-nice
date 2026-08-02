@@ -20,7 +20,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 ## Authored catalog contract used by navigation before any section is materialized.
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
-	CodexSection.ENEMY: 54,
+	CodexSection.ENEMY: 55,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
@@ -300,6 +300,21 @@ func _build_enemy_specific_stats(enemy: EnemyConfig) -> Array[CodexStatRow]:
 		)
 		stats.append(
 			CodexStatRow.new("爆炸半径", _format_number(config.explosion_radius))
+		)
+	elif enemy is CombatRobotShieldBearerConfig:
+		var config := enemy as CombatRobotShieldBearerConfig
+		stats.append(
+			CodexStatRow.new("盾牌抵消", "%d 次" % config.shield_max_blocks)
+		)
+		stats.append(
+			CodexStatRow.new(
+				"开裂阈值", "%d 次" % config.shield_cracked_remaining
+			)
+		)
+		stats.append(
+			CodexStatRow.new(
+				"危急阈值", "%d 次" % config.shield_critical_remaining
+			)
 		)
 	elif enemy is CombatRobotGunnerConfig:
 		var config := enemy as CombatRobotGunnerConfig
