@@ -448,7 +448,7 @@ theme_override_colors/font_color = Color(0.82, 0.86, 0.79, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "选择角色后从地图正中心进入大尺度世界，可自由移动并由镜头跟随探索随机生成的稀疏路线；信息集中显示于 HUD，仅房主可消耗行动力推动队伍位置。"
+text = "选择角色后从地图正中心进入大尺度世界，可自由移动并由镜头跟随，亦可拖动查看密集分布的随机路线节点；信息集中显示于 HUD，仅房主可消耗行动力推动队伍位置。"
 autowrap_mode = 2
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P3/PageMargin/Content"]

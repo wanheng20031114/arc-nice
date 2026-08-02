@@ -356,6 +356,43 @@ func _test_board_contract(
 		(board.get("_cells") as Dictionary).size() == graph.get_node_count(),
 		"棋盘必须为 99 个逻辑格各实例化一个复用 Cell 场景。"
 	)
+	var cell_layer := board.get_node_or_null("CellLayer") as Control
+	var first_cells: Array[RogueRouteCell] = []
+	for node_id in range(graph.get_node_count()):
+		first_cells.append(board.get_cell(node_id))
+	_expect(
+		board.present_graph(
+			graph,
+			DEFAULT_CONFIG,
+			runtime.current_node_id,
+			runtime.action_points,
+			runtime.visited_counts,
+			true
+		),
+		"同一布局必须支持原子重呈现。"
+	)
+	var stale_cell_attached := false
+	var stale_cell_reused := false
+	for node_id in range(first_cells.size()):
+		var old_cell := first_cells[node_id]
+		if old_cell == null:
+			stale_cell_attached = true
+			continue
+		stale_cell_attached = (
+			stale_cell_attached
+			or old_cell.get_parent() == cell_layer
+		)
+		stale_cell_reused = (
+			stale_cell_reused
+			or old_cell == board.get_cell(node_id)
+		)
+	_expect(
+		cell_layer != null
+		and cell_layer.get_child_count() == graph.get_node_count()
+		and not stale_cell_attached
+		and not stale_cell_reused,
+		"同帧重呈现后 CellLayer 只能保留 99 个新 Cell，不得残留或复用旧实例。"
+	)
 
 	var start_cell := board.get_cell(graph.start_node_id)
 	var empty_cell := board.get_cell(empty_neighbor_id)
@@ -368,17 +405,23 @@ func _test_board_contract(
 		start_cell != null
 		and empty_cell != null
 		and empty_cell.is_empty
-		and empty_cell.empty_glyph.visible
+		and empty_cell.empty_bead.visible
+		and not empty_cell.content_disc.visible
+		and not empty_cell.name_label.visible
 		and empty_cell.is_interaction_enabled(),
-		"相邻空节点必须显示空白原语，并与其他节点一样可点击移动。"
+		"相邻空节点必须仅显示小圆珠、隐藏名称，并保持可点击移动。"
 	)
+	var named_cell: RogueRouteCell = null
+	for node_id in range(graph.get_node_count()):
+		if graph.get_node_type(node_id) != RogueRouteGraph.NodeType.EMPTY:
+			named_cell = board.get_cell(node_id)
+			break
 	_expect(
-		start_cell.name_label.visible
-		and empty_cell.name_label.visible
+		named_cell != null
+		and named_cell.name_label.visible
 		and far_cell != null
-		and not far_cell.name_label.visible
 		and not far_cell.is_interaction_enabled(),
-		"名称只应在当前位置/邻域显示，未连接远端不得可交互。"
+		"事件节点名称必须常显，未连接远端不得可交互。"
 	)
 
 	var pressed_node_ids: Array[int] = []
@@ -480,9 +523,59 @@ func _test_board_contract(
 		"棋盘初始呈现也必须拒绝负行动力。"
 	)
 
+	var invalid_offset_graph := _make_graph_with_out_of_bounds_offset(graph)
+	_expect(
+		invalid_offset_graph != null,
+		"越界视觉偏移测试夹具必须仍是结构合法的路线图。"
+	)
+	if invalid_offset_graph != null:
+		var graph_before_rejection := board.graph
+		var child_count_before_rejection := (
+			cell_layer.get_child_count() if cell_layer != null else -1
+		)
+		_expect(
+			not board.present_graph(
+				invalid_offset_graph,
+				DEFAULT_CONFIG,
+				empty_neighbor_id,
+				0,
+				runtime.visited_counts,
+				true
+			)
+			and board.graph == graph_before_rejection
+			and cell_layer != null
+			and cell_layer.get_child_count() == child_count_before_rejection,
+			"超过配置 visual_jitter 的快照必须在清空现有棋盘前零副作用拒绝。"
+		)
+
 	board.queue_free()
 	await process_frame
 	await process_frame
+
+
+func _make_graph_with_out_of_bounds_offset(
+	source: RogueRouteGraph
+) -> RogueRouteGraph:
+	var offsets := source.visual_offsets.duplicate()
+	var target_node_id := 0 if source.start_node_id != 0 else 1
+	offsets[target_node_id] = Vector2(
+		float(DEFAULT_CONFIG.visual_jitter_pixels.x + 1),
+		0.0
+	)
+	var result := RogueRouteGraph.new()
+	var errors := result.initialize_layout(
+		source.generation_seed,
+		source.width,
+		source.height,
+		source.start_node_id,
+		source.node_types,
+		source.node_content_seeds,
+		offsets,
+		source.edges
+	)
+	if not errors.is_empty():
+		return null
+	return result
 
 
 func _find_non_neighbor(graph: RogueRouteGraph, source_node_id: int) -> int:

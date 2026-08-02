@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="RogueRouteGenerationConfig" load_steps=9 format=3]
+[gd_resource type="Resource" script_class="RogueRouteGenerationConfig" format=3 uid="uid://cvp8cqsxji0xu"]
 
-[ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_generation_config.gd" id="1_script"]
-[ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_node_type_config.gd" id="2_type_script"]
+[ext_resource type="Script" uid="uid://crq4yoaknng2q" path="res://resources/config/rogue_route/rogue_route_generation_config.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://c5bwdhrij10lp" path="res://resources/config/rogue_route/rogue_route_node_type_config.gd" id="2_type_script"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/magical_encounter.tres" id="3_magical"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/emergency_combat.tres" id="4_emergency"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/normal_combat.tres" id="5_normal"]
@@ -11,13 +11,5 @@
 
 [resource]
 script = ExtResource("1_script")
-width = 11
-height = 9
-empty_ratio = 0.5
-empty_ratio_jitter = 0.06
-empty_cluster_strength = 0.3
 node_type_catalog = Array[ExtResource("2_type_script")]([ExtResource("3_magical"), ExtResource("4_emergency"), ExtResource("5_normal"), ExtResource("6_resource"), ExtResource("7_market"), ExtResource("8_prepare")])
-extra_edge_ratio = 0.2
-initial_action_points = 12
-move_action_cost = 1
-visual_jitter_pixels = Vector2i(7, 5)
+visual_jitter_pixels = Vector2i(5, 2)

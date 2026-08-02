@@ -7,7 +7,7 @@ class_name RogueRouteNodeTypeConfig
 	"神奇遭遇:1",
 	"紧急作战:2",
 	"普通作战:3",
-	"荒野资源:4",
+	"遗址物资:4",
 	"神秘黑市:5",
 	"未雨绸缪:6"
 ) var node_type: int = RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
@@ -15,6 +15,8 @@ class_name RogueRouteNodeTypeConfig
 @export var icon: Texture2D = null
 @export_range(0.0, 1000.0, 0.01, "or_greater") var generation_weight := 1.0
 @export_range(0, 99, 1, "or_greater") var minimum_count := 1
+## 0 表示不设上限；正数上限同时约束保底数量与后续权重抽取。
+@export_range(0, 99, 1, "or_greater") var maximum_count := 0
 ## 为后续对话池、战斗地图池或商店池预留。本次 P3 不加载正式内容。
 @export var content_pool_id: StringName = &""
 
@@ -36,4 +38,11 @@ func validate_config() -> PackedStringArray:
 		errors.append("路线节点 %s 的生成权重无效。" % String(type_id))
 	if minimum_count < 0:
 		errors.append("路线节点 %s 的 minimum_count 不能为负数。" % String(type_id))
+	if maximum_count < 0:
+		errors.append("路线节点 %s 的 maximum_count 不能为负数。" % String(type_id))
+	elif maximum_count > 0 and maximum_count < minimum_count:
+		errors.append(
+			"路线节点 %s 的 maximum_count 不能小于 minimum_count。"
+			% String(type_id)
+		)
 	return errors

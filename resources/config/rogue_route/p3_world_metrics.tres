@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="RogueRouteWorldMetrics" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_world_metrics.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")

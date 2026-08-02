@@ -11,7 +11,7 @@ signal return_requested
 const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
 const INVALID_NODE_ID := -1
 const AUTO_SEED := 0
-const CAMERA_ZOOM := Vector2(2.0, 2.0)
+const ROUTE_CONTRACT_FIELD := "runtime_contract_hash"
 const AVATAR_SPAWN_OFFSETS := [
 	Vector2.ZERO,
 	Vector2(12.0, 0.0),
@@ -29,42 +29,22 @@ const AVATAR_SPAWN_OFFSETS := [
 ## 0 表示每次进入时生成新 seed；非零值便于复现指定地图。
 @export var initial_generation_seed := AUTO_SEED
 
-@onready var world: Node2D = $World
+@onready var world: RogueRouteWorld = $World
 @onready var route_board: RogueRouteBoard = $World/RouteBoard
 @onready var player_container: Node2D = $World/Players
 @onready var map_camera: Camera2D = $World/Camera2D
-@onready var role_value: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/RoleValue
-)
-@onready var character_value: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/CharacterValue
-)
-@onready var action_points_value: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/Stats/ActionPoints/Value
-)
-@onready var seed_value: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/Stats/Seed/Value
-)
-@onready var position_value: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/Stats/Position/Value
-)
-@onready var content_overline: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/ContentOverline
-)
-@onready var content_title: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/ContentTitle
-)
-@onready var content_body: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/ContentBody
-)
-@onready var content_meta: Label = (
-	$HUD/Root/RightPanel/PanelMargin/Content/ContentMeta
-)
-@onready var regenerate_button: Button = (
-	$HUD/Root/RightPanel/PanelMargin/Content/RegenerateButton
-)
-@onready var hint_label: Label = $HUD/Root/BottomDock/DockMargin/Layout/Hint
-@onready var status_message: Label = $HUD/Root/BottomDock/DockMargin/Layout/StatusMessage
+@onready var role_value: Label = %RoleValue
+@onready var character_value: Label = %CharacterValue
+@onready var action_points_value: Label = %ActionPointsValue
+@onready var seed_value: Label = %SeedValue
+@onready var position_value: Label = %PositionValue
+@onready var content_overline: Label = %ContentOverline
+@onready var content_title: Label = %ContentTitle
+@onready var content_body: Label = %ContentBody
+@onready var content_meta: Label = %ContentMeta
+@onready var regenerate_button: Button = %RegenerateButton
+@onready var hint_label: Label = %Hint
+@onready var status_message: Label = %StatusMessage
 @onready var move_confirmation: ConfirmationDialog = $MoveConfirmation
 
 var _route_graph: RogueRouteGraph = null
@@ -77,6 +57,7 @@ var player: Player = null
 var peer_players: Dictionary[int, Player] = {}
 var _local_peer_id := 0
 var _multiplayer_avatar_mode := false
+var _camera_drag_active := false
 
 
 func _ready() -> void:
@@ -96,6 +77,35 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	if player != null and is_instance_valid(player):
 		route_board.update_local_player_global_position(player.global_position)
+		_clamp_camera_drag_offset()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mouse_button := event as InputEventMouseButton
+		if mouse_button.button_index not in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_MIDDLE]:
+			return
+		_camera_drag_active = mouse_button.pressed
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseMotion and _camera_drag_active:
+		var mouse_motion := event as InputEventMouseMotion
+		var drag_mask := MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_MIDDLE
+		if (mouse_motion.button_mask & drag_mask) == 0:
+			_camera_drag_active = false
+			return
+		_apply_camera_drag(mouse_motion.relative)
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey:
+		var key_event := event as InputEventKey
+		if (
+			key_event.pressed
+			and not key_event.echo
+			and key_event.keycode == KEY_HOME
+		):
+			_recenter_camera_on_player()
+			get_viewport().set_input_as_handled()
 
 
 func start_authoritative_session(
@@ -143,7 +153,7 @@ func start_authoritative_session(
 	_bind_runtime_state(generated_graph, generated_state)
 	_route_ready = true
 	_configure_camera_world_bounds()
-	_place_all_players_at_current_node()
+	_place_all_players_at_current_node(true)
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("路线世界已生成。移动角色探索，并走近青色相邻节点。", false)
@@ -172,6 +182,11 @@ func apply_full_snapshot(
 	layout_snapshot: Dictionary,
 	state_snapshot: Dictionary
 ) -> bool:
+	if str(layout_snapshot.get(ROUTE_CONTRACT_FIELD, "")) != (
+		_get_runtime_contract_hash()
+	):
+		_set_status("房主路线版本与本地运行配置不兼容。", true)
+		return false
 	var imported_graph := RogueRouteGraph.import_layout(layout_snapshot)
 	if imported_graph == null:
 		_set_status("房主路线布局快照无效。", true)
@@ -203,7 +218,7 @@ func apply_full_snapshot(
 	_bind_runtime_state(imported_graph, imported_state)
 	_route_ready = true
 	_configure_camera_world_bounds()
-	_place_all_players_at_current_node()
+	_place_all_players_at_current_node(true)
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("已同步房主路线。当前为只读模式。", false)
@@ -228,7 +243,9 @@ func apply_move_delta(delta: Dictionary) -> bool:
 func export_layout_snapshot() -> Dictionary:
 	if not is_route_ready():
 		return {}
-	return _route_graph.export_layout().duplicate(true)
+	var snapshot := _route_graph.export_layout().duplicate(true)
+	snapshot[ROUTE_CONTRACT_FIELD] = _get_runtime_contract_hash()
+	return snapshot
 
 
 func export_state_snapshot() -> Dictionary:
@@ -239,6 +256,10 @@ func export_state_snapshot() -> Dictionary:
 
 func get_route_revision() -> int:
 	return _runtime_state.state_revision if is_route_ready() else -1
+
+
+func get_runtime_contract_hash() -> String:
+	return _get_runtime_contract_hash()
 
 
 func is_route_ready() -> bool:
@@ -459,7 +480,7 @@ func configure_multiplayer_players(
 		return false
 	_attach_camera_to_local_player()
 	if is_route_ready():
-		_place_all_players_at_current_node()
+		_place_all_players_at_current_node(true)
 	_update_character_display()
 	return true
 
@@ -629,7 +650,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	if player_instance == player:
 		player = null
 	if map_camera.get_parent() == player_instance:
-		map_camera.reparent(world, true)
+		world.detach_camera_from_player()
 	player_container.remove_child(player_instance)
 	player_instance.queue_free()
 
@@ -661,6 +682,9 @@ func _instantiate_route_player(character_id: StringName) -> Player:
 	var player_instance := PlayerCharacterRegistry.instantiate_character(resolved_id)
 	if player_instance == null:
 		push_error("TestRogueRouteP3: 无法实例化路线角色 %s。" % resolved_id)
+	else:
+		# P3 的背景、节点和 HUD 使用平滑过滤；低像素玩家单独保持清晰。
+		player_instance.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	return player_instance
 
 
@@ -674,31 +698,32 @@ func _get_avatar_spawn_position(index: int) -> Vector2:
 func _attach_camera_to_local_player() -> void:
 	if map_camera == null or player == null:
 		return
-	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
-	player.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
-	if map_camera.get_parent() != player:
-		map_camera.reparent(player)
-	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_INHERIT
-	map_camera.position = Vector2.ZERO
-	map_camera.zoom = CAMERA_ZOOM
-	map_camera.position_smoothing_enabled = false
-	map_camera.enabled = true
-	_configure_camera_world_bounds()
-	player.reset_physics_interpolation()
-	map_camera.reset_physics_interpolation()
+	world.attach_camera_to_player(player)
 
 
 func _configure_camera_world_bounds() -> void:
-	if map_camera == null:
-		return
-	var bounds := route_board.get_world_bounds()
-	map_camera.limit_left = floori(bounds.position.x)
-	map_camera.limit_top = floori(bounds.position.y)
-	map_camera.limit_right = ceili(bounds.end.x)
-	map_camera.limit_bottom = ceili(bounds.end.y)
+	world.configure_world_bounds()
+	_clamp_camera_drag_offset()
 
 
-func _place_all_players_at_current_node() -> void:
+func _apply_camera_drag(screen_delta: Vector2) -> void:
+	world.apply_camera_drag(player, screen_delta, get_viewport_rect().size)
+
+
+func _clamp_camera_drag_offset() -> void:
+	world.clamp_camera_drag(player, get_viewport_rect().size)
+
+
+func _recenter_camera_on_player() -> void:
+	_camera_drag_active = false
+	world.recenter_camera(player, get_viewport_rect().size)
+
+
+func _on_recenter_button_pressed() -> void:
+	_recenter_camera_on_player()
+
+
+func _place_all_players_at_current_node(recenter_camera: bool = false) -> void:
 	if not is_route_ready():
 		return
 	var anchor := route_board.get_node_global_position(
@@ -719,6 +744,8 @@ func _place_all_players_at_current_node() -> void:
 		_teleport_route_player(player, anchor)
 	if player != null:
 		route_board.update_local_player_global_position(player.global_position)
+		if recenter_camera:
+			_recenter_camera_on_player()
 
 
 func _teleport_route_player(player_instance: Player, target_position: Vector2) -> void:
@@ -738,8 +765,7 @@ func _set_local_player_controls_locked(locked: bool) -> void:
 
 
 func _clear_player_instances() -> void:
-	if map_camera != null and map_camera.get_parent() != world:
-		map_camera.reparent(world, true)
+	world.detach_camera_from_player()
 	for child in player_container.get_children():
 		player_container.remove_child(child)
 		child.queue_free()
@@ -797,10 +823,10 @@ func _update_authority_ui() -> void:
 	)
 	regenerate_button.disabled = not _authority_enabled
 	hint_label.text = (
-		"WASD / 左摇杆探索；走近发光节点后点击确认，每次消耗 %d AP。"
+		"WASD / 左摇杆探索 · 拖动空白处查看地图 · 每次移动消耗 %d AP。"
 		% generation_config.move_action_cost
 		if _authority_enabled and generation_config != null
-		else "WASD / 左摇杆自由探索；路线节点与行动力由房主统一确认。"
+		else "WASD / 左摇杆自由探索 · 拖动空白处查看地图；路线由房主确认。"
 	)
 
 
@@ -857,6 +883,14 @@ func _get_node_display_name(node_id: int) -> String:
 		if type_config != null and not type_config.display_name.is_empty():
 			return type_config.display_name
 	return "未知节点"
+
+
+func _get_runtime_contract_hash() -> String:
+	if generation_config == null:
+		return ""
+	return generation_config.compute_runtime_contract_hash(
+		route_board.get_world_metrics()
+	)
 
 
 func _set_status(message: String, is_error: bool) -> void:

@@ -2,90 +2,82 @@
 
 [ext_resource type="Script" path="res://scene/rogue_route/rogue_route_cell.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/empty_node.png" id="3_empty_node"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_node_normal"]
-bg_color = Color(0.075, 0.105, 0.125, 0.96)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.36, 0.45, 0.48, 0.92)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_node_hover"]
-bg_color = Color(0.09, 0.15, 0.175, 0.98)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.43, 0.87, 0.91, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_node_pressed"]
-bg_color = Color(0.12, 0.18, 0.19, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.96, 0.78, 0.34, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_node_disabled"]
-bg_color = Color(0.045, 0.06, 0.07, 0.9)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disc"]
+bg_color = Color(0.025, 0.043, 0.058, 0.96)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.25, 0.29, 0.3, 0.72)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+border_color = Color(0.36, 0.45, 0.5, 0.82)
+corner_radius_top_left = 11
+corner_radius_top_right = 11
+corner_radius_bottom_right = 11
+corner_radius_bottom_left = 11
+corner_detail = 8
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_node_focus"]
-bg_color = Color(0, 0, 0, 0)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.93, 0.96, 0.88, 0.9)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_reachable"]
+draw_center = false
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.32, 0.76, 0.82, 0.72)
+corner_radius_top_left = 15
+corner_radius_top_right = 15
+corner_radius_bottom_right = 15
+corner_radius_bottom_left = 15
+corner_detail = 8
+shadow_color = Color(0.13, 0.66, 0.74, 0.2)
+shadow_size = 1
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_current"]
-bg_color = Color(0.1, 0.8, 0.88, 0.08)
+bg_color = Color(0.11, 0.75, 0.84, 0.08)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.38, 0.93, 1, 0.96)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
+border_color = Color(0.42, 0.91, 0.96, 0.92)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+corner_detail = 8
+shadow_color = Color(0.18, 0.75, 0.84, 0.27)
+shadow_size = 2
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_selected"]
-bg_color = Color(0.96, 0.74, 0.22, 0.04)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(1, 0.78, 0.29, 0.94)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
+bg_color = Color(0.95, 0.72, 0.22, 0.055)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.81, 0.38, 0.94)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+corner_detail = 8
+shadow_color = Color(0.92, 0.65, 0.18, 0.25)
+shadow_size = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_empty_halo"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.92)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+corner_detail = 8
+shadow_color = Color(1, 1, 1, 0.18)
+shadow_size = 1
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_visited"]
 bg_color = Color(0.42, 0.84, 0.69, 1)
@@ -94,85 +86,120 @@ border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.08, 0.13, 0.12, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+corner_detail = 8
 
 [node name="RogueRouteCell" type="Control"]
-custom_minimum_size = Vector2(64, 74)
-offset_right = 64.0
-offset_bottom = 74.0
+custom_minimum_size = Vector2(48, 50)
+offset_right = 48.0
+offset_bottom = 50.0
 mouse_filter = 2
 script = ExtResource("1_script")
 
 [node name="SelectedHalo" type="Panel" parent="."]
 visible = false
 layout_mode = 0
-offset_left = 1.0
-offset_top = -3.0
-offset_right = 63.0
-offset_bottom = 59.0
+offset_left = 6.0
+offset_top = -2.0
+offset_right = 42.0
+offset_bottom = 34.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_selected")
 
 [node name="CurrentHalo" type="Panel" parent="."]
 visible = false
 layout_mode = 0
-offset_left = 4.0
-offset_right = 60.0
-offset_bottom = 56.0
+offset_left = 8.0
+offset_right = 40.0
+offset_bottom = 32.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_current")
+
+[node name="ReachableHalo" type="Panel" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 9.0
+offset_top = 1.0
+offset_right = 39.0
+offset_bottom = 31.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_reachable")
 
 [node name="NodeButton" type="Button" parent="."]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 4.0
-offset_right = 56.0
-offset_bottom = 52.0
+offset_right = 40.0
+offset_bottom = 32.0
 focus_mode = 2
 mouse_default_cursor_shape = 2
-theme_override_styles/normal = SubResource("StyleBoxFlat_node_normal")
-theme_override_styles/hover = SubResource("StyleBoxFlat_node_hover")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_node_pressed")
-theme_override_styles/disabled = SubResource("StyleBoxFlat_node_disabled")
-theme_override_styles/focus = SubResource("StyleBoxFlat_node_focus")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button")
 
-[node name="Icon" type="TextureRect" parent="NodeButton"]
-texture_filter = 1
+[node name="ContentDisc" type="Panel" parent="NodeButton"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -8.0
+offset_left = 5.0
+offset_top = 5.0
+offset_right = -5.0
+offset_bottom = -5.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_disc")
+
+[node name="Icon" type="TextureRect" parent="NodeButton"]
+texture_filter = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 7.0
+offset_top = 7.0
+offset_right = -7.0
+offset_bottom = -7.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="EmptyGlyph" type="Label" parent="NodeButton"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="EmptyStateHalo" type="Panel" parent="NodeButton"]
+visible = false
+layout_mode = 0
+offset_left = 9.0
+offset_top = 9.0
+offset_right = 23.0
+offset_bottom = 23.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.53, 0.65, 0.66, 1)
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 23
-text = "·"
-horizontal_alignment = 1
-vertical_alignment = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_empty_halo")
+
+[node name="EmptyBead" type="TextureRect" parent="NodeButton"]
+texture_filter = 2
+layout_mode = 0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 20.0
+offset_bottom = 20.0
+mouse_filter = 2
+texture = ExtResource("3_empty_node")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="VisitedMark" type="Panel" parent="."]
 visible = false
 layout_mode = 0
-offset_left = 49.0
-offset_top = 45.0
-offset_right = 55.0
-offset_bottom = 51.0
+offset_left = 34.0
+offset_top = 26.0
+offset_right = 40.0
+offset_bottom = 32.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_visited")
 
@@ -180,15 +207,16 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_visited")
 visible = false
 layout_mode = 0
 offset_left = -20.0
-offset_top = 57.0
-offset_right = 84.0
-offset_bottom = 74.0
+offset_top = 34.0
+offset_right = 156.0
+offset_bottom = 64.0
+scale = Vector2(0.5, 0.5)
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.93, 0.96, 0.95, 1)
-theme_override_colors/font_outline_color = Color(0.025, 0.035, 0.04, 0.96)
-theme_override_constants/outline_size = 3
+theme_override_colors/font_color = Color(0.91, 0.95, 0.96, 1)
+theme_override_colors/font_outline_color = Color(0.012, 0.02, 0.027, 0.98)
+theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 18
 text = "路线节点"
 horizontal_alignment = 1
 vertical_alignment = 1

@@ -3,6 +3,9 @@ extends SceneTree
 const DEFAULT_CONFIG: RogueRouteGenerationConfig = preload(
 	"res://resources/config/rogue_route/p3_generation_config.tres"
 )
+const WORLD_METRICS: RogueRouteWorldMetrics = preload(
+	"res://resources/config/rogue_route/p3_world_metrics.tres"
+)
 const EXPECTED_ICON_PATHS := {
 	RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER:
 		"res://resources/texture/rogue_route/magical_encounter.png",
@@ -29,6 +32,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_default_config_contract()
+	_test_runtime_contract_hash()
 	_test_determinism_and_layout_round_trip()
 	_test_random_stream_isolation()
 	_test_seed_sweep_invariants()
@@ -62,6 +66,24 @@ func _test_default_config_contract() -> void:
 		DEFAULT_CONFIG.node_type_catalog.size() == 6,
 		"P3 路线图必须注册六种非空节点。"
 	)
+	var black_market_config := DEFAULT_CONFIG.get_type_config(
+		RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET
+	)
+	var ruins_resource_config := DEFAULT_CONFIG.get_type_config(
+		RogueRouteGraph.NodeType.WILDERNESS_RESOURCE
+	)
+	_expect(
+		black_market_config != null
+		and black_market_config.minimum_count == 4
+		and black_market_config.maximum_count == 7
+		and is_equal_approx(black_market_config.generation_weight, 0.2),
+		"神秘黑市必须使用 4–7 个硬数量约束与 0.2 生成权重。"
+	)
+	_expect(
+		ruins_resource_config != null
+		and ruins_resource_config.display_name == "遗址物资",
+		"数值类型 4 必须对玩家显示为遗址物资。"
+	)
 	for node_type in EXPECTED_ICON_PATHS:
 		var type_config := DEFAULT_CONFIG.get_type_config(int(node_type))
 		_expect(
@@ -84,6 +106,62 @@ func _test_default_config_contract() -> void:
 	_expect(
 		_has_error_containing(duplicate_type_config.validate_config(), "重复"),
 		"重复路线节点注册必须被配置校验拒绝。"
+	)
+	var invalid_maximum_config := (
+		DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
+	)
+	var invalid_black_market := invalid_maximum_config.get_type_config(
+		RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET
+	)
+	invalid_black_market.maximum_count = invalid_black_market.minimum_count - 1
+	_expect(
+		_has_error_containing(
+			invalid_maximum_config.validate_config(),
+			"maximum_count"
+		),
+		"正数 maximum_count 小于 minimum_count 时必须被配置校验拒绝。"
+	)
+
+
+func _test_runtime_contract_hash() -> void:
+	_expect(WORLD_METRICS != null, "P3 必须加载统一路线世界度量资源。")
+	if WORLD_METRICS == null:
+		return
+	_expect(
+		WORLD_METRICS.validate_metrics().is_empty()
+		and WORLD_METRICS.cell_spacing.is_equal_approx(Vector2(88.0, 48.0))
+		and WORLD_METRICS.board_margin.is_equal_approx(Vector2(96.0, 96.0))
+		and WORLD_METRICS.get_layout_size(Vector2i(11, 9)).is_equal_approx(
+			Vector2(1072.0, 576.0)
+		),
+		"P3 世界度量必须稳定定义 88×48 间距、96 边距和 1072×576 布局。"
+	)
+	var baseline_hash := DEFAULT_CONFIG.compute_runtime_contract_hash(
+		WORLD_METRICS
+	)
+	var repeated_hash := DEFAULT_CONFIG.compute_runtime_contract_hash(
+		WORLD_METRICS
+	)
+	_expect(
+		baseline_hash.length() == 64 and baseline_hash == repeated_hash,
+		"运行契约哈希必须是稳定的 64 位十六进制 SHA-256。"
+	)
+	var changed_metrics := WORLD_METRICS.duplicate(true) as RogueRouteWorldMetrics
+	changed_metrics.cell_spacing.x += 1.0
+	var changed_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
+	changed_config.move_action_cost += 1
+	var changed_cap_config := (
+		DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
+	)
+	changed_cap_config.get_type_config(
+		RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET
+	).maximum_count += 1
+	_expect(
+		DEFAULT_CONFIG.compute_runtime_contract_hash(changed_metrics) != baseline_hash
+		and changed_config.compute_runtime_contract_hash(WORLD_METRICS) != baseline_hash
+		and changed_cap_config.compute_runtime_contract_hash(WORLD_METRICS)
+		!= baseline_hash,
+		"世界几何、移动消耗或节点 maximum_count 变化必须改变运行契约哈希。"
 	)
 
 
@@ -217,12 +295,26 @@ func _validate_graph_invariants(
 		"%s：空节点比例 %.4f 超出配置范围。" % [label, empty_ratio]
 	)
 	for type_config in config.node_type_catalog:
+		var generated_count := graph.get_node_ids_by_type(
+			type_config.node_type
+		).size()
 		_expect(
-			graph.get_node_ids_by_type(type_config.node_type).size()
-			>= type_config.minimum_count,
-			"%s：%s 数量不得低于 minimum_count。"
+			generated_count >= type_config.minimum_count
+			and (
+				type_config.maximum_count == 0
+				or generated_count <= type_config.maximum_count
+			),
+			"%s：%s 数量必须位于 minimum_count/maximum_count 约束内。"
 			% [label, type_config.display_name]
 		)
+	var black_market_count := graph.get_node_ids_by_type(
+		RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET
+	).size()
+	_expect(
+		black_market_count >= 4 and black_market_count <= 7,
+		"%s：神秘黑市总数必须始终位于 4–7，实际为 %d。"
+		% [label, black_market_count]
+	)
 
 	var maximum_edge_count := graph.get_max_cardinal_edge_count()
 	var spanning_tree_edge_count := node_count - 1

@@ -134,7 +134,7 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 		and entry_subtitle.text.contains("均先选择角色")
 		and p3_description != null
 		and p3_description.text.contains("正中心")
-		and p3_description.text.contains("稀疏路线")
+		and p3_description.text.contains("密集分布")
 		and p3_description.text.contains("房主")
 		and p3_description.text.contains("行动力")
 		and p3_description.text.contains("大尺度世界")

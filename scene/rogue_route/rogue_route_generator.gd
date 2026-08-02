@@ -29,6 +29,8 @@ static func generate(
 	var visual_rng := _make_stream(generation_seed, VISUAL_STREAM_SALT)
 	var generated_edges := _generate_edges(config, topology_rng)
 	var content_data := _generate_content(config, content_rng)
+	if content_data.is_empty():
+		return null
 	var generated_visual_offsets := _generate_visual_offsets(config, visual_rng)
 
 	var graph := RogueRouteGraph.new()
@@ -130,10 +132,14 @@ static func _generate_content(
 		0.0,
 		1.0
 	)
+	var minimum_empty_count := maxi(
+		1,
+		node_count - config.get_maximum_non_empty_count()
+	)
 	var maximum_empty_count := node_count - config.get_minimum_non_empty_count()
 	var empty_count := clampi(
 		roundi(float(node_count) * target_empty_ratio),
-		1,
+		minimum_empty_count,
 		maximum_empty_count
 	)
 	var start_node_id := config.get_center_node_id()
@@ -192,11 +198,23 @@ static func _generate_content(
 			return first.node_type < second.node_type
 	)
 	var generated_types: Array[int] = []
+	var generated_counts: Dictionary[int, int] = {}
 	for type_config in type_configs:
+		generated_counts[type_config.node_type] = 0
 		for _minimum_index in range(type_config.minimum_count):
 			generated_types.append(type_config.node_type)
+			generated_counts[type_config.node_type] += 1
 	while generated_types.size() < non_empty_node_ids.size():
-		generated_types.append(_roll_weighted_type(type_configs, random))
+		var next_type := _roll_weighted_type(
+			type_configs,
+			generated_counts,
+			random
+		)
+		if next_type == RogueRouteGraph.NodeType.EMPTY:
+			push_error("路线节点类型容量不足，无法填满非空节点。")
+			return {}
+		generated_types.append(next_type)
+		generated_counts[next_type] = generated_counts.get(next_type, 0) + 1
 	_shuffle_ints(generated_types, random)
 	for assignment_index in range(non_empty_node_ids.size()):
 		node_types[non_empty_node_ids[assignment_index]] = generated_types[assignment_index]
@@ -233,18 +251,37 @@ static func _generate_visual_offsets(
 
 static func _roll_weighted_type(
 	type_configs: Array[RogueRouteNodeTypeConfig],
+	generated_counts: Dictionary[int, int],
 	random: RandomNumberGenerator
 ) -> int:
 	var total_weight := 0.0
+	var fallback_type := RogueRouteGraph.NodeType.EMPTY
 	for type_config in type_configs:
+		if not _has_remaining_capacity(type_config, generated_counts):
+			continue
 		total_weight += maxf(type_config.generation_weight, 0.0)
+		if type_config.generation_weight > 0.0:
+			fallback_type = type_config.node_type
+	if total_weight <= 0.0:
+		return RogueRouteGraph.NodeType.EMPTY
 	var roll := random.randf() * total_weight
-	var fallback_type: int = type_configs.back().node_type
 	for type_config in type_configs:
+		if not _has_remaining_capacity(type_config, generated_counts):
+			continue
 		roll -= maxf(type_config.generation_weight, 0.0)
 		if roll <= 0.0:
 			return type_config.node_type
 	return fallback_type
+
+
+static func _has_remaining_capacity(
+	type_config: RogueRouteNodeTypeConfig,
+	generated_counts: Dictionary[int, int]
+) -> bool:
+	return (
+		type_config.maximum_count == 0
+		or generated_counts.get(type_config.node_type, 0) < type_config.maximum_count
+	)
 
 
 static func _find_root(parents: Array[int], node_id: int) -> int:

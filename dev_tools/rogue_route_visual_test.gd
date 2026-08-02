@@ -32,6 +32,12 @@ func _run() -> void:
 		push_error("当前显示驱动无法读取 P3 路线视觉预览。")
 		quit(1)
 		return
+	# 项目启用了 HDR 2D；视口读回值处于线性空间，PNG 预览需要转回
+	# sRGB 才能与玩家实际看到的亮度一致。
+	if bool(ProjectSettings.get_setting("rendering/viewport/hdr_2d", false)):
+		if preview.get_format() not in [Image.FORMAT_RGB8, Image.FORMAT_RGBA8]:
+			preview.convert(Image.FORMAT_RGBA8)
+		preview.linear_to_srgb()
 	var absolute_path := ProjectSettings.globalize_path(PREVIEW_PATH)
 	var save_error := preview.save_png(absolute_path)
 	if save_error != OK:

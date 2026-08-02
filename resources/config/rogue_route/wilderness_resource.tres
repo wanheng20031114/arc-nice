@@ -7,7 +7,7 @@
 script = ExtResource("1_script")
 type_id = &"wilderness_resource"
 node_type = 4
-display_name = "荒野资源"
+display_name = "遗址物资"
 icon = ExtResource("2_icon")
 generation_weight = 1.0
 minimum_count = 1

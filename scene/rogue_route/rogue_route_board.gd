@@ -2,20 +2,18 @@ extends Control
 class_name RogueRouteBoard
 
 signal node_pressed(node_id: int)
+signal layout_bounds_changed(bounds: Rect2)
 
 const CELL_SCENE: PackedScene = preload(
 	"res://scene/rogue_route/rogue_route_cell.tscn"
 )
 const INVALID_NODE_ID := -1
-const CELL_ANCHOR_FALLBACK := Vector2(32.0, 28.0)
-const CELL_SPACING := Vector2(256.0, 192.0)
-const BOARD_MARGIN := Vector2(320.0, 192.0)
-const NODE_INTERACTION_RADIUS := 88.0
-const MARKER_MOVE_SECONDS := 0.24
+const CELL_ANCHOR_FALLBACK := Vector2(24.0, 16.0)
+
+@export var world_metrics: RogueRouteWorldMetrics
 
 @onready var connections: RogueRouteConnections = $Connections
 @onready var cell_layer: Control = $CellLayer
-@onready var group_marker: Control = $GroupMarker
 @onready var waiting_label: Label = $WaitingLabel
 
 var graph: RogueRouteGraph = null
@@ -32,11 +30,13 @@ var _node_positions: Dictionary[int, Vector2] = {}
 var _local_player_position := Vector2.ZERO
 var _has_local_player_position := false
 var _nodes_in_player_range: Dictionary[int, bool] = {}
-var _marker_tween: Tween = null
 
 
 func _ready() -> void:
-	group_marker.hide()
+	if world_metrics != null and world_metrics.validate_metrics().is_empty():
+		_set_layout_size(world_metrics.get_layout_size(
+			world_metrics.default_grid_size
+		))
 	waiting_label.hide()
 
 
@@ -55,6 +55,10 @@ func present_graph(
 		or not new_generation_config.validate_config().is_empty()
 		or new_generation_config.width != new_graph.width
 		or new_generation_config.height != new_graph.height
+		or not _is_graph_compatible_with_world(
+			new_graph,
+			new_generation_config
+		)
 		or not _is_valid_runtime_view(
 			new_graph,
 			initial_current_node_id,
@@ -91,9 +95,8 @@ func present_graph(
 		cell.node_pressed.connect(_on_cell_pressed)
 		_cells[node_id] = cell
 	waiting_label.hide()
-	group_marker.show()
 	_layout_cells()
-	_update_cell_states(false)
+	_update_cell_states()
 	return true
 
 
@@ -107,7 +110,7 @@ func update_runtime_state(
 	new_current_node_id: int,
 	new_action_points: int,
 	new_visited_counts: PackedInt32Array,
-	animate_marker: bool = true
+	_animate_marker: bool = true
 ) -> bool:
 	if (
 		not _is_valid_runtime_view(
@@ -118,12 +121,11 @@ func update_runtime_state(
 		)
 	):
 		return false
-	var previous_node_id := current_node_id
 	current_node_id = new_current_node_id
 	action_points = new_action_points
 	visited_counts = new_visited_counts.duplicate()
 	selected_node_id = INVALID_NODE_ID
-	_update_cell_states(animate_marker and previous_node_id != current_node_id)
+	_update_cell_states()
 	return true
 
 
@@ -131,14 +133,14 @@ func set_authority_enabled(enabled: bool) -> void:
 	if _authority_enabled == enabled:
 		return
 	_authority_enabled = enabled
-	_update_cell_states(false)
+	_update_cell_states()
 
 
 func set_interaction_locked(locked: bool) -> void:
 	if _interaction_locked == locked:
 		return
 	_interaction_locked = locked
-	_update_cell_states(false)
+	_update_cell_states()
 
 
 func select_node(node_id: int) -> void:
@@ -167,18 +169,37 @@ func get_node_global_position(node_id: int) -> Vector2:
 
 
 func get_world_bounds() -> Rect2:
-	return Rect2(get_global_transform() * Vector2.ZERO, size)
+	var transform := get_global_transform()
+	var bounds := Rect2(transform * Vector2.ZERO, Vector2.ZERO)
+	bounds = bounds.expand(transform * Vector2(size.x, 0.0))
+	bounds = bounds.expand(transform * size)
+	bounds = bounds.expand(transform * Vector2(0.0, size.y))
+	return bounds
+
+
+func get_world_metrics() -> RogueRouteWorldMetrics:
+	return world_metrics
 
 
 func get_default_spawn_global_position(
 	target_config: RogueRouteGenerationConfig = null
 ) -> Vector2:
-	var width := target_config.width if target_config != null else 11
-	var height := target_config.height if target_config != null else 9
+	if world_metrics == null:
+		return global_position
+	var width := (
+		target_config.width
+		if target_config != null
+		else world_metrics.default_grid_size.x
+	)
+	var height := (
+		target_config.height
+		if target_config != null
+		else world_metrics.default_grid_size.y
+	)
 	var center_coord := Vector2i(width / 2, height / 2)
 	return get_global_transform() * (
-		BOARD_MARGIN
-		+ Vector2(center_coord.x, center_coord.y) * CELL_SPACING
+		world_metrics.board_margin
+		+ Vector2(center_coord.x, center_coord.y) * world_metrics.cell_spacing
 	)
 
 
@@ -216,29 +237,27 @@ func get_cell(node_id: int) -> RogueRouteCell:
 
 
 func _layout_cells() -> void:
-	if graph == null or _cells.is_empty():
+	if graph == null or _cells.is_empty() or world_metrics == null:
 		return
 	_node_positions.clear()
-	size = Vector2(
-		BOARD_MARGIN.x * 2.0 + CELL_SPACING.x * float(maxi(graph.width - 1, 0)),
-		BOARD_MARGIN.y * 2.0 + CELL_SPACING.y * float(maxi(graph.height - 1, 0))
-	)
+	_set_layout_size(world_metrics.get_layout_size(
+		Vector2i(graph.width, graph.height)
+	))
 	for node_id in range(graph.get_node_count()):
 		var coord := graph.id_to_coord(node_id)
 		var anchor := (
-			BOARD_MARGIN
-			+ Vector2(float(coord.x), float(coord.y)) * CELL_SPACING
+			world_metrics.board_margin
+			+ Vector2(float(coord.x), float(coord.y)) * world_metrics.cell_spacing
 			+ graph.get_visual_offset(node_id)
 		)
 		var cell := _cells[node_id]
 		cell.position = anchor - cell.get_connection_anchor()
 		_node_positions[node_id] = anchor
 	connections.set_node_positions(_node_positions)
-	_position_marker_immediately()
 	_refresh_player_range_interactions()
 
 
-func _update_cell_states(animate_marker: bool) -> void:
+func _update_cell_states() -> void:
 	if graph == null:
 		return
 	var neighbors := graph.get_neighbors(current_node_id)
@@ -268,44 +287,14 @@ func _update_cell_states(animate_marker: bool) -> void:
 		current_node_id,
 		neighbors
 	)
-	if animate_marker:
-		_animate_marker_to_current()
-	else:
-		_position_marker_immediately()
-
-
-func _position_marker_immediately() -> void:
-	if graph == null or not _node_positions.has(current_node_id):
-		return
-	if _marker_tween != null:
-		_marker_tween.kill()
-		_marker_tween = null
-	group_marker.position = _node_positions[current_node_id]
-
-
-func _animate_marker_to_current() -> void:
-	if graph == null or not _node_positions.has(current_node_id):
-		return
-	if _marker_tween != null:
-		_marker_tween.kill()
-	_marker_tween = create_tween()
-	_marker_tween.tween_property(
-		group_marker,
-		"position",
-		_node_positions[current_node_id],
-		MARKER_MOVE_SECONDS
-	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
-	_marker_tween.finished.connect(func() -> void:
-		_marker_tween = null
-	)
 
 
 func _clear_cells() -> void:
-	if _marker_tween != null:
-		_marker_tween.kill()
-		_marker_tween = null
 	for cell in _cells.values():
-		(cell as RogueRouteCell).queue_free()
+		var route_cell := cell as RogueRouteCell
+		if route_cell.get_parent() == cell_layer:
+			cell_layer.remove_child(route_cell)
+		route_cell.queue_free()
 	_cells.clear()
 	_node_positions.clear()
 	_nodes_in_player_range.clear()
@@ -314,7 +303,6 @@ func _clear_cells() -> void:
 	current_node_id = INVALID_NODE_ID
 	selected_node_id = INVALID_NODE_ID
 	visited_counts = PackedInt32Array()
-	group_marker.hide()
 	connections.setup({}, PackedInt32Array(), INVALID_NODE_ID, PackedInt32Array())
 
 
@@ -326,14 +314,18 @@ func _on_cell_pressed(node_id: int) -> void:
 
 func _refresh_player_range_interactions() -> void:
 	var next_nodes_in_range: Dictionary[int, bool] = {}
-	if graph != null and _has_local_player_position:
+	if graph != null and _has_local_player_position and world_metrics != null:
+		var interaction_radius_squared := (
+			world_metrics.node_interaction_radius
+			* world_metrics.node_interaction_radius
+		)
 		for neighbor_id in graph.get_neighbors(current_node_id):
 			var target_id := int(neighbor_id)
 			if (
 				_node_positions.has(target_id)
-				and _local_player_position.distance_to(
+				and _local_player_position.distance_squared_to(
 					_node_positions[target_id]
-				) <= NODE_INTERACTION_RADIUS
+				) <= interaction_radius_squared
 			):
 				next_nodes_in_range[target_id] = true
 	if next_nodes_in_range == _nodes_in_player_range:
@@ -378,5 +370,33 @@ func _is_valid_runtime_view(
 		return false
 	for visit_count in target_visited_counts:
 		if visit_count < 0:
+			return false
+	return true
+
+
+func _set_layout_size(layout_size: Vector2) -> void:
+	if size.is_equal_approx(layout_size):
+		return
+	size = layout_size
+	layout_bounds_changed.emit(get_world_bounds())
+
+
+func _is_graph_compatible_with_world(
+	target_graph: RogueRouteGraph,
+	target_config: RogueRouteGenerationConfig
+) -> bool:
+	if world_metrics == null or not world_metrics.validate_metrics().is_empty():
+		return false
+	var maximum_jitter := target_config.visual_jitter_pixels
+	if (
+		float(maximum_jitter.x) * 2.0 >= world_metrics.cell_spacing.x
+		or float(maximum_jitter.y) * 2.0 >= world_metrics.cell_spacing.y
+	):
+		return false
+	for offset in target_graph.visual_offsets:
+		if (
+			absf(offset.x) > float(maximum_jitter.x)
+			or absf(offset.y) > float(maximum_jitter.y)
+		):
 			return false
 	return true
