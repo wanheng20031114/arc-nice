@@ -1,0 +1,416 @@
+[gd_scene load_steps=17 format=3]
+
+[ext_resource type="Script" path="res://scene/rogue_route/rogue_route_move_confirmation.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/route_move_confirmation_frame.png" id="2_frame"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud_location_icon.png" id="4_location"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud_ap_icon.png" id="5_ap"]
+
+[sub_resource type="FontVariation" id="FontVariation_heading"]
+base_font = ExtResource("3_font")
+variation_embolden = 0.48
+spacing_top = 1
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("3_font")
+variation_embolden = 0.18
+spacing_top = 1
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ap_panel"]
+bg_color = Color(0.55, 0.31, 0.12, 0.1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.47, 0.245, 0.075, 0.36)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_secondary"]
+content_margin_left = 22.0
+content_margin_top = 9.0
+content_margin_right = 22.0
+content_margin_bottom = 9.0
+bg_color = Color(0.3, 0.16, 0.075, 0.08)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.36, 0.18, 0.065, 0.68)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_secondary_hover"]
+content_margin_left = 22.0
+content_margin_top = 9.0
+content_margin_right = 22.0
+content_margin_bottom = 9.0
+bg_color = Color(0.72, 0.46, 0.2, 0.22)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.56, 0.29, 0.085, 0.92)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_secondary_pressed"]
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 8.0
+bg_color = Color(0.36, 0.18, 0.06, 0.26)
+border_width_left = 2
+border_width_top = 3
+border_width_right = 2
+border_width_bottom = 1
+border_color = Color(0.42, 0.2, 0.055, 0.94)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_primary"]
+content_margin_left = 28.0
+content_margin_top = 9.0
+content_margin_right = 28.0
+content_margin_bottom = 9.0
+bg_color = Color(0.55, 0.285, 0.075, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 3
+border_color = Color(0.29, 0.12, 0.03, 0.96)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_primary_hover"]
+content_margin_left = 28.0
+content_margin_top = 9.0
+content_margin_right = 28.0
+content_margin_bottom = 9.0
+bg_color = Color(0.72, 0.41, 0.11, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 3
+border_color = Color(0.31, 0.125, 0.025, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_primary_pressed"]
+content_margin_left = 28.0
+content_margin_top = 10.0
+content_margin_right = 28.0
+content_margin_bottom = 8.0
+bg_color = Color(0.43, 0.2, 0.045, 1)
+border_width_left = 2
+border_width_top = 3
+border_width_right = 2
+border_width_bottom = 1
+border_color = Color(0.25, 0.09, 0.018, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.96, 0.7, 0.31, 0.9)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+expand_margin_left = 3.0
+expand_margin_top = 3.0
+expand_margin_right = 3.0
+expand_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_close"]
+
+[node name="RogueRouteMoveConfirmation" type="CanvasLayer"]
+process_mode = 3
+visible = false
+layer = 30
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="MapShade" type="ColorRect" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.018, 0.014, 0.011, 0.72)
+
+[node name="PanelStage" type="Control" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -330.0
+offset_top = -188.0
+offset_right = 330.0
+offset_bottom = 188.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(330, 188)
+mouse_filter = 0
+
+[node name="Frame" type="NinePatchRect" parent="Root/PanelStage"]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_frame")
+patch_margin_left = 32
+patch_margin_top = 30
+patch_margin_right = 32
+patch_margin_bottom = 30
+
+[node name="ContentMargin" type="MarginContainer" parent="Root/PanelStage/Frame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 54
+theme_override_constants/margin_top = 38
+theme_override_constants/margin_right = 54
+theme_override_constants/margin_bottom = 38
+
+[node name="Content" type="VBoxContainer" parent="Root/PanelStage/Frame/ContentMargin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="Root/PanelStage/Frame/ContentMargin/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="LocationIcon" type="TextureRect" parent="Root/PanelStage/Frame/ContentMargin/Content/Header"]
+texture_filter = 1
+custom_minimum_size = Vector2(38, 38)
+layout_mode = 2
+texture = ExtResource("4_location")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TitleBlock" type="VBoxContainer" parent="Root/PanelStage/Frame/ContentMargin/Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = -1
+
+[node name="Title" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content/Header/TitleBlock"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.25, 0.105, 0.035, 1)
+theme_override_fonts/font = SubResource("FontVariation_heading")
+theme_override_font_sizes/font_size = 25
+text = "确认路线移动"
+
+[node name="Subtitle" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content/Header/TitleBlock"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.39, 0.225, 0.105, 0.82)
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 13
+text = "地下遗址路线"
+
+[node name="CloseButton" type="Button" parent="Root/PanelStage/Frame/ContentMargin/Content/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.33, 0.14, 0.045, 0.86)
+theme_override_colors/font_hover_color = Color(0.55, 0.23, 0.045, 1)
+theme_override_fonts/font = SubResource("FontVariation_heading")
+theme_override_font_sizes/font_size = 25
+theme_override_styles/normal = SubResource("StyleBoxEmpty_close")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_close")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_close")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_close")
+text = "×"
+
+[node name="HeaderLine" type="ColorRect" parent="Root/PanelStage/Frame/ContentMargin/Content"]
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.47, 0.245, 0.075, 0.38)
+
+[node name="DestinationCaption" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43, 0.25, 0.12, 0.88)
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 15
+text = "移动至"
+
+[node name="DestinationLabel" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.08, 0.025, 1)
+theme_override_fonts/font = SubResource("FontVariation_heading")
+theme_override_font_sizes/font_size = 30
+text = "神奇遭遇"
+text_overrun_behavior = 3
+
+[node name="APPanel" type="PanelContainer" parent="Root/PanelStage/Frame/ContentMargin/Content"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_ap_panel")
+
+[node name="APMargin" type="MarginContainer" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 8
+
+[node name="APRow" type="HBoxContainer" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel/APMargin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="APIcon" type="TextureRect" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel/APMargin/APRow"]
+texture_filter = 1
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+texture = ExtResource("5_ap")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="APCaption" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel/APMargin/APRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.37, 0.19, 0.075, 0.9)
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 15
+text = "行动力"
+
+[node name="CurrentAPLabel" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel/APMargin/APRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.23, 0.09, 0.025, 1)
+theme_override_fonts/font = SubResource("FontVariation_heading")
+theme_override_font_sizes/font_size = 23
+text = "12"
+
+[node name="Arrow" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel/APMargin/APRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54, 0.27, 0.07, 0.9)
+theme_override_fonts/font = SubResource("FontVariation_heading")
+theme_override_font_sizes/font_size = 20
+text = "→"
+
+[node name="RemainingAPLabel" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel/APMargin/APRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.47, 0.45, 1)
+theme_override_fonts/font = SubResource("FontVariation_heading")
+theme_override_font_sizes/font_size = 23
+text = "11"
+
+[node name="APSpacer" type="Control" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel/APMargin/APRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="CostLabel" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content/APPanel/APMargin/APRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43, 0.21, 0.065, 0.92)
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 15
+text = "消耗 1 行动力"
+
+[node name="Footer" type="HBoxContainer" parent="Root/PanelStage/Frame/ContentMargin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 12
+alignment = 2
+
+[node name="Hint" type="Label" parent="Root/PanelStage/Frame/ContentMargin/Content/Footer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.4, 0.25, 0.14, 0.72)
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 13
+text = "确认只更新路线节点，不移动玩家或镜头。"
+vertical_alignment = 2
+
+[node name="CancelButton" type="Button" parent="Root/PanelStage/Frame/ContentMargin/Content/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 46)
+layout_mode = 2
+focus_neighbor_left = NodePath("../ConfirmButton")
+focus_neighbor_right = NodePath("../ConfirmButton")
+focus_next = NodePath("../ConfirmButton")
+focus_previous = NodePath("../ConfirmButton")
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.28, 0.115, 0.035, 1)
+theme_override_colors/font_hover_color = Color(0.23, 0.08, 0.018, 1)
+theme_override_colors/font_pressed_color = Color(0.23, 0.08, 0.018, 1)
+theme_override_fonts/font = SubResource("FontVariation_heading")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_secondary")
+theme_override_styles/hover = SubResource("StyleBoxFlat_secondary_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_secondary_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
+text = "取消"
+
+[node name="ConfirmButton" type="Button" parent="Root/PanelStage/Frame/ContentMargin/Content/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(142, 46)
+layout_mode = 2
+focus_neighbor_left = NodePath("../CancelButton")
+focus_neighbor_right = NodePath("../CancelButton")
+focus_next = NodePath("../CancelButton")
+focus_previous = NodePath("../CancelButton")
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(1, 0.91, 0.72, 1)
+theme_override_colors/font_hover_color = Color(1, 0.96, 0.84, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.9, 0.67, 1)
+theme_override_fonts/font = SubResource("FontVariation_heading")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_primary")
+theme_override_styles/hover = SubResource("StyleBoxFlat_primary_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_primary_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
+text = "确认移动"

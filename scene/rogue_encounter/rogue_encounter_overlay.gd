@@ -455,7 +455,7 @@ func _fallback_result_text() -> String:
 			return "鸡哥：好吧，那就送你了。"
 		return "鸡哥：一手交钱，一手交球。"
 	if StringName(state.get("winning_option", &"")) == OPTION_FREE:
-		return "鸡哥：哪有什么好的事情。"
+		return "鸡哥：哪有这么好的事情？"
 	return "鸡哥结束了这次交易。"
 
 

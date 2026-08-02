@@ -59,7 +59,7 @@ const AVATAR_SPAWN_OFFSETS := [
 @onready var regenerate_button: Button = %RegenerateButton
 @onready var hint_label: Label = %Hint
 @onready var status_message: Label = %StatusMessage
-@onready var move_confirmation: ConfirmationDialog = $MoveConfirmation
+@onready var move_confirmation: RogueRouteMoveConfirmation = $MoveConfirmation
 @onready var encounter_overlay: RogueEncounterOverlay = $EncounterOverlay
 @onready var encounter_economy: RogueEncounterEconomyCoordinator = (
 	$EncounterEconomy
@@ -112,7 +112,8 @@ func _physics_process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _encounter_input_locked:
+	if _encounter_input_locked or _pending_node_id != INVALID_NODE_ID:
+		_camera_drag_active = false
 		return
 	if event is InputEventMouseButton:
 		var mouse_button := event as InputEventMouseButton
@@ -770,6 +771,7 @@ func _on_route_board_node_pressed(node_id: int) -> void:
 		not _authority_enabled
 		or not is_route_ready()
 		or _encounter_input_locked
+		or _pending_node_id != INVALID_NODE_ID
 	):
 		return
 	if not route_board.can_interact_with_node(node_id):
@@ -788,16 +790,13 @@ func _on_route_board_node_pressed(node_id: int) -> void:
 	route_board.select_node(node_id)
 	route_board.set_interaction_locked(true)
 	_set_local_player_controls_locked(true)
+	_camera_drag_active = false
 	_show_node_content(node_id, true)
-	move_confirmation.dialog_text = (
-		"移动至「%s」？\n本次消耗 %d 行动力，确认后剩余 %d。"
-		% [
-			_get_node_display_name(node_id),
-			generation_config.move_action_cost,
-			_runtime_state.action_points - generation_config.move_action_cost,
-		]
+	move_confirmation.present(
+		_get_node_display_name(node_id),
+		_runtime_state.action_points,
+		generation_config.move_action_cost
 	)
-	move_confirmation.popup_centered(Vector2i(460, 210))
 
 
 func _on_move_confirmation_confirmed() -> void:
@@ -869,12 +868,19 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 
 
 func _on_regenerate_button_pressed() -> void:
-	if not _authority_enabled or _encounter_input_locked:
+	if (
+		not _authority_enabled
+		or _encounter_input_locked
+		or _pending_node_id != INVALID_NODE_ID
+	):
 		return
 	start_authoritative_session()
 
 
 func _on_return_button_pressed() -> void:
+	if _pending_node_id != INVALID_NODE_ID:
+		_on_move_confirmation_canceled()
+		return
 	_clear_pending_move(true)
 	return_requested.emit()
 	if manage_return_locally:
@@ -1180,6 +1186,8 @@ func _recenter_camera_on_player() -> void:
 
 
 func _on_recenter_button_pressed() -> void:
+	if _encounter_input_locked or _pending_node_id != INVALID_NODE_ID:
+		return
 	_recenter_camera_on_player()
 
 
@@ -1205,7 +1213,7 @@ func _clear_pending_move(hide_dialog: bool) -> void:
 	if not is_node_ready():
 		return
 	if hide_dialog and move_confirmation.visible:
-		move_confirmation.hide()
+		move_confirmation.dismiss()
 	route_board.set_interaction_locked(_encounter_input_locked)
 	route_board.clear_selection()
 	_set_local_player_controls_locked(_encounter_input_locked)
@@ -1214,6 +1222,8 @@ func _clear_pending_move(hide_dialog: bool) -> void:
 func _finish_pending_move() -> void:
 	_pending_node_id = INVALID_NODE_ID
 	_pending_revision = -1
+	if move_confirmation.visible:
+		move_confirmation.dismiss()
 	route_board.set_interaction_locked(_encounter_input_locked)
 	route_board.clear_selection()
 	_set_local_player_controls_locked(_encounter_input_locked)

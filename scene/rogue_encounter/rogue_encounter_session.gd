@@ -753,7 +753,7 @@ func _get_result_text() -> String:
 		RogueEncounterEconomyCoordinator.RESULT_GRANTED_FREE:
 			return "好吧，那就送你了。"
 		RogueEncounterEconomyCoordinator.RESULT_FREE_FAILED:
-			return "哪有什么好的事情。"
+			return "哪有这么好的事情？"
 		RogueEncounterEconomyCoordinator.RESULT_ALL_INVENTORIES_FULL:
 			return "所有玩家背包均已满，交易未完成。"
 		RogueEncounterEconomyCoordinator.RESULT_INSUFFICIENT_PLANKS:
