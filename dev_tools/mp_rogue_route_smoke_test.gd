@@ -114,8 +114,8 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 40,
-		"协议 v40 必须同时隔离举盾机器人盾牌阶段与史莱姆多页遭遇结果。"
+		NetConstants.PROTOCOL_VERSION == 41,
+		"协议 v41 必须保留举盾机器人与史莱姆协议，并隔离鬼影遭遇结果。"
 	)
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
@@ -614,18 +614,16 @@ func _test_encounter_network_contract(
 		"客户端必须拒绝倒退的遭遇 revision。"
 	)
 	var current_revision := int(voting.get("revision", -1))
-	var encounter_id := StringName(voting.get("encounter_id", &""))
-	var one_page_option := (
-		RogueEncounterRegistry.OPTION_ASK_FOR_FREE
-		if encounter_id == RogueEncounterRegistry.CHICKEN_BRO
-		else RogueEncounterRegistry.OPTION_LEAVE_SLIMES
+	var encounter_options := RogueEncounterRegistry.get_option_ids(
+		StringName(voting.get("encounter_id", &""))
 	)
 	_expect(
-		host_route.host_submit_encounter_vote(
+		not encounter_options.is_empty()
+		and host_route.host_submit_encounter_vote(
 			participant_peer_id,
 			occurrence_key,
 			current_revision,
-			one_page_option
+			encounter_options[-1]
 		),
 		"Host 必须只接受当前 occurrence/revision 的投票。"
 	)

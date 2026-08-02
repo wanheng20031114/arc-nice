@@ -5,12 +5,15 @@ const MAGICAL_ENCOUNTER_POOL := &"magical_encounter"
 
 const CHICKEN_BRO := &"chicken_bro"
 const SLIME_TALKERS := &"slime_talkers"
+const GHOST_SHADOW := &"ghost_shadow"
 
 const OPTION_PURCHASE_BASKETBALL := &"purchase_basketball"
 const OPTION_ASK_FOR_FREE := &"ask_for_free"
 const OPTION_HELP_SLIMES := &"help_slimes"
 const OPTION_KICK_SLIMES := &"kick_slimes"
 const OPTION_LEAVE_SLIMES := &"leave_slimes"
+const OPTION_GHOST_RUN_AWAY := &"ghost_run_away"
+const OPTION_GHOST_WHO_ARE_YOU := &"ghost_who_are_you"
 
 const MAX_VISIBLE_OPTIONS := 3
 
@@ -87,10 +90,40 @@ const _CONTENT_CONFIGS := {
 			},
 		],
 	},
+	GHOST_SHADOW: {
+		"display_name": "鬼影",
+		"portrait_texture_path": (
+			"res://resources/texture/rogue_encounter/ghost_shadow.png"
+		),
+		"encounter_hint": "",
+		"intro_speaker": "",
+		"intro_text": "你遇到了一个鬼影",
+		"intro_is_narration": true,
+		"resolving_speaker": "",
+		"resolving_text": "鬼影正在消散……",
+		"resolving_is_narration": true,
+		"result_status": "鬼影已经离开",
+		"default_result_speaker": "",
+		"default_result_is_narration": true,
+		"options": [
+			{
+				"option_id": OPTION_GHOST_RUN_AWAY,
+				"title": "逃跑",
+				"description": "鬼知道会发生什么，赶快逃",
+				"icon_texture_path": "",
+			},
+			{
+				"option_id": OPTION_GHOST_WHO_ARE_YOU,
+				"title": "你是？",
+				"description": "",
+				"icon_texture_path": "",
+			},
+		],
+	},
 }
 
 const _POOLS := {
-	MAGICAL_ENCOUNTER_POOL: [CHICKEN_BRO, SLIME_TALKERS],
+	MAGICAL_ENCOUNTER_POOL: [CHICKEN_BRO, SLIME_TALKERS, GHOST_SHADOW],
 }
 
 
@@ -161,7 +194,6 @@ static func get_option_ids(encounter_id: StringName) -> Array[StringName]:
 		if not option_id.is_empty():
 			result.append(option_id)
 	return result
-
 
 static func is_valid_option(
 	encounter_id: StringName,

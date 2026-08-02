@@ -24,6 +24,7 @@ func _run() -> void:
 	_test_settled_result_and_spectator_migration()
 	_test_slime_session_options_and_result_pages()
 	_test_slime_result_page_contract()
+	_test_ghost_shadow_results_and_no_economy()
 	if _failures.is_empty():
 		print("ROGUE_ENCOUNTER_CORE_SMOKE_TEST_OK")
 		quit(0)
@@ -701,6 +702,170 @@ func _test_slime_session_options_and_result_pages() -> void:
 	remote_economy.free()
 	remote_run_state.free()
 	session.free()
+	economy.free()
+	run_state.free()
+
+
+func _test_ghost_shadow_results_and_no_economy() -> void:
+	var pool_entries := RogueEncounterRegistry.get_pool_entries(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+	)
+	_expect(
+		pool_entries.size() == 3
+		and pool_entries.has(RogueEncounterRegistry.CHICKEN_BRO)
+		and pool_entries.has(RogueEncounterRegistry.SLIME_TALKERS)
+		and pool_entries.has(RogueEncounterRegistry.GHOST_SHADOW),
+		"神奇遭遇池必须同时包含鸡哥、会说话的史莱姆与鬼影。"
+	)
+	var ghost_config := RogueEncounterRegistry.get_encounter_config(
+		RogueEncounterRegistry.GHOST_SHADOW
+	)
+	var ghost_options := RogueEncounterRegistry.get_option_configs(
+		RogueEncounterRegistry.GHOST_SHADOW
+	)
+	_expect(
+		str(ghost_config.get("display_name", "")) == "鬼影"
+		and str(ghost_config.get("intro_text", "")) == "你遇到了一个鬼影"
+		and bool(ghost_config.get("intro_is_narration", false))
+		and ghost_options.size() == 2
+		and str(ghost_options[0].get("title", "")) == "逃跑"
+		and str(ghost_options[0].get("description", ""))
+		== "鬼知道会发生什么，赶快逃"
+		and str(ghost_options[1].get("title", "")) == "你是？"
+		and str(ghost_options[1].get("description", "")).is_empty(),
+		"鬼影必须使用旁白开场，并注册指定的两个选项文案。"
+	)
+
+	var run_state := _new_run_state()
+	run_state.ensure_multiplayer_peer_state(71)
+	var economy := RogueEncounterEconomyCoordinator.new()
+	economy.configure(run_state)
+	var economy_before := economy.export_snapshot([71])
+
+	var flee_session := RogueEncounterSession.new()
+	flee_session.initialize_authority(economy, [71])
+	var flee_seed := _seed_for_encounter(
+		71071,
+		RogueEncounterRegistry.GHOST_SHADOW
+	)
+	_expect(
+		flee_session.start_for_node(
+			71,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			flee_seed,
+			[71]
+		),
+		"鬼影逃跑用例应从神奇遭遇池启动。"
+	)
+	var flee_intro := flee_session.export_state()
+	var flee_availability := (
+		flee_intro.get("option_availability", {}) as Dictionary
+	)
+	_expect(
+		StringName(flee_intro.get("encounter_id", &""))
+		== RogueEncounterRegistry.GHOST_SHADOW
+		and bool(flee_availability.get(
+			String(RogueEncounterRegistry.OPTION_GHOST_RUN_AWAY),
+			false
+		))
+		and bool(flee_availability.get(
+			String(RogueEncounterRegistry.OPTION_GHOST_WHO_ARE_YOU),
+			false
+		)),
+		"鬼影的两个选项都必须由通用可用性快照标记为可用。"
+	)
+	_expect(
+		flee_session.submit_intro_ack(
+			71,
+			flee_session.get_occurrence_key(),
+			flee_session.get_revision()
+		)
+		and flee_session.submit_vote(
+			71,
+			flee_session.get_occurrence_key(),
+			flee_session.get_revision(),
+			RogueEncounterRegistry.OPTION_GHOST_RUN_AWAY
+		),
+		"鬼影逃跑选项应完成权威结算。"
+	)
+	var flee_result := flee_session.export_state()
+	var flee_pages := flee_result.get("result_pages", []) as Array
+	_expect(
+		flee_session.get_phase() == RogueEncounterSession.PHASE_RESULT
+		and flee_pages.size() == 1
+		and bool((flee_pages[0] as Dictionary).get("is_narration", false))
+		and str(flee_result.get("result_text", "")) == "处于安全考虑，逃跑了"
+		and StringName(
+			(flee_result.get("economy_result", {}) as Dictionary).get(
+				"result_code",
+				&""
+			)
+		) == RogueEncounterEconomyCoordinator.RESULT_GHOST_FLED,
+		"鬼影逃跑必须展示指定旁白并进入结果阶段。"
+	)
+
+	var question_session := RogueEncounterSession.new()
+	question_session.initialize_authority(economy, [71])
+	var question_seed := _seed_for_encounter(
+		72072,
+		RogueEncounterRegistry.GHOST_SHADOW
+	)
+	_expect(
+		question_session.start_for_node(
+			72,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			question_seed,
+			[71]
+		),
+		"鬼影询问身份用例应从神奇遭遇池启动。"
+	)
+	_expect(
+		question_session.submit_intro_ack(
+			71,
+			question_session.get_occurrence_key(),
+			question_session.get_revision()
+		)
+		and question_session.submit_vote(
+			71,
+			question_session.get_occurrence_key(),
+			question_session.get_revision(),
+			RogueEncounterRegistry.OPTION_GHOST_WHO_ARE_YOU
+		),
+		"鬼影“你是？”选项应完成默认权威结算。"
+	)
+	var question_result := question_session.export_state()
+	var question_payload := (
+		question_result.get("economy_result", {}) as Dictionary
+	)
+	_expect(
+		str(question_result.get("result_text", ""))
+		== "鬼影什么也没有说，消失了"
+		and StringName(question_payload.get("result_code", &""))
+		== RogueEncounterEconomyCoordinator.RESULT_GHOST_VANISHED
+		and StringName(question_payload.get("special_outcome_key", &""))
+		== RogueEncounterEconomyCoordinator.GHOST_IDENTITY_SPECIAL_OUTCOME,
+		"“你是？”当前应走消失结果，同时保留专用特殊结果入口。"
+	)
+	_expect(
+		economy.export_snapshot([71]) == economy_before,
+		"鬼影的两个默认结果都不得改动队伍经济快照。"
+	)
+
+	var remote_run_state := _new_run_state()
+	var remote_economy := RogueEncounterEconomyCoordinator.new()
+	remote_economy.configure(remote_run_state)
+	var remote_session := RogueEncounterSession.new()
+	remote_session.initialize_remote(remote_economy)
+	_expect(
+		remote_session.apply_remote_state(question_result)
+		and remote_session.export_state() == question_result,
+		"鬼影选项、结果页与预留结果键必须通过通用 Session 快照无损同步。"
+	)
+	remote_session.free()
+	remote_economy.free()
+	remote_run_state.free()
+	question_session.free()
+	flee_session.free()
 	economy.free()
 	run_state.free()
 

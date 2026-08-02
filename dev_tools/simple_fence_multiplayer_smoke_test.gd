@@ -84,8 +84,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 40,
-		"协议v40必须保留既有wire类型并隔离新增权威状态。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 41,
+		"协议v41必须保留史莱姆多页结果与既有wire类型，并隔离鬼影wire ID。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

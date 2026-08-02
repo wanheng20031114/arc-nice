@@ -13,11 +13,14 @@ const SLIME_HELP_COLLECTIBLE_CHANCE := 0.5
 const SLIME_XIRANG_REWARD_AMOUNTS: Array[int] = [500, 1000, 2000, 5000]
 const ENCOUNTER_CHICKEN_BRO := &"chicken_bro"
 const ENCOUNTER_SLIME_TALKERS := &"slime_talkers"
+const ENCOUNTER_GHOST_SHADOW := &"ghost_shadow"
 const OPTION_PURCHASE := &"purchase_basketball"
 const OPTION_FREE := &"ask_for_free"
 const OPTION_HELP_SLIMES := &"help_slimes"
 const OPTION_KICK_SLIMES := &"kick_slimes"
 const OPTION_LEAVE_SLIMES := &"leave_slimes"
+const OPTION_GHOST_RUN_AWAY := &"ghost_run_away"
+const OPTION_GHOST_WHO_ARE_YOU := &"ghost_who_are_you"
 const PLANK_PATH := "res://resources/config/materials/material_plank.tres"
 const BASKETBALL_PATH := "res://resources/config/collectibles/collectible_basketball.tres"
 const WATER_BOTTLE_PATH := "res://resources/config/materials/material_water_bottle.tres"
@@ -37,6 +40,9 @@ const RESULT_SLIME_KICK_INVENTORY := &"slime_kick_inventory"
 const RESULT_SLIME_KICK_WAREHOUSE := &"slime_kick_warehouse"
 const RESULT_SLIME_KICK_DROPPED := &"slime_kick_dropped"
 const RESULT_SLIME_LEFT := &"slime_left"
+const RESULT_GHOST_FLED := &"ghost_fled"
+const RESULT_GHOST_VANISHED := &"ghost_vanished"
+const GHOST_IDENTITY_SPECIAL_OUTCOME := &"ghost_identity_special"
 
 var _run_state: RunStateStore
 var _economy_revision := 0
@@ -109,6 +115,11 @@ func get_option_availability(
 				String(OPTION_KICK_SLIMES): true,
 				String(OPTION_LEAVE_SLIMES): true,
 			}
+		ENCOUNTER_GHOST_SHADOW:
+			return {
+				String(OPTION_GHOST_RUN_AWAY): true,
+				String(OPTION_GHOST_WHO_ARE_YOU): true,
+			}
 		_:
 			return {}
 
@@ -138,8 +149,55 @@ func resolve_encounter(
 				eligible_peer_ids,
 				occurrence_key
 			)
+		ENCOUNTER_GHOST_SHADOW:
+			return resolve_ghost_shadow(
+				option_id,
+				node_content_seed,
+				eligible_peer_ids,
+				occurrence_key
+			)
 		_:
 			return _make_result(false, RESULT_INVALID_REQUEST)
+
+
+## 鬼影没有资源收支，因此不会推进经济 revision 或写入结算账本。
+## 固定结果本身是幂等的，仍由通用 Session 写入权威遭遇快照。
+func resolve_ghost_shadow(
+	option_id: StringName,
+	node_content_seed: int,
+	eligible_peer_ids: Array[int],
+	occurrence_key: String = ""
+) -> Dictionary:
+	if (
+		_run_state == null
+		or option_id not in [
+			OPTION_GHOST_RUN_AWAY,
+			OPTION_GHOST_WHO_ARE_YOU,
+		]
+		or _normalize_peer_ids(eligible_peer_ids).is_empty()
+	):
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	if option_id == OPTION_GHOST_WHO_ARE_YOU:
+		return _resolve_ghost_who_are_you(
+			node_content_seed,
+			eligible_peer_ids,
+			occurrence_key
+		)
+	return _make_ghost_result(RESULT_GHOST_FLED, option_id)
+
+
+## “你是？”的窄扩展入口。未来只需在此根据明确条件返回新的权威结果；
+## 当前条件尚未设计，始终采用普通的“鬼影消失”结果。
+func _resolve_ghost_who_are_you(
+	_node_content_seed: int,
+	_eligible_peer_ids: Array[int],
+	_occurrence_key: String
+) -> Dictionary:
+	return _make_ghost_result(
+		RESULT_GHOST_VANISHED,
+		OPTION_GHOST_WHO_ARE_YOU,
+		GHOST_IDENTITY_SPECIAL_OUTCOME
+	)
 
 
 ## Host-only settlement for the talking-slime encounter. Every branch is cached
@@ -791,6 +849,20 @@ func _make_slime_result(
 		"gel_count": 0,
 		"gel_destination": "none",
 		"gel_warehouse_net_ids": [],
+	}, true)
+	return result
+
+
+func _make_ghost_result(
+	result_code: StringName,
+	option_id: StringName,
+	special_outcome_key: StringName = &""
+) -> Dictionary:
+	var result := _make_result(true, result_code)
+	result.merge({
+		"encounter_id": String(ENCOUNTER_GHOST_SHADOW),
+		"option_id": String(option_id),
+		"special_outcome_key": String(special_outcome_key),
 	}, true)
 	return result
 

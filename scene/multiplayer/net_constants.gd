@@ -34,7 +34,9 @@ extends RefCounted
 ## 与破盾表现；旧客户端无法正确恢复盾牌耐久阶段或消费对应弹体表现。
 ## v40：P3 神奇遭遇池新增会说话的史莱姆、三选项投票与多页权威结果；
 ## 旧客户端会拒绝新 option_id，亦无法解释 result_pages。
-const PROTOCOL_VERSION := 40
+## v41：P3 神奇遭遇池新增“鬼影”事件及其独立选项/结果 wire ID；v40 客户端
+## 无法渲染该事件，也会拒绝其投票快照。
+const PROTOCOL_VERSION := 41
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

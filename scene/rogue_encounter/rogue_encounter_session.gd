@@ -136,7 +136,10 @@ func start_for_node(
 		content_pool_id,
 		node_content_seed
 	)
-	if encounter_id.is_empty():
+	if (
+		encounter_id.is_empty()
+		or not RogueEncounterRegistry.has_encounter(encounter_id)
+	):
 		return false
 	var participants := _normalize_peer_ids(
 		eligible_peer_ids if not eligible_peer_ids.is_empty() else _authority_peer_ids
@@ -890,6 +893,20 @@ func _build_result_pages(
 				return [_make_result_page(
 					"",
 					"真是一群神奇的生物，你记录了下来，然后便离开了",
+					true
+				)]
+	elif encounter_id == RogueEncounterRegistry.GHOST_SHADOW:
+		match result_code:
+			RogueEncounterEconomyCoordinator.RESULT_GHOST_FLED:
+				return [_make_result_page(
+					"",
+					"处于安全考虑，逃跑了",
+					true
+				)]
+			RogueEncounterEconomyCoordinator.RESULT_GHOST_VANISHED:
+				return [_make_result_page(
+					"",
+					"鬼影什么也没有说，消失了",
 					true
 				)]
 	var definition := RogueEncounterRegistry.get_definition(encounter_id)

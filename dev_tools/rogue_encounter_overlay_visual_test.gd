@@ -3,7 +3,8 @@ extends SceneTree
 const OVERLAY_SCENE := preload(
 	"res://scene/rogue_encounter/rogue_encounter_overlay.tscn"
 )
-const PREVIEW_PATH := "user://rogue_encounter_chicken_bro_preview.png"
+const CHICKEN_PREVIEW_PATH := "user://rogue_encounter_chicken_bro_preview.png"
+const GHOST_PREVIEW_PATH := "user://rogue_encounter_ghost_shadow_preview.png"
 
 
 func _init() -> void:
@@ -61,13 +62,60 @@ func _run() -> void:
 		if preview.get_format() not in [Image.FORMAT_RGB8, Image.FORMAT_RGBA8]:
 			preview.convert(Image.FORMAT_RGBA8)
 		preview.linear_to_srgb()
-	var absolute_path := ProjectSettings.globalize_path(PREVIEW_PATH)
+	var absolute_path := ProjectSettings.globalize_path(CHICKEN_PREVIEW_PATH)
 	var save_error := preview.save_png(absolute_path)
 	if save_error != OK:
 		push_error("无法保存鸡哥遭遇预览：%s" % error_string(save_error))
 		quit(1)
 		return
-	print("ROGUE_ENCOUNTER_OVERLAY_VISUAL_TEST_OK path=%s" % absolute_path)
+	overlay.hide_immediately()
+	overlay.apply_state({
+		"schema_version": 1,
+		"revision": 2,
+		"phase": "voting",
+		"node_id": 81,
+		"node_content_seed": 8181,
+		"occurrence_key": "81:8181",
+		"encounter_id": "ghost_shadow",
+		"remaining_seconds": 52.0,
+		"voting_timer_running": true,
+		"participant_peer_ids": [1, 2],
+		"active_peer_ids": [1, 2],
+		"spectator_peer_ids": [],
+		"intro_confirmed_peer_ids": [1, 2],
+		"votes": [{"peer_id": 2, "option_id": "ghost_who_are_you"}],
+		"abstained_peer_ids": [],
+		"option_availability": {
+			"ghost_run_away": true,
+			"ghost_who_are_you": true,
+		},
+		"winning_option": "",
+		"economy_result": {},
+		"result_text": "",
+	})
+	await overlay.cover_map_for_encounter()
+	await overlay.reveal_encounter()
+	for _frame in range(3):
+		await process_frame
+	preview = root.get_texture().get_image()
+	if preview == null or preview.is_empty():
+		push_error("当前显示驱动无法读取鬼影遭遇预览。")
+		quit(1)
+		return
+	if bool(ProjectSettings.get_setting("rendering/viewport/hdr_2d", false)):
+		if preview.get_format() not in [Image.FORMAT_RGB8, Image.FORMAT_RGBA8]:
+			preview.convert(Image.FORMAT_RGBA8)
+		preview.linear_to_srgb()
+	var ghost_absolute_path := ProjectSettings.globalize_path(GHOST_PREVIEW_PATH)
+	save_error = preview.save_png(ghost_absolute_path)
+	if save_error != OK:
+		push_error("无法保存鬼影遭遇预览：%s" % error_string(save_error))
+		quit(1)
+		return
+	print(
+		"ROGUE_ENCOUNTER_OVERLAY_VISUAL_TEST_OK chicken=%s ghost=%s"
+		% [absolute_path, ghost_absolute_path]
+	)
 	overlay.queue_free()
 	backdrop.queue_free()
 	await process_frame

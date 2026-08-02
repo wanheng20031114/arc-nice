@@ -111,15 +111,15 @@ func _run() -> void:
 	}
 	overlay.apply_state(voting)
 	_expect(
-		overlay.choice_purchase.button.disabled
-		and not overlay.choice_free.button.disabled,
+		overlay.choice_first.button.disabled
+		and not overlay.choice_second.button.disabled,
 		"木板不足时购买项应显示但禁用，0元购仍可选择。"
 	)
 	_expect(
-		overlay.choice_purchase.title_label.text == "购买篮球"
-		and overlay.choice_purchase.description_label.text
+		overlay.choice_first.title_label.text == "购买篮球"
+		and overlay.choice_first.description_label.text
 		== "花费10个木板购买一个篮球"
-		and overlay.choice_free.description_label.text
+		and overlay.choice_second.description_label.text
 		== "鸡哥有概率被你说服",
 		"鸡哥两个选项必须使用精简后的标题与小字文案。"
 	)
@@ -127,7 +127,7 @@ func _run() -> void:
 		not overlay.choice_third.visible,
 		"鸡哥回归必须只显示两张选项卡，第三张静态卡不得残留。"
 	)
-	overlay.choice_free.button.emit_signal("pressed")
+	overlay.choice_second.button.emit_signal("pressed")
 	_expect(
 		vote_requests.size() == 1
 		and StringName(vote_requests[0]["option"])
@@ -177,6 +177,7 @@ func _run() -> void:
 	await _test_reconnected_options_focus()
 	await _test_completed_state_waits_for_local_result_hold()
 	await _test_slime_content_three_choices_and_result_pages()
+	await _test_ghost_shadow_presentation_and_results()
 
 	if failures.is_empty():
 		print("ROGUE_ENCOUNTER_OVERLAY_SMOKE_TEST_OK")
@@ -226,6 +227,33 @@ func _make_slime_intro_state() -> Dictionary:
 		"leave_slimes": true,
 	}
 	return state
+
+
+func _make_ghost_state() -> Dictionary:
+	return {
+		"schema_version": 1,
+		"revision": 1,
+		"phase": "intro",
+		"node_id": 81,
+		"node_content_seed": 8181,
+		"occurrence_key": "81:8181",
+		"encounter_id": "ghost_shadow",
+		"remaining_seconds": 60.0,
+		"voting_timer_running": false,
+		"participant_peer_ids": [81],
+		"active_peer_ids": [81],
+		"spectator_peer_ids": [],
+		"intro_confirmed_peer_ids": [],
+		"votes": [],
+		"abstained_peer_ids": [],
+		"option_availability": {
+			"ghost_run_away": true,
+			"ghost_who_are_you": true,
+		},
+		"winning_option": "",
+		"economy_result": {},
+		"result_text": "",
+	}
 
 
 func _test_mouse_confirm_and_inactive_vote_filter() -> void:
@@ -281,13 +309,13 @@ func _test_reconnected_options_focus() -> void:
 	await overlay.cover_map_for_encounter()
 	await overlay.reveal_encounter()
 	_expect(
-		overlay.choice_purchase.button.has_focus()
-		or overlay.choice_free.button.has_focus(),
+		overlay.choice_first.button.has_focus()
+		or overlay.choice_second.button.has_focus(),
 		"重连或全量同步后直接进入选项页时，手柄必须获得可用选项焦点。"
 	)
 	# 覆盖层已经揭示后，也可能因修复性全量快照从对白页直接恢复到选项页。
-	overlay.choice_purchase.button.release_focus()
-	overlay.choice_free.button.release_focus()
+	overlay.choice_first.button.release_focus()
+	overlay.choice_second.button.release_focus()
 	var repaired_intro := _make_intro_state()
 	repaired_intro["node_id"] = 13
 	repaired_intro["node_content_seed"] = 9982
@@ -303,8 +331,8 @@ func _test_reconnected_options_focus() -> void:
 	_expect(
 		overlay.options_page.visible
 		and (
-			overlay.choice_purchase.button.has_focus()
-			or overlay.choice_free.button.has_focus()
+			overlay.choice_first.button.has_focus()
+			or overlay.choice_second.button.has_focus()
 		),
 		"已揭示覆盖层的全量修复直接进入选项页时也必须补齐手柄焦点。"
 	)
@@ -493,6 +521,114 @@ func _test_slime_content_three_choices_and_result_pages() -> void:
 	_expect(
 		local_result_hold_count[0] == 1,
 		"多页结果只能在最后一页完整显示并停留后请求退出。"
+	)
+	overlay.hide_immediately()
+	overlay.free()
+
+
+func _test_ghost_shadow_presentation_and_results() -> void:
+	var overlay := OVERLAY_SCENE.instantiate() as RogueEncounterOverlay
+	root.add_child(overlay)
+	var local_vote_requests: Array[StringName] = []
+	var local_hold_count := [0]
+	overlay.vote_requested.connect(
+		func(
+			_key: String,
+			_revision: int,
+			option_id: StringName
+		) -> void: local_vote_requests.append(option_id)
+	)
+	overlay.result_hold_completed.connect(
+		func(_key: String, _revision: int) -> void: local_hold_count[0] += 1
+	)
+	overlay.configure_local_context(81, {81: "玩家"}, {})
+	overlay.visible = true
+	overlay.encounter_content.visible = true
+	overlay.encounter_is_revealed = true
+	overlay.apply_state(_make_ghost_state())
+	_expect(
+		overlay.encounter_name.text == "鬼影"
+		and overlay.encounter_portrait.texture != null
+		and overlay.encounter_portrait.texture.resource_path
+		== "res://resources/texture/rogue_encounter/ghost_shadow.png"
+		and not overlay.encounter_hint.visible,
+		"鬼影事件必须展示专属左侧立绘与名称。"
+	)
+	_expect(
+		not overlay.speaker.visible
+		and overlay.dialogue_text.text.replace(
+			DialogueTypewriterController.NO_BREAK_MARK,
+			""
+		) == "你遇到了一个鬼影",
+		"鬼影开场必须作为非对话旁白显示。"
+	)
+
+	var voting := _make_ghost_state()
+	voting["revision"] = 2
+	voting["phase"] = "voting"
+	voting["intro_confirmed_peer_ids"] = [81]
+	overlay.apply_state(voting)
+	_expect(
+		overlay.choice_first.title_label.text == "逃跑"
+		and overlay.choice_first.description_label.text
+		== "鬼知道会发生什么，赶快逃"
+		and overlay.choice_first.description_label.visible
+		and overlay.choice_second.title_label.text == "你是？"
+		and overlay.choice_second.description_label.text.is_empty()
+		and not overlay.choice_second.description_label.visible,
+		"鬼影选项必须使用指定文案，且“你是？”不能显示小字行。"
+	)
+	overlay.choice_second.button.emit_signal("pressed")
+	_expect(
+		local_vote_requests == [
+			RogueEncounterRegistry.OPTION_GHOST_WHO_ARE_YOU
+		],
+		"鬼影第二项必须提交预留了特殊结果入口的独立option id。"
+	)
+
+	var flee_result := voting.duplicate(true)
+	flee_result["revision"] = 3
+	flee_result["phase"] = "result"
+	flee_result["winning_option"] = "ghost_run_away"
+	flee_result["result_pages"] = [{
+		"speaker": "",
+		"text": "处于安全考虑，逃跑了",
+		"is_narration": true,
+	}]
+	overlay.apply_state(flee_result)
+	overlay.typewriter.finish_line()
+	_expect(
+		overlay.dialogue_text.text.replace(
+			DialogueTypewriterController.NO_BREAK_MARK,
+			""
+		) == "处于安全考虑，逃跑了"
+		and not overlay.speaker.visible,
+		"鬼影逃跑必须通过权威结果页展示旁白文字。"
+	)
+
+	var question_result := flee_result.duplicate(true)
+	question_result["revision"] = 4
+	question_result["winning_option"] = "ghost_who_are_you"
+	question_result["result_pages"] = [{
+		"speaker": "",
+		"text": "鬼影什么也没有说，消失了",
+		"is_narration": true,
+	}]
+	overlay.apply_state(question_result)
+	overlay.typewriter.finish_line()
+	_expect(
+		overlay.dialogue_text.text.replace(
+			DialogueTypewriterController.NO_BREAK_MARK,
+			""
+		) == "鬼影什么也没有说，消失了"
+		and not overlay.speaker.visible
+		and overlay.status_label.text == "鬼影已经离开",
+		"鬼影询问身份必须通过权威结果页展示默认消失旁白。"
+	)
+	await create_timer(RogueEncounterOverlay.RESULT_HOLD_SECONDS + 0.08).timeout
+	_expect(
+		local_hold_count[0] == 1,
+		"鬼影结果显示完成后必须沿用通用离场信号。"
 	)
 	overlay.hide_immediately()
 	overlay.free()

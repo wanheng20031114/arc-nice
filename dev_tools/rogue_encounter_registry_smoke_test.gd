@@ -23,8 +23,9 @@ func _test_pool_and_deterministic_selection() -> void:
 		entries == [
 			RogueEncounterRegistry.CHICKEN_BRO,
 			RogueEncounterRegistry.SLIME_TALKERS,
+			RogueEncounterRegistry.GHOST_SHADOW,
 		],
-		"神奇遭遇池必须同时注册鸡哥与会说话的史莱姆。"
+		"神奇遭遇池必须同时注册鸡哥、会说话的史莱姆与鬼影。"
 	)
 	var selected: Dictionary = {}
 	for seed_value in range(128):
@@ -40,8 +41,9 @@ func _test_pool_and_deterministic_selection() -> void:
 		selected[first] = true
 	_expect(
 		selected.has(RogueEncounterRegistry.CHICKEN_BRO)
-		and selected.has(RogueEncounterRegistry.SLIME_TALKERS),
-		"固定seed样本必须能够覆盖池中的两种遭遇。"
+		and selected.has(RogueEncounterRegistry.SLIME_TALKERS)
+		and selected.has(RogueEncounterRegistry.GHOST_SHADOW),
+		"固定seed样本必须能够覆盖池中的三种遭遇。"
 	)
 
 
@@ -51,6 +53,9 @@ func _test_content_configs() -> void:
 	)
 	var slimes := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.SLIME_TALKERS
+	)
+	var ghost := RogueEncounterRegistry.get_encounter_config(
+		RogueEncounterRegistry.GHOST_SHADOW
 	)
 	_expect(
 		str(chicken.get("intro_text", ""))
@@ -70,14 +75,27 @@ func _test_content_configs() -> void:
 		== "res://resources/texture/rogue_encounter/talking_slime_group.png",
 		"史莱姆内容必须引用专用群像素材。"
 	)
+	_expect(
+		str(ghost.get("display_name", "")) == "鬼影"
+		and str(ghost.get("portrait_texture_path", ""))
+		== "res://resources/texture/rogue_encounter/ghost_shadow.png"
+		and str(ghost.get("intro_text", "")) == "你遇到了一个鬼影"
+		and bool(ghost.get("intro_is_narration", false))
+		and str(ghost.get("intro_speaker", "")).is_empty(),
+		"鬼影必须引用专用立绘并使用旁白式开场。"
+	)
 	var chicken_options := RogueEncounterRegistry.get_option_configs(
 		RogueEncounterRegistry.CHICKEN_BRO
 	)
 	var slime_options := RogueEncounterRegistry.get_option_configs(
 		RogueEncounterRegistry.SLIME_TALKERS
 	)
+	var ghost_options := RogueEncounterRegistry.get_option_configs(
+		RogueEncounterRegistry.GHOST_SHADOW
+	)
 	_expect(chicken_options.size() == 2, "鸡哥必须继续显示两个选项。")
 	_expect(slime_options.size() == 3, "史莱姆遭遇必须显示三个选项。")
+	_expect(ghost_options.size() == 2, "鬼影遭遇必须显示两个选项。")
 	_expect(
 		RogueEncounterRegistry.get_option_ids(
 			RogueEncounterRegistry.SLIME_TALKERS
@@ -99,6 +117,20 @@ func _test_content_configs() -> void:
 		== "这和我有什么关系？"
 		and str(slime_options[2].get("description", "")) == "离开该节点",
 		"史莱姆三个选项必须与策划文案一致。"
+	)
+	_expect(
+		RogueEncounterRegistry.get_option_ids(
+			RogueEncounterRegistry.GHOST_SHADOW
+		) == [
+			RogueEncounterRegistry.OPTION_GHOST_RUN_AWAY,
+			RogueEncounterRegistry.OPTION_GHOST_WHO_ARE_YOU,
+		]
+		and str(ghost_options[0].get("title", "")) == "逃跑"
+		and str(ghost_options[0].get("description", ""))
+		== "鬼知道会发生什么，赶快逃"
+		and str(ghost_options[1].get("title", "")) == "你是？"
+		and str(ghost_options[1].get("description", "")).is_empty(),
+		"鬼影选项ID与文案必须稳定，“你是？”不得显示小字。"
 	)
 	var mutated := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.CHICKEN_BRO

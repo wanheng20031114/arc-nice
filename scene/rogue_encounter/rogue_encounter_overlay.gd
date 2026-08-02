@@ -35,17 +35,22 @@ const RESULT_HOLD_SECONDS := 1.5
 @onready var actor_portrait: TextureRect = %ActorPortrait
 @onready var name_plate: PanelContainer = %NamePlate
 @onready var actor_name: Label = %ActorName
+@onready var encounter_portrait: TextureRect = actor_portrait
+@onready var encounter_name: Label = actor_name
 @onready var encounter_hint: Label = %EncounterHint
 @onready var stage_label: Label = %StageLabel
 @onready var status_label: Label = %StatusLabel
 @onready var intro_page: VBoxContainer = %IntroPage
 @onready var speaker_label: Label = %Speaker
+@onready var speaker: Label = speaker_label
 @onready var dialogue_text: RichTextLabel = %DialogueText
 @onready var prompt_label: Label = %PromptLabel
 @onready var options_page: VBoxContainer = %OptionsPage
 @onready var choice_purchase: RogueEncounterChoiceCard = %Choice1
 @onready var choice_free: RogueEncounterChoiceCard = %Choice2
 @onready var choice_third: RogueEncounterChoiceCard = %Choice3
+@onready var choice_first: RogueEncounterChoiceCard = choice_purchase
+@onready var choice_second: RogueEncounterChoiceCard = choice_free
 @onready var vote_status_label: Label = %VoteStatusLabel
 @onready var option_back_buffer: BackBufferCopy = %OptionBackBuffer
 @onready var option_reveal_cover: ColorRect = %OptionRevealCover
@@ -331,7 +336,10 @@ func _show_dialogue_page(
 	speaker_label.visible = not is_narration and not speaker.is_empty()
 	stage_label.text = str(encounter_config.get("display_name", "神奇遭遇"))
 	if show_prompt:
-		status_label.text = "先听他说完，再作决定"
+		status_label.text = str(encounter_config.get(
+			"intro_status",
+			"先听他说完，再作决定"
+		))
 	if force or rendered_line != line:
 		rendered_line = line
 		typewriter.say(line)
@@ -457,7 +465,10 @@ func _update_vote_state() -> void:
 	elif local_intro_advanced and not _local_intro_is_authoritatively_confirmed():
 		status_label.text = "正在同步个人选项……"
 	elif phase == PHASE_INTRO and not _local_intro_page_is_advanced():
-		status_label.text = "先听他说完，再作决定"
+		status_label.text = str(encounter_config.get(
+			"intro_status",
+			"先听他说完，再作决定"
+		))
 	else:
 		status_label.text = "等待所有玩家决定 · 剩余 %d 秒" % remaining
 	vote_status_label.text = "已投票 %d/%d" % [votes_count, active_peers.size()]
@@ -507,9 +518,22 @@ func _on_typewriter_line_finished() -> void:
 
 
 func _fallback_result_text() -> String:
+	var economy := state.get("economy_result", {}) as Dictionary
+	var explicit_text := str(economy.get("result_text", ""))
+	if not explicit_text.is_empty():
+		return explicit_text
+	var winning_option := StringName(state.get("winning_option", &""))
+	for option in RogueEncounterRegistry.get_option_configs(
+		rendered_encounter_id
+	):
+		if StringName(option.get("option_id", &"")) != winning_option:
+			continue
+		var option_result_text := str(option.get("result_text", ""))
+		if not option_result_text.is_empty():
+			return option_result_text
+		break
 	if rendered_encounter_id != RogueEncounterRegistry.CHICKEN_BRO:
 		return "这次神奇遭遇已经结束。"
-	var economy := state.get("economy_result", {}) as Dictionary
 	var result_code := str(economy.get("result_code", ""))
 	if result_code == "all_inventories_full":
 		return "所有玩家背包均已满，交易未完成。"
@@ -571,6 +595,7 @@ func _bind_encounter_content(encounter_id: StringName) -> void:
 		actor_portrait.texture = null
 		actor_name.text = "神秘来客"
 		encounter_hint.text = "地下遗址中的未知相遇"
+		encounter_hint.visible = true
 		name_plate.visible = true
 		return
 	actor_portrait.texture = _load_texture(str(encounter_config.get(
@@ -579,6 +604,7 @@ func _bind_encounter_content(encounter_id: StringName) -> void:
 	)))
 	actor_name.text = str(encounter_config.get("display_name", "神秘来客"))
 	encounter_hint.text = str(encounter_config.get("encounter_hint", ""))
+	encounter_hint.visible = not encounter_hint.text.is_empty()
 	name_plate.visible = not actor_name.text.is_empty()
 
 

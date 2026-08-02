@@ -32,6 +32,7 @@ func configure(
 	number_label.text = "%02d" % (display_index + 1)
 	title_label.text = title
 	description_label.text = description
+	description_label.visible = not description.is_empty()
 	icon_rect.texture = icon
 	icon_rect.visible = icon != null
 	button.disabled = is_disabled

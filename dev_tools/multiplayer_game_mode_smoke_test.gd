@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 40,
-		"协议v40必须保留既有模式接线并隔离新增的权威状态。"
+		NetConstants.PROTOCOL_VERSION == 41,
+		"协议v41必须保留史莱姆多页结果、隔离鬼影wire ID，并保留既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
