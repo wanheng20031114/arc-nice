@@ -1,6 +1,6 @@
-[gd_resource type="SpriteFrames" format=3]
+[gd_resource type="SpriteFrames" format=3 uid="uid://cgtafi0bxnlt8"]
 
-[ext_resource type="Texture2D" path="res://resources/texture/player/tango/tango_electric_surge_field_vfx.png" id="1_texture"]
+[ext_resource type="Texture2D" uid="uid://bpfoq5306o4d5" path="res://resources/texture/player/tango/tango_electric_surge_field_vfx.png" id="1_texture"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_surge_00"]
 atlas = ExtResource("1_texture")
