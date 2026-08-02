@@ -26,7 +26,9 @@ extends RefCounted
 ## 无法验证或实例化该 Host 权威弹丸。
 ## v36：新增测试场景 P1B 的 wire 游戏模式值 5；原 P1 对外显示为 P1A，
 ## 但继续保留稳定 key test_arena_p1，旧客户端无法识别 P1B 房间与加载目标。
-const PROTOCOL_VERSION := 36
+## v37：P3 神奇遭遇新增 Host 权威的逐人对白确认、投票、结算与经济快照；
+## 路线完整快照同时携带遭遇和经济状态，旧客户端无法解释新的 RPC 参数。
+const PROTOCOL_VERSION := 37
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

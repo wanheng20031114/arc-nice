@@ -84,8 +84,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 36,
-		"P1B 模式接线必须由协议v36隔离旧客户端。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 37,
+		"神奇遭遇网络接线必须由协议v37隔离旧客户端。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

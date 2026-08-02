@@ -1227,6 +1227,8 @@ func _on_plant_placement_mode_changed(active: bool) -> void:
 func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	if plant == null:
 		return
+	if runtime_mode == RuntimeMode.SINGLEPLAYER:
+		_assign_singleplayer_plant_net_id(plant)
 	_track_progression_plant_placement(plant)
 	var hydrangea := plant as HydrangeaRainTower
 	if hydrangea != null:
@@ -1248,6 +1250,8 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	var oak_warehouse := plant as OakWarehouse
 	if oak_warehouse != null:
 		oak_warehouse.set_shared_storage_panel(oak_warehouse_panel)
+		if runtime_mode == RuntimeMode.SINGLEPLAYER:
+			_configure_singleplayer_warehouse_persistence(oak_warehouse)
 	production_coordinator.register_plant(plant)
 	var production_building := plant as ProductionBuilding
 	if production_building != null:
@@ -1277,6 +1281,95 @@ func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 			construction_callback,
 			CONNECT_ONE_SHOT
 		)
+
+
+func _assign_singleplayer_plant_net_id(plant: PlantDefense) -> int:
+	if plant == null:
+		return 0
+	var existing_net_id := int(plant.get_meta(&"net_id", 0))
+	if existing_net_id > 0:
+		next_multiplayer_plant_net_id = maxi(
+			next_multiplayer_plant_net_id,
+			existing_net_id + 1
+		)
+		return existing_net_id
+	var assigned_net_id := next_multiplayer_plant_net_id
+	# 单人仓库只需一个本局内稳定的持久账本键；不写入 PlantSystem 的
+	# 联机复制索引，避免把纯单人实体误暴露给多人快照路径。
+	plant.set_meta(&"net_id", assigned_net_id)
+	next_multiplayer_plant_net_id += 1
+	return assigned_net_id
+
+
+func _configure_singleplayer_warehouse_persistence(warehouse: OakWarehouse) -> void:
+	if warehouse == null or run_state == null:
+		return
+	var warehouse_net_id := int(warehouse.get_meta(&"net_id", 0))
+	if warehouse_net_id <= 0:
+		push_error("GameTowerDefense: 单人共享仓库缺少稳定运行时ID。")
+		return
+	var saved_snapshot := run_state.get_shared_warehouse_snapshot(warehouse_net_id)
+	if saved_snapshot.is_empty():
+		if not SharedWarehouseLedgerBridge.persist_to_ledger(
+			run_state,
+			warehouse,
+			warehouse_net_id
+		):
+			push_warning(
+				"GameTowerDefense: 无法初始化共享仓库 %d 的跨场景账本。"
+				% warehouse_net_id
+			)
+	elif not SharedWarehouseLedgerBridge.restore_from_ledger(
+		run_state,
+		warehouse,
+		warehouse_net_id
+	):
+		push_warning(
+			"GameTowerDefense: 无法恢复共享仓库 %d 的跨场景快照。"
+			% warehouse_net_id
+		)
+	var storage_callback := _on_singleplayer_warehouse_storage_changed.bind(
+		warehouse
+	)
+	if not warehouse.storage_changed.is_connected(storage_callback):
+		warehouse.storage_changed.connect(storage_callback)
+	var removal_callback := _on_singleplayer_warehouse_removal_started.bind(
+		warehouse
+	)
+	if not warehouse.removal_started.is_connected(removal_callback):
+		warehouse.removal_started.connect(removal_callback)
+
+
+func _on_singleplayer_warehouse_storage_changed(warehouse: OakWarehouse) -> void:
+	if (
+		runtime_mode != RuntimeMode.SINGLEPLAYER
+		or warehouse == null
+		or not is_instance_valid(warehouse)
+		or warehouse.is_removing
+	):
+		return
+	var warehouse_net_id := int(warehouse.get_meta(&"net_id", 0))
+	if not SharedWarehouseLedgerBridge.persist_to_ledger(
+		run_state,
+		warehouse,
+		warehouse_net_id
+	):
+		push_warning(
+			"GameTowerDefense: 无法保存共享仓库 %d 的跨场景快照。"
+			% warehouse_net_id
+		)
+
+
+func _on_singleplayer_warehouse_removal_started(
+	_removal_mode: int,
+	warehouse: OakWarehouse
+) -> void:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER or warehouse == null:
+		return
+	SharedWarehouseLedgerBridge.remove_from_ledger(
+		run_state,
+		int(warehouse.get_meta(&"net_id", warehouse.warehouse_net_id))
+	)
 
 
 func _track_progression_plant_placement(plant: PlantDefense) -> void:

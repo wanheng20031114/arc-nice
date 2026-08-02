@@ -574,6 +574,8 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	if net_manager != null and net_manager.is_host():
+		_capture_shared_warehouse_ledger()
 	if net_manager != null and net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
 		net_manager.connection_state_changed.disconnect(_on_connection_state_changed)
 	if net_manager != null and net_manager.player_left.is_connected(_on_net_player_left):
@@ -2048,6 +2050,8 @@ func _configure_warehouse_network(
 		_get_local_peer_id(),
 		snapshot_ready
 	)
+	if net_manager.is_host():
+		_restore_authoritative_warehouse_from_ledger(warehouse, net_id)
 	var callback := _on_warehouse_storage_command_requested.bind(warehouse)
 	if not warehouse.storage_command_requested.is_connected(callback):
 		warehouse.storage_command_requested.connect(callback)
@@ -2468,7 +2472,64 @@ func _on_authoritative_warehouse_storage_changed(warehouse: OakWarehouse) -> voi
 	_pending_authoritative_warehouse_snapshots[net_id] = (
 		warehouse.export_storage_snapshot()
 	)
+	_persist_authoritative_warehouse_snapshot(warehouse, net_id)
 	_schedule_shared_production_state_flush()
+
+
+func _restore_authoritative_warehouse_from_ledger(
+	warehouse: OakWarehouse,
+	warehouse_net_id: int
+) -> bool:
+	if (
+		run_state == null
+		or not net_manager.is_host()
+		or warehouse == null
+		or warehouse_net_id <= 0
+	):
+		return false
+	var has_saved_snapshot := not run_state.get_shared_warehouse_snapshot(
+		warehouse_net_id
+	).is_empty()
+	if SharedWarehouseLedgerBridge.restore_from_ledger(
+		run_state,
+		warehouse,
+		warehouse_net_id
+	):
+		return true
+	if has_saved_snapshot:
+		push_warning(
+			"MpGame: 无法恢复共享仓库 %d 的跨场景快照。"
+			% warehouse_net_id
+		)
+	return false
+
+
+func _persist_authoritative_warehouse_snapshot(
+	warehouse: OakWarehouse,
+	warehouse_net_id: int
+) -> bool:
+	if (
+		run_state == null
+		or not net_manager.is_host()
+		or warehouse == null
+		or not is_instance_valid(warehouse)
+		or warehouse_net_id <= 0
+	):
+		return false
+	return SharedWarehouseLedgerBridge.persist_to_ledger(
+		run_state,
+		warehouse,
+		warehouse_net_id
+	)
+
+
+func _capture_shared_warehouse_ledger() -> bool:
+	if run_state == null or game == null or not net_manager.is_host():
+		return false
+	return SharedWarehouseLedgerBridge.capture_runtime_warehouses(
+		run_state,
+		game
+	)
 
 
 func _on_authoritative_production_state_changed(

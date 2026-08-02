@@ -66,6 +66,10 @@ func _test_high_resolution_dialogue(scene_path: String) -> void:
 	var name_label := bubble.get_node_or_null(
 		DIALOGUE_CONTENT_ROOT + "/NamePlate/Name"
 	) as Label
+	var typewriter := bubble.get_node_or_null(
+		"Typewriter"
+	) as DialogueTypewriterController
+	var blip_audio := bubble.get_node_or_null("BlipAudio") as AudioStreamPlayer
 	var keyboard_prompt := bubble.get_node_or_null(
 		DIALOGUE_CONTENT_ROOT
 		+ "/BubblePanel/Margin/Content/PromptRow/KeyboardPrompt"
@@ -97,6 +101,15 @@ func _test_high_resolution_dialogue(scene_path: String) -> void:
 		and keyboard_prompt.label_settings.font_size == 11,
 		"%s prompt text must rasterize at the authored 11 px size before half-scaling." % scene_path
 	)
+	_expect(
+		typewriter != null
+		and blip_audio != null
+		and blip_audio.bus == &"SFX"
+		and is_equal_approx(blip_audio.volume_db, 4.0)
+		and blip_audio.max_polyphony == 4,
+		"%s must use the shared typewriter and the 4 dB SFX blip contract."
+		% scene_path
+	)
 	bubble.free()
 
 
@@ -115,6 +128,9 @@ func _test_native_xiaocong_dialogue() -> void:
 		DIALOGUE_CONTENT_ROOT + "/NamePlate/Name"
 	) as Label
 	var blip_audio := bubble.get_node_or_null("BlipAudio") as AudioStreamPlayer
+	var typewriter := bubble.get_node_or_null(
+		"Typewriter"
+	) as DialogueTypewriterController
 	_expect(
 		bubble.scale == Vector2.ONE
 		and bubble.position == bubble.position.round()
@@ -129,7 +145,11 @@ func _test_native_xiaocong_dialogue() -> void:
 		and dialogue_text.get_theme_font_size("normal_font_size") == 17
 		and name_label != null
 		and name_label.label_settings.font_size == 18
-		and blip_audio != null,
+		and blip_audio != null
+		and typewriter != null
+		and blip_audio.bus == &"SFX"
+		and is_equal_approx(blip_audio.volume_db, 4.0)
+		and blip_audio.max_polyphony == 4,
 		"Xiaocong dialogue text and audio must stay native-resolution and non-positional."
 	)
 	bubble.free()

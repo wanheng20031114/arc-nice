@@ -270,7 +270,7 @@ func _get_collectible_pool_for_player(player_instance: Player) -> Array:
 	var result: Array = []
 	if player_instance == null:
 		return result
-	for item in CollectibleRegistry.get_all():
+	for item in CollectibleRegistry.get_standard_random_pool():
 		if player_instance.is_collectible_compatible(item):
 			result.append(item)
 	return result

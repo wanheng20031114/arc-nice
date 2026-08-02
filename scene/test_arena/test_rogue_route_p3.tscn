@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://scene/test_arena/test_rogue_route_p3.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_board.tscn" id="2_board"]
@@ -9,6 +9,9 @@
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud_location_icon.png" id="7_location_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/underground_ruins_background.png" id="8_ruins"]
 [ext_resource type="Script" path="res://scene/rogue_route/rogue_route_world.gd" id="9_world_script"]
+[ext_resource type="Script" path="res://scene/rogue_encounter/rogue_encounter_economy_coordinator.gd" id="10_encounter_economy"]
+[ext_resource type="Script" path="res://scene/rogue_encounter/rogue_encounter_session.gd" id="11_encounter_session"]
+[ext_resource type="PackedScene" path="res://scene/rogue_encounter/rogue_encounter_overlay.tscn" id="12_encounter_overlay"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -118,6 +121,14 @@ bg_color = Color(0.26, 0.57, 0.64, 0.48)
 [node name="TestRogueRouteP3" type="Node2D"]
 script = ExtResource("1_script")
 generation_config = ExtResource("3_config")
+
+[node name="EncounterEconomy" type="Node" parent="."]
+script = ExtResource("10_encounter_economy")
+
+[node name="EncounterSession" type="Node" parent="."]
+script = ExtResource("11_encounter_session")
+
+[node name="EncounterOverlay" parent="." instance=ExtResource("12_encounter_overlay")]
 
 [node name="World" type="Node2D" parent="."]
 script = ExtResource("9_world_script")

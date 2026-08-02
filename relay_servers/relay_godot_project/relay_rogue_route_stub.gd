@@ -9,12 +9,42 @@ func net_request_route_full_snapshot() -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func net_route_full_snapshot(layout: Dictionary, state: Dictionary) -> void:
+func net_route_full_snapshot(
+	layout: Dictionary,
+	state: Dictionary,
+	encounter_state: Dictionary,
+	economy_state: Dictionary
+) -> void:
 	pass
 
 
 @rpc("authority", "call_remote", "reliable", 0)
 func net_route_move_delta(delta: Dictionary) -> void:
+	pass
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_intro_ack(
+	occurrence_key: String,
+	expected_revision: int
+) -> void:
+	pass
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_vote(
+	occurrence_key: String,
+	expected_revision: int,
+	option_id: StringName
+) -> void:
+	pass
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_encounter_snapshot(
+	encounter_state: Dictionary,
+	economy_state: Dictionary
+) -> void:
 	pass
 
 

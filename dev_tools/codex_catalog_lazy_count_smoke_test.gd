@@ -2,7 +2,7 @@ extends SceneTree
 
 const EXPECTED_COUNTS := {
 	CodexSection.ENEMY: 53,
-	CodexSection.COLLECTIBLE: 123,
+	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
 
@@ -65,7 +65,7 @@ func _test_default_counts_are_lightweight() -> void:
 	)
 	_expect(
 		not CollectibleRegistry.is_cache_ready(),
-		"Reading the collectible count must not load the 123 collectible configs."
+		"Reading the collectible count must not load the 124 collectible configs."
 	)
 
 

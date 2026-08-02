@@ -80,7 +80,10 @@ func _test_debug_collectible_window() -> void:
 	game._unhandled_input(_make_action("cheat_collectibles"))
 	_expect(window.is_open(), "cheat_collectibles must open the debug collectible window.")
 	_expect(game.player.controls_locked, "Opening the debug collectible window must lock player controls.")
-	_expect(window.collectible_list.get_item_count() == LuoxiMerchant.get_collectible_pool().size(), "Debug window must list every collectible.")
+	_expect(
+		window.collectible_list.get_item_count() == CollectibleRegistry.get_all().size(),
+		"Debug window must list standard and event-only special collectibles."
+	)
 
 	window.collectible_requested.emit(APPLE_COLLECTIBLE.resource_path)
 	await process_frame

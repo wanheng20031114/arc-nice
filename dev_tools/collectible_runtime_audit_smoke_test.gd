@@ -63,7 +63,7 @@ func _run() -> void:
 
 func _test_every_collectible_runtime_effect() -> void:
 	var pool := LuoxiMerchant.get_collectible_pool()
-	_expect(pool.size() == 123, "Runtime audit must load 123 collectibles from Luoxi pool.")
+	_expect(pool.size() == 123, "Runtime audit must load 123 effect-bearing collectibles from the standard pool.")
 	var seen_paths: Dictionary = {}
 	var seen_effect_ids: Dictionary = {}
 	for item_variant in pool:

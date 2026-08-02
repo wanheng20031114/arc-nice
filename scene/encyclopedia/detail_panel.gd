@@ -5,6 +5,7 @@ signal close_requested
 
 const PREVIEW_MAGNIFICATION := 3.0
 const PREVIEW_MAX_SIZE := Vector2(124.0, 124.0)
+const SPECIAL_TEXT_COLOR := Color("e7efed")
 
 @onready var detail_content: VBoxContainer = $Margin/Content
 @onready var section_label: Label = $Margin/Content/Header/SectionLabel
@@ -171,12 +172,20 @@ func _clear_container(container: Container) -> void:
 
 
 func _apply_accent(accent: Color) -> void:
+	var is_special := (
+		current_entry != null and current_entry.primary_badge == "特殊"
+	)
 	section_label.add_theme_color_override(&"font_color", accent)
-	name_label.add_theme_color_override(&"font_color", accent.lightened(0.18))
+	name_label.add_theme_color_override(
+		&"font_color",
+		SPECIAL_TEXT_COLOR if is_special else accent.lightened(0.18)
+	)
 	stats_heading.add_theme_color_override(&"font_color", accent)
 	notes_heading.add_theme_color_override(&"font_color", accent)
 	_apply_badge_style(primary_badge, accent, 0.16)
 	_apply_badge_style(secondary_badge, accent, 0.08)
+	if is_special:
+		primary_badge.add_theme_color_override(&"font_color", SPECIAL_TEXT_COLOR)
 
 
 func _apply_badge_style(label: Label, accent: Color, alpha: float) -> void:

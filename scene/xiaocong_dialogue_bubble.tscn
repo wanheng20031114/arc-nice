@@ -1,8 +1,9 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scene/merchant_dialogue_bubble.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
 [ext_resource type="AudioStream" path="res://resources/audio/ui/dialogue_blip.wav" id="3_blip"]
+[ext_resource type="Script" path="res://scene/dialogue_typewriter_controller.gd" id="4_typewriter"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bubble"]
 bg_color = Color(0.86, 0.91, 0.87, 1)
@@ -137,5 +138,8 @@ vertical_alignment = 1
 [node name="BlipAudio" type="AudioStreamPlayer" parent="."]
 bus = &"SFX"
 stream = ExtResource("3_blip")
-volume_db = 2.0
+volume_db = 4.0
 max_polyphony = 4
+
+[node name="Typewriter" type="Node" parent="."]
+script = ExtResource("4_typewriter")

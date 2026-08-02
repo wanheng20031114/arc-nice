@@ -599,6 +599,11 @@ def _kill_rule(data: dict[str, Any]) -> list[str]:
 
 
 def _copy_rule(data: dict[str, Any]) -> str:
+    if str(data.get("collectible_effect_id", "")) == "basketball":
+        return (
+            "副本规则：允许重复获得、放入背包或共享仓库；"
+            "每次鸡哥交易只发放1份，本配置不设置全局或整局唯一限制"
+        )
     if bool(data.get("collectible_stacks_by_copy", False)):
         maximum = int(data.get("collectible_max_copies", 0))
         if maximum > 0:
@@ -628,6 +633,11 @@ def _compatibility_rule(data: dict[str, Any]) -> str:
 def _effect_rules(data: dict[str, Any]) -> list[str]:
     if str(data.get("collectible_effect_id", "")) == "admin_doll":
         return ["在庄方宜处升级已解锁技能的后续等级时，本次升级不消耗息壤"]
+    if str(data.get("collectible_effect_id", "")) == "basketball":
+        return [
+            "当前没有战斗效果；作为事件限定道具，仅预留给后续特殊节点检测是否持有，"
+            "不限制全局或整局持有数量"
+        ]
 
     rules: list[str] = []
     for builder in (

@@ -5,6 +5,11 @@ const ROUTE_SCENE := preload("res://scene/test_arena/test_rogue_route_p3.tscn")
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
+const OAK_WAREHOUSE_SCENE := preload(
+	"res://scene/plant_defense/oak_warehouse.tscn"
+)
+const PLANK := preload("res://resources/config/materials/material_plank.tres")
 const WRAPPER_SCENE_PATH := "res://scene/multiplayer/mp_rogue_route.tscn"
 const ROUTE_SCENE_PATH := "res://scene/test_arena/test_rogue_route_p3.tscn"
 const WEISHIDAIER_SCENE_PATH := (
@@ -19,6 +24,8 @@ class FakeNetManager:
 	var host_peer_id := 7
 	var host_role := false
 	var connection_state := NetManagerStore.ConnectionState.IN_GAME
+	var connected_players: Dictionary = {}
+	var connected_player_characters: Dictionary = {}
 
 
 	func get_host_peer_id() -> int:
@@ -37,6 +44,10 @@ class FakeNetManager:
 		return peer_id > 0 and peer_id != host_peer_id
 
 
+	func get_player_character_map() -> Dictionary:
+		return connected_player_characters.duplicate(true)
+
+
 class ManifestNetManager:
 	extends Node
 
@@ -46,6 +57,43 @@ class ManifestNetManager:
 			1: PlayerCharacterRegistry.WEISHIDAIER_ID,
 			2: PlayerCharacterRegistry.TANGO_ID,
 		}
+
+
+class WarehouseRuntimeStub:
+	extends GameTowerDefense
+
+	var warehouses: Dictionary = {}
+
+
+	func _ready() -> void:
+		pass
+
+
+	func _physics_process(_delta: float) -> void:
+		pass
+
+
+	func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
+		var result: Array[Dictionary] = []
+		for peer_id_variant in warehouses.keys():
+			result.append({"net_id": int(peer_id_variant)})
+		return result
+
+
+	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
+		return warehouses.get(net_id) as PlantDefense
+
+
+class ReconnectWrapperStub:
+	extends MpRogueRoute
+
+
+	func _ready() -> void:
+		pass
+
+
+	func _exit_tree() -> void:
+		pass
 
 
 var failures: Array[String] = []
@@ -59,12 +107,13 @@ func _run() -> void:
 	_test_mode_and_loading_contract()
 	await _test_lobby_contract()
 	await _test_snapshot_and_delta_contract()
+	await _test_warehouse_route_persistence_contract()
 	_test_host_requires_character_confirmation()
 	_finish()
 
 
 func _test_mode_and_loading_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 36, "P1B 模式接线必须使用协议 v36。")
+	_expect(NetConstants.PROTOCOL_VERSION == 37, "神奇遭遇网络接线必须使用协议 v37。")
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
 		"P3 轻量角色姿态同步必须保持约 12Hz。"
@@ -183,6 +232,13 @@ func _test_snapshot_and_delta_contract() -> void:
 	client_route.start_client_waiting()
 	var layout := host_route.export_layout_snapshot()
 	var state := host_route.export_state_snapshot()
+	var encounter_state := host_route.export_encounter_snapshot()
+	var economy_state := host_route.export_encounter_economy_snapshot()
+	_expect(
+		(encounter_state.get("economy_snapshot", {}) as Dictionary).is_empty()
+		and not economy_state.is_empty(),
+		"P3 线路快照必须只发送一份独立经济账本，不能在遭遇快照内重复携带。"
+	)
 
 	var wrapper := WRAPPER_SCENE.instantiate() as Node
 	var wrapped_route := wrapper.get_node("RogueRoute") as TestRogueRouteP3
@@ -192,7 +248,13 @@ func _test_snapshot_and_delta_contract() -> void:
 	)
 	var wrapper_script := wrapper.get_script() as Script
 	var rpc_config: Dictionary = wrapper_script.get_rpc_config()
-	for rpc_name in [&"net_route_full_snapshot", &"net_route_move_delta"]:
+	for rpc_name in [
+		&"net_route_full_snapshot",
+		&"net_route_move_delta",
+		&"net_route_encounter_intro_ack",
+		&"net_route_encounter_vote",
+		&"net_route_encounter_snapshot",
+	]:
 		var config := rpc_config.get(rpc_name, {}) as Dictionary
 		_expect(
 			int(config.get("transfer_mode", -1))
@@ -237,7 +299,9 @@ func _test_snapshot_and_delta_contract() -> void:
 			"_apply_full_snapshot_from_peer",
 			fake_net_manager.host_peer_id + 1,
 			layout,
-			state
+			state,
+			encounter_state,
+			economy_state
 		))
 		and not client_route.is_route_ready(),
 		"客户端必须拒绝非 Host 发来的完整快照。"
@@ -256,7 +320,9 @@ func _test_snapshot_and_delta_contract() -> void:
 			"_apply_full_snapshot_from_peer",
 			fake_net_manager.host_peer_id,
 			layout,
-			invalid_state
+			invalid_state,
+			encounter_state,
+			economy_state
 		))
 		and bool(wrapper.get("_snapshot_request_pending"))
 		and not bool(wrapper.call(
@@ -274,7 +340,9 @@ func _test_snapshot_and_delta_contract() -> void:
 			"_apply_full_snapshot_from_peer",
 			fake_net_manager.host_peer_id,
 			layout,
-			state
+			state,
+			encounter_state,
+			economy_state
 		))
 		and client_route.is_route_ready()
 		and not bool(wrapper.get("_snapshot_request_pending"))
@@ -415,13 +483,246 @@ func _test_snapshot_and_delta_contract() -> void:
 			"只读客户端点击节点不得创建移动确认。"
 		)
 
-	_test_avatar_validation_contract(host_route, wrapper, fake_net_manager)
+	await _test_encounter_network_contract(
+		host_route,
+		client_route,
+		wrapper,
+		fake_net_manager,
+		layout
+	)
 
-	wrapper.free()
-	fake_net_manager.free()
-	host_route.queue_free()
+	# 重连背包迁移必须在单一运行时中验证；同进程客户端夹具持有相同 peer
+	# 的 Player，会在 Host remap 信号中人为重建旧背包，这不是实际部署拓扑。
 	client_route.queue_free()
 	await process_frame
+	await _test_avatar_validation_contract(host_route, wrapper, fake_net_manager)
+
+	if is_instance_valid(wrapper):
+		wrapper.free()
+	fake_net_manager.free()
+	host_route.queue_free()
+	if is_instance_valid(client_route):
+		client_route.queue_free()
+	await process_frame
+
+
+func _test_encounter_network_contract(
+	host_route: TestRogueRouteP3,
+	client_route: TestRogueRouteP3,
+	wrapper: Node,
+	fake_net_manager: FakeNetManager,
+	layout: Dictionary
+) -> void:
+	var node_types := layout.get("node_types", PackedByteArray()) as PackedByteArray
+	var magical_node_id := -1
+	for node_id in node_types.size():
+		if int(node_types[node_id]) == RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER:
+			magical_node_id = node_id
+			break
+	_expect(magical_node_id >= 0, "固定 P3 路线必须包含神奇遭遇节点。")
+	if magical_node_id < 0:
+		return
+	_expect(
+		bool(host_route.call("_try_start_encounter_for_node", magical_node_id)),
+		"Host 必须能为未解决的神奇遭遇节点创建唯一 Session。"
+	)
+	var started := host_route.export_encounter_snapshot()
+	var occurrence_key := str(started.get("occurrence_key", ""))
+	var initial_revision := int(started.get("revision", -1))
+	var participants := started.get("participant_peer_ids", []) as Array
+	_expect(
+		participants == [0],
+		"P3 单人遭遇必须使用 RunState 的真实 peer=0 背包，不能伪装成多人 peer。"
+	)
+	var participant_peer_id := int(participants[0]) if not participants.is_empty() else -1
+	_expect(
+		host_route.host_submit_encounter_intro_ack(
+			participant_peer_id,
+			occurrence_key,
+			initial_revision
+		),
+		"玩家可在 reveal 完成前确认对白。"
+	)
+	host_route.call(
+		"_on_encounter_revealed",
+		occurrence_key,
+		initial_revision
+	)
+	var voting := host_route.export_encounter_snapshot()
+	_expect(
+		bool(voting.get("voting_timer_running", false)),
+		"reveal 回调必须使用 Session 最新 revision，不能被提前对白确认锁死60秒计时。"
+	)
+	var economy := host_route.export_encounter_economy_snapshot()
+	var client_state_before := client_route.export_encounter_snapshot()
+	_expect(
+		not bool(wrapper.call(
+			"_apply_encounter_snapshot_from_peer",
+			fake_net_manager.host_peer_id + 1,
+			voting,
+			economy
+		))
+		and client_route.export_encounter_snapshot() == client_state_before,
+		"客户端必须拒绝非 Host 的遭遇快照。"
+	)
+	var invalid_economy := economy.duplicate(true)
+	invalid_economy["schema_version"] = -1
+	var advanced_voting := voting.duplicate(true)
+	advanced_voting["revision"] = int(voting.get("revision", 0)) + 1
+	_expect(
+		not client_route.apply_encounter_snapshot(
+			advanced_voting,
+			invalid_economy
+		)
+		and client_route.export_encounter_snapshot() == client_state_before,
+		"独立经济快照无效时，客户端不得半提交遭遇 revision 或 phase。"
+	)
+	_expect(
+		bool(wrapper.call(
+			"_apply_encounter_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			voting,
+			economy
+		))
+		and client_route.is_encounter_active()
+		and bool(client_route.get("_encounter_input_locked"))
+		and not (
+			client_route.get_node("EncounterSession").export_state().get(
+				"economy_snapshot",
+				{}
+			) as Dictionary
+		).is_empty(),
+		"Host 遭遇快照必须开启覆盖层并锁定路线输入。"
+	)
+	await create_timer(
+		RogueEncounterOverlay.COVER_DURATION_SECONDS
+		+ RogueEncounterOverlay.REVEAL_DURATION_SECONDS
+		+ 0.08
+	).timeout
+	var stale := voting.duplicate(true)
+	stale["revision"] = maxi(int(voting.get("revision", 0)) - 1, 0)
+	_expect(
+		not bool(wrapper.call(
+			"_apply_encounter_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			stale,
+			economy
+		)),
+		"客户端必须拒绝倒退的遭遇 revision。"
+	)
+	var current_revision := int(voting.get("revision", -1))
+	_expect(
+		host_route.host_submit_encounter_vote(
+			participant_peer_id,
+			occurrence_key,
+			current_revision,
+			RogueEncounterEconomyCoordinator.OPTION_FREE
+		),
+		"Host 必须只接受当前 occurrence/revision 的投票。"
+	)
+	var result := host_route.export_encounter_snapshot()
+	_expect(
+		StringName(result.get("phase", &"")) == &"result"
+		and bool(result.get("settlement_committed", false)),
+		"投票完成后必须得到一次性权威结算。"
+	)
+	var result_economy := host_route.export_encounter_economy_snapshot()
+	_expect(
+		bool(wrapper.call(
+			"_apply_encounter_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			result,
+			result_economy
+		)),
+		"客户端必须能先进入自己的结果逐字显示阶段。"
+	)
+	var session := host_route.get_node("EncounterSession") as RogueEncounterSession
+	var result_revision := int(result.get("revision", -1))
+	_expect(
+		session.add_spectator(99),
+		"结果停留期间加入的玩家必须作为旁观者推进权威 revision。"
+	)
+	host_route.call(
+		"_on_encounter_result_hold_completed",
+		occurrence_key,
+		result_revision
+	)
+	_expect(
+		session.get_phase() == &"completed"
+		and host_route.is_encounter_active()
+		and not bool(host_route.call(
+			"_try_start_encounter_for_node",
+			magical_node_id
+		)),
+		"结果停留期 revision 变化不得锁死退出，退出转场完成前仍须保持输入锁。"
+	)
+	var completed := host_route.export_encounter_snapshot()
+	var completed_economy := host_route.export_encounter_economy_snapshot()
+	_expect(
+		bool(wrapper.call(
+			"_apply_encounter_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			completed,
+			completed_economy
+		))
+		and client_route.is_encounter_active()
+		and bool(client_route.get("_encounter_input_locked")),
+		"房主 completed 不得强制关闭尚未读完结果的高延迟客户端。"
+	)
+	var client_overlay := client_route.get_node(
+		"EncounterOverlay"
+	) as RogueEncounterOverlay
+	client_overlay.typewriter.finish_line()
+	await create_timer(RogueEncounterOverlay.RESULT_HOLD_SECONDS + 0.08).timeout
+	_expect(
+		client_route.is_encounter_active()
+		and bool(client_route.get("_encounter_input_locked")),
+		"客户端本地结果停留完成后，退出转场期间仍须保持输入锁。"
+	)
+	await create_timer(
+		RogueEncounterOverlay.COVER_DURATION_SECONDS
+		+ RogueEncounterOverlay.REVEAL_DURATION_SECONDS
+		+ 0.08
+	).timeout
+	_expect(
+		not host_route.is_encounter_active()
+		and not bool(host_route.get("_encounter_input_locked"))
+		and not client_route.is_encounter_active()
+		and not bool(client_route.get("_encounter_input_locked"))
+		and not bool(host_route.call(
+			"_try_start_encounter_for_node",
+			magical_node_id
+		)),
+		"退出转场完成后才可恢复位姿同步，已解决节点仍不得重复触发。"
+	)
+	var previous_layout_hash := str(
+		host_route.export_layout_snapshot().get("layout_hash", "")
+	)
+	_expect(
+		host_route.start_authoritative_session(20260801, false),
+		"Host 必须能以相同 seed 开启一局新的路线会话。"
+	)
+	var regenerated_layout := host_route.export_layout_snapshot()
+	var regenerated_state := host_route.export_state_snapshot()
+	var regenerated_encounter := host_route.export_encounter_snapshot()
+	var regenerated_economy := host_route.export_encounter_economy_snapshot()
+	_expect(
+		str(regenerated_layout.get("layout_hash", "")) == previous_layout_hash
+		and client_route.apply_full_snapshot(
+			regenerated_layout,
+			regenerated_state,
+			regenerated_encounter,
+			regenerated_economy
+		)
+		and not client_route.is_encounter_active()
+		and (
+			client_route.export_encounter_snapshot().get(
+				"resolved_node_ids",
+				[]
+			) as Array
+		).is_empty(),
+		"相同布局 hash 的新局也必须按遭遇 revision 回退重置，不能继承旧节点完成态。"
+	)
 
 
 func _test_avatar_validation_contract(
@@ -431,29 +732,35 @@ func _test_avatar_validation_contract(
 ) -> void:
 	var client_peer_id := fake_net_manager.host_peer_id + 1
 	var observer_peer_id := fake_net_manager.host_peer_id + 2
+	fake_net_manager.host_role = true
+	fake_net_manager.connected_players = {
+		fake_net_manager.host_peer_id: "Host",
+		client_peer_id: "Client",
+		observer_peer_id: "Observer",
+	}
+	fake_net_manager.connected_player_characters = {
+		fake_net_manager.host_peer_id:
+			PlayerCharacterRegistry.WEISHIDAIER_ID,
+		client_peer_id: PlayerCharacterRegistry.TANGO_ID,
+		observer_peer_id: PlayerCharacterRegistry.WEISHIDAIER_ID,
+	}
+	var configure_wrapper := ReconnectWrapperStub.new()
+	configure_wrapper.set("_route", host_route)
+	configure_wrapper.set("_net_manager", fake_net_manager)
+	root.add_child(configure_wrapper)
+	var shared_run_state := root.get_node_or_null("RunState") as RunStateStore
 	_expect(
-		host_route.configure_multiplayer_players(
-			fake_net_manager.host_peer_id,
-			{
-				fake_net_manager.host_peer_id: "Host",
-				client_peer_id: "Client",
-				observer_peer_id: "Observer",
-			},
-			{
-				fake_net_manager.host_peer_id:
-					PlayerCharacterRegistry.WEISHIDAIER_ID,
-				client_peer_id: PlayerCharacterRegistry.TANGO_ID,
-				observer_peer_id:
-					PlayerCharacterRegistry.WEISHIDAIER_ID,
-			}
-		),
-		"P3 Host 测试必须能按房间名称与角色表创建玩家。"
+		bool(configure_wrapper.call("_configure_route_players"))
+		and shared_run_state != null
+		and shared_run_state.active_multiplayer_peer_id
+		== fake_net_manager.host_peer_id,
+		"P3 配置玩家后必须按房间角色表创建节点并绑定本机活动背包。"
 	)
+	configure_wrapper.free()
 	var remote_player := host_route.get_player_for_peer(client_peer_id)
 	if remote_player == null:
 		return
 	wrapper.set("_route", host_route)
-	fake_net_manager.host_role = true
 	var valid_pose := wrapper.call("_encode_avatar_pose", {
 		"position": remote_player.global_position,
 		"velocity": Vector2.ZERO,
@@ -523,9 +830,10 @@ func _test_avatar_validation_contract(
 		)),
 		"可靠位置纠正必须按 peer 去重并限制在约 12Hz。"
 	)
-	_test_incremental_avatar_reconnect(
+	await _test_incremental_avatar_reconnect(
 		host_route,
 		wrapper,
+		fake_net_manager,
 		client_peer_id,
 		observer_peer_id
 	)
@@ -534,6 +842,7 @@ func _test_avatar_validation_contract(
 func _test_incremental_avatar_reconnect(
 	host_route: TestRogueRouteP3,
 	wrapper: Node,
+	fake_net_manager: FakeNetManager,
 	old_peer_id: int,
 	observer_peer_id: int
 ) -> void:
@@ -550,22 +859,63 @@ func _test_incremental_avatar_reconnect(
 	var old_position := old_player.global_position
 	var observer_position := observer_player.global_position
 	var migrated_peer_id := old_peer_id + 20
+	# 该离树包装场景只用于前面的 RPC/姿态测试；其子玩家会订阅 RunState，
+	# 在背包迁移前释放，避免用未入树的测试实例响应 inventory_changed。
+	wrapper.free()
+	var shared_run_state := root.get_node_or_null("RunState") as RunStateStore
+	if shared_run_state == null:
+		_expect(false, "重连测试必须取得常驻 RunState。")
+		return
+	shared_run_state.begin_new_run(&"weishidaier", false)
+	shared_run_state.ensure_multiplayer_peer_state(old_peer_id)
+	shared_run_state.set_active_multiplayer_peer(old_peer_id)
 	_expect(
-		bool(wrapper.call(
-			"_migrate_reconnected_player",
-			old_peer_id,
-			migrated_peer_id,
-			"ClientReconnected",
-			PlayerCharacterRegistry.TANGO_ID
-		))
+		shared_run_state.try_add_item_count_for_peer(old_peer_id, PLANK, 3),
+		"重连夹具必须先写入旧 peer 背包。"
+	)
+	var old_inventory_revision: int = (
+		shared_run_state.get_inventory_revision_for_peer(old_peer_id)
+	)
+	var reconnect_wrapper := ReconnectWrapperStub.new()
+	reconnect_wrapper.set("_route", host_route)
+	reconnect_wrapper.set("_net_manager", fake_net_manager)
+	root.add_child(reconnect_wrapper)
+	var live_reconnect_succeeded := bool(reconnect_wrapper.call(
+		"_finish_player_reconnect",
+		old_peer_id,
+		migrated_peer_id,
+		"ClientReconnected",
+		PlayerCharacterRegistry.TANGO_ID
+	))
+	_expect(
+		live_reconnect_succeeded
 		and host_route.get_player_for_peer(old_peer_id) == null
-		and host_route.get_player_for_peer(migrated_peer_id) == old_player
-		and old_player.global_position.is_equal_approx(old_position)
+		and host_route.get_player_for_peer(migrated_peer_id) == old_player,
+		"仍在场的重连 peer 必须原位迁移同一角色节点。"
+	)
+	_expect(
+		not shared_run_state.has_multiplayer_peer_state(old_peer_id)
+		and shared_run_state.has_multiplayer_peer_state(migrated_peer_id)
+		and shared_run_state.get_inventory_item_total_for_peer(
+			migrated_peer_id,
+			PLANK
+		) == 3
+		and shared_run_state.get_inventory_revision_for_peer(migrated_peer_id)
+		== old_inventory_revision,
+		"重连必须把旧 peer 的背包内容与 revision 原子迁移到新 peer。"
+	)
+	_expect(
+		shared_run_state.active_multiplayer_peer_id == migrated_peer_id,
+		"本机 peer 重连后通用背包 API 必须跟随迁移到新身份。"
+	)
+	_expect(
+		old_player.global_position.is_equal_approx(old_position)
 		and host_route.get_player_for_peer(observer_peer_id) == observer_player
 		and observer_player.global_position.is_equal_approx(observer_position),
-		"仍在场的重连 peer 必须原位迁移节点，且不得重建或传送其他玩家。"
+		"重连不得传送当前玩家或其他玩家。"
 	)
-	wrapper.call("_on_player_left", migrated_peer_id)
+	reconnect_wrapper.call("_on_player_left", migrated_peer_id)
+	await process_frame
 	_expect(
 		host_route.get_player_for_peer(migrated_peer_id) == null
 		and host_route.get_player_for_peer(observer_peer_id) == observer_player
@@ -574,8 +924,8 @@ func _test_incremental_avatar_reconnect(
 	)
 	var replacement_peer_id := migrated_peer_id + 1
 	_expect(
-		bool(wrapper.call(
-			"_migrate_reconnected_player",
+		bool(reconnect_wrapper.call(
+			"_finish_player_reconnect",
 			migrated_peer_id,
 			replacement_peer_id,
 			"ClientRestored",
@@ -587,11 +937,107 @@ func _test_incremental_avatar_reconnect(
 	_expect(
 		replacement != null
 		and replacement != old_player
+		and not shared_run_state.has_multiplayer_peer_state(migrated_peer_id)
+		and shared_run_state.get_inventory_item_total_for_peer(
+			replacement_peer_id,
+			PLANK
+		) == 3
+		and shared_run_state.active_multiplayer_peer_id == replacement_peer_id
 		and replacement.global_position.is_equal_approx(old_position)
 		and host_route.get_player_for_peer(observer_peer_id) == observer_player
 		and observer_player.global_position.is_equal_approx(observer_position),
 		"增量补建必须恢复离线玩家原位置，并保持未重连玩家完全不动。"
 	)
+	var collision_peer_id := replacement_peer_id + 1
+	shared_run_state.ensure_multiplayer_peer_state(collision_peer_id)
+	_expect(
+		not bool(reconnect_wrapper.call(
+			"_migrate_reconnected_run_state",
+			replacement_peer_id,
+			collision_peer_id
+		))
+		and shared_run_state.has_multiplayer_peer_state(replacement_peer_id)
+		and shared_run_state.has_multiplayer_peer_state(collision_peer_id)
+		and host_route.get_player_for_peer(replacement_peer_id) == replacement,
+		"目标 peer 已有背包时必须原子拒绝迁移，并在迁移角色与遭遇前中止。"
+	)
+	_expect(
+		shared_run_state.try_add_item_count_for_peer(
+			collision_peer_id,
+			PLANK,
+			2
+		),
+		"客户端冲突夹具必须预建 new peer 背包。"
+	)
+	var source_revision := (
+		shared_run_state.get_inventory_revision_for_peer(replacement_peer_id)
+	)
+	fake_net_manager.host_role = false
+	_expect(
+		bool(reconnect_wrapper.call(
+			"_finish_player_reconnect",
+			replacement_peer_id,
+			collision_peer_id,
+			"ClientRemapped",
+			PlayerCharacterRegistry.TANGO_ID
+		))
+		and not shared_run_state.has_multiplayer_peer_state(replacement_peer_id)
+		and shared_run_state.has_multiplayer_peer_state(collision_peer_id)
+		and shared_run_state.get_inventory_item_total_for_peer(
+			collision_peer_id,
+			PLANK
+		) == 3
+		and shared_run_state.get_inventory_revision_for_peer(collision_peer_id)
+		== source_revision
+		and shared_run_state.active_multiplayer_peer_id == collision_peer_id
+		and shared_run_state.get_party_item_total(PLANK) == 3
+		and shared_run_state.has_party_item(PLANK),
+		"既有客户端必须用 old peer 状态替换预建 new peer，且默认全队统计不得双计。"
+	)
+	var reconnecting_client_old_peer_id := collision_peer_id + 100
+	shared_run_state.ensure_multiplayer_peer_state(
+		reconnecting_client_old_peer_id
+	)
+	_expect(
+		shared_run_state.try_add_item_count_for_peer(
+			reconnecting_client_old_peer_id,
+			PLANK,
+			5
+		),
+		"重连者本人夹具必须保留一个未收到身份通知的 old peer。"
+	)
+	fake_net_manager.connected_players = {
+		fake_net_manager.host_peer_id: "Host",
+		observer_peer_id: "Observer",
+		collision_peer_id: "ReconnectedClient",
+	}
+	var authoritative_economy := (
+		host_route.get_node("EncounterEconomy")
+		as RogueEncounterEconomyCoordinator
+	).export_snapshot([collision_peer_id])
+	_expect(
+		bool(reconnect_wrapper.call(
+			"_apply_full_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			host_route.export_layout_snapshot(),
+			host_route.export_state_snapshot(),
+			host_route.export_encounter_snapshot(),
+			authoritative_economy
+		))
+		and not shared_run_state.has_multiplayer_peer_state(
+			reconnecting_client_old_peer_id
+		)
+		and shared_run_state.get_inventory_item_total_for_peer(
+			collision_peer_id,
+			PLANK
+		) == 3
+		and shared_run_state.get_inventory_revision_for_peer(collision_peer_id)
+		== source_revision
+		and shared_run_state.active_multiplayer_peer_id == collision_peer_id
+		and shared_run_state.get_party_item_total(PLANK) == 3,
+		"未收到 old→new 通知的重连者本人必须在首次 Host 全量后清除旧键且不重复统计。"
+	)
+	reconnect_wrapper.queue_free()
 
 
 func _build_first_move_delta(layout: Dictionary, state: Dictionary) -> Dictionary:
@@ -648,6 +1094,74 @@ func _test_host_requires_character_confirmation() -> void:
 	)
 	root.remove_child(net_manager)
 	net_manager.free()
+
+
+func _test_warehouse_route_persistence_contract() -> void:
+	const WAREHOUSE_NET_ID := 41
+	var run_state := RunStateStore.new()
+	run_state.begin_new_run(&"weishidaier", false)
+	var net_manager := FakeNetManager.new()
+	net_manager.host_role = true
+	net_manager.host_peer_id = 1
+	var runtime := WarehouseRuntimeStub.new()
+	var source := OAK_WAREHOUSE_SCENE.instantiate() as OakWarehouse
+	root.add_child(source)
+	await process_frame
+	source.configure_multiplayer_storage(WAREHOUSE_NET_ID, 1, true)
+	var slots: Array[Dictionary] = []
+	for slot_index in RunStateStore.INVENTORY_CAPACITY:
+		slots.append({
+			"slot_index": slot_index,
+			"config_path": PLANK.resource_path if slot_index == 0 else "",
+			"stack_count": 6 if slot_index == 0 else 0,
+		})
+	_expect(
+		source.apply_storage_snapshot({
+			"warehouse_net_id": WAREHOUSE_NET_ID,
+			"revision": 1,
+			"slots": slots,
+		}),
+		"仓库持久化夹具必须能写入正 network id 的存储快照。"
+	)
+	runtime.warehouses = {WAREHOUSE_NET_ID: source}
+	var mp_game := MpGameScript.new()
+	mp_game.net_manager = net_manager
+	mp_game.run_state = run_state
+	mp_game.game = runtime
+	_expect(
+		bool(mp_game.call(
+			"_persist_authoritative_warehouse_snapshot",
+			source,
+			WAREHOUSE_NET_ID
+		))
+		and run_state.get_shared_warehouse_item_total(PLANK) == 6,
+		"Host 仓库存储变化必须进入跨场景共享账本。"
+	)
+	var restored := OAK_WAREHOUSE_SCENE.instantiate() as OakWarehouse
+	root.add_child(restored)
+	await process_frame
+	restored.configure_multiplayer_storage(WAREHOUSE_NET_ID, 1, true)
+	_expect(
+		bool(mp_game.call(
+			"_restore_authoritative_warehouse_from_ledger",
+			restored,
+			WAREHOUSE_NET_ID
+		))
+		and restored.get_storage_item_total(PLANK) == 6,
+		"返回战斗并完成仓库网络配置后必须恢复路线期间保留的账本。"
+	)
+	_expect(
+		bool(mp_game.call("_capture_shared_warehouse_ledger"))
+		and run_state.get_shared_warehouse_item_total(PLANK) == 6,
+		"离开战斗场景前必须从当前有效正 id 仓库全量刷新账本。"
+	)
+	restored.queue_free()
+	source.queue_free()
+	mp_game.free()
+	runtime.free()
+	net_manager.free()
+	run_state.free()
+	await process_frame
 
 
 func _finish() -> void:

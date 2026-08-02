@@ -1,7 +1,7 @@
 extends SceneTree
 
-const WAREHOUSE_SCENE := preload(
-	"res://scene/plant_defense/oak_warehouse.tscn"
+const WAREHOUSE_SCRIPT := preload(
+	"res://scene/plant_defense/oak_warehouse.gd"
 )
 const WHITE_CRYSTAL := preload(
 	"res://resources/config/materials/material_white_crystal.tres"
@@ -22,32 +22,10 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var fixture := Node2D.new()
-	fixture.name = "OakWarehouseSnapshotBatchSmokeTest"
-	root.add_child(fixture)
-
-	var first_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
-	var second_warehouse := WAREHOUSE_SCENE.instantiate() as OakWarehouse
-	fixture.add_child(first_warehouse)
-	fixture.add_child(second_warehouse)
-	var config := PlantDefenseRegistry.get_config(&"oak_warehouse")
-	first_warehouse.setup(
-		config,
-		null,
-		[Vector2i.ZERO, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.ONE],
-		true
-	)
-	second_warehouse.setup(
-		config,
-		null,
-		[
-			Vector2i(3, 0),
-			Vector2i(4, 0),
-			Vector2i(3, 1),
-			Vector2i(4, 1),
-		],
-		true
-	)
+	# 该测试只验证 OakWarehouse 的存储快照协议；直接构造真实脚本实例，
+	# 避免把“配置反向引用场景”的资源环误引入协议级冷启动测试。
+	var first_warehouse := _make_warehouse()
+	var second_warehouse := _make_warehouse()
 	first_warehouse.configure_multiplayer_storage(
 		FIRST_WAREHOUSE_NET_ID,
 		CLIENT_PEER_ID,
@@ -58,9 +36,6 @@ func _run() -> void:
 		CLIENT_PEER_ID,
 		true
 	)
-	await process_frame
-
-	_expect(config != null and config.is_valid(), "测试必须加载真实橡木仓库配置。")
 	_expect(
 		first_warehouse.try_add_storage_item_count(WHITE_CRYSTAL, 3),
 		"测试前置必须能向第一座真实仓库写入3个白色水晶。"
@@ -78,9 +53,8 @@ func _run() -> void:
 		second_warehouse
 	)
 
-	fixture.queue_free()
-	for _frame in range(3):
-		await process_frame
+	first_warehouse.free()
+	second_warehouse.free()
 	if failures.is_empty():
 		print("OAK_WAREHOUSE_SNAPSHOT_BATCH_SMOKE_TEST_OK")
 		quit(0)
@@ -147,6 +121,16 @@ func _test_successful_batch_is_atomically_observable(
 
 	first_warehouse.storage_changed.disconnect(first_listener)
 	second_warehouse.storage_changed.disconnect(second_listener)
+
+
+func _make_warehouse() -> OakWarehouse:
+	var warehouse := WAREHOUSE_SCRIPT.new() as OakWarehouse
+	warehouse.storage_items.resize(OakWarehouse.STORAGE_CAPACITY)
+	warehouse.storage_stack_counts.resize(OakWarehouse.STORAGE_CAPACITY)
+	warehouse.storage_stack_counts.fill(0)
+	warehouse.multiplayer_storage_request_timer = Timer.new()
+	warehouse.add_child(warehouse.multiplayer_storage_request_timer)
+	return warehouse
 
 
 func _test_invalid_snapshot_aborts_whole_batch(

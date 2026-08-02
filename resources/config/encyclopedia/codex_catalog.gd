@@ -6,6 +6,7 @@ const COLLECTIBLE_FILTER_KEYS: Array[StringName] = [
 	&"rare",
 	&"epic",
 	&"legendary",
+	&"special",
 ]
 const BUILDING_FILTER_KEYS: Array[StringName] = [
 	&"defense_tower",
@@ -20,7 +21,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
 	CodexSection.ENEMY: 53,
-	CodexSection.COLLECTIBLE: 123,
+	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
 const COLLECTIBLE_ACCENTS: Array[Color] = [
@@ -28,6 +29,7 @@ const COLLECTIBLE_ACCENTS: Array[Color] = [
 	Color("#68d8ff"),
 	Color("#c987ff"),
 	Color("#ffae32"),
+	Color("#7EE3C4"),
 ]
 const ENEMY_NORMAL_ACCENT := Color("#6fd4bd")
 const ENEMY_ELITE_ACCENT := Color("#c58aff")
@@ -194,6 +196,9 @@ func _build_collectible_entries() -> Array[CodexEntryViewData]:
 			continue
 		var rarity := int(item.collectible_rarity)
 		var rarity_label := PickupConfig.get_collectible_rarity_label(rarity)
+		var classification_stat_label := (
+			PickupConfig.get_collectible_classification_stat_label(rarity)
+		)
 		var entry := CodexEntryViewData.new()
 		entry.entry_id = entry_id
 		entry.section = CodexSection.COLLECTIBLE
@@ -207,7 +212,7 @@ func _build_collectible_entries() -> Array[CodexEntryViewData]:
 		entry.filter_label = rarity_label
 		entry.sort_group = rarity
 		entry.sort_order = config_index
-		entry.stats = [CodexStatRow.new("稀有度", rarity_label)]
+		entry.stats = [CodexStatRow.new(classification_stat_label, rarity_label)]
 		entry.notes = _build_collectible_notes(item)
 		entry.visibility_state = visibility
 		entry.source_resource = item
@@ -441,6 +446,11 @@ func _build_linglan_boss_stats() -> Array[CodexStatRow]:
 
 func _build_collectible_notes(item: PickupConfig) -> PackedStringArray:
 	var notes := PackedStringArray()
+	if PickupConfig.is_special_collectible_category(item.collectible_rarity):
+		notes.append("当前战斗效果：无")
+		notes.append("获取方式：事件限定")
+		notes.append("持有规则：可重复获得，每份独立占用一个背包或仓库槽位")
+		return notes
 	if item.collectible_stacks_by_copy:
 		if item.collectible_max_copies > 0:
 			notes.append(

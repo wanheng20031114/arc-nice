@@ -13,7 +13,9 @@ const COLLECTIBLE_RARITY_COLORS := {
 	"稀有": Color("68d8ff"),
 	"史诗": Color("c987ff"),
 	"传说": Color("ffae32"),
+	"特殊": Color("7ee3c4"),
 }
+const SPECIAL_TEXT_COLOR := Color("e7efed")
 
 @onready var artwork_frame: PanelContainer = $Margin/Content/ArtworkFrame
 @onready var icon_rect: TextureRect = $Margin/Content/ArtworkFrame/Icon
@@ -111,7 +113,9 @@ func _apply_palette() -> void:
 	var accent := Color(0.45, 0.48, 0.49) if is_unknown else _entry_accent()
 	var is_active := _is_hovered or _is_focused
 	var is_legendary := not is_unknown and entry_data.primary_badge == "传说"
-	var edge_width := 2 if is_legendary else 1
+	var is_special := not is_unknown and entry_data.primary_badge == "特殊"
+	var has_glow := is_legendary or is_special
+	var edge_width := 2 if has_glow else 1
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = UNKNOWN_BACKGROUND if is_unknown else REVEALED_BACKGROUND
 	panel_style.border_width_left = edge_width
@@ -128,14 +132,19 @@ func _apply_palette() -> void:
 	panel_style.corner_radius_top_right = 5
 	panel_style.corner_radius_bottom_right = 5
 	panel_style.corner_radius_bottom_left = 5
-	if is_legendary:
+	if has_glow:
+		var glow_alpha := 0.4 if is_active else 0.22
+		var glow_size := 7 if is_active else 5
+		if is_special:
+			glow_alpha = 0.34 if is_active else 0.17
+			glow_size = 6 if is_active else 4
 		panel_style.shadow_color = Color(
 			accent.r,
 			accent.g,
 			accent.b,
-			0.4 if is_active else 0.22
+			glow_alpha
 		)
-		panel_style.shadow_size = 7 if is_active else 5
+		panel_style.shadow_size = glow_size
 		panel_style.shadow_offset = Vector2(0.0, 2.0)
 	panel_style.content_margin_left = 0.0
 	panel_style.content_margin_top = 0.0
@@ -152,11 +161,16 @@ func _apply_palette() -> void:
 	artwork_frame.add_theme_stylebox_override(&"panel", artwork_style)
 
 	var badge_style := StyleBoxFlat.new()
+	var badge_alpha := 0.13
+	if is_legendary:
+		badge_alpha = 0.24
+	elif is_special:
+		badge_alpha = 0.18
 	badge_style.bg_color = Color(
 		accent.r,
 		accent.g,
 		accent.b,
-		0.24 if is_legendary else 0.13
+		badge_alpha
 	)
 	badge_style.corner_radius_top_left = 2
 	badge_style.corner_radius_top_right = 2
@@ -165,11 +179,23 @@ func _apply_palette() -> void:
 	badge_label.add_theme_stylebox_override(&"normal", badge_style)
 	badge_label.add_theme_color_override(
 		&"font_color",
-		accent.lightened(0.18) if not is_unknown else Color(0.58, 0.6, 0.61)
+		(
+			SPECIAL_TEXT_COLOR
+			if is_special
+			else accent.lightened(0.18)
+		)
+		if not is_unknown
+		else Color(0.58, 0.6, 0.61)
 	)
 	name_label.add_theme_color_override(
 		&"font_color",
-		Color(0.94, 0.92, 0.84) if not is_unknown else Color(0.5, 0.52, 0.53)
+		(
+			SPECIAL_TEXT_COLOR
+			if is_special
+			else Color(0.94, 0.92, 0.84)
+		)
+		if not is_unknown
+		else Color(0.5, 0.52, 0.53)
 	)
 	unknown_glyph.add_theme_color_override(&"font_color", accent)
 

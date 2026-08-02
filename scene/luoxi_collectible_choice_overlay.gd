@@ -51,6 +51,7 @@ const CARD_COMMON_COLOR := Color(0.94, 0.96, 1.0, 1.0)
 const CARD_RARE_COLOR := Color(0.17, 0.56, 1.0, 1.0)
 const CARD_EPIC_COLOR := Color(0.70, 0.25, 1.0, 1.0)
 const CARD_LEGENDARY_COLOR := Color(1.0, 0.46, 0.08, 1.0)
+const CARD_SPECIAL_COLOR := Color("7EE3C4")
 const CARD_EDGE_SCALE_X := 0.04
 const CARD_FLIP_IN_DURATION := 0.14
 const CARD_FLIP_OUT_DURATION := 0.24
@@ -397,6 +398,8 @@ static func get_card_rarity_color(rarity: int) -> Color:
 			return CARD_EPIC_COLOR
 		PickupConfig.CollectibleRarity.LEGENDARY:
 			return CARD_LEGENDARY_COLOR
+		PickupConfig.CollectibleRarity.SPECIAL:
+			return CARD_SPECIAL_COLOR
 		_:
 			return CARD_COMMON_COLOR
 
@@ -409,6 +412,8 @@ static func get_card_aura_strength(rarity: int) -> float:
 			return 0.22
 		PickupConfig.CollectibleRarity.LEGENDARY:
 			return 0.34
+		PickupConfig.CollectibleRarity.SPECIAL:
+			return 0.12
 		_:
 			return 0.02
 
@@ -421,6 +426,8 @@ static func get_card_reveal_power(rarity: int) -> float:
 			return 1.05
 		PickupConfig.CollectibleRarity.LEGENDARY:
 			return 1.42
+		PickupConfig.CollectibleRarity.SPECIAL:
+			return 0.32
 		_:
 			return 0.08
 
@@ -433,6 +440,8 @@ static func get_card_shadow_size(rarity: int) -> int:
 			return 14
 		PickupConfig.CollectibleRarity.LEGENDARY:
 			return 18
+		PickupConfig.CollectibleRarity.SPECIAL:
+			return 10
 		_:
 			return 8
 
@@ -450,10 +459,19 @@ func _apply_card_rarity_visuals(index: int, rarity: int) -> void:
 		shadow_alpha = 0.42
 	elif rarity == PickupConfig.CollectibleRarity.LEGENDARY:
 		shadow_alpha = 0.52
+	elif rarity == PickupConfig.CollectibleRarity.SPECIAL:
+		shadow_alpha = 0.30
 
 	var base_style := card_base_styles[index]
 	base_style.border_color = rarity_color
-	base_style.border_width_left = 3 if rarity >= PickupConfig.CollectibleRarity.EPIC else 2
+	base_style.border_width_left = (
+		3
+		if rarity in [
+			PickupConfig.CollectibleRarity.EPIC,
+			PickupConfig.CollectibleRarity.LEGENDARY,
+		]
+		else 2
+	)
 	base_style.border_width_top = base_style.border_width_left
 	base_style.border_width_right = base_style.border_width_left
 	base_style.border_width_bottom = base_style.border_width_left
@@ -464,7 +482,15 @@ func _apply_card_rarity_visuals(index: int, rarity: int) -> void:
 		shadow_alpha
 	)
 	base_style.shadow_size = shadow_size
-	base_style.shadow_offset = Vector2(0, 2 if rarity >= PickupConfig.CollectibleRarity.EPIC else 3)
+	base_style.shadow_offset = Vector2(
+		0,
+		2
+		if rarity in [
+			PickupConfig.CollectibleRarity.EPIC,
+			PickupConfig.CollectibleRarity.LEGENDARY,
+		]
+		else 3
+	)
 
 	var hover_style := card_hover_styles[index]
 	hover_style.border_color = rarity_color.lerp(Color.WHITE, 0.2)

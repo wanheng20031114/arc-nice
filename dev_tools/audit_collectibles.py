@@ -2,8 +2,8 @@
 """
 Audit collectible resources and icon assets.
 
-Checks every collectible config for a meaningful gameplay effect, valid
-rarity, valid effect field combinations, unique effect signatures, and a
+Checks every collectible config for a meaningful gameplay or event purpose,
+valid rarity/category, valid effect field combinations, unique effect signatures, and a
 32x32 non-empty PNG icon with matching Godot import metadata.
 """
 
@@ -36,6 +36,7 @@ RARITY_LABELS = {
     1: "稀有",
     2: "史诗",
     3: "传说",
+    4: "特殊",
 }
 
 FIELD_DEFAULTS: dict[str, Any] = {
@@ -139,7 +140,7 @@ GAMEPLAY_EFFECT_FIELDS = tuple(
     for field in FIELD_DEFAULTS.keys()
     if field not in STACKING_METADATA_FIELDS and field not in DESIGN_METADATA_FIELDS
 )
-SPECIAL_EFFECT_IDS = {"admin_doll"}
+SPECIAL_EFFECT_IDS = {"admin_doll", "basketball"}
 VALID_PERIODIC_EFFECTS = {"thunder", "frost", "heal", "archer", "sakura_rocket"}
 VALID_SKILL_EFFECTS = {"moon_shield", "swift"}
 VALID_CONDITIONAL_EFFECTS = {"health_below", "health_above", "xirang_at_least", "xirang_below", "skill_unlocked", "skill_locked"}
@@ -242,8 +243,8 @@ DESIGN_PROFILE_FIELDS = (
     "defense_xirang_step",
     "defense_bonus_per_xirang_step",
 )
-NEW_COLLECTIBLE_COUNT = 99
-EXPECTED_TOTAL_COUNT = 123
+NEW_COLLECTIBLE_COUNT = 100
+EXPECTED_TOTAL_COUNT = 124
 STATIC_STAT_FIELDS = (
     "collectible_attack_bonus",
     "collectible_max_health_bonus",
@@ -437,6 +438,8 @@ def has_meaningful_effect(data: dict[str, Any]) -> bool:
 def summarize_effect(data: dict[str, Any]) -> str:
     if data.get("collectible_effect_id") == "admin_doll":
         return "庄方宜后续技能升级免费"
+    if data.get("collectible_effect_id") == "basketball":
+        return "事件限定：后续特殊节点道具"
 
     parts: list[str] = []
     labels = [
@@ -509,6 +512,8 @@ def _has_non_default(data: dict[str, Any], fields: tuple[str, ...]) -> bool:
 
 
 def primary_affix_categories(data: dict[str, Any]) -> list[str]:
+    if data.get("collectible_effect_id") == "basketball":
+        return ["特殊"]
     categories: list[str] = []
     if _has_non_default(data, STATIC_STAT_FIELDS):
         categories.append("基础数值")
@@ -855,7 +860,7 @@ def validate_logic_fields(data: dict[str, Any], issues: list[str], config_name: 
 
     rarity = data.get("collectible_rarity")
     if rarity not in RARITY_LABELS:
-        issues.append(f"稀有度无效: {rarity}")
+        issues.append(f"品质/分类无效: {rarity}")
 
     if not has_meaningful_effect(data):
         issues.append("没有可运行的收藏品效果")
@@ -980,10 +985,10 @@ def write_report(audits: list[CollectibleAudit]) -> None:
         f"- 配置总数: {len(audits)}",
         f"- 新增收藏品数: {new_count}",
         f"- 问题总数: {total_issues}",
-        "- 稀有度分布: "
+        "- 品质/分类分布: "
         + "，".join(f"{RARITY_LABELS.get(rarity, str(rarity))} {count}" for rarity, count in sorted(rarity_counts.items())),
         "",
-        "| 文件 | 名称 | 稀有度 | 效果摘要 | 设计说明 | 图标主体 | 图标像素 | 问题 |",
+        "| 文件 | 名称 | 品质/分类 | 效果摘要 | 设计说明 | 图标主体 | 图标像素 | 问题 |",
         "| --- | --- | --- | --- | --- | --- | ---: | --- |",
     ]
 

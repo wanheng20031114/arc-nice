@@ -121,7 +121,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 36, "Protocol must be v36.")
+	_expect(NetConstants.PROTOCOL_VERSION == 37, "Protocol must be v37.")
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
 		and NetConstants.NETWORK_COMBAT_VALUE_MAX == 0x7FFFFFFF,
@@ -138,7 +138,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v36 channel assignments must remain stable."
+		"Protocol v37 channel assignments must remain stable."
 	)
 
 

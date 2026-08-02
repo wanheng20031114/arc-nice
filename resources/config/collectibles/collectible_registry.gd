@@ -5,6 +5,7 @@ const CONFIG_DIR := "res://resources/config/collectibles"
 const CONFIG_PREFIX := "collectible_"
 
 static var _pool_cache: Array[PickupConfig] = []
+static var _standard_random_pool_cache: Array[PickupConfig] = []
 static var _by_path_cache: Dictionary = {}
 static var _cache_ready := false
 
@@ -12,6 +13,23 @@ static var _cache_ready := false
 static func get_all() -> Array[PickupConfig]:
 	ensure_cache()
 	return _pool_cache.duplicate()
+
+
+## Standard reward/shop rolls only contain the four ordinary rarity tiers.
+## Event-only special collectibles remain available through get_all()/get_for_path().
+static func get_standard_random_pool() -> Array[PickupConfig]:
+	ensure_cache()
+	return _standard_random_pool_cache.duplicate()
+
+
+static func is_standard_random_collectible(item: PickupConfig) -> bool:
+	if item == null:
+		return false
+	var rarity := int(item.collectible_rarity)
+	return (
+		rarity >= PickupConfig.CollectibleRarity.COMMON
+		and rarity <= PickupConfig.CollectibleRarity.LEGENDARY
+	)
 
 
 static func get_for_path(config_path: String) -> PickupConfig:
@@ -64,6 +82,8 @@ static func cache_config(item: PickupConfig) -> void:
 		return
 	_by_path_cache[item.resource_path] = item
 	_pool_cache.append(item)
+	if is_standard_random_collectible(item):
+		_standard_random_pool_cache.append(item)
 
 
 static func finish_cache_warmup() -> void:

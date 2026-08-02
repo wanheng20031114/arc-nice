@@ -392,6 +392,8 @@ func _get_rarity_color(rarity: int) -> Color:
 			return Color(0.76, 0.36, 1.0, 1.0)
 		PickupConfig.CollectibleRarity.LEGENDARY:
 			return Color(1.0, 0.72, 0.20, 1.0)
+		PickupConfig.CollectibleRarity.SPECIAL:
+			return Color("7EE3C4")
 		_:
 			return Color(0.80, 0.76, 0.65, 1.0)
 

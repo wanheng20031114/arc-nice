@@ -50,7 +50,7 @@ func _run() -> void:
 	screen.call("_apply_section", CodexSection.COLLECTIBLE)
 	var initial_collectible_count := await _wait_for_first_batch(screen)
 	_expect(
-		initial_collectible_count > 0 and initial_collectible_count < 123,
+		initial_collectible_count > 0 and initial_collectible_count < 124,
 		"收藏品目录必须先显示首批卡片，再逐帧补齐剩余内容。"
 	)
 	# 在旧协程仍有待建条目时立刻切分类，旧 generation 必须彻底失效。
@@ -78,14 +78,14 @@ func _run() -> void:
 	_expect(
 		(screen.get("_cards") as Array).is_empty()
 		and (screen.get("_pending_grid_entries") as Array).is_empty()
-		and screen.result_count.text == "显示 0 / 123",
+		and screen.result_count.text == "显示 0 / 124",
 		"快速连续搜索必须只保留最后一次 generation 的空结果。"
 	)
 
 	# 清空搜索后，除首批外，每帧新增量不得超过固定批次预算。
 	screen.call("_on_search_changed", "")
 	var reset_first_count := await _wait_for_first_batch(screen)
-	_expect(reset_first_count < 123, "重置搜索也不能单帧重建全部卡片。")
+	_expect(reset_first_count < 124, "重置搜索也不能单帧重建全部卡片。")
 	var previous_count := reset_first_count
 	for _frame in MAX_WAIT_FRAMES:
 		await process_frame
@@ -96,9 +96,9 @@ func _run() -> void:
 			"首批之后单帧新增卡片不得超过批次预算。"
 		)
 		previous_count = current_count
-		if current_count == 123:
+		if current_count == 124:
 			break
-	_expect(previous_count == 123, "收藏品目录最终必须补齐全部 123 张卡片。")
+	_expect(previous_count == 124, "收藏品目录最终必须补齐全部 124 张卡片。")
 
 	# 保存滚动位置时保持在顶部构建，等内容完整后只恢复一次。
 	var section_states := screen.get("_section_states") as Dictionary

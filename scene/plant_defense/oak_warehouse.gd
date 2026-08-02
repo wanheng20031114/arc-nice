@@ -289,6 +289,18 @@ func notify_production_storage_changed() -> void:
 	storage_changed.emit()
 
 
+## 为单人和权威联机仓库绑定跨场景稳定标识，但不改变当前网络模式。
+## 网络配置仍由 configure_multiplayer_storage() 独立负责。
+func configure_persistent_storage_identity(new_warehouse_net_id: int) -> bool:
+	if new_warehouse_net_id <= 0:
+		return false
+	if multiplayer_storage_enabled and warehouse_net_id != new_warehouse_net_id:
+		return false
+	warehouse_net_id = new_warehouse_net_id
+	set_meta(&"net_id", new_warehouse_net_id)
+	return true
+
+
 func configure_multiplayer_storage(
 	new_warehouse_net_id: int,
 	peer_id: int,

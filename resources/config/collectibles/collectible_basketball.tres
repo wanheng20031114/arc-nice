@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="PickupConfig" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/basketball.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "篮球"
+drop_weight = 0.0
+description = "会在某个特殊节点发挥作用。"
+can_store_in_inventory = true
+stackable = false
+inventory_locked = false
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "basketball"
+collectible_rarity = 4
+collectible_design_id = "basketball"
+collectible_design_note = "篮球规则：当前没有战斗效果；作为事件限定道具，仅预留给后续特殊节点检测是否持有，不限制全局或整局持有数量。副本规则：允许重复获得、放入背包或共享仓库；每次鸡哥交易只发放1份，本配置不设置全局或整局唯一限制。"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

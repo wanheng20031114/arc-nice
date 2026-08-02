@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 36,
-		"P1B wire 游戏模式接线要求协议v36。"
+		NetConstants.PROTOCOL_VERSION == 37,
+		"神奇遭遇网络接线要求协议v37。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

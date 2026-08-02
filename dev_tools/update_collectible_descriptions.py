@@ -299,6 +299,8 @@ def describe_kill(data: dict[str, Any]) -> str:
 def generate_description(data: dict[str, Any]) -> str:
     if data.get("collectible_effect_id") == "admin_doll":
         return "庄方宜为你升级技能时不消耗息壤。"
+    if data.get("collectible_effect_id") == "basketball":
+        return "会在某个特殊节点发挥作用。"
 
     parts: list[str] = []
     ammo_additive = int(data.get("collectible_ammo_capacity_additive_bonus", 0))

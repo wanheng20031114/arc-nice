@@ -4,8 +4,11 @@ class_name RunStateStore
 signal inventory_changed
 signal upgrade_changed
 signal selected_character_changed(character_id: StringName)
+signal shared_warehouse_ledger_changed(snapshot: Dictionary)
 
 const INVENTORY_CAPACITY := 20
+const PARTY_ECONOMY_SCHEMA_VERSION := 1
+const SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION := 1
 const STARTING_WOOD_COUNT := 5
 const STARTING_WOOD: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
@@ -53,6 +56,10 @@ var multiplayer_inventories: Dictionary = {}
 var multiplayer_inventory_stack_counts: Dictionary = {}
 var multiplayer_inventory_revisions: Dictionary = {}
 var multiplayer_upgrade_levels: Dictionary = {}
+## OakWarehouse 的跨场景 wire 快照。路线场景没有仓库节点，因此只保留
+## 可验证的 config_path/count 数据，不持有已卸载场景中的 Node 引用。
+var shared_warehouse_snapshots: Dictionary = {}
+var shared_warehouse_ledger_revision: int = 0
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 var _include_starting_inventory_for_new_peers := true
 
@@ -98,6 +105,8 @@ func begin_new_run(
 	multiplayer_inventory_stack_counts.clear()
 	multiplayer_inventory_revisions.clear()
 	multiplayer_upgrade_levels.clear()
+	shared_warehouse_snapshots.clear()
+	shared_warehouse_ledger_revision = 0
 	run_started = true
 	inventory_changed.emit()
 	upgrade_changed.emit()
@@ -729,13 +738,20 @@ func has_multiplayer_peer_state(peer_id: int) -> bool:
 	)
 
 
-func remap_multiplayer_peer_state(old_peer_id: int, new_peer_id: int) -> bool:
+func remap_multiplayer_peer_state(
+	old_peer_id: int,
+	new_peer_id: int,
+	replace_existing_target: bool = false
+) -> bool:
 	if (
 		old_peer_id <= 0
 		or new_peer_id <= 0
 		or old_peer_id == new_peer_id
 		or not has_multiplayer_peer_state(old_peer_id)
-		or has_multiplayer_peer_state(new_peer_id)
+		or (
+			has_multiplayer_peer_state(new_peer_id)
+			and not replace_existing_target
+		)
 	):
 		return false
 	multiplayer_inventories[new_peer_id] = multiplayer_inventories[old_peer_id]
@@ -756,6 +772,34 @@ func remap_multiplayer_peer_state(old_peer_id: int, new_peer_id: int) -> bool:
 	inventory_changed.emit()
 	upgrade_changed.emit()
 	return true
+
+
+## 客户端收到房主全量身份表后清理本局已不再存在的 peer，避免重连前后的
+## old/new 背包同时参与默认全队统计。仅处理多人键，不影响单人 peer=0。
+func prune_multiplayer_peer_states(
+	allowed_peer_ids: PackedInt32Array
+) -> int:
+	var allowed: Dictionary = {}
+	for peer_id in allowed_peer_ids:
+		if peer_id > 0:
+			allowed[peer_id] = true
+	var stale_peer_ids: Array[int] = []
+	for raw_peer_id in multiplayer_inventories.keys():
+		var peer_id := int(raw_peer_id)
+		if peer_id > 0 and not allowed.has(peer_id):
+			stale_peer_ids.append(peer_id)
+	if stale_peer_ids.is_empty():
+		return 0
+	for peer_id in stale_peer_ids:
+		multiplayer_inventories.erase(peer_id)
+		multiplayer_inventory_stack_counts.erase(peer_id)
+		multiplayer_inventory_revisions.erase(peer_id)
+		multiplayer_upgrade_levels.erase(peer_id)
+		if active_multiplayer_peer_id == peer_id:
+			active_multiplayer_peer_id = 0
+	inventory_changed.emit()
+	upgrade_changed.emit()
+	return stale_peer_ids.size()
 
 
 func get_inventory_slot_state(slot_index: int) -> Dictionary:
@@ -1295,6 +1339,211 @@ func get_item_count_for_peer(peer_id: int, slot_index: int) -> int:
 	return maxi(int(peer_counts[slot_index]), 1)
 
 
+func get_shared_warehouse_ledger_revision() -> int:
+	return shared_warehouse_ledger_revision
+
+
+## 用场景中 OakWarehouse.export_storage_snapshot() 的结果刷新持久账本。
+## 整批快照先完成解码，再一次发布，避免跨仓库的半提交状态。
+func replace_shared_warehouse_snapshots(
+	snapshots: Array,
+	expected_ledger_revision: int = -1,
+	emit_change_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	if (
+		expected_ledger_revision >= 0
+		and expected_ledger_revision != shared_warehouse_ledger_revision
+	):
+		return false
+	var candidate := {
+		"schema_version": SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION,
+		"revision": shared_warehouse_ledger_revision + 1,
+		"warehouses": snapshots,
+	}
+	var decoded := _decode_shared_warehouse_ledger(candidate, -1)
+	if decoded.is_empty():
+		return false
+	shared_warehouse_snapshots = decoded["warehouses"] as Dictionary
+	shared_warehouse_ledger_revision = int(decoded["revision"])
+	if emit_change_signal:
+		shared_warehouse_ledger_changed.emit(export_shared_warehouse_ledger())
+	return true
+
+
+func clear_shared_warehouse_ledger(emit_change_signal: bool = true) -> void:
+	shared_warehouse_snapshots.clear()
+	shared_warehouse_ledger_revision += 1
+	if emit_change_signal:
+		shared_warehouse_ledger_changed.emit(export_shared_warehouse_ledger())
+
+
+func export_shared_warehouse_ledger() -> Dictionary:
+	var ordered_ids: Array[int] = []
+	for raw_warehouse_id in shared_warehouse_snapshots.keys():
+		ordered_ids.append(int(raw_warehouse_id))
+	ordered_ids.sort()
+	var warehouses: Array[Dictionary] = []
+	for warehouse_id in ordered_ids:
+		warehouses.append(
+			(shared_warehouse_snapshots[warehouse_id] as Dictionary).duplicate(true)
+		)
+	return {
+		"schema_version": SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION,
+		"revision": shared_warehouse_ledger_revision,
+		"warehouses": warehouses,
+	}
+
+
+func apply_shared_warehouse_ledger_snapshot(
+	snapshot: Dictionary,
+	allow_revision_rewind: bool = false,
+	emit_change_signal: bool = true
+) -> bool:
+	var minimum_revision := -1 if allow_revision_rewind else shared_warehouse_ledger_revision
+	var decoded := _decode_shared_warehouse_ledger(snapshot, minimum_revision)
+	if decoded.is_empty():
+		return false
+	var changed: bool = (
+		int(decoded["revision"]) != shared_warehouse_ledger_revision
+		or decoded["warehouses"] != shared_warehouse_snapshots
+	)
+	shared_warehouse_snapshots = decoded["warehouses"] as Dictionary
+	shared_warehouse_ledger_revision = int(decoded["revision"])
+	if changed and emit_change_signal:
+		shared_warehouse_ledger_changed.emit(export_shared_warehouse_ledger())
+	return true
+
+
+func get_shared_warehouse_snapshot(warehouse_net_id: int) -> Dictionary:
+	if not shared_warehouse_snapshots.has(warehouse_net_id):
+		return {}
+	return (
+		(shared_warehouse_snapshots[warehouse_net_id] as Dictionary).duplicate(true)
+	)
+
+
+func get_shared_warehouse_item_total(item: PickupConfig) -> int:
+	if item == null or item.resource_path.is_empty():
+		return 0
+	var total := 0
+	for warehouse_snapshot_value in shared_warehouse_snapshots.values():
+		var warehouse_snapshot := warehouse_snapshot_value as Dictionary
+		for raw_slot_value in warehouse_snapshot.get("slots", []) as Array:
+			var slot := raw_slot_value as Dictionary
+			if str(slot.get("config_path", "")) == item.resource_path:
+				total += int(slot.get("stack_count", 0))
+	return total
+
+
+func get_registered_inventory_peer_ids() -> PackedInt32Array:
+	var peer_ids := PackedInt32Array()
+	if multiplayer_inventories.is_empty():
+		peer_ids.append(0)
+		return peer_ids
+	var ordered_peer_ids: Array[int] = []
+	for raw_peer_id in multiplayer_inventories.keys():
+		var peer_id := int(raw_peer_id)
+		if peer_id > 0:
+			ordered_peer_ids.append(peer_id)
+	ordered_peer_ids.sort()
+	for peer_id in ordered_peer_ids:
+		peer_ids.append(peer_id)
+	return peer_ids
+
+
+func get_party_item_total(
+	item: PickupConfig,
+	peer_ids: PackedInt32Array = PackedInt32Array()
+) -> int:
+	ensure_run_started()
+	if item == null:
+		return 0
+	var resolved_peer_ids := (
+		peer_ids.duplicate()
+		if not peer_ids.is_empty()
+		else get_registered_inventory_peer_ids()
+	)
+	var seen_peer_ids: Dictionary = {}
+	var total := get_shared_warehouse_item_total(item)
+	for peer_id in resolved_peer_ids:
+		if seen_peer_ids.has(peer_id):
+			continue
+		seen_peer_ids[peer_id] = true
+		if peer_id == 0:
+			total += get_inventory_item_total(item)
+		elif peer_id > 0:
+			total += get_inventory_item_total_for_peer(peer_id, item)
+	return total
+
+
+func has_party_item(
+	item: PickupConfig,
+	peer_ids: PackedInt32Array = PackedInt32Array()
+) -> bool:
+	return get_party_item_total(item, peer_ids) > 0
+
+
+func export_party_economy_snapshot(
+	peer_ids: PackedInt32Array = PackedInt32Array()
+) -> Dictionary:
+	ensure_run_started()
+	var resolved_peer_ids := (
+		peer_ids.duplicate()
+		if not peer_ids.is_empty()
+		else get_registered_inventory_peer_ids()
+	)
+	resolved_peer_ids.sort()
+	var inventories: Array[Dictionary] = []
+	var seen_peer_ids: Dictionary = {}
+	for peer_id in resolved_peer_ids:
+		if seen_peer_ids.has(peer_id) or peer_id < 0:
+			continue
+		seen_peer_ids[peer_id] = true
+		inventories.append(
+			export_inventory_snapshot()
+			if peer_id == 0
+			else export_inventory_snapshot_for_peer(peer_id)
+		)
+	return {
+		"schema_version": PARTY_ECONOMY_SCHEMA_VERSION,
+		"warehouse_ledger": export_shared_warehouse_ledger(),
+		"inventories": inventories,
+	}
+
+
+## 应用来自房主的全量经济快照。所有仓库和玩家背包先解码、再一起提交。
+func apply_party_economy_snapshot(
+	snapshot: Dictionary,
+	allow_revision_rewind: bool = false
+) -> bool:
+	var prepared := _prepare_party_economy_snapshot(
+		snapshot,
+		allow_revision_rewind,
+		false,
+		-1,
+		{}
+	)
+	return _commit_prepared_party_economy_snapshot(prepared)
+
+
+## 遭遇等房主事务使用的单步 CAS。next snapshot 中每个发生变化的 store
+## 必须只前进一个 revision；全部基准 revision 在首个写入前统一复核。
+func apply_authoritative_party_transaction(
+	next_snapshot: Dictionary,
+	expected_warehouse_ledger_revision: int,
+	expected_inventory_revisions: Dictionary
+) -> bool:
+	var prepared := _prepare_party_economy_snapshot(
+		next_snapshot,
+		false,
+		true,
+		expected_warehouse_ledger_revision,
+		expected_inventory_revisions
+	)
+	return _commit_prepared_party_economy_snapshot(prepared)
+
+
 func _bump_local_inventory_revision() -> void:
 	inventory_revision += 1
 
@@ -1423,6 +1672,233 @@ func _inventory_slot_state_matches(
 		current_path == str(slot_state.get("config_path", ""))
 		and current_count == int(slot_state.get("stack_count", 0))
 	)
+
+
+func _decode_shared_warehouse_ledger(
+	snapshot: Dictionary,
+	minimum_revision: int
+) -> Dictionary:
+	if (
+		typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"])
+		!= SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION
+		or typeof(snapshot.get("revision")) != TYPE_INT
+	):
+		return {}
+	var incoming_revision := int(snapshot["revision"])
+	if incoming_revision < 0 or incoming_revision < minimum_revision:
+		return {}
+	var raw_warehouses_value: Variant = snapshot.get("warehouses")
+	if typeof(raw_warehouses_value) != TYPE_ARRAY:
+		return {}
+	var decoded_warehouses: Dictionary = {}
+	for raw_warehouse_value in raw_warehouses_value as Array:
+		if typeof(raw_warehouse_value) != TYPE_DICTIONARY:
+			return {}
+		var decoded_warehouse := _decode_shared_warehouse_snapshot(
+			raw_warehouse_value as Dictionary
+		)
+		if decoded_warehouse.is_empty():
+			return {}
+		var warehouse_net_id := int(decoded_warehouse["warehouse_net_id"])
+		if decoded_warehouses.has(warehouse_net_id):
+			return {}
+		decoded_warehouses[warehouse_net_id] = decoded_warehouse
+	return {
+		"revision": incoming_revision,
+		"warehouses": decoded_warehouses,
+	}
+
+
+func _decode_shared_warehouse_snapshot(snapshot: Dictionary) -> Dictionary:
+	if (
+		typeof(snapshot.get("warehouse_net_id")) != TYPE_INT
+		or int(snapshot["warehouse_net_id"]) <= 0
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or int(snapshot["revision"]) < 0
+	):
+		return {}
+	var raw_slots_value: Variant = snapshot.get("slots")
+	if typeof(raw_slots_value) != TYPE_ARRAY:
+		return {}
+	var raw_slots := raw_slots_value as Array
+	if raw_slots.size() != INVENTORY_CAPACITY:
+		return {}
+	var normalized_slots: Array[Dictionary] = []
+	normalized_slots.resize(INVENTORY_CAPACITY)
+	var seen_slots: Dictionary = {}
+	for raw_slot_value in raw_slots:
+		if typeof(raw_slot_value) != TYPE_DICTIONARY:
+			return {}
+		var raw_slot := raw_slot_value as Dictionary
+		var slot_index := int(raw_slot.get("slot_index", -1))
+		if (
+			slot_index < 0
+			or slot_index >= INVENTORY_CAPACITY
+			or seen_slots.has(slot_index)
+		):
+			return {}
+		seen_slots[slot_index] = true
+		var config_path := str(raw_slot.get("config_path", ""))
+		var stack_count := int(raw_slot.get("stack_count", 0))
+		var decoded_item := _decode_inventory_item(config_path, stack_count)
+		if not bool(decoded_item.get("valid", false)):
+			return {}
+		normalized_slots[slot_index] = {
+			"slot_index": slot_index,
+			"config_path": config_path,
+			"stack_count": stack_count,
+		}
+	return {
+		"warehouse_net_id": int(snapshot["warehouse_net_id"]),
+		"revision": int(snapshot["revision"]),
+		"slots": normalized_slots,
+	}
+
+
+func _prepare_party_economy_snapshot(
+	snapshot: Dictionary,
+	allow_revision_rewind: bool,
+	require_single_revision_step: bool,
+	expected_warehouse_revision: int,
+	expected_inventory_revisions: Dictionary
+) -> Dictionary:
+	ensure_run_started()
+	if (
+		typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"]) != PARTY_ECONOMY_SCHEMA_VERSION
+		or typeof(snapshot.get("warehouse_ledger")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("inventories")) != TYPE_ARRAY
+	):
+		return {}
+	if (
+		require_single_revision_step
+		and expected_warehouse_revision != shared_warehouse_ledger_revision
+	):
+		return {}
+	var decoded_ledger := _decode_shared_warehouse_ledger(
+		snapshot["warehouse_ledger"] as Dictionary,
+		-1 if allow_revision_rewind else shared_warehouse_ledger_revision
+	)
+	if decoded_ledger.is_empty():
+		return {}
+	var incoming_ledger_revision := int(decoded_ledger["revision"])
+	if (
+		require_single_revision_step
+		and incoming_ledger_revision != shared_warehouse_ledger_revision
+		and incoming_ledger_revision != shared_warehouse_ledger_revision + 1
+	):
+		return {}
+
+	var prepared_inventories: Dictionary = {}
+	for raw_inventory_value in snapshot["inventories"] as Array:
+		if typeof(raw_inventory_value) != TYPE_DICTIONARY:
+			return {}
+		var raw_inventory := raw_inventory_value as Dictionary
+		if typeof(raw_inventory.get("peer_id")) != TYPE_INT:
+			return {}
+		var peer_id := int(raw_inventory["peer_id"])
+		if peer_id < 0 or prepared_inventories.has(peer_id):
+			return {}
+		var current_revision := _get_inventory_revision_without_creating(peer_id)
+		if require_single_revision_step:
+			if (
+				not expected_inventory_revisions.has(peer_id)
+				or int(expected_inventory_revisions[peer_id]) != current_revision
+			):
+				return {}
+		var decoded_inventory := _decode_inventory_snapshot(
+			raw_inventory,
+			peer_id,
+			-1 if allow_revision_rewind else current_revision
+		)
+		if decoded_inventory.is_empty():
+			return {}
+		var incoming_revision := int(decoded_inventory["revision"])
+		if (
+			require_single_revision_step
+			and incoming_revision != current_revision
+			and incoming_revision != current_revision + 1
+		):
+			return {}
+		decoded_inventory["expected_current_revision"] = current_revision
+		prepared_inventories[peer_id] = decoded_inventory
+	return {
+		"expected_warehouse_revision": shared_warehouse_ledger_revision,
+		"warehouse_ledger": decoded_ledger,
+		"inventories": prepared_inventories,
+	}
+
+
+func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
+	if (
+		prepared.is_empty()
+		or int(prepared.get("expected_warehouse_revision", -1))
+		!= shared_warehouse_ledger_revision
+	):
+		return false
+	var prepared_inventories := prepared.get("inventories", {}) as Dictionary
+	for raw_peer_id in prepared_inventories.keys():
+		var peer_id := int(raw_peer_id)
+		var prepared_inventory := prepared_inventories[raw_peer_id] as Dictionary
+		if (
+			int(prepared_inventory.get("expected_current_revision", -1))
+			!= _get_inventory_revision_without_creating(peer_id)
+		):
+			return false
+
+	var prepared_ledger := prepared["warehouse_ledger"] as Dictionary
+	var ledger_changed: bool = (
+		int(prepared_ledger["revision"]) != shared_warehouse_ledger_revision
+		or prepared_ledger["warehouses"] != shared_warehouse_snapshots
+	)
+	shared_warehouse_snapshots = prepared_ledger["warehouses"] as Dictionary
+	shared_warehouse_ledger_revision = int(prepared_ledger["revision"])
+
+	var any_inventory_changed := false
+	for raw_peer_id in prepared_inventories.keys():
+		var peer_id := int(raw_peer_id)
+		var prepared_inventory := prepared_inventories[raw_peer_id] as Dictionary
+		var next_items := prepared_inventory["items"] as Array
+		var next_counts := prepared_inventory["counts"] as Array
+		var next_revision := int(prepared_inventory["revision"])
+		if peer_id == 0:
+			_ensure_local_inventory_shape()
+			any_inventory_changed = any_inventory_changed or (
+				next_revision != inventory_revision
+				or next_items != inventory
+				or next_counts != inventory_stack_counts
+			)
+			inventory.assign(next_items)
+			inventory_stack_counts.assign(next_counts)
+			inventory_revision = next_revision
+			continue
+		ensure_multiplayer_peer_state(peer_id)
+		var peer_items := multiplayer_inventories[peer_id] as Array
+		var peer_counts := multiplayer_inventory_stack_counts[peer_id] as Array
+		any_inventory_changed = any_inventory_changed or (
+			next_revision != get_inventory_revision_for_peer(peer_id)
+			or next_items != peer_items
+			or next_counts != peer_counts
+		)
+		peer_items.assign(next_items)
+		peer_counts.assign(next_counts)
+		multiplayer_inventory_revisions[peer_id] = next_revision
+
+	# 对外只在整个批次均已写入后各发布一次信号。
+	if any_inventory_changed:
+		inventory_changed.emit()
+	if ledger_changed:
+		shared_warehouse_ledger_changed.emit(export_shared_warehouse_ledger())
+	return true
+
+
+func _get_inventory_revision_without_creating(peer_id: int) -> int:
+	if peer_id == 0:
+		return inventory_revision
+	if peer_id < 0:
+		return -1
+	return int(multiplayer_inventory_revisions.get(peer_id, 0))
 
 
 func _ensure_local_inventory_shape() -> void:

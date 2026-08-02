@@ -31,6 +31,7 @@ enum CollectibleRarity {
 	RARE,
 	EPIC,
 	LEGENDARY,
+	SPECIAL,
 	
 }
 
@@ -59,6 +60,7 @@ const COLLECTIBLE_EFFECT_CHARGED_JADE_PENDANT := "charged_jade_pendant"
 const COLLECTIBLE_EFFECT_LUCKY_GEM := "lucky_gem"
 const COLLECTIBLE_EFFECT_MEDIEVAL_SHIELD := "medieval_shield"
 const COLLECTIBLE_EFFECT_SAKURA := "sakura"
+const COLLECTIBLE_EFFECT_BASKETBALL := "basketball"
 
 const PERIODIC_EFFECT_THUNDER := "thunder"
 const PERIODIC_EFFECT_FROST := "frost"
@@ -340,6 +342,8 @@ static func get_collectible_rarity_label(rarity: int) -> String:
 			return "史诗"
 		CollectibleRarity.LEGENDARY:
 			return "传说"
+		CollectibleRarity.SPECIAL:
+			return "特殊"
 		_:
 			return "普通"
 
@@ -354,5 +358,15 @@ static func get_collectible_rarity_bbcode_color(rarity: int) -> String:
 			return "#c987ff"
 		CollectibleRarity.LEGENDARY:
 			return "#ffae32"
+		CollectibleRarity.SPECIAL:
+			return "#7EE3C4"
 		_:
 			return "#f0e3c2"
+
+
+static func is_special_collectible_category(rarity: int) -> bool:
+	return rarity == CollectibleRarity.SPECIAL
+
+
+static func get_collectible_classification_stat_label(rarity: int) -> String:
+	return "分类" if is_special_collectible_category(rarity) else "稀有度"

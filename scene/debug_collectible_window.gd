@@ -68,7 +68,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _populate_collectibles() -> void:
 	collectible_list.clear()
-	for item_variant in LuoxiMerchant.get_collectible_pool():
+	# The debug catalog intentionally includes event-only special collectibles;
+	# production reward rolls use CollectibleRegistry.get_standard_random_pool().
+	for item_variant in CollectibleRegistry.get_all():
 		var item := item_variant as PickupConfig
 		if item == null:
 			continue

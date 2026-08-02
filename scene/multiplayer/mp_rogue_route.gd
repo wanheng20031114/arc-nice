@@ -35,6 +35,8 @@ var _snapshot_request_retry_at_msec := 0
 var _snapshot_request_retry_exponent := 0
 var _latest_layout_snapshot: Dictionary = {}
 var _latest_state_snapshot: Dictionary = {}
+var _latest_encounter_snapshot: Dictionary = {}
+var _latest_economy_snapshot: Dictionary = {}
 var _avatar_sync_time_left := 0.0
 var _client_avatar_sequence := 0
 var _host_avatar_snapshot_sequence := 0
@@ -98,6 +100,8 @@ func _physics_process(delta: float) -> void:
 		_retry_full_snapshot_if_due()
 	if not _route.is_route_ready():
 		return
+	if _route.is_encounter_active():
+		return
 	_avatar_sync_time_left -= maxf(delta, 0.0)
 	if _avatar_sync_time_left > 0.0:
 		return
@@ -136,6 +140,24 @@ func _connect_route_signals() -> void:
 		_route.host_layout_committed.connect(_on_host_layout_committed)
 	if not _route.host_move_committed.is_connected(_on_host_move_committed):
 		_route.host_move_committed.connect(_on_host_move_committed)
+	if not _route.host_encounter_snapshot_committed.is_connected(
+		_on_host_encounter_snapshot_committed
+	):
+		_route.host_encounter_snapshot_committed.connect(
+			_on_host_encounter_snapshot_committed
+		)
+	if not _route.encounter_intro_ack_requested.is_connected(
+		_on_local_encounter_intro_ack_requested
+	):
+		_route.encounter_intro_ack_requested.connect(
+			_on_local_encounter_intro_ack_requested
+		)
+	if not _route.encounter_vote_requested.is_connected(
+		_on_local_encounter_vote_requested
+	):
+		_route.encounter_vote_requested.connect(
+			_on_local_encounter_vote_requested
+		)
 	if not _route.return_requested.is_connected(_on_return_requested):
 		_route.return_requested.connect(_on_return_requested)
 
@@ -147,6 +169,24 @@ func _disconnect_route_signals() -> void:
 		_route.host_layout_committed.disconnect(_on_host_layout_committed)
 	if _route.host_move_committed.is_connected(_on_host_move_committed):
 		_route.host_move_committed.disconnect(_on_host_move_committed)
+	if _route.host_encounter_snapshot_committed.is_connected(
+		_on_host_encounter_snapshot_committed
+	):
+		_route.host_encounter_snapshot_committed.disconnect(
+			_on_host_encounter_snapshot_committed
+		)
+	if _route.encounter_intro_ack_requested.is_connected(
+		_on_local_encounter_intro_ack_requested
+	):
+		_route.encounter_intro_ack_requested.disconnect(
+			_on_local_encounter_intro_ack_requested
+		)
+	if _route.encounter_vote_requested.is_connected(
+		_on_local_encounter_vote_requested
+	):
+		_route.encounter_vote_requested.disconnect(
+			_on_local_encounter_vote_requested
+		)
 	if _route.return_requested.is_connected(_on_return_requested):
 		_route.return_requested.disconnect(_on_return_requested)
 
@@ -160,6 +200,8 @@ func _connect_net_manager_signals() -> void:
 		_net_manager.player_reconnected.connect(_on_player_reconnected)
 	if not _net_manager.player_left.is_connected(_on_player_left):
 		_net_manager.player_left.connect(_on_player_left)
+	if not _net_manager.player_joined.is_connected(_on_player_joined):
+		_net_manager.player_joined.connect(_on_player_joined)
 
 
 func _disconnect_net_manager_signals() -> void:
@@ -175,6 +217,8 @@ func _disconnect_net_manager_signals() -> void:
 		_net_manager.player_reconnected.disconnect(_on_player_reconnected)
 	if _net_manager.player_left.is_connected(_on_player_left):
 		_net_manager.player_left.disconnect(_on_player_left)
+	if _net_manager.player_joined.is_connected(_on_player_joined):
+		_net_manager.player_joined.disconnect(_on_player_joined)
 
 
 func _report_game_loaded() -> void:
@@ -207,6 +251,16 @@ func _on_player_reconnected(
 	player_name: String,
 	character_id: StringName
 ) -> void:
+	# Host 需等待 NetManager 先把身份通知排入各客户端的可靠信道；既有客户端
+	# 则立即清理 old peer，保证后续同信道全量经济快照不会与旧背包并存。
+	if not _is_host():
+		_finish_player_reconnect(
+			old_peer_id,
+			new_peer_id,
+			player_name,
+			character_id
+		)
+		return
 	call_deferred(
 		"_finish_player_reconnect",
 		old_peer_id,
@@ -224,16 +278,138 @@ func _finish_player_reconnect(
 ) -> bool:
 	if not is_inside_tree():
 		return false
-	if not _migrate_reconnected_player(
+	var route_already_uses_new_peer := (
+		_route != null
+		and _route.get_player_for_peer(old_peer_id) == null
+		and _route.get_player_for_peer(new_peer_id) != null
+		and _route.get_player_for_peer(new_peer_id).get_character_id()
+		== character_id
+	)
+	if not route_already_uses_new_peer and not _can_migrate_reconnected_player(
+		old_peer_id,
+		new_peer_id,
+		character_id
+	):
+		return false
+	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
+	var had_old_run_state := (
+		shared_run_state != null
+		and shared_run_state.has_multiplayer_peer_state(old_peer_id)
+	)
+	var had_new_run_state := (
+		shared_run_state != null
+		and shared_run_state.has_multiplayer_peer_state(new_peer_id)
+	)
+	if not _migrate_reconnected_run_state(
+		old_peer_id,
+		new_peer_id,
+		not _is_host()
+	):
+		push_error(
+			"MpRogueRoute: 无法迁移重连玩家 %d -> %d 的背包状态。"
+			% [old_peer_id, new_peer_id]
+		)
+		return false
+	if not route_already_uses_new_peer and not _migrate_reconnected_player(
 		old_peer_id,
 		new_peer_id,
 		player_name,
 		character_id
 	):
+		if _is_host() and had_old_run_state and not had_new_run_state:
+			_rollback_reconnected_run_state(old_peer_id, new_peer_id)
 		return false
 	if _is_host():
+		_route.host_migrate_encounter_peer(old_peer_id, new_peer_id)
 		_send_full_snapshot_to_peer(new_peer_id)
 	return true
+
+
+func _can_migrate_reconnected_player(
+	old_peer_id: int,
+	new_peer_id: int,
+	character_id: StringName
+) -> bool:
+	if (
+		old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+		or _route == null
+		or _route.get_player_for_peer(new_peer_id) != null
+	):
+		return false
+	var old_player := _route.get_player_for_peer(old_peer_id)
+	if old_player != null:
+		return old_player.get_character_id() == character_id
+	_prune_disconnected_avatar_poses()
+	return not (
+		_disconnected_avatar_poses.get(old_peer_id, {}) as Dictionary
+	).is_empty()
+
+
+func _migrate_reconnected_run_state(
+	old_peer_id: int,
+	new_peer_id: int,
+	replace_existing_target: bool = false
+) -> bool:
+	if (
+		old_peer_id <= 0
+		or new_peer_id <= 0
+		or old_peer_id == new_peer_id
+	):
+		return false
+	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if shared_run_state == null:
+		return false
+	# RunState.remap_multiplayer_peer_state() 会同步发出 inventory_changed。
+	# 仍在路线树中的旧 Player 若继续以 old_peer_id 响应该信号，会立刻重建
+	# 一个空的旧背包。先只暂存其背包查询身份；权威字典与节点名仍由后续
+	# _migrate_reconnected_player() 一次性迁移。
+	var live_player: Player = null
+	if _route != null:
+		live_player = _route.get_player_for_peer(old_peer_id)
+	var staged_live_peer := (
+		live_player != null
+		and is_instance_valid(live_player)
+		and live_player.peer_id == old_peer_id
+	)
+	if staged_live_peer:
+		live_player.peer_id = new_peer_id
+	var migrated := true
+	if shared_run_state.has_multiplayer_peer_state(old_peer_id):
+		migrated = shared_run_state.remap_multiplayer_peer_state(
+			old_peer_id,
+			new_peer_id,
+			replace_existing_target
+		)
+	else:
+		shared_run_state.ensure_multiplayer_peer_state(new_peer_id)
+		migrated = shared_run_state.has_multiplayer_peer_state(new_peer_id)
+	if not migrated and staged_live_peer:
+		live_player.peer_id = old_peer_id
+	return migrated
+
+
+func _rollback_reconnected_run_state(
+	old_peer_id: int,
+	new_peer_id: int
+) -> bool:
+	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if shared_run_state == null:
+		return false
+	var live_player: Player = null
+	if _route != null:
+		live_player = _route.get_player_for_peer(old_peer_id)
+	if (
+		live_player != null
+		and is_instance_valid(live_player)
+		and live_player.peer_id == new_peer_id
+	):
+		live_player.peer_id = old_peer_id
+	return shared_run_state.remap_multiplayer_peer_state(
+		new_peer_id,
+		old_peer_id
+	)
 
 
 func _migrate_reconnected_player(
@@ -293,6 +469,8 @@ func _migrate_reconnected_player(
 
 func _on_player_left(peer_id: int) -> void:
 	if _route != null:
+		if _is_host():
+			_route.host_remove_encounter_peer(peer_id)
 		_prune_disconnected_avatar_poses()
 		var preserved_pose := _get_avatar_pose_for_peer(peer_id)
 		if not preserved_pose.is_empty():
@@ -300,6 +478,40 @@ func _on_player_left(peer_id: int) -> void:
 			_disconnected_avatar_poses[peer_id] = preserved_pose.duplicate(true)
 		_route.remove_multiplayer_player(peer_id)
 	_clear_avatar_peer_sync_state(peer_id)
+
+
+func _on_player_joined(peer_id: int, player_name: String) -> void:
+	if (
+		not _runtime_prepared
+		or _route == null
+		or peer_id <= 0
+		or _route.get_player_for_peer(peer_id) != null
+	):
+		return
+	var character_id := PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+	if _net_manager.has_method("get_player_character_map"):
+		var character_ids := (
+			_net_manager.call("get_player_character_map") as Dictionary
+		)
+		character_id = StringName(
+			character_ids.get(peer_id, character_id)
+		)
+	var anchor := _route.get_player_for_peer(_get_host_peer_id())
+	var spawn_position := (
+		anchor.global_position
+		if anchor != null
+		else Vector2.ZERO
+	)
+	if not _route.add_multiplayer_player(
+		peer_id,
+		player_name,
+		character_id,
+		spawn_position
+	):
+		return
+	if _is_host():
+		_route.host_add_encounter_spectator(peer_id)
+		_send_full_snapshot_to_peer(peer_id)
 
 
 func _on_host_layout_committed(layout: Dictionary, state: Dictionary) -> void:
@@ -324,6 +536,74 @@ func _on_host_move_committed(delta: Dictionary) -> void:
 			net_route_move_delta.rpc_id(peer_id, delta.duplicate(true))
 
 
+func _on_host_encounter_snapshot_committed(
+	encounter_snapshot: Dictionary,
+	economy_snapshot: Dictionary
+) -> void:
+	if (
+		not _is_host()
+		or encounter_snapshot.is_empty()
+		or economy_snapshot.is_empty()
+	):
+		return
+	_latest_encounter_snapshot = encounter_snapshot.duplicate(true)
+	_latest_economy_snapshot = economy_snapshot.duplicate(true)
+	if _get_connection_state() != STATE_IN_GAME or not _has_network_peer():
+		return
+	for peer_id in _get_remote_player_peer_ids():
+		if _is_peer_send_ready(peer_id):
+			net_route_encounter_snapshot.rpc_id(
+				peer_id,
+				_latest_encounter_snapshot.duplicate(true),
+				_latest_economy_snapshot.duplicate(true)
+			)
+
+
+func _on_local_encounter_intro_ack_requested(
+	occurrence_key: String,
+	expected_revision: int
+) -> void:
+	var local_peer_id := _get_local_peer_id()
+	if _is_host():
+		_route.host_submit_encounter_intro_ack(
+			local_peer_id,
+			occurrence_key,
+			expected_revision
+		)
+	elif _is_client() and _has_network_peer():
+		var host_peer_id := _get_host_peer_id()
+		if host_peer_id > 0 and _is_peer_send_ready(host_peer_id):
+			net_route_encounter_intro_ack.rpc_id(
+				host_peer_id,
+				occurrence_key,
+				expected_revision
+			)
+
+
+func _on_local_encounter_vote_requested(
+	occurrence_key: String,
+	expected_revision: int,
+	option_id: StringName
+) -> void:
+	var local_peer_id := _get_local_peer_id()
+	if _is_host():
+		_route.host_submit_encounter_vote(
+			local_peer_id,
+			occurrence_key,
+			expected_revision,
+			option_id
+		)
+	elif _is_client() and _has_network_peer():
+		var host_peer_id := _get_host_peer_id()
+		if host_peer_id > 0 and _is_peer_send_ready(host_peer_id):
+			net_route_encounter_vote.rpc_id(
+				host_peer_id,
+				occurrence_key,
+				expected_revision,
+				option_id
+			)
+
+
 func _refresh_authoritative_snapshot_cache() -> bool:
 	if (
 		_route == null
@@ -332,10 +612,19 @@ func _refresh_authoritative_snapshot_cache() -> bool:
 		return false
 	var layout := _route.export_layout_snapshot()
 	var state := _route.export_state_snapshot()
-	if layout.is_empty() or state.is_empty():
+	var encounter := _route.export_encounter_snapshot()
+	var economy := _route.export_encounter_economy_snapshot()
+	if (
+		layout.is_empty()
+		or state.is_empty()
+		or encounter.is_empty()
+		or economy.is_empty()
+	):
 		return false
 	_latest_layout_snapshot = layout.duplicate(true)
 	_latest_state_snapshot = state.duplicate(true)
+	_latest_encounter_snapshot = encounter.duplicate(true)
+	_latest_economy_snapshot = economy.duplicate(true)
 	return true
 
 
@@ -371,7 +660,9 @@ func _send_full_snapshot_to_peer(peer_id: int) -> void:
 	net_route_full_snapshot.rpc_id(
 		peer_id,
 		_latest_layout_snapshot.duplicate(true),
-		_latest_state_snapshot.duplicate(true)
+		_latest_state_snapshot.duplicate(true),
+		_latest_encounter_snapshot.duplicate(true),
+		_latest_economy_snapshot.duplicate(true)
 	)
 
 
@@ -443,11 +734,19 @@ func _configure_route_players() -> bool:
 	var local_peer_id := _get_local_peer_id()
 	if local_peer_id <= 0 or not player_names.has(local_peer_id):
 		return false
-	return _route.configure_multiplayer_players(
+	if not _route.configure_multiplayer_players(
 		local_peer_id,
 		player_names.duplicate(),
 		character_ids.duplicate()
-	)
+	):
+		return false
+	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if shared_run_state == null:
+		return false
+	# 与 MpGame 保持相同生命周期：进入多人运行时绑定本机 peer；切场不清空，
+	# 让路线、战斗与遭遇继续共享同一背包。
+	shared_run_state.set_active_multiplayer_peer(local_peer_id)
+	return true
 
 
 func _send_local_avatar_pose() -> void:
@@ -601,6 +900,104 @@ func _next_avatar_sequence(current_sequence: int) -> int:
 	return mini(current_sequence + 1, AVATAR_MAX_SEQUENCE)
 
 
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_intro_ack(
+	occurrence_key: String,
+	expected_revision: int
+) -> void:
+	if not _is_host() or _route == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or sender_id == _get_host_peer_id():
+		return
+	if not _route.host_submit_encounter_intro_ack(
+		sender_id,
+		occurrence_key,
+		expected_revision
+	):
+		_send_encounter_snapshot_to_peer(sender_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_vote(
+	occurrence_key: String,
+	expected_revision: int,
+	option_id: StringName
+) -> void:
+	if not _is_host() or _route == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or sender_id == _get_host_peer_id():
+		return
+	if not _route.host_submit_encounter_vote(
+		sender_id,
+		occurrence_key,
+		expected_revision,
+		option_id
+	):
+		_send_encounter_snapshot_to_peer(sender_id)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_encounter_snapshot(
+	encounter_state: Dictionary,
+	economy_state: Dictionary
+) -> void:
+	_apply_encounter_snapshot_from_peer(
+		multiplayer.get_remote_sender_id(),
+		encounter_state,
+		economy_state
+	)
+
+
+func _apply_encounter_snapshot_from_peer(
+	sender_id: int,
+	encounter_state: Dictionary,
+	economy_state: Dictionary
+) -> bool:
+	if (
+		not _is_client()
+		or sender_id != _get_host_peer_id()
+		or encounter_state.is_empty()
+		or economy_state.is_empty()
+		or _route == null
+	):
+		return false
+	if _route.apply_encounter_snapshot(
+		encounter_state.duplicate(true),
+		economy_state.duplicate(true)
+	):
+		_latest_encounter_snapshot = encounter_state.duplicate(true)
+		_latest_economy_snapshot = economy_state.duplicate(true)
+		return true
+	_request_full_snapshot()
+	return false
+
+
+func _send_encounter_snapshot_to_peer(peer_id: int) -> bool:
+	if (
+		not _is_host()
+		or peer_id <= 0
+		or peer_id == _get_host_peer_id()
+		or not _has_network_peer()
+		or not _is_peer_send_ready(peer_id)
+		or _route == null
+	):
+		return false
+	var encounter_state := _route.export_encounter_snapshot()
+	var economy_state := _route.export_encounter_economy_snapshot()
+	if encounter_state.is_empty() or economy_state.is_empty():
+		return false
+	_latest_encounter_snapshot = encounter_state.duplicate(true)
+	_latest_economy_snapshot = economy_state.duplicate(true)
+	net_route_encounter_snapshot.rpc_id(
+		peer_id,
+		_latest_encounter_snapshot.duplicate(true),
+		_latest_economy_snapshot.duplicate(true)
+	)
+	return true
+
+
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
 func net_route_avatar_input(
 	sequence: int,
@@ -639,6 +1036,7 @@ func _accept_client_avatar_pose(
 		or sequence > AVATAR_MAX_SEQUENCE
 		or packed_pose.size() != AVATAR_POSE_FIELD_COUNT
 		or _route.get_player_for_peer(peer_id) == null
+		or _route.is_encounter_active()
 	):
 		return false
 	if route_revision != _route.get_route_revision():
@@ -852,18 +1250,27 @@ func net_request_route_full_snapshot() -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func net_route_full_snapshot(layout: Dictionary, state: Dictionary) -> void:
+func net_route_full_snapshot(
+	layout: Dictionary,
+	state: Dictionary,
+	encounter_state: Dictionary,
+	economy_state: Dictionary
+) -> void:
 	_apply_full_snapshot_from_peer(
 		multiplayer.get_remote_sender_id(),
 		layout,
-		state
+		state,
+		encounter_state,
+		economy_state
 	)
 
 
 func _apply_full_snapshot_from_peer(
 	sender_id: int,
 	layout: Dictionary,
-	state: Dictionary
+	state: Dictionary,
+	encounter_state: Dictionary,
+	economy_state: Dictionary
 ) -> bool:
 	if (
 		not _is_client()
@@ -871,12 +1278,19 @@ func _apply_full_snapshot_from_peer(
 		or _route == null
 	):
 		return false
-	if layout.is_empty() or state.is_empty():
+	if (
+		layout.is_empty()
+		or state.is_empty()
+		or encounter_state.is_empty()
+		or economy_state.is_empty()
+	):
 		_schedule_full_snapshot_retry()
 		return false
 	if not _route.apply_full_snapshot(
 		layout.duplicate(true),
-		state.duplicate(true)
+		state.duplicate(true),
+		encounter_state.duplicate(true),
+		economy_state.duplicate(true)
 	):
 		_schedule_full_snapshot_retry()
 		return false
@@ -885,7 +1299,26 @@ func _apply_full_snapshot_from_peer(
 		return false
 	_reset_snapshot_request_state()
 	_reset_avatar_validation_positions()
+	_latest_encounter_snapshot = encounter_state.duplicate(true)
+	_latest_economy_snapshot = economy_state.duplicate(true)
+	_prune_client_inventory_states_to_connected_players()
 	return true
+
+
+func _prune_client_inventory_states_to_connected_players() -> int:
+	if not is_inside_tree() or not _is_client() or _net_manager == null:
+		return 0
+	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if shared_run_state == null:
+		return 0
+	var connected_players := _net_manager.get("connected_players") as Dictionary
+	var allowed_peer_ids := PackedInt32Array()
+	for raw_peer_id in connected_players.keys():
+		var peer_id := int(raw_peer_id)
+		if peer_id > 0:
+			allowed_peer_ids.append(peer_id)
+	allowed_peer_ids.sort()
+	return shared_run_state.prune_multiplayer_peer_states(allowed_peer_ids)
 
 
 @rpc("authority", "call_remote", "reliable", 0)

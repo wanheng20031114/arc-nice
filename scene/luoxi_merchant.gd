@@ -143,7 +143,7 @@ static func get_refresh_cost(refresh_count: int) -> int:
 
 
 static func get_collectible_pool() -> Array:
-	return CollectibleRegistry.get_all()
+	return CollectibleRegistry.get_standard_random_pool()
 
 
 static func get_collectible_for_choice(choice_index: int) -> PickupConfig:

@@ -17,7 +17,7 @@ class_name RogueRouteNodeTypeConfig
 @export_range(0, 99, 1, "or_greater") var minimum_count := 1
 ## 0 表示不设上限；正数上限同时约束保底数量与后续权重抽取。
 @export_range(0, 99, 1, "or_greater") var maximum_count := 0
-## 为后续对话池、战斗地图池或商店池预留。本次 P3 不加载正式内容。
+## 由路线内容注册表解析为具体遭遇、战斗地图或商店内容。
 @export var content_pool_id: StringName = &""
 
 
