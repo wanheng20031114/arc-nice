@@ -18,6 +18,17 @@ func _init() -> void:
 func _run() -> void:
 	var overlay := OVERLAY_SCENE.instantiate() as RogueEncounterOverlay
 	root.add_child(overlay)
+	_expect(
+		overlay.transition_cover_audio.stream.resource_path
+		== "res://resources/audio/ui/xiaocong_transition_cover.wav"
+		and overlay.transition_reveal_audio.stream.resource_path
+		== "res://resources/audio/ui/xiaocong_transition_reveal.wav"
+		and overlay.transition_cover_audio.bus == &"SFX"
+		and overlay.transition_reveal_audio.bus == &"SFX"
+		and is_equal_approx(overlay.transition_cover_audio.volume_db, -8.0)
+		and is_equal_approx(overlay.transition_reveal_audio.volume_db, -7.0),
+		"神奇遭遇必须复用小葱转场的遮盖/揭示音效、总线与响度。"
+	)
 	overlay.intro_ack_requested.connect(
 		func(key: String, revision: int) -> void:
 			intro_requests.append({"key": key, "revision": revision})
@@ -39,7 +50,15 @@ func _run() -> void:
 	overlay.configure_local_context(1, {1: "玩家"}, {1: &""})
 	overlay.apply_state(_make_intro_state())
 	await overlay.cover_map_for_encounter()
+	_expect(
+		overlay.transition_cover_audio.playing,
+		"从肉鸽地图进入神奇遭遇时必须播放小葱遮盖音效。"
+	)
 	await overlay.reveal_encounter()
+	_expect(
+		overlay.transition_reveal_audio.playing,
+		"神奇遭遇揭示时必须播放小葱揭示音效。"
+	)
 	_expect(overlay.visible, "遭遇揭示后覆盖层必须可见。")
 	_expect(revealed_count == 1, "每个 occurrence 只能发出一次 reveal 完成信号。")
 	_expect(
@@ -120,7 +139,24 @@ func _run() -> void:
 	overlay.typewriter.finish_line()
 	await create_timer(RogueEncounterOverlay.RESULT_HOLD_SECONDS + 0.08).timeout
 	_expect(result_hold_count == 1, "结果完整显示后必须停留1.5秒再请求退出。")
-	await overlay.reveal_map_after_encounter()
+	overlay.transition_cover_audio.stop()
+	overlay.transition_reveal_audio.stop()
+	overlay.reveal_map_after_encounter()
+	await process_frame
+	_expect(
+		overlay.transition_cover_audio.playing,
+		"从神奇遭遇返回肉鸽地图时必须先播放小葱遮盖音效。"
+	)
+	await create_timer(
+		RogueEncounterOverlay.COVER_DURATION_SECONDS + 0.04
+	).timeout
+	_expect(
+		overlay.transition_reveal_audio.playing,
+		"返回肉鸽地图的揭示阶段必须播放小葱揭示音效。"
+	)
+	await create_timer(
+		RogueEncounterOverlay.REVEAL_DURATION_SECONDS + 0.06
+	).timeout
 	_expect(not overlay.visible, "退出转场后覆盖层必须完全隐藏。")
 	var replay := _make_intro_state()
 	replay["revision"] = 6
