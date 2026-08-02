@@ -255,14 +255,16 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 34, "The multiplayer protocol version must be 34.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v34 must provision eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 36, "The multiplayer protocol version must be 36.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v36 must provision eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 33))
+		not bool(net_manager.call("_is_protocol_version_compatible", 35))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 34))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 33))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 32))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 31))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 30))
@@ -292,7 +294,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v34 must reject the previous v33 client, all older versions, and registrations with no version."
+		"Protocol v36 must reject v35 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -370,12 +372,22 @@ func _test_net_manager_game_mode_authority() -> void:
 		== "tower_defense",
 		"Tower-defense mode must expose a stable API key."
 	)
+	_expect(
+		int(NetManagerStore.GameMode.STANDARD) == 0
+		and int(NetManagerStore.GameMode.TOWER_DEFENSE) == 1
+		and int(NetManagerStore.GameMode.TEST_ARENA_P1) == 2
+		and int(NetManagerStore.GameMode.TEST_ARENA_P2) == 3
+		and int(NetManagerStore.GameMode.TEST_ARENA_P3) == 4
+		and int(NetManagerStore.GameMode.TEST_ARENA_P1B) == 5,
+		"P1B must append wire value 5 without renumbering existing game modes."
+	)
 	for mode_contract in [
 		[NetManagerStore.GameMode.STANDARD, "standard", "普通模式"],
 		[NetManagerStore.GameMode.TOWER_DEFENSE, "tower_defense", "塔防模式"],
-		[NetManagerStore.GameMode.TEST_ARENA_P1, "test_arena_p1", "测试场景 P1"],
+		[NetManagerStore.GameMode.TEST_ARENA_P1, "test_arena_p1", "测试场景 P1A"],
 		[NetManagerStore.GameMode.TEST_ARENA_P2, "test_arena_p2", "测试场景 P2"],
 		[NetManagerStore.GameMode.TEST_ARENA_P3, "test_arena_p3", "测试场景 P3 · 肉鸽路线"],
+		[NetManagerStore.GameMode.TEST_ARENA_P1B, "test_arena_p1b", "测试场景 P1B"],
 	]:
 		var mode := int(mode_contract[0]) as NetManagerStore.GameMode
 		var key := str(mode_contract[1])

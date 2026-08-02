@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_gunner.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_gunner.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"combat_robot_gunner"
+enemy_config = ExtResource("2_config")
+family_id = &"mechanical_life"
+family_label = "机械生命"
+rank = 0
+sort_order = 530
+visible_in_codex = true
+description = "由冷灰方盒机体与线性关节构成的持枪战斗机器人。它锁定玩家或植物后会立即锁死射击方向，以半速追击并移动连射十二发轻微散布弹丸；进入目标 24 像素近距时停步射击，完成一轮后进入冷却。"
+traits = PackedStringArray("12发连射", "追击射击", "机械生命")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

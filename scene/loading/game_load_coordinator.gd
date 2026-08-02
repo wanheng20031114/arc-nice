@@ -11,6 +11,9 @@ const MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH := (
 const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena_p1b.tscn"
+)
 const TEST_GRASS_ARENA_P2_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena_p2.tscn"
 )
@@ -29,6 +32,9 @@ const TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH := (
 const TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/singleplayer/campaign.tres"
 )
+const TEST_ARENA_P1B_SINGLEPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/p1b/singleplayer/campaign.tres"
+)
 const TEST_ARENA_P2_SINGLEPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres"
 )
@@ -37,6 +43,9 @@ const TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH := (
 )
 const TEST_ARENA_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres"
+)
+const TEST_ARENA_P1B_MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres"
 )
 const TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
@@ -54,6 +63,7 @@ const GAME_MODE_TOWER_DEFENSE := 1
 const GAME_MODE_TEST_ARENA_P1 := 2
 const GAME_MODE_TEST_ARENA_P2 := 3
 const GAME_MODE_TEST_ARENA_P3 := 4
+const GAME_MODE_TEST_ARENA_P1B := 5
 const CAMPAIGN_RUNTIME_RESOURCES_META := &"_game_load_runtime_resources"
 const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/plant_defense/agave_cannon.tscn",
@@ -70,6 +80,7 @@ const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://scene/collectible_sakura_rocket.tscn",
 	"res://scene/collectible_sakura_explosion.tscn",
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
 	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",
 	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
@@ -165,6 +176,8 @@ func _get_singleplayer_campaign_path(scene_path: String) -> String:
 			return TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH
 		TEST_GRASS_ARENA_SCENE_PATH:
 			return TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH
+		TEST_GRASS_ARENA_P1B_SCENE_PATH:
+			return TEST_ARENA_P1B_SINGLEPLAYER_CAMPAIGN_PATH
 		TEST_GRASS_ARENA_P2_SCENE_PATH:
 			return TEST_ARENA_P2_SINGLEPLAYER_CAMPAIGN_PATH
 		TEST_ROGUE_ROUTE_P3_SCENE_PATH:
@@ -177,6 +190,7 @@ func _uses_tower_defense_runtime(scene_path: String) -> bool:
 	return (
 		scene_path == TOWER_DEFENSE_GAME_SCENE_PATH
 		or scene_path == TEST_GRASS_ARENA_SCENE_PATH
+		or scene_path == TEST_GRASS_ARENA_P1B_SCENE_PATH
 		or scene_path == TEST_GRASS_ARENA_P2_SCENE_PATH
 	)
 
@@ -228,6 +242,8 @@ func _get_multiplayer_runtime_path(game_mode: int) -> String:
 			return TOWER_DEFENSE_GAME_SCENE_PATH
 		GAME_MODE_TEST_ARENA_P1:
 			return TEST_GRASS_ARENA_SCENE_PATH
+		GAME_MODE_TEST_ARENA_P1B:
+			return TEST_GRASS_ARENA_P1B_SCENE_PATH
 		GAME_MODE_TEST_ARENA_P2:
 			return TEST_GRASS_ARENA_P2_SCENE_PATH
 		GAME_MODE_TEST_ARENA_P3:
@@ -242,6 +258,8 @@ func _get_multiplayer_campaign_path(game_mode: int) -> String:
 			return TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH
 		GAME_MODE_TEST_ARENA_P1:
 			return TEST_ARENA_MULTIPLAYER_CAMPAIGN_PATH
+		GAME_MODE_TEST_ARENA_P1B:
+			return TEST_ARENA_P1B_MULTIPLAYER_CAMPAIGN_PATH
 		GAME_MODE_TEST_ARENA_P2:
 			return TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH
 		GAME_MODE_TEST_ARENA_P3:
@@ -720,6 +738,7 @@ func _get_resource_weight(path: String) -> float:
 		path == STANDARD_GAME_SCENE_PATH
 		or path == TOWER_DEFENSE_GAME_SCENE_PATH
 		or path == TEST_GRASS_ARENA_SCENE_PATH
+		or path == TEST_GRASS_ARENA_P1B_SCENE_PATH
 		or path == TEST_GRASS_ARENA_P2_SCENE_PATH
 	):
 		return 7.0

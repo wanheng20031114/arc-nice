@@ -3,6 +3,9 @@ extends SceneTree
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
 const GAME_TOWER_DEFENSE_SCENE := preload("res://scene/game_tower_defense.tscn")
 const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena_p1b.tscn"
+)
 const TEST_GRASS_ARENA_P2_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena_p2.tscn"
 )
@@ -142,7 +145,7 @@ func _test_main_menu_entry() -> void:
 		and test_choice_overlay.arena_selected.is_connected(
 			Callable(main_menu, "_on_test_arena_selected")
 		),
-		"Main menu must own and connect the P1/P2 test-arena selector."
+		"Main menu must own and connect the P1A/P1B/P2/P3 test-arena selector."
 	)
 	if test_choice_overlay == null or character_overlay == null:
 		return
@@ -150,45 +153,72 @@ func _test_main_menu_entry() -> void:
 	await process_frame
 	_expect(
 		test_choice_overlay.is_open() and not character_overlay.is_open(),
-		"Test-arena entry must open P1/P2 selection before character selection."
+		"Test-arena entry must open scene selection before character selection."
 	)
-	var p1_button := test_choice_overlay.get_node(
-		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content/EnterButton"
+	var p1a_button := test_choice_overlay.get_node(
+		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1A/PageMargin/Content/EnterButton"
+	) as Button
+	var p1b_button := test_choice_overlay.get_node(
+		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/EnterButton"
 	) as Button
 	var p2_button := test_choice_overlay.get_node(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton"
 	) as Button
 	_expect(
-		p1_button.text == "进入 P1 综合测试"
+		p1a_button.text == "进入 P1A 史莱姆测试"
+		and p1b_button.text == "进入 P1B 机器人测试"
 		and p2_button.text == "进入 P2 单日流程",
-		"Test selector must expose authored P1 and P2 actions."
+		"Test selector must expose authored P1A, P1B and P2 actions."
 	)
-	p1_button.pressed.emit()
+	p1a_button.pressed.emit()
 	await process_frame
 	_expect(
 		not test_choice_overlay.is_open()
 		and character_overlay.is_open()
 		and str(main_menu.call("_get_pending_singleplayer_scene_path"))
 		== TEST_GRASS_ARENA_SCENE_PATH,
-		"Selecting P1 must continue to character selection and preserve the original arena."
+		"Selecting P1A must continue to character selection and preserve the original arena."
 	)
-	_expect(not run_state.run_started, "Selecting P1 must not start the run before character confirmation.")
+	_expect(not run_state.run_started, "Selecting P1A must not start the run before confirmation.")
 	character_overlay.close()
 	await process_frame
 	_expect(
 		test_choice_overlay.is_open(),
-		"Backing out of test-arena character selection must return to the P1/P2 selector."
+		"Backing out of test-arena character selection must return to the scene selector."
 	)
 	test_choice_overlay.close()
 	await process_frame
 	_expect(
 		test_arena_button.has_focus(),
-		"Closing the P1/P2 selector must restore focus to the test-arena entry."
+		"Closing the scene selector must restore focus to the test-arena entry."
 	)
 
 	test_arena_button.pressed.emit()
 	await process_frame
 	var tabs := test_choice_overlay.tabs
+	tabs.current_tab = TestArenaChoiceOverlay.P1B_TAB_INDEX
+	await process_frame
+	p1b_button.pressed.emit()
+	await process_frame
+	_expect(
+		character_overlay.is_open()
+		and str(main_menu.call("_get_pending_singleplayer_scene_path"))
+		== TEST_GRASS_ARENA_P1B_SCENE_PATH,
+		"Selecting P1B must route character confirmation to its independent arena."
+	)
+	_expect(not run_state.run_started, "Selecting P1B must not start the run before confirmation.")
+	character_overlay.close()
+	await process_frame
+	_expect(
+		test_choice_overlay.is_open()
+		and test_choice_overlay.tabs.current_tab == TestArenaChoiceOverlay.P1B_TAB_INDEX,
+		"Backing out of P1B character selection must restore the P1B tab."
+	)
+	test_choice_overlay.close()
+	await process_frame
+
+	test_arena_button.pressed.emit()
+	await process_frame
 	tabs.current_tab = TestArenaChoiceOverlay.P2_TAB_INDEX
 	await process_frame
 	p2_button.pressed.emit()

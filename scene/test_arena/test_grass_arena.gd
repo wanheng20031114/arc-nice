@@ -16,7 +16,8 @@ const FORMAL_PROGRESSION := preload(
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
 
-@export var test_entry_announcement_text := "测试场景 P1"
+@export var test_scene_label := "P1A"
+@export var test_entry_announcement_text := "测试场景 P1A"
 
 @onready var test_controls_hint: Label = $TestControlsHint/Hint
 
@@ -51,7 +52,7 @@ func _announce_wave_phase_start(wave_number: int) -> bool:
 	return true
 
 
-## P1 用于综合压力测试，扩大核心血量以避免长时间测试被过早中断。
+## P1A/P1B 用于综合压力测试，扩大核心血量以避免长时间测试被过早中断。
 func _configure_home_defense() -> void:
 	super._configure_home_defense()
 	maximum_base_health = TEST_BASE_HEALTH
@@ -166,6 +167,6 @@ func _update_test_controls_hint() -> void:
 		)
 	)
 	test_controls_hint.text = (
-		"草地测试场景｜当前：%s\n"
+		"草地测试场景 %s｜当前：%s\n"
 		+ controls_text
-	) % ("夜晚" if manual_night_enabled else "白天")
+	) % [test_scene_label, "夜晚" if manual_night_enabled else "白天"]

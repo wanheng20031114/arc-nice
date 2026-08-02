@@ -64,7 +64,7 @@ func _run() -> void:
 
 
 func _test_mode_and_loading_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 34, "P3 运行时契约快照必须使用协议 v34。")
+	_expect(NetConstants.PROTOCOL_VERSION == 36, "P1B 模式接线必须使用协议 v36。")
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
 		"P3 轻量角色姿态同步必须保持约 12Hz。"
@@ -133,12 +133,12 @@ func _test_lobby_contract() -> void:
 	var character_overlay := lobby.get_node(
 		"PlayerCharacterChoiceOverlay"
 	) as PlayerCharacterChoiceOverlay
-	_expect(selector.item_count == 5, "多人大厅必须暴露五个模式选项。")
+	_expect(selector.item_count == 6, "多人大厅必须暴露六个模式选项。")
 	_expect(
-		selector.get_item_id(4) == NetManagerStore.GameMode.TEST_ARENA_P3
-		and selector.get_item_text(4).contains("P3")
-		and selector.get_item_icon(4) != null,
-		"大厅第五项必须是带图标的 P3 肉鸽路线。"
+		selector.get_item_id(5) == NetManagerStore.GameMode.TEST_ARENA_P3
+		and selector.get_item_text(5).contains("P3")
+		and selector.get_item_icon(5) != null,
+		"大厅第六项必须是带图标的 P3 肉鸽路线。"
 	)
 	lobby.call("_update_choose_character_button")
 	_expect(choose_button.visible, "P3 房间必须允许玩家选择并确认角色。")
@@ -149,7 +149,7 @@ func _test_lobby_contract() -> void:
 		"_on_net_game_mode_changed",
 		NetManagerStore.GameMode.TEST_ARENA_P2
 	)
-	_expect(character_overlay.is_open(), "P1/P2/标准模式同步不得误关角色选择。")
+	_expect(character_overlay.is_open(), "P1A/P1B/P2/标准模式同步不得误关角色选择。")
 	character_overlay.close()
 	net_manager.set_host_game_mode(NetManagerStore.GameMode.TEST_ARENA_P3)
 	character_overlay.open(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID)

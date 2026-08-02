@@ -19,7 +19,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 ## Authored catalog contract used by navigation before any section is materialized.
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
-	CodexSection.ENEMY: 52,
+	CodexSection.ENEMY: 53,
 	CodexSection.COLLECTIBLE: 123,
 	CodexSection.BUILDING: 16,
 }
@@ -272,7 +272,26 @@ func _build_enemy_stats(
 
 func _build_enemy_specific_stats(enemy: EnemyConfig) -> Array[CodexStatRow]:
 	var stats: Array[CodexStatRow] = []
-	if enemy is CombatRobotConfig:
+	if enemy is CombatRobotGunnerConfig:
+		var config := enemy as CombatRobotGunnerConfig
+		stats.append(CodexStatRow.new("攻击距离", _format_number(config.attack_range)))
+		stats.append(CodexStatRow.new("射击前摇", "0 秒"))
+		stats.append(CodexStatRow.new("每轮射击", "%d 发" % config.burst_count))
+		stats.append(CodexStatRow.new("连射间隔", "%s 秒" % _format_number(config.burst_fire_interval)))
+		stats.append(CodexStatRow.new("散布范围", "±%s°" % _format_number(config.spread_angle_degrees)))
+		stats.append(
+			CodexStatRow.new(
+				"射击移速",
+				"%s%%（基础有效速度 %s）" % [
+					_format_number(config.burst_move_speed_multiplier * 100.0),
+					_format_number(config.move_speed * config.burst_move_speed_multiplier),
+				]
+			)
+		)
+		stats.append(CodexStatRow.new("攻击冷却", "%s 秒" % _format_number(config.attack_cooldown)))
+		stats.append(CodexStatRow.new("弹体速度", _format_number(config.projectile_speed)))
+		stats.append(CodexStatRow.new("弹体寿命", "%s 秒" % _format_number(config.projectile_lifetime)))
+	elif enemy is CombatRobotConfig:
 		var config := enemy as CombatRobotConfig
 		stats.append(CodexStatRow.new("锁定范围", _format_number(config.dash_trigger_range)))
 		stats.append(CodexStatRow.new("冲刺前摇", "%s 秒" % _format_number(config.dash_windup)))

@@ -22,7 +22,11 @@ extends RefCounted
 ## 跨信道路线 revision 隔离与可靠位置纠正。
 ## v34：P3 路线全量快照新增 runtime_contract_hash，防止旧客户端忽略
 ## 新字段后继续使用与 Host 不一致的世界几何。
-const PROTOCOL_VERSION := 34
+## v35：新增战斗机器人枪手弹丸类型与玩家受击来源 wire ID 17；旧客户端
+## 无法验证或实例化该 Host 权威弹丸。
+## v36：新增测试场景 P1B 的 wire 游戏模式值 5；原 P1 对外显示为 P1A，
+## 但继续保留稳定 key test_arena_p1，旧客户端无法识别 P1B 房间与加载目标。
+const PROTOCOL_VERSION := 36
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

@@ -5,6 +5,9 @@ const TANGO_LASER_BULLET_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
 const AK_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
+const GUNNER_BULLET_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
+)
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
@@ -56,6 +59,7 @@ func _run() -> void:
 	pool.register_scene(BULLET_SCENE, 1, 2)
 	pool.register_scene(TANGO_LASER_BULLET_SCENE, 1, 2)
 	pool.register_scene(AK_BULLET_SCENE, 1, 2)
+	pool.register_scene(GUNNER_BULLET_SCENE, 1, 2)
 	pool.register_scene(SMG_BULLET_SCENE, 1, 2)
 	pool.register_scene(RPG_ROCKET_SCENE, 1, 2)
 	pool.register_scene(MAGE_FIREBALL_SCENE, 1, 2)
@@ -513,10 +517,19 @@ func _verify_real_collision_callback_release() -> void:
 func _verify_capoo_bullet_reuse() -> void:
 	var ak := pool.acquire(AK_BULLET_SCENE) as CapooAK47Bullet
 	var smg := pool.acquire(SMG_BULLET_SCENE) as CapooAK47Bullet
-	_expect(ak != null and smg != null and ak != smg, "AK and SMG must use separate scene buckets.")
-	if ak == null or smg == null:
+	var gunner := pool.acquire(GUNNER_BULLET_SCENE) as CombatRobotGunnerBullet
+	_expect(
+		ak != null and smg != null and gunner != null
+		and ak != smg and ak != gunner and smg != gunner,
+		"AK, SMG, and gunner bullets must use separate scene buckets."
+	)
+	if ak == null or smg == null or gunner == null:
 		return
 	var ak_id := ak.get_instance_id()
+	var gunner_id := gunner.get_instance_id()
+	var gunner_sweep_query := (
+		gunner.damageable_sweep.query as PhysicsShapeQueryParameters2D
+	)
 	ak.setup(Vector2.LEFT, 33, 555.0, 8.0)
 	ak.setup_multiplayer(71, 3, &"capoo_ak47_bullet")
 	ak.has_hit = true
@@ -526,8 +539,14 @@ func _verify_capoo_bullet_reuse() -> void:
 	ak.animated_sprite.frame = 1
 	pool.release(ak)
 	smg.retire(false)
+	gunner.setup(Vector2.UP, 35, 420.0, 1.5)
+	gunner.setup_multiplayer(1702, 1, &"contaminated")
+	gunner.sweep_exclude.append(gunner.get_rid())
+	gunner.has_hit = true
+	pool.release(gunner)
 	await _wait_for_quarantine()
 	var reused_ak := pool.acquire(AK_BULLET_SCENE) as CapooAK47Bullet
+	var reused_gunner := pool.acquire(GUNNER_BULLET_SCENE) as CombatRobotGunnerBullet
 	_expect(reused_ak != null and reused_ak.get_instance_id() == ak_id, "AK bullet must reuse its retained instance.")
 	if reused_ak == null:
 		return
@@ -546,6 +565,25 @@ func _verify_capoo_bullet_reuse() -> void:
 		and reused_ak.animated_sprite.frame_progress == 0.0,
 		"AK animation must restart from its first frame."
 	)
+	_expect(
+		reused_gunner != null and reused_gunner.get_instance_id() == gunner_id,
+		"Gunner bullet must reuse its retained instance."
+	)
+	if reused_gunner != null:
+		_expect(
+			reused_gunner.pool_active and not reused_gunner.has_hit
+			and reused_gunner.source_type == &"combat_robot_gunner_bullet",
+			"Reused gunner bullet must restore its dedicated active/source state."
+		)
+		_expect(
+			is_same(reused_gunner.damageable_sweep.query, gunner_sweep_query),
+			"Gunner bullet pooling must retain its shape-sweep query."
+		)
+		_expect(
+			reused_gunner.sweep_exclude.is_empty(),
+			"Gunner bullet pooling must clear temporary sweep exclusions."
+		)
+		reused_gunner.retire(false)
 	reused_ak.remaining_lifetime = 0.0
 	reused_ak.call("_physics_process", 0.016)
 	_expect(not reused_ak.pool_active, "Natural AK expiry must return to the pool.")

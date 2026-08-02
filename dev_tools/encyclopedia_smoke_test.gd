@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 52,
+	CodexSection.ENEMY: 53,
 	CodexSection.COLLECTIBLE: 123,
 	CodexSection.BUILDING: 16,
 }
@@ -33,11 +33,11 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 2,
-	&"mechanical_life": 1,
+	&"mechanical_life": 2,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
-	EnemyCodexEntryConfig.Rank.NORMAL: 45,
+	EnemyCodexEntryConfig.Rank.NORMAL: 46,
 	EnemyCodexEntryConfig.Rank.ELITE: 6,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
@@ -111,7 +111,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 52 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 53 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -256,6 +256,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_green_slime := false
 	var saw_guardian := false
 	var saw_combat_robot := false
+	var saw_combat_robot_gunner := false
 	var saw_linglan := false
 	for entry in catalog.get_entries(CodexSection.ENEMY):
 		var source := entry.source_resource as EnemyCodexEntryConfig
@@ -338,6 +339,57 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				== "+%d 点" % guardian.aura_physical_defense_bonus,
 				"Guardian codex stats must use its typed aura config."
 			)
+		if config is CombatRobotGunnerConfig:
+			saw_combat_robot_gunner = true
+			var gunner := config as CombatRobotGunnerConfig
+			_expect(
+				String(stats.get("生命", "")) == "180"
+				and String(stats.get("单次伤害", "")) == "35"
+				and String(stats.get("物理防御", "")) == "10 点"
+				and String(stats.get("法术防御", "")) == "15"
+				and String(stats.get("移动速度", "")) == "30"
+				and String(stats.get("基地伤害", "")) == "2"
+				and String(stats.get("击杀息壤", "")) == "10",
+				"Combat robot gunner codex must expose its authored core attributes."
+			)
+			_expect(
+				String(stats.get("攻击距离", ""))
+				== _format_number(gunner.attack_range)
+				and String(stats.get("射击前摇", "")) == "0 秒"
+				and String(stats.get("每轮射击", ""))
+				== "%d 发" % gunner.burst_count
+				and String(stats.get("连射间隔", ""))
+				== "%s 秒" % _format_number(gunner.burst_fire_interval)
+				and String(stats.get("散布范围", ""))
+				== "±%s°" % _format_number(gunner.spread_angle_degrees)
+				and String(stats.get("射击移速", ""))
+				== "%s%%（基础有效速度 %s）" % [
+					_format_number(gunner.burst_move_speed_multiplier * 100.0),
+					_format_number(
+						gunner.move_speed * gunner.burst_move_speed_multiplier
+					),
+				]
+				and String(stats.get("攻击冷却", ""))
+				== "%s 秒" % _format_number(gunner.attack_cooldown)
+				and String(stats.get("弹体速度", ""))
+				== _format_number(gunner.projectile_speed)
+				and String(stats.get("弹体寿命", ""))
+				== "%s 秒" % _format_number(gunner.projectile_lifetime),
+				"Combat robot gunner codex stats must use its typed burst-fire config."
+			)
+			_expect(
+				source.sort_order == 530
+				and source.family_id == &"mechanical_life"
+				and source.rank == EnemyCodexEntryConfig.Rank.NORMAL
+				and entry.primary_badge == "机械生命"
+				and entry.secondary_badge == "普通"
+				and source.description
+				== "由冷灰方盒机体与线性关节构成的持枪战斗机器人。它锁定玩家或植物后会立即锁死射击方向，以半速追击并移动连射十二发轻微散布弹丸；进入目标 24 像素近距时停步射击，完成一轮后进入冷却。"
+				and entry.notes == PackedStringArray(
+					["12发连射", "追击射击", "机械生命"]
+				),
+				"Combat robot gunner must keep its normal-rank mechanical codex contract."
+			)
 		if config is CombatRobotConfig:
 			saw_combat_robot = true
 			var robot := config as CombatRobotConfig
@@ -371,8 +423,12 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				"Linglan must expose typed values for all four boss skills."
 			)
 	_expect(
-		saw_green_slime and saw_guardian and saw_combat_robot and saw_linglan,
-		"Enemy stat contract must cover regeneration, aura, dash and Boss adapters."
+		saw_green_slime
+		and saw_guardian
+		and saw_combat_robot
+		and saw_combat_robot_gunner
+		and saw_linglan,
+		"Enemy stat contract must cover regeneration, aura, dash, burst-fire and Boss adapters."
 	)
 
 
@@ -516,7 +572,7 @@ func _test_scene_contract() -> void:
 	await _wait_for_grid_build(screen)
 
 	_expect(
-		screen.enemy_button.text == "敌人  52"
+		screen.enemy_button.text == "敌人  53"
 		and screen.collectible_button.text == "收藏品  123"
 		and screen.building_button.text == "建筑物  16",
 		"Sidebar must display all three section totals."
@@ -529,15 +585,15 @@ func _test_scene_contract() -> void:
 	_expect(
 		int(screen.get("_current_section")) == CodexSection.ENEMY
 		and screen.section_title.text == "敌人档案"
-		and screen.archive_index.text == "052 条记录",
+		and screen.archive_index.text == "053 条记录",
 		"Encyclopedia must open on the enemy section."
 	)
 	var cards: Array = screen.get("_cards")
 	_expect(
-		cards.size() == 52
-		and screen.entry_grid.get_child_count() == 52
-		and screen.result_count.text == "显示 52 / 52",
-		"Initial enemy grid must render all 52 entries."
+		cards.size() == 53
+		and screen.entry_grid.get_child_count() == 53
+		and screen.result_count.text == "显示 53 / 53",
+		"Initial enemy grid must render all 53 entries."
 	)
 	_expect(
 		screen.search_edit.text.is_empty()
@@ -968,11 +1024,11 @@ func _test_search_filter_and_section_state(
 	await _wait_for_grid_build(screen)
 	var search_cards: Array = screen.get("_cards")
 	_expect(
-		not search_cards.is_empty() and search_cards.size() < 52,
+		not search_cards.is_empty() and search_cards.size() < 53,
 		"Enemy name search must narrow the visible result set."
 	)
 	_expect(
-		screen.result_count.text == "显示 %d / 52" % search_cards.size(),
+		screen.result_count.text == "显示 %d / 53" % search_cards.size(),
 		"Result count must stay synchronized with name-search results."
 	)
 	for card_variant in search_cards:

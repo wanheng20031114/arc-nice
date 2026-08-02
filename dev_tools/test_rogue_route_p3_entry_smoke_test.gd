@@ -1,11 +1,15 @@
 extends SceneTree
 
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
-const P1_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const P1A_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const P1B_SCENE_PATH := "res://scene/test_arena/test_grass_arena_p1b.tscn"
 const P2_SCENE_PATH := "res://scene/test_arena/test_grass_arena_p2.tscn"
 const P3_SCENE_PATH := "res://scene/test_arena/test_rogue_route_p3.tscn"
-const P1_CAMPAIGN_PATH := (
+const P1A_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/singleplayer/campaign.tres"
+)
+const P1B_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/p1b/singleplayer/campaign.tres"
 )
 const P2_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres"
@@ -71,12 +75,13 @@ func _test_lightweight_manifest(coordinator: Node) -> void:
 	)
 	_expect(ResourceLoader.exists(P3_SCENE_PATH), "P3入口指向的场景必须存在。")
 
-	for legacy_contract in [
-		[P1_SCENE_PATH, P1_CAMPAIGN_PATH],
+	for tower_contract in [
+		[P1A_SCENE_PATH, P1A_CAMPAIGN_PATH],
+		[P1B_SCENE_PATH, P1B_CAMPAIGN_PATH],
 		[P2_SCENE_PATH, P2_CAMPAIGN_PATH],
 	]:
-		var scene_path := str(legacy_contract[0])
-		var campaign_path := str(legacy_contract[1])
+		var scene_path := str(tower_contract[0])
+		var campaign_path := str(tower_contract[1])
 		var manifest := coordinator.call(
 			"_build_singleplayer_manifest",
 			scene_path
@@ -86,7 +91,7 @@ func _test_lightweight_manifest(coordinator: Node) -> void:
 			and manifest.has(campaign_path)
 			and manifest.has(WEISHIDAIER_SCENE_PATH)
 			and bool(coordinator.call("_uses_tower_defense_runtime", scene_path)),
-			"P1/P2必须继续加载各自战役、所选角色与塔防运行时。"
+			"P1A/P1B/P2必须加载各自战役、所选角色与塔防运行时。"
 		)
 
 
@@ -130,7 +135,7 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 		p3_title != null
 		and p3_title.text == "P3 · 肉鸽路线框架"
 		and entry_subtitle != null
-		and entry_subtitle.text.contains("P1 / P2 / P3")
+		and entry_subtitle.text.contains("P1A / P1B / P2 / P3")
 		and entry_subtitle.text.contains("均先选择角色")
 		and p3_description != null
 		and p3_description.text.contains("正中心")
@@ -200,29 +205,41 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 	if coordinator != null:
 		coordinator.name = original_coordinator_name
 
-	for legacy_entry in [
-		[TestArenaChoiceOverlay.ARENA_P1_ID, P1_SCENE_PATH],
-		[TestArenaChoiceOverlay.ARENA_P2_ID, P2_SCENE_PATH],
+	for tower_entry in [
+		[
+			TestArenaChoiceOverlay.ARENA_P1A_ID,
+			P1A_SCENE_PATH,
+			TestArenaChoiceOverlay.P1A_TAB_INDEX,
+			"P1A",
+		],
+		[
+			TestArenaChoiceOverlay.ARENA_P1B_ID,
+			P1B_SCENE_PATH,
+			TestArenaChoiceOverlay.P1B_TAB_INDEX,
+			"P1B",
+		],
+		[
+			TestArenaChoiceOverlay.ARENA_P2_ID,
+			P2_SCENE_PATH,
+			TestArenaChoiceOverlay.P2_TAB_INDEX,
+			"P2",
+		],
 	]:
-		selector.open(StringName(legacy_entry[0]))
+		selector.open(StringName(tower_entry[0]))
 		await process_frame
-		var tab_index := (
-			TestArenaChoiceOverlay.P1_TAB_INDEX
-			if legacy_entry[0] == TestArenaChoiceOverlay.ARENA_P1_ID
-			else TestArenaChoiceOverlay.P2_TAB_INDEX
-		)
+		var tab_index := int(tower_entry[2])
 		selector.tabs.current_tab = tab_index
 		var enter_button := selector.get_node(
-			"Root/Center/Panel/PanelMargin/Layout/Tabs/P%d/PageMargin/Content/EnterButton"
-			% (tab_index + 1)
+			"Root/Center/Panel/PanelMargin/Layout/Tabs/%s/PageMargin/Content/EnterButton"
+			% str(tower_entry[3])
 		) as Button
 		enter_button.pressed.emit()
 		await process_frame
 		_expect(
 			character_selector.is_open()
 			and str(main_menu.call("_get_pending_singleplayer_scene_path"))
-			== str(legacy_entry[1]),
-			"P1/P2必须继续进入角色选择并保留原场景路径。"
+			== str(tower_entry[1]),
+			"P1A/P1B/P2必须进入角色选择并保留各自场景路径。"
 		)
 		character_selector.close()
 		await process_frame

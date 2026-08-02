@@ -7,17 +7,23 @@ const ENCYCLOPEDIA_SCENE_PATH := "res://scene/encyclopedia/encyclopedia_screen.t
 const TEST_GRASS_ARENA_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena.tscn"
 )
+const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena_p1b.tscn"
+)
 const TEST_GRASS_ARENA_P2_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena_p2.tscn"
 )
 const TEST_ROGUE_ROUTE_P3_SCENE_PATH := (
 	"res://scene/test_arena/test_rogue_route_p3.tscn"
 )
-const TEST_ARENA_P1_ID := &"p1"
+const TEST_ARENA_P1A_ID := &"p1"
+const TEST_ARENA_P1_ID := TEST_ARENA_P1A_ID
+const TEST_ARENA_P1B_ID := &"p1b"
 const TEST_ARENA_P2_ID := &"p2"
 const TEST_ARENA_P3_ID := &"p3"
 const TEST_ARENA_SCENE_PATHS := {
-	TEST_ARENA_P1_ID: TEST_GRASS_ARENA_SCENE_PATH,
+	TEST_ARENA_P1A_ID: TEST_GRASS_ARENA_SCENE_PATH,
+	TEST_ARENA_P1B_ID: TEST_GRASS_ARENA_P1B_SCENE_PATH,
 	TEST_ARENA_P2_ID: TEST_GRASS_ARENA_P2_SCENE_PATH,
 	TEST_ARENA_P3_ID: TEST_ROGUE_ROUTE_P3_SCENE_PATH,
 }
@@ -58,7 +64,7 @@ enum SingleplayerDestination {
 static var _requested_focus_id: StringName = FOCUS_DEFAULT
 
 var pending_singleplayer_destination := SingleplayerDestination.STANDARD
-var pending_test_arena_id: StringName = TEST_ARENA_P1_ID
+var pending_test_arena_id: StringName = TEST_ARENA_P1A_ID
 var _encyclopedia_load_state := EncyclopediaLoadState.IDLE
 var _encyclopedia_scene: PackedScene
 var _encyclopedia_open_requested := false

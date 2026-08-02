@@ -17,4 +17,5 @@ script = ExtResource("2_script")
 singleplayer_campaign = ExtResource("3_campaign")
 multiplayer_campaign = ExtResource("5_multiplayer_campaign")
 day_cycle_config = SubResource("Resource_p2_day_cycle")
+test_scene_label = "P2"
 test_entry_announcement_text = ""

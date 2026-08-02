@@ -1,0 +1,49 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_gunner.gd" id="2_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_gunner.tres" id="3_frames"]
+[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="4_shader"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_ak47_fire.wav" id="5_audio"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
+resource_local_to_scene = false
+shader = ExtResource("4_shader")
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(14, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+resource_local_to_scene = true
+size = Vector2(14, 16)
+
+[node name="CombatRobotGunner" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+combat_sense_update_interval_frames = 3
+path_refresh_interval = 0.25
+waypoint_arrival_distance = 4.0
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+material = SubResource("ShaderMaterial_status")
+texture_filter = 1
+sprite_frames = ExtResource("3_frames")
+animation = &"move"
+
+[node name="CollisionShape2D" parent="." index="1"]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
+position = Vector2(0, 2)
+shape = SubResource("RectangleShape2D_touch")
+
+[node name="Muzzle" type="Marker2D" parent="." index="5"]
+position = Vector2(14, 1)
+
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="6"]
+stream = ExtResource("5_audio")
+bus = &"SFX"
+volume_db = -16.0
+max_distance = 180.0
+max_polyphony = 3

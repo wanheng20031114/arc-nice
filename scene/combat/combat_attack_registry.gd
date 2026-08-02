@@ -22,6 +22,7 @@ enum PlayerHitWireId {
 	LINGLAN_SKILL2_ROCKET = 14,
 	LINGLAN_SKILL3_ORB = 15,
 	LINGLAN_SKILL4_ORB = 16,
+	COMBAT_ROBOT_GUNNER_BULLET = 17,
 }
 
 const FIRE_SORCERER_VOLLEY := &"fire_sorcerer_fireball_volley"
@@ -73,6 +74,8 @@ static func encode_player_hit_source(source_type: StringName) -> int:
 			return PlayerHitWireId.LINGLAN_SKILL3_ORB
 		&"linglan_skill4_orb":
 			return PlayerHitWireId.LINGLAN_SKILL4_ORB
+		&"combat_robot_gunner_bullet":
+			return PlayerHitWireId.COMBAT_ROBOT_GUNNER_BULLET
 		_:
 			return PlayerHitWireId.INVALID
 
@@ -111,6 +114,8 @@ static func decode_player_hit_source(wire_id: int) -> StringName:
 			return &"linglan_skill3_orb"
 		PlayerHitWireId.LINGLAN_SKILL4_ORB:
 			return &"linglan_skill4_orb"
+		PlayerHitWireId.COMBAT_ROBOT_GUNNER_BULLET:
+			return &"combat_robot_gunner_bullet"
 		_:
 			return &""
 

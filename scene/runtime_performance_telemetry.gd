@@ -14,6 +14,7 @@ const PROJECTILE_SCRIPT_PATHS := {
 	"res://scene/bullet.gd": true,
 	"res://scene/collectible_arrow_projectile.gd": true,
 	"res://scene/enemy/capoo/capoo_ak47_bullet.gd": true,
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.gd": true,
 	"res://scene/enemy/capoo/capoo_mage_fireball.gd": true,
 	"res://scene/enemy/capoo/capoo_rpg_rocket.gd": true,
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.gd": true,

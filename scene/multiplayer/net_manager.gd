@@ -33,6 +33,7 @@ enum GameMode {
 	TEST_ARENA_P1,
 	TEST_ARENA_P2,
 	TEST_ARENA_P3,
+	TEST_ARENA_P1B,
 }
 enum ConnectionState {
 	DISCONNECTED,
@@ -168,6 +169,8 @@ static func game_mode_to_key(game_mode: GameMode) -> String:
 			return "tower_defense"
 		GameMode.TEST_ARENA_P1:
 			return "test_arena_p1"
+		GameMode.TEST_ARENA_P1B:
+			return "test_arena_p1b"
 		GameMode.TEST_ARENA_P2:
 			return "test_arena_p2"
 		GameMode.TEST_ARENA_P3:
@@ -182,6 +185,8 @@ static func game_mode_from_key(game_mode_key: String) -> GameMode:
 			return GameMode.TOWER_DEFENSE
 		"test_arena_p1":
 			return GameMode.TEST_ARENA_P1
+		"test_arena_p1b":
+			return GameMode.TEST_ARENA_P1B
 		"test_arena_p2":
 			return GameMode.TEST_ARENA_P2
 		"test_arena_p3":
@@ -195,7 +200,9 @@ static func get_game_mode_display_name(game_mode: GameMode) -> String:
 		GameMode.TOWER_DEFENSE:
 			return "塔防模式"
 		GameMode.TEST_ARENA_P1:
-			return "测试场景 P1"
+			return "测试场景 P1A"
+		GameMode.TEST_ARENA_P1B:
+			return "测试场景 P1B"
 		GameMode.TEST_ARENA_P2:
 			return "测试场景 P2"
 		GameMode.TEST_ARENA_P3:
@@ -1448,6 +1455,7 @@ func _is_valid_game_mode(game_mode: int) -> bool:
 		or game_mode == GameMode.TEST_ARENA_P1
 		or game_mode == GameMode.TEST_ARENA_P2
 		or game_mode == GameMode.TEST_ARENA_P3
+		or game_mode == GameMode.TEST_ARENA_P1B
 	)
 
 

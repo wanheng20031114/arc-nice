@@ -23,6 +23,7 @@ class LobbyGameModeTests(unittest.TestCase):
         GameMode.TEST_ARENA_P1,
         GameMode.TEST_ARENA_P2,
         GameMode.TEST_ARENA_P3,
+        GameMode.TEST_ARENA_P1B,
     )
 
     def _create_joinable_room(
@@ -123,6 +124,11 @@ class LobbyGameModeTests(unittest.TestCase):
             "TestP3Host",
             GameMode.TEST_ARENA_P3,
         )
+        test_p1b_room = self._create_joinable_room(
+            manager,
+            "TestP1BHost",
+            GameMode.TEST_ARENA_P1B,
+        )
 
         expected_rooms = {
             GameMode.STANDARD: standard_room,
@@ -130,6 +136,7 @@ class LobbyGameModeTests(unittest.TestCase):
             GameMode.TEST_ARENA_P1: test_p1_room,
             GameMode.TEST_ARENA_P2: test_p2_room,
             GameMode.TEST_ARENA_P3: test_p3_room,
+            GameMode.TEST_ARENA_P1B: test_p1b_room,
         }
         for game_mode, expected_room in expected_rooms.items():
             with self.subTest(game_mode=game_mode):
@@ -146,6 +153,14 @@ class LobbyGameModeTests(unittest.TestCase):
             )
         )
         self.assertNotIn("WrongMode", tower_room.players)
+        self.assertIsNone(
+            manager.join_room(
+                test_p1_room.id,
+                "P1BMismatch",
+                GameMode.TEST_ARENA_P1B,
+            )
+        )
+        self.assertNotIn("P1BMismatch", test_p1_room.players)
 
         with patch.object(lobby_main, "room_mgr", manager):
             quick_result = asyncio.run(
@@ -180,6 +195,17 @@ class LobbyGameModeTests(unittest.TestCase):
             )
             self.assertEqual(test_p3_result["room_id"], test_p3_room.id)
             self.assertEqual(test_p3_result["game_mode"], "test_arena_p3")
+
+            test_p1b_result = asyncio.run(
+                lobby_main.quick_match(
+                    QuickMatchRequest(
+                        player_name="TestP1BClient",
+                        game_mode=GameMode.TEST_ARENA_P1B,
+                    )
+                )
+            )
+            self.assertEqual(test_p1b_result["room_id"], test_p1b_room.id)
+            self.assertEqual(test_p1b_result["game_mode"], "test_arena_p1b")
 
             with self.assertRaises(HTTPException):
                 asyncio.run(

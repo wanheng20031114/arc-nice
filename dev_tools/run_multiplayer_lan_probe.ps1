@@ -4,7 +4,7 @@ param(
     [int]$TimeoutSeconds = 65,
     [ValidateSet("full", "leave", "wave", "boss", "tower_defense", "death_revive", "mode_contract")]
     [string]$Scenario = "full",
-    [ValidateSet("standard", "tower_defense", "test_arena_p1", "test_arena_p2")]
+    [ValidateSet("standard", "tower_defense", "test_arena_p1", "test_arena_p1b", "test_arena_p2")]
     [string]$GameMode = "standard",
     [ValidateRange(2, 8)]
     [int]$PlayerCount = 4,

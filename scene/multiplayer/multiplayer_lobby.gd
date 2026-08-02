@@ -16,6 +16,7 @@ const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
 const GAME_MODE_STANDARD_KEY := "standard"
 const GAME_MODE_TOWER_DEFENSE_KEY := "tower_defense"
 const GAME_MODE_TEST_ARENA_P1_KEY := "test_arena_p1"
+const GAME_MODE_TEST_ARENA_P1B_KEY := "test_arena_p1b"
 const GAME_MODE_TEST_ARENA_P2_KEY := "test_arena_p2"
 const GAME_MODE_TEST_ARENA_P3_KEY := "test_arena_p3"
 const GAME_MODE_STANDARD_ICON: Texture2D = preload(
@@ -232,8 +233,13 @@ func _configure_game_mode_selector() -> void:
 	)
 	game_mode_selector.add_icon_item(
 		GAME_MODE_TEST_ARENA_P1_ICON,
-		"测试场 P1",
+		"测试场 P1A",
 		NetManagerStore.GameMode.TEST_ARENA_P1
+	)
+	game_mode_selector.add_icon_item(
+		GAME_MODE_TEST_ARENA_P1_ICON,
+		"测试场 P1B",
+		NetManagerStore.GameMode.TEST_ARENA_P1B
 	)
 	game_mode_selector.add_icon_item(
 		GAME_MODE_TEST_ARENA_P2_ICON,
@@ -271,6 +277,8 @@ func _get_selected_game_mode() -> NetManagerStore.GameMode:
 			return NetManagerStore.GameMode.TOWER_DEFENSE
 		NetManagerStore.GameMode.TEST_ARENA_P1:
 			return NetManagerStore.GameMode.TEST_ARENA_P1
+		NetManagerStore.GameMode.TEST_ARENA_P1B:
+			return NetManagerStore.GameMode.TEST_ARENA_P1B
 		NetManagerStore.GameMode.TEST_ARENA_P2:
 			return NetManagerStore.GameMode.TEST_ARENA_P2
 		NetManagerStore.GameMode.TEST_ARENA_P3:
@@ -306,6 +314,7 @@ func _get_room_game_mode_key(room_data: Dictionary) -> String:
 		GAME_MODE_STANDARD_KEY,
 		GAME_MODE_TOWER_DEFENSE_KEY,
 		GAME_MODE_TEST_ARENA_P1_KEY,
+		GAME_MODE_TEST_ARENA_P1B_KEY,
 		GAME_MODE_TEST_ARENA_P2_KEY,
 		GAME_MODE_TEST_ARENA_P3_KEY,
 	]:
@@ -1243,6 +1252,8 @@ func _get_game_mode_icon(game_mode: NetManagerStore.GameMode) -> Texture2D:
 		NetManagerStore.GameMode.TOWER_DEFENSE:
 			return GAME_MODE_TOWER_DEFENSE_ICON
 		NetManagerStore.GameMode.TEST_ARENA_P1:
+			return GAME_MODE_TEST_ARENA_P1_ICON
+		NetManagerStore.GameMode.TEST_ARENA_P1B:
 			return GAME_MODE_TEST_ARENA_P1_ICON
 		NetManagerStore.GameMode.TEST_ARENA_P2:
 			return GAME_MODE_TEST_ARENA_P2_ICON

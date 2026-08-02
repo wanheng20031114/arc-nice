@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="WaveConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot.tres" id="2_combat_robot"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_gunner.tres" id="3_combat_robot_gunner"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="4_wave_script"]
+
+[sub_resource type="Resource" id="Resource_combat_robot_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("2_combat_robot")
+count = 500
+
+[sub_resource type="Resource" id="Resource_combat_robot_gunner_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("3_combat_robot_gunner")
+count = 500
+
+[resource]
+script = ExtResource("4_wave_script")
+wave_name = "第1波 两型战斗机器人交替测试（多人）"
+enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_combat_robot_entry"), SubResource("Resource_combat_robot_gunner_entry")])
+spawn_point_mask = 3
+spawn_order = 1
+spawn_interval = 3.0
+spawn_count_per_tick = 1
+max_alive_enemies = 1000
+step_id = &"wave_01"
+display_name = "第1波 两型战斗机器人严格交替各500台"

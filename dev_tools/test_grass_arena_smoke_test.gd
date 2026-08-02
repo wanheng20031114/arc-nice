@@ -70,17 +70,17 @@ func _run() -> void:
 
 func _test_entry_announcement() -> void:
 	var announcement := arena.day_phase_announcement
-	_expect(not arena.day_phase_announcements_enabled, "P1必须禁用正式昼夜阶段报幕。")
+	_expect(not arena.day_phase_announcements_enabled, "P1A必须禁用正式昼夜阶段报幕。")
 	_expect(
 		announcement != null
-		and arena.test_entry_announcement_text == "测试场景 P1"
+		and arena.test_entry_announcement_text == "测试场景 P1A"
 		and is_equal_approx(
 			arena.progression_config.initial_preparation_seconds,
 			3.0
 		)
 		and announcement.presentation_count == 0
 		and not announcement.is_presenting(),
-		"P1必须保留完整三秒倒计时，并在波次开始前隐藏入场报幕。"
+		"P1A必须保留完整三秒倒计时，并在波次开始前隐藏入场报幕。"
 	)
 
 
@@ -93,14 +93,14 @@ func _test_deferred_entry_announcement() -> void:
 	await process_frame
 	_expect(
 		deferred_arena.day_phase_announcement.presentation_count == 0,
-		"P1加载尚未完成时不得在遮罩后提前播放报幕。"
+		"P1A加载尚未完成时不得在遮罩后提前播放报幕。"
 	)
 	deferred_arena.activate_runtime()
 	await process_frame
 	await process_frame
 	_expect(
 		deferred_arena.day_phase_announcement.presentation_count == 0,
-		"P1运行时激活后仍必须先等待三声倒计时。"
+		"P1A运行时激活后仍必须先等待三声倒计时。"
 	)
 	var first_step := deferred_arena.call("_get_start_flow_step") as FlowStepConfig
 	var countdown_audio := deferred_arena.countdown_audio
@@ -109,7 +109,7 @@ func _test_deferred_entry_announcement() -> void:
 		deferred_arena.countdown_seconds == 3
 		and countdown_audio.playing
 		and deferred_arena.day_phase_announcement.presentation_count == 0,
-		"P1倒计时必须从3开始播放第一声，且不得提前显示报幕。"
+		"P1A倒计时必须从3开始播放第一声，且不得提前显示报幕。"
 	)
 	for expected_seconds in [2, 1]:
 		countdown_audio.stop()
@@ -118,16 +118,16 @@ func _test_deferred_entry_announcement() -> void:
 			deferred_arena.countdown_seconds == expected_seconds
 			and countdown_audio.playing
 			and deferred_arena.day_phase_announcement.presentation_count == 0,
-			"P1倒计时的3、2、1三声结束前不得显示报幕。"
+			"P1A倒计时的3、2、1三声结束前不得显示报幕。"
 		)
 	countdown_audio.stop()
 	deferred_arena.call("_on_state_timer_timeout")
 	_expect(
 		deferred_arena.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
 		and deferred_arena.day_phase_announcement.presentation_count == 1
-		and deferred_arena.day_phase_announcement.current_text == "测试场景 P1"
+		and deferred_arena.day_phase_announcement.current_text == "测试场景 P1A"
 		and deferred_arena.day_phase_announcement.is_presenting(),
-		"P1必须在完整三声倒计时后才显示一次入场大字并播放咚声。"
+		"P1A必须在完整三声倒计时后才显示一次入场大字并播放咚声。"
 	)
 	var duplicate_handled := bool(
 		deferred_arena.call("_announce_wave_phase_start", 1)
@@ -135,13 +135,13 @@ func _test_deferred_entry_announcement() -> void:
 	_expect(
 		duplicate_handled
 		and deferred_arena.day_phase_announcement.presentation_count == 1,
-		"重复的首波状态必须由P1报幕去重，且不得补播普通开战音效。"
+		"重复的首波状态必须由P1A报幕去重，且不得补播普通开战音效。"
 	)
 	deferred_arena.activate_runtime()
 	await process_frame
 	_expect(
 		deferred_arena.day_phase_announcement.presentation_count == 1,
-		"重复激活P1运行时不得重播入场报幕。"
+		"重复激活P1A运行时不得重播入场报幕。"
 	)
 	deferred_arena.day_phase_announcement.hide_announcement()
 	deferred_arena.queue_free()
@@ -170,6 +170,10 @@ func _test_campaign() -> void:
 	var wave := waves[0]
 	_expect(wave.get_total_enemy_count() == 1000, "第一波必须正好包含1000个敌人。")
 	_expect(wave.enemy_entries.size() == 5, "第一波必须包含五种史莱姆条目。")
+	_expect(
+		wave.spawn_order == WaveConfig.SpawnOrder.SHUFFLED,
+		"P1A 必须保留默认的随机打乱生成顺序。"
+	)
 	if wave.enemy_entries.size() == ORDERED_SLIME_CONFIGS.size():
 		for entry_index in range(ORDERED_SLIME_CONFIGS.size()):
 			var entry := wave.enemy_entries[entry_index]
@@ -190,18 +194,18 @@ func _test_campaign() -> void:
 	_expect(
 		multiplayer_waves.size() == 1
 		and multiplayer_waves[0].get_total_enemy_count() == 1000,
-		"P1 多人 Campaign 必须保持精确1000只敌人的测试压力。"
+		"P1A 多人 Campaign 必须保持精确1000只敌人的测试压力。"
 	)
 	_expect(
 		is_zero_approx(
 			arena.progression_config.enemy_count_per_extra_player_ratio
 		)
 		and arena.progression_config.get_scaled_enemy_count(1000, 8) == 1000,
-		"P1 测试敌人数不得随多人房间人数缩放。"
+		"P1A 测试敌人数不得随多人房间人数缩放。"
 	)
 	_expect(
 		arena.supports_test_arena_manual_night_sync(),
-		"P1 必须声明多人手动昼夜同步能力。"
+		"P1A 必须声明多人手动昼夜同步能力。"
 	)
 
 	arena.random_generator.seed = 0x5A17
@@ -295,19 +299,19 @@ func _test_arena_layout() -> void:
 		zhuangfangyi != null
 		and zhuangfangyi.visible
 		and zhuangfangyi.position == Vector2(96, 224),
-		"P1 必须在草地底部放置可见的庄方宜。"
+		"P1A 必须在草地底部放置可见的庄方宜。"
 	)
 	_expect(
 		luoxi != null
 		and luoxi.visible
 		and luoxi.position == Vector2(154, 224),
-		"P1 必须按正式场景的横向布局在庄方宜右侧放置洛茜。"
+		"P1A 必须按正式场景的横向布局在庄方宜右侧放置洛茜。"
 	)
 	_expect(
 		arena.maximum_base_health == TestGrassArena.TEST_BASE_HEALTH
 		and arena.current_base_health == TestGrassArena.TEST_BASE_HEALTH
 		and arena.current_base_health == 1000,
-		"P1 核心必须以1000/1000生命进入测试。"
+		"P1A 核心必须以1000/1000生命进入测试。"
 	)
 
 

@@ -41,6 +41,10 @@ func _run() -> void:
 	]
 	var wave := WaveConfig.new()
 	wave.enemy_entries = entries
+	_expect(
+		wave.spawn_order == WaveConfig.SpawnOrder.SHUFFLED,
+		"Wave spawn queues must keep shuffled ordering as their default."
+	)
 
 	_expect(
 		inherited_entry.resolve_xirang_kill_reward() == 7,
@@ -121,6 +125,48 @@ func _run() -> void:
 		"Wave spawn queue clear must release the paired reward array."
 	)
 	_expect(game.pending_enemy_config_index == 0, "Wave spawn queue clear must reset the cursor.")
+
+	var short_entry := WaveEnemyEntry.new()
+	short_entry.enemy_config = inherited_config
+	short_entry.count = 2
+	short_entry.xirang_kill_reward_override = 41
+	var invalid_entry := WaveEnemyEntry.new()
+	var long_entry := WaveEnemyEntry.new()
+	long_entry.enemy_config = positive_override_config
+	long_entry.count = 4
+	var empty_entry := WaveEnemyEntry.new()
+	empty_entry.enemy_config = zero_override_config
+	empty_entry.count = 0
+	var round_robin_entries: Array[WaveEnemyEntry] = [
+		short_entry,
+		null,
+		invalid_entry,
+		long_entry,
+		empty_entry,
+	]
+	var round_robin_wave := WaveConfig.new()
+	round_robin_wave.spawn_order = WaveConfig.SpawnOrder.ENTRY_ROUND_ROBIN
+	round_robin_wave.enemy_entries = round_robin_entries
+	var expected_round_robin_configs: Array[EnemyConfig] = [
+		inherited_config,
+		positive_override_config,
+		inherited_config,
+		positive_override_config,
+		positive_override_config,
+		positive_override_config,
+	]
+	for seed_value in [0x1251, 0x9374]:
+		game.random_generator.seed = seed_value
+		game.call("_build_wave_spawn_queue", round_robin_wave)
+		_expect(
+			game.pending_enemy_configs == expected_round_robin_configs,
+			"Round-robin queues must skip invalid entries and exhaust unequal counts in entry order."
+		)
+		_expect(
+			game.pending_enemy_xirang_kill_rewards == [41, 19, 41, 19, 19, 19],
+			"Round-robin queues must keep every reward paired with its config."
+		)
+		game.call("_clear_pending_enemy_spawn_queue")
 
 	game.queue_free()
 	await process_frame

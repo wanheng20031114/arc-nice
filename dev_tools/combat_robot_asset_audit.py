@@ -54,6 +54,21 @@ MAX_ANIMATION_TORSO_SCALE_DRIFT = 1.0
 MAX_CROSS_ANIMATION_TORSO_SCALE_DRIFT = 1.0
 MAX_MOVE_TORSO_FILL_DRIFT = 0.04
 
+# The approved warning-color pass intentionally replaces some of the original
+# red/orange ramp without changing geometry.  Keep those authored colors
+# explicit so the audit still rejects arbitrary palette drift, while temporal
+# comparisons normalize every approved warning color to one semantic accent.
+APPROVED_WARNING_ACCENT_PALETTE = (
+    (185, 75, 80, 255),
+    (236, 28, 36, 255),
+    (255, 0, 0, 255),
+)
+RUNTIME_PALETTE = (*PALETTE, *APPROVED_WARNING_ACCENT_PALETTE)
+RUNTIME_ACCENT_PALETTE = (
+    *ACCENT_PALETTE,
+    *APPROVED_WARNING_ACCENT_PALETTE,
+)
+
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -82,7 +97,7 @@ def _assert_binary_clean_alpha(image: Image.Image) -> None:
 
 
 def _assert_palette(image: Image.Image) -> None:
-    allowed = set(PALETTE)
+    allowed = set(RUNTIME_PALETTE)
     visible = {pixel for pixel in image.getdata() if pixel[3] > 0}
     unexpected = visible - allowed
     if unexpected:
@@ -128,9 +143,25 @@ def _matches_opaque_stamp(
 ) -> bool:
     """Compare authored rigid pixels while allowing limb joints in empty edge cells."""
     return all(
-        reference_pixel[3] == 0 or reference_pixel == candidate_pixel
+        reference_pixel[3] == 0
+        or _normalize_warning_accent(reference_pixel)
+        == _normalize_warning_accent(candidate_pixel)
         for reference_pixel, candidate_pixel in zip(reference, candidate)
     )
+
+
+def _normalize_warning_accent(
+    pixel: tuple[int, int, int, int],
+) -> tuple[int, int, int, int]:
+    if pixel in RUNTIME_ACCENT_PALETTE:
+        return ACCENT_PALETTE[0]
+    return pixel
+
+
+def _normalized_pixels(
+    image: Image.Image,
+) -> tuple[tuple[int, int, int, int], ...]:
+    return tuple(_normalize_warning_accent(pixel) for pixel in image.getdata())
 
 
 def _assert_temporal_stability(report: list[dict]) -> None:
@@ -175,7 +206,7 @@ def _assert_temporal_stability(report: list[dict]) -> None:
         )
 
     canonical_colors = set(living_frames[0]["canonical_chassis_colors"])
-    if not canonical_colors.intersection(ACCENT_PALETTE):
+    if not canonical_colors.intersection(RUNTIME_ACCENT_PALETTE):
         raise AssertionError("Canonical chassis crop lacks its red/orange eye")
     steel_colors = set(PALETTE[:8])
     if len(canonical_colors.intersection(steel_colors)) < 3:
@@ -325,7 +356,7 @@ def _assert_sheet_contract(sheet: Image.Image) -> list[dict]:
 
     _assert_binary_clean_alpha(sheet)
     _assert_palette(sheet)
-    accent_colors = set(ACCENT_PALETTE)
+    accent_colors = set(RUNTIME_ACCENT_PALETTE)
     outline = PALETTE[0]
     report: list[dict] = []
 
@@ -431,12 +462,12 @@ def _assert_sheet_contract(sheet: Image.Image) -> list[dict]:
                     ),
                     "canonical_chassis_colors": canonical_colors,
                     "move_weapon_pixels": (
-                        frame.crop(MOVE_WEAPON_RECT).tobytes()
+                        _normalized_pixels(frame.crop(MOVE_WEAPON_RECT))
                         if animation_name == "move"
                         else None
                     ),
                     "dash_fixed_core_pixels": (
-                        frame.crop(DASH_FIXED_CORE_RECT).tobytes()
+                        _normalized_pixels(frame.crop(DASH_FIXED_CORE_RECT))
                         if animation_name == "dash"
                         else None
                     ),

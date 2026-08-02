@@ -6,6 +6,9 @@ const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
 const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
+const COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
+)
 const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const CAPOO_RPG_ROCKET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
@@ -376,6 +379,7 @@ func _ready() -> void:
 		),
 		384
 	)
+	session_object_pool.register_scene(COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE, 0, 96)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 24, 192)
 	session_object_pool.register_scene(
@@ -4373,6 +4377,9 @@ func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 	pending_enemy_configs.clear()
 	pending_enemy_xirang_kill_rewards.clear()
 	pending_enemy_config_index = 0
+	if wave_config.spawn_order == WaveConfig.SpawnOrder.ENTRY_ROUND_ROBIN:
+		_build_entry_round_robin_spawn_queue(wave_config)
+		return
 	for entry in wave_config.enemy_entries:
 		if entry == null or entry.enemy_config == null:
 			continue
@@ -4399,6 +4406,42 @@ func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 			pending_enemy_xirang_kill_rewards[target_index]
 		)
 		pending_enemy_xirang_kill_rewards[target_index] = temporary_reward
+
+
+func _build_entry_round_robin_spawn_queue(wave_config: WaveConfig) -> void:
+	var entries: Array[WaveEnemyEntry] = []
+	var remaining_counts: Array[int] = []
+	var remaining_total := 0
+	for entry in wave_config.enemy_entries:
+		if entry == null or entry.enemy_config == null:
+			continue
+		var scaled_count := maxi(
+			progression_config.get_scaled_enemy_count(
+				maxi(entry.count, 0),
+				_get_progression_player_count()
+			),
+			0
+		)
+		if scaled_count <= 0:
+			continue
+		entries.append(entry)
+		remaining_counts.append(scaled_count)
+		remaining_total += scaled_count
+
+	while remaining_total > 0:
+		for entry_index in range(entries.size()):
+			if remaining_counts[entry_index] <= 0:
+				continue
+			var entry := entries[entry_index]
+			var resolved_enemy_config := _resolve_fate_enemy_config(
+				entry.enemy_config
+			)
+			pending_enemy_configs.append(resolved_enemy_config)
+			pending_enemy_xirang_kill_rewards.append(
+				entry.resolve_xirang_kill_reward(resolved_enemy_config)
+			)
+			remaining_counts[entry_index] -= 1
+			remaining_total -= 1
 
 
 func _get_progression_player_count() -> int:

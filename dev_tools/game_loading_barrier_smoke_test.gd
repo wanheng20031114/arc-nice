@@ -123,6 +123,7 @@ func _test_loading_scene_contract() -> void:
 	coordinator.call("_append_character_scene", manifest, &"weishidaier")
 	_expect(manifest.size() == 1, "Loading manifest must deduplicate player scenes.")
 	var test_scene_path := "res://scene/test_arena/test_grass_arena.tscn"
+	var test_p1b_scene_path := "res://scene/test_arena/test_grass_arena_p1b.tscn"
 	var test_p2_scene_path := "res://scene/test_arena/test_grass_arena_p2.tscn"
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_scene_path))
@@ -132,6 +133,19 @@ func _test_loading_scene_contract() -> void:
 	_expect(
 		bool(coordinator.call("_uses_tower_defense_runtime", test_scene_path)),
 		"Test-arena loading must include tower-defense runtime resources."
+	)
+	_expect(
+		str(coordinator.call("_get_singleplayer_campaign_path", test_p1b_scene_path))
+		== "res://resources/config/campaigns/test_arena/p1b/singleplayer/campaign.tres",
+		"Test-arena P1B loading must use its mechanical-life campaign."
+	)
+	_expect(
+		bool(coordinator.call("_uses_tower_defense_runtime", test_p1b_scene_path)),
+		"Test-arena P1B loading must include tower-defense runtime resources."
+	)
+	_expect(
+		float(coordinator.call("_get_resource_weight", test_p1b_scene_path)) == 7.0,
+		"Test-arena P1B scene must use the tower-defense scene loading weight."
 	)
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_p2_scene_path))
@@ -161,6 +175,11 @@ func _test_loading_scene_contract() -> void:
 			NetManagerStore.GameMode.TEST_ARENA_P1,
 			test_scene_path,
 			"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P1B,
+			test_p1b_scene_path,
+			"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres",
 		],
 		[
 			NetManagerStore.GameMode.TEST_ARENA_P2,
@@ -225,6 +244,7 @@ func _test_runtime_activation_gate() -> void:
 		"Barrier completion must reactivate gameplay exactly once."
 	)
 	_expect_sorcerer_projectile_pools(game, 48, 704)
+	_expect_gunner_projectile_pool(game)
 	game.queue_free()
 	await process_frame
 
@@ -376,6 +396,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 			"Standard loading must retain delayed Boss runtime resource: %s" % path
 		)
 	_expect_tango_projectile_pool(runtime)
+	_expect_gunner_projectile_pool(runtime)
 
 	load_errors.clear()
 	coordinator.loading_failed.connect(failure_callback)
@@ -399,6 +420,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 	)
 	_expect_sorcerer_projectile_pools(tower_runtime, 48, 704)
 	_expect_tango_projectile_pool(tower_runtime)
+	_expect_gunner_projectile_pool(tower_runtime)
 	await physics_frame
 	await physics_frame
 	_expect_lifecycle_prewarm_pool_released(tower_runtime)
@@ -484,6 +506,11 @@ func _test_mp_game_preparation_barrier() -> void:
 			NetManagerStore.GameMode.TEST_ARENA_P1,
 			"res://scene/test_arena/test_grass_arena.tscn",
 			"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P1B,
+			"res://scene/test_arena/test_grass_arena_p1b.tscn",
+			"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres",
 		],
 		[
 			NetManagerStore.GameMode.TEST_ARENA_P2,
@@ -609,6 +636,26 @@ func _expect_tango_projectile_pool(runtime: GameRuntimeBase) -> void:
 		and int(metrics.get("dropped", -1)) == 0
 		and int(metrics.get("retained_capacity", -1)) == 768,
 		"Tango laser pool must prewarm 64 leases with retained capacity 768."
+	)
+
+
+func _expect_gunner_projectile_pool(runtime: GameRuntimeBase) -> void:
+	if runtime == null:
+		return
+	var object_pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
+	_expect(object_pool != null, "Runtime must expose the gunner projectile object pool.")
+	if object_pool == null:
+		return
+	var scene_path := (
+		"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
+	)
+	var metrics := object_pool.get_metrics(scene_path)
+	_expect(
+		int(metrics.get("created", -1)) == 0
+		and int(metrics.get("inactive", -1)) == 0
+		and int(metrics.get("in_use", -1)) == 0
+		and int(metrics.get("retained_capacity", -1)) == 96,
+		"Gunner bullet pool must register lazily with retained capacity 96."
 	)
 
 

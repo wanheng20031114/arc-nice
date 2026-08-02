@@ -4,12 +4,16 @@ class_name TestArenaChoiceOverlay
 signal arena_selected(arena_id: StringName)
 signal selection_closed
 
-const ARENA_P1_ID: StringName = &"p1"
+const ARENA_P1A_ID: StringName = &"p1"
+const ARENA_P1_ID: StringName = ARENA_P1A_ID
+const ARENA_P1B_ID: StringName = &"p1b"
 const ARENA_P2_ID: StringName = &"p2"
 const ARENA_P3_ID: StringName = &"p3"
-const P1_TAB_INDEX := 0
-const P2_TAB_INDEX := 1
-const P3_TAB_INDEX := 2
+const P1A_TAB_INDEX := 0
+const P1_TAB_INDEX := P1A_TAB_INDEX
+const P1B_TAB_INDEX := 1
+const P2_TAB_INDEX := 2
+const P3_TAB_INDEX := 3
 const OPEN_FADE_DURATION := 0.14
 const OPEN_PANEL_DURATION := 0.18
 
@@ -17,8 +21,11 @@ const OPEN_PANEL_DURATION := 0.18
 @onready var dim: ColorRect = $Root/Dim
 @onready var panel: PanelContainer = $Root/Center/Panel
 @onready var tabs: TabContainer = $Root/Center/Panel/PanelMargin/Layout/Tabs
-@onready var p1_enter_button: Button = (
-	$Root/Center/Panel/PanelMargin/Layout/Tabs/P1/PageMargin/Content/EnterButton
+@onready var p1a_enter_button: Button = (
+	$Root/Center/Panel/PanelMargin/Layout/Tabs/P1A/PageMargin/Content/EnterButton
+)
+@onready var p1b_enter_button: Button = (
+	$Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/EnterButton
 )
 @onready var p2_enter_button: Button = (
 	$Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton
@@ -36,7 +43,7 @@ func _ready() -> void:
 	set_process_unhandled_input(false)
 
 
-func open(initial_arena_id: StringName = ARENA_P1_ID) -> void:
+func open(initial_arena_id: StringName = ARENA_P1A_ID) -> void:
 	_select_tab(initial_arena_id)
 	if is_open():
 		call_deferred("_focus_current_action")
@@ -65,8 +72,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-func _on_p1_pressed() -> void:
-	_choose_arena(ARENA_P1_ID)
+func _on_p1a_pressed() -> void:
+	_choose_arena(ARENA_P1A_ID)
+
+
+func _on_p1b_pressed() -> void:
+	_choose_arena(ARENA_P1B_ID)
 
 
 func _on_p2_pressed() -> void:
@@ -107,24 +118,28 @@ func _hide_overlay(emit_closed_signal: bool) -> void:
 
 func _select_tab(arena_id: StringName) -> void:
 	match arena_id:
+		ARENA_P1B_ID:
+			tabs.current_tab = P1B_TAB_INDEX
 		ARENA_P2_ID:
 			tabs.current_tab = P2_TAB_INDEX
 		ARENA_P3_ID:
 			tabs.current_tab = P3_TAB_INDEX
 		_:
-			tabs.current_tab = P1_TAB_INDEX
+			tabs.current_tab = P1A_TAB_INDEX
 
 
 func _focus_current_action() -> void:
 	if not is_open():
 		return
 	match tabs.current_tab:
+		P1B_TAB_INDEX:
+			p1b_enter_button.grab_focus()
 		P2_TAB_INDEX:
 			p2_enter_button.grab_focus()
 		P3_TAB_INDEX:
 			p3_enter_button.grab_focus()
 		_:
-			p1_enter_button.grab_focus()
+			p1a_enter_button.grab_focus()
 
 
 func _prepare_open_animation() -> void:

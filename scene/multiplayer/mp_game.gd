@@ -46,6 +46,9 @@ const FEEDBACK_RPC_METHODS := {
 const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
+	"res://scene/test_arena/test_grass_arena_p1b.tscn"
+)
 const TEST_GRASS_ARENA_P2_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena_p2.tscn"
 )
@@ -79,6 +82,9 @@ const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_fr
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
+const COMBAT_ROBOT_GUNNER_BULLET_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
+)
 const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
 const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
@@ -3008,6 +3014,8 @@ func _get_game_scene_path_for_mode(game_mode: int) -> String:
 			return TOWER_DEFENSE_GAME_SCENE_PATH
 		NetManagerStore.GameMode.TEST_ARENA_P1:
 			return TEST_GRASS_ARENA_SCENE_PATH
+		NetManagerStore.GameMode.TEST_ARENA_P1B:
+			return TEST_GRASS_ARENA_P1B_SCENE_PATH
 		NetManagerStore.GameMode.TEST_ARENA_P2:
 			return TEST_GRASS_ARENA_P2_SCENE_PATH
 		_:
@@ -6755,6 +6763,25 @@ func _instantiate_projectile(
 				game.capoo_projectile_motion_system if game != null else null
 			)
 			return capoo_bullet
+		&"combat_robot_gunner_bullet":
+			var gunner_bullet := (
+				_acquire_or_instantiate_projectile(COMBAT_ROBOT_GUNNER_BULLET_SCENE)
+				as CombatRobotGunnerBullet
+			)
+			if gunner_bullet == null:
+				return null
+			gunner_bullet.top_level = true
+			# Direction already contains the Host-authored spread. Clients must not
+			# sample or reconstruct spread independently.
+			gunner_bullet.setup(
+				direction,
+				damage,
+				speed,
+				lifetime,
+				game.grid_pathfinder as GridPathfinder if game != null else null,
+				game.capoo_projectile_motion_system if game != null else null
+			)
+			return gunner_bullet
 		&"capoo_rpg_rocket":
 			var rpg_rocket := (
 				_acquire_or_instantiate_projectile(CAPOO_RPG_ROCKET_SCENE)

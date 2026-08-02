@@ -20,6 +20,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot.tres"),
+	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
@@ -123,6 +124,7 @@ const ARTIFICIAL_CREATION_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 ]
 const MECHANICAL_LIFE_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot.tres"),
+	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
 ]
 const SLIME_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/slime.tres"),
@@ -146,6 +148,9 @@ const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 const PLAYER_BULLET_SCENE := preload("res://scene/bullet.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
+)
+const COMBAT_ROBOT_GUNNER_BULLET_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 )
 const CAPOO_SMG_BULLET_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
@@ -198,6 +203,7 @@ func _run() -> void:
 func _test_enemy_projectile_z_contract() -> void:
 	for projectile_scene in [
 		CAPOO_AK47_BULLET_SCENE,
+		COMBAT_ROBOT_GUNNER_BULLET_SCENE,
 		CAPOO_SMG_BULLET_SCENE,
 	]:
 		var projectile := projectile_scene.instantiate() as Area2D
@@ -205,7 +211,7 @@ func _test_enemy_projectile_z_contract() -> void:
 			projectile != null
 			and projectile.z_index == 3
 			and projectile.z_index > ENEMY_BODY_VISUAL_Z_INDEX,
-			"AK与SMG弹体必须使用z=3，严格位于普通敌人身体z=2之上。"
+			"快速弹体必须使用z=3，严格位于普通敌人身体z=2之上。"
 		)
 		if projectile != null:
 			projectile.free()
@@ -383,8 +389,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golem configs must carry the artificial_creation category tag."
 	)
 	_expect(
-		int(category_counts["mechanical_life"]) == 1,
-		"Exactly the combat robot config must carry the mechanical_life category tag."
+		int(category_counts["mechanical_life"]) == 2,
+		"Exactly the two combat robot configs must carry the mechanical_life category tag."
 	)
 	_expect(
 		int(category_counts["slime"]) == 10,
