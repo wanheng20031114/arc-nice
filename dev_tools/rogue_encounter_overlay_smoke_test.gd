@@ -123,6 +123,10 @@ func _run() -> void:
 		== "鸡哥有概率被你说服",
 		"鸡哥两个选项必须使用精简后的标题与小字文案。"
 	)
+	_expect(
+		not overlay.choice_third.visible,
+		"鸡哥回归必须只显示两张选项卡，第三张静态卡不得残留。"
+	)
 	overlay.choice_free.button.emit_signal("pressed")
 	_expect(
 		vote_requests.size() == 1
@@ -172,6 +176,7 @@ func _run() -> void:
 	_test_mouse_confirm_and_inactive_vote_filter()
 	await _test_reconnected_options_focus()
 	await _test_completed_state_waits_for_local_result_hold()
+	await _test_slime_content_three_choices_and_result_pages()
 
 	if failures.is_empty():
 		print("ROGUE_ENCOUNTER_OVERLAY_SMOKE_TEST_OK")
@@ -207,6 +212,20 @@ func _make_intro_state() -> Dictionary:
 		"economy_result": {},
 		"result_text": "",
 	}
+
+
+func _make_slime_intro_state() -> Dictionary:
+	var state := _make_intro_state()
+	state["node_id"] = 21
+	state["node_content_seed"] = 77821
+	state["occurrence_key"] = "21:77821"
+	state["encounter_id"] = "slime_talkers"
+	state["option_availability"] = {
+		"help_slimes": true,
+		"kick_slimes": true,
+		"leave_slimes": true,
+	}
+	return state
 
 
 func _test_mouse_confirm_and_inactive_vote_filter() -> void:
@@ -325,6 +344,156 @@ func _test_completed_state_waits_for_local_result_hold() -> void:
 	_expect(local_hold_count[0] == 0, "completed 状态也必须完整保留本地1.5秒结果停留。")
 	await create_timer(0.18).timeout
 	_expect(local_hold_count[0] == 1, "本地结果停留完成后应恰好发出一次退出就绪信号。")
+	overlay.hide_immediately()
+	overlay.free()
+
+
+func _test_slime_content_three_choices_and_result_pages() -> void:
+	var overlay := OVERLAY_SCENE.instantiate() as RogueEncounterOverlay
+	root.add_child(overlay)
+	overlay.configure_local_context(31, {31: "史莱姆访客"}, {})
+	var intro := _make_slime_intro_state()
+	intro["participant_peer_ids"] = [31]
+	intro["active_peer_ids"] = [31]
+	overlay.visible = true
+	overlay.encounter_content.visible = true
+	overlay.encounter_is_revealed = true
+	overlay.apply_state(intro)
+	_expect(
+		overlay.rendered_encounter_id == RogueEncounterRegistry.SLIME_TALKERS
+		and overlay.actor_name.text == "会说话的史莱姆"
+		and not overlay.speaker_label.visible
+		and overlay.dialogue_text.text.replace(
+			DialogueTypewriterController.NO_BREAK_MARK,
+			""
+		) == "你遇到了一群会说话的史莱姆",
+		"史莱姆开场必须使用群体身份和无说话者的旁白正文。"
+	)
+	overlay.typewriter.finish_line()
+	var voting := intro.duplicate(true)
+	voting["revision"] = 2
+	voting["phase"] = "voting"
+	voting["intro_confirmed_peer_ids"] = [31]
+	overlay.apply_state(voting)
+	_expect(
+		overlay.choice_purchase.visible
+		and overlay.choice_free.visible
+		and overlay.choice_third.visible,
+		"史莱姆选项页必须完整显示三张选项卡。"
+	)
+	_expect(
+		overlay.choice_purchase.option_id
+		== RogueEncounterRegistry.OPTION_HELP_SLIMES
+		and overlay.choice_purchase.title_label.text == "给予一些帮助"
+		and overlay.choice_purchase.description_label.text
+		== "赠予这些史莱姆10个水瓶"
+		and overlay.choice_free.option_id
+		== RogueEncounterRegistry.OPTION_KICK_SLIMES
+		and overlay.choice_free.title_label.text == "一脚踢死"
+		and overlay.choice_free.description_label.text == "杀死这些史莱姆"
+		and overlay.choice_third.option_id
+		== RogueEncounterRegistry.OPTION_LEAVE_SLIMES
+		and overlay.choice_third.title_label.text == "这和我有什么关系？"
+		and overlay.choice_third.description_label.text == "离开该节点",
+		"史莱姆三个选项的标题、小字和ID必须逐项匹配配置。"
+	)
+	var requested_options: Array[StringName] = []
+	overlay.vote_requested.connect(
+		func(_key: String, _revision: int, option_id: StringName) -> void:
+			requested_options.append(option_id)
+	)
+	overlay.choice_third.button.emit_signal("pressed")
+	_expect(
+		requested_options == [RogueEncounterRegistry.OPTION_LEAVE_SLIMES],
+		"第三张选项卡必须通过既有投票信号提交离开选项。"
+	)
+	for choice_card in overlay.choice_cards:
+		choice_card.button.release_focus()
+	var only_leave_available := voting.duplicate(true)
+	only_leave_available["revision"] = 3
+	only_leave_available["option_availability"] = {
+		"help_slimes": false,
+		"kick_slimes": false,
+		"leave_slimes": true,
+	}
+	overlay.apply_state(only_leave_available)
+	_expect(
+		overlay.choice_purchase.button.disabled
+		and overlay.choice_free.button.disabled
+		and overlay.choice_third.button.has_focus(),
+		"前两项不可用时，键盘和手柄焦点必须落到第三个可用选项。"
+	)
+
+	var chicken := _make_intro_state()
+	chicken["node_id"] = 22
+	chicken["node_content_seed"] = 77822
+	chicken["occurrence_key"] = "22:77822"
+	chicken["participant_peer_ids"] = [31]
+	chicken["active_peer_ids"] = [31]
+	chicken["intro_confirmed_peer_ids"] = [31]
+	chicken["phase"] = "voting"
+	overlay.apply_state(chicken)
+	_expect(
+		not overlay.choice_third.visible
+		and overlay.choice_third.option_id.is_empty(),
+		"从三选项史莱姆切换到鸡哥时必须清空并隐藏第三张卡。"
+	)
+
+	var result := _make_slime_intro_state()
+	result["revision"] = 4
+	result["phase"] = "result"
+	result["participant_peer_ids"] = [31]
+	result["active_peer_ids"] = [31]
+	result["intro_confirmed_peer_ids"] = [31]
+	result["result_pages"] = [
+		{
+			"speaker": "史莱姆",
+			"text": "谢谢你，旅行者",
+			"is_narration": false,
+		},
+		{
+			"speaker": "",
+			"text": "史莱姆回礼了你一些息壤水晶",
+			"is_narration": true,
+		},
+	]
+	var local_result_hold_count := [0]
+	overlay.result_hold_completed.connect(
+		func(_key: String, _revision: int) -> void:
+			local_result_hold_count[0] += 1
+	)
+	overlay.apply_state(result)
+	_expect(
+		overlay.speaker_label.visible
+		and overlay.speaker_label.text == "史莱姆"
+		and overlay.dialogue_text.text.replace(
+			DialogueTypewriterController.NO_BREAK_MARK,
+			""
+		) == "谢谢你，旅行者",
+		"史莱姆结果第一页必须作为角色对白显示。"
+	)
+	var completed := result.duplicate(true)
+	completed["revision"] = 5
+	completed["phase"] = "completed"
+	overlay.apply_state(completed)
+	overlay.typewriter.finish_line()
+	await create_timer(RogueEncounterOverlay.RESULT_PAGE_GAP_SECONDS + 0.08).timeout
+	_expect(
+		overlay.result_page_index == 1
+		and not overlay.speaker_label.visible
+		and overlay.dialogue_text.text.replace(
+			DialogueTypewriterController.NO_BREAK_MARK,
+			""
+		) == "史莱姆回礼了你一些息壤水晶"
+		and local_result_hold_count[0] == 0,
+		"completed 快照不得跳过第二页旁白或提前请求退出。"
+	)
+	overlay.typewriter.finish_line()
+	await create_timer(RogueEncounterOverlay.RESULT_HOLD_SECONDS + 0.08).timeout
+	_expect(
+		local_result_hold_count[0] == 1,
+		"多页结果只能在最后一页完整显示并停留后请求退出。"
+	)
 	overlay.hide_immediately()
 	overlay.free()
 

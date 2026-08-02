@@ -114,8 +114,8 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 39,
-		"协议 v39 必须保留既有 wire 语义并隔离举盾机器人盾牌阶段。"
+		NetConstants.PROTOCOL_VERSION == 40,
+		"协议 v40 必须同时隔离举盾机器人盾牌阶段与史莱姆多页遭遇结果。"
 	)
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
@@ -614,20 +614,30 @@ func _test_encounter_network_contract(
 		"客户端必须拒绝倒退的遭遇 revision。"
 	)
 	var current_revision := int(voting.get("revision", -1))
+	var encounter_id := StringName(voting.get("encounter_id", &""))
+	var one_page_option := (
+		RogueEncounterRegistry.OPTION_ASK_FOR_FREE
+		if encounter_id == RogueEncounterRegistry.CHICKEN_BRO
+		else RogueEncounterRegistry.OPTION_LEAVE_SLIMES
+	)
 	_expect(
 		host_route.host_submit_encounter_vote(
 			participant_peer_id,
 			occurrence_key,
 			current_revision,
-			RogueEncounterEconomyCoordinator.OPTION_FREE
+			one_page_option
 		),
 		"Host 必须只接受当前 occurrence/revision 的投票。"
 	)
 	var result := host_route.export_encounter_snapshot()
+	var result_pages := result.get("result_pages", []) as Array
 	_expect(
 		StringName(result.get("phase", &"")) == &"result"
-		and bool(result.get("settlement_committed", false)),
-		"投票完成后必须得到一次性权威结算。"
+		and bool(result.get("settlement_committed", false))
+		and result_pages.size() == 1
+		and str(result.get("result_text", ""))
+		== str((result_pages[0] as Dictionary).get("text", "")),
+		"投票完成后必须得到一次性权威结算及可无损同步的结果页。"
 	)
 	var result_economy := host_route.export_encounter_economy_snapshot()
 	_expect(

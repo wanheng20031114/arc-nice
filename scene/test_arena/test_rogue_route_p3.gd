@@ -697,6 +697,7 @@ func _try_dismiss_locally_completed_encounter() -> void:
 
 
 func _on_encounter_economy_changed(_snapshot: Dictionary) -> void:
+	_sync_route_player_xirang_from_run_state()
 	if _authority_enabled:
 		_emit_host_encounter_snapshot()
 
@@ -928,6 +929,7 @@ func configure_multiplayer_players(
 	if player == null:
 		push_error("TestRogueRouteP3: 多人路线场景缺少本地角色。")
 		return false
+	_sync_route_player_xirang_from_run_state()
 	_attach_camera_to_local_player()
 	_configure_encounter_overlay_context()
 	_update_character_display()
@@ -956,6 +958,7 @@ func add_multiplayer_player(
 	if added:
 		_player_names[peer_id] = player_name
 		_player_character_ids[peer_id] = character_id
+		_sync_route_player_xirang_from_run_state()
 		_configure_encounter_overlay_context()
 	return added
 
@@ -998,6 +1001,7 @@ func migrate_multiplayer_player(
 	)
 	player_instance.global_position = preserved_position
 	player_instance.velocity = preserved_velocity
+	_sync_route_player_xirang_from_run_state()
 	_configure_encounter_overlay_context()
 	return true
 
@@ -1137,8 +1141,43 @@ func _configure_singleplayer_player() -> void:
 	_local_peer_id = SINGLEPLAYER_PEER_ID
 	_player_names = {SINGLEPLAYER_PEER_ID: "玩家"}
 	_player_character_ids = {SINGLEPLAYER_PEER_ID: character_id}
+	_sync_route_player_xirang_from_run_state()
 	_attach_camera_to_local_player()
 	_configure_encounter_overlay_context()
+
+
+func _sync_route_player_xirang_from_run_state() -> void:
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state == null:
+		return
+	if _multiplayer_avatar_mode:
+		var peer_ids: Array[int] = []
+		for raw_peer_id in peer_players.keys():
+			var peer_id := int(raw_peer_id)
+			if peer_id > 0:
+				peer_ids.append(peer_id)
+		peer_ids.sort()
+		for peer_id in peer_ids:
+			_apply_route_player_xirang(
+				peer_players.get(peer_id) as Player,
+				run_state.get_party_xirang_balance(peer_id)
+			)
+		return
+	_apply_route_player_xirang(
+		player,
+		run_state.get_party_xirang_balance(SINGLEPLAYER_PEER_ID)
+	)
+
+
+func _apply_route_player_xirang(player_instance: Player, amount: int) -> void:
+	if player_instance == null or not is_instance_valid(player_instance):
+		return
+	var resolved_amount := maxi(amount, 0)
+	if player_instance.current_xirang == resolved_amount:
+		return
+	var delta := resolved_amount - player_instance.current_xirang
+	player_instance.current_xirang = resolved_amount
+	player_instance.xirang_changed.emit(resolved_amount, delta)
 
 
 func _instantiate_route_player(character_id: StringName) -> Player:

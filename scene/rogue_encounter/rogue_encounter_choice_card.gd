@@ -27,6 +27,7 @@ func configure(
 	icon: Texture2D,
 	is_disabled: bool
 ) -> void:
+	visible = true
 	option_id = new_option_id
 	number_label.text = "%02d" % (display_index + 1)
 	title_label.text = title
@@ -39,6 +40,21 @@ func configure(
 		if is_disabled
 		else Color.WHITE
 	)
+
+
+func reset_card() -> void:
+	option_id = &""
+	number_label.text = ""
+	title_label.text = ""
+	description_label.text = ""
+	icon_rect.texture = null
+	icon_rect.visible = false
+	button.button_pressed = false
+	button.disabled = true
+	set_interaction_enabled(false)
+	set_voters([], {})
+	self_modulate = Color.WHITE
+	visible = false
 
 
 func set_selected(is_selected: bool) -> void:

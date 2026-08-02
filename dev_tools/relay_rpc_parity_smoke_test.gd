@@ -258,10 +258,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 39,
-		"协议v39必须保留既有 RPC 接线并隔离举盾机器人盾牌阶段。"
+		NetConstants.PROTOCOL_VERSION == 40,
+		"协议v40必须同时隔离举盾机器人盾牌阶段与史莱姆多页遭遇结果。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v39 must provision eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v40 must retain eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -300,7 +300,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v39 hosts must accept exactly v39 and reject v38."
+		"Protocol v40 hosts must accept exactly v40 and reject v39."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -368,11 +368,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 39")
+		and relay_source.contains("const PROTOCOL_VERSION := 40")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v39, accept the room capacity, and provision "
+			"Relay server must declare v40, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)

@@ -32,7 +32,9 @@ extends RefCounted
 ## 爆炸三阶段合同重建表现，旧客户端无法实例化该类型。
 ## v39：敌人视觉状态快照新增举盾机器人盾牌阶段位，且敌人动作协议新增格挡
 ## 与破盾表现；旧客户端无法正确恢复盾牌耐久阶段或消费对应弹体表现。
-const PROTOCOL_VERSION := 39
+## v40：P3 神奇遭遇池新增会说话的史莱姆、三选项投票与多页权威结果；
+## 旧客户端会拒绝新 option_id，亦无法解释 result_pages。
+const PROTOCOL_VERSION := 40
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

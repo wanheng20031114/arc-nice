@@ -17,27 +17,35 @@ const PHASE_VOTING := &"voting"
 const PHASE_RESOLVING := &"resolving"
 const PHASE_RESULT := &"result"
 const PHASE_COMPLETED := &"completed"
-const OPTION_PURCHASE := &"purchase_basketball"
-const OPTION_FREE := &"ask_for_free"
+## 保留旧名称供既有调用与测试使用；实际选项由 Registry 内容配置驱动。
+const OPTION_PURCHASE := RogueEncounterRegistry.OPTION_PURCHASE_BASKETBALL
+const OPTION_FREE := RogueEncounterRegistry.OPTION_ASK_FOR_FREE
+const OPTION_HELP_SLIMES := RogueEncounterRegistry.OPTION_HELP_SLIMES
+const OPTION_KICK_SLIMES := RogueEncounterRegistry.OPTION_KICK_SLIMES
+const OPTION_LEAVE_SLIMES := RogueEncounterRegistry.OPTION_LEAVE_SLIMES
 const INTRO_TEXT := "鸡哥：练习时长2年半，会唱跳rap篮球。"
 const COVER_DURATION_SECONDS := 0.32
 const REVEAL_DURATION_SECONDS := 0.38
 const OPTION_REVEAL_DURATION_SECONDS := 0.36
+const RESULT_PAGE_GAP_SECONDS := 0.45
 const RESULT_HOLD_SECONDS := 1.5
-const BASKETBALL_TEXTURE := preload(
-	"res://resources/texture/collectibles/basketball.png"
-)
 
 @onready var encounter_content: Control = %EncounterContent
 @onready var decision_panel: NinePatchRect = %DecisionPanel
+@onready var actor_portrait: TextureRect = %ActorPortrait
+@onready var name_plate: PanelContainer = %NamePlate
+@onready var actor_name: Label = %ActorName
+@onready var encounter_hint: Label = %EncounterHint
 @onready var stage_label: Label = %StageLabel
 @onready var status_label: Label = %StatusLabel
 @onready var intro_page: VBoxContainer = %IntroPage
+@onready var speaker_label: Label = %Speaker
 @onready var dialogue_text: RichTextLabel = %DialogueText
 @onready var prompt_label: Label = %PromptLabel
 @onready var options_page: VBoxContainer = %OptionsPage
-@onready var choice_purchase: RogueEncounterChoiceCard = %ChoicePurchase
-@onready var choice_free: RogueEncounterChoiceCard = %ChoiceFree
+@onready var choice_purchase: RogueEncounterChoiceCard = %Choice1
+@onready var choice_free: RogueEncounterChoiceCard = %Choice2
+@onready var choice_third: RogueEncounterChoiceCard = %Choice3
 @onready var vote_status_label: Label = %VoteStatusLabel
 @onready var option_back_buffer: BackBufferCopy = %OptionBackBuffer
 @onready var option_reveal_cover: ColorRect = %OptionRevealCover
@@ -51,6 +59,8 @@ var local_peer_id := 0
 var player_names_by_peer: Dictionary = {}
 var character_ids_by_peer: Dictionary = {}
 var state: Dictionary = {}
+var encounter_config: Dictionary = {}
+var rendered_encounter_id: StringName = &""
 var occurrence_key := ""
 var expected_revision := 0
 var rendered_phase: StringName = PHASE_IDLE
@@ -63,17 +73,21 @@ var transition_tween: Tween = null
 var option_tween: Tween = null
 var result_hold_serial := 0
 var revealed_occurrence_key := ""
+var choice_cards: Array[RogueEncounterChoiceCard] = []
+var result_pages: Array[Dictionary] = []
+var result_page_index := 0
 
 
 func _ready() -> void:
 	typewriter.configure(dialogue_text, blip_audio)
 	typewriter.line_finished.connect(_on_typewriter_line_finished)
-	choice_purchase.selected.connect(_on_option_selected)
-	choice_free.selected.connect(_on_option_selected)
+	choice_cards = [choice_purchase, choice_free, choice_third]
 	var group := ButtonGroup.new()
 	group.allow_unpress = false
-	choice_purchase.button.button_group = group
-	choice_free.button.button_group = group
+	for choice_card in choice_cards:
+		choice_card.selected.connect(_on_option_selected)
+		choice_card.button.button_group = group
+		choice_card.reset_card()
 	_set_transition_progress(0.0)
 	_set_option_reveal_progress(1.0)
 	hide_immediately()
@@ -101,7 +115,11 @@ func apply_state(new_state: Dictionary) -> void:
 		pending_intro_revision = -1
 		rendered_line = ""
 		rendered_phase = PHASE_IDLE
+		_reset_result_pages()
 		result_hold_serial += 1
+	var encounter_id := StringName(state.get("encounter_id", &""))
+	if encounter_id != rendered_encounter_id:
+		_bind_encounter_content(encounter_id)
 	expected_revision = int(state.get("revision", 0))
 	var authoritative_intro := _local_intro_is_authoritatively_confirmed()
 	if authoritative_intro:
@@ -229,6 +247,7 @@ func hide_immediately() -> void:
 	option_back_buffer.visible = false
 	option_reveal_cover.visible = false
 	typewriter.clear()
+	_reset_result_pages()
 
 
 func _input(event: InputEvent) -> void:
@@ -275,18 +294,32 @@ func _render_state(force: bool) -> void:
 		_show_result(force)
 		return
 	if phase == PHASE_RESOLVING:
-		_show_dialogue_page("鸡哥正在盘算……", false, force)
+		_show_dialogue_page(
+			str(encounter_config.get("resolving_text", "遭遇正在结算……")),
+			str(encounter_config.get("resolving_speaker", "")),
+			bool(encounter_config.get("resolving_is_narration", true)),
+			false,
+			force
+		)
 		status_label.text = "结算中"
 		return
 	if _local_intro_page_is_advanced() or not _local_can_participate():
 		_show_options_page()
 	else:
-		_show_dialogue_page(INTRO_TEXT, true, force)
+		_show_dialogue_page(
+			str(encounter_config.get("intro_text", "发生了一次神奇遭遇。")),
+			str(encounter_config.get("intro_speaker", "")),
+			bool(encounter_config.get("intro_is_narration", true)),
+			true,
+			force
+		)
 	_update_vote_state()
 
 
 func _show_dialogue_page(
 	line: String,
+	speaker: String,
+	is_narration: bool,
 	show_prompt: bool,
 	force: bool
 ) -> void:
@@ -294,7 +327,9 @@ func _show_dialogue_page(
 	intro_page.visible = true
 	options_page.visible = false
 	prompt_label.visible = show_prompt
-	stage_label.text = "鸡哥"
+	speaker_label.text = speaker
+	speaker_label.visible = not is_narration and not speaker.is_empty()
+	stage_label.text = str(encounter_config.get("display_name", "神奇遭遇"))
 	if show_prompt:
 		status_label.text = "先听他说完，再作决定"
 	if force or rendered_line != line:
@@ -345,53 +380,67 @@ func _play_option_reveal() -> void:
 
 
 func _show_result(force: bool) -> void:
-	var result_text := str(state.get("result_text", ""))
-	if result_text.is_empty():
-		result_text = _fallback_result_text()
-	_show_dialogue_page(result_text, false, force)
-	stage_label.text = "遭遇结果"
-	status_label.text = "鸡哥已经作出回应"
+	var next_pages := _decode_result_pages(state.get("result_pages", []))
+	if next_pages.is_empty():
+		var result_text := str(state.get("result_text", ""))
+		if result_text.is_empty():
+			result_text = _fallback_result_text()
+		if not result_text.is_empty():
+			next_pages.append({
+				"speaker": str(encounter_config.get(
+					"default_result_speaker",
+					""
+				)),
+				"text": result_text,
+				"is_narration": bool(encounter_config.get(
+					"default_result_is_narration",
+					true
+				)),
+			})
+	if next_pages != result_pages:
+		result_pages = next_pages
+		result_page_index = 0
+		result_hold_serial += 1
+		force = true
+	_show_current_result_page(force)
 
 
 func _render_choice_cards() -> void:
 	var availability := state.get("option_availability", {}) as Dictionary
-	var purchase_enabled := bool(
-		_dict_value(availability, "purchase_basketball", false)
-	)
-	var free_enabled := bool(_dict_value(availability, "ask_for_free", true))
 	var local_enabled := (
 		_local_can_participate()
 		and _local_intro_is_authoritatively_confirmed()
 	)
-	choice_purchase.configure(
-		OPTION_PURCHASE,
-		0,
-		"购买篮球",
-		"花费10个木板购买一个篮球",
-		BASKETBALL_TEXTURE,
-		not purchase_enabled or not local_enabled
-	)
-	choice_free.configure(
-		OPTION_FREE,
-		1,
-		"为什么不能0元购？",
-		"鸡哥有概率被你说服",
-		null,
-		not free_enabled or not local_enabled
-	)
-	choice_purchase.set_interaction_enabled(local_enabled and purchase_enabled)
-	choice_free.set_interaction_enabled(local_enabled and free_enabled)
 	var local_vote := _get_vote_for_peer(local_peer_id)
-	choice_purchase.set_selected(local_vote == OPTION_PURCHASE)
-	choice_free.set_selected(local_vote == OPTION_FREE)
-	choice_purchase.set_voters(
-		_get_voters_for_option(OPTION_PURCHASE),
-		character_ids_by_peer
+	var option_configs := RogueEncounterRegistry.get_option_configs(
+		rendered_encounter_id
 	)
-	choice_free.set_voters(
-		_get_voters_for_option(OPTION_FREE),
-		character_ids_by_peer
-	)
+	for index in range(choice_cards.size()):
+		var choice_card := choice_cards[index]
+		if index >= option_configs.size():
+			choice_card.reset_card()
+			continue
+		var option := option_configs[index]
+		var option_id := StringName(option.get("option_id", &""))
+		var option_enabled := bool(_dict_value(
+			availability,
+			String(option_id),
+			false
+		))
+		choice_card.configure(
+			option_id,
+			index,
+			str(option.get("title", "")),
+			str(option.get("description", "")),
+			_load_texture(str(option.get("icon_texture_path", ""))),
+			not option_enabled or not local_enabled
+		)
+		choice_card.set_interaction_enabled(local_enabled and option_enabled)
+		choice_card.set_selected(local_vote == option_id)
+		choice_card.set_voters(
+			_get_voters_for_option(option_id),
+			character_ids_by_peer
+		)
 
 
 func _update_vote_state() -> void:
@@ -422,18 +471,30 @@ func _on_option_selected(option_id: StringName) -> void:
 		or not _local_intro_is_authoritatively_confirmed()
 	):
 		return
-	choice_purchase.set_selected(option_id == OPTION_PURCHASE)
-	choice_free.set_selected(option_id == OPTION_FREE)
+	for choice_card in choice_cards:
+		choice_card.set_selected(choice_card.option_id == option_id)
 	vote_requested.emit(occurrence_key, expected_revision, option_id)
 
 
 func _on_typewriter_line_finished() -> void:
 	# completed 是房主已完成权威结算，不代表这个客户端也已读完结果。
-	# 高延迟客户端继续完成自己的逐字显示与 1.5 秒停留，再通知外层退出。
+	# 高延迟客户端继续完成自己的全部结果页与 1.5 秒停留，再通知外层退出。
 	if rendered_phase not in [PHASE_RESULT, PHASE_COMPLETED] or rendered_line.is_empty():
 		return
 	result_hold_serial += 1
 	var serial := result_hold_serial
+	if result_page_index + 1 < result_pages.size():
+		var page_timer := get_tree().create_timer(RESULT_PAGE_GAP_SECONDS)
+		await page_timer.timeout
+		if (
+			serial != result_hold_serial
+			or not visible
+			or rendered_phase not in [PHASE_RESULT, PHASE_COMPLETED]
+		):
+			return
+		result_page_index += 1
+		_show_current_result_page(true)
+		return
 	var timer := get_tree().create_timer(RESULT_HOLD_SECONDS)
 	await timer.timeout
 	if (
@@ -446,6 +507,8 @@ func _on_typewriter_line_finished() -> void:
 
 
 func _fallback_result_text() -> String:
+	if rendered_encounter_id != RogueEncounterRegistry.CHICKEN_BRO:
+		return "这次神奇遭遇已经结束。"
 	var economy := state.get("economy_result", {}) as Dictionary
 	var result_code := str(economy.get("result_code", ""))
 	if result_code == "all_inventories_full":
@@ -457,6 +520,72 @@ func _fallback_result_text() -> String:
 	if StringName(state.get("winning_option", &"")) == OPTION_FREE:
 		return "鸡哥：哪有这么好的事情？"
 	return "鸡哥结束了这次交易。"
+
+
+func _show_current_result_page(force: bool) -> void:
+	if result_pages.is_empty() or result_page_index >= result_pages.size():
+		return
+	var page := result_pages[result_page_index]
+	_show_dialogue_page(
+		str(page.get("text", "")),
+		str(page.get("speaker", "")),
+		bool(page.get("is_narration", false)),
+		false,
+		force
+	)
+	stage_label.text = "遭遇结果"
+	status_label.text = str(encounter_config.get(
+		"result_status",
+		"这次相遇已经有了结果"
+	))
+
+
+func _decode_result_pages(raw_pages: Variant) -> Array[Dictionary]:
+	var decoded: Array[Dictionary] = []
+	if typeof(raw_pages) != TYPE_ARRAY:
+		return decoded
+	for raw_page in raw_pages as Array:
+		if typeof(raw_page) != TYPE_DICTIONARY:
+			continue
+		var page := raw_page as Dictionary
+		var text := str(page.get("text", ""))
+		if text.is_empty():
+			continue
+		decoded.append({
+			"speaker": str(page.get("speaker", "")),
+			"text": text,
+			"is_narration": bool(page.get("is_narration", false)),
+		})
+	return decoded
+
+
+func _reset_result_pages() -> void:
+	result_pages.clear()
+	result_page_index = 0
+
+
+func _bind_encounter_content(encounter_id: StringName) -> void:
+	rendered_encounter_id = encounter_id
+	encounter_config = RogueEncounterRegistry.get_encounter_config(encounter_id)
+	if encounter_config.is_empty():
+		actor_portrait.texture = null
+		actor_name.text = "神秘来客"
+		encounter_hint.text = "地下遗址中的未知相遇"
+		name_plate.visible = true
+		return
+	actor_portrait.texture = _load_texture(str(encounter_config.get(
+		"portrait_texture_path",
+		""
+	)))
+	actor_name.text = str(encounter_config.get("display_name", "神秘来客"))
+	encounter_hint.text = str(encounter_config.get("encounter_hint", ""))
+	name_plate.visible = not actor_name.text.is_empty()
+
+
+func _load_texture(resource_path: String) -> Texture2D:
+	if resource_path.is_empty() or not ResourceLoader.exists(resource_path):
+		return null
+	return load(resource_path) as Texture2D
 
 
 func _local_intro_page_is_advanced() -> bool:
@@ -529,15 +658,13 @@ func _focus_first_available_option() -> void:
 		or not _local_can_participate()
 	):
 		return
-	if (
-		choice_purchase.button.has_focus()
-		or choice_free.button.has_focus()
-	):
-		return
-	if not choice_purchase.button.disabled:
-		choice_purchase.button.grab_focus()
-	elif not choice_free.button.disabled:
-		choice_free.button.grab_focus()
+	for choice_card in choice_cards:
+		if choice_card.visible and choice_card.button.has_focus():
+			return
+	for choice_card in choice_cards:
+		if choice_card.visible and not choice_card.button.disabled:
+			choice_card.button.grab_focus()
+			return
 
 
 func _dict_value(mapping: Dictionary, key: String, default: Variant) -> Variant:

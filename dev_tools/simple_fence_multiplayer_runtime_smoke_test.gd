@@ -54,8 +54,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 39,
-		"多人运行时协议v39必须保留既有接线并隔离举盾机器人盾牌阶段。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 40,
+		"多人运行时协议v40必须保留既有wire类型并隔离新增权威状态。"
 	)
 	host_game = TOWER_DEFENSE_SCENE.instantiate() as GameTowerDefense
 	_expect(host_game != null, "围栏多人运行时测试必须能实例化真实塔防场景。")

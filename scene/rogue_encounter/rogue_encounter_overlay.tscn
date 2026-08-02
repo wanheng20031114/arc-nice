@@ -176,13 +176,14 @@ mouse_filter = 2
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="ChickenCenter" type="CenterContainer" parent="Root/EncounterContent/ScreenMargin/MainRow/PortraitStage"]
+[node name="ActorCenter" type="CenterContainer" parent="Root/EncounterContent/ScreenMargin/MainRow/PortraitStage"]
 custom_minimum_size = Vector2(0, 360)
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="ChickenBro" type="TextureRect" parent="Root/EncounterContent/ScreenMargin/MainRow/PortraitStage/ChickenCenter"]
+[node name="ActorPortrait" type="TextureRect" parent="Root/EncounterContent/ScreenMargin/MainRow/PortraitStage/ActorCenter"]
+unique_name_in_owner = true
 texture_filter = 1
 custom_minimum_size = Vector2(336, 336)
 layout_mode = 2
@@ -192,13 +193,15 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="NamePlate" type="PanelContainer" parent="Root/EncounterContent/ScreenMargin/MainRow/PortraitStage"]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(156, 46)
 layout_mode = 2
 size_flags_horizontal = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_name")
 
-[node name="ChickenName" type="Label" parent="Root/EncounterContent/ScreenMargin/MainRow/PortraitStage/NamePlate"]
+[node name="ActorName" type="Label" parent="Root/EncounterContent/ScreenMargin/MainRow/PortraitStage/NamePlate"]
+unique_name_in_owner = true
 layout_mode = 2
 text = "鸡哥"
 label_settings = SubResource("LabelSettings_chicken_name")
@@ -206,6 +209,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="EncounterHint" type="Label" parent="Root/EncounterContent/ScreenMargin/MainRow/PortraitStage"]
+unique_name_in_owner = true
 layout_mode = 2
 text = "地下遗址里的神秘来客"
 label_settings = SubResource("LabelSettings_prompt")
@@ -287,6 +291,7 @@ mouse_filter = 2
 theme_override_constants/separation = 12
 
 [node name="Speaker" type="Label" parent="Root/EncounterContent/ScreenMargin/MainRow/DecisionPanel/DecisionMargin/DecisionContent/PageStack/IntroPage"]
+unique_name_in_owner = true
 layout_mode = 2
 text = "鸡哥"
 label_settings = SubResource("LabelSettings_status")
@@ -327,11 +332,15 @@ mouse_filter = 2
 theme_override_constants/separation = 10
 alignment = 1
 
-[node name="ChoicePurchase" parent="Root/EncounterContent/ScreenMargin/MainRow/DecisionPanel/DecisionMargin/DecisionContent/PageStack/OptionsPage" instance=ExtResource("2_card")]
+[node name="Choice1" parent="Root/EncounterContent/ScreenMargin/MainRow/DecisionPanel/DecisionMargin/DecisionContent/PageStack/OptionsPage" instance=ExtResource("2_card")]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="ChoiceFree" parent="Root/EncounterContent/ScreenMargin/MainRow/DecisionPanel/DecisionMargin/DecisionContent/PageStack/OptionsPage" instance=ExtResource("2_card")]
+[node name="Choice2" parent="Root/EncounterContent/ScreenMargin/MainRow/DecisionPanel/DecisionMargin/DecisionContent/PageStack/OptionsPage" instance=ExtResource("2_card")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Choice3" parent="Root/EncounterContent/ScreenMargin/MainRow/DecisionPanel/DecisionMargin/DecisionContent/PageStack/OptionsPage" instance=ExtResource("2_card")]
 unique_name_in_owner = true
 layout_mode = 2
 

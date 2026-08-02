@@ -22,6 +22,24 @@ static func get_standard_random_pool() -> Array[PickupConfig]:
 	return _standard_random_pool_cache.duplicate()
 
 
+## Event rewards that cap rarity still use the standard pool, so SPECIAL items
+## can never leak in when enum values are extended after the four normal tiers.
+static func get_standard_random_pool_up_to(
+	maximum_rarity: int
+) -> Array[PickupConfig]:
+	ensure_cache()
+	var bounded_maximum := clampi(
+		maximum_rarity,
+		PickupConfig.CollectibleRarity.COMMON,
+		PickupConfig.CollectibleRarity.LEGENDARY
+	)
+	var result: Array[PickupConfig] = []
+	for item in _standard_random_pool_cache:
+		if int(item.collectible_rarity) <= bounded_maximum:
+			result.append(item)
+	return result
+
+
 static func is_standard_random_collectible(item: PickupConfig) -> bool:
 	if item == null:
 		return false

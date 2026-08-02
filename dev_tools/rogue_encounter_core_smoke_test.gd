@@ -22,6 +22,8 @@ func _run() -> void:
 	_test_snapshot_replay_and_peer_migration()
 	_test_dynamic_option_availability()
 	_test_settled_result_and_spectator_migration()
+	_test_slime_session_options_and_result_pages()
+	_test_slime_result_page_contract()
 	if _failures.is_empty():
 		print("ROGUE_ENCOUNTER_CORE_SMOKE_TEST_OK")
 		quit(0)
@@ -230,8 +232,9 @@ func _test_session_personal_progress_and_timeout() -> void:
 	economy.configure(run_state)
 	var session := RogueEncounterSession.new()
 	session.initialize_authority(economy, [1, 2])
+	var seed := _seed_for_encounter(31337, RogueEncounterRegistry.CHICKEN_BRO)
 	_expect(
-		session.start_for_node(7, &"magical_encounter", 31337, [1, 2]),
+		session.start_for_node(7, &"magical_encounter", seed, [1, 2]),
 		"鸡哥遭遇应从神奇遭遇池启动。"
 	)
 	var started := session.export_state()
@@ -312,8 +315,9 @@ func _test_snapshot_replay_and_peer_migration() -> void:
 	economy.configure(run_state)
 	var authority := RogueEncounterSession.new()
 	authority.initialize_authority(economy, [11, 12])
+	var seed := _seed_for_encounter(7654, RogueEncounterRegistry.CHICKEN_BRO)
 	_expect(
-		authority.start_for_node(9, &"magical_encounter", 7654, [11, 12]),
+		authority.start_for_node(9, &"magical_encounter", seed, [11, 12]),
 		"迁移用例应启动遭遇。"
 	)
 	var revision := authority.get_revision()
@@ -400,8 +404,9 @@ func _test_dynamic_option_availability() -> void:
 	economy.configure(run_state)
 	var session := RogueEncounterSession.new()
 	session.initialize_authority(economy, [51])
+	var seed := _seed_for_encounter(51051, RogueEncounterRegistry.CHICKEN_BRO)
 	_expect(
-		session.start_for_node(51, &"magical_encounter", 51051, [51]),
+		session.start_for_node(51, &"magical_encounter", seed, [51]),
 		"动态购买可用性测试应启动遭遇。"
 	)
 	var revision_before_economy_change := session.get_revision()
@@ -442,8 +447,9 @@ func _test_settled_result_and_spectator_migration() -> void:
 	economy.configure(run_state)
 	var session := RogueEncounterSession.new()
 	session.initialize_authority(economy, [61])
+	var seed := _seed_for_encounter(61061, RogueEncounterRegistry.CHICKEN_BRO)
 	_expect(
-		session.start_for_node(61, &"magical_encounter", 61061, [61]),
+		session.start_for_node(61, &"magical_encounter", seed, [61]),
 		"结算迁移测试应启动遭遇。"
 	)
 	_expect(
@@ -518,7 +524,7 @@ func _test_deterministic_tie_and_no_vote() -> void:
 	economy.configure(run_state)
 	var session := RogueEncounterSession.new()
 	session.initialize_authority(economy, [31, 32])
-	var seed := 88021
+	var seed := _seed_for_encounter(88021, RogueEncounterRegistry.CHICKEN_BRO)
 	_expect(
 		session.start_for_node(41, &"magical_encounter", seed, [31, 32]),
 		"平票测试应启动遭遇。"
@@ -563,7 +569,10 @@ func _test_deterministic_tie_and_no_vote() -> void:
 
 	var no_vote_session := RogueEncounterSession.new()
 	no_vote_session.initialize_authority(economy, [31, 32])
-	var no_vote_seed := 90210
+	var no_vote_seed := _seed_for_encounter(
+		90210,
+		RogueEncounterRegistry.CHICKEN_BRO
+	)
 	_expect(
 		no_vote_session.start_for_node(
 			42,
@@ -598,6 +607,178 @@ func _test_deterministic_tie_and_no_vote() -> void:
 	session.free()
 	economy.free()
 	run_state.free()
+
+
+func _test_slime_session_options_and_result_pages() -> void:
+	var run_state := _new_run_state()
+	run_state.ensure_multiplayer_peer_state(71)
+	var economy := RogueEncounterEconomyCoordinator.new()
+	economy.configure(run_state)
+	var session := RogueEncounterSession.new()
+	session.initialize_authority(economy, [71])
+	var seed := _seed_for_encounter(
+		71071,
+		RogueEncounterRegistry.SLIME_TALKERS
+	)
+	_expect(
+		session.start_for_node(71, &"magical_encounter", seed, [71]),
+		"史莱姆遭遇应能通过通用 Session 启动。"
+	)
+	var started := session.export_state()
+	var availability := started.get("option_availability", {}) as Dictionary
+	_expect(
+		StringName(started.get("encounter_id", &""))
+		== RogueEncounterRegistry.SLIME_TALKERS
+		and not bool(availability.get("help_slimes", true))
+		and bool(availability.get("kick_slimes", false))
+		and bool(availability.get("leave_slimes", false)),
+		"史莱姆应按 encounter_id 输出三项权威可用性，缺水时只禁用帮助。"
+	)
+	_expect(
+		session.submit_intro_ack(
+			71,
+			session.get_occurrence_key(),
+			session.get_revision()
+		),
+		"史莱姆对白确认应复用通用确认请求。"
+	)
+	_expect(
+		not session.submit_vote(
+			71,
+			session.get_occurrence_key(),
+			session.get_revision(),
+			RogueEncounterRegistry.OPTION_ASK_FOR_FREE
+		),
+		"Session 必须拒绝不属于当前史莱姆遭遇的鸡哥选项。"
+	)
+	_expect(
+		session.submit_vote(
+			71,
+			session.get_occurrence_key(),
+			session.get_revision(),
+			RogueEncounterRegistry.OPTION_LEAVE_SLIMES
+		),
+		"单人选择离开后应立即完成权威结算。"
+	)
+	var result := session.export_state()
+	var pages := result.get("result_pages", []) as Array
+	_expect(
+		int(result.get("schema_version", -1)) == RogueEncounterSession.SCHEMA_VERSION
+		and StringName(result.get("phase", &"")) == RogueEncounterSession.PHASE_RESULT
+		and pages.size() == 1
+		and str((pages[0] as Dictionary).get("speaker", "")).is_empty()
+		and bool((pages[0] as Dictionary).get("is_narration", false))
+		and str((pages[0] as Dictionary).get("text", ""))
+		== "真是一群神奇的生物，你记录了下来，然后便离开了"
+		and str(result.get("result_text", ""))
+		== str((pages[0] as Dictionary).get("text", "")),
+		"史莱姆离开结果必须输出一页旁白，并让 result_text 等于末页正文。"
+	)
+
+	var remote_run_state := _new_run_state()
+	var remote_economy := RogueEncounterEconomyCoordinator.new()
+	remote_economy.configure(remote_run_state)
+	var remote_session := RogueEncounterSession.new()
+	remote_session.initialize_remote(remote_economy)
+	_expect(
+		remote_session.apply_remote_state(result)
+		and remote_session.export_state() == result,
+		"v2 Session 快照必须无损同步三选项与 result_pages。"
+	)
+	var malformed := result.duplicate(true)
+	malformed["revision"] = int(result["revision"]) + 1
+	malformed["result_pages"] = [{
+		"speaker": "",
+		"text": "",
+		"is_narration": true,
+	}]
+	_expect(
+		not remote_session.apply_remote_state(malformed)
+		and remote_session.export_state() == result,
+		"空正文的 result_pages 必须在提交经济与阶段前被拒绝。"
+	)
+	remote_session.free()
+	remote_economy.free()
+	remote_run_state.free()
+	session.free()
+	economy.free()
+	run_state.free()
+
+
+func _test_slime_result_page_contract() -> void:
+	var session := RogueEncounterSession.new()
+	var collectible_pages := session.call(
+		"_build_result_pages",
+		RogueEncounterRegistry.SLIME_TALKERS,
+		{"result_code": String(
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_HELP_COLLECTIBLES
+		)}
+	) as Array
+	var xirang_pages := session.call(
+		"_build_result_pages",
+		RogueEncounterRegistry.SLIME_TALKERS,
+		{"result_code": String(
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_HELP_XIRANG
+		)}
+	) as Array
+	var kick_pages := session.call(
+		"_build_result_pages",
+		RogueEncounterRegistry.SLIME_TALKERS,
+		{"result_code": String(
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_KICK_INVENTORY
+		)}
+	) as Array
+	var dropped_pages := session.call(
+		"_build_result_pages",
+		RogueEncounterRegistry.SLIME_TALKERS,
+		{"result_code": String(
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_KICK_DROPPED
+		)}
+	) as Array
+	_expect(
+		collectible_pages.size() == 2
+		and (collectible_pages[0] as Dictionary) == {
+			"speaker": "史莱姆",
+			"text": "谢谢你，旅行者",
+			"is_narration": false,
+		}
+		and str((collectible_pages[1] as Dictionary).get("text", ""))
+		== "史莱姆回礼了你随机的三件收藏品",
+		"收藏品回礼必须先显示史莱姆对白，再显示奖励旁白。"
+	)
+	_expect(
+		xirang_pages.size() == 2
+		and str((xirang_pages[1] as Dictionary).get("text", ""))
+		== "史莱姆回礼了你一些息壤水晶",
+		"息壤分支必须使用统一术语“息壤水晶”。"
+	)
+	_expect(
+		kick_pages.size() == 2
+		and str((kick_pages[0] as Dictionary).get("text", ""))
+		== "把史莱姆当做路边野狗一样踢死了"
+		and str((kick_pages[1] as Dictionary).get("text", ""))
+		== "获得了10份凝胶",
+		"成功取得凝胶时必须按两页顺序呈现。"
+	)
+	_expect(
+		dropped_pages.size() == 2
+		and str((dropped_pages[1] as Dictionary).get("text", ""))
+		== "背包与仓库已满，10份凝胶被丢弃了。",
+		"凝胶无处存放时结果页不得谎报已获得奖励。"
+	)
+	session.free()
+
+
+func _seed_for_encounter(start_seed: int, encounter_id: StringName) -> int:
+	for offset in 10_000:
+		var candidate := start_seed + offset
+		if RogueEncounterRegistry.select_encounter(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			candidate
+		) == encounter_id:
+			return candidate
+	push_error("无法为遭遇 %s 找到测试 seed。" % encounter_id)
+	return start_seed
 
 
 func _new_run_state() -> RunStateStore:

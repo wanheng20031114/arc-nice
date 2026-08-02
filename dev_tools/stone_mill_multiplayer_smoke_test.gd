@@ -126,8 +126,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 39,
-		"多人协议v39必须保留既有接线并隔离举盾机器人盾牌阶段。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 40,
+		"多人协议v40必须保留既有wire类型并隔离新增权威状态。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

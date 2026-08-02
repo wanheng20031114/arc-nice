@@ -5,10 +5,12 @@ signal inventory_changed
 signal upgrade_changed
 signal selected_character_changed(character_id: StringName)
 signal shared_warehouse_ledger_changed(snapshot: Dictionary)
+signal party_xirang_ledger_changed(snapshot: Dictionary)
 
 const INVENTORY_CAPACITY := 20
-const PARTY_ECONOMY_SCHEMA_VERSION := 1
+const PARTY_ECONOMY_SCHEMA_VERSION := 2
 const SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION := 1
+const PARTY_XIRANG_LEDGER_SCHEMA_VERSION := 1
 const STARTING_WOOD_COUNT := 5
 const STARTING_WOOD: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
@@ -60,6 +62,10 @@ var multiplayer_upgrade_levels: Dictionary = {}
 ## 可验证的 config_path/count 数据，不持有已卸载场景中的 Node 引用。
 var shared_warehouse_snapshots: Dictionary = {}
 var shared_warehouse_ledger_revision: int = 0
+## 路线、遭遇与重连共享的息壤绝对余额。键为 peer_id；单人使用 0。
+## 余额与背包、仓库一同进入 party economy 快照，避免重复快照重复加钱。
+var party_xirang_balances: Dictionary = {}
+var party_xirang_ledger_revision: int = 0
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 var _include_starting_inventory_for_new_peers := true
 
@@ -107,6 +113,8 @@ func begin_new_run(
 	multiplayer_upgrade_levels.clear()
 	shared_warehouse_snapshots.clear()
 	shared_warehouse_ledger_revision = 0
+	party_xirang_balances = {0: 0}
+	party_xirang_ledger_revision = 0
 	run_started = true
 	inventory_changed.emit()
 	upgrade_changed.emit()
@@ -481,6 +489,10 @@ func ensure_multiplayer_peer_state(peer_id: int) -> void:
 			StatType.ATTACK_SPEED: 0,
 			StatType.DODGE: 0,
 		}
+	if not party_xirang_balances.has(peer_id):
+		party_xirang_balances[peer_id] = 0
+		party_xirang_ledger_revision += 1
+		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
 
 
 func try_add_item_for_peer(peer_id: int, item: PickupConfig) -> bool:
@@ -763,6 +775,10 @@ func remap_multiplayer_peer_state(
 	)
 	if multiplayer_upgrade_levels.has(old_peer_id):
 		multiplayer_upgrade_levels[new_peer_id] = multiplayer_upgrade_levels[old_peer_id]
+	if party_xirang_balances.has(old_peer_id):
+		party_xirang_balances[new_peer_id] = int(party_xirang_balances[old_peer_id])
+		party_xirang_balances.erase(old_peer_id)
+		party_xirang_ledger_revision += 1
 	multiplayer_inventories.erase(old_peer_id)
 	multiplayer_inventory_stack_counts.erase(old_peer_id)
 	multiplayer_inventory_revisions.erase(old_peer_id)
@@ -771,6 +787,7 @@ func remap_multiplayer_peer_state(
 		active_multiplayer_peer_id = new_peer_id
 	inventory_changed.emit()
 	upgrade_changed.emit()
+	party_xirang_ledger_changed.emit(export_party_xirang_ledger())
 	return true
 
 
@@ -795,10 +812,13 @@ func prune_multiplayer_peer_states(
 		multiplayer_inventory_stack_counts.erase(peer_id)
 		multiplayer_inventory_revisions.erase(peer_id)
 		multiplayer_upgrade_levels.erase(peer_id)
+		party_xirang_balances.erase(peer_id)
 		if active_multiplayer_peer_id == peer_id:
 			active_multiplayer_peer_id = 0
 	inventory_changed.emit()
 	upgrade_changed.emit()
+	party_xirang_ledger_revision += 1
+	party_xirang_ledger_changed.emit(export_party_xirang_ledger())
 	return stale_peer_ids.size()
 
 
@@ -1484,6 +1504,62 @@ func has_party_item(
 	return get_party_item_total(item, peer_ids) > 0
 
 
+func get_party_xirang_ledger_revision() -> int:
+	return party_xirang_ledger_revision
+
+
+func get_party_xirang_balance(peer_id: int) -> int:
+	ensure_run_started()
+	if peer_id < 0:
+		return 0
+	if peer_id > 0:
+		ensure_multiplayer_peer_state(peer_id)
+	elif not party_xirang_balances.has(0):
+		party_xirang_balances[0] = 0
+	return maxi(int(party_xirang_balances.get(peer_id, 0)), 0)
+
+
+func set_party_xirang_balance(
+	peer_id: int,
+	amount: int,
+	emit_change_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	if peer_id < 0 or amount < 0:
+		return false
+	if peer_id > 0:
+		ensure_multiplayer_peer_state(peer_id)
+	var clamped_amount := maxi(amount, 0)
+	if int(party_xirang_balances.get(peer_id, 0)) == clamped_amount:
+		return true
+	party_xirang_balances[peer_id] = clamped_amount
+	party_xirang_ledger_revision += 1
+	if emit_change_signal:
+		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
+	return true
+
+
+func export_party_xirang_ledger() -> Dictionary:
+	ensure_run_started()
+	var values: Dictionary = {}
+	var peer_ids: Array[int] = []
+	for raw_peer_id in party_xirang_balances.keys():
+		var peer_id := int(raw_peer_id)
+		if peer_id >= 0 and not peer_ids.has(peer_id):
+			peer_ids.append(peer_id)
+	peer_ids.sort()
+	for peer_id in peer_ids:
+		values[str(peer_id)] = maxi(
+			int(party_xirang_balances.get(peer_id, 0)),
+			0
+		)
+	return {
+		"schema_version": PARTY_XIRANG_LEDGER_SCHEMA_VERSION,
+		"revision": party_xirang_ledger_revision,
+		"values": values,
+	}
+
+
 func export_party_economy_snapshot(
 	peer_ids: PackedInt32Array = PackedInt32Array()
 ) -> Dictionary:
@@ -1509,6 +1585,7 @@ func export_party_economy_snapshot(
 		"schema_version": PARTY_ECONOMY_SCHEMA_VERSION,
 		"warehouse_ledger": export_shared_warehouse_ledger(),
 		"inventories": inventories,
+		"xirang_ledger": export_party_xirang_ledger(),
 	}
 
 
@@ -1522,7 +1599,8 @@ func apply_party_economy_snapshot(
 		allow_revision_rewind,
 		false,
 		-1,
-		{}
+		{},
+		-1
 	)
 	return _commit_prepared_party_economy_snapshot(prepared)
 
@@ -1532,14 +1610,21 @@ func apply_party_economy_snapshot(
 func apply_authoritative_party_transaction(
 	next_snapshot: Dictionary,
 	expected_warehouse_ledger_revision: int,
-	expected_inventory_revisions: Dictionary
+	expected_inventory_revisions: Dictionary,
+	expected_xirang_ledger_revision: int = -1,
+	next_xirang_ledger: Dictionary = {}
 ) -> bool:
+	var resolved_snapshot := next_snapshot
+	if not next_xirang_ledger.is_empty():
+		resolved_snapshot = next_snapshot.duplicate(true)
+		resolved_snapshot["xirang_ledger"] = next_xirang_ledger.duplicate(true)
 	var prepared := _prepare_party_economy_snapshot(
-		next_snapshot,
+		resolved_snapshot,
 		false,
 		true,
 		expected_warehouse_ledger_revision,
-		expected_inventory_revisions
+		expected_inventory_revisions,
+		expected_xirang_ledger_revision
 	)
 	return _commit_prepared_party_economy_snapshot(prepared)
 
@@ -1756,12 +1841,54 @@ func _decode_shared_warehouse_snapshot(snapshot: Dictionary) -> Dictionary:
 	}
 
 
+func _decode_party_xirang_ledger(
+	snapshot: Dictionary,
+	minimum_revision: int
+) -> Dictionary:
+	if (
+		typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"])
+		!= PARTY_XIRANG_LEDGER_SCHEMA_VERSION
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or typeof(snapshot.get("values")) != TYPE_DICTIONARY
+	):
+		return {}
+	var incoming_revision := int(snapshot["revision"])
+	if incoming_revision < 0 or incoming_revision < minimum_revision:
+		return {}
+	var decoded_values: Dictionary = {}
+	for raw_peer_id in (snapshot["values"] as Dictionary).keys():
+		if (
+			typeof(raw_peer_id) != TYPE_INT
+			and (
+				typeof(raw_peer_id) != TYPE_STRING
+				or not str(raw_peer_id).is_valid_int()
+			)
+		):
+			return {}
+		var peer_id := int(raw_peer_id)
+		var amount_value: Variant = (snapshot["values"] as Dictionary)[raw_peer_id]
+		if (
+			peer_id < 0
+			or decoded_values.has(peer_id)
+			or typeof(amount_value) != TYPE_INT
+			or int(amount_value) < 0
+		):
+			return {}
+		decoded_values[peer_id] = int(amount_value)
+	return {
+		"revision": incoming_revision,
+		"values": decoded_values,
+	}
+
+
 func _prepare_party_economy_snapshot(
 	snapshot: Dictionary,
 	allow_revision_rewind: bool,
 	require_single_revision_step: bool,
 	expected_warehouse_revision: int,
-	expected_inventory_revisions: Dictionary
+	expected_inventory_revisions: Dictionary,
+	expected_xirang_revision: int
 ) -> Dictionary:
 	ensure_run_started()
 	if (
@@ -1769,11 +1896,18 @@ func _prepare_party_economy_snapshot(
 		or int(snapshot["schema_version"]) != PARTY_ECONOMY_SCHEMA_VERSION
 		or typeof(snapshot.get("warehouse_ledger")) != TYPE_DICTIONARY
 		or typeof(snapshot.get("inventories")) != TYPE_ARRAY
+		or typeof(snapshot.get("xirang_ledger")) != TYPE_DICTIONARY
 	):
 		return {}
 	if (
 		require_single_revision_step
 		and expected_warehouse_revision != shared_warehouse_ledger_revision
+	):
+		return {}
+	if (
+		require_single_revision_step
+		and expected_xirang_revision >= 0
+		and expected_xirang_revision != party_xirang_ledger_revision
 	):
 		return {}
 	var decoded_ledger := _decode_shared_warehouse_ledger(
@@ -1787,6 +1921,25 @@ func _prepare_party_economy_snapshot(
 		require_single_revision_step
 		and incoming_ledger_revision != shared_warehouse_ledger_revision
 		and incoming_ledger_revision != shared_warehouse_ledger_revision + 1
+	):
+		return {}
+	var decoded_xirang_ledger := _decode_party_xirang_ledger(
+		snapshot["xirang_ledger"] as Dictionary,
+		-1 if allow_revision_rewind else party_xirang_ledger_revision
+	)
+	if decoded_xirang_ledger.is_empty():
+		return {}
+	var incoming_xirang_revision := int(decoded_xirang_ledger["revision"])
+	if (
+		require_single_revision_step
+		and incoming_xirang_revision != party_xirang_ledger_revision
+		and incoming_xirang_revision != party_xirang_ledger_revision + 1
+	):
+		return {}
+	if (
+		not allow_revision_rewind
+		and incoming_xirang_revision == party_xirang_ledger_revision
+		and decoded_xirang_ledger["values"] != party_xirang_balances
 	):
 		return {}
 
@@ -1825,7 +1978,9 @@ func _prepare_party_economy_snapshot(
 		prepared_inventories[peer_id] = decoded_inventory
 	return {
 		"expected_warehouse_revision": shared_warehouse_ledger_revision,
+		"expected_xirang_revision": party_xirang_ledger_revision,
 		"warehouse_ledger": decoded_ledger,
+		"xirang_ledger": decoded_xirang_ledger,
 		"inventories": prepared_inventories,
 	}
 
@@ -1835,6 +1990,8 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		prepared.is_empty()
 		or int(prepared.get("expected_warehouse_revision", -1))
 		!= shared_warehouse_ledger_revision
+		or int(prepared.get("expected_xirang_revision", -1))
+		!= party_xirang_ledger_revision
 	):
 		return false
 	var prepared_inventories := prepared.get("inventories", {}) as Dictionary
@@ -1854,6 +2011,15 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 	)
 	shared_warehouse_snapshots = prepared_ledger["warehouses"] as Dictionary
 	shared_warehouse_ledger_revision = int(prepared_ledger["revision"])
+	var prepared_xirang_ledger := prepared["xirang_ledger"] as Dictionary
+	var xirang_changed: bool = (
+		int(prepared_xirang_ledger["revision"]) != party_xirang_ledger_revision
+		or prepared_xirang_ledger["values"] != party_xirang_balances
+	)
+	party_xirang_balances = (
+		prepared_xirang_ledger["values"] as Dictionary
+	).duplicate(true)
+	party_xirang_ledger_revision = int(prepared_xirang_ledger["revision"])
 
 	var any_inventory_changed := false
 	for raw_peer_id in prepared_inventories.keys():
@@ -1890,6 +2056,8 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		inventory_changed.emit()
 	if ledger_changed:
 		shared_warehouse_ledger_changed.emit(export_shared_warehouse_ledger())
+	if xirang_changed:
+		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
 	return true
 
 

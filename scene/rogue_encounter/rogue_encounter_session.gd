@@ -6,8 +6,9 @@ signal encounter_started(snapshot: Dictionary)
 signal encounter_finished(snapshot: Dictionary)
 signal economy_changed(snapshot: Dictionary)
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 const VOTING_TIMEOUT_SECONDS := 60.0
+const MAX_RESULT_PAGE_COUNT := 4
 
 const PHASE_IDLE := &"idle"
 const PHASE_INTRO := &"intro"
@@ -48,6 +49,7 @@ var _abstained: Dictionary = {}
 var _option_availability: Dictionary = {}
 var _winning_option: StringName = &""
 var _economy_result: Dictionary = {}
+var _result_pages: Array[Dictionary] = []
 var _economy_snapshot: Dictionary = {}
 var _resolved_node_ids: Dictionary = {}
 var _settlement_committed := false
@@ -106,6 +108,7 @@ func _reset_runtime_state(economy: RogueEncounterEconomyCoordinator) -> void:
 	_option_availability.clear()
 	_winning_option = &""
 	_economy_result.clear()
+	_result_pages.clear()
 	_economy_snapshot.clear()
 	_resolved_node_ids.clear()
 	_settlement_committed = false
@@ -159,6 +162,7 @@ func start_for_node(
 	_abstained.clear()
 	_winning_option = &""
 	_economy_result.clear()
+	_result_pages.clear()
 	_settlement_committed = false
 	_option_availability.clear()
 	_refresh_option_availability()
@@ -373,6 +377,7 @@ func export_state() -> Dictionary:
 		"option_availability": _option_availability.duplicate(true),
 		"winning_option": String(_winning_option),
 		"economy_result": _economy_result.duplicate(true),
+		"result_pages": _result_pages.duplicate(true),
 		"result_text": _get_result_text(),
 		"economy_snapshot": _economy_snapshot.duplicate(true),
 		"resolved_node_ids": _dictionary_int_keys(_resolved_node_ids),
@@ -422,6 +427,7 @@ func apply_remote_state(snapshot: Dictionary) -> bool:
 	_option_availability = decoded["option_availability"] as Dictionary
 	_winning_option = StringName(decoded["winning_option"])
 	_economy_result = decoded["economy_result"] as Dictionary
+	_result_pages = decoded["result_pages"] as Array[Dictionary]
 	_economy_snapshot = incoming_economy
 	_resolved_node_ids = decoded["resolved_node_ids"] as Dictionary
 	_settlement_committed = bool(decoded["settlement_committed"])
@@ -485,13 +491,18 @@ func _refresh_option_availability() -> bool:
 		or _phase not in [PHASE_INTRO, PHASE_VOTING]
 	):
 		return false
-	var next_availability := {
-		String(RogueEncounterEconomyCoordinator.OPTION_PURCHASE): (
-			not _active_peer_ids.is_empty()
-			and _economy.can_afford_purchase(_active_peer_ids)
-		),
-		String(RogueEncounterEconomyCoordinator.OPTION_FREE): true,
-	}
+	var reported_availability := _economy.get_option_availability(
+		_encounter_id,
+		_active_peer_ids
+	)
+	var next_availability: Dictionary = {}
+	for option_id in RogueEncounterRegistry.get_option_ids(_encounter_id):
+		next_availability[String(option_id)] = bool(
+			reported_availability.get(
+				String(option_id),
+				reported_availability.get(option_id, false)
+			)
+		)
 	if next_availability == _option_availability:
 		return false
 	_option_availability = next_availability
@@ -518,7 +529,8 @@ func _begin_resolution() -> void:
 	_voting_timer_running = false
 	_last_broadcast_remaining_second = 0
 	_bump_and_emit()
-	var result := _economy.resolve_chicken_bro(
+	var result := _economy.resolve_encounter(
+		_encounter_id,
 		_winning_option,
 		_node_content_seed,
 		_active_peer_ids,
@@ -531,6 +543,7 @@ func _begin_resolution() -> void:
 		_bump_and_emit()
 		return
 	_economy_result = result.duplicate(true)
+	_result_pages = _build_result_pages(_encounter_id, _economy_result)
 	_economy_snapshot = _economy.export_snapshot(_participant_peer_ids)
 	_settlement_committed = true
 	_resolved_node_ids[_node_id] = true
@@ -540,10 +553,7 @@ func _begin_resolution() -> void:
 
 func _select_winning_option() -> StringName:
 	var available_options: Array[StringName] = []
-	for option_id in [
-		RogueEncounterEconomyCoordinator.OPTION_PURCHASE,
-		RogueEncounterEconomyCoordinator.OPTION_FREE,
-	]:
+	for option_id in RogueEncounterRegistry.get_option_ids(_encounter_id):
 		if _is_option_available(option_id):
 			available_options.append(option_id)
 	if available_options.is_empty():
@@ -600,6 +610,16 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		or typeof(snapshot.get("voting_timer_running")) != TYPE_BOOL
 	):
 		return {}
+	var decoded_phase := StringName(snapshot["phase"])
+	var decoded_encounter_id := StringName(snapshot.get("encounter_id", ""))
+	if (
+		decoded_phase != PHASE_IDLE
+		and (
+			decoded_encounter_id.is_empty()
+			or RogueEncounterRegistry.get_definition(decoded_encounter_id).is_empty()
+		)
+	):
+		return {}
 	var participant_peer_ids: Variant = _decode_peer_id_array(
 		snapshot.get("participant_peer_ids")
 	)
@@ -630,9 +650,20 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 			return {}
 	var decoded_votes: Variant = _decode_votes(
 		snapshot.get("votes"),
-		participant_peer_ids as Array[int]
+		participant_peer_ids as Array[int],
+		decoded_encounter_id
 	)
 	if decoded_votes == null:
+		return {}
+	var decoded_result_pages: Variant = _decode_result_pages(
+		snapshot.get("result_pages")
+	)
+	if decoded_result_pages == null:
+		return {}
+	if (
+		decoded_phase in [PHASE_RESULT, PHASE_COMPLETED]
+		and (decoded_result_pages as Array[Dictionary]).is_empty()
+	):
 		return {}
 	if (
 		typeof(snapshot.get("option_availability")) != TYPE_DICTIONARY
@@ -643,12 +674,12 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		return {}
 	return {
 		"revision": int(snapshot["revision"]),
-		"phase": str(snapshot["phase"]),
+		"phase": String(decoded_phase),
 		"node_id": int(snapshot["node_id"]),
 		"content_pool_id": str(snapshot.get("content_pool_id", "")),
 		"node_content_seed": int(snapshot["node_content_seed"]),
 		"occurrence_key": str(snapshot.get("occurrence_key", "")),
-		"encounter_id": str(snapshot.get("encounter_id", "")),
+		"encounter_id": String(decoded_encounter_id),
 		"remaining_seconds": float(snapshot["remaining_seconds"]),
 		"voting_timer_running": bool(snapshot["voting_timer_running"]),
 		"participant_peer_ids": participant_peer_ids,
@@ -667,6 +698,7 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		"economy_result": (
 			snapshot["economy_result"] as Dictionary
 		).duplicate(true),
+		"result_pages": decoded_result_pages,
 		"economy_snapshot": (
 			snapshot["economy_snapshot"] as Dictionary
 		).duplicate(true),
@@ -698,7 +730,11 @@ func _decode_nonnegative_int_array(value: Variant) -> Variant:
 	return _decode_peer_id_array(value)
 
 
-func _decode_votes(value: Variant, participants: Array[int]) -> Variant:
+func _decode_votes(
+	value: Variant,
+	participants: Array[int],
+	encounter_id: StringName
+) -> Variant:
 	if typeof(value) != TYPE_ARRAY:
 		return null
 	var result: Dictionary = {}
@@ -716,13 +752,39 @@ func _decode_votes(value: Variant, participants: Array[int]) -> Variant:
 		if (
 			not participants.has(peer_id)
 			or result.has(peer_id)
-			or option_id not in [
-				RogueEncounterEconomyCoordinator.OPTION_PURCHASE,
-				RogueEncounterEconomyCoordinator.OPTION_FREE,
-			]
+			or not RogueEncounterRegistry.is_valid_option(
+				encounter_id,
+				option_id
+			)
 		):
 			return null
 		result[peer_id] = option_id
+	return result
+
+
+func _decode_result_pages(value: Variant) -> Variant:
+	if typeof(value) != TYPE_ARRAY:
+		return null
+	var raw_pages := value as Array
+	if raw_pages.size() > MAX_RESULT_PAGE_COUNT:
+		return null
+	var result: Array[Dictionary] = []
+	for raw_page_value in raw_pages:
+		if typeof(raw_page_value) != TYPE_DICTIONARY:
+			return null
+		var page := raw_page_value as Dictionary
+		if (
+			typeof(page.get("speaker")) != TYPE_STRING
+			or typeof(page.get("text")) != TYPE_STRING
+			or str(page["text"]).is_empty()
+			or typeof(page.get("is_narration")) != TYPE_BOOL
+		):
+			return null
+		result.append({
+			"speaker": str(page["speaker"]),
+			"text": str(page["text"]),
+			"is_narration": bool(page["is_narration"]),
+		})
 	return result
 
 
@@ -746,20 +808,114 @@ func _dictionary_int_keys(source: Dictionary) -> Array[int]:
 	return result
 
 
+func _build_result_pages(
+	encounter_id: StringName,
+	economy_result: Dictionary
+) -> Array[Dictionary]:
+	var result_code := StringName(economy_result.get("result_code", &""))
+	if encounter_id == RogueEncounterRegistry.CHICKEN_BRO:
+		match result_code:
+			RogueEncounterEconomyCoordinator.RESULT_GRANTED_PAID:
+				return [_make_result_page("鸡哥", "一手交钱，一手交球。", false)]
+			RogueEncounterEconomyCoordinator.RESULT_GRANTED_FREE:
+				return [_make_result_page("鸡哥", "好吧，那就送你了。", false)]
+			RogueEncounterEconomyCoordinator.RESULT_FREE_FAILED:
+				return [_make_result_page("鸡哥", "哪有这么好的事情？", false)]
+			RogueEncounterEconomyCoordinator.RESULT_ALL_INVENTORIES_FULL:
+				return [_make_result_page(
+					"",
+					"所有玩家背包均已满，交易未完成。",
+					true
+				)]
+			RogueEncounterEconomyCoordinator.RESULT_INSUFFICIENT_PLANKS:
+				return [_make_result_page("", "木板不足，交易未完成。", true)]
+	elif encounter_id == RogueEncounterRegistry.SLIME_TALKERS:
+		match result_code:
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_HELP_COLLECTIBLES:
+				return [
+					_make_result_page("史莱姆", "谢谢你，旅行者", false),
+					_make_result_page(
+						"",
+						"史莱姆回礼了你随机的三件收藏品",
+						true
+					),
+				]
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_HELP_XIRANG:
+				return [
+					_make_result_page("史莱姆", "谢谢你，旅行者", false),
+					_make_result_page(
+						"",
+						"史莱姆回礼了你一些息壤水晶",
+						true
+					),
+				]
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_INSUFFICIENT_WATER:
+				return [_make_result_page(
+					"",
+					"水瓶不足，无法帮助这些史莱姆。",
+					true
+				)]
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_KICK_INVENTORY:
+				return [
+					_make_result_page(
+						"",
+						"把史莱姆当做路边野狗一样踢死了",
+						true
+					),
+					_make_result_page("", "获得了10份凝胶", true),
+				]
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_KICK_WAREHOUSE:
+				return [
+					_make_result_page(
+						"",
+						"把史莱姆当做路边野狗一样踢死了",
+						true
+					),
+					_make_result_page("", "获得了10份凝胶", true),
+				]
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_KICK_DROPPED:
+				return [
+					_make_result_page(
+						"",
+						"把史莱姆当做路边野狗一样踢死了",
+						true
+					),
+					_make_result_page(
+						"",
+						"背包与仓库已满，10份凝胶被丢弃了。",
+						true
+					),
+				]
+			RogueEncounterEconomyCoordinator.RESULT_SLIME_LEFT:
+				return [_make_result_page(
+					"",
+					"真是一群神奇的生物，你记录了下来，然后便离开了",
+					true
+				)]
+	var definition := RogueEncounterRegistry.get_definition(encounter_id)
+	return [_make_result_page(
+		str(definition.get("default_result_speaker", "")),
+		"遭遇已经结束。",
+		bool(definition.get("default_result_is_narration", true))
+	)]
+
+
+func _make_result_page(
+	speaker: String,
+	text: String,
+	is_narration: bool
+) -> Dictionary:
+	return {
+		"speaker": speaker,
+		"text": text,
+		"is_narration": is_narration,
+	}
+
+
 func _get_result_text() -> String:
-	match StringName(_economy_result.get("result_code", &"")):
-		RogueEncounterEconomyCoordinator.RESULT_GRANTED_PAID:
-			return "一手交钱，一手交球。"
-		RogueEncounterEconomyCoordinator.RESULT_GRANTED_FREE:
-			return "好吧，那就送你了。"
-		RogueEncounterEconomyCoordinator.RESULT_FREE_FAILED:
-			return "哪有这么好的事情？"
-		RogueEncounterEconomyCoordinator.RESULT_ALL_INVENTORIES_FULL:
-			return "所有玩家背包均已满，交易未完成。"
-		RogueEncounterEconomyCoordinator.RESULT_INSUFFICIENT_PLANKS:
-			return "木板不足，交易未完成。"
-		_:
-			return ""
+	if _result_pages.is_empty():
+		return ""
+	return str(_result_pages[_result_pages.size() - 1].get("text", ""))
 
 
 func _export_votes() -> Array[Dictionary]:

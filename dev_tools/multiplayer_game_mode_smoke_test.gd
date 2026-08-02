@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 39,
-		"协议v39必须保留既有模式接线并隔离举盾机器人盾牌阶段。"
+		NetConstants.PROTOCOL_VERSION == 40,
+		"协议v40必须保留既有模式接线并隔离新增的权威状态。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
