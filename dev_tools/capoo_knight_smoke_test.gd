@@ -112,8 +112,8 @@ func _test_resource_contract() -> void:
 	_expect(KNIGHT_CONFIG.slash_effect_scene != null, "Knight slash effect scene is missing.")
 	_expect(_resource_path(KNIGHT_CONFIG.attack_audio_stream).ends_with("capoo_sword_slash_heavy.wav"), "Knight slash audio mismatch.")
 
-	var texture := load("res://resources/texture/capoo_knight.png") as Texture2D
-	var slash_texture := load("res://resources/texture/capoo_knight_slash.png") as Texture2D
+	var texture := load("res://resources/texture/enemy/capoo/capoo_knight.png") as Texture2D
+	var slash_texture := load("res://resources/texture/enemy/capoo/capoo_knight_slash.png") as Texture2D
 	_expect(texture != null and texture.get_size() == Vector2(384, 384), "Knight sprite sheet size is incorrect.")
 	_expect(slash_texture != null and slash_texture.get_size() == Vector2(384, 96), "Knight slash sheet size is incorrect.")
 	var knight_instance := KNIGHT_SCENE.instantiate() as CapooKnight
@@ -159,7 +159,7 @@ func _test_elite_resource_contract() -> void:
 	_expect(ELITE_KNIGHT_CONFIG.slash_effect_scene == KNIGHT_CONFIG.slash_effect_scene, "Elite knight must reuse knight slash effect.")
 	_expect(_resource_path(ELITE_KNIGHT_CONFIG.attack_audio_stream).ends_with("capoo_sword_slash_heavy.wav"), "Elite knight slash audio mismatch.")
 
-	var texture := load("res://resources/texture/capoo_knight_elite.png") as Texture2D
+	var texture := load("res://resources/texture/enemy/capoo/capoo_knight_elite.png") as Texture2D
 	_expect(texture != null and texture.get_size() == Vector2(384, 384), "Elite knight sprite sheet size is incorrect.")
 
 	var knight_instance := KNIGHT_SCENE.instantiate() as CapooKnight

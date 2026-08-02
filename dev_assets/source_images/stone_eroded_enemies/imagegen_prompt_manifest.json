@@ -13,130 +13,130 @@
   "asset_specific_inputs": [
     {
       "asset_id": "capoo_ak47",
-      "edit_target": "resources/texture/capoo_ak47.png",
+      "edit_target": "resources/texture/enemy/capoo/capoo_ak47.png",
       "imagegen_source": "capoo_ak47_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/capoo_ak47.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/capoo_ak47.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "capoo_knight",
-      "edit_target": "resources/texture/capoo_knight.png",
+      "edit_target": "resources/texture/enemy/capoo/capoo_knight.png",
       "imagegen_source": "capoo_knight_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/capoo_knight.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/capoo_knight.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "capoo_knight_elite",
-      "edit_target": "resources/texture/capoo_knight_elite.png",
+      "edit_target": "resources/texture/enemy/capoo/capoo_knight_elite.png",
       "imagegen_source": "capoo_knight_elite_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/capoo_knight_elite.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/capoo_knight_elite.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "capoo_mage",
-      "edit_target": "resources/texture/capoo_mage.png",
+      "edit_target": "resources/texture/enemy/capoo/capoo_mage.png",
       "imagegen_source": "capoo_mage_stone_eroded_imagegen_green.png",
-      "runtime_output": "resources/texture/stone_eroded/capoo_mage.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/capoo_mage.png",
       "chroma_key": "#00ff00"
     },
     {
       "asset_id": "capoo_rpg",
-      "edit_target": "resources/texture/capoo_rpg.png",
+      "edit_target": "resources/texture/enemy/capoo/capoo_rpg.png",
       "imagegen_source": "capoo_rpg_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/capoo_rpg.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/capoo_rpg.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "capoo_smg",
-      "edit_target": "resources/texture/capoo_smg.png",
+      "edit_target": "resources/texture/enemy/capoo/capoo_smg.png",
       "imagegen_source": "capoo_smg_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/capoo_smg.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/capoo_smg.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "capoo_sniper",
-      "edit_target": "resources/texture/capoo_sniper.png",
+      "edit_target": "resources/texture/enemy/capoo/capoo_sniper.png",
       "imagegen_source": "capoo_sniper_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/capoo_sniper.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/capoo_sniper.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "capoo_swordsman",
-      "edit_target": "resources/texture/capoo_swordsman.png",
+      "edit_target": "resources/texture/enemy/capoo/capoo_swordsman.png",
       "imagegen_source": "capoo_swordsman_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/capoo_swordsman.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/capoo_swordsman.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "yuanshi_insect",
-      "edit_target": "resources/texture/源石虫.png",
+      "edit_target": "resources/texture/enemy/yuanshi_insect/源石虫.png",
       "imagegen_source": "yuanshi_insect_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/yuanshi_insect.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/yuanshi_insect.png",
       "chroma_key": "#ff00ff",
       "note": "普通、硬壳、迅捷、自爆四种原石虫共享该96x192主体图集。"
     },
     {
       "asset_id": "yuanshi_insect_fire_ranged",
-      "edit_target": "resources/texture/yuanshi_insect_fire_ranged.png",
+      "edit_target": "resources/texture/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.png",
       "imagegen_source": "yuanshi_insect_fire_ranged_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/yuanshi_insect_fire_ranged.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/yuanshi_insect_fire_ranged.png",
       "chroma_key": "#ff00ff",
       "note": "为生图编辑临时将10x1逻辑格无损重排为5x2，最终恢复原320x32布局。"
     },
     {
       "asset_id": "yuanshi_insect_green_shell",
-      "edit_target": "resources/texture/yuanshi_insect_green_shell.png",
+      "edit_target": "resources/texture/enemy/yuanshi_insect/yuanshi_insect_green_shell.png",
       "imagegen_source": "yuanshi_insect_green_shell_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/yuanshi_insect_green_shell.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/yuanshi_insect_green_shell.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "yuanshi_insect_guardian",
-      "edit_target": "resources/texture/yuanshi_insect_guardian.png",
+      "edit_target": "resources/texture/enemy/yuanshi_insect/yuanshi_insect_guardian.png",
       "imagegen_source": "yuanshi_insect_guardian_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/yuanshi_insect_guardian.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/yuanshi_insect_guardian.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "yuanshi_insect_purple_bomber",
-      "edit_target": "resources/texture/yuanshi_insect_purple_bomber.png",
+      "edit_target": "resources/texture/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.png",
       "imagegen_source": "yuanshi_insect_purple_bomber_stone_eroded_imagegen_green.png",
-      "runtime_output": "resources/texture/stone_eroded/yuanshi_insect_purple_bomber.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/yuanshi_insect_purple_bomber.png",
       "chroma_key": "#00ff00"
     },
     {
       "asset_id": "slime",
-      "edit_target": "resources/texture/slime.png",
+      "edit_target": "resources/texture/enemy/slime/slime.png",
       "imagegen_source": "slime_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/slime.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/slime.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "slime_fire",
-      "edit_target": "resources/texture/slime_fire.png",
+      "edit_target": "resources/texture/enemy/slime/slime_fire.png",
       "imagegen_source": "slime_fire_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/slime_fire.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/slime_fire.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "slime_frost",
-      "edit_target": "resources/texture/slime_frost.png",
+      "edit_target": "resources/texture/enemy/slime/slime_frost.png",
       "imagegen_source": "slime_frost_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/slime_frost.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/slime_frost.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "slime_golden",
-      "edit_target": "resources/texture/slime_golden.png",
+      "edit_target": "resources/texture/enemy/slime/slime_golden.png",
       "imagegen_source": "slime_golden_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/slime_golden.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/slime_golden.png",
       "chroma_key": "#ff00ff"
     },
     {
       "asset_id": "slime_green",
-      "edit_target": "resources/texture/slime_green.png",
+      "edit_target": "resources/texture/enemy/slime/slime_green.png",
       "imagegen_source": "slime_green_stone_eroded_imagegen_magenta.png",
-      "runtime_output": "resources/texture/stone_eroded/slime_green.png",
+      "runtime_output": "resources/texture/enemy/stone_eroded/slime_green.png",
       "chroma_key": "#ff00ff"
     }
   ],

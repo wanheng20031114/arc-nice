@@ -26,7 +26,7 @@ from pixel_grid_analyzer import analyze_image
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/frost_sorcerer"
-TEXTURE_DIR = ROOT / "resources/texture"
+TEXTURE_DIR = ROOT / "resources/texture/enemy/sorcerer"
 
 CHARACTER_ROW_SOURCES = (
     SOURCE_DIR / "frost_sorcerer_move_fire_scale_v2_alpha.png",

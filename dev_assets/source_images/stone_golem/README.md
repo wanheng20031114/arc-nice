@@ -56,10 +56,10 @@ Repair prompt:
 ```powershell
 python dev_tools/process_stone_golem_sheet.py `
   dev_assets/source_images/stone_golem/stone_golem_sheet_alpha_v2.png `
-  resources/texture/stone_golem.png
+  resources/texture/enemy/artificial_creation/stone_golem.png
 
 python agent_skills/enemy-generation-pipeline/scripts/analyze_enemy_sheet.py `
-  resources/texture/stone_golem.png `
+  resources/texture/enemy/artificial_creation/stone_golem.png `
   --grid 4x4 `
   --virtual-size 64x64 `
   --body-anchor 32x57 `

@@ -50,7 +50,7 @@ const LINGLAN_SLIME_CONFIG_PATHS: Array[String] = [
 	"res://resources/config/enemies/slime_fire.tres",
 ]
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
-const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/guardian_point_light.png")
+const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
 const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4

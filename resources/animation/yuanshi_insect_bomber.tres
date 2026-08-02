@@ -1,7 +1,7 @@
 [gd_resource type="SpriteFrames" format=3 uid="uid://b5wdos2x826w2"]
 
-[ext_resource type="Texture2D" uid="uid://bya8idibp7vs3" path="res://resources/texture/源石虫.png" id="1_jf1kb"]
-[ext_resource type="Texture2D" uid="uid://cjxva0exdfnxv" path="res://resources/texture/爆炸特效.png" id="2_yk6et"]
+[ext_resource type="Texture2D" uid="uid://bya8idibp7vs3" path="res://resources/texture/enemy/yuanshi_insect/源石虫.png" id="1_jf1kb"]
+[ext_resource type="Texture2D" uid="uid://cjxva0exdfnxv" path="res://resources/texture/enemy/yuanshi_insect/爆炸特效.png" id="2_yk6et"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_oyqew"]
 atlas = ExtResource("1_jf1kb")

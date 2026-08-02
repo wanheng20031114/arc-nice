@@ -16,7 +16,7 @@
 整数像素采样。
 
 2026-08-01 起，运行时 move 不再读取主图第一行的旧四帧。新 move 使用独立
-`resources/texture/fire_sorcerer_move.png`，规格为 320×40、8×1 帧、12 fps；
+`resources/texture/enemy/sorcerer/fire_sorcerer_move.png`，规格为 320×40、8×1 帧、12 fps；
 八帧完整周期仍为 `8 / 12 = 0.667` 秒，与旧四帧 6 fps 的周期一致。
 `fire_sorcerer_move_generated_v1.png`、两张 opposite 重绘和
 `fire_sorcerer_move_native_v1.png` 仅保留为历史原稿及主图第一行兼容来源。

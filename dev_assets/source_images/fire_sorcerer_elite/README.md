@@ -1,10 +1,10 @@
 # 精英火焰术士 imagegen 素材记录
 
 运行时角色严格派生自当前已验收的
-`resources/texture/fire_sorcerer.png`；蓝火球严格派生自
-`resources/texture/fire_sorcerer_fireball.png`。两张原版贴图是唯一的
+`resources/texture/enemy/sorcerer/fire_sorcerer.png`；蓝火球严格派生自
+`resources/texture/enemy/sorcerer/fire_sorcerer_fireball.png`。两张原版贴图是唯一的
 几何、姿势、中心锚点、逐帧边界和透明轮廓来源，不能用旧版生图素材替换。
-八帧 move 同样以 `resources/texture/fire_sorcerer_move.png` 为唯一运行时几何
+八帧 move 同样以 `resources/texture/enemy/sorcerer/fire_sorcerer_move.png` 为唯一运行时几何
 来源；独立生图只负责提供金边和蓝色杖火的配色设计。
 
 ## 文件
@@ -20,7 +20,7 @@
 - `fire_sorcerer_elite_move_8pose_imagegen_reference.png`：4×2 八相位 move
   的金边与蓝色杖火设计参考。
 - `fire_sorcerer_elite_move_8pose_alpha_reference.png`：上述参考的透明版本。
-- `resources/texture/fire_sorcerer_elite_move.png`：普通版几何与精英设计配色
+- `resources/texture/enemy/sorcerer/fire_sorcerer_elite_move.png`：普通版几何与精英设计配色
   合成得到的 320×40、8×1 运行时横条。
 
 ## 角色设计参考

@@ -76,9 +76,9 @@ func _test_resource_contract() -> void:
 		"RPG explosion frame count mismatch."
 	)
 
-	var texture := load("res://resources/texture/capoo_rpg.png") as Texture2D
-	var rocket_texture := load("res://resources/texture/capoo_rpg_rocket.png") as Texture2D
-	var explosion_texture := load("res://resources/texture/capoo_rpg_explosion.png") as Texture2D
+	var texture := load("res://resources/texture/enemy/capoo/capoo_rpg.png") as Texture2D
+	var rocket_texture := load("res://resources/texture/enemy/capoo/capoo_rpg_rocket.png") as Texture2D
+	var explosion_texture := load("res://resources/texture/enemy/capoo/capoo_rpg_explosion.png") as Texture2D
 	_expect(texture != null and texture.get_size() == Vector2(384, 384), "RPG sprite sheet size is incorrect.")
 	_expect(rocket_texture != null and rocket_texture.get_size() == Vector2(128, 32), "RPG rocket sheet size is incorrect.")
 	_expect(

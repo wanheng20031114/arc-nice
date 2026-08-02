@@ -12,11 +12,11 @@ class_name YuanshiInsectAuraConfig
 @export var aura_particles_enabled: bool = true
 # 单颗粒子使用的像素纹理。
 @export var aura_particle_texture: Texture2D = preload(
-	"res://resources/texture/yuanshi_insect_green_aura_particle.tres"
+	"res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_green_aura_particle.tres"
 )
 # 每颗粒子出生时随机抽取的色泽。
 @export var aura_particle_color_ramp: Texture2D = preload(
-	"res://resources/texture/yuanshi_insect_green_aura_colors.tres"
+	"res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_green_aura_colors.tres"
 )
 # 同时存在的粒子数量；数量越高，喷射越密集。
 @export_range(1, 512, 1, "or_greater") var aura_particle_amount: int = 72

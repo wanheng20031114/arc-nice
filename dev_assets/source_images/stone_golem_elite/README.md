@@ -1,7 +1,7 @@
 # Elite Stone Golem source manifest
 
 The elite sheet is derived only from the current runtime
-`resources/texture/stone_golem.png`. That file contains the user's latest
+`resources/texture/enemy/artificial_creation/stone_golem.png`. That file contains the user's latest
 hand-repaired outline, complete legs, and internal pixels, so older generated
 stone-golem sources must not be substituted for it.
 
@@ -40,8 +40,8 @@ mask instead of downscaling the generated reference.
 
 ```powershell
 python dev_tools/create_stone_golem_elite_sheet.py `
-  resources/texture/stone_golem.png `
-  resources/texture/stone_golem_elite.png `
+  resources/texture/enemy/artificial_creation/stone_golem.png `
+  resources/texture/enemy/artificial_creation/stone_golem_elite.png `
   --overlay-output `
   dev_assets/source_images/stone_golem_elite/stone_golem_elite_detail_overlay.png
 ```

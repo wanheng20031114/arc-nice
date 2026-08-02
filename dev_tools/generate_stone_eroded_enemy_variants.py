@@ -219,7 +219,9 @@ def _build_animation(variant: EnemyVariant) -> str:
 		raise ValueError(f"{source_path} has no texture ExtResource.")
 	main_match = matches[0]
 	line = _without_resource_uid(main_match.group(0))
-	new_texture_path = f"res://resources/texture/stone_eroded/{variant.texture_name}"
+	new_texture_path = (
+		f"res://resources/texture/enemy/stone_eroded/{variant.texture_name}"
+	)
 	line = re.sub(r'path="[^"]+"', f'path="{new_texture_path}"', line)
 	return text[: main_match.start()] + line + text[main_match.end() :]
 

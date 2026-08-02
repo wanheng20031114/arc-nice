@@ -48,9 +48,12 @@ FIRE_SOURCE_PATH = SOURCE_DIR / "combat_robot_gunner_fire_f2_imagegen.png"
 DEATH_SOURCE_PATH = SOURCE_DIR / "combat_robot_gunner_death_d1_imagegen.png"
 BULLET_SOURCE_PATH = SOURCE_DIR / "combat_robot_gunner_bullet_b2_imagegen.png"
 
-RUNTIME_SHEET_PATH = PROJECT_ROOT / "resources" / "texture" / "combat_robot_gunner.png"
+RUNTIME_TEXTURE_DIR = (
+    PROJECT_ROOT / "resources/texture/enemy/mechanical_life"
+)
+RUNTIME_SHEET_PATH = RUNTIME_TEXTURE_DIR / "combat_robot_gunner.png"
 RUNTIME_BULLET_PATH = (
-    PROJECT_ROOT / "resources" / "texture" / "combat_robot_gunner_bullet.png"
+    RUNTIME_TEXTURE_DIR / "combat_robot_gunner_bullet.png"
 )
 
 FRAME_SIZE = 32
@@ -82,6 +85,16 @@ REPORT_PATH = PREVIEW_DIR / "combat_robot_gunner_asset_build_report.json"
 
 TRANSPARENT = (0, 0, 0, 0)
 REVIEW_BACKGROUND = (13, 19, 31, 255)
+ATTACK_ALERT_RED = (255, 0, 0, 255)
+ATTACK_ALERT_POINTS = (
+    (13, 5),
+    (15, 11),
+    (16, 11),
+    (17, 11),
+    (15, 12),
+    (16, 12),
+    (17, 12),
+)
 
 
 def _green_key(image: Image.Image) -> Image.Image:
@@ -441,6 +454,27 @@ def _build_fire_matrix(
     return matrix, upper_phases
 
 
+def _apply_reviewed_fire_edits(fire_matrix: list[list[Image.Image]]) -> None:
+    """Preserve the reviewed bright attack signal and three repaired edges."""
+    for upper_index in (0, 2):
+        for frame in fire_matrix[upper_index]:
+            pixels = frame.load()
+            for point in ATTACK_ALERT_POINTS:
+                if pixels[point] != PALETTE[8]:
+                    raise ValueError(f"Attack alert source pixel changed at {point}")
+                pixels[point] = ATTACK_ALERT_RED
+
+    for leg_index in range(3):
+        pixels = fire_matrix[1][leg_index].load()
+        for y in range(13, 19):
+            if pixels[9, y] != PALETTE[0] or pixels[10, y] != TRANSPARENT:
+                raise ValueError(
+                    f"Reviewed fire edge source changed at leg={leg_index}, y={y}"
+                )
+            pixels[9, y] = TRANSPARENT
+            pixels[10, y] = PALETTE[0]
+
+
 def _largest_eroded_center(image: Image.Image) -> tuple[float, float]:
     """Locate the generated death frame's thick rotated box."""
     eroded = image.getchannel("A").filter(ImageFilter.MinFilter(5))
@@ -569,7 +603,7 @@ def _assert_frame_contract(frame: Image.Image, label: str) -> None:
     alphas = set(frame.getchannel("A").getdata())
     if not alphas.issubset({0, 255}):
         raise AssertionError(f"{label} contains non-binary alpha: {sorted(alphas)}")
-    if not _visible_colors(frame).issubset(set(PALETTE)):
+    if not _visible_colors(frame).issubset(set(PALETTE) | {ATTACK_ALERT_RED}):
         raise AssertionError(f"{label} contains colors outside the fixed palette")
     for red, green, blue, alpha in frame.getdata():
         if alpha == 0 and (red, green, blue) != (0, 0, 0):
@@ -611,6 +645,20 @@ def _assert_contracts(
     expected_flash = {(30, 16), (31, 16), (30, 17), (31, 17)}
     for upper_index, row in enumerate(fire_matrix):
         for frame in row:
+            alert_points = {
+                (x, y)
+                for y in range(frame.height)
+                for x in range(frame.width)
+                if frame.getpixel((x, y)) == ATTACK_ALERT_RED
+            }
+            expected_alert = (
+                set(ATTACK_ALERT_POINTS) if upper_index in (0, 2) else set()
+            )
+            if alert_points != expected_alert:
+                raise AssertionError(
+                    f"Fire F{upper_index} attack alert pixels differ: "
+                    f"{sorted(alert_points)}"
+                )
             visible_flash = {
                 (x, y)
                 for y in range(16, 18)
@@ -696,7 +744,7 @@ def _build_comparison(
     bullet_frames: list[Image.Image],
 ) -> Image.Image:
     combat_robot_sheet = Image.open(
-        PROJECT_ROOT / "resources" / "texture" / "combat_robot.png"
+        RUNTIME_TEXTURE_DIR / "combat_robot.png"
     ).convert("RGBA")
     tango_sheet = Image.open(
         PROJECT_ROOT / "resources" / "texture" / "player" / "tango" / "tango_move.png"
@@ -767,6 +815,7 @@ def build(write_runtime: bool = False) -> dict:
     fire_matrix, _upper_phases = _build_fire_matrix(
         fixed_upper, magazine, leg_layers
     )
+    _apply_reviewed_fire_edits(fire_matrix)
     death_frames = _build_death_frames(
         aligned_anchor,
         fixed_upper,

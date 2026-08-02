@@ -30,8 +30,8 @@ from process_frost_sorcerer_assets import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/lightning_sorcerer"
-OUTPUT = ROOT / "resources/texture/lightning_sorcerer.png"
-MOVE_OUTPUT = ROOT / "resources/texture/lightning_sorcerer_move.png"
+OUTPUT = ROOT / "resources/texture/enemy/sorcerer/lightning_sorcerer.png"
+MOVE_OUTPUT = ROOT / "resources/texture/enemy/sorcerer/lightning_sorcerer_move.png"
 MOVE_SOURCE = SOURCE_DIR / "lightning_sorcerer_move_8pose_v5_alpha.png"
 ROW_SOURCES = (
     SOURCE_DIR / "lightning_sorcerer_move_alpha.png",

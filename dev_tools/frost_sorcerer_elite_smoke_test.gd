@@ -13,15 +13,15 @@ const BASE_SCENE := preload(
 	"res://scene/enemy/sorcerer/frost_sorcerer.tscn"
 )
 
-const BASE_TEXTURE_PATH := "res://resources/texture/frost_sorcerer.png"
+const BASE_TEXTURE_PATH := "res://resources/texture/enemy/sorcerer/frost_sorcerer.png"
 const ELITE_TEXTURE_PATH := (
-	"res://resources/texture/frost_sorcerer_elite.png"
+	"res://resources/texture/enemy/sorcerer/frost_sorcerer_elite.png"
 )
 const BASE_MOVE_TEXTURE_PATH := (
-	"res://resources/texture/frost_sorcerer_move.png"
+	"res://resources/texture/enemy/sorcerer/frost_sorcerer_move.png"
 )
 const ELITE_MOVE_TEXTURE_PATH := (
-	"res://resources/texture/frost_sorcerer_elite_move.png"
+	"res://resources/texture/enemy/sorcerer/frost_sorcerer_elite_move.png"
 )
 const EXPECTED_CHANGED_PIXEL_COUNT := 1594
 const MOVE_FRAME_COUNT := 8

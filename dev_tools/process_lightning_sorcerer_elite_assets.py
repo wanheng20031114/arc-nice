@@ -25,7 +25,7 @@ from process_lightning_sorcerer_assets import _assert_lightning_gait_contract
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEXTURE_DIR = ROOT / "resources/texture"
+TEXTURE_DIR = ROOT / "resources/texture/enemy/sorcerer"
 ANIMATION_DIR = ROOT / "resources/animation"
 
 BASE_CHARACTER = TEXTURE_DIR / "lightning_sorcerer.png"
@@ -307,8 +307,8 @@ def _sprite_frames_text() -> str:
     lines = [
         '[gd_resource type="SpriteFrames" format=3 uid="uid://cwdlo03coum0b"]',
         "",
-        '[ext_resource type="Texture2D" uid="uid://b36yt8ewr3axr" path="res://resources/texture/lightning_sorcerer_elite.png" id="1_texture"]',
-        '[ext_resource type="Texture2D" uid="uid://dql2aoi5h4ivq" path="res://resources/texture/lightning_sorcerer_elite_move.png" id="2_move"]',
+        '[ext_resource type="Texture2D" uid="uid://b36yt8ewr3axr" path="res://resources/texture/enemy/sorcerer/lightning_sorcerer_elite.png" id="1_texture"]',
+        '[ext_resource type="Texture2D" uid="uid://dql2aoi5h4ivq" path="res://resources/texture/enemy/sorcerer/lightning_sorcerer_elite_move.png" id="2_move"]',
         "",
     ]
     for name in sorted(ANIMATIONS):

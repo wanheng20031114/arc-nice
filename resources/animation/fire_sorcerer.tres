@@ -1,7 +1,7 @@
 [gd_resource type="SpriteFrames" format=3 uid="uid://fq4hw782ls7f"]
 
-[ext_resource type="Texture2D" uid="uid://n2vio6cf7374" path="res://resources/texture/fire_sorcerer.png" id="1_texture"]
-[ext_resource type="Texture2D" uid="uid://nxambs141p6q" path="res://resources/texture/fire_sorcerer_move.png" id="2_move"]
+[ext_resource type="Texture2D" uid="uid://n2vio6cf7374" path="res://resources/texture/enemy/sorcerer/fire_sorcerer.png" id="1_texture"]
+[ext_resource type="Texture2D" uid="uid://nxambs141p6q" path="res://resources/texture/enemy/sorcerer/fire_sorcerer_move.png" id="2_move"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_attack_0"]
 atlas = ExtResource("1_texture")

@@ -23,7 +23,7 @@ from scipy import ndimage
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/stone_eroded_enemies"
-TEXTURE_DIR = ROOT / "resources/texture/stone_eroded"
+TEXTURE_DIR = ROOT / "resources/texture/enemy/stone_eroded"
 REVIEW_DIR = ROOT / "tmp/stone_eroded_enemies"
 
 
@@ -48,7 +48,7 @@ class TextureAsset:
 ASSETS = (
 	TextureAsset(
 		asset_id="capoo_ak47",
-		base_path=ROOT / "resources/texture/capoo_ak47.png",
+		base_path=ROOT / "resources/texture/enemy/capoo/capoo_ak47.png",
 		imagegen_path=SOURCE_DIR / "capoo_ak47_stone_eroded_imagegen_magenta.png",
 		output_path=TEXTURE_DIR / "capoo_ak47.png",
 		columns=4,
@@ -59,7 +59,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="capoo_knight",
-		base_path=ROOT / "resources/texture/capoo_knight.png",
+		base_path=ROOT / "resources/texture/enemy/capoo/capoo_knight.png",
 		imagegen_path=(
 			SOURCE_DIR / "capoo_knight_stone_eroded_imagegen_magenta.png"
 		),
@@ -71,7 +71,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="capoo_knight_elite",
-		base_path=ROOT / "resources/texture/capoo_knight_elite.png",
+		base_path=ROOT / "resources/texture/enemy/capoo/capoo_knight_elite.png",
 		imagegen_path=(
 			SOURCE_DIR / "capoo_knight_elite_stone_eroded_imagegen_magenta.png"
 		),
@@ -93,7 +93,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="capoo_mage",
-		base_path=ROOT / "resources/texture/capoo_mage.png",
+		base_path=ROOT / "resources/texture/enemy/capoo/capoo_mage.png",
 		imagegen_path=(
 			SOURCE_DIR / "capoo_mage_stone_eroded_imagegen_green.png"
 		),
@@ -109,7 +109,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="capoo_rpg",
-		base_path=ROOT / "resources/texture/capoo_rpg.png",
+		base_path=ROOT / "resources/texture/enemy/capoo/capoo_rpg.png",
 		imagegen_path=SOURCE_DIR / "capoo_rpg_stone_eroded_imagegen_magenta.png",
 		output_path=TEXTURE_DIR / "capoo_rpg.png",
 		columns=4,
@@ -120,7 +120,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="capoo_smg",
-		base_path=ROOT / "resources/texture/capoo_smg.png",
+		base_path=ROOT / "resources/texture/enemy/capoo/capoo_smg.png",
 		imagegen_path=SOURCE_DIR / "capoo_smg_stone_eroded_imagegen_magenta.png",
 		output_path=TEXTURE_DIR / "capoo_smg.png",
 		columns=4,
@@ -131,7 +131,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="capoo_sniper",
-		base_path=ROOT / "resources/texture/capoo_sniper.png",
+		base_path=ROOT / "resources/texture/enemy/capoo/capoo_sniper.png",
 		imagegen_path=(
 			SOURCE_DIR / "capoo_sniper_stone_eroded_imagegen_magenta.png"
 		),
@@ -144,7 +144,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="capoo_swordsman",
-		base_path=ROOT / "resources/texture/capoo_swordsman.png",
+		base_path=ROOT / "resources/texture/enemy/capoo/capoo_swordsman.png",
 		imagegen_path=(
 			SOURCE_DIR / "capoo_swordsman_stone_eroded_imagegen_magenta.png"
 		),
@@ -160,7 +160,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="yuanshi_insect",
-		base_path=ROOT / "resources/texture/源石虫.png",
+		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/源石虫.png",
 		imagegen_path=(
 			SOURCE_DIR / "yuanshi_insect_stone_eroded_imagegen_magenta.png"
 		),
@@ -172,7 +172,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="yuanshi_insect_fire_ranged",
-		base_path=ROOT / "resources/texture/yuanshi_insect_fire_ranged.png",
+		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.png",
 		imagegen_path=(
 			SOURCE_DIR / "yuanshi_insect_fire_ranged_stone_eroded_imagegen_magenta.png"
 		),
@@ -188,7 +188,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="yuanshi_insect_green_shell",
-		base_path=ROOT / "resources/texture/yuanshi_insect_green_shell.png",
+		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/yuanshi_insect_green_shell.png",
 		imagegen_path=(
 			SOURCE_DIR / "yuanshi_insect_green_shell_stone_eroded_imagegen_magenta.png"
 		),
@@ -200,7 +200,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="yuanshi_insect_guardian",
-		base_path=ROOT / "resources/texture/yuanshi_insect_guardian.png",
+		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/yuanshi_insect_guardian.png",
 		imagegen_path=(
 			SOURCE_DIR / "yuanshi_insect_guardian_stone_eroded_imagegen_magenta.png"
 		),
@@ -213,7 +213,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="yuanshi_insect_purple_bomber",
-		base_path=ROOT / "resources/texture/yuanshi_insect_purple_bomber.png",
+		base_path=ROOT / "resources/texture/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.png",
 		imagegen_path=(
 			SOURCE_DIR / "yuanshi_insect_purple_bomber_stone_eroded_imagegen_green.png"
 		),
@@ -225,7 +225,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="slime",
-		base_path=ROOT / "resources/texture/slime.png",
+		base_path=ROOT / "resources/texture/enemy/slime/slime.png",
 		imagegen_path=SOURCE_DIR / "slime_stone_eroded_imagegen_magenta.png",
 		output_path=TEXTURE_DIR / "slime.png",
 		columns=3,
@@ -235,7 +235,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="slime_fire",
-		base_path=ROOT / "resources/texture/slime_fire.png",
+		base_path=ROOT / "resources/texture/enemy/slime/slime_fire.png",
 		imagegen_path=SOURCE_DIR / "slime_fire_stone_eroded_imagegen_magenta.png",
 		output_path=TEXTURE_DIR / "slime_fire.png",
 		columns=3,
@@ -245,7 +245,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="slime_frost",
-		base_path=ROOT / "resources/texture/slime_frost.png",
+		base_path=ROOT / "resources/texture/enemy/slime/slime_frost.png",
 		imagegen_path=SOURCE_DIR / "slime_frost_stone_eroded_imagegen_magenta.png",
 		output_path=TEXTURE_DIR / "slime_frost.png",
 		columns=3,
@@ -255,7 +255,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="slime_golden",
-		base_path=ROOT / "resources/texture/slime_golden.png",
+		base_path=ROOT / "resources/texture/enemy/slime/slime_golden.png",
 		imagegen_path=(
 			SOURCE_DIR / "slime_golden_stone_eroded_imagegen_magenta.png"
 		),
@@ -267,7 +267,7 @@ ASSETS = (
 	),
 	TextureAsset(
 		asset_id="slime_green",
-		base_path=ROOT / "resources/texture/slime_green.png",
+		base_path=ROOT / "resources/texture/enemy/slime/slime_green.png",
 		imagegen_path=SOURCE_DIR / "slime_green_stone_eroded_imagegen_magenta.png",
 		output_path=TEXTURE_DIR / "slime_green.png",
 		columns=3,

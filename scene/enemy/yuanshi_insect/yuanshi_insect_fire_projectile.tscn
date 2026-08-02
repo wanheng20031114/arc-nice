@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://cpurafcmqp6i1"]
 
 [ext_resource type="Script" uid="uid://t41jeaklxwd1" path="res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.gd" id="1_script"]
-[ext_resource type="Texture2D" uid="uid://bd8l8aj80xmt7" path="res://resources/texture/yuanshi_insect_fire_projectile.png" id="2_texture"]
+[ext_resource type="Texture2D" uid="uid://bd8l8aj80xmt7" path="res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.png" id="2_texture"]
 [ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="3_emission"]
 [ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="4_halo"]
 

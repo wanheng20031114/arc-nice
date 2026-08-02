@@ -23,9 +23,9 @@
   内置 `imagegen` 生成的 4×4 多级紫色色阶设计参考。
 - `lightning_sorcerer_elite_move_8pose_palette_swap_v7_imagegen_reference.png`：
   Codex 内置 `imagegen` 生成的八帧移动紫色色阶设计参考。
-- `resources/texture/lightning_sorcerer_elite.png`：160×160 运行时主动画；
+- `resources/texture/enemy/sorcerer/lightning_sorcerer_elite.png`：160×160 运行时主动画；
   只由普通版主图执行固定色表映射得到。
-- `resources/texture/lightning_sorcerer_elite_move.png`：320×40 八帧移动横条；
+- `resources/texture/enemy/sorcerer/lightning_sorcerer_elite_move.png`：320×40 八帧移动横条；
   只由普通版移动横条执行同一固定色表映射得到。
 - `resources/animation/lightning_sorcerer_elite.tres`：独立 SpriteFrames；移动
   8 帧、12 fps，蓄力/攻击/死亡各 4 帧。

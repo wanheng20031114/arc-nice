@@ -8,7 +8,7 @@ geometry, then samples four complete 29px-tall character poses with
 nearest-neighbor resampling.  No body region is mirrored or spliced.
 
 The resulting 160x40 native strip is audited before it replaces row zero of
-``resources/texture/fire_sorcerer.png``.  Rows one through three are protected
+``resources/texture/enemy/sorcerer/fire_sorcerer.png``.  Rows one through three are protected
 by a decoded-RGBA fingerprint and remain pixel-identical.
 """
 

@@ -6,8 +6,8 @@ const ELITE_CONFIG := preload(
 	"res://resources/config/enemies/stone_golem_elite.tres"
 )
 const BASE_CONFIG := preload("res://resources/config/enemies/stone_golem.tres")
-const ELITE_TEXTURE_PATH := "res://resources/texture/stone_golem_elite.png"
-const BASE_TEXTURE_PATH := "res://resources/texture/stone_golem.png"
+const ELITE_TEXTURE_PATH := "res://resources/texture/enemy/artificial_creation/stone_golem_elite.png"
+const BASE_TEXTURE_PATH := "res://resources/texture/enemy/artificial_creation/stone_golem.png"
 const DETAIL_OVERLAY_PATH := (
 	"res://dev_assets/source_images/stone_golem_elite/"
 	+ "stone_golem_elite_detail_overlay.png"

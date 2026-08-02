@@ -1,8 +1,8 @@
 @tool
 extends SceneTree
 
-const SOURCE_PATH := "res://resources/texture/源石虫.png"
-const OUTPUT_PATH := "res://resources/texture/yuanshi_insect_guardian.png"
+const SOURCE_PATH := "res://resources/texture/enemy/yuanshi_insect/源石虫.png"
+const OUTPUT_PATH := "res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_guardian.png"
 const FRAME_SIZE := Vector2i(32, 32)
 const SHEET_SIZE := Vector2i(96, 64)
 

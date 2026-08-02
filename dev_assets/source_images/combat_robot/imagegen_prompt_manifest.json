@@ -76,7 +76,7 @@
     "death_median_pose": "30.95x26.4; later collapse frames occupy fewer rows"
   },
   "runtime_contract": {
-    "sheet": "res://resources/texture/combat_robot.png",
+    "sheet": "res://resources/texture/enemy/mechanical_life/combat_robot.png",
     "size": "256x128 RGBA",
     "cell": "32x32",
     "visible_bbox": "at most 28x28",

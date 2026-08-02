@@ -80,8 +80,8 @@ func _test_resource_contract() -> void:
 	_expect(_count_wave_entries(WAVE_06) == 0, "Wave 6 must not spawn AK Capoos.")
 	_expect(_count_wave_entries(WAVE_07) == 80, "Wave 7 must contain 80 AK Capoos.")
 
-	var texture := load("res://resources/texture/capoo_ak47.png") as Texture2D
-	var bullet_texture := load("res://resources/texture/capoo_ak47_bullet.png") as Texture2D
+	var texture := load("res://resources/texture/enemy/capoo/capoo_ak47.png") as Texture2D
+	var bullet_texture := load("res://resources/texture/enemy/capoo/capoo_ak47_bullet.png") as Texture2D
 	_expect(texture != null and texture.get_size() == Vector2(384, 384), "AK Capoo sprite sheet size is incorrect.")
 	_expect(
 		bullet_texture != null and bullet_texture.get_size() == Vector2(24, 8),

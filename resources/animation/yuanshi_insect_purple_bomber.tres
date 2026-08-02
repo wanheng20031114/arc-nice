@@ -1,7 +1,7 @@
 [gd_resource type="SpriteFrames" format=3 uid="uid://cwlh2bn3ov35t"]
 
-[ext_resource type="Texture2D" uid="uid://v8x2xmc8q2r8" path="res://resources/texture/yuanshi_insect_purple_bomber.png" id="1_body"]
-[ext_resource type="Texture2D" uid="uid://4ahn5tvle4ej" path="res://resources/texture/yuanshi_insect_purple_explosion.png" id="2_explosion"]
+[ext_resource type="Texture2D" uid="uid://v8x2xmc8q2r8" path="res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.png" id="1_body"]
+[ext_resource type="Texture2D" uid="uid://4ahn5tvle4ej" path="res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_purple_explosion.png" id="2_explosion"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_death_0"]
 atlas = ExtResource("1_body")

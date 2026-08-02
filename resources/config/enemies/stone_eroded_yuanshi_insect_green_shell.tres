@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" uid="uid://ddvjjkxmc4m3i" path="res://resources/config/enemies/yuanshi_insect_green_shell_config.gd" id="2_script"]
 [ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="3_8s541"]
-[ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/yuanshi_insect_green_aura_particle.tres" id="8_aura_particle"]
-[ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/yuanshi_insect_green_aura_colors.tres" id="9_aura_colors"]
+[ext_resource type="Texture2D" uid="uid://gpwpt2glrhpb" path="res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_green_aura_particle.tres" id="8_aura_particle"]
+[ext_resource type="Texture2D" uid="uid://04o6ofntabvg" path="res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_green_aura_colors.tres" id="9_aura_colors"]
 [ext_resource type="PackedScene" path="res://scene/enemy/stone_eroded/stone_eroded_yuanshi_insect_green_shell.tscn" id="enemy_scene"]
 
 [resource]

@@ -161,7 +161,7 @@ func _test_resource_contract() -> void:
 		"Initial attack staggering must stay at 0.35 seconds."
 	)
 
-	var texture := load("res://resources/texture/stone_golem.png") as Texture2D
+	var texture := load("res://resources/texture/enemy/artificial_creation/stone_golem.png") as Texture2D
 	_expect(
 		texture != null and texture.get_size() == Vector2(256.0, 256.0),
 		"Stone golem sheet must be a native 4x4 grid of 64 px frames."

@@ -47,7 +47,10 @@ from PIL import Image, ImageFilter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = PROJECT_ROOT / "dev_assets" / "source_images" / "combat_robot"
-OUTPUT_PATH = PROJECT_ROOT / "resources" / "texture" / "combat_robot.png"
+OUTPUT_PATH = (
+    PROJECT_ROOT
+    / "resources/texture/enemy/mechanical_life/combat_robot.png"
+)
 PREVIEW_PATH = (
     PROJECT_ROOT
     / "dev_assets"

@@ -15,9 +15,9 @@ const MIN_STRONG_RGB_CHANGE_RATIO := 0.005
 const MIN_STRONG_RGB_CHANNEL_DELTA := 24
 const EXPECTED_TEXTURE_PAIR_COUNT := 18
 const SHARED_NON_BODY_VFX_TEXTURE_BY_ENEMY := {
-	"yuanshi_insect_bomber": "res://resources/texture/爆炸特效.png",
+	"yuanshi_insect_bomber": "res://resources/texture/enemy/yuanshi_insect/爆炸特效.png",
 	"yuanshi_insect_purple_bomber": (
-		"res://resources/texture/yuanshi_insect_purple_explosion.png"
+		"res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_purple_explosion.png"
 	),
 }
 
@@ -408,7 +408,7 @@ func _test_frame_contract(
 		return
 	_expect(
 		eroded_atlas.resource_path.begins_with(
-			"res://resources/texture/stone_eroded/"
+			"res://resources/texture/enemy/stone_eroded/"
 		),
 		"%s 石蚀版帧必须引用stone_eroded运行时纹理。" % label
 	)

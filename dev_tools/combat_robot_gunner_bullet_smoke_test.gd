@@ -86,7 +86,7 @@ func _test_scene_and_animation_contract() -> void:
 				"Fly frame %d must use its exact 12x8 atlas cell." % frame_index
 			)
 	var texture := load(
-		"res://resources/texture/combat_robot_gunner_bullet.png"
+		"res://resources/texture/enemy/mechanical_life/combat_robot_gunner_bullet.png"
 	) as Texture2D
 	_expect(
 		texture != null and texture.get_size() == Vector2(36.0, 8.0),

@@ -14,7 +14,7 @@
   反向换重心源图，左脚完整承重、右脚仅脚尖点地。
 - `lightning_sorcerer_move_8pose_v5_alpha.png`：去绿后将 F5 精确替换回第二行
   第二格的透明最终源图。
-- `resources/texture/lightning_sorcerer_move.png`：320×40、8×1 的运行时
+- `resources/texture/enemy/sorcerer/lightning_sorcerer_move.png`：320×40、8×1 的运行时
   移动横条。
 - `lightning_sorcerer_windup_imagegen_source.png`：蓄力四帧的绿色背景原图。
 - `lightning_sorcerer_attack_imagegen_source.png`：施法四帧的绿色背景原图。
@@ -59,9 +59,9 @@ python dev_tools/process_lightning_sorcerer_assets.py --check-only
 
 处理脚本逐帧调用 `pixel_grid_analyzer.py`。4×2 移动源图按行优先拆成八帧，
 使用 nearest 栅格化并按固定姿态中心与地线放入
-`resources/texture/lightning_sorcerer_move.png`，最终为 320×40、8×1、每帧
+`resources/texture/enemy/sorcerer/lightning_sorcerer_move.png`，最终为 320×40、8×1、每帧
 40×40。构建同时验证横向质心峰峰值不超过 1 像素，并锁定步态相位：F2/F6
 必须各只有一个落地脚段，F5 左脚落地宽度至少 5 像素且右脚尖不超过 3 像素，
 F0/F2 下半身 IoU 必须低于 0.80。蓄力、施法和死亡仍各用四帧并保留在
-`resources/texture/lightning_sorcerer.png` 主图中。全部运行时输出均保持二值
+`resources/texture/enemy/sorcerer/lightning_sorcerer.png` 主图中。全部运行时输出均保持二值
 alpha，透明像素 RGB 为零。

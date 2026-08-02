@@ -12,7 +12,7 @@
 
 - `frost_sorcerer_move_8pose_v3_imagegen_source.png`：4×2 八相位绿色背景源图。
 - `frost_sorcerer_move_8pose_v3_alpha.png`：对应的透明源图。
-- `resources/texture/frost_sorcerer_move.png`：运行时 320×40、8×1 移动横条。
+- `resources/texture/enemy/sorcerer/frost_sorcerer_move.png`：运行时 320×40、8×1 移动横条。
 
 其余三条四帧动作继续写入角色主图：
 
@@ -106,11 +106,11 @@ python dev_tools/process_frost_sorcerer_assets.py --check-only
 ```
 
 脚本逐帧调用 `dev_tools/pixel_grid_analyzer.py` 记录视觉网格分析。4×2 移动源图
-按行优先拆成八帧，分别放入独立的 `resources/texture/frost_sorcerer_move.png`；
+按行优先拆成八帧，分别放入独立的 `resources/texture/enemy/sorcerer/frost_sorcerer_move.png`；
 每帧 40×40，最终横条为 320×40。构建会锁定姿态中心 `(17, 27)`、地线
 `y = 38` 和不超过 1 像素的横向质心峰峰值，不再把八个姿态分别拉伸到旧四帧
 火焰术士边界。蓄力、攻击和消散仍按原有四帧契约写入
-`resources/texture/frost_sorcerer.png` 主图。全部输出继续强制二值 alpha、透明
+`resources/texture/enemy/sorcerer/frost_sorcerer.png` 主图。全部输出继续强制二值 alpha、透明
 RGB 清零和受控角色调色板。`--check-only` 会在内存中重建并确认主图、独立移动
 横条和冰锥运行时贴图均未过期。
 

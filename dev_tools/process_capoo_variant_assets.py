@@ -16,7 +16,7 @@ CAPOO_SOURCE = ROOT / "dev_assets/source_images/capoo_variants_generated_v2.png"
 PROJECTILE_SOURCE = ROOT / "dev_assets/source_images/capoo_projectiles_generated_v2.png"
 FIREBALL_IMPACT_SOURCE = ROOT / "dev_assets/source_images/capoo_mage_fireball_impact_generated.png"
 
-TEXTURE_DIR = ROOT / "resources/texture"
+TEXTURE_DIR = ROOT / "resources/texture/enemy/capoo"
 ANIMATION_DIR = ROOT / "resources/animation"
 DEBUG_DIR = ROOT / "tmp/capoo_variant_assets"
 
@@ -437,7 +437,7 @@ def _write_capoo_frames(name: str, frame_size: tuple[int, int] | None = None) ->
 	if frame_size == None:
 		frame_size = (CAPOO_FRAME_SIZE, CAPOO_FRAME_SIZE)
 	frame_width, frame_height = frame_size
-	texture_path = f"res://resources/texture/{name}.png"
+	texture_path = f"res://resources/texture/enemy/capoo/{name}.png"
 	resource_uid = SPRITE_FRAME_UIDS.get(name, "")
 	texture_uid = TEXTURE_UIDS.get(name, "")
 	resource_header = (
@@ -499,7 +499,7 @@ def _write_capoo_frames(name: str, frame_size: tuple[int, int] | None = None) ->
 
 
 def _write_fireball_frames() -> None:
-	texture_path = "res://resources/texture/capoo_mage_fireball.png"
+	texture_path = "res://resources/texture/enemy/capoo/capoo_mage_fireball.png"
 	lines = [
 		f"[gd_resource type=\"SpriteFrames\" format=3 uid=\"{FIREBALL_SPRITE_FRAMES_UID}\"]",
 		"",
@@ -557,7 +557,7 @@ def _write_linear_frames(
 	frame_height: int,
 	speed: float,
 ) -> None:
-	texture_path = f"res://resources/texture/{name}.png"
+	texture_path = f"res://resources/texture/enemy/capoo/{name}.png"
 	lines = [
 		"[gd_resource type=\"SpriteFrames\" format=3]",
 		"",

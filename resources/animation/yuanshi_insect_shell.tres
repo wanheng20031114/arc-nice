@@ -1,6 +1,6 @@
 [gd_resource type="SpriteFrames" format=3 uid="uid://dil4bd4tna04v"]
 
-[ext_resource type="Texture2D" uid="uid://bya8idibp7vs3" path="res://resources/texture/源石虫.png" id="1_knw0g"]
+[ext_resource type="Texture2D" uid="uid://bya8idibp7vs3" path="res://resources/texture/enemy/yuanshi_insect/源石虫.png" id="1_knw0g"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_d6ru1"]
 atlas = ExtResource("1_knw0g")

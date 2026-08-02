@@ -506,7 +506,7 @@ def _assert_animation_resource() -> None:
     if not ANIMATION_RESOURCE_PATH.is_file():
         raise FileNotFoundError(ANIMATION_RESOURCE_PATH)
     text = ANIMATION_RESOURCE_PATH.read_text(encoding="utf-8")
-    texture_path = 'path="res://resources/texture/combat_robot.png"'
+    texture_path = 'path="res://resources/texture/enemy/mechanical_life/combat_robot.png"'
     if text.count(texture_path) != 1:
         raise AssertionError(
             "SpriteFrames must reference combat_robot.png exactly once"

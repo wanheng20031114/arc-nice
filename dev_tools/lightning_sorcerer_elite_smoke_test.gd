@@ -19,15 +19,15 @@ const TargetWarningScript := preload(
 	"res://scene/enemy/sorcerer/lightning_sorcerer_target_warning.gd"
 )
 
-const BASE_TEXTURE_PATH := "res://resources/texture/lightning_sorcerer.png"
+const BASE_TEXTURE_PATH := "res://resources/texture/enemy/sorcerer/lightning_sorcerer.png"
 const ELITE_TEXTURE_PATH := (
-	"res://resources/texture/lightning_sorcerer_elite.png"
+	"res://resources/texture/enemy/sorcerer/lightning_sorcerer_elite.png"
 )
 const BASE_MOVE_TEXTURE_PATH := (
-	"res://resources/texture/lightning_sorcerer_move.png"
+	"res://resources/texture/enemy/sorcerer/lightning_sorcerer_move.png"
 )
 const ELITE_MOVE_TEXTURE_PATH := (
-	"res://resources/texture/lightning_sorcerer_elite_move.png"
+	"res://resources/texture/enemy/sorcerer/lightning_sorcerer_elite_move.png"
 )
 const ELITE_ANIMATION_PATH := (
 	"res://resources/animation/lightning_sorcerer_elite.tres"

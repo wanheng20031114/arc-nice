@@ -21,7 +21,7 @@ const PLAYER_CONFIG := preload(
 
 const CHARACTER_FRAME_LIMIT := Vector2(40.0, 40.0)
 const FIREBALL_FRAME_LIMIT := Vector2(40.0, 40.0)
-const MOVE_TEXTURE_PATH := "res://resources/texture/fire_sorcerer_move.png"
+const MOVE_TEXTURE_PATH := "res://resources/texture/enemy/sorcerer/fire_sorcerer_move.png"
 const MOVE_FRAME_COUNT := 8
 const MOVE_ANIMATION_SPEED := 12.0
 const TEST_HEALTH := 1000
@@ -205,10 +205,10 @@ func _test_resource_and_scene_contract() -> void:
 	)
 
 	var character_texture := load(
-		"res://resources/texture/fire_sorcerer.png"
+		"res://resources/texture/enemy/sorcerer/fire_sorcerer.png"
 	) as Texture2D
 	var fireball_texture := load(
-		"res://resources/texture/fire_sorcerer_fireball.png"
+		"res://resources/texture/enemy/sorcerer/fire_sorcerer_fireball.png"
 	) as Texture2D
 	_expect(
 		character_texture != null

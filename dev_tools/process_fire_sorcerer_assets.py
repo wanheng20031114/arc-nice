@@ -40,7 +40,7 @@ from process_frost_sorcerer_assets import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/fire_sorcerer"
-TEXTURE_DIR = ROOT / "resources/texture"
+TEXTURE_DIR = ROOT / "resources/texture/enemy/sorcerer"
 ANIMATION_DIR = ROOT / "resources/animation"
 
 CHARACTER_SOURCE = SOURCE_DIR / "fire_sorcerer_generated_v2.png"
@@ -898,16 +898,16 @@ def main() -> None:
     _save_if_decoded_changed(fireball_sheet, FIREBALL_OUTPUT)
     _write_sprite_frames(
         CHARACTER_ANIMATION_OUTPUT,
-        "res://resources/texture/fire_sorcerer.png",
+        "res://resources/texture/enemy/sorcerer/fire_sorcerer.png",
         CHARACTER_FRAME_SIZE,
         CHARACTER_ANIMATIONS,
         CHARACTER_ANIMATION_UID,
         CHARACTER_TEXTURE_UID,
-        "res://resources/texture/fire_sorcerer_move.png",
+        "res://resources/texture/enemy/sorcerer/fire_sorcerer_move.png",
     )
     _write_sprite_frames(
         FIREBALL_ANIMATION_OUTPUT,
-        "res://resources/texture/fire_sorcerer_fireball.png",
+        "res://resources/texture/enemy/sorcerer/fire_sorcerer_fireball.png",
         FIREBALL_FRAME_SIZE,
         FIREBALL_ANIMATIONS,
         FIREBALL_ANIMATION_UID,

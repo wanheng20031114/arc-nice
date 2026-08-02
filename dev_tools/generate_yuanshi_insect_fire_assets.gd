@@ -1,8 +1,8 @@
 extends SceneTree
 
-const SOURCE_TEXTURE_PATH := "res://resources/texture/yuanshi_insect_green_shell.png"
-const YUANSHI_INSECT_OUTPUT_PATH := "res://resources/texture/yuanshi_insect_fire_ranged.png"
-const PROJECTILE_OUTPUT_PATH := "res://resources/texture/yuanshi_insect_fire_projectile.png"
+const SOURCE_TEXTURE_PATH := "res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_green_shell.png"
+const YUANSHI_INSECT_OUTPUT_PATH := "res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.png"
+const PROJECTILE_OUTPUT_PATH := "res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.png"
 const AUDIO_OUTPUT_PATH := "res://resources/audio/yuanshi_insect_fire_attack.wav"
 
 const FRAME_SIZE := Vector2i(32, 32)

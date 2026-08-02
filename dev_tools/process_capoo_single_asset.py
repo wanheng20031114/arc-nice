@@ -403,7 +403,7 @@ def _write_capoo_direct_alpha_frames(
 	name: str,
 	regions: dict[str, list[tuple[tuple[int, int, int, int], tuple[int, int, int, int]]]],
 ) -> None:
-	texture_path = f"res://resources/texture/{name}.png"
+	texture_path = f"res://resources/texture/enemy/capoo/{name}.png"
 	resource_uid = SPRITE_FRAME_UIDS.get(name, "")
 	texture_uid = TEXTURE_UIDS.get(name, "")
 	resource_header = (

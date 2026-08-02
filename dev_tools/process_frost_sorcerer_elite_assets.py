@@ -14,10 +14,10 @@ from process_frost_sorcerer_assets import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE_CHARACTER = ROOT / "resources/texture/frost_sorcerer.png"
-BASE_MOVE = ROOT / "resources/texture/frost_sorcerer_move.png"
-CHARACTER_OUTPUT = ROOT / "resources/texture/frost_sorcerer_elite.png"
-MOVE_OUTPUT = ROOT / "resources/texture/frost_sorcerer_elite_move.png"
+BASE_CHARACTER = ROOT / "resources/texture/enemy/sorcerer/frost_sorcerer.png"
+BASE_MOVE = ROOT / "resources/texture/enemy/sorcerer/frost_sorcerer_move.png"
+CHARACTER_OUTPUT = ROOT / "resources/texture/enemy/sorcerer/frost_sorcerer_elite.png"
+MOVE_OUTPUT = ROOT / "resources/texture/enemy/sorcerer/frost_sorcerer_elite_move.png"
 ANIMATION_OUTPUT = ROOT / "resources/animation/frost_sorcerer_elite.tres"
 
 CHARACTER_SIZE = (160, 160)
@@ -196,12 +196,12 @@ def _sprite_frames_text() -> str:
         (
             '[ext_resource type="Texture2D" '
             'uid="uid://dy0ko2yfl3e3l" '
-            'path="res://resources/texture/frost_sorcerer_elite.png" '
+            'path="res://resources/texture/enemy/sorcerer/frost_sorcerer_elite.png" '
             'id="1_texture"]'
         ),
         (
             '[ext_resource type="Texture2D" '
-            'path="res://resources/texture/frost_sorcerer_elite_move.png" '
+            'path="res://resources/texture/enemy/sorcerer/frost_sorcerer_elite_move.png" '
             'id="2_move"]'
         ),
         "",

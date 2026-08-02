@@ -24,7 +24,7 @@ const CHARACTER_FRAME_SIZE := Vector2(40.0, 40.0)
 const ICE_SPIKE_FRAME_SIZE := Vector2(32.0, 32.0)
 const EXPECTED_PROJECTILE_MASK := 1 | 2 | 512
 const FROST_MOVE_TEXTURE_PATH := (
-	"res://resources/texture/frost_sorcerer_move.png"
+	"res://resources/texture/enemy/sorcerer/frost_sorcerer_move.png"
 )
 const MOVE_FRAME_COUNT := 8
 const MOVE_ANIMATION_SPEED := 12.0

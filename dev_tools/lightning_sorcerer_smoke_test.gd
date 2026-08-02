@@ -21,7 +21,7 @@ const TEST_HEALTH := 1000
 const EXPECTED_ATTACK_RANGE := 7.0 * 16.0
 const EXPECTED_CHAIN_RANGE := 3.0 * 16.0
 const LIGHTNING_MOVE_TEXTURE_PATH := (
-	"res://resources/texture/lightning_sorcerer_move.png"
+	"res://resources/texture/enemy/sorcerer/lightning_sorcerer_move.png"
 )
 const MOVE_FRAME_COUNT := 8
 const MOVE_ANIMATION_SPEED := 12.0

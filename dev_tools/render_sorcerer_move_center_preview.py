@@ -27,23 +27,23 @@ ANIMATION_OUTPUT = (
     / "dev_assets/generated_previews/sorcerer_move_cycle_preview.gif"
 )
 TRACKS = (
-    ("FROST", ROOT / "resources/texture/frost_sorcerer_move.png"),
+    ("FROST", ROOT / "resources/texture/enemy/sorcerer/frost_sorcerer_move.png"),
     (
         "FROST ELITE",
-        ROOT / "resources/texture/frost_sorcerer_elite_move.png",
+        ROOT / "resources/texture/enemy/sorcerer/frost_sorcerer_elite_move.png",
     ),
-    ("FIRE", ROOT / "resources/texture/fire_sorcerer_move.png"),
+    ("FIRE", ROOT / "resources/texture/enemy/sorcerer/fire_sorcerer_move.png"),
     (
         "FIRE ELITE",
-        ROOT / "resources/texture/fire_sorcerer_elite_move.png",
+        ROOT / "resources/texture/enemy/sorcerer/fire_sorcerer_elite_move.png",
     ),
     (
         "LIGHTNING",
-        ROOT / "resources/texture/lightning_sorcerer_move.png",
+        ROOT / "resources/texture/enemy/sorcerer/lightning_sorcerer_move.png",
     ),
     (
         "LIGHTNING ELITE",
-        ROOT / "resources/texture/lightning_sorcerer_elite_move.png",
+        ROOT / "resources/texture/enemy/sorcerer/lightning_sorcerer_elite_move.png",
     ),
 )
 PHASES = (

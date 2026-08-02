@@ -1,6 +1,6 @@
 [gd_resource type="SpriteFrames" format=3 uid="uid://dbks4i83dyqs"]
 
-[ext_resource type="Texture2D" uid="uid://c37hu2lcntuax" path="res://resources/texture/fire_sorcerer_elite_fireball.png" id="1_texture"]
+[ext_resource type="Texture2D" uid="uid://c37hu2lcntuax" path="res://resources/texture/enemy/sorcerer/fire_sorcerer_elite_fireball.png" id="1_texture"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_expire_0"]
 atlas = ExtResource("1_texture")

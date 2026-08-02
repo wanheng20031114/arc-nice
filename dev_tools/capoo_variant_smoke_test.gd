@@ -145,12 +145,12 @@ func _test_resource_contract() -> void:
 	_expect(is_equal_approx(SMG_CONFIG.projectile_lifetime, 0.18), "SMG bullet lifetime must stay short.")
 	_expect(is_equal_approx(SMG_CONFIG.spread_angle_degrees, 20.0), "SMG spread angle mismatch.")
 
-	_expect(_texture_size("res://resources/texture/capoo_mage.png") == Vector2(1402, 1122), "Mage sprite sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_sniper.png") == Vector2(512, 384), "Sniper sprite sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_smg.png") == Vector2(640, 512), "SMG sprite sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_mage_fireball.png") == Vector2(384, 128), "Fireball sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_smg_bullet.png") == Vector2(48, 8), "SMG bullet sheet size mismatch.")
-	_expect(_texture_size("res://resources/texture/capoo_sniper_lock_reticle.png") == Vector2(32, 32), "Sniper reticle texture size mismatch.")
+	_expect(_texture_size("res://resources/texture/enemy/capoo/capoo_mage.png") == Vector2(1402, 1122), "Mage sprite sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/enemy/capoo/capoo_sniper.png") == Vector2(512, 384), "Sniper sprite sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/enemy/capoo/capoo_smg.png") == Vector2(640, 512), "SMG sprite sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/enemy/capoo/capoo_mage_fireball.png") == Vector2(384, 128), "Fireball sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/enemy/capoo/capoo_smg_bullet.png") == Vector2(48, 8), "SMG bullet sheet size mismatch.")
+	_expect(_texture_size("res://resources/texture/enemy/capoo/capoo_sniper_lock_reticle.png") == Vector2(32, 32), "Sniper reticle texture size mismatch.")
 
 	_expect(_has_capoo_frames(MAGE_CONFIG.enemy_scene, "Mage"), "Mage animation contract failed.")
 	_expect(_has_mage_original_alpha_regions(), "Mage original alpha AtlasTexture regions failed.")

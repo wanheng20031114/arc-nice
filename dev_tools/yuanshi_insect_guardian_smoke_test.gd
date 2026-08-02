@@ -193,7 +193,7 @@ func _test_resource_contract() -> void:
 		GUARDIAN_CONFIG.aura_physical_defense_bonus == 3,
 		"Guardian aura must provide exactly +3 physical defense."
 	)
-	var texture := load("res://resources/texture/yuanshi_insect_guardian.png") as Texture2D
+	var texture := load("res://resources/texture/enemy/yuanshi_insect/yuanshi_insect_guardian.png") as Texture2D
 	var image := texture.get_image() if texture != null else null
 	_expect(image != null and image.get_size() == Vector2i(96, 64), "Guardian sprite sheet size is incorrect.")
 

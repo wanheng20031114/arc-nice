@@ -13,10 +13,11 @@ from process_combat_robot_assets import PALETTE
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SHEET_PATH = PROJECT_ROOT / "resources" / "texture" / "combat_robot_gunner.png"
-BULLET_PATH = (
-    PROJECT_ROOT / "resources" / "texture" / "combat_robot_gunner_bullet.png"
+RUNTIME_TEXTURE_DIR = (
+    PROJECT_ROOT / "resources/texture/enemy/mechanical_life"
 )
+SHEET_PATH = RUNTIME_TEXTURE_DIR / "combat_robot_gunner.png"
+BULLET_PATH = RUNTIME_TEXTURE_DIR / "combat_robot_gunner_bullet.png"
 FRAMES_PATH = (
     PROJECT_ROOT / "resources" / "animation" / "combat_robot_gunner.tres"
 )
@@ -29,7 +30,19 @@ FRAME_SIZE = 32
 BASELINE_Y = 28
 MAX_VISIBLE_SIZE = 28
 TRANSPARENT = (0, 0, 0, 0)
-PALETTE_SET = set(PALETTE)
+ATTACK_ALERT_RED = (255, 0, 0, 255)
+BASE_DARK_RED = PALETTE[8]
+ATTACK_ALERT_POINTS = {
+    (13, 5),
+    (15, 11),
+    (16, 11),
+    (17, 11),
+    (15, 12),
+    (16, 12),
+    (17, 12),
+}
+ATTACK_ACCENT_COLORS = {ATTACK_ALERT_RED}
+PALETTE_SET = set(PALETTE) | ATTACK_ACCENT_COLORS
 
 
 def _sha256(path: Path) -> str:
@@ -52,6 +65,27 @@ def _bbox(image: Image.Image) -> tuple[int, int, int, int]:
     if bbox is None:
         raise AssertionError("Unexpected empty sprite frame")
     return bbox
+
+
+def _points_with_color(
+    image: Image.Image, color: tuple[int, int, int, int]
+) -> set[tuple[int, int]]:
+    return {
+        (x, y)
+        for y in range(image.height)
+        for x in range(image.width)
+        if image.getpixel((x, y)) == color
+    }
+
+
+def _normalized_chassis_bytes(
+    image: Image.Image,
+) -> tuple[tuple[int, int, int, int], ...]:
+    chassis = image.crop((11, 4, 21, 22))
+    return tuple(
+        BASE_DARK_RED if pixel == ATTACK_ALERT_RED else pixel
+        for pixel in chassis.getdata()
+    )
 
 
 def _audit_pixels(image: Image.Image, label: str) -> None:
@@ -149,7 +183,10 @@ def _audit_sprite_frames_text() -> None:
             raise AssertionError(
                 f"SpriteFrames animation {name} misses speed={speed} loop={loop}"
             )
-    required_texture = 'path="res://resources/texture/combat_robot_gunner.png"'
+    required_texture = (
+        'path="res://resources/texture/enemy/mechanical_life/'
+        'combat_robot_gunner.png"'
+    )
     if text.count(required_texture) != 1:
         raise AssertionError("SpriteFrames must reference the gunner sheet exactly once")
 
@@ -189,6 +226,22 @@ def main() -> None:
     for index, frame in enumerate(death):
         _audit_robot_frame(frame, f"death[{index}]")
 
+    for index, frame in enumerate(move):
+        if _points_with_color(frame, ATTACK_ALERT_RED):
+            raise AssertionError(f"move[{index}] unexpectedly uses attack alert red")
+    for upper, row in enumerate(fire):
+        expected_alert = ATTACK_ALERT_POINTS if upper in (0, 2) else set()
+        for leg, frame in enumerate(row):
+            alert_points = _points_with_color(frame, ATTACK_ALERT_RED)
+            if alert_points != expected_alert:
+                raise AssertionError(
+                    f"fire[{upper}][{leg}] attack alert pixels differ: "
+                    f"{sorted(alert_points)}"
+                )
+    for index, frame in enumerate(death):
+        if _points_with_color(frame, ATTACK_ALERT_RED):
+            raise AssertionError(f"death[{index}] unexpectedly uses attack alert red")
+
     stable_move_upper = {
         _masked_bytes(frame, (9, 22, 23, 28)) for frame in move
     }
@@ -202,11 +255,11 @@ def main() -> None:
         raise AssertionError("Move does not contain eight unique leg phases")
 
     # The chassis itself is immutable across move and all 32 fire combinations.
-    core = move[0].crop((11, 4, 21, 22)).tobytes()
-    if any(frame.crop((11, 4, 21, 22)).tobytes() != core for frame in move):
+    core = _normalized_chassis_bytes(move[0])
+    if any(_normalized_chassis_bytes(frame) != core for frame in move):
         raise AssertionError("Move chassis/core flickers")
     if any(
-        frame.crop((11, 4, 21, 22)).tobytes() != core
+        _normalized_chassis_bytes(frame) != core
         for row in fire
         for frame in row
     ):

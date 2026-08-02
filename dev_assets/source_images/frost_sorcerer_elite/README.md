@@ -1,8 +1,8 @@
 # 精英冰霜术士素材记录
 
 运行时角色严格派生自当前已验收的普通寒冰术士。四帧的蓄力、攻击和消散动作
-派生自 `resources/texture/frost_sorcerer.png`，八帧移动动画派生自独立的
-`resources/texture/frost_sorcerer_move.png`。普通版运行时贴图是唯一的几何、
+派生自 `resources/texture/enemy/sorcerer/frost_sorcerer.png`，八帧移动动画派生自独立的
+`resources/texture/enemy/sorcerer/frost_sorcerer_move.png`。普通版运行时贴图是唯一的几何、
 姿势、中心锚点、逐帧边界和透明轮廓来源；精英版不重画或缩放任何运行时动画帧。
 
 ## 文件
@@ -13,8 +13,8 @@
   的精英配色设计参考。
 - `frost_sorcerer_elite_move_8pose_alpha_reference.png`：上述移动设计参考的
   透明版本；同样不直接进入运行时。
-- `resources/texture/frost_sorcerer_elite.png`：主图动作的确定性换色输出。
-- `resources/texture/frost_sorcerer_elite_move.png`：从普通版八帧移动横条
+- `resources/texture/enemy/sorcerer/frost_sorcerer_elite.png`：主图动作的确定性换色输出。
+- `resources/texture/enemy/sorcerer/frost_sorcerer_elite_move.png`：从普通版八帧移动横条
   确定性换色得到的 320×40、8×1 运行时贴图。
 - `resources/animation/frost_sorcerer_elite.tres`：独立 SpriteFrames。
 
@@ -34,9 +34,9 @@ Constraints: preserve all sixteen complete poses exactly: row 1 move, row 2 wind
 上面的 4×4 参考继续约束主图配色。八帧移动的 4×2 imagegen 稿也只用于说明
 精英亮青、淡青内饰和冰魔法高光应该如何落色；它不是最终轮廓或姿态基准，也不
 要求与普通版 v3 的透明轮廓逐像素相同。运行时
-`resources/texture/frost_sorcerer_elite_move.png` 的全部几何、八个步行相位、
+`resources/texture/enemy/sorcerer/frost_sorcerer_elite_move.png` 的全部几何、八个步行相位、
 姿态中心、脚底线和 alpha 都以普通版 v3 构建出的
-`resources/texture/frost_sorcerer_move.png` 为唯一来源，再进行确定性换色。
+`resources/texture/enemy/sorcerer/frost_sorcerer_move.png` 为唯一来源，再进行确定性换色。
 
 ## 确定性构建
 

@@ -26,24 +26,24 @@ const PLAYER_CONFIG := preload(
 )
 
 const BASE_CHARACTER_TEXTURE_PATH := (
-	"res://resources/texture/fire_sorcerer.png"
+	"res://resources/texture/enemy/sorcerer/fire_sorcerer.png"
 )
 const ELITE_CHARACTER_TEXTURE_PATH := (
-	"res://resources/texture/fire_sorcerer_elite.png"
+	"res://resources/texture/enemy/sorcerer/fire_sorcerer_elite.png"
 )
 const BASE_MOVE_TEXTURE_PATH := (
-	"res://resources/texture/fire_sorcerer_move.png"
+	"res://resources/texture/enemy/sorcerer/fire_sorcerer_move.png"
 )
 const ELITE_MOVE_TEXTURE_PATH := (
-	"res://resources/texture/fire_sorcerer_elite_move.png"
+	"res://resources/texture/enemy/sorcerer/fire_sorcerer_elite_move.png"
 )
 const MOVE_FRAME_COUNT := 8
 const MOVE_ANIMATION_SPEED := 12.0
 const BASE_FIREBALL_TEXTURE_PATH := (
-	"res://resources/texture/fire_sorcerer_fireball.png"
+	"res://resources/texture/enemy/sorcerer/fire_sorcerer_fireball.png"
 )
 const ELITE_FIREBALL_TEXTURE_PATH := (
-	"res://resources/texture/fire_sorcerer_elite_fireball.png"
+	"res://resources/texture/enemy/sorcerer/fire_sorcerer_elite_fireball.png"
 )
 const GOLD_COLORS := {
 	Color8(132, 76, 8, 255): true,
