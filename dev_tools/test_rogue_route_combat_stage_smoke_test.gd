@@ -32,6 +32,8 @@ func _run() -> void:
 		"房主路线必须能以夹具种子启动。"
 	)
 	await process_frame
+	# 路线展开演出由专项测试覆盖；本用例只验证作战阶段持有的输入锁。
+	host.route_board.complete_entry_reveal()
 
 	var host_starts: Array[Dictionary] = []
 	var host_combat_consumer := (

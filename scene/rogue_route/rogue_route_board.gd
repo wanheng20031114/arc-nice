@@ -3,12 +3,17 @@ class_name RogueRouteBoard
 
 signal node_pressed(node_id: int)
 signal layout_bounds_changed(bounds: Rect2)
+signal entry_reveal_finished
 
 const CELL_SCENE: PackedScene = preload(
 	"res://scene/rogue_route/rogue_route_cell.tscn"
 )
 const INVALID_NODE_ID := -1
 const CELL_ANCHOR_FALLBACK := Vector2(24.0, 16.0)
+const ENTRY_REVEAL_DURATION_SECONDS := 1.45
+const NODE_ROOT_REVEAL_SPAN := 0.16
+const NODE_REVEAL_EDGE_OFFSET := 0.10
+const NODE_REVEAL_SPAN := 0.12
 
 @export var world_metrics: RogueRouteWorldMetrics
 
@@ -30,6 +35,12 @@ var _node_positions: Dictionary[int, Vector2] = {}
 var _local_player_position := Vector2.ZERO
 var _has_local_player_position := false
 var _nodes_in_player_range: Dictionary[int, bool] = {}
+var _entry_reveal_tween: Tween = null
+var _entry_reveal_prepared := false
+var _entry_reveal_progress := 1.0
+var _entry_reveal_serial := 0
+var _entry_reveal_depths: Dictionary[int, int] = {}
+var _entry_reveal_max_depth := 0
 
 
 func _ready() -> void:
@@ -46,7 +57,8 @@ func present_graph(
 	initial_current_node_id: int,
 	initial_action_points: int,
 	initial_visited_counts: PackedInt32Array,
-	authority_enabled: bool
+	authority_enabled: bool,
+	prepare_entry_reveal_animation: bool = true
 ) -> bool:
 	if (
 		new_graph == null
@@ -97,6 +109,10 @@ func present_graph(
 	waiting_label.hide()
 	_layout_cells()
 	_update_cell_states()
+	if prepare_entry_reveal_animation:
+		prepare_entry_reveal(initial_current_node_id)
+	else:
+		complete_entry_reveal()
 	return true
 
 
@@ -236,6 +252,94 @@ func get_cell(node_id: int) -> RogueRouteCell:
 	return _cells.get(node_id) as RogueRouteCell
 
 
+func prepare_entry_reveal(root_node_id: int = INVALID_NODE_ID) -> bool:
+	if graph == null or _cells.is_empty():
+		return false
+	var resolved_root_id := root_node_id
+	if not graph.is_valid_node_id(resolved_root_id):
+		resolved_root_id = current_node_id
+	if not graph.is_valid_node_id(resolved_root_id):
+		return false
+	_stop_entry_reveal_tween()
+	_entry_reveal_serial += 1
+	_entry_reveal_depths = _build_entry_reveal_depths(resolved_root_id)
+	if _entry_reveal_depths.size() != graph.get_node_count():
+		_entry_reveal_depths.clear()
+		_entry_reveal_max_depth = 0
+		return false
+	_entry_reveal_max_depth = 0
+	for depth in _entry_reveal_depths.values():
+		_entry_reveal_max_depth = maxi(_entry_reveal_max_depth, int(depth))
+	_entry_reveal_prepared = true
+	_entry_reveal_progress = 0.0
+	connections.prepare_entry_reveal(
+		_entry_reveal_depths,
+		_entry_reveal_max_depth
+	)
+	for cell in _cells.values():
+		(cell as RogueRouteCell).prepare_entry_reveal()
+	_apply_entry_reveal_progress(0.0)
+	return true
+
+
+func play_entry_reveal(
+	duration_seconds: float = ENTRY_REVEAL_DURATION_SECONDS
+) -> void:
+	if graph == null or _cells.is_empty():
+		return
+	if not _entry_reveal_prepared and not prepare_entry_reveal(current_node_id):
+		return
+	_stop_entry_reveal_tween()
+	if duration_seconds <= 0.0 or _entry_reveal_progress >= 0.9999:
+		complete_entry_reveal()
+		return
+	_entry_reveal_serial += 1
+	var play_serial := _entry_reveal_serial
+	var tween := create_tween()
+	_entry_reveal_tween = tween
+	tween.tween_method(
+		_apply_entry_reveal_progress,
+		_entry_reveal_progress,
+		1.0,
+		duration_seconds * (1.0 - _entry_reveal_progress)
+	).set_trans(Tween.TRANS_LINEAR).set_ease(Tween.EASE_IN_OUT)
+	tween.finished.connect(
+		_on_entry_reveal_tween_finished.bind(tween, play_serial),
+		CONNECT_ONE_SHOT
+	)
+
+
+func complete_entry_reveal() -> void:
+	var had_pending_reveal := (
+		_entry_reveal_prepared
+		or _entry_reveal_tween != null
+		or not is_equal_approx(_entry_reveal_progress, 1.0)
+	)
+	_stop_entry_reveal_tween()
+	_entry_reveal_serial += 1
+	_entry_reveal_prepared = false
+	_entry_reveal_progress = 1.0
+	_entry_reveal_depths.clear()
+	_entry_reveal_max_depth = 0
+	connections.complete_entry_reveal()
+	for cell in _cells.values():
+		(cell as RogueRouteCell).complete_entry_reveal()
+	if had_pending_reveal:
+		entry_reveal_finished.emit()
+
+
+func is_entry_reveal_playing() -> bool:
+	return _entry_reveal_tween != null and _entry_reveal_tween.is_running()
+
+
+func is_entry_reveal_prepared() -> bool:
+	return _entry_reveal_prepared
+
+
+func get_entry_reveal_progress() -> float:
+	return _entry_reveal_progress
+
+
 func _layout_cells() -> void:
 	if graph == null or _cells.is_empty() or world_metrics == null:
 		return
@@ -290,6 +394,12 @@ func _update_cell_states() -> void:
 
 
 func _clear_cells() -> void:
+	_stop_entry_reveal_tween()
+	_entry_reveal_serial += 1
+	_entry_reveal_prepared = false
+	_entry_reveal_progress = 1.0
+	_entry_reveal_depths.clear()
+	_entry_reveal_max_depth = 0
 	for cell in _cells.values():
 		var route_cell := cell as RogueRouteCell
 		if route_cell.get_parent() == cell_layer:
@@ -304,6 +414,68 @@ func _clear_cells() -> void:
 	selected_node_id = INVALID_NODE_ID
 	visited_counts = PackedInt32Array()
 	connections.setup({}, PackedInt32Array(), INVALID_NODE_ID, PackedInt32Array())
+	connections.complete_entry_reveal()
+
+
+func _apply_entry_reveal_progress(progress: float) -> void:
+	_entry_reveal_progress = clampf(progress, 0.0, 1.0)
+	connections.set_entry_reveal_progress(_entry_reveal_progress)
+	for node_id in _cells:
+		var depth: int = _entry_reveal_depths.get(node_id, 0)
+		var local_progress := _get_node_entry_reveal_progress(depth)
+		_cells[node_id].set_entry_reveal_progress(local_progress)
+
+
+func _get_node_entry_reveal_progress(depth: int) -> float:
+	if depth <= 0:
+		return smoothstep(
+			0.0,
+			NODE_ROOT_REVEAL_SPAN,
+			_entry_reveal_progress
+		)
+	var start_progress := (
+		connections.get_wave_start_progress(depth)
+		+ NODE_REVEAL_EDGE_OFFSET
+	)
+	return smoothstep(
+		start_progress,
+		start_progress + NODE_REVEAL_SPAN,
+		_entry_reveal_progress
+	)
+
+
+func _build_entry_reveal_depths(root_node_id: int) -> Dictionary[int, int]:
+	var depths: Dictionary[int, int] = {root_node_id: 0}
+	var pending := PackedInt32Array([root_node_id])
+	var read_index := 0
+	while read_index < pending.size():
+		var node_id := int(pending[read_index])
+		read_index += 1
+		var next_depth := int(depths[node_id]) + 1
+		for neighbor_id_variant in graph.get_neighbors(node_id):
+			var neighbor_id := int(neighbor_id_variant)
+			if depths.has(neighbor_id):
+				continue
+			depths[neighbor_id] = next_depth
+			pending.append(neighbor_id)
+	return depths
+
+
+func _stop_entry_reveal_tween() -> void:
+	if _entry_reveal_tween == null:
+		return
+	_entry_reveal_tween.kill()
+	_entry_reveal_tween = null
+
+
+func _on_entry_reveal_tween_finished(
+	tween: Tween,
+	play_serial: int
+) -> void:
+	if tween != _entry_reveal_tween or play_serial != _entry_reveal_serial:
+		return
+	_entry_reveal_tween = null
+	complete_entry_reveal()
 
 
 func _on_cell_pressed(node_id: int) -> void:

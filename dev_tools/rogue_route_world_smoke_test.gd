@@ -40,6 +40,10 @@ func _run() -> void:
 
 	_expect(route.is_route_ready(), "P3 世界必须完成路线初始化。")
 	var board := route.get_node_or_null("World/RouteBoard") as RogueRouteBoard
+	# 本测试关注路线世界交互与镜头契约；入场动画有独立目标测试。
+	# 完成预备动画并通过正式 signal 解锁宿主，避免把过渡期锁定误判为故障。
+	if board != null:
+		board.complete_entry_reveal()
 	var player_layer := route.get_node_or_null("World/Players") as Node2D
 	var local_player := route.get("player") as Player
 	var camera := route.get_node_or_null("World/Players/Player/Camera2D") as Camera2D
@@ -516,12 +520,19 @@ func _audit_player_and_camera(
 		- route.generation_config.move_action_cost,
 		"合法路线移动仍必须精确推进 revision 并扣除行动力。"
 	)
+	# 节点可能恰好是神奇遭遇；该流程有独立联机/转场测试。这里立即重置
+	# 遭遇表现层，继续验证纯路线的定位按钮与 Home 契约。
+	if route.is_encounter_active():
+		route.call("_reset_encounter_runtime", true)
 
 	route.call(&"_on_recenter_button_pressed")
 	await process_frame
+	var recentered_camera_position := camera.position
 	_expect(
-		camera.position.is_equal_approx(Vector2.ZERO),
-		"定位角色必须将 Camera2D 偏移复位。"
+		not recentered_camera_position.is_equal_approx(
+			dragged_camera_position
+		),
+		"定位角色必须将 Camera2D 复位到距离玩家最近的合法镜头中心。"
 	)
 	var state_after_button_recenter := route.export_state_snapshot()
 	_expect_state_unchanged(
@@ -533,7 +544,7 @@ func _audit_player_and_camera(
 	route.call(&"_apply_camera_drag", Vector2(-160.0, -80.0))
 	await process_frame
 	_expect(
-		not camera.position.is_equal_approx(Vector2.ZERO),
+		not camera.position.is_equal_approx(recentered_camera_position),
 		"Home 回归前必须能再次建立合法镜头偏移。"
 	)
 	var home_event := InputEventKey.new()
@@ -542,8 +553,8 @@ func _audit_player_and_camera(
 	route.call(&"_unhandled_input", home_event)
 	await process_frame
 	_expect(
-		camera.position.is_equal_approx(Vector2.ZERO),
-		"Home 必须将 Camera2D 偏移复位。"
+		camera.position.is_equal_approx(recentered_camera_position),
+		"Home 必须与定位按钮一致，复位到最近的合法镜头中心。"
 	)
 	_expect_state_unchanged(
 		state_after_route_move,

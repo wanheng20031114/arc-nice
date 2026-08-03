@@ -11,7 +11,7 @@
 [ext_resource type="Script" path="res://scene/rogue_route/rogue_route_world.gd" id="9_world_script"]
 [ext_resource type="Script" path="res://scene/rogue_encounter/rogue_encounter_economy_coordinator.gd" id="10_encounter_economy"]
 [ext_resource type="Script" path="res://scene/rogue_encounter/rogue_encounter_session.gd" id="11_encounter_session"]
-[ext_resource type="PackedScene" path="res://scene/rogue_encounter/rogue_encounter_overlay.tscn" id="12_encounter_overlay"]
+[ext_resource type="PackedScene" path="res://scene/rogue_encounter/rogue_encounter_scene.tscn" id="12_encounter_scene"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_move_confirmation.tscn" id="13_move_confirmation"]
 [ext_resource type="PackedScene" path="res://scene/rogue_combat/rogue_combat_result_overlay.tscn" id="14_combat_result"]
 [ext_resource type="Script" path="res://scene/rogue_combat/rogue_combat_singleplayer_coordinator.gd" id="15_single_combat_coordinator"]
@@ -136,7 +136,7 @@ script = ExtResource("11_encounter_session")
 script = ExtResource("15_single_combat_coordinator")
 encounter_config = ExtResource("16_combat_config")
 
-[node name="EncounterOverlay" parent="." instance=ExtResource("12_encounter_overlay")]
+[node name="EncounterScene" parent="." instance=ExtResource("12_encounter_scene")]
 
 [node name="World" type="Node2D" parent="."]
 script = ExtResource("9_world_script")

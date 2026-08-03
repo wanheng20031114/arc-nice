@@ -65,8 +65,9 @@ const AVATAR_SPAWN_OFFSETS := [
 @onready var regenerate_button: Button = %RegenerateButton
 @onready var hint_label: Label = %Hint
 @onready var status_message: Label = %StatusMessage
+@onready var route_hud: CanvasLayer = $HUD
 @onready var move_confirmation: RogueRouteMoveConfirmation = $MoveConfirmation
-@onready var encounter_overlay: RogueEncounterOverlay = $EncounterOverlay
+@onready var encounter_scene: RogueEncounterScene = $EncounterScene
 @onready var encounter_economy: RogueEncounterEconomyCoordinator = (
 	$EncounterEconomy
 )
@@ -74,6 +75,16 @@ const AVATAR_SPAWN_OFFSETS := [
 @onready var combat_result_overlay: RogueCombatResultOverlay = (
 	$CombatResultOverlay
 )
+
+## 保留战斗协调器与既有测试使用的 Overlay 访问契约；实际表现已由
+## 独立 RogueEncounterScene 承载，权威状态仍留在当前路线根节点。
+var encounter_overlay: RogueEncounterOverlay:
+	get:
+		return (
+			encounter_scene.presentation
+			if encounter_scene != null
+			else null
+		)
 
 var _route_graph: RogueRouteGraph = null
 var _runtime_state: RogueRouteRuntimeState = null
@@ -87,6 +98,8 @@ var _local_peer_id := 0
 var _multiplayer_avatar_mode := false
 var _camera_drag_active := false
 var _encounter_input_locked := false
+var _route_reveal_input_locked := false
+var _runtime_activated := false
 var _encounter_presented_active := false
 var _encounter_presentation_serial := 0
 var _local_result_hold_completed_occurrence_key := ""
@@ -102,8 +115,15 @@ var _player_character_ids: Dictionary = {}
 
 
 func _ready() -> void:
+	_connect_runtime_activation_signal()
 	_create_encounter_runtime()
 	route_board.show_waiting_for_host()
+	if not route_board.entry_reveal_finished.is_connected(
+		_on_route_entry_reveal_finished
+	):
+		route_board.entry_reveal_finished.connect(
+			_on_route_entry_reveal_finished
+		)
 	if manage_return_locally:
 		_configure_singleplayer_player()
 	_update_character_display()
@@ -114,6 +134,7 @@ func _ready() -> void:
 		call_deferred("_initialize_default_session")
 	else:
 		_set_status("等待外部会话初始化。", false)
+	call_deferred("_activate_runtime_when_loader_is_idle")
 
 
 func _process(delta: float) -> void:
@@ -128,7 +149,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _encounter_input_locked or _pending_node_id != INVALID_NODE_ID:
+	if _is_route_input_locked() or _pending_node_id != INVALID_NODE_ID:
 		_camera_drag_active = false
 		return
 	if event is InputEventMouseButton:
@@ -190,6 +211,7 @@ func start_authoritative_session(
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(true)
 
+	_set_route_reveal_input_locked(false)
 	_clear_pending_move(true)
 	set_authority_enabled(true)
 	if not route_board.present_graph(
@@ -213,10 +235,12 @@ func start_authoritative_session(
 			export_layout_snapshot(),
 			export_state_snapshot()
 		)
+	_try_play_route_entry_reveal()
 	return true
 
 
 func start_client_waiting() -> void:
+	_set_route_reveal_input_locked(false)
 	_clear_pending_move(true)
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(false)
@@ -291,6 +315,7 @@ func apply_full_snapshot(
 		_reset_normal_combat_stage(true)
 		_reset_encounter_runtime(false)
 
+	_set_route_reveal_input_locked(false)
 	_clear_pending_move(true)
 	set_authority_enabled(false)
 	if not route_board.present_graph(
@@ -299,7 +324,8 @@ func apply_full_snapshot(
 		imported_state.current_node_id,
 		imported_state.action_points,
 		imported_state.visited_counts,
-		false
+		false,
+		layout_changed or route_rewound or encounter_rewound
 	):
 		_set_status("客户端路线视觉层初始化失败。", true)
 		return false
@@ -318,6 +344,7 @@ func apply_full_snapshot(
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("已同步房主路线。当前为只读模式。", false)
+	_try_play_route_entry_reveal()
 	return true
 
 
@@ -615,7 +642,49 @@ func get_runtime_preparation_progress() -> Dictionary:
 
 
 func activate_runtime() -> void:
-	pass
+	_runtime_activated = true
+	_try_play_route_entry_reveal()
+
+
+func _connect_runtime_activation_signal() -> void:
+	var loader := get_node_or_null("/root/GameLoadCoordinator")
+	var finished_callable := Callable(self, "_on_loading_finished")
+	if (
+		loader != null
+		and loader.has_signal("loading_finished")
+		and not loader.is_connected(&"loading_finished", finished_callable)
+	):
+		loader.connect(&"loading_finished", finished_callable)
+
+
+func _activate_runtime_when_loader_is_idle() -> void:
+	var loader := get_node_or_null("/root/GameLoadCoordinator")
+	if loader == null or not bool(loader.call("is_loading")):
+		activate_runtime()
+
+
+func _on_loading_finished(_multiplayer_load: bool) -> void:
+	activate_runtime()
+
+
+func _try_play_route_entry_reveal() -> void:
+	if not _runtime_activated or not is_route_ready() or not is_node_ready():
+		return
+	var loader := get_node_or_null("/root/GameLoadCoordinator")
+	if loader != null and bool(loader.call("is_loading")):
+		return
+	if is_encounter_active():
+		route_board.complete_entry_reveal()
+		_set_route_reveal_input_locked(false)
+		return
+	if not route_board.is_entry_reveal_prepared():
+		return
+	_set_route_reveal_input_locked(true)
+	route_board.play_entry_reveal()
+
+
+func _on_route_entry_reveal_finished() -> void:
+	_set_route_reveal_input_locked(false)
 
 
 func host_submit_encounter_intro_ack(
@@ -686,29 +755,29 @@ func _create_encounter_runtime() -> void:
 		encounter_session.economy_changed.connect(
 			_on_encounter_economy_changed
 		)
-	if encounter_overlay != null:
-		if not encounter_overlay.intro_ack_requested.is_connected(
+	if encounter_scene != null:
+		if not encounter_scene.intro_ack_requested.is_connected(
 			_on_encounter_intro_ack_requested
 		):
-			encounter_overlay.intro_ack_requested.connect(
+			encounter_scene.intro_ack_requested.connect(
 				_on_encounter_intro_ack_requested
 			)
-		if not encounter_overlay.vote_requested.is_connected(
+		if not encounter_scene.vote_requested.is_connected(
 			_on_encounter_vote_requested
 		):
-			encounter_overlay.vote_requested.connect(
+			encounter_scene.vote_requested.connect(
 				_on_encounter_vote_requested
 			)
-		if not encounter_overlay.encounter_revealed.is_connected(
+		if not encounter_scene.encounter_revealed.is_connected(
 			_on_encounter_revealed
 		):
-			encounter_overlay.encounter_revealed.connect(
+			encounter_scene.encounter_revealed.connect(
 				_on_encounter_revealed
 			)
-		if not encounter_overlay.result_hold_completed.is_connected(
+		if not encounter_scene.result_hold_completed.is_connected(
 			_on_encounter_result_hold_completed
 		):
-			encounter_overlay.result_hold_completed.connect(
+			encounter_scene.result_hold_completed.connect(
 				_on_encounter_result_hold_completed
 			)
 	_configure_encounter_overlay_context()
@@ -718,9 +787,10 @@ func _reset_encounter_runtime(authority: bool) -> void:
 	_encounter_presentation_serial += 1
 	_encounter_presented_active = false
 	_local_result_hold_completed_occurrence_key = ""
+	if encounter_scene != null:
+		encounter_scene.hide_immediately()
+	_set_route_presentation_active(true)
 	_set_encounter_input_locked(false)
-	if encounter_overlay != null:
-		encounter_overlay.hide_immediately()
 	_create_encounter_runtime()
 	if authority:
 		encounter_session.reset_authority(
@@ -809,7 +879,7 @@ func _make_normal_combat_occurrence_key(
 
 
 func _configure_encounter_overlay_context() -> void:
-	if encounter_overlay == null:
+	if encounter_scene == null:
 		return
 	var local_peer_id := _get_local_encounter_peer_id()
 	var names := _player_names.duplicate(true)
@@ -818,7 +888,7 @@ func _configure_encounter_overlay_context() -> void:
 		names[local_peer_id] = "玩家"
 	if character_ids.is_empty() and player != null:
 		character_ids[local_peer_id] = player.get_character_id()
-	encounter_overlay.configure_local_context(
+	encounter_scene.configure_local_context(
 		local_peer_id,
 		names,
 		character_ids
@@ -970,8 +1040,8 @@ func _on_encounter_result_hold_completed(
 
 
 func _on_encounter_state_changed(snapshot: Dictionary) -> void:
-	if encounter_overlay != null:
-		encounter_overlay.apply_state(snapshot.duplicate(true))
+	if encounter_scene != null:
+		encounter_scene.apply_state(snapshot.duplicate(true))
 	var phase := StringName(snapshot.get("phase", &"idle"))
 	var encounter_active := phase not in [&"idle", &"completed"]
 	if encounter_active and not _encounter_presented_active:
@@ -1018,18 +1088,26 @@ func _emit_host_encounter_snapshot() -> void:
 
 
 func _present_encounter(presentation_serial: int) -> void:
-	if encounter_overlay == null:
+	if encounter_scene == null:
 		return
-	await encounter_overlay.cover_map_for_encounter()
+	await encounter_scene.cover_route_for_encounter()
 	if presentation_serial != _encounter_presentation_serial:
 		return
-	encounter_overlay.apply_state(export_encounter_snapshot())
-	await encounter_overlay.reveal_encounter()
+	_set_route_presentation_active(false)
+	encounter_scene.apply_state(export_encounter_snapshot())
+	await encounter_scene.reveal_encounter()
+	if presentation_serial != _encounter_presentation_serial:
+		return
 
 
 func _dismiss_encounter(presentation_serial: int) -> void:
-	if encounter_overlay != null:
-		await encounter_overlay.reveal_map_after_encounter()
+	if encounter_scene != null:
+		await encounter_scene.cover_encounter_for_route()
+	if presentation_serial != _encounter_presentation_serial:
+		return
+	_set_route_presentation_active(true)
+	if encounter_scene != null:
+		await encounter_scene.reveal_route_after_encounter()
 	if presentation_serial != _encounter_presentation_serial:
 		return
 	_set_encounter_input_locked(false)
@@ -1041,12 +1119,56 @@ func _set_encounter_input_locked(locked: bool) -> void:
 	if not is_node_ready():
 		return
 	if locked:
+		# 遭遇/作战优先于路线入场演出。同步快照可能在展开 Tween
+		# 进行中到达，必须先收束演出，避免隐藏 World 后冻结 Tween 与锁。
+		route_board.complete_entry_reveal()
+		_set_route_reveal_input_locked(false)
 		_clear_pending_move(true)
-	route_board.set_interaction_locked(
-		locked or _pending_node_id != INVALID_NODE_ID
+	_refresh_route_input_lock()
+
+
+func _set_route_reveal_input_locked(locked: bool) -> void:
+	if _route_reveal_input_locked == locked:
+		return
+	_route_reveal_input_locked = locked
+	_camera_drag_active = false
+	if not is_node_ready():
+		return
+	if locked:
+		_clear_pending_move(true)
+	_refresh_route_input_lock()
+
+
+func _is_route_input_locked() -> bool:
+	return _encounter_input_locked or _route_reveal_input_locked
+
+
+func _refresh_route_input_lock() -> void:
+	if not is_node_ready():
+		return
+	var locked := (
+		_is_route_input_locked()
+		or _pending_node_id != INVALID_NODE_ID
 	)
+	route_board.set_interaction_locked(locked)
 	_set_local_player_controls_locked(locked)
 	_update_authority_ui()
+
+
+func _set_route_presentation_active(active: bool) -> void:
+	if not is_node_ready():
+		return
+	if active:
+		world.process_mode = Node.PROCESS_MODE_INHERIT
+		world.show()
+		route_hud.visible = true
+		world.reset_physics_interpolation()
+		return
+	if move_confirmation.visible:
+		move_confirmation.dismiss()
+	route_hud.visible = false
+	world.hide()
+	world.process_mode = Node.PROCESS_MODE_DISABLED
 
 
 func _bind_runtime_state(
@@ -1075,7 +1197,7 @@ func _on_route_board_node_pressed(node_id: int) -> void:
 	if (
 		not _authority_enabled
 		or not is_route_ready()
-		or _encounter_input_locked
+		or _is_route_input_locked()
 		or _pending_node_id != INVALID_NODE_ID
 	):
 		return
@@ -1182,7 +1304,7 @@ func _on_combat_result_overlay_dismissed() -> void:
 func _on_regenerate_button_pressed() -> void:
 	if (
 		not _authority_enabled
-		or _encounter_input_locked
+		or _is_route_input_locked()
 		or _pending_node_id != INVALID_NODE_ID
 	):
 		return
@@ -1536,7 +1658,7 @@ func _recenter_camera_on_player() -> void:
 
 
 func _on_recenter_button_pressed() -> void:
-	if _encounter_input_locked or _pending_node_id != INVALID_NODE_ID:
+	if _is_route_input_locked() or _pending_node_id != INVALID_NODE_ID:
 		return
 	_recenter_camera_on_player()
 
@@ -1564,9 +1686,8 @@ func _clear_pending_move(hide_dialog: bool) -> void:
 		return
 	if hide_dialog and move_confirmation.visible:
 		move_confirmation.dismiss()
-	route_board.set_interaction_locked(_encounter_input_locked)
 	route_board.clear_selection()
-	_set_local_player_controls_locked(_encounter_input_locked)
+	_refresh_route_input_lock()
 
 
 func _finish_pending_move() -> void:
@@ -1574,9 +1695,8 @@ func _finish_pending_move() -> void:
 	_pending_revision = -1
 	if move_confirmation.visible:
 		move_confirmation.dismiss()
-	route_board.set_interaction_locked(_encounter_input_locked)
 	route_board.clear_selection()
-	_set_local_player_controls_locked(_encounter_input_locked)
+	_refresh_route_input_lock()
 
 
 func _update_route_hud() -> void:
@@ -1607,10 +1727,12 @@ func _update_authority_ui() -> void:
 		&"font_color",
 		Color("7fe7dc") if _authority_enabled else Color("a4b0ad")
 	)
-	regenerate_button.disabled = not _authority_enabled or _encounter_input_locked
+	regenerate_button.disabled = not _authority_enabled or _is_route_input_locked()
 	hint_label.text = (
 		"遭遇或作战进行中；路线移动与地图拖动已锁定。"
 		if _encounter_input_locked
+		else "地下路线正在展开…"
+		if _route_reveal_input_locked
 		else
 		"WASD / 左摇杆探索 · 拖动空白处查看地图 · 每次移动消耗 %d AP。"
 		% generation_config.move_action_cost

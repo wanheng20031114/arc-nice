@@ -232,6 +232,9 @@ func _report_game_loaded() -> void:
 
 
 func _synchronize_after_barrier() -> void:
+	# 只提出激活请求；路线场景会等全局加载遮罩真正退场后再播放
+	# 入场动画。客户端尚未收到布局时，请求会保留到首个有效快照。
+	_route.activate_runtime()
 	if _is_host():
 		_broadcast_full_snapshot()
 	elif _is_client():

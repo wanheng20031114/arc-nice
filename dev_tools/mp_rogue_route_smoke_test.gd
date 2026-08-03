@@ -138,6 +138,7 @@ func _test_mode_and_loading_contract() -> void:
 		NetManagerStore.GameMode.TEST_ARENA_P3,
 		manifest_net_manager
 	) as Array
+	manifest_net_manager.free()
 	_expect(
 		manifest == [
 			WRAPPER_SCENE_PATH,
@@ -516,6 +517,37 @@ func _test_encounter_network_contract(
 	fake_net_manager: FakeNetManager,
 	layout: Dictionary
 ) -> void:
+	var client_local_player := client_route.get_player_for_peer(
+		fake_net_manager.host_peer_id + 1
+	)
+	var client_camera := client_route.get("map_camera") as Camera2D
+	var client_player_position_before := (
+		client_local_player.global_position
+		if client_local_player != null
+		else Vector2.ZERO
+	)
+	var client_camera_position_before := (
+		client_camera.position if client_camera != null else Vector2.ZERO
+	)
+	var client_camera_global_before := (
+		client_camera.global_position if client_camera != null else Vector2.ZERO
+	)
+	var host_session_node := host_route.get_node("EncounterSession")
+	var host_economy_node := host_route.get_node("EncounterEconomy")
+	var client_session_node := client_route.get_node("EncounterSession")
+	var client_economy_node := client_route.get_node("EncounterEconomy")
+	var host_session_instance_id := host_session_node.get_instance_id()
+	var host_economy_instance_id := host_economy_node.get_instance_id()
+	var client_session_instance_id := client_session_node.get_instance_id()
+	var client_economy_instance_id := client_economy_node.get_instance_id()
+	var client_player_instance_id := (
+		client_local_player.get_instance_id()
+		if client_local_player != null
+		else 0
+	)
+	var client_camera_instance_id := (
+		client_camera.get_instance_id() if client_camera != null else 0
+	)
 	var node_types := layout.get("node_types", PackedByteArray()) as PackedByteArray
 	var magical_node_id := -1
 	for node_id in node_types.size():
@@ -546,15 +578,20 @@ func _test_encounter_network_contract(
 		),
 		"玩家可在 reveal 完成前确认对白。"
 	)
-	host_route.call(
-		"_on_encounter_revealed",
-		occurrence_key,
-		initial_revision
-	)
+	await create_timer(
+		RogueEncounterOverlay.COVER_DURATION_SECONDS
+		+ RogueEncounterOverlay.REVEAL_DURATION_SECONDS
+		+ 0.08
+	).timeout
 	var voting := host_route.export_encounter_snapshot()
 	_expect(
-		bool(voting.get("voting_timer_running", false)),
-		"reveal 回调必须使用 Session 最新 revision，不能被提前对白确认锁死60秒计时。"
+		bool(voting.get("voting_timer_running", false))
+		and float(voting.get("remaining_seconds", 0.0)) > 0.0
+		and float(voting.get("remaining_seconds", 0.0)) < 60.0,
+		"独立遭遇场景的真实 reveal 信号必须使用最新 revision 启动60秒投票计时。"
+	)
+	var remaining_after_host_reveal := float(
+		voting.get("remaining_seconds", 0.0)
 	)
 	var economy := host_route.export_encounter_economy_snapshot()
 	var client_state_before := client_route.export_encounter_snapshot()
@@ -602,6 +639,33 @@ func _test_encounter_network_contract(
 		+ RogueEncounterOverlay.REVEAL_DURATION_SECONDS
 		+ 0.08
 	).timeout
+	var host_encounter_scene := host_route.get_node(
+		"EncounterScene"
+	) as RogueEncounterScene
+	var client_encounter_scene := client_route.get_node(
+		"EncounterScene"
+	) as RogueEncounterScene
+	_expect(
+		host_encounter_scene != null
+		and client_encounter_scene != null
+		and host_encounter_scene.presentation.visible
+		and client_encounter_scene.presentation.visible
+		and host_encounter_scene.backdrop_layer.visible
+		and client_encounter_scene.backdrop_layer.visible
+		and not (host_route.get("world") as RogueRouteWorld).visible
+		and not (client_route.get("world") as RogueRouteWorld).visible
+		and (host_route.get("world") as RogueRouteWorld).process_mode
+		== Node.PROCESS_MODE_DISABLED
+		and (client_route.get("world") as RogueRouteWorld).process_mode
+		== Node.PROCESS_MODE_DISABLED
+		and not (host_route.get("route_hud") as CanvasLayer).visible
+		and not (client_route.get("route_hud") as CanvasLayer).visible
+		and float(host_route.export_encounter_snapshot().get(
+			"remaining_seconds",
+			remaining_after_host_reveal
+		)) < remaining_after_host_reveal,
+		"神奇遭遇必须切入独立表现场景；路线隐藏暂停时权威计时仍须继续。"
+	)
 	var stale := voting.duplicate(true)
 	stale["revision"] = maxi(int(voting.get("revision", 0)) - 1, 0)
 	_expect(
@@ -680,9 +744,7 @@ func _test_encounter_network_contract(
 		and bool(client_route.get("_encounter_input_locked")),
 		"房主 completed 不得强制关闭尚未读完结果的高延迟客户端。"
 	)
-	var client_overlay := client_route.get_node(
-		"EncounterOverlay"
-	) as RogueEncounterOverlay
+	var client_overlay := client_encounter_scene.presentation
 	client_overlay.typewriter.finish_line()
 	await create_timer(RogueEncounterOverlay.RESULT_HOLD_SECONDS + 0.08).timeout
 	_expect(
@@ -700,11 +762,38 @@ func _test_encounter_network_contract(
 		and not bool(host_route.get("_encounter_input_locked"))
 		and not client_route.is_encounter_active()
 		and not bool(client_route.get("_encounter_input_locked"))
+		and (host_route.get("world") as RogueRouteWorld).visible
+		and (client_route.get("world") as RogueRouteWorld).visible
+		and (host_route.get("route_hud") as CanvasLayer).visible
+		and (client_route.get("route_hud") as CanvasLayer).visible
+		and not host_encounter_scene.backdrop_layer.visible
+		and not client_encounter_scene.backdrop_layer.visible
+		and (host_route.get("world") as RogueRouteWorld).process_mode
+		== Node.PROCESS_MODE_INHERIT
+		and (client_route.get("world") as RogueRouteWorld).process_mode
+		== Node.PROCESS_MODE_INHERIT
+		and host_session_node.get_instance_id() == host_session_instance_id
+		and host_economy_node.get_instance_id() == host_economy_instance_id
+		and client_session_node.get_instance_id() == client_session_instance_id
+		and client_economy_node.get_instance_id() == client_economy_instance_id
+		and client_local_player != null
+		and client_local_player.get_instance_id() == client_player_instance_id
+		and client_local_player.global_position.is_equal_approx(
+			client_player_position_before
+		)
+		and client_camera != null
+		and client_camera.get_instance_id() == client_camera_instance_id
+		and client_camera.position.is_equal_approx(
+			client_camera_position_before
+		)
+		and client_camera.global_position.is_equal_approx(
+			client_camera_global_before
+		)
 		and not bool(host_route.call(
 			"_try_start_encounter_for_node",
 			magical_node_id
 		)),
-		"退出转场完成后才可恢复位姿同步，已解决节点仍不得重复触发。"
+		"退出转场后必须原位恢复路线、玩家与镜头，已解决节点仍不得重复触发。"
 	)
 	var previous_layout_hash := str(
 		host_route.export_layout_snapshot().get("layout_hash", "")
@@ -733,6 +822,26 @@ func _test_encounter_network_contract(
 			) as Array
 		).is_empty(),
 		"相同布局 hash 的新局也必须按遭遇 revision 回退重置，不能继承旧节点完成态。"
+	)
+	var host_board := host_route.get("route_board") as RogueRouteBoard
+	var client_board := client_route.get("route_board") as RogueRouteBoard
+	_expect(
+		host_board != null
+		and client_board != null
+		and host_board.is_entry_reveal_playing()
+		and client_board.is_entry_reveal_playing()
+		and bool(host_route.get("_route_reveal_input_locked"))
+		and bool(client_route.get("_route_reveal_input_locked")),
+		"同布局 hash 的新局也必须让房主与客户端一致重播路线入场动画。"
+	)
+	if host_board != null:
+		host_board.complete_entry_reveal()
+	if client_board != null:
+		client_board.complete_entry_reveal()
+	_expect(
+		not bool(host_route.get("_route_reveal_input_locked"))
+		and not bool(client_route.get("_route_reveal_input_locked")),
+		"中止新局入场动画后不得残留路线输入锁。"
 	)
 
 

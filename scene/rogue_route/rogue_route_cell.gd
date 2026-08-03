@@ -4,6 +4,9 @@ class_name RogueRouteCell
 signal node_pressed(node_id: int)
 
 const INVALID_NODE_ID := -1
+const ENTRY_REVEAL_START_SCALE := 0.78
+const ENTRY_REVEAL_OVERSHOOT_SCALE := 1.04
+const ENTRY_REVEAL_OVERSHOOT_POINT := 0.78
 
 @onready var current_halo: Panel = $CurrentHalo
 @onready var selected_halo: Panel = $SelectedHalo
@@ -29,6 +32,8 @@ var _is_focused := false
 var _is_selected := false
 var _is_current := false
 var _is_visited := false
+var _entry_reveal_progress := 1.0
+var _entry_reveal_base_self_modulate := Color.WHITE
 
 
 func _ready() -> void:
@@ -113,6 +118,58 @@ func get_connection_anchor() -> Vector2:
 	if not is_node_ready():
 		return Vector2(24.0, 16.0)
 	return node_button.position + node_button.size * 0.5
+
+
+func prepare_entry_reveal() -> void:
+	if is_equal_approx(_entry_reveal_progress, 1.0):
+		_entry_reveal_base_self_modulate = self_modulate
+	pivot_offset = get_connection_anchor()
+	set_entry_reveal_progress(0.0)
+
+
+func set_entry_reveal_progress(progress: float) -> void:
+	_entry_reveal_progress = clampf(progress, 0.0, 1.0)
+	var alpha_progress := smoothstep(0.0, 0.72, _entry_reveal_progress)
+	self_modulate = Color(
+		_entry_reveal_base_self_modulate.r,
+		_entry_reveal_base_self_modulate.g,
+		_entry_reveal_base_self_modulate.b,
+		_entry_reveal_base_self_modulate.a * alpha_progress
+	)
+	var reveal_scale := 1.0
+	if _entry_reveal_progress < ENTRY_REVEAL_OVERSHOOT_POINT:
+		var rise_progress := smoothstep(
+			0.0,
+			ENTRY_REVEAL_OVERSHOOT_POINT,
+			_entry_reveal_progress
+		)
+		reveal_scale = lerpf(
+			ENTRY_REVEAL_START_SCALE,
+			ENTRY_REVEAL_OVERSHOOT_SCALE,
+			rise_progress
+		)
+	else:
+		var settle_progress := smoothstep(
+			ENTRY_REVEAL_OVERSHOOT_POINT,
+			1.0,
+			_entry_reveal_progress
+		)
+		reveal_scale = lerpf(
+			ENTRY_REVEAL_OVERSHOOT_SCALE,
+			1.0,
+			settle_progress
+		)
+	scale = Vector2.ONE * reveal_scale
+
+
+func complete_entry_reveal() -> void:
+	_entry_reveal_progress = 1.0
+	self_modulate = _entry_reveal_base_self_modulate
+	scale = Vector2.ONE
+
+
+func get_entry_reveal_progress() -> float:
+	return _entry_reveal_progress
 
 
 func _on_node_button_pressed() -> void:

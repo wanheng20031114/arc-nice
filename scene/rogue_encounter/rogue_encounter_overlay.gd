@@ -199,9 +199,10 @@ func reveal_encounter() -> void:
 	encounter_revealed.emit(occurrence_key, expected_revision)
 
 
-func reveal_map_after_encounter() -> void:
+## 退出遭遇的第一阶段：用场景转场完全遮住遭遇内容。外层独立场景在
+## await 返回后切回路线表现层，因此路线不会在遮盖完成前提前出现。
+func cover_encounter_for_route() -> void:
 	if not visible:
-		encounter_hidden.emit()
 		return
 	_stop_transition_tween()
 	_stop_option_tween()
@@ -221,9 +222,23 @@ func reveal_map_after_encounter() -> void:
 	await tween.finished
 	if transition_tween != tween:
 		return
+	transition_tween = null
+	_set_transition_progress(1.0)
 	encounter_content.visible = false
+
+
+## 退出遭遇的第二阶段：外层已在全遮盖状态下恢复路线表现层，此处只
+## 揭开遮盖。拆分为两段可确保玩家与摄像机节点无需重建或重新定位。
+func reveal_route_after_encounter() -> void:
+	if not visible:
+		encounter_hidden.emit()
+		return
+	_stop_transition_tween()
+	transition_cover.visible = true
+	transition_cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	_set_transition_progress(1.0)
 	transition_reveal_audio.play()
-	tween = create_tween()
+	var tween := create_tween()
 	transition_tween = tween
 	tween.tween_method(
 		_set_transition_progress,
@@ -237,6 +252,18 @@ func reveal_map_after_encounter() -> void:
 	transition_tween = null
 	hide_immediately()
 	encounter_hidden.emit()
+
+
+## 兼容原调用：没有独立场景协调器时仍可一次完成“遮盖遭遇并揭示
+## 路线”。新路线流程应优先分别调用上面的两个阶段。
+func reveal_map_after_encounter() -> void:
+	if not visible:
+		encounter_hidden.emit()
+		return
+	await cover_encounter_for_route()
+	if not visible:
+		return
+	await reveal_route_after_encounter()
 
 
 func hide_immediately() -> void:
