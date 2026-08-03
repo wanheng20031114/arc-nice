@@ -17,6 +17,5 @@ enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("CombatRobotEn
 spawn_point_mask = 7
 spawn_interval = 0.1
 spawn_count_per_tick = 10
-max_alive_enemies = 10
 step_id = &"wave_01"
 display_name = "狭路相逢：击败全部作战机器人"
