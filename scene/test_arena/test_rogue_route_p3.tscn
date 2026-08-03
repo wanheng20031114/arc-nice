@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3]
+[gd_scene load_steps=26 format=3]
 
 [ext_resource type="Script" path="res://scene/test_arena/test_rogue_route_p3.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_board.tscn" id="2_board"]
@@ -13,6 +13,9 @@
 [ext_resource type="Script" path="res://scene/rogue_encounter/rogue_encounter_session.gd" id="11_encounter_session"]
 [ext_resource type="PackedScene" path="res://scene/rogue_encounter/rogue_encounter_overlay.tscn" id="12_encounter_overlay"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_move_confirmation.tscn" id="13_move_confirmation"]
+[ext_resource type="PackedScene" path="res://scene/rogue_combat/rogue_combat_result_overlay.tscn" id="14_combat_result"]
+[ext_resource type="Script" path="res://scene/rogue_combat/rogue_combat_singleplayer_coordinator.gd" id="15_single_combat_coordinator"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/encounter_01.tres" id="16_combat_config"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -128,6 +131,10 @@ script = ExtResource("10_encounter_economy")
 
 [node name="EncounterSession" type="Node" parent="."]
 script = ExtResource("11_encounter_session")
+
+[node name="SingleplayerCombatCoordinator" type="Node" parent="."]
+script = ExtResource("15_single_combat_coordinator")
+encounter_config = ExtResource("16_combat_config")
 
 [node name="EncounterOverlay" parent="." instance=ExtResource("12_encounter_overlay")]
 
@@ -468,9 +475,12 @@ tooltip_text = "回到本地角色（Home）"
 
 [node name="MoveConfirmation" parent="." instance=ExtResource("13_move_confirmation")]
 
+[node name="CombatResultOverlay" parent="." instance=ExtResource("14_combat_result")]
+
 [connection signal="node_pressed" from="World/RouteBoard" to="." method="_on_route_board_node_pressed"]
 [connection signal="pressed" from="HUD/Root/TopBar/TopLayout/ReturnButton" to="." method="_on_return_button_pressed"]
 [connection signal="pressed" from="HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RegenerateButton" to="." method="_on_regenerate_button_pressed"]
 [connection signal="pressed" from="HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RecenterButton" to="." method="_on_recenter_button_pressed"]
 [connection signal="canceled" from="MoveConfirmation" to="." method="_on_move_confirmation_canceled"]
 [connection signal="confirmed" from="MoveConfirmation" to="." method="_on_move_confirmation_confirmed"]
+[connection signal="dismissed" from="CombatResultOverlay" to="." method="_on_combat_result_overlay_dismissed"]

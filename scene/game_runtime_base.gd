@@ -324,6 +324,17 @@ func _play_remote_linglan_airdrop_visual(
 
 @abstract func apply_remote_defeat() -> void
 @abstract func apply_remote_victory() -> void
+
+
+## Terminal defeat metadata is optional for existing runtimes. Specialized
+## encounters can override both hooks so every client presents the host's
+## authoritative reason without changing the long-standing defeat entry point.
+func get_multiplayer_defeat_reason() -> String:
+	return ""
+
+
+func apply_remote_defeat_with_reason(_failure_reason: String) -> void:
+	apply_remote_defeat()
 @abstract func apply_remote_enemy_count(alive_count: int) -> void
 @abstract func apply_remote_merchant_active(active: bool) -> void
 @abstract func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void
@@ -1192,6 +1203,20 @@ func allows_debug_collectible_grants() -> bool:
 
 func request_tower_defense_wave_start(_requester_peer_id: int = 0) -> bool:
 	return false
+
+
+## Combat runtimes that treat death as permanent for the current encounter can
+## override this per-player policy. The default preserves every existing mode's
+## respawn behavior.
+func allows_player_respawn(_peer_id: int) -> bool:
+	return true
+
+
+## Encounter runtimes can suppress configured enemy loot without replacing the
+## EnemyConfig resource. Keeping that canonical resource identity is required
+## by multiplayer spawn serialization.
+func allows_enemy_pickup_drops() -> bool:
+	return true
 
 
 func consume_next_player_respawn_delay(_peer_id: int) -> float:

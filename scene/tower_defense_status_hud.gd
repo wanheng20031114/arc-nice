@@ -13,6 +13,8 @@ const LOCAL_DEATH_COMPACT_REVEAL_DELAY := 0.2
 const LOCAL_DEATH_COMPACT_REVEAL_SECONDS := 0.28
 const DEAD_PLAYERS_FADE_SECONDS := 0.3
 const COUNTDOWN_PULSE_SECONDS := 0.22
+const PERMANENT_DEATH_FULL_TEXT := "本次作战无法复活"
+const PERMANENT_DEATH_COMPACT_TEXT := "观战中"
 
 @onready var death_screen_effect: ColorRect = $DeathScreenEffect
 @onready var gate_warning_overlay: ColorRect = $GateWarningOverlay
@@ -36,6 +38,7 @@ const COUNTDOWN_PULSE_SECONDS := 0.22
 var respawn_entries: Dictionary = {}
 var _dead_player_list_enabled := true
 var local_dead_peer_id := -1
+var local_permanent_death_active := false
 var local_death_top_position := Vector2.ZERO
 var local_death_top_size := Vector2.ZERO
 var local_death_intro_active := false
@@ -84,9 +87,31 @@ func set_player_respawn(
 	}
 	if is_local_player:
 		local_dead_peer_id = peer_id
+		local_permanent_death_active = false
 		if begins_local_death:
 			_play_local_death_intro()
 		_update_local_countdown(maxi(seconds_left, 0), begins_local_death)
+	_refresh_dead_player_list()
+
+
+## Presents a local death with no revive timer. It deliberately does not add a
+## respawn entry, so runtimes that disable the right-side list cannot expose a
+## misleading teammate countdown.
+func show_local_permanent_death(peer_id: int) -> void:
+	if peer_id < 0:
+		return
+	var begins_local_death := (
+		local_dead_peer_id != peer_id or not local_death_center.visible
+	)
+	local_dead_peer_id = peer_id
+	local_permanent_death_active = true
+	if begins_local_death:
+		_play_local_death_intro()
+	_set_local_death_status_text(
+		PERMANENT_DEATH_FULL_TEXT,
+		PERMANENT_DEATH_COMPACT_TEXT,
+		begins_local_death
+	)
 	_refresh_dead_player_list()
 
 
@@ -185,14 +210,22 @@ func _update_local_countdown(seconds_left: int, force_pulse := false) -> void:
 		if seconds_left <= 0
 		else "%d 秒后复活" % seconds_left
 	)
+	_set_local_death_status_text(countdown_text, countdown_text, force_pulse)
+
+
+func _set_local_death_status_text(
+	full_text: String,
+	compact_text: String,
+	force_pulse: bool
+) -> void:
 	var text_changed := (
-		local_countdown_label.text != countdown_text
-		or local_compact_countdown_label.text != countdown_text
+		local_countdown_label.text != full_text
+		or local_compact_countdown_label.text != compact_text
 	)
 	if not text_changed and not force_pulse:
 		return
-	local_countdown_label.text = countdown_text
-	local_compact_countdown_label.text = countdown_text
+	local_countdown_label.text = full_text
+	local_compact_countdown_label.text = compact_text
 	if countdown_pulse_tween != null:
 		countdown_pulse_tween.kill()
 	if countdown_pulse_target != null:
@@ -304,6 +337,7 @@ func _stop_local_death_presentation() -> void:
 		dead_players_tween.kill()
 		dead_players_tween = null
 	local_death_intro_active = false
+	local_permanent_death_active = false
 	death_screen_effect.hide()
 	local_death_center.hide()
 	_refresh_local_death_top_position()

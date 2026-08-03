@@ -53,7 +53,7 @@ const PURCHASE_RESULT_INVALID_PLAYER := 3
 const PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS := 4
 const PURCHASE_RESULT_SKILL1_UPGRADE_MAXED := 5
 const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.1
-const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
+const MAX_WAVE_SPAWN_COUNT_PER_TICK := 10
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
 const MUSIC_FADE_IN_SECONDS := 3.0
 const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
@@ -240,11 +240,16 @@ func _ready() -> void:
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
-		_start_client_flow_countdown(
-			WaveState.PRE_WAVE,
-			_get_flow_step_id(_get_start_flow_step()),
-			maxi(ceili(pre_wave_duration), 0)
-		)
+		# Embedded runtimes replace their occurrence campaign after shared-data
+		# preparation and before explicit activation. Keep the deferred client at
+		# an empty flow state so that replacement is atomic; the Host's first
+		# authoritative flow packet will establish the visible countdown.
+		if not runtime_activation_deferred:
+			_start_client_flow_countdown(
+				WaveState.PRE_WAVE,
+				_get_flow_step_id(_get_start_flow_step()),
+				maxi(ceili(pre_wave_duration), 0)
+			)
 	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
 		_enter_pre_flow_step(_get_start_flow_step())
 	else:

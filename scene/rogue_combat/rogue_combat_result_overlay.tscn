@@ -1,0 +1,407 @@
+[gd_scene load_steps=20 format=3]
+
+[ext_resource type="Script" path="res://scene/rogue_combat/rogue_combat_result_overlay.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="3_xirang"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.035, 0.038, 0.037, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.68, 0.51, 0.3, 0.92)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.62)
+shadow_size = 12
+shadow_offset = Vector2(0, 5)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_loot_card"]
+bg_color = Color(0.07, 0.068, 0.058, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.41, 0.28, 0.86)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_icon_frame"]
+bg_color = Color(0.025, 0.03, 0.028, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.66, 0.58, 0.4, 0.82)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rarity"]
+content_margin_left = 8.0
+content_margin_top = 2.0
+content_margin_right = 8.0
+content_margin_bottom = 2.0
+bg_color = Color(0.34, 0.36, 0.34, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.68, 0.72, 0.67, 0.84)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_normal"]
+content_margin_left = 18.0
+content_margin_top = 7.0
+content_margin_right = 18.0
+content_margin_bottom = 7.0
+bg_color = Color(0.15, 0.18, 0.16, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.67, 0.59, 0.39, 0.86)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
+content_margin_left = 18.0
+content_margin_top = 7.0
+content_margin_right = 18.0
+content_margin_bottom = 7.0
+bg_color = Color(0.25, 0.22, 0.14, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.77, 0.38, 0.98)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_pressed"]
+content_margin_left = 18.0
+content_margin_top = 7.0
+content_margin_right = 18.0
+content_margin_bottom = 7.0
+bg_color = Color(0.1, 0.115, 0.105, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.94, 0.68, 0.3, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_focus"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.88, 0.55, 0.9)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 38
+font_color = Color(1, 1, 1, 1)
+outline_size = 4
+outline_color = Color(0.018, 0.03, 0.02, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_subtitle"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 15
+font_color = Color(0.83, 0.87, 0.82, 1)
+outline_size = 2
+outline_color = Color(0.018, 0.022, 0.02, 0.96)
+
+[sub_resource type="LabelSettings" id="LabelSettings_currency_label"]
+font = ExtResource("2_font")
+font_size = 16
+font_color = Color(0.88, 0.9, 0.84, 1)
+outline_size = 2
+outline_color = Color(0.02, 0.024, 0.02, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_currency_value"]
+font = ExtResource("2_font")
+font_size = 22
+font_color = Color(1, 0.82, 0.34, 1)
+outline_size = 2
+outline_color = Color(0.04, 0.025, 0.008, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_section"]
+font = ExtResource("2_font")
+font_size = 14
+font_color = Color(0.74, 0.71, 0.61, 1)
+outline_size = 1
+outline_color = Color(0.02, 0.022, 0.018, 0.94)
+
+[sub_resource type="LabelSettings" id="LabelSettings_loot_name"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 21
+font_color = Color(0.96, 0.94, 0.85, 1)
+outline_size = 2
+outline_color = Color(0.025, 0.024, 0.018, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_loot_status"]
+font = ExtResource("2_font")
+font_size = 14
+font_color = Color(0.58, 0.9, 0.61, 1)
+outline_size = 2
+outline_color = Color(0.018, 0.028, 0.02, 0.96)
+
+[sub_resource type="LabelSettings" id="LabelSettings_rarity"]
+font = ExtResource("2_font")
+font_size = 12
+font_color = Color(0.94, 0.95, 0.91, 1)
+outline_size = 1
+outline_color = Color(0.08, 0.08, 0.075, 0.94)
+
+[node name="RogueCombatResultOverlay" type="CanvasLayer"]
+process_mode = 3
+visible = false
+layer = 100
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.012, 0.014, 0.013, 0.76)
+
+[node name="SafeMargin" type="MarginContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="Center" type="CenterContainer" parent="Root/SafeMargin"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ResultPanel" type="PanelContainer" parent="Root/SafeMargin/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(540, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="PanelStack" type="VBoxContainer" parent="Root/SafeMargin/Center/ResultPanel"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="ResultAccent" type="ColorRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 5)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.46, 0.86, 0.51, 0.92)
+
+[node name="PanelMargin" type="MarginContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 26
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 26
+
+[node name="ResultContent" type="VBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="ResultTitle" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "通过作战"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ResultSubtitle" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "所有敌人已被击败，作战区域已经安全。"
+label_settings = SubResource("LabelSettings_subtitle")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Divider" type="ColorRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.57, 0.46, 0.29, 0.48)
+
+[node name="CurrencyRow" type="HBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_constants/separation = 7
+alignment = 1
+
+[node name="Label" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/CurrencyRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "获得额外息壤："
+label_settings = SubResource("LabelSettings_currency_label")
+vertical_alignment = 1
+
+[node name="Icon" type="TextureRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/CurrencyRow"]
+texture_filter = 1
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("3_xirang")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ExtraXirangValue" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/CurrencyRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+text = "+500"
+label_settings = SubResource("LabelSettings_currency_value")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="LootSectionLabel" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+layout_mode = 2
+text = "战利品栏"
+label_settings = SubResource("LabelSettings_section")
+
+[node name="LootCard" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_loot_card")
+
+[node name="LootCardMargin" type="MarginContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="LootRow" type="HBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="LootIconFrame" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(82, 82)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_icon_frame")
+
+[node name="IconMargin" type="MarginContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow/LootIconFrame"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="LootIcon" type="TextureRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow/LootIconFrame/IconMargin"]
+unique_name_in_owner = true
+texture_filter = 1
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LootText" type="VBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="RarityBadge" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_rarity")
+
+[node name="RarityLabel" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow/LootText/RarityBadge"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "普通品质"
+label_settings = SubResource("LabelSettings_rarity")
+
+[node name="LootName" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+text = "蜡烛头"
+label_settings = SubResource("LabelSettings_loot_name")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="LootStatus" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard/LootCardMargin/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "已放入背包"
+label_settings = SubResource("LabelSettings_loot_status")
+autowrap_mode = 2
+
+[node name="CloseButton" type="Button" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(196, 42)
+layout_mode = 2
+size_flags_horizontal = 4
+focus_neighbor_top = NodePath(".")
+focus_neighbor_bottom = NodePath(".")
+focus_next = NodePath(".")
+focus_previous = NodePath(".")
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.95, 0.94, 0.85, 1)
+theme_override_colors/font_hover_color = Color(1, 0.93, 0.67, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_focus")
+text = "关闭"

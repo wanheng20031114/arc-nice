@@ -19,6 +19,12 @@ signal encounter_vote_requested(
 	expected_revision: int,
 	option_id: StringName
 )
+signal normal_combat_requested(
+	node_id: int,
+	content_seed: int,
+	occurrence_key: String
+)
+signal combat_result_dismissed
 signal return_requested
 
 const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
@@ -65,6 +71,9 @@ const AVATAR_SPAWN_OFFSETS := [
 	$EncounterEconomy
 )
 @onready var encounter_session: RogueEncounterSession = $EncounterSession
+@onready var combat_result_overlay: RogueCombatResultOverlay = (
+	$CombatResultOverlay
+)
 
 var _route_graph: RogueRouteGraph = null
 var _runtime_state: RogueRouteRuntimeState = null
@@ -81,6 +90,13 @@ var _encounter_input_locked := false
 var _encounter_presented_active := false
 var _encounter_presentation_serial := 0
 var _local_result_hold_completed_occurrence_key := ""
+var _normal_combat_active := false
+var _normal_combat_node_id := INVALID_NODE_ID
+var _normal_combat_content_seed := 0
+var _normal_combat_visit_count := 0
+var _normal_combat_occurrence_key := ""
+var _route_presentation_enabled := true
+var _route_presentation_restore_state: Dictionary = {}
 var _player_names: Dictionary = {}
 var _player_character_ids: Dictionary = {}
 
@@ -171,6 +187,7 @@ func start_authoritative_session(
 	):
 		_set_status("路线运行状态初始化失败。", true)
 		return false
+	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(true)
 
 	_clear_pending_move(true)
@@ -201,6 +218,7 @@ func start_authoritative_session(
 
 func start_client_waiting() -> void:
 	_clear_pending_move(true)
+	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(false)
 	_disconnect_runtime_state()
 	_route_graph = null
@@ -244,6 +262,10 @@ func apply_full_snapshot(
 		or _route_graph.compute_layout_hash()
 		!= imported_graph.compute_layout_hash()
 	)
+	var route_rewound := _is_full_snapshot_rewound(
+		imported_graph,
+		imported_state
+	)
 	var encounter_rewound := false
 	if encounter_session != null and not encounter_snapshot.is_empty():
 		var incoming_encounter_revision := int(
@@ -265,7 +287,8 @@ func apply_full_snapshot(
 				!= str(current_encounter_snapshot.get("occurrence_key", ""))
 			)
 		)
-	if layout_changed or encounter_rewound:
+	if layout_changed or route_rewound or encounter_rewound:
+		_reset_normal_combat_stage(true)
 		_reset_encounter_runtime(false)
 
 	_clear_pending_move(true)
@@ -296,6 +319,27 @@ func apply_full_snapshot(
 	_show_node_content(_runtime_state.current_node_id, false)
 	_set_status("已同步房主路线。当前为只读模式。", false)
 	return true
+
+
+func _is_full_snapshot_rewound(
+	imported_graph: RogueRouteGraph,
+	imported_state: RogueRouteRuntimeState
+) -> bool:
+	if (
+		_route_graph == null
+		or _runtime_state == null
+		or imported_graph == null
+		or imported_state == null
+		or _route_graph.compute_layout_hash()
+		!= imported_graph.compute_layout_hash()
+	):
+		return false
+	if imported_state.state_revision < _runtime_state.state_revision:
+		return true
+	return (
+		imported_state.state_revision == _runtime_state.state_revision
+		and imported_state.export_state() != _runtime_state.export_state()
+	)
 
 
 func apply_move_delta(delta: Dictionary) -> bool:
@@ -375,12 +419,155 @@ func apply_encounter_snapshot(
 
 func is_encounter_active() -> bool:
 	return (
+		_normal_combat_active
+		or
 		_encounter_input_locked
 		or (
 			encounter_session != null
 			and encounter_session.is_active()
 		)
 	)
+
+
+func is_normal_combat_active() -> bool:
+	return _normal_combat_active
+
+
+func get_normal_combat_occurrence_key() -> String:
+	return _normal_combat_occurrence_key
+
+
+## 客户端只接受能由当前权威路线状态完整复算出的作战启动数据。
+## 相同启动包可安全重放；不同 occurrence 不会覆盖正在进行的作战。
+func apply_normal_combat_started(
+	node_id: int,
+	content_seed: int,
+	occurrence_key: String
+) -> bool:
+	if _authority_enabled or not _validate_normal_combat_start(
+		node_id,
+		content_seed,
+		occurrence_key
+	):
+		return false
+	if _normal_combat_active:
+		return (
+			node_id == _normal_combat_node_id
+			and content_seed == _normal_combat_content_seed
+			and occurrence_key == _normal_combat_occurrence_key
+		)
+	if (
+		_encounter_input_locked
+		or (
+			encounter_session != null
+			and encounter_session.is_active()
+		)
+	):
+		return false
+	_begin_normal_combat_stage(node_id, content_seed, occurrence_key)
+	_set_status("房主已发起普通作战，正在进入战斗区域。", false)
+	return true
+
+
+func complete_normal_combat(occurrence_key: String) -> bool:
+	if (
+		not _normal_combat_active
+		or occurrence_key.is_empty()
+		or occurrence_key != _normal_combat_occurrence_key
+	):
+		return false
+	_clear_normal_combat_state()
+	_set_encounter_input_locked(
+		encounter_session != null and encounter_session.is_active()
+	)
+	_set_status("普通作战阶段已结束。", false)
+	return true
+
+
+func set_route_presentation_enabled(enabled: bool) -> void:
+	if not is_node_ready() or enabled == _route_presentation_enabled:
+		return
+	_route_presentation_enabled = enabled
+	if not enabled:
+		_route_presentation_restore_state = {
+			"world_visible": world.visible,
+			"hud_visible": ($HUD as CanvasLayer).visible,
+			"move_confirmation_visible": move_confirmation.visible,
+			"encounter_overlay_visible": encounter_overlay.visible,
+			"camera_enabled": map_camera.enabled,
+		}
+		world.visible = false
+		($HUD as CanvasLayer).visible = false
+		move_confirmation.visible = false
+		encounter_overlay.visible = false
+		map_camera.enabled = false
+		_camera_drag_active = false
+		return
+	world.visible = bool(
+		_route_presentation_restore_state.get("world_visible", true)
+	)
+	($HUD as CanvasLayer).visible = bool(
+		_route_presentation_restore_state.get("hud_visible", true)
+	)
+	move_confirmation.visible = bool(
+		_route_presentation_restore_state.get(
+			"move_confirmation_visible",
+			false
+		)
+	)
+	encounter_overlay.visible = bool(
+		_route_presentation_restore_state.get(
+			"encounter_overlay_visible",
+			false
+		)
+	)
+	map_camera.enabled = bool(
+		_route_presentation_restore_state.get("camera_enabled", true)
+	)
+	_route_presentation_restore_state.clear()
+
+
+func show_combat_result(result: Dictionary) -> bool:
+	if combat_result_overlay == null or typeof(result.get("victory")) != TYPE_BOOL:
+		return false
+	var victory := bool(result["victory"])
+	if not victory:
+		var failure_reason_value: Variant = result.get("failure_reason", "")
+		if typeof(failure_reason_value) not in [TYPE_STRING, TYPE_STRING_NAME]:
+			return false
+		combat_result_overlay.show_failure(str(failure_reason_value))
+		return true
+	if typeof(result.get("extra_xirang")) != TYPE_INT:
+		return false
+	var extra_xirang := int(result["extra_xirang"])
+	if extra_xirang < 0 or typeof(result.get("loot")) != TYPE_DICTIONARY:
+		return false
+	var loot := result["loot"] as Dictionary
+	if typeof(loot.get("config_path")) != TYPE_STRING:
+		return false
+	var config_path := str(loot["config_path"])
+	var loot_config: PickupConfig = null
+	if not config_path.is_empty():
+		if not ResourceLoader.exists(config_path, "PickupConfig"):
+			return false
+		loot_config = load(config_path) as PickupConfig
+		if loot_config == null:
+			return false
+	var inventory_full := (
+		StringName(loot.get("failure_reason", &"")) == &"inventory_full"
+	)
+	combat_result_overlay.show_victory(
+		extra_xirang,
+		loot_config.display_name if loot_config != null else "",
+		loot_config.icon_texture if loot_config != null else null,
+		inventory_full
+	)
+	return true
+
+
+func hide_combat_result() -> void:
+	if combat_result_overlay != null:
+		combat_result_overlay.hide_immediately()
 
 
 func get_route_revision() -> int:
@@ -542,6 +729,85 @@ func _reset_encounter_runtime(authority: bool) -> void:
 		)
 
 
+func _reset_normal_combat_stage(restore_presentation: bool) -> void:
+	_clear_normal_combat_state()
+	if not is_node_ready():
+		return
+	hide_combat_result()
+	if restore_presentation:
+		set_route_presentation_enabled(true)
+	_set_encounter_input_locked(
+		encounter_session != null and encounter_session.is_active()
+	)
+
+
+func _clear_normal_combat_state() -> void:
+	_normal_combat_active = false
+	_normal_combat_node_id = INVALID_NODE_ID
+	_normal_combat_content_seed = 0
+	_normal_combat_visit_count = 0
+	_normal_combat_occurrence_key = ""
+
+
+func _begin_normal_combat_stage(
+	node_id: int,
+	content_seed: int,
+	occurrence_key: String
+) -> void:
+	_normal_combat_active = true
+	_normal_combat_node_id = node_id
+	_normal_combat_content_seed = content_seed
+	_normal_combat_visit_count = int(_runtime_state.visited_counts[node_id])
+	_normal_combat_occurrence_key = occurrence_key
+	_set_encounter_input_locked(true)
+
+
+func _validate_normal_combat_start(
+	node_id: int,
+	content_seed: int,
+	occurrence_key: String
+) -> bool:
+	if (
+		not is_route_ready()
+		or occurrence_key.is_empty()
+		or not _route_graph.is_valid_node_id(node_id)
+		or _runtime_state.current_node_id != node_id
+		or _route_graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.NORMAL_COMBAT
+		or _route_graph.get_node_content_seed(node_id) != content_seed
+		or node_id >= _runtime_state.visited_counts.size()
+	):
+		return false
+	var visit_count := int(_runtime_state.visited_counts[node_id])
+	return (
+		visit_count > 0
+		and occurrence_key == _make_normal_combat_occurrence_key(
+			node_id,
+			content_seed,
+			visit_count
+		)
+	)
+
+
+func _make_normal_combat_occurrence_key(
+	node_id: int,
+	content_seed: int,
+	visit_count: int
+) -> String:
+	if (
+		_route_graph == null
+		or not _route_graph.is_valid_node_id(node_id)
+		or visit_count <= 0
+	):
+		return ""
+	return "combat:%s:%d:%d:%d" % [
+		_route_graph.compute_layout_hash(),
+		node_id,
+		content_seed,
+		visit_count,
+	]
+
+
 func _configure_encounter_overlay_context() -> void:
 	if encounter_overlay == null:
 		return
@@ -578,6 +844,7 @@ func _get_active_encounter_peer_ids() -> Array[int]:
 func _try_start_encounter_for_node(node_id: int) -> bool:
 	if (
 		not _authority_enabled
+		or _normal_combat_active
 		or encounter_session == null
 		or _route_graph == null
 		or not _route_graph.is_valid_node_id(node_id)
@@ -598,6 +865,43 @@ func _try_start_encounter_for_node(node_id: int) -> bool:
 		_route_graph.get_node_content_seed(node_id),
 		_get_active_encounter_peer_ids()
 	)
+
+
+func _try_start_normal_combat_for_node(
+	node_id: int,
+	target_visit_count: int
+) -> bool:
+	if (
+		not _authority_enabled
+		or _normal_combat_active
+		or _encounter_input_locked
+		or not is_route_ready()
+		or not _route_graph.is_valid_node_id(node_id)
+		or _runtime_state.current_node_id != node_id
+		or _route_graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.NORMAL_COMBAT
+		or node_id >= _runtime_state.visited_counts.size()
+		or target_visit_count <= 0
+		or int(_runtime_state.visited_counts[node_id]) != target_visit_count
+		or get_signal_connection_list(&"normal_combat_requested").is_empty()
+		or (
+			encounter_session != null
+			and encounter_session.is_active()
+		)
+	):
+		return false
+	var content_seed := _route_graph.get_node_content_seed(node_id)
+	var occurrence_key := _make_normal_combat_occurrence_key(
+		node_id,
+		content_seed,
+		target_visit_count
+	)
+	if occurrence_key.is_empty():
+		return false
+	_begin_normal_combat_stage(node_id, content_seed, occurrence_key)
+	_set_status("已进入普通作战节点，正在准备战斗。", false)
+	normal_combat_requested.emit(node_id, content_seed, occurrence_key)
+	return true
 
 
 func _on_encounter_intro_ack_requested(
@@ -863,9 +1167,16 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 		],
 		false
 	)
-	_try_start_encounter_for_node(
-		int(delta.get("to_node_id", INVALID_NODE_ID))
+	var target_node_id := int(delta.get("to_node_id", INVALID_NODE_ID))
+	_try_start_normal_combat_for_node(
+		target_node_id,
+		int(delta.get("target_visit_count", 0))
 	)
+	_try_start_encounter_for_node(target_node_id)
+
+
+func _on_combat_result_overlay_dismissed() -> void:
+	combat_result_dismissed.emit()
 
 
 func _on_regenerate_button_pressed() -> void:
@@ -1298,7 +1609,7 @@ func _update_authority_ui() -> void:
 	)
 	regenerate_button.disabled = not _authority_enabled or _encounter_input_locked
 	hint_label.text = (
-		"神奇遭遇进行中；路线移动与地图拖动已锁定。"
+		"遭遇或作战进行中；路线移动与地图拖动已锁定。"
 		if _encounter_input_locked
 		else
 		"WASD / 左摇杆探索 · 拖动空白处查看地图 · 每次移动消耗 %d AP。"

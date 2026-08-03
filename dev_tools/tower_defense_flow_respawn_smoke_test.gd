@@ -2,6 +2,12 @@ extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
+const STATUS_HUD_SCENE := preload("res://scene/tower_defense_status_hud.tscn")
+
+
+class NoRespawnTowerRuntime extends GameTowerDefense:
+	func allows_player_respawn(_peer_id: int) -> bool:
+		return false
 
 var failures: Array[String] = []
 
@@ -11,6 +17,7 @@ func _init() -> void:
 
 
 func _run() -> void:
+	await _test_respawn_policy_and_permanent_death_hud()
 	await _test_singleplayer_flow_and_respawn()
 	await _test_singleplayer_transition_revive_policy()
 	await _test_host_transition_revive_signal_policy()
@@ -25,6 +32,108 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_respawn_policy_and_permanent_death_hud() -> void:
+	var standard_runtime := TOWER_SCENE.instantiate() as GameTowerDefense
+	_expect(
+		standard_runtime.allows_player_respawn(1),
+		"Existing runtimes must retain the default allow-respawn policy."
+	)
+	standard_runtime.free()
+
+	var no_respawn_runtime := NoRespawnTowerRuntime.new()
+	var mp_game := MP_GAME_SCENE.instantiate()
+	mp_game.set("game", no_respawn_runtime)
+	mp_game.call("_schedule_player_revive", 7)
+	var revive_times := mp_game.get("_dead_player_revive_times") as Dictionary
+	var revive_seconds := mp_game.get("_dead_player_revive_last_seconds") as Dictionary
+	_expect(
+		revive_times.is_empty() and revive_seconds.is_empty(),
+		"The shared MpGame scheduler must not create a timer when the runtime forbids respawn."
+	)
+	revive_times[7] = 0.0
+	revive_seconds[7] = 0
+	mp_game.call("_revive_player_peer", 7, Vector2.ZERO)
+	_expect(
+		revive_times.is_empty() and revive_seconds.is_empty(),
+		"The final revive sink must discard a stale timer instead of bypassing the runtime policy."
+	)
+	var mp_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/mp_game.gd"
+	)
+	for lethal_function in [
+		"request_multiplayer_player_damage_over_time_tick",
+		"apply_luoxi_direct_health_loss",
+		"_apply_player_hit_report",
+	]:
+		_expect(
+			_get_function_source(mp_source, lethal_function).contains(
+				"_schedule_player_revive("
+			),
+			"Every lethal player-damage path must route through the shared respawn-policy scheduler."
+		)
+	mp_game.free()
+	no_respawn_runtime.free()
+
+	var status_hud := STATUS_HUD_SCENE.instantiate() as TowerDefenseStatusHUD
+	root.add_child(status_hud)
+	await process_frame
+	status_hud.set_dead_player_list_enabled(false)
+	status_hud.show_local_permanent_death(7)
+	_expect(
+		status_hud.local_permanent_death_active
+		and status_hud.local_dead_peer_id == 7
+		and status_hud.death_screen_effect.visible
+		and status_hud.local_death_center.visible,
+		"Permanent local death must reuse the full-screen mask and central death card."
+	)
+	_expect(
+		status_hud.local_countdown_label.text == "本次作战无法复活"
+		and status_hud.local_compact_countdown_label.text == "观战中",
+		"Permanent local death must use explicit spectator wording instead of a fake countdown."
+	)
+	_expect(
+		status_hud.respawn_entries.is_empty()
+		and not status_hud.dead_players_panel.visible
+		and status_hud.dead_players_label.text.is_empty(),
+		"Permanent local death must not populate or reveal the disabled right-side respawn list."
+	)
+	await create_timer(1.08).timeout
+	_expect(
+		not status_hud.local_death_full_content.visible
+		and status_hud.local_death_compact_content.visible
+		and status_hud.local_compact_countdown_label.text == "观战中",
+		"The collapsed permanent-death card must remain an unambiguous spectator indicator."
+	)
+	status_hud.clear_player_respawn(7)
+	_expect(
+		not status_hud.local_permanent_death_active
+		and not status_hud.death_screen_effect.visible
+		and not status_hud.local_death_center.visible,
+		"Clearing permanent local death must reset the reused presentation."
+	)
+	status_hud.set_player_respawn(7, "玩家", 5, true)
+	_expect(
+		not status_hud.local_permanent_death_active
+		and status_hud.local_countdown_label.text == "5 秒后复活"
+		and status_hud.local_compact_countdown_label.text == "5 秒后复活",
+		"The legacy tower-defense countdown API must retain its existing behavior."
+	)
+	status_hud.clear_all_respawns()
+	status_hud.queue_free()
+	await process_frame
+
+
+func _get_function_source(source: String, function_name: String) -> String:
+	var marker := "func %s(" % function_name
+	var function_start := source.find(marker)
+	if function_start < 0:
+		return ""
+	var next_function := source.find("\nfunc ", function_start + marker.length())
+	if next_function < 0:
+		return source.substr(function_start)
+	return source.substr(function_start, next_function - function_start)
 
 
 func _test_singleplayer_flow_and_respawn() -> void:

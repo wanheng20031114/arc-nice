@@ -1,5 +1,7 @@
 extends Node2D
 
+signal embedded_runtime_prepared
+
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
 const MultiplayerRuntimeMetricsScript := preload(
@@ -288,6 +290,10 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
+@export_group("内嵌战斗运行时")
+@export_file("*.tscn") var runtime_scene_path_override := ""
+@export var embedded_runtime := false
+
 var snapshot_mgr := SnapshotManager.new()
 var _runtime_scene_cache: Dictionary = {}
 var _projectile_default_parameter_cache: Dictionary[StringName, Dictionary] = {}
@@ -544,6 +550,7 @@ var _luoxi_offer_random_generator := RandomNumberGenerator.new()
 var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
 	_NetConstants.CHANNEL_COUNT
 )
+var _embedded_runtime_active := false
 
 
 func _ready() -> void:
@@ -574,7 +581,11 @@ func _ready() -> void:
 		push_warning("MpGame 启动时没有有效的多人连接，返回大厅。")
 		call_deferred("_return_to_lobby")
 		return
-	_report_game_loaded_when_prepared()
+	if embedded_runtime:
+		_client_host_game_ready = false
+		_announce_embedded_runtime_when_prepared()
+	else:
+		_report_game_loaded_when_prepared()
 
 
 func _exit_tree() -> void:
@@ -643,6 +654,8 @@ func _exit_tree() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if embedded_runtime and not _embedded_runtime_active:
+		return
 	if int(net_manager.connection_state) != STATE_IN_GAME:
 		return
 	_update_recent_event_cache_prune(delta)
@@ -666,6 +679,45 @@ func _report_game_loaded_when_prepared() -> void:
 	net_manager.report_game_loaded()
 
 
+func _announce_embedded_runtime_when_prepared() -> void:
+	if game == null:
+		return
+	if not game.is_runtime_preparation_complete():
+		await game.runtime_preparation_completed
+	if not is_inside_tree() or not embedded_runtime:
+		return
+	embedded_runtime_prepared.emit()
+
+
+func activate_embedded_runtime() -> bool:
+	if (
+		not embedded_runtime
+		or _embedded_runtime_active
+		or game == null
+		or not game.is_runtime_preparation_complete()
+		or int(net_manager.connection_state) != STATE_IN_GAME
+	):
+		return false
+	_embedded_runtime_active = true
+	_client_host_game_ready = true
+	if net_manager.is_host():
+		_host_startup_snapshot_grace_time_left = (
+			HOST_STARTUP_SNAPSHOT_GRACE_SECONDS
+		)
+	game.activate_runtime()
+	if net_manager.is_client():
+		_request_runtime_state_from_host()
+	return true
+
+
+func is_embedded_runtime_active() -> bool:
+	return embedded_runtime and _embedded_runtime_active
+
+
+func get_game_runtime() -> GameRuntimeBase:
+	return game
+
+
 func is_runtime_preparation_complete() -> bool:
 	return game != null and game.is_runtime_preparation_complete()
 
@@ -677,6 +729,8 @@ func get_runtime_preparation_progress() -> Dictionary:
 
 
 func _process(delta: float) -> void:
+	if embedded_runtime and not _embedded_runtime_active:
+		return
 	_update_public_room_keepalive(delta)
 	if net_manager.is_client() or net_manager.is_host():
 		_client_interpolate_entities()
@@ -3074,6 +3128,8 @@ func _setup_game(mode: int) -> bool:
 
 
 func _get_game_scene_path_for_mode(game_mode: int) -> String:
+	if not runtime_scene_path_override.strip_edges().is_empty():
+		return runtime_scene_path_override
 	match game_mode:
 		NetManagerStore.GameMode.TOWER_DEFENSE:
 			return TOWER_DEFENSE_GAME_SCENE_PATH
@@ -3761,7 +3817,14 @@ func _get_connected_client_peer_ids() -> Array[int]:
 	return result
 
 
+# The coordinator first creates this stable RPC path on every participant,
+# then opens its prepare/activate barrier. Game._ready() can emit merchant or
+# inventory signals before that barrier; suppress those transient packets so
+# they never target a client path that has not been created yet. Activation's
+# runtime-state request repairs every authoritative state channel.
 func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> void:
+	if embedded_runtime and not _embedded_runtime_active:
+		return
 	var peer_ids := _get_connected_client_peer_ids()
 	if not peer_ids.is_empty():
 		_record_outbound_rpc(method_name, args, peer_ids.size())
@@ -9955,14 +10018,19 @@ func _mark_player_health_revision_applied(peer_id: int, health_revision: int) ->
 
 
 func _schedule_player_revive(peer_id: int) -> void:
-	if peer_id <= 0 or _dead_player_revive_times.has(peer_id):
+	if peer_id <= 0:
 		return
 	if _active_tango_charges_by_peer.has(peer_id):
 		_cancel_authoritative_tango_charge(peer_id, true)
-	if game == null or game.wave_state in [
+	if (
+		game == null
+		or not game.allows_player_respawn(peer_id)
+		or _dead_player_revive_times.has(peer_id)
+		or game.wave_state in [
 		GameRuntimeBase.WaveState.VICTORY,
 		GameRuntimeBase.WaveState.DEFEAT,
-	]:
+		]
+	):
 		return
 	_host_latest_client_player_snapshot_states.erase(peer_id)
 	var revive_delay := game.consume_next_player_respawn_delay(peer_id)
@@ -9986,8 +10054,12 @@ func _host_update_player_revives() -> void:
 		return
 	var now := _get_net_time()
 	var due_peers: Array[int] = []
+	var disallowed_peers: Array[int] = []
 	for peer_id_variant in _dead_player_revive_times:
 		var peer_id := int(peer_id_variant)
+		if not game.allows_player_respawn(peer_id):
+			disallowed_peers.append(peer_id)
+			continue
 		var revive_at := float(_dead_player_revive_times[peer_id])
 		var seconds_left := maxi(ceili(revive_at - now), 0)
 		if seconds_left != int(_dead_player_revive_last_seconds.get(peer_id, -1)):
@@ -9996,6 +10068,10 @@ func _host_update_player_revives() -> void:
 			net_player_revive_countdown(peer_id, seconds_left)
 		if now >= revive_at:
 			due_peers.append(peer_id)
+	for peer_id in disallowed_peers:
+		_dead_player_revive_times.erase(peer_id)
+		_dead_player_revive_last_seconds.erase(peer_id)
+		game.clear_player_respawn_countdown(peer_id)
 	if due_peers.is_empty():
 		return
 	var revive_positions := _collect_living_player_revive_positions()
@@ -10037,7 +10113,11 @@ func _resolve_multiplayer_revive_position(
 	peer_id: int,
 	living_player_positions: Array
 ) -> Variant:
-	if game == null or peer_id <= 0:
+	if (
+		game == null
+		or peer_id <= 0
+		or not game.allows_player_respawn(peer_id)
+	):
 		return null
 	var fixed_position: Variant = game.get_fixed_multiplayer_respawn_position(peer_id)
 	if fixed_position is Vector2:
@@ -10048,9 +10128,18 @@ func _resolve_multiplayer_revive_position(
 
 
 func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
+	if (
+		game == null
+		or peer_id <= 0
+		or not game.allows_player_respawn(peer_id)
+	):
+		_dead_player_revive_times.erase(peer_id)
+		_dead_player_revive_last_seconds.erase(peer_id)
+		if game != null:
+			game.clear_player_respawn_countdown(peer_id)
+		return
 	var player_node: Player = null
-	if game != null:
-		player_node = game.get_player_for_peer(peer_id)
+	player_node = game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
 	var active_tiyi_activation_id := int(_active_tiyi_activations_by_peer.get(peer_id, 0))
@@ -10111,6 +10200,8 @@ func _on_host_revive_all_requested() -> void:
 	var revive_positions := _collect_living_player_revive_positions()
 	for peer_id_variant in game.peer_players:
 		var peer_id := int(peer_id_variant)
+		if not game.allows_player_respawn(peer_id):
+			continue
 		var player_node := game.peer_players[peer_id_variant] as Player
 		if player_node == null or not is_instance_valid(player_node) or not player_node.is_dead:
 			continue
@@ -10125,6 +10216,9 @@ func _on_host_revive_all_requested() -> void:
 @rpc("authority", "call_remote", "reliable", 5)
 func net_player_revive_countdown(peer_id: int, seconds_left: int) -> void:
 	if game == null or peer_id <= 0:
+		return
+	if not game.allows_player_respawn(peer_id):
+		game.clear_player_respawn_countdown(peer_id)
 		return
 	var player_node := game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
@@ -10152,7 +10246,12 @@ func net_player_revived(
 	var player_node: Player = null
 	if game != null:
 		player_node = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
+	if (
+		game == null
+		or not game.allows_player_respawn(peer_id)
+		or player_node == null
+		or not is_instance_valid(player_node)
+	):
 		return
 	if health_revision <= int(_player_health_revisions.get(peer_id, 0)):
 		return
@@ -10942,7 +11041,10 @@ func _on_host_defeat_started() -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
 	_clear_pending_player_revives()
-	_rpc_to_connected_clients(&"net_game_defeated")
+	_rpc_to_connected_clients(
+		&"net_game_defeated",
+		[game.get_multiplayer_defeat_reason() if game != null else ""]
+	)
 
 
 func _on_host_victory_started() -> void:
@@ -12987,11 +13089,11 @@ func net_linglan_airdrop_started(
 
 
 @rpc("authority", "call_remote", "reliable", 5)
-func net_game_defeated() -> void:
+func net_game_defeated(failure_reason: String = "") -> void:
 	if game == null or net_manager.is_host():
 		return
 	_clear_pending_player_revives()
-	game.apply_remote_defeat()
+	game.apply_remote_defeat_with_reason(failure_reason)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -14423,6 +14525,10 @@ func _on_connection_state_changed(new_state: int) -> void:
 	if new_state == STATE_DISCONNECTED:
 		_return_to_lobby()
 	elif new_state == STATE_IN_GAME:
+		if embedded_runtime:
+			if _embedded_runtime_active and net_manager.is_client():
+				_request_runtime_state_from_host()
+			return
 		_client_host_game_ready = true
 		if game != null:
 			game.activate_runtime()
@@ -14531,7 +14637,11 @@ func _on_net_player_reconnected(
 		reconnect_state.get("applied_health_revision", 0)
 	)
 	var revive_at := float(reconnect_state.get("revive_at", -1.0))
-	if net_manager.is_host() and revive_at >= 0.0:
+	if (
+		net_manager.is_host()
+		and revive_at >= 0.0
+		and game.allows_player_respawn(new_peer_id)
+	):
 		_dead_player_revive_times[new_peer_id] = revive_at
 		_dead_player_revive_last_seconds[new_peer_id] = int(
 			reconnect_state.get("revive_last_seconds", -1)

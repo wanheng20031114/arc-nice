@@ -1,0 +1,21 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/game.tscn" id="1_game"]
+[ext_resource type="Script" path="res://scene/rogue_combat/rogue_combat_game.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scene/rogue_combat/rogue_combat_hud.tscn" id="3_hud"]
+[ext_resource type="PackedScene" path="res://scene/tower_defense_status_hud.tscn" id="4_death_hud"]
+
+[node name="RogueCombatGame" instance=ExtResource("1_game")]
+script = ExtResource("2_script")
+pre_wave_duration = 3.0
+auto_start_waves = false
+linglan_boss_enabled = false
+
+[node name="CombatDeadlineTimer" type="Timer" parent="."]
+wait_time = 1.0
+
+[node name="RogueCombatHUD" parent="." instance=ExtResource("3_hud")]
+
+[node name="TowerDefenseStatusHUD" parent="." instance=ExtResource("4_death_hud")]
+
+[connection signal="timeout" from="CombatDeadlineTimer" to="." method="_on_combat_deadline_timer_timeout"]

@@ -4131,14 +4131,30 @@ func _queue_configured_xirang_kill_reward() -> void:
 	var reward_amount := get_effective_xirang_kill_reward()
 	if is_multiplayer_proxy or reward_amount <= 0:
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("grant_xirang_kill_reward"):
+	var game_runtime := _get_owning_game_runtime()
+	if game_runtime == null:
 		return
-	current_scene.call("grant_xirang_kill_reward", reward_amount)
+	game_runtime.grant_xirang_kill_reward(reward_amount)
+
+
+## Enemies are authored below a GameRuntimeBase container. Resolve that
+## structural owner instead of SceneTree.current_scene, because Rouge combat is
+## intentionally embedded below its route scene in both singleplayer and MP.
+func _get_owning_game_runtime() -> GameRuntimeBase:
+	var ancestor := get_parent()
+	while ancestor != null:
+		var game_runtime := ancestor as GameRuntimeBase
+		if game_runtime != null:
+			return game_runtime
+		ancestor = ancestor.get_parent()
+	return null
 
 
 func _queue_configured_pickup_drops() -> void:
 	if is_multiplayer_proxy or config == null or config.drop_table == null:
+		return
+	var game_runtime := _get_owning_game_runtime()
+	if game_runtime != null and not game_runtime.allows_enemy_pickup_drops():
 		return
 	var drop_configs := config.drop_table.resolve_drop_configs(
 		config.category_tags,

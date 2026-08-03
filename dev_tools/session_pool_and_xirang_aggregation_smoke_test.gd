@@ -416,11 +416,17 @@ func _test_multiplayer_forwarding_contract() -> void:
 	)
 	var enemy_source := FileAccess.get_file_as_string("res://scene/enemy/enemy.gd")
 	_expect(
-		enemy_source.contains('current_scene.has_method("grant_xirang_kill_reward")')
+		enemy_source.contains("func _get_owning_game_runtime() -> GameRuntimeBase:")
 		and enemy_source.contains(
+			"game_runtime.grant_xirang_kill_reward(reward_amount)"
+		)
+		and enemy_source.contains(
+			"not game_runtime.allows_enemy_pickup_drops()"
+		)
+		and not enemy_source.contains(
 			'current_scene.call("grant_xirang_kill_reward", reward_amount)'
 		),
-		"Enemy death rewards must route their effective value through the active root scene."
+		"Enemy rewards must target their owning runtime, including embedded Rouge combat."
 	)
 	for reward_owner_path in [
 		"res://scene/enemy/yuanshi_insect/yuanshi_insect.gd",

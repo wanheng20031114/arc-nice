@@ -1,0 +1,454 @@
+extends SceneTree
+
+## 多人 Rouge 作战协调器运行态 smoke。
+##
+## 单进程 SceneTree 无法伪造 MultiplayerAPI.get_remote_sender_id()，因此本测试
+## 不直接调用客户端 RPC 入口，而是驱动相同的房主本地权威分支与真实状态机方法。
+## 仅替换 MpGame 的创建结果，避免在单元测试里启动完整联网战场。
+
+const COORDINATOR := preload(
+	"res://scene/rogue_combat/rogue_combat_multiplayer_coordinator.gd"
+)
+const ROUTE_SCENE := preload(
+	"res://scene/test_arena/test_rogue_route_p3.tscn"
+)
+
+
+class FakeNetManager extends Node:
+	signal player_left(peer_id: int)
+	signal player_joined(peer_id: int, player_name: String)
+	signal player_reconnected(
+		old_peer_id: int,
+		new_peer_id: int,
+		player_name: String,
+		character_id: StringName
+	)
+
+	var send_ready_peer_ids: Dictionary = {}
+
+	func is_host() -> bool:
+		return true
+
+	func is_client() -> bool:
+		return false
+
+	func get_host_peer_id() -> int:
+		return 1
+
+	func get_local_peer_id() -> int:
+		return 1
+
+	func is_peer_send_ready(peer_id: int) -> bool:
+		return send_ready_peer_ids.has(peer_id)
+
+
+class FakeEmbeddedRuntime extends Node:
+	var activation_result := false
+
+	func activate_embedded_runtime() -> bool:
+		return activation_result
+
+
+class RuntimeCoordinatorHarness extends RogueCombatMultiplayerCoordinator:
+	var create_runtime_result := true
+
+	func _create_embedded_runtime() -> bool:
+		return create_runtime_result
+
+
+var _failures: PackedStringArray = []
+var _fixture_root: Node2D = null
+var _route: TestRogueRouteP3 = null
+var _coordinator: RuntimeCoordinatorHarness = null
+var _fake_net_manager: FakeNetManager = null
+
+
+func _init() -> void:
+	call_deferred(&"_run")
+
+
+func _run() -> void:
+	await _create_fixture()
+	_test_terminal_safe_releases_protocol_but_keeps_result()
+	_test_next_prepare_collects_stale_result()
+	_test_player_left_preserves_participant_and_shrinks_barriers()
+	_test_reconnect_remaps_terminal_settlement()
+	_test_authoritative_prepare_failure_aborts_safely()
+	_test_authoritative_config_failure_aborts_safely()
+	_test_authoritative_activation_failure_aborts_safely()
+	await _destroy_fixture()
+
+	if _failures.is_empty():
+		print("ROGUE_COMBAT_MULTIPLAYER_COORDINATOR_RUNTIME_SMOKE_TEST_OK")
+		quit(0)
+		return
+	for failure in _failures:
+		push_error(failure)
+	quit(1)
+
+
+func _create_fixture() -> void:
+	_fixture_root = Node2D.new()
+	_fixture_root.name = "RogueCombatCoordinatorRuntimeFixture"
+	_route = ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	_route.name = "RogueRoute"
+	_route.auto_initialize = false
+	_route.manage_return_locally = false
+	_coordinator = RuntimeCoordinatorHarness.new()
+	_coordinator.name = "RogueCombatCoordinator"
+	_fake_net_manager = FakeNetManager.new()
+	_fake_net_manager.name = "FakeNetManager"
+	_fixture_root.add_child(_route)
+	_fixture_root.add_child(_coordinator)
+	_fixture_root.add_child(_fake_net_manager)
+	root.add_child(_fixture_root)
+	await process_frame
+
+	# _ready() 先完成正式场景绑定，再替换成可预测的本地主机网络门面。
+	_coordinator._net_manager = _fake_net_manager
+	_coordinator._enabled = true
+	_expect(
+		_coordinator.encounter_config.is_ready_to_enable(),
+		"正式 encounter_01 配置应处于已确认、可启用状态。"
+	)
+	_expect(
+		_coordinator.is_enabled(),
+		"运行态 fixture 中多人协调器应启用。"
+	)
+
+
+func _destroy_fixture() -> void:
+	if _fixture_root != null and is_instance_valid(_fixture_root):
+		_fixture_root.queue_free()
+	await process_frame
+	_fixture_root = null
+	_route = null
+	_coordinator = null
+	_fake_net_manager = null
+
+
+func _test_terminal_safe_releases_protocol_but_keeps_result() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:terminal-safe:1"
+	_seed_route_combat(11, 1101, occurrence_key)
+	_route.set_route_presentation_enabled(false)
+	_route.show_combat_result({
+		"victory": false,
+		"failure_reason": "测试结算仍打开",
+	})
+
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._active_node_id = 11
+	_coordinator._active_content_seed = 1101
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true}
+	_coordinator._settlement_received = true
+	_coordinator._local_terminal_finalized = true
+	_coordinator._local_result_visible = true
+	_coordinator._local_result_occurrence_key = occurrence_key
+	var runtime := Node.new()
+	runtime.name = "TerminalRuntime"
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+
+	_coordinator._receive_safe_to_teardown(occurrence_key)
+
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE,
+		"terminal safe 后协议 phase 必须立即回到 IDLE。"
+	)
+	_expect(
+		_coordinator._combat_network == null,
+		"terminal safe 后必须释放本地战场引用。"
+	)
+	_expect(
+		_coordinator._local_result_occurrence_key == occurrence_key,
+		"释放协议运行时不得清除独立的结算 occurrence。"
+	)
+	_expect(
+		_coordinator._local_result_visible
+		and _route.combat_result_overlay.visible,
+		"某位玩家尚未关闭时，terminal safe 不得关闭其结算 Overlay。"
+	)
+	_expect(
+		_route.is_normal_combat_active(),
+		"结果仍打开时路线作战阶段应继续由独立结果生命周期持有。"
+	)
+
+
+func _test_next_prepare_collects_stale_result() -> void:
+	var old_occurrence_key := _coordinator._local_result_occurrence_key
+	var new_occurrence_key := "combat:runtime:next-prepare:2"
+	_coordinator.create_runtime_result = true
+	var began := _coordinator._begin_protocol(
+		12,
+		1202,
+		new_occurrence_key,
+		PackedInt32Array([1]),
+		{1: 450},
+		false
+	)
+
+	_expect(began, "下一次 prepare 应能启动新的协议 occurrence。")
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.PREPARING
+		and _coordinator._active_occurrence_key == new_occurrence_key,
+		"下一次 prepare 应进入新 occurrence 的 PREPARING。"
+	)
+	_expect(
+		_coordinator._local_result_occurrence_key.is_empty()
+		and not _coordinator._local_result_visible,
+		"下一次 prepare 必须自动清理旧结算生命周期。"
+	)
+	_expect(
+		not _route.combat_result_overlay.visible,
+		"下一次 prepare 必须自动收起仍打开的旧结算 Overlay。"
+	)
+	_expect(
+		not _route.is_normal_combat_active(),
+		"自动收旧结果时必须用旧 occurrence 完成上一场路线阶段。"
+	)
+	_expect(
+		old_occurrence_key == "combat:runtime:terminal-safe:1",
+		"测试前置应保留上一场独立 occurrence，而非被协议 reset 清空。"
+	)
+	_coordinator._abort_authoritative_protocol(&"test_cleanup")
+
+
+func _test_player_left_preserves_participant_and_shrinks_barriers() -> void:
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.PREPARING
+	_coordinator._active_occurrence_key = "combat:runtime:left:3"
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 300, 2: 700}
+	_coordinator._expected_prepared_peers = {1: true, 2: true}
+	_coordinator._prepared_peers = {2: true}
+	_coordinator._expected_terminal_peers = {1: true, 2: true}
+	_coordinator._terminal_ready_peers = {2: true}
+
+	_coordinator._on_player_left(2)
+
+	_expect(
+		_coordinator._participant_peer_ids.has(2),
+		"断线玩家必须保留在冻结的参战 roster 中，供重连恢复。"
+	)
+	_expect(
+		_coordinator._disconnected_participants.has(2)
+		and int((_coordinator._disconnected_participants[2] as Dictionary).get(
+			"entry_xirang",
+			-1
+		)) == 700,
+		"断线记录必须保存参战身份及入口息壤。"
+	)
+	_expect(
+		not _coordinator._expected_prepared_peers.has(2)
+		and not _coordinator._prepared_peers.has(2)
+		and not _coordinator._expected_terminal_peers.has(2)
+		and not _coordinator._terminal_ready_peers.has(2),
+		"断线玩家必须退出 prepare 与 terminal 两个 barrier。"
+	)
+
+
+func _test_reconnect_remaps_terminal_settlement() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:reconnect:4"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._active_node_id = 14
+	_coordinator._active_content_seed = 1404
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 800}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 800,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_coordinator._expected_terminal_peers = {1: true}
+	_coordinator._settlement_received = true
+	_coordinator._pending_settlement = {
+		"occurrence_key": occurrence_key,
+		"final_xirang_by_peer": {1: 600, 2: 1300},
+		"inventory_snapshots_by_peer": {
+			1: {"peer_id": 1, "items": []},
+			2: {"peer_id": 2, "items": ["loot_for_old_peer"]},
+		},
+		"results_by_peer": {
+			1: {"peer_id": 1, "victory": true},
+			2: {"peer_id": 2, "victory": true},
+		},
+	}
+
+	# remote_sender_id 无法在单进程伪造；直接覆盖相同的房主本地迁移分支。
+	_coordinator._finish_player_reconnected(2, 3)
+
+	_expect(
+		not _coordinator._participant_peer_ids.has(2)
+		and _coordinator._participant_peer_ids.has(3),
+		"重连必须将冻结 roster 从 old peer 映射到 new peer。"
+	)
+	_expect(
+		not _coordinator._entry_xirang_by_peer.has(2)
+		and int(_coordinator._entry_xirang_by_peer.get(3, -1)) == 800,
+		"重连必须迁移入口息壤。"
+	)
+	_expect(
+		not _coordinator._disconnected_participants.has(2)
+		and _coordinator._expected_terminal_peers.has(3),
+		"SETTLED 阶段重连应重新加入新 peer 的 terminal barrier。"
+	)
+	for map_key in [
+		"final_xirang_by_peer",
+		"inventory_snapshots_by_peer",
+		"results_by_peer",
+	]:
+		var peer_map := _coordinator._pending_settlement[map_key] as Dictionary
+		_expect(
+			not peer_map.has(2) and peer_map.has(3),
+			"重连必须迁移 settlement 映射：%s。" % map_key
+		)
+	var inventory := (
+		_coordinator._pending_settlement["inventory_snapshots_by_peer"]
+		as Dictionary
+	)
+	var results := (
+		_coordinator._pending_settlement["results_by_peer"] as Dictionary
+	)
+	_expect(
+		int((inventory[3] as Dictionary).get("peer_id", -1)) == 3
+		and int((results[3] as Dictionary).get("peer_id", -1)) == 3,
+		"重连后字典 payload 内部 peer_id 也必须改为 new peer。"
+	)
+
+
+func _test_authoritative_prepare_failure_aborts_safely() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:prepare-failed:5"
+	_seed_route_combat(15, 1505, occurrence_key)
+	_coordinator.create_runtime_result = false
+	var began := _coordinator._begin_protocol(
+		15,
+		1505,
+		occurrence_key,
+		PackedInt32Array([1]),
+		{1: 500},
+		false
+	)
+	_expect(not began, "运行时创建失败时 _begin_protocol 必须返回 false。")
+
+	# 与房主 _on_normal_combat_requested 的失败分支相同：创建失败后权威 abort。
+	_coordinator._abort_authoritative_protocol(&"host_runtime_create_failed")
+	_assert_abort_recovered(15, "prepare/create 失败")
+
+
+func _test_authoritative_config_failure_aborts_safely() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:config-failed:6"
+	_seed_route_combat(16, 1606, occurrence_key)
+	_coordinator.create_runtime_result = true
+	var began := _coordinator._begin_protocol(
+		16,
+		1606,
+		occurrence_key,
+		PackedInt32Array([1]),
+		{1: 600},
+		false
+	)
+	_expect(began, "config 失败用例应先进入 PREPARING。")
+	var invalid_runtime := Node.new()
+	invalid_runtime.name = "RuntimeWithoutGameContract"
+	_coordinator.add_child(invalid_runtime)
+	_coordinator._combat_network = invalid_runtime
+	_expect(
+		not _coordinator._configure_occurrence_runtime(),
+		"缺少 get_game_runtime 契约时 occurrence 配置必须失败。"
+	)
+
+	# _on_embedded_runtime_prepared 对这个 false 执行同一个房主权威 abort；
+	# 这里直接进入该权威分支，避免把预期失败写成测试框架错误日志。
+	_coordinator._abort_authoritative_protocol(&"runtime_config_failed")
+	_assert_abort_recovered(16, "config 失败")
+
+
+func _test_authoritative_activation_failure_aborts_safely() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:activate-failed:7"
+	_seed_route_combat(17, 1707, occurrence_key)
+	_coordinator.create_runtime_result = true
+	var began := _coordinator._begin_protocol(
+		17,
+		1707,
+		occurrence_key,
+		PackedInt32Array([1]),
+		{1: 700},
+		false
+	)
+	_expect(began, "activate 失败用例应先进入 PREPARING。")
+	var failing_runtime := FakeEmbeddedRuntime.new()
+	failing_runtime.name = "RuntimeRejectingActivation"
+	failing_runtime.activation_result = false
+	_coordinator.add_child(failing_runtime)
+	_coordinator._combat_network = failing_runtime
+	_coordinator._local_runtime_prepared = true
+	_coordinator._expected_prepared_peers = {1: true}
+	_coordinator._prepared_peers = {1: true}
+
+	# 真实 barrier 会调用 _activate_local_runtime；false 后立即走房主权威 abort。
+	_coordinator._try_activate_host_barrier()
+	_assert_abort_recovered(17, "activate 失败")
+
+
+func _assert_abort_recovered(node_id: int, context: String) -> void:
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		and _coordinator._active_occurrence_key.is_empty(),
+		"%s后协议必须回到 IDLE。" % context
+	)
+	_expect(
+		not _route.is_normal_combat_active()
+		and _route._route_presentation_enabled,
+		"%s后必须完成作战阶段并恢复路线显示。" % context
+	)
+	_expect(
+		not _coordinator._consumed_node_ids.has(node_id),
+		"%s属于技术回滚，不得消费战斗节点。" % context
+	)
+	_expect(
+		_coordinator._combat_network == null,
+		"%s后不得保留嵌入战场引用。" % context
+	)
+
+
+func _reset_fixture_state() -> void:
+	if (
+		_coordinator._combat_network != null
+		and is_instance_valid(_coordinator._combat_network)
+	):
+		_coordinator._combat_network.queue_free()
+	_coordinator._combat_network = null
+	_coordinator._combat_game = null
+	_coordinator._reset_protocol_state()
+	_coordinator._clear_local_result_lifecycle()
+	_coordinator._consumed_node_ids.clear()
+	_coordinator.create_runtime_result = true
+	_route.hide_combat_result()
+	_route._clear_normal_combat_state()
+	_route.set_route_presentation_enabled(true)
+
+
+func _seed_route_combat(
+	node_id: int,
+	content_seed: int,
+	occurrence_key: String
+) -> void:
+	_route._normal_combat_active = true
+	_route._normal_combat_node_id = node_id
+	_route._normal_combat_content_seed = content_seed
+	_route._normal_combat_visit_count = 1
+	_route._normal_combat_occurrence_key = occurrence_key
+
+
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		_failures.append(message)

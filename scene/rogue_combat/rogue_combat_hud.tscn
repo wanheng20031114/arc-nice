@@ -1,0 +1,325 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://scene/rogue_combat/rogue_combat_hud.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_info"]
+bg_color = Color(0.027, 0.043, 0.038, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.66, 0.49, 0.28, 0.84)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.48)
+shadow_size = 5
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_preparation"]
+bg_color = Color(0.045, 0.038, 0.035, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.84, 0.48, 0.25, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.58)
+shadow_size = 10
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="LabelSettings" id="LabelSettings_caption"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 11
+font_color = Color(0.68, 0.75, 0.7, 1)
+outline_size = 1
+outline_color = Color(0.01, 0.02, 0.018, 0.96)
+
+[sub_resource type="LabelSettings" id="LabelSettings_event"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 18
+font_color = Color(1, 0.88, 0.66, 1)
+outline_size = 2
+outline_color = Color(0.035, 0.02, 0.012, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_time"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 22
+font_color = Color(1, 0.86, 0.48, 1)
+outline_size = 2
+outline_color = Color(0.04, 0.025, 0.008, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_enemy"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 22
+font_color = Color(1, 0.48, 0.39, 1)
+outline_size = 2
+outline_color = Color(0.04, 0.015, 0.012, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_prep_eyebrow"]
+font = ExtResource("2_font")
+font_size = 12
+font_color = Color(0.8, 0.67, 0.48, 1)
+outline_size = 2
+outline_color = Color(0.025, 0.018, 0.014, 0.96)
+
+[sub_resource type="LabelSettings" id="LabelSettings_prep_title"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 38
+font_color = Color(1, 0.64, 0.38, 1)
+outline_size = 4
+outline_color = Color(0.035, 0.018, 0.012, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_prep_caption"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 15
+font_color = Color(0.9, 0.91, 0.84, 1)
+outline_size = 2
+outline_color = Color(0.025, 0.025, 0.022, 0.96)
+
+[sub_resource type="LabelSettings" id="LabelSettings_prep_seconds"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 62
+font_color = Color(1, 0.84, 0.36, 1)
+outline_size = 5
+outline_color = Color(0.04, 0.025, 0.008, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_prep_hint"]
+resource_local_to_scene = true
+font = ExtResource("2_font")
+font_size = 14
+font_color = Color(0.72, 0.76, 0.72, 1)
+outline_size = 2
+outline_color = Color(0.02, 0.024, 0.02, 0.94)
+
+[node name="RogueCombatHUD" type="CanvasLayer"]
+process_mode = 3
+visible = false
+layer = 18
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TopSafeMargin" type="MarginContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 84.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 9
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 7
+
+[node name="TopCenter" type="CenterContainer" parent="Root/TopSafeMargin"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="InfoPanel" type="PanelContainer" parent="Root/TopSafeMargin/TopCenter"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(620, 64)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_info")
+
+[node name="InfoMargin" type="MarginContainer" parent="Root/TopSafeMargin/TopCenter/InfoPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 7
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 7
+
+[node name="Content" type="HBoxContainer" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="EventBlock" type="VBoxContainer" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(168, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = -1
+alignment = 1
+
+[node name="Caption" type="Label" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content/EventBlock"]
+layout_mode = 2
+text = "ROGUE 作战事件"
+label_settings = SubResource("LabelSettings_caption")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="EventTitle" type="Label" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content/EventBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "狭路相逢"
+label_settings = SubResource("LabelSettings_event")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="EventDivider" type="ColorRect" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content"]
+custom_minimum_size = Vector2(1, 38)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.5, 0.4, 0.27, 0.52)
+
+[node name="TimeBlock" type="VBoxContainer" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = -1
+alignment = 1
+
+[node name="TimeCaption" type="Label" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content/TimeBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "剩余时间"
+label_settings = SubResource("LabelSettings_caption")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TimeValue" type="Label" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content/TimeBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "01:30"
+label_settings = SubResource("LabelSettings_time")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TimeDivider" type="ColorRect" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content"]
+custom_minimum_size = Vector2(1, 38)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.5, 0.4, 0.27, 0.52)
+
+[node name="EnemyBlock" type="VBoxContainer" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = -1
+alignment = 1
+
+[node name="Caption" type="Label" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content/EnemyBlock"]
+layout_mode = 2
+text = "敌人存活 / 总数"
+label_settings = SubResource("LabelSettings_caption")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="EnemyValue" type="Label" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content/EnemyBlock"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "10 / 10"
+label_settings = SubResource("LabelSettings_enemy")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PreparationCenter" type="CenterContainer" parent="Root"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 78.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="PreparationPanel" type="PanelContainer" parent="Root/PreparationCenter"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(430, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_preparation")
+
+[node name="PreparationMargin" type="MarginContainer" parent="Root/PreparationCenter/PreparationPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 34
+theme_override_constants/margin_top = 26
+theme_override_constants/margin_right = 34
+theme_override_constants/margin_bottom = 26
+
+[node name="PreparationContent" type="VBoxContainer" parent="Root/PreparationCenter/PreparationPanel/PreparationMargin"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 9
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="Root/PreparationCenter/PreparationPanel/PreparationMargin/PreparationContent"]
+layout_mode = 2
+text = "作 战 事 件"
+label_settings = SubResource("LabelSettings_prep_eyebrow")
+horizontal_alignment = 1
+
+[node name="PreparationEventTitle" type="Label" parent="Root/PreparationCenter/PreparationPanel/PreparationMargin/PreparationContent"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "狭路相逢"
+label_settings = SubResource("LabelSettings_prep_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Divider" type="ColorRect" parent="Root/PreparationCenter/PreparationPanel/PreparationMargin/PreparationContent"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.82, 0.49, 0.25, 0.48)
+
+[node name="PreparationCaption" type="Label" parent="Root/PreparationCenter/PreparationPanel/PreparationMargin/PreparationContent"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "作战即将开始"
+label_settings = SubResource("LabelSettings_prep_caption")
+horizontal_alignment = 1
+
+[node name="PreparationSeconds" type="Label" parent="Root/PreparationCenter/PreparationPanel/PreparationMargin/PreparationContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 68)
+layout_mode = 2
+text = "3"
+label_settings = SubResource("LabelSettings_prep_seconds")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PreparationHint" type="Label" parent="Root/PreparationCenter/PreparationPanel/PreparationMargin/PreparationContent"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "红门开启后，消灭全部敌人"
+label_settings = SubResource("LabelSettings_prep_hint")
+horizontal_alignment = 1
+autowrap_mode = 2
