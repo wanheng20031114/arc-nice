@@ -329,10 +329,18 @@ func _test_timeout_result_then_retry() -> void:
 		_cleanup_route(route)
 		await process_frame
 		return
+	_expect(
+		await _wait_for_preparation(battle),
+		"超时夹具必须先完成战场预热，才能验证活动战场的安全冻结。"
+	)
 	battle.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
 	battle.combat_seconds_remaining = 1
 	battle.set("_combat_deadline_started", true)
 	battle.call("_on_combat_deadline_timer_timeout")
+	_expect(
+		battle.process_mode != Node.PROCESS_MODE_DISABLED,
+		"结果信号回调不得在触发帧同步禁用含碰撞体的战场树。"
+	)
 	_expect(
 		await _wait_for_result_overlay(route),
 		"90秒耗尽的失败必须显示失败结算。"

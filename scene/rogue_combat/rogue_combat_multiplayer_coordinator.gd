@@ -626,7 +626,9 @@ func _on_local_combat_outcome_started(
 			victory,
 			failure_reason
 		)
-	_try_finalize_local_terminal()
+	# 本地结果同样可能来自 body_entered 等物理回调；若结算快照已经
+	# 到达，立即 finalize 会递归禁用战场碰撞体，因此统一延迟收束。
+	call_deferred(&"_try_finalize_local_terminal")
 
 
 func _settle_host_outcome(

@@ -320,8 +320,26 @@ func _on_battle_outcome_started(
 	if battle != active_battle or _settling_outcome:
 		return
 	_settling_outcome = true
+	call_deferred(
+		&"_freeze_and_resolve_active_outcome",
+		victory,
+		failure_reason,
+		battle
+	)
+
+
+## 战斗结果可能由 CharacterBody2D 的碰撞回调触发。禁用战场根节点会
+## 递归禁用其 CollisionObject 子节点，因此必须离开物理回调后再执行。
+func _freeze_and_resolve_active_outcome(
+	victory: bool,
+	failure_reason: String,
+	battle: RogueCombatGame
+) -> void:
+	if battle != active_battle or not is_instance_valid(battle):
+		_settling_outcome = false
+		return
 	battle.process_mode = Node.PROCESS_MODE_DISABLED
-	call_deferred(&"_resolve_active_outcome", victory, failure_reason)
+	_resolve_active_outcome(victory, failure_reason)
 
 
 func _resolve_active_outcome(victory: bool, failure_reason: String) -> void:

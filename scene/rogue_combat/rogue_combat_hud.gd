@@ -105,7 +105,7 @@ func hide_hud() -> void:
 
 static func format_seconds(total_seconds: int) -> String:
 	var safe_seconds := maxi(total_seconds, 0)
-	return "%02d:%02d" % [safe_seconds / 60, safe_seconds % 60]
+	return "%02d:%02d" % [floori(safe_seconds / 60.0), safe_seconds % 60]
 
 
 func _update_responsive_layout() -> void:
