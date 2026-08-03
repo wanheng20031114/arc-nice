@@ -32,9 +32,6 @@ var _authority_enabled := true
 var _interaction_locked := false
 var _cells: Dictionary[int, RogueRouteCell] = {}
 var _node_positions: Dictionary[int, Vector2] = {}
-var _local_player_position := Vector2.ZERO
-var _has_local_player_position := false
-var _nodes_in_player_range: Dictionary[int, bool] = {}
 var _entry_reveal_tween: Tween = null
 var _entry_reveal_prepared := false
 var _entry_reveal_progress := 1.0
@@ -219,20 +216,6 @@ func get_default_spawn_global_position(
 	)
 
 
-func update_local_player_global_position(player_global_position: Vector2) -> void:
-	_local_player_position = (
-		get_global_transform().affine_inverse() * player_global_position
-	)
-	_has_local_player_position = true
-	_refresh_player_range_interactions()
-
-
-func clear_local_player_position() -> void:
-	_has_local_player_position = false
-	_nodes_in_player_range.clear()
-	_refresh_neighbor_click_states()
-
-
 func can_interact_with_node(node_id: int) -> bool:
 	return (
 		graph != null
@@ -240,12 +223,7 @@ func can_interact_with_node(node_id: int) -> bool:
 		and not _interaction_locked
 		and action_points >= move_action_cost
 		and graph.has_edge(current_node_id, node_id)
-		and _nodes_in_player_range.has(node_id)
 	)
-
-
-func is_node_in_player_range(node_id: int) -> bool:
-	return _nodes_in_player_range.has(node_id)
 
 
 func get_cell(node_id: int) -> RogueRouteCell:
@@ -358,7 +336,6 @@ func _layout_cells() -> void:
 		cell.position = anchor - cell.get_connection_anchor()
 		_node_positions[node_id] = anchor
 	connections.set_node_positions(_node_positions)
-	_refresh_player_range_interactions()
 
 
 func _update_cell_states() -> void:
@@ -377,7 +354,6 @@ func _update_cell_states() -> void:
 			and not _interaction_locked
 			and has_action_points
 			and neighbors.has(node_id)
-			and _nodes_in_player_range.has(node_id)
 		)
 		cell.set_near(near_lookup.has(node_id))
 		cell.set_selected(node_id == selected_node_id)
@@ -407,7 +383,6 @@ func _clear_cells() -> void:
 		route_cell.queue_free()
 	_cells.clear()
 	_node_positions.clear()
-	_nodes_in_player_range.clear()
 	graph = null
 	generation_config = null
 	current_node_id = INVALID_NODE_ID
@@ -482,48 +457,6 @@ func _on_cell_pressed(node_id: int) -> void:
 	if not can_interact_with_node(node_id):
 		return
 	node_pressed.emit(node_id)
-
-
-func _refresh_player_range_interactions() -> void:
-	var next_nodes_in_range: Dictionary[int, bool] = {}
-	if graph != null and _has_local_player_position and world_metrics != null:
-		var interaction_radius_squared := (
-			world_metrics.node_interaction_radius
-			* world_metrics.node_interaction_radius
-		)
-		for neighbor_id in graph.get_neighbors(current_node_id):
-			var target_id := int(neighbor_id)
-			if (
-				_node_positions.has(target_id)
-				and _local_player_position.distance_squared_to(
-					_node_positions[target_id]
-				) <= interaction_radius_squared
-			):
-				next_nodes_in_range[target_id] = true
-	if next_nodes_in_range == _nodes_in_player_range:
-		return
-	var affected_ids: Dictionary[int, bool] = {}
-	for node_id in _nodes_in_player_range:
-		affected_ids[node_id] = true
-	for node_id in next_nodes_in_range:
-		affected_ids[node_id] = true
-	_nodes_in_player_range = next_nodes_in_range
-	for node_id in affected_ids:
-		_refresh_cell_click_state(node_id)
-
-
-func _refresh_neighbor_click_states() -> void:
-	if graph == null:
-		return
-	for neighbor_id in graph.get_neighbors(current_node_id):
-		_refresh_cell_click_state(int(neighbor_id))
-
-
-func _refresh_cell_click_state(node_id: int) -> void:
-	var cell := _cells.get(node_id) as RogueRouteCell
-	if cell == null:
-		return
-	cell.set_click_enabled(can_interact_with_node(node_id))
 
 
 func _is_valid_runtime_view(

@@ -398,9 +398,6 @@ func _test_board_contract(
 	var empty_cell := board.get_cell(empty_neighbor_id)
 	var far_node_id := _find_non_neighbor(graph, graph.start_node_id)
 	var far_cell := board.get_cell(far_node_id)
-	board.update_local_player_global_position(
-		board.get_node_global_position(empty_neighbor_id)
-	)
 	_expect(
 		start_cell != null
 		and empty_cell != null
@@ -409,7 +406,7 @@ func _test_board_contract(
 		and not empty_cell.content_disc.visible
 		and not empty_cell.name_label.visible
 		and empty_cell.is_interaction_enabled(),
-		"相邻空节点必须仅显示小圆珠、隐藏名称，并保持可点击移动。"
+		"相邻空节点必须仅显示小圆珠、隐藏名称，并且无需玩家位置即可点击移动。"
 	)
 	var named_cell: RogueRouteCell = null
 	for node_id in range(graph.get_node_count()):

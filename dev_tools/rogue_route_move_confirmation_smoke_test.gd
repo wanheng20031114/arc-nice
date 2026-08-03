@@ -124,6 +124,8 @@ func _audit_p3_integration() -> void:
 		root.remove_child(route)
 		route.free()
 		return
+	board.complete_entry_reveal()
+	await process_frame
 
 	var neighbors := board.graph.get_neighbors(runtime.current_node_id)
 	_expect(not neighbors.is_empty(), "初始路线节点必须存在可移动邻居。")
@@ -132,11 +134,35 @@ func _audit_p3_integration() -> void:
 		root.remove_child(route)
 		route.free()
 		return
-	var target_node_id := int(neighbors[0])
-	local_player.global_position = board.get_node_global_position(target_node_id)
+	var target_node_id := -1
+	for neighbor_id in neighbors:
+		var node_type := board.graph.get_node_type(int(neighbor_id))
+		if node_type not in [
+			RogueRouteGraph.NodeType.NORMAL_COMBAT,
+			RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER,
+		]:
+			target_node_id = int(neighbor_id)
+			break
+	_expect(
+		target_node_id >= 0,
+		"确认层回归夹具必须存在不会切换场景的相邻节点。"
+	)
+	if target_node_id < 0:
+		current_scene = null
+		root.remove_child(route)
+		route.free()
+		return
+	local_player.global_position = board.get_node_global_position(
+		runtime.current_node_id
+	)
 	local_player.velocity = Vector2.ZERO
-	board.update_local_player_global_position(local_player.global_position)
 	await physics_frame
+	_expect(
+		local_player.global_position.distance_to(
+			board.get_node_global_position(target_node_id)
+		) > 28.0,
+		"远距点击夹具必须让玩家停留在当前节点附近，而非目标节点周围。"
+	)
 	route.call(&"_apply_camera_drag", Vector2(-96.0, -48.0))
 	await process_frame
 	var camera_position_before_modal := camera.position
@@ -145,7 +171,7 @@ func _audit_p3_integration() -> void:
 	_expect(
 		int(route.get("_pending_node_id")) == target_node_id
 		and route.move_confirmation.visible,
-		"进入节点范围并点击后必须打开自定义确认层。"
+		"玩家远离目标节点时，点击合法相邻节点仍必须打开自定义确认层。"
 	)
 	_expect(
 		bool(board.get("_interaction_locked")) and local_player.controls_locked,

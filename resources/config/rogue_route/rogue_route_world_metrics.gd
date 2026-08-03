@@ -5,13 +5,16 @@ class_name RogueRouteWorldMetrics
 ## 路线世界中唯一的几何度量来源。路线板、相机、物理墙和联机位置校验
 ## 都必须从同一份资源读取，避免视觉缩放后各系统仍使用旧边界。
 
+## 历史交互半径已不参与节点选择；只在契约哈希中保留原值，避免
+## 本次交互改动无意义地改变现有种子生成出的路线布局与节点内容。
+const LEGACY_NODE_INTERACTION_RADIUS_CONTRACT := 28.0
+
 @export_group("网格布局")
 @export var default_grid_size := Vector2i(11, 9)
 @export var cell_spacing := Vector2(88.0, 48.0)
 @export var board_margin := Vector2(96.0, 96.0)
 
-@export_group("探索交互")
-@export_range(1.0, 256.0, 1.0) var node_interaction_radius := 28.0
+@export_group("世界边界")
 @export_range(2.0, 64.0, 1.0) var boundary_thickness := 16.0
 
 @export_group("镜头")
@@ -35,13 +38,6 @@ func validate_metrics() -> PackedStringArray:
 		or board_margin.y < 0.0
 	):
 		errors.append("board_margin 必须是有限非负数。")
-	if (
-		not is_finite(node_interaction_radius)
-		or node_interaction_radius <= 0.0
-	):
-		errors.append("node_interaction_radius 必须是有限正数。")
-	elif node_interaction_radius >= minf(cell_spacing.x, cell_spacing.y):
-		errors.append("node_interaction_radius 必须小于最短节点间距。")
 	if not is_finite(boundary_thickness) or boundary_thickness <= 0.0:
 		errors.append("boundary_thickness 必须是有限正数。")
 	if not is_finite(camera_zoom) or camera_zoom <= 0.0:
@@ -74,7 +70,9 @@ func compute_contract_hash() -> String:
 		"default_grid=%d,%d" % [default_grid_size.x, default_grid_size.y],
 		"spacing=%.3f,%.3f" % [cell_spacing.x, cell_spacing.y],
 		"margin=%.3f,%.3f" % [board_margin.x, board_margin.y],
-		"interaction_radius=%.3f" % node_interaction_radius,
+		"interaction_radius=%.3f" % (
+			LEGACY_NODE_INTERACTION_RADIUS_CONTRACT
+		),
 		"boundary_thickness=%.3f" % boundary_thickness,
 		"camera_zoom=%.3f" % camera_zoom,
 		"parallax=%.3f" % parallax_scroll_scale,

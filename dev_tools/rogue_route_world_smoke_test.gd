@@ -467,19 +467,29 @@ func _audit_player_and_camera(
 	var target_node_id := -1
 	if runtime != null and graph != null:
 		var neighbors := graph.get_neighbors(runtime.current_node_id)
-		if not neighbors.is_empty():
-			target_node_id = int(neighbors[0])
+		for neighbor_id in neighbors:
+			var node_type := graph.get_node_type(int(neighbor_id))
+			if node_type not in [
+				RogueRouteGraph.NodeType.NORMAL_COMBAT,
+				RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER,
+			]:
+				target_node_id = int(neighbor_id)
+				break
 	if board != null and target_node_id >= 0:
-		local_player.global_position = board.get_node_global_position(target_node_id)
+		local_player.global_position = board.get_node_global_position(
+			runtime.current_node_id
+		)
 		local_player.velocity = Vector2.ZERO
-		board.update_local_player_global_position(local_player.global_position)
 	await physics_frame
 	await process_frame
 	_expect(
 		board != null
 		and target_node_id >= 0
-		and board.is_node_in_player_range(target_node_id),
-		"确认移动回归夹具必须先让玩家自由走入目标节点范围。"
+		and local_player.global_position.distance_to(
+			board.get_node_global_position(target_node_id)
+		) > 28.0
+		and board.can_interact_with_node(target_node_id),
+		"玩家停留在远离目标的位置时，合法相邻节点仍必须允许点击。"
 	)
 	route.call(&"_apply_camera_drag", Vector2(-96.0, -48.0))
 	await process_frame

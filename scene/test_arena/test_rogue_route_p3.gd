@@ -163,7 +163,6 @@ func _process(delta: float) -> void:
 
 func _physics_process(_delta: float) -> void:
 	if player != null and is_instance_valid(player):
-		route_board.update_local_player_global_position(player.global_position)
 		_clamp_camera_drag_offset()
 
 
@@ -248,7 +247,7 @@ func start_authoritative_session(
 	_configure_camera_world_bounds()
 	_update_route_hud()
 	_show_node_content(_runtime_state.current_node_id, false)
-	_set_status("路线世界已生成。移动角色探索，并走近青色相邻节点。", false)
+	_set_status("路线世界已生成。可自由探索，点击青色相邻节点即可选择路线。", false)
 	if announce_full_snapshot:
 		host_layout_committed.emit(
 			export_layout_snapshot(),
@@ -1291,7 +1290,7 @@ func _on_route_board_node_pressed(node_id: int) -> void:
 	):
 		return
 	if not route_board.can_interact_with_node(node_id):
-		_set_status("请先走近目标节点，再确认路线移动。", true)
+		_set_status("该节点当前不可移动。", true)
 		return
 	var rejection_reason := _runtime_state.get_move_rejection_reason(
 		node_id,
@@ -1321,10 +1320,6 @@ func _on_move_confirmation_confirmed() -> void:
 	_pending_node_id = INVALID_NODE_ID
 	_pending_revision = -1
 	if not _authority_enabled or not is_route_ready():
-		_finish_pending_move()
-		return
-	if not route_board.is_node_in_player_range(target_node_id):
-		_set_status("你已离开目标节点范围，本次移动未执行。", true)
 		_finish_pending_move()
 		return
 	var rejection_reason := _runtime_state.get_move_rejection_reason(
