@@ -1,46 +1,6 @@
-[gd_resource type="SpriteFrames" format=3]
+[gd_resource type="SpriteFrames" format=3 uid="uid://2koj0atuawe1"]
 
-[ext_resource type="Texture2D" path="res://resources/texture/enemy/mechanical_life/combat_robot_shield_bearer.png" id="1_texture"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
-atlas = ExtResource("1_texture")
-region = Rect2(0, 64, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_1"]
-atlas = ExtResource("1_texture")
-region = Rect2(32, 64, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_2"]
-atlas = ExtResource("1_texture")
-region = Rect2(64, 64, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_3"]
-atlas = ExtResource("1_texture")
-region = Rect2(96, 64, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_4"]
-atlas = ExtResource("1_texture")
-region = Rect2(128, 64, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_5"]
-atlas = ExtResource("1_texture")
-region = Rect2(160, 64, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_6"]
-atlas = ExtResource("1_texture")
-region = Rect2(192, 64, 32, 32)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_7"]
-atlas = ExtResource("1_texture")
-region = Rect2(224, 64, 32, 32)
-filter_clip = true
+[ext_resource type="Texture2D" uid="uid://bjn2o1otp4405" path="res://resources/texture/enemy/mechanical_life/combat_robot_shield_bearer.png" id="1_texture"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_death_0"]
 atlas = ExtResource("1_texture")
@@ -82,37 +42,48 @@ atlas = ExtResource("1_texture")
 region = Rect2(224, 192, 32, 32)
 filter_clip = true
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 64, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(32, 64, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(64, 64, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(96, 64, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_4"]
+atlas = ExtResource("1_texture")
+region = Rect2(128, 64, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_5"]
+atlas = ExtResource("1_texture")
+region = Rect2(160, 64, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_6"]
+atlas = ExtResource("1_texture")
+region = Rect2(192, 64, 32, 32)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_7"]
+atlas = ExtResource("1_texture")
+region = Rect2(224, 64, 32, 32)
+filter_clip = true
+
 [resource]
 animations = [{
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_0")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_1")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_2")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_3")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_4")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_5")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_6")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_move_7")
-}],
-"loop": true,
-"name": &"move",
-"speed": 14.0
-}, {
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_death_0")
@@ -141,4 +112,33 @@ animations = [{
 "loop": false,
 "name": &"death",
 "speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_move_7")
+}],
+"loop": true,
+"name": &"move",
+"speed": 14.0
 }]

@@ -8,12 +8,11 @@ const COMBAT_ROBOT_CONFIG := preload(
 )
 
 const EXPECTED_SPAWN_POSITIONS: Dictionary[StringName, Vector2] = {
-	&"Spawn1": Vector2(112.0, -18.0),
-	&"Spawn2": Vector2(306.0, 144.0),
-	&"Spawn3": Vector2(306.0, 224.0),
-	&"Spawn4": Vector2(128.0, 276.0),
-	&"Spawn5": Vector2(-50.0, 144.0),
+	&"Spawn1": Vector2(255.0, 32.0),
+	&"Spawn2": Vector2(255.0, 129.0),
+	&"Spawn3": Vector2(255.0, 223.0),
 }
+const EXPECTED_PLAYER_SPAWN_POSITION := Vector2(79.0, 128.0)
 
 var failures: Array[String] = []
 var game: RogueCombatGame = null
@@ -84,12 +83,20 @@ func _test_independent_scene_contract() -> void:
 	)
 	var ground := game.get_node_or_null("GroundTileMapLayer") as TileMapLayer
 	var overlay := game.get_node_or_null("OverlayTileMapLayer") as TileMapLayer
+	var player_spawn := game.get_node_or_null("PlayerSpawn") as Marker2D
 	_expect(
 		ground != null
 		and not ground.get_used_cells().is_empty()
 		and overlay != null
-		and overlay.get_used_cells().size() == 10,
-		"独立场景必须保留已绘制的地图与五扇红门覆盖图块。"
+		and overlay.get_used_cells().size() == 12,
+		"独立场景必须保留已绘制的地图与三扇 2×2 红门覆盖图块。"
+	)
+	_expect(
+		player_spawn != null
+		and player_spawn.position.is_equal_approx(
+			EXPECTED_PLAYER_SPAWN_POSITION
+		),
+		"Rouge 作战场景必须保留调整后的队伍出生锚点。"
 	)
 
 	var spawn_root := game.get_node_or_null("EnemySpawnPoints") as Node2D
@@ -97,7 +104,7 @@ func _test_independent_scene_contract() -> void:
 	if spawn_root != null:
 		_expect(
 			spawn_root.get_child_count() == EXPECTED_SPAWN_POSITIONS.size(),
-			"Rouge 作战场景必须原样保留五个红门出生点。"
+			"Rouge 作战场景必须且只能包含三个红门出生点。"
 		)
 		for spawn_name in EXPECTED_SPAWN_POSITIONS:
 			var marker := spawn_root.get_node_or_null(
@@ -108,8 +115,51 @@ func _test_independent_scene_contract() -> void:
 				and marker.position.is_equal_approx(
 					EXPECTED_SPAWN_POSITIONS[spawn_name]
 				),
-				"红门出生点 %s 必须保留普通模式位置。" % String(spawn_name)
+				"红门出生点 %s 必须使用场景 01 的专属位置。" % String(spawn_name)
 			)
+			if marker != null and player_spawn != null:
+				var path: PackedVector2Array = game.grid_pathfinder.call(
+					"get_global_path",
+					marker.global_position,
+					player_spawn.global_position
+				)
+				_expect(
+					not path.is_empty()
+					and path[-1].is_equal_approx(player_spawn.global_position),
+					"红门出生点 %s 必须能通过当前瓦片地形到达玩家区域。"
+					% String(spawn_name)
+				)
+
+	if player_spawn != null:
+		var authored_team_positions: Dictionary[Vector2, bool] = {}
+		for player_index in 4:
+			var spawn_offset: Vector2 = game.call(
+				"_get_multiplayer_spawn_offset",
+				player_index
+			)
+			var team_position: Vector2 = player_spawn.position + spawn_offset
+			authored_team_positions[team_position] = true
+		_expect(
+			authored_team_positions.size() == 4,
+			"四人队伍必须从新 PlayerSpawn 锚点得到四个互不重叠的位置。"
+		)
+
+	_expect(
+		not game.standard_merchants_enabled
+		and game.merchant == null
+		and game.luoxi_merchant == null
+		and game.get_node_or_null("ZhuangfangyiMerchant") == null
+		and game.get_node_or_null("LuoxiMerchant") == null
+		and game.get_node_or_null("WorldBounds") == null,
+		"场景 01 必须在静态结构中排除标准商人、默认拾取物与旧 WorldBounds。"
+	)
+	var scene_contract_errors := game.validate_encounter_scene_contract(
+		RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
+	)
+	_expect(
+		scene_contract_errors.is_empty(),
+		"场景 01 必须满足三门专属结构契约：%s" % [scene_contract_errors]
+	)
 
 	_expect(
 		is_equal_approx(game.pre_wave_duration, 3.0)
@@ -370,7 +420,9 @@ func _create_test_wave() -> WaveConfig:
 	result.step_id = &"rogue_combat_smoke_wave"
 	result.wave_name = "狭路相逢"
 	result.enemy_entries = [entry]
-	result.spawn_point_mask = WaveConfig.STANDARD_SPAWN_POINT_MASK
+	result.spawn_point_mask = (
+		RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
+	)
 	result.spawn_interval = 60.0
 	result.spawn_count_per_tick = 1
 	result.max_alive_enemies = 1

@@ -564,8 +564,8 @@ func _validate_host_spawn_batch(game: RogueCombatGame) -> bool:
 	for marker in game.active_wave_spawn_points:
 		if marker != null and is_instance_valid(marker):
 			door_positions.append(marker.global_position)
-	if door_positions.size() != 5:
-		_fail("Host formal wave did not activate all five red doors")
+	if door_positions.size() != 3:
+		_fail("Host formal wave did not activate all three red doors")
 		return false
 	for spawn_position in host_spawn_positions:
 		var found_door := false

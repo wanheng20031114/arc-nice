@@ -74,6 +74,9 @@ const MULTIPLAYER_CAMPAIGN_PATH := (
 @export var auto_start_waves: bool = true
 @export var linglan_boss_enabled: bool = true
 
+@export_group("标准场景内容")
+@export var standard_merchants_enabled: bool = true
+
 @onready var player_spawn: Marker2D = $PlayerSpawn
 @onready var ground_tile_map_layer: TileMapLayer = $GroundTileMapLayer
 @onready var overlay_tile_map_layer: TileMapLayer = $OverlayTileMapLayer
@@ -89,8 +92,8 @@ const MULTIPLAYER_CAMPAIGN_PATH := (
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
-@onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
-@onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
+@onready var merchant: ZhuangfangyiMerchant = _resolve_zhuangfangyi_merchant()
+@onready var luoxi_merchant: LuoxiMerchant = _resolve_luoxi_merchant()
 @onready var boss_container: Node2D = $BossContainer
 @onready var guardian_aura_system: GuardianAuraSystem = $GuardianAuraSystem
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
@@ -140,8 +143,24 @@ var navigation_prewarmed: bool = false
 var _singleplayer_tango_charge_started_at: float = -1.0
 
 
+func _resolve_zhuangfangyi_merchant() -> ZhuangfangyiMerchant:
+	if not standard_merchants_enabled:
+		return null
+	return get_node("ZhuangfangyiMerchant") as ZhuangfangyiMerchant
+
+
+func _resolve_luoxi_merchant() -> LuoxiMerchant:
+	if not standard_merchants_enabled:
+		return null
+	return get_node("LuoxiMerchant") as LuoxiMerchant
+
+
 func _ready() -> void:
 	random_generator.randomize()
+	if not _validate_standard_scene_content():
+		set_process(false)
+		set_physics_process(false)
+		return
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 		if load_coordinator != null and bool(load_coordinator.call("is_loading")):
@@ -261,6 +280,17 @@ func _ready() -> void:
 			mark_runtime_preparation_complete()
 	elif auto_start_waves or runtime_activation_deferred:
 		_schedule_enemy_navigation_prewarm()
+
+
+func _validate_standard_scene_content() -> bool:
+	if not standard_merchants_enabled:
+		return true
+	if merchant != null and luoxi_merchant != null:
+		return true
+	push_error(
+		"Game: 场景启用了标准商人能力，但缺少庄方宜或洛茜商人节点。"
+	)
+	return false
 
 
 func _on_runtime_activated() -> void:

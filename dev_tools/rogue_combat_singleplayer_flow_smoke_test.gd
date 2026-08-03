@@ -164,7 +164,7 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 	)
 	_expect(
 		_validate_spawned_robots_at_red_doors(battle),
-		"10台机器人必须随机分布在五扇红门的原始出生点上。"
+		"10台机器人必须全部从三扇红门生成，轮转刷怪必须覆盖全部三门。"
 	)
 
 	var inventory_revision_before := run_state.inventory_revision
@@ -236,7 +236,7 @@ func _test_full_inventory_and_runtime_content_policy() -> void:
 
 	var config := _make_confirmed_config({
 		"keep_enemy_kill_xirang": RogueCombatEncounterConfig.Decision.NO,
-		"keep_standard_merchants_pickups_and_drops": (
+		"enemy_pickup_drops": (
 			RogueCombatEncounterConfig.Decision.NO
 		),
 	})
@@ -262,16 +262,22 @@ func _test_full_inventory_and_runtime_content_policy() -> void:
 		return
 	_expect(
 		_validate_battle_campaign(battle, 0, true),
-		"关闭普通奖励时，机器人击杀息壤覆盖必须为0且掉落表必须为空。"
+		"关闭敌人掉落时，机器人击杀息壤覆盖必须为0且运行时不得生成拾取物。"
 	)
-	for node_path in RogueCombatSingleplayerCoordinator.DISABLED_STANDARD_NODE_PATHS:
-		var target := battle.get_node_or_null(node_path)
-		_expect(
-			target != null
-			and target.process_mode == Node.PROCESS_MODE_DISABLED
-			and (not target.visible if target is CanvasItem else true),
-			"关闭普通内容时必须隐藏并禁用%s。" % String(node_path)
-		)
+	_expect(
+		battle.get_node_or_null("ZhuangfangyiMerchant") == null
+		and battle.get_node_or_null("LuoxiMerchant") == null
+		and battle.get_node_or_null("WorldBounds") == null,
+		"Rouge 专用战场不得重新引入庄方宜、洛茜或旧 WorldBounds 内容。"
+	)
+	var scene_contract_errors := battle.validate_encounter_scene_contract(
+		RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
+	)
+	_expect(
+		scene_contract_errors.is_empty(),
+		"正式战场必须满足三门、队伍出生点及无静态商人/拾取物契约：%s"
+		% [scene_contract_errors]
+	)
 	battle.call("_enter_victory")
 	_expect(
 		await _wait_for_battle_return(coordinator),
@@ -475,7 +481,9 @@ func _make_confirmed_config(overrides: Dictionary = {}) -> RogueCombatEncounterC
 	var result := BASE_ENCOUNTER_CONFIG.duplicate(true) as RogueCombatEncounterConfig
 	result.decisions_confirmed = true
 	result.deadline_start = RogueCombatEncounterConfig.DeadlineStart.WAVE_START
-	result.spawn_point_mask = WaveConfig.STANDARD_SPAWN_POINT_MASK
+	result.spawn_point_mask = (
+		RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
+	)
 	result.spawn_count_per_tick = result.enemy_count
 	result.keep_enemy_kill_xirang = RogueCombatEncounterConfig.Decision.YES
 	result.filter_loot_by_character = RogueCombatEncounterConfig.Decision.YES
@@ -483,7 +491,7 @@ func _make_confirmed_config(overrides: Dictionary = {}) -> RogueCombatEncounterC
 	result.return_to_route_before_result = RogueCombatEncounterConfig.Decision.YES
 	result.show_failure_result = RogueCombatEncounterConfig.Decision.YES
 	result.consume_node_on_failure = RogueCombatEncounterConfig.Decision.YES
-	result.keep_standard_merchants_pickups_and_drops = (
+	result.enemy_pickup_drops = (
 		RogueCombatEncounterConfig.Decision.NO
 	)
 	result.inherit_route_xirang = RogueCombatEncounterConfig.Decision.YES
@@ -508,7 +516,8 @@ func _validate_battle_campaign(
 	if (
 		wave.get_total_enemy_count() != 10
 		or wave.enemy_entries.size() != 1
-		or wave.spawn_point_mask != WaveConfig.STANDARD_SPAWN_POINT_MASK
+		or wave.spawn_point_mask
+		!= RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
 		or wave.spawn_count_per_tick != 10
 		or wave.max_alive_enemies < 10
 	):
@@ -527,7 +536,7 @@ func _validate_battle_campaign(
 
 
 func _validate_spawned_robots_at_red_doors(battle: RogueCombatGame) -> bool:
-	if battle == null or battle.active_wave_spawn_points.size() != 5:
+	if battle == null or battle.active_wave_spawn_points.size() != 3:
 		return false
 	var used_spawn_points: Dictionary = {}
 	var matched_enemy_count := 0
@@ -543,7 +552,7 @@ func _validate_spawned_robots_at_red_doors(battle: RogueCombatGame) -> bool:
 				matched_enemy_count += 1
 				used_spawn_points[spawn_point.name] = true
 				break
-	return matched_enemy_count == 10 and used_spawn_points.size() >= 2
+	return matched_enemy_count == 10 and used_spawn_points.size() == 3
 
 
 func _defeat_all_active_enemies(battle: RogueCombatGame) -> int:

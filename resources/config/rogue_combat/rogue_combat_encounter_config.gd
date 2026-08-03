@@ -23,6 +23,11 @@ const DEFAULT_PREPARATION_SECONDS := 3
 const DEFAULT_COMBAT_LIMIT_SECONDS := 90
 const DEFAULT_ENEMY_COUNT := 10
 const DEFAULT_EXTRA_XIRANG := 500
+const REQUIRED_SCENE_SPAWN_POINT_MASK := (
+	WaveConfig.SPAWN_POINT_1_MASK
+	| WaveConfig.SPAWN_POINT_2_MASK
+	| WaveConfig.SPAWN_POINT_3_MASK
+)
 const COMBAT_ROBOT_CONFIG_PATH := (
 	"res://resources/config/enemies/combat_robot.tres"
 )
@@ -42,7 +47,7 @@ var combat_limit_seconds: int = DEFAULT_COMBAT_LIMIT_SECONDS
 @export_group("待玩家确认的规则")
 @export var decisions_confirmed: bool = false
 @export var deadline_start: DeadlineStart = DeadlineStart.UNSPECIFIED
-@export_flags("Spawn1", "Spawn2", "Spawn3", "Spawn4", "Spawn5")
+@export_flags("Spawn1", "Spawn2", "Spawn3")
 var spawn_point_mask: int = 0
 @export_range(0, 999, 1, "or_greater") var spawn_count_per_tick: int = 0
 @export var keep_enemy_kill_xirang: Decision = Decision.UNSPECIFIED
@@ -51,7 +56,7 @@ var spawn_point_mask: int = 0
 @export var return_to_route_before_result: Decision = Decision.UNSPECIFIED
 @export var show_failure_result: Decision = Decision.UNSPECIFIED
 @export var consume_node_on_failure: Decision = Decision.UNSPECIFIED
-@export var keep_standard_merchants_pickups_and_drops: Decision = Decision.UNSPECIFIED
+@export var enemy_pickup_drops: Decision = Decision.UNSPECIFIED
 @export var inherit_route_xirang: Decision = Decision.UNSPECIFIED
 @export var support_singleplayer: Decision = Decision.UNSPECIFIED
 @export var support_multiplayer: Decision = Decision.UNSPECIFIED
@@ -67,6 +72,49 @@ func validate_config() -> PackedStringArray:
 
 func is_ready_to_enable() -> bool:
 	return validate_config().is_empty()
+
+
+## 为本次节点复制一份独立资源图，单人和多人必须共同使用此入口。
+func build_occurrence_campaign(occurrence_key: String) -> WaveCampaignConfig:
+	if occurrence_key.is_empty() or campaign == null:
+		return null
+	var source_waves := campaign.get_waves()
+	if source_waves.size() != 1:
+		return null
+	var source_wave := source_waves[0]
+	if source_wave == null or source_wave.enemy_entries.size() != 1:
+		return null
+	var source_entry := source_wave.enemy_entries[0]
+	if source_entry == null or source_entry.enemy_config == null:
+		return null
+
+	var entry := source_entry.duplicate(false) as WaveEnemyEntry
+	var wave := source_wave.duplicate(false) as WaveConfig
+	var flow := campaign.flow_graph.duplicate(false) as FlowGraphConfig
+	var occurrence_campaign := campaign.duplicate(false) as WaveCampaignConfig
+	if entry == null or wave == null or flow == null or occurrence_campaign == null:
+		return null
+
+	# 保留正式 EnemyConfig 的资源路径，确保多人刷怪序列化身份稳定。
+	entry.enemy_config = source_entry.enemy_config
+	entry.count = enemy_count
+	entry.xirang_kill_reward_override = (
+		-1 if keep_enemy_kill_xirang == Decision.YES else 0
+	)
+	wave.enemy_entries = [entry]
+	wave.spawn_point_mask = spawn_point_mask
+	wave.spawn_count_per_tick = spawn_count_per_tick
+	wave.max_alive_enemies = maxi(wave.max_alive_enemies, enemy_count)
+	wave.exits = []
+	flow.start_step = wave
+	flow.steps = [wave]
+	occurrence_campaign.campaign_id = StringName(
+		"%s|%s" % [String(campaign.campaign_id), occurrence_key]
+	)
+	occurrence_campaign.flow_graph = flow
+	if not occurrence_campaign.validate_campaign().is_empty():
+		return null
+	return occurrence_campaign
 
 
 func _validate_fixed_fields(errors: PackedStringArray) -> void:
@@ -122,6 +170,8 @@ func _validate_campaign(errors: PackedStringArray) -> void:
 			errors.append("狭路相逢技术波次必须保留默认击杀息壤继承值 -1。")
 	if wave.max_alive_enemies < enemy_count:
 		errors.append("Rouge 战斗波次的场上敌人上限不能小于 enemy_count。")
+	if wave.spawn_point_mask != REQUIRED_SCENE_SPAWN_POINT_MASK:
+		errors.append("狭路相逢技术波次必须与场景的三扇红门一致。")
 
 
 func _validate_pending_decisions(errors: PackedStringArray) -> void:
@@ -136,8 +186,8 @@ func _validate_pending_decisions(errors: PackedStringArray) -> void:
 		errors.append("Rouge 战斗的 90 秒时限起点无效。")
 	if spawn_point_mask == 0:
 		errors.append("Rouge 战斗使用哪些红门尚未指定。")
-	elif spawn_point_mask & ~WaveConfig.STANDARD_SPAWN_POINT_MASK:
-		errors.append("Rouge 战斗只能使用 Spawn1 至 Spawn5 红门。")
+	elif spawn_point_mask != REQUIRED_SCENE_SPAWN_POINT_MASK:
+		errors.append("狭路相逢必须且只能使用场景中的 Spawn1 至 Spawn3。")
 	if spawn_count_per_tick <= 0:
 		errors.append("Rouge 战斗的单次生成数量尚未指定。")
 	elif spawn_count_per_tick > enemy_count:
@@ -151,8 +201,8 @@ func _validate_pending_decisions(errors: PackedStringArray) -> void:
 	_validate_decision(errors, consume_node_on_failure, "失败时是否消耗节点")
 	_validate_decision(
 		errors,
-		keep_standard_merchants_pickups_and_drops,
-		"是否保留普通模式商人、拾取物和掉落"
+		enemy_pickup_drops,
+		"是否允许敌人随机掉落拾取物"
 	)
 	_validate_decision(errors, inherit_route_xirang, "是否继承 Rouge 路线息壤")
 	_validate_decision(errors, support_singleplayer, "是否支持单人 Rouge")

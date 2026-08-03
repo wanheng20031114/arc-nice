@@ -131,58 +131,11 @@ static func build_occurrence_campaign(
 	config: RogueCombatEncounterConfig,
 	occurrence_key: String
 ) -> WaveCampaignConfig:
-	if (
-		config == null
-		or occurrence_key.is_empty()
-		or config.campaign == null
-	):
-		return null
-	var source_waves := config.campaign.get_waves()
-	if source_waves.size() != 1:
-		return null
-	var source_wave := source_waves[0]
-	if source_wave == null or source_wave.enemy_entries.size() != 1:
-		return null
-	var source_entry := source_wave.enemy_entries[0]
-	if source_entry == null or source_entry.enemy_config == null:
-		return null
-
-	var entry := source_entry.duplicate(false) as WaveEnemyEntry
-	var wave := source_wave.duplicate(false) as WaveConfig
-	var flow := config.campaign.flow_graph.duplicate(false) as FlowGraphConfig
-	var campaign := config.campaign.duplicate(false) as WaveCampaignConfig
-	if (
-		entry == null
-		or wave == null
-		or flow == null
-		or campaign == null
-	):
-		return null
-
-	# Keep the canonical resource path for MpGame spawn serialization. Random
-	# drops are controlled by RogueCombatGame's encounter-local runtime policy.
-	entry.enemy_config = source_entry.enemy_config
-	entry.count = config.enemy_count
-	entry.xirang_kill_reward_override = (
-		-1
-		if config.keep_enemy_kill_xirang
-		== RogueCombatEncounterConfig.Decision.YES
-		else 0
+	return (
+		config.build_occurrence_campaign(occurrence_key)
+		if config != null
+		else null
 	)
-
-	wave.enemy_entries = [entry]
-	wave.spawn_point_mask = config.spawn_point_mask
-	wave.spawn_count_per_tick = config.spawn_count_per_tick
-	wave.max_alive_enemies = maxi(wave.max_alive_enemies, config.enemy_count)
-	wave.exits = []
-
-	flow.start_step = wave
-	flow.steps = [wave]
-	campaign.campaign_id = StringName(
-		"%s|%s" % [String(config.campaign.campaign_id), occurrence_key]
-	)
-	campaign.flow_graph = flow
-	return campaign
 
 
 func _connect_net_manager_signals() -> void:
@@ -464,6 +417,13 @@ func _configure_occurrence_runtime() -> bool:
 	_combat_game = game_runtime as RogueCombatGame
 	if _combat_game == null or _combat_game.current_flow_step != null:
 		return false
+	var scene_contract_errors := _combat_game.validate_encounter_scene_contract(
+		encounter_config.spawn_point_mask
+	)
+	if not scene_contract_errors.is_empty():
+		for error in scene_contract_errors:
+			push_error(error)
+		return false
 	var campaign := build_occurrence_campaign(
 		encounter_config,
 		_active_occurrence_key
@@ -493,13 +453,9 @@ func _configure_occurrence_runtime() -> bool:
 	)
 	_combat_game.linglan_boss_enabled = false
 	_combat_game.enemy_pickup_drops_enabled = (
-		encounter_config.keep_standard_merchants_pickups_and_drops
+		encounter_config.enemy_pickup_drops
 		== RogueCombatEncounterConfig.Decision.YES
 	)
-	if encounter_config.keep_standard_merchants_pickups_and_drops == (
-		RogueCombatEncounterConfig.Decision.NO
-	):
-		_disable_standard_ambient_content(_combat_game)
 	_apply_xirang_map_to_game(_combat_game, _entry_xirang_by_peer)
 	for raw_peer_id in _participant_peer_ids.keys():
 		var peer_id := int(raw_peer_id)
@@ -517,29 +473,6 @@ func _configure_occurrence_runtime() -> bool:
 	# 必须最后打开，确保 activate_runtime() 看到完整 campaign / 经济 / 环境。
 	_combat_game.auto_start_waves = true
 	return true
-
-
-static func _disable_standard_ambient_content(game: Game) -> void:
-	if game == null:
-		return
-	if game.merchant != null:
-		game.merchant.set_active(false)
-		game.merchant.visible = false
-		game.merchant.process_mode = Node.PROCESS_MODE_DISABLED
-	if game.luoxi_merchant != null:
-		game.luoxi_merchant.set_active(false)
-		game.luoxi_merchant.visible = false
-		game.luoxi_merchant.process_mode = Node.PROCESS_MODE_DISABLED
-	for pickup_variant in game.multiplayer_pickups.values():
-		var pickup := pickup_variant as Pickup
-		if pickup == null or not is_instance_valid(pickup):
-			continue
-		pickup.visible = false
-		pickup.collision_layer = 0
-		pickup.collision_mask = 0
-		pickup.process_mode = Node.PROCESS_MODE_DISABLED
-	game.multiplayer_pickups.clear()
-	game.pending_multiplayer_pickup_exit_ids.clear()
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)
@@ -1439,7 +1372,7 @@ static func _make_config_signature(
 		int(config.return_to_route_before_result),
 		int(config.show_failure_result),
 		int(config.consume_node_on_failure),
-		int(config.keep_standard_merchants_pickups_and_drops),
+		int(config.enemy_pickup_drops),
 		int(config.inherit_route_xirang),
 		int(config.support_multiplayer),
 	]

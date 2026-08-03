@@ -15,18 +15,9 @@ signal battle_returned(
 const ENCOUNTER_CONFIG := preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
 )
-const COMBAT_ROBOT_CONFIG := preload(
-	"res://resources/config/enemies/combat_robot.tres"
-)
 const SINGLEPLAYER_PEER_ID := 0
 const INVALID_NODE_ID := -1
 const BATTLE_NODE_NAME := "RogueCombatBattle"
-const DISABLED_STANDARD_NODE_PATHS: Array[NodePath] = [
-	NodePath("ZhuangfangyiMerchant"),
-	NodePath("LuoxiMerchant"),
-	NodePath("WorldBounds/Pickup3"),
-	NodePath("WorldBounds/Pickup4"),
-]
 
 @export var encounter_config: RogueCombatEncounterConfig = ENCOUNTER_CONFIG
 
@@ -132,11 +123,16 @@ func _on_normal_combat_requested(
 		_recover_route_from_start_failure(occurrence_key)
 		return
 
-	_configure_battle_before_tree(battle, occurrence_campaign)
-	if not _configure_optional_standard_content(battle):
+	var scene_contract_errors := battle.validate_encounter_scene_contract(
+		encounter_config.spawn_point_mask
+	)
+	if not scene_contract_errors.is_empty():
+		for error in scene_contract_errors:
+			push_error(error)
 		battle.free()
 		_recover_route_from_start_failure(occurrence_key)
 		return
+	_configure_battle_before_tree(battle, occurrence_campaign)
 
 	_active_node_id = node_id
 	_active_content_seed = content_seed
@@ -196,7 +192,7 @@ func _configure_battle_before_tree(
 		else RogueCombatGame.DeadlineStart.WAVE_START
 	)
 	battle.enemy_pickup_drops_enabled = (
-		encounter_config.keep_standard_merchants_pickups_and_drops
+		encounter_config.enemy_pickup_drops
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	# 派生场景本身保持关闭；只有确认过完整策略的协调器才会打开自动流程。
@@ -207,98 +203,7 @@ func _configure_battle_before_tree(
 func _build_occurrence_campaign(
 	occurrence_key: String
 ) -> WaveCampaignConfig:
-	var base_waves := encounter_config.campaign.get_waves()
-	if base_waves.size() != 1:
-		push_error("单人 Rouge 作战配置必须提供一个基础波次。")
-		return null
-	var base_wave := base_waves[0]
-	var occurrence_wave := base_wave.duplicate(true) as WaveConfig
-	if occurrence_wave == null:
-		push_error("无法复制单人 Rouge 作战基础波次。")
-		return null
-
-	var robot_entry := WaveEnemyEntry.new()
-	# Multiplayer spawn replication identifies enemy types by resource_path.
-	# Reuse the canonical robot resource and let the runtime drop policy suppress
-	# this encounter's random loot without mutating shared configuration.
-	robot_entry.enemy_config = COMBAT_ROBOT_CONFIG
-	robot_entry.count = encounter_config.enemy_count
-	robot_entry.xirang_kill_reward_override = (
-		-1
-		if encounter_config.keep_enemy_kill_xirang
-		== RogueCombatEncounterConfig.Decision.YES
-		else 0
-	)
-	var entries: Array[WaveEnemyEntry] = [robot_entry]
-	occurrence_wave.enemy_entries = entries
-	occurrence_wave.wave_name = encounter_config.event_title
-	occurrence_wave.display_name = encounter_config.event_title
-	occurrence_wave.step_id = &"rogue_combat_wave"
-	occurrence_wave.spawn_point_mask = encounter_config.spawn_point_mask
-	occurrence_wave.spawn_count_per_tick = encounter_config.spawn_count_per_tick
-	occurrence_wave.max_alive_enemies = maxi(
-		encounter_config.enemy_count,
-		encounter_config.spawn_count_per_tick
-	)
-	occurrence_wave.post_clear_rest_duration = 0.0
-	occurrence_wave.exits.clear()
-
-	var graph := FlowGraphConfig.new()
-	graph.graph_name = "%s / %s" % [
-		encounter_config.event_title,
-		occurrence_key,
-	]
-	graph.start_step = occurrence_wave
-	var steps: Array[FlowStepConfig] = [occurrence_wave]
-	graph.steps = steps
-
-	var campaign := WaveCampaignConfig.new()
-	campaign.campaign_id = StringName(
-		"%s_occurrence" % String(encounter_config.encounter_id)
-	)
-	campaign.flow_graph = graph
-	var errors := campaign.validate_campaign()
-	if not errors.is_empty():
-		for error in errors:
-			push_error(error)
-		return null
-	return campaign
-
-
-func _configure_optional_standard_content(battle: RogueCombatGame) -> bool:
-	if (
-		encounter_config.keep_standard_merchants_pickups_and_drops
-		== RogueCombatEncounterConfig.Decision.YES
-	):
-		return true
-	for node_path in DISABLED_STANDARD_NODE_PATHS:
-		var target := battle.get_node_or_null(node_path)
-		if target == null:
-			push_error(
-				"Rouge 作战场景缺少需禁用的普通模式节点：%s"
-				% String(node_path)
-			)
-			return false
-		_disable_runtime_subtree(target)
-	return true
-
-
-func _disable_runtime_subtree(target: Node) -> void:
-	target.process_mode = Node.PROCESS_MODE_DISABLED
-	if target is CanvasItem:
-		(target as CanvasItem).visible = false
-	if target is CollisionObject2D:
-		var collision_object := target as CollisionObject2D
-		collision_object.collision_layer = 0
-		collision_object.collision_mask = 0
-	if target is Area2D:
-		var area := target as Area2D
-		area.monitoring = false
-		area.monitorable = false
-	if target is CollisionShape2D:
-		(target as CollisionShape2D).disabled = true
-	for child in target.get_children():
-		_disable_runtime_subtree(child)
+	return encounter_config.build_occurrence_campaign(occurrence_key)
 
 
 func _activate_battle_when_prepared(

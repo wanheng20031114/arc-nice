@@ -48,7 +48,7 @@ func _run() -> void:
 	_test_unconfirmed_config_is_rejected()
 	_test_all_explicit_decisions_enable_a_copy()
 	_test_fixed_contract_rejects_drift()
-	_test_spawn_policy_is_not_locked_to_technical_wave()
+	_test_spawn_policy_matches_authored_scene()
 	_test_single_wave_campaign()
 	_test_ten_enemy_spawn_batch()
 	_test_standard_spawn_batch_values_unchanged()
@@ -86,9 +86,9 @@ func _test_confirmed_fixed_contract() -> void:
 		ENCOUNTER_CONFIG.deadline_start
 		== ENCOUNTER_CONFIG_SCRIPT.DeadlineStart.WAVE_START
 		and ENCOUNTER_CONFIG.spawn_point_mask
-		== WaveConfig.STANDARD_SPAWN_POINT_MASK
+		== ENCOUNTER_CONFIG_SCRIPT.REQUIRED_SCENE_SPAWN_POINT_MASK
 		and ENCOUNTER_CONFIG.spawn_count_per_tick == 10,
-		"正式配置必须在三秒后开始90秒计时，并从五门同批生成10台机器人。"
+		"正式配置必须在三秒后开始90秒计时，并从三门同批生成10台机器人。"
 	)
 	_expect(
 		ENCOUNTER_CONFIG.keep_enemy_kill_xirang
@@ -103,7 +103,7 @@ func _test_confirmed_fixed_contract() -> void:
 		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
 		and ENCOUNTER_CONFIG.consume_node_on_failure
 		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.keep_standard_merchants_pickups_and_drops
+		and ENCOUNTER_CONFIG.enemy_pickup_drops
 		== ENCOUNTER_CONFIG_SCRIPT.Decision.NO
 		and ENCOUNTER_CONFIG.inherit_route_xirang
 		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
@@ -181,13 +181,24 @@ func _test_fixed_contract_rejects_drift() -> void:
 		)
 
 
-func _test_spawn_policy_is_not_locked_to_technical_wave() -> void:
+func _test_spawn_policy_matches_authored_scene() -> void:
 	var ready := _make_ready_config()
 	ready.spawn_point_mask = 1
+	_expect(
+		not ready.is_ready_to_enable(),
+		"只启用 Spawn1 必须被拒绝，场景 01 必须完整使用三扇红门。"
+	)
+	ready = _make_ready_config()
+	ready.spawn_point_mask = 8
+	_expect(
+		not ready.is_ready_to_enable(),
+		"引用场景中不存在的 Spawn4 必须被配置校验拒绝。"
+	)
+	ready = _make_ready_config()
 	ready.spawn_count_per_tick = 2
 	_expect(
 		ready.is_ready_to_enable(),
-		"合法出生策略应由 occurrence campaign 应用，不能被技术波次 31/10 锁死。"
+		"三门掩码固定时，合法的 occurrence 刷怪批量仍应允许调整。"
 	)
 	ready.spawn_count_per_tick = 11
 	_expect(
@@ -200,7 +211,9 @@ func _make_ready_config() -> RogueCombatEncounterConfig:
 	var ready := ENCOUNTER_CONFIG.duplicate(true) as RogueCombatEncounterConfig
 	ready.decisions_confirmed = true
 	ready.deadline_start = ENCOUNTER_CONFIG_SCRIPT.DeadlineStart.WAVE_START
-	ready.spawn_point_mask = WaveConfig.STANDARD_SPAWN_POINT_MASK
+	ready.spawn_point_mask = (
+		ENCOUNTER_CONFIG_SCRIPT.REQUIRED_SCENE_SPAWN_POINT_MASK
+	)
 	ready.spawn_count_per_tick = 10
 	ready.keep_enemy_kill_xirang = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
 	ready.filter_loot_by_character = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
@@ -208,7 +221,7 @@ func _make_ready_config() -> RogueCombatEncounterConfig:
 	ready.return_to_route_before_result = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
 	ready.show_failure_result = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
 	ready.consume_node_on_failure = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.keep_standard_merchants_pickups_and_drops = (
+	ready.enemy_pickup_drops = (
 		ENCOUNTER_CONFIG_SCRIPT.Decision.NO
 	)
 	ready.inherit_route_xirang = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
@@ -230,7 +243,11 @@ func _test_single_wave_campaign() -> void:
 	_expect(wave.exits.is_empty(), "唯一战斗波次必须是无出口的终点。")
 	_expect(wave.enemy_entries.size() == 1, "唯一波次必须只有一个敌人条目。")
 	_expect(wave.get_total_enemy_count() == 10, "唯一波次必须精确生成 10 台机器人。")
-	_expect(wave.spawn_point_mask == 31, "技术波次必须预置五扇红门掩码 31。")
+	_expect(
+		wave.spawn_point_mask
+		== ENCOUNTER_CONFIG_SCRIPT.REQUIRED_SCENE_SPAWN_POINT_MASK,
+		"技术波次必须预置与场景一致的三扇红门掩码 7。"
+	)
 	_expect(wave.spawn_count_per_tick == 10, "技术波次必须支持单次生成 10 台机器人。")
 	_expect(wave.max_alive_enemies == 10, "技术波次必须允许 10 台机器人同时存活。")
 	if wave.enemy_entries.size() == 1:

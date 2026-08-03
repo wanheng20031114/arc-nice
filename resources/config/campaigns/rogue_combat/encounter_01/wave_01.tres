@@ -1,20 +1,20 @@
-[gd_resource type="Resource" script_class="WaveConfig" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://c56oaktqgvssu"]
 
-[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
+[ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
 [ext_resource type="Resource" path="res://resources/config/enemies/combat_robot.tres" id="2_combat_robot"]
-[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="3_wave_script"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="3_c6c0l"]
+[ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="3_wave_script"]
 
 [sub_resource type="Resource" id="CombatRobotEntry"]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("2_combat_robot")
 count = 10
-xirang_kill_reward_override = -1
 
 [resource]
 script = ExtResource("3_wave_script")
 wave_name = "狭路相逢"
 enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("CombatRobotEntry")])
-spawn_point_mask = 31
+spawn_point_mask = 7
 spawn_interval = 0.1
 spawn_count_per_tick = 10
 max_alive_enemies = 10

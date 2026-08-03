@@ -51,7 +51,7 @@ func _test_confirmed_formal_config_is_enabled() -> void:
 
 func _test_occurrence_campaign_is_isolated() -> void:
 	var config := _make_confirmed_config()
-	config.keep_standard_merchants_pickups_and_drops = (
+	config.enemy_pickup_drops = (
 		RogueCombatEncounterConfig.Decision.NO
 	)
 	config.keep_enemy_kill_xirang = RogueCombatEncounterConfig.Decision.YES
@@ -93,7 +93,7 @@ func _test_occurrence_campaign_is_isolated() -> void:
 
 func _test_kill_reward_policy_is_explicit() -> void:
 	var config := _make_confirmed_config()
-	config.keep_standard_merchants_pickups_and_drops = (
+	config.enemy_pickup_drops = (
 		RogueCombatEncounterConfig.Decision.YES
 	)
 	config.keep_enemy_kill_xirang = RogueCombatEncounterConfig.Decision.NO
@@ -106,7 +106,7 @@ func _test_kill_reward_policy_is_explicit() -> void:
 		return
 	var entry := campaign.get_waves()[0].enemy_entries[0]
 	_expect(entry.xirang_kill_reward_override == 0, "关闭时必须明确覆盖为0。")
-	_expect(entry.enemy_config.drop_table != null, "保留普通内容时不得清空敌人的掉落表。")
+	_expect(entry.enemy_config.drop_table != null, "开启敌人拾取物掉落时不得清空掉落表。")
 
 
 func _test_protocol_contract_is_static_and_order_safe() -> void:
@@ -191,7 +191,7 @@ func _make_confirmed_config() -> RogueCombatEncounterConfig:
 	var config := FORMAL_CONFIG.duplicate(false) as RogueCombatEncounterConfig
 	config.decisions_confirmed = true
 	config.deadline_start = RogueCombatEncounterConfig.DeadlineStart.WAVE_START
-	config.spawn_point_mask = WaveConfig.STANDARD_SPAWN_POINT_MASK
+	config.spawn_point_mask = RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
 	config.spawn_count_per_tick = 10
 	config.keep_enemy_kill_xirang = RogueCombatEncounterConfig.Decision.YES
 	config.filter_loot_by_character = RogueCombatEncounterConfig.Decision.YES
@@ -199,7 +199,7 @@ func _make_confirmed_config() -> RogueCombatEncounterConfig:
 	config.return_to_route_before_result = RogueCombatEncounterConfig.Decision.YES
 	config.show_failure_result = RogueCombatEncounterConfig.Decision.YES
 	config.consume_node_on_failure = RogueCombatEncounterConfig.Decision.YES
-	config.keep_standard_merchants_pickups_and_drops = (
+	config.enemy_pickup_drops = (
 		RogueCombatEncounterConfig.Decision.NO
 	)
 	config.inherit_route_xirang = RogueCombatEncounterConfig.Decision.YES

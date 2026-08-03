@@ -29,6 +29,69 @@ var combat_seconds_remaining := 0
 var _combat_deadline_started := false
 var _outcome_emitted := false
 var _failure_reason := DEFAULT_FAILURE_REASON
+var _spawn_point_rotation_index := 0
+
+
+func validate_encounter_scene_contract(
+	expected_spawn_point_mask: int
+) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if standard_merchants_enabled:
+		errors.append("Rouge 专用作战场景必须关闭标准商人能力。")
+	if (
+		expected_spawn_point_mask <= 0
+		or expected_spawn_point_mask & ~WaveConfig.ALL_SPAWN_POINT_MASK
+	):
+		errors.append("Rouge 作战配置提供了无效的出生点掩码。")
+
+	var spawn_root := get_node_or_null("EnemySpawnPoints") as Node2D
+	if spawn_root == null:
+		errors.append("Rouge 作战场景缺少 EnemySpawnPoints。")
+	else:
+		var authored_spawn_point_mask := 0
+		for child in spawn_root.get_children():
+			var marker := child as Marker2D
+			if marker == null:
+				errors.append(
+					"EnemySpawnPoints 只能直接包含 Marker2D，发现：%s。"
+					% child.name
+				)
+				continue
+			var spawn_index := WaveConfig.SPAWN_POINT_NAMES.find(marker.name)
+			if spawn_index < 0:
+				errors.append("存在未注册的 Rouge 出生点：%s。" % marker.name)
+				continue
+			var spawn_bit := 1 << spawn_index
+			if authored_spawn_point_mask & spawn_bit:
+				errors.append("Rouge 出生点名称重复：%s。" % marker.name)
+				continue
+			authored_spawn_point_mask |= spawn_bit
+		if authored_spawn_point_mask != expected_spawn_point_mask:
+			errors.append(
+				"Rouge 场景出生点掩码 %d 与遭遇配置 %d 不一致。"
+				% [authored_spawn_point_mask, expected_spawn_point_mask]
+			)
+
+	if get_node_or_null("PlayerSpawn") as Marker2D == null:
+		errors.append("Rouge 作战场景缺少队伍出生锚点 PlayerSpawn。")
+	_append_forbidden_static_content_errors(self, errors)
+	return errors
+
+
+func _append_forbidden_static_content_errors(
+	parent: Node,
+	errors: PackedStringArray
+) -> void:
+	for child in parent.get_children():
+		if child is ZhuangfangyiMerchant:
+			errors.append("Rouge 专用作战场景不得包含庄方宜商人节点。")
+		elif child is LuoxiMerchant:
+			errors.append("Rouge 专用作战场景不得包含洛茜商人节点。")
+		elif child is Pickup:
+			errors.append(
+				"Rouge 专用作战场景不得预置静态拾取物：%s。" % child.name
+			)
+		_append_forbidden_static_content_errors(child, errors)
 
 
 func _ready() -> void:
@@ -43,6 +106,28 @@ func allows_player_respawn(_peer_id: int) -> bool:
 
 func allows_enemy_pickup_drops() -> bool:
 	return enemy_pickup_drops_enabled
+
+
+func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
+	var resolved := super._resolve_wave_spawn_points(wave_config)
+	if not resolved:
+		_spawn_point_rotation_index = 0
+		return false
+	_spawn_point_rotation_index = random_generator.randi_range(
+		0,
+		active_wave_spawn_points.size() - 1
+	)
+	return true
+
+
+func _pick_spawn_point() -> Marker2D:
+	if active_wave_spawn_points.is_empty():
+		return null
+	var marker := active_wave_spawn_points[
+		_spawn_point_rotation_index % active_wave_spawn_points.size()
+	]
+	_spawn_point_rotation_index += 1
+	return marker
 
 
 func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
