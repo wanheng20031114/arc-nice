@@ -335,6 +335,7 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
 	random_generator.randomize()
+	initialize_world_lighting()
 	LuoxiMerchant.reset_runtime_choice_count()
 	if day_cycle_config == null or not day_cycle_config.is_valid():
 		push_error("GameTowerDefense: DayCycleConfig 无效，停止初始化。")

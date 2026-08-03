@@ -128,6 +128,7 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		_cleanup_route(route)
 		await process_frame
 		return
+	_expect_fixed_underground_night(battle, "战场创建")
 
 	_expect(
 		battle.auto_start_waves
@@ -140,10 +141,13 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		_validate_battle_campaign(battle, -1, true),
 		"胜利夹具必须生成保留击杀息壤的一波十机器人 Campaign。"
 	)
+	var preparation_ready := await _wait_for_preparation(battle)
 	_expect(
-		await _wait_for_preparation(battle),
+		preparation_ready,
 		"战场预热后必须自动进入三秒狭路相逢准备倒计时。"
 	)
+	if preparation_ready:
+		_expect_fixed_underground_night(battle, "准备阶段")
 	_expect(
 		battle.countdown_seconds == 3
 		and battle.combat_time_limit_seconds == 90.0
@@ -162,6 +166,7 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		and battle.combat_seconds_remaining == 90,
 		"三秒结束时必须同批生成10台机器人，并从此刻开始完整90秒计时。"
 	)
+	_expect_fixed_underground_night(battle, "ACTIVE 阶段")
 	_expect(
 		_validate_spawned_robots_at_red_doors(battle),
 		"10台机器人必须全部从三扇红门生成，轮转刷怪必须覆盖全部三门。"
@@ -582,6 +587,35 @@ func _wait_for_preparation(battle: RogueCombatGame) -> bool:
 			return true
 		await process_frame
 	return false
+
+
+func _expect_fixed_underground_night(
+	battle: RogueCombatGame,
+	context: String
+) -> void:
+	if battle == null or not is_instance_valid(battle):
+		_expect(false, "%s缺少有效的 Rouge 作战实例。" % context)
+		return
+	var controller := battle.day_night_controller
+	_expect(
+		battle.world_lighting_policy
+		== GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
+		and controller != null
+		and controller.night_color.is_equal_approx(
+			RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+		)
+		and controller.color.is_equal_approx(
+			RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+		)
+		and is_equal_approx(controller.night_factor, 1.0)
+		and controller.is_night()
+		and not controller.is_transitioning()
+		and controller.get("_transition_tween") == null,
+		(
+			"%s必须保持 FIXED_NIGHT、factor=1 与地下夜色，且不能遗留昼夜 Tween。"
+			% context
+		)
+	)
 
 
 func _wait_for_battle_return(

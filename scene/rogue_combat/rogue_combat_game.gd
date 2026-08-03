@@ -11,6 +11,12 @@ enum DeadlineStart {
 const DEFAULT_EVENT_TITLE := "狭路相逢"
 const DEFAULT_FAILURE_REASON := "队伍已全数阵亡"
 const TIMEOUT_FAILURE_REASON := "作战时间已耗尽"
+const UNDERGROUND_NIGHT_COLOR := Color(
+	77.0 / 255.0,
+	108.0 / 255.0,
+	139.0 / 255.0,
+	1.0
+)
 
 @export_group("Rouge 作战")
 @export var event_title := DEFAULT_EVENT_TITLE
@@ -38,6 +44,19 @@ func validate_encounter_scene_contract(
 	var errors := PackedStringArray()
 	if standard_merchants_enabled:
 		errors.append("Rouge 专用作战场景必须关闭标准商人能力。")
+	if world_lighting_policy != WorldLightingPolicy.FIXED_NIGHT:
+		errors.append("地下 Rouge 作战场景必须使用常驻黑夜光照策略。")
+	var lighting_controller := get_node_or_null(
+		"DayNightController"
+	) as DayNightController
+	if lighting_controller == null:
+		errors.append("地下 Rouge 作战场景缺少昼夜光照控制器。")
+	elif not lighting_controller.night_color.is_equal_approx(
+		UNDERGROUND_NIGHT_COLOR
+	):
+		errors.append("地下 Rouge 作战场景必须使用专属的深夜环境色。")
+	if get_node_or_null("NightVfxFlashPool") as NightVfxFlashPool == null:
+		errors.append("地下 Rouge 作战场景缺少塔防同款夜间闪光池。")
 	if (
 		expected_spawn_point_mask <= 0
 		or expected_spawn_point_mask & ~WaveConfig.ALL_SPAWN_POINT_MASK
@@ -66,6 +85,13 @@ func validate_encounter_scene_contract(
 				errors.append("Rouge 出生点名称重复：%s。" % marker.name)
 				continue
 			authored_spawn_point_mask |= spawn_bit
+			var night_light := marker.get_node_or_null(
+				"NightLight"
+			) as NightPointLight2D
+			if night_light == null:
+				errors.append("Rouge 出生点 %s 缺少夜间门灯。" % marker.name)
+			elif not is_equal_approx(night_light.night_energy, 0.3):
+				errors.append("Rouge 出生点 %s 的夜间门灯能量必须为0.3。" % marker.name)
 		if authored_spawn_point_mask != expected_spawn_point_mask:
 			errors.append(
 				"Rouge 场景出生点掩码 %d 与遭遇配置 %d 不一致。"

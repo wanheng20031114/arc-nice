@@ -2,6 +2,9 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game.tscn")
 const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const ROGUE_COMBAT_SCENE_01 := preload(
+	"res://scene/rogue_combat/rogue_combat_game_01.tscn"
+)
 const DAY_NIGHT_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"
 )
@@ -56,6 +59,7 @@ func _run() -> void:
 	await _test_vegetation_ring_night_behavior()
 	await _test_npc_night_behavior()
 	_test_authored_scene_contracts()
+	await _test_rogue_combat_permanent_underground_night()
 	await _test_every_wave_gradual_transition()
 	await _test_tower_wave_lighting()
 	await _test_fresh_client_remote_flow_lighting()
@@ -528,6 +532,92 @@ func _test_authored_scene_contracts() -> void:
 	tower.free()
 
 
+func _test_rogue_combat_permanent_underground_night() -> void:
+	var game := ROGUE_COMBAT_SCENE_01.instantiate() as RogueCombatGame
+	_expect(game != null, "Rouge 作战场景 01 必须能够实例化昼夜测试夹具。")
+	if game == null:
+		return
+	game.auto_start_waves = false
+	root.add_child(game)
+	current_scene = game
+	await process_frame
+	await process_frame
+
+	var controller := game.day_night_controller
+	var reference_night := DayNightController.REFERENCE_NIGHT_COLOR
+	var underground_night := RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+	var reference_luminance := _color_luminance(reference_night)
+	var underground_luminance := _color_luminance(underground_night)
+	var luminance_ratio := (
+		underground_luminance / reference_luminance
+		if reference_luminance > 0.0
+		else 0.0
+	)
+	_expect(
+		underground_night.is_equal_approx(
+			Color(77.0 / 255.0, 108.0 / 255.0, 139.0 / 255.0, 1.0)
+		)
+		and underground_night.r < reference_night.r
+		and underground_night.g < reference_night.g
+		and underground_night.b < reference_night.b
+		and luminance_ratio >= 0.85
+		and luminance_ratio <= 0.93,
+		"地下夜色必须为#4D6C8B，且亮度保持在塔防#577B9E的85%至93%。"
+	)
+	_expect(
+		controller != null
+		and game.world_lighting_policy
+		== GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
+		and controller.night_color.is_equal_approx(underground_night)
+		and controller.color.is_equal_approx(underground_night)
+		and is_equal_approx(controller.night_factor, 1.0)
+		and controller.is_night()
+		and not controller.is_transitioning(),
+		"Rouge 作战场景入树后必须立即稳定在无Tween的地下黑夜。"
+	)
+
+	var gate_lights := _collect_night_lights(
+		game.get_node("EnemySpawnPoints")
+	)
+	_expect(
+		_all_lights_at_energy(gate_lights, 3, 0.3),
+		"地下战场三扇红门灯必须常亮，且每盏保持0.3能量。"
+	)
+	var flash_pool := game.get_node_or_null(
+		"NightVfxFlashPool"
+	) as NightVfxFlashPool
+	_expect(
+		flash_pool != null and flash_pool.get_capacity() == 8,
+		"地下黑夜必须保留容量为8的共享战斗闪光池。"
+	)
+
+	game.transition_world_to_day(0.0)
+	_expect(
+		controller.color.is_equal_approx(underground_night)
+		and is_equal_approx(controller.night_factor, 1.0)
+		and controller.is_night()
+		and not controller.is_transitioning(),
+		"固定黑夜策略收到立即白昼请求时不得离开地下夜色。"
+	)
+	game.transition_world_to_day(0.25)
+	await process_frame
+	_expect(
+		controller.color.is_equal_approx(underground_night)
+		and is_equal_approx(controller.night_factor, 1.0)
+		and controller.is_night()
+		and not controller.is_transitioning()
+		and _all_lights_at_energy(gate_lights, 3, 0.3),
+		"固定黑夜策略收到渐变白昼请求时也不得创建Tween或关闭红门灯。"
+	)
+
+	game.state_timer.stop()
+	game.enemy_spawn_timer.stop()
+	game.queue_free()
+	current_scene = null
+	await process_frame
+	await process_frame
+
+
 func _test_every_wave_gradual_transition() -> void:
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
@@ -908,6 +998,29 @@ func _all_lights_disabled(lights: Array[NightPointLight2D]) -> bool:
 		):
 			return false
 	return true
+
+
+func _all_lights_at_energy(
+	lights: Array[NightPointLight2D],
+	expected_count: int,
+	expected_energy: float
+) -> bool:
+	if lights.size() != expected_count:
+		return false
+	for light in lights:
+		if (
+			light == null
+			or not is_instance_valid(light)
+			or not light.enabled
+			or not is_equal_approx(light.night_energy, expected_energy)
+			or not is_equal_approx(light.energy, expected_energy)
+		):
+			return false
+	return true
+
+
+func _color_luminance(color: Color) -> float:
+	return color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722
 
 
 func _expect(condition: bool, message: String) -> void:

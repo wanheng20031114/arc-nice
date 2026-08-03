@@ -530,7 +530,40 @@ func _wait_for_combat_game(
 	):
 		_fail("%s combat runtime does not carry the formal 3s/90s contract" % label)
 		return null
+	if not _validate_fixed_underground_night(game, label):
+		return null
 	return game
+
+
+func _validate_fixed_underground_night(
+	game: RogueCombatGame,
+	label: String
+) -> bool:
+	var controller := game.day_night_controller
+	if (
+		game.world_lighting_policy
+		!= GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
+		or controller == null
+		or not controller.night_color.is_equal_approx(
+			RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+		)
+		or not controller.color.is_equal_approx(
+			RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+		)
+		or not is_equal_approx(controller.night_factor, 1.0)
+		or not controller.is_night()
+		or controller.is_transitioning()
+		or controller.get("_transition_tween") != null
+	):
+		_fail(
+			(
+				"%s combat runtime must keep FIXED_NIGHT, factor=1, "
+				+ "UNDERGROUND_NIGHT_COLOR, and no lighting Tween"
+			)
+			% label
+		)
+		return false
+	return true
 
 
 func _on_host_enemy_spawned(

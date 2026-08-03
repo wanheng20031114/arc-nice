@@ -157,6 +157,7 @@ func _resolve_luoxi_merchant() -> LuoxiMerchant:
 
 func _ready() -> void:
 	random_generator.randomize()
+	initialize_world_lighting()
 	if not _validate_standard_scene_content():
 		set_process(false)
 		set_physics_process(false)

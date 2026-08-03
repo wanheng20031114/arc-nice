@@ -144,6 +144,12 @@ enum RuntimeMode {
 	CLIENT_VIEW,
 }
 
+enum WorldLightingPolicy {
+	FLOW_CONTROLLED,
+	FIXED_DAY,
+	FIXED_NIGHT,
+}
+
 enum WaveState {
 	PRE_WAVE,
 	WAVE_ACTIVE,
@@ -156,6 +162,11 @@ enum WaveState {
 }
 
 @export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
+
+@export_group("世界光照")
+@export var world_lighting_policy: WorldLightingPolicy = (
+	WorldLightingPolicy.FLOW_CONTROLLED
+)
 
 @onready var enemy_container: Node2D = $EnemyContainer
 @onready var grid_pathfinder: Node = $GridPathfinder
@@ -191,11 +202,46 @@ var _xirang_kill_reward_flush_queued: bool = false
 
 
 func transition_world_to_night(duration_seconds: float = -1.0) -> void:
-	day_night_controller.transition_to_night(duration_seconds)
+	_request_world_lighting(true, duration_seconds)
 
 
 func transition_world_to_day(duration_seconds: float = -1.0) -> void:
-	day_night_controller.transition_to_day(duration_seconds)
+	_request_world_lighting(false, duration_seconds)
+
+
+func initialize_world_lighting() -> void:
+	var initial_night_factor := (
+		1.0
+		if world_lighting_policy == WorldLightingPolicy.FIXED_NIGHT
+		else 0.0
+	)
+	_set_fixed_world_lighting(initial_night_factor)
+
+
+func _request_world_lighting(
+	request_night: bool,
+	duration_seconds: float
+) -> void:
+	match world_lighting_policy:
+		WorldLightingPolicy.FIXED_DAY:
+			_set_fixed_world_lighting(0.0)
+		WorldLightingPolicy.FIXED_NIGHT:
+			_set_fixed_world_lighting(1.0)
+		_:
+			if request_night:
+				day_night_controller.transition_to_night(duration_seconds)
+			else:
+				day_night_controller.transition_to_day(duration_seconds)
+
+
+func _set_fixed_world_lighting(night_factor: float) -> void:
+	var safe_factor := clampf(night_factor, 0.0, 1.0)
+	if (
+		not day_night_controller.is_transitioning()
+		and is_equal_approx(day_night_controller.night_factor, safe_factor)
+	):
+		return
+	day_night_controller.set_night_factor_immediate(safe_factor)
 
 
 func _apply_wave_start_lighting(_wave_number: int) -> void:

@@ -58,6 +58,7 @@ func _run() -> void:
 	)
 
 	_test_independent_scene_contract()
+	_test_fixed_underground_night_contract()
 	_test_deadline_start_policies()
 	_test_authoritative_deadline_and_outcomes()
 	_test_client_active_flow_updates()
@@ -192,9 +193,64 @@ func _test_independent_scene_contract() -> void:
 	)
 
 
+func _test_fixed_underground_night_contract() -> void:
+	var controller := game.day_night_controller
+	var reference_color := DayNightController.REFERENCE_NIGHT_COLOR
+	var underground_color := RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+	var luminance_ratio := (
+		underground_color.get_luminance()
+		/ reference_color.get_luminance()
+	)
+	_expect(
+		game.world_lighting_policy
+		== GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT,
+		"场景 01 必须使用 FIXED_NIGHT 世界光照策略。"
+	)
+	_expect(
+		controller != null
+		and controller.night_color.is_equal_approx(underground_color),
+		"场景 01 的 DayNightController 必须静态配置地下夜色。"
+	)
+	_expect(
+		luminance_ratio >= 0.85
+		and luminance_ratio <= 0.93
+		and underground_color.r < reference_color.r
+		and underground_color.g < reference_color.g
+		and underground_color.b < reference_color.b,
+		"地下夜色必须比塔防参考夜色的各 RGB 通道更低，且亮度保持在 85%-93%。"
+	)
+	_expect_fixed_underground_night("场景初始化")
+
+	for spawn_name in EXPECTED_SPAWN_POSITIONS:
+		var gate_light := game.get_node_or_null(
+			"EnemySpawnPoints/%s/NightLight" % String(spawn_name)
+		) as NightPointLight2D
+		_expect(
+			gate_light != null
+			and gate_light.enabled
+			and is_equal_approx(gate_light.energy, 0.3),
+			"固定黑夜下红门 %s 必须以 0.3 能量持续发光。"
+			% String(spawn_name)
+		)
+
+	var flash_pool := game.get_node_or_null(
+		"NightVfxFlashPool"
+	) as NightVfxFlashPool
+	_expect(
+		flash_pool != null and flash_pool.get_capacity() == 8,
+		"场景 01 必须复用容量为 8 的夜间战斗闪光池。"
+	)
+
+	game.transition_world_to_day(5.0)
+	_expect_fixed_underground_night("显式白昼请求")
+	game.transition_world_to_night(5.0)
+	_expect_fixed_underground_night("显式黑夜请求")
+
+
 func _test_deadline_start_policies() -> void:
 	game.deadline_start = RogueCombatGame.DeadlineStart.PREPARATION_START
 	game.call("_enter_pre_flow_step", wave)
+	_expect_fixed_underground_night("PRE_WAVE（准备期计时）")
 	_expect(
 		game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
 		and game.countdown_seconds == 3,
@@ -217,6 +273,7 @@ func _test_deadline_start_policies() -> void:
 
 	game.deadline_start = RogueCombatGame.DeadlineStart.WAVE_START
 	game.call("_enter_pre_flow_step", wave)
+	_expect_fixed_underground_night("PRE_WAVE（开战时计时）")
 	_expect(
 		not bool(game.get("_combat_deadline_started"))
 		and game.combat_deadline_timer.is_stopped()
@@ -227,6 +284,7 @@ func _test_deadline_start_policies() -> void:
 	game.navigation_prewarmed = true
 	game.call("_begin_wave_config", wave)
 	game.enemy_spawn_timer.stop()
+	_expect_fixed_underground_night("WAVE_ACTIVE")
 	_expect(
 		game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
 		and game.current_wave_total == 10,
@@ -282,6 +340,7 @@ func _test_authoritative_deadline_and_outcomes() -> void:
 	var outcome_count_before_timeout := outcome_events.size()
 	game.call("_on_combat_deadline_timer_timeout")
 	game.call("_on_combat_deadline_timer_timeout")
+	_expect_fixed_underground_night("DEFEAT")
 	_expect(
 		game.wave_state == GameRuntimeBase.WaveState.DEFEAT
 		and game.combat_deadline_timer.is_stopped()
@@ -303,6 +362,7 @@ func _test_authoritative_deadline_and_outcomes() -> void:
 	var outcome_count_before_victory := outcome_events.size()
 	game.call("_enter_victory")
 	game.call("_enter_victory")
+	_expect_fixed_underground_night("VICTORY")
 	_expect(
 		game.wave_state == GameRuntimeBase.WaveState.VICTORY
 		and game.combat_deadline_timer.is_stopped()
@@ -328,6 +388,7 @@ func _test_client_active_flow_updates() -> void:
 		GameRuntimeBase.WaveState.WAVE_ACTIVE,
 		73
 	)
+	_expect_fixed_underground_night("客户端 WAVE_ACTIVE 首包")
 	_expect(
 		game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
 		and game.combat_seconds_remaining == 73
@@ -341,6 +402,7 @@ func _test_client_active_flow_updates() -> void:
 		GameRuntimeBase.WaveState.WAVE_ACTIVE,
 		42
 	)
+	_expect_fixed_underground_night("客户端 WAVE_ACTIVE 更新")
 	_expect(
 		game.combat_seconds_remaining == 42
 		and game.rogue_combat_hud.time_value_label.text == "00:42",
@@ -365,6 +427,7 @@ func _test_remote_timeout_reason_contract() -> void:
 	game.apply_remote_defeat_with_reason(
 		RogueCombatGame.TIMEOUT_FAILURE_REASON
 	)
+	_expect_fixed_underground_night("客户端 DEFEAT")
 	_expect(
 		game.wave_state == GameRuntimeBase.WaveState.DEFEAT
 		and game.get_multiplayer_defeat_reason()
@@ -449,6 +512,23 @@ func _cleanup() -> void:
 		game.queue_free()
 		await process_frame
 	game = null
+
+
+func _expect_fixed_underground_night(context: String) -> void:
+	var controller := game.day_night_controller
+	_expect(
+		controller != null
+		and controller.night_color.is_equal_approx(
+			RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+		)
+		and controller.color.is_equal_approx(
+			RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+		)
+		and is_equal_approx(controller.night_factor, 1.0)
+		and controller.is_night()
+		and not controller.is_transitioning(),
+		"%s 后必须保持地下固定黑夜，且不能遗留昼夜 Tween。" % context
+	)
 
 
 func _expect(condition: bool, message: String) -> void:
