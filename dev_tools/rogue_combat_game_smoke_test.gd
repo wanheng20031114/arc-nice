@@ -58,7 +58,7 @@ func _run() -> void:
 			})
 	)
 
-	_test_inherited_scene_contract()
+	_test_independent_scene_contract()
 	_test_deadline_start_policies()
 	_test_authoritative_deadline_and_outcomes()
 	_test_client_active_flow_updates()
@@ -69,13 +69,18 @@ func _run() -> void:
 	_finish()
 
 
-func _test_inherited_scene_contract() -> void:
-	_expect(game is Game, "Rouge 作战运行时必须继续继承普通模式 Game。")
+func _test_independent_scene_contract() -> void:
+	var scene_state := ROGUE_COMBAT_SCENE.get_state()
+	_expect(
+		scene_state != null and scene_state.get_base_scene_state() == null,
+		"Rouge 作战必须是可独立编辑的场景，不能继续继承 game.tscn。"
+	)
+	_expect(game is Game, "Rouge 作战脚本必须继续复用普通模式 Game 行为。")
 	_expect(
 		game.get_node_or_null("GroundTileMapLayer") is TileMapLayer
 		and game.get_node_or_null("OverlayTileMapLayer") is TileMapLayer
 		and game.get_node_or_null("PlayerSpawn") is Marker2D,
-		"继承场景必须保留普通模式的地面、覆盖层与玩家出生点。"
+		"独立场景必须保留地面、覆盖层与玩家出生点。"
 	)
 	var ground := game.get_node_or_null("GroundTileMapLayer") as TileMapLayer
 	var overlay := game.get_node_or_null("OverlayTileMapLayer") as TileMapLayer
@@ -84,11 +89,11 @@ func _test_inherited_scene_contract() -> void:
 		and not ground.get_used_cells().is_empty()
 		and overlay != null
 		and overlay.get_used_cells().size() == 10,
-		"继承场景必须保留普通模式已绘制的地图与五扇红门覆盖图块。"
+		"独立场景必须保留已绘制的地图与五扇红门覆盖图块。"
 	)
 
 	var spawn_root := game.get_node_or_null("EnemySpawnPoints") as Node2D
-	_expect(spawn_root != null, "继承场景必须保留 EnemySpawnPoints。")
+	_expect(spawn_root != null, "独立场景必须保留 EnemySpawnPoints。")
 	if spawn_root != null:
 		_expect(
 			spawn_root.get_child_count() == EXPECTED_SPAWN_POSITIONS.size(),
