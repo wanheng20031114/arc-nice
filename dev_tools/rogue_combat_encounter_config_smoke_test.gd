@@ -70,7 +70,7 @@ func _test_confirmed_fixed_contract() -> void:
 	_expect(ENCOUNTER_CONFIG.event_title == "狭路相逢", "战斗事件标题必须为狭路相逢。")
 	_expect(
 		ENCOUNTER_CONFIG.combat_scene_path
-		== "res://scene/rogue_combat/rogue_combat_game.tscn",
+		== "res://scene/rogue_combat/rogue_combat_game_01.tscn",
 		"战斗事件必须指向独立 Rouge 战斗场景。"
 	)
 	_expect(ENCOUNTER_CONFIG.campaign == ROGUE_CAMPAIGN, "战斗事件必须绑定独立 Campaign。")

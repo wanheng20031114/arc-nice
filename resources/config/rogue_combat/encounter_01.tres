@@ -7,7 +7,7 @@
 script = ExtResource("1_config_script")
 encounter_id = &"narrow_road_01"
 event_title = "狭路相逢"
-combat_scene_path = "res://scene/rogue_combat/rogue_combat_game.tscn"
+combat_scene_path = "res://scene/rogue_combat/rogue_combat_game_01.tscn"
 campaign = ExtResource("2_campaign")
 preparation_seconds = 3
 combat_limit_seconds = 90

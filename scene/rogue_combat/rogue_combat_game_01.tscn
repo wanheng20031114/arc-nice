@@ -125,7 +125,7 @@ b = Vector2(-213.33333, -106.666664)
 a = Vector2(1060, 960)
 b = Vector2(1060, -106.666664)
 
-[node name="RogueCombatGame" type="Node2D" unique_id=20737211]
+[node name="RogueCombatGame01" type="Node2D" unique_id=20737211]
 position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
 pre_wave_duration = 3.0

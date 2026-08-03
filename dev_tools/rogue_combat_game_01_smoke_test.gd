@@ -1,7 +1,7 @@
 extends SceneTree
 
-const ROGUE_COMBAT_SCENE := preload(
-	"res://scene/rogue_combat/rogue_combat_game.tscn"
+const ROGUE_COMBAT_SCENE_01 := preload(
+	"res://scene/rogue_combat/rogue_combat_game_01.tscn"
 )
 const COMBAT_ROBOT_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot.tres"
@@ -28,8 +28,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	wave = _create_test_wave()
-	game = ROGUE_COMBAT_SCENE.instantiate() as RogueCombatGame
-	_expect(game != null, "Rouge 作战场景必须能实例化为 RogueCombatGame。")
+	game = ROGUE_COMBAT_SCENE_01.instantiate() as RogueCombatGame
+	_expect(game != null, "Rouge 作战场景 1 必须能实例化为 RogueCombatGame。")
 	if game == null:
 		_finish()
 		return
@@ -70,7 +70,7 @@ func _run() -> void:
 
 
 func _test_independent_scene_contract() -> void:
-	var scene_state := ROGUE_COMBAT_SCENE.get_state()
+	var scene_state := ROGUE_COMBAT_SCENE_01.get_state()
 	_expect(
 		scene_state != null and scene_state.get_base_scene_state() == null,
 		"Rouge 作战必须是可独立编辑的场景，不能继续继承 game.tscn。"
@@ -384,7 +384,7 @@ func _create_test_campaign(test_wave: WaveConfig) -> WaveCampaignConfig:
 	graph.start_step = test_wave
 
 	var campaign := WaveCampaignConfig.new()
-	campaign.campaign_id = &"rogue_combat_game_smoke_test"
+	campaign.campaign_id = &"rogue_combat_game_01_smoke_test"
 	campaign.flow_graph = graph
 	return campaign
 
@@ -408,10 +408,10 @@ func _expect(condition: bool, message: String) -> void:
 
 func _finish() -> void:
 	if failures.is_empty():
-		print("ROGUE_COMBAT_GAME_SMOKE_TEST_OK")
+		print("ROGUE_COMBAT_GAME_01_SMOKE_TEST_OK")
 		quit(0)
 		return
-	print("ROGUE_COMBAT_GAME_SMOKE_TEST_FAILED count=%d" % failures.size())
+	print("ROGUE_COMBAT_GAME_01_SMOKE_TEST_FAILED count=%d" % failures.size())
 	for failure in failures:
 		print(" - %s" % failure)
 	quit(1)

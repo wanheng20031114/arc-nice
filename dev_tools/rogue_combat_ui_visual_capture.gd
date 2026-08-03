@@ -3,7 +3,7 @@ extends SceneTree
 const VIEWPORT_SIZE := Vector2i(1280, 720)
 const OUTPUT_DIRECTORY := "res://dev_tools/visual_output"
 const COMBAT_SCENE := preload(
-	"res://scene/rogue_combat/rogue_combat_game.tscn"
+	"res://scene/rogue_combat/rogue_combat_game_01.tscn"
 )
 const RESULT_SCENE := preload(
 	"res://scene/rogue_combat/rogue_combat_result_overlay.tscn"
