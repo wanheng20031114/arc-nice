@@ -888,6 +888,9 @@ func _configure_singleplayer_player() -> void:
 	var player_instance := _instantiate_player_character(character_id)
 	if player_instance == null:
 		return
+	player_instance.set_run_max_health_penalty(
+		run_state.get_max_health_penalty_for_peer(0)
+	)
 	player_instance.name = "Player"
 	player_instance.position = player_spawn.position
 	add_child(player_instance)
@@ -916,9 +919,17 @@ func _attach_camera_to_local_player() -> void:
 
 
 func _configure_home_defense() -> void:
-	maximum_base_health = DEFAULT_BASE_HEALTH
-	current_base_health = maximum_base_health
-	base_health_revision = 0
+	if run_state != null:
+		run_state.ensure_run_started()
+		maximum_base_health = run_state.get_party_core_maximum_health()
+		current_base_health = run_state.get_party_core_health()
+		# 蓝门复制revision属于当前塔防实例；队伍账本revision还会因玩家和
+		# 最大生命惩罚变化而前进，不能混用同一序列。
+		base_health_revision = 0
+	else:
+		maximum_base_health = DEFAULT_BASE_HEALTH
+		current_base_health = maximum_base_health
+		base_health_revision = 0
 	resolved_home_enemy_ids.clear()
 	home_objective_targets.clear()
 	if home_gate_controller == null:
@@ -990,6 +1001,10 @@ func apply_remote_base_health(
 	maximum_base_health = safe_maximum
 	current_base_health = safe_current
 	base_health_revision = new_revision
+	# 客户端只镜像房主已决定的核心值，并禁止再次发出状态信号，避免网络
+	# 消息与本地 ledger 观察者形成回写环。
+	if run_state != null:
+		run_state.set_party_core_health(safe_current, safe_maximum, false)
 	_update_base_health_display(has_received_remote_base_health_snapshot)
 	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
 	if (
@@ -1079,6 +1094,15 @@ func _apply_base_damage(amount: int) -> void:
 	if not result.accepted:
 		return
 	current_base_health = result.health_after
+	if run_state != null and runtime_mode != RuntimeMode.CLIENT_VIEW:
+		if not run_state.set_party_core_health(
+			current_base_health,
+			maximum_base_health
+		):
+			push_error("GameTowerDefense: 无法回写本局共享核心生命。")
+			return
+		current_base_health = run_state.get_party_core_health()
+		maximum_base_health = run_state.get_party_core_maximum_health()
 	base_health_revision += 1
 	_update_base_health_display()
 	if tower_defense_status_hud != null:
@@ -5699,6 +5723,9 @@ func _configure_multiplayer_players() -> void:
 		var player_instance := _instantiate_player_character(character_id)
 		if player_instance == null:
 			continue
+		player_instance.set_run_max_health_penalty(
+			run_state.get_max_health_penalty_for_peer(peer_id)
+		)
 		player_instance.name = "Player_%d" % peer_id
 		player_instance.position = player_spawn.position + _get_multiplayer_spawn_offset(index)
 		add_child(player_instance)
@@ -5836,6 +5863,9 @@ func restore_multiplayer_player(
 	var player_instance := _instantiate_player_character(character_id)
 	if player_instance == null:
 		return null
+	player_instance.set_run_max_health_penalty(
+		run_state.get_max_health_penalty_for_peer(new_peer_id)
+	)
 	player_instance.name = "Player_%d" % new_peer_id
 	player_instance.position = (
 		state.position

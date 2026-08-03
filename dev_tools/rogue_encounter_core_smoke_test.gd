@@ -25,6 +25,8 @@ func _run() -> void:
 	_test_slime_session_options_and_result_pages()
 	_test_slime_result_page_contract()
 	_test_ghost_shadow_results_and_no_economy()
+	_test_fluorescent_pit_multiround_session()
+	_test_fluorescent_pit_core_failure_session()
 	if _failures.is_empty():
 		print("ROGUE_ENCOUNTER_CORE_SMOKE_TEST_OK")
 		quit(0)
@@ -684,7 +686,7 @@ func _test_slime_session_options_and_result_pages() -> void:
 	_expect(
 		remote_session.apply_remote_state(result)
 		and remote_session.export_state() == result,
-		"v2 Session 快照必须无损同步三选项与 result_pages。"
+		"v3 Session 快照必须无损同步三选项与 result_pages。"
 	)
 	var malformed := result.duplicate(true)
 	malformed["revision"] = int(result["revision"]) + 1
@@ -711,11 +713,12 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
 	)
 	_expect(
-		pool_entries.size() == 3
+		pool_entries.size() == 4
 		and pool_entries.has(RogueEncounterRegistry.CHICKEN_BRO)
 		and pool_entries.has(RogueEncounterRegistry.SLIME_TALKERS)
-		and pool_entries.has(RogueEncounterRegistry.GHOST_SHADOW),
-		"神奇遭遇池必须同时包含鸡哥、会说话的史莱姆与鬼影。"
+		and pool_entries.has(RogueEncounterRegistry.GHOST_SHADOW)
+		and pool_entries.has(RogueEncounterRegistry.FLUORESCENT_PIT),
+		"神奇遭遇池必须同时包含鸡哥、会说话的史莱姆、鬼影与荧光坑洞。"
 	)
 	var ghost_config := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.GHOST_SHADOW
@@ -870,6 +873,218 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 	run_state.free()
 
 
+func _test_fluorescent_pit_multiround_session() -> void:
+	var run_state := _new_run_state()
+	for peer_id in [1, 2]:
+		run_state.ensure_multiplayer_peer_state(peer_id)
+	var economy := RogueEncounterEconomyCoordinator.new()
+	economy.configure(run_state)
+	var session := RogueEncounterSession.new()
+	session.initialize_authority(economy, [1, 2])
+	var seed := _seed_for_pit_bucket(900_000, 85, 99)
+	_expect(
+		session.start_for_node(
+			901,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			seed,
+			[1, 2]
+		),
+		"荧光坑洞多轮测试应从神奇遭遇池启动。"
+	)
+	for peer_id in [1, 2]:
+		_expect(
+			session.submit_intro_ack(
+				peer_id,
+				session.get_occurrence_key(),
+				session.get_revision()
+			),
+			"坑洞玩家应分别确认开场旁白。"
+		)
+	for peer_id in [1, 2]:
+		_expect(
+			session.submit_vote(
+				peer_id,
+				session.get_occurrence_key(),
+				session.get_revision(),
+				RogueEncounterEconomyCoordinator.OPTION_EXPLORE_PIT
+			),
+			"坑洞玩家应能投票继续下探。"
+		)
+	var first_result := session.export_state()
+	_expect(
+		StringName(first_result.get("phase", &""))
+		== RogueEncounterSession.PHASE_RESULT
+		and int(first_result.get("schema_version", -1)) == 3
+		and int(first_result.get("round_index", -1)) == 0
+		and int(first_result.get("result_sequence", -1)) == 1
+		and not bool(first_result.get("terminal_result", true))
+		and not session.is_node_resolved(901)
+		and (first_result.get("round_recipient_peer_ids", []) as Array)
+		== [1, 2]
+		and (first_result.get("disabled_option_ids", []) as Array)
+		== [String(RogueEncounterEconomyCoordinator.OPTION_EXPLORE_PIT)],
+		"到底结果必须保留节点、固定当轮在线玩家并永久禁用继续下探。"
+	)
+	_expect(
+		not session.complete_result(
+			session.get_occurrence_key(),
+			session.get_revision()
+		),
+		"多轮坑洞不得被旧 complete_result 接口提前结束。"
+	)
+	_expect(session.remove_peer(2), "结果页期间掉线应移出ACK屏障。")
+	_expect(
+		run_state.remap_multiplayer_peer_state(2, 22)
+		and session.migrate_peer(2, 22),
+		"结果页期间重连应迁移身份但不加入本轮ACK对象。"
+	)
+	var migrated_result := session.export_state()
+	_expect(
+		(migrated_result.get("round_recipient_peer_ids", []) as Array)
+		== [1]
+		and not (migrated_result.get("active_peer_ids", []) as Array).has(22),
+		"中途重连玩家不能重新加入已经固定的当轮结算对象。"
+	)
+	_expect(
+		session.submit_result_ack(1, session.get_occurrence_key(), 1),
+		"剩余结算对象确认后应解除首轮结果屏障。"
+	)
+	var second_round := session.export_state()
+	var availability := second_round.get("option_availability", {}) as Dictionary
+	_expect(
+		session.get_phase() == RogueEncounterSession.PHASE_VOTING
+		and int(second_round.get("round_index", -1)) == 1
+		and int(second_round.get("result_sequence", -1)) == 1
+		and bool(second_round.get("voting_timer_running", false))
+		and is_equal_approx(
+			float(second_round.get("remaining_seconds", 0.0)),
+			60.0
+		)
+		and (second_round.get("active_peer_ids", []) as Array) == [1, 22]
+		and bool(availability.get(
+			String(RogueEncounterEconomyCoordinator.OPTION_LEAVE_PIT),
+			false
+		))
+		and not bool(availability.get(
+			String(RogueEncounterEconomyCoordinator.OPTION_EXPLORE_PIT),
+			true
+		)),
+		"ACK齐全后应保留开场确认并重置60秒投票，同时让重连玩家从下一轮加入。"
+	)
+	for peer_id in [1, 22]:
+		_expect(
+			session.submit_vote(
+				peer_id,
+				session.get_occurrence_key(),
+				session.get_revision(),
+				RogueEncounterEconomyCoordinator.OPTION_LEAVE_PIT
+			),
+			"到底后在线玩家应能投票离开。"
+		)
+	var terminal_result := session.export_state()
+	_expect(
+		bool(terminal_result.get("terminal_result", false))
+		and int(terminal_result.get("result_sequence", -1)) == 2
+		and str(terminal_result.get("result_text", "")) == "还是赶紧走吧"
+		and session.is_node_resolved(901),
+		"主动离开必须产生第二个终局结果并消耗节点。"
+	)
+	_expect(
+		not session.submit_result_ack(
+			1,
+			session.get_occurrence_key(),
+			1
+		)
+		and session.submit_result_ack(
+			1,
+			session.get_occurrence_key(),
+			2
+		)
+		and not session.submit_result_ack(
+			1,
+			session.get_occurrence_key(),
+			2
+		)
+		and session.submit_result_ack(
+			22,
+			session.get_occurrence_key(),
+			2
+		)
+		and session.get_phase() == RogueEncounterSession.PHASE_COMPLETED,
+		"结果ACK必须校验序号、按peer幂等，并在全员确认终局后完成遭遇。"
+	)
+	var remote_run_state := _new_run_state()
+	var remote_economy := RogueEncounterEconomyCoordinator.new()
+	remote_economy.configure(remote_run_state)
+	var remote_session := RogueEncounterSession.new()
+	remote_session.initialize_remote(remote_economy)
+	var completed := session.export_state()
+	_expect(
+		remote_session.apply_remote_state(completed)
+		and remote_session.export_state() == completed,
+		"schema 3多轮终局快照必须可无损同步。"
+	)
+	remote_session.free()
+	remote_economy.free()
+	remote_run_state.free()
+	session.free()
+	economy.free()
+	run_state.free()
+
+
+func _test_fluorescent_pit_core_failure_session() -> void:
+	var run_state := _new_run_state()
+	run_state.ensure_multiplayer_peer_state(51)
+	_expect(run_state.set_party_core_health(2, 100), "核心归零测试应设置2点核心生命。")
+	var economy := RogueEncounterEconomyCoordinator.new()
+	economy.configure(run_state)
+	var session := RogueEncounterSession.new()
+	session.initialize_authority(economy, [51])
+	var seed := _seed_for_pit_bucket(950_000, 50, 80)
+	_expect(
+		session.start_for_node(
+			951,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			seed,
+			[51]
+		)
+		and session.submit_intro_ack(
+			51,
+			session.get_occurrence_key(),
+			session.get_revision()
+		)
+		and session.submit_vote(
+			51,
+			session.get_occurrence_key(),
+			session.get_revision(),
+			RogueEncounterEconomyCoordinator.OPTION_EXPLORE_PIT
+		),
+		"踩空归零用例应启动坑洞并完成一次下探。"
+	)
+	var failed_result := session.export_state()
+	var payload := failed_result.get("economy_result", {}) as Dictionary
+	_expect(
+		bool(failed_result.get("terminal_result", false))
+		and bool(failed_result.get("run_failed", false))
+		and int(payload.get("core_before", -1)) == 2
+		and int(payload.get("core_after", -1)) == 0
+		and session.is_node_resolved(951),
+		"共享核心降至0时，Session必须传播终局败局并消耗节点。"
+	)
+	_expect(
+		session.submit_result_ack(
+			51,
+			session.get_occurrence_key(),
+			int(failed_result.get("result_sequence", -1))
+		)
+		and session.get_phase() == RogueEncounterSession.PHASE_COMPLETED,
+		"败局也必须在玩家看完结果并ACK后才进入完成阶段。"
+	)
+	session.free()
+	economy.free()
+	run_state.free()
+
+
 func _test_slime_result_page_contract() -> void:
 	var session := RogueEncounterSession.new()
 	var collectible_pages := session.call(
@@ -943,6 +1158,32 @@ func _seed_for_encounter(start_seed: int, encounter_id: StringName) -> int:
 		) == encounter_id:
 			return candidate
 	push_error("无法为遭遇 %s 找到测试 seed。" % encounter_id)
+	return start_seed
+
+
+func _seed_for_pit_bucket(
+	start_seed: int,
+	minimum_bucket: int,
+	exclusive_maximum_bucket: int,
+	round_index: int = 0
+) -> int:
+	for offset in 100_000:
+		var candidate := start_seed + offset
+		if (
+			RogueEncounterRegistry.select_encounter(
+				RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+				candidate
+			) != RogueEncounterRegistry.FLUORESCENT_PIT
+		):
+			continue
+		var bucket := RogueEncounterRandom.choose_index(
+			candidate,
+			StringName("fluorescent_pit_outcome|round:%d" % round_index),
+			100
+		)
+		if bucket >= minimum_bucket and bucket < exclusive_maximum_bucket:
+			return candidate
+	push_error("无法为荧光坑洞找到指定概率桶测试 seed。")
 	return start_seed
 
 

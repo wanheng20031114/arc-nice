@@ -3,7 +3,7 @@ class_name RogueEncounterEconomyCoordinator
 
 signal economy_changed(snapshot: Dictionary)
 
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 const PURCHASE_COST := 10
 const FREE_PURCHASE_CHANCE := 0.5
 const SLIME_HELP_COST := 10
@@ -14,6 +14,7 @@ const SLIME_XIRANG_REWARD_AMOUNTS: Array[int] = [500, 1000, 2000, 5000]
 const ENCOUNTER_CHICKEN_BRO := &"chicken_bro"
 const ENCOUNTER_SLIME_TALKERS := &"slime_talkers"
 const ENCOUNTER_GHOST_SHADOW := &"ghost_shadow"
+const ENCOUNTER_FLUORESCENT_PIT := &"fluorescent_pit"
 const OPTION_PURCHASE := &"purchase_basketball"
 const OPTION_FREE := &"ask_for_free"
 const OPTION_HELP_SLIMES := &"help_slimes"
@@ -21,6 +22,8 @@ const OPTION_KICK_SLIMES := &"kick_slimes"
 const OPTION_LEAVE_SLIMES := &"leave_slimes"
 const OPTION_GHOST_RUN_AWAY := &"ghost_run_away"
 const OPTION_GHOST_WHO_ARE_YOU := &"ghost_who_are_you"
+const OPTION_EXPLORE_PIT := &"explore_pit"
+const OPTION_LEAVE_PIT := &"leave_pit"
 const PLANK_PATH := "res://resources/config/materials/material_plank.tres"
 const BASKETBALL_PATH := "res://resources/config/collectibles/collectible_basketball.tres"
 const WATER_BOTTLE_PATH := "res://resources/config/materials/material_water_bottle.tres"
@@ -42,7 +45,19 @@ const RESULT_SLIME_KICK_DROPPED := &"slime_kick_dropped"
 const RESULT_SLIME_LEFT := &"slime_left"
 const RESULT_GHOST_FLED := &"ghost_fled"
 const RESULT_GHOST_VANISHED := &"ghost_vanished"
+const RESULT_PIT_NOTHING := &"pit_nothing"
+const RESULT_PIT_XIRANG := &"pit_xirang"
+const RESULT_PIT_FALL := &"pit_fall"
+const RESULT_PIT_COLLECTIBLE := &"pit_collectible"
+const RESULT_PIT_BOTTOM := &"pit_bottom"
+const RESULT_PIT_RADIATION := &"pit_radiation"
+const RESULT_PIT_LEFT := &"pit_left"
 const GHOST_IDENTITY_SPECIAL_OUTCOME := &"ghost_identity_special"
+
+const PIT_XIRANG_MINIMUM := 5
+const PIT_XIRANG_MAXIMUM := 100
+const PIT_CORE_DAMAGE := 2
+const PIT_MAX_HEALTH_PENALTY := 20
 
 var _run_state: RunStateStore
 var _economy_revision := 0
@@ -120,6 +135,11 @@ func get_option_availability(
 				String(OPTION_GHOST_RUN_AWAY): true,
 				String(OPTION_GHOST_WHO_ARE_YOU): true,
 			}
+		ENCOUNTER_FLUORESCENT_PIT:
+			return {
+				String(OPTION_EXPLORE_PIT): true,
+				String(OPTION_LEAVE_PIT): true,
+			}
 		_:
 			return {}
 
@@ -132,7 +152,8 @@ func resolve_encounter(
 	option_id: StringName,
 	node_content_seed: int,
 	eligible_peer_ids: Array[int],
-	occurrence_key: String = ""
+	occurrence_key: String = "",
+	round_index: int = 0
 ) -> Dictionary:
 	match encounter_id:
 		ENCOUNTER_CHICKEN_BRO:
@@ -155,6 +176,14 @@ func resolve_encounter(
 				node_content_seed,
 				eligible_peer_ids,
 				occurrence_key
+			)
+		ENCOUNTER_FLUORESCENT_PIT:
+			return resolve_fluorescent_pit(
+				option_id,
+				node_content_seed,
+				eligible_peer_ids,
+				occurrence_key,
+				round_index
 			)
 		_:
 			return _make_result(false, RESULT_INVALID_REQUEST)
@@ -197,6 +226,412 @@ func _resolve_ghost_who_are_you(
 		RESULT_GHOST_VANISHED,
 		OPTION_GHOST_WHO_ARE_YOU,
 		GHOST_IDENTITY_SPECIAL_OUTCOME
+	)
+
+
+## “荧光坑洞”的每一次下探都是一次独立结算。round_index 同时进入
+## 随机 salt 与幂等键，确保重复 RPC 复用结果，而下一轮仍能重新抽取。
+func resolve_fluorescent_pit(
+	option_id: StringName,
+	node_content_seed: int,
+	eligible_peer_ids: Array[int],
+	occurrence_key: String = "",
+	round_index: int = 0
+) -> Dictionary:
+	var normalized_round_index := maxi(round_index, 0)
+	var round_occurrence_key := _make_pit_round_occurrence_key(
+		occurrence_key,
+		normalized_round_index
+	)
+	if (
+		not round_occurrence_key.is_empty()
+		and _settled_occurrences.has(round_occurrence_key)
+	):
+		return (
+			(_settled_occurrences[round_occurrence_key] as Dictionary).duplicate(
+				true
+			)
+		)
+	if (
+		_run_state == null
+		or option_id not in [OPTION_EXPLORE_PIT, OPTION_LEAVE_PIT]
+	):
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	var ordered_peer_ids := _normalize_peer_ids(eligible_peer_ids)
+	if ordered_peer_ids.is_empty():
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	for peer_id in ordered_peer_ids:
+		if peer_id > 0:
+			_run_state.ensure_multiplayer_peer_state(peer_id)
+
+	if option_id == OPTION_LEAVE_PIT:
+		var leave_result := _make_pit_result(
+			RESULT_PIT_LEFT,
+			option_id,
+			normalized_round_index,
+			ordered_peer_ids,
+			"还是赶紧走吧"
+		)
+		leave_result["terminal"] = true
+		return _finalize_resolution(
+			leave_result,
+			round_occurrence_key,
+			ordered_peer_ids
+		)
+
+	var outcome_bucket := RogueEncounterRandom.choose_index(
+		node_content_seed,
+		StringName("fluorescent_pit_outcome|round:%d" % normalized_round_index),
+		100
+	)
+	if outcome_bucket < 30:
+		return _finalize_resolution(
+			_make_pit_result(
+				RESULT_PIT_NOTHING,
+				option_id,
+				normalized_round_index,
+				ordered_peer_ids,
+				"往下几米后，什么也没有发现"
+			),
+			round_occurrence_key,
+			ordered_peer_ids
+		)
+	if outcome_bucket < 50:
+		return _resolve_pit_xirang(
+			node_content_seed,
+			normalized_round_index,
+			ordered_peer_ids,
+			round_occurrence_key
+		)
+	if outcome_bucket < 80:
+		return _resolve_pit_fall(
+			normalized_round_index,
+			ordered_peer_ids,
+			round_occurrence_key
+		)
+	if outcome_bucket < 85:
+		return _resolve_pit_collectible(
+			node_content_seed,
+			normalized_round_index,
+			ordered_peer_ids,
+			round_occurrence_key
+		)
+	if outcome_bucket < 99:
+		var bottom_result := _make_pit_result(
+			RESULT_PIT_BOTTOM,
+			option_id,
+			normalized_round_index,
+			ordered_peer_ids,
+			"这就到底了？"
+		)
+		bottom_result["disable_explore"] = true
+		return _finalize_resolution(
+			bottom_result,
+			round_occurrence_key,
+			ordered_peer_ids
+		)
+	return _resolve_pit_radiation(
+		normalized_round_index,
+		ordered_peer_ids,
+		round_occurrence_key
+	)
+
+
+func _resolve_pit_xirang(
+	node_content_seed: int,
+	round_index: int,
+	ordered_peer_ids: Array[int],
+	round_occurrence_key: String
+) -> Dictionary:
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	var xirang_ledger := party_snapshot.get("xirang_ledger", {}) as Dictionary
+	if (
+		inventory_snapshots.size() != ordered_peer_ids.size()
+		or not _is_valid_xirang_ledger(xirang_ledger)
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var expected_inventory_revisions := _get_expected_inventory_revisions(
+		inventory_snapshots,
+		ordered_peer_ids
+	)
+	var expected_xirang_revision := int(xirang_ledger["revision"])
+	var next_snapshot := party_snapshot.duplicate(true)
+	var next_xirang_ledger := next_snapshot["xirang_ledger"] as Dictionary
+	var next_values := next_xirang_ledger["values"] as Dictionary
+	var xirang_amount := PIT_XIRANG_MINIMUM + RogueEncounterRandom.choose_index(
+		node_content_seed,
+		StringName("fluorescent_pit_xirang|round:%d" % round_index),
+		PIT_XIRANG_MAXIMUM - PIT_XIRANG_MINIMUM + 1
+	)
+	var xirang_totals: Array[Dictionary] = []
+	var personal_detail_by_peer: Dictionary = {}
+	for peer_id in ordered_peer_ids:
+		var peer_key := str(peer_id)
+		var next_total := int(next_values.get(peer_key, 0)) + xirang_amount
+		next_values[peer_key] = next_total
+		xirang_totals.append({"peer_id": peer_id, "total": next_total})
+		personal_detail_by_peer[peer_id] = "获得息壤：%d" % xirang_amount
+	next_xirang_ledger["revision"] = expected_xirang_revision + 1
+	if not _run_state.apply_authoritative_party_transaction(
+		next_snapshot,
+		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
+		expected_inventory_revisions,
+		expected_xirang_revision,
+		next_xirang_ledger
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var result := _make_pit_result(
+		RESULT_PIT_XIRANG,
+		OPTION_EXPLORE_PIT,
+		round_index,
+		ordered_peer_ids,
+		"发现一些散落的息壤",
+		"全队每人获得息壤：%d" % xirang_amount,
+		personal_detail_by_peer
+	)
+	result.merge({
+		"reward_kind": "xirang",
+		"reward_granted": true,
+		"xirang_reward_each": xirang_amount,
+		"xirang_totals": xirang_totals,
+	}, true)
+	return _finalize_resolution(
+		result,
+		round_occurrence_key,
+		ordered_peer_ids,
+		true
+	)
+
+
+func _resolve_pit_fall(
+	round_index: int,
+	ordered_peer_ids: Array[int],
+	round_occurrence_key: String
+) -> Dictionary:
+	var transaction := _prepare_pit_status_transaction(ordered_peer_ids)
+	if transaction.is_empty():
+		return _make_result(false, RESULT_STALE_STATE)
+	var next_status := transaction["next_status"] as Dictionary
+	var core_before := int(next_status["core_current"])
+	var core_after := maxi(core_before - PIT_CORE_DAMAGE, 0)
+	next_status["core_current"] = core_after
+	next_status["revision"] = int(transaction["expected_status_revision"]) + 1
+	if not _commit_pit_status_transaction(transaction):
+		return _make_result(false, RESULT_STALE_STATE)
+	var core_maximum := int(next_status["core_maximum"])
+	var result := _make_pit_result(
+		RESULT_PIT_FALL,
+		OPTION_EXPLORE_PIT,
+		round_index,
+		ordered_peer_ids,
+		"你一脚踩空，不慎滑落",
+		"核心生命：%d → %d / %d" % [core_before, core_after, core_maximum]
+	)
+	result.merge({
+		"core_damage": PIT_CORE_DAMAGE,
+		"core_before": core_before,
+		"core_after": core_after,
+		"core_maximum": core_maximum,
+		"terminal": core_after <= 0,
+		"run_failed": core_after <= 0,
+	}, true)
+	return _finalize_resolution(
+		result,
+		round_occurrence_key,
+		ordered_peer_ids,
+		true
+	)
+
+
+func _resolve_pit_collectible(
+	node_content_seed: int,
+	round_index: int,
+	ordered_peer_ids: Array[int],
+	round_occurrence_key: String
+) -> Dictionary:
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	if inventory_snapshots.size() != ordered_peer_ids.size():
+		return _make_result(false, RESULT_STALE_STATE)
+	var expected_inventory_revisions := _get_expected_inventory_revisions(
+		inventory_snapshots,
+		ordered_peer_ids
+	)
+	var next_snapshot := party_snapshot.duplicate(true)
+	var next_inventory_snapshots := _index_inventory_snapshots(next_snapshot)
+	var touched_peer_ids: Dictionary = {}
+	var collectible_rewards: Array[Dictionary] = []
+	var personal_detail_by_peer: Dictionary = {}
+	var any_reward_granted := false
+	for peer_id in ordered_peer_ids:
+		var reward_pool := _get_pit_collectible_pool_for_peer(peer_id)
+		if reward_pool.is_empty():
+			return _make_result(false, RESULT_INVALID_REQUEST)
+		var item := reward_pool[
+			RogueEncounterRandom.choose_index(
+				node_content_seed,
+				StringName(
+					"fluorescent_pit_collectible|round:%d|peer:%d"
+					% [round_index, peer_id]
+				),
+				reward_pool.size()
+			)
+		]
+		var granted := _add_item_to_inventory(
+			next_inventory_snapshots[peer_id] as Dictionary,
+			item
+		)
+		if granted:
+			touched_peer_ids[peer_id] = true
+			any_reward_granted = true
+		var rarity_name := PickupConfig.get_collectible_rarity_label(
+			int(item.collectible_rarity)
+		)
+		var detail_text := (
+			"获得：%s（%s）" % [item.display_name, rarity_name]
+			if granted
+			else "背包已满，未获得：%s（%s）" % [item.display_name, rarity_name]
+		)
+		personal_detail_by_peer[peer_id] = detail_text
+		collectible_rewards.append({
+			"peer_id": peer_id,
+			"rolled_path": item.resource_path,
+			"rolled_paths": [item.resource_path],
+			"granted_paths": [item.resource_path] if granted else [],
+			"name": item.display_name,
+			"rarity": int(item.collectible_rarity),
+			"rarity_name": rarity_name,
+			"granted": granted,
+			"failure_reason": "" if granted else "inventory_full",
+			"discarded_count": 0 if granted else 1,
+		})
+	_bump_touched_inventory_revisions(
+		next_inventory_snapshots,
+		expected_inventory_revisions,
+		touched_peer_ids
+	)
+	if any_reward_granted and not _run_state.apply_authoritative_party_transaction(
+		next_snapshot,
+		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
+		expected_inventory_revisions
+	):
+		return _make_result(false, RESULT_STALE_STATE)
+	var result := _make_pit_result(
+		RESULT_PIT_COLLECTIBLE,
+		OPTION_EXPLORE_PIT,
+		round_index,
+		ordered_peer_ids,
+		"捡到一个亮晶晶的物品",
+		"每位玩家独立抽取一件不高于史诗品质的收藏品",
+		personal_detail_by_peer
+	)
+	result.merge({
+		"reward_kind": "collectibles",
+		"reward_granted": any_reward_granted,
+		"collectible_rewards": collectible_rewards,
+	}, true)
+	return _finalize_resolution(
+		result,
+		round_occurrence_key,
+		ordered_peer_ids,
+		any_reward_granted
+	)
+
+
+func _resolve_pit_radiation(
+	round_index: int,
+	ordered_peer_ids: Array[int],
+	round_occurrence_key: String
+) -> Dictionary:
+	var transaction := _prepare_pit_status_transaction(ordered_peer_ids)
+	if transaction.is_empty():
+		return _make_result(false, RESULT_STALE_STATE)
+	var next_status := transaction["next_status"] as Dictionary
+	var penalty_values := next_status["max_health_penalties"] as Dictionary
+	var penalty_totals: Array[Dictionary] = []
+	var personal_detail_by_peer: Dictionary = {}
+	for peer_id in ordered_peer_ids:
+		var peer_key := str(peer_id)
+		var penalty_before := int(penalty_values.get(peer_key, 0))
+		var penalty_after := penalty_before + PIT_MAX_HEALTH_PENALTY
+		penalty_values[peer_key] = penalty_after
+		penalty_totals.append({
+			"peer_id": peer_id,
+			"before": penalty_before,
+			"after": penalty_after,
+			"penalty_before": penalty_before,
+			"penalty_after": penalty_after,
+		})
+		personal_detail_by_peer[peer_id] = (
+			"最大生命惩罚：%d → %d" % [penalty_before, penalty_after]
+		)
+	next_status["revision"] = int(transaction["expected_status_revision"]) + 1
+	if not _commit_pit_status_transaction(transaction):
+		return _make_result(false, RESULT_STALE_STATE)
+	var result := _make_pit_result(
+		RESULT_PIT_RADIATION,
+		OPTION_EXPLORE_PIT,
+		round_index,
+		ordered_peer_ids,
+		"糟糕！是放射性元素！赶紧走！",
+		"所有玩家的最大生命值减少20",
+		personal_detail_by_peer
+	)
+	result.merge({
+		"terminal": true,
+		"max_health_penalty_added": PIT_MAX_HEALTH_PENALTY,
+		"max_health_penalty_totals": penalty_totals,
+	}, true)
+	return _finalize_resolution(
+		result,
+		round_occurrence_key,
+		ordered_peer_ids,
+		true
+	)
+
+
+func _prepare_pit_status_transaction(
+	ordered_peer_ids: Array[int]
+) -> Dictionary:
+	var party_snapshot := _run_state.export_party_economy_snapshot(
+		_to_packed_peer_ids(ordered_peer_ids)
+	)
+	var inventory_snapshots := _index_inventory_snapshots(party_snapshot)
+	var status := party_snapshot.get("party_status_ledger", {}) as Dictionary
+	if (
+		inventory_snapshots.size() != ordered_peer_ids.size()
+		or not _is_valid_party_status_ledger(status)
+	):
+		return {}
+	var next_snapshot := party_snapshot.duplicate(true)
+	return {
+		"party_snapshot": party_snapshot,
+		"next_snapshot": next_snapshot,
+		"expected_inventory_revisions": _get_expected_inventory_revisions(
+			inventory_snapshots,
+			ordered_peer_ids
+		),
+		"expected_status_revision": int(status["revision"]),
+		"next_status": next_snapshot["party_status_ledger"] as Dictionary,
+	}
+
+
+func _commit_pit_status_transaction(transaction: Dictionary) -> bool:
+	var party_snapshot := transaction["party_snapshot"] as Dictionary
+	var next_snapshot := transaction["next_snapshot"] as Dictionary
+	return _run_state.apply_authoritative_party_transaction(
+		next_snapshot,
+		int((party_snapshot["warehouse_ledger"] as Dictionary)["revision"]),
+		transaction["expected_inventory_revisions"] as Dictionary,
+		-1,
+		{},
+		int(transaction["expected_status_revision"]),
+		transaction["next_status"] as Dictionary
 	)
 
 
@@ -536,7 +971,26 @@ func migrate_result_peer_references(
 		payments.erase(old_peer_id)
 		payments[new_peer_id] = int(payments.get(new_peer_id, 0)) + old_payment
 		migrated["player_payments"] = payments
-	for field_name in ["collectible_rewards", "xirang_totals"]:
+	var recipients := migrated.get("round_recipient_peer_ids", []) as Array
+	for index in recipients.size():
+		if int(recipients[index]) == old_peer_id:
+			recipients[index] = new_peer_id
+	if not recipients.is_empty():
+		recipients.sort()
+		migrated["round_recipient_peer_ids"] = recipients
+	var personal_details := (
+		migrated.get("personal_detail_by_peer", {}) as Dictionary
+	)
+	if personal_details.has(old_peer_id):
+		var detail: Variant = personal_details[old_peer_id]
+		personal_details.erase(old_peer_id)
+		personal_details[new_peer_id] = detail
+		migrated["personal_detail_by_peer"] = personal_details
+	for field_name in [
+		"collectible_rewards",
+		"xirang_totals",
+		"max_health_penalty_totals",
+	]:
 		var entries := migrated.get(field_name, []) as Array
 		for raw_entry_value in entries:
 			if typeof(raw_entry_value) != TYPE_DICTIONARY:
@@ -867,6 +1321,102 @@ func _make_ghost_result(
 	return result
 
 
+func _make_pit_result(
+	result_code: StringName,
+	option_id: StringName,
+	round_index: int,
+	recipient_peer_ids: Array[int],
+	common_result_text: String,
+	common_detail_text: String = "",
+	personal_detail_by_peer: Dictionary = {}
+) -> Dictionary:
+	var result := _make_result(true, result_code)
+	result.merge({
+		"encounter_id": String(ENCOUNTER_FLUORESCENT_PIT),
+		"option_id": String(option_id),
+		"terminal": false,
+		"run_failed": false,
+		"disable_explore": false,
+		"round_index": round_index,
+		"round_recipient_peer_ids": recipient_peer_ids.duplicate(),
+		"common_result_text": common_result_text,
+		"common_detail_text": common_detail_text,
+		"personal_detail_by_peer": personal_detail_by_peer.duplicate(true),
+	}, true)
+	return result
+
+
+func _make_pit_round_occurrence_key(
+	occurrence_key: String,
+	round_index: int
+) -> String:
+	if occurrence_key.is_empty():
+		return ""
+	var round_suffix := "|round:%d" % round_index
+	if occurrence_key.ends_with(round_suffix):
+		return occurrence_key
+	return occurrence_key + round_suffix
+
+
+func _get_pit_collectible_pool_for_peer(peer_id: int) -> Array[PickupConfig]:
+	var character_id := _get_character_id_for_peer(peer_id)
+	var result: Array[PickupConfig] = []
+	for item in CollectibleRegistry.get_standard_random_pool_up_to(
+		PickupConfig.CollectibleRarity.EPIC
+	):
+		if (
+			item != null
+			and item.can_store_in_inventory
+			and _is_collectible_compatible_with_character(item, character_id)
+		):
+			result.append(item)
+	return result
+
+
+func _get_character_id_for_peer(peer_id: int) -> StringName:
+	var fallback := _run_state.get_selected_character_id()
+	if peer_id <= 0:
+		return fallback
+	var scene_tree := Engine.get_main_loop() as SceneTree
+	var net_manager := (
+		scene_tree.root.get_node_or_null("NetManager")
+		if scene_tree != null
+		else null
+	)
+	if net_manager == null or not net_manager.has_method("get_player_character_map"):
+		return fallback
+	var character_map := (
+		net_manager.call("get_player_character_map") as Dictionary
+	)
+	var character_id := StringName(character_map.get(peer_id, fallback))
+	return (
+		character_id
+		if PlayerCharacterRegistry.is_valid_character_id(character_id)
+		else fallback
+	)
+
+
+func _is_collectible_compatible_with_character(
+	item: PickupConfig,
+	character_id: StringName
+) -> bool:
+	if item == null:
+		return false
+	# 与当前角色脚本保持同一能力口径：Weishidaier/Tiyi 继承
+	# AmmoRangedPlayer；Hoe Cat 使用默认 false；Tango 虽重写投射物方法，
+	# 但为避免批量齐射 RPC 分歧，当前实现明确返回 false。
+	var supports_ammunition := character_id in [
+		PlayerCharacterRegistry.WEISHIDAIER_ID,
+		PlayerCharacterRegistry.TIYI_ID,
+	]
+	var supports_projectile_patterns := supports_ammunition
+	if item.requires_projectile_primary_attack and not supports_projectile_patterns:
+		return false
+	if item.requires_ammunition and not supports_ammunition:
+		return false
+	return true
+
+
 func _normalize_peer_ids(peer_ids: Array[int]) -> Array[int]:
 	var result: Array[int] = []
 	var seen: Dictionary = {}
@@ -944,6 +1494,34 @@ func _is_valid_xirang_ledger(ledger: Dictionary) -> bool:
 			return false
 		var raw_value: Variant = (ledger["values"] as Dictionary)[raw_peer_key]
 		if typeof(raw_value) != TYPE_INT or int(raw_value) < 0:
+			return false
+	return true
+
+
+func _is_valid_party_status_ledger(ledger: Dictionary) -> bool:
+	if (
+		typeof(ledger.get("schema_version")) != TYPE_INT
+		or int(ledger["schema_version"]) != 1
+		or typeof(ledger.get("revision")) != TYPE_INT
+		or int(ledger["revision"]) < 0
+		or typeof(ledger.get("core_current")) != TYPE_INT
+		or typeof(ledger.get("core_maximum")) != TYPE_INT
+		or int(ledger["core_maximum"]) <= 0
+		or int(ledger["core_current"]) < 0
+		or int(ledger["core_current"]) > int(ledger["core_maximum"])
+		or typeof(ledger.get("max_health_penalties")) != TYPE_DICTIONARY
+	):
+		return false
+	for raw_peer_key in (ledger["max_health_penalties"] as Dictionary).keys():
+		if typeof(raw_peer_key) != TYPE_STRING:
+			return false
+		var peer_key := str(raw_peer_key)
+		if not peer_key.is_valid_int() or str(peer_key.to_int()) != peer_key:
+			return false
+		var raw_penalty: Variant = (
+			ledger["max_health_penalties"] as Dictionary
+		)[raw_peer_key]
+		if typeof(raw_penalty) != TYPE_INT or int(raw_penalty) < 0:
 			return false
 	return true
 

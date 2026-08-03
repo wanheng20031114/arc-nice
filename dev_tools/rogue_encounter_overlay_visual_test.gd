@@ -5,6 +5,9 @@ const OVERLAY_SCENE := preload(
 )
 const CHICKEN_PREVIEW_PATH := "user://rogue_encounter_chicken_bro_preview.png"
 const GHOST_PREVIEW_PATH := "user://rogue_encounter_ghost_shadow_preview.png"
+const FLUORESCENT_PIT_PREVIEW_PATH := (
+	"user://rogue_encounter_fluorescent_pit_preview.png"
+)
 
 
 func _init() -> void:
@@ -26,7 +29,7 @@ func _run() -> void:
 		{1: PlayerCharacterRegistry.get_default_character_id(), 2: &"tiyi"}
 	)
 	overlay.apply_state({
-		"schema_version": 1,
+		"schema_version": 3,
 		"revision": 4,
 		"phase": "voting",
 		"node_id": 12,
@@ -48,6 +51,15 @@ func _run() -> void:
 		"winning_option": "",
 		"economy_result": {},
 		"result_text": "",
+		"result_pages": [],
+		"round_index": 0,
+		"result_sequence": 0,
+		"disabled_option_ids": [],
+		"round_recipient_peer_ids": [],
+		"result_ack_peer_ids": [],
+		"terminal_result": false,
+		"run_failed": false,
+		"personal_result_pages": {},
 	})
 	await overlay.cover_map_for_encounter()
 	await overlay.reveal_encounter()
@@ -70,7 +82,7 @@ func _run() -> void:
 		return
 	overlay.hide_immediately()
 	overlay.apply_state({
-		"schema_version": 1,
+		"schema_version": 3,
 		"revision": 2,
 		"phase": "voting",
 		"node_id": 81,
@@ -92,6 +104,15 @@ func _run() -> void:
 		"winning_option": "",
 		"economy_result": {},
 		"result_text": "",
+		"result_pages": [],
+		"round_index": 0,
+		"result_sequence": 0,
+		"disabled_option_ids": [],
+		"round_recipient_peer_ids": [],
+		"result_ack_peer_ids": [],
+		"terminal_result": false,
+		"run_failed": false,
+		"personal_result_pages": {},
 	})
 	await overlay.cover_map_for_encounter()
 	await overlay.reveal_encounter()
@@ -112,9 +133,67 @@ func _run() -> void:
 		push_error("无法保存鬼影遭遇预览：%s" % error_string(save_error))
 		quit(1)
 		return
+	overlay.hide_immediately()
+	overlay.apply_state({
+		"schema_version": 3,
+		"revision": 8,
+		"phase": "voting",
+		"node_id": 109,
+		"node_content_seed": 621947,
+		"occurrence_key": "109:621947",
+		"encounter_id": "fluorescent_pit",
+		"remaining_seconds": 60.0,
+		"voting_timer_running": true,
+		"participant_peer_ids": [1, 2],
+		"active_peer_ids": [1, 2],
+		"spectator_peer_ids": [],
+		"intro_confirmed_peer_ids": [1, 2],
+		"votes": [],
+		"abstained_peer_ids": [],
+		"option_availability": {
+			"explore_pit": true,
+			"leave_pit": true,
+		},
+		"winning_option": "",
+		"economy_result": {},
+		"result_text": "",
+		"result_pages": [],
+		"round_index": 0,
+		"result_sequence": 0,
+		"disabled_option_ids": [],
+		"round_recipient_peer_ids": [],
+		"result_ack_peer_ids": [],
+		"terminal_result": false,
+		"run_failed": false,
+		"personal_result_pages": {},
+	})
+	await overlay.cover_map_for_encounter()
+	await overlay.reveal_encounter()
+	for _frame in range(3):
+		await process_frame
+	preview = root.get_texture().get_image()
+	if preview == null or preview.is_empty():
+		push_error("当前显示驱动无法读取荧光坑洞遭遇预览。")
+		quit(1)
+		return
+	if bool(ProjectSettings.get_setting("rendering/viewport/hdr_2d", false)):
+		if preview.get_format() not in [Image.FORMAT_RGB8, Image.FORMAT_RGBA8]:
+			preview.convert(Image.FORMAT_RGBA8)
+		preview.linear_to_srgb()
+	var fluorescent_pit_absolute_path := ProjectSettings.globalize_path(
+		FLUORESCENT_PIT_PREVIEW_PATH
+	)
+	save_error = preview.save_png(fluorescent_pit_absolute_path)
+	if save_error != OK:
+		push_error("无法保存荧光坑洞遭遇预览：%s" % error_string(save_error))
+		quit(1)
+		return
 	print(
-		"ROGUE_ENCOUNTER_OVERLAY_VISUAL_TEST_OK chicken=%s ghost=%s"
-		% [absolute_path, ghost_absolute_path]
+		(
+			"ROGUE_ENCOUNTER_OVERLAY_VISUAL_TEST_OK "
+			+ "chicken=%s ghost=%s fluorescent_pit=%s"
+		)
+		% [absolute_path, ghost_absolute_path, fluorescent_pit_absolute_path]
 	)
 	overlay.queue_free()
 	backdrop.queue_free()

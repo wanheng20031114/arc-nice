@@ -36,7 +36,9 @@ extends RefCounted
 ## 旧客户端会拒绝新 option_id，亦无法解释 result_pages。
 ## v41：P3 神奇遭遇池新增“鬼影”事件及其独立选项/结果 wire ID；v40 客户端
 ## 无法渲染该事件，也会拒绝其投票快照。
-const PROTOCOL_VERSION := 41
+## v42：P3 神奇遭遇新增“荧光坑洞”的多轮投票、逐轮结果确认 RPC，以及共享
+## 核心/最大生命惩罚账本；v41 客户端无法解释升级后的 Session/Economy 快照。
+const PROTOCOL_VERSION := 42
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

@@ -19,6 +19,10 @@ signal encounter_vote_requested(
 	expected_revision: int,
 	option_id: StringName
 )
+signal encounter_result_ack_requested(
+	occurrence_key: String,
+	result_sequence: int
+)
 signal normal_combat_requested(
 	node_id: int,
 	content_seed: int,
@@ -58,6 +62,9 @@ const AVATAR_SPAWN_OFFSETS := [
 @onready var action_points_value: Label = %ActionPointsValue
 @onready var seed_value: Label = %SeedValue
 @onready var position_value: Label = %PositionValue
+@onready var core_value: Label = %CoreValue
+@onready var core_progress: ProgressBar = %CoreProgress
+@onready var core_stat: VBoxContainer = $HUD/Root/TopBar/TopLayout/TopStats/CoreStat
 @onready var content_overline: Label = %ContentOverline
 @onready var content_title: Label = %ContentTitle
 @onready var content_body: Label = %ContentBody
@@ -75,6 +82,7 @@ const AVATAR_SPAWN_OFFSETS := [
 @onready var combat_result_overlay: RogueCombatResultOverlay = (
 	$CombatResultOverlay
 )
+@onready var run_defeat_overlay: RogueRunDefeatOverlay = $RunDefeatOverlay
 
 ## 保留战斗协调器与既有测试使用的 Overlay 访问契约；实际表现已由
 ## 独立 RogueEncounterScene 承载，权威状态仍留在当前路线根节点。
@@ -112,6 +120,12 @@ var _route_presentation_enabled := true
 var _route_presentation_restore_state: Dictionary = {}
 var _player_names: Dictionary = {}
 var _player_character_ids: Dictionary = {}
+var _run_state: RunStateStore = null
+var _core_damage_tween: Tween = null
+var _cached_core_current := -1
+var _run_failure_presented := false
+var _cached_max_health_penalties: Dictionary = {}
+var _max_health_transition_by_peer: Dictionary = {}
 
 
 func _ready() -> void:
@@ -126,6 +140,11 @@ func _ready() -> void:
 		)
 	if manage_return_locally:
 		_configure_singleplayer_player()
+	_connect_party_status_ledger()
+	if run_defeat_overlay != null and not run_defeat_overlay.confirmed.is_connected(
+		_on_run_defeat_confirmed
+	):
+		run_defeat_overlay.confirmed.connect(_on_run_defeat_confirmed)
 	_update_character_display()
 	_update_authority_ui()
 	_update_route_hud()
@@ -721,6 +740,22 @@ func host_submit_encounter_vote(
 	)
 
 
+func host_submit_encounter_result_ack(
+	peer_id: int,
+	occurrence_key: String,
+	result_sequence: int
+) -> bool:
+	return (
+		_authority_enabled
+		and encounter_session != null
+		and encounter_session.submit_result_ack(
+			peer_id,
+			occurrence_key,
+			result_sequence
+		)
+	)
+
+
 func host_remove_encounter_peer(peer_id: int) -> void:
 	if _authority_enabled and encounter_session != null:
 		encounter_session.remove_peer(peer_id)
@@ -779,6 +814,12 @@ func _create_encounter_runtime() -> void:
 		):
 			encounter_scene.result_hold_completed.connect(
 				_on_encounter_result_hold_completed
+			)
+		if not encounter_overlay.result_ack_requested.is_connected(
+			_on_encounter_result_ack_requested
+		):
+			encounter_overlay.result_ack_requested.connect(
+				_on_encounter_result_ack_requested
 			)
 	_configure_encounter_overlay_context()
 
@@ -1039,9 +1080,36 @@ func _on_encounter_result_hold_completed(
 	_try_dismiss_locally_completed_encounter()
 
 
+func _on_encounter_result_ack_requested(
+	occurrence_key: String,
+	result_sequence: int
+) -> void:
+	if (
+		encounter_session == null
+		or encounter_session.get_occurrence_key() != occurrence_key
+		or result_sequence <= 0
+	):
+		return
+	_local_result_hold_completed_occurrence_key = occurrence_key
+	if manage_return_locally:
+		host_submit_encounter_result_ack(
+			_get_local_encounter_peer_id(),
+			occurrence_key,
+			result_sequence
+		)
+	else:
+		encounter_result_ack_requested.emit(
+			occurrence_key,
+			result_sequence
+		)
+	_try_dismiss_locally_completed_encounter()
+
+
 func _on_encounter_state_changed(snapshot: Dictionary) -> void:
 	if encounter_scene != null:
-		encounter_scene.apply_state(snapshot.duplicate(true))
+		encounter_scene.apply_state(
+			_decorate_local_max_health_result(snapshot)
+		)
 	var phase := StringName(snapshot.get("phase", &"idle"))
 	var encounter_active := phase not in [&"idle", &"completed"]
 	if encounter_active and not _encounter_presented_active:
@@ -1072,6 +1140,7 @@ func _try_dismiss_locally_completed_encounter() -> void:
 
 func _on_encounter_economy_changed(_snapshot: Dictionary) -> void:
 	_sync_route_player_xirang_from_run_state()
+	_sync_party_status_from_run_state()
 	if _authority_enabled:
 		_emit_host_encounter_snapshot()
 
@@ -1094,7 +1163,9 @@ func _present_encounter(presentation_serial: int) -> void:
 	if presentation_serial != _encounter_presentation_serial:
 		return
 	_set_route_presentation_active(false)
-	encounter_scene.apply_state(export_encounter_snapshot())
+	encounter_scene.apply_state(
+		_decorate_local_max_health_result(export_encounter_snapshot())
+	)
 	await encounter_scene.reveal_encounter()
 	if presentation_serial != _encounter_presentation_serial:
 		return
@@ -1110,7 +1181,25 @@ func _dismiss_encounter(presentation_serial: int) -> void:
 		await encounter_scene.reveal_route_after_encounter()
 	if presentation_serial != _encounter_presentation_serial:
 		return
+	var completed_state := encounter_session.export_state() if encounter_session != null else {}
+	if bool(completed_state.get("run_failed", false)):
+		_show_run_defeat()
+		return
 	_set_encounter_input_locked(false)
+
+
+func _show_run_defeat() -> void:
+	if _run_failure_presented or run_defeat_overlay == null:
+		return
+	_run_failure_presented = true
+	_set_encounter_input_locked(true)
+	run_defeat_overlay.show_defeat(not manage_return_locally)
+
+
+func _on_run_defeat_confirmed() -> void:
+	return_requested.emit()
+	if manage_return_locally:
+		call_deferred(&"_return_to_main_menu")
 
 
 func _set_encounter_input_locked(locked: bool) -> void:
@@ -1363,6 +1452,7 @@ func configure_multiplayer_players(
 		push_error("TestRogueRouteP3: 多人路线场景缺少本地角色。")
 		return false
 	_sync_route_player_xirang_from_run_state()
+	_sync_party_status_from_run_state()
 	_attach_camera_to_local_player()
 	_configure_encounter_overlay_context()
 	_update_character_display()
@@ -1392,6 +1482,7 @@ func add_multiplayer_player(
 		_player_names[peer_id] = player_name
 		_player_character_ids[peer_id] = character_id
 		_sync_route_player_xirang_from_run_state()
+		_sync_party_status_from_run_state()
 		_configure_encounter_overlay_context()
 	return added
 
@@ -1435,6 +1526,7 @@ func migrate_multiplayer_player(
 	player_instance.global_position = preserved_position
 	player_instance.velocity = preserved_velocity
 	_sync_route_player_xirang_from_run_state()
+	_sync_party_status_from_run_state()
 	_configure_encounter_overlay_context()
 	return true
 
@@ -1575,6 +1667,7 @@ func _configure_singleplayer_player() -> void:
 	_player_names = {SINGLEPLAYER_PEER_ID: "玩家"}
 	_player_character_ids = {SINGLEPLAYER_PEER_ID: character_id}
 	_sync_route_player_xirang_from_run_state()
+	_sync_party_status_from_run_state()
 	_attach_camera_to_local_player()
 	_configure_encounter_overlay_context()
 
@@ -1611,6 +1704,186 @@ func _apply_route_player_xirang(player_instance: Player, amount: int) -> void:
 	var delta := resolved_amount - player_instance.current_xirang
 	player_instance.current_xirang = resolved_amount
 	player_instance.xirang_changed.emit(resolved_amount, delta)
+
+
+func _connect_party_status_ledger() -> void:
+	_run_state = get_node_or_null("/root/RunState") as RunStateStore
+	if _run_state == null:
+		_update_core_hud(100, 100)
+		return
+	if not _run_state.party_status_ledger_changed.is_connected(
+		_on_party_status_ledger_changed
+	):
+		_run_state.party_status_ledger_changed.connect(
+			_on_party_status_ledger_changed
+		)
+	_sync_party_status_from_run_state()
+	_cache_max_health_penalties(_run_state.export_party_status_ledger())
+
+
+func _on_party_status_ledger_changed(snapshot: Dictionary) -> void:
+	var before_max_health: Dictionary = {}
+	var players_by_status_peer: Dictionary = {}
+	for raw_peer_id in peer_players.keys():
+		var dictionary_peer_id := int(raw_peer_id)
+		var peer_player := peer_players.get(dictionary_peer_id) as Player
+		if peer_player != null and is_instance_valid(peer_player):
+			# RunState 的重连 remap 会先把仍在树中的 Player.peer_id 暂存为
+			# new peer，再同步发出账本信号；此刻 peer_players 的字典键仍可能是
+			# old peer。必须以节点真实身份读取信号快照，不能调用会 ensure 状态的
+			# RunState getter，否则刚移除的 old peer 会被重新创建。
+			var status_peer_id := (
+				peer_player.peer_id
+				if peer_player.peer_id > 0
+				else dictionary_peer_id
+			)
+			before_max_health[status_peer_id] = peer_player.max_health
+			players_by_status_peer[status_peer_id] = peer_player
+	if not _multiplayer_avatar_mode and player != null and is_instance_valid(player):
+		before_max_health[SINGLEPLAYER_PEER_ID] = player.max_health
+		players_by_status_peer[SINGLEPLAYER_PEER_ID] = player
+	_update_core_hud(
+		int(snapshot.get("core_current", 100)),
+		int(snapshot.get("core_maximum", 100))
+	)
+	var incoming_penalties := snapshot.get("max_health_penalties", {}) as Dictionary
+	for raw_peer_id in players_by_status_peer.keys():
+		var peer_id := int(raw_peer_id)
+		var peer_player := players_by_status_peer.get(peer_id) as Player
+		if peer_player == null or not is_instance_valid(peer_player):
+			continue
+		peer_player.set_run_max_health_penalty(
+			_get_status_snapshot_penalty(incoming_penalties, peer_id)
+		)
+	for raw_peer_key in incoming_penalties.keys():
+		var peer_id := int(raw_peer_key)
+		var penalty_after := int(incoming_penalties[raw_peer_key])
+		var penalty_before := int(_cached_max_health_penalties.get(peer_id, 0))
+		if penalty_after <= penalty_before or not before_max_health.has(peer_id):
+			continue
+		var peer_player := players_by_status_peer.get(peer_id) as Player
+		if peer_player == null or not is_instance_valid(peer_player):
+			continue
+		_max_health_transition_by_peer[peer_id] = {
+			"before": int(before_max_health[peer_id]),
+			"after": peer_player.max_health,
+			"penalty_after": penalty_after,
+		}
+	_cache_max_health_penalties(snapshot)
+
+
+func _get_status_snapshot_penalty(
+	penalties: Dictionary,
+	peer_id: int
+) -> int:
+	return maxi(
+		int(penalties.get(str(peer_id), penalties.get(peer_id, 0))),
+		0
+	)
+
+
+func _cache_max_health_penalties(snapshot: Dictionary) -> void:
+	_cached_max_health_penalties.clear()
+	var penalties := snapshot.get("max_health_penalties", {}) as Dictionary
+	for raw_peer_key in penalties.keys():
+		_cached_max_health_penalties[int(raw_peer_key)] = int(
+			penalties[raw_peer_key]
+		)
+
+
+func _decorate_local_max_health_result(snapshot: Dictionary) -> Dictionary:
+	var decorated := snapshot.duplicate(true)
+	var economy_result := decorated.get("economy_result", {}) as Dictionary
+	if StringName(economy_result.get("result_code", &"")) != &"pit_radiation":
+		return decorated
+	var local_peer_id := _get_local_encounter_peer_id()
+	var transition := (
+		_max_health_transition_by_peer.get(local_peer_id, {}) as Dictionary
+	)
+	if transition.is_empty():
+		return decorated
+	var expected_penalty_after := -1
+	var penalty_totals := economy_result.get(
+		"max_health_penalty_totals",
+		[]
+	) as Array
+	for raw_entry in penalty_totals:
+		if typeof(raw_entry) != TYPE_DICTIONARY:
+			continue
+		var entry := raw_entry as Dictionary
+		if int(entry.get("peer_id", -1)) == local_peer_id:
+			expected_penalty_after = int(entry.get("after", -1))
+			break
+	if expected_penalty_after != int(transition.get("penalty_after", -2)):
+		return decorated
+	var personal_pages := decorated.get("personal_result_pages", {}) as Dictionary
+	personal_pages[local_peer_id] = [{
+		"speaker": "",
+		"text": "最大生命：%d → %d" % [
+			int(transition.get("before", 1)),
+			int(transition.get("after", 1)),
+		],
+		"is_narration": true,
+	}]
+	decorated["personal_result_pages"] = personal_pages
+	return decorated
+
+
+func _sync_party_status_from_run_state() -> void:
+	if _run_state == null:
+		_run_state = get_node_or_null("/root/RunState") as RunStateStore
+	if _run_state == null:
+		_update_core_hud(100, 100)
+		return
+	_update_core_hud(
+		_run_state.get_party_core_health(),
+		_run_state.get_party_core_maximum_health()
+	)
+	if _multiplayer_avatar_mode:
+		for raw_peer_id in peer_players.keys():
+			var peer_id := int(raw_peer_id)
+			var player_instance := peer_players.get(peer_id) as Player
+			if player_instance != null and is_instance_valid(player_instance):
+				player_instance.set_run_max_health_penalty(
+					_run_state.get_max_health_penalty_for_peer(peer_id)
+				)
+		return
+	if player != null and is_instance_valid(player):
+		player.set_run_max_health_penalty(
+			_run_state.get_max_health_penalty_for_peer(SINGLEPLAYER_PEER_ID)
+		)
+
+
+func _update_core_hud(current_health: int, maximum_health: int) -> void:
+	if not is_node_ready() or core_value == null or core_progress == null:
+		return
+	var safe_maximum := maxi(maximum_health, 1)
+	var safe_current := clampi(current_health, 0, safe_maximum)
+	var was_damaged := _cached_core_current >= 0 and safe_current < _cached_core_current
+	_cached_core_current = safe_current
+	core_value.text = "%d/%d" % [safe_current, safe_maximum]
+	core_progress.max_value = float(safe_maximum)
+	core_progress.value = float(safe_current)
+	var ratio := float(safe_current) / float(safe_maximum)
+	core_value.add_theme_color_override(
+		&"font_color",
+		Color(1.0, 0.31, 0.28, 1.0)
+		if ratio <= 0.25
+		else Color(0.42, 0.82, 1.0, 1.0)
+	)
+	if not was_damaged or core_stat == null:
+		return
+	if _core_damage_tween != null:
+		_core_damage_tween.kill()
+	core_stat.self_modulate = Color(1.32, 0.58, 0.52, 1.0)
+	_core_damage_tween = create_tween()
+	_core_damage_tween.tween_property(
+		core_stat,
+		"self_modulate",
+		Color.WHITE,
+		0.42
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_core_damage_tween.finished.connect(func() -> void: _core_damage_tween = null)
 
 
 func _instantiate_route_player(character_id: StringName) -> Player:

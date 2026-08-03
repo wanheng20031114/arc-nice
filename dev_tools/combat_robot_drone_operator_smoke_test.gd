@@ -897,10 +897,10 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 		"MpGame must own the dedicated type and full three-stage elapsed compensation."
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 41
+		NET_CONSTANTS.PROTOCOL_VERSION == 42
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
 		(
-			"Protocol v41 must retain the v38 projectile, v39 shield-state, and "
+			"Protocol v42 must retain the v38 projectile, v39 shield-state, and "
 			+ "v40 slime semantics while isolating the ghost IDs without adding channels."
 		)
 	)

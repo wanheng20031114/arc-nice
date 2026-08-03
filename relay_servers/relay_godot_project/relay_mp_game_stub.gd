@@ -714,7 +714,7 @@ func net_linglan_airdrop_started(
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)
-func net_game_defeated() -> void:
+func net_game_defeated(failure_reason: String = "") -> void:
 	pass
 
 @rpc("authority", "call_remote", "reliable", 5)

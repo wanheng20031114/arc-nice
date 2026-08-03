@@ -24,8 +24,9 @@ func _test_pool_and_deterministic_selection() -> void:
 			RogueEncounterRegistry.CHICKEN_BRO,
 			RogueEncounterRegistry.SLIME_TALKERS,
 			RogueEncounterRegistry.GHOST_SHADOW,
+			RogueEncounterRegistry.FLUORESCENT_PIT,
 		],
-		"神奇遭遇池必须同时注册鸡哥、会说话的史莱姆与鬼影。"
+		"四种神奇遭遇必须等权注册且保持稳定顺序。"
 	)
 	var selected: Dictionary = {}
 	for seed_value in range(128):
@@ -42,8 +43,9 @@ func _test_pool_and_deterministic_selection() -> void:
 	_expect(
 		selected.has(RogueEncounterRegistry.CHICKEN_BRO)
 		and selected.has(RogueEncounterRegistry.SLIME_TALKERS)
-		and selected.has(RogueEncounterRegistry.GHOST_SHADOW),
-		"固定seed样本必须能够覆盖池中的三种遭遇。"
+		and selected.has(RogueEncounterRegistry.GHOST_SHADOW)
+		and selected.has(RogueEncounterRegistry.FLUORESCENT_PIT),
+		"固定seed样本必须能够覆盖池中的四种遭遇。"
 	)
 
 
@@ -56,6 +58,9 @@ func _test_content_configs() -> void:
 	)
 	var ghost := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.GHOST_SHADOW
+	)
+	var pit := RogueEncounterRegistry.get_encounter_config(
+		RogueEncounterRegistry.FLUORESCENT_PIT
 	)
 	_expect(
 		str(chicken.get("intro_text", ""))
@@ -84,6 +89,16 @@ func _test_content_configs() -> void:
 		and str(ghost.get("intro_speaker", "")).is_empty(),
 		"鬼影必须引用专用立绘并使用旁白式开场。"
 	)
+	_expect(
+		str(pit.get("display_name", "")) == "荧光坑洞"
+		and str(pit.get("portrait_texture_path", ""))
+		== "res://resources/texture/rogue_encounter/fluorescent_pit.png"
+		and str(pit.get("encounter_hint", "")) == "深不见底的遗址裂隙"
+		and str(pit.get("intro_text", ""))
+		== "一道幽蓝的微光从坑洞深处传来"
+		and bool(pit.get("intro_is_narration", false)),
+		"荧光坑洞必须使用专用素材、提示与旁白开场。"
+	)
 	var chicken_options := RogueEncounterRegistry.get_option_configs(
 		RogueEncounterRegistry.CHICKEN_BRO
 	)
@@ -93,9 +108,13 @@ func _test_content_configs() -> void:
 	var ghost_options := RogueEncounterRegistry.get_option_configs(
 		RogueEncounterRegistry.GHOST_SHADOW
 	)
+	var pit_options := RogueEncounterRegistry.get_option_configs(
+		RogueEncounterRegistry.FLUORESCENT_PIT
+	)
 	_expect(chicken_options.size() == 2, "鸡哥必须继续显示两个选项。")
 	_expect(slime_options.size() == 3, "史莱姆遭遇必须显示三个选项。")
 	_expect(ghost_options.size() == 2, "鬼影遭遇必须显示两个选项。")
+	_expect(pit_options.size() == 2, "荧光坑洞必须显示两个选项。")
 	_expect(
 		RogueEncounterRegistry.get_option_ids(
 			RogueEncounterRegistry.SLIME_TALKERS
@@ -131,6 +150,21 @@ func _test_content_configs() -> void:
 		and str(ghost_options[1].get("title", "")) == "你是？"
 		and str(ghost_options[1].get("description", "")).is_empty(),
 		"鬼影选项ID与文案必须稳定，“你是？”不得显示小字。"
+	)
+	_expect(
+		RogueEncounterRegistry.get_option_ids(
+			RogueEncounterRegistry.FLUORESCENT_PIT
+		) == [
+			RogueEncounterRegistry.OPTION_EXPLORE_PIT,
+			RogueEncounterRegistry.OPTION_LEAVE_PIT,
+		]
+		and str(pit_options[0].get("title", "")) == "往下探探！"
+		and str(pit_options[0].get("description", ""))
+		== "谁也无法阻挡我们的好奇心！"
+		and str(pit_options[1].get("title", "")) == "还是先走吧"
+		and str(pit_options[1].get("description", ""))
+		== "这么深的坑还是别继续了",
+		"荧光坑洞选项ID、顺序与策划文案必须稳定。"
 	)
 	var mutated := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.CHICKEN_BRO

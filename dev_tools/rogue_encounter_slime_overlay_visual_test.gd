@@ -25,7 +25,7 @@ func _run() -> void:
 		{1: PlayerCharacterRegistry.get_default_character_id(), 2: &"tiyi"}
 	)
 	overlay.apply_state({
-		"schema_version": 2,
+		"schema_version": 3,
 		"revision": 4,
 		"phase": "voting",
 		"node_id": 21,
@@ -49,6 +49,14 @@ func _run() -> void:
 		"economy_result": {},
 		"result_text": "",
 		"result_pages": [],
+		"round_index": 0,
+		"result_sequence": 0,
+		"disabled_option_ids": [],
+		"round_recipient_peer_ids": [],
+		"result_ack_peer_ids": [],
+		"terminal_result": false,
+		"run_failed": false,
+		"personal_result_pages": {},
 	})
 	await overlay.cover_map_for_encounter()
 	await overlay.reveal_encounter()

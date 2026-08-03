@@ -158,6 +158,12 @@ func _connect_route_signals() -> void:
 		_route.encounter_vote_requested.connect(
 			_on_local_encounter_vote_requested
 		)
+	if not _route.encounter_result_ack_requested.is_connected(
+		_on_local_encounter_result_ack_requested
+	):
+		_route.encounter_result_ack_requested.connect(
+			_on_local_encounter_result_ack_requested
+		)
 	if not _route.return_requested.is_connected(_on_return_requested):
 		_route.return_requested.connect(_on_return_requested)
 
@@ -186,6 +192,12 @@ func _disconnect_route_signals() -> void:
 	):
 		_route.encounter_vote_requested.disconnect(
 			_on_local_encounter_vote_requested
+		)
+	if _route.encounter_result_ack_requested.is_connected(
+		_on_local_encounter_result_ack_requested
+	):
+		_route.encounter_result_ack_requested.disconnect(
+			_on_local_encounter_result_ack_requested
 		)
 	if _route.return_requested.is_connected(_on_return_requested):
 		_route.return_requested.disconnect(_on_return_requested)
@@ -607,6 +619,27 @@ func _on_local_encounter_vote_requested(
 			)
 
 
+func _on_local_encounter_result_ack_requested(
+	occurrence_key: String,
+	result_sequence: int
+) -> void:
+	var local_peer_id := _get_local_peer_id()
+	if _is_host():
+		_route.host_submit_encounter_result_ack(
+			local_peer_id,
+			occurrence_key,
+			result_sequence
+		)
+	elif _is_client() and _has_network_peer():
+		var host_peer_id := _get_host_peer_id()
+		if host_peer_id > 0 and _is_peer_send_ready(host_peer_id):
+			net_route_encounter_result_ack.rpc_id(
+				host_peer_id,
+				occurrence_key,
+				result_sequence
+			)
+
+
 func _refresh_authoritative_snapshot_cache() -> bool:
 	if (
 		_route == null
@@ -937,6 +970,24 @@ func net_route_encounter_vote(
 		occurrence_key,
 		expected_revision,
 		option_id
+	):
+		_send_encounter_snapshot_to_peer(sender_id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_result_ack(
+	occurrence_key: String,
+	result_sequence: int
+) -> void:
+	if not _is_host() or _route == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0 or sender_id == _get_host_peer_id():
+		return
+	if not _route.host_submit_encounter_result_ack(
+		sender_id,
+		occurrence_key,
+		result_sequence
 	):
 		_send_encounter_snapshot_to_peer(sender_id)
 

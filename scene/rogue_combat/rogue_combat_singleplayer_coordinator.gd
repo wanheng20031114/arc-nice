@@ -156,6 +156,11 @@ func _on_normal_combat_requested(
 		_dispose_active_battle()
 		_recover_route_from_start_failure(occurrence_key)
 		return
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state != null:
+		battle.player.set_run_max_health_penalty(
+			run_state.get_max_health_penalty_for_peer(SINGLEPLAYER_PEER_ID)
+		)
 
 	# Game._ready() 会先应用普通模式的 1000 息壤。若选择继承，则在新增
 	# 战场后的首个物理帧前立即覆盖，确保玩家没有一帧使用错误经济状态。

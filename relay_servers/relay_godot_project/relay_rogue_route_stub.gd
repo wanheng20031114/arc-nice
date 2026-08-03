@@ -40,6 +40,14 @@ func net_route_encounter_vote(
 	pass
 
 
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_encounter_result_ack(
+	occurrence_key: String,
+	result_sequence: int
+) -> void:
+	pass
+
+
 @rpc("authority", "call_remote", "reliable", 0)
 func net_route_encounter_snapshot(
 	encounter_state: Dictionary,

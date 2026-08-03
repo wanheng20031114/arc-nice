@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=3]
+[gd_scene load_steps=29 format=3]
 
 [ext_resource type="Script" path="res://scene/test_arena/test_rogue_route_p3.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_board.tscn" id="2_board"]
@@ -16,6 +16,7 @@
 [ext_resource type="PackedScene" path="res://scene/rogue_combat/rogue_combat_result_overlay.tscn" id="14_combat_result"]
 [ext_resource type="Script" path="res://scene/rogue_combat/rogue_combat_singleplayer_coordinator.gd" id="15_single_combat_coordinator"]
 [ext_resource type="Resource" path="res://resources/config/rogue_combat/encounter_01.tres" id="16_combat_config"]
+[ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_run_defeat_overlay.tscn" id="17_run_defeat"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -121,6 +122,20 @@ corner_radius_bottom_left = 7
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_divider"]
 bg_color = Color(0.26, 0.57, 0.64, 0.48)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_core_background"]
+bg_color = Color(0.006, 0.023, 0.019, 0.92)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_core_fill"]
+bg_color = Color(0.28, 0.72, 0.94, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
 
 [node name="TestRogueRouteP3" type="Node2D"]
 script = ExtResource("1_script")
@@ -293,10 +308,48 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_divider")
 
 [node name="TopStats" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout"]
-custom_minimum_size = Vector2(345, 0)
+custom_minimum_size = Vector2(485, 0)
 layout_mode = 2
 alignment = 2
 theme_override_constants/separation = 8
+
+[node name="CoreStat" type="VBoxContainer" parent="HUD/Root/TopBar/TopLayout/TopStats"]
+custom_minimum_size = Vector2(132, 0)
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 0
+
+[node name="CoreRow" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout/TopStats/CoreStat"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 5
+
+[node name="CoreTitle" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats/CoreStat/CoreRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.75, 0.69, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 10
+text = "核心生命"
+vertical_alignment = 1
+
+[node name="CoreValue" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats/CoreStat/CoreRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.42, 0.82, 1, 1)
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 13
+text = "100/100"
+vertical_alignment = 1
+
+[node name="CoreProgress" type="ProgressBar" parent="HUD/Root/TopBar/TopLayout/TopStats/CoreStat"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(132, 3)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_core_background")
+theme_override_styles/fill = SubResource("StyleBoxFlat_core_fill")
+value = 100.0
+show_percentage = false
 
 [node name="ApIcon" type="TextureRect" parent="HUD/Root/TopBar/TopLayout/TopStats"]
 custom_minimum_size = Vector2(34, 34)
@@ -476,6 +529,8 @@ tooltip_text = "回到本地角色（Home）"
 [node name="MoveConfirmation" parent="." instance=ExtResource("13_move_confirmation")]
 
 [node name="CombatResultOverlay" parent="." instance=ExtResource("14_combat_result")]
+
+[node name="RunDefeatOverlay" parent="." instance=ExtResource("17_run_defeat")]
 
 [connection signal="node_pressed" from="World/RouteBoard" to="." method="_on_route_board_node_pressed"]
 [connection signal="pressed" from="HUD/Root/TopBar/TopLayout/ReturnButton" to="." method="_on_return_button_pressed"]

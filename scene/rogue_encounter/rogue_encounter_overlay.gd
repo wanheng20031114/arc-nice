@@ -9,6 +9,7 @@ signal vote_requested(
 )
 signal encounter_revealed(occurrence_key: String, expected_revision: int)
 signal result_hold_completed(occurrence_key: String, expected_revision: int)
+signal result_ack_requested(occurrence_key: String, result_sequence: int)
 signal encounter_hidden
 
 const PHASE_IDLE := &"idle"
@@ -81,6 +82,8 @@ var revealed_occurrence_key := ""
 var choice_cards: Array[RogueEncounterChoiceCard] = []
 var result_pages: Array[Dictionary] = []
 var result_page_index := 0
+var rendered_result_sequence := -1
+var last_ack_requested_result_sequence := -1
 
 
 func _ready() -> void:
@@ -121,6 +124,8 @@ func apply_state(new_state: Dictionary) -> void:
 		rendered_line = ""
 		rendered_phase = PHASE_IDLE
 		_reset_result_pages()
+		rendered_result_sequence = -1
+		last_ack_requested_result_sequence = -1
 		result_hold_serial += 1
 	var encounter_id := StringName(state.get("encounter_id", &""))
 	if encounter_id != rendered_encounter_id:
@@ -280,6 +285,8 @@ func hide_immediately() -> void:
 	option_reveal_cover.visible = false
 	typewriter.clear()
 	_reset_result_pages()
+	rendered_result_sequence = -1
+	last_ack_requested_result_sequence = -1
 
 
 func _input(event: InputEvent) -> void:
@@ -321,10 +328,14 @@ func _render_state(force: bool) -> void:
 	var phase := StringName(state.get("phase", PHASE_IDLE))
 	if phase == PHASE_IDLE:
 		return
+	var previous_phase := rendered_phase
 	rendered_phase = phase
 	if phase == PHASE_RESULT or phase == PHASE_COMPLETED:
 		_show_result(force)
 		return
+	if previous_phase in [PHASE_RESULT, PHASE_COMPLETED]:
+		result_hold_serial += 1
+		_reset_result_pages()
 	if phase == PHASE_RESOLVING:
 		_show_dialogue_page(
 			str(encounter_config.get("resolving_text", "遭遇正在结算……")),
@@ -416,6 +427,7 @@ func _play_option_reveal() -> void:
 
 func _show_result(force: bool) -> void:
 	var next_pages := _decode_result_pages(state.get("result_pages", []))
+	next_pages.append_array(_local_personal_result_pages())
 	if next_pages.is_empty():
 		var result_text := str(state.get("result_text", ""))
 		if result_text.is_empty():
@@ -432,7 +444,12 @@ func _show_result(force: bool) -> void:
 					true
 				)),
 			})
-	if next_pages != result_pages:
+	var next_result_sequence := int(state.get("result_sequence", 0))
+	if (
+		next_result_sequence != rendered_result_sequence
+		or next_pages != result_pages
+	):
+		rendered_result_sequence = next_result_sequence
 		result_pages = next_pages
 		result_page_index = 0
 		result_hold_serial += 1
@@ -541,6 +558,16 @@ func _on_typewriter_line_finished() -> void:
 		or rendered_phase not in [PHASE_RESULT, PHASE_COMPLETED]
 	):
 		return
+	if (
+		_result_requires_ack()
+		and rendered_result_sequence
+		!= last_ack_requested_result_sequence
+	):
+		last_ack_requested_result_sequence = rendered_result_sequence
+		result_ack_requested.emit(
+			occurrence_key,
+			rendered_result_sequence
+		)
 	result_hold_completed.emit(occurrence_key, expected_revision)
 
 
@@ -608,6 +635,29 @@ func _decode_result_pages(raw_pages: Variant) -> Array[Dictionary]:
 			"is_narration": bool(page.get("is_narration", false)),
 		})
 	return decoded
+
+
+func _local_personal_result_pages() -> Array[Dictionary]:
+	var raw_personal_pages: Variant = state.get("personal_result_pages", {})
+	if typeof(raw_personal_pages) != TYPE_DICTIONARY:
+		return []
+	var personal_pages := raw_personal_pages as Dictionary
+	var raw_pages: Variant = personal_pages.get(
+		local_peer_id,
+		personal_pages.get(str(local_peer_id), [])
+	)
+	return _decode_result_pages(raw_pages)
+
+
+func _result_requires_ack() -> bool:
+	if (
+		rendered_encounter_id != RogueEncounterRegistry.FLUORESCENT_PIT
+		or rendered_result_sequence <= 0
+	):
+		return false
+	return _to_int_array(
+		state.get("round_recipient_peer_ids", [])
+	).has(local_peer_id)
 
 
 func _reset_result_pages() -> void:

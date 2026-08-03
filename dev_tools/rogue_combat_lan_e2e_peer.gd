@@ -30,6 +30,9 @@ var host_spawn_ids: Array[int] = []
 var host_spawn_positions: Array[Vector2] = []
 var host_spawn_config_paths: PackedStringArray = []
 var host_spawn_ticks: PackedInt64Array = []
+var watched_coordinator: RogueCombatMultiplayerCoordinator = null
+var watched_result_overlay: RogueCombatResultOverlay = null
+var watched_settlement: Dictionary = {}
 
 
 func _init() -> void:
@@ -105,6 +108,7 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	if route == null or coordinator == null or not coordinator.is_enabled():
 		_fail("Host P3 runtime is missing the enabled combat coordinator")
 		return
+	_start_settlement_watch(coordinator, route)
 	if not route.is_route_ready():
 		_fail("Host route was not generated")
 		return
@@ -298,6 +302,7 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	if route == null or coordinator == null or not coordinator.is_enabled():
 		_fail("Client P3 runtime is missing the enabled combat coordinator")
 		return
+	_start_settlement_watch(coordinator, route)
 	if not await _wait_until(route.is_route_ready, NETWORK_TIMEOUT_SECONDS):
 		_fail("Client did not receive the initial route snapshot")
 		return
@@ -653,6 +658,8 @@ func _wait_for_settlement_and_result(
 	var captured := {}
 	var deadline := Time.get_ticks_msec() + int(COMBAT_TIMEOUT_SECONDS * 1000.0)
 	while Time.get_ticks_msec() < deadline:
+		if captured.is_empty() and not watched_settlement.is_empty():
+			captured = watched_settlement.duplicate(true)
 		var pending := coordinator.get("_pending_settlement") as Dictionary
 		if captured.is_empty() and not pending.is_empty():
 			captured = pending.duplicate(true)
@@ -663,8 +670,69 @@ func _wait_for_settlement_and_result(
 		):
 			return captured
 		await process_frame
+	print(
+		(
+			"ROGUE_COMBAT_LAN_%s_RESULT_TIMEOUT phase=%s pending=%d captured=%d "
+			+ "local_visible=%s overlay_visible=%s result_occurrence=%s"
+		) % [
+			label.to_upper(),
+			str(coordinator.get("_phase")),
+			(coordinator.get("_pending_settlement") as Dictionary).size(),
+			captured.size(),
+			str(bool(coordinator.get("_local_result_visible"))),
+			str(route.combat_result_overlay.visible),
+			str(coordinator.get("_local_result_occurrence_key")),
+		]
+	)
 	_fail("%s did not receive a victory settlement and visible result" % label)
 	return {}
+
+
+func _start_settlement_watch(
+	coordinator: RogueCombatMultiplayerCoordinator,
+	route: TestRogueRouteP3
+) -> void:
+	# terminal-safe 会立即释放战场协议并清空 _pending_settlement，但会按设计
+	# 保留各端独立的可见结算。探针从进入战斗起缓存结算，并监听结果层
+	# visibility_changed，在 show_victory 的同步调用栈内读取 Host 的短暂
+	# SETTLED 状态；只按帧轮询仍可能在一帧内同时 SETTLED -> IDLE 而错过。
+	watched_coordinator = coordinator
+	watched_result_overlay = route.combat_result_overlay
+	watched_settlement.clear()
+	var watcher := Callable(self, "_capture_pending_settlement")
+	if not process_frame.is_connected(watcher):
+		process_frame.connect(watcher)
+	if (
+		watched_result_overlay != null
+		and not watched_result_overlay.visibility_changed.is_connected(watcher)
+	):
+		watched_result_overlay.visibility_changed.connect(watcher)
+
+
+func _capture_pending_settlement() -> void:
+	if (
+		not watched_settlement.is_empty()
+		or watched_coordinator == null
+		or not is_instance_valid(watched_coordinator)
+	):
+		return
+	var pending := watched_coordinator.get("_pending_settlement") as Dictionary
+	if not pending.is_empty():
+		watched_settlement = pending.duplicate(true)
+
+
+func _stop_settlement_watch() -> void:
+	var watcher := Callable(self, "_capture_pending_settlement")
+	if process_frame.is_connected(watcher):
+		process_frame.disconnect(watcher)
+	if (
+		watched_result_overlay != null
+		and is_instance_valid(watched_result_overlay)
+		and watched_result_overlay.visibility_changed.is_connected(watcher)
+	):
+		watched_result_overlay.visibility_changed.disconnect(watcher)
+	watched_coordinator = null
+	watched_result_overlay = null
 
 
 func _validate_victory_settlement(
@@ -902,6 +970,7 @@ func _fail(message: String) -> void:
 
 
 func _finish(role: String) -> void:
+	_stop_settlement_watch()
 	if failures.is_empty():
 		print("ROGUE_COMBAT_LAN_%s_OK" % role.to_upper())
 		quit(0)

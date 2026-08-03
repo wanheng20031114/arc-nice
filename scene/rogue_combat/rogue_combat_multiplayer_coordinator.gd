@@ -501,6 +501,13 @@ func _configure_occurrence_runtime() -> bool:
 	):
 		_disable_standard_ambient_content(_combat_game)
 	_apply_xirang_map_to_game(_combat_game, _entry_xirang_by_peer)
+	for raw_peer_id in _participant_peer_ids.keys():
+		var peer_id := int(raw_peer_id)
+		var battle_player := _combat_game.get_player_for_peer(peer_id)
+		if battle_player != null and is_instance_valid(battle_player):
+			battle_player.set_run_max_health_penalty(
+				_run_state.get_max_health_penalty_for_peer(peer_id)
+			)
 	if not _combat_game.combat_outcome_started.is_connected(
 		_on_local_combat_outcome_started
 	):

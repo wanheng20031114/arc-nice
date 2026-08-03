@@ -126,8 +126,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 41,
-		"多人协议v41必须保留史莱姆多页结果与既有wire类型，并隔离鬼影wire ID。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 42,
+		"多人协议v42必须保留既有wire类型，并隔离荧光坑洞结算。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

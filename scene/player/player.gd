@@ -262,6 +262,7 @@ var _last_skill_activation_msec: int = -MIN_SKILL_ACTIVATION_INTERVAL_MSEC
 var _base_stats_initialized: bool = false
 var _base_move_speed: float = 0.0
 var _base_max_health: int = 0
+var _run_max_health_penalty: int = 0
 var _base_attack_damage: float = 0.0
 var _base_physical_defense: int = 0
 var _base_magic_defense: int = 0
@@ -1535,6 +1536,21 @@ func get_skill1_charge_rate_per_second() -> float:
 		+ maxf(collectible_skill_charge_bonus_per_second, 0.0)
 		+ _skill_charge_rate_modifier_total
 	)
+
+
+## 本局跨场景最大生命惩罚在角色、升级、收藏品和命运加成全部结算后扣除。
+## 角色加入场景树前也可以注入；_ready 的首次属性刷新会自然应用该值。
+func set_run_max_health_penalty(amount: int) -> void:
+	var clamped_amount := maxi(amount, 0)
+	if _run_max_health_penalty == clamped_amount:
+		return
+	_run_max_health_penalty = clamped_amount
+	if _base_stats_initialized and is_node_ready():
+		_refresh_collectible_stats()
+
+
+func get_run_max_health_penalty() -> int:
+	return _run_max_health_penalty
 
 
 ## Applies the tower-defense fate modifiers as absolute run state. Calling this
@@ -2856,7 +2872,7 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		roundi(
 			float(_base_max_health + max_health_bonus)
 			* tower_defense_fate_max_health_multiplier
-		),
+		) - _run_max_health_penalty,
 		1
 	)
 	move_speed = maxf(
@@ -2930,7 +2946,8 @@ func _get_collectible_health_condition_maximum(
 	for item in active_items:
 		result += item.collectible_max_health_bonus
 	return maxi(
-		roundi(float(result) * tower_defense_fate_max_health_multiplier),
+		roundi(float(result) * tower_defense_fate_max_health_multiplier)
+		- _run_max_health_penalty,
 		1
 	)
 

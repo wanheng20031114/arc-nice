@@ -107,6 +107,7 @@ func _run() -> void:
 	_test_mode_and_loading_contract()
 	await _test_lobby_contract()
 	await _test_snapshot_and_delta_contract()
+	await _test_fluorescent_pit_route_integration()
 	await _test_warehouse_route_persistence_contract()
 	_test_host_requires_character_confirmation()
 	_finish()
@@ -114,8 +115,8 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 41,
-		"协议 v41 必须保留举盾机器人与史莱姆协议，并隔离鬼影遭遇结果。"
+		NetConstants.PROTOCOL_VERSION == 42,
+		"协议 v42 必须保留既有遭遇，并隔离荧光坑洞多轮结算。"
 	)
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
@@ -257,6 +258,7 @@ func _test_snapshot_and_delta_contract() -> void:
 		&"net_route_move_delta",
 		&"net_route_encounter_intro_ack",
 		&"net_route_encounter_vote",
+		&"net_route_encounter_result_ack",
 		&"net_route_encounter_snapshot",
 	]:
 		var config := rpc_config.get(rpc_name, {}) as Dictionary
@@ -549,12 +551,27 @@ func _test_encounter_network_contract(
 		client_camera.get_instance_id() if client_camera != null else 0
 	)
 	var node_types := layout.get("node_types", PackedByteArray()) as PackedByteArray
+	var node_content_seeds := layout.get(
+		"node_content_seeds",
+		PackedInt64Array()
+	) as PackedInt64Array
 	var magical_node_id := -1
 	for node_id in node_types.size():
-		if int(node_types[node_id]) == RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER:
+		if (
+			int(node_types[node_id])
+			== RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+			and node_id < node_content_seeds.size()
+			and RogueEncounterRegistry.select_encounter(
+				RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+				int(node_content_seeds[node_id])
+			) != RogueEncounterRegistry.FLUORESCENT_PIT
+		):
 			magical_node_id = node_id
 			break
-	_expect(magical_node_id >= 0, "固定 P3 路线必须包含神奇遭遇节点。")
+	_expect(
+		magical_node_id >= 0,
+		"固定 P3 路线必须包含一个旧式单轮神奇遭遇节点。"
+	)
 	if magical_node_id < 0:
 		return
 	_expect(
@@ -843,6 +860,246 @@ func _test_encounter_network_contract(
 		and not bool(client_route.get("_route_reveal_input_locked")),
 		"中止新局入场动画后不得残留路线输入锁。"
 	)
+
+
+func _test_fluorescent_pit_route_integration() -> void:
+	var run_state := root.get_node_or_null("RunState") as RunStateStore
+	_expect(run_state != null, "荧光坑洞外层测试需要 RunState。")
+	if run_state == null:
+		return
+
+	# 放射性分支必须把最终生效后的真实最大生命前后值交给本地结果页，
+	# 而不是只显示累计惩罚账本的 0 -> 20。
+	run_state.begin_new_run(&"weishidaier", false)
+	var radiation_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	radiation_route.auto_initialize = false
+	radiation_route.manage_return_locally = true
+	root.add_child(radiation_route)
+	await process_frame
+	radiation_route.manage_return_locally = false
+	radiation_route.call("_reset_encounter_runtime", true)
+	var radiation_session := radiation_route.get_node(
+		"EncounterSession"
+	) as RogueEncounterSession
+	var health_before := radiation_route.player.max_health
+	var radiation_seed := _find_fluorescent_pit_seed_for_bucket(
+		8_400_000,
+		99,
+		100
+	)
+	_expect(
+		radiation_session.start_for_node(
+			840,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			radiation_seed,
+			[0]
+		),
+		"P3 路线必须能启动放射性荧光坑洞用例。"
+	)
+	var radiation_key := radiation_session.get_occurrence_key()
+	_expect(
+		radiation_route.host_submit_encounter_intro_ack(
+			0,
+			radiation_key,
+			radiation_session.get_revision()
+		)
+		and radiation_route.host_submit_encounter_vote(
+			0,
+			radiation_key,
+			radiation_session.get_revision(),
+			RogueEncounterEconomyCoordinator.OPTION_EXPLORE_PIT
+		),
+		"放射性坑洞用例必须完成开场确认与下探投票。"
+	)
+	var radiation_result := radiation_session.export_state()
+	var health_after := radiation_route.player.max_health
+	var overlay_state := radiation_route.encounter_overlay.state
+	var personal_pages := overlay_state.get(
+		"personal_result_pages",
+		{}
+	) as Dictionary
+	var local_pages := personal_pages.get(0, []) as Array
+	_expect(
+		StringName(radiation_result.get("phase", &"")) == &"result"
+		and health_after == maxi(health_before - 20, 1)
+		and local_pages.size() == 1
+		and str((local_pages[0] as Dictionary).get("text", ""))
+		== "最大生命：%d → %d" % [health_before, health_after],
+		"放射性结果页必须显示本地角色真实最大生命前后值。"
+	)
+	var radiation_ack_forwarder := func(
+		occurrence_key: String,
+		result_sequence: int
+	) -> void:
+		radiation_route.host_submit_encounter_result_ack(
+			0,
+			occurrence_key,
+			result_sequence
+		)
+	radiation_route.encounter_result_ack_requested.connect(
+		radiation_ack_forwarder
+	)
+	radiation_route.call(
+		"_on_encounter_result_ack_requested",
+		radiation_key,
+		int(radiation_result.get("result_sequence", 0))
+	)
+	_expect(
+		radiation_session.get_phase() == &"completed"
+		and bool(radiation_route.get("_encounter_input_locked")),
+		"P3 本地 ACK 路由必须以 occurrence + sequence 完成终局，并在退场期间保持锁定。"
+	)
+	await create_timer(
+		RogueEncounterOverlay.COVER_DURATION_SECONDS
+		+ RogueEncounterOverlay.REVEAL_DURATION_SECONDS
+		+ 0.08
+	).timeout
+	_expect(
+		not bool(radiation_route.get("_encounter_input_locked"))
+		and not (
+			radiation_route.get_node("RunDefeatOverlay")
+			as RogueRunDefeatOverlay
+		).visible,
+		"非败局强制离开应在转场后恢复路线，且不得显示战败层。"
+	)
+	radiation_route.queue_free()
+	await process_frame
+
+	# 核心归零必须先完成坑洞结果 ACK，再显示阻塞式战败确认。
+	run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		run_state.set_party_core_health(2, 100),
+		"核心归零外层测试应设置 2/100。"
+	)
+	var failure_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	failure_route.auto_initialize = false
+	failure_route.manage_return_locally = true
+	root.add_child(failure_route)
+	await process_frame
+	failure_route.manage_return_locally = false
+	failure_route.call("_reset_encounter_runtime", true)
+	var core_value := failure_route.get_node(
+		"HUD/Root/TopBar/TopLayout/TopStats/CoreStat/CoreRow/CoreValue"
+	) as Label
+	var core_progress := failure_route.get_node(
+		"HUD/Root/TopBar/TopLayout/TopStats/CoreStat/CoreProgress"
+	) as ProgressBar
+	_expect(
+		core_value.text == "2/100"
+		and is_equal_approx(core_progress.value, 2.0),
+		"P3 静态核心 HUD 必须读取共享账本当前值。"
+	)
+	var failure_session := failure_route.get_node(
+		"EncounterSession"
+	) as RogueEncounterSession
+	var fall_seed := _find_fluorescent_pit_seed_for_bucket(
+		8_500_000,
+		50,
+		80
+	)
+	_expect(
+		failure_session.start_for_node(
+			850,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			fall_seed,
+			[0]
+		),
+		"P3 路线必须能启动踩空归零用例。"
+	)
+	var failure_key := failure_session.get_occurrence_key()
+	_expect(
+		failure_route.host_submit_encounter_intro_ack(
+			0,
+			failure_key,
+			failure_session.get_revision()
+		)
+		and failure_route.host_submit_encounter_vote(
+			0,
+			failure_key,
+			failure_session.get_revision(),
+			RogueEncounterEconomyCoordinator.OPTION_EXPLORE_PIT
+		),
+		"踩空归零用例必须完成开场确认与下探投票。"
+	)
+	var failure_result := failure_session.export_state()
+	_expect(
+		bool(failure_result.get("run_failed", false))
+		and core_value.text == "0/100"
+		and is_zero_approx(core_progress.value),
+		"共享核心 2 -> 0 时 P3 HUD 必须同步归零且 Session 标记败局。"
+	)
+	var failure_ack_forwarder := func(
+		occurrence_key: String,
+		result_sequence: int
+	) -> void:
+		failure_route.host_submit_encounter_result_ack(
+			0,
+			occurrence_key,
+			result_sequence
+		)
+	failure_route.encounter_result_ack_requested.connect(failure_ack_forwarder)
+	failure_route.call(
+		"_on_encounter_result_ack_requested",
+		failure_key,
+		int(failure_result.get("result_sequence", 0))
+	)
+	await create_timer(
+		RogueEncounterOverlay.COVER_DURATION_SECONDS
+		+ RogueEncounterOverlay.REVEAL_DURATION_SECONDS
+		+ 0.08
+	).timeout
+	var defeat_overlay := failure_route.get_node(
+		"RunDefeatOverlay"
+	) as RogueRunDefeatOverlay
+	_expect(
+		defeat_overlay.visible
+		and bool(failure_route.get("_encounter_input_locked"))
+		and defeat_overlay.title_label.text == "战败"
+		and defeat_overlay.reason_label.text == "核心生命值归0，游戏结束"
+		and defeat_overlay.confirm_button.text == "返回多人大厅",
+		"核心归零必须在结果页完成后显示多人战败确认并继续锁定路线。"
+	)
+	var return_events := {"count": 0}
+	failure_route.return_requested.connect(
+		func() -> void:
+			return_events["count"] = int(return_events["count"]) + 1
+	)
+	defeat_overlay.confirm_button.pressed.emit()
+	_expect(
+		int(return_events["count"]) == 1 and not defeat_overlay.visible,
+		"多人战败确认必须只请求一次返回大厅。"
+	)
+	defeat_overlay.show_defeat(false)
+	_expect(
+		defeat_overlay.confirm_button.text == "返回主菜单",
+		"同一战败层在单人模式必须明确返回主菜单。"
+	)
+	defeat_overlay.hide_immediately()
+	failure_route.queue_free()
+	await process_frame
+
+
+func _find_fluorescent_pit_seed_for_bucket(
+	start_seed: int,
+	minimum_bucket: int,
+	exclusive_maximum_bucket: int
+) -> int:
+	for offset in 100_000:
+		var candidate := start_seed + offset
+		if RogueEncounterRegistry.select_encounter(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			candidate
+		) != RogueEncounterRegistry.FLUORESCENT_PIT:
+			continue
+		var bucket := RogueEncounterRandom.choose_index(
+			candidate,
+			&"fluorescent_pit_outcome|round:0",
+			100
+		)
+		if bucket >= minimum_bucket and bucket < exclusive_maximum_bucket:
+			return candidate
+	push_error("无法为 P3 外层测试找到荧光坑洞概率桶 seed。")
+	return start_seed
 
 
 func _test_avatar_validation_contract(

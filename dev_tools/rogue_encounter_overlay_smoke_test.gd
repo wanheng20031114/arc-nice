@@ -178,6 +178,7 @@ func _run() -> void:
 	await _test_completed_state_waits_for_local_result_hold()
 	await _test_slime_content_three_choices_and_result_pages()
 	await _test_ghost_shadow_presentation_and_results()
+	await _test_personal_result_page_and_ack_request()
 
 	if failures.is_empty():
 		print("ROGUE_ENCOUNTER_OVERLAY_SMOKE_TEST_OK")
@@ -190,7 +191,7 @@ func _run() -> void:
 
 func _make_intro_state() -> Dictionary:
 	return {
-		"schema_version": 1,
+		"schema_version": 3,
 		"revision": 1,
 		"phase": "intro",
 		"node_id": 12,
@@ -212,6 +213,15 @@ func _make_intro_state() -> Dictionary:
 		"winning_option": "",
 		"economy_result": {},
 		"result_text": "",
+		"result_pages": [],
+		"round_index": 0,
+		"result_sequence": 0,
+		"disabled_option_ids": [],
+		"round_recipient_peer_ids": [],
+		"result_ack_peer_ids": [],
+		"terminal_result": false,
+		"run_failed": false,
+		"personal_result_pages": {},
 	}
 
 
@@ -231,7 +241,7 @@ func _make_slime_intro_state() -> Dictionary:
 
 func _make_ghost_state() -> Dictionary:
 	return {
-		"schema_version": 1,
+		"schema_version": 3,
 		"revision": 1,
 		"phase": "intro",
 		"node_id": 81,
@@ -253,6 +263,15 @@ func _make_ghost_state() -> Dictionary:
 		"winning_option": "",
 		"economy_result": {},
 		"result_text": "",
+		"result_pages": [],
+		"round_index": 0,
+		"result_sequence": 0,
+		"disabled_option_ids": [],
+		"round_recipient_peer_ids": [],
+		"result_ack_peer_ids": [],
+		"terminal_result": false,
+		"run_failed": false,
+		"personal_result_pages": {},
 	}
 
 
@@ -629,6 +648,75 @@ func _test_ghost_shadow_presentation_and_results() -> void:
 	_expect(
 		local_hold_count[0] == 1,
 		"鬼影结果显示完成后必须沿用通用离场信号。"
+	)
+	overlay.hide_immediately()
+	overlay.free()
+
+
+func _test_personal_result_page_and_ack_request() -> void:
+	var overlay := OVERLAY_SCENE.instantiate() as RogueEncounterOverlay
+	root.add_child(overlay)
+	overlay.configure_local_context(101, {101: "玩家一", 202: "玩家二"}, {})
+	var ack_requests: Array[Dictionary] = []
+	overlay.result_ack_requested.connect(
+		func(key: String, sequence: int) -> void:
+			ack_requests.append({"key": key, "sequence": sequence})
+	)
+	overlay.visible = true
+	overlay.encounter_content.visible = true
+	overlay.encounter_is_revealed = true
+	var result := _make_intro_state()
+	result["node_id"] = 101
+	result["node_content_seed"] = 99101
+	result["occurrence_key"] = "101:99101"
+	result["encounter_id"] = "fluorescent_pit"
+	result["participant_peer_ids"] = [101, 202]
+	result["active_peer_ids"] = [101, 202]
+	result["intro_confirmed_peer_ids"] = [101, 202]
+	result["revision"] = 8
+	result["phase"] = "result"
+	result["result_sequence"] = 3
+	result["round_recipient_peer_ids"] = [101, 202]
+	result["result_pages"] = [{
+		"speaker": "",
+		"text": "捡到一个亮晶晶的物品",
+		"is_narration": true,
+	}]
+	result["personal_result_pages"] = {
+		101: [{
+			"speaker": "",
+			"text": "获得：测试收藏品（普通）",
+			"is_narration": true,
+		}],
+		202: [{
+			"speaker": "",
+			"text": "背包已满，未获得：另一件收藏品（史诗）",
+			"is_narration": true,
+		}],
+	}
+	overlay.apply_state(result)
+	_expect(
+		overlay.result_pages.size() == 2
+		and str(overlay.result_pages[1].get("text", ""))
+		== "获得：测试收藏品（普通）",
+		"结果页必须只拼接本地玩家的个人明细，不能泄露其他玩家页面。"
+	)
+	overlay.typewriter.finish_line()
+	await create_timer(RogueEncounterOverlay.RESULT_PAGE_GAP_SECONDS + 0.08).timeout
+	overlay.typewriter.finish_line()
+	await create_timer(RogueEncounterOverlay.RESULT_HOLD_SECONDS + 0.08).timeout
+	_expect(
+		ack_requests == [{"key": "101:99101", "sequence": 3}],
+		"通用页与本地个人页播放完并停留1.5秒后，应按结果序号恰好请求一次ACK。"
+	)
+	var replay := result.duplicate(true)
+	replay["revision"] = 9
+	replay["result_ack_peer_ids"] = [202]
+	overlay.apply_state(replay)
+	await create_timer(0.05).timeout
+	_expect(
+		ack_requests.size() == 1,
+		"同一结果序号的ACK快照更新不得重复触发结果播放或ACK请求。"
 	)
 	overlay.hide_immediately()
 	overlay.free()

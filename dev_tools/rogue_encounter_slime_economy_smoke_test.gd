@@ -40,8 +40,8 @@ func _test_economy_snapshot_schema() -> void:
 	_expect(
 		int(snapshot.get("schema_version", -1))
 		== RogueEncounterEconomyCoordinator.SCHEMA_VERSION
-		and RogueEncounterEconomyCoordinator.SCHEMA_VERSION == 2,
-		"新增权威息壤账本后，遭遇经济外层快照必须使用schema 2。"
+		and RogueEncounterEconomyCoordinator.SCHEMA_VERSION == 3,
+		"新增队伍状态账本后，遭遇经济外层快照必须使用schema 3。"
 	)
 	_expect(
 		int((snapshot.get("party_economy", {}) as Dictionary).get(

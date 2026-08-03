@@ -6,6 +6,7 @@ const MAGICAL_ENCOUNTER_POOL := &"magical_encounter"
 const CHICKEN_BRO := &"chicken_bro"
 const SLIME_TALKERS := &"slime_talkers"
 const GHOST_SHADOW := &"ghost_shadow"
+const FLUORESCENT_PIT := &"fluorescent_pit"
 
 const OPTION_PURCHASE_BASKETBALL := &"purchase_basketball"
 const OPTION_ASK_FOR_FREE := &"ask_for_free"
@@ -14,6 +15,8 @@ const OPTION_KICK_SLIMES := &"kick_slimes"
 const OPTION_LEAVE_SLIMES := &"leave_slimes"
 const OPTION_GHOST_RUN_AWAY := &"ghost_run_away"
 const OPTION_GHOST_WHO_ARE_YOU := &"ghost_who_are_you"
+const OPTION_EXPLORE_PIT := &"explore_pit"
+const OPTION_LEAVE_PIT := &"leave_pit"
 
 const MAX_VISIBLE_OPTIONS := 3
 
@@ -120,10 +123,45 @@ const _CONTENT_CONFIGS := {
 			},
 		],
 	},
+	FLUORESCENT_PIT: {
+		"display_name": "荧光坑洞",
+		"portrait_texture_path": (
+			"res://resources/texture/rogue_encounter/fluorescent_pit.png"
+		),
+		"encounter_hint": "深不见底的遗址裂隙",
+		"intro_speaker": "",
+		"intro_text": "一道幽蓝的微光从坑洞深处传来",
+		"intro_is_narration": true,
+		"resolving_speaker": "",
+		"resolving_text": "众人正小心翼翼地向下探寻……",
+		"resolving_is_narration": true,
+		"result_status": "坑洞深处传来了新的动静",
+		"default_result_speaker": "",
+		"default_result_is_narration": true,
+		"options": [
+			{
+				"option_id": OPTION_EXPLORE_PIT,
+				"title": "往下探探！",
+				"description": "谁也无法阻挡我们的好奇心！",
+				"icon_texture_path": "",
+			},
+			{
+				"option_id": OPTION_LEAVE_PIT,
+				"title": "还是先走吧",
+				"description": "这么深的坑还是别继续了",
+				"icon_texture_path": "",
+			},
+		],
+	},
 }
 
 const _POOLS := {
-	MAGICAL_ENCOUNTER_POOL: [CHICKEN_BRO, SLIME_TALKERS, GHOST_SHADOW],
+	MAGICAL_ENCOUNTER_POOL: [
+		CHICKEN_BRO,
+		SLIME_TALKERS,
+		GHOST_SHADOW,
+		FLUORESCENT_PIT,
+	],
 }
 
 
