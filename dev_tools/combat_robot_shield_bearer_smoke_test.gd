@@ -121,14 +121,14 @@ func _test_resource_and_scene_contract() -> void:
 	_expect(
 		body_shape != null
 		and body_shape.shape is RectangleShape2D
-		and (body_shape.shape as RectangleShape2D).size == Vector2(14, 16),
-		"本体世界碰撞必须保持14×16方盒。"
+		and (body_shape.shape as RectangleShape2D).size == Vector2(8, 16),
+		"本体世界碰撞必须保持8×16窄方盒。"
 	)
 	_expect(
 		touch_shape != null
 		and touch_shape.shape is RectangleShape2D
-		and (touch_shape.shape as RectangleShape2D).size == Vector2(14, 16),
-		"接触伤害区域必须保持14×16方盒且不包含盾牌。"
+		and (touch_shape.shape as RectangleShape2D).size == Vector2(8, 16),
+		"接触伤害区域必须保持8×16窄方盒且不包含盾牌。"
 	)
 	_expect(
 		shield_root != null

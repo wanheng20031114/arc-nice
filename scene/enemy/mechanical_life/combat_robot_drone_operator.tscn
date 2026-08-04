@@ -1,69 +1,90 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene format=3 uid="uid://ddqgfny8rf4b1"]
 
-[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_drone_operator.gd" id="2_script"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_drone_operator.tres" id="3_frames"]
-[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="4_shader"]
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://dij5oj5elibqn" path="res://scene/enemy/mechanical_life/combat_robot_drone_operator.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://cmfqfaheh4fbb" path="res://resources/animation/combat_robot_drone_operator.tres" id="3_frames"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="4_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
-resource_local_to_scene = false
 shader = ExtResource("4_shader")
+shader_parameter/blink_enabled = false
+shader_parameter/blink_speed = 12.0
+shader_parameter/hidden_ratio = 0.5
+shader_parameter/dodge_effect_strength = 0.0
+shader_parameter/dodge_sweep = 0.0
+shader_parameter/dodge_color = Color(0.42, 0.95, 1, 1)
+shader_parameter/dodge_flash_color = Color(1, 1, 1, 1)
+shader_parameter/dodge_outline_width = 3.0
+shader_parameter/dash_effect_strength = 0.0
+shader_parameter/dash_direction = Vector2(1, 0)
+shader_parameter/dash_color = Color(0.12, 1.45, 1.3, 1)
+shader_parameter/dash_trail_pixels = 4.0
+shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
+shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
+shader_parameter/burn_edge_width = 2.0
+shader_parameter/bleed_overlay_color = Color(0.95, 0.02, 0.08, 0.58)
+shader_parameter/bleed_outline_width = 2.0
+shader_parameter/electric_attachment_overlay_color = Color(0.2, 1.18, 1.32, 0.72)
+shader_parameter/revive_glow_strength = 0.0
+shader_parameter/revive_glow_color = Color(3.2, 3.2, 3.2, 1)
+shader_parameter/revive_glow_outline_width = 4.5
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_7ev4l"]
 resource_local_to_scene = true
-size = Vector2(14, 16)
+size = Vector2(8, 17)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_xo45x"]
 resource_local_to_scene = true
-size = Vector2(14, 16)
+size = Vector2(8, 17)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_attack_sense"]
 resource_local_to_scene = true
 radius = 80.0
 
-[node name="CombatRobotDroneOperator" instance=ExtResource("1_base")]
+[node name="CombatRobotDroneOperator" unique_id=137575064 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 4.0
 
-[node name="AnimatedSprite2D" parent="." index="0"]
-material = SubResource("ShaderMaterial_status")
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 1
+material = SubResource("ShaderMaterial_status")
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
 
-[node name="CollisionShape2D" parent="." index="1"]
-position = Vector2(0, 2)
-shape = SubResource("RectangleShape2D_body")
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(0, 1.5)
+shape = SubResource("RectangleShape2D_7ev4l")
 
-[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
-position = Vector2(0, 2)
-shape = SubResource("RectangleShape2D_touch")
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(0, 1.5)
+shape = SubResource("RectangleShape2D_xo45x")
 
-[node name="AttackSenseArea" type="Area2D" parent="." index="5"]
+[node name="AttackSenseArea" type="Area2D" parent="." index="5" unique_id=56005700]
 collision_layer = 0
 collision_mask = 514
 monitorable = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="AttackSenseArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AttackSenseArea" index="0" unique_id=1157301697]
 shape = SubResource("CircleShape2D_attack_sense")
+debug_color = Color(0.5764706, 0.5411765, 0.34901962, 0.1254902)
 
-[node name="DeployTimer" type="Timer" parent="." index="6"]
+[node name="DeployTimer" type="Timer" parent="." index="6" unique_id=393249522]
 process_callback = 0
 wait_time = 0.1
 one_shot = true
 
-[node name="CooldownTimer" type="Timer" parent="." index="7"]
+[node name="CooldownTimer" type="Timer" parent="." index="7" unique_id=1984219094]
 process_callback = 0
 wait_time = 3.0
 one_shot = true
 
-[node name="BlockedRetryTimer" type="Timer" parent="." index="8"]
+[node name="BlockedRetryTimer" type="Timer" parent="." index="8" unique_id=1666794368]
 process_callback = 0
 wait_time = 0.35
 one_shot = true
 
-[node name="DroneSpawn" type="Marker2D" parent="." index="9"]
+[node name="DroneSpawn" type="Marker2D" parent="." index="9" unique_id=351997409]
 
 [connection signal="body_entered" from="AttackSenseArea" to="." method="_on_attack_sense_area_body_entered"]
 [connection signal="body_exited" from="AttackSenseArea" to="." method="_on_attack_sense_area_body_exited"]

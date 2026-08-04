@@ -1,27 +1,27 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene format=3 uid="uid://dfe2qw0euqcb5"]
 
-[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_shield_bearer.gd" id="2_script"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_intact.tres" id="3_intact"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_cracked.tres" id="4_cracked"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_critical.tres" id="5_critical"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_broken.tres" id="6_broken"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_fx.tres" id="7_fx"]
-[ext_resource type="Script" path="res://scene/enemy/projectile_shield_area.gd" id="8_shield_area"]
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://daf7hvt3yw7se" path="res://scene/enemy/mechanical_life/combat_robot_shield_bearer.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://cmv5ws1l1rtv1" path="res://resources/animation/combat_robot_shield_bearer_intact.tres" id="3_intact"]
+[ext_resource type="SpriteFrames" uid="uid://cnh0r2aj81urw" path="res://resources/animation/combat_robot_shield_bearer_cracked.tres" id="4_cracked"]
+[ext_resource type="SpriteFrames" uid="uid://2koj0atuawe1" path="res://resources/animation/combat_robot_shield_bearer_critical.tres" id="5_critical"]
+[ext_resource type="SpriteFrames" uid="uid://d0eshj7ronhti" path="res://resources/animation/combat_robot_shield_bearer_broken.tres" id="6_broken"]
+[ext_resource type="SpriteFrames" uid="uid://8sp4jun1nmoj" path="res://resources/animation/combat_robot_shield_bearer_fx.tres" id="7_fx"]
+[ext_resource type="Script" uid="uid://ck145jsstof6a" path="res://scene/enemy/projectile_shield_area.gd" id="8_shield_area"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_uicnc"]
 resource_local_to_scene = true
-size = Vector2(14, 16)
+size = Vector2(8, 16)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_dagwq"]
 resource_local_to_scene = true
-size = Vector2(14, 16)
+size = Vector2(8, 16)
 
 [sub_resource type="ConvexPolygonShape2D" id="ConvexPolygonShape2D_shield"]
 resource_local_to_scene = true
 points = PackedVector2Array(-1, -9, 1, -9, 2, -8, 2, 7, 1, 8, -2, 8, -3, 7, -3, -7)
 
-[node name="CombatRobotShieldBearer" instance=ExtResource("1_base")]
+[node name="CombatRobotShieldBearer" unique_id=756098210 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 4.0
@@ -30,33 +30,32 @@ cracked_sprite_frames = ExtResource("4_cracked")
 critical_sprite_frames = ExtResource("5_critical")
 broken_sprite_frames = ExtResource("6_broken")
 
-[node name="AnimatedSprite2D" parent="." index="0"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 1
 sprite_frames = ExtResource("3_intact")
 animation = &"move"
 
-[node name="CollisionShape2D" parent="." index="1"]
-position = Vector2(0, 2)
-shape = SubResource("RectangleShape2D_body")
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(0, 1)
+shape = SubResource("RectangleShape2D_uicnc")
 
-[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
-position = Vector2(0, 2)
-shape = SubResource("RectangleShape2D_touch")
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(0, 1)
+shape = SubResource("RectangleShape2D_dagwq")
 
-[node name="ShieldFacingRoot" type="Node2D" parent="." index="5"]
+[node name="ShieldFacingRoot" type="Node2D" parent="." index="5" unique_id=356137340]
 position = Vector2(11, 1)
 
-[node name="ProjectileShieldArea" type="Area2D" parent="ShieldFacingRoot"]
+[node name="ProjectileShieldArea" type="Area2D" parent="ShieldFacingRoot" index="0" unique_id=2074078665]
 collision_layer = 4096
 collision_mask = 0
 monitoring = false
-monitorable = true
 script = ExtResource("8_shield_area")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="ShieldFacingRoot/ProjectileShieldArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ShieldFacingRoot/ProjectileShieldArea" index="0" unique_id=1978966015]
 shape = SubResource("ConvexPolygonShape2D_shield")
 
-[node name="ShieldFxSprite" type="AnimatedSprite2D" parent="ShieldFacingRoot"]
+[node name="ShieldFxSprite" type="AnimatedSprite2D" parent="ShieldFacingRoot" index="1" unique_id=117084614]
 visible = false
 z_index = 3
 texture_filter = 1

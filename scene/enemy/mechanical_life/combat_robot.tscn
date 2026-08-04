@@ -1,52 +1,53 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://c16yfxfaap5l2"]
 
-[ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot.gd" id="2_script"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot.tres" id="3_frames"]
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://bcgfig6bnsi3p" path="res://scene/enemy/mechanical_life/combat_robot.gd" id="2_script"]
+[ext_resource type="SpriteFrames" uid="uid://bglphdi3vj2j4" path="res://resources/animation/combat_robot.tres" id="3_frames"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_82cvi"]
 resource_local_to_scene = true
-size = Vector2(14, 16)
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
-resource_local_to_scene = true
-size = Vector2(14, 16)
+size = Vector2(8, 15)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_sword_body"]
 resource_local_to_scene = true
-size = Vector2(10, 3)
+size = Vector2(7, 3)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_41bts"]
+resource_local_to_scene = true
+size = Vector2(8, 15)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_sword_touch"]
 resource_local_to_scene = true
-size = Vector2(10, 3)
+size = Vector2(7, 3)
 
-[node name="CombatRobot" instance=ExtResource("1_base")]
+[node name="CombatRobot" unique_id=381357564 instance=ExtResource("1_base")]
 script = ExtResource("2_script")
 path_refresh_interval = 0.25
 waypoint_arrival_distance = 4.0
 
-[node name="AnimatedSprite2D" parent="." index="0"]
+[node name="AnimatedSprite2D" parent="." index="0" unique_id=1398407782]
 texture_filter = 1
 sprite_frames = ExtResource("3_frames")
 animation = &"move"
+frame_progress = 0.45677757
 
-[node name="CollisionShape2D" parent="." index="1"]
-position = Vector2(0, 2)
-shape = SubResource("RectangleShape2D_body")
+[node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
+position = Vector2(0, 2.5)
+shape = SubResource("RectangleShape2D_82cvi")
 
-[node name="SwordCollisionShape2D" type="CollisionShape2D" parent="." index="2"]
-position = Vector2(10, 0)
+[node name="SwordCollisionShape2D" type="CollisionShape2D" parent="." index="2" unique_id=1867632121]
+position = Vector2(7.5, 7)
 shape = SubResource("RectangleShape2D_sword_body")
 
-[node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
-position = Vector2(0, 2)
-shape = SubResource("RectangleShape2D_touch")
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
+position = Vector2(0, 2.5)
+shape = SubResource("RectangleShape2D_41bts")
 
-[node name="SwordCollisionShape2D" type="CollisionShape2D" parent="TouchDamageArea" index="1"]
-position = Vector2(10, 0)
+[node name="SwordCollisionShape2D" type="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="1" unique_id=1913047299]
+position = Vector2(7.5, 7)
 shape = SubResource("RectangleShape2D_sword_touch")
 
-[node name="WindupWarning" type="Polygon2D" parent="." index="7"]
+[node name="WindupWarning" type="Polygon2D" parent="." index="6" unique_id=1168673443]
 visible = false
 z_index = 1
 color = Color(1, 0.28, 0.08, 0.06)

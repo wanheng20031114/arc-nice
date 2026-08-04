@@ -1,11 +1,15 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene format=3 uid="uid://du7m837uopo0d"]
 
-[ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_suicide_drone.gd" id="1_script"]
-[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_suicide_drone.tres" id="2_frames"]
+[ext_resource type="Script" uid="uid://7i5ffsp1bxv4" path="res://scene/enemy/mechanical_life/combat_robot_suicide_drone.gd" id="1_script"]
+[ext_resource type="SpriteFrames" uid="uid://c8eetasmgcm3o" path="res://resources/animation/combat_robot_suicide_drone.tres" id="2_frames"]
 [ext_resource type="Material" path="res://resources/shader/rapid_projectile_single_pass.tres" id="3_projectile_material"]
-[ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="4_emission_shader"]
-[ext_resource type="AudioStream" path="res://resources/audio/capoo_rpg_launch.wav" id="5_launch_audio"]
-[ext_resource type="AudioStream" path="res://resources/audio/cowboy_explosion.wav" id="6_explosion_audio"]
+[ext_resource type="Shader" uid="uid://wvfodiby561n" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="4_emission_shader"]
+[ext_resource type="AudioStream" uid="uid://312idcw43nv8" path="res://resources/audio/capoo_rpg_launch.wav" id="5_launch_audio"]
+[ext_resource type="AudioStream" uid="uid://bogl46dtqkano" path="res://resources/audio/cowboy_explosion.wav" id="6_explosion_audio"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
+resource_local_to_scene = true
+radius = 28.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_explosion_emission"]
 shader = ExtResource("4_emission_shader")
@@ -14,55 +18,48 @@ shader_parameter/threshold_softness = 0.12
 shader_parameter/emission_strength = 0.9
 shader_parameter/emission_tint = Color(1.1, 0.48, 0.2, 0.7)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_explosion"]
-resource_local_to_scene = true
-radius = 28.0
-
-[node name="CombatRobotSuicideDrone" type="Node2D" groups=["runtime_projectiles"]]
-z_index = 3
+[node name="CombatRobotSuicideDrone" type="Node2D" unique_id=279343445 groups=["runtime_projectiles"]]
 top_level = true
+z_index = 3
 script = ExtResource("1_script")
 explosion_shape = SubResource("CircleShape2D_explosion")
 
-[node name="DroneSprite" type="AnimatedSprite2D" parent="."]
-visible = false
-material = ExtResource("3_projectile_material")
+[node name="DroneSprite" type="AnimatedSprite2D" parent="." unique_id=267520179]
 texture_filter = 1
+material = ExtResource("3_projectile_material")
 sprite_frames = ExtResource("2_frames")
 animation = &"fly"
 
-[node name="TargetMarker" type="AnimatedSprite2D" parent="."]
+[node name="TargetMarker" type="AnimatedSprite2D" parent="." unique_id=1722498017]
 visible = false
 z_index = 1
 texture_filter = 1
 sprite_frames = ExtResource("2_frames")
 animation = &"target"
 
-[node name="ExplosionSprite" type="AnimatedSprite2D" parent="."]
+[node name="ExplosionSprite" type="AnimatedSprite2D" parent="." unique_id=1205804965]
 visible = false
 z_index = 2
 texture_filter = 1
 sprite_frames = ExtResource("2_frames")
 animation = &"explode"
 
-[node name="EmissionOverlay" type="AnimatedSprite2D" parent="ExplosionSprite"]
-material = SubResource("ShaderMaterial_explosion_emission")
+[node name="EmissionOverlay" type="AnimatedSprite2D" parent="ExplosionSprite" unique_id=1347111191]
 texture_filter = 1
+material = SubResource("ShaderMaterial_explosion_emission")
 sprite_frames = ExtResource("2_frames")
 animation = &"explode"
 
-[node name="LaunchAudio" type="AudioStreamPlayer2D" parent="."]
+[node name="LaunchAudio" type="AudioStreamPlayer2D" parent="." unique_id=13752469]
 stream = ExtResource("5_launch_audio")
-bus = &"SFX"
 volume_db = -18.0
 max_distance = 180.0
-max_polyphony = 1
-
-[node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="."]
-stream = ExtResource("6_explosion_audio")
 bus = &"SFX"
+
+[node name="ExplosionAudio" type="AudioStreamPlayer2D" parent="." unique_id=873576188]
+stream = ExtResource("6_explosion_audio")
 volume_db = -12.0
 max_distance = 220.0
-max_polyphony = 1
+bus = &"SFX"
 
 [connection signal="finished" from="ExplosionAudio" to="." method="_on_explosion_audio_finished"]

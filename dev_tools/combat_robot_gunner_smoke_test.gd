@@ -203,7 +203,7 @@ func _test_resource_and_scene_contract() -> void:
 	var body_shape := gunner.get_node("CollisionShape2D") as CollisionShape2D
 	var touch_shape := gunner.get_node("TouchDamageArea/CollisionShape2D") as CollisionShape2D
 	_expect(sprite != null, "Scene must own its main AnimatedSprite2D.")
-	_expect(muzzle != null and muzzle.position == Vector2(14, 1), "Muzzle must be authored at (14, 1).")
+	_expect(muzzle != null and muzzle.position == Vector2(11, 2), "Muzzle must be authored at (11, 2).")
 	_expect(gunner.get_node_or_null("MuzzleFlash") == null, "Atlas frames must replace polygon muzzle flash.")
 	_expect(
 		attack_audio != null
@@ -214,12 +214,12 @@ func _test_resource_and_scene_contract() -> void:
 	_expect(gunner.combat_sense_update_interval_frames == 3, "Sensing must wait at most two ticks.")
 	_expect(
 		body_shape.shape is RectangleShape2D
-		and (body_shape.shape as RectangleShape2D).size == Vector2(14, 16),
+		and (body_shape.shape as RectangleShape2D).size == Vector2(8, 17),
 		"Body collision must match the box chassis."
 	)
 	_expect(
 		touch_shape.shape is RectangleShape2D
-		and (touch_shape.shape as RectangleShape2D).size == Vector2(14, 16)
+		and (touch_shape.shape as RectangleShape2D).size == Vector2(8, 17)
 		and touch_shape.shape != body_shape.shape,
 		"Touch collision must use an independent box shape."
 	)

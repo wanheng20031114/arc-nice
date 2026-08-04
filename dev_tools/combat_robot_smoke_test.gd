@@ -152,16 +152,16 @@ func _test_resource_and_scene_contract() -> void:
 			"Chassis/sword and body/touch shapes must all be independent resources."
 		)
 		_expect(
-			(body_shapes[0].shape as RectangleShape2D).size == Vector2(14, 16),
+			(body_shapes[0].shape as RectangleShape2D).size == Vector2(8, 15),
 			"Body collision size must match the box-shaped chassis."
 		)
 		_expect(
-			(touch_shapes[0].shape as RectangleShape2D).size == Vector2(14, 16),
+			(touch_shapes[0].shape as RectangleShape2D).size == Vector2(8, 15),
 			"Touch collision size must match the box-shaped chassis."
 		)
 		_expect(
-			(body_shapes[1].shape as RectangleShape2D).size == Vector2(10, 3)
-			and (touch_shapes[1].shape as RectangleShape2D).size == Vector2(10, 3),
+			(body_shapes[1].shape as RectangleShape2D).size == Vector2(7, 3)
+			and (touch_shapes[1].shape as RectangleShape2D).size == Vector2(7, 3),
 			"The sword must use independent slender rectangle collisions."
 		)
 	if warning != null:

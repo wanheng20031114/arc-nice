@@ -248,15 +248,15 @@ func _test_resource_and_scene_contract() -> void:
 	var sense_area := operator.get_node("AttackSenseArea") as Area2D
 	_expect(
 		body_shape.shape is RectangleShape2D
-		and (body_shape.shape as RectangleShape2D).size == Vector2(14, 16)
+		and (body_shape.shape as RectangleShape2D).size == Vector2(8, 17)
 		and touch_shape.shape is RectangleShape2D
-		and (touch_shape.shape as RectangleShape2D).size == Vector2(14, 16),
-		"Body and touch collision must use independent 14x16 rectangles."
+		and (touch_shape.shape as RectangleShape2D).size == Vector2(8, 17),
+		"Body and touch collision must use independent 8x17 rectangles."
 	)
 	_expect(
 		not is_same(body_shape.shape, touch_shape.shape)
-		and body_shape.position == Vector2(0, 2)
-		and touch_shape.position == Vector2(0, 2),
+		and body_shape.position == Vector2(0, 1.5)
+		and touch_shape.position == Vector2(0, 1.5),
 		"Body and touch shapes must be independent and center on the box chassis."
 	)
 	_expect(
