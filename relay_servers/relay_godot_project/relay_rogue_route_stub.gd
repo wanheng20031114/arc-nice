@@ -23,6 +23,20 @@ func net_route_move_delta(delta: Dictionary) -> void:
 	pass
 
 
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_briefing_state(snapshot: Dictionary) -> void:
+	pass
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_briefing_cover_ready(
+	occurrence_key: String,
+	briefing_revision: int,
+	expected_route_revision: int
+) -> void:
+	pass
+
+
 @rpc("any_peer", "call_remote", "reliable", 0)
 func net_route_encounter_intro_ack(
 	occurrence_key: String,

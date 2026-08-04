@@ -44,8 +44,10 @@ class FakeNetManager extends Node:
 
 class FakeEmbeddedRuntime extends Node:
 	var activation_result := false
+	var activation_calls := 0
 
 	func activate_embedded_runtime() -> bool:
+		activation_calls += 1
 		return activation_result
 
 
@@ -73,10 +75,13 @@ func _run() -> void:
 	_test_next_prepare_collects_stale_result()
 	_test_player_left_preserves_participant_and_shrinks_barriers()
 	_test_reconnect_remaps_terminal_settlement()
+	await _test_prepared_barrier_reveals_before_single_activation()
+	_test_dispatch_window_reconnect_skips_completed_barrier()
+	await _test_abort_during_entry_reveal_clears_cover()
 	await _test_route_reset_aborts_terminal_sequence()
 	_test_authoritative_prepare_failure_aborts_safely()
 	_test_authoritative_config_failure_aborts_safely()
-	_test_authoritative_activation_failure_aborts_safely()
+	await _test_authoritative_activation_failure_aborts_safely()
 	await _destroy_fixture()
 
 	if _failures.is_empty():
@@ -323,6 +328,172 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 	)
 
 
+func _test_prepared_barrier_reveals_before_single_activation() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:entry-reveal:5"
+	_seed_route_combat(15, 1505, occurrence_key)
+	_expect(
+		_coordinator._begin_protocol(
+			15,
+			1505,
+			occurrence_key,
+			PackedInt32Array([1, 2]),
+			{1: 500, 2: 500},
+			false
+		),
+		"入口 reveal 夹具必须先进入 PREPARING。"
+	)
+	var runtime := FakeEmbeddedRuntime.new()
+	runtime.name = "EntryRevealRuntime"
+	runtime.activation_result = true
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+	_coordinator._local_runtime_prepared = true
+	_coordinator._expected_prepared_peers = {1: true, 2: true}
+	_coordinator._prepared_peers = {1: true}
+	_set_entry_transition_covered()
+
+	_coordinator._try_activate_host_barrier()
+	_expect(
+		not _coordinator._activation_dispatch_started
+		and not _coordinator._local_activation_requested
+		and runtime.activation_calls == 0
+		and _route.combat_scene_transition.is_covered(),
+		"全员 prepared 前不得 dispatch、reveal 或激活本地战场。"
+	)
+
+	_coordinator._prepared_peers[2] = true
+	_coordinator._try_activate_host_barrier()
+	_expect(
+		_coordinator._activation_dispatch_started
+		and _coordinator._local_activation_requested
+		and runtime.activation_calls == 0,
+		"全员 prepared 后只能先请求 entry reveal，不能同步抢跑 activate。"
+	)
+	await process_frame
+	var reveal_serial := int(
+		_route.combat_scene_transition.get("_transition_serial")
+	)
+	_expect(
+		bool(_coordinator._request_local_runtime_activation())
+		and int(_route.combat_scene_transition.get("_transition_serial"))
+		== reveal_serial
+		and runtime.activation_calls == 0,
+		"重复 activation 请求必须复用正在进行的 reveal，不得重启 Tween。"
+	)
+	await create_timer(
+		RogueSceneTransition.REVEAL_DURATION_SECONDS + 0.08,
+		true
+	).timeout
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.ACTIVE
+		and _coordinator._local_runtime_activated
+		and runtime.activation_calls == 1
+		and not _route.combat_scene_transition.visible,
+		"prepared barrier 完成后必须等待 reveal 结束，再且仅激活一次运行时。"
+	)
+	var serial_after_activation := int(
+		_route.combat_scene_transition.get("_transition_serial")
+	)
+	_expect(
+		bool(_coordinator._request_local_runtime_activation())
+		and runtime.activation_calls == 1
+		and int(_route.combat_scene_transition.get("_transition_serial"))
+		== serial_after_activation,
+		"ACTIVE 后的重复 activation 包必须幂等，不能重复激活或再次 reveal。"
+	)
+
+
+func _test_dispatch_window_reconnect_skips_completed_barrier() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:dispatch-reconnect:6"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.PREPARING
+	_coordinator._active_node_id = 16
+	_coordinator._active_content_seed = 1606
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 700}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 700,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_coordinator._expected_prepared_peers = {1: true}
+	_coordinator._prepared_peers = {1: true}
+	_coordinator._activation_dispatch_started = true
+	_coordinator._activate_when_prepared = true
+
+	_coordinator._finish_player_reconnected(2, 3)
+	var coordinator_source := FileAccess.get_file_as_string(
+		"res://scene/rogue_combat/rogue_combat_multiplayer_coordinator.gd"
+	)
+	_expect(
+		not _coordinator._participant_peer_ids.has(2)
+		and _coordinator._participant_peer_ids.has(3)
+		and not _coordinator._expected_prepared_peers.has(3),
+		"activation 已 dispatch 的 reveal 窗口内，重连 peer 不得重新加入已结束 barrier。"
+	)
+	_expect(
+		coordinator_source.contains(
+			"] or _activation_dispatch_started"
+		),
+		"dispatch 窗口重连的 net_combat_prepare 必须携带 activate_immediately。"
+	)
+
+
+func _test_abort_during_entry_reveal_clears_cover() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:entry-abort:7"
+	_seed_route_combat(17, 1707, occurrence_key)
+	_expect(
+		_coordinator._begin_protocol(
+			17,
+			1707,
+			occurrence_key,
+			PackedInt32Array([1]),
+			{1: 700},
+			false
+		),
+		"入口 abort 夹具必须先进入 PREPARING。"
+	)
+	var runtime := FakeEmbeddedRuntime.new()
+	runtime.name = "EntryAbortRuntime"
+	runtime.activation_result = true
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+	_coordinator._local_runtime_prepared = true
+	_coordinator._expected_prepared_peers = {1: true}
+	_coordinator._prepared_peers = {1: true}
+	_set_entry_transition_covered()
+	_coordinator._try_activate_host_barrier()
+	await process_frame
+	_expect(
+		_coordinator._activation_dispatch_started
+		and _route.combat_scene_transition.visible
+		and not _coordinator._local_runtime_activated,
+		"abort 前置必须处于 entry reveal 中且尚未激活战场。"
+	)
+
+	_coordinator._abort_authoritative_protocol(&"test_abort_during_reveal")
+	_expect(
+		not _route.combat_scene_transition.visible
+		and is_zero_approx(_route.combat_scene_transition.progress),
+		"权威 abort 必须立即清除 shader cover 与鼠标遮挡。"
+	)
+	await create_timer(
+		RogueSceneTransition.REVEAL_DURATION_SECONDS + 0.08,
+		true
+	).timeout
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		and not _coordinator._local_runtime_activated
+		and not _route.combat_scene_transition.visible,
+		"被 abort 的旧 reveal 协程结束后不得复活或激活已释放战场。"
+	)
+
+
 func _test_route_reset_aborts_terminal_sequence() -> void:
 	_reset_fixture_state()
 	var occurrence_key := "combat:runtime:victory-reset:5"
@@ -433,8 +604,11 @@ func _test_authoritative_activation_failure_aborts_safely() -> void:
 	_coordinator._expected_prepared_peers = {1: true}
 	_coordinator._prepared_peers = {1: true}
 
-	# 真实 barrier 会调用 _activate_local_runtime；false 后立即走房主权威 abort。
+	# 真实 barrier 会先异步等待 entry reveal，再调用 _activate_local_runtime；
+	# false 后进入同一房主权威 abort 分支。
 	_coordinator._try_activate_host_barrier()
+	await process_frame
+	await process_frame
 	_assert_abort_recovered(17, "activate 失败")
 
 
@@ -456,6 +630,11 @@ func _assert_abort_recovered(node_id: int, context: String) -> void:
 	_expect(
 		_coordinator._combat_network == null,
 		"%s后不得保留嵌入战场引用。" % context
+	)
+	_expect(
+		not _route.combat_scene_transition.visible
+		and is_zero_approx(_route.combat_scene_transition.progress),
+		"%s后不得残留入口 shader cover。" % context
 	)
 
 
@@ -486,6 +665,11 @@ func _seed_route_combat(
 	_route._normal_combat_content_seed = content_seed
 	_route._normal_combat_visit_count = 1
 	_route._normal_combat_occurrence_key = occurrence_key
+
+
+func _set_entry_transition_covered() -> void:
+	_route.combat_scene_transition.visible = true
+	_route.combat_scene_transition.call(&"_set_progress", 1.0)
 
 
 func _expect(condition: bool, message: String) -> void:

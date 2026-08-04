@@ -1,4 +1,4 @@
-[gd_scene load_steps=32 format=3]
+[gd_scene load_steps=33 format=3]
 
 [ext_resource type="Script" path="res://scene/test_arena/test_rogue_route_p3.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_board.tscn" id="2_board"]
@@ -20,6 +20,7 @@
 [ext_resource type="PackedScene" path="res://scene/vfx/rogue_route_ambient_vfx.tscn" id="18_route_ambient_vfx"]
 [ext_resource type="PackedScene" path="res://scene/rogue_combat/rogue_combat_victory_presentation.tscn" id="19_combat_victory"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_scene_transition.tscn" id="20_scene_transition"]
+[ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_node_briefing.tscn" id="21_node_briefing"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -533,6 +534,8 @@ tooltip_text = "回到本地角色（Home）"
 
 [node name="MoveConfirmation" parent="." instance=ExtResource("13_move_confirmation")]
 
+[node name="NodeBriefing" parent="." instance=ExtResource("21_node_briefing")]
+
 [node name="CombatResultOverlay" parent="." instance=ExtResource("14_combat_result")]
 
 [node name="CombatVictoryPresentation" parent="." instance=ExtResource("19_combat_victory")]
@@ -547,4 +550,6 @@ tooltip_text = "回到本地角色（Home）"
 [connection signal="pressed" from="HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RecenterButton" to="." method="_on_recenter_button_pressed"]
 [connection signal="canceled" from="MoveConfirmation" to="." method="_on_move_confirmation_canceled"]
 [connection signal="confirmed" from="MoveConfirmation" to="." method="_on_move_confirmation_confirmed"]
+[connection signal="canceled" from="NodeBriefing" to="." method="_on_node_briefing_canceled"]
+[connection signal="confirmed" from="NodeBriefing" to="." method="_on_node_briefing_confirmed"]
 [connection signal="dismissed" from="CombatResultOverlay" to="." method="_on_combat_result_overlay_dismissed"]

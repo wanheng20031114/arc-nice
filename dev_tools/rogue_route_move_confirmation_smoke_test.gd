@@ -4,12 +4,16 @@ const CONFIRMATION_SCENE := preload(
 	"res://scene/rogue_route/rogue_route_move_confirmation.tscn"
 )
 const ROUTE_SCENE := preload("res://scene/test_arena/test_rogue_route_p3.tscn")
+const GENERATION_CONFIG := preload(
+	"res://resources/config/rogue_route/p3_generation_config.tres"
+)
 const RUINS_BACKGROUND := preload(
 	"res://resources/texture/rogue_route/underground_ruins_background.png"
 )
 const EXPECTED_FRAME_PATH := (
 	"res://resources/texture/rogue_route/route_move_confirmation_frame.png"
 )
+const MAX_SEED_SEARCH := 4096
 
 var failures: Array[String] = []
 var confirmed_count := 0
@@ -83,7 +87,7 @@ func _run() -> void:
 	_expect(not confirmation.visible, "ui_cancel 必须关闭确认层。")
 	_expect(canceled_count == 1 and confirmed_count == 0, "取消只能发出一次 canceled。")
 
-	confirmation.present("普通作战", 7, 2)
+	confirmation.present("紧急作战", 7, 2)
 	confirmation.confirm_button.pressed.emit()
 	_expect(not confirmation.visible, "确认后必须立即关闭确认层。")
 	_expect(confirmed_count == 1 and canceled_count == 1, "确认只能发出一次 confirmed。")
@@ -97,6 +101,13 @@ func _run() -> void:
 
 
 func _audit_p3_integration() -> void:
+	var fixture := _find_legacy_confirmation_fixture()
+	_expect(
+		not fixture.is_empty(),
+		"测试种子范围内必须同时存在相邻紧急作战与非战斗节点。"
+	)
+	if fixture.is_empty():
+		return
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID, false)
@@ -104,7 +115,7 @@ func _audit_p3_integration() -> void:
 	_expect(route != null, "P3 路线场景必须能够实例化自定义确认层。")
 	if route == null:
 		return
-	route.initial_generation_seed = 424242
+	route.initial_generation_seed = int(fixture["seed"])
 	route.return_requested.connect(func() -> void: return_requested_count += 1)
 	root.add_child(route)
 	current_scene = route
@@ -127,31 +138,8 @@ func _audit_p3_integration() -> void:
 	board.complete_entry_reveal()
 	await process_frame
 
-	var neighbors := board.graph.get_neighbors(runtime.current_node_id)
-	_expect(not neighbors.is_empty(), "初始路线节点必须存在可移动邻居。")
-	if neighbors.is_empty():
-		current_scene = null
-		root.remove_child(route)
-		route.free()
-		return
-	var target_node_id := -1
-	for neighbor_id in neighbors:
-		var node_type := board.graph.get_node_type(int(neighbor_id))
-		if node_type not in [
-			RogueRouteGraph.NodeType.NORMAL_COMBAT,
-			RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER,
-		]:
-			target_node_id = int(neighbor_id)
-			break
-	_expect(
-		target_node_id >= 0,
-		"确认层回归夹具必须存在不会切换场景的相邻节点。"
-	)
-	if target_node_id < 0:
-		current_scene = null
-		root.remove_child(route)
-		route.free()
-		return
+	var emergency_node_id := int(fixture["emergency_node_id"])
+	var non_combat_node_id := int(fixture["non_combat_node_id"])
 	local_player.global_position = board.get_node_global_position(
 		runtime.current_node_id
 	)
@@ -159,7 +147,7 @@ func _audit_p3_integration() -> void:
 	await physics_frame
 	_expect(
 		local_player.global_position.distance_to(
-			board.get_node_global_position(target_node_id)
+			board.get_node_global_position(emergency_node_id)
 		) > 28.0,
 		"远距点击夹具必须让玩家停留在当前节点附近，而非目标节点周围。"
 	)
@@ -167,11 +155,14 @@ func _audit_p3_integration() -> void:
 	await process_frame
 	var camera_position_before_modal := camera.position
 
-	route.call(&"_on_route_board_node_pressed", target_node_id)
+	route.call(&"_on_route_board_node_pressed", emergency_node_id)
 	_expect(
-		int(route.get("_pending_node_id")) == target_node_id
-		and route.move_confirmation.visible,
-		"玩家远离目标节点时，点击合法相邻节点仍必须打开自定义确认层。"
+		int(route.get("_pending_node_id")) == emergency_node_id
+		and route.move_confirmation.visible
+		and not route.node_briefing.visible
+		and int(route.get("_briefing_phase"))
+		== TestRogueRouteP3.BriefingPhase.NONE,
+		"紧急作战仍必须使用旧移动确认框，不得误接入普通作战简报。"
 	)
 	_expect(
 		bool(board.get("_interaction_locked")) and local_player.controls_locked,
@@ -187,7 +178,7 @@ func _audit_p3_integration() -> void:
 	_expect(
 		route.export_state_snapshot() == state_before_guard_checks
 		and camera.position.is_equal_approx(camera_position_before_modal)
-		and int(route.get("_pending_node_id")) == target_node_id,
+		and int(route.get("_pending_node_id")) == emergency_node_id,
 		"确认期间重生成、定位与 Home 输入均不得穿透到底层地图。"
 	)
 	route.call(&"_on_return_button_pressed")
@@ -195,17 +186,27 @@ func _audit_p3_integration() -> void:
 		return_requested_count == 0
 		and int(route.get("_pending_node_id")) == -1
 		and not route.move_confirmation.visible
+		and not route.node_briefing.visible
 		and not bool(board.get("_interaction_locked"))
 		and not local_player.controls_locked,
-		"确认期间按返回只能取消本次移动并恢复输入。"
+		"紧急作战确认期间按返回只能取消本次移动并恢复输入。"
 	)
 
-	route.call(&"_on_route_board_node_pressed", target_node_id)
+	route.call(&"_on_route_board_node_pressed", non_combat_node_id)
+	_expect(
+		int(route.get("_pending_node_id")) == non_combat_node_id
+		and route.move_confirmation.visible
+		and not route.node_briefing.visible
+		and int(route.get("_briefing_phase"))
+		== TestRogueRouteP3.BriefingPhase.NONE,
+		"遗址物资、黑市或未雨绸缪节点仍必须使用旧移动确认框。"
+	)
 	var state_before_move := route.export_state_snapshot()
 	var player_position_before_move := local_player.global_position
 	var camera_local_before_move := camera.position
 	var camera_global_before_move := camera.global_position
 	var camera_center_before_move := camera.get_screen_center_position()
+	route.move_confirmation.confirm_button.pressed.emit()
 	route.move_confirmation.confirm_button.pressed.emit()
 	await physics_frame
 	await process_frame
@@ -215,8 +216,16 @@ func _audit_p3_integration() -> void:
 		== int(state_before_move.get("revision", -1)) + 1
 		and int(state_after_move.get("action_points", -1))
 		== int(state_before_move.get("action_points", -1))
-		- route.generation_config.move_action_cost,
-		"确认移动必须只推进一次 revision 并准确扣除行动力。"
+		- route.generation_config.move_action_cost
+		and int(state_after_move.get("current_node_id", -1))
+		== non_combat_node_id
+		and int((state_after_move.get("visited_counts") as PackedInt32Array)[
+			non_combat_node_id
+		])
+		== int((state_before_move.get("visited_counts") as PackedInt32Array)[
+			non_combat_node_id
+		]) + 1,
+		"旧确认框连续确认也只能推进一次 revision、扣一次行动力并增加一次访问。"
 	)
 	_expect(
 		local_player.global_position.is_equal_approx(player_position_before_move)
@@ -230,6 +239,30 @@ func _audit_p3_integration() -> void:
 	root.remove_child(route)
 	route.free()
 	await process_frame
+
+
+func _find_legacy_confirmation_fixture() -> Dictionary:
+	for seed in range(1, MAX_SEED_SEARCH + 1):
+		var graph := RogueRouteGenerator.generate(GENERATION_CONFIG, seed)
+		if graph == null:
+			continue
+		var emergency_node_id := -1
+		var non_combat_node_id := -1
+		for neighbor_id in graph.get_neighbors(graph.start_node_id):
+			match graph.get_node_type(neighbor_id):
+				RogueRouteGraph.NodeType.EMERGENCY_COMBAT:
+					emergency_node_id = int(neighbor_id)
+				RogueRouteGraph.NodeType.WILDERNESS_RESOURCE, \
+				RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET, \
+				RogueRouteGraph.NodeType.PREPARE_AHEAD:
+					non_combat_node_id = int(neighbor_id)
+		if emergency_node_id >= 0 and non_combat_node_id >= 0:
+			return {
+				"seed": seed,
+				"emergency_node_id": emergency_node_id,
+				"non_combat_node_id": non_combat_node_id,
+			}
+	return {}
 
 
 func _save_preview() -> void:

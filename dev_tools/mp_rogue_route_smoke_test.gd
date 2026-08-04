@@ -16,6 +16,7 @@ const WEISHIDAIER_SCENE_PATH := (
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
 const TANGO_SCENE_PATH := "res://scene/player/tango/player_tango.tscn"
+const BRIEFING_SEED_SEARCH_LIMIT := 4096
 
 
 class FakeNetManager:
@@ -107,6 +108,7 @@ func _run() -> void:
 	_test_mode_and_loading_contract()
 	await _test_lobby_contract()
 	await _test_snapshot_and_delta_contract()
+	await _test_briefing_network_contract()
 	await _test_fluorescent_pit_route_integration()
 	await _test_warehouse_route_persistence_contract()
 	_test_host_requires_character_confirmation()
@@ -115,8 +117,8 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 42,
-		"协议 v42 必须保留既有遭遇，并隔离荧光坑洞多轮结算。"
+		NetConstants.PROTOCOL_VERSION == 43,
+		"协议 v43 必须保留既有遭遇，并隔离荧光坑洞多轮结算。"
 	)
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
@@ -256,6 +258,7 @@ func _test_snapshot_and_delta_contract() -> void:
 	for rpc_name in [
 		&"net_route_full_snapshot",
 		&"net_route_move_delta",
+		&"net_route_briefing_state",
 		&"net_route_encounter_intro_ack",
 		&"net_route_encounter_vote",
 		&"net_route_encounter_result_ack",
@@ -268,6 +271,30 @@ func _test_snapshot_and_delta_contract() -> void:
 			and int(config.get("channel", -1)) == 0,
 			"P3 完整快照与移动 delta 必须在可靠有序信道同步。"
 		)
+	var briefing_state_config := rpc_config.get(
+		&"net_route_briefing_state", {}
+	) as Dictionary
+	var briefing_cover_ready_config := rpc_config.get(
+		&"net_route_briefing_cover_ready", {}
+	) as Dictionary
+	_expect(
+		int(briefing_state_config.get("rpc_mode", -1))
+		== MultiplayerAPI.RPC_MODE_AUTHORITY
+		and not bool(briefing_state_config.get("call_local", true))
+		and int(briefing_state_config.get("transfer_mode", -1))
+		== MultiplayerPeer.TRANSFER_MODE_RELIABLE
+		and int(briefing_state_config.get("channel", -1)) == 0,
+		"作战简报状态必须只允许 Host 通过可靠有序信道下发。"
+	)
+	_expect(
+		int(briefing_cover_ready_config.get("rpc_mode", -1))
+		== MultiplayerAPI.RPC_MODE_ANY_PEER
+		and not bool(briefing_cover_ready_config.get("call_local", true))
+		and int(briefing_cover_ready_config.get("transfer_mode", -1))
+		== MultiplayerPeer.TRANSFER_MODE_RELIABLE
+		and int(briefing_cover_ready_config.get("channel", -1)) == 0,
+		"简报 cover-ready 必须允许客户端通过可靠有序信道向 Host 回执。"
+	)
 	var avatar_input_config := rpc_config.get(
 		&"net_route_avatar_input", {}
 	) as Dictionary
@@ -509,6 +536,360 @@ func _test_snapshot_and_delta_contract() -> void:
 	host_route.queue_free()
 	if is_instance_valid(client_route):
 		client_route.queue_free()
+	await process_frame
+
+
+func _test_briefing_network_contract() -> void:
+	var probe_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	probe_route.auto_initialize = false
+	probe_route.manage_return_locally = false
+	var fixture := _find_adjacent_normal_combat_fixture(
+		probe_route.generation_config
+	)
+	probe_route.free()
+	_expect(
+		not fixture.is_empty(),
+		"简报联机测试必须找到起点相邻的普通作战节点。"
+	)
+	if fixture.is_empty():
+		return
+
+	var host_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var client_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var pre_move_rejoin := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var post_move_rejoin := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	for route in [host_route, client_route, pre_move_rejoin, post_move_rejoin]:
+		route.auto_initialize = false
+		route.manage_return_locally = false
+		root.add_child(route)
+	await process_frame
+
+	var seed := int(fixture["seed"])
+	var combat_node_id := int(fixture["combat_node_id"])
+	_expect(
+		host_route.start_authoritative_session(seed, false),
+		"Host 简报夹具必须能生成固定普通作战路线。"
+	)
+	host_route.normal_combat_requested.connect(
+		func(
+			_node_id: int,
+			_content_seed: int,
+			_occurrence_key: String
+		) -> void:
+			pass
+	)
+	host_route.route_board.complete_entry_reveal()
+	client_route.start_client_waiting()
+	pre_move_rejoin.start_client_waiting()
+	post_move_rejoin.start_client_waiting()
+	var layout := host_route.export_layout_snapshot()
+	var route_state_before_briefing := host_route.export_state_snapshot()
+	var route_revision_before := int(route_state_before_briefing["revision"])
+	var action_points_before := int(route_state_before_briefing["action_points"])
+
+	host_route.call(&"_on_route_board_node_pressed", combat_node_id)
+	var presented_state := host_route.export_state_snapshot()
+	var presented := (
+		presented_state.get("briefing_state", {}) as Dictionary
+	)
+	_expect(
+		int(presented.get("phase", -1))
+		== TestRogueRouteP3.BriefingPhase.PRESENTED
+		and int(presented_state.get("revision", -1)) == route_revision_before
+		and int(presented_state.get("action_points", -1))
+		== action_points_before,
+		"打开普通作战简报只能推进独立简报 revision，不得扣 AP 或提交路线。"
+	)
+
+	var wrapper := WRAPPER_SCENE.instantiate() as MpRogueRoute
+	var fake_net_manager := FakeNetManager.new()
+	fake_net_manager.connected_players = {
+		fake_net_manager.host_peer_id: "Host",
+		fake_net_manager.host_peer_id + 1: "Client",
+	}
+	wrapper.set("_route", client_route)
+	wrapper.set("_net_manager", fake_net_manager)
+	var encounter_state := host_route.export_encounter_snapshot()
+	var economy_state := host_route.export_encounter_economy_snapshot()
+	_expect(
+		bool(wrapper.call(
+			"_apply_full_snapshot_from_peer",
+			fake_net_manager.host_peer_id,
+			layout,
+			presented_state,
+			encounter_state,
+			economy_state
+		)),
+		"客户端完整快照必须恢复 Host 的 PRESENTED 简报。"
+	)
+	await process_frame
+	_expect(
+		int(client_route.get("_briefing_phase"))
+		== TestRogueRouteP3.BriefingPhase.PRESENTED
+		and client_route.node_briefing.visible
+		and not client_route.node_briefing.can_decide()
+		and int(client_route.export_state_snapshot()["revision"])
+		== route_revision_before
+		and int(client_route.export_state_snapshot()["action_points"])
+		== action_points_before,
+		"重连客户端必须看到只读简报，且 PRESENTED 快照不得改变路线状态。"
+	)
+
+	var entering := presented.duplicate(true)
+	entering["revision"] = int(presented["revision"]) + 1
+	entering["phase"] = TestRogueRouteP3.BriefingPhase.ENTERING
+	var pre_move_state := presented_state.duplicate(true)
+	pre_move_state["briefing_state"] = entering.duplicate(true)
+	_expect(
+		pre_move_rejoin.apply_full_snapshot(layout, pre_move_state),
+		"ENTERING 的 move 前完整快照必须可由 occurrence 与预期路线 revision 复算。"
+	)
+	await process_frame
+	_expect(
+		int(pre_move_rejoin.get("_briefing_phase"))
+		== TestRogueRouteP3.BriefingPhase.ENTERING
+		and not pre_move_rejoin.node_briefing.visible
+		and pre_move_rejoin.combat_scene_transition.visible,
+		"move 前重连必须关闭简报并恢复本地 shader cover。"
+	)
+
+	var client_state_before_wrong_sender := client_route.export_state_snapshot()
+	_expect(
+		not bool(wrapper.call(
+			"_apply_briefing_state_from_peer",
+			fake_net_manager.host_peer_id + 99,
+			entering
+		))
+		and client_route.export_state_snapshot()
+		== client_state_before_wrong_sender,
+		"客户端必须原子拒绝非 Host 发来的简报状态。"
+	)
+	for invalid_kind in ["layout", "occurrence", "expected_revision"]:
+		var invalid := entering.duplicate(true)
+		match invalid_kind:
+			"layout":
+				invalid["layout_hash"] = "invalid-layout"
+			"occurrence":
+				invalid["occurrence_key"] = str(invalid["occurrence_key"]) + ":stale"
+			"expected_revision":
+				invalid["expected_route_revision"] = (
+					int(invalid["expected_route_revision"]) + 1
+				)
+		var state_before_invalid := client_route.export_state_snapshot()
+		_expect(
+			not bool(wrapper.call(
+				"_apply_briefing_state_from_peer",
+				fake_net_manager.host_peer_id,
+				invalid
+			))
+			and client_route.export_state_snapshot() == state_before_invalid
+			and client_route.node_briefing.visible,
+			"错误 %s 简报包必须原子拒绝，不能关闭当前 PRESENTED 界面。"
+			% invalid_kind
+		)
+
+	_expect(
+		bool(wrapper.call(
+			"_apply_briefing_state_from_peer",
+			fake_net_manager.host_peer_id,
+			entering
+		)),
+		"客户端必须接受 Host 的当前 ENTERING 简报包。"
+	)
+	await process_frame
+	var transition_serial := int(
+		client_route.combat_scene_transition.get("_transition_serial")
+	)
+	var transition_tween: Variant = (
+		client_route.combat_scene_transition.get("_transition_tween")
+	)
+	var entering_client_state := client_route.export_state_snapshot()
+	_expect(
+		bool(wrapper.call(
+			"_apply_briefing_state_from_peer",
+			fake_net_manager.host_peer_id,
+			entering
+		))
+		and bool(wrapper.call(
+			"_apply_briefing_state_from_peer",
+			fake_net_manager.host_peer_id,
+			presented
+		))
+		and client_route.export_state_snapshot() == entering_client_state
+		and int(client_route.combat_scene_transition.get(
+			"_transition_serial"
+		)) == transition_serial
+		and client_route.combat_scene_transition.get("_transition_tween")
+		== transition_tween,
+		"相同或旧简报包必须幂等忽略，不能重启 cover 动画。"
+	)
+	var same_revision_conflict := entering.duplicate(true)
+	same_revision_conflict["phase"] = TestRogueRouteP3.BriefingPhase.PRESENTED
+	_expect(
+		not bool(wrapper.call(
+			"_apply_briefing_state_from_peer",
+			fake_net_manager.host_peer_id,
+			same_revision_conflict
+		))
+		and client_route.export_state_snapshot() == entering_client_state
+		and int(client_route.combat_scene_transition.get(
+			"_transition_serial"
+		)) == transition_serial,
+		"同 revision 的冲突简报必须原子拒绝，不能倒退到 PRESENTED。"
+	)
+
+	host_route.call(&"_on_node_briefing_confirmed")
+	var authoritative_entering := host_route.export_briefing_state_snapshot()
+	_expect(
+		int(authoritative_entering.get("phase", -1))
+		== TestRogueRouteP3.BriefingPhase.ENTERING
+		and int(host_route.export_state_snapshot()["revision"])
+		== route_revision_before,
+		"Host 确认后必须先进入 ENTERING，等待全员 cover-ready 才提交 move。"
+	)
+
+	fake_net_manager.host_role = true
+	wrapper.set("_route", host_route)
+	wrapper.call("_configure_briefing_cover_barrier", authoritative_entering)
+	var host_peer_id := fake_net_manager.host_peer_id
+	var client_peer_id := host_peer_id + 1
+	var briefing_revision := int(authoritative_entering["revision"])
+	var occurrence_key := str(authoritative_entering["occurrence_key"])
+	var expected_route_revision := int(
+		authoritative_entering["expected_route_revision"]
+	)
+	_expect(
+		not bool(wrapper.call(
+			"_accept_briefing_cover_ready",
+			client_peer_id + 99,
+			occurrence_key,
+			briefing_revision,
+			expected_route_revision
+		))
+		and not bool(wrapper.call(
+			"_accept_briefing_cover_ready",
+			client_peer_id,
+			occurrence_key + ":expired",
+			briefing_revision,
+			expected_route_revision
+		)),
+		"cover-ready 屏障必须拒绝非参战 sender 与过期 occurrence。"
+	)
+	_expect(
+		bool(wrapper.call(
+			"_accept_briefing_cover_ready",
+			client_peer_id,
+			occurrence_key,
+			briefing_revision,
+			expected_route_revision
+		))
+		and bool(wrapper.call(
+			"_accept_briefing_cover_ready",
+			client_peer_id,
+			occurrence_key,
+			briefing_revision,
+			expected_route_revision
+		))
+		and int(host_route.export_state_snapshot()["revision"])
+		== route_revision_before
+		and (wrapper.get("_briefing_cover_ready_peers") as Dictionary).size()
+		== 1,
+		"客户端重复 cover-ready 必须幂等，Host 未 ready 前不得提交路线。"
+	)
+	_expect(
+		bool(wrapper.call(
+			"_accept_briefing_cover_ready",
+			host_peer_id,
+			occurrence_key,
+			briefing_revision,
+			expected_route_revision
+		))
+		and int(host_route.export_state_snapshot()["revision"])
+		== route_revision_before + 1
+		and int(host_route.export_state_snapshot()["action_points"])
+		== action_points_before - host_route.generation_config.move_action_cost
+		and bool(wrapper.get("_briefing_move_commit_started")),
+		"全员 cover-ready 后 Host 必须只提交一次路线移动与 AP 扣除。"
+	)
+	var committed_state := host_route.export_state_snapshot()
+	_expect(
+		not bool(wrapper.call(
+			"_accept_briefing_cover_ready",
+			host_peer_id,
+			occurrence_key,
+			briefing_revision,
+			expected_route_revision
+		))
+		and host_route.export_state_snapshot() == committed_state,
+		"屏障完成后的重复 ready 不得再次推进路线 revision。"
+	)
+
+	_expect(
+		post_move_rejoin.apply_full_snapshot(layout, committed_state),
+		"ENTERING 的 move 后完整快照必须接受 expected+1 的路线 revision。"
+	)
+	await process_frame
+	await process_frame
+	_expect(
+		int(post_move_rejoin.get("_briefing_phase"))
+		== TestRogueRouteP3.BriefingPhase.ENTERING,
+		"move 后重连必须保留 ENTERING 简报阶段。"
+	)
+	_expect(
+		int(post_move_rejoin.export_state_snapshot()["current_node_id"])
+		== combat_node_id,
+		"move 后重连必须恢复到目标作战节点。"
+	)
+	_expect(
+		post_move_rejoin.combat_scene_transition.visible,
+		"move 后重连必须恢复同一 occurrence 的 cover。"
+	)
+
+	# 新一轮屏障只收到 Host ready 时，远端断线应收缩 expected roster，
+	# 并立即触发唯一一次权威提交。
+	_expect(
+		host_route.start_authoritative_session(seed, false),
+		"断线屏障夹具必须能重置到同一固定路线。"
+	)
+	host_route.route_board.complete_entry_reveal()
+	host_route.call(&"_on_route_board_node_pressed", combat_node_id)
+	host_route.call(&"_on_node_briefing_confirmed")
+	var disconnect_entering := host_route.export_briefing_state_snapshot()
+	wrapper.call("_configure_briefing_cover_barrier", disconnect_entering)
+	var disconnect_occurrence := str(disconnect_entering["occurrence_key"])
+	var disconnect_briefing_revision := int(disconnect_entering["revision"])
+	var disconnect_route_revision := int(
+		disconnect_entering["expected_route_revision"]
+	)
+	_expect(
+		bool(wrapper.call(
+			"_accept_briefing_cover_ready",
+			host_peer_id,
+			disconnect_occurrence,
+			disconnect_briefing_revision,
+			disconnect_route_revision
+		))
+		and int(host_route.export_state_snapshot()["revision"])
+		== disconnect_route_revision,
+		"远端尚未 ready 时，Host ready 不能越过 cover 屏障。"
+	)
+	wrapper.call("_on_player_left", client_peer_id)
+	_expect(
+		int(host_route.export_state_snapshot()["revision"])
+		== disconnect_route_revision + 1
+		and not (wrapper.get(
+			"_briefing_cover_expected_peers"
+		) as Dictionary).has(client_peer_id)
+		and bool(wrapper.get("_briefing_move_commit_started")),
+		"cover 等待期间断线必须收缩 expected 集合并幂等完成剩余成员提交。"
+	)
+
+	if is_instance_valid(wrapper):
+		wrapper.free()
+	fake_net_manager.free()
+	for route in [host_route, client_route, pre_move_rejoin, post_move_rejoin]:
+		if is_instance_valid(route):
+			route.queue_free()
 	await process_frame
 
 
@@ -1443,6 +1824,27 @@ func _build_first_move_delta(layout: Dictionary, state: Dictionary) -> Dictionar
 		"action_points": int(state.get("action_points", 0)) - 1,
 		"target_visit_count": int(visited[target_node_id]) + 1,
 	}
+
+
+func _find_adjacent_normal_combat_fixture(
+	config: RogueRouteGenerationConfig
+) -> Dictionary:
+	if config == null:
+		return {}
+	for seed in range(1, BRIEFING_SEED_SEARCH_LIMIT + 1):
+		var graph := RogueRouteGenerator.generate(config, seed)
+		if graph == null:
+			continue
+		for neighbor_id in graph.get_neighbors(graph.start_node_id):
+			if (
+				graph.get_node_type(neighbor_id)
+				== RogueRouteGraph.NodeType.NORMAL_COMBAT
+			):
+				return {
+					"seed": seed,
+					"combat_node_id": int(neighbor_id),
+				}
+	return {}
 
 
 func _test_host_requires_character_confirmation() -> void:

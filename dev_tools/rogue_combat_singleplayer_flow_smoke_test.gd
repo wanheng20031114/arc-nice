@@ -31,6 +31,8 @@ func _run() -> void:
 		return
 
 	await _test_formal_configuration_gate_and_multiplayer_isolation()
+	await _test_normal_combat_briefing_cancel_confirm_and_entry()
+	await _test_briefing_start_failure_cleanup()
 	await _test_victory_reward_return_and_consumed_revisit()
 	await _test_victory_presentation_route_reset_cancels_sequence()
 	await _test_victory_reveal_route_reset_discards_old_result()
@@ -93,6 +95,170 @@ func _test_formal_configuration_gate_and_multiplayer_isolation() -> void:
 		"MpRogueRoute 内嵌同一地图时，单人协调器绝不能连接或双重消费。"
 	)
 	_cleanup_route(multiplayer_route)
+	await process_frame
+
+
+func _test_normal_combat_briefing_cancel_confirm_and_entry() -> void:
+	run_state.begin_new_run(&"weishidaier", false)
+	var route := await _create_ready_route(_make_confirmed_config())
+	if route == null:
+		return
+	var coordinator := _get_coordinator(route)
+	var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
+	var combat_node_id := int(fixture["combat_node_id"])
+	var action_points_before := runtime.action_points
+	var revision_before := runtime.state_revision
+	var visit_count_before := int(runtime.visited_counts[combat_node_id])
+	route.route_board.complete_entry_reveal()
+	await process_frame
+
+	route.route_board.node_pressed.emit(combat_node_id)
+	await process_frame
+	var presented_snapshot := route.export_briefing_state_snapshot()
+	_expect(
+		route.node_briefing.visible
+		and route.node_briefing.can_decide()
+		and not route.node_briefing.is_decision_locked()
+		and route.node_briefing.confirm_button.text == "进入作战"
+		and not route.move_confirmation.visible
+		and int(presented_snapshot.get("phase", -1))
+		== TestRogueRouteP3.BriefingPhase.PRESENTED,
+		"点击相邻普通作战节点必须显示原生作战简报，并替代旧移动确认框。"
+	)
+	route.node_briefing.cancel_button.pressed.emit()
+	await process_frame
+	_expect(
+		runtime.current_node_id != combat_node_id
+		and runtime.action_points == action_points_before
+		and runtime.state_revision == revision_before
+		and int(runtime.visited_counts[combat_node_id]) == visit_count_before
+		and not route.node_briefing.visible
+		and not route.combat_scene_transition.visible
+		and int(route.export_briefing_state_snapshot().get("phase", -1))
+		== TestRogueRouteP3.BriefingPhase.NONE,
+		"取消简报不得扣行动力、推进 revision/访问次数或遗留简报与黑幕。"
+	)
+
+	var move_commit_count := [0]
+	var battle_start_count := [0]
+	var battle_started_under_full_cover := [false]
+	var battle_started_deferred := [false]
+	var preparation_seen := [false]
+	var preparation_under_full_cover := [false]
+	route.host_move_committed.connect(
+		func(_delta: Dictionary) -> void:
+			move_commit_count[0] = int(move_commit_count[0]) + 1
+	)
+	coordinator.battle_started.connect(
+		func(
+			_node_id: int,
+			_occurrence_key: String,
+			_battle: RogueCombatGame
+		) -> void:
+			battle_start_count[0] = int(battle_start_count[0]) + 1
+			battle_started_under_full_cover[0] = (
+				route.combat_scene_transition.is_covered()
+			)
+			battle_started_deferred[0] = _battle.runtime_activation_deferred
+			if _battle.is_runtime_preparation_complete():
+				preparation_seen[0] = true
+				preparation_under_full_cover[0] = (
+					_battle.runtime_activation_deferred
+					and route.combat_scene_transition.is_covered()
+				)
+			else:
+				_battle.runtime_preparation_completed.connect(
+					func() -> void:
+						preparation_seen[0] = true
+						preparation_under_full_cover[0] = (
+							_battle.runtime_activation_deferred
+							and route.combat_scene_transition.is_covered()
+						),
+					CONNECT_ONE_SHOT
+				)
+	)
+	route.route_board.node_pressed.emit(combat_node_id)
+	await process_frame
+	_expect(route.node_briefing.visible, "取消后再次点击必须能重新打开作战简报。")
+	route.node_briefing.confirm_button.pressed.emit()
+	# 直接重复发出按钮信号，验证简报自身的单次决策锁与路线 phase 双重门控。
+	route.node_briefing.confirm_button.pressed.emit()
+	await create_timer(0.06, true).timeout
+	_expect(
+		runtime.action_points == action_points_before
+		and runtime.state_revision == revision_before
+		and int(runtime.visited_counts[combat_node_id]) == visit_count_before
+		and int(move_commit_count[0]) == 0
+		and int(battle_start_count[0]) == 0
+		and not route.node_briefing.visible
+		and route.combat_scene_transition.visible
+		and not route.combat_scene_transition.is_covered()
+		and int(route.export_briefing_state_snapshot().get("phase", -1))
+		== TestRogueRouteP3.BriefingPhase.ENTERING,
+		"确认后必须先锁定并关闭简报、播放遮盖，遮盖完成前不能移动或创建战场。"
+	)
+
+	var battle := await _wait_for_active_battle(coordinator)
+	_expect(
+		battle != null
+		and runtime.current_node_id == combat_node_id
+		and runtime.action_points
+		== action_points_before - route.generation_config.move_action_cost
+		and runtime.state_revision == revision_before + 1
+		and int(runtime.visited_counts[combat_node_id])
+		== visit_count_before + 1
+		and int(move_commit_count[0]) == 1
+		and int(battle_start_count[0]) == 1
+		and bool(battle_started_under_full_cover[0])
+		and bool(battle_started_deferred[0]),
+		"遮盖完成后才能且只能提交一次移动、扣一次行动力并创建一个延迟激活战场。"
+	)
+	if battle != null:
+		var preparation_ready := await _wait_for_preparation(battle)
+		_expect(
+			preparation_ready
+			and bool(preparation_seen[0])
+			and bool(preparation_under_full_cover[0])
+			and not route.combat_scene_transition.visible
+			and is_zero_approx(route.combat_scene_transition.progress)
+			and not battle.runtime_activation_deferred
+			and battle.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+			and battle.countdown_seconds == 3,
+			"战场 prepared 时必须仍处于完整遮盖；reveal 完成后才可激活三秒准备倒计时。"
+		)
+	_cleanup_route(route)
+	await process_frame
+
+
+func _test_briefing_start_failure_cleanup() -> void:
+	run_state.begin_new_run(&"weishidaier", false)
+	var route := await _create_ready_route(_make_confirmed_config())
+	if route == null:
+		return
+	var coordinator := _get_coordinator(route)
+	var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
+	var combat_node_id := int(fixture["combat_node_id"])
+	var revision_before := runtime.state_revision
+	route.route_board.complete_entry_reveal()
+	await process_frame
+
+	route.route_board.node_pressed.emit(combat_node_id)
+	await process_frame
+	_expect(route.node_briefing.visible, "启动失败夹具必须先进入真实简报路径。")
+	# 简报展示后令正式配置门控失效，覆盖移动已提交但战场无法启动的恢复分支。
+	coordinator.encounter_config.decisions_confirmed = false
+	route.node_briefing.confirm_button.pressed.emit()
+	route.node_briefing.confirm_button.pressed.emit()
+	_expect(
+		await _wait_for_briefing_entry_cleanup(
+			route,
+			coordinator,
+			runtime,
+			revision_before + 1
+		),
+		"战场启动失败必须恢复路线，并清除简报、ENTERING 状态与转场黑幕。"
+	)
+	_cleanup_route(route)
 	await process_frame
 
 
@@ -230,19 +396,31 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 			start_node_id,
 			route.generation_config.move_action_cost,
 			runtime.state_revision
-		)
-		and runtime.try_move(
-			combat_node_id,
-			route.generation_config.move_action_cost,
-			runtime.state_revision
 		),
-		"消费节点复访夹具必须能离开后再次进入同一格。"
+		"消费节点复访夹具必须能先离开已消费作战格。"
 	)
+	var revisit_revision_before := runtime.state_revision
+	route.route_board.node_pressed.emit(combat_node_id)
+	await process_frame
 	_expect(
-		battle_starts.size() == 1
+		route.node_briefing.visible,
+		"复访已消费普通作战节点仍必须沿真实简报确认入口执行。"
+	)
+	route.node_briefing.confirm_button.pressed.emit()
+	route.node_briefing.confirm_button.pressed.emit()
+	_expect(
+		await _wait_for_briefing_entry_cleanup(
+			route,
+			coordinator,
+			runtime,
+			revisit_revision_before + 1
+		)
+		and battle_starts.size() == 1
 		and coordinator.get_active_battle() == null
-		and not route.is_normal_combat_active(),
-		"胜利后复访已消费节点必须立即完成，不得再次实例化战斗。"
+		and not route.is_normal_combat_active()
+		and not route.node_briefing.visible
+		and not route.combat_scene_transition.visible,
+		"胜利后复访已消费节点必须立即完成，不得重开战斗或遗留简报/黑幕。"
 	)
 	_cleanup_route(route)
 	await process_frame
@@ -722,6 +900,39 @@ func _wait_for_preparation(battle: RogueCombatGame) -> bool:
 			is_instance_valid(battle)
 			and not battle.runtime_activation_deferred
 			and battle.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+		):
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_active_battle(
+	coordinator: RogueCombatSingleplayerCoordinator
+) -> RogueCombatGame:
+	for _frame in MAX_BATTLE_READY_FRAMES:
+		var battle := coordinator.get_active_battle()
+		if battle != null and is_instance_valid(battle):
+			return battle
+		await process_frame
+	return null
+
+
+func _wait_for_briefing_entry_cleanup(
+	route: TestRogueRouteP3,
+	coordinator: RogueCombatSingleplayerCoordinator,
+	runtime: RogueRouteRuntimeState,
+	expected_revision: int
+) -> bool:
+	for _frame in MAX_BATTLE_READY_FRAMES:
+		if (
+			runtime.state_revision == expected_revision
+			and coordinator.get_active_battle() == null
+			and not route.is_normal_combat_active()
+			and not route.node_briefing.visible
+			and not route.combat_scene_transition.visible
+			and route.get_node("World").visible
+			and int(route.export_briefing_state_snapshot().get("phase", -1))
+			== TestRogueRouteP3.BriefingPhase.NONE
 		):
 			return true
 		await process_frame

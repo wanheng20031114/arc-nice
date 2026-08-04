@@ -45,29 +45,201 @@ func _run() -> void:
 			})
 	)
 	host.normal_combat_requested.connect(host_combat_consumer)
+	var host_cover_commits: Array[bool] = []
+	var host_cover_consumer := (
+		func(
+			occurrence_key: String,
+			briefing_revision: int,
+			expected_route_revision: int
+		) -> void:
+			host_cover_commits.append(host.host_commit_briefed_move(
+				occurrence_key,
+				briefing_revision,
+				expected_route_revision
+			))
+	)
+	host.briefing_cover_completed.connect(host_cover_consumer)
 	var runtime := host.get("_runtime_state") as RogueRouteRuntimeState
 	var graph := host.get("_route_graph") as RogueRouteGraph
 	var initial_state := host.export_state_snapshot()
 	var layout_snapshot := host.export_layout_snapshot()
 	var start_node_id := runtime.current_node_id
 	var combat_node_id := int(fixture["combat_node_id"])
-	var revision := runtime.state_revision
-	_expect(
-		runtime.try_move(
-			combat_node_id,
-			host.generation_config.move_action_cost,
-			revision
-		),
-		"权威移动进入普通作战节点必须成功。"
+	var content_seed := graph.get_node_content_seed(combat_node_id)
+
+	# 第一次打开只验证取消事务：路线本体字段必须完全不动，只有简报 revision
+	# 从 PRESENTED 推进到 NONE。
+	host.call(&"_on_route_board_node_pressed", combat_node_id)
+	var first_presented_state := host.export_state_snapshot()
+	var first_presented_briefing := (
+		first_presented_state["briefing_state"] as Dictionary
 	)
-	_expect(host_starts.size() == 1, "每次权威进入普通作战节点必须发出一次请求。")
+	_expect(
+		host.node_briefing.visible
+		and not host.move_confirmation.visible
+		and int(first_presented_briefing["phase"])
+		== TestRogueRouteP3.BriefingPhase.PRESENTED
+		and int(first_presented_briefing["node_id"]) == combat_node_id
+		and int(first_presented_briefing["expected_route_revision"])
+		== int(initial_state["revision"]),
+		"普通作战点击必须只打开新简报，并记录待提交的路线 revision。"
+	)
+	_expect(
+		_same_route_runtime_fields(first_presented_state, initial_state),
+		"简报 PRESENTED 前后 AP、路线 revision、当前位置和 visits 必须不变。"
+	)
+	host.node_briefing.cancel_button.pressed.emit()
+	await process_frame
+	var canceled_state := host.export_state_snapshot()
+	var canceled_briefing := canceled_state["briefing_state"] as Dictionary
+	_expect(
+		_same_route_runtime_fields(canceled_state, initial_state)
+		and int(canceled_briefing["phase"])
+		== TestRogueRouteP3.BriefingPhase.NONE
+		and int(canceled_briefing["revision"])
+		== int(first_presented_briefing["revision"]) + 1
+		and not host.node_briefing.visible
+		and not host.move_confirmation.visible,
+		"取消普通作战简报必须只关闭待决状态，不扣 AP、不移动或增加 visits。"
+	)
+
+	# 第二次打开用于全量快照与确认防重验证。
+	host.call(&"_on_route_board_node_pressed", combat_node_id)
+	var presented_state := host.export_state_snapshot()
+	var presented_briefing := presented_state["briefing_state"] as Dictionary
+	_expect(
+		_same_route_runtime_fields(presented_state, initial_state)
+		and host.node_briefing.visible
+		and not host.move_confirmation.visible
+		and int(presented_briefing["phase"])
+		== TestRogueRouteP3.BriefingPhase.PRESENTED,
+		"再次点击普通作战必须恢复唯一的新简报，不提前提交路线移动。"
+	)
+
+	var client := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	client.auto_initialize = false
+	client.manage_return_locally = false
+	root.add_child(client)
+	await process_frame
+	client.start_client_waiting()
+	_expect(
+		client.apply_full_snapshot(layout_snapshot, presented_state),
+		"PRESENTED 全量快照必须在客户端恢复普通作战简报。"
+	)
+	_expect(
+		client.node_briefing.visible
+		and not client.node_briefing.can_decide()
+		and not client.move_confirmation.visible
+		and client.export_briefing_state_snapshot() == presented_briefing,
+		"客户端必须显示只读等待态简报，并保持旧确认框隐藏。"
+	)
+	_expect(
+		client.apply_full_snapshot(layout_snapshot, presented_state),
+		"完全相同的 PRESENTED 全量快照必须幂等接受。"
+	)
+	_expect(
+		not client.apply_full_snapshot(layout_snapshot, initial_state),
+		"当前路线未回滚时，旧简报 revision 的全量包必须被拒绝。"
+	)
+	var conflicting_state := presented_state.duplicate(true)
+	var conflicting_briefing := (
+		conflicting_state["briefing_state"] as Dictionary
+	)
+	conflicting_briefing["phase"] = TestRogueRouteP3.BriefingPhase.ENTERING
+	_expect(
+		not client.apply_full_snapshot(layout_snapshot, conflicting_state),
+		"相同简报 revision 但内容冲突的全量包必须被拒绝。"
+	)
+	_expect(
+		client.apply_briefing_state_snapshot(
+			initial_state["briefing_state"] as Dictionary
+		)
+		and client.apply_briefing_state_snapshot(presented_briefing)
+		and not client.apply_briefing_state_snapshot(conflicting_briefing)
+		and client.export_briefing_state_snapshot() == presented_briefing
+		and client.node_briefing.visible,
+		"低层简报同步必须忽略旧包、幂等接受同包并拒绝同 revision 冲突。"
+	)
+
+	var state_before_confirm := host.export_state_snapshot()
+	host.node_briefing.confirm_button.pressed.emit()
+	host.node_briefing.confirm_button.pressed.emit()
+	await process_frame
+	var entering_pre_move_state := host.export_state_snapshot()
+	var entering_pre_move_briefing := (
+		entering_pre_move_state["briefing_state"] as Dictionary
+	)
+	_expect(
+		_same_route_runtime_fields(entering_pre_move_state, state_before_confirm)
+		and int(entering_pre_move_briefing["phase"])
+		== TestRogueRouteP3.BriefingPhase.ENTERING
+		and int(entering_pre_move_briefing["revision"])
+		== int(presented_briefing["revision"]) + 1
+		and not host.node_briefing.visible
+		and not host.move_confirmation.visible,
+		"双击确认只能提交一次 ENTERING；遮盖完成前路线本体不得变化。"
+	)
+	_expect(
+		client.apply_full_snapshot(layout_snapshot, entering_pre_move_state)
+		and int(client.export_briefing_state_snapshot()["phase"])
+		== TestRogueRouteP3.BriefingPhase.ENTERING
+		and not client.node_briefing.visible,
+		"移动提交前的 ENTERING 全量快照必须同步关闭客户端简报并开始遮盖。"
+	)
+	await create_timer(RogueSceneTransition.COVER_DURATION_SECONDS + 0.08).timeout
+	var entering_post_move_state := host.export_state_snapshot()
+	var entering_post_move_briefing := (
+		entering_post_move_state["briefing_state"] as Dictionary
+	)
+	_expect(
+		int(entering_post_move_briefing["phase"])
+		== TestRogueRouteP3.BriefingPhase.ENTERING,
+		"遮盖后、准备屏障完成前，简报状态必须保持 ENTERING。"
+	)
+	_expect(
+		int(entering_post_move_state["revision"])
+		== int(initial_state["revision"]) + 1
+		and int(entering_post_move_state["action_points"])
+		== int(initial_state["action_points"])
+		- host.generation_config.move_action_cost
+		and int(entering_post_move_state["current_node_id"])
+		== combat_node_id
+		and _visit_count(entering_post_move_state, combat_node_id)
+		== _visit_count(initial_state, combat_node_id) + 1,
+		(
+			"遮盖后确认必须只提交一次路线移动、扣一次 AP 并增加一次 visits；"
+			+ "实际 revision=%d AP=%d current=%d visits=%d cover=%.3f。"
+		) % [
+			int(entering_post_move_state["revision"]),
+			int(entering_post_move_state["action_points"]),
+			int(entering_post_move_state["current_node_id"]),
+			_visit_count(entering_post_move_state, combat_node_id),
+			host.combat_scene_transition.progress,
+		]
+	)
+	_expect(
+		host_cover_commits == [true] and host_starts.size() == 1,
+		(
+			"遮盖后必须且只能提交一次权威移动并发出一次作战启动；"
+			+ "实际 cover commits=%s，starts=%d。"
+		) % [host_cover_commits, host_starts.size()]
+	)
 	if host_starts.is_empty():
+		_cleanup_route(client)
 		_cleanup_route(host)
 		_finish()
 		return
 	var first_start := host_starts[0]
 	var first_key := str(first_start["occurrence_key"])
-	var content_seed := graph.get_node_content_seed(combat_node_id)
+	_expect(
+		not host.host_commit_briefed_move(
+			str(entering_post_move_briefing["occurrence_key"]),
+			int(entering_post_move_briefing["revision"]),
+			int(entering_post_move_briefing["expected_route_revision"])
+		)
+		and host.export_state_snapshot() == entering_post_move_state,
+		"相同 ENTERING tuple 的重复 cover-ready 不得再次扣 AP 或提交路线。"
+	)
 	_expect(
 		host.is_normal_combat_active()
 		and host.is_encounter_active()
@@ -82,16 +254,9 @@ func _run() -> void:
 		bool(host.route_board.get("_interaction_locked")),
 		"普通作战开始后必须锁定路线输入。"
 	)
-
-	var client := ROUTE_SCENE.instantiate() as TestRogueRouteP3
-	client.auto_initialize = false
-	client.manage_return_locally = false
-	root.add_child(client)
-	await process_frame
-	client.start_client_waiting()
 	_expect(
-		client.apply_full_snapshot(layout_snapshot, host.export_state_snapshot()),
-		"客户端必须先接受当前路线全量快照。"
+		client.apply_full_snapshot(layout_snapshot, entering_post_move_state),
+		"路线提交后的 ENTERING 全量快照必须接受已移动状态。"
 	)
 	_expect(
 		not client.apply_normal_combat_started(
@@ -124,10 +289,24 @@ func _run() -> void:
 		),
 		"客户端必须接受严格匹配的启动数据并幂等接受重放。"
 	)
+	_expect(
+		host.complete_briefing_entry(first_key),
+		"房主在战场准备完成后必须结束权威 ENTERING 状态。"
+	)
+	var completed_briefing := host.export_briefing_state_snapshot()
+	_expect(
+		int(completed_briefing["phase"])
+		== TestRogueRouteP3.BriefingPhase.NONE
+		and client.apply_briefing_state_snapshot(completed_briefing)
+		and int(client.export_briefing_state_snapshot()["phase"])
+		== TestRogueRouteP3.BriefingPhase.NONE,
+		"准备屏障结束后，双方简报状态必须收敛到 NONE。"
+	)
 
 	var world := client.get_node("World") as Node2D
 	var hud := client.get_node("HUD") as CanvasLayer
 	var confirmation_visible := client.move_confirmation.visible
+	var briefing_visible := client.node_briefing.visible
 	var encounter_visible := client.encounter_overlay.visible
 	var camera_enabled := client.map_camera.enabled
 	client.set_route_presentation_enabled(false)
@@ -135,15 +314,17 @@ func _run() -> void:
 		not world.visible
 		and not hud.visible
 		and not client.move_confirmation.visible
+		and not client.node_briefing.visible
 		and not client.encounter_overlay.visible
 		and not client.map_camera.enabled,
-		"关闭路线表现时必须原生隐藏地图、HUD、两个模态层并关闭路线相机。"
+		"关闭路线表现时必须隐藏地图、HUD、旧确认框、简报、遭遇层与路线相机。"
 	)
 	client.set_route_presentation_enabled(true)
 	_expect(
 		world.visible
 		and hud.visible
 		and client.move_confirmation.visible == confirmation_visible
+		and client.node_briefing.visible == briefing_visible
 		and client.encounter_overlay.visible == encounter_visible
 		and client.map_camera.enabled == camera_enabled,
 		"恢复路线表现时必须还原原可见状态，不重建或误开模态层。"
@@ -220,6 +401,7 @@ func _run() -> void:
 		"房主必须能完成第二次作战阶段。"
 	)
 	host.normal_combat_requested.disconnect(host_combat_consumer)
+	host.briefing_cover_completed.disconnect(host_cover_consumer)
 	_expect(
 		runtime.try_move(
 			start_node_id,
@@ -306,6 +488,24 @@ func _find_adjacent_normal_combat_fixture() -> Dictionary:
 					"combat_node_id": int(neighbor_id),
 				}
 	return {}
+
+
+func _same_route_runtime_fields(first: Dictionary, second: Dictionary) -> bool:
+	return (
+		int(first.get("revision", -1)) == int(second.get("revision", -1))
+		and int(first.get("current_node_id", -1))
+		== int(second.get("current_node_id", -1))
+		and int(first.get("action_points", -1))
+		== int(second.get("action_points", -1))
+		and first.get("visited_counts") == second.get("visited_counts")
+	)
+
+
+func _visit_count(snapshot: Dictionary, node_id: int) -> int:
+	var visits := snapshot.get("visited_counts") as PackedInt32Array
+	if node_id < 0 or node_id >= visits.size():
+		return -1
+	return int(visits[node_id])
 
 
 func _cleanup_route(route: TestRogueRouteP3) -> void:

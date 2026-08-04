@@ -84,8 +84,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 42,
-		"协议v42必须保留既有wire类型，并隔离荧光坑洞结算。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 43,
+		"协议v43必须保留既有wire类型，并隔离荧光坑洞结算。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

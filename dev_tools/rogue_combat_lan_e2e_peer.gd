@@ -140,12 +140,96 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	if baseline.is_empty():
 		return
 	var runtime_state := route.get("_runtime_state") as RogueRouteRuntimeState
-	if runtime_state == null or not runtime_state.try_move(
-		combat_node_id,
-		route.generation_config.move_action_cost,
-		route.get_route_revision()
+	if runtime_state == null:
+		_fail("Host route runtime state is missing")
+		return
+	var route_node_before := runtime_state.current_node_id
+	var action_points_before := runtime_state.action_points
+	var route_revision_before := runtime_state.state_revision
+	var visit_count_before := int(
+		runtime_state.visited_counts[combat_node_id]
+	)
+	route.route_board.complete_entry_reveal()
+	route.route_board.node_pressed.emit(combat_node_id)
+	if not await _wait_until(
+		func() -> bool: return route.node_briefing.visible,
+		NETWORK_TIMEOUT_SECONDS
 	):
-		_fail("Host could not move onto the deterministic combat node")
+		_fail("Host did not present the normal-combat briefing")
+		return
+	if (
+		route.move_confirmation.visible
+		or not route.node_briefing.can_decide()
+		or runtime_state.current_node_id != route_node_before
+		or runtime_state.action_points != action_points_before
+		or runtime_state.state_revision != route_revision_before
+		or int(runtime_state.visited_counts[combat_node_id])
+		!= visit_count_before
+	):
+		_fail("Host briefing presentation changed route state before confirmation")
+		return
+	if not await _wait_for_marker(
+		"client_briefing_presented_1",
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Host timed out waiting for Client read-only briefing")
+		return
+	route.node_briefing.cancel_button.pressed.emit()
+	if not await _wait_until(
+		func() -> bool: return not route.node_briefing.visible,
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Host briefing did not close after cancel")
+		return
+	if not await _wait_for_marker(
+		"client_briefing_canceled",
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Host timed out waiting for synchronized Client cancel")
+		return
+	if (
+		runtime_state.current_node_id != route_node_before
+		or runtime_state.action_points != action_points_before
+		or runtime_state.state_revision != route_revision_before
+		or int(runtime_state.visited_counts[combat_node_id])
+		!= visit_count_before
+	):
+		_fail("Cancel changed AP, route revision, node, or visit count")
+		return
+	route.route_board.node_pressed.emit(combat_node_id)
+	if not await _wait_until(
+		func() -> bool: return route.node_briefing.visible,
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Host could not reopen the normal-combat briefing")
+		return
+	if not await _wait_for_marker(
+		"client_briefing_presented_2",
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Host timed out waiting for Client reopened briefing")
+		return
+	route.node_briefing.confirm_button.pressed.emit()
+	route.node_briefing.confirm_button.pressed.emit()
+	if not await _wait_until(
+		func() -> bool:
+			return (
+				route.is_normal_combat_active()
+				and not route.get_normal_combat_occurrence_key().is_empty()
+			),
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Host cover-ready barrier did not commit the combat move")
+		return
+	if (
+		runtime_state.current_node_id != combat_node_id
+		or runtime_state.action_points
+		!= action_points_before - route.generation_config.move_action_cost
+		or runtime_state.state_revision != route_revision_before + 1
+		or int(runtime_state.visited_counts[combat_node_id])
+		!= visit_count_before + 1
+	):
+		_fail("Confirmed briefing did not commit exactly one route move")
 		return
 	var occurrence_key := route.get_normal_combat_occurrence_key()
 	if occurrence_key.is_empty():
@@ -349,7 +433,79 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	var baseline := _capture_route_and_inventory_baseline(route, peer_ids)
 	if baseline.is_empty():
 		return
+	var runtime_state := route.get("_runtime_state") as RogueRouteRuntimeState
+	if runtime_state == null:
+		_fail("Client route runtime state is missing")
+		return
+	var route_node_before := runtime_state.current_node_id
+	var action_points_before := runtime_state.action_points
+	var route_revision_before := runtime_state.state_revision
+	var visit_count_before := int(
+		runtime_state.visited_counts[combat_node_id]
+	)
 	if not _write_marker("client_route_ready", "ok"):
+		return
+	if not await _wait_until(
+		func() -> bool: return route.node_briefing.visible,
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Client did not receive the Host briefing")
+		return
+	var first_briefing_revision := int(
+		route.export_briefing_state_snapshot().get("revision", -1)
+	)
+	if (
+		route.node_briefing.can_decide()
+		or not route.node_briefing.cancel_button.disabled
+		or not route.node_briefing.confirm_button.disabled
+		or route.move_confirmation.visible
+		or runtime_state.current_node_id != route_node_before
+		or runtime_state.action_points != action_points_before
+		or runtime_state.state_revision != route_revision_before
+		or int(runtime_state.visited_counts[combat_node_id])
+		!= visit_count_before
+	):
+		_fail("Client briefing was interactive or changed route state")
+		return
+	if not _write_marker("client_briefing_presented_1", "ok"):
+		return
+	if not await _wait_until(
+		func() -> bool:
+			return (
+				not route.node_briefing.visible
+				and int(route.export_briefing_state_snapshot().get("phase", -1))
+				== TestRogueRouteP3.BriefingPhase.NONE
+			),
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Client did not synchronize the Host briefing cancel")
+		return
+	if (
+		runtime_state.current_node_id != route_node_before
+		or runtime_state.action_points != action_points_before
+		or runtime_state.state_revision != route_revision_before
+		or int(runtime_state.visited_counts[combat_node_id])
+		!= visit_count_before
+	):
+		_fail("Synchronized briefing cancel changed Client route state")
+		return
+	if not _write_marker("client_briefing_canceled", "ok"):
+		return
+	if not await _wait_until(
+		func() -> bool:
+			return (
+				route.node_briefing.visible
+				and int(route.export_briefing_state_snapshot().get("revision", -1))
+				> first_briefing_revision
+			),
+		NETWORK_TIMEOUT_SECONDS
+	):
+		_fail("Client did not receive the reopened Host briefing")
+		return
+	if route.node_briefing.can_decide():
+		_fail("Client reopened briefing unexpectedly allowed decisions")
+		return
+	if not _write_marker("client_briefing_presented_2", "ok"):
 		return
 	if not await _wait_until(
 		func() -> bool:

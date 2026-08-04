@@ -99,6 +99,7 @@ func _on_normal_combat_requested(
 	if not _enabled or route == null:
 		return
 	if _consumed_node_ids.has(node_id):
+		route.abort_briefing_entry(occurrence_key)
 		route.complete_normal_combat(occurrence_key)
 		return
 	if active_battle != null or _settling_outcome:
@@ -224,6 +225,21 @@ func _activate_battle_when_prepared(
 		or occurrence_key != _active_occurrence_key
 		or _settling_outcome
 	):
+		return
+	route.complete_briefing_entry(occurrence_key)
+	var entry_revealed := await route.reveal_normal_combat_entry(
+		occurrence_key
+	)
+	if (
+		battle != active_battle
+		or not is_instance_valid(battle)
+		or occurrence_key != _active_occurrence_key
+		or _settling_outcome
+	):
+		return
+	if not entry_revealed:
+		_dispose_active_battle()
+		_recover_route_from_start_failure(occurrence_key)
 		return
 	battle.activate_runtime()
 
@@ -581,7 +597,7 @@ func _recover_route_from_start_failure(occurrence_key: String) -> void:
 		return
 	_victory_sequence_serial += 1
 	route.combat_victory_presentation.interrupt_and_reset()
-	route.combat_scene_transition.hide_immediately()
+	route.abort_briefing_entry(occurrence_key)
 	route.complete_normal_combat(occurrence_key)
 	route.set_route_presentation_enabled(true)
 

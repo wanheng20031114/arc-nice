@@ -37,6 +37,12 @@ var _latest_layout_snapshot: Dictionary = {}
 var _latest_state_snapshot: Dictionary = {}
 var _latest_encounter_snapshot: Dictionary = {}
 var _latest_economy_snapshot: Dictionary = {}
+var _briefing_cover_expected_peers: Dictionary = {}
+var _briefing_cover_ready_peers: Dictionary = {}
+var _briefing_cover_occurrence_key := ""
+var _briefing_cover_revision := -1
+var _briefing_cover_expected_route_revision := -1
+var _briefing_move_commit_started := false
 var _avatar_sync_time_left := 0.0
 var _client_avatar_sequence := 0
 var _host_avatar_snapshot_sequence := 0
@@ -140,6 +146,18 @@ func _connect_route_signals() -> void:
 		_route.host_layout_committed.connect(_on_host_layout_committed)
 	if not _route.host_move_committed.is_connected(_on_host_move_committed):
 		_route.host_move_committed.connect(_on_host_move_committed)
+	if not _route.host_briefing_state_committed.is_connected(
+		_on_host_briefing_state_committed
+	):
+		_route.host_briefing_state_committed.connect(
+			_on_host_briefing_state_committed
+		)
+	if not _route.briefing_cover_completed.is_connected(
+		_on_local_briefing_cover_completed
+	):
+		_route.briefing_cover_completed.connect(
+			_on_local_briefing_cover_completed
+		)
 	if not _route.host_encounter_snapshot_committed.is_connected(
 		_on_host_encounter_snapshot_committed
 	):
@@ -175,6 +193,18 @@ func _disconnect_route_signals() -> void:
 		_route.host_layout_committed.disconnect(_on_host_layout_committed)
 	if _route.host_move_committed.is_connected(_on_host_move_committed):
 		_route.host_move_committed.disconnect(_on_host_move_committed)
+	if _route.host_briefing_state_committed.is_connected(
+		_on_host_briefing_state_committed
+	):
+		_route.host_briefing_state_committed.disconnect(
+			_on_host_briefing_state_committed
+		)
+	if _route.briefing_cover_completed.is_connected(
+		_on_local_briefing_cover_completed
+	):
+		_route.briefing_cover_completed.disconnect(
+			_on_local_briefing_cover_completed
+		)
 	if _route.host_encounter_snapshot_committed.is_connected(
 		_on_host_encounter_snapshot_committed
 	):
@@ -336,6 +366,11 @@ func _finish_player_reconnect(
 		return false
 	if _is_host():
 		_route.host_migrate_encounter_peer(old_peer_id, new_peer_id)
+		if _briefing_cover_expected_peers.has(old_peer_id):
+			_briefing_cover_expected_peers.erase(old_peer_id)
+			_briefing_cover_ready_peers.erase(old_peer_id)
+			if not _briefing_move_commit_started:
+				_briefing_cover_expected_peers[new_peer_id] = true
 		_send_full_snapshot_to_peer(new_peer_id)
 	return true
 
@@ -483,6 +518,10 @@ func _migrate_reconnected_player(
 
 
 func _on_player_left(peer_id: int) -> void:
+	if _is_host() and _briefing_cover_expected_peers.has(peer_id):
+		_briefing_cover_expected_peers.erase(peer_id)
+		_briefing_cover_ready_peers.erase(peer_id)
+		_try_commit_briefed_move_after_cover_barrier()
 	if _route != null:
 		if _is_host():
 			_route.host_remove_encounter_peer(peer_id)
@@ -526,12 +565,19 @@ func _on_player_joined(peer_id: int, player_name: String) -> void:
 		return
 	if _is_host():
 		_route.host_add_encounter_spectator(peer_id)
+		if (
+			not _briefing_move_commit_started
+			and not _briefing_cover_occurrence_key.is_empty()
+			and _is_peer_send_ready(peer_id)
+		):
+			_briefing_cover_expected_peers[peer_id] = true
 		_send_full_snapshot_to_peer(peer_id)
 
 
 func _on_host_layout_committed(layout: Dictionary, state: Dictionary) -> void:
 	if not _is_host() or layout.is_empty() or state.is_empty():
 		return
+	_reset_briefing_cover_barrier()
 	_reset_avatar_validation_positions()
 	_latest_layout_snapshot = layout.duplicate(true)
 	_latest_state_snapshot = state.duplicate(true)
@@ -549,6 +595,122 @@ func _on_host_move_committed(delta: Dictionary) -> void:
 	for peer_id in _get_remote_player_peer_ids():
 		if _is_peer_send_ready(peer_id):
 			net_route_move_delta.rpc_id(peer_id, delta.duplicate(true))
+
+
+func _on_host_briefing_state_committed(snapshot: Dictionary) -> void:
+	if not _is_host() or snapshot.is_empty():
+		return
+	_configure_briefing_cover_barrier(snapshot)
+	_refresh_authoritative_state_cache()
+	if _get_connection_state() != STATE_IN_GAME or not _has_network_peer():
+		return
+	for peer_id in _get_remote_player_peer_ids():
+		if _is_peer_send_ready(peer_id):
+			net_route_briefing_state.rpc_id(
+				peer_id,
+				snapshot.duplicate(true)
+			)
+
+
+func _configure_briefing_cover_barrier(snapshot: Dictionary) -> void:
+	_reset_briefing_cover_barrier()
+	if (
+		int(snapshot.get("phase", -1))
+		!= TestRogueRouteP3.BriefingPhase.ENTERING
+	):
+		return
+	_briefing_cover_occurrence_key = str(
+		snapshot.get("occurrence_key", "")
+	)
+	_briefing_cover_revision = int(snapshot.get("revision", -1))
+	_briefing_cover_expected_route_revision = int(
+		snapshot.get("expected_route_revision", -1)
+	)
+	var local_peer_id := _get_local_peer_id()
+	if local_peer_id > 0:
+		_briefing_cover_expected_peers[local_peer_id] = true
+	for peer_id in _get_remote_player_peer_ids():
+		if _is_peer_send_ready(peer_id):
+			_briefing_cover_expected_peers[peer_id] = true
+
+
+func _reset_briefing_cover_barrier() -> void:
+	_briefing_cover_expected_peers.clear()
+	_briefing_cover_ready_peers.clear()
+	_briefing_cover_occurrence_key = ""
+	_briefing_cover_revision = -1
+	_briefing_cover_expected_route_revision = -1
+	_briefing_move_commit_started = false
+
+
+func _on_local_briefing_cover_completed(
+	occurrence_key: String,
+	briefing_revision: int,
+	expected_route_revision: int
+) -> void:
+	var local_peer_id := _get_local_peer_id()
+	if _is_host():
+		_accept_briefing_cover_ready(
+			local_peer_id,
+			occurrence_key,
+			briefing_revision,
+			expected_route_revision
+		)
+		return
+	if (
+		_is_client()
+		and local_peer_id > 0
+		and _is_peer_send_ready(_get_host_peer_id())
+	):
+		net_route_briefing_cover_ready.rpc_id(
+			_get_host_peer_id(),
+			occurrence_key,
+			briefing_revision,
+			expected_route_revision
+		)
+
+
+func _accept_briefing_cover_ready(
+	peer_id: int,
+	occurrence_key: String,
+	briefing_revision: int,
+	expected_route_revision: int
+) -> bool:
+	if (
+		not _is_host()
+		or _briefing_move_commit_started
+		or peer_id <= 0
+		or not _briefing_cover_expected_peers.has(peer_id)
+		or occurrence_key != _briefing_cover_occurrence_key
+		or briefing_revision != _briefing_cover_revision
+		or expected_route_revision
+		!= _briefing_cover_expected_route_revision
+	):
+		return false
+	_briefing_cover_ready_peers[peer_id] = true
+	_try_commit_briefed_move_after_cover_barrier()
+	return true
+
+
+func _try_commit_briefed_move_after_cover_barrier() -> void:
+	if (
+		not _is_host()
+		or _briefing_move_commit_started
+		or _briefing_cover_expected_peers.is_empty()
+	):
+		return
+	for peer_id_variant in _briefing_cover_expected_peers.keys():
+		if not _briefing_cover_ready_peers.has(int(peer_id_variant)):
+			return
+	_briefing_move_commit_started = true
+	if not _route.host_commit_briefed_move(
+		_briefing_cover_occurrence_key,
+		_briefing_cover_revision,
+		_briefing_cover_expected_route_revision
+	):
+		# 路线会自行恢复已过期或被拒绝的进入状态；保持锁定可防止重复 ready
+		# 在恢复协程完成前再次尝试提交。
+		return
 
 
 func _on_host_encounter_snapshot_committed(
@@ -1392,6 +1554,47 @@ func _apply_move_delta_from_peer(sender_id: int, delta: Dictionary) -> bool:
 		return true
 	_request_full_snapshot()
 	return false
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_route_briefing_state(snapshot: Dictionary) -> void:
+	_apply_briefing_state_from_peer(
+		multiplayer.get_remote_sender_id(),
+		snapshot
+	)
+
+
+func _apply_briefing_state_from_peer(
+	sender_id: int,
+	snapshot: Dictionary
+) -> bool:
+	if (
+		not _is_client()
+		or sender_id != _get_host_peer_id()
+		or snapshot.is_empty()
+		or _route == null
+	):
+		return false
+	if _route.apply_briefing_state_snapshot(snapshot.duplicate(true)):
+		return true
+	_request_full_snapshot()
+	return false
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_route_briefing_cover_ready(
+	occurrence_key: String,
+	briefing_revision: int,
+	expected_route_revision: int
+) -> void:
+	if not _is_host():
+		return
+	_accept_briefing_cover_ready(
+		multiplayer.get_remote_sender_id(),
+		occurrence_key,
+		briefing_revision,
+		expected_route_revision
+	)
 
 
 func _on_return_requested() -> void:

@@ -47,8 +47,10 @@ var _reconnecting_peer_ids: Dictionary = {}
 var _expected_prepared_peers: Dictionary = {}
 var _prepared_peers: Dictionary = {}
 var _activate_when_prepared := false
+var _activation_dispatch_started := false
 var _local_runtime_prepared := false
 var _local_runtime_activated := false
+var _local_activation_requested := false
 
 var _combat_network: Node = null
 var _combat_game: RogueCombatGame = null
@@ -220,16 +222,26 @@ func _on_normal_combat_requested(
 	):
 		return
 	if _consumed_node_ids.has(node_id):
+		_route.abort_briefing_entry(occurrence_key)
+		for peer_id in _capture_current_participants():
+			if (
+				peer_id == _get_local_peer_id()
+				or not _is_peer_send_ready(peer_id)
+			):
+				continue
+			net_combat_route_spectator.rpc_id(peer_id, occurrence_key)
 		_route.complete_normal_combat(occurrence_key)
 		return
 
 	var participants := _capture_current_participants()
 	if participants.is_empty():
+		_route.abort_briefing_entry(occurrence_key)
 		_route.complete_normal_combat(occurrence_key)
 		return
 	var entry_xirang := _capture_entry_xirang(participants)
 	if entry_xirang.size() != participants.size():
 		push_error("RogueCombatMultiplayerCoordinator: 无法捕获完整入口息壤。")
+		_route.abort_briefing_entry(occurrence_key)
 		_route.complete_normal_combat(occurrence_key)
 		return
 
@@ -285,8 +297,10 @@ func _begin_protocol(
 	_expected_prepared_peers = _participant_peer_ids.duplicate()
 	_prepared_peers.clear()
 	_activate_when_prepared = activate_when_prepared
+	_activation_dispatch_started = activate_when_prepared
 	_local_runtime_prepared = false
 	_local_runtime_activated = false
+	_local_activation_requested = false
 	_local_outcome_received = false
 	_local_outcome_victory = false
 	_local_outcome_failure_reason = ""
@@ -331,7 +345,7 @@ func net_combat_prepare(
 			_activate_when_prepared or activate_when_prepared
 		)
 		if _activate_when_prepared and _local_runtime_prepared:
-			_activate_local_runtime()
+			_request_local_runtime_activation()
 		return
 	_resolve_stale_local_result_before_prepare()
 	if not _route.apply_normal_combat_started(
@@ -412,7 +426,7 @@ func _on_embedded_runtime_prepared() -> void:
 			_active_occurrence_key
 		)
 	if _activate_when_prepared:
-		if not _activate_local_runtime():
+		if not _request_local_runtime_activation():
 			if _is_host():
 				_abort_authoritative_protocol(&"runtime_activate_failed")
 			else:
@@ -508,6 +522,7 @@ func _try_activate_host_barrier() -> void:
 	if (
 		not _is_host()
 		or _phase != ProtocolPhase.PREPARING
+		or _activation_dispatch_started
 		or not _local_runtime_prepared
 		or not _contains_all_keys(
 			_prepared_peers,
@@ -515,12 +530,14 @@ func _try_activate_host_barrier() -> void:
 		)
 	):
 		return
+	_activation_dispatch_started = true
+	_activate_when_prepared = true
 	for peer_id_variant in _participant_peer_ids.keys():
 		var peer_id := int(peer_id_variant)
 		if peer_id == _get_local_peer_id() or not _is_peer_send_ready(peer_id):
 			continue
 		net_combat_activate.rpc_id(peer_id, _active_occurrence_key)
-	if not _activate_local_runtime():
+	if not _request_local_runtime_activation():
 		_abort_authoritative_protocol(&"host_runtime_activate_failed")
 
 
@@ -533,13 +550,57 @@ func net_combat_activate(occurrence_key: String) -> void:
 		or occurrence_key != _active_occurrence_key
 	):
 		return
+	_activation_dispatch_started = true
 	_activate_when_prepared = true
 	if _local_runtime_prepared:
-		if not _activate_local_runtime():
+		if not _request_local_runtime_activation():
 			_request_authoritative_abort(
 				_active_occurrence_key,
 				&"client_runtime_activate_failed"
 			)
+
+
+func _request_local_runtime_activation() -> bool:
+	if _local_runtime_activated or _local_activation_requested:
+		return true
+	if (
+		_phase != ProtocolPhase.PREPARING
+		or not _local_runtime_prepared
+		or _active_occurrence_key.is_empty()
+	):
+		return false
+	_local_activation_requested = true
+	call_deferred(
+		&"_activate_local_runtime_after_entry_reveal",
+		_active_occurrence_key
+	)
+	return true
+
+
+func _activate_local_runtime_after_entry_reveal(
+	occurrence_key: String
+) -> void:
+	var revealed := await _route.reveal_normal_combat_entry(occurrence_key)
+	if (
+		_phase != ProtocolPhase.PREPARING
+		or occurrence_key != _active_occurrence_key
+		or not _local_activation_requested
+	):
+		return
+	_local_activation_requested = false
+	if not revealed:
+		_request_authoritative_abort(
+			occurrence_key,
+			&"entry_reveal_failed"
+		)
+		return
+	if _is_host():
+		_route.complete_briefing_entry(occurrence_key)
+	if not _activate_local_runtime():
+		_request_authoritative_abort(
+			occurrence_key,
+			&"runtime_activate_failed"
+		)
 
 
 func _activate_local_runtime() -> bool:
@@ -1043,8 +1104,10 @@ func _reset_protocol_state() -> void:
 	_expected_prepared_peers.clear()
 	_prepared_peers.clear()
 	_activate_when_prepared = false
+	_activation_dispatch_started = false
 	_local_runtime_prepared = false
 	_local_runtime_activated = false
+	_local_activation_requested = false
 	_local_outcome_received = false
 	_local_outcome_victory = false
 	_local_outcome_failure_reason = ""
@@ -1101,6 +1164,7 @@ func _abort_authoritative_protocol(reason: StringName) -> void:
 	if not _is_host() or _active_occurrence_key.is_empty():
 		return
 	var occurrence_key := _active_occurrence_key
+	_route.abort_briefing_entry(occurrence_key)
 	for peer_id_variant in _participant_peer_ids.keys():
 		var peer_id := int(peer_id_variant)
 		if peer_id == _get_local_peer_id() or not _is_peer_send_ready(peer_id):
@@ -1136,6 +1200,7 @@ func _apply_protocol_abort(occurrence_key: String) -> void:
 	_combat_network = null
 	_combat_game = null
 	if _route != null and is_instance_valid(_route):
+		_route.abort_briefing_entry(occurrence_key)
 		_route.complete_normal_combat(occurrence_key)
 		_route.set_route_presentation_enabled(true)
 	_reset_protocol_state()
@@ -1210,6 +1275,7 @@ func net_combat_route_spectator(occurrence_key: String) -> void:
 	):
 		return
 	# 不创建 MpGame，也不参与 prepare barrier；路线本身仍由房主权威锁定。
+	_route.hide_combat_entry_transition()
 	_route.set_route_presentation_enabled(true)
 
 
@@ -1287,7 +1353,10 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 	_prepared_peers.erase(old_peer_id)
 	_expected_terminal_peers.erase(old_peer_id)
 	_terminal_ready_peers.erase(old_peer_id)
-	if _phase == ProtocolPhase.PREPARING:
+	if (
+		_phase == ProtocolPhase.PREPARING
+		and not _activation_dispatch_started
+	):
 		_expected_prepared_peers[new_peer_id] = true
 	elif _phase == ProtocolPhase.SETTLED:
 		_expected_terminal_peers[new_peer_id] = true
@@ -1298,7 +1367,7 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 	var activate_immediately := _phase in [
 		ProtocolPhase.ACTIVE,
 		ProtocolPhase.SETTLED,
-	]
+	] or _activation_dispatch_started
 	net_combat_prepare.rpc_id(
 		new_peer_id,
 		_active_node_id,

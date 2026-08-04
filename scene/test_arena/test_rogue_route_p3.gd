@@ -6,6 +6,12 @@ signal host_layout_committed(
 	state_snapshot: Dictionary
 )
 signal host_move_committed(delta: Dictionary)
+signal host_briefing_state_committed(briefing_snapshot: Dictionary)
+signal briefing_cover_completed(
+	occurrence_key: String,
+	briefing_revision: int,
+	expected_route_revision: int
+)
 signal host_encounter_snapshot_committed(
 	encounter_snapshot: Dictionary,
 	economy_snapshot: Dictionary
@@ -37,6 +43,11 @@ const INVALID_NODE_ID := -1
 const AUTO_SEED := 0
 const ROUTE_CONTRACT_FIELD := "runtime_contract_hash"
 const SINGLEPLAYER_PEER_ID := 0
+const BRIEFING_STATE_FIELD := "briefing_state"
+const BRIEFING_SCHEMA_VERSION := 1
+const NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT := preload(
+	"res://scene/rogue_route/rogue_normal_combat_briefing_adapter.gd"
+)
 const AVATAR_SPAWN_OFFSETS := [
 	Vector2.ZERO,
 	Vector2(12.0, 0.0),
@@ -47,6 +58,12 @@ const AVATAR_SPAWN_OFFSETS := [
 	Vector2(-12.0, 12.0),
 	Vector2(12.0, -12.0),
 ]
+
+enum BriefingPhase {
+	NONE,
+	PRESENTED,
+	ENTERING,
+}
 
 @export var generation_config: RogueRouteGenerationConfig
 @export var auto_initialize := true
@@ -75,6 +92,7 @@ const AVATAR_SPAWN_OFFSETS := [
 @onready var status_message: Label = %StatusMessage
 @onready var route_hud: CanvasLayer = $HUD
 @onready var move_confirmation: RogueRouteMoveConfirmation = $MoveConfirmation
+@onready var node_briefing: RogueRouteNodeBriefing = $NodeBriefing
 @onready var encounter_scene: RogueEncounterScene = $EncounterScene
 @onready var encounter_economy: RogueEncounterEconomyCoordinator = (
 	$EncounterEconomy
@@ -107,6 +125,12 @@ var _authority_enabled := true
 var _route_ready := false
 var _pending_node_id := INVALID_NODE_ID
 var _pending_revision := -1
+var _briefing_revision := 0
+var _briefing_phase := BriefingPhase.NONE
+var _briefing_node_id := INVALID_NODE_ID
+var _briefing_occurrence_key := ""
+var _briefing_expected_route_revision := -1
+var _normal_combat_briefing_adapter: RefCounted = null
 var player: Player = null
 var peer_players: Dictionary[int, Player] = {}
 var _local_peer_id := 0
@@ -136,6 +160,9 @@ var _max_health_transition_by_peer: Dictionary = {}
 
 
 func _ready() -> void:
+	_normal_combat_briefing_adapter = (
+		NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT.new()
+	)
 	_connect_runtime_activation_signal()
 	_create_encounter_runtime()
 	route_board.show_waiting_for_host()
@@ -233,6 +260,7 @@ func start_authoritative_session(
 	):
 		_set_status("路线运行状态初始化失败。", true)
 		return false
+	_reset_briefing_runtime(true)
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(true)
 
@@ -266,6 +294,7 @@ func start_authoritative_session(
 
 func start_client_waiting() -> void:
 	_set_route_reveal_input_locked(false)
+	_reset_briefing_runtime(true)
 	_clear_pending_move(true)
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(false)
@@ -286,6 +315,11 @@ func apply_full_snapshot(
 	encounter_snapshot: Dictionary = {},
 	economy_snapshot: Dictionary = {}
 ) -> bool:
+	var briefing_value: Variant = state_snapshot.get(BRIEFING_STATE_FIELD)
+	if typeof(briefing_value) != TYPE_DICTIONARY:
+		_set_status("房主路线状态缺少作战简报快照。", true)
+		return false
+	var briefing_snapshot := (briefing_value as Dictionary).duplicate(true)
 	if str(layout_snapshot.get(ROUTE_CONTRACT_FIELD, "")) != (
 		_get_runtime_contract_hash()
 	):
@@ -305,6 +339,13 @@ func apply_full_snapshot(
 		return false
 	if not imported_state.apply_remote_state(state_snapshot):
 		_set_status("房主路线状态与布局不匹配。", true)
+		return false
+	if not _validate_briefing_state_against(
+		briefing_snapshot,
+		imported_graph,
+		imported_state
+	):
+		_set_status("房主作战简报状态与路线不匹配。", true)
 		return false
 	var layout_changed := (
 		_route_graph == null
@@ -336,12 +377,32 @@ func apply_full_snapshot(
 				!= str(current_encounter_snapshot.get("occurrence_key", ""))
 			)
 		)
-	if layout_changed or route_rewound or encounter_rewound:
+	var presentation_rewound := (
+		layout_changed or route_rewound or encounter_rewound
+	)
+	if not presentation_rewound and is_route_ready():
+		var incoming_briefing_revision := int(
+			briefing_snapshot["revision"]
+		)
+		if (
+			incoming_briefing_revision < _briefing_revision
+			or (
+				incoming_briefing_revision == _briefing_revision
+				and briefing_snapshot != export_briefing_state_snapshot()
+			)
+		):
+			_set_status("房主作战简报快照已过期或发生冲突。", true)
+			return false
+	if presentation_rewound:
+		_reset_briefing_runtime(true)
 		_reset_normal_combat_stage(true)
 		_reset_encounter_runtime(false)
 
 	_set_route_reveal_input_locked(false)
-	_clear_pending_move(true)
+	if _briefing_phase == BriefingPhase.NONE:
+		_clear_pending_move(true)
+	elif move_confirmation.visible:
+		move_confirmation.dismiss()
 	set_authority_enabled(false)
 	if not route_board.present_graph(
 		imported_graph,
@@ -356,6 +417,12 @@ func apply_full_snapshot(
 		return false
 	_bind_runtime_state(imported_graph, imported_state)
 	_route_ready = true
+	if not apply_briefing_state_snapshot(briefing_snapshot):
+		_set_status("房主作战简报状态与路线不匹配。", true)
+		return false
+	if _briefing_phase != BriefingPhase.NONE:
+		route_board.select_node(_briefing_node_id)
+	_refresh_route_input_lock()
 	if (
 		not encounter_snapshot.is_empty()
 		and not apply_encounter_snapshot(
@@ -420,7 +487,149 @@ func export_layout_snapshot() -> Dictionary:
 func export_state_snapshot() -> Dictionary:
 	if not is_route_ready():
 		return {}
-	return _runtime_state.export_state().duplicate(true)
+	var snapshot := _runtime_state.export_state().duplicate(true)
+	snapshot[BRIEFING_STATE_FIELD] = export_briefing_state_snapshot()
+	return snapshot
+
+
+func export_briefing_state_snapshot() -> Dictionary:
+	if not is_route_ready():
+		return {}
+	return {
+		"schema_version": BRIEFING_SCHEMA_VERSION,
+		"layout_hash": _route_graph.compute_layout_hash(),
+		"revision": _briefing_revision,
+		"phase": _briefing_phase,
+		"node_id": _briefing_node_id,
+		"occurrence_key": _briefing_occurrence_key,
+		"expected_route_revision": _briefing_expected_route_revision,
+	}
+
+
+## 客户端只接受可由本地路线完整复算的权威简报状态。旧 revision 会被忽略，
+## 同 revision 的不同内容会被拒绝，避免过期包重新打开或重复提交简报。
+func apply_briefing_state_snapshot(snapshot: Dictionary) -> bool:
+	if (
+		_authority_enabled
+		or not is_route_ready()
+		or not _validate_briefing_state_against(
+			snapshot,
+			_route_graph,
+			_runtime_state
+		)
+	):
+		return false
+	var incoming_revision := int(snapshot["revision"])
+	if incoming_revision < _briefing_revision:
+		return true
+	if incoming_revision == _briefing_revision:
+		return snapshot == export_briefing_state_snapshot()
+	var previous_phase := _briefing_phase
+	_assign_briefing_state(snapshot)
+	_sync_briefing_presentation(previous_phase)
+	return true
+
+
+## 战场已经在遮盖下完成本地准备后，由协调器调用。入口遮盖不存在时返回
+## true，以兼容直接构造战斗阶段的底层 smoke；正式简报路径一定会执行 reveal。
+func reveal_normal_combat_entry(occurrence_key: String) -> bool:
+	if (
+		occurrence_key.is_empty()
+		or not _normal_combat_active
+		or occurrence_key != _normal_combat_occurrence_key
+	):
+		return false
+	if not combat_scene_transition.visible:
+		return true
+	var revealed := await combat_scene_transition.reveal()
+	return (
+		revealed
+		and _normal_combat_active
+		and occurrence_key == _normal_combat_occurrence_key
+	)
+
+
+## Host 在全员战场准备屏障到齐时结束权威 ENTERING 状态；各端正在进行的
+## reveal 不受 NONE 快照影响，仍由本地协调器独立等待完成。
+func complete_briefing_entry(occurrence_key: String) -> bool:
+	if (
+		not _authority_enabled
+		or _briefing_phase != BriefingPhase.ENTERING
+		or occurrence_key.is_empty()
+		or occurrence_key != _briefing_occurrence_key
+	):
+		return false
+	return _commit_host_briefing_state(
+		BriefingPhase.NONE,
+		INVALID_NODE_ID,
+		"",
+		-1
+	)
+
+
+## 单机由本地 cover 完成后直接调用；联机仅由 MpRogueRoute 的全员
+## cover-ready 屏障调用。tuple 与当前权威状态必须完全一致，且 route revision
+## 仍停留在确认前，因而重复 ready 不可能再次扣除行动力。
+func host_commit_briefed_move(
+	occurrence_key: String,
+	briefing_revision: int,
+	expected_route_revision: int
+) -> bool:
+	if (
+		not _authority_enabled
+		or not is_route_ready()
+		or _briefing_phase != BriefingPhase.ENTERING
+		or occurrence_key.is_empty()
+		or occurrence_key != _briefing_occurrence_key
+		or briefing_revision != _briefing_revision
+		or expected_route_revision != _briefing_expected_route_revision
+		or _runtime_state.state_revision != expected_route_revision
+	):
+		return false
+	var rejection_reason := _runtime_state.get_move_rejection_reason(
+		_briefing_node_id,
+		generation_config.move_action_cost,
+		expected_route_revision
+	)
+	if not rejection_reason.is_empty():
+		call_deferred(
+			&"_recover_failed_briefing_entry",
+			rejection_reason
+		)
+		return false
+	if not _runtime_state.try_move(
+		_briefing_node_id,
+		generation_config.move_action_cost,
+		expected_route_revision
+	):
+		call_deferred(
+			&"_recover_failed_briefing_entry",
+			"路线状态已变化，本次作战未启动。"
+		)
+		return false
+	return true
+
+
+func abort_briefing_entry(occurrence_key: String) -> void:
+	if (
+		_briefing_phase == BriefingPhase.ENTERING
+		and not occurrence_key.is_empty()
+		and occurrence_key == _briefing_occurrence_key
+	):
+		if _authority_enabled:
+			_commit_host_briefing_state(
+				BriefingPhase.NONE,
+				INVALID_NODE_ID,
+				"",
+				-1
+			)
+		else:
+			_reset_briefing_runtime(false)
+	combat_scene_transition.hide_immediately()
+
+
+func hide_combat_entry_transition() -> void:
+	combat_scene_transition.hide_immediately()
 
 
 func export_encounter_snapshot() -> Dictionary:
@@ -848,6 +1057,16 @@ func _reset_encounter_runtime(authority: bool) -> void:
 
 func _reset_normal_combat_stage(restore_presentation: bool) -> void:
 	var interrupted_occurrence_key := _normal_combat_occurrence_key
+	if _briefing_phase != BriefingPhase.NONE:
+		if _authority_enabled and is_route_ready():
+			_commit_host_briefing_state(
+				BriefingPhase.NONE,
+				INVALID_NODE_ID,
+				"",
+				-1
+			)
+		else:
+			_reset_briefing_runtime(false)
 	_clear_normal_combat_state()
 	if not is_node_ready():
 		return
@@ -927,6 +1146,252 @@ func _make_normal_combat_occurrence_key(
 		content_seed,
 		visit_count,
 	]
+
+
+func _commit_host_briefing_state(
+	phase: int,
+	node_id: int,
+	occurrence_key: String,
+	expected_route_revision: int
+) -> bool:
+	if not _authority_enabled or not is_route_ready():
+		return false
+	var snapshot := {
+		"schema_version": BRIEFING_SCHEMA_VERSION,
+		"layout_hash": _route_graph.compute_layout_hash(),
+		"revision": _briefing_revision + 1,
+		"phase": phase,
+		"node_id": node_id,
+		"occurrence_key": occurrence_key,
+		"expected_route_revision": expected_route_revision,
+	}
+	if not _validate_briefing_state_against(
+		snapshot,
+		_route_graph,
+		_runtime_state
+	):
+		return false
+	var previous_phase := _briefing_phase
+	_assign_briefing_state(snapshot)
+	_sync_briefing_presentation(previous_phase)
+	host_briefing_state_committed.emit(snapshot.duplicate(true))
+	return true
+
+
+func _assign_briefing_state(snapshot: Dictionary) -> void:
+	_briefing_revision = int(snapshot["revision"])
+	_briefing_phase = int(snapshot["phase"])
+	_briefing_node_id = int(snapshot["node_id"])
+	_briefing_occurrence_key = str(snapshot["occurrence_key"])
+	_briefing_expected_route_revision = int(
+		snapshot["expected_route_revision"]
+	)
+
+
+func _validate_briefing_state_against(
+	snapshot: Dictionary,
+	graph: RogueRouteGraph,
+	state: RogueRouteRuntimeState
+) -> bool:
+	if (
+		graph == null
+		or state == null
+		or generation_config == null
+		or typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"]) != BRIEFING_SCHEMA_VERSION
+		or typeof(snapshot.get("layout_hash")) != TYPE_STRING
+		or str(snapshot["layout_hash"]) != graph.compute_layout_hash()
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or int(snapshot["revision"]) < 0
+		or typeof(snapshot.get("phase")) != TYPE_INT
+		or typeof(snapshot.get("node_id")) != TYPE_INT
+		or typeof(snapshot.get("occurrence_key")) != TYPE_STRING
+		or typeof(snapshot.get("expected_route_revision")) != TYPE_INT
+	):
+		return false
+	var phase := int(snapshot["phase"])
+	var node_id := int(snapshot["node_id"])
+	var occurrence_key := str(snapshot["occurrence_key"])
+	var expected_route_revision := int(
+		snapshot["expected_route_revision"]
+	)
+	if phase == BriefingPhase.NONE:
+		return (
+			node_id == INVALID_NODE_ID
+			and occurrence_key.is_empty()
+			and expected_route_revision == -1
+		)
+	if phase not in [BriefingPhase.PRESENTED, BriefingPhase.ENTERING]:
+		return false
+	if (
+		node_id < 0
+		or not graph.is_valid_node_id(node_id)
+		or node_id >= state.visited_counts.size()
+		or graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.NORMAL_COMBAT
+		or occurrence_key.is_empty()
+		or expected_route_revision < 0
+	):
+		return false
+
+	var visit_count := 0
+	if state.state_revision == expected_route_revision:
+		if (
+			not graph.has_edge(state.current_node_id, node_id)
+			or not state.get_move_rejection_reason(
+				node_id,
+				generation_config.move_action_cost,
+				expected_route_revision
+			).is_empty()
+		):
+			return false
+		visit_count = int(state.visited_counts[node_id]) + 1
+		if (
+			_normal_combat_briefing_adapter == null
+			or _build_normal_combat_briefing_model(
+				node_id,
+				state.action_points
+			) == null
+		):
+			return false
+	elif (
+		phase == BriefingPhase.ENTERING
+		and state.state_revision == expected_route_revision + 1
+		and state.current_node_id == node_id
+	):
+		visit_count = int(state.visited_counts[node_id])
+	else:
+		return false
+	var expected_occurrence_key := "combat:%s:%d:%d:%d" % [
+		graph.compute_layout_hash(),
+		node_id,
+		graph.get_node_content_seed(node_id),
+		visit_count,
+	]
+	return occurrence_key == expected_occurrence_key
+
+
+func _build_normal_combat_briefing_model(
+	node_id: int,
+	current_action_points: int
+) -> RogueRouteNodeBriefingModel:
+	if (
+		_normal_combat_briefing_adapter == null
+		or generation_config == null
+		or node_id < 0
+	):
+		return null
+	var node_config := generation_config.get_type_config(
+		RogueRouteGraph.NodeType.NORMAL_COMBAT
+	)
+	return _normal_combat_briefing_adapter.call(
+		&"build_model",
+		node_config,
+		current_action_points,
+		generation_config.move_action_cost
+	) as RogueRouteNodeBriefingModel
+
+
+func _sync_briefing_presentation(previous_phase: int) -> void:
+	if not is_node_ready():
+		return
+	if _briefing_phase == BriefingPhase.NONE:
+		node_briefing.dismiss()
+		if (
+			previous_phase == BriefingPhase.ENTERING
+			and not _normal_combat_active
+		):
+			combat_scene_transition.hide_immediately()
+		_pending_node_id = INVALID_NODE_ID
+		_pending_revision = -1
+		route_board.clear_selection()
+		_refresh_route_input_lock()
+		return
+	_pending_node_id = _briefing_node_id
+	_pending_revision = _briefing_expected_route_revision
+	route_board.select_node(_briefing_node_id)
+	route_board.set_interaction_locked(true)
+	_set_local_player_controls_locked(true)
+	_camera_drag_active = false
+	if _briefing_phase == BriefingPhase.PRESENTED:
+		var model := _build_normal_combat_briefing_model(
+			_briefing_node_id,
+			_runtime_state.action_points
+		)
+		if model == null:
+			push_error("普通作战简报模型构建失败。")
+			return
+		node_briefing.present(model, _authority_enabled)
+		return
+	node_briefing.dismiss()
+	if not combat_scene_transition.visible:
+		call_deferred(
+			&"_cover_then_submit_briefed_move",
+			_briefing_revision,
+			_briefing_occurrence_key
+		)
+
+
+func _cover_then_submit_briefed_move(
+	briefing_revision: int,
+	occurrence_key: String
+) -> void:
+	if (
+		_briefing_phase != BriefingPhase.ENTERING
+		or briefing_revision != _briefing_revision
+		or occurrence_key != _briefing_occurrence_key
+	):
+		return
+	var covered := await combat_scene_transition.cover()
+	if (
+		not covered
+		or _briefing_phase != BriefingPhase.ENTERING
+		or briefing_revision != _briefing_revision
+		or occurrence_key != _briefing_occurrence_key
+	):
+		return
+	briefing_cover_completed.emit(
+		occurrence_key,
+		briefing_revision,
+		_briefing_expected_route_revision
+	)
+	if _authority_enabled and manage_return_locally:
+		host_commit_briefed_move(
+			occurrence_key,
+			briefing_revision,
+			_briefing_expected_route_revision
+		)
+
+
+func _recover_failed_briefing_entry(message: String) -> void:
+	if _briefing_phase != BriefingPhase.ENTERING:
+		return
+	if not _commit_host_briefing_state(
+		BriefingPhase.NONE,
+		INVALID_NODE_ID,
+		"",
+		-1
+	):
+		return
+	_set_status(message, true)
+	var revealed := await combat_scene_transition.reveal()
+	if not revealed:
+		combat_scene_transition.hide_immediately()
+
+
+func _reset_briefing_runtime(interrupt_transition: bool) -> void:
+	_briefing_revision = 0
+	_briefing_phase = BriefingPhase.NONE
+	_briefing_node_id = INVALID_NODE_ID
+	_briefing_occurrence_key = ""
+	_briefing_expected_route_revision = -1
+	if not is_node_ready():
+		return
+	node_briefing.dismiss()
+	if interrupt_transition:
+		combat_scene_transition.hide_immediately()
+	route_board.clear_selection()
+	_refresh_route_input_lock()
 
 
 func _configure_encounter_overlay_context() -> void:
@@ -1239,7 +1704,11 @@ func _set_route_reveal_input_locked(locked: bool) -> void:
 
 
 func _is_route_input_locked() -> bool:
-	return _encounter_input_locked or _route_reveal_input_locked
+	return (
+		_encounter_input_locked
+		or _route_reveal_input_locked
+		or _briefing_phase != BriefingPhase.NONE
+	)
 
 
 func _refresh_route_input_lock() -> void:
@@ -1318,6 +1787,24 @@ func _on_route_board_node_pressed(node_id: int) -> void:
 	_set_local_player_controls_locked(true)
 	_camera_drag_active = false
 	_show_node_content(node_id, true)
+	if (
+		_route_graph.get_node_type(node_id)
+		== RogueRouteGraph.NodeType.NORMAL_COMBAT
+	):
+		var occurrence_key := _make_normal_combat_occurrence_key(
+			node_id,
+			_route_graph.get_node_content_seed(node_id),
+			int(_runtime_state.visited_counts[node_id]) + 1
+		)
+		if not _commit_host_briefing_state(
+			BriefingPhase.PRESENTED,
+			node_id,
+			occurrence_key,
+			_pending_revision
+		):
+			_set_status("普通作战简报无法生成，本次移动未执行。", true)
+			_finish_pending_move()
+		return
 	move_confirmation.present(
 		_get_node_display_name(node_id),
 		_runtime_state.action_points,
@@ -1357,6 +1844,48 @@ func _on_move_confirmation_canceled() -> void:
 		_show_node_content(_runtime_state.current_node_id, false)
 
 
+func _on_node_briefing_confirmed() -> void:
+	if (
+		not _authority_enabled
+		or not is_route_ready()
+		or _briefing_phase != BriefingPhase.PRESENTED
+		or _pending_node_id != _briefing_node_id
+		or _pending_revision != _briefing_expected_route_revision
+	):
+		return
+	if not _commit_host_briefing_state(
+		BriefingPhase.ENTERING,
+		_briefing_node_id,
+		_briefing_occurrence_key,
+		_briefing_expected_route_revision
+	):
+		_set_status("路线状态已变化，本次作战未启动。", true)
+		_commit_host_briefing_state(
+			BriefingPhase.NONE,
+			INVALID_NODE_ID,
+			"",
+			-1
+		)
+
+
+func _on_node_briefing_canceled() -> void:
+	if (
+		not _authority_enabled
+		or not is_route_ready()
+		or _briefing_phase != BriefingPhase.PRESENTED
+	):
+		return
+	if not _commit_host_briefing_state(
+		BriefingPhase.NONE,
+		INVALID_NODE_ID,
+		"",
+		-1
+	):
+		return
+	_set_status("已取消普通作战；行动力与路线位置未发生变化。", false)
+	_show_node_content(_runtime_state.current_node_id, false)
+
+
 func _on_runtime_state_changed(_snapshot: Dictionary) -> void:
 	if not is_route_ready():
 		return
@@ -1385,10 +1914,16 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 		false
 	)
 	var target_node_id := int(delta.get("to_node_id", INVALID_NODE_ID))
-	_try_start_normal_combat_for_node(
+	var normal_combat_started := _try_start_normal_combat_for_node(
 		target_node_id,
 		int(delta.get("target_visit_count", 0))
 	)
+	if (
+		not normal_combat_started
+		and _briefing_phase == BriefingPhase.ENTERING
+		and _briefing_node_id == target_node_id
+	):
+		abort_briefing_entry(_briefing_occurrence_key)
 	_try_start_encounter_for_node(target_node_id)
 
 
@@ -1407,6 +1942,11 @@ func _on_regenerate_button_pressed() -> void:
 
 
 func _on_return_button_pressed() -> void:
+	if _briefing_phase == BriefingPhase.PRESENTED:
+		_on_node_briefing_canceled()
+		return
+	if _briefing_phase == BriefingPhase.ENTERING:
+		return
 	if _pending_node_id != INVALID_NODE_ID:
 		_on_move_confirmation_canceled()
 		return
@@ -2052,6 +2592,11 @@ func _show_node_content(node_id: int, is_preview: bool) -> void:
 		content_body.text = (
 			"首次抵达会触发全队共享的神奇遭遇；已完成节点回访时"
 			+ "不会重复结算。"
+		)
+	elif node_type == RogueRouteGraph.NodeType.NORMAL_COMBAT:
+		content_body.text = (
+			"抵达前将显示全队共享的作战简报；仅房主能够确认，"
+			+ "确认前不会扣除行动力。"
 		)
 	else:
 		content_body.text = (
