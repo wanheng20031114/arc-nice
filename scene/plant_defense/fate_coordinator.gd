@@ -94,7 +94,10 @@ func begin_interlude(
 	var available_buff_ids := _get_available_permanent_buff_ids()
 	var available_option_ids: Array[StringName] = []
 	for config in TowerDefenseFateRegistry.get_all_option_configs():
-		if config.requires_available_permanent_buff() and available_buff_ids.is_empty():
+		if (
+			available_buff_ids.size()
+			< config.required_available_permanent_buff_count()
+		):
 			continue
 		if (
 			config.option_id == TowerDefenseFateRegistry.OPTION_FATE_STONE
@@ -397,13 +400,14 @@ func _on_resolution_requested(
 			player_max_health_multiplier += option_config.primary_amount
 			apply_player_modifiers_to_all()
 			manager.finalize_resolution()
-		TowerDefenseFateOptionConfig.EffectType.CRITICAL_RANDOM_BUFF:
-			_set_base_health(game.maximum_base_health, roundi(option_config.primary_amount))
-			var random_buff_id := manager.choose_random_available_permanent_buff()
-			if random_buff_id.is_empty() or not _activate_permanent_buff(random_buff_id):
+		TowerDefenseFateOptionConfig.EffectType.CRITICAL_BUFF_SELECTION:
+			if not _activate_permanent_buff(permanent_buff_id):
 				manager.force_finish()
 				return
-			manager.winning_permanent_buff_id = random_buff_id
+			_set_base_health(
+				game.maximum_base_health,
+				roundi(option_config.primary_amount)
+			)
 			manager.finalize_resolution()
 		TowerDefenseFateOptionConfig.EffectType.DOUBLE_XIRANG:
 			_for_each_eligible_player(

@@ -1028,6 +1028,12 @@ func _is_valid_xiaocong_vote_payload(
 			TowerDefenseFateRegistry.get_permanent_buff_config(permanent_buff_id)
 			!= null
 		)
+	if option_id == TowerDefenseFateRegistry.OPTION_CRITICAL_CORE:
+		return (
+			permanent_buff_id.is_empty()
+			or TowerDefenseFateRegistry.get_permanent_buff_config(permanent_buff_id)
+			!= null
+		)
 	return permanent_buff_id.is_empty()
 
 

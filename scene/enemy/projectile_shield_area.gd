@@ -27,8 +27,6 @@ var _configured := false
 
 
 func _ready() -> void:
-	monitoring = false
-	monitorable = true
 	collision_mask = 0
 	if not _configured:
 		_max_durability = maxi(initial_max_durability, 1)
@@ -135,7 +133,11 @@ func _is_visual_proxy() -> bool:
 
 func _apply_collision_state() -> void:
 	var enabled := is_active()
+	# Direct ray/shape queries use the collision layer, so keep this transition
+	# synchronous to preserve the twentieth-hit atomicity contract. Area2D
+	# monitoring properties, however, cannot be changed while Godot is flushing
+	# an area_entered/area_exited callback; defer those server mutations.
 	collision_layer = PROJECTILE_SHIELD_COLLISION_LAYER if enabled else 0
-	monitorable = enabled
-	monitoring = false
 	collision_mask = 0
+	set_deferred(&"monitorable", enabled)
+	set_deferred(&"monitoring", false)

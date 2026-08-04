@@ -31,6 +31,7 @@ func _init() -> void:
 
 func _run() -> void:
 	await _test_strong_type_and_atomic_durability()
+	await _test_signal_safe_monitorable_transition()
 	await _test_proxy_visual_consumption_is_read_only()
 	await _test_real_ray_front_and_back_contract()
 	await _test_real_projectile_interception_matrix()
@@ -81,13 +82,17 @@ func _test_strong_type_and_atomic_durability() -> void:
 	_expect(
 		shield.get_remaining_durability() == 0
 		and not shield.is_active()
-		and shield.collision_layer == 0
-		and not shield.monitorable,
+		and shield.collision_layer == 0,
 		"The twentieth hit must synchronously disable the collision candidate."
 	)
 	_expect(
 		not shield.try_intercept(Vector2.LEFT),
 		"The twenty-first hit must see a transparent broken shield."
+	)
+	await process_frame
+	_expect(
+		not shield.monitorable,
+		"The broken shield must settle its deferred monitorable state safely."
 	)
 	_expect(int(event_counts["durability"]) == 20, "Each authoritative block must emit one durability event.")
 	_expect(int(event_counts["break"]) == 1, "Only the twentieth hit may emit shield_broken.")
@@ -107,6 +112,62 @@ func _test_strong_type_and_atomic_durability() -> void:
 	_expect(
 		shield.is_active() and shield.collision_layer == PROJECTILE_SHIELD_LAYER,
 		"An unbroken lifecycle-disabled shield may restore its passive layer."
+	)
+	owner_enemy.free()
+	await _dispose_fixture(fixture)
+
+
+func _test_signal_safe_monitorable_transition() -> void:
+	var fixture := _create_fixture("ShieldSignalSafetyFixture")
+	var owner_enemy := Enemy.new()
+	var shield := await _add_shield(fixture, owner_enemy, Vector2.ZERO)
+	var overlap_detector := Area2D.new()
+	overlap_detector.collision_layer = 0
+	overlap_detector.collision_mask = PROJECTILE_SHIELD_LAYER
+	overlap_detector.monitoring = true
+	overlap_detector.monitorable = false
+	var detector_shape := CollisionShape2D.new()
+	var detector_circle := CircleShape2D.new()
+	detector_circle.radius = 12.0
+	detector_shape.shape = detector_circle
+	overlap_detector.add_child(detector_shape)
+	var callback_count := [0]
+	var disable_on_enter := func(area: Area2D) -> void:
+		if area != shield:
+			return
+		callback_count[0] = int(callback_count[0]) + 1
+		shield.set_shield_active(false)
+	overlap_detector.area_entered.connect(disable_on_enter)
+	fixture.add_child(overlap_detector)
+	await physics_frame
+	await process_frame
+	await physics_frame
+	_expect(
+		int(callback_count[0]) == 1,
+		"A real Area2D overlap must exercise shield disable inside an in/out signal."
+	)
+	_expect(
+		not shield.is_active()
+		and shield.collision_layer == 0
+		and not shield.monitorable,
+		(
+			"Signal-triggered shield disable must leave no passive collision or "
+			+ "monitorable state after the deferred physics boundary."
+		)
+	)
+	overlap_detector.area_entered.disconnect(disable_on_enter)
+	shield.set_shield_active(true)
+	shield.set_shield_active(false)
+	shield.set_shield_active(true)
+	_expect(
+		shield.is_active() and shield.collision_layer == PROJECTILE_SHIELD_LAYER,
+		"Rapid lifecycle changes must expose only the final collision candidate."
+	)
+	await process_frame
+	await physics_frame
+	_expect(
+		shield.monitorable,
+		"The final deferred monitorable request must win after rapid state changes."
 	)
 	owner_enemy.free()
 	await _dispose_fixture(fixture)
@@ -412,6 +473,14 @@ func _test_source_matrix_contract() -> void:
 		(
 			"Shield authority must not use Godot server identity because a Relay "
 			+ "game Host is also an ENet client."
+		)
+	)
+	_expect(
+		shield_source.contains("set_deferred(&\"monitorable\", enabled)")
+		and not shield_source.contains("\n\tmonitorable = enabled"),
+		(
+			"Shield monitorability must be deferred because lifecycle changes can "
+			+ "run inside Area2D in/out signals."
 		)
 	)
 	var rocket_source := FileAccess.get_file_as_string(

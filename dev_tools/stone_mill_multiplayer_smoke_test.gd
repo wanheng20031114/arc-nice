@@ -126,8 +126,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 43,
-		"多人协议v43必须保留既有wire类型，并隔离荧光坑洞结算。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 44,
+		"多人协议v44必须保留既有wire类型，并隔离新增小葱二阶段投票。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

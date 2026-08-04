@@ -361,6 +361,12 @@ func _refresh_prompt() -> void:
 			if timeout_recovery_available and local_is_host
 			else "命运选择已经开启 · 剩余 %d 秒" % timeout_seconds_left
 		)
+	elif current_stage == TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING:
+		prompt_label.text = (
+			"全局增益投票超时 · F 由房主继续结算"
+			if timeout_recovery_available and local_is_host
+			else "请选择一项全局增益 · 剩余 %d 秒" % timeout_seconds_left
+		)
 	elif current_stage == TowerDefenseFateManager.STAGE_RESOLVING:
 		prompt_label.text = "小葱正在改写命运"
 	elif current_stage == TowerDefenseFateManager.STAGE_RESOLVED:

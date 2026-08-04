@@ -103,6 +103,7 @@ func _run() -> void:
 	_test_terrain_snapshot_repair_watchdog_contract()
 	_test_bamboo_mortar_payload_contract()
 	_test_corn_burst_payload_contract()
+	_test_xiaocong_vote_payload_contract()
 	_test_projectile_id_codec_contract()
 	_test_projectile_origin_lane_runtime_contract()
 	_test_linglan_skill1_ring_payload_contract()
@@ -112,7 +113,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V43_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V44_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -121,7 +122,7 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 43, "Protocol must be v43.")
+	_expect(NetConstants.PROTOCOL_VERSION == 44, "Protocol must be v44.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
 		"Protocol v39 must reserve enemy visual-status bits 5..6 for shield stages."
@@ -142,8 +143,56 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v43 channel assignments must remain stable."
+		"Protocol v44 channel assignments must remain stable."
 	)
+
+
+func _test_xiaocong_vote_payload_contract() -> void:
+	var mp_game := MpGameScript.new()
+	var registered_buff_id := TowerDefenseFateRegistry.BUFF_PLAYER_REGENERATION
+	_expect(
+		mp_game._is_valid_xiaocong_vote_payload(
+			TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT,
+			registered_buff_id
+		),
+		"Permanent-contract payloads must accept a registered global buff."
+	)
+	_expect(
+		not mp_game._is_valid_xiaocong_vote_payload(
+			TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT,
+			StringName()
+		),
+		"Permanent-contract payloads must reject an empty global buff."
+	)
+	_expect(
+		mp_game._is_valid_xiaocong_vote_payload(
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			StringName()
+		),
+		"The first critical-core vote must keep using an empty buff payload."
+	)
+	_expect(
+		mp_game._is_valid_xiaocong_vote_payload(
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			registered_buff_id
+		),
+		"The second critical-core vote must accept a registered global buff."
+	)
+	_expect(
+		not mp_game._is_valid_xiaocong_vote_payload(
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			&"unregistered_buff"
+		),
+		"Critical-core payloads must reject an unregistered global buff."
+	)
+	_expect(
+		not mp_game._is_valid_xiaocong_vote_payload(
+			TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+			registered_buff_id
+		),
+		"Options without a buff stage must reject non-empty buff payloads."
+	)
+	mp_game.free()
 
 
 func _test_v25_high_value_player_snapshot_contract() -> void:

@@ -5,6 +5,6 @@ script = ExtResource("1")
 option_id = &"critical_core"
 menu_order = 80
 display_name = "濒危核心 · 全局增益"
-description = "基地当前生命值降至 1 点（上限不变），获得一项尚未生效的全局增益。"
+description = "基地当前生命值降至 1 点（上限不变）；若本项胜出，全员再从随机展示的 3 项未生效全局增益中投票选择 1 项。"
 effect_type = 7
 primary_amount = 1.0

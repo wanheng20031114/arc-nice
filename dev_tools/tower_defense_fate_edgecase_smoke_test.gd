@@ -307,6 +307,7 @@ func _test_stone_inventory_access_overlay() -> void:
 			TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
 		]),
 		"permanent_buff_offer": PackedStringArray(),
+		"permanent_buff_votes": {},
 		"available_permanent_buff_count": 9,
 		"votes": {},
 		"winning_option_id": "",
@@ -397,10 +398,15 @@ func _test_stone_inventory_access_overlay() -> void:
 	)
 
 	var submitted_option_ids: Array[StringName] = []
+	var submitted_buff_option_ids: Array[StringName] = []
+	var submitted_buff_ids: Array[StringName] = []
 	overlay.choice_submitted.connect(
 		func(option_id: StringName, permanent_buff_id: StringName) -> void:
 			if permanent_buff_id.is_empty():
 				submitted_option_ids.append(option_id)
+			else:
+				submitted_buff_option_ids.append(option_id)
+				submitted_buff_ids.append(permanent_buff_id)
 	)
 	state["votes"] = {}
 	overlay.apply_state(state, 1, {})
@@ -415,6 +421,105 @@ func _test_stone_inventory_access_overlay() -> void:
 		"Display slots one through three must submit the host's named offer order."
 	)
 
+	var critical_buff_offer: Array[StringName] = [
+		TowerDefenseFateRegistry.BUFF_SLIME_SPEED_REDUCTION,
+		TowerDefenseFateRegistry.BUFF_BUILDING_REGENERATION,
+		TowerDefenseFateRegistry.BUFF_PLAYER_REGENERATION,
+	]
+	state["stage"] = String(
+		TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING
+	)
+	state["permanent_buff_offer"] = _buff_wire_ids(critical_buff_offer)
+	state["permanent_buff_votes"] = {
+		2: String(critical_buff_offer[0]),
+	}
+	state["stage_time_remaining"] = 18.0
+	# A peer can still have the first-stage permanent-contract modal open when
+	# another peer's final vote makes Critical Core win. Its Cancel focus must
+	# move onto a visible second-stage choice when that button is hidden.
+	overlay.permanent_buff_offer = critical_buff_offer.duplicate()
+	overlay._show_buff_modal()
+	overlay.buff_cancel_button.grab_focus()
+	overlay.apply_state(state, 1, {})
+	var visible_buff_button_count := 0
+	var all_critical_buttons_enabled := true
+	for button in overlay.buff_buttons:
+		if button.visible:
+			visible_buff_button_count += 1
+			all_critical_buttons_enabled = (
+				all_critical_buttons_enabled and not button.disabled
+			)
+	_expect(
+		overlay.buff_modal.visible
+		and not overlay.choice_list.visible
+		and not overlay.buff_cancel_button.visible
+		and overlay.buff_cancel_button.disabled
+		and visible_buff_button_count == 3
+		and all_critical_buttons_enabled
+		and overlay.buff_buttons.has(
+			overlay.get_viewport().gui_get_focus_owner()
+		),
+		"Critical core must replace the fate cards with exactly three non-cancelable buff vote buttons."
+	)
+	_expect(
+		"全局增益投票 1/2" in overlay.status_label.text
+		and "1 票" in overlay.buff_buttons[0].text,
+		"The critical-core second stage must show multiplayer vote progress and per-buff tallies."
+	)
+	overlay.buff_buttons[1].pressed.emit()
+	_expect(
+		overlay.buff_modal.visible
+		and submitted_buff_option_ids == [
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		]
+		and submitted_buff_ids == [critical_buff_offer[1]],
+		"An eligible player must submit critical_core plus the selected offered buff without closing the vote modal."
+	)
+	state["permanent_buff_votes"] = {
+		1: String(critical_buff_offer[1]),
+		2: String(critical_buff_offer[0]),
+	}
+	overlay.apply_state(state, 1, {})
+	_expect(
+		overlay.buff_buttons[1].text.begins_with("✓ ")
+		and "1 票" in overlay.buff_buttons[1].text,
+		"An authoritative critical-core snapshot must mark the local selection while keeping it changeable."
+	)
+	overlay.buff_buttons[2].pressed.emit()
+	_expect(
+		submitted_buff_ids == [critical_buff_offer[1], critical_buff_offer[2]],
+		"An eligible player must be able to change the second-stage buff vote."
+	)
+	var critical_submission_count := submitted_buff_ids.size()
+	overlay.apply_state(state, 3, {})
+	var all_observer_buff_buttons_disabled := true
+	for button in overlay.buff_buttons:
+		if button.visible:
+			all_observer_buff_buttons_disabled = (
+				all_observer_buff_buttons_disabled and button.disabled
+			)
+	overlay.buff_buttons[0].pressed.emit()
+	_expect(
+		overlay.buff_modal.visible
+		and "旁观" in overlay.status_label.text
+		and all_observer_buff_buttons_disabled
+		and submitted_buff_ids.size() == critical_submission_count,
+		"A non-eligible peer must see the critical buff vote but cannot submit it."
+	)
+	state["eligible_peer_ids"] = [0]
+	state["permanent_buff_votes"] = {}
+	overlay.apply_state(state, 0, {})
+	overlay.buff_cancel_button.pressed.emit()
+	overlay.buff_buttons[0].pressed.emit()
+	_expect(
+		overlay.buff_modal.visible
+		and submitted_buff_option_ids[-1]
+		== TowerDefenseFateRegistry.OPTION_CRITICAL_CORE
+		and submitted_buff_ids[-1] == critical_buff_offer[0],
+		"Single-player critical-core selection must use the same non-cancelable three-choice vote UI."
+	)
+
+	state["eligible_peer_ids"] = [1, 2]
 	state["stage"] = String(TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD)
 	state["collectible_offers"] = {1: []}
 	state["collectible_claimed_peer_ids"] = []
@@ -524,6 +629,13 @@ func _option_wire_ids(option_ids: Array[StringName]) -> PackedStringArray:
 	var result := PackedStringArray()
 	for option_id in option_ids:
 		result.append(String(option_id))
+	return result
+
+
+func _buff_wire_ids(buff_ids: Array[StringName]) -> PackedStringArray:
+	var result := PackedStringArray()
+	for buff_id in buff_ids:
+		result.append(String(buff_id))
 	return result
 
 

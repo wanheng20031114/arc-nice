@@ -48,6 +48,15 @@ class LightingProbe:
 		lighting_events.append(&"day")
 
 
+class CriticalCoreGameProbe:
+	extends GameTowerDefense
+
+	var health_display_update_count := 0
+
+	func _update_base_health_display(_play_damage_pulse: bool = true) -> void:
+		health_display_update_count += 1
+
+
 var failures: Array[String] = []
 
 
@@ -64,6 +73,7 @@ func _run() -> void:
 	await _test_elite_config_prewarm()
 	await _test_wave_hud_uses_day_cycle_config()
 	await _test_xiaocong_collectible_offer_count()
+	await _test_critical_core_follow_up_resolution()
 	await _test_scene_config_and_interlude_freeze()
 	await _test_fate_stone_zero_benefit_filter()
 	if failures.is_empty():
@@ -339,6 +349,93 @@ func _test_xiaocong_collectible_offer_count() -> void:
 	game.peer_players.clear()
 	target_player.free()
 	merchant.free()
+	game.free()
+	coordinator.queue_free()
+	await process_frame
+
+
+func _test_critical_core_follow_up_resolution() -> void:
+	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
+	root.add_child(coordinator)
+	await process_frame
+	var game := CriticalCoreGameProbe.new()
+	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.maximum_base_health = 19
+	game.current_base_health = 13
+	var all_buff_ids := TowerDefenseFateRegistry.get_all_permanent_buff_ids()
+	_expect(
+		all_buff_ids.size() >= 4,
+		"The Critical Core integration fixture requires at least four global buffs."
+	)
+	if all_buff_ids.size() < 4:
+		game.free()
+		coordinator.queue_free()
+		await process_frame
+		return
+	var previously_active_buff_id := all_buff_ids[0]
+	coordinator.active_permanent_buff_ids = [previously_active_buff_id]
+	coordinator.setup(game, game.day_cycle_config)
+	coordinator.manager.random_generator.seed = 7102301
+	coordinator.begin_interlude(1, &"next", [0], 0)
+	coordinator.manager.available_option_ids = [
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+	]
+	coordinator.manager.record_interaction(0)
+	coordinator.manager.submit_vote(
+		0,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		&""
+	)
+	var follow_up_offer := coordinator.manager.permanent_buff_offer.duplicate()
+	_expect(
+		coordinator.manager.stage
+		== TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING
+		and follow_up_offer.size() == 3
+		and not follow_up_offer.has(previously_active_buff_id),
+		"Critical Core must open a three-choice follow-up containing only buffs not already active."
+	)
+	_expect(
+		game.current_base_health == 13
+		and game.maximum_base_health == 19
+		and coordinator.active_permanent_buff_ids == [previously_active_buff_id],
+		"Winning the first Critical Core vote must not reduce health or activate a random buff before the follow-up choice."
+	)
+	var selected_buff_id: StringName = follow_up_offer[1]
+	coordinator.manager.submit_vote(
+		0,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		selected_buff_id
+	)
+	var activated_unselected_offer := false
+	for buff_id in follow_up_offer:
+		if (
+			buff_id != selected_buff_id
+			and coordinator.active_permanent_buff_ids.has(buff_id)
+		):
+			activated_unselected_offer = true
+	_expect(
+		coordinator.manager.stage == TowerDefenseFateManager.STAGE_RESOLVED
+		and coordinator.manager.winning_option_id
+		== TowerDefenseFateRegistry.OPTION_CRITICAL_CORE
+		and coordinator.manager.winning_permanent_buff_id == selected_buff_id,
+		"The completed follow-up choice must be retained as the authoritative Critical Core result."
+	)
+	_expect(
+		game.current_base_health == 1
+		and game.maximum_base_health == 19
+		and game.base_health_revision == 1
+		and game.health_display_update_count == 1,
+		"Critical Core must set current base health to one exactly once without changing its maximum."
+	)
+	_expect(
+		coordinator.active_permanent_buff_ids.size() == 2
+		and coordinator.active_permanent_buff_ids.has(previously_active_buff_id)
+		and coordinator.active_permanent_buff_ids.count(selected_buff_id) == 1
+		and not activated_unselected_offer,
+		"Critical Core must preserve existing buffs and activate only the elected follow-up buff once."
+	)
+	coordinator.manager.force_finish()
+	LuoxiMerchant.reset_runtime_choice_count()
 	game.free()
 	coordinator.queue_free()
 	await process_frame

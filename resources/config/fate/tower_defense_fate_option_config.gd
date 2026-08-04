@@ -9,7 +9,7 @@ enum EffectType {
 	XIRANG_GIFT,
 	DASH_COOLDOWN,
 	MAX_HEALTH,
-	CRITICAL_RANDOM_BUFF,
+	CRITICAL_BUFF_SELECTION,
 	DOUBLE_XIRANG,
 	DANGEROUS_SPEED,
 }
@@ -41,7 +41,13 @@ func is_valid() -> bool:
 
 
 func requires_available_permanent_buff() -> bool:
-	return effect_type in [
+	return required_available_permanent_buff_count() > 0
+
+
+func required_available_permanent_buff_count() -> int:
+	if effect_type in [
 		EffectType.PERMANENT_ELITE_CONTRACT,
-		EffectType.CRITICAL_RANDOM_BUFF,
-	]
+		EffectType.CRITICAL_BUFF_SELECTION,
+	]:
+		return 3
+	return 0

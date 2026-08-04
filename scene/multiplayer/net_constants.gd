@@ -39,7 +39,9 @@ extends RefCounted
 ## v42：P3 神奇遭遇新增“荧光坑洞”的多轮投票、逐轮结果确认 RPC，以及共享
 ## 核心/最大生命惩罚账本；v41 客户端无法解释升级后的 Session/Economy 快照。
 ## v43：肉鸽路线权威快照新增待显示作战简报状态；v42 客户端无法解释新增字段。
-const PROTOCOL_VERSION := 43
+## v44：小葱“濒危核心”新增第二阶段全局增益投票；v43 客户端无法解释
+## 新阶段，也会拒绝携带增益 ID 的濒危核心投票。
+const PROTOCOL_VERSION := 44
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

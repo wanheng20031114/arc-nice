@@ -26,6 +26,9 @@ signal collectible_submitted(choice_index: int)
 @onready var entrance_back_buffer: BackBufferCopy = $Root/EntranceBackBuffer
 @onready var entrance_reveal_cover: ColorRect = $Root/EntranceRevealCover
 @onready var buff_modal: CenterContainer = $Root/BuffModal
+@onready var buff_modal_title: Label = (
+	$Root/BuffModal/Panel/Margin/Content/Title
+)
 @onready var buff_buttons: Array[Button] = [
 	$Root/BuffModal/Panel/Margin/Content/Buff0,
 	$Root/BuffModal/Panel/Margin/Content/Buff1,
@@ -51,6 +54,7 @@ var available_option_ids: Array[StringName] = []
 var permanent_buff_offer: Array[StringName] = []
 var local_peer_id := 0
 var rendered_local_vote: StringName = &""
+var rendered_local_buff_vote: StringName = &""
 var show_tween: Tween = null
 var rendered_stage: StringName = &""
 
@@ -98,6 +102,7 @@ func apply_state(
 		return
 	if stage not in [
 		TowerDefenseFateManager.STAGE_VOTING,
+		TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING,
 		TowerDefenseFateManager.STAGE_RESOLVING,
 		TowerDefenseFateManager.STAGE_RESOLVED,
 		TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD,
@@ -125,6 +130,8 @@ func apply_state(
 	)
 	if stage == TowerDefenseFateManager.STAGE_VOTING:
 		_apply_vote_state(state, eligible_peers, character_ids_by_peer)
+	elif stage == TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING:
+		_apply_critical_buff_vote_state(state, eligible_peers)
 	elif stage == TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD:
 		_apply_collectible_state(state, eligible_peers)
 		_hide_buff_modal()
@@ -148,6 +155,7 @@ func hide_overlay() -> void:
 	visible = false
 	rendered_stage = &""
 	rendered_local_vote = &""
+	rendered_local_buff_vote = &""
 	_set_inventory_access_mode(false)
 	buff_modal.visible = false
 	collectible_panel.visible = false
@@ -186,7 +194,13 @@ func _apply_vote_state(
 	character_ids_by_peer: Dictionary
 ) -> void:
 	var votes := state.get("votes", {}) as Dictionary
+	var permanent_buff_votes := (
+		state.get("permanent_buff_votes", {}) as Dictionary
+	)
 	rendered_local_vote = StringName(votes.get(local_peer_id, ""))
+	rendered_local_buff_vote = StringName(
+		permanent_buff_votes.get(local_peer_id, "")
+	)
 	var local_is_eligible := eligible_peers.has(local_peer_id)
 	var recovery_available := bool(
 		state.get("timeout_recovery_available", false)
@@ -229,6 +243,38 @@ func _apply_vote_state(
 		card.set_resolution_state(false, false)
 		card.set_selected(rendered_local_vote == option_id)
 		card.set_voters(voters, character_ids_by_peer)
+
+
+func _apply_critical_buff_vote_state(
+	state: Dictionary,
+	eligible_peers: Array[int]
+) -> void:
+	var votes := state.get("permanent_buff_votes", {}) as Dictionary
+	rendered_local_vote = TowerDefenseFateRegistry.OPTION_CRITICAL_CORE
+	rendered_local_buff_vote = StringName(votes.get(local_peer_id, ""))
+	var local_is_eligible := eligible_peers.has(local_peer_id)
+	var recovery_available := bool(
+		state.get("timeout_recovery_available", false)
+	)
+	var local_is_host := int(state.get("host_peer_id", -1)) == local_peer_id
+	if local_is_eligible:
+		status_label.text = (
+			"濒危核心已选定 · 全局增益投票 %d/%d · 可重新选择"
+			% [votes.size(), eligible_peers.size()]
+		)
+		if recovery_available:
+			status_label.text += (
+				" · 等待超时，按 F 继续结算"
+				if local_is_host
+				else " · 等待房主继续结算"
+			)
+		else:
+			status_label.text += " · 剩余 %d 秒" % ceili(
+				float(state.get("stage_time_remaining", 0.0))
+			)
+	else:
+		status_label.text = "本日旁观 · 等待参与玩家投票选择全局增益"
+	_show_critical_buff_vote_modal(votes, local_is_eligible)
 
 
 func _apply_collectible_state(
@@ -380,29 +426,68 @@ func _on_card_selected(option_id: StringName) -> void:
 
 func _show_buff_modal() -> void:
 	buff_modal.visible = true
+	buff_modal_title.text = "选择你要投票的永久增益"
+	buff_cancel_button.visible = true
+	buff_cancel_button.disabled = false
 	for card in choice_cards:
 		card.set_interaction_enabled(false)
 	for button_index in range(buff_buttons.size()):
 		var button := buff_buttons[button_index]
 		button.visible = button_index < permanent_buff_offer.size()
+		button.disabled = false
 		if not button.visible:
 			continue
 		var buff_config := TowerDefenseFateRegistry.get_permanent_buff_config(
 			permanent_buff_offer[button_index]
 		)
 		button.text = (
-			buff_config.description
+			"%s\n%s" % [buff_config.display_name, buff_config.description]
 			if buff_config != null
 			else "未知增益"
 		)
-	for button in buff_buttons:
-		if button.visible and not button.disabled:
-			button.grab_focus()
-			break
+	_focus_first_buff_button()
+
+
+func _show_critical_buff_vote_modal(
+	votes: Dictionary,
+	local_is_eligible: bool
+) -> void:
+	buff_modal.visible = true
+	buff_modal_title.text = "濒危核心 · 从三项全局增益中投票"
+	buff_cancel_button.visible = false
+	buff_cancel_button.disabled = true
+	for card in choice_cards:
+		card.set_interaction_enabled(false)
+	for button_index in range(buff_buttons.size()):
+		var button := buff_buttons[button_index]
+		button.visible = button_index < permanent_buff_offer.size()
+		button.disabled = not local_is_eligible
+		if not button.visible:
+			continue
+		var buff_id := permanent_buff_offer[button_index]
+		var buff_config := TowerDefenseFateRegistry.get_permanent_buff_config(
+			buff_id
+		)
+		if buff_config == null:
+			button.text = "未知增益"
+			button.disabled = true
+			continue
+		var vote_count := _count_votes_for_buff(votes, buff_id)
+		var selected_prefix := "✓ " if rendered_local_buff_vote == buff_id else ""
+		button.text = "%s%s · %d 票\n%s" % [
+			selected_prefix,
+			buff_config.display_name,
+			vote_count,
+			buff_config.description,
+		]
+	if local_is_eligible and not _buff_button_has_focus():
+		_focus_first_buff_button()
 
 
 func _hide_buff_modal() -> void:
 	buff_modal.visible = false
+	buff_cancel_button.visible = true
+	buff_cancel_button.disabled = false
 	if rendered_stage == TowerDefenseFateManager.STAGE_VOTING:
 		for card in choice_cards:
 			card.set_interaction_enabled(
@@ -411,6 +496,8 @@ func _hide_buff_modal() -> void:
 
 
 func _on_buff_cancelled() -> void:
+	if rendered_stage != TowerDefenseFateManager.STAGE_VOTING:
+		return
 	_hide_buff_modal()
 	_restore_vote_selection()
 	_focus_selected_card()
@@ -418,14 +505,24 @@ func _on_buff_cancelled() -> void:
 
 func _on_buff_selected(button_index: int) -> void:
 	if (
-		rendered_stage != TowerDefenseFateManager.STAGE_VOTING
-		or not buff_modal.visible
+		not buff_modal.visible
 		or button_index < 0
 		or button_index >= permanent_buff_offer.size()
+		or buff_buttons[button_index].disabled
 	):
 		return
 	var buff_id := permanent_buff_offer[button_index]
+	if rendered_stage == TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING:
+		rendered_local_buff_vote = buff_id
+		choice_submitted.emit(
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			buff_id
+		)
+		return
+	if rendered_stage != TowerDefenseFateManager.STAGE_VOTING:
+		return
 	rendered_local_vote = TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT
+	rendered_local_buff_vote = buff_id
 	_hide_buff_modal()
 	_restore_vote_selection()
 	choice_submitted.emit(
@@ -504,6 +601,21 @@ func _focus_active_action() -> void:
 				return
 
 
+func _focus_first_buff_button() -> void:
+	for button in buff_buttons:
+		if button.visible and not button.disabled:
+			button.grab_focus()
+			return
+
+
+func _buff_button_has_focus() -> bool:
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	for button in buff_buttons:
+		if focus_owner == button and button.visible and not button.disabled:
+			return true
+	return false
+
+
 func _restore_vote_selection() -> void:
 	for card in choice_cards:
 		card.set_selected(
@@ -532,6 +644,14 @@ func _voters_for_option(
 			voters.append(int(peer_variant))
 	voters.sort()
 	return voters
+
+
+func _count_votes_for_buff(votes: Dictionary, buff_id: StringName) -> int:
+	var result := 0
+	for peer_variant in votes:
+		if StringName(votes[peer_variant]) == buff_id:
+			result += 1
+	return result
 
 
 func _to_int_array(value: Variant) -> Array[int]:

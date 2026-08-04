@@ -293,9 +293,14 @@ func _test_proxy_collision_snapshot_and_action_contract() -> void:
 	_expect(
 		proxy.is_multiplayer_proxy
 		and shield_area.is_active()
-		and shield_area.collision_layer == SHIELD_LAYER
-		and shield_area.monitorable,
-		"代理配置后必须精确恢复盾牌查询碰撞，供客户端弹体表现命中。"
+		and shield_area.collision_layer == SHIELD_LAYER,
+		"代理配置后必须同步恢复盾牌查询层，供客户端弹体表现命中。"
+	)
+	await process_frame
+	await physics_frame
+	_expect(
+		shield_area.monitorable,
+		"代理盾牌必须在安全物理边界恢复可查询状态。"
 	)
 	_expect(
 		shield_area.try_intercept(Vector2.LEFT)

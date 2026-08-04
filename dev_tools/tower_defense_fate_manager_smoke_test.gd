@@ -20,6 +20,12 @@ func _run() -> void:
 	_test_unoffered_vote_is_rejected(manager)
 	_test_offer_order_survives_remote_state(manager)
 	_test_empty_buff_pool_filters_options(manager)
+	_test_critical_option_requires_three_available_buffs(manager)
+	_test_critical_buff_vote_contract(manager)
+	_test_critical_transition_clears_contract_votes(manager)
+	_test_critical_buff_vote_majority_and_tie(manager)
+	_test_critical_buff_vote_snapshot_and_disconnect(manager)
+	_test_critical_buff_vote_timeout_recovery(manager)
 	_test_tied_votes_follow_offer_order(manager)
 	_test_waiting_disconnect(manager)
 	_test_voting_disconnect(manager)
@@ -205,6 +211,265 @@ func _test_empty_buff_pool_filters_options(
 	manager.force_finish()
 
 
+func _test_critical_option_requires_three_available_buffs(
+	manager: TowerDefenseFateManager
+) -> void:
+	var buff_ids := TowerDefenseFateRegistry.get_all_permanent_buff_ids()
+	var limited_buff_ids: Array[StringName] = [buff_ids[0], buff_ids[1]]
+	manager.begin_interlude(
+		1,
+		&"next",
+		_peers([1]),
+		1,
+		[
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+			TowerDefenseFateRegistry.OPTION_DASH_COOLDOWN,
+			TowerDefenseFateRegistry.OPTION_XIRANG_GIFT,
+		],
+		limited_buff_ids
+	)
+	_expect(
+		manager.available_option_ids.size()
+		== TowerDefenseFateManager.FATE_OPTION_OFFER_COUNT
+		and not manager.available_option_ids.has(
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE
+		),
+		"Critical Core must not be offered when fewer than three inactive buffs remain."
+	)
+	manager.force_finish()
+
+
+func _test_critical_buff_vote_contract(
+	manager: TowerDefenseFateManager
+) -> void:
+	var all_buff_ids := TowerDefenseFateRegistry.get_all_permanent_buff_ids()
+	var inactive_buff_ids: Array[StringName] = []
+	for buff_index in range(1, all_buff_ids.size()):
+		inactive_buff_ids.append(all_buff_ids[buff_index])
+	manager.random_generator.seed = 7102126
+	manager.begin_interlude(
+		1,
+		&"next",
+		_peers([1]),
+		1,
+		[TowerDefenseFateRegistry.OPTION_CRITICAL_CORE],
+		inactive_buff_ids
+	)
+	manager.record_interaction(1)
+	_expect(
+		manager.submit_vote(
+			1,
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			&""
+		),
+		"The first-round Critical Core vote must not require a buff payload."
+	)
+	var offer := manager.permanent_buff_offer.duplicate()
+	var unique_offer := {}
+	var offer_uses_only_inactive_buffs := true
+	for buff_id in offer:
+		unique_offer[buff_id] = true
+		offer_uses_only_inactive_buffs = (
+			offer_uses_only_inactive_buffs
+			and inactive_buff_ids.has(buff_id)
+			and TowerDefenseFateRegistry.get_permanent_buff_config(buff_id) != null
+		)
+	_expect(
+		manager.stage == TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING
+		and manager.winning_option_id
+		== TowerDefenseFateRegistry.OPTION_CRITICAL_CORE
+		and manager.winning_permanent_buff_id.is_empty(),
+		"Winning Critical Core must enter a second vote without resolving a buff early."
+	)
+	_expect(
+		offer.size() == 3
+		and unique_offer.size() == 3
+		and offer_uses_only_inactive_buffs
+		and not offer.has(all_buff_ids[0]),
+		"The Critical Core follow-up must offer exactly three unique registered inactive buffs."
+	)
+	var unoffered_buff_id: StringName = &""
+	for buff_id in inactive_buff_ids:
+		if not offer.has(buff_id):
+			unoffered_buff_id = buff_id
+			break
+	_expect(
+		not unoffered_buff_id.is_empty(),
+		"The invalid-vote fixture must retain at least one registered unoffered buff."
+	)
+	_expect(
+		not manager.submit_vote(
+			1,
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			&""
+		)
+		and not manager.submit_vote(
+			1,
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			unoffered_buff_id
+		)
+		and not manager.submit_vote(
+			1,
+			TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+			offer[0]
+		)
+		and manager.permanent_buff_votes.is_empty()
+		and manager.stage
+		== TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING,
+		"The follow-up vote must reject empty, unoffered, or wrong-option payloads without mutation."
+	)
+	_expect(
+		manager.submit_vote(
+			1,
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			offer[1]
+		)
+		and manager.stage == TowerDefenseFateManager.STAGE_RESOLVING
+		and manager.winning_permanent_buff_id == offer[1],
+		"A valid offered Critical Core buff must become the authoritative result."
+	)
+	manager.force_finish()
+
+
+func _test_critical_buff_vote_majority_and_tie(
+	manager: TowerDefenseFateManager
+) -> void:
+	var majority_offer := _begin_critical_buff_vote(manager, 2, [1, 2, 3])
+	manager.submit_vote(
+		1,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		majority_offer[0]
+	)
+	manager.submit_vote(
+		2,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		majority_offer[1]
+	)
+	manager.submit_vote(
+		3,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		majority_offer[1]
+	)
+	_expect(
+		manager.stage == TowerDefenseFateManager.STAGE_RESOLVING
+		and manager.winning_permanent_buff_id == majority_offer[1],
+		"The Critical Core follow-up must resolve the multiplayer buff majority."
+	)
+	manager.force_finish()
+
+	var tied_offer := _begin_critical_buff_vote(manager, 3, [1, 2])
+	manager.submit_vote(
+		1,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		tied_offer[2]
+	)
+	manager.submit_vote(
+		2,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		tied_offer[0]
+	)
+	_expect(
+		manager.stage == TowerDefenseFateManager.STAGE_RESOLVING
+		and manager.winning_permanent_buff_id == tied_offer[0],
+		"A tied Critical Core buff vote must follow the host's offer order."
+	)
+	manager.force_finish()
+
+
+func _test_critical_transition_clears_contract_votes(
+	manager: TowerDefenseFateManager
+) -> void:
+	manager.begin_interlude(
+		2,
+		&"next",
+		_peers([1, 2, 3]),
+		1,
+		[
+			TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT,
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			TowerDefenseFateRegistry.OPTION_BASE_REBUILD,
+		],
+		TowerDefenseFateRegistry.get_all_permanent_buff_ids()
+	)
+	for peer_id in [1, 2, 3]:
+		manager.record_interaction(peer_id)
+	manager.submit_vote(
+		1,
+		TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT,
+		manager.permanent_buff_offer[0]
+	)
+	manager.submit_vote(
+		2,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		&""
+	)
+	manager.submit_vote(
+		3,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		&""
+	)
+	_expect(
+		manager.stage == TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING
+		and manager.winning_option_id
+		== TowerDefenseFateRegistry.OPTION_CRITICAL_CORE
+		and manager.permanent_buff_votes.is_empty(),
+		"Entering the Critical Core follow-up must clear losing first-round contract buff votes."
+	)
+	manager.force_finish()
+
+
+func _test_critical_buff_vote_snapshot_and_disconnect(
+	manager: TowerDefenseFateManager
+) -> void:
+	var offer := _begin_critical_buff_vote(manager, 4, [1, 2])
+	manager.submit_vote(
+		1,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		offer[2]
+	)
+	var remote_manager := TowerDefenseFateManager.new()
+	remote_manager.apply_remote_state(manager.export_state())
+	_expect(
+		remote_manager.active
+		and remote_manager.stage
+		== TowerDefenseFateManager.STAGE_CRITICAL_BUFF_VOTING
+		and remote_manager.permanent_buff_offer == offer
+		and StringName(remote_manager.permanent_buff_votes.get(1, &"")) == offer[2],
+		"A reconnect snapshot must preserve the Critical Core stage, offer order, and submitted buff vote."
+	)
+	remote_manager.free()
+	manager.remove_eligible_peer(2)
+	_expect(
+		manager.stage == TowerDefenseFateManager.STAGE_RESOLVING
+		and manager.winning_permanent_buff_id == offer[2],
+		"Disconnecting the last missing follow-up voter must resolve the remaining valid vote."
+	)
+	manager.force_finish()
+
+
+func _test_critical_buff_vote_timeout_recovery(
+	manager: TowerDefenseFateManager
+) -> void:
+	var offer := _begin_critical_buff_vote(manager, 5, [1, 2])
+	manager.submit_vote(
+		1,
+		TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+		offer[1]
+	)
+	manager.advance_stage_timeout(999.0)
+	_expect(
+		manager.timeout_recovery_available
+		and not manager.request_timeout_recovery(2)
+		and manager.request_timeout_recovery(1)
+		and manager.stage == TowerDefenseFateManager.STAGE_RESOLVING
+		and manager.permanent_buff_votes.size() == 2
+		and manager.winning_permanent_buff_id == offer[1],
+		"Only the host may recover a timed-out Critical Core vote, filling from the host's valid buff choice."
+	)
+	manager.force_finish()
+
+
 func _test_tied_votes_follow_offer_order(
 	manager: TowerDefenseFateManager
 ) -> void:
@@ -317,6 +582,31 @@ func _test_host_timeout_recovery(manager: TowerDefenseFateManager) -> void:
 		"Host timeout recovery must fill missing votes deterministically from the host vote."
 	)
 	manager.force_finish()
+
+
+func _begin_critical_buff_vote(
+	manager: TowerDefenseFateManager,
+	day_number: int,
+	peer_values: Array
+) -> Array[StringName]:
+	manager.random_generator.seed = 7102200 + day_number
+	manager.begin_interlude(
+		day_number,
+		&"next",
+		_peers(peer_values),
+		1,
+		[TowerDefenseFateRegistry.OPTION_CRITICAL_CORE],
+		TowerDefenseFateRegistry.get_all_permanent_buff_ids()
+	)
+	for peer_id in peer_values:
+		manager.record_interaction(int(peer_id))
+	for peer_id in peer_values:
+		manager.submit_vote(
+			int(peer_id),
+			TowerDefenseFateRegistry.OPTION_CRITICAL_CORE,
+			&""
+		)
+	return manager.permanent_buff_offer.duplicate()
 
 
 func _begin(
