@@ -9,6 +9,9 @@ const ENCOUNTER_CONFIG_SCRIPT := preload(
 const ROGUE_CAMPAIGN := preload(
 	"res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres"
 )
+const ROGUE_COMBAT_MUSIC := preload(
+	"res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3"
+)
 const COMBAT_ROBOT := preload(
 	"res://resources/config/enemies/combat_robot.tres"
 )
@@ -250,6 +253,25 @@ func _test_single_wave_campaign() -> void:
 	)
 	_expect(wave.spawn_count_per_tick == 10, "技术波次必须支持单次生成 10 台机器人。")
 	_expect(wave.max_alive_enemies == 10, "技术波次必须允许 10 台机器人同时存活。")
+	_expect(
+		wave.music == ROGUE_COMBAT_MUSIC
+		and ROGUE_COMBAT_MUSIC is AudioStreamMP3
+		and (ROGUE_COMBAT_MUSIC as AudioStreamMP3).loop,
+		"唯一波次必须使用循环导入的 1-28 作为作战音乐来源。"
+	)
+	var singleplayer_occurrence := ENCOUNTER_CONFIG.build_occurrence_campaign(
+		"combat:music:singleplayer"
+	)
+	var multiplayer_occurrence := ENCOUNTER_CONFIG.build_occurrence_campaign(
+		"combat:music:multiplayer"
+	)
+	_expect(
+		singleplayer_occurrence != null
+		and multiplayer_occurrence != null
+		and singleplayer_occurrence.get_waves()[0].music == ROGUE_COMBAT_MUSIC
+		and multiplayer_occurrence.get_waves()[0].music == ROGUE_COMBAT_MUSIC,
+		"单人和多人 occurrence Campaign 必须继承同一份 1-28 波次音乐。"
+	)
 	if wave.enemy_entries.size() == 1:
 		var entry := wave.enemy_entries[0]
 		_expect(entry.enemy_config == COMBAT_ROBOT, "唯一敌人条目必须是基础作战机器人。")

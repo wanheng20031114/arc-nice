@@ -4,7 +4,6 @@
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]
-[ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="10_swtgm"]
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
 [ext_resource type="PackedScene" path="res://scene/player/ui/player_profile_panel.tscn" id="13_profile_panel"]
 [ext_resource type="PackedScene" uid="uid://bybgq7nbb2dgy" path="res://scene/wave_hud.tscn" id="14_wave_hud"]
@@ -122,7 +121,6 @@ night_color = Color(0.301961, 0.423529, 0.545098, 1)
 [node name="NightVfxFlashPool" parent="." unique_id=1729563916 instance=ExtResource("29_night_vfx_flash_pool")]
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=707834306]
-stream = ExtResource("10_swtgm")
 volume_db = -6.0
 bus = &"Music"
 

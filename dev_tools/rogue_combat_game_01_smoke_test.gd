@@ -6,6 +6,9 @@ const ROGUE_COMBAT_SCENE_01 := preload(
 const COMBAT_ROBOT_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot.tres"
 )
+const ROGUE_COMBAT_MUSIC := preload(
+	"res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3"
+)
 
 const EXPECTED_SPAWN_POSITIONS: Dictionary[StringName, Vector2] = {
 	&"Spawn1": Vector2(255.0, 32.0),
@@ -280,6 +283,10 @@ func _test_deadline_start_policies() -> void:
 		and game.combat_seconds_remaining == 90,
 		"选择 WAVE_START 时，准备阶段只能重置 90 秒状态，不能提前启动。"
 	)
+	_expect(
+		not game.music_player.playing and game.music_player.stream == null,
+		"三秒准备倒计时期间不得提前绑定或播放作战音乐。"
+	)
 	game.state_timer.stop()
 	game.navigation_prewarmed = true
 	game.call("_begin_wave_config", wave)
@@ -300,6 +307,20 @@ func _test_deadline_start_policies() -> void:
 		game.rogue_combat_hud.time_value_label.text == "01:30"
 		and game.rogue_combat_hud.enemy_value_label.text == "10 / 10",
 		"正式作战 HUD 必须从 01:30 和 10/10 开始。"
+	)
+	_expect(
+		game.music_player.playing
+		and game.music_player.stream == ROGUE_COMBAT_MUSIC
+		and game.music_player.bus == &"Music"
+		and is_equal_approx(
+			game.music_player.volume_db,
+			Game.MUSIC_FADE_IN_START_VOLUME_DB
+		)
+		and game.music_fade_tween != null
+		and is_equal_approx(Game.DEFAULT_MUSIC_VOLUME_DB, -6.0)
+		and is_equal_approx(Game.MUSIC_FADE_IN_SECONDS, 3.0)
+		and (ROGUE_COMBAT_MUSIC as AudioStreamMP3).loop,
+		"WAVE_ACTIVE 必须在 Music 总线以 -6 dB 目标和三秒淡入启动循环 1-28。"
 	)
 	game.call("_stop_combat_deadline")
 
@@ -489,6 +510,7 @@ func _create_test_wave() -> WaveConfig:
 	result.spawn_interval = 60.0
 	result.spawn_count_per_tick = 1
 	result.max_alive_enemies = 1
+	result.music = ROGUE_COMBAT_MUSIC
 	return result
 
 

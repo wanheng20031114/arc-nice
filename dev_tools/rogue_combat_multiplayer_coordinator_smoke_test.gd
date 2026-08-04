@@ -88,6 +88,15 @@ func _test_occurrence_campaign_is_isolated() -> void:
 		wave.spawn_count_per_tick == config.spawn_count_per_tick,
 		"应应用已确认的同批生成数量。"
 	)
+	_expect(
+		wave.music == source_wave.music
+		and wave.music is AudioStreamMP3
+		and wave.music.resource_path.ends_with(
+			"1-28 Journey of the Prairie King (The Outlaw).mp3"
+		)
+		and (wave.music as AudioStreamMP3).loop,
+		"多人 occurrence 波次必须继承共享的循环 1-28 音乐。"
+	)
 	_expect(wave.get_total_enemy_count() == 10, "本次波次必须恰好包含10个作战机器人。")
 
 
