@@ -52,7 +52,6 @@ wave_name = "第3波"
 enemy_entries = Array[ExtResource("1_lylh1")]([SubResource("Resource_8stx2"), SubResource("Resource_tgf04"), SubResource("Resource_vr4tg"), SubResource("Resource_jty4s"), SubResource("Resource_5gigy")])
 spawn_point_mask = 63
 spawn_interval = 0.025
-spawn_count_per_tick = 1
 max_alive_enemies = 300
 music = ExtResource("8_ddgr5")
 post_wave_music = ExtResource("10_post_music")

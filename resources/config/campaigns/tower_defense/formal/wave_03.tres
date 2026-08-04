@@ -1,14 +1,14 @@
-[gd_resource type="Resource" script_class="WaveConfig" format=3]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://bsfqnpq46r6hj"]
 
-[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry"]
-[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_basic"]
-[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="3_fast"]
-[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="4_bomber"]
-[ext_resource type="Resource" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="5_fire"]
-[ext_resource type="Script" path="res://resources/config/flow/flow_exit_config.gd" id="6_exit"]
-[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_combat.ogg" id="7_music"]
-[ext_resource type="AudioStream" path="res://resources/audio/shenmu_forest_intermission.ogg" id="8_rest"]
-[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="9_wave"]
+[ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry"]
+[ext_resource type="Resource" uid="uid://d31hbyrmfh543" path="res://resources/config/enemies/yuanshi_insect_basic.tres" id="2_basic"]
+[ext_resource type="Resource" uid="uid://drqobuvr21y71" path="res://resources/config/enemies/yuanshi_insect_fast.tres" id="3_fast"]
+[ext_resource type="Resource" uid="uid://gh81or2m6c2t" path="res://resources/config/enemies/yuanshi_insect_bomber.tres" id="4_bomber"]
+[ext_resource type="Resource" uid="uid://c6unlgwoqktx5" path="res://resources/config/enemies/yuanshi_insect_fire_ranged.tres" id="5_fire"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="6_exit"]
+[ext_resource type="AudioStream" uid="uid://cq88gwju4hy3n" path="res://resources/audio/shenmu_forest_combat.ogg" id="7_music"]
+[ext_resource type="AudioStream" uid="uid://baapagnqe6lpx" path="res://resources/audio/shenmu_forest_intermission.ogg" id="8_rest"]
+[ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="9_wave"]
 
 [sub_resource type="Resource" id="Entry_basic"]
 script = ExtResource("1_entry")
@@ -40,7 +40,6 @@ wave_name = "第3波 火线初现"
 enemy_entries = Array[ExtResource("1_entry")]([SubResource("Entry_basic"), SubResource("Entry_fast"), SubResource("Entry_bomber"), SubResource("Entry_fire")])
 spawn_point_mask = 63
 spawn_interval = 0.6
-spawn_count_per_tick = 1
 max_alive_enemies = 36
 music = ExtResource("7_music")
 post_wave_music = ExtResource("8_rest")

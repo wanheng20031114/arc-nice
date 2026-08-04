@@ -94,7 +94,6 @@ wave_name = "第10波"
 enemy_entries = Array[ExtResource("1_8q1mw")]([SubResource("Resource_ps2if"), SubResource("Resource_8udad"), SubResource("Resource_b4qed"), SubResource("Resource_60i1q"), SubResource("Resource_0ecgy"), SubResource("Resource_ex2m4"), SubResource("Resource_rddd4"), SubResource("Resource_xv544"), SubResource("Resource_1aif7"), SubResource("Resource_qrvpi"), SubResource("Resource_1pv45")])
 spawn_point_mask = 63
 spawn_interval = 0.025
-spawn_count_per_tick = 1
 max_alive_enemies = 300
 music = ExtResource("14_ligwa")
 post_wave_music = ExtResource("15_c8omq")
