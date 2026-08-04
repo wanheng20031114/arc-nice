@@ -1,2 +1,6 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
+
+# 即使通过 git archive 制作源码包，也排除本地参考资料目录。
+/参考用 export-ignore
+/参考用/** export-ignore
