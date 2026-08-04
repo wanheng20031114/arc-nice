@@ -9,6 +9,14 @@ const COMBAT_ROBOT_CONFIG := preload(
 const ROGUE_COMBAT_MUSIC := preload(
 	"res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3"
 )
+const ROGUE_COMBAT_SCRIPT_PATH := "res://scene/rogue_combat/rogue_combat_game.gd"
+const ROGUE_COMBAT_SCENE_PATH := "res://scene/rogue_combat/rogue_combat_game_01.tscn"
+const EXPECTED_STANDARD_NIGHT_COLOR := Color(
+	87.0 / 255.0,
+	123.0 / 255.0,
+	158.0 / 255.0,
+	1.0
+)
 
 const EXPECTED_SPAWN_POSITIONS: Dictionary[StringName, Vector2] = {
 	&"Spawn1": Vector2(255.0, 32.0),
@@ -79,6 +87,25 @@ func _test_independent_scene_contract() -> void:
 		"Rouge 作战必须是可独立编辑的场景，不能继续继承 game.tscn。"
 	)
 	_expect(game is Game, "Rouge 作战脚本必须继续复用普通模式 Game 行为。")
+	var script_source := FileAccess.get_file_as_string(
+		ROGUE_COMBAT_SCRIPT_PATH
+	)
+	var scene_source := FileAccess.get_file_as_string(
+		ROGUE_COMBAT_SCENE_PATH
+	)
+	_expect(
+		not script_source.is_empty()
+		and script_source.contains(
+			"const UNDERGROUND_NIGHT_COLOR := "
+			+ "DayNightController.REFERENCE_NIGHT_COLOR"
+		),
+		"Rouge 黑夜常量源码必须直接引用塔防标准夜色，不能复制色值。"
+	)
+	_expect(
+		not scene_source.is_empty()
+		and not scene_source.contains("night_color ="),
+		"场景 01 不得重新声明 night_color 覆盖，必须继承控制器标准夜色。"
+	)
 	_expect(
 		game.get_node_or_null("GroundTileMapLayer") is TileMapLayer
 		and game.get_node_or_null("OverlayTileMapLayer") is TileMapLayer
@@ -200,10 +227,6 @@ func _test_fixed_underground_night_contract() -> void:
 	var controller := game.day_night_controller
 	var reference_color := DayNightController.REFERENCE_NIGHT_COLOR
 	var underground_color := RogueCombatGame.UNDERGROUND_NIGHT_COLOR
-	var luminance_ratio := (
-		underground_color.get_luminance()
-		/ reference_color.get_luminance()
-	)
 	_expect(
 		game.world_lighting_policy
 		== GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT,
@@ -211,16 +234,12 @@ func _test_fixed_underground_night_contract() -> void:
 	)
 	_expect(
 		controller != null
-		and controller.night_color.is_equal_approx(underground_color),
-		"场景 01 的 DayNightController 必须静态配置地下夜色。"
-	)
-	_expect(
-		luminance_ratio >= 0.85
-		and luminance_ratio <= 0.93
-		and underground_color.r < reference_color.r
-		and underground_color.g < reference_color.g
-		and underground_color.b < reference_color.b,
-		"地下夜色必须比塔防参考夜色的各 RGB 通道更低，且亮度保持在 85%-93%。"
+		and reference_color == EXPECTED_STANDARD_NIGHT_COLOR
+		and underground_color == EXPECTED_STANDARD_NIGHT_COLOR
+		and underground_color == reference_color
+		and controller.night_color == EXPECTED_STANDARD_NIGHT_COLOR
+		and controller.color == EXPECTED_STANDARD_NIGHT_COLOR,
+		"塔防、Rouge 常量与场景最终夜色必须严格等于 #577B9E。"
 	)
 	_expect_fixed_underground_night("场景初始化")
 
@@ -231,8 +250,9 @@ func _test_fixed_underground_night_contract() -> void:
 		_expect(
 			gate_light != null
 			and gate_light.enabled
+			and is_equal_approx(gate_light.night_energy, 0.3)
 			and is_equal_approx(gate_light.energy, 0.3),
-			"固定黑夜下红门 %s 必须以 0.3 能量持续发光。"
+			"固定黑夜下红门 %s 的 night_energy 与实时能量必须保持 0.3。"
 			% String(spawn_name)
 		)
 
@@ -240,8 +260,8 @@ func _test_fixed_underground_night_contract() -> void:
 		"NightVfxFlashPool"
 	) as NightVfxFlashPool
 	_expect(
-		flash_pool != null and flash_pool.get_capacity() == 8,
-		"场景 01 必须复用容量为 8 的夜间战斗闪光池。"
+		_flash_pool_matches_authored_contract(flash_pool),
+		"场景 01 必须复用容量为 8 且包络参数不变的夜间战斗闪光池。"
 	)
 
 	game.transition_world_to_day(5.0)
@@ -540,17 +560,45 @@ func _expect_fixed_underground_night(context: String) -> void:
 	var controller := game.day_night_controller
 	_expect(
 		controller != null
-		and controller.night_color.is_equal_approx(
-			RogueCombatGame.UNDERGROUND_NIGHT_COLOR
-		)
-		and controller.color.is_equal_approx(
-			RogueCombatGame.UNDERGROUND_NIGHT_COLOR
-		)
+		and DayNightController.REFERENCE_NIGHT_COLOR
+		== EXPECTED_STANDARD_NIGHT_COLOR
+		and RogueCombatGame.UNDERGROUND_NIGHT_COLOR
+		== EXPECTED_STANDARD_NIGHT_COLOR
+		and controller.night_color == EXPECTED_STANDARD_NIGHT_COLOR
+		and controller.color == EXPECTED_STANDARD_NIGHT_COLOR
 		and is_equal_approx(controller.night_factor, 1.0)
 		and controller.is_night()
-		and not controller.is_transitioning(),
+		and not controller.is_transitioning()
+		and controller.get("_transition_tween") == null,
 		"%s 后必须保持地下固定黑夜，且不能遗留昼夜 Tween。" % context
 	)
+
+
+func _flash_pool_matches_authored_contract(
+	pool: NightVfxFlashPool
+) -> bool:
+	if pool == null or pool.get_capacity() != 8 or pool.get_child_count() != 8:
+		return false
+	for child in pool.get_children():
+		var flash := child as NightVfxFlash2D
+		if (
+			flash == null
+			or flash.auto_play
+			or flash.shadow_enabled
+			or flash.is_flash_active()
+			or flash.is_processing()
+			or not is_equal_approx(flash.texture_scale, 0.4)
+			or not is_equal_approx(flash.attack_seconds, 0.04)
+			or not is_equal_approx(flash.hold_seconds, 0.06)
+			or not is_equal_approx(flash.decay_seconds, 0.30)
+			or not is_equal_approx(flash.initial_strength, 0.58)
+			or not is_equal_approx(flash.hold_end_strength, 0.78)
+			or not is_equal_approx(flash.decay_exponent, 1.8)
+			or not is_equal_approx(flash.start_scale_multiplier, 0.74)
+			or not is_equal_approx(flash.end_scale_multiplier, 0.84)
+		):
+			return false
+	return true
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -45,6 +45,12 @@ const LEGACY_VEGETATION_RING_RADIUS := 64.0 * 0.52 * 0.5
 const MIN_EXPANDED_VEGETATION_RING_RADIUS := (
 	LEGACY_VEGETATION_RING_RADIUS * 2.0
 )
+const EXPECTED_STANDARD_NIGHT_COLOR := Color(
+	87.0 / 255.0,
+	123.0 / 255.0,
+	158.0 / 255.0,
+	1.0
+)
 
 var failures: Array[String] = []
 
@@ -546,34 +552,23 @@ func _test_rogue_combat_permanent_underground_night() -> void:
 	var controller := game.day_night_controller
 	var reference_night := DayNightController.REFERENCE_NIGHT_COLOR
 	var underground_night := RogueCombatGame.UNDERGROUND_NIGHT_COLOR
-	var reference_luminance := _color_luminance(reference_night)
-	var underground_luminance := _color_luminance(underground_night)
-	var luminance_ratio := (
-		underground_luminance / reference_luminance
-		if reference_luminance > 0.0
-		else 0.0
-	)
 	_expect(
-		underground_night.is_equal_approx(
-			Color(77.0 / 255.0, 108.0 / 255.0, 139.0 / 255.0, 1.0)
-		)
-		and underground_night.r < reference_night.r
-		and underground_night.g < reference_night.g
-		and underground_night.b < reference_night.b
-		and luminance_ratio >= 0.85
-		and luminance_ratio <= 0.93,
-		"地下夜色必须为#4D6C8B，且亮度保持在塔防#577B9E的85%至93%。"
+		reference_night == EXPECTED_STANDARD_NIGHT_COLOR
+		and underground_night == EXPECTED_STANDARD_NIGHT_COLOR
+		and underground_night == reference_night,
+		"Rouge 与塔防的黑夜常量必须严格共用 #577B9E。"
 	)
 	_expect(
 		controller != null
 		and game.world_lighting_policy
 		== GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
-		and controller.night_color.is_equal_approx(underground_night)
-		and controller.color.is_equal_approx(underground_night)
+		and controller.night_color == EXPECTED_STANDARD_NIGHT_COLOR
+		and controller.color == EXPECTED_STANDARD_NIGHT_COLOR
 		and is_equal_approx(controller.night_factor, 1.0)
 		and controller.is_night()
-		and not controller.is_transitioning(),
-		"Rouge 作战场景入树后必须立即稳定在无Tween的地下黑夜。"
+		and not controller.is_transitioning()
+		and controller.get("_transition_tween") == null,
+		"Rouge 作战场景入树后必须立即稳定在无 Tween 的 #577B9E 固定黑夜。"
 	)
 
 	var gate_lights := _collect_night_lights(
@@ -587,25 +582,29 @@ func _test_rogue_combat_permanent_underground_night() -> void:
 		"NightVfxFlashPool"
 	) as NightVfxFlashPool
 	_expect(
-		flash_pool != null and flash_pool.get_capacity() == 8,
-		"地下黑夜必须保留容量为8的共享战斗闪光池。"
+		_flash_pool_matches_authored_contract(flash_pool),
+		"地下黑夜必须保留容量为 8 且包络参数不变的共享战斗闪光池。"
 	)
 
 	game.transition_world_to_day(0.0)
 	_expect(
-		controller.color.is_equal_approx(underground_night)
+		controller.night_color == EXPECTED_STANDARD_NIGHT_COLOR
+		and controller.color == EXPECTED_STANDARD_NIGHT_COLOR
 		and is_equal_approx(controller.night_factor, 1.0)
 		and controller.is_night()
-		and not controller.is_transitioning(),
+		and not controller.is_transitioning()
+		and controller.get("_transition_tween") == null,
 		"固定黑夜策略收到立即白昼请求时不得离开地下夜色。"
 	)
 	game.transition_world_to_day(0.25)
 	await process_frame
 	_expect(
-		controller.color.is_equal_approx(underground_night)
+		controller.night_color == EXPECTED_STANDARD_NIGHT_COLOR
+		and controller.color == EXPECTED_STANDARD_NIGHT_COLOR
 		and is_equal_approx(controller.night_factor, 1.0)
 		and controller.is_night()
 		and not controller.is_transitioning()
+		and controller.get("_transition_tween") == null
 		and _all_lights_at_energy(gate_lights, 3, 0.3),
 		"固定黑夜策略收到渐变白昼请求时也不得创建Tween或关闭红门灯。"
 	)
@@ -1019,8 +1018,31 @@ func _all_lights_at_energy(
 	return true
 
 
-func _color_luminance(color: Color) -> float:
-	return color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722
+func _flash_pool_matches_authored_contract(
+	pool: NightVfxFlashPool
+) -> bool:
+	if pool == null or pool.get_capacity() != 8 or pool.get_child_count() != 8:
+		return false
+	for child in pool.get_children():
+		var flash := child as NightVfxFlash2D
+		if (
+			flash == null
+			or flash.auto_play
+			or flash.shadow_enabled
+			or flash.is_flash_active()
+			or flash.is_processing()
+			or not is_equal_approx(flash.texture_scale, 0.4)
+			or not is_equal_approx(flash.attack_seconds, 0.04)
+			or not is_equal_approx(flash.hold_seconds, 0.06)
+			or not is_equal_approx(flash.decay_seconds, 0.30)
+			or not is_equal_approx(flash.initial_strength, 0.58)
+			or not is_equal_approx(flash.hold_end_strength, 0.78)
+			or not is_equal_approx(flash.decay_exponent, 1.8)
+			or not is_equal_approx(flash.start_scale_multiplier, 0.74)
+			or not is_equal_approx(flash.end_scale_multiplier, 0.84)
+		):
+			return false
+	return true
 
 
 func _expect(condition: bool, message: String) -> void:

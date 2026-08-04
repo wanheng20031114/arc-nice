@@ -11,12 +11,7 @@ enum DeadlineStart {
 const DEFAULT_EVENT_TITLE := "狭路相逢"
 const DEFAULT_FAILURE_REASON := "队伍已全数阵亡"
 const TIMEOUT_FAILURE_REASON := "作战时间已耗尽"
-const UNDERGROUND_NIGHT_COLOR := Color(
-	77.0 / 255.0,
-	108.0 / 255.0,
-	139.0 / 255.0,
-	1.0
-)
+const UNDERGROUND_NIGHT_COLOR := DayNightController.REFERENCE_NIGHT_COLOR
 
 @export_group("Rouge 作战")
 @export var event_title := DEFAULT_EVENT_TITLE
@@ -51,10 +46,8 @@ func validate_encounter_scene_contract(
 	) as DayNightController
 	if lighting_controller == null:
 		errors.append("地下 Rouge 作战场景缺少昼夜光照控制器。")
-	elif not lighting_controller.night_color.is_equal_approx(
-		UNDERGROUND_NIGHT_COLOR
-	):
-		errors.append("地下 Rouge 作战场景必须使用专属的深夜环境色。")
+	elif lighting_controller.night_color != UNDERGROUND_NIGHT_COLOR:
+		errors.append("地下 Rouge 作战场景必须使用塔防标准黑夜环境色。")
 	if get_node_or_null("NightVfxFlashPool") as NightVfxFlashPool == null:
 		errors.append("地下 Rouge 作战场景缺少塔防同款夜间闪光池。")
 	if (

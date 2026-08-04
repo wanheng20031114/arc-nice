@@ -116,7 +116,6 @@ world_lighting_policy = 2
 environment = SubResource("Environment_revive_glow")
 
 [node name="DayNightController" parent="." unique_id=2104398439 instance=ExtResource("27_day_night")]
-night_color = Color(0.301961, 0.423529, 0.545098, 1)
 
 [node name="NightVfxFlashPool" parent="." unique_id=1729563916 instance=ExtResource("29_night_vfx_flash_pool")]
 

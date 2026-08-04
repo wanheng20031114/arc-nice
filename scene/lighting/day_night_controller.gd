@@ -90,7 +90,12 @@ func _apply_night_factor(
 	var safe_factor := clampf(value, 0.0, 1.0)
 	var factor_changed := night_factor != safe_factor
 	night_factor = safe_factor
-	color = day_color.lerp(night_color, night_factor)
+	if night_factor == 0.0:
+		color = day_color
+	elif night_factor == 1.0:
+		color = night_color
+	else:
+		color = day_color.lerp(night_color, night_factor)
 	if force_emit or factor_changed:
 		night_factor_changed.emit(night_factor)
 
