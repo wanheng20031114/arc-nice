@@ -34,6 +34,7 @@ var _pending_victory := false
 var _pending_result: Dictionary = {}
 var _consumed_node_ids: Dictionary[int, bool] = {}
 var _last_result: Dictionary = {}
+var _victory_sequence_serial := 0
 
 
 func _ready() -> void:
@@ -51,10 +52,15 @@ func _ready() -> void:
 	route.normal_combat_requested.connect(_on_normal_combat_requested)
 	route.combat_result_dismissed.connect(_on_combat_result_dismissed)
 	route.host_layout_committed.connect(_on_host_layout_committed)
+	route.normal_combat_stage_reset.connect(_on_normal_combat_stage_reset)
 	_enabled = true
 
 
 func _exit_tree() -> void:
+	_victory_sequence_serial += 1
+	if route != null and is_instance_valid(route):
+		route.combat_victory_presentation.interrupt_and_reset()
+		route.combat_scene_transition.hide_immediately()
 	_disconnect_route_signals()
 	active_battle = null
 	route = null
@@ -272,10 +278,12 @@ func _resolve_active_outcome(victory: bool, failure_reason: String) -> void:
 		== RogueCombatEncounterConfig.Decision.YES
 	):
 		_consumed_node_ids[_active_node_id] = true
+	if victory:
+		_play_victory_return_sequence()
+		return
 
 	var should_show_result := (
-		victory
-		or encounter_config.show_failure_result
+		encounter_config.show_failure_result
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	if not should_show_result:
@@ -349,6 +357,158 @@ func _on_combat_result_dismissed() -> void:
 	call_deferred(&"_finalize_return_from_battle")
 
 
+func _play_victory_return_sequence() -> void:
+	if active_battle == null or route == null:
+		return
+	_victory_sequence_serial += 1
+	var serial := _victory_sequence_serial
+	var battle := active_battle
+	var completed_occurrence_key := _active_occurrence_key
+	var completed_result := _pending_result.duplicate(true)
+	var presentation := route.combat_victory_presentation
+	var transition := route.combat_scene_transition
+	var title_completed := await presentation.play(battle.music_player)
+	if not title_completed:
+		_recover_interrupted_victory_sequence(
+			serial,
+			completed_occurrence_key,
+			completed_result
+		)
+		return
+	if not _is_current_victory_sequence(
+		serial,
+		battle,
+		completed_occurrence_key
+	):
+		_recover_interrupted_victory_sequence(
+			serial,
+			completed_occurrence_key,
+			completed_result
+		)
+		return
+	var cover_completed := await transition.cover()
+	if not cover_completed:
+		_recover_interrupted_victory_sequence(
+			serial,
+			completed_occurrence_key,
+			completed_result
+		)
+		return
+	if not _is_current_victory_sequence(
+		serial,
+		battle,
+		completed_occurrence_key
+	):
+		_recover_interrupted_victory_sequence(
+			serial,
+			completed_occurrence_key,
+			completed_result
+		)
+		return
+	_copy_battle_xirang_to_route()
+	route.complete_normal_combat(completed_occurrence_key)
+	route.set_route_presentation_enabled(true)
+	_dispose_active_battle()
+	var reveal_completed := await transition.reveal()
+	if not reveal_completed:
+		transition.hide_immediately()
+		_cancel_pending_victory_sequence(serial, completed_occurrence_key)
+		return
+	if (
+		serial != _victory_sequence_serial
+		or route == null
+		or not is_instance_valid(route)
+	):
+		return
+	route.show_combat_result(completed_result)
+	_complete_return_lifecycle(
+		true,
+		completed_occurrence_key,
+		completed_result
+	)
+
+
+func _is_current_victory_sequence(
+	serial: int,
+	battle: RogueCombatGame,
+	occurrence_key: String
+) -> bool:
+	return (
+		serial == _victory_sequence_serial
+		and route != null
+		and is_instance_valid(route)
+		and battle == active_battle
+		and is_instance_valid(battle)
+		and occurrence_key == _active_occurrence_key
+		and route.is_normal_combat_active()
+		and occurrence_key == route.get_normal_combat_occurrence_key()
+		and _pending_victory
+		and _settling_outcome
+	)
+
+
+func _recover_interrupted_victory_sequence(
+	serial: int,
+	occurrence_key: String,
+	result: Dictionary
+) -> void:
+	if (
+		serial != _victory_sequence_serial
+		or occurrence_key != _active_occurrence_key
+	):
+		return
+	_victory_sequence_serial += 1
+	if route != null and is_instance_valid(route):
+		route.combat_victory_presentation.interrupt_and_reset()
+		route.combat_scene_transition.hide_immediately()
+		_copy_battle_xirang_to_route()
+		if (
+			route.is_normal_combat_active()
+			and occurrence_key == route.get_normal_combat_occurrence_key()
+		):
+			route.complete_normal_combat(occurrence_key)
+		route.set_route_presentation_enabled(true)
+	_dispose_active_battle()
+	if route != null and is_instance_valid(route):
+		route.show_combat_result(result)
+	_complete_return_lifecycle(true, occurrence_key, result)
+
+
+func _on_normal_combat_stage_reset(occurrence_key: String) -> void:
+	if (
+		(active_battle == null and not _settling_outcome)
+		or (
+			not occurrence_key.is_empty()
+			and occurrence_key != _active_occurrence_key
+		)
+	):
+		return
+	_cancel_pending_victory_sequence(
+		_victory_sequence_serial,
+		_active_occurrence_key
+	)
+
+
+func _cancel_pending_victory_sequence(
+	serial: int,
+	occurrence_key: String
+) -> void:
+	if (
+		serial != _victory_sequence_serial
+		or occurrence_key != _active_occurrence_key
+	):
+		return
+	_victory_sequence_serial += 1
+	_dispose_active_battle()
+	_pending_victory = false
+	_pending_result.clear()
+	_settling_outcome = false
+	_waiting_for_result_dismissal = false
+	_active_node_id = INVALID_NODE_ID
+	_active_content_seed = 0
+	_active_occurrence_key = ""
+
+
 func _finalize_return_from_battle() -> void:
 	if active_battle == null or route == null:
 		return
@@ -359,7 +519,20 @@ func _finalize_return_from_battle() -> void:
 	route.complete_normal_combat(completed_occurrence_key)
 	route.set_route_presentation_enabled(true)
 	_dispose_active_battle()
+	_complete_return_lifecycle(
+		completed_victory,
+		completed_occurrence_key,
+		completed_result
+	)
+
+
+func _complete_return_lifecycle(
+	completed_victory: bool,
+	completed_occurrence_key: String,
+	completed_result: Dictionary
+) -> void:
 	_pending_result.clear()
+	_pending_victory = false
 	_settling_outcome = false
 	_waiting_for_result_dismissal = false
 	_active_node_id = INVALID_NODE_ID
@@ -406,6 +579,9 @@ func _dispose_active_battle() -> void:
 func _recover_route_from_start_failure(occurrence_key: String) -> void:
 	if route == null:
 		return
+	_victory_sequence_serial += 1
+	route.combat_victory_presentation.interrupt_and_reset()
+	route.combat_scene_transition.hide_immediately()
 	route.complete_normal_combat(occurrence_key)
 	route.set_route_presentation_enabled(true)
 
@@ -423,3 +599,6 @@ func _disconnect_route_signals() -> void:
 	var layout_callable := Callable(self, "_on_host_layout_committed")
 	if route.host_layout_committed.is_connected(layout_callable):
 		route.host_layout_committed.disconnect(layout_callable)
+	var reset_callable := Callable(self, "_on_normal_combat_stage_reset")
+	if route.normal_combat_stage_reset.is_connected(reset_callable):
+		route.normal_combat_stage_reset.disconnect(reset_callable)

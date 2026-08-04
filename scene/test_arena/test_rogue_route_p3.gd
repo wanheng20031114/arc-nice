@@ -28,6 +28,7 @@ signal normal_combat_requested(
 	content_seed: int,
 	occurrence_key: String
 )
+signal normal_combat_stage_reset(occurrence_key: String)
 signal combat_result_dismissed
 signal return_requested
 
@@ -81,6 +82,12 @@ const AVATAR_SPAWN_OFFSETS := [
 @onready var encounter_session: RogueEncounterSession = $EncounterSession
 @onready var combat_result_overlay: RogueCombatResultOverlay = (
 	$CombatResultOverlay
+)
+@onready var combat_victory_presentation: RogueCombatVictoryPresentation = (
+	$CombatVictoryPresentation
+)
+@onready var combat_scene_transition: RogueSceneTransition = (
+	$CombatSceneTransition
 )
 @onready var run_defeat_overlay: RogueRunDefeatOverlay = $RunDefeatOverlay
 
@@ -840,15 +847,19 @@ func _reset_encounter_runtime(authority: bool) -> void:
 
 
 func _reset_normal_combat_stage(restore_presentation: bool) -> void:
+	var interrupted_occurrence_key := _normal_combat_occurrence_key
 	_clear_normal_combat_state()
 	if not is_node_ready():
 		return
+	combat_victory_presentation.interrupt_and_reset()
+	combat_scene_transition.hide_immediately()
 	hide_combat_result()
 	if restore_presentation:
 		set_route_presentation_enabled(true)
 	_set_encounter_input_locked(
 		encounter_session != null and encounter_session.is_active()
 	)
+	normal_combat_stage_reset.emit(interrupted_occurrence_key)
 
 
 func _clear_normal_combat_state() -> void:

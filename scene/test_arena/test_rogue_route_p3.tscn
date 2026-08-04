@@ -1,4 +1,4 @@
-[gd_scene load_steps=30 format=3]
+[gd_scene load_steps=32 format=3]
 
 [ext_resource type="Script" path="res://scene/test_arena/test_rogue_route_p3.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_board.tscn" id="2_board"]
@@ -18,6 +18,8 @@
 [ext_resource type="Resource" path="res://resources/config/rogue_combat/encounter_01.tres" id="16_combat_config"]
 [ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_run_defeat_overlay.tscn" id="17_run_defeat"]
 [ext_resource type="PackedScene" path="res://scene/vfx/rogue_route_ambient_vfx.tscn" id="18_route_ambient_vfx"]
+[ext_resource type="PackedScene" path="res://scene/rogue_combat/rogue_combat_victory_presentation.tscn" id="19_combat_victory"]
+[ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_scene_transition.tscn" id="20_scene_transition"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -532,6 +534,10 @@ tooltip_text = "回到本地角色（Home）"
 [node name="MoveConfirmation" parent="." instance=ExtResource("13_move_confirmation")]
 
 [node name="CombatResultOverlay" parent="." instance=ExtResource("14_combat_result")]
+
+[node name="CombatVictoryPresentation" parent="." instance=ExtResource("19_combat_victory")]
+
+[node name="CombatSceneTransition" parent="." instance=ExtResource("20_scene_transition")]
 
 [node name="RunDefeatOverlay" parent="." instance=ExtResource("17_run_defeat")]
 

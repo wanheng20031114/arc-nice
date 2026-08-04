@@ -147,6 +147,28 @@ func _test_protocol_contract_is_static_and_order_safe() -> void:
 		and source.contains("func net_combat_safe_to_teardown("),
 		"跨信道结果到齐后还需安全 teardown 握手，避免缺失 RPC NodePath。"
 	)
+	var victory_terminal_source := _slice_between(
+		source,
+		"func _play_local_victory_terminal(occurrence_key: String) -> void:",
+		"func _is_current_victory_terminal("
+	)
+	var title_index := victory_terminal_source.find(
+		"await presentation.play(game.music_player)"
+	)
+	var cover_index := victory_terminal_source.find("await transition.cover()")
+	var return_index := victory_terminal_source.find("_return_to_route_local()")
+	var reveal_index := victory_terminal_source.find("await transition.reveal()")
+	var result_index := victory_terminal_source.find("_show_local_result()")
+	var ready_index := victory_terminal_source.find("_mark_local_terminal_ready()")
+	_expect(
+		title_index >= 0
+		and cover_index > title_index
+		and return_index > cover_index
+		and reveal_index > return_index
+		and result_index > reveal_index
+		and ready_index > result_index,
+		"多人胜利必须按标题→遮盖→回图→揭示→结算→terminal-ready 顺序执行。"
+	)
 	_expect(
 		source.contains("func _on_host_layout_committed(")
 		and source.contains("_consumed_node_ids.clear()"),

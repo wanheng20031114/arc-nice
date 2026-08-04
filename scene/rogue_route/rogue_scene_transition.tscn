@@ -1,0 +1,44 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scene/rogue_route/rogue_scene_transition.gd" id="1_script"]
+[ext_resource type="Shader" path="res://resources/shader/xiaocong_fate_scene_transition.gdshader" id="2_shader"]
+[ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="3_noise"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/xiaocong_transition_cover.wav" id="4_cover_audio"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/xiaocong_transition_reveal.wav" id="5_reveal_audio"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_transition"]
+resource_local_to_scene = true
+shader = ExtResource("2_shader")
+shader_parameter/transition_noise = ExtResource("3_noise")
+shader_parameter/chamber_color = Color(0, 0, 0, 1)
+shader_parameter/growth_edge_color = Color(0.13, 0.135, 0.14, 0.22)
+shader_parameter/growth_core_color = Color(0.54, 0.55, 0.56, 0.34)
+shader_parameter/growth_edge_width = 0.024
+
+[node name="RogueSceneTransition" type="CanvasLayer"]
+process_mode = 3
+visible = false
+layer = 120
+script = ExtResource("1_script")
+
+[node name="Cover" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_transition")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="CoverAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("4_cover_audio")
+volume_db = -8.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="RevealAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_reveal_audio")
+volume_db = -7.0
+max_polyphony = 1
+bus = &"SFX"

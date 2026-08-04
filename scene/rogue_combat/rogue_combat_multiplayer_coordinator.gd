@@ -70,6 +70,7 @@ var _local_route_returned := false
 var _local_result_occurrence_key := ""
 var _local_terminal_finalized := false
 var _consumed_node_ids: Dictionary = {}
+var _terminal_sequence_serial := 0
 
 
 func _ready() -> void:
@@ -99,10 +100,17 @@ func _ready() -> void:
 		_on_host_layout_committed
 	):
 		_route.host_layout_committed.connect(_on_host_layout_committed)
+	if not _route.normal_combat_stage_reset.is_connected(
+		_on_route_normal_combat_stage_reset
+	):
+		_route.normal_combat_stage_reset.connect(
+			_on_route_normal_combat_stage_reset
+		)
 	_connect_net_manager_signals()
 
 
 func _exit_tree() -> void:
+	_interrupt_terminal_presentation()
 	_disconnect_route_signals()
 	_disconnect_net_manager_signals()
 
@@ -166,6 +174,12 @@ func _disconnect_route_signals() -> void:
 		_on_host_layout_committed
 	):
 		_route.host_layout_committed.disconnect(_on_host_layout_committed)
+	if _route.normal_combat_stage_reset.is_connected(
+		_on_route_normal_combat_stage_reset
+	):
+		_route.normal_combat_stage_reset.disconnect(
+			_on_route_normal_combat_stage_reset
+		)
 
 
 func _on_host_layout_committed(
@@ -759,6 +773,9 @@ func _try_finalize_local_terminal() -> void:
 	_local_route_returned = false
 
 	var victory := bool(_pending_settlement.get("victory", false))
+	if victory:
+		_play_local_victory_terminal(_active_occurrence_key)
+		return
 	var should_show_result := victory or (
 		encounter_config.show_failure_result
 		== RogueCombatEncounterConfig.Decision.YES
@@ -776,6 +793,97 @@ func _try_finalize_local_terminal() -> void:
 	else:
 		_clear_local_result_lifecycle()
 	_mark_local_terminal_ready()
+
+
+func _play_local_victory_terminal(occurrence_key: String) -> void:
+	if (
+		_route == null
+		or _combat_game == null
+		or not is_instance_valid(_route)
+		or not is_instance_valid(_combat_game)
+	):
+		_abort_interrupted_victory_terminal(occurrence_key)
+		return
+	_terminal_sequence_serial += 1
+	var serial := _terminal_sequence_serial
+	var game := _combat_game
+	var presentation := _route.combat_victory_presentation
+	var transition := _route.combat_scene_transition
+	var title_completed := await presentation.play(game.music_player)
+	if not title_completed:
+		_abort_interrupted_victory_terminal(occurrence_key)
+		return
+	if not _is_current_victory_terminal(serial, occurrence_key, game):
+		_abort_interrupted_victory_terminal(occurrence_key)
+		return
+	var cover_completed := await transition.cover()
+	if not cover_completed:
+		_abort_interrupted_victory_terminal(occurrence_key)
+		return
+	if not _is_current_victory_terminal(serial, occurrence_key, game):
+		_abort_interrupted_victory_terminal(occurrence_key)
+		return
+	_return_to_route_local()
+	var reveal_completed := await transition.reveal()
+	if not reveal_completed:
+		_abort_interrupted_victory_terminal(occurrence_key)
+		return
+	if not _is_current_victory_terminal(serial, occurrence_key, game):
+		_abort_interrupted_victory_terminal(occurrence_key)
+		return
+	if not _show_local_result():
+		_clear_local_result_lifecycle()
+	_mark_local_terminal_ready()
+
+
+func _is_current_victory_terminal(
+	serial: int,
+	occurrence_key: String,
+	game: RogueCombatGame
+) -> bool:
+	return (
+		serial == _terminal_sequence_serial
+		and _local_terminal_finalized
+		and _phase == ProtocolPhase.SETTLED
+		and occurrence_key == _active_occurrence_key
+		and occurrence_key == _local_result_occurrence_key
+		and game == _combat_game
+		and is_instance_valid(game)
+		and _settlement_received
+		and _local_outcome_received
+		and _local_outcome_victory
+		and bool(_pending_settlement.get("victory", false))
+	)
+
+
+func _abort_interrupted_victory_terminal(occurrence_key: String) -> void:
+	if (
+		occurrence_key.is_empty()
+		or _phase == ProtocolPhase.IDLE
+		or occurrence_key != _active_occurrence_key
+	):
+		return
+	_interrupt_terminal_presentation()
+	if _is_host():
+		call_deferred(
+			&"_abort_authoritative_protocol",
+			&"victory_presentation_interrupted"
+		)
+		return
+	if _is_client():
+		_request_authoritative_abort(
+			occurrence_key,
+			&"victory_presentation_interrupted"
+		)
+	_apply_protocol_abort(occurrence_key)
+
+
+func _on_route_normal_combat_stage_reset(occurrence_key: String) -> void:
+	_abort_interrupted_victory_terminal(
+		occurrence_key
+		if not occurrence_key.is_empty()
+		else _active_occurrence_key
+	)
 
 
 func _mark_local_terminal_ready() -> void:
@@ -922,6 +1030,7 @@ func _clear_local_result_lifecycle() -> void:
 
 
 func _reset_protocol_state() -> void:
+	_interrupt_terminal_presentation()
 	_phase = ProtocolPhase.IDLE
 	_active_node_id = INVALID_NODE_ID
 	_active_content_seed = 0
@@ -947,6 +1056,14 @@ func _reset_protocol_state() -> void:
 	_terminal_safe_received = false
 	_terminal_safe_broadcast = false
 	_local_terminal_finalized = false
+
+
+func _interrupt_terminal_presentation() -> void:
+	_terminal_sequence_serial += 1
+	if _route == null or not is_instance_valid(_route):
+		return
+	_route.combat_victory_presentation.interrupt_and_reset()
+	_route.combat_scene_transition.hide_immediately()
 
 
 func _request_authoritative_abort(

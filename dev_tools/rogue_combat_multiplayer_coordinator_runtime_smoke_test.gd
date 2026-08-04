@@ -73,6 +73,7 @@ func _run() -> void:
 	_test_next_prepare_collects_stale_result()
 	_test_player_left_preserves_participant_and_shrinks_barriers()
 	_test_reconnect_remaps_terminal_settlement()
+	await _test_route_reset_aborts_terminal_sequence()
 	_test_authoritative_prepare_failure_aborts_safely()
 	_test_authoritative_config_failure_aborts_safely()
 	_test_authoritative_activation_failure_aborts_safely()
@@ -319,6 +320,44 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 		int((inventory[3] as Dictionary).get("peer_id", -1)) == 3
 		and int((results[3] as Dictionary).get("peer_id", -1)) == 3,
 		"重连后字典 payload 内部 peer_id 也必须改为 new peer。"
+	)
+
+
+func _test_route_reset_aborts_terminal_sequence() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:victory-reset:5"
+	_seed_route_combat(15, 1505, occurrence_key)
+	_route.set_route_presentation_enabled(false)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._active_node_id = 15
+	_coordinator._active_content_seed = 1505
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true}
+	_coordinator._settlement_received = true
+	_coordinator._local_outcome_received = true
+	_coordinator._local_outcome_victory = true
+	_coordinator._local_terminal_finalized = true
+	_coordinator._local_result_occurrence_key = occurrence_key
+	var runtime := Node.new()
+	runtime.name = "InterruptedVictoryRuntime"
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+
+	_route._reset_normal_combat_stage(true)
+	await process_frame
+
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		and _coordinator._combat_network == null
+		and _coordinator._active_occurrence_key.is_empty(),
+		"胜利演出中的路线重置必须进入权威 abort，不能遗留 terminal barrier。"
+	)
+	_expect(
+		not _route.is_normal_combat_active()
+		and _route.get_node("World").visible
+		and not _route.combat_victory_presentation.visible
+		and not _route.combat_scene_transition.visible,
+		"胜利演出中断后必须恢复路线并清空标题与转场。"
 	)
 
 

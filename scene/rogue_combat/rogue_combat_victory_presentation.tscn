@@ -1,0 +1,152 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scene/rogue_combat/rogue_combat_victory_presentation.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/rogue_combat_victory.wav" id="3_victory_audio"]
+
+[node name="RogueCombatVictoryPresentation" type="CanvasLayer"]
+process_mode = 3
+visible = false
+layer = 110
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Shade" type="ColorRect" parent="Root"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.012, 0.018, 0.03, 0)
+
+[node name="LeftLine" type="ColorRect" parent="Root"]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -292.0
+offset_top = -1.0
+offset_right = -118.0
+offset_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.78, 0.6, 0.25, 0.88)
+transform_pivot_offset = Vector2(174, 1)
+
+[node name="VictoryTitle" type="Label" parent="Root"]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -112.0
+offset_top = -46.0
+offset_right = -56.0
+offset_bottom = 46.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.91, 0.68, 1)
+theme_override_colors/font_outline_color = Color(0.16, 0.075, 0.02, 0.95)
+theme_override_constants/outline_size = 8
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 56
+text = "胜"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="WinnerTitle" type="Label" parent="Root"]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -56.0
+offset_top = -46.0
+offset_bottom = 46.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.91, 0.68, 1)
+theme_override_colors/font_outline_color = Color(0.16, 0.075, 0.02, 0.95)
+theme_override_constants/outline_size = 8
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 56
+text = "者"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="IsTitle" type="Label" parent="Root"]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_top = -46.0
+offset_right = 56.0
+offset_bottom = 46.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.91, 0.68, 1)
+theme_override_colors/font_outline_color = Color(0.16, 0.075, 0.02, 0.95)
+theme_override_constants/outline_size = 8
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 56
+text = "为"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="KingTitle" type="Label" parent="Root"]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 56.0
+offset_top = -46.0
+offset_right = 112.0
+offset_bottom = 46.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.91, 0.68, 1)
+theme_override_colors/font_outline_color = Color(0.16, 0.075, 0.02, 0.95)
+theme_override_constants/outline_size = 8
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 56
+text = "王"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="RightLine" type="ColorRect" parent="Root"]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 118.0
+offset_top = -1.0
+offset_right = 292.0
+offset_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.78, 0.6, 0.25, 0.88)
+transform_pivot_offset = Vector2(0, 1)
+
+[node name="VictoryAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_victory_audio")
+volume_db = -5.0
+max_polyphony = 1
+bus = &"SFX"

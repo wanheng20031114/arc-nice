@@ -32,6 +32,8 @@ func _run() -> void:
 
 	await _test_formal_configuration_gate_and_multiplayer_isolation()
 	await _test_victory_reward_return_and_consumed_revisit()
+	await _test_victory_presentation_route_reset_cancels_sequence()
+	await _test_victory_reveal_route_reset_discards_old_result()
 	await _test_full_inventory_and_runtime_content_policy()
 	await _test_timeout_result_then_retry()
 	await _test_consumed_failure_and_non_inherited_xirang()
@@ -106,6 +108,11 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 	var combat_node_id := int(fixture["combat_node_id"])
 	var start_node_id := runtime.current_node_id
 	var battle_starts: Array[RogueCombatGame] = []
+	var victory_playback_count := [0]
+	route.combat_victory_presentation.playback_finished.connect(
+		func() -> void:
+			victory_playback_count[0] = int(victory_playback_count[0]) + 1
+	)
 	coordinator.battle_started.connect(
 		func(
 			_node_id: int,
@@ -178,6 +185,18 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		"正式战斗夹具必须实际击败刚生成的10台机器人。"
 	)
 	_expect(
+		await _wait_for_victory_presentation(route),
+		"胜利确认后必须先显示“胜者为王”表现。"
+	)
+	_expect(
+		not route.combat_result_overlay.visible
+		and not route.get_node("World").visible
+		and coordinator.get_active_battle() == battle
+		and battle.process_mode == Node.PROCESS_MODE_DISABLED,
+		"标题播放期间不得提前回图、释放战场或显示原有结算。"
+	)
+	coordinator.call("_on_battle_outcome_started", true, "", battle)
+	_expect(
 		await _wait_for_battle_return(coordinator),
 		"击败全部敌人的胜利结果必须返回 Rouge 路线。"
 	)
@@ -200,7 +219,8 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		and route.combat_result_overlay.extra_xirang_value_label.text == "+500"
 		and not route.is_normal_combat_active()
 		and route.get_node("World").visible
-		and coordinator.is_node_consumed(combat_node_id),
+		and coordinator.is_node_consumed(combat_node_id)
+		and int(victory_playback_count[0]) == 1,
 		"先回图策略必须先完成/释放战斗，再在路线中央显示胜利结算并消费节点。"
 	)
 	route.combat_result_overlay.close_button.pressed.emit()
@@ -223,6 +243,117 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		and coordinator.get_active_battle() == null
 		and not route.is_normal_combat_active(),
 		"胜利后复访已消费节点必须立即完成，不得再次实例化战斗。"
+	)
+	_cleanup_route(route)
+	await process_frame
+
+
+func _test_victory_presentation_route_reset_cancels_sequence() -> void:
+	run_state.begin_new_run(&"weishidaier", false)
+	var route := await _create_ready_route(_make_confirmed_config())
+	if route == null:
+		return
+	var coordinator := _get_coordinator(route)
+	var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
+	var combat_node_id := int(fixture["combat_node_id"])
+	var returned_count := [0]
+	coordinator.battle_returned.connect(
+		func(_victory: bool, _key: String, _result: Dictionary) -> void:
+			returned_count[0] = int(returned_count[0]) + 1
+	)
+	_expect(
+		runtime.try_move(
+			combat_node_id,
+			route.generation_config.move_action_cost,
+			runtime.state_revision
+		),
+		"胜利中断夹具必须能进入普通作战节点。"
+	)
+	var battle := coordinator.get_active_battle()
+	if battle == null:
+		_expect(false, "胜利中断夹具必须创建战场。")
+		_cleanup_route(route)
+		await process_frame
+		return
+	_expect(
+		await _wait_for_preparation(battle),
+		"胜利中断夹具必须先完成真实战场预热。"
+	)
+	battle.call("_enter_victory")
+	_expect(
+		await _wait_for_victory_presentation(route),
+		"路线重置测试必须先进入胜利标题阶段。"
+	)
+	route.call("_reset_normal_combat_stage", true)
+	await create_timer(0.12, true).timeout
+	_expect(
+		coordinator.get_active_battle() == null
+		and not bool(coordinator.get("_settling_outcome"))
+		and not route.is_normal_combat_active()
+		and route.get_node("World").visible
+		and not route.combat_victory_presentation.visible
+		and not route.combat_scene_transition.visible
+		and not route.combat_result_overlay.visible
+		and int(returned_count[0]) == 0,
+		"路线重置必须取消旧胜利协程并释放战场，不能延迟回图或显示旧结算。"
+	)
+	_cleanup_route(route)
+	await process_frame
+
+
+func _test_victory_reveal_route_reset_discards_old_result() -> void:
+	run_state.begin_new_run(&"weishidaier", false)
+	var route := await _create_ready_route(_make_confirmed_config())
+	if route == null:
+		return
+	var coordinator := _get_coordinator(route)
+	var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
+	var returned_count := [0]
+	coordinator.battle_returned.connect(
+		func(_victory: bool, _key: String, _result: Dictionary) -> void:
+			returned_count[0] = int(returned_count[0]) + 1
+	)
+	_expect(
+		runtime.try_move(
+			int(fixture["combat_node_id"]),
+			route.generation_config.move_action_cost,
+			runtime.state_revision
+		),
+		"揭示中断夹具必须能进入普通作战节点。"
+	)
+	var battle := coordinator.get_active_battle()
+	if battle == null:
+		_expect(false, "揭示中断夹具必须创建战场。")
+		_cleanup_route(route)
+		await process_frame
+		return
+	_expect(
+		await _wait_for_preparation(battle),
+		"揭示中断夹具必须先完成真实战场预热。"
+	)
+	battle.call("_enter_victory")
+	_expect(
+		await _wait_for_victory_presentation(route),
+		"揭示中断夹具必须先进入胜利标题阶段。"
+	)
+	await route.combat_victory_presentation.playback_finished
+	await create_timer(0.34, true).timeout
+	_expect(
+		coordinator.get_active_battle() == null
+		and route.get_node("World").visible
+		and route.combat_scene_transition.visible
+		and not route.combat_result_overlay.visible,
+		"揭示中断必须发生在战场已释放、路线已恢复且结算尚未显示的窗口。"
+	)
+	route.call("_reset_normal_combat_stage", true)
+	await create_timer(0.45, true).timeout
+	_expect(
+		not bool(coordinator.get("_settling_outcome"))
+		and str(coordinator.get("_active_occurrence_key")).is_empty()
+		and not route.combat_scene_transition.visible
+		and not route.combat_result_overlay.visible
+		and int(returned_count[0]) == 0,
+		"揭示期间路线重置必须丢弃旧结算，不能弹到重置后的路线。"
 	)
 	_cleanup_route(route)
 	await process_frame
@@ -320,6 +451,11 @@ func _test_timeout_result_then_retry() -> void:
 		return
 	_set_player_xirang(route.player, 777)
 	var coordinator := _get_coordinator(route)
+	var victory_playback_count := [0]
+	route.combat_victory_presentation.playback_finished.connect(
+		func() -> void:
+			victory_playback_count[0] = int(victory_playback_count[0]) + 1
+	)
 	var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
 	var combat_node_id := int(fixture["combat_node_id"])
 	var start_node_id := runtime.current_node_id
@@ -362,6 +498,8 @@ func _test_timeout_result_then_retry() -> void:
 		and route.is_normal_combat_active()
 		and not route.get_node("World").visible
 		and route.combat_result_overlay.result_title_label.text == "作战失败"
+		and not route.combat_victory_presentation.visible
+		and int(victory_playback_count[0]) == 0
 		and route.combat_result_overlay.result_subtitle_label.text
 		== RogueCombatGame.TIMEOUT_FAILURE_REASON,
 		"战场上结算策略必须冻结战斗并等待玩家关闭，再恢复路线。"
@@ -370,7 +508,8 @@ func _test_timeout_result_then_retry() -> void:
 	_expect(
 		await _wait_for_battle_return(coordinator)
 		and route.player.current_xirang == 777
-		and not coordinator.is_node_consumed(combat_node_id),
+		and not coordinator.is_node_consumed(combat_node_id)
+		and int(victory_playback_count[0]) == 0,
 		"超时失败不得发奖励；不消费策略必须允许后续重试。"
 	)
 	_expect(
@@ -621,15 +760,26 @@ func _expect_fixed_underground_night(
 func _wait_for_battle_return(
 	coordinator: RogueCombatSingleplayerCoordinator
 ) -> bool:
-	for _frame in 120:
-		if coordinator.get_active_battle() == null:
+	for _frame in 240:
+		if (
+			coordinator.get_active_battle() == null
+			and not bool(coordinator.get("_settling_outcome"))
+		):
+			return true
+		await process_frame
+	return false
+
+
+func _wait_for_victory_presentation(route: TestRogueRouteP3) -> bool:
+	for _frame in 60:
+		if route.combat_victory_presentation.visible:
 			return true
 		await process_frame
 	return false
 
 
 func _wait_for_result_overlay(route: TestRogueRouteP3) -> bool:
-	for _frame in 120:
+	for _frame in 240:
 		if route.combat_result_overlay.visible:
 			return true
 		await process_frame
