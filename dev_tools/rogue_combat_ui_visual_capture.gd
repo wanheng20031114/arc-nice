@@ -67,7 +67,7 @@ func _capture_preparation_hud() -> void:
 	await _wait_frames(2)
 	_expect(
 		_combat.rogue_combat_hud.preparation_seconds_label.text == "3"
-		and _combat.rogue_combat_hud.enemy_value_label.text == "10 / 10",
+		and _combat.rogue_combat_hud.enemy_value_label.text == "0 / 10",
 		"准备 HUD 文案与数量不符合 3 秒、10 名敌人的设计。"
 	)
 	_expect_control_inside_viewport(
@@ -87,13 +87,13 @@ func _capture_preparation_hud() -> void:
 
 
 func _capture_combat_hud() -> void:
-	_combat.rogue_combat_hud.show_combat("狭路相逢", 90.0, 10, 10)
+	_combat.rogue_combat_hud.show_combat("狭路相逢", 90.0, 0, 10)
 	await _wait_frames(2)
 	_expect(
 		_combat.rogue_combat_hud.time_value_label.text == "01:30"
-		and _combat.rogue_combat_hud.enemy_value_label.text == "10 / 10"
+		and _combat.rogue_combat_hud.enemy_value_label.text == "0 / 10"
 		and not _combat.rogue_combat_hud.preparation_center.visible,
-		"战斗 HUD 必须显示 01:30、10/10，且不保留准备卡。"
+		"战斗 HUD 必须显示 01:30、0/10 已消灭进度，且不保留准备卡。"
 	)
 	_expect_control_inside_viewport(
 		_combat.rogue_combat_hud.info_panel,
@@ -147,7 +147,7 @@ func _capture_failure_result() -> void:
 
 func _capture_permanent_death() -> void:
 	_result.hide_immediately()
-	_combat.rogue_combat_hud.show_combat("狭路相逢", 47.0, 6, 10)
+	_combat.rogue_combat_hud.show_combat("狭路相逢", 47.0, 4, 10)
 	_combat.tower_defense_status_hud.set_dead_player_list_enabled(false)
 	_combat.tower_defense_status_hud.show_local_permanent_death(0)
 	# 捕捉实际入场动画的完整提示阶段：卡片已完全显现，仍明确写出

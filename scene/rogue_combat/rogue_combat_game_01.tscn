@@ -6,7 +6,6 @@
 [ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
 [ext_resource type="PackedScene" path="res://scene/player/ui/player_profile_panel.tscn" id="13_profile_panel"]
-[ext_resource type="PackedScene" uid="uid://bybgq7nbb2dgy" path="res://scene/wave_hud.tscn" id="14_wave_hud"]
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]
 [ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/damage_number_pool.gd" id="18_damage_pool"]
@@ -153,8 +152,6 @@ position = Vector2(79, 128)
 
 [node name="CurrencyHUD" parent="." unique_id=912718684 instance=ExtResource("12_currency_hud")]
 visible = false
-
-[node name="WaveHUD" parent="." unique_id=1126268867 instance=ExtResource("14_wave_hud")]
 
 [node name="PlayerProfilePanel" parent="." unique_id=1216528429 instance=ExtResource("13_profile_panel")]
 

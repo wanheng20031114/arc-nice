@@ -47,7 +47,7 @@ func show_preparation(
 	set_event_title(event_title)
 	time_caption_label.text = PREPARATION_CAPTION
 	set_preparation_time(seconds_left)
-	set_enemy_count(total_enemy_count, total_enemy_count)
+	set_defeated_enemy_count(0, total_enemy_count)
 
 
 func set_preparation_time(seconds_left: float) -> void:
@@ -61,7 +61,7 @@ func set_preparation_time(seconds_left: float) -> void:
 func show_combat(
 	event_title: String = DEFAULT_EVENT_TITLE,
 	remaining_seconds: float = 90.0,
-	alive_enemies: int = 10,
+	defeated_enemies: int = 0,
 	total_enemies: int = 10
 ) -> void:
 	show()
@@ -69,7 +69,7 @@ func show_combat(
 	set_event_title(event_title)
 	time_caption_label.text = COMBAT_CAPTION
 	set_combat_remaining_time(remaining_seconds)
-	set_enemy_count(alive_enemies, total_enemies)
+	set_defeated_enemy_count(defeated_enemies, total_enemies)
 
 
 func set_combat_remaining_time(remaining_seconds: float) -> void:
@@ -81,12 +81,14 @@ func set_combat_remaining_time(remaining_seconds: float) -> void:
 	)
 
 
-func set_enemy_count(alive_enemies: int, total_enemies: int) -> void:
+func set_defeated_enemy_count(defeated_enemies: int, total_enemies: int) -> void:
 	var safe_total := maxi(total_enemies, 0)
-	var safe_alive := clampi(alive_enemies, 0, safe_total) if safe_total > 0 else 0
-	enemy_value_label.text = "%d / %d" % [safe_alive, safe_total]
+	var safe_defeated := (
+		clampi(defeated_enemies, 0, safe_total) if safe_total > 0 else 0
+	)
+	enemy_value_label.text = "%d / %d" % [safe_defeated, safe_total]
 	enemy_value_label.self_modulate = (
-		CLEARED_ENEMY_COLOR if safe_alive <= 0 else ACTIVE_ENEMY_COLOR
+		CLEARED_ENEMY_COLOR if safe_defeated >= safe_total else ACTIVE_ENEMY_COLOR
 	)
 
 

@@ -116,7 +116,6 @@ func _append_forbidden_static_content_errors(
 func _ready() -> void:
 	super._ready()
 	tower_defense_status_hud.set_dead_player_list_enabled(false)
-	wave_hud.hide_all()
 
 
 func allows_player_respawn(_peer_id: int) -> bool:
@@ -155,7 +154,6 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	super._enter_pre_flow_step(flow_step)
 	if wave_state != WaveState.PRE_WAVE:
 		return
-	wave_hud.hide_all()
 	rogue_combat_hud.show_preparation(
 		event_title,
 		float(countdown_seconds),
@@ -171,12 +169,11 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	super._begin_wave_config(wave_config)
 	if wave_state != WaveState.WAVE_ACTIVE:
 		return
-	wave_hud.hide_all()
 	var total_enemies := maxi(current_wave_total, 0)
 	rogue_combat_hud.show_combat(
 		event_title,
 		float(combat_seconds_remaining),
-		total_enemies,
+		current_wave_defeated,
 		total_enemies
 	)
 	if deadline_start == DeadlineStart.WAVE_START:
@@ -186,7 +183,6 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 func _on_state_timer_timeout() -> void:
 	super._on_state_timer_timeout()
 	if wave_state == WaveState.PRE_WAVE:
-		wave_hud.hide_all()
 		rogue_combat_hud.set_preparation_time(float(countdown_seconds))
 
 
@@ -211,19 +207,22 @@ func _on_combat_deadline_timer_timeout() -> void:
 
 func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 	super._on_wave_enemy_defeated(enemy)
-	rogue_combat_hud.set_enemy_count(
-		maxi(current_wave_total - current_wave_defeated, 0),
+	rogue_combat_hud.set_defeated_enemy_count(
+		maxi(current_wave_defeated, 0),
 		maxi(current_wave_total, 0)
 	)
 
 
 func apply_remote_enemy_count(alive_count: int) -> void:
 	super.apply_remote_enemy_count(alive_count)
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW or wave_state != WaveState.WAVE_ACTIVE:
 		return
-	rogue_combat_hud.set_enemy_count(
-		maxi(alive_count, 0),
-		maxi(current_wave_total, alive_count)
+	var total_enemies := maxi(current_wave_total, maxi(alive_count, 0))
+	var safe_alive_count := clampi(alive_count, 0, total_enemies)
+	current_wave_defeated = total_enemies - safe_alive_count
+	rogue_combat_hud.set_defeated_enemy_count(
+		current_wave_defeated,
+		total_enemies
 	)
 
 
@@ -243,7 +242,6 @@ func apply_remote_flow_state(
 		)
 		return
 	super.apply_remote_flow_state(step_id, state, seconds)
-	wave_hud.hide_all()
 	match typed_state:
 		WaveState.PRE_WAVE:
 			rogue_combat_hud.show_preparation(
@@ -254,10 +252,12 @@ func apply_remote_flow_state(
 		WaveState.WAVE_ACTIVE:
 			combat_seconds_remaining = maxi(seconds, 0)
 			var total_enemies := _get_expected_enemy_count(current_flow_step)
+			current_wave_total = total_enemies
+			current_wave_defeated = 0
 			rogue_combat_hud.show_combat(
 				event_title,
 				float(combat_seconds_remaining),
-				total_enemies,
+				0,
 				total_enemies
 			)
 		WaveState.VICTORY, WaveState.DEFEAT:
@@ -317,7 +317,6 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 		return
 	_stop_combat_deadline()
 	super._enter_victory(emit_multiplayer)
-	wave_hud.hide_all()
 	rogue_combat_hud.hide_hud()
 	_emit_combat_outcome_once(true, "")
 
@@ -327,7 +326,6 @@ func _enter_defeat() -> void:
 		return
 	_stop_combat_deadline()
 	super._enter_defeat()
-	wave_hud.hide_all()
 	rogue_combat_hud.hide_hud()
 	_emit_combat_outcome_once(false, _failure_reason)
 
@@ -350,7 +348,6 @@ func apply_remote_defeat() -> void:
 		return
 	_stop_combat_deadline()
 	super.apply_remote_defeat()
-	wave_hud.hide_all()
 	rogue_combat_hud.hide_hud()
 	_emit_combat_outcome_once(false, _failure_reason)
 

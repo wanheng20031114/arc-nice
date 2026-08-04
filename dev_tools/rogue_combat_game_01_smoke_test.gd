@@ -200,9 +200,11 @@ func _test_independent_scene_contract() -> void:
 	)
 	_expect(
 		game.get_node_or_null("RogueCombatHUD") is RogueCombatHUD
+		and game.get_node_or_null("WaveHUD") == null
+		and game.wave_hud == null
 		and game.get_node_or_null("CombatDeadlineTimer") is Timer
 		and game.get_node_or_null("TowerDefenseStatusHUD") is TowerDefenseStatusHUD,
-		"作战 HUD、权威计时 Timer 与死亡 HUD 必须作为静态场景节点存在。"
+		"场景必须只保留专用作战 HUD，并静态提供权威计时 Timer 与死亡 HUD。"
 	)
 	_expect(
 		is_equal_approx(game.combat_deadline_timer.wait_time, 1.0)
@@ -288,8 +290,8 @@ func _test_deadline_start_policies() -> void:
 	_expect(
 		game.rogue_combat_hud.visible
 		and game.rogue_combat_hud.preparation_seconds_label.text == "3"
-		and game.rogue_combat_hud.enemy_value_label.text == "10 / 10",
-		"准备阶段 HUD 必须显示事件倒计时与本波十名敌人。"
+		and game.rogue_combat_hud.enemy_value_label.text == "0 / 10",
+		"准备阶段 HUD 必须显示事件倒计时与本波 0/10 已消灭进度。"
 	)
 	game.state_timer.stop()
 	game.call("_stop_combat_deadline")
@@ -325,8 +327,8 @@ func _test_deadline_start_policies() -> void:
 	)
 	_expect(
 		game.rogue_combat_hud.time_value_label.text == "01:30"
-		and game.rogue_combat_hud.enemy_value_label.text == "10 / 10",
-		"正式作战 HUD 必须从 01:30 和 10/10 开始。"
+		and game.rogue_combat_hud.enemy_value_label.text == "0 / 10",
+		"正式作战 HUD 必须从 01:30 和 0/10 已消灭进度开始。"
 	)
 	_expect(
 		game.music_player.playing
@@ -422,7 +424,7 @@ func _test_client_active_flow_updates() -> void:
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
 	game.wave_state = GameRuntimeBase.WaveState.PRE_WAVE
 	game.current_flow_step = wave
-	game.current_wave_total = 10
+	game.current_wave_total = 0
 	game.wave_start_audio.stop()
 	game.apply_remote_flow_state(
 		wave.step_id,
@@ -433,8 +435,16 @@ func _test_client_active_flow_updates() -> void:
 	_expect(
 		game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
 		and game.combat_seconds_remaining == 73
+		and game.current_wave_total == 10
 		and game.rogue_combat_hud.time_value_label.text == "01:13",
-		"Client 首次进入 WAVE_ACTIVE 时必须建立作战状态与剩余秒。"
+		"Client 首次进入 WAVE_ACTIVE 时必须建立作战状态、敌人总数与剩余秒。"
+	)
+	game.apply_remote_enemy_count(7)
+	_expect(
+		game.wave_hud == null
+		and game.current_wave_defeated == 3
+		and game.rogue_combat_hud.enemy_value_label.text == "3 / 10",
+		"Client 敌人数同步必须只更新专用作战 HUD，不能依赖已删除的通用 HUD。"
 	)
 
 	game.wave_start_audio.stop()

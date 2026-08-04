@@ -88,7 +88,8 @@ const MULTIPLAYER_CAMPAIGN_PATH := (
 @onready var countdown_audio: AudioStreamPlayer = $CountdownAudio
 @onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
-@onready var wave_hud: WaveHUD = $WaveHUD
+# 专用战斗场景可以用自己的表现层完整替代通用 WaveHUD。
+@onready var wave_hud: WaveHUD = get_node_or_null("WaveHUD") as WaveHUD
 @onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
@@ -249,9 +250,16 @@ func _ready() -> void:
 	settings_panel.closed.connect(_on_settings_panel_closed)
 	debug_collectible_window.collectible_requested.connect(_on_debug_collectible_requested)
 	debug_collectible_window.closed.connect(_on_debug_collectible_window_closed)
-	wave_hud.set_return_button_text("返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅")
-	if not wave_hud.return_to_lobby_requested.is_connected(_on_wave_hud_return_to_lobby_requested):
-		wave_hud.return_to_lobby_requested.connect(_on_wave_hud_return_to_lobby_requested)
+	if wave_hud != null:
+		wave_hud.set_return_button_text(
+			"返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅"
+		)
+		if not wave_hud.return_to_lobby_requested.is_connected(
+			_on_wave_hud_return_to_lobby_requested
+		):
+			wave_hud.return_to_lobby_requested.connect(
+				_on_wave_hud_return_to_lobby_requested
+			)
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		player.died.connect(_on_player_died)
 	_set_merchant_active(false)
@@ -272,7 +280,7 @@ func _ready() -> void:
 			)
 	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
 		_enter_pre_flow_step(_get_start_flow_step())
-	else:
+	elif wave_hud != null:
 		wave_hud.hide_all()
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		if runtime_activation_deferred:
@@ -626,13 +634,15 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			var wave_config := flow_step as WaveConfig
 			if wave_config != null:
 				_update_wave_music(wave_config)
-			wave_hud.show_enemy_count(maxi(current_wave_index + 1, 1), 0)
+			if wave_hud != null:
+				wave_hud.show_enemy_count(maxi(current_wave_index + 1, 1), 0)
 			wave_start_audio.play()
 		WaveState.BOSS_INTRO:
 			state_timer.stop()
 			wave_state = WaveState.BOSS_INTRO
 			_set_local_merchants_active(false)
-			wave_hud.hide_all()
+			if wave_hud != null:
+				wave_hud.hide_all()
 			var boss_config := flow_step as BossConfig
 			if boss_config != null:
 				active_boss_config = boss_config
@@ -643,7 +653,8 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			state_timer.stop()
 			wave_state = WaveState.BOSS_ACTIVE
 			_set_local_merchants_active(false)
-			wave_hud.hide_all()
+			if wave_hud != null:
+				wave_hud.hide_all()
 			if linglan_boss_intro_vfx != null:
 				linglan_boss_intro_vfx.stop_intro()
 			var active_config := flow_step as BossConfig
@@ -673,7 +684,8 @@ func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_posit
 	current_flow_step = boss_config
 	wave_state = WaveState.BOSS_ACTIVE
 	state_timer.stop()
-	wave_hud.hide_all()
+	if wave_hud != null:
+		wave_hud.hide_all()
 	_set_local_merchants_active(false)
 	_update_boss_music(boss_config)
 
@@ -728,7 +740,8 @@ func apply_remote_enemy_count(alive_count: int) -> void:
 		return
 	if wave_state != WaveState.WAVE_ACTIVE:
 		return
-	wave_hud.show_enemy_count(current_wave_index + 1, alive_count)
+	if wave_hud != null:
+		wave_hud.show_enemy_count(current_wave_index + 1, alive_count)
 
 
 
@@ -742,7 +755,8 @@ func apply_remote_defeat() -> void:
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)
-	wave_hud.show_defeat()
+	if wave_hud != null:
+		wave_hud.show_defeat()
 
 
 func show_damage_number(
@@ -1477,7 +1491,8 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	enemy_spawn_timer.stop()
 	_set_merchant_active(false)
 	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
-	wave_hud.show_countdown(countdown_seconds)
+	if wave_hud != null:
+		wave_hud.show_countdown(countdown_seconds)
 	_schedule_enemy_navigation_prewarm()
 	_emit_multiplayer_flow_state(WaveState.PRE_WAVE)
 
@@ -1504,7 +1519,8 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 		else 0
 	)
 	_update_post_wave_music(current_flow_step)
-	wave_hud.show_countdown(countdown_seconds)
+	if wave_hud != null:
+		wave_hud.show_countdown(countdown_seconds)
 	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
 
 	if countdown_seconds <= 0:
@@ -1554,11 +1570,12 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	_build_wave_spawn_queue(wave_config)
 	current_wave_total = pending_enemy_configs.size()
 	_update_wave_music(wave_config)
-	wave_hud.show_wave_progress(
-		current_wave_index + 1,
-		current_wave_defeated,
-		current_wave_total
-	)
+	if wave_hud != null:
+		wave_hud.show_wave_progress(
+			current_wave_index + 1,
+			current_wave_defeated,
+			current_wave_total
+		)
 	wave_start_audio.play()
 	_emit_multiplayer_flow_state(WaveState.WAVE_ACTIVE)
 
@@ -1674,7 +1691,8 @@ func _on_state_timer_timeout() -> void:
 
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
 	if countdown_seconds > 0:
-		wave_hud.show_countdown(countdown_seconds)
+		if wave_hud != null:
+			wave_hud.show_countdown(countdown_seconds)
 		if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
 			_play_countdown_tick()
 		return
@@ -1700,7 +1718,8 @@ func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds
 	if state == WaveState.INTERMISSION:
 		_update_post_wave_music(flow_step)
 	countdown_seconds = maxi(seconds, 0)
-	wave_hud.show_countdown(countdown_seconds)
+	if wave_hud != null:
+		wave_hud.show_countdown(countdown_seconds)
 	if countdown_seconds <= 0:
 		state_timer.stop()
 		return
@@ -1712,7 +1731,8 @@ func _update_client_flow_countdown() -> void:
 		state_timer.stop()
 		return
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	wave_hud.show_countdown(countdown_seconds)
+	if wave_hud != null:
+		wave_hud.show_countdown(countdown_seconds)
 	if countdown_seconds <= 0:
 		state_timer.stop()
 		return
@@ -2011,11 +2031,12 @@ func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 
 	current_wave_defeated = mini(current_wave_defeated + 1, current_wave_total)
 	_emit_multiplayer_enemy_defeated(enemy)
-	wave_hud.show_wave_progress(
-		current_wave_index + 1,
-		current_wave_defeated,
-		current_wave_total
-	)
+	if wave_hud != null:
+		wave_hud.show_wave_progress(
+			current_wave_index + 1,
+			current_wave_defeated,
+			current_wave_total
+		)
 	_check_wave_completion()
 
 
@@ -2088,7 +2109,8 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 		linglan_boss_intro_vfx.stop_intro()
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
-	wave_hud.show_victory()
+	if wave_hud != null:
+		wave_hud.show_victory()
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_victory_started.emit()
 		_emit_multiplayer_flow_state(WaveState.VICTORY)
@@ -2106,7 +2128,8 @@ func _enter_defeat() -> void:
 		linglan_boss_intro_vfx.stop_intro()
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
-	wave_hud.show_defeat()
+	if wave_hud != null:
+		wave_hud.show_defeat()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_defeat_started.emit()
 
@@ -2132,7 +2155,8 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	current_wave_spawned = 1
 	current_wave_defeated = 0
 	_set_merchant_active(false)
-	wave_hud.hide_all()
+	if wave_hud != null:
+		wave_hud.hide_all()
 	_update_boss_music(boss_config)
 	_prepare_linglan_boss_arena(boss_config)
 	linglan_boss.config = _get_boss_enemy_config(boss_config)

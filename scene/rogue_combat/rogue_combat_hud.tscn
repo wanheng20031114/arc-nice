@@ -231,7 +231,7 @@ alignment = 1
 
 [node name="Caption" type="Label" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content/EnemyBlock"]
 layout_mode = 2
-text = "敌人存活 / 总数"
+text = "已消灭"
 label_settings = SubResource("LabelSettings_caption")
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -239,7 +239,7 @@ vertical_alignment = 1
 [node name="EnemyValue" type="Label" parent="Root/TopSafeMargin/TopCenter/InfoPanel/InfoMargin/Content/EnemyBlock"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "10 / 10"
+text = "0 / 10"
 label_settings = SubResource("LabelSettings_enemy")
 horizontal_alignment = 1
 vertical_alignment = 1

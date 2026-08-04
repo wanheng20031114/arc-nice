@@ -57,8 +57,9 @@ func _run() -> void:
 	_expect(
 		hud.preparation_seconds_label.text == "3"
 		and hud.time_value_label.text == "3"
-		and hud.enemy_value_label.text == "10 / 10",
-		"三秒准备状态必须显示 3、以及 10/10 敌人总量。"
+		and (hud.enemy_block.get_node("Caption") as Label).text == "已消灭"
+		and hud.enemy_value_label.text == "0 / 10",
+		"三秒准备状态必须显示 3、已消灭标题以及 0/10 进度。"
 	)
 	hud.set_preparation_time(0.0)
 	_expect(
@@ -66,13 +67,13 @@ func _run() -> void:
 		"准备倒计时归零时必须给出明确的开始提示。"
 	)
 
-	hud.show_combat("狭路相逢", 90.0, 10, 10)
+	hud.show_combat("狭路相逢", 90.0, 0, 10)
 	_expect(
 		not hud.preparation_center.visible
 		and hud.time_caption_label.text == "剩余时间"
 		and hud.time_value_label.text == "01:30"
-		and hud.enemy_value_label.text == "10 / 10",
-		"正式作战阶段必须显示 90 秒计时和存活/总敌人数。"
+		and hud.enemy_value_label.text == "0 / 10",
+		"正式作战阶段必须显示 90 秒计时和已消灭/总敌人数。"
 	)
 	hud.set_combat_remaining_time(9.01)
 	_expect(
@@ -82,13 +83,13 @@ func _run() -> void:
 		),
 		"最后十秒必须向上取整显示，并切换为紧急颜色。"
 	)
-	hud.set_enemy_count(0, 10)
+	hud.set_defeated_enemy_count(10, 10)
 	_expect(
-		hud.enemy_value_label.text == "0 / 10"
+		hud.enemy_value_label.text == "10 / 10"
 		and hud.enemy_value_label.self_modulate.is_equal_approx(
 			HUD_SCRIPT.CLEARED_ENEMY_COLOR
 		),
-		"清空敌人后 HUD 必须保留总数并显示已肃清状态。"
+		"消灭全部敌人后 HUD 必须保留总数并显示已肃清状态。"
 	)
 
 	_set_viewport_size(Vector2i(640, 360))
