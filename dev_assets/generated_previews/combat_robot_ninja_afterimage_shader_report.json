@@ -1,0 +1,1803 @@
+{
+  "afterimage_pixels": 4.0,
+  "afterimage_sample_alpha_near_middle_far": [
+    0.48,
+    0.34,
+    0.22
+  ],
+  "afterimage_sample_offsets": [
+    0.45,
+    0.9,
+    1.35
+  ],
+  "atlas_filter_clip": true,
+  "atlas_frame_count": 8,
+  "atlas_frame_size": [
+    40,
+    40
+  ],
+  "atlas_regions": [
+    [
+      0.0,
+      40.0,
+      40.0,
+      40.0
+    ],
+    [
+      40.0,
+      40.0,
+      40.0,
+      40.0
+    ],
+    [
+      80.0,
+      40.0,
+      40.0,
+      40.0
+    ],
+    [
+      120.0,
+      40.0,
+      40.0,
+      40.0
+    ],
+    [
+      160.0,
+      40.0,
+      40.0,
+      40.0
+    ],
+    [
+      200.0,
+      40.0,
+      40.0,
+      40.0
+    ],
+    [
+      240.0,
+      40.0,
+      40.0,
+      40.0
+    ],
+    [
+      280.0,
+      40.0,
+      40.0,
+      40.0
+    ]
+  ],
+  "atlas_standalone_changed_pixels_by_frame": {
+    "0": 0,
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0,
+    "6": 0,
+    "7": 0
+  },
+  "atlas_standalone_rgba_tolerance": 0.00392156862745098,
+  "body_changed_pixels_by_sprite": {
+    "v1/DOWN-RIGHT/frame_0": 0,
+    "v1/DOWN-RIGHT/frame_1": 0,
+    "v1/DOWN-RIGHT/frame_2": 0,
+    "v1/DOWN-RIGHT/frame_3": 0,
+    "v1/DOWN-RIGHT/frame_4": 0,
+    "v1/DOWN-RIGHT/frame_5": 0,
+    "v1/DOWN-RIGHT/frame_6": 0,
+    "v1/DOWN-RIGHT/frame_7": 0,
+    "v1/DOWN/frame_0": 0,
+    "v1/DOWN/frame_1": 0,
+    "v1/DOWN/frame_2": 0,
+    "v1/DOWN/frame_3": 0,
+    "v1/DOWN/frame_4": 0,
+    "v1/DOWN/frame_5": 0,
+    "v1/DOWN/frame_6": 0,
+    "v1/DOWN/frame_7": 0,
+    "v1/LEFT/frame_0": 0,
+    "v1/LEFT/frame_1": 0,
+    "v1/LEFT/frame_2": 0,
+    "v1/LEFT/frame_3": 0,
+    "v1/LEFT/frame_4": 0,
+    "v1/LEFT/frame_5": 0,
+    "v1/LEFT/frame_6": 0,
+    "v1/LEFT/frame_7": 0,
+    "v1/RIGHT/frame_0": 0,
+    "v1/RIGHT/frame_1": 0,
+    "v1/RIGHT/frame_2": 0,
+    "v1/RIGHT/frame_3": 0,
+    "v1/RIGHT/frame_4": 0,
+    "v1/RIGHT/frame_5": 0,
+    "v1/RIGHT/frame_6": 0,
+    "v1/RIGHT/frame_7": 0,
+    "v1/UP-LEFT/frame_0": 0,
+    "v1/UP-LEFT/frame_1": 0,
+    "v1/UP-LEFT/frame_2": 0,
+    "v1/UP-LEFT/frame_3": 0,
+    "v1/UP-LEFT/frame_4": 0,
+    "v1/UP-LEFT/frame_5": 0,
+    "v1/UP-LEFT/frame_6": 0,
+    "v1/UP-LEFT/frame_7": 0,
+    "v1/UP/frame_0": 0,
+    "v1/UP/frame_1": 0,
+    "v1/UP/frame_2": 0,
+    "v1/UP/frame_3": 0,
+    "v1/UP/frame_4": 0,
+    "v1/UP/frame_5": 0,
+    "v1/UP/frame_6": 0,
+    "v1/UP/frame_7": 0,
+    "v2/DOWN-RIGHT/frame_0": 0,
+    "v2/DOWN-RIGHT/frame_1": 0,
+    "v2/DOWN-RIGHT/frame_2": 0,
+    "v2/DOWN-RIGHT/frame_3": 0,
+    "v2/DOWN-RIGHT/frame_4": 0,
+    "v2/DOWN-RIGHT/frame_5": 0,
+    "v2/DOWN-RIGHT/frame_6": 0,
+    "v2/DOWN-RIGHT/frame_7": 0,
+    "v2/DOWN/frame_0": 0,
+    "v2/DOWN/frame_1": 0,
+    "v2/DOWN/frame_2": 0,
+    "v2/DOWN/frame_3": 0,
+    "v2/DOWN/frame_4": 0,
+    "v2/DOWN/frame_5": 0,
+    "v2/DOWN/frame_6": 0,
+    "v2/DOWN/frame_7": 0,
+    "v2/LEFT/frame_0": 0,
+    "v2/LEFT/frame_1": 0,
+    "v2/LEFT/frame_2": 0,
+    "v2/LEFT/frame_3": 0,
+    "v2/LEFT/frame_4": 0,
+    "v2/LEFT/frame_5": 0,
+    "v2/LEFT/frame_6": 0,
+    "v2/LEFT/frame_7": 0,
+    "v2/RIGHT/frame_0": 0,
+    "v2/RIGHT/frame_1": 0,
+    "v2/RIGHT/frame_2": 0,
+    "v2/RIGHT/frame_3": 0,
+    "v2/RIGHT/frame_4": 0,
+    "v2/RIGHT/frame_5": 0,
+    "v2/RIGHT/frame_6": 0,
+    "v2/RIGHT/frame_7": 0,
+    "v2/UP-LEFT/frame_0": 0,
+    "v2/UP-LEFT/frame_1": 0,
+    "v2/UP-LEFT/frame_2": 0,
+    "v2/UP-LEFT/frame_3": 0,
+    "v2/UP-LEFT/frame_4": 0,
+    "v2/UP-LEFT/frame_5": 0,
+    "v2/UP-LEFT/frame_6": 0,
+    "v2/UP-LEFT/frame_7": 0,
+    "v2/UP/frame_0": 0,
+    "v2/UP/frame_1": 0,
+    "v2/UP/frame_2": 0,
+    "v2/UP/frame_3": 0,
+    "v2/UP/frame_4": 0,
+    "v2/UP/frame_5": 0,
+    "v2/UP/frame_6": 0,
+    "v2/UP/frame_7": 0,
+    "v3/DOWN-RIGHT/frame_0": 0,
+    "v3/DOWN-RIGHT/frame_1": 0,
+    "v3/DOWN-RIGHT/frame_2": 0,
+    "v3/DOWN-RIGHT/frame_3": 0,
+    "v3/DOWN-RIGHT/frame_4": 0,
+    "v3/DOWN-RIGHT/frame_5": 0,
+    "v3/DOWN-RIGHT/frame_6": 0,
+    "v3/DOWN-RIGHT/frame_7": 0,
+    "v3/DOWN/frame_0": 0,
+    "v3/DOWN/frame_1": 0,
+    "v3/DOWN/frame_2": 0,
+    "v3/DOWN/frame_3": 0,
+    "v3/DOWN/frame_4": 0,
+    "v3/DOWN/frame_5": 0,
+    "v3/DOWN/frame_6": 0,
+    "v3/DOWN/frame_7": 0,
+    "v3/LEFT/frame_0": 0,
+    "v3/LEFT/frame_1": 0,
+    "v3/LEFT/frame_2": 0,
+    "v3/LEFT/frame_3": 0,
+    "v3/LEFT/frame_4": 0,
+    "v3/LEFT/frame_5": 0,
+    "v3/LEFT/frame_6": 0,
+    "v3/LEFT/frame_7": 0,
+    "v3/RIGHT/frame_0": 0,
+    "v3/RIGHT/frame_1": 0,
+    "v3/RIGHT/frame_2": 0,
+    "v3/RIGHT/frame_3": 0,
+    "v3/RIGHT/frame_4": 0,
+    "v3/RIGHT/frame_5": 0,
+    "v3/RIGHT/frame_6": 0,
+    "v3/RIGHT/frame_7": 0,
+    "v3/UP-LEFT/frame_0": 0,
+    "v3/UP-LEFT/frame_1": 0,
+    "v3/UP-LEFT/frame_2": 0,
+    "v3/UP-LEFT/frame_3": 0,
+    "v3/UP-LEFT/frame_4": 0,
+    "v3/UP-LEFT/frame_5": 0,
+    "v3/UP-LEFT/frame_6": 0,
+    "v3/UP-LEFT/frame_7": 0,
+    "v3/UP/frame_0": 0,
+    "v3/UP/frame_1": 0,
+    "v3/UP/frame_2": 0,
+    "v3/UP/frame_3": 0,
+    "v3/UP/frame_4": 0,
+    "v3/UP/frame_5": 0,
+    "v3/UP/frame_6": 0,
+    "v3/UP/frame_7": 0
+  },
+  "body_rgba_tolerance": 0.00392156862745098,
+  "body_source_over_foreground": true,
+  "changed_pixels_by_sprite": {
+    "v1/DOWN-RIGHT/frame_0": 2246,
+    "v1/DOWN-RIGHT/frame_1": 2210,
+    "v1/DOWN-RIGHT/frame_2": 2221,
+    "v1/DOWN-RIGHT/frame_3": 2415,
+    "v1/DOWN-RIGHT/frame_4": 2256,
+    "v1/DOWN-RIGHT/frame_5": 2184,
+    "v1/DOWN-RIGHT/frame_6": 2151,
+    "v1/DOWN-RIGHT/frame_7": 2282,
+    "v1/DOWN/frame_0": 2508,
+    "v1/DOWN/frame_1": 2412,
+    "v1/DOWN/frame_2": 2184,
+    "v1/DOWN/frame_3": 2476,
+    "v1/DOWN/frame_4": 2484,
+    "v1/DOWN/frame_5": 2384,
+    "v1/DOWN/frame_6": 2184,
+    "v1/DOWN/frame_7": 2452,
+    "v1/LEFT/frame_0": 2328,
+    "v1/LEFT/frame_1": 2256,
+    "v1/LEFT/frame_2": 2128,
+    "v1/LEFT/frame_3": 2196,
+    "v1/LEFT/frame_4": 2332,
+    "v1/LEFT/frame_5": 2224,
+    "v1/LEFT/frame_6": 2136,
+    "v1/LEFT/frame_7": 2196,
+    "v1/RIGHT/frame_0": 2328,
+    "v1/RIGHT/frame_1": 2256,
+    "v1/RIGHT/frame_2": 2128,
+    "v1/RIGHT/frame_3": 2196,
+    "v1/RIGHT/frame_4": 2332,
+    "v1/RIGHT/frame_5": 2224,
+    "v1/RIGHT/frame_6": 2136,
+    "v1/RIGHT/frame_7": 2196,
+    "v1/UP-LEFT/frame_0": 2450,
+    "v1/UP-LEFT/frame_1": 2366,
+    "v1/UP-LEFT/frame_2": 2186,
+    "v1/UP-LEFT/frame_3": 2358,
+    "v1/UP-LEFT/frame_4": 2392,
+    "v1/UP-LEFT/frame_5": 2328,
+    "v1/UP-LEFT/frame_6": 2239,
+    "v1/UP-LEFT/frame_7": 2431,
+    "v1/UP/frame_0": 2324,
+    "v1/UP/frame_1": 2220,
+    "v1/UP/frame_2": 2088,
+    "v1/UP/frame_3": 2392,
+    "v1/UP/frame_4": 2324,
+    "v1/UP/frame_5": 2228,
+    "v1/UP/frame_6": 2088,
+    "v1/UP/frame_7": 2352,
+    "v2/DOWN-RIGHT/frame_0": 2004,
+    "v2/DOWN-RIGHT/frame_1": 1940,
+    "v2/DOWN-RIGHT/frame_2": 2037,
+    "v2/DOWN-RIGHT/frame_3": 2131,
+    "v2/DOWN-RIGHT/frame_4": 2039,
+    "v2/DOWN-RIGHT/frame_5": 1976,
+    "v2/DOWN-RIGHT/frame_6": 1947,
+    "v2/DOWN-RIGHT/frame_7": 2016,
+    "v2/DOWN/frame_0": 2356,
+    "v2/DOWN/frame_1": 2272,
+    "v2/DOWN/frame_2": 2128,
+    "v2/DOWN/frame_3": 2284,
+    "v2/DOWN/frame_4": 2348,
+    "v2/DOWN/frame_5": 2260,
+    "v2/DOWN/frame_6": 2128,
+    "v2/DOWN/frame_7": 2260,
+    "v2/LEFT/frame_0": 2112,
+    "v2/LEFT/frame_1": 2076,
+    "v2/LEFT/frame_2": 2016,
+    "v2/LEFT/frame_3": 2020,
+    "v2/LEFT/frame_4": 2112,
+    "v2/LEFT/frame_5": 2048,
+    "v2/LEFT/frame_6": 2008,
+    "v2/LEFT/frame_7": 2040,
+    "v2/RIGHT/frame_0": 2112,
+    "v2/RIGHT/frame_1": 2076,
+    "v2/RIGHT/frame_2": 2016,
+    "v2/RIGHT/frame_3": 2020,
+    "v2/RIGHT/frame_4": 2112,
+    "v2/RIGHT/frame_5": 2048,
+    "v2/RIGHT/frame_6": 2008,
+    "v2/RIGHT/frame_7": 2040,
+    "v2/UP-LEFT/frame_0": 2156,
+    "v2/UP-LEFT/frame_1": 2076,
+    "v2/UP-LEFT/frame_2": 1993,
+    "v2/UP-LEFT/frame_3": 2078,
+    "v2/UP-LEFT/frame_4": 2101,
+    "v2/UP-LEFT/frame_5": 2023,
+    "v2/UP-LEFT/frame_6": 2047,
+    "v2/UP-LEFT/frame_7": 2142,
+    "v2/UP/frame_0": 2100,
+    "v2/UP/frame_1": 2008,
+    "v2/UP/frame_2": 1976,
+    "v2/UP/frame_3": 2164,
+    "v2/UP/frame_4": 2064,
+    "v2/UP/frame_5": 2016,
+    "v2/UP/frame_6": 1968,
+    "v2/UP/frame_7": 2124,
+    "v3/DOWN-RIGHT/frame_0": 1362,
+    "v3/DOWN-RIGHT/frame_1": 1331,
+    "v3/DOWN-RIGHT/frame_2": 1426,
+    "v3/DOWN-RIGHT/frame_3": 1469,
+    "v3/DOWN-RIGHT/frame_4": 1402,
+    "v3/DOWN-RIGHT/frame_5": 1368,
+    "v3/DOWN-RIGHT/frame_6": 1349,
+    "v3/DOWN-RIGHT/frame_7": 1419,
+    "v3/DOWN/frame_0": 1968,
+    "v3/DOWN/frame_1": 1912,
+    "v3/DOWN/frame_2": 1816,
+    "v3/DOWN/frame_3": 1940,
+    "v3/DOWN/frame_4": 1976,
+    "v3/DOWN/frame_5": 1924,
+    "v3/DOWN/frame_6": 1816,
+    "v3/DOWN/frame_7": 1916,
+    "v3/LEFT/frame_0": 1496,
+    "v3/LEFT/frame_1": 1492,
+    "v3/LEFT/frame_2": 1444,
+    "v3/LEFT/frame_3": 1440,
+    "v3/LEFT/frame_4": 1488,
+    "v3/LEFT/frame_5": 1448,
+    "v3/LEFT/frame_6": 1452,
+    "v3/LEFT/frame_7": 1464,
+    "v3/RIGHT/frame_0": 1496,
+    "v3/RIGHT/frame_1": 1492,
+    "v3/RIGHT/frame_2": 1444,
+    "v3/RIGHT/frame_3": 1440,
+    "v3/RIGHT/frame_4": 1488,
+    "v3/RIGHT/frame_5": 1448,
+    "v3/RIGHT/frame_6": 1452,
+    "v3/RIGHT/frame_7": 1464,
+    "v3/UP-LEFT/frame_0": 1436,
+    "v3/UP-LEFT/frame_1": 1381,
+    "v3/UP-LEFT/frame_2": 1309,
+    "v3/UP-LEFT/frame_3": 1398,
+    "v3/UP-LEFT/frame_4": 1402,
+    "v3/UP-LEFT/frame_5": 1361,
+    "v3/UP-LEFT/frame_6": 1388,
+    "v3/UP-LEFT/frame_7": 1455,
+    "v3/UP/frame_0": 1564,
+    "v3/UP/frame_1": 1508,
+    "v3/UP/frame_2": 1528,
+    "v3/UP/frame_3": 1684,
+    "v3/UP/frame_4": 1516,
+    "v3/UP/frame_5": 1504,
+    "v3/UP/frame_6": 1500,
+    "v3/UP/frame_7": 1648
+  },
+  "directions": [
+    "RIGHT",
+    "LEFT",
+    "UP",
+    "DOWN",
+    "DOWN-RIGHT",
+    "UP-LEFT"
+  ],
+  "failures": [],
+  "instances_per_shared_material": 18,
+  "max_source_pixel_offset": 5.4,
+  "ninja_block_excludes": [
+    "scan",
+    "leading_edge",
+    "body_tint"
+  ],
+  "opposite_direction_projection_by_sprite": {
+    "v1/DOWN-RIGHT/frame_0": 21.1703491210938,
+    "v1/DOWN-RIGHT/frame_1": 21.2326259613037,
+    "v1/DOWN-RIGHT/frame_2": 21.1173610687256,
+    "v1/DOWN-RIGHT/frame_3": 18.9818630218506,
+    "v1/DOWN-RIGHT/frame_4": 21.4973068237305,
+    "v1/DOWN-RIGHT/frame_5": 21.9789752960205,
+    "v1/DOWN-RIGHT/frame_6": 22.464485168457,
+    "v1/DOWN-RIGHT/frame_7": 20.6176948547363,
+    "v1/DOWN/frame_0": 12.4319915771484,
+    "v1/DOWN/frame_1": 13.1869964599609,
+    "v1/DOWN/frame_2": 16.5182952880859,
+    "v1/DOWN/frame_3": 12.5221252441406,
+    "v1/DOWN/frame_4": 12.8393402099609,
+    "v1/DOWN/frame_5": 13.6273498535156,
+    "v1/DOWN/frame_6": 16.5182952880859,
+    "v1/DOWN/frame_7": 12.8307952880859,
+    "v1/LEFT/frame_0": 26.9763793945313,
+    "v1/LEFT/frame_1": 28.2389221191406,
+    "v1/LEFT/frame_2": 29.842529296875,
+    "v1/LEFT/frame_3": 29.7373657226563,
+    "v1/LEFT/frame_4": 28.7932434082031,
+    "v1/LEFT/frame_5": 28.2739562988281,
+    "v1/LEFT/frame_6": 30.0193481445313,
+    "v1/LEFT/frame_7": 29.6390075683594,
+    "v1/RIGHT/frame_0": 26.9763793945313,
+    "v1/RIGHT/frame_1": 28.2389068603516,
+    "v1/RIGHT/frame_2": 29.8425445556641,
+    "v1/RIGHT/frame_3": 29.7373352050781,
+    "v1/RIGHT/frame_4": 28.793212890625,
+    "v1/RIGHT/frame_5": 28.27392578125,
+    "v1/RIGHT/frame_6": 30.0193634033203,
+    "v1/RIGHT/frame_7": 29.6390228271484,
+    "v1/UP-LEFT/frame_0": 26.9900722503662,
+    "v1/UP-LEFT/frame_1": 27.2255325317383,
+    "v1/UP-LEFT/frame_2": 28.9320259094238,
+    "v1/UP-LEFT/frame_3": 28.3015575408936,
+    "v1/UP-LEFT/frame_4": 27.884183883667,
+    "v1/UP-LEFT/frame_5": 27.9815826416016,
+    "v1/UP-LEFT/frame_6": 28.9292106628418,
+    "v1/UP-LEFT/frame_7": 28.4781513214111,
+    "v1/UP/frame_0": 32.07568359375,
+    "v1/UP/frame_1": 31.6488494873047,
+    "v1/UP/frame_2": 31.5964965820313,
+    "v1/UP/frame_3": 32.4691314697266,
+    "v1/UP/frame_4": 32.07568359375,
+    "v1/UP/frame_5": 31.8561401367188,
+    "v1/UP/frame_6": 31.5964965820313,
+    "v1/UP/frame_7": 32.3867492675781,
+    "v2/DOWN-RIGHT/frame_0": 23.1044692993164,
+    "v2/DOWN-RIGHT/frame_1": 23.7756023406982,
+    "v2/DOWN-RIGHT/frame_2": 22.0333003997803,
+    "v2/DOWN-RIGHT/frame_3": 21.5082130432129,
+    "v2/DOWN-RIGHT/frame_4": 23.5966262817383,
+    "v2/DOWN-RIGHT/frame_5": 24.2065410614014,
+    "v2/DOWN-RIGHT/frame_6": 23.9731597900391,
+    "v2/DOWN-RIGHT/frame_7": 23.0068893432617,
+    "v2/DOWN/frame_0": 14.9624328613281,
+    "v2/DOWN/frame_1": 15.7261962890625,
+    "v2/DOWN/frame_2": 17.6808166503906,
+    "v2/DOWN/frame_3": 15.9593811035156,
+    "v2/DOWN/frame_4": 15.0897216796875,
+    "v2/DOWN/frame_5": 15.9258422851563,
+    "v2/DOWN/frame_6": 17.6808166503906,
+    "v2/DOWN/frame_7": 16.3307495117188,
+    "v2/LEFT/frame_0": 28.6799011230469,
+    "v2/LEFT/frame_1": 29.5443115234375,
+    "v2/LEFT/frame_2": 31.0317687988281,
+    "v2/LEFT/frame_3": 31.8029479980469,
+    "v2/LEFT/frame_4": 31.3318481445313,
+    "v2/LEFT/frame_5": 30.6319580078125,
+    "v2/LEFT/frame_6": 31.3558044433594,
+    "v2/LEFT/frame_7": 30.9593811035156,
+    "v2/RIGHT/frame_0": 28.6799163818359,
+    "v2/RIGHT/frame_1": 29.5443115234375,
+    "v2/RIGHT/frame_2": 31.0317687988281,
+    "v2/RIGHT/frame_3": 31.8029327392578,
+    "v2/RIGHT/frame_4": 31.3318481445313,
+    "v2/RIGHT/frame_5": 30.6319427490234,
+    "v2/RIGHT/frame_6": 31.3558197021484,
+    "v2/RIGHT/frame_7": 30.9593963623047,
+    "v2/UP-LEFT/frame_0": 27.3765869140625,
+    "v2/UP-LEFT/frame_1": 27.4815063476563,
+    "v2/UP-LEFT/frame_2": 29.4306468963623,
+    "v2/UP-LEFT/frame_3": 29.0785369873047,
+    "v2/UP-LEFT/frame_4": 28.8782615661621,
+    "v2/UP-LEFT/frame_5": 29.1319885253906,
+    "v2/UP-LEFT/frame_6": 29.4801483154297,
+    "v2/UP-LEFT/frame_7": 28.7200222015381,
+    "v2/UP/frame_0": 30.536865234375,
+    "v2/UP/frame_1": 30.1804809570313,
+    "v2/UP/frame_2": 30.6922302246094,
+    "v2/UP/frame_3": 30.8628845214844,
+    "v2/UP/frame_4": 30.2166748046875,
+    "v2/UP/frame_5": 30.3042602539063,
+    "v2/UP/frame_6": 30.6708679199219,
+    "v2/UP/frame_7": 30.7809753417969,
+    "v3/DOWN-RIGHT/frame_0": 24.5733432769775,
+    "v3/DOWN-RIGHT/frame_1": 24.9525337219238,
+    "v3/DOWN-RIGHT/frame_2": 22.0413703918457,
+    "v3/DOWN-RIGHT/frame_3": 22.0720138549805,
+    "v3/DOWN-RIGHT/frame_4": 24.1733512878418,
+    "v3/DOWN-RIGHT/frame_5": 24.551420211792,
+    "v3/DOWN-RIGHT/frame_6": 24.5557346343994,
+    "v3/DOWN-RIGHT/frame_7": 23.1217555999756,
+    "v3/DOWN/frame_0": 15.1822509765625,
+    "v3/DOWN/frame_1": 15.578369140625,
+    "v3/DOWN/frame_2": 16.9752807617188,
+    "v3/DOWN/frame_3": 15.6182861328125,
+    "v3/DOWN/frame_4": 15.0706176757813,
+    "v3/DOWN/frame_5": 15.3696899414063,
+    "v3/DOWN/frame_6": 16.9752807617188,
+    "v3/DOWN/frame_7": 16.0520629882813,
+    "v3/LEFT/frame_0": 30.5274963378906,
+    "v3/LEFT/frame_1": 30.8559875488281,
+    "v3/LEFT/frame_2": 32.4356384277344,
+    "v3/LEFT/frame_3": 33.7835388183594,
+    "v3/LEFT/frame_4": 33.205810546875,
+    "v3/LEFT/frame_5": 32.425537109375,
+    "v3/LEFT/frame_6": 32.4940185546875,
+    "v3/LEFT/frame_7": 32.3074951171875,
+    "v3/RIGHT/frame_0": 30.5275115966797,
+    "v3/RIGHT/frame_1": 30.8559875488281,
+    "v3/RIGHT/frame_2": 32.4356384277344,
+    "v3/RIGHT/frame_3": 33.7835235595703,
+    "v3/RIGHT/frame_4": 33.205810546875,
+    "v3/RIGHT/frame_5": 32.4255218505859,
+    "v3/RIGHT/frame_6": 32.4940338134766,
+    "v3/RIGHT/frame_7": 32.3075103759766,
+    "v3/UP-LEFT/frame_0": 31.8538589477539,
+    "v3/UP-LEFT/frame_1": 31.7938270568848,
+    "v3/UP-LEFT/frame_2": 33.0157241821289,
+    "v3/UP-LEFT/frame_3": 32.459114074707,
+    "v3/UP-LEFT/frame_4": 32.2618789672852,
+    "v3/UP-LEFT/frame_5": 32.6443939208984,
+    "v3/UP-LEFT/frame_6": 33.1748962402344,
+    "v3/UP-LEFT/frame_7": 32.5612258911133,
+    "v3/UP/frame_0": 29.0023803710938,
+    "v3/UP/frame_1": 28.6787719726563,
+    "v3/UP/frame_2": 29.4406127929688,
+    "v3/UP/frame_3": 30.0245361328125,
+    "v3/UP/frame_4": 28.8395385742188,
+    "v3/UP/frame_5": 28.97607421875,
+    "v3/UP/frame_6": 29.3685913085938,
+    "v3/UP/frame_7": 29.9033813476563
+  },
+  "production_instance_uniforms": [
+    "ninja_afterimage_strength",
+    "ninja_afterimage_direction"
+  ],
+  "production_shader_used_directly": true,
+  "rendering_driver": "vulkan",
+  "rendering_method": "forward_plus",
+  "review_algorithm": "production_original_rgb_three_offset_afterimage",
+  "runtime_shader_in_memory_modified": false,
+  "sample_rgb": "original texture RGB",
+  "shared_material_count": 1,
+  "shared_shader_count": 1,
+  "source_animation": "boost_s1",
+  "source_animation_row": 1,
+  "source_size": [
+    320,
+    120
+  ],
+  "source_texture": "res://resources/texture/enemy/mechanical_life/combat_robot_ninja.png",
+  "source_texture_class": "CompressedTexture2D",
+  "source_texture_loaded_via_resource_loader": true,
+  "sprite_scale": 4.0,
+  "status_shader_path": "res://scene/entity_motion_status.gdshader",
+  "status_shader_sha256": "10454b4a7db41abf7ec5881a4f516f919868df1bbf1b395cc86346edc4de05f6",
+  "trail_body_intersection_pixels_by_sprite": {
+    "v1/DOWN-RIGHT/frame_0": 0,
+    "v1/DOWN-RIGHT/frame_1": 0,
+    "v1/DOWN-RIGHT/frame_2": 0,
+    "v1/DOWN-RIGHT/frame_3": 0,
+    "v1/DOWN-RIGHT/frame_4": 0,
+    "v1/DOWN-RIGHT/frame_5": 0,
+    "v1/DOWN-RIGHT/frame_6": 0,
+    "v1/DOWN-RIGHT/frame_7": 0,
+    "v1/DOWN/frame_0": 0,
+    "v1/DOWN/frame_1": 0,
+    "v1/DOWN/frame_2": 0,
+    "v1/DOWN/frame_3": 0,
+    "v1/DOWN/frame_4": 0,
+    "v1/DOWN/frame_5": 0,
+    "v1/DOWN/frame_6": 0,
+    "v1/DOWN/frame_7": 0,
+    "v1/LEFT/frame_0": 0,
+    "v1/LEFT/frame_1": 0,
+    "v1/LEFT/frame_2": 0,
+    "v1/LEFT/frame_3": 0,
+    "v1/LEFT/frame_4": 0,
+    "v1/LEFT/frame_5": 0,
+    "v1/LEFT/frame_6": 0,
+    "v1/LEFT/frame_7": 0,
+    "v1/RIGHT/frame_0": 0,
+    "v1/RIGHT/frame_1": 0,
+    "v1/RIGHT/frame_2": 0,
+    "v1/RIGHT/frame_3": 0,
+    "v1/RIGHT/frame_4": 0,
+    "v1/RIGHT/frame_5": 0,
+    "v1/RIGHT/frame_6": 0,
+    "v1/RIGHT/frame_7": 0,
+    "v1/UP-LEFT/frame_0": 0,
+    "v1/UP-LEFT/frame_1": 0,
+    "v1/UP-LEFT/frame_2": 0,
+    "v1/UP-LEFT/frame_3": 0,
+    "v1/UP-LEFT/frame_4": 0,
+    "v1/UP-LEFT/frame_5": 0,
+    "v1/UP-LEFT/frame_6": 0,
+    "v1/UP-LEFT/frame_7": 0,
+    "v1/UP/frame_0": 0,
+    "v1/UP/frame_1": 0,
+    "v1/UP/frame_2": 0,
+    "v1/UP/frame_3": 0,
+    "v1/UP/frame_4": 0,
+    "v1/UP/frame_5": 0,
+    "v1/UP/frame_6": 0,
+    "v1/UP/frame_7": 0,
+    "v2/DOWN-RIGHT/frame_0": 0,
+    "v2/DOWN-RIGHT/frame_1": 0,
+    "v2/DOWN-RIGHT/frame_2": 0,
+    "v2/DOWN-RIGHT/frame_3": 0,
+    "v2/DOWN-RIGHT/frame_4": 0,
+    "v2/DOWN-RIGHT/frame_5": 0,
+    "v2/DOWN-RIGHT/frame_6": 0,
+    "v2/DOWN-RIGHT/frame_7": 0,
+    "v2/DOWN/frame_0": 0,
+    "v2/DOWN/frame_1": 0,
+    "v2/DOWN/frame_2": 0,
+    "v2/DOWN/frame_3": 0,
+    "v2/DOWN/frame_4": 0,
+    "v2/DOWN/frame_5": 0,
+    "v2/DOWN/frame_6": 0,
+    "v2/DOWN/frame_7": 0,
+    "v2/LEFT/frame_0": 0,
+    "v2/LEFT/frame_1": 0,
+    "v2/LEFT/frame_2": 0,
+    "v2/LEFT/frame_3": 0,
+    "v2/LEFT/frame_4": 0,
+    "v2/LEFT/frame_5": 0,
+    "v2/LEFT/frame_6": 0,
+    "v2/LEFT/frame_7": 0,
+    "v2/RIGHT/frame_0": 0,
+    "v2/RIGHT/frame_1": 0,
+    "v2/RIGHT/frame_2": 0,
+    "v2/RIGHT/frame_3": 0,
+    "v2/RIGHT/frame_4": 0,
+    "v2/RIGHT/frame_5": 0,
+    "v2/RIGHT/frame_6": 0,
+    "v2/RIGHT/frame_7": 0,
+    "v2/UP-LEFT/frame_0": 0,
+    "v2/UP-LEFT/frame_1": 0,
+    "v2/UP-LEFT/frame_2": 0,
+    "v2/UP-LEFT/frame_3": 0,
+    "v2/UP-LEFT/frame_4": 0,
+    "v2/UP-LEFT/frame_5": 0,
+    "v2/UP-LEFT/frame_6": 0,
+    "v2/UP-LEFT/frame_7": 0,
+    "v2/UP/frame_0": 0,
+    "v2/UP/frame_1": 0,
+    "v2/UP/frame_2": 0,
+    "v2/UP/frame_3": 0,
+    "v2/UP/frame_4": 0,
+    "v2/UP/frame_5": 0,
+    "v2/UP/frame_6": 0,
+    "v2/UP/frame_7": 0,
+    "v3/DOWN-RIGHT/frame_0": 0,
+    "v3/DOWN-RIGHT/frame_1": 0,
+    "v3/DOWN-RIGHT/frame_2": 0,
+    "v3/DOWN-RIGHT/frame_3": 0,
+    "v3/DOWN-RIGHT/frame_4": 0,
+    "v3/DOWN-RIGHT/frame_5": 0,
+    "v3/DOWN-RIGHT/frame_6": 0,
+    "v3/DOWN-RIGHT/frame_7": 0,
+    "v3/DOWN/frame_0": 0,
+    "v3/DOWN/frame_1": 0,
+    "v3/DOWN/frame_2": 0,
+    "v3/DOWN/frame_3": 0,
+    "v3/DOWN/frame_4": 0,
+    "v3/DOWN/frame_5": 0,
+    "v3/DOWN/frame_6": 0,
+    "v3/DOWN/frame_7": 0,
+    "v3/LEFT/frame_0": 0,
+    "v3/LEFT/frame_1": 0,
+    "v3/LEFT/frame_2": 0,
+    "v3/LEFT/frame_3": 0,
+    "v3/LEFT/frame_4": 0,
+    "v3/LEFT/frame_5": 0,
+    "v3/LEFT/frame_6": 0,
+    "v3/LEFT/frame_7": 0,
+    "v3/RIGHT/frame_0": 0,
+    "v3/RIGHT/frame_1": 0,
+    "v3/RIGHT/frame_2": 0,
+    "v3/RIGHT/frame_3": 0,
+    "v3/RIGHT/frame_4": 0,
+    "v3/RIGHT/frame_5": 0,
+    "v3/RIGHT/frame_6": 0,
+    "v3/RIGHT/frame_7": 0,
+    "v3/UP-LEFT/frame_0": 0,
+    "v3/UP-LEFT/frame_1": 0,
+    "v3/UP-LEFT/frame_2": 0,
+    "v3/UP-LEFT/frame_3": 0,
+    "v3/UP-LEFT/frame_4": 0,
+    "v3/UP-LEFT/frame_5": 0,
+    "v3/UP-LEFT/frame_6": 0,
+    "v3/UP-LEFT/frame_7": 0,
+    "v3/UP/frame_0": 0,
+    "v3/UP/frame_1": 0,
+    "v3/UP/frame_2": 0,
+    "v3/UP/frame_3": 0,
+    "v3/UP/frame_4": 0,
+    "v3/UP/frame_5": 0,
+    "v3/UP/frame_6": 0,
+    "v3/UP/frame_7": 0
+  },
+  "trail_centroid_offset_by_sprite": {
+    "v1/DOWN-RIGHT/frame_0": [
+      -22.1215209960938,
+      -7.81787109375
+    ],
+    "v1/DOWN-RIGHT/frame_1": [
+      -22.4707641601563,
+      -7.55670166015625
+    ],
+    "v1/DOWN-RIGHT/frame_2": [
+      -22.9956665039063,
+      -6.86878967285156
+    ],
+    "v1/DOWN-RIGHT/frame_3": [
+      -21.6636352539063,
+      -5.18077087402344
+    ],
+    "v1/DOWN-RIGHT/frame_4": [
+      -22.73291015625,
+      -7.66886901855469
+    ],
+    "v1/DOWN-RIGHT/frame_5": [
+      -23.0014038085938,
+      -8.08155822753906
+    ],
+    "v1/DOWN-RIGHT/frame_6": [
+      -23.5303344726563,
+      -8.23924255371094
+    ],
+    "v1/DOWN-RIGHT/frame_7": [
+      -22.00390625,
+      -7.15391540527344
+    ],
+    "v1/DOWN/frame_0": [
+      -8.488525390625,
+      -12.4319915771484
+    ],
+    "v1/DOWN/frame_1": [
+      -9.30859375,
+      -13.1869964599609
+    ],
+    "v1/DOWN/frame_2": [
+      -12.336669921875,
+      -16.5182952880859
+    ],
+    "v1/DOWN/frame_3": [
+      -10.0299682617188,
+      -12.5221252441406
+    ],
+    "v1/DOWN/frame_4": [
+      -9.190185546875,
+      -12.8393402099609
+    ],
+    "v1/DOWN/frame_5": [
+      -9.6920166015625,
+      -13.6273498535156
+    ],
+    "v1/DOWN/frame_6": [
+      -12.0132446289063,
+      -16.5182952880859
+    ],
+    "v1/DOWN/frame_7": [
+      -9.9952392578125,
+      -12.8307952880859
+    ],
+    "v1/LEFT/frame_0": [
+      26.9763793945313,
+      2.92759704589844
+    ],
+    "v1/LEFT/frame_1": [
+      28.2389221191406,
+      2.56208801269531
+    ],
+    "v1/LEFT/frame_2": [
+      29.842529296875,
+      1.17631530761719
+    ],
+    "v1/LEFT/frame_3": [
+      29.7373657226563,
+      0.984375
+    ],
+    "v1/LEFT/frame_4": [
+      28.7932434082031,
+      2.9764404296875
+    ],
+    "v1/LEFT/frame_5": [
+      28.2739562988281,
+      2.13308715820313
+    ],
+    "v1/LEFT/frame_6": [
+      30.0193481445313,
+      1.25035095214844
+    ],
+    "v1/LEFT/frame_7": [
+      29.6390075683594,
+      0.962509155273438
+    ],
+    "v1/RIGHT/frame_0": [
+      -26.9763793945313,
+      2.92759704589844
+    ],
+    "v1/RIGHT/frame_1": [
+      -28.2389068603516,
+      2.56208801269531
+    ],
+    "v1/RIGHT/frame_2": [
+      -29.8425445556641,
+      1.17631530761719
+    ],
+    "v1/RIGHT/frame_3": [
+      -29.7373352050781,
+      0.984375
+    ],
+    "v1/RIGHT/frame_4": [
+      -28.793212890625,
+      2.9764404296875
+    ],
+    "v1/RIGHT/frame_5": [
+      -28.27392578125,
+      2.13308715820313
+    ],
+    "v1/RIGHT/frame_6": [
+      -30.0193634033203,
+      1.25035095214844
+    ],
+    "v1/RIGHT/frame_7": [
+      -29.6390228271484,
+      0.962509155273438
+    ],
+    "v1/UP-LEFT/frame_0": [
+      20.3984375,
+      17.7712860107422
+    ],
+    "v1/UP-LEFT/frame_1": [
+      21.20068359375,
+      17.3020324707031
+    ],
+    "v1/UP-LEFT/frame_2": [
+      24.9156494140625,
+      16.0004119873047
+    ],
+    "v1/UP-LEFT/frame_3": [
+      23.10302734375,
+      16.9214172363281
+    ],
+    "v1/UP-LEFT/frame_4": [
+      22.2052001953125,
+      17.2289886474609
+    ],
+    "v1/UP-LEFT/frame_5": [
+      22.5748291015625,
+      16.9971008300781
+    ],
+    "v1/UP-LEFT/frame_6": [
+      24.1361083984375,
+      16.7759704589844
+    ],
+    "v1/UP-LEFT/frame_7": [
+      22.41748046875,
+      17.8567047119141
+    ],
+    "v1/UP/frame_0": [
+      -8.764404296875,
+      32.07568359375
+    ],
+    "v1/UP/frame_1": [
+      -9.56683349609375,
+      31.6488494873047
+    ],
+    "v1/UP/frame_2": [
+      -13.7601318359375,
+      31.5964965820313
+    ],
+    "v1/UP/frame_3": [
+      -11.2376098632813,
+      32.4691314697266
+    ],
+    "v1/UP/frame_4": [
+      -9.93280029296875,
+      32.07568359375
+    ],
+    "v1/UP/frame_5": [
+      -11.2005615234375,
+      31.8561401367188
+    ],
+    "v1/UP/frame_6": [
+      -13.1023559570313,
+      31.5964965820313
+    ],
+    "v1/UP/frame_7": [
+      -10.6366577148438,
+      32.3867492675781
+    ],
+    "v2/DOWN-RIGHT/frame_0": [
+      -23.4608154296875,
+      -9.21383666992188
+    ],
+    "v2/DOWN-RIGHT/frame_1": [
+      -24.024658203125,
+      -9.59912109375
+    ],
+    "v2/DOWN-RIGHT/frame_2": [
+      -23.9874267578125,
+      -7.17236328125
+    ],
+    "v2/DOWN-RIGHT/frame_3": [
+      -23.6212768554688,
+      -6.79592895507813
+    ],
+    "v2/DOWN-RIGHT/frame_4": [
+      -24.765869140625,
+      -8.60479736328125
+    ],
+    "v2/DOWN-RIGHT/frame_5": [
+      -25.1939086914063,
+      -9.039306640625
+    ],
+    "v2/DOWN-RIGHT/frame_6": [
+      -24.9124145507813,
+      -8.99075317382813
+    ],
+    "v2/DOWN-RIGHT/frame_7": [
+      -23.64599609375,
+      -8.89065551757813
+    ],
+    "v2/DOWN/frame_0": [
+      -9.48931884765625,
+      -14.9624328613281
+    ],
+    "v2/DOWN/frame_1": [
+      -10.2717895507813,
+      -15.7261962890625
+    ],
+    "v2/DOWN/frame_2": [
+      -12.92333984375,
+      -17.6808166503906
+    ],
+    "v2/DOWN/frame_3": [
+      -11.9219970703125,
+      -15.9593811035156
+    ],
+    "v2/DOWN/frame_4": [
+      -11.131103515625,
+      -15.0897216796875
+    ],
+    "v2/DOWN/frame_5": [
+      -11.5149536132813,
+      -15.9258422851563
+    ],
+    "v2/DOWN/frame_6": [
+      -12.5701904296875,
+      -17.6808166503906
+    ],
+    "v2/DOWN/frame_7": [
+      -11.1672973632813,
+      -16.3307495117188
+    ],
+    "v2/LEFT/frame_0": [
+      28.6799011230469,
+      1.37222290039063
+    ],
+    "v2/LEFT/frame_1": [
+      29.5443115234375,
+      1.4412841796875
+    ],
+    "v2/LEFT/frame_2": [
+      31.0317687988281,
+      1.05435180664063
+    ],
+    "v2/LEFT/frame_3": [
+      31.8029479980469,
+      -0.16265869140625
+    ],
+    "v2/LEFT/frame_4": [
+      31.3318481445313,
+      1.37222290039063
+    ],
+    "v2/LEFT/frame_5": [
+      30.6319580078125,
+      1.010498046875
+    ],
+    "v2/LEFT/frame_6": [
+      31.3558044433594,
+      0.895416259765625
+    ],
+    "v2/LEFT/frame_7": [
+      30.9593811035156,
+      0.17926025390625
+    ],
+    "v2/RIGHT/frame_0": [
+      -28.6799163818359,
+      1.37222290039063
+    ],
+    "v2/RIGHT/frame_1": [
+      -29.5443115234375,
+      1.4412841796875
+    ],
+    "v2/RIGHT/frame_2": [
+      -31.0317687988281,
+      1.05435180664063
+    ],
+    "v2/RIGHT/frame_3": [
+      -31.8029327392578,
+      -0.16265869140625
+    ],
+    "v2/RIGHT/frame_4": [
+      -31.3318481445313,
+      1.37222290039063
+    ],
+    "v2/RIGHT/frame_5": [
+      -30.6319427490234,
+      1.010498046875
+    ],
+    "v2/RIGHT/frame_6": [
+      -31.3558197021484,
+      0.895416259765625
+    ],
+    "v2/RIGHT/frame_7": [
+      -30.9593963623047,
+      0.17926025390625
+    ],
+    "v2/UP-LEFT/frame_0": [
+      22.4503173828125,
+      16.2660217285156
+    ],
+    "v2/UP-LEFT/frame_1": [
+      23.163818359375,
+      15.7008972167969
+    ],
+    "v2/UP-LEFT/frame_2": [
+      26.1553955078125,
+      15.4658203125
+    ],
+    "v2/UP-LEFT/frame_3": [
+      25.6068115234375,
+      15.5164489746094
+    ],
+    "v2/UP-LEFT/frame_4": [
+      25.06787109375,
+      15.7721557617188
+    ],
+    "v2/UP-LEFT/frame_5": [
+      25.911376953125,
+      15.2874755859375
+    ],
+    "v2/UP-LEFT/frame_6": [
+      25.39990234375,
+      16.2913208007813
+    ],
+    "v2/UP-LEFT/frame_7": [
+      24.2763671875,
+      16.3398742675781
+    ],
+    "v2/UP/frame_0": [
+      -10.7363891601563,
+      30.536865234375
+    ],
+    "v2/UP/frame_1": [
+      -11.7222900390625,
+      30.1804809570313
+    ],
+    "v2/UP/frame_2": [
+      -14.7075805664063,
+      30.6922302246094
+    ],
+    "v2/UP/frame_3": [
+      -13.2251586914063,
+      30.8628845214844
+    ],
+    "v2/UP/frame_4": [
+      -12.6902465820313,
+      30.2166748046875
+    ],
+    "v2/UP/frame_5": [
+      -13.816162109375,
+      30.3042602539063
+    ],
+    "v2/UP/frame_6": [
+      -14.6416625976563,
+      30.6708679199219
+    ],
+    "v2/UP/frame_7": [
+      -12.729248046875,
+      30.7809753417969
+    ],
+    "v3/DOWN-RIGHT/frame_0": [
+      -27.3466186523438,
+      -7.40533447265625
+    ],
+    "v3/DOWN-RIGHT/frame_1": [
+      -27.9104614257813,
+      -7.37774658203125
+    ],
+    "v3/DOWN-RIGHT/frame_2": [
+      -26.7301635742188,
+      -4.4410400390625
+    ],
+    "v3/DOWN-RIGHT/frame_3": [
+      -26.4389038085938,
+      -4.775634765625
+    ],
+    "v3/DOWN-RIGHT/frame_4": [
+      -27.552001953125,
+      -6.63427734375
+    ],
+    "v3/DOWN-RIGHT/frame_5": [
+      -27.9100341796875,
+      -6.8109130859375
+    ],
+    "v3/DOWN-RIGHT/frame_6": [
+      -28.1510009765625,
+      -6.5760498046875
+    ],
+    "v3/DOWN-RIGHT/frame_7": [
+      -26.6461791992188,
+      -6.05291748046875
+    ],
+    "v3/DOWN/frame_0": [
+      -12.4434204101563,
+      -15.1822509765625
+    ],
+    "v3/DOWN/frame_1": [
+      -12.9766845703125,
+      -15.578369140625
+    ],
+    "v3/DOWN/frame_2": [
+      -14.9246826171875,
+      -16.9752807617188
+    ],
+    "v3/DOWN/frame_3": [
+      -13.5179443359375,
+      -15.6182861328125
+    ],
+    "v3/DOWN/frame_4": [
+      -12.8928833007813,
+      -15.0706176757813
+    ],
+    "v3/DOWN/frame_5": [
+      -13.5302734375,
+      -15.3696899414063
+    ],
+    "v3/DOWN/frame_6": [
+      -14.854736328125,
+      -16.9752807617188
+    ],
+    "v3/DOWN/frame_7": [
+      -13.765869140625,
+      -16.0520629882813
+    ],
+    "v3/LEFT/frame_0": [
+      30.5274963378906,
+      1.662353515625
+    ],
+    "v3/LEFT/frame_1": [
+      30.8559875488281,
+      2.1685791015625
+    ],
+    "v3/LEFT/frame_2": [
+      32.4356384277344,
+      1.818603515625
+    ],
+    "v3/LEFT/frame_3": [
+      33.7835388183594,
+      0.301513671875
+    ],
+    "v3/LEFT/frame_4": [
+      33.205810546875,
+      1.50250244140625
+    ],
+    "v3/LEFT/frame_5": [
+      32.425537109375,
+      1.23956298828125
+    ],
+    "v3/LEFT/frame_6": [
+      32.4940185546875,
+      1.93499755859375
+    ],
+    "v3/LEFT/frame_7": [
+      32.3074951171875,
+      0.8677978515625
+    ],
+    "v3/RIGHT/frame_0": [
+      -30.5275115966797,
+      1.662353515625
+    ],
+    "v3/RIGHT/frame_1": [
+      -30.8559875488281,
+      2.1685791015625
+    ],
+    "v3/RIGHT/frame_2": [
+      -32.4356384277344,
+      1.818603515625
+    ],
+    "v3/RIGHT/frame_3": [
+      -33.7835235595703,
+      0.301513671875
+    ],
+    "v3/RIGHT/frame_4": [
+      -33.205810546875,
+      1.50250244140625
+    ],
+    "v3/RIGHT/frame_5": [
+      -32.4255218505859,
+      1.23956298828125
+    ],
+    "v3/RIGHT/frame_6": [
+      -32.4940338134766,
+      1.93499755859375
+    ],
+    "v3/RIGHT/frame_7": [
+      -32.3075103759766,
+      0.8677978515625
+    ],
+    "v3/UP-LEFT/frame_0": [
+      28.6385498046875,
+      16.4096069335938
+    ],
+    "v3/UP-LEFT/frame_1": [
+      29.2130126953125,
+      15.750244140625
+    ],
+    "v3/UP-LEFT/frame_2": [
+      31.6888427734375,
+      15.00244140625
+    ],
+    "v3/UP-LEFT/frame_3": [
+      29.9722900390625,
+      15.9318237304688
+    ],
+    "v3/UP-LEFT/frame_4": [
+      29.8536376953125,
+      15.7715454101563
+    ],
+    "v3/UP-LEFT/frame_5": [
+      30.7476806640625,
+      15.41845703125
+    ],
+    "v3/UP-LEFT/frame_6": [
+      30.17919921875,
+      16.7371826171875
+    ],
+    "v3/UP-LEFT/frame_7": [
+      29.2867431640625,
+      16.7617797851563
+    ],
+    "v3/UP/frame_0": [
+      -17.8787231445313,
+      29.0023803710938
+    ],
+    "v3/UP/frame_1": [
+      -18.775634765625,
+      28.6787719726563
+    ],
+    "v3/UP/frame_2": [
+      -21.1221923828125,
+      29.4406127929688
+    ],
+    "v3/UP/frame_3": [
+      -18.508544921875,
+      30.0245361328125
+    ],
+    "v3/UP/frame_4": [
+      -19.5279541015625,
+      28.8395385742188
+    ],
+    "v3/UP/frame_5": [
+      -20.8502807617188,
+      28.97607421875
+    ],
+    "v3/UP/frame_6": [
+      -21.3619384765625,
+      29.3685913085938
+    ],
+    "v3/UP/frame_7": [
+      -18.9786987304688,
+      29.9033813476563
+    ]
+  },
+  "trail_only_changed_pixels_by_sprite": {
+    "v1/DOWN-RIGHT/frame_0": 2246,
+    "v1/DOWN-RIGHT/frame_1": 2210,
+    "v1/DOWN-RIGHT/frame_2": 2221,
+    "v1/DOWN-RIGHT/frame_3": 2415,
+    "v1/DOWN-RIGHT/frame_4": 2256,
+    "v1/DOWN-RIGHT/frame_5": 2184,
+    "v1/DOWN-RIGHT/frame_6": 2151,
+    "v1/DOWN-RIGHT/frame_7": 2282,
+    "v1/DOWN/frame_0": 2508,
+    "v1/DOWN/frame_1": 2412,
+    "v1/DOWN/frame_2": 2184,
+    "v1/DOWN/frame_3": 2476,
+    "v1/DOWN/frame_4": 2484,
+    "v1/DOWN/frame_5": 2384,
+    "v1/DOWN/frame_6": 2184,
+    "v1/DOWN/frame_7": 2452,
+    "v1/LEFT/frame_0": 2328,
+    "v1/LEFT/frame_1": 2256,
+    "v1/LEFT/frame_2": 2128,
+    "v1/LEFT/frame_3": 2196,
+    "v1/LEFT/frame_4": 2332,
+    "v1/LEFT/frame_5": 2224,
+    "v1/LEFT/frame_6": 2136,
+    "v1/LEFT/frame_7": 2196,
+    "v1/RIGHT/frame_0": 2328,
+    "v1/RIGHT/frame_1": 2256,
+    "v1/RIGHT/frame_2": 2128,
+    "v1/RIGHT/frame_3": 2196,
+    "v1/RIGHT/frame_4": 2332,
+    "v1/RIGHT/frame_5": 2224,
+    "v1/RIGHT/frame_6": 2136,
+    "v1/RIGHT/frame_7": 2196,
+    "v1/UP-LEFT/frame_0": 2450,
+    "v1/UP-LEFT/frame_1": 2366,
+    "v1/UP-LEFT/frame_2": 2186,
+    "v1/UP-LEFT/frame_3": 2358,
+    "v1/UP-LEFT/frame_4": 2392,
+    "v1/UP-LEFT/frame_5": 2328,
+    "v1/UP-LEFT/frame_6": 2239,
+    "v1/UP-LEFT/frame_7": 2431,
+    "v1/UP/frame_0": 2324,
+    "v1/UP/frame_1": 2220,
+    "v1/UP/frame_2": 2088,
+    "v1/UP/frame_3": 2392,
+    "v1/UP/frame_4": 2324,
+    "v1/UP/frame_5": 2228,
+    "v1/UP/frame_6": 2088,
+    "v1/UP/frame_7": 2352,
+    "v2/DOWN-RIGHT/frame_0": 2004,
+    "v2/DOWN-RIGHT/frame_1": 1940,
+    "v2/DOWN-RIGHT/frame_2": 2037,
+    "v2/DOWN-RIGHT/frame_3": 2131,
+    "v2/DOWN-RIGHT/frame_4": 2039,
+    "v2/DOWN-RIGHT/frame_5": 1976,
+    "v2/DOWN-RIGHT/frame_6": 1947,
+    "v2/DOWN-RIGHT/frame_7": 2016,
+    "v2/DOWN/frame_0": 2356,
+    "v2/DOWN/frame_1": 2272,
+    "v2/DOWN/frame_2": 2128,
+    "v2/DOWN/frame_3": 2284,
+    "v2/DOWN/frame_4": 2348,
+    "v2/DOWN/frame_5": 2260,
+    "v2/DOWN/frame_6": 2128,
+    "v2/DOWN/frame_7": 2260,
+    "v2/LEFT/frame_0": 2112,
+    "v2/LEFT/frame_1": 2076,
+    "v2/LEFT/frame_2": 2016,
+    "v2/LEFT/frame_3": 2020,
+    "v2/LEFT/frame_4": 2112,
+    "v2/LEFT/frame_5": 2048,
+    "v2/LEFT/frame_6": 2008,
+    "v2/LEFT/frame_7": 2040,
+    "v2/RIGHT/frame_0": 2112,
+    "v2/RIGHT/frame_1": 2076,
+    "v2/RIGHT/frame_2": 2016,
+    "v2/RIGHT/frame_3": 2020,
+    "v2/RIGHT/frame_4": 2112,
+    "v2/RIGHT/frame_5": 2048,
+    "v2/RIGHT/frame_6": 2008,
+    "v2/RIGHT/frame_7": 2040,
+    "v2/UP-LEFT/frame_0": 2156,
+    "v2/UP-LEFT/frame_1": 2076,
+    "v2/UP-LEFT/frame_2": 1993,
+    "v2/UP-LEFT/frame_3": 2078,
+    "v2/UP-LEFT/frame_4": 2101,
+    "v2/UP-LEFT/frame_5": 2023,
+    "v2/UP-LEFT/frame_6": 2047,
+    "v2/UP-LEFT/frame_7": 2142,
+    "v2/UP/frame_0": 2100,
+    "v2/UP/frame_1": 2008,
+    "v2/UP/frame_2": 1976,
+    "v2/UP/frame_3": 2164,
+    "v2/UP/frame_4": 2064,
+    "v2/UP/frame_5": 2016,
+    "v2/UP/frame_6": 1968,
+    "v2/UP/frame_7": 2124,
+    "v3/DOWN-RIGHT/frame_0": 1362,
+    "v3/DOWN-RIGHT/frame_1": 1331,
+    "v3/DOWN-RIGHT/frame_2": 1426,
+    "v3/DOWN-RIGHT/frame_3": 1469,
+    "v3/DOWN-RIGHT/frame_4": 1402,
+    "v3/DOWN-RIGHT/frame_5": 1368,
+    "v3/DOWN-RIGHT/frame_6": 1349,
+    "v3/DOWN-RIGHT/frame_7": 1419,
+    "v3/DOWN/frame_0": 1968,
+    "v3/DOWN/frame_1": 1912,
+    "v3/DOWN/frame_2": 1816,
+    "v3/DOWN/frame_3": 1940,
+    "v3/DOWN/frame_4": 1976,
+    "v3/DOWN/frame_5": 1924,
+    "v3/DOWN/frame_6": 1816,
+    "v3/DOWN/frame_7": 1916,
+    "v3/LEFT/frame_0": 1496,
+    "v3/LEFT/frame_1": 1492,
+    "v3/LEFT/frame_2": 1444,
+    "v3/LEFT/frame_3": 1440,
+    "v3/LEFT/frame_4": 1488,
+    "v3/LEFT/frame_5": 1448,
+    "v3/LEFT/frame_6": 1452,
+    "v3/LEFT/frame_7": 1464,
+    "v3/RIGHT/frame_0": 1496,
+    "v3/RIGHT/frame_1": 1492,
+    "v3/RIGHT/frame_2": 1444,
+    "v3/RIGHT/frame_3": 1440,
+    "v3/RIGHT/frame_4": 1488,
+    "v3/RIGHT/frame_5": 1448,
+    "v3/RIGHT/frame_6": 1452,
+    "v3/RIGHT/frame_7": 1464,
+    "v3/UP-LEFT/frame_0": 1436,
+    "v3/UP-LEFT/frame_1": 1381,
+    "v3/UP-LEFT/frame_2": 1309,
+    "v3/UP-LEFT/frame_3": 1398,
+    "v3/UP-LEFT/frame_4": 1402,
+    "v3/UP-LEFT/frame_5": 1361,
+    "v3/UP-LEFT/frame_6": 1388,
+    "v3/UP-LEFT/frame_7": 1455,
+    "v3/UP/frame_0": 1564,
+    "v3/UP/frame_1": 1508,
+    "v3/UP/frame_2": 1528,
+    "v3/UP/frame_3": 1684,
+    "v3/UP/frame_4": 1516,
+    "v3/UP/frame_5": 1504,
+    "v3/UP/frame_6": 1500,
+    "v3/UP/frame_7": 1648
+  },
+  "trail_requires_source_transparency": true,
+  "trail_world_direction_dot_by_sprite": {
+    "v1/DOWN-RIGHT/frame_0": -21.1703491210938,
+    "v1/DOWN-RIGHT/frame_1": -21.2326259613037,
+    "v1/DOWN-RIGHT/frame_2": -21.1173610687256,
+    "v1/DOWN-RIGHT/frame_3": -18.9818630218506,
+    "v1/DOWN-RIGHT/frame_4": -21.4973068237305,
+    "v1/DOWN-RIGHT/frame_5": -21.9789752960205,
+    "v1/DOWN-RIGHT/frame_6": -22.464485168457,
+    "v1/DOWN-RIGHT/frame_7": -20.6176948547363,
+    "v1/DOWN/frame_0": -12.4319915771484,
+    "v1/DOWN/frame_1": -13.1869964599609,
+    "v1/DOWN/frame_2": -16.5182952880859,
+    "v1/DOWN/frame_3": -12.5221252441406,
+    "v1/DOWN/frame_4": -12.8393402099609,
+    "v1/DOWN/frame_5": -13.6273498535156,
+    "v1/DOWN/frame_6": -16.5182952880859,
+    "v1/DOWN/frame_7": -12.8307952880859,
+    "v1/LEFT/frame_0": -26.9763793945313,
+    "v1/LEFT/frame_1": -28.2389221191406,
+    "v1/LEFT/frame_2": -29.842529296875,
+    "v1/LEFT/frame_3": -29.7373657226563,
+    "v1/LEFT/frame_4": -28.7932434082031,
+    "v1/LEFT/frame_5": -28.2739562988281,
+    "v1/LEFT/frame_6": -30.0193481445313,
+    "v1/LEFT/frame_7": -29.6390075683594,
+    "v1/RIGHT/frame_0": -26.9763793945313,
+    "v1/RIGHT/frame_1": -28.2389068603516,
+    "v1/RIGHT/frame_2": -29.8425445556641,
+    "v1/RIGHT/frame_3": -29.7373352050781,
+    "v1/RIGHT/frame_4": -28.793212890625,
+    "v1/RIGHT/frame_5": -28.27392578125,
+    "v1/RIGHT/frame_6": -30.0193634033203,
+    "v1/RIGHT/frame_7": -29.6390228271484,
+    "v1/UP-LEFT/frame_0": -26.9900722503662,
+    "v1/UP-LEFT/frame_1": -27.2255325317383,
+    "v1/UP-LEFT/frame_2": -28.9320259094238,
+    "v1/UP-LEFT/frame_3": -28.3015575408936,
+    "v1/UP-LEFT/frame_4": -27.884183883667,
+    "v1/UP-LEFT/frame_5": -27.9815826416016,
+    "v1/UP-LEFT/frame_6": -28.9292106628418,
+    "v1/UP-LEFT/frame_7": -28.4781513214111,
+    "v1/UP/frame_0": -32.07568359375,
+    "v1/UP/frame_1": -31.6488494873047,
+    "v1/UP/frame_2": -31.5964965820313,
+    "v1/UP/frame_3": -32.4691314697266,
+    "v1/UP/frame_4": -32.07568359375,
+    "v1/UP/frame_5": -31.8561401367188,
+    "v1/UP/frame_6": -31.5964965820313,
+    "v1/UP/frame_7": -32.3867492675781,
+    "v2/DOWN-RIGHT/frame_0": -23.1044692993164,
+    "v2/DOWN-RIGHT/frame_1": -23.7756023406982,
+    "v2/DOWN-RIGHT/frame_2": -22.0333003997803,
+    "v2/DOWN-RIGHT/frame_3": -21.5082130432129,
+    "v2/DOWN-RIGHT/frame_4": -23.5966262817383,
+    "v2/DOWN-RIGHT/frame_5": -24.2065410614014,
+    "v2/DOWN-RIGHT/frame_6": -23.9731597900391,
+    "v2/DOWN-RIGHT/frame_7": -23.0068893432617,
+    "v2/DOWN/frame_0": -14.9624328613281,
+    "v2/DOWN/frame_1": -15.7261962890625,
+    "v2/DOWN/frame_2": -17.6808166503906,
+    "v2/DOWN/frame_3": -15.9593811035156,
+    "v2/DOWN/frame_4": -15.0897216796875,
+    "v2/DOWN/frame_5": -15.9258422851563,
+    "v2/DOWN/frame_6": -17.6808166503906,
+    "v2/DOWN/frame_7": -16.3307495117188,
+    "v2/LEFT/frame_0": -28.6799011230469,
+    "v2/LEFT/frame_1": -29.5443115234375,
+    "v2/LEFT/frame_2": -31.0317687988281,
+    "v2/LEFT/frame_3": -31.8029479980469,
+    "v2/LEFT/frame_4": -31.3318481445313,
+    "v2/LEFT/frame_5": -30.6319580078125,
+    "v2/LEFT/frame_6": -31.3558044433594,
+    "v2/LEFT/frame_7": -30.9593811035156,
+    "v2/RIGHT/frame_0": -28.6799163818359,
+    "v2/RIGHT/frame_1": -29.5443115234375,
+    "v2/RIGHT/frame_2": -31.0317687988281,
+    "v2/RIGHT/frame_3": -31.8029327392578,
+    "v2/RIGHT/frame_4": -31.3318481445313,
+    "v2/RIGHT/frame_5": -30.6319427490234,
+    "v2/RIGHT/frame_6": -31.3558197021484,
+    "v2/RIGHT/frame_7": -30.9593963623047,
+    "v2/UP-LEFT/frame_0": -27.3765869140625,
+    "v2/UP-LEFT/frame_1": -27.4815063476563,
+    "v2/UP-LEFT/frame_2": -29.4306468963623,
+    "v2/UP-LEFT/frame_3": -29.0785369873047,
+    "v2/UP-LEFT/frame_4": -28.8782615661621,
+    "v2/UP-LEFT/frame_5": -29.1319885253906,
+    "v2/UP-LEFT/frame_6": -29.4801483154297,
+    "v2/UP-LEFT/frame_7": -28.7200222015381,
+    "v2/UP/frame_0": -30.536865234375,
+    "v2/UP/frame_1": -30.1804809570313,
+    "v2/UP/frame_2": -30.6922302246094,
+    "v2/UP/frame_3": -30.8628845214844,
+    "v2/UP/frame_4": -30.2166748046875,
+    "v2/UP/frame_5": -30.3042602539063,
+    "v2/UP/frame_6": -30.6708679199219,
+    "v2/UP/frame_7": -30.7809753417969,
+    "v3/DOWN-RIGHT/frame_0": -24.5733432769775,
+    "v3/DOWN-RIGHT/frame_1": -24.9525337219238,
+    "v3/DOWN-RIGHT/frame_2": -22.0413703918457,
+    "v3/DOWN-RIGHT/frame_3": -22.0720138549805,
+    "v3/DOWN-RIGHT/frame_4": -24.1733512878418,
+    "v3/DOWN-RIGHT/frame_5": -24.551420211792,
+    "v3/DOWN-RIGHT/frame_6": -24.5557346343994,
+    "v3/DOWN-RIGHT/frame_7": -23.1217555999756,
+    "v3/DOWN/frame_0": -15.1822509765625,
+    "v3/DOWN/frame_1": -15.578369140625,
+    "v3/DOWN/frame_2": -16.9752807617188,
+    "v3/DOWN/frame_3": -15.6182861328125,
+    "v3/DOWN/frame_4": -15.0706176757813,
+    "v3/DOWN/frame_5": -15.3696899414063,
+    "v3/DOWN/frame_6": -16.9752807617188,
+    "v3/DOWN/frame_7": -16.0520629882813,
+    "v3/LEFT/frame_0": -30.5274963378906,
+    "v3/LEFT/frame_1": -30.8559875488281,
+    "v3/LEFT/frame_2": -32.4356384277344,
+    "v3/LEFT/frame_3": -33.7835388183594,
+    "v3/LEFT/frame_4": -33.205810546875,
+    "v3/LEFT/frame_5": -32.425537109375,
+    "v3/LEFT/frame_6": -32.4940185546875,
+    "v3/LEFT/frame_7": -32.3074951171875,
+    "v3/RIGHT/frame_0": -30.5275115966797,
+    "v3/RIGHT/frame_1": -30.8559875488281,
+    "v3/RIGHT/frame_2": -32.4356384277344,
+    "v3/RIGHT/frame_3": -33.7835235595703,
+    "v3/RIGHT/frame_4": -33.205810546875,
+    "v3/RIGHT/frame_5": -32.4255218505859,
+    "v3/RIGHT/frame_6": -32.4940338134766,
+    "v3/RIGHT/frame_7": -32.3075103759766,
+    "v3/UP-LEFT/frame_0": -31.8538589477539,
+    "v3/UP-LEFT/frame_1": -31.7938270568848,
+    "v3/UP-LEFT/frame_2": -33.0157241821289,
+    "v3/UP-LEFT/frame_3": -32.459114074707,
+    "v3/UP-LEFT/frame_4": -32.2618789672852,
+    "v3/UP-LEFT/frame_5": -32.6443939208984,
+    "v3/UP-LEFT/frame_6": -33.1748962402344,
+    "v3/UP-LEFT/frame_7": -32.5612258911133,
+    "v3/UP/frame_0": -29.0023803710938,
+    "v3/UP/frame_1": -28.6787719726563,
+    "v3/UP/frame_2": -29.4406127929688,
+    "v3/UP/frame_3": -30.0245361328125,
+    "v3/UP/frame_4": -28.8395385742188,
+    "v3/UP/frame_5": -28.97607421875,
+    "v3/UP/frame_6": -29.3685913085938,
+    "v3/UP/frame_7": -29.9033813476563
+  },
+  "transparent_margin_contract": 6,
+  "variant_strengths": [
+    1.0,
+    0.7,
+    0.4
+  ],
+  "world_to_shader_local_direction": {
+    "v1/DOWN": {
+      "flip_h": false,
+      "shader_local": [
+        0.0,
+        1.0
+      ],
+      "world": [
+        0.0,
+        1.0
+      ]
+    },
+    "v1/DOWN-RIGHT": {
+      "flip_h": false,
+      "shader_local": [
+        0.707106828689575,
+        0.707106828689575
+      ],
+      "world": [
+        0.70710676908493,
+        0.70710676908493
+      ]
+    },
+    "v1/LEFT": {
+      "flip_h": true,
+      "shader_local": [
+        1.0,
+        0.0
+      ],
+      "world": [
+        -1.0,
+        0.0
+      ]
+    },
+    "v1/RIGHT": {
+      "flip_h": false,
+      "shader_local": [
+        1.0,
+        0.0
+      ],
+      "world": [
+        1.0,
+        0.0
+      ]
+    },
+    "v1/UP": {
+      "flip_h": false,
+      "shader_local": [
+        0.0,
+        -1.0
+      ],
+      "world": [
+        0.0,
+        -1.0
+      ]
+    },
+    "v1/UP-LEFT": {
+      "flip_h": true,
+      "shader_local": [
+        0.707106828689575,
+        -0.707106828689575
+      ],
+      "world": [
+        -0.70710676908493,
+        -0.70710676908493
+      ]
+    },
+    "v2/DOWN": {
+      "flip_h": false,
+      "shader_local": [
+        0.0,
+        1.0
+      ],
+      "world": [
+        0.0,
+        1.0
+      ]
+    },
+    "v2/DOWN-RIGHT": {
+      "flip_h": false,
+      "shader_local": [
+        0.707106828689575,
+        0.707106828689575
+      ],
+      "world": [
+        0.70710676908493,
+        0.70710676908493
+      ]
+    },
+    "v2/LEFT": {
+      "flip_h": true,
+      "shader_local": [
+        1.0,
+        0.0
+      ],
+      "world": [
+        -1.0,
+        0.0
+      ]
+    },
+    "v2/RIGHT": {
+      "flip_h": false,
+      "shader_local": [
+        1.0,
+        0.0
+      ],
+      "world": [
+        1.0,
+        0.0
+      ]
+    },
+    "v2/UP": {
+      "flip_h": false,
+      "shader_local": [
+        0.0,
+        -1.0
+      ],
+      "world": [
+        0.0,
+        -1.0
+      ]
+    },
+    "v2/UP-LEFT": {
+      "flip_h": true,
+      "shader_local": [
+        0.707106828689575,
+        -0.707106828689575
+      ],
+      "world": [
+        -0.70710676908493,
+        -0.70710676908493
+      ]
+    },
+    "v3/DOWN": {
+      "flip_h": false,
+      "shader_local": [
+        0.0,
+        1.0
+      ],
+      "world": [
+        0.0,
+        1.0
+      ]
+    },
+    "v3/DOWN-RIGHT": {
+      "flip_h": false,
+      "shader_local": [
+        0.707106828689575,
+        0.707106828689575
+      ],
+      "world": [
+        0.70710676908493,
+        0.70710676908493
+      ]
+    },
+    "v3/LEFT": {
+      "flip_h": true,
+      "shader_local": [
+        1.0,
+        0.0
+      ],
+      "world": [
+        -1.0,
+        0.0
+      ]
+    },
+    "v3/RIGHT": {
+      "flip_h": false,
+      "shader_local": [
+        1.0,
+        0.0
+      ],
+      "world": [
+        1.0,
+        0.0
+      ]
+    },
+    "v3/UP": {
+      "flip_h": false,
+      "shader_local": [
+        0.0,
+        -1.0
+      ],
+      "world": [
+        0.0,
+        -1.0
+      ]
+    },
+    "v3/UP-LEFT": {
+      "flip_h": true,
+      "shader_local": [
+        0.707106828689575,
+        -0.707106828689575
+      ],
+      "world": [
+        -0.70710676908493,
+        -0.70710676908493
+      ]
+    }
+  },
+  "packaged_board": "dev_assets/generated_previews/combat_robot_ninja_afterimage_shader_board.png",
+  "packaged_variants": {
+    "v1": {
+      "static": "dev_assets/generated_previews/combat_robot_ninja_afterimage_v1_full_strength.png",
+      "gif": "dev_assets/generated_previews/combat_robot_ninja_afterimage_v1_full_strength.gif",
+      "gif_bytes": 129006
+    },
+    "v2": {
+      "static": "dev_assets/generated_previews/combat_robot_ninja_afterimage_v2_medium_strength.png",
+      "gif": "dev_assets/generated_previews/combat_robot_ninja_afterimage_v2_medium_strength.gif",
+      "gif_bytes": 125500
+    },
+    "v3": {
+      "static": "dev_assets/generated_previews/combat_robot_ninja_afterimage_v3_light_strength.png",
+      "gif": "dev_assets/generated_previews/combat_robot_ninja_afterimage_v3_light_strength.gif",
+      "gif_bytes": 115825
+    }
+  },
+  "gif_frame_count": 8,
+  "gif_frame_duration_ms": 42
+}

@@ -61,8 +61,9 @@ const ELECTRIC_SURGE_MOVE_SPEED_MULTIPLIER := 0.65
 const ELEMENTAL_ATTACHMENT_ELECTRIC := 1 << 0
 const ELECTRIC_ATTACHMENT_VISUAL_STATUS_MASK := 1 << 4
 # Bits 0..4 remain the common collectible/element overlays. Bits 5..6 are
-# reserved by protocol v39 for enemy-specific visual state (currently the
-# shield bearer's monotonic intact/cracked/critical/broken stage).
+# scene-specific visual state: shield bearers use both bits for their monotonic
+# stage, while protocol v45 ninja robots use bit 5 for the short boost state.
+# Those enemy scene types are mutually exclusive.
 const NETWORK_VISUAL_STATUS_MASK := 0x7f
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 const DEATH_ANIMATION_SPEED_SCALES: Array[float] = [0.92, 0.96, 1.0, 1.04, 1.08]
@@ -1790,6 +1791,17 @@ func set_multiplayer_proxy_visual_active(active: bool) -> void:
 func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) -> void:
 	if animated_sprite == null or status_visual_material == null:
 		return
+	if (
+		parameter_name != SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER
+		and parameter_name != BURN_OVERLAY_STRENGTH_SHADER_PARAMETER
+		and parameter_name != BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER
+		and parameter_name != ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER
+	):
+		if animated_sprite.material == null:
+			animated_sprite.material = status_visual_material
+		animated_sprite.set_instance_shader_parameter(parameter_name, value)
+		_refresh_visual_shader_material_binding()
+		return
 	var strength := clampf(float(value), 0.0, 1.0)
 	match parameter_name:
 		SLOW_OVERLAY_STRENGTH_SHADER_PARAMETER:
@@ -1809,23 +1821,43 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 				return
 			electric_attachment_overlay_strength = strength
 		_:
-			if animated_sprite.material == null:
-				animated_sprite.material = status_visual_material
-			animated_sprite.set_instance_shader_parameter(parameter_name, value)
 			return
 
-	var has_status_overlay := (
-		slow_overlay_strength > 0.0
-		or burn_overlay_strength > 0.0
-		or bleed_overlay_strength > 0.0
-		or electric_attachment_overlay_strength > 0.0
-	)
+	var has_status_overlay := _has_active_visual_shader_effect()
 	if has_status_overlay and animated_sprite.material == null:
 		animated_sprite.material = status_visual_material
 	if animated_sprite.material != null:
 		animated_sprite.set_instance_shader_parameter(parameter_name, strength)
 	if not has_status_overlay:
 		animated_sprite.material = null
+
+
+## Enemy variants with a short authored shader effect override this hook so
+## ordinary slow/burn/bleed refreshes do not detach their shared status
+## material midway through the effect. The material itself remains shared;
+## per-instance shader parameters carry the transient state.
+func _has_variant_visual_shader_effect() -> bool:
+	return false
+
+
+func _has_active_visual_shader_effect() -> bool:
+	return (
+		slow_overlay_strength > 0.0
+		or burn_overlay_strength > 0.0
+		or bleed_overlay_strength > 0.0
+		or electric_attachment_overlay_strength > 0.0
+		or _has_variant_visual_shader_effect()
+	)
+
+
+func _refresh_visual_shader_material_binding() -> void:
+	if animated_sprite == null or status_visual_material == null:
+		return
+	if _has_active_visual_shader_effect():
+		if animated_sprite.material == null:
+			animated_sprite.material = status_visual_material
+		return
+	animated_sprite.material = null
 
 
 func _create_damage_target_profile() -> DamageTargetProfile:

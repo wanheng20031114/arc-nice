@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 44,
-		"协议v44必须隔离新增小葱二阶段投票，并保留既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 45,
+		"协议v45必须隔离忍者机器人加速表现语义，并保留既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

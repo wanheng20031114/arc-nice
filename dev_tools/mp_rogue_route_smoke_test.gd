@@ -117,8 +117,8 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 44,
-		"协议 v44 必须保留既有遭遇，并隔离荧光坑洞多轮结算。"
+		NetConstants.PROTOCOL_VERSION == 45,
+		"协议 v45 必须保留既有遭遇，并隔离忍者机器人加速表现语义。"
 	)
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,

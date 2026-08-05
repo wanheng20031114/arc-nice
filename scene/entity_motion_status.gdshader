@@ -12,6 +12,9 @@ uniform float dash_effect_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec2 dash_direction = vec2(1.0, 0.0);
 uniform vec4 dash_color : source_color = vec4(0.12, 1.45, 1.3, 1.0);
 uniform float dash_trail_pixels : hint_range(1.0, 8.0) = 4.0;
+instance uniform float ninja_afterimage_strength : hint_range(0.0, 1.0) = 0.0;
+instance uniform vec2 ninja_afterimage_direction = vec2(1.0, 0.0);
+uniform float ninja_afterimage_pixels : hint_range(1.0, 4.0) = 4.0;
 instance uniform float slow_overlay_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 slow_overlay_color : source_color = vec4(0.55, 0.86, 1.0, 1.0);
 instance uniform float burn_overlay_strength : hint_range(0.0, 1.0) = 0.0;
@@ -90,6 +93,57 @@ void fragment() {
 			color.rgb = mix(color.rgb, dash_color.rgb, min(body_mask * 0.5, 1.0));
 			color.rgb += dash_color.rgb * body_mask * 0.34;
 			color.a = max(color.a, COLOR.a);
+		}
+	}
+
+	// Ninja afterimages preserve the source body and only fill source-transparent
+	// pixels behind it. Compose far-to-near in premultiplied alpha so every
+	// layer keeps the sampled sprite's original RGB instead of applying a tint.
+	if (ninja_afterimage_strength > 0.0 && texture_color.a <= 0.0) {
+		vec2 direction = ninja_afterimage_direction;
+		if (length(direction) < 0.001) {
+			direction = vec2(1.0, 0.0);
+		} else {
+			direction = normalize(direction);
+		}
+		vec2 trail_offset = (
+			direction * TEXTURE_PIXEL_SIZE * ninja_afterimage_pixels
+		);
+		vec4 near_sample = texture(
+			TEXTURE,
+			clamp(UV + trail_offset * 0.45, vec2(0.0), vec2(1.0))
+		);
+		vec4 middle_sample = texture(
+			TEXTURE,
+			clamp(UV + trail_offset * 0.9, vec2(0.0), vec2(1.0))
+		);
+		vec4 far_sample = texture(
+			TEXTURE,
+			clamp(UV + trail_offset * 1.35, vec2(0.0), vec2(1.0))
+		);
+		near_sample.a *= 0.48;
+		middle_sample.a *= 0.34;
+		far_sample.a *= 0.22;
+
+		float combined_alpha = far_sample.a;
+		vec3 premultiplied_rgb = far_sample.rgb * far_sample.a;
+		premultiplied_rgb = (
+			middle_sample.rgb * middle_sample.a
+			+ premultiplied_rgb * (1.0 - middle_sample.a)
+		);
+		combined_alpha = (
+			middle_sample.a + combined_alpha * (1.0 - middle_sample.a)
+		);
+		premultiplied_rgb = (
+			near_sample.rgb * near_sample.a
+			+ premultiplied_rgb * (1.0 - near_sample.a)
+		);
+		combined_alpha = (
+			near_sample.a + combined_alpha * (1.0 - near_sample.a)
+		);
+		if (combined_alpha > 0.0) {
+			color.rgb = premultiplied_rgb / max(combined_alpha, 0.00001);
+			color.a = combined_alpha * ninja_afterimage_strength;
 		}
 	}
 

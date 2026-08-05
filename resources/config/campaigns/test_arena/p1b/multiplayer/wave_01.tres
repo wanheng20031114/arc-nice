@@ -7,34 +7,40 @@
 [ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_drone_operator.tres" id="5_combat_robot_drone_operator"]
 [ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="6_33c5t"]
 [ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_shield_bearer.tres" id="6_combat_robot_shield_bearer"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_ninja.tres" id="7_combat_robot_ninja"]
 
 [sub_resource type="Resource" id="Resource_combat_robot_entry"]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("2_combat_robot")
-count = 250
+count = 200
 
 [sub_resource type="Resource" id="Resource_combat_robot_gunner_entry"]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("3_combat_robot_gunner")
-count = 250
+count = 200
 
 [sub_resource type="Resource" id="Resource_combat_robot_drone_operator_entry"]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("5_combat_robot_drone_operator")
-count = 250
+count = 200
 
 [sub_resource type="Resource" id="Resource_combat_robot_shield_bearer_entry"]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("6_combat_robot_shield_bearer")
-count = 250
+count = 200
+
+[sub_resource type="Resource" id="Resource_combat_robot_ninja_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("7_combat_robot_ninja")
+count = 200
 
 [resource]
 script = ExtResource("4_wave_script")
-wave_name = "第1波 四型战斗机器人轮转测试（多人）"
-enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_combat_robot_entry"), SubResource("Resource_combat_robot_gunner_entry"), SubResource("Resource_combat_robot_drone_operator_entry"), SubResource("Resource_combat_robot_shield_bearer_entry")])
+wave_name = "第1波 五型战斗机器人轮转测试（多人）"
+enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_combat_robot_entry"), SubResource("Resource_combat_robot_gunner_entry"), SubResource("Resource_combat_robot_drone_operator_entry"), SubResource("Resource_combat_robot_shield_bearer_entry"), SubResource("Resource_combat_robot_ninja_entry")])
 spawn_point_mask = 3
 spawn_order = 1
 spawn_interval = 3.0
 max_alive_enemies = 1000
 step_id = &"wave_01"
-display_name = "第1波 四型战斗机器人严格轮转（各250台）"
+display_name = "第1波 五型战斗机器人严格轮转（各200台）"

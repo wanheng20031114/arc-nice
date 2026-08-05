@@ -20,7 +20,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 ## Authored catalog contract used by navigation before any section is materialized.
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
-	CodexSection.ENEMY: 55,
+	CodexSection.ENEMY: 56,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
@@ -277,7 +277,25 @@ func _build_enemy_stats(
 
 func _build_enemy_specific_stats(enemy: EnemyConfig) -> Array[CodexStatRow]:
 	var stats: Array[CodexStatRow] = []
-	if enemy is CombatRobotDroneOperatorConfig:
+	if enemy is CombatRobotNinjaConfig:
+		var config := enemy as CombatRobotNinjaConfig
+		stats.append(
+			CodexStatRow.new(
+				"受击加速",
+				"%s 倍" % _format_number(config.boost_speed_multiplier)
+			)
+		)
+		stats.append(
+			CodexStatRow.new(
+				"加速持续", "%s 秒" % _format_number(config.boost_duration)
+			)
+		)
+		stats.append(
+			CodexStatRow.new(
+				"触发冷却", "%s 秒" % _format_number(config.boost_cooldown)
+			)
+		)
+	elif enemy is CombatRobotDroneOperatorConfig:
 		var config := enemy as CombatRobotDroneOperatorConfig
 		stats.append(
 			CodexStatRow.new("搜索范围", _format_number(config.attack_range))

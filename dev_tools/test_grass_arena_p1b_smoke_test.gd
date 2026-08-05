@@ -19,11 +19,17 @@ const COMBAT_ROBOT_DRONE_OPERATOR_CONFIG := preload(
 const COMBAT_ROBOT_SHIELD_BEARER_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot_shield_bearer.tres"
 )
+const COMBAT_ROBOT_NINJA_CONFIG := preload(
+	"res://resources/config/enemies/combat_robot_ninja.tres"
+)
 const COMBAT_ROBOT_DRONE_OPERATOR_CONFIG_PATH := (
 	"res://resources/config/enemies/combat_robot_drone_operator.tres"
 )
 const COMBAT_ROBOT_SHIELD_BEARER_CONFIG_PATH := (
 	"res://resources/config/enemies/combat_robot_shield_bearer.tres"
+)
+const COMBAT_ROBOT_NINJA_CONFIG_PATH := (
+	"res://resources/config/enemies/combat_robot_ninja.tres"
 )
 const FORMAL_WAVE_DIRECTORIES := [
 	"res://resources/config/campaigns/standard/singleplayer",
@@ -31,7 +37,7 @@ const FORMAL_WAVE_DIRECTORIES := [
 	"res://resources/config/campaigns/tower_defense/formal",
 ]
 const EXPECTED_TOTAL_ENEMIES := 1000
-const EXPECTED_ROBOT_TYPE_COUNT := 250
+const EXPECTED_ROBOT_TYPE_COUNT := 200
 
 var failures: Array[String] = []
 var arena: TestGrassArena
@@ -56,7 +62,7 @@ func _run() -> void:
 	_test_scene_contract()
 	_test_campaign_contracts()
 	_test_new_robots_stay_out_of_formal_waves()
-	_test_strict_four_type_rotation_queue()
+	_test_strict_five_type_rotation_queue()
 	_test_unequal_round_robin_queue()
 
 	current_scene = null
@@ -115,27 +121,32 @@ func _validate_campaign_wave(campaign: WaveCampaignConfig, mode_label: String) -
 		wave.get_total_enemy_count() == EXPECTED_TOTAL_ENEMIES,
 		"P1B %s波次必须正好包含1000台机器人。" % mode_label
 	)
-	_expect(wave.enemy_entries.size() == 4, "P1B %s波次必须只有四种机器人。" % mode_label)
-	if wave.enemy_entries.size() == 4:
+	_expect(wave.enemy_entries.size() == 5, "P1B %s波次必须只有五种机器人。" % mode_label)
+	if wave.enemy_entries.size() == 5:
 		_expect(
 			wave.enemy_entries[0].enemy_config == COMBAT_ROBOT_CONFIG
 			and wave.enemy_entries[0].count == EXPECTED_ROBOT_TYPE_COUNT,
-			"P1B %s波次必须先登记250台持剑战斗机器人。" % mode_label
+			"P1B %s波次必须先登记200台持剑战斗机器人。" % mode_label
 		)
 		_expect(
 			wave.enemy_entries[1].enemy_config == COMBAT_ROBOT_GUNNER_CONFIG
 			and wave.enemy_entries[1].count == EXPECTED_ROBOT_TYPE_COUNT,
-			"P1B %s波次必须第二个登记250台持枪战斗机器人。" % mode_label
+			"P1B %s波次必须第二个登记200台持枪战斗机器人。" % mode_label
 		)
 		_expect(
 			wave.enemy_entries[2].enemy_config == COMBAT_ROBOT_DRONE_OPERATOR_CONFIG
 			and wave.enemy_entries[2].count == EXPECTED_ROBOT_TYPE_COUNT,
-			"P1B %s波次必须第三个登记250台爆炸无人机操作员。" % mode_label
+			"P1B %s波次必须第三个登记200台爆炸无人机操作员。" % mode_label
 		)
 		_expect(
 			wave.enemy_entries[3].enemy_config == COMBAT_ROBOT_SHIELD_BEARER_CONFIG
 			and wave.enemy_entries[3].count == EXPECTED_ROBOT_TYPE_COUNT,
-			"P1B %s波次必须第四个登记250台举盾战斗机器人。" % mode_label
+			"P1B %s波次必须第四个登记200台举盾战斗机器人。" % mode_label
+		)
+		_expect(
+			wave.enemy_entries[4].enemy_config == COMBAT_ROBOT_NINJA_CONFIG
+			and wave.enemy_entries[4].count == EXPECTED_ROBOT_TYPE_COUNT,
+			"P1B %s波次必须第五个登记200台忍者战斗机器人。" % mode_label
 		)
 	_expect(
 		wave.spawn_order == WaveConfig.SpawnOrder.ENTRY_ROUND_ROBIN,
@@ -154,6 +165,7 @@ func _validate_campaign_wave(campaign: WaveCampaignConfig, mode_label: String) -
 func _test_new_robots_stay_out_of_formal_waves() -> void:
 	var operator_reference_count := 0
 	var shield_bearer_reference_count := 0
+	var ninja_reference_count := 0
 	for directory_path in FORMAL_WAVE_DIRECTORIES:
 		var directory := DirAccess.open(directory_path)
 		_expect(
@@ -174,6 +186,7 @@ func _test_new_robots_stay_out_of_formal_waves() -> void:
 			shield_bearer_reference_count += wave_text.count(
 				COMBAT_ROBOT_SHIELD_BEARER_CONFIG_PATH
 			)
+			ninja_reference_count += wave_text.count(COMBAT_ROBOT_NINJA_CONFIG_PATH)
 	_expect(
 		operator_reference_count == 0,
 		"爆炸无人机操作员只能进入 P1B，所有正式波次引用次数必须为0。"
@@ -182,9 +195,13 @@ func _test_new_robots_stay_out_of_formal_waves() -> void:
 		shield_bearer_reference_count == 0,
 		"举盾战斗机器人只能进入 P1B，所有正式波次引用次数必须为0。"
 	)
+	_expect(
+		ninja_reference_count == 0,
+		"忍者战斗机器人只能进入 P1B，所有正式波次引用次数必须为0。"
+	)
 
 
-func _test_strict_four_type_rotation_queue() -> void:
+func _test_strict_five_type_rotation_queue() -> void:
 	var singleplayer_wave := TEST_CAMPAIGN.get_waves()[0]
 	var multiplayer_wave := MULTIPLAYER_TEST_CAMPAIGN.get_waves()[0]
 	var expected_configs: Array[EnemyConfig] = [
@@ -192,6 +209,7 @@ func _test_strict_four_type_rotation_queue() -> void:
 		COMBAT_ROBOT_GUNNER_CONFIG,
 		COMBAT_ROBOT_DRONE_OPERATOR_CONFIG,
 		COMBAT_ROBOT_SHIELD_BEARER_CONFIG,
+		COMBAT_ROBOT_NINJA_CONFIG,
 	]
 	for wave in [singleplayer_wave, multiplayer_wave]:
 		for seed_value in [0x51B0, 0x71B0]:
@@ -202,13 +220,13 @@ func _test_strict_four_type_rotation_queue() -> void:
 				and arena.pending_enemy_xirang_kill_rewards.size() == EXPECTED_TOTAL_ENEMIES,
 				"P1B 运行时必须构建1000项且配置/奖励严格等长的队列。"
 			)
-			var actual_counts: Array[int] = [0, 0, 0, 0]
+			var actual_counts: Array[int] = [0, 0, 0, 0, 0]
 			for queue_index in range(arena.pending_enemy_configs.size()):
-				var expected_config := expected_configs[queue_index % 4]
+				var expected_config := expected_configs[queue_index % 5]
 				var queued_config := arena.pending_enemy_configs[queue_index]
 				_expect(
 					queued_config == expected_config,
-					"P1B 必须从持剑开始，按持剑、持枪、操作员、举盾在全部1000项中严格轮转。"
+					"P1B 必须从持剑开始，按持剑、持枪、操作员、举盾、忍者在全部1000项中严格轮转。"
 				)
 				var actual_index := expected_configs.find(queued_config)
 				if actual_index >= 0:
@@ -222,12 +240,13 @@ func _test_strict_four_type_rotation_queue() -> void:
 				actual_counts[0] == EXPECTED_ROBOT_TYPE_COUNT
 				and actual_counts[1] == EXPECTED_ROBOT_TYPE_COUNT
 				and actual_counts[2] == EXPECTED_ROBOT_TYPE_COUNT
-				and actual_counts[3] == EXPECTED_ROBOT_TYPE_COUNT,
-				"P1B 四型轮转必须最终各生成250台。"
+				and actual_counts[3] == EXPECTED_ROBOT_TYPE_COUNT
+				and actual_counts[4] == EXPECTED_ROBOT_TYPE_COUNT,
+				"P1B 五型轮转必须最终各生成200台。"
 			)
 			_expect(
-				arena.pending_enemy_configs.back() == COMBAT_ROBOT_SHIELD_BEARER_CONFIG,
-				"P1B 的第1000项必须是第250台举盾战斗机器人。"
+				arena.pending_enemy_configs.back() == COMBAT_ROBOT_NINJA_CONFIG,
+				"P1B 的第1000项必须是第200台忍者战斗机器人。"
 			)
 			arena.call("_clear_pending_enemy_spawn_queue")
 

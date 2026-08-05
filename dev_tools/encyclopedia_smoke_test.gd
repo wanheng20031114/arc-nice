@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 55,
+	CodexSection.ENEMY: 56,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
@@ -34,11 +34,11 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 2,
-	&"mechanical_life": 4,
+	&"mechanical_life": 5,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
-	EnemyCodexEntryConfig.Rank.NORMAL: 48,
+	EnemyCodexEntryConfig.Rank.NORMAL: 49,
 	EnemyCodexEntryConfig.Rank.ELITE: 6,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
@@ -112,7 +112,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 55 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 56 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -201,7 +201,7 @@ func _test_enemy_rank_counts(catalog: CodexCatalog) -> void:
 		actual_counts[source.rank] = int(actual_counts.get(source.rank, 0)) + 1
 	_expect(
 		actual_counts == EXPECTED_ENEMY_RANK_COUNTS,
-		"Enemy ranks must contain 48 normal, six elite, and one Boss entry."
+		"Enemy ranks must contain 49 normal, six elite, and one Boss entry."
 	)
 
 
@@ -260,6 +260,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_combat_robot_gunner := false
 	var saw_combat_robot_drone_operator := false
 	var saw_combat_robot_shield_bearer := false
+	var saw_combat_robot_ninja := false
 	var saw_linglan := false
 	for entry in catalog.get_entries(CodexSection.ENEMY):
 		var source := entry.source_resource as EnemyCodexEntryConfig
@@ -464,6 +465,38 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				),
 				"Shield bearer must keep its normal-rank mechanical codex contract."
 			)
+		if config is CombatRobotNinjaConfig:
+			saw_combat_robot_ninja = true
+			var ninja := config as CombatRobotNinjaConfig
+			_expect(
+				String(stats.get("生命", "")) == "180"
+				and String(stats.get("单次伤害", "")) == "35"
+				and String(stats.get("物理防御", "")) == "10 点"
+				and String(stats.get("法术防御", "")) == "15"
+				and String(stats.get("移动速度", "")) == "80"
+				and String(stats.get("基地伤害", "")) == "2"
+				and String(stats.get("击杀息壤", "")) == "10"
+				and String(stats.get("受击加速", ""))
+				== "%s 倍" % _format_number(ninja.boost_speed_multiplier)
+				and String(stats.get("加速持续", ""))
+				== "%s 秒" % _format_number(ninja.boost_duration)
+				and String(stats.get("触发冷却", ""))
+				== "%s 秒" % _format_number(ninja.boost_cooldown),
+				"Ninja robot codex must expose its authored attributes and boost contract."
+			)
+			_expect(
+				source.sort_order == 560
+				and source.family_id == &"mechanical_life"
+				and source.rank == EnemyCodexEntryConfig.Rank.NORMAL
+				and entry.primary_badge == "机械生命"
+				and entry.secondary_badge == "普通"
+				and source.description
+				== "双持长刃的高速冷灰盒体机器人。它会持续追踪玩家或植物，并以刀刃和身体造成接触伤害；任何实际扣血都会令其立刻进入短暂疾跑，移动速度提高至两倍并留下反向尾影。加速不会改变追踪方向，也不能穿过墙体或水域。"
+				and entry.notes == PackedStringArray(
+					["受击加速", "双刃接触", "机械生命"]
+				),
+				"Ninja robot must keep its normal-rank mechanical codex contract."
+			)
 		if config is CombatRobotConfig:
 			saw_combat_robot = true
 			var robot := config as CombatRobotConfig
@@ -503,8 +536,9 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 		and saw_combat_robot_gunner
 		and saw_combat_robot_drone_operator
 		and saw_combat_robot_shield_bearer
+		and saw_combat_robot_ninja
 		and saw_linglan,
-		"Enemy stat contract must cover regeneration, aura, dash, burst-fire, drone deployment, projectile shields and Boss adapters."
+		"Enemy stat contract must cover regeneration, aura, dash, burst-fire, drone deployment, projectile shields, ninja boosts and Boss adapters."
 	)
 
 
@@ -646,9 +680,12 @@ func _test_scene_contract() -> void:
 	current_scene = screen
 	await _wait_frames(3)
 	await _wait_for_grid_build(screen)
+	var expected_enemy_count := int(
+		EXPECTED_SECTION_COUNTS[CodexSection.ENEMY]
+	)
 
 	_expect(
-		screen.enemy_button.text == "敌人  55"
+		screen.enemy_button.text == "敌人  %d" % expected_enemy_count
 		and screen.collectible_button.text == "收藏品  124"
 		and screen.building_button.text == "建筑物  16",
 		"Sidebar must display all three section totals."
@@ -661,15 +698,16 @@ func _test_scene_contract() -> void:
 	_expect(
 		int(screen.get("_current_section")) == CodexSection.ENEMY
 		and screen.section_title.text == "敌人档案"
-		and screen.archive_index.text == "055 条记录",
+		and screen.archive_index.text == "%03d 条记录" % expected_enemy_count,
 		"Encyclopedia must open on the enemy section."
 	)
 	var cards: Array = screen.get("_cards")
 	_expect(
-		cards.size() == 55
-		and screen.entry_grid.get_child_count() == 55
-		and screen.result_count.text == "显示 55 / 55",
-		"Initial enemy grid must render all 55 entries."
+		cards.size() == expected_enemy_count
+		and screen.entry_grid.get_child_count() == expected_enemy_count
+		and screen.result_count.text
+		== "显示 %d / %d" % [expected_enemy_count, expected_enemy_count],
+		"Initial enemy grid must render every registered enemy entry."
 	)
 	_expect(
 		screen.search_edit.text.is_empty()
@@ -1095,16 +1133,21 @@ func _test_collectible_filter_visuals(screen: EncyclopediaScreen) -> void:
 func _test_search_filter_and_section_state(
 	screen: EncyclopediaScreen
 ) -> void:
+	var expected_enemy_count := int(
+		EXPECTED_SECTION_COUNTS[CodexSection.ENEMY]
+	)
 	_set_search_query(screen, "铃兰")
 	await _wait_frames(3)
 	await _wait_for_grid_build(screen)
 	var search_cards: Array = screen.get("_cards")
 	_expect(
-		not search_cards.is_empty() and search_cards.size() < 55,
+		not search_cards.is_empty()
+		and search_cards.size() < expected_enemy_count,
 		"Enemy name search must narrow the visible result set."
 	)
 	_expect(
-		screen.result_count.text == "显示 %d / 55" % search_cards.size(),
+		screen.result_count.text
+		== "显示 %d / %d" % [search_cards.size(), expected_enemy_count],
 		"Result count must stay synchronized with name-search results."
 	)
 	for card_variant in search_cards:

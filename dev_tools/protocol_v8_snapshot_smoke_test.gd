@@ -113,7 +113,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V44_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V45_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -122,10 +122,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 44, "Protocol must be v44.")
+	_expect(NetConstants.PROTOCOL_VERSION == 45, "Protocol must be v45.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v39 must reserve enemy visual-status bits 5..6 for shield stages."
+		"Protocol v45 must preserve scene-specific bits 5..6 for shield stages and ninja boost."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -143,7 +143,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v44 channel assignments must remain stable."
+		"Protocol v45 channel assignments must remain stable."
 	)
 
 
@@ -1380,8 +1380,9 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		state.locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_MOVING
 		state.health = 100 + enemy_index
 		state.health_revision = enemy_index + 3
-		# Enemy 1 combines the common low-five status bits with the v39
-		# shield-stage high bits (10 = critical).
+		# Enemy 1 combines the common low-five status bits with the scene-specific
+		# high bits. Shield bearers use them as 10 = critical; v45 ninja robots
+		# independently use bit 5 as their boost flag.
 		state.visual_status_mask = 0b1011101 if enemy_index == 0 else 0
 		states.append(state)
 	var keyframe := sender.encode_enemy_snapshots_for_peer(8, states, true)
@@ -1401,7 +1402,8 @@ func _test_enemy_codec_reuse_and_packet_budget() -> void:
 		"Enemy visual status, locomotion and health revision must round-trip in a keyframe."
 	)
 	states[0].position.x += 2.0
-	# Preserve common bits while advancing the shield stage to 11 = broken.
+	# Preserve common bits while setting both scene-specific bits. This remains
+	# 11 = broken for shield bearers and also proves the v45 ninja bit5 survives.
 	states[0].visual_status_mask = 0b1110100
 	states[0].locomotion_state = SnapshotManager.ENEMY_LOCOMOTION_IDLE
 	var delta := sender.encode_enemy_snapshots_for_peer(8, states, false)

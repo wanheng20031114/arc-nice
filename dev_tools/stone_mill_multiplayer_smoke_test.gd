@@ -126,8 +126,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 44,
-		"多人协议v44必须保留既有wire类型，并隔离新增小葱二阶段投票。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 45,
+		"多人协议v45必须保留既有wire类型，并隔离忍者机器人加速表现。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

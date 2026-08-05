@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="CombatRobotNinjaConfig" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/combat_robot_ninja_config.gd" id="1_config"]
+[ext_resource type="Resource" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_drop_table"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_ninja.tscn" id="3_scene"]
+[ext_resource type="AudioStream" uid="uid://druowpv8vg1x0" path="res://resources/audio/capoo_sword_slash_light.wav" id="4_audio"]
+
+[resource]
+script = ExtResource("1_config")
+boost_animation_name = &"boost"
+boost_speed_multiplier = 2.0
+boost_duration = 0.5
+boost_cooldown = 3.0
+boost_audio_stream = ExtResource("4_audio")
+display_name = "忍者战斗机器人"
+category_tags = PackedStringArray("mechanical_life")
+enemy_scene = ExtResource("3_scene")
+max_health = 180
+attack_damage = 35
+physical_defense = 10
+magic_defense = 15
+move_speed = 80.0
+home_damage = 2
+xirang_kill_reward = 10
+drop_table = ExtResource("2_drop_table")

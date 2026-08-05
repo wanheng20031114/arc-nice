@@ -1,0 +1,691 @@
+{
+  "asset": "combat_robot_ninja",
+  "approved_selection": {
+    "move": "M1",
+    "boost": "S1",
+    "death": "D1"
+  },
+  "runtime_written": true,
+  "runtime_texture": "resources/texture/enemy/mechanical_life/combat_robot_ninja.png",
+  "runtime_texture_sha256": "f34f15083e48af0179c1d2669a3d22bdfdb33de266d9373cbaa9defa2b434ceb",
+  "runtime_size": [
+    320,
+    120
+  ],
+  "frame_size": [
+    40,
+    40
+  ],
+  "frame_count": 24,
+  "source_hashes": {
+    "move": "07af3470d29a39c0d541b499fa671716153e3a673402caa692a6b9bde7e5efa6",
+    "boost": "0caf9cef8ed8723c5b0e49f0c7dc2c78a2ccf6e252c71e6bf1eb5e99d7cb609f",
+    "death": "22c987eaf26692722ec0a77fc9a9720c4a6a1b785ddc97733c55748c13276b58"
+  },
+  "fixed_palette": [
+    [
+      21,
+      22,
+      19,
+      255
+    ],
+    [
+      29,
+      28,
+      30,
+      255
+    ],
+    [
+      55,
+      59,
+      63,
+      255
+    ],
+    [
+      82,
+      88,
+      94,
+      255
+    ],
+    [
+      112,
+      121,
+      128,
+      255
+    ],
+    [
+      151,
+      159,
+      164,
+      255
+    ],
+    [
+      190,
+      196,
+      198,
+      255
+    ],
+    [
+      226,
+      229,
+      226,
+      255
+    ],
+    [
+      102,
+      25,
+      20,
+      255
+    ],
+    [
+      190,
+      48,
+      31,
+      255
+    ],
+    [
+      239,
+      92,
+      34,
+      255
+    ],
+    [
+      255,
+      181,
+      71,
+      255
+    ]
+  ],
+  "binary_alpha": true,
+  "transparent_rgb_zero": true,
+  "maximum_visible_bbox": [
+    28,
+    28
+  ],
+  "minimum_transparent_margin": 6,
+  "baseline_y": 32,
+  "fixed_core_pixels": 168,
+  "animation_contract": {
+    "move": {
+      "frames": 8,
+      "speed": 20.0,
+      "loop": true,
+      "row": 0
+    },
+    "boost": {
+      "frames": 8,
+      "speed": 24.0,
+      "loop": true,
+      "row": 1
+    },
+    "death": {
+      "frames": 8,
+      "speed": 12.0,
+      "loop": false,
+      "row": 2
+    }
+  },
+  "frames": {
+    "move": [
+      {
+        "frame": 0,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "38e2b9451cc387419850c28d44aee6a6be9be8a2438fa4b335679abc15de81ed"
+      },
+      {
+        "frame": 1,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "67cefdc39c3d9998eb83135492e3234b0a80f6dbec5ffe60fb050aedbe7c5613"
+      },
+      {
+        "frame": 2,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "c8ddd1d31ad5e8dd294f32abbb18bb742e04e978cdb2c52923b508cb0b2a6e05"
+      },
+      {
+        "frame": 3,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "878419caf5a78960065f7905d3afb210fdbba81b2490aac2a2798c58afcedc13"
+      },
+      {
+        "frame": 4,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "88bb2b93eba8f4074302bb1011fdd27cec5cc7878df23a23881ce5d11b48f8a2"
+      },
+      {
+        "frame": 5,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "94734d9168a86bb2a545b2e5916583fb26440bfd0dae2f0d205e4a36ecc583b8"
+      },
+      {
+        "frame": 6,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "930d89068ba3d1f6b16bce8f7743cb93470043ce16b38a9388df3cb75922f6dd"
+      },
+      {
+        "frame": 7,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "6db813ea4a88052d082e61a7b91765db6c9595de97eabb1b5c698522c136084f"
+      }
+    ],
+    "boost": [
+      {
+        "frame": 0,
+        "bbox": [
+          6,
+          8,
+          30,
+          32
+        ],
+        "visible_size": [
+          24,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          10,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 9,
+        "rgba_sha256": "9ddab2583435dd2919b53297496764d9267d9274f49add93b04b66319b5d5f66"
+      },
+      {
+        "frame": 1,
+        "bbox": [
+          6,
+          8,
+          29,
+          32
+        ],
+        "visible_size": [
+          23,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          11,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 9,
+        "rgba_sha256": "0bc84f9bc192eeb2e3006b829f32fbf71ea2ad04022c2999ce09726b58a625a3"
+      },
+      {
+        "frame": 2,
+        "bbox": [
+          6,
+          8,
+          27,
+          32
+        ],
+        "visible_size": [
+          21,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          13,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 9,
+        "rgba_sha256": "59d741b15d1e79d6731d87ff24068befe82e320b6ab0fda7e9d4865b82866a90"
+      },
+      {
+        "frame": 3,
+        "bbox": [
+          6,
+          8,
+          28,
+          32
+        ],
+        "visible_size": [
+          22,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          12,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 9,
+        "rgba_sha256": "c0f956b94c8db6b37b9f30559f605aa7e57669cff2df3921abcab2c042ed7d52"
+      },
+      {
+        "frame": 4,
+        "bbox": [
+          6,
+          8,
+          30,
+          32
+        ],
+        "visible_size": [
+          24,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          10,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 9,
+        "rgba_sha256": "591628126904a865b4208bd30c77b531d213ec28db6a7acc8ad817ff3ae36ece"
+      },
+      {
+        "frame": 5,
+        "bbox": [
+          6,
+          8,
+          30,
+          32
+        ],
+        "visible_size": [
+          24,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          10,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 9,
+        "rgba_sha256": "c4b66b18ecde5d80aeee2311b9acd79a4253fe3a888d75cee3cda4da1eff8f7b"
+      },
+      {
+        "frame": 6,
+        "bbox": [
+          6,
+          8,
+          27,
+          32
+        ],
+        "visible_size": [
+          21,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          13,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 9,
+        "rgba_sha256": "2e41b568ffde539a9f7d05567d8c41104ac75393f55861ffe213255584f08da2"
+      },
+      {
+        "frame": 7,
+        "bbox": [
+          6,
+          8,
+          27,
+          32
+        ],
+        "visible_size": [
+          21,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          13,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 9,
+        "rgba_sha256": "bb44e994f669dc14df19328098345622b57ff9f5dbed12b81b06778214f4039f"
+      }
+    ],
+    "death": [
+      {
+        "frame": 0,
+        "bbox": [
+          6,
+          8,
+          33,
+          32
+        ],
+        "visible_size": [
+          27,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          7,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 11,
+        "rgba_sha256": "4d9424767d77000a544d59ef60ac50d155eab17d176ef47c5734ff4e51251dd4"
+      },
+      {
+        "frame": 1,
+        "bbox": [
+          6,
+          9,
+          34,
+          32
+        ],
+        "visible_size": [
+          28,
+          23
+        ],
+        "margins": [
+          6,
+          9,
+          6,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 12,
+        "rgba_sha256": "4400f8c6a56ecaee2a47fe0d12a5ff3b5555b2f0bbf59c920760a0e211f72621"
+      },
+      {
+        "frame": 2,
+        "bbox": [
+          6,
+          8,
+          34,
+          32
+        ],
+        "visible_size": [
+          28,
+          24
+        ],
+        "margins": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 12,
+        "rgba_sha256": "15891e8f1fb3262190424a2e1260050566d4ec51d14dd6640bcacfa9e1c02551"
+      },
+      {
+        "frame": 3,
+        "bbox": [
+          6,
+          10,
+          34,
+          32
+        ],
+        "visible_size": [
+          28,
+          22
+        ],
+        "margins": [
+          6,
+          10,
+          6,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 13,
+        "rgba_sha256": "eba15e4765412e6b6c60be958e85718fd89b8a39481ea0c2df8d516fde130724"
+      },
+      {
+        "frame": 4,
+        "bbox": [
+          7,
+          10,
+          34,
+          32
+        ],
+        "visible_size": [
+          27,
+          22
+        ],
+        "margins": [
+          7,
+          10,
+          6,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 13,
+        "rgba_sha256": "1fc2a1e5370f2e6c570f54e68258774335ba264c2461158d512e696547373d2d"
+      },
+      {
+        "frame": 5,
+        "bbox": [
+          7,
+          12,
+          34,
+          32
+        ],
+        "visible_size": [
+          27,
+          20
+        ],
+        "margins": [
+          7,
+          12,
+          6,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 15,
+        "rgba_sha256": "d157a4ef7e5730952cac5a2f775c316a6287ae11bbe8a24e9c2c910cfddeb05e"
+      },
+      {
+        "frame": 6,
+        "bbox": [
+          6,
+          15,
+          34,
+          32
+        ],
+        "visible_size": [
+          28,
+          17
+        ],
+        "margins": [
+          6,
+          15,
+          6,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 16,
+        "rgba_sha256": "302d049400541bb31b322bf7e519436abe1ef96c3eb825c1a153e2fd64cf0a22"
+      },
+      {
+        "frame": 7,
+        "bbox": [
+          6,
+          17,
+          34,
+          32
+        ],
+        "visible_size": [
+          28,
+          15
+        ],
+        "margins": [
+          6,
+          17,
+          6,
+          8
+        ],
+        "connected_components": 1,
+        "blade_highlight_pixels": 15,
+        "rgba_sha256": "404d43f55b0ee9aa961a72f061543311f05ebfde039cde541c59f232cf9ba15f"
+      }
+    ]
+  },
+  "nearest_neighbor_contract": {
+    "project_default_texture_filter": 0,
+    "atlas_filter_clip": true,
+    "mipmaps": false,
+    "import_uid": "uid://cir5jg41q8dif"
+  },
+  "shader_contract": {
+    "shader_sha256": "10454b4a7db41abf7ec5881a4f516f919868df1bbf1b395cc86346edc4de05f6",
+    "instance_uniforms": [
+      "ninja_afterimage_strength",
+      "ninja_afterimage_direction"
+    ],
+    "sample_offsets": [
+      0.45,
+      0.9,
+      1.35
+    ],
+    "sample_alpha_near_middle_far": [
+      0.48,
+      0.34,
+      0.22
+    ],
+    "sample_rgb": "original texture RGB",
+    "body_tint": false,
+    "body_scan": false,
+    "dash_block_sha256": "582818eeb5d43e880f90942b696184ddfcc9295d7f51582ec3ebf19614c9bc58"
+  }
+}

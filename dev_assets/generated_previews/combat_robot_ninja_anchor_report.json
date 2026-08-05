@@ -1,0 +1,338 @@
+{
+  "asset": "combat_robot_ninja_anchor_candidates",
+  "stage": "first_human_review_gate",
+  "runtime_written": false,
+  "construction": {
+    "identity_source": "dev_assets/source_images/combat_robot_drone_operator/combat_robot_drone_operator_anchor_c_approved_native32.png",
+    "identity_source_sha256": "30af60b309a8adb247b4a7d3ec0cb8cde3046e2ebe2bf30cac08758d209d5a11",
+    "immutable_identity_pixels": 182,
+    "identity_offset": [
+      4,
+      4
+    ],
+    "imagegen_source_pixels_imported": false,
+    "native_identity_resized": false,
+    "palette": [
+      [
+        21,
+        22,
+        19,
+        255
+      ],
+      [
+        29,
+        28,
+        30,
+        255
+      ],
+      [
+        55,
+        59,
+        63,
+        255
+      ],
+      [
+        82,
+        88,
+        94,
+        255
+      ],
+      [
+        112,
+        121,
+        128,
+        255
+      ],
+      [
+        151,
+        159,
+        164,
+        255
+      ],
+      [
+        190,
+        196,
+        198,
+        255
+      ],
+      [
+        226,
+        229,
+        226,
+        255
+      ],
+      [
+        102,
+        25,
+        20,
+        255
+      ],
+      [
+        190,
+        48,
+        31,
+        255
+      ],
+      [
+        239,
+        92,
+        34,
+        255
+      ],
+      [
+        255,
+        181,
+        71,
+        255
+      ]
+    ],
+    "binary_alpha": true,
+    "transparent_rgb_zero": true,
+    "canvas": [
+      40,
+      40
+    ],
+    "maximum_visible_bbox": [
+      28,
+      28
+    ],
+    "registered_center_x": 20.0,
+    "baseline_y": 32
+  },
+  "source_grid_analysis": {
+    "a": {
+      "original": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_a_imagegen.png",
+      "original_sha256": "d01c64ee72e48c888597b056760090de9027da5597fe71be3935a69103e72975",
+      "transparent": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_a_transparent.png",
+      "transparent_sha256": "8984ff4382687bedcb65ef42600bf14f44193dfdcabf3d00ecd3502d7d947959",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "subject_bbox": [
+        51,
+        192,
+        1193,
+        1039
+      ],
+      "subject_crop_size": [
+        1142,
+        847
+      ],
+      "grid_cell_width": 1.0,
+      "grid_cell_height": 1.0,
+      "confidence": 0.129,
+      "detection_mode": "native_or_unknown",
+      "unsafe_for_direct_resize": true,
+      "source_pixels_imported": false
+    },
+    "b": {
+      "original": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_b_imagegen.png",
+      "original_sha256": "268e7ced2b8a8bb2ac70504380d8b9fd257614f9ddcf9b7300afaa97b0225589",
+      "transparent": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_b_transparent.png",
+      "transparent_sha256": "08f10d79b1311baab18aff1bc0191281c3bec2ddaa9166ce3a7d1d60a57657c1",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "subject_bbox": [
+        89,
+        309,
+        955,
+        946
+      ],
+      "subject_crop_size": [
+        866,
+        637
+      ],
+      "grid_cell_width": 1.0,
+      "grid_cell_height": 1.0,
+      "confidence": 0.317,
+      "detection_mode": "native_or_unknown",
+      "unsafe_for_direct_resize": true,
+      "source_pixels_imported": false
+    },
+    "c": {
+      "original": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_c_imagegen.png",
+      "original_sha256": "40bcde13214dce84746e9db7c615141a7fef4618f83c6b1fcaf9dfe3fe72bd37",
+      "transparent": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_c_transparent.png",
+      "transparent_sha256": "8a1a4b54456aec82c21172f730c6afa5901b685ea655eedb29fd60bbb9b6b9e7",
+      "source_size": [
+        1254,
+        1254
+      ],
+      "subject_bbox": [
+        37,
+        309,
+        1216,
+        929
+      ],
+      "subject_crop_size": [
+        1179,
+        620
+      ],
+      "grid_cell_width": 1.0,
+      "grid_cell_height": 1.0,
+      "confidence": 0.367,
+      "detection_mode": "native_or_unknown",
+      "unsafe_for_direct_resize": true,
+      "source_pixels_imported": false
+    }
+  },
+  "candidate_audit": {
+    "a": {
+      "label": "A 交叉护持 / opposing diagonals",
+      "native_size": [
+        40,
+        40
+      ],
+      "bbox": [
+        6,
+        8,
+        34,
+        32
+      ],
+      "visible_size": [
+        28,
+        24
+      ],
+      "baseline_y": 32,
+      "registered_torso_center_x": 20.0,
+      "immutable_identity_pixels": 182,
+      "side_armor_pixels": 11,
+      "connected_components": 1,
+      "palette_colors": 11,
+      "blade_point_count": 45,
+      "handle_points": [
+        [
+          11,
+          24
+        ],
+        [
+          10,
+          25
+        ],
+        [
+          27,
+          19
+        ],
+        [
+          28,
+          19
+        ]
+      ],
+      "rgba_sha256": "30a77c1febe34b41d2dc3d23e4734c1ed29f2002f555edfdd0ad663d15a2f42b"
+    },
+    "b": {
+      "label": "B 双反手后掠 / layered reverse grips",
+      "native_size": [
+        40,
+        40
+      ],
+      "bbox": [
+        6,
+        8,
+        27,
+        32
+      ],
+      "visible_size": [
+        21,
+        24
+      ],
+      "baseline_y": 32,
+      "registered_torso_center_x": 20.0,
+      "immutable_identity_pixels": 182,
+      "side_armor_pixels": 11,
+      "connected_components": 1,
+      "palette_colors": 11,
+      "blade_point_count": 33,
+      "handle_points": [
+        [
+          11,
+          18
+        ],
+        [
+          10,
+          18
+        ],
+        [
+          12,
+          25
+        ],
+        [
+          11,
+          26
+        ]
+      ],
+      "rgba_sha256": "aa9a52a10c263186d9bbbc647f1358cc823efc05190dcf1316d00282271a22ce"
+    },
+    "c": {
+      "label": "C 前后平举 / near-horizontal guard",
+      "native_size": [
+        40,
+        40
+      ],
+      "bbox": [
+        6,
+        8,
+        33,
+        32
+      ],
+      "visible_size": [
+        27,
+        24
+      ],
+      "baseline_y": 32,
+      "registered_torso_center_x": 20.0,
+      "immutable_identity_pixels": 182,
+      "side_armor_pixels": 11,
+      "connected_components": 1,
+      "palette_colors": 11,
+      "blade_point_count": 39,
+      "handle_points": [
+        [
+          13,
+          24
+        ],
+        [
+          12,
+          24
+        ],
+        [
+          26,
+          21
+        ],
+        [
+          27,
+          21
+        ]
+      ],
+      "rgba_sha256": "4d9424767d77000a544d59ef60ac50d155eab17d176ef47c5734ff4e51251dd4"
+    }
+  },
+  "outputs": {
+    "a": {
+      "native40": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_a_native40.png",
+      "integer_16x": "dev_assets/generated_previews/combat_robot_ninja_anchor_a_16x.png",
+      "native_sha256": "08a4e399a167a86cc98fcf04b4dceb0108e36d216d627bb918d065525bd4a03b"
+    },
+    "b": {
+      "native40": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_b_native40.png",
+      "integer_16x": "dev_assets/generated_previews/combat_robot_ninja_anchor_b_16x.png",
+      "native_sha256": "155b02bf214bfce6bb18238ec50eb489d6019d71cd45f77575f2ccbda8befd28"
+    },
+    "c": {
+      "native40": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_c_native40.png",
+      "integer_16x": "dev_assets/generated_previews/combat_robot_ninja_anchor_c_16x.png",
+      "native_sha256": "fad3791b332927a109b0592ca8fcd6cfc77e662cb55dfd2ae17f1cb5047c0121"
+    }
+  },
+  "approved_anchor": {
+    "selection": "C",
+    "native40": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_c_approved_native40.png",
+    "integer_16x": "dev_assets/source_images/combat_robot_ninja/combat_robot_ninja_anchor_c_approved_16x.png",
+    "native_sha256": "fad3791b332927a109b0592ca8fcd6cfc77e662cb55dfd2ae17f1cb5047c0121"
+  },
+  "comparison": "dev_assets/generated_previews/combat_robot_ninja_anchor_comparison.png",
+  "manifest": "dev_assets/source_images/combat_robot_ninja/imagegen_prompt_manifest.json"
+}
