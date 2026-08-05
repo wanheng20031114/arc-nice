@@ -341,6 +341,9 @@ func _run() -> void:
 	pathfinder_stub.name = "GridPathfinder"
 	fixture.add_child(pathfinder_stub)
 	fixture.add_child(CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE.instantiate())
+	var drone_motion_system := CombatRobotDroneMotionSystem.new()
+	drone_motion_system.name = "CombatRobotDroneMotionSystem"
+	fixture.add_child(drone_motion_system)
 	fixture.add_child(DAY_NIGHT_SCENE.instantiate())
 	root.add_child(fixture)
 	current_scene = fixture

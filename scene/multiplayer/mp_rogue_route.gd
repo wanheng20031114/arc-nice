@@ -25,6 +25,11 @@ const AVATAR_RECONNECT_POSE_RETENTION_MSEC := 90_000
 const SNAPSHOT_REQUEST_RETRY_BASE_MSEC := 250
 const SNAPSHOT_REQUEST_RETRY_MAX_MSEC := 2_000
 const SNAPSHOT_REQUEST_RETRY_MAX_EXPONENT := 3
+const ROUTE_REPAIR_RATE_PER_SECOND := 0.5
+const ROUTE_REPAIR_RATE_BURST := 2.0
+const ROUTE_ENCOUNTER_COMMAND_RATE_PER_SECOND := 4.0
+const ROUTE_ENCOUNTER_COMMAND_RATE_BURST := 6.0
+const BRIEFING_COVER_BARRIER_TIMEOUT_MSEC := 10_000
 
 var _route: TestRogueRouteP3 = null
 var _net_manager: Node = null
@@ -43,6 +48,7 @@ var _briefing_cover_occurrence_key := ""
 var _briefing_cover_revision := -1
 var _briefing_cover_expected_route_revision := -1
 var _briefing_move_commit_started := false
+var _briefing_cover_deadline_msec := 0
 var _avatar_sync_time_left := 0.0
 var _client_avatar_sequence := 0
 var _host_avatar_snapshot_sequence := 0
@@ -53,6 +59,8 @@ var _accepted_avatar_times_msec: Dictionary = {}
 var _disconnected_avatar_poses: Dictionary = {}
 var _last_avatar_correction_times_msec: Dictionary = {}
 var _last_avatar_correction_sequences: Dictionary = {}
+var _route_repair_request_rate_buckets: Dictionary = {}
+var _route_encounter_command_rate_buckets: Dictionary = {}
 
 
 func _ready() -> void:
@@ -102,6 +110,8 @@ func _physics_process(delta: float) -> void:
 		or _route == null
 	):
 		return
+	if _is_host():
+		_poll_briefing_cover_timeout()
 	if _is_client() and _snapshot_request_pending:
 		_retry_full_snapshot_if_due()
 	if not _route.is_route_ready():
@@ -119,6 +129,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _exit_tree() -> void:
+	_route_repair_request_rate_buckets.clear()
+	_route_encounter_command_rate_buckets.clear()
 	_disconnect_net_manager_signals()
 	_disconnect_route_signals()
 
@@ -365,6 +377,10 @@ func _finish_player_reconnect(
 			_rollback_reconnected_run_state(old_peer_id, new_peer_id)
 		return false
 	if _is_host():
+		_route_repair_request_rate_buckets.erase(old_peer_id)
+		_route_repair_request_rate_buckets.erase(new_peer_id)
+		_route_encounter_command_rate_buckets.erase(old_peer_id)
+		_route_encounter_command_rate_buckets.erase(new_peer_id)
 		_route.host_migrate_encounter_peer(old_peer_id, new_peer_id)
 		if _briefing_cover_expected_peers.has(old_peer_id):
 			_briefing_cover_expected_peers.erase(old_peer_id)
@@ -391,10 +407,10 @@ func _can_migrate_reconnected_player(
 	var old_player := _route.get_player_for_peer(old_peer_id)
 	if old_player != null:
 		return old_player.get_character_id() == character_id
-	_prune_disconnected_avatar_poses()
-	return not (
-		_disconnected_avatar_poses.get(old_peer_id, {}) as Dictionary
-	).is_empty()
+	# The reconnect signal was authenticated by NetManager's Host RPC. A client
+	# that itself rejoined later may never have observed the old avatar, so it
+	# must be allowed to create a placeholder for the new authoritative identity.
+	return PlayerCharacterRegistry.is_valid_character_id(character_id)
 
 
 func _migrate_reconnected_run_state(
@@ -430,6 +446,7 @@ func _migrate_reconnected_run_state(
 		migrated = shared_run_state.remap_multiplayer_peer_state(
 			old_peer_id,
 			new_peer_id,
+			replace_existing_target,
 			replace_existing_target
 		)
 	else:
@@ -488,17 +505,16 @@ func _migrate_reconnected_player(
 	else:
 		_prune_disconnected_avatar_poses()
 		preserved_pose = _disconnected_avatar_poses.get(old_peer_id, {}) as Dictionary
-		if preserved_pose.is_empty():
-			push_warning(
-				"MpRogueRoute: 重连 peer %d 缺少可迁移角色姿态。"
-				% old_peer_id
-			)
-			return false
+		var fallback_position := _get_reconnect_avatar_fallback_position()
 		migrated = _route.add_multiplayer_player(
 			new_peer_id,
 			player_name,
 			character_id,
-			preserved_pose.get("position", Vector2.ZERO) as Vector2
+			(
+				preserved_pose.get("position", fallback_position) as Vector2
+				if not preserved_pose.is_empty()
+				else fallback_position
+			)
 		)
 	if not migrated:
 		return false
@@ -517,7 +533,19 @@ func _migrate_reconnected_player(
 	return true
 
 
+func _get_reconnect_avatar_fallback_position() -> Vector2:
+	if _route == null:
+		return Vector2.ZERO
+	for candidate_peer_id in [_get_host_peer_id(), _get_local_peer_id()]:
+		var candidate := _route.get_player_for_peer(candidate_peer_id)
+		if candidate != null and is_instance_valid(candidate):
+			return _route.clamp_avatar_position(candidate.global_position)
+	return _route.clamp_avatar_position(Vector2.ZERO)
+
+
 func _on_player_left(peer_id: int) -> void:
+	_route_repair_request_rate_buckets.erase(peer_id)
+	_route_encounter_command_rate_buckets.erase(peer_id)
 	if _is_host() and _briefing_cover_expected_peers.has(peer_id):
 		_briefing_cover_expected_peers.erase(peer_id)
 		_briefing_cover_ready_peers.erase(peer_id)
@@ -632,6 +660,10 @@ func _configure_briefing_cover_barrier(snapshot: Dictionary) -> void:
 	for peer_id in _get_remote_player_peer_ids():
 		if _is_peer_send_ready(peer_id):
 			_briefing_cover_expected_peers[peer_id] = true
+	if _is_host() and not _briefing_cover_occurrence_key.is_empty():
+		_briefing_cover_deadline_msec = (
+			Time.get_ticks_msec() + BRIEFING_COVER_BARRIER_TIMEOUT_MSEC
+		)
 
 
 func _reset_briefing_cover_barrier() -> void:
@@ -641,6 +673,23 @@ func _reset_briefing_cover_barrier() -> void:
 	_briefing_cover_revision = -1
 	_briefing_cover_expected_route_revision = -1
 	_briefing_move_commit_started = false
+	_briefing_cover_deadline_msec = 0
+
+
+func _poll_briefing_cover_timeout(now_msec: int = -1) -> bool:
+	var now := Time.get_ticks_msec() if now_msec < 0 else now_msec
+	if (
+		not _is_host()
+		or _briefing_move_commit_started
+		or _briefing_cover_occurrence_key.is_empty()
+		or _briefing_cover_deadline_msec <= 0
+		or now < _briefing_cover_deadline_msec
+	):
+		return false
+	var occurrence_key := _briefing_cover_occurrence_key
+	_briefing_cover_deadline_msec = 0
+	_route.abort_briefing_entry(occurrence_key)
+	return true
 
 
 func _on_local_briefing_cover_completed(
@@ -681,6 +730,7 @@ func _accept_briefing_cover_ready(
 		or _briefing_move_commit_started
 		or peer_id <= 0
 		or not _briefing_cover_expected_peers.has(peer_id)
+		or _briefing_cover_ready_peers.has(peer_id)
 		or occurrence_key != _briefing_cover_occurrence_key
 		or briefing_revision != _briefing_cover_revision
 		or expected_route_revision
@@ -901,6 +951,87 @@ func _reserve_full_snapshot_request(now_msec: int = -1) -> bool:
 	return true
 
 
+func _admit_route_repair_request(peer_id: int) -> bool:
+	return (
+		_is_registered_route_peer(peer_id)
+		and _consume_route_repair_request(peer_id)
+	)
+
+
+func _admit_route_encounter_command(peer_id: int) -> bool:
+	return (
+		_is_registered_route_peer(peer_id)
+		and _consume_peer_rate_token(
+			_route_encounter_command_rate_buckets,
+			peer_id,
+			ROUTE_ENCOUNTER_COMMAND_RATE_PER_SECOND,
+			ROUTE_ENCOUNTER_COMMAND_RATE_BURST
+		)
+	)
+
+
+func _is_registered_route_peer(peer_id: int) -> bool:
+	if _net_manager == null or _get_connection_state() != STATE_IN_GAME:
+		return false
+	var connected_players := _net_manager.get("connected_players") as Dictionary
+	return (
+		peer_id > 0
+		and peer_id != _get_host_peer_id()
+		and connected_players.has(peer_id)
+		and _route != null
+		and _route.get_player_for_peer(peer_id) != null
+		and _is_peer_send_ready(peer_id)
+	)
+
+
+func _consume_route_repair_request(
+	peer_id: int,
+	now_seconds: float = -1.0
+) -> bool:
+	return _consume_peer_rate_token(
+		_route_repair_request_rate_buckets,
+		peer_id,
+		ROUTE_REPAIR_RATE_PER_SECOND,
+		ROUTE_REPAIR_RATE_BURST,
+		now_seconds
+	)
+
+
+func _consume_peer_rate_token(
+	buckets: Dictionary,
+	peer_id: int,
+	rate_per_second: float,
+	burst: float,
+	now_seconds: float = -1.0
+) -> bool:
+	if peer_id <= 0 or rate_per_second <= 0.0 or burst <= 0.0:
+		return false
+	var now := (
+		float(Time.get_ticks_msec()) / 1000.0
+		if now_seconds < 0.0
+		else now_seconds
+	)
+	var bucket := buckets.get(peer_id, {}) as Dictionary
+	if bucket.is_empty():
+		bucket = {
+			"tokens": burst,
+			"last_time": now,
+		}
+		buckets[peer_id] = bucket
+	var tokens := minf(
+		burst,
+		float(bucket.get("tokens", burst))
+		+ maxf(now - float(bucket.get("last_time", now)), 0.0)
+		* rate_per_second
+	)
+	var accepted := tokens >= 1.0
+	if accepted:
+		tokens -= 1.0
+	bucket["tokens"] = tokens
+	bucket["last_time"] = now
+	return accepted
+
+
 func _retry_full_snapshot_if_due() -> void:
 	if Time.get_ticks_msec() >= _snapshot_request_retry_at_msec:
 		_request_full_snapshot()
@@ -1106,13 +1237,13 @@ func net_route_encounter_intro_ack(
 	if not _is_host() or _route == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or sender_id == _get_host_peer_id():
+	if not _admit_route_encounter_command(sender_id):
 		return
 	if not _route.host_submit_encounter_intro_ack(
 		sender_id,
 		occurrence_key,
 		expected_revision
-	):
+	) and _admit_route_repair_request(sender_id):
 		_send_encounter_snapshot_to_peer(sender_id)
 
 
@@ -1125,14 +1256,14 @@ func net_route_encounter_vote(
 	if not _is_host() or _route == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or sender_id == _get_host_peer_id():
+	if not _admit_route_encounter_command(sender_id):
 		return
 	if not _route.host_submit_encounter_vote(
 		sender_id,
 		occurrence_key,
 		expected_revision,
 		option_id
-	):
+	) and _admit_route_repair_request(sender_id):
 		_send_encounter_snapshot_to_peer(sender_id)
 
 
@@ -1144,13 +1275,13 @@ func net_route_encounter_result_ack(
 	if not _is_host() or _route == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or sender_id == _get_host_peer_id():
+	if not _admit_route_encounter_command(sender_id):
 		return
 	if not _route.host_submit_encounter_result_ack(
 		sender_id,
 		occurrence_key,
 		result_sequence
-	):
+	) and _admit_route_repair_request(sender_id):
 		_send_encounter_snapshot_to_peer(sender_id)
 
 
@@ -1460,7 +1591,7 @@ func net_request_route_full_snapshot() -> void:
 	if not _is_host():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or sender_id == _get_host_peer_id():
+	if not _admit_route_repair_request(sender_id):
 		return
 	_send_full_snapshot_to_peer(sender_id)
 
@@ -1589,8 +1720,14 @@ func net_route_briefing_cover_ready(
 ) -> void:
 	if not _is_host():
 		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if (
+		_briefing_cover_ready_peers.has(sender_id)
+		or not _admit_route_encounter_command(sender_id)
+	):
+		return
 	_accept_briefing_cover_ready(
-		multiplayer.get_remote_sender_id(),
+		sender_id,
 		occurrence_key,
 		briefing_revision,
 		expected_route_revision

@@ -1,6 +1,7 @@
 extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const HUD_SCENE := preload("res://scene/plant_defense/plant_selection_hud.tscn")
 const DEFAULT_VIEWPORT := Vector2i(1152, 648)
 const SMALL_VIEWPORT := Vector2i(800, 480)
@@ -15,6 +16,18 @@ const EXPECTED_CATEGORY_COUNTS := {
 }
 
 var failures: Array[String] = []
+
+
+class FakeNetManager:
+	extends Node
+
+	var connected_players := {1: "Host", 2: "Client"}
+
+	func is_host() -> bool:
+		return true
+
+	func get_host_peer_id() -> int:
+		return 1
 
 
 func _init() -> void:
@@ -271,15 +284,57 @@ func _test_host_rejects_free_placement() -> void:
 	)
 	var collectible_pool := LuoxiMerchant.get_collectible_pool()
 	if not collectible_pool.is_empty():
+		var collectible_path := (collectible_pool[0] as PickupConfig).resource_path
 		_expect(
-			not game.grant_debug_collectible(
-				(collectible_pool[0] as PickupConfig).resource_path
-			),
+			not game.grant_debug_collectible(collectible_path),
 			"Formal tower defense must reject direct debug collectible grants."
+		)
+		_test_multiplayer_debug_grant_policy(
+			game,
+			run_state,
+			collectible_path
 		)
 	current_scene = null
 	game.queue_free()
 	await _wait_until_freed(game)
+
+
+func _test_multiplayer_debug_grant_policy(
+	game: GameTowerDefense,
+	run_state: RunStateStore,
+	collectible_path: String
+) -> void:
+	var mp_game := MP_GAME_SCENE.instantiate()
+	var fake_net_manager := FakeNetManager.new()
+	mp_game.set("game", game)
+	mp_game.set("net_manager", fake_net_manager)
+	mp_game.set("run_state", run_state)
+	var inventory_before := run_state.export_inventory_snapshot_for_peer(1)
+	var metrics_before := mp_game.call("get_snapshot_packet_metrics") as Dictionary
+	var channels_before := metrics_before.get("channel_metrics", []) as Array
+	var transaction_packets_before := int(
+		(channels_before[6] as Dictionary).get("packet_count", 0)
+	)
+
+	mp_game.call("request_debug_collectible", collectible_path)
+	mp_game.call("_apply_debug_collectible_for_peer", 1, collectible_path)
+
+	var inventory_after := run_state.export_inventory_snapshot_for_peer(1)
+	var metrics_after := mp_game.call("get_snapshot_packet_metrics") as Dictionary
+	var channels_after := metrics_after.get("channel_metrics", []) as Array
+	var transaction_packets_after := int(
+		(channels_after[6] as Dictionary).get("packet_count", 0)
+	)
+	_expect(
+		inventory_after == inventory_before
+		and transaction_packets_after == transaction_packets_before,
+		(
+			"Formal multiplayer debug grants must neither mutate inventory nor "
+			+ "broadcast a reliable result."
+		)
+	)
+	mp_game.free()
+	fake_net_manager.free()
 
 
 func _find_card(

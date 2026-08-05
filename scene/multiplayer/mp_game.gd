@@ -248,6 +248,8 @@ const SIMPLE_CRAFTING_RESULT_CACHE_SIZE := 32
 const SIMPLE_CRAFTING_WIRE_ID_MAX_LENGTH := 128
 const PLAYER_TRANSACTION_INGRESS_RATE_PER_SECOND := 32.0
 const PLAYER_TRANSACTION_INGRESS_RATE_BURST := 48.0
+const PLAYER_ACTION_INGRESS_RATE_PER_SECOND := 24.0
+const PLAYER_ACTION_INGRESS_RATE_BURST := 32.0
 const INVENTORY_COMMAND_RATE_PER_SECOND := 12.0
 const INVENTORY_COMMAND_RATE_BURST := 20.0
 const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
@@ -408,6 +410,7 @@ var _plant_placement_rate_buckets: Dictionary = {}
 var _client_projectile_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_rate_buckets: Dictionary = {}
 var _player_transaction_ingress_rate_buckets: Dictionary = {}
+var _player_action_ingress_rate_buckets: Dictionary = {}
 var _inventory_command_rate_buckets: Dictionary = {}
 var _luoxi_transaction_rate_buckets: Dictionary = {}
 var _xiaocong_transaction_rate_buckets: Dictionary = {}
@@ -551,6 +554,8 @@ var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
 	_NetConstants.CHANNEL_COUNT
 )
 var _embedded_runtime_active := false
+var _embedded_participant_peer_ids: Dictionary[int, bool] = {}
+var _suspended_embedded_participant_peer_ids: Dictionary[int, bool] = {}
 
 
 func _ready() -> void:
@@ -646,6 +651,7 @@ func _exit_tree() -> void:
 	_warehouse_transaction_result_cache.clear()
 	_production_command_result_cache.clear()
 	_player_transaction_ingress_rate_buckets.clear()
+	_player_action_ingress_rate_buckets.clear()
 	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
 	_xiaocong_transaction_rate_buckets.clear()
@@ -707,6 +713,59 @@ func activate_embedded_runtime() -> bool:
 	game.activate_runtime()
 	if net_manager.is_client():
 		_request_runtime_state_from_host()
+	return true
+
+
+## Freezes the peer roster before an embedded combat runtime enters the tree.
+## Route spectators share the multiplayer session but must never acquire combat
+## players, snapshots, transactions, or settlement state from this MpGame.
+func configure_embedded_participant_roster(
+	peer_ids: PackedInt32Array
+) -> bool:
+	if not embedded_runtime or is_inside_tree() or peer_ids.is_empty():
+		return false
+	var next_roster: Dictionary[int, bool] = {}
+	for peer_id in peer_ids:
+		if peer_id <= 0 or next_roster.has(peer_id):
+			return false
+		next_roster[peer_id] = true
+	_embedded_participant_peer_ids = next_roster
+	return true
+
+
+## Removes one connected peer from the current embedded battle without
+## disconnecting it from the shared route session. This is used only when a
+## late-reconnecting client cannot rebuild its local combat runtime; keeping a
+## Player here would continue snapshots and transactions toward a route-only
+## spectator that can no longer consume them.
+func suspend_embedded_participant_for_current_combat(
+	peer_id: int,
+	previous_peer_id: int = -1
+) -> bool:
+	if not embedded_runtime or peer_id <= 0:
+		return false
+	# MpGame and the route coordinator receive the same reconnect signal. By the
+	# time the coordinator performs a spectator downgrade, this roster may still
+	# contain the old identity or may already have completed old -> new remapping.
+	var roster_peer_id := -1
+	if (
+		previous_peer_id > 0
+		and _embedded_participant_peer_ids.has(previous_peer_id)
+	):
+		roster_peer_id = previous_peer_id
+	elif _embedded_participant_peer_ids.has(peer_id):
+		roster_peer_id = peer_id
+	if roster_peer_id <= 0:
+		return false
+	if roster_peer_id != peer_id:
+		_embedded_participant_peer_ids.erase(roster_peer_id)
+		_embedded_participant_peer_ids[peer_id] = true
+		_suspended_embedded_participant_peer_ids.erase(roster_peer_id)
+		_clear_peer_network_state(roster_peer_id)
+	_suspended_embedded_participant_peer_ids[peer_id] = true
+	_clear_peer_network_state(peer_id)
+	if game != null and game.has_method("remove_multiplayer_player"):
+		game.call("remove_multiplayer_player", peer_id)
 	return true
 
 
@@ -1560,6 +1619,8 @@ func broadcast_collectible_follow_visual_effect(
 
 
 func request_multiplayer_cheat_xirang() -> void:
+	if not OS.is_debug_build():
+		return
 	if net_manager.is_host():
 		_apply_cheat_xirang_for_peer(_get_local_peer_id())
 	else:
@@ -1567,6 +1628,8 @@ func request_multiplayer_cheat_xirang() -> void:
 
 
 func request_debug_collectible(config_path: String) -> void:
+	if game == null or not game.allows_debug_collectible_grants():
+		return
 	if net_manager.is_host():
 		_apply_debug_collectible_for_peer(_get_local_peer_id(), config_path)
 	else:
@@ -1731,11 +1794,12 @@ func _consume_peer_rate_token(
 	buckets: Dictionary,
 	peer_id: int,
 	rate_per_second: float,
-	burst: float
+	burst: float,
+	now_seconds: float = -1.0
 ) -> bool:
 	if peer_id <= 0 or rate_per_second <= 0.0 or burst <= 0.0:
 		return false
-	var now := _get_net_time()
+	var now := _get_net_time() if now_seconds < 0.0 else now_seconds
 	var bucket: Dictionary
 	if buckets.has(peer_id):
 		bucket = buckets[peer_id] as Dictionary
@@ -1762,11 +1826,41 @@ func _consume_remote_transaction_admission(peer_id: int) -> bool:
 	# alternating transaction RPC types to multiply its admitted workload.
 	if peer_id == _get_local_peer_id():
 		return true
+	if _is_embedded_participant_suspended(peer_id):
+		return false
 	return _consume_peer_rate_token(
 		_player_transaction_ingress_rate_buckets,
 		peer_id,
 		PLAYER_TRANSACTION_INGRESS_RATE_PER_SECOND,
 		PLAYER_TRANSACTION_INGRESS_RATE_BURST
+	)
+
+
+func _consume_remote_player_action_admission(
+	peer_id: int,
+	now_seconds: float = -1.0
+) -> bool:
+	if (
+		not net_manager.is_host()
+		or game == null
+		or peer_id <= 0
+		or _is_embedded_participant_suspended(peer_id)
+		or game.get_player_for_peer(peer_id) == null
+	):
+		return false
+	return _consume_peer_rate_token(
+		_player_action_ingress_rate_buckets,
+		peer_id,
+		PLAYER_ACTION_INGRESS_RATE_PER_SECOND,
+		PLAYER_ACTION_INGRESS_RATE_BURST,
+		now_seconds
+	)
+
+
+func _is_embedded_participant_suspended(peer_id: int) -> bool:
+	return (
+		embedded_runtime
+		and _suspended_embedded_participant_peer_ids.has(peer_id)
 	)
 
 
@@ -3042,6 +3136,9 @@ func is_client_view_runtime() -> bool:
 
 
 func _setup_game(mode: int) -> bool:
+	if embedded_runtime and _embedded_participant_peer_ids.is_empty():
+		push_error("MpGame: 内嵌战斗缺少冻结的参战玩家名单。")
+		return false
 	var game_mode := int(net_manager.get("current_game_mode"))
 	var game_scene_path := _get_game_scene_path_for_mode(game_mode)
 	var game_scene := load(game_scene_path) as PackedScene
@@ -3057,11 +3154,20 @@ func _setup_game(mode: int) -> bool:
 	var local_peer_id: int = _get_local_peer_id()
 	if local_peer_id <= 0 and net_manager.is_host():
 		local_peer_id = _get_host_peer_id()
+	if embedded_runtime and not _embedded_participant_peer_ids.has(local_peer_id):
+		push_error("MpGame: 路线观战者不得创建内嵌战斗运行时。")
+		return false
+	var runtime_player_names := _filter_embedded_peer_map(
+		net_manager.connected_players
+	)
+	var runtime_character_ids := _filter_embedded_peer_map(
+		net_manager.call("get_player_character_map") as Dictionary
+	)
 	game.configure_multiplayer(
 		mode,
 		local_peer_id,
-		net_manager.connected_players,
-		net_manager.call("get_player_character_map") as Dictionary
+		runtime_player_names,
+		runtime_character_ids
 	)
 	if net_manager.is_host():
 		game.multiplayer_enemy_spawned.connect(_on_host_enemy_spawned)
@@ -3814,6 +3920,21 @@ func _get_connected_client_peer_ids() -> Array[int]:
 		var peer_id := int(peer_id_variant)
 		if peer_id <= 0 or peer_id == host_peer_id:
 			continue
+		if embedded_runtime and not _embedded_participant_peer_ids.has(peer_id):
+			continue
+		if (
+			embedded_runtime
+			and _suspended_embedded_participant_peer_ids.has(peer_id)
+		):
+			continue
+		if (
+			embedded_runtime
+			and (
+				game == null
+				or game.get_player_for_peer(peer_id) == null
+			)
+		):
+			continue
 		if (
 			net_manager.has_method("is_peer_send_ready")
 			and not bool(net_manager.call("is_peer_send_ready", peer_id))
@@ -3821,6 +3942,16 @@ func _get_connected_client_peer_ids() -> Array[int]:
 			continue
 		result.append(peer_id)
 	return result
+
+
+func _filter_embedded_peer_map(source: Dictionary) -> Dictionary:
+	if not embedded_runtime:
+		return source
+	var filtered: Dictionary = {}
+	for peer_id in _embedded_participant_peer_ids:
+		if source.has(peer_id):
+			filtered[peer_id] = source[peer_id]
+	return filtered
 
 
 # The coordinator first creates this stable RPC path on every participant,
@@ -4676,7 +4807,7 @@ func net_player_dash_requested(
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
+	if not _consume_remote_player_action_admission(sender_id):
 		return
 	var player_node := game.get_player_for_peer(sender_id)
 	_try_accept_client_dash_request(
@@ -4767,7 +4898,7 @@ func net_hoe_primary_attack_requested(direction: Vector2, request_id: int = 0) -
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
+	if not _consume_remote_player_action_admission(sender_id):
 		return
 	_apply_authoritative_hoe_action(sender_id, HOE_ACTION_PRIMARY, direction, request_id)
 
@@ -4777,7 +4908,7 @@ func net_hoe_whirlwind_requested(request_id: int = 0) -> void:
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
+	if not _consume_remote_player_action_admission(sender_id):
 		return
 	_apply_authoritative_hoe_action(sender_id, HOE_ACTION_WHIRLWIND, Vector2.ZERO, request_id)
 
@@ -4882,7 +5013,10 @@ func net_tango_electric_surge_requested(request_id: int) -> void:
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or request_id <= 0:
+	if (
+		not _consume_remote_player_action_admission(sender_id)
+		or request_id <= 0
+	):
 		return
 	_apply_authoritative_tango_electric_surge_request(sender_id, request_id)
 
@@ -5128,7 +5262,10 @@ func net_tango_charge_started_requested(direction: Vector2, request_id: int) -> 
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or request_id <= 0:
+	if (
+		not _consume_remote_player_action_admission(sender_id)
+		or request_id <= 0
+	):
 		return
 	_apply_authoritative_tango_charge_started(sender_id, direction, request_id)
 
@@ -5138,7 +5275,10 @@ func net_tango_charge_released_requested(direction: Vector2, request_id: int) ->
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or request_id <= 0:
+	if (
+		not _consume_remote_player_action_admission(sender_id)
+		or request_id <= 0
+	):
 		return
 	_apply_authoritative_tango_charge_released(sender_id, direction, request_id)
 
@@ -5148,7 +5288,10 @@ func net_tango_charge_cancelled_requested(request_id: int) -> void:
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or request_id <= 0:
+	if (
+		not _consume_remote_player_action_admission(sender_id)
+		or request_id <= 0
+	):
 		return
 	_apply_authoritative_tango_charge_cancelled(sender_id, request_id)
 
@@ -5454,7 +5597,10 @@ func net_tiyi_high_noon_requested(activation_id: int) -> void:
 	if not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or activation_id <= 0:
+	if (
+		not _consume_remote_player_action_admission(sender_id)
+		or activation_id <= 0
+	):
 		return
 	_apply_authoritative_tiyi_high_noon_request(sender_id, activation_id)
 
@@ -6400,7 +6546,11 @@ func _try_accept_client_projectile_request_identity(
 	projectile_id: int,
 	owner_peer_id: int
 ) -> bool:
-	if sender_id <= 0 or owner_peer_id != sender_id:
+	if (
+		sender_id <= 0
+		or owner_peer_id != sender_id
+		or _is_embedded_participant_suspended(sender_id)
+	):
 		return false
 	# Duplicate predicted-shot retries are already known and must not consume the
 	# peer's budget. The origin-lane check is likewise cheaper than validating or
@@ -13444,20 +13594,24 @@ func net_luoxi_special_game_finish_requested(session_revision: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_cheat_xirang_requested() -> void:
-	if not net_manager.is_host():
+	if not net_manager.is_host() or not OS.is_debug_build():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
+	if sender_id <= 0 or not _consume_remote_transaction_admission(sender_id):
 		return
 	_apply_cheat_xirang_for_peer(sender_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_debug_collectible_requested(config_path: String) -> void:
-	if not net_manager.is_host():
+	if (
+		not net_manager.is_host()
+		or game == null
+		or not game.allows_debug_collectible_grants()
+	):
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
+	if sender_id <= 0 or not _consume_remote_transaction_admission(sender_id):
 		return
 	_apply_debug_collectible_for_peer(sender_id, config_path)
 
@@ -14363,7 +14517,7 @@ func _spawn_collectible_follow_visual_effect(
 
 
 func _apply_cheat_xirang_for_peer(peer_id: int) -> void:
-	if game == null:
+	if game == null or not OS.is_debug_build():
 		return
 	var player_node: Player = game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
@@ -14377,12 +14531,14 @@ func _apply_cheat_xirang_for_peer(peer_id: int) -> void:
 
 
 func _apply_debug_collectible_for_peer(peer_id: int, config_path: String) -> void:
-	if game == null or peer_id <= 0:
+	if (
+		game == null
+		or peer_id <= 0
+		or not game.allows_debug_collectible_grants()
+	):
 		return
 	var item := LuoxiMerchant.get_collectible_for_path(config_path)
-	var success := false
-	if item != null and game.allows_debug_collectible_grants():
-		success = run_state.try_add_item_for_peer(peer_id, item)
+	var success := item != null and run_state.try_add_item_for_peer(peer_id, item)
 	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
 	_rpc_to_connected_clients(
 		&"net_debug_collectible_granted",
@@ -14545,6 +14701,8 @@ func _on_connection_state_changed(new_state: int) -> void:
 func _on_net_player_left(peer_id: int) -> void:
 	if peer_id <= 0:
 		return
+	if embedded_runtime and not _embedded_participant_peer_ids.has(peer_id):
+		return
 	_capture_disconnected_player_reconnect_state(peer_id)
 	_clear_peer_network_state(peer_id)
 	if game != null and game.has_method("remove_multiplayer_player"):
@@ -14600,22 +14758,58 @@ func _on_net_player_reconnected(
 	character_id: StringName
 ) -> void:
 	if (
-		game == null
-		or old_peer_id <= 0
+		old_peer_id <= 0
 		or new_peer_id <= 0
 		or old_peer_id == new_peer_id
 	):
 		return
+	if (
+		embedded_runtime
+		and _embedded_participant_peer_ids.has(old_peer_id)
+		and _suspended_embedded_participant_peer_ids.has(old_peer_id)
+	):
+		_embedded_participant_peer_ids.erase(old_peer_id)
+		_embedded_participant_peer_ids[new_peer_id] = true
+		_suspended_embedded_participant_peer_ids.erase(old_peer_id)
+		_suspended_embedded_participant_peer_ids[new_peer_id] = true
+		_clear_peer_network_state(old_peer_id)
+		_clear_peer_network_state(new_peer_id)
+		return
+	if game == null:
+		return
 	var reconnect_state := (
 		_disconnected_player_reconnect_states.get(old_peer_id, {}) as Dictionary
 	)
+	if embedded_runtime:
+		if not _embedded_participant_peer_ids.has(old_peer_id):
+			return
+		# A client that rejoined after this peer disconnected has no local capture.
+		# Restore a remote placeholder; the Host's next new-id player keyframe and
+		# reliable inventory snapshot converge every authoritative field. The Host
+		# must never synthesize missing authority state.
+		if reconnect_state.is_empty() and not net_manager.is_client():
+			push_error(
+				"MpGame: 房主缺少参战玩家 %d 的权威重连状态。"
+				% old_peer_id
+			)
+			return
+	var run_state_was_remapped := false
 	if run_state.has_multiplayer_peer_state(old_peer_id):
-		if not run_state.remap_multiplayer_peer_state(old_peer_id, new_peer_id):
+		var preserve_newer_client_inventory: bool = (
+			embedded_runtime and net_manager.is_client()
+		)
+		if not run_state.remap_multiplayer_peer_state(
+			old_peer_id,
+			new_peer_id,
+			preserve_newer_client_inventory,
+			preserve_newer_client_inventory
+		):
 			push_error(
 				"MpGame: 无法迁移重连玩家 %d -> %d 的背包状态。"
 				% [old_peer_id, new_peer_id]
 			)
 			return
+		run_state_was_remapped = true
 	else:
 		run_state.ensure_multiplayer_peer_state(new_peer_id)
 	var player_state := reconnect_state.get("state") as SnapshotManager.PlayerState
@@ -14631,11 +14825,22 @@ func _on_net_player_reconnected(
 		reconnect_state
 	)
 	if player_node == null or not is_instance_valid(player_node):
+		if run_state_was_remapped:
+			if not run_state.remap_multiplayer_peer_state(new_peer_id, old_peer_id):
+				push_error(
+					"MpGame: 无法回滚重连玩家 %d -> %d 的背包状态。"
+					% [new_peer_id, old_peer_id]
+				)
+		if player_state != null:
+			player_state.peer_id = old_peer_id
 		push_error(
 			"MpGame: 无法恢复重连玩家 %d -> %d 的运行时节点。"
 			% [old_peer_id, new_peer_id]
 		)
 		return
+	if embedded_runtime:
+		_embedded_participant_peer_ids.erase(old_peer_id)
+		_embedded_participant_peer_ids[new_peer_id] = true
 	_player_health_revisions[new_peer_id] = int(
 		reconnect_state.get("health_revision", 0)
 	)
@@ -14771,6 +14976,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_client_projectile_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_rate_buckets.erase(peer_id)
 	_player_transaction_ingress_rate_buckets.erase(peer_id)
+	_player_action_ingress_rate_buckets.erase(peer_id)
 	_inventory_command_rate_buckets.erase(peer_id)
 	_luoxi_transaction_rate_buckets.erase(peer_id)
 	_xiaocong_transaction_rate_buckets.erase(peer_id)

@@ -97,6 +97,16 @@ class ReconnectWrapperStub:
 		pass
 
 
+class BriefingTimeoutRouteStub:
+	extends TestRogueRouteP3
+
+	var aborted_occurrence_key := ""
+
+
+	func abort_briefing_entry(occurrence_key: String) -> void:
+		aborted_occurrence_key = occurrence_key
+
+
 var failures: Array[String] = []
 
 
@@ -106,6 +116,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_mode_and_loading_contract()
+	_test_briefing_cover_timeout_contract()
 	await _test_lobby_contract()
 	await _test_snapshot_and_delta_contract()
 	await _test_briefing_network_contract()
@@ -117,9 +128,10 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 45,
-		"协议 v45 必须保留既有遭遇，并隔离忍者机器人加速表现语义。"
+		NetConstants.PROTOCOL_VERSION == 46,
+		"协议 v46 必须保留既有遭遇与忍者机器人加速表现，并隔离重连激活确认。"
 	)
+
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
 		"P3 轻量角色姿态同步必须保持约 12Hz。"
@@ -167,6 +179,31 @@ func _test_mode_and_loading_contract() -> void:
 		and not bool(coordinator.call("_uses_tower_defense_runtime", ROUTE_SCENE_PATH)),
 		"P3 必须绕过 campaign、背包和塔防运行时，但保留角色场景。"
 	)
+
+
+func _test_briefing_cover_timeout_contract() -> void:
+	var wrapper := ReconnectWrapperStub.new()
+	var route := BriefingTimeoutRouteStub.new()
+	var net_manager := FakeNetManager.new()
+	net_manager.host_role = true
+	wrapper.set("_route", route)
+	wrapper.set("_net_manager", net_manager)
+	wrapper.set("_briefing_cover_occurrence_key", "combat:cover-timeout")
+	wrapper.set("_briefing_cover_deadline_msec", 10_000)
+	_expect(
+		not bool(wrapper.call("_poll_briefing_cover_timeout", 9_999))
+		and route.aborted_occurrence_key.is_empty(),
+		"briefing cover deadline 前不得取消作战进入。"
+	)
+	_expect(
+		bool(wrapper.call("_poll_briefing_cover_timeout", 10_000))
+		and route.aborted_occurrence_key == "combat:cover-timeout"
+		and int(wrapper.get("_briefing_cover_deadline_msec")) == 0,
+		"静默 cover peer 超时后必须取消进入，保留尚未提交的 AP/revision。"
+	)
+	wrapper.free()
+	route.free()
+	net_manager.free()
 
 
 func _test_lobby_contract() -> void:
@@ -256,6 +293,7 @@ func _test_snapshot_and_delta_contract() -> void:
 	var wrapper_script := wrapper.get_script() as Script
 	var rpc_config: Dictionary = wrapper_script.get_rpc_config()
 	for rpc_name in [
+		&"net_request_route_full_snapshot",
 		&"net_route_full_snapshot",
 		&"net_route_move_delta",
 		&"net_route_briefing_state",
@@ -328,6 +366,38 @@ func _test_snapshot_and_delta_contract() -> void:
 	wrapper.set("_route", client_route)
 	wrapper.set("_net_manager", fake_net_manager)
 	_expect(
+		bool(wrapper.call("_consume_route_repair_request", 21, 1000.0))
+		and bool(wrapper.call("_consume_route_repair_request", 21, 1000.0))
+		and not bool(wrapper.call("_consume_route_repair_request", 21, 1000.0))
+		and bool(wrapper.call("_consume_route_repair_request", 22, 1000.0))
+		and not bool(wrapper.call("_consume_route_repair_request", 21, 1001.0))
+		and bool(wrapper.call("_consume_route_repair_request", 21, 1002.0)),
+		(
+			"Host route repair admission must allow a two-request burst, refill at "
+			+ "0.5/s, and isolate each peer's budget."
+		)
+	)
+	wrapper.set("_route_repair_request_rate_buckets", {})
+	var encounter_command_buckets := (
+		wrapper.get("_route_encounter_command_rate_buckets") as Dictionary
+	)
+	var command_admission_count := 0
+	for _command_index in 7:
+		if bool(wrapper.call(
+			"_consume_peer_rate_token",
+			encounter_command_buckets,
+			31,
+			4.0,
+			6.0,
+			1000.0
+		)):
+			command_admission_count += 1
+	_expect(
+		command_admission_count == 6,
+		"Encounter commands must admit a six-request burst and reject the seventh."
+	)
+	wrapper.set("_route_encounter_command_rate_buckets", {})
+	_expect(
 		not bool(wrapper.call(
 			"_apply_full_snapshot_from_peer",
 			fake_net_manager.host_peer_id + 1,
@@ -384,6 +454,10 @@ func _test_snapshot_and_delta_contract() -> void:
 		"客户端必须在坏快照后接受 Host 的正确快照并重置退避状态。"
 	)
 	var client_peer_id := fake_net_manager.host_peer_id + 1
+	fake_net_manager.connected_players = {
+		fake_net_manager.host_peer_id: "Host",
+		client_peer_id: "Client",
+	}
 	_expect(
 		client_route.configure_multiplayer_players(
 			client_peer_id,
@@ -403,6 +477,33 @@ func _test_snapshot_and_delta_contract() -> void:
 	var client_host_player := client_route.get_player_for_peer(
 		fake_net_manager.host_peer_id
 	)
+	wrapper.set("_route_repair_request_rate_buckets", {})
+	_expect(
+		bool(wrapper.call("_admit_route_repair_request", client_peer_id))
+		and bool(wrapper.call("_admit_route_repair_request", client_peer_id))
+		and not bool(wrapper.call("_admit_route_repair_request", client_peer_id))
+		and not bool(wrapper.call(
+			"_admit_route_repair_request",
+			client_peer_id + 100
+		))
+		and not (
+			wrapper.get("_route_repair_request_rate_buckets") as Dictionary
+		).has(client_peer_id + 100),
+		(
+			"Repair admission must require an in-game connected route Player, share "
+			+ "one budget, and avoid allocating buckets for outsiders."
+		)
+	)
+	wrapper.set("_route_repair_request_rate_buckets", {})
+	fake_net_manager.connection_state = NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY
+	_expect(
+		not bool(wrapper.call("_admit_route_repair_request", client_peer_id))
+		and not (
+			wrapper.get("_route_repair_request_rate_buckets") as Dictionary
+		).has(client_peer_id),
+		"Route repair admission must close outside the IN_GAME state."
+	)
+	fake_net_manager.connection_state = NetManagerStore.ConnectionState.IN_GAME
 	var client_camera := client_route.get("map_camera") as Camera2D
 	if (
 		client_local_player != null
@@ -522,6 +623,16 @@ func _test_snapshot_and_delta_contract() -> void:
 		wrapper,
 		fake_net_manager,
 		layout
+	)
+	wrapper.call("_on_player_left", client_peer_id)
+	_expect(
+		not (
+			wrapper.get("_route_repair_request_rate_buckets") as Dictionary
+		).has(client_peer_id)
+		and not (
+			wrapper.get("_route_encounter_command_rate_buckets") as Dictionary
+		).has(client_peer_id),
+		"Disconnect cleanup must erase both route request budgets."
 	)
 
 	# 重连背包迁移必须在单一运行时中验证；同进程客户端夹具持有相同 peer
@@ -783,7 +894,7 @@ func _test_briefing_network_contract() -> void:
 			briefing_revision,
 			expected_route_revision
 		))
-		and bool(wrapper.call(
+		and not bool(wrapper.call(
 			"_accept_briefing_cover_ready",
 			client_peer_id,
 			occurrence_key,
@@ -794,7 +905,7 @@ func _test_briefing_network_contract() -> void:
 		== route_revision_before
 		and (wrapper.get("_briefing_cover_ready_peers") as Dictionary).size()
 		== 1,
-		"客户端重复 cover-ready 必须幂等，Host 未 ready 前不得提交路线。"
+		"客户端重复 cover-ready 必须幂等早退，Host 未 ready 前不得提交路线。"
 	)
 	_expect(
 		bool(wrapper.call(
@@ -1724,11 +1835,16 @@ func _test_incremental_avatar_reconnect(
 			collision_peer_id,
 			PLANK,
 			2
+		)
+		and shared_run_state.try_add_item_count_for_peer(
+			collision_peer_id,
+			PLANK,
+			2
 		),
-		"客户端冲突夹具必须预建 new peer 背包。"
+		"客户端冲突夹具必须预建 revision 更新的 Host new-peer 背包。"
 	)
-	var source_revision := (
-		shared_run_state.get_inventory_revision_for_peer(replacement_peer_id)
+	var target_revision := (
+		shared_run_state.get_inventory_revision_for_peer(collision_peer_id)
 	)
 	fake_net_manager.host_role = false
 	_expect(
@@ -1744,14 +1860,86 @@ func _test_incremental_avatar_reconnect(
 		and shared_run_state.get_inventory_item_total_for_peer(
 			collision_peer_id,
 			PLANK
-		) == 3
+		) == 4
 		and shared_run_state.get_inventory_revision_for_peer(collision_peer_id)
-		== source_revision
+		== target_revision
 		and shared_run_state.active_multiplayer_peer_id == collision_peer_id
-		and shared_run_state.get_party_item_total(PLANK) == 3
+		and shared_run_state.get_party_item_total(PLANK) == 4
 		and shared_run_state.has_party_item(PLANK),
-		"既有客户端必须用 old peer 状态替换预建 new peer，且默认全队统计不得双计。"
+		(
+			"CH6 先到时必须保留 revision 更新的 Host new-peer 背包，同时迁移"
+			+ " old peer 身份且不得双计。"
+		)
 	)
+	var newer_old_peer_id := collision_peer_id + 10
+	var older_target_peer_id := collision_peer_id + 11
+	shared_run_state.ensure_multiplayer_peer_state(newer_old_peer_id)
+	shared_run_state.ensure_multiplayer_peer_state(older_target_peer_id)
+	_expect(
+		shared_run_state.try_add_item_count_for_peer(
+			newer_old_peer_id,
+			PLANK,
+			3
+		)
+		and shared_run_state.try_add_item_count_for_peer(
+			newer_old_peer_id,
+			PLANK,
+			3
+		)
+		and shared_run_state.try_add_item_count_for_peer(
+			older_target_peer_id,
+			PLANK,
+			1
+		)
+		and shared_run_state.remap_multiplayer_peer_state(
+			newer_old_peer_id,
+			older_target_peer_id,
+			true,
+			true
+		)
+		and not shared_run_state.has_multiplayer_peer_state(newer_old_peer_id)
+		and shared_run_state.get_inventory_item_total_for_peer(
+			older_target_peer_id,
+			PLANK
+		) == 6,
+		"new-id 背包 revision 较旧时，原子重连必须保留 old 的更新内容。"
+	)
+	shared_run_state.prune_multiplayer_peer_states(PackedInt32Array([
+		fake_net_manager.host_peer_id,
+		observer_peer_id,
+		collision_peer_id,
+	]))
+	var unseen_old_peer_id := collision_peer_id + 20
+	var unseen_new_peer_id := collision_peer_id + 21
+	fake_net_manager.connected_players[unseen_new_peer_id] = "LateReconnect"
+	fake_net_manager.connected_player_characters[unseen_new_peer_id] = (
+		PlayerCharacterRegistry.WEISHIDAIER_ID
+	)
+	var host_anchor := host_route.get_player_for_peer(fake_net_manager.host_peer_id)
+	var host_anchor_position := (
+		host_anchor.global_position if host_anchor != null else Vector2.ZERO
+	)
+	_expect(
+		bool(reconnect_wrapper.call(
+			"_finish_player_reconnect",
+			unseen_old_peer_id,
+			unseen_new_peer_id,
+			"LateReconnect",
+			PlayerCharacterRegistry.WEISHIDAIER_ID
+		))
+		and host_route.get_player_for_peer(unseen_new_peer_id) != null
+		and host_route.get_player_for_peer(unseen_new_peer_id).global_position
+			.is_equal_approx(host_route.clamp_avatar_position(host_anchor_position))
+		and observer_player.global_position.is_equal_approx(observer_position),
+		(
+			"后加入客户端即使从未见过 old avatar，也必须为可信重连创建安全"
+			+ "占位且不移动其他玩家。"
+		)
+	)
+	reconnect_wrapper.call("_on_player_left", unseen_new_peer_id)
+	await process_frame
+	fake_net_manager.connected_players.erase(unseen_new_peer_id)
+	fake_net_manager.connected_player_characters.erase(unseen_new_peer_id)
 	var reconnecting_client_old_peer_id := collision_peer_id + 100
 	shared_run_state.ensure_multiplayer_peer_state(
 		reconnecting_client_old_peer_id
@@ -1788,11 +1976,11 @@ func _test_incremental_avatar_reconnect(
 		and shared_run_state.get_inventory_item_total_for_peer(
 			collision_peer_id,
 			PLANK
-		) == 3
+		) == 4
 		and shared_run_state.get_inventory_revision_for_peer(collision_peer_id)
-		== source_revision
+		== target_revision
 		and shared_run_state.active_multiplayer_peer_id == collision_peer_id
-		and shared_run_state.get_party_item_total(PLANK) == 3,
+		and shared_run_state.get_party_item_total(PLANK) == 4,
 		"未收到 old→new 通知的重连者本人必须在首次 Host 全量后清除旧键且不重复统计。"
 	)
 	reconnect_wrapper.queue_free()

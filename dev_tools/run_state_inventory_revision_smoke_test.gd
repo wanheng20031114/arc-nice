@@ -86,15 +86,14 @@ func _test_peer_slot_state_and_snapshot(run_state: RunStateStore) -> void:
 		"Peer旧快照不得回滚较新的背包状态。"
 	)
 	_expect(
-		run_state.apply_inventory_snapshot_for_peer(PEER_ID, initial_snapshot, true),
-		"Host明确标记revision冲突时，权威完整快照必须能够回退并修复客户端漂移。"
+		not run_state.apply_inventory_snapshot_for_peer(PEER_ID, initial_snapshot, true),
+		"即使Host明确标记强制修复，旧revision也不得越过跨信道栅栏回退新状态。"
 	)
 	_expect(
-		run_state.get_item_count_for_peer(PEER_ID, 0) == 10
-		and run_state.get_inventory_revision_for_peer(PEER_ID) == 1,
-		"强制状态修复后Peer物品数量与Host revision必须精确一致。"
+		run_state.get_item_count_for_peer(PEER_ID, 0) == 0
+		and run_state.get_inventory_revision_for_peer(PEER_ID) == 2,
+		"迟到的强制修复不得抹掉较新的Peer物品状态或降低revision。"
 	)
-	_expect(run_state.discard_item_for_peer(PEER_ID, 0), "修复测试后必须重新推进Peer revision。")
 
 	var repaired_state := initial_state.duplicate(true)
 	repaired_state["stack_count"] = 4

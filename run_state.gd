@@ -767,10 +767,15 @@ func has_multiplayer_peer_state(peer_id: int) -> bool:
 	)
 
 
+## Atomically migrates a reconnect identity. When independent reliable channels
+## deliver the Host's new-id inventory before the old->new identity RPC, clients
+## may preserve that equal-or-newer inventory while still migrating the old
+## peer's upgrades and party ledgers. Only one final signal set is published.
 func remap_multiplayer_peer_state(
 	old_peer_id: int,
 	new_peer_id: int,
-	replace_existing_target: bool = false
+	replace_existing_target: bool = false,
+	preserve_newer_target_inventory: bool = false
 ) -> bool:
 	if (
 		old_peer_id <= 0
@@ -783,13 +788,30 @@ func remap_multiplayer_peer_state(
 		)
 	):
 		return false
-	multiplayer_inventories[new_peer_id] = multiplayer_inventories[old_peer_id]
-	multiplayer_inventory_stack_counts[new_peer_id] = (
-		multiplayer_inventory_stack_counts[old_peer_id]
+	var keep_target_inventory := (
+		preserve_newer_target_inventory
+		and has_multiplayer_peer_state(new_peer_id)
+		and get_inventory_revision_for_peer(new_peer_id)
+		>= get_inventory_revision_for_peer(old_peer_id)
 	)
-	multiplayer_inventory_revisions[new_peer_id] = (
-		multiplayer_inventory_revisions[old_peer_id]
+	var remapped_inventory: Array = (
+		multiplayer_inventories[new_peer_id] as Array
+		if keep_target_inventory
+		else multiplayer_inventories[old_peer_id] as Array
 	)
+	var remapped_counts: Array = (
+		multiplayer_inventory_stack_counts[new_peer_id] as Array
+		if keep_target_inventory
+		else multiplayer_inventory_stack_counts[old_peer_id] as Array
+	)
+	var remapped_revision: int = int(
+		multiplayer_inventory_revisions[new_peer_id]
+		if keep_target_inventory
+		else multiplayer_inventory_revisions[old_peer_id]
+	)
+	multiplayer_inventories[new_peer_id] = remapped_inventory
+	multiplayer_inventory_stack_counts[new_peer_id] = remapped_counts
+	multiplayer_inventory_revisions[new_peer_id] = remapped_revision
 	if multiplayer_upgrade_levels.has(old_peer_id):
 		multiplayer_upgrade_levels[new_peer_id] = multiplayer_upgrade_levels[old_peer_id]
 	if party_xirang_balances.has(old_peer_id):
@@ -923,10 +945,18 @@ func prepare_inventory_snapshot_for_peer(
 		return {}
 	ensure_multiplayer_peer_state(peer_id)
 	var current_revision := get_inventory_revision_for_peer(peer_id)
+	# Inventory revisions are a monotonic cross-channel fence. A CH0 combat
+	# settlement can legitimately overtake an older CH6 repair response; allowing
+	# that response to rewind the revision would also discard settlement loot.
+	# Keep the compatibility flag for callers that request an authoritative repair,
+	# but never let it authorize an older wire revision over newer local state.
+	var snapshot_revision := int(snapshot.get("revision", -1))
+	if snapshot_revision < current_revision:
+		return {}
 	var decoded := _decode_inventory_snapshot(
 		snapshot,
 		peer_id,
-		-1 if allow_revision_rewind else current_revision
+		current_revision
 	)
 	if decoded.is_empty():
 		return {}
@@ -1558,6 +1588,44 @@ func set_party_xirang_balance(
 	if int(party_xirang_balances.get(peer_id, 0)) == clamped_amount:
 		return true
 	party_xirang_balances[peer_id] = clamped_amount
+	party_xirang_ledger_revision += 1
+	if emit_change_signal:
+		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
+	return true
+
+
+## Applies one authoritative combat settlement as a single ledger revision and
+## signal, so route listeners can never observe a half-updated multiplayer map.
+func set_party_xirang_balances(
+	balances: Dictionary,
+	emit_change_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	if balances.is_empty():
+		return false
+	var normalized: Dictionary[int, int] = {}
+	for peer_id_variant in balances.keys():
+		if typeof(peer_id_variant) != TYPE_INT:
+			return false
+		var peer_id := int(peer_id_variant)
+		if (
+			peer_id < 0
+			or normalized.has(peer_id)
+			or typeof(balances[peer_id_variant]) != TYPE_INT
+			or int(balances[peer_id_variant]) < 0
+			or (peer_id > 0 and not has_multiplayer_peer_state(peer_id))
+		):
+			return false
+		normalized[peer_id] = int(balances[peer_id_variant])
+	var changed := false
+	for peer_id in normalized:
+		var amount: int = normalized[peer_id]
+		if int(party_xirang_balances.get(peer_id, 0)) == amount:
+			continue
+		party_xirang_balances[peer_id] = amount
+		changed = true
+	if not changed:
+		return true
 	party_xirang_ledger_revision += 1
 	if emit_change_signal:
 		party_xirang_ledger_changed.emit(export_party_xirang_ledger())

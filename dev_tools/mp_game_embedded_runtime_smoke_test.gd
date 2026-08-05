@@ -17,6 +17,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_static_embedded_runtime_contract()
+	_test_embedded_participant_roster_contract()
 	await _test_embedded_runtime_lifecycle()
 	await _cleanup()
 	_finish()
@@ -98,6 +99,86 @@ func _test_static_embedded_runtime_contract() -> void:
 	)
 
 
+func _test_embedded_participant_roster_contract() -> void:
+	var contract := MP_GAME_SCENE.instantiate()
+	contract.set("embedded_runtime", true)
+	_expect(
+		bool(contract.call(
+			"configure_embedded_participant_roster",
+			PackedInt32Array([1, 2])
+		)),
+		"Embedded MpGame must accept one valid frozen roster before entering the tree."
+	)
+	var filtered := contract.call(
+		"_filter_embedded_peer_map",
+		{1: "Host", 2: "Participant", 3: "RouteSpectator"}
+	) as Dictionary
+	_expect(
+		filtered == {1: "Host", 2: "Participant"},
+		"Embedded runtime setup must exclude every connected route spectator."
+	)
+	_expect(
+		not bool(contract.call(
+			"configure_embedded_participant_roster",
+			PackedInt32Array([1, 1])
+		))
+		and (contract.get("_embedded_participant_peer_ids") as Dictionary)
+			== {1: true, 2: true},
+		"An invalid replacement roster must be rejected without corrupting the frozen roster."
+	)
+	_expect(
+		bool(contract.call(
+			"suspend_embedded_participant_for_current_combat",
+			2
+		))
+		and (contract.get("_embedded_participant_peer_ids") as Dictionary)
+			== {1: true, 2: true}
+		and (contract.get(
+			"_suspended_embedded_participant_peer_ids"
+		) as Dictionary) == {2: true}
+		and not bool(contract.call(
+			"_consume_remote_transaction_admission",
+			2
+		)),
+		(
+			"A combat-only spectator downgrade must preserve the frozen identity "
+			+ "while rejecting subsequent transaction ingress."
+		)
+	)
+	contract.call(
+		"_on_net_player_reconnected",
+		2,
+		4,
+		"ParticipantReconnectedAgain",
+		&"weishidaier"
+	)
+	_expect(
+		(contract.get("_embedded_participant_peer_ids") as Dictionary)
+			== {1: true, 4: true}
+		and (contract.get(
+			"_suspended_embedded_participant_peer_ids"
+		) as Dictionary) == {4: true},
+		"A suspended participant's canonical identity must follow another reconnect."
+	)
+	_expect(
+		bool(contract.call(
+			"suspend_embedded_participant_for_current_combat",
+			4,
+			2
+		))
+		and (contract.get("_embedded_participant_peer_ids") as Dictionary)
+			== {1: true, 4: true}
+		and (contract.get(
+			"_suspended_embedded_participant_peer_ids"
+		) as Dictionary) == {4: true},
+		(
+			"Spectator downgrade must also succeed when MpGame has already "
+			+ "remapped the old identity before the coordinator callback runs."
+		)
+	)
+	contract.free()
+
+
 func _test_embedded_runtime_lifecycle() -> void:
 	net_manager = root.get_node_or_null("NetManager") as NetManagerStore
 	_expect(net_manager != null, "NetManager autoload must exist for embedded runtime coverage.")
@@ -133,6 +214,13 @@ func _test_embedded_runtime_lifecycle() -> void:
 	mp_game = MP_GAME_SCENE.instantiate()
 	mp_game.set("embedded_runtime", true)
 	mp_game.set("runtime_scene_path_override", OVERRIDE_RUNTIME_SCENE_PATH)
+	_expect(
+		bool(mp_game.call(
+			"configure_embedded_participant_roster",
+			PackedInt32Array([net_manager.get_local_peer_id()])
+		)),
+		"The embedded lifecycle fixture must freeze its Host-only participant roster."
+	)
 	_expect(
 		not bool(mp_game.call("activate_embedded_runtime")),
 		"An embedded MpGame without a prepared child runtime must refuse activation."

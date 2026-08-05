@@ -111,6 +111,7 @@ var is_starting_game: bool = false
 var pending_public_request: PublicRequest = PublicRequest.NONE
 var current_public_room_id: String = ""
 var current_public_host_token: String = ""
+var current_public_member_token: String = ""
 var current_public_room_name: String = ""
 var current_public_is_host: bool = false
 var current_public_room_game_mode: NetManagerStore.GameMode = NetManagerStore.GameMode.STANDARD
@@ -805,14 +806,22 @@ func _begin_public_host_room(data: Dictionary) -> void:
 	var relay_port := int(data.get("relay_port", 0))
 	var room_id := _get_public_room_id(data)
 	var host_token := str(data.get("host_token", ""))
+	var member_token := str(data.get("member_token", ""))
 
 	current_public_room_id = room_id
 	current_public_host_token = host_token
+	current_public_member_token = member_token
 	current_public_room_name = str(data.get("name", "公网房间"))
 	current_public_is_host = true
 	relay_host_ready_sent = false
 
-	if relay_ip.is_empty() or relay_port <= 0 or room_id.is_empty() or host_token.is_empty():
+	if (
+		relay_ip.is_empty()
+		or relay_port <= 0
+		or room_id.is_empty()
+		or host_token.is_empty()
+		or member_token.is_empty()
+	):
 		_cleanup_failed_public_membership("创建公网房间失败：Relay 信息不完整")
 		return
 	if not _apply_room_game_mode(data, true):
@@ -838,14 +847,22 @@ func _begin_public_client_room(data: Dictionary) -> void:
 	var relay_port := int(data.get("relay_port", 0))
 	var host_peer_id := int(data.get("host_peer_id", 0))
 	var room_id := _get_public_room_id(data)
+	var member_token := str(data.get("member_token", ""))
 
 	current_public_room_id = room_id
 	current_public_host_token = ""
+	current_public_member_token = member_token
 	current_public_room_name = str(data.get("name", "公网房间"))
 	current_public_is_host = false
 	relay_host_ready_sent = false
 
-	if relay_ip.is_empty() or relay_port <= 0 or host_peer_id <= 0 or room_id.is_empty():
+	if (
+		relay_ip.is_empty()
+		or relay_port <= 0
+		or host_peer_id <= 0
+		or room_id.is_empty()
+		or member_token.is_empty()
+	):
 		_cleanup_failed_public_membership("加入公网房间失败：Relay 信息不完整")
 		return
 	if not _apply_room_game_mode(data, false):
@@ -1128,23 +1145,27 @@ func _on_leave_room() -> void:
 	var was_public := not current_public_room_id.is_empty()
 	var room_id := current_public_room_id
 	var host_token := current_public_host_token
+	var member_token := current_public_member_token
 	var player_name: String = str(net_manager.local_player_name)
 	var was_host := current_public_is_host
 	net_manager.disconnect_from_game()
 	if was_public and not room_id.is_empty():
-		if was_host and not host_token.is_empty():
+		if not member_token.is_empty():
+			_send_public_request(
+				PublicRequest.LEAVE_ROOM,
+				"/rooms/%s/leave" % room_id,
+				HTTPClient.METHOD_POST,
+				{
+					"player_name": player_name,
+					"member_token": member_token,
+				}
+			)
+		elif was_host and not host_token.is_empty():
 			_send_public_request(
 				PublicRequest.DESTROY_ROOM,
 				"/rooms/%s" % room_id,
 				HTTPClient.METHOD_DELETE,
 				{"host_token": host_token}
-			)
-		else:
-			_send_public_request(
-				PublicRequest.LEAVE_ROOM,
-				"/rooms/%s/leave" % room_id,
-				HTTPClient.METHOD_POST,
-				{"player_name": player_name}
 			)
 	_clear_public_room_state()
 	if was_public:
@@ -1167,13 +1188,18 @@ func _cleanup_failed_public_membership(message: String) -> void:
 			browser_status_label.text = message
 		return
 
-	if current_public_is_host:
-		if current_public_host_token.is_empty():
-			_clear_public_room_state()
-			if current_view != LobbyView.USERNAME_INPUT:
-				_show_view(LobbyView.PUBLIC_BROWSER)
-				browser_status_label.text = "%s；响应缺少房主令牌，无法自动释放目录房间。" % message
-			return
+	if (
+		current_public_member_token.is_empty()
+		and (
+			not current_public_is_host
+			or current_public_host_token.is_empty()
+		)
+	):
+		_clear_public_room_state()
+		if current_view != LobbyView.USERNAME_INPUT:
+			_show_view(LobbyView.PUBLIC_BROWSER)
+			browser_status_label.text = "%s；响应缺少成员令牌，无法自动释放目录房间。" % message
+		return
 
 	public_cleanup_in_progress = true
 	public_cleanup_pending_dispatch = true
@@ -1193,8 +1219,11 @@ func _dispatch_failed_public_membership_cleanup() -> void:
 	public_cleanup_pending_dispatch = false
 	var cleanup_action := PublicRequest.LEAVE_ROOM
 	var cleanup_path := "/rooms/%s/leave" % current_public_room_id
-	var cleanup_body := {"player_name": str(net_manager.local_player_name)}
-	if current_public_is_host:
+	var cleanup_body := {
+		"player_name": str(net_manager.local_player_name),
+		"member_token": current_public_member_token,
+	}
+	if current_public_member_token.is_empty() and current_public_is_host:
 		cleanup_action = PublicRequest.DESTROY_ROOM
 		cleanup_path = "/rooms/%s" % current_public_room_id
 		cleanup_body = {"host_token": current_public_host_token}
@@ -1218,6 +1247,7 @@ func _on_back_to_main_menu() -> void:
 func _clear_public_room_state() -> void:
 	current_public_room_id = ""
 	current_public_host_token = ""
+	current_public_member_token = ""
 	current_public_room_name = ""
 	current_public_is_host = false
 	current_public_room_game_mode = NetManagerStore.GameMode.STANDARD

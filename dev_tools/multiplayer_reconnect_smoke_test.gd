@@ -1,6 +1,8 @@
 extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
+const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const WOOD_MATERIAL: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
 )
@@ -9,6 +11,9 @@ const HOST_PEER_ID := 101
 const OLD_PEER_ID := 202
 const NEW_PEER_ID := 303
 const RESTORED_POSITION := Vector2(384.0, 256.0)
+const CLIENT_LOCAL_PEER_ID := 404
+const UNSEEN_OLD_PEER_ID := 505
+const UNSEEN_NEW_PEER_ID := 606
 
 
 class HostNetManagerStub:
@@ -18,7 +23,19 @@ class HostNetManagerStub:
 		return true
 
 
+class ClientNetManagerStub:
+	extends Node
+
+	func is_host() -> bool:
+		return false
+
+	func is_client() -> bool:
+		return true
+
+
 var failures: Array[String] = []
+var reconnect_deadline_events: Array[PackedInt32Array] = []
+var lobby_registration_events: Array[int] = []
 
 
 func _init() -> void:
@@ -27,7 +44,10 @@ func _init() -> void:
 
 func _run() -> void:
 	await _test_reconnect_token_contract()
+	_test_late_loaded_report_cannot_revive_timed_out_reconnect()
+	_test_lobby_ingress_is_bounded_and_idempotent()
 	await _test_authoritative_player_state_remap()
+	await _test_embedded_client_restores_unseen_participant()
 	await _cleanup_root()
 	if failures.is_empty():
 		print("MULTIPLAYER_RECONNECT_SMOKE_TEST_OK")
@@ -60,6 +80,147 @@ func _test_reconnect_token_contract() -> void:
 	)
 	net_manager.queue_free()
 	await process_frame
+
+
+func _test_late_loaded_report_cannot_revive_timed_out_reconnect() -> void:
+	var net_manager := NetManagerStore.new()
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	net_manager.connection_state = NetManagerStore.ConnectionState.IN_GAME
+	net_manager.loading_session_id = 73
+	net_manager.connected_players[NEW_PEER_ID] = "Reconnect"
+	net_manager.connected_player_characters[NEW_PEER_ID] = &"weishidaier"
+	net_manager.confirmed_character_peers[NEW_PEER_ID] = true
+	net_manager._peer_reconnect_tokens[NEW_PEER_ID] = (
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+	net_manager._pending_reconnect_loads[NEW_PEER_ID] = {
+		"old_peer_id": OLD_PEER_ID,
+		"token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		"deadline_msec": 10_000,
+	}
+	reconnect_deadline_events.clear()
+	net_manager.player_reconnected.connect(
+		_on_deadline_fixture_player_reconnected
+	)
+
+	var eligible_before_deadline := bool(
+		net_manager._can_complete_pending_reconnect_load(
+			NEW_PEER_ID,
+			73,
+			9_999
+		)
+	)
+	net_manager._poll_reconnect_deadlines(10_000)
+	var pending := (
+		net_manager._pending_reconnect_loads[NEW_PEER_ID] as Dictionary
+	)
+	net_manager._handle_report_game_loaded(NEW_PEER_ID, 73, 10_001)
+	_expect(
+		eligible_before_deadline
+		and bool(pending.get("timed_out", false))
+		and not net_manager._can_complete_pending_reconnect_load(
+			NEW_PEER_ID,
+			73,
+			10_001
+		)
+		and net_manager._pending_reconnect_loads.has(NEW_PEER_ID)
+		and reconnect_deadline_events.is_empty(),
+		(
+			"A reconnect load report arriving after its deadline must remain rejected "
+			+ "without emitting player_reconnected, while preserving the old identity "
+			+ "record for disconnect cleanup."
+		)
+	)
+	net_manager.player_reconnected.disconnect(
+		_on_deadline_fixture_player_reconnected
+	)
+	net_manager.free()
+
+
+func _on_deadline_fixture_player_reconnected(
+	old_peer_id: int,
+	new_peer_id: int,
+	_player_name: String,
+	_character_id: StringName
+) -> void:
+	reconnect_deadline_events.append(
+		PackedInt32Array([old_peer_id, new_peer_id])
+	)
+
+
+func _test_lobby_ingress_is_bounded_and_idempotent() -> void:
+	var net_manager := NetManagerStore.new()
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	net_manager.connection_state = NetManagerStore.ConnectionState.HOSTING_LAN
+	lobby_registration_events.clear()
+	net_manager.player_joined.connect(_on_lobby_fixture_player_joined)
+	var reconnect_token := "cccccccccccccccccccccccccccccccc"
+	var registered := net_manager._handle_player_registration(
+		OLD_PEER_ID,
+		"Remote",
+		"weishidaier",
+		true,
+		NET_CONSTANTS.PROTOCOL_VERSION,
+		reconnect_token
+	)
+	var replayed := net_manager._handle_player_registration(
+		OLD_PEER_ID,
+		"MutatedName",
+		"hoe_cat",
+		false,
+		NET_CONSTANTS.PROTOCOL_VERSION,
+		"dddddddddddddddddddddddddddddddd"
+	)
+	var character_changed := net_manager._handle_player_character_request(
+		OLD_PEER_ID,
+		"hoe_cat",
+		true
+	)
+	var no_op_character_replay := net_manager._handle_player_character_request(
+		OLD_PEER_ID,
+		"hoe_cat",
+		true
+	)
+
+	var rate_peer_id := 707
+	var admitted_at_once := 0
+	for _attempt in range(int(NetManagerStore.LOBBY_COMMAND_RATE_BURST) + 1):
+		if net_manager._consume_lobby_command_admission(rate_peer_id, 100.0):
+			admitted_at_once += 1
+	var admitted_after_refill := net_manager._consume_lobby_command_admission(
+		rate_peer_id,
+		101.0
+	)
+	_expect(
+		registered
+		and not replayed
+		and lobby_registration_events == [OLD_PEER_ID]
+		and str(net_manager.connected_players.get(OLD_PEER_ID, "")) == "Remote"
+		and str(net_manager._peer_reconnect_tokens.get(OLD_PEER_ID, ""))
+		== reconnect_token
+		and character_changed
+		and not no_op_character_replay
+		and net_manager.get_player_character_id(OLD_PEER_ID)
+		== PlayerCharacterRegistry.HOE_CAT_ID,
+		(
+			"A connected lobby identity must register once, retain its reconnect token, "
+			+ "and broadcast character state only when that state actually changes."
+		)
+	)
+	_expect(
+		admitted_at_once == int(NetManagerStore.LOBBY_COMMAND_RATE_BURST)
+		and admitted_after_refill,
+		(
+			"The shared lobby command bucket must cap one peer's immediate reliable "
+			+ "ingress while refilling for legitimate later input."
+		)
+	)
+	net_manager.player_joined.disconnect(_on_lobby_fixture_player_joined)
+	net_manager.free()
+
+
+func _on_lobby_fixture_player_joined(peer_id: int, _player_name: String) -> void:
+	lobby_registration_events.append(peer_id)
 
 
 func _test_authoritative_player_state_remap() -> void:
@@ -99,12 +260,49 @@ func _test_authoritative_player_state_remap() -> void:
 		run_state.try_add_item_count_for_peer(OLD_PEER_ID, WOOD_MATERIAL, 7),
 		"Reconnect fixture must seed the authoritative peer inventory."
 	)
+	# Route and embedded-combat avatars share the global RunState signal. Keep a
+	# route-like stale listener alive across the combat remap to prove that a
+	# read-side cache refresh cannot recreate the removed old-peer ledger.
+	var stale_route_player := PlayerCharacterRegistry.instantiate_character(
+		PlayerCharacterRegistry.WEISHIDAIER_ID
+	) as Player
+	root.add_child(stale_route_player)
+	await process_frame
+	stale_route_player.configure_multiplayer_control(
+		OLD_PEER_ID,
+		false,
+		"StaleRouteAvatar"
+	)
+	stale_route_player.set_process(false)
+	stale_route_player.set_physics_process(false)
 
-	var mp_game := preload("res://scene/multiplayer/mp_game.gd").new()
+	var mp_game := MP_GAME_SCRIPT.new()
 	var net_stub := HostNetManagerStub.new()
 	mp_game.game = game
 	mp_game.run_state = run_state
 	mp_game.net_manager = net_stub
+	var admitted_actions_at_once := 0
+	for _attempt in range(int(MP_GAME_SCRIPT.PLAYER_ACTION_INGRESS_RATE_BURST) + 1):
+		if mp_game._consume_remote_player_action_admission(
+			OLD_PEER_ID,
+			200.0
+		):
+			admitted_actions_at_once += 1
+	var admitted_action_after_refill := (
+		mp_game._consume_remote_player_action_admission(
+			OLD_PEER_ID,
+			201.0
+		)
+	)
+	_expect(
+		admitted_actions_at_once
+		== int(MP_GAME_SCRIPT.PLAYER_ACTION_INGRESS_RATE_BURST)
+		and admitted_action_after_refill,
+		(
+			"Reliable player actions must share a bounded per-peer ingress budget "
+			+ "without blocking legitimate input after refill."
+		)
+	)
 	var expected_revive_at := float(mp_game.call("_get_net_time")) + 5.0
 	mp_game._dead_player_revive_times[OLD_PEER_ID] = expected_revive_at
 	mp_game._dead_player_revive_last_seconds[OLD_PEER_ID] = 5
@@ -158,6 +356,143 @@ func _test_authoritative_player_state_remap() -> void:
 		),
 		"Reconnect must restore spawn, production, research, and pending respawn state."
 	)
+	mp_game.free()
+	net_stub.free()
+	stale_route_player.queue_free()
+	current_scene = null
+	game.queue_free()
+	for _frame in 4:
+		await process_frame
+		await physics_frame
+
+
+func _test_embedded_client_restores_unseen_participant() -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	game.auto_start_waves = false
+	game.configure_multiplayer(
+		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		CLIENT_LOCAL_PEER_ID,
+		{
+			HOST_PEER_ID: "Host",
+			CLIENT_LOCAL_PEER_ID: "ClientA",
+		},
+		{
+			HOST_PEER_ID: &"weishidaier",
+			CLIENT_LOCAL_PEER_ID: &"weishidaier",
+		}
+	)
+	root.add_child(game)
+	current_scene = game
+	for _frame in 4:
+		await process_frame
+		await physics_frame
+
+	var mp_game := MP_GAME_SCRIPT.new()
+	mp_game.embedded_runtime = true
+	_expect(
+		mp_game.configure_embedded_participant_roster(PackedInt32Array([
+			HOST_PEER_ID,
+			CLIENT_LOCAL_PEER_ID,
+			UNSEEN_OLD_PEER_ID,
+		])),
+		"Client placeholder fixture must freeze the original combat roster."
+	)
+	var net_stub := ClientNetManagerStub.new()
+	mp_game.game = game
+	mp_game.run_state = run_state
+	mp_game.net_manager = net_stub
+	mp_game.call(
+		"_on_net_player_reconnected",
+		UNSEEN_OLD_PEER_ID,
+		UNSEEN_NEW_PEER_ID,
+		"ClientB",
+		&"weishidaier"
+	)
+	var restored := game.get_player_for_peer(UNSEEN_NEW_PEER_ID) as Player
+	_expect(
+		restored != null
+		and not mp_game._embedded_participant_peer_ids.has(UNSEEN_OLD_PEER_ID)
+		and mp_game._embedded_participant_peer_ids.has(UNSEEN_NEW_PEER_ID)
+		and run_state.has_multiplayer_peer_state(UNSEEN_NEW_PEER_ID),
+		(
+			"A rejoined client with no old local capture must create a remote combat "
+			+ "placeholder and remap the frozen roster."
+		)
+	)
+	if restored != null:
+		var authoritative_state := SnapshotManager.PlayerState.new()
+		authoritative_state.peer_id = UNSEEN_NEW_PEER_ID
+		authoritative_state.character_id = &"weishidaier"
+		authoritative_state.position = Vector2(512.0, 288.0)
+		authoritative_state.velocity = Vector2(10.0, -2.0)
+		authoritative_state.current_health = 17
+		authoritative_state.max_health = 120
+		authoritative_state.health_revision = 4
+		authoritative_state.current_xirang = 345
+		authoritative_state.ammo_capacity = 12
+		authoritative_state.current_ammo = 7
+		restored.apply_multiplayer_snapshot_motion(
+			authoritative_state.position,
+			authoritative_state.velocity,
+			authoritative_state.facing,
+			authoritative_state.anim_state
+		)
+		mp_game.call(
+			"_apply_player_realtime_snapshot",
+			restored,
+			authoritative_state
+		)
+		_expect(
+			restored.global_position == authoritative_state.position
+			and restored.current_health == 17
+			and restored.max_health == 120
+			and restored.current_xirang == 345
+			and restored.current_ammo == 7,
+			(
+				"The next Host player keyframe must fully converge the placeholder; "
+				+ "actual pos=%s health=%d/%d xirang=%d ammo=%d."
+			)
+			% [
+				restored.global_position,
+				restored.current_health,
+				restored.max_health,
+				restored.current_xirang,
+				restored.current_ammo,
+			]
+		)
+
+	var authoritative_run_state := RunStateStore.new()
+	authoritative_run_state.begin_new_run(&"weishidaier", false)
+	authoritative_run_state.ensure_multiplayer_peer_state(UNSEEN_NEW_PEER_ID)
+	_expect(
+		authoritative_run_state.try_add_item_count_for_peer(
+			UNSEEN_NEW_PEER_ID,
+			WOOD_MATERIAL,
+			2
+		),
+		"Authoritative inventory fixture must create a new-id snapshot."
+	)
+	var inventory_snapshot := (
+		authoritative_run_state.export_inventory_snapshot_for_peer(
+			UNSEEN_NEW_PEER_ID
+		)
+	)
+	mp_game.call(
+		"net_inventory_snapshot",
+		UNSEEN_NEW_PEER_ID,
+		inventory_snapshot,
+		true
+	)
+	_expect(
+		run_state.get_inventory_item_total_for_peer(
+			UNSEEN_NEW_PEER_ID,
+			WOOD_MATERIAL
+		) == 2,
+		"The reliable Host inventory snapshot must converge the placeholder RunState."
+	)
+	authoritative_run_state.free()
 	mp_game.free()
 	net_stub.free()
 	current_scene = null

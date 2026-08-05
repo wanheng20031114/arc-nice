@@ -517,6 +517,8 @@ func _update_facing(move_direction: Vector2) -> void:
 
 
 func _set_facing_left(new_facing_left: bool) -> void:
+	if facing_left == new_facing_left:
+		return
 	super._set_facing_left(new_facing_left)
 	_sync_shield_facing()
 

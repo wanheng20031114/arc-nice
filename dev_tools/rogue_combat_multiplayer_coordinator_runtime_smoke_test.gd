@@ -12,6 +12,9 @@ const COORDINATOR := preload(
 const ROUTE_SCENE := preload(
 	"res://scene/test_arena/test_rogue_route_p3.tscn"
 )
+const WOOD_MATERIAL: PickupConfig = preload(
+	"res://resources/config/materials/material_wood.tres"
+)
 
 
 class FakeNetManager extends Node:
@@ -25,18 +28,20 @@ class FakeNetManager extends Node:
 	)
 
 	var send_ready_peer_ids: Dictionary = {}
+	var host_role := true
+	var local_peer_id := 1
 
 	func is_host() -> bool:
-		return true
+		return host_role
 
 	func is_client() -> bool:
-		return false
+		return not host_role
 
 	func get_host_peer_id() -> int:
 		return 1
 
 	func get_local_peer_id() -> int:
-		return 1
+		return local_peer_id
 
 	func is_peer_send_ready(peer_id: int) -> bool:
 		return send_ready_peer_ids.has(peer_id)
@@ -45,17 +50,87 @@ class FakeNetManager extends Node:
 class FakeEmbeddedRuntime extends Node:
 	var activation_result := false
 	var activation_calls := 0
+	var suspended_peers: Array[PackedInt32Array] = []
+	var game_runtime: Node = null
 
 	func activate_embedded_runtime() -> bool:
 		activation_calls += 1
 		return activation_result
 
+	func get_game_runtime() -> Node:
+		return game_runtime
+
+	func suspend_embedded_participant_for_current_combat(
+		peer_id: int,
+		previous_peer_id: int = -1
+	) -> bool:
+		suspended_peers.append(PackedInt32Array([
+			peer_id,
+			previous_peer_id,
+		]))
+		return true
+
+
+class FakeCombatGame extends Node:
+	var players: Dictionary = {}
+
+	func get_player_for_peer(peer_id: int) -> Node:
+		return players.get(peer_id) as Node
+
+
+class RewardCombatGameHarness extends RogueCombatGame:
+	var fixture_players: Dictionary = {}
+
+	func get_player_for_peer(peer_id: int) -> Player:
+		return fixture_players.get(peer_id) as Player
+
 
 class RuntimeCoordinatorHarness extends RogueCombatMultiplayerCoordinator:
 	var create_runtime_result := true
+	var terminal_spectator_dispatches: Array[Dictionary] = []
+	var host_settlement_commit_result := true
+	var host_settlement_commit_uses_super := false
+	var host_settlement_commit_observations: Array[Dictionary] = []
+	var host_settlement_broadcasts: Array[Dictionary] = []
+	var settlement_event_order: Array[String] = []
 
 	func _create_embedded_runtime() -> bool:
 		return create_runtime_result
+
+	func _dispatch_terminal_spectator_sync(
+		peer_id: int,
+		occurrence_key: String,
+		settlement: Dictionary
+	) -> void:
+		settlement_event_order.append("spectator:%d" % peer_id)
+		terminal_spectator_dispatches.append({
+			"peer_id": peer_id,
+			"occurrence_key": occurrence_key,
+			"settlement": settlement.duplicate(true),
+		})
+
+	func _commit_host_settlement_locally(settlement: Dictionary) -> bool:
+		var occurrence_key := str(settlement.get("occurrence_key", ""))
+		host_settlement_commit_observations.append({
+			"occurrence_key": occurrence_key,
+			"tombstone_present": _settled_occurrences.has(occurrence_key),
+			"broadcast_count": host_settlement_broadcasts.size(),
+			"settlement": settlement.duplicate(true),
+		})
+		if host_settlement_commit_uses_super:
+			return super._commit_host_settlement_locally(settlement)
+		return host_settlement_commit_result
+
+	func _broadcast_authoritative_settlement(
+		occurrence_key: String,
+		settlement: Dictionary
+	) -> void:
+		settlement_event_order.append("broadcast")
+		host_settlement_broadcasts.append({
+			"occurrence_key": occurrence_key,
+			"settlement": settlement.duplicate(true),
+			"tombstone_present": _settled_occurrences.has(occurrence_key),
+		})
 
 
 var _failures: PackedStringArray = []
@@ -73,8 +148,22 @@ func _run() -> void:
 	await _create_fixture()
 	_test_terminal_safe_releases_protocol_but_keeps_result()
 	_test_next_prepare_collects_stale_result()
+	_test_new_layout_clears_combat_idempotency_caches()
+	_test_host_settlement_commit_gates_broadcast()
+	_test_pending_reconnect_is_spectator_before_settlement_broadcast()
+	_test_late_activation_cannot_rewind_settled_phase()
+	await _test_real_reward_mutation_rolls_back_after_commit_failure()
 	_test_player_left_preserves_participant_and_shrinks_barriers()
+	_test_client_abort_admission_is_prepare_only()
+	_test_reconnect_prepare_marker_lifecycle()
+	_test_prepare_barrier_timeout_aborts_entry()
+	_test_reconnect_activation_timeout_downgrades_peer()
+	_test_terminal_spectator_sync_retries_send_ready()
+	_test_terminal_barrier_timeout_forces_safe_release()
 	_test_reconnect_remaps_terminal_settlement()
+	_test_host_missing_reconnect_runtime_becomes_spectator()
+	_test_precombat_disconnect_reconnect_stays_route_spectator()
+	_test_route_spectator_settlement_converges_economy()
 	await _test_prepared_barrier_reveals_before_single_activation()
 	_test_dispatch_window_reconnect_skips_completed_barrier()
 	await _test_abort_during_entry_reveal_clears_cover()
@@ -221,6 +310,299 @@ func _test_next_prepare_collects_stale_result() -> void:
 	_coordinator._abort_authoritative_protocol(&"test_cleanup")
 
 
+func _test_new_layout_clears_combat_idempotency_caches() -> void:
+	_reset_fixture_state()
+	_coordinator._consumed_node_ids[17] = true
+	_coordinator._settled_occurrences["combat:old-layout:17:1"] = true
+	_coordinator._on_host_layout_committed({}, {})
+	_expect(
+		_coordinator._consumed_node_ids.is_empty()
+		and _coordinator._settled_occurrences.is_empty(),
+		(
+			"新路线布局提交时必须同时清理节点消费与 occurrence 结算幂等缓存，"
+			+ "避免确定性 key 在下一局被误判为已结算。"
+		)
+	)
+
+
+func _test_host_settlement_commit_gates_broadcast() -> void:
+	_reset_fixture_state()
+	const NODE_ID := 18
+	var occurrence_key := "combat:runtime:settlement-commit-gate:2c"
+	var settlement := {
+		"occurrence_key": occurrence_key,
+		"victory": true,
+	}
+	_seed_route_combat(NODE_ID, 1802, occurrence_key)
+	_route.set_route_presentation_enabled(false)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_node_id = NODE_ID
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._expected_prepared_peers = {1: true, 2: true}
+	_coordinator._prepared_peers = {1: true, 2: true}
+	_coordinator._expected_terminal_peers = {1: true, 2: true}
+	_coordinator._settlement_scheduled = true
+	var runtime := Node.new()
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+	_coordinator.host_settlement_commit_result = false
+	_expect(
+		not _coordinator._publish_host_settlement(occurrence_key, settlement)
+		and not _coordinator._settled_occurrences.has(occurrence_key)
+		and _coordinator.host_settlement_broadcasts.is_empty(),
+		"Host 本地结算提交失败时不得写幂等缓存或向客户端广播。"
+	)
+	var failed_observation := (
+		_coordinator.host_settlement_commit_observations[0] as Dictionary
+	)
+	_expect(
+		not bool(failed_observation.get("tombstone_present", true))
+		and int(failed_observation.get("broadcast_count", -1)) == 0,
+		"本地结算提交必须发生在 settled tombstone 与首个远端广播之前。"
+	)
+	_assert_abort_recovered(NODE_ID, "Host 本地结算提交失败")
+	_expect(
+		not _coordinator._settlement_scheduled
+		and _coordinator._expected_prepared_peers.is_empty()
+		and _coordinator._prepared_peers.is_empty()
+		and _coordinator._expected_terminal_peers.is_empty()
+		and _coordinator._terminal_ready_peers.is_empty(),
+		"本地结算失败回滚后不得遗留 scheduled 标记或 prepare/terminal barrier。"
+	)
+
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator.host_settlement_commit_result = true
+	_expect(
+		_coordinator._publish_host_settlement(occurrence_key, settlement)
+		and _coordinator._settled_occurrences.has(occurrence_key)
+		and _coordinator.host_settlement_broadcasts.size() == 1,
+		"本地提交恢复后必须只发布一次权威结算并写入幂等缓存。"
+	)
+	var successful_observation := (
+		_coordinator.host_settlement_commit_observations[0] as Dictionary
+	)
+	var broadcast := _coordinator.host_settlement_broadcasts[0] as Dictionary
+	_expect(
+		not bool(successful_observation.get("tombstone_present", true))
+		and int(successful_observation.get("broadcast_count", -1)) == 0
+		and bool(broadcast.get("tombstone_present", false)),
+		"成功顺序必须严格为本地 commit -> settled tombstone -> remote broadcast。"
+	)
+	_expect(
+		not _coordinator._publish_host_settlement(occurrence_key, settlement)
+		and _coordinator.host_settlement_commit_observations.size() == 1
+		and _coordinator.host_settlement_broadcasts.size() == 1,
+		"重复结算必须在本地 commit 前被幂等缓存拦截，不能再次发布。"
+	)
+
+
+func _test_pending_reconnect_is_spectator_before_settlement_broadcast() -> void:
+	_reset_fixture_state()
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	run_state.ensure_multiplayer_peer_state(1)
+	run_state.ensure_multiplayer_peer_state(2)
+	var occurrence_key := "combat:runtime:settlement-pending-reconnect:2d"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_node_id = 19
+	_coordinator._active_content_seed = 1902
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 100, 2: 200}
+	_coordinator._pending_reconnect_prepare_peers[2] = {
+		"occurrence_key": occurrence_key,
+		"deadline_msec": 99_999,
+	}
+	_fake_net_manager.send_ready_peer_ids = {2: true}
+	var runtime := FakeEmbeddedRuntime.new()
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+	_coordinator.host_settlement_commit_uses_super = true
+	var settlement := {
+		"node_id": 19,
+		"content_seed": 1902,
+		"occurrence_key": occurrence_key,
+		"victory": false,
+		"failure_reason": "重连结算顺序测试",
+		"consume_node": false,
+		"final_xirang_by_peer": {1: 100, 2: 200},
+		"inventory_snapshots_by_peer": {
+			1: run_state.export_inventory_snapshot_for_peer(1),
+			2: run_state.export_inventory_snapshot_for_peer(2),
+		},
+		"results_by_peer": {
+			1: {"peer_id": 1, "victory": false},
+			2: {"peer_id": 2, "victory": false},
+		},
+	}
+
+	_expect(
+		_coordinator._publish_host_settlement(occurrence_key, settlement),
+		"Host 真实结算提交应成功。"
+	)
+	var spectator_dispatch := (
+		_coordinator.terminal_spectator_dispatches[0] as Dictionary
+		if not _coordinator.terminal_spectator_dispatches.is_empty()
+		else {}
+	)
+	_expect(
+		_coordinator.settlement_event_order == ["spectator:2", "broadcast"]
+		and not (spectator_dispatch.get("settlement", {}) as Dictionary).is_empty(),
+		(
+			"未 ACTIVATED 的重连 peer 必须先在可靠 CH0 收到 spectator，"
+			+ "随后携带结算，普通结算广播只能发生在其后。"
+		)
+	)
+	_expect(
+		not _coordinator._pending_reconnect_prepare_peers.has(2)
+		and _coordinator._disconnected_participants.has(2)
+		and not _coordinator._expected_terminal_peers.has(2)
+		and runtime.suspended_peers == [PackedInt32Array([2, -1])],
+		"结算前降级必须同时退出 reconnect/terminal barrier 并停止战斗收发。"
+	)
+	_reset_fixture_state()
+
+
+func _test_late_activation_cannot_rewind_settled_phase() -> void:
+	_reset_fixture_state()
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._active_occurrence_key = "combat:runtime:late-activation:2e"
+	_coordinator._settlement_received = true
+	_coordinator._local_runtime_prepared = true
+	var runtime := FakeEmbeddedRuntime.new()
+	runtime.activation_result = true
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+
+	_expect(
+		not _coordinator._activate_local_runtime()
+		and _coordinator._phase == COORDINATOR.ProtocolPhase.SETTLED
+		and not _coordinator._local_runtime_activated
+		and runtime.activation_calls == 0,
+		"迟到的本地激活不得启动已结算战场或把 SETTLED 回写为 ACTIVE。"
+	)
+	_reset_fixture_state()
+
+
+func _test_real_reward_mutation_rolls_back_after_commit_failure() -> void:
+	_reset_fixture_state()
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	run_state.ensure_multiplayer_peer_state(1)
+	var occurrence_key := "combat:runtime:reward-rollback:2f"
+	_seed_route_combat(20, 2002, occurrence_key)
+	var runtime := Node.new()
+	runtime.name = "RewardRollbackRuntime"
+	_fixture_root.add_child(runtime)
+	var combat_game := RewardCombatGameHarness.new()
+	var battle_player := PlayerCharacterRegistry.instantiate_character(
+		&"weishidaier"
+	) as Player
+	_fixture_root.add_child(battle_player)
+	await process_frame
+	await physics_frame
+	battle_player.configure_multiplayer_control(1, true, "Host")
+	combat_game.fixture_players[1] = battle_player
+
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_node_id = 20
+	_coordinator._active_content_seed = 2002
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true}
+	_coordinator._entry_xirang_by_peer = {1: battle_player.get_xirang()}
+	_coordinator._combat_network = runtime
+	_coordinator._combat_game = combat_game
+	_coordinator._settlement_scheduled = true
+	_coordinator.host_settlement_commit_result = false
+	var xirang_before := battle_player.get_xirang()
+	var inventory_before := run_state.export_inventory_snapshot_for_peer(1)
+	var revision_before := int(inventory_before.get("revision", -1))
+	var rollback_state := _coordinator._capture_host_reward_rollback_state()
+	battle_player.grant_xirang_reward(
+		_coordinator.encounter_config.extra_xirang,
+		false
+	)
+	var reward_result := RogueCombatRewardResolver.resolve_reward(
+		run_state,
+		StringName(occurrence_key),
+		_coordinator._active_content_seed,
+		1,
+		_coordinator.encounter_config.extra_xirang,
+		true,
+		battle_player
+	)
+	reward_result["victory"] = true
+	var settlement := {
+		"node_id": 20,
+		"content_seed": 2002,
+		"occurrence_key": occurrence_key,
+		"victory": true,
+		"failure_reason": "",
+		"consume_node": true,
+		"final_xirang_by_peer": {1: battle_player.get_xirang()},
+		"inventory_snapshots_by_peer": {
+			1: run_state.export_inventory_snapshot_for_peer(1),
+		},
+		"results_by_peer": {1: reward_result},
+	}
+	_expect(
+		not _coordinator._publish_host_settlement(
+			occurrence_key,
+			settlement,
+			rollback_state
+		),
+		"真实奖励写入后的注入 commit 失败必须拒绝发布。"
+	)
+
+	var observation := (
+		_coordinator.host_settlement_commit_observations[0] as Dictionary
+		if not _coordinator.host_settlement_commit_observations.is_empty()
+		else {}
+	)
+	var attempted_settlement := observation.get("settlement", {}) as Dictionary
+	var attempted_xirang := (
+		attempted_settlement.get("final_xirang_by_peer", {}) as Dictionary
+	)
+	var attempted_inventories := (
+		attempted_settlement.get("inventory_snapshots_by_peer", {}) as Dictionary
+	)
+	var attempted_inventory := attempted_inventories.get(1, {}) as Dictionary
+	var inventory_after := run_state.export_inventory_snapshot_for_peer(1)
+	_expect(
+		int(attempted_xirang.get(1, -1))
+		== xirang_before + _coordinator.encounter_config.extra_xirang
+		and int(attempted_inventory.get("revision", -1)) > revision_before,
+		"失败注入必须发生在真实息壤与收藏品奖励已经写入之后。"
+	)
+	_expect(
+		battle_player.get_xirang() == xirang_before
+		and _inventory_contents(inventory_after)
+		== _inventory_contents(inventory_before)
+		and int(inventory_after.get("revision", -1))
+		> int(attempted_inventory.get("revision", -1)),
+		(
+			"本地结算 commit 失败必须完整恢复 Player 息壤与奖励前背包内容，"
+			+ "同时以更高 revision 发布回滚。"
+		)
+	)
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		and not _coordinator._consumed_node_ids.has(20)
+		and _coordinator.host_settlement_broadcasts.is_empty(),
+		"奖励回滚后必须返回可重试路线，且不得消费节点或广播失败结算。"
+	)
+	battle_player.queue_free()
+	combat_game.free()
+	for _frame in 3:
+		await process_frame
+		await physics_frame
+	_reset_fixture_state()
+
+
 func _test_player_left_preserves_participant_and_shrinks_barriers() -> void:
 	_reset_fixture_state()
 	_coordinator._phase = COORDINATOR.ProtocolPhase.PREPARING
@@ -255,6 +637,298 @@ func _test_player_left_preserves_participant_and_shrinks_barriers() -> void:
 	)
 
 
+func _test_client_abort_admission_is_prepare_only() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:abort-admission:3a"
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._phase = COORDINATOR.ProtocolPhase.PREPARING
+	var accepted_reason_count := 0
+	for reason_variant in COORDINATOR.CLIENT_PREPARATION_ABORT_REASONS.keys():
+		if _coordinator._can_accept_client_abort_request(
+			2,
+			occurrence_key,
+			StringName(reason_variant)
+		):
+			accepted_reason_count += 1
+	_expect(
+		accepted_reason_count
+		== COORDINATOR.CLIENT_PREPARATION_ABORT_REASONS.size()
+		and not _coordinator._can_accept_client_abort_request(
+			2,
+			occurrence_key,
+			&"victory_presentation_interrupted"
+		)
+		and not _coordinator._can_accept_client_abort_request(
+			2,
+			occurrence_key,
+			&"arbitrary_remote_reason"
+		)
+		and not _coordinator._can_accept_client_abort_request(
+			3,
+			occurrence_key,
+			&"runtime_create_failed"
+		)
+		and not _coordinator._can_accept_client_abort_request(
+			2,
+			occurrence_key + ":stale",
+			&"runtime_create_failed"
+		),
+		(
+			"客户端只能在 PREPARING 阶段、当前 occurrence 中，由冻结名单内成员"
+			+ "上报八种白名单准备失败。"
+		)
+	)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._activation_dispatch_started = true
+	_coordinator._pending_reconnect_prepare_peers[2] = {
+		"occurrence_key": occurrence_key,
+		"deadline_msec": 99_999,
+	}
+	_expect(
+		not _coordinator._can_accept_client_abort_request(
+			2,
+			occurrence_key,
+			&"runtime_create_failed"
+		)
+		and _coordinator._can_withdraw_failed_runtime_participant(
+			2,
+			occurrence_key,
+			&"runtime_create_failed"
+		),
+		"ACTIVE 重连恢复失败只能退出该 pending peer，不得终止整场战斗。"
+	)
+	_coordinator._pending_reconnect_prepare_peers.clear()
+	_expect(
+		not _coordinator._can_withdraw_failed_runtime_participant(
+			2,
+			occurrence_key,
+			&"runtime_create_failed"
+		),
+		"未收到本次即时恢复包的 ACTIVE peer 不得伪造失败降级。"
+	)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._pending_reconnect_prepare_peers[2] = {
+		"occurrence_key": occurrence_key,
+		"deadline_msec": 99_999,
+	}
+	_expect(
+		not _coordinator._can_accept_client_abort_request(
+			2,
+			occurrence_key,
+			&"runtime_create_failed"
+		)
+		and _coordinator._can_withdraw_failed_runtime_participant(
+			2,
+			occurrence_key,
+			&"runtime_create_failed"
+		),
+		"SETTLED 重连失败只能降级该 pending peer，不得回滚终局。"
+	)
+
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 500}
+	_coordinator._expected_terminal_peers = {1: true, 2: true}
+	var runtime := FakeEmbeddedRuntime.new()
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+	_coordinator._withdraw_failed_runtime_participant(
+		2,
+		occurrence_key,
+		&"runtime_create_failed"
+	)
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.ACTIVE
+		and _coordinator._disconnected_participants.has(2)
+		and not _coordinator._expected_terminal_peers.has(2)
+		and not _coordinator._pending_reconnect_prepare_peers.has(2),
+		"单端恢复失败必须保持 Host 战斗运行并退出所有 barrier。"
+	)
+	_expect(
+		runtime.suspended_peers == [PackedInt32Array([2, -1])],
+		"Host MpGame 必须停止失败 peer 的战斗收发。"
+	)
+	_reset_fixture_state()
+
+
+func _test_reconnect_prepare_marker_lifecycle() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:reconnect-marker:3b"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.PREPARING
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._expected_prepared_peers = {1: true, 2: true}
+	_coordinator._pending_reconnect_prepare_peers[2] = {
+		"occurrence_key": occurrence_key,
+		"deadline_msec": 0,
+	}
+
+	_coordinator._accept_combat_prepared(2, occurrence_key)
+	_expect(
+		_coordinator._prepared_peers.has(2)
+		and _coordinator._pending_reconnect_prepare_peers.has(2),
+		"PREPARING 重连的首个 prepared 必须满足 barrier 但保留失败窗口。"
+	)
+	_coordinator._activation_dispatch_started = true
+	_coordinator._accept_combat_prepared(2, occurrence_key)
+	_expect(
+		_coordinator._pending_reconnect_prepare_peers.has(2)
+		and _coordinator._can_withdraw_failed_runtime_participant(
+			2,
+			occurrence_key,
+			&"runtime_activate_failed"
+		),
+		"重复 PREPARED 不得伪装成激活成功或提前关闭失败窗口。"
+	)
+	_coordinator._accept_combat_activated(2, occurrence_key)
+	_expect(
+		not _coordinator._pending_reconnect_prepare_peers.has(2)
+		and not _coordinator._can_withdraw_failed_runtime_participant(
+			2,
+			occurrence_key,
+			&"runtime_activate_failed"
+		),
+		"独立 ACTIVATED 确认后必须关闭该 peer 的失败窗口。"
+	)
+	_reset_fixture_state()
+
+
+func _test_prepare_barrier_timeout_aborts_entry() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:prepare-timeout:3c"
+	_seed_route_combat(31, 3103, occurrence_key)
+	_expect(
+		_coordinator._begin_protocol(
+			31,
+			3103,
+			occurrence_key,
+			PackedInt32Array([1, 2]),
+			{1: 500, 2: 500},
+			false
+		),
+		"prepare timeout 夹具必须进入 PREPARING。"
+	)
+	_coordinator._prepare_barrier_deadline_msec = 10_000
+	_coordinator._poll_prepare_barrier_timeout(9_999)
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.PREPARING,
+		"prepare deadline 前不得中断作战进入。"
+	)
+	_coordinator._poll_prepare_barrier_timeout(10_000)
+	_assert_abort_recovered(31, "prepare barrier 超时")
+
+
+func _test_reconnect_activation_timeout_downgrades_peer() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:reconnect-timeout:3d"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 500}
+	_coordinator._pending_reconnect_prepare_peers[2] = {
+		"occurrence_key": occurrence_key,
+		"deadline_msec": 10_000,
+	}
+	var runtime := FakeEmbeddedRuntime.new()
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+
+	_coordinator._poll_reconnect_activation_timeouts(9_999)
+	_expect(
+		_coordinator._pending_reconnect_prepare_peers.has(2),
+		"重连 activation deadline 前必须继续等待。"
+	)
+	_coordinator._poll_reconnect_activation_timeouts(10_000)
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.ACTIVE
+		and _coordinator._disconnected_participants.has(2)
+		and not _coordinator._pending_reconnect_prepare_peers.has(2)
+		and runtime.suspended_peers == [PackedInt32Array([2, -1])],
+		"重连激活静默超时必须只降级该 peer，Host 战斗继续。"
+	)
+	_reset_fixture_state()
+
+
+func _test_terminal_barrier_timeout_forces_safe_release() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:terminal-timeout:3e"
+	_seed_route_combat(33, 3303, occurrence_key)
+	_route.set_route_presentation_enabled(false)
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 500}
+	_coordinator._expected_terminal_peers = {1: true, 2: true}
+	_coordinator._settlement_received = true
+	_coordinator._pending_settlement = {
+		"occurrence_key": occurrence_key,
+		"results_by_peer": {
+			1: {
+				"peer_id": 1,
+				"victory": false,
+				"failure_reason": "终局演出超时测试",
+			},
+		},
+	}
+	_coordinator._local_result_occurrence_key = occurrence_key
+	_coordinator._terminal_barrier_deadline_msec = 10_000
+	var runtime := FakeEmbeddedRuntime.new()
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+
+	_coordinator._poll_terminal_barrier_timeout(10_000)
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		and _coordinator._combat_network == null
+		and not _route.is_normal_combat_active()
+		and _route._route_presentation_enabled
+		and _coordinator._local_result_visible
+		and _route.combat_result_overlay.visible
+		and runtime.suspended_peers == [PackedInt32Array([2, -1])],
+		(
+			"terminal-ready 静默 peer 超时后必须强制回图并完成安全释放，"
+			+ "但不能吞掉已经生成的本地结算面板。"
+		)
+	)
+	_reset_fixture_state()
+
+
+func _test_terminal_spectator_sync_retries_send_ready() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:spectator-send-ready:3e"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.SETTLED
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._settlement_received = true
+	_coordinator._pending_settlement = {
+		"occurrence_key": occurrence_key,
+		"results_by_peer": {2: {"peer_id": 2, "victory": true}},
+	}
+
+	_coordinator._send_terminal_reconnect_spectator(2, occurrence_key)
+	_expect(
+		_coordinator._pending_terminal_spectator_syncs.has(2)
+		and _coordinator.terminal_spectator_dispatches.is_empty(),
+		"send-ready 尚未建立时，观战与结算同步必须保留为可重试状态。"
+	)
+	_fake_net_manager.send_ready_peer_ids[2] = true
+	_coordinator._poll_pending_terminal_spectator_syncs()
+	var dispatched := (
+		_coordinator.terminal_spectator_dispatches[0]
+		if not _coordinator.terminal_spectator_dispatches.is_empty()
+		else {}
+	) as Dictionary
+	_expect(
+		not _coordinator._pending_terminal_spectator_syncs.has(2)
+		and _coordinator.terminal_spectator_dispatches.size() == 1
+		and int(dispatched.get("peer_id", -1)) == 2
+		and str(dispatched.get("occurrence_key", "")) == occurrence_key
+		and not (dispatched.get("settlement", {}) as Dictionary).is_empty(),
+		"send-ready 恢复后必须恰好一次补发观战状态和权威结算。"
+	)
+	_fake_net_manager.send_ready_peer_ids.erase(2)
+	_reset_fixture_state()
+
+
 func _test_reconnect_remaps_terminal_settlement() -> void:
 	_reset_fixture_state()
 	var occurrence_key := "combat:runtime:reconnect:4"
@@ -285,6 +959,15 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 			2: {"peer_id": 2, "victory": true},
 		},
 	}
+	var runtime := FakeEmbeddedRuntime.new()
+	var combat_game := FakeCombatGame.new()
+	var restored_player := Node.new()
+	combat_game.add_child(restored_player)
+	combat_game.players[3] = restored_player
+	runtime.add_child(combat_game)
+	runtime.game_runtime = combat_game
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
 
 	# remote_sender_id 无法在单进程伪造；直接覆盖相同的房主本地迁移分支。
 	_coordinator._finish_player_reconnected(2, 3)
@@ -301,8 +984,11 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 	)
 	_expect(
 		not _coordinator._disconnected_participants.has(2)
-		and _coordinator._expected_terminal_peers.has(3),
-		"SETTLED 阶段重连应重新加入新 peer 的 terminal barrier。"
+		and _coordinator._disconnected_participants.has(3)
+		and not _coordinator._expected_terminal_peers.has(3)
+		and not _coordinator._pending_reconnect_prepare_peers.has(3)
+		and runtime.suspended_peers == [PackedInt32Array([3, 2])],
+		"SETTLED 重连必须直接降级路线观战，不再创建或激活已结束的战场。"
 	)
 	for map_key in [
 		"final_xirang_by_peer",
@@ -325,6 +1011,162 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 		int((inventory[3] as Dictionary).get("peer_id", -1)) == 3
 		and int((results[3] as Dictionary).get("peer_id", -1)) == 3,
 		"重连后字典 payload 内部 peer_id 也必须改为 new peer。"
+	)
+
+
+func _test_host_missing_reconnect_runtime_becomes_spectator() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:missing-host-player:4b"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 900}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 900,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_coordinator._reconnecting_peer_ids[3] = true
+	var runtime := FakeEmbeddedRuntime.new()
+	var combat_game := FakeCombatGame.new()
+	runtime.add_child(combat_game)
+	runtime.game_runtime = combat_game
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+
+	_coordinator._finish_player_reconnected(2, 3)
+
+	_expect(
+		not _coordinator._participant_peer_ids.has(2)
+		and _coordinator._participant_peer_ids.has(3)
+		and _coordinator._disconnected_participants.has(3)
+		and not _coordinator._pending_reconnect_prepare_peers.has(3),
+		"Host 缺少权威 Player 时必须迁移结算身份但禁止发送战斗恢复包。"
+	)
+	_expect(
+		runtime.suspended_peers == [PackedInt32Array([3, 2])],
+		"Host 缺 Player 的身份链必须同步迁移为 suspended roster。"
+	)
+	_reset_fixture_state()
+
+
+func _test_route_spectator_settlement_converges_economy() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:spectator-economy:4c"
+	var node_id := 44
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	run_state.ensure_multiplayer_peer_state(1)
+	run_state.ensure_multiplayer_peer_state(2)
+	_expect(
+		run_state.try_add_item_count_for_peer(2, WOOD_MATERIAL, 1),
+		"观战结算夹具必须先建立旧客户端背包。"
+	)
+
+	var authoritative := RunStateStore.new()
+	authoritative.begin_new_run(&"weishidaier", false)
+	authoritative.ensure_multiplayer_peer_state(1)
+	authoritative.ensure_multiplayer_peer_state(2)
+	_expect(
+		authoritative.try_add_item_count_for_peer(2, WOOD_MATERIAL, 5),
+		"观战结算夹具必须建立 Host 权威背包。"
+	)
+
+	_fake_net_manager.host_role = false
+	_fake_net_manager.local_peer_id = 2
+	_route._multiplayer_avatar_mode = true
+	_route._local_peer_id = 2
+	_expect(
+		_route.add_multiplayer_player(
+			2,
+			"Spectator",
+			PlayerCharacterRegistry.WEISHIDAIER_ID,
+			Vector2.ZERO
+		),
+		"观战结算夹具必须创建路线角色。"
+	)
+	var route_player := _route.get_player_for_peer(2)
+	if route_player != null:
+		route_player.current_xirang = 100
+	_seed_route_combat(node_id, 4404, occurrence_key)
+	_coordinator._route_spectator_occurrence_key = occurrence_key
+	var settlement := {
+		"node_id": node_id,
+		"occurrence_key": occurrence_key,
+		"victory": true,
+		"consume_node": true,
+		"final_xirang_by_peer": {1: 600, 2: 777},
+		"inventory_snapshots_by_peer": {
+			1: authoritative.export_inventory_snapshot_for_peer(1),
+			2: authoritative.export_inventory_snapshot_for_peer(2),
+		},
+		"results_by_peer": {
+			1: {"peer_id": 1, "victory": true},
+			2: {"peer_id": 2, "victory": true},
+		},
+	}
+
+	_expect(
+		_coordinator._apply_route_spectator_settlement(
+			occurrence_key,
+			settlement
+		),
+		"降级观战端必须接受同 occurrence 的 Host 经济结算。"
+	)
+	_expect(
+		run_state.get_inventory_item_total_for_peer(2, WOOD_MATERIAL) == 5
+		and run_state.get_inventory_revision_for_peer(2)
+		== authoritative.get_inventory_revision_for_peer(2)
+		and run_state.get_party_xirang_balance(2) == 777
+		and route_player != null
+		and route_player.current_xirang == 777,
+		"观战端背包 revision、物品、息壤账本与路线显示必须收敛到 Host。"
+	)
+	_route._sync_route_player_xirang_from_run_state()
+	_expect(
+		route_player != null and route_player.current_xirang == 777,
+		"后续路线事件从 RunState 重载时不得把战后息壤回退到战前值。"
+	)
+	_expect(
+		not _route.is_normal_combat_active()
+		and _route._route_presentation_enabled
+		and _coordinator._route_spectator_occurrence_key.is_empty()
+		and _coordinator._consumed_node_ids.has(node_id)
+		and _coordinator._phase == COORDINATOR.ProtocolPhase.IDLE,
+		"观战经济结算必须结束本地路线战斗且不进入胜利/terminal 流程。"
+	)
+	_route.remove_multiplayer_player(2)
+	_route._multiplayer_avatar_mode = false
+	_fake_net_manager.host_role = true
+	_fake_net_manager.local_peer_id = 1
+	authoritative.free()
+	_reset_fixture_state()
+
+
+func _test_precombat_disconnect_reconnect_stays_route_spectator() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:precombat-left:5"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 500}
+	_coordinator._reconnecting_peer_ids[4] = true
+
+	# old=3 left before the combat roster was frozen and therefore has no
+	# disconnected-participant record. Its new identity must remain on the route.
+	_coordinator._finish_player_reconnected(3, 4)
+
+	_expect(
+		_coordinator._participant_peer_ids == {1: true, 2: true}
+		and not _coordinator._entry_xirang_by_peer.has(4),
+		"A pre-combat leaver must not join the frozen combat or settlement roster on reconnect."
+	)
+	_expect(
+		not _coordinator._reconnecting_peer_ids.has(4)
+		and _coordinator._pending_spectator_peers.has(4),
+		"A non-participant reconnect must be queued for an explicit route-spectator sync."
 	)
 
 
@@ -647,9 +1489,19 @@ func _reset_fixture_state() -> void:
 	_coordinator._combat_network = null
 	_coordinator._combat_game = null
 	_coordinator._reset_protocol_state()
+	_coordinator._pending_terminal_spectator_syncs.clear()
 	_coordinator._clear_local_result_lifecycle()
 	_coordinator._consumed_node_ids.clear()
 	_coordinator.create_runtime_result = true
+	_coordinator.terminal_spectator_dispatches.clear()
+	_coordinator.host_settlement_commit_result = true
+	_coordinator.host_settlement_commit_uses_super = false
+	_coordinator.host_settlement_commit_observations.clear()
+	_coordinator.host_settlement_broadcasts.clear()
+	_coordinator.settlement_event_order.clear()
+	_fake_net_manager.send_ready_peer_ids.clear()
+	_fake_net_manager.host_role = true
+	_fake_net_manager.local_peer_id = 1
 	_route.hide_combat_result()
 	_route._clear_normal_combat_state()
 	_route.set_route_presentation_enabled(true)
@@ -670,6 +1522,18 @@ func _seed_route_combat(
 func _set_entry_transition_covered() -> void:
 	_route.combat_scene_transition.visible = true
 	_route.combat_scene_transition.call(&"_set_progress", 1.0)
+
+
+func _inventory_contents(snapshot: Dictionary) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for slot_variant in snapshot.get("slots", []) as Array:
+		var slot := slot_variant as Dictionary
+		result.append({
+			"slot_index": int(slot.get("slot_index", -1)),
+			"config_path": str(slot.get("config_path", "")),
+			"stack_count": int(slot.get("stack_count", 0)),
+		})
+	return result
 
 
 func _expect(condition: bool, message: String) -> void:

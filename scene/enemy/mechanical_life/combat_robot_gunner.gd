@@ -672,8 +672,10 @@ func _get_navigation_move_direction(target: Node2D) -> Vector2:
 func _update_facing(move_direction: Vector2) -> void:
 	if is_zero_approx(move_direction.x):
 		return
+	var previous_facing_left := facing_left
 	_set_facing_from_direction(move_direction)
-	_sync_muzzle_facing()
+	if facing_left != previous_facing_left:
+		_sync_muzzle_facing()
 
 
 func _sync_muzzle_facing() -> void:

@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from relay_servers.lobby_api import main as lobby_main
 from relay_servers.lobby_api.main import (
     CreateRoomRequest,
+    HostReadyRequest,
+    HostTokenRequest,
     JoinRoomRequest,
+    LeaveRoomRequest,
     QuickMatchRequest,
+    UpdateRoomRequest,
 )
 from relay_servers.lobby_api.models import GameMode, RoomInfo, RoomStatus
 from relay_servers.lobby_api.room_manager import RoomManager
@@ -83,6 +90,26 @@ class LobbyGameModeTests(unittest.TestCase):
                     ).game_mode,
                     game_mode,
                 )
+
+    def test_request_models_bound_untrusted_text_fields(self) -> None:
+        invalid_requests = (
+            lambda: CreateRoomRequest(host_name="H" * 33),
+            lambda: CreateRoomRequest(host_name="Host", name="R" * 65),
+            lambda: JoinRoomRequest(player_name="P" * 33),
+            lambda: LeaveRoomRequest(
+                player_name="Member",
+                member_token="M" * 129,
+            ),
+            lambda: LeaveRoomRequest(player_name="Member"),
+            lambda: QuickMatchRequest(player_name="Q" * 33),
+            lambda: HostTokenRequest(host_token="T" * 129),
+            lambda: HostReadyRequest(host_token="T" * 129, host_peer_id=1),
+            lambda: UpdateRoomRequest(status="S" * 33, host_token="token"),
+        )
+        for build_request in invalid_requests:
+            with self.subTest(build_request=build_request):
+                with self.assertRaises(ValidationError):
+                    build_request()
 
     def test_room_public_contract_includes_every_game_mode(self) -> None:
         for game_mode in self.ALL_GAME_MODES:
@@ -217,6 +244,228 @@ class LobbyGameModeTests(unittest.TestCase):
                         ),
                     )
                 )
+
+    def test_join_response_issues_only_callers_private_member_token(self) -> None:
+        manager = RoomManager()
+        room = self._create_joinable_room(
+            manager,
+            "PublicHost",
+            GameMode.STANDARD,
+        )
+        launcher = MagicMock()
+        launcher.reap_exited.return_value = []
+
+        with (
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+        ):
+            response = asyncio.run(
+                lobby_main.join_room(
+                    room.id,
+                    JoinRoomRequest(player_name="Member"),
+                )
+            )
+
+        host_token = room.players[room.host_name].member_token
+        member_token = room.players["Member"].member_token
+        self.assertEqual(response["member_token"], member_token)
+        self.assertNotEqual(member_token, host_token)
+        self.assertNotIn("member_token", room.to_public_dict())
+        self.assertNotIn("member_token", room.to_join_dict("127.0.0.1"))
+        self.assertTrue(
+            all("member_token" not in player for player in response["players"])
+        )
+
+    def test_leave_requires_matching_member_token_for_host_and_member(self) -> None:
+        manager = RoomManager()
+        room = self._create_joinable_room(
+            manager,
+            "PublicHost",
+            GameMode.STANDARD,
+        )
+        self.assertIsNotNone(
+            manager.join_room(room.id, "Member", GameMode.STANDARD)
+        )
+        launcher = MagicMock()
+
+        authorized, removed = manager.leave_room(
+            room.id,
+            room.host_name,
+            "wrong-token",
+        )
+        self.assertFalse(authorized)
+        self.assertIsNone(removed)
+        self.assertIs(manager.get_room(room.id), room)
+        self.assertIn(room.host_name, room.players)
+
+        unicode_authorized, unicode_removed = manager.leave_room(
+            room.id,
+            room.host_name,
+            "伪造令牌",
+        )
+        self.assertFalse(unicode_authorized)
+        self.assertIsNone(unicode_removed)
+
+        with (
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(
+                    lobby_main.leave_room(
+                        room.id,
+                        LeaveRoomRequest(
+                            player_name=room.host_name,
+                            member_token=room.players["Member"].member_token,
+                        ),
+                    )
+                )
+
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertIs(manager.get_room(room.id), room)
+        launcher.stop_relay.assert_not_called()
+
+        with (
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+        ):
+            result = asyncio.run(
+                lobby_main.leave_room(
+                    room.id,
+                    LeaveRoomRequest(
+                        player_name=room.host_name,
+                        member_token=room.players[room.host_name].member_token,
+                    ),
+                )
+            )
+
+        self.assertEqual(result, {"status": "ok"})
+        self.assertIsNone(manager.get_room(room.id))
+        launcher.stop_relay.assert_called_once_with(room.relay_port)
+
+    def test_member_leave_and_tokenized_host_destroy_remain_available(self) -> None:
+        manager = RoomManager()
+        room = self._create_joinable_room(
+            manager,
+            "PublicHost",
+            GameMode.STANDARD,
+        )
+        self.assertIsNotNone(
+            manager.join_room(room.id, "Member", GameMode.STANDARD)
+        )
+        member_token = room.players["Member"].member_token
+        launcher = MagicMock()
+
+        with (
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+        ):
+            leave_result = asyncio.run(
+                lobby_main.leave_room(
+                    room.id,
+                    LeaveRoomRequest(
+                        player_name="Member",
+                        member_token=member_token,
+                    ),
+                )
+            )
+            self.assertEqual(leave_result, {"status": "ok"})
+            self.assertNotIn("Member", room.players)
+            self.assertIs(manager.get_room(room.id), room)
+            launcher.stop_relay.assert_not_called()
+
+            with self.assertRaises(HTTPException) as replayed:
+                asyncio.run(
+                    lobby_main.leave_room(
+                        room.id,
+                        LeaveRoomRequest(
+                            player_name="Member",
+                            member_token=member_token,
+                        ),
+                    )
+                )
+            self.assertEqual(replayed.exception.status_code, 403)
+
+            destroy_result = asyncio.run(
+                lobby_main.destroy_room(
+                    room.id,
+                    HostTokenRequest(host_token=room.host_token),
+                )
+            )
+
+        self.assertEqual(destroy_result, {"status": "ok"})
+        self.assertIsNone(manager.get_room(room.id))
+        launcher.stop_relay.assert_called_once_with(room.relay_port)
+
+    def test_member_token_authorizes_only_one_concurrent_leave(self) -> None:
+        manager = RoomManager()
+        room = self._create_joinable_room(
+            manager,
+            "PublicHost",
+            GameMode.STANDARD,
+        )
+        self.assertIsNotNone(
+            manager.join_room(room.id, "Member", GameMode.STANDARD)
+        )
+        member_token = room.players["Member"].member_token
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(
+                executor.map(
+                    lambda _index: manager.leave_room(
+                        room.id,
+                        "Member",
+                        member_token,
+                    ),
+                    range(2),
+                )
+            )
+
+        self.assertEqual([authorized for authorized, _room in results].count(True), 1)
+        self.assertEqual([authorized for authorized, _room in results].count(False), 1)
+        self.assertNotIn("Member", room.players)
+
+    def test_leave_http_contract_requires_matching_member_token(self) -> None:
+        manager = RoomManager()
+        room = self._create_joinable_room(
+            manager,
+            "PublicHost",
+            GameMode.STANDARD,
+        )
+        self.assertIsNotNone(
+            manager.join_room(room.id, "Member", GameMode.STANDARD)
+        )
+        member_token = room.players["Member"].member_token
+        launcher = MagicMock()
+
+        with (
+            patch.object(lobby_main, "room_mgr", manager),
+            patch.object(lobby_main, "relay_launcher", launcher),
+            TestClient(lobby_main.app) as client,
+        ):
+            missing = client.post(
+                f"/rooms/{room.id}/leave",
+                json={"player_name": "Member"},
+            )
+            forged = client.post(
+                f"/rooms/{room.id}/leave",
+                json={
+                    "player_name": "Member",
+                    "member_token": "forged-token",
+                },
+            )
+            accepted = client.post(
+                f"/rooms/{room.id}/leave",
+                json={
+                    "player_name": "Member",
+                    "member_token": member_token,
+                },
+            )
+
+        self.assertEqual(missing.status_code, 422)
+        self.assertEqual(forged.status_code, 403)
+        self.assertEqual(accepted.status_code, 200)
+        self.assertNotIn("Member", room.players)
 
 
 if __name__ == "__main__":

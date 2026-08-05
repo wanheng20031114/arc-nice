@@ -16,6 +16,20 @@ const COMBAT_RUNTIME_NODE_NAME := &"RogueCombatNetwork"
 const STANDARD_BATTLE_XIRANG := 1000
 const INVALID_NODE_ID := -1
 const TERMINAL_PROCESS_MODE := Node.PROCESS_MODE_DISABLED
+const PREPARE_BARRIER_TIMEOUT_MSEC := 30_000
+const RECONNECT_ACTIVATION_TIMEOUT_MSEC := 15_000
+const TERMINAL_BARRIER_TIMEOUT_MSEC := 15_000
+const TERMINAL_SPECTATOR_SYNC_TIMEOUT_MSEC := 30_000
+const CLIENT_PREPARATION_ABORT_REASONS := {
+	&"local_config_disabled": true,
+	&"config_mismatch": true,
+	&"route_start_rejected": true,
+	&"runtime_create_failed": true,
+	&"runtime_config_failed": true,
+	&"client_runtime_activate_failed": true,
+	&"entry_reveal_failed": true,
+	&"runtime_activate_failed": true,
+}
 
 enum ProtocolPhase {
 	IDLE,
@@ -43,6 +57,9 @@ var _entry_xirang_by_peer: Dictionary = {}
 var _disconnected_participants: Dictionary = {}
 var _pending_spectator_peers: Dictionary = {}
 var _reconnecting_peer_ids: Dictionary = {}
+var _pending_reconnect_prepare_peers: Dictionary = {}
+var _pending_terminal_spectator_syncs: Dictionary = {}
+var _route_spectator_occurrence_key := ""
 
 var _expected_prepared_peers: Dictionary = {}
 var _prepared_peers: Dictionary = {}
@@ -51,6 +68,7 @@ var _activation_dispatch_started := false
 var _local_runtime_prepared := false
 var _local_runtime_activated := false
 var _local_activation_requested := false
+var _prepare_barrier_deadline_msec := 0
 
 var _combat_network: Node = null
 var _combat_game: RogueCombatGame = null
@@ -66,6 +84,7 @@ var _expected_terminal_peers: Dictionary = {}
 var _terminal_ready_peers: Dictionary = {}
 var _terminal_safe_received := false
 var _terminal_safe_broadcast := false
+var _terminal_barrier_deadline_msec := 0
 
 var _local_result_visible := false
 var _local_route_returned := false
@@ -109,6 +128,136 @@ func _ready() -> void:
 			_on_route_normal_combat_stage_reset
 		)
 	_connect_net_manager_signals()
+
+
+func _physics_process(_delta: float) -> void:
+	if not _enabled or not _is_host():
+		return
+	var now_msec := Time.get_ticks_msec()
+	_poll_pending_terminal_spectator_syncs(now_msec)
+	if _phase == ProtocolPhase.IDLE:
+		return
+	_poll_prepare_barrier_timeout(now_msec)
+	_poll_reconnect_activation_timeouts(now_msec)
+	_poll_terminal_barrier_timeout(now_msec)
+
+
+func _poll_prepare_barrier_timeout(now_msec: int = -1) -> void:
+	var now := Time.get_ticks_msec() if now_msec < 0 else now_msec
+	if (
+		not _is_host()
+		or _phase != ProtocolPhase.PREPARING
+		or _activation_dispatch_started
+		or _prepare_barrier_deadline_msec <= 0
+		or now < _prepare_barrier_deadline_msec
+	):
+		return
+	_prepare_barrier_deadline_msec = 0
+	_abort_authoritative_protocol(&"prepare_barrier_timeout")
+
+
+func _poll_reconnect_activation_timeouts(now_msec: int = -1) -> void:
+	if (
+		not _is_host()
+		or not (
+			_phase == ProtocolPhase.ACTIVE
+			or (
+				_phase == ProtocolPhase.PREPARING
+				and _activation_dispatch_started
+			)
+		)
+	):
+		return
+	var now := Time.get_ticks_msec() if now_msec < 0 else now_msec
+	var timed_out_peer_ids: Array[int] = []
+	for peer_id_variant in _pending_reconnect_prepare_peers.keys():
+		var pending := (
+			_pending_reconnect_prepare_peers[peer_id_variant] as Dictionary
+		)
+		var deadline_msec := int(pending.get("deadline_msec", 0))
+		if deadline_msec > 0 and now >= deadline_msec:
+			timed_out_peer_ids.append(int(peer_id_variant))
+	for peer_id in timed_out_peer_ids:
+		_downgrade_pending_reconnect_to_spectator(
+			peer_id,
+			&"reconnect_activation_timeout"
+		)
+
+
+func _poll_terminal_barrier_timeout(now_msec: int = -1) -> void:
+	var now := Time.get_ticks_msec() if now_msec < 0 else now_msec
+	if (
+		not _is_host()
+		or _phase != ProtocolPhase.SETTLED
+		or _terminal_barrier_deadline_msec <= 0
+		or now < _terminal_barrier_deadline_msec
+	):
+		return
+	_terminal_barrier_deadline_msec = 0
+	var occurrence_key := _active_occurrence_key
+	var local_peer_id := _get_local_peer_id()
+	var timed_out_peer_ids: Array[int] = []
+	for peer_id_variant in _expected_terminal_peers.keys():
+		var peer_id := int(peer_id_variant)
+		if not _terminal_ready_peers.has(peer_id):
+			timed_out_peer_ids.append(peer_id)
+	for peer_id in timed_out_peer_ids:
+		if peer_id == local_peer_id:
+			_interrupt_terminal_presentation()
+			if _local_result_occurrence_key.is_empty():
+				_local_result_occurrence_key = occurrence_key
+			_return_to_route_local()
+			if not _show_local_result():
+				_clear_local_result_lifecycle()
+			_terminal_ready_peers[peer_id] = true
+			continue
+		_mark_participant_disconnected_from_barriers(peer_id)
+		if (
+			_combat_network != null
+			and is_instance_valid(_combat_network)
+			and _combat_network.has_method(
+				"suspend_embedded_participant_for_current_combat"
+			)
+		):
+			_combat_network.call(
+				"suspend_embedded_participant_for_current_combat",
+				peer_id
+			)
+		_send_terminal_reconnect_spectator(peer_id, occurrence_key)
+	_try_broadcast_safe_teardown()
+
+
+func _poll_pending_terminal_spectator_syncs(
+	now_msec: int = -1
+) -> void:
+	if not _is_host() or _pending_terminal_spectator_syncs.is_empty():
+		return
+	var now := Time.get_ticks_msec() if now_msec < 0 else now_msec
+	for peer_id_variant in _pending_terminal_spectator_syncs.keys():
+		var peer_id := int(peer_id_variant)
+		var pending := (
+			_pending_terminal_spectator_syncs.get(peer_id, {}) as Dictionary
+		)
+		var expires_msec := int(pending.get("expires_msec", 0))
+		if expires_msec > 0 and now >= expires_msec:
+			_pending_terminal_spectator_syncs.erase(peer_id)
+			push_warning((
+				"RogueCombatMultiplayerCoordinator: peer %d 的路线观战结算同步"
+				+ "等待 send-ready 超时，交由后续路线权威快照收敛。"
+			) % peer_id)
+			continue
+		_flush_pending_terminal_spectator_sync(peer_id)
+
+
+func _discard_pending_terminal_spectator_syncs_except(
+	occurrence_key: String
+) -> void:
+	for peer_id_variant in _pending_terminal_spectator_syncs.keys():
+		var pending := (
+			_pending_terminal_spectator_syncs[peer_id_variant] as Dictionary
+		)
+		if str(pending.get("occurrence_key", "")) != occurrence_key:
+			_pending_terminal_spectator_syncs.erase(peer_id_variant)
 
 
 func _exit_tree() -> void:
@@ -188,10 +337,12 @@ func _on_host_layout_committed(
 	_layout_snapshot: Dictionary,
 	_state_snapshot: Dictionary
 ) -> void:
-	# Node ids are scoped to one generated layout. A newly committed route must
-	# not inherit consumed combat nodes from the previous layout.
+	# Node ids and occurrence keys are scoped to one generated layout. A newly
+	# committed route must not inherit either idempotency cache; otherwise a
+	# deterministic key reused by a later run could be mistaken for an old result.
 	if _phase == ProtocolPhase.IDLE:
 		_consumed_node_ids.clear()
+		_settled_occurrences.clear()
 
 
 func _disconnect_net_manager_signals() -> void:
@@ -286,7 +437,9 @@ func _begin_protocol(
 		or participant_peer_ids.is_empty()
 	):
 		return false
+	_discard_pending_terminal_spectator_syncs_except(occurrence_key)
 	_resolve_stale_local_result_before_prepare()
+	_route_spectator_occurrence_key = ""
 	_active_node_id = node_id
 	_active_content_seed = content_seed
 	_active_occurrence_key = occurrence_key
@@ -294,6 +447,7 @@ func _begin_protocol(
 	_participant_peer_ids = _index_peer_ids(participant_peer_ids)
 	_entry_xirang_by_peer = entry_xirang_by_peer.duplicate(true)
 	_disconnected_participants.clear()
+	_pending_reconnect_prepare_peers.clear()
 	_expected_prepared_peers = _participant_peer_ids.duplicate()
 	_prepared_peers.clear()
 	_activate_when_prepared = activate_when_prepared
@@ -301,6 +455,9 @@ func _begin_protocol(
 	_local_runtime_prepared = false
 	_local_runtime_activated = false
 	_local_activation_requested = false
+	_prepare_barrier_deadline_msec = (
+		Time.get_ticks_msec() + PREPARE_BARRIER_TIMEOUT_MSEC
+	)
 	_local_outcome_received = false
 	_local_outcome_victory = false
 	_local_outcome_failure_reason = ""
@@ -378,6 +535,15 @@ func _create_embedded_runtime() -> bool:
 		return false
 	instance.name = COMBAT_RUNTIME_NODE_NAME
 	instance.set("embedded_runtime", true)
+	if not bool(instance.call(
+		"configure_embedded_participant_roster",
+		_pack_peer_ids(_participant_peer_ids)
+	)):
+		push_error(
+			"RogueCombatMultiplayerCoordinator: 无法冻结内嵌战斗参战名单。"
+		)
+		instance.free()
+		return false
 	instance.set(
 		"runtime_scene_path_override",
 		encounter_config.combat_scene_path
@@ -420,7 +586,11 @@ func _on_embedded_runtime_prepared() -> void:
 	if _is_host():
 		_prepared_peers[local_peer_id] = true
 		_try_activate_host_barrier()
-	elif _is_client() and _is_peer_send_ready(_get_host_peer_id()):
+	elif (
+		_is_client()
+		and not _activate_when_prepared
+		and _is_peer_send_ready(_get_host_peer_id())
+	):
 		net_combat_prepared.rpc_id(
 			_get_host_peer_id(),
 			_active_occurrence_key
@@ -505,17 +675,50 @@ func _configure_occurrence_runtime() -> bool:
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func net_combat_prepared(occurrence_key: String) -> void:
+	_accept_combat_prepared(
+		multiplayer.get_remote_sender_id(),
+		occurrence_key
+	)
+
+
+func _accept_combat_prepared(sender_id: int, occurrence_key: String) -> void:
 	if (
 		not _is_host()
+		or sender_id <= 0
 		or _phase != ProtocolPhase.PREPARING
 		or occurrence_key != _active_occurrence_key
+		or not _expected_prepared_peers.has(sender_id)
+		or _prepared_peers.has(sender_id)
 	):
-		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if not _expected_prepared_peers.has(sender_id):
 		return
 	_prepared_peers[sender_id] = true
 	_try_activate_host_barrier()
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_combat_activated(occurrence_key: String) -> void:
+	_accept_combat_activated(
+		multiplayer.get_remote_sender_id(),
+		occurrence_key
+	)
+
+
+func _accept_combat_activated(sender_id: int, occurrence_key: String) -> void:
+	if (
+		not _is_host()
+		or sender_id <= 0
+		or occurrence_key != _active_occurrence_key
+		or not _is_pending_reconnect_prepare(sender_id, occurrence_key)
+		or not (
+			_phase in [ProtocolPhase.ACTIVE, ProtocolPhase.SETTLED]
+			or (
+				_phase == ProtocolPhase.PREPARING
+				and _activation_dispatch_started
+			)
+		)
+	):
+		return
+	_pending_reconnect_prepare_peers.erase(sender_id)
 
 
 func _try_activate_host_barrier() -> void:
@@ -532,6 +735,15 @@ func _try_activate_host_barrier() -> void:
 		return
 	_activation_dispatch_started = true
 	_activate_when_prepared = true
+	_prepare_barrier_deadline_msec = 0
+	var reconnect_deadline := (
+		Time.get_ticks_msec() + RECONNECT_ACTIVATION_TIMEOUT_MSEC
+	)
+	for peer_id_variant in _pending_reconnect_prepare_peers.keys():
+		var pending := (
+			_pending_reconnect_prepare_peers[peer_id_variant] as Dictionary
+		)
+		pending["deadline_msec"] = reconnect_deadline
 	for peer_id_variant in _participant_peer_ids.keys():
 		var peer_id := int(peer_id_variant)
 		if peer_id == _get_local_peer_id() or not _is_peer_send_ready(peer_id):
@@ -606,6 +818,8 @@ func _activate_local_runtime_after_entry_reveal(
 func _activate_local_runtime() -> bool:
 	if (
 		_local_runtime_activated
+		or _phase != ProtocolPhase.PREPARING
+		or _settlement_received
 		or not _local_runtime_prepared
 		or _combat_network == null
 		or not is_instance_valid(_combat_network)
@@ -616,6 +830,14 @@ func _activate_local_runtime() -> bool:
 		return false
 	_local_runtime_activated = true
 	_phase = ProtocolPhase.ACTIVE
+	# PREPARED and ACTIVATED are distinct idempotent protocol stages. Reusing one
+	# acknowledgement would let a duplicated PREPARED packet close the reconnect
+	# failure window before entry reveal and runtime activation actually finish.
+	if _is_client() and _is_peer_send_ready(_get_host_peer_id()):
+		net_combat_activated.rpc_id(
+			_get_host_peer_id(),
+			_active_occurrence_key
+		)
 	return true
 
 
@@ -659,7 +881,13 @@ func _settle_host_outcome(
 		or not is_instance_valid(_combat_game)
 	):
 		return
-	_settled_occurrences[occurrence_key] = true
+	var reward_rollback_state := _capture_host_reward_rollback_state()
+	if reward_rollback_state.is_empty():
+		push_error(
+			"RogueCombatMultiplayerCoordinator: 无法捕获结算前奖励状态，已中止结算。"
+		)
+		_abort_authoritative_protocol(&"reward_rollback_capture_failed")
+		return
 	var final_xirang_by_peer: Dictionary = {}
 	var inventory_snapshots_by_peer: Dictionary = {}
 	var results_by_peer: Dictionary = {}
@@ -740,16 +968,206 @@ func _settle_host_outcome(
 		"inventory_snapshots_by_peer": inventory_snapshots_by_peer,
 		"results_by_peer": results_by_peer,
 	}
+	if not _publish_host_settlement(
+		occurrence_key,
+		settlement,
+		reward_rollback_state
+	):
+		push_error(
+			"RogueCombatMultiplayerCoordinator: Host 本地结算提交失败，已阻止向客户端发布。"
+		)
+
+
+func _publish_host_settlement(
+	occurrence_key: String,
+	settlement: Dictionary,
+	reward_rollback_state: Dictionary = {}
+) -> bool:
+	if (
+		not _is_host()
+		or occurrence_key.is_empty()
+		or occurrence_key != _active_occurrence_key
+		or _settled_occurrences.has(occurrence_key)
+		or str(settlement.get("occurrence_key", "")) != occurrence_key
+	):
+		return false
+	# Host is the transaction coordinator: no remote peer may observe settlement
+	# until the authoritative local validation and ledger commit have succeeded.
+	# The idempotency tombstone is likewise written only after that commit, so a
+	# local failure cannot both split the party and suppress recovery. Reward
+	# generation mutates the Host inventory and Player Xirang before this point;
+	# restore those values with a new monotonic inventory revision before returning
+	# to the route, otherwise retrying the unconsumed node could duplicate rewards.
+	if not _commit_host_settlement_locally(settlement):
+		if (
+			not reward_rollback_state.is_empty()
+			and not _rollback_host_reward_mutations(reward_rollback_state)
+		):
+			push_error(
+				"RogueCombatMultiplayerCoordinator: Host 结算失败后的奖励回滚失败。"
+			)
+		_abort_authoritative_protocol(&"settlement_commit_failed")
+		return false
+	_settled_occurrences[occurrence_key] = true
+	_downgrade_pending_reconnects_before_settlement_broadcast(
+		occurrence_key
+	)
+	_broadcast_authoritative_settlement(occurrence_key, settlement)
+	_try_broadcast_safe_teardown()
+	return true
+
+
+func _capture_host_reward_rollback_state() -> Dictionary:
+	if not _is_host() or _run_state == null or _participant_peer_ids.is_empty():
+		return {}
+	var inventory_snapshots_by_peer: Dictionary = {}
+	var combat_xirang_by_peer: Dictionary = {}
+	for peer_id_variant in _participant_peer_ids.keys():
+		if typeof(peer_id_variant) != TYPE_INT:
+			return {}
+		var peer_id := int(peer_id_variant)
+		if peer_id <= 0:
+			return {}
+		var snapshot := _run_state.export_inventory_snapshot_for_peer(peer_id)
+		if snapshot.is_empty():
+			return {}
+		inventory_snapshots_by_peer[peer_id] = snapshot.duplicate(true)
+		if _combat_game == null or not is_instance_valid(_combat_game):
+			continue
+		var player := _combat_game.get_player_for_peer(peer_id)
+		if player != null and is_instance_valid(player):
+			combat_xirang_by_peer[peer_id] = player.get_xirang()
+	return {
+		"inventory_snapshots_by_peer": inventory_snapshots_by_peer,
+		"combat_xirang_by_peer": combat_xirang_by_peer,
+	}
+
+
+func _rollback_host_reward_mutations(rollback_state: Dictionary) -> bool:
+	if (
+		not _is_host()
+		or _run_state == null
+		or typeof(rollback_state.get("inventory_snapshots_by_peer"))
+		!= TYPE_DICTIONARY
+		or typeof(rollback_state.get("combat_xirang_by_peer"))
+		!= TYPE_DICTIONARY
+	):
+		return false
+	var snapshots := (
+		rollback_state["inventory_snapshots_by_peer"] as Dictionary
+	)
+	if snapshots.size() != _participant_peer_ids.size():
+		return false
+
+	# Prepare every rollback first. Each restored inventory advances from the
+	# reward revision to reward_revision + 1, so observers never see revision time
+	# move backwards even though the pre-reward contents are restored.
+	var prepared_rollbacks: Dictionary = {}
 	for peer_id_variant in _participant_peer_ids.keys():
 		var peer_id := int(peer_id_variant)
-		if peer_id == _get_local_peer_id() or not _is_peer_send_ready(peer_id):
+		if (
+			typeof(peer_id_variant) != TYPE_INT
+			or peer_id <= 0
+			or not snapshots.has(peer_id)
+			or not snapshots[peer_id] is Dictionary
+		):
+			return false
+		var rollback_snapshot := (
+			(snapshots[peer_id] as Dictionary).duplicate(true)
+		)
+		var rollback_revision := (
+			_run_state.get_inventory_revision_for_peer(peer_id) + 1
+		)
+		rollback_snapshot["revision"] = rollback_revision
+		var slots := rollback_snapshot.get("slots", []) as Array
+		if slots.size() != RunStateStore.INVENTORY_CAPACITY:
+			return false
+		for slot_variant in slots:
+			if not slot_variant is Dictionary:
+				return false
+			(slot_variant as Dictionary)["revision"] = rollback_revision
+		var prepared := _run_state.prepare_inventory_snapshot_for_peer(
+			peer_id,
+			rollback_snapshot
+		)
+		if prepared.is_empty():
+			return false
+		prepared_rollbacks[peer_id] = prepared
+
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
+		if not _run_state.commit_prepared_inventory_snapshot_for_peer(
+			prepared_rollbacks[peer_id] as Dictionary,
+			false
+		):
+			return false
+	_run_state.notify_inventory_snapshot_committed()
+	_apply_xirang_map_to_game(
+		_combat_game,
+		rollback_state["combat_xirang_by_peer"] as Dictionary
+	)
+	return true
+
+
+func _downgrade_pending_reconnects_before_settlement_broadcast(
+	occurrence_key: String
+) -> void:
+	if (
+		not _is_host()
+		or not _settlement_received
+		or occurrence_key.is_empty()
+		or occurrence_key != _active_occurrence_key
+		or _pending_reconnect_prepare_peers.is_empty()
+	):
+		return
+	var pending_peer_ids: Array[int] = []
+	for peer_id_variant in _pending_reconnect_prepare_peers.keys():
+		pending_peer_ids.append(int(peer_id_variant))
+	pending_peer_ids.sort()
+	for peer_id in pending_peer_ids:
+		if not _is_pending_reconnect_prepare(peer_id, occurrence_key):
+			_pending_reconnect_prepare_peers.erase(peer_id)
+			continue
+		_mark_participant_disconnected_from_barriers(peer_id)
+		if (
+			_combat_network != null
+			and is_instance_valid(_combat_network)
+			and _combat_network.has_method(
+				"suspend_embedded_participant_for_current_combat"
+			)
+		):
+			_combat_network.call(
+				"suspend_embedded_participant_for_current_combat",
+				peer_id
+			)
+		_pending_reconnect_prepare_peers.erase(peer_id)
+		_pending_spectator_peers.erase(peer_id)
+		_send_terminal_reconnect_spectator(peer_id, occurrence_key)
+	# The caller tests the terminal barrier only after the ordinary participant
+	# settlement broadcast, so safe-to-teardown can never overtake settlement.
+
+
+func _commit_host_settlement_locally(settlement: Dictionary) -> bool:
+	return _apply_settlement(settlement)
+
+
+func _broadcast_authoritative_settlement(
+	occurrence_key: String,
+	settlement: Dictionary
+) -> void:
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
+		if (
+			peer_id == _get_local_peer_id()
+			or _disconnected_participants.has(peer_id)
+			or not _is_peer_send_ready(peer_id)
+		):
 			continue
 		net_combat_settlement.rpc_id(
 			peer_id,
 			occurrence_key,
 			settlement.duplicate(true)
 		)
-	_apply_settlement(settlement)
 
 
 @rpc("authority", "call_remote", "reliable", 0)
@@ -760,10 +1178,77 @@ func net_combat_settlement(
 	if (
 		not _is_client()
 		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
-		or occurrence_key != _active_occurrence_key
 	):
 		return
-	_apply_settlement(settlement)
+	if occurrence_key == _active_occurrence_key:
+		_apply_settlement(settlement)
+		return
+	if occurrence_key == _route_spectator_occurrence_key:
+		_apply_route_spectator_settlement(occurrence_key, settlement)
+
+
+func _apply_route_spectator_settlement(
+	occurrence_key: String,
+	settlement: Dictionary
+) -> bool:
+	if (
+		occurrence_key.is_empty()
+		or occurrence_key != _route_spectator_occurrence_key
+		or str(settlement.get("occurrence_key", "")) != occurrence_key
+		or typeof(settlement.get("consume_node")) != TYPE_BOOL
+		or typeof(settlement.get("final_xirang_by_peer"))
+		!= TYPE_DICTIONARY
+		or typeof(settlement.get("inventory_snapshots_by_peer"))
+		!= TYPE_DICTIONARY
+		or typeof(settlement.get("results_by_peer")) != TYPE_DICTIONARY
+	):
+		return false
+	var final_xirang := settlement["final_xirang_by_peer"] as Dictionary
+	var inventory_snapshots := (
+		settlement["inventory_snapshots_by_peer"] as Dictionary
+	)
+	var results := settlement["results_by_peer"] as Dictionary
+	var local_peer_id := _get_local_peer_id()
+	if (
+		local_peer_id <= 0
+		or final_xirang.is_empty()
+		or final_xirang.size() != inventory_snapshots.size()
+		or final_xirang.size() != results.size()
+		or not final_xirang.has(local_peer_id)
+		or not inventory_snapshots.has(local_peer_id)
+	):
+		return false
+
+	for peer_id_variant in final_xirang.keys():
+		var peer_id := int(peer_id_variant)
+		if (
+			typeof(peer_id_variant) != TYPE_INT
+			or peer_id <= 0
+			or typeof(final_xirang[peer_id_variant]) != TYPE_INT
+			or int(final_xirang[peer_id_variant]) < 0
+			or not inventory_snapshots.has(peer_id)
+			or not inventory_snapshots[peer_id] is Dictionary
+			or not results.has(peer_id)
+			or not results[peer_id] is Dictionary
+		):
+			return false
+		var snapshot := inventory_snapshots[peer_id] as Dictionary
+		if int(snapshot.get("peer_id", -1)) != peer_id:
+			return false
+	if not _apply_authoritative_settlement_economy(
+		final_xirang,
+		inventory_snapshots
+	):
+		return false
+	_apply_xirang_map_to_route(final_xirang)
+	if bool(settlement["consume_node"]):
+		var node_id := int(settlement.get("node_id", INVALID_NODE_ID))
+		if node_id >= 0:
+			_consumed_node_ids[node_id] = true
+	_route.complete_normal_combat(occurrence_key)
+	_route.set_route_presentation_enabled(true)
+	_route_spectator_occurrence_key = ""
+	return true
 
 
 func _apply_settlement(settlement: Dictionary) -> bool:
@@ -792,13 +1277,13 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 	):
 		return false
 
+	if not _apply_authoritative_settlement_economy(
+		final_xirang,
+		inventory_snapshots
+	):
+		return false
 	_apply_xirang_map_to_game(_combat_game, final_xirang)
 	_apply_xirang_map_to_route(final_xirang)
-	for peer_id_variant in inventory_snapshots.keys():
-		var peer_id := int(peer_id_variant)
-		var snapshot := inventory_snapshots[peer_id_variant] as Dictionary
-		if not _is_host():
-			_run_state.apply_inventory_snapshot_for_peer(peer_id, snapshot, true)
 	if bool(settlement.get("consume_node", false)):
 		_consumed_node_ids[int(settlement.get("node_id", INVALID_NODE_ID))] = true
 
@@ -808,8 +1293,44 @@ func _apply_settlement(settlement: Dictionary) -> bool:
 	_expected_terminal_peers = _participant_peer_ids.duplicate()
 	for disconnected_peer_id in _disconnected_participants.keys():
 		_expected_terminal_peers.erase(disconnected_peer_id)
+	if _is_host():
+		_terminal_barrier_deadline_msec = (
+			Time.get_ticks_msec() + TERMINAL_BARRIER_TIMEOUT_MSEC
+		)
 	_try_finalize_local_terminal()
 	return true
+
+
+func _apply_authoritative_settlement_economy(
+	final_xirang: Dictionary,
+	inventory_snapshots: Dictionary
+) -> bool:
+	if not _is_host():
+		# Preflight every peer snapshot before publishing any inventory signal.
+		# This prevents malformed Host data from exposing a half-updated party.
+		var prepared_snapshots: Dictionary = {}
+		for peer_id_variant in inventory_snapshots.keys():
+			var peer_id := int(peer_id_variant)
+			var snapshot := inventory_snapshots[peer_id_variant] as Dictionary
+			var prepared := _run_state.prepare_inventory_snapshot_for_peer(
+				peer_id,
+				snapshot,
+				true
+			)
+			if prepared.is_empty():
+				return false
+			prepared_snapshots[peer_id] = prepared
+		for peer_id_variant in prepared_snapshots.keys():
+			if not _run_state.commit_prepared_inventory_snapshot_for_peer(
+				prepared_snapshots[peer_id_variant] as Dictionary,
+				false
+			):
+				push_error(
+					"RogueCombatMultiplayerCoordinator: 结算背包提交失去原子性。"
+				)
+				return false
+		_run_state.notify_inventory_snapshot_committed()
+	return _run_state.set_party_xirang_balances(final_xirang)
 
 
 func _try_finalize_local_terminal() -> void:
@@ -932,14 +1453,24 @@ func _abort_interrupted_victory_terminal(occurrence_key: String) -> void:
 		)
 		return
 	if _is_client():
-		_request_authoritative_abort(
-			occurrence_key,
-			&"victory_presentation_interrupted"
-		)
+		# A local presentation failure is not an authoritative combat failure.
+		# Mark this peer terminal-ready so it cannot hold the Host barrier, then
+		# clean up only this client's interrupted result flow.
+		if _is_peer_send_ready(_get_host_peer_id()):
+			net_combat_terminal_ready.rpc_id(
+				_get_host_peer_id(),
+				occurrence_key
+			)
 	_apply_protocol_abort(occurrence_key)
 
 
 func _on_route_normal_combat_stage_reset(occurrence_key: String) -> void:
+	if (
+		not occurrence_key.is_empty()
+		and occurrence_key == _route_spectator_occurrence_key
+	):
+		_route_spectator_occurrence_key = ""
+		return
 	_abort_interrupted_victory_terminal(
 		occurrence_key
 		if not occurrence_key.is_empty()
@@ -970,7 +1501,10 @@ func net_combat_terminal_ready(occurrence_key: String) -> void:
 	):
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if not _expected_terminal_peers.has(sender_id):
+	if (
+		not _expected_terminal_peers.has(sender_id)
+		or _terminal_ready_peers.has(sender_id)
+	):
 		return
 	_terminal_ready_peers[sender_id] = true
 	_try_broadcast_safe_teardown()
@@ -988,6 +1522,7 @@ func _try_broadcast_safe_teardown() -> void:
 	):
 		return
 	_terminal_safe_broadcast = true
+	_terminal_barrier_deadline_msec = 0
 	for peer_id_variant in _participant_peer_ids.keys():
 		var peer_id := int(peer_id_variant)
 		if peer_id == _get_local_peer_id() or not _is_peer_send_ready(peer_id):
@@ -1101,6 +1636,7 @@ func _reset_protocol_state() -> void:
 	_entry_xirang_by_peer.clear()
 	_disconnected_participants.clear()
 	_reconnecting_peer_ids.clear()
+	_pending_reconnect_prepare_peers.clear()
 	_expected_prepared_peers.clear()
 	_prepared_peers.clear()
 	_activate_when_prepared = false
@@ -1108,6 +1644,7 @@ func _reset_protocol_state() -> void:
 	_local_runtime_prepared = false
 	_local_runtime_activated = false
 	_local_activation_requested = false
+	_prepare_barrier_deadline_msec = 0
 	_local_outcome_received = false
 	_local_outcome_victory = false
 	_local_outcome_failure_reason = ""
@@ -1118,6 +1655,7 @@ func _reset_protocol_state() -> void:
 	_terminal_ready_peers.clear()
 	_terminal_safe_received = false
 	_terminal_safe_broadcast = false
+	_terminal_barrier_deadline_msec = 0
 	_local_terminal_finalized = false
 
 
@@ -1151,13 +1689,118 @@ func net_combat_abort_requested(
 	occurrence_key: String,
 	reason: StringName
 ) -> void:
-	if (
-		not _is_host()
-		or occurrence_key != _active_occurrence_key
-		or not _participant_peer_ids.has(multiplayer.get_remote_sender_id())
+	var sender_id := multiplayer.get_remote_sender_id()
+	if _can_accept_client_abort_request(sender_id, occurrence_key, reason):
+		_abort_authoritative_protocol(reason)
+		return
+	if _can_withdraw_failed_runtime_participant(
+		sender_id,
+		occurrence_key,
+		reason
+	):
+		_withdraw_failed_runtime_participant(sender_id, occurrence_key, reason)
+
+
+func _can_accept_client_abort_request(
+	sender_id: int,
+	occurrence_key: String,
+	reason: StringName
+) -> bool:
+	return (
+		_is_host()
+		and _phase == ProtocolPhase.PREPARING
+		and not _activation_dispatch_started
+		and occurrence_key == _active_occurrence_key
+		and _participant_peer_ids.has(sender_id)
+		and CLIENT_PREPARATION_ABORT_REASONS.has(reason)
+	)
+
+
+func _can_withdraw_failed_runtime_participant(
+	sender_id: int,
+	occurrence_key: String,
+	reason: StringName
+) -> bool:
+	return (
+		_is_host()
+		and occurrence_key == _active_occurrence_key
+		and _participant_peer_ids.has(sender_id)
+		and _is_pending_reconnect_prepare(sender_id, occurrence_key)
+		and CLIENT_PREPARATION_ABORT_REASONS.has(reason)
+		and (
+			_phase in [ProtocolPhase.ACTIVE, ProtocolPhase.SETTLED]
+			or (
+				_phase == ProtocolPhase.PREPARING
+				and _activation_dispatch_started
+			)
+		)
+	)
+
+
+func _is_pending_reconnect_prepare(
+	peer_id: int,
+	occurrence_key: String
+) -> bool:
+	var pending := (
+		_pending_reconnect_prepare_peers.get(peer_id, {}) as Dictionary
+	)
+	return (
+		peer_id > 0
+		and not occurrence_key.is_empty()
+		and str(pending.get("occurrence_key", "")) == occurrence_key
+	)
+
+
+func _withdraw_failed_runtime_participant(
+	peer_id: int,
+	occurrence_key: String,
+	reason: StringName
+) -> void:
+	if not _can_withdraw_failed_runtime_participant(
+		peer_id,
+		occurrence_key,
+		reason
 	):
 		return
-	_abort_authoritative_protocol(reason)
+	_downgrade_pending_reconnect_to_spectator(peer_id, reason)
+
+
+func _downgrade_pending_reconnect_to_spectator(
+	peer_id: int,
+	reason: StringName
+) -> void:
+	if (
+		not _is_host()
+		or peer_id <= 0
+		or not _participant_peer_ids.has(peer_id)
+		or not _is_pending_reconnect_prepare(
+			peer_id,
+			_active_occurrence_key
+		)
+	):
+		return
+	var occurrence_key := _active_occurrence_key
+	# A late reconnect failure belongs to this participant, not the already
+	# running authoritative battle. Treat it like a combat-only disconnect while
+	# keeping the peer connected to the route as a spectator.
+	_on_player_left(peer_id)
+	if (
+		_combat_network != null
+		and is_instance_valid(_combat_network)
+		and _combat_network.has_method(
+			"suspend_embedded_participant_for_current_combat"
+		)
+	):
+		_combat_network.call(
+			"suspend_embedded_participant_for_current_combat",
+			peer_id
+		)
+	push_warning((
+		"RogueCombatMultiplayerCoordinator: peer %d 战斗运行时恢复失败"
+		+ "（%s），已降级为路线观战。"
+	) % [peer_id, reason])
+	_pending_reconnect_prepare_peers.erase(peer_id)
+	_send_terminal_reconnect_spectator(peer_id, occurrence_key)
 
 
 func _abort_authoritative_protocol(reason: StringName) -> void:
@@ -1207,9 +1850,23 @@ func _apply_protocol_abort(occurrence_key: String) -> void:
 
 
 func _on_player_left(peer_id: int) -> void:
+	_pending_spectator_peers.erase(peer_id)
+	_pending_terminal_spectator_syncs.erase(peer_id)
 	if _phase == ProtocolPhase.IDLE or peer_id <= 0:
 		return
+	_pending_reconnect_prepare_peers.erase(peer_id)
 	if not _participant_peer_ids.has(peer_id):
+		return
+	_mark_participant_disconnected_from_barriers(peer_id)
+	if _is_host():
+		if _phase == ProtocolPhase.PREPARING:
+			_try_activate_host_barrier()
+		elif _phase == ProtocolPhase.SETTLED:
+			_try_broadcast_safe_teardown()
+
+
+func _mark_participant_disconnected_from_barriers(peer_id: int) -> void:
+	if peer_id <= 0 or not _participant_peer_ids.has(peer_id):
 		return
 	_disconnected_participants[peer_id] = {
 		"entry_xirang": int(_entry_xirang_by_peer.get(peer_id, 0)),
@@ -1220,11 +1877,6 @@ func _on_player_left(peer_id: int) -> void:
 	_prepared_peers.erase(peer_id)
 	_expected_terminal_peers.erase(peer_id)
 	_terminal_ready_peers.erase(peer_id)
-	if _is_host():
-		if _phase == ProtocolPhase.PREPARING:
-			_try_activate_host_barrier()
-		elif _phase == ProtocolPhase.SETTLED:
-			_try_broadcast_safe_teardown()
 
 
 func _on_player_joined(peer_id: int, _player_name: String) -> void:
@@ -1275,8 +1927,41 @@ func net_combat_route_spectator(occurrence_key: String) -> void:
 	):
 		return
 	# 不创建 MpGame，也不参与 prepare barrier；路线本身仍由房主权威锁定。
+	if (
+		_phase != ProtocolPhase.IDLE
+		and occurrence_key == _active_occurrence_key
+	):
+		_release_local_combat_to_route_spectator(occurrence_key)
+		return
+	_route_spectator_occurrence_key = occurrence_key
 	_route.hide_combat_entry_transition()
 	_route.set_route_presentation_enabled(true)
+
+
+func _release_local_combat_to_route_spectator(occurrence_key: String) -> void:
+	if (
+		occurrence_key.is_empty()
+		or occurrence_key != _active_occurrence_key
+	):
+		return
+	if _combat_network != null and is_instance_valid(_combat_network):
+		_combat_network.queue_free()
+	var received_settlement := (
+		_pending_settlement.duplicate(true)
+		if _settlement_received
+		else {}
+	)
+	_combat_network = null
+	_combat_game = null
+	_route.hide_combat_entry_transition()
+	_route.set_route_presentation_enabled(true)
+	_reset_protocol_state()
+	_route_spectator_occurrence_key = occurrence_key
+	if not received_settlement.is_empty():
+		_apply_route_spectator_settlement(
+			occurrence_key,
+			received_settlement
+		)
 
 
 func _on_player_reconnected(
@@ -1328,6 +2013,9 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 		)
 	):
 		_reconnecting_peer_ids.erase(new_peer_id)
+		if _is_host() and _phase != ProtocolPhase.IDLE:
+			_pending_spectator_peers[new_peer_id] = true
+			call_deferred("_defer_route_spectator_sync", new_peer_id)
 		return
 	if _terminal_safe_broadcast:
 		if _is_host():
@@ -1338,36 +2026,54 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 		_reconnecting_peer_ids.erase(new_peer_id)
 		return
 
-	_participant_peer_ids.erase(old_peer_id)
-	_participant_peer_ids[new_peer_id] = true
-	if _entry_xirang_by_peer.has(old_peer_id):
-		_entry_xirang_by_peer[new_peer_id] = _entry_xirang_by_peer[old_peer_id]
-		_entry_xirang_by_peer.erase(old_peer_id)
-	elif _disconnected_participants.has(old_peer_id):
-		var record := _disconnected_participants[old_peer_id] as Dictionary
-		_entry_xirang_by_peer[new_peer_id] = int(
-			record.get("entry_xirang", 0)
+	var host_runtime_missing := _host_runtime_is_missing_peer(new_peer_id)
+	var disconnected_record := _remap_reconnected_participant_identity(
+		old_peer_id,
+		new_peer_id
+	)
+	if _is_host() and _phase == ProtocolPhase.SETTLED:
+		# The outcome already exists; rebuilding and activating a combat scene only
+		# races its deferred prepared signal against the settlement packet. Restore
+		# authoritative economy directly on a route spectator instead.
+		_keep_reconnected_participant_as_spectator(
+			old_peer_id,
+			new_peer_id,
+			disconnected_record
 		)
-	_disconnected_participants.erase(old_peer_id)
-	_expected_prepared_peers.erase(old_peer_id)
-	_prepared_peers.erase(old_peer_id)
-	_expected_terminal_peers.erase(old_peer_id)
-	_terminal_ready_peers.erase(old_peer_id)
-	if (
-		_phase == ProtocolPhase.PREPARING
-		and not _activation_dispatch_started
-	):
-		_expected_prepared_peers[new_peer_id] = true
-	elif _phase == ProtocolPhase.SETTLED:
-		_expected_terminal_peers[new_peer_id] = true
-		_remap_pending_settlement_peer(old_peer_id, new_peer_id)
+		return
+	if host_runtime_missing:
+		# MpGame had no authoritative PlayerState to restore. Keep the canonical
+		# identity migrated for route economy/settlement, but never send a prepare
+		# that the Host itself cannot simulate.
+		_keep_reconnected_participant_as_spectator(
+			old_peer_id,
+			new_peer_id,
+			disconnected_record
+		)
+		return
+
 	_reconnecting_peer_ids.erase(new_peer_id)
-	if not _is_host() or not _is_peer_send_ready(new_peer_id):
+	if not _is_host():
+		return
+	if not _is_peer_send_ready(new_peer_id):
+		_keep_reconnected_participant_as_spectator(
+			old_peer_id,
+			new_peer_id,
+			disconnected_record
+		)
 		return
 	var activate_immediately := _phase in [
 		ProtocolPhase.ACTIVE,
 		ProtocolPhase.SETTLED,
 	] or _activation_dispatch_started
+	_pending_reconnect_prepare_peers[new_peer_id] = {
+		"occurrence_key": _active_occurrence_key,
+		"deadline_msec": (
+			Time.get_ticks_msec() + RECONNECT_ACTIVATION_TIMEOUT_MSEC
+			if activate_immediately
+			else 0
+		),
+	}
 	net_combat_prepare.rpc_id(
 		new_peer_id,
 		_active_node_id,
@@ -1386,18 +2092,162 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 		)
 
 
+func _keep_reconnected_participant_as_spectator(
+	old_peer_id: int,
+	new_peer_id: int,
+	disconnected_record: Dictionary
+) -> void:
+	_disconnected_participants[new_peer_id] = disconnected_record.duplicate(true)
+	_pending_reconnect_prepare_peers.erase(new_peer_id)
+	_expected_prepared_peers.erase(new_peer_id)
+	_prepared_peers.erase(new_peer_id)
+	_expected_terminal_peers.erase(new_peer_id)
+	_terminal_ready_peers.erase(new_peer_id)
+	if (
+		_combat_network != null
+		and is_instance_valid(_combat_network)
+		and _combat_network.has_method(
+			"suspend_embedded_participant_for_current_combat"
+		)
+	):
+		_combat_network.call(
+			"suspend_embedded_participant_for_current_combat",
+			new_peer_id,
+			old_peer_id
+		)
+	_reconnecting_peer_ids.erase(new_peer_id)
+	_send_terminal_reconnect_spectator(
+		new_peer_id,
+		_active_occurrence_key
+	)
+
+
+func _host_runtime_is_missing_peer(peer_id: int) -> bool:
+	if not _is_host() or peer_id <= 0:
+		return false
+	if (
+		_combat_network == null
+		or not is_instance_valid(_combat_network)
+		or not _combat_network.has_method("get_game_runtime")
+	):
+		return true
+	var runtime := _combat_network.call("get_game_runtime") as Node
+	return (
+		runtime == null
+		or not is_instance_valid(runtime)
+		or not runtime.has_method("get_player_for_peer")
+		or runtime.call("get_player_for_peer", peer_id) == null
+	)
+
+
+func _remap_reconnected_participant_identity(
+	old_peer_id: int,
+	new_peer_id: int
+) -> Dictionary:
+	var disconnected_record := (
+		(_disconnected_participants[old_peer_id] as Dictionary).duplicate(true)
+		if _disconnected_participants.has(old_peer_id)
+		else {
+			"entry_xirang": int(_entry_xirang_by_peer.get(old_peer_id, 0)),
+			"was_prepared": _prepared_peers.has(old_peer_id),
+			"was_terminal_ready": _terminal_ready_peers.has(old_peer_id),
+		}
+	)
+	_participant_peer_ids.erase(old_peer_id)
+	_participant_peer_ids[new_peer_id] = true
+	if _entry_xirang_by_peer.has(old_peer_id):
+		_entry_xirang_by_peer[new_peer_id] = _entry_xirang_by_peer[old_peer_id]
+		_entry_xirang_by_peer.erase(old_peer_id)
+	elif _disconnected_participants.has(old_peer_id):
+		var record := _disconnected_participants[old_peer_id] as Dictionary
+		_entry_xirang_by_peer[new_peer_id] = int(
+			record.get("entry_xirang", 0)
+		)
+	_disconnected_participants.erase(old_peer_id)
+	_pending_reconnect_prepare_peers.erase(old_peer_id)
+	_expected_prepared_peers.erase(old_peer_id)
+	_prepared_peers.erase(old_peer_id)
+	_expected_terminal_peers.erase(old_peer_id)
+	_terminal_ready_peers.erase(old_peer_id)
+	if (
+		_phase == ProtocolPhase.PREPARING
+		and not _activation_dispatch_started
+	):
+		_expected_prepared_peers[new_peer_id] = true
+	elif _phase == ProtocolPhase.SETTLED:
+		_expected_terminal_peers[new_peer_id] = true
+		_remap_pending_settlement_peer(old_peer_id, new_peer_id)
+	return disconnected_record
+
+
 func _send_terminal_reconnect_spectator(
 	peer_id: int,
 	occurrence_key: String
 ) -> void:
 	_reconnecting_peer_ids.erase(peer_id)
+	if not _is_host() or peer_id <= 0 or occurrence_key.is_empty():
+		return
+	var settlement: Dictionary = {}
+	if (
+		_settlement_received
+		and occurrence_key == _active_occurrence_key
+		and not _pending_settlement.is_empty()
+	):
+		settlement = _pending_settlement.duplicate(true)
+	_pending_terminal_spectator_syncs[peer_id] = {
+		"occurrence_key": occurrence_key,
+		"settlement": settlement,
+		"expires_msec": (
+			Time.get_ticks_msec() + TERMINAL_SPECTATOR_SYNC_TIMEOUT_MSEC
+		),
+	}
+	_flush_pending_terminal_spectator_sync(peer_id)
+
+
+func _flush_pending_terminal_spectator_sync(peer_id: int) -> bool:
 	if (
 		not _is_host()
-		or occurrence_key.is_empty()
+		or peer_id <= 0
+		or not _pending_terminal_spectator_syncs.has(peer_id)
 		or not _is_peer_send_ready(peer_id)
 	):
-		return
+		return false
+	var pending := (
+		_pending_terminal_spectator_syncs[peer_id] as Dictionary
+	)
+	var occurrence_key := str(pending.get("occurrence_key", ""))
+	if occurrence_key.is_empty():
+		_pending_terminal_spectator_syncs.erase(peer_id)
+		return false
+	var settlement := pending.get("settlement", {}) as Dictionary
+	if (
+		settlement.is_empty()
+		and _settlement_received
+		and occurrence_key == _active_occurrence_key
+		and not _pending_settlement.is_empty()
+	):
+		settlement = _pending_settlement.duplicate(true)
+	_dispatch_terminal_spectator_sync(
+		peer_id,
+		occurrence_key,
+		settlement
+	)
+	_pending_terminal_spectator_syncs.erase(peer_id)
+	return true
+
+
+func _dispatch_terminal_spectator_sync(
+	peer_id: int,
+	occurrence_key: String,
+	settlement: Dictionary
+) -> void:
 	net_combat_route_spectator.rpc_id(peer_id, occurrence_key)
+	if not settlement.is_empty():
+		net_combat_settlement.rpc_id(
+			peer_id,
+			occurrence_key,
+			settlement.duplicate(true)
+		)
 
 
 func _remap_pending_settlement_peer(
@@ -1502,8 +2352,10 @@ func _validate_authoritative_peer_maps(
 	for peer_id_variant in _participant_peer_ids.keys():
 		var peer_id := int(peer_id_variant)
 		if (
-			peer_id <= 0
+			typeof(peer_id_variant) != TYPE_INT
+			or peer_id <= 0
 			or not xirang_by_peer.has(peer_id)
+			or typeof(xirang_by_peer[peer_id]) != TYPE_INT
 			or int(xirang_by_peer[peer_id]) < 0
 			or not inventory_snapshots_by_peer.has(peer_id)
 			or not inventory_snapshots_by_peer[peer_id] is Dictionary

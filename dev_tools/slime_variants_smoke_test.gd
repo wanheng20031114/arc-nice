@@ -493,18 +493,65 @@ func _test_green_regeneration_contract() -> void:
 	)
 
 	green_slime.current_health = 200
-	green_slime.is_multiplayer_proxy = true
+	regeneration_timer.start()
+	green_slime.configure_multiplayer_proxy()
+	_expect(
+		regeneration_timer.is_stopped(),
+		"绿色史莱姆多人代理必须停止子 Timer，不能每0.5秒空回调。"
+	)
 	green_slime._on_regeneration_timer_timeout()
 	_expect(
 		green_slime.current_health == 200,
 		"多人代理不得在客户端自行回血。"
 	)
+	var legacy_proxy_timeout_count := [0]
+	regeneration_timer.timeout.connect(
+		func() -> void:
+			legacy_proxy_timeout_count[0] = int(legacy_proxy_timeout_count[0]) + 1
+	)
+	# A emulates the former proxy behavior by restarting the otherwise identical
+	# Timer; B keeps the optimized stopped state from configure_multiplayer_proxy.
+	regeneration_timer.start()
+	await create_timer(
+		GreenSlime.REGENERATION_INTERVAL_SECONDS + 0.12,
+		true
+	).timeout
+	var legacy_timeout_count := int(legacy_proxy_timeout_count[0])
+	regeneration_timer.stop()
+	legacy_proxy_timeout_count[0] = 0
+	await create_timer(
+		GreenSlime.REGENERATION_INTERVAL_SECONDS + 0.12,
+		true
+	).timeout
+	_expect(
+		legacy_timeout_count >= 1
+		and int(legacy_proxy_timeout_count[0]) == 0,
+		"代理 Timer A/B 必须从每周期至少一次空回调降为零。"
+	)
 	green_slime.is_multiplayer_proxy = false
 	green_slime.is_dead = true
 	green_slime._on_regeneration_timer_timeout()
 	_expect(green_slime.current_health == 200, "死亡绿色史莱姆不得回血。")
+	green_slime.is_dead = false
+	regeneration_timer.start()
+	green_slime._die()
+	_expect(regeneration_timer.is_stopped(), "绿色史莱姆死亡时必须停止回血 Timer。")
 
 	green_slime.queue_free()
+	await process_frame
+
+	var escaping_slime := GREEN_CONFIG.enemy_scene.instantiate() as GreenSlime
+	fixture.add_child(escaping_slime)
+	escaping_slime.setup(GREEN_CONFIG, null, null)
+	await process_frame
+	var escaping_timer := escaping_slime.regeneration_timer
+	_expect(
+		not escaping_timer.is_stopped()
+		and escaping_slime.remove_for_home_escape()
+		and escaping_timer.is_stopped(),
+		"绿色史莱姆逃离基地时必须停止回血 Timer。"
+	)
+	escaping_slime.queue_free()
 	await process_frame
 
 

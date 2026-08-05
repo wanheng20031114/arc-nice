@@ -47,6 +47,9 @@ const LINGLAN_BOSS_CONFIG_PATH := (
 	"res://resources/config/bosses/boss_01_linglan.tres"
 )
 const CAPOO_AK47_BULLET_POOL_PATH := "res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
+const COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH := (
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
+)
 const CAPOO_MAGE_FIREBALL_POOL_PATH := "res://scene/enemy/capoo/capoo_mage_fireball.tscn"
 const BULLET_HIT_EFFECT_POOL_PATH := "res://scene/bullet_hit_effect.tscn"
 const ENEMY_HIT_EFFECT_POOL_PATH := "res://scene/enemy/enemy_hit_effect.tscn"
@@ -111,6 +114,8 @@ var effective_projectile_world_certificate := false
 var requested_projectile_hot_metrics := false
 var requested_batched_projectile_motion := true
 var requested_ak_attack_phase_stagger := true
+var requested_gunner_bullet_pool_prewarm := 0
+var requested_gunner_bullet_pool_retained := 96
 var requested_smg_short_range_targeting := true
 var requested_smg_hitscan_attack := true
 var requested_disable_smg_projectiles := false
@@ -125,6 +130,8 @@ var original_guardian_unchanged_diff_fast_path := true
 var original_projectile_world_certificate := true
 var original_batched_projectile_motion := true
 var original_ak_attack_phase_stagger := true
+var original_gunner_bullet_pool_prewarm := 0
+var original_gunner_bullet_pool_retained := 96
 var original_smg_short_range_targeting := true
 var original_smg_hitscan_attack := true
 var original_expanded_projectile_prewarm := true
@@ -228,6 +235,16 @@ func _parse_user_arguments() -> void:
 			requested_ak_attack_phase_stagger = (
 				argument.get_slice("=", 1).to_lower() == "true"
 			)
+		elif argument.begins_with("--gunner-bullet-pool-prewarm="):
+			requested_gunner_bullet_pool_prewarm = maxi(
+				int(argument.get_slice("=", 1)),
+				0
+			)
+		elif argument.begins_with("--gunner-bullet-pool-retained="):
+			requested_gunner_bullet_pool_retained = maxi(
+				int(argument.get_slice("=", 1)),
+				1
+			)
 		elif argument.begins_with("--smg-short-range-targeting="):
 			requested_smg_short_range_targeting = (
 				argument.get_slice("=", 1).to_lower() == "true"
@@ -287,6 +304,12 @@ func _run() -> void:
 	)
 	original_batched_projectile_motion = CapooAK47Bullet.batched_motion_enabled
 	original_ak_attack_phase_stagger = CapooAK47.attack_phase_stagger_enabled
+	original_gunner_bullet_pool_prewarm = (
+		GameRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count
+	)
+	original_gunner_bullet_pool_retained = (
+		GameRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity
+	)
 	original_smg_short_range_targeting = CapooSMG.short_range_targeting_enabled
 	original_smg_hitscan_attack = CapooSMG.hitscan_attack_enabled
 	original_expanded_projectile_prewarm = (
@@ -307,6 +330,12 @@ func _run() -> void:
 	CapooAK47Bullet.world_collision_certificate_enabled = false
 	CapooAK47Bullet.batched_motion_enabled = requested_batched_projectile_motion
 	CapooAK47.attack_phase_stagger_enabled = requested_ak_attack_phase_stagger
+	GameRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count = (
+		requested_gunner_bullet_pool_prewarm
+	)
+	GameRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity = (
+		requested_gunner_bullet_pool_retained
+	)
 	CapooSMG.short_range_targeting_enabled = requested_smg_short_range_targeting
 	CapooSMG.hitscan_attack_enabled = requested_smg_hitscan_attack
 	GameTowerDefense.expanded_projectile_pool_prewarm_enabled = (
@@ -453,6 +482,7 @@ func _run() -> void:
 			+ "phase=%s enemies=%d fences=%d corn=%d agave=%d warmup=%d samples=%d "
 			+ "setup_ms=%.3f tower_setup_ms=%.3f runtime_setup_ms=%.3f "
 			+ "projectile_pool_registration_ms=%.3f expanded_prewarm=%s "
+			+ "gunner_pool=%d/%d "
 			+ "seed=%d max_fps=%d physics_hz=%d renderer=%s driver=%s gpu=%s"
 		)
 		% [
@@ -470,6 +500,8 @@ func _run() -> void:
 			runtime_setup_ms,
 			game.projectile_pool_registration_ms,
 			str(requested_expanded_projectile_prewarm),
+			requested_gunner_bullet_pool_prewarm,
+			requested_gunner_bullet_pool_retained,
 			fixed_seed,
 			Engine.max_fps,
 			Engine.physics_ticks_per_second,
@@ -1431,6 +1463,8 @@ func _measure_sample_window(
 		"projectile_hot_metrics": requested_projectile_hot_metrics,
 		"batched_projectile_motion": requested_batched_projectile_motion,
 		"ak_attack_phase_stagger": requested_ak_attack_phase_stagger,
+		"gunner_bullet_pool_prewarm": requested_gunner_bullet_pool_prewarm,
+		"gunner_bullet_pool_retained": requested_gunner_bullet_pool_retained,
 		"smg_short_range_targeting": requested_smg_short_range_targeting,
 		"smg_hitscan_attack": requested_smg_hitscan_attack,
 		"disable_smg_projectiles": requested_disable_smg_projectiles,
@@ -1722,6 +1756,7 @@ func _get_projectile_pool_metrics() -> Dictionary:
 		return result
 	for scene_path in [
 		CAPOO_AK47_BULLET_POOL_PATH,
+		COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH,
 		CAPOO_MAGE_FIREBALL_POOL_PATH,
 		BULLET_HIT_EFFECT_POOL_PATH,
 	]:
@@ -1748,6 +1783,10 @@ func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
 		CAPOO_MAGE_FIREBALL_POOL_PATH,
 		{}
 	) as Dictionary
+	var gunner_metrics := metrics_by_path.get(
+		COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH,
+		{}
+	) as Dictionary
 	_expect(
 		int(ak47_metrics.get("created", -1)) == expected_ak47_prewarm,
 		"AK projectile pool startup count must match the selected A/B variant."
@@ -1755,6 +1794,16 @@ func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
 	_expect(
 		int(mage_metrics.get("created", -1)) == expected_mage_prewarm,
 		"Mage projectile pool startup count must match the selected A/B variant."
+	)
+	_expect(
+		int(gunner_metrics.get("created", -1))
+		== requested_gunner_bullet_pool_prewarm
+		and int(gunner_metrics.get("retained_capacity", -1))
+		== maxi(
+			requested_gunner_bullet_pool_prewarm,
+			requested_gunner_bullet_pool_retained
+		),
+		"Gunner projectile pool startup metrics must match the isolated A/B values."
 	)
 	_expect(
 		int(ak47_metrics.get("retained_capacity", -1)) == 384
@@ -1767,6 +1816,7 @@ func _build_pool_metric_window(before: Dictionary, after: Dictionary) -> Diction
 	var result := {}
 	for scene_path in [
 		CAPOO_AK47_BULLET_POOL_PATH,
+		COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH,
 		CAPOO_MAGE_FIREBALL_POOL_PATH,
 		BULLET_HIT_EFFECT_POOL_PATH,
 	]:
@@ -1967,6 +2017,12 @@ func _finish() -> void:
 	)
 	CapooAK47Bullet.batched_motion_enabled = original_batched_projectile_motion
 	CapooAK47.attack_phase_stagger_enabled = original_ak_attack_phase_stagger
+	GameRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count = (
+		original_gunner_bullet_pool_prewarm
+	)
+	GameRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity = (
+		original_gunner_bullet_pool_retained
+	)
 	CapooSMG.short_range_targeting_enabled = original_smg_short_range_targeting
 	CapooSMG.hitscan_attack_enabled = original_smg_hitscan_attack
 	GameTowerDefense.expanded_projectile_pool_prewarm_enabled = (

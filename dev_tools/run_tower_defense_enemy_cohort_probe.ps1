@@ -75,6 +75,12 @@ param(
 
     [bool]$ExpandedProjectilePrewarm = $true,
 
+    [ValidateRange(0, 5000)]
+    [int]$GunnerBulletPoolPrewarm = 0,
+
+    [ValidateRange(1, 10000)]
+    [int]$GunnerBulletPoolRetained = 96,
+
     [bool]$EnemyAttackAudioLimiter = $true,
 
     [bool]$PooledMageImpactEffect = $true,
@@ -141,6 +147,8 @@ $godotArguments += @(
     "--smg-hitscan-attack=$($SmgHitscanAttack.ToString().ToLowerInvariant())",
     "--disable-smg-projectiles=$($DisableSmgProjectiles.ToString().ToLowerInvariant())",
     "--expanded-projectile-prewarm=$($ExpandedProjectilePrewarm.ToString().ToLowerInvariant())",
+    "--gunner-bullet-pool-prewarm=$GunnerBulletPoolPrewarm",
+    "--gunner-bullet-pool-retained=$GunnerBulletPoolRetained",
     "--enemy-attack-audio-limiter=$($EnemyAttackAudioLimiter.ToString().ToLowerInvariant())",
     "--pooled-mage-impact-effect=$($PooledMageImpactEffect.ToString().ToLowerInvariant())"
 )

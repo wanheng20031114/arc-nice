@@ -24,6 +24,10 @@ const RECONNECT_TOKEN_HEX_LENGTH := 32
 const RECONNECT_GRACE_MILLISECONDS := 90_000
 const RECONNECT_LOAD_TIMEOUT_MILLISECONDS := 30_000
 const LATE_REGISTRATION_TIMEOUT_MILLISECONDS := 5_000
+const LOBBY_COMMAND_RATE_PER_SECOND := 6.0
+const LOBBY_COMMAND_RATE_BURST := 12.0
+const MAX_LOBBY_PLAYER_NAME_WIRE_LENGTH := 64
+const MAX_LOBBY_CHARACTER_ID_WIRE_LENGTH := 64
 
 enum NetRole { NONE, HOST, CLIENT }
 enum ConnMode { DIRECT, RELAY }
@@ -83,6 +87,7 @@ var _peer_reconnect_tokens: Dictionary[int, String] = {}
 var _disconnected_reconnect_slots: Dictionary[String, Dictionary] = {}
 var _pending_reconnect_loads: Dictionary[int, Dictionary] = {}
 var _late_registration_deadlines: Dictionary[int, int] = {}
+var _lobby_command_rate_buckets: Dictionary[int, Dictionary] = {}
 
 
 func _ready() -> void:
@@ -735,6 +740,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_peer_reconnect_tokens.erase(peer_id)
 	_pending_reconnect_loads.erase(peer_id)
 	_late_registration_deadlines.erase(peer_id)
+	_lobby_command_rate_buckets.erase(peer_id)
 	if is_host() and connection_state == ConnectionState.LOADING_GAME:
 		_expected_game_load_peers.erase(peer_id)
 		_ready_game_load_peers.erase(peer_id)
@@ -887,12 +893,39 @@ func _rpc_register_player(
 	protocol_version: int = -1,
 	reconnect_token: String = ""
 ) -> void:
-	if not is_host():
-		return
+	_handle_player_registration(
+		multiplayer.get_remote_sender_id(),
+		player_name,
+		character_id,
+		character_confirmed,
+		protocol_version,
+		reconnect_token
+	)
 
-	var sender_id: int = multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
+
+func _handle_player_registration(
+	sender_id: int,
+	player_name: String,
+	character_id: String,
+	character_confirmed: bool,
+	protocol_version: int,
+	reconnect_token: String
+) -> bool:
+	if not is_host() or sender_id <= 0:
+		return false
+	# Registration is immutable for one connected ENet identity. Reliable replay
+	# or a malicious token/name rotation must not emit player_joined again or
+	# amplify one packet into a full-room player-list broadcast.
+	if connected_players.has(sender_id):
+		return false
+	if not _consume_lobby_command_admission(sender_id):
+		return false
+	if (
+		player_name.length() > MAX_LOBBY_PLAYER_NAME_WIRE_LENGTH
+		or character_id.length() > MAX_LOBBY_CHARACTER_ID_WIRE_LENGTH
+		or reconnect_token.length() > RECONNECT_TOKEN_HEX_LENGTH
+	):
+		return false
 	if not _is_protocol_version_compatible(protocol_version):
 		push_warning(
 			"NetManager: 拒绝 peer %d 的协议版本 %d，当前版本为 %d。"
@@ -900,17 +933,13 @@ func _rpc_register_player(
 		)
 		_rpc_protocol_rejected.rpc_id(sender_id, NetConstants.PROTOCOL_VERSION)
 		call_deferred("_disconnect_incompatible_peer", sender_id)
-		return
+		return false
 	var normalized_reconnect_token := reconnect_token.strip_edges().to_lower()
 	if not _is_valid_reconnect_token(normalized_reconnect_token):
 		_rpc_join_rejected.rpc_id(sender_id, "无效的联机重连身份。")
 		call_deferred("_disconnect_incompatible_peer", sender_id)
-		return
+		return false
 	_late_registration_deadlines.erase(sender_id)
-	# A delayed or replayed reliable registration from a member of the frozen roster
-	# is idempotent. It must not eject an already accepted player from the running game.
-	if connected_players.has(sender_id) and not _is_registration_open():
-		return
 	if not _is_registration_open():
 		if (
 			connection_state == ConnectionState.IN_GAME
@@ -920,24 +949,24 @@ func _rpc_register_player(
 				normalized_reconnect_token
 			)
 		):
-			return
+			return true
 		_rpc_join_rejected.rpc_id(
 			sender_id,
 			"房间已经开始；该身份没有可恢复的断线席位。"
 		)
 		call_deferred("_disconnect_incompatible_peer", sender_id)
-		return
+		return false
 	if _peer_reconnect_tokens.values().has(normalized_reconnect_token):
 		_rpc_join_rejected.rpc_id(sender_id, "该联机身份已在房间中使用。")
 		call_deferred("_disconnect_incompatible_peer", sender_id)
-		return
+		return false
 	if connected_players.size() >= room_max_players:
 		_rpc_join_rejected.rpc_id(
 			sender_id,
 			"房间已满（%d/%d）。" % [connected_players.size(), room_max_players]
 		)
 		call_deferred("_disconnect_incompatible_peer", sender_id)
-		return
+		return false
 
 	connected_players[sender_id] = _sanitize_player_name(player_name)
 	var requested_character_id := StringName(character_id)
@@ -953,6 +982,7 @@ func _rpc_register_player(
 	_emit_room_capacity_changed()
 	_broadcast_player_list_to_clients()
 	_debug_log("NetManager: 玩家注册, id=%d, name=%s" % [sender_id, connected_players[sender_id]])
+	return true
 
 
 func _begin_peer_reconnect(
@@ -1024,26 +1054,36 @@ func _is_registration_open() -> bool:
 	return connection_state < ConnectionState.LOADING_GAME
 
 
-func _poll_reconnect_deadlines() -> void:
+func _poll_reconnect_deadlines(now_msec: int = -1) -> void:
 	if not is_host():
 		return
-	var now_msec := Time.get_ticks_msec()
+	var resolved_now_msec := (
+		Time.get_ticks_msec()
+		if now_msec < 0
+		else now_msec
+	)
 	for peer_id in _late_registration_deadlines.keys():
-		if now_msec < int(_late_registration_deadlines[peer_id]):
+		if resolved_now_msec < int(_late_registration_deadlines[peer_id]):
 			continue
 		_late_registration_deadlines.erase(peer_id)
 		_reject_late_connected_peer(int(peer_id))
 	for reconnect_token in _disconnected_reconnect_slots.keys():
 		var slot := _disconnected_reconnect_slots[reconnect_token] as Dictionary
-		if now_msec >= int(slot.get("expires_msec", 0)):
+		if resolved_now_msec >= int(slot.get("expires_msec", 0)):
 			_disconnected_reconnect_slots.erase(reconnect_token)
 	for peer_id in _pending_reconnect_loads.keys():
 		var pending := _pending_reconnect_loads[peer_id] as Dictionary
-		if now_msec < int(pending.get("deadline_msec", 0)):
+		if (
+			bool(pending.get("timed_out", false))
+			or resolved_now_msec < int(pending.get("deadline_msec", 0))
+		):
 			continue
-		pending["deadline_msec"] = 0x7FFFFFFFFFFFFFFF
+		# Keep the original identity record until peer_disconnected rebuilds its
+		# reconnect slot, but make completion irrevocably ineligible before the
+		# deferred rejection/disconnect window begins.
+		pending["timed_out"] = true
 		_pending_reconnect_loads[peer_id] = pending
-		if multiplayer.has_multiplayer_peer():
+		if is_inside_tree() and multiplayer.has_multiplayer_peer():
 			_rpc_join_rejected.rpc_id(
 				int(peer_id),
 				"断线重连加载超时，请重新连接。"
@@ -1056,6 +1096,41 @@ func _clear_reconnect_session_state() -> void:
 	_disconnected_reconnect_slots.clear()
 	_pending_reconnect_loads.clear()
 	_late_registration_deadlines.clear()
+	_lobby_command_rate_buckets.clear()
+
+
+func _consume_lobby_command_admission(
+	peer_id: int,
+	now_seconds: float = -1.0
+) -> bool:
+	if peer_id <= 0:
+		return false
+	var now := (
+		float(Time.get_ticks_msec()) / 1000.0
+		if now_seconds < 0.0
+		else now_seconds
+	)
+	var bucket: Dictionary
+	if _lobby_command_rate_buckets.has(peer_id):
+		bucket = _lobby_command_rate_buckets[peer_id] as Dictionary
+	else:
+		bucket = {
+			"tokens": LOBBY_COMMAND_RATE_BURST,
+			"last_time": now,
+		}
+		_lobby_command_rate_buckets[peer_id] = bucket
+	var tokens := float(bucket.get("tokens", LOBBY_COMMAND_RATE_BURST))
+	var last_time := float(bucket.get("last_time", now))
+	tokens = minf(
+		LOBBY_COMMAND_RATE_BURST,
+		tokens + maxf(now - last_time, 0.0) * LOBBY_COMMAND_RATE_PER_SECOND
+	)
+	var accepted := tokens >= 1.0
+	if accepted:
+		tokens -= 1.0
+	bucket["tokens"] = tokens
+	bucket["last_time"] = now
+	return accepted
 
 
 func _disconnect_incompatible_peer(peer_id: int) -> void:
@@ -1093,18 +1168,39 @@ func _rpc_join_rejected(reason: String) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_set_player_character(character_id: String, confirmed: bool) -> void:
-	if not is_host():
-		return
-	if connection_state >= ConnectionState.LOADING_GAME:
-		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or not connected_players.has(sender_id):
-		return
+	_handle_player_character_request(
+		multiplayer.get_remote_sender_id(),
+		character_id,
+		confirmed
+	)
+
+
+func _handle_player_character_request(
+	sender_id: int,
+	character_id: String,
+	confirmed: bool
+) -> bool:
+	if (
+		not is_host()
+		or connection_state >= ConnectionState.LOADING_GAME
+		or sender_id <= 0
+		or not connected_players.has(sender_id)
+		or not _consume_lobby_command_admission(sender_id)
+		or character_id.length() > MAX_LOBBY_CHARACTER_ID_WIRE_LENGTH
+	):
+		return false
 	var requested_id := StringName(character_id)
 	if not PlayerCharacterRegistry.is_valid_character_id(requested_id):
-		return
+		return false
+	if (
+		StringName(connected_player_characters.get(sender_id, DEFAULT_CHARACTER_ID))
+		== requested_id
+		and bool(confirmed_character_peers.get(sender_id, false)) == confirmed
+	):
+		return false
 	_set_peer_character(sender_id, requested_id, confirmed)
 	_broadcast_player_list_to_clients()
+	return true
 
 
 @rpc("authority", "call_remote", "reliable", 0)
@@ -1218,19 +1314,49 @@ func _rpc_host_game_ready(session_id: int = 0) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func _rpc_report_game_loaded(session_id: int) -> void:
-	if not is_host():
+	_handle_report_game_loaded(
+		multiplayer.get_remote_sender_id(),
+		session_id
+	)
+
+
+func _handle_report_game_loaded(
+	sender_id: int,
+	session_id: int,
+	now_msec: int = -1
+) -> void:
+	if not is_host() or sender_id <= 0:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if (
-		connection_state == ConnectionState.IN_GAME
-		and session_id == loading_session_id
-		and _pending_reconnect_loads.has(sender_id)
-	):
+	if _can_complete_pending_reconnect_load(sender_id, session_id, now_msec):
 		_complete_peer_reconnect(sender_id)
 		return
 	if connection_state != ConnectionState.LOADING_GAME:
 		return
 	_mark_peer_game_loaded(sender_id, session_id)
+
+
+func _can_complete_pending_reconnect_load(
+	peer_id: int,
+	session_id: int,
+	now_msec: int = -1
+) -> bool:
+	if (
+		peer_id <= 0
+		or connection_state != ConnectionState.IN_GAME
+		or session_id != loading_session_id
+		or not _pending_reconnect_loads.has(peer_id)
+	):
+		return false
+	var pending := _pending_reconnect_loads[peer_id] as Dictionary
+	var resolved_now_msec := (
+		Time.get_ticks_msec()
+		if now_msec < 0
+		else now_msec
+	)
+	return (
+		not bool(pending.get("timed_out", false))
+		and int(pending.get("deadline_msec", 0)) > resolved_now_msec
+	)
 
 
 func _complete_peer_reconnect(new_peer_id: int) -> void:

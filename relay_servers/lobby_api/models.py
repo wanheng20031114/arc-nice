@@ -35,6 +35,10 @@ class PlayerInfo:
     name: str
     peer_id: int = 0
     joined_at: float = field(default_factory=time.time)
+    member_token: str = field(
+        default_factory=lambda: secrets.token_urlsafe(24),
+        repr=False,
+    )
 
 
 @dataclass
@@ -86,7 +90,12 @@ class RoomInfo:
             "status": self.status.value,
         }
 
-    def to_join_dict(self, public_ip: str, include_host_token: bool = False) -> dict:
+    def to_join_dict(
+        self,
+        public_ip: str,
+        include_host_token: bool = False,
+        member_name: Optional[str] = None,
+    ) -> dict:
         """返回加入房间时所需的详细信息。"""
         result = self.to_public_dict()
         result["host_ip"] = self.host_ip
@@ -98,6 +107,10 @@ class RoomInfo:
         ]
         if include_host_token:
             result["host_token"] = self.host_token
+        if member_name is not None:
+            member = self.players.get(member_name)
+            if member is not None:
+                result["member_token"] = member.member_token
         if self.relay_port > 0:
             result["relay_ip"] = public_ip
             result["relay_port"] = self.relay_port

@@ -184,7 +184,9 @@ func _apply_config() -> void:
 	attack_cooldown_left = 0.0
 	var fire_config := config as FireConfig
 	initial_attack_stagger_left = (
-		_get_initial_attack_stagger(fire_config)
+		_get_deterministic_initial_stagger(
+			fire_config.initial_attack_stagger_window
+		)
 		if fire_config != null
 		else 0.0
 	)
@@ -225,25 +227,6 @@ func _update_attack_cooldown(delta: float) -> void:
 			attack_target_refresh_left - delta,
 			0.0
 		)
-
-
-func _get_initial_attack_stagger(fire_config: FireConfig) -> float:
-	var window := maxf(fire_config.initial_attack_stagger_window, 0.0)
-	if window <= 0.0:
-		return 0.0
-	var physics_ticks_per_second := maxi(
-		Engine.physics_ticks_per_second,
-		1
-	)
-	var bucket_count := maxi(
-		ceili(window * float(physics_ticks_per_second)),
-		1
-	)
-	var bucket_index := posmod(
-		navigation_update_frame_offset,
-		bucket_count
-	)
-	return float(bucket_index) / float(physics_ticks_per_second)
 
 
 func _try_start_summon(

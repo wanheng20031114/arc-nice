@@ -84,8 +84,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 45,
-		"协议v45必须保留既有wire类型，并隔离忍者机器人加速表现。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 46,
+		"协议v46必须保留既有wire类型与忍者加速表现，并隔离重连激活确认。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

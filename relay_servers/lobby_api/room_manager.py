@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import secrets
 import time
 import threading
 from typing import Optional
@@ -86,23 +87,35 @@ class RoomManager:
             room.touch()
             return room
 
-    def leave_room(self, room_id: str, player_name: str) -> Optional[RoomInfo]:
+    def leave_room(
+        self,
+        room_id: str,
+        player_name: str,
+        member_token: str,
+    ) -> tuple[bool, Optional[RoomInfo]]:
+        """校验成员身份并离房；房主离房会关闭整个房间。"""
         with self._lock:
             room = self._rooms.get(room_id)
             if room is None:
-                return None
+                return False, None
+            member = room.players.get(player_name)
+            if (
+                member is None
+                or not member_token
+                or not secrets.compare_digest(
+                    member_token.encode("utf-8"),
+                    member.member_token.encode("ascii"),
+                )
+            ):
+                return False, None
 
-            was_host = player_name == room.host_name
+            if player_name == room.host_name:
+                self._rooms.pop(room_id, None)
+                room.status = RoomStatus.CLOSED
+                return True, room
             room.players.pop(player_name, None)
             room.touch()
-
-            # Host 离开或房间空了，关闭房间。
-            if was_host or room.player_count == 0:
-                room.status = RoomStatus.CLOSED
-                self._rooms.pop(room_id, None)
-                return room
-
-            return None
+            return True, None
 
     # ─── 状态更新 ─────────────────────────────────
 
@@ -138,6 +151,26 @@ class RoomManager:
             room.relay_pid = relay_pid
             room.touch()
             return True
+
+    def close_rooms_for_relay_ports(
+        self,
+        relay_ports: list[int],
+        excluded_room_ids: set[str] | None = None,
+    ) -> list[RoomInfo]:
+        """关闭仍指向已退出 Relay 的房间，避免端口复用后误停新进程。"""
+        normalized_ports = {int(port) for port in relay_ports if int(port) > 0}
+        if not normalized_ports:
+            return []
+        excluded = excluded_room_ids or set()
+        with self._lock:
+            removed: list[RoomInfo] = []
+            for room_id, room in list(self._rooms.items()):
+                if room_id in excluded or room.relay_port not in normalized_ports:
+                    continue
+                self._rooms.pop(room_id, None)
+                room.status = RoomStatus.CLOSED
+                removed.append(room)
+            return removed
 
     def mark_host_ready(self, room_id: str, host_token: str, host_peer_id: int) -> Optional[RoomInfo]:
         with self._lock:

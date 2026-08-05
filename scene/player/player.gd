@@ -2007,11 +2007,15 @@ func apply_multiplayer_realtime_state(
 	var previous_skill1_unlocked := skill1_unlocked
 	var previous_skill1_upgrade_level := skill1_upgrade_level
 	var previous_skill1_charge_duration := skill1_charge_duration
-	max_health = maxi(new_max_health, 1)
+	var snapshot_max_health := maxi(new_max_health, 1)
 	var clamped_xirang := maxi(new_current_xirang, 0)
 	if current_xirang != clamped_xirang:
 		current_xirang = clamped_xirang
 		xirang_changed.emit(current_xirang, 0)
+	# xirang_changed can synchronously rebuild collectible-derived stats. Apply
+	# the Host maximum afterwards so that callback ordering cannot replace the
+	# authoritative snapshot with a temporarily stale local inventory result.
+	max_health = snapshot_max_health
 	_apply_multiplayer_character_realtime_state(
 		new_form_mode,
 		new_shot_pattern,
@@ -2061,7 +2065,19 @@ func apply_multiplayer_realtime_state(
 			or max_health != previous_max_health
 			or skill1_unlocked != previous_skill1_unlocked
 		):
+			# Re-evaluate health-conditional collectible effects, but keep the
+			# Host's life values authoritative. Inventory and player keyframes use
+			# independent reliable channels during reconnect, so the local
+			# collectible cache may legitimately lag this snapshot for one frame.
+			var authoritative_health := current_health
+			var authoritative_max_health := max_health
 			_refresh_collectible_stats(false)
+			max_health = authoritative_max_health
+			current_health = clampi(
+				authoritative_health,
+				0,
+				max_health
+			)
 		health_bar.visible = true
 		health_bar.setup(max_health, current_health)
 		health_changed.emit(current_health, max_health)
@@ -2326,6 +2342,8 @@ func grant_xirang_reward(
 
 
 func grant_cheat_xirang(amount: int = CHEAT_XIRANG_AMOUNT) -> bool:
+	if not OS.is_debug_build():
+		return false
 	return _grant_xirang_unrestricted(amount)
 
 
@@ -2962,6 +2980,15 @@ func _rebuild_active_collectible_items_cache() -> void:
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
 		_prune_inactive_collectible_runtime_state()
+		return
+	# A route avatar and an embedded-combat avatar can briefly coexist for the
+	# same identity while a reconnect remap is being published.  A stale avatar
+	# must treat an already-removed peer inventory as empty; calling RunState's
+	# public slot getters here would otherwise recreate the obsolete peer key
+	# from inside the inventory_changed signal.
+	if peer_id > 0 and not run_state.has_multiplayer_peer_state(peer_id):
+		_prune_inactive_collectible_runtime_state()
+		active_collectible_cache_initialized = true
 		return
 
 	var active_copy_counts: Dictionary = {}

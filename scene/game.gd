@@ -6,9 +6,6 @@ const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
 const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
-const COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
-)
 const COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
@@ -181,7 +178,7 @@ func _ready() -> void:
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
 	session_object_pool.register_scene(TANGO_LASER_BULLET_POOL_SCENE, 64, 768)
 	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
-	session_object_pool.register_scene(COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE, 0, 96)
+	GameRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 12, 96)
@@ -550,7 +547,7 @@ func _toggle_full_screen() -> void:
 
 
 func _toggle_debug_collectible_window() -> void:
-	if debug_collectible_window == null:
+	if debug_collectible_window == null or not allows_debug_collectible_grants():
 		return
 	debug_collectible_window.toggle()
 	if debug_collectible_window.is_open():
@@ -574,6 +571,8 @@ func _on_debug_collectible_requested(config_path: String) -> void:
 
 
 func grant_debug_collectible(config_path: String) -> bool:
+	if not allows_debug_collectible_grants():
+		return false
 	var item := LuoxiMerchant.get_collectible_for_path(config_path)
 	if item == null:
 		return false

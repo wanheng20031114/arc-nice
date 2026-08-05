@@ -15,6 +15,9 @@ const MOVE_SPEED_TRAIL_EFFECT_POOL_SCENE := preload(
 const CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn"
 )
+const COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE_PATH := (
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
+)
 const LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
@@ -29,7 +32,18 @@ const ENEMY_HIT_EFFECT_CAPACITY := 128
 const MOVE_SPEED_TRAIL_EFFECT_RETAINED_CAPACITY := 32
 const LIGHTNING_SORCERER_LIGHTNING_VFX_PREWARM_COUNT := 64
 const LIGHTNING_SORCERER_LIGHTNING_VFX_RETAINED_CAPACITY := 96
+const COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT := 0
+const COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY := 96
 const SINGLEPLAYER_BULK_INDEX_MIN_TARGETS := 512
+
+# The cohort probe overrides these before scene creation for isolated A/B runs.
+# Production keeps the proven lazy 0/96 policy in both runtime modes.
+static var combat_robot_gunner_bullet_pool_prewarm_count := (
+	COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT
+)
+static var combat_robot_gunner_bullet_pool_retained_capacity := (
+	COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY
+)
 
 signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
 signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
@@ -524,6 +538,26 @@ static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void
 		LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE,
 		LIGHTNING_SORCERER_LIGHTNING_VFX_PREWARM_COUNT,
 		LIGHTNING_SORCERER_LIGHTNING_VFX_RETAINED_CAPACITY
+	)
+
+
+static func register_combat_robot_gunner_bullet_pool(
+	pool: SessionObjectPool
+) -> void:
+	if pool == null:
+		return
+	# Runtime loading avoids a compile-time cycle: the projectile inherits shared
+	# enemy code that resolves GameRuntimeBase while this base script is loading.
+	var projectile_scene := load(
+		COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE_PATH
+	) as PackedScene
+	if projectile_scene == null:
+		push_error("无法加载持枪战斗机器人弹丸池场景。")
+		return
+	pool.register_scene(
+		projectile_scene,
+		maxi(combat_robot_gunner_bullet_pool_prewarm_count, 0),
+		maxi(combat_robot_gunner_bullet_pool_retained_capacity, 1)
 	)
 
 
@@ -1244,7 +1278,9 @@ func supports_tower_defense() -> bool:
 
 
 func allows_debug_collectible_grants() -> bool:
-	return true
+	# Standard runtimes expose the debug catalog only in editor/debug builds.
+	# Explicit sandbox runtimes may override this policy for a shipped sandbox.
+	return OS.is_debug_build()
 
 
 func request_tower_defense_wave_start(_requester_peer_id: int = 0) -> bool:

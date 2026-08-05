@@ -255,14 +255,16 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 45, "The multiplayer protocol version must be 45.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v45 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 46, "The multiplayer protocol version must be 46.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v46 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 43))
+		not bool(net_manager.call("_is_protocol_version_compatible", 45))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 44))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 43))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 42))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 41))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 40))
@@ -302,7 +304,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v45 must reject v44 and all older or unversioned clients."
+		"Protocol v46 must reject v45 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -2234,26 +2236,46 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			run_state.get_item_count_for_peer(3, 0) == 2,
 			"Authoritative inventory use confirmation must preserve the remainder of a stack."
 		)
-		var host_repair_snapshot: Dictionary = (
+		var stale_host_repair_snapshot: Dictionary = (
 			run_state.export_inventory_snapshot_for_peer(3)
 		)
+		var settlement_inventory_snapshot := (
+			stale_host_repair_snapshot.duplicate(true) as Dictionary
+		)
+		settlement_inventory_snapshot["revision"] = (
+			int(stale_host_repair_snapshot.get("revision", -1)) + 1
+		)
+		var settlement_slots := (
+			settlement_inventory_snapshot.get("slots", []) as Array
+		)
+		for settlement_slot_value in settlement_slots:
+			var settlement_slot := settlement_slot_value as Dictionary
+			settlement_slot["revision"] = int(
+				settlement_inventory_snapshot["revision"]
+			)
+		var settlement_first_slot := settlement_slots[0] as Dictionary
+		settlement_first_slot["stack_count"] = 3
 		_expect(
-			run_state.discard_item_for_peer(3, 0),
-			"Client drift fixture must be able to move ahead of the Host revision."
+			run_state.apply_inventory_snapshot_for_peer(
+				3,
+				settlement_inventory_snapshot,
+				true
+			),
+			"The CH0 settlement fixture must commit revision R+1 before the delayed repair."
 		)
 		mp_game.call(
 			"net_inventory_item_discarded",
 			3,
 			0,
 			false,
-			host_repair_snapshot,
+			stale_host_repair_snapshot,
 			true
 		)
 		_expect(
-			run_state.get_item_count_for_peer(3, 0) == 2
+			run_state.get_item_count_for_peer(3, 0) == 3
 			and run_state.get_inventory_revision_for_peer(3)
-			== int(host_repair_snapshot.get("revision", -1)),
-			"Revision conflicts must force-apply the Host inventory snapshot without performing the rejected action."
+			== int(settlement_inventory_snapshot.get("revision", -1)),
+			"A delayed forced CH6 repair at revision R must not rewind the already-applied CH0 settlement at R+1."
 		)
 		var inventory_before_second_missing_discard: Dictionary = (
 			run_state.export_inventory_snapshot_for_peer(3)

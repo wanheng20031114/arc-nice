@@ -6,9 +6,6 @@ const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
 const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
-const COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
-)
 const COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
@@ -383,7 +380,7 @@ func _ready() -> void:
 		),
 		384
 	)
-	session_object_pool.register_scene(COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE, 0, 96)
+	GameRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 24, 192)

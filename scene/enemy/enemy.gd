@@ -3533,6 +3533,22 @@ func _is_combat_sense_refresh_due() -> bool:
 	)
 
 
+## Spreads the first expensive action of a freshly spawned cohort across exact
+## physics-tick buckets. The per-enemy phase identity is deterministic for the
+## runtime, so this does not consume gameplay RNG or change later cooldowns.
+func _get_deterministic_initial_stagger(window_seconds: float) -> float:
+	var window := maxf(window_seconds, 0.0)
+	if window <= 0.0:
+		return 0.0
+	var physics_ticks_per_second := maxi(Engine.physics_ticks_per_second, 1)
+	var bucket_count := maxi(
+		ceili(window * float(physics_ticks_per_second)),
+		1
+	)
+	var bucket_index := posmod(navigation_update_frame_offset, bucket_count)
+	return float(bucket_index) / float(physics_ticks_per_second)
+
+
 func _get_next_navigation_phase_frame(interval: int) -> int:
 	var safe_interval := maxi(interval, 1)
 	var next_frame := Engine.get_physics_frames() + 1

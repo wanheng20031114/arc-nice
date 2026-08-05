@@ -897,11 +897,12 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 		"MpGame must own the dedicated type and full three-stage elapsed compensation."
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 45
+		NET_CONSTANTS.PROTOCOL_VERSION == 46
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
 		(
-			"Protocol v45 must retain the v38 projectile, v39 shield-state, and "
-			+ "v40 slime semantics while isolating ninja boost visuals without adding channels."
+			"Protocol v46 must retain the v38 projectile, v39 shield-state, and "
+			+ "v40 slime semantics while isolating ninja boost visuals, ghost IDs, "
+			+ "and reconnect activation without adding channels."
 		)
 	)
 	for source_path in ["res://scene/game.gd", "res://scene/game_tower_defense.gd"]:
