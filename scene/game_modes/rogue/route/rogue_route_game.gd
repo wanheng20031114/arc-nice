@@ -993,7 +993,7 @@ func _initialize_default_session() -> void:
 
 func _create_encounter_runtime() -> void:
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
-	encounter_economy.reset_runtime(run_state)
+	encounter_economy.reset_runtime(run_state, _player_character_ids)
 	encounter_session.reset_remote(encounter_economy)
 	if not encounter_session.state_changed.is_connected(
 		_on_encounter_state_changed
@@ -1974,6 +1974,7 @@ func configure_multiplayer_players(
 	_local_peer_id = local_peer_id
 	_player_names = player_names.duplicate(true)
 	_player_character_ids = player_character_ids.duplicate(true)
+	_sync_encounter_player_character_ids()
 	var peer_ids: Array[int] = []
 	for peer_id_variant in player_names:
 		var peer_id := int(peer_id_variant)
@@ -2027,6 +2028,7 @@ func add_multiplayer_player(
 	if added:
 		_player_names[peer_id] = player_name
 		_player_character_ids[peer_id] = character_id
+		_sync_encounter_player_character_ids()
 		_sync_route_player_xirang_from_run_state()
 		_sync_party_status_from_run_state()
 		_configure_encounter_overlay_context()
@@ -2061,6 +2063,7 @@ func migrate_multiplayer_player(
 	_player_character_ids.erase(old_peer_id)
 	_player_names[new_peer_id] = player_name
 	_player_character_ids[new_peer_id] = character_id
+	_sync_encounter_player_character_ids()
 	player_instance.name = "RoutePlayer_%d" % new_peer_id
 	if old_peer_id == _local_peer_id:
 		_local_peer_id = new_peer_id
@@ -2183,6 +2186,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	peer_players.erase(peer_id)
 	_player_names.erase(peer_id)
 	_player_character_ids.erase(peer_id)
+	_sync_encounter_player_character_ids()
 	if player_instance == player:
 		player = null
 	if map_camera.get_parent() == player_instance:
@@ -2212,6 +2216,7 @@ func _configure_singleplayer_player() -> void:
 	_local_peer_id = SINGLEPLAYER_PEER_ID
 	_player_names = {SINGLEPLAYER_PEER_ID: "玩家"}
 	_player_character_ids = {SINGLEPLAYER_PEER_ID: character_id}
+	_sync_encounter_player_character_ids()
 	_sync_route_player_xirang_from_run_state()
 	_sync_party_status_from_run_state()
 	_attach_camera_to_local_player()
@@ -2495,7 +2500,13 @@ func _clear_player_instances() -> void:
 	peer_players.clear()
 	_player_names.clear()
 	_player_character_ids.clear()
+	_sync_encounter_player_character_ids()
 	player = null
+
+
+func _sync_encounter_player_character_ids() -> void:
+	if encounter_economy != null:
+		encounter_economy.set_player_character_ids(_player_character_ids)
 
 
 func _clear_pending_move(hide_dialog: bool) -> void:

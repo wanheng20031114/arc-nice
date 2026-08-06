@@ -80,7 +80,7 @@ func _on_body_entered(body: Node2D) -> void:
 	var player := body as Player
 	if player == null:
 		return
-	var net_manager := get_node_or_null("/root/NetManager")
+	var net_manager := NetManagerStore.get_autoload_instance()
 	if net_manager != null and net_manager.is_client():
 		return
 

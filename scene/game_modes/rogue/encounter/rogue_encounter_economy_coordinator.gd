@@ -60,16 +60,24 @@ const PIT_CORE_DAMAGE := 2
 const PIT_MAX_HEALTH_PENALTY := 20
 
 var _run_state: RunStateStore
+var _player_character_ids: Dictionary = {}
 var _economy_revision := 0
 var _settled_occurrences: Dictionary = {}
 
 
-func configure(run_state: RunStateStore) -> void:
-	reset_runtime(run_state)
+func configure(
+	run_state: RunStateStore,
+	player_character_ids: Dictionary = {}
+) -> void:
+	reset_runtime(run_state, player_character_ids)
 
 
-func reset_runtime(run_state: RunStateStore) -> void:
+func reset_runtime(
+	run_state: RunStateStore,
+	player_character_ids: Dictionary = {}
+) -> void:
 	_run_state = run_state
+	set_player_character_ids(player_character_ids)
 	_economy_revision = 0
 	_settled_occurrences.clear()
 	if _run_state != null:
@@ -78,6 +86,10 @@ func reset_runtime(run_state: RunStateStore) -> void:
 
 func is_configured() -> bool:
 	return _run_state != null
+
+
+func set_player_character_ids(player_character_ids: Dictionary) -> void:
+	_player_character_ids = player_character_ids.duplicate(true)
 
 
 func can_afford_purchase(peer_ids: Array[int]) -> bool:
@@ -1377,18 +1389,9 @@ func _get_character_id_for_peer(peer_id: int) -> StringName:
 	var fallback := _run_state.get_selected_character_id()
 	if peer_id <= 0:
 		return fallback
-	var scene_tree := Engine.get_main_loop() as SceneTree
-	var net_manager := (
-		scene_tree.root.get_node_or_null("NetManager")
-		if scene_tree != null
-		else null
+	var character_id := StringName(
+		_player_character_ids.get(peer_id, fallback)
 	)
-	if net_manager == null or not net_manager.has_method("get_player_character_map"):
-		return fallback
-	var character_map := (
-		net_manager.call("get_player_character_map") as Dictionary
-	)
-	var character_id := StringName(character_map.get(peer_id, fallback))
 	return (
 		character_id
 		if PlayerCharacterRegistry.is_valid_character_id(character_id)

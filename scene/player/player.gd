@@ -82,10 +82,6 @@ var _world_movement_saved_visibility: Dictionary[StringName, bool] = {}
 @onready var name_label: Label = $NameLabel
 @onready var nameplate_layer: CanvasLayer = $NameplateLayer
 @onready var nameplate_label: Label = $NameplateLayer/NameplateLabel
-@onready var _net_manager := (
-	get_node_or_null("/root/NetManager") as NetManagerStore
-)
-
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_lightning_effect.tscn")

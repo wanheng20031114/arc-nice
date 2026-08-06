@@ -78,8 +78,8 @@ enum PublicRequest {
 @onready var wait_status_label: Label = $LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/WaitStatusLabel
 @onready var public_lobby_request: HTTPRequest = $PublicLobbyRequest
 @onready var character_choice_overlay: PlayerCharacterChoiceOverlay = $PlayerCharacterChoiceOverlay
-@onready var net_manager: Node = get_node("/root/NetManager")
-@onready var run_state: Node = get_node_or_null("/root/RunState")
+@onready var net_manager: NetManagerStore = NetManagerStore.get_autoload_instance()
+@onready var run_state: RunStateStore = get_node_or_null("/root/RunState") as RunStateStore
 
 var current_view: LobbyView = LobbyView.USERNAME_INPUT
 var is_starting_game: bool = false
@@ -890,13 +890,9 @@ func _refresh_wait_player_list() -> void:
 		var label := Label.new()
 		var is_host_marker := " (Host)" if peer_id == net_manager.get_host_peer_id() else ""
 		var is_local_marker: String = " <- 你" if peer_id == net_manager.get_local_peer_id() else ""
-		var character_id := StringName(
-			net_manager.call("get_player_character_id", peer_id)
-		)
+		var character_id := net_manager.get_player_character_id(peer_id)
 		var character_name := _get_character_display_name(character_id)
-		var character_confirmed := bool(
-			net_manager.call("is_player_character_confirmed", peer_id)
-		)
+		var character_confirmed := net_manager.is_player_character_confirmed(peer_id)
 		var confirmation_marker := " ✓" if character_confirmed else "（角色未确认）"
 		label.text = "%s · %s%s%s%s" % [
 			player_name,
@@ -911,9 +907,7 @@ func _refresh_wait_player_list() -> void:
 	if net_manager.is_host():
 		start_game_btn.disabled = (
 			net_manager.connected_players.size() < 2
-			or not bool(
-				net_manager.call("are_all_player_characters_confirmed")
-			)
+			or not net_manager.are_all_player_characters_confirmed()
 			or (current_public_is_host and not relay_host_ready_sent)
 		)
 	_update_choose_character_button()
@@ -933,8 +927,8 @@ func _update_room_capacity_label(current_players: int = -1) -> void:
 func _open_character_choice_if_needed() -> void:
 	if current_view != LobbyView.ROOM_WAIT:
 		return
-	var local_peer_id := int(net_manager.call("get_local_peer_id"))
-	if local_peer_id > 0 and bool(net_manager.call("is_player_character_confirmed", local_peer_id)):
+	var local_peer_id := net_manager.get_local_peer_id()
+	if local_peer_id > 0 and net_manager.is_player_character_confirmed(local_peer_id):
 		return
 	_on_choose_character_pressed()
 
@@ -947,9 +941,9 @@ func _on_choose_character_pressed() -> void:
 func _on_character_confirmed(character_id: StringName) -> void:
 	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
 		return
-	if run_state != null and run_state.has_method("set_selected_character"):
-		run_state.call("set_selected_character", character_id)
-	net_manager.call("set_local_character_id", character_id, true)
+	if run_state != null:
+		run_state.set_selected_character(character_id)
+	net_manager.set_local_character_id(character_id, true)
 	character_choice_overlay.close()
 	_refresh_wait_player_list()
 	wait_status_label.text = "角色已确认，等待其他玩家。"
@@ -964,10 +958,10 @@ func _update_choose_character_button() -> void:
 	choose_character_btn.visible = true
 	var character_id := _get_local_selected_character_id()
 	var character_name := _get_character_display_name(character_id)
-	var local_peer_id := int(net_manager.call("get_local_peer_id"))
+	var local_peer_id := net_manager.get_local_peer_id()
 	var confirmed := (
 		local_peer_id > 0
-		and bool(net_manager.call("is_player_character_confirmed", local_peer_id))
+		and net_manager.is_player_character_confirmed(local_peer_id)
 	)
 	choose_character_btn.text = (
 		"更换角色：%s（已确认）" % character_name
@@ -1010,7 +1004,7 @@ func _on_net_connection_failed(reason: String) -> void:
 
 
 func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
-	var is_relay := int(net_manager.get("conn_mode")) == 1
+	var is_relay := net_manager.conn_mode == NetManagerStore.ConnMode.RELAY
 	_refresh_game_mode_selector_state()
 	match new_state:
 		STATE_CONNECTING_LAN:
@@ -1043,7 +1037,7 @@ func _on_net_state_changed(new_state: NetManagerStore.ConnectionState) -> void:
 func _on_start_game() -> void:
 	if not net_manager.is_host():
 		return
-	if not bool(net_manager.call("are_all_player_characters_confirmed")):
+	if not net_manager.are_all_player_characters_confirmed():
 		wait_status_label.text = "请等待所有玩家确认角色。"
 		_refresh_wait_player_list()
 		return
@@ -1077,9 +1071,8 @@ func _change_to_multiplayer_game() -> void:
 		is_starting_game = false
 		push_error("MultiplayerLobby: 当前联机模式没有目录定义。")
 		return
-	if run_state != null and run_state.has_method("begin_new_run"):
-		run_state.call(
-			"begin_new_run",
+	if run_state != null:
+		run_state.begin_new_run(
 			_get_local_selected_character_id(),
 			game_mode_definition.include_starting_inventory
 		)
@@ -1245,16 +1238,13 @@ func _load_game_mode_icon(definition: GameModeDefinition) -> Texture2D:
 
 
 func _sync_local_character_selection() -> void:
-	net_manager.call("set_local_character_id", _get_local_selected_character_id(), false)
+	net_manager.set_local_character_id(_get_local_selected_character_id(), false)
 
 
 func _get_local_selected_character_id() -> StringName:
 	var selected_character_id := PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	if run_state != null:
-		if run_state.has_method("get_selected_character_id"):
-			selected_character_id = StringName(run_state.call("get_selected_character_id"))
-		else:
-			selected_character_id = StringName(run_state.get("selected_character_id"))
+		selected_character_id = run_state.get_selected_character_id()
 	if not PlayerCharacterRegistry.is_valid_character_id(selected_character_id):
 		selected_character_id = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	return selected_character_id

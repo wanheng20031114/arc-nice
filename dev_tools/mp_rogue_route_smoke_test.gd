@@ -5,7 +5,6 @@ const ROUTE_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_gam
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
-const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
 const OAK_WAREHOUSE_SCENE := preload(
 	"res://scene/plant_defense/oak_warehouse.tscn"
 )
@@ -20,13 +19,14 @@ const BRIEFING_SEED_SEARCH_LIMIT := 4096
 
 
 class FakeNetManager:
-	extends Node
+	extends NetManagerStore
 
-	var host_peer_id := 7
 	var host_role := false
-	var connection_state := NetManagerStore.ConnectionState.IN_GAME
-	var connected_players: Dictionary = {}
-	var connected_player_characters: Dictionary = {}
+
+
+	func _init() -> void:
+		host_peer_id = 7
+		connection_state = NetManagerStore.ConnectionState.IN_GAME
 
 
 	func get_host_peer_id() -> int:
@@ -50,7 +50,7 @@ class FakeNetManager:
 
 
 class ManifestNetManager:
-	extends Node
+	extends NetManagerStore
 
 
 	func get_player_character_map() -> Dictionary:
@@ -72,6 +72,23 @@ class WarehouseRuntimeStub:
 
 	func _physics_process(_delta: float) -> void:
 		pass
+
+
+	func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
+		var result: Array[Dictionary] = []
+		for peer_id_variant in warehouses.keys():
+			result.append({"net_id": int(peer_id_variant)})
+		return result
+
+
+	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
+		return warehouses.get(net_id) as PlantDefense
+
+
+class WarehouseTowerModeAdapterStub:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	var warehouses: Dictionary = {}
 
 
 	func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
@@ -1622,6 +1639,7 @@ func _test_avatar_validation_contract(
 	configure_wrapper.set("_net_manager", fake_net_manager)
 	root.add_child(configure_wrapper)
 	var shared_run_state := root.get_node_or_null("RunState") as RunStateStore
+	configure_wrapper.set("_run_state", shared_run_state)
 	_expect(
 		bool(configure_wrapper.call("_configure_route_players"))
 		and shared_run_state != null
@@ -1752,6 +1770,7 @@ func _test_incremental_avatar_reconnect(
 	var reconnect_wrapper := ReconnectWrapperStub.new()
 	reconnect_wrapper.set("_route", host_route)
 	reconnect_wrapper.set("_net_manager", fake_net_manager)
+	reconnect_wrapper.set("_run_state", shared_run_state)
 	root.add_child(reconnect_wrapper)
 	var live_reconnect_succeeded := bool(reconnect_wrapper.call(
 		"_finish_player_reconnect",
@@ -2096,15 +2115,17 @@ func _test_warehouse_route_persistence_contract() -> void:
 		"仓库持久化夹具必须能写入正 network id 的存储快照。"
 	)
 	runtime.warehouses = {WAREHOUSE_NET_ID: source}
-	var mp_game := MpGameScript.new()
-	mp_game.net_manager = net_manager
-	mp_game.run_state = run_state
-	mp_game.game = runtime
-	mp_game._mode_adapter = tower_adapter
-	mp_game.tower_mode_adapter = tower_adapter
-	tower_adapter.attach_multiplayer_session(mp_game)
+	tower_adapter.warehouses = runtime.warehouses
+	var tower_economy := MpTowerEconomyCoordinator.new()
+	tower_economy.bind_runtime(
+		runtime,
+		tower_adapter,
+		run_state,
+		net_manager,
+		0.0
+	)
 	_expect(
-		bool(mp_game.call(
+		bool(tower_economy.call(
 			"_persist_authoritative_warehouse_snapshot",
 			source,
 			WAREHOUSE_NET_ID
@@ -2117,7 +2138,7 @@ func _test_warehouse_route_persistence_contract() -> void:
 	await process_frame
 	restored.configure_multiplayer_storage(WAREHOUSE_NET_ID, 1, true)
 	_expect(
-		bool(mp_game.call(
+		bool(tower_economy.call(
 			"_restore_authoritative_warehouse_from_ledger",
 			restored,
 			WAREHOUSE_NET_ID
@@ -2126,13 +2147,14 @@ func _test_warehouse_route_persistence_contract() -> void:
 		"返回战斗并完成仓库网络配置后必须恢复路线期间保留的账本。"
 	)
 	_expect(
-		bool(mp_game.call("_capture_shared_warehouse_ledger"))
+		tower_economy.capture_shared_warehouse_ledger()
 		and run_state.get_shared_warehouse_item_total(PLANK) == 6,
 		"离开战斗场景前必须从当前有效正 id 仓库全量刷新账本。"
 	)
 	restored.queue_free()
 	source.queue_free()
-	mp_game.free()
+	tower_economy.unbind_runtime(runtime)
+	tower_economy.free()
 	runtime.free()
 	net_manager.free()
 	run_state.free()
@@ -2141,8 +2163,8 @@ func _test_warehouse_route_persistence_contract() -> void:
 
 func _bind_warehouse_tower_mode_adapter(
 	runtime: WarehouseRuntimeStub
-) -> TowerDefenseMultiplayerModeAdapter:
-	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+) -> WarehouseTowerModeAdapterStub:
+	var adapter := WarehouseTowerModeAdapterStub.new()
 	adapter.name = "MultiplayerModeAdapter"
 	runtime.add_child(adapter)
 	adapter.bind_runtime(runtime)
