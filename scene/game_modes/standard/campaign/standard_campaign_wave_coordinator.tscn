@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cq1s6nwp0e4ad"]
+
+[ext_resource type="Script" path="res://scene/game_modes/standard/campaign/standard_campaign_wave_coordinator.gd" id="1_coordinator"]
+
+[node name="CampaignWaveCoordinator" type="Node"]
+script = ExtResource("1_coordinator")

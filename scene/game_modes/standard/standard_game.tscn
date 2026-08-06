@@ -30,6 +30,7 @@
 [ext_resource type="PackedScene" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="32_gameplay_gateway"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/standard/multiplayer/standard_multiplayer_mode_adapter.tscn" id="33_mode_adapter"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/standard/boss/standard_linglan_boss_runtime_port.tscn" id="34_linglan_port"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/standard/campaign/standard_campaign_wave_coordinator.tscn" id="35_campaign_wave"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -137,6 +138,8 @@ mode_definition = ExtResource("31_mode_definition")
 [node name="MultiplayerModeAdapter" parent="." instance=ExtResource("33_mode_adapter")]
 
 [node name="LinglanBossRuntimePort" parent="." instance=ExtResource("34_linglan_port")]
+
+[node name="CampaignWaveCoordinator" parent="." instance=ExtResource("35_campaign_wave")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")

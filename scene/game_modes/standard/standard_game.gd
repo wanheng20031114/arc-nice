@@ -50,9 +50,21 @@ const INITIAL_PLAYER_XIRANG := 1000
 @onready var linglan_boss_runtime_port: LinglanBossRuntimePort = (
 	$LinglanBossRuntimePort
 )
+var campaign_wave_coordinator: StandardCampaignWaveCoordinator:
+	get:
+		return get_node("CampaignWaveCoordinator") as StandardCampaignWaveCoordinator
 
 var _singleplayer_tango_charge_started_at: float = -1.0
-var bosses: Array[Resource] = []
+var bosses: Array[Resource]:
+	get:
+		return (
+			campaign_wave_coordinator.bosses
+			if campaign_wave_coordinator != null
+			else []
+		)
+	set(value):
+		if campaign_wave_coordinator != null:
+			campaign_wave_coordinator.replace_bosses(value)
 var music_fade_tween: Tween = null
 var luoxi_collectible_claim_counts: Dictionary = {}
 var linglan_boss_started: bool = false
@@ -74,6 +86,35 @@ func _get_default_mode_definition() -> GameModeDefinition:
 
 
 func _initialize_mode_runtime_before_validation() -> void:
+	campaign_wave_coordinator.bind_presentation(
+		wave_hud,
+		countdown_audio,
+		wave_start_audio
+	)
+	if not campaign_wave_coordinator.wave_music_requested.is_connected(
+		_update_wave_music
+	):
+		campaign_wave_coordinator.wave_music_requested.connect(
+			_update_wave_music
+		)
+	if not campaign_wave_coordinator.post_wave_music_requested.is_connected(
+		_update_post_wave_music
+	):
+		campaign_wave_coordinator.post_wave_music_requested.connect(
+			_update_post_wave_music
+		)
+	if not campaign_wave_coordinator.boss_step_requested.is_connected(
+		_on_campaign_boss_step_requested
+	):
+		campaign_wave_coordinator.boss_step_requested.connect(
+			_on_campaign_boss_step_requested
+		)
+	if not campaign_wave_coordinator.remote_boss_state_requested.is_connected(
+		_on_campaign_remote_boss_state_requested
+	):
+		campaign_wave_coordinator.remote_boss_state_requested.connect(
+			_on_campaign_remote_boss_state_requested
+		)
 	if merchant != null:
 		merchant.bind_multiplayer_mode_adapter(multiplayer_mode_adapter)
 	if luoxi_merchant != null:
@@ -81,6 +122,9 @@ func _initialize_mode_runtime_before_validation() -> void:
 
 
 func _validate_mode_scene_content() -> bool:
+	if campaign_wave_coordinator == null:
+		push_error("StandardGame: 缺少静态 CampaignWaveCoordinator 节点。")
+		return false
 	if linglan_boss_enabled and linglan_boss_runtime_port == null:
 		push_error("StandardGame: 场景启用了铃兰 Boss，但缺少静态运行时端口。")
 		return false
@@ -93,12 +137,9 @@ func _validate_mode_scene_content() -> bool:
 
 
 func _configure_active_campaign() -> bool:
-	bosses.clear()
 	if not super._configure_active_campaign():
 		return false
-	for configured_boss in active_campaign.get_bosses():
-		bosses.append(configured_boss)
-	return true
+	return campaign_wave_coordinator.initialize_campaign(active_campaign)
 
 
 func _register_mode_object_pools() -> void:
@@ -163,28 +204,24 @@ func _present_flow_countdown(
 	_state: CombatFlowState.State,
 	seconds: int
 ) -> void:
-	wave_hud.show_countdown(seconds)
+	campaign_wave_coordinator.present_flow_countdown(seconds)
 
 
 func _present_wave_started(
 	wave_config: WaveConfig,
 	is_remote: bool
 ) -> void:
-	if wave_config != null:
-		_update_wave_music(wave_config)
-	if is_remote:
-		wave_hud.show_enemy_count(maxi(current_wave_index + 1, 1), 0)
-	else:
-		wave_hud.show_wave_progress(
-			current_wave_index + 1,
-			current_wave_defeated,
-			current_wave_total
-		)
-	wave_start_audio.play()
+	campaign_wave_coordinator.present_wave_started(
+		wave_config,
+		is_remote,
+		current_wave_index + 1,
+		current_wave_defeated,
+		current_wave_total
+	)
 
 
 func _present_wave_progress(defeated_count: int, total_count: int) -> void:
-	wave_hud.show_wave_progress(
+	campaign_wave_coordinator.present_wave_progress(
 		current_wave_index + 1,
 		defeated_count,
 		total_count
@@ -192,7 +229,10 @@ func _present_wave_progress(defeated_count: int, total_count: int) -> void:
 
 
 func _present_remote_enemy_count(alive_count: int) -> void:
-	wave_hud.show_enemy_count(current_wave_index + 1, alive_count)
+	campaign_wave_coordinator.present_remote_enemy_count(
+		current_wave_index + 1,
+		alive_count
+	)
 
 
 func _present_terminal_state(victory: bool) -> void:
@@ -207,33 +247,39 @@ func _present_terminal_state(victory: bool) -> void:
 
 
 func _hide_mode_wave_presentation() -> void:
-	wave_hud.hide_all()
+	campaign_wave_coordinator.hide_wave_presentation()
 
 
 func _present_countdown_tick() -> void:
-	countdown_audio.pitch_scale = 1.0
-	countdown_audio.play()
+	campaign_wave_coordinator.present_countdown_tick()
 
 
 func _present_intermission_started(cleared_step: FlowStepConfig) -> void:
-	_update_post_wave_music(cleared_step)
+	campaign_wave_coordinator.present_intermission_started(cleared_step)
 
 
 func _begin_mode_flow_step(flow_step: FlowStepConfig) -> bool:
-	var boss_config := flow_step as BossConfig
-	if boss_config == null:
-		return false
-	_begin_linglan_boss_intro(boss_config)
-	return true
+	return campaign_wave_coordinator.begin_mode_flow_step(flow_step)
 
 
 func _apply_remote_mode_flow_state(
 	state: CombatFlowState.State,
 	flow_step: FlowStepConfig
 ) -> bool:
-	var boss_config := flow_step as BossConfig
-	if boss_config == null:
-		return false
+	return campaign_wave_coordinator.apply_remote_mode_flow_state(
+		state,
+		flow_step
+	)
+
+
+func _on_campaign_boss_step_requested(boss_config: BossConfig) -> void:
+	_begin_linglan_boss_intro(boss_config)
+
+
+func _on_campaign_remote_boss_state_requested(
+	state: CombatFlowState.State,
+	boss_config: BossConfig
+) -> void:
 	match state:
 		CombatFlowState.State.BOSS_INTRO:
 			state_timer.stop()
@@ -244,7 +290,6 @@ func _apply_remote_mode_flow_state(
 			_update_boss_music(boss_config)
 			_prepare_linglan_boss_arena(boss_config)
 			_play_remote_boss_intro(boss_config)
-			return true
 		CombatFlowState.State.BOSS_ACTIVE:
 			state_timer.stop()
 			wave_state = state
@@ -254,8 +299,6 @@ func _apply_remote_mode_flow_state(
 				linglan_boss_intro_vfx.stop_intro()
 			active_boss_config = boss_config
 			_update_boss_music(boss_config)
-			return true
-	return false
 
 
 func _prewarm_mode_runtime_data() -> void:
@@ -749,24 +792,13 @@ func _deferred_request_boss_runtime_scene_loads() -> void:
 	_request_boss_runtime_scene_loads()
 
 func _get_first_boss_config() -> Resource:
-	for boss_config in _get_configured_bosses():
+	for boss_config in campaign_wave_coordinator.get_configured_bosses():
 		if _boss_config_has_required_data(boss_config):
 			return boss_config
 	return null
 
 func _get_configured_bosses() -> Array[BossConfig]:
-	var result: Array[BossConfig] = []
-	if flow_graph != null:
-		for step in flow_graph.steps:
-			var boss_step := step as BossConfig
-			if boss_step != null:
-				result.append(boss_step)
-	if result.is_empty():
-		for boss_resource in bosses:
-			var boss_config := boss_resource as BossConfig
-			if boss_config != null:
-				result.append(boss_config)
-	return result
+	return campaign_wave_coordinator.get_configured_bosses()
 
 func _boss_config_has_required_data(boss_config: Resource) -> bool:
 	if boss_config == null:
