@@ -139,6 +139,10 @@ func _test_scene_instantiation() -> void:
 			mp_game.get_node_or_null("PlayerCoordinator") is MpPlayerCoordinator,
 			"MpGame must statically instantiate its player snapshot coordinator."
 		)
+		_expect(
+			mp_game.get_node_or_null("EnemyCoordinator") is MpEnemyCoordinator,
+			"MpGame must statically instantiate its enemy synchronization coordinator."
+		)
 		mp_game.free()
 
 	var game := GAME_SCENE.instantiate()
@@ -1232,8 +1236,8 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 		await physics_frame
 		return
 	_bind_multiplayer_runtime(mp_game, game)
-	var net_enemies := mp_game.get("_net_enemies") as Dictionary
-	var enemy_spawn_times := mp_game.get("_enemy_spawn_snapshot_times") as Dictionary
+	var net_enemies: Dictionary = mp_game.enemy_coordinator.net_enemies
+	var enemy_spawn_times: Dictionary = mp_game.enemy_coordinator.enemy_spawn_snapshot_times
 	net_enemies[7] = enemy_a
 	net_enemies[8] = enemy_b
 	net_enemies[9] = enemy_c
@@ -1264,7 +1268,7 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 	var second_chunk := snapshot_mgr.encode_all_enemy_snapshots([state_b, state_c])
 	mp_game.call("_rpc_receive_enemy_snapshot", 0.0, first_chunk, 10, 0, 2)
 	var state_a_frame := (
-		(mp_game.enemy_interpolators[7] as NetInterpolator).get_latest_state()
+		(mp_game.enemy_coordinator.enemy_interpolators[7] as NetInterpolator).get_latest_state()
 	)
 	_expect(
 		net_enemies.has(7)
@@ -1382,14 +1386,14 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 		await physics_frame
 		return
 	_bind_multiplayer_runtime(mp_game, game)
-	var net_enemies := mp_game.get("_net_enemies") as Dictionary
-	var enemy_spawn_times := mp_game.get("_enemy_spawn_snapshot_times") as Dictionary
+	var net_enemies: Dictionary = mp_game.enemy_coordinator.net_enemies
+	var enemy_spawn_times: Dictionary = mp_game.enemy_coordinator.enemy_spawn_snapshot_times
 	net_enemies[21] = enemy_dead
 	net_enemies[22] = enemy_stale
 	enemy_spawn_times[21] = 0.0
 	enemy_spawn_times[22] = 0.0
-	mp_game.enemy_interpolators[21] = NetInterpolator.new(0.1)
-	mp_game.enemy_interpolators[22] = NetInterpolator.new(0.1)
+	mp_game.enemy_coordinator.enemy_interpolators[21] = NetInterpolator.new(0.1)
+	mp_game.enemy_coordinator.enemy_interpolators[22] = NetInterpolator.new(0.1)
 
 	var snapshot_mgr := SnapshotManager.new()
 	var dead_state := SnapshotManager.EnemyState.new()
@@ -1402,7 +1406,10 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 	await process_frame
 	_expect(not net_enemies.has(21), "Dead enemy snapshots must erase the client enemy index.")
 	_expect(not enemy_spawn_times.has(21), "Dead enemy snapshots must erase spawn timing.")
-	_expect(not mp_game.enemy_interpolators.has(21), "Dead enemy snapshots must clear interpolation state.")
+	_expect(
+		not mp_game.enemy_coordinator.enemy_interpolators.has(21),
+		"Dead enemy snapshots must clear interpolation state."
+	)
 	_expect(enemy_dead.is_dead, "Dead enemy snapshots must start the proxy death state.")
 
 	mp_game.call(
@@ -1416,7 +1423,10 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 	await process_frame
 	_expect(not net_enemies.has(22), "An empty chunked roster must reconcile stale enemies.")
 	_expect(not enemy_spawn_times.has(22), "An empty chunked roster must erase stale spawn timing.")
-	_expect(not mp_game.enemy_interpolators.has(22), "An empty chunked roster must clear stale interpolation.")
+	_expect(
+		not mp_game.enemy_coordinator.enemy_interpolators.has(22),
+		"An empty chunked roster must clear stale interpolation."
+	)
 	_expect(
 		mp_game.snapshot_mgr.enemy_receive_baselines.is_empty(),
 		"An empty chunked roster must prune the receive baseline only after completion."
@@ -1622,7 +1632,7 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		mp_game.set("_net_time_origin", Time.get_ticks_msec() / 1000.0 - 10.0)
 		mp_game.set("_has_host_time_offset", true)
 		mp_game.set("_host_to_client_time_offset", 0.0)
-		var net_enemies := mp_game.get("_net_enemies") as Dictionary
+		var net_enemies: Dictionary = mp_game.enemy_coordinator.net_enemies
 		net_enemies[42] = enemy
 		var interp := NetInterpolator.new(0.05, 0.0)
 		interp.push_snapshot(
@@ -1632,7 +1642,7 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 			0,
 			Enemy.LocomotionState.MOVING
 		)
-		mp_game.enemy_interpolators[42] = interp
+		mp_game.enemy_coordinator.enemy_interpolators[42] = interp
 		mp_game.call("net_enemy_action", 42, "windup", Vector2.RIGHT, Vector2(100.0, 100.0), 1, 9.0)
 		_expect(
 			enemy.global_position.is_equal_approx(Vector2(5.0, 5.0)),
@@ -1645,13 +1655,15 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 				"A transform-stale enemy action must leave snapshot position untouched while its newer action id still advances proxy visuals."
 			)
 		mp_game.call("net_enemy_action", 42, "windup", Vector2.RIGHT, Vector2(20.0, 5.0), 2, 10.0)
-		var latest_timestamp := (mp_game.enemy_interpolators[42] as NetInterpolator).get_latest_timestamp()
+		var latest_timestamp := (
+			mp_game.enemy_coordinator.enemy_interpolators[42] as NetInterpolator
+		).get_latest_timestamp()
 		_expect(
 			is_equal_approx(latest_timestamp, 10.0),
 			"Fresh enemy action events must enter the enemy interpolation timeline."
 		)
 		var latest_action_state := (
-			(mp_game.enemy_interpolators[42] as NetInterpolator).get_latest_state()
+			(mp_game.enemy_coordinator.enemy_interpolators[42] as NetInterpolator).get_latest_state()
 		)
 		_expect(
 			latest_action_state.velocity == Vector2.ZERO
@@ -1674,9 +1686,11 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 			sniper.global_position = Vector2(12.0, 8.0)
 			var sniper_interp := NetInterpolator.new(0.05, 0.0)
 			sniper_interp.push_snapshot(9.5, sniper.global_position, Vector2.ZERO)
-			mp_game.enemy_interpolators[43] = sniper_interp
+			mp_game.enemy_coordinator.enemy_interpolators[43] = sniper_interp
 			var aim_glow := sniper.get_node_or_null("AimGlow") as Polygon2D
-			var net_enemies_for_target_action := mp_game.get("_net_enemies") as Dictionary
+			var net_enemies_for_target_action: Dictionary = (
+				mp_game.enemy_coordinator.net_enemies
+			)
 			net_enemies_for_target_action[43] = sniper
 			mp_game.call(
 				"net_enemy_target_action",
@@ -1729,8 +1743,10 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 			linglan.global_position = Vector2(18.0, 18.0)
 			var linglan_interp := NetInterpolator.new(0.05, 0.0)
 			linglan_interp.push_snapshot(9.5, linglan.global_position, Vector2.ZERO)
-			mp_game.enemy_interpolators[44] = linglan_interp
-			var net_enemies_for_linglan_action := mp_game.get("_net_enemies") as Dictionary
+			mp_game.enemy_coordinator.enemy_interpolators[44] = linglan_interp
+			var net_enemies_for_linglan_action: Dictionary = (
+				mp_game.enemy_coordinator.net_enemies
+			)
 			net_enemies_for_linglan_action[44] = linglan
 			current_scene = client_game
 			mp_game.call(
@@ -3295,16 +3311,21 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			"Client enemy proxies must not stack native physics interpolation on network interpolation."
 		)
 		client_enemy.set_meta("net_id", 77)
-		var client_net_enemies := client_mp_game.get("_net_enemies") as Dictionary
-		var spawn_times := client_mp_game.get("_enemy_spawn_snapshot_times") as Dictionary
+		var client_net_enemies: Dictionary = client_mp_game.enemy_coordinator.net_enemies
+		var spawn_times: Dictionary = (
+			client_mp_game.enemy_coordinator.enemy_spawn_snapshot_times
+		)
 		client_net_enemies[77] = client_enemy
 		spawn_times[77] = 0.0
-		client_mp_game.enemy_interpolators[77] = NetInterpolator.new(0.1)
+		client_mp_game.enemy_coordinator.enemy_interpolators[77] = NetInterpolator.new(0.1)
 		client_mp_game.call("net_enemy_defeated", 77, Vector2(44.0, 55.0))
 		await process_frame
 		_expect(not client_net_enemies.has(77), "Client enemy defeated event must erase the enemy index.")
 		_expect(not spawn_times.has(77), "Client enemy defeated event must erase spawn timing.")
-		_expect(not client_mp_game.enemy_interpolators.has(77), "Client enemy defeated event must clear interpolation state.")
+		_expect(
+			not client_mp_game.enemy_coordinator.enemy_interpolators.has(77),
+			"Client enemy defeated event must clear interpolation state."
+		)
 		_expect(is_instance_valid(client_enemy), "Client enemy defeated event must keep the node long enough to play death visuals.")
 		_expect(client_enemy.global_position == Vector2(44.0, 55.0), "Client enemy defeated event must apply the authoritative death position.")
 		_expect(client_enemy.is_dead, "Client enemy defeated event must start the proxy death sequence.")
@@ -3326,7 +3347,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 		magic_enemy.configure_multiplayer_proxy()
 		magic_enemy.set_meta("net_id", 78)
 		magic_enemy.global_position = Vector2(88.0, 99.0)
-		var client_net_enemies := client_mp_game.get("_net_enemies") as Dictionary
+		var client_net_enemies: Dictionary = client_mp_game.enemy_coordinator.net_enemies
 		client_net_enemies[78] = magic_enemy
 		var health_after_magic := maxi(magic_enemy.current_health - 5, 1)
 		client_mp_game.call(
@@ -4936,9 +4957,14 @@ func _bind_mp_game_coordinators(
 		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
 	)
 	mp_game.player_coordinator = player_coordinator
+	var enemy_coordinator := (
+		mp_game.get_node("EnemyCoordinator") as MpEnemyCoordinator
+	)
+	mp_game.enemy_coordinator = enemy_coordinator
 	if game != null:
 		session_coordinator.bind_runtime(game)
 		player_coordinator.bind_runtime(game)
+		enemy_coordinator.bind_runtime(game)
 	return player_coordinator
 
 

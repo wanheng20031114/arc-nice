@@ -463,11 +463,16 @@ func _new_mp_game(use_host: bool = false) -> Node:
 	var player_coordinator := MpPlayerCoordinator.new()
 	player_coordinator.name = "PlayerCoordinator"
 	mp_game.add_child(player_coordinator)
+	var enemy_coordinator := MpEnemyCoordinator.new()
+	enemy_coordinator.name = "EnemyCoordinator"
+	mp_game.add_child(enemy_coordinator)
 	mp_game.set("game", fixture)
 	mp_game.set("net_manager", host_net_manager if use_host else client_net_manager)
 	mp_game.set("session_coordinator", session)
 	mp_game.set("player_coordinator", player_coordinator)
 	player_coordinator.bind_runtime(fixture)
+	mp_game.set("enemy_coordinator", enemy_coordinator)
+	enemy_coordinator.bind_runtime(fixture)
 	mp_game.set("_mode_adapter", tower_adapter)
 	mp_game.set("tower_mode_adapter", tower_adapter)
 	session.bind_runtime(fixture)
@@ -550,7 +555,9 @@ func _test_combat_target_query_reuse() -> void:
 	)
 
 	var client_mp_game := _new_mp_game()
-	client_mp_game.set("_net_enemies", {901: near_enemy, 902: boss_enemy, 903: far_enemy})
+	client_mp_game.enemy_coordinator.net_enemies.assign(
+		{901: near_enemy, 902: boss_enemy, 903: far_enemy}
+	)
 	var client_reused_targets: Array[Enemy] = [far_enemy]
 	client_mp_game.call(
 		"query_combat_targets_into",
@@ -594,7 +601,7 @@ func _test_combat_target_query_reuse() -> void:
 		"MP client queries must exclude dead proxy targets."
 	)
 
-	client_mp_game.set("_net_enemies", {})
+	client_mp_game.enemy_coordinator.net_enemies.clear()
 	fixture.unregister_combat_target(901)
 	fixture.unregister_combat_target(902)
 	fixture.unregister_combat_target(903)
@@ -630,10 +637,10 @@ func _test_adaptive_enemy_snapshot_cadence() -> void:
 func _test_enemy_interpolator_iteration_prunes_after_traversal() -> void:
 	var mp_game := _new_mp_game()
 	var stale_ids: Array = mp_game.get("_stale_enemy_interpolator_ids") as Array
-	mp_game.enemy_interpolators[7001] = NetInterpolator.new()
+	mp_game.enemy_coordinator.enemy_interpolators[7001] = NetInterpolator.new()
 	mp_game.call("_client_interpolate_entities")
 	_expect(
-		not mp_game.enemy_interpolators.has(7001),
+		not mp_game.enemy_coordinator.enemy_interpolators.has(7001),
 		"Client interpolation must prune missing enemies after direct dictionary traversal."
 	)
 	_expect(
@@ -1134,11 +1141,11 @@ func _test_unordered_enemy_chunk_convergence() -> void:
 		"Both unordered chunks must converge into one completed batch."
 	)
 	_expect(
-		(mp_game.get("enemy_interpolators") as Dictionary).size() == 70,
+		mp_game.enemy_coordinator.enemy_interpolators.size() == 70,
 		"A completed unordered batch must apply all seventy enemy states exactly once."
 	)
 	var unordered_frame := (
-		(mp_game.enemy_interpolators[1] as NetInterpolator).get_latest_state()
+		(mp_game.enemy_coordinator.enemy_interpolators[1] as NetInterpolator).get_latest_state()
 	)
 	_expect(
 		unordered_frame.anim_state == Enemy.LocomotionState.MOVING,
@@ -1178,7 +1185,7 @@ func _test_missing_delta_then_keyframe_recovery() -> void:
 	mp_game.call("_rpc_receive_enemy_snapshot", 3.0, undecodable_delta, 20, 0, 1, 20)
 	_expect(
 		int(mp_game.get("_last_completed_enemy_snapshot_batch_id")) == 0
-		and (mp_game.get("enemy_interpolators") as Dictionary).is_empty(),
+		and mp_game.enemy_coordinator.enemy_interpolators.is_empty(),
 		"A delta with no receive baseline must not complete or create a corrupted proxy."
 	)
 
@@ -1186,11 +1193,11 @@ func _test_missing_delta_then_keyframe_recovery() -> void:
 	mp_game.call("_rpc_receive_enemy_snapshot", 3.1, keyframe, 21, 0, 1, 20)
 	_expect(
 		int(mp_game.get("_last_completed_enemy_snapshot_batch_id")) == 21
-		and (mp_game.get("enemy_interpolators") as Dictionary).has(900),
+		and mp_game.enemy_coordinator.enemy_interpolators.has(900),
 		"The next keyframe must self-heal a lost baseline and converge the enemy proxy."
 	)
 	var repaired_frame := (
-		(mp_game.enemy_interpolators[900] as NetInterpolator).get_latest_state()
+		(mp_game.enemy_coordinator.enemy_interpolators[900] as NetInterpolator).get_latest_state()
 	)
 	_expect(
 		repaired_frame.anim_state == Enemy.LocomotionState.MOVING,
@@ -1210,7 +1217,7 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 	fixture.add_child(stale_enemy)
 	live_enemy.process_mode = Node.PROCESS_MODE_DISABLED
 	stale_enemy.process_mode = Node.PROCESS_MODE_DISABLED
-	mp_game.set("_net_enemies", {1: live_enemy, 2: stale_enemy})
+	mp_game.enemy_coordinator.net_enemies.assign({1: live_enemy, 2: stale_enemy})
 	fixture.multiplayer_enemies_by_net_id = {1: live_enemy, 2: stale_enemy}
 
 	var live_pickup := PICKUP_SCENE.instantiate() as Pickup
@@ -1240,8 +1247,8 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 		PackedInt32Array([20])
 	)
 	_expect(
-		(mp_game.get("_net_enemies") as Dictionary).has(1)
-		and not (mp_game.get("_net_enemies") as Dictionary).has(2),
+		mp_game.enemy_coordinator.net_enemies.has(1)
+		and not mp_game.enemy_coordinator.net_enemies.has(2),
 		"A complete-state manifest must silently prune a leaked enemy replica."
 	)
 	_expect(
@@ -1259,7 +1266,7 @@ func _test_runtime_world_manifest_prunes_stale_replicas() -> void:
 		and not fixture.animated_plant_removal_ids.has(21),
 		"A complete-state manifest must prune stale plants and their queued warehouse snapshots."
 	)
-	mp_game.set("_net_enemies", {})
+	mp_game.enemy_coordinator.net_enemies.clear()
 	fixture.multiplayer_enemies_by_net_id.clear()
 	fixture.multiplayer_pickups.clear()
 	fixture.proxy_plants.clear()
@@ -1705,6 +1712,9 @@ func _new_capturing_host_mp_game() -> CapturingMpGame:
 	var player_coordinator := MpPlayerCoordinator.new()
 	player_coordinator.name = "PlayerCoordinator"
 	mp_game.add_child(player_coordinator)
+	var enemy_coordinator := MpEnemyCoordinator.new()
+	enemy_coordinator.name = "EnemyCoordinator"
+	mp_game.add_child(enemy_coordinator)
 	var keepalive_request := HTTPRequest.new()
 	keepalive_request.name = "PublicRoomKeepaliveRequest"
 	mp_game.add_child(keepalive_request)
@@ -1713,8 +1723,10 @@ func _new_capturing_host_mp_game() -> CapturingMpGame:
 	mp_game.set("net_manager", host_net_manager)
 	mp_game.set("session_coordinator", session)
 	mp_game.set("player_coordinator", player_coordinator)
+	mp_game.set("enemy_coordinator", enemy_coordinator)
 	session.bind_runtime(fixture)
 	player_coordinator.bind_runtime(fixture)
+	enemy_coordinator.bind_runtime(fixture)
 	var tower_adapter := fixture.get_multiplayer_mode_adapter() as TestTowerModeAdapter
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter
@@ -1836,7 +1848,7 @@ func _test_offscreen_proxy_visual_budget() -> void:
 	far_enemy.is_multiplayer_proxy = true
 	near_enemy.global_position = Vector2.ZERO
 	far_enemy.global_position = Vector2(100000.0, 100000.0)
-	mp_game.set("_net_enemies", {1: near_enemy, 2: far_enemy})
+	mp_game.enemy_coordinator.net_enemies.assign({1: near_enemy, 2: far_enemy})
 	await process_frame
 	mp_game.call("_update_client_proxy_visual_budget", 1.0)
 	_expect(
@@ -1873,7 +1885,7 @@ func _test_offscreen_proxy_visual_budget() -> void:
 		and bool(mp_game.call("_should_interpolate_enemy_proxy", 2, far_enemy, 10.2)),
 		"A visible proxy must keep full render-rate interpolation even with a retained offscreen slot."
 	)
-	mp_game.set("_net_enemies", {})
+	mp_game.enemy_coordinator.net_enemies.clear()
 	near_enemy.queue_free()
 	far_enemy.queue_free()
 	camera.queue_free()

@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scene/multiplayer/mp_game.gd" id="1_mpgame"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/session/mp_session_coordinator.tscn" id="2_session"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/player/mp_player_coordinator.tscn" id="3_player"]
+[ext_resource type="PackedScene" path="res://scene/multiplayer/enemy/mp_enemy_coordinator.tscn" id="4_enemy"]
 
 [node name="MpGame" type="Node2D"]
 script = ExtResource("1_mpgame")
@@ -10,6 +11,8 @@ script = ExtResource("1_mpgame")
 [node name="SessionCoordinator" parent="." instance=ExtResource("2_session")]
 
 [node name="PlayerCoordinator" parent="." instance=ExtResource("3_player")]
+
+[node name="EnemyCoordinator" parent="." instance=ExtResource("4_enemy")]
 
 [node name="PublicRoomKeepaliveRequest" type="HTTPRequest" parent="."]
 timeout = 10.0

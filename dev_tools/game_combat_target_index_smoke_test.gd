@@ -177,6 +177,10 @@ func _test_nearest_combat_target_contracts() -> void:
 	var net_manager := TestNetManager.new()
 	net_manager.host_mode = true
 	var multiplayer_game: Variant = MpGameScript.new()
+	var enemy_coordinator := MpEnemyCoordinator.new()
+	multiplayer_game.add_child(enemy_coordinator)
+	enemy_coordinator.bind_runtime(game)
+	multiplayer_game.set("enemy_coordinator", enemy_coordinator)
 	multiplayer_game.set("net_manager", net_manager)
 	multiplayer_game.set("game", game)
 	_expect(
@@ -241,7 +245,7 @@ func _test_nearest_combat_target_contracts() -> void:
 	client_queued.queue_free()
 	var freed_client_enemy := _new_tree_safe_test_enemy()
 	freed_client_enemy.free()
-	multiplayer_game.set("_net_enemies", {
+	enemy_coordinator.net_enemies.assign({
 		501: client_nearest,
 		502: client_tie_a,
 		503: client_tie_b,
@@ -341,9 +345,13 @@ func _test_queued_target_query_contracts() -> void:
 
 	var net_manager := TestNetManager.new()
 	var multiplayer_game: Variant = MpGameScript.new()
+	var enemy_coordinator := MpEnemyCoordinator.new()
+	multiplayer_game.add_child(enemy_coordinator)
+	enemy_coordinator.bind_runtime(game)
+	multiplayer_game.set("enemy_coordinator", enemy_coordinator)
 	multiplayer_game.set("net_manager", net_manager)
 	multiplayer_game.set("game", game)
-	multiplayer_game.set("_net_enemies", {701: queued_enemy})
+	enemy_coordinator.net_enemies.assign({701: queued_enemy})
 	sorted_targets.append(queued_enemy)
 	unordered_targets.append(queued_enemy)
 	multiplayer_game.call(

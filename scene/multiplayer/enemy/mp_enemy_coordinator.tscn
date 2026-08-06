@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" uid="uid://c5k7w61mj2p4f" path="res://scene/multiplayer/enemy/mp_enemy_coordinator.gd" id="1_enemy"]
+
+[node name="EnemyCoordinator" type="Node"]
+script = ExtResource("1_enemy")

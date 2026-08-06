@@ -180,35 +180,16 @@ const SNAPSHOT_PACKET_WARN_BYTES := 1200
 const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
 const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
-const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
-## 自协议 v26 起使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
-## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
-const SHARED_SNAPSHOT_COHORT_ID := -1
-# A full enemy keyframe is 24 bytes after adding health_revision. Forty-six
-# records plus the uint16 count stay at 1106 bytes, below the 1200-byte budget.
-const ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES := 46
-const ENEMY_HIGH_PRESSURE_THRESHOLD := 200
-const ENEMY_HIGH_PRESSURE_SNAPSHOT_HZ := 20
 const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
 const BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS := 0.05
 const CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS := 0.05
 const WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS := 0.1
 const PLANT_HEALTH_FLUSH_INTERVAL_SECONDS := 0.05
-const CLIENT_PROXY_VISUAL_BUDGET_INTERVAL_SECONDS := 0.2
-const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
-# Proxies outside the expanded camera rectangle have no visible transform to
-# smooth. Keep their logical snapshots intact, but sample/apply them at 15 Hz.
-# A deterministic per-net-id phase spreads the work instead of producing one
-# large interpolation burst every fourth 60 Hz render frame.
-const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ := 15.0
-const CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT := 64
-const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
 # Plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
 # records stay near 984 bytes and below the project's 1200-byte packet budget.
 const PLANT_HEALTH_MAX_RECORDS_PER_PACKET := 24
 const BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET := 24
 const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
-const ENEMY_SPAWN_BATCH_MAX_RECORDS := 16
 const ENEMY_TERMINAL_DEFEATED := 0
 const ENEMY_TERMINAL_ESCAPED := 1
 const ENEMY_TERMINAL_REMOVED := 2
@@ -217,11 +198,6 @@ const CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
 const CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
 const CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
 const CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT * 2
-const CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES := 512
-const CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS := 5.0
-const CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES := 512
-const CLIENT_ENEMY_ACTION_KIND_GENERIC := 0
-const CLIENT_ENEMY_ACTION_KIND_TARGET := 1
 const PLANT_PLACEMENT_RATE_PER_SECOND := 4.0
 const PLANT_PLACEMENT_RATE_BURST := 8.0
 const BUILDING_INTERACTION_MAX_DISTANCE := 48.0
@@ -278,9 +254,9 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 @onready var session_coordinator: MpSessionCoordinator = $SessionCoordinator
 @onready var player_coordinator: MpPlayerCoordinator = $PlayerCoordinator
+@onready var enemy_coordinator: MpEnemyCoordinator = $EnemyCoordinator
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
-var snapshot_mgr := SnapshotManager.new()
 var _runtime_scene_cache: Dictionary = {}
 var _projectile_default_parameter_cache: Dictionary[StringName, Dictionary] = {}
 var _agave_cannonball_scene: PackedScene = null
@@ -293,8 +269,6 @@ var _linglan_skill3_orb_scene: PackedScene = null
 var _linglan_skill4_config: Resource = null
 var _linglan_skill4_orb_scene: PackedScene = null
 var _linglan_skill4_orb_script: Script = null
-var enemy_interpolators: Dictionary = {}
-var _stale_enemy_interpolator_ids: Array[int] = []
 var game: CombatRuntimeBase = null
 var _gameplay_gateway: MultiplayerGameplayGateway = null
 var _mode_adapter: MultiplayerModeAdapter = null
@@ -302,8 +276,6 @@ var tower_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _linglan_boss_runtime_port: LinglanBossRuntimePort = null
 var input_sequence: int = 0
 var _net_time_origin: float = 0.0
-var _net_enemies: Dictionary = {}
-var _enemy_spawn_snapshot_times: Dictionary = {}
 var _has_host_time_offset: bool = false
 var _host_to_client_time_offset: float = 0.0
 var _has_sent_input: bool = false
@@ -351,8 +323,6 @@ var _processed_enemy_hit_ids: Dictionary = {}
 var _processed_player_hit_ids: Dictionary = {}
 var _next_collectible_effect_event_id: int = 1
 var _processed_collectible_effect_event_ids: Dictionary = {}
-var _host_enemy_snapshot_batch_sequence: int = 0
-var _host_enemy_snapshot_live_ids: Dictionary = {}
 # Highest reliable life-event revision processed per player. On Host this is
 # also the allocator; on clients it deduplicates presentation events.
 var _player_health_revisions: Dictionary = {}
@@ -370,15 +340,6 @@ var _large_player_snapshot_packet_count: int = 0
 var _large_enemy_snapshot_packet_count: int = 0
 var _enemy_snapshot_payload_bytes_total: int = 0
 var _enemy_snapshot_packet_count: int = 0
-var _enemy_snapshot_batch_count: int = 0
-var _enemy_snapshot_completed_batch_count: int = 0
-var _enemy_snapshot_incomplete_batch_evict_count: int = 0
-var _enemy_snapshot_stale_chunk_count: int = 0
-var _last_enemy_keyframe_time_by_peer: Dictionary = {}
-var _enemy_snapshot_cohort_peers: Dictionary = {}
-# Session-lifetime encode work counters. Peer detach/rejoin does not reset them;
-# returning to the lobby does, and a new MpGame instance always starts at zero.
-var _enemy_snapshot_chunk_encode_count: int = 0
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
 var _client_projectile_request_rate_buckets: Dictionary = {}
@@ -447,12 +408,6 @@ var _last_research_request_ids: Dictionary = {}
 var _research_milestone_connected := false
 var _luoxi_offer_states_by_peer: Dictionary = {}
 var _luoxi_offer_revision_counters: Dictionary = {}
-var _pending_enemy_snapshot_batches: Dictionary = {}
-var _last_completed_enemy_snapshot_batch_id: int = 0
-var _latest_enemy_snapshot_batch_seen: int = 0
-var _current_enemy_snapshot_hz: int = _NetConstants.ENEMY_SNAPSHOT_HZ
-var _pending_enemy_damage_feedback: Dictionary = {}
-var _active_enemy_damage_feedback_context: Dictionary = {}
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 var _pending_bamboo_mortar_visuals := PackedInt32Array()
 var _pending_bamboo_mortar_action_ids := PackedInt32Array()
@@ -483,30 +438,7 @@ var _remote_plant_feedback_revisions: Dictionary = {}
 var _remote_plant_feedback_revision_order: Array[int] = []
 var _pending_wave_progress: Dictionary = {}
 var _wave_progress_flush_time_left: float = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
-var _client_proxy_visual_budget_time_left: float = 0.0
-var _offscreen_enemy_proxy_count: int = 0
-var _offscreen_enemy_interpolation_slots: Dictionary = {}
 var _last_applied_remote_enemy_count: int = -1
-# Enemy actions and durable spawns use independent channels. Keep the newest
-# shared action-sequence record per not-yet-spawned enemy in a bounded intrusive
-# FIFO. Replacement, spawn consumption, terminal cleanup and oldest eviction
-# are all O(1); generic cancel/fire and target windup therefore cannot reorder
-# across two separate pending containers.
-var _pending_enemy_actions: Dictionary = {}
-var _pending_enemy_action_previous_ids: Dictionary = {}
-var _pending_enemy_action_next_ids: Dictionary = {}
-var _pending_enemy_action_oldest_id: int = 0
-var _pending_enemy_action_newest_id: int = 0
-# A reliable terminal may overtake an older CH7 action. Bounded tombstones stop
-# that late action from rebuilding pending state until an explicit spawn for the
-# same id proves a new lifecycle.
-var _client_terminal_enemy_ids: Dictionary = {}
-var _client_terminal_enemy_previous_ids: Dictionary = {}
-var _client_terminal_enemy_next_ids: Dictionary = {}
-var _client_terminal_enemy_oldest_id: int = 0
-var _client_terminal_enemy_newest_id: int = 0
-var _pending_enemy_spawns: Array[Dictionary] = []
-var _host_terminal_enemy_ids: Dictionary = {}
 var _public_room_keepalive_time_left: float = 0.0
 var _public_room_keepalive_in_flight: bool = false
 var _next_terrain_snapshot_id: int = 1
@@ -535,6 +467,14 @@ func _ready() -> void:
 	_net_time_origin = Time.get_ticks_msec() / 1000.0
 	_revive_random_generator.randomize()
 	_luoxi_offer_random_generator.randomize()
+	if not enemy_coordinator.remote_enemy_spawned.is_connected(_on_remote_enemy_spawned):
+		enemy_coordinator.remote_enemy_spawned.connect(_on_remote_enemy_spawned)
+	if not enemy_coordinator.remote_enemy_escape_requested.is_connected(
+		_on_remote_enemy_escape_requested
+	):
+		enemy_coordinator.remote_enemy_escape_requested.connect(
+			_on_remote_enemy_escape_requested
+		)
 	set_multiplayer_authority(_get_host_peer_id())
 	if not net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
 		net_manager.connection_state_changed.connect(_on_connection_state_changed)
@@ -596,11 +536,15 @@ func _exit_tree() -> void:
 			session_coordinator.unbind_runtime(game)
 		if player_coordinator != null:
 			player_coordinator.unbind_runtime(game)
+		if enemy_coordinator != null:
+			enemy_coordinator.unbind_runtime(game)
 	else:
 		if session_coordinator != null:
 			session_coordinator.reset_session_state()
 		if player_coordinator != null:
 			player_coordinator.reset_session_state()
+		if enemy_coordinator != null:
+			enemy_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -610,13 +554,7 @@ func _exit_tree() -> void:
 			public_room_keepalive_request.request_completed.disconnect(_on_public_room_keepalive_completed)
 		if public_room_keepalive_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 			public_room_keepalive_request.cancel_request()
-	snapshot_mgr.reset_delta_cache()
-	_enemy_snapshot_cohort_peers.clear()
-	_pending_enemy_snapshot_batches.clear()
-	_host_enemy_snapshot_live_ids.clear()
 	_processed_collectible_effect_event_ids.clear()
-	_pending_enemy_damage_feedback.clear()
-	_active_enemy_damage_feedback_context.clear()
 	_clear_bamboo_mortar_visuals()
 	_pending_corn_machine_gun_burst_visuals.clear()
 	_pending_corn_machine_gun_burst_action_ids.clear()
@@ -626,12 +564,7 @@ func _exit_tree() -> void:
 	_clear_remote_plant_health_state()
 	_clear_pending_warehouse_snapshots()
 	_clear_pending_remote_production_states()
-	_clear_pending_enemy_actions()
-	_clear_client_enemy_terminal_markers()
 	_pending_wave_progress.clear()
-	_pending_enemy_spawns.clear()
-	_host_terminal_enemy_ids.clear()
-	_offscreen_enemy_interpolation_slots.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_client_projectile_request_rate_buckets.clear()
@@ -791,59 +724,12 @@ func _process(delta: float) -> void:
 		_client_interpolate_entities()
 	if net_manager.is_client() and game != null:
 		_update_terrain_snapshot_repair_watchdog(delta)
-		_update_client_proxy_visual_budget(delta)
-		var remote_enemy_count := _net_enemies.size()
+		enemy_coordinator.update_proxy_visual_budget(delta)
+		var remote_enemy_count := enemy_coordinator.get_remote_enemy_count()
 		if remote_enemy_count != _last_applied_remote_enemy_count:
 			_last_applied_remote_enemy_count = remote_enemy_count
 			if _mode_adapter != null:
 				_mode_adapter.apply_remote_enemy_count(remote_enemy_count)
-
-
-func _update_client_proxy_visual_budget(delta: float) -> void:
-	_client_proxy_visual_budget_time_left = maxf(
-		_client_proxy_visual_budget_time_left - maxf(delta, 0.0),
-		0.0
-	)
-	if _client_proxy_visual_budget_time_left > 0.0 or game == null:
-		return
-	_client_proxy_visual_budget_time_left = CLIENT_PROXY_VISUAL_BUDGET_INTERVAL_SECONDS
-	var viewport := game.get_viewport()
-	var camera: Camera2D = null
-	if viewport != null:
-		camera = viewport.get_camera_2d()
-	if camera == null:
-		_offscreen_enemy_proxy_count = 0
-		for enemy_net_id_variant in _net_enemies:
-			var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
-			var uncullable_enemy := enemy_variant as Enemy
-			if uncullable_enemy != null and is_instance_valid(uncullable_enemy):
-				uncullable_enemy.set_multiplayer_proxy_visual_active(true)
-		return
-	var viewport_size := viewport.get_visible_rect().size
-	var safe_zoom := Vector2(
-		maxf(absf(camera.zoom.x), 0.001),
-		maxf(absf(camera.zoom.y), 0.001)
-	)
-	var visible_world_size := Vector2(
-		viewport_size.x / safe_zoom.x,
-		viewport_size.y / safe_zoom.y
-	)
-	var margin_vector := Vector2.ONE * CLIENT_PROXY_VISUAL_BUDGET_MARGIN
-	var active_rect := Rect2(
-		camera.get_screen_center_position() - visible_world_size * 0.5 - margin_vector,
-		visible_world_size + margin_vector * 2.0
-	)
-	var offscreen_count := 0
-	for enemy_net_id_variant in _net_enemies:
-		var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
-		var enemy := enemy_variant as Enemy
-		if enemy == null or not is_instance_valid(enemy):
-			continue
-		var visual_active := active_rect.has_point(enemy.global_position)
-		enemy.set_multiplayer_proxy_visual_active(visual_active)
-		if not visual_active:
-			offscreen_count += 1
-	_offscreen_enemy_proxy_count = offscreen_count
 
 
 func request_multiplayer_upgrade(stat_type: int) -> void:
@@ -3207,6 +3093,7 @@ func _setup_game(mode: int) -> bool:
 		return false
 	session_coordinator.bind_runtime(game)
 	player_coordinator.bind_runtime(game)
+	enemy_coordinator.bind_runtime(game)
 	gameplay_gateway.attach_multiplayer_session(self)
 	mode_adapter.attach_multiplayer_session(self)
 	tower_mode_adapter = mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -3316,6 +3203,8 @@ func _discard_unparented_game_runtime() -> void:
 		session_coordinator.unbind_runtime(game)
 	if game != null and player_coordinator != null:
 		player_coordinator.unbind_runtime(game)
+	if game != null and enemy_coordinator != null:
+		enemy_coordinator.unbind_runtime(game)
 	if game != null and is_instance_valid(game) and game.get_parent() == null:
 		game.free()
 	game = null
@@ -3613,46 +3502,17 @@ func _send_terrain_snapshot_to_peer(peer_id: int) -> void:
 
 
 func _send_live_enemy_roster_to_peer(peer_id: int) -> void:
-	var sorted_ids: Array[int] = []
-	for net_id_variant in game.multiplayer_enemies_by_net_id.keys():
-		sorted_ids.append(int(net_id_variant))
-	sorted_ids.sort()
-	for chunk_start in range(0, sorted_ids.size(), ENEMY_SPAWN_BATCH_MAX_RECORDS):
-		var chunk_end := mini(
-			chunk_start + ENEMY_SPAWN_BATCH_MAX_RECORDS,
-			sorted_ids.size()
-		)
-		var net_ids := PackedInt32Array()
-		var config_paths := PackedStringArray()
-		var positions := PackedVector2Array()
-		var spawn_times := PackedFloat64Array()
-		for record_index in range(chunk_start, chunk_end):
-			var net_id := sorted_ids[record_index]
-			var enemy_variant: Variant = game.multiplayer_enemies_by_net_id.get(net_id)
-			if enemy_variant == null or not is_instance_valid(enemy_variant):
-				continue
-			var enemy := enemy_variant as Enemy
-			if enemy == null or enemy.is_dead or enemy is LinglanBoss or enemy.config == null:
-				continue
-			var config_path := enemy.config.resource_path
-			if config_path.is_empty():
-				continue
-			net_ids.append(net_id)
-			config_paths.append(config_path)
-			positions.append(enemy.global_position)
-			spawn_times.append(_get_net_time())
-		if net_ids.is_empty():
-			continue
+	for batch in enemy_coordinator.build_live_spawn_batches(_get_net_time()):
 		_record_outbound_rpc(
 			&"net_enemy_spawned_batch",
-			[net_ids, config_paths, positions, spawn_times]
+			[batch.net_ids, batch.config_paths, batch.positions, batch.spawn_times]
 		)
 		net_enemy_spawned_batch.rpc_id(
 			peer_id,
-			net_ids,
-			config_paths,
-			positions,
-			spawn_times
+			batch.net_ids,
+			batch.config_paths,
+			batch.positions,
+			batch.spawn_times
 		)
 
 
@@ -3750,15 +3610,7 @@ func _host_physics_tick(frame: int, _delta: float) -> void:
 
 
 func _get_enemy_snapshot_interval_frames() -> int:
-	var enemy_count := 0
-	if game != null:
-		enemy_count = game.multiplayer_enemies_by_net_id.size()
-	var target_hz := (
-		ENEMY_HIGH_PRESSURE_SNAPSHOT_HZ
-		if enemy_count >= ENEMY_HIGH_PRESSURE_THRESHOLD
-		else _NetConstants.ENEMY_SNAPSHOT_HZ
-	)
-	return maxi(roundi(float(_NetConstants.HOST_PHYSICS_HZ) / float(target_hz)), 1)
+	return enemy_coordinator.get_snapshot_interval_frames()
 
 
 func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
@@ -3819,135 +3671,30 @@ func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
 	if client_peer_ids.is_empty():
 		return
 	var states: Array[SnapshotManager.EnemyState] = game.collect_enemy_snapshot_states()
-	if not SnapshotManager.are_enemy_snapshot_states_serializable(states):
-		push_error("MpGame: 敌人快照含越界战斗值，已拒绝整个发送批次。")
-		return
-	var snapshot_time := _get_net_time()
-	var snapshot_interval_frames := _get_enemy_snapshot_interval_frames()
-	var snapshot_hz := maxi(
-		roundi(float(_NetConstants.HOST_PHYSICS_HZ) / float(snapshot_interval_frames)),
-		1
-	)
-	_host_enemy_snapshot_batch_sequence += 1
-	var batch_id := _host_enemy_snapshot_batch_sequence
-	var chunk_count := maxi(
-		ceili(float(states.size()) / float(ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES)),
-		1
-	)
-	_host_enemy_snapshot_live_ids.clear()
-	for state in states:
-		if state != null and state.net_id > 0:
-			_host_enemy_snapshot_live_ids[state.net_id] = true
-	var force_keyframe := _snapshot_cohort_requires_keyframe(
-		_enemy_snapshot_cohort_peers,
-		_last_enemy_keyframe_time_by_peer,
+	var batch := enemy_coordinator.build_host_snapshot_batch(
+		states,
 		client_peer_ids,
-		snapshot_time,
-		ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS
+		_get_net_time()
 	)
-	_enemy_snapshot_batch_count += client_peer_ids.size()
-	for chunk_index in range(chunk_count):
-		var chunk_start := chunk_index * ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES
-		var chunk_end := mini(
-			chunk_start + ENEMY_SNAPSHOT_CHUNK_MAX_ENTITIES,
-			states.size()
-		)
-		var chunk_entity_count := chunk_end - chunk_start
-		var data := snapshot_mgr.encode_enemy_snapshot_range_for_cohort(
-			SHARED_SNAPSHOT_COHORT_ID,
-			states,
-			chunk_start,
-			chunk_entity_count,
-			force_keyframe
-		)
-		_enemy_snapshot_chunk_encode_count += 1
-		for peer_id in client_peer_ids:
-			_record_snapshot_packet_size(&"enemy", data.size(), chunk_entity_count)
+	if batch == null or batch.is_empty():
+		return
+	for chunk in batch.chunks:
+		for peer_id in batch.peer_ids:
+			_record_snapshot_packet_size(&"enemy", chunk.data.size(), chunk.entity_count)
 			_rpc_receive_enemy_snapshot.rpc_id(
 				peer_id,
-				snapshot_time,
-				data,
-				batch_id,
-				chunk_index,
-				chunk_count,
-				snapshot_hz
+				batch.host_timestamp,
+				chunk.data,
+				batch.batch_id,
+				chunk.chunk_index,
+				batch.chunk_count,
+				batch.snapshot_hz
 			)
-	snapshot_mgr.prune_enemy_send_cohort_baseline_to_ids(
-		SHARED_SNAPSHOT_COHORT_ID,
-		_host_enemy_snapshot_live_ids
-	)
-	_commit_snapshot_cohort_send(
-		_enemy_snapshot_cohort_peers,
-		_last_enemy_keyframe_time_by_peer,
-		client_peer_ids,
-		snapshot_time,
-		force_keyframe
-	)
 
 
 func _sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
 	player_coordinator.sync_snapshot_cohort_readiness(ready_peer_ids)
-	var ready_lookup: Dictionary = {}
-	for peer_id in ready_peer_ids:
-		if peer_id > 0:
-			ready_lookup[peer_id] = true
-	_detach_unready_snapshot_cohort_peers(
-		_enemy_snapshot_cohort_peers,
-		_last_enemy_keyframe_time_by_peer,
-		ready_lookup
-	)
-
-
-func _detach_unready_snapshot_cohort_peers(
-	cohort_peers: Dictionary,
-	last_keyframe_times: Dictionary,
-	ready_lookup: Dictionary
-) -> void:
-	for peer_id_variant in cohort_peers.keys():
-		var peer_id := int(peer_id_variant)
-		if ready_lookup.has(peer_id):
-			continue
-		cohort_peers.erase(peer_id)
-		last_keyframe_times.erase(peer_id)
-	if not cohort_peers.is_empty():
-		return
-	snapshot_mgr.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
-
-
-func _snapshot_cohort_requires_keyframe(
-	cohort_peers: Dictionary,
-	last_keyframe_times: Dictionary,
-	ready_peer_ids: Array[int],
-	snapshot_time: float,
-	keyframe_interval_seconds: float
-) -> bool:
-	if ready_peer_ids.is_empty():
-		return false
-	if cohort_peers.size() != ready_peer_ids.size():
-		return true
-	for peer_id in ready_peer_ids:
-		if not cohort_peers.has(peer_id) or not last_keyframe_times.has(peer_id):
-			return true
-		var last_keyframe_time := float(last_keyframe_times.get(peer_id, -INF))
-		if snapshot_time - last_keyframe_time >= keyframe_interval_seconds:
-			return true
-	return false
-
-
-func _commit_snapshot_cohort_send(
-	cohort_peers: Dictionary,
-	last_keyframe_times: Dictionary,
-	ready_peer_ids: Array[int],
-	snapshot_time: float,
-	was_keyframe: bool
-) -> void:
-	cohort_peers.clear()
-	for peer_id in ready_peer_ids:
-		if peer_id <= 0:
-			continue
-		cohort_peers[peer_id] = true
-		if was_keyframe:
-			last_keyframe_times[peer_id] = snapshot_time
+	enemy_coordinator.sync_snapshot_cohort_readiness(ready_peer_ids)
 
 
 func _get_connected_client_peer_ids() -> Array[int]:
@@ -4107,6 +3854,7 @@ func _record_snapshot_packet_size(snapshot_type: StringName, packet_bytes: int, 
 
 func get_snapshot_packet_metrics() -> Dictionary:
 	var runtime_metrics := _runtime_network_metrics.get_summary()
+	var enemy_metrics := enemy_coordinator.get_snapshot_metrics()
 	var pool_metrics: Dictionary = {}
 	if game != null:
 		var object_pool := game.get_node_or_null("SessionObjectPool") as SessionObjectPool
@@ -4119,15 +3867,27 @@ func get_snapshot_packet_metrics() -> Dictionary:
 		"large_enemy_snapshot_packet_count": _large_enemy_snapshot_packet_count,
 		"enemy_snapshot_payload_bytes_total": _enemy_snapshot_payload_bytes_total,
 		"enemy_snapshot_packet_count": _enemy_snapshot_packet_count,
-		"enemy_snapshot_batch_count": _enemy_snapshot_batch_count,
+		"enemy_snapshot_batch_count": int(enemy_metrics.get("enemy_snapshot_batch_count", 0)),
 		"player_snapshot_encode_count": player_coordinator.get_snapshot_encode_count(),
-		"enemy_snapshot_chunk_encode_count": _enemy_snapshot_chunk_encode_count,
+		"enemy_snapshot_chunk_encode_count": int(
+			enemy_metrics.get("enemy_snapshot_chunk_encode_count", 0)
+		),
 		"player_snapshot_cohort_size": player_coordinator.get_snapshot_cohort_size(),
-		"enemy_snapshot_cohort_size": _enemy_snapshot_cohort_peers.size(),
-		"enemy_snapshot_completed_batch_count": _enemy_snapshot_completed_batch_count,
-		"enemy_snapshot_incomplete_batch_evict_count": _enemy_snapshot_incomplete_batch_evict_count,
-		"enemy_snapshot_stale_chunk_count": _enemy_snapshot_stale_chunk_count,
-		"offscreen_enemy_proxy_count": _offscreen_enemy_proxy_count,
+		"enemy_snapshot_cohort_size": int(
+			enemy_metrics.get("enemy_snapshot_cohort_size", 0)
+		),
+		"enemy_snapshot_completed_batch_count": int(
+			enemy_metrics.get("enemy_snapshot_completed_batch_count", 0)
+		),
+		"enemy_snapshot_incomplete_batch_evict_count": int(
+			enemy_metrics.get("enemy_snapshot_incomplete_batch_evict_count", 0)
+		),
+		"enemy_snapshot_stale_chunk_count": int(
+			enemy_metrics.get("enemy_snapshot_stale_chunk_count", 0)
+		),
+		"offscreen_enemy_proxy_count": int(
+			enemy_metrics.get("offscreen_enemy_proxy_count", 0)
+		),
 		"rpc_payload_diagnostics_enabled": _rpc_payload_diagnostics_enabled,
 		"rpc_payload_diagnostic_sample_interval": RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL,
 		"rpc_payload_diagnostic_sample_count": _rpc_payload_sample_count,
@@ -4217,14 +3977,6 @@ func _on_public_room_keepalive_completed(
 	var parsed_dict := parsed as Dictionary
 	if parsed_dict != null and parsed_dict.has("relay_running") and not bool(parsed_dict["relay_running"]):
 		push_warning("MpGame: 公网房间续租成功，但云端 Relay 进程已不在运行。")
-
-
-func _create_enemy_interpolator() -> NetInterpolator:
-	return NetInterpolator.new(
-		1.0 / float(maxi(_current_enemy_snapshot_hz, 1)),
-		_NetConstants.ENEMY_INTERPOLATION_DELAY_FACTOR,
-		_NetConstants.ENEMY_MAX_EXTRAPOLATION_SECONDS
-	)
 
 
 func _client_physics_tick(frame: int) -> void:
@@ -4344,66 +4096,7 @@ func _client_interpolate_entities() -> void:
 	var current_time := _get_net_time()
 	var local_peer_id: int = _get_client_view_local_peer_id()
 	player_coordinator.interpolate_remote_players(current_time, local_peer_id)
-	_stale_enemy_interpolator_ids.clear()
-	for net_id_variant in enemy_interpolators:
-		var net_id := int(net_id_variant)
-		var enemy_interp := enemy_interpolators.get(net_id) as NetInterpolator
-		var enemy_variant: Variant = _net_enemies.get(net_id)
-		if (
-			enemy_interp == null
-			or enemy_variant == null
-			or not is_instance_valid(enemy_variant)
-		):
-			_stale_enemy_interpolator_ids.append(net_id)
-			continue
-		var enemy_node := enemy_variant as Enemy
-		if enemy_node == null:
-			_stale_enemy_interpolator_ids.append(net_id)
-			continue
-		if not _should_interpolate_enemy_proxy(net_id, enemy_node, current_time):
-			continue
-		var enemy_frame_state: NetInterpolator.FrameSnapshot = (
-			enemy_interp.get_current_state(current_time)
-		)
-		var enemy_position: Vector2 = enemy_interp.get_interpolated_position(current_time)
-		var enemy_velocity: Vector2 = enemy_interp.get_interpolated_velocity(current_time)
-		enemy_node.apply_multiplayer_proxy_motion(
-			enemy_position,
-			enemy_velocity,
-			enemy_frame_state.anim_state
-		)
-	# Dictionary mutation during direct iteration is unsafe. Prune invalid entries
-	# only after the allocation-free traversal has completed.
-	for stale_net_id in _stale_enemy_interpolator_ids:
-		_get_valid_client_enemy_for_net_id(stale_net_id)
-		enemy_interpolators.erase(stale_net_id)
-		_offscreen_enemy_interpolation_slots.erase(stale_net_id)
-
-
-func _should_interpolate_enemy_proxy(
-	net_id: int,
-	enemy_node: Enemy,
-	current_time: float
-) -> bool:
-	if (
-		not is_client_view_runtime()
-		or enemy_node == null
-		or enemy_node.multiplayer_proxy_visual_active
-	):
-		return true
-	var interval := 1.0 / CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_HZ
-	var phase_index := (net_id * 37) % CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT
-	var phase_offset := (
-		float(phase_index)
-		/ float(CLIENT_OFFSCREEN_ENEMY_INTERPOLATION_PHASE_COUNT)
-		* interval
-	)
-	var current_slot := floori((current_time + phase_offset) / interval)
-	var previous_slot := int(_offscreen_enemy_interpolation_slots.get(net_id, current_slot - 1))
-	if previous_slot == current_slot:
-		return false
-	_offscreen_enemy_interpolation_slots[net_id] = current_slot
-	return true
+	enemy_coordinator.interpolate_remote_enemies(current_time)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
@@ -4437,143 +4130,15 @@ func _rpc_receive_enemy_snapshot(
 	chunk_count: int = 1,
 	snapshot_hz: int = _NetConstants.ENEMY_SNAPSHOT_HZ
 ) -> void:
-	if game == null:
-		return
-	if not is_client_view_runtime():
-		return
-	var is_chunked_batch := batch_id > 0
-	if is_chunked_batch and (chunk_count <= 0 or chunk_index < 0 or chunk_index >= chunk_count):
-		return
-	if is_chunked_batch and batch_id <= _last_completed_enemy_snapshot_batch_id:
-		_enemy_snapshot_stale_chunk_count += 1
-		return
-	if is_chunked_batch and batch_id < _latest_enemy_snapshot_batch_seen:
-		_enemy_snapshot_stale_chunk_count += 1
-		return
-	if is_chunked_batch:
-		_latest_enemy_snapshot_batch_seen = maxi(_latest_enemy_snapshot_batch_seen, batch_id)
-	var resolved_snapshot_hz := clampi(snapshot_hz, 1, _NetConstants.HOST_PHYSICS_HZ)
-	if resolved_snapshot_hz != _current_enemy_snapshot_hz:
-		_current_enemy_snapshot_hz = resolved_snapshot_hz
-		for interpolator_variant in enemy_interpolators.values():
-			var existing_interpolator := interpolator_variant as NetInterpolator
-			if existing_interpolator != null:
-				existing_interpolator.set_snapshot_interval(1.0 / float(resolved_snapshot_hz))
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
-	var batch: Dictionary = {}
-	if is_chunked_batch:
-		_prune_old_enemy_snapshot_batches(batch_id)
-		batch = _pending_enemy_snapshot_batches.get(batch_id, {}) as Dictionary
-		if batch.is_empty():
-			batch = {
-				"chunk_count": chunk_count,
-				"received": {},
-				"seen": {},
-				"snapshot_time": snapshot_time,
-			}
-			_pending_enemy_snapshot_batches[batch_id] = batch
-		elif int(batch.get("chunk_count", 0)) != chunk_count:
-			_pending_enemy_snapshot_batches.erase(batch_id)
-			return
-		var received := batch["received"] as Dictionary
-		if received.has(chunk_index):
-			return
-	var states := snapshot_mgr.decode_enemy_snapshots_with_baseline(data, not is_chunked_batch)
-	var snapshot_has_full_roster := _is_complete_enemy_snapshot_batch(data, states.size())
-	var seen_enemy_ids: Dictionary = {}
-	if is_chunked_batch:
-		seen_enemy_ids = batch["seen"] as Dictionary
-	for state in states:
-		var enemy_state := state as SnapshotManager.EnemyState
-		if enemy_state == null:
-			continue
-		if enemy_state.net_id <= 0:
-			continue
-		seen_enemy_ids[enemy_state.net_id] = true
-		if enemy_state.is_dead:
-			var dead_enemy: Enemy = _get_valid_client_enemy_for_net_id(enemy_state.net_id)
-			if dead_enemy != null and is_instance_valid(dead_enemy):
-				dead_enemy.global_position = enemy_state.position
-				_apply_enemy_network_health(
-					dead_enemy,
-					enemy_state.health,
-					enemy_state.health_revision
-				)
-			_remove_client_enemy(enemy_state.net_id, true)
-			continue
-		if not enemy_interpolators.has(enemy_state.net_id):
-			enemy_interpolators[enemy_state.net_id] = _create_enemy_interpolator()
-		var interp := enemy_interpolators[enemy_state.net_id] as NetInterpolator
-		interp.push_snapshot(
-			snapshot_time,
-			enemy_state.position,
-			enemy_state.velocity,
-			0,
-			enemy_state.locomotion_state,
-			enemy_state.health,
-			enemy_state.is_dead
-		)
-		var enemy_node: Enemy = _get_valid_client_enemy_for_net_id(enemy_state.net_id)
-		if enemy_node != null and is_instance_valid(enemy_node):
-			_apply_enemy_network_health(
-				enemy_node,
-				enemy_state.health,
-				enemy_state.health_revision
-			)
-			enemy_node.is_dead = enemy_state.is_dead
-			enemy_node.apply_multiplayer_visual_status_mask(enemy_state.visual_status_mask)
-	if not is_chunked_batch:
-		if snapshot_has_full_roster:
-			_reconcile_enemy_roster(seen_enemy_ids, snapshot_time)
-		return
-	if not snapshot_has_full_roster:
-		return
-	var received := batch["received"] as Dictionary
-	received[chunk_index] = true
-	if received.size() == chunk_count:
-		snapshot_mgr.prune_enemy_receive_baseline_to_ids(seen_enemy_ids)
-		_enemy_snapshot_completed_batch_count += 1
-		_last_completed_enemy_snapshot_batch_id = batch_id
-		_discard_enemy_snapshot_batches_through(batch_id)
-		_reconcile_enemy_roster(seen_enemy_ids, float(batch.get("snapshot_time", snapshot_time)))
-
-
-func _prune_old_enemy_snapshot_batches(current_batch_id: int) -> void:
-	for pending_batch_id_variant in _pending_enemy_snapshot_batches.keys():
-		var pending_batch_id := int(pending_batch_id_variant)
-		if pending_batch_id < current_batch_id - 2:
-			_enemy_snapshot_incomplete_batch_evict_count += 1
-			_pending_enemy_snapshot_batches.erase(pending_batch_id)
-
-
-func _discard_enemy_snapshot_batches_through(completed_batch_id: int) -> void:
-	for pending_batch_id_variant in _pending_enemy_snapshot_batches.keys():
-		var pending_batch_id := int(pending_batch_id_variant)
-		if pending_batch_id <= completed_batch_id:
-			if pending_batch_id < completed_batch_id:
-				_enemy_snapshot_incomplete_batch_evict_count += 1
-			_pending_enemy_snapshot_batches.erase(pending_batch_id)
-
-
-func _is_complete_enemy_snapshot_batch(data: PackedByteArray, decoded_count: int) -> bool:
-	if data.size() < 2:
-		return false
-	var stream := StreamPeerBuffer.new()
-	stream.data_array = data
-	var expected_count := stream.get_u16()
-	return decoded_count == expected_count
-
-
-func _apply_enemy_network_health(
-	enemy_node: Enemy,
-	current_health: int,
-	health_revision: int
-) -> bool:
-	if enemy_node == null or health_revision <= enemy_node.health_revision:
-		return false
-	enemy_node.apply_multiplayer_health_snapshot(maxi(current_health, 0))
-	enemy_node.health_revision = health_revision
-	return true
+	enemy_coordinator.apply_authoritative_snapshot(
+		snapshot_time,
+		data,
+		batch_id,
+		chunk_index,
+		chunk_count,
+		snapshot_hz
+	)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
@@ -8246,9 +7811,15 @@ func _rpc_enemy_hit_report(
 	_damage: int,
 	_impact_direction: Vector2
 ) -> void:
-	# Protocol-v25 compatibility shell. Client-selected enemy IDs are not
-	# collision evidence, so even an old or malicious client cannot settle here.
-	return
+	var sender_id := multiplayer.get_remote_sender_id()
+	enemy_coordinator.receive_enemy_hit_report(
+		sender_id,
+		_projectile_id,
+		_owner_peer_id,
+		_enemy_net_id,
+		_damage,
+		_impact_direction
+	)
 
 
 func _apply_enemy_hit_report(
@@ -8421,13 +7992,14 @@ func _apply_confirmed_enemy_damage(
 		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
 		not show_hit_particles
 	)
-	_active_enemy_damage_feedback_context[enemy_net_id] = {
-		"impact_direction": impact_direction,
-		"damage_type": int(damage_type),
-		"show_hit_particles": show_hit_particles,
-	}
+	enemy_coordinator.set_active_damage_feedback_context(
+		enemy_net_id,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
 	var result := enemy.apply_combat_damage(request)
-	_active_enemy_damage_feedback_context.erase(enemy_net_id)
+	enemy_coordinator.clear_active_damage_feedback_context(enemy_net_id)
 	if not result.accepted:
 		return false
 	if result.lethal:
@@ -8471,13 +8043,14 @@ func _apply_confirmed_enemy_damage_batch(
 		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
 		not show_hit_particles
 	)
-	_active_enemy_damage_feedback_context[enemy_net_id] = {
-		"impact_direction": impact_direction,
-		"damage_type": int(damage_type),
-		"show_hit_particles": show_hit_particles,
-	}
+	enemy_coordinator.set_active_damage_feedback_context(
+		enemy_net_id,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
 	var result := enemy.apply_combat_damage(request)
-	_active_enemy_damage_feedback_context.erase(enemy_net_id)
+	enemy_coordinator.clear_active_damage_feedback_context(enemy_net_id)
 	if not result.accepted:
 		return false
 	if result.lethal:
@@ -8507,36 +8080,15 @@ func _queue_enemy_damage_feedback(
 ) -> void:
 	if not is_inside_tree() or not net_manager.is_host() or enemy_net_id <= 0:
 		return
-	if (
-		not _NetConstants.is_valid_network_combat_value(current_health)
-		or not _NetConstants.is_valid_network_combat_value(health_revision)
-		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
-	):
-		push_error("MpGame: 敌人战斗反馈含越界 int32 值，已拒绝入队。")
-		return
-	var feedback := _pending_enemy_damage_feedback.get(enemy_net_id, {}) as Dictionary
-	if feedback.is_empty():
-		feedback = {
-			"current_health": current_health,
-			"health_revision": health_revision,
-			"damage": 0,
-			"impact_direction": impact_direction,
-			"damage_type": int(damage_type),
-			"show_hit_particles": show_hit_particles,
-		}
-	feedback["current_health"] = current_health
-	feedback["health_revision"] = health_revision
-	var combined_damage := int(feedback.get("damage", 0)) + confirmed_damage
-	if not _NetConstants.is_valid_network_combat_value(combined_damage):
-		push_error("MpGame: 敌人战斗反馈聚合值超过 signed int32，已拒绝入队。")
-		return
-	feedback["damage"] = combined_damage
-	feedback["impact_direction"] = impact_direction
-	feedback["damage_type"] = int(damage_type)
-	feedback["show_hit_particles"] = (
-		bool(feedback.get("show_hit_particles", false)) or show_hit_particles
+	enemy_coordinator.queue_damage_feedback(
+		enemy_net_id,
+		current_health,
+		health_revision,
+		confirmed_damage,
+		impact_direction,
+		damage_type,
+		show_hit_particles
 	)
-	_pending_enemy_damage_feedback[enemy_net_id] = feedback
 
 
 func _update_batched_network_events(delta: float) -> void:
@@ -8692,60 +8244,19 @@ func _flush_tiyi_target_updates() -> void:
 
 
 func _flush_enemy_damage_feedback() -> void:
-	if _pending_enemy_damage_feedback.is_empty():
-		return
-	var enemy_ids: Array[int] = []
-	for enemy_id_variant in _pending_enemy_damage_feedback.keys():
-		enemy_ids.append(int(enemy_id_variant))
-	enemy_ids.sort()
-	for chunk_start in range(0, enemy_ids.size(), COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET):
-		var chunk_end := mini(
-			chunk_start + COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET,
-			enemy_ids.size()
-		)
-		var net_ids := PackedInt32Array()
-		var health_values := PackedInt32Array()
-		var health_revisions := PackedInt32Array()
-		var damage_values := PackedInt32Array()
-		var directions := PackedVector2Array()
-		var damage_types := PackedByteArray()
-		var particle_flags := PackedByteArray()
-		for record_index in range(chunk_start, chunk_end):
-			var enemy_id := enemy_ids[record_index]
-			var feedback := _pending_enemy_damage_feedback.get(enemy_id, {}) as Dictionary
-			var current_health := int(feedback.get("current_health", 0))
-			var health_revision := int(feedback.get("health_revision", 0))
-			var confirmed_damage := int(feedback.get("damage", 0))
-			if (
-				not _NetConstants.is_valid_network_combat_value(enemy_id)
-				or not _NetConstants.is_valid_network_combat_value(current_health)
-				or not _NetConstants.is_valid_network_combat_value(health_revision)
-				or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
-			):
-				push_error("MpGame: 拒绝序列化越界敌人战斗反馈。")
-				continue
-			net_ids.append(enemy_id)
-			health_values.append(current_health)
-			health_revisions.append(health_revision)
-			damage_values.append(confirmed_damage)
-			directions.append(feedback.get("impact_direction", Vector2.ZERO) as Vector2)
-			damage_types.append(int(feedback.get("damage_type", 0)))
-			particle_flags.append(1 if bool(feedback.get("show_hit_particles", false)) else 0)
-		if net_ids.is_empty():
-			continue
+	for batch in enemy_coordinator.drain_damage_feedback_batches():
 		_rpc_to_connected_clients(
 			&"net_enemy_damage_feedback_batch",
 			[
-				net_ids,
-				health_values,
-				health_revisions,
-				damage_values,
-				directions,
-				damage_types,
-				particle_flags,
+				batch.net_ids,
+				batch.health_values,
+				batch.health_revisions,
+				batch.damage_values,
+				batch.directions,
+				batch.damage_types,
+				batch.particle_flags,
 			]
 		)
-	_pending_enemy_damage_feedback.clear()
 
 
 func _flush_plant_health_updates() -> void:
@@ -9079,54 +8590,15 @@ func net_enemy_damage_feedback_batch(
 	damage_types: PackedByteArray,
 	particle_flags: PackedByteArray
 ) -> void:
-	var record_count := mini(
-		net_ids.size(),
-		mini(
-			health_values.size(),
-			mini(
-				health_revisions.size(),
-				mini(
-					damage_values.size(),
-					mini(
-						directions.size(),
-						mini(damage_types.size(), particle_flags.size())
-					)
-				)
-			)
-		)
+	enemy_coordinator.apply_damage_feedback_batch(
+		net_ids,
+		health_values,
+		health_revisions,
+		damage_values,
+		directions,
+		damage_types,
+		particle_flags
 	)
-	for record_index in range(record_count):
-		if (
-			net_ids[record_index] <= 0
-			or not _NetConstants.is_valid_network_combat_value(
-				health_values[record_index]
-			)
-			or not _NetConstants.is_valid_network_combat_value(
-				health_revisions[record_index]
-			)
-			or not _NetConstants.is_valid_network_combat_value(
-				damage_values[record_index]
-			)
-		):
-			continue
-		var enemy := _get_client_enemy_for_net_id(net_ids[record_index])
-		if enemy == null or not is_instance_valid(enemy):
-			continue
-		_apply_enemy_network_health(
-			enemy,
-			health_values[record_index],
-			health_revisions[record_index]
-		)
-		enemy.show_damage_number(
-			damage_values[record_index],
-			directions[record_index],
-			int(damage_types[record_index]) as EnemyConfig.DamageType
-		)
-		if directions[record_index] != Vector2.ZERO:
-			enemy.play_multiplayer_damage_feedback(
-				directions[record_index],
-				particle_flags[record_index] != 0
-			)
 
 
 @rpc("authority", "call_remote", "unreliable", 7)
@@ -9140,26 +8612,16 @@ func net_enemy_damage_applied(
 	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
 	show_hit_particles: bool = true
 ) -> void:
-	if (
-		enemy_net_id <= 0
-		or not _NetConstants.is_valid_network_combat_value(current_health)
-		or not _NetConstants.is_valid_network_combat_value(health_revision)
-		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
-	):
-		return
-	var enemy := _get_client_enemy_for_net_id(enemy_net_id)
-	if enemy == null or not is_instance_valid(enemy):
-		return
-	_apply_enemy_network_health(enemy, current_health, health_revision)
-	enemy.show_damage_number(
+	enemy_coordinator.apply_damage_event(
+		enemy_net_id,
+		current_health,
+		health_revision,
+		is_dead,
 		confirmed_damage,
 		impact_direction,
-		damage_type as EnemyConfig.DamageType
+		damage_type,
+		show_hit_particles
 	)
-	if impact_direction != Vector2.ZERO:
-		enemy.play_multiplayer_damage_feedback(impact_direction, show_hit_particles)
-	if is_dead:
-		_remove_client_enemy(enemy_net_id, true)
 
 
 func request_multiplayer_player_damage(
@@ -9900,15 +9362,7 @@ func get_all_combat_targets() -> Array[Enemy]:
 		return []
 	if net_manager.is_host():
 		return game.get_all_combat_targets()
-	var result: Array[Enemy] = []
-	for enemy_net_id_variant in _net_enemies:
-		var enemy_variant: Variant = _net_enemies.get(int(enemy_net_id_variant))
-		if enemy_variant == null or not is_instance_valid(enemy_variant):
-			continue
-		var enemy := enemy_variant as Enemy
-		if CombatTargetIndexScript.is_enemy_queryable(enemy):
-			result.append(enemy)
-	return result
+	return enemy_coordinator.get_all_client_combat_targets()
 
 
 func pick_random_combat_target(center: Vector2, radius: float = 0.0) -> Enemy:
@@ -9935,35 +9389,11 @@ func find_nearest_combat_target(
 			radius,
 			excluded_instance_ids
 		)
-	var radius_squared := radius * radius
-	var nearest: Enemy = null
-	var nearest_distance_squared := INF
-	var nearest_instance_id := 0
-	for enemy_net_id_variant in _net_enemies:
-		var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
-		if enemy_variant == null or not is_instance_valid(enemy_variant):
-			continue
-		var enemy := enemy_variant as Enemy
-		if not CombatTargetIndexScript.is_enemy_queryable(enemy):
-			continue
-		var instance_id := enemy.get_instance_id()
-		if excluded_instance_ids.has(instance_id):
-			continue
-		var distance_squared := center.distance_squared_to(enemy.global_position)
-		if distance_squared > radius_squared:
-			continue
-		if (
-			nearest == null
-			or distance_squared < nearest_distance_squared
-			or (
-				distance_squared == nearest_distance_squared
-				and instance_id < nearest_instance_id
-			)
-		):
-			nearest = enemy
-			nearest_distance_squared = distance_squared
-			nearest_instance_id = instance_id
-	return nearest
+	return enemy_coordinator.find_nearest_client_combat_target(
+		center,
+		radius,
+		excluded_instance_ids
+	)
 
 
 func query_combat_targets(center: Vector2, radius: float, max_count: int = 0) -> Array[Enemy]:
@@ -9984,28 +9414,13 @@ func query_combat_targets_into(
 	if net_manager.is_host():
 		game.query_combat_targets_into(center, radius, result, max_count)
 		return
-	var safe_radius := maxf(radius, 0.0)
-	var radius_squared := safe_radius * safe_radius
-	for enemy_net_id_variant in _net_enemies:
-		var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
-		if enemy_variant == null or not is_instance_valid(enemy_variant):
-			continue
-		var enemy := enemy_variant as Enemy
-		if not CombatTargetIndexScript.is_enemy_queryable(enemy):
-			continue
-		if safe_radius > 0.0 and center.distance_squared_to(enemy.global_position) > radius_squared:
-			continue
-		result.append(enemy)
-	result.sort_custom(
-		func(a: Enemy, b: Enemy) -> bool:
-			var a_distance := center.distance_squared_to(a.global_position)
-			var b_distance := center.distance_squared_to(b.global_position)
-			if a_distance != b_distance:
-				return a_distance < b_distance
-			return a.get_instance_id() < b.get_instance_id()
+	enemy_coordinator.query_client_combat_targets_into(
+		center,
+		radius,
+		result,
+		max_count,
+		true
 	)
-	if max_count > 0 and result.size() > max_count:
-		result.resize(max_count)
 
 
 func query_combat_targets_unordered_into(
@@ -10019,21 +9434,13 @@ func query_combat_targets_unordered_into(
 	if net_manager.is_host():
 		game.query_combat_targets_unordered_into(center, radius, result)
 		return
-	var safe_radius := maxf(radius, 0.0)
-	var radius_squared := safe_radius * safe_radius
-	for enemy_net_id_variant in _net_enemies:
-		var enemy_variant: Variant = _net_enemies.get(enemy_net_id_variant)
-		if enemy_variant == null or not is_instance_valid(enemy_variant):
-			continue
-		var enemy := enemy_variant as Enemy
-		if not CombatTargetIndexScript.is_enemy_queryable(enemy):
-			continue
-		if (
-			safe_radius > 0.0
-			and center.distance_squared_to(enemy.global_position) > radius_squared
-		):
-			continue
-		result.append(enemy)
+	enemy_coordinator.query_client_combat_targets_into(
+		center,
+		radius,
+		result,
+		0,
+		false
+	)
 
 
 func query_living_players_in_radius_into(
@@ -10094,26 +9501,11 @@ func is_host_multiplayer_authority() -> bool:
 
 
 func _get_host_enemy_for_net_id(enemy_net_id: int) -> Enemy:
-	if game == null:
-		return null
-	return game.get_enemy_for_net_id(enemy_net_id)
-
-
-func _get_client_enemy_for_net_id(enemy_net_id: int) -> Enemy:
-	return _get_valid_client_enemy_for_net_id(enemy_net_id)
+	return enemy_coordinator.get_host_enemy(enemy_net_id)
 
 
 func _get_valid_client_enemy_for_net_id(enemy_net_id: int) -> Enemy:
-	var enemy_variant: Variant = _net_enemies.get(enemy_net_id)
-	if enemy_variant == null:
-		return null
-	if not is_instance_valid(enemy_variant):
-		_net_enemies.erase(enemy_net_id)
-		_enemy_spawn_snapshot_times.erase(enemy_net_id)
-		enemy_interpolators.erase(enemy_net_id)
-		_offscreen_enemy_interpolation_slots.erase(enemy_net_id)
-		return null
-	return enemy_variant as Enemy
+	return enemy_coordinator.get_valid_client_enemy(enemy_net_id)
 
 func _next_player_health_revision(peer_id: int) -> int:
 	var next_revision := int(_player_health_revisions.get(peer_id, 0)) + 1
@@ -10414,37 +9806,33 @@ func _on_host_enemy_spawned(
 ) -> void:
 	if enemy_config == null or not is_inside_tree() or not net_manager.is_host():
 		return
-	_pending_enemy_spawns.append({
-		"net_id": net_id,
-		"config_path": enemy_config.resource_path,
-		"position": spawn_position,
-		"spawn_time": _get_net_time(),
-	})
+	enemy_coordinator.queue_host_spawn(
+		net_id,
+		enemy_config,
+		spawn_position,
+		_get_net_time()
+	)
+
+
+func _on_remote_enemy_spawned(enemy: Enemy) -> void:
+	if enemy == null or not _has_tower_mode():
+		return
+	tower_mode_adapter.configure_runtime_enemy_modifiers(enemy)
+
+
+func _on_remote_enemy_escape_requested(net_id: int) -> void:
+	if not _has_tower_mode():
+		return
+	tower_mode_adapter.apply_remote_enemy_escape(net_id)
 
 
 func _flush_pending_enemy_spawns() -> void:
-	if _pending_enemy_spawns.is_empty() or not net_manager.is_host():
+	if not net_manager.is_host():
 		return
-	var spawn_records := _pending_enemy_spawns.duplicate(true)
-	_pending_enemy_spawns.clear()
-	for chunk_start in range(0, spawn_records.size(), ENEMY_SPAWN_BATCH_MAX_RECORDS):
-		var chunk_end := mini(
-			chunk_start + ENEMY_SPAWN_BATCH_MAX_RECORDS,
-			spawn_records.size()
-		)
-		var net_ids := PackedInt32Array()
-		var config_paths := PackedStringArray()
-		var positions := PackedVector2Array()
-		var spawn_times := PackedFloat64Array()
-		for record_index in range(chunk_start, chunk_end):
-			var record := spawn_records[record_index] as Dictionary
-			net_ids.append(int(record.get("net_id", 0)))
-			config_paths.append(String(record.get("config_path", "")))
-			positions.append(record.get("position", Vector2.ZERO) as Vector2)
-			spawn_times.append(float(record.get("spawn_time", _get_net_time())))
+	for batch in enemy_coordinator.drain_host_spawn_batches():
 		_rpc_to_connected_clients(
 			&"net_enemy_spawned_batch",
-			[net_ids, config_paths, positions, spawn_times]
+			[batch.net_ids, batch.config_paths, batch.positions, batch.spawn_times]
 		)
 
 
@@ -10467,149 +9855,27 @@ func _on_host_enemy_escaped(net_id: int) -> void:
 
 
 func _broadcast_enemy_terminal(net_id: int, reason: int, event_position: Vector2) -> void:
-	if net_id <= 0:
-		return
-	match reason:
-		ENEMY_TERMINAL_DEFEATED:
-			# A defeated enemy later emits the generic tree-exit removal. Retain only
-			# this in-flight pairing marker, then consume it on REMOVED below.
-			if _host_terminal_enemy_ids.has(net_id):
-				return
-			_host_terminal_enemy_ids[net_id] = true
-		ENEMY_TERMINAL_REMOVED:
-			if _host_terminal_enemy_ids.erase(net_id):
-				return
-		ENEMY_TERMINAL_ESCAPED:
-			# TowerDefenseGame suppresses the later generic removal itself, so an
-			# escape must never become a session-long terminal-ID tombstone.
-			_host_terminal_enemy_ids.erase(net_id)
-		_:
-			return
-	var terminal_feedback := (
-		_collect_enemy_terminal_feedback(net_id)
-		if reason == ENEMY_TERMINAL_DEFEATED
-		else {}
+	var terminal := enemy_coordinator.build_host_terminal_event(
+		net_id,
+		reason,
+		event_position
 	)
-	if (
-		not _NetConstants.is_valid_network_combat_value(
-			int(terminal_feedback.get("current_health", 0))
-		)
-		or not _NetConstants.is_valid_network_combat_value(
-			int(terminal_feedback.get("health_revision", 0))
-		)
-		or not _NetConstants.is_valid_network_combat_value(
-			int(terminal_feedback.get("damage", 0))
-		)
-	):
-		push_error("MpGame: 敌人终结事件超出网络 signed int32 契约，已拒绝发送。")
+	if terminal.is_empty():
 		return
 	_rpc_to_connected_clients(
 		&"net_enemy_terminal",
 		[
-			net_id,
-			reason,
-			event_position,
-			int(terminal_feedback.get("current_health", 0)),
-			int(terminal_feedback.get("health_revision", 0)),
-			int(terminal_feedback.get("damage", 0)),
-			terminal_feedback.get(
-				"impact_direction",
-				Vector2.ZERO
-			) as Vector2,
-			int(
-				terminal_feedback.get(
-					"damage_type",
-					EnemyConfig.DamageType.PHYSICAL
-				)
-			),
-			bool(
-				terminal_feedback.get(
-					"show_hit_particles",
-					false
-				)
-			),
+			int(terminal.get("net_id", 0)),
+			int(terminal.get("reason", ENEMY_TERMINAL_REMOVED)),
+			terminal.get("event_position", Vector2.ZERO) as Vector2,
+			int(terminal.get("current_health", 0)),
+			int(terminal.get("health_revision", 0)),
+			int(terminal.get("damage", 0)),
+			terminal.get("impact_direction", Vector2.ZERO) as Vector2,
+			int(terminal.get("damage_type", EnemyConfig.DamageType.PHYSICAL)),
+			bool(terminal.get("show_hit_particles", false)),
 		]
 	)
-
-
-func _collect_enemy_terminal_feedback(enemy_net_id: int) -> Dictionary:
-	var pending_feedback := _pending_enemy_damage_feedback.get(
-		enemy_net_id,
-		{}
-	) as Dictionary
-	_pending_enemy_damage_feedback.erase(enemy_net_id)
-	var active_context := _active_enemy_damage_feedback_context.get(
-		enemy_net_id,
-		{}
-	) as Dictionary
-	var enemy: Enemy = null
-	if game != null:
-		enemy = game.multiplayer_enemies_by_net_id.get(
-			enemy_net_id
-		) as Enemy
-	var current_health := int(
-		pending_feedback.get("current_health", 0)
-	)
-	var health_revision := int(
-		pending_feedback.get("health_revision", 0)
-	)
-	var confirmed_damage := maxi(
-		int(pending_feedback.get("damage", 0)),
-		0
-	)
-	var impact_direction := pending_feedback.get(
-		"impact_direction",
-		Vector2.ZERO
-	) as Vector2
-	var damage_type := int(
-		pending_feedback.get(
-			"damage_type",
-			EnemyConfig.DamageType.PHYSICAL
-		)
-	)
-	var show_hit_particles := bool(
-		pending_feedback.get("show_hit_particles", false)
-	)
-	if enemy != null and is_instance_valid(enemy):
-		current_health = maxi(enemy.current_health, 0)
-		health_revision = enemy.health_revision
-		# defeated is emitted synchronously from Enemy._die(), before the
-		# normal feedback queue call returns. The structured result is already
-		# installed on the receiver and is the single source of truth here.
-		var lethal_result := enemy.last_damage_result
-		if lethal_result != null and lethal_result.accepted and lethal_result.lethal:
-			confirmed_damage += lethal_result.applied_damage
-			if lethal_result.request != null:
-				impact_direction = lethal_result.request.get_safe_impact_direction()
-				damage_type = lethal_result.request.damage_type
-				show_hit_particles = not lethal_result.request.has_flag(
-					CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES
-				)
-	if not active_context.is_empty():
-		impact_direction = active_context.get(
-			"impact_direction",
-			impact_direction
-		) as Vector2
-		damage_type = int(
-			active_context.get("damage_type", damage_type)
-		)
-		show_hit_particles = (
-			show_hit_particles
-			or bool(
-				active_context.get(
-					"show_hit_particles",
-					false
-				)
-			)
-		)
-	return {
-		"current_health": current_health,
-		"health_revision": health_revision,
-		"damage": confirmed_damage,
-		"impact_direction": impact_direction,
-		"damage_type": damage_type,
-		"show_hit_particles": show_hit_particles,
-	}
 
 
 func _on_host_base_health_changed(
@@ -11427,10 +10693,7 @@ func net_runtime_world_manifest(
 	for net_id in manifest.positive_plant_ids:
 		_clear_remote_plant_removed_marker(net_id)
 
-	for net_id_variant in _net_enemies.keys():
-		var net_id := int(net_id_variant)
-		if not manifest.enemy_id_set.has(net_id):
-			_remove_client_enemy(net_id, false)
+	enemy_coordinator.remove_enemies_missing_from_manifest(manifest.enemy_id_set)
 	for net_id_variant in game.multiplayer_pickups.keys():
 		var net_id := int(net_id_variant)
 		if not manifest.pickup_id_set.has(net_id):
@@ -12200,46 +11463,15 @@ func net_enemy_spawned(
 	pos_y: float,
 	host_spawn_timestamp: float
 ) -> void:
-	if game == null or net_manager.is_host() or net_id <= 0:
-		return
-	var existing_enemy := _get_valid_client_enemy_for_net_id(net_id)
-	if (
-		existing_enemy != null
-		and not existing_enemy.is_dead
-		and existing_enemy.config != null
-		and existing_enemy.config.resource_path == config_path
-	):
-		_clear_client_enemy_terminal_marker(net_id)
-		_consume_pending_enemy_action(net_id)
-		return
-	_remove_client_enemy(net_id, false, true, true)
-	var enemy_config: EnemyConfig = load(config_path) as EnemyConfig
-	if enemy_config == null:
-		return
-	var spawn_scene := enemy_config.enemy_scene
-	if spawn_scene == null:
-		return
-	var enemy: Enemy = spawn_scene.instantiate() as Enemy
-	if enemy == null:
-		return
-	game.enemy_container.add_child(enemy)
 	var spawn_position: Vector2 = Vector2(pos_x, pos_y)
 	var mapped_spawn_time: float = _map_host_timestamp_to_client_time(host_spawn_timestamp, false)
-	_enemy_spawn_snapshot_times[net_id] = mapped_spawn_time
-	enemy.global_position = _get_buffered_enemy_position(net_id, spawn_position)
-	enemy.setup(enemy_config, game.player, game.grid_pathfinder, game)
-	if _has_tower_mode():
-		tower_mode_adapter.configure_runtime_enemy_modifiers(enemy)
-	enemy.configure_multiplayer_proxy()
-	enemy.set_meta("net_id", net_id)
-	enemy.tree_exited.connect(_on_client_enemy_tree_exited.bind(net_id, enemy))
-	_net_enemies[net_id] = enemy
-	game.multiplayer_enemies_by_net_id[net_id] = enemy
-	game.multiplayer_enemy_ids_by_instance[enemy.get_instance_id()] = net_id
-	game.register_combat_target(net_id, enemy)
-	_clear_client_enemy_terminal_marker(net_id)
-	_consume_pending_enemy_action(net_id)
-	game.play_remote_enemy_spawn_effect(spawn_position)
+	enemy_coordinator.receive_enemy_spawn(
+		net_id,
+		config_path,
+		spawn_position,
+		mapped_spawn_time,
+		_get_net_time()
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -12254,12 +11486,16 @@ func net_enemy_spawned_batch(
 		mini(config_paths.size(), mini(positions.size(), spawn_times.size()))
 	)
 	for record_index in range(record_count):
-		net_enemy_spawned(
+		var mapped_spawn_time := _map_host_timestamp_to_client_time(
+			spawn_times[record_index],
+			false
+		)
+		enemy_coordinator.receive_enemy_spawn(
 			net_ids[record_index],
 			config_paths[record_index],
-			positions[record_index].x,
-			positions[record_index].y,
-			spawn_times[record_index]
+			positions[record_index],
+			mapped_spawn_time,
+			_get_net_time()
 		)
 
 
@@ -12275,72 +11511,34 @@ func net_enemy_terminal(
 	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
 	show_hit_particles: bool = false
 ) -> void:
-	if (
-		game == null
-		or net_manager.is_host()
-		or net_id <= 0
-		or not _NetConstants.is_valid_network_combat_value(current_health)
-		or not _NetConstants.is_valid_network_combat_value(health_revision)
-		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
-	):
-		return
-	_mark_client_enemy_terminal(net_id)
-	match reason:
-		ENEMY_TERMINAL_DEFEATED:
-			var enemy := _get_valid_client_enemy_for_net_id(net_id)
-			if enemy != null and is_instance_valid(enemy):
-				enemy.global_position = event_position
-				_apply_enemy_network_health(
-					enemy,
-					current_health,
-					health_revision
-				)
-				if confirmed_damage > 0:
-					enemy.show_damage_number(
-						confirmed_damage,
-						impact_direction,
-						damage_type as EnemyConfig.DamageType
-					)
-					if impact_direction != Vector2.ZERO:
-						enemy.play_multiplayer_damage_feedback(
-							impact_direction,
-							show_hit_particles
-						)
-			_remove_client_enemy(net_id, true)
-		ENEMY_TERMINAL_ESCAPED:
-			if _has_tower_mode():
-				tower_mode_adapter.apply_remote_enemy_escape(net_id)
-			_remove_client_enemy(net_id, false)
-		_:
-			_remove_client_enemy(net_id, false)
+	enemy_coordinator.receive_enemy_terminal(
+		net_id,
+		reason,
+		event_position,
+		current_health,
+		health_revision,
+		confirmed_damage,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
-	if game == null or net_manager.is_host() or net_id <= 0:
-		return
-	_mark_client_enemy_terminal(net_id)
-	var enemy: Enemy = _get_valid_client_enemy_for_net_id(net_id)
-	if enemy != null and is_instance_valid(enemy):
-		enemy.global_position = defeat_position
-	_remove_client_enemy(net_id, true)
+	enemy_coordinator.receive_enemy_defeated(net_id, defeat_position)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_removed(net_id: int) -> void:
-	if game == null or net_manager.is_host() or net_id <= 0:
-		return
-	_mark_client_enemy_terminal(net_id)
-	_remove_client_enemy(net_id, true)
+	enemy_coordinator.receive_enemy_removed(net_id)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_escaped(net_id: int) -> void:
-	if net_manager.is_host() or not _has_tower_mode() or net_id <= 0:
+	if not _has_tower_mode():
 		return
-	_mark_client_enemy_terminal(net_id)
-	tower_mode_adapter.apply_remote_enemy_escape(net_id)
-	_remove_client_enemy(net_id, false)
+	enemy_coordinator.receive_enemy_escaped(net_id)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -12720,17 +11918,25 @@ func net_enemy_action(
 	action_id: int,
 	host_action_timestamp: float = -1.0
 ) -> void:
-	if game == null or net_manager.is_host():
+	if not is_finite(host_action_timestamp):
 		return
-	_receive_enemy_action_record({
-		"kind": CLIENT_ENEMY_ACTION_KIND_GENERIC,
-		"net_id": net_id,
-		"action_name": StringName(action_name),
-		"direction": direction,
-		"action_position": action_position,
-		"action_id": action_id,
-		"host_action_timestamp": host_action_timestamp,
-	})
+	var received_at := _get_net_time()
+	var mapped_action_time := received_at
+	if host_action_timestamp >= 0.0:
+		mapped_action_time = _map_host_timestamp_to_client_time(
+			host_action_timestamp,
+			false
+		)
+	enemy_coordinator.receive_enemy_action(
+		net_id,
+		StringName(action_name),
+		direction,
+		action_position,
+		action_id,
+		mapped_action_time,
+		received_at,
+		host_action_timestamp
+	)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 7)
@@ -12742,279 +11948,25 @@ func net_enemy_target_action(
 	action_id: int,
 	host_action_timestamp: float = -1.0
 ) -> void:
-	if game == null or net_manager.is_host():
+	if not is_finite(host_action_timestamp):
 		return
-	_receive_enemy_action_record({
-		"kind": CLIENT_ENEMY_ACTION_KIND_TARGET,
-		"net_id": net_id,
-		"action_name": StringName(action_name),
-		"target_peer_id": target_peer_id,
-		"action_position": action_position,
-		"action_id": action_id,
-		"host_action_timestamp": host_action_timestamp,
-	})
-
-
-func _receive_enemy_action_record(record: Dictionary) -> void:
-	if not _is_valid_received_enemy_action_record(record):
-		return
-	var net_id := int(record.get("net_id", 0))
-	var enemy := _get_valid_client_enemy_for_net_id(net_id)
-	if enemy == null or not is_instance_valid(enemy):
-		if not _client_terminal_enemy_ids.has(net_id):
-			_cache_pending_enemy_action(record)
-		return
-	_deliver_received_enemy_action_record(record, enemy)
-
-
-func _is_valid_received_enemy_action_record(record: Dictionary) -> bool:
-	var kind := int(record.get("kind", -1))
-	var host_action_timestamp := float(
-		record.get("host_action_timestamp", -1.0)
-	)
-	if (
-		int(record.get("net_id", 0)) <= 0
-		or int(record.get("action_id", 0)) <= 0
-		or StringName(record.get("action_name", &"")).is_empty()
-		or not _is_finite_vector2(record.get("action_position", Vector2.ZERO))
-		or not is_finite(host_action_timestamp)
-	):
-		return false
-	match kind:
-		CLIENT_ENEMY_ACTION_KIND_GENERIC:
-			return _is_finite_vector2(record.get("direction", Vector2.ZERO))
-		CLIENT_ENEMY_ACTION_KIND_TARGET:
-			return int(record.get("target_peer_id", 0)) > 0
-		_:
-			return false
-
-
-func _deliver_received_enemy_action_record(
-	record: Dictionary,
-	enemy: Enemy
-) -> void:
-	if enemy == null or not is_instance_valid(enemy):
-		return
-	var net_id := int(record.get("net_id", 0))
-	var action_position := record.get("action_position", Vector2.ZERO) as Vector2
-	var action_sample := _push_enemy_action_interpolator_sample(
-		net_id,
-		action_position,
-		float(record.get("host_action_timestamp", -1.0))
-	)
-	if action_sample.get("apply_direct_position", false):
-		enemy.global_position = action_position
-	var action_elapsed := _get_received_enemy_action_record_elapsed(record)
-	var action_name := StringName(record.get("action_name", &""))
-	var action_id := int(record.get("action_id", 0))
-	match int(record.get("kind", -1)):
-		CLIENT_ENEMY_ACTION_KIND_GENERIC:
-			var direction := record.get("direction", Vector2.ZERO) as Vector2
-			if enemy.has_method("play_multiplayer_enemy_action_with_context"):
-				enemy.call(
-					"play_multiplayer_enemy_action_with_context",
-					action_name,
-					direction,
-					action_position,
-					action_id,
-					action_elapsed
-				)
-			elif enemy.has_method("play_multiplayer_enemy_action"):
-				enemy.call(
-					"play_multiplayer_enemy_action",
-					action_name,
-					direction,
-					action_id
-				)
-		CLIENT_ENEMY_ACTION_KIND_TARGET:
-			var target := game.get_player_for_peer(
-				int(record.get("target_peer_id", 0))
-			)
-			if enemy.has_method("play_multiplayer_enemy_target_action_with_context"):
-				enemy.call(
-					"play_multiplayer_enemy_target_action_with_context",
-					action_name,
-					target,
-					action_position,
-					action_id,
-					action_elapsed
-				)
-			elif enemy.has_method("play_multiplayer_enemy_target_action"):
-				enemy.call(
-					"play_multiplayer_enemy_target_action",
-					action_name,
-					target,
-					action_id
-				)
-
-
-func _get_received_enemy_action_record_elapsed(record: Dictionary) -> float:
-	var elapsed := _get_received_enemy_action_elapsed(
-		float(record.get("host_action_timestamp", -1.0))
-	)
-	var received_at := float(record.get("received_at", _get_net_time()))
-	return maxf(elapsed, maxf(_get_net_time() - received_at, 0.0))
-
-
-func _cache_pending_enemy_action(record: Dictionary) -> bool:
-	var net_id := int(record.get("net_id", 0))
-	if net_id <= 0 or _client_terminal_enemy_ids.has(net_id):
-		return false
-	var action_id := int(record.get("action_id", 0))
-	if _pending_enemy_actions.has(net_id):
-		var current := _pending_enemy_actions[net_id] as Dictionary
-		var current_action_id := int(current.get("action_id", 0))
-		if action_id < current_action_id:
-			return false
-		if action_id == current_action_id:
-			var current_host_time := float(
-				current.get("host_action_timestamp", -1.0)
-			)
-			var incoming_host_time := float(
-				record.get("host_action_timestamp", -1.0)
-			)
-			if (
-				current_host_time >= 0.0
-				and incoming_host_time >= 0.0
-				and incoming_host_time < current_host_time
-			):
-				return false
-		_erase_pending_enemy_action(net_id)
-	while (
-		_pending_enemy_actions.size()
-		>= CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES
-	):
-		_erase_pending_enemy_action(_pending_enemy_action_oldest_id)
-	var stored_record := record.duplicate(true)
-	stored_record["received_at"] = _get_net_time()
-	var previous_id := _pending_enemy_action_newest_id
-	_pending_enemy_actions[net_id] = stored_record
-	_pending_enemy_action_previous_ids[net_id] = previous_id
-	_pending_enemy_action_next_ids[net_id] = 0
-	if previous_id > 0:
-		_pending_enemy_action_next_ids[previous_id] = net_id
-	else:
-		_pending_enemy_action_oldest_id = net_id
-	_pending_enemy_action_newest_id = net_id
-	return true
-
-
-func _consume_pending_enemy_action(net_id: int) -> bool:
-	var pending := _take_pending_enemy_action(net_id)
-	if pending.is_empty() or _is_pending_enemy_action_expired(pending):
-		return false
-	var enemy := _get_valid_client_enemy_for_net_id(net_id)
-	if enemy == null or not is_instance_valid(enemy):
-		return false
-	_deliver_received_enemy_action_record(pending, enemy)
-	return true
-
-
-func _is_pending_enemy_action_expired(record: Dictionary) -> bool:
-	var received_at := float(record.get("received_at", -INF))
-	return (
-		not is_finite(received_at)
-		or _get_net_time() - received_at
-			> CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS
-	)
-
-
-func _take_pending_enemy_action(net_id: int) -> Dictionary:
-	var pending := _pending_enemy_actions.get(net_id, {}) as Dictionary
-	if pending.is_empty():
-		return {}
-	_erase_pending_enemy_action(net_id)
-	return pending
-
-
-func _erase_pending_enemy_action(net_id: int) -> bool:
-	if not _pending_enemy_actions.has(net_id):
-		return false
-	var previous_id := int(_pending_enemy_action_previous_ids.get(net_id, 0))
-	var next_id := int(_pending_enemy_action_next_ids.get(net_id, 0))
-	if previous_id > 0:
-		_pending_enemy_action_next_ids[previous_id] = next_id
-	else:
-		_pending_enemy_action_oldest_id = next_id
-	if next_id > 0:
-		_pending_enemy_action_previous_ids[next_id] = previous_id
-	else:
-		_pending_enemy_action_newest_id = previous_id
-	_pending_enemy_action_previous_ids.erase(net_id)
-	_pending_enemy_action_next_ids.erase(net_id)
-	_pending_enemy_actions.erase(net_id)
-	return true
-
-
-func _clear_pending_enemy_actions() -> void:
-	_pending_enemy_actions.clear()
-	_pending_enemy_action_previous_ids.clear()
-	_pending_enemy_action_next_ids.clear()
-	_pending_enemy_action_oldest_id = 0
-	_pending_enemy_action_newest_id = 0
-
-
-func _mark_client_enemy_terminal(net_id: int) -> void:
-	if net_id <= 0:
-		return
-	_erase_pending_enemy_action(net_id)
-	_clear_client_enemy_terminal_marker(net_id)
-	while (
-		_client_terminal_enemy_ids.size()
-		>= CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES
-	):
-		_clear_client_enemy_terminal_marker(
-			_client_terminal_enemy_oldest_id
+	var received_at := _get_net_time()
+	var mapped_action_time := received_at
+	if host_action_timestamp >= 0.0:
+		mapped_action_time = _map_host_timestamp_to_client_time(
+			host_action_timestamp,
+			false
 		)
-	var previous_id := _client_terminal_enemy_newest_id
-	_client_terminal_enemy_ids[net_id] = true
-	_client_terminal_enemy_previous_ids[net_id] = previous_id
-	_client_terminal_enemy_next_ids[net_id] = 0
-	if previous_id > 0:
-		_client_terminal_enemy_next_ids[previous_id] = net_id
-	else:
-		_client_terminal_enemy_oldest_id = net_id
-	_client_terminal_enemy_newest_id = net_id
-
-
-func _clear_client_enemy_terminal_marker(net_id: int) -> bool:
-	if not _client_terminal_enemy_ids.has(net_id):
-		return false
-	var previous_id := int(
-		_client_terminal_enemy_previous_ids.get(net_id, 0)
+	enemy_coordinator.receive_enemy_target_action(
+		net_id,
+		StringName(action_name),
+		target_peer_id,
+		action_position,
+		action_id,
+		mapped_action_time,
+		received_at,
+		host_action_timestamp
 	)
-	var next_id := int(_client_terminal_enemy_next_ids.get(net_id, 0))
-	if previous_id > 0:
-		_client_terminal_enemy_next_ids[previous_id] = next_id
-	else:
-		_client_terminal_enemy_oldest_id = next_id
-	if next_id > 0:
-		_client_terminal_enemy_previous_ids[next_id] = previous_id
-	else:
-		_client_terminal_enemy_newest_id = previous_id
-	_client_terminal_enemy_previous_ids.erase(net_id)
-	_client_terminal_enemy_next_ids.erase(net_id)
-	_client_terminal_enemy_ids.erase(net_id)
-	return true
-
-
-func _clear_client_enemy_terminal_markers() -> void:
-	_client_terminal_enemy_ids.clear()
-	_client_terminal_enemy_previous_ids.clear()
-	_client_terminal_enemy_next_ids.clear()
-	_client_terminal_enemy_oldest_id = 0
-	_client_terminal_enemy_newest_id = 0
-
-
-func _get_received_enemy_action_elapsed(host_action_timestamp: float) -> float:
-	if not is_finite(host_action_timestamp) or host_action_timestamp < 0.0:
-		return 0.0
-	var mapped_action_time := _map_host_timestamp_to_client_time(
-		host_action_timestamp,
-		false
-	)
-	var elapsed := maxf(_get_net_time() - mapped_action_time, 0.0)
-	return elapsed if is_finite(elapsed) else 0.0
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 7)
@@ -13029,113 +11981,6 @@ func net_enemy_lightning_chain(points: PackedVector2Array) -> void:
 	# endpoint list as a transient visual and never resolve targets locally.
 	game.play_lightning_sorcerer_chain_vfx(points)
 
-
-func _push_enemy_action_interpolator_sample(
-	net_id: int,
-	action_position: Vector2,
-	host_action_timestamp: float
-) -> Dictionary:
-	if net_id <= 0:
-		return {}
-	var action_time := _get_net_time()
-	if host_action_timestamp >= 0.0:
-		action_time = _map_host_timestamp_to_client_time(host_action_timestamp, false)
-	var interp := enemy_interpolators.get(net_id) as NetInterpolator
-	var had_interpolator_samples := interp != null and interp.get_buffer_size() > 0
-	var inherited_frame_state := NetInterpolator.FrameSnapshot.new()
-	if interp != null:
-		if had_interpolator_samples:
-			inherited_frame_state = interp.get_latest_state()
-		var latest_timestamp := interp.get_latest_timestamp()
-		if latest_timestamp > 0.0 and action_time < latest_timestamp:
-			# Snapshot ordering owns only transform history. The action sequence is
-			# independently ordered by each proxy and must still receive terminal,
-			# cancel, fire or windup records even when CH3 is already newer.
-			return {"sample_inserted": false, "apply_direct_position": false}
-	else:
-		interp = _create_enemy_interpolator()
-		enemy_interpolators[net_id] = interp
-	interp.push_snapshot(
-		action_time,
-		action_position,
-		Vector2.ZERO,
-		inherited_frame_state.facing,
-		inherited_frame_state.anim_state,
-		inherited_frame_state.health,
-		inherited_frame_state.is_dead
-	)
-	return {"sample_inserted": true, "apply_direct_position": not had_interpolator_samples}
-
-
-
-func _on_client_enemy_tree_exited(net_id: int, exiting_enemy: Enemy) -> void:
-	var enemy_variant: Variant = _net_enemies.get(net_id)
-	if enemy_variant == null:
-		return
-	if is_instance_valid(enemy_variant) and enemy_variant != exiting_enemy:
-		return
-	_net_enemies.erase(net_id)
-	_erase_pending_enemy_action(net_id)
-	_enemy_spawn_snapshot_times.erase(net_id)
-	enemy_interpolators.erase(net_id)
-	_offscreen_enemy_interpolation_slots.erase(net_id)
-	if game != null:
-		game.multiplayer_enemies_by_net_id.erase(net_id)
-		game.multiplayer_enemy_ids_by_instance.erase(exiting_enemy.get_instance_id())
-		game.unregister_combat_target(net_id)
-
-func _get_buffered_enemy_position(net_id: int, fallback_position: Vector2) -> Vector2:
-	var interp: NetInterpolator = enemy_interpolators.get(net_id) as NetInterpolator
-	if interp == null or interp.get_buffer_size() <= 0:
-		return fallback_position
-	return interp.get_interpolated_position(_get_net_time())
-
-
-func _reconcile_enemy_roster(seen_enemy_ids: Dictionary, snapshot_time: float) -> void:
-	var stale_ids: Array[int] = []
-	for net_id_variant in _net_enemies:
-		var net_id := int(net_id_variant)
-		if seen_enemy_ids.has(net_id):
-			continue
-		var spawn_time := float(_enemy_spawn_snapshot_times.get(net_id, -INF))
-		if spawn_time > snapshot_time:
-			continue
-		stale_ids.append(net_id)
-	for net_id in stale_ids:
-		# Snapshot roster reconciliation is recovery, not a death event. Explicit
-		# reliable defeat/removal RPCs own death presentation; a leaked Home enemy
-		# must disappear silently even if the state channel arrives first.
-		_remove_client_enemy(net_id, false)
-
-
-func _remove_client_enemy(
-	net_id: int,
-	play_death_sequence: bool,
-	preserve_interpolator: bool = false,
-	preserve_pending_action: bool = false
-) -> void:
-	var enemy_variant: Variant = _net_enemies.get(net_id)
-	if enemy_variant != null and is_instance_valid(enemy_variant):
-		var enemy: Enemy = enemy_variant as Enemy
-		if enemy != null:
-			if play_death_sequence:
-				enemy.play_multiplayer_death_sequence()
-			else:
-				enemy.queue_free()
-	_net_enemies.erase(net_id)
-	if not preserve_pending_action:
-		_erase_pending_enemy_action(net_id)
-	_enemy_spawn_snapshot_times.erase(net_id)
-	if game != null:
-		game.multiplayer_enemies_by_net_id.erase(net_id)
-		game.unregister_combat_target(net_id)
-		if enemy_variant != null and is_instance_valid(enemy_variant):
-			var enemy_for_instance := enemy_variant as Enemy
-			if enemy_for_instance != null:
-				game.multiplayer_enemy_ids_by_instance.erase(enemy_for_instance.get_instance_id())
-	if not preserve_interpolator:
-		enemy_interpolators.erase(net_id)
-	_offscreen_enemy_interpolation_slots.erase(net_id)
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_pickup_removed(net_id: int) -> void:
@@ -13243,11 +12088,11 @@ func net_boss_started(net_id: int, boss_config_path: String, spawn_position: Vec
 	_mode_adapter.apply_remote_boss_started(net_id, boss_config, spawn_position)
 	var boss_enemy := game.get_enemy_for_net_id(net_id) as Enemy
 	if boss_enemy != null and is_instance_valid(boss_enemy):
-		_net_enemies[net_id] = boss_enemy
-		if not boss_enemy.tree_exited.is_connected(_on_client_enemy_tree_exited.bind(net_id, boss_enemy)):
-			boss_enemy.tree_exited.connect(_on_client_enemy_tree_exited.bind(net_id, boss_enemy))
-		_clear_client_enemy_terminal_marker(net_id)
-		_consume_pending_enemy_action(net_id)
+		enemy_coordinator.register_client_enemy(
+			net_id,
+			boss_enemy,
+			_get_net_time()
+		)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -14986,11 +13831,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 		and net_manager.is_host()
 	):
 		_cancel_authoritative_tango_charge(peer_id, true)
-	snapshot_mgr.clear_peer_delta_cache(peer_id)
-	_enemy_snapshot_cohort_peers.erase(peer_id)
-	_last_enemy_keyframe_time_by_peer.erase(peer_id)
-	if _enemy_snapshot_cohort_peers.is_empty():
-		snapshot_mgr.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
+	enemy_coordinator.clear_peer(peer_id)
 	player_coordinator.clear_peer(peer_id)
 	_last_plant_placement_request_ids.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
@@ -15083,29 +13924,18 @@ func _clear_projectile_records_for_peer(peer_id: int) -> void:
 
 
 func _return_to_lobby() -> void:
-	snapshot_mgr.reset_delta_cache()
 	player_coordinator.reset_session_state()
+	enemy_coordinator.reset_session_state()
 	_disconnected_player_reconnect_states.clear()
-	_enemy_snapshot_cohort_peers.clear()
-	_enemy_snapshot_chunk_encode_count = 0
-	_pending_enemy_snapshot_batches.clear()
 	_processed_collectible_effect_event_ids.clear()
-	_last_completed_enemy_snapshot_batch_id = 0
-	_latest_enemy_snapshot_batch_seen = 0
-	_pending_enemy_damage_feedback.clear()
-	_active_enemy_damage_feedback_context.clear()
 	_pending_plant_health_updates.clear()
 	_clear_remote_plant_health_state()
 	_clear_pending_warehouse_snapshots()
 	_pending_authoritative_warehouse_snapshots.clear()
 	_pending_production_state_updates.clear()
 	_clear_pending_remote_production_states()
-	_clear_pending_enemy_actions()
-	_clear_client_enemy_terminal_markers()
 	_shared_production_state_flush_scheduled = false
 	_pending_wave_progress.clear()
-	_pending_enemy_spawns.clear()
-	_host_terminal_enemy_ids.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_client_projectile_request_rate_buckets.clear()
@@ -15138,7 +13968,6 @@ func _return_to_lobby() -> void:
 	_last_research_request_ids.clear()
 	_research_milestone_connected = false
 	_warehouse_transaction_started_usec.clear()
-	_last_enemy_keyframe_time_by_peer.clear()
 	_hoe_action_sequences_by_peer.clear()
 	_tango_charge_sequences_by_peer.clear()
 	_last_tango_volley_visual_state_by_peer.clear()

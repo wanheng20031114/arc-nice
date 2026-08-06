@@ -496,6 +496,7 @@ func _test_scene_node_paths() -> void:
 		[
 			NodePath("SessionCoordinator"),
 			NodePath("PlayerCoordinator"),
+			NodePath("EnemyCoordinator"),
 			NodePath("PublicRoomKeepaliveRequest"),
 		]
 	)

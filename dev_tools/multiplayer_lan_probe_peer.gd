@@ -2521,7 +2521,10 @@ func _wait_for_first_client_enemy_id(mp_game: Node, timeout_seconds: float) -> i
 	while _now_seconds() <= end_time:
 		if mp_game == null or not is_instance_valid(mp_game):
 			return 0
-		var enemies := mp_game.get("_net_enemies") as Dictionary
+		var coordinator := mp_game.get_node_or_null("EnemyCoordinator") as MpEnemyCoordinator
+		if coordinator == null:
+			return 0
+		var enemies := coordinator.net_enemies
 		for enemy_id_variant in enemies:
 			var enemy_id := int(enemy_id_variant)
 			var enemy_variant: Variant = enemies.get(enemy_id)
@@ -2534,7 +2537,10 @@ func _wait_for_first_client_enemy_id(mp_game: Node, timeout_seconds: float) -> i
 func _wait_for_client_enemy_removed(mp_game: Node, enemy_id: int, timeout_seconds: float) -> bool:
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
-		var enemies := mp_game.get("_net_enemies") as Dictionary
+		var coordinator := mp_game.get_node_or_null("EnemyCoordinator") as MpEnemyCoordinator
+		if coordinator == null:
+			return true
+		var enemies := coordinator.net_enemies
 		var enemy_variant: Variant = enemies.get(enemy_id)
 		if enemy_variant == null or not is_instance_valid(enemy_variant):
 			return true
@@ -3315,7 +3321,10 @@ func _get_latest_projectile_record_for_peer(mp_game: Node, peer_id: int) -> int:
 func _get_valid_client_enemy(mp_game: Node, enemy_id: int) -> Enemy:
 	if mp_game == null or not is_instance_valid(mp_game):
 		return null
-	var enemies := mp_game.get("_net_enemies") as Dictionary
+	var coordinator := mp_game.get_node_or_null("EnemyCoordinator") as MpEnemyCoordinator
+	if coordinator == null:
+		return null
+	var enemies := coordinator.net_enemies
 	var enemy_variant: Variant = enemies.get(enemy_id)
 	if enemy_variant == null or not is_instance_valid(enemy_variant):
 		return null

@@ -312,6 +312,7 @@ func _test_target_warning_proxy_contract() -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", runtime)
+	var enemy_coordinator := _attach_enemy_coordinator(mp_game, runtime)
 
 	var player := PLAYER_SCENE.instantiate() as Player
 	_expect(player != null, "Player warning fixture must instantiate a typed player.")
@@ -341,7 +342,7 @@ func _test_target_warning_proxy_contract() -> void:
 	lightning.setup(LIGHTNING_SORCERER_CONFIG, player)
 	lightning.configure_multiplayer_proxy()
 	lightning.set_meta("net_id", 73)
-	var net_enemies := mp_game.get("_net_enemies") as Dictionary
+	var net_enemies := enemy_coordinator.net_enemies
 	net_enemies[73] = lightning
 
 	var target_warning := lightning.get_node_or_null("TargetWarning") as Node2D
@@ -577,6 +578,19 @@ func _test_target_warning_proxy_contract() -> void:
 	fixture_root.free()
 
 
+func _attach_enemy_coordinator(
+	mp_game: Node,
+	runtime: CombatRuntimeBase
+) -> MpEnemyCoordinator:
+	var coordinator := MpEnemyCoordinator.new()
+	coordinator.name = "EnemyCoordinator"
+	mp_game.add_child(coordinator)
+	mp_game.set("enemy_coordinator", coordinator)
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	coordinator.bind_runtime(runtime)
+	return coordinator
+
+
 func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	var fixture_root := Node2D.new()
 	fixture_root.name = "LightningPendingActionFixture"
@@ -588,6 +602,7 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", runtime)
+	var enemy_coordinator := _attach_enemy_coordinator(mp_game, runtime)
 	var player := PLAYER_SCENE.instantiate() as Player
 	_expect(player != null, "Pending-action fixture must instantiate a player.")
 	if player == null:
@@ -625,7 +640,7 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		20,
 		synchronized_host_time - 0.02
 	)
-	var pending_actions := mp_game.get("_pending_enemy_actions") as Dictionary
+	var pending_actions := enemy_coordinator.pending_enemy_actions
 	var retry_record := pending_actions.get(retry_net_id, {}) as Dictionary
 	_expect(
 		pending_actions.size() == 1
@@ -642,10 +657,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	)
 	_expect(retry_lightning != null, "Retry fixture must register a lightning proxy.")
 	if retry_lightning != null:
-		var consumed := bool(mp_game.call(
-			"_consume_pending_enemy_action",
-			retry_net_id
-		))
+		var consumed := enemy_coordinator.consume_pending_enemy_action(
+			retry_net_id,
+			float(mp_game.call("_get_net_time"))
+		)
 		var retry_warning := retry_lightning.get_node("TargetWarning") as Node2D
 		_expect(
 			consumed
@@ -679,7 +694,7 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	_expect(
 		pending_actions.size() == 1
 		and int(cancel_record.get("kind", -1))
-			== MP_GAME_SCRIPT.CLIENT_ENEMY_ACTION_KIND_GENERIC
+			== MpEnemyCoordinator.CLIENT_ENEMY_ACTION_KIND_GENERIC
 		and StringName(cancel_record.get("action_name", &"")) == &"cancel",
 		"Target starts and generic terminal/cancel actions must share one sequence buffer; the newer cancel wins."
 	)
@@ -690,7 +705,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		cancel_net_id
 	)
 	if cancel_lightning != null:
-		mp_game.call("_consume_pending_enemy_action", cancel_net_id)
+		enemy_coordinator.consume_pending_enemy_action(
+			cancel_net_id,
+			float(mp_game.call("_get_net_time"))
+		)
 		var cancel_warning := cancel_lightning.get_node("TargetWarning") as Node2D
 		_expect(
 			cancel_lightning.latest_proxy_action_id == 31
@@ -707,7 +725,7 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 			21,
 			synchronized_host_time
 		)
-		var interp := mp_game.call("_create_enemy_interpolator") as NetInterpolator
+		var interp := enemy_coordinator.call("_create_interpolator") as NetInterpolator
 		var mapped_action_time := float(mp_game.call(
 			"_map_host_timestamp_to_client_time",
 			synchronized_host_time,
@@ -718,7 +736,7 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 			Vector2(900.0, 700.0),
 			Vector2.ZERO
 		)
-		var interpolators := mp_game.get("enemy_interpolators") as Dictionary
+		var interpolators := enemy_coordinator.enemy_interpolators
 		interpolators[retry_net_id] = interp
 		var proxy_position_before_action := retry_lightning.global_position
 		mp_game.net_enemy_target_action(
@@ -755,7 +773,7 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 	var expired_record := pending_actions.get(expired_net_id, {}) as Dictionary
 	expired_record["received_at"] = (
 		float(mp_game.call("_get_net_time"))
-		- MP_GAME_SCRIPT.CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS
+		- MpEnemyCoordinator.CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS
 		- 0.1
 	)
 	pending_actions[expired_net_id] = expired_record
@@ -766,10 +784,10 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		expired_net_id
 	)
 	if expired_lightning != null:
-		var expired_consumed := bool(mp_game.call(
-			"_consume_pending_enemy_action",
-			expired_net_id
-		))
+		var expired_consumed := enemy_coordinator.consume_pending_enemy_action(
+			expired_net_id,
+			float(mp_game.call("_get_net_time"))
+		)
 		var expired_warning := expired_lightning.get_node("TargetWarning") as Node2D
 		_expect(
 			not expired_consumed
@@ -801,15 +819,15 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		50,
 		synchronized_host_time + 0.1
 	)
-	var terminal_ids := mp_game.get("_client_terminal_enemy_ids") as Dictionary
+	var terminal_ids := enemy_coordinator.client_terminal_enemy_ids
 	_expect(
 		not pending_actions.has(terminal_net_id)
 		and terminal_ids.has(terminal_net_id),
 		"Reliable terminal cleanup must reject a delayed CH7 retry instead of rebuilding pending state."
 	)
 
-	mp_game.call("_clear_pending_enemy_actions")
-	mp_game.call("_clear_client_enemy_terminal_markers")
+	enemy_coordinator.clear_pending_enemy_actions()
+	enemy_coordinator.clear_client_terminal_markers()
 	var pressure_start_usec := Time.get_ticks_usec()
 	var pressure_count := 10000
 	var pressure_base_id := 100000
@@ -826,17 +844,17 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		float(Time.get_ticks_usec() - pressure_start_usec) / 1000.0
 	)
 	var action_capacity := int(
-		MP_GAME_SCRIPT.CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES
+		MpEnemyCoordinator.CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES
 	)
 	_expect(
 		pending_actions.size() == action_capacity
-		and (mp_game.get("_pending_enemy_action_previous_ids") as Dictionary).size()
+		and (enemy_coordinator.get("_pending_enemy_action_previous_ids") as Dictionary).size()
 			== action_capacity
-		and (mp_game.get("_pending_enemy_action_next_ids") as Dictionary).size()
+		and (enemy_coordinator.get("_pending_enemy_action_next_ids") as Dictionary).size()
 			== action_capacity
-		and int(mp_game.get("_pending_enemy_action_oldest_id"))
+		and int(enemy_coordinator.get("_pending_enemy_action_oldest_id"))
 			== pressure_base_id + pressure_count - action_capacity
-		and int(mp_game.get("_pending_enemy_action_newest_id"))
+		and int(enemy_coordinator.get("_pending_enemy_action_newest_id"))
 			== pressure_base_id + pressure_count - 1,
 		"10k unknown ids must retain exactly the bounded newest FIFO window with coherent O(1) links."
 	)
@@ -845,30 +863,30 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		"10k unknown-id buffering exceeded a generous 2 s smoke-test budget."
 	)
 	print("LIGHTNING_PENDING_ACTION_10K_MS=%.3f" % pressure_elapsed_ms)
-	mp_game.call("_clear_pending_enemy_actions")
+	enemy_coordinator.clear_pending_enemy_actions()
 	_expect(
 		pending_actions.is_empty()
-		and (mp_game.get("_pending_enemy_action_previous_ids") as Dictionary).is_empty()
-		and (mp_game.get("_pending_enemy_action_next_ids") as Dictionary).is_empty()
-		and int(mp_game.get("_pending_enemy_action_oldest_id")) == 0
-		and int(mp_game.get("_pending_enemy_action_newest_id")) == 0,
+		and (enemy_coordinator.get("_pending_enemy_action_previous_ids") as Dictionary).is_empty()
+		and (enemy_coordinator.get("_pending_enemy_action_next_ids") as Dictionary).is_empty()
+		and int(enemy_coordinator.get("_pending_enemy_action_oldest_id")) == 0
+		and int(enemy_coordinator.get("_pending_enemy_action_newest_id")) == 0,
 		"Pending-action cleanup must reset records, links and endpoints together."
 	)
 
 	for index in range(10000):
-		mp_game.call("_mark_client_enemy_terminal", pressure_base_id + index)
+		enemy_coordinator.mark_client_terminal(pressure_base_id + index)
 	var terminal_capacity := int(
-		MP_GAME_SCRIPT.CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES
+		MpEnemyCoordinator.CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES
 	)
 	_expect(
 		terminal_ids.size() == terminal_capacity
-		and int(mp_game.get("_client_terminal_enemy_oldest_id"))
+		and int(enemy_coordinator.get("_client_terminal_enemy_oldest_id"))
 			== pressure_base_id + 10000 - terminal_capacity
-		and int(mp_game.get("_client_terminal_enemy_newest_id"))
+		and int(enemy_coordinator.get("_client_terminal_enemy_newest_id"))
 			== pressure_base_id + 9999,
 		"Terminal tombstones must also remain bounded under a 10k lifecycle burst."
 	)
-	mp_game.call("_clear_client_enemy_terminal_markers")
+	enemy_coordinator.clear_client_terminal_markers()
 
 	mp_game.net_enemy_action(0, "cancel", Vector2.RIGHT, Vector2.ZERO, 1, -1.0)
 	mp_game.net_enemy_action(1, "cancel", Vector2(INF, 0.0), Vector2.ZERO, 1, -1.0)
@@ -880,12 +898,14 @@ func _test_pre_spawn_action_buffer_and_snapshot_decoupling() -> void:
 		"Malformed and non-finite fault-injection payloads must not enter the bounded buffer."
 	)
 
-	var source := FileAccess.get_file_as_string(MP_GAME_PATH)
-	var spawn_body := _extract_function_body(source, "func net_enemy_spawned(")
-	var boss_body := _extract_function_body(source, "func net_boss_started(")
+	var source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/enemy/mp_enemy_coordinator.gd"
+	)
+	var spawn_body := _extract_function_body(source, "func receive_enemy_spawn(")
+	var boss_body := _extract_function_body(source, "func register_client_enemy(")
 	_expect(
-		spawn_body.contains("_consume_pending_enemy_action(net_id)")
-		and boss_body.contains("_consume_pending_enemy_action(net_id)"),
+		spawn_body.contains("consume_pending_enemy_action(net_id, current_time)")
+		and boss_body.contains("consume_pending_enemy_action(net_id, current_time)"),
 		"Normal enemies and bosses must both consume pending actions immediately after proxy registration."
 	)
 
@@ -910,7 +930,8 @@ func _register_lightning_proxy(
 	lightning.setup(LIGHTNING_SORCERER_CONFIG, player)
 	lightning.configure_multiplayer_proxy()
 	lightning.set_meta("net_id", net_id)
-	var net_enemies := mp_game.get("_net_enemies") as Dictionary
+	var enemy_coordinator := mp_game.get("enemy_coordinator") as MpEnemyCoordinator
+	var net_enemies := enemy_coordinator.net_enemies
 	net_enemies[net_id] = lightning
 	return lightning
 

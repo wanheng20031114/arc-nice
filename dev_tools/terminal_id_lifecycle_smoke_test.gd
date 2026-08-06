@@ -312,8 +312,19 @@ func _bind_tree_less_tower_pickup_registry(
 	return registry
 
 
+func _attach_enemy_coordinator(
+	mp_game: RecordingMpGame
+) -> MpEnemyCoordinator:
+	var coordinator := MpEnemyCoordinator.new()
+	coordinator.name = "EnemyCoordinator"
+	mp_game.add_child(coordinator)
+	mp_game.enemy_coordinator = coordinator
+	return coordinator
+
+
 func _test_host_terminal_pairing_cache() -> void:
 	var mp_game := RecordingMpGame.new()
+	var enemy_coordinator := _attach_enemy_coordinator(mp_game)
 	mp_game._broadcast_enemy_terminal(1, ENEMY_TERMINAL_DEFEATED, Vector2.ZERO)
 	mp_game._broadcast_enemy_terminal(1, ENEMY_TERMINAL_DEFEATED, Vector2.ZERO)
 	_expect(
@@ -322,7 +333,7 @@ func _test_host_terminal_pairing_cache() -> void:
 	)
 	mp_game._broadcast_enemy_terminal(1, ENEMY_TERMINAL_REMOVED, Vector2.ZERO)
 	_expect(
-		mp_game._host_terminal_enemy_ids.is_empty(),
+		enemy_coordinator.host_terminal_enemy_ids.is_empty(),
 		"Generic removal must consume the pending defeated marker."
 	)
 
@@ -340,7 +351,7 @@ func _test_host_terminal_pairing_cache() -> void:
 			Vector2.ZERO
 		)
 	_expect(
-		mp_game._host_terminal_enemy_ids.is_empty(),
+		enemy_coordinator.host_terminal_enemy_ids.is_empty(),
 		"Thousands of defeated→removed pairs must leave no Host terminal IDs."
 	)
 	_expect(
@@ -354,7 +365,7 @@ func _test_host_terminal_pairing_cache() -> void:
 		mp_game._broadcast_enemy_terminal(net_id, ENEMY_TERMINAL_REMOVED, Vector2.ZERO)
 		mp_game._broadcast_enemy_terminal(net_id, ENEMY_TERMINAL_ESCAPED, Vector2.ZERO)
 	_expect(
-		mp_game._host_terminal_enemy_ids.is_empty(),
+		enemy_coordinator.host_terminal_enemy_ids.is_empty(),
 		"Direct removed/escaped terminals must never allocate Host tombstones."
 	)
 	_expect(
@@ -366,12 +377,14 @@ func _test_host_terminal_pairing_cache() -> void:
 
 func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
 	var mp_game := RecordingMpGame.new()
+	var enemy_coordinator := _attach_enemy_coordinator(mp_game)
 	var net_manager_stub := ClientNetManagerStub.new()
 	mp_game.set("net_manager", net_manager_stub)
 	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
 	_prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = CLIENT_VIEW
 	mp_game.game = runtime
+	enemy_coordinator.bind_runtime(runtime)
 	mp_game._mode_adapter = runtime.get_multiplayer_mode_adapter()
 	mp_game.tower_mode_adapter = (
 		mp_game._mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -382,7 +395,7 @@ func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
 		mp_game.net_enemy_escaped(net_id)
 		mp_game.net_enemy_removed(net_id)
 	_expect(
-		mp_game._net_enemies.is_empty(),
+		enemy_coordinator.net_enemies.is_empty(),
 		"Unified and legacy escape/removal traffic must leave no client enemies."
 	)
 	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
@@ -397,6 +410,7 @@ func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
 
 func _test_reliable_terminal_feedback_payload() -> void:
 	var mp_game := RecordingMpGame.new()
+	var enemy_coordinator := _attach_enemy_coordinator(mp_game)
 	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as TowerDefenseGame
 	_prepare_runtime_boundaries(runtime)
 	var enemy := Enemy.new()
@@ -414,14 +428,15 @@ func _test_reliable_terminal_feedback_payload() -> void:
 	enemy.is_dead = true
 	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
 	mp_game.game = runtime
-	mp_game._pending_enemy_damage_feedback[net_id] = {
+	enemy_coordinator.bind_runtime(runtime)
+	enemy_coordinator.pending_enemy_damage_feedback[net_id] = {
 		"current_health": 10,
 		"damage": 15,
 		"impact_direction": Vector2.LEFT,
 		"damage_type": int(EnemyConfig.DamageType.MAGIC),
 		"show_hit_particles": false,
 	}
-	mp_game._active_enemy_damage_feedback_context[net_id] = {
+	enemy_coordinator.active_enemy_damage_feedback_context[net_id] = {
 		"impact_direction": Vector2.RIGHT,
 		"damage_type": int(EnemyConfig.DamageType.PHYSICAL),
 		"show_hit_particles": true,
@@ -446,7 +461,7 @@ func _test_reliable_terminal_feedback_payload() -> void:
 		"可靠终结事件必须合并未发送的15点反馈与最后25点致死伤害，并携带最终方向、类型和粒子标记。"
 	)
 	_expect(
-		not mp_game._pending_enemy_damage_feedback.has(net_id),
+		not enemy_coordinator.pending_enemy_damage_feedback.has(net_id),
 		"致死反馈并入可靠终结事件后必须从不可靠批队列移除，避免重复浮字。"
 	)
 	runtime.multiplayer_enemies_by_net_id.clear()
@@ -457,6 +472,7 @@ func _test_reliable_terminal_feedback_payload() -> void:
 
 func _test_real_batch_damage_terminal_chain() -> void:
 	var mp_game := RecordingMpGame.new()
+	var enemy_coordinator := _attach_enemy_coordinator(mp_game)
 	var keepalive_request := HTTPRequest.new()
 	keepalive_request.name = "PublicRoomKeepaliveRequest"
 	mp_game.add_child(keepalive_request)
@@ -467,6 +483,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	var gateway := _prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = HOST_AUTHORITY
 	mp_game.game = runtime
+	enemy_coordinator.bind_runtime(runtime)
 	mp_game._mode_adapter = runtime.get_multiplayer_mode_adapter()
 	mp_game.tower_mode_adapter = (
 		mp_game._mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -526,17 +543,19 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		"真实apply_damage_batch→defeated信号→可靠terminal链必须携带最后40点致死反馈。"
 	)
 	_expect(
-		not mp_game._pending_enemy_damage_feedback.has(net_id)
-		and not mp_game._active_enemy_damage_feedback_context.has(net_id),
+		not enemy_coordinator.pending_enemy_damage_feedback.has(net_id)
+		and not enemy_coordinator.active_enemy_damage_feedback_context.has(net_id),
 		"真实致死批伤结束后不得遗留不可靠反馈或活动伤害上下文。"
 	)
 	var client_mp_game := RecordingMpGame.new()
+	var client_enemy_coordinator := _attach_enemy_coordinator(client_mp_game)
 	var client_net_manager := ClientNetManagerStub.new()
 	var client_runtime := TerminalTowerRuntime.new()
 	_prepare_runtime_boundaries(client_runtime)
 	client_runtime.runtime_mode = CLIENT_VIEW
 	client_mp_game.net_manager = client_net_manager
 	client_mp_game.game = client_runtime
+	client_enemy_coordinator.bind_runtime(client_runtime)
 	client_mp_game._mode_adapter = client_runtime.get_multiplayer_mode_adapter()
 	client_mp_game.tower_mode_adapter = (
 		client_mp_game._mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -550,7 +569,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	client_enemy.setup(lethal_config, null, null, client_runtime)
 	client_enemy.configure_multiplayer_proxy()
 	client_enemy.set_meta(&"net_id", net_id)
-	client_mp_game._net_enemies[net_id] = client_enemy
+	client_enemy_coordinator.net_enemies[net_id] = client_enemy
 	client_runtime.multiplayer_enemies_by_net_id[net_id] = client_enemy
 	client_runtime.multiplayer_enemy_ids_by_instance[
 		client_enemy.get_instance_id()
@@ -559,7 +578,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	_expect(
 		client_enemy.is_dead
 		and client_enemy.current_health == 0
-		and not client_mp_game._net_enemies.has(net_id)
+		and not client_enemy_coordinator.net_enemies.has(net_id)
 		and not client_runtime.multiplayer_enemies_by_net_id.has(net_id)
 		and client_runtime.amount == 40
 		and client_runtime.impact_direction == Vector2.RIGHT
