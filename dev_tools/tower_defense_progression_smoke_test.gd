@@ -115,11 +115,11 @@ func _test_campaign_coordinator_contract() -> void:
 	_expect(
 		coordinator != null
 		and game.campaign_coordinator == coordinator
-		and coordinator.active_campaign == game.active_campaign
-		and coordinator.flow_graph == game.flow_graph
-		and coordinator.waves == game.waves
-		and coordinator.bosses == game.bosses,
-		"Tower campaign rules must be authored as one static coordinator and remain the root façade source."
+		and coordinator.active_campaign != null
+		and coordinator.flow_graph != null
+		and not coordinator.waves.is_empty()
+		and not coordinator.bosses.is_empty(),
+		"Tower campaign rules must be authored and owned by one static coordinator."
 	)
 	var wave_trace: Array[String] = []
 	if coordinator != null:
@@ -310,7 +310,10 @@ func _test_singleplayer_starting_package() -> void:
 	game.auto_start_waves = false
 	root.add_child(game)
 	await process_frame
-	_expect(game.starting_package_granted, "Singleplayer starter package must be granted.")
+	_expect(
+		game.player_roster_coordinator.starting_package_granted,
+		"Singleplayer starter package must be granted."
+	)
 	_expect_exact_starting_inventory(run_state, 0, "Singleplayer")
 	_expect(
 		bool(game.call("_grant_tower_defense_starting_package")),
@@ -318,9 +321,9 @@ func _test_singleplayer_starting_package() -> void:
 	)
 	_expect_exact_starting_inventory(run_state, 0, "Repeated singleplayer grant")
 	_expect(
-		game.call("_get_initial_preparation_seconds") == 90
-		and game.call("_get_wave_intermission_seconds") == 30
-		and game.call("_get_new_day_preparation_seconds") == 60,
+		game.campaign_coordinator.get_initial_preparation_seconds() == 90
+		and game.campaign_coordinator.get_wave_intermission_seconds() == 30
+		and game.campaign_coordinator.get_new_day_preparation_seconds() == 60,
 		"Runtime must source all three countdowns from progression config."
 	)
 	var metrics := game.get_progression_metrics_snapshot()
@@ -356,7 +359,7 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 	root.add_child(game)
 	await process_frame
 	_expect(
-		game.starting_package_granted,
+		game.player_roster_coordinator.starting_package_granted,
 		"%d-player starter package must be granted." % player_count
 	)
 	for peer_id in range(1, player_count + 1):
@@ -366,7 +369,9 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 			"%d-player peer %d" % [player_count, peer_id]
 		)
 	if player_count == 2:
-		game.call("_enter_pre_flow_step", game.call("_get_start_flow_step"))
+		game.campaign_coordinator.enter_pre_flow_step(
+			game.campaign_coordinator.get_start_flow_step()
+		)
 		_expect(
 			not game.request_tower_defense_wave_start(2),
 			"A non-host player must not end multiplayer preparation."
@@ -376,15 +381,16 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 			"The host must be able to confirm the final wave countdown."
 		)
 		_expect(
-			game.wave_state == CombatFlowState.State.PRE_WAVE
-			and game.countdown_seconds == 3,
+			game.campaign_coordinator.wave_state == CombatFlowState.State.PRE_WAVE
+			and game.campaign_coordinator.countdown_seconds == 3,
 			"Host confirmation must preserve a complete 3-second countdown."
 		)
 		for _countdown_step in range(3):
 			game.countdown_audio.stop()
-			game.call("_on_state_timer_timeout")
+			game.campaign_coordinator.on_state_timer_timeout()
 		_expect(
-			game.current_wave_total == int((FORMAL_SCALED_TOTALS[2] as Array)[0]),
+			game.campaign_coordinator.current_wave_total
+			== int((FORMAL_SCALED_TOTALS[2] as Array)[0]),
 			"Host runtime must apply the two-player wave scaling contract."
 		)
 	game.queue_free()

@@ -8,7 +8,6 @@ const PLANT_REMOVAL_SMOKE_SCENE := preload(
 	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
 )
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png")
-const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
 const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
 const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
@@ -22,7 +21,6 @@ const MUSIC_FADE_IN_SECONDS := TowerDefensePresentationCoordinator.MUSIC_FADE_IN
 const MUSIC_FADE_IN_START_VOLUME_DB := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_START_VOLUME_DB
 const BOSS_INTRO_CAMERA_FOCUS_SECONDS := TowerDefensePresentationCoordinator.BOSS_INTRO_CAMERA_FOCUS_SECONDS
 const DEFEAT_CAMERA_TRAVEL_SECONDS := TowerDefensePresentationCoordinator.DEFEAT_CAMERA_TRAVEL_SECONDS
-const INITIAL_PLAYER_XIRANG := TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
 const DEFAULT_BASE_HEALTH := 100
 const XIAOCONG_INTERACTION_DISTANCE := (
 	TowerDefenseFateFlowCoordinator.XIAOCONG_INTERACTION_DISTANCE
@@ -300,7 +298,6 @@ var spectator_camera_active: bool:
 		if presentation_coordinator != null and presentation_coordinator.is_bound():
 			presentation_coordinator.spectator_camera_active = value
 var projectile_pool_registration_ms := 0.0
-var starting_package_granted := false
 var runtime_prewarm_tearing_down := false
 
 
@@ -579,7 +576,7 @@ func _configure_player_roster_coordinator() -> bool:
 		multiplayer_player_character_ids,
 		multiplayer_spawn_slot_indices,
 		player_wave_death_counts,
-		DEFAULT_PLAYER_CHARACTER_ID,
+		TowerDefensePlayerRosterCoordinator.DEFAULT_PLAYER_CHARACTER_ID,
 		MULTIPLAYER_SPAWN_OFFSETS,
 		PLAYER_RESPAWN_DELAYS,
 		PLAYER_RESPAWN_INVINCIBILITY_SECONDS,
@@ -865,7 +862,9 @@ func replace_campaign_runtime_state_for_fixture(
 
 
 func _configure_singleplayer_player() -> void:
-	var character_id := _get_selected_singleplayer_character_id()
+	var character_id := (
+		player_roster_coordinator.get_selected_singleplayer_character_id()
+	)
 	player = player_roster_coordinator.configure_singleplayer(character_id)
 
 
@@ -999,76 +998,13 @@ func _on_personal_inventory_output_committed(peer_id: int) -> void:
 	tower_multiplayer_mode_adapter.publish_inventory_changed(peer_id)
 
 
-func _get_selected_singleplayer_character_id() -> StringName:
-	var character_id := DEFAULT_PLAYER_CHARACTER_ID
-	if run_state != null:
-		if run_state.has_method("get_selected_character_id"):
-			character_id = StringName(run_state.call("get_selected_character_id"))
-		else:
-			character_id = StringName(run_state.get("selected_character_id"))
-	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
-		return DEFAULT_PLAYER_CHARACTER_ID
-	return character_id
-
-
 func _apply_initial_player_xirang() -> void:
 	player_roster_coordinator.local_player = player
 	player_roster_coordinator.apply_initial_player_xirang()
 
 
 func _grant_tower_defense_starting_package() -> bool:
-	if starting_package_granted:
-		return true
-	if run_state == null or progression_config == null:
-		return false
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return false
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		var items := progression_config.get_starting_items(true)
-		var amounts := progression_config.get_starting_amounts(true)
-		if not run_state.can_add_item_counts(items, amounts):
-			return false
-		if not run_state.try_add_item_counts_if_revision(
-			items,
-			amounts,
-			run_state.get_inventory_revision()
-		):
-			return false
-		starting_package_granted = true
-		return true
-
-	var peer_ids: Array[int] = []
-	for peer_id_variant in peer_players:
-		peer_ids.append(int(peer_id_variant))
-	peer_ids.sort()
-	if (
-		peer_ids.is_empty()
-		or multiplayer_local_peer_id <= 0
-		or not peer_players.has(multiplayer_local_peer_id)
-	):
-		return false
-	for peer_id in peer_ids:
-		run_state.ensure_multiplayer_peer_state(peer_id)
-		var include_team_items := peer_id == multiplayer_local_peer_id
-		if not run_state.can_add_item_counts_for_peer(
-			peer_id,
-			progression_config.get_starting_items(include_team_items),
-			progression_config.get_starting_amounts(include_team_items)
-		):
-			return false
-	for peer_id in peer_ids:
-		var include_team_items := peer_id == multiplayer_local_peer_id
-		if not run_state.try_add_item_counts_for_peer_if_revision(
-			peer_id,
-			progression_config.get_starting_items(include_team_items),
-			progression_config.get_starting_amounts(include_team_items),
-			run_state.get_inventory_revision_for_peer(peer_id),
-			false
-		):
-			return false
-	starting_package_granted = true
-	run_state.notify_inventory_snapshot_committed()
-	return true
+	return player_roster_coordinator.grant_starting_package(progression_config)
 
 
 func _register_research_players() -> void:

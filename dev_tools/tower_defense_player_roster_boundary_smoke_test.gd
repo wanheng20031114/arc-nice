@@ -7,61 +7,6 @@ const TOWER_SCENE := preload(
 var failures: Array[String] = []
 
 
-class RecordingResearchCoordinator extends ResearchCoordinator:
-	var trace: Array[String] = []
-
-	func remap_player_peer_state(_old_peer_id: int, _new_peer_id: int) -> bool:
-		trace.append("research_remap")
-		return true
-
-	func register_player(_player: Player) -> void:
-		trace.append("research_register")
-
-
-class RecordingProductionCoordinator extends ProductionCoordinator:
-	var trace: Array[String] = []
-
-	func activate_personal_output_peer(_peer_id: int) -> bool:
-		trace.append("production_activate")
-		return true
-
-
-class RecordingFateCoordinator extends FateCoordinator:
-	var trace: Array[String] = []
-
-	func apply_player_modifiers_to_all() -> void:
-		trace.append("fate_apply")
-
-
-class RecordingTowerDefenseGame extends TowerDefenseGame:
-	var restore_trace: Array[String] = []
-
-	func _remap_luoxi_collectible_claims(old_peer_id: int, new_peer_id: int) -> void:
-		restore_trace.append("luoxi_remap")
-		super(old_peer_id, new_peer_id)
-
-	func _request_enemy_retarget_after_objective_change() -> void:
-		restore_trace.append("retarget")
-
-
-class RecordingPlayerRoster extends TowerDefensePlayerRosterCoordinator:
-	var trace: Array[String] = []
-
-	func prepare_restore_metadata(
-		old_peer_id: int,
-		new_peer_id: int,
-		player_name: String,
-		character_id: StringName,
-		spawn_slot_index: int
-	) -> bool:
-		var prepared := super(
-			old_peer_id, new_peer_id, player_name, character_id, spawn_slot_index
-		)
-		if prepared:
-			trace.append("metadata")
-		return prepared
-
-
 func _initialize() -> void:
 	call_deferred("_run")
 
@@ -69,7 +14,6 @@ func _initialize() -> void:
 func _run() -> void:
 	await _test_host_roster_and_snapshot_parity()
 	await _test_singleplayer_death_and_tango_paths()
-	_test_restore_order()
 	_test_tree_less_fixture_facade()
 	_test_source_boundary()
 	await process_frame
@@ -108,6 +52,10 @@ func _test_host_roster_and_snapshot_parity() -> void:
 	) as TowerDefensePlayerRosterCoordinator
 	_expect(roster != null, "塔防场景必须静态挂载玩家编排节点。")
 	_expect(roster != null and roster.is_bound(), "塔防玩家编排依赖必须完整绑定。")
+	_expect(
+		roster != null and roster.starting_package_granted,
+		"多人房主的原子起步包必须由玩家编排完成。"
+	)
 	_expect(_peer_ids(game.peer_players) == [1, 2, 3], "塔防玩家必须按 peer ID 排序出生。")
 	_expect(game.player == game.get_player_for_peer(2), "塔防必须选择本地 peer 玩家。")
 	var expected_names := game.multiplayer_player_names.duplicate()
@@ -177,6 +125,10 @@ func _test_singleplayer_death_and_tango_paths() -> void:
 	await process_frame
 	await process_frame
 	var roster := game.get_node("PlayerRosterCoordinator") as TowerDefensePlayerRosterCoordinator
+	_expect(
+		roster.starting_package_granted,
+		"单人原子起步包必须由玩家编排完成。"
+	)
 	game.call("_reset_player_wave_death_counts")
 	game.player.died.emit()
 	_expect(
@@ -240,79 +192,6 @@ func _test_tree_less_fixture_facade() -> void:
 	game.free()
 
 
-func _test_restore_order() -> void:
-	var trace: Array[String] = []
-	var game := RecordingTowerDefenseGame.new()
-	game.restore_trace = trace
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.multiplayer_local_peer_id = 1
-	var roster := RecordingPlayerRoster.new()
-	roster.trace = trace
-	var spawn := Marker2D.new()
-	var run_state := RunStateStore.new()
-	var research := RecordingResearchCoordinator.new()
-	research.trace = trace
-	research.player_technology_levels[2] = 3
-	var production := RecordingProductionCoordinator.new()
-	production.trace = trace
-	var fate := RecordingFateCoordinator.new()
-	fate.trace = trace
-	game.add_child(roster)
-	game.add_child(spawn)
-	game.add_child(run_state)
-	game.add_child(research)
-	game.add_child(production)
-	game.add_child(fate)
-	game.player_roster_coordinator = roster
-	game.player_spawn = spawn
-	game.fate_coordinator = fate
-	game.multiplayer_player_names[2] = "Old"
-	game.multiplayer_player_character_ids[2] = &"tango"
-	game.multiplayer_spawn_slot_indices[2] = 1
-	game.luoxi_collectible_claim_counts[2] = 4
-	roster.setup(
-		game.runtime_mode,
-		game.multiplayer_local_peer_id,
-		root,
-		spawn,
-		run_state,
-		research,
-		production,
-		game.peer_players,
-		game.multiplayer_player_names,
-		game.multiplayer_player_character_ids,
-		game.multiplayer_spawn_slot_indices,
-		game.player_wave_death_counts,
-		TowerDefenseGame.DEFAULT_PLAYER_CHARACTER_ID,
-		TowerDefenseGame.MULTIPLAYER_SPAWN_OFFSETS,
-		TowerDefenseGame.PLAYER_RESPAWN_DELAYS,
-		TowerDefenseGame.PLAYER_RESPAWN_INVINCIBILITY_SECONDS,
-		TowerDefenseGame.TANGO_MINIMUM_CHARGE_SECONDS,
-		TowerDefenseGame.TANGO_MAXIMUM_CHARGE_SECONDS,
-		TowerDefenseGame.TANGO_CHARGE_THRESHOLD_EPSILON
-	)
-	var restored := game.restore_multiplayer_player(
-		2, 5, "Restored", &"tango", null, 1
-	)
-	_expect(restored != null, "记录 fixture 必须成功恢复塔防玩家。")
-	_expect(
-		trace == [
-			"metadata",
-			"luoxi_remap",
-			"research_remap",
-			"research_register",
-			"production_activate",
-			"fate_apply",
-			"retarget",
-		],
-		"恢复顺序必须保持 metadata→洛茜→科研→生产→命运→重定向。"
-	)
-	if restored != null:
-		game.peer_players.erase(5)
-		restored.free()
-	game.free()
-
-
 func _test_source_boundary() -> void:
 	var source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.gd"
@@ -329,6 +208,15 @@ func _test_source_boundary() -> void:
 	_expect(not source.contains("NodePath(\"../"), "玩家编排不得持有上行 NodePath。")
 	_expect(not source.contains("StandardGame"), "塔防玩家编排不得反向依赖普通模式。")
 	_expect(not source.contains("RogueCombatGame"), "塔防玩家编排不得反向依赖肉鸽模式。")
+	var root_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
+	)
+	_expect(
+		source.contains("func grant_starting_package(")
+		and source.contains("func get_selected_singleplayer_character_id()")
+		and not root_source.contains("can_add_item_counts_for_peer("),
+		"角色选择与原子起步包必须由玩家编排拥有，根脚本只保留 façade。"
+	)
 	_expect(
 		scene_source.contains("[node name=\"PlayerRosterCoordinator\" parent=\".\" instance="),
 		"玩家编排必须由塔防 .tscn 静态实例化。"

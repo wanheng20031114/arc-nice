@@ -1,6 +1,7 @@
 extends Node
 class_name TowerDefensePlayerRosterCoordinator
 
+const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const INITIAL_PLAYER_XIRANG := 1000
 
 signal player_runtime_binding_requested(player: Player)
@@ -21,6 +22,7 @@ var spawn_slot_indices: Dictionary[int, int] = {}
 var wave_death_counts: Dictionary = {}
 var singleplayer_respawn_time_left := -1.0
 var singleplayer_respawn_last_seconds := -1
+var starting_package_granted := false
 
 var _player_parent: Node
 var _spawn_point: Marker2D
@@ -103,6 +105,15 @@ func configure_roster(names: Dictionary, character_ids: Dictionary) -> void:
 		player_names[key] = names_copy[key]
 	for key in character_ids_copy:
 		player_character_ids[key] = character_ids_copy[key]
+
+
+func get_selected_singleplayer_character_id() -> StringName:
+	var character_id := _default_character_id
+	if _run_state != null:
+		character_id = _run_state.get_selected_character_id()
+	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+		return _default_character_id
+	return character_id
 
 
 func configure_singleplayer(character_id: StringName) -> Player:
@@ -188,6 +199,59 @@ func apply_initial_player_xirang() -> void:
 			continue
 		player_instance.current_xirang = INITIAL_PLAYER_XIRANG
 		player_instance.xirang_changed.emit(player_instance.current_xirang, 0)
+
+
+func grant_starting_package(
+	progression_config: TowerDefenseProgressionConfig
+) -> bool:
+	if starting_package_granted:
+		return true
+	if _run_state == null or progression_config == null:
+		return false
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		return false
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		var items := progression_config.get_starting_items(true)
+		var amounts := progression_config.get_starting_amounts(true)
+		if not _run_state.can_add_item_counts(items, amounts):
+			return false
+		if not _run_state.try_add_item_counts_if_revision(
+			items,
+			amounts,
+			_run_state.get_inventory_revision()
+		):
+			return false
+		starting_package_granted = true
+		return true
+
+	var peer_ids: Array[int] = []
+	for peer_id_variant in peer_players:
+		peer_ids.append(int(peer_id_variant))
+	peer_ids.sort()
+	if peer_ids.is_empty() or local_peer_id <= 0 or not peer_players.has(local_peer_id):
+		return false
+	for peer_id in peer_ids:
+		_run_state.ensure_multiplayer_peer_state(peer_id)
+		var include_team_items := peer_id == local_peer_id
+		if not _run_state.can_add_item_counts_for_peer(
+			peer_id,
+			progression_config.get_starting_items(include_team_items),
+			progression_config.get_starting_amounts(include_team_items)
+		):
+			return false
+	for peer_id in peer_ids:
+		var include_team_items := peer_id == local_peer_id
+		if not _run_state.try_add_item_counts_for_peer_if_revision(
+			peer_id,
+			progression_config.get_starting_items(include_team_items),
+			progression_config.get_starting_amounts(include_team_items),
+			_run_state.get_inventory_revision_for_peer(peer_id),
+			false
+		):
+			return false
+	starting_package_granted = true
+	_run_state.notify_inventory_snapshot_committed()
+	return true
 
 
 func remove_multiplayer_player(peer_id: int) -> Player:
