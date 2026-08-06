@@ -15,9 +15,11 @@ const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := (
 	"res://resources/config/enemies/capoo_sniper.tres"
 )
-const DEFAULT_MUSIC_VOLUME_DB := -6.0
-const MUSIC_FADE_IN_SECONDS := 3.0
-const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
+const DEFAULT_MUSIC_VOLUME_DB := StandardMusicCoordinator.DEFAULT_MUSIC_VOLUME_DB
+const MUSIC_FADE_IN_SECONDS := StandardMusicCoordinator.MUSIC_FADE_IN_SECONDS
+const MUSIC_FADE_IN_START_VOLUME_DB := (
+	StandardMusicCoordinator.MUSIC_FADE_IN_START_VOLUME_DB
+)
 
 @export_group("普通模式规则")
 @export var linglan_boss_enabled: bool = true
@@ -51,6 +53,9 @@ var player_roster_coordinator: StandardPlayerRosterCoordinator:
 var merchant_coordinator: StandardMerchantCoordinator:
 	get:
 		return get_node_or_null("MerchantCoordinator") as StandardMerchantCoordinator
+var music_coordinator: StandardMusicCoordinator:
+	get:
+		return get_node_or_null("MusicCoordinator") as StandardMusicCoordinator
 var merchant: ZhuangfangyiMerchant:
 	get:
 		var coordinator := merchant_coordinator
@@ -118,7 +123,20 @@ var bosses: Array[Resource]:
 	set(value):
 		if campaign_wave_coordinator != null:
 			campaign_wave_coordinator.replace_bosses(value)
-var music_fade_tween: Tween = null
+var _pending_music_fade_tween: Tween = null
+var music_fade_tween: Tween:
+	get:
+		var coordinator := music_coordinator
+		return (
+			coordinator.music_fade_tween
+			if coordinator != null and coordinator.is_bound()
+			else _pending_music_fade_tween
+		)
+	set(value):
+		_pending_music_fade_tween = value
+		var coordinator := music_coordinator
+		if coordinator != null and coordinator.is_bound():
+			coordinator.replace_music_fade_tween(value)
 var _pending_luoxi_collectible_claim_counts: Dictionary = {}
 var luoxi_collectible_claim_counts: Dictionary:
 	get:
@@ -307,6 +325,12 @@ func _get_default_mode_definition() -> GameModeDefinition:
 
 
 func _initialize_mode_runtime_before_validation() -> void:
+	var standard_music := music_coordinator
+	if standard_music != null:
+		standard_music.bind_dependencies(music_player, self)
+		standard_music.replace_music_fade_tween(
+			_pending_music_fade_tween
+		)
 	pickup_registry.bind_standard_dependencies(
 		runtime_mode,
 		multiplayer_pickups,
@@ -455,6 +479,12 @@ func _connect_boss_coordinator_signals() -> void:
 
 
 func _validate_mode_scene_content() -> bool:
+	if music_coordinator == null:
+		push_error("StandardGame: 缺少静态 MusicCoordinator 节点。")
+		return false
+	if not music_coordinator.is_bound():
+		push_error("StandardGame: MusicCoordinator 依赖未完整绑定。")
+		return false
 	if pickup_registry == null:
 		push_error("StandardGame: 缺少静态 PickupRegistry 节点。")
 		return false
@@ -1142,24 +1172,16 @@ func _play_remote_boss_intro(boss_config: BossConfig) -> void:
 	boss_coordinator.play_remote_intro(boss_config)
 
 func _update_wave_music(wave_config: WaveConfig) -> void:
-	if wave_config.music == null:
-		return
-	_play_music_stream(wave_config.music, DEFAULT_MUSIC_VOLUME_DB, 0.0, true)
+	music_coordinator.update_wave_music(wave_config)
 
 func _update_post_wave_music(flow_step: FlowStepConfig) -> void:
-	var wave_config := flow_step as WaveConfig
-	if wave_config == null or wave_config.post_wave_music == null:
-		return
-	_play_music_stream(wave_config.post_wave_music, DEFAULT_MUSIC_VOLUME_DB, 0.0, true)
+	music_coordinator.update_post_wave_music(flow_step)
 
 func _update_boss_music(boss_config: BossConfig) -> void:
-	if boss_config == null or boss_config.music == null:
-		return
-	_play_music_stream(boss_config.music, boss_config.music_volume_db, boss_config.music_loop_offset, false)
+	music_coordinator.update_boss_music(boss_config)
 
 func pause_all_background_music() -> void:
-	_stop_music_fade_tween()
-	_pause_background_music_players(self)
+	music_coordinator.pause_all_background_music()
 
 func _play_music_stream(
 	stream: AudioStream,
@@ -1167,71 +1189,27 @@ func _play_music_stream(
 	loop_offset: float = 0.0,
 	fade_in: bool = false
 ) -> void:
-	if stream == null:
-		return
-	_configure_music_loop(stream, loop_offset)
-	music_player.stream_paused = false
-	if music_player.stream == stream and music_player.playing:
-		return
-	_stop_music_fade_tween()
-	music_player.stream = stream
-	music_player.volume_db = MUSIC_FADE_IN_START_VOLUME_DB if fade_in else volume_db
-	music_player.play()
-	if fade_in:
-		var fade_tween := create_tween()
-		music_fade_tween = fade_tween
-		fade_tween.tween_property(
-			music_player,
-			"volume_db",
-			volume_db,
-			MUSIC_FADE_IN_SECONDS
-		)
-		fade_tween.finished.connect(
-			func() -> void:
-				if music_fade_tween == fade_tween:
-					music_fade_tween = null
-		)
+	music_coordinator.play_music_stream(
+		stream,
+		volume_db,
+		loop_offset,
+		fade_in
+	)
 
 func _stop_music_fade_tween() -> void:
-	if music_fade_tween == null:
-		return
-	music_fade_tween.kill()
-	music_fade_tween = null
+	music_coordinator.stop_music_fade_tween()
 
 func _configure_music_loop(stream: AudioStream, loop_offset: float) -> void:
-	if stream == null:
-		return
-	if _audio_stream_has_property(stream, &"loop"):
-		stream.set(&"loop", true)
-	if _audio_stream_has_property(stream, &"loop_offset"):
-		stream.set(&"loop_offset", maxf(loop_offset, 0.0))
+	music_coordinator.configure_music_loop(stream, loop_offset)
 
 func _audio_stream_has_property(stream: AudioStream, property_name: StringName) -> bool:
-	for property in stream.get_property_list():
-		if property.get("name") == property_name:
-			return true
-	return false
+	return music_coordinator.audio_stream_has_property(stream, property_name)
 
 func _pause_background_music_players(root_node: Node) -> void:
-	if root_node == null:
-		return
-	if _is_background_music_player(root_node):
-		root_node.set(&"stream_paused", true)
-	for child in root_node.get_children():
-		_pause_background_music_players(child)
+	music_coordinator.pause_background_music_players(root_node)
 
 func _is_background_music_player(node: Node) -> bool:
-	if not (
-		node is AudioStreamPlayer
-		or node is AudioStreamPlayer2D
-		or node is AudioStreamPlayer3D
-	):
-		return false
-	if not bool(node.get(&"playing")):
-		return false
-	var bus_name := String(node.get(&"bus")).to_lower()
-	var node_name := String(node.name).to_lower()
-	return bus_name == "music" or node_name.contains("music") or node_name.contains("bgm")
+	return music_coordinator.is_background_music_player(node)
 
 func request_tango_charge_started(direction: Vector2) -> bool:
 	return player_roster_coordinator.request_tango_charge_started(direction)

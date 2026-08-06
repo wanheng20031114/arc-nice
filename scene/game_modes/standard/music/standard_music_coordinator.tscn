@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d4p7k2s9x5m1c"]
+
+[ext_resource type="Script" uid="uid://c6w3n8q2m9v4b" path="res://scene/game_modes/standard/music/standard_music_coordinator.gd" id="1_coordinator"]
+
+[node name="StandardMusicCoordinator" type="Node"]
+script = ExtResource("1_coordinator")
