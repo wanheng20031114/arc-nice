@@ -8,6 +8,9 @@ const MpWorldFlowCoordinatorScript := preload(
 )
 const BOSS_CONFIG_PATH := "res://resources/config/bosses/boss_01_linglan.tres"
 const PICKUP_CONFIG_PATH := "res://resources/config/materials/material_wood.tres"
+const IMMEDIATE_PICKUP_CONFIG_PATH := (
+	"res://resources/config/pickups/pickup_speed.tres"
+)
 
 
 class ProbeRuntime:
@@ -50,6 +53,28 @@ class ProbeEnemyCoordinator:
 
 	func get_remote_enemy_count() -> int:
 		return remote_count
+
+
+class ProbePlayer:
+	extends Player
+
+	var immediate_apply_count := 0
+	var immediate_apply_healing := true
+	var inventory_feedback_count := 0
+	var last_pickup_config: PickupConfig = null
+
+	func apply_pickup(
+		config: PickupConfig,
+		apply_healing: bool = true
+	) -> bool:
+		immediate_apply_count += 1
+		immediate_apply_healing = apply_healing
+		last_pickup_config = config
+		return config != null
+
+	func play_world_inventory_pickup_feedback(config: PickupConfig) -> void:
+		inventory_feedback_count += 1
+		last_pickup_config = config
 
 
 class ProbeModeAdapter:
@@ -158,6 +183,11 @@ func _run() -> void:
 	var mode_adapter := ProbeModeAdapter.new()
 	var enemy_coordinator := ProbeEnemyCoordinator.new()
 	var gameplay_gateway := MultiplayerGameplayGateway.new()
+	var run_state := RunStateStore.new()
+	var net_manager := NetManagerStore.new()
+	var pickup_container := Node2D.new()
+	runtime.add_child(pickup_container)
+	runtime.enemy_container = pickup_container
 	_expect(coordinator != null, "WorldFlowCoordinator 场景必须可实例化。")
 	if coordinator == null:
 		quit(1)
@@ -166,13 +196,23 @@ func _run() -> void:
 	var host_events: Array[StringName] = []
 	var progress_packets: Array[Dictionary] = []
 	var terminal_events: Array[bool] = []
-	coordinator.pickup_spawn_broadcast_requested.connect(
-		func(_net_id: int, _path: String, _position: Vector2) -> void:
-			host_events.append(&"pickup_spawn")
+	var pickup_broadcast_packets: Array[Dictionary] = []
+	var pickup_peer_packets: Array[Dictionary] = []
+	coordinator.rpc_broadcast_requested.connect(
+		func(method_name: StringName, arguments: Array) -> void:
+			host_events.append(method_name)
+			pickup_broadcast_packets.append({
+				"method_name": method_name,
+				"arguments": arguments.duplicate(true),
+			})
 	)
-	coordinator.pickup_remove_broadcast_requested.connect(
-		func(_net_id: int) -> void:
-			host_events.append(&"pickup_remove")
+	coordinator.rpc_to_peer_requested.connect(
+		func(peer_id: int, method_name: StringName, arguments: Array) -> void:
+			pickup_peer_packets.append({
+				"peer_id": peer_id,
+				"method_name": method_name,
+				"arguments": arguments.duplicate(true),
+			})
 	)
 	coordinator.merchant_active_broadcast_requested.connect(
 		func(_active: bool) -> void:
@@ -207,14 +247,18 @@ func _run() -> void:
 			terminal_events.append(true)
 	)
 
+	run_state.begin_new_run(&"weishidaier", false)
+	net_manager.net_role = NetManagerStore.NetRole.HOST
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	coordinator.bind_runtime(
 		runtime,
 		mode_adapter,
 		enemy_coordinator,
-		gameplay_gateway
+		gameplay_gateway,
+		run_state,
+		net_manager
 	)
-	_expect(coordinator.is_bound(), "协调器必须绑定四个强类型运行时依赖。")
+	_expect(coordinator.is_bound(), "协调器必须绑定全部六个强类型运行时依赖。")
 	_expect(
 		coordinator.request_authoritative_wave_start(7)
 		and mode_adapter.wave_start_peer_id == 7,
@@ -241,18 +285,63 @@ func _run() -> void:
 	var pickup_config := load(PICKUP_CONFIG_PATH) as PickupConfig
 	var boss_config := load(BOSS_CONFIG_PATH) as BossConfig
 	_expect(pickup_config != null and boss_config != null, "smoke 配置必须可加载。")
+	var authoritative_inventory_snapshot: Dictionary = {}
+	var live_pickup: Pickup = null
 	if pickup_config != null:
+		live_pickup = Pickup.new()
+		live_pickup.config = pickup_config
+		live_pickup.global_position = Vector2(11, 12)
+		runtime.multiplayer_pickups[32] = live_pickup
+		_expect(
+			coordinator.send_live_pickup_roster_to_peer(9) == 1
+			and pickup_peer_packets.size() == 1
+			and int(pickup_peer_packets[0].get("peer_id", 0)) == 9
+			and StringName(
+				pickup_peer_packets[0].get("method_name", &"")
+			) == &"net_pickup_spawned"
+			and pickup_peer_packets[0].get("arguments", []) == [
+				32,
+				PICKUP_CONFIG_PATH,
+				11.0,
+				12.0,
+			],
+			"迟加入拾取物清单必须按固定参数顺序向目标 peer 出站。"
+		)
+		run_state.ensure_multiplayer_peer_state(7)
+		_expect(
+			run_state.try_add_item_for_peer(7, pickup_config),
+			"Host smoke 必须先构造已提交的拾取物背包状态。"
+		)
 		gameplay_gateway.pickup_spawned.emit(31, pickup_config, Vector2(4, 5))
 		gameplay_gateway.pickup_removed.emit(31)
+		gameplay_gateway.pickup_collected.emit(31, 7, pickup_config, false)
+		if not pickup_broadcast_packets.is_empty():
+			var collected_packet := pickup_broadcast_packets.back() as Dictionary
+			var collected_arguments := (
+				collected_packet.get("arguments", []) as Array
+			)
+			if collected_arguments.size() == 5:
+				authoritative_inventory_snapshot = (
+					collected_arguments[4] as Dictionary
+				).duplicate(true)
+			_expect(
+				StringName(collected_packet.get("method_name", &""))
+				== &"net_pickup_collected"
+				and collected_arguments.size() == 5
+				and int(authoritative_inventory_snapshot.get("revision", -1))
+				== run_state.get_inventory_revision_for_peer(7),
+				"Host 收集事件必须携带已提交 revision 的权威背包快照。"
+			)
 	mode_adapter.merchant_active_changed.emit(true)
 	if boss_config != null:
 		mode_adapter.boss_started.emit(91, boss_config, Vector2(8, 9))
 	mode_adapter.defeat_started.emit()
 	mode_adapter.victory_started.emit()
 	_expect(
-		host_events.slice(host_events.size() - 6) == [
-			&"pickup_spawn",
-			&"pickup_remove",
+		host_events.slice(host_events.size() - 7) == [
+			&"net_pickup_spawned",
+			&"net_pickup_removed",
+			&"net_pickup_collected",
 			&"merchant",
 			&"boss",
 			&"defeat",
@@ -263,13 +352,109 @@ func _run() -> void:
 	)
 
 	coordinator.unbind_runtime(runtime)
+	runtime.multiplayer_pickups.erase(32)
+	if live_pickup != null:
+		live_pickup.free()
+	run_state.begin_new_run(&"weishidaier", false)
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	coordinator.bind_runtime(
 		runtime,
 		mode_adapter,
 		enemy_coordinator,
-		gameplay_gateway
+		gameplay_gateway,
+		run_state,
+		net_manager
 	)
+	var collector := ProbePlayer.new()
+	runtime.peer_players[7] = collector
+	var immediate_pickup_config := load(
+		IMMEDIATE_PICKUP_CONFIG_PATH
+	) as PickupConfig
+	_expect(immediate_pickup_config != null, "即时拾取配置必须可加载。")
+	if pickup_config != null and immediate_pickup_config != null:
+		coordinator.receive_pickup_spawned(
+			41,
+			PICKUP_CONFIG_PATH,
+			Vector2(21, 22)
+		)
+		var spawned_pickup := runtime.get_pickup_for_net_id(41)
+		_expect(
+			spawned_pickup != null
+			and spawned_pickup.config == pickup_config
+			and spawned_pickup.global_position == Vector2(21, 22)
+			and spawned_pickup.collision_layer == 0
+			and spawned_pickup.collision_mask == 0,
+			"客户端生成拾取物必须加载配置、定位并关闭本地碰撞。"
+		)
+		coordinator.receive_pickup_removed(41)
+		_expect(
+			not runtime.multiplayer_pickups.has(41),
+			"客户端移除事件必须立即清理拾取物索引。"
+		)
+
+		coordinator.receive_pickup_spawned(
+			42,
+			IMMEDIATE_PICKUP_CONFIG_PATH,
+			Vector2.ZERO
+		)
+		coordinator.receive_pickup_collected(
+			42,
+			7,
+			IMMEDIATE_PICKUP_CONFIG_PATH,
+			true
+		)
+		_expect(
+			not runtime.multiplayer_pickups.has(42)
+			and collector.immediate_apply_count == 1
+			and not collector.immediate_apply_healing
+			and collector.last_pickup_config == immediate_pickup_config,
+			"即时拾取必须先清理实例，再以禁用治疗的客户端重放应用。"
+		)
+
+		run_state.ensure_multiplayer_peer_state(7)
+		coordinator.receive_pickup_spawned(
+			43,
+			PICKUP_CONFIG_PATH,
+			Vector2.ZERO
+		)
+		coordinator.receive_pickup_collected(
+			43,
+			7,
+			PICKUP_CONFIG_PATH,
+			false,
+			authoritative_inventory_snapshot
+		)
+		var applied_inventory_revision := (
+			run_state.get_inventory_revision_for_peer(7)
+		)
+		_expect(
+			not runtime.multiplayer_pickups.has(43)
+			and applied_inventory_revision
+			== int(authoritative_inventory_snapshot.get("revision", -1))
+			and collector.inventory_feedback_count == 1
+			and collector.last_pickup_config == pickup_config,
+			"背包拾取必须应用更新的 revision 快照并只播放一次收入反馈。"
+		)
+		coordinator.receive_pickup_spawned(
+			44,
+			PICKUP_CONFIG_PATH,
+			Vector2.ZERO
+		)
+		coordinator.receive_pickup_collected(
+			44,
+			7,
+			PICKUP_CONFIG_PATH,
+			false,
+			authoritative_inventory_snapshot
+		)
+		_expect(
+			not runtime.multiplayer_pickups.has(44)
+			and run_state.get_inventory_revision_for_peer(7)
+			== applied_inventory_revision
+			and collector.inventory_feedback_count == 1,
+			"重复或同 revision 背包快照不得重复播放拾取反馈。"
+		)
 	coordinator.receive_merchant_active(true)
 	coordinator.receive_flow_state(&"wave_active", 2, 3)
 	enemy_coordinator.remote_count = 12
@@ -316,12 +501,17 @@ func _run() -> void:
 		and int(metrics.get("last_applied_remote_enemy_count", 0)) == -1,
 		"解绑必须清空所有会话态。"
 	)
+	_test_pickup_delegation_contract()
 
 	coordinator.free()
 	gameplay_gateway.free()
 	enemy_coordinator.free()
 	mode_adapter.free()
+	runtime.peer_players.erase(7)
+	collector.free()
 	runtime.free()
+	run_state.free()
+	net_manager.free()
 	if failures.is_empty():
 		print("MP_WORLD_FLOW_COORDINATOR_SMOKE_TEST_OK")
 		quit(0)
@@ -334,3 +524,33 @@ func _run() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _test_pickup_delegation_contract() -> void:
+	var root_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/mp_game.gd"
+	)
+	var coordinator_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
+	)
+	_expect(
+		root_source.contains(
+			"world_flow_coordinator.send_live_pickup_roster_to_peer(peer_id)"
+		)
+		and root_source.contains(
+			"world_flow_coordinator.receive_pickup_collected("
+		)
+		and not root_source.contains("func _on_host_pickup_collected("),
+		"MpGame 必须把迟加入清单和收集应用收口为 WorldFlow 薄门面。"
+	)
+	_expect(
+		coordinator_source.contains(
+			"_gameplay_gateway.pickup_collected, _on_host_pickup_collected"
+		)
+		and coordinator_source.contains(
+			"_run_state.apply_inventory_snapshot_for_peer("
+		)
+		and coordinator_source.contains("signal rpc_to_peer_requested(")
+		and coordinator_source.contains("signal rpc_broadcast_requested("),
+		"WorldFlow 必须拥有强类型拾取信号、背包 revision 与统一出站边界。"
+	)

@@ -4,12 +4,12 @@ class_name MpWorldFlowCoordinator
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS := 0.1
 
-signal pickup_spawn_broadcast_requested(
-	net_id: int,
-	config_path: String,
-	spawn_position: Vector2
+signal rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
 )
-signal pickup_remove_broadcast_requested(net_id: int)
+signal rpc_broadcast_requested(method_name: StringName, arguments: Array)
 signal merchant_active_broadcast_requested(active: bool)
 signal wave_progress_broadcast_requested(
 	progress: Dictionary,
@@ -33,6 +33,8 @@ var _runtime: CombatRuntimeBase = null
 var _mode_adapter: MultiplayerModeAdapter = null
 var _enemy_coordinator: MpEnemyCoordinator = null
 var _gameplay_gateway: MultiplayerGameplayGateway = null
+var _run_state: RunStateStore = null
+var _net_manager: NetManagerStore = null
 var _pending_wave_progress: Dictionary = {}
 var _wave_progress_flush_time_left := WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 var _client_has_received_flow_state := false
@@ -43,17 +45,23 @@ func bind_runtime(
 	runtime_instance: CombatRuntimeBase,
 	mode_adapter_instance: MultiplayerModeAdapter,
 	enemy_coordinator_instance: MpEnemyCoordinator,
-	gameplay_gateway_instance: MultiplayerGameplayGateway
+	gameplay_gateway_instance: MultiplayerGameplayGateway,
+	run_state_instance: RunStateStore,
+	net_manager_instance: NetManagerStore
 ) -> void:
 	assert(runtime_instance != null, "MpWorldFlowCoordinator 缺少战斗运行时。")
 	assert(mode_adapter_instance != null, "MpWorldFlowCoordinator 缺少模式适配器。")
 	assert(enemy_coordinator_instance != null, "MpWorldFlowCoordinator 缺少敌人协调器。")
 	assert(gameplay_gateway_instance != null, "MpWorldFlowCoordinator 缺少玩法网关。")
+	assert(run_state_instance != null, "MpWorldFlowCoordinator 缺少 RunStateStore。")
+	assert(net_manager_instance != null, "MpWorldFlowCoordinator 缺少 NetManagerStore。")
 	if (
 		_runtime == runtime_instance
 		and _mode_adapter == mode_adapter_instance
 		and _enemy_coordinator == enemy_coordinator_instance
 		and _gameplay_gateway == gameplay_gateway_instance
+		and _run_state == run_state_instance
+		and _net_manager == net_manager_instance
 	):
 		return
 	if _runtime != null:
@@ -63,6 +71,8 @@ func bind_runtime(
 	_mode_adapter = mode_adapter_instance
 	_enemy_coordinator = enemy_coordinator_instance
 	_gameplay_gateway = gameplay_gateway_instance
+	_run_state = run_state_instance
+	_net_manager = net_manager_instance
 	reset_session_state()
 	_connect_runtime_signals()
 
@@ -76,6 +86,8 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	_mode_adapter = null
 	_enemy_coordinator = null
 	_gameplay_gateway = null
+	_run_state = null
+	_net_manager = null
 
 
 func is_bound() -> bool:
@@ -88,12 +100,17 @@ func is_bound() -> bool:
 		and is_instance_valid(_enemy_coordinator)
 		and _gameplay_gateway != null
 		and is_instance_valid(_gameplay_gateway)
+		and _run_state != null
+		and is_instance_valid(_run_state)
+		and _net_manager != null
+		and is_instance_valid(_net_manager)
 	)
 
 
 func is_host_authority() -> bool:
 	return (
 		is_bound()
+		and _net_manager.is_host()
 		and _runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	)
@@ -102,6 +119,7 @@ func is_host_authority() -> bool:
 func is_client_view() -> bool:
 	return (
 		is_bound()
+		and _net_manager.is_client()
 		and _runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	)
 
@@ -283,6 +301,28 @@ func build_live_pickup_records() -> Array[Dictionary]:
 	return records
 
 
+func send_live_pickup_roster_to_peer(peer_id: int) -> int:
+	if peer_id <= 0 or not is_host_authority():
+		return 0
+	var sent_count := 0
+	for record in build_live_pickup_records():
+		var net_id := int(record.get("net_id", 0))
+		var config_path := String(record.get("config_path", ""))
+		var spawn_position := record.get("position", Vector2.ZERO) as Vector2
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_pickup_spawned",
+			[
+				net_id,
+				config_path,
+				spawn_position.x,
+				spawn_position.y,
+			]
+		)
+		sent_count += 1
+	return sent_count
+
+
 func receive_pickup_removed(net_id: int) -> void:
 	if not is_client_view() or net_id <= 0:
 		return
@@ -318,6 +358,42 @@ func receive_pickup_spawned(
 	pickup.collision_layer = 0
 	pickup.collision_mask = 0
 	_runtime.multiplayer_pickups[net_id] = pickup
+
+
+func receive_pickup_collected(
+	net_id: int,
+	collector_peer_id: int,
+	config_path: String,
+	applied_immediately: bool,
+	inventory_snapshot: Dictionary = {}
+) -> void:
+	if not is_client_view():
+		return
+	receive_pickup_removed(net_id)
+	if config_path.is_empty():
+		return
+	var pickup_config := load(config_path) as PickupConfig
+	if pickup_config == null:
+		return
+	var player_node := _runtime.get_player_for_peer(collector_peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	if applied_immediately:
+		player_node.apply_pickup(pickup_config, false)
+	elif not inventory_snapshot.is_empty():
+		var inventory_revision_before := (
+			_run_state.get_inventory_revision_for_peer(collector_peer_id)
+		)
+		var snapshot_applied := _run_state.apply_inventory_snapshot_for_peer(
+			collector_peer_id,
+			inventory_snapshot
+		)
+		if (
+			snapshot_applied
+			and _run_state.get_inventory_revision_for_peer(collector_peer_id)
+			> inventory_revision_before
+		):
+			player_node.play_world_inventory_pickup_feedback(pickup_config)
 
 
 func reset_session_state() -> void:
@@ -356,6 +432,7 @@ func _connect_runtime_signals() -> void:
 	)
 	_connect_signal(_gameplay_gateway.pickup_spawned, _on_host_pickup_spawned)
 	_connect_signal(_gameplay_gateway.pickup_removed, _on_host_pickup_removed)
+	_connect_signal(_gameplay_gateway.pickup_collected, _on_host_pickup_collected)
 
 
 func _disconnect_runtime_signals() -> void:
@@ -384,6 +461,10 @@ func _disconnect_runtime_signals() -> void:
 			_gameplay_gateway.pickup_removed,
 			_on_host_pickup_removed
 		)
+		_disconnect_signal(
+			_gameplay_gateway.pickup_collected,
+			_on_host_pickup_collected
+		)
 
 
 func _on_host_pickup_spawned(
@@ -391,19 +472,57 @@ func _on_host_pickup_spawned(
 	pickup_config: PickupConfig,
 	spawn_position: Vector2
 ) -> void:
-	if not is_host_authority() or pickup_config == null:
+	if (
+		not is_host_authority()
+		or pickup_config == null
+		or pickup_config.resource_path.is_empty()
+	):
 		return
-	pickup_spawn_broadcast_requested.emit(
-		net_id,
-		pickup_config.resource_path,
-		spawn_position
+	rpc_broadcast_requested.emit(
+		&"net_pickup_spawned",
+		[
+			net_id,
+			pickup_config.resource_path,
+			spawn_position.x,
+			spawn_position.y,
+		]
 	)
 
 
 func _on_host_pickup_removed(net_id: int) -> void:
 	if not is_host_authority() or net_id <= 0:
 		return
-	pickup_remove_broadcast_requested.emit(net_id)
+	rpc_broadcast_requested.emit(&"net_pickup_removed", [net_id])
+
+
+func _on_host_pickup_collected(
+	net_id: int,
+	collector_peer_id: int,
+	pickup_config: PickupConfig,
+	applied_immediately: bool
+) -> void:
+	if not is_host_authority():
+		return
+	var config_path := pickup_config.resource_path if pickup_config != null else ""
+	var inventory_snapshot := {}
+	if (
+		not applied_immediately
+		and collector_peer_id > 0
+		and _run_state.has_multiplayer_peer_state(collector_peer_id)
+	):
+		inventory_snapshot = _run_state.export_inventory_snapshot_for_peer(
+			collector_peer_id
+		)
+	rpc_broadcast_requested.emit(
+		&"net_pickup_collected",
+		[
+			net_id,
+			collector_peer_id,
+			config_path,
+			applied_immediately,
+			inventory_snapshot,
+		]
+	)
 
 
 func _on_host_merchant_active_changed(active: bool) -> void:

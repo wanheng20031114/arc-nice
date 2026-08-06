@@ -141,12 +141,12 @@ func _ready() -> void:
 func _connect_world_flow_coordinator_signals() -> void:
 	var signal_bindings: Array[Array] = [
 		[
-			world_flow_coordinator.pickup_spawn_broadcast_requested,
-			_on_world_flow_pickup_spawn_broadcast_requested,
+			world_flow_coordinator.rpc_to_peer_requested,
+			_on_world_flow_rpc_to_peer_requested,
 		],
 		[
-			world_flow_coordinator.pickup_remove_broadcast_requested,
-			_on_world_flow_pickup_remove_broadcast_requested,
+			world_flow_coordinator.rpc_broadcast_requested,
+			_on_world_flow_rpc_broadcast_requested,
 		],
 		[
 			world_flow_coordinator.merchant_active_broadcast_requested,
@@ -182,6 +182,28 @@ func _connect_world_flow_coordinator_signals() -> void:
 		var target: Callable = binding[1]
 		if not source.is_connected(target):
 			source.connect(target)
+
+
+func _on_world_flow_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	if peer_id <= 0 or not is_inside_tree() or not net_manager.is_host():
+		return
+	_record_outbound_rpc(method_name, arguments)
+	var rpc_arguments: Array = [peer_id, method_name]
+	rpc_arguments.append_array(arguments)
+	callv(&"rpc_id", rpc_arguments)
+
+
+func _on_world_flow_rpc_broadcast_requested(
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(method_name, arguments)
 
 
 func _on_player_life_rpc_broadcast_requested(
@@ -1659,7 +1681,9 @@ func _setup_game(mode: int) -> bool:
 		game,
 		mode_adapter,
 		enemy_coordinator,
-		gameplay_gateway
+		gameplay_gateway,
+		run_state,
+		net_manager
 	)
 	player_coordinator.bind_life_dependencies(
 		net_manager,
@@ -1729,7 +1753,6 @@ func _setup_game(mode: int) -> bool:
 		tower_world_coordinator.reset_session_state()
 		tower_fate_coordinator.reset_session_state()
 	if net_manager.is_host():
-		gameplay_gateway.pickup_collected.connect(_on_host_pickup_collected)
 		if _linglan_boss_runtime_port != null:
 			_linglan_boss_runtime_port.airdrop_started.connect(
 				_on_host_linglan_airdrop_started
@@ -1853,7 +1876,7 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 		)
 	merchant_transactions_coordinator.send_offer_state_if_present(peer_id)
 	enemy_coordinator.send_live_spawn_roster_to_peer(peer_id)
-	_send_live_pickup_roster_to_peer(peer_id)
+	world_flow_coordinator.send_live_pickup_roster_to_peer(peer_id)
 	if _has_tower_mode():
 		tower_world_coordinator.request_base_health_snapshot_for_peer(peer_id)
 	var progress_snapshot := world_flow_coordinator.get_wave_progress_snapshot()
@@ -1965,30 +1988,6 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 			0,
 			-1
 		)
-
-
-func _send_live_pickup_roster_to_peer(peer_id: int) -> void:
-	for record in world_flow_coordinator.build_live_pickup_records():
-		var net_id := int(record.get("net_id", 0))
-		var config_path := String(record.get("config_path", ""))
-		var spawn_position := record.get("position", Vector2.ZERO) as Vector2
-		_record_outbound_rpc(
-			&"net_pickup_spawned",
-			[
-				net_id,
-				config_path,
-				spawn_position.x,
-				spawn_position.y,
-			]
-		)
-		net_pickup_spawned.rpc_id(
-			peer_id,
-			net_id,
-			config_path,
-			spawn_position.x,
-			spawn_position.y
-		)
-
 
 func _send_runtime_world_manifest_to_peer(peer_id: int) -> void:
 	var live_enemy_ids := PackedInt32Array()
@@ -4182,55 +4181,6 @@ func broadcast_enemy_lightning_chain(points: PackedVector2Array) -> void:
 	enemy_coordinator.broadcast_enemy_lightning_chain(points)
 
 
-func _on_world_flow_pickup_remove_broadcast_requested(net_id: int) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
-		return
-	_rpc_to_connected_clients(&"net_pickup_removed", [net_id])
-
-
-func _on_world_flow_pickup_spawn_broadcast_requested(
-	net_id: int,
-	config_path: String,
-	spawn_position: Vector2
-) -> void:
-	if config_path.is_empty() or not is_inside_tree() or not net_manager.is_host():
-		return
-	_rpc_to_connected_clients(
-		&"net_pickup_spawned",
-		[net_id, config_path, spawn_position.x, spawn_position.y]
-	)
-
-
-func _on_host_pickup_collected(
-	net_id: int,
-	collector_peer_id: int,
-	pickup_config: PickupConfig,
-	applied_immediately: bool
-) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
-		return
-	var config_path := pickup_config.resource_path if pickup_config != null else ""
-	var inventory_snapshot := {}
-	if (
-		not applied_immediately
-		and collector_peer_id > 0
-		and run_state.has_multiplayer_peer_state(collector_peer_id)
-	):
-		inventory_snapshot = run_state.export_inventory_snapshot_for_peer(
-			collector_peer_id
-		)
-	_rpc_to_connected_clients(
-		&"net_pickup_collected",
-		[
-			net_id,
-			collector_peer_id,
-			config_path,
-			applied_immediately,
-			inventory_snapshot,
-		]
-	)
-
-
 func _on_world_flow_merchant_active_broadcast_requested(active: bool) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
@@ -5080,36 +5030,13 @@ func net_pickup_collected(
 	applied_immediately: bool,
 	inventory_snapshot: Dictionary = {}
 ) -> void:
-	if game == null or net_manager.is_host():
-		return
-	var pickup: Pickup = game.get_pickup_for_net_id(net_id)
-	if pickup != null and is_instance_valid(pickup):
-		game.multiplayer_pickups.erase(net_id)
-		pickup.queue_free()
-	if config_path.is_empty():
-		return
-	var pickup_config := load(config_path) as PickupConfig
-	if pickup_config == null:
-		return
-	var player_node: Player = game.get_player_for_peer(collector_peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	if applied_immediately:
-		player_node.apply_pickup(pickup_config, false)
-	elif not inventory_snapshot.is_empty():
-		var inventory_revision_before := run_state.get_inventory_revision_for_peer(
-			collector_peer_id
-		)
-		var snapshot_applied := run_state.apply_inventory_snapshot_for_peer(
-			collector_peer_id,
-			inventory_snapshot
-		)
-		if (
-			snapshot_applied
-			and run_state.get_inventory_revision_for_peer(collector_peer_id)
-			> inventory_revision_before
-		):
-			player_node.play_world_inventory_pickup_feedback(pickup_config)
+	world_flow_coordinator.receive_pickup_collected(
+		net_id,
+		collector_peer_id,
+		config_path,
+		applied_immediately,
+		inventory_snapshot
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
