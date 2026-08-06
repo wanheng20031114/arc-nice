@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
 
 var failures: Array[String] = []
@@ -18,7 +18,7 @@ func _run() -> void:
 	# one synthetic process frame. Keep that exhaustive contract independent from
 	# the production frame cap; the dedicated fixture below turns the cap back on.
 	Enemy.navigation_process_frame_budget_enabled = false
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game
@@ -103,7 +103,7 @@ func _run() -> void:
 
 
 func _verify_navigation_phase_distribution(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	enemy_config: EnemyConfig
 ) -> void:
 	const SAMPLE_COUNT := 24
@@ -158,7 +158,7 @@ func _verify_navigation_phase_distribution(
 
 
 func _verify_navigation_next_refresh_cache(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig
 ) -> void:
@@ -266,7 +266,7 @@ func _verify_navigation_next_refresh_cache(
 
 
 func _verify_same_render_navigation_dedupe(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig
 ) -> void:
@@ -398,7 +398,7 @@ func _verify_same_render_navigation_dedupe(
 	Enemy.navigation_process_frame_budget_enabled = saved_budget_switch
 
 
-func _collect_actual_enemy_configs(game: GameTowerDefense) -> Array[EnemyConfig]:
+func _collect_actual_enemy_configs(game: TowerDefenseGame) -> Array[EnemyConfig]:
 	var configs: Array[EnemyConfig] = []
 	var seen_paths: Dictionary = {}
 	for wave_config in game.waves:
@@ -426,7 +426,7 @@ func _append_unique_enemy_config(
 
 
 func _verify_config_navigation_matrix(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig,
 	spawn_points: Array[Marker2D],
@@ -554,7 +554,7 @@ func _verify_config_navigation_matrix(
 
 
 func _verify_enemy_consumer_for_config(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig,
 	spawn_points: Array[Marker2D],
@@ -588,7 +588,7 @@ func _verify_enemy_consumer_for_config(
 
 
 func _verify_diagonal_flow_and_corner_guards(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig
 ) -> void:
@@ -708,7 +708,7 @@ func _verify_diagonal_flow_and_corner_guards(
 
 
 func _verify_deferred_does_not_direct_fallback(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig,
 	spawn_point: Marker2D,
@@ -779,7 +779,7 @@ func _verify_deferred_does_not_direct_fallback(
 
 
 func _verify_far_home_uses_safe_direct_approach(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig,
 	spawn_point: Marker2D,
@@ -877,7 +877,7 @@ func _verify_far_home_uses_safe_direct_approach(
 
 
 func _verify_near_static_verified_motion_contract(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig
 ) -> void:
@@ -1043,7 +1043,7 @@ func _verify_near_static_verified_motion_contract(
 
 
 func _verify_near_moving_verified_motion_contract(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig
 ) -> void:
@@ -1211,7 +1211,7 @@ func _find_open_near_static_fixture(
 
 
 func _spawn_navigation_blocker(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	from_position: Vector2,
 	to_position: Vector2,
 	collision_layer: int
@@ -1275,7 +1275,7 @@ func _verify_blocker_rejects_lightweight_motion(
 
 
 func _verify_near_static_plant_contact_still_stops(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig,
 	fixture: PackedVector2Array
@@ -1439,7 +1439,7 @@ func _find_isolatable_target(agent_grid: AStarGrid2D, start_cell: Vector2i) -> V
 
 
 func _verify_spawn_recovery_motion(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	enemy_configs: Array[EnemyConfig]
 ) -> void:

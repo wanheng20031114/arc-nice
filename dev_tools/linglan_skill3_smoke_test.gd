@@ -5,7 +5,7 @@ const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tre
 const SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tres")
 const SKILL3_CONFIG := preload("res://resources/config/bosses/linglan_skill3.tres")
 const ORB_SCENE := preload("res://scene/boss/linglan/linglan_skill3_light_orb.tscn")
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
@@ -195,8 +195,8 @@ func _test_skill3_scene_contract() -> void:
 
 
 func _test_game_target_entry() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for Skill3 target check.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for Skill3 target check.")
 	if game == null:
 		return
 	game.auto_start_waves = false
@@ -206,7 +206,7 @@ func _test_game_target_entry() -> void:
 	var ground_layer := game.get_node("GroundTileMapLayer") as TileMapLayer
 	var expected_target := ground_layer.to_global(ground_layer.map_to_local(SKILL3_CONFIG.target_cell))
 	var actual_target := game.get_linglan_skill3_target_global_position(SKILL3_CONFIG.target_cell)
-	_expect(actual_target.is_equal_approx(expected_target), "Game must resolve Skill3 target through GroundTileMapLayer.map_to_local().")
+	_expect(actual_target.is_equal_approx(expected_target), "StandardGame must resolve Skill3 target through GroundTileMapLayer.map_to_local().")
 	game.queue_free()
 	current_scene = test_root
 	await process_frame

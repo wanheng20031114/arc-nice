@@ -194,7 +194,7 @@ func _test_outbound_rpc_channel_classification() -> void:
 
 func _test_authoritative_plant_registry_count() -> void:
 	var mp_game := MpGameScript.new()
-	var tower_game := GameTowerDefense.new()
+	var tower_game := TowerDefenseGame.new()
 	var plant_system := PlantSystem.new()
 	var plant := PlantDefense.new()
 	tower_game.plant_system = plant_system

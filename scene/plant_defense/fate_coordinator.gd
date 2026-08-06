@@ -24,7 +24,7 @@ const ALL_ENEMY_SPEED_SOURCE_ID := 880004
 @onready var manager: TowerDefenseFateManager = $TowerDefenseFateManager
 @onready var runtime_tick_timer: Timer = $RuntimeTickTimer
 
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var day_cycle_config: DayCycleConfig = null
 var active_permanent_buff_ids: Array[StringName] = []
 var elite_bias_day := 0
@@ -46,7 +46,7 @@ func _ready() -> void:
 	manager.state_changed.connect(_on_manager_state_changed)
 
 
-func setup(new_game: GameTowerDefense, new_day_cycle_config: DayCycleConfig) -> void:
+func setup(new_game: TowerDefenseGame, new_day_cycle_config: DayCycleConfig) -> void:
 	game = new_game
 	day_cycle_config = new_day_cycle_config
 	request_elite_enemy_config_loads()

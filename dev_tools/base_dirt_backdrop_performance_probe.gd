@@ -1,11 +1,11 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const SAMPLE_FRAMES := 180
 const WARMUP_FRAMES := 45
 
 var failures: Array[String] = []
-var game: GameTowerDefense
+var game: TowerDefenseGame
 var viewport_rid := RID()
 var original_max_fps := 0
 
@@ -17,7 +17,7 @@ func _init() -> void:
 func _run() -> void:
 	original_max_fps = Engine.max_fps
 	Engine.max_fps = 0
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense scene must instantiate for the base-dirt render probe.")
 	if game == null:
 		await _finish()

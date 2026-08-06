@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const LAND := DualGridTilemap.TraversalType.LAND
 const WATER := DualGridTilemap.TraversalType.WATER
 const AGENT_EXTENTS := Vector2(8.0, 4.0)
@@ -13,7 +13,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game

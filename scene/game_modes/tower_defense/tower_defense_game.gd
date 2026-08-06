@@ -1,5 +1,5 @@
 extends GameRuntimeBase
-class_name GameTowerDefense
+class_name TowerDefenseGame
 
 const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
 const TANGO_LASER_BULLET_POOL_SCENE := preload(
@@ -85,12 +85,6 @@ const XIAOCONG_INTERACTION_DISTANCE := 220.0
 # fresh. Topology changes and player availability changes request an immediate
 # budgeted pass below, so the idle cadence can stay deliberately conservative.
 const ENEMY_RETARGET_INTERVAL_SECONDS := 0.60
-const SINGLEPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres"
-)
-const MULTIPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
-)
 const FORMAL_PROGRESSION_CONFIG_PATH := (
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
@@ -151,6 +145,7 @@ static var expanded_projectile_pool_prewarm_enabled := true
 var _singleplayer_tango_charge_started_at: float = -1.0
 
 @export_group("战役资源")
+@export var mode_definition: GameModeDefinition = null
 @export var singleplayer_campaign: WaveCampaignConfig = null
 @export var multiplayer_campaign: WaveCampaignConfig = null
 
@@ -335,7 +330,7 @@ func _ready() -> void:
 	initialize_world_lighting()
 	LuoxiMerchant.reset_runtime_choice_count()
 	if day_cycle_config == null or not day_cycle_config.is_valid():
-		push_error("GameTowerDefense: DayCycleConfig 无效，停止初始化。")
+		push_error("TowerDefenseGame: DayCycleConfig 无效，停止初始化。")
 		set_process(false)
 		set_physics_process(false)
 		return
@@ -454,7 +449,7 @@ func _ready() -> void:
 		production_coordinator.configure_multiplayer_output_peers(peer_players.keys())
 		_register_static_multiplayer_pickups()
 	if player == null:
-		push_error("Game: 无法创建当前角色，停止初始化。")
+		push_error("TowerDefenseGame: 无法创建当前角色，停止初始化。")
 		set_process(false)
 		set_physics_process(false)
 		return
@@ -497,7 +492,7 @@ func _ready() -> void:
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 		and not _grant_tower_defense_starting_package()
 	):
-		push_error("GameTowerDefense: 无法原子发放正式塔防起步包，停止初始化。")
+		push_error("TowerDefenseGame: 无法原子发放正式塔防起步包，停止初始化。")
 		set_process(false)
 		set_physics_process(false)
 		return
@@ -849,25 +844,33 @@ func _configure_active_campaign() -> bool:
 			FORMAL_PROGRESSION_CONFIG_PATH
 		) as TowerDefenseProgressionConfig
 	if progression_config == null or not progression_config.is_valid():
-		push_error("GameTowerDefense: 正式成长配置缺失或无效。")
+		push_error("TowerDefenseGame: 正式成长配置缺失或无效。")
 		return false
+	var definition := mode_definition
+	if definition == null:
+		definition = GameModeCatalog.get_definition(
+			GameModeCatalog.MODE_TOWER_DEFENSE
+		)
+	if definition != null and singleplayer_campaign == null:
+		singleplayer_campaign = load(
+			definition.singleplayer_campaign_path
+		) as WaveCampaignConfig
+	if definition != null and multiplayer_campaign == null:
+		multiplayer_campaign = load(
+			definition.multiplayer_campaign_path
+		) as WaveCampaignConfig
 	active_campaign = (
 		singleplayer_campaign
 		if runtime_mode == RuntimeMode.SINGLEPLAYER
 		else multiplayer_campaign
 	)
 	if active_campaign == null:
-		var campaign_path := (
-			SINGLEPLAYER_CAMPAIGN_PATH
-			if runtime_mode == RuntimeMode.SINGLEPLAYER
-			else MULTIPLAYER_CAMPAIGN_PATH
-		)
-		active_campaign = load(campaign_path) as WaveCampaignConfig
+		push_error("TowerDefenseGame: 模式定义无法解析当前运行模式的 Campaign。")
 	flow_graph = null
 	waves.clear()
 	bosses.clear()
 	if active_campaign == null:
-		push_error("GameTowerDefense: 当前运行模式没有配置 WaveCampaignConfig。")
+		push_error("TowerDefenseGame: 当前运行模式没有配置 WaveCampaignConfig。")
 		return false
 	var campaign_errors := active_campaign.validate_campaign()
 	if not campaign_errors.is_empty():
@@ -931,7 +934,7 @@ func _configure_home_defense() -> void:
 	resolved_home_enemy_ids.clear()
 	home_objective_targets.clear()
 	if home_gate_controller == null:
-		push_error("GameTowerDefense: HomeGateController 缺失。")
+		push_error("TowerDefenseGame: HomeGateController 缺失。")
 	else:
 		home_gate_controller.setup(overlay_tile_map_layer)
 		home_objective_targets = home_gate_controller.get_objective_targets()
@@ -1097,7 +1100,7 @@ func _apply_base_damage(amount: int) -> void:
 			current_base_health,
 			maximum_base_health
 		):
-			push_error("GameTowerDefense: 无法回写本局共享核心生命。")
+			push_error("TowerDefenseGame: 无法回写本局共享核心生命。")
 			return
 		current_base_health = run_state.get_party_core_health()
 		maximum_base_health = run_state.get_party_core_maximum_health()
@@ -1168,7 +1171,7 @@ func _complete_escaped_boss_step() -> void:
 
 func _configure_plant_defense_system() -> void:
 	if plant_system == null or plant_placement_controller == null or plant_container == null:
-		push_error("GameTowerDefense: 植物防御塔节点不完整，已禁用放置功能。")
+		push_error("TowerDefenseGame: 植物防御塔节点不完整，已禁用放置功能。")
 		return
 
 	var placement_rect := PlantSystem.DEFAULT_PLACEMENT_AREA
@@ -1332,7 +1335,7 @@ func _configure_singleplayer_warehouse_persistence(warehouse: OakWarehouse) -> v
 		return
 	var warehouse_net_id := int(warehouse.get_meta(&"net_id", 0))
 	if warehouse_net_id <= 0:
-		push_error("GameTowerDefense: 单人共享仓库缺少稳定运行时ID。")
+		push_error("TowerDefenseGame: 单人共享仓库缺少稳定运行时ID。")
 		return
 	var saved_snapshot := run_state.get_shared_warehouse_snapshot(warehouse_net_id)
 	if saved_snapshot.is_empty():
@@ -1342,7 +1345,7 @@ func _configure_singleplayer_warehouse_persistence(warehouse: OakWarehouse) -> v
 			warehouse_net_id
 		):
 			push_warning(
-				"GameTowerDefense: 无法初始化共享仓库 %d 的跨场景账本。"
+				"TowerDefenseGame: 无法初始化共享仓库 %d 的跨场景账本。"
 				% warehouse_net_id
 			)
 	elif not SharedWarehouseLedgerBridge.restore_from_ledger(
@@ -1351,7 +1354,7 @@ func _configure_singleplayer_warehouse_persistence(warehouse: OakWarehouse) -> v
 		warehouse_net_id
 	):
 		push_warning(
-			"GameTowerDefense: 无法恢复共享仓库 %d 的跨场景快照。"
+			"TowerDefenseGame: 无法恢复共享仓库 %d 的跨场景快照。"
 			% warehouse_net_id
 		)
 	var storage_callback := _on_singleplayer_warehouse_storage_changed.bind(
@@ -1381,7 +1384,7 @@ func _on_singleplayer_warehouse_storage_changed(warehouse: OakWarehouse) -> void
 		warehouse_net_id
 	):
 		push_warning(
-			"GameTowerDefense: 无法保存共享仓库 %d 的跨场景快照。"
+			"TowerDefenseGame: 无法保存共享仓库 %d 的跨场景快照。"
 			% warehouse_net_id
 		)
 
@@ -1495,7 +1498,7 @@ func _configure_vegetation_spread_system(placement_rect: Rect2i) -> void:
 	multiplayer_terrain_overrides.clear()
 	multiplayer_terrain_revision = 0
 	if dual_grid_terrain == null or vegetation_spread_system == null:
-		push_error("GameTowerDefense: 植被传播节点或地形节点缺失。")
+		push_error("TowerDefenseGame: 植被传播节点或地形节点缺失。")
 		return
 	for y in range(placement_rect.position.y, placement_rect.end.y):
 		for x in range(placement_rect.position.x, placement_rect.end.x):
@@ -2319,7 +2322,7 @@ func _on_authoritative_vegetation_terrain_changed(
 	terrain_types: PackedInt32Array
 ) -> void:
 	if not _is_valid_terrain_payload(cell_xy, terrain_types):
-		push_error("GameTowerDefense: 植被传播提交了非法地形批次。")
+		push_error("TowerDefenseGame: 植被传播提交了非法地形批次。")
 		return
 	for index in range(terrain_types.size()):
 		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
@@ -2408,7 +2411,7 @@ func _instantiate_player_character(character_id: StringName) -> Player:
 		resolved_id = DEFAULT_PLAYER_CHARACTER_ID
 	var instance := PlayerCharacterRegistry.instantiate_character(resolved_id) as Player
 	if instance == null:
-		push_error("Game: 无法实例化角色 %s" % resolved_id)
+		push_error("TowerDefenseGame: 无法实例化角色 %s" % resolved_id)
 	return instance
 
 
@@ -2666,7 +2669,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 	var flow_step := _get_flow_step_by_id(step_id)
 	if flow_step == null and typed_state not in [WaveState.VICTORY, WaveState.DEFEAT]:
 		push_error(
-			"GameTowerDefense: 收到当前 Campaign 不存在的流程 step_id：%s"
+			"TowerDefenseGame: 收到当前 Campaign 不存在的流程 step_id：%s"
 			% String(step_id)
 		)
 		return
@@ -3075,7 +3078,7 @@ func apply_luoxi_player_health_loss(
 		current_scene == null
 		or not current_scene.has_method("apply_luoxi_direct_health_loss")
 	):
-		push_error("GameTowerDefense: 多人洛茜直接扣血缺少主机复制入口。")
+		push_error("TowerDefenseGame: 多人洛茜直接扣血缺少主机复制入口。")
 		return 0
 	return int(current_scene.call(
 		"apply_luoxi_direct_health_loss",
@@ -4319,7 +4322,7 @@ func _teleport_fate_player_authoritatively(
 ) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		if not multiplayer_player_teleport_requested.has_connections():
-			push_error("GameTowerDefense: 多人权威传送缺少 MPGame 处理器。")
+			push_error("TowerDefenseGame: 多人权威传送缺少 MPGame 处理器。")
 			return
 		multiplayer_player_teleport_requested.emit(peer_id, target_position)
 		return
@@ -5912,7 +5915,7 @@ func restore_multiplayer_player(
 				new_peer_id
 			):
 				push_error(
-					"GameTowerDefense: 无法迁移重连玩家 %d -> %d 的个人科研状态。"
+					"TowerDefenseGame: 无法迁移重连玩家 %d -> %d 的个人科研状态。"
 					% [old_peer_id, new_peer_id]
 				)
 		research_coordinator.register_player(player_instance)
@@ -6434,7 +6437,7 @@ func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
 
 func _is_flow_system_ready() -> bool:
 	if flow_graph == null:
-		push_error("GameTowerDefense 当前 Campaign 没有配置 FlowGraphConfig。")
+		push_error("TowerDefenseGame 当前 Campaign 没有配置 FlowGraphConfig。")
 		return false
 	if not _is_spawn_system_ready():
 		return false

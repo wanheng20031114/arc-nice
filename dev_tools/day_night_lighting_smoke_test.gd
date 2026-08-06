@@ -1,7 +1,7 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const ROGUE_COMBAT_SCENE_01 := preload(
 	"res://scene/rogue_combat/rogue_combat_game_01.tscn"
 )
@@ -476,7 +476,7 @@ func _test_authored_scene_contracts() -> void:
 	)
 	stake.free()
 
-	var game := GAME_SCENE.instantiate() as Game
+	var game := GAME_SCENE.instantiate() as StandardGame
 	_expect(
 		game.get_node_or_null("DayNightController") is DayNightController,
 		"普通模式主场景必须直接包含昼夜CanvasModulate控制器。"
@@ -501,7 +501,7 @@ func _test_authored_scene_contracts() -> void:
 		)
 	game.free()
 
-	var tower := TOWER_SCENE.instantiate() as GameTowerDefense
+	var tower := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(
 		tower.get_node_or_null("DayNightController") is DayNightController,
 		"塔防主场景必须直接包含昼夜CanvasModulate控制器。"
@@ -623,7 +623,7 @@ func _test_every_wave_gradual_transition() -> void:
 		run_state.set_selected_character(
 			PlayerCharacterRegistry.WEISHIDAIER_ID
 		)
-	var game := GAME_SCENE.instantiate() as Game
+	var game := GAME_SCENE.instantiate() as StandardGame
 	game.auto_start_waves = false
 	game.linglan_boss_enabled = false
 	root.add_child(game)
@@ -741,7 +741,7 @@ func _test_every_wave_gradual_transition() -> void:
 
 
 func _test_tower_wave_lighting() -> void:
-	var tower := TOWER_SCENE.instantiate() as GameTowerDefense
+	var tower := TOWER_SCENE.instantiate() as TowerDefenseGame
 	tower.auto_start_waves = false
 	tower.linglan_boss_enabled = false
 	root.add_child(tower)
@@ -863,7 +863,7 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 				0
 			)
 			await create_timer(0.18).timeout
-			if game is GameTowerDefense:
+			if game is TowerDefenseGame:
 				_expect(
 					is_zero_approx(controller.night_factor)
 					and controller.color.is_equal_approx(Color.WHITE)

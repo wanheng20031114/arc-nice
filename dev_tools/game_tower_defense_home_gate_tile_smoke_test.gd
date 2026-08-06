@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const ATLAS_PATH := "res://resources/texture/动态瓦片.png"
 const RED_GATE_COORDS := Vector2i(0, 0)
 const HOME_GATE_COORDS := Vector2i(0, 3)
@@ -18,7 +18,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense scene must instantiate for home-gate verification.")
 	if game == null:
 		_finish()

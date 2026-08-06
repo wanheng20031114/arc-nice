@@ -168,7 +168,7 @@ func _test_resource_contract() -> void:
 
 
 func _test_reticle_coordinator_scene_installation() -> void:
-	for scene_path in ["res://scene/game.tscn", "res://scene/game_tower_defense.tscn"]:
+	for scene_path in ["res://scene/game_modes/standard/standard_game.tscn", "res://scene/game_modes/tower_defense/tower_defense_game.tscn"]:
 		var packed_scene := load(scene_path) as PackedScene
 		var game_instance := packed_scene.instantiate() if packed_scene != null else null
 		_expect(game_instance != null, "Sniper coordinator scene fixture failed to instantiate: %s" % scene_path)

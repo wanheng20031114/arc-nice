@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TEST_QUEUE_SIZE := 1000
 
 var failures: Array[String] = []
@@ -11,7 +11,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := GAME_SCENE.instantiate() as Game
+	var game := GAME_SCENE.instantiate() as StandardGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game

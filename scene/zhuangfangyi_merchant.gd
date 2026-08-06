@@ -120,11 +120,11 @@ func _try_upgrade_skill() -> void:
 
 func show_purchase_result(result_code: int) -> void:
 	match result_code:
-		Game.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS:
+		StandardGame.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS:
 			dialogue_bubble.say(UPGRADED_LINE)
-		Game.PURCHASE_RESULT_SKILL1_UPGRADE_MAXED:
+		StandardGame.PURCHASE_RESULT_SKILL1_UPGRADE_MAXED:
 			dialogue_bubble.say(MAX_UPGRADED_LINE)
-		Game.PURCHASE_RESULT_INSUFFICIENT_XIRANG:
+		StandardGame.PURCHASE_RESULT_INSUFFICIENT_XIRANG:
 			dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)
 		_:
 			dialogue_bubble.say(INSUFFICIENT_XIRANG_LINE)

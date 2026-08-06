@@ -3606,7 +3606,7 @@ func _pick_random_thunder_target() -> Enemy:
 			0.0
 		) as Enemy
 	# Non-runtime fixtures keep exact behavior with a reservoir-selected local
-	# preference. Production Game/MpGame scenes always use the indexed path above.
+	# preference. Production StandardGame/MpGame scenes always use the indexed path above.
 	var enemies := _collect_alive_enemies()
 	var radius_squared := THUNDER_LOCAL_TARGET_RADIUS * THUNDER_LOCAL_TARGET_RADIUS
 	var nearby_choice: Enemy = null

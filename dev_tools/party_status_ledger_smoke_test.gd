@@ -3,7 +3,7 @@ extends SceneTree
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 
 var failures: Array[String] = []
 
@@ -172,7 +172,7 @@ func _test_tower_defense_hydration_and_writeback(
 		and run_state.set_max_health_penalty_for_peer(0, 20),
 		"塔防跨场景测试状态必须可预置。"
 	)
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game
@@ -207,7 +207,7 @@ func _test_tower_defense_client_mirror(run_state: RunStateStore) -> void:
 		and run_state.set_max_health_penalty_for_peer(2, 20),
 		"塔防客户端镜像测试状态必须可预置。"
 	)
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,

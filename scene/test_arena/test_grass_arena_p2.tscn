@@ -1,10 +1,9 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="PackedScene" path="res://scene/test_arena/test_grass_arena.tscn" id="1_p1"]
 [ext_resource type="Script" path="res://scene/test_arena/test_grass_arena_p2.gd" id="2_script"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres" id="3_campaign"]
 [ext_resource type="Script" path="res://resources/config/day_cycle/day_cycle_config.gd" id="4_day_cycle_script"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres" id="5_multiplayer_campaign"]
+[ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p2.tres" id="6_mode_definition"]
 
 [sub_resource type="Resource" id="Resource_p2_day_cycle"]
 resource_local_to_scene = true
@@ -14,8 +13,7 @@ night_start_wave_in_day = 1
 
 [node name="TestGrassArenaP2" instance=ExtResource("1_p1")]
 script = ExtResource("2_script")
-singleplayer_campaign = ExtResource("3_campaign")
-multiplayer_campaign = ExtResource("5_multiplayer_campaign")
+mode_definition = ExtResource("6_mode_definition")
 day_cycle_config = SubResource("Resource_p2_day_cycle")
 test_scene_label = "P2"
 test_entry_announcement_text = ""

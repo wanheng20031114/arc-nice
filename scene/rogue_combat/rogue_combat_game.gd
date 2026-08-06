@@ -1,4 +1,4 @@
-extends Game
+extends StandardGame
 class_name RogueCombatGame
 
 signal combat_outcome_started(victory: bool, failure_reason: String)

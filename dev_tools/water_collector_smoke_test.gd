@@ -8,7 +8,7 @@ const PANEL_SCENE := preload("res://scene/plant_defense/production_building_pane
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
-const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const WATER_COLLECTOR_CONFIG := preload(
 	"res://resources/config/plant_defense/water_collector.tres"
 )
@@ -342,7 +342,7 @@ func _test_multiplayer_water_collector_contract(test_root: Node) -> void:
 
 
 func _test_four_water_cell_support(test_root: Node) -> void:
-	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	test_root.add_child(game)
 	await process_frame
 	var terrain := game.dual_grid_terrain

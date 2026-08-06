@@ -1,6 +1,6 @@
 [gd_scene format=4 uid="uid://dcqarxlpbdh8y"]
 
-[ext_resource type="Script" uid="uid://7lyj58pu4nvs" path="res://scene/game.gd" id="1_17rxn"]
+[ext_resource type="Script" uid="uid://7lyj58pu4nvs" path="res://scene/game_modes/standard/standard_game.gd" id="1_17rxn"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/pickup.tscn" id="4_qpk70"]
@@ -26,6 +26,7 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="28_night_light"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="29_night_vfx_flash_pool"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="30_combat_robot_drone_motion"]
+[ext_resource type="Resource" path="res://scene/game_modes/definitions/standard.tres" id="31_mode_definition"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -123,9 +124,10 @@ b = Vector2(-213.33333, -106.666664)
 a = Vector2(1060, 960)
 b = Vector2(1060, -106.666664)
 
-[node name="Game" type="Node2D" unique_id=20737211]
+[node name="StandardGame" type="Node2D" unique_id=20737211]
 position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
+mode_definition = ExtResource("31_mode_definition")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")

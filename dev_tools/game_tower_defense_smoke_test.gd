@@ -1,7 +1,7 @@
 extends SceneTree
 
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
-const GAME_TOWER_DEFENSE_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_TOWER_DEFENSE_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
 const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena_p1b.tscn"
@@ -36,13 +36,13 @@ func _run() -> void:
 
 
 func _test_tower_defense_scene_identity() -> void:
-	var game_tower_defense := GAME_TOWER_DEFENSE_SCENE.instantiate() as GameTowerDefense
-	_expect(game_tower_defense != null, "Tower-defense scene must instantiate as GameTowerDefense.")
+	var game_tower_defense := GAME_TOWER_DEFENSE_SCENE.instantiate() as TowerDefenseGame
+	_expect(game_tower_defense != null, "Tower-defense scene must instantiate as TowerDefenseGame.")
 	if game_tower_defense == null:
 		return
-	_expect(game_tower_defense.name == &"GameTowerDefense", "Tower-defense root node name is incorrect.")
+	_expect(game_tower_defense.name == &"TowerDefenseGame", "Tower-defense root node name is incorrect.")
 	_expect(
-		game_tower_defense.get_script().resource_path == "res://scene/game_tower_defense.gd",
+		game_tower_defense.get_script().resource_path == "res://scene/game_modes/tower_defense/tower_defense_game.gd",
 		"Tower-defense scene must use its independent controller script."
 	)
 	var warehouse_panels: Array[OakWarehousePanel] = []
@@ -292,7 +292,7 @@ func _test_main_menu_entry() -> void:
 	character_overlay.call("_confirm_selection")
 	var scene_change_deadline := Time.get_ticks_msec() + 30000
 	while (
-		not (current_scene is GameTowerDefense)
+		not (current_scene is TowerDefenseGame)
 		and Time.get_ticks_msec() < scene_change_deadline
 	):
 		await process_frame
@@ -302,13 +302,13 @@ func _test_main_menu_entry() -> void:
 		run_state.get_selected_character_id() == PlayerCharacterRegistry.TIYI_ID,
 		"Tower-defense entry must persist the character confirmed in the shared selection flow."
 	)
-	_expect(current_scene is GameTowerDefense, "Tower-defense entry must load game_tower_defense.tscn.")
+	_expect(current_scene is TowerDefenseGame, "Tower-defense entry must load game_tower_defense.tscn.")
 	if current_scene != null:
 		_expect(
-			current_scene.scene_file_path == "res://scene/game_tower_defense.tscn",
+			current_scene.scene_file_path == "res://scene/game_modes/tower_defense/tower_defense_game.tscn",
 			"Current scene path must be game_tower_defense.tscn."
 		)
-	var tower_game := current_scene as GameTowerDefense
+	var tower_game := current_scene as TowerDefenseGame
 	if tower_game != null:
 		var preparation_deadline := Time.get_ticks_msec() + 30000
 		while (

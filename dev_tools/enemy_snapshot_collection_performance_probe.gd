@@ -4,7 +4,7 @@ extends SceneTree
 # mirrors the former temporary containers/live-id/get_children allocations while
 # reusing EnemyState objects, so the timing comparison isolates collection
 # overhead rather than snapshot encoding or state construction.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
@@ -16,7 +16,7 @@ const SWEEPS_PER_SAMPLE := 20
 const FIXTURE_ORIGIN := Vector2(2800.0, 2800.0)
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var enemies: Array[Enemy] = []
 var legacy_states_by_net_id: Dictionary = {}
 var legacy_output: Array[SnapshotManager.EnemyState] = []
@@ -27,7 +27,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Enemy snapshot probe must instantiate tower defense.")
 	if game == null:
 		await _finish()
@@ -170,9 +170,9 @@ func _verify_collection_semantics_and_reuse() -> void:
 		and not helper_source.contains("var live_ids: Dictionary = {}"),
 		"Production snapshot collection must retain native bulk traversal and reusable scratch containers."
 	)
-	var game_source := FileAccess.get_file_as_string("res://scene/game.gd")
+	var game_source := FileAccess.get_file_as_string("res://scene/game_modes/standard/standard_game.gd")
 	var tower_source := FileAccess.get_file_as_string(
-		"res://scene/game_tower_defense.gd"
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
 	)
 	_expect(
 		not game_source.contains(

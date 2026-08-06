@@ -52,8 +52,8 @@ func _run() -> void:
 
 func _test_runtime_scene_wiring() -> void:
 	for runtime_scene_path in [
-		"res://scene/game.tscn",
-		"res://scene/game_tower_defense.tscn",
+		"res://scene/game_modes/standard/standard_game.tscn",
+		"res://scene/game_modes/tower_defense/tower_defense_game.tscn",
 	]:
 		var runtime_scene := load(runtime_scene_path) as PackedScene
 		_expect(runtime_scene != null, "Runtime scene resource must load: %s" % runtime_scene_path)
@@ -317,7 +317,7 @@ func _test_spawn_effect_tween_isolation() -> void:
 
 
 func _test_direct_xirang_kill_reward() -> void:
-	var runtime_scene := load("res://scene/game.tscn") as PackedScene
+	var runtime_scene := load("res://scene/game_modes/standard/standard_game.tscn") as PackedScene
 	var runtime := runtime_scene.instantiate() as GameRuntimeBase
 	_expect(runtime != null, "Direct-reward fixture must instantiate the standard runtime.")
 	if runtime == null:

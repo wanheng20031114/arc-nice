@@ -32,12 +32,12 @@ const MAX_LOBBY_CHARACTER_ID_WIRE_LENGTH := 64
 enum NetRole { NONE, HOST, CLIENT }
 enum ConnMode { DIRECT, RELAY }
 enum GameMode {
-	STANDARD,
-	TOWER_DEFENSE,
-	TEST_ARENA_P1,
-	TEST_ARENA_P2,
-	TEST_ARENA_P3,
-	TEST_ARENA_P1B,
+	STANDARD = GameModeCatalog.MODE_STANDARD,
+	TOWER_DEFENSE = GameModeCatalog.MODE_TOWER_DEFENSE,
+	TEST_ARENA_P1 = GameModeCatalog.MODE_TEST_ARENA_P1,
+	TEST_ARENA_P2 = GameModeCatalog.MODE_TEST_ARENA_P2,
+	TEST_ARENA_P3 = GameModeCatalog.MODE_TEST_ARENA_P3,
+	TEST_ARENA_P1B = GameModeCatalog.MODE_TEST_ARENA_P1B,
 }
 enum ConnectionState {
 	DISCONNECTED,
@@ -169,51 +169,28 @@ func get_current_game_mode() -> GameMode:
 
 
 static func game_mode_to_key(game_mode: GameMode) -> String:
-	match game_mode:
-		GameMode.TOWER_DEFENSE:
-			return "tower_defense"
-		GameMode.TEST_ARENA_P1:
-			return "test_arena_p1"
-		GameMode.TEST_ARENA_P1B:
-			return "test_arena_p1b"
-		GameMode.TEST_ARENA_P2:
-			return "test_arena_p2"
-		GameMode.TEST_ARENA_P3:
-			return "test_arena_p3"
-		_:
-			return "standard"
+	var definition := GameModeCatalog.get_definition(int(game_mode))
+	if definition == null:
+		definition = GameModeCatalog.get_definition(
+			GameModeCatalog.DEFAULT_MODE_ID
+		)
+	return String(definition.wire_key) if definition != null else ""
 
 
 static func game_mode_from_key(game_mode_key: String) -> GameMode:
-	match game_mode_key.strip_edges().to_lower():
-		"tower_defense":
-			return GameMode.TOWER_DEFENSE
-		"test_arena_p1":
-			return GameMode.TEST_ARENA_P1
-		"test_arena_p1b":
-			return GameMode.TEST_ARENA_P1B
-		"test_arena_p2":
-			return GameMode.TEST_ARENA_P2
-		"test_arena_p3":
-			return GameMode.TEST_ARENA_P3
-		_:
-			return GameMode.STANDARD
+	return (
+		GameModeCatalog.resolve_wire_key_or_default(game_mode_key)
+		as GameMode
+	)
 
 
 static func get_game_mode_display_name(game_mode: GameMode) -> String:
-	match game_mode:
-		GameMode.TOWER_DEFENSE:
-			return "塔防模式"
-		GameMode.TEST_ARENA_P1:
-			return "测试场景 P1A"
-		GameMode.TEST_ARENA_P1B:
-			return "测试场景 P1B"
-		GameMode.TEST_ARENA_P2:
-			return "测试场景 P2"
-		GameMode.TEST_ARENA_P3:
-			return "测试场景 P3 · 肉鸽路线"
-		_:
-			return "普通模式"
+	var definition := GameModeCatalog.get_definition(int(game_mode))
+	if definition == null:
+		definition = GameModeCatalog.get_definition(
+			GameModeCatalog.DEFAULT_MODE_ID
+		)
+	return definition.display_name if definition != null else ""
 
 
 func set_pending_room_max_players(max_players: int) -> bool:
@@ -1575,14 +1552,7 @@ func _set_current_game_mode(game_mode: GameMode) -> void:
 
 
 func _is_valid_game_mode(game_mode: int) -> bool:
-	return (
-		game_mode == GameMode.STANDARD
-		or game_mode == GameMode.TOWER_DEFENSE
-		or game_mode == GameMode.TEST_ARENA_P1
-		or game_mode == GameMode.TEST_ARENA_P2
-		or game_mode == GameMode.TEST_ARENA_P3
-		or game_mode == GameMode.TEST_ARENA_P1B
-	)
+	return GameModeCatalog.is_valid_mode_id(game_mode)
 
 
 func _is_valid_room_max_players(max_players: int) -> bool:

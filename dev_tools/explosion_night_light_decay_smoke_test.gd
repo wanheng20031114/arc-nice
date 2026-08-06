@@ -18,8 +18,8 @@ const EXPLOSION_SCENES := [
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn",
 ]
 const WORLD_SCENES := [
-	"res://scene/game.tscn",
-	"res://scene/game_tower_defense.tscn",
+	"res://scene/game_modes/standard/standard_game.tscn",
+	"res://scene/game_modes/tower_defense/tower_defense_game.tscn",
 ]
 const EXPECTED_DECAY_EXPONENT := 1.8
 const ATTACK_SECONDS := 0.04

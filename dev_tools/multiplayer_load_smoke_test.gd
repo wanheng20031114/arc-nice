@@ -2,8 +2,8 @@ extends SceneTree
 
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
-const GAME_SCENE := preload("res://scene/game.tscn")
-const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
+const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const TEST_ARENA_SCENE := preload("res://scene/test_arena/test_grass_arena.tscn")
 const TEST_ARENA_P2_SCENE := preload("res://scene/test_arena/test_grass_arena_p2.tscn")
 const TEST_ARENA_MULTIPLAYER_CAMPAIGN := preload(
@@ -141,7 +141,7 @@ func _test_scene_instantiation() -> void:
 		mp_game.free()
 
 	var game := GAME_SCENE.instantiate()
-	_expect(game != null, "game.tscn must instantiate as Game.")
+	_expect(game != null, "game.tscn must instantiate as StandardGame.")
 	if game != null:
 		game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
 		_stop_audio_players(game)
@@ -167,9 +167,12 @@ func _test_scene_instantiation() -> void:
 			% arena_contract["name"]
 		)
 		if arena != null:
+			var arena_definition := arena.mode_definition as GameModeDefinition
 			_expect(
-				arena.multiplayer_campaign == arena_contract["campaign"],
-				"Test arena %s must bind its dedicated multiplayer Campaign."
+				arena_definition != null
+				and arena_definition.multiplayer_campaign_path
+				== (arena_contract["campaign"] as WaveCampaignConfig).resource_path,
+				"Test arena %s must bind its dedicated multiplayer Campaign definition."
 				% arena_contract["name"]
 			)
 			arena.free()
@@ -426,7 +429,7 @@ func _test_net_manager_game_mode_authority() -> void:
 	_expect(
 		mode_events.has(NetManagerStore.GameMode.TOWER_DEFENSE)
 		and mode_events.has(NetManagerStore.GameMode.STANDARD),
-		"Game-mode changes must emit both selection and reset events."
+		"StandardGame-mode changes must emit both selection and reset events."
 	)
 
 
@@ -763,8 +766,8 @@ func _test_delta_snapshot_peer_cache_cleanup() -> void:
 
 
 func _test_freed_pickup_index_cleanup() -> void:
-	var game := Game.new()
-	_expect(game != null, "Game object must instantiate for pickup index cleanup test.")
+	var game := StandardGame.new()
+	_expect(game != null, "StandardGame object must instantiate for pickup index cleanup test.")
 	if game == null:
 		return
 	var pickup := Pickup.new()
@@ -774,21 +777,21 @@ func _test_freed_pickup_index_cleanup() -> void:
 		return
 	game.multiplayer_pickups[77] = pickup
 	pickup.free()
-	_expect(game.get_pickup_for_net_id(77) == null, "Game must ignore freed pickup references by net id.")
-	_expect(not game.multiplayer_pickups.has(77), "Game must erase freed pickup references from the net id index.")
+	_expect(game.get_pickup_for_net_id(77) == null, "StandardGame must ignore freed pickup references by net id.")
+	_expect(not game.multiplayer_pickups.has(77), "StandardGame must erase freed pickup references from the net id index.")
 	game.free()
 
 
 func _test_multiplayer_peer_disconnect_cleanup() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for multiplayer peer cleanup test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for multiplayer peer cleanup test.")
 	if game == null:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client", 3: "Third"})
 	game.set("auto_start_waves", false)
 	root.add_child(game)
 	await process_frame
-	_expect(game.peer_players.has(2), "Game must create peer player 2 before cleanup.")
+	_expect(game.peer_players.has(2), "StandardGame must create peer player 2 before cleanup.")
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(&"weishidaier", false)
@@ -1002,10 +1005,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	await physics_frame
 	game.remove_multiplayer_player(2)
 	await process_frame
-	_expect(not game.peer_players.has(2), "Game must erase disconnected peer players.")
-	_expect(not game.multiplayer_player_names.has(2), "Game must erase disconnected peer names.")
-	_expect(game.peer_players.has(1), "Game must keep the local host player during peer cleanup.")
-	_expect(remote_player == null or not is_instance_valid(remote_player), "Game must free disconnected peer player nodes.")
+	_expect(not game.peer_players.has(2), "StandardGame must erase disconnected peer players.")
+	_expect(not game.multiplayer_player_names.has(2), "StandardGame must erase disconnected peer names.")
+	_expect(game.peer_players.has(1), "StandardGame must keep the local host player during peer cleanup.")
+	_expect(remote_player == null or not is_instance_valid(remote_player), "StandardGame must free disconnected peer player nodes.")
 	_stop_audio_players(game)
 	game.queue_free()
 	await process_frame
@@ -1081,8 +1084,8 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 
 
 func _test_player_snapshot_roster_reconcile() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for player roster reconcile test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for player roster reconcile test.")
 	if game == null:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Client", 3: "Leaving", 4: "Other"})
@@ -1147,8 +1150,8 @@ func _test_player_snapshot_roster_reconcile() -> void:
 
 
 func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for enemy roster snapshot test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for enemy roster snapshot test.")
 	if game == null:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
@@ -1300,8 +1303,8 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 
 
 func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for enemy snapshot cleanup test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for enemy snapshot cleanup test.")
 	if game == null:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
@@ -1389,8 +1392,8 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 
 
 func _test_host_remote_player_position_writeback() -> void:
-	var host_game := GAME_SCENE.instantiate() as Game
-	_expect(host_game != null, "Game scene must instantiate for remote player writeback test.")
+	var host_game := GAME_SCENE.instantiate() as StandardGame
+	_expect(host_game != null, "StandardGame scene must instantiate for remote player writeback test.")
 	if host_game == null:
 		return
 	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
@@ -1533,8 +1536,8 @@ func _test_projectile_time_compensation() -> void:
 
 
 func _test_enemy_action_uses_snapshot_timeline() -> void:
-	var client_game := GAME_SCENE.instantiate() as Game
-	_expect(client_game != null, "Game scene must instantiate for enemy action timeline test.")
+	var client_game := GAME_SCENE.instantiate() as StandardGame
+	_expect(client_game != null, "StandardGame scene must instantiate for enemy action timeline test.")
 	if client_game == null:
 		return
 	client_game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
@@ -1694,8 +1697,8 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 
 
 func _test_host_remote_player_form_buff_expires() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for remote form buff test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for remote form buff test.")
 	if game == null:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
@@ -1762,8 +1765,8 @@ func _test_host_remote_player_form_buff_expires() -> void:
 
 
 func _test_four_player_runtime_and_confirmed_events() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for four-player smoke test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for four-player smoke test.")
 	if game == null:
 		return
 	var player_names := {
@@ -1991,7 +1994,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		var skill1_duration_before_upgrade := peer_four.skill1_charge_duration
 		var skill1_upgrade_result := game.try_purchase_skill1_for_peer(4)
 		_expect(
-			skill1_upgrade_result == Game.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS,
+			skill1_upgrade_result == StandardGame.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS,
 			"Owned skill1 transaction must upgrade skill1 on host."
 		)
 		_expect(peer_four.current_xirang == 25, "Skill1 upgrade must deduct the first 200 xirang cost.")
@@ -2005,7 +2008,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 			4,
 			777,
 			true,
-			Game.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS,
+			StandardGame.PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS,
 			2,
 			peer_four.skill1_charge_duration - 2.0
 		)
@@ -2325,8 +2328,8 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 
 
 func _test_multiplayer_character_scene_registry() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game must instantiate for multiplayer character registry test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame must instantiate for multiplayer character registry test.")
 	if game == null:
 		return
 	game.configure_multiplayer(
@@ -2344,15 +2347,15 @@ func _test_multiplayer_character_scene_registry() -> void:
 	var tiyi_player := game.get_player_for_peer(3) as PlayerTiyi
 	_expect(
 		host_player != null and host_player.get_character_id() == &"weishidaier",
-		"Game must instantiate the registered Weishidaier scene for the host peer."
+		"StandardGame must instantiate the registered Weishidaier scene for the host peer."
 	)
 	_expect(
 		local_player != null and local_player.get_character_id() == &"hoe_cat",
-		"Game must instantiate the registered Hoe Cat scene for the client peer."
+		"StandardGame must instantiate the registered Hoe Cat scene for the client peer."
 	)
 	_expect(
 		tiyi_player != null and tiyi_player.get_character_id() == &"tiyi",
-		"Game must instantiate the registered Tiyi scene for a standard multiplayer peer."
+		"StandardGame must instantiate the registered Tiyi scene for a standard multiplayer peer."
 	)
 	if tiyi_player != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
@@ -2541,7 +2544,7 @@ func _test_multiplayer_character_scene_registry() -> void:
 		)
 	_expect(
 		game.player == local_player,
-		"Game.player must reference the local peer even when the host sorts first."
+		"StandardGame.player must reference the local peer even when the host sorts first."
 	)
 	_stop_audio_players(game)
 	game.queue_free()
@@ -2549,8 +2552,8 @@ func _test_multiplayer_character_scene_registry() -> void:
 
 
 func _test_host_authoritative_hoe_actions() -> void:
-	var host_game := GAME_SCENE.instantiate() as Game
-	_expect(host_game != null, "Game must instantiate for authoritative Hoe Cat action coverage.")
+	var host_game := GAME_SCENE.instantiate() as StandardGame
+	_expect(host_game != null, "StandardGame must instantiate for authoritative Hoe Cat action coverage.")
 	if host_game == null:
 		return
 	host_game.configure_multiplayer(
@@ -2751,8 +2754,8 @@ func _test_host_authoritative_hoe_actions() -> void:
 
 
 func _test_host_authoritative_tiyi_protocol() -> void:
-	var host_game := GAME_SCENE.instantiate() as Game
-	_expect(host_game != null, "Game must instantiate for authoritative Tiyi protocol coverage.")
+	var host_game := GAME_SCENE.instantiate() as StandardGame
+	_expect(host_game != null, "StandardGame must instantiate for authoritative Tiyi protocol coverage.")
 	if host_game == null:
 		return
 	host_game.configure_multiplayer(
@@ -2908,8 +2911,8 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 
 
 func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
-	var host_game := GAME_SCENE.instantiate() as Game
-	_expect(host_game != null, "Game scene must instantiate for enemy hit dedupe test.")
+	var host_game := GAME_SCENE.instantiate() as StandardGame
+	_expect(host_game != null, "StandardGame scene must instantiate for enemy hit dedupe test.")
 	if host_game == null:
 		return
 	host_game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
@@ -3178,8 +3181,8 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	await process_frame
 	await physics_frame
 
-	var client_game := GAME_SCENE.instantiate() as Game
-	_expect(client_game != null, "Game scene must instantiate for client event cleanup test.")
+	var client_game := GAME_SCENE.instantiate() as StandardGame
+	_expect(client_game != null, "StandardGame scene must instantiate for client event cleanup test.")
 	if client_game == null:
 		return
 	client_game.configure_multiplayer(2, 2, {1: "Host", 2: "Client"})
@@ -3515,8 +3518,8 @@ func _test_player_multiplayer_death_visual_state() -> void:
 
 
 func _test_multiplayer_revive_position_uses_living_players() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for revive position test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for revive position test.")
 	if game == null:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Dead", 3: "RemoteAlive"})
@@ -3578,7 +3581,7 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 
 
 func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
-	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense game must instantiate for spawn-slot coverage.")
 	if game == null:
 		return
@@ -3668,8 +3671,8 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 
 
 func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for revive interpolation test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for revive interpolation test.")
 	if game == null:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Local", 3: "Remote"})
@@ -3720,8 +3723,8 @@ func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
 
 
 func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for client damage confirm blink test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for client damage confirm blink test.")
 	if game == null:
 		return
 	game.configure_multiplayer(2, 2, {1: "Host", 2: "Local"})
@@ -3842,8 +3845,8 @@ func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
 
 
 func _test_linglan_boss_registration_uses_boss_event_only() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for Linglan boss registration test.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for Linglan boss registration test.")
 	if game == null:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
@@ -3886,7 +3889,7 @@ func _test_linglan_boss_registration_uses_boss_event_only() -> void:
 
 
 func _test_linglan_airdrop_replication_contract() -> void:
-	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower game must instantiate for Linglan airdrop replication.")
 	if game == null:
 		return
@@ -4074,8 +4077,8 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 	await process_frame
 	await physics_frame
 
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Sakura rocket multiplayer test must instantiate Game.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "Sakura rocket multiplayer test must instantiate StandardGame.")
 	if game == null:
 		return
 	game.configure_multiplayer(1, 1, {1: "Host", 2: "Client"})
@@ -4175,7 +4178,7 @@ func _test_multiplayer_cheat_xirang_confirm() -> void:
 		return
 
 	var host_game := GAME_SCENE.instantiate()
-	_expect(host_game != null, "Game scene must instantiate for cheat xirang confirm test.")
+	_expect(host_game != null, "StandardGame scene must instantiate for cheat xirang confirm test.")
 	if host_game == null:
 		mp_game.free()
 		return
@@ -4233,7 +4236,7 @@ func _test_game_runtime_modes() -> void:
 		"Multiplayer player scene nameplate must show the peer name."
 	)
 	_expect(host_player.nameplate_label.custom_minimum_size.y >= 30.0, "Multiplayer nameplate must leave room for outlined player names.")
-	_expect(host_player.current_xirang == Game.INITIAL_PLAYER_XIRANG, "Host player must start with initial xirang.")
+	_expect(host_player.current_xirang == StandardGame.INITIAL_PLAYER_XIRANG, "Host player must start with initial xirang.")
 	_expect(
 		host_player.nameplate_label.label_settings.font_color.is_equal_approx(Player.LOCAL_NAMEPLATE_FONT_COLOR),
 		"Local host nameplate text must be green."
@@ -4286,7 +4289,7 @@ func _test_game_runtime_modes() -> void:
 	)
 	_expect(
 		client_local_player != null
-		and client_local_player.current_xirang == Game.INITIAL_PLAYER_XIRANG,
+		and client_local_player.current_xirang == StandardGame.INITIAL_PLAYER_XIRANG,
 		"Client local player must start with initial xirang."
 	)
 	_expect(
@@ -4299,7 +4302,7 @@ func _test_game_runtime_modes() -> void:
 	client_game.queue_free()
 	await process_frame
 
-	var tower_client_game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
+	var tower_client_game := TOWER_DEFENSE_GAME_SCENE.instantiate() as TowerDefenseGame
 	tower_client_game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
 		2,
@@ -4765,13 +4768,13 @@ func _test_snapshot_round_trip() -> void:
 	_expect(count_only_enemy_states.is_empty(), "Enemy snapshot count without payload must decode to no states.")
 
 
-func _has_active_damage_number_text(game: Game, expected_text: String) -> bool:
+func _has_active_damage_number_text(game: StandardGame, expected_text: String) -> bool:
 	if game == null or game.damage_number_pool == null:
 		return false
 	return game.damage_number_pool.has_active_text(expected_text)
 
 
-func _prepare_direct_enemy_spawn_points(game: Game) -> bool:
+func _prepare_direct_enemy_spawn_points(game: StandardGame) -> bool:
 	if game == null:
 		return false
 	var campaign_waves: Array = game.get("waves")

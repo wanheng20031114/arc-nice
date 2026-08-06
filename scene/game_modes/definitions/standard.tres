@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="GameModeDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/game_mode_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+mode_id = 0
+wire_key = &"standard"
+display_name = "普通模式"
+lobby_label = "普通冒险"
+lobby_icon_path = "res://resources/texture/ui/multiplayer/mode_standard.png"
+lobby_order = 0
+singleplayer_entry_scene_path = "res://scene/game_modes/standard/standard_game.tscn"
+multiplayer_entry_scene_path = "res://scene/multiplayer/mp_game.tscn"
+multiplayer_runtime_scene_path = "res://scene/game_modes/standard/standard_game.tscn"
+singleplayer_campaign_path = "res://resources/config/campaigns/standard/singleplayer/campaign.tres"
+multiplayer_campaign_path = "res://resources/config/campaigns/standard/multiplayer/campaign.tres"
+runtime_load_weight = 7.0
+entry_load_weight = 4.0

@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const OFFSETS: Array[float] = [-6.0, -3.0, 0.0, 3.0, 6.0]
 const MAX_STATIC_REPORTS := 32
@@ -29,7 +29,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game
@@ -375,7 +375,7 @@ func _scan_inflated_grid_transition_band(
 
 
 func _scan_all_agent_profile_transition_bands(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	objectives: Array[Node2D]
 ) -> void:
@@ -425,7 +425,7 @@ func _scan_all_agent_profile_transition_bands(
 
 
 func _run_spawn_route_probes(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	objectives: Array[Node2D]
 ) -> void:
@@ -514,7 +514,7 @@ func _run_spawn_route_probes(
 	await physics_frame
 
 
-func _collect_unique_agent_profile_configs(game: GameTowerDefense) -> Array[EnemyConfig]:
+func _collect_unique_agent_profile_configs(game: TowerDefenseGame) -> Array[EnemyConfig]:
 	var configs: Array[EnemyConfig] = []
 	var seen_profiles: Dictionary = {}
 	for wave_config in game.waves:
@@ -564,7 +564,7 @@ func _print_cardinal_design_evidence(enemy: Enemy, objective: Node2D) -> void:
 		)
 
 
-func _assert_results(game: GameTowerDefense) -> void:
+func _assert_results(game: TowerDefenseGame) -> void:
 	_expect(static_sample_count > 0, "Static corner matrix did not collect samples.")
 	_expect(
 		static_zero_count == 0,
@@ -712,7 +712,7 @@ func _is_valid_recovery_first_step(
 
 
 func _print_home_target_diagnostics(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder,
 	objectives: Array[Node2D]
 ) -> void:

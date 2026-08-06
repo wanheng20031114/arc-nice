@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE_PATH := "res://scene/game.tscn"
+const GAME_SCENE_PATH := "res://scene/game_modes/standard/standard_game.tscn"
 
 
 func _init() -> void:
@@ -16,10 +16,10 @@ func _run() -> void:
 		quit(1)
 		return
 
-	var game := packed.instantiate() as Game
+	var game := packed.instantiate() as StandardGame
 	var instantiated_msec := Time.get_ticks_msec()
 	if game == null:
-		push_error("Failed to instantiate Game.")
+		push_error("Failed to instantiate StandardGame.")
 		quit(1)
 		return
 

@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const WAVE_04 := preload("res://resources/config/waves/wave_04.tres")
 const WAVE_07 := preload("res://resources/config/waves/wave_07.tres")
 
@@ -103,12 +103,12 @@ func _test_wave_music_fade() -> void:
 	_expect(_stream_path(music_player.stream) == _stream_path(WAVE_04.music), "Wave combat BGM did not start.")
 	_expect(music_player.playing, "Wave combat BGM player must be playing.")
 	_expect(
-		_float_close(music_player.volume_db, Game.MUSIC_FADE_IN_START_VOLUME_DB, 0.05),
+		_float_close(music_player.volume_db, StandardGame.MUSIC_FADE_IN_START_VOLUME_DB, 0.05),
 		"Wave combat BGM must start at an audible fade-in volume."
 	)
 	await _finish_music_fade(game)
 	_expect(
-		_float_close(music_player.volume_db, Game.DEFAULT_MUSIC_VOLUME_DB, 0.2),
+		_float_close(music_player.volume_db, StandardGame.DEFAULT_MUSIC_VOLUME_DB, 0.2),
 		"Wave combat BGM must fade to the default music volume."
 	)
 
@@ -135,12 +135,12 @@ func _test_intermission_music_owner_and_fade() -> void:
 	)
 	_expect(music_player.playing, "Intermission BGM player must be playing.")
 	_expect(
-		_float_close(music_player.volume_db, Game.MUSIC_FADE_IN_START_VOLUME_DB, 0.05),
+		_float_close(music_player.volume_db, StandardGame.MUSIC_FADE_IN_START_VOLUME_DB, 0.05),
 		"Intermission BGM must start at an audible fade-in volume."
 	)
 	await _finish_music_fade(game)
 	_expect(
-		_float_close(music_player.volume_db, Game.DEFAULT_MUSIC_VOLUME_DB, 0.2),
+		_float_close(music_player.volume_db, StandardGame.DEFAULT_MUSIC_VOLUME_DB, 0.2),
 		"Intermission BGM must fade to the default music volume."
 	)
 
@@ -149,19 +149,19 @@ func _test_intermission_music_owner_and_fade() -> void:
 	await _drain_cleanup_frames()
 
 
-func _create_game() -> Game:
-	var game := GAME_SCENE.instantiate() as Game
+func _create_game() -> StandardGame:
+	var game := GAME_SCENE.instantiate() as StandardGame
 	game.auto_start_waves = false
 	var music_player := game.get_node("MusicPlayer") as AudioStreamPlayer
 	music_player.autoplay = false
 	return game
 
 
-func _finish_music_fade(game: Game) -> void:
+func _finish_music_fade(game: StandardGame) -> void:
 	var fade_tween := game.get("music_fade_tween") as Tween
 	_expect(fade_tween != null, "Music fade tween must be active.")
 	if fade_tween != null:
-		fade_tween.custom_step(Game.MUSIC_FADE_IN_SECONDS + 0.25)
+		fade_tween.custom_step(StandardGame.MUSIC_FADE_IN_SECONDS + 0.25)
 	await process_frame
 
 

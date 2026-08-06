@@ -31,7 +31,7 @@ class TestSceneRoot:
 
 
 class TestGame:
-	extends GameTowerDefense
+	extends TowerDefenseGame
 
 	var damageable_players: Array[Player] = []
 	var test_core_health := 100

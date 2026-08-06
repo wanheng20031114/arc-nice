@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="GameModeDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/game_mode_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+mode_id = 4
+wire_key = &"test_arena_p3"
+display_name = "测试场景 P3 · 肉鸽路线"
+lobby_label = "测试场 P3 · 肉鸽路线"
+lobby_icon_path = "res://resources/texture/rogue_route/party_marker.png"
+lobby_order = 5
+singleplayer_entry_scene_path = "res://scene/test_arena/test_rogue_route_p3.tscn"
+multiplayer_entry_scene_path = "res://scene/multiplayer/mp_rogue_route.tscn"
+multiplayer_runtime_scene_path = "res://scene/test_arena/test_rogue_route_p3.tscn"
+uses_wave_campaign = false
+include_starting_inventory = false

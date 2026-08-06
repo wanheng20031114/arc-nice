@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
 
@@ -13,7 +13,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Long-wave fixture must instantiate tower defense.")
 	if game == null:
 		_finish(0, 0)

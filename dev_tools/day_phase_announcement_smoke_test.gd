@@ -166,7 +166,7 @@ func _test_presentation(announcement: DayPhaseAnnouncement) -> void:
 func _test_phase_boundary_deduplication(
 	announcement: DayPhaseAnnouncement
 ) -> void:
-	var game := GameTowerDefense.new()
+	var game := TowerDefenseGame.new()
 	game.day_phase_announcement = announcement
 	game.day_phase_announcements_enabled = true
 	var baseline_count := announcement.presentation_count

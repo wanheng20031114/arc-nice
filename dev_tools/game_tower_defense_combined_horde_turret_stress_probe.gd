@@ -1,14 +1,14 @@
 extends SceneTree
 
 # Integrated regression probe for the reported high-pressure hitch: a real
-# GameTowerDefense scene, live pathfinding enemies, real Corn/Agave/Bamboo
+# TowerDefenseGame scene, live pathfinding enemies, real Corn/Agave/Bamboo
 # plants, pooled projectiles/effects and the production follow camera all run
 # together.
 #
 # Run with --headless --fixed-fps 60. Timings are diagnostic rather than tied
 # to a machine-specific pass threshold; semantic and lifecycle invariants are
 # the regression gates.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
@@ -56,7 +56,7 @@ const MOVEMENT_SWITCH_PHYSICS_FRAMES := 75
 const CLEANUP_FRAMES := 12
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var pathfinder: GridPathfinder = null
 var enemies: Array[Enemy] = []
 var initial_enemy_positions := PackedVector2Array()
@@ -83,8 +83,8 @@ func _run() -> void:
 	Engine.max_fps = 0
 	seed(FIXED_SEED)
 
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
-	_expect(game != null, "Combined stress probe must instantiate GameTowerDefense.")
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
+	_expect(game != null, "Combined stress probe must instantiate TowerDefenseGame.")
 	if game == null:
 		await _finish()
 		return
@@ -393,7 +393,7 @@ func _spawn_live_enemies() -> void:
 		enemy.setup(enemy_config, game.player, pathfinder)
 		enemy.current_health = PROBE_ENEMY_HEALTH
 		enemy.set_near_moving_target_direct_distance(
-			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS
 		)
 		enemy.material_drop_random_generator.seed = FIXED_SEED + enemy_index * 2 + 1
 		var insect := enemy as YuanshiInsect
@@ -657,7 +657,7 @@ func _measure_synchronized_corn_peak() -> void:
 
 func _measure_real_target_query_batch() -> void:
 	# Supplemental CPU attribution inside the same production fixture. Each
-	# sweep calls the real Corn selection method, which uses GameTowerDefense's
+	# sweep calls the real Corn selection method, which uses TowerDefenseGame's
 	# CombatTargetIndex, full exact distance ordering and physics LOS ray.
 	_stop_tower_combat()
 	for enemy in enemies:

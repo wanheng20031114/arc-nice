@@ -1,5 +1,5 @@
 extends GameRuntimeBase
-class_name Game
+class_name StandardGame
 
 const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
 const TANGO_LASER_BULLET_POOL_SCENE := preload(
@@ -55,14 +55,9 @@ const DEFAULT_MUSIC_VOLUME_DB := -6.0
 const MUSIC_FADE_IN_SECONDS := 3.0
 const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
 const INITIAL_PLAYER_XIRANG := 1000
-const SINGLEPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
-)
-const MULTIPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
-)
 
 @export_group("战役资源")
+@export var mode_definition: GameModeDefinition = null
 @export var singleplayer_campaign: WaveCampaignConfig = null
 @export var multiplayer_campaign: WaveCampaignConfig = null
 
@@ -235,7 +230,7 @@ func _ready() -> void:
 		_configure_multiplayer_players()
 		_register_static_multiplayer_pickups()
 	if player == null:
-		push_error("Game: 无法创建当前角色，停止初始化。")
+		push_error("StandardGame: 无法创建当前角色，停止初始化。")
 		set_process(false)
 		set_physics_process(false)
 		return
@@ -294,7 +289,7 @@ func _validate_standard_scene_content() -> bool:
 	if merchant != null and luoxi_merchant != null:
 		return true
 	push_error(
-		"Game: 场景启用了标准商人能力，但缺少庄方宜或洛茜商人节点。"
+		"StandardGame: 场景启用了标准商人能力，但缺少庄方宜或洛茜商人节点。"
 	)
 	return false
 
@@ -418,23 +413,31 @@ func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -
 
 
 func _configure_active_campaign() -> bool:
+	var definition := mode_definition
+	if definition == null:
+		definition = GameModeCatalog.get_definition(
+			GameModeCatalog.MODE_STANDARD
+		)
+	if definition != null and singleplayer_campaign == null:
+		singleplayer_campaign = load(
+			definition.singleplayer_campaign_path
+		) as WaveCampaignConfig
+	if definition != null and multiplayer_campaign == null:
+		multiplayer_campaign = load(
+			definition.multiplayer_campaign_path
+		) as WaveCampaignConfig
 	active_campaign = (
 		singleplayer_campaign
 		if runtime_mode == RuntimeMode.SINGLEPLAYER
 		else multiplayer_campaign
 	)
 	if active_campaign == null:
-		var campaign_path := (
-			SINGLEPLAYER_CAMPAIGN_PATH
-			if runtime_mode == RuntimeMode.SINGLEPLAYER
-			else MULTIPLAYER_CAMPAIGN_PATH
-		)
-		active_campaign = load(campaign_path) as WaveCampaignConfig
+		push_error("StandardGame: 模式定义无法解析当前运行模式的 Campaign。")
 	flow_graph = null
 	waves.clear()
 	bosses.clear()
 	if active_campaign == null:
-		push_error("Game: 当前运行模式没有配置 WaveCampaignConfig。")
+		push_error("StandardGame: 当前运行模式没有配置 WaveCampaignConfig。")
 		return false
 	var campaign_errors := active_campaign.validate_campaign()
 	if not campaign_errors.is_empty():
@@ -477,7 +480,7 @@ func _instantiate_player_character(character_id: StringName) -> Player:
 		resolved_id = DEFAULT_PLAYER_CHARACTER_ID
 	var instance := PlayerCharacterRegistry.instantiate_character(resolved_id) as Player
 	if instance == null:
-		push_error("Game: 无法实例化角色 %s" % resolved_id)
+		push_error("StandardGame: 无法实例化角色 %s" % resolved_id)
 	return instance
 
 
@@ -615,7 +618,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 	var typed_state := state as WaveState
 	var flow_step := _get_flow_step_by_id(step_id)
 	if flow_step == null and typed_state not in [WaveState.VICTORY, WaveState.DEFEAT]:
-		push_error("Game: 收到当前 Campaign 不存在的流程 step_id：%s" % String(step_id))
+		push_error("StandardGame: 收到当前 Campaign 不存在的流程 step_id：%s" % String(step_id))
 		return
 	if flow_step != null:
 		current_flow_step = flow_step
@@ -2810,7 +2813,7 @@ func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
 
 func _is_flow_system_ready() -> bool:
 	if flow_graph == null:
-		push_error("Game 当前 Campaign 没有配置 FlowGraphConfig。")
+		push_error("StandardGame 当前 Campaign 没有配置 FlowGraphConfig。")
 		return false
 	if not _is_spawn_system_ready():
 		return false

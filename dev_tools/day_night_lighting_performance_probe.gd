@@ -3,7 +3,7 @@ extends SceneTree
 # This probe intentionally requires a real rendering driver. Do not run it with
 # --headless: the render CPU/GPU monitors and Canvas draw-call counts would no
 # longer describe PointLight2D cost.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const DAY_NIGHT_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"
 )
@@ -42,7 +42,7 @@ const GREEN_RING_TEXTURE_SCALE := 0.82
 const GREEN_RING_NIGHT_ENERGY := 0.62
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var controller: DayNightController = null
 var stress_root: Node2D = null
 var stress_lights: Array[NightPointLight2D] = []
@@ -109,7 +109,7 @@ func _run() -> void:
 			PlayerCharacterRegistry.WEISHIDAIER_ID
 		)
 
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Lighting probe must instantiate tower defense.")
 	if game == null:
 		await _finish()
@@ -522,7 +522,7 @@ func _spawn_live_gameplay_enemies() -> int:
 		enemy.setup(enemy_config, game.player, pathfinder)
 		enemy.current_health = 1_000_000_000
 		enemy.set_near_moving_target_direct_distance(
-			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS
 		)
 		enemy.material_drop_random_generator.seed = 20260720 + enemy_index * 2
 		var insect := enemy as YuanshiInsect

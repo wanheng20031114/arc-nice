@@ -1,11 +1,11 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const WORLD_COLLISION_MASK := 1
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 
 
 class PhysicsSetupDriver:
@@ -61,7 +61,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense fixture must instantiate.")
 	if game == null:
 		await _finish()

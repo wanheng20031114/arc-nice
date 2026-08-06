@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const PICKUP_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
 const EXPECTED_ENEMY_COUNT := 300
@@ -18,7 +18,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Non-navigation fixture must instantiate tower defense.")
 	if game == null:
 		await _finish(null)
@@ -141,7 +141,7 @@ func _benchmark_idle_methods(enemies: Array[Enemy]) -> Dictionary:
 	}
 
 
-func _benchmark_legacy_pickup_scan(game: GameTowerDefense) -> Dictionary:
+func _benchmark_legacy_pickup_scan(game: TowerDefenseGame) -> Dictionary:
 	var started_usec := Time.get_ticks_usec()
 	for _iteration in range(LEGACY_PICKUP_SCAN_BENCHMARK_ITERATIONS):
 		var pickups: Array[Pickup] = []
@@ -334,8 +334,8 @@ func _verify_source_allocation_contract() -> void:
 		"Zero-velocity movement must return before scanning player or plant contacts."
 	)
 	for runtime_source_path in [
-		"res://scene/game.gd",
-		"res://scene/game_tower_defense.gd",
+		"res://scene/game_modes/standard/standard_game.gd",
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
 	]:
 		var runtime_source := FileAccess.get_file_as_string(runtime_source_path)
 		_expect(
@@ -399,7 +399,7 @@ func _verify_segmented_enemy_metrics(enemies: Array[Enemy]) -> void:
 		)
 
 
-func _verify_event_driven_pickup_registration(game: GameTowerDefense) -> void:
+func _verify_event_driven_pickup_registration(game: TowerDefenseGame) -> void:
 	var original_mode := game.runtime_mode
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	var pickup := PICKUP_SCENE.instantiate() as Pickup
@@ -437,7 +437,7 @@ func _count_nodes_recursive(node: Node) -> int:
 	return count
 
 
-func _finish(game: GameTowerDefense) -> void:
+func _finish(game: TowerDefenseGame) -> void:
 	current_scene = null
 	if game != null:
 		game.queue_free()

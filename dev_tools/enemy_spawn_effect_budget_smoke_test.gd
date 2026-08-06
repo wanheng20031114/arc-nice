@@ -143,8 +143,8 @@ func _test_shared_runtime_pool_profile() -> void:
 
 func _test_runtime_call_paths_share_the_budget() -> void:
 	for runtime_script_path in [
-		"res://scene/game.gd",
-		"res://scene/game_tower_defense.gd",
+		"res://scene/game_modes/standard/standard_game.gd",
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
 	]:
 		var runtime_script := load(runtime_script_path) as GDScript
 		_expect(runtime_script != null, "Runtime script must load: %s" % runtime_script_path)

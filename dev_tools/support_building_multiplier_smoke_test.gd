@@ -2,7 +2,7 @@ extends SceneTree
 
 # Bootstrap the gameplay graph before standalone combat scenes to avoid the
 # Enemy -> game runtime -> registry preload cycle used by projectile scripts.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const AGAVE_SCENE := preload("res://scene/plant_defense/agave_cannon.tscn")
 const AGAVE_CONFIG := preload(
 	"res://resources/config/plant_defense/agave_cannon.tres"

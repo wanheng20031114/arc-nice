@@ -3,7 +3,7 @@ extends SceneTree
 # Real-window regression probe for the tower-defense follow camera. It keeps
 # the same 300 frozen enemies on screen and changes only player/camera motion
 # or one visual layer at a time.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
@@ -16,7 +16,7 @@ const WARMUP_FRAMES := 90
 const DIRECTION_SWITCH_PHYSICS_FRAMES := 30
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var enemies: Array[Enemy] = []
 var viewport_rid := RID()
 var movement_enabled := false
@@ -35,7 +35,7 @@ func _run() -> void:
 	# even though normal gameplay is intentionally capped at 60 FPS.
 	original_max_fps = Engine.max_fps
 	Engine.max_fps = 0
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Movement probe must instantiate tower defense.")
 	if game == null:
 		await _finish()

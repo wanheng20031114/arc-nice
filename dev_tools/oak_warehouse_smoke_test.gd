@@ -1114,7 +1114,7 @@ func _test_authoritative_warehouse_sender_guard(
 ) -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
 	var net_manager_stub := HostNetManagerStub.new()
-	var game_stub := GameTowerDefense.new()
+	var game_stub := TowerDefenseGame.new()
 	var plant_system_stub := AuthoritativePlantSystemStub.new()
 	mp_game.net_manager = net_manager_stub
 	mp_game.run_state = run_state

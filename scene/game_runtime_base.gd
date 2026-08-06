@@ -781,7 +781,7 @@ func pick_random_combat_target(center: Vector2, radius: float = 0.0) -> Enemy:
 		return combat_target_index.pick_random_alive_in_radius(center, radius)
 	# Lightweight fixtures and an early pre-activation call can precede index
 	# enablement. Preserve behavior there without weakening the indexed production
-	# path used by Game and GameTowerDefense.
+	# path used by StandardGame and TowerDefenseGame.
 	var safe_radius := maxf(radius, 0.0)
 	var radius_squared := safe_radius * safe_radius
 	var selected_enemy: Enemy = null

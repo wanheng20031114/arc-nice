@@ -86,7 +86,7 @@ func _test_independent_scene_contract() -> void:
 		scene_state != null and scene_state.get_base_scene_state() == null,
 		"Rouge 作战必须是可独立编辑的场景，不能继续继承 game.tscn。"
 	)
-	_expect(game is Game, "Rouge 作战脚本必须继续复用普通模式 Game 行为。")
+	_expect(game is StandardGame, "Rouge 作战脚本必须继续复用普通模式 StandardGame 行为。")
 	var script_source := FileAccess.get_file_as_string(
 		ROGUE_COMBAT_SCRIPT_PATH
 	)
@@ -336,11 +336,11 @@ func _test_deadline_start_policies() -> void:
 		and game.music_player.bus == &"Music"
 		and is_equal_approx(
 			game.music_player.volume_db,
-			Game.MUSIC_FADE_IN_START_VOLUME_DB
+			StandardGame.MUSIC_FADE_IN_START_VOLUME_DB
 		)
 		and game.music_fade_tween != null
-		and is_equal_approx(Game.DEFAULT_MUSIC_VOLUME_DB, -6.0)
-		and is_equal_approx(Game.MUSIC_FADE_IN_SECONDS, 3.0)
+		and is_equal_approx(StandardGame.DEFAULT_MUSIC_VOLUME_DB, -6.0)
+		and is_equal_approx(StandardGame.MUSIC_FADE_IN_SECONDS, 3.0)
 		and (ROGUE_COMBAT_MUSIC as AudioStreamMP3).loop,
 		"WAVE_ACTIVE 必须在 Music 总线以 -6 dB 目标和三秒淡入启动循环 1-28。"
 	)

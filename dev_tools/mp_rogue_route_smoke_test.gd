@@ -61,7 +61,7 @@ class ManifestNetManager:
 
 
 class WarehouseRuntimeStub:
-	extends GameTowerDefense
+	extends TowerDefenseGame
 
 	var warehouses: Dictionary = {}
 

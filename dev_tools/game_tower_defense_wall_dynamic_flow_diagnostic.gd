@@ -3,7 +3,7 @@ extends SceneTree
 # Integration regression for the synchronized enemy stop observed when the
 # moving player target reaches a wall. It drives the same contact-region slot
 # contract as production enemies and validates both build bounds and liveness.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
@@ -20,7 +20,7 @@ const FLOW_RADIUS_ENV := "ARC_NAV_DYNAMIC_FLOW_RADIUS"
 const SOURCE_RADIUS_ENV := "ARC_NAV_SOURCE_RADIUS"
 const PACKED_BUILD_ENV := "ARC_NAV_PACKED_FLOW_BUILD"
 
-var game: GameTowerDefense
+var game: TowerDefenseGame
 var pathfinder: GridPathfinder
 var enemies: Array[Enemy] = []
 var failures: Array[String] = []
@@ -32,7 +32,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	if game == null:
 		push_error("WALL_DYNAMIC_FLOW_DIAGNOSTIC could not instantiate tower defense.")
 		quit(1)
@@ -93,7 +93,7 @@ func _run() -> void:
 		return
 	var source_cohort_signature := _get_source_cohort_signature(source_cells)
 	probe_enemy.set_near_moving_target_direct_distance(
-		GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
+		TowerDefenseGame.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 	)
 	probe_enemy.navigation_update_interval_frames = 1
 	var cold_fixture := _find_cold_handoff_fixture(
@@ -1169,7 +1169,7 @@ func _spawn_enemies(source_cells: Array[Vector2i]) -> void:
 		game.enemy_container.add_child(enemy)
 		enemy.setup(BASIC_ENEMY_CONFIG, game.player, pathfinder)
 		enemy.set_near_moving_target_direct_distance(
-			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
+			TowerDefenseGame.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 		)
 		enemy.global_position = pathfinder.call("_map_to_global", cell) as Vector2
 		enemy.navigation_update_interval_frames = 1

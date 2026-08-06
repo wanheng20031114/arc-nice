@@ -3,7 +3,7 @@ extends SceneTree
 # This probe must run with a real rendering driver. It deliberately keeps the
 # navigation performance probe separate: every phase below keeps the same 300
 # frozen, on-screen enemies and changes only projectile/effect pressure.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
@@ -35,7 +35,7 @@ enum ProjectileMode {
 }
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var enemies: Array[Enemy] = []
 var projectiles: Array[Bullet] = []
 var viewport_rid := RID()
@@ -58,7 +58,7 @@ func _init() -> void:
 
 func _run() -> void:
 	seed(fixed_seed)
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Projectile render probe must instantiate tower defense.")
 	if game == null:
 		await _finish()

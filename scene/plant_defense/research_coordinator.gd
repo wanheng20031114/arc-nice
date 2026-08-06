@@ -49,7 +49,7 @@ const GLOBAL_REQUIREMENTS: Array[Dictionary] = [
 
 var production_coordinator: ProductionCoordinator = null
 var plant_system: PlantSystem = null
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var authoritative_processing_enabled := true
 var global_research_states: Dictionary = {}
 var global_research_elapsed: Dictionary = {}
@@ -87,7 +87,7 @@ func _ready() -> void:
 func setup(
 	new_production_coordinator: ProductionCoordinator,
 	new_plant_system: PlantSystem,
-	new_game: GameTowerDefense
+	new_game: TowerDefenseGame
 ) -> void:
 	production_coordinator = new_production_coordinator
 	plant_system = new_plant_system
@@ -512,7 +512,7 @@ func _apply_player_levels_to_runtime() -> void:
 		)
 	if game == null:
 		return
-	if game.runtime_mode == GameTowerDefense.RuntimeMode.SINGLEPLAYER:
+	if game.runtime_mode == TowerDefenseGame.RuntimeMode.SINGLEPLAYER:
 		if game.player != null:
 			register_player(game.player)
 		return

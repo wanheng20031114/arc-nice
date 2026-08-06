@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const DEFAULT_WAVES: Array[WaveConfig] = [
 	preload("res://resources/config/waves/wave_01.tres"),
@@ -96,25 +96,25 @@ func _test_default_wave_resources() -> void:
 func _test_game_scene_wave_list() -> void:
 	var game := GAME_SCENE.instantiate() as Node2D
 	var campaign_configured := bool(game.call("_configure_active_campaign"))
-	_expect(campaign_configured, "Game scene must configure its singleplayer Campaign.")
+	_expect(campaign_configured, "StandardGame scene must configure its singleplayer Campaign.")
 	var game_waves: Array = game.get("waves")
 	var flow_graph := game.get("flow_graph") as FlowGraphConfig
-	_expect(game_waves.size() == 12, "Game scene must load 12 waves.")
-	_expect(flow_graph != null, "Game scene must load the default flow graph.")
+	_expect(game_waves.size() == 12, "StandardGame scene must load 12 waves.")
+	_expect(flow_graph != null, "StandardGame scene must load the default flow graph.")
 	if flow_graph != null:
 		_expect(flow_graph.start_step == game_waves[0], "Default flow must start at the first wave.")
 		_expect(flow_graph.steps.size() >= game_waves.size() + 1, "Default flow must include waves plus the boss node.")
 		_expect(flow_graph.get_step_by_id(&"boss_01_linglan") is BossConfig, "Default flow must include the Linglan boss node.")
 	if game_waves.size() >= 1:
 		var first_wave := game_waves[0] as WaveConfig
-		_expect(first_wave != null, "Game first wave resource is missing.")
+		_expect(first_wave != null, "StandardGame first wave resource is missing.")
 		if first_wave != null:
-			_expect(first_wave.get_total_enemy_count() > 0, "Game first wave must contain enemies.")
+			_expect(first_wave.get_total_enemy_count() > 0, "StandardGame first wave must contain enemies.")
 	if game_waves.size() >= 12:
 		var final_wave := game_waves[11] as WaveConfig
 		_expect(
 			final_wave != null and final_wave.get_total_enemy_count() == 560,
-			"Game final normal wave must include the late-game enemy set."
+			"StandardGame final normal wave must include the late-game enemy set."
 		)
 	game.queue_free()
 
@@ -161,8 +161,8 @@ func _test_grid_pathfinder_budget() -> void:
 
 	var pathfinder := game.get_node("GridPathfinder") as GridPathfinder
 	var player := game.get_node("Player") as Player
-	_expect(pathfinder != null, "Game must provide GridPathfinder.")
-	_expect(player != null, "Game must provide Player for pathfinder budget test.")
+	_expect(pathfinder != null, "StandardGame must provide GridPathfinder.")
+	_expect(player != null, "StandardGame must provide Player for pathfinder budget test.")
 	if pathfinder == null or player == null:
 		game.queue_free()
 		await process_frame
@@ -236,7 +236,7 @@ func _test_wave_state_flow() -> void:
 		wave_hud.has_node("WaveInfoBar"),
 		"Wave HUD must expose WaveInfoBar as an editable scene node."
 	)
-	_expect(game.get("wave_state") == STATE_PRE_WAVE, "Game did not enter PRE_WAVE.")
+	_expect(game.get("wave_state") == STATE_PRE_WAVE, "StandardGame did not enter PRE_WAVE.")
 	_expect(game.get("countdown_seconds") == 5, "Opening countdown must start at 5.")
 	_expect(
 		not (game.get_node("CountdownAudio") as AudioStreamPlayer).playing,

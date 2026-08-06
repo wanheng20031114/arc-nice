@@ -3,7 +3,7 @@ extends SceneTree
 # The complete probe requires a real rendering driver. The
 # --guardian-physics-only mode is intentionally headless-safe and isolates the
 # retired guardian Area2D collision pairs from the centralized production state.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
@@ -31,7 +31,7 @@ const FIXTURE_CENTER := Vector2(512.0, 352.0)
 const CLEANUP_SETTLE_FRAMES := 6
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var enemies: Array[Enemy] = []
 var viewport_rid := RID()
 
@@ -52,7 +52,7 @@ func _init() -> void:
 
 func _run() -> void:
 	seed(fixed_seed)
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Enemy VFX probe must instantiate tower defense.")
 	if game == null:
 		await _finish()

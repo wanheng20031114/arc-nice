@@ -16,7 +16,7 @@ func _run() -> void:
 	root.add_child(coordinator)
 	await process_frame
 	var manager := coordinator.manager
-	var game := GameTowerDefense.new()
+	var game := TowerDefenseGame.new()
 	game.fate_coordinator = coordinator
 	game.fate_manager = manager
 	coordinator.setup(game, game.day_cycle_config)
@@ -89,7 +89,7 @@ func _test_partial_stone_delivery_revision(
 
 
 func _test_collectible_missing_player(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:
@@ -126,7 +126,7 @@ func _test_collectible_missing_player(
 
 
 func _test_remote_revision_guard(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:

@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_DEFENSE_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_DEFENSE_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const SIMPLE_FENCE_CONFIG := preload(
 	"res://resources/config/plant_defense/simple_fence.tres"
 )
@@ -44,7 +44,7 @@ const EXPECTED_SPAWN_RPC_ARGUMENTS := [
 ]
 
 var failures: Array[String] = []
-var host_game: GameTowerDefense = null
+var host_game: TowerDefenseGame = null
 var client_fixtures: Array[Dictionary] = []
 
 
@@ -57,7 +57,7 @@ func _run() -> void:
 		NET_CONSTANTS.PROTOCOL_VERSION == 46,
 		"多人运行时协议v46必须保留既有wire类型与忍者加速表现，并隔离重连激活确认。"
 	)
-	host_game = TOWER_DEFENSE_SCENE.instantiate() as GameTowerDefense
+	host_game = TOWER_DEFENSE_SCENE.instantiate() as TowerDefenseGame
 	_expect(host_game != null, "围栏多人运行时测试必须能实例化真实塔防场景。")
 	if host_game == null:
 		_finish()
@@ -205,11 +205,11 @@ func _run() -> void:
 
 	var live_client := _create_client_fixture("LiveClient", owner_peer_id)
 	for spawn_record in spawn_records:
-		_apply_spawn_record(live_client["runtime"] as GameTowerDefense, spawn_record)
+		_apply_spawn_record(live_client["runtime"] as TowerDefenseGame, spawn_record)
 	_assert_topology(
 		"实时 Client",
 		host_game,
-		live_client["runtime"] as GameTowerDefense,
+		live_client["runtime"] as TowerDefenseGame,
 		active_net_ids,
 		anchor_by_net_id
 	)
@@ -241,11 +241,11 @@ func _run() -> void:
 	)
 	var damage_record: Dictionary = health_records.back()
 	_apply_health_record(
-		live_client["runtime"] as GameTowerDefense,
+		live_client["runtime"] as TowerDefenseGame,
 		damage_record
 	)
 	var live_center := (
-		live_client["runtime"] as GameTowerDefense
+		live_client["runtime"] as TowerDefenseGame
 	).get_multiplayer_plant_node(center_net_id)
 	_expect(
 		live_center != null
@@ -263,18 +263,18 @@ func _run() -> void:
 		var late_snapshot := roster[snapshot_index].duplicate(true)
 		late_snapshot["request_id"] = 0
 		_apply_spawn_record(
-			late_client["runtime"] as GameTowerDefense,
+			late_client["runtime"] as TowerDefenseGame,
 			late_snapshot
 		)
 	_assert_topology(
 		"逆序晚加入 Client",
 		host_game,
-		late_client["runtime"] as GameTowerDefense,
+		late_client["runtime"] as TowerDefenseGame,
 		active_net_ids,
 		anchor_by_net_id
 	)
 	var late_center := (
-		late_client["runtime"] as GameTowerDefense
+		late_client["runtime"] as TowerDefenseGame
 	).get_multiplayer_plant_node(center_net_id)
 	_expect(
 		late_center != null
@@ -285,7 +285,7 @@ func _run() -> void:
 	if late_center != null:
 		var late_health_before_stale := late_center.current_health
 		var late_revision_before_stale := late_center.health_revision
-		(late_client["runtime"] as GameTowerDefense).apply_remote_plant_health(
+		(late_client["runtime"] as TowerDefenseGame).apply_remote_plant_health(
 			center_net_id,
 			late_center.max_health,
 			late_center.max_health,
@@ -357,11 +357,11 @@ func _run() -> void:
 		"Host 致命伤害必须先推进 revision，再权威移除围栏并广播 destroyed。"
 	)
 
-	(live_client["runtime"] as GameTowerDefense).apply_remote_plant_removed_with_reason(
+	(live_client["runtime"] as TowerDefenseGame).apply_remote_plant_removed_with_reason(
 		center_net_id,
 		true
 	)
-	(late_client["runtime"] as GameTowerDefense).apply_remote_plant_removed_with_reason(
+	(late_client["runtime"] as TowerDefenseGame).apply_remote_plant_removed_with_reason(
 		center_net_id,
 		true
 	)
@@ -369,22 +369,22 @@ func _run() -> void:
 	_assert_topology(
 		"中心移除后的实时 Client",
 		host_game,
-		live_client["runtime"] as GameTowerDefense,
+		live_client["runtime"] as TowerDefenseGame,
 		active_net_ids,
 		anchor_by_net_id
 	)
 	_assert_topology(
 		"中心移除后的晚加入 Client",
 		host_game,
-		late_client["runtime"] as GameTowerDefense,
+		late_client["runtime"] as TowerDefenseGame,
 		active_net_ids,
 		anchor_by_net_id
 	)
 	_expect(
-		(live_client["runtime"] as GameTowerDefense).get_multiplayer_plant_node(
+		(live_client["runtime"] as TowerDefenseGame).get_multiplayer_plant_node(
 			center_net_id
 		) == null
-		and (late_client["runtime"] as GameTowerDefense).get_multiplayer_plant_node(
+		and (late_client["runtime"] as TowerDefenseGame).get_multiplayer_plant_node(
 			center_net_id
 		) == null,
 		"两类 Client 都必须在可靠 remove 调用栈内释放中心围栏索引。"
@@ -427,7 +427,7 @@ func _create_client_fixture(label: String, owner_peer_id: int) -> Dictionary:
 		plant_container,
 		host_game.plant_system.placement_area
 	)
-	var runtime := GameTowerDefense.new()
+	var runtime := TowerDefenseGame.new()
 	runtime.name = "%sRuntime" % label
 	runtime.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
 	runtime.plant_system = plant_system
@@ -442,7 +442,7 @@ func _create_client_fixture(label: String, owner_peer_id: int) -> Dictionary:
 
 
 func _apply_spawn_record(
-	runtime: GameTowerDefense,
+	runtime: TowerDefenseGame,
 	record: Dictionary
 ) -> void:
 	runtime.apply_remote_plant_spawn(
@@ -458,7 +458,7 @@ func _apply_spawn_record(
 
 
 func _apply_health_record(
-	runtime: GameTowerDefense,
+	runtime: TowerDefenseGame,
 	record: Dictionary
 ) -> void:
 	runtime.apply_remote_plant_health(
@@ -471,8 +471,8 @@ func _apply_health_record(
 
 func _assert_topology(
 	label: String,
-	authority: GameTowerDefense,
-	replica: GameTowerDefense,
+	authority: TowerDefenseGame,
+	replica: TowerDefenseGame,
 	active_net_ids: Array[int],
 	anchor_by_net_id: Dictionary[int, Vector2i]
 ) -> void:
@@ -600,7 +600,7 @@ func _find_peer_item_slot(
 
 func _cleanup() -> void:
 	for fixture in client_fixtures:
-		var runtime := fixture.get("runtime") as GameTowerDefense
+		var runtime := fixture.get("runtime") as TowerDefenseGame
 		var plant_system := fixture.get("plant_system") as PlantSystem
 		var plant_container := fixture.get("plant_container") as Node2D
 		if runtime != null and is_instance_valid(runtime):

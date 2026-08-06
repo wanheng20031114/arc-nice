@@ -10,8 +10,8 @@ const MAIN_NET_MANAGER_PATH := "res://scene/multiplayer/net_manager.gd"
 const RELAY_NET_MANAGER_PATH := "res://relay_servers/relay_godot_project/relay_net_manager_stub.gd"
 const RELAY_SERVER_PATH := "res://relay_servers/relay_godot_project/relay_server.gd"
 const RELAY_PROJECT_PATH := "res://relay_servers/relay_godot_project/project.godot"
-const STANDARD_GAME_PATH := "res://scene/game.gd"
-const TOWER_DEFENSE_GAME_PATH := "res://scene/game_tower_defense.gd"
+const STANDARD_GAME_PATH := "res://scene/game_modes/standard/standard_game.gd"
+const TOWER_DEFENSE_GAME_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.gd"
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 

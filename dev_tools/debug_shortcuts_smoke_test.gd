@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 
@@ -64,15 +64,15 @@ func _test_debug_collectible_window() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run()
 
-	var game := GAME_SCENE.instantiate() as Game
+	var game := GAME_SCENE.instantiate() as StandardGame
 	game.set("auto_start_waves", false)
 	test_root.add_child(game)
 	await process_frame
 	await physics_frame
-	_expect(game.player.current_xirang == Game.INITIAL_PLAYER_XIRANG, "Game player must start with initial xirang.")
+	_expect(game.player.current_xirang == StandardGame.INITIAL_PLAYER_XIRANG, "StandardGame player must start with initial xirang.")
 
 	var window := game.get_node_or_null("SettingsLayer/DebugCollectibleWindow") as DebugCollectibleWindow
-	_expect(window != null, "Game must include DebugCollectibleWindow under SettingsLayer.")
+	_expect(window != null, "StandardGame must include DebugCollectibleWindow under SettingsLayer.")
 	if window == null:
 		game.queue_free()
 		return

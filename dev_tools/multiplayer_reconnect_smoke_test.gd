@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const WOOD_MATERIAL: PickupConfig = preload(
@@ -226,7 +226,7 @@ func _on_lobby_fixture_player_joined(peer_id: int, _player_name: String) -> void
 func _test_authoritative_player_state_remap() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
-	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -369,7 +369,7 @@ func _test_authoritative_player_state_remap() -> void:
 func _test_embedded_client_restores_unseen_participant() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
-	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,

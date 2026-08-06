@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const REAL_FENCE_COUNT := 1000
 const NAVIGATION_QUERY_COUNT := 300
 
@@ -12,7 +12,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game
@@ -139,7 +139,7 @@ func _run() -> void:
 
 
 func _build_route_pairs(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder: GridPathfinder
 ) -> Array[Dictionary]:
 	var open_cells: Array[Vector2i] = []
@@ -256,7 +256,7 @@ func _navigation_state_signature(pathfinder: GridPathfinder) -> Dictionary:
 	}
 
 
-func _retarget_signature(game: GameTowerDefense) -> Dictionary:
+func _retarget_signature(game: TowerDefenseGame) -> Dictionary:
 	return {
 		"time_left": game.enemy_retarget_time_left,
 		"sweep_remaining": game.enemy_retarget_sweep_remaining,
@@ -280,7 +280,7 @@ func _sorted_dictionary_value_hashes(dictionary: Dictionary) -> PackedInt64Array
 	return values
 
 
-func _finish(game: GameTowerDefense) -> void:
+func _finish(game: TowerDefenseGame) -> void:
 	game.queue_free()
 	for _cleanup_frame in range(8):
 		await process_frame

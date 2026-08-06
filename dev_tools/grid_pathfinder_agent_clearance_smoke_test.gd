@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TEST_AGENT_HALF_EXTENTS := Vector2(9.0, 9.0)
 const EXACT_TOUCH_AGENT_HALF_EXTENTS := Vector2(8.0, 8.0)
 const BASIC_INSECT_HALF_EXTENTS := Vector2(8.0, 4.0)
@@ -28,18 +28,18 @@ func _run() -> void:
 	await physics_frame
 
 	var pathfinder := game.get_node("GridPathfinder") as GridPathfinder
-	_expect(pathfinder != null, "Game must provide GridPathfinder.")
+	_expect(pathfinder != null, "StandardGame must provide GridPathfinder.")
 	_expect(pathfinder != null and pathfinder.is_built, "GridPathfinder must be built.")
 	_expect(
 		game.is_runtime_preparation_complete(),
-		"Game startup must complete staged navigation preparation."
+		"StandardGame startup must complete staged navigation preparation."
 	)
 	if pathfinder == null or not pathfinder.is_built:
 		_finish(game)
 		return
 	_expect(
 		pathfinder.agent_grid_cache.size() > 0,
-		"Game startup must prewarm enemy agent clearance grids."
+		"StandardGame startup must prewarm enemy agent clearance grids."
 	)
 	_verify_local_clearance_matches_bruteforce(pathfinder)
 

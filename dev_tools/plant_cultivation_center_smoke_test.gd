@@ -995,7 +995,7 @@ func _test_authoritative_placement_rollback_sync(
 	)
 	var initial_revision := run_state.get_inventory_revision_for_peer(2)
 	var plant_system := PlacementRollbackPlantSystem.new(config)
-	var host_game := GameTowerDefense.new()
+	var host_game := TowerDefenseGame.new()
 	host_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	host_game.run_state = run_state
 	host_game.plant_system = plant_system

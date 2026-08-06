@@ -26,7 +26,7 @@ var _failures := PackedStringArray()
 
 
 class SpawnBatchProbe:
-	extends Game
+	extends StandardGame
 
 	var spawn_attempts := 0
 
@@ -169,7 +169,7 @@ func _test_fixed_contract_rejects_drift() -> void:
 	var mutations := [
 		[&"encounter_id", &"wrong_encounter"],
 		[&"event_title", "错误标题"],
-		[&"combat_scene_path", "res://scene/game.tscn"],
+		[&"combat_scene_path", "res://scene/game_modes/standard/standard_game.tscn"],
 		[&"preparation_seconds", 4],
 		[&"combat_limit_seconds", 91],
 		[&"enemy_count", 11],
@@ -290,8 +290,8 @@ func _test_ten_enemy_spawn_batch() -> void:
 	probe.enemy_spawn_timer = Timer.new()
 	probe.call("_build_wave_spawn_queue", wave)
 	probe.call("_spawn_wave_batch")
-	_expect(probe.spawn_attempts == 10, "Game 单个刷怪 tick 必须实际尝试生成 10 个敌人。")
-	_expect(probe.current_wave_spawned == 10, "Game 单个刷怪 tick 必须记录 10 个已生成敌人。")
+	_expect(probe.spawn_attempts == 10, "StandardGame 单个刷怪 tick 必须实际尝试生成 10 个敌人。")
+	_expect(probe.current_wave_spawned == 10, "StandardGame 单个刷怪 tick 必须记录 10 个已生成敌人。")
 	_expect(
 		probe.pending_enemy_configs.is_empty(),
 		"单次批量生成 10 个敌人后不应残留待生成队列。"

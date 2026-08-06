@@ -99,7 +99,7 @@ func _run() -> void:
 	_expect(browser_panel != null, "Room browser must keep its styled panel shell.")
 	_expect(browser_scroll != null, "Room browser body must use a native ScrollContainer.")
 	_expect(settings_card != null, "Room settings card must remain available.")
-	_expect(game_mode_selector != null, "Game-mode selector must remain available.")
+	_expect(game_mode_selector != null, "StandardGame-mode selector must remain available.")
 	_expect(max_players_spin != null, "Room-capacity selector must remain available.")
 	_expect(public_tabs != null, "Public room tabs must remain available.")
 	_expect(public_status != null, "Public room status must remain available.")

@@ -142,7 +142,7 @@ static func find_for(source: Node) -> NightVfxFlashPool:
 		branch = branch.get_parent()
 
 	# Multiplayer effects are commonly attached to MpGame (the current scene),
-	# while the pool belongs to its embedded Game/GameTowerDefense child. That
+	# while the pool belongs to its embedded StandardGame/TowerDefenseGame child. That
 	# topology is not reachable by walking only upward from the effect. Pools
 	# register once with SceneTree so this fallback remains bounded and avoids a
 	# recursive scene scan on every explosion.

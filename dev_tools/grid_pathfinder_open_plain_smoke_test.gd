@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const SYNC_PROFILE_EXTENTS := Vector2(15.0, 2.0)
 const STAGED_PROFILE_EXTENTS := Vector2(3.0, 15.0)
 const RUNTIME_PROFILE_EXTENTS := Vector2(14.0, 11.0)
@@ -16,9 +16,9 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	if game == null:
-		_expect(false, "Tower-defense scene must instantiate GameTowerDefense.")
+		_expect(false, "Tower-defense scene must instantiate TowerDefenseGame.")
 		_finish(null)
 		return
 	game.auto_start_waves = false

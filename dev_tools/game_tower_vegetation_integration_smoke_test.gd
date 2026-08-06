@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const VEGETATION_STAKE_CONFIG := preload(
 	"res://resources/config/plant_defense/vegetation_stake.tres"
 )
@@ -30,8 +30,8 @@ func _init() -> void:
 func _run() -> void:
 	await _test_vegetation_stake_scene_contract()
 
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
-	_expect(game != null, "GameTowerDefense场景必须能够实例化。")
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_expect(game != null, "TowerDefenseGame场景必须能够实例化。")
 	if game == null:
 		_finish()
 		return
@@ -195,7 +195,7 @@ func _test_vegetation_stake_scene_contract() -> void:
 	await process_frame
 
 
-func _test_preauthored_spread_system(game: GameTowerDefense) -> void:
+func _test_preauthored_spread_system(game: TowerDefenseGame) -> void:
 	_expect(game.supports_multiplayer_terrain_state(), "塔防运行时必须启用多人地形状态。")
 	var spread_node := game.get_node_or_null("VegetationSpreadSystem")
 	_expect(spread_node is VegetationSpreadSystem, "GameTower场景必须预置VegetationSpreadSystem。")
@@ -216,7 +216,7 @@ func _test_preauthored_spread_system(game: GameTowerDefense) -> void:
 		"塔防场景必须预置并启动权威端1秒植物失地衰败Timer。"
 	)
 	_expect(
-		GameTowerDefense.TERRAIN_NETWORK_BATCH_MAX_CELLS == 96,
+		TowerDefenseGame.TERRAIN_NETWORK_BATCH_MAX_CELLS == 96,
 		"塔防权威地形网络批次上限必须为96格。"
 	)
 	_expect(
@@ -225,7 +225,7 @@ func _test_preauthored_spread_system(game: GameTowerDefense) -> void:
 	)
 
 
-func _test_authoritative_batching(game: GameTowerDefense) -> void:
+func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 	_expect(
 		game.authored_terrain_baseline.size() >= AUTHORITATIVE_BATCH_CELL_COUNT,
 		"塔防 authored baseline 必须足够覆盖193格分块测试。"
@@ -285,7 +285,7 @@ func _test_authoritative_batching(game: GameTowerDefense) -> void:
 	)
 
 
-func _test_client_snapshot_replacement_and_revision(game: GameTowerDefense) -> void:
+func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> void:
 	var empty_target := Vector2i.ZERO
 	var found_empty_target := false
 	for cell_variant in game.authored_terrain_baseline.keys():
@@ -356,7 +356,7 @@ func _test_client_snapshot_replacement_and_revision(game: GameTowerDefense) -> v
 	_expect(game.multiplayer_terrain_overrides.is_empty(), "恢复baseline的delta必须移除对应override。")
 
 
-func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
+func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
 	var spread := game.vegetation_spread_system
 	var plant_system := game.plant_system
 	var config := VEGETATION_STAKE_CONFIG as PlantDefenseConfig
@@ -538,7 +538,7 @@ func _test_real_plant_lifecycle(game: GameTowerDefense) -> void:
 	spread.set_process(was_processing)
 
 
-func _test_multiplayer_lifecycle_effect_routing(game: GameTowerDefense) -> void:
+func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 	var plant_system := game.plant_system
 	var config := VEGETATION_STAKE_CONFIG as PlantDefenseConfig
 	if plant_system == null or config == null:
@@ -695,7 +695,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: GameTowerDefense) -> void:
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 
 
-func _test_multi_cell_unsupported_terrain_damage(game: GameTowerDefense) -> void:
+func _test_multi_cell_unsupported_terrain_damage(game: TowerDefenseGame) -> void:
 	var config := AGAVE_CONFIG as PlantDefenseConfig
 	var plant_system := game.plant_system
 	_expect(config != null and plant_system != null, "2x2失地衰败测试需要龙舌兰配置与PlantSystem。")
@@ -777,7 +777,7 @@ func _test_multi_cell_unsupported_terrain_damage(game: GameTowerDefense) -> void
 
 
 func _find_lifecycle_fixture(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	config: PlantDefenseConfig
 ) -> Dictionary:
 	var anchors := game.plant_system.get_valid_anchors_for_player(config, game.player)
@@ -799,7 +799,7 @@ func _find_lifecycle_fixture(
 
 
 func _find_authored_spread_cell(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	anchor: Vector2i,
 	ring: int
 ) -> Vector2i:

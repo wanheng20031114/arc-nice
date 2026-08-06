@@ -15,7 +15,7 @@ extends SceneTree
 # tower-defense scene, authored enemy scenes, shared GridPathfinder, production
 # retargeting, projectile/effect pools, camera, player collision and audio/VFX
 # budgets. Timings are diagnostic; semantic/lifecycle invariants are the gates.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/enemy_attack_audio_limiter.gd"
@@ -72,7 +72,7 @@ enum ProbePhase {
 }
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var pathfinder: GridPathfinder = null
 var telemetry: RuntimePerformanceTelemetry = null
 var enemy_config: EnemyConfig = null
@@ -313,7 +313,7 @@ func _run() -> void:
 	original_smg_short_range_targeting = CapooSMG.short_range_targeting_enabled
 	original_smg_hitscan_attack = CapooSMG.hitscan_attack_enabled
 	original_expanded_projectile_prewarm = (
-		GameTowerDefense.expanded_projectile_pool_prewarm_enabled
+		TowerDefenseGame.expanded_projectile_pool_prewarm_enabled
 	)
 	original_enemy_attack_audio_limiter = ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled
 	original_pooled_mage_impact_effect = (
@@ -338,7 +338,7 @@ func _run() -> void:
 	)
 	CapooSMG.short_range_targeting_enabled = requested_smg_short_range_targeting
 	CapooSMG.hitscan_attack_enabled = requested_smg_hitscan_attack
-	GameTowerDefense.expanded_projectile_pool_prewarm_enabled = (
+	TowerDefenseGame.expanded_projectile_pool_prewarm_enabled = (
 		requested_expanded_projectile_prewarm
 	)
 	ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled = (
@@ -380,8 +380,8 @@ func _run() -> void:
 		_disable_smg_projectiles_in_cohort()
 
 	var runtime_setup_started_usec := Time.get_ticks_usec()
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
-	_expect(game != null, "Enemy cohort probe must instantiate GameTowerDefense.")
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
+	_expect(game != null, "Enemy cohort probe must instantiate TowerDefenseGame.")
 	if game == null:
 		await _finish()
 		return
@@ -571,7 +571,7 @@ func _prepare_runtime() -> void:
 			game.player.uses_local_input = false
 			_release_movement_input()
 	elif phase == ProbePhase.BOSS:
-		game.wave_state = GameTowerDefense.WaveState.BOSS_ACTIVE
+		game.wave_state = TowerDefenseGame.WaveState.BOSS_ACTIVE
 	movement_start_physics_frame = Engine.get_physics_frames()
 	movement_direction = 0
 	if phase != ProbePhase.BURST:
@@ -1007,7 +1007,7 @@ func _spawn_cohort() -> void:
 			enemy.navigation_update_interval_frames = requested_navigation_interval
 		enemy.current_health = ENEMY_PROBE_HEALTH if not is_boss else enemy.current_health
 		enemy.set_near_moving_target_direct_distance(
-			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS
 		)
 		if phase != ProbePhase.APPROACH:
 			enemy.set_target_player(game.player)
@@ -1766,14 +1766,14 @@ func _get_projectile_pool_metrics() -> Dictionary:
 
 func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
 	var expected_ak47_prewarm := (
-		GameTowerDefense.EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
+		TowerDefenseGame.EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
 		if requested_expanded_projectile_prewarm
-		else GameTowerDefense.LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
+		else TowerDefenseGame.LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
 	)
 	var expected_mage_prewarm := (
-		GameTowerDefense.EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+		TowerDefenseGame.EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
 		if requested_expanded_projectile_prewarm
-		else GameTowerDefense.LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+		else TowerDefenseGame.LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
 	)
 	var ak47_metrics := metrics_by_path.get(
 		CAPOO_AK47_BULLET_POOL_PATH,
@@ -2025,7 +2025,7 @@ func _finish() -> void:
 	)
 	CapooSMG.short_range_targeting_enabled = original_smg_short_range_targeting
 	CapooSMG.hitscan_attack_enabled = original_smg_hitscan_attack
-	GameTowerDefense.expanded_projectile_pool_prewarm_enabled = (
+	TowerDefenseGame.expanded_projectile_pool_prewarm_enabled = (
 		original_expanded_projectile_prewarm
 	)
 	ENEMY_ATTACK_AUDIO_LIMITER.limiting_enabled = (

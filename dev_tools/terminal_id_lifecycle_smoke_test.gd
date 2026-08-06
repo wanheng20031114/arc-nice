@@ -1,7 +1,7 @@
 extends SceneTree
 
-const GAME_SCRIPT := preload("res://scene/game.gd")
-const TOWER_DEFENSE_GAME_SCRIPT := preload("res://scene/game_tower_defense.gd")
+const GAME_SCRIPT := preload("res://scene/game_modes/standard/standard_game.gd")
+const TOWER_DEFENSE_GAME_SCRIPT := preload("res://scene/game_modes/tower_defense/tower_defense_game.gd")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
@@ -90,8 +90,8 @@ func _init() -> void:
 func _run() -> void:
 	_test_game_enemy_removal_markers()
 	_test_tower_defense_enemy_escape_marker()
-	_test_pickup_tree_exit_markers(GAME_SCRIPT.new(), "Game")
-	_test_pickup_tree_exit_markers(TOWER_DEFENSE_GAME_SCRIPT.new(), "GameTowerDefense")
+	_test_pickup_tree_exit_markers(GAME_SCRIPT.new(), "StandardGame")
+	_test_pickup_tree_exit_markers(TOWER_DEFENSE_GAME_SCRIPT.new(), "TowerDefenseGame")
 	_test_host_terminal_pairing_cache()
 	_test_reliable_terminal_feedback_payload()
 	_test_real_batch_damage_terminal_chain()
@@ -106,8 +106,8 @@ func _run() -> void:
 
 
 func _test_game_enemy_removal_markers() -> void:
-	_exercise_enemy_exit_pressure(GAME_SCRIPT.new(), "Game")
-	_exercise_enemy_exit_pressure(TOWER_DEFENSE_GAME_SCRIPT.new(), "GameTowerDefense")
+	_exercise_enemy_exit_pressure(GAME_SCRIPT.new(), "StandardGame")
+	_exercise_enemy_exit_pressure(TOWER_DEFENSE_GAME_SCRIPT.new(), "TowerDefenseGame")
 
 
 func _exercise_enemy_exit_pressure(runtime: Node, label: String) -> void:

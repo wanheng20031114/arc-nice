@@ -1,15 +1,13 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=4 format=3]
 
-[ext_resource type="PackedScene" path="res://scene/game_tower_defense.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/tower_defense_game.tscn" id="1_base"]
 [ext_resource type="Script" path="res://scene/test_arena/test_grass_arena.gd" id="2_script"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/singleplayer/campaign.tres" id="3_campaign"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/multiplayer/campaign.tres" id="4_multiplayer_campaign"]
+[ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1.tres" id="5_mode_definition"]
 
 [node name="TestGrassArena" instance=ExtResource("1_base")]
 position = Vector2(0, 0)
 script = ExtResource("2_script")
-singleplayer_campaign = ExtResource("3_campaign")
-multiplayer_campaign = ExtResource("4_multiplayer_campaign")
+mode_definition = ExtResource("5_mode_definition")
 test_scene_label = "P1A"
 test_entry_announcement_text = "测试场景 P1A"
 day_phase_announcements_enabled = false

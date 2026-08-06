@@ -386,7 +386,7 @@ func _test_host_successful_hits_register_burn_statuses() -> void:
 	burn_scheduler.call("clear_all")
 	var mp_game := TestMpGame.new()
 	var net_manager := TestNetManager.new()
-	var game := Game.new()
+	var game := StandardGame.new()
 	var normal_player := _spawn_player(Vector2(-800.0, -300.0), 20)
 	var elite_player := _spawn_player(Vector2(-900.0, -300.0), 21)
 	normal_player.physical_defense = 999
@@ -496,7 +496,7 @@ func _test_host_invincible_first_contact_is_consumed() -> void:
 	burn_scheduler.call("clear_all")
 	var mp_game := TestMpGame.new()
 	var net_manager := TestNetManager.new()
-	var game := Game.new()
+	var game := StandardGame.new()
 	var invincible_player := _spawn_player(Vector2(-400.0, -400.0), 2)
 	var second_player := _spawn_player(Vector2(-500.0, -400.0), 3)
 	game.peer_players[2] = invincible_player
@@ -574,7 +574,7 @@ func _test_client_invincible_first_contact_reports_zero() -> void:
 	var net_manager := TestNetManager.new()
 	net_manager.host_mode = false
 	net_manager.local_peer_id = 4
-	var game := Game.new()
+	var game := StandardGame.new()
 	var invincible_player := _spawn_player(Vector2(-400.0, -500.0), 4)
 	var second_player := _spawn_player(Vector2(-500.0, -500.0), 5)
 	game.peer_players[4] = invincible_player

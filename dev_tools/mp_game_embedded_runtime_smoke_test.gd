@@ -1,7 +1,7 @@
 extends SceneTree
 
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
-const OVERRIDE_RUNTIME_SCENE_PATH := "res://scene/game.tscn"
+const OVERRIDE_RUNTIME_SCENE_PATH := "res://scene/game_modes/standard/standard_game.tscn"
 const TEST_PORT := 19_347
 const PREPARATION_TIMEOUT_MSEC := 30_000
 const FLOAT_EPSILON := 0.0001
@@ -86,7 +86,7 @@ func _test_static_embedded_runtime_contract() -> void:
 		and source.contains("game.apply_remote_defeat_with_reason(failure_reason)"),
 		"The terminal defeat RPC must preserve the Host's authoritative failure reason."
 	)
-	var game_source := FileAccess.get_file_as_string("res://scene/game.gd")
+	var game_source := FileAccess.get_file_as_string("res://scene/game_modes/standard/standard_game.gd")
 	_expect(
 		game_source.contains(
 			"if not runtime_activation_deferred:\n"

@@ -613,7 +613,7 @@ func _run() -> void:
 		"赌怪专用券必须使用32×32图标、精确说明文字并支持999堆叠。"
 	)
 	_expect(panel_texture != null and panel_texture.get_size() == Vector2(728, 544), "通用生产面板背景必须为728×544。")
-	var game_scene := load("res://scene/game_tower_defense.tscn") as PackedScene
+	var game_scene := load("res://scene/game_modes/tower_defense/tower_defense_game.tscn") as PackedScene
 	var game_instance := game_scene.instantiate() if game_scene != null else null
 	_expect(
 		game_instance != null

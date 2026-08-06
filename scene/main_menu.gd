@@ -1,31 +1,17 @@
 extends Control
 class_name MainMenu
 
-const GAME_SCENE_PATH := "res://scene/game.tscn"
-const GAME_TOWER_DEFENSE_SCENE_PATH := "res://scene/game_tower_defense.tscn"
 const ENCYCLOPEDIA_SCENE_PATH := "res://scene/encyclopedia/encyclopedia_screen.tscn"
-const TEST_GRASS_ARENA_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena.tscn"
-)
-const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p1b.tscn"
-)
-const TEST_GRASS_ARENA_P2_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p2.tscn"
-)
-const TEST_ROGUE_ROUTE_P3_SCENE_PATH := (
-	"res://scene/test_arena/test_rogue_route_p3.tscn"
-)
 const TEST_ARENA_P1A_ID := &"p1"
 const TEST_ARENA_P1_ID := TEST_ARENA_P1A_ID
 const TEST_ARENA_P1B_ID := &"p1b"
 const TEST_ARENA_P2_ID := &"p2"
 const TEST_ARENA_P3_ID := &"p3"
-const TEST_ARENA_SCENE_PATHS := {
-	TEST_ARENA_P1A_ID: TEST_GRASS_ARENA_SCENE_PATH,
-	TEST_ARENA_P1B_ID: TEST_GRASS_ARENA_P1B_SCENE_PATH,
-	TEST_ARENA_P2_ID: TEST_GRASS_ARENA_P2_SCENE_PATH,
-	TEST_ARENA_P3_ID: TEST_ROGUE_ROUTE_P3_SCENE_PATH,
+const TEST_ARENA_MODE_IDS := {
+	TEST_ARENA_P1A_ID: GameModeCatalog.MODE_TEST_ARENA_P1,
+	TEST_ARENA_P1B_ID: GameModeCatalog.MODE_TEST_ARENA_P1B,
+	TEST_ARENA_P2_ID: GameModeCatalog.MODE_TEST_ARENA_P2,
+	TEST_ARENA_P3_ID: GameModeCatalog.MODE_TEST_ARENA_P3,
 }
 const FOCUS_DEFAULT: StringName = &"singleplayer"
 const FOCUS_ENCYCLOPEDIA: StringName = &"encyclopedia"
@@ -151,7 +137,7 @@ func _on_test_arena_pressed() -> void:
 
 
 func _on_test_arena_selected(arena_id: StringName) -> void:
-	if not TEST_ARENA_SCENE_PATHS.has(arena_id):
+	if not TEST_ARENA_MODE_IDS.has(arena_id):
 		push_error("Main menu received an invalid test arena: %s" % arena_id)
 		return
 	pending_test_arena_id = arena_id
@@ -173,9 +159,12 @@ func _on_character_confirmed(character_id: StringName) -> void:
 	if not run_state.set_selected_character(character_id):
 		push_error("Main menu received an invalid character selection: %s" % character_id)
 		return
-	var scene_path := _get_pending_singleplayer_scene_path()
-	run_state.begin_new_run(character_id, scene_path != TEST_ROGUE_ROUTE_P3_SCENE_PATH)
-	_begin_singleplayer_load(scene_path)
+	var definition := _get_pending_singleplayer_definition()
+	if definition == null:
+		push_error("Main menu could not resolve the selected game mode.")
+		return
+	run_state.begin_new_run(character_id, definition.include_starting_inventory)
+	_begin_singleplayer_load(definition.singleplayer_entry_scene_path)
 
 
 func _begin_singleplayer_load(scene_path: String) -> void:
@@ -187,18 +176,27 @@ func _begin_singleplayer_load(scene_path: String) -> void:
 
 
 func _get_pending_singleplayer_scene_path() -> String:
+	var definition := _get_pending_singleplayer_definition()
+	return definition.singleplayer_entry_scene_path if definition != null else ""
+
+
+func _get_pending_singleplayer_definition() -> GameModeDefinition:
+	return GameModeCatalog.get_definition(_get_pending_singleplayer_mode_id())
+
+
+func _get_pending_singleplayer_mode_id() -> int:
 	match pending_singleplayer_destination:
 		SingleplayerDestination.TOWER_DEFENSE:
-			return GAME_TOWER_DEFENSE_SCENE_PATH
+			return GameModeCatalog.MODE_TOWER_DEFENSE
 		SingleplayerDestination.TEST_ARENA:
-			return str(
-				TEST_ARENA_SCENE_PATHS.get(
+			return int(
+				TEST_ARENA_MODE_IDS.get(
 					pending_test_arena_id,
-					TEST_GRASS_ARENA_SCENE_PATH
+					GameModeCatalog.MODE_TEST_ARENA_P1
 				)
 			)
 		_:
-			return GAME_SCENE_PATH
+			return GameModeCatalog.MODE_STANDARD
 
 
 func _on_character_selection_closed() -> void:

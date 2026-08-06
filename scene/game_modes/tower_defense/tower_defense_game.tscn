@@ -1,6 +1,6 @@
 [gd_scene format=4 uid="uid://dy51i4e27gaoi"]
 
-[ext_resource type="Script" uid="uid://d1w121mq74kpw" path="res://scene/game_tower_defense.gd" id="1_17rxn"]
+[ext_resource type="Script" uid="uid://d1w121mq74kpw" path="res://scene/game_modes/tower_defense/tower_defense_game.gd" id="1_17rxn"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/pickup.tscn" id="4_qpk70"]
@@ -54,6 +54,7 @@
 [ext_resource type="Script" path="res://scene/plant_defense/orange_charging_aura_coordinator.gd" id="55_orange_aura"]
 [ext_resource type="PackedScene" path="res://scene/day_phase_announcement.tscn" id="56_day_announcement"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="57_combat_robot_drone_motion"]
+[ext_resource type="Resource" path="res://scene/game_modes/definitions/tower_defense.tres" id="58_mode_definition"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -147,10 +148,11 @@ custom_data_layer_0/name = "overlay_role"
 custom_data_layer_0/type = 21
 sources/0 = SubResource("TileSetAtlasSource_fc0e3")
 
-[node name="GameTowerDefense" type="Node2D" unique_id=20737211]
+[node name="TowerDefenseGame" type="Node2D" unique_id=20737211]
 physics_interpolation_mode = 2
 position = Vector2(2, 0)
 script = ExtResource("1_17rxn")
+mode_definition = ExtResource("58_mode_definition")
 day_cycle_config = ExtResource("53_day_cycle")
 linglan_boss_enabled = true
 

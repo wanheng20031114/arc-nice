@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const CONTEXT_COUNT := 300
 const TEST_AGENT_HALF_EXTENTS := Vector2(8.0, 4.0)
 const TEST_EXPANSIONS_PER_FRAME := 64
@@ -38,9 +38,9 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	if game == null:
-		_expect(false, "Tower-defense scene must instantiate GameTowerDefense.")
+		_expect(false, "Tower-defense scene must instantiate TowerDefenseGame.")
 		_finish(null, 0)
 		return
 	game.auto_start_waves = false
@@ -600,7 +600,7 @@ func _test_target_release_cancels_pending_job(
 
 func _test_two_targets_share_one_profile_anchor_job(
 	pathfinder: GridPathfinder,
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	source_position: Vector2,
 	target_cell: Vector2i
 ) -> void:
@@ -735,7 +735,7 @@ func _test_static_try_stages_and_publishes_fixed_cache(
 
 func _test_cold_target_retarget_is_bounded(
 	pathfinder: GridPathfinder,
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	source_position: Vector2,
 	anchor_cell: Vector2i,
 	far_retarget_cell: Vector2i
@@ -831,7 +831,7 @@ func _test_cold_target_retarget_is_bounded(
 
 func _test_rebuild_cancels_flow_and_agent_grid_jobs(
 	pathfinder: GridPathfinder,
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	source_position: Vector2,
 	dynamic_target_cell: Vector2i,
 	agent_grid_target_cell: Vector2i
@@ -928,7 +928,7 @@ func _test_rebuild_cancels_flow_and_agent_grid_jobs(
 
 
 func _test_public_api_auto_extends_long_wall_coverage(
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var synthetic_grid := AStarGrid2D.new()
 	synthetic_grid.region = Rect2i(0, 0, 64, 64)
@@ -1144,7 +1144,7 @@ func _test_public_api_auto_extends_long_wall_coverage(
 
 
 func _test_late_required_source_resumes_packed_coverage_search(
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var fixture := _stage_packed_coverage_materialization(
 		game,
@@ -1225,7 +1225,7 @@ func _test_late_required_source_resumes_packed_coverage_search(
 
 
 func _test_rebuild_cancels_partial_packed_materialization(
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var fixture := _stage_packed_coverage_materialization(
 		game,
@@ -1275,7 +1275,7 @@ func _test_rebuild_cancels_partial_packed_materialization(
 	pathfinder.queue_free()
 
 
-func _test_player_flow_priority_and_round_robin(game: GameTowerDefense) -> void:
+func _test_player_flow_priority_and_round_robin(game: TowerDefenseGame) -> void:
 	for packed_storage in [false, true]:
 		var suffix := "Packed" if packed_storage else "Legacy"
 		var pathfinder := _create_open_synthetic_pathfinder(
@@ -1446,7 +1446,7 @@ func _test_player_flow_priority_and_round_robin(game: GameTowerDefense) -> void:
 
 
 func _test_flow_priority_selector_performance_ab(
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var pathfinder := _create_open_synthetic_pathfinder(
 		game,
@@ -1557,7 +1557,7 @@ func _legacy_flow_priority_service_order_index(
 	return selected_index if selected_index >= 0 else 0
 
 
-func _test_integral_forward_obstacle_lookahead(game: GameTowerDefense) -> void:
+func _test_integral_forward_obstacle_lookahead(game: TowerDefenseGame) -> void:
 	var pathfinder := _create_open_synthetic_pathfinder(
 		game,
 		"IntegralForwardObstacleLookahead",
@@ -1615,7 +1615,7 @@ func _test_integral_forward_obstacle_lookahead(game: GameTowerDefense) -> void:
 
 
 func _test_dynamic_prefetch_cohort_deduplication(
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var pathfinder := _create_open_synthetic_pathfinder(
 		game,
@@ -1681,7 +1681,7 @@ func _test_dynamic_prefetch_cohort_deduplication(
 
 
 func _test_prefetch_preserves_unique_coverage_sources(
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var pathfinder := _create_open_synthetic_pathfinder(
 		game,
@@ -1815,7 +1815,7 @@ func _test_prefetch_preserves_unique_coverage_sources(
 
 
 func _stage_packed_coverage_materialization(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder_name: String
 ) -> Dictionary:
 	var pathfinder := _create_open_synthetic_pathfinder(
@@ -1917,7 +1917,7 @@ func _stage_packed_coverage_materialization(
 
 
 func _create_open_synthetic_pathfinder(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	pathfinder_name: String,
 	region_size: Vector2i,
 	flow_radius_cells: int

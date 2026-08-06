@@ -145,7 +145,7 @@ func _test_multiplayer_projectile_branch_preserves_host_direction() -> void:
 
 
 func _test_runtime_registration_contract() -> void:
-	for source_path in ["res://scene/game.gd", "res://scene/game_tower_defense.gd"]:
+	for source_path in ["res://scene/game_modes/standard/standard_game.gd", "res://scene/game_modes/tower_defense/tower_defense_game.gd"]:
 		var source := FileAccess.get_file_as_string(source_path)
 		_expect(
 			source.contains(

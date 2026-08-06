@@ -1,8 +1,8 @@
 extends SceneTree
 
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
-const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
-const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
+const STANDARD_GAME_SCENE_PATH := "res://scene/game_modes/standard/standard_game.tscn"
+const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 const TEST_ARENA_P1_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
 const TEST_ARENA_P1B_SCENE_PATH := (
 	"res://scene/test_arena/test_grass_arena_p1b.tscn"
@@ -55,8 +55,8 @@ const PROBE_SCENARIO_RECONNECT := "reconnect"
 const PROBE_SCENARIO_MODE_CONTRACT := "mode_contract"
 const PROBE_OWNED_ROOT_NODE_NAMES := {
 	"MpGame": true,
-	"Game": true,
-	"GameTowerDefense": true,
+	"StandardGame": true,
+	"TowerDefenseGame": true,
 	"MultiplayerLobby": true,
 }
 
@@ -316,7 +316,7 @@ func _run_mp_game_probe(
 	_disable_probe_wave_flow(game)
 	if game.peer_players.size() != expected_players:
 		_fail(
-			"Game expected %d peer players, saw %d."
+			"StandardGame expected %d peer players, saw %d."
 			% [expected_players, game.peer_players.size()]
 		)
 	if probe_scenario == PROBE_SCENARIO_MODE_CONTRACT:
@@ -460,7 +460,7 @@ func _validate_exact_mode_runtime(game: GameRuntimeBase) -> void:
 	match probe_game_mode:
 		"tower_defense":
 			has_exact_runtime_type = (
-				game is GameTowerDefense
+				game is TowerDefenseGame
 				and not (game is TestGrassArena)
 			)
 		"test_arena_p1":
@@ -476,7 +476,7 @@ func _validate_exact_mode_runtime(game: GameRuntimeBase) -> void:
 		"test_arena_p2":
 			has_exact_runtime_type = game is TestGrassArenaP2
 		_:
-			has_exact_runtime_type = game is Game
+			has_exact_runtime_type = game is StandardGame
 	_expect_mode_contract(
 		has_exact_runtime_type,
 		"Mode %s instantiated an unexpected runtime class." % probe_game_mode
@@ -640,7 +640,7 @@ func _run_leave_probe(
 func _run_tower_defense_reconnect_probe(
 	net_manager: Node,
 	mp_game: Node,
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	is_host_probe: bool,
 	is_reconnect_attempt: bool
 ) -> void:
@@ -659,7 +659,7 @@ func _run_tower_defense_reconnect_probe(
 func _run_host_tower_defense_reconnect_probe(
 	net_manager: Node,
 	mp_game: Node,
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var old_peer_id := _get_peer_id_by_name(net_manager, RECONNECT_PLAYER_NAME)
 	var player_instance := game.get_player_for_peer(old_peer_id) as Player
@@ -745,7 +745,7 @@ func _run_host_tower_defense_reconnect_probe(
 
 func _run_existing_tower_defense_client_reconnect_probe(
 	net_manager: Node,
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var old_peer_id := _get_peer_id_by_name(net_manager, RECONNECT_PLAYER_NAME)
 	if old_peer_id <= 0:
@@ -797,7 +797,7 @@ func _run_existing_tower_defense_client_reconnect_probe(
 
 func _run_rejoined_tower_defense_client_probe(
 	net_manager: Node,
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var local_peer_id := int(net_manager.get_local_peer_id())
 	var local_player := game.get_player_for_peer(local_peer_id) as Player
@@ -835,7 +835,7 @@ func _run_rejoined_tower_defense_client_probe(
 
 func _wait_for_reconnected_player(
 	net_manager: Node,
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	old_peer_id: int,
 	timeout_seconds: float
 ) -> int:
@@ -883,7 +883,7 @@ func _run_tower_defense_runtime_probe(
 	is_host_probe: bool
 ) -> void:
 	if not bool(game.call("supports_tower_defense")):
-		_fail("Tower-defense runtime probe received the standard Game runtime.")
+		_fail("Tower-defense runtime probe received the standard StandardGame runtime.")
 		return
 	await _wait_seconds(1.0)
 	if not await _exercise_tower_defense_local_character(net_manager, mp_game, game):
@@ -1512,7 +1512,7 @@ func _run_client_tower_defense_runtime_probe(
 func _run_host_tower_defense_fate_probe(
 	net_manager: Node,
 	mp_game: Node,
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var fate_manager := game.fate_manager
 	var resume_step := game.call("_get_start_flow_step") as FlowStepConfig
@@ -1608,7 +1608,7 @@ func _run_host_tower_defense_fate_probe(
 func _run_client_tower_defense_fate_probe(
 	net_manager: Node,
 	mp_game: Node,
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	if not await _wait_for_game_wave_state(
 		game,

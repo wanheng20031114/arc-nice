@@ -1,10 +1,6 @@
 extends Control
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
-const MULTIPLAYER_GAME_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
-const MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH := (
-	"res://scene/multiplayer/mp_rogue_route.tscn"
-)
 const PUBLIC_LOBBY_API_BASE_URL := _NetConstants.PUBLIC_LOBBY_API_BASE_URL
 const USERNAME_CARET_SIZE := Vector2(2.0, 34.0)
 const USERNAME_CARET_BLINK_INTERVAL := 0.48
@@ -13,27 +9,6 @@ const STATE_HOSTING_LAN := NetManagerStore.ConnectionState.HOSTING_LAN
 const STATE_CONNECTING_LAN := NetManagerStore.ConnectionState.CONNECTING_LAN
 const STATE_CONNECTED_IN_LOBBY := NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY
 const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
-const GAME_MODE_STANDARD_KEY := "standard"
-const GAME_MODE_TOWER_DEFENSE_KEY := "tower_defense"
-const GAME_MODE_TEST_ARENA_P1_KEY := "test_arena_p1"
-const GAME_MODE_TEST_ARENA_P1B_KEY := "test_arena_p1b"
-const GAME_MODE_TEST_ARENA_P2_KEY := "test_arena_p2"
-const GAME_MODE_TEST_ARENA_P3_KEY := "test_arena_p3"
-const GAME_MODE_STANDARD_ICON: Texture2D = preload(
-	"res://resources/texture/ui/multiplayer/mode_standard.png"
-)
-const GAME_MODE_TOWER_DEFENSE_ICON: Texture2D = preload(
-	"res://resources/texture/ui/multiplayer/mode_tower_defense.png"
-)
-const GAME_MODE_TEST_ARENA_P1_ICON: Texture2D = preload(
-	"res://resources/texture/ui/multiplayer/mode_test_p1.png"
-)
-const GAME_MODE_TEST_ARENA_P2_ICON: Texture2D = preload(
-	"res://resources/texture/ui/multiplayer/mode_test_p2.png"
-)
-const GAME_MODE_TEST_ARENA_P3_ICON: Texture2D = preload(
-	"res://resources/texture/rogue_route/party_marker.png"
-)
 
 enum LobbyView {
 	USERNAME_INPUT,
@@ -126,6 +101,7 @@ var _username_panel_intro_tween: Tween
 var _username_panel_intro_target_position := Vector2.ZERO
 var _username_panel_intro_active := false
 var _username_caret_blink_elapsed := 0.0
+var _game_mode_icon_cache: Dictionary = {}
 
 
 func _ready() -> void:
@@ -222,36 +198,12 @@ func _disconnect_net_manager_signals() -> void:
 
 func _configure_game_mode_selector() -> void:
 	game_mode_selector.clear()
-	game_mode_selector.add_icon_item(
-		GAME_MODE_STANDARD_ICON,
-		"普通冒险",
-		NetManagerStore.GameMode.STANDARD
-	)
-	game_mode_selector.add_icon_item(
-		GAME_MODE_TOWER_DEFENSE_ICON,
-		"塔防模式",
-		NetManagerStore.GameMode.TOWER_DEFENSE
-	)
-	game_mode_selector.add_icon_item(
-		GAME_MODE_TEST_ARENA_P1_ICON,
-		"测试场 P1A",
-		NetManagerStore.GameMode.TEST_ARENA_P1
-	)
-	game_mode_selector.add_icon_item(
-		GAME_MODE_TEST_ARENA_P1_ICON,
-		"测试场 P1B",
-		NetManagerStore.GameMode.TEST_ARENA_P1B
-	)
-	game_mode_selector.add_icon_item(
-		GAME_MODE_TEST_ARENA_P2_ICON,
-		"测试场 P2",
-		NetManagerStore.GameMode.TEST_ARENA_P2
-	)
-	game_mode_selector.add_icon_item(
-		GAME_MODE_TEST_ARENA_P3_ICON,
-		"测试场 P3 · 肉鸽路线",
-		NetManagerStore.GameMode.TEST_ARENA_P3
-	)
+	for definition in GameModeCatalog.get_lobby_definitions():
+		game_mode_selector.add_icon_item(
+			_load_game_mode_icon(definition),
+			definition.lobby_label,
+			definition.mode_id
+		)
 	_select_game_mode_in_selector(
 		net_manager.get_current_game_mode() as NetManagerStore.GameMode
 	)
@@ -273,19 +225,9 @@ func _get_selected_game_mode() -> NetManagerStore.GameMode:
 	if item_index < 0 or item_index >= game_mode_selector.item_count:
 		return NetManagerStore.GameMode.STANDARD
 	var item_id := game_mode_selector.get_item_id(item_index)
-	match item_id:
-		NetManagerStore.GameMode.TOWER_DEFENSE:
-			return NetManagerStore.GameMode.TOWER_DEFENSE
-		NetManagerStore.GameMode.TEST_ARENA_P1:
-			return NetManagerStore.GameMode.TEST_ARENA_P1
-		NetManagerStore.GameMode.TEST_ARENA_P1B:
-			return NetManagerStore.GameMode.TEST_ARENA_P1B
-		NetManagerStore.GameMode.TEST_ARENA_P2:
-			return NetManagerStore.GameMode.TEST_ARENA_P2
-		NetManagerStore.GameMode.TEST_ARENA_P3:
-			return NetManagerStore.GameMode.TEST_ARENA_P3
-		_:
-			return NetManagerStore.GameMode.STANDARD
+	if GameModeCatalog.is_valid_mode_id(item_id):
+		return item_id as NetManagerStore.GameMode
+	return NetManagerStore.GameMode.STANDARD
 
 
 func _get_selected_game_mode_key() -> String:
@@ -308,19 +250,19 @@ func _prepare_selected_host_game_mode() -> bool:
 
 
 func _get_room_game_mode_key(room_data: Dictionary) -> String:
+	var default_definition := GameModeCatalog.get_definition(
+		GameModeCatalog.DEFAULT_MODE_ID
+	)
+	var default_key := (
+		String(default_definition.wire_key)
+		if default_definition != null
+		else ""
+	)
 	var game_mode_key := str(
-		room_data.get("game_mode", GAME_MODE_STANDARD_KEY)
+		room_data.get("game_mode", default_key)
 	).strip_edges().to_lower()
-	if game_mode_key in [
-		GAME_MODE_STANDARD_KEY,
-		GAME_MODE_TOWER_DEFENSE_KEY,
-		GAME_MODE_TEST_ARENA_P1_KEY,
-		GAME_MODE_TEST_ARENA_P1B_KEY,
-		GAME_MODE_TEST_ARENA_P2_KEY,
-		GAME_MODE_TEST_ARENA_P3_KEY,
-	]:
-		return game_mode_key
-	return ""
+	var definition := GameModeCatalog.get_definition_by_wire_key(game_mode_key)
+	return String(definition.wire_key) if definition != null else ""
 
 
 func _apply_room_game_mode(room_data: Dictionary, as_host: bool) -> bool:
@@ -626,7 +568,11 @@ func _on_quick_match_pressed() -> void:
 
 
 func _on_public_room_selected(room_id: String, game_mode_key: String) -> void:
-	var game_mode := NetManagerStore.game_mode_from_key(game_mode_key)
+	var definition := GameModeCatalog.get_definition_by_wire_key(game_mode_key)
+	if definition == null:
+		_show_public_error("房间返回了无效的游戏模式。")
+		return
+	var game_mode := definition.mode_id as NetManagerStore.GameMode
 	if not net_manager.set_pending_game_mode(game_mode):
 		_show_public_error("当前连接状态不能加入房间。")
 		return
@@ -1124,21 +1070,24 @@ func _change_to_multiplayer_game() -> void:
 	var tree := get_tree()
 	if tree == null:
 		return
+	var game_mode_definition := GameModeCatalog.get_definition(
+		int(net_manager.get_current_game_mode())
+	)
+	if game_mode_definition == null:
+		is_starting_game = false
+		push_error("MultiplayerLobby: 当前联机模式没有目录定义。")
+		return
 	if run_state != null and run_state.has_method("begin_new_run"):
 		run_state.call(
 			"begin_new_run",
 			_get_local_selected_character_id(),
-			not _is_rogue_route_mode()
+			game_mode_definition.include_starting_inventory
 		)
 	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 	if load_coordinator != null and load_coordinator.has_method("begin_multiplayer"):
 		load_coordinator.call("begin_multiplayer")
 		return
-	tree.change_scene_to_file(
-		MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH
-		if _is_rogue_route_mode()
-		else MULTIPLAYER_GAME_SCENE_PATH
-	)
+	tree.change_scene_to_file(game_mode_definition.multiplayer_entry_scene_path)
 
 
 func _on_leave_room() -> void:
@@ -1278,27 +1227,21 @@ func _get_room_max_players(room_data: Dictionary) -> int:
 
 
 func _get_game_mode_icon(game_mode: NetManagerStore.GameMode) -> Texture2D:
-	match game_mode:
-		NetManagerStore.GameMode.TOWER_DEFENSE:
-			return GAME_MODE_TOWER_DEFENSE_ICON
-		NetManagerStore.GameMode.TEST_ARENA_P1:
-			return GAME_MODE_TEST_ARENA_P1_ICON
-		NetManagerStore.GameMode.TEST_ARENA_P1B:
-			return GAME_MODE_TEST_ARENA_P1_ICON
-		NetManagerStore.GameMode.TEST_ARENA_P2:
-			return GAME_MODE_TEST_ARENA_P2_ICON
-		NetManagerStore.GameMode.TEST_ARENA_P3:
-			return GAME_MODE_TEST_ARENA_P3_ICON
-		_:
-			return GAME_MODE_STANDARD_ICON
+	return _load_game_mode_icon(GameModeCatalog.get_definition(int(game_mode)))
 
 
-func _is_rogue_route_mode() -> bool:
-	return (
-		net_manager != null
-		and net_manager.get_current_game_mode()
-		== NetManagerStore.GameMode.TEST_ARENA_P3
-	)
+func _load_game_mode_icon(definition: GameModeDefinition) -> Texture2D:
+	if definition == null:
+		return null
+	var icon_path := definition.lobby_icon_path.strip_edges()
+	if icon_path.is_empty():
+		return null
+	if _game_mode_icon_cache.has(icon_path):
+		return _game_mode_icon_cache[icon_path] as Texture2D
+	var icon := load(icon_path) as Texture2D
+	if icon != null:
+		_game_mode_icon_cache[icon_path] = icon
+	return icon
 
 
 func _sync_local_character_selection() -> void:

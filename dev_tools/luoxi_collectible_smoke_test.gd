@@ -2,7 +2,7 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const LUOXI_SCENE := preload("res://scene/luoxi_merchant.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const INVENTORY_SLOT_SCENE := preload("res://scene/inventory_slot.tscn")
@@ -85,8 +85,8 @@ func _test_hoe_cat_collectible_compatibility_filter() -> void:
 
 
 func _test_luoxi_game_scene_placement() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for Luoxi placement.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for Luoxi placement.")
 	if game == null:
 		return
 	game.set("auto_start_waves", false)
@@ -96,8 +96,8 @@ func _test_luoxi_game_scene_placement() -> void:
 
 	var zhuangfangyi := game.get_node_or_null("ZhuangfangyiMerchant") as ZhuangfangyiMerchant
 	var luoxi := game.get_node_or_null("LuoxiMerchant") as LuoxiMerchant
-	_expect(zhuangfangyi != null, "Game must keep Zhuangfangyi merchant.")
-	_expect(luoxi != null, "Game must instantiate Luoxi merchant.")
+	_expect(zhuangfangyi != null, "StandardGame must keep Zhuangfangyi merchant.")
+	_expect(luoxi != null, "StandardGame must instantiate Luoxi merchant.")
 	if zhuangfangyi != null and luoxi != null:
 		_expect(luoxi.position.x > zhuangfangyi.position.x, "Luoxi must be placed to the right of Zhuangfangyi.")
 		var zhuang_shape := zhuangfangyi.get_node("InteractionArea/CollisionShape2D") as CollisionShape2D

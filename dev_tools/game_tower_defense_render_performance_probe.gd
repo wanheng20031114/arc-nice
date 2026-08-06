@@ -3,12 +3,12 @@ extends SceneTree
 # Run this probe with a real display driver (not --headless) so Godot's render
 # monitors include CanvasItem batching and draw calls. The window can be placed
 # off-screen from the command line during automated profiling.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const SAMPLE_FRAMES := 180
 const EXPECTED_ENEMIES := 300
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 
 
 func _init() -> void:
@@ -16,7 +16,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Render probe must instantiate tower defense.")
 	if game == null:
 		await _finish()

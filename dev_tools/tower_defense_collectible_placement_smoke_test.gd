@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -20,7 +20,7 @@ func _run() -> void:
 	for character_config in PlayerCharacterRegistry.get_all_configs():
 		var character_id := character_config.character_id
 		run_state.begin_new_run(character_id)
-		var game := GAME_SCENE.instantiate() as GameTowerDefense
+		var game := GAME_SCENE.instantiate() as TowerDefenseGame
 		game.auto_start_waves = false
 		game.sandbox_free_building_enabled = true
 		test_root.add_child(game)
@@ -64,7 +64,7 @@ func _run() -> void:
 
 
 func _test_f10_collectible_then_place(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	controller: PlantPlacementController,
 	window: DebugCollectibleWindow
 ) -> void:
@@ -154,7 +154,7 @@ func _test_f10_collectible_then_place(
 	)
 
 
-func _create_enemy_crowd_placement_fixture(game: GameTowerDefense) -> Node2D:
+func _create_enemy_crowd_placement_fixture(game: TowerDefenseGame) -> Node2D:
 	var configs := game.plant_system.get_available_configs()
 	_expect(not configs.is_empty(), "Enemy-crowd placement regression requires a plant config.")
 	if configs.is_empty():

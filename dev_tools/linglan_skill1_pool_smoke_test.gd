@@ -462,8 +462,8 @@ func _test_offscreen_hit_keeps_damage_without_visual_lease() -> void:
 
 func _test_production_runtime_registration_contract() -> void:
 	for runtime_script_path in [
-		"res://scene/game.gd",
-		"res://scene/game_tower_defense.gd",
+		"res://scene/game_modes/standard/standard_game.gd",
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
 	]:
 		var source := FileAccess.get_file_as_string(runtime_script_path)
 		_expect(

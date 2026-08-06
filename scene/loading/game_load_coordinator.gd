@@ -4,52 +4,6 @@ signal loading_started(multiplayer_load: bool)
 signal loading_finished(multiplayer_load: bool)
 signal loading_failed(message: String)
 
-const MULTIPLAYER_SCENE_PATH := "res://scene/multiplayer/mp_game.tscn"
-const MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH := (
-	"res://scene/multiplayer/mp_rogue_route.tscn"
-)
-const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
-const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
-const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
-const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p1b.tscn"
-)
-const TEST_GRASS_ARENA_P2_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p2.tscn"
-)
-const TEST_ROGUE_ROUTE_P3_SCENE_PATH := (
-	"res://scene/test_arena/test_rogue_route_p3.tscn"
-)
-const STANDARD_SINGLEPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
-)
-const STANDARD_MULTIPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
-)
-const TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres"
-)
-const TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/test_arena/singleplayer/campaign.tres"
-)
-const TEST_ARENA_P1B_SINGLEPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/test_arena/p1b/singleplayer/campaign.tres"
-)
-const TEST_ARENA_P2_SINGLEPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres"
-)
-const TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres"
-)
-const TEST_ARENA_MULTIPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres"
-)
-const TEST_ARENA_P1B_MULTIPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres"
-)
-const TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH := (
-	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
-)
 const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
 const MULTIPLAYER_LOBBY_SCENE_PATH := "res://scene/multiplayer/multiplayer_lobby.tscn"
 const RESOURCE_PROGRESS_END := 0.82
@@ -59,40 +13,7 @@ const MINIMUM_VISIBLE_SECONDS := 0.35
 const LOAD_TIMEOUT_SECONDS := 120.0
 const MULTIPLAYER_STATE_DISCONNECTED := 0
 const MULTIPLAYER_STATE_IN_GAME := 5
-const GAME_MODE_TOWER_DEFENSE := 1
-const GAME_MODE_TEST_ARENA_P1 := 2
-const GAME_MODE_TEST_ARENA_P2 := 3
-const GAME_MODE_TEST_ARENA_P3 := 4
-const GAME_MODE_TEST_ARENA_P1B := 5
 const CAMPAIGN_RUNTIME_RESOURCES_META := &"_game_load_runtime_resources"
-const TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS: Array[String] = [
-	"res://scene/plant_defense/agave_cannon.tscn",
-	"res://scene/plant_defense/agave_cannonball.tscn",
-	"res://scene/plant_defense/oak_warehouse.tscn",
-	"res://scene/plant_defense/wood_processing_station.tscn",
-	"res://scene/plant_defense/stone_mill.tscn",
-	"res://scene/plant_defense/excavator.tscn",
-	"res://scene/plant_defense/simple_fence.tscn",
-	"res://scene/plant_defense/plant_cultivation_center.tscn",
-	"res://scene/plant_defense/planting_base.tscn",
-	"res://scene/plant_defense/grape_arc_tower.tscn",
-	"res://scene/collectible_arrow_projectile.tscn",
-	"res://scene/collectible_sakura_rocket.tscn",
-	"res://scene/collectible_sakura_explosion.tscn",
-	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
-	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
-	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
-	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",
-	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
-	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
-	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
-	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
-	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn",
-	"res://scene/bullet.tscn",
-	"res://scene/bullet_hit_effect.tscn",
-	"res://scene/enemy/enemy_hit_effect.tscn",
-]
 
 enum LoadState {
 	IDLE,
@@ -147,53 +68,61 @@ func _ready() -> void:
 func begin_singleplayer(scene_path: String) -> void:
 	if _state != LoadState.IDLE and _state != LoadState.FAILED:
 		return
+	if GameModeCatalog.get_definition_by_singleplayer_entry(scene_path) == null:
+		_is_multiplayer_load = false
+		_show_error("无法识别单人游戏模式：%s" % scene_path)
+		return
 	_begin_load(scene_path, _build_singleplayer_manifest(scene_path), false)
+
+
+func begin_singleplayer_mode(mode_id: int) -> void:
+	var definition := GameModeCatalog.get_definition(mode_id)
+	if definition == null:
+		if _state == LoadState.IDLE or _state == LoadState.FAILED:
+			_is_multiplayer_load = false
+			_show_error("无法识别单人游戏模式：%d" % mode_id)
+		return
+	begin_singleplayer(definition.singleplayer_entry_scene_path)
 
 
 func _build_singleplayer_manifest(scene_path: String) -> Array[String]:
 	var manifest: Array[String] = [scene_path]
-	if scene_path == TEST_ROGUE_ROUTE_P3_SCENE_PATH:
-		var rogue_run_state := get_node_or_null("/root/RunState") as RunStateStore
-		if rogue_run_state != null:
-			_append_character_scene(
-				manifest,
-				rogue_run_state.get_selected_character_id()
-			)
+	var definition := GameModeCatalog.get_definition_by_singleplayer_entry(scene_path)
+	if definition == null:
 		return manifest
-	var campaign_path := _get_singleplayer_campaign_path(scene_path)
-	manifest.append(campaign_path)
+	if definition.uses_wave_campaign:
+		_append_existing_resource_path(manifest, definition.singleplayer_campaign_path)
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:
 		_append_character_scene(manifest, run_state.get_selected_character_id())
-		_append_inventory_runtime_resources(manifest, run_state)
-	if _uses_tower_defense_runtime(scene_path):
-		_append_tower_defense_runtime_resources(manifest, false)
+		if definition.include_starting_inventory:
+			_append_inventory_runtime_resources(manifest, run_state)
+	if not GameModeCatalog.get_preload_resource_paths(definition).is_empty():
+		_append_mode_preload_resources(manifest, definition, false)
 	return manifest
 
 
 func _get_singleplayer_campaign_path(scene_path: String) -> String:
-	match scene_path:
-		TOWER_DEFENSE_GAME_SCENE_PATH:
-			return TOWER_DEFENSE_SINGLEPLAYER_CAMPAIGN_PATH
-		TEST_GRASS_ARENA_SCENE_PATH:
-			return TEST_ARENA_SINGLEPLAYER_CAMPAIGN_PATH
-		TEST_GRASS_ARENA_P1B_SCENE_PATH:
-			return TEST_ARENA_P1B_SINGLEPLAYER_CAMPAIGN_PATH
-		TEST_GRASS_ARENA_P2_SCENE_PATH:
-			return TEST_ARENA_P2_SINGLEPLAYER_CAMPAIGN_PATH
-		TEST_ROGUE_ROUTE_P3_SCENE_PATH:
-			return ""
-		_:
-			return STANDARD_SINGLEPLAYER_CAMPAIGN_PATH
+	var definition := GameModeCatalog.get_definition_by_singleplayer_entry(scene_path)
+	return definition.singleplayer_campaign_path if definition != null else ""
 
 
 func _uses_tower_defense_runtime(scene_path: String) -> bool:
-	return (
-		scene_path == TOWER_DEFENSE_GAME_SCENE_PATH
-		or scene_path == TEST_GRASS_ARENA_SCENE_PATH
-		or scene_path == TEST_GRASS_ARENA_P1B_SCENE_PATH
-		or scene_path == TEST_GRASS_ARENA_P2_SCENE_PATH
-	)
+	var definition := _get_definition_for_runtime_or_entry(scene_path)
+	return not GameModeCatalog.get_preload_resource_paths(definition).is_empty()
+
+
+func _get_definition_for_runtime_or_entry(scene_path: String) -> GameModeDefinition:
+	var definition := GameModeCatalog.get_definition_by_singleplayer_entry(scene_path)
+	if definition != null:
+		return definition
+	var catalog := GameModeCatalog.get_shared()
+	if catalog == null:
+		return null
+	for candidate in catalog.definitions:
+		if candidate != null and candidate.multiplayer_runtime_scene_path == scene_path:
+			return candidate
+	return null
 
 
 func begin_multiplayer() -> void:
@@ -205,68 +134,51 @@ func begin_multiplayer() -> void:
 		_show_error("无法读取多人会话。")
 		return
 	var game_mode := int(net_manager.get("current_game_mode"))
-	var entry_path := _get_multiplayer_entry_path(game_mode)
+	var definition := GameModeCatalog.get_definition(game_mode)
+	if definition == null:
+		_is_multiplayer_load = true
+		_show_error("无法识别多人游戏模式：%d" % game_mode)
+		return
+	var entry_path := definition.multiplayer_entry_scene_path
 	var manifest := _build_multiplayer_manifest(game_mode, net_manager)
 	_begin_load(entry_path, manifest, true)
 
 
 func _build_multiplayer_manifest(game_mode: int, net_manager: Node) -> Array[String]:
-	var runtime_path := _get_multiplayer_runtime_path(game_mode)
-	var entry_path := _get_multiplayer_entry_path(game_mode)
+	var definition := GameModeCatalog.get_definition(game_mode)
+	if definition == null:
+		return []
+	var runtime_path := definition.multiplayer_runtime_scene_path
+	var entry_path := definition.multiplayer_entry_scene_path
 	var manifest: Array[String] = [entry_path]
 	if runtime_path != entry_path:
 		manifest.append(runtime_path)
 	var character_map: Dictionary = net_manager.call("get_player_character_map") as Dictionary
 	for character_id_variant in character_map.values():
 		_append_character_scene(manifest, StringName(character_id_variant))
-	if game_mode == GAME_MODE_TEST_ARENA_P3:
-		return manifest
-	var campaign_path := _get_multiplayer_campaign_path(game_mode)
-	manifest.append(campaign_path)
+	if definition.uses_wave_campaign:
+		_append_existing_resource_path(manifest, definition.multiplayer_campaign_path)
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
-	if run_state != null:
+	if run_state != null and definition.include_starting_inventory:
 		_append_inventory_runtime_resources(manifest, run_state)
-	if _uses_tower_defense_runtime(runtime_path):
-		_append_tower_defense_runtime_resources(manifest, true)
+	if not GameModeCatalog.get_preload_resource_paths(definition).is_empty():
+		_append_mode_preload_resources(manifest, definition, true)
 	return manifest
 
 
 func _get_multiplayer_entry_path(game_mode: int) -> String:
-	if game_mode == GAME_MODE_TEST_ARENA_P3:
-		return MULTIPLAYER_ROGUE_ROUTE_SCENE_PATH
-	return MULTIPLAYER_SCENE_PATH
+	var definition := GameModeCatalog.get_definition(game_mode)
+	return definition.multiplayer_entry_scene_path if definition != null else ""
 
 
 func _get_multiplayer_runtime_path(game_mode: int) -> String:
-	match game_mode:
-		GAME_MODE_TOWER_DEFENSE:
-			return TOWER_DEFENSE_GAME_SCENE_PATH
-		GAME_MODE_TEST_ARENA_P1:
-			return TEST_GRASS_ARENA_SCENE_PATH
-		GAME_MODE_TEST_ARENA_P1B:
-			return TEST_GRASS_ARENA_P1B_SCENE_PATH
-		GAME_MODE_TEST_ARENA_P2:
-			return TEST_GRASS_ARENA_P2_SCENE_PATH
-		GAME_MODE_TEST_ARENA_P3:
-			return TEST_ROGUE_ROUTE_P3_SCENE_PATH
-		_:
-			return STANDARD_GAME_SCENE_PATH
+	var definition := GameModeCatalog.get_definition(game_mode)
+	return definition.multiplayer_runtime_scene_path if definition != null else ""
 
 
 func _get_multiplayer_campaign_path(game_mode: int) -> String:
-	match game_mode:
-		GAME_MODE_TOWER_DEFENSE:
-			return TOWER_DEFENSE_MULTIPLAYER_CAMPAIGN_PATH
-		GAME_MODE_TEST_ARENA_P1:
-			return TEST_ARENA_MULTIPLAYER_CAMPAIGN_PATH
-		GAME_MODE_TEST_ARENA_P1B:
-			return TEST_ARENA_P1B_MULTIPLAYER_CAMPAIGN_PATH
-		GAME_MODE_TEST_ARENA_P2:
-			return TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH
-		GAME_MODE_TEST_ARENA_P3:
-			return ""
-		_:
-			return STANDARD_MULTIPLAYER_CAMPAIGN_PATH
+	var definition := GameModeCatalog.get_definition(game_mode)
+	return definition.multiplayer_campaign_path if definition != null else ""
 
 
 func is_loading() -> bool:
@@ -615,11 +527,12 @@ func _append_character_scene(manifest: Array[String], character_id: StringName) 
 	manifest.append(config.player_scene)
 
 
-func _append_tower_defense_runtime_resources(
+func _append_mode_preload_resources(
 	manifest: Array[String],
+	definition: GameModeDefinition,
 	include_all_characters: bool
 ) -> void:
-	for path in TOWER_DEFENSE_RUNTIME_RESOURCE_PATHS:
+	for path in GameModeCatalog.get_preload_resource_paths(definition):
 		_append_existing_resource_path(manifest, path)
 	for plant_config in PlantDefenseRegistry.get_all_configs():
 		if plant_config == null:
@@ -733,18 +646,4 @@ func _get_resource_weight(path: String) -> float:
 	# multiplayer wrapper own most script/texture dependencies; Campaign and
 	# selected-character resources become comparatively cheap after that shared
 	# closure is cached.
-	if path.ends_with("campaign.tres"):
-		return 2.0
-	if (
-		path == STANDARD_GAME_SCENE_PATH
-		or path == TOWER_DEFENSE_GAME_SCENE_PATH
-		or path == TEST_GRASS_ARENA_SCENE_PATH
-		or path == TEST_GRASS_ARENA_P1B_SCENE_PATH
-		or path == TEST_GRASS_ARENA_P2_SCENE_PATH
-	):
-		return 7.0
-	if path == MULTIPLAYER_SCENE_PATH:
-		return 4.0
-	if path.contains("/player_"):
-		return 1.0
-	return 1.0
+	return GameModeCatalog.get_scene_load_weight(path)

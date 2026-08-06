@@ -1,7 +1,7 @@
 extends SceneTree
 
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const SETTINGS_MANAGER_SCRIPT := preload("res://scene/settings/settings_manager.gd")
 const NODE_ADDED_CALLBACK_BENCHMARK_COUNT := 512
 
@@ -301,7 +301,7 @@ func _test_settings_panel_scene() -> void:
 
 func _test_audio_bus_assignment() -> void:
 	var game := GAME_SCENE.instantiate()
-	_expect(game != null, "Game scene must instantiate for audio bus test.")
+	_expect(game != null, "StandardGame scene must instantiate for audio bus test.")
 	if game == null:
 		return
 	game.set("auto_start_waves", false)
@@ -309,7 +309,7 @@ func _test_audio_bus_assignment() -> void:
 	await process_frame
 
 	var music_player := game.get_node_or_null("MusicPlayer") as AudioStreamPlayer
-	_expect(music_player != null, "Game MusicPlayer must exist.")
+	_expect(music_player != null, "StandardGame MusicPlayer must exist.")
 	if music_player != null:
 		_expect(music_player.bus == "Music", "MusicPlayer must route to Music bus.")
 	var player := game.get_node_or_null("Player")
@@ -320,7 +320,7 @@ func _test_audio_bus_assignment() -> void:
 	if primary_attack_audio != null:
 		_expect(primary_attack_audio.bus == "SFX", "Effect audio must route to SFX bus.")
 	var camera := game.get_node_or_null("Camera2D") as Camera2D
-	_expect(camera != null, "Game Camera2D must exist.")
+	_expect(camera != null, "StandardGame Camera2D must exist.")
 	if camera != null:
 		var visible_world_size := Vector2(root.content_scale_size) / camera.zoom
 		_expect(

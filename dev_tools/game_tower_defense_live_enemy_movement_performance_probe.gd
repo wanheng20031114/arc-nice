@@ -6,7 +6,7 @@ extends SceneTree
 # walkable-cell placement and 60 Hz gameplay.
 # The fixture changes one axis at a time: player motion, dynamic/static target,
 # navigation, or physics interpolation scope.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
@@ -44,7 +44,7 @@ enum InterpolationScope {
 }
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var pathfinder: GridPathfinder = null
 var static_target: Marker2D = null
 var enemies: Array[Enemy] = []
@@ -67,7 +67,7 @@ func _run() -> void:
 	Engine.max_fps = 60
 	seed(FIXED_SEED)
 
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Live-enemy movement probe must instantiate tower defense.")
 	if game == null:
 		await _finish()
@@ -213,7 +213,7 @@ func _spawn_live_enemies() -> void:
 		game.enemy_container.add_child(enemy)
 		enemy.setup(enemy_config, game.player, pathfinder)
 		enemy.set_near_moving_target_direct_distance(
-			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS
+			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS
 		)
 		enemy.global_position = candidate_positions[enemy_index]
 		enemy.velocity = Vector2.ZERO

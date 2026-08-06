@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const TANGO_SCENE := preload("res://scene/player/tango/player_tango.tscn")
 const ENEMY_BASE_SCENE := preload("res://scene/enemy/enemy.tscn")
@@ -77,7 +77,7 @@ func _run() -> void:
 
 func _test_game_mix() -> void:
 	var game := GAME_SCENE.instantiate()
-	_expect(game != null, "Game scene must instantiate for audio mix test.")
+	_expect(game != null, "StandardGame scene must instantiate for audio mix test.")
 	if game == null:
 		return
 	game.set("auto_start_waves", false)

@@ -4,7 +4,7 @@ extends SceneTree
 # former full EnemyContainer scan with the production CombatTargetIndex while
 # keeping enemy instances, positions, query centers and deterministic ordering
 # identical. Timings are diagnostic; semantic parity is the regression gate.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 
 const ENEMY_COUNT := 300
@@ -19,7 +19,7 @@ const SAMPLE_SWEEPS := 60
 const FIXTURE_ORIGIN := Vector2(3000.0, 3000.0)
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var enemies: Array[Enemy] = []
 var query_centers := PackedVector2Array()
 var reusable_indexed_targets: Array[Enemy] = []
@@ -30,7 +30,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Plant-target performance probe must instantiate tower defense.")
 	if game == null:
 		await _finish()

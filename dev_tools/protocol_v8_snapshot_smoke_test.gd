@@ -4,7 +4,7 @@ const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const SnapshotManager := preload("res://scene/multiplayer/snapshot_manager.gd")
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
-const TOWER_DEFENSE_RUNTIME_PATH := "res://scene/game_tower_defense.gd"
+const TOWER_DEFENSE_RUNTIME_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.gd"
 const PROJECTILE_SEQUENCE_MAX: int = 0xFFFFFFFF
 const PROJECTILE_HOST_ORIGIN_BIT: int = 0x80000000
 const PROJECTILE_SEQUENCE_COUNTER_MAX: int = 0x7FFFFFFF
@@ -21,7 +21,7 @@ class TerrainClientNetManagerStub:
 
 
 class TerrainRuntimeStub:
-	extends "res://scene/game_tower_defense.gd"
+	extends "res://scene/game_modes/tower_defense/tower_defense_game.gd"
 
 	var snapshot_revisions: Array[int] = []
 	var delta_revisions: Array[int] = []

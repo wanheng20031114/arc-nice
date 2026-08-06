@@ -1,11 +1,11 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const STATUS_HUD_SCENE := preload("res://scene/tower_defense_status_hud.tscn")
 
 
-class NoRespawnTowerRuntime extends GameTowerDefense:
+class NoRespawnTowerRuntime extends TowerDefenseGame:
 	func allows_player_respawn(_peer_id: int) -> bool:
 		return false
 
@@ -35,7 +35,7 @@ func _run() -> void:
 
 
 func _test_respawn_policy_and_permanent_death_hud() -> void:
-	var standard_runtime := TOWER_SCENE.instantiate() as GameTowerDefense
+	var standard_runtime := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(
 		standard_runtime.allows_player_respawn(1),
 		"Existing runtimes must retain the default allow-respawn policy."
@@ -137,7 +137,7 @@ func _get_function_source(source: String, function_name: String) -> String:
 
 
 func _test_singleplayer_flow_and_respawn() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	var authored_status_hud := game.get_node("TowerDefenseStatusHUD") as CanvasLayer
 	_expect(
 		authored_status_hud != null and not authored_status_hud.visible,
@@ -478,7 +478,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(float(death_shader.get_shader_parameter(&"center_darkness")) <= 0.03, "The death vignette center must stay nearly unchanged.")
 	_expect(float(death_shader.get_shader_parameter(&"edge_darkness")) >= 0.65, "The death vignette edges must clearly communicate the dead state.")
 	_expect(gate_shader.shader.code.contains("SCREEN_PIXEL_SIZE"), "The gate vignette must compensate for viewport aspect ratio.")
-	await create_timer(GameTowerDefense.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
+	await create_timer(TowerDefenseGame.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
 	_expect(game.map_camera.global_position.is_equal_approx(defeat_gate_center), "The defeat camera must finish at the authoritative blue-gate center.")
 	_expect(game.map_camera.zoom.is_equal_approx(defeat_zoom), "The completed defeat camera transition must not alter zoom.")
 	_expect(game.wave_hud.result_overlay.visible, "The shared defeat overlay must appear after camera travel completes.")
@@ -500,7 +500,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 
 
 func _test_singleplayer_transition_revive_policy() -> void:
-	var intermission_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var intermission_game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	root.add_child(intermission_game)
 	current_scene = intermission_game
 	await process_frame
@@ -554,7 +554,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	_expect(int(intermission_revives["count"]) == 1, "A living player must not emit a synthetic revive during intermission entry.")
 	await _cleanup_tower_game(intermission_game)
 
-	var zero_rest_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var zero_rest_game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	root.add_child(zero_rest_game)
 	current_scene = zero_rest_game
 	await process_frame
@@ -583,7 +583,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	)
 	await _cleanup_tower_game(zero_rest_game)
 
-	var victory_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var victory_game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	root.add_child(victory_game)
 	current_scene = victory_game
 	await process_frame
@@ -605,7 +605,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	)
 	await _cleanup_tower_game(victory_game)
 
-	var defeat_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var defeat_game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	root.add_child(defeat_game)
 	current_scene = defeat_game
 	await process_frame
@@ -639,7 +639,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	var player_names := {1: "主机", 2: "队友"}
 	var character_ids := {1: &"weishidaier", 2: &"tiyi"}
 
-	var living_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var living_game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	living_game.auto_start_waves = false
 	living_game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -665,7 +665,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	)
 	await _cleanup_tower_game(living_game)
 
-	var intermission_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var intermission_game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	intermission_game.auto_start_waves = false
 	intermission_game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -699,7 +699,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	)
 	await _cleanup_tower_game(intermission_game)
 
-	var victory_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var victory_game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	victory_game.auto_start_waves = false
 	victory_game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -729,7 +729,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	)
 	await _cleanup_tower_game(victory_game)
 
-	var defeat_game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var defeat_game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	defeat_game.auto_start_waves = false
 	defeat_game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -765,7 +765,7 @@ func _test_host_authoritative_revive_all() -> void:
 	var previous_role := int(net_manager.get("net_role"))
 	net_manager.set("net_role", 1)
 
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -869,7 +869,7 @@ func _test_host_authoritative_revive_all() -> void:
 
 
 func _test_client_view_waits_for_authoritative_revive() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
@@ -967,7 +967,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 
 
 func _test_client_gate_warning_replication() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
@@ -1016,7 +1016,7 @@ func _test_client_gate_warning_replication() -> void:
 	_expect(game.defeat_camera_tween == first_defeat_tween, "A duplicate reliable defeat event must not restart client camera travel.")
 	_expect(not game.music_player.playing, "A client must stop its own BGM as soon as defeat is received.")
 	_expect(not game.wave_hud.result_overlay.visible, "A client must also defer the defeat overlay until its local camera arrives.")
-	await create_timer(GameTowerDefense.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
+	await create_timer(TowerDefenseGame.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
 	_expect(game.map_camera.global_position.is_equal_approx(game.home_objective_targets[0].global_position.round()), "Every client camera must converge on the same blue-gate objective.")
 	_expect(game.map_camera.zoom.is_equal_approx(client_defeat_zoom), "Client defeat presentation must preserve local camera zoom.")
 	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "Client defeat presentation must use the exact shared subtitle.")
@@ -1030,7 +1030,7 @@ func _test_client_gate_warning_replication() -> void:
 
 
 func _test_multiplayer_all_dead_is_not_defeat() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -1124,7 +1124,7 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 		await physics_frame
 
 
-func _finish_final_countdown(game: GameTowerDefense) -> void:
+func _finish_final_countdown(game: TowerDefenseGame) -> void:
 	for expected_seconds in [2, 1, 0]:
 		game.countdown_audio.stop()
 		game.call("_on_state_timer_timeout")
@@ -1152,7 +1152,7 @@ func _all_control_descendants_ignore_mouse(node: Node) -> bool:
 	return true
 
 
-func _all_multiplayer_players_dead(game: GameTowerDefense, peer_ids: Array[int]) -> bool:
+func _all_multiplayer_players_dead(game: TowerDefenseGame, peer_ids: Array[int]) -> bool:
 	for peer_id in peer_ids:
 		var player_instance := game.get_player_for_peer(peer_id)
 		if player_instance == null or not player_instance.is_dead:
@@ -1160,7 +1160,7 @@ func _all_multiplayer_players_dead(game: GameTowerDefense, peer_ids: Array[int])
 	return true
 
 
-func _cleanup_tower_game(game: GameTowerDefense) -> void:
+func _cleanup_tower_game(game: TowerDefenseGame) -> void:
 	_stop_audio_players(game)
 	if current_scene == game:
 		current_scene = null

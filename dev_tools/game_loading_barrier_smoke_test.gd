@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const TEST_PORT := 29279
 const LINGLAN_BOSS_RUNTIME_RESOURCE_PATHS: Array[String] = [
@@ -164,12 +164,12 @@ func _test_loading_scene_contract() -> void:
 	for multiplayer_contract in [
 		[
 			NetManagerStore.GameMode.STANDARD,
-			"res://scene/game.tscn",
+			"res://scene/game_modes/standard/standard_game.tscn",
 			"res://resources/config/campaigns/standard/multiplayer/campaign.tres",
 		],
 		[
 			NetManagerStore.GameMode.TOWER_DEFENSE,
-			"res://scene/game_tower_defense.tscn",
+			"res://scene/game_modes/tower_defense/tower_defense_game.tscn",
 			"res://resources/config/campaigns/tower_defense/multiplayer/campaign.tres",
 		],
 		[
@@ -255,8 +255,8 @@ func _test_mode_specific_mp_game_source() -> void:
 	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
 	_expect(not source.is_empty(), "MpGame source must be readable.")
 	_expect(
-		not source.contains('preload("res://scene/game.tscn")')
-		and not source.contains('preload("res://scene/game_tower_defense.tscn")'),
+		not source.contains('preload("res://scene/game_modes/standard/standard_game.tscn")')
+		and not source.contains('preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")'),
 		"MpGame must not eagerly preload both gameplay modes."
 	)
 	_expect(
@@ -305,8 +305,8 @@ func _test_mode_specific_mp_game_source() -> void:
 		"MpGame must defer runtime activation before reporting local readiness."
 	)
 	for runtime_script_path in [
-		"res://scene/game.gd",
-		"res://scene/game_tower_defense.gd",
+		"res://scene/game_modes/standard/standard_game.gd",
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
 	]:
 		var runtime_source := FileAccess.get_file_as_string(runtime_script_path)
 		_expect(
@@ -375,7 +375,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 	var failure_callback := func(message: String) -> void:
 		load_errors.append(message)
 	coordinator.loading_failed.connect(failure_callback)
-	coordinator.begin_singleplayer("res://scene/game.tscn")
+	coordinator.begin_singleplayer("res://scene/game_modes/standard/standard_game.tscn")
 	var deadline_msec := Time.get_ticks_msec() + 15000
 	while Time.get_ticks_msec() < deadline_msec:
 		if not coordinator.is_loading():
@@ -386,7 +386,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 	var runtime := current_scene as GameRuntimeBase
 	_expect(
 		runtime != null
-		and runtime.scene_file_path == "res://scene/game.tscn"
+		and runtime.scene_file_path == "res://scene/game_modes/standard/standard_game.tscn"
 		and runtime.is_runtime_preparation_complete()
 		and runtime.runtime_activated
 		and runtime.process_mode == Node.PROCESS_MODE_INHERIT,
@@ -403,7 +403,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 
 	load_errors.clear()
 	coordinator.loading_failed.connect(failure_callback)
-	coordinator.begin_singleplayer("res://scene/game_tower_defense.tscn")
+	coordinator.begin_singleplayer("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 	deadline_msec = Time.get_ticks_msec() + 30000
 	while Time.get_ticks_msec() < deadline_msec:
 		if not coordinator.is_loading():
@@ -414,7 +414,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 	var tower_runtime := current_scene as GameRuntimeBase
 	_expect(
 		tower_runtime != null
-		and tower_runtime.scene_file_path == "res://scene/game_tower_defense.tscn"
+		and tower_runtime.scene_file_path == "res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 		and tower_runtime.supports_tower_defense()
 		and tower_runtime.is_runtime_preparation_complete()
 		and tower_runtime.runtime_activated
@@ -570,7 +570,7 @@ func _test_mp_game_preparation_barrier() -> void:
 
 
 func _expect_lifecycle_prewarm_pool_released(runtime: GameRuntimeBase) -> void:
-	var tower_runtime := runtime as GameTowerDefense
+	var tower_runtime := runtime as TowerDefenseGame
 	if tower_runtime == null:
 		return
 	for scene_path in [

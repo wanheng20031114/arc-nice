@@ -360,12 +360,12 @@ func _verify_scene_structure() -> void:
 		instance.free()
 
 	_expect(
-		_packed_scene_has_node("res://scene/game.tscn", &"NightVfxFlashPool"),
+		_packed_scene_has_node("res://scene/game_modes/standard/standard_game.tscn", &"NightVfxFlashPool"),
 		"普通模式世界必须直接预置共享夜间闪光池。"
 	)
 	_expect(
 		_packed_scene_has_node(
-			"res://scene/game_tower_defense.tscn",
+			"res://scene/game_modes/tower_defense/tower_defense_game.tscn",
 			&"NightVfxFlashPool"
 		),
 		"塔防世界必须直接预置共享夜间闪光池。"

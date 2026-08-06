@@ -10,7 +10,7 @@ const COLLECTIBLE_ROCKET_SCENE := preload("res://scene/collectible_sakura_rocket
 const COLLECTIBLE_EXPLOSION_SCENE := preload("res://scene/collectible_sakura_explosion.tscn")
 const COLLECTIBLE_SAKURA_EXPLOSION_SCRIPT := preload("res://scene/collectible_sakura_explosion.gd")
 const EXPLOSION_FRAMES := preload("res://resources/animation/linglan_skill2_sakura_explosion.tres")
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
@@ -248,8 +248,8 @@ func _test_skill2_scene_contract() -> void:
 
 
 func _test_game_target_and_spawn_entry() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for Skill2 target/spawn checks.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for Skill2 target/spawn checks.")
 	if game == null:
 		return
 	game.auto_start_waves = false
@@ -260,16 +260,16 @@ func _test_game_target_and_spawn_entry() -> void:
 	var ground_layer := game.get_node("GroundTileMapLayer") as TileMapLayer
 	var expected_target := ground_layer.to_global(ground_layer.map_to_local(SKILL2_CONFIG.target_cell))
 	var actual_target := game.get_linglan_skill2_target_global_position(SKILL2_CONFIG.target_cell)
-	_expect(actual_target.is_equal_approx(expected_target), "Game must resolve Skill2 target through GroundTileMapLayer.map_to_local().")
+	_expect(actual_target.is_equal_approx(expected_target), "StandardGame must resolve Skill2 target through GroundTileMapLayer.map_to_local().")
 
 	var spawn4 := game.get_node("EnemySpawnPoints/Spawn4") as Marker2D
 	var spawn5 := game.get_node("EnemySpawnPoints/Spawn5") as Marker2D
 	var enemy_count_before := _count_enemy_children(game.enemy_container)
 	game.spawn_linglan_skill2_enemies(SKILL2_CONFIG.spawn_enemy_config, SKILL2_CONFIG.spawn_marker_names)
 	var spawned_positions := _get_enemy_positions_after_index(game.enemy_container, enemy_count_before)
-	_expect(spawned_positions.size() == 2, "Skill2 Game spawn entry must create exactly two boss adds.")
-	_expect(_positions_include(spawned_positions, spawn4.global_position), "Skill2 Game spawn entry must use Spawn4.")
-	_expect(_positions_include(spawned_positions, spawn5.global_position), "Skill2 Game spawn entry must use Spawn5.")
+	_expect(spawned_positions.size() == 2, "Skill2 StandardGame spawn entry must create exactly two boss adds.")
+	_expect(_positions_include(spawned_positions, spawn4.global_position), "Skill2 StandardGame spawn entry must use Spawn4.")
+	_expect(_positions_include(spawned_positions, spawn5.global_position), "Skill2 StandardGame spawn entry must use Spawn5.")
 	_expect(game.active_wave_enemy_ids.is_empty(), "Skill2 boss adds must not enter normal wave counters.")
 
 	game.queue_free()

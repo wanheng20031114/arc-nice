@@ -1,7 +1,7 @@
 extends SceneTree
 
 # Bootstrap the complete gameplay type graph before standalone plant scenes.
-const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const ORANGE_TOWER_SCENE := preload(
 	"res://scene/plant_defense/orange_charging_tower.tscn"
 )

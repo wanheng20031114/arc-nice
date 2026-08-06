@@ -7,7 +7,7 @@ const LINGLAN_BOSS_ENTRY := preload("res://resources/config/bosses/boss_01_lingl
 const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const BOSS_HEALTH_HUD_SCENE := preload("res://scene/boss/linglan/boss_health_hud.tscn")
 const INTRO_VFX_SCENE := preload("res://scene/boss/linglan/linglan_boss_intro_vfx.tscn")
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const DEFAULT_FLOW := preload("res://resources/config/flow/default_combat_flow.tres")
 
 var failures: Array[String] = []
@@ -262,8 +262,8 @@ func _test_intro_vfx_scene() -> void:
 
 
 func _test_game_boss_opening_flow() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for Linglan boss flow.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for Linglan boss flow.")
 	if game == null:
 		return
 	game.auto_start_waves = false
@@ -271,12 +271,12 @@ func _test_game_boss_opening_flow() -> void:
 	await process_frame
 	await physics_frame
 
-	_expect(game.bosses.size() == 1, "Game must load the Linglan boss entry.")
+	_expect(game.bosses.size() == 1, "StandardGame must load the Linglan boss entry.")
 	if game.bosses.size() >= 1:
-		_expect(game.bosses[0] == LINGLAN_BOSS_ENTRY, "Game boss list must use boss_01_linglan.")
-	_expect(game.get_node_or_null("BossContainer/LinglanBoss") == null, "Game must lazy-instantiate Linglan instead of loading boss art on scene entry.")
-	_expect(game.get_node_or_null("BossHealthHUD") == null, "Game must lazy-instantiate the boss HUD instead of loading it on scene entry.")
-	_expect(game.get_node_or_null("LinglanBossIntroVFX") == null, "Game must lazy-instantiate the boss intro VFX instead of loading it on scene entry.")
+		_expect(game.bosses[0] == LINGLAN_BOSS_ENTRY, "StandardGame boss list must use boss_01_linglan.")
+	_expect(game.get_node_or_null("BossContainer/LinglanBoss") == null, "StandardGame must lazy-instantiate Linglan instead of loading boss art on scene entry.")
+	_expect(game.get_node_or_null("BossHealthHUD") == null, "StandardGame must lazy-instantiate the boss HUD instead of loading it on scene entry.")
+	_expect(game.get_node_or_null("LinglanBossIntroVFX") == null, "StandardGame must lazy-instantiate the boss intro VFX instead of loading it on scene entry.")
 
 	var ground_layer := game.get_node("GroundTileMapLayer") as TileMapLayer
 	var overlay_layer := game.get_node("OverlayTileMapLayer") as TileMapLayer
@@ -289,11 +289,11 @@ func _test_game_boss_opening_flow() -> void:
 	game.current_flow_step = LINGLAN_BOSS_ENTRY
 	game.call("_begin_linglan_boss_intro", LINGLAN_BOSS_ENTRY)
 	await process_frame
-	_expect(game.wave_state == Game.WaveState.BOSS_INTRO, "Game must enter Linglan boss intro state.")
+	_expect(game.wave_state == StandardGame.WaveState.BOSS_INTRO, "StandardGame must enter Linglan boss intro state.")
 	var music_player := game.get_node("MusicPlayer") as AudioStreamPlayer
-	_expect(music_player.stream == LINGLAN_BOSS_ENTRY.music, "Game must switch to Linglan boss music when the intro starts.")
-	_expect(is_equal_approx(music_player.volume_db, LINGLAN_BOSS_ENTRY.music_volume_db), "Game must apply the Linglan boss music volume.")
-	_expect(is_equal_approx(float(music_player.stream.get(&"loop_offset")), LINGLAN_BOSS_ENTRY.music_loop_offset), "Game must apply the Linglan boss music loop offset.")
+	_expect(music_player.stream == LINGLAN_BOSS_ENTRY.music, "StandardGame must switch to Linglan boss music when the intro starts.")
+	_expect(is_equal_approx(music_player.volume_db, LINGLAN_BOSS_ENTRY.music_volume_db), "StandardGame must apply the Linglan boss music volume.")
+	_expect(is_equal_approx(float(music_player.stream.get(&"loop_offset")), LINGLAN_BOSS_ENTRY.music_loop_offset), "StandardGame must apply the Linglan boss music loop offset.")
 	var boss := game.get_node_or_null("BossContainer/LinglanBoss") as LinglanBoss
 	_expect(boss != null and not boss.visible, "Linglan must stay hidden during petal convergence.")
 
@@ -314,7 +314,7 @@ func _test_game_boss_opening_flow() -> void:
 	game.call("_on_linglan_boss_intro_finished")
 	await process_frame
 	await physics_frame
-	_expect(game.wave_state == Game.WaveState.BOSS_ACTIVE, "Game must activate Linglan after intro VFX.")
+	_expect(game.wave_state == StandardGame.WaveState.BOSS_ACTIVE, "StandardGame must activate Linglan after intro VFX.")
 	_expect(boss != null and boss.visible and boss.current_health == LINGLAN_CONFIG.max_health, "Linglan must appear active with configured health.")
 	var hud := game.get_node_or_null("BossHealthHUD") as BossHealthHUD
 	_expect(hud != null and (hud.get_node("Root") as Control).visible, "Top boss HUD must appear after Linglan activates.")
@@ -336,12 +336,12 @@ func _test_game_boss_opening_flow() -> void:
 
 
 func _test_host_boss_multiplayer_flow_signals() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for host Linglan boss sync.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for host Linglan boss sync.")
 	if game == null:
 		return
 	game.auto_start_waves = false
-	game.configure_multiplayer(Game.RuntimeMode.HOST_AUTHORITY, 1, {1: "host"})
+	game.configure_multiplayer(StandardGame.RuntimeMode.HOST_AUTHORITY, 1, {1: "host"})
 
 	var flow_events: Array[Dictionary] = []
 	var boss_events: Array[Dictionary] = []
@@ -378,7 +378,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 	await process_frame
 	await physics_frame
 
-	_expect(game.wave_state == Game.WaveState.BOSS_ACTIVE, "Host flow must activate Linglan boss.")
+	_expect(game.wave_state == StandardGame.WaveState.BOSS_ACTIVE, "Host flow must activate Linglan boss.")
 	_expect(boss_events.size() == 1, "Host must emit one boss_started event.")
 	var boss_net_id := int(boss_events[0].get("net_id", 0)) if not boss_events.is_empty() else 0
 	_expect(boss_net_id > 0, "Host boss_started event must include a network id.")
@@ -386,7 +386,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 	for event in flow_events:
 		if (
 			event.get("step_id") == &"boss_01_linglan"
-			and int(event.get("state", -1)) == int(Game.WaveState.BOSS_ACTIVE)
+			and int(event.get("state", -1)) == int(StandardGame.WaveState.BOSS_ACTIVE)
 		):
 			has_boss_active_flow_event = true
 			break
@@ -408,7 +408,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 		boss.apply_damage(boss.current_health + LINGLAN_CONFIG.physical_defense)
 		await create_timer(1.5).timeout
 		await process_frame
-		_expect(game.wave_state == Game.WaveState.VICTORY, "Host boss defeat must advance the flow to victory.")
+		_expect(game.wave_state == StandardGame.WaveState.VICTORY, "Host boss defeat must advance the flow to victory.")
 		_expect(victory_events[0] == 1, "Host must broadcast victory after terminal boss defeat.")
 
 	game.queue_free()

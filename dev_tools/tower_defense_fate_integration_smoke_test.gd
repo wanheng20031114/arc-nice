@@ -1,12 +1,12 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const FATE_COORDINATOR_SCENE := preload(
 	"res://scene/plant_defense/fate_coordinator.tscn"
 )
 
 class FlowBoundaryProbe:
-	extends GameTowerDefense
+	extends TowerDefenseGame
 
 	var probe_wave_number := 1
 	var probe_next_step: FlowStepConfig = null
@@ -37,7 +37,7 @@ class FlowBoundaryProbe:
 
 
 class LightingProbe:
-	extends GameTowerDefense
+	extends TowerDefenseGame
 
 	var lighting_events: Array[StringName] = []
 
@@ -49,7 +49,7 @@ class LightingProbe:
 
 
 class CriticalCoreGameProbe:
-	extends GameTowerDefense
+	extends TowerDefenseGame
 
 	var health_display_update_count := 0
 
@@ -202,7 +202,7 @@ func _test_wave_completion_boundaries() -> void:
 
 
 func _test_elite_bias_day_window() -> void:
-	var probe := GameTowerDefense.new()
+	var probe := TowerDefenseGame.new()
 	var coordinator := FateCoordinator.new()
 	coordinator.setup(probe, probe.day_cycle_config)
 	probe.fate_coordinator = coordinator
@@ -246,7 +246,7 @@ func _test_elite_bias_day_window() -> void:
 
 
 func _test_double_xirang_day_combat_states() -> void:
-	var probe := GameTowerDefense.new()
+	var probe := TowerDefenseGame.new()
 	var coordinator := FateCoordinator.new()
 	coordinator.setup(probe, probe.day_cycle_config)
 	probe.fate_coordinator = coordinator
@@ -323,7 +323,7 @@ func _test_xiaocong_collectible_offer_count() -> void:
 	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
 	root.add_child(coordinator)
 	await process_frame
-	var game := GameTowerDefense.new()
+	var game := TowerDefenseGame.new()
 	var merchant := LuoxiMerchant.new()
 	var target_player := preload(
 		"res://scene/player/weishidaier/player_weishidaier.tscn"
@@ -444,7 +444,7 @@ func _test_critical_core_follow_up_resolution() -> void:
 func _test_scene_config_and_interlude_freeze() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
-	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game
@@ -653,7 +653,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		"invalid"
 	)
 	_expect(
-		placement_rejections == [GameTowerDefense.PLANT_PLACEMENT_REJECT_FLOW_LOCKED],
+		placement_rejections == [TowerDefenseGame.PLANT_PLACEMENT_REJECT_FLOW_LOCKED],
 		"The authoritative server must reject stale building requests during fate interlude."
 	)
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
@@ -679,7 +679,7 @@ func _test_fate_stone_zero_benefit_filter() -> void:
 	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
 	root.add_child(coordinator)
 	await process_frame
-	var game := GameTowerDefense.new()
+	var game := TowerDefenseGame.new()
 	game.run_state = run_state
 	game.player = Player.new()
 	coordinator.setup(game, game.day_cycle_config)

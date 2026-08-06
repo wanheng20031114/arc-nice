@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
@@ -46,7 +46,7 @@ func _run() -> void:
 	var original_physics_interpolation := physics_interpolation
 	var original_transform_pixel_snap := root.snap_2d_transforms_to_pixel
 	var original_vertex_pixel_snap := root.snap_2d_vertices_to_pixel
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense scene must instantiate for Home verification.")
 	if game == null:
 		_finish()
@@ -106,7 +106,7 @@ func _run() -> void:
 
 
 func _verify_camera(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	expected_transform_pixel_snap: bool,
 	expected_vertex_pixel_snap: bool
 ) -> void:
@@ -144,7 +144,7 @@ func _verify_camera(
 	)
 
 
-func _verify_equal_directional_player_speed(game: GameTowerDefense) -> void:
+func _verify_equal_directional_player_speed(game: TowerDefenseGame) -> void:
 	for action in [&"move_left", &"move_right", &"move_up", &"move_down"]:
 		Input.action_release(action)
 	Input.action_press(&"move_right")
@@ -168,7 +168,7 @@ func _verify_equal_directional_player_speed(game: GameTowerDefense) -> void:
 	)
 
 
-func _verify_spawn_mask_resolution(game: GameTowerDefense) -> void:
+func _verify_spawn_mask_resolution(game: TowerDefenseGame) -> void:
 	var test_wave := WaveConfig.new()
 	test_wave.step_id = &"spawn_mask_probe"
 	test_wave.spawn_point_mask = (1 << 1) | (1 << 5)
@@ -219,7 +219,7 @@ func _verify_spawn_mask_resolution(game: GameTowerDefense) -> void:
 	)
 
 
-func _verify_home_gate_areas(game: GameTowerDefense) -> void:
+func _verify_home_gate_areas(game: TowerDefenseGame) -> void:
 	var controller := game.home_gate_controller
 	_expect(controller != null, "HomeGateController must exist.")
 	if controller == null:
@@ -248,7 +248,7 @@ func _verify_home_gate_areas(game: GameTowerDefense) -> void:
 		_expect(rectangle != null and rectangle.size == Vector2(16, 16), "Home trigger must match one logical 16x16 cell.")
 
 
-func _verify_linglan_tower_contract(game: GameTowerDefense) -> void:
+func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	var spawn5 := game.enemy_spawn_points_by_name.get(&"Spawn5") as Marker2D
 	var spawn6 := game.enemy_spawn_points_by_name.get(&"Spawn6") as Marker2D
 	_expect(spawn5 != null and spawn6 != null, "Linglan spawn anchors Spawn5/6 must exist.")
@@ -307,7 +307,7 @@ func _verify_linglan_tower_contract(game: GameTowerDefense) -> void:
 		existing_enemy_ids[enemy_child.get_instance_id()] = true
 	var original_wave_state := game.wave_state
 	var original_random_state := game.random_generator.state
-	game.wave_state = GameTowerDefense.WaveState.BOSS_ACTIVE
+	game.wave_state = TowerDefenseGame.WaveState.BOSS_ACTIVE
 	var slime_spawn_position := resolved_spawn + Vector2(-12.0, 8.0)
 	game.spawn_linglan_random_slime(slime_spawn_position)
 	var spawned_slime: Enemy = null
@@ -413,14 +413,14 @@ func _verify_linglan_tower_contract(game: GameTowerDefense) -> void:
 
 
 func _verify_remote_linglan_airdrop_visual(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	sniper_config: EnemyConfig,
 	landing_position: Vector2
 ) -> void:
 	var original_runtime_mode := game.runtime_mode
 	var original_wave_state := game.wave_state
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.wave_state = GameTowerDefense.WaveState.BOSS_ACTIVE
+	game.wave_state = TowerDefenseGame.WaveState.BOSS_ACTIVE
 	game.apply_remote_linglan_airdrop_started(
 		sniper_config,
 		landing_position,
@@ -455,7 +455,7 @@ func _verify_remote_linglan_airdrop_visual(
 	game.wave_state = original_wave_state
 
 
-func _verify_physical_home_gate_trigger(game: GameTowerDefense) -> void:
+func _verify_physical_home_gate_trigger(game: TowerDefenseGame) -> void:
 	var targets := game.get_home_objective_targets()
 	if targets.is_empty():
 		return
@@ -496,7 +496,7 @@ func _verify_physical_home_gate_trigger(game: GameTowerDefense) -> void:
 	game.call("_update_base_health_display")
 
 
-func _verify_far_linear_enemy_reaches_home(game: GameTowerDefense) -> void:
+func _verify_far_linear_enemy_reaches_home(game: TowerDefenseGame) -> void:
 	var targets := game.get_home_objective_targets()
 	if targets.is_empty() or game.enemy_spawn_points.is_empty():
 		return
@@ -559,32 +559,32 @@ func _verify_far_linear_enemy_reaches_home(game: GameTowerDefense) -> void:
 	game.call("_update_base_health_display")
 
 
-func _verify_target_selection(game: GameTowerDefense) -> void:
+func _verify_target_selection(game: TowerDefenseGame) -> void:
 	var targets := game.get_home_objective_targets()
 	if targets.is_empty():
 		return
 	var logical_tile_width := float(game.ground_tile_map_layer.tile_set.tile_size.x)
 	_expect(
 		is_equal_approx(
-			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS / logical_tile_width,
-			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS / logical_tile_width,
+			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
 		),
 		"The player aggro radius must equal 10 logical tiles."
 	)
 	_expect(
 		is_equal_approx(
-			GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS * game.map_camera.zoom.x,
+			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS * game.map_camera.zoom.x,
 			320.0
 		),
 		"At tower-defense zoom 2, the player aggro radius must appear as 320 screen pixels."
 	)
 	_expect(
 		is_equal_approx(
-			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE / logical_tile_width,
-			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS
+			TowerDefenseGame.PLAYER_NEAR_MOVING_DIRECT_DISTANCE / logical_tile_width,
+			TowerDefenseGame.PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS
 		)
 		and is_equal_approx(
-			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS,
+			TowerDefenseGame.PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS,
 			16.0
 		),
 		"The direct-moving tier must remain an independently configured 16 logical tiles."
@@ -592,7 +592,7 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 	_expect(
 		game.grid_pathfinder.dynamic_target_flow_radius_cells == 16
 		and float(game.grid_pathfinder.dynamic_target_flow_radius_cells)
-			> GameTowerDefense.PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS,
+			> TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS,
 		"The 10-tile player aggro must retain an independent 16-tile detour field."
 	)
 	var gate := targets[0]
@@ -729,7 +729,7 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 	_expect(
 		is_equal_approx(
 			retarget_enemy.near_moving_target_direct_distance,
-			GameTowerDefense.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
+			TowerDefenseGame.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 		),
 		"Tower defense must keep its independent 16-tile direct-player tier."
 	)
@@ -758,7 +758,7 @@ func _verify_target_selection(game: GameTowerDefense) -> void:
 
 
 func _register_target_probe_plant(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	global_position: Vector2,
 	plant_config: PlantDefenseConfig = AGAVE_CONFIG
 ) -> PlantDefense:
@@ -779,14 +779,14 @@ func _register_target_probe_plant(
 	return plant
 
 
-func _release_target_probe_plant(game: GameTowerDefense, plant: PlantDefense) -> void:
+func _release_target_probe_plant(game: TowerDefenseGame, plant: PlantDefense) -> void:
 	if plant == null or not is_instance_valid(plant):
 		return
 	game.plant_system.call("_release_plant_footprint", plant)
 	plant.free()
 
 
-func _verify_retarget_budget(game: GameTowerDefense, gate: Node2D) -> void:
+func _verify_retarget_budget(game: TowerDefenseGame, gate: Node2D) -> void:
 	# Keep the spatial index non-empty while all 300 enemies are outside plant
 	# aggro. This exercises the bounded 8-tile query instead of its empty fast path.
 	var far_plant := _register_target_probe_plant(
@@ -811,7 +811,7 @@ func _verify_retarget_budget(game: GameTowerDefense, gate: Node2D) -> void:
 	var gate_target_count := 0
 	var required_budget_frames := ceili(
 		float(enemies.size())
-		/ float(GameTowerDefense.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME)
+		/ float(TowerDefenseGame.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME)
 	)
 	for _budget_frame in range(required_budget_frames):
 		var previous_gate_target_count := gate_target_count
@@ -822,7 +822,7 @@ func _verify_retarget_budget(game: GameTowerDefense, gate: Node2D) -> void:
 				gate_target_count += 1
 		_expect(
 			gate_target_count - previous_gate_target_count
-				<= GameTowerDefense.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME,
+				<= TowerDefenseGame.ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME,
 			"A 300-enemy retarget sweep must preserve its per-frame budget."
 		)
 	_expect(
@@ -835,7 +835,7 @@ func _verify_retarget_budget(game: GameTowerDefense, gate: Node2D) -> void:
 
 
 func _verify_singleplayer_combat_target_index_and_agave(
-	game: GameTowerDefense
+	game: TowerDefenseGame
 ) -> void:
 	var agave := AGAVE_CONFIG.plant_scene.instantiate() as AgaveCannon
 	_expect(agave != null, "Single-player target-index verification requires an Agave cannon.")
@@ -974,7 +974,7 @@ func _verify_singleplayer_combat_target_index_and_agave(
 
 
 func _spawn_singleplayer_index_probe_enemy(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	spawn_position: Vector2
 ) -> Enemy:
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
@@ -989,7 +989,7 @@ func _spawn_singleplayer_index_probe_enemy(
 	return enemy
 
 
-func _verify_enemy_contract(game: GameTowerDefense) -> void:
+func _verify_enemy_contract(game: TowerDefenseGame) -> void:
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	_expect(enemy != null, "Basic enemy must instantiate for target-contract verification.")
 	if enemy == null:
@@ -1046,7 +1046,7 @@ func _verify_home_damage_resources() -> void:
 				"Unexpected home_damage for %s." % config_name
 			)
 
-func _verify_escape_resolution(game: GameTowerDefense) -> void:
+func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 	var pickup_count_before := _count_reward_nodes(game)
 	var xirang_before := game.player.current_xirang
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
@@ -1059,7 +1059,7 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 	var defeated_state := {"emitted": false}
 	enemy.defeated.connect(func(_defeated_enemy: Enemy) -> void: defeated_state["emitted"] = true)
 
-	game.wave_state = GameTowerDefense.WaveState.WAVE_ACTIVE
+	game.wave_state = TowerDefenseGame.WaveState.WAVE_ACTIVE
 	game.current_wave_total = 2
 	game.current_wave_spawned = 1
 	game.current_wave_defeated = 0
@@ -1086,7 +1086,7 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 	)
 
 	game.call("_apply_base_damage", game.current_base_health)
-	_expect(game.wave_state == GameTowerDefense.WaveState.DEFEAT, "Base health reaching zero must cause defeat.")
+	_expect(game.wave_state == TowerDefenseGame.WaveState.DEFEAT, "Base health reaching zero must cause defeat.")
 
 	var linglan_config := load(
 		"res://resources/config/enemies/linglan_boss.tres"
@@ -1099,7 +1099,7 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 		game.linglan_boss = linglan
 		game.maximum_base_health = 250
 		game.current_base_health = 250
-		game.wave_state = GameTowerDefense.WaveState.BOSS_ACTIVE
+		game.wave_state = TowerDefenseGame.WaveState.BOSS_ACTIVE
 		game.current_wave_total = 1
 		game.current_wave_spawned = 1
 		game.current_wave_escaped = 0
@@ -1110,7 +1110,7 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 		game.call("_on_enemy_reached_home", linglan, Vector2i(2, 22))
 		_expect(
 			game.current_base_health == 0
-			and game.wave_state == GameTowerDefense.WaveState.DEFEAT,
+			and game.wave_state == TowerDefenseGame.WaveState.DEFEAT,
 			"An escaped Linglan must destroy even an upgraded core instead of completing the Boss step."
 		)
 		await process_frame
@@ -1118,7 +1118,7 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 		game.linglan_boss = null
 
 	game.current_base_health = game.maximum_base_health
-	game.wave_state = GameTowerDefense.WaveState.WAVE_ACTIVE
+	game.wave_state = TowerDefenseGame.WaveState.WAVE_ACTIVE
 	game.current_flow_step = null
 	game.current_wave_total = 1
 	game.current_wave_spawned = 1
@@ -1126,7 +1126,7 @@ func _verify_escape_resolution(game: GameTowerDefense) -> void:
 	game.call("_clear_pending_enemy_spawn_queue")
 	game.active_wave_enemy_ids.clear()
 	game.call("_check_wave_completion")
-	_expect(game.wave_state == GameTowerDefense.WaveState.VICTORY, "Wave completion must use resolved, allowing escaped enemies to finish a wave.")
+	_expect(game.wave_state == TowerDefenseGame.WaveState.VICTORY, "Wave completion must use resolved, allowing escaped enemies to finish a wave.")
 
 
 func _count_reward_nodes(node: Node) -> int:

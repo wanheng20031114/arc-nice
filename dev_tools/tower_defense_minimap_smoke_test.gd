@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const MINIMAP_SCENE := preload("res://scene/tower_defense_minimap.tscn")
 const REMOTE_PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn")
@@ -23,7 +23,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense scene must instantiate for minimap verification.")
 	if game == null:
 		_finish()
@@ -62,7 +62,7 @@ func _run() -> void:
 
 
 func _verify_scene_structure(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	minimap: TowerDefenseMinimap
 ) -> void:
 	_expect(minimap.layer == 9, "Minimap must render above the world in its own CanvasLayer.")
@@ -270,7 +270,7 @@ func _verify_static_multimesh_signature(
 
 
 func _verify_projection_and_coordinate(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	minimap: TowerDefenseMinimap
 ) -> void:
 	var canvas := minimap.minimap_canvas
@@ -394,7 +394,7 @@ func _verify_projection_and_coordinate(
 
 
 func _verify_dynamic_markers(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	canvas: TowerDefenseMinimapCanvas
 ) -> void:
 	var remote_player := REMOTE_PLAYER_SCENE.instantiate() as Player

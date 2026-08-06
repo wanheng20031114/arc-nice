@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const CULTIVATION_CENTER_SCENE := preload(
 	"res://scene/plant_defense/plant_cultivation_center.tscn"
 )
@@ -243,7 +243,7 @@ func _test_research_gates() -> void:
 func _test_singleplayer_starting_package() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
-	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	await process_frame
@@ -281,7 +281,7 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 	for peer_id in range(1, player_count + 1):
 		names[peer_id] = "Player %d" % peer_id
 		characters[peer_id] = &"weishidaier"
-	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,

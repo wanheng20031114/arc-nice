@@ -1,4 +1,4 @@
-extends GameTowerDefense
+extends TowerDefenseGame
 class_name TestGrassArena
 
 const GRASS_RECT := Rect2i(0, 0, 16, 16)

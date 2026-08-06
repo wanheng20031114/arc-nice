@@ -109,7 +109,7 @@ func _test_host_authority_and_auto_barrage() -> void:
 	player.skill1_charge = player.skill1_charge_duration
 	player.global_position = Vector2(120.0, 76.0)
 
-	var game := Game.new()
+	var game := StandardGame.new()
 	game.peer_players[7] = player
 	var mp_game := RecordingMpGame.new()
 	var host_net := HostNetManagerStub.new()
@@ -242,7 +242,7 @@ func _test_client_recovery_visual() -> void:
 	remote_player.set_process(false)
 	remote_player.set_physics_process(false)
 
-	var game := Game.new()
+	var game := StandardGame.new()
 	game.peer_players[7] = remote_player
 	var mp_game := RecordingMpGame.new()
 	var keepalive := HTTPRequest.new()

@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const BASE_DIRT_TILE_TEXTURE := preload(
 	"res://resources/terrain/dual_grid/tilled_soil_full_tile_16.png"
 )
@@ -21,7 +21,7 @@ func _init() -> void:
 
 func _run() -> void:
 	var start_msec := Time.get_ticks_msec()
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense scene must instantiate for terrain verification.")
 	if game == null:
 		_finish()
@@ -53,7 +53,7 @@ func _run() -> void:
 	_finish()
 
 
-func _verify_dual_grid_wiring(game: GameTowerDefense) -> void:
+func _verify_dual_grid_wiring(game: TowerDefenseGame) -> void:
 	var terrain := game.dual_grid_terrain
 	_expect(terrain != null, "Tower-defense scene must expose DualGridTerrain.")
 	if terrain == null:
@@ -120,7 +120,7 @@ func _verify_dual_grid_wiring(game: GameTowerDefense) -> void:
 	)
 
 
-func _verify_large_map_topology(game: GameTowerDefense) -> void:
+func _verify_large_map_topology(game: TowerDefenseGame) -> void:
 	var gameplay_layer := game.ground_tile_map_layer
 	var gameplay_rect := gameplay_layer.get_used_rect()
 	_expect(
@@ -155,7 +155,7 @@ func _verify_large_map_topology(game: GameTowerDefense) -> void:
 			"Enemy spawn marker must stay inside the closed map boundary: %s" % marker.name
 		)
 
-	for spawn_offset in GameTowerDefense.MULTIPLAYER_SPAWN_OFFSETS:
+	for spawn_offset in TowerDefenseGame.MULTIPLAYER_SPAWN_OFFSETS:
 		var spawn_position := game.player_spawn.global_position + spawn_offset
 		var spawn_cell := gameplay_layer.local_to_map(gameplay_layer.to_local(spawn_position))
 		var ground_data := gameplay_layer.get_cell_tile_data(spawn_cell)
@@ -170,7 +170,7 @@ func _verify_large_map_topology(game: GameTowerDefense) -> void:
 		)
 
 
-func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
+func _verify_visual_grid_alignment(game: TowerDefenseGame) -> void:
 	var terrain := game.dual_grid_terrain
 	if terrain == null:
 		return
@@ -272,7 +272,7 @@ func _verify_visual_grid_alignment(game: GameTowerDefense) -> void:
 	)
 
 
-func _verify_base_dirt_coverage(game: GameTowerDefense) -> void:
+func _verify_base_dirt_coverage(game: TowerDefenseGame) -> void:
 	var terrain := game.dual_grid_terrain
 	if terrain == null or terrain.base_dirt_backdrop == null:
 		return
@@ -346,7 +346,7 @@ func _verify_base_dirt_texture_matches_atlas() -> void:
 			)
 
 
-func _verify_terrain_semantics(game: GameTowerDefense) -> void:
+func _verify_terrain_semantics(game: TowerDefenseGame) -> void:
 	var terrain := game.dual_grid_terrain
 	if terrain == null:
 		return
@@ -411,7 +411,7 @@ func _verify_terrain_semantics(game: GameTowerDefense) -> void:
 
 
 func _verify_open_ground_terrain_rules(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	terrain: DualGridTilemap
 ) -> void:
 	var ground_cell := Vector2i.MAX
@@ -483,7 +483,7 @@ func _verify_open_ground_terrain_rules(
 	pathfinder.rebuild()
 
 
-func _has_water_physics_at_cell(game: GameTowerDefense, cell: Vector2i) -> bool:
+func _has_water_physics_at_cell(game: TowerDefenseGame, cell: Vector2i) -> bool:
 	var collision_layer := game.dual_grid_terrain.water_collision_map_layer
 	var query_shape := RectangleShape2D.new()
 	query_shape.size = Vector2(8.0, 8.0)
@@ -499,7 +499,7 @@ func _has_water_physics_at_cell(game: GameTowerDefense, cell: Vector2i) -> bool:
 	return not game.get_world_2d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
-func _verify_runtime_placement_visibility(game: GameTowerDefense) -> void:
+func _verify_runtime_placement_visibility(game: TowerDefenseGame) -> void:
 	var controller := game.plant_placement_controller
 	_expect(controller != null, "PlantPlacementController must exist for visibility verification.")
 	if controller == null:
@@ -532,7 +532,7 @@ func _verify_runtime_placement_visibility(game: GameTowerDefense) -> void:
 	_expect(instructions != null and not instructions.visible, "Placement instructions must hide after cancellation.")
 
 
-func _verify_reachable_grass_placement(game: GameTowerDefense) -> void:
+func _verify_reachable_grass_placement(game: TowerDefenseGame) -> void:
 	var configs := game.plant_system.get_available_configs()
 	_expect(not configs.is_empty(), "Tower-defense scene must expose at least one plant config.")
 	if configs.is_empty():

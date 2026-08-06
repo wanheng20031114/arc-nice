@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const HUD_SCENE := preload("res://scene/plant_defense/plant_selection_hud.tscn")
 const DEFAULT_VIEWPORT := Vector2i(1152, 648)
@@ -52,7 +52,7 @@ func _run() -> void:
 func _test_formal_inventory_catalog_and_placement() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
-	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game
@@ -246,7 +246,7 @@ func _test_catalog_layout(viewport_size: Vector2i) -> void:
 func _test_host_rejects_free_placement() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
-	var game := GAME_SCENE.instantiate() as GameTowerDefense
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
 		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
@@ -278,7 +278,7 @@ func _test_host_rejects_free_placement() -> void:
 		and rejections[0]["request_id"] == 77
 		and rejections[0]["peer_id"] == 2
 		and rejections[0]["reason"]
-		== GameTowerDefense.PLANT_PLACEMENT_REJECT_FREE_DISABLED
+		== TowerDefenseGame.PLANT_PLACEMENT_REJECT_FREE_DISABLED
 		and game.plant_container.get_child_count() == plant_count_before,
 		"Formal host must reject the legacy free-placement RPC before placement."
 	)
@@ -300,7 +300,7 @@ func _test_host_rejects_free_placement() -> void:
 
 
 func _test_multiplayer_debug_grant_policy(
-	game: GameTowerDefense,
+	game: TowerDefenseGame,
 	run_state: RunStateStore,
 	collectible_path: String
 ) -> void:

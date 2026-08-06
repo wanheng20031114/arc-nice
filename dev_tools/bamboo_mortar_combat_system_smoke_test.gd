@@ -9,7 +9,7 @@ const ARMORED_ENEMY_CONFIG := preload(
 )
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const TOWER_DEFENSE_GAME_SCRIPT := preload(
-	"res://scene/game_tower_defense.gd"
+	"res://scene/game_modes/tower_defense/tower_defense_game.gd"
 )
 
 var failures: Array[String] = []
@@ -685,7 +685,7 @@ func _test_multiplayer_batch_bridge() -> void:
 			EnemyConfig.DamageType.PHYSICAL
 		)
 		and enemy.current_health == client_health_before,
-		"GameTowerDefense Client运行时也必须在底层拒绝植物批伤。"
+		"TowerDefenseGame Client运行时也必须在底层拒绝植物批伤。"
 	)
 	bridge_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	net_manager_stub.host = true

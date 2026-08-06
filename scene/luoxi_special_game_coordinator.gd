@@ -18,7 +18,7 @@ enum ResultCode {
 	PLAYER_DIED,
 }
 
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var run_state: RunStateStore = null
 var merchant: LuoxiMerchant = null
 var random_generator: RandomNumberGenerator = null
@@ -28,7 +28,7 @@ var revision_counters_by_peer: Dictionary = {}
 
 
 func setup(
-	new_game: GameTowerDefense,
+	new_game: TowerDefenseGame,
 	new_run_state: RunStateStore,
 	new_merchant: LuoxiMerchant,
 	new_random_generator: RandomNumberGenerator,

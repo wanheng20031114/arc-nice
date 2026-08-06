@@ -66,7 +66,7 @@ func _run() -> void:
 	_expect(room_mode_label != null, "Room wait panel must expose the synchronized mode label.")
 	_expect(room_capacity_label != null, "Room wait panel must expose synchronized room capacity.")
 	if game_mode_selector != null:
-		_expect(game_mode_selector.item_count == 6, "Game-mode selector must contain all six supported modes.")
+		_expect(game_mode_selector.item_count == 6, "StandardGame-mode selector must contain all six supported modes.")
 		_expect(
 			game_mode_selector.get_item_id(0) == NetManagerStore.GameMode.STANDARD
 			and game_mode_selector.get_item_id(1) == NetManagerStore.GameMode.TOWER_DEFENSE,

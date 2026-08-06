@@ -58,22 +58,22 @@ func _run() -> void:
 
 
 func _test_game_source_enables_shared_index() -> void:
-	var source := FileAccess.get_file_as_string("res://scene/game.gd")
+	var source := FileAccess.get_file_as_string("res://scene/game_modes/standard/standard_game.gd")
 	_expect(
 		source.contains("enable_singleplayer_combat_target_index()"),
-		"Game._ready() must enable the shared single-player combat target index."
+		"StandardGame._ready() must enable the shared single-player combat target index."
 	)
 	var tower_source := FileAccess.get_file_as_string(
-		"res://scene/game_tower_defense.gd"
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
 	)
 	_expect(
 		tower_source.contains("enable_singleplayer_combat_target_index(true)"),
-		"GameTowerDefense must preserve its forced bounded-query index policy."
+		"TowerDefenseGame must preserve its forced bounded-query index policy."
 	)
 
 
 func _test_nearest_combat_target_contracts() -> void:
-	var game := Game.new()
+	var game := StandardGame.new()
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "NearestEnemyContainer"
@@ -301,7 +301,7 @@ func _test_nearest_combat_target_contracts() -> void:
 
 
 func _test_queued_target_query_contracts() -> void:
-	var game := Game.new()
+	var game := StandardGame.new()
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "QueuedEnemyContainer"
@@ -372,7 +372,7 @@ func _test_queued_target_query_contracts() -> void:
 
 
 func _test_singleplayer_container_lifecycle() -> void:
-	var game := Game.new()
+	var game := StandardGame.new()
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "IndexedEnemyContainer"
@@ -451,7 +451,7 @@ func _test_singleplayer_container_lifecycle() -> void:
 	game.free()
 	enemy_container.queue_free()
 
-	var multiplayer_game := Game.new()
+	var multiplayer_game := StandardGame.new()
 	multiplayer_game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var multiplayer_enemy_container := Node2D.new()
 	multiplayer_game.enemy_container = multiplayer_enemy_container
@@ -479,7 +479,7 @@ func _test_singleplayer_container_lifecycle() -> void:
 	multiplayer_game.free()
 
 
-func _count_index_bucket_occurrences(game: Game, net_id: int) -> int:
+func _count_index_bucket_occurrences(game: StandardGame, net_id: int) -> int:
 	var occurrences := 0
 	for bucket_variant in game.combat_target_index.buckets.values():
 		var bucket := bucket_variant as Array
@@ -488,7 +488,7 @@ func _count_index_bucket_occurrences(game: Game, net_id: int) -> int:
 
 
 func _test_same_physics_frame_bucket_migration() -> void:
-	var game := Game.new()
+	var game := StandardGame.new()
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var enemy := _new_tree_safe_test_enemy()
 	test_root.add_child(enemy)
@@ -567,7 +567,7 @@ func _test_same_physics_frame_bucket_migration() -> void:
 
 
 func _test_tower_defense_forced_policy() -> void:
-	var game := GameTowerDefense.new()
+	var game := TowerDefenseGame.new()
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "EnemyContainer"
@@ -616,7 +616,7 @@ func _new_tree_safe_test_enemy() -> TestEnemy:
 
 
 func _run_ab_case(enemy_count: int) -> void:
-	var game := Game.new()
+	var game := StandardGame.new()
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "EnemyContainer"
@@ -671,7 +671,7 @@ func _run_ab_case(enemy_count: int) -> void:
 
 
 func _assert_query_equivalence(
-	game: Game,
+	game: StandardGame,
 	containers: Array[Node],
 	centers: PackedVector2Array,
 	enemy_count: int
@@ -732,7 +732,7 @@ func _same_enemy_membership(a: Array[Enemy], b: Array[Enemy]) -> bool:
 	return true
 
 
-func _assert_adaptive_routing(game: Game, enemy_count: int) -> void:
+func _assert_adaptive_routing(game: StandardGame, enemy_count: int) -> void:
 	var result: Array[Enemy] = []
 	var physics_frame := Engine.get_physics_frames()
 	game.combat_target_index._last_refresh_physics_frame = -777
@@ -768,7 +768,7 @@ func _assert_adaptive_routing(game: Game, enemy_count: int) -> void:
 
 
 func _run_frame_group_ab_matrix(
-	game: Game,
+	game: StandardGame,
 	centers: PackedVector2Array,
 	enemy_count: int
 ) -> void:
@@ -820,7 +820,7 @@ func _run_frame_group_ab_matrix(
 
 
 func _measure_legacy_frame_groups(
-	game: Game,
+	game: StandardGame,
 	centers: PackedVector2Array,
 	radius: float,
 	max_count: int,
@@ -849,7 +849,7 @@ func _measure_legacy_frame_groups(
 
 
 func _measure_indexed_frame_groups(
-	game: Game,
+	game: StandardGame,
 	centers: PackedVector2Array,
 	radius: float,
 	max_count: int,
@@ -878,7 +878,7 @@ func _measure_indexed_frame_groups(
 
 
 func _measure_adaptive_frame_groups(
-	game: Game,
+	game: StandardGame,
 	centers: PackedVector2Array,
 	radius: float,
 	max_count: int,
@@ -904,7 +904,7 @@ func _measure_adaptive_frame_groups(
 	return elapsed_usec
 
 
-func _measure_legacy_queries(game: Game, centers: PackedVector2Array) -> int:
+func _measure_legacy_queries(game: StandardGame, centers: PackedVector2Array) -> int:
 	var result: Array[Enemy] = []
 	var checksum := 0
 	var index_was_enabled := game._singleplayer_combat_target_index_enabled
@@ -925,7 +925,7 @@ func _measure_legacy_queries(game: Game, centers: PackedVector2Array) -> int:
 	return elapsed_usec
 
 
-func _measure_indexed_queries(game: Game, centers: PackedVector2Array) -> int:
+func _measure_indexed_queries(game: StandardGame, centers: PackedVector2Array) -> int:
 	var result: Array[Enemy] = []
 	var checksum := 0
 	var started_usec := Time.get_ticks_usec()

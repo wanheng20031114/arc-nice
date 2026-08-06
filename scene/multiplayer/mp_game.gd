@@ -45,15 +45,6 @@ const FEEDBACK_RPC_METHODS := {
 	&"net_plant_health_batch": true,
 	&"net_tower_defense_wave_progress_changed": true,
 }
-const STANDARD_GAME_SCENE_PATH := "res://scene/game.tscn"
-const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_tower_defense.tscn"
-const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
-const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p1b.tscn"
-)
-const TEST_GRASS_ARENA_P2_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p2.tscn"
-)
 const AGAVE_CANNONBALL_SCENE_PATH := "res://scene/plant_defense/agave_cannonball.tscn"
 const BAMBOO_MORTAR_SCRIPT := preload(
 	"res://scene/plant_defense/bamboo_mortar.gd"
@@ -1867,7 +1858,7 @@ func _is_embedded_participant_suspended(peer_id: int) -> bool:
 func _get_authoritative_team_plant_count() -> int:
 	if game == null or not game.supports_tower_defense():
 		return 0
-	var tower_defense_game := game as GameTowerDefense
+	var tower_defense_game := game as TowerDefenseGame
 	if tower_defense_game == null or tower_defense_game.plant_system == null:
 		# A tower-defense Host without its authoritative registry must fail closed;
 		# accepting placements here would silently bypass the shared team limit.
@@ -2869,7 +2860,7 @@ func _apply_authoritative_simple_crafting_request(
 			result = RunStateStore.CRAFT_RESULT_INVALID_RECIPE
 		else:
 			var completed_research_ids: Array[StringName] = []
-			var tower_defense_game := game as GameTowerDefense
+			var tower_defense_game := game as TowerDefenseGame
 			if (
 				tower_defense_game != null
 				and tower_defense_game.research_coordinator != null
@@ -3061,7 +3052,7 @@ func _find_authoritative_nearest_interaction_building(
 		or not game.supports_tower_defense()
 	):
 		return null
-	var tower_defense_game := game as GameTowerDefense
+	var tower_defense_game := game as TowerDefenseGame
 	if tower_defense_game == null or tower_defense_game.plant_system == null:
 		return null
 	return tower_defense_game.plant_system.find_nearest_operational_interaction_building_world(
@@ -3242,17 +3233,8 @@ func _setup_game(mode: int) -> bool:
 func _get_game_scene_path_for_mode(game_mode: int) -> String:
 	if not runtime_scene_path_override.strip_edges().is_empty():
 		return runtime_scene_path_override
-	match game_mode:
-		NetManagerStore.GameMode.TOWER_DEFENSE:
-			return TOWER_DEFENSE_GAME_SCENE_PATH
-		NetManagerStore.GameMode.TEST_ARENA_P1:
-			return TEST_GRASS_ARENA_SCENE_PATH
-		NetManagerStore.GameMode.TEST_ARENA_P1B:
-			return TEST_GRASS_ARENA_P1B_SCENE_PATH
-		NetManagerStore.GameMode.TEST_ARENA_P2:
-			return TEST_GRASS_ARENA_P2_SCENE_PATH
-		_:
-			return STANDARD_GAME_SCENE_PATH
+	var definition := GameModeCatalog.get_definition(game_mode)
+	return definition.multiplayer_runtime_scene_path if definition != null else ""
 
 
 func _request_runtime_state_from_host() -> void:
@@ -3955,7 +3937,7 @@ func _filter_embedded_peer_map(source: Dictionary) -> Dictionary:
 
 
 # The coordinator first creates this stable RPC path on every participant,
-# then opens its prepare/activate barrier. Game._ready() can emit merchant or
+# then opens its prepare/activate barrier. StandardGame._ready() can emit merchant or
 # inventory signals before that barrier; suppress those transient packets so
 # they never target a client path that has not been created yet. Activation's
 # runtime-state request repairs every authoritative state channel.
@@ -10504,7 +10486,7 @@ func _broadcast_enemy_terminal(net_id: int, reason: int, event_position: Vector2
 			if _host_terminal_enemy_ids.erase(net_id):
 				return
 		ENEMY_TERMINAL_ESCAPED:
-			# GameTowerDefense suppresses the later generic removal itself, so an
+			# TowerDefenseGame suppresses the later generic removal itself, so an
 			# escape must never become a session-long terminal-ID tombstone.
 			_host_terminal_enemy_ids.erase(net_id)
 		_:

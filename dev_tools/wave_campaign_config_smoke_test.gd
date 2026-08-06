@@ -3,8 +3,8 @@ extends SceneTree
 const WAVE_CAMPAIGN_CONFIG_SCRIPT := preload(
 	"res://resources/config/waves/wave_campaign_config.gd"
 )
-const STANDARD_GAME_SCENE := preload("res://scene/game.tscn")
-const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const STANDARD_GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
+const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const FORMAL_TOTALS: Array[int] = [24, 36, 48, 64, 80, 96, 112, 128, 144, 160, 176, 200]
 const FORMAL_MAX_ALIVE: Array[int] = [24, 32, 36, 40, 48, 52, 56, 64, 72, 80, 88, 96]
 const PERFORMANCE_TOTAL := 1200
@@ -278,7 +278,7 @@ func _test_boss_mode_separation() -> void:
 		"res://resources/config/bosses/boss_01_linglan.tres"
 	) as BossConfig
 	_expect(standard_boss != null, "Standard Linglan BossConfig must continue to load.")
-	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense boss integration probe must instantiate.")
 	if game != null:
 		_expect(game.linglan_boss_enabled, "Tower-defense Linglan must be enabled by the authored scene.")

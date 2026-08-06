@@ -1,11 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="PackedScene" path="res://scene/test_arena/test_grass_arena.tscn" id="1_p1a"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/p1b/singleplayer/campaign.tres" id="2_campaign"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres" id="3_multiplayer_campaign"]
+[ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1b.tres" id="4_mode_definition"]
 
 [node name="TestGrassArenaP1B" instance=ExtResource("1_p1a")]
-singleplayer_campaign = ExtResource("2_campaign")
-multiplayer_campaign = ExtResource("3_multiplayer_campaign")
+mode_definition = ExtResource("4_mode_definition")
 test_scene_label = "P1B"
 test_entry_announcement_text = "测试场景 P1B"

@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const PERFORMANCE_CAMPAIGN := preload(
 	"res://resources/config/campaigns/tower_defense/performance/campaign.tres"
 )
@@ -23,7 +23,7 @@ const EXPECTED_MAX_ALIVE := 300
 
 var failures: Array[String] = []
 var telemetry: Node = null
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 
 
 func _init() -> void:
@@ -36,7 +36,7 @@ func _run() -> void:
 	_verify_percentiles()
 	_verify_player_bullet_lifetime()
 
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Telemetry pressure fixture must instantiate tower defense.")
 	if game == null:
 		await _finish()

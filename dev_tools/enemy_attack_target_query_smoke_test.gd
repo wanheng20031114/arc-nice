@@ -244,7 +244,7 @@ func _test_runtime_player_plant_merge(
 	nearest_plant: PlantDefense,
 	second_plant: PlantDefense
 ) -> void:
-	var runtime := GameTowerDefense.new()
+	var runtime := TowerDefenseGame.new()
 	runtime.plant_system = plant_system
 	var local_player := Player.new()
 	local_player.position = center_world + Vector2(TILE_SIZE * 0.5, 0.0)

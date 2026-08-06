@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const PERFORMANCE_CAMPAIGN := preload(
 	"res://resources/config/campaigns/tower_defense/performance/campaign.tres"
 )
@@ -19,7 +19,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as GameTowerDefense
+	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Tower-defense pressure scene must instantiate.")
 	if game == null:
 		_finish(0)

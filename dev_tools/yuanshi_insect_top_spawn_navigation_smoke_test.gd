@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const FAST_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fast.tres")
 const SHELL_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_shell.tres")
@@ -21,7 +21,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var game := GAME_SCENE.instantiate() as Game
+	var game := GAME_SCENE.instantiate() as StandardGame
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game
@@ -30,8 +30,8 @@ func _run() -> void:
 
 	var spawn_point := game.get_node_or_null("EnemySpawnPoints/Spawn1") as Marker2D
 	var pathfinder := game.get_node_or_null("GridPathfinder") as GridPathfinder
-	_expect(spawn_point != null, "Game must provide the top enemy spawn point.")
-	_expect(pathfinder != null and pathfinder.is_built, "Game must provide a built GridPathfinder.")
+	_expect(spawn_point != null, "StandardGame must provide the top enemy spawn point.")
+	_expect(pathfinder != null and pathfinder.is_built, "StandardGame must provide a built GridPathfinder.")
 	if spawn_point == null or pathfinder == null or not pathfinder.is_built:
 		_finish(game)
 		return
@@ -54,7 +54,7 @@ func _run() -> void:
 
 
 func _test_top_spawn_navigation_for_config(
-	game: Game,
+	game: StandardGame,
 	spawn_point: Marker2D,
 	pathfinder: GridPathfinder,
 	enemy_config: EnemyConfig
@@ -96,7 +96,7 @@ func _test_top_spawn_navigation_for_config(
 	await physics_frame
 
 
-func _spawn_insect(game: Game, position: Vector2, enemy_config: EnemyConfig) -> YuanshiInsect:
+func _spawn_insect(game: StandardGame, position: Vector2, enemy_config: EnemyConfig) -> YuanshiInsect:
 	var enemy := enemy_config.enemy_scene.instantiate() as YuanshiInsect
 	game.enemy_container.add_child(enemy)
 	enemy.global_position = position

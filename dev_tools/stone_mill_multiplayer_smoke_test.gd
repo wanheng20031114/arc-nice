@@ -71,7 +71,7 @@ class CapturingMpGame:
 
 
 class TestTowerRuntime:
-	extends GameTowerDefense
+	extends TowerDefenseGame
 
 	var shown_crafting_results: Array[Dictionary] = []
 

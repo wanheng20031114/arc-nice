@@ -317,7 +317,7 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	cold_scheduler.call("clear_all")
 	var mp_game := TestMpGame.new()
 	var net_manager := TestNetManager.new()
-	var game := Game.new()
+	var game := StandardGame.new()
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", game)
 
@@ -478,7 +478,7 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 	var net_manager := TestNetManager.new()
 	net_manager.host_mode = false
 	net_manager.local_peer_id = 21
-	var game := Game.new()
+	var game := StandardGame.new()
 	var player := _spawn_player(Vector2(-800.0, -600.0), 21)
 	player.physical_defense = 99
 	player.set("_base_physical_defense", 99)

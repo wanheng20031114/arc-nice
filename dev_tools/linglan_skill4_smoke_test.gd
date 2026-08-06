@@ -11,7 +11,7 @@ const ORB_SCRIPT := preload("res://scene/boss/linglan/linglan_skill4_light_orb.g
 const ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
 const ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.tscn"
 const ORB_SHADER_PATH := "res://scene/boss/linglan/linglan_skill3_light_orb.gdshader"
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 
@@ -606,8 +606,8 @@ func _test_laser_overlap_tracking_and_multiplayer_event_ids() -> void:
 
 
 func _test_game_helpers() -> void:
-	var game := GAME_SCENE.instantiate() as Game
-	_expect(game != null, "Game scene must instantiate for Skill4 helper checks.")
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for Skill4 helper checks.")
 	if game == null:
 		return
 	game.auto_start_waves = false
@@ -623,20 +623,20 @@ func _test_game_helpers() -> void:
 		SKILL4_CONFIG.target_cell_a,
 		SKILL4_CONFIG.target_cell_b
 	)
-	_expect(actual_target.is_equal_approx(expected_target), "Game must resolve Skill4 midpoint through map_to_local().")
+	_expect(actual_target.is_equal_approx(expected_target), "StandardGame must resolve Skill4 midpoint through map_to_local().")
 	var bounds := game.get_linglan_skill4_laser_bounds(-3, 18, -1, 16, 5)
 	_expect(
 		(bounds.get("start_min") as Vector2).is_equal_approx(ground_layer.to_global(ground_layer.map_to_local(Vector2i(-3, -1)))),
-		"Game Skill4 start min bounds mismatch."
+		"StandardGame Skill4 start min bounds mismatch."
 	)
 	_expect(
 		(bounds.get("final_max") as Vector2).is_equal_approx(ground_layer.to_global(ground_layer.map_to_local(Vector2i(13, 11)))),
-		"Game Skill4 final max bounds mismatch."
+		"StandardGame Skill4 final max bounds mismatch."
 	)
 	var orb_position := game.get_linglan_skill4_orb_spawn_global_position(-3, 7)
 	_expect(
 		orb_position.is_equal_approx(ground_layer.to_global(ground_layer.map_to_local(Vector2i(-3, 7)))),
-		"Game Skill4 orb spawn position must use cell center."
+		"StandardGame Skill4 orb spawn position must use cell center."
 	)
 	game.queue_free()
 	current_scene = test_root

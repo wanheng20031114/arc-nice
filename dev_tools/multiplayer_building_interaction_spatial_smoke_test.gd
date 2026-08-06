@@ -40,7 +40,7 @@ class TestMpGame:
 
 var failures: Array[String] = []
 var plant_system := QueryProbePlantSystem.new()
-var runtime := GameTowerDefense.new()
+var runtime := TowerDefenseGame.new()
 var mp_game := TestMpGame.new()
 var player := Player.new()
 var all_buildings: Array[PlantDefense] = []

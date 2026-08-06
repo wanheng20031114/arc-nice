@@ -190,7 +190,7 @@ func _run() -> void:
 	)
 
 	var client_mp := RecordingMpGame.new()
-	var client_game := Game.new()
+	var client_game := StandardGame.new()
 	client_game.peer_players[owner_peer_id] = player
 	client_mp.set("game", client_game)
 	client_mp.set("_has_host_time_offset", true)

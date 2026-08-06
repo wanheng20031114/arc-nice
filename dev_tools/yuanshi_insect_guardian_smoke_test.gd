@@ -9,8 +9,8 @@ const GREEN_SHELL_CONFIG := preload(
 const GUARDIAN_AURA_SYSTEM_SCENE := preload(
 	"res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn"
 )
-const STANDARD_GAME_SCENE := preload("res://scene/game.tscn")
-const TOWER_GAME_SCENE := preload("res://scene/game_tower_defense.tscn")
+const STANDARD_GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
+const TOWER_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_aura.gd")
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
 

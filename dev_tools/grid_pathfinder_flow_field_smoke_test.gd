@@ -1,6 +1,6 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game.tscn")
+const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TEST_AGENT_HALF_EXTENTS := Vector2(8.0, 8.0)
 const BLOCKED_AGENT_HALF_EXTENTS := Vector2(9.0, 9.0)
 
@@ -19,7 +19,7 @@ func _run() -> void:
 	await physics_frame
 
 	var pathfinder := game.get_node("GridPathfinder") as GridPathfinder
-	_expect(pathfinder != null, "Game must provide GridPathfinder.")
+	_expect(pathfinder != null, "StandardGame must provide GridPathfinder.")
 	_expect(pathfinder != null and pathfinder.is_built, "GridPathfinder must be built.")
 	if pathfinder == null or not pathfinder.is_built:
 		_finish(game)

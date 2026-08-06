@@ -51,7 +51,7 @@ class CapturingMpGame:
 
 
 class PlacementCaptureRuntime:
-	extends GameTowerDefense
+	extends TowerDefenseGame
 
 	var inventory_placement_requests: Array[Dictionary] = []
 

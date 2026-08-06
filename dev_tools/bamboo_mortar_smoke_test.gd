@@ -2,7 +2,7 @@ extends SceneTree
 
 # Match production bootstrap order before loading the standalone mortar graph;
 # this keeps Enemy, runtime and registry global classes out of a preload cycle.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const MORTAR_SCENE := preload(
 	"res://scene/plant_defense/bamboo_mortar.tscn"
 )

@@ -4,7 +4,7 @@ extends SceneTree
 # regression. Every phase reuses the same bodies, positions, target, pathfinder
 # profile and player-motion trace. The symmetric phase order limits warm-up and
 # thermal bias without mixing scene loading or navigation builds into samples.
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const PROBE_ENEMY_SCENE := preload(
 	"res://dev_tools/physics2d_isolation_probe_enemy.tscn"
 )
@@ -52,7 +52,7 @@ const SYMMETRIC_PHASE_ORDER: Array[int] = [
 ]
 
 var failures: Array[String] = []
-var game: GameTowerDefense = null
+var game: TowerDefenseGame = null
 var pathfinder: GridPathfinder = null
 var static_target: Marker2D = null
 var enemies: Array[Enemy] = []
@@ -75,7 +75,7 @@ func _run() -> void:
 	for mode in PHASE_LABELS:
 		samples_by_mode[int(mode)] = []
 
-	game = TOWER_SCENE.instantiate() as GameTowerDefense
+	game = TOWER_SCENE.instantiate() as TowerDefenseGame
 	_expect(game != null, "Physics2D isolation probe must instantiate tower defense.")
 	if game == null:
 		await _finish()

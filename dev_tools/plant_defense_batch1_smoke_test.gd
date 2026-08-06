@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TOWER_SCENE := preload("res://scene/game_tower_defense.tscn")
+const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
@@ -1898,7 +1898,7 @@ func _test_multiplayer_authority_contracts() -> void:
 			building_item_slot = slot_index
 			break
 	var building_item_revision := run_state.get_inventory_revision_for_peer(2)
-	var host_game := GameTowerDefense.new()
+	var host_game := TowerDefenseGame.new()
 	host_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	host_game.run_state = run_state
 	host_game.plant_system = plant_system
