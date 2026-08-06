@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/multiplayer/tower_world/mp_tower_world_coordinator.gd" id="1_tower_world"]
+
+[node name="TowerWorldCoordinator" type="Node"]
+script = ExtResource("1_tower_world")
