@@ -299,7 +299,7 @@ func handle_player_died(peer_id: int) -> void:
 	if tower_runtime == null or _player_roster_coordinator == null:
 		return
 	cancel_luoxi_special_game_for_peer(peer_id)
-	tower_runtime._request_enemy_retarget_after_objective_change()
+	_enemy_coordinator.request_retarget()
 	var is_singleplayer := (
 		tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 		and peer_id == 0
@@ -333,7 +333,7 @@ func handle_player_revived(peer_id: int) -> void:
 	var tower_runtime := get_tower_runtime()
 	if tower_runtime == null:
 		return
-	tower_runtime._request_enemy_retarget_after_objective_change()
+	_enemy_coordinator.request_retarget()
 	clear_player_respawn_countdown(peer_id)
 	if (
 		(
@@ -406,7 +406,7 @@ func restore_multiplayer_player(
 		return null
 	if _fate_coordinator != null:
 		_fate_coordinator.apply_player_modifiers_to_all()
-	tower_runtime._request_enemy_retarget_after_objective_change()
+	_enemy_coordinator.request_retarget()
 	return player_instance
 
 
@@ -1127,9 +1127,22 @@ func apply_remote_base_health(
 
 
 func apply_remote_enemy_escape(net_id: int) -> void:
+	if _home_defense_coordinator != null:
+		_home_defense_coordinator.apply_remote_enemy_escape(net_id)
+
+
+func publish_authoritative_base_health(
+	current_health: int,
+	maximum_health: int,
+	revision: int
+) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_enemy_escape(net_id)
+	if (
+		tower_runtime != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		base_health_changed.emit(current_health, maximum_health, revision)
 
 
 func get_wave_progress_snapshot() -> Dictionary:
@@ -1942,20 +1955,6 @@ func _set_local_merchants_active(active: bool) -> bool:
 	return changed
 
 
-func _on_base_health_changed(
-	current_health: int,
-	maximum_health: int,
-	revision: int
-) -> void:
-	var tower_runtime := get_tower_runtime()
-	if (
-		tower_runtime != null
-		and tower_runtime.runtime_mode
-		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	):
-		base_health_changed.emit(current_health, maximum_health, revision)
-
-
 func _on_wave_progress_changed(
 	wave_number: int,
 	defeated: int,
@@ -2056,10 +2055,6 @@ func _connect_mode_signals() -> void:
 		_presentation_coordinator.start_wave_requested.connect(
 			handle_wave_start_requested
 		)
-	if not _home_defense_coordinator.base_health_changed.is_connected(
-		_on_base_health_changed
-	):
-		_home_defense_coordinator.base_health_changed.connect(_on_base_health_changed)
 	if not _enemy_coordinator.wave_progress_changed.is_connected(
 		_on_wave_progress_changed
 	):

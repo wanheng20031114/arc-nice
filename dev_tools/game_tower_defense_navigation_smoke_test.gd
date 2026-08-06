@@ -29,7 +29,7 @@ func _run() -> void:
 	_expect(pathfinder != null and pathfinder.is_built, "Tower defense must provide a built GridPathfinder.")
 	_expect(game.linglan_boss_enabled, "Tower-defense Linglan must be enabled.")
 	_expect(game.bosses.size() == 1, "Tower-defense Campaign must expose the Linglan BossConfig.")
-	var spawn_points: Array[Marker2D] = game.enemy_spawn_points
+	var spawn_points: Array[Marker2D] = game.enemy_coordinator.enemy_spawn_points
 	var targets: Array[Node2D] = []
 	if game.player != null:
 		targets.append(game.player)
@@ -1443,7 +1443,7 @@ func _verify_spawn_recovery_motion(
 	pathfinder: GridPathfinder,
 	enemy_configs: Array[EnemyConfig]
 ) -> void:
-	if game.enemy_spawn_points.size() < 6:
+	if game.enemy_coordinator.enemy_spawn_points.size() < 6:
 		return
 	game.set_physics_process(false)
 	var objective_targets := game.get_home_objective_targets()
@@ -1477,7 +1477,7 @@ func _verify_spawn_recovery_motion(
 			if enemy == null:
 				continue
 			game.enemy_container.add_child(enemy)
-			enemy.global_position = game.enemy_spawn_points[spawn_index].global_position
+			enemy.global_position = game.enemy_coordinator.enemy_spawn_points[spawn_index].global_position
 			enemy.setup(enemy_config, game.player, pathfinder)
 			enemy.set_objective_target(objective)
 			enemy.navigation_update_interval_frames = 1
@@ -1487,7 +1487,7 @@ func _verify_spawn_recovery_motion(
 			initial_distances[enemy_id] = enemy.global_position.distance_to(objective.global_position)
 			route_labels[enemy_id] = "%s %s" % [
 				enemy_config.display_name,
-				game.enemy_spawn_points[spawn_index].name,
+				game.enemy_coordinator.enemy_spawn_points[spawn_index].name,
 			]
 
 	_expect(not moving_enemies.is_empty(), "Spawn5/6 recovery must exercise shared-chase enemies.")

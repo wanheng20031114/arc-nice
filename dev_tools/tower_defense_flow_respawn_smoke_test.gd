@@ -256,8 +256,9 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"Active combat must hide only the phase banner while preserving the three metrics."
 	)
 	_expect(
-		int(game.wave_hud.enemy_value_label.text) == game.hud_alive_enemy_ids.size()
-		and game.hud_alive_enemy_ids.size() > 0,
+		int(game.wave_hud.enemy_value_label.text)
+		== game.enemy_coordinator.hud_alive_enemy_ids.size()
+		and game.enemy_coordinator.hud_alive_enemy_ids.size() > 0,
 		"Authoritative enemy spawns must update the independent on-field enemy metric."
 	)
 	_expect(
@@ -497,7 +498,9 @@ func _test_singleplayer_flow_and_respawn() -> void:
 
 	game.current_base_health = 1
 	var defeat_zoom := game.map_camera.zoom
-	var defeat_gate_center := game.home_objective_targets[0].global_position.round()
+	var defeat_gate_center := (
+		game.home_defense_coordinator.get_home_targets()[0].global_position.round()
+	)
 	game.call("_apply_base_damage", 1)
 	_expect(game.wave_state == CombatFlowState.State.DEFEAT, "Blue-gate health reaching zero must still end the game.")
 	_expect(not game.music_player.playing, "Tower-defense defeat must stop the active BGM immediately.")
@@ -1073,7 +1076,12 @@ func _test_client_gate_warning_replication() -> void:
 	_expect(not game.music_player.playing, "A client must stop its own BGM as soon as defeat is received.")
 	_expect(not game.wave_hud.result_overlay.visible, "A client must also defer the defeat overlay until its local camera arrives.")
 	await create_timer(TowerDefenseGame.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
-	_expect(game.map_camera.global_position.is_equal_approx(game.home_objective_targets[0].global_position.round()), "Every client camera must converge on the same blue-gate objective.")
+	_expect(
+		game.map_camera.global_position.is_equal_approx(
+			game.home_defense_coordinator.get_home_targets()[0].global_position.round()
+		),
+		"Every client camera must converge on the same blue-gate objective."
+	)
 	_expect(game.map_camera.zoom.is_equal_approx(client_defeat_zoom), "Client defeat presentation must preserve local camera zoom.")
 	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "Client defeat presentation must use the exact shared subtitle.")
 	_expect(game.defeat_audio.playing, "Each client must play the defeat sound locally after camera travel.")

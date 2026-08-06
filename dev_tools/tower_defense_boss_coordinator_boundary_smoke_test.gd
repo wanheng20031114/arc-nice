@@ -24,6 +24,9 @@ const COORDINATOR_SCENE_PATH := (
 const PORT_SOURCE_PATH := (
 	"res://scene/game_modes/tower_defense/boss/tower_defense_linglan_boss_runtime_port.gd"
 )
+const ENEMY_COORDINATOR_SOURCE_PATH := (
+	"res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.gd"
+)
 
 var failures: Array[String] = []
 var exit_code := 0
@@ -52,6 +55,7 @@ func _test_static_structure_and_order_guards() -> void:
 	var coordinator_source := _read_text(COORDINATOR_SOURCE_PATH)
 	var coordinator_scene_source := _read_text(COORDINATOR_SCENE_PATH)
 	var port_source := _read_text(PORT_SOURCE_PATH)
+	var enemy_coordinator_source := _read_text(ENEMY_COORDINATOR_SOURCE_PATH)
 	_expect(
 		root_scene_source.contains(
 			'[node name="BossCoordinator" parent="." instance=ExtResource("68_boss_coordinator")]'
@@ -103,11 +107,11 @@ func _test_static_structure_and_order_guards() -> void:
 			"ensure_runtime_nodes",
 			"reset_wave_death_counts",
 			"linglan_boss_started = true",
-			"runtime.wave_state = CombatFlowState.State.BOSS_INTRO",
-			"runtime._clear_pending_enemy_spawn_queue()",
-			"runtime._clear_active_enemies()",
-			"runtime._clear_resolved_home_enemy_ids()",
-			"runtime._clear_hud_alive_enemies()",
+			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO",
+			"enemy_coordinator.clear_queue()",
+			"enemy_coordinator.clear_active_enemies()",
+			"home_defense_coordinator.clear_resolved_enemy_ids()",
+			"enemy_coordinator.clear_hud_alive_enemies()",
 			"runtime._set_merchant_active(false)",
 			"runtime._update_boss_music(boss_config)",
 			"runtime._focus_camera_on_boss_intro(spawn_position)",
@@ -130,9 +134,9 @@ func _test_static_structure_and_order_guards() -> void:
 		remote_intro_source,
 		[
 			"runtime.state_timer.stop()",
-			"runtime.wave_state = CombatFlowState.State.BOSS_INTRO",
+			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO",
 			"runtime._set_local_merchants_active(false)",
-			"runtime.wave_hud.show_tower_defense_boss_progress(0, 1)",
+			"runtime._show_tower_defense_boss_progress(0, 1)",
 			"active_boss_config = boss_config",
 			"runtime._update_boss_music(boss_config)",
 			"prepare_arena(boss_config)",
@@ -147,9 +151,9 @@ func _test_static_structure_and_order_guards() -> void:
 		remote_active_source,
 		[
 			"runtime.state_timer.stop()",
-			"runtime.wave_state = CombatFlowState.State.BOSS_ACTIVE",
+			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE",
 			"runtime._set_local_merchants_active(false)",
-			"runtime.wave_hud.show_tower_defense_boss_progress(0, 1)",
+			"runtime._show_tower_defense_boss_progress(0, 1)",
 			"restore_remote_camera_if_intro_complete()",
 			"active_boss_config = boss_config",
 			"runtime._update_boss_music(boss_config)",
@@ -162,10 +166,10 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect_order(
 		activate_source,
 		[
-			"runtime._register_active_enemy(linglan_boss)",
+			"enemy_coordinator.register_external_enemy(linglan_boss)",
 			"linglan_boss.tree_exited.connect(exited_callback)",
-			"runtime._finalize_authoritative_enemy_spawn(",
-			"runtime.wave_hud.show_tower_defense_boss_progress(0, 1)",
+			"enemy_coordinator.finalize_authoritative_enemy_spawn(",
+			"runtime._show_tower_defense_boss_progress(0, 1)",
 			"runtime._emit_multiplayer_flow_state(CombatFlowState.State.BOSS_ACTIVE)",
 			"runtime._emit_tower_boss_started_authoritatively(",
 		],
@@ -180,26 +184,26 @@ func _test_static_structure_and_order_guards() -> void:
 		proxy_source,
 		[
 			"boss_enemy.setup(",
-			"runtime.configure_runtime_enemy_modifiers(boss_enemy)",
+			"enemy_coordinator.configure_runtime_enemy_modifiers(boss_enemy)",
 			"boss_enemy.configure_multiplayer_proxy()",
 			'boss_enemy.set_meta("net_id", net_id)',
-			"runtime.register_remote_boss_proxy_indices(boss_enemy, net_id)",
+			"enemy_coordinator.register_remote_proxy_indices(boss_enemy, net_id)",
 		],
 		"client Boss proxy"
 	)
 	var proxy_index_source := _function_source(
-		root_source,
-		"func register_remote_boss_proxy_indices(",
-		"func apply_remote_victory("
+		enemy_coordinator_source,
+		"func register_remote_proxy_indices(",
+		"func collect_snapshot_states("
 	)
 	_expect_order(
 		proxy_index_source,
 		[
-			"multiplayer_enemies_by_net_id[net_id] = boss_enemy",
-			"register_combat_target(net_id, boss_enemy)",
-			"multiplayer_enemy_ids_by_instance[boss_enemy.get_instance_id()] = net_id",
+			"_multiplayer_enemies_by_net_id[net_id] = enemy",
+			"_runtime.register_combat_target(net_id, enemy)",
+			"_multiplayer_enemy_ids_by_instance[enemy.get_instance_id()] = net_id",
 		],
-		"client Boss proxy root indices"
+		"client Boss proxy EnemyCoordinator indices"
 	)
 	var add_source := _function_source(
 		coordinator_source,
@@ -209,10 +213,10 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect_order(
 		add_source,
 		[
-			"runtime._register_active_enemy(enemy_instance)",
+			"enemy_coordinator.register_external_enemy(enemy_instance)",
 			"_connect_boss_add_signals(enemy_instance, enemy_id)",
-			"runtime._finalize_authoritative_enemy_spawn(",
-			"runtime._spawn_enemy_spawn_effect(spawn_position)",
+			"enemy_coordinator.finalize_authoritative_enemy_spawn(",
+			"enemy_coordinator.spawn_enemy_spawn_effect(spawn_position)",
 		],
 		"Boss add"
 	)
@@ -224,10 +228,10 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect_order(
 		airdrop_source,
 		[
-			"runtime._register_active_enemy(enemy_instance)",
+			"enemy_coordinator.register_external_enemy(enemy_instance)",
 			"_connect_boss_add_signals(enemy_instance, enemy_id)",
-			"runtime._finalize_authoritative_enemy_spawn(",
-			"runtime._spawn_enemy_spawn_effect(landing_position)",
+			"enemy_coordinator.finalize_authoritative_enemy_spawn(",
+			"enemy_coordinator.spawn_enemy_spawn_effect(landing_position)",
 		],
 		"Boss airdrop"
 	)
@@ -322,7 +326,7 @@ func _test_runtime_binding_and_behavior() -> void:
 		CombatFlowState.State.BOSS_INTRO, null
 	)
 	_expect(
-		game.wave_state == CombatFlowState.State.BOSS_INTRO
+		game.campaign_coordinator.wave_state == CombatFlowState.State.BOSS_INTRO
 		and game.state_timer.is_stopped()
 		and coordinator.active_boss_config == BOSS_CONFIG,
 		"null BossConfig 的 remote INTRO 仍须更新基础状态且保留旧配置。"
@@ -332,7 +336,7 @@ func _test_runtime_binding_and_behavior() -> void:
 		CombatFlowState.State.BOSS_ACTIVE, null
 	)
 	_expect(
-		game.wave_state == CombatFlowState.State.BOSS_ACTIVE
+		game.campaign_coordinator.wave_state == CombatFlowState.State.BOSS_ACTIVE
 		and game.state_timer.is_stopped()
 		and coordinator.active_boss_config == BOSS_CONFIG,
 		"null BossConfig 的 remote ACTIVE 仍须更新基础状态且保留旧配置。"
@@ -341,8 +345,8 @@ func _test_runtime_binding_and_behavior() -> void:
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	game.apply_remote_boss_started(0, BOSS_CONFIG, Vector2(123.0, 234.0))
 	_expect(
-		game.wave_state == CombatFlowState.State.BOSS_ACTIVE
-		and game.current_flow_step == BOSS_CONFIG
+		game.campaign_coordinator.wave_state == CombatFlowState.State.BOSS_ACTIVE
+		and game.campaign_coordinator.current_flow_step == BOSS_CONFIG
 		and coordinator.active_boss_config == BOSS_CONFIG,
 		"net_id=0 的迟到/异常 Boss started 仍须先更新 client 状态。"
 	)
@@ -354,16 +358,16 @@ func _test_runtime_binding_and_behavior() -> void:
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	game.call("_begin_linglan_boss_intro", BOSS_CONFIG)
 	_expect(
-		game.wave_state == CombatFlowState.State.BOSS_INTRO
+		game.campaign_coordinator.wave_state == CombatFlowState.State.BOSS_INTRO
 		and coordinator.linglan_boss != null,
 		"塔防 Boss intro 未进入预期状态或未准备实体。"
 	)
 	game.call("_on_linglan_boss_intro_finished")
 	_expect(
-		game.wave_state == CombatFlowState.State.BOSS_ACTIVE
+		game.campaign_coordinator.wave_state == CombatFlowState.State.BOSS_ACTIVE
 		and coordinator.linglan_boss != null
-		and game.call(
-			"_has_active_enemy", coordinator.linglan_boss.get_instance_id()
+		and game.enemy_coordinator.has_active_enemy(
+			coordinator.linglan_boss.get_instance_id()
 		),
 		"Boss activate 必须在 root 活跃索引登记实体。"
 	)
@@ -373,7 +377,7 @@ func _test_runtime_binding_and_behavior() -> void:
 	coordinator.handle_boss_defeated(active_boss)
 	await create_timer(1.05).timeout
 	_expect(
-		game.wave_state != CombatFlowState.State.BOSS_ACTIVE,
+		game.campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE,
 		"重复 defeat 信号不得把首次 1.3 秒完成点推迟到第二次信号之后。"
 	)
 	# Drain the second legacy-compatible timer scheduled by the duplicate signal.

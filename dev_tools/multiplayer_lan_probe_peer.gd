@@ -1017,7 +1017,14 @@ func _run_host_tower_defense_runtime_probe(
 	if escaped_enemy == null or not is_instance_valid(escaped_enemy):
 		_fail("Host tower-defense escape probe lost its enemy before Home resolution.")
 		return
-	game.call("_on_enemy_reached_home", escaped_enemy, Vector2i.ZERO)
+	var tower_game := game as TowerDefenseGame
+	if tower_game == null:
+		_fail("Host Home escape probe did not receive a TowerDefenseGame runtime.")
+		return
+	tower_game.home_defense_coordinator.on_enemy_reached_home(
+		escaped_enemy,
+		Vector2i.ZERO
+	)
 	if int(game.current_base_health) != 92:
 		_fail("Host Home escape did not apply the configured enemy base damage.")
 		return
@@ -1784,7 +1791,7 @@ func _run_host_wave_probe(game: Variant) -> void:
 				String(next_step.step_id) if next_step != null else "<null>",
 				int(game.current_wave_resolved),
 				int(game.current_wave_total),
-				game.active_wave_enemy_ids.size(),
+				_get_active_wave_enemy_count(game),
 			]
 		)
 		return
@@ -3569,14 +3576,31 @@ func _get_peer_id_by_name(net_manager: Node, player_name: String) -> int:
 
 
 func _spawn_host_probe_enemy(game: Variant) -> int:
-	if game.active_wave_spawn_points.is_empty():
-		if game.waves.is_empty() or not bool(game.call("_resolve_wave_spawn_points", game.waves[0])):
+	var tower_game := game as TowerDefenseGame
+	var active_spawn_points: Array[Marker2D] = (
+		tower_game.enemy_coordinator.active_wave_spawn_points
+		if tower_game != null
+		else game.active_wave_spawn_points
+	)
+	if active_spawn_points.is_empty():
+		var resolved := false
+		if not game.waves.is_empty():
+			resolved = (
+				tower_game.enemy_coordinator.resolve_spawn_points(game.waves[0])
+				if tower_game != null
+				else bool(game.call("_resolve_wave_spawn_points", game.waves[0]))
+			)
+		if not resolved:
 			_fail("Host probe could not resolve an active wave spawn-point mask.")
 			return 0
 	var previous_ids: Dictionary = {}
 	for net_id_variant in game.multiplayer_enemies_by_net_id:
 		previous_ids[int(net_id_variant)] = true
-	var spawned := bool(game.call("_try_spawn_enemy", BASIC_ENEMY_CONFIG))
+	var spawned := (
+		tower_game.enemy_coordinator.try_spawn_enemy(BASIC_ENEMY_CONFIG)
+		if tower_game != null
+		else bool(game.call("_try_spawn_enemy", BASIC_ENEMY_CONFIG))
+	)
 	if not spawned:
 		_fail("Host probe failed to spawn test enemy.")
 		return 0
@@ -3595,6 +3619,15 @@ func _spawn_host_probe_enemy(game: Variant) -> int:
 			return net_id
 	_fail("Host probe spawned enemy without a new net id.")
 	return 0
+
+
+func _get_active_wave_enemy_count(game: Variant) -> int:
+	var tower_game := game as TowerDefenseGame
+	return (
+		tower_game.enemy_coordinator.active_wave_enemy_ids.size()
+		if tower_game != null
+		else game.active_wave_enemy_ids.size()
+	)
 
 
 func _parse_probe_options() -> Dictionary:

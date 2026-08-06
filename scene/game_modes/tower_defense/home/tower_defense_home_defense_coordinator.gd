@@ -13,34 +13,42 @@ var current_base_health := 100
 var base_health_revision := 0
 var has_received_remote_base_health_snapshot := false
 var resolved_home_enemy_ids: Dictionary = {}
-var last_change_play_damage_pulse := true
-var last_change_was_remote := false
 
-var _runtime_mode := CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+var _runtime: CombatRuntimeBase
 var _run_state: RunStateStore
-var _flow_state_query: Callable
-var _active_enemy_query: Callable
-var _active_boss_query: Callable
+var _campaign_coordinator: TowerDefenseCampaignCoordinator
+var _enemy_coordinator: TowerDefenseEnemyCoordinator
+var _boss_container: Node2D
+var _presentation_coordinator: TowerDefensePresentationCoordinator
+var _multiplayer_adapter: TowerDefenseMultiplayerModeAdapter
+var _resolved_remote_escape_net_ids: Dictionary = {}
 
 
 func setup(
-	runtime_mode: int,
+	runtime: CombatRuntimeBase,
 	run_state: RunStateStore,
 	home_gate_controller: HomeGateController,
 	overlay_tile_map_layer: TileMapLayer,
 	default_base_health: int,
-	flow_state_query: Callable,
-	active_enemy_query: Callable,
-	active_boss_query: Callable
+	campaign_coordinator: TowerDefenseCampaignCoordinator,
+	enemy_coordinator: TowerDefenseEnemyCoordinator,
+	boss_container: Node2D,
+	presentation_coordinator: TowerDefensePresentationCoordinator,
+	multiplayer_adapter: TowerDefenseMultiplayerModeAdapter
 ) -> bool:
-	assert(flow_state_query.is_valid(), "HomeDefenseCoordinator 缺少流程状态查询。")
-	assert(active_enemy_query.is_valid(), "HomeDefenseCoordinator 缺少活动敌人查询。")
-	assert(active_boss_query.is_valid(), "HomeDefenseCoordinator 缺少活动 Boss 查询。")
-	_runtime_mode = runtime_mode
+	assert(runtime != null, "HomeDefenseCoordinator 缺少 CombatRuntimeBase 运行时。")
+	assert(campaign_coordinator != null, "HomeDefenseCoordinator 缺少 CampaignCoordinator。")
+	assert(enemy_coordinator != null, "HomeDefenseCoordinator 缺少 EnemyCoordinator。")
+	assert(boss_container != null, "HomeDefenseCoordinator 缺少 BossContainer。")
+	assert(presentation_coordinator != null, "HomeDefenseCoordinator 缺少 PresentationCoordinator。")
+	assert(multiplayer_adapter != null, "HomeDefenseCoordinator 缺少 MultiplayerModeAdapter。")
+	_runtime = runtime
 	_run_state = run_state
-	_flow_state_query = flow_state_query
-	_active_enemy_query = active_enemy_query
-	_active_boss_query = active_boss_query
+	_campaign_coordinator = campaign_coordinator
+	_enemy_coordinator = enemy_coordinator
+	_boss_container = boss_container
+	_presentation_coordinator = presentation_coordinator
+	_multiplayer_adapter = multiplayer_adapter
 	if _run_state != null:
 		_run_state.ensure_run_started()
 		maximum_base_health = _run_state.get_party_core_maximum_health()
@@ -51,13 +59,27 @@ func setup(
 	base_health_revision = 0
 	has_received_remote_base_health_snapshot = false
 	resolved_home_enemy_ids.clear()
+	_resolved_remote_escape_net_ids.clear()
 	home_objective_targets.clear()
 	if home_gate_controller == null:
 		push_error("HomeDefenseCoordinator: HomeGateController 缺失。")
 		return false
 	home_gate_controller.setup(overlay_tile_map_layer)
 	home_objective_targets.assign(home_gate_controller.get_objective_targets())
+	_enemy_coordinator.set_home_objective_targets(home_objective_targets)
+	_present_base_health(false, true)
 	return true
+
+
+func is_bound() -> bool:
+	return (
+		_runtime != null
+		and _campaign_coordinator != null
+		and _enemy_coordinator != null
+		and _boss_container != null
+		and _presentation_coordinator != null
+		and _multiplayer_adapter != null
+	)
 
 
 func get_home_targets() -> Array[Node2D]:
@@ -90,7 +112,7 @@ func apply_remote_base_health(
 	new_maximum_health: int,
 	new_revision: int
 ) -> bool:
-	if _runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+	if _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
 	if has_received_remote_base_health_snapshot and new_revision <= base_health_revision:
 		return false
@@ -102,23 +124,27 @@ func apply_remote_base_health(
 	base_health_revision = new_revision
 	if _run_state != null:
 		_run_state.set_party_core_health(current_base_health, maximum_base_health, false)
-	last_change_play_damage_pulse = (
+	var play_damage_pulse := (
 		has_received_remote_base_health_snapshot
 		and current_base_health < previous_health
 	)
-	last_change_was_remote = true
 	has_received_remote_base_health_snapshot = true
+	_present_base_health(play_damage_pulse, true)
 	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
 	return true
 
 
-func apply_remote_enemy_escape(enemy: Enemy) -> bool:
+func apply_remote_enemy_escape(net_id: int) -> bool:
 	if (
-		_runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or enemy == null
-		or not is_instance_valid(enemy)
+		_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or net_id <= 0
+		or _resolved_remote_escape_net_ids.has(net_id)
 	):
 		return false
+	var enemy := _enemy_coordinator.take_remote_enemy_for_escape(net_id)
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	_resolved_remote_escape_net_ids[net_id] = true
 	enemy.remove_for_home_escape()
 	return true
 
@@ -136,29 +162,54 @@ func apply_base_damage(amount: int) -> int:
 	if not result.accepted:
 		return 0
 	current_base_health = result.health_after
-	if _run_state != null and _runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+	if (
+		_run_state != null
+		and _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
 		if not _run_state.set_party_core_health(current_base_health, maximum_base_health):
 			push_error("HomeDefenseCoordinator: 无法回写本局共享核心生命。")
 			return 0
 		current_base_health = _run_state.get_party_core_health()
 		maximum_base_health = _run_state.get_party_core_maximum_health()
 	base_health_revision += 1
-	last_change_play_damage_pulse = true
-	last_change_was_remote = false
+	_present_base_health(true, false)
 	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
 	if current_base_health <= 0:
 		base_defeated.emit()
 	return previous_health - current_base_health
 
 
+func set_authoritative_base_health(
+	new_maximum_health: int,
+	new_current_health: int
+) -> bool:
+	if _runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		return false
+	maximum_base_health = maxi(new_maximum_health, 1)
+	current_base_health = clampi(
+		new_current_health,
+		0,
+		maximum_base_health
+	)
+	base_health_revision += 1
+	_present_base_health(false, false)
+	base_health_changed.emit(
+		current_base_health,
+		maximum_base_health,
+		base_health_revision
+	)
+	return true
+
+
 func clear_resolved_enemy_ids() -> void:
 	resolved_home_enemy_ids.clear()
+	_resolved_remote_escape_net_ids.clear()
 
 
 func on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
-	if _runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+	if _runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return
-	var flow_state := int(_flow_state_query.call())
+	var flow_state := _campaign_coordinator.wave_state
 	if flow_state in [CombatFlowState.State.VICTORY, CombatFlowState.State.DEFEAT]:
 		return
 	if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
@@ -169,14 +220,27 @@ func on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 	resolved_home_enemy_ids[enemy_id] = true
 	var resolves_active_wave := (
 		flow_state == CombatFlowState.State.WAVE_ACTIVE
-		and bool(_active_enemy_query.call(enemy_id))
+		and _enemy_coordinator.has_active_enemy(enemy_id)
 	)
-	var active_boss := _active_boss_query.call() as Enemy
+	var active_boss := _get_active_boss()
 	var resolves_boss_step := (
 		flow_state == CombatFlowState.State.BOSS_ACTIVE
 		and enemy == active_boss
-		and bool(_active_enemy_query.call(enemy_id))
+		and _enemy_coordinator.has_active_enemy(enemy_id)
 	)
+	if resolves_active_wave or resolves_boss_step:
+		_campaign_coordinator.current_wave_escaped = mini(
+			_campaign_coordinator.current_wave_escaped + 1,
+			_campaign_coordinator.current_wave_total
+		)
+		_campaign_coordinator.current_wave_resolved = mini(
+			_campaign_coordinator.current_wave_resolved + 1,
+			_campaign_coordinator.current_wave_total
+		)
+		_enemy_coordinator.remove_active_enemy(enemy_id)
+	_enemy_coordinator.remove_hud_alive_enemy(enemy_id)
+	_enemy_coordinator.emit_multiplayer_enemy_escaped(enemy)
+	enemy.remove_for_home_escape()
 	enemy_escaped.emit(enemy, resolves_active_wave, resolves_boss_step)
 	var home_damage := (
 		current_base_health
@@ -188,6 +252,33 @@ func on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 		wave_escape_finished.emit()
 	if (
 		resolves_boss_step
-		and int(_flow_state_query.call()) != CombatFlowState.State.DEFEAT
+		and _campaign_coordinator.wave_state != CombatFlowState.State.DEFEAT
 	):
 		boss_escaped.emit()
+
+
+func _present_base_health(
+	play_damage_pulse: bool,
+	was_remote: bool
+) -> void:
+	_presentation_coordinator.show_base_health(
+		current_base_health,
+		maximum_base_health,
+		play_damage_pulse
+	)
+	if play_damage_pulse:
+		_presentation_coordinator.play_gate_damage_warning()
+	if not was_remote:
+		_multiplayer_adapter.publish_authoritative_base_health(
+			current_base_health,
+			maximum_base_health,
+			base_health_revision
+		)
+
+
+func _get_active_boss() -> Enemy:
+	for child in _boss_container.get_children():
+		var candidate := child as Enemy
+		if candidate != null and is_instance_valid(candidate) and not candidate.is_dead:
+			return candidate
+	return null

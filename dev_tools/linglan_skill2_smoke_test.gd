@@ -274,7 +274,10 @@ func _test_game_target_and_spawn_entry() -> void:
 	_expect(spawned_positions.size() == 2, "Skill2 StandardGame spawn entry must create exactly two boss adds.")
 	_expect(_positions_include(spawned_positions, spawn4.global_position), "Skill2 StandardGame spawn entry must use Spawn4.")
 	_expect(_positions_include(spawned_positions, spawn5.global_position), "Skill2 StandardGame spawn entry must use Spawn5.")
-	_expect(game.active_wave_enemy_ids.is_empty(), "Skill2 boss adds must not enter normal wave counters.")
+	_expect(
+		game.enemy_coordinator.active_wave_enemy_ids.is_empty(),
+		"Skill2 boss adds must not enter normal wave counters."
+	)
 
 	game.queue_free()
 	await process_frame

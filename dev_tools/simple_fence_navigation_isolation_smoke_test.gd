@@ -258,9 +258,9 @@ func _navigation_state_signature(pathfinder: GridPathfinder) -> Dictionary:
 
 func _retarget_signature(game: TowerDefenseGame) -> Dictionary:
 	return {
-		"time_left": game.enemy_retarget_time_left,
-		"sweep_remaining": game.enemy_retarget_sweep_remaining,
-		"cursor": game.enemy_retarget_cursor,
+		"time_left": game.enemy_coordinator.enemy_retarget_time_left,
+		"sweep_remaining": game.enemy_coordinator.enemy_retarget_sweep_remaining,
+		"cursor": game.enemy_coordinator.enemy_retarget_cursor,
 	}
 
 

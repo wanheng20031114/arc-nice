@@ -27,7 +27,6 @@ var enabled := false
 var runtime: TowerDefenseGame
 var boss_container: Node2D
 var enemy_container: Node2D
-var enemy_spawn_points_root: Node2D
 var runtime_port: TowerDefenseLinglanBossRuntimePort
 var ground_tile_map_layer: TileMapLayer
 var campaign_coordinator: TowerDefenseCampaignCoordinator
@@ -56,7 +55,6 @@ func setup(
 	configured_enabled: bool,
 	configured_boss_container: Node2D,
 	configured_enemy_container: Node2D,
-	configured_spawn_points_root: Node2D,
 	configured_runtime_port: TowerDefenseLinglanBossRuntimePort,
 	configured_ground_layer: TileMapLayer,
 	configured_campaign: TowerDefenseCampaignCoordinator,
@@ -70,7 +68,6 @@ func setup(
 	enabled = configured_enabled
 	boss_container = configured_boss_container
 	enemy_container = configured_enemy_container
-	enemy_spawn_points_root = configured_spawn_points_root
 	runtime_port = configured_runtime_port
 	ground_tile_map_layer = configured_ground_layer
 	campaign_coordinator = configured_campaign
@@ -88,7 +85,6 @@ func is_bound() -> bool:
 		runtime != null
 		and boss_container != null
 		and enemy_container != null
-		and enemy_spawn_points_root != null
 		and runtime_port != null
 		and ground_tile_map_layer != null
 		and campaign_coordinator != null
@@ -134,15 +130,15 @@ func begin_intro(boss_config: BossConfig = null) -> void:
 	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO
 	runtime.enemy_spawn_timer.stop()
 	runtime.state_timer.stop()
-	runtime._clear_pending_enemy_spawn_queue()
-	runtime._clear_active_enemies()
+	enemy_coordinator.clear_queue()
+	enemy_coordinator.clear_active_enemies()
 	campaign_coordinator.current_wave_total = 1
 	campaign_coordinator.current_wave_spawned = 1
 	campaign_coordinator.current_wave_defeated = 0
 	campaign_coordinator.current_wave_escaped = 0
 	campaign_coordinator.current_wave_resolved = 0
-	runtime._clear_resolved_home_enemy_ids()
-	runtime._clear_hud_alive_enemies()
+	home_defense_coordinator.clear_resolved_enemy_ids()
+	enemy_coordinator.clear_hud_alive_enemies()
 	runtime._set_merchant_active(false)
 	runtime._show_tower_defense_boss_progress(0, 1)
 	runtime._update_boss_music(boss_config)
@@ -241,13 +237,16 @@ func activate_boss() -> void:
 		runtime_port
 	)
 	if not linglan_boss.is_advancing_to_home():
-		runtime._assign_enemy_targets(linglan_boss, linglan_boss.global_position)
+		enemy_coordinator.assign_enemy_targets(
+			linglan_boss,
+			linglan_boss.global_position
+		)
 	var boss_instance_id := linglan_boss.get_instance_id()
-	runtime._register_active_enemy(linglan_boss)
+	enemy_coordinator.register_external_enemy(linglan_boss)
 	var exited_callback := _on_boss_tree_exited.bind(boss_instance_id)
 	if not linglan_boss.tree_exited.is_connected(exited_callback):
 		linglan_boss.tree_exited.connect(exited_callback)
-	var boss_net_id := runtime._finalize_authoritative_enemy_spawn(
+	var boss_net_id := enemy_coordinator.finalize_authoritative_enemy_spawn(
 		linglan_boss,
 		get_boss_enemy_config(active_boss_config),
 		linglan_boss.global_position,
@@ -305,16 +304,16 @@ func complete_escaped_step_if_ready() -> void:
 
 func remove_remaining_adds() -> void:
 	if enemy_container == null:
-		runtime._clear_active_enemies()
-		runtime._clear_hud_alive_enemies()
+		enemy_coordinator.clear_active_enemies()
+		enemy_coordinator.clear_hud_alive_enemies()
 		return
 	for child in enemy_container.get_children():
 		var enemy := child as Enemy
 		if enemy != null and is_instance_valid(enemy):
-			if runtime._has_active_enemy(enemy.get_instance_id()):
+			if enemy_coordinator.has_active_enemy(enemy.get_instance_id()):
 				enemy.queue_free()
-	runtime._clear_active_enemies()
-	runtime._clear_hud_alive_enemies()
+	enemy_coordinator.clear_active_enemies()
+	enemy_coordinator.clear_hud_alive_enemies()
 
 
 func request_runtime_scene_loads() -> void:
@@ -578,7 +577,7 @@ func spawn_airdrop_sniper(
 
 
 func get_skill2_target_player(from_position: Vector2) -> Player:
-	return runtime._pick_enemy_target(from_position)
+	return enemy_coordinator.pick_enemy_target(from_position)
 
 
 func get_skill_target_global_position(_target_cell: Vector2i) -> Vector2:
@@ -712,10 +711,10 @@ func instantiate_remote_proxy(
 	boss_container.add_child(boss_enemy)
 	boss_enemy.global_position = spawn_position
 	boss_enemy.setup(enemy_config, runtime.player, grid_pathfinder, runtime, runtime_port)
-	runtime.configure_runtime_enemy_modifiers(boss_enemy)
+	enemy_coordinator.configure_runtime_enemy_modifiers(boss_enemy)
 	boss_enemy.configure_multiplayer_proxy()
 	boss_enemy.set_meta("net_id", net_id)
-	runtime.register_remote_boss_proxy_indices(boss_enemy, net_id)
+	enemy_coordinator.register_remote_proxy_indices(boss_enemy, net_id)
 	return boss_enemy
 
 
@@ -748,18 +747,18 @@ func _try_spawn_boss_add_at_position(
 	enemy_instance.global_position = spawn_position
 	enemy_instance.setup(
 		enemy_config,
-		runtime._pick_enemy_target(spawn_position),
+		enemy_coordinator.pick_enemy_target(spawn_position),
 		grid_pathfinder,
 		runtime
 	)
-	runtime._assign_enemy_targets(enemy_instance, spawn_position)
+	enemy_coordinator.assign_enemy_targets(enemy_instance, spawn_position)
 	var enemy_id := enemy_instance.get_instance_id()
-	runtime._register_active_enemy(enemy_instance)
+	enemy_coordinator.register_external_enemy(enemy_instance)
 	_connect_boss_add_signals(enemy_instance, enemy_id)
-	runtime._finalize_authoritative_enemy_spawn(
+	enemy_coordinator.finalize_authoritative_enemy_spawn(
 		enemy_instance, enemy_config, enemy_instance.global_position
 	)
-	runtime._spawn_enemy_spawn_effect(spawn_position)
+	enemy_coordinator.spawn_enemy_spawn_effect(spawn_position)
 	return true
 
 
@@ -803,11 +802,11 @@ func _finish_airdrop_sniper_spawn(
 	enemy_instance.global_position = landing_position + Vector2(0.0, -drop_height)
 	enemy_instance.setup(
 		enemy_config,
-		runtime._pick_enemy_target(landing_position),
+		enemy_coordinator.pick_enemy_target(landing_position),
 		grid_pathfinder,
 		runtime
 	)
-	runtime._assign_enemy_targets(enemy_instance, landing_position)
+	enemy_coordinator.assign_enemy_targets(enemy_instance, landing_position)
 	enemy_instance.velocity = Vector2.ZERO
 	enemy_instance.set_process(false)
 	enemy_instance.set_physics_process(false)
@@ -827,12 +826,12 @@ func _finish_airdrop_sniper_spawn(
 	enemy_instance.set_physics_process(true)
 	_set_collision_shapes_disabled_recursive(enemy_instance, false)
 	var enemy_id := enemy_instance.get_instance_id()
-	runtime._register_active_enemy(enemy_instance)
+	enemy_coordinator.register_external_enemy(enemy_instance)
 	_connect_boss_add_signals(enemy_instance, enemy_id)
-	runtime._finalize_authoritative_enemy_spawn(
+	enemy_coordinator.finalize_authoritative_enemy_spawn(
 		enemy_instance, enemy_config, landing_position
 	)
-	runtime._spawn_enemy_spawn_effect(landing_position)
+	enemy_coordinator.spawn_enemy_spawn_effect(landing_position)
 
 
 func _get_random_arena_position() -> Vector2:
@@ -874,12 +873,12 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 		or enemy != linglan_boss
 	):
 		return
-	runtime._remove_active_enemy(enemy.get_instance_id())
-	runtime._remove_hud_alive_enemy(enemy.get_instance_id())
+	enemy_coordinator.remove_active_enemy(enemy.get_instance_id())
+	enemy_coordinator.remove_hud_alive_enemy(enemy.get_instance_id())
 	campaign_coordinator.current_wave_defeated = 1
 	campaign_coordinator.current_wave_resolved = 1
 	runtime._show_tower_defense_boss_progress(1, 1)
-	runtime._emit_multiplayer_enemy_defeated(enemy)
+	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
 	remove_remaining_adds()
 	var victory_timer := runtime.get_tree().create_timer(1.3)
 	victory_timer.timeout.connect(_complete_boss_after_delay)
@@ -893,11 +892,13 @@ func _complete_boss_after_delay() -> void:
 
 
 func _on_boss_tree_exited(enemy_id: int) -> void:
-	runtime._on_boss_enemy_tree_exited(enemy_id)
+	enemy_coordinator.handle_wave_enemy_tree_exited(enemy_id)
 
 
 func _on_boss_add_defeated(enemy: Enemy) -> void:
-	runtime._on_boss_add_defeated(enemy)
+	if enemy != null:
+		enemy_coordinator.remove_hud_alive_enemy(enemy.get_instance_id())
+	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
 
 
 func _connect_boss_signals() -> void:
@@ -929,7 +930,7 @@ func _connect_boss_add_signals(
 
 
 func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
-	return enemy_coordinator.get_spawn_marker(marker_name, enemy_spawn_points_root)
+	return enemy_coordinator.get_spawn_marker(marker_name)
 
 
 func _set_collision_shapes_disabled_recursive(root_node: Node, disabled: bool) -> void:

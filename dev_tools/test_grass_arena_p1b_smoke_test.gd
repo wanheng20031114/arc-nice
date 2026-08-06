@@ -214,16 +214,22 @@ func _test_strict_five_type_rotation_queue() -> void:
 	for wave in [singleplayer_wave, multiplayer_wave]:
 		for seed_value in [0x51B0, 0x71B0]:
 			arena.random_generator.seed = seed_value
-			arena.call("_build_wave_spawn_queue", wave)
+			arena.enemy_coordinator.begin_wave(
+				wave,
+				arena.progression_config,
+				arena.campaign_runtime_port.get_progression_player_count()
+			)
 			_expect(
-				arena.pending_enemy_configs.size() == EXPECTED_TOTAL_ENEMIES
-				and arena.pending_enemy_xirang_kill_rewards.size() == EXPECTED_TOTAL_ENEMIES,
+				arena.enemy_coordinator.pending_enemy_configs.size()
+				== EXPECTED_TOTAL_ENEMIES
+				and arena.enemy_coordinator.pending_enemy_xirang_kill_rewards.size()
+				== EXPECTED_TOTAL_ENEMIES,
 				"P1B 运行时必须构建1000项且配置/奖励严格等长的队列。"
 			)
 			var actual_counts: Array[int] = [0, 0, 0, 0, 0]
-			for queue_index in range(arena.pending_enemy_configs.size()):
+			for queue_index in range(arena.enemy_coordinator.pending_enemy_configs.size()):
 				var expected_config := expected_configs[queue_index % 5]
-				var queued_config := arena.pending_enemy_configs[queue_index]
+				var queued_config := arena.enemy_coordinator.pending_enemy_configs[queue_index]
 				_expect(
 					queued_config == expected_config,
 					"P1B 必须从持剑开始，按持剑、持枪、操作员、举盾、忍者在全部1000项中严格轮转。"
@@ -232,7 +238,7 @@ func _test_strict_five_type_rotation_queue() -> void:
 				if actual_index >= 0:
 					actual_counts[actual_index] += 1
 				_expect(
-					arena.pending_enemy_xirang_kill_rewards[queue_index]
+					arena.enemy_coordinator.pending_enemy_xirang_kill_rewards[queue_index]
 					== expected_config.xirang_kill_reward,
 					"P1B 轮询队列中的息壤奖励必须始终与机器人配置配对。"
 				)
@@ -245,10 +251,11 @@ func _test_strict_five_type_rotation_queue() -> void:
 				"P1B 五型轮转必须最终各生成200台。"
 			)
 			_expect(
-				arena.pending_enemy_configs.back() == COMBAT_ROBOT_NINJA_CONFIG,
+				arena.enemy_coordinator.pending_enemy_configs.back()
+				== COMBAT_ROBOT_NINJA_CONFIG,
 				"P1B 的第1000项必须是第200台忍者战斗机器人。"
 			)
-			arena.call("_clear_pending_enemy_spawn_queue")
+			arena.enemy_coordinator.clear_queue()
 
 
 func _test_unequal_round_robin_queue() -> void:
@@ -279,7 +286,11 @@ func _test_unequal_round_robin_queue() -> void:
 	var wave := WaveConfig.new()
 	wave.spawn_order = WaveConfig.SpawnOrder.ENTRY_ROUND_ROBIN
 	wave.enemy_entries = entries
-	arena.call("_build_wave_spawn_queue", wave)
+	arena.enemy_coordinator.begin_wave(
+		wave,
+		arena.progression_config,
+		arena.campaign_runtime_port.get_progression_player_count()
+	)
 
 	var expected_configs: Array[EnemyConfig] = [
 		short_config,
@@ -290,14 +301,15 @@ func _test_unequal_round_robin_queue() -> void:
 		long_config,
 	]
 	_expect(
-		arena.pending_enemy_configs == expected_configs,
+		arena.enemy_coordinator.pending_enemy_configs == expected_configs,
 		"条目轮询必须跳过空/无配置/零数量条目，并在短条目耗尽后继续长条目。"
 	)
 	_expect(
-		arena.pending_enemy_xirang_kill_rewards == [11, 17, 11, 17, 17, 17],
+		arena.enemy_coordinator.pending_enemy_xirang_kill_rewards
+		== [11, 17, 11, 17, 17, 17],
 		"不等数量轮询仍必须维持配置与奖励的一一配对。"
 	)
-	arena.call("_clear_pending_enemy_spawn_queue")
+	arena.enemy_coordinator.clear_queue()
 
 
 func _finish() -> void:

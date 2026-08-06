@@ -442,7 +442,7 @@ func _run_spawn_route_probes(
 	var stagnant_frames: Dictionary = {}
 	var route_labels: Dictionary = {}
 	for enemy_config in _collect_unique_agent_profile_configs(game):
-		for spawn in game.enemy_spawn_points:
+		for spawn in game.enemy_coordinator.enemy_spawn_points:
 			var enemy := enemy_config.enemy_scene.instantiate() as Enemy
 			game.enemy_container.add_child(enemy)
 			enemy.global_position = spawn.global_position
@@ -586,7 +586,10 @@ func _assert_results(game: TowerDefenseGame) -> void:
 		"%d recovery decisions skipped an adjacent/no-corner-cutting first step."
 		% invalid_recovery_first_step_count
 	)
-	_expect(game.enemy_spawn_points.size() == 6, "Dynamic matrix requires all six spawn points.")
+	_expect(
+		game.enemy_coordinator.enemy_spawn_points.size() == 6,
+		"Dynamic matrix requires all six spawn points."
+	)
 	_expect(dynamic_route_count >= 6, "Dynamic route matrix did not instantiate every spawn.")
 	_expect(
 		dynamic_stuck_count == 0,

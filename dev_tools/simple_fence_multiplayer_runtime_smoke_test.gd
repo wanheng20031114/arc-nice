@@ -158,8 +158,8 @@ func _run() -> void:
 			-1
 		)
 	)
-	host_game.enemy_retarget_time_left = RETARGET_TIME_SENTINEL
-	host_game.enemy_retarget_sweep_remaining = RETARGET_SWEEP_SENTINEL
+	host_game.enemy_coordinator.enemy_retarget_time_left = RETARGET_TIME_SENTINEL
+	host_game.enemy_coordinator.enemy_retarget_sweep_remaining = RETARGET_SWEEP_SENTINEL
 	for placement_index in range(connected_anchors.size()):
 		var slot_index := _find_peer_item_slot(
 			run_state,
@@ -179,8 +179,8 @@ func _run() -> void:
 			fence_item.resource_path
 		)
 		_expect(
-			host_game.enemy_retarget_time_left == RETARGET_TIME_SENTINEL
-			and host_game.enemy_retarget_sweep_remaining
+			host_game.enemy_coordinator.enemy_retarget_time_left == RETARGET_TIME_SENTINEL
+			and host_game.enemy_coordinator.enemy_retarget_sweep_remaining
 			== RETARGET_SWEEP_SENTINEL,
 			"CONTACT_ONLY 围栏放置不得请求全敌重索敌或改写既有预算。"
 		)
@@ -335,8 +335,8 @@ func _run() -> void:
 		# removal path regresses to the legacy global scan, it will clear this value.
 		scan_probe_enemy.set_objective_target(host_center)
 
-	host_game.enemy_retarget_time_left = RETARGET_TIME_SENTINEL
-	host_game.enemy_retarget_sweep_remaining = RETARGET_SWEEP_SENTINEL
+	host_game.enemy_coordinator.enemy_retarget_time_left = RETARGET_TIME_SENTINEL
+	host_game.enemy_coordinator.enemy_retarget_sweep_remaining = RETARGET_SWEEP_SENTINEL
 	var lethal_health_revision := host_center.health_revision
 	_expect(
 		host_center.receive_unmitigated_damage(
@@ -346,8 +346,8 @@ func _run() -> void:
 		"Host 必须能通过正式伤害生命周期摧毁中心围栏。"
 	)
 	_expect(
-		host_game.enemy_retarget_time_left == RETARGET_TIME_SENTINEL
-		and host_game.enemy_retarget_sweep_remaining
+		host_game.enemy_coordinator.enemy_retarget_time_left == RETARGET_TIME_SENTINEL
+		and host_game.enemy_coordinator.enemy_retarget_sweep_remaining
 		== RETARGET_SWEEP_SENTINEL,
 		"CONTACT_ONLY 围栏摧毁不得请求全敌重索敌或改写预算。"
 	)

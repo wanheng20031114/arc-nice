@@ -91,12 +91,16 @@ func _test_campaign_contract() -> void:
 		and arena.progression_config.get_scaled_enemy_count(1, 8) == 1,
 		"P2 测试敌人数不得随多人房间人数缩放。"
 	)
-	arena.call("_build_wave_spawn_queue", wave)
+	arena.enemy_coordinator.begin_wave(
+		wave,
+		arena.progression_config,
+		arena.campaign_runtime_port.get_progression_player_count()
+	)
 	_expect(
-		arena.pending_enemy_configs == [SLIME_CONFIG],
+		arena.enemy_coordinator.pending_enemy_configs == [SLIME_CONFIG],
 		"P2 运行时生成队列必须精确包含一只普通史莱姆。"
 	)
-	arena.call("_clear_pending_enemy_spawn_queue")
+	arena.enemy_coordinator.clear_queue()
 
 
 func _test_inherited_arena_and_interlude() -> void:
@@ -124,10 +128,10 @@ func _test_one_kill_completes_day() -> void:
 	arena.current_wave_spawned = 1
 	arena.current_wave_defeated = 1
 	arena.current_wave_resolved = 1
-	arena.active_wave_enemy_ids.clear()
-	arena.call("_clear_pending_enemy_spawn_queue")
+	arena.enemy_coordinator.active_wave_enemy_ids.clear()
+	arena.enemy_coordinator.clear_queue()
 	arena.wave_state = CombatFlowState.State.WAVE_ACTIVE
-	arena.call("_check_wave_completion")
+	arena.enemy_coordinator.check_wave_completion()
 	var fate_interlude_ready := await _wait_for_fate_interlude(5.0)
 
 	var hint_layer := arena.get_node("TestControlsHint") as CanvasLayer

@@ -209,18 +209,25 @@ func _test_campaign() -> void:
 	)
 
 	arena.random_generator.seed = 0x5A17
-	arena.call("_build_wave_spawn_queue", wave)
-	_expect(arena.pending_enemy_configs.size() == 1000, "运行时生成队列必须正好构建1000项。")
+	arena.enemy_coordinator.begin_wave(
+		wave,
+		arena.progression_config,
+		arena.campaign_runtime_port.get_progression_player_count()
+	)
 	_expect(
-		arena.pending_enemy_xirang_kill_rewards.size() == 1000,
+		arena.enemy_coordinator.pending_enemy_configs.size() == 1000,
+		"运行时生成队列必须正好构建1000项。"
+	)
+	_expect(
+		arena.enemy_coordinator.pending_enemy_xirang_kill_rewards.size() == 1000,
 		"塔防运行时的敌人与息壤奖励队列必须严格等长。"
 	)
 	var queue_counts: Dictionary = {}
 	var remains_strict_cycle := true
-	for queue_index in range(arena.pending_enemy_configs.size()):
-		var queued_config := arena.pending_enemy_configs[queue_index]
+	for queue_index in range(arena.enemy_coordinator.pending_enemy_configs.size()):
+		var queued_config := arena.enemy_coordinator.pending_enemy_configs[queue_index]
 		_expect(
-			arena.pending_enemy_xirang_kill_rewards[queue_index]
+			arena.enemy_coordinator.pending_enemy_xirang_kill_rewards[queue_index]
 			== queued_config.xirang_kill_reward,
 			"塔防队列洗牌后，敌人配置与继承的息壤奖励必须保持配对。"
 		)
@@ -233,10 +240,10 @@ func _test_campaign() -> void:
 			"随机队列必须包含每种史莱姆各200只，且必须包含绿色史莱姆。"
 		)
 	_expect(not remains_strict_cycle, "测试场景生成队列必须随机混合，不能继续固定轮询。")
-	arena.call("_clear_pending_enemy_spawn_queue")
+	arena.enemy_coordinator.clear_queue()
 	_expect(
-		arena.pending_enemy_configs.is_empty()
-		and arena.pending_enemy_xirang_kill_rewards.is_empty(),
+		arena.enemy_coordinator.pending_enemy_configs.is_empty()
+		and arena.enemy_coordinator.pending_enemy_xirang_kill_rewards.is_empty(),
 		"塔防运行时清理刷怪队列时必须同时释放敌人与奖励数组。"
 	)
 

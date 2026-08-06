@@ -15,34 +15,18 @@ func _init() -> void:
 func _run() -> void:
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
-	game.pending_enemy_config_index = 7
-	game.next_multiplayer_enemy_net_id = 43
-	game.enemy_retarget_time_left = 0.37
-	game.enemy_retarget_sweep_remaining = 19
-	game.enemy_retarget_cursor = 5
-	game.active_wave_enemy_ids[101] = true
-	game.hud_alive_enemy_ids[102] = true
-	game.pending_multiplayer_enemy_escape_ids[103] = true
 
 	root.add_child(game)
 	current_scene = game
 	_expect(game.enemy_coordinator.is_bound(), "EnemyCoordinator 强类型运行时依赖未完整绑定。")
-	_expect(game.enemy_coordinator.pending_enemy_config_index == 7, "ready 前 queue cursor 被吞掉。")
-	_expect(game.enemy_coordinator.next_multiplayer_enemy_net_id == 43, "ready 前 net id 被吞掉。")
-	_expect(is_equal_approx(game.enemy_coordinator.enemy_retarget_time_left, 0.37), "ready 前 retarget timer 被吞掉。")
-	_expect(game.enemy_coordinator.enemy_retarget_sweep_remaining == 19, "ready 前 retarget sweep 被吞掉。")
-	_expect(game.enemy_coordinator.enemy_retarget_cursor == 5, "ready 前 retarget cursor 被吞掉。")
-	_expect(game.enemy_coordinator.has_active_enemy(101), "active id façade 没有共享同一 Dictionary。")
-	_expect(game.enemy_coordinator.hud_enemy_count() == 1, "HUD id façade 没有共享同一 Dictionary。")
-	_expect(game.enemy_coordinator.consume_pending_escape(103), "escape id façade 没有共享同一 Dictionary。")
 	await process_frame
 
-	game.pending_enemy_config_index = 11
-	game.next_multiplayer_enemy_net_id = 47
-	game.enemy_retarget_cursor = 9
-	_expect(game.enemy_coordinator.pending_enemy_config_index == 11, "ready 后 queue cursor setter 未转发。")
-	_expect(game.enemy_coordinator.next_multiplayer_enemy_net_id == 47, "ready 后 net id setter 未转发。")
-	_expect(game.enemy_coordinator.enemy_retarget_cursor == 9, "ready 后 retarget setter 未转发。")
+	game.enemy_coordinator.pending_enemy_config_index = 11
+	game.enemy_coordinator.next_multiplayer_enemy_net_id = 47
+	game.enemy_coordinator.enemy_retarget_cursor = 9
+	_expect(game.enemy_coordinator.pending_enemy_config_index == 11, "queue cursor 未由 EnemyCoordinator 持有。")
+	_expect(game.enemy_coordinator.next_multiplayer_enemy_net_id == 47, "net id 未由 EnemyCoordinator 持有。")
+	_expect(game.enemy_coordinator.enemy_retarget_cursor == 9, "retarget cursor 未由 EnemyCoordinator 持有。")
 
 	await _exercise_spawn_terminal_chain(game)
 
@@ -98,14 +82,14 @@ func _exercise_spawn_terminal_chain(game: TowerDefenseGame) -> void:
 	game.enemy_coordinator.clear_active_enemies()
 	game.enemy_coordinator.clear_hud_enemies()
 	game.enemy_coordinator.active_wave_spawn_points.clear()
-	if game.enemy_spawn_points.is_empty():
+	if game.enemy_coordinator.enemy_spawn_points.is_empty():
 		_expect(false, "正式场景没有可用的敌人出生点。")
 		return
 	game.enemy_coordinator.active_wave_spawn_points.append(
-		game.enemy_spawn_points[0]
+		game.enemy_coordinator.enemy_spawn_points[0]
 	)
 
-	var spawned := bool(game.call("_try_spawn_enemy", ENEMY_CONFIG, 9))
+	var spawned := game.enemy_coordinator.try_spawn_enemy(ENEMY_CONFIG, 9)
 	_expect(spawned, "EnemyCoordinator 未能完成普通波次敌人实例化。")
 	_expect(spawned_ids == [47], "出生广播或稳定 net id 顺序发生变化。")
 	var enemy := game.multiplayer_enemies_by_net_id.get(47) as Enemy

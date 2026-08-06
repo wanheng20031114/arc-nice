@@ -99,7 +99,9 @@ func _run() -> void:
 		and pressure_spawn_frames < 600
 	):
 		var batch_started_usec: int = telemetry.begin_enemy_spawn_batch()
-		game.call("_spawn_wave_batch")
+		game.enemy_coordinator.spawn_wave_batch(
+			TowerDefenseCampaignCoordinator.MAX_WAVE_SPAWN_COUNT_PER_TICK
+		)
 		telemetry.end_enemy_spawn_batch(batch_started_usec)
 		await process_frame
 		pressure_spawn_frames += 1

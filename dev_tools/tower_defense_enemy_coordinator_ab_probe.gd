@@ -69,8 +69,8 @@ func _run() -> void:
 		actual_trace.clear()
 		var wave := _create_wave()
 		var spawn_points: Array[Marker2D] = []
-		for point_index in range(mini(game.enemy_spawn_points.size(), 3)):
-			spawn_points.append(game.enemy_spawn_points[point_index])
+		for point_index in range(mini(game.enemy_coordinator.enemy_spawn_points.size(), 3)):
+			spawn_points.append(game.enemy_coordinator.enemy_spawn_points[point_index])
 		_expect(not spawn_points.is_empty(), "A/B 场景没有可用出生点。")
 		if spawn_points.is_empty():
 			break
@@ -99,7 +99,7 @@ func _run() -> void:
 		game.enemy_coordinator.active_wave_spawn_points.assign(spawn_points)
 		game.multiplayer_enemy_ids_by_instance.clear()
 		game.multiplayer_enemies_by_net_id.clear()
-		game.next_multiplayer_enemy_net_id = first_net_id
+		game.enemy_coordinator.next_multiplayer_enemy_net_id = first_net_id
 		game.campaign_coordinator.current_wave_total = game.enemy_coordinator.begin_wave(
 			wave,
 			PROGRESSION,

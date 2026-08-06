@@ -9,13 +9,25 @@ signal wave_progress_changed(
 	total: int
 )
 signal wave_completed
-signal enemy_reached_home(enemy: Enemy, gate_cell: Vector2i)
-signal enemy_spawned(enemy: Enemy)
-signal enemy_removed(enemy_id: int)
 
-var _runtime: TowerDefenseGame
+const ENEMY_RETARGET_INTERVAL_SECONDS := 0.60
+const ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME := 16
+const AUTHORED_LOGICAL_TILE_SIZE := 16.0
+const PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS := 8.0
+const PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS := 10.0
+const PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS := 16.0
+const PLAYER_NEAR_MOVING_DIRECT_DISTANCE := (
+	PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS * AUTHORED_LOGICAL_TILE_SIZE
+)
+
+var _runtime: CombatRuntimeBase
 var _campaign_coordinator: TowerDefenseCampaignCoordinator
+var _player_roster_coordinator: TowerDefensePlayerRosterCoordinator
+var _plant_runtime_coordinator: TowerDefensePlantRuntimeCoordinator
 var _enemy_container: Node2D
+var _boss_container: Node2D
+var _enemy_spawn_points_root: Node2D
+var _ground_tile_map_layer: TileMapLayer
 var _grid_pathfinder: GridPathfinder
 var _enemy_spawn_timer: Timer
 var _multiplayer_gateway: MultiplayerGameplayGateway
@@ -33,7 +45,6 @@ var pending_enemy_configs: Array[EnemyConfig] = []
 var pending_enemy_xirang_kill_rewards: Array[int] = []
 var active_wave_enemy_ids: Dictionary = {}
 var hud_alive_enemy_ids: Dictionary = {}
-var pending_multiplayer_enemy_escape_ids: Dictionary = {}
 
 var spawn_point_configuration_valid := true
 var pending_enemy_config_index := 0
@@ -41,37 +52,39 @@ var next_multiplayer_enemy_net_id := 1
 var enemy_retarget_time_left := 0.0
 var enemy_retarget_sweep_remaining := 0
 var enemy_retarget_cursor := 0
+var _home_objective_targets: Array[Node2D] = []
+var _pending_terminal_escape_net_ids: Dictionary = {}
 
 var _random_generator: RandomNumberGenerator
 
 
 func setup(
-	runtime: TowerDefenseGame,
+	runtime: CombatRuntimeBase,
 	campaign_coordinator: TowerDefenseCampaignCoordinator,
+	player_roster_coordinator: TowerDefensePlayerRosterCoordinator,
+	plant_runtime_coordinator: TowerDefensePlantRuntimeCoordinator,
 	random_generator: RandomNumberGenerator,
 	enemy_container: Node2D,
+	boss_container: Node2D,
+	enemy_spawn_points_root: Node2D,
+	ground_tile_map_layer: TileMapLayer,
 	grid_pathfinder: GridPathfinder,
 	enemy_spawn_timer: Timer,
 	multiplayer_gateway: MultiplayerGameplayGateway,
 	fate_coordinator: FateCoordinator,
 	presentation_coordinator: TowerDefensePresentationCoordinator,
 	session_object_pool: SessionObjectPool,
-	enemy_spawn_effect_scene: PackedScene,
-	spawn_points: Array[Marker2D],
-	spawn_points_by_name: Dictionary[StringName, Marker2D],
-	wave_spawn_points: Array[Marker2D],
-	queued_configs: Array[EnemyConfig],
-	queued_rewards: Array[int],
-	active_ids: Dictionary,
-	hud_ids: Dictionary,
-	pending_escape_ids: Dictionary,
-	multiplayer_ids_by_instance: Dictionary,
-	multiplayer_enemies_by_net_id: Dictionary
+	enemy_spawn_effect_scene: PackedScene
 ) -> void:
-	assert(runtime != null, "EnemyCoordinator 缺少 TowerDefenseGame 运行时。")
+	assert(runtime != null, "EnemyCoordinator 缺少 CombatRuntimeBase 运行时。")
 	assert(campaign_coordinator != null, "EnemyCoordinator 缺少 CampaignCoordinator。")
+	assert(player_roster_coordinator != null, "EnemyCoordinator 缺少 PlayerRosterCoordinator。")
+	assert(plant_runtime_coordinator != null, "EnemyCoordinator 缺少 PlantRuntimeCoordinator。")
 	assert(random_generator != null, "EnemyCoordinator 必须复用运行时 RNG。")
 	assert(enemy_container != null, "EnemyCoordinator 缺少 EnemyContainer。")
+	assert(boss_container != null, "EnemyCoordinator 缺少 BossContainer。")
+	assert(enemy_spawn_points_root != null, "EnemyCoordinator 缺少 EnemySpawnPoints。")
+	assert(ground_tile_map_layer != null, "EnemyCoordinator 缺少 Ground TileMapLayer。")
 	assert(grid_pathfinder != null, "EnemyCoordinator 缺少强类型 GridPathfinder。")
 	assert(enemy_spawn_timer != null, "EnemyCoordinator 缺少 EnemySpawnTimer。")
 	assert(multiplayer_gateway != null, "EnemyCoordinator 缺少多人网关。")
@@ -81,8 +94,13 @@ func setup(
 	assert(enemy_spawn_effect_scene != null, "EnemyCoordinator 缺少出生特效场景。")
 	_runtime = runtime
 	_campaign_coordinator = campaign_coordinator
+	_player_roster_coordinator = player_roster_coordinator
+	_plant_runtime_coordinator = plant_runtime_coordinator
 	_random_generator = random_generator
 	_enemy_container = enemy_container
+	_boss_container = boss_container
+	_enemy_spawn_points_root = enemy_spawn_points_root
+	_ground_tile_map_layer = ground_tile_map_layer
 	_grid_pathfinder = grid_pathfinder
 	_enemy_spawn_timer = enemy_spawn_timer
 	_multiplayer_gateway = multiplayer_gateway
@@ -90,23 +108,22 @@ func setup(
 	_presentation_coordinator = presentation_coordinator
 	_session_object_pool = session_object_pool
 	_enemy_spawn_effect_scene = enemy_spawn_effect_scene
-	enemy_spawn_points = spawn_points
-	enemy_spawn_points_by_name = spawn_points_by_name
-	active_wave_spawn_points = wave_spawn_points
-	pending_enemy_configs = queued_configs
-	pending_enemy_xirang_kill_rewards = queued_rewards
-	active_wave_enemy_ids = active_ids
-	hud_alive_enemy_ids = hud_ids
-	pending_multiplayer_enemy_escape_ids = pending_escape_ids
-	_multiplayer_enemy_ids_by_instance = multiplayer_ids_by_instance
-	_multiplayer_enemies_by_net_id = multiplayer_enemies_by_net_id
+	_multiplayer_enemy_ids_by_instance = runtime.multiplayer_enemy_ids_by_instance
+	_multiplayer_enemies_by_net_id = runtime.multiplayer_enemies_by_net_id
+	_pending_terminal_escape_net_ids.clear()
+	collect_spawn_points(_enemy_spawn_points_root)
 
 
 func is_bound() -> bool:
 	return (
 		_runtime != null
 		and _campaign_coordinator != null
+		and _player_roster_coordinator != null
+		and _plant_runtime_coordinator != null
 		and _enemy_container != null
+		and _boss_container != null
+		and _enemy_spawn_points_root != null
+		and _ground_tile_map_layer != null
 		and _grid_pathfinder != null
 		and _enemy_spawn_timer != null
 		and _multiplayer_gateway != null
@@ -299,22 +316,23 @@ func pick_spawn_point() -> Marker2D:
 	]
 
 
-func get_spawn_marker(marker_name: StringName, spawn_points_root: Node2D) -> Marker2D:
+func get_spawn_marker(marker_name: StringName) -> Marker2D:
 	if marker_name == &"":
 		return null
 	var marker := enemy_spawn_points_by_name.get(marker_name) as Marker2D
 	if marker != null:
 		return marker
-	if spawn_points_root == null:
+	if _enemy_spawn_points_root == null:
 		return null
-	return spawn_points_root.get_node_or_null(NodePath(String(marker_name))) as Marker2D
+	return _enemy_spawn_points_root.get_node_or_null(
+		NodePath(String(marker_name))
+	) as Marker2D
 
 
 func register_external_enemy(enemy: Enemy) -> void:
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	active_wave_enemy_ids[enemy.get_instance_id()] = true
-	enemy_spawned.emit(enemy)
 
 
 func has_active_enemy(enemy_id: int) -> bool:
@@ -352,22 +370,26 @@ func hud_enemy_count() -> int:
 	return hud_alive_enemy_ids.size()
 
 
-func add_pending_escape(net_id: int) -> void:
-	pending_multiplayer_enemy_escape_ids[net_id] = true
-
-
-func consume_pending_escape(net_id: int) -> bool:
-	return pending_multiplayer_enemy_escape_ids.erase(net_id)
-
-
-func get_enemy(net_id: int, enemies_by_net_id: Dictionary) -> Enemy:
-	if not enemies_by_net_id.has(net_id):
+func get_enemy(net_id: int) -> Enemy:
+	if not _multiplayer_enemies_by_net_id.has(net_id):
 		return null
-	var enemy_variant: Variant = enemies_by_net_id.get(net_id)
+	var enemy_variant: Variant = _multiplayer_enemies_by_net_id.get(net_id)
 	if enemy_variant == null or not is_instance_valid(enemy_variant):
-		enemies_by_net_id.erase(net_id)
+		_multiplayer_enemies_by_net_id.erase(net_id)
 		return null
 	return enemy_variant as Enemy
+
+
+func take_remote_enemy_for_escape(net_id: int) -> Enemy:
+	if _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW or net_id <= 0:
+		return null
+	var enemy := get_enemy(net_id)
+	if enemy == null:
+		return null
+	_multiplayer_enemies_by_net_id.erase(net_id)
+	_multiplayer_enemy_ids_by_instance.erase(enemy.get_instance_id())
+	_runtime.unregister_combat_target(net_id)
+	return enemy
 
 
 func get_progress(
@@ -394,18 +416,6 @@ func report_progress(
 	total: int
 ) -> void:
 	wave_progress_changed.emit(wave_number, defeated, escaped, resolved, total)
-
-
-func report_wave_completed() -> void:
-	wave_completed.emit()
-
-
-func report_enemy_reached_home(enemy: Enemy, gate_cell: Vector2i) -> void:
-	enemy_reached_home.emit(enemy, gate_cell)
-
-
-func report_enemy_removed(enemy_id: int) -> void:
-	enemy_removed.emit(enemy_id)
 
 
 func spawn_wave_batch(max_spawn_count_per_tick: int) -> void:
@@ -462,12 +472,12 @@ func try_spawn_enemy(
 	enemy_instance.global_position = spawn_point.global_position
 	enemy_instance.setup(
 		enemy_config,
-		_runtime._pick_enemy_target(spawn_point.global_position),
+		pick_enemy_target(spawn_point.global_position),
 		_grid_pathfinder,
 		_runtime
 	)
 	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
-	_runtime._assign_enemy_targets(enemy_instance, spawn_point.global_position)
+	assign_enemy_targets(enemy_instance, spawn_point.global_position)
 	var enemy_id := enemy_instance.get_instance_id()
 	register_external_enemy(enemy_instance)
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
@@ -578,9 +588,37 @@ func emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
 	_multiplayer_gateway.enemy_defeated.emit(enemy_net_id, enemy.global_position)
 
 
+func emit_multiplayer_enemy_escaped(enemy: Enemy) -> void:
+	if _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
+		return
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var enemy_net_id := int(
+		_multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0)
+	)
+	if enemy_net_id <= 0:
+		return
+	_pending_terminal_escape_net_ids[enemy_net_id] = true
+	_multiplayer_gateway.enemy_escaped.emit(enemy_net_id)
+
+
+func register_remote_proxy_indices(enemy: Enemy, net_id: int) -> void:
+	if enemy == null or net_id <= 0:
+		return
+	_multiplayer_enemies_by_net_id[net_id] = enemy
+	_runtime.register_combat_target(net_id, enemy)
+	_multiplayer_enemy_ids_by_instance[enemy.get_instance_id()] = net_id
+
+
+func collect_snapshot_states() -> Array[SnapshotManager.EnemyState]:
+	return _runtime.collect_reused_enemy_snapshot_states(
+		_enemy_container,
+		_boss_container
+	)
+
+
 func handle_wave_enemy_tree_exited(enemy_id: int) -> void:
 	remove_active_enemy(enemy_id)
-	report_enemy_removed(enemy_id)
 	remove_hud_alive_enemy(enemy_id)
 	mark_multiplayer_enemy_removed(enemy_id)
 	check_wave_completion()
@@ -598,7 +636,7 @@ func mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 		return
 	# Escape is the terminal replication event. Its marker is consumed exactly
 	# once by the ensuing tree exit; normal exits still emit enemy_removed.
-	if consume_pending_escape(enemy_net_id):
+	if _pending_terminal_escape_net_ids.erase(enemy_net_id):
 		return
 	_multiplayer_gateway.enemy_removed.emit(enemy_net_id)
 
@@ -617,6 +655,11 @@ func check_wave_completion() -> void:
 
 	_enemy_spawn_timer.stop()
 	wave_completed.emit()
+
+
+func finish_home_wave_escape() -> void:
+	show_wave_progress()
+	check_wave_completion()
 
 
 func register_hud_alive_enemy(enemy: Enemy) -> void:
@@ -700,7 +743,7 @@ func apply_remote_wave_progress(
 
 func is_spawn_system_ready() -> bool:
 	return (
-		_runtime.player != null
+		_player_roster_coordinator.local_player != null
 		and _grid_pathfinder.is_built
 		and not enemy_spawn_points.is_empty()
 	)
@@ -717,64 +760,175 @@ func spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 		effect.call("restart_effect")
 
 
-func update_targets(
-	delta: float,
-	enemy_container: Node,
-	boss_enemy: Enemy,
-	retarget_interval: float,
-	max_per_frame: int,
-	assign_targets: Callable
-) -> void:
-	assert(assign_targets.is_valid(), "EnemyCoordinator 缺少目标分配器。")
+func update_targets(delta: float) -> void:
 	enemy_retarget_time_left = maxf(enemy_retarget_time_left - delta, 0.0)
 	if enemy_retarget_time_left <= 0.0 and enemy_retarget_sweep_remaining <= 0:
-		enemy_retarget_time_left = retarget_interval
-		enemy_retarget_sweep_remaining = enemy_container.get_child_count()
+		enemy_retarget_time_left = ENEMY_RETARGET_INTERVAL_SECONDS
+		enemy_retarget_sweep_remaining = _enemy_container.get_child_count()
+		var boss_enemy := _get_active_boss_target()
 		if (
 			boss_enemy != null
 			and is_instance_valid(boss_enemy)
 			and not boss_enemy.is_dead
 			and not boss_enemy.is_advancing_to_home()
 		):
-			assign_targets.call(boss_enemy, boss_enemy.global_position)
-	process_retarget_budget(enemy_container, max_per_frame, assign_targets)
+			assign_enemy_targets(boss_enemy, boss_enemy.global_position)
+	_process_retarget_budget()
 
 
-func process_retarget_budget(
-	enemy_container: Node,
-	max_per_frame: int,
-	assign_targets: Callable
-) -> void:
+func _process_retarget_budget() -> void:
 	var processed_count := 0
-	while enemy_retarget_sweep_remaining > 0 and processed_count < max_per_frame:
-		var enemy_count := enemy_container.get_child_count()
+	while (
+		enemy_retarget_sweep_remaining > 0
+		and processed_count < ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME
+	):
+		var enemy_count := _enemy_container.get_child_count()
 		if enemy_count <= 0:
 			enemy_retarget_sweep_remaining = 0
 			enemy_retarget_cursor = 0
 			return
 		if enemy_retarget_cursor >= enemy_count:
 			enemy_retarget_cursor = 0
-		var enemy := enemy_container.get_child(enemy_retarget_cursor) as Enemy
+		var enemy := _enemy_container.get_child(enemy_retarget_cursor) as Enemy
 		enemy_retarget_cursor = (enemy_retarget_cursor + 1) % enemy_count
 		enemy_retarget_sweep_remaining -= 1
 		processed_count += 1
 		if enemy == null or enemy.is_dead:
 			continue
-		assign_targets.call(enemy, enemy.global_position)
+		assign_enemy_targets(enemy, enemy.global_position)
+
+
+func assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
+	if enemy == null or enemy.is_dead:
+		return
+	enemy.set_near_moving_target_direct_distance(
+		PLAYER_NEAR_MOVING_DIRECT_DISTANCE
+	)
+	var combat_player := pick_enemy_target(from_position)
+	var objective := _pick_enemy_objective(
+		from_position,
+		combat_player,
+		enemy.can_target_water_plant_objectives()
+	)
+	enemy.set_target_player(combat_player)
+	enemy.set_objective_target(objective)
+
+
+func pick_enemy_target(from_position: Vector2) -> Player:
+	if _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
+		var local_player := _player_roster_coordinator.local_player
+		return (
+			local_player
+			if local_player != null and not local_player.is_dead
+			else null
+		)
+	var best_player: Player = null
+	var best_distance := INF
+	for peer_id_variant in _player_roster_coordinator.peer_players:
+		var candidate := (
+			_player_roster_coordinator.peer_players[peer_id_variant] as Player
+		)
+		if (
+			candidate == null
+			or not is_instance_valid(candidate)
+			or candidate.is_dead
+		):
+			continue
+		var distance := from_position.distance_squared_to(candidate.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best_player = candidate
+	return best_player
+
+
+func _pick_enemy_objective(
+	from_position: Vector2,
+	combat_player: Player,
+	include_water_plants: bool = false
+) -> Node2D:
+	var nearest_plant := _plant_runtime_coordinator.find_nearest_enemy_objective(
+		from_position,
+		PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS,
+		include_water_plants
+	)
+	if nearest_plant != null:
+		return nearest_plant
+	if (
+		combat_player != null
+		and is_instance_valid(combat_player)
+		and not combat_player.is_dead
+		and _get_logical_tile_distance_squared(
+			from_position,
+			combat_player.global_position
+		) <= PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS * PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+	):
+		return combat_player
+	return _get_nearest_home_target(from_position)
+
+
+func set_home_objective_targets(targets: Array[Node2D]) -> void:
+	_home_objective_targets.assign(targets)
+
+
+func _get_active_boss_target() -> Enemy:
+	for child in _boss_container.get_children():
+		var candidate := child as Enemy
+		if (
+			candidate != null
+			and is_instance_valid(candidate)
+			and not candidate.is_dead
+		):
+			return candidate
+	return null
+
+
+func _get_nearest_home_target(from_position: Vector2) -> Node2D:
+	var nearest_target: Node2D = null
+	var nearest_distance_squared := INF
+	for target in _home_objective_targets:
+		if target == null or not is_instance_valid(target):
+			continue
+		var distance_squared := from_position.distance_squared_to(
+			target.global_position
+		)
+		if distance_squared < nearest_distance_squared:
+			nearest_distance_squared = distance_squared
+			nearest_target = target
+	return nearest_target
+
+
+func _get_logical_tile_distance_squared(
+	from_global_position: Vector2,
+	to_global_position: Vector2
+) -> float:
+	if (
+		_ground_tile_map_layer == null
+		or _ground_tile_map_layer.tile_set == null
+	):
+		return (
+			from_global_position.distance_squared_to(to_global_position)
+			/ (AUTHORED_LOGICAL_TILE_SIZE * AUTHORED_LOGICAL_TILE_SIZE)
+		)
+	var tile_size := Vector2(_ground_tile_map_layer.tile_set.tile_size).abs()
+	if tile_size.x <= 0.0 or tile_size.y <= 0.0:
+		return INF
+	var from_local := _ground_tile_map_layer.to_local(from_global_position)
+	var to_local := _ground_tile_map_layer.to_local(to_global_position)
+	var offset_in_cells := Vector2(
+		(to_local.x - from_local.x) / tile_size.x,
+		(to_local.y - from_local.y) / tile_size.y
+	)
+	return offset_in_cells.length_squared()
 
 
 func request_retarget() -> void:
 	enemy_retarget_time_left = 0.0
 
 
-func clear_removed_plant_objective(
-	plant: PlantDefense,
-	enemy_container: Node,
-	boss_container: Node
-) -> void:
+func clear_removed_plant_objective(plant: PlantDefense) -> void:
 	if plant == null:
 		return
-	for container in [enemy_container, boss_container]:
+	for container in [_enemy_container, _boss_container]:
 		if container == null:
 			continue
 		for child in container.get_children():

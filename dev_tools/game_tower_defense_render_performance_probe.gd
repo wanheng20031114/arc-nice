@@ -46,10 +46,12 @@ func _run() -> void:
 	game.call("_begin_flow_step", first_wave)
 	game.enemy_spawn_timer.stop()
 	while game.current_wave_spawned < EXPECTED_ENEMIES:
-		game.call("_spawn_wave_batch")
+		game.enemy_coordinator.spawn_wave_batch(
+			TowerDefenseCampaignCoordinator.MAX_WAVE_SPAWN_COUNT_PER_TICK
+		)
 		await process_frame
 	_expect(
-		game.active_wave_enemy_ids.size() == EXPECTED_ENEMIES,
+		game.enemy_coordinator.active_wave_enemy_ids.size() == EXPECTED_ENEMIES,
 		"Render probe must hold exactly 300 live enemies."
 	)
 
@@ -211,7 +213,7 @@ func _print_monitor_summary(label: String, summary: Dictionary) -> void:
 			+ "collision_pairs_p50=%.0f collision_pairs_p95=%.0f nodes=%.0f"
 		) % [
 			label,
-			game.active_wave_enemy_ids.size(),
+			game.enemy_coordinator.active_wave_enemy_ids.size(),
 			wall_frame["p50"],
 			wall_frame["p95"],
 			wall_frame["p99"],

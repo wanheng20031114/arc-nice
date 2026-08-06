@@ -5,6 +5,12 @@ const TOWER_DEFENSE_GAME_SCRIPT := preload("res://scene/game_modes/tower_defense
 const STANDARD_PICKUP_REGISTRY_SCENE := preload(
 	"res://scene/game_modes/standard/pickup/standard_pickup_registry.tscn"
 )
+const TOWER_ENEMY_COORDINATOR_SCENE := preload(
+	"res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.tscn"
+)
+const ENEMY_SPAWN_EFFECT_SCENE := preload(
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn"
+)
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
@@ -135,7 +141,11 @@ func _exercise_enemy_exit_pressure(runtime: CombatRuntimeBase, label: String) ->
 		var net_id := event_index + 1
 		instance_to_net[instance_id] = net_id
 		net_to_enemy[net_id] = null
-		if event_index % 2 == 0:
+		if runtime is TowerDefenseGame:
+			(runtime as TowerDefenseGame).enemy_coordinator.handle_wave_enemy_tree_exited(
+				instance_id
+			)
+		elif event_index % 2 == 0:
 			runtime.call("_on_wave_enemy_tree_exited", instance_id)
 		else:
 			runtime.call("_on_boss_enemy_tree_exited", instance_id)
@@ -163,18 +173,22 @@ func _test_tower_defense_enemy_escape_marker() -> void:
 	var net_id := 77
 	runtime.multiplayer_enemy_ids_by_instance[enemy_instance_id] = net_id
 	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
-	runtime._emit_multiplayer_enemy_escaped(enemy)
+	runtime.enemy_coordinator.emit_multiplayer_enemy_escaped(enemy)
+	var pending_escape_ids := (
+		runtime.enemy_coordinator.get("_pending_terminal_escape_net_ids")
+		as Dictionary
+	)
 	_expect(
-		runtime.pending_multiplayer_enemy_escape_ids.size() == 1,
+		pending_escape_ids.size() == 1,
 		"Escape must retain one marker only until the paired tree exit."
 	)
 	# Boss and boss-add exits share this removal path; it must consume, not retain,
 	# the escape marker while suppressing the duplicate generic terminal event.
-	runtime._on_boss_enemy_tree_exited(enemy_instance_id)
+	runtime.enemy_coordinator.handle_wave_enemy_tree_exited(enemy_instance_id)
 	_expect(escaped_ids == [net_id], "Escape must emit its terminal event once.")
 	_expect(removed_ids.is_empty(), "Escape tree exit must suppress generic removal.")
 	_expect(
-		runtime.pending_multiplayer_enemy_escape_ids.is_empty(),
+		pending_escape_ids.is_empty(),
 		"Escape marker must be consumed by the paired boss tree exit."
 	)
 	enemy.free()
@@ -435,6 +449,8 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	var lethal_config := ENEMY_CONFIG.duplicate(true) as EnemyConfig
 	lethal_config.max_health = 40
 	lethal_config.physical_defense = 0
+	lethal_config.xirang_kill_reward = 0
+	lethal_config.drop_table = null
 	enemy.setup(lethal_config, null, null, runtime)
 	enemy.set_process(false)
 	enemy.set_physics_process(false)
@@ -446,7 +462,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
 	enemy.defeated.connect(
 		func(defeated_enemy: Enemy) -> void:
-			runtime._emit_multiplayer_enemy_defeated(defeated_enemy)
+			runtime.enemy_coordinator.emit_multiplayer_enemy_defeated(defeated_enemy)
 	)
 	var accepted := (
 		mp_game.apply_authoritative_plant_enemy_damage_batch(
@@ -518,6 +534,9 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	runtime.multiplayer_enemy_ids_by_instance.clear()
 	mp_game.remove_child(enemy)
 	enemy.free()
+	# This tree-less fixture never binds tower warehouse state. Disable that
+	# unrelated exit capture before removing the MpGame node from the SceneTree.
+	mp_game.tower_mode_adapter = null
 	root.remove_child(mp_game)
 	mp_game.free()
 	runtime.free()
@@ -541,6 +560,7 @@ func _prepare_runtime_boundaries(
 	var adapter: MultiplayerModeAdapter = null
 	if runtime is TowerDefenseGame:
 		var tower_runtime := runtime as TowerDefenseGame
+		_bind_tree_less_tower_enemy_coordinator(tower_runtime, gateway)
 		var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
 		plant_runtime.name = "PlantRuntimeCoordinator"
 		tower_runtime.add_child(plant_runtime)
@@ -554,6 +574,77 @@ func _prepare_runtime_boundaries(
 	adapter.bind_runtime(runtime)
 	runtime.multiplayer_mode_adapter = adapter
 	return gateway
+
+
+func _bind_tree_less_tower_enemy_coordinator(
+	runtime: TowerDefenseGame,
+	gateway: MultiplayerGameplayGateway
+) -> TowerDefenseEnemyCoordinator:
+	var coordinator := (
+		TOWER_ENEMY_COORDINATOR_SCENE.instantiate()
+		as TowerDefenseEnemyCoordinator
+	)
+	coordinator.name = "EnemyCoordinator"
+	runtime.add_child(coordinator)
+	var campaign := TowerDefenseCampaignCoordinator.new()
+	campaign.name = "CampaignCoordinator"
+	runtime.add_child(campaign)
+	var player_roster := TowerDefensePlayerRosterCoordinator.new()
+	player_roster.name = "PlayerRosterCoordinator"
+	runtime.add_child(player_roster)
+	var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+	plant_runtime.name = "EnemyFixturePlantRuntimeCoordinator"
+	runtime.add_child(plant_runtime)
+	var enemy_container := Node2D.new()
+	enemy_container.name = "EnemyContainer"
+	runtime.add_child(enemy_container)
+	var boss_container := Node2D.new()
+	boss_container.name = "BossContainer"
+	runtime.add_child(boss_container)
+	var spawn_points := Node2D.new()
+	spawn_points.name = "EnemySpawnPoints"
+	runtime.add_child(spawn_points)
+	var spawn_point := Marker2D.new()
+	spawn_point.name = "Spawn1"
+	spawn_points.add_child(spawn_point)
+	var ground_layer := TileMapLayer.new()
+	ground_layer.name = "GroundTileMapLayer"
+	runtime.add_child(ground_layer)
+	var pathfinder := GridPathfinder.new()
+	pathfinder.name = "GridPathfinder"
+	runtime.add_child(pathfinder)
+	var spawn_timer := Timer.new()
+	spawn_timer.name = "EnemySpawnTimer"
+	runtime.add_child(spawn_timer)
+	var fate := FateCoordinator.new()
+	fate.name = "FateCoordinator"
+	runtime.add_child(fate)
+	var presentation := TowerDefensePresentationCoordinator.new()
+	presentation.name = "PresentationCoordinator"
+	runtime.add_child(presentation)
+	var object_pool := SessionObjectPool.new()
+	object_pool.name = "SessionObjectPool"
+	runtime.add_child(object_pool)
+	coordinator.setup(
+		runtime,
+		campaign,
+		player_roster,
+		plant_runtime,
+		RandomNumberGenerator.new(),
+		enemy_container,
+		boss_container,
+		spawn_points,
+		ground_layer,
+		pathfinder,
+		spawn_timer,
+		gateway,
+		fate,
+		presentation,
+		object_pool,
+		ENEMY_SPAWN_EFFECT_SCENE
+	)
+	runtime.enemy_coordinator = coordinator
+	return coordinator
 
 
 func _expect(condition: bool, message: String) -> void:

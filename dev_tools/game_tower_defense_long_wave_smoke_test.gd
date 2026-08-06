@@ -87,16 +87,18 @@ func _run() -> void:
 	while game.current_wave_spawned < EXPECTED_WAVE_TOTAL and cycle_guard < 8:
 		while (
 			game.current_wave_spawned < EXPECTED_WAVE_TOTAL
-			and game.active_wave_enemy_ids.size() < EXPECTED_MAX_ALIVE
+			and game.enemy_coordinator.active_wave_enemy_ids.size() < EXPECTED_MAX_ALIVE
 		):
-			game.call("_spawn_wave_batch")
+			game.enemy_coordinator.spawn_wave_batch(
+				TowerDefenseCampaignCoordinator.MAX_WAVE_SPAWN_COUNT_PER_TICK
+			)
 			observed_peak_enemies = maxi(
 				observed_peak_enemies,
-				game.active_wave_enemy_ids.size()
+				game.enemy_coordinator.active_wave_enemy_ids.size()
 			)
 			await process_frame
 		_expect(
-			game.active_wave_enemy_ids.size() <= EXPECTED_MAX_ALIVE,
+			game.enemy_coordinator.active_wave_enemy_ids.size() <= EXPECTED_MAX_ALIVE,
 			"Long-wave spawning must never exceed the live cap."
 		)
 
@@ -114,8 +116,8 @@ func _run() -> void:
 		var clear_deadline := Time.get_ticks_msec() + 10000
 		var previous_frame_tick_usec := Time.get_ticks_usec()
 		var post_frame_index := 0
-		while not game.active_wave_enemy_ids.is_empty() and Time.get_ticks_msec() < clear_deadline:
-			var active_before := game.active_wave_enemy_ids.size()
+		while not game.enemy_coordinator.active_wave_enemy_ids.is_empty() and Time.get_ticks_msec() < clear_deadline:
+			var active_before := game.enemy_coordinator.active_wave_enemy_ids.size()
 			var children_before := game.enemy_container.get_child_count()
 			await process_frame
 			var current_frame_tick_usec := Time.get_ticks_usec()
@@ -129,7 +131,7 @@ func _run() -> void:
 					"frame": post_frame_index,
 					"elapsed_ms": frame_elapsed_ms,
 					"active_before": active_before,
-					"active_after": game.active_wave_enemy_ids.size(),
+					"active_after": game.enemy_coordinator.active_wave_enemy_ids.size(),
 					"children_before": children_before,
 					"children_after": game.enemy_container.get_child_count(),
 					"player_xirang": game.player.current_xirang,
@@ -137,7 +139,7 @@ func _run() -> void:
 			previous_frame_tick_usec = current_frame_tick_usec
 			post_frame_index += 1
 		_expect(
-			game.active_wave_enemy_ids.is_empty(),
+			game.enemy_coordinator.active_wave_enemy_ids.is_empty(),
 			"Every defeated 300-enemy tranche must leave the active registry."
 		)
 		cycle_guard += 1

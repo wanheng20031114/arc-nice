@@ -56,7 +56,6 @@ const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
 const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
 const SPECTATOR_CAMERA_SPEED := TowerDefensePresentationCoordinator.SPECTATOR_CAMERA_SPEED
 const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.025
-const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
 const DEFAULT_MUSIC_VOLUME_DB := TowerDefensePresentationCoordinator.DEFAULT_MUSIC_VOLUME_DB
 const MUSIC_FADE_IN_SECONDS := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_SECONDS
 const MUSIC_FADE_IN_START_VOLUME_DB := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_START_VOLUME_DB
@@ -70,29 +69,8 @@ const DEFAULT_BASE_HEALTH := 100
 const XIAOCONG_INTERACTION_DISTANCE := (
 	TowerDefenseFateFlowCoordinator.XIAOCONG_INTERACTION_DISTANCE
 )
-# A full background sweep only needs to keep long-lived objectives reasonably
-# fresh. Topology changes and player availability changes request an immediate
-# budgeted pass below, so the idle cadence can stay deliberately conservative.
-const ENEMY_RETARGET_INTERVAL_SECONDS := 0.60
 const FORMAL_PROGRESSION_CONFIG_PATH := (
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
-)
-const ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME := 16
-# Target priority is evaluated in logical tile units so it remains stable if a
-# TileMap transform changes. These world-space constants document the current
-# authored 16 px grid and remain useful to UI/tests.
-const AUTHORED_LOGICAL_TILE_SIZE := 16.0
-const PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS := 8.0
-const PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS := 10.0
-const PLAYER_OBJECTIVE_AGGRO_RADIUS := (
-	PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS * AUTHORED_LOGICAL_TILE_SIZE
-)
-# Keep navigation's nearby-moving-target tier independent from the gameplay
-# aggro radius. This lets target acquisition shrink without silently changing
-# how an already-selected moving objective is navigated.
-const PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS := 16.0
-const PLAYER_NEAR_MOVING_DIRECT_DISTANCE := (
-	PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS * AUTHORED_LOGICAL_TILE_SIZE
 )
 const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
@@ -257,38 +235,6 @@ var multiplayer_terrain_overrides: Dictionary:
 		return plant_runtime_coordinator.multiplayer_terrain_overrides
 	set(value):
 		plant_runtime_coordinator.multiplayer_terrain_overrides = value
-var enemy_spawn_points: Array[Marker2D] = []
-var enemy_spawn_points_by_name: Dictionary[StringName, Marker2D] = {}
-var active_wave_spawn_points: Array[Marker2D] = []
-var _spawn_point_configuration_valid := true
-var spawn_point_configuration_valid: bool:
-	get:
-		return (
-			enemy_coordinator.spawn_point_configuration_valid
-			if enemy_coordinator != null
-			else _spawn_point_configuration_valid
-		)
-	set(value):
-		_spawn_point_configuration_valid = value
-		if enemy_coordinator != null:
-			enemy_coordinator.spawn_point_configuration_valid = value
-var pending_enemy_configs: Array[EnemyConfig] = []
-var pending_enemy_xirang_kill_rewards: Array[int] = []
-var _pending_enemy_config_index := 0
-var pending_enemy_config_index: int:
-	get:
-		return (
-			enemy_coordinator.pending_enemy_config_index
-			if enemy_coordinator != null
-			else _pending_enemy_config_index
-		)
-	set(value):
-		_pending_enemy_config_index = value
-		if enemy_coordinator != null:
-			enemy_coordinator.pending_enemy_config_index = value
-var active_wave_enemy_ids: Dictionary = {}
-var hud_alive_enemy_ids: Dictionary = {}
-
 var _pending_music_fade_tween: Tween = null
 var music_fade_tween: Tween:
 	get:
@@ -329,103 +275,26 @@ var multiplayer_player_names: Dictionary = {}
 var multiplayer_player_character_ids: Dictionary = {}
 var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
 var pending_multiplayer_pickup_exit_ids: Dictionary = {}
-var pending_multiplayer_enemy_escape_ids: Dictionary = {}
-var _enemy_retarget_time_left := 0.0
-var enemy_retarget_time_left: float:
-	get:
-		return (
-			enemy_coordinator.enemy_retarget_time_left
-			if enemy_coordinator != null
-			else _enemy_retarget_time_left
-		)
-	set(value):
-		_enemy_retarget_time_left = value
-		if enemy_coordinator != null:
-			enemy_coordinator.enemy_retarget_time_left = value
-var _enemy_retarget_sweep_remaining := 0
-var enemy_retarget_sweep_remaining: int:
-	get:
-		return (
-			enemy_coordinator.enemy_retarget_sweep_remaining
-			if enemy_coordinator != null
-			else _enemy_retarget_sweep_remaining
-		)
-	set(value):
-		_enemy_retarget_sweep_remaining = value
-		if enemy_coordinator != null:
-			enemy_coordinator.enemy_retarget_sweep_remaining = value
-var _enemy_retarget_cursor := 0
-var enemy_retarget_cursor: int:
-	get:
-		return (
-			enemy_coordinator.enemy_retarget_cursor
-			if enemy_coordinator != null
-			else _enemy_retarget_cursor
-		)
-	set(value):
-		_enemy_retarget_cursor = value
-		if enemy_coordinator != null:
-			enemy_coordinator.enemy_retarget_cursor = value
-var _home_objective_targets: Array[Node2D] = []
-var home_objective_targets: Array[Node2D]:
-	get:
-		return (
-			home_defense_coordinator.home_objective_targets
-			if home_defense_coordinator != null
-			else _home_objective_targets
-		)
-	set(value):
-		_home_objective_targets = value
-		if home_defense_coordinator != null:
-			home_defense_coordinator.home_objective_targets.assign(value)
-var _maximum_base_health := DEFAULT_BASE_HEALTH
 var maximum_base_health: int:
 	get:
-		return home_defense_coordinator.maximum_base_health if home_defense_coordinator != null else _maximum_base_health
+		return home_defense_coordinator.maximum_base_health
 	set(value):
-		_maximum_base_health = value
-		if home_defense_coordinator != null:
-			home_defense_coordinator.maximum_base_health = value
-var _current_base_health := DEFAULT_BASE_HEALTH
+		home_defense_coordinator.maximum_base_health = value
 var current_base_health: int:
 	get:
-		return home_defense_coordinator.current_base_health if home_defense_coordinator != null else _current_base_health
+		return home_defense_coordinator.current_base_health
 	set(value):
-		_current_base_health = value
-		if home_defense_coordinator != null:
-			home_defense_coordinator.current_base_health = value
-var _base_health_revision := 0
+		home_defense_coordinator.current_base_health = value
 var base_health_revision: int:
 	get:
-		return home_defense_coordinator.base_health_revision if home_defense_coordinator != null else _base_health_revision
+		return home_defense_coordinator.base_health_revision
 	set(value):
-		_base_health_revision = value
-		if home_defense_coordinator != null:
-			home_defense_coordinator.base_health_revision = value
-var _has_received_remote_base_health_snapshot := false
+		home_defense_coordinator.base_health_revision = value
 var has_received_remote_base_health_snapshot: bool:
 	get:
-		return home_defense_coordinator.has_received_remote_base_health_snapshot if home_defense_coordinator != null else _has_received_remote_base_health_snapshot
+		return home_defense_coordinator.has_received_remote_base_health_snapshot
 	set(value):
-		_has_received_remote_base_health_snapshot = value
-		if home_defense_coordinator != null:
-			home_defense_coordinator.has_received_remote_base_health_snapshot = value
-var _resolved_home_enemy_ids: Dictionary = {}
-var resolved_home_enemy_ids: Dictionary:
-	get:
-		return home_defense_coordinator.resolved_home_enemy_ids if home_defense_coordinator != null else _resolved_home_enemy_ids
-var _next_multiplayer_enemy_net_id := 1
-var next_multiplayer_enemy_net_id: int:
-	get:
-		return (
-			enemy_coordinator.next_multiplayer_enemy_net_id
-			if enemy_coordinator != null
-			else _next_multiplayer_enemy_net_id
-		)
-	set(value):
-		_next_multiplayer_enemy_net_id = value
-		if enemy_coordinator != null:
-			enemy_coordinator.next_multiplayer_enemy_net_id = value
+		home_defense_coordinator.has_received_remote_base_health_snapshot = value
 var next_multiplayer_pickup_net_id: int = 1000
 var _next_multiplayer_plant_net_id := 1
 var next_multiplayer_plant_net_id: int:
@@ -690,7 +559,6 @@ func _ready() -> void:
 		run_state.ensure_run_started()
 		_configure_singleplayer_player()
 	_configure_enemy_coordinator()
-	_collect_enemy_spawn_points()
 	_configure_timers()
 	prewarmer_coordinator.prewarm_enemy_visual_resources()
 	CombatRuntimeBase.register_common_visual_effect_pools(session_object_pool)
@@ -798,8 +666,8 @@ func _ready() -> void:
 	_attach_camera_to_local_player()
 	presentation_coordinator.configure_wave_hud(
 		int(runtime_mode),
-		current_base_health,
-		maximum_base_health
+		home_defense_coordinator.current_base_health,
+		home_defense_coordinator.maximum_base_health
 	)
 	_configure_home_defense()
 	_configure_plant_defense_system()
@@ -884,7 +752,7 @@ func _ready() -> void:
 	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
 		campaign_coordinator.enter_pre_flow_step(_get_start_flow_step())
 	else:
-		_show_tower_defense_wave_progress()
+		enemy_coordinator.show_wave_progress()
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		if runtime_activation_deferred:
 			call_deferred("prepare_shared_runtime_data_and_complete")
@@ -909,7 +777,7 @@ func _physics_process(delta: float) -> void:
 	_update_local_spectator_camera(delta)
 	_update_singleplayer_respawn(delta)
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		_update_tower_defense_enemy_targets(delta)
+		enemy_coordinator.update_targets(delta)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		_update_multiplayer_remote_player_passive_state(delta)
 
@@ -983,7 +851,7 @@ func _configure_player_roster_coordinator() -> bool:
 		bind_player_runtime_context
 	)
 	player_roster_coordinator.enemy_retarget_requested.connect(
-		_request_enemy_retarget_after_objective_change
+		enemy_coordinator.request_retarget
 	)
 	return true
 
@@ -1325,81 +1193,21 @@ func _attach_camera_to_local_player() -> void:
 
 func _configure_home_defense() -> void:
 	home_defense_coordinator.setup(
-		runtime_mode,
+		self,
 		run_state,
 		home_gate_controller,
 		overlay_tile_map_layer,
 		DEFAULT_BASE_HEALTH,
-		_get_home_flow_state,
-		_has_active_enemy,
-		_get_active_home_boss
+		campaign_coordinator,
+		enemy_coordinator,
+		boss_container,
+		presentation_coordinator,
+		tower_multiplayer_mode_adapter
 	)
-	if not home_gate_controller.enemy_reached_home.is_connected(
-		enemy_coordinator.report_enemy_reached_home
-	):
-		home_gate_controller.enemy_reached_home.connect(
-			enemy_coordinator.report_enemy_reached_home
-		)
-	if not enemy_coordinator.enemy_reached_home.is_connected(
-		home_defense_coordinator.on_enemy_reached_home
-	):
-		enemy_coordinator.enemy_reached_home.connect(
-			home_defense_coordinator.on_enemy_reached_home
-		)
-	if not home_defense_coordinator.enemy_escaped.is_connected(_on_home_enemy_escaped):
-		home_defense_coordinator.enemy_escaped.connect(_on_home_enemy_escaped)
-	if not home_defense_coordinator.base_health_changed.is_connected(
-		_on_home_base_health_changed
-	):
-		home_defense_coordinator.base_health_changed.connect(_on_home_base_health_changed)
-	if not home_defense_coordinator.base_defeated.is_connected(
-		campaign_coordinator.enter_defeat
-	):
-		home_defense_coordinator.base_defeated.connect(
-			campaign_coordinator.enter_defeat
-		)
-	if not home_defense_coordinator.boss_escaped.is_connected(_on_home_boss_escaped):
-		home_defense_coordinator.boss_escaped.connect(_on_home_boss_escaped)
-	if not home_defense_coordinator.wave_escape_finished.is_connected(
-		_finish_home_wave_escape
-	):
-		home_defense_coordinator.wave_escape_finished.connect(
-		_finish_home_wave_escape
-		)
-	_update_base_health_display()
-
-
-func _get_home_flow_state() -> int:
-	return campaign_coordinator.wave_state
-
-
-func _get_active_home_boss() -> Enemy:
-	return linglan_boss if linglan_boss != null and is_instance_valid(linglan_boss) else null
-
-
-func _clear_resolved_home_enemy_ids() -> void:
-	if home_defense_coordinator != null:
-		home_defense_coordinator.clear_resolved_enemy_ids()
-	else:
-		_resolved_home_enemy_ids.clear()
 
 
 func get_home_objective_targets() -> Array[Node2D]:
-	return home_defense_coordinator.get_home_targets() if home_defense_coordinator != null else home_objective_targets.duplicate()
-
-
-func get_linglan_home_objective_target(from_position: Vector2) -> Node2D:
-	if home_defense_coordinator != null:
-		return home_defense_coordinator.get_nearest_home_target(from_position)
-	var nearest_target: Node2D = null
-	var nearest_distance_squared := INF
-	for target in home_objective_targets:
-		if target != null and is_instance_valid(target):
-			var distance_squared := from_position.distance_squared_to(target.global_position)
-			if distance_squared < nearest_distance_squared:
-				nearest_distance_squared = distance_squared
-				nearest_target = target
-	return nearest_target
+	return home_defense_coordinator.get_home_targets()
 
 
 func _configure_minimap() -> void:
@@ -1416,129 +1224,16 @@ func _configure_minimap() -> void:
 	)
 
 
-func get_base_health_snapshot() -> Dictionary:
-	if home_defense_coordinator != null:
-		return home_defense_coordinator.get_base_health_snapshot()
-	return {"current_health": current_base_health, "maximum_health": maximum_base_health, "revision": base_health_revision}
-
-
-func apply_remote_base_health(
-	new_current_health: int,
-	new_maximum_health: int,
-	new_revision: int
-) -> void:
-	if home_defense_coordinator != null:
-		home_defense_coordinator.apply_remote_base_health(
-			new_current_health, new_maximum_health, new_revision
-		)
-
-
-func apply_remote_enemy_escape(net_id: int) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW or net_id <= 0:
-		return
-	var enemy := get_enemy_for_net_id(net_id)
-	if enemy == null or not is_instance_valid(enemy):
-		return
-	multiplayer_enemies_by_net_id.erase(net_id)
-	multiplayer_enemy_ids_by_instance.erase(enemy.get_instance_id())
-	unregister_combat_target(net_id)
-	if home_defense_coordinator != null:
-		home_defense_coordinator.apply_remote_enemy_escape(enemy)
-	else:
-		enemy.remove_for_home_escape()
-
-
-func _on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
-	if enemy_coordinator != null:
-		enemy_coordinator.report_enemy_reached_home(enemy, _gate_cell)
-	elif home_defense_coordinator != null:
-		home_defense_coordinator.on_enemy_reached_home(enemy, _gate_cell)
-
-
-func _on_home_enemy_escaped(
-	enemy: Enemy,
-	resolves_active_wave: bool,
-	resolves_boss_step: bool
-) -> void:
-	var enemy_id := enemy.get_instance_id()
-	if resolves_active_wave or resolves_boss_step:
-		campaign_coordinator.current_wave_escaped = mini(
-			campaign_coordinator.current_wave_escaped + 1,
-			campaign_coordinator.current_wave_total
-		)
-		campaign_coordinator.current_wave_resolved = mini(
-			campaign_coordinator.current_wave_resolved + 1,
-			campaign_coordinator.current_wave_total
-		)
-		_remove_active_enemy(enemy_id)
-	_remove_hud_alive_enemy(enemy_id)
-	_emit_multiplayer_enemy_escaped(enemy)
-	enemy.remove_for_home_escape()
-
-
-func _finish_home_wave_escape() -> void:
-	enemy_coordinator.show_wave_progress()
-	enemy_coordinator.check_wave_completion()
-
-
-func _on_home_boss_escaped() -> void:
-	if campaign_coordinator.wave_state != CombatFlowState.State.DEFEAT:
-		call_deferred("_complete_escaped_boss_step")
-
-
-func _emit_multiplayer_enemy_escaped(enemy: Enemy) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY or enemy == null:
-		return
-	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0))
-	if enemy_net_id > 0:
-		# Escape is the terminal replication event. Suppress the later generic
-		# tree-exit removal so clients never replay a death-style removal path.
-		_add_pending_enemy_escape(enemy_net_id)
-		multiplayer_gateway.enemy_escaped.emit(enemy_net_id)
-
-
 func _apply_base_damage(amount: int) -> void:
-	if home_defense_coordinator != null:
-		home_defense_coordinator.apply_base_damage(amount)
-
-
-func _on_home_base_health_changed(
-	new_current_health: int,
-	new_maximum_health: int,
-	new_revision: int
-) -> void:
-	_update_base_health_display(home_defense_coordinator.last_change_play_damage_pulse)
-	if home_defense_coordinator.last_change_was_remote:
-		base_health_changed.emit(new_current_health, new_maximum_health, new_revision)
-		if home_defense_coordinator.last_change_play_damage_pulse:
-			presentation_coordinator.play_gate_damage_warning()
-	else:
-		presentation_coordinator.play_gate_damage_warning()
-		base_health_changed.emit(new_current_health, new_maximum_health, new_revision)
+	home_defense_coordinator.apply_base_damage(amount)
 
 
 func _update_base_health_display(play_damage_pulse: bool = true) -> void:
 	presentation_coordinator.show_base_health(
-		current_base_health,
-		maximum_base_health,
+		home_defense_coordinator.current_base_health,
+		home_defense_coordinator.maximum_base_health,
 		play_damage_pulse
 	)
-
-
-func _register_hud_alive_enemy(enemy: Enemy) -> void:
-	enemy_coordinator.register_hud_alive_enemy(enemy)
-
-
-func _remove_hud_alive_enemy(enemy_id: int) -> void:
-	enemy_coordinator.remove_hud_alive_enemy(enemy_id)
-
-
-func _clear_hud_alive_enemies() -> void:
-	enemy_coordinator.clear_hud_alive_enemies()
-
-
-func _complete_escaped_boss_step() -> void:
-	boss_coordinator.complete_escaped_step_if_ready()
 
 
 func _configure_plant_defense_system() -> void:
@@ -1564,15 +1259,11 @@ func _configure_plant_defense_system() -> void:
 	)
 	plant_runtime_coordinator.next_multiplayer_plant_net_id = _next_multiplayer_plant_net_id
 	_prepare_plant_runtime_signal_bindings()
-	var clear_removed_plant_target := enemy_coordinator.clear_removed_plant_objective.bind(
-		enemy_container,
-		boss_container
-	)
 	if not plant_runtime_coordinator.plant_removed_for_target_cleanup.is_connected(
-		clear_removed_plant_target
+		enemy_coordinator.clear_removed_plant_objective
 	):
 		plant_runtime_coordinator.plant_removed_for_target_cleanup.connect(
-			clear_removed_plant_target
+			enemy_coordinator.clear_removed_plant_objective
 		)
 
 	var placement_rect := PlantSystem.DEFAULT_PLACEMENT_AREA
@@ -1599,7 +1290,7 @@ func _configure_plant_defense_system() -> void:
 	if home_gate_controller != null:
 		for home_cell in home_gate_controller.get_home_gate_cells():
 			plant_system.reserve_cell(home_cell)
-	for spawn_point in enemy_spawn_points:
+	for spawn_point in enemy_coordinator.enemy_spawn_points:
 		plant_system.reserve_world_position(spawn_point.global_position, 1)
 	if merchant != null:
 		plant_system.reserve_world_position(merchant.global_position)
@@ -1639,10 +1330,10 @@ func _configure_plant_placement_coordinator() -> bool:
 
 func _prepare_plant_runtime_signal_bindings() -> void:
 	if not plant_runtime_coordinator.enemy_retarget_requested.is_connected(
-		_request_enemy_retarget_after_objective_change
+		enemy_coordinator.request_retarget
 	):
 		plant_runtime_coordinator.enemy_retarget_requested.connect(
-			_request_enemy_retarget_after_objective_change
+			enemy_coordinator.request_retarget
 		)
 	if not plant_runtime_coordinator.progression_plant_placed.is_connected(
 		campaign_coordinator.track_progression_plant_placement
@@ -2038,18 +1729,6 @@ func _instantiate_remote_linglan_boss_proxy(
 	)
 
 
-func register_remote_boss_proxy_indices(
-	boss_enemy: LinglanBoss,
-	net_id: int
-) -> void:
-	if boss_enemy == null or net_id <= 0:
-		return
-	# Frozen v46 client registration order: net map -> target index -> instance map.
-	multiplayer_enemies_by_net_id[net_id] = boss_enemy
-	register_combat_target(net_id, boss_enemy)
-	multiplayer_enemy_ids_by_instance[boss_enemy.get_instance_id()] = net_id
-
-
 func apply_remote_victory() -> void:
 	tower_multiplayer_mode_adapter.apply_remote_victory()
 
@@ -2380,7 +2059,6 @@ func _configure_boss_coordinator() -> bool:
 		linglan_boss_enabled,
 		boss_container,
 		enemy_container,
-		enemy_spawn_points_root,
 		linglan_boss_runtime_port,
 		ground_tile_map_layer,
 		campaign_coordinator,
@@ -2499,94 +2177,21 @@ func _configure_enemy_coordinator() -> void:
 	enemy_coordinator.setup(
 		self,
 		campaign_coordinator,
+		player_roster_coordinator,
+		plant_runtime_coordinator,
 		random_generator,
 		enemy_container,
+		boss_container,
+		enemy_spawn_points_root,
+		ground_tile_map_layer,
 		tower_grid_pathfinder,
 		enemy_spawn_timer,
 		multiplayer_gateway,
 		fate_coordinator,
 		presentation_coordinator,
 		session_object_pool,
-		ENEMY_SPAWN_EFFECT_SCENE,
-		enemy_spawn_points,
-		enemy_spawn_points_by_name,
-		active_wave_spawn_points,
-		pending_enemy_configs,
-		pending_enemy_xirang_kill_rewards,
-		active_wave_enemy_ids,
-		hud_alive_enemy_ids,
-		pending_multiplayer_enemy_escape_ids,
-		multiplayer_enemy_ids_by_instance,
-		multiplayer_enemies_by_net_id
+		ENEMY_SPAWN_EFFECT_SCENE
 	)
-	# Read the pre-tree façade backing fields directly. Once @onready resolves,
-	# the public getters intentionally point at the coordinator and would otherwise
-	# hide fixture values assigned before add_child()/ready.
-	enemy_coordinator.pending_enemy_config_index = _pending_enemy_config_index
-	enemy_coordinator.next_multiplayer_enemy_net_id = _next_multiplayer_enemy_net_id
-	enemy_coordinator.enemy_retarget_time_left = _enemy_retarget_time_left
-	enemy_coordinator.enemy_retarget_sweep_remaining = _enemy_retarget_sweep_remaining
-	enemy_coordinator.enemy_retarget_cursor = _enemy_retarget_cursor
-
-
-func _has_active_enemy(enemy_id: int) -> bool:
-	return (
-		enemy_coordinator.has_active_enemy(enemy_id)
-		if enemy_coordinator != null
-		else active_wave_enemy_ids.has(enemy_id)
-	)
-
-
-func _register_active_enemy(enemy: Enemy) -> void:
-	if enemy == null or not is_instance_valid(enemy):
-		return
-	if enemy_coordinator != null:
-		enemy_coordinator.register_external_enemy(enemy)
-	else:
-		active_wave_enemy_ids[enemy.get_instance_id()] = true
-
-
-func _remove_active_enemy(enemy_id: int) -> bool:
-	return (
-		enemy_coordinator.remove_active_enemy(enemy_id)
-		if enemy_coordinator != null
-		else active_wave_enemy_ids.erase(enemy_id)
-	)
-
-
-func _clear_active_enemies() -> void:
-	if enemy_coordinator != null:
-		enemy_coordinator.clear_active_enemies()
-	else:
-		active_wave_enemy_ids.clear()
-
-
-func _has_active_enemies() -> bool:
-	return (
-		enemy_coordinator.has_active_enemies()
-		if enemy_coordinator != null
-		else not active_wave_enemy_ids.is_empty()
-	)
-
-
-func _add_pending_enemy_escape(net_id: int) -> void:
-	if enemy_coordinator != null:
-		enemy_coordinator.add_pending_escape(net_id)
-	else:
-		pending_multiplayer_enemy_escape_ids[net_id] = true
-
-
-func _consume_pending_enemy_escape(net_id: int) -> bool:
-	return (
-		enemy_coordinator.consume_pending_escape(net_id)
-		if enemy_coordinator != null
-		else pending_multiplayer_enemy_escape_ids.erase(net_id)
-	)
-
-
-func _collect_enemy_spawn_points() -> void:
-	enemy_coordinator.collect_spawn_points(enemy_spawn_points_root)
-	spawn_point_configuration_valid = enemy_coordinator.spawn_point_configuration_valid
 
 
 func _configure_timers() -> void:
@@ -2763,30 +2368,6 @@ func _is_fate_double_xirang_reward_active() -> bool:
 	return fate_coordinator != null and fate_coordinator.is_double_xirang_reward_active()
 
 
-func _spawn_wave_batch() -> void:
-	enemy_coordinator.spawn_wave_batch(MAX_WAVE_SPAWN_COUNT_PER_TICK)
-	pending_enemy_config_index = enemy_coordinator.pending_enemy_config_index
-
-
-func _has_pending_enemy_configs() -> bool:
-	return enemy_coordinator.has_pending_queue()
-
-
-func _clear_pending_enemy_spawn_queue() -> void:
-	enemy_coordinator.clear_queue()
-	pending_enemy_config_index = enemy_coordinator.pending_enemy_config_index
-
-
-func _try_spawn_enemy(
-	enemy_config: EnemyConfig,
-	xirang_kill_reward_override: int = -1
-) -> bool:
-	return enemy_coordinator.try_spawn_enemy(
-		enemy_config,
-		xirang_kill_reward_override
-	)
-
-
 func spawn_linglan_skill2_enemies(
 	enemy_config: EnemyConfig,
 	marker_names: Array[StringName]
@@ -2814,86 +2395,8 @@ func spawn_linglan_airdrop_sniper(
 	)
 
 
-func _finalize_authoritative_enemy_spawn(
-	enemy_instance: Enemy,
-	enemy_config: EnemyConfig,
-	spawn_position: Vector2,
-	broadcast_spawn: bool = true
-) -> int:
-	return enemy_coordinator.finalize_authoritative_enemy_spawn(
-		enemy_instance,
-		enemy_config,
-		spawn_position,
-		broadcast_spawn
-	)
-
-
-func configure_runtime_enemy_modifiers(enemy_instance: Enemy) -> void:
-	enemy_coordinator.configure_runtime_enemy_modifiers(enemy_instance)
-
-
-func _register_multiplayer_enemy_instance(
-	enemy_instance: Enemy,
-	enemy_config: EnemyConfig,
-	spawn_position: Vector2,
-	broadcast_spawn: bool = true
-) -> int:
-	return enemy_coordinator.register_multiplayer_enemy_instance(
-		enemy_instance,
-		enemy_config,
-		spawn_position,
-		broadcast_spawn
-	)
-
-
-func _configure_authoritative_enemy_physics_interpolation(enemy_instance: Enemy) -> void:
-	enemy_coordinator.configure_authoritative_enemy_physics_interpolation(
-		enemy_instance
-	)
-
-
-func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
-	enemy_coordinator.handle_wave_enemy_tree_exited(enemy_id)
-
-
-func _show_tower_defense_wave_progress() -> void:
-	enemy_coordinator.show_wave_progress()
-
-
 func _show_tower_defense_boss_progress(defeated: int, total: int) -> void:
 	presentation_coordinator.show_boss_progress(defeated, total)
-
-
-func get_tower_defense_wave_progress_snapshot() -> Dictionary:
-	return enemy_coordinator.get_wave_progress_snapshot()
-
-
-func apply_remote_tower_defense_wave_progress(
-	wave_number: int,
-	defeated: int,
-	escaped: int,
-	resolved: int,
-	total: int
-) -> void:
-	enemy_coordinator.apply_remote_wave_progress(
-		wave_number,
-		defeated,
-		escaped,
-		resolved,
-		total
-	)
-
-
-func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
-	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
-
-
-func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
-	enemy_coordinator.mark_multiplayer_enemy_removed(enemy_id)
-
-
-func _check_wave_completion() -> void:
-	enemy_coordinator.check_wave_completion()
 
 
 func get_progression_metrics_snapshot() -> Dictionary:
@@ -2914,18 +2417,6 @@ func _on_linglan_boss_intro_finished() -> void:
 
 func _activate_linglan_boss() -> void:
 	boss_coordinator.activate_boss()
-
-
-func _on_boss_enemy_tree_exited(enemy_id: int) -> void:
-	_remove_active_enemy(enemy_id)
-	_remove_hud_alive_enemy(enemy_id)
-	_mark_multiplayer_enemy_removed(enemy_id)
-
-
-func _on_boss_add_defeated(enemy: Enemy) -> void:
-	if enemy != null:
-		_remove_hud_alive_enemy(enemy.get_instance_id())
-	_emit_multiplayer_enemy_defeated(enemy)
 
 
 func _rebroadcast_linglan_boss_started_after_sync_window(
@@ -3094,17 +2585,7 @@ func get_player_for_peer(peer_id: int) -> Player:
 
 
 func get_enemy_for_net_id(net_id: int) -> Enemy:
-	if not multiplayer_enemies_by_net_id.has(net_id):
-		return null
-	var enemy: Enemy = null
-	if enemy_coordinator != null:
-		enemy = enemy_coordinator.get_enemy(net_id, multiplayer_enemies_by_net_id)
-	else:
-		var enemy_variant: Variant = multiplayer_enemies_by_net_id.get(net_id)
-		if enemy_variant != null and is_instance_valid(enemy_variant):
-			enemy = enemy_variant as Enemy
-		else:
-			multiplayer_enemies_by_net_id.erase(net_id)
+	var enemy := enemy_coordinator.get_enemy(net_id)
 	if enemy == null:
 		unregister_combat_target(net_id)
 	return enemy
@@ -3254,54 +2735,7 @@ func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 
 
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
-	return collect_reused_enemy_snapshot_states(enemy_container, boss_container)
-
-
-func _update_tower_defense_enemy_targets(delta: float) -> void:
-	var active_boss_enemy: Enemy = null
-	if linglan_boss != null and is_instance_valid(linglan_boss):
-		active_boss_enemy = linglan_boss
-	enemy_coordinator.update_targets(
-		delta,
-		enemy_container,
-		active_boss_enemy,
-		ENEMY_RETARGET_INTERVAL_SECONDS,
-		ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME,
-		_assign_enemy_targets
-	)
-
-
-func _assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
-	if enemy == null or enemy.is_dead:
-		return
-	enemy.set_near_moving_target_direct_distance(PLAYER_NEAR_MOVING_DIRECT_DISTANCE)
-	var combat_player := _pick_enemy_target(from_position)
-	# Resolve the capability once in this budgeted 0.60-second retarget pass.
-	# PlantSystem then reuses its existing influence candidates and only adds one
-	# enum comparison per candidate; movement ticks perform no type probing.
-	var objective := _pick_enemy_objective(
-		from_position,
-		combat_player,
-		enemy.can_target_water_plant_objectives()
-	)
-	enemy.set_target_player(combat_player)
-	enemy.set_objective_target(objective)
-
-
-func _pick_enemy_target(from_position: Vector2) -> Player:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return player if player != null and not player.is_dead else null
-	var best_player: Player = null
-	var best_distance := INF
-	for peer_id_variant in peer_players:
-		var candidate := peer_players[peer_id_variant] as Player
-		if candidate == null or not is_instance_valid(candidate) or candidate.is_dead:
-			continue
-		var distance := from_position.distance_squared_to(candidate.global_position)
-		if distance < best_distance:
-			best_distance = distance
-			best_player = candidate
-	return best_player
+	return enemy_coordinator.collect_snapshot_states()
 
 
 func find_nearest_enemy_attack_target_world(
@@ -3320,72 +2754,6 @@ func find_nearest_enemy_attack_target_world(
 		excluded_instance_ids,
 		neutral_target
 	)
-
-
-func _pick_enemy_objective(
-	from_position: Vector2,
-	combat_player: Player,
-	include_water_plants: bool = false
-) -> Node2D:
-	var nearest_plant := plant_runtime_coordinator.find_nearest_enemy_objective(
-		from_position,
-		PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS,
-		include_water_plants
-	)
-	if nearest_plant != null:
-		return nearest_plant
-	if (
-		combat_player != null
-		and is_instance_valid(combat_player)
-		and not combat_player.is_dead
-		and _get_logical_tile_distance_squared(
-			from_position,
-			combat_player.global_position
-		) <= PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS * PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
-	):
-		return combat_player
-
-	var best_gate: Node2D = null
-	var best_gate_distance := INF
-	for gate_target in home_objective_targets:
-		if gate_target == null or not is_instance_valid(gate_target):
-			continue
-		var gate_distance := from_position.distance_squared_to(gate_target.global_position)
-		if gate_distance < best_gate_distance:
-			best_gate_distance = gate_distance
-			best_gate = gate_target
-	return best_gate
-
-
-func _get_logical_tile_distance_squared(
-	from_global_position: Vector2,
-	to_global_position: Vector2
-) -> float:
-	if ground_tile_map_layer == null or ground_tile_map_layer.tile_set == null:
-		return (
-			from_global_position.distance_squared_to(to_global_position)
-			/ (AUTHORED_LOGICAL_TILE_SIZE * AUTHORED_LOGICAL_TILE_SIZE)
-		)
-	var tile_size := Vector2(ground_tile_map_layer.tile_set.tile_size).abs()
-	if tile_size.x <= 0.0 or tile_size.y <= 0.0:
-		return INF
-	var from_local := ground_tile_map_layer.to_local(from_global_position)
-	var to_local := ground_tile_map_layer.to_local(to_global_position)
-	var offset_in_cells := Vector2(
-		(to_local.x - from_local.x) / tile_size.x,
-		(to_local.y - from_local.y) / tile_size.y
-	)
-	return offset_in_cells.length_squared()
-
-
-func _request_enemy_retarget_after_objective_change() -> void:
-	# Do not restart an in-progress budgeted sweep. Setting the timer to zero
-	# guarantees one fresh pass immediately after it finishes, while preserving
-	# the per-physics-frame cap for 300+ active enemies.
-	if enemy_coordinator != null:
-		enemy_coordinator.request_retarget()
-	else:
-		enemy_retarget_time_left = 0.0
 
 
 func get_linglan_skill2_target_global_position(target_cell: Vector2i) -> Vector2:
@@ -3427,10 +2795,6 @@ func get_linglan_skill4_orb_spawn_global_position(x_cell: int, y_cell: int) -> V
 
 func get_linglan_skill2_target_player(from_position: Vector2) -> Player:
 	return boss_coordinator.get_skill2_target_player(from_position)
-
-
-func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
-	return enemy_coordinator.get_spawn_marker(marker_name, enemy_spawn_points_root)
 
 
 func _is_flow_system_ready() -> bool:
@@ -3498,20 +2862,8 @@ func _is_spawn_system_ready() -> bool:
 	return enemy_coordinator.is_spawn_system_ready()
 
 
-func _get_current_wave() -> WaveConfig:
-	return campaign_coordinator.current_flow_step as WaveConfig
-
-
-func _pick_spawn_point() -> Marker2D:
-	return enemy_coordinator.pick_spawn_point()
-
-
-func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
-	enemy_coordinator.spawn_enemy_spawn_effect(spawn_global_position)
-
-
 func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
-	_spawn_enemy_spawn_effect(spawn_global_position)
+	enemy_coordinator.spawn_enemy_spawn_effect(spawn_global_position)
 
 
 func _play_countdown_tick() -> void:

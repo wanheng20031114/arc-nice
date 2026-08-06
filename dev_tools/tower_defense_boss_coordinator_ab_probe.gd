@@ -66,7 +66,7 @@ func _run() -> void:
 	var skill4_bounds := game.get_linglan_skill4_laser_bounds(-3, 18, -1, 16, 5)
 	trace["active"] = {
 		"state": int(game.wave_state),
-		"active_enemy_count": game.active_wave_enemy_ids.size(),
+		"active_enemy_count": game.enemy_coordinator.active_wave_enemy_ids.size(),
 		"boss_active": boss != null and boss.is_active,
 		"skill2_target": _vector_key(
 			game.get_linglan_skill2_target_global_position(Vector2i(7, 8))
@@ -101,9 +101,9 @@ func _run() -> void:
 	adds.sort()
 	trace["adds"] = {
 		"items": adds,
-		"active_enemy_count": game.active_wave_enemy_ids.size(),
-		"hud_enemy_count": game.hud_alive_enemy_ids.size(),
-		"next_net_id": game.next_multiplayer_enemy_net_id,
+		"active_enemy_count": game.enemy_coordinator.active_wave_enemy_ids.size(),
+		"hud_enemy_count": game.enemy_coordinator.hud_alive_enemy_ids.size(),
+		"next_net_id": game.enemy_coordinator.next_multiplayer_enemy_net_id,
 	}
 
 	await create_timer(0.80).timeout
@@ -118,8 +118,8 @@ func _run() -> void:
 		"state": int(game.wave_state),
 		"defeated": game.current_wave_defeated,
 		"resolved": game.current_wave_resolved,
-		"active_enemy_count": game.active_wave_enemy_ids.size(),
-		"hud_enemy_count": game.hud_alive_enemy_ids.size(),
+		"active_enemy_count": game.enemy_coordinator.active_wave_enemy_ids.size(),
+		"hud_enemy_count": game.enemy_coordinator.hud_alive_enemy_ids.size(),
 	}
 
 	_stop_audio_recursive(game)

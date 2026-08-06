@@ -85,13 +85,15 @@ func _run() -> void:
 		"Sequential spawning must preserve the original total rate of 40 enemies per second."
 	)
 	for _spawn_index in range(EXPECTED_MAX_ALIVE):
-		game.call("_spawn_wave_batch")
+		game.enemy_coordinator.spawn_wave_batch(
+			TowerDefenseCampaignCoordinator.MAX_WAVE_SPAWN_COUNT_PER_TICK
+		)
 	var fill_elapsed_msec := Time.get_ticks_msec() - started_at_msec
 
 	_expect(game.current_wave_total == EXPECTED_WAVE_TOTAL, "Runtime queue total must stay at 1200.")
 	_expect(game.current_wave_spawned == EXPECTED_MAX_ALIVE, "Runtime must fill exactly 300 slots.")
 	_expect(
-		game.active_wave_enemy_ids.size() == EXPECTED_MAX_ALIVE,
+		game.enemy_coordinator.active_wave_enemy_ids.size() == EXPECTED_MAX_ALIVE,
 		"Active enemy registry must stop exactly at 300."
 	)
 	_expect(
@@ -99,15 +101,17 @@ func _run() -> void:
 		"EnemyContainer must contain exactly 300 live enemies at the cap."
 	)
 	_expect(
-		game.pending_enemy_config_index == EXPECTED_MAX_ALIVE,
+		game.enemy_coordinator.pending_enemy_config_index == EXPECTED_MAX_ALIVE,
 		"Spawn queue must retain the remaining 900 enemies after reaching the cap."
 	)
 
 	for _blocked_batch_index in range(20):
-		game.call("_spawn_wave_batch")
+		game.enemy_coordinator.spawn_wave_batch(
+			TowerDefenseCampaignCoordinator.MAX_WAVE_SPAWN_COUNT_PER_TICK
+		)
 	_expect(
 		game.current_wave_spawned == EXPECTED_MAX_ALIVE
-		and game.active_wave_enemy_ids.size() == EXPECTED_MAX_ALIVE,
+		and game.enemy_coordinator.active_wave_enemy_ids.size() == EXPECTED_MAX_ALIVE,
 		"Additional spawn ticks must never exceed the 300-enemy hard cap."
 	)
 
