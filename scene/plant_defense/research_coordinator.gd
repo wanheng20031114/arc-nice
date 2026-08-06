@@ -1,7 +1,6 @@
-extends Node
+extends CraftingResearchStateProvider
 class_name ResearchCoordinator
 
-signal research_state_changed
 signal research_milestone_changed(player_key: int)
 
 enum GlobalResearchState {

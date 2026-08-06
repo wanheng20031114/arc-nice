@@ -102,7 +102,7 @@ func _ready() -> void:
 	simple_crafting_panel.craft_request_cancelled.connect(
 		_on_simple_crafting_request_cancelled
 	)
-	simple_crafting_panel.set_research_coordinator(research_coordinator)
+	simple_crafting_panel.set_research_state_provider(research_coordinator)
 	attack_row.upgrade_requested.connect(_on_upgrade_requested)
 	health_row.upgrade_requested.connect(_on_upgrade_requested)
 	speed_row.upgrade_requested.connect(_on_upgrade_requested)
@@ -132,7 +132,7 @@ func set_research_coordinator(
 ) -> void:
 	research_coordinator = new_research_coordinator
 	if is_node_ready():
-		simple_crafting_panel.set_research_coordinator(research_coordinator)
+		simple_crafting_panel.set_research_state_provider(research_coordinator)
 
 
 func open() -> void:

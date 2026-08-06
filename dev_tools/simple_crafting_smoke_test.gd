@@ -4,7 +4,7 @@ const PROFILE_PANEL_SCENE := preload(
 	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
 )
 const SIMPLE_CRAFTING_PANEL_SCENE := preload(
-	"res://scene/player/ui/simple_crafting_panel.tscn"
+	"res://scene/ui/shared/crafting/simple_crafting_panel.tscn"
 )
 const RESEARCH_COORDINATOR_SCENE := preload(
 	"res://scene/plant_defense/research_coordinator.tscn"
@@ -1198,7 +1198,7 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	ui_root.add_child(research)
 	await process_frame
 	research.research_tick_timer.stop()
-	crafting_panel.set_research_coordinator(research)
+	crafting_panel.set_research_state_provider(research)
 	_expect(
 		_count_visible_recipe_buttons(crafting_panel) == 7,
 		"绑定尚未完成任何配方科研的协调器后仍只能显示七条基础配方。"
@@ -1239,7 +1239,7 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	ui_root.add_child(replacement_research)
 	await process_frame
 	replacement_research.research_tick_timer.stop()
-	crafting_panel.set_research_coordinator(replacement_research)
+	crafting_panel.set_research_state_provider(replacement_research)
 	_expect(
 		_count_visible_recipe_buttons(crafting_panel) == 7
 		and crafting_panel.selected_recipe_id
@@ -1252,7 +1252,7 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 		),
 		"切换科研协调器时必须解绑旧信号，并在当前配方消失后回退到第一条基础配方。"
 	)
-	crafting_panel.set_research_coordinator(null)
+	crafting_panel.set_research_state_provider(null)
 	_expect(
 		_count_visible_recipe_buttons(crafting_panel) == 7
 		and not replacement_research.research_state_changed.is_connected(
@@ -1285,7 +1285,7 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 		"简易制造必须只使用场景常驻的3秒单次RPC超时Timer，不得引入生产进度条。"
 	)
 	var panel_source := FileAccess.get_file_as_string(
-		"res://scene/player/ui/simple_crafting_panel.gd"
+		"res://scene/ui/shared/crafting/simple_crafting_panel.gd"
 	)
 	_expect(
 		not panel_source.contains("func _process(")

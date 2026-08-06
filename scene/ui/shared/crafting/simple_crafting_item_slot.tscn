@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3]
 
-[ext_resource type="Script" path="res://scene/player/ui/simple_crafting_item_slot.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/ui/shared/crafting/simple_crafting_item_slot.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slot"]

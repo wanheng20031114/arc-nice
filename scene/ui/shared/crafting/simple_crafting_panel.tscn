@@ -1,8 +1,8 @@
 [gd_scene load_steps=12 format=3]
 
-[ext_resource type="Script" path="res://scene/player/ui/simple_crafting_panel.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/ui/shared/crafting/simple_crafting_panel.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
-[ext_resource type="PackedScene" path="res://scene/player/ui/simple_crafting_item_slot.tscn" id="3_slot"]
+[ext_resource type="PackedScene" path="res://scene/ui/shared/crafting/simple_crafting_item_slot.tscn" id="3_slot"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_background"]
 bg_color = Color(0.025, 0.045, 0.045, 0.98)

@@ -33,7 +33,7 @@ signal craft_request_cancelled(request_token: int)
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var recipes: Array[ProductionRecipe] = []
-var research_coordinator: ResearchCoordinator = null
+var research_state_provider: CraftingResearchStateProvider = null
 var selected_recipe_id: StringName = &""
 var request_pending := false
 var _next_request_token := 0
@@ -47,30 +47,30 @@ func _ready() -> void:
 		)
 	craft_button.pressed.connect(_on_craft_pressed)
 	request_timeout.timeout.connect(_on_request_timeout)
-	_bind_research_coordinator_signal()
+	_bind_research_state_provider_signal()
 	_reload_recipes()
 	refresh()
 
 
-func set_research_coordinator(
-	new_research_coordinator: ResearchCoordinator
+func set_research_state_provider(
+	new_research_state_provider: CraftingResearchStateProvider
 ) -> void:
-	if research_coordinator == new_research_coordinator:
+	if research_state_provider == new_research_state_provider:
 		return
 	if (
-		research_coordinator != null
-		and is_instance_valid(research_coordinator)
-		and research_coordinator.research_state_changed.is_connected(
+		research_state_provider != null
+		and is_instance_valid(research_state_provider)
+		and research_state_provider.research_state_changed.is_connected(
 			_on_research_state_changed
 		)
 	):
-		research_coordinator.research_state_changed.disconnect(
+		research_state_provider.research_state_changed.disconnect(
 			_on_research_state_changed
 		)
-	research_coordinator = new_research_coordinator
+	research_state_provider = new_research_state_provider
 	if not is_node_ready():
 		return
-	_bind_research_coordinator_signal()
+	_bind_research_state_provider_signal()
 	_reload_recipes()
 	refresh()
 
@@ -302,21 +302,21 @@ func _clear_pending_request() -> int:
 
 
 func _get_completed_global_research_ids() -> Array[StringName]:
-	if research_coordinator != null and is_instance_valid(research_coordinator):
-		return research_coordinator.get_completed_global_research_ids()
+	if research_state_provider != null and is_instance_valid(research_state_provider):
+		return research_state_provider.get_completed_global_research_ids()
 	var completed_ids: Array[StringName] = []
 	return completed_ids
 
 
-func _bind_research_coordinator_signal() -> void:
+func _bind_research_state_provider_signal() -> void:
 	if (
-		research_coordinator != null
-		and is_instance_valid(research_coordinator)
-		and not research_coordinator.research_state_changed.is_connected(
+		research_state_provider != null
+		and is_instance_valid(research_state_provider)
+		and not research_state_provider.research_state_changed.is_connected(
 			_on_research_state_changed
 		)
 	):
-		research_coordinator.research_state_changed.connect(
+		research_state_provider.research_state_changed.connect(
 			_on_research_state_changed
 		)
 

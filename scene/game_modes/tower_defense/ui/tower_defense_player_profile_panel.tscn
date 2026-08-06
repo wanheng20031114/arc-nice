@@ -12,7 +12,7 @@
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_unselected.png" id="10_tab_unselected"]
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_hovered.png" id="11_tab_hovered"]
 [ext_resource type="Texture2D" path="res://resources/texture/profile_tab_selected.png" id="12_tab_selected"]
-[ext_resource type="PackedScene" path="res://scene/player/ui/simple_crafting_panel.tscn" id="13_simple_crafting"]
+[ext_resource type="PackedScene" path="res://scene/ui/shared/crafting/simple_crafting_panel.tscn" id="13_simple_crafting"]
 [ext_resource type="PackedScene" path="res://scene/ui/shared/profile/player_stats_view.tscn" id="14_stats"]
 [ext_resource type="PackedScene" path="res://scene/ui/shared/profile/player_inventory_view.tscn" id="15_inventory"]
 
