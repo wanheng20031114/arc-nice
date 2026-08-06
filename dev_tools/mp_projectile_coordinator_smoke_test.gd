@@ -67,6 +67,9 @@ class ProbeProjectile:
 
 
 var failures: Array[String] = []
+var broadcast_methods: Array[StringName] = []
+var broadcast_argument_counts: Array[int] = []
+var host_request_methods: Array[StringName] = []
 
 
 func _init() -> void:
@@ -84,6 +87,108 @@ func _run() -> void:
 		return
 	coordinator.bind_runtime(runtime)
 	_expect(coordinator.is_bound(), "弹体协调器必须强类型绑定战斗运行时。")
+	var net_manager := NetManagerStore.new()
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	net_manager.connection_state = NetManagerStore.ConnectionState.IN_GAME
+	var player_coordinator := MpPlayerCoordinator.new()
+	player_coordinator.bind_runtime(runtime)
+	coordinator.bind_network_facade_dependencies(
+		net_manager,
+		player_coordinator,
+		func() -> float: return 400.0,
+		func(_host_timestamp: float) -> float: return 0.05,
+		func(_peer_id: int) -> bool: return false
+	)
+	coordinator.rpc_broadcast_requested.connect(_on_rpc_broadcast_requested)
+	coordinator.rpc_to_host_requested.connect(_on_rpc_to_host_requested)
+	_expect(
+		coordinator.has_network_facade_dependencies(),
+		"弹体网络门面必须显式注入 NetManager、玩家协调器与时钟入口。"
+	)
+
+	var host_projectile := ProbeProjectile.new()
+	coordinator.submit_local_projectile(
+		host_projectile,
+		&"probe",
+		2,
+		Vector2(10.0, 20.0),
+		Vector2.RIGHT,
+		11,
+		120.0,
+		1.0
+	)
+	_expect(
+		broadcast_methods == [&"net_projectile_fired"]
+		and broadcast_argument_counts == [12],
+		"Host 本地弹体必须由协调器登记，并请求根节点广播既有 12 字段载荷。"
+	)
+
+	player_coordinator.observe_tango_charge_sequence(2, 1)
+	var tango_projectiles: Array[Node] = [
+		ProbeProjectile.new(),
+		ProbeProjectile.new(),
+		ProbeProjectile.new(),
+	]
+	coordinator.submit_local_tango_laser_volley(
+		tango_projectiles,
+		PackedVector2Array([Vector2.ZERO, Vector2.UP, Vector2.DOWN]),
+		Vector2.RIGHT,
+		2,
+		13,
+		200.0,
+		1.5,
+		1.0,
+		0.5
+	)
+	_expect(
+		broadcast_methods.size() == 2
+		and broadcast_methods[1] == &"net_tango_laser_volley"
+		and broadcast_argument_counts[1] == 11,
+		"探戈三连发必须由协调器登记并请求根节点广播既有载荷。"
+	)
+
+	var linglan_projectiles: Array[Node] = []
+	var linglan_positions := PackedVector2Array()
+	var linglan_directions := PackedVector2Array()
+	for projectile_index in range(33):
+		linglan_projectiles.append(ProbeProjectile.new())
+		linglan_positions.append(Vector2(projectile_index, 0.0))
+		linglan_directions.append(Vector2.RIGHT)
+	coordinator.submit_local_linglan_skill1_ring(
+		linglan_projectiles,
+		linglan_positions,
+		linglan_directions,
+		9,
+		17,
+		180.0,
+		2.0
+	)
+	_expect(
+		broadcast_methods.size() == 4
+		and broadcast_methods[2] == &"net_linglan_skill1_ring_batch"
+		and broadcast_methods[3] == &"net_linglan_skill1_ring_batch"
+		and broadcast_argument_counts[2] == 8
+		and broadcast_argument_counts[3] == 8,
+		"灵兰弹环超过单包上限时必须由协调器按既有 32 颗边界分批。"
+	)
+
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	var client_projectile := ProbeProjectile.new()
+	coordinator.submit_local_projectile(
+		client_projectile,
+		&"probe",
+		77,
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		19,
+		100.0,
+		1.0
+	)
+	_expect(
+		host_request_methods == [&"_rpc_projectile_fired_from_client"],
+		"Client 本地预测弹体必须由协调器请求根节点发往 Host。"
+	)
+	net_manager.net_role = NetManagerStore.NetRole.HOST
 
 	var encoded_host_id := MpProjectileCoordinatorScript.encode_projectile_id(
 		7,
@@ -244,12 +349,25 @@ func _run() -> void:
 	)
 	coordinator.unbind_runtime(runtime)
 	_expect(not coordinator.is_bound(), "解绑后不得保留旧战斗运行时。")
+	_expect(
+		not coordinator.has_network_facade_dependencies(),
+		"解绑运行时后必须释放网络门面依赖。"
+	)
 
-	coordinator.free()
-	runtime.free()
+	player_coordinator.unbind_runtime(runtime)
+	player_coordinator.free()
+	net_manager.free()
+	host_projectile.free()
+	client_projectile.free()
+	for tango_projectile in tango_projectiles:
+		tango_projectile.free()
+	for linglan_projectile in linglan_projectiles:
+		linglan_projectile.free()
 	finished_projectile.free()
 	peer_two_projectile.free()
 	peer_three_projectile.free()
+	coordinator.free()
+	runtime.free()
 	if failures.is_empty():
 		print("MP_PROJECTILE_COORDINATOR_SMOKE_TEST_OK")
 		quit(0)
@@ -262,3 +380,18 @@ func _run() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _on_rpc_broadcast_requested(
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	broadcast_methods.append(method_name)
+	broadcast_argument_counts.append(arguments.size())
+
+
+func _on_rpc_to_host_requested(
+	method_name: StringName,
+	_arguments: Array
+) -> void:
+	host_request_methods.append(method_name)

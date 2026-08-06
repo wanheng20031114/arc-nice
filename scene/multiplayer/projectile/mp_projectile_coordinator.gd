@@ -1,6 +1,9 @@
 extends Node
 class_name MpProjectileCoordinator
 
+signal rpc_to_host_requested(method_name: StringName, arguments: Array)
+signal rpc_broadcast_requested(method_name: StringName, arguments: Array)
+
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 
 const BULLET_SCENE_PATH := "res://scene/bullet.tscn"
@@ -102,6 +105,8 @@ const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TANGO_LASER_PROJECTILE_TYPE: StringName = &"tango_laser_bullet"
 const TANGO_LASER_VOLLEY_PROJECTILE_COUNT := 3
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
+const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
+const TANGO_NETWORK_BARRAGE_MAXIMUM_SECONDS := 5.0
 
 
 class EnemyHitAdmission:
@@ -113,6 +118,11 @@ class EnemyHitAdmission:
 
 
 var _runtime: CombatRuntimeBase = null
+var _net_manager: NetManagerStore = null
+var _player_coordinator: MpPlayerCoordinator = null
+var _get_net_time_callable := Callable()
+var _get_host_event_age_callable := Callable()
+var _is_embedded_participant_suspended_callable := Callable()
 var _runtime_scene_cache: Dictionary = {}
 var _projectile_default_parameter_cache: Dictionary[StringName, Dictionary] = {}
 var _linglan_sakura_bullet_scene: PackedScene = null
@@ -129,6 +139,7 @@ var _projectile_records: Dictionary = {}
 var _stale_projectile_record_ids: Array[int] = []
 var _processed_enemy_hit_ids: Dictionary = {}
 var _client_projectile_request_rate_buckets: Dictionary = {}
+var _last_tango_volley_visual_state_by_peer: Dictionary = {}
 
 
 func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
@@ -145,10 +156,508 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 		return
 	reset_session_state()
 	_runtime = null
+	_clear_network_facade_dependencies()
 
 
 func is_bound() -> bool:
 	return _runtime != null and is_instance_valid(_runtime)
+
+
+func bind_network_facade_dependencies(
+	net_manager_instance: NetManagerStore,
+	player_coordinator_instance: MpPlayerCoordinator,
+	get_net_time_callable: Callable,
+	get_host_event_age_callable: Callable,
+	is_embedded_participant_suspended_callable: Callable
+) -> void:
+	assert(net_manager_instance != null, "MpProjectileCoordinator 缺少 NetManager。")
+	assert(
+		player_coordinator_instance != null,
+		"MpProjectileCoordinator 缺少玩家协调器。"
+	)
+	assert(
+		get_net_time_callable.is_valid(),
+		"MpProjectileCoordinator 缺少网络时钟。"
+	)
+	assert(
+		get_host_event_age_callable.is_valid(),
+		"MpProjectileCoordinator 缺少 Host 事件时间映射。"
+	)
+	assert(
+		is_embedded_participant_suspended_callable.is_valid(),
+		"MpProjectileCoordinator 缺少内嵌参战者状态入口。"
+	)
+	_net_manager = net_manager_instance
+	_player_coordinator = player_coordinator_instance
+	_get_net_time_callable = get_net_time_callable
+	_get_host_event_age_callable = get_host_event_age_callable
+	_is_embedded_participant_suspended_callable = (
+		is_embedded_participant_suspended_callable
+	)
+
+
+func has_network_facade_dependencies() -> bool:
+	return (
+		_net_manager != null
+		and _player_coordinator != null
+		and _get_net_time_callable.is_valid()
+		and _get_host_event_age_callable.is_valid()
+		and _is_embedded_participant_suspended_callable.is_valid()
+	)
+
+
+func submit_local_projectile(
+	projectile: Node,
+	projectile_type: StringName,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0,
+	target_enemy_net_id: int = 0
+) -> void:
+	if (
+		projectile == null
+		or not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+	):
+		return
+	if not _NetConstants.is_valid_network_combat_value(damage):
+		push_error(
+			"MpProjectileCoordinator: 投射物伤害超出网络 signed int32 契约，已拒绝发送。"
+		)
+		return
+	var now := _get_net_time()
+	var projectile_id := register_local_projectile(
+		projectile,
+		projectile_type,
+		owner_peer_id,
+		damage,
+		lifetime,
+		pierces_enemies,
+		_net_manager.is_host(),
+		now
+	)
+	if projectile_id <= 0:
+		return
+	var host_fire_timestamp := _get_net_time()
+	var arguments := [
+		projectile_id,
+		String(projectile_type),
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		pierces_enemies,
+		target_peer_id,
+		host_fire_timestamp,
+		target_enemy_net_id,
+	]
+	if _net_manager.is_host():
+		rpc_broadcast_requested.emit(&"net_projectile_fired", arguments)
+	elif _net_manager.is_client():
+		rpc_to_host_requested.emit(
+			&"_rpc_projectile_fired_from_client",
+			arguments
+		)
+
+
+func submit_local_tango_laser_volley(
+	projectiles: Array[Node],
+	spawn_positions: PackedVector2Array,
+	direction: Vector2,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	charge_ratio: float,
+	barrage_remaining_seconds: float
+) -> bool:
+	if (
+		not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+	):
+		return false
+	var charge_sequence := _player_coordinator.get_tango_charge_sequence(
+		owner_peer_id
+	)
+	var maximum_internal_barrage_seconds := (
+		_player_coordinator.get_tango_laser_barrage_maximum_seconds(
+			owner_peer_id,
+			charge_ratio
+		)
+	)
+	var projectile_ids := register_local_tango_laser_volley(
+		projectiles,
+		spawn_positions,
+		direction,
+		owner_peer_id,
+		damage,
+		speed,
+		lifetime,
+		charge_sequence,
+		charge_ratio,
+		barrage_remaining_seconds,
+		maximum_internal_barrage_seconds,
+		_get_net_time()
+	)
+	if projectile_ids.is_empty():
+		return false
+	var host_fire_timestamp := _get_net_time()
+	rpc_broadcast_requested.emit(
+		&"net_tango_laser_volley",
+		[
+			projectile_ids,
+			spawn_positions,
+			direction.normalized(),
+			owner_peer_id,
+			charge_sequence,
+			charge_ratio,
+			minf(
+				barrage_remaining_seconds,
+				TANGO_NETWORK_BARRAGE_MAXIMUM_SECONDS
+			),
+			damage,
+			speed,
+			lifetime,
+			host_fire_timestamp,
+		]
+	)
+	return true
+
+
+func submit_local_linglan_skill1_ring(
+	projectiles: Array[Node],
+	spawn_positions: PackedVector2Array,
+	directions: PackedVector2Array,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float
+) -> void:
+	var projectile_count := projectiles.size()
+	if (
+		projectile_count <= 0
+		or spawn_positions.size() != projectile_count
+		or directions.size() != projectile_count
+		or not has_network_facade_dependencies()
+		or not _net_manager.is_multiplayer_active()
+		or not _net_manager.is_host()
+	):
+		return
+	var projectile_ids := register_local_linglan_skill1_ring(
+		projectiles,
+		owner_peer_id,
+		damage,
+		lifetime,
+		_get_net_time()
+	)
+	if projectile_ids.size() != projectile_count:
+		return
+	var host_fire_timestamp := _get_net_time()
+	for chunk_start in range(
+		0,
+		projectile_ids.size(),
+		LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
+	):
+		var chunk_end := mini(
+			chunk_start + LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET,
+			projectile_ids.size()
+		)
+		rpc_broadcast_requested.emit(
+			&"net_linglan_skill1_ring_batch",
+			[
+				projectile_ids.slice(chunk_start, chunk_end),
+				spawn_positions.slice(chunk_start, chunk_end),
+				directions.slice(chunk_start, chunk_end),
+				owner_peer_id,
+				damage,
+				speed,
+				lifetime,
+				host_fire_timestamp,
+			]
+		)
+
+
+func handle_client_projectile_fired(
+	sender_id: int,
+	projectile_id: int,
+	projectile_type_text: String,
+	owner_peer_id: int,
+	reported_spawn_position: Vector2,
+	reported_direction: Vector2,
+	reported_damage: int,
+	_reported_speed: float,
+	_reported_lifetime: float,
+	_reported_pierces_enemies: bool = false,
+	target_peer_id: int = 0,
+	_client_fire_timestamp: float = -1.0,
+	_target_enemy_net_id: int = 0
+) -> void:
+	if (
+		not has_network_facade_dependencies()
+		or not _net_manager.is_host()
+		or not _NetConstants.is_valid_network_combat_value(reported_damage)
+	):
+		return
+	var now := _get_net_time()
+	if not accept_client_projectile_request_identity(
+		sender_id,
+		projectile_id,
+		owner_peer_id,
+		bool(_is_embedded_participant_suspended_callable.call(sender_id)),
+		now
+	):
+		return
+	var accepted_direction := get_valid_client_projectile_direction(
+		reported_direction
+	)
+	if accepted_direction == Vector2.ZERO:
+		return
+	var projectile_type := StringName(projectile_type_text)
+	if (
+		projectile_type != TIYI_SNIPER_PROJECTILE_TYPE
+		and not is_client_projectile_spawn_position_allowed(
+			projectile_type,
+			owner_peer_id,
+			reported_spawn_position,
+			_player_coordinator.get_accepted_player_position(owner_peer_id),
+			CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
+		)
+	):
+		return
+	var accepted_parameters := get_authoritative_client_projectile_parameters(
+		projectile_type,
+		owner_peer_id
+	)
+	if accepted_parameters.is_empty():
+		return
+	var accepted_spawn_position := (
+		get_authoritative_client_projectile_spawn_position(
+			projectile_type,
+			owner_peer_id,
+			reported_spawn_position,
+			accepted_direction
+		)
+	)
+	if not _is_finite_vector2(accepted_spawn_position):
+		return
+	var accepted_damage := int(accepted_parameters["damage"])
+	if not _NetConstants.is_valid_network_combat_value(accepted_damage):
+		push_error(
+			"MpProjectileCoordinator: 权威投射物伤害超出网络 signed int32 契约，已拒绝发送。"
+		)
+		return
+	var accepted_speed := float(accepted_parameters["speed"])
+	var accepted_lifetime := float(accepted_parameters["lifetime"])
+	var accepted_pierces_enemies := bool(
+		accepted_parameters.get("pierces_enemies", false)
+	)
+	var accepted_target_enemy_net_id := resolve_authoritative_homing_target(
+		owner_peer_id,
+		accepted_direction,
+		bool(accepted_parameters.get("homes_to_enemy", false))
+	)
+	var host_fire_timestamp := _get_net_time()
+	var accepted_arguments := [
+		projectile_id,
+		projectile_type_text,
+		owner_peer_id,
+		accepted_spawn_position,
+		accepted_direction,
+		accepted_damage,
+		accepted_speed,
+		accepted_lifetime,
+		accepted_pierces_enemies,
+		target_peer_id,
+		host_fire_timestamp,
+		accepted_target_enemy_net_id,
+	]
+	rpc_broadcast_requested.emit(&"net_projectile_fired", accepted_arguments)
+	receive_projectile_fired(
+		projectile_id,
+		projectile_type,
+		owner_peer_id,
+		accepted_spawn_position,
+		accepted_direction,
+		accepted_damage,
+		accepted_speed,
+		accepted_lifetime,
+		accepted_pierces_enemies,
+		target_peer_id,
+		accepted_target_enemy_net_id,
+		0.0,
+		host_fire_timestamp
+	)
+
+
+func apply_authority_projectile_fired(
+	sender_id: int,
+	projectile_id: int,
+	projectile_type_text: String,
+	owner_peer_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	pierces_enemies: bool = false,
+	target_peer_id: int = 0,
+	host_fire_timestamp: float = -1.0,
+	target_enemy_net_id: int = 0
+) -> void:
+	if not _is_authority_sender(sender_id):
+		return
+	var projectile_type := StringName(projectile_type_text)
+	var event_age := _get_host_event_age(host_fire_timestamp)
+	receive_projectile_fired(
+		projectile_id,
+		projectile_type,
+		owner_peer_id,
+		spawn_position,
+		direction,
+		damage,
+		speed,
+		lifetime,
+		pierces_enemies,
+		target_peer_id,
+		target_enemy_net_id,
+		get_projectile_time_compensation_age(
+			event_age,
+			lifetime,
+			projectile_type
+		),
+		_get_net_time()
+	)
+
+
+func apply_authority_tango_laser_volley(
+	sender_id: int,
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	direction: Vector2,
+	owner_peer_id: int,
+	charge_sequence: int,
+	charge_ratio: float,
+	barrage_remaining_seconds: float,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float
+) -> void:
+	if (
+		not _is_authority_sender(sender_id)
+		or not is_valid_tango_laser_volley_payload(
+			projectile_ids,
+			spawn_positions,
+			direction,
+			owner_peer_id,
+			charge_sequence,
+			charge_ratio,
+			barrage_remaining_seconds,
+			damage,
+			speed,
+			lifetime,
+			host_fire_timestamp
+		)
+	):
+		return
+	var current_charge_sequence := _player_coordinator.get_tango_charge_sequence(
+		owner_peer_id
+	)
+	var previous_visual_state := (
+		_last_tango_volley_visual_state_by_peer.get(owner_peer_id, {})
+		as Dictionary
+	)
+	var previous_visual_sequence := int(previous_visual_state.get("sequence", 0))
+	var previous_visual_timestamp := float(
+		previous_visual_state.get("host_fire_timestamp", -1.0)
+	)
+	var should_apply_visual_state := (
+		charge_sequence > current_charge_sequence
+		or (
+			charge_sequence == current_charge_sequence
+			and (
+				charge_sequence > previous_visual_sequence
+				or host_fire_timestamp > previous_visual_timestamp
+			)
+		)
+	)
+	if charge_sequence > current_charge_sequence:
+		_player_coordinator.observe_tango_charge_sequence(
+			owner_peer_id,
+			charge_sequence
+		)
+	var barrage_age := _get_host_event_age(host_fire_timestamp)
+	if should_apply_visual_state:
+		_last_tango_volley_visual_state_by_peer[owner_peer_id] = {
+			"sequence": charge_sequence,
+			"host_fire_timestamp": host_fire_timestamp,
+		}
+		var owner_player := _get_player(owner_peer_id) as PlayerTango
+		if owner_player != null:
+			owner_player.apply_remote_tango_barrage_snapshot(
+				direction,
+				charge_ratio,
+				charge_sequence,
+				barrage_remaining_seconds - barrage_age
+			)
+			if barrage_age <= lifetime:
+				owner_player.play_remote_tango_volley_audio()
+	var next_charge_sequence := receive_tango_laser_volley(
+		projectile_ids,
+		spawn_positions,
+		direction,
+		owner_peer_id,
+		charge_sequence,
+		current_charge_sequence,
+		charge_ratio,
+		barrage_remaining_seconds,
+		damage,
+		speed,
+		lifetime,
+		host_fire_timestamp,
+		barrage_age,
+		_get_net_time()
+	)
+	if next_charge_sequence > current_charge_sequence:
+		_player_coordinator.observe_tango_charge_sequence(
+			owner_peer_id,
+			next_charge_sequence
+		)
+
+
+func apply_authority_linglan_skill1_ring(
+	sender_id: int,
+	projectile_ids: PackedInt64Array,
+	spawn_positions: PackedVector2Array,
+	directions: PackedVector2Array,
+	owner_peer_id: int,
+	damage: int,
+	speed: float,
+	lifetime: float,
+	host_fire_timestamp: float
+) -> void:
+	if not _is_authority_sender(sender_id):
+		return
+	receive_linglan_skill1_ring(
+		projectile_ids,
+		spawn_positions,
+		directions,
+		owner_peer_id,
+		damage,
+		speed,
+		lifetime,
+		host_fire_timestamp,
+		_get_host_event_age(host_fire_timestamp),
+		_get_net_time()
+	)
 
 
 func register_local_projectile(
@@ -792,6 +1301,7 @@ func prune_records(now: float) -> void:
 
 func clear_peer(peer_id: int) -> void:
 	_client_projectile_request_rate_buckets.erase(peer_id)
+	_last_tango_volley_visual_state_by_peer.erase(peer_id)
 	clear_projectiles_for_peer(peer_id)
 	clear_projectile_records_for_peer(peer_id)
 
@@ -842,6 +1352,7 @@ func reset_session_state() -> void:
 	_stale_projectile_record_ids.clear()
 	_processed_enemy_hit_ids.clear()
 	_client_projectile_request_rate_buckets.clear()
+	_last_tango_volley_visual_state_by_peer.clear()
 	_next_projectile_sequence = 1
 
 
@@ -852,6 +1363,7 @@ func get_state_metrics() -> Dictionary:
 		"projectile_records": _projectile_records.size(),
 		"request_rate_buckets": _client_projectile_request_rate_buckets.size(),
 		"enemy_hit_dedupe": _processed_enemy_hit_ids.size(),
+		"tango_visual_peers": _last_tango_volley_visual_state_by_peer.size(),
 	}
 
 
@@ -2222,6 +2734,38 @@ func _on_network_projectile_tree_exited(projectile_id: int, projectile: Node) ->
 
 func notify_projectile_tree_exited(projectile_id: int, projectile: Node) -> void:
 	_on_network_projectile_tree_exited(projectile_id, projectile)
+
+
+func _clear_network_facade_dependencies() -> void:
+	_net_manager = null
+	_player_coordinator = null
+	_get_net_time_callable = Callable()
+	_get_host_event_age_callable = Callable()
+	_is_embedded_participant_suspended_callable = Callable()
+
+
+func _get_net_time() -> float:
+	if not _get_net_time_callable.is_valid():
+		return 0.0
+	var now := float(_get_net_time_callable.call())
+	return now if is_finite(now) else 0.0
+
+
+func _get_host_event_age(host_event_timestamp: float) -> float:
+	if host_event_timestamp < 0.0 or not _get_host_event_age_callable.is_valid():
+		return 0.0
+	var event_age := float(
+		_get_host_event_age_callable.call(host_event_timestamp)
+	)
+	return maxf(event_age, 0.0) if is_finite(event_age) else 0.0
+
+
+func _is_authority_sender(sender_id: int) -> bool:
+	if not has_network_facade_dependencies():
+		return false
+	if sender_id <= 0:
+		return _net_manager.is_host()
+	return sender_id == _net_manager.get_host_peer_id()
 
 
 static func _is_recent_event_cached(
