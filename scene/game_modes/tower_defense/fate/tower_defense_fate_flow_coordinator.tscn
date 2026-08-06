@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d0brkwgd71xus"]
+
+[ext_resource type="Script" uid="uid://c4r3m2sotd88a" path="res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.gd" id="1_fate_flow"]
+
+[node name="FateFlowCoordinator" type="Node"]
+script = ExtResource("1_fate_flow")

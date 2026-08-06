@@ -65,6 +65,7 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.tscn" id="66_plant_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.tscn" id="67_player_roster"]
 [ext_resource type="PackedScene" uid="uid://b84n1wng7l2np" path="res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.tscn" id="68_boss_coordinator"]
+[ext_resource type="PackedScene" uid="uid://d0brkwgd71xus" path="res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.tscn" id="69_fate_flow"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -405,6 +406,8 @@ script = ExtResource("54_luoxi_special_game")
 [node name="FateCoordinator" parent="." instance=ExtResource("51_fate_coordinator")]
 
 [node name="XiaocongFateInterlude" parent="." instance=ExtResource("52_xiaocong_interlude")]
+
+[node name="FateFlowCoordinator" parent="." instance=ExtResource("69_fate_flow")]
 
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 

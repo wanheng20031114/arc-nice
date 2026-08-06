@@ -68,7 +68,9 @@ const LINGLAN_AIRDROP_NEARBY_RADIUS := TowerDefenseBossCoordinator.LINGLAN_AIRDR
 const DEFEAT_CAMERA_TRAVEL_SECONDS := 0.55
 const INITIAL_PLAYER_XIRANG := TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
 const DEFAULT_BASE_HEALTH := 100
-const XIAOCONG_INTERACTION_DISTANCE := 220.0
+const XIAOCONG_INTERACTION_DISTANCE := (
+	TowerDefenseFateFlowCoordinator.XIAOCONG_INTERACTION_DISTANCE
+)
 # A full background sweep only needs to keep long-lived objectives reasonably
 # fresh. Topology changes and player availability changes request an immediate
 # budgeted pass below, so the idle cadence can stay deliberately conservative.
@@ -205,6 +207,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 	$FateCoordinator/TowerDefenseFateManager
 )
 @onready var xiaocong_fate_interlude: XiaocongFateInterlude = $XiaocongFateInterlude
+@onready var fate_flow_coordinator: TowerDefenseFateFlowCoordinator = (
+	$FateFlowCoordinator
+)
 @onready var boss_container: Node2D = $BossContainer
 @onready var linglan_boss_runtime_port: TowerDefenseLinglanBossRuntimePort = (
 	$LinglanBossRuntimePort as TowerDefenseLinglanBossRuntimePort
@@ -584,11 +589,6 @@ var singleplayer_respawn_last_seconds: int:
 			player_roster_coordinator.singleplayer_respawn_last_seconds = value
 var spectator_camera_active := false
 var projectile_pool_registration_ms := 0.0
-var fate_frozen_terrain_decay_time_left := 0.0
-var remote_fate_entry_in_progress := false
-var remote_fate_departure_in_progress := false
-var remote_fate_departure_covered := false
-var pending_remote_fate_flow_state: Dictionary = {}
 var starting_package_granted := false
 var progression_started_msec := 0
 var first_defense_tower_seconds := -1.0
@@ -827,7 +827,10 @@ func _ready() -> void:
 	)
 	_set_merchant_active(false)
 	fate_coordinator.setup(self, day_cycle_config)
-	_configure_xiaocong_fate_flow()
+	if not _configure_xiaocong_fate_flow():
+		set_process(false)
+		set_physics_process(false)
+		return
 	if not _configure_boss_coordinator():
 		set_process(false)
 		set_physics_process(false)
@@ -2367,28 +2370,24 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 		)
 		return
 	if (
-		wave_state == CombatFlowState.State.FATE_INTERLUDE
-		and typed_state != CombatFlowState.State.FATE_INTERLUDE
-		and xiaocong_fate_interlude.is_active
-		and not remote_fate_departure_covered
+		fate_flow_coordinator != null
+		and fate_flow_coordinator.should_defer_remote_flow_state(
+			step_id, state, seconds
+		)
 	):
-		pending_remote_fate_flow_state = {
-			"step_id": step_id,
-			"state": state,
-			"seconds": seconds,
-		}
-		_begin_remote_fate_departure()
 		return
 	var leaving_fate_interlude := (
-		wave_state == CombatFlowState.State.FATE_INTERLUDE
-		and typed_state != CombatFlowState.State.FATE_INTERLUDE
-		and xiaocong_fate_interlude.is_active
+		fate_flow_coordinator != null
+		and fate_flow_coordinator.is_leaving_remote_interlude(typed_state)
 	)
 	if flow_step != null:
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	_set_fate_interlude_systems_frozen(typed_state == CombatFlowState.State.FATE_INTERLUDE)
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator.set_interlude_systems_frozen(
+			typed_state == CombatFlowState.State.FATE_INTERLUDE
+		)
 	match typed_state:
 		CombatFlowState.State.PRE_WAVE:
 			transition_world_to_day()
@@ -2419,26 +2418,16 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 				CombatFlowState.State.BOSS_ACTIVE, flow_step as BossConfig
 			)
 		CombatFlowState.State.FATE_INTERLUDE:
-			state_timer.stop()
-			enemy_spawn_timer.stop()
-			wave_state = CombatFlowState.State.FATE_INTERLUDE
-			_set_fate_player_combat_locked(true)
-			if not remote_fate_entry_in_progress:
-				if xiaocong_fate_interlude.is_active:
-					_present_fate_interlude_locally(
-						_get_day_number_for_wave(maxi(current_wave_index + 1, 1))
-					)
-				else:
-					_begin_remote_fate_entry(
-						_get_day_number_for_wave(maxi(current_wave_index + 1, 1))
-					)
+			if fate_flow_coordinator != null:
+				fate_flow_coordinator.apply_remote_interlude_flow(
+					_get_day_number_for_wave(maxi(current_wave_index + 1, 1))
+				)
 		CombatFlowState.State.VICTORY:
 			apply_remote_victory()
 		CombatFlowState.State.DEFEAT:
 			apply_remote_defeat()
 	if leaving_fate_interlude:
-		_leave_fate_interlude_presentation()
-		_finish_remote_fate_return()
+		fate_flow_coordinator.complete_remote_flow_transition()
 	_update_plant_placement_input_state()
 
 func get_flow_state_snapshot() -> Dictionary:
@@ -3521,74 +3510,91 @@ func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
 	return body_half_extents
 
 
-func _configure_xiaocong_fate_flow() -> void:
-	if not fate_manager.state_changed.is_connected(_on_xiaocong_fate_state_changed):
-		fate_manager.state_changed.connect(_on_xiaocong_fate_state_changed)
-	if not fate_manager.interlude_completed.is_connected(
-		_on_xiaocong_fate_interlude_completed
-	):
-		fate_manager.interlude_completed.connect(
-			_on_xiaocong_fate_interlude_completed
-		)
-	if not xiaocong_fate_interlude.interaction_requested.is_connected(
+func _configure_xiaocong_fate_flow() -> bool:
+	if fate_flow_coordinator == null:
+		push_error("TowerDefenseGame: 缺少静态 FateFlowCoordinator 节点。")
+		return false
+	fate_flow_coordinator.setup(
+		self,
+		fate_coordinator,
+		fate_manager,
+		xiaocong_fate_interlude,
+		enemy_spawn_timer,
+		state_timer,
+		plant_terrain_decay_timer,
+		production_coordinator,
+		research_coordinator,
+		plant_placement_controller,
+		wave_hud,
+		tower_defense_status_hud,
+		tower_defense_minimap,
+		player_spawn
+	)
+	if not fate_flow_coordinator.local_interaction_requested.is_connected(
 		_on_local_xiaocong_interaction_requested
 	):
-		xiaocong_fate_interlude.interaction_requested.connect(
+		fate_flow_coordinator.local_interaction_requested.connect(
 			_on_local_xiaocong_interaction_requested
 		)
-	if not xiaocong_fate_interlude.fate_choice_submitted.is_connected(
+	if not fate_flow_coordinator.local_fate_vote_requested.is_connected(
 		_on_local_xiaocong_fate_choice_submitted
 	):
-		xiaocong_fate_interlude.fate_choice_submitted.connect(
+		fate_flow_coordinator.local_fate_vote_requested.connect(
 			_on_local_xiaocong_fate_choice_submitted
 		)
-	if not xiaocong_fate_interlude.collectible_choice_submitted.is_connected(
+	if not fate_flow_coordinator.local_collectible_choice_requested.is_connected(
 		_on_local_xiaocong_collectible_choice_submitted
 	):
-		xiaocong_fate_interlude.collectible_choice_submitted.connect(
+		fate_flow_coordinator.local_collectible_choice_requested.connect(
 			_on_local_xiaocong_collectible_choice_submitted
 		)
-	_configure_xiaocong_local_context()
+	if not fate_flow_coordinator.state_snapshot_changed.is_connected(
+		_on_xiaocong_fate_state_changed
+	):
+		fate_flow_coordinator.state_snapshot_changed.connect(
+			_on_xiaocong_fate_state_changed
+		)
+	if not fate_flow_coordinator.is_bound():
+		push_error("TowerDefenseGame: FateFlowCoordinator 依赖绑定失败。")
+		return false
+	return true
 
 
-func _configure_xiaocong_local_context() -> void:
-	var character_ids := multiplayer_player_character_ids.duplicate()
-	if runtime_mode == RuntimeMode.SINGLEPLAYER and player != null:
-		character_ids[0] = player.character_id
-	xiaocong_fate_interlude.configure_local_player(
-		player,
-		_get_local_fate_peer_id(),
-		character_ids
+func _emit_xiaocong_interaction_request() -> void:
+	tower_multiplayer_mode_adapter.xiaocong_interaction_requested.emit()
+
+
+func _emit_xiaocong_vote_request(
+	option_id: StringName,
+	permanent_buff_id: StringName
+) -> void:
+	tower_multiplayer_mode_adapter.xiaocong_vote_requested.emit(
+		option_id, permanent_buff_id
 	)
 
 
-func _get_local_fate_peer_id() -> int:
-	return 0 if runtime_mode == RuntimeMode.SINGLEPLAYER else multiplayer_local_peer_id
+func _emit_xiaocong_collectible_request(choice_index: int) -> void:
+	tower_multiplayer_mode_adapter.xiaocong_collectible_requested.emit(choice_index)
 
 
-func _get_fate_peer_ids() -> Array[int]:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		return [0]
-	var peer_ids: Array[int] = []
-	for peer_variant in peer_players:
-		var peer_id := int(peer_variant)
-		if peer_id > 0:
-			peer_ids.append(peer_id)
-	peer_ids.sort()
-	return peer_ids
+func _emit_xiaocong_fate_state_snapshot(snapshot: Dictionary) -> void:
+	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
+		tower_multiplayer_mode_adapter.xiaocong_fate_state_changed.emit(snapshot)
 
 
-func _get_fate_player(peer_id: int) -> Player:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0:
-		return player
-	return get_player_for_peer(peer_id)
+func _resume_flow_after_fate_interlude(next_step_id: StringName) -> void:
+	var next_step := _get_flow_step_by_id(next_step_id)
+	if next_step == null:
+		_enter_victory()
+		return
+	_enter_intermission(next_step)
 
 
 func _on_local_xiaocong_interaction_requested() -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		request_xiaocong_interaction(0)
 	else:
-		tower_multiplayer_mode_adapter.xiaocong_interaction_requested.emit()
+		_emit_xiaocong_interaction_request()
 
 
 func _on_local_xiaocong_fate_choice_submitted(
@@ -3598,30 +3604,21 @@ func _on_local_xiaocong_fate_choice_submitted(
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		request_xiaocong_fate_vote(0, option_id, permanent_buff_id)
 	else:
-		tower_multiplayer_mode_adapter.xiaocong_vote_requested.emit(option_id, permanent_buff_id)
+		_emit_xiaocong_vote_request(option_id, permanent_buff_id)
 
 
 func _on_local_xiaocong_collectible_choice_submitted(choice_index: int) -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		request_xiaocong_collectible_choice(0, choice_index)
 	else:
-		tower_multiplayer_mode_adapter.xiaocong_collectible_requested.emit(choice_index)
+		_emit_xiaocong_collectible_request(choice_index)
 
 
 func request_xiaocong_interaction(peer_id: int) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
-	var player_instance := _get_fate_player(peer_id)
-	if player_instance == null or not is_instance_valid(player_instance):
-		return
-	if (
-		player_instance.global_position.distance_to(
-			xiaocong_fate_interlude.global_position
-		) > XIAOCONG_INTERACTION_DISTANCE
-	):
-		return
-	if not fate_manager.record_interaction(peer_id):
-		fate_manager.request_timeout_recovery(peer_id)
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator.request_interaction(peer_id)
 
 
 func request_xiaocong_fate_vote(
@@ -3631,21 +3628,32 @@ func request_xiaocong_fate_vote(
 ) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
-	fate_manager.submit_vote(peer_id, option_id, permanent_buff_id)
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator.request_fate_vote(
+			peer_id, option_id, permanent_buff_id
+		)
 
 
 func request_xiaocong_collectible_choice(peer_id: int, choice_index: int) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
-	fate_coordinator.request_collectible_choice(peer_id, choice_index)
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator.request_collectible_choice(peer_id, choice_index)
 
 
 func _is_fate_collectible_choice_pending_for_peer(peer_id: int) -> bool:
-	return fate_coordinator.is_collectible_choice_pending_for_peer(peer_id)
+	return (
+		fate_flow_coordinator != null
+		and fate_flow_coordinator.is_collectible_choice_pending_for_peer(peer_id)
+	)
 
 
 func get_xiaocong_fate_state_snapshot() -> Dictionary:
-	return _build_xiaocong_fate_state_snapshot()
+	return (
+		fate_flow_coordinator.get_state_snapshot()
+		if fate_flow_coordinator != null
+		else {}
+	)
 
 
 func apply_remote_xiaocong_fate_state(state: Dictionary) -> void:
@@ -3653,215 +3661,26 @@ func apply_remote_xiaocong_fate_state(state: Dictionary) -> void:
 		return
 	if int(state.get("revision", 0)) < fate_manager.state_revision:
 		return
-	fate_coordinator.apply_remote_runtime_state(state)
-	fate_manager.apply_remote_state(state)
-
-
-func _build_xiaocong_fate_state_snapshot() -> Dictionary:
-	var state := fate_manager.export_state()
-	state.merge(fate_coordinator.export_runtime_state(), true)
-	return state
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator.apply_remote_state(state)
 
 
 func _on_xiaocong_fate_state_changed(_state: Dictionary) -> void:
-	var snapshot := _build_xiaocong_fate_state_snapshot()
-	_configure_xiaocong_local_context()
-	xiaocong_fate_interlude.apply_fate_state(snapshot)
-	if fate_manager.active:
-		if not (
-			runtime_mode == RuntimeMode.CLIENT_VIEW
-			and remote_fate_entry_in_progress
-		):
-			_present_fate_interlude_locally(fate_manager.completed_day)
-	elif (
-		wave_state == CombatFlowState.State.FATE_INTERLUDE
-		and runtime_mode == RuntimeMode.CLIENT_VIEW
-	):
-		_begin_remote_fate_departure()
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		tower_multiplayer_mode_adapter.xiaocong_fate_state_changed.emit(snapshot)
+	_emit_xiaocong_fate_state_snapshot(_state)
 
 func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
-	_set_fate_interlude_systems_frozen(true)
-	wave_state = CombatFlowState.State.FATE_INTERLUDE
-	_set_fate_player_combat_locked(true)
-	next_flow_step_after_rest = next_step
-	countdown_seconds = 0
-	enemy_spawn_timer.stop()
-	state_timer.stop()
-	var completed_day := _get_day_number_for_wave(current_wave_index + 1)
-	_emit_multiplayer_flow_state(CombatFlowState.State.FATE_INTERLUDE)
-	await xiaocong_fate_interlude.cover_scene_for_transfer()
-	if wave_state != CombatFlowState.State.FATE_INTERLUDE:
-		return
-	_set_merchant_active(false)
-	transition_world_to_day()
-	_force_revive_dead_players()
-	_present_fate_interlude_locally(completed_day)
-	_teleport_authoritative_players_to_fate_room()
-	await xiaocong_fate_interlude.play_room_reveal()
-	if wave_state != CombatFlowState.State.FATE_INTERLUDE:
-		return
-	fate_coordinator.begin_interlude(
-		completed_day,
-		_get_flow_step_id(next_step),
-		_get_fate_peer_ids(),
-		_get_local_fate_peer_id()
-	)
-
-
-func _present_fate_interlude_locally(day_number: int) -> void:
-	transition_world_to_day()
-	if not xiaocong_fate_interlude.is_active:
-		xiaocong_fate_interlude.set_active(true, day_number)
-	wave_hud.hide_all()
-	if tower_defense_status_hud != null:
-		tower_defense_status_hud.hide()
-	if tower_defense_minimap != null:
-		tower_defense_minimap.hide()
-	_set_fate_player_combat_locked(true)
-
-
-func _begin_remote_fate_entry(day_number: int) -> void:
-	if remote_fate_entry_in_progress:
-		return
-	remote_fate_entry_in_progress = true
-	remote_fate_departure_in_progress = false
-	remote_fate_departure_covered = false
-	pending_remote_fate_flow_state.clear()
-	await xiaocong_fate_interlude.cover_scene_for_transfer()
-	if runtime_mode != RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
-		remote_fate_entry_in_progress = false
-		return
-	transition_world_to_day()
-	_set_local_merchants_active(false)
-	_present_fate_interlude_locally(day_number)
-	await xiaocong_fate_interlude.play_room_reveal()
-	remote_fate_entry_in_progress = false
-
-
-func _begin_remote_fate_departure() -> void:
-	if remote_fate_departure_in_progress:
-		return
-	remote_fate_departure_in_progress = true
-	await xiaocong_fate_interlude.play_outcome_message(
-		fate_manager.winning_option_id
-	)
-	await xiaocong_fate_interlude.cover_scene_for_transfer()
-	remote_fate_departure_covered = true
-	if pending_remote_fate_flow_state.is_empty():
-		return
-	var deferred_flow_state := pending_remote_fate_flow_state.duplicate()
-	pending_remote_fate_flow_state.clear()
-	apply_remote_flow_state(
-		StringName(deferred_flow_state.get("step_id", "")),
-		int(deferred_flow_state.get("state", int(CombatFlowState.State.INTERMISSION))),
-		int(deferred_flow_state.get("seconds", 0))
-	)
-
-
-func _finish_remote_fate_return() -> void:
-	await xiaocong_fate_interlude.reveal_world_after_transfer()
-	remote_fate_entry_in_progress = false
-	remote_fate_departure_in_progress = false
-	remote_fate_departure_covered = false
-	pending_remote_fate_flow_state.clear()
-
-
-func _leave_fate_interlude_presentation() -> void:
-	xiaocong_fate_interlude.set_active(false)
-	_set_fate_interlude_systems_frozen(false)
-	if tower_defense_status_hud != null:
-		tower_defense_status_hud.show()
-	if tower_defense_minimap != null:
-		tower_defense_minimap.show()
-	_set_fate_player_combat_locked(false)
-	_refresh_player_modal_ui_lock()
-	_update_plant_placement_input_state()
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator.enter_interlude(next_step)
 
 
 func _set_fate_interlude_systems_frozen(frozen: bool) -> void:
-	if plant_placement_controller != null:
-		plant_placement_controller.set_placement_input_enabled(not frozen)
-		plant_placement_controller.set_process_unhandled_input(not frozen)
-	if frozen:
-		_cancel_plant_placement()
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	if production_coordinator != null:
-		production_coordinator.set_authoritative_processing_enabled(not frozen)
-	if research_coordinator != null:
-		research_coordinator.set_authoritative_processing_enabled(not frozen)
-	if plant_terrain_decay_timer == null:
-		return
-	if frozen:
-		if not plant_terrain_decay_timer.is_stopped():
-			fate_frozen_terrain_decay_time_left = plant_terrain_decay_timer.time_left
-			plant_terrain_decay_timer.stop()
-		return
-	if plant_terrain_decay_timer.is_stopped():
-		plant_terrain_decay_timer.start(
-			fate_frozen_terrain_decay_time_left
-			if fate_frozen_terrain_decay_time_left > 0.0
-			else plant_terrain_decay_timer.wait_time
-		)
-	fate_frozen_terrain_decay_time_left = 0.0
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator.set_interlude_systems_frozen(frozen)
 
 
 func _set_fate_player_combat_locked(locked: bool) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		if player != null and is_instance_valid(player) and not player.is_dead:
-			player.set_combat_actions_locked(locked)
-			player.set_controls_locked(false)
-		return
-	for player_variant in peer_players.values():
-		var player_instance := player_variant as Player
-		if (
-			player_instance != null
-			and is_instance_valid(player_instance)
-			and not player_instance.is_dead
-		):
-			player_instance.set_combat_actions_locked(locked)
-			player_instance.set_controls_locked(false)
-
-
-func _teleport_authoritative_players_to_fate_room() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	var peer_ids := _get_fate_peer_ids()
-	for slot_index in range(peer_ids.size()):
-		var peer_id := peer_ids[slot_index]
-		var player_instance := _get_fate_player(peer_id)
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		_teleport_fate_player_authoritatively(
-			peer_id,
-			player_instance,
-			xiaocong_fate_interlude.get_player_spawn_position(slot_index)
-		)
-
-
-func _restore_authoritative_players_from_fate_room() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	var peer_ids := _get_fate_peer_ids()
-	for slot_index in range(peer_ids.size()):
-		var peer_id := peer_ids[slot_index]
-		var player_instance := _get_fate_player(peer_id)
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		var spawn_offset := (
-			Vector2.ZERO
-			if runtime_mode == RuntimeMode.SINGLEPLAYER
-			else _get_multiplayer_spawn_offset(
-				int(multiplayer_spawn_slot_indices.get(peer_id, slot_index))
-			)
-		)
-		_teleport_fate_player_authoritatively(
-			peer_id,
-			player_instance,
-			player_spawn.global_position + spawn_offset
-		)
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator.set_player_combat_locked(locked)
 
 
 func _teleport_fate_player_authoritatively(
@@ -3881,21 +3700,8 @@ func _teleport_fate_player_authoritatively(
 
 
 func _on_xiaocong_fate_interlude_completed(next_step_id: StringName) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	var winning_option_id := fate_manager.winning_option_id
-	await xiaocong_fate_interlude.play_outcome_message(winning_option_id)
-	await xiaocong_fate_interlude.cover_scene_for_transfer()
-	fate_coordinator.clear_pending_rewards()
-	_leave_fate_interlude_presentation()
-	_restore_authoritative_players_from_fate_room()
-	var next_step := _get_flow_step_by_id(next_step_id)
-	if next_step == null:
-		_enter_victory()
-		await xiaocong_fate_interlude.reveal_world_after_transfer()
-		return
-	_enter_intermission(next_step)
-	await xiaocong_fate_interlude.reveal_world_after_transfer()
+	if fate_flow_coordinator != null:
+		fate_flow_coordinator._on_interlude_completed(next_step_id)
 
 
 func _begin_fate_collectible_reward() -> void:
