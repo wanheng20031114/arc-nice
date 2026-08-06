@@ -33,7 +33,6 @@ const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
 const STATE_IN_GAME := 5
-const HOST_TIME_OFFSET_SMOOTH_WEIGHT := 0.08
 const INPUT_CHANGE_EPSILON := 0.001
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
@@ -92,9 +91,6 @@ var _mode_adapter: MultiplayerModeAdapter = null
 var tower_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _linglan_boss_runtime_port: LinglanBossRuntimePort = null
 var input_sequence: int = 0
-var _net_time_origin: float = 0.0
-var _has_host_time_offset: bool = false
-var _host_to_client_time_offset: float = 0.0
 var _has_sent_input: bool = false
 var _last_sent_move_input: Vector2 = Vector2.ZERO
 var _last_sent_shoot_input: Vector2 = Vector2.ZERO
@@ -108,15 +104,16 @@ var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _host_startup_snapshot_grace_time_left: float = 0.0
 var _client_host_game_ready: bool = false
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
-var _public_room_keepalive_time_left: float = 0.0
-var _public_room_keepalive_in_flight: bool = false
 var _embedded_runtime_active := false
 var _embedded_participant_peer_ids: Dictionary[int, bool] = {}
 var _suspended_embedded_participant_peer_ids: Dictionary[int, bool] = {}
 
 
 func _ready() -> void:
-	_net_time_origin = Time.get_ticks_msec() / 1000.0
+	session_coordinator.bind_transport_dependencies(
+		net_manager,
+		public_room_keepalive_request
+	)
 	player_coordinator.randomize_revive_generator()
 	merchant_transactions_coordinator.randomize_offer_generator()
 	if not enemy_coordinator.remote_enemy_spawned.is_connected(_on_remote_enemy_spawned):
@@ -135,8 +132,6 @@ func _ready() -> void:
 		net_manager.player_left.connect(_on_net_player_left)
 	if not net_manager.player_reconnected.is_connected(_on_net_player_reconnected):
 		net_manager.player_reconnected.connect(_on_net_player_reconnected)
-	if not public_room_keepalive_request.request_completed.is_connected(_on_public_room_keepalive_completed):
-		public_room_keepalive_request.request_completed.connect(_on_public_room_keepalive_completed)
 	if net_manager.is_host():
 		if not _setup_game(GAME_RUNTIME_HOST_AUTHORITY):
 			call_deferred("_return_to_lobby")
@@ -364,11 +359,8 @@ func _exit_tree() -> void:
 	_mode_adapter = null
 	tower_mode_adapter = null
 	_linglan_boss_runtime_port = null
-	if public_room_keepalive_request != null:
-		if public_room_keepalive_request.request_completed.is_connected(_on_public_room_keepalive_completed):
-			public_room_keepalive_request.request_completed.disconnect(_on_public_room_keepalive_completed)
-		if public_room_keepalive_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
-			public_room_keepalive_request.cancel_request()
+	if session_coordinator != null:
+		session_coordinator.unbind_transport_dependencies()
 	if tower_economy_coordinator != null:
 		tower_economy_coordinator.reset_session_state()
 	if tower_world_coordinator != null:
@@ -381,7 +373,6 @@ func _exit_tree() -> void:
 		collectible_presentation_coordinator.reset_session_state()
 	if network_diagnostics_coordinator != null:
 		network_diagnostics_coordinator.reset_session_state()
-	_public_room_keepalive_in_flight = false
 
 
 func _physics_process(delta: float) -> void:
@@ -515,7 +506,7 @@ func get_runtime_preparation_progress() -> Dictionary:
 func _process(delta: float) -> void:
 	if embedded_runtime and not _embedded_runtime_active:
 		return
-	_update_public_room_keepalive(delta)
+	session_coordinator.update_transport(delta)
 	if net_manager.is_client() or net_manager.is_host():
 		_client_interpolate_entities()
 	if net_manager.is_client() and game != null:
@@ -1668,13 +1659,13 @@ func _setup_game(mode: int) -> bool:
 		mode_adapter,
 		run_state,
 		net_manager,
-		_net_time_origin
+		session_coordinator.get_net_time_origin()
 	)
 	collectible_presentation_coordinator.bind_runtime(
 		game,
 		self,
 		net_manager,
-		_net_time_origin
+		session_coordinator.get_net_time_origin()
 	)
 	if tower_adapter != null:
 		tower_economy_coordinator.bind_runtime(
@@ -1682,7 +1673,7 @@ func _setup_game(mode: int) -> bool:
 			tower_adapter,
 			run_state,
 			net_manager,
-			_net_time_origin
+			session_coordinator.get_net_time_origin()
 		)
 		tower_world_coordinator.bind_session(
 			self,
@@ -1696,7 +1687,7 @@ func _setup_game(mode: int) -> bool:
 			game,
 			tower_adapter,
 			net_manager,
-			_net_time_origin
+			session_coordinator.get_net_time_origin()
 		)
 	else:
 		tower_economy_coordinator.reset_session_state()
@@ -2233,80 +2224,6 @@ func _get_network_diagnostics_coordinator() -> MpNetworkDiagnosticsCoordinatorSc
 	return get_node(^"NetworkDiagnosticsCoordinator") as MpNetworkDiagnosticsCoordinatorScript
 
 
-func _update_public_room_keepalive(delta: float) -> void:
-	if not _should_send_public_room_keepalive():
-		_public_room_keepalive_time_left = 0.0
-		return
-	if _public_room_keepalive_in_flight:
-		return
-	_public_room_keepalive_time_left -= delta
-	if _public_room_keepalive_time_left > 0.0:
-		return
-	_send_public_room_keepalive()
-
-
-func _should_send_public_room_keepalive() -> bool:
-	if public_room_keepalive_request == null or net_manager == null:
-		return false
-	if not net_manager.is_host():
-		return false
-	if int(net_manager.get("conn_mode")) != int(NetManagerStore.ConnMode.RELAY):
-		return false
-	if not bool(net_manager.get("public_is_host")):
-		return false
-	return (
-		not str(net_manager.get("public_room_id")).strip_edges().is_empty()
-		and not str(net_manager.get("public_host_token")).strip_edges().is_empty()
-	)
-
-
-func _send_public_room_keepalive() -> void:
-	var room_id := str(net_manager.get("public_room_id")).strip_edges()
-	var host_token := str(net_manager.get("public_host_token")).strip_edges()
-	if room_id.is_empty() or host_token.is_empty():
-		return
-	var body := JSON.stringify({"host_token": host_token})
-	var headers := PackedStringArray(["Content-Type: application/json"])
-	var err := public_room_keepalive_request.request(
-		"%s/rooms/%s/keepalive" % [_NetConstants.PUBLIC_LOBBY_API_BASE_URL, room_id],
-		headers,
-		HTTPClient.METHOD_POST,
-		body
-	)
-	if err != OK:
-		_public_room_keepalive_time_left = _NetConstants.PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS
-		push_warning("MpGame: 公网房间续租请求启动失败: %s" % error_string(err))
-		return
-	_public_room_keepalive_in_flight = true
-
-
-func _on_public_room_keepalive_completed(
-	result: int,
-	response_code: int,
-	_headers: PackedStringArray,
-	body: PackedByteArray
-) -> void:
-	_public_room_keepalive_in_flight = false
-	_public_room_keepalive_time_left = _NetConstants.PUBLIC_ROOM_KEEPALIVE_INTERVAL_SECONDS
-	if not _should_send_public_room_keepalive():
-		return
-	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
-		var error_body_text := body.get_string_from_utf8()
-		push_warning(
-			"MpGame: 公网房间续租失败 result=%d status=%d body=%s"
-			% [result, response_code, error_body_text.left(160)]
-		)
-		return
-
-	var parsed: Variant = null
-	var response_body_text := body.get_string_from_utf8()
-	if not response_body_text.is_empty():
-		parsed = JSON.parse_string(response_body_text)
-	var parsed_dict := parsed as Dictionary
-	if parsed_dict != null and parsed_dict.has("relay_running") and not bool(parsed_dict["relay_running"]):
-		push_warning("MpGame: 公网房间续租成功，但云端 Relay 进程已不在运行。")
-
-
 func _client_physics_tick(frame: int) -> void:
 	if not _client_host_game_ready:
 		return
@@ -2634,7 +2551,7 @@ func net_tango_electric_surge_started(
 ) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
 	var transport_age_seconds := 0.0
-	if _has_host_time_offset:
+	if session_coordinator.has_host_time_offset():
 		if (
 			(sender_id <= 0 or sender_id == _get_host_peer_id())
 			and is_finite(host_sent_at)
@@ -5512,8 +5429,8 @@ func net_bamboo_mortar_visual_batch(
 		committed_windup_durations,
 		host_action_times,
 		_get_net_time(),
-		_has_host_time_offset,
-		_host_to_client_time_offset
+		session_coordinator.has_host_time_offset(),
+		session_coordinator.get_host_to_client_time_offset()
 	)
 
 
@@ -5530,8 +5447,8 @@ func net_hydrangea_rain_visual(
 		target_position,
 		host_action_time,
 		_get_net_time(),
-		_has_host_time_offset,
-		_host_to_client_time_offset
+		session_coordinator.has_host_time_offset(),
+		session_coordinator.get_host_to_client_time_offset()
 	)
 
 
@@ -5548,8 +5465,8 @@ func net_corn_machine_gun_burst_batch(
 		directions,
 		host_action_times,
 		_get_net_time(),
-		_has_host_time_offset,
-		_host_to_client_time_offset
+		session_coordinator.has_host_time_offset(),
+		session_coordinator.get_host_to_client_time_offset()
 	)
 
 
@@ -6292,26 +6209,14 @@ func _get_client_view_local_peer_id() -> int:
 
 
 func _get_net_time() -> float:
-	return Time.get_ticks_msec() / 1000.0 - _net_time_origin
+	return session_coordinator.get_net_time()
 
 
 func _map_host_timestamp_to_client_time(host_timestamp: float, update_offset: bool = true) -> float:
-	var receive_time := _get_net_time()
-	var sampled_offset := receive_time - host_timestamp
-	if not update_offset:
-		if _has_host_time_offset:
-			return host_timestamp + _host_to_client_time_offset
-		return receive_time
-	if not _has_host_time_offset:
-		_host_to_client_time_offset = sampled_offset
-		_has_host_time_offset = true
-	else:
-		_host_to_client_time_offset = lerpf(
-			_host_to_client_time_offset,
-			sampled_offset,
-			HOST_TIME_OFFSET_SMOOTH_WEIGHT
-		)
-	return host_timestamp + _host_to_client_time_offset
+	return session_coordinator.map_host_timestamp_to_client_time(
+		host_timestamp,
+		update_offset
+	)
 
 
 func _on_connection_state_changed(new_state: int) -> void:
