@@ -6,7 +6,9 @@ const COORDINATOR_SCENE := preload(
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
-const FATE_MANAGER_SOURCE_PATH := "res://scene/tower_defense_fate_manager.gd"
+const FATE_MANAGER_SOURCE_PATH := (
+	"res://scene/game_modes/tower_defense/fate/tower_defense_fate_manager.gd"
+)
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
