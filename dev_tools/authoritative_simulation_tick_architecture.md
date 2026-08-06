@@ -118,7 +118,7 @@
 - `project.godot` 的 `run/max_fps=60` 是渲染帧上限，不等同于物理 Tick；两项契约必须分别表达。
 - `project.godot` 的 `[physics]` 段现已把 `common/physics_ticks_per_second=60` 写成显式项目契约；本轮没有降低玩家或 PhysicsServer 的全局频率。
 - `scene/multiplayer/net_constants.gd:42-45` 已将 Host 物理、输入、玩家快照、敌人快照分别定义为 60、60、60、30 Hz。
-- 塔防场景已打开 SceneTree 物理插值，并为权威玩家和敌人启用原生插值（`scene/game_tower_defense.gd:240-259`、`:638-653`、`:3556-3569`）。
+- 塔防场景已打开 SceneTree 物理插值，并由模式内协调器为权威玩家和敌人启用原生插值（`scene/game_modes/tower_defense/tower_defense_game.gd:225-237`、`scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.gd:640-643`、`scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.gd:554`）。
 
 Godot 官方文档也建议将物理模拟保持在固定 Tick，并用插值把渲染与物理解耦；降低全局物理 Tick 会增加玩家输入延迟。因此本方案不降低全局 60 Hz，而是在其内部对非玩家系统分频：
 
@@ -138,7 +138,7 @@ Godot 官方文档也建议将物理模拟保持在固定 Tick，并用插值把
 
 ### 3.3 客户端表现层已经与权威敌人解耦
 
-- `scene/game_runtime_base.gd:112-128` 已区分 `SINGLEPLAYER`、`HOST_AUTHORITY` 和 `CLIENT_VIEW`。
+- `scene/combat/runtime/combat_runtime_base.gd:47-59` 已区分 `SINGLEPLAYER`、`HOST_AUTHORITY` 和 `CLIENT_VIEW`。
 - `scene/enemy/enemy.gd:737-763` 将多人客户端敌人配置为代理，关闭自身物理/处理与原生物理插值；注释明确说明位置由网络快照在渲染更新中插值，避免双重插值。
 - Host 在 `scene/multiplayer/mp_game.gd:2652-2681` 以玩家 60 Hz、敌人 30 Hz 的频率发快照；敌人达到 200 后降为 20 Hz（`scene/multiplayer/mp_game.gd:152-153`、`:2672-2679`）。
 - 敌人快照按 46 个实体分块并做 cohort / delta 编码（`scene/multiplayer/mp_game.gd`），状态包含位置、速度、生命、生命修订号和视觉状态等（`scene/multiplayer/snapshot_manager.gd`）。
@@ -498,7 +498,7 @@ flowchart TD
 
 性能架构稳定后再进行：
 
-- `scene/game.gd` 与 `scene/game_tower_defense.gd` 存在大量同名流程函数；审计时两者分别约 2688 / 5032 行，并有约 174 个共同函数名。应逐组件提取到 `CombatRuntimeBase` 或独立服务，而不是继续扩大两个脚本。
+- 本文建立基线时，原 `scene/game.gd` 与 `scene/game_tower_defense.gd` 分别约 2688 / 5032 行，并有约 174 个共同函数名；现已迁移为 `scene/game_modes/standard/standard_game.gd` 与 `scene/game_modes/tower_defense/tower_defense_game.gd`，共享中性能力下沉至 `scene/combat/runtime/combat_runtime_base.gd`，模式流程继续由各自协调器承载。
 - `path_refresh_interval`、`direct_chase_extra_distance` 在多种敌人脚本与场景中保留导出项，例如 `scene/enemy/capoo_ak47.gd:16-18`、`scene/enemy/capoo_knight.gd:20-22`、`scene/enemy/capoo_ranged_enemy.gd:9-11`；当前搜索只发现声明/序列化，没有运行时读取。确认场景迁移与兼容后再删除。
 - 开发探针和 `runtime_performance_telemetry.gd` 属于验证基础设施，不应当作“垃圾代码”随意删除。
 
