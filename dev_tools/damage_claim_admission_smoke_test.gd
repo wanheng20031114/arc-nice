@@ -215,9 +215,13 @@ func _test_enemy_hit_claim_lane_is_disabled() -> void:
 		source,
 		"func _rpc_enemy_hit_report("
 	)
-	var settlement_body := _get_function_body(
+	var root_settlement_body := _get_function_body(
 		source,
 		"func _apply_enemy_hit_report("
+	)
+	var settlement_body := _get_function_body(
+		enemy_source,
+		"func apply_host_enemy_hit_report("
 	)
 	var admission_body := _get_function_body(
 		projectile_source,
@@ -245,10 +249,12 @@ func _test_enemy_hit_claim_lane_is_disabled() -> void:
 		"The root enemy-hit RPC must capture its sender and delegate to the fail-closed coordinator."
 	)
 	_expect(
-		settlement_body.contains("projectile_coordinator.prepare_enemy_hit(")
-		and settlement_body.contains("projectile_coordinator.commit_enemy_hit(")
+		root_settlement_body.contains("enemy_coordinator.apply_host_enemy_hit_report(")
+		and not root_settlement_body.contains("prepare_enemy_hit(")
+		and settlement_body.contains("_projectile_coordinator.prepare_enemy_hit(")
+		and settlement_body.contains("_projectile_coordinator.commit_enemy_hit(")
 		and not settlement_body.contains("_projectile_records"),
-		"MpGame must retain only the Host damage sink while projectile admission remains coordinated."
+		"MpGame must expose only a thin Host façade while EnemyCoordinator sequences damage admission."
 	)
 	_expect(
 		admission_body.contains("_projectile_records.get(projectile_id)")

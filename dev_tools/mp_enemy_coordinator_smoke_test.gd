@@ -3,6 +3,9 @@ extends SceneTree
 const ENEMY_COORDINATOR_SCENE := preload(
 	"res://scene/multiplayer/enemy/mp_enemy_coordinator.tscn"
 )
+const PROJECTILE_COORDINATOR_SCENE := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.tscn"
+)
 const TEST_ENEMY_CONFIG_PATH := "res://resources/config/enemies/capoo_ak47.tres"
 
 
@@ -60,6 +63,7 @@ var failures: Array[String] = []
 var _probe_net_time := 30.0
 var _lifecycle_broadcasts: Array[Dictionary] = []
 var _lifecycle_peer_sends: Array[Dictionary] = []
+var _damage_broadcasts: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -76,6 +80,14 @@ func _run() -> void:
 	get_root().add_child(coordinator)
 	coordinator.bind_runtime(runtime)
 	_expect(coordinator.is_bound(), "EnemyCoordinator 必须强类型绑定战斗运行时。")
+	var projectile_coordinator := (
+		PROJECTILE_COORDINATOR_SCENE.instantiate() as MpProjectileCoordinator
+	)
+	var presentation_parent := Node2D.new()
+	get_root().add_child(projectile_coordinator)
+	get_root().add_child(presentation_parent)
+	projectile_coordinator.bind_runtime(runtime)
+	coordinator.bind_damage_dependencies(projectile_coordinator, presentation_parent)
 	var net_manager := ProbeNetManager.new()
 	var gameplay_gateway := MultiplayerGameplayGateway.new()
 	gameplay_gateway.bind_runtime(runtime)
@@ -90,9 +102,14 @@ func _run() -> void:
 	coordinator.lifecycle_rpc_to_peer_requested.connect(
 		_probe_on_lifecycle_peer_send
 	)
+	coordinator.damage_rpc_broadcast_requested.connect(_probe_on_damage_broadcast)
 	_expect(
 		coordinator.has_lifecycle_dependencies(),
 		"EnemyCoordinator 必须显式绑定网络、Gateway 与网络时钟。"
+	)
+	_expect(
+		coordinator.has_damage_dependencies(),
+		"EnemyCoordinator 必须显式绑定 ProjectileCoordinator 与表现父节点。"
 	)
 
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
@@ -227,6 +244,53 @@ func _run() -> void:
 		and feedback_batches[0].particle_flags == PackedByteArray([1]),
 		"同一敌人的不可靠伤害反馈必须合并最终生命、revision、总伤害与粒子标记。"
 	)
+	if enemy_config != null:
+		var damage_enemy := Enemy.new()
+		damage_enemy.config = enemy_config
+		damage_enemy.current_health = 1000
+		runtime.multiplayer_enemies_by_net_id[950] = damage_enemy
+		var projectile_id := MpProjectileCoordinator.encode_projectile_id(2, 17)
+		projectile_coordinator.remember_projectile_record(
+			projectile_id,
+			2,
+			&"player_bullet",
+			23,
+			2.0,
+			false,
+			_probe_net_time
+		)
+		var health_before_hit := damage_enemy.current_health
+		coordinator.apply_host_enemy_hit_report(
+			projectile_id,
+			2,
+			950,
+			999,
+			Vector2.LEFT
+		)
+		var health_after_first_hit := damage_enemy.current_health
+		coordinator.apply_host_enemy_hit_report(
+			projectile_id,
+			2,
+			950,
+			999,
+			Vector2.LEFT
+		)
+		coordinator.update_damage_feedback(
+			MpEnemyCoordinator.COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
+		)
+		_expect(
+			health_after_first_hit < health_before_hit
+			and damage_enemy.current_health == health_after_first_hit,
+			"Host 敌人命中必须采用弹体账本伤害，且同一非穿透弹体只结算一次。"
+		)
+		_expect(
+			_damage_broadcasts.size() == 1
+			and StringName(_damage_broadcasts[0].get("method", &""))
+			== &"net_enemy_damage_feedback_batch",
+			"已确认敌人伤害必须按既有 50ms 节流汇入一次批广播。"
+		)
+		runtime.multiplayer_enemies_by_net_id.erase(950)
+		damage_enemy.free()
 
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	net_manager.host_mode = false
@@ -313,11 +377,15 @@ func _run() -> void:
 	)
 	coordinator.unbind_runtime(runtime)
 	_expect(
-		not coordinator.is_bound() and not coordinator.has_lifecycle_dependencies(),
-		"解绑后不得保留旧战斗运行时或生命周期依赖。"
+		not coordinator.is_bound()
+		and not coordinator.has_lifecycle_dependencies()
+		and not coordinator.has_damage_dependencies(),
+		"解绑后不得保留旧战斗运行时、生命周期或伤害依赖。"
 	)
 	gameplay_gateway.free()
 	net_manager.free()
+	presentation_parent.free()
+	projectile_coordinator.free()
 	runtime.free()
 	coordinator.free()
 
@@ -357,6 +425,16 @@ func _probe_on_lifecycle_peer_send(
 ) -> void:
 	_lifecycle_peer_sends.append({
 		"peer_id": peer_id,
+		"method": method_name,
+		"arguments": arguments.duplicate(true),
+	})
+
+
+func _probe_on_damage_broadcast(
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	_damage_broadcasts.append({
 		"method": method_name,
 		"arguments": arguments.duplicate(true),
 	})

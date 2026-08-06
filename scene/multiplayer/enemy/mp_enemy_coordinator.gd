@@ -19,6 +19,7 @@ const CLIENT_PROXY_VISUAL_BUDGET_INTERVAL_SECONDS := 0.2
 const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
 const ENEMY_SPAWN_BATCH_MAX_RECORDS := 16
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
+const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
 const CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES := 512
 const CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS := 5.0
 const CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES := 512
@@ -41,6 +42,10 @@ signal lifecycle_rpc_to_peer_requested(
 	arguments: Array
 )
 signal lifecycle_rpc_broadcast_requested(
+	method_name: StringName,
+	arguments: Array
+)
+signal damage_rpc_broadcast_requested(
 	method_name: StringName,
 	arguments: Array
 )
@@ -111,6 +116,9 @@ var _runtime: CombatRuntimeBase = null
 var _net_manager: NetManagerStore = null
 var _gameplay_gateway: MultiplayerGameplayGateway = null
 var _get_net_time_callable := Callable()
+var _projectile_coordinator: MpProjectileCoordinator = null
+var _damage_presentation_parent: Node2D = null
+var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 var _snapshot_manager := SnapshotManager.new()
 var enemy_spawn_snapshot_times: Dictionary[int, float] = {}
 var _stale_enemy_interpolator_ids: Array[int] = []
@@ -146,6 +154,7 @@ func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	if _runtime == runtime_instance:
 		return
 	if _runtime != null:
+		_clear_damage_dependencies()
 		_clear_lifecycle_dependencies()
 		reset_session_state()
 	_runtime = runtime_instance
@@ -154,6 +163,7 @@ func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	if _runtime != runtime_instance:
 		return
+	_clear_damage_dependencies()
 	_clear_lifecycle_dependencies()
 	_runtime = null
 	reset_session_state()
@@ -189,6 +199,32 @@ func has_lifecycle_dependencies() -> bool:
 		and _gameplay_gateway != null
 		and is_instance_valid(_gameplay_gateway)
 		and _get_net_time_callable.is_valid()
+	)
+
+
+func bind_damage_dependencies(
+	projectile_coordinator_instance: MpProjectileCoordinator,
+	presentation_parent_instance: Node2D
+) -> void:
+	assert(
+		projectile_coordinator_instance != null,
+		"MpEnemyCoordinator 缺少 MpProjectileCoordinator。"
+	)
+	assert(
+		presentation_parent_instance != null,
+		"MpEnemyCoordinator 缺少敌人伤害表现父节点。"
+	)
+	_projectile_coordinator = projectile_coordinator_instance
+	_damage_presentation_parent = presentation_parent_instance
+
+
+func has_damage_dependencies() -> bool:
+	return (
+		is_bound()
+		and _projectile_coordinator != null
+		and is_instance_valid(_projectile_coordinator)
+		and _damage_presentation_parent != null
+		and is_instance_valid(_damage_presentation_parent)
 	)
 
 
@@ -231,6 +267,11 @@ func _clear_lifecycle_dependencies() -> void:
 	_net_manager = null
 	_gameplay_gateway = null
 	_get_net_time_callable = Callable()
+
+
+func _clear_damage_dependencies() -> void:
+	_projectile_coordinator = null
+	_damage_presentation_parent = null
 
 
 func _is_host_lifecycle_bound() -> bool:
@@ -1278,6 +1319,306 @@ func receive_enemy_hit_report(
 	pass
 
 
+func get_player_projectile_damage_type(
+	projectile_type: StringName
+) -> EnemyConfig.DamageType:
+	if projectile_type == MpProjectileCoordinator.TIYI_SNIPER_PROJECTILE_TYPE:
+		return EnemyConfig.DamageType.MAGIC
+	return EnemyConfig.DamageType.PHYSICAL
+
+
+func apply_tiyi_high_noon_damage(
+	owner_player: PlayerTiyi,
+	enemy_net_id: int,
+	enemy: Enemy
+) -> void:
+	if (
+		owner_player == null
+		or not is_instance_valid(owner_player)
+		or enemy_net_id <= 0
+		or enemy == null
+		or not is_instance_valid(enemy)
+		or enemy.is_dead
+	):
+		return
+	var resolved_damage := owner_player.get_high_noon_damage_against_enemy(enemy)
+	var impact_direction := -owner_player.global_position.direction_to(
+		enemy.global_position
+	)
+	apply_confirmed_enemy_damage(
+		enemy_net_id,
+		enemy,
+		resolved_damage,
+		impact_direction,
+		EnemyConfig.DamageType.MAGIC,
+		false
+	)
+
+
+func apply_collectible_enemy_damage(
+	enemy: Enemy,
+	damage: int,
+	impact_direction: Vector2,
+	damage_type: int = EnemyConfig.DamageType.MAGIC,
+	show_hit_particles: bool = true
+) -> bool:
+	if enemy == null or not is_instance_valid(enemy):
+		return false
+	var enemy_net_id := int(enemy.get_meta("net_id", 0))
+	if enemy_net_id <= 0:
+		var request := DamageRequest.new(damage, damage_type)
+		request.with_source(null, 0, &"collectible_effect")
+		request.with_directions(impact_direction)
+		request.with_flag(
+			CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
+			not show_hit_particles
+		)
+		return enemy.apply_combat_damage(request).accepted
+	return apply_confirmed_enemy_damage(
+		enemy_net_id,
+		enemy,
+		damage,
+		impact_direction,
+		damage_type as EnemyConfig.DamageType,
+		show_hit_particles
+	)
+
+
+func apply_host_enemy_hit_report(
+	projectile_id: int,
+	owner_peer_id: int,
+	enemy_net_id: int,
+	reported_damage: int,
+	impact_direction: Vector2
+) -> void:
+	if not has_damage_dependencies():
+		return
+	var now := _get_network_time()
+	var admission: MpProjectileCoordinator.EnemyHitAdmission = (
+		_projectile_coordinator.prepare_enemy_hit(
+			projectile_id,
+			owner_peer_id,
+			enemy_net_id,
+			reported_damage,
+			now
+		)
+	)
+	if admission == null:
+		return
+	var projectile_type: StringName = admission.projectile_type
+	var authoritative_damage: int = admission.authoritative_damage
+	var enemy := get_host_enemy(enemy_net_id)
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var owner_player: Player = _runtime.get_player_for_peer(owner_peer_id)
+	if (
+		owner_player != null
+		and is_instance_valid(owner_player)
+		and (
+			projectile_type == &"player_bullet"
+			or projectile_type == MpProjectileCoordinator.TIYI_SNIPER_PROJECTILE_TYPE
+			or projectile_type == MpProjectileCoordinator.TANGO_LASER_PROJECTILE_TYPE
+			or projectile_type == &"skill1_bomb"
+		)
+	):
+		authoritative_damage = owner_player.resolve_attack_damage_against_enemy(
+			authoritative_damage,
+			enemy
+		)
+	if not apply_confirmed_enemy_damage(
+		enemy_net_id,
+		enemy,
+		authoritative_damage,
+		impact_direction,
+		get_player_projectile_damage_type(projectile_type)
+	):
+		return
+	_projectile_coordinator.commit_enemy_hit(
+		projectile_id,
+		enemy_net_id,
+		admission.consumes_first_confirmed_hit,
+		now
+	)
+	if projectile_type == MpProjectileCoordinator.TIYI_SNIPER_PROJECTILE_TYPE:
+		_broadcast_tiyi_sniper_hit_confirmation(
+			projectile_id,
+			enemy_net_id,
+			enemy,
+			impact_direction
+		)
+	if (
+		(
+			projectile_type == &"player_bullet"
+			or projectile_type == MpProjectileCoordinator.TIYI_SNIPER_PROJECTILE_TYPE
+			or projectile_type == MpProjectileCoordinator.TANGO_LASER_PROJECTILE_TYPE
+		)
+		and owner_player != null
+		and is_instance_valid(owner_player)
+	):
+		owner_player.apply_collectible_attack_hit_effects(enemy, authoritative_damage)
+
+
+func _broadcast_tiyi_sniper_hit_confirmation(
+	projectile_id: int,
+	enemy_net_id: int,
+	enemy: Enemy,
+	impact_direction: Vector2
+) -> void:
+	var projectile_record: Dictionary = _projectile_coordinator.get_projectile_record(
+		projectile_id
+	)
+	var authoritative_hit_position := enemy.global_position
+	var authoritative_direction := (
+		_projectile_coordinator.get_valid_client_projectile_direction(-impact_direction)
+	)
+	var projectile_node := _projectile_coordinator.get_projectile(projectile_id) as Node2D
+	if projectile_node != null:
+		authoritative_hit_position = projectile_node.global_position
+		var projectile_direction_variant: Variant = projectile_node.get("direction")
+		if projectile_direction_variant is Vector2:
+			var projectile_direction := (
+				_projectile_coordinator.get_valid_client_projectile_direction(
+					projectile_direction_variant as Vector2
+				)
+			)
+			if projectile_direction != Vector2.ZERO:
+				authoritative_direction = projectile_direction
+	if authoritative_direction == Vector2.ZERO:
+		authoritative_direction = Vector2.RIGHT
+	damage_rpc_broadcast_requested.emit(
+		&"net_tiyi_sniper_hit_confirmed",
+		[
+			projectile_id,
+			enemy_net_id,
+			authoritative_hit_position,
+			authoritative_direction,
+			bool(projectile_record.get("pierces_enemies", false)),
+		]
+	)
+
+
+func receive_tiyi_sniper_hit_confirmation(
+	sender_id: int,
+	host_peer_id: int,
+	projectile_id: int,
+	enemy_net_id: int,
+	hit_position: Vector2,
+	direction: Vector2,
+	continues_piercing: bool
+) -> void:
+	if (
+		not has_damage_dependencies()
+		or projectile_id <= 0
+		or enemy_net_id <= 0
+		or not _is_finite_vector2(hit_position)
+		or (sender_id > 0 and sender_id != host_peer_id)
+	):
+		return
+	_projectile_coordinator.apply_tiyi_sniper_hit_confirmation(
+		projectile_id,
+		enemy_net_id,
+		hit_position,
+		direction,
+		continues_piercing,
+		_damage_presentation_parent
+	)
+
+
+func apply_confirmed_enemy_damage(
+	enemy_net_id: int,
+	enemy: Enemy,
+	damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType,
+	show_hit_particles: bool = true
+) -> bool:
+	if enemy_net_id <= 0 or enemy == null or not is_instance_valid(enemy):
+		return false
+	var request := DamageRequest.new(damage, int(damage_type))
+	request.with_directions(impact_direction)
+	request.with_flag(
+		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
+		not show_hit_particles
+	)
+	set_active_damage_feedback_context(
+		enemy_net_id,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
+	var result := enemy.apply_combat_damage(request)
+	clear_active_damage_feedback_context(enemy_net_id)
+	if not result.accepted:
+		return false
+	if result.lethal:
+		# 同步 defeated 信号已经把最终一击纳入可靠 terminal 事件。
+		return true
+	_queue_host_damage_feedback(
+		enemy_net_id,
+		result.health_after,
+		enemy.health_revision,
+		result.applied_damage,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
+	return true
+
+
+func _queue_host_damage_feedback(
+	enemy_net_id: int,
+	current_health: int,
+	health_revision: int,
+	confirmed_damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType,
+	show_hit_particles: bool
+) -> void:
+	if (
+		not is_inside_tree()
+		or _net_manager == null
+		or not is_instance_valid(_net_manager)
+		or not _net_manager.is_host()
+		or enemy_net_id <= 0
+	):
+		return
+	queue_damage_feedback(
+		enemy_net_id,
+		current_health,
+		health_revision,
+		confirmed_damage,
+		impact_direction,
+		damage_type,
+		show_hit_particles
+	)
+
+
+func update_damage_feedback(delta: float) -> void:
+	if (
+		_net_manager == null
+		or not is_instance_valid(_net_manager)
+		or not _net_manager.is_host()
+	):
+		return
+	_combat_feedback_flush_time_left -= maxf(delta, 0.0)
+	if _combat_feedback_flush_time_left > 0.0:
+		return
+	_combat_feedback_flush_time_left = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
+	for batch in drain_damage_feedback_batches():
+		damage_rpc_broadcast_requested.emit(
+			&"net_enemy_damage_feedback_batch",
+			[
+				batch.net_ids,
+				batch.health_values,
+				batch.health_revisions,
+				batch.damage_values,
+				batch.directions,
+				batch.damage_types,
+				batch.particle_flags,
+			]
+		)
+
+
 func apply_damage_feedback_batch(
 	net_ids: PackedInt32Array,
 	health_values: PackedInt32Array,
@@ -1508,6 +1849,10 @@ func collect_terminal_feedback(enemy_net_id: int) -> Dictionary:
 
 func get_host_enemy(enemy_net_id: int) -> Enemy:
 	return _runtime.get_enemy_for_net_id(enemy_net_id) if is_bound() else null
+
+
+func _is_finite_vector2(value: Vector2) -> bool:
+	return is_finite(value.x) and is_finite(value.y)
 
 
 func get_client_enemy(enemy_net_id: int) -> Enemy:

@@ -5015,6 +5015,7 @@ func _bind_mp_game_coordinators(
 		player_coordinator.bind_runtime(game)
 		enemy_coordinator.bind_runtime(game)
 		projectile_coordinator.bind_runtime(game)
+		enemy_coordinator.bind_damage_dependencies(projectile_coordinator, mp_game)
 	return player_coordinator
 
 
