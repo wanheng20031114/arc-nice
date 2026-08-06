@@ -43,6 +43,70 @@ class ProbeRuntime:
 		pass
 
 
+class ProbeWorldFlowCoordinator:
+	extends MpWorldFlowCoordinator
+
+	var events: Array[String] = []
+
+	func receive_pickup_removed(net_id: int) -> void:
+		events.append("pickup:%d" % net_id)
+
+
+class ProbeEnemyCoordinator:
+	extends MpEnemyCoordinator
+
+	var events: Array[String] = []
+	var last_live_enemy_ids: Dictionary = {}
+
+	func remove_enemies_missing_from_manifest(live_enemy_ids: Dictionary) -> void:
+		last_live_enemy_ids = live_enemy_ids.duplicate()
+		events.append("enemy")
+
+
+class ProbeTowerWorldCoordinator:
+	extends MpTowerWorldCoordinator
+
+	var events: Array[String] = []
+	var last_plant_id_set: Dictionary = {}
+	var last_positive_plant_ids := PackedInt32Array()
+	var removed_ids := PackedInt32Array([8, 10])
+
+	func is_bound() -> bool:
+		return true
+
+	func find_live_plant_ids_missing_from_manifest(
+		plant_id_set: Dictionary
+	) -> PackedInt32Array:
+		last_plant_id_set = plant_id_set.duplicate()
+		events.append("find_plants")
+		return removed_ids.duplicate()
+
+	func reconcile_runtime_manifest(
+		plant_id_set: Dictionary,
+		positive_plant_ids: PackedInt32Array,
+		_manifest_removed_ids: PackedInt32Array
+	) -> void:
+		last_plant_id_set = plant_id_set.duplicate()
+		last_positive_plant_ids = positive_plant_ids.duplicate()
+		events.append("reconcile_plants")
+
+
+class ProbeTowerEconomyCoordinator:
+	extends MpTowerEconomyCoordinator
+
+	var events: Array[String] = []
+
+	func notify_plant_removed(net_id: int) -> void:
+		events.append("plant_removed:%d" % net_id)
+
+	func notify_plant_available(net_id: int) -> void:
+		events.append("plant_available:%d" % net_id)
+
+	func try_apply_pending_warehouse_snapshots_atomically() -> bool:
+		events.append("apply_warehouse")
+		return true
+
+
 var failures: Array[String] = []
 
 
@@ -114,6 +178,53 @@ func _run() -> void:
 	var net_manager := NetManagerStore.new()
 	var keepalive_request := HTTPRequest.new()
 	coordinator.bind_transport_dependencies(net_manager, keepalive_request)
+	var manifest_events: Array[String] = []
+	var world_flow_coordinator := ProbeWorldFlowCoordinator.new()
+	var enemy_coordinator := ProbeEnemyCoordinator.new()
+	var tower_world_coordinator := ProbeTowerWorldCoordinator.new()
+	var tower_economy_coordinator := ProbeTowerEconomyCoordinator.new()
+	world_flow_coordinator.events = manifest_events
+	enemy_coordinator.events = manifest_events
+	tower_world_coordinator.events = manifest_events
+	tower_economy_coordinator.events = manifest_events
+	coordinator.bind_world_manifest_dependencies(
+		world_flow_coordinator,
+		enemy_coordinator,
+		tower_world_coordinator,
+		tower_economy_coordinator
+	)
+	runtime.multiplayer_pickups[3] = null
+	runtime.multiplayer_pickups[4] = null
+	_expect(
+		coordinator.apply_runtime_world_manifest(
+			PackedInt32Array([2, 7]),
+			PackedInt32Array([4]),
+			PackedInt32Array([6, 6, 9])
+		),
+		"客户端完整 manifest 必须由 SessionCoordinator 接管。"
+	)
+	_expect(
+		manifest_events == [
+			"enemy",
+			"pickup:3",
+			"plant_available:6",
+			"plant_available:6",
+			"plant_available:9",
+			"find_plants",
+			"plant_removed:8",
+			"plant_removed:10",
+			"reconcile_plants",
+			"apply_warehouse",
+		],
+		"manifest 必须保持敌人、拾取、植物 marker、移除、重建、仓库补交顺序。"
+	)
+	_expect(
+		enemy_coordinator.last_live_enemy_ids.keys() == [2, 7]
+		and tower_world_coordinator.last_plant_id_set.keys() == [6, 9]
+		and tower_world_coordinator.last_positive_plant_ids
+		== PackedInt32Array([6, 6, 9]),
+		"manifest 迁移不得改变成员去重或正植物 ID 的重复顺序。"
+	)
 	_expect(
 		keepalive_request.request_completed.is_connected(
 			Callable(coordinator, "_on_public_room_keepalive_completed")
@@ -202,6 +313,10 @@ func _run() -> void:
 	coordinator.unbind_runtime(runtime)
 	_expect(not coordinator.is_bound(), "解绑后不得继续持有旧战斗运行时。")
 	_expect(
+		not coordinator.has_world_manifest_dependencies(),
+		"解绑运行时必须同时释放 manifest 强类型依赖。"
+	)
+	_expect(
 		not coordinator.has_requested_runtime_state(),
 		"解绑必须清理会话级客户端 latch。"
 	)
@@ -216,6 +331,10 @@ func _run() -> void:
 	runtime.free()
 	net_manager.free()
 	keepalive_request.free()
+	world_flow_coordinator.free()
+	enemy_coordinator.free()
+	tower_world_coordinator.free()
+	tower_economy_coordinator.free()
 	coordinator.free()
 
 	if failures.is_empty():

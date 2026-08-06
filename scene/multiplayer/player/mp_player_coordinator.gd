@@ -693,6 +693,51 @@ func apply_authoritative_tango_electric_surge_request(
 	return true
 
 
+func receive_tango_electric_surge_started(
+	sender_id: int,
+	peer_id: int,
+	activation_id: int,
+	origin: Vector2,
+	remaining_seconds_at_send: float,
+	host_sent_at: float,
+	buff_active: bool,
+	request_id: int,
+	auto_fire_charge_sequence: int
+) -> void:
+	var transport_age_seconds := 0.0
+	if (
+		has_realtime_dependencies()
+		and _session_coordinator.has_host_time_offset()
+		and (
+			sender_id <= 0
+			or sender_id == _realtime_net_manager.get_host_peer_id()
+		)
+		and is_finite(host_sent_at)
+	):
+		var local_sent_at := (
+			_session_coordinator.map_host_timestamp_to_client_time(
+				host_sent_at,
+				false
+			)
+		)
+		transport_age_seconds = maxf(
+			_session_coordinator.get_net_time() - local_sent_at,
+			0.0
+		)
+	apply_tango_electric_surge_started(
+		sender_id,
+		peer_id,
+		activation_id,
+		origin,
+		remaining_seconds_at_send,
+		host_sent_at,
+		buff_active,
+		request_id,
+		auto_fire_charge_sequence,
+		transport_age_seconds
+	)
+
+
 func apply_tango_electric_surge_started(
 	sender_id: int,
 	peer_id: int,
