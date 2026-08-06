@@ -6,7 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/combat/pickups/pickup.tscn" id="4_qpk70"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="7_yq8tf"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_rrr3j"]
-[ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]
+[ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/combat/navigation/grid_pathfinder.gd" id="9_5wjd4"]
 [ext_resource type="AudioStream" uid="uid://cmfbw4cr7dde" path="res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3" id="10_swtgm"]
 [ext_resource type="PackedScene" path="res://scene/ui/shared/hud/currency_hud.tscn" id="12_currency_hud"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.tscn" id="13_profile_panel"]
