@@ -9,8 +9,8 @@ const STANDARD_GAME_SOURCE_PATH := (
 const WAVE_RUNTIME_SOURCE_PATH := (
 	"res://scene/combat/runtime/wave_combat_runtime_base.gd"
 )
-const TOWER_GAME_SOURCE_PATH := (
-	"res://scene/game_modes/tower_defense/tower_defense_game.gd"
+const TOWER_PREWARMER_SOURCE_PATH := (
+	"res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.gd"
 )
 const AGAVE_CANNONBALL_SCENE_PATH := (
 	"res://scene/plant_defense/agave_cannonball.tscn"
@@ -41,7 +41,7 @@ func _test_source_boundaries() -> void:
 		+ "\n"
 		+ FileAccess.get_file_as_string(WAVE_RUNTIME_SOURCE_PATH)
 	)
-	var tower_source := FileAccess.get_file_as_string(TOWER_GAME_SOURCE_PATH)
+	var tower_source := FileAccess.get_file_as_string(TOWER_PREWARMER_SOURCE_PATH)
 	_expect(
 		not standard_source.contains(AGAVE_CANNONBALL_SCENE_PATH),
 		"StandardGame must not preload the tower-only Agave cannonball."
@@ -55,7 +55,7 @@ func _test_source_boundaries() -> void:
 		and tower_source.contains(
 			"register_scene(AGAVE_CANNONBALL_POOL_SCENE, 48, 384)"
 		),
-		"TowerDefenseGame must retain its live Agave cannonball pool contract."
+		"TowerDefensePrewarmerCoordinator must retain the live Agave cannonball pool contract."
 	)
 
 

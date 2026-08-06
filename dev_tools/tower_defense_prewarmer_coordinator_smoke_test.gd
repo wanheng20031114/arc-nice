@@ -28,6 +28,23 @@ class RuntimeProbe:
 		return can_continue_prewarm
 
 
+class RecordingObjectPool:
+	extends SessionObjectPool
+
+	var registrations: Array[Dictionary] = []
+
+	func register_scene(
+		scene: PackedScene,
+		prewarm_count: int,
+		retained_capacity: int
+	) -> void:
+		registrations.append({
+			"path": scene.resource_path if scene != null else "",
+			"prewarm": prewarm_count,
+			"capacity": retained_capacity,
+		})
+
+
 var failures: Array[String] = []
 
 
@@ -48,6 +65,10 @@ func _run() -> void:
 
 	_test_authored_shader_node_ownership(coordinator)
 	_test_strong_typed_binding(coordinator, pathfinder)
+	_test_object_pool_registration_contract(
+		coordinator,
+		fixture["object_pool"] as RecordingObjectPool
+	)
 	_test_host_client_schedule_branches(coordinator, runtime)
 	_test_wave_start_sync_fallback(coordinator, runtime, pathfinder)
 
@@ -70,7 +91,7 @@ func _create_fixture() -> Dictionary:
 	var runtime := RuntimeProbe.new()
 	var pathfinder := GridPathfinder.new()
 	var map_camera := Camera2D.new()
-	var object_pool := SessionObjectPool.new()
+	var object_pool := RecordingObjectPool.new()
 	var boss := TowerDefenseBossCoordinator.new()
 	var fate := FateCoordinator.new()
 	var no_waves: Array[WaveConfig] = []
@@ -170,6 +191,20 @@ func _test_source_boundaries() -> void:
 		and root_source.contains("\t\tPLANT_REMOVAL_SMOKE_SCENE,"),
 		"TowerDefenseGame 必须显式注入强类型寻路器与两个 authored PackedScene。"
 	)
+	_expect(
+		coordinator_source.contains("func register_runtime_object_pools(")
+		and coordinator_source.contains(
+			"register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)"
+		)
+		and coordinator_source.contains(
+			"register_scene(AGAVE_CANNONBALL_POOL_SCENE, 48, 384)"
+		)
+		and root_source.contains(
+			"prewarmer_coordinator.register_runtime_object_pools("
+		)
+		and not root_source.contains("session_object_pool.register_scene("),
+		"塔防对象池清单必须由 PrewarmerCoordinator 独占，根脚本只负责触发。"
+	)
 
 
 func _test_authored_shader_node_ownership(
@@ -201,6 +236,78 @@ func _test_strong_typed_binding(
 		and coordinator.tower_grid_pathfinder is GridPathfinder,
 		"PrewarmerCoordinator 必须保存显式注入的强类型 GridPathfinder。"
 	)
+
+
+func _test_object_pool_registration_contract(
+	coordinator: TowerDefensePrewarmerCoordinator,
+	object_pool: RecordingObjectPool
+) -> void:
+	object_pool.registrations.clear()
+	coordinator.register_runtime_object_pools(false)
+	_expect(
+		_registration_matches(
+			object_pool,
+			"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
+			32,
+			384
+		)
+		and _registration_matches(
+			object_pool,
+			"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
+			24,
+			192
+		),
+		"Legacy 对象池分支必须保持 AK47=32/384、Mage=24/192。"
+	)
+	_expect(
+		_registration_matches(
+			object_pool,
+			"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
+			0,
+			384
+		)
+		and _registration_matches(
+			object_pool,
+			"res://scene/plant_defense/agave_cannonball.tscn",
+			48,
+			384
+		),
+		"塔防专属自杀无人机与龙舌兰对象池规格不得改变。"
+	)
+
+	object_pool.registrations.clear()
+	coordinator.register_runtime_object_pools(true)
+	_expect(
+		_registration_matches(
+			object_pool,
+			"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
+			128,
+			384
+		)
+		and _registration_matches(
+			object_pool,
+			"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
+			64,
+			192
+		),
+		"Expanded 对象池分支必须保持 AK47=128/384、Mage=64/192。"
+	)
+
+
+func _registration_matches(
+	object_pool: RecordingObjectPool,
+	scene_path: String,
+	prewarm_count: int,
+	retained_capacity: int
+) -> bool:
+	for record in object_pool.registrations:
+		if str(record.get("path", "")) != scene_path:
+			continue
+		return (
+			int(record.get("prewarm", -1)) == prewarm_count
+			and int(record.get("capacity", -1)) == retained_capacity
+		)
+	return false
 
 
 func _test_host_client_schedule_branches(

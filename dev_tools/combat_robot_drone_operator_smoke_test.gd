@@ -905,7 +905,10 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 			+ "and reconnect activation without adding channels."
 		)
 	)
-	for source_path in ["res://scene/combat/runtime/wave_combat_runtime_base.gd", "res://scene/game_modes/tower_defense/tower_defense_game.gd"]:
+	for source_path in [
+		"res://scene/combat/runtime/wave_combat_runtime_base.gd",
+		"res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.gd",
+	]:
 		var compact_source := FileAccess.get_file_as_string(source_path)
 		for whitespace in [" ", "\t", "\r", "\n"]:
 			compact_source = compact_source.replace(whitespace, "")

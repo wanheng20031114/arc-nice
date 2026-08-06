@@ -1766,14 +1766,14 @@ func _get_projectile_pool_metrics() -> Dictionary:
 
 func _validate_projectile_pool_startup(metrics_by_path: Dictionary) -> void:
 	var expected_ak47_prewarm := (
-		TowerDefenseGame.EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
+		TowerDefensePrewarmerCoordinator.EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
 		if requested_expanded_projectile_prewarm
-		else TowerDefenseGame.LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
+		else TowerDefensePrewarmerCoordinator.LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
 	)
 	var expected_mage_prewarm := (
-		TowerDefenseGame.EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+		TowerDefensePrewarmerCoordinator.EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
 		if requested_expanded_projectile_prewarm
-		else TowerDefenseGame.LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+		else TowerDefensePrewarmerCoordinator.LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
 	)
 	var ak47_metrics := metrics_by_path.get(
 		CAPOO_AK47_BULLET_POOL_PATH,

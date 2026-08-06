@@ -1,6 +1,67 @@
 extends Node2D
 class_name TowerDefensePrewarmerCoordinator
 
+const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
+const TANGO_LASER_BULLET_POOL_SCENE := preload(
+	"res://scene/player/tango/tango_laser_bullet.tscn"
+)
+const CAPOO_AK47_BULLET_POOL_SCENE := preload(
+	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
+)
+const COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
+)
+const CAPOO_SMG_BULLET_POOL_SCENE := preload(
+	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
+)
+const CAPOO_RPG_ROCKET_POOL_SCENE := preload(
+	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn"
+)
+const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload(
+	"res://scene/enemy/capoo/capoo_mage_fireball.tscn"
+)
+const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
+	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
+)
+const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE := preload(
+	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
+)
+const FROST_SORCERER_ICE_SPIKE_POOL_SCENE := preload(
+	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
+)
+const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload(
+	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn"
+)
+const AGAVE_CANNONBALL_POOL_SCENE := preload(
+	"res://scene/plant_defense/agave_cannonball.tscn"
+)
+const BAMBOO_MORTAR_SHELL_POOL_SCENE := preload(
+	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
+)
+const COLLECTIBLE_ARROW_POOL_SCENE := preload(
+	"res://scene/collectible_arrow_projectile.tscn"
+)
+const COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE := preload(
+	"res://scene/collectible_sakura_rocket.tscn"
+)
+const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
+	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
+)
+const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
+	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
+)
+
+const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
+const PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY := 32
+# Wave 9 can have roughly 120 AK rounds and more than 30 mage fireballs alive
+# concurrently. Instantiate that steady-state set while the loading mask is
+# active instead of growing the elastic gameplay pools on synchronized attacks.
+# The retained capacities are deliberately unchanged.
+const LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT := 32
+const EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT := 128
+const LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT := 24
+const EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT := 64
+
 @onready var plant_lifecycle_shader_prewarm: Sprite2D = (
 	$PlantLifecycleShaderPrewarm
 )
@@ -14,6 +75,7 @@ class_name TowerDefensePrewarmerCoordinator
 var navigation_prewarm_requested := false
 var navigation_prewarmed := false
 var plant_lifecycle_shader_prewarmed := false
+var projectile_pool_registration_ms := 0.0
 
 var runtime: TowerDefenseGame = null
 var tower_grid_pathfinder: GridPathfinder = null
@@ -90,6 +152,84 @@ func can_continue_runtime_prewarm() -> bool:
 func prewarm_enemy_visual_resources() -> void:
 	if guardian_point_light_texture != null:
 		guardian_point_light_texture.get_size()
+
+
+func register_runtime_object_pools(expanded_projectile_prewarm: bool) -> void:
+	if session_object_pool == null:
+		push_error("TowerDefensePrewarmerCoordinator: 对象池尚未绑定。")
+		return
+	prewarm_enemy_visual_resources()
+	CombatRuntimeBase.register_common_visual_effect_pools(session_object_pool)
+	session_object_pool.register_scene(
+		placement_particles_scene,
+		PLANT_LIFECYCLE_VFX_PREWARM_COUNT,
+		PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY
+	)
+	session_object_pool.register_scene(
+		removal_smoke_scene,
+		PLANT_LIFECYCLE_VFX_PREWARM_COUNT,
+		PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY
+	)
+	var registration_started_usec := Time.get_ticks_usec()
+	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
+	session_object_pool.register_scene(TANGO_LASER_BULLET_POOL_SCENE, 64, 768)
+	session_object_pool.register_scene(
+		CAPOO_AK47_BULLET_POOL_SCENE,
+		(
+			EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT
+			if expanded_projectile_prewarm
+			else LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT
+		),
+		384
+	)
+	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
+	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
+	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
+	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 24, 192)
+	session_object_pool.register_scene(
+		CAPOO_MAGE_FIREBALL_POOL_SCENE,
+		(
+			EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+			if expanded_projectile_prewarm
+			else LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT
+		),
+		192
+	)
+	# A 7 s flight plus expiry visuals slightly overlaps a third 3.6 s attack
+	# cycle. Capacity includes those visual-only leases and release quarantine.
+	session_object_pool.register_scene(
+		FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE,
+		48,
+		704
+	)
+	session_object_pool.register_scene(
+		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE,
+		48,
+		704
+	)
+	# One 7 s ice spike spans two 3.6 s cast cycles. Capacity intentionally
+	# covers the 300-enemy gameplay probe while prewarm stays loading-friendly.
+	session_object_pool.register_scene(FROST_SORCERER_ICE_SPIKE_POOL_SCENE, 48, 704)
+	CombatRuntimeBase.register_capoo_mage_fireball_impact_pool(
+		session_object_pool,
+		48,
+		64
+	)
+	projectile_pool_registration_ms = float(
+		Time.get_ticks_usec() - registration_started_usec
+	) / 1000.0
+	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 48, 384)
+	session_object_pool.register_scene(AGAVE_CANNONBALL_POOL_SCENE, 48, 384)
+	# The formal synchronized ceiling is 100 mortars. Prewarm the complete first
+	# volley during loading so gameplay never pays a 64 -> 100 expansion.
+	session_object_pool.register_scene(BAMBOO_MORTAR_SHELL_POOL_SCENE, 100, 384)
+	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 48, 384)
+	session_object_pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE, 16, 128)
+	# 18 rings/s * 20 directions * 2 s lifetime = 720 live bullets. The retained
+	# headroom covers the pool's one-physics-frame release quarantine.
+	session_object_pool.register_scene(LINGLAN_SKILL1_BULLET_POOL_SCENE, 64, 768)
+	# A 0.16 s effect at the same peak fire rate needs about 58 concurrent leases.
+	session_object_pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE, 16, 96)
 
 
 func schedule_boss_runtime_scene_loads() -> void:
