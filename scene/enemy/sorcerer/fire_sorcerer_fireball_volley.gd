@@ -67,12 +67,14 @@ var direction := Vector2.RIGHT
 var damage: int = 1
 var remaining_lifetime: float = 7.0
 var target: Node2D = null
-var target_runtime: Node = null
+var target_runtime: CombatRuntimeBase = null
 var target_refresh_left: float = 0.0
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"fire_sorcerer_fireball_volley"
 var pool_active := true
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var active_ball_mask: int = ALL_BALLS_ACTIVE_MASK
 var visible_effect_mask: int = 0
 var ball_directions := PackedVector2Array([
@@ -135,6 +137,8 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	combat_runtime = null
+	gameplay_gateway = null
 	pool_active = true
 	speed = _authored_speed
 	max_lifetime = _authored_max_lifetime
@@ -160,11 +164,22 @@ func on_pool_released(_generation: int) -> void:
 	pool_active = false
 	target = null
 	target_runtime = null
+	combat_runtime = null
+	gameplay_gateway = null
 	target_refresh_left = 0.0
 	active_ball_mask = 0
 	visible_effect_mask = 0
 	set_physics_process(false)
 	_disable_all_balls()
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
+	target_runtime = runtime_context
 
 
 func setup(
@@ -174,7 +189,7 @@ func setup(
 	initial_lifetime: float,
 	initial_target: Node2D = null,
 	initial_homing_turn_rate: float = 6.0,
-	initial_target_runtime: Node = null,
+	initial_target_runtime: CombatRuntimeBase = null,
 	initial_burn_duration: float = -1.0,
 	initial_burn_level: int = -1
 ) -> void:
@@ -189,14 +204,7 @@ func setup(
 	max_lifetime = maxf(initial_lifetime, 0.01)
 	remaining_lifetime = max_lifetime
 	target = initial_target
-	target_runtime = (
-		initial_target_runtime
-		if (
-			initial_target_runtime != null
-			and initial_target_runtime.has_method(TARGET_QUERY_METHOD)
-		)
-		else null
-	)
+	target_runtime = initial_target_runtime
 	target_refresh_left = 0.0
 	homing_turn_rate = maxf(initial_homing_turn_rate, 0.0)
 	if initial_burn_duration >= 0.0:
@@ -276,11 +284,10 @@ func _update_homing_target(delta: float) -> void:
 	target_refresh_left = TARGET_REFRESH_INTERVAL
 	var query_position := _get_active_ball_center()
 	var reachable_distance := maxf(speed * remaining_lifetime, 0.0)
-	var refreshed_target := target_runtime.call(
-		TARGET_QUERY_METHOD,
+	var refreshed_target := target_runtime.find_nearest_enemy_attack_target_world(
 		query_position,
 		reachable_distance
-	) as Node2D
+	)
 	if _is_damage_target_alive(refreshed_target):
 		target = refreshed_target
 		target_refresh_left = 0.0
@@ -438,7 +445,10 @@ func _on_ball_body_entered(body: Node2D, ball_index: int) -> void:
 					true
 				)
 			)
-			if not handled_by_multiplayer:
+			if (
+				not handled_by_multiplayer
+				and _has_explicit_singleplayer_authority()
+			):
 				var damage_was_applied := player.apply_damage(
 					damage,
 					EnemyConfig.DamageType.MAGIC,
@@ -463,6 +473,7 @@ func _on_ball_body_entered(body: Node2D, ball_index: int) -> void:
 	if plant != null:
 		if (
 			contact_consumed
+			and _has_authoritative_runtime()
 			and not plant.is_dead
 			and not plant.is_removing
 		):
@@ -602,16 +613,13 @@ func _try_report_multiplayer_player_hit(
 	ball_index: int,
 	contact_preconsumed: bool
 ) -> bool:
-	if projectile_id <= 0:
-		return false
-	var current_scene := get_tree().current_scene
 	if (
-		current_scene == null
-		or not current_scene.has_method("request_multiplayer_player_damage")
+		projectile_id <= 0
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		projectile_id,
 		player.peer_id,
 		damage,
@@ -622,25 +630,35 @@ func _try_report_multiplayer_player_hit(
 		),
 		true,
 		contact_preconsumed
-	))
+	)
 
 
 func _try_consume_multiplayer_contact(ball_index: int) -> bool:
 	if projectile_id <= 0:
 		return true
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene == null
-		or not current_scene.has_method(
-			"try_consume_fire_sorcerer_fireball_contact"
-		)
-	):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return false
-	return bool(current_scene.call(
-		"try_consume_fire_sorcerer_fireball_contact",
+	return gameplay_gateway.try_consume_fire_sorcerer_fireball_contact(
 		projectile_id,
 		_get_ball_source_type(ball_index)
-	))
+	)
+
+
+func _has_authoritative_runtime() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		_has_authoritative_runtime()
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 func _get_default_projectile_source_type() -> StringName:

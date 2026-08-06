@@ -1,4 +1,4 @@
-extends GameRuntimeBase
+extends CombatRuntimeBase
 class_name TowerDefenseGame
 
 const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
@@ -182,6 +182,12 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: TowerDefenseLuoxiMerchant = $LuoxiMerchant
+@onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
+	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
+)
+@onready var tower_plant_gameplay_port: TowerPlantGameplayPort = (
+	$TowerPlantGameplayPort as TowerPlantGameplayPort
+)
 @onready var luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator = (
 	$LuoxiSpecialGameCoordinator
 )
@@ -191,6 +197,9 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 )
 @onready var xiaocong_fate_interlude: XiaocongFateInterlude = $XiaocongFateInterlude
 @onready var boss_container: Node2D = $BossContainer
+@onready var linglan_boss_runtime_port: LinglanBossRuntimePort = (
+	$LinglanBossRuntimePort
+)
 @onready var guardian_aura_system: GuardianAuraSystem = $GuardianAuraSystem
 @onready var plant_container: Node2D = $PlantContainer
 @onready var plant_system: PlantSystem = $PlantSystem
@@ -233,6 +242,7 @@ var pending_enemy_config_index: int = 0
 var active_wave_enemy_ids: Dictionary = {}
 var hud_alive_enemy_ids: Dictionary = {}
 
+var wave_state: CombatFlowState.State = CombatFlowState.State.PRE_WAVE
 var current_wave_index: int = 0
 var current_wave_total: int = 0
 var current_wave_spawned: int = 0
@@ -322,13 +332,23 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	random_generator.randomize()
 	initialize_world_lighting()
+	if merchant != null:
+		merchant.bind_multiplayer_mode_adapter(multiplayer_mode_adapter)
+	if luoxi_merchant != null:
+		luoxi_merchant.bind_multiplayer_mode_adapter(multiplayer_mode_adapter)
+	oak_warehouse_panel.bind_tower_plant_gameplay_port(
+		tower_plant_gameplay_port
+	)
 	LuoxiMerchant.reset_runtime_choice_count()
 	if day_cycle_config == null or not day_cycle_config.is_valid():
 		push_error("TowerDefenseGame: DayCycleConfig 无效，停止初始化。")
 		set_process(false)
 		set_physics_process(false)
 		return
-	bamboo_mortar_combat_system.setup(self)
+	bamboo_mortar_combat_system.setup(
+		self,
+		tower_plant_gameplay_port
+	)
 	bamboo_mortar_combat_system.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
@@ -346,7 +366,7 @@ func _ready() -> void:
 	_collect_enemy_spawn_points()
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
-	GameRuntimeBase.register_common_visual_effect_pools(session_object_pool)
+	CombatRuntimeBase.register_common_visual_effect_pools(session_object_pool)
 	session_object_pool.register_scene(
 		PLANT_PLACEMENT_PARTICLES_SCENE,
 		PLANT_LIFECYCLE_VFX_PREWARM_COUNT,
@@ -369,7 +389,7 @@ func _ready() -> void:
 		),
 		384
 	)
-	GameRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
+	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 24, 192)
@@ -397,7 +417,7 @@ func _ready() -> void:
 	# One 7 s ice spike spans two 3.6 s cast cycles.  Capacity intentionally
 	# covers the 300-enemy gameplay probe while prewarm stays loading-friendly.
 	session_object_pool.register_scene(FROST_SORCERER_ICE_SPIKE_POOL_SCENE, 48, 704)
-	GameRuntimeBase.register_capoo_mage_fireball_impact_pool(
+	CombatRuntimeBase.register_capoo_mage_fireball_impact_pool(
 		session_object_pool,
 		48,
 		64
@@ -528,7 +548,7 @@ func _ready() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
 		_start_client_flow_countdown(
-			WaveState.PRE_WAVE,
+			CombatFlowState.State.PRE_WAVE,
 			_get_flow_step_id(_get_start_flow_step()),
 			_get_initial_preparation_seconds()
 		)
@@ -669,6 +689,21 @@ func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -
 
 func supports_tower_defense() -> bool:
 	return true
+
+
+## Only authored tower-defense test arenas opt into this diagnostic contract.
+## Keeping it on the tower runtime avoids leaking test-arena behavior into the
+## neutral combat base while preserving the existing subclasses' overrides.
+func supports_test_arena_manual_night_sync() -> bool:
+	return false
+
+
+func get_test_arena_manual_night_enabled() -> bool:
+	return false
+
+
+func apply_remote_test_arena_manual_night(_enabled: bool) -> void:
+	pass
 
 
 func _apply_wave_start_lighting(wave_number: int) -> void:
@@ -1029,7 +1064,7 @@ func apply_remote_enemy_escape(net_id: int) -> void:
 func _on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
-	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
+	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
 		return
 	if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
 		return
@@ -1039,11 +1074,11 @@ func _on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 	resolved_home_enemy_ids[enemy_id] = true
 
 	var resolves_active_wave := (
-		wave_state == WaveState.WAVE_ACTIVE
+		wave_state == CombatFlowState.State.WAVE_ACTIVE
 		and active_wave_enemy_ids.has(enemy_id)
 	)
 	var resolves_boss_step := (
-		wave_state == WaveState.BOSS_ACTIVE
+		wave_state == CombatFlowState.State.BOSS_ACTIVE
 		and enemy == linglan_boss
 		and active_wave_enemy_ids.has(enemy_id)
 	)
@@ -1065,7 +1100,7 @@ func _on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 	if resolves_active_wave:
 		_show_tower_defense_wave_progress()
 		_check_wave_completion()
-	elif resolves_boss_step and wave_state != WaveState.DEFEAT:
+	elif resolves_boss_step and wave_state != CombatFlowState.State.DEFEAT:
 		call_deferred("_complete_escaped_boss_step")
 
 
@@ -1077,7 +1112,7 @@ func _emit_multiplayer_enemy_escaped(enemy: Enemy) -> void:
 		# Escape is the terminal replication event. Suppress the later generic
 		# tree-exit removal so clients never replay a death-style removal path.
 		pending_multiplayer_enemy_escape_ids[enemy_net_id] = true
-		multiplayer_enemy_escaped.emit(enemy_net_id)
+		multiplayer_gateway.enemy_escaped.emit(enemy_net_id)
 
 
 func _apply_base_damage(amount: int) -> void:
@@ -1107,7 +1142,7 @@ func _apply_base_damage(amount: int) -> void:
 		tower_defense_status_hud.play_gate_damage_warning()
 	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_base_health_changed.emit(
+		tower_multiplayer_mode_adapter.base_health_changed.emit(
 			current_base_health,
 			maximum_base_health,
 			base_health_revision
@@ -1157,7 +1192,7 @@ func _update_hud_alive_enemy_count() -> void:
 
 
 func _complete_escaped_boss_step() -> void:
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if current_wave_resolved < current_wave_total:
 		return
@@ -1182,7 +1217,9 @@ func _configure_plant_defense_system() -> void:
 		player,
 		plant_container,
 		placement_rect,
-		dual_grid_terrain
+		dual_grid_terrain,
+		self,
+		tower_plant_gameplay_port
 	)
 	orange_charging_aura_coordinator.setup(plant_system)
 	_configure_vegetation_spread_system(placement_rect)
@@ -1567,9 +1604,9 @@ func _update_plant_placement_input_state() -> void:
 		player != null
 		and not player.is_dead
 		and wave_state not in [
-			WaveState.VICTORY,
-			WaveState.DEFEAT,
-			WaveState.FATE_INTERLUDE,
+			CombatFlowState.State.VICTORY,
+			CombatFlowState.State.DEFEAT,
+			CombatFlowState.State.FATE_INTERLUDE,
 		]
 		and not _has_exclusive_modal_open()
 	)
@@ -1591,7 +1628,7 @@ func begin_inventory_building_placement(
 		or plant_system == null
 		or player == null
 		or player.is_dead
-		or wave_state == WaveState.FATE_INTERLUDE
+		or wave_state == CombatFlowState.State.FATE_INTERLUDE
 		or _has_exclusive_modal_open()
 	):
 		return false
@@ -1661,7 +1698,7 @@ func _on_inventory_plant_placement_requested(
 			item_config_path
 		)
 		return
-	multiplayer_inventory_plant_placement_requested.emit(
+	tower_multiplayer_mode_adapter.inventory_plant_placement_requested.emit(
 		request_id,
 		plant_id,
 		anchor,
@@ -1679,7 +1716,7 @@ func _request_singleplayer_inventory_plant_placement(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
-	if wave_state == WaveState.FATE_INTERLUDE:
+	if wave_state == CombatFlowState.State.FATE_INTERLUDE:
 		plant_placement_controller.notify_multiplayer_placement_rejected(
 			request_id
 		)
@@ -1739,7 +1776,7 @@ func _request_singleplayer_inventory_plant_placement(
 
 func _on_personal_inventory_output_committed(peer_id: int) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id > 0:
-		multiplayer_inventory_changed.emit(peer_id)
+		tower_multiplayer_mode_adapter.inventory_changed.emit(peer_id)
 
 
 func _on_multiplayer_plant_placement_requested(
@@ -1749,7 +1786,7 @@ func _on_multiplayer_plant_placement_requested(
 ) -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		return
-	multiplayer_plant_placement_requested.emit(request_id, plant_id, anchor)
+	tower_multiplayer_mode_adapter.plant_placement_requested.emit(request_id, plant_id, anchor)
 
 
 func request_multiplayer_plant_placement(
@@ -1760,7 +1797,7 @@ func request_multiplayer_plant_placement(
 ) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
-	if wave_state == WaveState.FATE_INTERLUDE:
+	if wave_state == CombatFlowState.State.FATE_INTERLUDE:
 		_reject_multiplayer_plant_placement(
 			request_id,
 			requester_peer_id,
@@ -1821,7 +1858,7 @@ func request_multiplayer_inventory_plant_placement(
 ) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
-	if wave_state == WaveState.FATE_INTERLUDE:
+	if wave_state == CombatFlowState.State.FATE_INTERLUDE:
 		_reject_multiplayer_plant_placement(
 			request_id,
 			requester_peer_id,
@@ -1936,10 +1973,10 @@ func request_multiplayer_inventory_plant_placement(
 				"Failed to restore a peer building item after placement."
 			)
 		run_state.notify_inventory_transaction_completed()
-		multiplayer_inventory_changed.emit(requester_peer_id)
+		tower_multiplayer_mode_adapter.inventory_changed.emit(requester_peer_id)
 		return
 	run_state.notify_inventory_transaction_completed()
-	multiplayer_inventory_changed.emit(requester_peer_id)
+	tower_multiplayer_mode_adapter.inventory_changed.emit(requester_peer_id)
 
 
 func _spawn_authoritative_multiplayer_plant(
@@ -1976,7 +2013,7 @@ func _spawn_authoritative_multiplayer_plant(
 		plant.authoritative_damage_status_changed.connect(
 			_on_authoritative_plant_damage_status_changed.bind(plant_net_id)
 		)
-	multiplayer_plant_spawned.emit(
+	tower_multiplayer_mode_adapter.plant_spawned.emit(
 		request_id,
 		requester_peer_id,
 		plant_net_id,
@@ -1994,7 +2031,7 @@ func _reject_multiplayer_plant_placement(
 	requester_peer_id: int,
 	reason: StringName
 ) -> void:
-	multiplayer_plant_placement_rejected.emit(request_id, requester_peer_id, reason)
+	tower_multiplayer_mode_adapter.plant_placement_rejected.emit(request_id, requester_peer_id, reason)
 
 
 func _on_authoritative_plant_health_changed(
@@ -2007,7 +2044,7 @@ func _on_authoritative_plant_health_changed(
 		return
 	if plant_system == null or plant_system.get_plant_by_net_id(net_id) == null:
 		return
-	multiplayer_plant_health_changed.emit(
+	tower_multiplayer_mode_adapter.plant_health_changed.emit(
 		net_id,
 		current_health,
 		maximum_health,
@@ -2024,7 +2061,7 @@ func _on_authoritative_plant_damage_status_changed(
 		return
 	if plant_system == null or plant_system.get_plant_by_net_id(net_id) == null:
 		return
-	multiplayer_plant_damage_status_changed.emit(
+	tower_multiplayer_mode_adapter.plant_damage_status_changed.emit(
 		net_id,
 		status_mask,
 		status_revision
@@ -2047,7 +2084,7 @@ func _on_authoritative_plant_damage_applied(
 	var net_id := int(plant.get_meta(&"net_id", 0))
 	if net_id <= 0:
 		return
-	multiplayer_plant_damage_applied.emit(
+	tower_multiplayer_mode_adapter.plant_damage_applied.emit(
 		net_id,
 		applied_damage,
 		impact_direction,
@@ -2070,7 +2107,7 @@ func _on_authoritative_plant_healing_applied(
 	var net_id := int(plant.get_meta(&"net_id", 0))
 	if net_id <= 0:
 		return
-	multiplayer_plant_healing_applied.emit(
+	tower_multiplayer_mode_adapter.plant_healing_applied.emit(
 		net_id,
 		applied_healing,
 		plant.get_lifecycle_vfx_global_position()
@@ -2094,7 +2131,7 @@ func _on_plant_removed(plant: PlantDefense) -> void:
 		production_building.close_production_panel()
 	var net_id := int(plant.get_meta(&"net_id", 0))
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY and net_id > 0:
-		multiplayer_plant_removed.emit(net_id, plant.is_dead)
+		tower_multiplayer_mode_adapter.plant_removed.emit(net_id, plant.is_dead)
 	if plant is VegetationStake and vegetation_spread_system != null:
 		vegetation_spread_system.cancel_source(_get_vegetation_source_id(plant))
 
@@ -2340,7 +2377,7 @@ func _on_authoritative_vegetation_terrain_changed(
 			chunk_cell_xy.append(cell_xy[index * 2 + 1])
 			chunk_terrain_types.append(terrain_types[index])
 		multiplayer_terrain_revision += 1
-		multiplayer_terrain_delta.emit(
+		tower_multiplayer_mode_adapter.terrain_delta.emit(
 			multiplayer_terrain_revision,
 			chunk_cell_xy,
 			chunk_terrain_types
@@ -2409,6 +2446,8 @@ func _instantiate_player_character(character_id: StringName) -> Player:
 	var instance := PlayerCharacterRegistry.instantiate_character(resolved_id) as Player
 	if instance == null:
 		push_error("TowerDefenseGame: 无法实例化角色 %s" % resolved_id)
+	else:
+		bind_player_runtime_context(instance)
 	return instance
 
 
@@ -2609,13 +2648,10 @@ func _toggle_debug_collectible_window() -> void:
 func _on_debug_collectible_requested(config_path: String) -> void:
 	if config_path.is_empty() or not sandbox_free_building_enabled:
 		return
-	var current_scene := get_tree().current_scene
 	if (
 		runtime_mode != RuntimeMode.SINGLEPLAYER
-		and current_scene != null
-		and current_scene.has_method("request_debug_collectible")
+		and multiplayer_mode_adapter.request_debug_collectible(config_path)
 	):
-		current_scene.call("request_debug_collectible", config_path)
 		return
 	debug_collectible_window.show_grant_result(config_path, grant_debug_collectible(config_path))
 
@@ -2656,26 +2692,26 @@ func show_simple_crafting_result(
 
 
 func _on_profile_multiplayer_upgrade_requested(stat_type: int) -> void:
-	multiplayer_profile_upgrade_requested.emit(stat_type)
+	multiplayer_mode_adapter.profile_upgrade_requested.emit(stat_type)
 
 
 func _on_profile_multiplayer_inventory_item_use_requested(
 	slot_index: int
 ) -> void:
-	multiplayer_profile_inventory_item_use_requested.emit(slot_index)
+	multiplayer_mode_adapter.profile_inventory_item_use_requested.emit(slot_index)
 
 
 func _on_profile_multiplayer_inventory_item_discard_requested(
 	slot_index: int
 ) -> void:
-	multiplayer_profile_inventory_item_discard_requested.emit(slot_index)
+	multiplayer_mode_adapter.profile_inventory_item_discard_requested.emit(slot_index)
 
 
 func _on_profile_multiplayer_simple_crafting_requested(
 	recipe_id: StringName,
 	request_token: int
 ) -> void:
-	multiplayer_profile_simple_crafting_requested.emit(
+	multiplayer_mode_adapter.profile_simple_crafting_requested.emit(
 		recipe_id,
 		request_token
 	)
@@ -2684,7 +2720,7 @@ func _on_profile_multiplayer_simple_crafting_requested(
 func _on_profile_multiplayer_simple_crafting_cancel_requested(
 	request_token: int
 ) -> void:
-	multiplayer_profile_simple_crafting_cancel_requested.emit(request_token)
+	multiplayer_mode_adapter.profile_simple_crafting_cancel_requested.emit(request_token)
 
 
 func _on_profile_building_placement_requested(
@@ -2705,17 +2741,17 @@ func apply_remote_merchant_active(active: bool) -> void:
 func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		return
-	var typed_state := state as WaveState
+	var typed_state := state as CombatFlowState.State
 	var flow_step := _get_flow_step_by_id(step_id)
-	if flow_step == null and typed_state not in [WaveState.VICTORY, WaveState.DEFEAT]:
+	if flow_step == null and typed_state not in [CombatFlowState.State.VICTORY, CombatFlowState.State.DEFEAT]:
 		push_error(
 			"TowerDefenseGame: 收到当前 Campaign 不存在的流程 step_id：%s"
 			% String(step_id)
 		)
 		return
 	if (
-		wave_state == WaveState.FATE_INTERLUDE
-		and typed_state != WaveState.FATE_INTERLUDE
+		wave_state == CombatFlowState.State.FATE_INTERLUDE
+		and typed_state != CombatFlowState.State.FATE_INTERLUDE
 		and xiaocong_fate_interlude.is_active
 		and not remote_fate_departure_covered
 	):
@@ -2727,25 +2763,25 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 		_begin_remote_fate_departure()
 		return
 	var leaving_fate_interlude := (
-		wave_state == WaveState.FATE_INTERLUDE
-		and typed_state != WaveState.FATE_INTERLUDE
+		wave_state == CombatFlowState.State.FATE_INTERLUDE
+		and typed_state != CombatFlowState.State.FATE_INTERLUDE
 		and xiaocong_fate_interlude.is_active
 	)
 	if flow_step != null:
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	_set_fate_interlude_systems_frozen(typed_state == WaveState.FATE_INTERLUDE)
+	_set_fate_interlude_systems_frozen(typed_state == CombatFlowState.State.FATE_INTERLUDE)
 	match typed_state:
-		WaveState.PRE_WAVE:
+		CombatFlowState.State.PRE_WAVE:
 			transition_world_to_day()
 			_start_client_flow_countdown(typed_state, step_id, seconds)
-		WaveState.INTERMISSION:
+		CombatFlowState.State.INTERMISSION:
 			_apply_intermission_lighting(maxi(current_wave_index + 1, 1))
 			_start_client_flow_countdown(typed_state, step_id, seconds)
-		WaveState.WAVE_ACTIVE:
+		CombatFlowState.State.WAVE_ACTIVE:
 			state_timer.stop()
-			wave_state = WaveState.WAVE_ACTIVE
+			wave_state = CombatFlowState.State.WAVE_ACTIVE
 			_apply_wave_start_lighting(maxi(current_wave_index + 1, 1))
 			var phase_announcement_started := _announce_wave_phase_start(
 				maxi(current_wave_index + 1, 1)
@@ -2757,9 +2793,9 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			_show_tower_defense_wave_progress()
 			if not phase_announcement_started:
 				wave_start_audio.play()
-		WaveState.BOSS_INTRO:
+		CombatFlowState.State.BOSS_INTRO:
 			state_timer.stop()
-			wave_state = WaveState.BOSS_INTRO
+			wave_state = CombatFlowState.State.BOSS_INTRO
 			_set_local_merchants_active(false)
 			wave_hud.show_tower_defense_boss_progress(0, 1)
 			var boss_config := flow_step as BossConfig
@@ -2768,9 +2804,9 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 				_update_boss_music(boss_config)
 				_prepare_linglan_boss_arena(boss_config)
 				_play_remote_boss_intro(boss_config)
-		WaveState.BOSS_ACTIVE:
+		CombatFlowState.State.BOSS_ACTIVE:
 			state_timer.stop()
-			wave_state = WaveState.BOSS_ACTIVE
+			wave_state = CombatFlowState.State.BOSS_ACTIVE
 			_set_local_merchants_active(false)
 			wave_hud.show_tower_defense_boss_progress(0, 1)
 			_restore_remote_camera_if_boss_intro_complete()
@@ -2778,10 +2814,10 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 			if active_config != null:
 				active_boss_config = active_config
 				_update_boss_music(active_config)
-		WaveState.FATE_INTERLUDE:
+		CombatFlowState.State.FATE_INTERLUDE:
 			state_timer.stop()
 			enemy_spawn_timer.stop()
-			wave_state = WaveState.FATE_INTERLUDE
+			wave_state = CombatFlowState.State.FATE_INTERLUDE
 			_set_fate_player_combat_locked(true)
 			if not remote_fate_entry_in_progress:
 				if xiaocong_fate_interlude.is_active:
@@ -2792,9 +2828,9 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 					_begin_remote_fate_entry(
 						_get_day_number_for_wave(maxi(current_wave_index + 1, 1))
 					)
-		WaveState.VICTORY:
+		CombatFlowState.State.VICTORY:
 			apply_remote_victory()
-		WaveState.DEFEAT:
+		CombatFlowState.State.DEFEAT:
 			apply_remote_defeat()
 	if leaving_fate_interlude:
 		_leave_fate_interlude_presentation()
@@ -2819,7 +2855,7 @@ func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_posit
 	_restore_remote_camera_if_boss_intro_complete()
 	active_boss_config = boss_config
 	current_flow_step = boss_config
-	wave_state = WaveState.BOSS_ACTIVE
+	wave_state = CombatFlowState.State.BOSS_ACTIVE
 	state_timer.stop()
 	wave_hud.show_tower_defense_boss_progress(0, 1)
 	_set_local_merchants_active(false)
@@ -2856,7 +2892,13 @@ func _instantiate_remote_linglan_boss_proxy(
 		return null
 	boss_container.add_child(boss_enemy)
 	boss_enemy.global_position = spawn_position
-	boss_enemy.setup(enemy_config, player, grid_pathfinder)
+	boss_enemy.setup(
+		enemy_config,
+		player,
+		grid_pathfinder,
+		self,
+		linglan_boss_runtime_port
+	)
 	configure_runtime_enemy_modifiers(boss_enemy)
 	boss_enemy.configure_multiplayer_proxy()
 	boss_enemy.set_meta("net_id", net_id)
@@ -2978,7 +3020,7 @@ func player_has_luoxi_special_ticket(player_instance: Player) -> bool:
 
 
 func supports_luoxi_special_game() -> bool:
-	return wave_state not in [WaveState.VICTORY, WaveState.DEFEAT]
+	return wave_state not in [CombatFlowState.State.VICTORY, CombatFlowState.State.DEFEAT]
 
 
 func request_luoxi_special_game_start() -> void:
@@ -3113,19 +3155,17 @@ func apply_luoxi_player_health_loss(
 		return 0
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		return target_player.apply_direct_health_loss(amount, minimum_health)
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene == null
-		or not current_scene.has_method("apply_luoxi_direct_health_loss")
-	):
+	var tower_adapter := (
+		multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
+	if tower_adapter == null:
 		push_error("TowerDefenseGame: 多人洛茜直接扣血缺少主机复制入口。")
 		return 0
-	return int(current_scene.call(
-		"apply_luoxi_direct_health_loss",
+	return tower_adapter.apply_luoxi_player_health_loss(
 		target_player,
 		amount,
 		minimum_health
-	))
+	)
 
 
 func apply_luoxi_core_health_loss(amount: int) -> int:
@@ -3255,14 +3295,16 @@ func _on_wave_hud_return_to_lobby_requested() -> void:
 		_cancel_plant_placement()
 		get_tree().change_scene_to_file("res://scene/main_menu.tscn")
 		return
-	return_to_lobby_requested.emit()
+	multiplayer_mode_adapter.return_to_lobby_requested.emit()
 
 
 func _on_wave_hud_start_wave_requested() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		var current_scene := get_tree().current_scene
-		if current_scene != null and current_scene.has_method("request_multiplayer_start_wave"):
-			current_scene.call("request_multiplayer_start_wave")
+		var tower_adapter := (
+			multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
+		)
+		if tower_adapter != null:
+			tower_adapter.request_wave_start()
 		return
 	request_tower_defense_wave_start(multiplayer_local_peer_id)
 
@@ -3278,11 +3320,11 @@ func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
 		)
 	):
 		return false
-	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
+	if wave_state != CombatFlowState.State.PRE_WAVE and wave_state != CombatFlowState.State.INTERMISSION:
 		return false
 	var flow_step := (
 		current_flow_step
-		if wave_state == WaveState.PRE_WAVE
+		if wave_state == CombatFlowState.State.PRE_WAVE
 		else next_flow_step_after_rest
 	)
 	if flow_step == null:
@@ -3302,7 +3344,7 @@ func _set_merchant_active(active: bool) -> void:
 	if not changed:
 		return
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_merchant_active_changed.emit(active)
+		multiplayer_mode_adapter.merchant_active_changed.emit(active)
 
 
 func _set_local_merchants_active(active: bool) -> bool:
@@ -3561,6 +3603,8 @@ func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 		linglan_boss.config = enemy_config
 		linglan_boss.name = "LinglanBoss"
 		boss_container.add_child(linglan_boss)
+	linglan_boss.bind_combat_runtime(self)
+	linglan_boss.bind_linglan_runtime_port(linglan_boss_runtime_port)
 
 	if linglan_boss_intro_vfx == null or not is_instance_valid(linglan_boss_intro_vfx):
 		var intro_scene := _load_threaded_or_direct(_get_boss_intro_vfx_scene_path(boss_config)) as PackedScene
@@ -4079,7 +4123,7 @@ func _on_local_xiaocong_interaction_requested() -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		request_xiaocong_interaction(0)
 	else:
-		multiplayer_xiaocong_interaction_requested.emit()
+		tower_multiplayer_mode_adapter.xiaocong_interaction_requested.emit()
 
 
 func _on_local_xiaocong_fate_choice_submitted(
@@ -4089,18 +4133,18 @@ func _on_local_xiaocong_fate_choice_submitted(
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		request_xiaocong_fate_vote(0, option_id, permanent_buff_id)
 	else:
-		multiplayer_xiaocong_vote_requested.emit(option_id, permanent_buff_id)
+		tower_multiplayer_mode_adapter.xiaocong_vote_requested.emit(option_id, permanent_buff_id)
 
 
 func _on_local_xiaocong_collectible_choice_submitted(choice_index: int) -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		request_xiaocong_collectible_choice(0, choice_index)
 	else:
-		multiplayer_xiaocong_collectible_requested.emit(choice_index)
+		tower_multiplayer_mode_adapter.xiaocong_collectible_requested.emit(choice_index)
 
 
 func request_xiaocong_interaction(peer_id: int) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != WaveState.FATE_INTERLUDE:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
 	var player_instance := _get_fate_player(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
@@ -4120,13 +4164,13 @@ func request_xiaocong_fate_vote(
 	option_id: StringName,
 	permanent_buff_id: StringName
 ) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != WaveState.FATE_INTERLUDE:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
 	fate_manager.submit_vote(peer_id, option_id, permanent_buff_id)
 
 
 func request_xiaocong_collectible_choice(peer_id: int, choice_index: int) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != WaveState.FATE_INTERLUDE:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
 	fate_coordinator.request_collectible_choice(peer_id, choice_index)
 
@@ -4165,25 +4209,25 @@ func _on_xiaocong_fate_state_changed(_state: Dictionary) -> void:
 		):
 			_present_fate_interlude_locally(fate_manager.completed_day)
 	elif (
-		wave_state == WaveState.FATE_INTERLUDE
+		wave_state == CombatFlowState.State.FATE_INTERLUDE
 		and runtime_mode == RuntimeMode.CLIENT_VIEW
 	):
 		_begin_remote_fate_departure()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_xiaocong_fate_state_changed.emit(snapshot)
+		tower_multiplayer_mode_adapter.xiaocong_fate_state_changed.emit(snapshot)
 
 func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
 	_set_fate_interlude_systems_frozen(true)
-	wave_state = WaveState.FATE_INTERLUDE
+	wave_state = CombatFlowState.State.FATE_INTERLUDE
 	_set_fate_player_combat_locked(true)
 	next_flow_step_after_rest = next_step
 	countdown_seconds = 0
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	var completed_day := _get_day_number_for_wave(current_wave_index + 1)
-	_emit_multiplayer_flow_state(WaveState.FATE_INTERLUDE)
+	_emit_multiplayer_flow_state(CombatFlowState.State.FATE_INTERLUDE)
 	await xiaocong_fate_interlude.cover_scene_for_transfer()
-	if wave_state != WaveState.FATE_INTERLUDE:
+	if wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
 	_set_merchant_active(false)
 	transition_world_to_day()
@@ -4191,7 +4235,7 @@ func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
 	_present_fate_interlude_locally(completed_day)
 	_teleport_authoritative_players_to_fate_room()
 	await xiaocong_fate_interlude.play_room_reveal()
-	if wave_state != WaveState.FATE_INTERLUDE:
+	if wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
 	fate_coordinator.begin_interlude(
 		completed_day,
@@ -4221,7 +4265,7 @@ func _begin_remote_fate_entry(day_number: int) -> void:
 	remote_fate_departure_covered = false
 	pending_remote_fate_flow_state.clear()
 	await xiaocong_fate_interlude.cover_scene_for_transfer()
-	if runtime_mode != RuntimeMode.CLIENT_VIEW or wave_state != WaveState.FATE_INTERLUDE:
+	if runtime_mode != RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		remote_fate_entry_in_progress = false
 		return
 	transition_world_to_day()
@@ -4246,7 +4290,7 @@ func _begin_remote_fate_departure() -> void:
 	pending_remote_fate_flow_state.clear()
 	apply_remote_flow_state(
 		StringName(deferred_flow_state.get("step_id", "")),
-		int(deferred_flow_state.get("state", int(WaveState.INTERMISSION))),
+		int(deferred_flow_state.get("state", int(CombatFlowState.State.INTERMISSION))),
 		int(deferred_flow_state.get("seconds", 0))
 	)
 
@@ -4361,10 +4405,10 @@ func _teleport_fate_player_authoritatively(
 	target_position: Vector2
 ) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		if not multiplayer_player_teleport_requested.has_connections():
+		if not multiplayer_gateway.player_teleport_requested.has_connections():
 			push_error("TowerDefenseGame: 多人权威传送缺少 MPGame 处理器。")
 			return
-		multiplayer_player_teleport_requested.emit(peer_id, target_position)
+		multiplayer_gateway.player_teleport_requested.emit(peer_id, target_position)
 		return
 	player_instance.global_position = target_position
 	player_instance.velocity = Vector2.ZERO
@@ -4433,7 +4477,7 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	if flow_step == null:
 		_enter_victory()
 		return
-	wave_state = WaveState.PRE_WAVE
+	wave_state = CombatFlowState.State.PRE_WAVE
 	transition_world_to_day()
 	current_flow_step = flow_step
 	next_flow_step_after_rest = flow_step
@@ -4445,7 +4489,7 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	_update_post_wave_music(flow_step)
 	wave_hud.show_countdown(countdown_seconds, _can_local_player_start_wave_early())
 	_schedule_enemy_navigation_prewarm()
-	_emit_multiplayer_flow_state(WaveState.PRE_WAVE)
+	_emit_multiplayer_flow_state(CombatFlowState.State.PRE_WAVE)
 
 	if countdown_seconds <= 0:
 		_begin_flow_step(current_flow_step)
@@ -4457,7 +4501,7 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 
 
 func _enter_intermission(next_step: FlowStepConfig = null) -> void:
-	wave_state = WaveState.INTERMISSION
+	wave_state = CombatFlowState.State.INTERMISSION
 	_apply_intermission_lighting(maxi(current_wave_index + 1, 1))
 	enemy_spawn_timer.stop()
 	_set_merchant_active(true)
@@ -4465,7 +4509,7 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 	countdown_seconds = _get_current_intermission_seconds()
 	_update_post_wave_music(current_flow_step)
 	wave_hud.show_countdown(countdown_seconds, _can_local_player_start_wave_early())
-	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
+	_emit_multiplayer_flow_state(CombatFlowState.State.INTERMISSION)
 	_force_revive_dead_players()
 
 	if countdown_seconds <= 0:
@@ -4504,7 +4548,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 		_prewarm_enemy_navigation_grids()
 		navigation_prewarmed = true
 
-	wave_state = WaveState.WAVE_ACTIVE
+	wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_reset_player_wave_death_counts()
 	current_wave_index = _get_wave_number_for_step(wave_config) - 1
 	_apply_wave_start_lighting(current_wave_index + 1)
@@ -4524,7 +4568,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	_show_tower_defense_wave_progress()
 	if not phase_announcement_started:
 		wave_start_audio.play()
-	_emit_multiplayer_flow_state(WaveState.WAVE_ACTIVE)
+	_emit_multiplayer_flow_state(CombatFlowState.State.WAVE_ACTIVE)
 
 	if current_wave_total <= 0:
 		_check_wave_completion()
@@ -4654,7 +4698,7 @@ func _on_state_timer_timeout() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		_update_client_flow_countdown()
 		return
-	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
+	if wave_state != CombatFlowState.State.PRE_WAVE and wave_state != CombatFlowState.State.INTERMISSION:
 		state_timer.stop()
 		return
 
@@ -4669,7 +4713,7 @@ func _on_state_timer_timeout() -> void:
 		return
 
 	state_timer.stop()
-	if wave_state == WaveState.PRE_WAVE:
+	if wave_state == CombatFlowState.State.PRE_WAVE:
 		_begin_flow_step(current_flow_step)
 	else:
 		_begin_flow_step(next_flow_step_after_rest)
@@ -4679,14 +4723,14 @@ func _on_enemy_spawn_timer_timeout() -> void:
 	_spawn_wave_batch()
 
 
-func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds: int) -> void:
+func _start_client_flow_countdown(state: CombatFlowState.State, step_id: StringName, seconds: int) -> void:
 	wave_state = state
 	var flow_step := _get_flow_step_by_id(step_id)
 	if flow_step != null:
 		current_flow_step = flow_step
 		if flow_step is WaveConfig:
 			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	if state == WaveState.PRE_WAVE or state == WaveState.INTERMISSION:
+	if state == CombatFlowState.State.PRE_WAVE or state == CombatFlowState.State.INTERMISSION:
 		_set_local_merchants_active(true)
 		_update_post_wave_music(flow_step)
 	countdown_seconds = maxi(seconds, 0)
@@ -4702,7 +4746,7 @@ func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds
 
 
 func _update_client_flow_countdown() -> void:
-	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
+	if wave_state != CombatFlowState.State.PRE_WAVE and wave_state != CombatFlowState.State.INTERMISSION:
 		state_timer.stop()
 		return
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
@@ -4721,7 +4765,7 @@ func _update_client_flow_countdown() -> void:
 
 
 func _spawn_wave_batch() -> void:
-	if wave_state != WaveState.WAVE_ACTIVE:
+	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		enemy_spawn_timer.stop()
 		return
 
@@ -4789,7 +4833,12 @@ func _try_spawn_enemy(
 
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = spawn_point.global_position
-	enemy_instance.setup(enemy_config, _pick_enemy_target(spawn_point.global_position), grid_pathfinder)
+	enemy_instance.setup(
+		enemy_config,
+		_pick_enemy_target(spawn_point.global_position),
+		grid_pathfinder,
+		self
+	)
 	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
 	_assign_enemy_targets(enemy_instance, spawn_point.global_position)
 	var enemy_id := enemy_instance.get_instance_id()
@@ -4814,7 +4863,7 @@ func spawn_linglan_skill2_enemies(
 
 
 func spawn_linglan_random_slime(spawn_position: Vector2) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != WaveState.BOSS_ACTIVE:
+	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if not spawn_position.is_finite():
 		return
@@ -4836,13 +4885,13 @@ func spawn_linglan_airdrop_sniper(
 ) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if enemy_config == null or enemy_config.enemy_scene == null:
 		return
 	var landing_position := _get_random_linglan_boss_arena_position()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_linglan_airdrop_started.emit(
+		linglan_boss_runtime_port.airdrop_started.emit(
 			enemy_config,
 			landing_position,
 			warning_duration,
@@ -4885,7 +4934,7 @@ func _finish_linglan_airdrop_sniper_spawn(
 ) -> void:
 	if warning_duration > 0.0:
 		await get_tree().create_timer(warning_duration).timeout
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if enemy_container == null or player == null:
 		return
@@ -4898,7 +4947,12 @@ func _finish_linglan_airdrop_sniper_spawn(
 
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = landing_position + Vector2(0.0, -drop_height)
-	enemy_instance.setup(enemy_config, _pick_enemy_target(landing_position), grid_pathfinder)
+	enemy_instance.setup(
+		enemy_config,
+		_pick_enemy_target(landing_position),
+		grid_pathfinder,
+		self
+	)
 	_assign_enemy_targets(enemy_instance, landing_position)
 	enemy_instance.velocity = Vector2.ZERO
 	enemy_instance.set_process(false)
@@ -4913,7 +4967,7 @@ func _finish_linglan_airdrop_sniper_spawn(
 
 	if not is_instance_valid(enemy_instance):
 		return
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		enemy_instance.queue_free()
 		return
 
@@ -5000,7 +5054,12 @@ func _try_spawn_boss_add_at_position(
 
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = spawn_position
-	enemy_instance.setup(enemy_config, _pick_enemy_target(spawn_position), grid_pathfinder)
+	enemy_instance.setup(
+		enemy_config,
+		_pick_enemy_target(spawn_position),
+		grid_pathfinder,
+		self
+	)
 	_assign_enemy_targets(enemy_instance, spawn_position)
 	var enemy_id := enemy_instance.get_instance_id()
 	active_wave_enemy_ids[enemy_id] = true
@@ -5057,7 +5116,7 @@ func _register_multiplayer_enemy_instance(
 	multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
 	register_combat_target(enemy_net_id, enemy_instance)
 	if broadcast_spawn:
-		multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
+		multiplayer_gateway.enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
 	return enemy_net_id
 
 
@@ -5078,7 +5137,7 @@ func _configure_authoritative_enemy_physics_interpolation(enemy_instance: Enemy)
 
 
 func _on_wave_enemy_defeated(enemy: Enemy) -> void:
-	if wave_state != WaveState.WAVE_ACTIVE:
+	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		return
 	if enemy == null or not active_wave_enemy_ids.has(enemy.get_instance_id()):
 		return
@@ -5100,7 +5159,7 @@ func _show_tower_defense_wave_progress() -> void:
 		current_wave_total
 	)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_tower_defense_wave_progress_changed.emit(
+		tower_multiplayer_mode_adapter.wave_progress_changed.emit(
 			current_wave_index + 1,
 			current_wave_defeated,
 			current_wave_escaped,
@@ -5144,7 +5203,7 @@ func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
 	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0))
 	if enemy_net_id <= 0:
 		return
-	multiplayer_enemy_defeated.emit(enemy_net_id, enemy.global_position)
+	multiplayer_gateway.enemy_defeated.emit(enemy_net_id, enemy.global_position)
 
 
 func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
@@ -5168,11 +5227,11 @@ func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 	# the ensuing tree exit. Consume it here; normal exits never become history.
 	if pending_multiplayer_enemy_escape_ids.erase(enemy_net_id):
 		return
-	multiplayer_enemy_removed.emit(enemy_net_id)
+	multiplayer_gateway.enemy_removed.emit(enemy_net_id)
 
 
 func _check_wave_completion() -> void:
-	if wave_state != WaveState.WAVE_ACTIVE:
+	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		return
 	if _has_pending_enemy_configs():
 		return
@@ -5302,7 +5361,7 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 		defeat_camera_tween.kill()
 		defeat_camera_tween = null
 	_restore_camera_after_boss_intro()
-	wave_state = WaveState.VICTORY
+	wave_state = CombatFlowState.State.VICTORY
 	transition_world_to_day()
 	_force_revive_dead_players(emit_multiplayer)
 	_clear_respawn_runtime_for_result()
@@ -5317,19 +5376,19 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 		boss_health_hud.hide_all()
 	wave_hud.show_victory()
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_victory_started.emit()
-		_emit_multiplayer_flow_state(WaveState.VICTORY)
+		multiplayer_mode_adapter.victory_started.emit()
+		_emit_multiplayer_flow_state(CombatFlowState.State.VICTORY)
 
 
 func _enter_defeat(emit_multiplayer: bool = true) -> void:
-	if wave_state == WaveState.DEFEAT:
+	if wave_state == CombatFlowState.State.DEFEAT:
 		return
 	if luoxi_special_game_coordinator != null:
 		luoxi_special_game_coordinator.cancel_all()
 	if luoxi_merchant != null:
 		luoxi_merchant.abort_special_game()
 	_cancel_plant_placement()
-	wave_state = WaveState.DEFEAT
+	wave_state = CombatFlowState.State.DEFEAT
 	transition_world_to_day()
 	defeat_presentation_completed = false
 	_clear_respawn_runtime_for_result()
@@ -5343,7 +5402,7 @@ func _enter_defeat(emit_multiplayer: bool = true) -> void:
 		boss_health_hud.hide_all()
 	wave_hud.hide_all()
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_defeat_started.emit()
+		multiplayer_mode_adapter.defeat_started.emit()
 	_begin_defeat_camera_sequence()
 
 
@@ -5392,7 +5451,7 @@ func _set_map_camera_rounded_global_position(camera_position: Vector2) -> void:
 
 func _complete_defeat_presentation() -> void:
 	defeat_camera_tween = null
-	if wave_state != WaveState.DEFEAT or defeat_presentation_completed:
+	if wave_state != CombatFlowState.State.DEFEAT or defeat_presentation_completed:
 		return
 	defeat_presentation_completed = true
 	wave_hud.show_tower_defense_defeat()
@@ -5423,7 +5482,7 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	_reset_player_wave_death_counts()
 	linglan_boss_started = true
 	current_flow_step = boss_config
-	wave_state = WaveState.BOSS_INTRO
+	wave_state = CombatFlowState.State.BOSS_INTRO
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_clear_pending_enemy_spawn_queue()
@@ -5447,7 +5506,7 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	_focus_camera_on_boss_intro(boss_spawn_position)
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
-	_emit_multiplayer_flow_state(WaveState.BOSS_INTRO)
+	_emit_multiplayer_flow_state(CombatFlowState.State.BOSS_INTRO)
 	if linglan_boss_intro_vfx != null:
 		linglan_boss_intro_vfx.play_intro(boss_spawn_position)
 	else:
@@ -5455,7 +5514,7 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 
 
 func _on_linglan_boss_intro_finished() -> void:
-	if wave_state != WaveState.BOSS_INTRO:
+	if wave_state != CombatFlowState.State.BOSS_INTRO:
 		return
 	_restore_camera_after_boss_intro()
 	_activate_linglan_boss()
@@ -5470,10 +5529,15 @@ func _activate_linglan_boss() -> void:
 	if not _boss_config_has_required_data(boss_config):
 		_enter_victory()
 		return
-	wave_state = WaveState.BOSS_ACTIVE
+	wave_state = CombatFlowState.State.BOSS_ACTIVE
 	linglan_boss.config = _get_boss_enemy_config(boss_config)
 	linglan_boss.global_position = _get_linglan_spawn_global_position(boss_config)
-	linglan_boss.activate_boss(player, grid_pathfinder)
+	linglan_boss.activate_boss(
+		player,
+		grid_pathfinder,
+		self,
+		linglan_boss_runtime_port
+	)
 	if not linglan_boss.is_advancing_to_home():
 		_assign_enemy_targets(linglan_boss, linglan_boss.global_position)
 	var boss_instance_id := linglan_boss.get_instance_id()
@@ -5489,9 +5553,9 @@ func _activate_linglan_boss() -> void:
 	wave_hud.show_tower_defense_boss_progress(0, 1)
 	if boss_health_hud != null:
 		boss_health_hud.show_for_boss(linglan_boss, _get_boss_display_name(boss_config))
-	_emit_multiplayer_flow_state(WaveState.BOSS_ACTIVE)
+	_emit_multiplayer_flow_state(CombatFlowState.State.BOSS_ACTIVE)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
+		multiplayer_mode_adapter.boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
 		_rebroadcast_linglan_boss_started_after_sync_window(boss_net_id, boss_config)
 
 
@@ -5516,15 +5580,15 @@ func _rebroadcast_linglan_boss_started_after_sync_window(
 	await get_tree().create_timer(0.75).timeout
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if linglan_boss == null or not is_instance_valid(linglan_boss):
 		return
-	multiplayer_boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
+	multiplayer_mode_adapter.boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
 
 
 func _on_linglan_boss_defeated(enemy: Enemy) -> void:
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if enemy != linglan_boss:
 		return
@@ -5540,7 +5604,7 @@ func _on_linglan_boss_defeated(enemy: Enemy) -> void:
 
 
 func _complete_linglan_boss_after_delay() -> void:
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	_remove_remaining_boss_adds()
 	_complete_current_step()
@@ -5574,7 +5638,7 @@ func _on_player_died() -> void:
 	_cancel_plant_placement()
 	_update_plant_placement_input_state()
 	player.apply_tower_defense_death_presentation()
-	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
+	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
 		return
 	_begin_local_spectator_camera()
 	var respawn_delay := consume_next_player_respawn_delay(0)
@@ -5589,7 +5653,7 @@ func _on_multiplayer_player_died(peer_id: int) -> void:
 	var dead_player := get_player_for_peer(peer_id)
 	if dead_player != null and is_instance_valid(dead_player):
 		dead_player.apply_tower_defense_death_presentation()
-	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
+	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
 		return
 	if peer_id == multiplayer_local_peer_id:
 		_begin_local_spectator_camera()
@@ -5663,7 +5727,7 @@ func _force_revive_dead_players(emit_multiplayer: bool = true) -> void:
 					and is_instance_valid(player_instance)
 					and player_instance.is_dead
 				):
-					multiplayer_revive_all_requested.emit()
+					multiplayer_mode_adapter.revive_all_requested.emit()
 					return
 		RuntimeMode.CLIENT_VIEW:
 			return
@@ -6075,7 +6139,7 @@ func _register_multiplayer_pickup(pickup: Pickup, net_id: int, broadcast_spawn: 
 	if not pickup.tree_exited.is_connected(_on_multiplayer_pickup_tree_exited.bind(net_id)):
 		pickup.tree_exited.connect(_on_multiplayer_pickup_tree_exited.bind(net_id))
 	if broadcast_spawn:
-		multiplayer_pickup_spawned.emit(net_id, pickup.config, pickup.global_position)
+		multiplayer_gateway.pickup_spawned.emit(net_id, pickup.config, pickup.global_position)
 
 
 func _on_multiplayer_pickup_consumed(
@@ -6088,7 +6152,7 @@ func _on_multiplayer_pickup_consumed(
 		return
 	if not _mark_multiplayer_pickup_removed(net_id, true):
 		return
-	multiplayer_pickup_collected.emit(
+	multiplayer_gateway.pickup_collected.emit(
 		net_id,
 		collector_peer_id,
 		pickup.config,
@@ -6115,7 +6179,7 @@ func _mark_multiplayer_pickup_removed(
 	elif pending_multiplayer_pickup_exit_ids.erase(net_id):
 		return false
 	multiplayer_pickups.erase(net_id)
-	multiplayer_pickup_removed.emit(net_id)
+	multiplayer_gateway.pickup_removed.emit(net_id)
 	return true
 
 
@@ -6527,10 +6591,10 @@ func _get_wave_number_for_step(wave_config: WaveConfig) -> int:
 	return current_wave_index + 1
 
 
-func _emit_multiplayer_flow_state(state: WaveState) -> void:
+func _emit_multiplayer_flow_state(state: CombatFlowState.State) -> void:
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
-	multiplayer_flow_state_changed.emit(
+	multiplayer_mode_adapter.flow_state_changed.emit(
 		_get_flow_step_id(current_flow_step),
 		int(state),
 		countdown_seconds
@@ -6656,7 +6720,7 @@ func _play_countdown_tick() -> void:
 
 
 func _play_client_countdown_tick_if_new(
-	state: WaveState,
+	state: CombatFlowState.State,
 	step_id: StringName,
 	seconds: int
 ) -> void:

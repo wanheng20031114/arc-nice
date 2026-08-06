@@ -27,6 +27,9 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="29_night_vfx_flash_pool"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="30_combat_robot_drone_motion"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/standard.tres" id="31_mode_definition"]
+[ext_resource type="PackedScene" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="32_gameplay_gateway"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/standard/multiplayer/standard_multiplayer_mode_adapter.tscn" id="33_mode_adapter"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/standard/boss/standard_linglan_boss_runtime_port.tscn" id="34_linglan_port"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -128,6 +131,12 @@ b = Vector2(1060, -106.666664)
 position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
 mode_definition = ExtResource("31_mode_definition")
+
+[node name="MultiplayerGameplayGateway" parent="." instance=ExtResource("32_gameplay_gateway")]
+
+[node name="MultiplayerModeAdapter" parent="." instance=ExtResource("33_mode_adapter")]
+
+[node name="LinglanBossRuntimePort" parent="." instance=ExtResource("34_linglan_port")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")

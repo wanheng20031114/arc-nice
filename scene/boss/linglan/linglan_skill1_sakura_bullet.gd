@@ -39,6 +39,16 @@ var world_collision_query := PhysicsRayQueryParameters2D.create(
 	Vector2.ZERO,
 	WORLD_COLLISION_MASK
 )
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func _ready() -> void:
@@ -69,6 +79,8 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	combat_runtime = null
+	gameplay_gateway = null
 	pool_active = true
 	has_hit = false
 	is_lifetime_despawning = false
@@ -106,6 +118,8 @@ func on_pool_acquired(_generation: int) -> void:
 
 
 func on_pool_released(_generation: int) -> void:
+	combat_runtime = null
+	gameplay_gateway = null
 	pool_active = false
 	has_hit = true
 	is_lifetime_despawning = false
@@ -242,7 +256,7 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 	if not player.is_dead:
 		var hit_registered := _try_report_multiplayer_player_hit(player)
-		if not hit_registered:
+		if not hit_registered and _has_explicit_singleplayer_authority():
 			hit_registered = player.apply_damage(
 				damage,
 				EnemyConfig.DamageType.PHYSICAL,
@@ -280,20 +294,18 @@ func retire() -> void:
 
 
 func _spawn_hit_effect() -> void:
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
+	var spawn_parent: Node = combat_runtime
 	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(self, global_position):
 		return
 
 	var effect: LinglanSakuraHitEffect = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call("has_session_object_pool_scene", HIT_EFFECT_SCENE))
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		HIT_EFFECT_SCENE
 	)
 	if uses_registered_pool:
-		effect = spawn_parent.call(
-			"acquire_session_object",
+		effect = combat_runtime.acquire_session_object(
 			HIT_EFFECT_SCENE,
 			false
 		) as LinglanSakuraHitEffect
@@ -311,23 +323,30 @@ func _spawn_hit_effect() -> void:
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
-	if projectile_id <= 0:
-		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return false
 	if (
 		source_type == &"linglan_skill1"
-		and current_scene.has_method("is_client_view_runtime")
-		and bool(current_scene.call("is_client_view_runtime"))
+		and gameplay_gateway.is_client_view()
 	):
 		return true
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	if projectile_id <= 0:
+		return false
+	return gameplay_gateway.request_player_damage(
 		projectile_id,
 		player.peer_id,
 		damage,
 		source_type,
+		EnemyConfig.DamageType.PHYSICAL,
 		-direction,
 		true
-	))
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)

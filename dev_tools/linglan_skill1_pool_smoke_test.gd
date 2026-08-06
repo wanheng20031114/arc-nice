@@ -15,13 +15,81 @@ const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
 const DAY_NIGHT_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"
 )
+const COMBAT_ROBOT_DRONE_MOTION_SYSTEM_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn"
+)
+const STANDARD_MODE_ADAPTER_SCENE := preload(
+	"res://scene/game_modes/standard/multiplayer/standard_multiplayer_mode_adapter.tscn"
+)
+
+
+class RecordingGameplaySession:
+	extends "res://scene/multiplayer/mp_game.gd"
+
+	var local_projectile_records: Array[Dictionary] = []
+
+	func register_local_projectile(
+		projectile: Node,
+		projectile_type: StringName,
+		owner_peer_id: int,
+		spawn_position: Vector2,
+		direction: Vector2,
+		damage: int,
+		speed: float,
+		lifetime: float,
+		pierces_enemies: bool = false,
+		target_peer_id: int = 0,
+		target_enemy_net_id: int = 0
+	) -> void:
+		local_projectile_records.append({
+			"projectile": projectile,
+			"projectile_type": projectile_type,
+			"owner_peer_id": owner_peer_id,
+			"spawn_position": spawn_position,
+			"direction": direction,
+			"damage": damage,
+			"speed": speed,
+			"lifetime": lifetime,
+			"pierces_enemies": pierces_enemies,
+			"target_peer_id": target_peer_id,
+			"target_enemy_net_id": target_enemy_net_id,
+		})
+		if projectile is LinglanSakuraBullet:
+			(projectile as LinglanSakuraBullet).setup_multiplayer(
+				7000 + local_projectile_records.size(),
+				owner_peer_id,
+				projectile_type
+			)
+
+	func register_local_linglan_skill1_ring(
+		projectiles: Array[Node],
+		spawn_positions: PackedVector2Array,
+		directions: PackedVector2Array,
+		owner_peer_id: int,
+		damage: int,
+		speed: float,
+		lifetime: float
+	) -> void:
+		for index in range(projectiles.size()):
+			register_local_projectile(
+				projectiles[index],
+				&"linglan_skill1",
+				owner_peer_id,
+				spawn_positions[index],
+				directions[index],
+				damage,
+				speed,
+				lifetime
+			)
 
 
 class PoolRuntime:
-	extends GameRuntimeBase
+	extends CombatRuntimeBase
 
 	var session_object_pool: SessionObjectPool = null
 	var local_projectile_records: Array[Dictionary] = []
+	var gameplay_gateway: MultiplayerGameplayGateway = null
+	var gameplay_session: RecordingGameplaySession = null
 
 	func install_pool() -> void:
 		var enemies := Node2D.new()
@@ -31,9 +99,18 @@ class PoolRuntime:
 		pathfinder.name = "GridPathfinder"
 		add_child(pathfinder)
 		add_child(CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE.instantiate())
+		add_child(COMBAT_ROBOT_DRONE_MOTION_SYSTEM_SCENE.instantiate())
+		add_child(DAY_NIGHT_SCENE.instantiate())
+		gameplay_gateway = MultiplayerGameplayGateway.new()
+		gameplay_gateway.name = "MultiplayerGameplayGateway"
+		add_child(gameplay_gateway)
+		add_child(STANDARD_MODE_ADAPTER_SCENE.instantiate())
 		session_object_pool = SessionObjectPool.new()
 		session_object_pool.name = "SessionObjectPool"
 		add_child(session_object_pool)
+		gameplay_session = RecordingGameplaySession.new()
+		gameplay_session.local_projectile_records = local_projectile_records
+		gameplay_gateway.attach_multiplayer_session(gameplay_session)
 
 	func configure_multiplayer(
 		_mode: int,
@@ -138,41 +215,6 @@ class PoolRuntime:
 	func show_debug_collectible_grant_result(_config_path: String, _success: bool) -> void:
 		pass
 
-	func register_local_projectile(
-		projectile: Node,
-		projectile_type: StringName,
-		owner_peer_id: int,
-		spawn_position: Vector2,
-		direction: Vector2,
-		damage: int,
-		speed: float,
-		lifetime: float,
-		pierces_enemies: bool = false,
-		target_peer_id: int = 0,
-		target_enemy_net_id: int = 0
-	) -> void:
-		local_projectile_records.append({
-			"projectile": projectile,
-			"projectile_type": projectile_type,
-			"owner_peer_id": owner_peer_id,
-			"spawn_position": spawn_position,
-			"direction": direction,
-			"damage": damage,
-			"speed": speed,
-			"lifetime": lifetime,
-			"pierces_enemies": pierces_enemies,
-			"target_peer_id": target_peer_id,
-			"target_enemy_net_id": target_enemy_net_id,
-		})
-		if projectile.has_method("setup_multiplayer"):
-			projectile.call(
-				"setup_multiplayer",
-				7000 + local_projectile_records.size(),
-				owner_peer_id,
-				projectile_type
-			)
-
-
 var failures: Array[String] = []
 var runtime: PoolRuntime = null
 var pool: SessionObjectPool = null
@@ -186,7 +228,6 @@ func _run() -> void:
 	runtime = PoolRuntime.new()
 	runtime.name = "LinglanSkill1PoolRuntime"
 	runtime.install_pool()
-	runtime.add_child(DAY_NIGHT_SCENE.instantiate())
 	root.add_child(runtime)
 	current_scene = runtime
 	pool = runtime.session_object_pool
@@ -200,6 +241,9 @@ func _run() -> void:
 	_test_production_runtime_registration_contract()
 
 	current_scene = null
+	runtime.gameplay_gateway.detach_multiplayer_session(runtime.gameplay_session)
+	runtime.gameplay_session.free()
+	runtime.gameplay_session = null
 	runtime.queue_free()
 	for _cleanup_frame in range(4):
 		await process_frame
@@ -220,6 +264,7 @@ func _test_boss_single_and_host_spawn_path() -> void:
 		return
 	runtime.add_child(boss)
 	await process_frame
+	boss.bind_combat_runtime(runtime)
 	boss.global_position = Vector2(96.0, 64.0)
 	boss.call("_spawn_skill1_projectile", Vector2.RIGHT)
 	var first := _find_active_sakura_bullet()
@@ -298,6 +343,10 @@ func _test_damage_trajectory_and_hit_effect_semantics() -> void:
 		player.queue_free()
 		return
 	bullet.top_level = true
+	bullet.bind_gameplay_context(
+		runtime,
+		runtime.get_multiplayer_gameplay_gateway()
+	)
 	bullet.global_position = Vector2(32.0, 20.0)
 	bullet.setup(Vector2.LEFT, 37, 225.0, 1.25)
 	bullet.call("_on_body_entered", player)
@@ -323,6 +372,10 @@ func _test_damage_trajectory_and_hit_effect_semantics() -> void:
 	var expiry_bullet := pool.acquire(SAKURA_BULLET_SCENE) as LinglanSakuraBullet
 	_expect(expiry_bullet != null, "Expiry semantics fixture must reacquire a Sakura bullet.")
 	if expiry_bullet != null:
+		expiry_bullet.bind_gameplay_context(
+			runtime,
+			runtime.get_multiplayer_gameplay_gateway()
+		)
 		expiry_bullet.setup(Vector2.DOWN, 50, 0.0, 0.01)
 		expiry_bullet.call("_physics_process", 0.02)
 		_expect(
@@ -443,6 +496,10 @@ func _test_offscreen_hit_keeps_damage_without_visual_lease() -> void:
 	_expect(bullet != null, "Offscreen semantics fixture must acquire a Sakura bullet.")
 	if bullet != null:
 		bullet.top_level = true
+		bullet.bind_gameplay_context(
+			runtime,
+			runtime.get_multiplayer_gameplay_gateway()
+		)
 		bullet.global_position = Vector2(100000.0, 100000.0)
 		bullet.setup(Vector2.RIGHT, 29, 300.0, 2.0)
 		bullet.call("_on_body_entered", player)
@@ -462,7 +519,7 @@ func _test_offscreen_hit_keeps_damage_without_visual_lease() -> void:
 
 func _test_production_runtime_registration_contract() -> void:
 	for runtime_script_path in [
-		"res://scene/game_modes/standard/standard_game.gd",
+		"res://scene/combat/runtime/wave_combat_runtime_base.gd",
 		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
 	]:
 		var source := FileAccess.get_file_as_string(runtime_script_path)

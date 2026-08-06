@@ -249,7 +249,7 @@ func _test_host_rejects_free_placement() -> void:
 	var game := GAME_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		{1: "Host", 2: "Client"},
 		{1: &"weishidaier", 2: &"weishidaier"}
@@ -257,8 +257,15 @@ func _test_host_rejects_free_placement() -> void:
 	root.add_child(game)
 	current_scene = game
 	await _wait_layout_frames(2)
+	var tower_adapter := (
+		game.get_multiplayer_mode_adapter()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	_expect(tower_adapter != null, "Formal tower scene must author its multiplayer mode adapter.")
+	if tower_adapter == null:
+		return
 	var rejections: Array[Dictionary] = []
-	game.multiplayer_plant_placement_rejected.connect(
+	tower_adapter.plant_placement_rejected.connect(
 		func(request_id: int, peer_id: int, reason: StringName) -> void:
 			rejections.append({
 				"request_id": request_id,

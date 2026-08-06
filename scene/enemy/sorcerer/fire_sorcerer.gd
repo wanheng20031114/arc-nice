@@ -64,13 +64,13 @@ func _select_nearest_attack_target(
 		attack_target_refresh_left = 0.0
 	if allow_runtime_refresh and attack_target_refresh_left <= 0.0:
 		attack_target_refresh_left = ATTACK_TARGET_REFRESH_INTERVAL
-		var runtime := _get_attack_target_runtime()
-		if runtime != null:
-			cached_runtime_attack_target = runtime.call(
-				ATTACK_TARGET_QUERY_METHOD,
-				global_position,
-				fire_config.attack_range
-			) as Node2D
+		if combat_runtime != null and is_instance_valid(combat_runtime):
+			cached_runtime_attack_target = (
+				combat_runtime.find_nearest_enemy_attack_target_world(
+					global_position,
+					fire_config.attack_range
+				)
+			)
 			if not _is_ranged_combat_target_valid(
 				cached_runtime_attack_target
 			):
@@ -103,15 +103,6 @@ func _select_nearest_attack_target(
 	):
 		return cached_runtime_attack_target
 	return fallback_target
-
-
-func _get_attack_target_runtime() -> Node:
-	if pathfinder == null:
-		return null
-	var runtime := pathfinder.get_parent()
-	if runtime != null and runtime.has_method(ATTACK_TARGET_QUERY_METHOD):
-		return runtime
-	return null
 
 
 func _physics_process(delta: float) -> void:
@@ -339,21 +330,17 @@ func _on_animated_sprite_animation_finished() -> void:
 func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 	if fire_config.volley_scene == null:
 		return false
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		return false
-	var volley: FireSorcererFireballVolley = null
 	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(
-			spawn_parent.call(
-				"has_session_object_pool_scene",
-				fire_config.volley_scene
-			)
-		)
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
 	):
-		volley = spawn_parent.call(
-			"acquire_session_object",
+		return false
+	var spawn_parent: Node = combat_runtime
+	var volley: FireSorcererFireballVolley = null
+	if combat_runtime.has_session_object_pool_scene(fire_config.volley_scene):
+		volley = combat_runtime.acquire_session_object(
 			fire_config.volley_scene,
 			false
 		) as FireSorcererFireballVolley
@@ -367,6 +354,7 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 		return false
 
 	var outgoing_damage := get_effective_attack_damage(fire_config.attack_damage)
+	volley.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	volley.top_level = true
 	volley.setup(
 		summon_direction,
@@ -375,40 +363,40 @@ func _spawn_fireball_volley(fire_config: FireConfig) -> bool:
 		fire_config.projectile_lifetime,
 		summon_target,
 		fire_config.homing_turn_rate,
-		_get_attack_target_runtime(),
+		combat_runtime,
 		fire_config.burn_duration,
 		fire_config.burn_level
 	)
 	if volley.get_parent() == null:
 		spawn_parent.add_child(volley)
+	elif volley.get_parent() != spawn_parent:
+		volley.reparent(spawn_parent)
 	# 与场景中三枚预览火球共用法杖前方的旋转枢轴，避免完成前摇时
 	# 实体火球相对预览图像向下跳动。
 	volley.global_position = summon_pivot.global_position
 	volley.reset_physics_interpolation()
-	if spawn_parent.has_method("register_local_projectile"):
-		var target_peer_id := 0
-		var target_plant_net_id := 0
-		var player_target := summon_target as Player
-		if player_target != null:
-			target_peer_id = player_target.peer_id
-		else:
-			var plant_target := summon_target as PlantDefense
-			if plant_target != null:
-				target_plant_net_id = int(plant_target.get_meta(&"net_id", 0))
-		spawn_parent.call(
-			"register_local_projectile",
-			volley,
-			_get_fireball_projectile_type(),
-			0,
-			volley.global_position,
-			summon_direction,
-			outgoing_damage,
-			fire_config.projectile_speed,
-			fire_config.projectile_lifetime,
-			false,
-			target_peer_id,
-			target_plant_net_id
-		)
+	var target_peer_id := 0
+	var target_plant_net_id := 0
+	var player_target := summon_target as Player
+	if player_target != null:
+		target_peer_id = player_target.peer_id
+	else:
+		var plant_target := summon_target as PlantDefense
+		if plant_target != null:
+			target_plant_net_id = int(plant_target.get_meta(&"net_id", 0))
+	gameplay_gateway.register_local_projectile(
+		volley,
+		_get_fireball_projectile_type(),
+		0,
+		volley.global_position,
+		summon_direction,
+		outgoing_damage,
+		fire_config.projectile_speed,
+		fire_config.projectile_lifetime,
+		false,
+		target_peer_id,
+		target_plant_net_id
+	)
 	return true
 
 

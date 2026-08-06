@@ -56,13 +56,13 @@ func _select_nearest_attack_target(
 		attack_target_refresh_left = 0.0
 	if allow_runtime_refresh and attack_target_refresh_left <= 0.0:
 		attack_target_refresh_left = ATTACK_TARGET_REFRESH_INTERVAL
-		var runtime := _get_attack_target_runtime()
-		if runtime != null:
-			cached_runtime_attack_target = runtime.call(
-				ATTACK_TARGET_QUERY_METHOD,
-				global_position,
-				frost_config.attack_range
-			) as Node2D
+		if combat_runtime != null and is_instance_valid(combat_runtime):
+			cached_runtime_attack_target = (
+				combat_runtime.find_nearest_enemy_attack_target_world(
+					global_position,
+					frost_config.attack_range
+				)
+			)
 			if not _is_ranged_combat_target_valid(
 				cached_runtime_attack_target
 			):
@@ -95,15 +95,6 @@ func _select_nearest_attack_target(
 	):
 		return cached_runtime_attack_target
 	return fallback_target
-
-
-func _get_attack_target_runtime() -> Node:
-	if pathfinder == null:
-		return null
-	var runtime := pathfinder.get_parent()
-	if runtime != null and runtime.has_method(ATTACK_TARGET_QUERY_METHOD):
-		return runtime
-	return null
 
 
 func _physics_process(delta: float) -> void:
@@ -324,19 +315,17 @@ func _on_animated_sprite_animation_finished() -> void:
 func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 	if frost_config.ice_spike_scene == null:
 		return false
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		return false
-	var ice_spike: FrostSorcererIceSpike = null
 	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call(
-			"has_session_object_pool_scene",
-			frost_config.ice_spike_scene
-		))
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
 	):
-		ice_spike = spawn_parent.call(
-			"acquire_session_object",
+		return false
+	var spawn_parent: Node = combat_runtime
+	var ice_spike: FrostSorcererIceSpike = null
+	if combat_runtime.has_session_object_pool_scene(frost_config.ice_spike_scene):
+		ice_spike = combat_runtime.acquire_session_object(
 			frost_config.ice_spike_scene,
 			false
 		) as FrostSorcererIceSpike
@@ -350,6 +339,7 @@ func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 		return false
 
 	var outgoing_damage := get_effective_attack_damage(frost_config.attack_damage)
+	ice_spike.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	ice_spike.top_level = true
 	ice_spike.setup(
 		summon_direction,
@@ -359,32 +349,32 @@ func _spawn_ice_spike(frost_config: FrostConfig) -> bool:
 	)
 	if ice_spike.get_parent() == null:
 		spawn_parent.add_child(ice_spike)
+	elif ice_spike.get_parent() != spawn_parent:
+		ice_spike.reparent(spawn_parent)
 	ice_spike.global_position = _get_ice_spike_spawn_position()
 	ice_spike.reset_physics_interpolation()
-	if spawn_parent.has_method("register_local_projectile"):
-		var target_peer_id := 0
-		var target_plant_net_id := 0
-		var player_target := summon_target as Player
-		if player_target != null:
-			target_peer_id = player_target.peer_id
-		else:
-			var plant_target := summon_target as PlantDefense
-			if plant_target != null:
-				target_plant_net_id = int(plant_target.get_meta(&"net_id", 0))
-		spawn_parent.call(
-			"register_local_projectile",
-			ice_spike,
-			_get_ice_spike_projectile_type(),
-			0,
-			ice_spike.global_position,
-			summon_direction,
-			outgoing_damage,
-			frost_config.projectile_speed,
-			frost_config.projectile_lifetime,
-			false,
-			target_peer_id,
-			target_plant_net_id
-		)
+	var target_peer_id := 0
+	var target_plant_net_id := 0
+	var player_target := summon_target as Player
+	if player_target != null:
+		target_peer_id = player_target.peer_id
+	else:
+		var plant_target := summon_target as PlantDefense
+		if plant_target != null:
+			target_plant_net_id = int(plant_target.get_meta(&"net_id", 0))
+	gameplay_gateway.register_local_projectile(
+		ice_spike,
+		_get_ice_spike_projectile_type(),
+		0,
+		ice_spike.global_position,
+		summon_direction,
+		outgoing_damage,
+		frost_config.projectile_speed,
+		frost_config.projectile_lifetime,
+		false,
+		target_peer_id,
+		target_plant_net_id
+	)
 	return true
 
 

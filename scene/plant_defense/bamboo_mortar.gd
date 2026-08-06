@@ -93,7 +93,6 @@ var latest_proxy_stage := -1
 var completed_authoritative_launch_count := 0
 var committed_windup_duration_seconds := WINDUP_DURATION_SECONDS
 
-var _combat_runtime: Node = null
 var _target_candidates: Array[Enemy] = []
 var _target_request_pending := false
 var _windup_started_at_seconds := 0.0
@@ -118,7 +117,6 @@ func _ready() -> void:
 
 func _on_setup_completed() -> void:
 	super._on_setup_completed()
-	_combat_runtime = get_tree().current_scene
 	configured_attack_damage = maxi(config.attack_damage, 0)
 	configured_attack_range = maxf(config.attack_range, 0.0)
 	committed_windup_duration_seconds = WINDUP_DURATION_SECONDS
@@ -319,24 +317,18 @@ func _try_begin_windup() -> void:
 	):
 		return
 	if (
-		_combat_runtime != null
-		and is_instance_valid(_combat_runtime)
-		and _combat_runtime.has_method(
-			"request_bamboo_mortar_target"
-		)
+		tower_multiplayer_mode_adapter != null
+		and is_instance_valid(tower_multiplayer_mode_adapter)
 	):
 		_target_request_pending = true
 		attack_timer.stop()
-		var accepted := bool(
-			_combat_runtime.call(
-				"request_bamboo_mortar_target",
+		var accepted := tower_multiplayer_mode_adapter.request_bamboo_mortar_target(
+			self,
+			MINIMUM_ATTACK_RANGE,
+			configured_attack_range,
+			Callable(
 				self,
-				MINIMUM_ATTACK_RANGE,
-				configured_attack_range,
-				Callable(
-					self,
-					"_on_bamboo_mortar_target_resolved"
-				)
+				"_on_bamboo_mortar_target_resolved"
 			)
 		)
 		if accepted:
@@ -374,17 +366,11 @@ func _cancel_scheduled_target_request() -> void:
 		return
 	_target_request_pending = false
 	if (
-		_combat_runtime == null
-		or not is_instance_valid(_combat_runtime)
-		or not _combat_runtime.has_method(
-			"cancel_bamboo_mortar_target_request"
-		)
+		tower_multiplayer_mode_adapter == null
+		or not is_instance_valid(tower_multiplayer_mode_adapter)
 	):
 		return
-	_combat_runtime.call(
-		"cancel_bamboo_mortar_target_request",
-		self
-	)
+	tower_multiplayer_mode_adapter.cancel_bamboo_mortar_target_request(self)
 
 
 func _begin_authoritative_windup(target: Enemy) -> void:
@@ -614,21 +600,12 @@ func _spawn_shell(
 		)
 	):
 		return null
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return null
+	var spawn_parent: CombatRuntimeBase = combat_runtime
 	var shell: BambooMortarShell = null
-	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(
-			spawn_parent.call(
-				"has_session_object_pool_scene",
-				SHELL_SCENE
-			)
-		)
-	):
-		shell = spawn_parent.call(
-			"acquire_session_object",
+	if spawn_parent.has_session_object_pool_scene(SHELL_SCENE):
+		shell = spawn_parent.acquire_session_object(
 			SHELL_SCENE,
 			false
 		) as BambooMortarShell
@@ -636,6 +613,10 @@ func _spawn_shell(
 		shell = SHELL_SCENE.instantiate() as BambooMortarShell
 	if shell == null:
 		return null
+	shell.bind_gameplay_context(
+		combat_runtime,
+		tower_multiplayer_mode_adapter
+	)
 	shell.top_level = true
 	if shell.get_parent() == null:
 		spawn_parent.add_child(shell)
@@ -655,15 +636,11 @@ func _spawn_shell(
 func _select_nearest_target_in_ring() -> Enemy:
 	_target_candidates.clear()
 	if (
-		_combat_runtime == null
-		or not is_instance_valid(_combat_runtime)
-		or not _combat_runtime.has_method(
-			"query_combat_targets_unordered_into"
-		)
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
 	):
 		return null
-	_combat_runtime.call(
-		"query_combat_targets_unordered_into",
+	combat_runtime.query_combat_targets_unordered_into(
 		global_position,
 		configured_attack_range,
 		_target_candidates
@@ -726,14 +703,11 @@ func _queue_network_visual(
 	landing_position: Vector2
 ) -> void:
 	if (
-		_combat_runtime == null
-		or not _combat_runtime.has_method(
-			"queue_bamboo_mortar_visual"
-		)
+		tower_multiplayer_mode_adapter == null
+		or not is_instance_valid(tower_multiplayer_mode_adapter)
 	):
 		return
-	_combat_runtime.call(
-		"queue_bamboo_mortar_visual",
+	tower_multiplayer_mode_adapter.queue_bamboo_mortar_visual(
 		int(get_meta(&"net_id", 0)),
 		action_id,
 		stage,

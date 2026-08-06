@@ -313,8 +313,8 @@ func is_double_xirang_reward_active() -> bool:
 		game != null
 		and day_cycle_config != null
 		and game.wave_state in [
-			GameRuntimeBase.WaveState.WAVE_ACTIVE,
-			GameRuntimeBase.WaveState.BOSS_ACTIVE,
+			CombatFlowState.State.WAVE_ACTIVE,
+			CombatFlowState.State.BOSS_ACTIVE,
 		]
 		and day_cycle_config.get_day_number(game.current_wave_index + 1)
 		== double_xirang_day
@@ -366,7 +366,7 @@ func _on_resolution_requested(
 	option_id: StringName,
 	permanent_buff_id: StringName
 ) -> void:
-	if game == null or game.runtime_mode == GameRuntimeBase.RuntimeMode.CLIENT_VIEW:
+	if game == null or game.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return
 	var option_config := TowerDefenseFateRegistry.get_option_config(option_id)
 	if option_config == null:
@@ -470,8 +470,8 @@ func _set_base_health(new_maximum: int, new_current: int) -> void:
 		game.maximum_base_health,
 		game.base_health_revision
 	)
-	if game.runtime_mode == GameRuntimeBase.RuntimeMode.HOST_AUTHORITY:
-		game.multiplayer_base_health_changed.emit(
+	if game.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
+		game.tower_multiplayer_mode_adapter.base_health_changed.emit(
 			game.current_base_health,
 			game.maximum_base_health,
 			game.base_health_revision
@@ -590,14 +590,14 @@ func _peer_has_item(peer_id: int, item: PickupConfig) -> bool:
 
 func _notify_inventory_changed(peer_id: int) -> void:
 	if (
-		game.runtime_mode == GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		game.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 		and peer_id > 0
 	):
-		game.multiplayer_inventory_changed.emit(peer_id)
+		game.tower_multiplayer_mode_adapter.inventory_changed.emit(peer_id)
 
 
 func _on_runtime_tick() -> void:
-	if game == null or game.runtime_mode == GameRuntimeBase.RuntimeMode.CLIENT_VIEW:
+	if game == null or game.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return
 	manager.advance_stage_timeout(runtime_tick_timer.wait_time)
 	_prune_missing_players()
@@ -621,8 +621,8 @@ func _apply_regeneration_tick() -> void:
 	if (
 		building_regen == null
 		or game.wave_state not in [
-			GameRuntimeBase.WaveState.WAVE_ACTIVE,
-			GameRuntimeBase.WaveState.BOSS_ACTIVE,
+			CombatFlowState.State.WAVE_ACTIVE,
+			CombatFlowState.State.BOSS_ACTIVE,
 		]
 	):
 		return
@@ -667,7 +667,7 @@ func _for_each_eligible_player(callback: Callable) -> void:
 func _get_player(peer_id: int) -> Player:
 	if game == null:
 		return null
-	if game.runtime_mode == GameRuntimeBase.RuntimeMode.SINGLEPLAYER and peer_id == 0:
+	if game.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER and peer_id == 0:
 		return game.player
 	return game.get_player_for_peer(peer_id)
 
@@ -676,7 +676,7 @@ func _get_all_players() -> Array[Player]:
 	var result: Array[Player] = []
 	if game == null:
 		return result
-	if game.runtime_mode == GameRuntimeBase.RuntimeMode.SINGLEPLAYER:
+	if game.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
 		if game.player != null and is_instance_valid(game.player):
 			result.append(game.player)
 		return result

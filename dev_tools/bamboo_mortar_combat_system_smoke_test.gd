@@ -15,6 +15,7 @@ const TOWER_DEFENSE_GAME_SCRIPT := preload(
 var failures: Array[String] = []
 var runtime: CombatRuntimeStub = null
 var combat_system: BambooMortarCombatSystem = null
+var plant_gameplay_port: CombatSystemPlantPort = null
 var next_enemy_id := 1
 
 
@@ -30,7 +31,7 @@ class TargetRequester:
 
 
 class CombatRuntimeStub:
-	extends Node2D
+	extends CombatRuntimeTestFixture
 
 	var target_index := CombatTargetIndex.new()
 	var enemies: Array[Enemy] = []
@@ -70,6 +71,32 @@ class CombatRuntimeStub:
 		return applied
 
 
+class CombatSystemPlantPort:
+	extends TowerPlantGameplayTestPort
+
+	var fixture_runtime: CombatRuntimeStub = null
+
+	func apply_authoritative_plant_enemy_damage_batch(
+		source_id: int,
+		enemy_node: Node2D,
+		damage_amounts: PackedInt64Array,
+		hit_counts: PackedInt32Array,
+		impact_direction: Vector2,
+		damage_type: int
+	) -> bool:
+		return (
+			fixture_runtime != null
+			and fixture_runtime.apply_authoritative_plant_enemy_damage_batch(
+				source_id,
+				enemy_node as Enemy,
+				damage_amounts,
+				hit_counts,
+				impact_direction,
+				damage_type
+			)
+		)
+
+
 class HostFlagNetManagerStub:
 	extends Node
 
@@ -86,8 +113,13 @@ func _init() -> void:
 func _run() -> void:
 	runtime = CombatRuntimeStub.new()
 	runtime.name = "BambooMortarCombatSystemSmokeFixture"
+	runtime.install_base_runtime_nodes()
 	root.add_child(runtime)
 	current_scene = runtime
+	plant_gameplay_port = CombatSystemPlantPort.new()
+	plant_gameplay_port.fixture_runtime = runtime
+	plant_gameplay_port.name = "TowerPlantGameplayPort"
+	runtime.add_child(plant_gameplay_port)
 	combat_system = (
 		COMBAT_SYSTEM_SCENE.instantiate()
 		as BambooMortarCombatSystem
@@ -98,7 +130,7 @@ func _run() -> void:
 	)
 	if combat_system != null:
 		runtime.add_child(combat_system)
-		combat_system.setup(runtime)
+		combat_system.setup(runtime, plant_gameplay_port)
 		combat_system.set_authoritative_processing_enabled(true)
 		_test_budgeted_cached_targeting()
 		await _test_dense_explosion_batch()
@@ -638,8 +670,10 @@ func _test_multiplayer_batch_bridge() -> void:
 	var bridge_game := TOWER_DEFENSE_GAME_SCRIPT.new()
 	var mp_game := MP_GAME_SCRIPT.new()
 	var net_manager_stub := HostFlagNetManagerStub.new()
+	var tower_mode_adapter := TowerDefenseMultiplayerModeAdapter.new()
 	mp_game.set("net_manager", net_manager_stub)
 	mp_game.game = bridge_game
+	mp_game.tower_mode_adapter = tower_mode_adapter
 	var enemy_net_id := 808
 	bridge_game.multiplayer_enemy_ids_by_instance[
 		enemy.get_instance_id()
@@ -674,7 +708,7 @@ func _test_multiplayer_batch_bridge() -> void:
 		and enemy.current_health == client_health_before,
 		"MpGame Client视角必须拒绝权威植物批伤，不能修改敌人生命。"
 	)
-	bridge_game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	bridge_game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	_expect(
 		not bridge_game.apply_authoritative_plant_enemy_damage_batch(
 			77,
@@ -687,7 +721,7 @@ func _test_multiplayer_batch_bridge() -> void:
 		and enemy.current_health == client_health_before,
 		"TowerDefenseGame Client运行时也必须在底层拒绝植物批伤。"
 	)
-	bridge_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	bridge_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	net_manager_stub.host = true
 	bridge_game.multiplayer_enemy_ids_by_instance.clear()
 	_expect(
@@ -703,6 +737,7 @@ func _test_multiplayer_batch_bridge() -> void:
 	)
 	mp_game.free()
 	bridge_game.free()
+	tower_mode_adapter.free()
 	net_manager_stub.free()
 
 
@@ -727,7 +762,7 @@ func _spawn_configured_enemy(
 		return null
 	runtime.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(config, null, null)
+	enemy.setup(config, null, null, runtime)
 	_prepare_enemy(enemy, position)
 	_register_enemy(enemy)
 	return enemy

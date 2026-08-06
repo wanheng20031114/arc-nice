@@ -210,7 +210,7 @@ func _test_tower_defense_client_mirror(run_state: RunStateStore) -> void:
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
 		2,
 		{1: "Host", 2: "Client"},
 		{1: &"weishidaier", 2: &"weishidaier"}

@@ -28,7 +28,7 @@ class RecordingMpGame:
 
 
 class PoolRuntime:
-	extends Node2D
+	extends "res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 
 	var pool: SessionObjectPool = null
 	var ring_batch_call_count: int = 0
@@ -41,9 +41,7 @@ class PoolRuntime:
 	var ring_lifetime: float = 0.0
 
 	func install_pool() -> void:
-		pool = SessionObjectPool.new()
-		pool.name = "SessionObjectPool"
-		add_child(pool)
+		pool = session_object_pool
 		pool.register_scene(SAKURA_BULLET_SCENE, 20, 768)
 
 	func has_session_object_pool_scene(scene: PackedScene) -> bool:
@@ -85,10 +83,10 @@ func _run() -> void:
 	runtime.name = "LinglanSkill1NetworkBatchRuntime"
 	runtime.install_pool()
 	root.add_child(runtime)
-	current_scene = runtime
 
 	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
 	runtime.add_child(boss)
+	runtime.bind_linglan_node(boss)
 	await process_frame
 	boss.global_position = Vector2(96.0, 64.0)
 	boss.call("_fire_skill1_ring", 0.0)
@@ -345,7 +343,6 @@ func _cleanup(
 		host_mp.free()
 	if boss != null and is_instance_valid(boss):
 		boss.queue_free()
-	current_scene = null
 	if runtime != null and is_instance_valid(runtime):
 		runtime.queue_free()
 	for _frame in range(3):

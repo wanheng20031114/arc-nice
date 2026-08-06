@@ -21,7 +21,8 @@ const VISUAL_ANIMATION: StringName = &"surge_loop"
 @onready var lifetime_timer: Timer = $LifetimeTimer
 
 var owner_player: Player = null
-var authoritative_damage_dispatcher: Node = null
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var zone_id: int = 0
 var overlapping_enemies: Dictionary[int, Enemy] = {}
 var completed_damage_tick_count: int = 0
@@ -60,16 +61,12 @@ func setup_multiplayer_visual_only(
 	setup(null, initial_zone_id, remaining_duration, false)
 
 
-func set_authoritative_damage_dispatcher(dispatcher: Node) -> bool:
-	if (
-		_active
-		or dispatcher == null
-		or not is_instance_valid(dispatcher)
-		or not dispatcher.has_method("apply_multiplayer_collectible_enemy_damage")
-	):
-		return false
-	authoritative_damage_dispatcher = dispatcher
-	return true
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func _ready() -> void:
@@ -287,23 +284,24 @@ func _apply_fixed_magic_damage(enemy: Enemy) -> void:
 		)
 		return
 	if (
-		authoritative_damage_dispatcher != null
-		and is_instance_valid(authoritative_damage_dispatcher)
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	):
-		authoritative_damage_dispatcher.call(
-			"apply_multiplayer_collectible_enemy_damage",
+		var request := DamageRequest.new(FIXED_MAGIC_DAMAGE, int(DAMAGE_TYPE))
+		request.with_source(self, zone_id, DAMAGE_SOURCE_TYPE)
+		request.with_directions(impact_direction)
+		request.with_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES, true)
+		enemy.apply_combat_damage(request)
+		return
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.apply_collectible_enemy_damage(
 			enemy,
 			FIXED_MAGIC_DAMAGE,
 			impact_direction,
-			int(DAMAGE_TYPE),
+			DAMAGE_TYPE,
 			false
 		)
-		return
-	var request := DamageRequest.new(FIXED_MAGIC_DAMAGE, int(DAMAGE_TYPE))
-	request.with_source(self, zone_id, DAMAGE_SOURCE_TYPE)
-	request.with_directions(impact_direction)
-	request.with_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES, true)
-	enemy.apply_combat_damage(request)
 
 
 func _remove_enemy(enemy_id: int, enemy: Enemy) -> void:

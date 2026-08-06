@@ -109,19 +109,53 @@ func _simulate_swept_compensation(compensated_delta: float) -> void:
 func _on_body_entered(body: Node2D) -> void:
 	if has_hit or not pool_active:
 		return
+	if _consume_if_unchecked_world_blocked():
+		return
+
+	var player := body as Player
+	if player != null:
+		if projectile_id > 0 and _request_player_damage_via_gateway(player):
+			_consume(true)
+			return
+		if not _has_explicit_singleplayer_authority():
+			# Missing or rejected multiplayer context must fail closed. Only an
+			# explicitly bound single-player runtime may mutate health locally.
+			_consume(true)
+			return
+		player.apply_damage(
+			damage,
+			EnemyConfig.DamageType.PHYSICAL,
+			_get_player_damage_context()
+		)
+		_consume(true)
+		return
+
 	var plant := body as PlantDefense
 	if plant != null:
 		if plant.is_dead or plant.is_removing:
 			return
-		var current_scene := get_tree().current_scene
-		if (
-			current_scene != null
-			and current_scene.has_method("is_client_view_runtime")
-			and bool(current_scene.call("is_client_view_runtime"))
-		):
+		if not _has_authoritative_runtime():
 			_consume(true)
 			return
 	super(body)
+
+
+func _request_player_damage_via_gateway(player: Player) -> bool:
+	if (
+		projectile_id <= 0
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
+		return false
+	return gameplay_gateway.request_player_damage(
+		projectile_id,
+		player.peer_id,
+		damage,
+		source_type,
+		EnemyConfig.DamageType.PHYSICAL,
+		-direction,
+		true
+	)
 
 
 func _configure_damageable_sweep() -> void:

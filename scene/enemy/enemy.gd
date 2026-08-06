@@ -167,6 +167,8 @@ static var _performance_metrics := {
 var target_player: Player = null
 var objective_target: Node2D = null
 var pathfinder: Node = null
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var _xirang_kill_reward_override: int = -1
 var projectile_motion_system: Node = null
 var current_health: int = 1
@@ -276,6 +278,21 @@ var combat_target_index_bucket := Vector2i.MAX
 var combat_target_index_bucket_size := 0.0
 var combat_target_index_bucket_minimum := Vector2.ZERO
 var combat_target_index_bucket_maximum := Vector2.ZERO
+
+
+func bind_combat_runtime(runtime_instance: CombatRuntimeBase) -> void:
+	combat_runtime = runtime_instance
+	bind_gameplay_gateway(
+		runtime_instance.get_multiplayer_gameplay_gateway()
+		if runtime_instance != null
+		else null
+	)
+
+
+func bind_gameplay_gateway(
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	gameplay_gateway = gateway
 
 
 static func set_performance_metrics_enabled(enabled: bool) -> void:
@@ -532,7 +549,14 @@ func _refresh_status_process_enabled() -> void:
 	set_process(_status_requires_render_process())
 
 
-func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
+func setup(
+	enemy_config: EnemyConfig,
+	player: Player,
+	shared_pathfinder: Node = null,
+	runtime_context: CombatRuntimeBase = null
+) -> void:
+	if runtime_context != null:
+		bind_combat_runtime(runtime_context)
 	clear_cold_status()
 	clear_collectible_statuses()
 	clear_electric_surge_state()
@@ -910,11 +934,9 @@ func configure_multiplayer_proxy() -> void:
 
 func _refresh_projectile_motion_system() -> void:
 	projectile_motion_system = null
-	if pathfinder == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
-	var runtime := pathfinder.get_parent() as GameRuntimeBase
-	if runtime != null:
-		projectile_motion_system = runtime.capoo_projectile_motion_system
+	projectile_motion_system = combat_runtime.capoo_projectile_motion_system
 
 
 func remove_for_home_escape() -> bool:
@@ -1123,12 +1145,14 @@ func show_damage_number(
 ) -> void:
 	if amount <= 0:
 		return
-	var damage_number_owner := get_parent()
-	while damage_number_owner != null:
-		if damage_number_owner.has_method("show_damage_number"):
-			damage_number_owner.call("show_damage_number", amount, global_position, impact_direction, damage_type)
-			return
-		damage_number_owner = damage_number_owner.get_parent()
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
+		return
+	combat_runtime.show_damage_number(
+		amount,
+		global_position,
+		impact_direction,
+		damage_type
+	)
 
 
 func play_multiplayer_damage_feedback(
@@ -4070,17 +4094,16 @@ func _try_deal_touch_damage() -> void:
 	if touched_player == null:
 		return
 
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_multiplayer_player_damage"):
-		current_scene.call(
-			"request_multiplayer_player_damage",
+	if _try_request_player_damage(
 			_get_multiplayer_touch_source_id(),
 			touched_player.peer_id,
 			outgoing_damage,
 			_get_multiplayer_touch_source_type(),
 			touch_damage_type
-		)
+		):
 		touch_damage_cooldown_left = touch_damage_interval
+		return
+	if not _has_explicit_singleplayer_authority():
 		return
 	var damage_was_applied := touched_player.apply_damage(
 		outgoing_damage,
@@ -4115,25 +4138,66 @@ func _get_multiplayer_touch_source_id() -> int:
 	var tick := int(Time.get_ticks_msec())
 	return maxi(net_id, 1) * 1000000 + tick
 
+
+func _try_request_player_damage(
+	source_id: int,
+	target_peer_id: int,
+	damage_amount: int,
+	source_type: StringName,
+	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+	source_direction: Vector2 = Vector2.ZERO,
+	is_ranged: bool = false,
+	contact_preconsumed: bool = false
+) -> bool:
+	return (
+		gameplay_gateway != null
+		and is_instance_valid(gameplay_gateway)
+		and gameplay_gateway.request_player_damage(
+			source_id,
+			target_peer_id,
+			damage_amount,
+			source_type,
+			damage_type,
+			source_direction,
+			is_ranged,
+			contact_preconsumed
+		)
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		_has_authoritative_runtime()
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+
+
+func _has_authoritative_runtime() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	)
+
 func _play_hit_particles(impact_direction: Vector2) -> void:
 	if impact_direction == Vector2.ZERO:
 		return
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
+	var spawn_parent: Node = combat_runtime
 	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(
 		self,
 		global_position
 	):
 		return
 	var effect: BulletHitEffect = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call("has_session_object_pool_scene", HIT_EFFECT_SCENE))
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		HIT_EFFECT_SCENE
 	)
 	if uses_registered_pool:
-		effect = spawn_parent.call(
-			"acquire_session_object",
+		effect = combat_runtime.acquire_session_object(
 			HIT_EFFECT_SCENE,
 			true
 		) as BulletHitEffect
@@ -4179,30 +4243,15 @@ func _queue_configured_xirang_kill_reward() -> void:
 	var reward_amount := get_effective_xirang_kill_reward()
 	if is_multiplayer_proxy or reward_amount <= 0:
 		return
-	var game_runtime := _get_owning_game_runtime()
-	if game_runtime == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
-	game_runtime.grant_xirang_kill_reward(reward_amount)
-
-
-## Enemies are authored below a GameRuntimeBase container. Resolve that
-## structural owner instead of SceneTree.current_scene, because Rouge combat is
-## intentionally embedded below its route scene in both singleplayer and MP.
-func _get_owning_game_runtime() -> GameRuntimeBase:
-	var ancestor := get_parent()
-	while ancestor != null:
-		var game_runtime := ancestor as GameRuntimeBase
-		if game_runtime != null:
-			return game_runtime
-		ancestor = ancestor.get_parent()
-	return null
+	combat_runtime.grant_xirang_kill_reward(reward_amount)
 
 
 func _queue_configured_pickup_drops() -> void:
 	if is_multiplayer_proxy or config == null or config.drop_table == null:
 		return
-	var game_runtime := _get_owning_game_runtime()
-	if game_runtime != null and not game_runtime.allows_enemy_pickup_drops():
+	if gameplay_gateway == null or not gameplay_gateway.allows_enemy_pickup_drops():
 		return
 	var drop_configs := config.drop_table.resolve_drop_configs(
 		config.category_tags,

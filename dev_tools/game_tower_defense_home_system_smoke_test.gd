@@ -249,6 +249,15 @@ func _verify_home_gate_areas(game: TowerDefenseGame) -> void:
 
 
 func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
+	var runtime_port := game.get_node_or_null(
+		"LinglanBossRuntimePort"
+	) as TowerDefenseLinglanBossRuntimePort
+	_expect(
+		runtime_port != null
+		and runtime_port.combat_runtime == game
+		and runtime_port.uses_tower_defense_rules(),
+		"TowerDefenseGame must statically bind its Tower Linglan runtime port."
+	)
 	var spawn5 := game.enemy_spawn_points_by_name.get(&"Spawn5") as Marker2D
 	var spawn6 := game.enemy_spawn_points_by_name.get(&"Spawn6") as Marker2D
 	_expect(spawn5 != null and spawn6 != null, "Linglan spawn anchors Spawn5/6 must exist.")
@@ -307,7 +316,7 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 		existing_enemy_ids[enemy_child.get_instance_id()] = true
 	var original_wave_state := game.wave_state
 	var original_random_state := game.random_generator.state
-	game.wave_state = TowerDefenseGame.WaveState.BOSS_ACTIVE
+	game.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	var slime_spawn_position := resolved_spawn + Vector2(-12.0, 8.0)
 	game.spawn_linglan_random_slime(slime_spawn_position)
 	var spawned_slime: Enemy = null
@@ -392,7 +401,7 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	)
 
 	var original_runtime_mode := game.runtime_mode
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	game.call("_play_remote_boss_intro", boss_config)
 	game.call("_restore_remote_camera_if_boss_intro_complete")
 	_expect(
@@ -419,9 +428,9 @@ func _verify_remote_linglan_airdrop_visual(
 ) -> void:
 	var original_runtime_mode := game.runtime_mode
 	var original_wave_state := game.wave_state
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.wave_state = TowerDefenseGame.WaveState.BOSS_ACTIVE
-	game.apply_remote_linglan_airdrop_started(
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	game.linglan_boss_runtime_port.apply_remote_airdrop_started(
 		sniper_config,
 		landing_position,
 		0.25,
@@ -1059,7 +1068,7 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 	var defeated_state := {"emitted": false}
 	enemy.defeated.connect(func(_defeated_enemy: Enemy) -> void: defeated_state["emitted"] = true)
 
-	game.wave_state = TowerDefenseGame.WaveState.WAVE_ACTIVE
+	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	game.current_wave_total = 2
 	game.current_wave_spawned = 1
 	game.current_wave_defeated = 0
@@ -1086,7 +1095,7 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 	)
 
 	game.call("_apply_base_damage", game.current_base_health)
-	_expect(game.wave_state == TowerDefenseGame.WaveState.DEFEAT, "Base health reaching zero must cause defeat.")
+	_expect(game.wave_state == CombatFlowState.State.DEFEAT, "Base health reaching zero must cause defeat.")
 
 	var linglan_config := load(
 		"res://resources/config/enemies/linglan_boss.tres"
@@ -1099,7 +1108,7 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 		game.linglan_boss = linglan
 		game.maximum_base_health = 250
 		game.current_base_health = 250
-		game.wave_state = TowerDefenseGame.WaveState.BOSS_ACTIVE
+		game.wave_state = CombatFlowState.State.BOSS_ACTIVE
 		game.current_wave_total = 1
 		game.current_wave_spawned = 1
 		game.current_wave_escaped = 0
@@ -1110,7 +1119,7 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 		game.call("_on_enemy_reached_home", linglan, Vector2i(2, 22))
 		_expect(
 			game.current_base_health == 0
-			and game.wave_state == TowerDefenseGame.WaveState.DEFEAT,
+			and game.wave_state == CombatFlowState.State.DEFEAT,
 			"An escaped Linglan must destroy even an upgraded core instead of completing the Boss step."
 		)
 		await process_frame
@@ -1118,7 +1127,7 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 		game.linglan_boss = null
 
 	game.current_base_health = game.maximum_base_health
-	game.wave_state = TowerDefenseGame.WaveState.WAVE_ACTIVE
+	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	game.current_flow_step = null
 	game.current_wave_total = 1
 	game.current_wave_spawned = 1
@@ -1126,7 +1135,7 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 	game.call("_clear_pending_enemy_spawn_queue")
 	game.active_wave_enemy_ids.clear()
 	game.call("_check_wave_completion")
-	_expect(game.wave_state == TowerDefenseGame.WaveState.VICTORY, "Wave completion must use resolved, allowing escaped enemies to finish a wave.")
+	_expect(game.wave_state == CombatFlowState.State.VICTORY, "Wave completion must use resolved, allowing escaped enemies to finish a wave.")
 
 
 func _count_reward_nodes(node: Node) -> int:

@@ -13,7 +13,7 @@ var failures: Array[String] = []
 
 
 class BossHost:
-	extends Node2D
+	extends "res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 
 	var airdrop_records: Array[Dictionary] = []
 	var slime_spawn_positions: Array[Vector2] = []
@@ -134,8 +134,8 @@ func _test_default_flow_and_waves() -> void:
 
 func _test_boss_scheduler_and_airdrop() -> void:
 	var host := BossHost.new()
+	host.linglan_tower_defense_rules = true
 	root.add_child(host)
-	current_scene = host
 	var home_target := Node2D.new()
 	home_target.name = "HomeObjective"
 	host.add_child(home_target)
@@ -151,7 +151,12 @@ func _test_boss_scheduler_and_airdrop() -> void:
 	await process_frame
 	await physics_frame
 	boss.config = LINGLAN_CONFIG
-	boss.activate_boss(null, null)
+	boss.activate_boss(
+		null,
+		null,
+		host,
+		host.linglan_boss_runtime_port
+	)
 	await process_frame
 
 	_expect(

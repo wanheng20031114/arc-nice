@@ -1,0 +1,2 @@
+extends BasicPlayerProfilePanel
+class_name RoguePlayerProfilePanel

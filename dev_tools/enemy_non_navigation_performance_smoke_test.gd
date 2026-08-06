@@ -334,7 +334,7 @@ func _verify_source_allocation_contract() -> void:
 		"Zero-velocity movement must return before scanning player or plant contacts."
 	)
 	for runtime_source_path in [
-		"res://scene/game_modes/standard/standard_game.gd",
+		"res://scene/combat/runtime/wave_combat_runtime_base.gd",
 		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
 	]:
 		var runtime_source := FileAccess.get_file_as_string(runtime_source_path)
@@ -401,7 +401,7 @@ func _verify_segmented_enemy_metrics(enemies: Array[Enemy]) -> void:
 
 func _verify_event_driven_pickup_registration(game: TowerDefenseGame) -> void:
 	var original_mode := game.runtime_mode
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	var pickup := PICKUP_SCENE.instantiate() as Pickup
 	_expect(pickup != null, "Event-driven pickup fixture must instantiate Pickup.")
 	if pickup == null:

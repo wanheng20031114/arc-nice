@@ -21,12 +21,41 @@ class TerrainClientNetManagerStub:
 
 
 class TerrainRuntimeStub:
-	extends "res://scene/game_modes/tower_defense/tower_defense_game.gd"
+	extends CombatRuntimeBase
 
 	var snapshot_revisions: Array[int] = []
 	var delta_revisions: Array[int] = []
 	var accept_snapshot := true
 	var accept_delta := true
+
+	func configure_multiplayer(
+		_mode: int,
+		_local_peer_id: int,
+		_player_names: Dictionary,
+		_player_character_ids: Dictionary = {}
+	) -> void:
+		pass
+
+	func get_player_for_peer(_peer_id: int) -> Player:
+		return null
+
+	func get_enemy_for_net_id(_net_id: int) -> Enemy:
+		return null
+
+	func get_pickup_for_net_id(_net_id: int) -> Pickup:
+		return null
+
+	func remove_multiplayer_player(_peer_id: int) -> void:
+		pass
+
+	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+		return []
+
+	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
+		return []
+
+	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
+		pass
 
 	func supports_multiplayer_terrain_state() -> bool:
 		return true
@@ -52,6 +81,50 @@ class TerrainRuntimeStub:
 		return true
 
 
+class TerrainTowerModeAdapter:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	var terrain_runtime: TerrainRuntimeStub = null
+
+	func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
+		super.bind_runtime(runtime_instance)
+		terrain_runtime = runtime_instance as TerrainRuntimeStub
+
+	func supports_terrain_state() -> bool:
+		return (
+			terrain_runtime != null
+			and terrain_runtime.supports_multiplayer_terrain_state()
+		)
+
+	func apply_remote_terrain_snapshot(
+		revision: int,
+		cell_xy: PackedInt32Array,
+		terrain_types: PackedInt32Array
+	) -> bool:
+		return (
+			terrain_runtime != null
+			and terrain_runtime.apply_remote_terrain_snapshot(
+				revision,
+				cell_xy,
+				terrain_types
+			)
+		)
+
+	func apply_remote_terrain_delta(
+		revision: int,
+		cell_xy: PackedInt32Array,
+		terrain_types: PackedInt32Array
+	) -> bool:
+		return (
+			terrain_runtime != null
+			and terrain_runtime.apply_remote_terrain_delta(
+				revision,
+				cell_xy,
+				terrain_types
+			)
+		)
+
+
 class TerrainRepairMpGame:
 	extends "res://scene/multiplayer/mp_game.gd"
 
@@ -71,6 +144,39 @@ class TerrainWatchdogMpGame:
 
 	func _transmit_terrain_snapshot_repair_request() -> void:
 		repair_request_count += 1
+
+
+class ProjectileRuntimeStub:
+	extends CombatRuntimeBase
+
+	func configure_multiplayer(
+		_mode: int,
+		_local_peer_id: int,
+		_player_names: Dictionary,
+		_player_character_ids: Dictionary = {}
+	) -> void:
+		pass
+
+	func get_player_for_peer(_peer_id: int) -> Player:
+		return null
+
+	func get_enemy_for_net_id(_net_id: int) -> Enemy:
+		return null
+
+	func get_pickup_for_net_id(_net_id: int) -> Pickup:
+		return null
+
+	func remove_multiplayer_player(_peer_id: int) -> void:
+		pass
+
+	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+		return []
+
+	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
+		return []
+
+	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
+		pass
 
 
 class BambooBatchRecordingMpGame:
@@ -263,8 +369,9 @@ func _test_terrain_delta_revision_repair_contract() -> void:
 	var mp_game := TerrainRepairMpGame.new()
 	var runtime := TerrainRuntimeStub.new()
 	var net_stub := TerrainClientNetManagerStub.new()
-	mp_game.set("game", runtime)
-	mp_game.set("net_manager", net_stub)
+	_bind_tower_mode_fixture(mp_game, runtime)
+	mp_game.game = runtime
+	mp_game.net_manager = net_stub
 	var cell_xy := PackedInt32Array([4, 7])
 	var grass := PackedInt32Array([2])
 	var dirt := PackedInt32Array([1])
@@ -328,8 +435,9 @@ func _test_terrain_snapshot_repair_watchdog_contract() -> void:
 	var mp_game := TerrainWatchdogMpGame.new()
 	var runtime := TerrainRuntimeStub.new()
 	var net_stub := TerrainClientNetManagerStub.new()
-	mp_game.set("game", runtime)
-	mp_game.set("net_manager", net_stub)
+	_bind_tower_mode_fixture(mp_game, runtime)
+	mp_game.game = runtime
+	mp_game.net_manager = net_stub
 
 	mp_game.call("_request_terrain_snapshot_repair")
 	mp_game.call("_request_terrain_snapshot_repair")
@@ -419,6 +527,20 @@ func _test_terrain_snapshot_repair_watchdog_contract() -> void:
 	mp_game.free()
 	runtime.free()
 	net_stub.free()
+
+
+func _bind_tower_mode_fixture(
+	mp_game: MultiplayerGameplaySession,
+	runtime: TerrainRuntimeStub
+) -> void:
+	var tower_adapter := TerrainTowerModeAdapter.new()
+	tower_adapter.name = "MultiplayerModeAdapter"
+	mp_game.add_child(tower_adapter)
+	tower_adapter.bind_runtime(runtime)
+	tower_adapter.attach_multiplayer_session(mp_game)
+	runtime.multiplayer_mode_adapter = tower_adapter
+	mp_game.set("_mode_adapter", tower_adapter)
+	mp_game.set("tower_mode_adapter", tower_adapter)
 
 
 func _test_player_codec_and_reuse() -> void:
@@ -1279,6 +1401,7 @@ func _test_projectile_id_codec_contract() -> void:
 
 func _test_projectile_origin_lane_runtime_contract() -> void:
 	var mp_game := MpGameScript.new()
+	var runtime := _bind_neutral_runtime_fixture(mp_game)
 	var client_lane_id := int(mp_game.call("_encode_projectile_id", 2, 57))
 	var host_lane_id := int(mp_game.call(
 		"_encode_projectile_id",
@@ -1366,6 +1489,29 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 		+ "without an ID collision or replacement."
 	)
 	mp_game.free()
+	runtime.free()
+
+
+func _bind_neutral_runtime_fixture(
+	mp_game: MultiplayerGameplaySession
+) -> ProjectileRuntimeStub:
+	var runtime := ProjectileRuntimeStub.new()
+	var gateway := MultiplayerGameplayGateway.new()
+	gateway.name = "MultiplayerGameplayGateway"
+	runtime.add_child(gateway)
+	gateway.bind_runtime(runtime)
+	gateway.attach_multiplayer_session(mp_game)
+	runtime.multiplayer_gateway = gateway
+	var mode_adapter := MultiplayerModeAdapter.new()
+	mode_adapter.name = "MultiplayerModeAdapter"
+	runtime.add_child(mode_adapter)
+	mode_adapter.bind_runtime(runtime)
+	mode_adapter.attach_multiplayer_session(mp_game)
+	runtime.multiplayer_mode_adapter = mode_adapter
+	mp_game.game = runtime
+	mp_game.set("_gameplay_gateway", gateway)
+	mp_game.set("_mode_adapter", mode_adapter)
+	return runtime
 
 
 func _test_enemy_codec_reuse_and_packet_budget() -> void:
@@ -1520,7 +1666,9 @@ func _test_plant_removal_restore_order() -> void:
 		if function_start >= 0 and function_end > function_start
 		else ""
 	)
-	var removal_signal_position := function_body.find("multiplayer_plant_removed.emit")
+	var removal_signal_position := function_body.find(
+		"tower_multiplayer_mode_adapter.plant_removed.emit"
+	)
 	var cancel_position := function_body.find("vegetation_spread_system.cancel_source")
 	_expect(
 		removal_signal_position >= 0

@@ -14,10 +14,13 @@ const ORB_SHADER_PATH := "res://scene/boss/linglan/linglan_skill3_light_orb.gdsh
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const TEST_RUNTIME_SCRIPT := preload(
+	"res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
+)
 
 
 class Skill4Host:
-	extends Node2D
+	extends "res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 
 	var target_position := Vector2(104.0, 32.0)
 	var requested_target_cells: Array[Array] = []
@@ -69,7 +72,8 @@ class Skill4Host:
 		speed: float,
 		lifetime: float,
 		pierces_enemies: bool = false,
-		target_peer_id: int = 0
+		target_peer_id: int = 0,
+		_target_enemy_net_id: int = 0
 	) -> void:
 		projectile_records.append({
 			"projectile": projectile,
@@ -101,7 +105,7 @@ class Skill4Host:
 
 
 class LaserDamageReportHost:
-	extends Node2D
+	extends "res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 
 	var damage_reports: Array[Dictionary] = []
 
@@ -110,7 +114,10 @@ class LaserDamageReportHost:
 		target_peer_id: int,
 		damage: int,
 		source_type: StringName,
-		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		_source_direction: Vector2 = Vector2.ZERO,
+		_is_ranged: bool = false,
+		_contact_preconsumed: bool = false
 	) -> bool:
 		damage_reports.append({
 			"source_id": source_id,
@@ -123,7 +130,7 @@ class LaserDamageReportHost:
 
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: CombatRuntimeBase
 
 
 func _init() -> void:
@@ -131,10 +138,9 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = TEST_RUNTIME_SCRIPT.new()
 	test_root.name = "LinglanSkill4SmokeTest"
 	root.add_child(test_root)
-	current_scene = test_root
 
 	_test_skill4_config()
 	_test_skill4_gpu_pulse_contract()
@@ -273,6 +279,7 @@ func _test_skill4_scene_contract() -> void:
 	if field == null:
 		return
 	test_root.add_child(field)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(field)
 	field.setup(
 		Vector2(-48.0, -16.0),
 		Vector2(288.0, 256.0),
@@ -374,6 +381,7 @@ func _test_skill4_scene_contract() -> void:
 	_expect(orb != null, "Skill4 orb scene must instantiate.")
 	if orb != null:
 		test_root.add_child(orb)
+		(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 		await process_frame
 		_expect(orb.collision_layer == 128, "Skill4 orb must use EnemyProjectile collision layer.")
 		_expect(orb.collision_mask == 2, "Skill4 orb must only collide with Player.")
@@ -405,6 +413,9 @@ func _test_skill4_scene_contract() -> void:
 			await create_timer(0.05).timeout
 			var comparison_orb := ORB_SCENE.instantiate() as ORB_SCRIPT
 			test_root.add_child(comparison_orb)
+			(test_root as LinglanCombatTestRuntime).bind_linglan_node(
+				comparison_orb
+			)
 			await process_frame
 			var comparison_core := comparison_orb.get_node_or_null("VisualRoot/Core") as Polygon2D
 			_expect(
@@ -426,13 +437,13 @@ func _test_skill4_scene_contract() -> void:
 
 
 func _test_laser_and_orb_damage() -> void:
-	current_scene = test_root
 	var laser_player := _spawn_player(test_root, Vector2(0.0, -16.0), 1, 200)
 	laser_player.physical_defense = 0
 	laser_player.magic_defense = 50
 	laser_player._base_magic_defense = 50
 	var field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
 	test_root.add_child(field)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(field)
 	field.setup(
 		Vector2(-48.0, -16.0),
 		Vector2(288.0, 256.0),
@@ -486,6 +497,7 @@ func _test_laser_and_orb_damage() -> void:
 	invulnerable_player._base_magic_defense = 0
 	var retry_field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
 	test_root.add_child(retry_field)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(retry_field)
 	retry_field.set_physics_process(false)
 	invulnerable_player.invincibility_time_left = 1.0
 	retry_field.call("_on_body_entered", invulnerable_player)
@@ -515,6 +527,7 @@ func _test_laser_and_orb_damage() -> void:
 	await physics_frame
 	var orb := ORB_SCENE.instantiate() as ORB_SCRIPT
 	test_root.add_child(orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.global_position = Vector2.ZERO
 	orb.setup(Vector2.RIGHT, 50, 0.0, 10.0, 8.0)
 	await physics_frame
@@ -529,6 +542,7 @@ func _test_laser_and_orb_damage() -> void:
 
 	var moving_orb := ORB_SCENE.instantiate() as ORB_SCRIPT
 	test_root.add_child(moving_orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(moving_orb)
 	moving_orb.global_position = Vector2.ZERO
 	moving_orb.setup(Vector2.LEFT, 1, 40.0, 10.0, 8.0)
 	moving_orb.call("_physics_process", 0.5)
@@ -541,10 +555,10 @@ func _test_laser_overlap_tracking_and_multiplayer_event_ids() -> void:
 	var report_host := LaserDamageReportHost.new()
 	report_host.name = "LaserDamageReportHost"
 	root.add_child(report_host)
-	current_scene = report_host
 
 	var field := LASER_FIELD_SCENE.instantiate() as LASER_FIELD_SCRIPT
 	report_host.add_child(field)
+	report_host.bind_linglan_node(field)
 	field.setup(
 		Vector2(-48.0, -16.0),
 		Vector2(288.0, 256.0),
@@ -600,7 +614,6 @@ func _test_laser_overlap_tracking_and_multiplayer_event_ids() -> void:
 	)
 
 	report_host.queue_free()
-	current_scene = test_root
 	await process_frame
 	await physics_frame
 
@@ -639,7 +652,6 @@ func _test_game_helpers() -> void:
 		"StandardGame Skill4 orb spawn position must use cell center."
 	)
 	game.queue_free()
-	current_scene = test_root
 	await process_frame
 	await physics_frame
 
@@ -650,6 +662,7 @@ func _test_skill_rotation_policy() -> void:
 	if boss == null:
 		return
 	test_root.add_child(boss)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(boss)
 	await process_frame
 
 	var start_position := Vector2(123.0, -45.0)
@@ -704,21 +717,20 @@ func _test_boss_skill4_schedule() -> void:
 	var host := Skill4Host.new()
 	host.name = "Skill4Host"
 	root.add_child(host)
-	current_scene = host
 
 	var player := _spawn_player(host, Vector2(240.0, 0.0), 7, 200)
 	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
 	_expect(boss != null, "Linglan scene must instantiate for Skill4 schedule.")
 	if boss == null:
 		host.queue_free()
-		current_scene = test_root
 		return
 	host.add_child(boss)
+	host.bind_linglan_node(boss)
 	await process_frame
 	await physics_frame
 	boss.global_position = Vector2(180.0, -72.0)
 	boss.config = LINGLAN_CONFIG
-	boss.activate_boss(player, null)
+	boss.activate_boss(player, null, host, host.linglan_boss_runtime_port)
 	boss.boss_skill_phase = LinglanBoss.BossSkillPhase.SKILL3
 	boss.skill3_elapsed = SKILL3_CONFIG.duration
 	boss.skill3_shots_fired = SKILL3_CONFIG.get_shot_count()
@@ -778,18 +790,17 @@ func _test_boss_skill4_schedule() -> void:
 		_expect(is_equal_approx(float(record.get("lifetime", 0.0)), 12.0), "Skill4 registered wrong orb active lifetime.")
 
 	host.queue_free()
-	current_scene = test_root
 	await process_frame
 	await physics_frame
 
 
 func _test_multiplayer_proxy_skill4_has_no_laser() -> void:
-	current_scene = test_root
 	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
 	_expect(boss != null, "Linglan scene did not instantiate for proxy Skill4 laser-removal contract.")
 	if boss == null:
 		return
 	test_root.add_child(boss)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(boss)
 	await process_frame
 	boss.configure_multiplayer_proxy()
 
@@ -811,6 +822,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	_expect(mp_game != null, "MP game scene must instantiate for Skill4 projectile registry.")
 	if mp_game == null:
 		return
+	mp_game.set("game", test_root)
 	var registry_config := SKILL4_CONFIG.duplicate(true) as LinglanSkill4Config
 	registry_config.orb_radius = 11.0
 	registry_config.orb_damage_radius = 9.0

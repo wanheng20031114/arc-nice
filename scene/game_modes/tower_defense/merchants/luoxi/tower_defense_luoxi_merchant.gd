@@ -236,16 +236,14 @@ func _request_special_game_start() -> void:
 	_arm_authoritative_request_timeout(
 		AuthoritativeRequestKind.SPECIAL_GAME_START
 	)
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene == null
-		or not current_scene.has_method("request_luoxi_special_game_start")
-	):
+	var tower_adapter := (
+		multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
+	if tower_adapter == null or not tower_adapter.request_luoxi_special_game_start():
 		apply_special_game_started({
 			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
 		})
 		return
-	current_scene.call("request_luoxi_special_game_start")
 
 
 func _on_special_game_card_reveal_requested(card_index: int) -> void:
@@ -254,21 +252,21 @@ func _on_special_game_card_reveal_requested(card_index: int) -> void:
 	_arm_authoritative_request_timeout(
 		AuthoritativeRequestKind.SPECIAL_GAME_REVEAL
 	)
-	var current_scene := get_tree().current_scene
+	var tower_adapter := (
+		multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
 	if (
-		current_scene == null
-		or not current_scene.has_method("request_luoxi_special_game_card_reveal")
+		tower_adapter == null
+		or not tower_adapter.request_luoxi_special_game_card_reveal(
+			special_game_session_revision,
+			card_index
+		)
 	):
 		apply_special_game_card_revealed({
 			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
 			"session_revision": special_game_session_revision,
 		})
 		return
-	current_scene.call(
-		"request_luoxi_special_game_card_reveal",
-		special_game_session_revision,
-		card_index
-	)
 
 
 func _on_special_game_finish_requested() -> void:
@@ -277,20 +275,20 @@ func _on_special_game_finish_requested() -> void:
 	_arm_authoritative_request_timeout(
 		AuthoritativeRequestKind.SPECIAL_GAME_FINISH
 	)
-	var current_scene := get_tree().current_scene
+	var tower_adapter := (
+		multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
 	if (
-		current_scene == null
-		or not current_scene.has_method("request_luoxi_special_game_finish")
+		tower_adapter == null
+		or not tower_adapter.request_luoxi_special_game_finish(
+			special_game_session_revision
+		)
 	):
 		apply_special_game_finished({
 			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
 			"session_revision": special_game_session_revision,
 		})
 		return
-	current_scene.call(
-		"request_luoxi_special_game_finish",
-		special_game_session_revision
-	)
 
 
 func _apply_special_game_revealed_state(result: Dictionary) -> void:
@@ -311,12 +309,10 @@ func _apply_special_game_revealed_state(result: Dictionary) -> void:
 func _player_has_special_game_ticket(player_instance: Player) -> bool:
 	if player_instance == null:
 		return false
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene == null
-		or not current_scene.has_method("supports_luoxi_special_game")
-		or not bool(current_scene.call("supports_luoxi_special_game"))
-	):
+	var tower_adapter := (
+		multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
+	if tower_adapter == null or not tower_adapter.supports_luoxi_special_game():
 		return false
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state == null:
@@ -372,15 +368,11 @@ func _abandon_special_game_revision(session_revision: int) -> void:
 	_close_special_game_overlay()
 	if session_revision <= 0:
 		return
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene != null
-		and current_scene.has_method("request_luoxi_special_game_finish")
-	):
-		current_scene.call(
-			"request_luoxi_special_game_finish",
-			session_revision
-		)
+	var tower_adapter := (
+		multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
+	if tower_adapter != null:
+		tower_adapter.request_luoxi_special_game_finish(session_revision)
 
 
 func abort_special_game() -> void:

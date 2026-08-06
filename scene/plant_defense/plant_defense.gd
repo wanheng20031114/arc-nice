@@ -53,6 +53,8 @@ const MIN_ATTACK_INTERVAL_MULTIPLIER := 0.05
 
 var config: PlantDefenseConfig = null
 var owner_player: Player = null
+var combat_runtime: CombatRuntimeBase = null
+var tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 var footprint_cells: Array[Vector2i] = []
 var current_health: int = 0
 var max_health: int = 0
@@ -84,6 +86,14 @@ var _pending_healing_number_amount: int = 0
 var _pending_physical_damage_number_direction := Vector2.ZERO
 var _pending_magic_damage_number_direction := Vector2.ZERO
 var _combat_number_flush_queued := false
+
+
+func bind_gameplay_context(
+	runtime_instance: CombatRuntimeBase,
+	mode_adapter: TowerPlantGameplayPort
+) -> void:
+	combat_runtime = runtime_instance
+	tower_multiplayer_mode_adapter = mode_adapter
 
 
 func _ready() -> void:

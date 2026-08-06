@@ -17,6 +17,8 @@ var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"yuanshi_fire_projectile"
 var pool_active: bool = true
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var _authored_speed: float = 142.5
 var _authored_max_lifetime: float = 2.0
 var _authored_collision_layer: int = 128
@@ -41,6 +43,8 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	combat_runtime = null
+	gameplay_gateway = null
 	pool_active = true
 	has_hit = false
 	direction = Vector2.RIGHT
@@ -62,9 +66,19 @@ func on_pool_acquired(_generation: int) -> void:
 func on_pool_released(_generation: int) -> void:
 	pool_active = false
 	has_hit = true
+	combat_runtime = null
+	gameplay_gateway = null
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func setup(
@@ -124,7 +138,10 @@ func _on_body_entered(body: Node2D) -> void:
 
 	var player := body as Player
 	if player != null:
-		if not _try_report_multiplayer_player_hit(player):
+		if (
+			not _try_report_multiplayer_player_hit(player)
+			and _has_explicit_singleplayer_authority()
+		):
 			player.apply_damage(
 				damage,
 				EnemyConfig.DamageType.PHYSICAL,
@@ -132,7 +149,7 @@ func _on_body_entered(body: Node2D) -> void:
 			)
 	else:
 		var plant := body as PlantDefense
-		if plant != null:
+		if plant != null and _has_authoritative_runtime():
 			if plant.is_dead or plant.is_removing:
 				return
 			plant.receive_damage(
@@ -159,20 +176,38 @@ func _consume() -> void:
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
-	if projectile_id <= 0:
+	if (
+		projectile_id <= 0
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
-		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		projectile_id,
 		player.peer_id,
 		damage,
 		source_type,
+		EnemyConfig.DamageType.PHYSICAL,
 		-direction,
 		true
-	))
+	)
+
+
+func _has_authoritative_runtime() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		_has_authoritative_runtime()
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 func _get_player_damage_context() -> Dictionary:

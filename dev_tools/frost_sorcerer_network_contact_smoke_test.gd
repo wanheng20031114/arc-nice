@@ -11,6 +11,9 @@ const ICE_SPIKE_DAMAGE := 20
 const ICE_SPIKE_SPEED := 100.0
 const ICE_SPIKE_LIFETIME := 7.0
 const ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
+const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 
 class TestMpGame:
@@ -65,26 +68,8 @@ class TestNetManager:
 		return 1
 
 
-class ContactAuthorityScene:
-	extends Node2D
-
-	var authority: Node = null
-
-	func try_consume_frost_sorcerer_ice_spike_contact(
-		projectile_id: int,
-		source_type: StringName
-	) -> bool:
-		if authority == null:
-			return false
-		return bool(authority.call(
-			"try_consume_frost_sorcerer_ice_spike_contact",
-			projectile_id,
-			source_type
-		))
-
-
 var failures: Array[String] = []
-var test_scene: ContactAuthorityScene = null
+var test_scene: EnemyGameplayGatewayTestRuntime = null
 
 
 func _init() -> void:
@@ -92,12 +77,15 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_scene = ContactAuthorityScene.new()
+	test_scene = (
+		COMBAT_RUNTIME_FIXTURE_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
 	test_scene.name = "FrostSorcererNetworkContactSmoke"
 	root.add_child(test_scene)
-	current_scene = test_scene
 	_get_cold_scheduler().call("clear_all")
 
+	_test_runtime_authority_boundary()
 	_test_record_key_and_global_consumption_contract()
 	_test_terminal_record_consumption()
 	_test_network_instantiation_and_lifetime_compensation()
@@ -105,7 +93,6 @@ func _run() -> void:
 	_test_client_confirmation_and_revision_deduplication()
 
 	_get_cold_scheduler().call("clear_all")
-	current_scene = null
 	test_scene.queue_free()
 	await process_frame
 	await physics_frame
@@ -119,6 +106,74 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_runtime_authority_boundary() -> void:
+	var gameplay_session := EnemyGameplayGatewayTestSession.new()
+	_get_cold_scheduler().call("clear_all")
+	test_scene.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var singleplayer := _spawn_player(Vector2(-1400.0, -900.0), 90)
+	var singleplayer_health_before := singleplayer.current_health
+	var local_spike := _spawn_bound_ice_spike(0, true)
+	local_spike.call("_handle_collision_body", singleplayer)
+	_expect(
+		singleplayer.current_health
+			== singleplayer_health_before - ICE_SPIKE_DAMAGE
+		and _get_cold_stack_count(singleplayer) == 1,
+		"Frost spike must apply damage and cold only under explicit SINGLEPLAYER authority."
+	)
+
+	test_scene.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	test_scene.attach_gameplay_session(gameplay_session)
+	var host_projectile_id := 82990
+	_remember_ice_spike_record(gameplay_session, host_projectile_id)
+	var host_player := _spawn_player(Vector2(-1500.0, -900.0), 91)
+	var host_health_before := host_player.current_health
+	var host_spike := _spawn_bound_ice_spike(host_projectile_id, true)
+	host_spike.call("_handle_collision_body", host_player)
+	_expect(
+		gameplay_session.player_damage_requests.size() == 1
+		and bool(gameplay_session.player_damage_requests[0].get(
+			"contact_preconsumed",
+			false
+		))
+		and int(gameplay_session.player_damage_requests[0].get(
+			"damage_type",
+			-1
+		)) == int(EnemyConfig.DamageType.MAGIC)
+		and host_player.current_health == host_health_before
+		and _get_cold_stack_count(host_player) == 0,
+		"HOST Frost spike must delegate its preconsumed magic hit through the typed gameplay gateway."
+	)
+
+	var request_count_before_client := gameplay_session.player_damage_requests.size()
+	test_scene.detach_gameplay_session(gameplay_session)
+	test_scene.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var client_player := _spawn_player(Vector2(-1600.0, -900.0), 92)
+	var client_health_before := client_player.current_health
+	var client_spike := _spawn_bound_ice_spike(82991, false)
+	client_spike.call("_handle_collision_body", client_player)
+	_expect(
+		client_player.current_health == client_health_before
+		and _get_cold_stack_count(client_player) == 0
+		and gameplay_session.player_damage_requests.size()
+			== request_count_before_client,
+		"CLIENT_VIEW Frost spike without an injected gateway must fail closed."
+	)
+
+	for node in [
+		singleplayer,
+		local_spike,
+		host_player,
+		host_spike,
+		client_player,
+		client_spike,
+	]:
+		if node != null and is_instance_valid(node):
+			node.queue_free()
+	gameplay_session.free()
+	_get_cold_scheduler().call("clear_all")
+	test_scene.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 
 
 func _test_record_key_and_global_consumption_contract() -> void:
@@ -194,9 +249,13 @@ func _test_terminal_record_consumption() -> void:
 	var mp_game := TestMpGame.new()
 	var projectile_id := 82030
 	_remember_ice_spike_record(mp_game, projectile_id)
-	test_scene.authority = mp_game
+	test_scene.attach_gameplay_session(mp_game)
 
 	var projectile := load(ICE_SPIKE_SCENE_PATH).instantiate() as FrostSorcererIceSpike
+	projectile.bind_gameplay_context(
+		test_scene,
+		test_scene.get_multiplayer_gameplay_gateway()
+	)
 	test_scene.add_child(projectile)
 	projectile.global_position = Vector2(5000.0, 5000.0)
 	projectile.setup(
@@ -228,7 +287,7 @@ func _test_terminal_record_consumption() -> void:
 	)
 
 	projectile.queue_free()
-	test_scene.authority = null
+	test_scene.detach_gameplay_session(mp_game)
 	mp_game.free()
 
 
@@ -236,6 +295,8 @@ func _test_network_instantiation_and_lifetime_compensation() -> void:
 	var mp_game := TestMpGame.new()
 	var net_manager := TestNetManager.new()
 	mp_game.set("net_manager", net_manager)
+	test_scene.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	mp_game.set("game", test_scene)
 	var projectile := mp_game.call(
 		"_instantiate_projectile",
 		ICE_SPIKE_TYPE,
@@ -317,7 +378,8 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	cold_scheduler.call("clear_all")
 	var mp_game := TestMpGame.new()
 	var net_manager := TestNetManager.new()
-	var game := StandardGame.new()
+	var game := test_scene
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", game)
 
@@ -445,7 +507,7 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	_remember_ice_spike_record(mp_game, lethal_projectile_id)
 	lethal_player.current_health = 10
 	lethal_player.health_bar.set_health(10, TEST_HEALTH)
-	game.wave_state = GameRuntimeBase.WaveState.VICTORY
+	game.wave_state = CombatFlowState.State.VICTORY
 	mp_game.request_multiplayer_player_damage(
 		lethal_projectile_id,
 		lethal_player.peer_id,
@@ -468,7 +530,6 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 	game.peer_players.clear()
 	mp_game.free()
 	net_manager.free()
-	game.free()
 
 
 func _test_client_confirmation_and_revision_deduplication() -> void:
@@ -478,7 +539,8 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 	var net_manager := TestNetManager.new()
 	net_manager.host_mode = false
 	net_manager.local_peer_id = 21
-	var game := StandardGame.new()
+	var game := test_scene
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var player := _spawn_player(Vector2(-800.0, -600.0), 21)
 	player.physical_defense = 99
 	player.set("_base_physical_defense", 99)
@@ -601,11 +663,11 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 	game.peer_players.clear()
 	mp_game.free()
 	net_manager.free()
-	game.free()
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 
 
 func _remember_ice_spike_record(
-	mp_game: TestMpGame,
+	mp_game: MultiplayerGameplaySession,
 	projectile_id: int
 ) -> void:
 	mp_game.call(
@@ -621,6 +683,7 @@ func _remember_ice_spike_record(
 func _spawn_player(position: Vector2, peer_id: int) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_scene.add_child(player)
+	test_scene.bind_player_runtime_context(player)
 	player.global_position = position
 	player.peer_id = peer_id
 	player.collision_layer = 0
@@ -634,6 +697,33 @@ func _spawn_player(position: Vector2, peer_id: int) -> Player:
 	player.set_process(false)
 	player.set_physics_process(false)
 	return player
+
+
+func _spawn_bound_ice_spike(
+	projectile_id: int,
+	bind_gateway: bool
+) -> FrostSorcererIceSpike:
+	var projectile := (
+		load(ICE_SPIKE_SCENE_PATH).instantiate()
+		as FrostSorcererIceSpike
+	)
+	projectile.bind_gameplay_context(
+		test_scene,
+		test_scene.get_multiplayer_gameplay_gateway()
+			if bind_gateway
+			else null
+	)
+	projectile.setup(
+		Vector2.RIGHT,
+		ICE_SPIKE_DAMAGE,
+		ICE_SPIKE_SPEED,
+		ICE_SPIKE_LIFETIME
+	)
+	test_scene.add_child(projectile)
+	if projectile_id > 0:
+		projectile.setup_multiplayer(projectile_id, 1, ICE_SPIKE_TYPE)
+	projectile.set_physics_process(false)
+	return projectile
 
 
 func _get_cold_scheduler() -> Node:

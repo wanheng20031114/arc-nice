@@ -63,6 +63,13 @@ var panel_session_generation := 0
 var quantity_dialog_source := ItemSource.NONE
 var quantity_dialog_slot_index := -1
 var quantity_dialog_item_path := ""
+var tower_plant_gameplay_port: TowerPlantGameplayPort = null
+
+
+func bind_tower_plant_gameplay_port(
+	gameplay_port: TowerPlantGameplayPort
+) -> void:
+	tower_plant_gameplay_port = gameplay_port
 
 
 func _ready() -> void:
@@ -674,12 +681,8 @@ func _on_use_pressed() -> void:
 	if not _is_consumable_item(item) or tracked_player == null:
 		return
 	if item.pickup_type == PickupConfig.PickupType.BUILDING:
-		var current_scene := get_tree().current_scene
 		if (
-			current_scene == null
-			or not current_scene.has_method(
-				"begin_inventory_building_placement"
-			)
+			tower_plant_gameplay_port == null
 		):
 			status_label.text = "当前场景不支持建造"
 			return
@@ -688,11 +691,10 @@ func _on_use_pressed() -> void:
 		var building_slot_index := selected_slot_index
 		var expected_revision := _get_panel_inventory_revision()
 		close()
-		var started := bool(current_scene.call(
-			"begin_inventory_building_placement",
+		var started := tower_plant_gameplay_port.begin_inventory_building_placement(
 			building_slot_index,
 			expected_revision
-		))
+		)
 		if not started and is_instance_valid(opening_warehouse):
 			open_for(opening_warehouse, opening_player)
 		return

@@ -8,7 +8,6 @@ const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const BOSS_HEALTH_HUD_SCENE := preload("res://scene/boss/linglan/boss_health_hud.tscn")
 const INTRO_VFX_SCENE := preload("res://scene/boss/linglan/linglan_boss_intro_vfx.tscn")
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
-const DEFAULT_FLOW := preload("res://resources/config/flow/default_combat_flow.tres")
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -19,21 +18,36 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var case_filter := OS.get_environment("ARC_LINGLAN_BOSS_CASE")
 	test_root = Node2D.new()
 	test_root.name = "LinglanBossSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
 
-	_test_animation_resource()
-	_test_boss_entry_resource()
-	await _test_boss_scene_contract()
-	await _test_boss_hud_binding()
-	await _test_intro_vfx_scene()
-	await _test_game_boss_opening_flow()
-	await _test_host_boss_multiplayer_flow_signals()
+	if case_filter.is_empty() or case_filter in ["assets", "resources"]:
+		_test_animation_resource()
+		_test_boss_entry_resource()
+	if case_filter.is_empty() or case_filter in ["assets", "boss"]:
+		await _test_boss_scene_contract()
+	if case_filter.is_empty() or case_filter in ["assets", "hud"]:
+		await _test_boss_hud_binding()
+	if case_filter.is_empty() or case_filter in ["assets", "intro"]:
+		await _test_intro_vfx_scene()
+	if case_filter.is_empty() or case_filter == "opening":
+		await _test_game_boss_opening_flow()
+	if case_filter.is_empty() or case_filter == "host":
+		await _test_host_boss_multiplayer_flow_signals()
+	if not case_filter.is_empty() and case_filter not in [
+		"assets", "resources", "boss", "hud", "intro", "opening", "host"
+	]:
+		failures.append("Unknown ARC_LINGLAN_BOSS_CASE: %s" % case_filter)
 
+	current_scene = null
 	test_root.queue_free()
-	for _cleanup_frame in range(4):
+	for _node_cleanup_frame in range(4):
+		await process_frame
+		await physics_frame
+	for _cleanup_frame in range(8):
 		await process_frame
 		await physics_frame
 
@@ -111,7 +125,12 @@ func _test_boss_entry_resource() -> void:
 	_expect(LINGLAN_CONFIG.home_damage == 100, "Linglan reaching the tower-defense blue gate must destroy the core.")
 	_expect(LINGLAN_CONFIG.move_animation_name == &"move", "Linglan boss movement must use the run animation.")
 	_expect(LINGLAN_CONFIG.death_animation_name == &"die", "Linglan boss must play the sakura dissolve die animation on death.")
-	_expect(DEFAULT_FLOW.get_step_by_id(&"boss_01_linglan") == LINGLAN_BOSS_ENTRY, "Default flow must include Linglan as a flow node.")
+	_expect(
+		FileAccess.get_file_as_string(
+			"res://resources/config/flow/default_combat_flow.tres"
+		).contains("res://resources/config/bosses/boss_01_linglan.tres"),
+		"Default flow must include Linglan as a flow node."
+	)
 	_expect(LINGLAN_BOSS_ENTRY.arena_center == Vector2(128, 128), "Linglan boss entry must keep the center spawn point.")
 	_expect(LINGLAN_BOSS_ENTRY.arena_floor_rect == Rect2i(-3, -1, 22, 18), "Linglan boss entry must only floor the requested arena rectangle.")
 
@@ -270,6 +289,15 @@ func _test_game_boss_opening_flow() -> void:
 	test_root.add_child(game)
 	await process_frame
 	await physics_frame
+	var runtime_port := game.get_node_or_null(
+		"LinglanBossRuntimePort"
+	) as StandardLinglanBossRuntimePort
+	_expect(
+		runtime_port != null
+		and runtime_port.combat_runtime == game
+		and not runtime_port.uses_tower_defense_rules(),
+		"StandardGame must statically bind its Standard Linglan runtime port."
+	)
 
 	_expect(game.bosses.size() == 1, "StandardGame must load the Linglan boss entry.")
 	if game.bosses.size() >= 1:
@@ -289,7 +317,7 @@ func _test_game_boss_opening_flow() -> void:
 	game.current_flow_step = LINGLAN_BOSS_ENTRY
 	game.call("_begin_linglan_boss_intro", LINGLAN_BOSS_ENTRY)
 	await process_frame
-	_expect(game.wave_state == StandardGame.WaveState.BOSS_INTRO, "StandardGame must enter Linglan boss intro state.")
+	_expect(game.wave_state == CombatFlowState.State.BOSS_INTRO, "StandardGame must enter Linglan boss intro state.")
 	var music_player := game.get_node("MusicPlayer") as AudioStreamPlayer
 	_expect(music_player.stream == LINGLAN_BOSS_ENTRY.music, "StandardGame must switch to Linglan boss music when the intro starts.")
 	_expect(is_equal_approx(music_player.volume_db, LINGLAN_BOSS_ENTRY.music_volume_db), "StandardGame must apply the Linglan boss music volume.")
@@ -314,8 +342,14 @@ func _test_game_boss_opening_flow() -> void:
 	game.call("_on_linglan_boss_intro_finished")
 	await process_frame
 	await physics_frame
-	_expect(game.wave_state == StandardGame.WaveState.BOSS_ACTIVE, "StandardGame must activate Linglan after intro VFX.")
+	_expect(game.wave_state == CombatFlowState.State.BOSS_ACTIVE, "StandardGame must activate Linglan after intro VFX.")
 	_expect(boss != null and boss.visible and boss.current_health == LINGLAN_CONFIG.max_health, "Linglan must appear active with configured health.")
+	_expect(
+		boss != null
+		and boss.linglan_runtime_port == runtime_port
+		and boss.has_linglan_runtime_context(),
+		"Active Linglan must receive runtime, gateway and mode port explicitly."
+	)
 	var hud := game.get_node_or_null("BossHealthHUD") as BossHealthHUD
 	_expect(hud != null and (hud.get_node("Root") as Control).visible, "Top boss HUD must appear after Linglan activates.")
 	if hud != null:
@@ -346,7 +380,12 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 	var flow_events: Array[Dictionary] = []
 	var boss_events: Array[Dictionary] = []
 	var victory_events := [0]
-	game.multiplayer_flow_state_changed.connect(
+	var mode_adapter := game.get_node("MultiplayerModeAdapter") as MultiplayerModeAdapter
+	_expect(mode_adapter != null, "StandardGame must author its multiplayer mode adapter.")
+	if mode_adapter == null:
+		game.queue_free()
+		return
+	mode_adapter.flow_state_changed.connect(
 		func(step_id: StringName, state: int, countdown_seconds: int) -> void:
 			flow_events.append({
 				"step_id": step_id,
@@ -354,7 +393,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 				"countdown_seconds": countdown_seconds,
 			})
 	)
-	game.multiplayer_boss_started.connect(
+	mode_adapter.boss_started.connect(
 		func(net_id: int, boss_config: BossConfig, spawn_position: Vector2) -> void:
 			boss_events.append({
 				"net_id": net_id,
@@ -362,7 +401,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 				"spawn_position": spawn_position,
 			})
 	)
-	game.multiplayer_victory_started.connect(
+	mode_adapter.victory_started.connect(
 		func() -> void:
 			victory_events[0] += 1
 	)
@@ -378,7 +417,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 	await process_frame
 	await physics_frame
 
-	_expect(game.wave_state == StandardGame.WaveState.BOSS_ACTIVE, "Host flow must activate Linglan boss.")
+	_expect(game.wave_state == CombatFlowState.State.BOSS_ACTIVE, "Host flow must activate Linglan boss.")
 	_expect(boss_events.size() == 1, "Host must emit one boss_started event.")
 	var boss_net_id := int(boss_events[0].get("net_id", 0)) if not boss_events.is_empty() else 0
 	_expect(boss_net_id > 0, "Host boss_started event must include a network id.")
@@ -386,7 +425,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 	for event in flow_events:
 		if (
 			event.get("step_id") == &"boss_01_linglan"
-			and int(event.get("state", -1)) == int(StandardGame.WaveState.BOSS_ACTIVE)
+			and int(event.get("state", -1)) == int(CombatFlowState.State.BOSS_ACTIVE)
 		):
 			has_boss_active_flow_event = true
 			break
@@ -408,7 +447,7 @@ func _test_host_boss_multiplayer_flow_signals() -> void:
 		boss.apply_damage(boss.current_health + LINGLAN_CONFIG.physical_defense)
 		await create_timer(1.5).timeout
 		await process_frame
-		_expect(game.wave_state == StandardGame.WaveState.VICTORY, "Host boss defeat must advance the flow to victory.")
+		_expect(game.wave_state == CombatFlowState.State.VICTORY, "Host boss defeat must advance the flow to victory.")
 		_expect(victory_events[0] == 1, "Host must broadcast victory after terminal boss defeat.")
 
 	game.queue_free()

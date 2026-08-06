@@ -1,6 +1,6 @@
 @abstract
 extends Node2D
-class_name GameRuntimeBase
+class_name CombatRuntimeBase
 
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
 const EnemySpawnEffectBudgetScript := preload("res://scene/enemy_spawn_effect_budget.gd")
@@ -21,10 +21,6 @@ const COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE_PATH := (
 const LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
-const LINGLAN_AIRDROP_WARNING_SCENE := preload(
-	"res://scene/boss/linglan/linglan_airdrop_warning_marker.tscn"
-)
-
 const ENEMY_SPAWN_EFFECT_PREWARM_COUNT := 16
 const ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY := 32
 const BULLET_HIT_EFFECT_CAPACITY := 64
@@ -45,118 +41,6 @@ static var combat_robot_gunner_bullet_pool_retained_capacity := (
 	COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY
 )
 
-signal multiplayer_enemy_spawned(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2)
-signal multiplayer_enemy_defeated(net_id: int, defeat_position: Vector2)
-signal multiplayer_enemy_removed(net_id: int)
-signal multiplayer_enemy_escaped(net_id: int)
-signal multiplayer_pickup_spawned(net_id: int, pickup_config: PickupConfig, spawn_position: Vector2)
-signal multiplayer_pickup_collected(
-	net_id: int,
-	collector_peer_id: int,
-	pickup_config: PickupConfig,
-	applied_immediately: bool
-)
-signal multiplayer_pickup_removed(net_id: int)
-signal multiplayer_merchant_active_changed(active: bool)
-signal multiplayer_flow_state_changed(step_id: StringName, state: int, countdown_seconds: int)
-signal test_arena_manual_night_changed(enabled: bool)
-signal multiplayer_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2)
-signal multiplayer_linglan_airdrop_started(
-	enemy_config: EnemyConfig,
-	landing_position: Vector2,
-	warning_duration: float,
-	drop_height: float,
-	drop_duration: float
-)
-signal multiplayer_defeat_started
-signal multiplayer_victory_started
-signal multiplayer_revive_all_requested
-signal multiplayer_base_health_changed(current_health: int, maximum_health: int, revision: int)
-signal multiplayer_tower_defense_wave_progress_changed(
-	wave_number: int,
-	defeated: int,
-	escaped: int,
-	resolved: int,
-	total: int
-)
-signal multiplayer_plant_spawned(
-	request_id: int,
-	owner_peer_id: int,
-	net_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	current_health: int,
-	maximum_health: int,
-	health_revision: int
-)
-signal multiplayer_plant_placement_rejected(
-	request_id: int,
-	requester_peer_id: int,
-	reason: StringName
-)
-signal multiplayer_plant_health_changed(
-	net_id: int,
-	current_health: int,
-	maximum_health: int,
-	health_revision: int
-)
-signal multiplayer_plant_damage_status_changed(
-	net_id: int,
-	status_mask: int,
-	status_revision: int
-)
-signal multiplayer_plant_damage_applied(
-	net_id: int,
-	applied_damage: int,
-	impact_direction: Vector2,
-	damage_type: EnemyConfig.DamageType,
-	world_position: Vector2
-)
-signal multiplayer_plant_healing_applied(
-	net_id: int,
-	applied_healing: int,
-	world_position: Vector2
-)
-signal multiplayer_plant_removed(net_id: int, was_destroyed: bool)
-## Authoritative terrain batches are already committed locally when emitted.
-## Revisions must be positive, strictly monotonic, and advance exactly once per
-## non-empty batch. cell_xy stores x/y pairs parallel to terrain_types.
-signal multiplayer_terrain_delta(
-	revision: int,
-	cell_xy: PackedInt32Array,
-	terrain_types: PackedInt32Array
-)
-signal multiplayer_plant_placement_requested(
-	request_id: int,
-	plant_id: StringName,
-	anchor: Vector2i
-)
-signal multiplayer_inventory_plant_placement_requested(
-	request_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	slot_index: int,
-	expected_inventory_revision: int,
-	item_config_path: String
-)
-signal multiplayer_inventory_changed(peer_id: int)
-signal multiplayer_profile_upgrade_requested(stat_type: int)
-signal multiplayer_profile_inventory_item_use_requested(slot_index: int)
-signal multiplayer_profile_inventory_item_discard_requested(slot_index: int)
-signal multiplayer_profile_simple_crafting_requested(
-	recipe_id: StringName,
-	request_token: int
-)
-signal multiplayer_profile_simple_crafting_cancel_requested(request_token: int)
-signal multiplayer_xiaocong_interaction_requested
-signal multiplayer_xiaocong_vote_requested(
-	option_id: StringName,
-	permanent_buff_id: StringName
-)
-signal multiplayer_xiaocong_collectible_requested(choice_index: int)
-signal multiplayer_xiaocong_fate_state_changed(state: Dictionary)
-signal multiplayer_player_teleport_requested(peer_id: int, target_position: Vector2)
-signal return_to_lobby_requested
 signal runtime_preparation_progress_changed(stage: String, completed: int, total: int)
 signal runtime_preparation_completed
 
@@ -170,17 +54,6 @@ enum WorldLightingPolicy {
 	FLOW_CONTROLLED,
 	FIXED_DAY,
 	FIXED_NIGHT,
-}
-
-enum WaveState {
-	PRE_WAVE,
-	WAVE_ACTIVE,
-	INTERMISSION,
-	VICTORY,
-	DEFEAT,
-	BOSS_INTRO,
-	BOSS_ACTIVE,
-	FATE_INTERLUDE,
 }
 
 @export var runtime_mode: RuntimeMode = RuntimeMode.SINGLEPLAYER
@@ -197,9 +70,14 @@ enum WaveState {
 	$CombatRobotDroneMotionSystem
 )
 @onready var day_night_controller: DayNightController = $DayNightController
+@onready var multiplayer_gateway: MultiplayerGameplayGateway = (
+	$MultiplayerGameplayGateway
+)
+@onready var multiplayer_mode_adapter: MultiplayerModeAdapter = (
+	$MultiplayerModeAdapter
+)
 
 var player: Player = null
-var wave_state: WaveState = WaveState.PRE_WAVE
 var multiplayer_local_peer_id: int = 0
 var peer_players: Dictionary = {}
 var multiplayer_pickups: Dictionary = {}
@@ -221,6 +99,38 @@ var runtime_preparation_completed_steps := 0
 var runtime_preparation_total_steps := 1
 var _pending_xirang_kill_reward: int = 0
 var _xirang_kill_reward_flush_queued: bool = false
+
+
+func get_multiplayer_gameplay_gateway() -> MultiplayerGameplayGateway:
+	var gateway := multiplayer_gateway
+	if gateway == null:
+		gateway = get_node_or_null(
+			"MultiplayerGameplayGateway"
+		) as MultiplayerGameplayGateway
+	if gateway != null and gateway.runtime != self:
+		gateway.bind_runtime(self)
+	return gateway
+
+
+func get_multiplayer_mode_adapter() -> MultiplayerModeAdapter:
+	var adapter := multiplayer_mode_adapter
+	if adapter == null:
+		adapter = get_node_or_null(
+			"MultiplayerModeAdapter"
+		) as MultiplayerModeAdapter
+	if adapter != null and adapter.runtime != self:
+		adapter.bind_runtime(self)
+	return adapter
+
+
+func bind_player_runtime_context(player_instance: Player) -> void:
+	if player_instance != null:
+		player_instance.bind_combat_runtime(self)
+
+
+func bind_enemy_runtime_context(enemy_instance: Enemy) -> void:
+	if enemy_instance != null:
+		enemy_instance.bind_combat_runtime(self)
 
 
 func transition_world_to_night(duration_seconds: float = -1.0) -> void:
@@ -266,12 +176,6 @@ func _set_fixed_world_lighting(night_factor: float) -> void:
 	day_night_controller.set_night_factor_immediate(safe_factor)
 
 
-func _apply_wave_start_lighting(_wave_number: int) -> void:
-	# Every normal wave uses night only while its combat state is active.
-	# PRE_WAVE and INTERMISSION own the matching transition back to daylight.
-	transition_world_to_night()
-
-
 @abstract func configure_multiplayer(
 	mode: int,
 	local_peer_id: int,
@@ -296,224 +200,7 @@ func restore_multiplayer_player(
 	return null
 @abstract func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]
 @abstract func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]
-@abstract func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void
-
-
-## Test arenas opt in to an explicit host-authoritative manual day/night
-## contract. Formal runtimes keep the zero-cost default.
-func supports_test_arena_manual_night_sync() -> bool:
-	return false
-
-
-func get_test_arena_manual_night_enabled() -> bool:
-	return false
-
-
-func apply_remote_test_arena_manual_night(_enabled: bool) -> void:
-	pass
-
-
-@abstract func get_flow_state_snapshot() -> Dictionary
-@abstract func apply_remote_boss_started(
-	net_id: int,
-	boss_config: BossConfig,
-	spawn_position: Vector2
-) -> void
-
-
-func apply_remote_linglan_airdrop_started(
-	enemy_config: EnemyConfig,
-	landing_position: Vector2,
-	warning_duration: float,
-	drop_height: float,
-	drop_duration: float
-) -> void:
-	if (
-		runtime_mode != RuntimeMode.CLIENT_VIEW
-		or enemy_config == null
-		or enemy_config.enemy_scene == null
-		or not landing_position.is_finite()
-		or wave_state == WaveState.VICTORY
-		or wave_state == WaveState.DEFEAT
-	):
-		return
-	var safe_warning_duration := clampf(warning_duration, 0.0, 5.0)
-	var safe_drop_height := clampf(drop_height, 0.0, 512.0)
-	var safe_drop_duration := clampf(drop_duration, 0.01, 5.0)
-	var warning := LINGLAN_AIRDROP_WARNING_SCENE.instantiate() as Node2D
-	if warning != null:
-		add_child(warning)
-		warning.top_level = true
-		warning.global_position = landing_position
-		warning.call("start", maxf(safe_warning_duration, 0.05))
-	_play_remote_linglan_airdrop_visual(
-		enemy_config,
-		landing_position,
-		safe_warning_duration,
-		safe_drop_height,
-		safe_drop_duration
-	)
-
-
-func _play_remote_linglan_airdrop_visual(
-	enemy_config: EnemyConfig,
-	landing_position: Vector2,
-	warning_duration: float,
-	drop_height: float,
-	drop_duration: float
-) -> void:
-	if warning_duration > 0.0:
-		await get_tree().create_timer(warning_duration).timeout
-	if (
-		not is_inside_tree()
-		or wave_state == WaveState.VICTORY
-		or wave_state == WaveState.DEFEAT
-	):
-		return
-	var visual := enemy_config.enemy_scene.instantiate() as Enemy
-	if visual == null:
-		return
-	visual.name = "LinglanAirdropSniperVisual"
-	enemy_container.add_child(visual)
-	visual.global_position = landing_position + Vector2.UP * drop_height
-	visual.setup(enemy_config, null, null)
-	visual.configure_multiplayer_proxy()
-	visual.collision_layer = 0
-	visual.collision_mask = 0
-	visual.add_to_group(&"linglan_airdrop_visual")
-	var tween := visual.create_tween()
-	tween.set_trans(Tween.TRANS_CUBIC)
-	tween.set_ease(Tween.EASE_IN)
-	tween.tween_property(visual, "global_position", landing_position, drop_duration)
-	await tween.finished
-	if is_instance_valid(visual):
-		visual.queue_free()
-
-
-@abstract func apply_remote_defeat() -> void
-@abstract func apply_remote_victory() -> void
-
-
-## Terminal defeat metadata is optional for existing runtimes. Specialized
-## encounters can override both hooks so every client presents the host's
-## authoritative reason without changing the long-standing defeat entry point.
-func get_multiplayer_defeat_reason() -> String:
-	return ""
-
-
-func apply_remote_defeat_with_reason(_failure_reason: String) -> void:
-	apply_remote_defeat()
-@abstract func apply_remote_enemy_count(alive_count: int) -> void
-@abstract func apply_remote_merchant_active(active: bool) -> void
 @abstract func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void
-@abstract func try_purchase_skill1_for_peer(peer_id: int) -> int
-@abstract func apply_skill1_purchase_state(
-	peer_id: int,
-	current_xirang: int,
-	skill1_unlocked: bool,
-	skill1_upgrade_level: int = -1,
-	skill1_charge_duration: float = -1.0
-) -> void
-@abstract func show_local_skill1_purchase_result(result_code: int) -> void
-@abstract func try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int
-@abstract func get_luoxi_collectible_refresh_count(peer_id: int) -> int
-@abstract func try_claim_luoxi_collectible_for_peer(
-	peer_id: int,
-	config_path_or_choice: Variant
-) -> int
-@abstract func has_luoxi_collectible_claimed(peer_id: int) -> bool
-@abstract func record_luoxi_collectible_claim(peer_id: int) -> void
-@abstract func mark_luoxi_collectible_claimed(peer_id: int) -> void
-@abstract func show_local_luoxi_collectible_result(result_code: int) -> void
-@abstract func show_local_luoxi_refresh_result(
-	result_code: int,
-	refresh_count: int,
-	current_xirang: int
-) -> void
-
-
-## 洛茜券牌局只在塔防运行时启用。这里保留完整的共享多人契约，其他
-## GameRuntimeBase 实现无需伪造玩法，也不会因 MPGame 的强类型调用失败。
-func supports_luoxi_special_game() -> bool:
-	return false
-
-
-func try_start_luoxi_special_game_for_peer(_peer_id: int) -> Dictionary:
-	return {"result_code": 1}
-
-
-func try_reveal_luoxi_special_game_card_for_peer(
-	_peer_id: int,
-	_session_revision: int,
-	_card_index: int
-) -> Dictionary:
-	return {"result_code": 1}
-
-
-func try_finish_luoxi_special_game_for_peer(
-	_peer_id: int,
-	_session_revision: int
-) -> Dictionary:
-	return {"result_code": 1}
-
-
-func show_local_luoxi_special_game_started(_result: Dictionary) -> void:
-	pass
-
-
-func show_local_luoxi_special_game_card_revealed(_result: Dictionary) -> void:
-	pass
-
-
-func show_local_luoxi_special_game_finished(_result: Dictionary) -> void:
-	pass
-
-
-@abstract func show_debug_collectible_grant_result(config_path: String, success: bool) -> void
-
-
-## Tower-defense-only fate hooks stay concrete so regular game runtimes do not
-## need empty implementations merely because MPGame shares this base contract.
-func request_xiaocong_interaction(_peer_id: int) -> void:
-	pass
-
-
-func request_xiaocong_fate_vote(
-	_peer_id: int,
-	_option_id: StringName,
-	_permanent_buff_id: StringName
-) -> void:
-	pass
-
-
-func request_xiaocong_collectible_choice(
-	_peer_id: int,
-	_choice_index: int
-) -> void:
-	pass
-
-
-func apply_remote_xiaocong_fate_state(_state: Dictionary) -> void:
-	pass
-
-
-func get_xiaocong_fate_state_snapshot() -> Dictionary:
-	return {}
-
-
-## Called after Enemy.setup() on every runtime path, before a remote enemy is
-## converted into a multiplayer proxy. Tower defense overrides this to apply
-## permanent fate modifiers identically on the host and all clients.
-func configure_runtime_enemy_modifiers(_enemy: Enemy) -> void:
-	pass
-
-
-func show_simple_crafting_result(
-	_recipe_id: StringName,
-	_result: StringName,
-	_request_token: int
-) -> void:
-	pass
 
 
 static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void:
@@ -555,7 +242,7 @@ static func register_combat_robot_gunner_bullet_pool(
 	if pool == null:
 		return
 	# Runtime loading avoids a compile-time cycle: the projectile inherits shared
-	# enemy code that resolves GameRuntimeBase while this base script is loading.
+	# enemy code that resolves CombatRuntimeBase while this base script is loading.
 	var projectile_scene := load(
 		COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE_PATH
 	) as PackedScene
@@ -698,16 +385,6 @@ func query_living_players_in_radius_into(
 		result.append(candidate)
 
 
-## Standard mode has no plant population. Tower-defense runtimes override this
-## contract with their maintained plant spatial index.
-func query_living_plants_in_radius_into(
-	_center: Vector2,
-	_radius: float,
-	result: Array[PlantDefense]
-) -> void:
-	result.clear()
-
-
 ## Single-player and Host-authoritative runtimes share one explicit plant-aura
 ## healing gateway. Multiplayer replication wraps this method in MpGame.
 func apply_authoritative_player_heal(
@@ -789,7 +466,7 @@ func pick_random_combat_target(center: Vector2, radius: float = 0.0) -> Enemy:
 		return combat_target_index.pick_random_alive_in_radius(center, radius)
 	# Lightweight fixtures and an early pre-activation call can precede index
 	# enablement. Preserve behavior there without weakening the indexed production
-	# path used by StandardGame and TowerDefenseGame.
+	# path used by every production combat runtime.
 	var safe_radius := maxf(radius, 0.0)
 	var radius_squared := safe_radius * safe_radius
 	var selected_enemy: Enemy = null
@@ -950,10 +627,6 @@ func _should_use_singleplayer_combat_target_index(
 		combat_target_index.enemies_by_net_id.size()
 		>= SINGLEPLAYER_BULK_INDEX_MIN_TARGETS
 	)
-
-
-func get_multiplayer_plant_node(_net_id: int) -> PlantDefense:
-	return null
 
 
 func _collect_combat_targets_from_container(container: Node, result: Array[Enemy]) -> void:
@@ -1160,27 +833,9 @@ func get_runtime_preparation_progress() -> Dictionary:
 
 
 func prewarm_shared_runtime_data() -> void:
-	if LuoxiMerchant.is_collectible_cache_ready():
-		return
-	var config_paths := LuoxiMerchant.get_collectible_config_paths()
-	const CONFIGS_PER_FRAME := 8
-	var total_batches := maxi(ceili(float(config_paths.size()) / CONFIGS_PER_FRAME), 1)
-	var completed_batches := 0
-	for batch_start in range(0, config_paths.size(), CONFIGS_PER_FRAME):
-		var batch_end := mini(batch_start + CONFIGS_PER_FRAME, config_paths.size())
-		for config_index in range(batch_start, batch_end):
-			var config := load(config_paths[config_index]) as PickupConfig
-			LuoxiMerchant.cache_collectible_config(config)
-		completed_batches += 1
-		update_runtime_preparation_progress(
-			"缓存收藏品配置…",
-			completed_batches,
-			total_batches
-		)
-		await get_tree().process_frame
-		if not is_inside_tree():
-			return
-	LuoxiMerchant.finish_collectible_cache_warmup()
+	var adapter := get_multiplayer_mode_adapter()
+	if adapter != null:
+		await adapter.prewarm_mode_runtime_data()
 
 
 func prepare_shared_runtime_data_and_complete() -> void:
@@ -1279,192 +934,3 @@ func _flush_xirang_kill_rewards() -> void:
 		var player_node := peer_players[peer_id_variant] as Player
 		if player_node != null and is_instance_valid(player_node):
 			player_node.grant_xirang_reward(amount, false)
-
-
-func supports_tower_defense() -> bool:
-	return false
-
-
-func allows_debug_collectible_grants() -> bool:
-	# Standard runtimes expose the debug catalog only in editor/debug builds.
-	# Explicit sandbox runtimes may override this policy for a shipped sandbox.
-	return OS.is_debug_build()
-
-
-func request_tower_defense_wave_start(_requester_peer_id: int = 0) -> bool:
-	return false
-
-
-## Combat runtimes that treat death as permanent for the current encounter can
-## override this per-player policy. The default preserves every existing mode's
-## respawn behavior.
-func allows_player_respawn(_peer_id: int) -> bool:
-	return true
-
-
-## Encounter runtimes can suppress configured enemy loot without replacing the
-## EnemyConfig resource. Keeping that canonical resource identity is required
-## by multiplayer spawn serialization.
-func allows_enemy_pickup_drops() -> bool:
-	return true
-
-
-func consume_next_player_respawn_delay(_peer_id: int) -> float:
-	return 10.0
-
-
-func update_player_respawn_countdown(_peer_id: int, _seconds_left: int) -> void:
-	pass
-
-
-func clear_player_respawn_countdown(_peer_id: int) -> void:
-	pass
-
-
-## Runtime modes with a fixed multiplayer respawn layout can return a world-space
-## position here. Returning null preserves the standard mode's living-player
-## revive behavior.
-func get_fixed_multiplayer_respawn_position(_peer_id: int) -> Variant:
-	return null
-
-
-func get_base_health_snapshot() -> Dictionary:
-	return {}
-
-
-func apply_remote_base_health(
-	_current_health: int,
-	_maximum_health: int,
-	_revision: int
-) -> void:
-	pass
-
-
-func apply_remote_enemy_escape(_net_id: int) -> void:
-	pass
-
-
-func request_multiplayer_plant_placement(
-	_requester_peer_id: int,
-	_request_id: int,
-	_plant_id: StringName,
-	_anchor: Vector2i
-) -> void:
-	pass
-
-
-func request_multiplayer_inventory_plant_placement(
-	_requester_peer_id: int,
-	_request_id: int,
-	_plant_id: StringName,
-	_anchor: Vector2i,
-	_slot_index: int,
-	_expected_inventory_revision: int,
-	_item_config_path: String
-) -> void:
-	pass
-
-
-func apply_remote_plant_spawn(
-	_request_id: int,
-	_owner_peer_id: int,
-	_net_id: int,
-	_plant_id: StringName,
-	_anchor: Vector2i,
-	_current_health: int,
-	_maximum_health: int,
-	_health_revision: int
-) -> void:
-	pass
-
-
-func apply_remote_plant_health(
-	_net_id: int,
-	_current_health: int,
-	_maximum_health: int,
-	_health_revision: int
-) -> void:
-	pass
-
-
-func apply_remote_plant_removed(_net_id: int) -> void:
-	pass
-
-
-## Reliable removal events carry the terminal reason so client-only feedback does
-## not depend on an unreliable health packet arriving first.
-func apply_remote_plant_removed_with_reason(
-	net_id: int,
-	_was_destroyed: bool
-) -> void:
-	apply_remote_plant_removed(net_id)
-
-
-## Complete-state repair uses this path to prune a stale local replica without
-## presenting the correction as a newly observed gameplay removal. Runtimes
-## without a distinct visual lifecycle retain the existing removal behavior.
-func apply_remote_plant_removed_silently(net_id: int) -> void:
-	apply_remote_plant_removed(net_id)
-
-
-func apply_remote_plant_placement_rejected(_request_id: int, _reason: StringName) -> void:
-	pass
-
-
-func has_multiplayer_plant(_net_id: int) -> bool:
-	return false
-
-
-func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
-	return []
-
-
-## Only runtimes that own replicated terrain overrides should opt in. The
-## standard runtime deliberately keeps the no-op contract below.
-func supports_multiplayer_terrain_state() -> bool:
-	return false
-
-
-## Returns the complete authoritative override set relative to the authored
-## map: {revision: int, cell_xy: PackedInt32Array, terrain_types: PackedInt32Array}.
-## EMPTY (-1) is a valid terrain value and must not be discarded.
-func get_multiplayer_terrain_snapshot() -> Dictionary:
-	return {
-		"revision": 0,
-		"cell_xy": PackedInt32Array(),
-		"terrain_types": PackedInt32Array(),
-	}
-
-
-## Client-view implementations must replace the complete override set
-## atomically and return false without mutation when the payload is invalid.
-func apply_remote_terrain_snapshot(
-	_revision: int,
-	_cell_xy: PackedInt32Array,
-	_terrain_types: PackedInt32Array
-) -> bool:
-	return false
-
-
-## Client-view implementations must apply the whole revision atomically and
-## return false without mutation when the payload is invalid.
-func apply_remote_terrain_delta(
-	_revision: int,
-	_cell_xy: PackedInt32Array,
-	_terrain_types: PackedInt32Array
-) -> bool:
-	return false
-
-
-func get_tower_defense_wave_progress_snapshot() -> Dictionary:
-	return {}
-
-
-func apply_remote_tower_defense_wave_progress(
-	_wave_number: int,
-	_defeated: int,
-	_escaped: int,
-	_resolved: int,
-	_total: int
-) -> void:
-	pass

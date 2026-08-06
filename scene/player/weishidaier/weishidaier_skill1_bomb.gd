@@ -26,6 +26,8 @@ var has_exploded: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"skill1_bomb"
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 
 
 func _ready() -> void:
@@ -43,6 +45,14 @@ func setup(initial_owner: Player, initial_direction: Vector2, initial_damage: in
 		direction = initial_direction.normalized()
 	rotation = direction.angle()
 	damage = maxi(initial_damage, 0)
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func setup_multiplayer(
@@ -183,11 +193,14 @@ func _apply_explosion_damage(direct_enemy: Enemy = null) -> void:
 
 
 func _can_apply_authoritative_damage() -> bool:
-	var current_scene := get_tree().current_scene
-	return not (
-		current_scene != null
-		and current_scene.has_method("is_client_view_runtime")
-		and bool(current_scene.call("is_client_view_runtime"))
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		and (
+			combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+			or gameplay_gateway != null
+		)
 	)
 
 
@@ -202,27 +215,23 @@ func _apply_damage_to_enemy(enemy: Enemy, damaged_ids: Dictionary) -> void:
 	if owner_player != null and is_instance_valid(owner_player):
 		resolved_damage = owner_player.resolve_attack_damage_against_enemy(damage, enemy)
 	var impact_direction := enemy.global_position.direction_to(global_position)
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene != null
-		and current_scene.has_method("apply_multiplayer_collectible_enemy_damage")
-	):
-		current_scene.call(
-			"apply_multiplayer_collectible_enemy_damage",
+	var damage_accepted := false
+	if combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		damage_accepted = enemy.apply_damage(
+			resolved_damage,
+			impact_direction,
+			EnemyConfig.DamageType.PHYSICAL
+		)
+	elif gameplay_gateway != null:
+		damage_accepted = gameplay_gateway.apply_collectible_enemy_damage(
 			enemy,
 			resolved_damage,
 			impact_direction,
 			EnemyConfig.DamageType.PHYSICAL,
 			true
 		)
+	if damage_accepted:
 		_apply_research_burn(enemy)
-		return
-	enemy.apply_damage(
-		resolved_damage,
-		impact_direction,
-		EnemyConfig.DamageType.PHYSICAL
-	)
-	_apply_research_burn(enemy)
 
 
 func _apply_research_burn(enemy: Enemy) -> void:
@@ -248,9 +257,9 @@ func _apply_research_burn(enemy: Enemy) -> void:
 
 
 func _spawn_explosion_effect() -> void:
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		spawn_parent = get_parent()
+	var spawn_parent := combat_runtime
+	if spawn_parent != null and not is_instance_valid(spawn_parent):
+		spawn_parent = null
 	if spawn_parent == null:
 		return
 

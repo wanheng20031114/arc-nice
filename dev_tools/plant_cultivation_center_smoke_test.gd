@@ -996,17 +996,18 @@ func _test_authoritative_placement_rollback_sync(
 	var initial_revision := run_state.get_inventory_revision_for_peer(2)
 	var plant_system := PlacementRollbackPlantSystem.new(config)
 	var host_game := TowerDefenseGame.new()
-	host_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(host_game)
+	host_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	host_game.run_state = run_state
 	host_game.plant_system = plant_system
 	host_game.peer_players = {2: player}
 	var rejected_requests: Array[int] = []
 	var changed_inventory_peers: Array[int] = []
-	host_game.multiplayer_plant_placement_rejected.connect(
+	tower_adapter.plant_placement_rejected.connect(
 		func(request_id: int, _peer_id: int, _reason: StringName) -> void:
 			rejected_requests.append(request_id)
 	)
-	host_game.multiplayer_inventory_changed.connect(
+	tower_adapter.inventory_changed.connect(
 		func(peer_id: int) -> void: changed_inventory_peers.append(peer_id)
 	)
 	host_game.request_multiplayer_inventory_plant_placement(
@@ -1028,6 +1029,18 @@ func _test_authoritative_placement_rollback_sync(
 	)
 	host_game.free()
 	plant_system.free()
+
+
+func _bind_tower_multiplayer_mode_adapter(
+	game: TowerDefenseGame
+) -> TowerDefenseMultiplayerModeAdapter:
+	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	adapter.name = "MultiplayerModeAdapter"
+	game.add_child(adapter)
+	adapter.bind_runtime(game)
+	game.multiplayer_mode_adapter = adapter
+	game.tower_multiplayer_mode_adapter = adapter
+	return adapter
 
 
 func _click_panel_control(control: Control) -> void:

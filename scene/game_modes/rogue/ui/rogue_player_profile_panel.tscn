@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3 uid="uid://bgq6oak2w4x7m"]
+
+[ext_resource type="PackedScene" uid="uid://cdp4w8n2k6j1r" path="res://scene/ui/shared/profile/basic_player_profile_panel.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://cmt5r1x8q3v7n" path="res://scene/game_modes/rogue/ui/rogue_player_profile_panel.gd" id="2_panel"]
+
+[node name="RoguePlayerProfilePanel" instance=ExtResource("1_base")]
+script = ExtResource("2_panel")

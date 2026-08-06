@@ -811,7 +811,7 @@ func _collect_source_query_candidates(
 
 	if not allow_tracked_enemy_fallback_scan:
 		return false
-	# Explicit unit fixtures without GameRuntimeBase or network IDs can retain
+	# Explicit unit fixtures without CombatRuntimeBase or network IDs can retain
 	# exact legacy behavior. This branch is never enabled by production scenes.
 	source_fallback_scan_count += 1
 	for enemy_id in tracked_enemy_ids:

@@ -249,8 +249,12 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	)
 	if expected_loot.size() != PLAYER_COUNT:
 		return
-	if not game.multiplayer_enemy_spawned.is_connected(_on_host_enemy_spawned):
-		game.multiplayer_enemy_spawned.connect(_on_host_enemy_spawned)
+	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+	if gameplay_gateway == null:
+		_fail("Host combat runtime is missing MultiplayerGameplayGateway")
+		return
+	if not gameplay_gateway.enemy_spawned.is_connected(_on_host_enemy_spawned):
+		gameplay_gateway.enemy_spawned.connect(_on_host_enemy_spawned)
 	if not await _wait_until(
 		func() -> bool:
 			return (
@@ -698,7 +702,7 @@ func _validate_fixed_underground_night(
 	var controller := game.day_night_controller
 	if (
 		game.world_lighting_policy
-		!= GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
+		!= CombatRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
 		or controller == null
 		or not controller.night_color.is_equal_approx(
 			RogueCombatGame.UNDERGROUND_NIGHT_COLOR

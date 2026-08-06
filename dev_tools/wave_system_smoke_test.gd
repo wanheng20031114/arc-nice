@@ -1,22 +1,9 @@
 extends SceneTree
 
-const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
-const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const DEFAULT_WAVES: Array[WaveConfig] = [
-	preload("res://resources/config/waves/wave_01.tres"),
-	preload("res://resources/config/waves/wave_02.tres"),
-	preload("res://resources/config/waves/wave_03.tres"),
-	preload("res://resources/config/waves/wave_04.tres"),
-	preload("res://resources/config/waves/wave_05.tres"),
-	preload("res://resources/config/waves/wave_06.tres"),
-	preload("res://resources/config/waves/wave_07.tres"),
-	preload("res://resources/config/waves/wave_08.tres"),
-	preload("res://resources/config/waves/wave_09.tres"),
-	preload("res://resources/config/waves/wave_10.tres"),
-	preload("res://resources/config/waves/wave_11.tres"),
-	preload("res://resources/config/waves/wave_12.tres"),
-]
-const MERCHANT_FRAMES := preload("res://resources/animation/zhuangfangyi.tres")
+var game_scene: PackedScene = null
+var basic_config: EnemyConfig = null
+var default_waves: Array[WaveConfig] = []
+var merchant_frames: SpriteFrames = null
 
 const STATE_PRE_WAVE := 0
 const STATE_WAVE_ACTIVE := 1
@@ -33,23 +20,49 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var selected_case := OS.get_environment("ARC_WAVE_SMOKE_CASE")
 	test_root = Node2D.new()
 	test_root.name = "WaveSystemSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
 
-	_test_default_wave_resources()
-	_test_game_scene_wave_list()
-	_test_merchant_asset()
-	await _test_grid_pathfinder_budget()
-	await _test_wave_state_flow()
-	await _test_defeat_stops_flow()
+	if selected_case.is_empty():
+		_load_test_resources("resources")
+		_test_default_wave_resources()
+		_test_merchant_asset()
+		_release_test_resources()
+		await process_frame
+		_load_test_resources("flow")
+		_test_game_scene_wave_list()
+		await _test_grid_pathfinder_budget()
+		await _test_wave_state_flow()
+		await _test_defeat_stops_flow()
+	else:
+		_load_test_resources(selected_case)
+	match selected_case:
+		"resources":
+			_test_default_wave_resources()
+			_test_merchant_asset()
+		"scene":
+			_test_game_scene_wave_list()
+		"pathfinder":
+			await _test_grid_pathfinder_budget()
+		"flow":
+			await _test_wave_state_flow()
+		"defeat":
+			await _test_defeat_stops_flow()
+		_:
+			pass
+	current_scene = null
 	test_root.queue_free()
+	test_root = null
 	await process_frame
 	await physics_frame
 	for _cleanup_frame in range(4):
 		await process_frame
 		await physics_frame
+	_release_test_resources()
+	await process_frame
 
 	if failures.is_empty():
 		print("WAVE_SYSTEM_SMOKE_TEST_OK")
@@ -63,8 +76,8 @@ func _run() -> void:
 
 func _test_default_wave_resources() -> void:
 	var expected_rests := [20.0, 20.0, 20.0, 20.0, 20.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0]
-	for wave_index in range(DEFAULT_WAVES.size()):
-		var wave_config := DEFAULT_WAVES[wave_index]
+	for wave_index in range(default_waves.size()):
+		var wave_config := default_waves[wave_index]
 		_expect(wave_config != null, "Wave %d resource is missing." % (wave_index + 1))
 		if wave_config == null:
 			continue
@@ -94,7 +107,7 @@ func _test_default_wave_resources() -> void:
 
 
 func _test_game_scene_wave_list() -> void:
-	var game := GAME_SCENE.instantiate() as Node2D
+	var game := game_scene.instantiate() as Node2D
 	var campaign_configured := bool(game.call("_configure_active_campaign"))
 	_expect(campaign_configured, "StandardGame scene must configure its singleplayer Campaign.")
 	var game_waves: Array = game.get("waves")
@@ -116,17 +129,17 @@ func _test_game_scene_wave_list() -> void:
 			final_wave != null and final_wave.get_total_enemy_count() == 560,
 			"StandardGame final normal wave must include the late-game enemy set."
 		)
-	game.queue_free()
+	game.free()
 
 
 func _test_merchant_asset() -> void:
-	_expect(MERCHANT_FRAMES.has_animation(&"idle"), "Merchant idle animation is missing.")
+	_expect(merchant_frames.has_animation(&"idle"), "Merchant idle animation is missing.")
 	_expect(
-		MERCHANT_FRAMES.get_frame_count(&"idle") == 8,
+		merchant_frames.get_frame_count(&"idle") == 8,
 		"Merchant idle animation must contain 8 frames."
 	)
 	_expect(
-		is_equal_approx(MERCHANT_FRAMES.get_animation_speed(&"idle"), 6.5),
+		is_equal_approx(merchant_frames.get_animation_speed(&"idle"), 6.5),
 		"Merchant idle animation must run at 6.5 FPS."
 	)
 
@@ -158,6 +171,9 @@ func _test_grid_pathfinder_budget() -> void:
 	test_root.add_child(game)
 	await process_frame
 	await physics_frame
+	# Keep the fixture's own navigation prewarmer/player callbacks from consuming
+	# the single-query budget while this test exercises the counter directly.
+	game.process_mode = Node.PROCESS_MODE_DISABLED
 
 	var pathfinder := game.get_node("GridPathfinder") as GridPathfinder
 	var player := game.get_node("Player") as Player
@@ -192,7 +208,8 @@ func _test_grid_pathfinder_budget() -> void:
 			catch_up_result == null,
 			"Catch-up physics ticks in one render frame must share one path budget."
 		)
-	while Engine.get_process_frames() == budget_process_frame:
+	var budget_frame_after_catch_up := pathfinder.path_query_budget_frame
+	while Engine.get_process_frames() == budget_frame_after_catch_up:
 		await process_frame
 	var next_render_result: Variant = pathfinder.try_get_global_path(
 		from_position,
@@ -200,7 +217,14 @@ func _test_grid_pathfinder_budget() -> void:
 	)
 	_expect(
 		next_render_result != null,
-		"Pathfinder budget must reset on the next rendered/process frame."
+		(
+			"Pathfinder budget must reset on the next rendered/process frame "
+			+ "(process=%d budget=%d used=%d)."
+		) % [
+			Engine.get_process_frames(),
+			pathfinder.path_query_budget_frame,
+			pathfinder.path_queries_used_this_frame,
+		]
 	)
 
 	game.queue_free()
@@ -328,7 +352,7 @@ func _test_defeat_stops_flow() -> void:
 
 
 func _create_test_game() -> Node2D:
-	var game := GAME_SCENE.instantiate() as Node2D
+	var game := game_scene.instantiate() as Node2D
 	game.set("auto_start_waves", false)
 	var music_player := game.get_node("MusicPlayer") as AudioStreamPlayer
 	music_player.autoplay = false
@@ -339,7 +363,7 @@ func _create_test_waves(wave_count: int) -> Array[WaveConfig]:
 	var result: Array[WaveConfig] = []
 	for wave_index in range(wave_count):
 		var entry := WaveEnemyEntry.new()
-		entry.enemy_config = BASIC_CONFIG
+		entry.enemy_config = basic_config
 		entry.count = 1
 		var wave_config := WaveConfig.new()
 		wave_config.step_id = StringName("test_wave_%02d" % (wave_index + 1))
@@ -393,3 +417,31 @@ func _defeat_only_enemy(game: Node2D) -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _load_test_resources(selected_case: String) -> void:
+	if selected_case in ["", "scene", "pathfinder", "flow", "defeat"]:
+		game_scene = load(
+			"res://scene/game_modes/standard/standard_game.tscn"
+		) as PackedScene
+	if selected_case in ["", "flow", "defeat"]:
+		basic_config = load(
+			"res://resources/config/enemies/yuanshi_insect_basic.tres"
+		) as EnemyConfig
+	if selected_case in ["", "resources"]:
+		merchant_frames = load(
+			"res://resources/animation/zhuangfangyi.tres"
+		) as SpriteFrames
+		for wave_index in range(1, 13):
+			default_waves.append(
+				load(
+					"res://resources/config/waves/wave_%02d.tres" % wave_index
+				) as WaveConfig
+			)
+
+
+func _release_test_resources() -> void:
+	default_waves.clear()
+	game_scene = null
+	basic_config = null
+	merchant_frames = null

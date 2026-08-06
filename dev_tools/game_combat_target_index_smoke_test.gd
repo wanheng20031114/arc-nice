@@ -58,7 +58,9 @@ func _run() -> void:
 
 
 func _test_game_source_enables_shared_index() -> void:
-	var source := FileAccess.get_file_as_string("res://scene/game_modes/standard/standard_game.gd")
+	var source := FileAccess.get_file_as_string(
+		"res://scene/combat/runtime/wave_combat_runtime_base.gd"
+	)
 	_expect(
 		source.contains("enable_singleplayer_combat_target_index()"),
 		"StandardGame._ready() must enable the shared single-player combat target index."
@@ -74,7 +76,7 @@ func _test_game_source_enables_shared_index() -> void:
 
 func _test_nearest_combat_target_contracts() -> void:
 	var game := StandardGame.new()
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "NearestEnemyContainer"
 	test_root.add_child(enemy_container)
@@ -302,7 +304,7 @@ func _test_nearest_combat_target_contracts() -> void:
 
 func _test_queued_target_query_contracts() -> void:
 	var game := StandardGame.new()
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "QueuedEnemyContainer"
 	test_root.add_child(enemy_container)
@@ -373,7 +375,7 @@ func _test_queued_target_query_contracts() -> void:
 
 func _test_singleplayer_container_lifecycle() -> void:
 	var game := StandardGame.new()
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "IndexedEnemyContainer"
 	test_root.add_child(enemy_container)
@@ -452,7 +454,7 @@ func _test_singleplayer_container_lifecycle() -> void:
 	enemy_container.queue_free()
 
 	var multiplayer_game := StandardGame.new()
-	multiplayer_game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	multiplayer_game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var multiplayer_enemy_container := Node2D.new()
 	multiplayer_game.enemy_container = multiplayer_enemy_container
 	multiplayer_game.add_child(multiplayer_enemy_container)
@@ -489,7 +491,7 @@ func _count_index_bucket_occurrences(game: StandardGame, net_id: int) -> int:
 
 func _test_same_physics_frame_bucket_migration() -> void:
 	var game := StandardGame.new()
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var enemy := _new_tree_safe_test_enemy()
 	test_root.add_child(enemy)
 	enemy.global_position = Vector2(95.5, 12.0)
@@ -568,7 +570,7 @@ func _test_same_physics_frame_bucket_migration() -> void:
 
 func _test_tower_defense_forced_policy() -> void:
 	var game := TowerDefenseGame.new()
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "EnemyContainer"
 	var boss_container := Node2D.new()
@@ -617,7 +619,7 @@ func _new_tree_safe_test_enemy() -> TestEnemy:
 
 func _run_ab_case(enemy_count: int) -> void:
 	var game := StandardGame.new()
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var enemy_container := Node2D.new()
 	enemy_container.name = "EnemyContainer"
 	var boss_container := Node2D.new()

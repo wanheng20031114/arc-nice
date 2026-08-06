@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dlgax6p2w8q3a"]
+
+[ext_resource type="Script" path="res://scene/game_modes/standard/boss/standard_linglan_boss_runtime_port.gd" id="1_port"]
+
+[node name="LinglanBossRuntimePort" type="Node"]
+script = ExtResource("1_port")

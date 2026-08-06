@@ -498,7 +498,7 @@ flowchart TD
 
 性能架构稳定后再进行：
 
-- `scene/game.gd` 与 `scene/game_tower_defense.gd` 存在大量同名流程函数；审计时两者分别约 2688 / 5032 行，并有约 174 个共同函数名。应逐组件提取到 `GameRuntimeBase` 或独立服务，而不是继续扩大两个脚本。
+- `scene/game.gd` 与 `scene/game_tower_defense.gd` 存在大量同名流程函数；审计时两者分别约 2688 / 5032 行，并有约 174 个共同函数名。应逐组件提取到 `CombatRuntimeBase` 或独立服务，而不是继续扩大两个脚本。
 - `path_refresh_interval`、`direct_chase_extra_distance` 在多种敌人脚本与场景中保留导出项，例如 `scene/enemy/capoo_ak47.gd:16-18`、`scene/enemy/capoo_knight.gd:20-22`、`scene/enemy/capoo_ranged_enemy.gd:9-11`；当前搜索只发现声明/序列化，没有运行时读取。确认场景迁移与兼容后再删除。
 - 开发探针和 `runtime_performance_telemetry.gd` 属于验证基础设施，不应当作“垃圾代码”随意删除。
 

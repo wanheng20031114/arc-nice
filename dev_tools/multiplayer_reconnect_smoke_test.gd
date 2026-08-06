@@ -227,9 +227,10 @@ func _test_authoritative_player_state_remap() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
 	var game := GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		HOST_PEER_ID,
 		{HOST_PEER_ID: "Host", OLD_PEER_ID: "Reconnect"},
 		{HOST_PEER_ID: &"weishidaier", OLD_PEER_ID: &"weishidaier"}
@@ -281,6 +282,7 @@ func _test_authoritative_player_state_remap() -> void:
 	mp_game.game = game
 	mp_game.run_state = run_state
 	mp_game.net_manager = net_stub
+	_bind_multiplayer_runtime(mp_game, game)
 	var admitted_actions_at_once := 0
 	for _attempt in range(int(MP_GAME_SCRIPT.PLAYER_ACTION_INGRESS_RATE_BURST) + 1):
 		if mp_game._consume_remote_player_action_admission(
@@ -370,9 +372,10 @@ func _test_embedded_client_restores_unseen_participant() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
 	var game := GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
 		CLIENT_LOCAL_PEER_ID,
 		{
 			HOST_PEER_ID: "Host",
@@ -403,6 +406,7 @@ func _test_embedded_client_restores_unseen_participant() -> void:
 	mp_game.game = game
 	mp_game.run_state = run_state
 	mp_game.net_manager = net_stub
+	_bind_multiplayer_runtime(mp_game, game)
 	mp_game.call(
 		"_on_net_player_reconnected",
 		UNSEEN_OLD_PEER_ID,
@@ -507,6 +511,29 @@ func _cleanup_root() -> void:
 	for _frame in 4:
 		await process_frame
 		await physics_frame
+
+
+func _disable_tower_fixture_background_loads(game: TowerDefenseGame) -> void:
+	var fate_coordinator := game.get_node_or_null("FateCoordinator") as FateCoordinator
+	if fate_coordinator != null:
+		fate_coordinator.elite_enemy_config_loads_requested = true
+
+
+func _bind_multiplayer_runtime(
+	mp_game,
+	game: CombatRuntimeBase
+) -> void:
+	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+	var mode_adapter := game.get_multiplayer_mode_adapter()
+	mp_game._gameplay_gateway = gameplay_gateway
+	mp_game._mode_adapter = mode_adapter
+	mp_game.tower_mode_adapter = (
+		mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
+	if gameplay_gateway != null:
+		gameplay_gateway.attach_multiplayer_session(mp_game)
+	if mode_adapter != null:
+		mode_adapter.attach_multiplayer_session(mp_game)
 
 
 func _expect(condition: bool, message: String) -> void:

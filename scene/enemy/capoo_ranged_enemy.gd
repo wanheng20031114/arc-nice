@@ -82,10 +82,8 @@ func _has_clear_world_line_to_position(target_position: Vector2) -> bool:
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			direction,
@@ -96,10 +94,8 @@ func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> voi
 
 func _broadcast_enemy_target_action(action_name: StringName, target_peer_id: int) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_target_action"):
-		current_scene.call(
-			"broadcast_enemy_target_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_target_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			target_peer_id,

@@ -1,9 +1,12 @@
 extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
+const PLAYER_TEST_RUNTIME := preload(
+	"res://dev_tools/player_test_combat_runtime.gd"
+)
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: PlayerTestCombatRuntime
 var player: PlayerWeishidaier
 
 
@@ -12,7 +15,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = PLAYER_TEST_RUNTIME.new() as PlayerTestCombatRuntime
 	test_root.name = "PlayerAmmoReloadSmokeRoot"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -23,6 +26,7 @@ func _run() -> void:
 		await _finish()
 		return
 	test_root.add_child(player)
+	test_root.bind_player_runtime_context(player)
 	await process_frame
 	await physics_frame
 	_stop_audio_players(player)

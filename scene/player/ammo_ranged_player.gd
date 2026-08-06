@@ -383,20 +383,18 @@ func _fire_bullets(base_direction: Vector2) -> bool:
 func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true) -> bool:
 	if shoot_direction == Vector2.ZERO:
 		return false
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if combat_runtime == null or gameplay_gateway == null:
 		return false
+	var spawn_parent: Node = combat_runtime
 	var projectile_scene := _get_primary_projectile_scene()
 	if projectile_scene == null:
 		return false
 	var bullet: Bullet = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call("has_session_object_pool_scene", projectile_scene))
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		projectile_scene
 	)
 	if uses_registered_pool:
-		bullet = spawn_parent.call(
-			"acquire_session_object",
+		bullet = combat_runtime.acquire_session_object(
 			projectile_scene,
 			false
 		) as Bullet
@@ -415,11 +413,14 @@ func _spawn_bullet(shoot_direction: Vector2, track_attack_direction: bool = true
 		attack_damage,
 		_get_primary_attack_damage_type()
 	)
+	bullet.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	bullet.setup(normalized_direction, bullet_damage, pierces_enemies)
 	bullet.setup_homing(homing_target)
 	bullet.setup_collectible_owner(self)
 	if bullet.get_parent() == null:
 		spawn_parent.add_child(bullet)
+	elif bullet.get_parent() != spawn_parent:
+		bullet.reparent(spawn_parent)
 	bullet.global_position = global_position + normalized_direction * _get_muzzle_distance()
 	bullet.reset_physics_interpolation()
 	var target_enemy_net_id := 0

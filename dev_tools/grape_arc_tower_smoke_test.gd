@@ -18,7 +18,7 @@ var failures: Array[String] = []
 
 
 class ChainRuntime:
-	extends Node2D
+	extends CombatRuntimeTestFixture
 
 	var targets: Array[Enemy] = []
 	var damage_targets: Array[Enemy] = []
@@ -66,16 +66,45 @@ class ChainRuntime:
 		damage_types.append(damage_type)
 
 
+class ChainGameplayPort:
+	extends TowerPlantGameplayTestPort
+
+	var fixture_runtime: ChainRuntime = null
+
+	func apply_authoritative_plant_enemy_damage(
+		_source_id: int,
+		target: Node2D,
+		amount: int,
+		direction: Vector2,
+		damage_type: int
+	) -> bool:
+		var enemy := target as Enemy
+		if fixture_runtime == null or enemy == null:
+			return false
+		fixture_runtime.apply_authoritative_plant_enemy_damage(
+			_source_id,
+			enemy,
+			amount,
+			direction,
+			damage_type as EnemyConfig.DamageType
+		)
+		return true
+
+
 func _init() -> void:
 	call_deferred("_run")
 
 
 func _run() -> void:
 	var runtime := ChainRuntime.new()
+	runtime.install_base_runtime_nodes()
 	root.add_child(runtime)
-	current_scene = runtime
+	var gameplay_port := ChainGameplayPort.new()
+	gameplay_port.fixture_runtime = runtime
+	runtime.add_child(gameplay_port)
 
 	var tower := TOWER_SCENE.instantiate() as GrapeArcTower
+	tower.bind_gameplay_context(runtime, gameplay_port)
 	runtime.add_child(tower)
 	tower.set_meta(&"net_id", 71001)
 	tower.setup(TOWER_CONFIG, null, [], false, -1, 0, -1, false)
@@ -355,6 +384,7 @@ func _run() -> void:
 	tower.idle_scan_timer.stop()
 
 	var proxy := TOWER_SCENE.instantiate() as GrapeArcTower
+	proxy.bind_gameplay_context(runtime, gameplay_port)
 	runtime.add_child(proxy)
 	proxy.set_meta(&"net_id", 71002)
 	proxy.setup(TOWER_CONFIG, null, [], true, -1, 0, -1, false)
@@ -386,6 +416,7 @@ func _run() -> void:
 	)
 
 	var hydrangea := HYDRANGEA_SCENE.instantiate() as HydrangeaRainTower
+	hydrangea.bind_gameplay_context(runtime, gameplay_port)
 	runtime.add_child(hydrangea)
 	hydrangea.setup(HYDRANGEA_CONFIG, null, [], false, -1, 0, -1, false)
 	hydrangea.cycle_timer.stop()

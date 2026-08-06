@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3 uid="uid://dmuyusw4c24nh"]
+
+[ext_resource type="PackedScene" path="res://scene/multiplayer/mp_game.tscn" id="1_mp_game"]
+[ext_resource type="Script" path="res://dev_tools/fixtures/rogue_combat_multiplayer_test_session.gd" id="2_fixture"]
+
+[node name="RogueCombatMultiplayerTestSession" instance=ExtResource("1_mp_game")]
+script = ExtResource("2_fixture")

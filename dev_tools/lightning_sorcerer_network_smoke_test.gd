@@ -41,7 +41,7 @@ class TestNetManager:
 
 
 class LightningVfxRuntime:
-	extends GameRuntimeBase
+	extends CombatRuntimeBase
 
 	var played_chains: Array[PackedVector2Array] = []
 	var players_by_peer_id: Dictionary = {}

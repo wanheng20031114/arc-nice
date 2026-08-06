@@ -68,7 +68,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 
-	host_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	host_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	host_game.next_multiplayer_plant_net_id = FIRST_FENCE_NET_ID
 	var owner_peer_id := maxi(host_game.player.peer_id, 1)
 	host_game.peer_players[owner_peer_id] = host_game.player
@@ -99,7 +99,16 @@ func _run() -> void:
 	var spawn_records: Array[Dictionary] = []
 	var health_records: Array[Dictionary] = []
 	var removal_records: Array[Dictionary] = []
-	host_game.multiplayer_plant_spawned.connect(
+	var host_tower_adapter := (
+		host_game.get_multiplayer_mode_adapter()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	_expect(host_tower_adapter != null, "真实塔防场景必须预置多人模式适配器。")
+	if host_tower_adapter == null:
+		await _cleanup()
+		_finish()
+		return
+	host_tower_adapter.plant_spawned.connect(
 		func(
 			request_id: int,
 			record_owner_peer_id: int,
@@ -121,7 +130,7 @@ func _run() -> void:
 				"health_revision": health_revision,
 			})
 	)
-	host_game.multiplayer_plant_health_changed.connect(
+	host_tower_adapter.plant_health_changed.connect(
 		func(
 			net_id: int,
 			current_health: int,
@@ -135,7 +144,7 @@ func _run() -> void:
 				"health_revision": health_revision,
 			})
 	)
-	host_game.multiplayer_plant_removed.connect(
+	host_tower_adapter.plant_removed.connect(
 		func(net_id: int, was_destroyed: bool) -> void:
 			removal_records.append({
 				"net_id": net_id,
@@ -429,7 +438,8 @@ func _create_client_fixture(label: String, owner_peer_id: int) -> Dictionary:
 	)
 	var runtime := TowerDefenseGame.new()
 	runtime.name = "%sRuntime" % label
-	runtime.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	_bind_tower_multiplayer_mode_adapter(runtime)
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	runtime.plant_system = plant_system
 	runtime.peer_players = {owner_peer_id: host_game.player}
 	var fixture := {
@@ -439,6 +449,18 @@ func _create_client_fixture(label: String, owner_peer_id: int) -> Dictionary:
 	}
 	client_fixtures.append(fixture)
 	return fixture
+
+
+func _bind_tower_multiplayer_mode_adapter(
+	runtime: TowerDefenseGame
+) -> TowerDefenseMultiplayerModeAdapter:
+	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	adapter.name = "MultiplayerModeAdapter"
+	runtime.add_child(adapter)
+	adapter.bind_runtime(runtime)
+	runtime.multiplayer_mode_adapter = adapter
+	runtime.tower_multiplayer_mode_adapter = adapter
+	return adapter
 
 
 func _apply_spawn_record(

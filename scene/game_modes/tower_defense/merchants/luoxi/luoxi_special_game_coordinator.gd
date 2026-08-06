@@ -205,8 +205,8 @@ func _can_start_for_player(player_instance: Player) -> bool:
 		and is_instance_valid(player_instance)
 		and not player_instance.is_dead
 		and game.wave_state not in [
-			GameRuntimeBase.WaveState.VICTORY,
-			GameRuntimeBase.WaveState.DEFEAT,
+			CombatFlowState.State.VICTORY,
+			CombatFlowState.State.DEFEAT,
 		]
 		and player_instance.global_position.distance_squared_to(
 			merchant.global_position

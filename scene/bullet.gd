@@ -39,6 +39,8 @@ var remaining_lifetime : float = 0.0
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"player_bullet"
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var pierces_enemies: bool = false
 var hit_enemy_instance_ids: Dictionary = {}
 var collectible_owner: Player = null
@@ -79,6 +81,8 @@ func on_pool_acquired(_generation: int) -> void:
 	remaining_lifetime = max_lifetime
 	projectile_id = 0
 	owner_peer_id = 0
+	combat_runtime = null
+	gameplay_gateway = null
 	source_type = &"player_bullet"
 	pierces_enemies = false
 	hit_enemy_instance_ids.clear()
@@ -103,6 +107,16 @@ func on_pool_released(_generation: int) -> void:
 	collectible_owner = null
 	homing_target = null
 	is_homing = false
+	combat_runtime = null
+	gameplay_gateway = null
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func retire() -> void:
@@ -300,14 +314,12 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 	if not _try_mark_enemy_hit(enemy):
 		return false
 
-	var reported_multiplayer_hit := _try_report_multiplayer_enemy_hit(enemy)
+	var reported_multiplayer_hit := false
 	var hit_registered := false
 	var resolved_damage := damage
 	if collectible_owner != null and is_instance_valid(collectible_owner):
 		resolved_damage = collectible_owner.resolve_attack_damage_against_enemy(damage, enemy)
-	if reported_multiplayer_hit:
-		hit_registered = true
-	else:
+	if _is_explicit_singleplayer_authority():
 		var request := DamageRequest.new(resolved_damage, int(get_damage_type()))
 		request.with_source(
 			collectible_owner if collectible_owner != null else self,
@@ -316,6 +328,9 @@ func try_hit_enemy(enemy: Enemy) -> bool:
 		)
 		request.with_directions(-direction)
 		hit_registered = enemy.apply_combat_damage(request).accepted
+	elif _requires_multiplayer_gateway_authority():
+		reported_multiplayer_hit = _try_report_multiplayer_enemy_hit(enemy)
+		hit_registered = reported_multiplayer_hit
 
 	if not hit_registered:
 		hit_enemy_instance_ids.erase(enemy.get_instance_id())
@@ -340,18 +355,31 @@ func _try_mark_enemy_hit(enemy: Enemy) -> bool:
 func _try_report_multiplayer_enemy_hit(enemy: Enemy) -> bool:
 	if projectile_id <= 0:
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_enemy_hit_report"):
+	if gameplay_gateway == null:
 		return false
 	var enemy_net_id := int(enemy.get_meta("net_id", 0))
 	if enemy_net_id <= 0:
 		return false
-	current_scene.call(
-		"request_enemy_hit_report",
+	return gameplay_gateway.request_enemy_hit_report(
 		projectile_id,
 		owner_peer_id,
 		enemy_net_id,
 		damage,
 		-enemy.global_position.direction_to(global_position)
 	)
-	return true
+
+
+func _is_explicit_singleplayer_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+
+
+func _requires_multiplayer_gateway_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)

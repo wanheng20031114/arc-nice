@@ -294,12 +294,12 @@ func _run_mp_game_probe(
 		mp_game.queue_free()
 		return
 	var game: Variant = mp_game.get("game")
-	if game == null or not is_instance_valid(game) or not game is GameRuntimeBase:
-		_fail("MpGame did not create a GameRuntimeBase.")
+	if game == null or not is_instance_valid(game) or not game is CombatRuntimeBase:
+		_fail("MpGame did not create a CombatRuntimeBase.")
 		mp_game.queue_free()
 		return
 	var expects_tower_defense := _uses_tower_defense_runtime()
-	if bool(game.call("supports_tower_defense")) != expects_tower_defense:
+	if _runtime_uses_tower_defense(game) != expects_tower_defense:
 		_fail("MpGame instantiated the wrong runtime for mode %s." % probe_game_mode)
 	_validate_exact_mode_runtime(game)
 	if expects_tower_defense:
@@ -412,6 +412,15 @@ func _uses_tower_defense_runtime() -> bool:
 	]
 
 
+func _runtime_uses_tower_defense(game: Variant) -> bool:
+	var runtime := game as CombatRuntimeBase
+	return (
+		runtime != null
+		and runtime.get_multiplayer_mode_adapter()
+			is TowerDefenseMultiplayerModeAdapter
+	)
+
+
 func _get_expected_runtime_scene_path() -> String:
 	match probe_game_mode:
 		"tower_defense":
@@ -440,7 +449,7 @@ func _get_expected_multiplayer_campaign_path() -> String:
 			return STANDARD_MULTIPLAYER_CAMPAIGN_PATH
 
 
-func _validate_exact_mode_runtime(game: GameRuntimeBase) -> void:
+func _validate_exact_mode_runtime(game: CombatRuntimeBase) -> void:
 	var expected_scene_path := _get_expected_runtime_scene_path()
 	var expected_campaign_path := _get_expected_multiplayer_campaign_path()
 	if game.scene_file_path != expected_scene_path:
@@ -511,7 +520,7 @@ func _validate_exact_mode_runtime(game: GameRuntimeBase) -> void:
 
 
 func _run_mode_contract_probe(
-	game: GameRuntimeBase,
+	game: CombatRuntimeBase,
 	is_host_probe: bool
 ) -> void:
 	if probe_game_mode in [
@@ -882,7 +891,7 @@ func _run_tower_defense_runtime_probe(
 	game: Variant,
 	is_host_probe: bool
 ) -> void:
-	if not bool(game.call("supports_tower_defense")):
+	if not _runtime_uses_tower_defense(game):
 		_fail("Tower-defense runtime probe received the standard StandardGame runtime.")
 		return
 	await _wait_seconds(1.0)
@@ -1528,7 +1537,7 @@ func _run_host_tower_defense_fate_probe(
 	game.call("_enter_xiaocong_fate_interlude", resume_step)
 	if not await _wait_for_game_wave_state(
 		game,
-		GameRuntimeBase.WaveState.FATE_INTERLUDE,
+		CombatFlowState.State.FATE_INTERLUDE,
 		5.0
 	):
 		_fail("Host did not enter the Xiaocong fate interlude.")
@@ -1573,7 +1582,7 @@ func _run_host_tower_defense_fate_probe(
 	)
 	if not await _wait_for_game_wave_state(
 		game,
-		GameRuntimeBase.WaveState.INTERMISSION,
+		CombatFlowState.State.INTERMISSION,
 		15.0
 	):
 		_fail("Host did not resume the campaign after the all-player fate vote.")
@@ -1612,7 +1621,7 @@ func _run_client_tower_defense_fate_probe(
 ) -> void:
 	if not await _wait_for_game_wave_state(
 		game,
-		GameRuntimeBase.WaveState.FATE_INTERLUDE,
+		CombatFlowState.State.FATE_INTERLUDE,
 		10.0
 	):
 		_fail("Client did not receive the Xiaocong fate flow state.")
@@ -1648,7 +1657,7 @@ func _run_client_tower_defense_fate_probe(
 	)
 	if not await _wait_for_game_wave_state(
 		game,
-		GameRuntimeBase.WaveState.INTERMISSION,
+		CombatFlowState.State.INTERMISSION,
 		15.0
 	):
 		_fail("Client did not resume from the completed fate vote.")
@@ -1737,7 +1746,7 @@ func _wait_for_player_xirang(
 
 func _run_host_wave_probe(game: Variant) -> void:
 	game.call("_begin_flow_step", game.flow_graph.start_step)
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.WAVE_ACTIVE, 3.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.WAVE_ACTIVE, 3.0):
 		_fail("Host wave probe did not enter wave active state.")
 		return
 	if int(game.current_wave_total) != 1:
@@ -1758,7 +1767,7 @@ func _run_host_wave_probe(game: Variant) -> void:
 	if not await _wait_for_host_enemy_removed(game, enemy_id, 8.0):
 		_fail("Host wave probe enemy was not removed after defeat.")
 		return
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.INTERMISSION, 5.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.INTERMISSION, 5.0):
 		var next_step: FlowStepConfig = game.call(
 			"_get_default_next_flow_step",
 			game.current_flow_step
@@ -1783,10 +1792,10 @@ func _run_host_wave_probe(game: Variant) -> void:
 
 
 func _run_client_wave_probe(mp_game: Node, game: Variant) -> void:
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.WAVE_ACTIVE, 6.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.WAVE_ACTIVE, 6.0):
 		_fail("Client wave probe did not receive wave start.")
 		return
-	if not bool(game.call("supports_tower_defense")) and not await _wait_for_wave_hud_text_contains(game, "第 1 波", 2.0):
+	if not _runtime_uses_tower_defense(game) and not await _wait_for_wave_hud_text_contains(game, "第 1 波", 2.0):
 		_fail("Client wave probe HUD did not show wave 1.")
 		return
 	var enemy_id := await _wait_for_first_client_enemy_id(mp_game, 6.0)
@@ -1794,7 +1803,7 @@ func _run_client_wave_probe(mp_game: Node, game: Variant) -> void:
 		_fail("Client wave probe did not receive wave enemy spawn.")
 		return
 	if (
-		bool(game.call("supports_tower_defense"))
+		_runtime_uses_tower_defense(game)
 		and not await _wait_for_tower_defense_hud_metrics(game, 1, 1, 0, 2.0)
 	):
 		_fail("Tower-defense client HUD did not show the live enemy without overwriting wave progress.")
@@ -1804,12 +1813,12 @@ func _run_client_wave_probe(mp_game: Node, game: Variant) -> void:
 		_fail("Client wave probe did not receive wave enemy removal.")
 		return
 	if (
-		bool(game.call("supports_tower_defense"))
+		_runtime_uses_tower_defense(game)
 		and not await _wait_for_tower_defense_hud_metrics(game, 1, 0, 100, 2.0)
 	):
 		_fail("Tower-defense client HUD did not settle enemy count and wave progress independently.")
 		return
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.INTERMISSION, 6.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.INTERMISSION, 6.0):
 		_fail("Client wave probe did not receive intermission.")
 		return
 	if not await _wait_for_merchant_active(game, true, 2.0):
@@ -1820,24 +1829,33 @@ func _run_client_wave_probe(mp_game: Node, game: Variant) -> void:
 
 
 func _run_host_boss_probe(game: Variant) -> void:
-	game.multiplayer_enemy_spawned.connect(
+	var runtime := game as CombatRuntimeBase
+	if runtime == null:
+		_fail("Host boss probe requires a CombatRuntimeBase.")
+		return
+	var gameplay_gateway := runtime.get_multiplayer_gameplay_gateway()
+	var mode_adapter := runtime.get_multiplayer_mode_adapter()
+	if gameplay_gateway == null or mode_adapter == null:
+		_fail("Host boss probe runtime is missing its typed multiplayer boundary.")
+		return
+	gameplay_gateway.enemy_spawned.connect(
 		func(net_id: int, enemy_config: EnemyConfig, _spawn_position: Vector2) -> void:
 			var config_path := enemy_config.resource_path if enemy_config != null else ""
 			print("LAN_PROBE_EVENT host_boss_enemy_spawn_signal net_id=%d config=%s" % [net_id, config_path])
 	)
-	game.multiplayer_boss_started.connect(
+	mode_adapter.boss_started.connect(
 		func(net_id: int, boss_config: BossConfig, _spawn_position: Vector2) -> void:
 			var config_path := boss_config.resource_path if boss_config != null else ""
 			print("LAN_PROBE_EVENT host_boss_started_signal net_id=%d config=%s" % [net_id, config_path])
 	)
 	game.call("_enter_pre_flow_step", LINGLAN_BOSS_ENTRY)
 	await _wait_frames(2)
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.BOSS_INTRO, 4.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.BOSS_INTRO, 4.0):
 		_fail("Host boss probe did not enter boss intro.")
 		return
 	print("LAN_PROBE_EVENT host_boss_intro_confirmed")
 	game.call("_on_linglan_boss_intro_finished")
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.BOSS_ACTIVE, 4.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.BOSS_ACTIVE, 4.0):
 		_fail("Host boss probe did not activate boss.")
 		return
 	var boss_id := await _wait_for_first_host_enemy_net_id(game, 4.0)
@@ -1860,18 +1878,18 @@ func _run_host_boss_probe(game: Variant) -> void:
 
 	if boss != null and is_instance_valid(boss):
 		boss.apply_damage(boss.current_health + boss.get_effective_physical_defense())
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.VICTORY, 6.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.VICTORY, 6.0):
 		_fail("Host boss probe did not enter victory after boss defeat.")
 		return
 	print("LAN_PROBE_EVENT host_boss_victory_confirmed")
 
 
 func _run_client_boss_probe(mp_game: Node, game: Variant) -> void:
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.BOSS_INTRO, 6.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.BOSS_INTRO, 6.0):
 		_fail("Client boss probe did not receive boss intro.")
 		return
 	print("LAN_PROBE_EVENT client_boss_intro_confirmed")
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.BOSS_ACTIVE, 8.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.BOSS_ACTIVE, 8.0):
 		_fail("Client boss probe did not receive boss active state.")
 		return
 	var boss_id := await _wait_for_first_client_enemy_id(mp_game, 8.0)
@@ -1890,7 +1908,7 @@ func _run_client_boss_probe(mp_game: Node, game: Variant) -> void:
 		return
 	print("LAN_PROBE_EVENT client_boss_health_confirmed")
 
-	if not await _wait_for_game_wave_state(game, GameRuntimeBase.WaveState.VICTORY, 10.0):
+	if not await _wait_for_game_wave_state(game, CombatFlowState.State.VICTORY, 10.0):
 		_fail("Client boss probe did not receive victory after boss defeat.")
 		return
 	print("LAN_PROBE_EVENT client_boss_victory_confirmed")
@@ -3387,7 +3405,7 @@ func _configure_probe_wave_flow(game: Variant) -> void:
 	# intermission so clearing it can be observed before wave two begins. Keep
 	# this one-enemy transport fixture independent from formal player scaling;
 	# the progression smoke test covers exact 1/2/4/8-player totals.
-	if bool(game.call("supports_tower_defense")):
+	if _runtime_uses_tower_defense(game):
 		var wave_progression := (
 			game.progression_config.duplicate(true)
 			as TowerDefenseProgressionConfig
@@ -3414,7 +3432,7 @@ func _configure_probe_boss_flow(game: Variant) -> void:
 	var flow_steps: Array[FlowStepConfig] = [LINGLAN_BOSS_ENTRY]
 	flow_graph.steps = flow_steps
 	game.flow_graph = flow_graph
-	if bool(game.call("supports_tower_defense")):
+	if _runtime_uses_tower_defense(game):
 		var boss_progression := (
 			game.progression_config.duplicate(true)
 			as TowerDefenseProgressionConfig

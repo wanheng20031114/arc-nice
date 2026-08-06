@@ -37,6 +37,7 @@ const EXPECTED_BLOOM_LIGHT_STRENGTH := 3.2
 
 var failures: Array[String] = []
 var fixture: RainTickRuntime
+var gameplay_port: RainGameplayPort
 var scheduler: Node
 
 
@@ -61,7 +62,7 @@ class TargetCachePlantSystem:
 
 
 class RainTickRuntime:
-	extends Node2D
+	extends CombatRuntimeTestFixture
 
 	var enemy_targets: Array[Enemy] = []
 	var plant_targets: Array[PlantDefense] = []
@@ -134,6 +135,41 @@ class RainTickRuntime:
 		return target_player._try_heal(heal_amount, false)
 
 
+class RainGameplayPort:
+	extends TowerPlantGameplayTestPort
+
+	var fixture_runtime: RainTickRuntime = null
+
+	func apply_authoritative_plant_enemy_damage_batch(
+		damage_source_id: int,
+		enemy_node: Node2D,
+		damage_amounts: PackedInt64Array,
+		hit_counts: PackedInt32Array,
+		impact_direction: Vector2,
+		damage_type: int
+	) -> bool:
+		var enemy := enemy_node as Enemy
+		if fixture_runtime == null or enemy == null:
+			return false
+		return fixture_runtime.apply_authoritative_plant_enemy_damage_batch(
+			damage_source_id,
+			enemy,
+			damage_amounts,
+			hit_counts,
+			impact_direction,
+			damage_type as EnemyConfig.DamageType
+		)
+
+	func query_living_plants_in_radius_into(
+		_center: Vector2,
+		_radius: float,
+		result: Array
+	) -> void:
+		result.clear()
+		if fixture_runtime != null:
+			result.append_array(fixture_runtime.plant_targets)
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -141,8 +177,11 @@ func _init() -> void:
 func _run() -> void:
 	fixture = RainTickRuntime.new()
 	fixture.name = "HydrangeaRainTowerSmokeFixture"
+	fixture.install_base_runtime_nodes()
 	root.add_child(fixture)
-	current_scene = fixture
+	gameplay_port = RainGameplayPort.new()
+	gameplay_port.fixture_runtime = fixture
+	fixture.add_child(gameplay_port)
 	scheduler = root.get_node("EnemyCollectibleStatusScheduler")
 	scheduler.call("clear_all")
 
@@ -161,6 +200,7 @@ func _run() -> void:
 	for _cleanup_frame in range(3):
 		await process_frame
 	fixture = null
+	gameplay_port = null
 	scheduler = null
 	if failures.is_empty():
 		print("HYDRANGEA_RAIN_TOWER_SMOKE_TEST_OK")
@@ -564,9 +604,8 @@ func _test_native_128_to_32_and_particle_contract() -> void:
 
 
 func _test_ground_dew_night_self_emission() -> void:
-	var controller := DayNightController.new()
-	controller.name = "DayNightController"
-	fixture.add_child(controller)
+	var controller := fixture.get_node("DayNightController") as DayNightController
+	controller.set_night_factor_immediate(0.0)
 	var tower := _make_tower(HYDRANGEA_CONFIG)
 	await process_frame
 	await process_frame
@@ -617,7 +656,6 @@ func _test_ground_dew_night_self_emission() -> void:
 	)
 	tower.call("_hide_rain_visual_immediate")
 	tower.queue_free()
-	controller.queue_free()
 	await process_frame
 	await process_frame
 
@@ -957,6 +995,7 @@ func _test_proxy_target_position_sync_and_deduplication() -> void:
 	var target_position := Vector2(72.0, 40.0)
 	var newer_target_position := Vector2(104.0, 56.0)
 	var constructing_proxy := HYDRANGEA_SCENE.instantiate() as HydrangeaRainTower
+	constructing_proxy.bind_gameplay_context(fixture, gameplay_port)
 	fixture.add_child(constructing_proxy)
 	constructing_proxy.setup(
 		HYDRANGEA_CONFIG,
@@ -1012,6 +1051,7 @@ func _test_proxy_target_position_sync_and_deduplication() -> void:
 	await process_frame
 
 	var live_proxy := HYDRANGEA_SCENE.instantiate() as HydrangeaRainTower
+	live_proxy.bind_gameplay_context(fixture, gameplay_port)
 	fixture.add_child(live_proxy)
 	live_proxy.setup(HYDRANGEA_CONFIG, null, _footprint_cells(), true)
 	live_proxy.apply_multiplayer_runtime_state(
@@ -1105,7 +1145,7 @@ func _test_one_authoritative_rain_tick() -> void:
 
 	var enemy := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
 	fixture.add_child(enemy)
-	enemy.setup(ENEMY_CONFIG, player, null)
+	enemy.setup(ENEMY_CONFIG, player, null, fixture)
 	enemy.set_physics_process(false)
 	var enemy_health_before := enemy.current_health
 	tower.current_health = tower.max_health - 100
@@ -1205,7 +1245,7 @@ func _test_overlapping_towers_stack_healing_not_reduction() -> void:
 
 	var enemy := ENEMY_CONFIG.enemy_scene.instantiate() as Enemy
 	fixture.add_child(enemy)
-	enemy.setup(ENEMY_CONFIG, player, null)
+	enemy.setup(ENEMY_CONFIG, player, null, fixture)
 	enemy.set_physics_process(false)
 	healing_target.current_health = healing_target.max_health - EXPECTED_HEAL * 3
 	healing_target.health_bar.set_health(
@@ -1258,6 +1298,7 @@ func _make_tower(
 	new_config: HydrangeaRainTowerConfig
 ) -> HydrangeaRainTower:
 	var tower := HYDRANGEA_SCENE.instantiate() as HydrangeaRainTower
+	tower.bind_gameplay_context(fixture, gameplay_port)
 	fixture.add_child(tower)
 	tower.setup(new_config, null, _footprint_cells())
 	tower.cycle_timer.stop()

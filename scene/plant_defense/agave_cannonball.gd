@@ -32,6 +32,8 @@ var projectile_id := 0
 var owner_peer_id := 0
 var source_type: StringName = &"agave_cannonball"
 var pool_active := true
+var combat_runtime: CombatRuntimeBase = null
+var tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 var explosion_query := PhysicsShapeQueryParameters2D.new()
 var explosion_targets: Dictionary[int, Enemy] = {}
 
@@ -47,8 +49,18 @@ func _ready() -> void:
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
 
 
+func bind_gameplay_context(
+	runtime_instance: CombatRuntimeBase,
+	mode_adapter: TowerPlantGameplayPort
+) -> void:
+	combat_runtime = runtime_instance
+	tower_multiplayer_mode_adapter = mode_adapter
+
+
 func on_pool_acquired(_generation: int) -> void:
 	pool_active = true
+	combat_runtime = null
+	tower_multiplayer_mode_adapter = null
 	explosion_targets.clear()
 	has_exploded = false
 	direction = Vector2.RIGHT
@@ -69,6 +81,8 @@ func on_pool_acquired(_generation: int) -> void:
 
 func on_pool_released(_generation: int) -> void:
 	pool_active = false
+	combat_runtime = null
+	tower_multiplayer_mode_adapter = null
 	explosion_targets.clear()
 	has_exploded = true
 	set_physics_process(false)
@@ -278,20 +292,15 @@ func _apply_explosion_damage(direct_enemy: Enemy) -> void:
 		var impact_direction := global_position.direction_to(enemy.global_position)
 		if impact_direction == Vector2.ZERO:
 			impact_direction = direction
-		var current_scene := get_tree().current_scene
-		if current_scene != null and current_scene.has_method(
-			"apply_authoritative_plant_enemy_damage"
+		if (
+			combat_runtime != null
+			and is_instance_valid(combat_runtime)
+			and tower_multiplayer_mode_adapter != null
+			and is_instance_valid(tower_multiplayer_mode_adapter)
 		):
-			current_scene.call(
-				"apply_authoritative_plant_enemy_damage",
+			tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage(
 				damage_source_id,
 				enemy,
-				damage,
-				impact_direction,
-				EnemyConfig.DamageType.PHYSICAL
-			)
-		else:
-			enemy.apply_damage(
 				damage,
 				impact_direction,
 				EnemyConfig.DamageType.PHYSICAL

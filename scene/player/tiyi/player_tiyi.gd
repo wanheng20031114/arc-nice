@@ -128,13 +128,10 @@ func _try_use_skill1() -> bool:
 	if skill1_charge < skill1_charge_duration:
 		return false
 
-	var current_scene := get_tree().current_scene
-	if (
-		multiplayer.has_multiplayer_peer()
-		and current_scene != null
-		and current_scene.has_method("request_tiyi_high_noon")
-	):
-		return bool(current_scene.call("request_tiyi_high_noon"))
+	if _requires_multiplayer_gameplay_gateway():
+		return gameplay_gateway != null and gameplay_gateway.request_tiyi_high_noon()
+	if not _is_explicit_singleplayer_authority():
+		return false
 
 	if not try_begin_skill1_activation(_uses_authoritative_skill_preserve_roll()):
 		return false
@@ -184,14 +181,13 @@ func apply_remote_high_noon_targets(
 
 
 func _resolve_remote_high_noon_targets() -> void:
-	var current_scene := get_tree().current_scene
 	var resolved_targets: Array[Enemy] = []
 	var resolved_instance_ids: Dictionary = {}
 	var unresolved_count := 0
 	for enemy_net_id in _high_noon_remote_target_ids:
 		var enemy: Enemy = null
-		if current_scene != null and current_scene.has_method("get_combat_target_by_net_id"):
-			enemy = current_scene.call("get_combat_target_by_net_id", int(enemy_net_id)) as Enemy
+		if _has_valid_combat_runtime():
+			enemy = combat_runtime.get_enemy_for_net_id(int(enemy_net_id))
 		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
 			unresolved_count += 1
 			continue
@@ -308,17 +304,13 @@ func _acquire_next_high_noon_target() -> bool:
 	if _get_locked_high_noon_targets().size() >= HIGH_NOON_MAX_TARGETS:
 		return false
 	var candidates: Array[Enemy] = []
-	var candidate_source: Array[Enemy] = []
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("query_combat_targets"):
-		candidate_source = current_scene.call(
-			"query_combat_targets",
+	if not _has_valid_combat_runtime():
+		return false
+	var candidate_source := combat_runtime.query_combat_targets(
 			global_position,
 			HIGH_NOON_RANGE,
 			0
-		) as Array[Enemy]
-	else:
-		candidate_source = _collect_alive_enemies()
+		)
 	for enemy in candidate_source:
 		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
 			continue
@@ -420,8 +412,7 @@ func _notify_high_noon_targets_changed() -> void:
 		var enemy_net_id := int(target.get_meta("net_id", 0))
 		if enemy_net_id > 0:
 			target_ids.append(enemy_net_id)
-	get_tree().current_scene.call(
-		"notify_tiyi_high_noon_targets_changed",
+	gameplay_gateway.notify_tiyi_high_noon_targets_changed(
 		peer_id,
 		_high_noon_activation_id,
 		target_ids
@@ -444,14 +435,13 @@ func _finish_high_noon() -> void:
 	var activation_id := _high_noon_activation_id
 	_play_high_noon_finish_effects(hit_positions)
 	if _has_high_noon_scene_bridge():
-		get_tree().current_scene.call(
-			"resolve_tiyi_high_noon",
+		gameplay_gateway.resolve_tiyi_high_noon(
 			peer_id,
 			activation_id,
 			target_ids,
 			hit_positions
 		)
-	else:
+	elif _is_explicit_singleplayer_authority():
 		for target in targets:
 			if target == null or not is_instance_valid(target) or target.is_dead:
 				continue
@@ -466,7 +456,7 @@ func _finish_high_noon() -> void:
 
 
 func _play_high_noon_finish_effects(hit_positions: PackedVector2Array) -> void:
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent != null:
 		for hit_position in hit_positions:
 			var effect := SNIPER_HIT_EFFECT_SCENE.instantiate() as TiyiSniperHitEffect
@@ -487,11 +477,7 @@ func _cancel_high_noon(notify_scene: bool) -> void:
 	var was_authoritative := _high_noon_authoritative
 	_clear_high_noon_state()
 	if notify_scene and was_authoritative and _has_high_noon_scene_bridge():
-		get_tree().current_scene.call(
-			"cancel_tiyi_high_noon",
-			peer_id,
-			activation_id
-		)
+		gameplay_gateway.cancel_tiyi_high_noon(peer_id, activation_id)
 
 
 func _clear_high_noon_state() -> void:
@@ -540,19 +526,15 @@ func _remove_research_lock_slow_from_all_targets() -> void:
 
 
 func _has_high_noon_scene_bridge() -> bool:
-	if not multiplayer.has_multiplayer_peer() or not multiplayer.is_server():
-		return false
-	var current_scene := get_tree().current_scene
 	return (
-		current_scene != null
-		and current_scene.has_method("notify_tiyi_high_noon_targets_changed")
-		and current_scene.has_method("resolve_tiyi_high_noon")
-		and current_scene.has_method("cancel_tiyi_high_noon")
+		_has_valid_combat_runtime()
+		and combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		and gameplay_gateway != null
 	)
 
 
 func _clear_owned_sniper_bullets() -> void:
-	var scene_root := get_tree().current_scene
+	var scene_root := _get_combat_spawn_parent()
 	if scene_root == null:
 		return
 	_clear_owned_sniper_bullets_recursive(scene_root)
@@ -569,6 +551,6 @@ func _clear_owned_sniper_bullets_recursive(node: Node) -> void:
 			)
 			var is_network_owner := peer_id > 0 and bullet.owner_peer_id == peer_id
 			if is_local_owner or is_network_owner:
-				bullet.queue_free()
+				bullet.retire()
 				continue
 		_clear_owned_sniper_bullets_recursive(child)

@@ -97,7 +97,7 @@ func _spawn_frozen_enemies() -> void:
 			float(enemy_index % 30) * 8.0,
 			float(enemy_index / 30) * 8.0
 		)
-		enemy.setup(BASIC_CONFIG, game.player, null)
+		enemy.setup(BASIC_CONFIG, game.player, null, game)
 		enemy.current_health = 1000 + enemy_index
 		enemy.velocity = Vector2(float(enemy_index % 7), -float(enemy_index % 5))
 		enemy.set_process(false)
@@ -157,7 +157,7 @@ func _verify_collection_semantics_and_reuse() -> void:
 	secondary_enemy.reparent(game.enemy_container, true)
 
 	var runtime_source := FileAccess.get_file_as_string(
-		"res://scene/game_runtime_base.gd"
+		"res://scene/combat/runtime/combat_runtime_base.gd"
 	)
 	var helper_start := runtime_source.find("func collect_reused_enemy_snapshot_states(")
 	var helper_end := runtime_source.find("\n\nfunc defer_runtime_activation", helper_start)
@@ -170,7 +170,9 @@ func _verify_collection_semantics_and_reuse() -> void:
 		and not helper_source.contains("var live_ids: Dictionary = {}"),
 		"Production snapshot collection must retain native bulk traversal and reusable scratch containers."
 	)
-	var game_source := FileAccess.get_file_as_string("res://scene/game_modes/standard/standard_game.gd")
+	var game_source := FileAccess.get_file_as_string(
+		"res://scene/combat/runtime/wave_combat_runtime_base.gd"
+	)
 	var tower_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
 	)

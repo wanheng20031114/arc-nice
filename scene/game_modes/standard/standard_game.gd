@@ -1,122 +1,59 @@
-extends GameRuntimeBase
+extends WaveCombatRuntimeBase
 class_name StandardGame
 
-const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
 const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
-const CAPOO_AK47_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
-const COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
-)
-const CAPOO_SMG_BULLET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
-const CAPOO_RPG_ROCKET_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
-const CAPOO_MAGE_FIREBALL_POOL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
-const FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
-)
-const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
-)
-const FROST_SORCERER_ICE_SPIKE_POOL_SCENE := preload(
-	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
-)
-const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn")
-const COLLECTIBLE_ARROW_POOL_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
-const COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE := preload(
-	"res://scene/collectible_sakura_rocket.tscn"
-)
+const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
+const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
+const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
+
 const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
 )
 const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
 )
-const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png")
-const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
-const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
-const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
-const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
-const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := "res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
-const BOSS_HEALTH_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
-const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := "res://resources/config/enemies/capoo_sniper.tres"
-const COUNTDOWN_FINAL_SECONDS := 3
-const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
-const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.1
-const MAX_WAVE_SPAWN_COUNT_PER_TICK := 10
+const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := (
+	"res://scene/boss/linglan/linglan_boss_intro_vfx.tscn"
+)
+const BOSS_HEALTH_HUD_SCENE_PATH := (
+	"res://scene/boss/linglan/boss_health_hud.tscn"
+)
+const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := (
+	"res://resources/config/enemies/capoo_sniper.tres"
+)
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
 const MUSIC_FADE_IN_SECONDS := 3.0
 const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
 const INITIAL_PLAYER_XIRANG := 1000
 
-@export_group("战役资源")
-@export var mode_definition: GameModeDefinition = null
-@export var singleplayer_campaign: WaveCampaignConfig = null
-@export var multiplayer_campaign: WaveCampaignConfig = null
-
-@export_group("战斗流程")
-@export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
-@export var auto_start_waves: bool = true
+@export_group("普通模式规则")
 @export var linglan_boss_enabled: bool = true
-
-@export_group("标准场景内容")
 @export var standard_merchants_enabled: bool = true
 
-@onready var player_spawn: Marker2D = $PlayerSpawn
 @onready var ground_tile_map_layer: TileMapLayer = $GroundTileMapLayer
 @onready var overlay_tile_map_layer: TileMapLayer = $OverlayTileMapLayer
-@onready var enemy_spawn_points_root: Node2D = $EnemySpawnPoints
-@onready var enemy_spawn_timer: Timer = $EnemySpawnTimer
-@onready var state_timer: Timer = $StateTimer
-@onready var map_camera: Camera2D = $Camera2D
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var countdown_audio: AudioStreamPlayer = $CountdownAudio
 @onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
-# 专用战斗场景可以用自己的表现层完整替代普通模式 HUD。
-@onready var wave_hud: StandardWaveHUD = (
-	get_node_or_null("WaveHUD") as StandardWaveHUD
-)
+@onready var wave_hud: StandardWaveHUD = $WaveHUD
 @onready var player_profile_panel: StandardPlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
-@onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
+@onready var debug_collectible_window: DebugCollectibleWindow = (
+	$SettingsLayer/DebugCollectibleWindow
+)
 @onready var merchant: ZhuangfangyiMerchant = _resolve_zhuangfangyi_merchant()
 @onready var luoxi_merchant: LuoxiMerchant = _resolve_luoxi_merchant()
 @onready var boss_container: Node2D = $BossContainer
-@onready var guardian_aura_system: GuardianAuraSystem = $GuardianAuraSystem
-@onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
-@onready var session_object_pool: SessionObjectPool = $SessionObjectPool
-@onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
+@onready var linglan_boss_runtime_port: LinglanBossRuntimePort = (
+	$LinglanBossRuntimePort
+)
 
-var random_generator := RandomNumberGenerator.new()
-var active_campaign: WaveCampaignConfig = null
-var flow_graph: FlowGraphConfig = null
-var waves: Array[WaveConfig] = []
+var _singleplayer_tango_charge_started_at: float = -1.0
 var bosses: Array[Resource] = []
-var enemy_spawn_points: Array[Marker2D] = []
-var enemy_spawn_points_by_name: Dictionary[StringName, Marker2D] = {}
-var active_wave_spawn_points: Array[Marker2D] = []
-var spawn_point_configuration_valid := true
-var pending_enemy_configs: Array[EnemyConfig] = []
-var pending_enemy_xirang_kill_rewards: Array[int] = []
-var pending_enemy_config_index: int = 0
-var active_wave_enemy_ids: Dictionary = {}
-
-var current_wave_index: int = 0
-var current_wave_total: int = 0
-var current_wave_spawned: int = 0
-var current_wave_defeated: int = 0
-var countdown_seconds: int = 0
-var current_flow_step: FlowStepConfig = null
-var next_flow_step_after_rest: FlowStepConfig = null
 var music_fade_tween: Tween = null
-var multiplayer_player_names: Dictionary = {}
-var multiplayer_player_character_ids: Dictionary = {}
-var pending_multiplayer_pickup_exit_ids: Dictionary = {}
-var enemy_retarget_time_left: float = 0.0
-var next_multiplayer_enemy_net_id: int = 1
-var next_multiplayer_pickup_net_id: int = 1000
-var multiplayer_defeat_check_pending: bool = false
 var luoxi_collectible_claim_counts: Dictionary = {}
 var linglan_boss_started: bool = false
 var active_boss_config: Resource
@@ -126,109 +63,65 @@ var boss_health_hud: BossHealthHUD = null
 var boss_runtime_scene_loads_requested: bool = false
 var linglan_enrage_sniper_config: EnemyConfig = null
 var boss_runtime_resources_by_path: Dictionary[String, Resource] = {}
-var navigation_prewarm_requested: bool = false
-var navigation_prewarmed: bool = false
-var _singleplayer_tango_charge_started_at: float = -1.0
-
-
-func _resolve_zhuangfangyi_merchant() -> ZhuangfangyiMerchant:
-	if not standard_merchants_enabled:
-		return null
-	return get_node("ZhuangfangyiMerchant") as ZhuangfangyiMerchant
-
-
-func _resolve_luoxi_merchant() -> LuoxiMerchant:
-	if not standard_merchants_enabled:
-		return null
-	return get_node("LuoxiMerchant") as LuoxiMerchant
 
 
 func _ready() -> void:
-	random_generator.randomize()
-	initialize_world_lighting()
-	if not _validate_standard_scene_content():
-		set_process(false)
-		set_physics_process(false)
-		return
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
-		if load_coordinator != null and bool(load_coordinator.call("is_loading")):
-			defer_runtime_activation()
-	if not _configure_active_campaign():
-		set_process(false)
-		set_physics_process(false)
-		return
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		run_state.ensure_run_started()
-		_configure_singleplayer_player()
-	_collect_enemy_spawn_points()
-	_configure_timers()
-	_prewarm_enemy_visual_resources()
-	GameRuntimeBase.register_common_visual_effect_pools(session_object_pool)
-	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
+	super._ready()
+
+
+func _get_default_mode_definition() -> GameModeDefinition:
+	return GameModeCatalog.get_definition(GameModeCatalog.MODE_STANDARD)
+
+
+func _initialize_mode_runtime_before_validation() -> void:
+	if merchant != null:
+		merchant.bind_multiplayer_mode_adapter(multiplayer_mode_adapter)
+	if luoxi_merchant != null:
+		luoxi_merchant.bind_multiplayer_mode_adapter(multiplayer_mode_adapter)
+
+
+func _validate_mode_scene_content() -> bool:
+	if linglan_boss_enabled and linglan_boss_runtime_port == null:
+		push_error("StandardGame: 场景启用了铃兰 Boss，但缺少静态运行时端口。")
+		return false
+	if not standard_merchants_enabled:
+		return true
+	if merchant != null and luoxi_merchant != null:
+		return true
+	push_error("StandardGame: 场景启用了标准商人能力，但缺少对应静态节点。")
+	return false
+
+
+func _configure_active_campaign() -> bool:
+	bosses.clear()
+	if not super._configure_active_campaign():
+		return false
+	for configured_boss in active_campaign.get_bosses():
+		bosses.append(configured_boss)
+	return true
+
+
+func _register_mode_object_pools() -> void:
 	session_object_pool.register_scene(TANGO_LASER_BULLET_POOL_SCENE, 64, 768)
-	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
-	GameRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
-	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
-	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
-	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 12, 96)
-	session_object_pool.register_scene(CAPOO_MAGE_FIREBALL_POOL_SCENE, 12, 96)
-	# A 7 s flight plus expiry visuals slightly overlaps a third 3.6 s attack
-	# cycle. Capacity includes those visual-only leases and release quarantine.
-	session_object_pool.register_scene(
-		FIRE_SORCERER_FIREBALL_VOLLEY_POOL_SCENE,
-		48,
-		704
-	)
-	session_object_pool.register_scene(
-		FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_POOL_SCENE,
-		48,
-		704
-	)
-	# A straight ice spike can remain alive across two 3.6 s casts.  The retained
-	# ceiling covers the authored 300-enemy stress cohort without mid-fight churn.
-	session_object_pool.register_scene(FROST_SORCERER_ICE_SPIKE_POOL_SCENE, 48, 704)
-	GameRuntimeBase.register_capoo_mage_fireball_impact_pool(
-		session_object_pool,
-		12,
-		24
-	)
-	session_object_pool.register_scene(YUANSHI_FIRE_PROJECTILE_POOL_SCENE, 24, 192)
-	session_object_pool.register_scene(COLLECTIBLE_ARROW_POOL_SCENE, 24, 192)
-	session_object_pool.register_scene(COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE, 8, 64)
-	# 18 rings/s * 20 directions * 2 s lifetime = 720 live bullets. The extra
-	# retained headroom covers the pool's one-physics-frame release quarantine;
-	# elastic acquisition still preserves every shot after an unusually long frame.
 	session_object_pool.register_scene(LINGLAN_SKILL1_BULLET_POOL_SCENE, 64, 768)
-	# A 0.16 s effect at the same peak fire rate needs about 58 concurrent leases.
 	session_object_pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE, 16, 96)
-	enable_singleplayer_combat_target_index()
-	guardian_aura_system.set_authoritative_processing_enabled(
-		runtime_mode != RuntimeMode.CLIENT_VIEW
-	)
-	if not enemy_container.child_entered_tree.is_connected(
-		_on_dynamic_pickup_container_child_entered
-	):
-		enemy_container.child_entered_tree.connect(
-			_on_dynamic_pickup_container_child_entered
-		)
+
+
+func _connect_mode_dynamic_pickup_containers() -> void:
 	if not boss_container.child_entered_tree.is_connected(
 		_on_dynamic_pickup_container_child_entered
 	):
 		boss_container.child_entered_tree.connect(
 			_on_dynamic_pickup_container_child_entered
 		)
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		run_state.ensure_run_started()
-		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
-		_configure_multiplayer_players()
-		_register_static_multiplayer_pickups()
-	if player == null:
-		push_error("StandardGame: 无法创建当前角色，停止初始化。")
-		set_process(false)
-		set_physics_process(false)
-		return
-	_apply_initial_player_xirang()
+
+
+func _register_additional_dynamic_multiplayer_pickups() -> void:
+	for child in boss_container.get_children():
+		_register_dynamic_multiplayer_pickup(child as Pickup)
+
+
+func _initialize_mode_player_ui() -> void:
 	currency_hud.bind_player(player)
 	player_profile_panel.configure_multiplayer_requests(
 		runtime_mode != RuntimeMode.SINGLEPLAYER
@@ -237,72 +130,167 @@ func _ready() -> void:
 	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
 	currency_hud.profile_requested.connect(player_profile_panel.open)
 	settings_panel.closed.connect(_on_settings_panel_closed)
-	debug_collectible_window.collectible_requested.connect(_on_debug_collectible_requested)
+	debug_collectible_window.collectible_requested.connect(
+		_on_debug_collectible_requested
+	)
 	debug_collectible_window.closed.connect(_on_debug_collectible_window_closed)
-	if wave_hud != null:
-		wave_hud.set_return_button_text(
-			"返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅"
-		)
-		if not wave_hud.return_to_lobby_requested.is_connected(
+	wave_hud.set_return_button_text(
+		"返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅"
+	)
+	if not wave_hud.return_to_lobby_requested.is_connected(
+		_on_wave_hud_return_to_lobby_requested
+	):
+		wave_hud.return_to_lobby_requested.connect(
 			_on_wave_hud_return_to_lobby_requested
-		):
-			wave_hud.return_to_lobby_requested.connect(
-				_on_wave_hud_return_to_lobby_requested
-			)
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		player.died.connect(_on_player_died)
+		)
+
+
+func _initialize_mode_runtime_content() -> void:
 	_set_merchant_active(false)
 	_configure_linglan_boss()
 	call_deferred("_deferred_request_boss_runtime_scene_loads")
 
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		auto_start_waves = false
-		# Embedded runtimes replace their occurrence campaign after shared-data
-		# preparation and before explicit activation. Keep the deferred client at
-		# an empty flow state so that replacement is atomic; the Host's first
-		# authoritative flow packet will establish the visible countdown.
-		if not runtime_activation_deferred:
-			_start_client_flow_countdown(
-				WaveState.PRE_WAVE,
-				_get_flow_step_id(_get_start_flow_step()),
-				maxi(ceili(pre_wave_duration), 0)
-			)
-	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
-		_enter_pre_flow_step(_get_start_flow_step())
-	elif wave_hud != null:
-		wave_hud.hide_all()
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		if runtime_activation_deferred:
-			call_deferred("prepare_shared_runtime_data_and_complete")
-		else:
-			mark_runtime_preparation_complete()
-	elif auto_start_waves or runtime_activation_deferred:
-		_schedule_enemy_navigation_prewarm()
+
+func _apply_initial_player_resources() -> void:
+	_apply_initial_player_xirang()
 
 
-func _validate_standard_scene_content() -> bool:
-	if not standard_merchants_enabled:
-		return true
-	if merchant != null and luoxi_merchant != null:
-		return true
-	push_error(
-		"StandardGame: 场景启用了标准商人能力，但缺少庄方宜或洛茜商人节点。"
+func _set_intermission_services_active(active: bool) -> void:
+	_set_merchant_active(active)
+
+
+func _present_flow_countdown(
+	_state: CombatFlowState.State,
+	seconds: int
+) -> void:
+	wave_hud.show_countdown(seconds)
+
+
+func _present_wave_started(
+	wave_config: WaveConfig,
+	is_remote: bool
+) -> void:
+	if wave_config != null:
+		_update_wave_music(wave_config)
+	if is_remote:
+		wave_hud.show_enemy_count(maxi(current_wave_index + 1, 1), 0)
+	else:
+		wave_hud.show_wave_progress(
+			current_wave_index + 1,
+			current_wave_defeated,
+			current_wave_total
+		)
+	wave_start_audio.play()
+
+
+func _present_wave_progress(defeated_count: int, total_count: int) -> void:
+	wave_hud.show_wave_progress(
+		current_wave_index + 1,
+		defeated_count,
+		total_count
 	)
+
+
+func _present_remote_enemy_count(alive_count: int) -> void:
+	wave_hud.show_enemy_count(current_wave_index + 1, alive_count)
+
+
+func _present_terminal_state(victory: bool) -> void:
+	if linglan_boss_intro_vfx != null:
+		linglan_boss_intro_vfx.stop_intro()
+	if boss_health_hud != null:
+		boss_health_hud.hide_all()
+	if victory:
+		wave_hud.show_victory()
+	else:
+		wave_hud.show_defeat()
+
+
+func _hide_mode_wave_presentation() -> void:
+	wave_hud.hide_all()
+
+
+func _present_countdown_tick() -> void:
+	countdown_audio.pitch_scale = 1.0
+	countdown_audio.play()
+
+
+func _present_intermission_started(cleared_step: FlowStepConfig) -> void:
+	_update_post_wave_music(cleared_step)
+
+
+func _begin_mode_flow_step(flow_step: FlowStepConfig) -> bool:
+	var boss_config := flow_step as BossConfig
+	if boss_config == null:
+		return false
+	_begin_linglan_boss_intro(boss_config)
+	return true
+
+
+func _apply_remote_mode_flow_state(
+	state: CombatFlowState.State,
+	flow_step: FlowStepConfig
+) -> bool:
+	var boss_config := flow_step as BossConfig
+	if boss_config == null:
+		return false
+	match state:
+		CombatFlowState.State.BOSS_INTRO:
+			state_timer.stop()
+			wave_state = state
+			_set_intermission_services_active(false)
+			wave_hud.hide_all()
+			active_boss_config = boss_config
+			_update_boss_music(boss_config)
+			_prepare_linglan_boss_arena(boss_config)
+			_play_remote_boss_intro(boss_config)
+			return true
+		CombatFlowState.State.BOSS_ACTIVE:
+			state_timer.stop()
+			wave_state = state
+			_set_intermission_services_active(false)
+			wave_hud.hide_all()
+			if linglan_boss_intro_vfx != null:
+				linglan_boss_intro_vfx.stop_intro()
+			active_boss_config = boss_config
+			_update_boss_music(boss_config)
+			return true
 	return false
 
 
-func _on_runtime_activated() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
+func _prewarm_mode_runtime_data() -> void:
+	await _prewarm_boss_runtime_resources()
+
+
+func _on_multiplayer_peer_restored(old_peer_id: int, new_peer_id: int) -> void:
+	if not luoxi_collectible_claim_counts.has(old_peer_id):
 		return
-	if current_flow_step == null and auto_start_waves and _is_flow_system_ready():
-		_enter_pre_flow_step(_get_start_flow_step())
+	luoxi_collectible_claim_counts[new_peer_id] = (
+		luoxi_collectible_claim_counts[old_peer_id]
+	)
+	luoxi_collectible_claim_counts.erase(old_peer_id)
 
 
-func _physics_process(delta: float) -> void:
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		_update_multiplayer_remote_player_passive_state(delta)
-		_update_multiplayer_enemy_targets(delta)
+func allows_debug_collectible_grants() -> bool:
+	return OS.is_debug_build()
 
+
+func _resolve_zhuangfangyi_merchant() -> ZhuangfangyiMerchant:
+	if not _uses_standard_merchants():
+		return null
+	return get_node("ZhuangfangyiMerchant") as ZhuangfangyiMerchant
+
+func _resolve_luoxi_merchant() -> LuoxiMerchant:
+	if not _uses_standard_merchants():
+		return null
+	return get_node("LuoxiMerchant") as LuoxiMerchant
+
+
+func _uses_standard_merchants() -> bool:
+	return standard_merchants_enabled
+
+func _uses_linglan_boss_flow() -> bool:
+	return linglan_boss_enabled
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("full_screen"):
@@ -313,173 +301,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("cheat_collectibles"):
 		_toggle_debug_collectible_window()
 		get_viewport().set_input_as_handled()
-
-
-func configure_multiplayer(
-	mode: int,
-	local_peer_id: int,
-	player_names: Dictionary,
-	player_character_ids: Dictionary = {}
-) -> void:
-	runtime_mode = mode as RuntimeMode
-	multiplayer_local_peer_id = local_peer_id
-	multiplayer_player_names = player_names.duplicate()
-	multiplayer_player_character_ids = player_character_ids.duplicate()
-
-
-func request_tango_charge_started(direction: Vector2) -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		return false
-	if not _is_valid_singleplayer_tango_player(player):
-		return false
-	var safe_direction := _sanitize_tango_charge_direction(player, direction)
-	if not bool(player.call("try_authoritative_tango_charge_started", safe_direction)):
-		return false
-	_singleplayer_tango_charge_started_at = Time.get_ticks_usec() / 1000000.0
-	return true
-
-
-func request_tango_charge_released(direction: Vector2) -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER or _singleplayer_tango_charge_started_at < 0.0:
-		return false
-	var started_at := _singleplayer_tango_charge_started_at
-	_singleplayer_tango_charge_started_at = -1.0
-	if not _is_valid_singleplayer_tango_player(player):
-		return false
-	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
-	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_MINIMUM_CHARGE_SECONDS:
-		player.call("cancel_authoritative_tango_charge")
-		return true
-	var charge_ratio := clampf(
-		(elapsed - TANGO_MINIMUM_CHARGE_SECONDS)
-		/ (TANGO_MAXIMUM_CHARGE_SECONDS - TANGO_MINIMUM_CHARGE_SECONDS),
-		0.0,
-		1.0
-	)
-	var safe_direction := _sanitize_tango_charge_direction(player, direction)
-	var result_variant: Variant = player.call(
-		"try_authoritative_tango_charge_released",
-		safe_direction,
-		charge_ratio
-	)
-	if not (result_variant is Dictionary):
-		player.call("cancel_authoritative_tango_charge")
-		return false
-	var result := result_variant as Dictionary
-	var succeeded := bool(result.get("accepted", false)) and bool(result.get("fired", false))
-	if not succeeded:
-		player.call("cancel_authoritative_tango_charge")
-	return succeeded
-
-
-func request_tango_charge_cancelled() -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		return false
-	var had_active_charge := _singleplayer_tango_charge_started_at >= 0.0
-	_singleplayer_tango_charge_started_at = -1.0
-	if not _is_valid_singleplayer_tango_player(player):
-		return false
-	player.call("cancel_authoritative_tango_charge")
-	return had_active_charge
-
-
-func _is_valid_singleplayer_tango_player(player_node: Player) -> bool:
-	return (
-		player_node != null
-		and is_instance_valid(player_node)
-		and player_node.has_method("is_tango")
-		and bool(player_node.call("is_tango"))
-		and player_node.has_method("try_authoritative_tango_charge_started")
-		and player_node.has_method("try_authoritative_tango_charge_released")
-		and player_node.has_method("cancel_authoritative_tango_charge")
-	)
-
-
-func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -> Vector2:
-	if is_finite(direction.x) and is_finite(direction.y) and direction.length_squared() > 0.0001:
-		return direction.normalized()
-	match player_node.get_multiplayer_facing_id():
-		1:
-			return Vector2.LEFT
-		2:
-			return Vector2.UP
-		3:
-			return Vector2.DOWN
-		_:
-			return Vector2.RIGHT
-
-
-func _configure_active_campaign() -> bool:
-	var definition := mode_definition
-	if definition == null:
-		definition = GameModeCatalog.get_definition(
-			GameModeCatalog.MODE_STANDARD
-		)
-	if definition != null and singleplayer_campaign == null:
-		singleplayer_campaign = load(
-			definition.singleplayer_campaign_path
-		) as WaveCampaignConfig
-	if definition != null and multiplayer_campaign == null:
-		multiplayer_campaign = load(
-			definition.multiplayer_campaign_path
-		) as WaveCampaignConfig
-	active_campaign = (
-		singleplayer_campaign
-		if runtime_mode == RuntimeMode.SINGLEPLAYER
-		else multiplayer_campaign
-	)
-	if active_campaign == null:
-		push_error("StandardGame: 模式定义无法解析当前运行模式的 Campaign。")
-	flow_graph = null
-	waves.clear()
-	bosses.clear()
-	if active_campaign == null:
-		push_error("StandardGame: 当前运行模式没有配置 WaveCampaignConfig。")
-		return false
-	var campaign_errors := active_campaign.validate_campaign()
-	if not campaign_errors.is_empty():
-		for error in campaign_errors:
-			push_error(error)
-		return false
-	flow_graph = active_campaign.flow_graph
-	waves.assign(active_campaign.get_waves())
-	for boss_config in active_campaign.get_bosses():
-		bosses.append(boss_config)
-	return true
-
-
-func _configure_singleplayer_player() -> void:
-	var character_id := _get_selected_singleplayer_character_id()
-	var player_instance := _instantiate_player_character(character_id)
-	if player_instance == null:
-		return
-	player_instance.name = "Player"
-	player_instance.position = player_spawn.position
-	add_child(player_instance)
-	player = player_instance
-
-
-func _get_selected_singleplayer_character_id() -> StringName:
-	var character_id := DEFAULT_PLAYER_CHARACTER_ID
-	if run_state != null:
-		if run_state.has_method("get_selected_character_id"):
-			character_id = StringName(run_state.call("get_selected_character_id"))
-		else:
-			character_id = StringName(run_state.get("selected_character_id"))
-	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
-		return DEFAULT_PLAYER_CHARACTER_ID
-	return character_id
-
-
-func _instantiate_player_character(character_id: StringName) -> Player:
-	var resolved_id := character_id
-	if not PlayerCharacterRegistry.is_valid_character_id(resolved_id):
-		resolved_id = DEFAULT_PLAYER_CHARACTER_ID
-	var instance := PlayerCharacterRegistry.instantiate_character(resolved_id) as Player
-	if instance == null:
-		push_error("StandardGame: 无法实例化角色 %s" % resolved_id)
-	return instance
-
 
 func _apply_initial_player_xirang() -> void:
 	var players: Array[Player] = []
@@ -497,26 +318,21 @@ func _apply_initial_player_xirang() -> void:
 		player_instance.current_xirang = INITIAL_PLAYER_XIRANG
 		player_instance.xirang_changed.emit(player_instance.current_xirang, 0)
 
-
 func _on_currency_hud_settings_requested() -> void:
 	if player_profile_panel.is_open():
 		player_profile_panel.close()
 	settings_panel.open()
 	_lock_player_for_modal_ui()
 
-
 func _on_settings_panel_closed() -> void:
 	_refresh_player_modal_ui_lock()
-
 
 func _on_debug_collectible_window_closed() -> void:
 	_refresh_player_modal_ui_lock()
 
-
 func _lock_player_for_modal_ui() -> void:
 	if player != null and not player.is_dead:
 		player.set_controls_locked(true)
-
 
 func _refresh_player_modal_ui_lock() -> void:
 	if player == null or player.is_dead:
@@ -525,7 +341,6 @@ func _refresh_player_modal_ui_lock() -> void:
 		player.set_controls_locked(true)
 	else:
 		player.set_controls_locked(false)
-
 
 func _toggle_full_screen() -> void:
 	var user_settings := get_node_or_null("/root/UserSettings")
@@ -545,7 +360,6 @@ func _toggle_full_screen() -> void:
 		DisplayServer.WINDOW_MODE_WINDOWED if is_fullscreen else DisplayServer.WINDOW_MODE_FULLSCREEN
 	)
 
-
 func _toggle_debug_collectible_window() -> void:
 	if debug_collectible_window == null or not allows_debug_collectible_grants():
 		return
@@ -555,20 +369,15 @@ func _toggle_debug_collectible_window() -> void:
 	else:
 		_refresh_player_modal_ui_lock()
 
-
 func _on_debug_collectible_requested(config_path: String) -> void:
 	if config_path.is_empty():
 		return
-	var current_scene := get_tree().current_scene
 	if (
 		runtime_mode != RuntimeMode.SINGLEPLAYER
-		and current_scene != null
-		and current_scene.has_method("request_debug_collectible")
+		and multiplayer_mode_adapter.request_debug_collectible(config_path)
 	):
-		current_scene.call("request_debug_collectible", config_path)
 		return
 	debug_collectible_window.show_grant_result(config_path, grant_debug_collectible(config_path))
-
 
 func grant_debug_collectible(config_path: String) -> bool:
 	if not allows_debug_collectible_grants():
@@ -580,12 +389,10 @@ func grant_debug_collectible(config_path: String) -> bool:
 		return run_state.try_add_item_for_peer(multiplayer_local_peer_id, item)
 	return run_state.try_add_item(item)
 
-
 func show_debug_collectible_grant_result(config_path: String, success: bool) -> void:
 	if debug_collectible_window == null:
 		return
 	debug_collectible_window.show_grant_result(config_path, success)
-
 
 func show_simple_crafting_result(
 	recipe_id: StringName,
@@ -600,111 +407,39 @@ func show_simple_crafting_result(
 		request_token
 	)
 
-
 func _on_profile_multiplayer_upgrade_requested(stat_type: int) -> void:
-	multiplayer_profile_upgrade_requested.emit(stat_type)
-
+	multiplayer_mode_adapter.profile_upgrade_requested.emit(stat_type)
 
 func _on_profile_multiplayer_inventory_item_use_requested(
 	slot_index: int
 ) -> void:
-	multiplayer_profile_inventory_item_use_requested.emit(slot_index)
-
+	multiplayer_mode_adapter.profile_inventory_item_use_requested.emit(slot_index)
 
 func _on_profile_multiplayer_inventory_item_discard_requested(
 	slot_index: int
 ) -> void:
-	multiplayer_profile_inventory_item_discard_requested.emit(slot_index)
-
+	multiplayer_mode_adapter.profile_inventory_item_discard_requested.emit(slot_index)
 
 func _on_profile_multiplayer_simple_crafting_requested(
 	recipe_id: StringName,
 	request_token: int
 ) -> void:
-	multiplayer_profile_simple_crafting_requested.emit(
+	multiplayer_mode_adapter.profile_simple_crafting_requested.emit(
 		recipe_id,
 		request_token
 	)
 
-
 func _on_profile_multiplayer_simple_crafting_cancel_requested(
 	request_token: int
 ) -> void:
-	multiplayer_profile_simple_crafting_cancel_requested.emit(request_token)
-
+	multiplayer_mode_adapter.profile_simple_crafting_cancel_requested.emit(request_token)
 
 func apply_remote_merchant_active(active: bool) -> void:
 	_set_local_merchants_active(active)
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		return
-	if not active and (wave_state == WaveState.PRE_WAVE or wave_state == WaveState.INTERMISSION):
+	if not active and (wave_state == CombatFlowState.State.PRE_WAVE or wave_state == CombatFlowState.State.INTERMISSION):
 		state_timer.stop()
-
-
-func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	var typed_state := state as WaveState
-	var flow_step := _get_flow_step_by_id(step_id)
-	if flow_step == null and typed_state not in [WaveState.VICTORY, WaveState.DEFEAT]:
-		push_error("StandardGame: 收到当前 Campaign 不存在的流程 step_id：%s" % String(step_id))
-		return
-	if flow_step != null:
-		current_flow_step = flow_step
-		if flow_step is WaveConfig:
-			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	match typed_state:
-		WaveState.PRE_WAVE, WaveState.INTERMISSION:
-			transition_world_to_day()
-			_start_client_flow_countdown(typed_state, step_id, seconds)
-		WaveState.WAVE_ACTIVE:
-			state_timer.stop()
-			wave_state = WaveState.WAVE_ACTIVE
-			_apply_wave_start_lighting(maxi(current_wave_index + 1, 1))
-			_set_local_merchants_active(false)
-			var wave_config := flow_step as WaveConfig
-			if wave_config != null:
-				_update_wave_music(wave_config)
-			if wave_hud != null:
-				wave_hud.show_enemy_count(maxi(current_wave_index + 1, 1), 0)
-			wave_start_audio.play()
-		WaveState.BOSS_INTRO:
-			state_timer.stop()
-			wave_state = WaveState.BOSS_INTRO
-			_set_local_merchants_active(false)
-			if wave_hud != null:
-				wave_hud.hide_all()
-			var boss_config := flow_step as BossConfig
-			if boss_config != null:
-				active_boss_config = boss_config
-				_update_boss_music(boss_config)
-				_prepare_linglan_boss_arena(boss_config)
-				_play_remote_boss_intro(boss_config)
-		WaveState.BOSS_ACTIVE:
-			state_timer.stop()
-			wave_state = WaveState.BOSS_ACTIVE
-			_set_local_merchants_active(false)
-			if wave_hud != null:
-				wave_hud.hide_all()
-			if linglan_boss_intro_vfx != null:
-				linglan_boss_intro_vfx.stop_intro()
-			var active_config := flow_step as BossConfig
-			if active_config != null:
-				active_boss_config = active_config
-				_update_boss_music(active_config)
-		WaveState.VICTORY:
-			apply_remote_victory()
-		WaveState.DEFEAT:
-			apply_remote_defeat()
-
-
-func get_flow_state_snapshot() -> Dictionary:
-	return {
-		"step_id": _get_flow_step_id(current_flow_step),
-		"state": int(wave_state),
-		"countdown_seconds": countdown_seconds,
-	}
-
 
 func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2) -> void:
 	if runtime_mode != RuntimeMode.CLIENT_VIEW or boss_config == null:
@@ -713,7 +448,7 @@ func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_posit
 		linglan_boss_intro_vfx.stop_intro()
 	active_boss_config = boss_config
 	current_flow_step = boss_config
-	wave_state = WaveState.BOSS_ACTIVE
+	wave_state = CombatFlowState.State.BOSS_ACTIVE
 	state_timer.stop()
 	if wave_hud != null:
 		wave_hud.hide_all()
@@ -735,7 +470,6 @@ func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_posit
 		if boss_health_hud != null:
 			boss_health_hud.show_for_boss(linglan_boss, _get_boss_display_name(boss_config))
 
-
 func _instantiate_remote_linglan_boss_proxy(
 	net_id: int,
 	boss_config: BossConfig,
@@ -751,81 +485,19 @@ func _instantiate_remote_linglan_boss_proxy(
 		return null
 	boss_container.add_child(boss_enemy)
 	boss_enemy.global_position = spawn_position
-	boss_enemy.setup(enemy_config, player, grid_pathfinder)
+	boss_enemy.setup(
+		enemy_config,
+		player,
+		grid_pathfinder,
+		self,
+		linglan_boss_runtime_port
+	)
 	boss_enemy.configure_multiplayer_proxy()
 	boss_enemy.set_meta("net_id", net_id)
 	multiplayer_enemies_by_net_id[net_id] = boss_enemy
 	register_combat_target(net_id, boss_enemy)
 	multiplayer_enemy_ids_by_instance[boss_enemy.get_instance_id()] = net_id
 	return boss_enemy
-
-
-func apply_remote_victory() -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	_enter_victory(false)
-
-
-func apply_remote_enemy_count(alive_count: int) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	if wave_state != WaveState.WAVE_ACTIVE:
-		return
-	if wave_hud != null:
-		wave_hud.show_enemy_count(current_wave_index + 1, alive_count)
-
-
-
-func apply_remote_defeat() -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	if wave_state == WaveState.DEFEAT:
-		return
-	wave_state = WaveState.DEFEAT
-	transition_world_to_day()
-	enemy_spawn_timer.stop()
-	state_timer.stop()
-	_set_merchant_active(false)
-	if wave_hud != null:
-		wave_hud.show_defeat()
-
-
-func show_damage_number(
-	amount: int,
-	spawn_position: Vector2,
-	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
-	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
-) -> bool:
-	return show_combat_number(
-		amount,
-		spawn_position,
-		DamageNumberPool.CombatNumberKind.DAMAGE,
-		impact_direction,
-		damage_type,
-		display_priority
-	)
-
-
-func show_combat_number(
-	amount: int,
-	spawn_position: Vector2,
-	number_kind: DamageNumberPool.CombatNumberKind,
-	motion_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
-	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
-) -> bool:
-	if damage_number_pool == null:
-		return false
-	return damage_number_pool.show_combat_number(
-		amount,
-		spawn_position,
-		number_kind,
-		motion_direction,
-		damage_type,
-		display_priority
-	)
-
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	var player_instance := get_player_for_peer(peer_id)
@@ -841,7 +513,6 @@ func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	if not player_instance.try_upgrade_skill1(free_upgrade):
 		return MerchantPurchaseResult.SkillUpgrade.INSUFFICIENT_XIRANG
 	return MerchantPurchaseResult.SkillUpgrade.UPGRADE_SUCCESS
-
 
 func apply_skill1_purchase_state(
 	peer_id: int,
@@ -864,12 +535,10 @@ func apply_skill1_purchase_state(
 			skill1_charge_duration
 		)
 
-
 func show_local_skill1_purchase_result(result_code: int) -> void:
 	if merchant == null:
 		return
 	merchant.show_purchase_result(result_code)
-
 
 func request_luoxi_collectible_choice(choice_index: int, config_path: String = "") -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
@@ -878,7 +547,6 @@ func request_luoxi_collectible_choice(choice_index: int, config_path: String = "
 	var resolved_config_path := _resolve_luoxi_collectible_path(choice_index, config_path)
 	var result_code := try_claim_luoxi_collectible_for_peer(peer_id, resolved_config_path)
 	show_local_luoxi_collectible_result(result_code)
-
 
 func request_luoxi_collectible_refresh() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
@@ -892,7 +560,6 @@ func request_luoxi_collectible_refresh() -> void:
 		player_instance.current_xirang if player_instance != null else 0
 	)
 
-
 func try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int:
 	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance) or luoxi_merchant == null:
@@ -901,12 +568,10 @@ func try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int:
 		return MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
 	return luoxi_merchant.try_purchase_refresh_for_player(player_instance)
 
-
 func get_luoxi_collectible_refresh_count(peer_id: int) -> int:
 	if luoxi_merchant == null:
 		return 0
 	return luoxi_merchant.get_player_refresh_count(maxi(peer_id, 0))
-
 
 func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: Variant) -> int:
 	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
@@ -941,21 +606,17 @@ func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: V
 	record_luoxi_collectible_claim(claim_key)
 	return MerchantPurchaseResult.CollectibleClaim.SUCCESS
 
-
 func _resolve_luoxi_collectible_path(choice_index: int, config_path: String) -> String:
 	if not config_path.is_empty():
 		return config_path
 	var item := LuoxiMerchant.get_collectible_for_choice(choice_index)
 	return item.resource_path if item != null else ""
 
-
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:
 	return get_luoxi_collectible_claim_count(peer_id) >= LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
 
-
 func get_luoxi_collectible_claim_count(peer_id: int) -> int:
 	return int(luoxi_collectible_claim_counts.get(maxi(peer_id, 0), 0))
-
 
 func record_luoxi_collectible_claim(peer_id: int) -> void:
 	var claim_key := maxi(peer_id, 0)
@@ -964,16 +625,13 @@ func record_luoxi_collectible_claim(peer_id: int) -> void:
 		LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
 	)
 
-
 func mark_luoxi_collectible_claimed(peer_id: int) -> void:
 	luoxi_collectible_claim_counts[maxi(peer_id, 0)] = LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
-
 
 func show_local_luoxi_collectible_result(result_code: int) -> void:
 	if luoxi_merchant == null:
 		return
 	luoxi_merchant.show_collectible_result(result_code)
-
 
 func show_local_luoxi_refresh_result(
 	result_code: int,
@@ -984,21 +642,18 @@ func show_local_luoxi_refresh_result(
 		return
 	luoxi_merchant.show_refresh_result(result_code, refresh_count, current_xirang)
 
-
 func _on_wave_hud_return_to_lobby_requested() -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		get_tree().change_scene_to_file("res://scene/main_menu.tscn")
 		return
-	return_to_lobby_requested.emit()
-
+	multiplayer_mode_adapter.return_to_lobby_requested.emit()
 
 func _set_merchant_active(active: bool) -> void:
 	var changed := _set_local_merchants_active(active)
 	if not changed:
 		return
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_merchant_active_changed.emit(active)
-
+		multiplayer_mode_adapter.merchant_active_changed.emit(active)
 
 func _set_local_merchants_active(active: bool) -> bool:
 	var changed := false
@@ -1012,7 +667,6 @@ func _set_local_merchants_active(active: bool) -> bool:
 		luoxi_merchant.set_active(active)
 		changed = true
 	return changed
-
 
 func _configure_linglan_boss() -> void:
 	if linglan_boss == null:
@@ -1031,16 +685,14 @@ func _configure_linglan_boss() -> void:
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
 
-
 func _request_boss_runtime_scene_loads() -> void:
 	if boss_runtime_scene_loads_requested:
 		return
-	if not linglan_boss_enabled:
+	if not _uses_linglan_boss_flow():
 		return
 	boss_runtime_scene_loads_requested = true
 	for resource_path in _get_boss_runtime_resource_paths():
 		ResourceLoader.load_threaded_request(resource_path)
-
 
 func _get_boss_runtime_resource_paths() -> Array[String]:
 	var paths: Array[String] = []
@@ -1059,9 +711,8 @@ func _get_boss_runtime_resource_paths() -> Array[String]:
 	paths.append(LINGLAN_ENRAGE_SNIPER_CONFIG_PATH)
 	return paths
 
-
 func _prewarm_boss_runtime_resources() -> void:
-	if not linglan_boss_enabled:
+	if not _uses_linglan_boss_flow():
 		return
 	_request_boss_runtime_scene_loads()
 	for resource_path in _get_boss_runtime_resource_paths():
@@ -1081,20 +732,12 @@ func _prewarm_boss_runtime_resources() -> void:
 		if runtime_resource != null:
 			boss_runtime_resources_by_path[resource_path] = runtime_resource
 
-
-func prewarm_shared_runtime_data() -> void:
-	await super.prewarm_shared_runtime_data()
-	if is_inside_tree():
-		await _prewarm_boss_runtime_resources()
-
-
 func get_linglan_enrage_sniper_config() -> EnemyConfig:
 	if linglan_enrage_sniper_config == null:
 		linglan_enrage_sniper_config = (
 			_load_threaded_or_direct(LINGLAN_ENRAGE_SNIPER_CONFIG_PATH) as EnemyConfig
 		)
 	return linglan_enrage_sniper_config
-
 
 func _deferred_request_boss_runtime_scene_loads() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -1105,13 +748,11 @@ func _deferred_request_boss_runtime_scene_loads() -> void:
 		return
 	_request_boss_runtime_scene_loads()
 
-
 func _get_first_boss_config() -> Resource:
 	for boss_config in _get_configured_bosses():
 		if _boss_config_has_required_data(boss_config):
 			return boss_config
 	return null
-
 
 func _get_configured_bosses() -> Array[BossConfig]:
 	var result: Array[BossConfig] = []
@@ -1127,7 +768,6 @@ func _get_configured_bosses() -> Array[BossConfig]:
 				result.append(boss_config)
 	return result
 
-
 func _boss_config_has_required_data(boss_config: Resource) -> bool:
 	if boss_config == null:
 		return false
@@ -1136,7 +776,6 @@ func _boss_config_has_required_data(boss_config: Resource) -> bool:
 	return (
 		(_get_boss_enemy_config(boss_config) != null or not _get_boss_enemy_config_path(boss_config).is_empty())
 	)
-
 
 func _get_boss_enemy_config(boss_config: Resource) -> EnemyConfig:
 	if boss_config == null:
@@ -1151,7 +790,6 @@ func _get_boss_enemy_config(boss_config: Resource) -> EnemyConfig:
 		return null
 	return _load_threaded_or_direct(enemy_config_path) as EnemyConfig
 
-
 func _get_boss_enemy_config_path(boss_config: Resource) -> String:
 	if boss_config == null:
 		return ""
@@ -1163,26 +801,20 @@ func _get_boss_enemy_config_path(boss_config: Resource) -> String:
 		return enemy_config.resource_path
 	return ""
 
-
 func _get_boss_arena_center(boss_config: Resource) -> Vector2:
 	return boss_config.get("arena_center")
-
 
 func _get_boss_arena_floor_rect(boss_config: Resource) -> Rect2i:
 	return boss_config.get("arena_floor_rect")
 
-
 func _get_boss_floor_source_id(boss_config: Resource) -> int:
 	return int(boss_config.get("floor_source_id"))
-
 
 func _get_boss_floor_atlas_coords(boss_config: Resource) -> Vector2i:
 	return boss_config.get("floor_atlas_coords")
 
-
 func _should_clear_boss_inner_overlay_cells(boss_config: Resource) -> bool:
 	return bool(boss_config.get("clear_inner_overlay_cells"))
-
 
 func _get_boss_display_name(boss_config: Resource) -> String:
 	var boss_name_value: Variant = boss_config.get("boss_name")
@@ -1193,7 +825,6 @@ func _get_boss_display_name(boss_config: Resource) -> String:
 		return enemy_config.display_name
 	return "Boss"
 
-
 func _get_boss_intro_vfx_scene_path(boss_config: Resource) -> String:
 	if boss_config == null:
 		return LINGLAN_BOSS_INTRO_VFX_SCENE_PATH
@@ -1202,7 +833,6 @@ func _get_boss_intro_vfx_scene_path(boss_config: Resource) -> String:
 		return String(path_value)
 	return LINGLAN_BOSS_INTRO_VFX_SCENE_PATH
 
-
 func _get_boss_hud_scene_path(boss_config: Resource) -> String:
 	if boss_config == null:
 		return BOSS_HEALTH_HUD_SCENE_PATH
@@ -1210,7 +840,6 @@ func _get_boss_hud_scene_path(boss_config: Resource) -> String:
 	if typeof(path_value) == TYPE_STRING and not String(path_value).is_empty():
 		return String(path_value)
 	return BOSS_HEALTH_HUD_SCENE_PATH
-
 
 func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 	if boss_container == null:
@@ -1231,6 +860,8 @@ func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 		linglan_boss.config = enemy_config
 		linglan_boss.name = "LinglanBoss"
 		boss_container.add_child(linglan_boss)
+	linglan_boss.bind_combat_runtime(self)
+	linglan_boss.bind_linglan_runtime_port(linglan_boss_runtime_port)
 
 	if linglan_boss_intro_vfx == null or not is_instance_valid(linglan_boss_intro_vfx):
 		var intro_scene := _load_threaded_or_direct(_get_boss_intro_vfx_scene_path(boss_config)) as PackedScene
@@ -1257,7 +888,6 @@ func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
 	_configure_linglan_boss()
 	return true
 
-
 func _ensure_boss_health_hud_runtime_node(boss_config: Resource) -> bool:
 	if boss_health_hud != null and is_instance_valid(boss_health_hud):
 		return true
@@ -1276,7 +906,6 @@ func _ensure_boss_health_hud_runtime_node(boss_config: Resource) -> bool:
 	add_child(boss_health_hud)
 	return true
 
-
 func _load_threaded_or_direct(path: String) -> Resource:
 	if path.is_empty():
 		return null
@@ -1290,567 +919,6 @@ func _load_threaded_or_direct(path: String) -> Resource:
 		return ResourceLoader.load_threaded_get(path)
 	return load(path)
 
-
-func _collect_enemy_spawn_points() -> void:
-	enemy_spawn_points.clear()
-	enemy_spawn_points_by_name.clear()
-	active_wave_spawn_points.clear()
-	spawn_point_configuration_valid = true
-	for child in enemy_spawn_points_root.get_children():
-		var spawn_point := child as Marker2D
-		if spawn_point != null:
-			var spawn_name := StringName(spawn_point.name)
-			if enemy_spawn_points_by_name.has(spawn_name):
-				push_error("EnemySpawnPoints 包含重复名称：%s" % String(spawn_name))
-				spawn_point_configuration_valid = false
-				continue
-			enemy_spawn_points.append(spawn_point)
-			enemy_spawn_points_by_name[spawn_name] = spawn_point
-
-	if enemy_spawn_points.is_empty():
-		push_warning("EnemySpawnPoints 下没有可用的 Marker2D 刷新点。")
-
-
-func _configure_timers() -> void:
-	enemy_spawn_timer.one_shot = false
-	if not enemy_spawn_timer.timeout.is_connected(_on_enemy_spawn_timer_timeout):
-		enemy_spawn_timer.timeout.connect(_on_enemy_spawn_timer_timeout)
-
-	state_timer.one_shot = false
-	state_timer.wait_time = 1.0
-	if not state_timer.timeout.is_connected(_on_state_timer_timeout):
-		state_timer.timeout.connect(_on_state_timer_timeout)
-
-
-func _prewarm_enemy_navigation_grids() -> void:
-	if grid_pathfinder == null:
-		return
-	if not grid_pathfinder.has_method("prewarm_agent_grid"):
-		return
-	if not bool(grid_pathfinder.get("is_built")):
-		return
-
-	var seen_scene_keys: Dictionary = {}
-	var seen_extent_keys: Dictionary = {}
-	for wave_config in waves:
-		if wave_config == null:
-			continue
-		for entry in wave_config.enemy_entries:
-			if entry == null or entry.enemy_config == null:
-				continue
-			var enemy_config := entry.enemy_config
-			if enemy_config.enemy_scene == null:
-				continue
-			var scene_key := enemy_config.enemy_scene.resource_path
-			if scene_key.is_empty():
-				scene_key = enemy_config.resource_path
-			if seen_scene_keys.has(scene_key):
-				continue
-			seen_scene_keys[scene_key] = true
-
-			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
-			if body_half_extents == Vector2.ZERO:
-				continue
-			var traversal_types := enemy_config.terrain_traversal_types
-			var extent_key := "%d:%d:%d" % [
-				ceili(body_half_extents.x),
-				ceili(body_half_extents.y),
-				traversal_types,
-			]
-			if seen_extent_keys.has(extent_key):
-				continue
-			seen_extent_keys[extent_key] = true
-			grid_pathfinder.call(
-				"prewarm_agent_grid",
-				body_half_extents,
-				traversal_types
-			)
-			if grid_pathfinder.has_method("prewarm_flow_navigation_target") and player != null:
-				grid_pathfinder.call(
-					"prewarm_flow_navigation_target",
-					player.global_position,
-					body_half_extents,
-					traversal_types
-				)
-
-
-func _schedule_enemy_navigation_prewarm() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	if navigation_prewarmed or navigation_prewarm_requested:
-		return
-	navigation_prewarm_requested = true
-	call_deferred("_run_scheduled_enemy_navigation_prewarm")
-
-
-func _run_scheduled_enemy_navigation_prewarm() -> void:
-	await get_tree().process_frame
-	await get_tree().process_frame
-	if not is_inside_tree():
-		return
-	navigation_prewarm_requested = false
-	if navigation_prewarmed:
-		await prewarm_shared_runtime_data()
-		if not is_inside_tree():
-			return
-		mark_runtime_preparation_complete()
-		return
-	await _prewarm_enemy_navigation_grids_staged()
-	if not is_inside_tree():
-		return
-	navigation_prewarmed = true
-	await prewarm_shared_runtime_data()
-	if not is_inside_tree():
-		return
-	mark_runtime_preparation_complete()
-
-
-func _prewarm_enemy_navigation_grids_staged() -> void:
-	update_runtime_preparation_progress("分析敌人通行体型…", 0, 1)
-	await get_tree().process_frame
-	if (
-		grid_pathfinder == null
-		or not grid_pathfinder.has_method("prewarm_agent_grid")
-		or not bool(grid_pathfinder.get("is_built"))
-	):
-		return
-
-	var profiles: Array[Dictionary] = []
-	var seen_scene_keys: Dictionary = {}
-	var seen_extent_keys: Dictionary = {}
-	for wave_config in waves:
-		if wave_config == null:
-			continue
-		for entry in wave_config.enemy_entries:
-			if entry == null or entry.enemy_config == null:
-				continue
-			var enemy_config := entry.enemy_config
-			if enemy_config.enemy_scene == null:
-				continue
-			var scene_key := enemy_config.enemy_scene.resource_path
-			if scene_key.is_empty():
-				scene_key = enemy_config.resource_path
-			if seen_scene_keys.has(scene_key):
-				continue
-			seen_scene_keys[scene_key] = true
-			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
-			await get_tree().process_frame
-			if not is_inside_tree() or body_half_extents == Vector2.ZERO:
-				continue
-			var traversal_types := enemy_config.terrain_traversal_types
-			var extent_key := "%d:%d:%d" % [
-				ceili(body_half_extents.x),
-				ceili(body_half_extents.y),
-				traversal_types,
-			]
-			if seen_extent_keys.has(extent_key):
-				continue
-			seen_extent_keys[extent_key] = true
-			profiles.append({
-				"half_extents": body_half_extents,
-				"traversal_types": traversal_types,
-			})
-
-	var target_count := 1 if player != null else 0
-	var total_steps := maxi(profiles.size() * (1 + target_count), 1)
-	var completed_steps := 0
-	update_runtime_preparation_progress("预热寻路网格…", completed_steps, total_steps)
-	for profile in profiles:
-		var half_extents: Vector2 = profile["half_extents"]
-		var traversal_types: int = int(profile["traversal_types"])
-		if grid_pathfinder.has_method("prewarm_agent_grid_staged"):
-			await grid_pathfinder.call(
-				"prewarm_agent_grid_staged",
-				half_extents,
-				traversal_types
-			)
-		else:
-			grid_pathfinder.call("prewarm_agent_grid", half_extents, traversal_types)
-		completed_steps += 1
-		update_runtime_preparation_progress("预热寻路网格…", completed_steps, total_steps)
-		await get_tree().process_frame
-		if not is_inside_tree():
-			return
-		if player != null and grid_pathfinder.has_method("prewarm_flow_navigation_target"):
-			if grid_pathfinder.has_method("prewarm_flow_navigation_target_staged"):
-				await grid_pathfinder.call(
-					"prewarm_flow_navigation_target_staged",
-					player.global_position,
-					half_extents,
-					traversal_types
-				)
-			else:
-				grid_pathfinder.call(
-					"prewarm_flow_navigation_target",
-					player.global_position,
-					half_extents,
-					traversal_types
-				)
-			completed_steps += 1
-			update_runtime_preparation_progress("预热首波路线…", completed_steps, total_steps)
-			await get_tree().process_frame
-
-
-func _prewarm_enemy_visual_resources() -> void:
-	GUARDIAN_POINT_LIGHT_TEXTURE.get_size()
-
-
-func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
-	if enemy_config == null or enemy_config.enemy_scene == null:
-		return Vector2.ZERO
-	var instance := enemy_config.enemy_scene.instantiate()
-	var enemy_instance := instance as Enemy
-	if enemy_instance == null:
-		if instance != null:
-			instance.free()
-		return Vector2.ZERO
-	var body_half_extents := enemy_instance.get_configured_body_collision_half_extents()
-	enemy_instance.free()
-	return body_half_extents
-
-
-func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
-	if flow_step == null:
-		_enter_victory()
-		return
-	wave_state = WaveState.PRE_WAVE
-	transition_world_to_day()
-	current_flow_step = flow_step
-	next_flow_step_after_rest = flow_step
-	if flow_step is WaveConfig:
-		current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	enemy_spawn_timer.stop()
-	_set_merchant_active(false)
-	countdown_seconds = maxi(ceili(pre_wave_duration), 0)
-	if wave_hud != null:
-		wave_hud.show_countdown(countdown_seconds)
-	_schedule_enemy_navigation_prewarm()
-	_emit_multiplayer_flow_state(WaveState.PRE_WAVE)
-
-	if countdown_seconds <= 0:
-		_begin_flow_step(current_flow_step)
-		return
-
-	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-		_play_countdown_tick()
-	state_timer.start(1.0)
-
-
-func _enter_intermission(next_step: FlowStepConfig = null) -> void:
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_revive_all_requested.emit()
-	wave_state = WaveState.INTERMISSION
-	transition_world_to_day()
-	enemy_spawn_timer.stop()
-	_set_merchant_active(true)
-	next_flow_step_after_rest = next_step
-	countdown_seconds = (
-		maxi(ceili(current_flow_step.post_clear_rest_duration), 0)
-		if current_flow_step != null
-		else 0
-	)
-	_update_post_wave_music(current_flow_step)
-	if wave_hud != null:
-		wave_hud.show_countdown(countdown_seconds)
-	_emit_multiplayer_flow_state(WaveState.INTERMISSION)
-
-	if countdown_seconds <= 0:
-		_begin_flow_step(next_flow_step_after_rest)
-		return
-
-	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-		_play_countdown_tick()
-	state_timer.start(1.0)
-
-
-func _begin_flow_step(flow_step: FlowStepConfig) -> void:
-	if flow_step == null:
-		_enter_victory()
-		return
-	current_flow_step = flow_step
-	next_flow_step_after_rest = null
-	if flow_step is WaveConfig:
-		_begin_wave_config(flow_step as WaveConfig)
-	elif flow_step is BossConfig:
-		_begin_linglan_boss_intro(flow_step as BossConfig)
-	else:
-		push_error("流程节点 %s 类型不支持。" % flow_step.get_flow_display_name())
-		_enter_defeat()
-
-
-func _begin_wave_config(wave_config: WaveConfig) -> void:
-	if wave_config == null:
-		push_error("流程节点缺少 WaveConfig。")
-		_enter_defeat()
-		return
-	if not _resolve_wave_spawn_points(wave_config):
-		_enter_defeat()
-		return
-	if runtime_mode != RuntimeMode.CLIENT_VIEW and not navigation_prewarmed:
-		_prewarm_enemy_navigation_grids()
-		navigation_prewarmed = true
-
-	wave_state = WaveState.WAVE_ACTIVE
-	current_wave_index = _get_wave_number_for_step(wave_config) - 1
-	_apply_wave_start_lighting(current_wave_index + 1)
-	state_timer.stop()
-	_set_merchant_active(false)
-	current_wave_spawned = 0
-	current_wave_defeated = 0
-	active_wave_enemy_ids.clear()
-	_build_wave_spawn_queue(wave_config)
-	current_wave_total = pending_enemy_configs.size()
-	_update_wave_music(wave_config)
-	if wave_hud != null:
-		wave_hud.show_wave_progress(
-			current_wave_index + 1,
-			current_wave_defeated,
-			current_wave_total
-		)
-	wave_start_audio.play()
-	_emit_multiplayer_flow_state(WaveState.WAVE_ACTIVE)
-
-	if current_wave_total <= 0:
-		_check_wave_completion()
-		return
-
-	_spawn_wave_batch()
-	if _has_pending_enemy_configs():
-		enemy_spawn_timer.start(maxf(wave_config.spawn_interval, MIN_WAVE_SPAWN_INTERVAL_SECONDS))
-
-
-func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
-	pending_enemy_configs.clear()
-	pending_enemy_xirang_kill_rewards.clear()
-	pending_enemy_config_index = 0
-	if wave_config.spawn_order == WaveConfig.SpawnOrder.ENTRY_ROUND_ROBIN:
-		_build_entry_round_robin_spawn_queue(wave_config)
-		return
-	for entry in wave_config.enemy_entries:
-		if entry == null or entry.enemy_config == null:
-			continue
-		for _enemy_index in range(maxi(entry.count, 0)):
-			pending_enemy_configs.append(entry.enemy_config)
-			pending_enemy_xirang_kill_rewards.append(
-				entry.resolve_xirang_kill_reward(entry.enemy_config)
-			)
-
-	for source_index in range(pending_enemy_configs.size() - 1, 0, -1):
-		var target_index := random_generator.randi_range(0, source_index)
-		var temporary_config := pending_enemy_configs[source_index]
-		pending_enemy_configs[source_index] = pending_enemy_configs[target_index]
-		pending_enemy_configs[target_index] = temporary_config
-		var temporary_reward := pending_enemy_xirang_kill_rewards[source_index]
-		pending_enemy_xirang_kill_rewards[source_index] = (
-			pending_enemy_xirang_kill_rewards[target_index]
-		)
-		pending_enemy_xirang_kill_rewards[target_index] = temporary_reward
-
-
-func _build_entry_round_robin_spawn_queue(wave_config: WaveConfig) -> void:
-	var entries: Array[WaveEnemyEntry] = []
-	var remaining_counts: Array[int] = []
-	var remaining_total := 0
-	for entry in wave_config.enemy_entries:
-		if entry == null or entry.enemy_config == null:
-			continue
-		var entry_count := maxi(entry.count, 0)
-		if entry_count <= 0:
-			continue
-		entries.append(entry)
-		remaining_counts.append(entry_count)
-		remaining_total += entry_count
-
-	while remaining_total > 0:
-		for entry_index in range(entries.size()):
-			if remaining_counts[entry_index] <= 0:
-				continue
-			var entry := entries[entry_index]
-			pending_enemy_configs.append(entry.enemy_config)
-			pending_enemy_xirang_kill_rewards.append(
-				entry.resolve_xirang_kill_reward(entry.enemy_config)
-			)
-			remaining_counts[entry_index] -= 1
-			remaining_total -= 1
-
-
-func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
-	active_wave_spawn_points.clear()
-	var resolution := _inspect_wave_spawn_points(wave_config)
-	if not bool(resolution.get("valid", false)):
-		var error_message := str(resolution.get("error", ""))
-		if not error_message.is_empty():
-			push_error(error_message)
-		return false
-	active_wave_spawn_points.assign(resolution.get("points", []))
-	return not active_wave_spawn_points.is_empty()
-
-
-func _inspect_wave_spawn_points(wave_config: WaveConfig) -> Dictionary:
-	var points: Array[Marker2D] = []
-	if wave_config == null or not spawn_point_configuration_valid:
-		return {"valid": false, "points": points, "error": ""}
-	var enabled_names := wave_config.get_enabled_spawn_point_names()
-	if enabled_names.is_empty():
-		return {
-			"valid": false,
-			"points": points,
-			"error": "波次 %s 没有启用任何出生点。" % wave_config.get_flow_display_name(),
-		}
-	for spawn_name in enabled_names:
-		var marker := enemy_spawn_points_by_name.get(spawn_name) as Marker2D
-		if marker == null:
-			return {
-				"valid": false,
-				"points": points,
-				"error": (
-					"波次 %s 引用了场景中不存在的出生点 %s。"
-					% [wave_config.get_flow_display_name(), String(spawn_name)]
-				),
-			}
-		points.append(marker)
-	return {"valid": true, "points": points, "error": ""}
-
-
-func _on_state_timer_timeout() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		_update_client_flow_countdown()
-		return
-	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
-		state_timer.stop()
-		return
-
-	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	if countdown_seconds > 0:
-		if wave_hud != null:
-			wave_hud.show_countdown(countdown_seconds)
-		if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-			_play_countdown_tick()
-		return
-
-	state_timer.stop()
-	if wave_state == WaveState.PRE_WAVE:
-		_begin_flow_step(current_flow_step)
-	else:
-		_begin_flow_step(next_flow_step_after_rest)
-
-
-func _on_enemy_spawn_timer_timeout() -> void:
-	_spawn_wave_batch()
-
-
-func _start_client_flow_countdown(state: WaveState, step_id: StringName, seconds: int) -> void:
-	wave_state = state
-	var flow_step := _get_flow_step_by_id(step_id)
-	if flow_step != null:
-		current_flow_step = flow_step
-		if flow_step is WaveConfig:
-			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	if state == WaveState.INTERMISSION:
-		_update_post_wave_music(flow_step)
-	countdown_seconds = maxi(seconds, 0)
-	if wave_hud != null:
-		wave_hud.show_countdown(countdown_seconds)
-	if countdown_seconds <= 0:
-		state_timer.stop()
-		return
-	state_timer.start(1.0)
-
-
-func _update_client_flow_countdown() -> void:
-	if wave_state != WaveState.PRE_WAVE and wave_state != WaveState.INTERMISSION:
-		state_timer.stop()
-		return
-	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	if wave_hud != null:
-		wave_hud.show_countdown(countdown_seconds)
-	if countdown_seconds <= 0:
-		state_timer.stop()
-		return
-	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-		_play_countdown_tick()
-
-
-func _spawn_wave_batch() -> void:
-	if wave_state != WaveState.WAVE_ACTIVE:
-		enemy_spawn_timer.stop()
-		return
-
-	var wave_config := _get_current_wave()
-	if wave_config == null:
-		enemy_spawn_timer.stop()
-		return
-
-	var spawn_count_this_tick := mini(
-		maxi(wave_config.spawn_count_per_tick, 1),
-		MAX_WAVE_SPAWN_COUNT_PER_TICK
-	)
-	for _spawn_index in range(spawn_count_this_tick):
-		if not _has_pending_enemy_configs():
-			break
-		if active_wave_enemy_ids.size() >= maxi(wave_config.max_alive_enemies, 1):
-			break
-
-		var enemy_config := pending_enemy_configs[pending_enemy_config_index]
-		var xirang_kill_reward := pending_enemy_xirang_kill_rewards[
-			pending_enemy_config_index
-		]
-		if not _try_spawn_enemy(enemy_config, xirang_kill_reward):
-			break
-
-		pending_enemy_config_index += 1
-		current_wave_spawned += 1
-
-	if not _has_pending_enemy_configs():
-		enemy_spawn_timer.stop()
-		_clear_pending_enemy_spawn_queue()
-
-	_check_wave_completion()
-
-
-func _has_pending_enemy_configs() -> bool:
-	return pending_enemy_config_index < pending_enemy_configs.size()
-
-
-func _clear_pending_enemy_spawn_queue() -> void:
-	pending_enemy_configs.clear()
-	pending_enemy_xirang_kill_rewards.clear()
-	pending_enemy_config_index = 0
-
-
-func _try_spawn_enemy(
-	enemy_config: EnemyConfig,
-	xirang_kill_reward_override: int = -1
-) -> bool:
-	if not _is_spawn_system_ready() or enemy_config == null:
-		return false
-
-	var spawn_point := _pick_spawn_point()
-	if spawn_point == null:
-		return false
-
-	var spawn_scene := enemy_config.enemy_scene
-	if spawn_scene == null:
-		push_warning("敌人配置 %s 缺少 enemy_scene。" % enemy_config.resource_path)
-		return false
-	var enemy_instance := spawn_scene.instantiate() as Enemy
-	if enemy_instance == null:
-		push_warning("敌人场景实例化失败，请检查波次中的敌人配置。")
-		return false
-
-	enemy_container.add_child(enemy_instance)
-	enemy_instance.global_position = spawn_point.global_position
-	enemy_instance.setup(enemy_config, _pick_enemy_target(spawn_point.global_position), grid_pathfinder)
-	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
-	var enemy_id := enemy_instance.get_instance_id()
-	active_wave_enemy_ids[enemy_id] = true
-	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
-	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
-	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
-	_spawn_enemy_spawn_effect(spawn_point.global_position)
-	return true
-
-
 func spawn_linglan_skill2_enemies(
 	enemy_config: EnemyConfig,
 	marker_names: Array[StringName]
@@ -1862,7 +930,6 @@ func spawn_linglan_skill2_enemies(
 	for marker_name in marker_names:
 		_try_spawn_boss_add_at_marker(enemy_config, marker_name)
 
-
 func spawn_linglan_airdrop_sniper(
 	enemy_config: EnemyConfig,
 	warning_scene: PackedScene,
@@ -1872,13 +939,13 @@ func spawn_linglan_airdrop_sniper(
 ) -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if enemy_config == null or enemy_config.enemy_scene == null:
 		return
 	var landing_position := _get_random_linglan_boss_arena_position()
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_linglan_airdrop_started.emit(
+		linglan_boss_runtime_port.airdrop_started.emit(
 			enemy_config,
 			landing_position,
 			warning_duration,
@@ -1893,7 +960,6 @@ func spawn_linglan_airdrop_sniper(
 		maxf(drop_height, 0.0),
 		maxf(drop_duration, 0.01)
 	)
-
 
 func _spawn_linglan_airdrop_warning(
 	warning_scene: PackedScene,
@@ -1911,7 +977,6 @@ func _spawn_linglan_airdrop_warning(
 	if warning.has_method("start"):
 		warning.call("start", warning_duration)
 
-
 func _finish_linglan_airdrop_sniper_spawn(
 	enemy_config: EnemyConfig,
 	landing_position: Vector2,
@@ -1921,7 +986,7 @@ func _finish_linglan_airdrop_sniper_spawn(
 ) -> void:
 	if warning_duration > 0.0:
 		await get_tree().create_timer(warning_duration).timeout
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if enemy_container == null or player == null:
 		return
@@ -1934,7 +999,12 @@ func _finish_linglan_airdrop_sniper_spawn(
 
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = landing_position + Vector2(0.0, -drop_height)
-	enemy_instance.setup(enemy_config, _pick_enemy_target(landing_position), grid_pathfinder)
+	enemy_instance.setup(
+		enemy_config,
+		_pick_enemy_target(landing_position),
+		grid_pathfinder,
+		self
+	)
 	enemy_instance.velocity = Vector2.ZERO
 	enemy_instance.set_process(false)
 	enemy_instance.set_physics_process(false)
@@ -1948,7 +1018,7 @@ func _finish_linglan_airdrop_sniper_spawn(
 
 	if not is_instance_valid(enemy_instance):
 		return
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		enemy_instance.queue_free()
 		return
 
@@ -1964,7 +1034,6 @@ func _finish_linglan_airdrop_sniper_spawn(
 	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, landing_position)
 	_spawn_enemy_spawn_effect(landing_position)
 
-
 func _set_enemy_collision_shapes_disabled_recursive(root: Node, disabled: bool) -> void:
 	if root == null:
 		return
@@ -1973,7 +1042,6 @@ func _set_enemy_collision_shapes_disabled_recursive(root: Node, disabled: bool) 
 		if shape != null:
 			shape.set_deferred("disabled", disabled)
 		_set_enemy_collision_shapes_disabled_recursive(child, disabled)
-
 
 func _get_random_linglan_boss_arena_position() -> Vector2:
 	if active_boss_config == null or ground_tile_map_layer == null:
@@ -1997,7 +1065,6 @@ func _get_random_linglan_boss_arena_position() -> Vector2:
 	)
 	return _get_tile_cell_global_position(target_cell)
 
-
 func _try_spawn_boss_add_at_marker(enemy_config: EnemyConfig, marker_name: StringName) -> bool:
 	if enemy_config == null:
 		return false
@@ -2018,7 +1085,12 @@ func _try_spawn_boss_add_at_marker(enemy_config: EnemyConfig, marker_name: Strin
 
 	enemy_container.add_child(enemy_instance)
 	enemy_instance.global_position = spawn_marker.global_position
-	enemy_instance.setup(enemy_config, _pick_enemy_target(spawn_marker.global_position), grid_pathfinder)
+	enemy_instance.setup(
+		enemy_config,
+		_pick_enemy_target(spawn_marker.global_position),
+		grid_pathfinder,
+		self
+	)
 	var enemy_id := enemy_instance.get_instance_id()
 	if not enemy_instance.defeated.is_connected(_on_boss_add_defeated):
 		enemy_instance.defeated.connect(_on_boss_add_defeated)
@@ -2027,143 +1099,6 @@ func _try_spawn_boss_add_at_marker(enemy_config: EnemyConfig, marker_name: Strin
 	_register_multiplayer_enemy_instance(enemy_instance, enemy_config, enemy_instance.global_position)
 	_spawn_enemy_spawn_effect(spawn_marker.global_position)
 	return true
-
-
-func _register_multiplayer_enemy_instance(
-	enemy_instance: Enemy,
-	enemy_config: EnemyConfig,
-	spawn_position: Vector2,
-	broadcast_spawn: bool = true
-) -> int:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return 0
-	if enemy_instance == null or enemy_config == null:
-		return 0
-	var enemy_id := enemy_instance.get_instance_id()
-	var existing_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
-	if existing_net_id > 0:
-		return existing_net_id
-	var enemy_net_id := next_multiplayer_enemy_net_id
-	next_multiplayer_enemy_net_id += 1
-	enemy_instance.set_meta("net_id", enemy_net_id)
-	multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
-	multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
-	register_combat_target(enemy_net_id, enemy_instance)
-	if broadcast_spawn:
-		multiplayer_enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
-	return enemy_net_id
-
-
-func _on_wave_enemy_defeated(enemy: Enemy) -> void:
-	if wave_state != WaveState.WAVE_ACTIVE:
-		return
-	if enemy == null or not active_wave_enemy_ids.has(enemy.get_instance_id()):
-		return
-
-	current_wave_defeated = mini(current_wave_defeated + 1, current_wave_total)
-	_emit_multiplayer_enemy_defeated(enemy)
-	if wave_hud != null:
-		wave_hud.show_wave_progress(
-			current_wave_index + 1,
-			current_wave_defeated,
-			current_wave_total
-		)
-	_check_wave_completion()
-
-
-func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if enemy == null:
-		return
-	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0))
-	if enemy_net_id <= 0:
-		return
-	multiplayer_enemy_defeated.emit(enemy_net_id, enemy.global_position)
-
-
-func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
-	active_wave_enemy_ids.erase(enemy_id)
-	_mark_multiplayer_enemy_removed(enemy_id)
-	_check_wave_completion()
-
-
-func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
-	multiplayer_enemy_ids_by_instance.erase(enemy_id)
-	if enemy_net_id > 0:
-		multiplayer_enemies_by_net_id.erase(enemy_net_id)
-		unregister_combat_target(enemy_net_id)
-	if enemy_net_id <= 0:
-		return
-	multiplayer_enemy_removed.emit(enemy_net_id)
-
-
-func _check_wave_completion() -> void:
-	if wave_state != WaveState.WAVE_ACTIVE:
-		return
-	if _has_pending_enemy_configs():
-		return
-	if current_wave_spawned < current_wave_total:
-		return
-	if current_wave_defeated < current_wave_total:
-		return
-	if not active_wave_enemy_ids.is_empty():
-		return
-
-	enemy_spawn_timer.stop()
-	_complete_current_step()
-
-
-func _complete_current_step() -> void:
-	var next_step := _get_default_next_flow_step(current_flow_step)
-	if next_step == null:
-		_enter_victory()
-		return
-	if current_flow_step != null and current_flow_step.post_clear_rest_duration > 0.0:
-		_enter_intermission(next_step)
-		return
-	_begin_flow_step(next_step)
-
-
-func _enter_victory(emit_multiplayer: bool = true) -> void:
-	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_revive_all_requested.emit()
-	wave_state = WaveState.VICTORY
-	transition_world_to_day()
-	enemy_spawn_timer.stop()
-	state_timer.stop()
-	_set_merchant_active(false)
-	if linglan_boss_intro_vfx != null:
-		linglan_boss_intro_vfx.stop_intro()
-	if boss_health_hud != null:
-		boss_health_hud.hide_all()
-	if wave_hud != null:
-		wave_hud.show_victory()
-	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_victory_started.emit()
-		_emit_multiplayer_flow_state(WaveState.VICTORY)
-
-
-func _enter_defeat() -> void:
-	if wave_state == WaveState.DEFEAT:
-		return
-	wave_state = WaveState.DEFEAT
-	transition_world_to_day()
-	enemy_spawn_timer.stop()
-	state_timer.stop()
-	_set_merchant_active(false)
-	if linglan_boss_intro_vfx != null:
-		linglan_boss_intro_vfx.stop_intro()
-	if boss_health_hud != null:
-		boss_health_hud.hide_all()
-	if wave_hud != null:
-		wave_hud.show_defeat()
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_defeat_started.emit()
-
 
 func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	if boss_config == null:
@@ -2177,7 +1112,7 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	active_boss_config = boss_config
 	linglan_boss_started = true
 	current_flow_step = boss_config
-	wave_state = WaveState.BOSS_INTRO
+	wave_state = CombatFlowState.State.BOSS_INTRO
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_clear_pending_enemy_spawn_queue()
@@ -2195,18 +1130,16 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	linglan_boss.set_active(false)
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
-	_emit_multiplayer_flow_state(WaveState.BOSS_INTRO)
+	_emit_multiplayer_flow_state(CombatFlowState.State.BOSS_INTRO)
 	if linglan_boss_intro_vfx != null:
 		linglan_boss_intro_vfx.play_intro(_get_boss_arena_center(boss_config))
 	else:
 		_on_linglan_boss_intro_finished()
 
-
 func _on_linglan_boss_intro_finished() -> void:
-	if wave_state != WaveState.BOSS_INTRO:
+	if wave_state != CombatFlowState.State.BOSS_INTRO:
 		return
 	_activate_linglan_boss()
-
 
 func _activate_linglan_boss() -> void:
 	if linglan_boss == null or not is_instance_valid(linglan_boss):
@@ -2217,10 +1150,15 @@ func _activate_linglan_boss() -> void:
 	if not _boss_config_has_required_data(boss_config):
 		_enter_victory()
 		return
-	wave_state = WaveState.BOSS_ACTIVE
+	wave_state = CombatFlowState.State.BOSS_ACTIVE
 	linglan_boss.config = _get_boss_enemy_config(boss_config)
 	linglan_boss.global_position = _get_boss_arena_center(boss_config)
-	linglan_boss.activate_boss(player, grid_pathfinder)
+	linglan_boss.activate_boss(
+		player,
+		grid_pathfinder,
+		self,
+		linglan_boss_runtime_port
+	)
 	var boss_instance_id := linglan_boss.get_instance_id()
 	active_wave_enemy_ids[boss_instance_id] = true
 	if not linglan_boss.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(boss_instance_id)):
@@ -2233,20 +1171,17 @@ func _activate_linglan_boss() -> void:
 	)
 	if boss_health_hud != null:
 		boss_health_hud.show_for_boss(linglan_boss, _get_boss_display_name(boss_config))
-	_emit_multiplayer_flow_state(WaveState.BOSS_ACTIVE)
+	_emit_multiplayer_flow_state(CombatFlowState.State.BOSS_ACTIVE)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
+		multiplayer_mode_adapter.boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
 		_rebroadcast_linglan_boss_started_after_sync_window(boss_net_id, boss_config)
-
 
 func _on_boss_enemy_tree_exited(enemy_id: int) -> void:
 	active_wave_enemy_ids.erase(enemy_id)
 	_mark_multiplayer_enemy_removed(enemy_id)
 
-
 func _on_boss_add_defeated(enemy: Enemy) -> void:
 	_emit_multiplayer_enemy_defeated(enemy)
-
 
 func _rebroadcast_linglan_boss_started_after_sync_window(
 	boss_net_id: int,
@@ -2257,15 +1192,14 @@ func _rebroadcast_linglan_boss_started_after_sync_window(
 	await get_tree().create_timer(0.75).timeout
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if linglan_boss == null or not is_instance_valid(linglan_boss):
 		return
-	multiplayer_boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
-
+	multiplayer_mode_adapter.boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
 
 func _on_linglan_boss_defeated(enemy: Enemy) -> void:
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if enemy != linglan_boss:
 		return
@@ -2275,12 +1209,10 @@ func _on_linglan_boss_defeated(enemy: Enemy) -> void:
 	var victory_timer := get_tree().create_timer(1.3)
 	victory_timer.timeout.connect(_complete_linglan_boss_after_delay)
 
-
 func _complete_linglan_boss_after_delay() -> void:
-	if wave_state != WaveState.BOSS_ACTIVE:
+	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	_complete_current_step()
-
 
 func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
 	if boss_config == null:
@@ -2305,449 +1237,8 @@ func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
 	if grid_pathfinder != null and grid_pathfinder.has_method("rebuild"):
 		grid_pathfinder.call("rebuild")
 
-
-func _on_player_died() -> void:
-	if wave_state == WaveState.VICTORY:
-		return
-	_enter_defeat()
-
-
-func _on_multiplayer_player_died(_peer_id: int) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
-		return
-	if multiplayer_defeat_check_pending:
-		return
-	multiplayer_defeat_check_pending = true
-	var defeat_timer := get_tree().create_timer(MULTIPLAYER_DEFEAT_GRACE_SECONDS)
-	defeat_timer.timeout.connect(_check_multiplayer_defeat_after_grace)
-
-
-func _check_multiplayer_defeat_after_grace() -> void:
-	multiplayer_defeat_check_pending = false
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if wave_state == WaveState.VICTORY or wave_state == WaveState.DEFEAT:
-		return
-	for peer_id_variant in peer_players:
-		var candidate := peer_players[peer_id_variant] as Player
-		if candidate != null and is_instance_valid(candidate) and not candidate.is_dead:
-			return
-	_enter_defeat()
-
-
-func _configure_multiplayer_players() -> void:
-	player = null
-	peer_players.clear()
-	if multiplayer_player_names.is_empty():
-		multiplayer_player_names[multiplayer_local_peer_id if multiplayer_local_peer_id > 0 else 1] = "Player"
-
-	var peer_ids: Array[int] = []
-	for peer_id_variant in multiplayer_player_names:
-		peer_ids.append(int(peer_id_variant))
-	peer_ids.sort()
-
-	var base_position := player_spawn.position
-	for index in range(peer_ids.size()):
-		var peer_id := peer_ids[index]
-		var character_id := _get_multiplayer_character_id(peer_id)
-		var player_instance := _instantiate_player_character(character_id)
-		if player_instance == null:
-			continue
-		player_instance.name = "Player_%d" % peer_id
-		player_instance.position = base_position + _get_multiplayer_spawn_offset(index)
-		add_child(player_instance)
-		var accepts_local_input := (
-			peer_id == multiplayer_local_peer_id
-			and (
-				runtime_mode == RuntimeMode.HOST_AUTHORITY
-				or runtime_mode == RuntimeMode.CLIENT_VIEW
-			)
-		)
-		var predicts_local_movement := (
-			runtime_mode == RuntimeMode.CLIENT_VIEW
-			and peer_id == multiplayer_local_peer_id
-		)
-		var display_name: String = str(multiplayer_player_names.get(peer_id, "Player %d" % peer_id))
-		player_instance.configure_multiplayer_control(
-			peer_id,
-			accepts_local_input,
-			display_name,
-			predicts_local_movement,
-			peer_id == multiplayer_local_peer_id
-		)
-		player_instance.set_multiplayer_visual_smoothing_enabled(
-			runtime_mode == RuntimeMode.HOST_AUTHORITY
-			and peer_id != multiplayer_local_peer_id
-		)
-		if (
-			(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
-			or (runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id != multiplayer_local_peer_id)
-		):
-			player_instance.set_physics_process(false)
-		if not player_instance.died.is_connected(_on_multiplayer_player_died.bind(peer_id)):
-			player_instance.died.connect(_on_multiplayer_player_died.bind(peer_id))
-		peer_players[peer_id] = player_instance
-		if peer_id == multiplayer_local_peer_id:
-			player = player_instance
-	if player == null and not peer_ids.is_empty():
-		player = peer_players.get(peer_ids[0]) as Player
-
-
-func _get_multiplayer_character_id(peer_id: int) -> StringName:
-	var character_id := StringName(
-		multiplayer_player_character_ids.get(peer_id, DEFAULT_PLAYER_CHARACTER_ID)
-	)
-	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
-		return DEFAULT_PLAYER_CHARACTER_ID
-	return character_id
-
-
-func _get_multiplayer_spawn_offset(index: int) -> Vector2:
-	const OFFSETS := [
-		Vector2.ZERO,
-		Vector2(18.0, 0.0),
-		Vector2(0.0, 18.0),
-		Vector2(18.0, 18.0),
-		Vector2(-18.0, 0.0),
-		Vector2(0.0, -18.0),
-		Vector2(-18.0, -18.0),
-		Vector2(18.0, -18.0),
-	]
-	return OFFSETS[index % OFFSETS.size()]
-
-
-func apply_network_input_for_peer(
-	peer_id: int,
-	move_input: Vector2,
-	shoot_input: Vector2,
-	use_skill1: bool,
-	use_reload: bool = false
-) -> void:
-	var player_instance: Player = peer_players.get(peer_id) as Player
-	if player_instance == null or not is_instance_valid(player_instance):
-		return
-	player_instance.apply_network_input(move_input, shoot_input, use_skill1, use_reload)
-
-
-func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
-	for peer_id_variant in peer_players:
-		var peer_id := int(peer_id_variant)
-		if peer_id == multiplayer_local_peer_id:
-			continue
-		var player_instance := peer_players[peer_id] as Player
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		player_instance.update_multiplayer_authority_passive_state(delta)
-
-
-func remove_multiplayer_player(peer_id: int) -> void:
-	if peer_id <= 0 or peer_id == multiplayer_local_peer_id:
-		return
-	var player_instance := peer_players.get(peer_id) as Player
-	peer_players.erase(peer_id)
-	multiplayer_player_names.erase(peer_id)
-	multiplayer_player_character_ids.erase(peer_id)
-	if player_instance != null and is_instance_valid(player_instance):
-		player_instance.queue_free()
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		_check_multiplayer_defeat_after_grace()
-
-
-func restore_multiplayer_player(
-	old_peer_id: int,
-	new_peer_id: int,
-	player_name: String,
-	character_id: StringName,
-	state: SnapshotManager.PlayerState,
-	spawn_slot_index: int,
-	_reconnect_state: Dictionary = {}
-) -> Player:
-	if (
-		new_peer_id <= 0
-		or peer_players.has(new_peer_id)
-		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
-	):
-		return null
-	multiplayer_player_names.erase(old_peer_id)
-	multiplayer_player_character_ids.erase(old_peer_id)
-	multiplayer_player_names[new_peer_id] = player_name
-	multiplayer_player_character_ids[new_peer_id] = character_id
-	if luoxi_collectible_claim_counts.has(old_peer_id):
-		luoxi_collectible_claim_counts[new_peer_id] = (
-			luoxi_collectible_claim_counts[old_peer_id]
-		)
-		luoxi_collectible_claim_counts.erase(old_peer_id)
-	var player_instance := _instantiate_player_character(character_id)
-	if player_instance == null:
-		return null
-	player_instance.name = "Player_%d" % new_peer_id
-	player_instance.position = (
-		state.position
-		if state != null
-		else player_spawn.position + _get_multiplayer_spawn_offset(spawn_slot_index)
-	)
-	add_child(player_instance)
-	var accepts_local_input := new_peer_id == multiplayer_local_peer_id
-	var predicts_local_movement := (
-		runtime_mode == RuntimeMode.CLIENT_VIEW
-		and new_peer_id == multiplayer_local_peer_id
-	)
-	player_instance.configure_multiplayer_control(
-		new_peer_id,
-		accepts_local_input,
-		player_name,
-		predicts_local_movement,
-		new_peer_id == multiplayer_local_peer_id
-	)
-	player_instance.set_multiplayer_visual_smoothing_enabled(
-		runtime_mode == RuntimeMode.HOST_AUTHORITY
-		and new_peer_id != multiplayer_local_peer_id
-	)
-	if (
-		(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
-		or (runtime_mode == RuntimeMode.HOST_AUTHORITY and new_peer_id != multiplayer_local_peer_id)
-	):
-		player_instance.set_physics_process(false)
-	if not player_instance.died.is_connected(
-		_on_multiplayer_player_died.bind(new_peer_id)
-	):
-		player_instance.died.connect(_on_multiplayer_player_died.bind(new_peer_id))
-	peer_players[new_peer_id] = player_instance
-	return player_instance
-
-
-func get_player_for_peer(peer_id: int) -> Player:
-	return peer_players.get(peer_id) as Player
-
-
-func get_enemy_for_net_id(net_id: int) -> Enemy:
-	if not multiplayer_enemies_by_net_id.has(net_id):
-		return null
-	var enemy_variant: Variant = multiplayer_enemies_by_net_id.get(net_id)
-	if enemy_variant == null:
-		multiplayer_enemies_by_net_id.erase(net_id)
-		unregister_combat_target(net_id)
-		return null
-	if not is_instance_valid(enemy_variant):
-		multiplayer_enemies_by_net_id.erase(net_id)
-		unregister_combat_target(net_id)
-		return null
-	return enemy_variant as Enemy
-
-
-func get_pickup_for_net_id(net_id: int) -> Pickup:
-	if not multiplayer_pickups.has(net_id):
-		return null
-	var pickup_variant: Variant = multiplayer_pickups.get(net_id)
-	if pickup_variant == null:
-		multiplayer_pickups.erase(net_id)
-		return null
-	if not is_instance_valid(pickup_variant):
-		multiplayer_pickups.erase(net_id)
-		return null
-	return pickup_variant as Pickup
-
-
-func _register_static_multiplayer_pickups() -> void:
-	multiplayer_pickups.clear()
-	pending_multiplayer_pickup_exit_ids.clear()
-	next_multiplayer_pickup_net_id = 1000
-	var pickups: Array[Pickup] = []
-	_collect_pickups_recursive(self, pickups)
-	pickups.sort_custom(_sort_pickups_by_path)
-
-	var next_pickup_id := 1
-	for pickup in pickups:
-		if pickup == null or not is_instance_valid(pickup):
-			continue
-		_register_multiplayer_pickup(pickup, next_pickup_id, false)
-		next_pickup_id += 1
-
-
-func _register_dynamic_multiplayer_pickups() -> void:
-	for child in enemy_container.get_children():
-		_register_dynamic_multiplayer_pickup(child as Pickup)
-	for child in boss_container.get_children():
-		_register_dynamic_multiplayer_pickup(child as Pickup)
-
-
-func _on_dynamic_pickup_container_child_entered(child: Node) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	var pickup := child as Pickup
-	if pickup == null:
-		return
-	# Drop scripts assign global_position immediately after add_child(). Defer one
-	# turn so the spawn RPC observes that final position rather than the container
-	# origin, while still avoiding a full-tree scan on every physics frame.
-	call_deferred("_register_dynamic_multiplayer_pickup_from_ref", weakref(pickup))
-
-
-func _register_dynamic_multiplayer_pickup_from_ref(pickup_ref: WeakRef) -> void:
-	if pickup_ref == null:
-		return
-	var pickup := pickup_ref.get_ref() as Pickup
-	_register_dynamic_multiplayer_pickup(pickup)
-
-
-func _register_dynamic_multiplayer_pickup(pickup: Pickup) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if pickup == null or not is_instance_valid(pickup) or pickup.is_queued_for_deletion():
-		return
-	if int(pickup.get_meta("net_id", 0)) > 0:
-		return
-	var net_id := next_multiplayer_pickup_net_id
-	next_multiplayer_pickup_net_id += 1
-	_register_multiplayer_pickup(pickup, net_id, true)
-
-
-func _collect_pickups_recursive(node: Node, pickups: Array[Pickup]) -> void:
-	for child in node.get_children():
-		var pickup := child as Pickup
-		if pickup != null:
-			pickups.append(pickup)
-		_collect_pickups_recursive(child, pickups)
-
-
-func _sort_pickups_by_path(a: Pickup, b: Pickup) -> bool:
-	return str(a.get_path()) < str(b.get_path())
-
-
-func _register_multiplayer_pickup(pickup: Pickup, net_id: int, broadcast_spawn: bool) -> void:
-	pickup.set_meta("net_id", net_id)
-	multiplayer_pickups[net_id] = pickup
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if not pickup.consumed.is_connected(_on_multiplayer_pickup_consumed):
-		pickup.consumed.connect(_on_multiplayer_pickup_consumed)
-	if not pickup.tree_exited.is_connected(_on_multiplayer_pickup_tree_exited.bind(net_id)):
-		pickup.tree_exited.connect(_on_multiplayer_pickup_tree_exited.bind(net_id))
-	if broadcast_spawn:
-		multiplayer_pickup_spawned.emit(net_id, pickup.config, pickup.global_position)
-
-
-func _on_multiplayer_pickup_consumed(
-	pickup: Pickup,
-	collector_peer_id: int,
-	applied_immediately: bool
-) -> void:
-	var net_id := int(pickup.get_meta("net_id", 0))
-	if net_id <= 0:
-		return
-	if not _mark_multiplayer_pickup_removed(net_id, true):
-		return
-	multiplayer_pickup_collected.emit(
-		net_id,
-		collector_peer_id,
-		pickup.config,
-		applied_immediately
-	)
-
-
-func _on_multiplayer_pickup_tree_exited(net_id: int) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	_mark_multiplayer_pickup_removed(net_id)
-
-
-func _mark_multiplayer_pickup_removed(
-	net_id: int,
-	suppress_next_tree_exit: bool = false
-) -> bool:
-	if net_id <= 0:
-		return false
-	if suppress_next_tree_exit:
-		if pending_multiplayer_pickup_exit_ids.has(net_id):
-			return false
-		pending_multiplayer_pickup_exit_ids[net_id] = true
-	elif pending_multiplayer_pickup_exit_ids.erase(net_id):
-		return false
-	multiplayer_pickups.erase(net_id)
-	multiplayer_pickup_removed.emit(net_id)
-	return true
-
-
-func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
-	var states: Array[SnapshotManager.PlayerState] = []
-	for peer_id_variant in peer_players:
-		var peer_id := int(peer_id_variant)
-		var player_instance := peer_players[peer_id] as Player
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		var state := SnapshotManager.PlayerState.new()
-		state.peer_id = peer_id
-		state.character_id = player_instance.get_character_id()
-		state.position = player_instance.global_position
-		state.velocity = player_instance.velocity
-		state.facing = player_instance.get_multiplayer_facing_id()
-		state.anim_state = player_instance.get_multiplayer_anim_state()
-		state.current_health = player_instance.current_health
-		state.max_health = player_instance.max_health
-		state.current_xirang = player_instance.current_xirang
-		state.is_dead = player_instance.is_dead
-		state.invincibility_time_left = player_instance.invincibility_time_left
-		state.skill1_unlocked = player_instance.skill1_unlocked
-		state.skill1_charge = player_instance.skill1_charge
-		state.skill1_charge_duration = player_instance.skill1_charge_duration
-		state.skill1_upgrade_level = player_instance.skill1_upgrade_level
-		state.form_mode = player_instance.get_multiplayer_form_mode()
-		state.shot_pattern = player_instance.get_multiplayer_shot_pattern()
-		state.ammo_capacity = player_instance.get_multiplayer_ammo_capacity()
-		state.current_ammo = player_instance.get_multiplayer_current_ammo()
-		state.is_reloading = player_instance.get_multiplayer_is_reloading()
-		state.reload_progress = player_instance.get_multiplayer_reload_progress()
-		state.primary_cooldown_ratio = _get_player_primary_cooldown_ratio(player_instance)
-		state.effective_move_speed_multiplier = (
-			player_instance.get_authoritative_move_speed_multiplier()
-		)
-		states.append(state)
-	return states
-
-
-func _get_player_primary_cooldown_ratio(player_instance: Player) -> float:
-	if player_instance == null:
-		return 0.0
-	if player_instance.has_method("get_primary_cooldown_ratio"):
-		return clampf(float(player_instance.call("get_primary_cooldown_ratio")), 0.0, 1.0)
-	if player_instance.has_method("get_primary_attack_cooldown_ratio"):
-		return clampf(float(player_instance.call("get_primary_attack_cooldown_ratio")), 0.0, 1.0)
-	return 0.0
-
-
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 	return collect_reused_enemy_snapshot_states(enemy_container, boss_container)
-
-
-func _update_multiplayer_enemy_targets(delta: float) -> void:
-	enemy_retarget_time_left = maxf(enemy_retarget_time_left - delta, 0.0)
-	if enemy_retarget_time_left > 0.0:
-		return
-	enemy_retarget_time_left = 0.35
-	for child in enemy_container.get_children():
-		var enemy := child as Enemy
-		if enemy == null or enemy.is_dead:
-			continue
-		enemy.set_target_player(_pick_enemy_target(enemy.global_position))
-
-
-func _pick_enemy_target(from_position: Vector2) -> Player:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return player
-	var best_player: Player = null
-	var best_distance := INF
-	for peer_id_variant in peer_players:
-		var candidate := peer_players[peer_id_variant] as Player
-		if candidate == null or not is_instance_valid(candidate) or candidate.is_dead:
-			continue
-		var distance := from_position.distance_squared_to(candidate.global_position)
-		if distance < best_distance:
-			best_distance = distance
-			best_player = candidate
-	return best_player if best_player != null else player
-
 
 func get_linglan_skill2_target_global_position(target_cell: Vector2i) -> Vector2:
 	if ground_tile_map_layer != null:
@@ -2756,14 +1247,12 @@ func get_linglan_skill2_target_global_position(target_cell: Vector2i) -> Vector2
 		return _get_boss_arena_center(active_boss_config)
 	return Vector2.ZERO
 
-
 func get_linglan_skill3_target_global_position(target_cell: Vector2i) -> Vector2:
 	if ground_tile_map_layer != null:
 		return ground_tile_map_layer.to_global(ground_tile_map_layer.map_to_local(target_cell))
 	if active_boss_config != null:
 		return _get_boss_arena_center(active_boss_config)
 	return Vector2.ZERO
-
 
 func get_linglan_skill4_target_global_position(
 	target_cell_a: Vector2i,
@@ -2777,7 +1266,6 @@ func get_linglan_skill4_target_global_position(
 	if active_boss_config != null:
 		return _get_boss_arena_center(active_boss_config)
 	return Vector2.ZERO
-
 
 func get_linglan_skill4_laser_bounds(
 	left_cell_x: int,
@@ -2811,7 +1299,6 @@ func get_linglan_skill4_laser_bounds(
 		"final_max": Vector2(maxf(final_a.x, final_b.x), maxf(final_a.y, final_b.y)),
 	}
 
-
 func get_linglan_skill4_orb_spawn_global_position(x_cell: int, y_cell: int) -> Vector2:
 	if ground_tile_map_layer != null:
 		return _get_tile_cell_global_position(Vector2i(x_cell, y_cell))
@@ -2819,14 +1306,11 @@ func get_linglan_skill4_orb_spawn_global_position(x_cell: int, y_cell: int) -> V
 		return _get_boss_arena_center(active_boss_config)
 	return Vector2.ZERO
 
-
 func _get_tile_cell_global_position(cell: Vector2i) -> Vector2:
 	return ground_tile_map_layer.to_global(ground_tile_map_layer.map_to_local(cell))
 
-
 func get_linglan_skill2_target_player(from_position: Vector2) -> Player:
 	return _pick_enemy_target(from_position)
-
 
 func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
 	if marker_name == &"":
@@ -2838,69 +1322,6 @@ func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
 		return null
 	var node := enemy_spawn_points_root.get_node_or_null(NodePath(String(marker_name)))
 	return node as Marker2D
-
-
-func _is_flow_system_ready() -> bool:
-	if flow_graph == null:
-		push_error("StandardGame 当前 Campaign 没有配置 FlowGraphConfig。")
-		return false
-	if not _is_spawn_system_ready():
-		return false
-	var errors := flow_graph.validate_graph()
-	for error in errors:
-		push_warning(error)
-	if not errors.is_empty():
-		return false
-	return _get_start_flow_step() != null
-
-
-func _get_start_flow_step() -> FlowStepConfig:
-	return flow_graph.start_step if flow_graph != null else null
-
-
-func _get_flow_step_by_id(step_id: StringName) -> FlowStepConfig:
-	if step_id == &"":
-		return null
-	return flow_graph.get_step_by_id(step_id) if flow_graph != null else null
-
-
-func _get_flow_step_id(flow_step: FlowStepConfig) -> StringName:
-	return flow_step.step_id if flow_step != null else &""
-
-
-func _get_default_next_flow_step(flow_step: FlowStepConfig) -> FlowStepConfig:
-	if flow_step == null:
-		return null
-	if flow_graph == null or flow_graph.get_step_index(flow_step) < 0:
-		return null
-	return flow_graph.get_default_next_step(flow_step)
-
-
-func _get_wave_number_for_step(wave_config: WaveConfig) -> int:
-	if wave_config == null:
-		return current_wave_index + 1
-	var wave_index := waves.find(wave_config)
-	if wave_index >= 0:
-		return wave_index + 1
-	if flow_graph != null:
-		var wave_number := 0
-		for step in flow_graph.steps:
-			if step is WaveConfig:
-				wave_number += 1
-			if step == wave_config:
-				return maxi(wave_number, 1)
-	return current_wave_index + 1
-
-
-func _emit_multiplayer_flow_state(state: WaveState) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	multiplayer_flow_state_changed.emit(
-		_get_flow_step_id(current_flow_step),
-		int(state),
-		countdown_seconds
-	)
-
 
 func _play_remote_boss_intro(boss_config: BossConfig) -> void:
 	var intro_scene := _load_threaded_or_direct(_get_boss_intro_vfx_scene_path(boss_config)) as PackedScene
@@ -2914,53 +1335,10 @@ func _play_remote_boss_intro(boss_config: BossConfig) -> void:
 		add_child(linglan_boss_intro_vfx)
 	linglan_boss_intro_vfx.play_intro(_get_boss_arena_center(boss_config))
 
-
-func _is_spawn_system_ready() -> bool:
-	return (
-		player != null
-		and grid_pathfinder != null
-		and grid_pathfinder.get("is_built")
-		and not enemy_spawn_points.is_empty()
-	)
-
-
-func _get_current_wave() -> WaveConfig:
-	return current_flow_step as WaveConfig
-
-
-func _pick_spawn_point() -> Marker2D:
-	if active_wave_spawn_points.is_empty():
-		return null
-	return active_wave_spawn_points[
-		random_generator.randi_range(0, active_wave_spawn_points.size() - 1)
-	]
-
-
-func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
-	if not try_reserve_enemy_spawn_effect(spawn_global_position):
-		return
-	var effect := session_object_pool.acquire(ENEMY_SPAWN_EFFECT_SCENE) as Node2D
-	if effect == null:
-		return
-	effect.global_position = spawn_global_position
-	if effect.has_method("restart_effect"):
-		effect.call("restart_effect")
-
-
-func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
-	_spawn_enemy_spawn_effect(spawn_global_position)
-
-
-func _play_countdown_tick() -> void:
-	countdown_audio.pitch_scale = 1.0
-	countdown_audio.play()
-
-
 func _update_wave_music(wave_config: WaveConfig) -> void:
 	if wave_config.music == null:
 		return
 	_play_music_stream(wave_config.music, DEFAULT_MUSIC_VOLUME_DB, 0.0, true)
-
 
 func _update_post_wave_music(flow_step: FlowStepConfig) -> void:
 	var wave_config := flow_step as WaveConfig
@@ -2968,17 +1346,14 @@ func _update_post_wave_music(flow_step: FlowStepConfig) -> void:
 		return
 	_play_music_stream(wave_config.post_wave_music, DEFAULT_MUSIC_VOLUME_DB, 0.0, true)
 
-
 func _update_boss_music(boss_config: BossConfig) -> void:
 	if boss_config == null or boss_config.music == null:
 		return
 	_play_music_stream(boss_config.music, boss_config.music_volume_db, boss_config.music_loop_offset, false)
 
-
 func pause_all_background_music() -> void:
 	_stop_music_fade_tween()
 	_pause_background_music_players(self)
-
 
 func _play_music_stream(
 	stream: AudioStream,
@@ -3011,13 +1386,11 @@ func _play_music_stream(
 					music_fade_tween = null
 		)
 
-
 func _stop_music_fade_tween() -> void:
 	if music_fade_tween == null:
 		return
 	music_fade_tween.kill()
 	music_fade_tween = null
-
 
 func _configure_music_loop(stream: AudioStream, loop_offset: float) -> void:
 	if stream == null:
@@ -3027,13 +1400,11 @@ func _configure_music_loop(stream: AudioStream, loop_offset: float) -> void:
 	if _audio_stream_has_property(stream, &"loop_offset"):
 		stream.set(&"loop_offset", maxf(loop_offset, 0.0))
 
-
 func _audio_stream_has_property(stream: AudioStream, property_name: StringName) -> bool:
 	for property in stream.get_property_list():
 		if property.get("name") == property_name:
 			return true
 	return false
-
 
 func _pause_background_music_players(root_node: Node) -> void:
 	if root_node == null:
@@ -3042,7 +1413,6 @@ func _pause_background_music_players(root_node: Node) -> void:
 		root_node.set(&"stream_paused", true)
 	for child in root_node.get_children():
 		_pause_background_music_players(child)
-
 
 func _is_background_music_player(node: Node) -> bool:
 	if not (
@@ -3056,3 +1426,80 @@ func _is_background_music_player(node: Node) -> bool:
 	var bus_name := String(node.get(&"bus")).to_lower()
 	var node_name := String(node.name).to_lower()
 	return bus_name == "music" or node_name.contains("music") or node_name.contains("bgm")
+
+func request_tango_charge_started(direction: Vector2) -> bool:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return false
+	if not _is_valid_singleplayer_tango_player(player):
+		return false
+	var safe_direction := _sanitize_tango_charge_direction(player, direction)
+	if not bool(player.call("try_authoritative_tango_charge_started", safe_direction)):
+		return false
+	_singleplayer_tango_charge_started_at = Time.get_ticks_usec() / 1000000.0
+	return true
+
+func request_tango_charge_released(direction: Vector2) -> bool:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER or _singleplayer_tango_charge_started_at < 0.0:
+		return false
+	var started_at := _singleplayer_tango_charge_started_at
+	_singleplayer_tango_charge_started_at = -1.0
+	if not _is_valid_singleplayer_tango_player(player):
+		return false
+	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
+	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_MINIMUM_CHARGE_SECONDS:
+		player.call("cancel_authoritative_tango_charge")
+		return true
+	var charge_ratio := clampf(
+		(elapsed - TANGO_MINIMUM_CHARGE_SECONDS)
+		/ (TANGO_MAXIMUM_CHARGE_SECONDS - TANGO_MINIMUM_CHARGE_SECONDS),
+		0.0,
+		1.0
+	)
+	var safe_direction := _sanitize_tango_charge_direction(player, direction)
+	var result_variant: Variant = player.call(
+		"try_authoritative_tango_charge_released",
+		safe_direction,
+		charge_ratio
+	)
+	if not (result_variant is Dictionary):
+		player.call("cancel_authoritative_tango_charge")
+		return false
+	var result := result_variant as Dictionary
+	var succeeded := bool(result.get("accepted", false)) and bool(result.get("fired", false))
+	if not succeeded:
+		player.call("cancel_authoritative_tango_charge")
+	return succeeded
+
+func request_tango_charge_cancelled() -> bool:
+	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+		return false
+	var had_active_charge := _singleplayer_tango_charge_started_at >= 0.0
+	_singleplayer_tango_charge_started_at = -1.0
+	if not _is_valid_singleplayer_tango_player(player):
+		return false
+	player.call("cancel_authoritative_tango_charge")
+	return had_active_charge
+
+func _is_valid_singleplayer_tango_player(player_node: Player) -> bool:
+	return (
+		player_node != null
+		and is_instance_valid(player_node)
+		and player_node.has_method("is_tango")
+		and bool(player_node.call("is_tango"))
+		and player_node.has_method("try_authoritative_tango_charge_started")
+		and player_node.has_method("try_authoritative_tango_charge_released")
+		and player_node.has_method("cancel_authoritative_tango_charge")
+	)
+
+func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -> Vector2:
+	if is_finite(direction.x) and is_finite(direction.y) and direction.length_squared() > 0.0001:
+		return direction.normalized()
+	match player_node.get_multiplayer_facing_id():
+		1:
+			return Vector2.LEFT
+		2:
+			return Vector2.UP
+		3:
+			return Vector2.DOWN
+		_:
+			return Vector2.RIGHT

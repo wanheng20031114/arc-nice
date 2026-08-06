@@ -10,6 +10,9 @@ const TANGO_LASER_BULLET_SCENE := preload(
 const TANGO_LASER_MATERIAL := preload(
 	"res://resources/shader/tango_laser_bullet_single_pass.tres"
 )
+const PLAYER_TEST_RUNTIME := preload(
+	"res://dev_tools/player_test_combat_runtime.gd"
+)
 const TANGO_MOVE_BOB_OFFSETS := [0, 1, 1, 0, 0, 1, 1, 0]
 const TANGO_DOWN_BODY_X_OFFSETS := [0, -1, -1, -1, 0, 1, 1, 1]
 const TANGO_DOWN_EXPECTED_CONTACTS := [
@@ -63,7 +66,7 @@ class TangoBulletEnemy:
 
 
 var failures: Array[String] = []
-var test_root: Node2D = null
+var test_root: PlayerTestCombatRuntime = null
 var player: PlayerTango = null
 var pixel_only := false
 
@@ -73,7 +76,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = PLAYER_TEST_RUNTIME.new() as PlayerTestCombatRuntime
 	test_root.name = "PlayerTangoMechanicsSmokeRoot"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -84,6 +87,7 @@ func _run() -> void:
 		await _finish()
 		return
 	test_root.add_child(player)
+	test_root.bind_player_runtime_context(player)
 	await process_frame
 	await physics_frame
 	_stop_audio_players(player)
@@ -855,6 +859,10 @@ func _run_schedule_probe(duration: float, steps: Array[float]) -> TangoScheduleP
 
 func _test_laser_bullet_scene_and_damage() -> void:
 	var bullet := TANGO_LASER_BULLET_SCENE.instantiate() as TangoLaserBullet
+	bullet.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	_expect(bullet != null, "Tango's independent laser-bullet scene must instantiate.")
 	if bullet == null:
 		return
@@ -911,6 +919,10 @@ func _test_laser_bullet_scene_and_damage() -> void:
 	var empty_path_bullet := (
 		TANGO_LASER_BULLET_SCENE.instantiate() as TangoLaserBullet
 	)
+	empty_path_bullet.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	empty_path_bullet.set_physics_process(false)
 	empty_path_bullet.setup(Vector2.RIGHT, 8, false)
 	empty_path_bullet.global_position = Vector2(0, -64)
@@ -958,6 +970,10 @@ func _test_laser_bullet_scene_and_damage() -> void:
 	var blocked_enemy := _spawn_bullet_enemy(Vector2(32, 64))
 	var wall := _spawn_sweep_wall(Vector2(16, 64))
 	var blocked_bullet := TANGO_LASER_BULLET_SCENE.instantiate() as TangoLaserBullet
+	blocked_bullet.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	blocked_bullet.set_physics_process(false)
 	blocked_bullet.setup(Vector2.RIGHT, 15, false)
 	blocked_bullet.global_position = Vector2(0, 64)
@@ -975,6 +991,10 @@ func _test_laser_bullet_scene_and_damage() -> void:
 	var muzzle_blocked_enemy := _spawn_bullet_enemy(Vector2(32, 128))
 	var muzzle_wall := _spawn_sweep_wall(Vector2(16, 128))
 	var muzzle_bullet := TANGO_LASER_BULLET_SCENE.instantiate() as TangoLaserBullet
+	muzzle_bullet.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	muzzle_bullet.set_physics_process(false)
 	muzzle_bullet.setup(Vector2.RIGHT, 15, false)
 	test_root.add_child(muzzle_bullet)

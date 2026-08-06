@@ -18,10 +18,13 @@ const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_firebal
 const EXPECTED_ROCKET_HOMING_TURN_RATE := 1.2
 const EXPECTED_ROCKET_EXPLOSION_RADIUS := 78.0
 const AUTHORED_EXPLOSION_RADIUS := 110.0
+const TEST_RUNTIME_SCRIPT := preload(
+	"res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
+)
 
 
 class Skill2Host:
-	extends Node2D
+	extends "res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 
 	var target_position := Vector2(180.0, -72.0)
 	var target_player: Player = null
@@ -53,7 +56,8 @@ class Skill2Host:
 		speed: float,
 		lifetime: float,
 		pierces_enemies: bool = false,
-		target_peer_id: int = 0
+		target_peer_id: int = 0,
+		_target_enemy_net_id: int = 0
 	) -> void:
 		projectile_records.append({
 			"projectile": projectile,
@@ -70,7 +74,7 @@ class Skill2Host:
 
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: CombatRuntimeBase
 
 
 func _init() -> void:
@@ -78,10 +82,9 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = TEST_RUNTIME_SCRIPT.new()
 	test_root.name = "LinglanSkill2SmokeTest"
 	root.add_child(test_root)
-	current_scene = test_root
 
 	_test_skill2_config()
 	_test_collectible_sakura_resource_dependencies()
@@ -177,6 +180,7 @@ func _test_skill2_scene_contract() -> void:
 	if rocket == null:
 		return
 	test_root.add_child(rocket)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(rocket)
 	await process_frame
 
 	_expect(rocket.collision_layer == 128, "Skill2 rocket collision layer must be EnemyProjectile(128).")
@@ -273,7 +277,6 @@ func _test_game_target_and_spawn_entry() -> void:
 	_expect(game.active_wave_enemy_ids.is_empty(), "Skill2 boss adds must not enter normal wave counters.")
 
 	game.queue_free()
-	current_scene = test_root
 	await process_frame
 	await physics_frame
 
@@ -282,7 +285,6 @@ func _test_boss_skill2_schedule() -> void:
 	var host := Skill2Host.new()
 	host.name = "Skill2Host"
 	root.add_child(host)
-	current_scene = host
 
 	var player := _spawn_player(host, Vector2(260.0, -80.0), 7, 200)
 	host.target_player = player
@@ -291,14 +293,14 @@ func _test_boss_skill2_schedule() -> void:
 	_expect(boss != null, "Linglan scene must instantiate for Skill2 schedule.")
 	if boss == null:
 		host.queue_free()
-		current_scene = test_root
 		return
 	host.add_child(boss)
+	host.bind_linglan_node(boss)
 	await process_frame
 	await physics_frame
 	boss.global_position = Vector2.ZERO
 	boss.config = LINGLAN_CONFIG
-	boss.activate_boss(player, null)
+	boss.activate_boss(player, null, host, host.linglan_boss_runtime_port)
 
 	boss.skill1_finished = true
 	boss.boss_skill_phase = LinglanBoss.BossSkillPhase.SKILL1
@@ -357,21 +359,25 @@ func _test_boss_skill2_schedule() -> void:
 		_expect(int(record.get("target_peer_id", 0)) == 7, "Skill2 rocket must register target peer id.")
 
 	host.queue_free()
-	current_scene = test_root
 	await process_frame
 	await physics_frame
 
 
 func _test_boss_death_clears_warning_arrow() -> void:
-	current_scene = test_root
 	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
 	_expect(boss != null, "Linglan scene must instantiate for Skill2 death cleanup.")
 	if boss == null:
 		return
 	test_root.add_child(boss)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(boss)
 	await process_frame
 	boss.config = LINGLAN_CONFIG
-	boss.activate_boss(null, null)
+	boss.activate_boss(
+		null,
+		null,
+		test_root,
+		(test_root as LinglanCombatTestRuntime).linglan_boss_runtime_port
+	)
 	boss.call("_begin_skill2_attack")
 	boss.call("_physics_process", 0.01)
 	_expect(_count_skill2_warning_arrows(test_root) == 1, "Skill2 death cleanup test must spawn one warning arrow first.")
@@ -391,6 +397,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	_expect(mp_game != null, "MP game scene must instantiate for Skill2 projectile registry.")
 	if mp_game == null:
 		return
+	mp_game.set("game", test_root)
 	var collectible_projectile := mp_game.call(
 		"_instantiate_projectile",
 		&"collectible_sakura_rocket",
@@ -503,11 +510,11 @@ func _test_multiplayer_projectile_instantiation() -> void:
 
 
 func _test_rocket_homing_and_explosion_damage() -> void:
-	current_scene = test_root
 	var homing_target := _spawn_player(test_root, Vector2(0.0, 120.0), 1, 200)
 	var rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	var fireball := MAGE_FIREBALL_SCENE.instantiate() as CapooMageFireball
 	test_root.add_child(rocket)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(rocket)
 	test_root.add_child(fireball)
 	await process_frame
 	rocket.global_position = Vector2.ZERO
@@ -539,7 +546,7 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 		return
 	test_root.add_child(enemy)
 	enemy.global_position = Vector2(48.0, 0.0)
-	enemy.setup(test_enemy_config, player, null)
+	enemy.setup(test_enemy_config, player, null, test_root)
 
 	var linglan_config := LINGLAN_CONFIG.duplicate(true) as EnemyConfig
 	linglan_config.max_health = 500
@@ -552,9 +559,15 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 		enemy.queue_free()
 		return
 	test_root.add_child(linglan)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(linglan)
 	linglan.global_position = Vector2(72.0, 0.0)
 	linglan.config = linglan_config
-	linglan.activate_boss(player, null)
+	linglan.activate_boss(
+		player,
+		null,
+		test_root,
+		(test_root as LinglanCombatTestRuntime).linglan_boss_runtime_port
+	)
 	linglan.set_physics_process(false)
 	await _wait_process_and_physics_frames(3)
 	for shape_node in linglan.body_collision_shapes:
@@ -563,6 +576,7 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 
 	var explosion_rocket := ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	test_root.add_child(explosion_rocket)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(explosion_rocket)
 	explosion_rocket.global_position = Vector2.ZERO
 	explosion_rocket.setup(Vector2.RIGHT, 80, 210.0, 5.0, EXPECTED_ROCKET_EXPLOSION_RADIUS, player, SKILL2_CONFIG.rocket_homing_turn_rate)
 	_expect(explosion_rocket.target_node == player, "Skill2 rocket default homing target must remain the target player.")
@@ -595,6 +609,7 @@ func _test_rocket_homing_and_explosion_damage() -> void:
 		COLLECTIBLE_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	)
 	test_root.add_child(sakura_mode_rocket)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(sakura_mode_rocket)
 	sakura_mode_rocket.global_position = Vector2.ZERO
 	sakura_mode_rocket.setup(
 		Vector2.RIGHT,

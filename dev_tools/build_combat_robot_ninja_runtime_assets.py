@@ -35,7 +35,7 @@ RESOURCE_TEXTURE_PATH = (
     "res://resources/texture/enemy/mechanical_life/combat_robot_ninja.png"
 )
 RESOURCE_TEXTURE_UID = "uid://cir5jg41q8dif"
-SPRITE_FRAMES_UID = "uid://d4k7v2qpbm9s1"
+SPRITE_FRAMES_UID = "uid://d4k7v2qpbnas1"
 
 FRAME_SIZE = 40
 FRAME_COUNT = 8

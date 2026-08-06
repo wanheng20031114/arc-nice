@@ -67,31 +67,38 @@ func on_pool_released(_generation: int) -> void:
 ## the staff origin followed by one to five hit positions. Returns false when
 ## the visual is invalid, outside the view budget, or the strict pool is full.
 static func try_spawn(
-	source: Node,
+	runtime: Node,
 	world_path: PackedVector2Array,
 	elapsed_seconds: float = 0.0
 ) -> bool:
-	if source == null or not _is_valid_world_path(world_path):
-		return false
-	if not _is_path_near_viewport(source, world_path):
-		return false
-
-	var pool_host := _find_pool_host(source)
-	if pool_host == null:
-		return false
-	var effect_scene := _get_effect_scene()
 	if (
-		effect_scene == null
-		or not bool(pool_host.call("has_session_object_pool_scene", effect_scene))
+		runtime == null
+		or not is_instance_valid(runtime)
+		or not _is_valid_world_path(world_path)
 	):
 		return false
-	var effect := pool_host.call(
-		"acquire_session_object",
-		effect_scene,
-		true
+	if not _is_path_near_viewport(runtime, world_path):
+		return false
+
+	var effect_scene := _get_effect_scene()
+	var session_pool := runtime.get_node_or_null(
+		"SessionObjectPool"
+	) as SessionObjectPool
+	if (
+		effect_scene == null
+		or session_pool == null
+		or not session_pool.is_registered(effect_scene)
+	):
+		return false
+	var effect := session_pool.try_acquire(
+		effect_scene
 	) as LightningSorcererLightningVfx
 	if effect == null:
 		return false
+	if effect.get_parent() == null:
+		runtime.add_child(effect)
+	elif effect.get_parent() != runtime:
+		effect.reparent(runtime)
 	if effect.play(world_path, elapsed_seconds):
 		return true
 	SessionObjectPool.release_to_owner(effect)
@@ -337,28 +344,6 @@ static func _get_effect_scene() -> PackedScene:
 	if _effect_scene == null:
 		_effect_scene = load(EFFECT_SCENE_PATH) as PackedScene
 	return _effect_scene
-
-
-static func _find_pool_host(source: Node) -> Node:
-	var tree := source.get_tree()
-	if tree != null:
-		var current_scene := tree.current_scene
-		if _is_pool_host(current_scene):
-			return current_scene
-	var branch := source
-	while branch != null:
-		if _is_pool_host(branch):
-			return branch
-		branch = branch.get_parent()
-	return null
-
-
-static func _is_pool_host(candidate: Node) -> bool:
-	return (
-		candidate != null
-		and candidate.has_method("has_session_object_pool_scene")
-		and candidate.has_method("acquire_session_object")
-	)
 
 
 static func _is_valid_world_path(world_path: PackedVector2Array) -> bool:

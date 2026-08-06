@@ -47,6 +47,8 @@ var owner_peer_id: int = 0
 var source_type: StringName = SOURCE_TYPE
 var pool_active := true
 var authoritative_damage := true
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 
 var deployment_started := false
 var flight_started := false
@@ -80,6 +82,10 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	# A pooled projectile must never retain the previous session/runtime lease.
+	# Its creator binds the new context immediately after acquisition.
+	combat_runtime = null
+	gameplay_gateway = null
 	pool_active = true
 	direction = Vector2.RIGHT
 	damage = DEFAULT_DAMAGE
@@ -124,11 +130,21 @@ func on_pool_released(_generation: int) -> void:
 	_explosion_completion_pending = false
 	_explosion_visual_done = true
 	_explosion_audio_done = true
+	combat_runtime = null
+	gameplay_gateway = null
 	_unregister_from_motion_system()
 	_stop_audio()
 	_reset_visuals()
 	set_process(false)
 	set_physics_process(false)
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func setup(
@@ -399,13 +415,13 @@ func _try_report_multiplayer_player_hit(
 	player: Player,
 	source_direction: Vector2
 ) -> bool:
-	if projectile_id <= 0:
+	if (
+		projectile_id <= 0
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
-		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		projectile_id,
 		player.peer_id,
 		damage,
@@ -413,16 +429,20 @@ func _try_report_multiplayer_player_hit(
 		EnemyConfig.DamageType.PHYSICAL,
 		source_direction,
 		true
-	))
+	)
 
 
 func _is_client_view_runtime() -> bool:
-	var current_scene := get_tree().current_scene
-	return (
-		current_scene != null
-		and current_scene.has_method("is_client_view_runtime")
-		and bool(current_scene.call("is_client_view_runtime"))
-	)
+	if combat_runtime != null and is_instance_valid(combat_runtime):
+		return (
+			combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		)
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		return gameplay_gateway.is_client_view()
+	# A replicated projectile without an injected authority context must fail
+	# closed. Host projectiles receive their runtime before network registration.
+	return projectile_id > 0
 
 
 func _update_marker_frame(elapsed: float) -> void:

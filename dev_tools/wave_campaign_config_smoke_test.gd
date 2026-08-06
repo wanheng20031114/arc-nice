@@ -250,13 +250,13 @@ func _test_campaign_validation() -> void:
 
 func _test_runtime_campaign_selection() -> void:
 	var cases := [
-		[STANDARD_GAME_SCENE, GameRuntimeBase.RuntimeMode.SINGLEPLAYER, &"standard_singleplayer"],
-		[STANDARD_GAME_SCENE, GameRuntimeBase.RuntimeMode.HOST_AUTHORITY, &"standard_multiplayer"],
-		[TOWER_DEFENSE_GAME_SCENE, GameRuntimeBase.RuntimeMode.SINGLEPLAYER, &"tower_defense_singleplayer"],
-		[TOWER_DEFENSE_GAME_SCENE, GameRuntimeBase.RuntimeMode.HOST_AUTHORITY, &"tower_defense_multiplayer"],
+		[STANDARD_GAME_SCENE, CombatRuntimeBase.RuntimeMode.SINGLEPLAYER, &"standard_singleplayer"],
+		[STANDARD_GAME_SCENE, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY, &"standard_multiplayer"],
+		[TOWER_DEFENSE_GAME_SCENE, CombatRuntimeBase.RuntimeMode.SINGLEPLAYER, &"tower_defense_singleplayer"],
+		[TOWER_DEFENSE_GAME_SCENE, CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY, &"tower_defense_multiplayer"],
 	]
 	for test_case in cases:
-		var game := (test_case[0] as PackedScene).instantiate() as GameRuntimeBase
+		var game := (test_case[0] as PackedScene).instantiate() as CombatRuntimeBase
 		_expect(game != null, "Runtime campaign probe must instantiate.")
 		if game == null:
 			continue

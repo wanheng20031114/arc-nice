@@ -351,9 +351,14 @@ func _update_tracking_movement(
 func _fire_locked_bullet() -> bool:
 	if gunner_config_cache == null or gunner_config_cache.projectile_scene == null:
 		return false
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if (
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
 		return false
+	var spawn_parent: Node = combat_runtime
 
 	var spread_radians := deg_to_rad(
 		maxf(gunner_config_cache.spread_angle_degrees, 0.0)
@@ -362,16 +367,11 @@ func _fire_locked_bullet() -> bool:
 		random_generator.randf_range(-spread_radians, spread_radians)
 	).normalized()
 	var projectile: CapooAK47Bullet = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call(
-			"has_session_object_pool_scene",
-			gunner_config_cache.projectile_scene
-		))
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		gunner_config_cache.projectile_scene
 	)
 	if uses_registered_pool:
-		projectile = spawn_parent.call(
-			"acquire_session_object",
+		projectile = combat_runtime.acquire_session_object(
 			gunner_config_cache.projectile_scene,
 			false
 		) as CapooAK47Bullet
@@ -389,6 +389,15 @@ func _fire_locked_bullet() -> bool:
 	)
 	var projectile_spawn_position := _get_safe_muzzle_spawn_position()
 	projectile.top_level = true
+	var gunner_bullet := projectile as CombatRobotGunnerBullet
+	if gunner_bullet == null:
+		push_warning("持枪战斗机器人弹丸必须使用 CombatRobotGunnerBullet。")
+		if uses_registered_pool:
+			combat_runtime.release_session_object(projectile)
+		else:
+			projectile.queue_free()
+		return false
+	gunner_bullet.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.setup(
 		shot_direction,
 		outgoing_damage,
@@ -399,20 +408,20 @@ func _fire_locked_bullet() -> bool:
 	)
 	if projectile.get_parent() == null:
 		spawn_parent.add_child(projectile)
+	elif projectile.get_parent() != spawn_parent:
+		projectile.reparent(spawn_parent)
 	projectile.global_position = projectile_spawn_position
 	projectile.reset_physics_interpolation()
-	if spawn_parent.has_method("register_local_projectile"):
-		spawn_parent.call(
-			"register_local_projectile",
-			projectile,
-			PROJECTILE_TYPE,
-			0,
-			projectile.global_position,
-			shot_direction,
-			outgoing_damage,
-			gunner_config_cache.projectile_speed,
-			gunner_config_cache.projectile_lifetime
-		)
+	gameplay_gateway.register_local_projectile(
+		projectile,
+		PROJECTILE_TYPE,
+		0,
+		projectile.global_position,
+		shot_direction,
+		outgoing_damage,
+		gunner_config_cache.projectile_speed,
+		gunner_config_cache.projectile_lifetime
+	)
 
 	_show_authoritative_shot_phase(burst_shots_fired)
 	if burst_shots_fired % 2 == 0:
@@ -689,13 +698,12 @@ func _sync_muzzle_facing() -> void:
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
-			int(get_meta("net_id", 0)),
-			action_name,
-			direction,
-			global_position,
-			action_sequence
-		)
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
+		return
+	gameplay_gateway.broadcast_enemy_action(
+		int(get_meta("net_id", 0)),
+		action_name,
+		direction,
+		global_position,
+		action_sequence
+	)

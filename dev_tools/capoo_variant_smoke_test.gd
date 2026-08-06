@@ -18,36 +18,13 @@ const WAVE_09 := preload("res://resources/config/waves/wave_09.tres")
 const WAVE_10 := preload("res://resources/config/waves/wave_10.tres")
 const WAVE_11 := preload("res://resources/config/waves/wave_11.tres")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
-
-
-class DamageRequestTestRoot:
-	extends Node2D
-
-	var damage_requests: Array[Dictionary] = []
-
-	func request_multiplayer_player_damage(
-		source_id: int,
-		target_peer_id: int,
-		damage: int,
-		source_type: StringName,
-		damage_type: EnemyConfig.DamageType,
-		source_direction: Vector2,
-		is_ranged: bool
-	) -> bool:
-		damage_requests.append({
-			"source_id": source_id,
-			"target_peer_id": target_peer_id,
-			"damage": damage,
-			"source_type": source_type,
-			"damage_type": damage_type,
-			"source_direction": source_direction,
-			"is_ranged": is_ranged,
-		})
-		return true
+const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: EnemyGameplayGatewayTestRuntime
 var spawned_fireballs: Array[CapooMageFireball] = []
 var spawned_smg_bullets: Array[CapooAK47Bullet] = []
 var spawned_smg_bullet_directions := PackedVector2Array()
@@ -59,11 +36,17 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = (
+		COMBAT_RUNTIME_FIXTURE_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
 	test_root.name = "CapooVariantSmokeTest"
 	root.add_child(test_root)
-	current_scene = test_root
 	test_root.child_entered_tree.connect(_on_child_entered_tree)
+	_expect(
+		test_root.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER,
+		"Capoo local combat fixture must declare explicit SINGLEPLAYER authority."
+	)
 	reticle_coordinator = RETICLE_COORDINATOR_SCRIPT.new() as CapooSniperLockVisualCoordinator
 	reticle_coordinator.name = "SniperLockVisualCoordinator"
 	test_root.add_child(reticle_coordinator)
@@ -409,6 +392,10 @@ func _test_fireball_impact_damage_and_release() -> void:
 	var fireball := FIREBALL_SCENE.instantiate() as CapooMageFireball
 	test_root.add_child(fireball)
 	fireball.global_position = Vector2.ZERO
+	fireball.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	fireball.setup(Vector2.RIGHT, MAGE_CONFIG.attack_damage, 0.0, 3.0, MAGE_CONFIG.fireball_radius)
 	fireball.call("_explode")
 	await process_frame
@@ -439,13 +426,16 @@ func _test_fireball_impact_damage_and_release() -> void:
 		release_guard_frames += 1
 	_expect(impact == null or not is_instance_valid(impact), "Fireball impact visual/audio did not release.")
 
-	var damage_request_scene := DamageRequestTestRoot.new()
-	root.add_child(damage_request_scene)
-	var previous_current_scene := current_scene
-	current_scene = damage_request_scene
+	var gameplay_session := EnemyGameplayGatewayTestSession.new()
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	test_root.attach_gameplay_session(gameplay_session)
 	var network_fireball := FIREBALL_SCENE.instantiate() as CapooMageFireball
-	damage_request_scene.add_child(network_fireball)
+	test_root.add_child(network_fireball)
 	network_fireball.global_position = Vector2.ZERO
+	network_fireball.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	network_fireball.setup(
 		Vector2.RIGHT,
 		MAGE_CONFIG.attack_damage,
@@ -459,14 +449,47 @@ func _test_fireball_impact_damage_and_release() -> void:
 	)
 	_expect(network_request_handled, "Multiplayer mage fireball damage request was not handled.")
 	_expect(
-		damage_request_scene.damage_requests.size() == 1
-		and damage_request_scene.damage_requests[0].get("damage_type")
+		gameplay_session.player_damage_requests.size() == 1
+		and gameplay_session.player_damage_requests[0].get("damage_type")
 			== EnemyConfig.DamageType.MAGIC,
-		"Multiplayer mage fireball request must explicitly report magic damage."
+		"HOST mage fireball must route explicit magic damage through the typed gameplay gateway."
 	)
 	network_fireball.queue_free()
-	current_scene = previous_current_scene
-	damage_request_scene.queue_free()
+
+	var health_before_client_view := near_player.current_health
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var client_view_fireball := FIREBALL_SCENE.instantiate() as CapooMageFireball
+	test_root.add_child(client_view_fireball)
+	client_view_fireball.global_position = Vector2.ZERO
+	client_view_fireball.bind_gameplay_context(test_root, null)
+	client_view_fireball.setup(
+		Vector2.RIGHT,
+		MAGE_CONFIG.attack_damage,
+		0.0,
+		3.0,
+		MAGE_CONFIG.fireball_radius
+	)
+	client_view_fireball.setup_multiplayer(903, 1, &"capoo_mage_fireball")
+	var client_view_was_handled := bool(
+		client_view_fireball.call(
+			"_try_report_multiplayer_player_hit",
+			near_player
+		)
+	)
+	client_view_fireball.call(
+		"_apply_explosion_damage_to_body",
+		near_player,
+		{}
+	)
+	_expect(
+		not client_view_was_handled
+		and near_player.current_health == health_before_client_view,
+		"CLIENT_VIEW mage fireball without an injected gateway must fail closed without local damage."
+	)
+	client_view_fireball.queue_free()
+	test_root.detach_gameplay_session(gameplay_session)
+	gameplay_session.free()
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	near_player.queue_free()
 	far_player.queue_free()
 	await physics_frame
@@ -797,6 +820,8 @@ func _test_proxy_action_visuals() -> void:
 
 func _test_multiplayer_projectile_registry() -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	mp_game.set("game", test_root)
 	var fireball := mp_game.call(
 		"_instantiate_projectile",
 		&"capoo_mage_fireball",
@@ -827,6 +852,7 @@ func _test_multiplayer_projectile_registry() -> void:
 		_expect(is_equal_approx(smg_bullet.max_lifetime, SMG_CONFIG.projectile_lifetime), "Registry SMG bullet lifetime mismatch.")
 		smg_bullet.free()
 	mp_game.free()
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 
 
 func _test_wave_entries() -> void:
@@ -844,6 +870,7 @@ func _test_wave_entries() -> void:
 func _spawn_player(position: Vector2, health: int) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(player)
+	test_root.bind_player_runtime_context(player)
 	player.global_position = position
 	player.collision_layer = 2
 	player.invincibility_duration = 0.0
@@ -859,7 +886,7 @@ func _spawn_mage(position: Vector2, player: Player) -> CapooMage:
 	var enemy := MAGE_SCENE.instantiate() as CapooMage
 	test_root.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(MAGE_CONFIG, player)
+	enemy.setup(MAGE_CONFIG, player, null, test_root)
 	return enemy
 
 
@@ -867,7 +894,7 @@ func _spawn_sniper(position: Vector2, player: Player) -> CapooSniper:
 	var enemy := SNIPER_SCENE.instantiate() as CapooSniper
 	test_root.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(SNIPER_CONFIG, player)
+	enemy.setup(SNIPER_CONFIG, player, null, test_root)
 	return enemy
 
 
@@ -875,7 +902,7 @@ func _spawn_smg(position: Vector2, player: Player) -> CapooSMG:
 	var enemy := SMG_SCENE.instantiate() as CapooSMG
 	test_root.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(SMG_CONFIG, player)
+	enemy.setup(SMG_CONFIG, player, null, test_root)
 	return enemy
 
 

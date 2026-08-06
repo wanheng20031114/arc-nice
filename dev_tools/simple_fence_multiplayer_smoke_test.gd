@@ -51,11 +51,40 @@ class CapturingMpGame:
 
 
 class PlacementCaptureRuntime:
-	extends TowerDefenseGame
+	extends CombatRuntimeBase
 
 	var inventory_placement_requests: Array[Dictionary] = []
 
 	func _ready() -> void:
+		pass
+
+	func configure_multiplayer(
+		_mode: int,
+		_local_peer_id: int,
+		_player_names: Dictionary,
+		_player_character_ids: Dictionary = {}
+	) -> void:
+		pass
+
+	func get_player_for_peer(peer_id: int) -> Player:
+		return peer_players.get(peer_id) as Player
+
+	func get_enemy_for_net_id(_net_id: int) -> Enemy:
+		return null
+
+	func get_pickup_for_net_id(_net_id: int) -> Pickup:
+		return null
+
+	func remove_multiplayer_player(peer_id: int) -> void:
+		peer_players.erase(peer_id)
+
+	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+		return []
+
+	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
+		return []
+
+	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
 		pass
 
 	func request_multiplayer_inventory_plant_placement(
@@ -76,6 +105,38 @@ class PlacementCaptureRuntime:
 			"revision": expected_inventory_revision,
 			"item_path": item_config_path,
 		})
+
+
+class PlacementCaptureTowerModeAdapter:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	func get_authoritative_team_plant_count() -> int:
+		return 0
+
+	func get_completed_global_research_ids() -> Array[StringName]:
+		return []
+
+	func request_authoritative_inventory_plant_placement(
+		requester_peer_id: int,
+		request_id: int,
+		plant_id: StringName,
+		anchor: Vector2i,
+		slot_index: int,
+		expected_inventory_revision: int,
+		item_config_path: String
+	) -> void:
+		var placement_runtime := runtime as PlacementCaptureRuntime
+		if placement_runtime == null:
+			return
+		placement_runtime.request_multiplayer_inventory_plant_placement(
+			requester_peer_id,
+			request_id,
+			plant_id,
+			anchor,
+			slot_index,
+			expected_inventory_revision,
+			item_config_path
+		)
 
 
 func _init() -> void:
@@ -110,11 +171,15 @@ func _test_host_authoritative_fence_crafting() -> Dictionary:
 	var net_manager := HostNetManagerStub.new()
 	var player := Player.new()
 	var runtime := PlacementCaptureRuntime.new()
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var mp_game := CapturingMpGame.new()
 	mp_game.net_manager = net_manager
 	mp_game.run_state = run_state
 	mp_game.game = runtime
+	mp_game._mode_adapter = tower_adapter
+	mp_game.tower_mode_adapter = tower_adapter
+	tower_adapter.attach_multiplayer_session(mp_game)
 
 	var first_revision := run_state.get_inventory_revision_for_peer(
 		REMOTE_PEER_ID
@@ -282,12 +347,15 @@ func _test_inventory_placement_replay_admission(
 	)
 	var revision := run_state.get_inventory_revision_for_peer(REMOTE_PEER_ID)
 	var runtime := PlacementCaptureRuntime.new()
-	runtime.plant_system = PlantSystem.new()
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
 	var net_manager := HostNetManagerStub.new()
 	var mp_game := CapturingMpGame.new()
 	mp_game.net_manager = net_manager
 	mp_game.run_state = run_state
 	mp_game.game = runtime
+	mp_game._mode_adapter = tower_adapter
+	mp_game.tower_mode_adapter = tower_adapter
+	tower_adapter.attach_multiplayer_session(mp_game)
 
 	mp_game.call(
 		"_handle_authoritative_inventory_plant_placement_request",
@@ -341,9 +409,19 @@ func _test_inventory_placement_replay_admission(
 
 	mp_game.free()
 	net_manager.free()
-	runtime.plant_system.free()
 	runtime.free()
 	run_state.free()
+
+
+func _bind_tower_multiplayer_mode_adapter(
+	runtime: PlacementCaptureRuntime
+) -> TowerDefenseMultiplayerModeAdapter:
+	var adapter := PlacementCaptureTowerModeAdapter.new()
+	adapter.name = "MultiplayerModeAdapter"
+	runtime.add_child(adapter)
+	adapter.bind_runtime(runtime)
+	runtime.multiplayer_mode_adapter = adapter
+	return adapter
 
 
 func _find_peer_item_slot(

@@ -13,6 +13,7 @@ func _init() -> void:
 
 func _run() -> void:
 	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
+	coordinator.elite_enemy_config_loads_requested = true
 	root.add_child(coordinator)
 	await process_frame
 	var manager := coordinator.manager
@@ -31,7 +32,9 @@ func _run() -> void:
 
 	coordinator.queue_free()
 	game.free()
-	await process_frame
+	for _cleanup_frame in range(8):
+		await process_frame
+		await physics_frame
 	if failures.is_empty():
 		print("TOWER_DEFENSE_FATE_EDGECASE_SMOKE_TEST_OK")
 		quit()
@@ -109,7 +112,7 @@ func _test_collectible_missing_player(
 		"An unclaimed eligible peer must remain able to choose its collectible."
 	)
 	var remaining_player := Player.new()
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	game.peer_players = {1: remaining_player}
 	coordinator._prune_missing_players()
 	_expect(
@@ -130,7 +133,7 @@ func _test_remote_revision_guard(
 	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	coordinator.elite_bias_day = 4
 	manager.state_revision = 10
 	game.apply_remote_xiaocong_fate_state({"revision": 9, "elite_bias_day": 99})
@@ -138,7 +141,7 @@ func _test_remote_revision_guard(
 		coordinator.elite_bias_day == 4,
 		"A stale fate snapshot must not overwrite coordinator runtime values."
 	)
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 
 
 func _test_stone_inventory_access_overlay() -> void:

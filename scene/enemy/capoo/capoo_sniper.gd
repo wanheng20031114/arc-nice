@@ -229,19 +229,16 @@ func _fire_locked_shot(direction: Vector2) -> void:
 		)
 	elif locked_player != null:
 		var hit_source_id := _get_multiplayer_damage_source_id(Time.get_ticks_msec() % 1000000)
-		var current_scene := get_tree().current_scene
-		var reported := false
-		if current_scene != null and current_scene.has_method("request_multiplayer_player_damage"):
-			reported = bool(current_scene.call(
-				"request_multiplayer_player_damage",
-				hit_source_id,
-				locked_player.peer_id,
-				outgoing_damage,
-				&"capoo_sniper_lock",
-				-direction,
-				true
-			))
-		if not reported:
+		var reported := _try_request_player_damage(
+			hit_source_id,
+			locked_player.peer_id,
+			outgoing_damage,
+			&"capoo_sniper_lock",
+			EnemyConfig.DamageType.PHYSICAL,
+			-direction,
+			true
+		)
+		if not reported and _has_explicit_singleplayer_authority():
 			locked_player.apply_damage(
 				outgoing_damage,
 				EnemyConfig.DamageType.PHYSICAL,

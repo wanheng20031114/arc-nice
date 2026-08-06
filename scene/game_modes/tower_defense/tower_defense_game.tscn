@@ -55,6 +55,10 @@
 [ext_resource type="PackedScene" path="res://scene/day_phase_announcement.tscn" id="56_day_announcement"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="57_combat_robot_drone_motion"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/tower_defense.tres" id="58_mode_definition"]
+[ext_resource type="PackedScene" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="59_gameplay_gateway"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn" id="60_mode_adapter"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/boss/tower_defense_linglan_boss_runtime_port.tscn" id="61_linglan_port"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/multiplayer/tower_plant_gameplay_bridge.gd" id="62_plant_gameplay_bridge"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -155,6 +159,15 @@ script = ExtResource("1_17rxn")
 mode_definition = ExtResource("58_mode_definition")
 day_cycle_config = ExtResource("53_day_cycle")
 linglan_boss_enabled = true
+
+[node name="MultiplayerGameplayGateway" parent="." instance=ExtResource("59_gameplay_gateway")]
+
+[node name="MultiplayerModeAdapter" parent="." instance=ExtResource("60_mode_adapter")]
+
+[node name="TowerPlantGameplayPort" type="Node" parent="."]
+script = ExtResource("62_plant_gameplay_bridge")
+
+[node name="LinglanBossRuntimePort" parent="." instance=ExtResource("61_linglan_port")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")

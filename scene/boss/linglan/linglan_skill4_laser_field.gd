@@ -69,6 +69,16 @@ var _geometry_update_count: int = 0
 var field_id: int = 0
 var source_type: StringName = &"linglan_skill4_laser"
 var field_finished: bool = false
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func _ready() -> void:
@@ -318,6 +328,8 @@ func _apply_player_damage(player: Player) -> void:
 	if _try_report_multiplayer_player_hit(player):
 		player_next_damage_times[player_id] = elapsed + maxf(contact_damage_interval, 0.0)
 		return
+	if not _has_explicit_singleplayer_authority():
+		return
 	player.apply_damage(damage, EnemyConfig.DamageType.MAGIC)
 	# Preserve the authored contact cadence even when dash/invincibility rejects
 	# this pulse; otherwise an overlapping player would be retried every frame.
@@ -328,17 +340,24 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 	var source_id := _allocate_damage_event_source_id()
 	if source_id <= 0:
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		source_id,
 		player.peer_id,
 		damage,
 		source_type,
 		EnemyConfig.DamageType.MAGIC
-	))
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 static func _allocate_damage_event_source_id() -> int:

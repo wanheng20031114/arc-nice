@@ -30,7 +30,7 @@ class PoolRuntime:
 		session_object_pool = SessionObjectPool.new()
 		session_object_pool.name = "SessionObjectPool"
 		add_child(session_object_pool)
-		GameRuntimeBase.register_common_visual_effect_pools(session_object_pool)
+		CombatRuntimeBase.register_common_visual_effect_pools(session_object_pool)
 
 	func has_session_object_pool_scene(scene: PackedScene) -> bool:
 		return session_object_pool != null and session_object_pool.is_registered(scene)

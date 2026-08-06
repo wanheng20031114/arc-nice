@@ -89,25 +89,14 @@ func _query_runtime_attack_target(
 	max_distance: float,
 	excluded_instance_ids: Dictionary = {}
 ) -> Node2D:
-	var runtime := _get_attack_target_runtime()
-	if runtime == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return null
-	var target := runtime.call(
-		ATTACK_TARGET_QUERY_METHOD,
+	var target := combat_runtime.find_nearest_enemy_attack_target_world(
 		from_position,
 		max_distance,
 		excluded_instance_ids
-	) as Node2D
+	)
 	return target if _is_ranged_combat_target_valid(target) else null
-
-
-func _get_attack_target_runtime() -> Node:
-	if pathfinder == null:
-		return null
-	var runtime := pathfinder.get_parent()
-	if runtime != null and runtime.has_method(ATTACK_TARGET_QUERY_METHOD):
-		return runtime
-	return null
 
 
 func _physics_process(delta: float) -> void:
@@ -332,13 +321,10 @@ func _finish_windup_and_strike(lightning_config: LightningConfig) -> void:
 		damage_source_id
 	)
 	if world_path.size() >= 2:
-		LightningVfx.try_spawn(self, world_path)
-		var current_scene := get_tree().current_scene
-		if (
-			current_scene != null
-			and current_scene.has_method("broadcast_enemy_lightning_chain")
-		):
-			current_scene.call("broadcast_enemy_lightning_chain", world_path)
+		if combat_runtime != null and is_instance_valid(combat_runtime):
+			LightningVfx.try_spawn(combat_runtime, world_path)
+		if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+			gameplay_gateway.broadcast_enemy_lightning_chain(world_path)
 	attack_cooldown_left = maxf(lightning_config.attack_interval, 0.01)
 	combat_state = CombatState.CHASE
 	windup_time_left = 0.0
@@ -402,22 +388,18 @@ func _apply_chain_damage(
 		var source_direction := player_target.global_position.direction_to(
 			source_position
 		)
-		var current_scene := get_tree().current_scene
-		if (
-			current_scene != null
-			and current_scene.has_method("request_multiplayer_player_damage")
-			and bool(current_scene.call(
-				"request_multiplayer_player_damage",
-				damage_source_id,
-				player_target.peer_id,
-				damage,
-				DAMAGE_SOURCE_TYPE,
-				EnemyConfig.DamageType.MAGIC,
-				source_direction,
-				true
-			))
+		if _try_request_player_damage(
+			damage_source_id,
+			player_target.peer_id,
+			damage,
+			DAMAGE_SOURCE_TYPE,
+			EnemyConfig.DamageType.MAGIC,
+			source_direction,
+			true
 		):
 			return true
+		if not _has_explicit_singleplayer_authority():
+			return false
 		return player_target.apply_damage(
 			damage,
 			EnemyConfig.DamageType.MAGIC,
@@ -428,7 +410,12 @@ func _apply_chain_damage(
 		)
 
 	var plant_target := target as PlantDefense
-	if plant_target == null or plant_target.is_dead or plant_target.is_removing:
+	if (
+		not _has_authoritative_runtime()
+		or plant_target == null
+		or plant_target.is_dead
+		or plant_target.is_removing
+	):
 		return false
 	return plant_target.receive_damage(
 		damage,
@@ -509,23 +496,19 @@ func _broadcast_windup_start(target: Node2D, is_retry: bool) -> void:
 	# without resetting progress while clients that missed it still get a cue.
 	if action_sequence <= 0:
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
 	var net_id := int(get_meta("net_id", 0))
 	if player_target != null:
-		if current_scene.has_method("broadcast_enemy_target_action"):
-			current_scene.call(
-				"broadcast_enemy_target_action",
-				net_id,
-				PLAYER_WINDUP_RETRY_ACTION,
-				player_target.peer_id,
-				global_position,
-				action_sequence
-			)
-	elif current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+		gameplay_gateway.broadcast_enemy_target_action(
+			net_id,
+			PLAYER_WINDUP_RETRY_ACTION,
+			player_target.peer_id,
+			global_position,
+			action_sequence
+		)
+	else:
+		gameplay_gateway.broadcast_enemy_action(
 			net_id,
 			PLANT_WINDUP_RETRY_ACTION,
 			_get_target_warning_world_position(target) - global_position,

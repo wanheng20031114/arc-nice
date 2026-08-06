@@ -18,6 +18,8 @@ var remaining_lifetime: float = 0.0
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"collectible_arrow"
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var has_hit: bool = false
 var pool_active: bool = true
 var _authored_speed: float = 360.0
@@ -57,6 +59,8 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = &"collectible_arrow"
+	combat_runtime = null
+	gameplay_gateway = null
 	rotation = 0.0
 	collision_layer = _authored_collision_layer
 	collision_mask = _authored_collision_mask
@@ -71,6 +75,16 @@ func on_pool_released(_generation: int) -> void:
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
+	combat_runtime = null
+	gameplay_gateway = null
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func setup(initial_direction: Vector2, initial_damage: int = 1) -> void:
@@ -139,9 +153,15 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 	var enemy := body as Enemy
 	if enemy != null:
-		var hit_registered := _try_report_multiplayer_enemy_hit(enemy)
-		if not hit_registered:
-			hit_registered = enemy.apply_damage(damage, -direction, EnemyConfig.DamageType.PHYSICAL)
+		var hit_registered := false
+		if _is_explicit_singleplayer_authority():
+			hit_registered = enemy.apply_damage(
+				damage,
+				-direction,
+				EnemyConfig.DamageType.PHYSICAL
+			)
+		elif _requires_multiplayer_gateway_authority():
+			hit_registered = _try_report_multiplayer_enemy_hit(enemy)
 		if hit_registered:
 			_consume()
 		return
@@ -149,23 +169,34 @@ func _on_body_entered(body: Node2D) -> void:
 
 
 func _try_report_multiplayer_enemy_hit(enemy: Enemy) -> bool:
-	if projectile_id <= 0:
-		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_enemy_hit_report"):
+	if projectile_id <= 0 or gameplay_gateway == null:
 		return false
 	var enemy_net_id := int(enemy.get_meta("net_id", 0))
 	if enemy_net_id <= 0:
 		return false
-	current_scene.call(
-		"request_enemy_hit_report",
+	return gameplay_gateway.request_enemy_hit_report(
 		projectile_id,
 		owner_peer_id,
 		enemy_net_id,
 		damage,
 		-enemy.global_position.direction_to(global_position)
 	)
-	return true
+
+
+func _is_explicit_singleplayer_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+
+
+func _requires_multiplayer_gateway_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 func _consume() -> void:

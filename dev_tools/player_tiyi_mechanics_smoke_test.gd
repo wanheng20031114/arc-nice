@@ -5,9 +5,12 @@ const SNIPER_BULLET_SCENE := preload(
 	"res://scene/player/tiyi/tiyi_sniper_bullet.tscn"
 )
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
+const PLAYER_TEST_RUNTIME := preload(
+	"res://dev_tools/player_test_combat_runtime.gd"
+)
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: PlayerTestCombatRuntime
 var player: PlayerTiyi
 
 
@@ -16,7 +19,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = PLAYER_TEST_RUNTIME.new() as PlayerTestCombatRuntime
 	test_root.name = "PlayerTiyiMechanicsSmokeRoot"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -27,6 +30,7 @@ func _run() -> void:
 		await _finish()
 		return
 	test_root.add_child(player)
+	test_root.bind_player_runtime_context(player)
 	await process_frame
 	await physics_frame
 	_stop_audio_players(player)
@@ -572,6 +576,10 @@ func _spawn_test_bullet(
 	pierces_enemies: bool = false
 ) -> TiyiSniperBullet:
 	var bullet := SNIPER_BULLET_SCENE.instantiate() as TiyiSniperBullet
+	bullet.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	bullet.setup(direction, 100, pierces_enemies)
 	bullet.setup_collectible_owner(player)
 	test_root.add_child(bullet)

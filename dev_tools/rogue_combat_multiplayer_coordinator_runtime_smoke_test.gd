@@ -12,6 +12,9 @@ const COORDINATOR := preload(
 const ROUTE_SCENE := preload(
 	"res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 )
+const FAKE_EMBEDDED_RUNTIME := preload(
+	"res://dev_tools/fixtures/rogue_combat_multiplayer_test_session.tscn"
+)
 const WOOD_MATERIAL: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
 )
@@ -45,37 +48,6 @@ class FakeNetManager extends Node:
 
 	func is_peer_send_ready(peer_id: int) -> bool:
 		return send_ready_peer_ids.has(peer_id)
-
-
-class FakeEmbeddedRuntime extends Node:
-	var activation_result := false
-	var activation_calls := 0
-	var suspended_peers: Array[PackedInt32Array] = []
-	var game_runtime: Node = null
-
-	func activate_embedded_runtime() -> bool:
-		activation_calls += 1
-		return activation_result
-
-	func get_game_runtime() -> Node:
-		return game_runtime
-
-	func suspend_embedded_participant_for_current_combat(
-		peer_id: int,
-		previous_peer_id: int = -1
-	) -> bool:
-		suspended_peers.append(PackedInt32Array([
-			peer_id,
-			previous_peer_id,
-		]))
-		return true
-
-
-class FakeCombatGame extends Node:
-	var players: Dictionary = {}
-
-	func get_player_for_peer(peer_id: int) -> Node:
-		return players.get(peer_id) as Node
 
 
 class RewardCombatGameHarness extends RogueCombatGame:
@@ -241,7 +213,10 @@ func _test_terminal_safe_releases_protocol_but_keeps_result() -> void:
 	_coordinator._local_terminal_finalized = true
 	_coordinator._local_result_visible = true
 	_coordinator._local_result_occurrence_key = occurrence_key
-	var runtime := Node.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	runtime.name = "TerminalRuntime"
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
@@ -343,7 +318,10 @@ func _test_host_settlement_commit_gates_broadcast() -> void:
 	_coordinator._prepared_peers = {1: true, 2: true}
 	_coordinator._expected_terminal_peers = {1: true, 2: true}
 	_coordinator._settlement_scheduled = true
-	var runtime := Node.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
 	_coordinator.host_settlement_commit_result = false
@@ -418,7 +396,10 @@ func _test_pending_reconnect_is_spectator_before_settlement_broadcast() -> void:
 		"deadline_msec": 99_999,
 	}
 	_fake_net_manager.send_ready_peer_ids = {2: true}
-	var runtime := FakeEmbeddedRuntime.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
 	_coordinator.host_settlement_commit_uses_super = true
@@ -473,7 +454,10 @@ func _test_late_activation_cannot_rewind_settled_phase() -> void:
 	_coordinator._active_occurrence_key = "combat:runtime:late-activation:2e"
 	_coordinator._settlement_received = true
 	_coordinator._local_runtime_prepared = true
-	var runtime := FakeEmbeddedRuntime.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	runtime.activation_result = true
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
@@ -495,7 +479,10 @@ func _test_real_reward_mutation_rolls_back_after_commit_failure() -> void:
 	run_state.ensure_multiplayer_peer_state(1)
 	var occurrence_key := "combat:runtime:reward-rollback:2f"
 	_seed_route_combat(20, 2002, occurrence_key)
-	var runtime := Node.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	runtime.name = "RewardRollbackRuntime"
 	_fixture_root.add_child(runtime)
 	var combat_game := RewardCombatGameHarness.new()
@@ -729,7 +716,10 @@ func _test_client_abort_admission_is_prepare_only() -> void:
 	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
 	_coordinator._entry_xirang_by_peer = {1: 500, 2: 500}
 	_coordinator._expected_terminal_peers = {1: true, 2: true}
-	var runtime := FakeEmbeddedRuntime.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
 	_coordinator._withdraw_failed_runtime_participant(
@@ -829,7 +819,10 @@ func _test_reconnect_activation_timeout_downgrades_peer() -> void:
 		"occurrence_key": occurrence_key,
 		"deadline_msec": 10_000,
 	}
-	var runtime := FakeEmbeddedRuntime.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
 
@@ -872,7 +865,10 @@ func _test_terminal_barrier_timeout_forces_safe_release() -> void:
 	}
 	_coordinator._local_result_occurrence_key = occurrence_key
 	_coordinator._terminal_barrier_deadline_msec = 10_000
-	var runtime := FakeEmbeddedRuntime.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
 
@@ -959,12 +955,16 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 			2: {"peer_id": 2, "victory": true},
 		},
 	}
-	var runtime := FakeEmbeddedRuntime.new()
-	var combat_game := FakeCombatGame.new()
-	var restored_player := Node.new()
-	combat_game.add_child(restored_player)
-	combat_game.players[3] = restored_player
-	runtime.add_child(combat_game)
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
+	var combat_game := RewardCombatGameHarness.new()
+	var restored_player := PlayerCharacterRegistry.instantiate_character(
+		&"weishidaier"
+	) as Player
+	_fixture_root.add_child(restored_player)
+	combat_game.fixture_players[3] = restored_player
 	runtime.game_runtime = combat_game
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
@@ -1029,9 +1029,11 @@ func _test_host_missing_reconnect_runtime_becomes_spectator() -> void:
 		},
 	}
 	_coordinator._reconnecting_peer_ids[3] = true
-	var runtime := FakeEmbeddedRuntime.new()
-	var combat_game := FakeCombatGame.new()
-	runtime.add_child(combat_game)
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
+	var combat_game := RewardCombatGameHarness.new()
 	runtime.game_runtime = combat_game
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
@@ -1185,7 +1187,10 @@ func _test_prepared_barrier_reveals_before_single_activation() -> void:
 		),
 		"入口 reveal 夹具必须先进入 PREPARING。"
 	)
-	var runtime := FakeEmbeddedRuntime.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	runtime.name = "EntryRevealRuntime"
 	runtime.activation_result = true
 	_coordinator.add_child(runtime)
@@ -1300,7 +1305,10 @@ func _test_abort_during_entry_reveal_clears_cover() -> void:
 		),
 		"入口 abort 夹具必须先进入 PREPARING。"
 	)
-	var runtime := FakeEmbeddedRuntime.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	runtime.name = "EntryAbortRuntime"
 	runtime.activation_result = true
 	_coordinator.add_child(runtime)
@@ -1351,7 +1359,10 @@ func _test_route_reset_aborts_terminal_sequence() -> void:
 	_coordinator._local_outcome_victory = true
 	_coordinator._local_terminal_finalized = true
 	_coordinator._local_result_occurrence_key = occurrence_key
-	var runtime := Node.new()
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	runtime.name = "InterruptedVictoryRuntime"
 	_coordinator.add_child(runtime)
 	_coordinator._combat_network = runtime
@@ -1408,13 +1419,16 @@ func _test_authoritative_config_failure_aborts_safely() -> void:
 		false
 	)
 	_expect(began, "config 失败用例应先进入 PREPARING。")
-	var invalid_runtime := Node.new()
-	invalid_runtime.name = "RuntimeWithoutGameContract"
+	var invalid_runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
+	invalid_runtime.name = "RuntimeWithoutGameRuntime"
 	_coordinator.add_child(invalid_runtime)
 	_coordinator._combat_network = invalid_runtime
 	_expect(
 		not _coordinator._configure_occurrence_runtime(),
-		"缺少 get_game_runtime 契约时 occurrence 配置必须失败。"
+		"多人会话尚无 CombatRuntimeBase 时 occurrence 配置必须失败。"
 	)
 
 	# _on_embedded_runtime_prepared 对这个 false 执行同一个房主权威 abort；
@@ -1437,7 +1451,10 @@ func _test_authoritative_activation_failure_aborts_safely() -> void:
 		false
 	)
 	_expect(began, "activate 失败用例应先进入 PREPARING。")
-	var failing_runtime := FakeEmbeddedRuntime.new()
+	var failing_runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
 	failing_runtime.name = "RuntimeRejectingActivation"
 	failing_runtime.activation_result = false
 	_coordinator.add_child(failing_runtime)

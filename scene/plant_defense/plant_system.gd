@@ -50,6 +50,8 @@ var ground_tile_map: TileMapLayer = null
 var terrain_map: DualGridTilemap = null
 var owner_player: Player = null
 var plant_container: Node2D = null
+var combat_runtime: CombatRuntimeBase = null
+var tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 var global_physical_defense_bonus := 0
 var placement_area: Rect2i = DEFAULT_PLACEMENT_AREA
 
@@ -94,13 +96,17 @@ func setup(
 	new_owner_player: Player,
 	new_plant_container: Node2D,
 	new_placement_area: Rect2i = DEFAULT_PLACEMENT_AREA,
-	new_terrain_map: DualGridTilemap = null
+	new_terrain_map: DualGridTilemap = null,
+	new_combat_runtime: CombatRuntimeBase = null,
+	new_tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 ) -> void:
 	_disconnect_terrain_changed_signal()
 	ground_tile_map = new_ground_tile_map
 	terrain_map = new_terrain_map
 	owner_player = new_owner_player
 	plant_container = new_plant_container
+	combat_runtime = new_combat_runtime
+	tower_multiplayer_mode_adapter = new_tower_multiplayer_mode_adapter
 	placement_area = new_placement_area
 	_connect_terrain_changed_signal()
 	_rebuild_plant_target_spatial_index()
@@ -120,14 +126,18 @@ func configure(
 	new_owner_player: Player,
 	new_plant_container: Node2D,
 	new_placement_area: Rect2i = DEFAULT_PLACEMENT_AREA,
-	new_terrain_map: DualGridTilemap = null
+	new_terrain_map: DualGridTilemap = null,
+	new_combat_runtime: CombatRuntimeBase = null,
+	new_tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 ) -> void:
 	setup(
 		new_ground_tile_map,
 		new_owner_player,
 		new_plant_container,
 		new_placement_area,
-		new_terrain_map
+		new_terrain_map,
+		new_combat_runtime,
+		new_tower_multiplayer_mode_adapter
 	)
 
 
@@ -346,6 +356,10 @@ func _instantiate_registered_plant(
 		"%s_net_%d" % [String(config.plant_id), net_id]
 		if net_id > 0
 		else "%s_%d" % [String(config.plant_id), plant.get_instance_id()]
+	)
+	plant.bind_gameplay_context(
+		combat_runtime,
+		tower_multiplayer_mode_adapter
 	)
 	plant_container.add_child(plant)
 	plant.global_position = get_anchor_world_position(top_left_cell, config)

@@ -45,13 +45,6 @@ const PROJECTILE_EVENTS_ONLY_ARG := "--projectile-events-only"
 var failures: Array[String] = []
 
 
-class ClientViewRuntimeStub:
-	extends Node
-
-	func is_client_view_runtime() -> bool:
-		return true
-
-
 func _init() -> void:
 	call_deferred("_run")
 
@@ -92,7 +85,7 @@ func _run() -> void:
 	await _test_enemy_snapshot_roster_requires_complete_batch()
 	await _test_enemy_snapshot_death_and_empty_roster_cleanup()
 	await _test_host_remote_player_position_writeback()
-	_test_projectile_time_compensation()
+	await _test_projectile_time_compensation()
 	await _test_enemy_action_uses_snapshot_timeline()
 	await _test_host_remote_player_form_buff_expires()
 	await _test_four_player_runtime_and_confirmed_events()
@@ -800,7 +793,7 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		remote_player.attack_damage = 37
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 2, false, 0.0)
 	var parameter_mp_game := MP_GAME_SCENE.instantiate()
-	parameter_mp_game.set("game", game)
+	_bind_multiplayer_runtime(parameter_mp_game, game)
 	var accepted_parameters := parameter_mp_game.call(
 		"_get_authoritative_client_projectile_parameters",
 		&"player_bullet",
@@ -1104,7 +1097,7 @@ func _test_player_snapshot_roster_reconcile() -> void:
 		await process_frame
 		await physics_frame
 		return
-	mp_game.set("game", game)
+	_bind_multiplayer_runtime(mp_game, game)
 	mp_game.player_visual_interpolators[3] = NetInterpolator.new(0.1)
 	var sequence_cache := mp_game.get("_last_player_state_sequences") as Dictionary
 	var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
@@ -1193,7 +1186,7 @@ func _test_enemy_snapshot_roster_requires_complete_batch() -> void:
 		await process_frame
 		await physics_frame
 		return
-	mp_game.set("game", game)
+	_bind_multiplayer_runtime(mp_game, game)
 	var net_enemies := mp_game.get("_net_enemies") as Dictionary
 	var enemy_spawn_times := mp_game.get("_enemy_spawn_snapshot_times") as Dictionary
 	net_enemies[7] = enemy_a
@@ -1343,7 +1336,7 @@ func _test_enemy_snapshot_death_and_empty_roster_cleanup() -> void:
 		await process_frame
 		await physics_frame
 		return
-	mp_game.set("game", game)
+	_bind_multiplayer_runtime(mp_game, game)
 	var net_enemies := mp_game.get("_net_enemies") as Dictionary
 	var enemy_spawn_times := mp_game.get("_enemy_spawn_snapshot_times") as Dictionary
 	net_enemies[21] = enemy_dead
@@ -1413,7 +1406,7 @@ func _test_host_remote_player_position_writeback() -> void:
 			previous_role = int(net_manager.get("net_role"))
 			net_manager.set("net_role", 1)
 		var mp_game := MP_GAME_SCENE.instantiate()
-		mp_game.set("game", host_game)
+		_bind_multiplayer_runtime(mp_game, host_game)
 		if net_manager != null:
 			mp_game.set("net_manager", net_manager)
 		var previous_visual_position := remote_player.get_multiplayer_visual_global_position()
@@ -1464,10 +1457,26 @@ func _test_host_remote_player_position_writeback() -> void:
 
 
 func _test_projectile_time_compensation() -> void:
+	var game := GAME_SCENE.instantiate() as StandardGame
+	_expect(game != null, "StandardGame scene must instantiate for projectile compensation.")
+	if game == null:
+		return
+	game.configure_multiplayer(
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		2,
+		{1: "Host", 2: "Client"}
+	)
+	game.auto_start_waves = false
+	root.add_child(game)
+	await process_frame
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "MpGame scene must instantiate for projectile compensation test.")
 	if mp_game == null:
+		_stop_audio_players(game)
+		game.queue_free()
+		await process_frame
 		return
+	_bind_multiplayer_runtime(mp_game, game)
 	var now_origin := Time.get_ticks_msec() / 1000.0 - 10.0
 	mp_game.set("_net_time_origin", now_origin)
 	mp_game.set("_has_host_time_offset", true)
@@ -1533,6 +1542,10 @@ func _test_projectile_time_compensation() -> void:
 		"An in-transit expiry must retain its multiplayer de-duplication record."
 	)
 	mp_game.free()
+	_stop_audio_players(game)
+	game.queue_free()
+	await process_frame
+	await physics_frame
 
 
 func _test_enemy_action_uses_snapshot_timeline() -> void:
@@ -1555,7 +1568,7 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		var sprite := enemy.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 		_expect(sprite != null, "Enemy action timeline test must find the proxy sprite.")
 		var mp_game := MP_GAME_SCENE.instantiate()
-		mp_game.set("game", client_game)
+		_bind_multiplayer_runtime(mp_game, client_game)
 		var net_manager := root.get_node_or_null("NetManager")
 		if net_manager != null:
 			mp_game.set("net_manager", net_manager)
@@ -1657,7 +1670,13 @@ func _test_enemy_action_uses_snapshot_timeline() -> void:
 		_expect(linglan != null, "Enemy action timeline test must instantiate Linglan.")
 		if linglan != null:
 			client_game.enemy_container.add_child(linglan)
-			linglan.setup(boss_enemy_config, client_game.player, client_game.grid_pathfinder)
+			linglan.setup(
+				boss_enemy_config,
+				client_game.player,
+				client_game.grid_pathfinder,
+				client_game,
+				client_game.linglan_boss_runtime_port
+			)
 			linglan.configure_multiplayer_proxy()
 			linglan.set_meta("net_id", 44)
 			linglan.global_position = Vector2(18.0, 18.0)
@@ -1731,7 +1750,7 @@ func _test_host_remote_player_form_buff_expires() -> void:
 		var net_manager := root.get_node_or_null("NetManager")
 		if net_manager != null:
 			mp_game.set("net_manager", net_manager)
-		mp_game.set("game", game)
+		_bind_multiplayer_runtime(mp_game, game)
 		mp_game.call(
 			"_apply_accepted_client_player_state",
 			2,
@@ -1800,7 +1819,7 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		await process_frame
 		await physics_frame
 		return
-	mp_game.set("game", game)
+	_bind_multiplayer_runtime(mp_game, game)
 	var net_manager := root.get_node_or_null("NetManager")
 	if net_manager != null:
 		mp_game.set("net_manager", net_manager)
@@ -2304,6 +2323,24 @@ func _test_four_player_runtime_and_confirmed_events() -> void:
 		)
 		mp_game.call("net_inventory_item_discarded", 99, 0, true, {})
 		_expect(not peer_inventories.has(99), "Inventory confirms for missing peers must not create peer run state.")
+		var bound_mode_adapter: MultiplayerModeAdapter = mp_game._mode_adapter
+		var inventory_before_unbound_confirm: Dictionary = (
+			run_state.export_inventory_snapshot_for_peer(3)
+		)
+		mp_game._mode_adapter = null
+		mp_game.call(
+			"net_luoxi_collectible_confirmed",
+			3,
+			0,
+			APPLE_COLLECTIBLE.resource_path,
+			MerchantPurchaseResult.CollectibleClaim.SUCCESS
+		)
+		_expect(
+			run_state.export_inventory_snapshot_for_peer(3)
+			== inventory_before_unbound_confirm,
+			"Luoxi confirmation must fail closed while the typed mode adapter is unavailable."
+		)
+		mp_game._mode_adapter = bound_mode_adapter
 		mp_game.call(
 			"net_luoxi_collectible_confirmed",
 			3,
@@ -2359,7 +2396,7 @@ func _test_multiplayer_character_scene_registry() -> void:
 	)
 	if tiyi_player != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
-		mp_game.set("game", game)
+		_bind_multiplayer_runtime(mp_game, game)
 		var weishidaier_player := host_player as AmmoRangedPlayer
 		if weishidaier_player != null:
 			var weishidaier_ammo_before := weishidaier_player.current_ammo
@@ -2587,7 +2624,7 @@ func _test_host_authoritative_hoe_actions() -> void:
 	net_manager.set("net_role", 1)
 	connected_players.clear()
 	connected_players[1] = "Host"
-	mp_game.set("game", host_game)
+	_bind_multiplayer_runtime(mp_game, host_game)
 	mp_game.set("net_manager", net_manager)
 	var host_orbit := hoe_player.get_node(
 		"SnowWolfSwordOrbit"
@@ -2789,7 +2826,7 @@ func _test_host_authoritative_tiyi_protocol() -> void:
 	net_manager.set("net_role", 1)
 	connected_players.clear()
 	connected_players[1] = "Host"
-	mp_game.set("game", host_game)
+	_bind_multiplayer_runtime(mp_game, host_game)
 	mp_game.set("net_manager", net_manager)
 	var oversized_target_ids := PackedInt32Array()
 	for enemy_net_id in range(1, 28):
@@ -2931,7 +2968,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	_expect(second_host_enemy != null, "Second host enemy must be indexed for projectile hit-limit tests.")
 	if host_enemy != null and second_host_enemy != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
-		mp_game.set("game", host_game)
+		_bind_multiplayer_runtime(mp_game, host_game)
 		var host_net_manager := root.get_node_or_null("NetManager")
 		var previous_role := 0
 		if host_net_manager != null:
@@ -3190,7 +3227,7 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	root.add_child(client_game)
 	await process_frame
 	var client_mp_game := MP_GAME_SCENE.instantiate()
-	client_mp_game.set("game", client_game)
+	_bind_multiplayer_runtime(client_mp_game, client_game)
 	var net_manager := root.get_node_or_null("NetManager")
 	if net_manager != null:
 		client_mp_game.set("net_manager", net_manager)
@@ -3233,7 +3270,12 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	_expect(magic_enemy != null, "Client magic damage test must instantiate an enemy.")
 	if magic_enemy != null:
 		client_game.enemy_container.add_child(magic_enemy)
-		magic_enemy.setup(BASIC_CONFIG, client_game.player, client_game.grid_pathfinder)
+		magic_enemy.setup(
+			BASIC_CONFIG,
+			client_game.player,
+			client_game.grid_pathfinder,
+			client_game
+		)
 		magic_enemy.configure_multiplayer_proxy()
 		magic_enemy.set_meta("net_id", 78)
 		magic_enemy.global_position = Vector2(88.0, 99.0)
@@ -3534,7 +3576,7 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 		game.queue_free()
 		await process_frame
 		return
-	mp_game.set("game", game)
+	_bind_multiplayer_runtime(mp_game, game)
 
 	var host_player := game.get_player_for_peer(1) as Player
 	var dead_player := game.get_player_for_peer(2) as Player
@@ -3561,7 +3603,8 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 			"Random revive position must be selected from living player anchors."
 		)
 		_expect(
-			game.get_fixed_multiplayer_respawn_position(2) == null,
+			game.get_multiplayer_mode_adapter().get_fixed_multiplayer_respawn_position(2)
+			== null,
 			"Standard mode must not opt into a fixed multiplayer respawn position."
 		)
 		var resolved_position: Variant = mp_game.call(
@@ -3582,6 +3625,7 @@ func _test_multiplayer_revive_position_uses_living_players() -> void:
 
 func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	_expect(game != null, "Tower-defense game must instantiate for spawn-slot coverage.")
 	if game == null:
 		return
@@ -3591,12 +3635,17 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 		3: "Peer 3",
 		4: "Peer 4",
 	}
-	game.configure_multiplayer(GameRuntimeBase.RuntimeMode.HOST_AUTHORITY, 1, player_names)
+	game.configure_multiplayer(CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY, 1, player_names)
 	game.auto_start_waves = false
 	_expect(game.linglan_boss_enabled, "Tower-defense Linglan must be enabled by the authored scene.")
 	root.add_child(game)
 	await process_frame
 	await physics_frame
+	var mode_adapter := (
+		game.get_multiplayer_mode_adapter()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	_expect(mode_adapter != null, "Tower-defense runtime must expose its typed mode adapter.")
 
 	_expect(
 		game.player_spawn.position == Vector2(117.0, 367.0),
@@ -3624,7 +3673,7 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 			player_node.global_position.is_equal_approx(expected_position),
 			"Tower-defense peer %d must start in its stable spawn slot." % peer_id
 		)
-		var fixed_position: Variant = game.get_fixed_multiplayer_respawn_position(peer_id)
+		var fixed_position: Variant = mode_adapter.get_fixed_multiplayer_respawn_position(peer_id)
 		_expect(
 			fixed_position is Vector2
 			and (fixed_position as Vector2).is_equal_approx(expected_position),
@@ -3634,7 +3683,7 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 	var mp_game := MP_GAME_SCENE.instantiate()
 	_expect(mp_game != null, "MpGame scene must instantiate for tower-defense respawn resolver coverage.")
 	if mp_game != null:
-		mp_game.set("game", game)
+		_bind_multiplayer_runtime(mp_game, game)
 		var unrelated_living_positions: Array[Vector2] = [Vector2(-400.0, -300.0)]
 		for peer_id in player_names:
 			var resolved_position: Variant = mp_game.call(
@@ -3642,7 +3691,7 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 				int(peer_id),
 				unrelated_living_positions
 			)
-			var expected_position: Variant = game.get_fixed_multiplayer_respawn_position(
+			var expected_position: Variant = mode_adapter.get_fixed_multiplayer_respawn_position(
 				int(peer_id)
 			)
 			_expect(
@@ -3652,13 +3701,13 @@ func _test_tower_defense_spawn_slots_and_fixed_respawn() -> void:
 				"Tower-defense revive resolver must prefer peer %d's fixed slot." % int(peer_id)
 			)
 
-		var peer_four_position: Variant = game.get_fixed_multiplayer_respawn_position(4)
+		var peer_four_position: Variant = mode_adapter.get_fixed_multiplayer_respawn_position(4)
 		game.remove_multiplayer_player(2)
 		_expect(
 			peer_four_position is Vector2
-			and game.get_fixed_multiplayer_respawn_position(4) is Vector2
+			and mode_adapter.get_fixed_multiplayer_respawn_position(4) is Vector2
 			and (
-				game.get_fixed_multiplayer_respawn_position(4) as Vector2
+				mode_adapter.get_fixed_multiplayer_respawn_position(4) as Vector2
 			).is_equal_approx(peer_four_position as Vector2),
 			"Removing a lower peer id must not shift another peer's respawn slot."
 		)
@@ -3686,7 +3735,7 @@ func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
 		var mp_game := MP_GAME_SCENE.instantiate()
 		_expect(mp_game != null, "MpGame scene must instantiate for revive interpolation test.")
 		if mp_game != null:
-			mp_game.set("game", game)
+			_bind_multiplayer_runtime(mp_game, game)
 			var old_position := Vector2(-400.0, -300.0)
 			var revive_position := Vector2(96.0, 144.0)
 			remote_player.global_position = old_position
@@ -3742,7 +3791,7 @@ func _test_client_local_damage_confirm_starts_hurt_blink() -> void:
 		_expect(mp_game != null, "MpGame scene must instantiate for client damage confirm blink test.")
 		_expect(damage_number_pool != null, "Client damage confirmation must share the game damage-number pool.")
 		if mp_game != null:
-			mp_game.set("game", game)
+			_bind_multiplayer_runtime(mp_game, game)
 			local_player.current_health = local_player.max_health
 			local_player.invincibility_time_left = 0.0
 			local_player.call("_set_hurt_blink_enabled", false)
@@ -3862,11 +3911,22 @@ func _test_linglan_boss_registration_uses_boss_event_only() -> void:
 	_expect(boss_enemy != null, "Linglan boss scene must instantiate as LinglanBoss.")
 	if boss_enemy != null:
 		game.boss_container.add_child(boss_enemy)
-		boss_enemy.setup(boss_enemy_config, game.player, game.grid_pathfinder)
+		boss_enemy.setup(
+			boss_enemy_config,
+			game.player,
+			game.grid_pathfinder,
+			game,
+			game.linglan_boss_runtime_port
+		)
 		var spawn_events: Array[int] = []
 		var spawn_callback := func(net_id: int, _enemy_config: EnemyConfig, _spawn_position: Vector2) -> void:
 			spawn_events.append(net_id)
-		game.multiplayer_enemy_spawned.connect(spawn_callback)
+		var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+		_expect(gameplay_gateway != null, "Standard runtime must expose its gameplay gateway.")
+		if gameplay_gateway == null:
+			boss_enemy.queue_free()
+			return
+		gameplay_gateway.enemy_spawned.connect(spawn_callback)
 		var net_id := int(game.call(
 			"_register_multiplayer_enemy_instance",
 			boss_enemy,
@@ -3874,7 +3934,7 @@ func _test_linglan_boss_registration_uses_boss_event_only() -> void:
 			Vector2(42.0, 64.0),
 			false
 		))
-		game.multiplayer_enemy_spawned.disconnect(spawn_callback)
+		gameplay_gateway.enemy_spawned.disconnect(spawn_callback)
 		_expect(net_id > 0, "Linglan boss registration must allocate a net id.")
 		_expect(spawn_events.is_empty(), "Linglan boss registration must not emit generic enemy spawn.")
 		_expect(
@@ -3890,6 +3950,7 @@ func _test_linglan_boss_registration_uses_boss_event_only() -> void:
 
 func _test_linglan_airdrop_replication_contract() -> void:
 	var game := TOWER_DEFENSE_GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	_expect(game != null, "Tower game must instantiate for Linglan airdrop replication.")
 	if game == null:
 		return
@@ -3897,10 +3958,10 @@ func _test_linglan_airdrop_replication_contract() -> void:
 	game.auto_start_waves = false
 	root.add_child(game)
 	await process_frame
-	game.wave_state = GameRuntimeBase.WaveState.BOSS_ACTIVE
+	game.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	var replicated_events: Array[Dictionary] = []
 	var spawned_events: Array[Dictionary] = []
-	game.multiplayer_linglan_airdrop_started.connect(
+	game.linglan_boss_runtime_port.airdrop_started.connect(
 		func(
 			enemy_config: EnemyConfig,
 			landing_position: Vector2,
@@ -3916,7 +3977,7 @@ func _test_linglan_airdrop_replication_contract() -> void:
 				"drop_duration": drop_duration,
 			})
 	)
-	game.multiplayer_enemy_spawned.connect(
+	game.get_multiplayer_gameplay_gateway().enemy_spawned.connect(
 		func(net_id: int, enemy_config: EnemyConfig, spawn_position: Vector2) -> void:
 			spawned_events.append({
 				"net_id": net_id,
@@ -4025,21 +4086,34 @@ func _test_linglan_boss_proxy_keeps_body_hit_collision() -> void:
 
 
 func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
-	var previous_scene := current_scene
-	var client_runtime_stub := ClientViewRuntimeStub.new()
-	root.add_child(client_runtime_stub)
-	current_scene = client_runtime_stub
+	var explicit_runtime := GAME_SCENE.instantiate() as StandardGame
+	_expect(explicit_runtime != null, "Linglan skill2 fixture must instantiate a typed runtime.")
+	if explicit_runtime == null:
+		return
+	explicit_runtime.configure_multiplayer(
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		2,
+		{1: "Host", 2: "Client"}
+	)
+	explicit_runtime.auto_start_waves = false
+	root.add_child(explicit_runtime)
+	await process_frame
+	var gameplay_gateway := explicit_runtime.get_multiplayer_gameplay_gateway()
 
 	var enemy := BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 	var authoritative_enemy: Enemy = null
 	var rocket := LINGLAN_SKILL2_ROCKET_SCENE.instantiate() as LinglanSkill2SakuraRocket
 	_expect(enemy != null and rocket != null, "Linglan skill2 client proxy damage test must instantiate enemy and rocket.")
 	if enemy != null and rocket != null:
-		root.add_child(enemy)
-		root.add_child(rocket)
-		await process_frame
-		enemy.setup(BASIC_CONFIG, null, null)
+		rocket.bind_gameplay_context(explicit_runtime, gameplay_gateway)
+		rocket.set_physics_process(false)
+		explicit_runtime.enemy_container.add_child(enemy)
+		explicit_runtime.add_child(rocket)
+		# `_ready()` re-enables projectile processing. Disable it immediately after
+		# entering the tree so this isolated authority fixture cannot self-retire.
+		enemy.setup(BASIC_CONFIG, null, null, explicit_runtime)
 		enemy.configure_multiplayer_proxy()
+		rocket.set_physics_process(false)
 		var health_before_client_proxy_hit := enemy.current_health
 		rocket.damage = 1
 		rocket.call("_apply_enemy_damage", enemy)
@@ -4048,7 +4122,7 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 			"Client-view Linglan skill2 rocket must not apply local damage to enemy proxies."
 		)
 
-		current_scene = previous_scene
+		explicit_runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 		authoritative_enemy = BASIC_CONFIG.enemy_scene.instantiate() as Enemy
 		_expect(
 			authoritative_enemy != null,
@@ -4056,8 +4130,8 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		)
 		if authoritative_enemy != null:
 			authoritative_enemy.global_position = Vector2(256.0, 256.0)
-			root.add_child(authoritative_enemy)
-			authoritative_enemy.setup(BASIC_CONFIG, null, null)
+			explicit_runtime.enemy_container.add_child(authoritative_enemy)
+			authoritative_enemy.setup(BASIC_CONFIG, null, null, explicit_runtime)
 			authoritative_enemy.set_physics_process(false)
 			var authoritative_health_before := authoritative_enemy.current_health
 			rocket.call("_apply_enemy_damage", authoritative_enemy)
@@ -4072,8 +4146,8 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		enemy.queue_free()
 	if authoritative_enemy != null:
 		authoritative_enemy.queue_free()
-	client_runtime_stub.queue_free()
-	current_scene = previous_scene
+	_stop_audio_players(explicit_runtime)
+	explicit_runtime.queue_free()
 	await process_frame
 	await physics_frame
 
@@ -4092,7 +4166,7 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		game.queue_free()
 		await process_frame
 		return
-	mp_game.set("game", game)
+	_bind_multiplayer_runtime(mp_game, game)
 	var net_manager := root.get_node_or_null("NetManager")
 	var previous_role := 0
 	if net_manager != null:
@@ -4187,7 +4261,7 @@ func _test_multiplayer_cheat_xirang_confirm() -> void:
 	host_game.set("auto_start_waves", false)
 	root.add_child(host_game)
 	await process_frame
-	mp_game.set("game", host_game)
+	_bind_multiplayer_runtime(mp_game, host_game)
 
 	var remote_player := host_game.get_player_for_peer(2) as Player
 	_expect(remote_player != null, "Remote player must exist for cheat xirang confirm test.")
@@ -4303,8 +4377,9 @@ func _test_game_runtime_modes() -> void:
 	await process_frame
 
 	var tower_client_game := TOWER_DEFENSE_GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(tower_client_game)
 	tower_client_game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
 		2,
 		{1: "Host", 2: "Client"}
 	)
@@ -4342,6 +4417,7 @@ func _test_test_arena_multiplayer_runtime_modes() -> void:
 	]:
 		var arena_scene := arena_contract["scene"] as PackedScene
 		var arena := arena_scene.instantiate() as TestGrassArena
+		_disable_tower_fixture_background_loads(arena)
 		_expect(
 			arena != null,
 			"%s multiplayer runtime must instantiate." % arena_contract["runtime_class"]
@@ -4349,7 +4425,7 @@ func _test_test_arena_multiplayer_runtime_modes() -> void:
 		if arena == null:
 			continue
 		arena.configure_multiplayer(
-			GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+			CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 			1,
 			{1: "Host", 2: "Client"},
 			{1: &"weishidaier", 2: &"weishidaier"}
@@ -4774,6 +4850,26 @@ func _has_active_damage_number_text(game: StandardGame, expected_text: String) -
 	return game.damage_number_pool.has_active_text(expected_text)
 
 
+func _bind_multiplayer_runtime(
+	mp_game,
+	game: CombatRuntimeBase
+) -> void:
+	if mp_game == null or game == null:
+		return
+	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+	var mode_adapter := game.get_multiplayer_mode_adapter()
+	mp_game.game = game
+	mp_game._gameplay_gateway = gameplay_gateway
+	mp_game._mode_adapter = mode_adapter
+	mp_game.tower_mode_adapter = (
+		mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
+	if gameplay_gateway != null:
+		gameplay_gateway.attach_multiplayer_session(mp_game)
+	if mode_adapter != null:
+		mode_adapter.attach_multiplayer_session(mp_game)
+
+
 func _prepare_direct_enemy_spawn_points(game: StandardGame) -> bool:
 	if game == null:
 		return false
@@ -4794,6 +4890,14 @@ func _expect(condition: bool, message: String) -> void:
 func _wait_process_frames(frame_count: int) -> void:
 	for _frame_index in range(frame_count):
 		await process_frame
+
+
+func _disable_tower_fixture_background_loads(game: TowerDefenseGame) -> void:
+	if game == null:
+		return
+	var fate_coordinator := game.get_node_or_null("FateCoordinator") as FateCoordinator
+	if fate_coordinator != null:
+		fate_coordinator.elite_enemy_config_loads_requested = true
 
 
 func _wait_for_sprite_animation(

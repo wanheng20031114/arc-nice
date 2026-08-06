@@ -297,22 +297,20 @@ func _fire_locked_bullet() -> bool:
 	var capoo_config := config as CapooConfig
 	if capoo_config == null or capoo_config.projectile_scene == null:
 		return false
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if (
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
 		return false
+	var spawn_parent: Node = combat_runtime
 	var projectile: CapooAK47Bullet = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(
-			spawn_parent.call(
-				"has_session_object_pool_scene",
-				capoo_config.projectile_scene
-			)
-		)
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		capoo_config.projectile_scene
 	)
 	if uses_registered_pool:
-		projectile = spawn_parent.call(
-			"acquire_session_object",
+		projectile = combat_runtime.acquire_session_object(
 			capoo_config.projectile_scene,
 			false
 		) as CapooAK47Bullet
@@ -323,6 +321,7 @@ func _fire_locked_bullet() -> bool:
 		return false
 
 	var outgoing_damage := get_effective_attack_damage(capoo_config.attack_damage)
+	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.top_level = true
 	projectile.setup(
 		burst_shot_direction,
@@ -334,20 +333,20 @@ func _fire_locked_bullet() -> bool:
 	)
 	if projectile.get_parent() == null:
 		spawn_parent.add_child(projectile)
+	elif projectile.get_parent() != spawn_parent:
+		projectile.reparent(spawn_parent)
 	projectile.global_position = global_position + burst_shot_direction * capoo_config.projectile_spawn_distance
 	projectile.reset_physics_interpolation()
-	if spawn_parent.has_method("register_local_projectile"):
-		spawn_parent.call(
-			"register_local_projectile",
-			projectile,
-			&"capoo_ak47_bullet",
-			0,
-			projectile.global_position,
-			burst_shot_direction,
-			outgoing_damage,
-			capoo_config.projectile_speed,
-			capoo_config.projectile_lifetime
-		)
+	gameplay_gateway.register_local_projectile(
+		projectile,
+		&"capoo_ak47_bullet",
+		0,
+		projectile.global_position,
+		burst_shot_direction,
+		outgoing_damage,
+		capoo_config.projectile_speed,
+		capoo_config.projectile_lifetime
+	)
 	if burst_audio_step % 2 == 0:
 		attack_audio.pitch_scale = random_generator.randf_range(0.98, 1.03)
 		ENEMY_ATTACK_AUDIO_LIMITER.play_rapid_fire(attack_audio)
@@ -472,10 +471,8 @@ func _play_config_animation(animation_name: StringName) -> void:
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			direction,

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://crap4mx7t2k6r"]
+
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.gd" id="1_adapter"]
+
+[node name="MultiplayerModeAdapter" type="Node"]
+script = ExtResource("1_adapter")

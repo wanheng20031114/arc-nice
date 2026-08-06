@@ -11,6 +11,10 @@ const RELAY_NET_MANAGER_PATH := "res://relay_servers/relay_godot_project/relay_n
 const RELAY_SERVER_PATH := "res://relay_servers/relay_godot_project/relay_server.gd"
 const RELAY_PROJECT_PATH := "res://relay_servers/relay_godot_project/project.godot"
 const STANDARD_GAME_PATH := "res://scene/game_modes/standard/standard_game.gd"
+const WAVE_RUNTIME_PATH := "res://scene/combat/runtime/wave_combat_runtime_base.gd"
+const ROGUE_COMBAT_GAME_PATH := (
+	"res://scene/game_modes/rogue/combat/rogue_combat_game.gd"
+)
 const TOWER_DEFENSE_GAME_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.gd"
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
@@ -495,7 +499,11 @@ func _test_tango_charge_authority_source() -> void:
 		),
 		"A stale Tango rejection must not cancel a newer local prediction."
 	)
-	for game_path in [STANDARD_GAME_PATH, TOWER_DEFENSE_GAME_PATH]:
+	for game_path in [
+		STANDARD_GAME_PATH,
+		ROGUE_COMBAT_GAME_PATH,
+		TOWER_DEFENSE_GAME_PATH,
+	]:
 		var game_source := FileAccess.get_file_as_string(game_path)
 		_expect(
 			game_source.contains("func request_tango_charge_started(direction: Vector2) -> bool:")
@@ -592,10 +600,15 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		"Late-join plant runtime snapshots must carry and apply revisioned damage-status masks."
 	)
 	_expect(
-		mp_game_source.contains("game.get_xiaocong_fate_state_snapshot()")
-		and mp_game_source.contains("game.apply_remote_xiaocong_fate_state(state)")
+		mp_game_source.contains("tower_mode_adapter.get_xiaocong_fate_state_snapshot()")
+		and mp_game_source.contains(
+			"tower_mode_adapter.apply_remote_xiaocong_fate_state(state)"
+		)
 		and mp_game_source.contains("_admit_remote_xiaocong_request(sender_id)"),
-		"Xiaocong fate state must participate in runtime repair and all remote choices must pass Host admission."
+		(
+			"Xiaocong fate state must cross the explicit tower adapter during runtime "
+			+ "repair, and all remote choices must pass Host admission."
+		)
 	)
 	_expect(
 		mp_game_source.contains("const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96")

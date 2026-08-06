@@ -326,23 +326,23 @@ func _spawn_committed_drone(
 	if drone_motion_system == null or not is_instance_valid(drone_motion_system):
 		return false
 
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if (
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
 		return false
+	var spawn_parent: Node = combat_runtime
 	var acquired_node: Node = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call(
-			"has_session_object_pool_scene",
-			operator_config_cache.drone_scene
-		))
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		operator_config_cache.drone_scene
 	)
 	if uses_registered_pool:
-		acquired_node = spawn_parent.call(
-			"acquire_session_object",
+		acquired_node = combat_runtime.acquire_session_object(
 			operator_config_cache.drone_scene,
 			false
-		) as Node
+		)
 	else:
 		acquired_node = operator_config_cache.drone_scene.instantiate()
 
@@ -350,8 +350,11 @@ func _spawn_committed_drone(
 	if drone == null:
 		_release_failed_drone_node(acquired_node)
 		return false
+	drone.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	if drone.get_parent() == null:
 		spawn_parent.add_child(drone)
+	elif drone.get_parent() != spawn_parent and not uses_registered_pool:
+		drone.reparent(spawn_parent)
 
 	var spawn_position := drone_spawn.global_position
 	var flight_direction := spawn_position.direction_to(target_position)
@@ -376,18 +379,16 @@ func _spawn_committed_drone(
 		drone.retire()
 		return false
 
-	if spawn_parent.has_method("register_local_projectile"):
-		spawn_parent.call(
-			"register_local_projectile",
-			drone,
-			PROJECTILE_TYPE,
-			0,
-			spawn_position,
-			flight_direction,
-			outgoing_damage,
-			drone_speed,
-			flight_duration
-		)
+	gameplay_gateway.register_local_projectile(
+		drone,
+		PROJECTILE_TYPE,
+		0,
+		spawn_position,
+		flight_direction,
+		outgoing_damage,
+		drone_speed,
+		flight_duration
+	)
 	return true
 
 
@@ -588,10 +589,8 @@ func _restore_proxy_move_animation() -> void:
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			direction,

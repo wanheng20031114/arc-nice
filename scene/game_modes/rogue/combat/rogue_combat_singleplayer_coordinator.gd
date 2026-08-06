@@ -165,7 +165,7 @@ func _on_normal_combat_requested(
 			run_state.get_max_health_penalty_for_peer(SINGLEPLAYER_PEER_ID)
 		)
 
-	# StandardGame._ready() 会先应用普通模式的 1000 息壤。若选择继承，则在新增
+	# WaveCombatRuntimeBase._ready() 会先应用共享波次运行时的 1000 息壤。若选择继承，则在新增
 	# 战场后的首个物理帧前立即覆盖，确保玩家没有一帧使用错误经济状态。
 	if (
 		encounter_config.inherit_route_xirang
@@ -184,7 +184,7 @@ func _configure_battle_before_tree(
 	campaign: WaveCampaignConfig
 ) -> void:
 	battle.name = BATTLE_NODE_NAME
-	battle.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	battle.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	battle.singleplayer_campaign = campaign
 	battle.multiplayer_campaign = campaign
 	battle.event_title = encounter_config.event_title

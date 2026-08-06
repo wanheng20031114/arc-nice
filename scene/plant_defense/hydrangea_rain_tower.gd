@@ -517,8 +517,7 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 		or is_removing
 	):
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
 	var effect_remaining_seconds := (
 		effect_started_at_seconds
@@ -528,8 +527,7 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 	if effect_remaining_seconds <= 0.0:
 		return
 
-	current_scene.call(
-		"query_combat_targets_unordered_into",
+	combat_runtime.query_combat_targets_unordered_into(
 		rain_target_global_position,
 		rain_config.rain_radius,
 		enemy_candidates
@@ -547,9 +545,12 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 			or enemy.is_queued_for_deletion()
 		):
 			continue
-		if deals_magic_damage:
-			current_scene.call(
-				"apply_authoritative_plant_enemy_damage_batch",
+		if (
+			deals_magic_damage
+			and tower_multiplayer_mode_adapter != null
+			and is_instance_valid(tower_multiplayer_mode_adapter)
+		):
+			tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage_batch(
 				effect_source_id,
 				enemy,
 				damage_amounts,
@@ -572,18 +573,22 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 			rain_config.enemy_attack_damage_multiplier
 		)
 
-	current_scene.call(
-		"query_living_plants_in_radius_into",
-		rain_target_global_position,
-		rain_config.rain_radius,
-		plant_candidates
-	)
+	if (
+		tower_multiplayer_mode_adapter != null
+		and is_instance_valid(tower_multiplayer_mode_adapter)
+	):
+		tower_multiplayer_mode_adapter.query_living_plants_in_radius_into(
+			rain_target_global_position,
+			rain_config.rain_radius,
+			plant_candidates
+		)
+	else:
+		plant_candidates.clear()
 	for plant in plant_candidates:
 		if plant != null and is_instance_valid(plant):
 			plant.receive_healing(rain_config.healing_per_tick, self)
 
-	current_scene.call(
-		"query_living_players_in_radius_into",
+	combat_runtime.query_living_players_in_radius_into(
 		rain_target_global_position,
 		rain_config.rain_radius,
 		player_candidates
@@ -591,8 +596,7 @@ func _apply_authoritative_rain_tick(tick_index: int) -> void:
 	for target_player in player_candidates:
 		if target_player == null or not is_instance_valid(target_player):
 			continue
-		current_scene.call(
-			"apply_authoritative_player_heal",
+		combat_runtime.apply_authoritative_player_heal(
 			target_player,
 			rain_config.healing_per_tick
 		)
@@ -1116,16 +1120,14 @@ func _stop_rain_field_tween() -> void:
 
 
 func _broadcast_rain_action(action_elapsed_seconds: float) -> void:
-	var current_scene := get_tree().current_scene
 	var plant_net_id := int(get_meta(&"net_id", 0))
 	if (
-		current_scene == null
+		tower_multiplayer_mode_adapter == null
+		or not is_instance_valid(tower_multiplayer_mode_adapter)
 		or plant_net_id <= 0
-		or not current_scene.has_method("queue_hydrangea_rain_visual")
 	):
 		return
-	current_scene.call(
-		"queue_hydrangea_rain_visual",
+	tower_multiplayer_mode_adapter.queue_hydrangea_rain_visual(
 		plant_net_id,
 		rain_action_id,
 		rain_target_global_position,

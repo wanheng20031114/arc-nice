@@ -209,12 +209,12 @@ func _test_loading_scene_contract() -> void:
 
 
 func _test_runtime_activation_gate() -> void:
-	var game := GAME_SCENE.instantiate() as GameRuntimeBase
+	var game := GAME_SCENE.instantiate() as CombatRuntimeBase
 	_expect(game != null, "Standard runtime must instantiate for activation-gate coverage.")
 	if game == null:
 		return
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		{1: "Loading Host"},
 		{1: &"weishidaier"}
@@ -284,10 +284,9 @@ func _test_mode_specific_mp_game_source() -> void:
 		and source.contains(
 			"fireball_target = game.get_player_for_peer(target_peer_id)"
 		)
-		and source.contains(
-			"fireball_target = game.get_multiplayer_plant_node("
-		)
+		and source.contains("fireball_target = _get_tower_plant(")
 		and source.contains("projectile as FireSorcererFireballVolley")
+		and source.contains("_prepare_enemy_network_projectile(fire_sorcerer_volley)")
 		and source.contains('projectile.has_method("simulate_compensated_motion")'),
 		(
 			"MpGame must instantiate, target, time-compensate, and lifetime-compensate "
@@ -305,7 +304,7 @@ func _test_mode_specific_mp_game_source() -> void:
 		"MpGame must defer runtime activation before reporting local readiness."
 	)
 	for runtime_script_path in [
-		"res://scene/game_modes/standard/standard_game.gd",
+		"res://scene/combat/runtime/wave_combat_runtime_base.gd",
 		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
 	]:
 		var runtime_source := FileAccess.get_file_as_string(runtime_script_path)
@@ -383,7 +382,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 		await process_frame
 	coordinator.loading_failed.disconnect(failure_callback)
 	_expect(load_errors.is_empty(), "Single-player coordinator flow must not report a load error.")
-	var runtime := current_scene as GameRuntimeBase
+	var runtime := current_scene as CombatRuntimeBase
 	_expect(
 		runtime != null
 		and runtime.scene_file_path == "res://scene/game_modes/standard/standard_game.tscn"
@@ -411,7 +410,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 		await process_frame
 	coordinator.loading_failed.disconnect(failure_callback)
 	_expect(load_errors.is_empty(), "Tower-defense coordinator flow must not report a load error.")
-	var tower_runtime := current_scene as GameRuntimeBase
+	var tower_runtime := current_scene as TowerDefenseGame
 	_expect(
 		tower_runtime != null
 		and tower_runtime.scene_file_path == "res://scene/game_modes/tower_defense/tower_defense_game.tscn"
@@ -490,7 +489,7 @@ func _test_mp_game_preparation_barrier() -> void:
 		if net_manager.connection_state == NetManagerStore.ConnectionState.IN_GAME:
 			break
 		await process_frame
-	var runtime := mp_game.get("game") as GameRuntimeBase
+	var runtime := mp_game.get("game") as TowerDefenseGame
 	_expect(
 		net_manager.connection_state == NetManagerStore.ConnectionState.IN_GAME
 		and runtime != null
@@ -569,7 +568,7 @@ func _test_mp_game_preparation_barrier() -> void:
 		net_manager.disconnect_from_game()
 
 
-func _expect_lifecycle_prewarm_pool_released(runtime: GameRuntimeBase) -> void:
+func _expect_lifecycle_prewarm_pool_released(runtime: CombatRuntimeBase) -> void:
 	var tower_runtime := runtime as TowerDefenseGame
 	if tower_runtime == null:
 		return
@@ -586,7 +585,7 @@ func _expect_lifecycle_prewarm_pool_released(runtime: GameRuntimeBase) -> void:
 
 
 func _expect_sorcerer_projectile_pools(
-	runtime: GameRuntimeBase,
+	runtime: CombatRuntimeBase,
 	expected_prewarm_count: int,
 	expected_retained_capacity: int
 ) -> void:
@@ -622,7 +621,7 @@ func _expect_sorcerer_projectile_pools(
 		)
 
 
-func _expect_tango_projectile_pool(runtime: GameRuntimeBase) -> void:
+func _expect_tango_projectile_pool(runtime: CombatRuntimeBase) -> void:
 	if runtime == null:
 		return
 	var object_pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
@@ -643,7 +642,7 @@ func _expect_tango_projectile_pool(runtime: GameRuntimeBase) -> void:
 	)
 
 
-func _expect_gunner_projectile_pool(runtime: GameRuntimeBase) -> void:
+func _expect_gunner_projectile_pool(runtime: CombatRuntimeBase) -> void:
 	if runtime == null:
 		return
 	var object_pool := runtime.get_node_or_null("SessionObjectPool") as SessionObjectPool
@@ -663,7 +662,7 @@ func _expect_gunner_projectile_pool(runtime: GameRuntimeBase) -> void:
 	)
 
 
-func _expect_drone_projectile_pool(runtime: GameRuntimeBase) -> void:
+func _expect_drone_projectile_pool(runtime: CombatRuntimeBase) -> void:
 	if runtime == null:
 		return
 	var motion_system := runtime.get_node_or_null(

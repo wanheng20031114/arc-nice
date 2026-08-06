@@ -305,10 +305,10 @@ func _run() -> void:
 	original_batched_projectile_motion = CapooAK47Bullet.batched_motion_enabled
 	original_ak_attack_phase_stagger = CapooAK47.attack_phase_stagger_enabled
 	original_gunner_bullet_pool_prewarm = (
-		GameRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count
+		CombatRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count
 	)
 	original_gunner_bullet_pool_retained = (
-		GameRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity
+		CombatRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity
 	)
 	original_smg_short_range_targeting = CapooSMG.short_range_targeting_enabled
 	original_smg_hitscan_attack = CapooSMG.hitscan_attack_enabled
@@ -330,10 +330,10 @@ func _run() -> void:
 	CapooAK47Bullet.world_collision_certificate_enabled = false
 	CapooAK47Bullet.batched_motion_enabled = requested_batched_projectile_motion
 	CapooAK47.attack_phase_stagger_enabled = requested_ak_attack_phase_stagger
-	GameRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count = (
+	CombatRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count = (
 		requested_gunner_bullet_pool_prewarm
 	)
-	GameRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity = (
+	CombatRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity = (
 		requested_gunner_bullet_pool_retained
 	)
 	CapooSMG.short_range_targeting_enabled = requested_smg_short_range_targeting
@@ -571,7 +571,7 @@ func _prepare_runtime() -> void:
 			game.player.uses_local_input = false
 			_release_movement_input()
 	elif phase == ProbePhase.BOSS:
-		game.wave_state = TowerDefenseGame.WaveState.BOSS_ACTIVE
+		game.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	movement_start_physics_frame = Engine.get_physics_frames()
 	movement_direction = 0
 	if phase != ProbePhase.BURST:
@@ -1002,7 +1002,7 @@ func _spawn_cohort() -> void:
 			float(int(stacked_row / 3) % 3) * 2.0
 		)
 		enemy.global_position = positions[position_index] + stacked_offset
-		enemy.setup(current_enemy_config, game.player, pathfinder)
+		enemy.setup(current_enemy_config, game.player, pathfinder, game)
 		if requested_navigation_interval > 0:
 			enemy.navigation_update_interval_frames = requested_navigation_interval
 		enemy.current_health = ENEMY_PROBE_HEALTH if not is_boss else enemy.current_health
@@ -2017,10 +2017,10 @@ func _finish() -> void:
 	)
 	CapooAK47Bullet.batched_motion_enabled = original_batched_projectile_motion
 	CapooAK47.attack_phase_stagger_enabled = original_ak_attack_phase_stagger
-	GameRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count = (
+	CombatRuntimeBase.combat_robot_gunner_bullet_pool_prewarm_count = (
 		original_gunner_bullet_pool_prewarm
 	)
-	GameRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity = (
+	CombatRuntimeBase.combat_robot_gunner_bullet_pool_retained_capacity = (
 		original_gunner_bullet_pool_retained
 	)
 	CapooSMG.short_range_targeting_enabled = original_smg_short_range_targeting

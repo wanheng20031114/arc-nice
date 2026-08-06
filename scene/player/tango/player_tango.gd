@@ -145,13 +145,13 @@ func _try_use_skill1() -> bool:
 	if skill1_charge < skill1_charge_duration:
 		return false
 
-	var current_scene := get_tree().current_scene
-	if (
-		multiplayer.has_multiplayer_peer()
-		and current_scene != null
-		and current_scene.has_method("request_tango_electric_surge")
-	):
-		return bool(current_scene.call("request_tango_electric_surge"))
+	if _requires_multiplayer_gameplay_gateway():
+		return (
+			gameplay_gateway != null
+			and gameplay_gateway.request_tango_electric_surge()
+		)
+	if not _is_explicit_singleplayer_authority():
+		return false
 	return try_start_authoritative_electric_surge(
 		_electric_surge_last_seen_activation_id + 1,
 		global_position
@@ -168,7 +168,7 @@ func try_start_authoritative_electric_surge(
 		or _electric_surge_active
 		or not is_finite(origin.x)
 		or not is_finite(origin.y)
-		or get_tree().current_scene == null
+		or not _has_valid_combat_runtime()
 	):
 		return false
 	if not try_begin_skill1_activation(true):
@@ -387,20 +387,25 @@ func _spawn_authoritative_electric_surge_field(
 	activation_id: int,
 	origin: Vector2
 ) -> bool:
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent == null:
 		return false
-	if spawn_parent.has_method("spawn_authoritative_tango_electric_surge_field"):
-		return bool(spawn_parent.call(
-			"spawn_authoritative_tango_electric_surge_field",
+	if _requires_multiplayer_gameplay_gateway():
+		return (
+			gameplay_gateway != null
+			and gameplay_gateway.spawn_authoritative_tango_electric_surge_field(
 			self,
 			activation_id,
 			origin
-		))
+			)
+		)
+	if not _is_explicit_singleplayer_authority():
+		return false
 	var field := ELECTRIC_SURGE_FIELD_SCENE.instantiate() as TangoElectricSurgeField
 	if field == null:
 		return false
 	field.top_level = true
+	field.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	spawn_parent.add_child(field)
 	field.global_position = origin
 	field.setup(self, activation_id, ELECTRIC_SURGE_DURATION, true)
@@ -412,21 +417,23 @@ func _spawn_remote_electric_surge_visual_field(
 	origin: Vector2,
 	remaining_seconds: float
 ) -> void:
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		return
-	if spawn_parent.has_method("spawn_remote_tango_electric_surge_visual_field"):
-		spawn_parent.call(
-			"spawn_remote_tango_electric_surge_visual_field",
+	if _requires_multiplayer_gameplay_gateway() and gameplay_gateway != null:
+		gameplay_gateway.spawn_remote_tango_electric_surge_visual_field(
 			activation_id,
 			origin,
 			remaining_seconds
 		)
 		return
+	if not _is_explicit_singleplayer_authority():
+		return
+	var spawn_parent := _get_combat_spawn_parent()
+	if spawn_parent == null:
+		return
 	var field := ELECTRIC_SURGE_FIELD_SCENE.instantiate() as TangoElectricSurgeField
 	if field == null:
 		return
 	field.top_level = true
+	field.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	spawn_parent.add_child(field)
 	field.global_position = origin
 	field.setup_multiplayer_visual_only(activation_id, remaining_seconds)
@@ -680,10 +687,12 @@ func _handle_primary_attack_input(shoot_input: Vector2) -> void:
 func _begin_local_charge_request(direction: Vector2) -> void:
 	var uses_instant_full_charge := _electric_surge_active
 	var accepted := false
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_tango_charge_started"):
-		accepted = bool(current_scene.call("request_tango_charge_started", direction))
-	else:
+	if _requires_multiplayer_gameplay_gateway():
+		accepted = (
+			gameplay_gateway != null
+			and gameplay_gateway.request_tango_charge_started(direction)
+		)
+	elif _is_explicit_singleplayer_authority():
 		accepted = try_authoritative_tango_charge_started(direction)
 	if not accepted:
 		_local_charge_input_active = false
@@ -704,9 +713,11 @@ func _begin_local_charge_request(direction: Vector2) -> void:
 func _release_local_charge_request(direction: Vector2) -> void:
 	_local_charge_input_active = false
 	var local_charge_elapsed := _charge_elapsed
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_tango_charge_released"):
-		var accepted := bool(current_scene.call("request_tango_charge_released", direction))
+	if _requires_multiplayer_gameplay_gateway():
+		var accepted := (
+			gameplay_gateway != null
+			and gameplay_gateway.request_tango_charge_released(direction)
+		)
 		if not accepted:
 			_cancel_charge_visual()
 			return
@@ -722,6 +733,9 @@ func _release_local_charge_request(direction: Vector2) -> void:
 				_charge_elapsed_to_release_ratio(local_charge_elapsed),
 				false
 			)
+		return
+	if not _is_explicit_singleplayer_authority():
+		_cancel_charge_visual()
 		return
 	if local_charge_elapsed + CHARGE_THRESHOLD_EPSILON < MIN_CHARGE_DURATION:
 		cancel_authoritative_tango_charge()
@@ -781,9 +795,8 @@ func _request_local_charge_cancel() -> void:
 	if _casting_state != CastingState.CHARGING:
 		return
 	_local_charge_input_active = false
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_tango_charge_cancelled"):
-		current_scene.call("request_tango_charge_cancelled")
+	if _requires_multiplayer_gameplay_gateway() and gameplay_gateway != null:
+		gameplay_gateway.request_tango_charge_cancelled()
 	cancel_authoritative_tango_charge()
 
 
@@ -1223,20 +1236,20 @@ func _emit_tango_volley() -> void:
 func _spawn_authoritative_tango_volley() -> bool:
 	if _barrage_damage_snapshot <= 0 or _casting_unit_sprites.size() != PROJECTILES_PER_VOLLEY:
 		return false
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent == null:
+		return false
+	if _requires_multiplayer_gameplay_gateway() and gameplay_gateway == null:
 		return false
 	var projectiles: Array[Node] = []
 	var spawn_positions := PackedVector2Array()
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call("has_session_object_pool_scene", LASER_BULLET_SCENE))
+	var uses_registered_pool := spawn_parent.has_session_object_pool_scene(
+		LASER_BULLET_SCENE
 	)
 	for unit_index in range(_casting_unit_sprites.size()):
 		var bullet: TangoLaserBullet = null
 		if uses_registered_pool:
-			bullet = spawn_parent.call(
-				"acquire_session_object",
+			bullet = spawn_parent.acquire_session_object(
 				LASER_BULLET_SCENE,
 				false
 			) as TangoLaserBullet
@@ -1246,11 +1259,14 @@ func _spawn_authoritative_tango_volley() -> bool:
 			_retire_spawned_tango_projectiles(projectiles)
 			return false
 		bullet.top_level = true
+		bullet.bind_gameplay_context(combat_runtime, gameplay_gateway)
 		bullet.source_type = LASER_BULLET_TYPE
 		bullet.setup(_barrage_direction, _barrage_damage_snapshot, false)
 		bullet.setup_collectible_owner(self)
 		if bullet.get_parent() == null:
 			spawn_parent.add_child(bullet)
+		elif bullet.get_parent() != spawn_parent:
+			bullet.reparent(spawn_parent)
 		# CastingUnits carries multiplayer_visual_offset for rendering only. Build
 		# the authoritative muzzle from the Player transform so interpolation can
 		# never shift hit detection or push a shot through nearby world geometry.
@@ -1268,9 +1284,8 @@ func _spawn_authoritative_tango_volley() -> bool:
 		bullet.reset_physics_interpolation()
 		projectiles.append(bullet)
 		spawn_positions.append(spawn_position)
-	if spawn_parent.has_method("register_local_tango_laser_volley"):
-		var registered := bool(spawn_parent.call(
-			"register_local_tango_laser_volley",
+	if _requires_multiplayer_gameplay_gateway():
+		var registered := gameplay_gateway.register_local_tango_laser_volley(
 			projectiles,
 			spawn_positions,
 			_barrage_direction,
@@ -1283,7 +1298,7 @@ func _spawn_authoritative_tango_volley() -> bool:
 				_barrage_duration - _barrage_elapsed,
 				0.0
 			)
-		))
+		)
 		if not registered:
 			_retire_spawned_tango_projectiles(projectiles)
 			return false
@@ -1292,8 +1307,9 @@ func _spawn_authoritative_tango_volley() -> bool:
 
 func _retire_spawned_tango_projectiles(projectiles: Array[Node]) -> void:
 	for projectile in projectiles:
-		if projectile != null and is_instance_valid(projectile):
-			projectile.call("retire")
+		var bullet := projectile as TangoLaserBullet
+		if bullet != null and is_instance_valid(bullet):
+			bullet.retire()
 
 
 func _begin_return_to_orbit() -> void:

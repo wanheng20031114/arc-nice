@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_ninja.gd" id="2_script"]
-[ext_resource type="SpriteFrames" uid="uid://d4k7v2qpbm9s1" path="res://resources/animation/combat_robot_ninja.tres" id="3_frames"]
+[ext_resource type="SpriteFrames" uid="uid://d4k7v2qpbnas1" path="res://resources/animation/combat_robot_ninja.tres" id="3_frames"]
 [ext_resource type="AudioStream" uid="uid://druowpv8vg1x0" path="res://resources/audio/capoo_sword_slash_light.wav" id="4_audio"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]

@@ -28,7 +28,7 @@ const TEST_HEALTH := 1000
 const TEST_DELTA := 1.0 / 60.0
 
 var failures: Array[String] = []
-var test_root: Node2D = null
+var test_root: PlayerTestCombatRuntime = null
 
 
 class DirectPathfinder:
@@ -53,14 +53,15 @@ class DirectPathfinder:
 
 
 class TargetRuntime:
-	extends Node2D
+	extends PlayerTestCombatRuntime
 
 	var nearest_target: Node2D = null
 	var query_count := 0
 
 	func find_nearest_enemy_attack_target_world(
 		from_position: Vector2,
-		max_distance: float
+		max_distance: float,
+		_excluded_instance_ids: Dictionary = {}
 	) -> Node2D:
 		query_count += 1
 		if nearest_target == null or not is_instance_valid(nearest_target):
@@ -78,7 +79,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = PlayerTestCombatRuntime.new()
 	test_root.name = "FireSorcererSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -824,7 +825,7 @@ func _test_runtime_nearest_target_selection() -> void:
 	runtime.nearest_target = nearest_plant
 	var pathfinder := DirectPathfinder.new()
 	runtime.add_child(pathfinder)
-	var enemy := _spawn_sorcerer(Vector2.ZERO, player, pathfinder)
+	var enemy := _spawn_sorcerer(Vector2.ZERO, player, pathfinder, runtime)
 	enemy.set_physics_process(false)
 	var navigation_gate := Node2D.new()
 	runtime.add_child(navigation_gate)
@@ -1014,6 +1015,7 @@ func _expect_animation_frames_within_limit(
 func _spawn_player(position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(player)
+	player.bind_combat_runtime(test_root)
 	player.global_position = position
 	player.invincibility_duration = 0.0
 	player.invincibility_time_left = 0.0
@@ -1029,12 +1031,14 @@ func _spawn_player(position: Vector2) -> Player:
 func _spawn_sorcerer(
 	position: Vector2,
 	player: Player,
-	pathfinder: Node
+	pathfinder: Node,
+	runtime_context: CombatRuntimeBase = null
 ) -> FireSorcerer:
+	var runtime := runtime_context if runtime_context != null else test_root
 	var enemy := FIRE_SORCERER_SCENE.instantiate() as FireSorcerer
-	test_root.add_child(enemy)
+	runtime.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(FIRE_SORCERER_CONFIG, player, pathfinder)
+	enemy.setup(FIRE_SORCERER_CONFIG, player, pathfinder, runtime)
 	return enemy
 
 
@@ -1046,13 +1050,18 @@ func _spawn_volley(
 	lifetime: float,
 	target: Node2D,
 	turn_rate: float,
-	target_runtime: Node = null
+	target_runtime: CombatRuntimeBase = null
 ) -> FireSorcererFireballVolley:
+	var runtime := target_runtime if target_runtime != null else test_root
 	var volley := (
 		FIREBALL_VOLLEY_SCENE.instantiate()
 		as FireSorcererFireballVolley
 	)
-	test_root.add_child(volley)
+	runtime.add_child(volley)
+	volley.bind_gameplay_context(
+		runtime,
+		runtime.get_multiplayer_gameplay_gateway()
+	)
 	volley.global_position = position
 	volley.setup(
 		initial_direction,
@@ -1061,7 +1070,7 @@ func _spawn_volley(
 		lifetime,
 		target,
 		turn_rate,
-		target_runtime
+		runtime
 	)
 	volley.set_physics_process(false)
 	return volley

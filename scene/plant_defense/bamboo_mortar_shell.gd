@@ -52,7 +52,8 @@ var projectile_id := 0
 var pool_active := true
 
 var _has_impacted := false
-var _combat_runtime: Node = null
+var _combat_runtime: CombatRuntimeBase = null
+var _tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 var _explosion_targets: Array[Enemy] = []
 var _explosion_completion_pending := false
 var _explosion_visual_done := true
@@ -97,6 +98,14 @@ func _ready() -> void:
 		set_physics_process(false)
 
 
+func bind_gameplay_context(
+	runtime_instance: CombatRuntimeBase,
+	mode_adapter: TowerPlantGameplayPort
+) -> void:
+	_combat_runtime = runtime_instance
+	_tower_multiplayer_mode_adapter = mode_adapter
+
+
 func on_pool_acquired(_generation: int) -> void:
 	pool_active = true
 	_reset_visual_state()
@@ -104,6 +113,8 @@ func on_pool_acquired(_generation: int) -> void:
 
 func on_pool_released(_generation: int) -> void:
 	pool_active = false
+	_combat_runtime = null
+	_tower_multiplayer_mode_adapter = null
 	_explosion_targets.clear()
 	_has_impacted = true
 	_explosion_completion_pending = false
@@ -163,7 +174,6 @@ func setup(
 		MIN_ARC_HEIGHT,
 		MAX_ARC_HEIGHT
 	)
-	_combat_runtime = get_tree().current_scene
 	_has_impacted = (
 		flight_elapsed_seconds >= flight_duration_seconds
 	)
@@ -316,14 +326,12 @@ func _apply_explosion_damage() -> void:
 	if (
 		_combat_runtime != null
 		and is_instance_valid(_combat_runtime)
-		and _combat_runtime.has_method(
-			"queue_bamboo_mortar_explosion"
-		)
+		and _tower_multiplayer_mode_adapter != null
+		and is_instance_valid(_tower_multiplayer_mode_adapter)
 	):
 		# A runtime that owns the authoritative queue also owns rejection. Do
 		# not bypass a disabled/rejected service with synchronous direct damage.
-		_combat_runtime.call(
-			"queue_bamboo_mortar_explosion",
+		_tower_multiplayer_mode_adapter.queue_bamboo_mortar_explosion(
 			landing_position,
 			INNER_RADIUS,
 			OUTER_RADIUS,
@@ -340,13 +348,9 @@ func _apply_explosion_damage_sync_for_fixture() -> void:
 	if (
 		_combat_runtime == null
 		or not is_instance_valid(_combat_runtime)
-		or not _combat_runtime.has_method(
-			"query_combat_targets_unordered_into"
-		)
 	):
 		return
-	_combat_runtime.call(
-		"query_combat_targets_unordered_into",
+	_combat_runtime.query_combat_targets_unordered_into(
 		landing_position,
 		OUTER_RADIUS,
 		_explosion_targets
@@ -376,19 +380,13 @@ func _apply_explosion_damage_sync_for_fixture() -> void:
 		)
 		if impact_direction == Vector2.ZERO:
 			impact_direction = Vector2.UP
-		if _combat_runtime.has_method(
-			"apply_authoritative_plant_enemy_damage"
+		if (
+			_tower_multiplayer_mode_adapter != null
+			and is_instance_valid(_tower_multiplayer_mode_adapter)
 		):
-			_combat_runtime.call(
-				"apply_authoritative_plant_enemy_damage",
+			_tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage(
 				damage_source_id,
 				enemy,
-				applied_damage,
-				impact_direction,
-				EnemyConfig.DamageType.PHYSICAL
-			)
-		else:
-			enemy.apply_damage(
 				applied_damage,
 				impact_direction,
 				EnemyConfig.DamageType.PHYSICAL
@@ -456,6 +454,7 @@ func _reset_visual_state() -> void:
 	projectile_id = 0
 	_has_impacted = false
 	_combat_runtime = null
+	_tower_multiplayer_mode_adapter = null
 	_explosion_targets.clear()
 	_explosion_completion_pending = false
 	_explosion_visual_done = true

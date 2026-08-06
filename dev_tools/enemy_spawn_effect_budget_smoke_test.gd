@@ -119,12 +119,12 @@ func _test_shared_runtime_pool_profile() -> void:
 	var pool := SessionObjectPool.new()
 	pool.name = "SharedVisualPoolProfile"
 	fixture.add_child(pool)
-	GameRuntimeBase.register_common_visual_effect_pools(pool)
+	CombatRuntimeBase.register_common_visual_effect_pools(pool)
 	_expect_pool_capacity(
 		pool,
 		SPAWN_EFFECT_SCENE,
-		GameRuntimeBase.ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY,
-		GameRuntimeBase.ENEMY_SPAWN_EFFECT_PREWARM_COUNT
+		CombatRuntimeBase.ENEMY_SPAWN_EFFECT_RETAINED_CAPACITY,
+		CombatRuntimeBase.ENEMY_SPAWN_EFFECT_PREWARM_COUNT
 	)
 	_expect_pool_capacity(
 		pool,
@@ -143,7 +143,7 @@ func _test_shared_runtime_pool_profile() -> void:
 
 func _test_runtime_call_paths_share_the_budget() -> void:
 	for runtime_script_path in [
-		"res://scene/game_modes/standard/standard_game.gd",
+		"res://scene/combat/runtime/wave_combat_runtime_base.gd",
 		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
 	]:
 		var runtime_script := load(runtime_script_path) as GDScript
@@ -153,7 +153,7 @@ func _test_runtime_call_paths_share_the_budget() -> void:
 		var source := runtime_script.source_code
 		_expect(
 			source.count(
-				"GameRuntimeBase.register_common_visual_effect_pools(session_object_pool)"
+				"CombatRuntimeBase.register_common_visual_effect_pools(session_object_pool)"
 			) == 1,
 			"Both runtime scenes must use the same visual pool profile: %s"
 			% runtime_script_path

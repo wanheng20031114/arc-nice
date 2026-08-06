@@ -30,7 +30,7 @@ const MAX_MOVE_CENTROID_X_DRIFT := 1.0
 
 
 class TargetRuntime:
-	extends Node2D
+	extends PlayerTestCombatRuntime
 
 	var candidates: Array[Node2D] = []
 	var query_count := 0
@@ -204,7 +204,7 @@ func _test_resource_and_scene_contract() -> void:
 	_expect(
 		not enemy_source.contains("projectile_scene")
 		and not enemy_source.contains("intersect_shape")
-		and enemy_source.contains("request_multiplayer_player_damage"),
+		and enemy_source.contains("_try_request_player_damage"),
 		"Lightning must resolve direct authoritative damage without a projectile or AOE query."
 	)
 
@@ -418,9 +418,6 @@ func _create_runtime(runtime_name: String) -> TargetRuntime:
 	var runtime := TargetRuntime.new()
 	runtime.name = runtime_name
 	fixture.add_child(runtime)
-	var pathfinder := Node.new()
-	pathfinder.name = "GridPathfinder"
-	runtime.add_child(pathfinder)
 	return runtime
 
 
@@ -428,7 +425,12 @@ func _spawn_enemy(runtime: TargetRuntime, target: Player) -> LightningSorcerer:
 	var enemy := LIGHTNING_SCENE.instantiate() as LightningSorcerer
 	runtime.add_child(enemy)
 	enemy.global_position = Vector2.ZERO
-	enemy.setup(LIGHTNING_CONFIG, target, runtime.get_node("GridPathfinder"))
+	enemy.setup(
+		LIGHTNING_CONFIG,
+		target,
+		runtime.get_node("GridPathfinder"),
+		runtime
+	)
 	enemy.set_physics_process(false)
 	return enemy
 
@@ -436,6 +438,7 @@ func _spawn_enemy(runtime: TargetRuntime, target: Player) -> LightningSorcerer:
 func _spawn_player(runtime: TargetRuntime, position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	runtime.add_child(player)
+	player.bind_combat_runtime(runtime)
 	player.global_position = position
 	player.invincibility_duration = 0.0
 	player.invincibility_time_left = 0.0

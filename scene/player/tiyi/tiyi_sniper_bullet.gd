@@ -24,31 +24,45 @@ func _ready() -> void:
 		bullet_sprite.play(&"fly")
 
 
+func on_pool_acquired(generation: int) -> void:
+	super.on_pool_acquired(generation)
+	_confirmed_hit_keys.clear()
+	_clear_temporary_shield_exceptions()
+
+
+func on_pool_released(generation: int) -> void:
+	_clear_temporary_shield_exceptions()
+	_confirmed_hit_keys.clear()
+	super.on_pool_released(generation)
+
+
 func get_damage_type() -> EnemyConfig.DamageType:
 	return EnemyConfig.DamageType.MAGIC
 
 
 func _physics_process(delta: float) -> void:
+	if not pool_active:
+		return
 	if remaining_lifetime <= 0.0:
-		queue_free()
+		retire()
 		return
 	var simulated_delta := minf(maxf(delta, 0.0), remaining_lifetime)
 	_sweep_segment(simulated_delta)
 	remaining_lifetime -= maxf(delta, 0.0)
-	if remaining_lifetime <= 0.0 and not is_queued_for_deletion():
-		queue_free()
+	if remaining_lifetime <= 0.0 and pool_active:
+		retire()
 
 
 func simulate_compensated_motion(seconds: float) -> void:
 	var time_left := clampf(seconds, 0.0, max_lifetime)
-	while time_left > 0.0 and not is_queued_for_deletion():
+	while time_left > 0.0 and pool_active and not is_queued_for_deletion():
 		var step := minf(time_left, MAX_COMPENSATION_STEP)
 		_sweep_segment(step)
 		time_left -= step
 
 
 func _sweep_segment(delta: float) -> void:
-	if delta <= 0.0 or is_queued_for_deletion():
+	if delta <= 0.0 or not pool_active or is_queued_for_deletion():
 		return
 	_update_homing(delta)
 	var remaining_distance := maxf(speed, 0.0) * delta
@@ -78,7 +92,7 @@ func _sweep_segment(delta: float) -> void:
 				global_position = hit_position
 				if shield.try_intercept(direction):
 					_clear_temporary_shield_exceptions()
-					queue_free()
+					retire()
 					return
 				if not _temporary_shield_exceptions.has(shield):
 					sweep_cast.add_exception(shield)
@@ -94,7 +108,7 @@ func _sweep_segment(delta: float) -> void:
 					0.0
 				)
 				_clear_temporary_shield_exceptions()
-				queue_free()
+				retire()
 				return
 
 			# A ShapeCast stops at its earliest unsafe fraction. Piercing therefore
@@ -103,7 +117,7 @@ func _sweep_segment(delta: float) -> void:
 			global_position = hit_position
 			try_hit_enemy(enemy)
 			collision_budget -= 1
-			if is_queued_for_deletion():
+			if not pool_active or is_queued_for_deletion():
 				_clear_temporary_shield_exceptions()
 				return
 			if collision_budget <= 0:
@@ -116,7 +130,12 @@ func _sweep_segment(delta: float) -> void:
 		)
 		global_position = sweep_start + direction * advance_distance
 		remaining_distance -= advance_distance
-	if remaining_distance > 0.0 and collision_budget > 0 and not is_queued_for_deletion():
+	if (
+		remaining_distance > 0.0
+		and collision_budget > 0
+		and pool_active
+		and not is_queued_for_deletion()
+	):
 		global_position += direction * remaining_distance
 	_clear_temporary_shield_exceptions()
 
@@ -189,12 +208,16 @@ func apply_authoritative_hit_confirmation(
 		rotation = direction.angle()
 	var hit_key: Variant = enemy_net_id if enemy_net_id > 0 else "%s:%s" % [hit_position.x, hit_position.y]
 	_spawn_hit_effect_once(hit_key, hit_position, direction)
-	if not continues_piercing and not is_queued_for_deletion():
-		queue_free()
+	if not continues_piercing and pool_active and not is_queued_for_deletion():
+		retire()
 
 
 func _should_play_local_authoritative_hit_effect() -> bool:
-	return not multiplayer.has_multiplayer_peer() or multiplayer.is_server()
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	)
 
 
 func _spawn_hit_effect_once(
@@ -205,7 +228,9 @@ func _spawn_hit_effect_once(
 	if _confirmed_hit_keys.has(hit_key):
 		return
 	_confirmed_hit_keys[hit_key] = true
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := combat_runtime
+	if spawn_parent != null and not is_instance_valid(spawn_parent):
+		spawn_parent = null
 	if spawn_parent == null:
 		return
 	var effect := HIT_EFFECT_SCENE.instantiate() as TiyiSniperHitEffect

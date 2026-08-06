@@ -413,7 +413,7 @@ func _run_live_gameplay_probe() -> void:
 	var enemy_count_before := game.enemy_container.get_child_count()
 	game.enemy_spawn_timer.stop()
 	game.state_timer.stop()
-	game.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	var spawned_enemy_count := _spawn_live_gameplay_enemies()
 	_expect(
 		spawned_enemy_count == LIVE_GAMEPLAY_ENEMY_COUNT,

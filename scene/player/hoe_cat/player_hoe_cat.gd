@@ -143,9 +143,13 @@ func _perform_primary_attack(attack_direction: Vector2) -> bool:
 		return false
 	var safe_direction := _get_safe_attack_direction(attack_direction)
 	last_attack_direction = safe_direction
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_hoe_primary_attack"):
-		return bool(current_scene.call("request_hoe_primary_attack", safe_direction))
+	if _requires_multiplayer_gameplay_gateway():
+		return (
+			gameplay_gateway != null
+			and gameplay_gateway.request_hoe_primary_attack(safe_direction)
+		)
+	if not _is_explicit_singleplayer_authority():
+		return false
 	return try_authoritative_hoe_primary_attack(safe_direction)
 
 
@@ -185,9 +189,10 @@ func _try_use_skill1() -> bool:
 	_sync_skill1_charge_duration_to_upgrade_level()
 	if skill1_charge < skill1_charge_duration:
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_hoe_whirlwind"):
-		return bool(current_scene.call("request_hoe_whirlwind"))
+	if _requires_multiplayer_gameplay_gateway():
+		return gameplay_gateway != null and gameplay_gateway.request_hoe_whirlwind()
+	if not _is_explicit_singleplayer_authority():
+		return false
 	return try_authoritative_hoe_whirlwind()
 
 

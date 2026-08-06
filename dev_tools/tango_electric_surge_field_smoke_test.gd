@@ -9,18 +9,18 @@ const ENEMY_CONFIG := preload(
 )
 
 
-class DamageDispatcherStub:
-	extends Node
+class DamageGatewayStub:
+	extends MultiplayerGameplayGateway
 
 	var applied_damage_count := 0
 	var last_damage_type := -1
 	var last_show_hit_particles := true
 
-	func apply_multiplayer_collectible_enemy_damage(
+	func apply_collectible_enemy_damage(
 		enemy: Enemy,
 		damage: int,
 		impact_direction: Vector2,
-		damage_type: int = EnemyConfig.DamageType.MAGIC,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.MAGIC,
 		show_hit_particles: bool = true
 	) -> bool:
 		applied_damage_count += 1
@@ -205,18 +205,15 @@ func _test_initial_overlap_signal_contract() -> void:
 
 
 func _test_eight_authoritative_ticks_and_status_cleanup() -> void:
-	var damage_dispatcher := DamageDispatcherStub.new()
-	fixture.add_child(damage_dispatcher)
+	var damage_gateway := DamageGatewayStub.new()
+	fixture.add_child(damage_gateway)
 	var field := FIELD_SCENE.instantiate() as TangoElectricSurgeField
 	var overlapping_field := (
 		FIELD_SCENE.instantiate() as TangoElectricSurgeField
 	)
 	field.global_position = Vector2(24.0, 40.0)
 	overlapping_field.global_position = field.global_position
-	_expect(
-		field.set_authoritative_damage_dispatcher(damage_dispatcher),
-		"权威场域必须接受显式多人伤害分发器，以便施术者断线后继续即时同步。"
-	)
+	field.bind_gameplay_context(null, damage_gateway)
 	field.setup(null, 2001)
 	# Network activation sequences are per player, so identical public zone IDs
 	# must still own independent local slow-source leases.
@@ -273,9 +270,9 @@ func _test_eight_authoritative_ticks_and_status_cleanup() -> void:
 	_expect(
 		field.completed_damage_tick_count == 8
 		and enemy.current_health == health_before - 160
-		and damage_dispatcher.applied_damage_count == 8
-		and damage_dispatcher.last_damage_type == EnemyConfig.DamageType.MAGIC
-		and not damage_dispatcher.last_show_hit_particles
+		and damage_gateway.applied_damage_count == 8
+		and damage_gateway.last_damage_type == EnemyConfig.DamageType.MAGIC
+		and not damage_gateway.last_show_hit_particles
 		and not field.is_active()
 		and finished_fields.has(field)
 		and field.is_queued_for_deletion(),
@@ -287,7 +284,7 @@ func _test_eight_authoritative_ticks_and_status_cleanup() -> void:
 		"场域结束只清理自己的减速来源，永久电元素附着必须保留。"
 	)
 	enemy.queue_free()
-	damage_dispatcher.queue_free()
+	damage_gateway.queue_free()
 	await process_frame
 
 

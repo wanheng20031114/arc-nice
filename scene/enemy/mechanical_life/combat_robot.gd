@@ -357,10 +357,8 @@ func _restore_proxy_move_animation() -> void:
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			direction,

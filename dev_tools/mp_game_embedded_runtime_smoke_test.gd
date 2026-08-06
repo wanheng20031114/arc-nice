@@ -81,12 +81,16 @@ func _test_static_embedded_runtime_contract() -> void:
 		"An explicit embedded runtime scene path must take priority over game mode."
 	)
 	_expect(
-		source.contains("[game.get_multiplayer_defeat_reason() if game != null else \"\"]")
+		source.contains("_mode_adapter.get_multiplayer_defeat_reason()")
 		and source.contains("func net_game_defeated(failure_reason: String = \"\")")
-		and source.contains("game.apply_remote_defeat_with_reason(failure_reason)"),
+		and source.contains(
+			"_mode_adapter.apply_remote_defeat_with_reason(failure_reason)"
+		),
 		"The terminal defeat RPC must preserve the Host's authoritative failure reason."
 	)
-	var game_source := FileAccess.get_file_as_string("res://scene/game_modes/standard/standard_game.gd")
+	var game_source := FileAccess.get_file_as_string(
+		"res://scene/combat/runtime/wave_combat_runtime_base.gd"
+	)
 	_expect(
 		game_source.contains(
 			"if not runtime_activation_deferred:\n"
@@ -193,8 +197,8 @@ func _test_embedded_runtime_lifecycle() -> void:
 	if host_error != OK:
 		return
 	_expect(
-		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
-		"The fixture must select tower defense before applying the standard-scene override."
+		net_manager.set_host_game_mode(NetManagerStore.GameMode.STANDARD),
+		"The fixture must select the mode owned by the standard runtime override."
 	)
 	net_manager.host_start_game()
 	_expect(
@@ -234,16 +238,20 @@ func _test_embedded_runtime_lifecycle() -> void:
 	)
 	root.add_child(mp_game)
 
-	var runtime := mp_game.call("get_game_runtime") as GameRuntimeBase
-	_expect(runtime != null, "Embedded MpGame must instantiate a GameRuntimeBase child.")
+	var runtime := mp_game.call("get_game_runtime") as CombatRuntimeBase
+	_expect(runtime != null, "Embedded MpGame must instantiate a CombatRuntimeBase child.")
 	if runtime == null:
 		return
 	_expect(
 		runtime.scene_file_path == OVERRIDE_RUNTIME_SCENE_PATH
-		and not runtime.supports_tower_defense(),
+		and runtime is StandardGame
+		and not (
+			runtime.get_multiplayer_mode_adapter()
+			is TowerDefenseMultiplayerModeAdapter
+		),
 		(
-			"The explicit standard-scene override must win even while NetManager selects "
-			+ "tower-defense mode."
+			"The explicit standard-scene override must resolve to its matching typed "
+			+ "runtime and adapter."
 		)
 	)
 	_expect(
@@ -304,7 +312,7 @@ func _test_embedded_runtime_lifecycle() -> void:
 		runtime.runtime_activated
 		and not runtime.runtime_activation_deferred
 		and runtime.process_mode == Node.PROCESS_MODE_INHERIT,
-		"Successful activation must reach GameRuntimeBase.activate_runtime()."
+		"Successful activation must reach CombatRuntimeBase.activate_runtime()."
 	)
 	_expect(
 		net_manager.connection_state == NetManagerStore.ConnectionState.IN_GAME

@@ -5,10 +5,13 @@ const SKILL4_ORB_SCENE := preload("res://scene/boss/linglan/linglan_skill4_light
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const SKILL3_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill3_light_orb.gd"
 const SKILL4_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
+const TEST_RUNTIME_SCRIPT := preload(
+	"res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
+)
 
 
 class DamageReportHost:
-	extends Node2D
+	extends "res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 
 	var damage_requests: Array[Dictionary] = []
 
@@ -17,9 +20,10 @@ class DamageReportHost:
 		target_peer_id: int,
 		damage: int,
 		source_type: StringName,
-		damage_type: EnemyConfig.DamageType,
-		source_direction: Vector2,
-		is_ranged: bool
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		source_direction: Vector2 = Vector2.ZERO,
+		is_ranged: bool = false,
+		_contact_preconsumed: bool = false
 	) -> bool:
 		damage_requests.append({
 			"source_id": source_id,
@@ -34,7 +38,7 @@ class DamageReportHost:
 
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: CombatRuntimeBase
 
 
 func _init() -> void:
@@ -45,10 +49,9 @@ func _run() -> void:
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(&"weishidaier")
-	test_root = Node2D.new()
+	test_root = TEST_RUNTIME_SCRIPT.new()
 	test_root.name = "LinglanOrbEventSmokeTest"
 	root.add_child(test_root)
-	current_scene = test_root
 
 	_test_query_frequency_contract()
 	await _test_skill3_flying_body_entered_hit()
@@ -124,10 +127,10 @@ func _test_query_frequency_contract() -> void:
 
 
 func _test_skill3_flying_body_entered_hit() -> void:
-	current_scene = test_root
 	var player := _spawn_player(test_root, Vector2(100.0, 0.0), 31, 200)
 	var orb := SKILL3_ORB_SCENE.instantiate() as LinglanSkill3LightOrb
 	test_root.add_child(orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.global_position = Vector2.ZERO
 	orb.setup(Vector2.RIGHT, 50, 90.0, 2.2)
 	orb.set_physics_process(false)
@@ -154,10 +157,10 @@ func _test_skill3_flying_body_entered_hit() -> void:
 
 
 func _test_skill3_expansion_capture_and_lifetime() -> void:
-	current_scene = test_root
 	var player := _spawn_player(test_root, Vector2(30.0, 0.0), 32, 200)
 	var orb := SKILL3_ORB_SCENE.instantiate() as LinglanSkill3LightOrb
 	test_root.add_child(orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.global_position = Vector2.ZERO
 	orb.setup(Vector2.RIGHT, 50, 0.0, 5.0, 15.0, 3.0, 0.5, 2.0)
 	orb.set_physics_process(false)
@@ -185,10 +188,10 @@ func _test_skill3_expansion_capture_and_lifetime() -> void:
 
 
 func _test_skill4_flying_and_spawn_overlap_hits() -> void:
-	current_scene = test_root
 	var flying_player := _spawn_player(test_root, Vector2(100.0, 0.0), 41, 200)
 	var flying_orb := SKILL4_ORB_SCENE.instantiate() as LinglanSkill4LightOrb
 	test_root.add_child(flying_orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(flying_orb)
 	flying_orb.global_position = Vector2.ZERO
 	flying_orb.setup(Vector2.RIGHT, 50, 40.0, 10.0, 8.0, 6.0)
 	flying_orb.set_physics_process(false)
@@ -220,6 +223,7 @@ func _test_skill4_flying_and_spawn_overlap_hits() -> void:
 	_set_player_health(spawn_player, 200)
 	var spawn_orb := SKILL4_ORB_SCENE.instantiate() as LinglanSkill4LightOrb
 	test_root.add_child(spawn_orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(spawn_orb)
 	spawn_orb.global_position = Vector2.ZERO
 	spawn_orb.setup(Vector2.RIGHT, 50, 0.0, 10.0, 8.0, 6.0)
 	spawn_orb.set_physics_process(false)
@@ -231,6 +235,7 @@ func _test_skill4_flying_and_spawn_overlap_hits() -> void:
 func _test_skill4_lifetime() -> void:
 	var orb := SKILL4_ORB_SCENE.instantiate() as LinglanSkill4LightOrb
 	test_root.add_child(orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.setup(Vector2.LEFT, 50, 40.0, 0.25, 11.0, 9.0)
 	orb.set_physics_process(false)
 	_expect(is_equal_approx(orb.get_current_radius(), 11.0), "Skill4 visual radius configuration changed.")
@@ -260,10 +265,10 @@ func _test_skill4_lifetime() -> void:
 func _test_multiplayer_proxy_identity_and_deduplication() -> void:
 	var host := DamageReportHost.new()
 	root.add_child(host)
-	current_scene = host
 	var player3 := _spawn_player(host, Vector2(80.0, 0.0), 73, 200)
 	var orb3 := SKILL3_ORB_SCENE.instantiate() as LinglanSkill3LightOrb
 	host.add_child(orb3)
+	host.bind_linglan_node(orb3)
 	orb3.setup(Vector2.RIGHT, 50, 0.0, 2.2)
 	orb3.setup_multiplayer(7300123, 1, &"linglan_skill3_orb")
 	orb3.set_physics_process(false)
@@ -275,6 +280,7 @@ func _test_multiplayer_proxy_identity_and_deduplication() -> void:
 	var player4 := _spawn_player(host, Vector2(96.0, 0.0), 74, 200)
 	var orb4 := SKILL4_ORB_SCENE.instantiate() as LinglanSkill4LightOrb
 	host.add_child(orb4)
+	host.bind_linglan_node(orb4)
 	orb4.setup(Vector2.LEFT, 50, 0.0, 10.0, 8.0, 6.0)
 	orb4.setup_multiplayer(7400456, 1, &"linglan_skill4_orb")
 	orb4.set_physics_process(false)
@@ -289,7 +295,6 @@ func _test_multiplayer_proxy_identity_and_deduplication() -> void:
 		_expect_damage_request(host.damage_requests[0], 7300123, 73, &"linglan_skill3_orb")
 		_expect_damage_request(host.damage_requests[1], 7400456, 74, &"linglan_skill4_orb")
 
-	current_scene = test_root
 	host.queue_free()
 	await process_frame
 	await physics_frame

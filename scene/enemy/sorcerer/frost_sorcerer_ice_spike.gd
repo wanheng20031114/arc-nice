@@ -34,6 +34,8 @@ var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = PROJECTILE_TYPE
 var pool_active := true
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var has_hit := false
 var effect_time_left := 0.0
 var multiplayer_contact_consumed := false
@@ -61,6 +63,8 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	combat_runtime = null
+	gameplay_gateway = null
 	pool_active = true
 	has_hit = false
 	effect_time_left = 0.0
@@ -83,8 +87,18 @@ func on_pool_released(_generation: int) -> void:
 	pool_active = false
 	has_hit = true
 	effect_time_left = 0.0
+	combat_runtime = null
+	gameplay_gateway = null
 	_pending_setup = false
 	_disable_projectile()
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func setup(
@@ -212,7 +226,10 @@ func _handle_collision_body(body: Node2D) -> void:
 				player,
 				contact_preconsumed
 			)
-			if not handled_by_multiplayer:
+			if (
+				not handled_by_multiplayer
+				and _has_explicit_singleplayer_authority()
+			):
 				var damage_was_applied := player.apply_damage(
 					damage,
 					EnemyConfig.DamageType.MAGIC,
@@ -225,7 +242,11 @@ func _handle_collision_body(body: Node2D) -> void:
 
 	var plant := body as PlantDefense
 	if plant != null:
-		if not plant.is_dead and not plant.is_removing:
+		if (
+			_has_authoritative_runtime()
+			and not plant.is_dead
+			and not plant.is_removing
+		):
 			plant.receive_damage(
 				damage,
 				self,
@@ -245,19 +266,14 @@ func _try_consume_multiplayer_contact() -> bool:
 		return true
 	if multiplayer_contact_consumed:
 		return true
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene == null
-		or not current_scene.has_method(
-			"try_consume_frost_sorcerer_ice_spike_contact"
-		)
-	):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return false
-	multiplayer_contact_consumed = bool(current_scene.call(
-		"try_consume_frost_sorcerer_ice_spike_contact",
-		projectile_id,
-		source_type
-	))
+	multiplayer_contact_consumed = (
+		gameplay_gateway.try_consume_frost_sorcerer_ice_spike_contact(
+			projectile_id,
+			source_type
+		)
+	)
 	return multiplayer_contact_consumed
 
 
@@ -265,16 +281,13 @@ func _try_report_multiplayer_player_hit(
 	player: Player,
 	contact_preconsumed: bool
 ) -> bool:
-	if projectile_id <= 0:
-		return false
-	var current_scene := get_tree().current_scene
 	if (
-		current_scene == null
-		or not current_scene.has_method("request_multiplayer_player_damage")
+		projectile_id <= 0
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
 	):
 		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		projectile_id,
 		player.peer_id,
 		damage,
@@ -283,7 +296,24 @@ func _try_report_multiplayer_player_hit(
 		_get_source_direction_to_player(player),
 		true,
 		contact_preconsumed
-	))
+	)
+
+
+func _has_authoritative_runtime() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		_has_authoritative_runtime()
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 func _get_player_damage_context(player: Player) -> Dictionary:

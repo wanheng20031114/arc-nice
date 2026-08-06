@@ -60,6 +60,8 @@ var enemies_only: bool = false
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill2_rocket"
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var base_sprite_modulate: Color = Color.WHITE
 var pool_active := true
 var _authored_speed := 210.0
@@ -122,6 +124,8 @@ func on_pool_acquired(_generation: int) -> void:
 	projectile_id = 0
 	owner_peer_id = 0
 	source_type = &"linglan_skill2_rocket"
+	combat_runtime = null
+	gameplay_gateway = null
 	explosion_damaged_ids.clear()
 	rotation = 0.0
 	collision_layer = _authored_collision_layer
@@ -148,6 +152,8 @@ func on_pool_released(_generation: int) -> void:
 	has_exploded = true
 	target_player = null
 	target_node = null
+	combat_runtime = null
+	gameplay_gateway = null
 	explosion_damaged_ids.clear()
 	set_physics_process(false)
 	set_deferred("monitoring", false)
@@ -218,6 +224,14 @@ func setup_multiplayer(
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
 	source_type = new_source_type
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func _physics_process(delta: float) -> void:
@@ -373,41 +387,45 @@ func _apply_explosion_damage_to_collider(collider: Node2D, damaged_ids: Dictiona
 func _apply_player_damage(player: Player) -> void:
 	if player.is_dead:
 		return
-	if _try_report_multiplayer_player_hit(player):
+	if _is_explicit_singleplayer_authority():
+		player.apply_damage(
+			damage,
+			damage_type,
+			_get_player_damage_context(player)
+		)
 		return
-	player.apply_damage(
-		damage,
-		damage_type,
-		_get_player_damage_context(player)
-	)
+	if _requires_multiplayer_gateway_authority():
+		_try_report_multiplayer_player_hit(player)
 
 
 func _apply_enemy_damage(enemy: Enemy) -> void:
 	if enemy.is_dead:
 		return
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene != null
-		and current_scene.has_method("is_client_view_runtime")
-		and bool(current_scene.call("is_client_view_runtime"))
-	):
-		return
 	var impact_direction := global_position.direction_to(enemy.global_position)
 	if impact_direction == Vector2.ZERO:
 		impact_direction = direction
-	if enemies_only and _try_apply_multiplayer_collectible_enemy_damage(enemy, impact_direction):
+	if _is_explicit_singleplayer_authority():
+		enemy.apply_damage(damage, impact_direction, damage_type)
 		return
-	if _try_report_multiplayer_enemy_hit(enemy, impact_direction):
+	if not _requires_multiplayer_gateway_authority():
 		return
-	enemy.apply_damage(damage, impact_direction, damage_type)
+	if (
+		enemies_only
+		and _try_apply_multiplayer_collectible_enemy_damage(
+			enemy,
+			impact_direction
+		)
+	):
+		return
+	_try_report_multiplayer_enemy_hit(enemy, impact_direction)
 
 
 func _spawn_explosion_effect() -> void:
 	if explosion_scene == null:
 		return
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		spawn_parent = get_parent()
+	var spawn_parent := combat_runtime
+	if spawn_parent != null and not is_instance_valid(spawn_parent):
+		spawn_parent = null
 	if spawn_parent == null:
 		return
 
@@ -415,8 +433,15 @@ func _spawn_explosion_effect() -> void:
 	if explosion == null:
 		return
 	explosion.top_level = true
-	if explosion.has_method("setup"):
-		explosion.call("setup", explosion_radius)
+	var linglan_explosion := explosion as LinglanSkill2SakuraExplosion
+	if linglan_explosion != null:
+		linglan_explosion.setup(explosion_radius)
+	else:
+		var collectible_explosion := explosion as CollectibleSakuraExplosion
+		if collectible_explosion == null:
+			explosion.free()
+			return
+		collectible_explosion.setup(explosion_radius)
 	spawn_parent.add_child(explosion)
 	explosion.global_position = global_position
 
@@ -425,18 +450,17 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 	var source_id := _get_damage_source_id()
 	if source_id <= 0:
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
+	if gameplay_gateway == null:
 		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		source_id,
 		player.peer_id,
 		damage,
 		source_type,
+		damage_type,
 		_get_source_direction_to_player(player),
 		true
-	))
+	)
 
 
 func _get_player_damage_context(player: Player) -> Dictionary:
@@ -455,34 +479,45 @@ func _get_source_direction_to_player(player: Player) -> Vector2:
 func _try_report_multiplayer_enemy_hit(enemy: Enemy, impact_direction: Vector2) -> bool:
 	if projectile_id <= 0 or owner_peer_id <= 0:
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_enemy_hit_report"):
+	if gameplay_gateway == null:
 		return false
 	var enemy_net_id := int(enemy.get_meta("net_id", 0))
 	if enemy_net_id <= 0:
 		return false
-	current_scene.call(
-		"request_enemy_hit_report",
+	return gameplay_gateway.request_enemy_hit_report(
 		projectile_id,
 		owner_peer_id,
 		enemy_net_id,
 		damage,
 		impact_direction
 	)
-	return true
 
 
 func _try_apply_multiplayer_collectible_enemy_damage(enemy: Enemy, impact_direction: Vector2) -> bool:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("apply_multiplayer_collectible_enemy_damage"):
+	if gameplay_gateway == null:
 		return false
-	return bool(current_scene.call(
-		"apply_multiplayer_collectible_enemy_damage",
+	return gameplay_gateway.apply_collectible_enemy_damage(
 		enemy,
 		damage,
 		impact_direction,
-		int(damage_type)
-	))
+		damage_type
+	)
+
+
+func _is_explicit_singleplayer_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+
+
+func _requires_multiplayer_gateway_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 func _get_damage_source_id() -> int:

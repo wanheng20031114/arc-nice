@@ -6,6 +6,9 @@ const STANDARD_GAME_SCENE := preload(
 const STANDARD_GAME_SOURCE_PATH := (
 	"res://scene/game_modes/standard/standard_game.gd"
 )
+const WAVE_RUNTIME_SOURCE_PATH := (
+	"res://scene/combat/runtime/wave_combat_runtime_base.gd"
+)
 const TOWER_GAME_SOURCE_PATH := (
 	"res://scene/game_modes/tower_defense/tower_defense_game.gd"
 )
@@ -33,7 +36,11 @@ func _run() -> void:
 
 
 func _test_source_boundaries() -> void:
-	var standard_source := FileAccess.get_file_as_string(STANDARD_GAME_SOURCE_PATH)
+	var standard_source := (
+		FileAccess.get_file_as_string(STANDARD_GAME_SOURCE_PATH)
+		+ "\n"
+		+ FileAccess.get_file_as_string(WAVE_RUNTIME_SOURCE_PATH)
+	)
 	var tower_source := FileAccess.get_file_as_string(TOWER_GAME_SOURCE_PATH)
 	_expect(
 		not standard_source.contains(AGAVE_CANNONBALL_SCENE_PATH),

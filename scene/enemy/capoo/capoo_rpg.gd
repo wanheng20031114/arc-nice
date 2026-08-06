@@ -212,21 +212,17 @@ func _fire_rocket() -> bool:
 	if rpg_config == null or rpg_config.projectile_scene == null:
 		return false
 
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		return false
-	var rocket: CapooRPGRocket = null
 	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(
-			spawn_parent.call(
-				"has_session_object_pool_scene",
-				rpg_config.projectile_scene
-			)
-		)
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
 	):
-		rocket = spawn_parent.call(
-			"acquire_session_object",
+		return false
+	var spawn_parent: Node = combat_runtime
+	var rocket: CapooRPGRocket = null
+	if combat_runtime.has_session_object_pool_scene(rpg_config.projectile_scene):
+		rocket = combat_runtime.acquire_session_object(
 			rpg_config.projectile_scene,
 			false
 		) as CapooRPGRocket
@@ -237,6 +233,7 @@ func _fire_rocket() -> bool:
 		return false
 
 	var outgoing_damage := get_effective_attack_damage(rpg_config.attack_damage)
+	rocket.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	rocket.top_level = true
 	rocket.setup(
 		fire_direction,
@@ -247,20 +244,20 @@ func _fire_rocket() -> bool:
 	)
 	if rocket.get_parent() == null:
 		spawn_parent.add_child(rocket)
+	elif rocket.get_parent() != spawn_parent:
+		rocket.reparent(spawn_parent)
 	rocket.global_position = global_position + fire_direction * rpg_config.projectile_spawn_distance
 	rocket.reset_physics_interpolation()
-	if spawn_parent.has_method("register_local_projectile"):
-		spawn_parent.call(
-			"register_local_projectile",
-			rocket,
-			&"capoo_rpg_rocket",
-			0,
-			rocket.global_position,
-			fire_direction,
-			outgoing_damage,
-			rpg_config.projectile_speed,
-			rpg_config.projectile_lifetime
-		)
+	gameplay_gateway.register_local_projectile(
+		rocket,
+		&"capoo_rpg_rocket",
+		0,
+		rocket.global_position,
+		fire_direction,
+		outgoing_damage,
+		rpg_config.projectile_speed,
+		rpg_config.projectile_lifetime
+	)
 	return true
 
 
@@ -333,10 +330,8 @@ func _play_proxy_muzzle_heat(direction: Vector2, duration: float, action_id: int
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			direction,

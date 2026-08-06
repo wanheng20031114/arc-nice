@@ -62,8 +62,8 @@ class HostNetManagerStub:
 		return false
 
 
-class DamageNumberRecorder:
-	extends Node2D
+class TerminalTowerRuntime:
+	extends TowerDefenseGame
 
 	var amount := 0
 	var impact_direction := Vector2.ZERO
@@ -72,12 +72,16 @@ class DamageNumberRecorder:
 	func show_damage_number(
 		confirmed_amount: int,
 		_world_position: Vector2,
-		confirmed_direction: Vector2,
-		confirmed_type: EnemyConfig.DamageType
-	) -> void:
+		confirmed_direction: Vector2 = Vector2.ZERO,
+		confirmed_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		_display_priority: DamageNumberPool.DisplayPriority = (
+			DamageNumberPool.DisplayPriority.NORMAL
+		)
+	) -> bool:
 		amount = confirmed_amount
 		impact_direction = confirmed_direction
 		damage_type = int(confirmed_type)
+		return true
 
 
 var failures: Array[String] = []
@@ -106,19 +110,23 @@ func _run() -> void:
 
 
 func _test_game_enemy_removal_markers() -> void:
-	_exercise_enemy_exit_pressure(GAME_SCRIPT.new(), "StandardGame")
-	_exercise_enemy_exit_pressure(TOWER_DEFENSE_GAME_SCRIPT.new(), "TowerDefenseGame")
+	var standard_runtime := GAME_SCRIPT.new() as CombatRuntimeBase
+	_prepare_runtime_boundaries(standard_runtime)
+	_exercise_enemy_exit_pressure(standard_runtime, "StandardGame")
+	var tower_runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as CombatRuntimeBase
+	_prepare_runtime_boundaries(tower_runtime)
+	_exercise_enemy_exit_pressure(tower_runtime, "TowerDefenseGame")
 
 
-func _exercise_enemy_exit_pressure(runtime: Node, label: String) -> void:
-	runtime.set("runtime_mode", HOST_AUTHORITY)
+func _exercise_enemy_exit_pressure(runtime: CombatRuntimeBase, label: String) -> void:
+	runtime.runtime_mode = HOST_AUTHORITY
+	var gateway := runtime.get_multiplayer_gameplay_gateway()
 	var removed_ids: Array[int] = []
-	runtime.connect(
-		"multiplayer_enemy_removed",
+	gateway.enemy_removed.connect(
 		func(net_id: int) -> void: removed_ids.append(net_id)
 	)
-	var instance_to_net := runtime.get("multiplayer_enemy_ids_by_instance") as Dictionary
-	var net_to_enemy := runtime.get("multiplayer_enemies_by_net_id") as Dictionary
+	var instance_to_net := runtime.multiplayer_enemy_ids_by_instance
+	var net_to_enemy := runtime.multiplayer_enemies_by_net_id
 	for event_index in range(PRESSURE_EVENT_COUNT):
 		var instance_id := 100_000 + event_index
 		var net_id := event_index + 1
@@ -136,14 +144,15 @@ func _exercise_enemy_exit_pressure(runtime: Node, label: String) -> void:
 
 
 func _test_tower_defense_enemy_escape_marker() -> void:
-	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
+	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as TowerDefenseGame
+	var gateway := _prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = HOST_AUTHORITY
 	var escaped_ids: Array[int] = []
 	var removed_ids: Array[int] = []
-	runtime.multiplayer_enemy_escaped.connect(
+	gateway.enemy_escaped.connect(
 		func(net_id: int) -> void: escaped_ids.append(net_id)
 	)
-	runtime.multiplayer_enemy_removed.connect(
+	gateway.enemy_removed.connect(
 		func(net_id: int) -> void: removed_ids.append(net_id)
 	)
 	var enemy := Enemy.new()
@@ -169,16 +178,15 @@ func _test_tower_defense_enemy_escape_marker() -> void:
 	runtime.free()
 
 
-func _test_pickup_tree_exit_markers(runtime: Node, label: String) -> void:
-	runtime.set("runtime_mode", HOST_AUTHORITY)
+func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -> void:
+	var gateway := _prepare_runtime_boundaries(runtime)
+	runtime.runtime_mode = HOST_AUTHORITY
 	var removed_ids: Array[int] = []
 	var collected_ids: Array[int] = []
-	runtime.connect(
-		"multiplayer_pickup_removed",
+	gateway.pickup_removed.connect(
 		func(net_id: int) -> void: removed_ids.append(net_id)
 	)
-	runtime.connect(
-		"multiplayer_pickup_collected",
+	gateway.pickup_collected.connect(
 		func(net_id: int, _peer_id: int, _config: PickupConfig, _applied: bool) -> void:
 			collected_ids.append(net_id)
 	)
@@ -275,8 +283,13 @@ func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
 	var net_manager_stub := ClientNetManagerStub.new()
 	mp_game.set("net_manager", net_manager_stub)
 	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
+	_prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = CLIENT_VIEW
 	mp_game.game = runtime
+	mp_game._mode_adapter = runtime.get_multiplayer_mode_adapter()
+	mp_game.tower_mode_adapter = (
+		mp_game._mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
 	for event_index in range(PRESSURE_EVENT_COUNT):
 		var net_id := event_index + 1
 		mp_game.net_enemy_terminal(net_id, ENEMY_TERMINAL_ESCAPED, Vector2.ZERO)
@@ -298,7 +311,8 @@ func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
 
 func _test_reliable_terminal_feedback_payload() -> void:
 	var mp_game := RecordingMpGame.new()
-	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
+	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as TowerDefenseGame
+	_prepare_runtime_boundaries(runtime)
 	var enemy := Enemy.new()
 	var net_id := 606
 	var lethal_request := DamageRequest.new(
@@ -364,9 +378,14 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	var net_manager_stub := HostNetManagerStub.new()
 	mp_game.net_manager = net_manager_stub
 	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
+	var gateway := _prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = HOST_AUTHORITY
 	mp_game.game = runtime
-	runtime.multiplayer_enemy_defeated.connect(
+	mp_game._mode_adapter = runtime.get_multiplayer_mode_adapter()
+	mp_game.tower_mode_adapter = (
+		mp_game._mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
+	gateway.enemy_defeated.connect(
 		mp_game._on_host_enemy_defeated
 	)
 	var enemy := ENEMY_SCENE.instantiate() as Enemy
@@ -381,7 +400,7 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	var lethal_config := ENEMY_CONFIG.duplicate(true) as EnemyConfig
 	lethal_config.max_health = 40
 	lethal_config.physical_defense = 0
-	enemy.setup(lethal_config, null, null)
+	enemy.setup(lethal_config, null, null, runtime)
 	enemy.set_process(false)
 	enemy.set_physics_process(false)
 	var net_id := 707
@@ -425,15 +444,22 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	)
 	var client_mp_game := RecordingMpGame.new()
 	var client_net_manager := ClientNetManagerStub.new()
-	var client_runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
+	var client_runtime := TerminalTowerRuntime.new()
+	_prepare_runtime_boundaries(client_runtime)
 	client_runtime.runtime_mode = CLIENT_VIEW
 	client_mp_game.net_manager = client_net_manager
 	client_mp_game.game = client_runtime
-	var damage_recorder := DamageNumberRecorder.new()
-	root.add_child(damage_recorder)
+	client_mp_game._mode_adapter = client_runtime.get_multiplayer_mode_adapter()
+	client_mp_game.tower_mode_adapter = (
+		client_mp_game._mode_adapter as TowerDefenseMultiplayerModeAdapter
+	)
+	var client_keepalive_request := HTTPRequest.new()
+	client_keepalive_request.name = "PublicRoomKeepaliveRequest"
+	client_mp_game.add_child(client_keepalive_request)
+	root.add_child(client_mp_game)
 	var client_enemy := ENEMY_SCENE.instantiate() as Enemy
-	damage_recorder.add_child(client_enemy)
-	client_enemy.setup(lethal_config, null, null)
+	client_mp_game.add_child(client_enemy)
+	client_enemy.setup(lethal_config, null, null, client_runtime)
 	client_enemy.configure_multiplayer_proxy()
 	client_enemy.set_meta(&"net_id", net_id)
 	client_mp_game._net_enemies[net_id] = client_enemy
@@ -447,9 +473,9 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		and client_enemy.current_health == 0
 		and not client_mp_game._net_enemies.has(net_id)
 		and not client_runtime.multiplayer_enemies_by_net_id.has(net_id)
-		and damage_recorder.amount == 40
-		and damage_recorder.impact_direction == Vector2.RIGHT
-		and damage_recorder.damage_type
+		and client_runtime.amount == 40
+		and client_runtime.impact_direction == Vector2.RIGHT
+		and client_runtime.damage_type
 		== int(EnemyConfig.DamageType.PHYSICAL),
 		"客户端消费九参数可靠terminal时必须先显示最后40点伤害、应用0生命，再执行死亡移除。"
 	)
@@ -461,13 +487,32 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	mp_game.free()
 	runtime.free()
 	net_manager_stub.free()
-	damage_recorder.remove_child(client_enemy)
+	client_mp_game.remove_child(client_enemy)
 	client_enemy.free()
-	root.remove_child(damage_recorder)
-	damage_recorder.free()
 	client_runtime.free()
+	root.remove_child(client_mp_game)
 	client_mp_game.free()
 	client_net_manager.free()
+
+
+func _prepare_runtime_boundaries(
+	runtime: CombatRuntimeBase
+) -> MultiplayerGameplayGateway:
+	var gateway := MultiplayerGameplayGateway.new()
+	gateway.name = "MultiplayerGameplayGateway"
+	runtime.add_child(gateway)
+	gateway.bind_runtime(runtime)
+	runtime.multiplayer_gateway = gateway
+	var adapter: MultiplayerModeAdapter = null
+	if runtime is TowerDefenseGame:
+		adapter = TowerDefenseMultiplayerModeAdapter.new()
+	else:
+		adapter = StandardMultiplayerModeAdapter.new()
+	adapter.name = "MultiplayerModeAdapter"
+	runtime.add_child(adapter)
+	adapter.bind_runtime(runtime)
+	runtime.multiplayer_mode_adapter = adapter
+	return gateway
 
 
 func _expect(condition: bool, message: String) -> void:

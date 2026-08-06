@@ -708,11 +708,11 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 	mp_motion_system.name = "CombatRobotDroneMotionSystem"
 	mp_game.add_child(mp_motion_system)
 
-	# MpGame requires a typed GameRuntimeBase reference only to resolve the shared
+	# MpGame requires a typed CombatRuntimeBase reference only to resolve the shared
 	# motion system and client-view authority. Keeping this fixture off-tree avoids
 	# constructing unrelated gameplay nodes.
 	var runtime_stub := StandardGame.new()
-	runtime_stub.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	runtime_stub.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	runtime_stub.combat_robot_drone_motion_system = mp_motion_system
 	mp_game.game = runtime_stub
 	test_root.add_child(mp_game)
@@ -905,7 +905,7 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 			+ "and reconnect activation without adding channels."
 		)
 	)
-	for source_path in ["res://scene/game_modes/standard/standard_game.gd", "res://scene/game_modes/tower_defense/tower_defense_game.gd"]:
+	for source_path in ["res://scene/combat/runtime/wave_combat_runtime_base.gd", "res://scene/game_modes/tower_defense/tower_defense_game.gd"]:
 		var compact_source := FileAccess.get_file_as_string(source_path)
 		for whitespace in [" ", "\t", "\r", "\n"]:
 			compact_source = compact_source.replace(whitespace, "")

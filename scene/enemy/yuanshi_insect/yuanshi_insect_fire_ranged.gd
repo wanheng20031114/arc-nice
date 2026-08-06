@@ -147,21 +147,17 @@ func _try_fire_ranged_projectile() -> bool:
 	if shoot_direction == Vector2.ZERO:
 		return false
 
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		return false
-	var projectile: YuanshiInsectFireProjectile = null
 	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(
-			spawn_parent.call(
-				"has_session_object_pool_scene",
-				fire_config.projectile_scene
-			)
-		)
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
 	):
-		projectile = spawn_parent.call(
-			"acquire_session_object",
+		return false
+	var spawn_parent: Node = combat_runtime
+	var projectile: YuanshiInsectFireProjectile = null
+	if combat_runtime.has_session_object_pool_scene(fire_config.projectile_scene):
+		projectile = combat_runtime.acquire_session_object(
 			fire_config.projectile_scene,
 			false
 		) as YuanshiInsectFireProjectile
@@ -172,6 +168,7 @@ func _try_fire_ranged_projectile() -> bool:
 		return false
 
 	var outgoing_damage := get_effective_attack_damage(fire_config.attack_damage)
+	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.top_level = true
 	projectile.setup(
 		shoot_direction,
@@ -181,22 +178,22 @@ func _try_fire_ranged_projectile() -> bool:
 	)
 	if projectile.get_parent() == null:
 		spawn_parent.add_child(projectile)
+	elif projectile.get_parent() != spawn_parent:
+		projectile.reparent(spawn_parent)
 	projectile.global_position = (
 		global_position + shoot_direction * fire_config.projectile_spawn_distance
 	)
 	projectile.reset_physics_interpolation()
-	if spawn_parent.has_method("register_local_projectile"):
-		spawn_parent.call(
-			"register_local_projectile",
-			projectile,
-			&"yuanshi_fire_projectile",
-			0,
-			projectile.global_position,
-			shoot_direction,
-			outgoing_damage,
-			fire_config.projectile_speed,
-			fire_config.projectile_lifetime
-		)
+	gameplay_gateway.register_local_projectile(
+		projectile,
+		&"yuanshi_fire_projectile",
+		0,
+		projectile.global_position,
+		shoot_direction,
+		outgoing_damage,
+		fire_config.projectile_speed,
+		fire_config.projectile_lifetime
+	)
 	attack_audio.pitch_scale = random_generator.randf_range(0.94, 1.06)
 	ENEMY_ATTACK_AUDIO_LIMITER.play_heavy_attack(attack_audio)
 	return true
@@ -254,10 +251,8 @@ func play_multiplayer_enemy_action(action_name: StringName, direction: Vector2, 
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			direction,

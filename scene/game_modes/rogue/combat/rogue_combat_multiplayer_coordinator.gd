@@ -70,7 +70,7 @@ var _local_runtime_activated := false
 var _local_activation_requested := false
 var _prepare_barrier_deadline_msec := 0
 
-var _combat_network: Node = null
+var _combat_network: MultiplayerGameplaySession = null
 var _combat_game: RogueCombatGame = null
 var _local_outcome_received := false
 var _local_outcome_victory := false
@@ -212,15 +212,8 @@ func _poll_terminal_barrier_timeout(now_msec: int = -1) -> void:
 			_terminal_ready_peers[peer_id] = true
 			continue
 		_mark_participant_disconnected_from_barriers(peer_id)
-		if (
-			_combat_network != null
-			and is_instance_valid(_combat_network)
-			and _combat_network.has_method(
-				"suspend_embedded_participant_for_current_combat"
-			)
-		):
-			_combat_network.call(
-				"suspend_embedded_participant_for_current_combat",
+		if _combat_network != null and is_instance_valid(_combat_network):
+			_combat_network.suspend_embedded_participant_for_current_combat(
 				peer_id
 			)
 		_send_terminal_reconnect_spectator(peer_id, occurrence_key)
@@ -529,31 +522,30 @@ func net_combat_prepare(
 func _create_embedded_runtime() -> bool:
 	if _combat_network != null or _active_occurrence_key.is_empty():
 		return false
-	var instance := MP_GAME_SCENE.instantiate()
+	var raw_instance := MP_GAME_SCENE.instantiate()
+	var instance := raw_instance as MultiplayerGameplaySession
 	if instance == null:
-		push_error("RogueCombatMultiplayerCoordinator: 无法实例化 MpGame。")
+		push_error(
+			"RogueCombatMultiplayerCoordinator: MpGame 未实现 MultiplayerGameplaySession。"
+		)
+		if raw_instance != null:
+			raw_instance.free()
 		return false
 	instance.name = COMBAT_RUNTIME_NODE_NAME
-	instance.set("embedded_runtime", true)
-	if not bool(instance.call(
-		"configure_embedded_participant_roster",
+	instance.embedded_runtime = true
+	if not instance.configure_embedded_participant_roster(
 		_pack_peer_ids(_participant_peer_ids)
-	)):
+	):
 		push_error(
 			"RogueCombatMultiplayerCoordinator: 无法冻结内嵌战斗参战名单。"
 		)
 		instance.free()
 		return false
-	instance.set(
-		"runtime_scene_path_override",
-		encounter_config.combat_scene_path
-	)
-	if not instance.is_connected(
-		&"embedded_runtime_prepared",
+	instance.runtime_scene_path_override = encounter_config.combat_scene_path
+	if not instance.embedded_runtime_prepared.is_connected(
 		_on_embedded_runtime_prepared
 	):
-		instance.connect(
-			&"embedded_runtime_prepared",
+		instance.embedded_runtime_prepared.connect(
 			_on_embedded_runtime_prepared
 		)
 	_combat_network = instance
@@ -607,11 +599,9 @@ func _on_embedded_runtime_prepared() -> void:
 
 
 func _configure_occurrence_runtime() -> bool:
-	if not _combat_network.has_method("get_game_runtime"):
+	if _combat_network == null or not is_instance_valid(_combat_network):
 		return false
-	var game_runtime := (
-		_combat_network.call("get_game_runtime") as GameRuntimeBase
-	)
+	var game_runtime := _combat_network.get_game_runtime()
 	_combat_game = game_runtime as RogueCombatGame
 	if _combat_game == null or _combat_game.current_flow_step != null:
 		return false
@@ -649,7 +639,6 @@ func _configure_occurrence_runtime() -> bool:
 		== RogueCombatEncounterConfig.DeadlineStart.PREPARATION_START
 		else RogueCombatGame.DeadlineStart.WAVE_START
 	)
-	_combat_game.linglan_boss_enabled = false
 	_combat_game.enemy_pickup_drops_enabled = (
 		encounter_config.enemy_pickup_drops
 		== RogueCombatEncounterConfig.Decision.YES
@@ -823,10 +812,9 @@ func _activate_local_runtime() -> bool:
 		or not _local_runtime_prepared
 		or _combat_network == null
 		or not is_instance_valid(_combat_network)
-		or not _combat_network.has_method("activate_embedded_runtime")
 	):
 		return false
-	if not bool(_combat_network.call("activate_embedded_runtime")):
+	if not _combat_network.activate_embedded_runtime():
 		return false
 	_local_runtime_activated = true
 	_phase = ProtocolPhase.ACTIVE
@@ -1129,15 +1117,8 @@ func _downgrade_pending_reconnects_before_settlement_broadcast(
 			_pending_reconnect_prepare_peers.erase(peer_id)
 			continue
 		_mark_participant_disconnected_from_barriers(peer_id)
-		if (
-			_combat_network != null
-			and is_instance_valid(_combat_network)
-			and _combat_network.has_method(
-				"suspend_embedded_participant_for_current_combat"
-			)
-		):
-			_combat_network.call(
-				"suspend_embedded_participant_for_current_combat",
+		if _combat_network != null and is_instance_valid(_combat_network):
+			_combat_network.suspend_embedded_participant_for_current_combat(
 				peer_id
 			)
 		_pending_reconnect_prepare_peers.erase(peer_id)
@@ -1594,8 +1575,8 @@ func _stop_local_combat_processing() -> void:
 
 
 func _set_combat_presentation_visible(visible: bool) -> void:
-	if _combat_network is CanvasItem and is_instance_valid(_combat_network):
-		(_combat_network as CanvasItem).visible = visible
+	if _combat_network != null and is_instance_valid(_combat_network):
+		_combat_network.visible = visible
 
 
 func _try_release_local_runtime() -> void:
@@ -1784,15 +1765,8 @@ func _downgrade_pending_reconnect_to_spectator(
 	# running authoritative battle. Treat it like a combat-only disconnect while
 	# keeping the peer connected to the route as a spectator.
 	_on_player_left(peer_id)
-	if (
-		_combat_network != null
-		and is_instance_valid(_combat_network)
-		and _combat_network.has_method(
-			"suspend_embedded_participant_for_current_combat"
-		)
-	):
-		_combat_network.call(
-			"suspend_embedded_participant_for_current_combat",
+	if _combat_network != null and is_instance_valid(_combat_network):
+		_combat_network.suspend_embedded_participant_for_current_combat(
 			peer_id
 		)
 	push_warning((
@@ -2103,15 +2077,8 @@ func _keep_reconnected_participant_as_spectator(
 	_prepared_peers.erase(new_peer_id)
 	_expected_terminal_peers.erase(new_peer_id)
 	_terminal_ready_peers.erase(new_peer_id)
-	if (
-		_combat_network != null
-		and is_instance_valid(_combat_network)
-		and _combat_network.has_method(
-			"suspend_embedded_participant_for_current_combat"
-		)
-	):
-		_combat_network.call(
-			"suspend_embedded_participant_for_current_combat",
+	if _combat_network != null and is_instance_valid(_combat_network):
+		_combat_network.suspend_embedded_participant_for_current_combat(
 			new_peer_id,
 			old_peer_id
 		)
@@ -2125,18 +2092,13 @@ func _keep_reconnected_participant_as_spectator(
 func _host_runtime_is_missing_peer(peer_id: int) -> bool:
 	if not _is_host() or peer_id <= 0:
 		return false
-	if (
-		_combat_network == null
-		or not is_instance_valid(_combat_network)
-		or not _combat_network.has_method("get_game_runtime")
-	):
+	if _combat_network == null or not is_instance_valid(_combat_network):
 		return true
-	var runtime := _combat_network.call("get_game_runtime") as Node
+	var runtime := _combat_network.get_game_runtime()
 	return (
 		runtime == null
 		or not is_instance_valid(runtime)
-		or not runtime.has_method("get_player_for_peer")
-		or runtime.call("get_player_for_peer", peer_id) == null
+		or runtime.get_player_for_peer(peer_id) == null
 	)
 
 

@@ -40,6 +40,16 @@ var damaged_player_ids: Dictionary = {}
 var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"linglan_skill3_orb"
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func _ready() -> void:
@@ -184,6 +194,8 @@ func _apply_player_damage(player: Player) -> void:
 	damaged_player_ids[player_id] = true
 	if _try_report_multiplayer_player_hit(player):
 		return
+	if not _has_explicit_singleplayer_authority():
+		return
 	player.apply_damage(
 		damage,
 		EnemyConfig.DamageType.MAGIC,
@@ -195,11 +207,9 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 	var source_id := _get_damage_source_id()
 	if source_id <= 0:
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		source_id,
 		player.peer_id,
 		damage,
@@ -207,7 +217,16 @@ func _try_report_multiplayer_player_hit(player: Player) -> bool:
 		EnemyConfig.DamageType.MAGIC,
 		_get_source_direction_to_player(player),
 		true
-	))
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 func _get_player_damage_context(player: Player) -> Dictionary:

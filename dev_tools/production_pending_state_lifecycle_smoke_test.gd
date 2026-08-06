@@ -43,7 +43,7 @@ class TestMpGame:
 
 
 class RuntimeStub:
-	extends GameRuntimeBase
+	extends CombatRuntimeBase
 
 	var plants: Dictionary = {}
 	var removed_ids: Array[int] = []
@@ -159,9 +159,6 @@ class RuntimeStub:
 	) -> void:
 		pass
 
-	func supports_tower_defense() -> bool:
-		return true
-
 	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
 		return plants.get(net_id) as PlantDefense
 
@@ -192,6 +189,68 @@ class RuntimeStub:
 	func apply_remote_plant_removed_silently(net_id: int) -> void:
 		silently_removed_ids.append(net_id)
 		plants.erase(net_id)
+
+
+class TestTowerModeAdapter:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	func _test_runtime() -> RuntimeStub:
+		return runtime as RuntimeStub
+
+	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
+		var test_runtime := _test_runtime()
+		return (
+			test_runtime.get_multiplayer_plant_node(net_id)
+			if test_runtime != null
+			else null
+		)
+
+	func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
+		var test_runtime := _test_runtime()
+		return (
+			test_runtime.get_multiplayer_plant_snapshots()
+			if test_runtime != null
+			else []
+		)
+
+	func apply_remote_plant_spawn(
+		_request_id: int,
+		_owner_peer_id: int,
+		_net_id: int,
+		_plant_id: StringName,
+		_anchor: Vector2i,
+		_current_health: int,
+		_maximum_health: int,
+		_health_revision: int
+	) -> void:
+		pass
+
+	func apply_remote_plant_health(
+		net_id: int,
+		current_health: int,
+		maximum_health: int,
+		health_revision: int
+	) -> void:
+		var plant := get_multiplayer_plant_node(net_id)
+		if plant != null:
+			plant.apply_remote_health(
+				current_health,
+				maximum_health,
+				health_revision
+			)
+
+	func apply_remote_plant_removed(
+		net_id: int,
+		_was_destroyed: bool = false,
+		silent: bool = false
+	) -> void:
+		var test_runtime := _test_runtime()
+		if test_runtime == null:
+			return
+		if silent:
+			test_runtime.apply_remote_plant_removed_silently(net_id)
+		else:
+			test_runtime.apply_remote_plant_removed(net_id)
 
 
 var failures: Array[String] = []
@@ -227,8 +286,16 @@ func _run() -> void:
 
 func _new_mp_game() -> TestMpGame:
 	var mp_game := TestMpGame.new()
-	mp_game.set("game", runtime)
-	mp_game.set("net_manager", net_manager)
+	var tower_adapter := TestTowerModeAdapter.new()
+	tower_adapter.name = "MultiplayerModeAdapter"
+	mp_game.add_child(tower_adapter)
+	tower_adapter.bind_runtime(runtime)
+	tower_adapter.attach_multiplayer_session(mp_game)
+	runtime.multiplayer_mode_adapter = tower_adapter
+	mp_game.game = runtime
+	mp_game.net_manager = net_manager
+	mp_game._mode_adapter = tower_adapter
+	mp_game.tower_mode_adapter = tower_adapter
 	return mp_game
 
 

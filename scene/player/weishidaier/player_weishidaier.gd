@@ -28,8 +28,10 @@ func _try_use_skill1() -> bool:
 	if skill1_charge < skill1_charge_duration:
 		return false
 
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent == null:
+		return false
+	if _requires_multiplayer_gameplay_gateway() and gameplay_gateway == null:
 		return false
 	var bomb := SKILL1_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
 	if bomb == null:
@@ -37,6 +39,7 @@ func _try_use_skill1() -> bool:
 
 	var shoot_direction := _get_skill1_direction()
 	bomb.top_level = true
+	bomb.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	var bomb_damage := get_skill1_projectile_damage()
 	bomb.setup(self, shoot_direction, bomb_damage)
 	if not try_begin_skill1_activation(_uses_authoritative_skill_preserve_roll()):

@@ -295,7 +295,7 @@ func _test_terminal_and_core_interruption_guards() -> void:
 	var game := TestGame.new()
 	game.player = player_instance
 	game.damageable_players = [player_instance]
-	game.wave_state = GameRuntimeBase.WaveState.VICTORY
+	game.wave_state = CombatFlowState.State.VICTORY
 	var coordinator := _make_coordinator(game)
 	var terminal_result := coordinator.start_for_peer(0)
 	_expect(
@@ -305,7 +305,7 @@ func _test_terminal_and_core_interruption_guards() -> void:
 	)
 	_expect(run_state.get_inventory_item_total(TICKET) == 1, "终局拒绝开局不得扣券。")
 
-	game.wave_state = GameRuntimeBase.WaveState.PRE_WAVE
+	game.wave_state = CombatFlowState.State.PRE_WAVE
 	coordinator.sessions_by_peer[0] = _make_session(41, [
 		_outcome(LuoxiSpecialGameRules.OutcomeKind.CORE_DAMAGE, 0, 5),
 		_outcome(LuoxiSpecialGameRules.OutcomeKind.XIRANG, 0, 100),

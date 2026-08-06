@@ -1,6 +1,4 @@
-extends Node2D
-
-signal embedded_runtime_prepared
+extends MultiplayerGameplaySession
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
@@ -283,10 +281,6 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
-@export_group("内嵌战斗运行时")
-@export_file("*.tscn") var runtime_scene_path_override := ""
-@export var embedded_runtime := false
-
 var snapshot_mgr := SnapshotManager.new()
 var _runtime_scene_cache: Dictionary = {}
 var _projectile_default_parameter_cache: Dictionary[StringName, Dictionary] = {}
@@ -306,7 +300,11 @@ var _player_snapshot_teleport_cutoff_sequences: Dictionary = {}
 var _pending_authoritative_player_teleports: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
 var _stale_enemy_interpolator_ids: Array[int] = []
-var game: GameRuntimeBase = null
+var game: CombatRuntimeBase = null
+var _gameplay_gateway: MultiplayerGameplayGateway = null
+var _mode_adapter: MultiplayerModeAdapter = null
+var tower_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
+var _linglan_boss_runtime_port: LinglanBossRuntimePort = null
 var input_sequence: int = 0
 var _net_time_origin: float = 0.0
 var _net_enemies: Dictionary = {}
@@ -596,8 +594,24 @@ func _exit_tree() -> void:
 		and net_manager.player_reconnected.is_connected(_on_net_player_reconnected)
 	):
 		net_manager.player_reconnected.disconnect(_on_net_player_reconnected)
-	if game != null and game.return_to_lobby_requested.is_connected(_on_game_return_to_lobby_requested):
-		game.return_to_lobby_requested.disconnect(_on_game_return_to_lobby_requested)
+	if game != null:
+		if (
+			_mode_adapter != null
+			and _mode_adapter.return_to_lobby_requested.is_connected(
+				_on_game_return_to_lobby_requested
+			)
+		):
+			_mode_adapter.return_to_lobby_requested.disconnect(
+				_on_game_return_to_lobby_requested
+			)
+		if _gameplay_gateway != null:
+			_gameplay_gateway.detach_multiplayer_session(self)
+		if _mode_adapter != null:
+			_mode_adapter.detach_multiplayer_session(self)
+	_gameplay_gateway = null
+	_mode_adapter = null
+	tower_mode_adapter = null
+	_linglan_boss_runtime_port = null
 	if public_room_keepalive_request != null:
 		if public_room_keepalive_request.request_completed.is_connected(_on_public_room_keepalive_completed):
 			public_room_keepalive_request.request_completed.disconnect(_on_public_room_keepalive_completed)
@@ -755,8 +769,8 @@ func suspend_embedded_participant_for_current_combat(
 		_clear_peer_network_state(roster_peer_id)
 	_suspended_embedded_participant_peer_ids[peer_id] = true
 	_clear_peer_network_state(peer_id)
-	if game != null and game.has_method("remove_multiplayer_player"):
-		game.call("remove_multiplayer_player", peer_id)
+	if game != null:
+		game.remove_multiplayer_player(peer_id)
 	return true
 
 
@@ -764,7 +778,7 @@ func is_embedded_runtime_active() -> bool:
 	return embedded_runtime and _embedded_runtime_active
 
 
-func get_game_runtime() -> GameRuntimeBase:
+func get_game_runtime() -> CombatRuntimeBase:
 	return game
 
 
@@ -790,7 +804,8 @@ func _process(delta: float) -> void:
 		var remote_enemy_count := _net_enemies.size()
 		if remote_enemy_count != _last_applied_remote_enemy_count:
 			_last_applied_remote_enemy_count = remote_enemy_count
-			game.apply_remote_enemy_count(remote_enemy_count)
+			if _mode_adapter != null:
+				_mode_adapter.apply_remote_enemy_count(remote_enemy_count)
 
 
 func _update_client_proxy_visual_budget(delta: float) -> void:
@@ -879,8 +894,8 @@ func request_multiplayer_simple_crafting(
 ) -> void:
 	var peer_id := _get_local_peer_id()
 	if peer_id <= 0 or game == null or ui_request_token <= 0:
-		if game != null:
-			game.show_simple_crafting_result(
+		if _mode_adapter != null:
+			_mode_adapter.show_simple_crafting_result(
 				recipe_id,
 				&"invalid_player",
 				ui_request_token
@@ -906,11 +921,12 @@ func request_multiplayer_simple_crafting(
 		)
 	else:
 		_take_local_simple_crafting_request_token(request_id)
-		game.show_simple_crafting_result(
-			recipe_id,
-			&"invalid_player",
-			ui_request_token
-		)
+		if _mode_adapter != null:
+			_mode_adapter.show_simple_crafting_result(
+				recipe_id,
+				&"invalid_player",
+				ui_request_token
+			)
 
 
 func cancel_multiplayer_simple_crafting_request(ui_request_token: int) -> void:
@@ -986,16 +1002,13 @@ func begin_inventory_building_placement(
 	expected_inventory_revision: int = -1
 ) -> bool:
 	if (
-		game == null
-		or not game.supports_tower_defense()
-		or not game.has_method("begin_inventory_building_placement")
+		not _has_tower_mode()
 	):
 		return false
-	return bool(game.call(
-		"begin_inventory_building_placement",
+	return tower_mode_adapter.begin_inventory_building_placement(
 		slot_index,
 		expected_inventory_revision
-	))
+	)
 
 
 func request_multiplayer_skill1_purchase() -> void:
@@ -1006,19 +1019,23 @@ func request_multiplayer_skill1_purchase() -> void:
 
 
 func request_multiplayer_start_wave() -> void:
-	if game == null or not game.supports_tower_defense():
+	if not _has_tower_mode():
 		return
 	if net_manager.is_host():
-		game.request_tower_defense_wave_start(_get_local_peer_id())
+		tower_mode_adapter.request_authoritative_wave_start(
+			_get_local_peer_id()
+		)
 	else:
 		net_tower_defense_start_wave_requested.rpc_id(_get_host_peer_id())
 
 
 func _on_local_xiaocong_interaction_requested() -> void:
-	if game == null or not game.supports_tower_defense():
+	if not _has_tower_mode():
 		return
 	if net_manager.is_host():
-		game.request_xiaocong_interaction(_get_local_peer_id())
+		tower_mode_adapter.request_xiaocong_interaction(
+			_get_local_peer_id()
+		)
 	elif net_manager.is_client():
 		net_xiaocong_interaction_requested.rpc_id(_get_host_peer_id())
 
@@ -1028,13 +1045,12 @@ func _on_local_xiaocong_vote_requested(
 	permanent_buff_id: StringName
 ) -> void:
 	if (
-		game == null
-		or not game.supports_tower_defense()
+		not _has_tower_mode()
 		or not _is_valid_xiaocong_vote_payload(option_id, permanent_buff_id)
 	):
 		return
 	if net_manager.is_host():
-		game.request_xiaocong_fate_vote(
+		tower_mode_adapter.request_xiaocong_fate_vote(
 			_get_local_peer_id(),
 			option_id,
 			permanent_buff_id
@@ -1049,14 +1065,13 @@ func _on_local_xiaocong_vote_requested(
 
 func _on_local_xiaocong_collectible_requested(choice_index: int) -> void:
 	if (
-		game == null
-		or not game.supports_tower_defense()
+		not _has_tower_mode()
 		or choice_index < 0
 		or choice_index > 3
 	):
 		return
 	if net_manager.is_host():
-		game.request_xiaocong_collectible_choice(
+		tower_mode_adapter.request_xiaocong_collectible_choice(
 			_get_local_peer_id(),
 			choice_index
 		)
@@ -1223,9 +1238,11 @@ func spawn_authoritative_tango_electric_surge_field(
 	)
 	if field == null:
 		return false
-	if not field.set_authoritative_damage_dispatcher(self):
+	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+	if gameplay_gateway == null:
 		field.free()
 		return false
+	field.bind_gameplay_context(game, gameplay_gateway)
 	field.connect(
 		&"finished",
 		Callable(self, "_on_authoritative_tango_electric_surge_field_finished").bind(
@@ -1265,6 +1282,11 @@ func spawn_remote_tango_electric_surge_visual_field(
 	)
 	if field == null:
 		return false
+	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+	if gameplay_gateway == null:
+		field.free()
+		return false
+	field.bind_gameplay_context(game, gameplay_gateway)
 	game.add_child(field)
 	field.global_position = origin
 	field.setup_multiplayer_visual_only(
@@ -1534,7 +1556,10 @@ func request_luoxi_special_game_start() -> void:
 
 
 func supports_luoxi_special_game() -> bool:
-	return game != null and game.supports_luoxi_special_game()
+	return (
+		_mode_adapter != null
+		and _mode_adapter.runtime_supports_luoxi_special_game()
+	)
 
 
 func request_luoxi_special_game_card_reveal(
@@ -1569,9 +1594,9 @@ func request_luoxi_special_game_finish(session_revision: int) -> void:
 
 
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:
-	if game == null:
+	if _mode_adapter == null:
 		return false
-	return game.has_luoxi_collectible_claimed(peer_id)
+	return _mode_adapter.runtime_has_luoxi_collectible_claimed(peer_id)
 
 
 func broadcast_collectible_visual_effect(
@@ -1619,7 +1644,11 @@ func request_multiplayer_cheat_xirang() -> void:
 
 
 func request_debug_collectible(config_path: String) -> void:
-	if game == null or not game.allows_debug_collectible_grants():
+	if (
+		game == null
+		or _mode_adapter == null
+		or not _mode_adapter.allows_debug_collectible_grants()
+	):
 		return
 	if net_manager.is_host():
 		_apply_debug_collectible_for_peer(_get_local_peer_id(), config_path)
@@ -1632,7 +1661,7 @@ func _on_local_plant_placement_requested(
 	plant_id: StringName,
 	anchor: Vector2i
 ) -> void:
-	if game == null or not game.supports_tower_defense():
+	if not _has_tower_mode():
 		return
 	if net_manager.is_host():
 		_handle_authoritative_plant_placement_request(
@@ -1658,7 +1687,7 @@ func _on_local_inventory_plant_placement_requested(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
-	if game == null or not game.supports_tower_defense():
+	if not _has_tower_mode():
 		return
 	if net_manager.is_host():
 		_handle_authoritative_inventory_plant_placement_request(
@@ -1688,7 +1717,7 @@ func _handle_authoritative_plant_placement_request(
 	plant_id_wire: String,
 	anchor: Vector2i
 ) -> void:
-	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+	if not net_manager.is_host() or not _has_tower_mode():
 		return
 	if not _consume_remote_transaction_admission(requester_peer_id):
 		return
@@ -1713,7 +1742,7 @@ func _handle_authoritative_plant_placement_request(
 	if _get_authoritative_team_plant_count() >= MULTIPLAYER_TEAM_PLANT_LIMIT:
 		_send_plant_placement_rejected(requester_peer_id, request_id, &"team_limit_reached")
 		return
-	game.request_multiplayer_plant_placement(
+	tower_mode_adapter.request_authoritative_plant_placement(
 		requester_peer_id,
 		request_id,
 		StringName(plant_id_wire),
@@ -1730,7 +1759,7 @@ func _handle_authoritative_inventory_plant_placement_request(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
-	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+	if not net_manager.is_host() or not _has_tower_mode():
 		return
 	if not _consume_remote_transaction_admission(requester_peer_id):
 		return
@@ -1770,7 +1799,7 @@ func _handle_authoritative_inventory_plant_placement_request(
 			&"team_limit_reached"
 		)
 		return
-	game.request_multiplayer_inventory_plant_placement(
+	tower_mode_adapter.request_authoritative_inventory_plant_placement(
 		requester_peer_id,
 		request_id,
 		StringName(plant_id_wire),
@@ -1855,15 +1884,34 @@ func _is_embedded_participant_suspended(peer_id: int) -> bool:
 	)
 
 
+func _has_tower_mode() -> bool:
+	return (
+		tower_mode_adapter != null
+		and is_instance_valid(tower_mode_adapter)
+	)
+
+
+func _get_tower_plant(net_id: int) -> PlantDefense:
+	if not _has_tower_mode():
+		return null
+	return tower_mode_adapter.get_multiplayer_plant_node(net_id)
+
+
+func _get_tower_plant_snapshots() -> Array[Dictionary]:
+	if not _has_tower_mode():
+		return []
+	return tower_mode_adapter.get_multiplayer_plant_snapshots()
+
+
 func _get_authoritative_team_plant_count() -> int:
-	if game == null or not game.supports_tower_defense():
+	if not _has_tower_mode():
 		return 0
-	var tower_defense_game := game as TowerDefenseGame
-	if tower_defense_game == null or tower_defense_game.plant_system == null:
+	var plant_count := tower_mode_adapter.get_authoritative_team_plant_count()
+	if plant_count < 0:
 		# A tower-defense Host without its authoritative registry must fail closed;
 		# accepting placements here would silently bypass the shared team limit.
 		return MULTIPLAYER_TEAM_PLANT_LIMIT
-	return tower_defense_game.plant_system.plants_by_net_id.size()
+	return plant_count
 
 
 func broadcast_plant_projectile_visual(
@@ -1875,7 +1923,8 @@ func broadcast_plant_projectile_visual(
 	lifetime: float
 ) -> void:
 	if (
-		not net_manager.is_host()
+		not _has_tower_mode()
+		or not net_manager.is_host()
 		or not _is_finite_vector2(spawn_position)
 		or not _is_finite_vector2(direction)
 		or direction.length_squared() <= 0.001
@@ -1902,7 +1951,8 @@ func queue_bamboo_mortar_visual(
 	committed_windup_duration_seconds: float
 ) -> void:
 	if (
-		not is_inside_tree()
+		not _has_tower_mode()
+		or not is_inside_tree()
 		or not net_manager.is_host()
 		or game == null
 		or plant_net_id <= 0
@@ -1918,7 +1968,7 @@ func queue_bamboo_mortar_visual(
 			> BAMBOO_MORTAR_SCRIPT.WINDUP_DURATION_SECONDS
 	):
 		return
-	var mortar := game.get_multiplayer_plant_node(plant_net_id)
+	var mortar := _get_tower_plant(plant_net_id)
 	if (
 		mortar == null
 		or not is_instance_valid(mortar)
@@ -1953,7 +2003,8 @@ func queue_hydrangea_rain_visual(
 	action_elapsed_seconds: float
 ) -> void:
 	if (
-		not is_inside_tree()
+		not _has_tower_mode()
+		or not is_inside_tree()
 		or not net_manager.is_host()
 		or game == null
 		or plant_net_id <= 0
@@ -1963,7 +2014,7 @@ func queue_hydrangea_rain_visual(
 		or action_elapsed_seconds < 0.0
 	):
 		return
-	var hydrangea := game.get_multiplayer_plant_node(plant_net_id)
+	var hydrangea := _get_tower_plant(plant_net_id)
 	if (
 		hydrangea == null
 		or not is_instance_valid(hydrangea)
@@ -1987,7 +2038,8 @@ func queue_corn_machine_gun_burst_visual(
 	direction: Vector2
 ) -> void:
 	if (
-		not is_inside_tree()
+		not _has_tower_mode()
+		or not is_inside_tree()
 		or not net_manager.is_host()
 		or game == null
 		or plant_net_id <= 0
@@ -1996,7 +2048,7 @@ func queue_corn_machine_gun_burst_visual(
 		or direction.length_squared() <= 0.001
 	):
 		return
-	var corn := game.get_multiplayer_plant_node(plant_net_id)
+	var corn := _get_tower_plant(plant_net_id)
 	if (
 		corn == null
 		or not is_instance_valid(corn)
@@ -2037,7 +2089,13 @@ func apply_authoritative_plant_enemy_damage(
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType
 ) -> bool:
-	if not net_manager.is_host() or game == null or enemy == null or damage <= 0:
+	if (
+		not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+		or enemy == null
+		or damage <= 0
+	):
 		return false
 	var enemy_net_id := int(
 		game.multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0)
@@ -2060,32 +2118,20 @@ func request_bamboo_mortar_target(
 	maximum_range: float,
 	callback: Callable
 ) -> bool:
-	if (
-		not net_manager.is_host()
-		or game == null
-		or not game.has_method("request_bamboo_mortar_target")
-	):
+	if not net_manager.is_host() or not _has_tower_mode():
 		return false
-	return bool(
-		game.call(
-			"request_bamboo_mortar_target",
-			owner,
-			minimum_range,
-			maximum_range,
-			callback
-		)
+	return tower_mode_adapter.request_runtime_bamboo_mortar_target(
+		owner,
+		minimum_range,
+		maximum_range,
+		callback
 	)
 
 
 func cancel_bamboo_mortar_target_request(owner: Node) -> void:
-	if (
-		game == null
-		or not game.has_method(
-			"cancel_bamboo_mortar_target_request"
-		)
-	):
+	if not _has_tower_mode():
 		return
-	game.call("cancel_bamboo_mortar_target_request", owner)
+	tower_mode_adapter.cancel_runtime_bamboo_mortar_target_request(owner)
 
 
 func select_bamboo_mortar_target_sync_for_fixture(
@@ -2093,20 +2139,13 @@ func select_bamboo_mortar_target_sync_for_fixture(
 	minimum_range: float,
 	maximum_range: float
 ) -> Enemy:
-	if (
-		not net_manager.is_host()
-		or game == null
-		or not game.has_method(
-			"select_bamboo_mortar_target_sync_for_fixture"
-		)
-	):
+	if not net_manager.is_host() or not _has_tower_mode():
 		return null
-	return game.call(
-		"select_bamboo_mortar_target_sync_for_fixture",
+	return tower_mode_adapter.select_runtime_bamboo_mortar_target_sync_for_fixture(
 		center,
 		minimum_range,
 		maximum_range
-	) as Enemy
+	)
 
 
 func queue_bamboo_mortar_explosion(
@@ -2117,22 +2156,15 @@ func queue_bamboo_mortar_explosion(
 	outer_damage: int,
 	damage_source_id: int
 ) -> bool:
-	if (
-		not net_manager.is_host()
-		or game == null
-		or not game.has_method("queue_bamboo_mortar_explosion")
-	):
+	if not net_manager.is_host() or not _has_tower_mode():
 		return false
-	return bool(
-		game.call(
-			"queue_bamboo_mortar_explosion",
-			landing_position,
-			inner_radius,
-			outer_radius,
-			inner_damage,
-			outer_damage,
-			damage_source_id
-		)
+	return tower_mode_adapter.queue_runtime_bamboo_mortar_explosion(
+		landing_position,
+		inner_radius,
+		outer_radius,
+		inner_damage,
+		outer_damage,
+		damage_source_id
 	)
 
 
@@ -2145,7 +2177,8 @@ func apply_authoritative_plant_enemy_damage_batch(
 	damage_type: EnemyConfig.DamageType
 ) -> bool:
 	if (
-		not net_manager.is_host()
+		not _has_tower_mode()
+		or not net_manager.is_host()
 		or game == null
 		or enemy == null
 		or damage_amounts.is_empty()
@@ -2175,12 +2208,9 @@ func apply_authoritative_plant_enemy_damage_batch(
 
 
 func get_bamboo_mortar_combat_metrics() -> Dictionary:
-	if (
-		game == null
-		or not game.has_method("get_bamboo_mortar_combat_metrics")
-	):
+	if not _has_tower_mode():
 		return {}
-	return game.call("get_bamboo_mortar_combat_metrics") as Dictionary
+	return tower_mode_adapter.get_runtime_bamboo_mortar_combat_metrics()
 
 
 func _configure_warehouse_network(
@@ -2188,6 +2218,8 @@ func _configure_warehouse_network(
 	snapshot_ready: bool,
 	apply_pending_snapshots: bool = true
 ) -> void:
+	if not _has_tower_mode():
+		return
 	var warehouse := plant as OakWarehouse
 	if warehouse == null or game == null:
 		return
@@ -2225,6 +2257,8 @@ func _configure_warehouse_network(
 
 
 func _configure_production_network(plant: PlantDefense, snapshot_ready: bool) -> void:
+	if not _has_tower_mode():
+		return
 	var building := plant as ProductionBuilding
 	if building == null or game == null:
 		return
@@ -2256,6 +2290,8 @@ func _configure_production_network(plant: PlantDefense, snapshot_ready: bool) ->
 
 
 func _configure_research_network(plant: PlantDefense) -> void:
+	if not _has_tower_mode():
+		return
 	var building := plant as ResearchCenter
 	if building == null or game == null:
 		return
@@ -2269,12 +2305,13 @@ func _configure_research_network(plant: PlantDefense) -> void:
 	if (
 		net_manager.is_host()
 		and not _research_milestone_connected
-		and game.research_coordinator != null
 	):
-		game.research_coordinator.research_milestone_changed.connect(
-			_on_authoritative_research_milestone_changed
+		_research_milestone_connected = (
+			_has_tower_mode()
+			and tower_mode_adapter.connect_research_milestone_changed(
+				_on_authoritative_research_milestone_changed
+			)
 		)
-		_research_milestone_connected = true
 
 
 func _on_research_command_requested(
@@ -2293,7 +2330,7 @@ func _apply_authoritative_research_command(
 	peer_id: int,
 	raw_command: Dictionary
 ) -> void:
-	if not net_manager.is_host() or game == null or peer_id <= 0:
+	if not _has_tower_mode() or not net_manager.is_host() or game == null or peer_id <= 0:
 		return
 	if not _consume_remote_transaction_admission(peer_id):
 		return
@@ -2320,7 +2357,7 @@ func _apply_authoritative_research_command(
 	var peer_request_ids := _last_research_request_ids.get(peer_id, {}) as Dictionary
 	var last_request_id := int(peer_request_ids.get(building_net_id, 0))
 	var player_node := game.get_player_for_peer(peer_id)
-	var building := game.get_multiplayer_plant_node(building_net_id) as ResearchCenter
+	var building := _get_tower_plant(building_net_id) as ResearchCenter
 	if (
 		request_id <= last_request_id
 		or (operation_wire == "global" and research_config == null)
@@ -2425,7 +2462,7 @@ func _on_authoritative_research_milestone_changed(player_key: int) -> void:
 	if (
 		not net_manager.is_host()
 		or game == null
-		or game.research_coordinator == null
+		or not _has_tower_mode()
 	):
 		return
 	var current_xirang := -1
@@ -2436,7 +2473,7 @@ func _on_authoritative_research_milestone_changed(player_key: int) -> void:
 	_rpc_to_connected_clients(
 		&"net_research_state_updated",
 		[
-			game.research_coordinator.export_runtime_state(),
+			tower_mode_adapter.get_research_runtime_state(),
 			player_key,
 			current_xirang,
 		]
@@ -2509,7 +2546,7 @@ func _apply_authoritative_production_command(
 	if not cached_result.is_empty():
 		_send_production_command_result(peer_id, cached_result)
 		return
-	var building := game.get_multiplayer_plant_node(
+	var building := _get_tower_plant(
 		building_net_id
 	) as ProductionBuilding
 	var player_node := game.get_player_for_peer(peer_id)
@@ -2673,11 +2710,18 @@ func _persist_authoritative_warehouse_snapshot(
 
 
 func _capture_shared_warehouse_ledger() -> bool:
-	if run_state == null or game == null or not net_manager.is_host():
+	if run_state == null or not _has_tower_mode() or not net_manager.is_host():
 		return false
-	return SharedWarehouseLedgerBridge.capture_runtime_warehouses(
+	var warehouses: Array[OakWarehouse] = []
+	for plant_snapshot in _get_tower_plant_snapshots():
+		var warehouse := _get_tower_plant(
+			int(plant_snapshot.get("net_id", 0))
+		) as OakWarehouse
+		if warehouse != null:
+			warehouses.append(warehouse)
+	return SharedWarehouseLedgerBridge.capture_warehouses(
 		run_state,
-		game
+		warehouses
 	)
 
 
@@ -2860,14 +2904,9 @@ func _apply_authoritative_simple_crafting_request(
 			result = RunStateStore.CRAFT_RESULT_INVALID_RECIPE
 		else:
 			var completed_research_ids: Array[StringName] = []
-			var tower_defense_game := game as TowerDefenseGame
-			if (
-				tower_defense_game != null
-				and tower_defense_game.research_coordinator != null
-			):
+			if _has_tower_mode():
 				completed_research_ids = (
-					tower_defense_game.research_coordinator
-					.get_completed_global_research_ids()
+					tower_mode_adapter.get_completed_global_research_ids()
 				)
 			result = run_state.try_craft_inventory_recipe_for_peer_if_revision(
 				peer_id,
@@ -2982,7 +3021,7 @@ func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionar
 		_send_warehouse_command_result(peer_id, cached_result)
 		return
 	var result: Dictionary = {}
-	var warehouse := game.get_multiplayer_plant_node(warehouse_net_id) as OakWarehouse
+	var warehouse := _get_tower_plant(warehouse_net_id) as OakWarehouse
 	var player_node := game.get_player_for_peer(peer_id)
 	var rejection_reason := &"invalid_command"
 	if not OakWarehouseProtocolScript.is_valid_command(command):
@@ -3048,14 +3087,10 @@ func _find_authoritative_nearest_interaction_building(
 	if (
 		player_node == null
 		or not is_instance_valid(player_node)
-		or game == null
-		or not game.supports_tower_defense()
+		or not _has_tower_mode()
 	):
 		return null
-	var tower_defense_game := game as TowerDefenseGame
-	if tower_defense_game == null or tower_defense_game.plant_system == null:
-		return null
-	return tower_defense_game.plant_system.find_nearest_operational_interaction_building_world(
+	return tower_mode_adapter.find_nearest_operational_interaction_building(
 		player_node.global_position,
 		BUILDING_INTERACTION_MAX_DISTANCE
 	)
@@ -3136,7 +3171,7 @@ func _setup_game(mode: int) -> bool:
 	if game_scene == null:
 		push_error("MpGame: 无法加载所选多人游戏场景：%s" % game_scene_path)
 		return false
-	game = game_scene.instantiate() as GameRuntimeBase
+	game = game_scene.instantiate() as CombatRuntimeBase
 	if game == null:
 		push_error("MpGame: 无法实例化所选多人游戏场景。")
 		return false
@@ -3147,6 +3182,7 @@ func _setup_game(mode: int) -> bool:
 		local_peer_id = _get_host_peer_id()
 	if embedded_runtime and not _embedded_participant_peer_ids.has(local_peer_id):
 		push_error("MpGame: 路线观战者不得创建内嵌战斗运行时。")
+		_discard_unparented_game_runtime()
 		return false
 	var runtime_player_names := _filter_embedded_peer_map(
 		net_manager.connected_players
@@ -3160,89 +3196,136 @@ func _setup_game(mode: int) -> bool:
 		runtime_player_names,
 		runtime_character_ids
 	)
+	_gameplay_gateway = game.get_multiplayer_gameplay_gateway()
+	_mode_adapter = game.get_multiplayer_mode_adapter()
+	var gameplay_gateway := _gameplay_gateway
+	var mode_adapter := _mode_adapter
+	_linglan_boss_runtime_port = game.get_node_or_null(
+		"LinglanBossRuntimePort"
+	) as LinglanBossRuntimePort
+	if gameplay_gateway == null or mode_adapter == null:
+		push_error("MpGame: 运行时缺少静态 Multiplayer Gateway/ModeAdapter。")
+		_discard_unparented_game_runtime()
+		return false
+	if not mode_adapter.accepts_game_mode_id(game_mode):
+		push_error(
+			"MpGame: 游戏模式 %d 与运行时 MultiplayerModeAdapter 不匹配。"
+			% game_mode
+		)
+		_discard_unparented_game_runtime()
+		return false
+	gameplay_gateway.attach_multiplayer_session(self)
+	mode_adapter.attach_multiplayer_session(self)
+	tower_mode_adapter = mode_adapter as TowerDefenseMultiplayerModeAdapter
+	var tower_adapter := tower_mode_adapter
 	if net_manager.is_host():
-		game.multiplayer_enemy_spawned.connect(_on_host_enemy_spawned)
-		game.multiplayer_enemy_defeated.connect(_on_host_enemy_defeated)
-		game.multiplayer_enemy_removed.connect(_on_host_enemy_removed)
-		game.multiplayer_enemy_escaped.connect(_on_host_enemy_escaped)
-		game.multiplayer_pickup_spawned.connect(_on_host_pickup_spawned)
-		game.multiplayer_pickup_collected.connect(_on_host_pickup_collected)
-		game.multiplayer_pickup_removed.connect(_on_host_pickup_removed)
-		game.multiplayer_merchant_active_changed.connect(_on_host_merchant_active_changed)
-		game.multiplayer_flow_state_changed.connect(_on_host_flow_state_changed)
-		game.multiplayer_boss_started.connect(_on_host_boss_started)
-		game.multiplayer_linglan_airdrop_started.connect(
-			_on_host_linglan_airdrop_started
-		)
-		game.multiplayer_defeat_started.connect(_on_host_defeat_started)
-		game.multiplayer_victory_started.connect(_on_host_victory_started)
-		game.multiplayer_revive_all_requested.connect(_on_host_revive_all_requested)
-		game.multiplayer_base_health_changed.connect(_on_host_base_health_changed)
-		game.multiplayer_tower_defense_wave_progress_changed.connect(
-			_on_host_tower_defense_wave_progress_changed
-		)
-		game.multiplayer_xiaocong_fate_state_changed.connect(
-			_on_host_xiaocong_fate_state_changed
-		)
-		game.test_arena_manual_night_changed.connect(
-			_on_host_test_arena_manual_night_changed
-		)
-		game.multiplayer_player_teleport_requested.connect(
+		gameplay_gateway.enemy_spawned.connect(_on_host_enemy_spawned)
+		gameplay_gateway.enemy_defeated.connect(_on_host_enemy_defeated)
+		gameplay_gateway.enemy_removed.connect(_on_host_enemy_removed)
+		gameplay_gateway.enemy_escaped.connect(_on_host_enemy_escaped)
+		gameplay_gateway.pickup_spawned.connect(_on_host_pickup_spawned)
+		gameplay_gateway.pickup_collected.connect(_on_host_pickup_collected)
+		gameplay_gateway.pickup_removed.connect(_on_host_pickup_removed)
+		mode_adapter.merchant_active_changed.connect(_on_host_merchant_active_changed)
+		mode_adapter.flow_state_changed.connect(_on_host_flow_state_changed)
+		mode_adapter.boss_started.connect(_on_host_boss_started)
+		if _linglan_boss_runtime_port != null:
+			_linglan_boss_runtime_port.airdrop_started.connect(
+				_on_host_linglan_airdrop_started
+			)
+		mode_adapter.defeat_started.connect(_on_host_defeat_started)
+		mode_adapter.victory_started.connect(_on_host_victory_started)
+		mode_adapter.revive_all_requested.connect(_on_host_revive_all_requested)
+		gameplay_gateway.player_teleport_requested.connect(
 			_on_host_player_teleport_requested
 		)
-		game.multiplayer_plant_spawned.connect(_on_host_plant_spawned)
-		game.multiplayer_plant_placement_rejected.connect(
-			_on_host_plant_placement_rejected
+		if tower_adapter != null:
+			tower_adapter.base_health_changed.connect(_on_host_base_health_changed)
+			tower_adapter.wave_progress_changed.connect(
+				_on_host_tower_defense_wave_progress_changed
+			)
+			tower_adapter.xiaocong_fate_state_changed.connect(
+				_on_host_xiaocong_fate_state_changed
+			)
+			tower_adapter.test_arena_manual_night_changed.connect(
+				_on_host_test_arena_manual_night_changed
+			)
+			tower_adapter.plant_spawned.connect(_on_host_plant_spawned)
+			tower_adapter.plant_placement_rejected.connect(
+				_on_host_plant_placement_rejected
+			)
+			tower_adapter.plant_health_changed.connect(
+				_on_host_plant_health_changed
+			)
+			tower_adapter.plant_damage_status_changed.connect(
+				_on_host_plant_damage_status_changed
+			)
+			tower_adapter.plant_damage_applied.connect(
+				_on_host_plant_damage_applied
+			)
+			tower_adapter.plant_healing_applied.connect(
+				_on_host_plant_healing_applied
+			)
+			tower_adapter.plant_removed.connect(_on_host_plant_removed)
+			tower_adapter.terrain_delta.connect(_on_host_terrain_delta)
+			tower_adapter.inventory_changed.connect(
+				_on_host_multiplayer_inventory_changed
+			)
+	if tower_adapter != null:
+		tower_adapter.plant_placement_requested.connect(
+			_on_local_plant_placement_requested
 		)
-		game.multiplayer_plant_health_changed.connect(_on_host_plant_health_changed)
-		game.multiplayer_plant_damage_status_changed.connect(
-			_on_host_plant_damage_status_changed
+		tower_adapter.inventory_plant_placement_requested.connect(
+			_on_local_inventory_plant_placement_requested
 		)
-		game.multiplayer_plant_damage_applied.connect(_on_host_plant_damage_applied)
-		game.multiplayer_plant_healing_applied.connect(_on_host_plant_healing_applied)
-		game.multiplayer_plant_removed.connect(_on_host_plant_removed)
-		game.multiplayer_terrain_delta.connect(_on_host_terrain_delta)
-		game.multiplayer_inventory_changed.connect(
-			_on_host_multiplayer_inventory_changed
-		)
-	game.multiplayer_plant_placement_requested.connect(
-		_on_local_plant_placement_requested
-	)
-	game.multiplayer_inventory_plant_placement_requested.connect(
-		_on_local_inventory_plant_placement_requested
-	)
-	game.multiplayer_profile_upgrade_requested.connect(
+	mode_adapter.profile_upgrade_requested.connect(
 		request_multiplayer_upgrade
 	)
-	game.multiplayer_profile_inventory_item_use_requested.connect(
+	mode_adapter.profile_inventory_item_use_requested.connect(
 		request_multiplayer_inventory_item_use
 	)
-	game.multiplayer_profile_inventory_item_discard_requested.connect(
+	mode_adapter.profile_inventory_item_discard_requested.connect(
 		request_multiplayer_inventory_item_discard
 	)
-	game.multiplayer_profile_simple_crafting_requested.connect(
+	mode_adapter.profile_simple_crafting_requested.connect(
 		request_multiplayer_simple_crafting
 	)
-	game.multiplayer_profile_simple_crafting_cancel_requested.connect(
+	mode_adapter.profile_simple_crafting_cancel_requested.connect(
 		cancel_multiplayer_simple_crafting_request
 	)
-	game.multiplayer_xiaocong_interaction_requested.connect(
-		_on_local_xiaocong_interaction_requested
+	if tower_adapter != null:
+		tower_adapter.xiaocong_interaction_requested.connect(
+			_on_local_xiaocong_interaction_requested
+		)
+		tower_adapter.xiaocong_vote_requested.connect(
+			_on_local_xiaocong_vote_requested
+		)
+		tower_adapter.xiaocong_collectible_requested.connect(
+			_on_local_xiaocong_collectible_requested
+		)
+	mode_adapter.return_to_lobby_requested.connect(
+		_on_game_return_to_lobby_requested
 	)
-	game.multiplayer_xiaocong_vote_requested.connect(
-		_on_local_xiaocong_vote_requested
-	)
-	game.multiplayer_xiaocong_collectible_requested.connect(
-		_on_local_xiaocong_collectible_requested
-	)
-	game.return_to_lobby_requested.connect(_on_game_return_to_lobby_requested)
 	add_child(game)
 	if net_manager.is_client():
-		_client_has_terrain_snapshot = not game.supports_multiplayer_terrain_state()
+		_client_has_terrain_snapshot = (
+			not _has_tower_mode()
+			or not tower_mode_adapter.supports_terrain_state()
+		)
 	run_state.set_active_multiplayer_peer(local_peer_id)
-	if net_manager.is_host() and game.supports_tower_defense():
+	if net_manager.is_host() and _has_tower_mode():
 		_broadcast_base_health_snapshot()
 	return true
+
+
+func _discard_unparented_game_runtime() -> void:
+	if game != null and is_instance_valid(game) and game.get_parent() == null:
+		game.free()
+	game = null
+	_gameplay_gateway = null
+	_mode_adapter = null
+	tower_mode_adapter = null
+	_linglan_boss_runtime_port = null
 
 
 func _get_game_scene_path_for_mode(game_mode: int) -> String:
@@ -3261,7 +3344,7 @@ func _request_runtime_state_from_host() -> void:
 	):
 		return
 	_runtime_state_requested = true
-	if game.supports_multiplayer_terrain_state():
+	if _has_tower_mode() and tower_mode_adapter.supports_terrain_state():
 		_client_waiting_for_terrain_snapshot = true
 		_arm_terrain_snapshot_repair_watchdog()
 	net_runtime_state_requested.rpc_id(
@@ -3296,8 +3379,8 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 		)
 	_send_live_enemy_roster_to_peer(peer_id)
 	_send_live_pickup_roster_to_peer(peer_id)
-	if game.supports_tower_defense():
-		var base_snapshot := game.get_base_health_snapshot()
+	if _has_tower_mode():
+		var base_snapshot := tower_mode_adapter.get_base_health_snapshot()
 		if not base_snapshot.is_empty():
 			net_base_health_changed.rpc_id(
 				peer_id,
@@ -3305,7 +3388,7 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 				int(base_snapshot.get("maximum_health", 1)),
 				int(base_snapshot.get("revision", 0))
 			)
-		var progress_snapshot := game.get_tower_defense_wave_progress_snapshot()
+		var progress_snapshot := tower_mode_adapter.get_wave_progress_snapshot()
 		if not progress_snapshot.is_empty():
 			net_tower_defense_wave_progress_keyframe.rpc_id(
 				peer_id,
@@ -3315,26 +3398,33 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 				int(progress_snapshot.get("resolved", 0)),
 				int(progress_snapshot.get("total", 0))
 			)
-		var fate_snapshot := game.get_xiaocong_fate_state_snapshot()
+		var fate_snapshot := tower_mode_adapter.get_xiaocong_fate_state_snapshot()
 		if not fate_snapshot.is_empty():
 			net_xiaocong_fate_state_changed.rpc_id(
 				peer_id,
 				fate_snapshot.duplicate(true)
 			)
-		if game.wave_state == GameRuntimeBase.WaveState.FATE_INTERLUDE:
+		if tower_mode_adapter.is_fate_interlude_active():
 			_send_authoritative_player_positions_to_peer(peer_id)
-	if game.supports_test_arena_manual_night_sync():
+	if (
+		_has_tower_mode()
+		and tower_mode_adapter.supports_test_arena_manual_night_sync()
+	):
 		net_test_arena_manual_night_changed.rpc_id(
 			peer_id,
-			game.get_test_arena_manual_night_enabled()
+			tower_mode_adapter.get_test_arena_manual_night_enabled()
 		)
 	if include_flow_state:
-		var flow_snapshot := game.get_flow_state_snapshot()
+		var flow_snapshot: Dictionary = (
+			_mode_adapter.get_flow_state_snapshot()
+			if _mode_adapter != null
+			else {}
+		)
 		if not flow_snapshot.is_empty():
 			net_flow_state_changed.rpc_id(
 				peer_id,
 				String(flow_snapshot.get("step_id", &"")),
-				int(flow_snapshot.get("state", GameRuntimeBase.WaveState.PRE_WAVE)),
+				int(flow_snapshot.get("state", CombatFlowState.State.PRE_WAVE)),
 				int(flow_snapshot.get("countdown_seconds", 0))
 			)
 	_send_active_tango_electric_surges_to_peer(peer_id)
@@ -3407,12 +3497,12 @@ func _send_authoritative_player_positions_to_peer(target_peer_id: int) -> void:
 
 
 func _send_live_plant_roster_to_peer(peer_id: int) -> void:
-	if not game.supports_tower_defense():
+	if not _has_tower_mode():
 		return
 	var warehouse_snapshots_by_net_id: Dictionary = {}
-	for plant_snapshot in game.get_multiplayer_plant_snapshots():
+	for plant_snapshot in _get_tower_plant_snapshots():
 		var plant_net_id := int(plant_snapshot.get("net_id", 0))
-		var plant := game.get_multiplayer_plant_node(plant_net_id)
+		var plant := _get_tower_plant(plant_net_id)
 		_configure_warehouse_network(plant, true)
 		_configure_production_network(plant, true)
 		_configure_research_network(plant)
@@ -3456,10 +3546,10 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 			warehouse_net_ids,
 			warehouse_snapshots
 		)
-	if game.research_coordinator != null:
+	if _has_tower_mode():
 		net_research_state_updated.rpc_id(
 			peer_id,
-			game.research_coordinator.export_runtime_state(),
+			tower_mode_adapter.get_research_runtime_state(),
 			0,
 			-1
 		)
@@ -3468,12 +3558,12 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 func _send_terrain_snapshot_to_peer(peer_id: int) -> void:
 	if (
 		not net_manager.is_host()
-		or game == null
+		or not _has_tower_mode()
 		or peer_id <= 0
-		or not game.supports_multiplayer_terrain_state()
+		or not tower_mode_adapter.supports_terrain_state()
 	):
 		return
-	var snapshot := game.get_multiplayer_terrain_snapshot()
+	var snapshot := tower_mode_adapter.get_terrain_snapshot()
 	var revision := int(snapshot.get("revision", -1))
 	var cell_xy: PackedInt32Array = snapshot.get("cell_xy", PackedInt32Array())
 	var terrain_types: PackedInt32Array = snapshot.get(
@@ -3628,8 +3718,8 @@ func _send_runtime_world_manifest_to_peer(peer_id: int) -> void:
 		var pickup := pickup_variant as Pickup
 		if pickup != null and is_instance_valid(pickup):
 			live_pickup_ids.append(net_id)
-	if game.supports_tower_defense():
-		for plant_snapshot in game.get_multiplayer_plant_snapshots():
+	if _has_tower_mode():
+		for plant_snapshot in _get_tower_plant_snapshots():
 			var plant_net_id := int(plant_snapshot.get("net_id", 0))
 			if plant_net_id > 0:
 				live_plant_ids.append(plant_net_id)
@@ -6166,6 +6256,7 @@ func register_local_tango_laser_volley(
 		if (
 			projectile == null
 			or not is_instance_valid(projectile)
+			or not _bind_player_projectile_gameplay_context(projectile)
 			or not _is_finite_vector2(spawn_positions[projectile_index])
 		):
 			return false
@@ -6315,6 +6406,8 @@ func _register_local_projectile_identity(
 	lifetime: float,
 	pierces_enemies: bool
 ) -> int:
+	if not _bind_player_projectile_gameplay_context(projectile):
+		return 0
 	var projectile_namespace := owner_peer_id
 	if projectile_namespace <= 0:
 		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
@@ -6776,6 +6869,10 @@ func _spawn_network_projectile(
 	)
 	if projectile == null:
 		return
+	if not _bind_player_projectile_gameplay_context(projectile):
+		if not release_session_object(projectile):
+			projectile.queue_free()
+		return
 	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
 	_known_projectiles[projectile_id] = projectile
 	var compensation_age := _get_projectile_time_compensation_age(
@@ -6947,6 +7044,82 @@ func _acquire_or_instantiate_projectile(scene: PackedScene) -> Node:
 	return scene.instantiate()
 
 
+func _bind_linglan_projectile_gameplay_context(projectile: Node) -> bool:
+	if projectile == null or not is_instance_valid(projectile) or game == null:
+		return false
+	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+	if gameplay_gateway == null:
+		return false
+	var projectile_parent := gameplay_gateway.get_projectile_parent()
+	if projectile_parent == null:
+		return false
+
+	var context_bound := false
+	var skill1_bullet := projectile as LinglanSakuraBullet
+	if skill1_bullet != null:
+		skill1_bullet.bind_gameplay_context(game, gameplay_gateway)
+		context_bound = true
+	var skill2_rocket := projectile as LinglanSkill2SakuraRocket
+	if skill2_rocket != null:
+		skill2_rocket.bind_gameplay_context(game, gameplay_gateway)
+		context_bound = true
+	var skill3_orb := projectile as LinglanSkill3LightOrb
+	if skill3_orb != null:
+		skill3_orb.bind_gameplay_context(game, gameplay_gateway)
+		context_bound = true
+	var skill4_orb := projectile as LinglanSkill4LightOrb
+	if skill4_orb != null:
+		skill4_orb.bind_gameplay_context(game, gameplay_gateway)
+		context_bound = true
+	if not context_bound:
+		return false
+
+	if projectile.get_parent() == null:
+		projectile_parent.add_child(projectile)
+	elif (
+		projectile.get_parent() != projectile_parent
+		and not game.is_ancestor_of(projectile)
+	):
+		return false
+	return true
+
+
+func _prepare_enemy_network_projectile(projectile: Node) -> bool:
+	if projectile == null or not is_instance_valid(projectile) or game == null:
+		return false
+	var gateway := game.get_multiplayer_gameplay_gateway()
+	if gateway == null or not is_instance_valid(gateway):
+		return false
+	var capoo_bullet := projectile as CapooAK47Bullet
+	var rpg_rocket := projectile as CapooRPGRocket
+	var mage_fireball := projectile as CapooMageFireball
+	var sorcerer_volley := projectile as FireSorcererFireballVolley
+	var yuanshi_fire_projectile := projectile as YuanshiInsectFireProjectile
+	var frost_ice_spike := projectile as FrostSorcererIceSpike
+	if capoo_bullet != null:
+		capoo_bullet.bind_gameplay_context(game, gateway)
+	elif rpg_rocket != null:
+		rpg_rocket.bind_gameplay_context(game, gateway)
+	elif mage_fireball != null:
+		mage_fireball.bind_gameplay_context(game, gateway)
+	elif sorcerer_volley != null:
+		sorcerer_volley.bind_gameplay_context(game, gateway)
+	elif yuanshi_fire_projectile != null:
+		yuanshi_fire_projectile.bind_gameplay_context(game, gateway)
+	elif frost_ice_spike != null:
+		frost_ice_spike.bind_gameplay_context(game, gateway)
+	else:
+		return false
+	var projectile_parent := gateway.get_projectile_parent()
+	if projectile_parent == null or not is_instance_valid(projectile_parent):
+		return false
+	if projectile.get_parent() == null:
+		projectile_parent.add_child(projectile)
+	elif projectile.get_parent() != projectile_parent:
+		projectile.reparent(projectile_parent)
+	return true
+
+
 func _get_cached_projectile_defaults(
 	projectile_type: StringName,
 	scene: PackedScene
@@ -7064,6 +7237,10 @@ func _instantiate_projectile(
 			if capoo_bullet == null:
 				return null
 			capoo_bullet.top_level = true
+			if not _prepare_enemy_network_projectile(capoo_bullet):
+				if not release_session_object(capoo_bullet):
+					capoo_bullet.queue_free()
+				return null
 			capoo_bullet.setup(
 				direction,
 				damage,
@@ -7081,6 +7258,22 @@ func _instantiate_projectile(
 			if gunner_bullet == null:
 				return null
 			gunner_bullet.top_level = true
+			if game != null:
+				var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+				var projectile_parent := (
+					gameplay_gateway.get_projectile_parent()
+					if gameplay_gateway != null
+					else null
+				)
+				if gameplay_gateway == null or projectile_parent == null:
+					if not release_session_object(gunner_bullet):
+						gunner_bullet.queue_free()
+					return null
+				gunner_bullet.bind_gameplay_context(game, gameplay_gateway)
+				if gunner_bullet.get_parent() == null:
+					projectile_parent.add_child(gunner_bullet)
+				elif gunner_bullet.get_parent() != projectile_parent:
+					gunner_bullet.reparent(projectile_parent)
 			# Direction already contains the Host-authored spread. Clients must not
 			# sample or reconstruct spread independently.
 			gunner_bullet.setup(
@@ -7109,6 +7302,21 @@ func _instantiate_projectile(
 			if suicide_drone == null:
 				return null
 			suicide_drone.top_level = true
+			var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
+			var projectile_parent := (
+				gameplay_gateway.get_projectile_parent()
+				if gameplay_gateway != null
+				else null
+			)
+			if gameplay_gateway == null or projectile_parent == null:
+				if not release_session_object(suicide_drone):
+					suicide_drone.queue_free()
+				return null
+			suicide_drone.bind_gameplay_context(game, gameplay_gateway)
+			if suicide_drone.get_parent() == null:
+				projectile_parent.add_child(suicide_drone)
+			elif suicide_drone.get_parent() != projectile_parent:
+				suicide_drone.reparent(projectile_parent)
 			suicide_drone.setup(
 				direction,
 				damage,
@@ -7126,6 +7334,10 @@ func _instantiate_projectile(
 			if rpg_rocket == null:
 				return null
 			rpg_rocket.top_level = true
+			if not _prepare_enemy_network_projectile(rpg_rocket):
+				if not release_session_object(rpg_rocket):
+					rpg_rocket.queue_free()
+				return null
 			rpg_rocket.setup(direction, damage, speed, lifetime)
 			return rpg_rocket
 		&"capoo_mage_fireball":
@@ -7136,6 +7348,10 @@ func _instantiate_projectile(
 			if fireball == null:
 				return null
 			fireball.top_level = true
+			if not _prepare_enemy_network_projectile(fireball):
+				if not release_session_object(fireball):
+					fireball.queue_free()
+				return null
 			fireball.setup(direction, damage, speed, lifetime)
 			return fireball
 		&"fire_sorcerer_fireball_volley":
@@ -7148,12 +7364,16 @@ func _instantiate_projectile(
 			if fire_sorcerer_volley == null:
 				return null
 			fire_sorcerer_volley.top_level = true
+			if not _prepare_enemy_network_projectile(fire_sorcerer_volley):
+				if not release_session_object(fire_sorcerer_volley):
+					fire_sorcerer_volley.queue_free()
+				return null
 			var fireball_target: Node2D = null
 			if game != null:
 				if target_peer_id > 0:
 					fireball_target = game.get_player_for_peer(target_peer_id)
 				elif target_enemy_net_id > 0:
-					fireball_target = game.get_multiplayer_plant_node(
+					fireball_target = _get_tower_plant(
 						target_enemy_net_id
 					)
 			fire_sorcerer_volley.setup(
@@ -7176,6 +7396,12 @@ func _instantiate_projectile(
 			if elite_fire_sorcerer_volley == null:
 				return null
 			elite_fire_sorcerer_volley.top_level = true
+			if not _prepare_enemy_network_projectile(
+				elite_fire_sorcerer_volley
+			):
+				if not release_session_object(elite_fire_sorcerer_volley):
+					elite_fire_sorcerer_volley.queue_free()
+				return null
 			var elite_fireball_target: Node2D = null
 			if game != null:
 				if target_peer_id > 0:
@@ -7183,7 +7409,7 @@ func _instantiate_projectile(
 						target_peer_id
 					)
 				elif target_enemy_net_id > 0:
-					elite_fireball_target = game.get_multiplayer_plant_node(
+					elite_fireball_target = _get_tower_plant(
 						target_enemy_net_id
 					)
 			elite_fire_sorcerer_volley.setup(
@@ -7204,6 +7430,10 @@ func _instantiate_projectile(
 			if smg_bullet == null:
 				return null
 			smg_bullet.top_level = true
+			if not _prepare_enemy_network_projectile(smg_bullet):
+				if not release_session_object(smg_bullet):
+					smg_bullet.queue_free()
+				return null
 			smg_bullet.setup(
 				direction,
 				damage,
@@ -7221,6 +7451,10 @@ func _instantiate_projectile(
 			if fire_projectile == null:
 				return null
 			fire_projectile.top_level = true
+			if not _prepare_enemy_network_projectile(fire_projectile):
+				if not release_session_object(fire_projectile):
+					fire_projectile.queue_free()
+				return null
 			fire_projectile.setup(direction, damage, speed, lifetime)
 			return fire_projectile
 		FROST_SORCERER_ICE_SPIKE_TYPE:
@@ -7233,6 +7467,10 @@ func _instantiate_projectile(
 			if frost_ice_spike == null:
 				return null
 			frost_ice_spike.top_level = true
+			if not _prepare_enemy_network_projectile(frost_ice_spike):
+				if not release_session_object(frost_ice_spike):
+					frost_ice_spike.queue_free()
+				return null
 			frost_ice_spike.setup(direction, damage, speed, lifetime)
 			return frost_ice_spike
 		&"linglan_skill1":
@@ -7246,21 +7484,30 @@ func _instantiate_projectile(
 			if sakura_bullet == null:
 				return null
 			sakura_bullet.top_level = true
+			if not _bind_linglan_projectile_gameplay_context(sakura_bullet):
+				if not release_session_object(sakura_bullet):
+					sakura_bullet.queue_free()
+				return null
 			sakura_bullet.setup(direction, damage, speed, lifetime)
 			return sakura_bullet
 		&"linglan_skill2_rocket":
 			_ensure_linglan_projectile_resources(projectile_type)
 			if _linglan_skill2_rocket_scene == null or _linglan_skill2_config == null:
 				return null
-			var sakura_rocket := _linglan_skill2_rocket_scene.instantiate() as Node2D
+			var sakura_rocket := (
+				_linglan_skill2_rocket_scene.instantiate()
+				as LinglanSkill2SakuraRocket
+			)
 			if sakura_rocket == null:
 				return null
 			sakura_rocket.top_level = true
+			if not _bind_linglan_projectile_gameplay_context(sakura_rocket):
+				sakura_rocket.queue_free()
+				return null
 			var rocket_target: Player = null
 			if game != null and target_peer_id > 0:
 				rocket_target = game.get_player_for_peer(target_peer_id)
-			sakura_rocket.call(
-				"setup",
+			sakura_rocket.setup(
 				direction,
 				damage,
 				speed,
@@ -7276,22 +7523,27 @@ func _instantiate_projectile(
 				return null
 			var collectible_sakura_rocket := (
 				_acquire_or_instantiate_projectile(_collectible_sakura_rocket_scene)
-				as Node2D
+				as LinglanSkill2SakuraRocket
 			)
 			if collectible_sakura_rocket == null:
 				return null
 			collectible_sakura_rocket.top_level = true
-			var collectible_explosion_radius := float(
-				collectible_sakura_rocket.get("explosion_radius")
+			if not _bind_linglan_projectile_gameplay_context(
+				collectible_sakura_rocket
+			):
+				if not release_session_object(collectible_sakura_rocket):
+					collectible_sakura_rocket.queue_free()
+				return null
+			var collectible_explosion_radius := (
+				collectible_sakura_rocket.explosion_radius
 			)
-			var collectible_homing_turn_rate := float(
-				collectible_sakura_rocket.get("homing_turn_rate")
+			var collectible_homing_turn_rate := (
+				collectible_sakura_rocket.homing_turn_rate
 			)
 			var target_enemy: Enemy = null
 			if game != null and target_enemy_net_id > 0:
 				target_enemy = game.get_enemy_for_net_id(target_enemy_net_id)
-			collectible_sakura_rocket.call(
-				"setup",
+			collectible_sakura_rocket.setup(
 				direction,
 				damage,
 				speed,
@@ -7308,12 +7560,17 @@ func _instantiate_projectile(
 			_ensure_linglan_projectile_resources(projectile_type)
 			if _linglan_skill3_orb_scene == null or _linglan_skill3_config == null:
 				return null
-			var light_orb := _linglan_skill3_orb_scene.instantiate() as Node2D
+			var light_orb := (
+				_linglan_skill3_orb_scene.instantiate()
+				as LinglanSkill3LightOrb
+			)
 			if light_orb == null:
 				return null
 			light_orb.top_level = true
-			light_orb.call(
-				"setup",
+			if not _bind_linglan_projectile_gameplay_context(light_orb):
+				light_orb.queue_free()
+				return null
+			light_orb.setup(
 				direction,
 				damage,
 				speed,
@@ -7328,12 +7585,17 @@ func _instantiate_projectile(
 			_ensure_linglan_projectile_resources(projectile_type)
 			if _linglan_skill4_orb_scene == null or _linglan_skill4_config == null:
 				return null
-			var skill4_orb := _linglan_skill4_orb_scene.instantiate() as Node2D
+			var skill4_orb := (
+				_linglan_skill4_orb_scene.instantiate()
+				as LinglanSkill4LightOrb
+			)
 			if skill4_orb == null:
 				return null
 			skill4_orb.top_level = true
-			skill4_orb.call(
-				"setup",
+			if not _bind_linglan_projectile_gameplay_context(skill4_orb):
+				skill4_orb.queue_free()
+				return null
+			skill4_orb.setup(
 				direction,
 				damage,
 				speed,
@@ -8153,6 +8415,7 @@ func _setup_projectile_network_identity(
 	owner_peer_id: int,
 	projectile_type: StringName
 ) -> void:
+	_bind_player_projectile_gameplay_context(projectile)
 	if projectile.has_method("setup_multiplayer"):
 		projectile.call("setup_multiplayer", projectile_id, owner_peer_id, projectile_type)
 	if projectile.has_signal(&"projectile_finished"):
@@ -8164,6 +8427,39 @@ func _setup_projectile_network_identity(
 			_on_network_projectile_tree_exited.bind(projectile_id, projectile),
 			CONNECT_ONE_SHOT
 		)
+
+
+func _bind_player_projectile_gameplay_context(projectile: Node) -> bool:
+	if projectile == null or not is_instance_valid(projectile):
+		return false
+	var player_projectile := false
+	var gameplay_gateway: MultiplayerGameplayGateway = null
+	if game != null:
+		gameplay_gateway = game.get_multiplayer_gameplay_gateway()
+	var bullet := projectile as Bullet
+	if bullet != null:
+		player_projectile = true
+		bullet.bind_gameplay_context(game, gameplay_gateway)
+	var arrow := projectile as CollectibleArrowProjectile
+	if arrow != null:
+		player_projectile = true
+		arrow.bind_gameplay_context(game, gameplay_gateway)
+	var bomb := projectile as WeishidaierSkill1Bomb
+	if bomb != null:
+		player_projectile = true
+		bomb.bind_gameplay_context(game, gameplay_gateway)
+	if not player_projectile:
+		return true
+	if game == null or gameplay_gateway == null:
+		return false
+	var projectile_parent := gameplay_gateway.get_projectile_parent()
+	if projectile_parent == null:
+		return false
+	if projectile.get_parent() == null:
+		projectile_parent.add_child(projectile)
+	elif projectile.get_parent() != projectile_parent:
+		projectile.reparent(projectile_parent)
+	return true
 
 
 func _on_network_projectile_finished(projectile_id: int, projectile: Node) -> void:
@@ -8775,7 +9071,7 @@ func _flush_enemy_damage_feedback() -> void:
 
 
 func _flush_plant_health_updates() -> void:
-	if _pending_plant_health_updates.is_empty():
+	if not _has_tower_mode() or _pending_plant_health_updates.is_empty():
 		return
 	var net_ids: Array[int] = []
 	for net_id_variant in _pending_plant_health_updates.keys():
@@ -8865,7 +9161,7 @@ func net_plant_health_batch(
 	damage_types: PackedByteArray,
 	world_positions: PackedVector2Array
 ) -> void:
-	if game == null or net_manager.is_host():
+	if not _has_tower_mode() or game == null or net_manager.is_host():
 		return
 	var record_count := mini(
 		net_ids.size(),
@@ -8909,7 +9205,7 @@ func net_plant_health_batch(
 			)
 		):
 			continue
-		var live_plant_before := game.get_multiplayer_plant_node(net_id)
+		var live_plant_before := _get_tower_plant(net_id)
 		var stale_for_live_plant := (
 			live_plant_before != null
 			and is_instance_valid(live_plant_before)
@@ -8959,14 +9255,15 @@ func _apply_or_defer_remote_plant_health(
 	health_revision: int
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or net_manager.is_host()
 		or net_id <= 0
 		or health_revision < 0
 		or _removed_remote_plant_ids.has(net_id)
 	):
 		return
-	var plant := game.get_multiplayer_plant_node(net_id)
+	var plant := _get_tower_plant(net_id)
 	if plant == null or not is_instance_valid(plant):
 		_cache_remote_plant_health(
 			net_id,
@@ -8985,7 +9282,7 @@ func _apply_or_defer_remote_plant_health(
 		selected_maximum = int(pending.get("maximum_health", maximum_health))
 		selected_revision = int(pending.get("health_revision", health_revision))
 	_erase_pending_remote_plant_health(net_id)
-	game.apply_remote_plant_health(
+	tower_mode_adapter.apply_remote_plant_health(
 		net_id,
 		selected_health,
 		selected_maximum,
@@ -9019,14 +9316,16 @@ func _cache_remote_plant_health(
 
 
 func _apply_pending_remote_plant_health(net_id: int) -> void:
+	if not _has_tower_mode():
+		return
 	var pending := _pending_remote_plant_health_updates.get(net_id, {}) as Dictionary
 	if pending.is_empty():
 		return
-	var plant := game.get_multiplayer_plant_node(net_id)
+	var plant := _get_tower_plant(net_id)
 	if plant == null or not is_instance_valid(plant):
 		return
 	_erase_pending_remote_plant_health(net_id)
-	game.apply_remote_plant_health(
+	tower_mode_adapter.apply_remote_plant_health(
 		net_id,
 		int(pending.get("current_health", 0)),
 		int(pending.get("maximum_health", 1)),
@@ -10076,9 +10375,13 @@ func query_living_plants_in_radius_into(
 	result: Array[PlantDefense]
 ) -> void:
 	result.clear()
-	if game == null or not game.supports_tower_defense():
+	if not _has_tower_mode():
 		return
-	game.query_living_plants_in_radius_into(center, radius, result)
+	tower_mode_adapter.query_living_plants_in_radius_into(
+		center,
+		radius,
+		result
+	)
 
 
 func apply_authoritative_player_heal(
@@ -10177,16 +10480,14 @@ func _schedule_player_revive(peer_id: int) -> void:
 		_cancel_authoritative_tango_charge(peer_id, true)
 	if (
 		game == null
-		or not game.allows_player_respawn(peer_id)
+		or _mode_adapter == null
+		or not _mode_adapter.allows_player_respawn(peer_id)
 		or _dead_player_revive_times.has(peer_id)
-		or game.wave_state in [
-		GameRuntimeBase.WaveState.VICTORY,
-		GameRuntimeBase.WaveState.DEFEAT,
-		]
+		or _mode_adapter.is_terminal_combat_state()
 	):
 		return
 	_host_latest_client_player_snapshot_states.erase(peer_id)
-	var revive_delay := game.consume_next_player_respawn_delay(peer_id)
+	var revive_delay := _mode_adapter.consume_next_player_respawn_delay(peer_id)
 	revive_delay = maxf(revive_delay, 0.0)
 	_dead_player_revive_times[peer_id] = _get_net_time() + revive_delay
 	_dead_player_revive_last_seconds[peer_id] = -1
@@ -10200,17 +10501,14 @@ func _schedule_player_revive(peer_id: int) -> void:
 func _host_update_player_revives() -> void:
 	if not net_manager.is_host() or game == null:
 		return
-	if game.wave_state in [
-		GameRuntimeBase.WaveState.VICTORY,
-		GameRuntimeBase.WaveState.DEFEAT,
-	]:
+	if _mode_adapter == null or _mode_adapter.is_terminal_combat_state():
 		return
 	var now := _get_net_time()
 	var due_peers: Array[int] = []
 	var disallowed_peers: Array[int] = []
 	for peer_id_variant in _dead_player_revive_times:
 		var peer_id := int(peer_id_variant)
-		if not game.allows_player_respawn(peer_id):
+		if _mode_adapter == null or not _mode_adapter.allows_player_respawn(peer_id):
 			disallowed_peers.append(peer_id)
 			continue
 		var revive_at := float(_dead_player_revive_times[peer_id])
@@ -10224,7 +10522,8 @@ func _host_update_player_revives() -> void:
 	for peer_id in disallowed_peers:
 		_dead_player_revive_times.erase(peer_id)
 		_dead_player_revive_last_seconds.erase(peer_id)
-		game.clear_player_respawn_countdown(peer_id)
+		if _mode_adapter != null:
+			_mode_adapter.clear_player_respawn_countdown(peer_id)
 	if due_peers.is_empty():
 		return
 	var revive_positions := _collect_living_player_revive_positions()
@@ -10269,10 +10568,13 @@ func _resolve_multiplayer_revive_position(
 	if (
 		game == null
 		or peer_id <= 0
-		or not game.allows_player_respawn(peer_id)
+		or _mode_adapter == null
+		or not _mode_adapter.allows_player_respawn(peer_id)
 	):
 		return null
-	var fixed_position: Variant = game.get_fixed_multiplayer_respawn_position(peer_id)
+	var fixed_position: Variant = (
+		_mode_adapter.get_fixed_multiplayer_respawn_position(peer_id)
+	)
 	if fixed_position is Vector2:
 		return fixed_position
 	if living_player_positions.is_empty():
@@ -10284,12 +10586,13 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 	if (
 		game == null
 		or peer_id <= 0
-		or not game.allows_player_respawn(peer_id)
+		or _mode_adapter == null
+		or not _mode_adapter.allows_player_respawn(peer_id)
 	):
 		_dead_player_revive_times.erase(peer_id)
 		_dead_player_revive_last_seconds.erase(peer_id)
-		if game != null:
-			game.clear_player_respawn_countdown(peer_id)
+		if _mode_adapter != null:
+			_mode_adapter.clear_player_respawn_countdown(peer_id)
 		return
 	var player_node: Player = null
 	player_node = game.get_player_for_peer(peer_id)
@@ -10353,7 +10656,7 @@ func _on_host_revive_all_requested() -> void:
 	var revive_positions := _collect_living_player_revive_positions()
 	for peer_id_variant in game.peer_players:
 		var peer_id := int(peer_id_variant)
-		if not game.allows_player_respawn(peer_id):
+		if _mode_adapter == null or not _mode_adapter.allows_player_respawn(peer_id):
 			continue
 		var player_node := game.peer_players[peer_id_variant] as Player
 		if player_node == null or not is_instance_valid(player_node) or not player_node.is_dead:
@@ -10370,14 +10673,15 @@ func _on_host_revive_all_requested() -> void:
 func net_player_revive_countdown(peer_id: int, seconds_left: int) -> void:
 	if game == null or peer_id <= 0:
 		return
-	if not game.allows_player_respawn(peer_id):
-		game.clear_player_respawn_countdown(peer_id)
+	if _mode_adapter == null or not _mode_adapter.allows_player_respawn(peer_id):
+		if _mode_adapter != null:
+			_mode_adapter.clear_player_respawn_countdown(peer_id)
 		return
 	var player_node := game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	if game.supports_tower_defense():
-		game.update_player_respawn_countdown(peer_id, seconds_left)
+	if _has_tower_mode():
+		_mode_adapter.update_player_respawn_countdown(peer_id, seconds_left)
 	else:
 		player_node.set_multiplayer_revive_countdown(seconds_left)
 
@@ -10401,7 +10705,8 @@ func net_player_revived(
 		player_node = game.get_player_for_peer(peer_id)
 	if (
 		game == null
-		or not game.allows_player_respawn(peer_id)
+		or _mode_adapter == null
+		or not _mode_adapter.allows_player_respawn(peer_id)
 		or player_node == null
 		or not is_instance_valid(player_node)
 	):
@@ -10418,7 +10723,8 @@ func net_player_revived(
 	_active_tiyi_activations_by_peer.erase(peer_id)
 	_tiyi_target_ids_by_peer.erase(peer_id)
 	player_node.revive_multiplayer(revive_position, current_health, invincible_seconds)
-	game.clear_player_respawn_countdown(peer_id)
+	if _mode_adapter != null:
+		_mode_adapter.clear_player_respawn_countdown(peer_id)
 	if is_client_view_runtime() and peer_id != _get_client_view_local_peer_id():
 		_reset_player_visual_interpolator_to_state(
 			peer_id,
@@ -10638,7 +10944,7 @@ func _on_host_base_health_changed(
 	maximum_health: int,
 	revision: int
 ) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
+	if not _has_tower_mode() or not is_inside_tree() or not net_manager.is_host():
 		return
 	if (
 		not _NetConstants.is_valid_network_combat_value(current_health)
@@ -10660,7 +10966,7 @@ func _on_host_tower_defense_wave_progress_changed(
 	resolved: int,
 	total: int
 ) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
+	if not _has_tower_mode() or not is_inside_tree() or not net_manager.is_host():
 		return
 	_pending_wave_progress = {
 		"wave_number": wave_number,
@@ -10676,7 +10982,7 @@ func _on_host_xiaocong_fate_state_changed(state: Dictionary) -> void:
 		not is_inside_tree()
 		or not net_manager.is_host()
 		or game == null
-		or not game.supports_tower_defense()
+		or not _has_tower_mode()
 	):
 		return
 	_rpc_to_connected_clients(
@@ -10689,8 +10995,8 @@ func _on_host_test_arena_manual_night_changed(enabled: bool) -> void:
 	if (
 		not is_inside_tree()
 		or not net_manager.is_host()
-		or game == null
-		or not game.supports_test_arena_manual_night_sync()
+		or not _has_tower_mode()
+		or not tower_mode_adapter.supports_test_arena_manual_night_sync()
 	):
 		return
 	_rpc_to_connected_clients(
@@ -10714,7 +11020,7 @@ func _on_host_player_teleport_requested(
 
 
 func _flush_wave_progress() -> void:
-	if _pending_wave_progress.is_empty():
+	if not _has_tower_mode() or _pending_wave_progress.is_empty():
 		return
 	_rpc_to_connected_clients(
 		&"net_tower_defense_wave_progress_changed",
@@ -10730,9 +11036,9 @@ func _flush_wave_progress() -> void:
 
 
 func _broadcast_base_health_snapshot() -> void:
-	if game == null or not game.supports_tower_defense() or not net_manager.is_host():
+	if not _has_tower_mode() or not net_manager.is_host():
 		return
-	var snapshot := game.get_base_health_snapshot()
+	var snapshot := tower_mode_adapter.get_base_health_snapshot()
 	if snapshot.is_empty():
 		return
 	_on_host_base_health_changed(
@@ -10752,7 +11058,7 @@ func _on_host_plant_spawned(
 	maximum_health: int,
 	health_revision: int
 ) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
+	if not _has_tower_mode() or not is_inside_tree() or not net_manager.is_host():
 		return
 	if (
 		net_id <= 0
@@ -10762,7 +11068,7 @@ func _on_host_plant_spawned(
 	):
 		push_error("MpGame: 植物生成生命值超出网络 signed int32 契约，已拒绝发送。")
 		return
-	var plant := game.get_multiplayer_plant_node(net_id)
+	var plant := _get_tower_plant(net_id)
 	_configure_warehouse_network(plant, true)
 	_configure_production_network(plant, true)
 	_configure_research_network(plant)
@@ -10793,7 +11099,7 @@ func _on_host_plant_placement_rejected(
 	requester_peer_id: int,
 	reason: StringName
 ) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
+	if not _has_tower_mode() or not is_inside_tree() or not net_manager.is_host():
 		return
 	_send_plant_placement_rejected(requester_peer_id, request_id, reason)
 
@@ -10803,10 +11109,13 @@ func _send_plant_placement_rejected(
 	request_id: int,
 	reason: StringName
 ) -> void:
-	if game == null or requester_peer_id <= 0:
+	if not _has_tower_mode() or game == null or requester_peer_id <= 0:
 		return
 	if requester_peer_id == _get_local_peer_id():
-		game.apply_remote_plant_placement_rejected(request_id, reason)
+		tower_mode_adapter.apply_remote_plant_placement_rejected(
+			request_id,
+			reason
+		)
 		return
 	if net_manager.has_method("is_peer_send_ready"):
 		if not bool(net_manager.call("is_peer_send_ready", requester_peer_id)):
@@ -10824,7 +11133,7 @@ func _on_host_plant_health_changed(
 	maximum_health: int,
 	health_revision: int
 ) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
+	if not _has_tower_mode() or not is_inside_tree() or not net_manager.is_host():
 		return
 	if (
 		net_id <= 0
@@ -10849,7 +11158,8 @@ func _on_host_plant_damage_status_changed(
 	status_revision: int
 ) -> void:
 	if (
-		not is_inside_tree()
+		not _has_tower_mode()
+		or not is_inside_tree()
 		or not net_manager.is_host()
 		or net_id <= 0
 		or status_revision <= 0
@@ -10869,7 +11179,8 @@ func _on_host_plant_damage_applied(
 	world_position: Vector2
 ) -> void:
 	if (
-		not is_inside_tree()
+		not _has_tower_mode()
+		or not is_inside_tree()
 		or not net_manager.is_host()
 		or net_id <= 0
 		or applied_damage <= 0
@@ -10915,7 +11226,8 @@ func _on_host_plant_healing_applied(
 	world_position: Vector2
 ) -> void:
 	if (
-		not is_inside_tree()
+		not _has_tower_mode()
+		or not is_inside_tree()
 		or not net_manager.is_host()
 		or net_id <= 0
 		or applied_healing <= 0
@@ -10931,7 +11243,12 @@ func _on_host_plant_healing_applied(
 
 
 func _on_host_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
-	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
+	if (
+		not _has_tower_mode()
+		or not is_inside_tree()
+		or not net_manager.is_host()
+		or net_id <= 0
+	):
 		return
 	if _pending_plant_health_updates.has(net_id):
 		var removed_net_ids: Array[int] = [net_id]
@@ -11134,9 +11451,9 @@ func _on_host_flow_state_changed(step_id: StringName, state: int, countdown_seco
 
 
 func _broadcast_wave_progress_keyframe() -> void:
-	if game == null or not game.supports_tower_defense():
+	if not _has_tower_mode():
 		return
-	var snapshot := game.get_tower_defense_wave_progress_snapshot()
+	var snapshot := tower_mode_adapter.get_wave_progress_snapshot()
 	if snapshot.is_empty():
 		return
 	_rpc_to_connected_clients(
@@ -11196,7 +11513,11 @@ func _on_host_defeat_started() -> void:
 	_clear_pending_player_revives()
 	_rpc_to_connected_clients(
 		&"net_game_defeated",
-		[game.get_multiplayer_defeat_reason() if game != null else ""]
+		[
+			_mode_adapter.get_multiplayer_defeat_reason()
+			if _mode_adapter != null
+			else ""
+		]
 	)
 
 
@@ -11254,8 +11575,8 @@ func _handle_authoritative_runtime_state_request(
 func net_terrain_snapshot_requested(known_revision: int) -> void:
 	if (
 		not net_manager.is_host()
-		or game == null
-		or not game.supports_multiplayer_terrain_state()
+		or not _has_tower_mode()
+		or not tower_mode_adapter.supports_terrain_state()
 		or known_revision < -1
 	):
 		return
@@ -11281,7 +11602,11 @@ func net_terrain_snapshot_chunk(
 	cell_xy: PackedInt32Array,
 	terrain_types: PackedInt32Array
 ) -> void:
-	if game == null or net_manager.is_host() or not game.supports_multiplayer_terrain_state():
+	if (
+		net_manager.is_host()
+		or not _has_tower_mode()
+		or not tower_mode_adapter.supports_terrain_state()
+	):
 		return
 	if snapshot_id <= _last_completed_terrain_snapshot_id:
 		return
@@ -11360,7 +11685,7 @@ func net_terrain_snapshot_chunk(
 		_client_waiting_for_terrain_snapshot = false
 		_terrain_snapshot_repair_watchdog_time_left = 0.0
 		return
-	if not game.apply_remote_terrain_snapshot(
+	if not tower_mode_adapter.apply_remote_terrain_snapshot(
 		revision,
 		complete_cell_xy,
 		complete_terrain_types
@@ -11383,7 +11708,11 @@ func net_terrain_delta(
 	cell_xy: PackedInt32Array,
 	terrain_types: PackedInt32Array
 ) -> void:
-	if game == null or net_manager.is_host() or not game.supports_multiplayer_terrain_state():
+	if (
+		net_manager.is_host()
+		or not _has_tower_mode()
+		or not tower_mode_adapter.supports_terrain_state()
+	):
 		return
 	if (
 		revision <= 0
@@ -11404,7 +11733,11 @@ func net_terrain_delta(
 	if revision != _client_terrain_revision + 1:
 		_request_terrain_snapshot_repair()
 		return
-	if not game.apply_remote_terrain_delta(revision, cell_xy, terrain_types):
+	if not tower_mode_adapter.apply_remote_terrain_delta(
+		revision,
+		cell_xy,
+		terrain_types
+	):
 		_request_terrain_snapshot_repair()
 		return
 	_client_terrain_revision = revision
@@ -11440,14 +11773,18 @@ func net_runtime_world_manifest(
 		var net_id := int(net_id_variant)
 		if not pickup_id_set.has(net_id):
 			net_pickup_removed(net_id)
-	if game.supports_tower_defense():
-		for plant_snapshot in game.get_multiplayer_plant_snapshots():
+	if _has_tower_mode():
+		for plant_snapshot in _get_tower_plant_snapshots():
 			var plant_net_id := int(plant_snapshot.get("net_id", 0))
 			if plant_net_id > 0 and not plant_id_set.has(plant_net_id):
 				_erase_pending_warehouse_snapshot(plant_net_id)
 				_erase_pending_remote_production_state(plant_net_id)
 				_mark_remote_plant_removed(plant_net_id)
-				game.apply_remote_plant_removed_silently(plant_net_id)
+				tower_mode_adapter.apply_remote_plant_removed(
+					plant_net_id,
+					false,
+					true
+				)
 			elif plant_net_id > 0:
 				_apply_pending_remote_plant_health(plant_net_id)
 		_try_apply_pending_warehouse_snapshots_atomically()
@@ -11464,7 +11801,7 @@ func net_plant_placement_requested(
 	plant_id: String,
 	anchor: Vector2i
 ) -> void:
-	if not net_manager.is_host() or game == null:
+	if not _has_tower_mode() or not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	_handle_authoritative_plant_placement_request(
@@ -11484,7 +11821,7 @@ func net_inventory_plant_placement_requested(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
-	if not net_manager.is_host() or game == null:
+	if not _has_tower_mode() or not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	_handle_authoritative_inventory_plant_placement_request(
@@ -11500,7 +11837,7 @@ func net_inventory_plant_placement_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_warehouse_command_requested(command: Dictionary) -> void:
-	if not net_manager.is_host() or game == null:
+	if not _has_tower_mode() or not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
@@ -11510,7 +11847,12 @@ func net_warehouse_command_requested(command: Dictionary) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
-	if not net_manager.is_host() or game == null or warehouse_net_id <= 0:
+	if (
+		not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+		or warehouse_net_id <= 0
+	):
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	_handle_authoritative_warehouse_snapshot_request(sender_id, warehouse_net_id)
@@ -11521,7 +11863,8 @@ func _handle_authoritative_warehouse_snapshot_request(
 	warehouse_net_id: int
 ) -> bool:
 	if (
-		net_manager == null
+		not _has_tower_mode()
+		or net_manager == null
 		or not net_manager.is_host()
 		or game == null
 		or sender_id <= 0
@@ -11542,7 +11885,7 @@ func _handle_authoritative_warehouse_snapshot_request(
 		WAREHOUSE_SNAPSHOT_REQUEST_RATE_BURST
 	):
 		return false
-	var warehouse := game.get_multiplayer_plant_node(warehouse_net_id) as OakWarehouse
+	var warehouse := _get_tower_plant(warehouse_net_id) as OakWarehouse
 	if (
 		not _is_authoritative_warehouse_interaction_candidate(warehouse)
 		or not _is_authoritative_nearest_warehouse(player_node, warehouse)
@@ -11576,7 +11919,7 @@ func _handle_authoritative_warehouse_snapshot_request(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_command_requested(command: Dictionary) -> void:
-	if not net_manager.is_host() or game == null:
+	if not _has_tower_mode() or not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
@@ -11586,7 +11929,7 @@ func net_production_command_requested(command: Dictionary) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_research_command_requested(command: Dictionary) -> void:
-	if not net_manager.is_host() or game == null:
+	if not _has_tower_mode() or not net_manager.is_host() or game == null:
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
@@ -11596,7 +11939,12 @@ func net_research_command_requested(command: Dictionary) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_snapshot_requested(building_net_id: int) -> void:
-	if not net_manager.is_host() or game == null or building_net_id <= 0:
+	if (
+		not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+		or building_net_id <= 0
+	):
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	var player_node := game.get_player_for_peer(sender_id)
@@ -11614,7 +11962,7 @@ func net_production_snapshot_requested(building_net_id: int) -> void:
 		PRODUCTION_SNAPSHOT_REQUEST_RATE_BURST
 	):
 		return
-	var building := game.get_multiplayer_plant_node(
+	var building := _get_tower_plant(
 		building_net_id
 	) as ProductionBuilding
 	if (
@@ -11650,7 +11998,7 @@ func net_production_snapshot_requested(building_net_id: int) -> void:
 
 @rpc("authority", "call_remote", "reliable", 6)
 func net_warehouse_command_result(result: Dictionary) -> void:
-	if game == null:
+	if not _has_tower_mode() or game == null:
 		return
 	var transaction_metric_key := _get_warehouse_transaction_metric_key(
 		int(result.get("warehouse_net_id", 0)),
@@ -11670,7 +12018,7 @@ func net_warehouse_command_result(result: Dictionary) -> void:
 		"warehouse_net_id",
 		0
 	)
-	var warehouse := game.get_multiplayer_plant_node(warehouse_net_id) as OakWarehouse
+	var warehouse := _get_tower_plant(warehouse_net_id) as OakWarehouse
 	if (
 		warehouse == null
 		or not is_instance_valid(warehouse)
@@ -11713,7 +12061,7 @@ func net_warehouse_command_result(result: Dictionary) -> void:
 
 @rpc("authority", "call_remote", "reliable", 6)
 func net_production_command_result(result: Dictionary) -> void:
-	if game == null:
+	if not _has_tower_mode() or game == null:
 		return
 	if (
 		typeof(result.get("success")) != TYPE_BOOL
@@ -11732,7 +12080,7 @@ func net_production_command_result(result: Dictionary) -> void:
 	)
 	if building_net_id <= 0 or _removed_remote_plant_ids.has(building_net_id):
 		return
-	var building := game.get_multiplayer_plant_node(
+	var building := _get_tower_plant(
 		building_net_id
 	) as ProductionBuilding
 	if (
@@ -11754,7 +12102,8 @@ func net_production_state_batch(
 	host_sample_times: PackedFloat64Array
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or net_manager.is_host()
 		or net_ids.is_empty()
 		or net_ids.size() > PRODUCTION_STATE_BATCH_MAX_BUILDINGS
@@ -11783,7 +12132,7 @@ func net_production_state_batch(
 			or typeof(state.get("revision")) != TYPE_INT
 		):
 			continue
-		var building := game.get_multiplayer_plant_node(net_id) as ProductionBuilding
+		var building := _get_tower_plant(net_id) as ProductionBuilding
 		if building == null or not is_instance_valid(building):
 			_cache_pending_remote_production_state(
 				net_id,
@@ -11818,6 +12167,8 @@ func net_warehouse_storage_snapshot_batch(
 	warehouse_net_ids: PackedInt32Array,
 	snapshots: Array
 ) -> void:
+	if not _has_tower_mode():
+		return
 	if not _apply_warehouse_storage_snapshot_batch(
 		warehouse_net_ids,
 		snapshots
@@ -11832,9 +12183,9 @@ func net_research_command_result(
 	success: bool,
 	reason: StringName
 ) -> void:
-	if game == null or building_net_id <= 0:
+	if not _has_tower_mode() or game == null or building_net_id <= 0:
 		return
-	var building := game.get_multiplayer_plant_node(building_net_id) as ResearchCenter
+	var building := _get_tower_plant(building_net_id) as ResearchCenter
 	if building == null or not is_instance_valid(building):
 		return
 	building.complete_multiplayer_research_request(request_id, success, reason)
@@ -11846,9 +12197,9 @@ func net_research_state_updated(
 	changed_player_peer_id: int,
 	current_xirang: int
 ) -> void:
-	if game == null or game.research_coordinator == null or state.is_empty():
+	if not _has_tower_mode() or state.is_empty():
 		return
-	game.research_coordinator.apply_multiplayer_runtime_state(state)
+	tower_mode_adapter.apply_remote_research_runtime_state(state)
 	if changed_player_peer_id <= 0 or current_xirang < 0:
 		return
 	var changed_player := game.get_player_for_peer(changed_player_peer_id)
@@ -11874,7 +12225,8 @@ func _apply_warehouse_storage_snapshot_batch(
 	snapshots: Array
 ) -> bool:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or warehouse_net_ids.is_empty()
 		or warehouse_net_ids.size() > CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
 		or snapshots.size() != warehouse_net_ids.size()
@@ -11924,7 +12276,7 @@ func _are_warehouse_snapshot_targets_available(
 	warehouse_net_ids: PackedInt32Array
 ) -> bool:
 	for warehouse_net_id in warehouse_net_ids:
-		var warehouse := game.get_multiplayer_plant_node(
+		var warehouse := _get_tower_plant(
 			warehouse_net_id
 		) as OakWarehouse
 		if warehouse == null or not is_instance_valid(warehouse):
@@ -11940,7 +12292,7 @@ func _commit_warehouse_storage_snapshot_batch(
 	warehouses.resize(warehouse_net_ids.size())
 	for index in warehouse_net_ids.size():
 		var warehouse_net_id := int(warehouse_net_ids[index])
-		var warehouse := game.get_multiplayer_plant_node(
+		var warehouse := _get_tower_plant(
 			warehouse_net_id
 		) as OakWarehouse
 		if warehouse == null or not is_instance_valid(warehouse):
@@ -12003,7 +12355,7 @@ func _try_apply_pending_warehouse_snapshots_atomically() -> bool:
 		var warehouse_net_id := int(warehouse_id_variant)
 		if _removed_remote_plant_ids.has(warehouse_net_id):
 			continue
-		var warehouse := game.get_multiplayer_plant_node(
+		var warehouse := _get_tower_plant(
 			warehouse_net_id
 		) as OakWarehouse
 		if warehouse == null or not is_instance_valid(warehouse):
@@ -12213,8 +12565,9 @@ func net_enemy_spawned(
 	var mapped_spawn_time: float = _map_host_timestamp_to_client_time(host_spawn_timestamp, false)
 	_enemy_spawn_snapshot_times[net_id] = mapped_spawn_time
 	enemy.global_position = _get_buffered_enemy_position(net_id, spawn_position)
-	enemy.setup(enemy_config, game.player, game.grid_pathfinder)
-	game.configure_runtime_enemy_modifiers(enemy)
+	enemy.setup(enemy_config, game.player, game.grid_pathfinder, game)
+	if _has_tower_mode():
+		tower_mode_adapter.configure_runtime_enemy_modifiers(enemy)
 	enemy.configure_multiplayer_proxy()
 	enemy.set_meta("net_id", net_id)
 	enemy.tree_exited.connect(_on_client_enemy_tree_exited.bind(net_id, enemy))
@@ -12293,7 +12646,8 @@ func net_enemy_terminal(
 						)
 			_remove_client_enemy(net_id, true)
 		ENEMY_TERMINAL_ESCAPED:
-			game.apply_remote_enemy_escape(net_id)
+			if _has_tower_mode():
+				tower_mode_adapter.apply_remote_enemy_escape(net_id)
 			_remove_client_enemy(net_id, false)
 		_:
 			_remove_client_enemy(net_id, false)
@@ -12320,10 +12674,10 @@ func net_enemy_removed(net_id: int) -> void:
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_enemy_escaped(net_id: int) -> void:
-	if game == null or net_manager.is_host() or net_id <= 0:
+	if net_manager.is_host() or not _has_tower_mode() or net_id <= 0:
 		return
 	_mark_client_enemy_terminal(net_id)
-	game.apply_remote_enemy_escape(net_id)
+	tower_mode_adapter.apply_remote_enemy_escape(net_id)
 	_remove_client_enemy(net_id, false)
 
 
@@ -12334,14 +12688,18 @@ func net_base_health_changed(
 	revision: int
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
 		or net_manager.is_host()
 		or not _NetConstants.is_valid_network_combat_value(current_health)
 		or not _NetConstants.is_valid_network_combat_value(maximum_health)
 		or not _NetConstants.is_valid_network_combat_value(revision)
 	):
 		return
-	game.apply_remote_base_health(current_health, maximum_health, revision)
+	tower_mode_adapter.apply_remote_base_health(
+		current_health,
+		maximum_health,
+		revision
+	)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 7)
@@ -12352,9 +12710,9 @@ func net_tower_defense_wave_progress_changed(
 	resolved: int,
 	total: int
 ) -> void:
-	if game == null or net_manager.is_host():
+	if not _has_tower_mode() or net_manager.is_host():
 		return
-	game.apply_remote_tower_defense_wave_progress(
+	tower_mode_adapter.apply_remote_wave_progress(
 		wave_number,
 		defeated,
 		escaped,
@@ -12383,25 +12741,24 @@ func net_tower_defense_wave_progress_keyframe(
 @rpc("authority", "call_remote", "reliable", 5)
 func net_xiaocong_fate_state_changed(state: Dictionary) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
 		or net_manager.is_host()
-		or not game.supports_tower_defense()
 		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
 	):
 		return
-	game.apply_remote_xiaocong_fate_state(state)
+	tower_mode_adapter.apply_remote_xiaocong_fate_state(state)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_test_arena_manual_night_changed(enabled: bool) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
 		or net_manager.is_host()
 		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
-		or not game.supports_test_arena_manual_night_sync()
+		or not tower_mode_adapter.supports_test_arena_manual_night_sync()
 	):
 		return
-	game.apply_remote_test_arena_manual_night(enabled)
+	tower_mode_adapter.apply_remote_test_arena_manual_night(enabled)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -12418,7 +12775,8 @@ func net_plant_spawned(
 	host_sample_time: float
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or net_manager.is_host()
 		or net_id <= 0
 		or not _NetConstants.is_valid_network_combat_value(current_health)
@@ -12427,7 +12785,7 @@ func net_plant_spawned(
 	):
 		return
 	_clear_remote_plant_removed_marker(net_id)
-	game.apply_remote_plant_spawn(
+	tower_mode_adapter.apply_remote_plant_spawn(
 		request_id,
 		owner_peer_id,
 		net_id,
@@ -12437,7 +12795,7 @@ func net_plant_spawned(
 		maximum_health,
 		health_revision
 	)
-	var plant := game.get_multiplayer_plant_node(net_id)
+	var plant := _get_tower_plant(net_id)
 	_configure_production_network(plant, false)
 	_configure_research_network(plant)
 	_apply_plant_runtime_state(plant, runtime_state, host_sample_time)
@@ -12453,9 +12811,12 @@ func net_plant_spawned(
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_plant_placement_rejected(request_id: int, reason: String) -> void:
-	if game == null or net_manager.is_host():
+	if not _has_tower_mode() or game == null or net_manager.is_host():
 		return
-	game.apply_remote_plant_placement_rejected(request_id, StringName(reason))
+	tower_mode_adapter.apply_remote_plant_placement_rejected(
+		request_id,
+		StringName(reason)
+	)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 7)
@@ -12466,7 +12827,8 @@ func net_plant_health_changed(
 	health_revision: int
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or net_manager.is_host()
 		or net_id <= 0
 		or not _NetConstants.is_valid_network_combat_value(current_health)
@@ -12488,9 +12850,9 @@ func net_plant_damage_status_changed(
 	status_mask: int,
 	status_revision: int
 ) -> void:
-	if game == null or net_manager.is_host() or net_id <= 0:
+	if not _has_tower_mode() or game == null or net_manager.is_host() or net_id <= 0:
 		return
-	var plant := game.get_multiplayer_plant_node(net_id)
+	var plant := _get_tower_plant(net_id)
 	if plant == null or not is_instance_valid(plant):
 		return
 	plant.apply_remote_damage_status_mask(status_mask, status_revision)
@@ -12498,12 +12860,12 @@ func net_plant_damage_status_changed(
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
-	if game == null or net_manager.is_host():
+	if not _has_tower_mode() or game == null or net_manager.is_host():
 		return
 	_erase_pending_warehouse_snapshot(net_id)
 	_erase_pending_remote_production_state(net_id)
 	_mark_remote_plant_removed(net_id)
-	game.apply_remote_plant_removed_with_reason(net_id, was_destroyed)
+	tower_mode_adapter.apply_remote_plant_removed(net_id, was_destroyed)
 	_try_apply_pending_warehouse_snapshots_atomically()
 
 
@@ -12516,7 +12878,8 @@ func net_plant_projectile_visual(
 	lifetime: float
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or net_manager.is_host()
 		or not _is_finite_vector2(spawn_position)
 		or not _is_finite_vector2(direction)
@@ -12560,7 +12923,8 @@ func net_bamboo_mortar_visual_batch(
 	host_action_times: PackedFloat64Array
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or net_manager.is_host()
 		or not _is_valid_bamboo_mortar_visual_payload(
 			plant_net_ids,
@@ -12574,7 +12938,7 @@ func net_bamboo_mortar_visual_batch(
 	):
 		return
 	for record_index in range(plant_net_ids.size()):
-		var mortar := game.get_multiplayer_plant_node(
+		var mortar := _get_tower_plant(
 			plant_net_ids[record_index]
 		)
 		if (
@@ -12612,7 +12976,8 @@ func net_hydrangea_rain_visual(
 	host_action_time: float
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or net_manager.is_host()
 		or plant_net_id <= 0
 		or action_id <= 0
@@ -12620,7 +12985,7 @@ func net_hydrangea_rain_visual(
 		or not is_finite(host_action_time)
 	):
 		return
-	var hydrangea := game.get_multiplayer_plant_node(plant_net_id)
+	var hydrangea := _get_tower_plant(plant_net_id)
 	if (
 		hydrangea == null
 		or not is_instance_valid(hydrangea)
@@ -12650,7 +13015,8 @@ func net_corn_machine_gun_burst_batch(
 	host_action_times: PackedFloat64Array
 ) -> void:
 	if (
-		game == null
+		not _has_tower_mode()
+		or game == null
 		or net_manager.is_host()
 		or not _is_valid_corn_machine_gun_burst_payload(
 			plant_net_ids,
@@ -12661,7 +13027,7 @@ func net_corn_machine_gun_burst_batch(
 	):
 		return
 	for record_index in range(plant_net_ids.size()):
-		var corn := game.get_multiplayer_plant_node(plant_net_ids[record_index])
+		var corn := _get_tower_plant(plant_net_ids[record_index])
 		if (
 			corn == null
 			or not is_instance_valid(corn)
@@ -12999,8 +13365,7 @@ func net_enemy_lightning_chain(points: PackedVector2Array) -> void:
 		return
 	# Damage and chain selection are Host-only. Clients replay only the accepted
 	# endpoint list as a transient visual and never resolve targets locally.
-	if game.has_method("play_lightning_sorcerer_chain_vfx"):
-		game.call("play_lightning_sorcerer_chain_vfx", points)
+	game.play_lightning_sorcerer_chain_vfx(points)
 
 
 func _push_enemy_action_interpolator_sample(
@@ -13185,31 +13550,35 @@ func net_pickup_collected(
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_merchant_active_changed(active: bool) -> void:
-	if game == null or net_manager.is_host():
+	if game == null or _mode_adapter == null or net_manager.is_host():
 		return
-	game.apply_remote_merchant_active(active)
+	_mode_adapter.apply_remote_merchant_active(active)
 
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int) -> void:
-	if game == null or net_manager.is_host():
+	if game == null or _mode_adapter == null or net_manager.is_host():
 		return
 	_client_has_received_flow_state = true
 	# The same count can need to repaint a newly entered wave/HUD state. Invalidate
 	# the render-frame cache at every authoritative flow transition.
 	_last_applied_remote_enemy_count = -1
-	game.apply_remote_flow_state(StringName(step_id), state, countdown_seconds)
+	_mode_adapter.apply_remote_flow_state(
+		StringName(step_id),
+		state,
+		countdown_seconds
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_boss_started(net_id: int, boss_config_path: String, spawn_position: Vector2) -> void:
-	if game == null or net_manager.is_host():
+	if game == null or _mode_adapter == null or net_manager.is_host():
 		return
 	var boss_config := load(boss_config_path) as BossConfig
 	if boss_config == null:
 		return
-	game.apply_remote_boss_started(net_id, boss_config, spawn_position)
+	_mode_adapter.apply_remote_boss_started(net_id, boss_config, spawn_position)
 	var boss_enemy := game.get_enemy_for_net_id(net_id) as Enemy
 	if boss_enemy != null and is_instance_valid(boss_enemy):
 		_net_enemies[net_id] = boss_enemy
@@ -13232,7 +13601,10 @@ func net_linglan_airdrop_started(
 	var enemy_config := load(enemy_config_path) as EnemyConfig
 	if enemy_config == null:
 		return
-	game.apply_remote_linglan_airdrop_started(
+	var runtime_port := _get_linglan_boss_runtime_port()
+	if runtime_port == null:
+		return
+	runtime_port.apply_remote_airdrop_started(
 		enemy_config,
 		landing_position,
 		warning_duration,
@@ -13241,20 +13613,34 @@ func net_linglan_airdrop_started(
 	)
 
 
+func _get_linglan_boss_runtime_port() -> LinglanBossRuntimePort:
+	if (
+		_linglan_boss_runtime_port != null
+		and is_instance_valid(_linglan_boss_runtime_port)
+	):
+		return _linglan_boss_runtime_port
+	if game == null or not is_instance_valid(game):
+		return null
+	_linglan_boss_runtime_port = game.get_node_or_null(
+		"LinglanBossRuntimePort"
+	) as LinglanBossRuntimePort
+	return _linglan_boss_runtime_port
+
+
 @rpc("authority", "call_remote", "reliable", 5)
 func net_game_defeated(failure_reason: String = "") -> void:
-	if game == null or net_manager.is_host():
+	if game == null or _mode_adapter == null or net_manager.is_host():
 		return
 	_clear_pending_player_revives()
-	game.apply_remote_defeat_with_reason(failure_reason)
+	_mode_adapter.apply_remote_defeat_with_reason(failure_reason)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_game_victory() -> void:
-	if game == null or net_manager.is_host():
+	if game == null or _mode_adapter == null or net_manager.is_host():
 		return
 	_clear_pending_player_revives()
-	game.apply_remote_victory()
+	_mode_adapter.apply_remote_victory()
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -13368,7 +13754,7 @@ func net_skill1_purchase_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tower_defense_start_wave_requested() -> void:
-	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+	if not net_manager.is_host() or not _has_tower_mode():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
@@ -13377,17 +13763,17 @@ func net_tower_defense_start_wave_requested() -> void:
 		return
 	if game.get_player_for_peer(sender_id) == null:
 		return
-	game.request_tower_defense_wave_start(sender_id)
+	tower_mode_adapter.request_authoritative_wave_start(sender_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_xiaocong_interaction_requested() -> void:
-	if not net_manager.is_host() or game == null or not game.supports_tower_defense():
+	if not net_manager.is_host() or not _has_tower_mode():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if not _admit_remote_xiaocong_request(sender_id):
 		return
-	game.request_xiaocong_interaction(sender_id)
+	tower_mode_adapter.request_xiaocong_interaction(sender_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -13399,8 +13785,7 @@ func net_xiaocong_fate_vote_requested(
 	var typed_buff_id := StringName(permanent_buff_id)
 	if (
 		not net_manager.is_host()
-		or game == null
-		or not game.supports_tower_defense()
+		or not _has_tower_mode()
 		or option_id.length() > TowerDefenseFateRegistry.MAX_WIRE_ID_LENGTH
 		or permanent_buff_id.length() > TowerDefenseFateRegistry.MAX_WIRE_ID_LENGTH
 		or not _is_valid_xiaocong_vote_payload(typed_option_id, typed_buff_id)
@@ -13409,7 +13794,7 @@ func net_xiaocong_fate_vote_requested(
 	var sender_id := multiplayer.get_remote_sender_id()
 	if not _admit_remote_xiaocong_request(sender_id):
 		return
-	game.request_xiaocong_fate_vote(
+	tower_mode_adapter.request_xiaocong_fate_vote(
 		sender_id,
 		typed_option_id,
 		typed_buff_id
@@ -13420,8 +13805,7 @@ func net_xiaocong_fate_vote_requested(
 func net_xiaocong_collectible_choice_requested(choice_index: int) -> void:
 	if (
 		not net_manager.is_host()
-		or game == null
-		or not game.supports_tower_defense()
+		or not _has_tower_mode()
 		or choice_index < 0
 		or choice_index > 3
 	):
@@ -13429,7 +13813,10 @@ func net_xiaocong_collectible_choice_requested(choice_index: int) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
 	if not _admit_remote_xiaocong_request(sender_id):
 		return
-	game.request_xiaocong_collectible_choice(sender_id, choice_index)
+	tower_mode_adapter.request_xiaocong_collectible_choice(
+		sender_id,
+		choice_index
+	)
 
 
 func _admit_remote_xiaocong_request(sender_id: int) -> bool:
@@ -13604,7 +13991,8 @@ func net_debug_collectible_requested(config_path: String) -> void:
 	if (
 		not net_manager.is_host()
 		or game == null
-		or not game.allows_debug_collectible_grants()
+		or _mode_adapter == null
+		or not _mode_adapter.allows_debug_collectible_grants()
 	):
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
@@ -13760,11 +14148,12 @@ func net_simple_crafting_result(
 			pass
 		_:
 			result_code = RunStateStore.CRAFT_RESULT_INVALID_RECIPE
-	game.show_simple_crafting_result(
-		StringName(recipe_id),
-		result_code,
-		ui_request_token
-	)
+	if _mode_adapter != null:
+		_mode_adapter.show_simple_crafting_result(
+			StringName(recipe_id),
+			result_code,
+			ui_request_token
+		)
 
 
 func _apply_confirmed_upgrade_to_player(player_node: Player, stat_type: int) -> void:
@@ -13788,9 +14177,9 @@ func net_skill1_purchase_confirmed(
 	skill1_upgrade_level: int = -1,
 	skill1_charge_duration: float = -1.0
 ) -> void:
-	if game == null:
+	if game == null or _mode_adapter == null:
 		return
-	game.apply_skill1_purchase_state(
+	_mode_adapter.apply_skill1_purchase_state(
 		peer_id,
 		current_xirang,
 		skill1_unlocked,
@@ -13798,7 +14187,7 @@ func net_skill1_purchase_confirmed(
 		skill1_charge_duration
 	)
 	if peer_id == _get_local_peer_id():
-		game.show_local_skill1_purchase_result(result_code)
+		_mode_adapter.show_local_skill1_purchase_result(result_code)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -13838,24 +14227,24 @@ func net_luoxi_collectible_confirmed(
 	offer_revision: int = 0,
 	inventory_snapshot: Dictionary = {}
 ) -> void:
-	if game == null:
+	if game == null or _mode_adapter == null:
 		return
 	if not inventory_snapshot.is_empty():
 		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
 	if result_code == MerchantPurchaseResult.CollectibleClaim.SUCCESS and not config_path.is_empty():
 		var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
 		if not already_applied_on_host:
-			game.record_luoxi_collectible_claim(peer_id)
+			_mode_adapter.runtime_record_luoxi_collectible_claim(peer_id)
 			if inventory_snapshot.is_empty():
 				var item := load(config_path) as PickupConfig
 				if item != null:
 					run_state.try_add_item_for_peer(peer_id, item)
 	elif result_code == MerchantPurchaseResult.CollectibleClaim.ALREADY_CLAIMED:
-		game.mark_luoxi_collectible_claimed(peer_id)
+		_mode_adapter.runtime_mark_luoxi_collectible_claimed(peer_id)
 	if peer_id == _get_local_peer_id():
 		if result_code == MerchantPurchaseResult.CollectibleClaim.STALE_OFFER:
 			return
-		game.show_local_luoxi_collectible_result(result_code)
+		_mode_adapter.show_local_luoxi_collectible_result(result_code)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -13865,7 +14254,7 @@ func net_luoxi_collectible_refresh_confirmed(
 	refresh_count: int,
 	current_xirang: int
 ) -> void:
-	if game == null:
+	if game == null or _mode_adapter == null:
 		return
 	var player_node: Player = game.get_player_for_peer(peer_id)
 	if player_node != null and is_instance_valid(player_node):
@@ -13875,7 +14264,11 @@ func net_luoxi_collectible_refresh_confirmed(
 			player_node.current_xirang = maxi(current_xirang, 0)
 			player_node.xirang_changed.emit(player_node.current_xirang, xirang_delta)
 	if peer_id == _get_local_peer_id():
-		game.show_local_luoxi_refresh_result(result_code, refresh_count, current_xirang)
+		_mode_adapter.show_local_luoxi_refresh_result(
+			result_code,
+			refresh_count,
+			current_xirang
+		)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -13884,12 +14277,12 @@ func net_luoxi_special_game_started(
 	result: Dictionary,
 	inventory_snapshot: Dictionary = {}
 ) -> void:
-	if game == null or peer_id <= 0:
+	if game == null or _mode_adapter == null or peer_id <= 0:
 		return
 	if not inventory_snapshot.is_empty():
 		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
 	if peer_id == _get_local_peer_id():
-		game.show_local_luoxi_special_game_started(result)
+		_mode_adapter.show_local_luoxi_special_game_started(result)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -13897,10 +14290,10 @@ func net_luoxi_special_game_card_revealed(
 	peer_id: int,
 	result: Dictionary
 ) -> void:
-	if game == null or peer_id <= 0:
+	if game == null or _mode_adapter == null or peer_id <= 0:
 		return
 	if peer_id == _get_local_peer_id():
-		game.show_local_luoxi_special_game_card_revealed(result)
+		_mode_adapter.show_local_luoxi_special_game_card_revealed(result)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -13909,7 +14302,7 @@ func net_luoxi_special_game_finished(
 	result: Dictionary,
 	inventory_snapshot: Dictionary = {}
 ) -> void:
-	if game == null or peer_id <= 0:
+	if game == null or _mode_adapter == null or peer_id <= 0:
 		return
 	if not inventory_snapshot.is_empty():
 		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
@@ -13929,7 +14322,7 @@ func net_luoxi_special_game_finished(
 				xirang_delta
 			)
 	if peer_id == _get_local_peer_id():
-		game.show_local_luoxi_special_game_finished(result)
+		_mode_adapter.show_local_luoxi_special_game_finished(result)
 
 
 @rpc("authority", "call_remote", "unreliable", 7)
@@ -14013,7 +14406,11 @@ func net_debug_collectible_granted(
 			if item != null:
 				run_state.try_add_item_for_peer(peer_id, item)
 	if peer_id == _get_local_peer_id():
-		game.show_debug_collectible_grant_result(config_path, success)
+		if _mode_adapter != null:
+			_mode_adapter.show_debug_collectible_grant_result(
+				config_path,
+				success
+			)
 
 
 func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
@@ -14121,12 +14518,12 @@ func _apply_inventory_item_discard_for_peer(
 
 
 func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
-	if game == null or peer_id <= 0:
+	if game == null or _mode_adapter == null or peer_id <= 0:
 		return
 	var player_node := game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return
-	var result_code := game.try_purchase_skill1_for_peer(peer_id)
+	var result_code := _mode_adapter.try_purchase_skill1_for_peer(peer_id)
 	var current_xirang := player_node.current_xirang
 	var skill1_unlocked := player_node.has_skill1()
 	var skill1_upgrade_level := player_node.skill1_upgrade_level
@@ -14154,9 +14551,9 @@ func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
 
 
 func _get_luoxi_merchant() -> LuoxiMerchant:
-	if game == null:
+	if _mode_adapter == null:
 		return null
-	return game.get("luoxi_merchant") as LuoxiMerchant
+	return _mode_adapter.get_luoxi_merchant()
 
 
 func _send_or_create_luoxi_offer_for_peer(peer_id: int) -> void:
@@ -14179,7 +14576,11 @@ func _create_luoxi_offer_for_peer(
 	peer_id: int,
 	excluded_paths: Array[String]
 ) -> Dictionary:
-	if game == null or peer_id <= 0 or game.has_luoxi_collectible_claimed(peer_id):
+	if (
+		_mode_adapter == null
+		or peer_id <= 0
+		or _mode_adapter.runtime_has_luoxi_collectible_claimed(peer_id)
+	):
 		return {}
 	var player_node: Player = game.get_player_for_peer(peer_id)
 	var merchant := _get_luoxi_merchant()
@@ -14209,7 +14610,9 @@ func _commit_luoxi_offer_state(
 	var state := {
 		"offer_revision": next_revision,
 		"config_paths": config_paths.duplicate(),
-		"refresh_count": game.get_luoxi_collectible_refresh_count(peer_id),
+		"refresh_count": (
+			_mode_adapter.runtime_get_luoxi_collectible_refresh_count(peer_id)
+		),
 	}
 	_luoxi_offer_states_by_peer[peer_id] = state
 	return state
@@ -14228,7 +14631,10 @@ func _send_luoxi_offer_state_to_peer(
 	var packed_paths := PackedStringArray(state.get("config_paths", []) as Array)
 	var offer_revision := int(state.get("offer_revision", 0))
 	var refresh_count := int(
-		state.get("refresh_count", game.get_luoxi_collectible_refresh_count(peer_id))
+		state.get(
+			"refresh_count",
+			_mode_adapter.runtime_get_luoxi_collectible_refresh_count(peer_id)
+		)
 	)
 	if peer_id == _get_local_peer_id():
 		net_luoxi_collectible_offer_state(
@@ -14259,7 +14665,9 @@ func _send_luoxi_offer_state_to_peer(
 func _apply_luoxi_special_game_start_for_peer(peer_id: int) -> void:
 	if game == null or peer_id <= 0 or not net_manager.is_host():
 		return
-	var result := game.try_start_luoxi_special_game_for_peer(peer_id)
+	var result := (
+		_mode_adapter.runtime_try_start_luoxi_special_game_for_peer(peer_id)
+	)
 	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
 	_rpc_to_connected_clients(
 		&"net_luoxi_special_game_started",
@@ -14280,7 +14688,7 @@ func _apply_luoxi_special_game_card_reveal_for_peer(
 ) -> void:
 	if game == null or peer_id <= 0 or not net_manager.is_host():
 		return
-	var result := game.try_reveal_luoxi_special_game_card_for_peer(
+	var result := _mode_adapter.runtime_try_reveal_luoxi_special_game_card_for_peer(
 		peer_id,
 		session_revision,
 		card_index
@@ -14299,7 +14707,7 @@ func _apply_luoxi_special_game_finish_for_peer(
 ) -> void:
 	if game == null or peer_id <= 0 or not net_manager.is_host():
 		return
-	var result := game.try_finish_luoxi_special_game_for_peer(
+	var result := _mode_adapter.runtime_try_finish_luoxi_special_game_for_peer(
 		peer_id,
 		session_revision
 	)
@@ -14361,7 +14769,7 @@ func _apply_luoxi_collectible_choice_for_peer(
 		)
 		return
 	var resolved_config_path := str(config_paths[choice_index])
-	var result_code := game.try_claim_luoxi_collectible_for_peer(
+	var result_code := _mode_adapter.runtime_try_claim_luoxi_collectible_for_peer(
 		peer_id,
 		resolved_config_path
 	)
@@ -14449,11 +14857,15 @@ func _apply_luoxi_collectible_refresh_for_peer(
 			MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
 		)
 		return
-	var result_code := game.try_refresh_luoxi_collectibles_for_peer(peer_id)
+	var result_code := (
+		_mode_adapter.runtime_try_refresh_luoxi_collectibles_for_peer(peer_id)
+	)
 	if result_code == MerchantPurchaseResult.OfferRefresh.SUCCESS:
 		state = _commit_luoxi_offer_state(peer_id, replacement_paths)
 	else:
-		state["refresh_count"] = game.get_luoxi_collectible_refresh_count(peer_id)
+		state["refresh_count"] = (
+			_mode_adapter.runtime_get_luoxi_collectible_refresh_count(peer_id)
+		)
 		_luoxi_offer_states_by_peer[peer_id] = state
 	_send_luoxi_offer_state_to_peer(peer_id, state, result_code)
 
@@ -14531,7 +14943,8 @@ func _apply_debug_collectible_for_peer(peer_id: int, config_path: String) -> voi
 	if (
 		game == null
 		or peer_id <= 0
-		or not game.allows_debug_collectible_grants()
+		or _mode_adapter == null
+		or not _mode_adapter.allows_debug_collectible_grants()
 	):
 		return
 	var item := LuoxiMerchant.get_collectible_for_path(config_path)
@@ -14575,8 +14988,8 @@ func _request_terrain_snapshot_repair() -> void:
 	if (
 		_client_waiting_for_terrain_snapshot
 		or not net_manager.is_client()
-		or game == null
-		or not game.supports_multiplayer_terrain_state()
+		or not _has_tower_mode()
+		or not tower_mode_adapter.supports_terrain_state()
 	):
 		return
 	_send_terrain_snapshot_repair_request()
@@ -14607,8 +15020,8 @@ func _update_terrain_snapshot_repair_watchdog(delta: float) -> void:
 		return
 	if (
 		not net_manager.is_client()
-		or game == null
-		or not game.supports_multiplayer_terrain_state()
+		or not _has_tower_mode()
+		or not tower_mode_adapter.supports_terrain_state()
 	):
 		return
 	_terrain_snapshot_repair_watchdog_time_left = maxf(
@@ -14702,8 +15115,8 @@ func _on_net_player_left(peer_id: int) -> void:
 		return
 	_capture_disconnected_player_reconnect_state(peer_id)
 	_clear_peer_network_state(peer_id)
-	if game != null and game.has_method("remove_multiplayer_player"):
-		game.call("remove_multiplayer_player", peer_id)
+	if game != null:
+		game.remove_multiplayer_player(peer_id)
 
 
 func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
@@ -14716,14 +15129,16 @@ func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 			break
 	var spawn_slot_index := 0
 	var wave_death_count := 0
-	if game.supports_tower_defense():
-		var spawn_slots := game.get("multiplayer_spawn_slot_indices") as Dictionary
-		spawn_slot_index = int(spawn_slots.get(peer_id, 0))
-		var wave_death_counts := game.get("player_wave_death_counts") as Dictionary
-		wave_death_count = int(wave_death_counts.get(peer_id, 0))
+	if _has_tower_mode():
+		spawn_slot_index = (
+			tower_mode_adapter.get_reconnect_spawn_slot_index(peer_id)
+		)
+		wave_death_count = (
+			tower_mode_adapter.get_reconnect_wave_death_count(peer_id)
+		)
 	var owned_plant_net_ids: Array[int] = []
-	if game.supports_tower_defense():
-		for plant_snapshot in game.get_multiplayer_plant_snapshots():
+	if _has_tower_mode():
+		for plant_snapshot in _get_tower_plant_snapshots():
 			if int(plant_snapshot.get("owner_peer_id", 0)) == peer_id:
 				owned_plant_net_ids.append(int(plant_snapshot.get("net_id", 0)))
 	_disconnected_player_reconnect_states[peer_id] = {
@@ -14848,7 +15263,8 @@ func _on_net_player_reconnected(
 	if (
 		net_manager.is_host()
 		and revive_at >= 0.0
-		and game.allows_player_respawn(new_peer_id)
+		and _mode_adapter != null
+		and _mode_adapter.allows_player_respawn(new_peer_id)
 	):
 		_dead_player_revive_times[new_peer_id] = revive_at
 		_dead_player_revive_last_seconds[new_peer_id] = int(
@@ -14898,7 +15314,7 @@ func _on_net_player_reconnected(
 			player_visual_interpolators[new_peer_id] = interpolator
 	var owned_plant_ids := reconnect_state.get("owned_plant_net_ids", []) as Array
 	for plant_net_id_variant in owned_plant_ids:
-		var plant := game.get_multiplayer_plant_node(int(plant_net_id_variant))
+		var plant := _get_tower_plant(int(plant_net_id_variant))
 		if plant != null and is_instance_valid(plant):
 			plant.owner_player = player_node
 	_disconnected_player_reconnect_states.erase(old_peer_id)

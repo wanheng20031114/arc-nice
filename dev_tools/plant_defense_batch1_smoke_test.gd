@@ -1899,15 +1899,19 @@ func _test_multiplayer_authority_contracts() -> void:
 			break
 	var building_item_revision := run_state.get_inventory_revision_for_peer(2)
 	var host_game := TowerDefenseGame.new()
-	host_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	host_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	host_game.run_state = run_state
 	host_game.plant_system = plant_system
 	host_game.peer_players = {2: requesting_player}
 	host_game.next_multiplayer_plant_net_id = 5101
+	var host_mode_adapter := TowerDefenseMultiplayerModeAdapter.new()
+	host_game.add_child(host_mode_adapter)
+	host_mode_adapter.bind_runtime(host_game)
+	host_game.tower_multiplayer_mode_adapter = host_mode_adapter
 	var spawned_building_records: Array[Dictionary] = []
 	var changed_inventory_peers: Array[int] = []
 	var placement_rejections: Array[Dictionary] = []
-	host_game.multiplayer_plant_spawned.connect(
+	host_mode_adapter.plant_spawned.connect(
 		func(
 			request_id: int,
 			owner_peer_id: int,
@@ -1926,10 +1930,10 @@ func _test_multiplayer_authority_contracts() -> void:
 				"anchor": requested_anchor,
 			})
 	)
-	host_game.multiplayer_inventory_changed.connect(
+	host_mode_adapter.inventory_changed.connect(
 		func(peer_id: int) -> void: changed_inventory_peers.append(peer_id)
 	)
-	host_game.multiplayer_plant_placement_rejected.connect(
+	host_mode_adapter.plant_placement_rejected.connect(
 		func(
 			request_id: int,
 			requester_peer_id: int,
@@ -2168,9 +2172,16 @@ func _test_cannonball_aoe_deduplication() -> void:
 	# active AudioStreamPlaybackWAV objects when the headless SceneTree exits.
 	enemy_a.hit_audio.stream = null
 	enemy_b.hit_audio.stream = null
+	var damage_runtime := TowerDefenseGame.new()
+	damage_runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var damage_adapter := TowerDefenseMultiplayerModeAdapter.new()
+	damage_adapter.bind_runtime(damage_runtime)
+	var damage_bridge := TowerPlantGameplayBridge.new()
+	damage_bridge.mode_adapter = damage_adapter
 
 	var cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	cannonball.position = Vector2(506, 500)
+	cannonball.bind_gameplay_context(damage_runtime, damage_bridge)
 	test_root.add_child(cannonball)
 	cannonball.setup(Vector2.RIGHT, agave_config.attack_damage, 180.0, 18.0, 1.0)
 	cannonball.set_physics_process(false)
@@ -2192,6 +2203,7 @@ func _test_cannonball_aoe_deduplication() -> void:
 
 	var visual_cannonball := CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	visual_cannonball.position = Vector2(506, 500)
+	visual_cannonball.bind_gameplay_context(damage_runtime, damage_bridge)
 	test_root.add_child(visual_cannonball)
 	visual_cannonball.setup(
 		Vector2.RIGHT,
@@ -2216,6 +2228,9 @@ func _test_cannonball_aoe_deduplication() -> void:
 	enemy_a.queue_free()
 	enemy_b.queue_free()
 	await process_frame
+	damage_bridge.free()
+	damage_adapter.free()
+	damage_runtime.free()
 
 
 func _find_open_anchor_with_left_margin() -> Vector2i:

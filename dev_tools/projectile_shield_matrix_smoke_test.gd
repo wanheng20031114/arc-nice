@@ -19,6 +19,9 @@ const SHIELD_BEARER_SCENE := preload(
 const SHIELD_BEARER_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot_shield_bearer.tres"
 )
+const PLAYER_TEST_RUNTIME := preload(
+	"res://dev_tools/player_test_combat_runtime.gd"
+)
 
 const PROJECTILE_SHIELD_LAYER := 1 << 12
 
@@ -327,6 +330,10 @@ func _test_weishidaier_real_sweep_and_explosion() -> void:
 	var health_before := bearer.current_health
 	var bomb := WEISHIDAIER_BOMB_SCENE.instantiate() as WeishidaierSkill1Bomb
 	fixture.add_child(bomb)
+	bomb.bind_gameplay_context(
+		fixture,
+		fixture.get_multiplayer_gameplay_gateway()
+	)
 	bomb.global_position = Vector2.ZERO
 	bomb.setup(null, Vector2.RIGHT, 40)
 	bomb.set_physics_process(false)
@@ -539,8 +546,8 @@ func _add_real_shield_bearer(
 	return bearer
 
 
-func _create_fixture(fixture_name: String) -> Node2D:
-	var fixture := Node2D.new()
+func _create_fixture(fixture_name: String) -> PlayerTestCombatRuntime:
+	var fixture := PLAYER_TEST_RUNTIME.new() as PlayerTestCombatRuntime
 	fixture.name = fixture_name
 	root.add_child(fixture)
 	current_scene = fixture

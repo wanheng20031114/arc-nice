@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bwy4m8w6x0rae"]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.gd" id="1_adapter"]
+
+[node name="MultiplayerModeAdapter" type="Node"]
+script = ExtResource("1_adapter")

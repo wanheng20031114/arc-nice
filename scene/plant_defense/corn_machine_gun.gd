@@ -59,7 +59,6 @@ var burst_muzzle_position := Vector2.ZERO
 var next_authoritative_action_id := 0
 var latest_proxy_action_id := 0
 var _hitscan_query_count := 0
-var _combat_runtime: Node = null
 var _target_candidates: Array[Enemy] = []
 var _ray_exclude: Array[RID] = []
 var _shield_retry_exclude: Array[RID] = []
@@ -96,7 +95,6 @@ func _physics_process(delta: float) -> void:
 
 func _on_setup_completed() -> void:
 	super._on_setup_completed()
-	_combat_runtime = get_tree().current_scene
 	_ray_exclude.clear()
 	_ray_exclude.append(get_rid())
 	_configure_ray_query()
@@ -259,11 +257,11 @@ func _start_authoritative_burst(direction: Vector2) -> void:
 	next_authoritative_action_id += 1
 	var action_id := next_authoritative_action_id
 	var safe_direction := direction.normalized()
-	if _combat_runtime != null and _combat_runtime.has_method(
-		"queue_corn_machine_gun_burst_visual"
+	if (
+		tower_multiplayer_mode_adapter != null
+		and is_instance_valid(tower_multiplayer_mode_adapter)
 	):
-		_combat_runtime.call(
-			"queue_corn_machine_gun_burst_visual",
+		tower_multiplayer_mode_adapter.queue_corn_machine_gun_burst_visual(
 			int(get_meta(&"net_id", 0)),
 			action_id,
 			safe_direction
@@ -402,19 +400,15 @@ func _fire_locked_hitscan(shot_index: int, authoritative: bool) -> void:
 	var enemy := ray_result.get("collider") as Enemy
 	if not _is_valid_target(enemy):
 		return
-	if _combat_runtime != null and _combat_runtime.has_method(
-		"apply_authoritative_plant_enemy_damage"
+	if (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and tower_multiplayer_mode_adapter != null
+		and is_instance_valid(tower_multiplayer_mode_adapter)
 	):
-		_combat_runtime.call(
-			"apply_authoritative_plant_enemy_damage",
+		tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage(
 			int(get_meta(&"net_id", get_instance_id())),
 			enemy,
-			configured_attack_damage,
-			burst_direction,
-			EnemyConfig.DamageType.PHYSICAL
-		)
-	else:
-		enemy.apply_damage(
 			configured_attack_damage,
 			burst_direction,
 			EnemyConfig.DamageType.PHYSICAL
@@ -555,14 +549,13 @@ func _cancel_burst(restart_idle: bool) -> void:
 
 func _select_nearest_visible_enemy() -> Enemy:
 	_target_candidates.clear()
-	if _combat_runtime == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return null
 	# The common open-field case needs only the nearest indexed candidate. The
 	# index's max_count=1 path performs one linear selection instead of sorting
 	# every enemy in range. If that candidate is obstructed, the adaptive exact
 	# fallback below avoids sorting unless several nearer targets are also hidden.
-	_combat_runtime.call(
-		"query_combat_targets_into",
+	combat_runtime.query_combat_targets_into(
 		global_position,
 		configured_attack_range,
 		_target_candidates,
@@ -576,8 +569,7 @@ func _select_nearest_visible_enemy() -> Enemy:
 		# sorting, discard that same nearest entry, then test a few more exact
 		# minima linearly. This keeps the common one-wall case O(n) while the sorted
 		# tail below bounds an arbitrarily large blocked group at O(n log n).
-		_combat_runtime.call(
-			"query_combat_targets_unordered_into",
+		combat_runtime.query_combat_targets_unordered_into(
 			global_position,
 			configured_attack_range,
 			_target_candidates

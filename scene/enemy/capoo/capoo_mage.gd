@@ -222,21 +222,17 @@ func _fire_fireball() -> bool:
 	if mage_config == null or mage_config.projectile_scene == null:
 		return false
 
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		return false
-	var fireball: CapooMageFireball = null
 	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(
-			spawn_parent.call(
-				"has_session_object_pool_scene",
-				mage_config.projectile_scene
-			)
-		)
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
 	):
-		fireball = spawn_parent.call(
-			"acquire_session_object",
+		return false
+	var spawn_parent: Node = combat_runtime
+	var fireball: CapooMageFireball = null
+	if combat_runtime.has_session_object_pool_scene(mage_config.projectile_scene):
+		fireball = combat_runtime.acquire_session_object(
 			mage_config.projectile_scene,
 			false
 		) as CapooMageFireball
@@ -247,6 +243,7 @@ func _fire_fireball() -> bool:
 		return false
 
 	var outgoing_damage := get_effective_attack_damage(mage_config.attack_damage)
+	fireball.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	fireball.top_level = true
 	fireball.setup(
 		fire_direction,
@@ -259,20 +256,20 @@ func _fire_fireball() -> bool:
 	)
 	if fireball.get_parent() == null:
 		spawn_parent.add_child(fireball)
+	elif fireball.get_parent() != spawn_parent:
+		fireball.reparent(spawn_parent)
 	fireball.global_position = global_position + fire_direction * mage_config.projectile_spawn_distance
 	fireball.reset_physics_interpolation()
-	if spawn_parent.has_method("register_local_projectile"):
-		spawn_parent.call(
-			"register_local_projectile",
-			fireball,
-			&"capoo_mage_fireball",
-			0,
-			fireball.global_position,
-			fire_direction,
-			outgoing_damage,
-			mage_config.projectile_speed,
-			mage_config.projectile_lifetime
-		)
+	gameplay_gateway.register_local_projectile(
+		fireball,
+		&"capoo_mage_fireball",
+		0,
+		fireball.global_position,
+		fire_direction,
+		outgoing_damage,
+		mage_config.projectile_speed,
+		mage_config.projectile_lifetime
+	)
 	return true
 
 

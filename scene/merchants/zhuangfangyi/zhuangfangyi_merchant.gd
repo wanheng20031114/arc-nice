@@ -23,6 +23,11 @@ var active_player: Player = null
 var dialogue_index: int = 0
 var purchase_result_visible: bool = false
 var dialogue_lines: Array = []
+var multiplayer_mode_adapter: MultiplayerModeAdapter = null
+
+
+func bind_multiplayer_mode_adapter(adapter: MultiplayerModeAdapter) -> void:
+	multiplayer_mode_adapter = adapter
 
 
 func _ready() -> void:
@@ -94,15 +99,10 @@ func _advance_dialogue() -> void:
 func _try_upgrade_skill() -> void:
 	if active_player == null:
 		return
-	var net_manager := get_node_or_null("/root/NetManager")
-	var current_scene := get_tree().current_scene
 	if (
-		net_manager != null
-		and net_manager.is_multiplayer_active()
-		and current_scene != null
-		and current_scene.has_method("request_multiplayer_skill1_purchase")
+		multiplayer_mode_adapter != null
+		and multiplayer_mode_adapter.request_skill1_purchase()
 	):
-		current_scene.call("request_multiplayer_skill1_purchase")
 		return
 	if active_player.is_skill1_upgrade_maxed():
 		dialogue_bubble.say(MAX_UPGRADED_LINE)

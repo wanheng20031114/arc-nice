@@ -277,17 +277,13 @@ func _fire_pending_projectile() -> void:
 	if shot_direction == Vector2.ZERO:
 		shot_direction = Vector2.RIGHT.rotated(cannon_pivot.global_rotation)
 
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
+	var spawn_parent: CombatRuntimeBase = combat_runtime
 
 	var cannonball: AgaveCannonball = null
-	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call("has_session_object_pool_scene", CANNONBALL_SCENE))
-	):
-		cannonball = spawn_parent.call(
-			"acquire_session_object",
+	if spawn_parent.has_session_object_pool_scene(CANNONBALL_SCENE):
+		cannonball = spawn_parent.acquire_session_object(
 			CANNONBALL_SCENE,
 			false
 		) as AgaveCannonball
@@ -295,6 +291,10 @@ func _fire_pending_projectile() -> void:
 		cannonball = CANNONBALL_SCENE.instantiate() as AgaveCannonball
 	if cannonball == null:
 		return
+	cannonball.bind_gameplay_context(
+		combat_runtime,
+		tower_multiplayer_mode_adapter
+	)
 	cannonball.top_level = true
 	if cannonball.get_parent() == null:
 		spawn_parent.add_child(cannonball)
@@ -310,9 +310,11 @@ func _fire_pending_projectile() -> void:
 		int(get_meta(&"net_id", get_instance_id()))
 	)
 	cannonball.reset_physics_interpolation()
-	if spawn_parent.has_method("broadcast_plant_projectile_visual"):
-		spawn_parent.call(
-			"broadcast_plant_projectile_visual",
+	if (
+		tower_multiplayer_mode_adapter != null
+		and is_instance_valid(tower_multiplayer_mode_adapter)
+	):
+		tower_multiplayer_mode_adapter.broadcast_plant_projectile_visual(
 			int(get_meta(&"net_id", 0)),
 			muzzle.global_position,
 			shot_direction,
@@ -326,14 +328,12 @@ func _fire_pending_projectile() -> void:
 
 func _select_nearest_visible_enemy() -> Enemy:
 	indexed_target_candidates.clear()
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("query_combat_targets_into"):
+	if combat_runtime != null and is_instance_valid(combat_runtime):
 		# Most shots have an unobstructed nearest target. Ask the shared index for
 		# only that target first so it can use its linear nearest-selection path;
 		# the adaptive blocked-target path preserves exact nearest-visible behavior
 		# without sorting the full radius for the common one-wall case.
-		current_scene.call(
-			"query_combat_targets_into",
+		combat_runtime.query_combat_targets_into(
 			global_position,
 			configured_attack_range,
 			indexed_target_candidates,
@@ -343,8 +343,7 @@ func _select_nearest_visible_enemy() -> Enemy:
 			var nearest := indexed_target_candidates[0]
 			if _is_valid_target(nearest) and _has_clear_world_line_to(nearest):
 				return nearest
-			current_scene.call(
-				"query_combat_targets_unordered_into",
+			combat_runtime.query_combat_targets_unordered_into(
 				global_position,
 				configured_attack_range,
 				indexed_target_candidates

@@ -374,11 +374,10 @@ func _play_slash_effect(direction: Vector2) -> void:
 	var effect := knight_config.slash_effect_scene.instantiate() as Node2D
 	if effect == null:
 		return
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		effect.queue_free()
 		return
-	spawn_parent.add_child(effect)
+	combat_runtime.add_child(effect)
 	var safe_direction := direction.normalized() if direction != Vector2.ZERO else Vector2.RIGHT
 	var effect_distance := (knight_config.slash_inner_radius + knight_config.slash_outer_radius) * 0.5
 	effect.global_position = global_position + safe_direction * effect_distance
@@ -424,25 +423,21 @@ func _apply_multiplayer_player_damage(
 ) -> void:
 	if hit_player == null or damage_amount <= 0:
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_multiplayer_player_damage"):
-		current_scene.call(
-			"request_multiplayer_player_damage",
+	if _try_request_player_damage(
 			source_id,
 			hit_player.peer_id,
 			damage_amount,
 			source_type
-		)
+		):
 		return
-	hit_player.apply_damage(damage_amount)
+	if _has_explicit_singleplayer_authority():
+		hit_player.apply_damage(damage_amount)
 
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			direction,

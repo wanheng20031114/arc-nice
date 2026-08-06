@@ -27,6 +27,8 @@ var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"capoo_rpg_rocket"
 var pool_active: bool = true
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var _authored_speed: float = 210.0
 var _authored_max_lifetime: float = 3.0
 var _authored_explosion_radius: float = 44.0
@@ -66,6 +68,8 @@ func _ready() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	combat_runtime = null
+	gameplay_gateway = null
 	pool_active = true
 	has_exploded = false
 	direction = Vector2.RIGHT
@@ -98,6 +102,8 @@ func on_pool_released(_generation: int) -> void:
 	pool_active = false
 	has_exploded = true
 	explosion_damaged_bodies.clear()
+	combat_runtime = null
+	gameplay_gateway = null
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
@@ -105,6 +111,14 @@ func on_pool_released(_generation: int) -> void:
 		animated_sprite.stop()
 	if emission_overlay != null:
 		emission_overlay.stop()
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func _restart_emission_animation() -> void:
@@ -182,7 +196,8 @@ func _explode(direct_hit: Node2D = null) -> void:
 		return
 	has_exploded = true
 	set_deferred("monitoring", false)
-	_apply_explosion_damage(direct_hit)
+	if _has_authoritative_runtime():
+		_apply_explosion_damage(direct_hit)
 	_spawn_explosion_effect()
 	_retire()
 
@@ -227,7 +242,11 @@ func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -
 	var player := body as Player
 	if player != null:
 		damaged_bodies[body_id] = true
-		if not player.is_dead and not _try_report_multiplayer_player_hit(player):
+		if (
+			not player.is_dead
+			and not _try_report_multiplayer_player_hit(player)
+			and _has_explicit_singleplayer_authority()
+		):
 			player.apply_damage(
 				damage,
 				EnemyConfig.DamageType.PHYSICAL,
@@ -250,35 +269,50 @@ func _apply_explosion_damage_to_body(body: Node2D, damaged_bodies: Dictionary) -
 
 
 func _spawn_explosion_effect() -> void:
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
-		spawn_parent = get_parent()
-	if spawn_parent == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
 
 	var explosion := EXPLOSION_SCENE.instantiate() as Node2D
 	if explosion == null:
 		return
 	explosion.top_level = true
-	spawn_parent.add_child(explosion)
+	combat_runtime.add_child(explosion)
 	explosion.global_position = global_position
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
-	if projectile_id <= 0:
+	if (
+		projectile_id <= 0
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
-		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		projectile_id,
 		player.peer_id,
 		damage,
 		source_type,
+		EnemyConfig.DamageType.PHYSICAL,
 		_get_source_direction_to_player(player),
 		true
-	))
+	)
+
+
+func _has_authoritative_runtime() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		_has_authoritative_runtime()
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 func _get_player_damage_context(player: Player) -> Dictionary:

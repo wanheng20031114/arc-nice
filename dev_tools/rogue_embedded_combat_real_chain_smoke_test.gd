@@ -1,0 +1,641 @@
+extends SceneTree
+
+const ROGUE_COMBAT_SCENE := preload(
+	"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
+)
+const COMBAT_ROBOT_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot.tscn"
+)
+const COMBAT_ROBOT_CONFIG := preload(
+	"res://resources/config/enemies/combat_robot.tres"
+)
+const COMBAT_ROBOT_GUNNER_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_gunner.tscn"
+)
+const COMBAT_ROBOT_GUNNER_CONFIG := preload(
+	"res://resources/config/enemies/combat_robot_gunner.tres"
+)
+const ROGUE_COMBAT_MUSIC := preload(
+	"res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3"
+)
+
+const AUTHORITATIVE_SEED := 20_260_806
+const CLIENT_PEER_ID := 2
+const CLIENT_GUNNER_PROJECTILE_ID := 72_001
+const CLIENT_DRONE_PROJECTILE_ID := 72_002
+const COOLDOWN_EPSILON := 0.01
+
+
+## Reproduces the production embedding boundary without granting network methods
+## to SceneTree.current_scene. In production those methods belong to the nested
+## MpGame/gateway, while current_scene is MpRogueRoute.
+class EmbeddedRouteShell:
+	extends Node2D
+
+
+## Runs MpGame's real projectile factory and identity pipeline without starting
+## an ENet session. Damage requests are deliberately accepted as client-view
+## presentation events and never mutate Player health.
+class EmbeddedMpGameHarness:
+	extends "res://scene/multiplayer/mp_game.gd"
+
+	var client_damage_requests: Array[Dictionary] = []
+
+
+	func _ready() -> void:
+		pass
+
+
+	func _exit_tree() -> void:
+		pass
+
+
+	func is_client_view_runtime() -> bool:
+		return true
+
+
+	func request_multiplayer_player_damage(
+		source_id: int,
+		target_peer_id: int,
+		damage: int,
+		source_type: StringName,
+		damage_type_or_source_direction: Variant = EnemyConfig.DamageType.PHYSICAL,
+		source_direction_or_is_ranged: Variant = Vector2.ZERO,
+		is_ranged: bool = false,
+		contact_preconsumed: bool = false
+	) -> bool:
+		client_damage_requests.append({
+			"source_id": source_id,
+			"target_peer_id": target_peer_id,
+			"damage": damage,
+			"source_type": source_type,
+			"damage_type_or_source_direction": damage_type_or_source_direction,
+			"source_direction_or_is_ranged": source_direction_or_is_ranged,
+			"is_ranged": is_ranged,
+			"contact_preconsumed": contact_preconsumed,
+		})
+		return true
+
+
+var failures: Array[String] = []
+var run_state: RunStateStore = null
+
+
+func _initialize() -> void:
+	call_deferred(&"_run")
+
+
+func _run() -> void:
+	run_state = root.get_node_or_null("RunState") as RunStateStore
+	_expect(run_state != null, "肉鸽真实战斗链路测试需要 RunState 自动加载。")
+	if run_state == null:
+		_finish()
+		return
+
+	run_state.begin_new_run(&"weishidaier", false)
+	await _test_authoritative_real_combat_and_teardown()
+	await _test_embedded_client_view_damage_authority()
+	_finish()
+
+
+func _test_authoritative_real_combat_and_teardown() -> void:
+	var route_shell := EmbeddedRouteShell.new()
+	route_shell.name = "RogueRouteAuthoritativeShell"
+	root.add_child(route_shell)
+	current_scene = route_shell
+
+	var coordinator := RogueCombatSingleplayerCoordinator.new()
+	coordinator.name = "SingleplayerCombatCoordinator"
+	route_shell.add_child(coordinator)
+	var wave := _create_one_enemy_wave()
+	var battle := await _create_battle(
+		route_shell,
+		wave,
+		CombatRuntimeBase.RuntimeMode.SINGLEPLAYER,
+		0
+	)
+	if battle == null:
+		await _dispose_shell(route_shell)
+		return
+
+	var player := battle.player as AmmoRangedPlayer
+	var gameplay_gateway := battle.get_multiplayer_gameplay_gateway()
+	_expect(
+		player != null
+		and gameplay_gateway != null
+		and gameplay_gateway.get_projectile_parent() == battle,
+		(
+			"单人肉鸽战场必须创建真实弹药型玩家，并把静态多人网关绑定到"
+			+ "战场根节点。"
+		)
+	)
+	if player == null:
+		coordinator.active_battle = battle
+		coordinator.call("_dispose_active_battle")
+		await _dispose_shell(route_shell)
+		return
+
+	# Start the real wave path so the spawned enemy owns the production defeated
+	# and tree_exited callbacks that drive final-wave settlement.
+	battle.random_generator.seed = AUTHORITATIVE_SEED
+	battle.navigation_prewarmed = true
+	battle.call("_begin_flow_step", wave)
+	battle.enemy_spawn_timer.stop()
+	battle.combat_deadline_timer.stop()
+	var enemy := _first_living_enemy(battle)
+	_expect(
+		enemy != null,
+		(
+			"单敌人肉鸽波次必须通过正式刷怪管线生成目标；"
+			+ "built=%s spawn_points=%d active_points=%d total=%d spawned=%d pending=%d。"
+		) % [
+			bool(battle.grid_pathfinder.get("is_built")),
+			battle.enemy_spawn_points.size(),
+			battle.active_wave_spawn_points.size(),
+			battle.current_wave_total,
+			battle.current_wave_spawned,
+			battle.pending_enemy_configs.size(),
+		]
+	)
+	if enemy != null:
+		enemy.set_physics_process(false)
+		enemy.set_process(false)
+
+	var outcomes: Array[Dictionary] = []
+	battle.combat_outcome_started.connect(
+		func(victory: bool, failure_reason: String) -> void:
+			outcomes.append({
+				"victory": victory,
+				"failure_reason": failure_reason,
+			})
+	)
+
+	var ammo_before := player.current_ammo
+	player.shooting_timer.stop()
+	if enemy != null:
+		# A one-health target still resolves armor and minimum damage through the
+		# production DamageResolver; no test-only damage shortcut is used.
+		enemy.current_health = 1
+	player.call("_try_shoot", Vector2.RIGHT)
+	var player_bullet := _find_active_player_bullet(route_shell, player)
+	_expect(
+		player_bullet != null
+		and player.current_ammo == ammo_before - 1,
+		"真实玩家开火必须消耗一发弹药并生成一枚由该玩家拥有的 Bullet。"
+	)
+	if player_bullet != null and enemy != null:
+		var hit_accepted := player_bullet.try_hit_enemy(enemy)
+		_expect(
+			hit_accepted
+			and enemy.is_dead
+			and enemy.current_health <= 0
+			and battle.current_wave_defeated == 1,
+			"Bullet 命中必须经过 Enemy 伤害/死亡信号并累计最后一名敌人。"
+		)
+		# Complete the authored death lifecycle deterministically instead of waiting
+		# on animation wall time; tree_exited remains the production completion gate.
+		enemy.call("_finish_after_death_animation")
+		await process_frame
+		await process_frame
+		_expect(
+			battle.wave_state == CombatFlowState.State.VICTORY
+			and outcomes.size() == 1
+			and bool(outcomes[0].get("victory", false))
+			and str(outcomes[0].get("failure_reason", "")).is_empty(),
+			"末敌退出树后必须且只能触发一次肉鸽胜利结算。"
+		)
+
+	await _test_real_gunner_projectile_damage(route_shell, battle, player)
+	await _test_contact_damage_cooldown(battle, player)
+
+	# Leave one real player projectile in flight, then execute the coordinator's
+	# production battle disposal. The outer route must survive without any lease.
+	player.shooting_timer.stop()
+	player.set_combat_actions_locked(false)
+	var lingering_spawned := bool(player.call("_spawn_bullet", Vector2.UP))
+	var lingering_bullet := _find_active_player_bullet(route_shell, player)
+	_expect(
+		lingering_spawned and lingering_bullet != null,
+		"释放测试必须先创建一枚仍在飞行的真实玩家弹体。"
+	)
+	coordinator.active_battle = battle
+	coordinator.call("_dispose_active_battle")
+	await process_frame
+	await physics_frame
+	var remaining_projectiles := _collect_projectiles(route_shell)
+	_expect(
+		remaining_projectiles.is_empty(),
+		(
+			"战场 teardown 后路线树下不得残留弹体；实际残留：%s。"
+			% [_describe_nodes(remaining_projectiles)]
+		)
+	)
+	for projectile in remaining_projectiles:
+		if projectile != null and is_instance_valid(projectile):
+			projectile.queue_free()
+	await _dispose_shell(route_shell)
+
+
+func _test_real_gunner_projectile_damage(
+	route_shell: Node,
+	battle: RogueCombatGame,
+	player: AmmoRangedPlayer
+) -> void:
+	_reset_player_for_damage_test(player)
+	var gunner := (
+		COMBAT_ROBOT_GUNNER_SCENE.instantiate() as CombatRobotGunner
+	)
+	_expect(gunner != null, "持枪战斗机器人场景必须能实例化。")
+	if gunner == null:
+		return
+	battle.enemy_container.add_child(gunner)
+	gunner.global_position = player.global_position + Vector2.LEFT * 40.0
+	gunner.setup(
+		COMBAT_ROBOT_GUNNER_CONFIG,
+		player,
+		battle.grid_pathfinder,
+		battle
+	)
+	gunner.random_generator.seed = AUTHORITATIVE_SEED
+	gunner.set_physics_process(false)
+	var burst_started := bool(gunner.call("_try_start_burst", player))
+	gunner.call("_update_burst", 0.0)
+	var gunner_bullet := _find_active_gunner_bullet(route_shell)
+	_expect(
+		burst_started and gunner_bullet != null,
+		"持枪战斗机器人必须通过真实 burst 管线发射枪弹。"
+	)
+	if gunner_bullet != null:
+		_expect(
+			gunner_bullet.get_parent() == battle,
+			(
+				"内嵌肉鸽中的机器人枪弹必须归属战场运行时，"
+				+ "不得挂到外层路线场景。"
+			)
+		)
+		gunner_bullet.set_physics_process(false)
+		var health_before := player.current_health
+		var expected_damage := gunner.get_effective_attack_damage(
+			COMBAT_ROBOT_GUNNER_CONFIG.attack_damage
+		)
+		gunner_bullet.call("_on_body_entered", player)
+		_expect(
+			health_before - player.current_health == expected_damage
+			and gunner_bullet.has_hit,
+			"真实机器人枪弹必须命中玩家、结算权威伤害并消费弹体。"
+		)
+	gunner.queue_free()
+	await process_frame
+
+
+func _test_contact_damage_cooldown(
+	battle: RogueCombatGame,
+	player: AmmoRangedPlayer
+) -> void:
+	_reset_player_for_damage_test(player)
+	player.physical_defense = maxi(COMBAT_ROBOT_CONFIG.attack_damage - 1, 0)
+	var robot := COMBAT_ROBOT_SCENE.instantiate() as CombatRobot
+	_expect(robot != null, "基础战斗机器人场景必须能实例化。")
+	if robot == null:
+		return
+	battle.enemy_container.add_child(robot)
+	robot.global_position = player.global_position
+	robot.setup(COMBAT_ROBOT_CONFIG, player, battle.grid_pathfinder, battle)
+	robot.set_physics_process(false)
+	robot.add_outgoing_attack_damage_multiplier_modifier(
+		91_001,
+		1.0 / float(COMBAT_ROBOT_CONFIG.attack_damage)
+	)
+	robot.touching_players[player.get_instance_id()] = player
+	robot.touched_player = player
+
+	var damage_per_touch := robot.get_effective_attack_damage(
+		COMBAT_ROBOT_CONFIG.attack_damage
+	)
+	var health_before := player.current_health
+	robot.call("_try_deal_touch_damage")
+	var health_after_first := player.current_health
+	robot.call("_try_deal_touch_damage")
+	var health_after_immediate_retry := player.current_health
+	robot.call(
+		"_update_touch_damage_unprofiled",
+		maxf(robot.touch_damage_interval - COOLDOWN_EPSILON, 0.0)
+	)
+	var health_before_expiry := player.current_health
+	robot.call("_update_touch_damage_unprofiled", COOLDOWN_EPSILON * 2.0)
+	_expect(
+		health_before - health_after_first == damage_per_touch
+		and health_after_immediate_retry == health_after_first
+		and health_before_expiry == health_after_first
+		and health_before_expiry - player.current_health == damage_per_touch
+		and robot.touch_damage_cooldown_left > 0.0,
+		"接触伤害必须立即命中一次、冷却内拒绝重复命中，并在到期后只命中一次。"
+	)
+	robot.queue_free()
+	await process_frame
+
+
+func _test_embedded_client_view_damage_authority() -> void:
+	var route_shell := EmbeddedRouteShell.new()
+	route_shell.name = "MpRogueRouteClientShell"
+	root.add_child(route_shell)
+	current_scene = route_shell
+
+	var mp_game := EmbeddedMpGameHarness.new()
+	mp_game.name = "EmbeddedCombatRuntime"
+	var keepalive_request := HTTPRequest.new()
+	keepalive_request.name = "PublicRoomKeepaliveRequest"
+	mp_game.add_child(keepalive_request)
+	route_shell.add_child(mp_game)
+	var wave := _create_one_enemy_wave()
+	var battle := await _create_battle(
+		mp_game,
+		wave,
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		CLIENT_PEER_ID
+	)
+	if battle == null:
+		await _dispose_shell(route_shell)
+		return
+	mp_game.game = battle
+	var gameplay_gateway := battle.get_multiplayer_gameplay_gateway()
+	_expect(
+		gameplay_gateway != null,
+		"ClientView 肉鸽战场必须提供静态 MultiplayerGameplayGateway 子节点。"
+	)
+	if gameplay_gateway != null:
+		gameplay_gateway.attach_multiplayer_session(mp_game)
+	var player := battle.get_player_for_peer(CLIENT_PEER_ID) as Player
+	_expect(player != null, "ClientView 肉鸽战场必须创建本地玩家视图。")
+	if player == null:
+		mp_game.game = null
+		await _dispose_shell(route_shell)
+		return
+	battle.process_mode = Node.PROCESS_MODE_DISABLED
+	_reset_player_for_damage_test(player)
+
+	mp_game.net_projectile_fired(
+		CLIENT_GUNNER_PROJECTILE_ID,
+		"combat_robot_gunner_bullet",
+		0,
+		player.global_position,
+		Vector2.RIGHT,
+		COMBAT_ROBOT_GUNNER_CONFIG.attack_damage,
+		COMBAT_ROBOT_GUNNER_CONFIG.projectile_speed,
+		COMBAT_ROBOT_GUNNER_CONFIG.projectile_lifetime,
+		false,
+		CLIENT_PEER_ID,
+		-1.0,
+		0
+	)
+	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
+	var gunner_bullet := (
+		known_projectiles.get(CLIENT_GUNNER_PROJECTILE_ID)
+		as CombatRobotGunnerBullet
+	)
+	_expect(
+		gunner_bullet != null,
+		"MpGame 必须通过真实复制弹体工厂创建机器人枪弹。"
+	)
+	if gunner_bullet != null:
+		gunner_bullet.set_physics_process(false)
+		var health_before := player.current_health
+		gunner_bullet.call("_on_body_entered", player)
+		_expect(
+			player.current_health == health_before
+			and mp_game.client_damage_requests.size() == 1,
+			(
+				"ClientView 枪弹接触只能交给嵌套多人网关消费，不能本地扣血；"
+				+ "health %d -> %d，gateway requests=%d。"
+			) % [
+				health_before,
+				player.current_health,
+				mp_game.client_damage_requests.size(),
+			]
+		)
+
+	_reset_player_for_damage_test(player)
+	mp_game.net_projectile_fired(
+		CLIENT_DRONE_PROJECTILE_ID,
+		"combat_robot_suicide_drone",
+		0,
+		player.global_position,
+		Vector2.RIGHT,
+		CombatRobotSuicideDrone.DEFAULT_DAMAGE,
+		CombatRobotSuicideDrone.DEFAULT_SPEED,
+		0.0,
+		false,
+		CLIENT_PEER_ID,
+		-1.0,
+		0
+	)
+	known_projectiles = mp_game.get("_known_projectiles") as Dictionary
+	var drone := (
+		known_projectiles.get(CLIENT_DRONE_PROJECTILE_ID)
+		as CombatRobotSuicideDrone
+	)
+	_expect(drone != null, "MpGame 必须通过真实复制弹体工厂创建自爆无人机。")
+	if drone != null:
+		await physics_frame
+		await physics_frame
+		var health_before := player.current_health
+		var recognized_client_view := bool(
+			drone.call("_is_client_view_runtime")
+		)
+		drone.simulate_compensated_motion(
+			CombatRobotSuicideDrone.DEPLOY_DELAY
+		)
+		_expect(
+			recognized_client_view
+			and drone.explosion_started
+			and player.current_health == health_before,
+			(
+				"ClientView 自爆无人机必须识别嵌套运行时并保持纯表现；"
+				+ "client_view=%s，exploded=%s，health %d -> %d。"
+			) % [
+				recognized_client_view,
+				drone.explosion_started,
+				health_before,
+				player.current_health,
+			]
+		)
+
+	if gameplay_gateway != null:
+		gameplay_gateway.detach_multiplayer_session(mp_game)
+	mp_game.game = null
+	await _dispose_shell(route_shell)
+
+
+func _create_battle(
+	parent: Node,
+	wave: WaveConfig,
+	runtime_mode: CombatRuntimeBase.RuntimeMode,
+	local_peer_id: int
+) -> RogueCombatGame:
+	var battle := ROGUE_COMBAT_SCENE.instantiate() as RogueCombatGame
+	_expect(battle != null, "肉鸽作战场景必须能实例化。")
+	if battle == null:
+		return null
+	var campaign := _create_campaign(wave)
+	battle.singleplayer_campaign = campaign
+	battle.multiplayer_campaign = campaign
+	battle.auto_start_waves = false
+	battle.runtime_mode = runtime_mode
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		battle.configure_multiplayer(
+			runtime_mode,
+			local_peer_id,
+			{local_peer_id: "Client"},
+			{local_peer_id: &"weishidaier"}
+		)
+	var music_player := battle.get_node_or_null("MusicPlayer") as AudioStreamPlayer
+	if music_player != null:
+		music_player.autoplay = false
+	parent.add_child(battle)
+	await process_frame
+	if not is_instance_valid(battle) or battle.player == null:
+		_expect(false, "肉鸽作战场景 ready 后必须拥有可用玩家。")
+		if is_instance_valid(battle):
+			battle.free()
+		return null
+	return battle
+
+
+func _create_one_enemy_wave() -> WaveConfig:
+	var entry := WaveEnemyEntry.new()
+	entry.enemy_config = COMBAT_ROBOT_CONFIG
+	entry.count = 1
+
+	var wave := WaveConfig.new()
+	wave.step_id = &"rogue_real_chain_wave"
+	wave.wave_name = "真实链路测试"
+	wave.enemy_entries = [entry]
+	wave.spawn_point_mask = (
+		RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
+	)
+	wave.spawn_interval = 60.0
+	wave.spawn_count_per_tick = 1
+	wave.max_alive_enemies = 1
+	wave.music = ROGUE_COMBAT_MUSIC
+	return wave
+
+
+func _create_campaign(wave: WaveConfig) -> WaveCampaignConfig:
+	var graph := FlowGraphConfig.new()
+	graph.graph_name = "Rogue Embedded Real Combat Chain"
+	graph.steps = [wave]
+	graph.start_step = wave
+
+	var campaign := WaveCampaignConfig.new()
+	campaign.campaign_id = &"rogue_embedded_real_chain"
+	campaign.flow_graph = graph
+	return campaign
+
+
+func _first_living_enemy(battle: RogueCombatGame) -> Enemy:
+	for child in battle.enemy_container.get_children():
+		var enemy := child as Enemy
+		if enemy != null and not enemy.is_dead:
+			return enemy
+	return null
+
+
+func _find_active_player_bullet(root_node: Node, owner: Player) -> Bullet:
+	for node in _collect_descendants(root_node):
+		var bullet := node as Bullet
+		if (
+			bullet != null
+			and bullet.pool_active
+			and not bullet.is_queued_for_deletion()
+			and bullet.collectible_owner == owner
+		):
+			return bullet
+	return null
+
+
+func _find_active_gunner_bullet(root_node: Node) -> CombatRobotGunnerBullet:
+	for node in _collect_descendants(root_node):
+		var bullet := node as CombatRobotGunnerBullet
+		if (
+			bullet != null
+			and bullet.pool_active
+			and not bullet.has_hit
+			and not bullet.is_queued_for_deletion()
+		):
+			return bullet
+	return null
+
+
+func _collect_projectiles(root_node: Node) -> Array[Node]:
+	var result: Array[Node] = []
+	for node in _collect_descendants(root_node):
+		var is_projectile := (
+			node is Bullet
+			or node is CapooAK47Bullet
+			or node is CombatRobotSuicideDrone
+		)
+		if is_projectile and not node.is_queued_for_deletion():
+			result.append(node)
+	return result
+
+
+func _collect_descendants(root_node: Node) -> Array[Node]:
+	var result: Array[Node] = []
+	var pending: Array[Node] = [root_node]
+	while not pending.is_empty():
+		var parent := pending.pop_back() as Node
+		for child in parent.get_children():
+			var child_node := child as Node
+			result.append(child_node)
+			pending.append(child_node)
+	return result
+
+
+func _describe_nodes(nodes: Array[Node]) -> PackedStringArray:
+	var descriptions := PackedStringArray()
+	for node in nodes:
+		if node == null or not is_instance_valid(node):
+			continue
+		descriptions.append("%s:%s" % [node.get_path(), node.get_class()])
+	return descriptions
+
+
+func _reset_player_for_damage_test(player: Player) -> void:
+	player.is_dead = false
+	player.current_health = maxi(player.max_health, 1)
+	player.physical_defense = 0
+	player.magic_defense = 0
+	player.invincibility_duration = 0.0
+	player.invincibility_time_left = 0.0
+	player.dodge_chance = 0.0
+	player.health_bar.setup(player.max_health, player.current_health)
+
+
+func _dispose_shell(route_shell: Node) -> void:
+	if current_scene == route_shell:
+		current_scene = null
+	if route_shell != null and is_instance_valid(route_shell):
+		route_shell.queue_free()
+	await process_frame
+	await process_frame
+
+
+func _expect(condition: bool, message: String) -> void:
+	if condition:
+		return
+	failures.append(message)
+	push_error(message)
+
+
+func _finish() -> void:
+	if failures.is_empty():
+		print("ROGUE_EMBEDDED_COMBAT_REAL_CHAIN_SMOKE_TEST_OK")
+		quit(0)
+		return
+	print(
+		"ROGUE_EMBEDDED_COMBAT_REAL_CHAIN_SMOKE_TEST_FAILED count=%d"
+		% failures.size()
+	)
+	for failure in failures:
+		print(" - %s" % failure)
+	quit(1)

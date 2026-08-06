@@ -123,7 +123,7 @@ func _test_deferred_entry_announcement() -> void:
 	countdown_audio.stop()
 	deferred_arena.call("_on_state_timer_timeout")
 	_expect(
-		deferred_arena.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
+		deferred_arena.wave_state == CombatFlowState.State.WAVE_ACTIVE
 		and deferred_arena.day_phase_announcement.presentation_count == 1
 		and deferred_arena.day_phase_announcement.current_text == "测试场景 P1A"
 		and deferred_arena.day_phase_announcement.is_presenting(),

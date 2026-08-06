@@ -8,9 +8,12 @@ const SAKURA_BULLET_SCENE := preload("res://scene/boss/linglan/linglan_skill1_sa
 const WARNING_RAY_SCENE := preload("res://scene/boss/linglan/linglan_skill1_warning_ray.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
+const TEST_RUNTIME_SCRIPT := preload(
+	"res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
+)
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: CombatRuntimeBase
 
 
 func _init() -> void:
@@ -18,10 +21,9 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = TEST_RUNTIME_SCRIPT.new()
 	test_root.name = "LinglanSkill1SmokeTest"
 	root.add_child(test_root)
-	current_scene = test_root
 
 	_test_skill1_config()
 	await _test_sakura_bullet_scene_contract()
@@ -64,6 +66,7 @@ func _test_sakura_bullet_scene_contract() -> void:
 	if bullet == null:
 		return
 	test_root.add_child(bullet)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(bullet)
 	await process_frame
 
 	var shape_node := bullet.get_node_or_null("CollisionShape2D") as CollisionShape2D
@@ -99,6 +102,7 @@ func _test_sakura_bullet_scene_contract() -> void:
 	test_root.add_child(enemy)
 	var enemy_safe_bullet := SAKURA_BULLET_SCENE.instantiate() as LinglanSakuraBullet
 	test_root.add_child(enemy_safe_bullet)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(enemy_safe_bullet)
 	await process_frame
 	enemy_safe_bullet.call("_on_body_entered", enemy)
 	_expect(enemy.current_health == 100, "Sakura bullet must ignore Enemy bodies.")
@@ -115,9 +119,15 @@ func _test_skill1_fire_schedule() -> void:
 	if boss == null:
 		return
 	test_root.add_child(boss)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(boss)
 	await process_frame
 	boss.config = LINGLAN_CONFIG
-	boss.activate_boss(null, null)
+	boss.activate_boss(
+		null,
+		null,
+		test_root,
+		(test_root as LinglanCombatTestRuntime).linglan_boss_runtime_port
+	)
 
 	boss.call("_physics_process", SKILL1_CONFIG.start_delay - SKILL1_CONFIG.warning_lead_time - 0.01)
 	_expect(_get_sakura_bullets().is_empty(), "Skill1 fired before the 5 second delay.")
@@ -193,6 +203,7 @@ func _test_multiplayer_proxy_warning_action() -> void:
 	if boss == null:
 		return
 	test_root.add_child(boss)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(boss)
 	await process_frame
 	boss.global_position = Vector2(32.0, -12.0)
 	boss.configure_multiplayer_proxy()
@@ -234,6 +245,7 @@ func _test_multiplayer_proxy_warning_action() -> void:
 	if death_boss == null:
 		return
 	test_root.add_child(death_boss)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(death_boss)
 	await process_frame
 	death_boss.global_position = Vector2(-32.0, 18.0)
 	death_boss.configure_multiplayer_proxy()

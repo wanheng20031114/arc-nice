@@ -32,11 +32,11 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 
 func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
 	super.apply_remote_flow_state(step_id, state, seconds)
-	var typed_state := state as WaveState
+	var typed_state := state as CombatFlowState.State
 	if typed_state in [
-		WaveState.FATE_INTERLUDE,
-		WaveState.VICTORY,
-		WaveState.DEFEAT,
+		CombatFlowState.State.FATE_INTERLUDE,
+		CombatFlowState.State.VICTORY,
+		CombatFlowState.State.DEFEAT,
 	]:
 		_set_test_controls_hint_visible(false)
 

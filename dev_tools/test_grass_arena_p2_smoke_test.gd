@@ -126,13 +126,13 @@ func _test_one_kill_completes_day() -> void:
 	arena.current_wave_resolved = 1
 	arena.active_wave_enemy_ids.clear()
 	arena.call("_clear_pending_enemy_spawn_queue")
-	arena.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	arena.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	arena.call("_check_wave_completion")
 	var fate_interlude_ready := await _wait_for_fate_interlude(5.0)
 
 	var hint_layer := arena.get_node("TestControlsHint") as CanvasLayer
 	_expect(
-		arena.wave_state == GameRuntimeBase.WaveState.FATE_INTERLUDE,
+		arena.wave_state == CombatFlowState.State.FATE_INTERLUDE,
 		"唯一史莱姆被击败后必须直接进入一整天结束的小葱流程。"
 	)
 	_expect(
@@ -156,7 +156,7 @@ func _test_one_kill_completes_day() -> void:
 
 	arena.call("_on_xiaocong_fate_interlude_completed", &"")
 	var entered_victory := await _wait_for_wave_state(
-		GameRuntimeBase.WaveState.VICTORY,
+		CombatFlowState.State.VICTORY,
 		5.0
 	)
 	_expect(

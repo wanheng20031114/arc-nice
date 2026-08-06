@@ -6,6 +6,9 @@ const STANDARD_PROFILE_SCENE := preload(
 const TOWER_PROFILE_SCENE := preload(
 	"res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.tscn"
 )
+const ROGUE_PROFILE_SCENE := preload(
+	"res://scene/game_modes/rogue/ui/rogue_player_profile_panel.tscn"
+)
 const LEGACY_PROFILE_SCRIPT_UID := "uid://llltdqhomb4y"
 
 var failures: Array[String] = []
@@ -22,31 +25,43 @@ func _run() -> void:
 	var tower := (
 		TOWER_PROFILE_SCENE.instantiate() as TowerDefensePlayerProfilePanel
 	)
+	var rogue := ROGUE_PROFILE_SCENE.instantiate() as RoguePlayerProfilePanel
 	root.add_child(standard)
 	root.add_child(tower)
+	root.add_child(rogue)
 	await process_frame
 
-	_expect(standard != null and tower != null, "普通与塔防 Profile 必须能独立实例化。")
-	if standard != null and tower != null:
+	_expect(
+		standard != null and tower != null and rogue != null,
+		"普通、塔防与肉鸽 Profile 必须能独立实例化。"
+	)
+	if standard != null and tower != null and rogue != null:
 		_expect(
 			standard.stats_view is PlayerStatsView
 			and tower.stats_view is PlayerStatsView
+			and rogue.stats_view is PlayerStatsView
 			and standard.inventory_view is PlayerInventoryView
-			and tower.inventory_view is PlayerInventoryView,
-			"两个模式包装器必须原生组合共享属性与背包视图。"
+			and tower.inventory_view is PlayerInventoryView
+			and rogue.inventory_view is PlayerInventoryView,
+			"三个模式包装器必须原生组合共享属性与背包视图。"
 		)
 		_expect(
 			standard.has_signal("opened")
 			and standard.has_signal("closed")
 			and tower.has_signal("opened")
 			and tower.has_signal("closed")
+			and rogue.has_signal("opened")
+			and rogue.has_signal("closed")
 			and standard.has_method("show_simple_crafting_result")
-			and tower.has_method("show_simple_crafting_result"),
+			and tower.has_method("show_simple_crafting_result")
+			and rogue.has_method("show_simple_crafting_result"),
 			"拆分后必须保留 Profile 的公开 façade 与开关信号。"
 		)
 		_expect(
 			not standard.has_method("set_research_coordinator")
+			and not rogue.has_method("set_research_coordinator")
 			and not standard.has_signal("building_placement_requested")
+			and not rogue.has_signal("building_placement_requested")
 			and tower.has_method("set_research_coordinator")
 			and tower.has_signal("building_placement_requested"),
 			"研究与建筑放置入口只能属于塔防 Profile。"
@@ -65,6 +80,12 @@ func _run() -> void:
 	var tower_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.gd"
 	)
+	var rogue_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/rogue/ui/rogue_player_profile_panel.gd"
+	)
+	var basic_source := FileAccess.get_file_as_string(
+		"res://scene/ui/shared/profile/basic_player_profile_panel.gd"
+	)
 	var stats_source := FileAccess.get_file_as_string(
 		"res://scene/ui/shared/profile/player_stats_view.gd"
 	)
@@ -74,12 +95,25 @@ func _run() -> void:
 	var rogue_combat_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/rogue/combat/rogue_combat_game.gd"
 	)
-	for source in [standard_source, tower_source, stats_source, inventory_source]:
+	for source in [
+		standard_source,
+		tower_source,
+		rogue_source,
+		basic_source,
+		stats_source,
+		inventory_source,
+	]:
 		_expect(
 			not source.contains("get_tree().current_scene")
 			and not source.contains("has_method(\"request_multiplayer"),
 			"Profile 拆分后不得再猜测 current_scene 的多人能力。"
 		)
+	_expect(
+		not rogue_source.contains("StandardPlayerProfilePanel")
+		and not rogue_combat_source.contains("game_modes/standard")
+		and not rogue_combat_source.contains("StandardPlayerProfilePanel"),
+		"肉鸽 Profile 不得反向依赖普通模式。"
+	)
 	_expect(
 		rogue_combat_source.contains(
 			"player_profile_panel.configure_multiplayer_requests(false)"
@@ -108,6 +142,7 @@ func _run() -> void:
 
 	standard.queue_free()
 	tower.queue_free()
+	rogue.queue_free()
 	await process_frame
 	if failures.is_empty():
 		print("PROFILE_MODE_SPLIT_SMOKE_TEST_OK")

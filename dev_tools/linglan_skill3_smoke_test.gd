@@ -9,10 +9,13 @@ const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn"
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
+const TEST_RUNTIME_SCRIPT := preload(
+	"res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
+)
 
 
 class Skill3Host:
-	extends Node2D
+	extends "res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 
 	var target_position := Vector2.ZERO
 	var requested_target_cells: Array[Vector2i] = []
@@ -32,7 +35,8 @@ class Skill3Host:
 		speed: float,
 		lifetime: float,
 		pierces_enemies: bool = false,
-		target_peer_id: int = 0
+		target_peer_id: int = 0,
+		_target_enemy_net_id: int = 0
 	) -> void:
 		projectile_records.append({
 			"projectile": projectile,
@@ -49,7 +53,7 @@ class Skill3Host:
 
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: CombatRuntimeBase
 
 
 func _init() -> void:
@@ -57,10 +61,9 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = TEST_RUNTIME_SCRIPT.new()
 	test_root.name = "LinglanSkill3SmokeTest"
 	root.add_child(test_root)
-	current_scene = test_root
 
 	_test_skill3_config()
 	await _test_skill3_scene_contract()
@@ -117,6 +120,7 @@ func _test_skill3_scene_contract() -> void:
 	if orb == null:
 		return
 	test_root.add_child(orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	await process_frame
 
 	_expect(orb.collision_layer == 128, "Skill3 orb must use EnemyProjectile collision layer.")
@@ -208,19 +212,18 @@ func _test_game_target_entry() -> void:
 	var actual_target := game.get_linglan_skill3_target_global_position(SKILL3_CONFIG.target_cell)
 	_expect(actual_target.is_equal_approx(expected_target), "StandardGame must resolve Skill3 target through GroundTileMapLayer.map_to_local().")
 	game.queue_free()
-	current_scene = test_root
 	await process_frame
 	await physics_frame
 
 
 func _test_orb_lifecycle_and_damage() -> void:
-	current_scene = test_root
 	var near_player := _spawn_player(test_root, Vector2(4.0, 0.0), 1, 200)
 	near_player.physical_defense = 0
 	near_player.magic_defense = 50
 	near_player._base_magic_defense = 50
 	var orb := ORB_SCENE.instantiate() as LinglanSkill3LightOrb
 	test_root.add_child(orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(orb)
 	orb.global_position = Vector2.ZERO
 	orb.setup(Vector2.RIGHT, 50, 0.0, 2.2)
 	await physics_frame
@@ -248,21 +251,28 @@ func _test_orb_lifecycle_and_damage() -> void:
 	var enemy := enemy_config.enemy_scene.instantiate() as Enemy
 	test_root.add_child(enemy)
 	enemy.global_position = Vector2(24.0, 18.0)
-	enemy.setup(enemy_config, far_player, null)
+	enemy.setup(enemy_config, far_player, null, test_root)
 	enemy.set_physics_process(false)
 	var linglan_config := LINGLAN_CONFIG.duplicate(true) as EnemyConfig
 	linglan_config.max_health = 500
 	linglan_config.physical_defense = 0
 	var linglan := LINGLAN_SCENE.instantiate() as LinglanBoss
 	test_root.add_child(linglan)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(linglan)
 	linglan.global_position = Vector2(0.0, 34.0)
 	linglan.config = linglan_config
-	linglan.activate_boss(far_player, null)
+	linglan.activate_boss(
+		far_player,
+		null,
+		test_root,
+		(test_root as LinglanCombatTestRuntime).linglan_boss_runtime_port
+	)
 	linglan.set_physics_process(false)
 	await _wait_process_and_physics_frames(3)
 
 	var grow_orb := ORB_SCENE.instantiate() as LinglanSkill3LightOrb
 	test_root.add_child(grow_orb)
+	(test_root as LinglanCombatTestRuntime).bind_linglan_node(grow_orb)
 	grow_orb.global_position = Vector2.ZERO
 	grow_orb.setup(Vector2.RIGHT, 50, 0.0, 2.2)
 	await process_frame
@@ -301,21 +311,20 @@ func _test_boss_skill3_schedule() -> void:
 	host.name = "Skill3Host"
 	host.target_position = Vector2.ZERO
 	root.add_child(host)
-	current_scene = host
 
 	var player := _spawn_player(host, Vector2(240.0, 0.0), 7, 200)
 	var boss := LINGLAN_SCENE.instantiate() as LinglanBoss
 	_expect(boss != null, "Linglan scene must instantiate for Skill3 schedule.")
 	if boss == null:
 		host.queue_free()
-		current_scene = test_root
 		return
 	host.add_child(boss)
+	host.bind_linglan_node(boss)
 	await process_frame
 	await physics_frame
 	boss.global_position = Vector2(180.0, -72.0)
 	boss.config = LINGLAN_CONFIG
-	boss.activate_boss(player, null)
+	boss.activate_boss(player, null, host, host.linglan_boss_runtime_port)
 	boss.skill3_random.seed = 12345
 	boss.boss_skill_phase = LinglanBoss.BossSkillPhase.SKILL2
 	boss.skill2_elapsed = SKILL2_CONFIG.get_total_duration()
@@ -385,7 +394,6 @@ func _test_boss_skill3_schedule() -> void:
 	)
 
 	host.queue_free()
-	current_scene = test_root
 	await process_frame
 	await physics_frame
 
@@ -395,6 +403,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	_expect(mp_game != null, "MP game scene must instantiate for Skill3 projectile registry.")
 	if mp_game == null:
 		return
+	mp_game.set("game", test_root)
 	var registry_config := SKILL3_CONFIG.duplicate(true) as LinglanSkill3Config
 	registry_config.orb_base_radius = 19.0
 	registry_config.orb_grow_scale = 2.25

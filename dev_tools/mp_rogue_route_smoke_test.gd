@@ -2075,6 +2075,7 @@ func _test_warehouse_route_persistence_contract() -> void:
 	net_manager.host_role = true
 	net_manager.host_peer_id = 1
 	var runtime := WarehouseRuntimeStub.new()
+	var tower_adapter := _bind_warehouse_tower_mode_adapter(runtime)
 	var source := OAK_WAREHOUSE_SCENE.instantiate() as OakWarehouse
 	root.add_child(source)
 	await process_frame
@@ -2099,6 +2100,9 @@ func _test_warehouse_route_persistence_contract() -> void:
 	mp_game.net_manager = net_manager
 	mp_game.run_state = run_state
 	mp_game.game = runtime
+	mp_game._mode_adapter = tower_adapter
+	mp_game.tower_mode_adapter = tower_adapter
+	tower_adapter.attach_multiplayer_session(mp_game)
 	_expect(
 		bool(mp_game.call(
 			"_persist_authoritative_warehouse_snapshot",
@@ -2133,6 +2137,18 @@ func _test_warehouse_route_persistence_contract() -> void:
 	net_manager.free()
 	run_state.free()
 	await process_frame
+
+
+func _bind_warehouse_tower_mode_adapter(
+	runtime: WarehouseRuntimeStub
+) -> TowerDefenseMultiplayerModeAdapter:
+	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	adapter.name = "MultiplayerModeAdapter"
+	runtime.add_child(adapter)
+	adapter.bind_runtime(runtime)
+	runtime.multiplayer_mode_adapter = adapter
+	runtime.tower_multiplayer_mode_adapter = adapter
+	return adapter
 
 
 func _finish() -> void:

@@ -159,12 +159,16 @@ func _test_host_authoritative_crafting() -> Dictionary:
 
 	var player := Player.new()
 	var runtime := TestTowerRuntime.new()
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var net_manager := HostNetManagerStub.new()
 	var mp_game := CapturingMpGame.new()
 	mp_game.net_manager = net_manager
 	mp_game.run_state = run_state
 	mp_game.game = runtime
+	mp_game._mode_adapter = tower_adapter
+	mp_game.tower_mode_adapter = tower_adapter
+	tower_adapter.attach_multiplayer_session(mp_game)
 
 	var crafting_revision := run_state.get_inventory_revision_for_peer(
 		REMOTE_PEER_ID
@@ -313,6 +317,7 @@ func _test_host_research_gated_crafting() -> void:
 	var player := Player.new()
 	var research_coordinator := ResearchCoordinator.new()
 	var runtime := TestTowerRuntime.new()
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	runtime.research_coordinator = research_coordinator
 	var net_manager := HostNetManagerStub.new()
@@ -320,6 +325,9 @@ func _test_host_research_gated_crafting() -> void:
 	mp_game.net_manager = net_manager
 	mp_game.run_state = run_state
 	mp_game.game = runtime
+	mp_game._mode_adapter = tower_adapter
+	mp_game.tower_mode_adapter = tower_adapter
+	tower_adapter.attach_multiplayer_session(mp_game)
 
 	var locked_revision := run_state.get_inventory_revision_for_peer(
 		REMOTE_PEER_ID
@@ -436,12 +444,13 @@ func _test_inventory_building_placement_authenticity(
 	var player := Player.new()
 	var plant_system := RejectingStonePlantSystem.new()
 	var runtime := TestTowerRuntime.new()
-	runtime.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	runtime.run_state = run_state
 	runtime.plant_system = plant_system
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var rejections: Array[StringName] = []
-	runtime.multiplayer_plant_placement_rejected.connect(
+	tower_adapter.plant_placement_rejected.connect(
 		func(
 			_request_id: int,
 			_requester_peer_id: int,
@@ -521,6 +530,18 @@ func _test_inventory_building_placement_authenticity(
 	run_state.free()
 
 
+func _bind_tower_multiplayer_mode_adapter(
+	runtime: TowerDefenseGame
+) -> TowerDefenseMultiplayerModeAdapter:
+	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	adapter.name = "MultiplayerModeAdapter"
+	runtime.add_child(adapter)
+	adapter.bind_runtime(runtime)
+	runtime.multiplayer_mode_adapter = adapter
+	runtime.tower_multiplayer_mode_adapter = adapter
+	return adapter
+
+
 func _test_client_rejects_bad_authoritative_snapshot(
 	authoritative_snapshot: Dictionary
 ) -> void:
@@ -529,12 +550,16 @@ func _test_client_rejects_bad_authoritative_snapshot(
 	run_state.ensure_multiplayer_peer_state(REMOTE_PEER_ID)
 	var player := Player.new()
 	var runtime := TestTowerRuntime.new()
+	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var net_manager := ClientNetManagerStub.new()
 	var mp_game := MP_GAME_SCRIPT.new()
 	mp_game.net_manager = net_manager
 	mp_game.run_state = run_state
 	mp_game.game = runtime
+	mp_game._mode_adapter = tower_adapter
+	mp_game.tower_mode_adapter = tower_adapter
+	tower_adapter.attach_multiplayer_session(mp_game)
 	mp_game.call("_track_local_simple_crafting_request", 77, 9001)
 
 	var bad_snapshot := authoritative_snapshot.duplicate(true)

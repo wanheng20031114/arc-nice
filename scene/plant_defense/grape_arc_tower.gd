@@ -71,7 +71,6 @@ var idle_scan_tween: Tween = null
 var idle_scan_active := false
 var _idle_scan_progress := 0.0
 var _idle_scan_strength := 0.0
-var _combat_runtime: Node = null
 var _query_candidates: Array[Enemy] = []
 var _chain_targets: Array[Enemy] = []
 var _arc_glows: Array[Line2D] = []
@@ -123,7 +122,6 @@ func _on_setup_completed() -> void:
 	if arc_config == null:
 		push_error("GrapeArcTower requires GrapeArcTowerConfig.")
 		return
-	_combat_runtime = get_tree().current_scene
 	configured_attack_damage = maxi(arc_config.attack_damage, 0)
 	configured_attack_range = maxf(arc_config.attack_range, 0.0)
 	configured_chain_jump_range = maxf(arc_config.chain_jump_range, 0.0)
@@ -361,13 +359,11 @@ func _on_release_timer_timeout() -> void:
 func _select_primary_target() -> Enemy:
 	_query_candidates.clear()
 	if (
-		_combat_runtime == null
-		or not is_instance_valid(_combat_runtime)
-		or not _combat_runtime.has_method("query_combat_targets_into")
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
 	):
 		return null
-	_combat_runtime.call(
-		"query_combat_targets_into",
+	combat_runtime.query_combat_targets_into(
 		global_position,
 		configured_attack_range,
 		_query_candidates,
@@ -405,8 +401,7 @@ func _build_chain(primary: Enemy) -> void:
 	var current_target := primary
 	while _chain_targets.size() < configured_max_chain_targets:
 		_query_candidates.clear()
-		_combat_runtime.call(
-			"query_combat_targets_into",
+		combat_runtime.query_combat_targets_into(
 			current_target.global_position,
 			configured_chain_jump_range,
 			_query_candidates,
@@ -436,21 +431,14 @@ func _apply_authoritative_chain(target_positions: PackedVector2Array) -> void:
 			target_positions[index]
 		)
 		if (
-			_combat_runtime != null
-			and _combat_runtime.has_method(
-				"apply_authoritative_plant_enemy_damage"
-			)
+			combat_runtime != null
+			and is_instance_valid(combat_runtime)
+			and tower_multiplayer_mode_adapter != null
+			and is_instance_valid(tower_multiplayer_mode_adapter)
 		):
-			_combat_runtime.call(
-				"apply_authoritative_plant_enemy_damage",
+			tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage(
 				source_id,
 				target,
-				configured_attack_damage,
-				impact_direction,
-				EnemyConfig.DamageType.MAGIC
-			)
-		else:
-			target.apply_damage(
 				configured_attack_damage,
 				impact_direction,
 				EnemyConfig.DamageType.MAGIC

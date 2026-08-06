@@ -10,10 +10,10 @@ const WATER_TERRAIN_LAYER := 1 << 11
 const TEST_SPEED := 240.0
 const TEST_COMPENSATION_AGE := 0.25
 
-class ClientViewFixture:
-	extends Node2D
+class ClientViewGateway:
+	extends MultiplayerGameplayGateway
 
-	func is_client_view_runtime() -> bool:
+	func is_client_view() -> bool:
 		return true
 
 
@@ -145,36 +145,36 @@ func _test_multiplayer_projectile_branch_preserves_host_direction() -> void:
 
 
 func _test_runtime_registration_contract() -> void:
-	for source_path in ["res://scene/game_modes/standard/standard_game.gd", "res://scene/game_modes/tower_defense/tower_defense_game.gd"]:
+	for source_path in ["res://scene/combat/runtime/wave_combat_runtime_base.gd", "res://scene/game_modes/tower_defense/tower_defense_game.gd"]:
 		var source := FileAccess.get_file_as_string(source_path)
 		_expect(
 			source.contains(
-				"GameRuntimeBase.register_combat_robot_gunner_bullet_pool("
+				"CombatRuntimeBase.register_combat_robot_gunner_bullet_pool("
 			),
 			"%s must use the shared gunner projectile pool contract." % source_path
 		)
 	var pool := SessionObjectPool.new()
 	root.add_child(pool)
-	GameRuntimeBase.register_combat_robot_gunner_bullet_pool(pool)
+	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(pool)
 	var pool_metrics := pool.get_metrics(BULLET_SCENE.resource_path)
 	_expect(
 		int(pool_metrics.get("created", -1))
-			== GameRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT
+			== CombatRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT
 		and int(pool_metrics.get("inactive", -1))
-			== GameRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT
+			== CombatRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT
 		and int(pool_metrics.get("retained_capacity", -1))
-			== GameRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY,
+			== CombatRuntimeBase.COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY,
 		"Shared gunner pool must stay lazy (0 prewarm) and retain 96 in both runtimes."
 	)
 	pool.free()
-	var load_source := FileAccess.get_file_as_string(
-		"res://scene/loading/game_load_coordinator.gd"
+	var catalog_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/game_mode_catalog.gd"
 	)
 	_expect(
-		load_source.contains(
+		catalog_source.contains(
 			"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 		),
-		"GameLoadCoordinator must stage-load the gunner projectile scene."
+		"GameModeCatalog must stage-load the gunner projectile scene."
 	)
 	var telemetry_source := FileAccess.get_file_as_string(
 		"res://scene/runtime_performance_telemetry.gd"
@@ -256,6 +256,11 @@ func _test_client_view_plant_hit_consumes_visual_without_damage() -> void:
 	var plant := _add_plant(fixture, Vector2(40.0, 0.0))
 	var initial_health := plant.current_health
 	var bullet := await _spawn_stationary_test_bullet(fixture)
+	var gameplay_gateway := (
+		fixture.get_node("MultiplayerGameplayGateway")
+		as MultiplayerGameplayGateway
+	)
+	bullet.bind_gameplay_context(null, gameplay_gateway)
 	bullet.simulate_compensated_motion(TEST_COMPENSATION_AGE)
 	_expect(bullet.has_hit, "Client-view plant contact must consume the visual projectile.")
 	_expect(
@@ -348,8 +353,11 @@ func _create_fixture(fixture_name: String) -> Node2D:
 
 
 func _create_client_view_fixture(fixture_name: String) -> Node2D:
-	var fixture := ClientViewFixture.new()
+	var fixture := Node2D.new()
 	fixture.name = fixture_name
+	var gameplay_gateway := ClientViewGateway.new()
+	gameplay_gateway.name = "MultiplayerGameplayGateway"
+	fixture.add_child(gameplay_gateway)
 	root.add_child(fixture)
 	current_scene = fixture
 	return fixture

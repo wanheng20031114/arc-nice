@@ -79,7 +79,8 @@ var skill3_shots_fired: int = 0
 var skill4_target_global_position := Vector2.ZERO
 var skill4_elapsed: float = 0.0
 var skill4_orb_spawn_ticks_completed: int = 0
-var skill4_laser_field: Node = null
+var skill4_laser_field: LinglanSkill4LaserField = null
+var linglan_runtime_port: LinglanBossRuntimePort = null
 
 
 func _ready() -> void:
@@ -91,9 +92,38 @@ func _ready() -> void:
 	_emit_health_changed()
 
 
-func setup(enemy_config: EnemyConfig, player: Player, shared_pathfinder: Node = null) -> void:
-	super.setup(enemy_config, player, shared_pathfinder)
+func setup(
+	enemy_config: EnemyConfig,
+	player: Player,
+	shared_pathfinder: Node = null,
+	runtime_context: CombatRuntimeBase = null,
+	runtime_port: LinglanBossRuntimePort = null
+) -> void:
+	super.setup(enemy_config, player, shared_pathfinder, runtime_context)
+	bind_linglan_runtime_port(runtime_port)
 	_emit_health_changed()
+
+
+func bind_linglan_runtime_port(runtime_port: LinglanBossRuntimePort) -> void:
+	linglan_runtime_port = runtime_port
+	if (
+		linglan_runtime_port != null
+		and combat_runtime != null
+		and linglan_runtime_port.combat_runtime != combat_runtime
+	):
+		linglan_runtime_port.bind_runtime(combat_runtime)
+
+
+func has_linglan_runtime_context() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and gameplay_gateway != null
+		and is_instance_valid(gameplay_gateway)
+		and linglan_runtime_port != null
+		and is_instance_valid(linglan_runtime_port)
+		and linglan_runtime_port.is_bound()
+	)
 
 
 func configure_multiplayer_proxy() -> void:
@@ -126,11 +156,19 @@ func apply_multiplayer_proxy_motion(
 	_play_proxy_locomotion_animation()
 
 
-func activate_boss(player: Player, shared_pathfinder: Node = null) -> void:
-	setup(config, player, shared_pathfinder)
+func activate_boss(
+	player: Player,
+	shared_pathfinder: Node = null,
+	runtime_context: CombatRuntimeBase = null,
+	runtime_port: LinglanBossRuntimePort = null
+) -> void:
+	setup(config, player, shared_pathfinder, runtime_context, runtime_port)
 	_reset_skill_state()
 	tower_defense_mode = (
-		_find_parent_with_method(&"get_linglan_home_objective_target") != null
+		linglan_runtime_port != null
+		and is_instance_valid(linglan_runtime_port)
+		and linglan_runtime_port.is_bound()
+		and linglan_runtime_port.uses_tower_defense_rules()
 	)
 	set_active(true)
 	if tower_defense_mode:
@@ -224,9 +262,8 @@ func apply_multiplayer_health_snapshot(new_current_health: int) -> void:
 
 
 func _pause_background_music_for_death() -> void:
-	var host := _find_parent_with_method(&"pause_all_background_music")
-	if host != null:
-		host.call("pause_all_background_music")
+	if linglan_runtime_port != null and is_instance_valid(linglan_runtime_port):
+		linglan_runtime_port.pause_background_music()
 
 
 func _reset_skill_state() -> void:
@@ -418,13 +455,9 @@ func _update_tower_advance(delta: float) -> void:
 
 
 func _resolve_tower_home_objective_target() -> Node2D:
-	var host := _find_parent_with_method(&"get_linglan_home_objective_target")
-	if host == null:
+	if linglan_runtime_port == null or not is_instance_valid(linglan_runtime_port):
 		return null
-	return host.call(
-		"get_linglan_home_objective_target",
-		global_position
-	) as Node2D
+	return linglan_runtime_port.get_home_objective_target(global_position)
 
 
 func is_advancing_to_home() -> bool:
@@ -441,10 +474,8 @@ func _update_tower_slime_summoning(delta: float) -> void:
 
 
 func _request_tower_random_slime() -> void:
-	var host := _find_parent_with_method(&"spawn_linglan_random_slime")
-	if host == null:
-		return
-	host.call("spawn_linglan_random_slime", global_position)
+	if linglan_runtime_port != null and is_instance_valid(linglan_runtime_port):
+		linglan_runtime_port.spawn_random_slime(global_position)
 
 
 func _update_enrage_sniper_airdrops(delta: float) -> void:
@@ -465,17 +496,13 @@ func _update_enrage_sniper_airdrops(delta: float) -> void:
 
 
 func _request_enrage_sniper_airdrop() -> void:
-	var host := _find_parent_with_method(&"spawn_linglan_airdrop_sniper")
-	if host == null:
+	if linglan_runtime_port == null or not is_instance_valid(linglan_runtime_port):
 		return
 	if enrage_sniper_config == null:
-		if not host.has_method(&"get_linglan_enrage_sniper_config"):
-			return
-		enrage_sniper_config = host.call("get_linglan_enrage_sniper_config") as EnemyConfig
+		enrage_sniper_config = linglan_runtime_port.get_enrage_sniper_config()
 	if enrage_sniper_config == null:
 		return
-	host.call(
-		"spawn_linglan_airdrop_sniper",
+	linglan_runtime_port.spawn_airdrop_sniper(
 		enrage_sniper_config,
 		AIRDROP_WARNING_SCENE,
 		ENRAGE_SNIPER_WARNING_DURATION,
@@ -594,20 +621,15 @@ func _spawn_skill1_projectile(
 	register_immediately: bool = true,
 	damage_snapshot: int = -1
 ) -> LinglanSakuraBullet:
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	var spawn_parent := _get_effect_spawn_parent()
+	if spawn_parent == null or gameplay_gateway == null:
 		return null
 	var projectile: LinglanSakuraBullet = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call(
-			"has_session_object_pool_scene",
-			skill1_config.projectile_scene
-		))
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		skill1_config.projectile_scene
 	)
 	if uses_registered_pool:
-		projectile = spawn_parent.call(
-			"acquire_session_object",
+		projectile = combat_runtime.acquire_session_object(
 			skill1_config.projectile_scene,
 			false
 		) as LinglanSakuraBullet
@@ -620,6 +642,7 @@ func _spawn_skill1_projectile(
 	if outgoing_damage < 0:
 		outgoing_damage = get_effective_attack_damage(skill1_config.projectile_damage)
 	projectile.top_level = true
+	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.setup(
 		direction,
 		outgoing_damage,
@@ -648,31 +671,17 @@ func _register_multiplayer_skill1_ring(
 ) -> void:
 	if projectiles.is_empty():
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene == null:
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
-	if current_scene.has_method("register_local_linglan_skill1_ring"):
-		current_scene.call(
-			"register_local_linglan_skill1_ring",
-			projectiles,
-			spawn_positions,
-			directions,
-			get_multiplayer_authority(),
-			damage_snapshot,
-			skill1_config.projectile_speed,
-			skill1_config.projectile_lifetime
-		)
-		return
-	# Lightweight test runtimes and single-player scenes may only expose the
-	# generic hook. Keep that compatibility without sending individual RPCs in
-	# the production multiplayer scene, which always implements the batch hook.
-	for index in range(projectiles.size()):
-		_register_multiplayer_projectile(
-			projectiles[index] as LinglanSakuraBullet,
-			spawn_positions[index],
-			directions[index],
-			damage_snapshot
-		)
+	gameplay_gateway.register_local_linglan_skill1_ring(
+		projectiles,
+		spawn_positions,
+		directions,
+		get_multiplayer_authority(),
+		damage_snapshot,
+		skill1_config.projectile_speed,
+		skill1_config.projectile_lifetime
+	)
 
 
 func _register_multiplayer_projectile(
@@ -681,11 +690,9 @@ func _register_multiplayer_projectile(
 	projectile_direction: Vector2,
 	damage_snapshot: int
 ) -> void:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
-	current_scene.call(
-		"register_local_projectile",
+	gameplay_gateway.register_local_projectile(
 		projectile,
 		&"linglan_skill1",
 		get_multiplayer_authority(),
@@ -713,7 +720,7 @@ func _update_skill1_warning_rays() -> void:
 
 
 func _spawn_skill1_warning_rays() -> void:
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_effect_spawn_parent()
 	if spawn_parent == null:
 		return
 
@@ -969,6 +976,7 @@ func _fire_skill2_rocket() -> void:
 	var spawn_position := global_position + skill2_pending_direction * skill2_config.rocket_spawn_distance
 	var outgoing_damage := get_effective_attack_damage(skill2_config.rocket_damage)
 	projectile.top_level = true
+	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.setup(
 		skill2_pending_direction,
 		outgoing_damage,
@@ -997,12 +1005,10 @@ func _register_skill2_multiplayer_projectile(
 	projectile_target_player: Player,
 	damage_snapshot: int
 ) -> void:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
 	var target_peer_id := projectile_target_player.peer_id if projectile_target_player != null else 0
-	current_scene.call(
-		"register_local_projectile",
+	gameplay_gateway.register_local_projectile(
 		projectile,
 		&"linglan_skill2_rocket",
 		get_multiplayer_authority(),
@@ -1032,32 +1038,27 @@ func _update_skill2_pending_target() -> void:
 
 
 func _pick_skill2_target_player() -> Player:
-	var host := _find_parent_with_method(&"get_linglan_skill2_target_player")
-	if host != null:
-		return host.call("get_linglan_skill2_target_player", global_position) as Player
+	if linglan_runtime_port != null and is_instance_valid(linglan_runtime_port):
+		return linglan_runtime_port.get_skill2_target_player(global_position)
 	if target_player != null and is_instance_valid(target_player) and not target_player.is_dead:
 		return target_player
 	return null
 
 
 func _request_skill2_spawn_adds() -> void:
-	var host := _find_parent_with_method(&"spawn_linglan_skill2_enemies")
-	if host == null:
+	if linglan_runtime_port == null or not is_instance_valid(linglan_runtime_port):
 		return
-	host.call(
-		"spawn_linglan_skill2_enemies",
+	linglan_runtime_port.spawn_skill2_enemies(
 		skill2_config.spawn_enemy_config,
 		skill2_config.spawn_marker_names
 	)
 
 
 func _resolve_skill2_target_global_position() -> Vector2:
-	var host := _find_parent_with_method(&"get_linglan_skill2_target_global_position")
-	if host != null:
-		return host.call(
-			"get_linglan_skill2_target_global_position",
+	if linglan_runtime_port != null and is_instance_valid(linglan_runtime_port):
+		return linglan_runtime_port.get_skill2_target_global_position(
 			skill2_config.target_cell
-		) as Vector2
+		)
 	return global_position
 
 
@@ -1145,6 +1146,7 @@ func _fire_skill3_orb() -> void:
 	var grow_delay := skill3_config.get_random_grow_delay(skill3_random)
 	var outgoing_damage := get_effective_attack_damage(skill3_config.orb_damage)
 	orb.top_level = true
+	orb.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	orb.setup(
 		direction,
 		outgoing_damage,
@@ -1179,11 +1181,9 @@ func _register_skill3_multiplayer_projectile(
 	grow_delay: float,
 	damage_snapshot: int
 ) -> void:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
-	current_scene.call(
-		"register_local_projectile",
+	gameplay_gateway.register_local_projectile(
 		projectile,
 		&"linglan_skill3_orb",
 		get_multiplayer_authority(),
@@ -1197,12 +1197,10 @@ func _register_skill3_multiplayer_projectile(
 
 
 func _resolve_skill3_target_global_position() -> Vector2:
-	var host := _find_parent_with_method(&"get_linglan_skill3_target_global_position")
-	if host != null:
-		return host.call(
-			"get_linglan_skill3_target_global_position",
+	if linglan_runtime_port != null and is_instance_valid(linglan_runtime_port):
+		return linglan_runtime_port.get_skill3_target_global_position(
 			skill3_config.target_cell
-		) as Vector2
+		)
 	return global_position
 
 
@@ -1325,6 +1323,7 @@ func _spawn_skill4_orb(spawn_from_left: bool, y_cell: int) -> void:
 	var spawn_position := _resolve_skill4_orb_spawn_global_position(spawn_from_left, y_cell)
 	var outgoing_damage := get_effective_attack_damage(config4.orb_damage)
 	orb.top_level = true
+	orb.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	orb.setup(
 		direction,
 		outgoing_damage,
@@ -1347,11 +1346,9 @@ func _register_skill4_multiplayer_projectile(
 	var config4 := _get_skill4_config()
 	if config4 == null:
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+	if gameplay_gateway == null or not is_instance_valid(gameplay_gateway):
 		return
-	current_scene.call(
-		"register_local_projectile",
+	gameplay_gateway.register_local_projectile(
 		projectile,
 		&"linglan_skill4_orb",
 		get_multiplayer_authority(),
@@ -1377,6 +1374,7 @@ func _spawn_skill4_laser_field(enable_damage: bool) -> void:
 	if field == null:
 		return
 	field.top_level = true
+	field.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	spawn_parent.add_child(field)
 	field.global_position = Vector2.ZERO
 	var outgoing_damage := (
@@ -1403,10 +1401,7 @@ func _spawn_skill4_laser_field(enable_damage: bool) -> void:
 
 func _clear_skill4_laser_field() -> void:
 	if skill4_laser_field != null and is_instance_valid(skill4_laser_field):
-		if skill4_laser_field.has_method("finish"):
-			skill4_laser_field.call("finish")
-		else:
-			skill4_laser_field.queue_free()
+		skill4_laser_field.finish()
 	skill4_laser_field = null
 
 
@@ -1414,13 +1409,11 @@ func _resolve_skill4_target_global_position() -> Vector2:
 	var config4 := _get_skill4_config()
 	if config4 == null:
 		return global_position
-	var host := _find_parent_with_method(&"get_linglan_skill4_target_global_position")
-	if host != null:
-		return host.call(
-			"get_linglan_skill4_target_global_position",
+	if linglan_runtime_port != null and is_instance_valid(linglan_runtime_port):
+		return linglan_runtime_port.get_skill4_target_global_position(
 			config4.target_cell_a,
 			config4.target_cell_b
-		) as Vector2
+		)
 	return global_position
 
 
@@ -1433,16 +1426,14 @@ func _resolve_skill4_laser_bounds() -> Dictionary:
 			"final_min": global_position,
 			"final_max": global_position,
 		}
-	var host := _find_parent_with_method(&"get_linglan_skill4_laser_bounds")
-	if host != null:
-		return host.call(
-			"get_linglan_skill4_laser_bounds",
+	if linglan_runtime_port != null and is_instance_valid(linglan_runtime_port):
+		return linglan_runtime_port.get_skill4_laser_bounds(
 			config4.laser_start_left_cell_x,
 			config4.laser_start_right_cell_x,
 			config4.laser_start_top_cell_y,
 			config4.laser_start_bottom_cell_y,
 			config4.laser_inward_cell_distance
-		) as Dictionary
+		)
 	return {
 		"start_min": global_position,
 		"start_max": global_position,
@@ -1455,18 +1446,16 @@ func _resolve_skill4_orb_spawn_global_position(spawn_from_left: bool, y_cell: in
 	var config4 := _get_skill4_config()
 	if config4 == null:
 		return global_position
-	var host := _find_parent_with_method(&"get_linglan_skill4_orb_spawn_global_position")
 	var x_cell: int = (
 		config4.laser_start_left_cell_x
 		if spawn_from_left
 		else config4.laser_start_right_cell_x
 	)
-	if host != null:
-		return host.call(
-			"get_linglan_skill4_orb_spawn_global_position",
+	if linglan_runtime_port != null and is_instance_valid(linglan_runtime_port):
+		return linglan_runtime_port.get_skill4_orb_spawn_global_position(
 			x_cell,
 			y_cell
-		) as Vector2
+		)
 	return global_position
 
 
@@ -1546,10 +1535,8 @@ func _play_proxy_locomotion_animation() -> void:
 
 func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> void:
 	action_sequence += 1
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("broadcast_enemy_action"):
-		current_scene.call(
-			"broadcast_enemy_action",
+	if gameplay_gateway != null and is_instance_valid(gameplay_gateway):
+		gameplay_gateway.broadcast_enemy_action(
 			int(get_meta("net_id", 0)),
 			action_name,
 			direction,
@@ -1558,23 +1545,10 @@ func _broadcast_enemy_action(action_name: StringName, direction: Vector2) -> voi
 		)
 
 
-func _find_parent_with_method(method_name: StringName) -> Node:
-	var current: Node = self
-	while current != null:
-		if current.has_method(method_name):
-			return current
-		current = current.get_parent()
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method(method_name):
-		return current_scene
-	return null
-
-
 func _get_effect_spawn_parent() -> Node:
-	var current_scene := get_tree().current_scene
-	if current_scene != null:
-		return current_scene
-	return get_parent()
+	if combat_runtime != null and is_instance_valid(combat_runtime):
+		return combat_runtime
+	return null
 
 
 func _play_skill2_fire_audio() -> void:

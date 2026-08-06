@@ -59,7 +59,7 @@ func _test_runtime_scene_wiring() -> void:
 		_expect(runtime_scene != null, "Runtime scene resource must load: %s" % runtime_scene_path)
 		if runtime_scene == null:
 			continue
-		var runtime := runtime_scene.instantiate() as GameRuntimeBase
+		var runtime := runtime_scene.instantiate() as CombatRuntimeBase
 		_expect(runtime != null, "Runtime scene must instantiate: %s" % runtime_scene_path)
 		if runtime == null:
 			continue
@@ -318,7 +318,7 @@ func _test_spawn_effect_tween_isolation() -> void:
 
 func _test_direct_xirang_kill_reward() -> void:
 	var runtime_scene := load("res://scene/game_modes/standard/standard_game.tscn") as PackedScene
-	var runtime := runtime_scene.instantiate() as GameRuntimeBase
+	var runtime := runtime_scene.instantiate() as CombatRuntimeBase
 	_expect(runtime != null, "Direct-reward fixture must instantiate the standard runtime.")
 	if runtime == null:
 		return
@@ -416,7 +416,7 @@ func _test_multiplayer_forwarding_contract() -> void:
 	)
 	var enemy_source := FileAccess.get_file_as_string("res://scene/enemy/enemy.gd")
 	_expect(
-		enemy_source.contains("func _get_owning_game_runtime() -> GameRuntimeBase:")
+		enemy_source.contains("func _get_owning_game_runtime() -> CombatRuntimeBase:")
 		and enemy_source.contains(
 			"game_runtime.grant_xirang_kill_reward(reward_amount)"
 		)
@@ -443,7 +443,7 @@ func _test_multiplayer_forwarding_contract() -> void:
 			"Enemy subclasses must not retain Xirang orb creation or collection code: %s"
 			% reward_owner_path
 		)
-	var runtime_source := FileAccess.get_file_as_string("res://scene/game_runtime_base.gd")
+	var runtime_source := FileAccess.get_file_as_string("res://scene/combat/runtime/combat_runtime_base.gd")
 	_expect(
 		runtime_source.contains("func grant_xirang_kill_reward(")
 		and not runtime_source.contains("func spawn_xirang_reward("),

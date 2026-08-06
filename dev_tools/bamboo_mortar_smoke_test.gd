@@ -57,7 +57,7 @@ var enemies: Array[Enemy] = []
 
 
 class MortarRuntimeStub:
-	extends Node2D
+	extends CombatRuntimeTestFixture
 
 	var candidates: Array[Enemy] = []
 	var query_count := 0
@@ -65,13 +65,19 @@ class MortarRuntimeStub:
 	var queued_visuals: Array[Dictionary] = []
 	var damage_records: Array[Dictionary] = []
 	var session_object_pool: SessionObjectPool = null
+	var plant_gameplay_port: MortarPlantPort = null
 	var apply_real_damage := false
 
 	func install_pool() -> void:
+		install_base_runtime_nodes()
 		session_object_pool = SessionObjectPool.new()
 		session_object_pool.name = "SessionObjectPool"
 		add_child(session_object_pool)
 		session_object_pool.register_scene(SHELL_SCENE, 1, 8)
+		plant_gameplay_port = MortarPlantPort.new()
+		plant_gameplay_port.fixture_runtime = self
+		plant_gameplay_port.name = "TowerPlantGameplayPort"
+		add_child(plant_gameplay_port)
 
 	func query_combat_targets_unordered_into(
 		center: Vector2,
@@ -144,11 +150,171 @@ class MortarRuntimeStub:
 	) -> Node:
 		if session_object_pool == null:
 			return null
-		return (
+		var instance := (
 			session_object_pool.try_acquire(scene)
 			if strict
 			else session_object_pool.acquire(scene)
 		)
+		var shell := instance as BambooMortarShell
+		if shell != null:
+			shell.bind_gameplay_context(self, plant_gameplay_port)
+		return instance
+
+
+class MortarPlantPort:
+	extends TowerPlantGameplayPort
+
+	var fixture_runtime: MortarRuntimeStub = null
+
+	func broadcast_plant_projectile_visual(
+		_plant_net_id: int,
+		_spawn_position: Vector2,
+		_direction: Vector2,
+		_speed: float,
+		_explosion_radius: float,
+		_lifetime: float
+	) -> bool:
+		return false
+
+	func queue_bamboo_mortar_visual(
+		plant_net_id: int,
+		action_id: int,
+		stage: int,
+		spawn_position: Vector2,
+		landing_position: Vector2,
+		committed_windup_duration_seconds: float
+	) -> bool:
+		if fixture_runtime == null:
+			return false
+		fixture_runtime.queue_bamboo_mortar_visual(
+			plant_net_id,
+			action_id,
+			stage,
+			spawn_position,
+			landing_position,
+			committed_windup_duration_seconds
+		)
+		return true
+
+	func queue_hydrangea_rain_visual(
+		_plant_net_id: int,
+		_action_id: int,
+		_target_position: Vector2,
+		_action_elapsed_seconds: float
+	) -> bool:
+		return false
+
+	func queue_corn_machine_gun_burst_visual(
+		_plant_net_id: int,
+		_action_id: int,
+		_direction: Vector2
+	) -> bool:
+		return false
+
+	func apply_authoritative_plant_enemy_damage(
+		source_id: int,
+		enemy_node: Node2D,
+		damage: int,
+		impact_direction: Vector2,
+		damage_type: int
+	) -> bool:
+		if fixture_runtime == null:
+			return false
+		return fixture_runtime.apply_authoritative_plant_enemy_damage(
+			source_id,
+			enemy_node as Enemy,
+			damage,
+			impact_direction,
+			damage_type
+		)
+
+	func apply_authoritative_plant_enemy_damage_batch(
+		_source_id: int,
+		enemy_node: Node2D,
+		damage_amounts: PackedInt64Array,
+		hit_counts: PackedInt32Array,
+		impact_direction: Vector2,
+		damage_type: int
+	) -> bool:
+		var enemy := enemy_node as Enemy
+		return (
+			enemy != null
+			and enemy.apply_damage_batch(
+				damage_amounts,
+				hit_counts,
+				impact_direction,
+				damage_type
+			)
+		)
+
+	func request_bamboo_mortar_target(
+		_owner: Node2D,
+		_minimum_range: float,
+		_maximum_range: float,
+		_callback: Callable
+	) -> bool:
+		return false
+
+	func cancel_bamboo_mortar_target_request(_owner: Node) -> void:
+		pass
+
+	func queue_bamboo_mortar_explosion(
+		landing_position: Vector2,
+		inner_radius: float,
+		outer_radius: float,
+		inner_damage: int,
+		outer_damage: int,
+		damage_source_id: int
+	) -> bool:
+		if fixture_runtime == null:
+			return false
+		var targets: Array[Enemy] = []
+		fixture_runtime.query_combat_targets_unordered_into(
+			landing_position,
+			outer_radius,
+			targets
+		)
+		var inner_radius_squared := inner_radius * inner_radius
+		var outer_radius_squared := outer_radius * outer_radius
+		for enemy in targets:
+			if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+				continue
+			var distance_squared := landing_position.distance_squared_to(
+				enemy.global_position
+			)
+			if distance_squared > outer_radius_squared:
+				continue
+			var applied_damage := (
+				inner_damage
+				if distance_squared <= inner_radius_squared
+				else outer_damage
+			)
+			var impact_direction := landing_position.direction_to(
+				enemy.global_position
+			)
+			if impact_direction == Vector2.ZERO:
+				impact_direction = Vector2.UP
+			apply_authoritative_plant_enemy_damage(
+				damage_source_id,
+				enemy,
+				applied_damage,
+				impact_direction,
+				EnemyConfig.DamageType.PHYSICAL
+			)
+		return true
+
+	func query_living_plants_in_radius_into(
+		_center: Vector2,
+		_radius: float,
+		result: Array
+	) -> void:
+		result.clear()
+
+	func begin_inventory_building_placement(
+		_slot_index: int,
+		_expected_inventory_revision: int
+	) -> bool:
+		return false
 
 
 func _init() -> void:
@@ -158,9 +324,9 @@ func _init() -> void:
 func _run() -> void:
 	runtime = MortarRuntimeStub.new()
 	runtime.name = "BambooMortarSmokeFixture"
+	runtime.install_pool()
 	root.add_child(runtime)
 	current_scene = runtime
-	runtime.install_pool()
 
 	var authority := _create_mortar(false, 701)
 	var proxy := _create_mortar(true, 702)
@@ -193,6 +359,7 @@ func _create_mortar(as_proxy: bool, net_id: int) -> BambooMortar:
 	if mortar == null:
 		return null
 	mortar.set_meta(&"net_id", net_id)
+	mortar.bind_gameplay_context(runtime, runtime.plant_gameplay_port)
 	runtime.add_child(mortar)
 	mortar.setup(MORTAR_CONFIG, null, [], as_proxy)
 	mortar.attack_timer.stop()
@@ -1628,7 +1795,7 @@ func _test_physical_defense_settlement() -> void:
 		return
 	runtime.add_child(armored)
 	armored.global_position = Vector2.ZERO
-	armored.setup(ARMORED_ENEMY_CONFIG, null, null)
+	armored.setup(ARMORED_ENEMY_CONFIG, null, null, runtime)
 	armored.set_process(false)
 	armored.set_physics_process(false)
 	if armored.touch_damage_area != null:

@@ -26,7 +26,7 @@ var _failures := PackedStringArray()
 
 
 class SpawnBatchProbe:
-	extends StandardGame
+	extends WaveCombatRuntimeBase
 
 	var spawn_attempts := 0
 
@@ -285,13 +285,13 @@ func _test_single_wave_campaign() -> void:
 func _test_ten_enemy_spawn_batch() -> void:
 	var wave := ROGUE_CAMPAIGN.get_waves()[0]
 	var probe := SpawnBatchProbe.new()
-	probe.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	probe.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	probe.current_flow_step = wave
 	probe.enemy_spawn_timer = Timer.new()
 	probe.call("_build_wave_spawn_queue", wave)
 	probe.call("_spawn_wave_batch")
-	_expect(probe.spawn_attempts == 10, "StandardGame 单个刷怪 tick 必须实际尝试生成 10 个敌人。")
-	_expect(probe.current_wave_spawned == 10, "StandardGame 单个刷怪 tick 必须记录 10 个已生成敌人。")
+	_expect(probe.spawn_attempts == 10, "WaveCombatRuntimeBase 单个刷怪 tick 必须实际尝试生成 10 个敌人。")
+	_expect(probe.current_wave_spawned == 10, "WaveCombatRuntimeBase 单个刷怪 tick 必须记录 10 个已生成敌人。")
 	_expect(
 		probe.pending_enemy_configs.is_empty(),
 		"单次批量生成 10 个敌人后不应残留待生成队列。"

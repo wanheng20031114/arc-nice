@@ -73,7 +73,12 @@ var authoritative_offer_pending: bool = false
 var _authoritative_request_kind: AuthoritativeRequestKind = (
 	AuthoritativeRequestKind.NONE
 )
+var multiplayer_mode_adapter: MultiplayerModeAdapter = null
 static var _runtime_choice_count := DEFAULT_CHOICE_COUNT
+
+
+func bind_multiplayer_mode_adapter(adapter: MultiplayerModeAdapter) -> void:
+	multiplayer_mode_adapter = adapter
 
 
 static func get_choice_count() -> int:
@@ -139,6 +144,36 @@ static func cache_collectible_config(item: PickupConfig) -> void:
 
 static func finish_collectible_cache_warmup() -> void:
 	CollectibleRegistry.finish_cache_warmup()
+
+
+static func prewarm_collectible_cache(runtime: CombatRuntimeBase) -> void:
+	if runtime == null or is_collectible_cache_ready():
+		return
+	var config_paths := get_collectible_config_paths()
+	const CONFIGS_PER_FRAME := 8
+	var total_batches := maxi(
+		ceili(float(config_paths.size()) / CONFIGS_PER_FRAME),
+		1
+	)
+	var completed_batches := 0
+	for batch_start in range(0, config_paths.size(), CONFIGS_PER_FRAME):
+		var batch_end := mini(
+			batch_start + CONFIGS_PER_FRAME,
+			config_paths.size()
+		)
+		for config_index in range(batch_start, batch_end):
+			var config := load(config_paths[config_index]) as PickupConfig
+			cache_collectible_config(config)
+		completed_batches += 1
+		runtime.update_runtime_preparation_progress(
+			"缓存收藏品配置…",
+			completed_batches,
+			total_batches
+		)
+		await runtime.get_tree().process_frame
+		if not runtime.is_inside_tree():
+			return
+	finish_collectible_cache_warmup()
 
 
 static func _ensure_collectible_cache() -> void:
@@ -569,15 +604,12 @@ func _get_authoritative_refresh_status(result_code: int) -> String:
 
 
 func _show_choice_offer() -> void:
-	var current_scene := get_tree().current_scene
 	if (
-		current_scene != null
-		and current_scene.has_method("uses_authoritative_luoxi_offers")
-		and bool(current_scene.call("uses_authoritative_luoxi_offers"))
+		multiplayer_mode_adapter != null
+		and multiplayer_mode_adapter.uses_authoritative_luoxi_offers()
 	):
 		begin_authoritative_offer_request()
-		if current_scene.has_method("request_luoxi_collectible_offer"):
-			current_scene.call("request_luoxi_collectible_offer")
+		multiplayer_mode_adapter.request_luoxi_collectible_offer()
 		return
 	choice_visible = true
 	dialogue_bubble.hide_bubble()
@@ -638,20 +670,14 @@ func _try_claim_selected_collectible() -> void:
 		show_collectible_result(MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER)
 		return
 	var config_path := selected_item.resource_path
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_luoxi_collectible_choice"):
-		if (
-			current_scene.has_method("uses_authoritative_luoxi_offers")
-			and bool(current_scene.call("uses_authoritative_luoxi_offers"))
-		):
-			current_scene.call(
-				"request_luoxi_collectible_choice",
-				selected_choice_index,
-				"",
-				authoritative_offer_revision
-			)
-		else:
-			current_scene.call("request_luoxi_collectible_choice", selected_choice_index, config_path)
+	if (
+		multiplayer_mode_adapter != null
+		and multiplayer_mode_adapter.request_luoxi_collectible_choice(
+			selected_choice_index,
+			config_path,
+			authoritative_offer_revision
+		)
+	):
 		return
 	show_collectible_result(_claim_local_collectible(active_player, config_path))
 
@@ -753,23 +779,19 @@ func _update_refresh_ui(status_override: String = "") -> void:
 func _request_collectible_refresh() -> void:
 	if active_player == null or not choice_visible:
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_luoxi_collectible_refresh"):
+	if multiplayer_mode_adapter != null:
 		choice_overlay.set_refresh_pending(true)
 		if (
-			current_scene.has_method("uses_authoritative_luoxi_offers")
-			and bool(current_scene.call("uses_authoritative_luoxi_offers"))
+			multiplayer_mode_adapter.uses_authoritative_luoxi_offers()
 		):
 			_arm_authoritative_request_timeout(
 				AuthoritativeRequestKind.REFRESH
 			)
-			current_scene.call(
-				"request_luoxi_collectible_refresh",
-				authoritative_offer_revision
-			)
-		else:
-			current_scene.call("request_luoxi_collectible_refresh")
-		return
+		if multiplayer_mode_adapter.request_luoxi_collectible_refresh(
+			authoritative_offer_revision
+		):
+			return
+		choice_overlay.set_refresh_pending(false)
 	var result_code := try_purchase_refresh_for_player(active_player)
 	show_refresh_result(
 		result_code,
@@ -874,9 +896,8 @@ func _is_player_claimed(player: Player) -> bool:
 	if player == null:
 		return false
 	var player_key := _get_player_claim_key(player)
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("has_luoxi_collectible_claimed"):
-		return bool(current_scene.call("has_luoxi_collectible_claimed", player_key))
+	if multiplayer_mode_adapter != null:
+		return multiplayer_mode_adapter.has_luoxi_collectible_claimed(player_key)
 	return _get_player_claim_count(player_key) >= COLLECTIBLE_CLAIMS_PER_ROUND
 
 

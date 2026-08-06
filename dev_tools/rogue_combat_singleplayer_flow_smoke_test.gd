@@ -222,7 +222,7 @@ func _test_normal_combat_briefing_cancel_confirm_and_entry() -> void:
 			and not route.combat_scene_transition.visible
 			and is_zero_approx(route.combat_scene_transition.progress)
 			and not battle.runtime_activation_deferred
-			and battle.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+			and battle.wave_state == CombatFlowState.State.PRE_WAVE
 			and battle.countdown_seconds == 3,
 			"战场 prepared 时必须仍处于完整遮盖；reveal 完成后才可激活三秒准备倒计时。"
 		)
@@ -331,7 +331,7 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 	for _second in 3:
 		battle.call("_on_state_timer_timeout")
 	_expect(
-		battle.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
+		battle.wave_state == CombatFlowState.State.WAVE_ACTIVE
 		and battle.current_wave_spawned == 10
 		and battle.current_wave_total == 10
 		and battle.active_wave_enemy_ids.size() == 10
@@ -658,7 +658,7 @@ func _test_timeout_result_then_retry() -> void:
 		await _wait_for_preparation(battle),
 		"超时夹具必须先完成战场预热，才能验证活动战场的安全冻结。"
 	)
-	battle.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	battle.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	battle.combat_seconds_remaining = 1
 	battle.set("_combat_deadline_started", true)
 	battle.call("_on_combat_deadline_timer_timeout")
@@ -899,7 +899,7 @@ func _wait_for_preparation(battle: RogueCombatGame) -> bool:
 		if (
 			is_instance_valid(battle)
 			and not battle.runtime_activation_deferred
-			and battle.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+			and battle.wave_state == CombatFlowState.State.PRE_WAVE
 		):
 			return true
 		await process_frame
@@ -949,7 +949,7 @@ func _expect_fixed_underground_night(
 	var controller := battle.day_night_controller
 	_expect(
 		battle.world_lighting_policy
-		== GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
+		== CombatRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
 		and controller != null
 		and controller.night_color.is_equal_approx(
 			RogueCombatGame.UNDERGROUND_NIGHT_COLOR

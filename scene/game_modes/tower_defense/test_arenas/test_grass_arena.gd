@@ -127,7 +127,7 @@ func set_manual_night_enabled(
 		return
 	_apply_manual_night_enabled(enabled, duration_seconds)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		test_arena_manual_night_changed.emit(manual_night_enabled)
+		tower_multiplayer_mode_adapter.test_arena_manual_night_changed.emit(manual_night_enabled)
 
 
 func supports_test_arena_manual_night_sync() -> bool:

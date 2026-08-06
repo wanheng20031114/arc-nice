@@ -58,17 +58,15 @@ func _apply_multiplayer_player_damage(
 ) -> void:
 	if hit_player == null or damage_amount <= 0:
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_multiplayer_player_damage"):
-		current_scene.call(
-			"request_multiplayer_player_damage",
+	if _try_request_player_damage(
 			source_id,
 			hit_player.peer_id,
 			damage_amount,
 			source_type
-		)
+		):
 		return
-	hit_player.apply_damage(damage_amount)
+	if _has_explicit_singleplayer_authority():
+		hit_player.apply_damage(damage_amount)
 
 
 func _get_multiplayer_damage_source_id(source_suffix: int) -> int:

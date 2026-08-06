@@ -9,10 +9,12 @@ const TEST_SEED := 20260715
 
 var failures: Array[String] = []
 var fixture: Node2D = null
+var default_runtime: CombatRuntimeTestFixture = null
+var plant_gameplay_port: CornPlantPort = null
 
 
 class TargetRuntimeStub:
-	extends Node2D
+	extends CombatRuntimeTestFixture
 
 	var candidate: Enemy = null
 	var candidates: Array[Enemy] = []
@@ -62,6 +64,35 @@ class TargetRuntimeStub:
 		)
 
 
+class CornPlantPort:
+	extends TowerPlantGameplayTestPort
+
+	func queue_corn_machine_gun_burst_visual(
+		_plant_net_id: int,
+		_action_id: int,
+		_direction: Vector2
+	) -> bool:
+		return true
+
+	func apply_authoritative_plant_enemy_damage(
+		_damage_source_id: int,
+		enemy_node: Node2D,
+		damage: int,
+		impact_direction: Vector2,
+		damage_type: int
+	) -> bool:
+		var enemy := enemy_node as Enemy
+		return (
+			enemy != null
+			and enemy.apply_damage(
+				damage,
+				impact_direction,
+				damage_type,
+				false
+			)
+		)
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -70,6 +101,13 @@ func _run() -> void:
 	fixture = Node2D.new()
 	fixture.name = "CornMachineGunSmokeFixture"
 	root.add_child(fixture)
+	default_runtime = CombatRuntimeTestFixture.new()
+	default_runtime.name = "DefaultCombatRuntime"
+	default_runtime.install_base_runtime_nodes()
+	fixture.add_child(default_runtime)
+	plant_gameplay_port = CornPlantPort.new()
+	plant_gameplay_port.name = "TowerPlantGameplayPort"
+	fixture.add_child(plant_gameplay_port)
 
 	var authority := _create_tower(false)
 	var proxy := _create_tower(true)
@@ -106,6 +144,7 @@ func _create_tower(as_proxy: bool) -> CornMachineGun:
 	_expect(tower != null, "玉米机枪塔场景必须实例化为 CornMachineGun。")
 	if tower == null:
 		return null
+	tower.bind_gameplay_context(default_runtime, plant_gameplay_port)
 	fixture.add_child(tower)
 	tower.setup(CORN_CONFIG, null, [], as_proxy)
 	tower.attack_timer.stop()
@@ -567,6 +606,7 @@ func _test_idle_aim_alternation(tower: CornMachineGun) -> void:
 func _test_target_and_ray_query_reuse(tower: CornMachineGun) -> void:
 	var runtime := TargetRuntimeStub.new()
 	runtime.name = "CornTargetRuntimeStub"
+	runtime.install_base_runtime_nodes()
 	fixture.add_child(runtime)
 	var enemy := ENEMY_SCENE.instantiate() as Enemy
 	_expect(enemy != null, "Target reuse fixture must instantiate an Enemy.")
@@ -582,7 +622,7 @@ func _test_target_and_ray_query_reuse(tower: CornMachineGun) -> void:
 	tower.global_position = Vector2(256.0, 192.0)
 	enemy.global_position = tower.aim_pivot.global_position + Vector2(40.0, 0.0)
 	runtime.candidate = enemy
-	tower.set("_combat_runtime", runtime)
+	tower.bind_gameplay_context(runtime, plant_gameplay_port)
 	# The signal is emitted at the start of a physics step. When an earlier test
 	# resumes from a SceneTreeTimer, one signal alone can still precede the
 	# PhysicsServer registration of this newly added collider. Cross one complete
@@ -634,12 +674,14 @@ func _test_target_and_ray_query_reuse(tower: CornMachineGun) -> void:
 	runtime.candidate = null
 	enemy.queue_free()
 	runtime.queue_free()
+	tower.bind_gameplay_context(default_runtime, plant_gameplay_port)
 	await physics_frame
 
 
 func _test_blocked_nearest_adaptive_selection(tower: CornMachineGun) -> void:
 	var runtime := TargetRuntimeStub.new()
 	runtime.name = "CornBlockedTargetRuntimeStub"
+	runtime.install_base_runtime_nodes()
 	fixture.add_child(runtime)
 	var blocked_enemy := ENEMY_SCENE.instantiate() as Enemy
 	var clear_enemy := ENEMY_SCENE.instantiate() as Enemy
@@ -652,6 +694,7 @@ func _test_blocked_nearest_adaptive_selection(tower: CornMachineGun) -> void:
 			if enemy != null:
 				enemy.queue_free()
 		runtime.queue_free()
+		tower.bind_gameplay_context(default_runtime, plant_gameplay_port)
 		return
 	for enemy in [blocked_enemy, clear_enemy]:
 		fixture.add_child(enemy)
@@ -665,7 +708,7 @@ func _test_blocked_nearest_adaptive_selection(tower: CornMachineGun) -> void:
 	blocked_enemy.global_position = ray_origin + Vector2(48.0, 0.0)
 	clear_enemy.global_position = ray_origin + Vector2(0.0, 80.0)
 	runtime.candidates.assign([blocked_enemy, clear_enemy])
-	tower.set("_combat_runtime", runtime)
+	tower.bind_gameplay_context(runtime, plant_gameplay_port)
 
 	var blocker := _create_hitscan_probe(&"AdaptiveSelectionWall", 1)
 	blocker.global_position = ray_origin + Vector2(24.0, 0.0)
@@ -690,6 +733,7 @@ func _test_blocked_nearest_adaptive_selection(tower: CornMachineGun) -> void:
 	blocked_enemy.queue_free()
 	clear_enemy.queue_free()
 	runtime.queue_free()
+	tower.bind_gameplay_context(default_runtime, plant_gameplay_port)
 	await physics_frame
 
 
@@ -820,9 +864,10 @@ func _test_other_shield_bearer_blocks_target(tower: CornMachineGun) -> void:
 	target.set_physics_process(false)
 	target.is_dead = false
 	var runtime := TargetRuntimeStub.new()
+	runtime.install_base_runtime_nodes()
 	case_root.add_child(runtime)
 	runtime.candidate = target
-	tower.set("_combat_runtime", runtime)
+	tower.bind_gameplay_context(runtime, plant_gameplay_port)
 	await physics_frame
 	await physics_frame
 	var selected := tower.call("_select_nearest_visible_enemy") as Enemy
@@ -832,7 +877,7 @@ func _test_other_shield_bearer_blocks_target(tower: CornMachineGun) -> void:
 		and _get_bearer_durability(blocker) == 20,
 		"其他举盾机器人位于射线上时必须遮挡后方目标，索敌射线本身不得消耗盾耐久。"
 	)
-	tower.set("_combat_runtime", null)
+	tower.bind_gameplay_context(default_runtime, plant_gameplay_port)
 	await _dispose_case_root(case_root)
 
 
@@ -877,7 +922,7 @@ func _prepare_locked_hitscan(
 	tower.call("_cancel_burst", false)
 	tower.call("_cancel_aim_return")
 	tower.call("_stop_idle_aim")
-	tower.set("_combat_runtime", null)
+	tower.bind_gameplay_context(default_runtime, plant_gameplay_port)
 	tower.global_position = tower_position
 	tower.call("_point_aim_at_direction", direction)
 	tower.burst_direction = direction.normalized()
@@ -908,7 +953,7 @@ func _add_real_shield_bearer(
 		return null
 	parent.add_child(bearer)
 	bearer.global_position = position
-	bearer.setup(bearer_config, null, null)
+	bearer.setup(bearer_config, null, null, default_runtime)
 	bearer.set_process(false)
 	bearer.set_physics_process(false)
 	bearer.call("_set_facing_left", facing_left)

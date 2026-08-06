@@ -44,7 +44,7 @@ func _run() -> void:
 		_finish()
 		return
 
-	var campaign := _create_test_campaign(wave)
+	var campaign: WaveCampaignConfig = _create_test_campaign(wave)
 	game.singleplayer_campaign = campaign
 	game.multiplayer_campaign = campaign
 	game.auto_start_waves = false
@@ -59,7 +59,7 @@ func _run() -> void:
 				"failure_reason": failure_reason,
 			})
 	)
-	game.multiplayer_flow_state_changed.connect(
+	game.multiplayer_mode_adapter.flow_state_changed.connect(
 		func(step_id: StringName, state: int, seconds: int) -> void:
 			flow_events.append({
 				"step_id": step_id,
@@ -77,6 +77,12 @@ func _run() -> void:
 	_test_permanent_death_presentation()
 
 	await _cleanup()
+	campaign = null
+	wave = null
+	outcome_events.clear()
+	flow_events.clear()
+	await process_frame
+	await physics_frame
 	_finish()
 
 
@@ -86,7 +92,15 @@ func _test_independent_scene_contract() -> void:
 		scene_state != null and scene_state.get_base_scene_state() == null,
 		"Rouge 作战必须是可独立编辑的场景，不能继续继承 game.tscn。"
 	)
-	_expect(game is StandardGame, "Rouge 作战脚本必须继续复用普通模式 StandardGame 行为。")
+	_expect(
+		game is WaveCombatRuntimeBase,
+		"Rouge 作战脚本必须复用中性 WaveCombatRuntimeBase 行为。"
+	)
+	var game_variant: Variant = game
+	_expect(
+		not game_variant is StandardGame,
+		"Rouge 作战运行时不得直接或间接依赖 StandardGame。"
+	)
 	var script_source := FileAccess.get_file_as_string(
 		ROGUE_COMBAT_SCRIPT_PATH
 	)
@@ -176,13 +190,10 @@ func _test_independent_scene_contract() -> void:
 		)
 
 	_expect(
-		not game.standard_merchants_enabled
-		and game.merchant == null
-		and game.luoxi_merchant == null
-		and game.get_node_or_null("ZhuangfangyiMerchant") == null
+		game.get_node_or_null("ZhuangfangyiMerchant") == null
 		and game.get_node_or_null("LuoxiMerchant") == null
 		and game.get_node_or_null("WorldBounds") == null,
-		"场景 01 必须在静态结构中排除标准商人、默认拾取物与旧 WorldBounds。"
+		"场景 01 必须静态排除普通模式商人、默认拾取物与旧 WorldBounds。"
 	)
 	var scene_contract_errors := game.validate_encounter_scene_contract(
 		RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
@@ -201,7 +212,6 @@ func _test_independent_scene_contract() -> void:
 	_expect(
 		game.get_node_or_null("RogueCombatHUD") is RogueCombatHUD
 		and game.get_node_or_null("WaveHUD") == null
-		and game.wave_hud == null
 		and game.get_node_or_null("CombatDeadlineTimer") is Timer
 		and game.get_node_or_null("PlayerLifeStatusLayer") is CanvasLayer
 		and game.get_node_or_null(
@@ -242,7 +252,7 @@ func _test_fixed_underground_night_contract() -> void:
 	var underground_color := RogueCombatGame.UNDERGROUND_NIGHT_COLOR
 	_expect(
 		game.world_lighting_policy
-		== GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT,
+		== CombatRuntimeBase.WorldLightingPolicy.FIXED_NIGHT,
 		"场景 01 必须使用 FIXED_NIGHT 世界光照策略。"
 	)
 	_expect(
@@ -288,7 +298,7 @@ func _test_deadline_start_policies() -> void:
 	game.call("_enter_pre_flow_step", wave)
 	_expect_fixed_underground_night("PRE_WAVE（准备期计时）")
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+		game.wave_state == CombatFlowState.State.PRE_WAVE
 		and game.countdown_seconds == 3,
 		"PREPARATION_START 必须先进入三秒 PRE_WAVE。"
 	)
@@ -326,7 +336,7 @@ func _test_deadline_start_policies() -> void:
 	game.enemy_spawn_timer.stop()
 	_expect_fixed_underground_night("WAVE_ACTIVE")
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
+		game.wave_state == CombatFlowState.State.WAVE_ACTIVE
 		and game.current_wave_total == 10,
 		"正式开战必须进入 WAVE_ACTIVE，并保留十名敌人的权威总数。"
 	)
@@ -347,11 +357,11 @@ func _test_deadline_start_policies() -> void:
 		and game.music_player.bus == &"Music"
 		and is_equal_approx(
 			game.music_player.volume_db,
-			StandardGame.MUSIC_FADE_IN_START_VOLUME_DB
+			RogueCombatGame.MUSIC_FADE_IN_START_VOLUME_DB
 		)
 		and game.music_fade_tween != null
-		and is_equal_approx(StandardGame.DEFAULT_MUSIC_VOLUME_DB, -6.0)
-		and is_equal_approx(StandardGame.MUSIC_FADE_IN_SECONDS, 3.0)
+		and is_equal_approx(RogueCombatGame.DEFAULT_MUSIC_VOLUME_DB, -6.0)
+		and is_equal_approx(RogueCombatGame.MUSIC_FADE_IN_SECONDS, 3.0)
 		and (ROGUE_COMBAT_MUSIC as AudioStreamMP3).loop,
 		"WAVE_ACTIVE 必须在 Music 总线以 -6 dB 目标和三秒淡入启动循环 1-28。"
 	)
@@ -359,8 +369,8 @@ func _test_deadline_start_policies() -> void:
 
 
 func _test_authoritative_deadline_and_outcomes() -> void:
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	game.combat_seconds_remaining = 90
 	game.combat_deadline_timer.stop()
 	game.set("_combat_deadline_started", true)
@@ -374,7 +384,7 @@ func _test_authoritative_deadline_and_outcomes() -> void:
 	_expect(
 		flow_events.size() == 1
 		and flow_events[0].step_id == wave.step_id
-		and int(flow_events[0].state) == GameRuntimeBase.WaveState.WAVE_ACTIVE
+		and int(flow_events[0].state) == CombatFlowState.State.WAVE_ACTIVE
 		and int(flow_events[0].seconds) == 89,
 		"Host 的每秒作战状态必须广播当前 step、WAVE_ACTIVE 与剩余秒数。"
 	)
@@ -385,10 +395,10 @@ func _test_authoritative_deadline_and_outcomes() -> void:
 	)
 	game.call("_stop_combat_deadline")
 
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	game.call("_reset_combat_outcome")
 	game.call("_reset_combat_deadline")
-	game.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	game.call("_start_combat_deadline")
 	game.combat_seconds_remaining = 1
 	var outcome_count_before_timeout := outcome_events.size()
@@ -396,7 +406,7 @@ func _test_authoritative_deadline_and_outcomes() -> void:
 	game.call("_on_combat_deadline_timer_timeout")
 	_expect_fixed_underground_night("DEFEAT")
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.DEFEAT
+		game.wave_state == CombatFlowState.State.DEFEAT
 		and game.combat_deadline_timer.is_stopped()
 		and not bool(game.get("_combat_deadline_started")),
 		"90 秒耗尽必须进入 DEFEAT 并停止截止计时。"
@@ -411,14 +421,14 @@ func _test_authoritative_deadline_and_outcomes() -> void:
 
 	game.call("_reset_combat_outcome")
 	game.call("_reset_combat_deadline")
-	game.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	game.call("_start_combat_deadline")
 	var outcome_count_before_victory := outcome_events.size()
 	game.call("_enter_victory")
 	game.call("_enter_victory")
 	_expect_fixed_underground_night("VICTORY")
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.VICTORY
+		game.wave_state == CombatFlowState.State.VICTORY
 		and game.combat_deadline_timer.is_stopped()
 		and not bool(game.get("_combat_deadline_started")),
 		"胜利必须停止截止计时，并保持幂等的 VICTORY 状态。"
@@ -432,19 +442,19 @@ func _test_authoritative_deadline_and_outcomes() -> void:
 
 
 func _test_client_active_flow_updates() -> void:
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.wave_state = GameRuntimeBase.WaveState.PRE_WAVE
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.wave_state = CombatFlowState.State.PRE_WAVE
 	game.current_flow_step = wave
 	game.current_wave_total = 0
 	game.wave_start_audio.stop()
 	game.apply_remote_flow_state(
 		wave.step_id,
-		GameRuntimeBase.WaveState.WAVE_ACTIVE,
+		CombatFlowState.State.WAVE_ACTIVE,
 		73
 	)
 	_expect_fixed_underground_night("客户端 WAVE_ACTIVE 首包")
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
+		game.wave_state == CombatFlowState.State.WAVE_ACTIVE
 		and game.combat_seconds_remaining == 73
 		and game.current_wave_total == 10
 		and game.rogue_combat_hud.time_value_label.text == "01:13",
@@ -452,16 +462,15 @@ func _test_client_active_flow_updates() -> void:
 	)
 	game.apply_remote_enemy_count(7)
 	_expect(
-		game.wave_hud == null
-		and game.current_wave_defeated == 3
+		game.current_wave_defeated == 3
 		and game.rogue_combat_hud.enemy_value_label.text == "3 / 10",
-		"Client 敌人数同步必须只更新专用作战 HUD，不能依赖已删除的通用 HUD。"
+		"Client 敌人数同步必须只更新 Rouge 专属作战 HUD。"
 	)
 
 	game.wave_start_audio.stop()
 	game.apply_remote_flow_state(
 		wave.step_id,
-		GameRuntimeBase.WaveState.WAVE_ACTIVE,
+		CombatFlowState.State.WAVE_ACTIVE,
 		42
 	)
 	_expect_fixed_underground_night("客户端 WAVE_ACTIVE 更新")
@@ -482,16 +491,16 @@ func _test_client_active_flow_updates() -> void:
 
 
 func _test_remote_timeout_reason_contract() -> void:
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	game.call("_reset_combat_outcome")
-	game.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	var outcome_count_before := outcome_events.size()
 	game.apply_remote_defeat_with_reason(
 		RogueCombatGame.TIMEOUT_FAILURE_REASON
 	)
 	_expect_fixed_underground_night("客户端 DEFEAT")
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.DEFEAT
+		game.wave_state == CombatFlowState.State.DEFEAT
 		and game.get_multiplayer_defeat_reason()
 		== RogueCombatGame.TIMEOUT_FAILURE_REASON,
 		"Client 必须保存 Host 发送的权威超时失败原因。"
@@ -506,7 +515,7 @@ func _test_remote_timeout_reason_contract() -> void:
 
 
 func _test_permanent_death_presentation() -> void:
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	game.player.is_dead = true
 	game.call("_present_permanent_death", 0)
 	var status_hud := game.player_life_status_hud
@@ -573,7 +582,9 @@ func _cleanup() -> void:
 		game.enemy_spawn_timer.stop()
 		game.state_timer.stop()
 		game.queue_free()
-		await process_frame
+		for _cleanup_frame in range(4):
+			await process_frame
+			await physics_frame
 	game = null
 
 

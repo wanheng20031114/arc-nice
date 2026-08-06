@@ -33,6 +33,8 @@ var projectile_id: int = 0
 var owner_peer_id: int = 0
 var source_type: StringName = &"capoo_ak47_bullet"
 var pool_active: bool = true
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var _authored_speed: float = 142.5
 var _authored_max_lifetime: float = 2.0
 var _authored_collision_layer: int = 128
@@ -72,6 +74,8 @@ func _enter_tree() -> void:
 
 
 func on_pool_acquired(_generation: int) -> void:
+	combat_runtime = null
+	gameplay_gateway = null
 	_detach_batched_motion_system()
 	_reset_world_collision_schedule()
 	pool_active = true
@@ -106,11 +110,21 @@ func on_pool_released(_generation: int) -> void:
 	pool_active = false
 	has_hit = true
 	world_collision_pathfinder = null
+	combat_runtime = null
+	gameplay_gateway = null
 	set_physics_process(false)
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
 	if animated_sprite != null:
 		animated_sprite.stop()
+
+
+func bind_gameplay_context(
+	runtime_context: CombatRuntimeBase,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	combat_runtime = runtime_context
+	gameplay_gateway = gateway
 
 
 func setup(
@@ -279,7 +293,10 @@ func _on_body_entered(body: Node2D) -> void:
 
 	var player := body as Player
 	if player != null:
-		if not _try_report_multiplayer_player_hit(player):
+		if (
+			not _try_report_multiplayer_player_hit(player)
+			and _has_explicit_singleplayer_authority()
+		):
 			player.apply_damage(
 				damage,
 				EnemyConfig.DamageType.PHYSICAL,
@@ -287,7 +304,7 @@ func _on_body_entered(body: Node2D) -> void:
 			)
 	else:
 		var plant := body as PlantDefense
-		if plant != null:
+		if plant != null and _has_authoritative_runtime():
 			if plant.is_dead or plant.is_removing:
 				return
 			plant.receive_damage(
@@ -376,9 +393,9 @@ func _try_attach_requested_batched_motion_system() -> void:
 
 
 func _spawn_hit_effect() -> void:
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if combat_runtime == null or not is_instance_valid(combat_runtime):
 		return
+	var spawn_parent: Node = combat_runtime
 	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(
 		self,
 		global_position
@@ -386,13 +403,11 @@ func _spawn_hit_effect() -> void:
 		return
 
 	var effect: BulletHitEffect = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call("has_session_object_pool_scene", HIT_EFFECT_SCENE))
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		HIT_EFFECT_SCENE
 	)
 	if uses_registered_pool:
-		effect = spawn_parent.call(
-			"acquire_session_object",
+		effect = combat_runtime.acquire_session_object(
 			HIT_EFFECT_SCENE,
 			true
 		) as BulletHitEffect
@@ -404,26 +419,46 @@ func _spawn_hit_effect() -> void:
 	effect.top_level = true
 	if effect.get_parent() == null:
 		spawn_parent.add_child(effect)
+	elif effect.get_parent() != spawn_parent:
+		effect.reparent(spawn_parent)
 	effect.global_position = global_position
 	effect.reset_physics_interpolation()
 	effect.setup(direction)
 
 
 func _try_report_multiplayer_player_hit(player: Player) -> bool:
-	if projectile_id <= 0:
+	if (
+		projectile_id <= 0
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
 		return false
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("request_multiplayer_player_damage"):
-		return false
-	return bool(current_scene.call(
-		"request_multiplayer_player_damage",
+	return gameplay_gateway.request_player_damage(
 		projectile_id,
 		player.peer_id,
 		damage,
 		source_type,
+		EnemyConfig.DamageType.PHYSICAL,
 		-direction,
 		true
-	))
+	)
+
+
+func _has_authoritative_runtime() -> bool:
+	return (
+		combat_runtime != null
+		and is_instance_valid(combat_runtime)
+		and combat_runtime.runtime_mode
+			!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	)
+
+
+func _has_explicit_singleplayer_authority() -> bool:
+	return (
+		_has_authoritative_runtime()
+		and combat_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
 
 
 func _get_player_damage_context() -> Dictionary:

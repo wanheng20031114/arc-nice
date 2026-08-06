@@ -11,6 +11,15 @@ const CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE := preload(
 const DAY_NIGHT_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"
 )
+const DRONE_MOTION_SYSTEM_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn"
+)
+const GAMEPLAY_GATEWAY_SCENE := preload(
+	"res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn"
+)
+const TOWER_MODE_ADAPTER_SCENE := preload(
+	"res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn"
+)
 
 const SEND_RECORD_COUNT := 513
 const SEND_PACKET_CAPACITY := 32
@@ -44,9 +53,15 @@ class ClientNetManagerStub:
 
 
 class TestRuntime:
-	extends GameRuntimeBase
+	extends TowerDefenseGame
 
 	var proxy_plants: Dictionary[int, PlantDefense] = {}
+
+	func _ready() -> void:
+		pass
+
+	func _physics_process(_delta: float) -> void:
+		pass
 
 	func configure_multiplayer(
 		_mode: int,
@@ -295,7 +310,7 @@ func _test_production_send_flush_boundary() -> void:
 func _test_production_receive_boundary() -> void:
 	var runtime := TestRuntime.new()
 	runtime.name = "CornNetworkBatchBoundaryRuntime"
-	runtime.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var enemy_container := Node2D.new()
 	enemy_container.name = "EnemyContainer"
 	runtime.add_child(enemy_container)
@@ -303,12 +318,28 @@ func _test_production_receive_boundary() -> void:
 	grid_pathfinder.name = "GridPathfinder"
 	runtime.add_child(grid_pathfinder)
 	runtime.add_child(CAPOO_PROJECTILE_MOTION_SYSTEM_SCENE.instantiate())
+	runtime.add_child(DRONE_MOTION_SYSTEM_SCENE.instantiate())
 	runtime.add_child(DAY_NIGHT_SCENE.instantiate())
-	root.add_child(runtime)
-	current_scene = runtime
-
+	var gameplay_gateway := (
+		GAMEPLAY_GATEWAY_SCENE.instantiate()
+		as MultiplayerGameplayGateway
+	)
+	var tower_mode_adapter := (
+		TOWER_MODE_ADAPTER_SCENE.instantiate()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	runtime.add_child(gameplay_gateway)
+	runtime.add_child(tower_mode_adapter)
+	gameplay_gateway.bind_runtime(runtime)
+	tower_mode_adapter.bind_runtime(runtime)
+	runtime.multiplayer_gateway = gameplay_gateway
+	runtime.multiplayer_mode_adapter = tower_mode_adapter
+	runtime.tower_multiplayer_mode_adapter = tower_mode_adapter
+	var receiver_root := Node.new()
+	receiver_root.name = "CornNetworkBatchBoundaryReceiver"
+	root.add_child(receiver_root)
 	var corn := CORN_SCENE.instantiate() as CornMachineGun
-	runtime.add_child(corn)
+	receiver_root.add_child(corn)
 	await process_frame
 	var footprint: Array[Vector2i] = [
 		Vector2i.ZERO,
@@ -316,14 +347,20 @@ func _test_production_receive_boundary() -> void:
 		Vector2i.DOWN,
 		Vector2i.ONE,
 	]
+	corn.bind_gameplay_context(runtime, null)
 	corn.setup(CORN_CONFIG, null, footprint, true)
 	corn.burst_shot_emitted.connect(_on_proxy_shot_emitted.bind(corn))
 	runtime.proxy_plants[PROXY_PLANT_NET_ID] = corn
 
 	var client_mp := MP_GAME_SCRIPT.new()
 	var client_net_manager := ClientNetManagerStub.new()
-	client_mp.set("game", runtime)
-	client_mp.set("net_manager", client_net_manager)
+	client_mp.game = runtime
+	client_mp.net_manager = client_net_manager
+	client_mp._gameplay_gateway = gameplay_gateway
+	client_mp._mode_adapter = tower_mode_adapter
+	client_mp.tower_mode_adapter = tower_mode_adapter
+	gameplay_gateway.attach_multiplayer_session(client_mp)
+	tower_mode_adapter.attach_multiplayer_session(client_mp)
 	client_mp.set(
 		"_net_time_origin",
 		Time.get_ticks_msec() / 1000.0 - CLIENT_TIME_BASE
@@ -467,11 +504,13 @@ func _test_production_receive_boundary() -> void:
 		"A duplicate late Corn action must not restart or redirect the active proxy burst."
 	)
 
+	gameplay_gateway.detach_multiplayer_session(client_mp)
+	tower_mode_adapter.detach_multiplayer_session(client_mp)
 	client_mp.free()
 	client_net_manager.free()
 	runtime.proxy_plants.clear()
-	current_scene = null
-	runtime.queue_free()
+	runtime.free()
+	receiver_root.queue_free()
 	for _frame in range(3):
 		await process_frame
 		await physics_frame

@@ -30,7 +30,7 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 	var tower_defense_game := TowerDefenseGame.new()
 	var host_player := Player.new()
 	var remote_player := Player.new()
-	tower_defense_game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	tower_defense_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	tower_defense_game.multiplayer_local_peer_id = 1
 	tower_defense_game.peer_players = {1: host_player, 2: remote_player}
 	multiplayer_game.game = tower_defense_game
@@ -108,7 +108,7 @@ func _test_client_teleport_resets_remote_interpolation() -> void:
 	var local_player := Player.new()
 	var remote_player := DEFAULT_PLAYER_SCENE.instantiate() as Player
 	root.add_child(remote_player)
-	tower_defense_game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	tower_defense_game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	tower_defense_game.multiplayer_local_peer_id = 3
 	tower_defense_game.peer_players = {2: remote_player, 3: local_player}
 	tower_defense_game.player = local_player
@@ -200,7 +200,7 @@ func _test_client_queues_teleport_until_player_exists() -> void:
 	var multiplayer_game := MP_GAME_SCRIPT.new()
 	var tower_defense_game := TowerDefenseGame.new()
 	var local_player := Player.new()
-	tower_defense_game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	tower_defense_game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	tower_defense_game.multiplayer_local_peer_id = 3
 	tower_defense_game.peer_players = {3: local_player}
 	tower_defense_game.player = local_player

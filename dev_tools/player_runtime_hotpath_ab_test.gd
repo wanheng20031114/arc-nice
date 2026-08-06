@@ -9,7 +9,27 @@ const FIRE_INTERVAL_ITERATIONS := 30_000
 const SYNTHETIC_PERIODIC_COUNT := 14
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: PlayerTestCombatRuntime
+
+
+class PlayerHotpathGameplaySession:
+	extends "res://scene/multiplayer/mp_game.gd"
+
+	func _ready() -> void:
+		pass
+
+	func _exit_tree() -> void:
+		pass
+
+	func apply_multiplayer_player_heal(
+		target_player: Player,
+		heal_amount: int
+	) -> bool:
+		return (
+			target_player != null
+			and is_instance_valid(target_player)
+			and target_player._try_heal(heal_amount, false)
+		)
 
 
 func _init() -> void:
@@ -17,12 +37,17 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = PlayerTestCombatRuntime.new()
 	test_root.name = "PlayerRuntimeHotpathABTest"
 	root.add_child(test_root)
 	current_scene = test_root
+	var gameplay_session := PlayerHotpathGameplaySession.new()
+	test_root.get_multiplayer_gameplay_gateway().attach_multiplayer_session(
+		gameplay_session
+	)
 
 	var player := PLAYER_SCENE.instantiate() as Player
+	player.bind_combat_runtime(test_root)
 	test_root.add_child(player)
 	await process_frame
 	await physics_frame
@@ -72,6 +97,7 @@ func _run() -> void:
 	)
 
 	player.queue_free()
+	gameplay_session.free()
 	test_root.queue_free()
 	for _cleanup_frame in range(4):
 		await process_frame
@@ -311,6 +337,7 @@ func _test_multiplayer_authority_semantics(player: Player) -> void:
 	var old_role := net_manager.net_role
 	var old_connection_state := net_manager.connection_state
 	var old_disconnect_in_progress := bool(net_manager.get("_disconnect_in_progress"))
+	var old_runtime_mode := test_root.runtime_mode
 
 	var item := PickupConfig.new()
 	item.collectible_effect_id = "authority_periodic_probe"
@@ -325,6 +352,7 @@ func _test_multiplayer_authority_semantics(player: Player) -> void:
 	net_manager.set("_disconnect_in_progress", false)
 	net_manager.net_role = NetManagerStore.NetRole.CLIENT
 	net_manager.connection_state = NetManagerStore.ConnectionState.IN_GAME
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	player.call("_update_collectible_runtime_effects", 2.0)
 	_expect(
 		player.current_health == initial_health
@@ -333,6 +361,7 @@ func _test_multiplayer_authority_semantics(player: Player) -> void:
 	)
 
 	net_manager.net_role = NetManagerStore.NetRole.HOST
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	player.call("_update_collectible_runtime_effects", 0.4)
 	_expect(
 		player.current_health == initial_health,
@@ -345,12 +374,14 @@ func _test_multiplayer_authority_semantics(player: Player) -> void:
 	)
 	var host_periodic_time := player._collectible_periodic_elapsed
 	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	player.call("_update_collectible_runtime_effects", 4.0)
 	_expect(
 		is_equal_approx(player._collectible_periodic_elapsed, host_periodic_time),
 		"Losing authority must pause an already armed periodic deadline."
 	)
 	net_manager.net_role = NetManagerStore.NetRole.HOST
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	player.call("_update_collectible_runtime_effects", 0.99)
 	_expect(
 		player.current_health == initial_health + 1,
@@ -365,6 +396,7 @@ func _test_multiplayer_authority_semantics(player: Player) -> void:
 	net_manager.net_role = old_role
 	net_manager.connection_state = old_connection_state
 	net_manager.set("_disconnect_in_progress", old_disconnect_in_progress)
+	test_root.runtime_mode = old_runtime_mode
 
 
 func _test_movement_visual_state_cache(player: Player) -> void:

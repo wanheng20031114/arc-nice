@@ -241,22 +241,20 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 		return true
 	if smg_config_cache.projectile_scene == null:
 		return false
-	var spawn_parent := get_tree().current_scene
-	if spawn_parent == null:
+	if (
+		combat_runtime == null
+		or not is_instance_valid(combat_runtime)
+		or gameplay_gateway == null
+		or not is_instance_valid(gameplay_gateway)
+	):
 		return false
+	var spawn_parent: Node = combat_runtime
 	var projectile: CapooAK47Bullet = null
-	var uses_registered_pool := (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(
-			spawn_parent.call(
-				"has_session_object_pool_scene",
-				smg_config_cache.projectile_scene
-			)
-		)
+	var uses_registered_pool := combat_runtime.has_session_object_pool_scene(
+		smg_config_cache.projectile_scene
 	)
 	if uses_registered_pool:
-		projectile = spawn_parent.call(
-			"acquire_session_object",
+		projectile = combat_runtime.acquire_session_object(
 			smg_config_cache.projectile_scene,
 			false
 		) as CapooAK47Bullet
@@ -268,6 +266,7 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 	var outgoing_damage := get_effective_attack_damage(
 		smg_config_cache.attack_damage
 	)
+	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.top_level = true
 	projectile.setup(
 		shoot_direction,
@@ -279,23 +278,23 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 	)
 	if projectile.get_parent() == null:
 		spawn_parent.add_child(projectile)
+	elif projectile.get_parent() != spawn_parent:
+		projectile.reparent(spawn_parent)
 	projectile.global_position = (
 		global_position
 		+ shoot_direction * smg_config_cache.projectile_spawn_distance
 	)
 	projectile.reset_physics_interpolation()
-	if spawn_parent.has_method("register_local_projectile"):
-		spawn_parent.call(
-			"register_local_projectile",
-			projectile,
-			&"capoo_smg_bullet",
-			0,
-			projectile.global_position,
-			shoot_direction,
-			outgoing_damage,
-			smg_config_cache.projectile_speed,
-			smg_config_cache.projectile_lifetime
-		)
+	gameplay_gateway.register_local_projectile(
+		projectile,
+		&"capoo_smg_bullet",
+		0,
+		projectile.global_position,
+		shoot_direction,
+		outgoing_damage,
+		smg_config_cache.projectile_speed,
+		smg_config_cache.projectile_lifetime
+	)
 	return true
 
 
@@ -347,22 +346,17 @@ func _apply_hitscan_player_damage(
 	outgoing_damage: int
 ) -> void:
 	var source_id := _get_multiplayer_damage_source_id(action_sequence + 1)
-	var current_scene := get_tree().current_scene
-	var reported := false
-	if (
-		current_scene != null
-		and current_scene.has_method("request_multiplayer_player_damage")
+	if _try_request_player_damage(
+		source_id,
+		hit_player.peer_id,
+		outgoing_damage,
+		&"capoo_smg_hitscan",
+		EnemyConfig.DamageType.PHYSICAL,
+		-shoot_direction,
+		true
 	):
-		reported = bool(current_scene.call(
-			"request_multiplayer_player_damage",
-			source_id,
-			hit_player.peer_id,
-			outgoing_damage,
-			&"capoo_smg_hitscan",
-			-shoot_direction,
-			true
-		))
-	if reported:
+		return
+	if not _has_explicit_singleplayer_authority():
 		return
 	hit_player.apply_damage(
 		outgoing_damage,

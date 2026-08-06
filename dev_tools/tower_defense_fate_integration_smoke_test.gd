@@ -65,17 +65,34 @@ func _init() -> void:
 
 
 func _run() -> void:
-	_test_day_and_lighting_boundaries()
-	_test_wave_completion_boundaries()
-	_test_elite_bias_day_window()
-	_test_double_xirang_day_combat_states()
-	_test_boss_runtime_health_cap()
-	await _test_elite_config_prewarm()
-	await _test_wave_hud_uses_day_cycle_config()
-	await _test_xiaocong_collectible_offer_count()
-	await _test_critical_core_follow_up_resolution()
-	await _test_scene_config_and_interlude_freeze()
-	await _test_fate_stone_zero_benefit_filter()
+	var case_filter := OS.get_environment("ARC_FATE_INTEGRATION_CASE")
+	if case_filter.is_empty() or case_filter in ["contracts", "core"]:
+		_test_day_and_lighting_boundaries()
+		_test_wave_completion_boundaries()
+		_test_elite_bias_day_window()
+		_test_double_xirang_day_combat_states()
+		_test_boss_runtime_health_cap()
+	if case_filter.is_empty() or case_filter in ["contracts", "ui", "hud"]:
+		await _test_wave_hud_uses_day_cycle_config()
+	if case_filter.is_empty() or case_filter in ["contracts", "ui", "offers"]:
+		await _test_xiaocong_collectible_offer_count()
+	if case_filter.is_empty() or case_filter in ["contracts", "ui", "critical"]:
+		await _test_critical_core_follow_up_resolution()
+	if case_filter.is_empty() or case_filter in ["contracts", "scene"]:
+		await _test_scene_config_and_interlude_freeze()
+	if case_filter.is_empty() or case_filter in ["contracts", "stone"]:
+		await _test_fate_stone_zero_benefit_filter()
+	if case_filter.is_empty() or case_filter == "threaded_prewarm":
+		await _test_elite_config_prewarm()
+	if not case_filter.is_empty() and case_filter not in [
+		"contracts", "core", "ui", "hud", "offers", "critical",
+		"scene", "stone", "threaded_prewarm"
+	]:
+		failures.append("Unknown ARC_FATE_INTEGRATION_CASE: %s" % case_filter)
+	current_scene = null
+	for _cleanup_frame in range(8):
+		await process_frame
+		await physics_frame
 	if failures.is_empty():
 		print("TOWER_DEFENSE_FATE_INTEGRATION_SMOKE_TEST_OK")
 		quit()
@@ -119,8 +136,17 @@ func _test_elite_config_prewarm() -> void:
 			== str(coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH[base_path_value]),
 			"Fate elite prewarm must retain the configured replacement for %s." % base_path
 		)
+	# Threaded ResourceLoader cleanup happens after the returned resources stop
+	# being reachable. Keep the full cache alive through the assertions, then
+	# release it and give the loader a real drain window before SceneTree exits.
+	await create_timer(1.0).timeout
+	for _drain_frame in range(120):
+		await process_frame
+	coordinator.elite_enemy_config_by_base_path.clear()
 	coordinator.queue_free()
-	await process_frame
+	for _cleanup_frame in range(4):
+		await process_frame
+		await physics_frame
 
 
 func _test_day_and_lighting_boundaries() -> void:
@@ -204,6 +230,7 @@ func _test_wave_completion_boundaries() -> void:
 func _test_elite_bias_day_window() -> void:
 	var probe := TowerDefenseGame.new()
 	var coordinator := FateCoordinator.new()
+	coordinator.elite_enemy_config_loads_requested = true
 	coordinator.setup(probe, probe.day_cycle_config)
 	probe.fate_coordinator = coordinator
 	var base_config := load(
@@ -248,27 +275,28 @@ func _test_elite_bias_day_window() -> void:
 func _test_double_xirang_day_combat_states() -> void:
 	var probe := TowerDefenseGame.new()
 	var coordinator := FateCoordinator.new()
+	coordinator.elite_enemy_config_loads_requested = true
 	coordinator.setup(probe, probe.day_cycle_config)
 	probe.fate_coordinator = coordinator
 	coordinator.double_xirang_day = 2
 	probe.current_wave_index = 4
-	probe.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	probe.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_expect(
 		probe._is_fate_double_xirang_reward_active(),
 		"The target day's ordinary waves must double Xirang kill rewards."
 	)
-	probe.wave_state = GameRuntimeBase.WaveState.BOSS_ACTIVE
+	probe.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	_expect(
 		probe._is_fate_double_xirang_reward_active(),
 		"A target-day boss fight must retain the next-day double-Xirang reward."
 	)
-	probe.wave_state = GameRuntimeBase.WaveState.INTERMISSION
+	probe.wave_state = CombatFlowState.State.INTERMISSION
 	_expect(
 		not probe._is_fate_double_xirang_reward_active(),
 		"The double-Xirang fate must remain combat-only."
 	)
 	probe.current_wave_index = 8
-	probe.wave_state = GameRuntimeBase.WaveState.WAVE_ACTIVE
+	probe.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_expect(
 		not probe._is_fate_double_xirang_reward_active(),
 		"The double-Xirang fate must expire after its single target day."
@@ -323,6 +351,7 @@ func _test_wave_hud_uses_day_cycle_config() -> void:
 
 func _test_xiaocong_collectible_offer_count() -> void:
 	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
+	coordinator.elite_enemy_config_loads_requested = true
 	root.add_child(coordinator)
 	await process_frame
 	var game := TowerDefenseGame.new()
@@ -330,7 +359,7 @@ func _test_xiaocong_collectible_offer_count() -> void:
 	var target_player := preload(
 		"res://scene/player/weishidaier/player_weishidaier.tscn"
 	).instantiate() as Player
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	game.fate_coordinator = coordinator
 	game.fate_manager = coordinator.manager
 	game.luoxi_merchant = merchant
@@ -358,10 +387,11 @@ func _test_xiaocong_collectible_offer_count() -> void:
 
 func _test_critical_core_follow_up_resolution() -> void:
 	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
+	coordinator.elite_enemy_config_loads_requested = true
 	root.add_child(coordinator)
 	await process_frame
 	var game := CriticalCoreGameProbe.new()
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	game.maximum_base_health = 19
 	game.current_base_health = 13
 	var all_buff_ids := TowerDefenseFateRegistry.get_all_permanent_buff_ids()
@@ -437,6 +467,7 @@ func _test_critical_core_follow_up_resolution() -> void:
 		"Critical Core must preserve existing buffs and activate only the elected follow-up buff once."
 	)
 	coordinator.manager.force_finish()
+	await create_timer(TowerDefenseFateManager.RESULT_DISPLAY_SECONDS + 0.1).timeout
 	LuoxiMerchant.reset_runtime_choice_count()
 	game.free()
 	coordinator.queue_free()
@@ -447,6 +478,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
 	var game := GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	root.add_child(game)
 	current_scene = game
@@ -639,12 +671,22 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		"Fate interlude must freeze production, research, terrain decay, and normal T input."
 	)
 	var placement_rejections: Array[StringName] = []
-	game.multiplayer_plant_placement_rejected.connect(
+	var tower_adapter := (
+		game.get_multiplayer_mode_adapter()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	_expect(tower_adapter != null, "The tower scene must author its multiplayer mode adapter.")
+	if tower_adapter == null:
+		current_scene = null
+		game.queue_free()
+		await process_frame
+		return
+	tower_adapter.plant_placement_rejected.connect(
 		func(_request_id: int, _peer_id: int, reason: StringName) -> void:
 			placement_rejections.append(reason)
 	)
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.wave_state = GameRuntimeBase.WaveState.FATE_INTERLUDE
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.wave_state = CombatFlowState.State.FATE_INTERLUDE
 	game.request_multiplayer_inventory_plant_placement(
 		2,
 		91,
@@ -658,7 +700,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		placement_rejections == [TowerDefenseGame.PLANT_PLACEMENT_REJECT_FLOW_LOCKED],
 		"The authoritative server must reject stale building requests during fate interlude."
 	)
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	game._set_fate_interlude_systems_frozen(false)
 	_expect(
 		game.production_coordinator.authoritative_processing_enabled
@@ -679,6 +721,7 @@ func _test_fate_stone_zero_benefit_filter() -> void:
 	) as PickupConfig
 	_expect(run_state.try_add_item(stone), "The fate-stone filter fixture must be stored.")
 	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator
+	coordinator.elite_enemy_config_loads_requested = true
 	root.add_child(coordinator)
 	await process_frame
 	var game := TowerDefenseGame.new()
@@ -702,3 +745,9 @@ func _test_fate_stone_zero_benefit_filter() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _disable_tower_fixture_background_loads(game: TowerDefenseGame) -> void:
+	var coordinator := game.get_node_or_null("FateCoordinator") as FateCoordinator
+	if coordinator != null:
+		coordinator.elite_enemy_config_loads_requested = true

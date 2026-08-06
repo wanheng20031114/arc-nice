@@ -32,7 +32,7 @@ const MOVE_GROUND_Y := 38
 const MAX_MOVE_CENTROID_X_DRIFT := 1.0
 
 var failures: Array[String] = []
-var fixture: Node2D = null
+var fixture: PlayerTestCombatRuntime = null
 var cold_scheduler: Node = null
 
 
@@ -41,7 +41,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	fixture = Node2D.new()
+	fixture = PlayerTestCombatRuntime.new()
 	fixture.name = "FrostSorcererSmokeTest"
 	root.add_child(fixture)
 	current_scene = fixture
@@ -226,7 +226,7 @@ func _test_one_projectile_attack_generation() -> void:
 	var enemy := FROST_SORCERER_SCENE.instantiate() as FrostSorcerer
 	fixture.add_child(enemy)
 	enemy.global_position = Vector2.ZERO
-	enemy.setup(FROST_SORCERER_CONFIG, player, null)
+	enemy.setup(FROST_SORCERER_CONFIG, player, null, fixture)
 	enemy.set_physics_process(false)
 	enemy.initial_attack_stagger_left = 0.0
 
@@ -284,6 +284,7 @@ func _test_one_projectile_attack_generation() -> void:
 func _test_straight_one_hundred_pixels_per_second() -> void:
 	var spike := ICE_SPIKE_SCENE.instantiate() as FrostSorcererIceSpike
 	fixture.add_child(spike)
+	_bind_spike_context(spike)
 	spike.global_position = Vector2(5000.0, 5000.0)
 	spike.setup(Vector2.RIGHT, 20, 100.0, 7.0)
 	spike.set_physics_process(false)
@@ -331,6 +332,7 @@ func _test_compensated_shape_sweep_graze() -> void:
 	)
 	var spike := ICE_SPIKE_SCENE.instantiate() as FrostSorcererIceSpike
 	fixture.add_child(spike)
+	_bind_spike_context(spike)
 	spike.global_position = start
 	spike.setup(Vector2.RIGHT, 20, 100.0, 7.0)
 	spike.set_physics_process(false)
@@ -362,6 +364,7 @@ func _test_native_area_contact_on_ordinary_steps() -> void:
 	player.magic_defense = 20
 	var spike := ICE_SPIKE_SCENE.instantiate() as FrostSorcererIceSpike
 	fixture.add_child(spike)
+	_bind_spike_context(spike)
 	spike.global_position = Vector2(2000.0, 2000.0)
 	spike.setup(Vector2.RIGHT, 20, 100.0, 7.0)
 
@@ -479,6 +482,7 @@ func _test_pool_reuse_resets_all_lease_state() -> void:
 		pool.queue_free()
 		return
 	var first_instance_id := first.get_instance_id()
+	_bind_spike_context(first)
 	first.setup(Vector2.DOWN, 77, 321.0, 0.25)
 	first.setup_multiplayer(701, 9, &"dirty_frost_projectile")
 	first.has_hit = true
@@ -517,7 +521,9 @@ func _test_pool_reuse_resets_all_lease_state() -> void:
 			and reused.collision_mask == EXPECTED_PROJECTILE_MASK
 			and reused.monitoring
 			and reused.monitorable
-			and not reused.collision_shape.disabled,
+			and not reused.collision_shape.disabled
+			and reused.combat_runtime == null
+			and reused.gameplay_gateway == null,
 			"Reacquisition must clear network identity and restore collision monitoring."
 		)
 		pool.release(reused)
@@ -530,6 +536,7 @@ func _test_pool_reuse_resets_all_lease_state() -> void:
 func _spawn_player(position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	fixture.add_child(player)
+	player.bind_combat_runtime(fixture)
 	player.global_position = position
 	player.invincibility_duration = 0.0
 	player.invincibility_time_left = 0.0
@@ -545,6 +552,7 @@ func _spawn_player(position: Vector2) -> Player:
 func _spawn_spike(position: Vector2) -> FrostSorcererIceSpike:
 	var spike := ICE_SPIKE_SCENE.instantiate() as FrostSorcererIceSpike
 	fixture.add_child(spike)
+	_bind_spike_context(spike)
 	spike.global_position = position
 	spike.setup(
 		Vector2.RIGHT,
@@ -554,6 +562,13 @@ func _spawn_spike(position: Vector2) -> FrostSorcererIceSpike:
 	)
 	spike.set_physics_process(false)
 	return spike
+
+
+func _bind_spike_context(spike: FrostSorcererIceSpike) -> void:
+	spike.bind_gameplay_context(
+		fixture,
+		fixture.get_multiplayer_gameplay_gateway()
+	)
 
 
 func _spawn_static_body(

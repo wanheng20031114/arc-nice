@@ -252,9 +252,16 @@ func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 		game.dual_grid_terrain.set_tile(cell, replacement)
 
 	emitted_terrain_batches.clear()
-	if not game.multiplayer_terrain_delta.is_connected(_on_terrain_delta):
-		game.multiplayer_terrain_delta.connect(_on_terrain_delta)
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var tower_adapter := (
+		game.get_multiplayer_mode_adapter()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	_expect(tower_adapter != null, "塔防场景必须预置多人模式适配器。")
+	if tower_adapter == null:
+		return
+	if not tower_adapter.terrain_delta.is_connected(_on_terrain_delta):
+		tower_adapter.terrain_delta.connect(_on_terrain_delta)
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	game.call(
 		"_on_authoritative_vegetation_terrain_changed",
 		cell_xy,
@@ -310,7 +317,7 @@ func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> v
 	if not found_restored_cell:
 		return
 
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var snapshot_applied := game.apply_remote_terrain_snapshot(
 		7,
 		PackedInt32Array([empty_target.x, empty_target.y]),
@@ -393,9 +400,17 @@ func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
 		"真实传播目标的authored baseline必须是EMPTY或DIRT。"
 	)
 
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	if not game.multiplayer_plant_removed.is_connected(_on_lifecycle_plant_removed):
-		game.multiplayer_plant_removed.connect(_on_lifecycle_plant_removed)
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var tower_adapter := (
+		game.get_multiplayer_mode_adapter()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	_expect(tower_adapter != null, "塔防场景必须预置多人模式适配器。")
+	if tower_adapter == null:
+		spread.set_process(was_processing)
+		return
+	if not tower_adapter.plant_removed.is_connected(_on_lifecycle_plant_removed):
+		tower_adapter.plant_removed.connect(_on_lifecycle_plant_removed)
 	var starting_revision := game.multiplayer_terrain_revision
 	var plant := plant_system.try_place_for_player(
 		config,
@@ -549,7 +564,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 	if anchors.is_empty():
 		return
 
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var anchor := anchors[0]
 	game.apply_remote_plant_spawn(
 		0,
@@ -609,7 +624,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		"实时客户端request_id>0必须播放0.7秒生成效果与一次空间放置声。"
 	)
 	if realtime_plant == null:
-		game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 		return
 
 	# Keep ample distance from the 0.305 s cue's natural finish so a slow
@@ -692,7 +707,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		).is_empty(),
 		"实时生成后提前撤除时，两套粒子租约与放置声部最终都必须完整释放。"
 	)
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 
 
 func _test_multi_cell_unsupported_terrain_damage(game: TowerDefenseGame) -> void:
@@ -702,7 +717,7 @@ func _test_multi_cell_unsupported_terrain_damage(game: TowerDefenseGame) -> void
 	if config == null or plant_system == null:
 		return
 
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	var valid_anchors := plant_system.get_valid_anchors_for_player(config, game.player)
 	_expect(not valid_anchors.is_empty(), "真实地图必须保留可放置2x2植物的草地锚点。")
 	if valid_anchors.is_empty():
@@ -730,13 +745,13 @@ func _test_multi_cell_unsupported_terrain_damage(game: TowerDefenseGame) -> void
 		game.dual_grid_terrain.set_tile(cell, DualGridTilemap.TerrainType.DIRT)
 
 	var full_health := plant.current_health
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	game.plant_terrain_decay_timer.timeout.emit()
 	_expect(
 		plant.current_health == full_health,
 		"CLIENT_VIEW不能本地结算2x2植物的失地衰败伤害。"
 	)
-	game.runtime_mode = GameRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	game.plant_terrain_decay_timer.timeout.emit()
 	_expect(
 		plant.current_health == full_health - 200,

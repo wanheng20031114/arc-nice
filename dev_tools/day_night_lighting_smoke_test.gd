@@ -561,7 +561,7 @@ func _test_rogue_combat_permanent_underground_night() -> void:
 	_expect(
 		controller != null
 		and game.world_lighting_policy
-		== GameRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
+		== CombatRuntimeBase.WorldLightingPolicy.FIXED_NIGHT
 		and controller.night_color == EXPECTED_STANDARD_NIGHT_COLOR
 		and controller.color == EXPECTED_STANDARD_NIGHT_COLOR
 		and is_equal_approx(controller.night_factor, 1.0)
@@ -704,7 +704,7 @@ func _test_every_wave_gradual_transition() -> void:
 		game.enemy_spawn_timer.stop()
 		await create_timer(0.06).timeout
 		_expect(
-			game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE
+			game.wave_state == CombatFlowState.State.WAVE_ACTIVE
 			and controller.night_factor > 0.0
 			and controller.night_factor < 1.0
 			and not controller.color.is_equal_approx(Color.WHITE),
@@ -724,7 +724,7 @@ func _test_every_wave_gradual_transition() -> void:
 		game.call("_enter_intermission", next_wave)
 		await create_timer(0.22).timeout
 		_expect(
-			game.wave_state == GameRuntimeBase.WaveState.INTERMISSION
+			game.wave_state == CombatFlowState.State.INTERMISSION
 			and is_zero_approx(controller.night_factor)
 			and controller.color.is_equal_approx(Color.WHITE)
 			and player_light != null
@@ -805,13 +805,13 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 	for fixture in fixtures:
 		var label := String(fixture["label"])
 		var packed_scene := fixture["scene"] as PackedScene
-		var game := packed_scene.instantiate() as GameRuntimeBase
+		var game := packed_scene.instantiate() as CombatRuntimeBase
 		_expect(game != null, "%s客户端场景必须能够实例化。" % label)
 		if game == null:
 			continue
 		game.defer_runtime_activation()
 		game.configure_multiplayer(
-			GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+			CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
 			2,
 			{1: "Host", 2: "Client"},
 			{
@@ -832,7 +832,7 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 		var controller := game.day_night_controller
 		var waves := game.get("waves") as Array
 		_expect(
-			game.runtime_mode == GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+			game.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 			and controller != null
 			and not waves.is_empty(),
 			"%s必须按真实入树顺序完成CLIENT_VIEW初始化。" % label
@@ -859,7 +859,7 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 			game.call(
 				"apply_remote_flow_state",
 				first_wave.step_id,
-				GameRuntimeBase.WaveState.WAVE_ACTIVE,
+				CombatFlowState.State.WAVE_ACTIVE,
 				0
 			)
 			await create_timer(0.18).timeout
@@ -879,7 +879,7 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 			game.call(
 				"apply_remote_flow_state",
 				first_wave.step_id,
-				GameRuntimeBase.WaveState.INTERMISSION,
+				CombatFlowState.State.INTERMISSION,
 				1
 			)
 			await create_timer(0.18).timeout
@@ -894,7 +894,7 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 			game.call(
 				"apply_remote_flow_state",
 				&"",
-				GameRuntimeBase.WaveState.VICTORY,
+				CombatFlowState.State.VICTORY,
 				0
 			)
 			await create_timer(0.18).timeout
@@ -909,7 +909,7 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 			game.call(
 				"apply_remote_flow_state",
 				&"",
-				GameRuntimeBase.WaveState.DEFEAT,
+				CombatFlowState.State.DEFEAT,
 				0
 			)
 			await create_timer(0.18).timeout
@@ -935,7 +935,7 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 		await process_frame
 
 
-func _await_runtime_preparation(game: GameRuntimeBase) -> void:
+func _await_runtime_preparation(game: CombatRuntimeBase) -> void:
 	if game.is_runtime_preparation_complete():
 		return
 	if game.has_method("_schedule_enemy_navigation_prewarm"):

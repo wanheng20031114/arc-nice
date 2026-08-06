@@ -50,6 +50,8 @@ var mouse_fire_held: bool = false
 var mouse_viewport_position: Vector2 = Vector2.ZERO
 var multiplayer_display_name: String = ""
 var client_movement_prediction_only: bool = false
+var combat_runtime: CombatRuntimeBase = null
+var gameplay_gateway: MultiplayerGameplayGateway = null
 var navigation_collision_extent_radius: float = -1.0
 var _pending_healing_number_amount: int = 0
 var _healing_number_flush_queued := false
@@ -289,6 +291,43 @@ var _burn_overlay_strength := -1.0
 var _bleed_overlay_strength := -1.0
 var _speed_trail_effect_active := false
 var _speed_trail_motion_direction := Vector2.ZERO
+
+
+func bind_combat_runtime(runtime_instance: CombatRuntimeBase) -> void:
+	combat_runtime = runtime_instance
+	bind_gameplay_gateway(
+		runtime_instance.get_multiplayer_gameplay_gateway()
+		if runtime_instance != null
+		else null
+	)
+
+
+func bind_gameplay_gateway(
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	gameplay_gateway = gateway
+
+
+func _has_valid_combat_runtime() -> bool:
+	return combat_runtime != null and is_instance_valid(combat_runtime)
+
+
+func _is_explicit_singleplayer_authority() -> bool:
+	return (
+		_has_valid_combat_runtime()
+		and combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+
+
+func _requires_multiplayer_gameplay_gateway() -> bool:
+	return (
+		_has_valid_combat_runtime()
+		and combat_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+
+
+func _get_combat_spawn_parent() -> CombatRuntimeBase:
+	return combat_runtime if _has_valid_combat_runtime() else null
 
 
 static func set_collectible_slow_batch_expiry_enabled(enabled: bool) -> void:
@@ -1160,24 +1199,19 @@ func _receive_incoming_damage_over_time_tick(
 ) -> bool:
 	if is_dead:
 		return false
-	if peer_id > 0:
-		var current_scene := get_tree().current_scene
-		if (
-			current_scene != null
-			and current_scene.has_method(
-				"request_multiplayer_player_damage_over_time_tick"
-			)
-		):
-			return bool(current_scene.call(
-				"request_multiplayer_player_damage_over_time_tick",
-				peer_id,
-				status_id,
-				source_family,
-				tick_damage
-			))
-	return apply_periodic_damage(
-		tick_damage,
-		damage_type
+	if _is_explicit_singleplayer_authority():
+		return apply_periodic_damage(tick_damage, damage_type)
+	if (
+		peer_id <= 0
+		or not _requires_multiplayer_gameplay_gateway()
+		or gameplay_gateway == null
+	):
+		return false
+	return gameplay_gateway.request_player_damage_over_time_tick(
+		peer_id,
+		status_id,
+		source_family,
+		tick_damage
 	)
 
 
@@ -1270,19 +1304,15 @@ func show_damage_number(
 ) -> void:
 	if amount <= 0:
 		return
-	var damage_number_owner := get_parent()
-	while damage_number_owner != null:
-		if damage_number_owner.has_method("show_damage_number"):
-			damage_number_owner.call(
-				"show_damage_number",
-				amount,
-				global_position,
-				impact_direction,
-				damage_type,
-				DamageNumberPool.DisplayPriority.IMPORTANT
-			)
-			return
-		damage_number_owner = damage_number_owner.get_parent()
+	if not _has_valid_combat_runtime():
+		return
+	combat_runtime.show_damage_number(
+		amount,
+		global_position,
+		impact_direction,
+		damage_type,
+		DamageNumberPool.DisplayPriority.IMPORTANT
+	)
 
 
 func queue_healing_number(amount: int) -> void:
@@ -1301,20 +1331,16 @@ func _flush_pending_healing_number() -> void:
 	_pending_healing_number_amount = 0
 	if amount <= 0:
 		return
-	var combat_number_owner := get_parent()
-	while combat_number_owner != null:
-		if combat_number_owner.has_method("show_combat_number"):
-			combat_number_owner.call(
-				"show_combat_number",
-				amount,
-				global_position,
-				DamageNumberPool.CombatNumberKind.HEALING,
-				Vector2.ZERO,
-				EnemyConfig.DamageType.PHYSICAL,
-				DamageNumberPool.DisplayPriority.IMPORTANT
-			)
-			return
-		combat_number_owner = combat_number_owner.get_parent()
+	if not _has_valid_combat_runtime():
+		return
+	combat_runtime.show_combat_number(
+		amount,
+		global_position,
+		DamageNumberPool.CombatNumberKind.HEALING,
+		Vector2.ZERO,
+		EnemyConfig.DamageType.PHYSICAL,
+		DamageNumberPool.DisplayPriority.IMPORTANT
+	)
 
 
 func _create_damage_target_profile(request: DamageRequest) -> DamageTargetProfile:
@@ -2278,6 +2304,10 @@ func apply_multiplayer_death_state() -> void:
 
 
 func apply_tower_defense_death_presentation() -> void:
+	apply_permanent_death_presentation()
+
+
+func apply_permanent_death_presentation() -> void:
 	if not is_dead:
 		return
 	tower_defense_death_presentation_active = true
@@ -2467,11 +2497,11 @@ func _play_xirang_pickup_audio() -> void:
 
 
 func _apply_cheat_xirang() -> void:
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("request_multiplayer_cheat_xirang"):
-		current_scene.call("request_multiplayer_cheat_xirang")
+	if _is_explicit_singleplayer_authority():
+		grant_cheat_xirang()
 		return
-	grant_cheat_xirang()
+	if gameplay_gateway != null and _requires_multiplayer_gameplay_gateway():
+		gameplay_gateway.request_multiplayer_cheat_xirang()
 
 
 func has_skill1() -> bool:
@@ -2617,17 +2647,8 @@ func _try_heal(amount: int, report_multiplayer: bool = true) -> bool:
 	_refresh_collectible_stats(false)
 	if peer_id <= 0:
 		queue_healing_number(last_healing_received)
-	elif report_multiplayer:
-		var current_scene := get_tree().current_scene
-		if (
-			current_scene != null
-			and current_scene.has_method("report_multiplayer_player_healing")
-		):
-			current_scene.call(
-				"report_multiplayer_player_healing",
-				self,
-				last_healing_received
-			)
+	elif report_multiplayer and gameplay_gateway != null:
+		gameplay_gateway.report_player_healing(self, last_healing_received)
 	return true
 
 
@@ -2687,11 +2708,9 @@ func _register_multiplayer_projectile(
 ) -> void:
 	if projectile == null:
 		return
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("register_local_projectile"):
+	if gameplay_gateway == null:
 		return
-	current_scene.call(
-		"register_local_projectile",
+	gameplay_gateway.register_local_projectile(
 		projectile,
 		projectile_type,
 		peer_id,
@@ -3591,39 +3610,15 @@ func _trigger_collectible_custom_thunder(item: PickupConfig) -> void:
 
 
 func _pick_random_thunder_target() -> Enemy:
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("pick_random_combat_target"):
-		var nearby_enemy := current_scene.call(
-			"pick_random_combat_target",
-			global_position,
-			THUNDER_LOCAL_TARGET_RADIUS
-		) as Enemy
-		if nearby_enemy != null:
-			return nearby_enemy
-		return current_scene.call(
-			"pick_random_combat_target",
-			global_position,
-			0.0
-		) as Enemy
-	# Non-runtime fixtures keep exact behavior with a reservoir-selected local
-	# preference. Production StandardGame/MpGame scenes always use the indexed path above.
-	var enemies := _collect_alive_enemies()
-	var radius_squared := THUNDER_LOCAL_TARGET_RADIUS * THUNDER_LOCAL_TARGET_RADIUS
-	var nearby_choice: Enemy = null
-	var nearby_count := 0
-	for enemy in enemies:
-		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
-			continue
-		if global_position.distance_squared_to(enemy.global_position) > radius_squared:
-			continue
-		nearby_count += 1
-		if randi() % nearby_count == 0:
-			nearby_choice = enemy
-	if nearby_choice != null:
-		return nearby_choice
-	if enemies.is_empty():
+	if not _has_valid_combat_runtime():
 		return null
-	return enemies[randi() % enemies.size()]
+	var nearby_enemy := combat_runtime.pick_random_combat_target(
+		global_position,
+		THUNDER_LOCAL_TARGET_RADIUS
+	)
+	if nearby_enemy != null:
+		return nearby_enemy
+	return combat_runtime.pick_random_combat_target(global_position, 0.0)
 
 
 func _trigger_collectible_custom_frost(item: PickupConfig) -> void:
@@ -3708,29 +3703,13 @@ func _trigger_sakura_rocket(item: PickupConfig) -> void:
 
 
 func _collect_nearest_alive_enemies(max_count: int, radius: float) -> Array[Enemy]:
-	var current_scene := get_tree().current_scene
-	if current_scene != null and current_scene.has_method("query_combat_targets"):
-		return current_scene.call(
-			"query_combat_targets",
-			global_position,
-			maxf(radius, 0.0),
-			maxi(max_count, 0)
-		) as Array[Enemy]
-	var enemies := _collect_alive_enemies()
-	if enemies.is_empty():
+	if not _has_valid_combat_runtime():
 		return []
-	var max_distance_squared := radius * radius
-	var filtered: Array[Enemy] = []
-	for enemy in enemies:
-		if enemy == null or not is_instance_valid(enemy):
-			continue
-		if radius > 0.0 and global_position.distance_squared_to(enemy.global_position) > max_distance_squared:
-			continue
-		filtered.append(enemy)
-	filtered.sort_custom(_sort_enemies_by_distance_to_self)
-	if max_count > 0 and filtered.size() > max_count:
-		filtered.resize(max_count)
-	return filtered
+	return combat_runtime.query_combat_targets(
+		global_position,
+		maxf(radius, 0.0),
+		maxi(max_count, 0)
+	)
 
 
 func _sort_enemies_by_distance_to_self(a: Enemy, b: Enemy) -> bool:
@@ -3748,35 +3727,31 @@ func _sort_enemies_by_distance_to_self(a: Enemy, b: Enemy) -> bool:
 func _spawn_collectible_arrow(target_enemy: Enemy, arrow_damage: int) -> bool:
 	if target_enemy == null or not is_instance_valid(target_enemy) or target_enemy.is_dead:
 		return false
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent == null:
+		return false
+	if _requires_multiplayer_gameplay_gateway() and gameplay_gateway == null:
 		return false
 	var shoot_direction := global_position.direction_to(target_enemy.global_position)
 	if shoot_direction == Vector2.ZERO:
 		shoot_direction = _facing_suffix_to_vector(facing_suffix)
-	var arrow: Node = null
-	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(
-			spawn_parent.call(
-				"has_session_object_pool_scene",
-				COLLECTIBLE_ARROW_PROJECTILE_SCENE
-			)
-		)
-	):
-		arrow = spawn_parent.call(
-			"acquire_session_object",
+	var arrow: CollectibleArrowProjectile = null
+	if spawn_parent.has_session_object_pool_scene(COLLECTIBLE_ARROW_PROJECTILE_SCENE):
+		arrow = spawn_parent.acquire_session_object(
 			COLLECTIBLE_ARROW_PROJECTILE_SCENE,
 			false
-		)
+		) as CollectibleArrowProjectile
 	else:
-		arrow = COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
+		arrow = COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate() as CollectibleArrowProjectile
 	if arrow == null:
 		return false
 	arrow.top_level = true
-	arrow.call("setup", shoot_direction, arrow_damage)
+	arrow.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	arrow.setup(shoot_direction, arrow_damage)
 	if arrow.get_parent() == null:
 		spawn_parent.add_child(arrow)
+	elif arrow.get_parent() != spawn_parent:
+		arrow.reparent(spawn_parent)
 	arrow.global_position = global_position + shoot_direction * auxiliary_projectile_spawn_distance
 	arrow.reset_physics_interpolation()
 	_register_multiplayer_projectile(
@@ -3837,8 +3812,10 @@ func _request_sakura_runtime_resources() -> void:
 func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -> bool:
 	if target_enemy == null or not is_instance_valid(target_enemy) or target_enemy.is_dead:
 		return false
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent == null:
+		return false
+	if _requires_multiplayer_gameplay_gateway() and gameplay_gateway == null:
 		return false
 	var rocket_scene := _get_collectible_sakura_rocket_scene()
 	if rocket_scene == null:
@@ -3846,27 +3823,23 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 	var shoot_direction := global_position.direction_to(target_enemy.global_position)
 	if shoot_direction == Vector2.ZERO:
 		shoot_direction = _facing_suffix_to_vector(facing_suffix)
-	var rocket: Node2D = null
-	if (
-		spawn_parent.has_method("has_session_object_pool_scene")
-		and bool(spawn_parent.call("has_session_object_pool_scene", rocket_scene))
-	):
-		rocket = spawn_parent.call(
-			"acquire_session_object",
+	var rocket: LinglanSkill2SakuraRocket = null
+	if spawn_parent.has_session_object_pool_scene(rocket_scene):
+		rocket = spawn_parent.acquire_session_object(
 			rocket_scene,
 			false
-		) as Node2D
+		) as LinglanSkill2SakuraRocket
 	else:
-		rocket = rocket_scene.instantiate() as Node2D
+		rocket = rocket_scene.instantiate() as LinglanSkill2SakuraRocket
 	if rocket == null:
 		return false
 	rocket.top_level = true
-	var rocket_speed := float(rocket.get("speed"))
-	var rocket_lifetime := float(rocket.get("max_lifetime"))
-	var rocket_explosion_radius := float(rocket.get("explosion_radius"))
-	var rocket_homing_turn_rate := float(rocket.get("homing_turn_rate"))
-	rocket.call(
-		"setup",
+	rocket.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	var rocket_speed := rocket.speed
+	var rocket_lifetime := rocket.max_lifetime
+	var rocket_explosion_radius := rocket.explosion_radius
+	var rocket_homing_turn_rate := rocket.homing_turn_rate
+	rocket.setup(
 		shoot_direction,
 		rocket_damage,
 		rocket_speed,
@@ -3880,6 +3853,8 @@ func _spawn_collectible_sakura_rocket(target_enemy: Enemy, rocket_damage: int) -
 	)
 	if rocket.get_parent() == null:
 		spawn_parent.add_child(rocket)
+	elif rocket.get_parent() != spawn_parent:
+		rocket.reparent(spawn_parent)
 	rocket.global_position = global_position + shoot_direction * auxiliary_projectile_spawn_distance
 	rocket.reset_physics_interpolation()
 	var target_enemy_net_id := int(target_enemy.get_meta("net_id", 0))
@@ -3978,19 +3953,18 @@ func _apply_authoritative_collectible_enemy_damage(
 ) -> bool:
 	if enemy == null or not is_instance_valid(enemy):
 		return false
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene != null
-		and current_scene.has_method("apply_multiplayer_collectible_enemy_damage")
-	):
-		return bool(current_scene.call(
-			"apply_multiplayer_collectible_enemy_damage",
+	if _requires_multiplayer_gameplay_gateway():
+		if gameplay_gateway == null:
+			return false
+		return gameplay_gateway.apply_collectible_enemy_damage(
 			enemy,
 			damage,
 			impact_direction,
-			int(damage_type),
+			damage_type,
 			show_hit_particles
-		))
+		)
+	if not _is_explicit_singleplayer_authority():
+		return false
 	var request := DamageRequest.new(damage, int(damage_type))
 	request.with_source(self, get_instance_id(), &"collectible_effect")
 	request.with_directions(impact_direction)
@@ -4004,17 +3978,14 @@ func _apply_authoritative_collectible_enemy_damage(
 func _apply_authoritative_player_heal(target_player: Player, heal_amount: int) -> bool:
 	if target_player == null or not is_instance_valid(target_player):
 		return false
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene != null
-		and current_scene.has_method("apply_multiplayer_player_heal")
-	):
-		return bool(current_scene.call(
-			"apply_multiplayer_player_heal",
-			target_player,
-			heal_amount
-		))
-	return target_player._try_heal(heal_amount)
+	if _requires_multiplayer_gameplay_gateway():
+		return (
+			gameplay_gateway != null
+			and gameplay_gateway.apply_player_heal(target_player, heal_amount)
+		)
+	if not _is_explicit_singleplayer_authority():
+		return false
+	return target_player._try_heal(heal_amount, false)
 
 
 func _apply_authoritative_collectible_player_heal(target_player: Player, heal_amount: int) -> bool:
@@ -4080,24 +4051,12 @@ func _query_alive_enemies_in_radius_into(
 	result: Array[Enemy]
 ) -> void:
 	result.clear()
-	var current_scene := get_tree().current_scene
-	if (
-		current_scene != null
-		and current_scene.has_method("query_combat_targets_unordered_into")
-	):
-		current_scene.call(
-			"query_combat_targets_unordered_into",
+	if _has_valid_combat_runtime():
+		combat_runtime.query_combat_targets_unordered_into(
 			center_position,
 			maxf(radius, 0.0),
 			result
 		)
-		return
-	var radius_squared := maxf(radius, 0.0) * maxf(radius, 0.0)
-	for enemy in _collect_alive_enemies():
-		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
-			continue
-		if center_position.distance_squared_to(enemy.global_position) <= radius_squared:
-			result.append(enemy)
 
 
 func _apply_collectible_area_heal(center_position: Vector2, radius: float, heal_amount: int) -> void:
@@ -4162,14 +4121,9 @@ func _apply_collectible_area_frost(
 
 
 func _collect_alive_enemies() -> Array[Enemy]:
-	var result: Array[Enemy] = []
-	var root := get_tree().current_scene
-	if root == null:
-		return result
-	if root.has_method("get_all_combat_targets"):
-		return root.call("get_all_combat_targets") as Array[Enemy]
-	_collect_alive_enemies_recursive(root, result)
-	return result
+	if not _has_valid_combat_runtime():
+		return []
+	return combat_runtime.get_all_combat_targets()
 
 
 func _collect_alive_enemies_recursive(node: Node, result: Array[Enemy]) -> void:
@@ -4182,10 +4136,9 @@ func _collect_alive_enemies_recursive(node: Node, result: Array[Enemy]) -> void:
 
 func _collect_alive_players() -> Array[Player]:
 	var result: Array[Player] = []
-	var root := get_tree().current_scene
-	if root == null:
+	if not _has_valid_combat_runtime():
 		return result
-	_collect_alive_players_recursive(root, result)
+	_collect_alive_players_recursive(combat_runtime, result)
 	return result
 
 
@@ -4198,11 +4151,13 @@ func _collect_alive_players_recursive(node: Node, result: Array[Player]) -> void
 
 
 func _should_run_authoritative_collectible_effects() -> bool:
-	if _net_manager == null:
+	if _is_explicit_singleplayer_authority():
 		return true
-	if not _net_manager.is_multiplayer_active():
-		return true
-	return _net_manager.is_host()
+	return (
+		_has_valid_combat_runtime()
+		and combat_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		and gameplay_gateway != null
+	)
 
 
 func _spawn_collectible_area_effect(radius: float, color: Color, duration: float) -> void:
@@ -4218,7 +4173,7 @@ func _spawn_collectible_area_at(
 	var effect := COLLECTIBLE_AREA_EFFECT_SCENE.instantiate() as CollectibleAreaEffect
 	if effect == null:
 		return
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent == null:
 		return
 	effect.top_level = true
@@ -4236,7 +4191,7 @@ func _spawn_collectible_frost_effect_at(spawn_position: Vector2, radius: float, 
 	var effect := COLLECTIBLE_FROST_AREA_EFFECT_SCENE.instantiate()
 	if effect == null:
 		return
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent == null:
 		return
 	effect.top_level = true
@@ -4250,7 +4205,7 @@ func _spawn_collectible_lightning_effect(spawn_position: Vector2) -> void:
 	var effect := COLLECTIBLE_LIGHTNING_EFFECT_SCENE.instantiate() as CollectibleLightningEffect
 	if effect == null:
 		return
-	var spawn_parent := get_tree().current_scene
+	var spawn_parent := _get_combat_spawn_parent()
 	if spawn_parent == null:
 		return
 	effect.top_level = true
@@ -4267,11 +4222,9 @@ func _broadcast_collectible_visual(
 	color: Color,
 	duration: float
 ) -> void:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("broadcast_collectible_visual_effect"):
+	if gameplay_gateway == null:
 		return
-	current_scene.call(
-		"broadcast_collectible_visual_effect",
+	gameplay_gateway.broadcast_collectible_visual_effect(
 		effect_type,
 		spawn_position,
 		radius,
@@ -4286,11 +4239,9 @@ func _broadcast_collectible_follow_visual(
 	radius: float,
 	duration: float
 ) -> void:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("broadcast_collectible_follow_visual_effect"):
+	if gameplay_gateway == null:
 		return
-	current_scene.call(
-		"broadcast_collectible_follow_visual_effect",
+	gameplay_gateway.broadcast_collectible_follow_visual_effect(
 		effect_type,
 		owner_peer_id,
 		radius,
@@ -4445,10 +4396,9 @@ func _finish_dash() -> void:
 
 
 func _notify_multiplayer_dash_started(direction: Vector2, start_move_input: Vector2) -> void:
-	var current_scene := get_tree().current_scene
-	if current_scene == null or not current_scene.has_method("notify_local_player_dash_started"):
+	if gameplay_gateway == null:
 		return
-	current_scene.call("notify_local_player_dash_started", direction, start_move_input)
+	gameplay_gateway.notify_local_player_dash_started(direction, start_move_input)
 
 
 func start_multiplayer_dash_protection(direction: Vector2) -> bool:

@@ -19,7 +19,7 @@ class PoolRuntime:
 		session_object_pool = SessionObjectPool.new()
 		session_object_pool.name = "SessionObjectPool"
 		add_child(session_object_pool)
-		GameRuntimeBase.register_capoo_mage_fireball_impact_pool(
+		CombatRuntimeBase.register_capoo_mage_fireball_impact_pool(
 			session_object_pool,
 			prewarm_count,
 			capacity

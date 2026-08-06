@@ -5,7 +5,7 @@
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
-[ext_resource type="PackedScene" path="res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn" id="13_profile_panel"]
+[ext_resource type="PackedScene" uid="uid://bgq6oak2w4x7m" path="res://scene/game_modes/rogue/ui/rogue_player_profile_panel.tscn" id="13_profile_panel"]
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]
 [ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/damage_number_pool.gd" id="18_damage_pool"]
@@ -21,6 +21,9 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="30_combat_robot_drone_motion"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_hud.tscn" id="31_rogue_hud"]
 [ext_resource type="PackedScene" uid="uid://d4jmq3n7wpx2a" path="res://scene/ui/shared/player_life_status_hud.tscn" id="32_life_hud"]
+[ext_resource type="PackedScene" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="33_gameplay_gateway"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="34_mode_adapter"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres" id="35_rogue_campaign"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -107,9 +110,13 @@ position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
 pre_wave_duration = 3.0
 auto_start_waves = false
-linglan_boss_enabled = false
-standard_merchants_enabled = false
+singleplayer_campaign = ExtResource("35_rogue_campaign")
+multiplayer_campaign = ExtResource("35_rogue_campaign")
 world_lighting_policy = 2
+
+[node name="MultiplayerGameplayGateway" parent="." instance=ExtResource("33_gameplay_gateway")]
+
+[node name="MultiplayerModeAdapter" parent="." instance=ExtResource("34_mode_adapter")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")

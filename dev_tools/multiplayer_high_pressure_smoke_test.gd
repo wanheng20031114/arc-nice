@@ -99,7 +99,7 @@ class CapturingMpGame:
 
 
 class TestRuntime:
-	extends GameRuntimeBase
+	extends CombatRuntimeBase
 
 	var proxy_plants: Dictionary[int, PlantDefense] = {}
 	var lookup_targets: Dictionary[int, Enemy] = {}
@@ -125,6 +125,7 @@ class TestRuntime:
 		return peer_players.get(peer_id) as Player
 
 	func get_enemy_for_net_id(net_id: int) -> Enemy:
+		target_lookup_count += 1
 		return lookup_targets.get(net_id) as Enemy
 
 	func get_pickup_for_net_id(net_id: int) -> Pickup:
@@ -252,9 +253,6 @@ class TestRuntime:
 		transaction_plant_lookup_count += 1
 		return proxy_plants.get(net_id) as PlantDefense
 
-	func supports_tower_defense() -> bool:
-		return true
-
 	func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
 		transaction_snapshot_query_count += 1
 		var snapshots: Array[Dictionary] = []
@@ -294,7 +292,6 @@ class TestRuntime:
 			plant.free()
 
 	func get_combat_target_by_net_id(net_id: int) -> Enemy:
-		target_lookup_count += 1
 		return lookup_targets.get(net_id) as Enemy
 
 	func show_combat_number(
@@ -316,6 +313,87 @@ class TestRuntime:
 		return true
 
 
+class TestTowerModeAdapter:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	func _test_runtime() -> TestRuntime:
+		return runtime as TestRuntime
+
+	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
+		var test_runtime := _test_runtime()
+		return (
+			test_runtime.get_multiplayer_plant_node(net_id)
+			if test_runtime != null
+			else null
+		)
+
+	func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
+		var test_runtime := _test_runtime()
+		return (
+			test_runtime.get_multiplayer_plant_snapshots()
+			if test_runtime != null
+			else []
+		)
+
+	func get_authoritative_team_plant_count() -> int:
+		var test_runtime := _test_runtime()
+		return test_runtime.proxy_plants.size() if test_runtime != null else -1
+
+	func apply_remote_plant_health(
+		net_id: int,
+		current_health: int,
+		maximum_health: int,
+		health_revision: int
+	) -> void:
+		var test_runtime := _test_runtime()
+		if test_runtime != null:
+			test_runtime.apply_remote_plant_health(
+				net_id,
+				current_health,
+				maximum_health,
+				health_revision
+			)
+
+	func apply_remote_plant_spawn(
+		request_id: int,
+		owner_peer_id: int,
+		net_id: int,
+		plant_id: StringName,
+		anchor: Vector2i,
+		current_health: int,
+		maximum_health: int,
+		health_revision: int
+	) -> void:
+		var test_runtime := _test_runtime()
+		if test_runtime != null:
+			test_runtime.apply_remote_plant_spawn(
+				request_id,
+				owner_peer_id,
+				net_id,
+				plant_id,
+				anchor,
+				current_health,
+				maximum_health,
+				health_revision
+			)
+
+	func apply_remote_plant_removed(
+		net_id: int,
+		was_destroyed: bool = false,
+		silent: bool = false
+	) -> void:
+		var test_runtime := _test_runtime()
+		if test_runtime == null:
+			return
+		if silent:
+			test_runtime.apply_remote_plant_removed_silently(net_id)
+		else:
+			test_runtime.apply_remote_plant_removed_with_reason(
+				net_id,
+				was_destroyed
+			)
+
+
 var failures: Array[String] = []
 var fixture: TestRuntime = null
 var client_net_manager := ClientNetManagerStub.new()
@@ -330,7 +408,7 @@ func _init() -> void:
 func _run() -> void:
 	fixture = TestRuntime.new()
 	fixture.name = "MultiplayerHighPressureFixture"
-	fixture.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	fixture.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var enemy_container := Node2D.new()
 	enemy_container.name = "EnemyContainer"
 	fixture.add_child(enemy_container)
@@ -345,6 +423,14 @@ func _run() -> void:
 	drone_motion_system.name = "CombatRobotDroneMotionSystem"
 	fixture.add_child(drone_motion_system)
 	fixture.add_child(DAY_NIGHT_SCENE.instantiate())
+	var gameplay_gateway := MultiplayerGameplayGateway.new()
+	gameplay_gateway.name = "MultiplayerGameplayGateway"
+	fixture.add_child(gameplay_gateway)
+	var mode_adapter := TestTowerModeAdapter.new()
+	mode_adapter.name = "MultiplayerModeAdapter"
+	fixture.add_child(mode_adapter)
+	mode_adapter.bind_runtime(fixture)
+	fixture.multiplayer_mode_adapter = mode_adapter
 	root.add_child(fixture)
 	current_scene = fixture
 	await process_frame
@@ -370,8 +456,12 @@ func _run() -> void:
 
 func _new_mp_game(use_host: bool = false) -> Node:
 	var mp_game := MP_GAME_SCRIPT.new()
+	var tower_adapter := fixture.get_multiplayer_mode_adapter() as TestTowerModeAdapter
 	mp_game.set("game", fixture)
 	mp_game.set("net_manager", host_net_manager if use_host else client_net_manager)
+	mp_game.set("_mode_adapter", tower_adapter)
+	mp_game.set("tower_mode_adapter", tower_adapter)
+	tower_adapter.attach_multiplayer_session(mp_game)
 	mp_games.append(mp_game)
 	return mp_game
 
@@ -386,7 +476,7 @@ func _test_combat_target_query_reuse() -> void:
 	near_enemy.global_position = Vector2(10.0, 0.0)
 	boss_enemy.global_position = Vector2(20.0, 0.0)
 	far_enemy.global_position = Vector2(100.0, 0.0)
-	fixture.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
+	fixture.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	var singleplayer_reused_targets: Array[Enemy] = [far_enemy]
 	fixture.query_combat_targets_into(
 		Vector2.ZERO,
@@ -398,7 +488,7 @@ func _test_combat_target_query_reuse() -> void:
 		singleplayer_reused_targets == [near_enemy, boss_enemy],
 		"Base single-player queries must refill one array from Enemy and Boss containers in distance order."
 	)
-	fixture.runtime_mode = GameRuntimeBase.RuntimeMode.CLIENT_VIEW
+	fixture.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	fixture.register_combat_target(901, near_enemy)
 	fixture.register_combat_target(902, boss_enemy)
 	fixture.register_combat_target(903, far_enemy)
@@ -1605,6 +1695,10 @@ func _new_capturing_host_mp_game() -> CapturingMpGame:
 	fixture.add_child(mp_game)
 	mp_game.set("game", fixture)
 	mp_game.set("net_manager", host_net_manager)
+	var tower_adapter := fixture.get_multiplayer_mode_adapter() as TestTowerModeAdapter
+	mp_game._mode_adapter = tower_adapter
+	mp_game.tower_mode_adapter = tower_adapter
+	tower_adapter.attach_multiplayer_session(mp_game)
 	return mp_game
 
 
@@ -1670,6 +1764,7 @@ func _test_hoe_prediction_confirmation_reconciliation() -> void:
 
 func _test_tiyi_direct_lookup_retry() -> void:
 	var player := TIYI_SCENE.instantiate() as PlayerTiyi
+	player.bind_combat_runtime(fixture)
 	fixture.add_child(player)
 	await process_frame
 	fixture.target_lookup_count = 0

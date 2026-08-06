@@ -12,6 +12,11 @@ class NoRespawnTowerRuntime extends TowerDefenseGame:
 	func allows_player_respawn(_peer_id: int) -> bool:
 		return false
 
+
+class NoRespawnTowerModeAdapter extends TowerDefenseMultiplayerModeAdapter:
+	func allows_player_respawn(_peer_id: int) -> bool:
+		return false
+
 var failures: Array[String] = []
 
 
@@ -28,6 +33,9 @@ func _run() -> void:
 	await _test_client_view_waits_for_authoritative_revive()
 	await _test_multiplayer_all_dead_is_not_defeat()
 	await _test_client_gate_warning_replication()
+	for _cleanup_frame in range(8):
+		await process_frame
+		await physics_frame
 	if failures.is_empty():
 		print("TOWER_DEFENSE_FLOW_RESPAWN_SMOKE_TEST_OK")
 		quit()
@@ -39,15 +47,25 @@ func _run() -> void:
 
 func _test_respawn_policy_and_permanent_death_hud() -> void:
 	var standard_runtime := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(standard_runtime)
 	_expect(
-		standard_runtime.allows_player_respawn(1),
+		standard_runtime.get_multiplayer_mode_adapter().allows_player_respawn(1),
 		"Existing runtimes must retain the default allow-respawn policy."
 	)
 	standard_runtime.free()
 
 	var no_respawn_runtime := NoRespawnTowerRuntime.new()
+	var no_respawn_adapter := NoRespawnTowerModeAdapter.new()
+	no_respawn_adapter.name = "MultiplayerModeAdapter"
+	no_respawn_runtime.add_child(no_respawn_adapter)
+	no_respawn_adapter.bind_runtime(no_respawn_runtime)
+	no_respawn_runtime.multiplayer_mode_adapter = no_respawn_adapter
+	no_respawn_runtime.tower_multiplayer_mode_adapter = no_respawn_adapter
 	var mp_game := MP_GAME_SCENE.instantiate()
 	mp_game.set("game", no_respawn_runtime)
+	mp_game.set("_mode_adapter", no_respawn_adapter)
+	mp_game.set("tower_mode_adapter", no_respawn_adapter)
+	no_respawn_adapter.attach_multiplayer_session(mp_game)
 	mp_game.call("_schedule_player_revive", 7)
 	var revive_times := mp_game.get("_dead_player_revive_times") as Dictionary
 	var revive_seconds := mp_game.get("_dead_player_revive_last_seconds") as Dictionary
@@ -159,6 +177,7 @@ func _get_function_source(source: String, function_name: String) -> String:
 
 func _test_singleplayer_flow_and_respawn() -> void:
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	var authored_status_hud := game.get_node("TowerDefenseStatusHUD") as CanvasLayer
 	_expect(
 		authored_status_hud != null and not authored_status_hud.visible,
@@ -178,7 +197,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	)
 	_expect(game.player.current_xirang == 1000, "The player must enter tower defense with 1000 Xirang.")
 	var first_step := game.current_flow_step
-	_expect(game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE, "The first wave must wait in PRE_WAVE instead of starting immediately.")
+	_expect(game.wave_state == CombatFlowState.State.PRE_WAVE, "The first wave must wait in PRE_WAVE instead of starting immediately.")
 	_expect(game.countdown_seconds == 90, "The first preparation period must start at 90 seconds.")
 	_expect(game.wave_hud.start_wave_button.visible and not game.wave_hud.start_wave_button.disabled, "The rest HUD must expose an enabled early-start button.")
 	_expect(
@@ -219,7 +238,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 
 	game.wave_hud.start_wave_button.pressed.emit()
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+		game.wave_state == CombatFlowState.State.PRE_WAVE
 		and game.countdown_seconds == 3
 		and game.countdown_audio.playing
 		and not game.wave_hud.start_wave_button.visible,
@@ -230,7 +249,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"The final 3-second countdown must reject repeated early-start requests."
 	)
 	_finish_final_countdown(game)
-	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "The third countdown tick must enter active combat exactly once.")
+	_expect(game.wave_state == CombatFlowState.State.WAVE_ACTIVE, "The third countdown tick must enter active combat exactly once.")
 	_expect(
 		not game.wave_hud.stage_banner.visible
 		and game.wave_hud.tower_defense_stats.visible,
@@ -265,7 +284,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	game.luoxi_merchant.result_visible = true
 	game.luoxi_merchant.dialogue_bubble.show()
 	game.call("_enter_intermission", first_step)
-	_expect(game.wave_state == GameRuntimeBase.WaveState.INTERMISSION, "Every cleared wave must enter a rest state.")
+	_expect(game.wave_state == CombatFlowState.State.INTERMISSION, "Every cleared wave must enter a rest state.")
 	_expect(game.countdown_seconds == 30, "Every ordinary between-wave rest must start at 30 seconds.")
 	_expect(
 		game.music_player.stream.resource_path
@@ -283,13 +302,13 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(game.luoxi_merchant.get_player_refresh_count(0) == 2, "Repeated state sync in one rest must not reset Luoxi twice.")
 	_expect(game.request_tower_defense_wave_start(0), "The between-wave rest button must also start the final countdown.")
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.INTERMISSION
+		game.wave_state == CombatFlowState.State.INTERMISSION
 		and game.countdown_seconds == 3,
 		"An intermission early-start must retain the rest state through the final countdown."
 	)
 	_finish_final_countdown(game)
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE,
+		game.wave_state == CombatFlowState.State.WAVE_ACTIVE,
 		"The intermission final countdown must enter combat only after all three ticks."
 	)
 	game.enemy_spawn_timer.stop()
@@ -310,7 +329,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	)
 	await physics_frame
 	_expect(game.player.is_dead, "A killed tower-defense player must enter the dead state.")
-	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "Player death must not end tower defense.")
+	_expect(game.wave_state == CombatFlowState.State.WAVE_ACTIVE, "Player death must not end tower defense.")
 	_expect(
 		game.player.body_sprite.visible
 		and game.player.body_sprite.animation == &"death"
@@ -480,7 +499,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	var defeat_zoom := game.map_camera.zoom
 	var defeat_gate_center := game.home_objective_targets[0].global_position.round()
 	game.call("_apply_base_damage", 1)
-	_expect(game.wave_state == GameRuntimeBase.WaveState.DEFEAT, "Blue-gate health reaching zero must still end the game.")
+	_expect(game.wave_state == CombatFlowState.State.DEFEAT, "Blue-gate health reaching zero must still end the game.")
 	_expect(not game.music_player.playing, "Tower-defense defeat must stop the active BGM immediately.")
 	_expect(not game.wave_hud.result_overlay.visible, "The defeat overlay must wait until the camera reaches the blue gate.")
 	_expect(not game.defeat_audio.playing, "The defeat cue must wait for the camera transition.")
@@ -520,6 +539,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 
 func _test_singleplayer_transition_revive_policy() -> void:
 	var intermission_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(intermission_game)
 	root.add_child(intermission_game)
 	current_scene = intermission_game
 	await process_frame
@@ -574,6 +594,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	await _cleanup_tower_game(intermission_game)
 
 	var zero_rest_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(zero_rest_game)
 	root.add_child(zero_rest_game)
 	current_scene = zero_rest_game
 	await process_frame
@@ -590,7 +611,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	zero_rest_game.call("_enter_intermission", zero_rest_step)
 	zero_rest_game.enemy_spawn_timer.stop()
 	_expect(
-		zero_rest_game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE,
+		zero_rest_game.wave_state == CombatFlowState.State.WAVE_ACTIVE,
 		"A zero-second intermission must continue directly into the next wave."
 	)
 	_expect(not zero_rest_game.player.is_dead, "A zero-second intermission must still revive a dead single-player character before the next wave begins.")
@@ -603,6 +624,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	await _cleanup_tower_game(zero_rest_game)
 
 	var victory_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(victory_game)
 	root.add_child(victory_game)
 	current_scene = victory_game
 	await process_frame
@@ -614,7 +636,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	)
 	victory_game.player.call("_die")
 	victory_game.call("_enter_victory")
-	_expect(victory_game.wave_state == GameRuntimeBase.WaveState.VICTORY, "The single-player revive policy test must enter victory.")
+	_expect(victory_game.wave_state == CombatFlowState.State.VICTORY, "The single-player revive policy test must enter victory.")
 	_expect(not victory_game.player.is_dead, "Victory must revive a dead single-player character immediately.")
 	_expect(int(victory_revives["count"]) == 1, "Victory must perform exactly one single-player revive transition.")
 	_expect(
@@ -625,6 +647,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	await _cleanup_tower_game(victory_game)
 
 	var defeat_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(defeat_game)
 	root.add_child(defeat_game)
 	current_scene = defeat_game
 	await process_frame
@@ -638,7 +661,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	var defeat_position := defeat_game.player.global_position
 	var defeat_health := defeat_game.player.current_health
 	defeat_game.call("_enter_defeat")
-	_expect(defeat_game.wave_state == GameRuntimeBase.WaveState.DEFEAT, "The single-player defeat policy test must enter defeat.")
+	_expect(defeat_game.wave_state == CombatFlowState.State.DEFEAT, "The single-player defeat policy test must enter defeat.")
 	_expect(
 		defeat_game.player.is_dead
 		and defeat_game.player.current_health == defeat_health
@@ -659,9 +682,10 @@ func _test_host_transition_revive_signal_policy() -> void:
 	var character_ids := {1: &"weishidaier", 2: &"tiyi"}
 
 	var living_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(living_game)
 	living_game.auto_start_waves = false
 	living_game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		player_names,
 		character_ids
@@ -671,7 +695,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	await process_frame
 	await physics_frame
 	var living_signals := {"count": 0}
-	living_game.multiplayer_revive_all_requested.connect(
+	living_game.get_multiplayer_mode_adapter().revive_all_requested.connect(
 		func() -> void:
 			living_signals["count"] = int(living_signals["count"]) + 1
 	)
@@ -685,9 +709,10 @@ func _test_host_transition_revive_signal_policy() -> void:
 	await _cleanup_tower_game(living_game)
 
 	var intermission_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(intermission_game)
 	intermission_game.auto_start_waves = false
 	intermission_game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		player_names,
 		character_ids
@@ -697,7 +722,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	await process_frame
 	await physics_frame
 	var intermission_signals := {"count": 0}
-	intermission_game.multiplayer_revive_all_requested.connect(
+	intermission_game.get_multiplayer_mode_adapter().revive_all_requested.connect(
 		func() -> void:
 			intermission_signals["count"] = int(intermission_signals["count"]) + 1
 	)
@@ -719,9 +744,10 @@ func _test_host_transition_revive_signal_policy() -> void:
 	await _cleanup_tower_game(intermission_game)
 
 	var victory_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(victory_game)
 	victory_game.auto_start_waves = false
 	victory_game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		player_names,
 		character_ids
@@ -731,7 +757,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	await process_frame
 	await physics_frame
 	var victory_signals := {"count": 0}
-	victory_game.multiplayer_revive_all_requested.connect(
+	victory_game.get_multiplayer_mode_adapter().revive_all_requested.connect(
 		func() -> void:
 			victory_signals["count"] = int(victory_signals["count"]) + 1
 	)
@@ -749,9 +775,10 @@ func _test_host_transition_revive_signal_policy() -> void:
 	await _cleanup_tower_game(victory_game)
 
 	var defeat_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(defeat_game)
 	defeat_game.auto_start_waves = false
 	defeat_game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		player_names,
 		character_ids
@@ -761,7 +788,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	await process_frame
 	await physics_frame
 	var defeat_signals := {"count": 0}
-	defeat_game.multiplayer_revive_all_requested.connect(
+	defeat_game.get_multiplayer_mode_adapter().revive_all_requested.connect(
 		func() -> void:
 			defeat_signals["count"] = int(defeat_signals["count"]) + 1
 	)
@@ -785,9 +812,10 @@ func _test_host_authoritative_revive_all() -> void:
 	net_manager.set("net_role", 1)
 
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		{1: "主机", 2: "存活队友"},
 		{1: &"weishidaier", 2: &"tiyi"}
@@ -816,6 +844,13 @@ func _test_host_authoritative_revive_all() -> void:
 	var mp_game := MP_GAME_SCENE.instantiate()
 	mp_game.set("game", game)
 	mp_game.set("net_manager", net_manager)
+	var tower_adapter := (
+		game.get_multiplayer_mode_adapter()
+		as TowerDefenseMultiplayerModeAdapter
+	)
+	mp_game.set("_mode_adapter", tower_adapter)
+	mp_game.set("tower_mode_adapter", tower_adapter)
+	tower_adapter.attach_multiplayer_session(mp_game)
 	var revive_times := mp_game.get("_dead_player_revive_times") as Dictionary
 	var revive_seconds := mp_game.get("_dead_player_revive_last_seconds") as Dictionary
 	revive_times[1] = 1000.0
@@ -832,11 +867,11 @@ func _test_host_authoritative_revive_all() -> void:
 		func() -> void:
 			revive_events["living"] = int(revive_events["living"]) + 1
 	)
-	game.multiplayer_revive_all_requested.connect(
+	game.get_multiplayer_mode_adapter().revive_all_requested.connect(
 		func() -> void:
 			revive_all_requests["count"] = int(revive_all_requests["count"]) + 1
 	)
-	game.multiplayer_revive_all_requested.connect(
+	game.get_multiplayer_mode_adapter().revive_all_requested.connect(
 		Callable(mp_game, "_on_host_revive_all_requested")
 	)
 
@@ -889,9 +924,10 @@ func _test_host_authoritative_revive_all() -> void:
 
 func _test_client_view_waits_for_authoritative_revive() -> void:
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
 		2,
 		{1: "主机", 2: "客户端"},
 		{1: &"weishidaier", 2: &"tiyi"}
@@ -902,7 +938,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 	await physics_frame
 	var revive_events := {"count": 0}
 	var revive_all_events := {"count": 0}
-	game.multiplayer_revive_all_requested.connect(
+	game.get_multiplayer_mode_adapter().revive_all_requested.connect(
 		func() -> void:
 			revive_all_events["count"] = int(revive_all_events["count"]) + 1
 	)
@@ -924,7 +960,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 	var flow_step := game.call("_get_start_flow_step") as FlowStepConfig
 	game.apply_remote_flow_state(
 		flow_step.step_id,
-		GameRuntimeBase.WaveState.INTERMISSION,
+		CombatFlowState.State.INTERMISSION,
 		30
 	)
 	_expect(
@@ -934,7 +970,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 	var countdown_audio := game.countdown_audio
 	game.apply_remote_flow_state(
 		flow_step.step_id,
-		GameRuntimeBase.WaveState.INTERMISSION,
+		CombatFlowState.State.INTERMISSION,
 		3
 	)
 	_expect(
@@ -944,7 +980,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 	countdown_audio.stop()
 	game.apply_remote_flow_state(
 		flow_step.step_id,
-		GameRuntimeBase.WaveState.INTERMISSION,
+		CombatFlowState.State.INTERMISSION,
 		3
 	)
 	_expect(
@@ -960,7 +996,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 		countdown_audio.stop()
 	game.apply_remote_flow_state(
 		flow_step.step_id,
-		GameRuntimeBase.WaveState.INTERMISSION,
+		CombatFlowState.State.INTERMISSION,
 		0
 	)
 	_expect(
@@ -987,9 +1023,10 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 
 func _test_client_gate_warning_replication() -> void:
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.CLIENT_VIEW,
+		CombatRuntimeBase.RuntimeMode.CLIENT_VIEW,
 		2,
 		{1: "主机", 2: "客户端"},
 		{1: &"weishidaier", 2: &"tiyi"}
@@ -1031,7 +1068,7 @@ func _test_client_gate_warning_replication() -> void:
 	game.apply_remote_defeat()
 	var first_defeat_tween := game.defeat_camera_tween
 	game.apply_remote_defeat()
-	_expect(game.wave_state == GameRuntimeBase.WaveState.DEFEAT, "A reliable defeat event must enter the shared client defeat state.")
+	_expect(game.wave_state == CombatFlowState.State.DEFEAT, "A reliable defeat event must enter the shared client defeat state.")
 	_expect(game.defeat_camera_tween == first_defeat_tween, "A duplicate reliable defeat event must not restart client camera travel.")
 	_expect(not game.music_player.playing, "A client must stop its own BGM as soon as defeat is received.")
 	_expect(not game.wave_hud.result_overlay.visible, "A client must also defer the defeat overlay until its local camera arrives.")
@@ -1050,9 +1087,10 @@ func _test_client_gate_warning_replication() -> void:
 
 func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		{1: "主机", 2: "队友"},
 		{1: &"weishidaier", 2: &"tiyi"}
@@ -1073,18 +1111,18 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 		"The Host must be able to confirm the team's final countdown."
 	)
 	_expect(
-		game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+		game.wave_state == CombatFlowState.State.PRE_WAVE
 		and game.countdown_seconds == 3,
 		"The Host confirmation must authoritatively enter the final countdown."
 	)
 	_finish_final_countdown(game)
-	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "The Host must start combat after the authoritative 3-second countdown.")
+	_expect(game.wave_state == CombatFlowState.State.WAVE_ACTIVE, "The Host must start combat after the authoritative 3-second countdown.")
 	game.enemy_spawn_timer.stop()
 	for peer_id in [1, 2]:
 		var player_instance := game.get_player_for_peer(peer_id)
 		player_instance.apply_multiplayer_death_state()
 	await physics_frame
-	_expect(game.wave_state == GameRuntimeBase.WaveState.WAVE_ACTIVE, "A full multiplayer team wipe must not end tower defense.")
+	_expect(game.wave_state == CombatFlowState.State.WAVE_ACTIVE, "A full multiplayer team wipe must not end tower defense.")
 	for peer_id in [1, 2]:
 		var player_instance := game.get_player_for_peer(peer_id)
 		_expect(
@@ -1127,7 +1165,7 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	game.update_player_respawn_countdown(2, 5)
 	_expect(game.tower_defense_status_hud.respawn_entries.size() == 2, "The right HUD must list every dead multiplayer player.")
 	var defeat_signals := {"count": 0}
-	game.multiplayer_defeat_started.connect(
+	game.get_multiplayer_mode_adapter().defeat_started.connect(
 		func() -> void: defeat_signals["count"] = int(defeat_signals["count"]) + 1
 	)
 	game.current_base_health = 1
@@ -1187,6 +1225,12 @@ func _cleanup_tower_game(game: TowerDefenseGame) -> void:
 	for _frame in range(4):
 		await process_frame
 		await physics_frame
+
+
+func _disable_tower_fixture_background_loads(game: TowerDefenseGame) -> void:
+	var coordinator := game.get_node_or_null("FateCoordinator") as FateCoordinator
+	if coordinator != null:
+		coordinator.elite_enemy_config_loads_requested = true
 
 
 func _expect(condition: bool, message: String) -> void:

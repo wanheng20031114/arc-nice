@@ -6,18 +6,18 @@ class_name SharedWarehouseLedgerBridge
 ## 持久化逻辑在仓库 revision 或槽位 wire 格式变化后发生漂移。
 
 
-static func bind_identity(warehouse: Node, warehouse_net_id: int) -> bool:
-	if not _has_warehouse_interface(warehouse) or warehouse_net_id <= 0:
+static func bind_identity(
+	warehouse: OakWarehouse,
+	warehouse_net_id: int
+) -> bool:
+	if warehouse == null or not is_instance_valid(warehouse) or warehouse_net_id <= 0:
 		return false
-	return bool(warehouse.call(
-		"configure_persistent_storage_identity",
-		warehouse_net_id
-	))
+	return warehouse.configure_persistent_storage_identity(warehouse_net_id)
 
 
 static func restore_from_ledger(
 	run_state: RunStateStore,
-	warehouse: Node,
+	warehouse: OakWarehouse,
 	warehouse_net_id: int
 ) -> bool:
 	if run_state == null or not bind_identity(warehouse, warehouse_net_id):
@@ -25,19 +25,19 @@ static func restore_from_ledger(
 	var snapshot := run_state.get_shared_warehouse_snapshot(warehouse_net_id)
 	if snapshot.is_empty():
 		return false
-	return bool(warehouse.call("apply_storage_snapshot", snapshot))
+	return warehouse.apply_storage_snapshot(snapshot)
 
 
 static func persist_to_ledger(
 	run_state: RunStateStore,
-	warehouse: Node,
+	warehouse: OakWarehouse,
 	warehouse_net_id: int
 ) -> bool:
 	if run_state == null or not bind_identity(warehouse, warehouse_net_id):
 		return false
 	var ledger := run_state.export_shared_warehouse_ledger()
 	var snapshots := (ledger.get("warehouses", []) as Array).duplicate(true)
-	var replacement := warehouse.call("export_storage_snapshot") as Dictionary
+	var replacement := warehouse.export_storage_snapshot()
 	var replaced := false
 	for index in snapshots.size():
 		var current := snapshots[index] as Dictionary
@@ -77,47 +77,36 @@ static func remove_from_ledger(
 	)
 
 
-static func capture_runtime_warehouses(
+static func capture_warehouses(
 	run_state: RunStateStore,
-	runtime: Node
+	warehouses: Array[OakWarehouse]
 ) -> bool:
-	if (
-		run_state == null
-		or runtime == null
-		or not is_instance_valid(runtime)
-		or not runtime.has_method("get_multiplayer_plant_snapshots")
-		or not runtime.has_method("get_multiplayer_plant_node")
-	):
+	if run_state == null:
 		return false
-	var warehouse_ids: Array[int] = []
-	for plant_snapshot in runtime.call("get_multiplayer_plant_snapshots") as Array:
-		var net_id := int(plant_snapshot.get("net_id", 0))
-		var warehouse := runtime.call(
-			"get_multiplayer_plant_node",
-			net_id
-		) as Node
+	var warehouses_by_id: Dictionary[int, OakWarehouse] = {}
+	for warehouse in warehouses:
+		var net_id := (
+			int(warehouse.get_meta(&"net_id", warehouse.warehouse_net_id))
+			if warehouse != null and is_instance_valid(warehouse)
+			else 0
+		)
 		if (
 			net_id <= 0
-			or not _has_warehouse_interface(warehouse)
-			or bool(warehouse.get("is_dead"))
-			or bool(warehouse.get("is_removing"))
+			or warehouse.is_dead
+			or warehouse.is_removing
 			or warehouse.is_queued_for_deletion()
 		):
 			continue
-		warehouse_ids.append(net_id)
+		warehouses_by_id[net_id] = warehouse
+	var warehouse_ids: Array[int] = warehouses_by_id.keys()
 	warehouse_ids.sort()
 
 	var snapshots: Array[Dictionary] = []
 	for warehouse_net_id in warehouse_ids:
-		var warehouse := runtime.call(
-			"get_multiplayer_plant_node",
-			warehouse_net_id
-		) as Node
+		var warehouse := warehouses_by_id[warehouse_net_id]
 		if not bind_identity(warehouse, warehouse_net_id):
 			return false
-		snapshots.append(
-			warehouse.call("export_storage_snapshot") as Dictionary
-		)
+		snapshots.append(warehouse.export_storage_snapshot())
 	return run_state.replace_shared_warehouse_snapshots(
 		snapshots,
 		run_state.get_shared_warehouse_ledger_revision()
@@ -127,14 +116,4 @@ static func capture_runtime_warehouses(
 static func _sort_snapshots_by_warehouse_id(left: Variant, right: Variant) -> bool:
 	return int((left as Dictionary).get("warehouse_net_id", 0)) < int(
 		(right as Dictionary).get("warehouse_net_id", 0)
-	)
-
-
-static func _has_warehouse_interface(warehouse: Node) -> bool:
-	return (
-		warehouse != null
-		and is_instance_valid(warehouse)
-		and warehouse.has_method("configure_persistent_storage_identity")
-		and warehouse.has_method("apply_storage_snapshot")
-		and warehouse.has_method("export_storage_snapshot")
 	)

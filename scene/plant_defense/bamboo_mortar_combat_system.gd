@@ -17,7 +17,8 @@ const EXPLOSION_EXACT_CLUSTER_CELL_SIZE := 2.0
 # 既能在9个物理帧内排空100座同步索敌，也给60 FPS主帧留出大部分预算。
 @export_range(100, 10000, 50, "or_greater") var target_budget_usec := 6000
 
-var _combat_runtime: Node = null
+var _combat_runtime: CombatRuntimeBase = null
+var _tower_multiplayer_mode_adapter: TowerPlantGameplayPort = null
 var _authoritative_processing_enabled := false
 
 var _pending_target_owner_ids: Array[int] = []
@@ -27,9 +28,6 @@ var _target_candidate_cache: Dictionary[Vector3i, Array] = {}
 var _target_result_cache: Dictionary = {}
 
 var _pending_explosions: Array[Dictionary] = []
-var _active_damage_dispatch_runtime: Node = null
-var _active_damage_dispatch_uses_bridge := false
-
 var target_requests_enqueued_total := 0
 var target_requests_deduplicated_total := 0
 var target_requests_resolved_total := 0
@@ -51,8 +49,12 @@ var last_target_processing_usec := 0
 var last_explosion_processing_usec := 0
 
 
-func setup(combat_runtime: Node) -> void:
+func setup(
+	combat_runtime: CombatRuntimeBase,
+	mode_adapter: TowerPlantGameplayPort
+) -> void:
 	_combat_runtime = combat_runtime
+	_tower_multiplayer_mode_adapter = mode_adapter
 
 
 func set_authoritative_processing_enabled(enabled: bool) -> void:
@@ -131,8 +133,7 @@ func select_target_sync_for_fixture(
 	if not _has_query_runtime():
 		return null
 	var candidates: Array[Enemy] = []
-	_combat_runtime.call(
-		"query_combat_targets_unordered_into",
+	_combat_runtime.query_combat_targets_unordered_into(
 		center,
 		maxf(maximum_range, 0.0),
 		candidates
@@ -346,8 +347,7 @@ func _get_cached_target_candidates(
 		+ 0.001
 	)
 	var candidates: Array[Enemy] = []
-	_combat_runtime.call(
-		"query_combat_targets_unordered_into",
+	_combat_runtime.query_combat_targets_unordered_into(
 		query_center,
 		query_radius,
 		candidates
@@ -418,22 +418,12 @@ func _process_explosion_batch() -> void:
 	var started_usec := Time.get_ticks_usec()
 	var requests := _pending_explosions
 	_pending_explosions = []
-	_active_damage_dispatch_runtime = get_tree().current_scene
-	_active_damage_dispatch_uses_bridge = (
-		_active_damage_dispatch_runtime != null
-		and is_instance_valid(_active_damage_dispatch_runtime)
-		and _active_damage_dispatch_runtime.has_method(
-			"apply_authoritative_plant_enemy_damage_batch"
-		)
-	)
 	var dense_batch := requests.size() >= EXPLOSION_GRID_BATCH_THRESHOLD
 	var groups := _group_explosions_by_exact_position(requests)
 	explosion_groups_total += groups.size()
 	explosion_request_merges_total += requests.size() - groups.size()
 	if dense_batch and groups.size() == 1:
 		_apply_single_dense_group_exact(groups[0])
-		_active_damage_dispatch_runtime = null
-		_active_damage_dispatch_uses_bridge = false
 		last_explosion_processing_usec = int(
 			Time.get_ticks_usec() - started_usec
 		)
@@ -449,8 +439,6 @@ func _process_explosion_batch() -> void:
 			profiles.size() == 1
 			and _try_apply_single_cluster_profile_exact(profiles[0])
 		):
-			_active_damage_dispatch_runtime = null
-			_active_damage_dispatch_uses_bridge = false
 			last_explosion_processing_usec = int(
 				Time.get_ticks_usec() - started_usec
 			)
@@ -526,8 +514,6 @@ func _process_explosion_batch() -> void:
 			impact_direction
 		)
 		explosion_enemy_batch_calls_total += 1
-	_active_damage_dispatch_runtime = null
-	_active_damage_dispatch_uses_bridge = false
 	last_explosion_processing_usec = int(
 		Time.get_ticks_usec() - started_usec
 	)
@@ -553,8 +539,7 @@ func _apply_single_dense_group_exact(group: Dictionary) -> void:
 	var outer_damage := maxi(int(group.get("outer_damage", 0)), 0)
 	var hit_count := maxi(int(group.get("count", 1)), 1)
 	var candidates: Array[Enemy] = []
-	_combat_runtime.call(
-		"query_combat_targets_unordered_into",
+	_combat_runtime.query_combat_targets_unordered_into(
 		position,
 		outer_radius,
 		candidates
@@ -677,8 +662,7 @@ func _try_apply_single_cluster_profile_exact(
 		0
 	)
 	var candidates: Array[Enemy] = []
-	_combat_runtime.call(
-		"query_combat_targets_unordered_into",
+	_combat_runtime.query_combat_targets_unordered_into(
 		cluster_center,
 		outer_radius + cluster_maximum_offset,
 		candidates
@@ -1001,11 +985,7 @@ func _build_temporary_enemy_index(
 ) -> Dictionary:
 	var indexed_enemies: Array[Enemy] = []
 	var indexed_positions := PackedVector2Array()
-	if (
-		_combat_runtime == null
-		or not is_instance_valid(_combat_runtime)
-		or not _combat_runtime.has_method("get_all_combat_targets")
-	):
+	if not _has_query_runtime():
 		return {
 			"grid": {},
 			"enemies": indexed_enemies,
@@ -1013,9 +993,7 @@ func _build_temporary_enemy_index(
 			"position_members": [],
 			"position_multiplicities": PackedInt32Array(),
 		}
-	var enemies := (
-		_combat_runtime.call("get_all_combat_targets") as Array[Enemy]
-	)
+	var enemies := _combat_runtime.get_all_combat_targets()
 	for enemy in enemies:
 		if (
 			enemy == null
@@ -1518,8 +1496,7 @@ func _accumulate_group_hits_from_shared_index(
 		inner_radius
 	)
 	var candidates: Array[Enemy] = []
-	_combat_runtime.call(
-		"query_combat_targets_unordered_into",
+	_combat_runtime.query_combat_targets_unordered_into(
 		position,
 		outer_radius,
 		candidates
@@ -1621,19 +1598,14 @@ func _apply_enemy_damage_batch(
 	hit_counts: PackedInt32Array,
 	impact_direction: Vector2
 ) -> bool:
-	if _active_damage_dispatch_uses_bridge:
-		return bool(
-			_active_damage_dispatch_runtime.call(
-				"apply_authoritative_plant_enemy_damage_batch",
-				0,
-				enemy,
-				damage_amounts,
-				hit_counts,
-				impact_direction,
-				EnemyConfig.DamageType.PHYSICAL
-			)
-		)
-	return enemy.apply_damage_batch(
+	if (
+		_tower_multiplayer_mode_adapter == null
+		or not is_instance_valid(_tower_multiplayer_mode_adapter)
+	):
+		return false
+	return _tower_multiplayer_mode_adapter.apply_authoritative_plant_enemy_damage_batch(
+		0,
+		enemy,
 		damage_amounts,
 		hit_counts,
 		impact_direction,
@@ -1645,9 +1617,6 @@ func _has_query_runtime() -> bool:
 	return (
 		_combat_runtime != null
 		and is_instance_valid(_combat_runtime)
-		and _combat_runtime.has_method(
-			"query_combat_targets_unordered_into"
-		)
 	)
 
 

@@ -8,11 +8,14 @@ const FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi
 const EXPLODER_SCRIPT := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_exploder.gd")
 const FIRE_CONFIG_SCRIPT := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd")
 const FIRE_WAVE := preload("res://resources/config/waves/wave_04.tres")
+const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 const COMBAT_STATE_CHASE := 0
 const COMBAT_STATE_ATTACK := 1
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: EnemyGameplayGatewayTestRuntime
 
 
 func _init() -> void:
@@ -20,10 +23,16 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = (
+		COMBAT_RUNTIME_FIXTURE_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
 	test_root.name = "YuanshiInsectFireSmokeTest"
 	root.add_child(test_root)
-	current_scene = test_root
+	_expect(
+		test_root.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER,
+		"Fire Yuanshi local fixture must declare explicit SINGLEPLAYER authority."
+	)
 
 	_test_resource_contract()
 	await _test_combat_sense_phase_semantics()
@@ -32,6 +41,7 @@ func _run() -> void:
 	await _test_attack_and_live_aim()
 	await _test_wall_blocks_attack()
 	await _test_projectile_damage_and_world_collision()
+	await _test_projectile_runtime_authority_boundary()
 	await _test_death_interrupts_attack()
 	test_root.queue_free()
 	await process_frame
@@ -213,7 +223,7 @@ func _assert_bomber_explosion_query_contract(
 
 	test_root.add_child(bomber)
 	bomber.global_position = Vector2.ZERO
-	bomber.setup(enemy_config, inside_player)
+	bomber.setup(enemy_config, inside_player, null, test_root)
 	bomber.set_physics_process(false)
 	await physics_frame
 	await physics_frame
@@ -292,7 +302,7 @@ func _test_legacy_bomber_unchanged() -> void:
 	if visual_bomber != null:
 		test_root.add_child(visual_bomber)
 		visual_bomber.global_position = Vector2.ZERO
-		visual_bomber.setup(BOMBER_CONFIG, player)
+		visual_bomber.setup(BOMBER_CONFIG, player, null, test_root)
 		await process_frame
 		visual_bomber.animated_sprite.flip_h = true
 		visual_bomber.animated_sprite.flip_v = true
@@ -320,7 +330,7 @@ func _test_legacy_bomber_unchanged() -> void:
 	_expect(bomber.get_script() == EXPLODER_SCRIPT, "Bomber scene must use the exploder script.")
 	test_root.add_child(bomber)
 	bomber.global_position = Vector2.ZERO
-	bomber.setup(BOMBER_CONFIG, player)
+	bomber.setup(BOMBER_CONFIG, player, null, test_root)
 	await _wait_physics_frames(20)
 
 	_expect(bomber.get_node_or_null("AttackAudio") == null, "Base bomber unexpectedly contains attack audio.")
@@ -382,7 +392,7 @@ func _test_wall_blocks_attack() -> void:
 
 	_expect(enemy.get("combat_state") == COMBAT_STATE_CHASE, "Enemy attacked through a World-layer wall.")
 	_expect(
-		not enemy.call("_has_clear_world_line_to_target"),
+		not enemy.call("_has_clear_world_line_to_target", player),
 		"World-layer wall did not block line of sight."
 	)
 	enemy.queue_free()
@@ -411,6 +421,67 @@ func _test_projectile_damage_and_world_collision() -> void:
 	await physics_frame
 
 
+func _test_projectile_runtime_authority_boundary() -> void:
+	var gameplay_session := EnemyGameplayGatewayTestSession.new()
+	var host_player := _spawn_player(Vector2(900.0, 900.0))
+	host_player.peer_id = 27
+	var host_health_before := host_player.current_health
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	test_root.attach_gameplay_session(gameplay_session)
+	var host_projectile := FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile
+	host_projectile.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
+	host_projectile.setup(
+		Vector2.RIGHT,
+		FIRE_CONFIG.attack_damage,
+		FIRE_CONFIG.projectile_speed,
+		2.0
+	)
+	test_root.add_child(host_projectile)
+	host_projectile.setup_multiplayer(9101, 1, &"yuanshi_fire_projectile")
+	host_projectile.call("_on_body_entered", host_player)
+	_expect(
+		gameplay_session.player_damage_requests.size() == 1
+		and gameplay_session.player_damage_requests[0].get("target_peer_id") == 27
+		and gameplay_session.player_damage_requests[0].get("damage_type")
+			== int(EnemyConfig.DamageType.PHYSICAL)
+		and host_player.current_health == host_health_before,
+		"HOST Fire Yuanshi projectile must delegate physical damage through the typed gateway exactly once."
+	)
+	await process_frame
+
+	test_root.detach_gameplay_session(gameplay_session)
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var client_player := _spawn_player(Vector2(1000.0, 900.0))
+	client_player.peer_id = 28
+	var client_health_before := client_player.current_health
+	var request_count_before := gameplay_session.player_damage_requests.size()
+	var client_projectile := FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile
+	client_projectile.bind_gameplay_context(test_root, null)
+	client_projectile.setup(
+		Vector2.RIGHT,
+		FIRE_CONFIG.attack_damage,
+		FIRE_CONFIG.projectile_speed,
+		2.0
+	)
+	test_root.add_child(client_projectile)
+	client_projectile.setup_multiplayer(9102, 1, &"yuanshi_fire_projectile")
+	client_projectile.call("_on_body_entered", client_player)
+	_expect(
+		client_player.current_health == client_health_before
+		and gameplay_session.player_damage_requests.size() == request_count_before,
+		"CLIENT_VIEW Fire Yuanshi projectile without an injected gateway must fail closed."
+	)
+	await process_frame
+	host_player.queue_free()
+	client_player.queue_free()
+	gameplay_session.free()
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	await physics_frame
+
+
 func _test_death_interrupts_attack() -> void:
 	var existing_projectile_ids := _get_projectile_ids()
 	var player := _spawn_player(Vector2(100, 0))
@@ -432,6 +503,7 @@ func _test_death_interrupts_attack() -> void:
 func _spawn_player(position: Vector2) -> Player:
 	var player := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(player)
+	test_root.bind_player_runtime_context(player)
 	player.global_position = position
 	return player
 
@@ -440,12 +512,16 @@ func _spawn_enemy(position: Vector2, player: Player) -> YuanshiInsect:
 	var enemy := FIRE_CONFIG.enemy_scene.instantiate() as YuanshiInsect
 	test_root.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(FIRE_CONFIG, player)
+	enemy.setup(FIRE_CONFIG, player, null, test_root)
 	return enemy
 
 
 func _spawn_projectile(position: Vector2, direction: Vector2) -> YuanshiInsectFireProjectile:
 	var projectile := FIRE_PROJECTILE_SCENE.instantiate() as YuanshiInsectFireProjectile
+	projectile.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	projectile.setup(direction, FIRE_CONFIG.attack_damage, FIRE_CONFIG.projectile_speed, 2.0)
 	test_root.add_child(projectile)
 	projectile.global_position = position

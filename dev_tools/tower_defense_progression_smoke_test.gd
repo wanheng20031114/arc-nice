@@ -76,6 +76,9 @@ func _run() -> void:
 	for player_count in [2, 4, 8]:
 		await _test_multiplayer_starting_package(player_count)
 	await _cleanup_runtime()
+	for _cleanup_frame in range(8):
+		await process_frame
+		await physics_frame
 	if failures.is_empty():
 		print("TOWER_DEFENSE_PROGRESSION_SMOKE_TEST_OK")
 		quit()
@@ -244,6 +247,7 @@ func _test_singleplayer_starting_package() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier")
 	var game := GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	root.add_child(game)
 	await process_frame
@@ -282,9 +286,10 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 		names[peer_id] = "Player %d" % peer_id
 		characters[peer_id] = &"weishidaier"
 	var game := GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
 	game.auto_start_waves = false
 	game.configure_multiplayer(
-		GameRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
 		1,
 		names,
 		characters
@@ -312,7 +317,7 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 			"The host must be able to confirm the final wave countdown."
 		)
 		_expect(
-			game.wave_state == GameRuntimeBase.WaveState.PRE_WAVE
+			game.wave_state == CombatFlowState.State.PRE_WAVE
 			and game.countdown_seconds == 3,
 			"Host confirmation must preserve a complete 3-second countdown."
 		)
@@ -382,6 +387,12 @@ func _cleanup_runtime() -> void:
 	for _frame in range(4):
 		await process_frame
 		await physics_frame
+
+
+func _disable_tower_fixture_background_loads(game: TowerDefenseGame) -> void:
+	var coordinator := game.get_node_or_null("FateCoordinator") as FateCoordinator
+	if coordinator != null:
+		coordinator.elite_enemy_config_loads_requested = true
 
 
 func _expect(condition: bool, message: String) -> void:
