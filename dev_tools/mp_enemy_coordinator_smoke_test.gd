@@ -12,6 +12,7 @@ const TEST_ENEMY_CONFIG_PATH := "res://resources/config/enemies/capoo_ak47.tres"
 class ProbeRuntime:
 	extends CombatRuntimeBase
 	var lightning_chain_replay_count := 0
+	var enemy_snapshot_states: Array[SnapshotManager.EnemyState] = []
 
 	func configure_multiplayer(
 		_mode: int,
@@ -37,7 +38,7 @@ class ProbeRuntime:
 		return []
 
 	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
-		return []
+		return enemy_snapshot_states
 
 	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
 		pass
@@ -64,6 +65,7 @@ var _probe_net_time := 30.0
 var _lifecycle_broadcasts: Array[Dictionary] = []
 var _lifecycle_peer_sends: Array[Dictionary] = []
 var _damage_broadcasts: Array[Dictionary] = []
+var _enemy_snapshot_sends: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -103,6 +105,7 @@ func _run() -> void:
 		_probe_on_lifecycle_peer_send
 	)
 	coordinator.damage_rpc_broadcast_requested.connect(_probe_on_damage_broadcast)
+	coordinator.enemy_snapshot_send_requested.connect(_probe_on_enemy_snapshot_send)
 	_expect(
 		coordinator.has_lifecycle_dependencies(),
 		"EnemyCoordinator 必须显式绑定网络、Gateway 与网络时钟。"
@@ -194,18 +197,25 @@ func _run() -> void:
 		state.health_revision = net_id
 		states.append(state)
 	var peers: Array[int] = [2, 3]
-	var snapshot_batch := coordinator.build_host_snapshot_batch(states, peers, 12.5)
-	_expect(
-		snapshot_batch != null
-		and snapshot_batch.peer_ids == peers
-		and snapshot_batch.chunk_count == 2
-		and snapshot_batch.chunks.size() == 2,
-		"48 个敌人必须沿既有线协议拆成两个有序快照块。"
+	runtime.enemy_snapshot_states.assign(states)
+	var snapshot_send_count := coordinator.broadcast_host_enemy_snapshots(
+		peers,
+		12.5
 	)
-	if snapshot_batch != null and not snapshot_batch.chunks.is_empty():
+	_expect(
+		snapshot_send_count == 4
+		and _enemy_snapshot_sends.size() == 4
+		and int(_enemy_snapshot_sends[0].get("peer_id", 0)) == 2
+		and int(_enemy_snapshot_sends[1].get("peer_id", 0)) == 3
+		and int(_enemy_snapshot_sends[2].get("peer_id", 0)) == 2
+		and int(_enemy_snapshot_sends[3].get("peer_id", 0)) == 3
+		and int(_enemy_snapshot_sends[0].get("chunk_count", 0)) == 2,
+		"48 个敌人的两个有序块必须由协调器编排为四次逐 peer 发送请求。"
+	)
+	if not _enemy_snapshot_sends.is_empty():
 		var decoder := SnapshotManager.new()
 		var decoded := decoder.decode_enemy_snapshots_with_baseline(
-			snapshot_batch.chunks[0].data,
+			_enemy_snapshot_sends[0].get("data", PackedByteArray()) as PackedByteArray,
 			false
 		)
 		_expect(
@@ -437,4 +447,26 @@ func _probe_on_damage_broadcast(
 	_damage_broadcasts.append({
 		"method": method_name,
 		"arguments": arguments.duplicate(true),
+	})
+
+
+func _probe_on_enemy_snapshot_send(
+	peer_id: int,
+	host_timestamp: float,
+	data: PackedByteArray,
+	batch_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	snapshot_hz: int,
+	entity_count: int
+) -> void:
+	_enemy_snapshot_sends.append({
+		"peer_id": peer_id,
+		"host_timestamp": host_timestamp,
+		"data": data,
+		"batch_id": batch_id,
+		"chunk_index": chunk_index,
+		"chunk_count": chunk_count,
+		"snapshot_hz": snapshot_hz,
+		"entity_count": entity_count,
 	})

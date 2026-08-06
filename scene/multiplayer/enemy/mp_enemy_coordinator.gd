@@ -49,6 +49,16 @@ signal damage_rpc_broadcast_requested(
 	method_name: StringName,
 	arguments: Array
 )
+signal enemy_snapshot_send_requested(
+	peer_id: int,
+	host_timestamp: float,
+	data: PackedByteArray,
+	batch_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	snapshot_hz: int,
+	entity_count: int
+)
 
 
 class HostSnapshotChunk:
@@ -342,6 +352,39 @@ func sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
 		_last_keyframe_time_by_peer.erase(peer_id)
 	if _snapshot_cohort_peers.is_empty():
 		_snapshot_manager.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
+
+
+func broadcast_host_enemy_snapshots(
+	ready_peer_ids: Array[int],
+	host_timestamp: float
+) -> int:
+	if not is_bound() or ready_peer_ids.is_empty():
+		return 0
+	var states: Array[SnapshotManager.EnemyState] = (
+		_runtime.collect_enemy_snapshot_states()
+	)
+	var batch := build_host_snapshot_batch(
+		states,
+		ready_peer_ids,
+		host_timestamp
+	)
+	if batch == null or batch.is_empty():
+		return 0
+	var send_count := 0
+	for chunk in batch.chunks:
+		for peer_id in batch.peer_ids:
+			enemy_snapshot_send_requested.emit(
+				peer_id,
+				batch.host_timestamp,
+				chunk.data,
+				batch.batch_id,
+				chunk.chunk_index,
+				batch.chunk_count,
+				batch.snapshot_hz,
+				chunk.entity_count
+			)
+			send_count += 1
+	return send_count
 
 
 func build_host_snapshot_batch(

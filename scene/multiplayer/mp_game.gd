@@ -252,6 +252,19 @@ func _on_player_snapshot_send_requested(
 	)
 
 
+func _on_player_authoritative_teleport_broadcast_requested(
+	peer_id: int,
+	target_position: Vector2,
+	snapshot_sequence_cutoff: int
+) -> void:
+	if not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(
+		&"net_player_authoritative_teleported",
+		[peer_id, target_position, snapshot_sequence_cutoff]
+	)
+
+
 func _on_stale_player_peer_detected(peer_id: int) -> void:
 	if peer_id <= 0 or game == null or not net_manager.is_client():
 		return
@@ -307,6 +320,34 @@ func _on_enemy_damage_rpc_broadcast_requested(
 	arguments: Array
 ) -> void:
 	_rpc_to_connected_clients(method_name, arguments)
+
+
+func _on_enemy_snapshot_send_requested(
+	peer_id: int,
+	host_timestamp: float,
+	data: PackedByteArray,
+	batch_id: int,
+	chunk_index: int,
+	chunk_count: int,
+	snapshot_hz: int,
+	entity_count: int
+) -> void:
+	if peer_id <= 0 or not net_manager.is_host():
+		return
+	_record_snapshot_packet_size(&"enemy", data.size(), entity_count)
+	_rpc_to_peer(
+		peer_id,
+		&"_rpc_receive_enemy_snapshot",
+		[
+			host_timestamp,
+			data,
+			batch_id,
+			chunk_index,
+			chunk_count,
+			snapshot_hz,
+		],
+		false
+	)
 
 
 func _exit_tree() -> void:
@@ -2026,53 +2067,13 @@ func _host_physics_tick(frame: int, _delta: float) -> void:
 		frame,
 		client_peer_ids
 	)
-	var enemy_snapshot_interval_frames := _get_enemy_snapshot_interval_frames()
+	var enemy_snapshot_interval_frames := enemy_coordinator.get_snapshot_interval_frames()
 	if frame % enemy_snapshot_interval_frames == 0:
-		_host_broadcast_enemy_snapshots(client_peer_ids)
+		enemy_coordinator.broadcast_host_enemy_snapshots(
+			client_peer_ids,
+			_get_net_time()
+		)
 	enemy_coordinator.update_host()
-
-
-func _get_enemy_snapshot_interval_frames() -> int:
-	return enemy_coordinator.get_snapshot_interval_frames()
-
-
-func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
-	if client_peer_ids.is_empty():
-		client_peer_ids = _get_connected_client_peer_ids()
-		_sync_snapshot_cohort_readiness(client_peer_ids)
-	player_coordinator.broadcast_host_player_snapshots(client_peer_ids)
-
-
-func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
-	if client_peer_ids.is_empty():
-		client_peer_ids = _get_connected_client_peer_ids()
-		_sync_snapshot_cohort_readiness(client_peer_ids)
-	if client_peer_ids.is_empty():
-		return
-	var states: Array[SnapshotManager.EnemyState] = game.collect_enemy_snapshot_states()
-	var batch := enemy_coordinator.build_host_snapshot_batch(
-		states,
-		client_peer_ids,
-		_get_net_time()
-	)
-	if batch == null or batch.is_empty():
-		return
-	for chunk in batch.chunks:
-		for peer_id in batch.peer_ids:
-			_record_snapshot_packet_size(&"enemy", chunk.data.size(), chunk.entity_count)
-			_rpc_to_peer(
-				peer_id,
-				&"_rpc_receive_enemy_snapshot",
-				[
-					batch.host_timestamp,
-					chunk.data,
-					batch.batch_id,
-					chunk.chunk_index,
-					batch.chunk_count,
-					batch.snapshot_hz,
-				],
-				false
-			)
 
 
 func _sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
@@ -2723,16 +2724,6 @@ func net_player_authoritative_teleported(
 		snapshot_sequence_cutoff,
 		_get_client_view_local_peer_id(),
 		_get_net_time()
-	)
-
-
-func _commit_authoritative_player_teleport(
-	peer_id: int,
-	target_position: Vector2
-) -> bool:
-	return player_coordinator.commit_authoritative_player_teleport(
-		peer_id,
-		target_position
 	)
 
 
@@ -3668,17 +3659,9 @@ func _on_host_player_teleport_requested(
 	peer_id: int,
 	target_position: Vector2
 ) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
-		return
-	if not _commit_authoritative_player_teleport(peer_id, target_position):
-		return
-	_rpc_to_connected_clients(
-		&"net_player_authoritative_teleported",
-		[
-			peer_id,
-			target_position,
-			player_coordinator.get_host_snapshot_sequence(),
-		]
+	player_coordinator.handle_authoritative_player_teleport_request(
+		peer_id,
+		target_position
 	)
 
 
