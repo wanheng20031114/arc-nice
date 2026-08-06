@@ -66,6 +66,7 @@
 [ext_resource type="PackedScene" uid="uid://dubxeu88obeuv" path="res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn" id="71_prewarmer"]
 [ext_resource type="PackedScene" uid="uid://d7n2r5w8y3k6p" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.tscn" id="72_plant_placement_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_runtime_port.tscn" id="73_campaign_runtime_port"]
+[ext_resource type="PackedScene" uid="uid://c5w9k3x7d2j8s" path="res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.tscn" id="74_pickup_registry"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -179,6 +180,8 @@ linglan_boss_enabled = true
 [node name="PlantRuntimeCoordinator" parent="." instance=ExtResource("66_plant_coordinator")]
 
 [node name="PlantPlacementCoordinator" parent="." instance=ExtResource("72_plant_placement_coordinator")]
+
+[node name="PickupRegistry" parent="." instance=ExtResource("74_pickup_registry")]
 
 [node name="PlayerRosterCoordinator" parent="." instance=ExtResource("67_player_roster")]
 

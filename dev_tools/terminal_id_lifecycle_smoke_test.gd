@@ -5,6 +5,9 @@ const TOWER_DEFENSE_GAME_SCRIPT := preload("res://scene/game_modes/tower_defense
 const STANDARD_PICKUP_REGISTRY_SCENE := preload(
 	"res://scene/game_modes/standard/pickup/standard_pickup_registry.tscn"
 )
+const TOWER_PICKUP_REGISTRY_SCENE := preload(
+	"res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.tscn"
+)
 const TOWER_ENEMY_COORDINATOR_SCENE := preload(
 	"res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.tscn"
 )
@@ -198,11 +201,21 @@ func _test_tower_defense_enemy_escape_marker() -> void:
 func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -> void:
 	var gateway := _prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = HOST_AUTHORITY
+	var pickup_registry: PickupRegistryBase = null
 	if runtime is StandardGame:
-		_bind_tree_less_standard_pickup_registry(
+		pickup_registry = _bind_tree_less_standard_pickup_registry(
 			runtime as StandardGame,
 			gateway
 		)
+	elif runtime is TowerDefenseGame:
+		pickup_registry = _bind_tree_less_tower_pickup_registry(
+			runtime as TowerDefenseGame,
+			gateway
+		)
+	_expect(pickup_registry != null, "%s pickup registry must bind." % label)
+	if pickup_registry == null:
+		runtime.free()
+		return
 	var removed_ids: Array[int] = []
 	var collected_ids: Array[int] = []
 	gateway.pickup_removed.connect(
@@ -218,8 +231,8 @@ func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -
 		var net_id := event_index + 1
 		pickup.set_meta("net_id", net_id)
 		pickup_index[net_id] = pickup
-		runtime.call("_on_multiplayer_pickup_consumed", pickup, 2, true)
-		runtime.call("_on_multiplayer_pickup_tree_exited", net_id)
+		pickup_registry.handle_multiplayer_pickup_consumed(pickup, 2, true)
+		pickup_registry.handle_multiplayer_pickup_tree_exited(net_id)
 	_expect(
 		removed_ids.size() == PRESSURE_EVENT_COUNT,
 		"%s consumed pickups must emit one removal despite their later tree exit." % label
@@ -229,19 +242,19 @@ func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -
 		"%s consumed pickups must preserve one collection confirmation." % label
 	)
 	_expect(
-		(runtime.get("pending_multiplayer_pickup_exit_ids") as Dictionary).is_empty(),
+		pickup_registry.pending_multiplayer_pickup_exit_ids.is_empty(),
 		"%s consumed pickup suppression markers must be consumed." % label
 	)
 
 	var spontaneous_net_id := PRESSURE_EVENT_COUNT + 1
 	pickup_index[spontaneous_net_id] = pickup
-	runtime.call("_on_multiplayer_pickup_tree_exited", spontaneous_net_id)
+	pickup_registry.handle_multiplayer_pickup_tree_exited(spontaneous_net_id)
 	_expect(
 		removed_ids.size() == PRESSURE_EVENT_COUNT + 1,
 		"%s spontaneous pickup exit must still emit one generic removal." % label
 	)
 	_expect(
-		(runtime.get("pending_multiplayer_pickup_exit_ids") as Dictionary).is_empty(),
+		pickup_registry.pending_multiplayer_pickup_exit_ids.is_empty(),
 		"%s spontaneous pickup exit must not allocate a tombstone." % label
 	)
 	pickup.free()
@@ -251,7 +264,7 @@ func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -
 func _bind_tree_less_standard_pickup_registry(
 	runtime: StandardGame,
 	gateway: MultiplayerGameplayGateway
-) -> void:
+) -> StandardPickupRegistry:
 	var enemy_container := Node2D.new()
 	enemy_container.name = "EnemyContainer"
 	runtime.add_child(enemy_container)
@@ -273,6 +286,30 @@ func _bind_tree_less_standard_pickup_registry(
 		{},
 		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
 	)
+	return registry
+
+
+func _bind_tree_less_tower_pickup_registry(
+	runtime: TowerDefenseGame,
+	gateway: MultiplayerGameplayGateway
+) -> TowerDefensePickupRegistry:
+	var registry := (
+		TOWER_PICKUP_REGISTRY_SCENE.instantiate()
+		as TowerDefensePickupRegistry
+	)
+	registry.name = "PickupRegistry"
+	runtime.add_child(registry)
+	runtime.pickup_registry = registry
+	registry.bind_tower_dependencies(
+		runtime.runtime_mode,
+		runtime.multiplayer_pickups,
+		gateway,
+		runtime.get_node("EnemyContainer") as Node2D,
+		runtime.get_node("BossContainer") as Node2D,
+		{},
+		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+	)
+	return registry
 
 
 func _test_host_terminal_pairing_cache() -> void:

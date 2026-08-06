@@ -181,6 +181,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var tower_plant_gameplay_port: TowerPlantGameplayPort = (
 	$TowerPlantGameplayPort as TowerPlantGameplayPort
 )
+@onready var pickup_registry: TowerDefensePickupRegistry = (
+	$PickupRegistry as TowerDefensePickupRegistry
+)
 @onready var luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator = (
 	$LuoxiSpecialGameCoordinator
 )
@@ -253,7 +256,18 @@ var defeat_camera_tween: Tween:
 var multiplayer_player_names: Dictionary = {}
 var multiplayer_player_character_ids: Dictionary = {}
 var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
-var pending_multiplayer_pickup_exit_ids: Dictionary = {}
+var _pending_multiplayer_pickup_exit_ids: Dictionary = {}
+var pending_multiplayer_pickup_exit_ids: Dictionary:
+	get:
+		return (
+			pickup_registry.pending_multiplayer_pickup_exit_ids
+			if pickup_registry != null and pickup_registry.is_bound()
+			else _pending_multiplayer_pickup_exit_ids
+		)
+	set(value):
+		_pending_multiplayer_pickup_exit_ids = value
+		if pickup_registry != null and pickup_registry.is_bound():
+			pickup_registry.pending_multiplayer_pickup_exit_ids = value
 var maximum_base_health: int:
 	get:
 		return home_defense_coordinator.maximum_base_health
@@ -274,7 +288,18 @@ var has_received_remote_base_health_snapshot: bool:
 		return home_defense_coordinator.has_received_remote_base_health_snapshot
 	set(value):
 		home_defense_coordinator.has_received_remote_base_health_snapshot = value
-var next_multiplayer_pickup_net_id: int = 1000
+var _next_multiplayer_pickup_net_id := PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+var next_multiplayer_pickup_net_id: int:
+	get:
+		return (
+			pickup_registry.next_multiplayer_pickup_net_id
+			if pickup_registry != null and pickup_registry.is_bound()
+			else _next_multiplayer_pickup_net_id
+		)
+	set(value):
+		_next_multiplayer_pickup_net_id = value
+		if pickup_registry != null and pickup_registry.is_bound():
+			pickup_registry.next_multiplayer_pickup_net_id = value
 var navigation_prewarm_requested: bool:
 	get:
 		return prewarmer_coordinator != null and prewarmer_coordinator.navigation_prewarm_requested
@@ -343,6 +368,10 @@ func _ready() -> void:
 	random_generator.randomize()
 	initialize_world_lighting()
 	if not _configure_player_roster_coordinator():
+		set_process(false)
+		set_physics_process(false)
+		return
+	if not _configure_pickup_registry():
 		set_process(false)
 		set_physics_process(false)
 		return
@@ -466,18 +495,6 @@ func _ready() -> void:
 	guardian_aura_system.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
-	if not enemy_container.child_entered_tree.is_connected(
-		_on_dynamic_pickup_container_child_entered
-	):
-		enemy_container.child_entered_tree.connect(
-			_on_dynamic_pickup_container_child_entered
-		)
-	if not boss_container.child_entered_tree.is_connected(
-		_on_dynamic_pickup_container_child_entered
-	):
-		boss_container.child_entered_tree.connect(
-			_on_dynamic_pickup_container_child_entered
-		)
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
@@ -697,6 +714,26 @@ func _configure_player_roster_coordinator() -> bool:
 	player_roster_coordinator.enemy_retarget_requested.connect(
 		enemy_coordinator.request_retarget
 	)
+	return true
+
+
+func _configure_pickup_registry() -> bool:
+	if pickup_registry == null:
+		push_error("TowerDefenseGame: 缺少静态 PickupRegistry 节点。")
+		return false
+	pickup_registry.bind_tower_dependencies(
+		runtime_mode,
+		multiplayer_pickups,
+		get_multiplayer_gameplay_gateway(),
+		enemy_container,
+		boss_container,
+		_pending_multiplayer_pickup_exit_ids,
+		_next_multiplayer_pickup_net_id
+	)
+	if not pickup_registry.is_bound():
+		push_error("TowerDefenseGame: PickupRegistry 依赖绑定不完整。")
+		return false
+	pickup_registry.connect_dynamic_containers()
 	return true
 
 
@@ -1557,136 +1594,14 @@ func get_enemy_for_net_id(net_id: int) -> Enemy:
 
 
 func get_pickup_for_net_id(net_id: int) -> Pickup:
-	if not multiplayer_pickups.has(net_id):
-		return null
-	var pickup_variant: Variant = multiplayer_pickups.get(net_id)
-	if pickup_variant == null:
-		multiplayer_pickups.erase(net_id)
-		return null
-	if not is_instance_valid(pickup_variant):
-		multiplayer_pickups.erase(net_id)
-		return null
-	return pickup_variant as Pickup
+	if pickup_registry != null and pickup_registry.is_bound():
+		return pickup_registry.get_pickup_for_net_id(net_id)
+	return PickupRegistryBase.get_pickup_from_index(multiplayer_pickups, net_id)
 
 
 func _register_static_multiplayer_pickups() -> void:
-	multiplayer_pickups.clear()
-	pending_multiplayer_pickup_exit_ids.clear()
-	next_multiplayer_pickup_net_id = 1000
-	var pickups: Array[Pickup] = []
-	_collect_pickups_recursive(self, pickups)
-	pickups.sort_custom(_sort_pickups_by_path)
-
-	var next_pickup_id := 1
-	for pickup in pickups:
-		if pickup == null or not is_instance_valid(pickup):
-			continue
-		_register_multiplayer_pickup(pickup, next_pickup_id, false)
-		next_pickup_id += 1
-
-
-func _register_dynamic_multiplayer_pickups() -> void:
-	for child in enemy_container.get_children():
-		_register_dynamic_multiplayer_pickup(child as Pickup)
-	for child in boss_container.get_children():
-		_register_dynamic_multiplayer_pickup(child as Pickup)
-
-
-func _on_dynamic_pickup_container_child_entered(child: Node) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	var pickup := child as Pickup
-	if pickup == null:
-		return
-	# Drop scripts assign global_position immediately after add_child(). Defer one
-	# turn so the spawn RPC observes that final position rather than the container
-	# origin, while still avoiding a full-tree scan on every physics frame.
-	call_deferred("_register_dynamic_multiplayer_pickup_from_ref", weakref(pickup))
-
-
-func _register_dynamic_multiplayer_pickup_from_ref(pickup_ref: WeakRef) -> void:
-	if pickup_ref == null:
-		return
-	var pickup := pickup_ref.get_ref() as Pickup
-	_register_dynamic_multiplayer_pickup(pickup)
-
-
-func _register_dynamic_multiplayer_pickup(pickup: Pickup) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if pickup == null or not is_instance_valid(pickup) or pickup.is_queued_for_deletion():
-		return
-	if int(pickup.get_meta("net_id", 0)) > 0:
-		return
-	var net_id := next_multiplayer_pickup_net_id
-	next_multiplayer_pickup_net_id += 1
-	_register_multiplayer_pickup(pickup, net_id, true)
-
-
-func _collect_pickups_recursive(node: Node, pickups: Array[Pickup]) -> void:
-	for child in node.get_children():
-		var pickup := child as Pickup
-		if pickup != null:
-			pickups.append(pickup)
-		_collect_pickups_recursive(child, pickups)
-
-
-func _sort_pickups_by_path(a: Pickup, b: Pickup) -> bool:
-	return str(a.get_path()) < str(b.get_path())
-
-
-func _register_multiplayer_pickup(pickup: Pickup, net_id: int, broadcast_spawn: bool) -> void:
-	pickup.set_meta("net_id", net_id)
-	multiplayer_pickups[net_id] = pickup
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if not pickup.consumed.is_connected(_on_multiplayer_pickup_consumed):
-		pickup.consumed.connect(_on_multiplayer_pickup_consumed)
-	if not pickup.tree_exited.is_connected(_on_multiplayer_pickup_tree_exited.bind(net_id)):
-		pickup.tree_exited.connect(_on_multiplayer_pickup_tree_exited.bind(net_id))
-	if broadcast_spawn:
-		multiplayer_gateway.pickup_spawned.emit(net_id, pickup.config, pickup.global_position)
-
-
-func _on_multiplayer_pickup_consumed(
-	pickup: Pickup,
-	collector_peer_id: int,
-	applied_immediately: bool
-) -> void:
-	var net_id := int(pickup.get_meta("net_id", 0))
-	if net_id <= 0:
-		return
-	if not _mark_multiplayer_pickup_removed(net_id, true):
-		return
-	multiplayer_gateway.pickup_collected.emit(
-		net_id,
-		collector_peer_id,
-		pickup.config,
-		applied_immediately
-	)
-
-
-func _on_multiplayer_pickup_tree_exited(net_id: int) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	_mark_multiplayer_pickup_removed(net_id)
-
-
-func _mark_multiplayer_pickup_removed(
-	net_id: int,
-	suppress_next_tree_exit: bool = false
-) -> bool:
-	if net_id <= 0:
-		return false
-	if suppress_next_tree_exit:
-		if pending_multiplayer_pickup_exit_ids.has(net_id):
-			return false
-		pending_multiplayer_pickup_exit_ids[net_id] = true
-	elif pending_multiplayer_pickup_exit_ids.erase(net_id):
-		return false
-	multiplayer_pickups.erase(net_id)
-	multiplayer_gateway.pickup_removed.emit(net_id)
-	return true
+	pickup_registry.set_runtime_mode(runtime_mode)
+	pickup_registry.register_static_pickups(self)
 
 
 func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:

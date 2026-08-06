@@ -352,13 +352,18 @@ func _verify_source_allocation_contract() -> void:
 	var tower_runtime_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
 	)
+	var tower_pickup_registry_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.gd"
+	)
 	_expect(
-		tower_runtime_source.count("_register_dynamic_multiplayer_pickups()") == 1,
+		not tower_runtime_source.contains("_register_dynamic_multiplayer_pickups")
+		and tower_runtime_source.contains("pickup_registry.connect_dynamic_containers()"),
 		"Tower runtime physics must not poll the full scene tree for pickups."
 	)
 	_expect(
-		tower_runtime_source.contains("enemy_container.child_entered_tree.connect("),
-		"Tower runtime must register dynamic pickups from EnemyContainer events."
+		tower_pickup_registry_source.contains("[enemy_container, boss_container]")
+		and tower_pickup_registry_source.contains("extends PickupRegistryBase"),
+		"Tower pickup registry must subscribe to Enemy and Boss dynamic containers."
 	)
 
 

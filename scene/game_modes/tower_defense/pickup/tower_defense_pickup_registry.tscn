@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c5w9k3x7d2j8s"]
+
+[ext_resource type="Script" uid="uid://b4q8n2m6r1t9p" path="res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.gd" id="1_registry"]
+
+[node name="PickupRegistry" type="Node"]
+script = ExtResource("1_registry")

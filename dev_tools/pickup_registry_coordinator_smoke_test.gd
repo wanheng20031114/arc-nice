@@ -6,8 +6,14 @@ const STANDARD_SCENE := preload(
 const ROGUE_SCENE := preload(
 	"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 )
+const TOWER_SCENE := preload(
+	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
+)
 const STANDARD_REGISTRY_SCENE := preload(
 	"res://scene/game_modes/standard/pickup/standard_pickup_registry.tscn"
+)
+const TOWER_REGISTRY_SCENE := preload(
+	"res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.tscn"
 )
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const HEALTH_PICKUP := preload(
@@ -25,6 +31,7 @@ func _run() -> void:
 	await _test_standard_registry()
 	await _test_rogue_registry()
 	_test_tree_less_standard_facade()
+	_test_tree_less_tower_registry()
 	_test_source_boundaries()
 	_finish()
 
@@ -224,6 +231,85 @@ func _test_tree_less_standard_facade() -> void:
 	game.free()
 
 
+func _test_tree_less_tower_registry() -> void:
+	var authored_game := TOWER_SCENE.instantiate() as TowerDefenseGame
+	_expect(
+		authored_game != null
+		and authored_game.get_node_or_null("PickupRegistry")
+		is TowerDefensePickupRegistry,
+		"塔防场景必须静态挂载自身 PickupRegistry。"
+	)
+	if authored_game != null:
+		authored_game.free()
+
+	var game := TowerDefenseGame.new()
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var gateway := MultiplayerGameplayGateway.new()
+	gateway.name = "MultiplayerGameplayGateway"
+	game.add_child(gateway)
+	gateway.bind_runtime(game)
+	game.multiplayer_gateway = gateway
+	var enemy_container := Node2D.new()
+	enemy_container.name = "EnemyContainer"
+	game.add_child(enemy_container)
+	var boss_container := Node2D.new()
+	boss_container.name = "BossContainer"
+	game.add_child(boss_container)
+	var registry := TOWER_REGISTRY_SCENE.instantiate() as TowerDefensePickupRegistry
+	registry.name = "PickupRegistry"
+	game.add_child(registry)
+	game.pickup_registry = registry
+	registry.bind_tower_dependencies(
+		game.runtime_mode,
+		game.multiplayer_pickups,
+		gateway,
+		enemy_container,
+		boss_container,
+		{},
+		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+	)
+	var spawned_ids: Array[int] = []
+	var terminal_events: Array[String] = []
+	gateway.pickup_spawned.connect(
+		func(net_id: int, _config: PickupConfig, _position: Vector2) -> void:
+			spawned_ids.append(net_id)
+	)
+	gateway.pickup_removed.connect(
+		func(net_id: int) -> void: terminal_events.append("removed:%d" % net_id)
+	)
+	gateway.pickup_collected.connect(
+		func(net_id: int, _peer_id: int, _config: PickupConfig, _applied: bool) -> void:
+			terminal_events.append("collected:%d" % net_id)
+	)
+	var pickup := PICKUP_SCENE.instantiate() as Pickup
+	pickup.config = HEALTH_PICKUP
+	boss_container.add_child(pickup)
+	registry.register_existing_dynamic_pickups()
+	_expect(
+		spawned_ids == [PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID]
+		and game.get_pickup_for_net_id(
+			PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+		) == pickup
+		and game.next_multiplayer_pickup_net_id
+		== PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID + 1,
+		"塔防 PickupRegistry 必须与根 façade 共享动态索引与 net id 游标。"
+	)
+	pickup.consumed.emit(pickup, 2, true)
+	registry.handle_multiplayer_pickup_tree_exited(
+		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+	)
+	_expect(
+		terminal_events == ["removed:1000", "collected:1000"]
+		and game.pending_multiplayer_pickup_exit_ids.is_empty()
+		and game.get_pickup_for_net_id(
+			PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+		) == null,
+		"塔防 PickupRegistry 必须保持消费、移除与退出抑制顺序。"
+	)
+	pickup.free()
+	game.free()
+
+
 func _test_source_boundaries() -> void:
 	var wave_source := FileAccess.get_file_as_string(
 		"res://scene/combat/runtime/wave_combat_runtime_base.gd"
@@ -233,6 +319,15 @@ func _test_source_boundaries() -> void:
 	)
 	var rogue_source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/rogue/combat/pickup/rogue_pickup_registry.gd"
+	)
+	var tower_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.gd"
+	)
+	var tower_runtime_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
+	)
+	var tower_scene_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 	)
 	var base_source := FileAccess.get_file_as_string(
 		"res://scene/combat/pickup/pickup_registry_base.gd"
@@ -252,10 +347,11 @@ func _test_source_boundaries() -> void:
 	_expect(not rogue_source.contains("StandardPickupRegistry"), "肉鸽 Pickup 协调器不得引用普通实现。")
 	_expect(
 		standard_source.contains("extends PickupRegistryBase")
-		and rogue_source.contains("extends PickupRegistryBase"),
-		"普通与肉鸽 PickupRegistry 必须各自静态实例化同一中性索引基类。"
+		and rogue_source.contains("extends PickupRegistryBase")
+		and tower_source.contains("extends PickupRegistryBase"),
+		"三个模式的 PickupRegistry 必须各自静态实例化同一中性索引基类。"
 	)
-	for source in [base_source, standard_source, rogue_source]:
+	for source in [base_source, standard_source, rogue_source, tower_source]:
 		_expect(
 			not source.contains("StandardGame")
 			and not source.contains("RogueCombatGame")
@@ -275,6 +371,20 @@ func _test_source_boundaries() -> void:
 		rogue_source.contains("[enemy_container]"),
 		"肉鸽 PickupRegistry 必须只组合自身 Enemy 动态容器。"
 	)
+	_expect(
+		tower_source.contains("[enemy_container, boss_container]"),
+		"塔防 PickupRegistry 必须显式组合 Enemy 与 Boss 两个动态容器。"
+	)
+	_expect(
+		tower_runtime_source.contains("pickup_registry.connect_dynamic_containers()")
+		and not tower_runtime_source.contains(
+			"func _on_dynamic_pickup_container_child_entered"
+		)
+		and tower_scene_source.contains(
+			"tower_defense/pickup/tower_defense_pickup_registry.tscn"
+		),
+		"塔防根必须只绑定静态 PickupRegistry，不再持有具体动态注册算法。"
+	)
 	for neutral_algorithm in [
 		"_collect_pickups_recursive",
 		"_register_dynamic_multiplayer_pickup_from_ref",
@@ -284,7 +394,8 @@ func _test_source_boundaries() -> void:
 		_expect(
 			base_source.contains(neutral_algorithm)
 			and not standard_source.contains(neutral_algorithm)
-			and not rogue_source.contains(neutral_algorithm),
+			and not rogue_source.contains(neutral_algorithm)
+			and not tower_source.contains(neutral_algorithm),
 			"中性 Pickup 算法只能存在于 PickupRegistryBase：%s。"
 			% neutral_algorithm
 		)
