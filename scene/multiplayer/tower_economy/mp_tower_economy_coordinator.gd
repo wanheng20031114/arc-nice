@@ -245,6 +245,14 @@ func configure_research_network(plant: PlantDefense) -> void:
 		)
 
 
+func request_plant_runtime_state_apply(
+	plant: PlantDefense,
+	state: Dictionary,
+	host_sample_time: float
+) -> void:
+	plant_runtime_state_apply_requested.emit(plant, state, host_sample_time)
+
+
 func handle_authoritative_warehouse_command(
 	peer_id: int,
 	raw_command: Dictionary
