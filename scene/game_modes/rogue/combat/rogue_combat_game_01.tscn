@@ -11,7 +11,7 @@
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/damage_number_pool.gd" id="18_damage_pool"]
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="19_settings_panel"]
 [ext_resource type="PackedScene" path="res://scene/debug_collectible_window.tscn" id="21_debug_collectibles"]
-[ext_resource type="Script" uid="uid://c53fvlhqiuysa" path="res://scene/session_object_pool.gd" id="22_session_pool"]
+[ext_resource type="Script" uid="uid://c53fvlhqiuysa" path="res://scene/combat/pooling/session_object_pool.gd" id="22_session_pool"]
 [ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn" id="24_guardian_aura_system"]
 [ext_resource type="Script" uid="uid://dfuccjc7ww0jj" path="res://scene/enemy/capoo/capoo_sniper_lock_visual_coordinator.gd" id="25_sniper_lock_visuals"]
 [ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_projectile_motion_system.tscn" id="26_capoo_projectile_motion"]

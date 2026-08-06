@@ -1,6 +1,6 @@
 extends SceneTree
 
-const POOL_SCRIPT := preload("res://scene/session_object_pool.gd")
+const POOL_SCRIPT := preload("res://scene/combat/pooling/session_object_pool.gd")
 const EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn")
 
 var failures: Array[String] = []
