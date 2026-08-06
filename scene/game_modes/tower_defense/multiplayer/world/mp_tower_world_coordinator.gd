@@ -44,21 +44,12 @@ signal inventory_plant_placement_request_to_host(
 	expected_inventory_revision: int,
 	item_config_path: String
 )
-signal plant_spawn_broadcast_requested(
-	request_id: int,
-	owner_peer_id: int,
-	net_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	current_health: int,
-	maximum_health: int,
-	health_revision: int
+signal rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	args: Array
 )
-signal plant_placement_rejection_send_requested(
-	requester_peer_id: int,
-	request_id: int,
-	reason: StringName
-)
+signal rpc_broadcast_requested(method_name: StringName, args: Array)
 signal plant_health_batch_broadcast_requested(
 	net_ids: PackedInt32Array,
 	health_values: PackedInt32Array,
@@ -75,7 +66,6 @@ signal plant_damage_status_broadcast_requested(
 	status_mask: int,
 	status_revision: int
 )
-signal plant_removed_broadcast_requested(net_id: int, was_destroyed: bool)
 signal terrain_snapshot_request_to_host(known_revision: int)
 signal base_health_send_requested(
 	target_peer_id: int,
@@ -131,6 +121,7 @@ signal corn_machine_gun_burst_batch_broadcast_requested(
 )
 
 var _session: MultiplayerGameplaySession = null
+var _session_coordinator: MpSessionCoordinator = null
 var _runtime: CombatRuntimeBase = null
 var _mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _net_manager: NetManagerStore = null
@@ -183,6 +174,7 @@ var _corn_machine_gun_burst_flush_time_left := (
 
 func bind_session(
 	session: MultiplayerGameplaySession,
+	session_coordinator: MpSessionCoordinator,
 	runtime: CombatRuntimeBase,
 	mode_adapter: TowerDefenseMultiplayerModeAdapter,
 	net_manager: NetManagerStore,
@@ -191,6 +183,7 @@ func bind_session(
 	tower_economy: MpTowerEconomyCoordinator
 ) -> void:
 	assert(session != null, "MpTowerWorldCoordinator 缺少多人会话。")
+	assert(session_coordinator != null, "MpTowerWorldCoordinator 缺少会话时钟。")
 	assert(runtime != null, "MpTowerWorldCoordinator 缺少战斗运行时。")
 	assert(mode_adapter != null, "MpTowerWorldCoordinator 缺少塔防模式适配器。")
 	assert(net_manager != null, "MpTowerWorldCoordinator 缺少网络管理器。")
@@ -199,6 +192,7 @@ func bind_session(
 	assert(tower_economy != null, "MpTowerWorldCoordinator 缺少塔防经济协调器。")
 	var initialize_terrain_state := (
 		_session != session
+		or _session_coordinator != session_coordinator
 		or _runtime != runtime
 		or _mode_adapter != mode_adapter
 		or _net_manager != net_manager
@@ -209,6 +203,7 @@ func bind_session(
 		_disconnect_mode_adapter()
 		reset_session_state()
 	_session = session
+	_session_coordinator = session_coordinator
 	_runtime = runtime
 	_mode_adapter = mode_adapter
 	_net_manager = net_manager
@@ -230,6 +225,7 @@ func unbind_session(session: MultiplayerGameplaySession) -> void:
 	_disconnect_mode_adapter()
 	reset_session_state()
 	_session = null
+	_session_coordinator = null
 	_runtime = null
 	_mode_adapter = null
 	_net_manager = null
@@ -242,6 +238,8 @@ func is_bound() -> bool:
 	return (
 		_session != null
 		and is_instance_valid(_session)
+		and _session_coordinator != null
+		and is_instance_valid(_session_coordinator)
 		and _runtime != null
 		and is_instance_valid(_runtime)
 		and _mode_adapter != null
@@ -1121,6 +1119,66 @@ func build_live_plant_ids() -> PackedInt32Array:
 	return live_ids
 
 
+func send_live_plant_roster_to_peer(peer_id: int) -> void:
+	if (
+		not _is_host_bound()
+		or peer_id <= 0
+		or not _net_manager.is_peer_send_ready(peer_id)
+	):
+		return
+	var warehouse_snapshots_by_net_id: Dictionary = {}
+	for plant_snapshot in build_live_plant_records():
+		var plant_net_id := int(plant_snapshot.get("net_id", 0))
+		var plant := get_plant(plant_net_id)
+		_tower_economy.configure_warehouse_network(plant, true)
+		_tower_economy.configure_production_network(plant, true)
+		_tower_economy.configure_research_network(plant)
+		var runtime_state := export_plant_runtime_state(plant)
+		var host_sample_time := _session_coordinator.get_net_time()
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_plant_spawned",
+			[
+				0,
+				int(plant_snapshot.get("owner_peer_id", 0)),
+				plant_net_id,
+				String(plant_snapshot.get("plant_id", &"")),
+				plant_snapshot.get("anchor", Vector2i.ZERO) as Vector2i,
+				int(plant_snapshot.get("current_health", 0)),
+				int(plant_snapshot.get("maximum_health", 1)),
+				int(plant_snapshot.get("health_revision", 0)),
+				runtime_state,
+				host_sample_time,
+			]
+		)
+		var warehouse := plant as OakWarehouse
+		if warehouse != null and is_instance_valid(warehouse):
+			warehouse_snapshots_by_net_id[plant_net_id] = (
+				warehouse.export_storage_snapshot()
+			)
+	var warehouse_ids := warehouse_snapshots_by_net_id.keys()
+	warehouse_ids.sort()
+	if not warehouse_ids.is_empty():
+		var warehouse_net_ids := PackedInt32Array()
+		var warehouse_snapshots: Array = []
+		for warehouse_id_variant in warehouse_ids:
+			var warehouse_net_id := int(warehouse_id_variant)
+			warehouse_net_ids.append(warehouse_net_id)
+			warehouse_snapshots.append(
+				warehouse_snapshots_by_net_id[warehouse_net_id]
+			)
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_warehouse_storage_snapshot_batch",
+			[warehouse_net_ids, warehouse_snapshots]
+		)
+	rpc_to_peer_requested.emit(
+		peer_id,
+		&"net_research_state_updated",
+		[_mode_adapter.get_research_runtime_state(), 0, -1]
+	)
+
+
 func get_plant(net_id: int) -> PlantDefense:
 	if not is_bound() or net_id <= 0:
 		return null
@@ -1200,11 +1258,7 @@ func receive_plant_spawn(
 	_tower_economy.notify_plant_available(net_id)
 	_tower_economy.configure_production_network(plant, false)
 	_tower_economy.configure_research_network(plant)
-	_tower_economy.request_plant_runtime_state_apply(
-		plant,
-		runtime_state,
-		host_sample_time
-	)
+	apply_plant_runtime_state(plant, runtime_state, host_sample_time)
 	var production_building := plant as ProductionBuilding
 	if (
 		production_building != null
@@ -1214,6 +1268,77 @@ func receive_plant_spawn(
 	_tower_economy.configure_warehouse_network(plant, false)
 	apply_pending_remote_plant_health(net_id)
 	return plant
+
+
+func export_plant_runtime_state(plant: PlantDefense) -> Dictionary:
+	if plant == null or not is_instance_valid(plant):
+		return {}
+	var runtime_state := plant.export_multiplayer_runtime_state().duplicate(true)
+	runtime_state["damage_status_mask"] = plant.get_damage_status_mask()
+	runtime_state["damage_status_revision"] = plant.damage_status_revision
+	return runtime_state
+
+
+func apply_plant_runtime_state(
+	plant: PlantDefense,
+	runtime_state: Dictionary,
+	host_sample_time: float
+) -> void:
+	if plant == null or not is_instance_valid(plant) or not is_finite(host_sample_time):
+		return
+	var corrected_state := runtime_state.duplicate(true)
+	if (
+		corrected_state.has("damage_status_mask")
+		and corrected_state.has("damage_status_revision")
+	):
+		plant.apply_remote_damage_status_mask(
+			int(corrected_state.get("damage_status_mask", 0)),
+			int(corrected_state.get("damage_status_revision", 0))
+		)
+	var mapped_sample_time := (
+		_session_coordinator.map_host_timestamp_to_client_time(
+			host_sample_time,
+			false
+		)
+	)
+	var sample_age := maxf(
+		_session_coordinator.get_net_time() - mapped_sample_time,
+		0.0
+	)
+	if corrected_state.has("spread_elapsed_seconds"):
+		var spread_elapsed := float(
+			corrected_state.get("spread_elapsed_seconds", 0.0)
+		)
+		if not is_finite(spread_elapsed):
+			return
+		corrected_state["spread_elapsed_seconds"] = (
+			maxf(spread_elapsed, 0.0) + sample_age
+		)
+	for elapsed_key in [
+		"windup_elapsed_seconds",
+		"projectile_elapsed_seconds",
+		"cycle_elapsed_seconds",
+		"rain_elapsed_seconds",
+		"ground_effect_elapsed_seconds",
+	]:
+		if not corrected_state.has(elapsed_key):
+			continue
+		var elapsed_seconds := float(corrected_state.get(elapsed_key, 0.0))
+		if not is_finite(elapsed_seconds):
+			return
+		corrected_state[elapsed_key] = maxf(elapsed_seconds, 0.0) + sample_age
+	var production_building := plant as ProductionBuilding
+	if production_building != null:
+		production_building.apply_multiplayer_runtime_state_with_host_sample(
+			corrected_state,
+			Time.get_ticks_msec() / 1000.0 - sample_age,
+			host_sample_time
+		)
+	else:
+		plant.apply_multiplayer_runtime_state(
+			corrected_state,
+			Time.get_ticks_msec() / 1000.0
+		)
 
 
 func receive_plant_placement_rejected(request_id: int, reason: String) -> void:
@@ -1522,10 +1647,25 @@ func _request_placement_rejection(
 	request_id: int,
 	reason: StringName
 ) -> void:
-	plant_placement_rejection_send_requested.emit(
+	send_plant_placement_rejected(requester_peer_id, request_id, reason)
+
+
+func send_plant_placement_rejected(
+	requester_peer_id: int,
+	request_id: int,
+	reason: StringName
+) -> void:
+	if not _is_host_bound() or requester_peer_id <= 0:
+		return
+	if requester_peer_id == _net_manager.get_local_peer_id():
+		_mode_adapter.apply_remote_plant_placement_rejected(request_id, reason)
+		return
+	if not _net_manager.is_peer_send_ready(requester_peer_id):
+		return
+	rpc_to_peer_requested.emit(
 		requester_peer_id,
-		request_id,
-		reason
+		&"net_plant_placement_rejected",
+		[request_id, String(reason)]
 	)
 
 
@@ -1576,16 +1716,31 @@ func _on_host_plant_spawned(
 	):
 		push_error("MpTowerWorldCoordinator: 植物生成生命值超出 signed int32 契约。")
 		return
-	plant_spawn_broadcast_requested.emit(
-		request_id,
-		owner_peer_id,
-		net_id,
-		plant_id,
-		anchor,
-		current_health,
-		maximum_health,
-		health_revision
+	_tower_economy.notify_plant_available(net_id)
+	var plant := get_plant(net_id)
+	_tower_economy.configure_warehouse_network(plant, true)
+	_tower_economy.configure_production_network(plant, true)
+	_tower_economy.configure_research_network(plant)
+	var runtime_state := export_plant_runtime_state(plant)
+	var host_sample_time := _session_coordinator.get_net_time()
+	rpc_broadcast_requested.emit(
+		&"net_plant_spawned",
+		[
+			request_id,
+			owner_peer_id,
+			net_id,
+			String(plant_id),
+			anchor,
+			current_health,
+			maximum_health,
+			health_revision,
+			runtime_state,
+			host_sample_time,
+		]
 	)
+	var warehouse := plant as OakWarehouse
+	if warehouse != null:
+		_tower_economy.broadcast_warehouse_snapshot(warehouse)
 
 
 func _on_host_plant_placement_rejected(
@@ -1712,7 +1867,11 @@ func _on_host_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
 	# Shell visuals share the ordered world-event channel with removal. Flush
 	# committed FIRE records while the corresponding plant proxy still exists.
 	_flush_bamboo_mortar_visuals()
-	plant_removed_broadcast_requested.emit(net_id, was_destroyed)
+	_tower_economy.notify_plant_removed(net_id)
+	rpc_broadcast_requested.emit(
+		&"net_plant_removed",
+		[net_id, was_destroyed]
+	)
 
 
 func _flush_plant_health_updates() -> void:

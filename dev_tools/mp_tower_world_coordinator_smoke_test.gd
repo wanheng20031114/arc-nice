@@ -88,14 +88,38 @@ class ClientNetManager:
 		return 2
 
 
+class TestSessionCoordinator:
+	extends MpSessionCoordinator
+
+	func get_net_time() -> float:
+		return 50.0
+
+	func map_host_timestamp_to_client_time(
+		host_timestamp: float,
+		_update_offset: bool = true
+	) -> float:
+		return host_timestamp + 3.0
+
+
 class TestProductionBuilding:
 	extends ProductionBuilding
 
 	var lifecycle_records: Array[String] = []
+	var applied_runtime_state: Dictionary = {}
+	var applied_host_sample_time := -1.0
 
 	func request_multiplayer_production_snapshot() -> bool:
 		lifecycle_records.append("production_snapshot")
 		return true
+
+	func apply_multiplayer_runtime_state_with_host_sample(
+		state: Dictionary,
+		_mapped_sample_time: float,
+		host_sample_time: float
+	) -> void:
+		lifecycle_records.append("runtime_state")
+		applied_runtime_state = state.duplicate(true)
+		applied_host_sample_time = host_sample_time
 
 
 class TestTowerEconomyCoordinator:
@@ -561,6 +585,15 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 		),
 		"TowerWorldCoordinator 必须以强类型依赖协调塔防经济。"
 	)
+	_expect(
+		not source.contains("func _export_plant_runtime_state(")
+		and not source.contains("func _apply_plant_runtime_state(")
+		and not source.contains("func _send_plant_placement_rejected(")
+		and coordinator_source.contains("func export_plant_runtime_state(")
+		and coordinator_source.contains("func apply_plant_runtime_state(")
+		and coordinator_source.contains("func send_live_plant_roster_to_peer("),
+		"MpGame 不得继续持有植物 runtime state、拒绝发送或迟加入 roster 算法。"
+	)
 
 
 func _test_placement_spawn_pending_health_remove_chain(
@@ -572,7 +605,7 @@ func _test_placement_spawn_pending_health_remove_chain(
 	var client_coordinator := client.coordinator as MpTowerWorldCoordinator
 	var host_adapter := host.adapter as TestTowerModeAdapter
 	var client_adapter := client.adapter as TestTowerModeAdapter
-	host_coordinator.plant_spawn_broadcast_requested.connect(_capture_spawn)
+	host_coordinator.rpc_broadcast_requested.connect(_capture_world_rpc_broadcast)
 	host_coordinator.handle_remote_plant_placement_request(
 		2,
 		1,
@@ -603,7 +636,7 @@ func _test_placement_spawn_pending_health_remove_chain(
 		int(_spawn_record.get("current_health", 0)),
 		int(_spawn_record.get("maximum_health", 1)),
 		int(_spawn_record.get("health_revision", 0)),
-		{"revision": 1},
+		{"revision": 1, "cycle_elapsed_seconds": 2.0},
 		42.0
 	)
 	_expect(
@@ -625,6 +658,19 @@ func _test_placement_spawn_pending_health_remove_chain(
 			"health",
 		],
 		"植物生成必须保持世界生成、经济配置、状态、补包与 pending 生命的原顺序。"
+	)
+	var production_building := plant as TestProductionBuilding
+	_expect(
+		production_building != null
+		and is_equal_approx(
+			float(production_building.applied_runtime_state.get(
+				"cycle_elapsed_seconds",
+				-1.0
+			)),
+			7.0
+		)
+		and is_equal_approx(production_building.applied_host_sample_time, 42.0),
+		"植物 runtime state 必须按会话时钟补偿 5 秒传输年龄，并保留 Host sample time。"
 	)
 	client_coordinator.receive_plant_removed(77, true)
 	client_coordinator.receive_plant_health_changed(77, 9, 10, 3)
@@ -991,6 +1037,7 @@ func _make_fixture(
 		ENEMY_COORDINATOR_SCENE.instantiate() as MpEnemyCoordinator
 	)
 	var tower_economy := TestTowerEconomyCoordinator.new()
+	var session_coordinator := TestSessionCoordinator.new()
 	var runtime := TestRuntime.new()
 	var adapter := TestTowerModeAdapter.new()
 	var net_manager: NetManagerStore = (
@@ -1000,6 +1047,7 @@ func _make_fixture(
 	var lifecycle_records: Array[String] = []
 	root.add_child(coordinator)
 	root.add_child(tower_economy)
+	root.add_child(session_coordinator)
 	tower_economy.lifecycle_records = lifecycle_records
 	adapter.lifecycle_records = lifecycle_records
 	adapter.bind_runtime(runtime)
@@ -1014,6 +1062,7 @@ func _make_fixture(
 	)
 	coordinator.bind_session(
 		session,
+		session_coordinator,
 		runtime,
 		adapter,
 		net_manager,
@@ -1026,6 +1075,7 @@ func _make_fixture(
 		"transactions": transactions,
 		"enemy_coordinator": enemy_coordinator,
 		"tower_economy": tower_economy,
+		"session_coordinator": session_coordinator,
 		"lifecycle_records": lifecycle_records,
 		"runtime": runtime,
 		"adapter": adapter,
@@ -1042,6 +1092,9 @@ func _dispose_fixture(
 	var transactions := fixture.transactions as MpTransactionsCoordinator
 	var enemy_coordinator := fixture.enemy_coordinator as MpEnemyCoordinator
 	var tower_economy := fixture.tower_economy as TestTowerEconomyCoordinator
+	var session_coordinator := (
+		fixture.session_coordinator as TestSessionCoordinator
+	)
 	var adapter := fixture.adapter as TestTowerModeAdapter
 	coordinator.unbind_session(session)
 	transactions.unbind_session(session)
@@ -1049,6 +1102,7 @@ func _dispose_fixture(
 	adapter.clear_plants()
 	coordinator.free()
 	tower_economy.free()
+	session_coordinator.free()
 	transactions.free()
 	enemy_coordinator.free()
 	adapter.free()
@@ -1210,25 +1264,23 @@ func _noop_target_callback(_target: Enemy) -> void:
 	pass
 
 
-func _capture_spawn(
-	request_id: int,
-	owner_peer_id: int,
-	net_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	current_health: int,
-	maximum_health: int,
-	health_revision: int
+func _capture_world_rpc_broadcast(
+	method_name: StringName,
+	args: Array
 ) -> void:
+	if method_name != &"net_plant_spawned" or args.size() != 10:
+		return
 	_spawn_record = {
-		"request_id": request_id,
-		"owner_peer_id": owner_peer_id,
-		"net_id": net_id,
-		"plant_id": plant_id,
-		"anchor": anchor,
-		"current_health": current_health,
-		"maximum_health": maximum_health,
-		"health_revision": health_revision,
+		"request_id": int(args[0]),
+		"owner_peer_id": int(args[1]),
+		"net_id": int(args[2]),
+		"plant_id": StringName(args[3]),
+		"anchor": args[4] as Vector2i,
+		"current_health": int(args[5]),
+		"maximum_health": int(args[6]),
+		"health_revision": int(args[7]),
+		"runtime_state": args[8] as Dictionary,
+		"host_sample_time": float(args[9]),
 	}
 
 
