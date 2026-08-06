@@ -66,3 +66,8 @@ timeout = 10.0
 [connection signal="plant_health_batch_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_plant_health_batch_broadcast_requested"]
 [connection signal="plant_damage_status_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_host_plant_damage_status_changed"]
 [connection signal="plant_removed_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_host_plant_removed"]
+[connection signal="terrain_snapshot_request_to_host" from="TowerWorldCoordinator" to="." method="_on_tower_world_terrain_snapshot_request_to_host"]
+[connection signal="base_health_send_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_base_health_send_requested"]
+[connection signal="terrain_snapshot_chunk_send_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_terrain_snapshot_chunk_send_requested"]
+[connection signal="terrain_delta_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_terrain_delta_broadcast_requested"]
+[connection signal="test_arena_manual_night_send_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_test_arena_manual_night_send_requested"]

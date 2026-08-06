@@ -78,6 +78,76 @@ class TestTowerModeAdapter:
 	var plants: Dictionary[int, PlantDefense] = {}
 	var placement_requests: Array[Dictionary] = []
 	var next_net_id := 77
+	var terrain_snapshot_revision := 7
+	var terrain_snapshot_cell_xy := PackedInt32Array()
+	var terrain_snapshot_types := PackedInt32Array()
+	var applied_terrain_revision := -1
+	var applied_terrain_cell_xy := PackedInt32Array()
+	var applied_terrain_types := PackedInt32Array()
+	var base_current_health := 8
+	var base_maximum_health := 12
+	var base_health_revision := 3
+	var applied_base_current_health := 0
+	var applied_base_maximum_health := 1
+	var applied_base_health_revision := -1
+	var manual_night_enabled := false
+
+	func supports_terrain_state() -> bool:
+		return true
+
+	func get_terrain_snapshot() -> Dictionary:
+		return {
+			"revision": terrain_snapshot_revision,
+			"cell_xy": terrain_snapshot_cell_xy.duplicate(),
+			"terrain_types": terrain_snapshot_types.duplicate(),
+		}
+
+	func apply_remote_terrain_snapshot(
+		revision: int,
+		cell_xy: PackedInt32Array,
+		terrain_types: PackedInt32Array
+	) -> bool:
+		applied_terrain_revision = revision
+		applied_terrain_cell_xy = cell_xy.duplicate()
+		applied_terrain_types = terrain_types.duplicate()
+		return true
+
+	func apply_remote_terrain_delta(
+		revision: int,
+		cell_xy: PackedInt32Array,
+		terrain_types: PackedInt32Array
+	) -> bool:
+		applied_terrain_revision = revision
+		applied_terrain_cell_xy.append_array(cell_xy)
+		applied_terrain_types.append_array(terrain_types)
+		return true
+
+	func get_base_health_snapshot() -> Dictionary:
+		return {
+			"current_health": base_current_health,
+			"maximum_health": base_maximum_health,
+			"revision": base_health_revision,
+		}
+
+	func apply_remote_base_health(
+		current_health: int,
+		maximum_health: int,
+		revision: int
+	) -> void:
+		if revision <= applied_base_health_revision:
+			return
+		applied_base_current_health = current_health
+		applied_base_maximum_health = maximum_health
+		applied_base_health_revision = revision
+
+	func supports_test_arena_manual_night_sync() -> bool:
+		return true
+
+	func get_test_arena_manual_night_enabled() -> bool:
+		return manual_night_enabled
+
+	func apply_remote_test_arena_manual_night(enabled: bool) -> void:
+		manual_night_enabled = enabled
 
 	func get_authoritative_team_plant_count() -> int:
 		return plants.size()
@@ -190,6 +260,9 @@ class TestTowerModeAdapter:
 
 var failures: Array[String] = []
 var _spawn_record: Dictionary = {}
+var _terrain_chunk_records: Array[Dictionary] = []
+var _terrain_repair_revisions: Array[int] = []
+var _base_health_send_records: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -204,6 +277,7 @@ func _run() -> void:
 		return
 	_test_static_boundary(mp_game)
 	_test_placement_spawn_pending_health_remove_chain(mp_game)
+	_test_terrain_repair_and_base_revision(mp_game)
 	mp_game.free()
 	_finish()
 
@@ -224,6 +298,7 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 	for function_name in [
 		"net_plant_placement_requested",
 		"net_inventory_plant_placement_requested",
+		"net_terrain_snapshot_requested",
 	]:
 		_expect(
 			_rpc_entry_captures_sender_first(source, function_name),
@@ -237,6 +312,12 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 		and not coordinator_source.contains("has_method")
 		and not coordinator_source.contains(".call("),
 		"TowerWorldCoordinator 不得通过动态能力探测访问运行时。"
+	)
+	_expect(
+		not source.contains("func _send_terrain_snapshot_to_peer")
+		and not source.contains("func _request_terrain_snapshot_repair")
+		and not source.contains("_pending_terrain_snapshot_batches"),
+		"MpGame 不得继续持有地形快照组装或修复状态。"
 	)
 
 
@@ -303,6 +384,80 @@ func _test_placement_spawn_pending_health_remove_chain(
 	_dispose_fixture(session, client)
 
 
+func _test_terrain_repair_and_base_revision(
+	session: MultiplayerGameplaySession
+) -> void:
+	var host := _make_fixture(session, true)
+	var client := _make_fixture(session, false)
+	var host_coordinator := host.coordinator as MpTowerWorldCoordinator
+	var client_coordinator := client.coordinator as MpTowerWorldCoordinator
+	var host_adapter := host.adapter as TestTowerModeAdapter
+	var client_adapter := client.adapter as TestTowerModeAdapter
+	_terrain_chunk_records.clear()
+	_terrain_repair_revisions.clear()
+	_base_health_send_records.clear()
+	host_coordinator.terrain_snapshot_chunk_send_requested.connect(
+		_capture_terrain_chunk
+	)
+	host_coordinator.base_health_send_requested.connect(_capture_base_health_send)
+	client_coordinator.terrain_snapshot_request_to_host.connect(
+		_capture_terrain_repair_request
+	)
+	for cell_index in range(97):
+		host_adapter.terrain_snapshot_cell_xy.append(cell_index)
+		host_adapter.terrain_snapshot_cell_xy.append(cell_index % 7)
+		host_adapter.terrain_snapshot_types.append(
+			1 if cell_index % 2 == 0 else 2
+		)
+	host_coordinator.request_terrain_snapshot_for_peer(2)
+	_expect(
+		_terrain_chunk_records.size() == 2
+		and int(_terrain_chunk_records[0].get("chunk_index", -1)) == 0
+		and int(_terrain_chunk_records[1].get("chunk_index", -1)) == 1,
+		"97 格权威地形必须按稳定顺序拆成两个快照分片。"
+	)
+	if _terrain_chunk_records.size() == 2:
+		client_coordinator.begin_runtime_state_request()
+		_deliver_terrain_chunk(client_coordinator, _terrain_chunk_records[1])
+		_deliver_terrain_chunk(client_coordinator, _terrain_chunk_records[0])
+	_expect(
+		client_adapter.applied_terrain_revision == 7
+		and client_adapter.applied_terrain_cell_xy
+		== host_adapter.terrain_snapshot_cell_xy
+		and client_adapter.applied_terrain_types
+		== host_adapter.terrain_snapshot_types,
+		"客户端必须按 chunk_index 重组乱序地形分片，并保留 revision。"
+	)
+
+	host_coordinator.broadcast_base_health_snapshot()
+	_expect(
+		_base_health_send_records.size() == 1
+		and int(_base_health_send_records[0].get("target_peer_id", -1)) == 0,
+		"基地生命变化必须由 TowerWorldCoordinator 请求根门面广播。"
+	)
+	client_coordinator.receive_base_health_changed(8, 12, 3)
+	client_coordinator.receive_base_health_changed(1, 12, 2)
+	_expect(
+		client_adapter.applied_base_current_health == 8
+		and client_adapter.applied_base_maximum_health == 12
+		and client_adapter.applied_base_health_revision == 3,
+		"基地生命旧 revision 必须由模式适配器拒绝。"
+	)
+
+	client_coordinator.receive_terrain_delta(
+		9,
+		PackedInt32Array([200, 3]),
+		PackedInt32Array([1])
+	)
+	client_coordinator.update_client(2.0)
+	_expect(
+		_terrain_repair_revisions == [7, 7],
+		"地形 revision 缺口必须立即请求修复，并在看门狗超时后限频重试。"
+	)
+	_dispose_fixture(session, host)
+	_dispose_fixture(session, client)
+
+
 func _make_fixture(
 	session: MultiplayerGameplaySession,
 	is_host: bool
@@ -361,6 +516,58 @@ func _dispose_fixture(
 	(fixture.runtime as TestRuntime).free()
 	(fixture.net_manager as NetManagerStore).free()
 	(fixture.run_state as RunStateStore).free()
+
+
+func _capture_terrain_chunk(
+	target_peer_id: int,
+	snapshot_id: int,
+	revision: int,
+	chunk_index: int,
+	chunk_count: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	_terrain_chunk_records.append({
+		"target_peer_id": target_peer_id,
+		"snapshot_id": snapshot_id,
+		"revision": revision,
+		"chunk_index": chunk_index,
+		"chunk_count": chunk_count,
+		"cell_xy": cell_xy.duplicate(),
+		"terrain_types": terrain_types.duplicate(),
+	})
+
+
+func _capture_terrain_repair_request(known_revision: int) -> void:
+	_terrain_repair_revisions.append(known_revision)
+
+
+func _capture_base_health_send(
+	target_peer_id: int,
+	current_health: int,
+	maximum_health: int,
+	revision: int
+) -> void:
+	_base_health_send_records.append({
+		"target_peer_id": target_peer_id,
+		"current_health": current_health,
+		"maximum_health": maximum_health,
+		"revision": revision,
+	})
+
+
+func _deliver_terrain_chunk(
+	coordinator: MpTowerWorldCoordinator,
+	record: Dictionary
+) -> void:
+	coordinator.receive_terrain_snapshot_chunk(
+		int(record.get("snapshot_id", 0)),
+		int(record.get("revision", -1)),
+		int(record.get("chunk_index", -1)),
+		int(record.get("chunk_count", 0)),
+		record.get("cell_xy", PackedInt32Array()) as PackedInt32Array,
+		record.get("terrain_types", PackedInt32Array()) as PackedInt32Array
+	)
 
 
 func _capture_spawn(

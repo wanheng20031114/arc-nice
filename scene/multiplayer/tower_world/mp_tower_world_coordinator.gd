@@ -14,6 +14,15 @@ const PLANT_PLACEMENT_RATE_PER_SECOND := 4.0
 const PLANT_PLACEMENT_RATE_BURST := 8.0
 const PLANT_ID_WIRE_MAX_LENGTH := 128
 const INVENTORY_ITEM_CONFIG_PATH_WIRE_MAX_LENGTH := 256
+const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96
+const TERRAIN_SNAPSHOT_MAX_CHUNKS := 4096
+const TERRAIN_DELTA_MAX_CELLS := 96
+const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0
+const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0
+const TERRAIN_SNAPSHOT_REPAIR_WATCHDOG_SECONDS := 2.0
+const TERRAIN_TYPE_EMPTY := -1
+const TERRAIN_TYPE_GRASS := 1
+const TERRAIN_TYPE_DIRT := 2
 
 signal plant_placement_request_to_host(
 	request_id: int,
@@ -60,6 +69,31 @@ signal plant_damage_status_broadcast_requested(
 	status_revision: int
 )
 signal plant_removed_broadcast_requested(net_id: int, was_destroyed: bool)
+signal terrain_snapshot_request_to_host(known_revision: int)
+signal base_health_send_requested(
+	target_peer_id: int,
+	current_health: int,
+	maximum_health: int,
+	revision: int
+)
+signal terrain_snapshot_chunk_send_requested(
+	target_peer_id: int,
+	snapshot_id: int,
+	revision: int,
+	chunk_index: int,
+	chunk_count: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+)
+signal terrain_delta_broadcast_requested(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+)
+signal test_arena_manual_night_send_requested(
+	target_peer_id: int,
+	enabled: bool
+)
 
 var _session: MultiplayerGameplaySession = null
 var _runtime: CombatRuntimeBase = null
@@ -81,6 +115,16 @@ var _removed_remote_plant_id_order: Array[int] = []
 var _remote_plant_feedback_revisions: Dictionary = {}
 var _remote_plant_feedback_revision_order: Array[int] = []
 
+var _terrain_snapshot_request_rate_buckets: Dictionary = {}
+var _next_terrain_snapshot_id := 1
+var _last_host_terrain_revision_broadcast := 0
+var _client_terrain_revision := -1
+var _client_has_terrain_snapshot := false
+var _client_waiting_for_terrain_snapshot := false
+var _terrain_snapshot_repair_watchdog_time_left := 0.0
+var _last_completed_terrain_snapshot_id := 0
+var _pending_terrain_snapshot_batches: Dictionary = {}
+
 
 func bind_session(
 	session: MultiplayerGameplaySession,
@@ -94,6 +138,12 @@ func bind_session(
 	assert(mode_adapter != null, "MpTowerWorldCoordinator 缺少塔防模式适配器。")
 	assert(net_manager != null, "MpTowerWorldCoordinator 缺少网络管理器。")
 	assert(transactions != null, "MpTowerWorldCoordinator 缺少事务协调器。")
+	var initialize_terrain_state := (
+		_session != session
+		or _runtime != runtime
+		or _mode_adapter != mode_adapter
+		or _net_manager != net_manager
+	)
 	if _session != null and _session != session:
 		_disconnect_mode_adapter()
 		reset_session_state()
@@ -102,6 +152,12 @@ func bind_session(
 	_mode_adapter = mode_adapter
 	_net_manager = net_manager
 	_transactions = transactions
+	if initialize_terrain_state:
+		_reset_terrain_session_state()
+		_client_has_terrain_snapshot = (
+			_net_manager.is_client()
+			and not _mode_adapter.supports_terrain_state()
+		)
 	_connect_mode_adapter()
 
 
@@ -138,6 +194,7 @@ func reset_session_state() -> void:
 	_pending_plant_health_updates.clear()
 	_plant_health_flush_time_left = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
 	_clear_remote_plant_health_state()
+	_reset_terrain_session_state()
 
 
 func clear_peer(peer_id: int) -> void:
@@ -145,6 +202,7 @@ func clear_peer(peer_id: int) -> void:
 		return
 	_last_plant_placement_request_ids.erase(peer_id)
 	_plant_placement_rate_buckets.erase(peer_id)
+	_terrain_snapshot_request_rate_buckets.erase(peer_id)
 
 
 func update_host(delta: float) -> void:
@@ -155,6 +213,377 @@ func update_host(delta: float) -> void:
 		return
 	_plant_health_flush_time_left = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
 	_flush_plant_health_updates()
+
+
+func update_client(delta: float) -> void:
+	if not _is_client_bound():
+		return
+	_update_terrain_snapshot_repair_watchdog(delta)
+
+
+func begin_runtime_state_request() -> void:
+	if not _is_client_bound() or not _mode_adapter.supports_terrain_state():
+		return
+	_client_waiting_for_terrain_snapshot = true
+	_arm_terrain_snapshot_repair_watchdog()
+
+
+func broadcast_base_health_snapshot() -> void:
+	if not _is_host_bound():
+		return
+	var snapshot := _mode_adapter.get_base_health_snapshot()
+	if snapshot.is_empty():
+		return
+	_on_host_base_health_changed(
+		int(snapshot.get("current_health", 0)),
+		int(snapshot.get("maximum_health", 1)),
+		int(snapshot.get("revision", 0))
+	)
+
+
+func request_base_health_snapshot_for_peer(target_peer_id: int) -> void:
+	if not _is_host_bound() or target_peer_id <= 0:
+		return
+	var snapshot := _mode_adapter.get_base_health_snapshot()
+	if snapshot.is_empty():
+		return
+	base_health_send_requested.emit(
+		target_peer_id,
+		int(snapshot.get("current_health", 0)),
+		int(snapshot.get("maximum_health", 1)),
+		int(snapshot.get("revision", 0))
+	)
+
+
+func request_test_arena_manual_night_for_peer(target_peer_id: int) -> void:
+	if (
+		not _is_host_bound()
+		or target_peer_id <= 0
+		or not _mode_adapter.supports_test_arena_manual_night_sync()
+	):
+		return
+	test_arena_manual_night_send_requested.emit(
+		target_peer_id,
+		_mode_adapter.get_test_arena_manual_night_enabled()
+	)
+
+
+func request_terrain_snapshot_for_peer(target_peer_id: int) -> void:
+	if (
+		not _is_host_bound()
+		or target_peer_id <= 0
+		or not _mode_adapter.supports_terrain_state()
+	):
+		return
+	var snapshot := _mode_adapter.get_terrain_snapshot()
+	var revision := int(snapshot.get("revision", -1))
+	var cell_xy: PackedInt32Array = snapshot.get(
+		"cell_xy",
+		PackedInt32Array()
+	)
+	var terrain_types: PackedInt32Array = snapshot.get(
+		"terrain_types",
+		PackedInt32Array()
+	)
+	if (
+		revision < 0
+		or not _is_valid_terrain_payload(
+			cell_xy,
+			terrain_types,
+			TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS * TERRAIN_SNAPSHOT_MAX_CHUNKS
+		)
+	):
+		push_error("MpTowerWorldCoordinator: authoritative terrain snapshot is invalid.")
+		return
+	var snapshot_id := _next_terrain_snapshot_id
+	_next_terrain_snapshot_id += 1
+	var cell_count := terrain_types.size()
+	var chunk_count := maxi(
+		ceili(float(cell_count) / float(TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS)),
+		1
+	)
+	for chunk_index in range(chunk_count):
+		var start_cell := chunk_index * TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS
+		var end_cell := mini(
+			start_cell + TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS,
+			cell_count
+		)
+		var chunk_cell_xy := PackedInt32Array()
+		var chunk_terrain_types := PackedInt32Array()
+		for cell_index in range(start_cell, end_cell):
+			chunk_cell_xy.append(cell_xy[cell_index * 2])
+			chunk_cell_xy.append(cell_xy[cell_index * 2 + 1])
+			chunk_terrain_types.append(terrain_types[cell_index])
+		terrain_snapshot_chunk_send_requested.emit(
+			target_peer_id,
+			snapshot_id,
+			revision,
+			chunk_index,
+			chunk_count,
+			chunk_cell_xy,
+			chunk_terrain_types
+		)
+
+
+func handle_remote_terrain_snapshot_request(
+	sender_id: int,
+	known_revision: int
+) -> void:
+	if (
+		not _is_host_bound()
+		or not _mode_adapter.supports_terrain_state()
+		or known_revision < -1
+		or sender_id <= 0
+		or _runtime.get_player_for_peer(sender_id) == null
+	):
+		return
+	if not _consume_terrain_snapshot_request_token(sender_id):
+		return
+	request_terrain_snapshot_for_peer(sender_id)
+
+
+func receive_terrain_snapshot_chunk(
+	snapshot_id: int,
+	revision: int,
+	chunk_index: int,
+	chunk_count: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	if not _is_client_terrain_bound():
+		return
+	if snapshot_id <= _last_completed_terrain_snapshot_id:
+		return
+	if (
+		snapshot_id <= 0
+		or revision < 0
+		or chunk_count <= 0
+		or chunk_count > TERRAIN_SNAPSHOT_MAX_CHUNKS
+		or chunk_index < 0
+		or chunk_index >= chunk_count
+		or not _is_valid_terrain_payload(
+			cell_xy,
+			terrain_types,
+			TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS
+		)
+		or (
+			chunk_index < chunk_count - 1
+			and terrain_types.size() != TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS
+		)
+		or (
+			terrain_types.is_empty()
+			and (chunk_count != 1 or chunk_index != 0)
+		)
+	):
+		_restart_terrain_snapshot_repair()
+		return
+	_arm_terrain_snapshot_repair_watchdog()
+
+	var batch := _pending_terrain_snapshot_batches.get(
+		snapshot_id,
+		{}
+	) as Dictionary
+	if batch.is_empty():
+		batch = {
+			"revision": revision,
+			"chunk_count": chunk_count,
+			"chunks": {},
+		}
+		_pending_terrain_snapshot_batches[snapshot_id] = batch
+	elif (
+		int(batch.get("revision", -1)) != revision
+		or int(batch.get("chunk_count", 0)) != chunk_count
+	):
+		_restart_terrain_snapshot_repair()
+		return
+
+	var chunks := batch.get("chunks", {}) as Dictionary
+	if chunks.has(chunk_index):
+		var previous := chunks[chunk_index] as Dictionary
+		if (
+			(previous.get("cell_xy", PackedInt32Array()) as PackedInt32Array)
+			== cell_xy
+			and (
+				previous.get("terrain_types", PackedInt32Array())
+				as PackedInt32Array
+			) == terrain_types
+		):
+			return
+		_restart_terrain_snapshot_repair()
+		return
+	chunks[chunk_index] = {
+		"cell_xy": cell_xy.duplicate(),
+		"terrain_types": terrain_types.duplicate(),
+	}
+	if chunks.size() < chunk_count:
+		return
+
+	var complete_cell_xy := PackedInt32Array()
+	var complete_terrain_types := PackedInt32Array()
+	for ordered_chunk_index in range(chunk_count):
+		if not chunks.has(ordered_chunk_index):
+			_restart_terrain_snapshot_repair()
+			return
+		var chunk := chunks[ordered_chunk_index] as Dictionary
+		var ordered_cell_xy: PackedInt32Array = chunk.get(
+			"cell_xy",
+			PackedInt32Array()
+		)
+		var ordered_terrain_types: PackedInt32Array = chunk.get(
+			"terrain_types",
+			PackedInt32Array()
+		)
+		complete_cell_xy.append_array(ordered_cell_xy)
+		complete_terrain_types.append_array(ordered_terrain_types)
+	if not _is_valid_terrain_payload(
+		complete_cell_xy,
+		complete_terrain_types
+	):
+		_restart_terrain_snapshot_repair()
+		return
+	if _client_has_terrain_snapshot and revision < _client_terrain_revision:
+		_pending_terrain_snapshot_batches.erase(snapshot_id)
+		_client_waiting_for_terrain_snapshot = false
+		_terrain_snapshot_repair_watchdog_time_left = 0.0
+		return
+	if not _mode_adapter.apply_remote_terrain_snapshot(
+		revision,
+		complete_cell_xy,
+		complete_terrain_types
+	):
+		_restart_terrain_snapshot_repair()
+		return
+	_client_terrain_revision = revision
+	_client_has_terrain_snapshot = true
+	_client_waiting_for_terrain_snapshot = false
+	_terrain_snapshot_repair_watchdog_time_left = 0.0
+	_last_completed_terrain_snapshot_id = snapshot_id
+	for pending_id_variant in _pending_terrain_snapshot_batches.keys():
+		if int(pending_id_variant) <= snapshot_id:
+			_pending_terrain_snapshot_batches.erase(pending_id_variant)
+
+
+func receive_terrain_delta(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	if not _is_client_terrain_bound():
+		return
+	if (
+		revision <= 0
+		or terrain_types.is_empty()
+		or not _is_valid_terrain_payload(
+			cell_xy,
+			terrain_types,
+			TERRAIN_DELTA_MAX_CELLS
+		)
+	):
+		_restart_terrain_snapshot_repair()
+		return
+	if _client_has_terrain_snapshot and revision <= _client_terrain_revision:
+		return
+	if not _client_has_terrain_snapshot or _client_waiting_for_terrain_snapshot:
+		_request_terrain_snapshot_repair()
+		return
+	if revision != _client_terrain_revision + 1:
+		_request_terrain_snapshot_repair()
+		return
+	if not _mode_adapter.apply_remote_terrain_delta(
+		revision,
+		cell_xy,
+		terrain_types
+	):
+		_request_terrain_snapshot_repair()
+		return
+	_client_terrain_revision = revision
+
+
+func receive_base_health_changed(
+	current_health: int,
+	maximum_health: int,
+	revision: int
+) -> void:
+	if (
+		not _is_client_bound()
+		or not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(revision)
+	):
+		return
+	_mode_adapter.apply_remote_base_health(
+		current_health,
+		maximum_health,
+		revision
+	)
+
+
+func receive_test_arena_manual_night_changed(
+	sender_id: int,
+	enabled: bool
+) -> void:
+	if (
+		not _is_client_bound()
+		or sender_id != _net_manager.get_host_peer_id()
+		or not _mode_adapter.supports_test_arena_manual_night_sync()
+	):
+		return
+	_mode_adapter.apply_remote_test_arena_manual_night(enabled)
+
+
+func _on_host_base_health_changed(
+	current_health: int,
+	maximum_health: int,
+	revision: int
+) -> void:
+	if not _is_host_bound():
+		return
+	if (
+		not _NetConstants.is_valid_network_combat_value(current_health)
+		or not _NetConstants.is_valid_network_combat_value(maximum_health)
+		or not _NetConstants.is_valid_network_combat_value(revision)
+	):
+		push_error("MpTowerWorldCoordinator: 基地生命快照超出 signed int32 契约。")
+		return
+	base_health_send_requested.emit(
+		0,
+		current_health,
+		maximum_health,
+		revision
+	)
+
+
+func _on_host_test_arena_manual_night_changed(enabled: bool) -> void:
+	if (
+		not _is_host_bound()
+		or not _mode_adapter.supports_test_arena_manual_night_sync()
+	):
+		return
+	test_arena_manual_night_send_requested.emit(0, enabled)
+
+
+func _on_host_terrain_delta(
+	revision: int,
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array
+) -> void:
+	if (
+		not _is_host_bound()
+		or revision <= _last_host_terrain_revision_broadcast
+		or terrain_types.is_empty()
+		or not _is_valid_terrain_payload(
+			cell_xy,
+			terrain_types,
+			TERRAIN_DELTA_MAX_CELLS
+		)
+	):
+		return
+	_last_host_terrain_revision_broadcast = revision
+	terrain_delta_broadcast_requested.emit(
+		revision,
+		cell_xy,
+		terrain_types
+	)
 
 
 func handle_remote_plant_placement_request(
@@ -974,6 +1403,130 @@ func _clear_remote_plant_health_state() -> void:
 	_remote_plant_feedback_revision_order.clear()
 
 
+func _request_terrain_snapshot_repair() -> void:
+	if (
+		_client_waiting_for_terrain_snapshot
+		or not _is_client_terrain_bound()
+	):
+		return
+	_send_terrain_snapshot_repair_request()
+
+
+func _send_terrain_snapshot_repair_request() -> void:
+	_client_waiting_for_terrain_snapshot = true
+	_arm_terrain_snapshot_repair_watchdog()
+	terrain_snapshot_request_to_host.emit(_client_terrain_revision)
+
+
+func _arm_terrain_snapshot_repair_watchdog() -> void:
+	_terrain_snapshot_repair_watchdog_time_left = (
+		TERRAIN_SNAPSHOT_REPAIR_WATCHDOG_SECONDS
+	)
+
+
+func _update_terrain_snapshot_repair_watchdog(delta: float) -> void:
+	if not _client_waiting_for_terrain_snapshot:
+		_terrain_snapshot_repair_watchdog_time_left = 0.0
+		return
+	if not _is_client_terrain_bound():
+		return
+	_terrain_snapshot_repair_watchdog_time_left = maxf(
+		_terrain_snapshot_repair_watchdog_time_left - maxf(delta, 0.0),
+		0.0
+	)
+	if _terrain_snapshot_repair_watchdog_time_left > 0.0:
+		return
+	# Valid chunks re-arm the watchdog. A stalled or rate-limited repair retries
+	# no more than once per watchdog interval and discards incomplete assembly.
+	_pending_terrain_snapshot_batches.clear()
+	_send_terrain_snapshot_repair_request()
+
+
+func _restart_terrain_snapshot_repair() -> void:
+	_pending_terrain_snapshot_batches.clear()
+	_client_waiting_for_terrain_snapshot = false
+	_terrain_snapshot_repair_watchdog_time_left = 0.0
+	_request_terrain_snapshot_repair()
+
+
+func _consume_terrain_snapshot_request_token(
+	peer_id: int,
+	now_seconds: float = -1.0
+) -> bool:
+	if peer_id <= 0:
+		return false
+	var now := (
+		Time.get_ticks_msec() / 1000.0
+		if now_seconds < 0.0
+		else now_seconds
+	)
+	var bucket: Dictionary
+	if _terrain_snapshot_request_rate_buckets.has(peer_id):
+		bucket = _terrain_snapshot_request_rate_buckets[peer_id] as Dictionary
+	else:
+		bucket = {
+			"tokens": TERRAIN_SNAPSHOT_REQUEST_RATE_BURST,
+			"last_time": now,
+		}
+		_terrain_snapshot_request_rate_buckets[peer_id] = bucket
+	var tokens := float(
+		bucket.get("tokens", TERRAIN_SNAPSHOT_REQUEST_RATE_BURST)
+	)
+	var last_time := float(bucket.get("last_time", now))
+	tokens = minf(
+		TERRAIN_SNAPSHOT_REQUEST_RATE_BURST,
+		tokens
+		+ maxf(now - last_time, 0.0)
+		* TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND
+	)
+	var accepted := tokens >= 1.0
+	if accepted:
+		tokens -= 1.0
+	bucket["tokens"] = tokens
+	bucket["last_time"] = now
+	return accepted
+
+
+func _is_valid_terrain_payload(
+	cell_xy: PackedInt32Array,
+	terrain_types: PackedInt32Array,
+	maximum_cells: int = 0
+) -> bool:
+	if cell_xy.size() != terrain_types.size() * 2:
+		return false
+	if maximum_cells > 0 and terrain_types.size() > maximum_cells:
+		return false
+	var seen_cells: Dictionary = {}
+	for cell_index in range(terrain_types.size()):
+		var terrain_type := terrain_types[cell_index]
+		if (
+			terrain_type != TERRAIN_TYPE_EMPTY
+			and terrain_type != TERRAIN_TYPE_GRASS
+			and terrain_type != TERRAIN_TYPE_DIRT
+		):
+			return false
+		var cell := Vector2i(
+			cell_xy[cell_index * 2],
+			cell_xy[cell_index * 2 + 1]
+		)
+		if seen_cells.has(cell):
+			return false
+		seen_cells[cell] = true
+	return true
+
+
+func _reset_terrain_session_state() -> void:
+	_terrain_snapshot_request_rate_buckets.clear()
+	_next_terrain_snapshot_id = 1
+	_last_host_terrain_revision_broadcast = 0
+	_client_terrain_revision = -1
+	_client_has_terrain_snapshot = false
+	_client_waiting_for_terrain_snapshot = false
+	_terrain_snapshot_repair_watchdog_time_left = 0.0
+	_last_completed_terrain_snapshot_id = 0
+	_pending_terrain_snapshot_batches.clear()
+
+
 func _connect_mode_adapter() -> void:
 	var bindings: Array[Array] = [
 		[_mode_adapter.plant_placement_requested, _on_local_plant_placement_requested],
@@ -991,6 +1544,12 @@ func _connect_mode_adapter() -> void:
 		[_mode_adapter.plant_damage_applied, _on_host_plant_damage_applied],
 		[_mode_adapter.plant_healing_applied, _on_host_plant_healing_applied],
 		[_mode_adapter.plant_removed, _on_host_plant_removed],
+		[_mode_adapter.base_health_changed, _on_host_base_health_changed],
+		[_mode_adapter.terrain_delta, _on_host_terrain_delta],
+		[
+			_mode_adapter.test_arena_manual_night_changed,
+			_on_host_test_arena_manual_night_changed,
+		],
 	]
 	for binding in bindings:
 		var source: Signal = binding[0]
@@ -1018,6 +1577,12 @@ func _disconnect_mode_adapter() -> void:
 		[_mode_adapter.plant_damage_applied, _on_host_plant_damage_applied],
 		[_mode_adapter.plant_healing_applied, _on_host_plant_healing_applied],
 		[_mode_adapter.plant_removed, _on_host_plant_removed],
+		[_mode_adapter.base_health_changed, _on_host_base_health_changed],
+		[_mode_adapter.terrain_delta, _on_host_terrain_delta],
+		[
+			_mode_adapter.test_arena_manual_night_changed,
+			_on_host_test_arena_manual_night_changed,
+		],
 	]
 	for binding in bindings:
 		var source: Signal = binding[0]
@@ -1032,3 +1597,7 @@ func _is_host_bound() -> bool:
 
 func _is_client_bound() -> bool:
 	return is_bound() and _net_manager.is_client() and not _net_manager.is_host()
+
+
+func _is_client_terrain_bound() -> bool:
+	return _is_client_bound() and _mode_adapter.supports_terrain_state()
