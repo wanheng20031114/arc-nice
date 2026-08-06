@@ -7,15 +7,15 @@ const MpProjectileCoordinatorScript := preload(
 const MpWorldFlowCoordinatorScript := preload(
 	"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
 )
+const MpTowerEconomyCoordinatorScript := preload(
+	"res://scene/multiplayer/tower_economy/mp_tower_economy_coordinator.gd"
+)
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := (
 	MpProjectileCoordinatorScript.LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
 )
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
 const MultiplayerRuntimeMetricsScript := preload(
 	"res://scene/multiplayer/multiplayer_runtime_metrics.gd"
-)
-const PeerReplayResultCacheScript := preload(
-	"res://scene/multiplayer/peer_replay_result_cache.gd"
 )
 const TRANSACTION_RPC_METHODS := {
 	&"net_inventory_snapshot": true,
@@ -67,11 +67,6 @@ const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_eff
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
-const OakWarehouseProtocolScript := preload("res://scene/plant_defense/oak_warehouse_protocol.gd")
-const ProductionBuildingProtocolScript := preload(
-	"res://scene/plant_defense/production_building_protocol.gd"
-)
-
 const INPUT_BUTTON_RELOAD := 2
 const INPUT_BUTTON_DASH := 4
 const DASH_INPUT_REDUNDANCY_PACKETS := 3
@@ -136,17 +131,9 @@ const ENEMY_TERMINAL_ESCAPED := 1
 const ENEMY_TERMINAL_REMOVED := 2
 const MULTIPLAYER_TEAM_PLANT_LIMIT := 256
 const CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
-const CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
-const CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT
 const CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES := MULTIPLAYER_TEAM_PLANT_LIMIT * 2
 const PLANT_PLACEMENT_RATE_PER_SECOND := 4.0
 const PLANT_PLACEMENT_RATE_BURST := 8.0
-const BUILDING_INTERACTION_MAX_DISTANCE := 48.0
-const WAREHOUSE_TRANSACTION_RATE_PER_SECOND := 12.0
-const WAREHOUSE_TRANSACTION_RATE_BURST := 20.0
-const WAREHOUSE_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
-const WAREHOUSE_SNAPSHOT_REQUEST_RATE_BURST := 4.0
-const WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE := 256
 const PLAYER_ACTION_INGRESS_RATE_PER_SECOND := 24.0
 const PLAYER_ACTION_INGRESS_RATE_BURST := 32.0
 const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
@@ -155,15 +142,6 @@ const XIAOCONG_TRANSACTION_RATE_PER_SECOND := 6.0
 const XIAOCONG_TRANSACTION_RATE_BURST := 10.0
 const PLANT_ID_WIRE_MAX_LENGTH := 128
 const INVENTORY_ITEM_CONFIG_PATH_WIRE_MAX_LENGTH := 256
-const PRODUCTION_COMMAND_RATE_PER_SECOND := 8.0
-const PRODUCTION_COMMAND_RATE_BURST := 12.0
-const PRODUCTION_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
-const PRODUCTION_SNAPSHOT_REQUEST_RATE_BURST := 4.0
-const PRODUCTION_COMMAND_RESULT_CACHE_SIZE := 256
-const PRODUCTION_STATE_BATCH_MAX_BUILDINGS := 24
-const RESEARCH_COMMAND_RATE_PER_SECOND := 4.0
-const RESEARCH_COMMAND_RATE_BURST := 6.0
-const RESEARCH_COMMAND_WIRE_ID_MAX_LENGTH := 128
 const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96
 const TERRAIN_SNAPSHOT_MAX_CHUNKS := 4096
 const TERRAIN_DELTA_MAX_CELLS := 96
@@ -183,7 +161,7 @@ const TERRAIN_TYPE_DIRT := 2
 # - CH_FEEDBACK: discardable combat numbers, status visuals, and progress batches.
 # Host owns enemy AI, player damage confirmation, death, revive, pickups, upgrades, and wave lifecycle.
 
-@onready var net_manager: Node = get_node("/root/NetManager")
+@onready var net_manager: NetManagerStore = get_node("/root/NetManager") as NetManagerStore
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 @onready var session_coordinator: MpSessionCoordinator = $SessionCoordinator
 @onready var player_coordinator: MpPlayerCoordinator = $PlayerCoordinator
@@ -191,6 +169,7 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var projectile_coordinator: MpProjectileCoordinatorScript = $ProjectileCoordinator
 @onready var world_flow_coordinator: MpWorldFlowCoordinatorScript = $WorldFlowCoordinator
 @onready var transactions_coordinator: MpTransactionsCoordinator = $TransactionsCoordinator
+@onready var tower_economy_coordinator: MpTowerEconomyCoordinatorScript = $TowerEconomyCoordinator
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var _agave_cannonball_scene: PackedScene = null
@@ -261,53 +240,10 @@ var _enemy_snapshot_payload_bytes_total: int = 0
 var _enemy_snapshot_packet_count: int = 0
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
-var _warehouse_transaction_rate_buckets: Dictionary = {}
 var _player_action_ingress_rate_buckets: Dictionary = {}
 var _luoxi_transaction_rate_buckets: Dictionary = {}
 var _xiaocong_transaction_rate_buckets: Dictionary = {}
-var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
 var _terrain_snapshot_request_rate_buckets: Dictionary = {}
-var _warehouse_transaction_result_cache := PeerReplayResultCacheScript.new(
-	WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE
-)
-# Keep the value dictionaries visible to diagnostics and multiplayer probes.
-var _warehouse_transaction_results_by_peer: Dictionary = (
-	_warehouse_transaction_result_cache.results_by_peer
-)
-var _warehouse_transaction_started_usec: Dictionary = {}
-var _pending_warehouse_snapshots: Dictionary = {}
-# CH6 batches may arrive before one or more CH5 plant spawns. Until every target
-# exists, this map coalesces the latest full snapshot per warehouse into one
-# atomically applied pending state. The links keep that set bounded under invalid
-# unknown ids without allocating Dictionary.keys() arrays during insertion.
-var _pending_warehouse_snapshot_previous_ids: Dictionary = {}
-var _pending_warehouse_snapshot_next_ids: Dictionary = {}
-var _pending_warehouse_snapshot_oldest_id: int = 0
-var _pending_warehouse_snapshot_newest_id: int = 0
-var _pending_authoritative_warehouse_snapshots: Dictionary = {}
-var _production_command_rate_buckets: Dictionary = {}
-var _production_snapshot_request_rate_buckets: Dictionary = {}
-var _production_command_result_cache := PeerReplayResultCacheScript.new(
-	PRODUCTION_COMMAND_RESULT_CACHE_SIZE
-)
-var _production_command_results_by_peer: Dictionary = (
-	_production_command_result_cache.results_by_peer
-)
-var _pending_production_state_updates: Dictionary = {}
-var _pending_remote_production_states: Dictionary = {}
-# Production state batches may arrive before the reliable plant spawn channel.
-# Keep exactly one latest state per unknown building in the same bounded O(1)
-# linked FIFO shape as warehouse snapshots: replacement preserves age, while
-# spawn consumption, confirmed-node manifest removal and oldest eviction unlink
-# in O(1).
-var _pending_remote_production_state_previous_ids: Dictionary = {}
-var _pending_remote_production_state_next_ids: Dictionary = {}
-var _pending_remote_production_state_oldest_id: int = 0
-var _pending_remote_production_state_newest_id: int = 0
-var _shared_production_state_flush_scheduled := false
-var _research_command_rate_buckets: Dictionary = {}
-var _last_research_request_ids: Dictionary = {}
-var _research_milestone_connected := false
 var _luoxi_offer_states_by_peer: Dictionary = {}
 var _luoxi_offer_revision_counters: Dictionary = {}
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
@@ -490,6 +426,8 @@ func _exit_tree() -> void:
 			world_flow_coordinator.unbind_runtime(game)
 		if transactions_coordinator != null:
 			transactions_coordinator.unbind_session(self)
+		if tower_economy_coordinator != null:
+			tower_economy_coordinator.unbind_runtime(game)
 	else:
 		if session_coordinator != null:
 			session_coordinator.reset_session_state()
@@ -503,6 +441,8 @@ func _exit_tree() -> void:
 			world_flow_coordinator.reset_session_state()
 		if transactions_coordinator != null:
 			transactions_coordinator.reset_session_state()
+		if tower_economy_coordinator != null:
+			tower_economy_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -520,16 +460,13 @@ func _exit_tree() -> void:
 	_pending_corn_machine_gun_burst_host_times.clear()
 	_pending_plant_health_updates.clear()
 	_clear_remote_plant_health_state()
-	_clear_pending_warehouse_snapshots()
-	_clear_pending_remote_production_states()
+	if tower_economy_coordinator != null:
+		tower_economy_coordinator.reset_session_state()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_terrain_snapshot_repair_watchdog_time_left = 0.0
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
-	_warehouse_transaction_started_usec.clear()
-	_warehouse_transaction_result_cache.clear()
-	_production_command_result_cache.clear()
 	_player_action_ingress_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
 	_xiaocong_transaction_rate_buckets.clear()
@@ -898,6 +835,60 @@ func _on_transaction_skill1_purchase_confirmation_broadcast_requested(
 			skill1_upgrade_level,
 			skill1_charge_duration
 		)
+
+
+func _on_tower_economy_rpc_to_host_requested(
+	method_name: StringName,
+	args: Array
+) -> void:
+	if not net_manager.is_client():
+		return
+	var rpc_args: Array = [_get_host_peer_id(), method_name]
+	rpc_args.append_array(args)
+	callv(&"rpc_id", rpc_args)
+
+
+func _on_tower_economy_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	args: Array,
+	record_outbound: bool
+) -> void:
+	if peer_id <= 0 or not net_manager.is_host():
+		return
+	if record_outbound:
+		_record_outbound_rpc(method_name, args)
+	var rpc_args: Array = [peer_id, method_name]
+	rpc_args.append_array(args)
+	callv(&"rpc_id", rpc_args)
+
+
+func _on_tower_economy_rpc_broadcast_requested(
+	method_name: StringName,
+	args: Array
+) -> void:
+	_rpc_to_connected_clients(method_name, args)
+
+
+func _on_tower_economy_inventory_snapshot_broadcast_requested(
+	peer_id: int,
+	snapshot: Dictionary
+) -> void:
+	_rpc_to_connected_clients(&"net_inventory_snapshot", [peer_id, snapshot])
+
+
+func _on_tower_economy_plant_runtime_state_apply_requested(
+	plant: PlantDefense,
+	state: Dictionary,
+	host_sample_time: float
+) -> void:
+	_apply_plant_runtime_state(plant, state, host_sample_time)
+
+
+func _on_tower_economy_transaction_latency_observed(
+	latency_ms: float
+) -> void:
+	_runtime_network_metrics.record_transaction_latency_ms(latency_ms)
 
 
 func request_multiplayer_start_wave() -> void:
@@ -2088,775 +2079,29 @@ func _configure_warehouse_network(
 	snapshot_ready: bool,
 	apply_pending_snapshots: bool = true
 ) -> void:
-	if not _has_tower_mode():
-		return
-	var warehouse := plant as OakWarehouse
-	if warehouse == null or game == null:
-		return
-	var net_id := int(warehouse.get_meta("net_id", warehouse.warehouse_net_id))
-	if net_id <= 0:
-		return
-	warehouse.configure_multiplayer_storage(
-		net_id,
-		_get_local_peer_id(),
-		snapshot_ready
+	tower_economy_coordinator.configure_warehouse_network(
+		plant,
+		snapshot_ready,
+		apply_pending_snapshots
 	)
-	if net_manager.is_host():
-		_restore_authoritative_warehouse_from_ledger(warehouse, net_id)
-	var callback := _on_warehouse_storage_command_requested.bind(warehouse)
-	if not warehouse.storage_command_requested.is_connected(callback):
-		warehouse.storage_command_requested.connect(callback)
-	var snapshot_callback := _on_warehouse_storage_snapshot_requested.bind(warehouse)
-	if not warehouse.storage_snapshot_requested.is_connected(snapshot_callback):
-		warehouse.storage_snapshot_requested.connect(snapshot_callback)
-	if net_manager.is_host():
-		var storage_changed_callback := (
-			_on_authoritative_warehouse_storage_changed.bind(warehouse)
-		)
-		if not warehouse.storage_changed.is_connected(storage_changed_callback):
-			warehouse.storage_changed.connect(storage_changed_callback)
-	if apply_pending_snapshots:
-		_try_apply_pending_warehouse_snapshots_atomically()
-	if (
-		net_manager.is_client()
-		and apply_pending_snapshots
-		and not warehouse.multiplayer_storage_snapshot_ready
-		and not _pending_warehouse_snapshots.has(net_id)
-	):
-		warehouse.request_multiplayer_storage_snapshot()
 
 
-func _configure_production_network(plant: PlantDefense, snapshot_ready: bool) -> void:
-	if not _has_tower_mode():
-		return
-	var building := plant as ProductionBuilding
-	if building == null or game == null:
-		return
-	var net_id := int(building.get_meta("net_id", building.building_net_id))
-	if net_id <= 0:
-		return
-	building.configure_multiplayer_production(
-		net_id,
-		_get_local_peer_id(),
+func _configure_production_network(
+	plant: PlantDefense,
+	snapshot_ready: bool
+) -> void:
+	tower_economy_coordinator.configure_production_network(
+		plant,
 		snapshot_ready
 	)
-	var command_callback := _on_production_command_requested.bind(building)
-	if not building.production_command_requested.is_connected(command_callback):
-		building.production_command_requested.connect(command_callback)
-	var snapshot_callback := _on_production_snapshot_requested.bind(building)
-	if not building.production_snapshot_requested.is_connected(snapshot_callback):
-		building.production_snapshot_requested.connect(snapshot_callback)
-	if net_manager.is_host():
-		var state_callback := _on_authoritative_production_state_changed.bind(building)
-		if not building.production_state_changed.is_connected(state_callback):
-			building.production_state_changed.connect(state_callback)
-	var pending := _take_pending_remote_production_state(net_id)
-	if not pending.is_empty():
-		_apply_plant_runtime_state(
-			building,
-			pending.get("state", {}) as Dictionary,
-			float(pending.get("host_sample_time", 0.0))
-		)
 
 
 func _configure_research_network(plant: PlantDefense) -> void:
-	if not _has_tower_mode():
-		return
-	var building := plant as ResearchCenter
-	if building == null or game == null:
-		return
-	var net_id := int(building.get_meta("net_id", building.building_net_id))
-	if net_id <= 0:
-		return
-	building.configure_multiplayer_research(net_id, _get_local_peer_id())
-	var callback := _on_research_command_requested.bind(building)
-	if not building.research_command_requested.is_connected(callback):
-		building.research_command_requested.connect(callback)
-	if (
-		net_manager.is_host()
-		and not _research_milestone_connected
-	):
-		_research_milestone_connected = (
-			_has_tower_mode()
-			and tower_mode_adapter.connect_research_milestone_changed(
-				_on_authoritative_research_milestone_changed
-			)
-		)
-
-
-func _on_research_command_requested(
-	command: Dictionary,
-	building: ResearchCenter
-) -> void:
-	if building == null or not is_instance_valid(building):
-		return
-	if net_manager.is_host():
-		_apply_authoritative_research_command(_get_local_peer_id(), command)
-	elif net_manager.is_client():
-		net_research_command_requested.rpc_id(_get_host_peer_id(), command)
-
-
-func _apply_authoritative_research_command(
-	peer_id: int,
-	raw_command: Dictionary
-) -> void:
-	if not _has_tower_mode() or not net_manager.is_host() or game == null or peer_id <= 0:
-		return
-	if not transactions_coordinator.consume_remote_transaction_admission(peer_id):
-		return
-	var command := _canonicalize_research_command(raw_command, peer_id)
-	if command.is_empty():
-		return
-	if not _consume_peer_rate_token(
-		_research_command_rate_buckets,
-		peer_id,
-		RESEARCH_COMMAND_RATE_PER_SECOND,
-		RESEARCH_COMMAND_RATE_BURST
-	):
-		return
-	var request_id := int(command["request_id"])
-	var building_net_id := int(command["building_net_id"])
-	var operation_wire := String(command["operation"])
-	var research_id_wire := String(command["research_id"])
-	var research_config: GlobalResearchConfig = (
-		GlobalResearchRegistry.get_config_by_wire_id(research_id_wire)
-		if operation_wire == "global"
-		else null
-	)
-	var result := ResearchCoordinator.RESULT_UNAVAILABLE
-	var peer_request_ids := _last_research_request_ids.get(peer_id, {}) as Dictionary
-	var last_request_id := int(peer_request_ids.get(building_net_id, 0))
-	var player_node := game.get_player_for_peer(peer_id)
-	var building := _get_tower_plant(building_net_id) as ResearchCenter
-	if (
-		request_id <= last_request_id
-		or (operation_wire == "global" and research_config == null)
-	):
-		result = ResearchCoordinator.RESULT_UNAVAILABLE
-	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
-		result = ResearchCoordinator.RESULT_UNAVAILABLE
-	elif (
-		building == null
-		or not is_instance_valid(building)
-		or building.is_dead
-		or building.is_removing
-		or not building.is_operational
-		or not _is_authoritative_nearest_research_center(player_node, building)
-	):
-		result = ResearchCoordinator.RESULT_UNAVAILABLE
-	else:
-		peer_request_ids[building_net_id] = request_id
-		_last_research_request_ids[peer_id] = peer_request_ids
-		result = (
-			building.try_start_global_research(research_config.research_id)
-			if operation_wire == "global"
-			else building.try_purchase_player_technology(player_node)
-		)
-	var success := result == ResearchCoordinator.RESULT_SUCCESS
-	if net_manager.is_peer_send_ready(peer_id):
-		net_research_command_result.rpc_id(
-			peer_id,
-			request_id,
-			building_net_id,
-			success,
-			result
-		)
-
-
-func _canonicalize_research_command(
-	raw_command: Dictionary,
-	expected_peer_id: int
-) -> Dictionary:
-	if (
-		expected_peer_id <= 0
-		or typeof(raw_command.get("schema")) != TYPE_INT
-		or int(raw_command["schema"])
-			!= ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA
-		or typeof(raw_command.get("request_id")) != TYPE_INT
-		or int(raw_command["request_id"]) <= 0
-		or typeof(raw_command.get("building_net_id")) != TYPE_INT
-		or int(raw_command["building_net_id"]) <= 0
-		or typeof(raw_command.get("peer_id")) != TYPE_INT
-		or int(raw_command["peer_id"]) != expected_peer_id
-	):
-		return {}
-	var operation_value: Variant = raw_command.get("operation")
-	var research_id_value: Variant = raw_command.get("research_id")
-	if (
-		typeof(operation_value) not in [TYPE_STRING, TYPE_STRING_NAME]
-		or typeof(research_id_value) not in [TYPE_STRING, TYPE_STRING_NAME]
-	):
-		return {}
-	var operation_wire := String(operation_value)
-	var research_id_wire := String(research_id_value)
-	if (
-		operation_wire != "global"
-		and operation_wire != "player"
-	) or (
-		research_id_wire.length() > RESEARCH_COMMAND_WIRE_ID_MAX_LENGTH
-	) or (
-		operation_wire == "player" and not research_id_wire.is_empty()
-	):
-		return {}
-	return {
-		"schema": ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA,
-		"request_id": int(raw_command["request_id"]),
-		"building_net_id": int(raw_command["building_net_id"]),
-		"peer_id": expected_peer_id,
-		"operation": operation_wire,
-		"research_id": research_id_wire,
-	}
-
-
-func _is_authoritative_nearest_research_center(
-	player_node: Player,
-	requested_building: ResearchCenter
-) -> bool:
-	if (
-		player_node == null
-		or not PlantDefense.is_operational_interaction_candidate(requested_building)
-	):
-		return false
-	if not requested_building.is_player_within_multiplayer_interaction_distance(
-		player_node,
-		BUILDING_INTERACTION_MAX_DISTANCE
-	):
-		return false
-	return (
-		_find_authoritative_nearest_interaction_building(player_node)
-		== requested_building
-	)
-
-
-func _on_authoritative_research_milestone_changed(player_key: int) -> void:
-	if (
-		not net_manager.is_host()
-		or game == null
-		or not _has_tower_mode()
-	):
-		return
-	var current_xirang := -1
-	if player_key > 0:
-		var changed_player := game.get_player_for_peer(player_key)
-		if changed_player != null:
-			current_xirang = changed_player.get_xirang()
-	_rpc_to_connected_clients(
-		&"net_research_state_updated",
-		[
-			tower_mode_adapter.get_research_runtime_state(),
-			player_key,
-			current_xirang,
-		]
-	)
-
-
-func _on_production_command_requested(
-	command: Dictionary,
-	building: ProductionBuilding
-) -> void:
-	if building == null or not is_instance_valid(building):
-		return
-	if net_manager.is_host():
-		_apply_authoritative_production_command(_get_local_peer_id(), command)
-	elif net_manager.is_client():
-		net_production_command_requested.rpc_id(_get_host_peer_id(), command)
-
-
-func _on_production_snapshot_requested(
-	building_net_id: int,
-	building: ProductionBuilding
-) -> void:
-	if building == null or not is_instance_valid(building) or building_net_id <= 0:
-		return
-	if net_manager.is_host():
-		building.set_multiplayer_production_snapshot_ready(true)
-	elif net_manager.is_client():
-		net_production_snapshot_requested.rpc_id(
-			_get_host_peer_id(),
-			building_net_id
-		)
-
-
-func _apply_authoritative_production_command(
-	peer_id: int,
-	raw_command: Dictionary
-) -> void:
-	if not net_manager.is_host() or game == null or peer_id <= 0:
-		return
-	if not transactions_coordinator.consume_remote_transaction_admission(peer_id):
-		return
-	var command := ProductionBuildingProtocolScript.canonicalize_command(
-		raw_command,
-		peer_id
-	)
-	if command.is_empty():
-		return
-	if not _consume_peer_rate_token(
-		_production_command_rate_buckets,
-		peer_id,
-		PRODUCTION_COMMAND_RATE_PER_SECOND,
-		PRODUCTION_COMMAND_RATE_BURST
-	):
-		return
-	var request_id := ProductionBuildingProtocolScript.get_int_field(
-		command,
-		"request_id",
-		0
-	)
-	var building_net_id := ProductionBuildingProtocolScript.get_int_field(
-		command,
-		"building_net_id",
-		0
-	)
-	var cached_result := _get_cached_production_command_result(
-		peer_id,
-		building_net_id,
-		request_id
-	)
-	if not cached_result.is_empty():
-		_send_production_command_result(peer_id, cached_result)
-		return
-	var building := _get_tower_plant(
-		building_net_id
-	) as ProductionBuilding
-	var player_node := game.get_player_for_peer(peer_id)
-	var success := false
-	var reason := ProductionBuildingProtocolScript.RESULT_INVALID_COMMAND
-	if not ProductionBuildingProtocolScript.is_valid_command(command):
-		reason = ProductionBuildingProtocolScript.RESULT_INVALID_COMMAND
-	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
-		reason = ProductionBuildingProtocolScript.RESULT_INVALID_PLAYER
-	elif (
-		building == null
-		or not is_instance_valid(building)
-		or building.is_dead
-		or building.is_removing
-		or not building.is_operational
-	):
-		reason = ProductionBuildingProtocolScript.RESULT_BUILDING_MISSING
-	elif not _is_authoritative_nearest_production_building(player_node, building):
-		reason = ProductionBuildingProtocolScript.RESULT_OUT_OF_RANGE
-	else:
-		reason = building.apply_authoritative_multiplayer_production_command(command)
-		success = reason == ProductionBuildingProtocolScript.RESULT_SUCCESS
-	var host_sample_time := _get_net_time()
-	var state := (
-		building.export_multiplayer_runtime_state()
-		if building != null and is_instance_valid(building)
-		else {}
-	)
-	var result := ProductionBuildingProtocolScript.make_result(
-		command,
-		success,
-		reason,
-		(
-			building.production_revision
-			if building != null and is_instance_valid(building)
-			else 0
-		),
-		state,
-		host_sample_time
-	)
-	_cache_production_command_result(
-		peer_id,
-		building_net_id,
-		request_id,
-		result
-	)
-	_send_production_command_result(peer_id, result)
-
-
-func _is_authoritative_nearest_production_building(
-	player_node: Player,
-	requested_building: ProductionBuilding
-) -> bool:
-	if (
-		player_node == null
-		or not PlantDefense.is_operational_interaction_candidate(requested_building)
-	):
-		return false
-	if not requested_building.is_player_within_multiplayer_interaction_distance(
-		player_node,
-		BUILDING_INTERACTION_MAX_DISTANCE
-	):
-		return false
-	return (
-		_find_authoritative_nearest_interaction_building(player_node)
-		== requested_building
-	)
-
-
-func _get_cached_production_command_result(
-	peer_id: int,
-	building_net_id: int,
-	request_id: int
-) -> Dictionary:
-	if building_net_id <= 0 or request_id <= 0:
-		return {}
-	var cache_key := "%d:%d" % [building_net_id, request_id]
-	return _production_command_result_cache.get_result(peer_id, cache_key)
-
-
-func _cache_production_command_result(
-	peer_id: int,
-	building_net_id: int,
-	request_id: int,
-	result: Dictionary
-) -> void:
-	if peer_id <= 0 or building_net_id <= 0 or request_id <= 0:
-		return
-	_production_command_result_cache.store_result(
-		peer_id,
-		"%d:%d" % [building_net_id, request_id],
-		result
-	)
-
-
-func _send_production_command_result(peer_id: int, result: Dictionary) -> void:
-	if peer_id == _get_local_peer_id():
-		net_production_command_result(result)
-	elif net_manager.is_peer_send_ready(peer_id):
-		net_production_command_result.rpc_id(peer_id, result)
-
-
-func _on_authoritative_warehouse_storage_changed(warehouse: OakWarehouse) -> void:
-	if not net_manager.is_host() or warehouse == null or not is_instance_valid(warehouse):
-		return
-	var net_id := int(warehouse.get_meta("net_id", warehouse.warehouse_net_id))
-	if net_id <= 0:
-		return
-	_pending_authoritative_warehouse_snapshots[net_id] = (
-		warehouse.export_storage_snapshot()
-	)
-	_persist_authoritative_warehouse_snapshot(warehouse, net_id)
-	_schedule_shared_production_state_flush()
-
-
-func _restore_authoritative_warehouse_from_ledger(
-	warehouse: OakWarehouse,
-	warehouse_net_id: int
-) -> bool:
-	if (
-		run_state == null
-		or not net_manager.is_host()
-		or warehouse == null
-		or warehouse_net_id <= 0
-	):
-		return false
-	var has_saved_snapshot := not run_state.get_shared_warehouse_snapshot(
-		warehouse_net_id
-	).is_empty()
-	if SharedWarehouseLedgerBridge.restore_from_ledger(
-		run_state,
-		warehouse,
-		warehouse_net_id
-	):
-		return true
-	if has_saved_snapshot:
-		push_warning(
-			"MpGame: 无法恢复共享仓库 %d 的跨场景快照。"
-			% warehouse_net_id
-		)
-	return false
-
-
-func _persist_authoritative_warehouse_snapshot(
-	warehouse: OakWarehouse,
-	warehouse_net_id: int
-) -> bool:
-	if (
-		run_state == null
-		or not net_manager.is_host()
-		or warehouse == null
-		or not is_instance_valid(warehouse)
-		or warehouse_net_id <= 0
-	):
-		return false
-	return SharedWarehouseLedgerBridge.persist_to_ledger(
-		run_state,
-		warehouse,
-		warehouse_net_id
-	)
+	tower_economy_coordinator.configure_research_network(plant)
 
 
 func _capture_shared_warehouse_ledger() -> bool:
-	if run_state == null or not _has_tower_mode() or not net_manager.is_host():
-		return false
-	var warehouses: Array[OakWarehouse] = []
-	for plant_snapshot in _get_tower_plant_snapshots():
-		var warehouse := _get_tower_plant(
-			int(plant_snapshot.get("net_id", 0))
-		) as OakWarehouse
-		if warehouse != null:
-			warehouses.append(warehouse)
-	return SharedWarehouseLedgerBridge.capture_warehouses(
-		run_state,
-		warehouses
-	)
-
-
-func _on_authoritative_production_state_changed(
-	replicate: bool,
-	building: ProductionBuilding
-) -> void:
-	if (
-		not replicate
-		or not net_manager.is_host()
-		or building == null
-		or not is_instance_valid(building)
-	):
-		return
-	var net_id := int(building.get_meta("net_id", building.building_net_id))
-	if net_id <= 0:
-		return
-	_pending_production_state_updates[net_id] = {
-		"state": building.export_multiplayer_runtime_state(),
-		"host_sample_time": _get_net_time(),
-	}
-	_schedule_shared_production_state_flush()
-
-
-func _schedule_shared_production_state_flush() -> void:
-	if _shared_production_state_flush_scheduled:
-		return
-	_shared_production_state_flush_scheduled = true
-	call_deferred("_flush_shared_production_network_state")
-
-
-func _flush_shared_production_network_state() -> void:
-	_shared_production_state_flush_scheduled = false
-	if not is_inside_tree() or not net_manager.is_host():
-		_pending_authoritative_warehouse_snapshots.clear()
-		_pending_production_state_updates.clear()
-		return
-	var warehouse_ids := _pending_authoritative_warehouse_snapshots.keys()
-	warehouse_ids.sort()
-	var warehouse_net_ids := PackedInt32Array()
-	var warehouse_snapshots: Array = []
-	for warehouse_id_variant in warehouse_ids:
-		var warehouse_net_id := int(warehouse_id_variant)
-		var snapshot := _pending_authoritative_warehouse_snapshots.get(
-			warehouse_net_id,
-			{}
-		) as Dictionary
-		if not snapshot.is_empty():
-			warehouse_net_ids.append(warehouse_net_id)
-			warehouse_snapshots.append(snapshot.duplicate(true))
-	if not warehouse_net_ids.is_empty():
-		_rpc_to_connected_clients(
-			&"net_warehouse_storage_snapshot_batch",
-			[warehouse_net_ids, warehouse_snapshots]
-		)
-	_pending_authoritative_warehouse_snapshots.clear()
-	var production_ids := _pending_production_state_updates.keys()
-	production_ids.sort()
-	var offset := 0
-	while offset < production_ids.size():
-		var net_ids := PackedInt32Array()
-		var states: Array = []
-		var sample_times := PackedFloat64Array()
-		var chunk_end := mini(
-			offset + PRODUCTION_STATE_BATCH_MAX_BUILDINGS,
-			production_ids.size()
-		)
-		for index in range(offset, chunk_end):
-			var net_id := int(production_ids[index])
-			var update := _pending_production_state_updates.get(net_id, {}) as Dictionary
-			net_ids.append(net_id)
-			states.append((update.get("state", {}) as Dictionary).duplicate(true))
-			sample_times.append(float(update.get("host_sample_time", 0.0)))
-		_rpc_to_connected_clients(
-			&"net_production_state_batch",
-			[net_ids, states, sample_times]
-		)
-		offset = chunk_end
-	_pending_production_state_updates.clear()
-
-
-func _on_warehouse_storage_command_requested(
-	command: Dictionary,
-	warehouse: OakWarehouse
-) -> void:
-	if warehouse == null or not is_instance_valid(warehouse):
-		return
-	var request_id := int(command.get("request_id", 0))
-	if request_id > 0:
-		_warehouse_transaction_started_usec[
-			_get_warehouse_transaction_metric_key(
-				int(command.get("warehouse_net_id", 0)),
-				request_id
-			)
-		] = Time.get_ticks_usec()
-	if net_manager.is_host():
-		_apply_authoritative_warehouse_command(_get_local_peer_id(), command)
-	elif net_manager.is_client():
-		net_warehouse_command_requested.rpc_id(_get_host_peer_id(), command)
-
-
-func _on_warehouse_storage_snapshot_requested(
-	warehouse_net_id: int,
-	warehouse: OakWarehouse
-) -> void:
-	if warehouse == null or not is_instance_valid(warehouse) or warehouse_net_id <= 0:
-		return
-	if net_manager.is_host():
-		warehouse.apply_storage_snapshot(warehouse.export_storage_snapshot())
-	elif net_manager.is_client():
-		net_warehouse_snapshot_requested.rpc_id(
-			_get_host_peer_id(),
-			warehouse_net_id
-		)
-
-
-func _get_warehouse_transaction_metric_key(
-	warehouse_net_id: int,
-	request_id: int
-) -> String:
-	return "%d:%d" % [warehouse_net_id, request_id]
-
-
-func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionary) -> void:
-	if not net_manager.is_host() or game == null or peer_id <= 0:
-		return
-	if not transactions_coordinator.consume_remote_transaction_admission(peer_id):
-		return
-	var command := OakWarehouseProtocolScript.canonicalize_command(
-		raw_command,
-		peer_id
-	)
-	if command.is_empty():
-		return
-	if not _consume_peer_rate_token(
-		_warehouse_transaction_rate_buckets,
-		peer_id,
-		WAREHOUSE_TRANSACTION_RATE_PER_SECOND,
-		WAREHOUSE_TRANSACTION_RATE_BURST
-	):
-		return
-	var request_id := OakWarehouseProtocolScript.get_int_field(command, "request_id", 0)
-	var warehouse_net_id := OakWarehouseProtocolScript.get_int_field(
-		command,
-		"warehouse_net_id",
-		0
-	)
-	var cached_result := _get_cached_warehouse_transaction_result(
-		peer_id,
-		warehouse_net_id,
-		request_id
-	)
-	if not cached_result.is_empty():
-		_send_warehouse_command_result(peer_id, cached_result)
-		return
-	var result: Dictionary = {}
-	var warehouse := _get_tower_plant(warehouse_net_id) as OakWarehouse
-	var player_node := game.get_player_for_peer(peer_id)
-	var rejection_reason := &"invalid_command"
-	if not OakWarehouseProtocolScript.is_valid_command(command):
-		rejection_reason = &"invalid_command"
-	elif player_node == null or not is_instance_valid(player_node) or player_node.is_dead:
-		rejection_reason = &"invalid_player"
-	elif (
-		warehouse == null
-		or not is_instance_valid(warehouse)
-		or warehouse.is_dead
-		or warehouse.is_removing
-		or not warehouse.is_operational
-	):
-		rejection_reason = &"warehouse_missing"
-	elif not _is_authoritative_nearest_warehouse(player_node, warehouse):
-		rejection_reason = &"out_of_range"
-	else:
-		result = warehouse.apply_transfer_command(command, run_state)
-	if result.is_empty():
-		result = OakWarehouseProtocolScript.make_result(
-			command,
-			false,
-			rejection_reason,
-			run_state.get_inventory_revision_for_peer(peer_id),
-			warehouse.get_storage_revision() if warehouse != null else 0
-		)
-		result["inventory_snapshot"] = run_state.export_inventory_snapshot_for_peer(peer_id)
-		if warehouse != null:
-			result["storage_snapshot"] = warehouse.export_storage_snapshot()
-	_cache_warehouse_transaction_result(peer_id, warehouse_net_id, request_id, result)
-	_send_warehouse_command_result(peer_id, result)
-	if bool(result.get("success", false)):
-		_broadcast_inventory_snapshot(peer_id)
-
-
-func _is_authoritative_nearest_warehouse(
-	player_node: Player,
-	requested_warehouse: OakWarehouse
-) -> bool:
-	if (
-		player_node == null
-		or not _is_authoritative_warehouse_interaction_candidate(
-			requested_warehouse
-		)
-	):
-		return false
-	var requested_distance := player_node.global_position.distance_squared_to(
-		requested_warehouse.global_position
-	)
-	if requested_distance > (
-		BUILDING_INTERACTION_MAX_DISTANCE * BUILDING_INTERACTION_MAX_DISTANCE
-	):
-		return false
-	return (
-		_find_authoritative_nearest_interaction_building(player_node)
-		== requested_warehouse
-	)
-
-
-func _find_authoritative_nearest_interaction_building(
-	player_node: Player
-) -> PlantDefense:
-	if (
-		player_node == null
-		or not is_instance_valid(player_node)
-		or not _has_tower_mode()
-	):
-		return null
-	return tower_mode_adapter.find_nearest_operational_interaction_building(
-		player_node.global_position,
-		BUILDING_INTERACTION_MAX_DISTANCE
-	)
-
-
-func _is_authoritative_warehouse_interaction_candidate(
-	warehouse: OakWarehouse
-) -> bool:
-	return PlantDefense.is_operational_interaction_candidate(warehouse)
-
-
-func _get_cached_warehouse_transaction_result(
-	peer_id: int,
-	warehouse_net_id: int,
-	request_id: int
-) -> Dictionary:
-	if warehouse_net_id <= 0 or request_id <= 0:
-		return {}
-	var cache_key := _get_warehouse_transaction_metric_key(warehouse_net_id, request_id)
-	return _warehouse_transaction_result_cache.get_result(peer_id, cache_key)
-
-
-func _cache_warehouse_transaction_result(
-	peer_id: int,
-	warehouse_net_id: int,
-	request_id: int,
-	result: Dictionary
-) -> void:
-	if peer_id <= 0 or warehouse_net_id <= 0 or request_id <= 0:
-		return
-	var cache_key := _get_warehouse_transaction_metric_key(warehouse_net_id, request_id)
-	_warehouse_transaction_result_cache.store_result(peer_id, cache_key, result)
-
-
-func _send_warehouse_command_result(peer_id: int, result: Dictionary) -> void:
-	if peer_id == _get_local_peer_id():
-		net_warehouse_command_result(result)
-	elif net_manager.is_peer_send_ready(peer_id):
-		net_warehouse_command_result.rpc_id(peer_id, result)
+	return tower_economy_coordinator.capture_shared_warehouse_ledger()
 
 
 func _broadcast_inventory_snapshot(peer_id: int) -> void:
@@ -2871,15 +2116,8 @@ func _on_host_multiplayer_inventory_changed(peer_id: int) -> void:
 
 
 func _broadcast_warehouse_snapshot(warehouse: OakWarehouse) -> void:
-	if warehouse == null or not is_instance_valid(warehouse):
-		return
-	_rpc_to_connected_clients(
-		&"net_warehouse_storage_snapshot_batch",
-		[
-			PackedInt32Array([warehouse.warehouse_net_id]),
-			[warehouse.export_storage_snapshot()],
-		]
-	)
+	tower_economy_coordinator.broadcast_warehouse_snapshot(warehouse)
+
 
 
 func is_client_view_runtime() -> bool:
@@ -2968,6 +2206,16 @@ func _setup_game(mode: int) -> bool:
 		run_state,
 		_suspended_embedded_participant_peer_ids
 	)
+	if tower_adapter != null:
+		tower_economy_coordinator.bind_runtime(
+			game,
+			tower_adapter,
+			run_state,
+			typed_net_manager,
+			_net_time_origin
+		)
+	else:
+		tower_economy_coordinator.reset_session_state()
 	if net_manager.is_host():
 		gameplay_gateway.enemy_spawned.connect(_on_host_enemy_spawned)
 		gameplay_gateway.enemy_defeated.connect(_on_host_enemy_defeated)
@@ -3059,6 +2307,8 @@ func _setup_game(mode: int) -> bool:
 
 
 func _discard_unparented_game_runtime() -> void:
+	if game != null and tower_economy_coordinator != null:
+		tower_economy_coordinator.unbind_runtime(game)
 	if game != null and world_flow_coordinator != null:
 		world_flow_coordinator.unbind_runtime(game)
 	if game != null and session_coordinator != null:
@@ -6820,6 +6070,7 @@ func _erase_pending_remote_plant_health(net_id: int) -> void:
 func _mark_remote_plant_removed(net_id: int) -> void:
 	if net_id <= 0:
 		return
+	tower_economy_coordinator.notify_plant_removed(net_id)
 	_erase_pending_remote_plant_health(net_id)
 	if _removed_remote_plant_ids.has(net_id):
 		return
@@ -6837,6 +6088,7 @@ func _mark_remote_plant_removed(net_id: int) -> void:
 func _clear_remote_plant_removed_marker(net_id: int) -> void:
 	if net_id <= 0:
 		return
+	tower_economy_coordinator.notify_plant_available(net_id)
 	if not _removed_remote_plant_ids.erase(net_id):
 		return
 	_removed_remote_plant_id_order.erase(net_id)
@@ -8452,8 +7704,7 @@ func _on_host_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
 		var removed_net_ids: Array[int] = [net_id]
 		_send_pending_plant_health_updates(removed_net_ids)
 	_pending_plant_health_updates.erase(net_id)
-	_pending_authoritative_warehouse_snapshots.erase(net_id)
-	_pending_production_state_updates.erase(net_id)
+	tower_economy_coordinator.notify_plant_removed(net_id)
 	# Bamboo shells are independent pooled visuals after FIRE. Flush their
 	# reliable CH_WORLD_EVENT records before the plant removal on that same
 	# ordered channel, so clients instantiate the shell while its proxy exists.
@@ -9014,262 +8265,95 @@ func net_inventory_plant_placement_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_warehouse_command_requested(command: Dictionary) -> void:
-	if not _has_tower_mode() or not net_manager.is_host() or game == null:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
+	if (
+		not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(sender_id)
+	):
 		return
-	_apply_authoritative_warehouse_command(sender_id, command)
+	tower_economy_coordinator.handle_authoritative_warehouse_command(
+		sender_id,
+		command
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_warehouse_snapshot_requested(warehouse_net_id: int) -> void:
-	if (
-		not _has_tower_mode()
-		or not net_manager.is_host()
-		or game == null
-		or warehouse_net_id <= 0
-	):
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	_handle_authoritative_warehouse_snapshot_request(sender_id, warehouse_net_id)
-
-
-func _handle_authoritative_warehouse_snapshot_request(
-	sender_id: int,
-	warehouse_net_id: int
-) -> bool:
 	if (
 		not _has_tower_mode()
-		or net_manager == null
 		or not net_manager.is_host()
 		or game == null
 		or sender_id <= 0
-		or warehouse_net_id <= 0
 	):
-		return false
-	var player_node := game.get_player_for_peer(sender_id)
-	if (
-		player_node == null
-		or not is_instance_valid(player_node)
-		or player_node.is_dead
-	):
-		return false
-	if not _consume_peer_rate_token(
-		_warehouse_snapshot_request_rate_buckets,
+		return
+	tower_economy_coordinator.handle_authoritative_warehouse_snapshot_request(
 		sender_id,
-		WAREHOUSE_SNAPSHOT_REQUEST_RATE_PER_SECOND,
-		WAREHOUSE_SNAPSHOT_REQUEST_RATE_BURST
-	):
-		return false
-	var warehouse := _get_tower_plant(warehouse_net_id) as OakWarehouse
-	if (
-		not _is_authoritative_warehouse_interaction_candidate(warehouse)
-		or not _is_authoritative_nearest_warehouse(player_node, warehouse)
-	):
-		return false
-	if not net_manager.is_peer_send_ready(sender_id):
-		return false
-	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(sender_id)
-	_record_outbound_rpc(
-		&"net_inventory_snapshot",
-		[sender_id, inventory_snapshot, false]
+		warehouse_net_id
 	)
-	net_inventory_snapshot.rpc_id(
-		sender_id,
-		sender_id,
-		inventory_snapshot,
-		false
-	)
-	var snapshot := warehouse.export_storage_snapshot()
-	_record_outbound_rpc(
-		&"net_warehouse_storage_snapshot_batch",
-		[PackedInt32Array([warehouse_net_id]), [snapshot]]
-	)
-	net_warehouse_storage_snapshot_batch.rpc_id(
-		sender_id,
-		PackedInt32Array([warehouse_net_id]),
-		[snapshot]
-	)
-	return true
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_production_command_requested(command: Dictionary) -> void:
-	if not _has_tower_mode() or not net_manager.is_host() or game == null:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
-	_apply_authoritative_production_command(sender_id, command)
-
-
-@rpc("any_peer", "call_remote", "reliable", 6)
-func net_research_command_requested(command: Dictionary) -> void:
-	if not _has_tower_mode() or not net_manager.is_host() or game == null:
-		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
-	_apply_authoritative_research_command(sender_id, command)
-
-
-@rpc("any_peer", "call_remote", "reliable", 6)
-func net_production_snapshot_requested(building_net_id: int) -> void:
 	if (
 		not _has_tower_mode()
 		or not net_manager.is_host()
 		or game == null
-		or building_net_id <= 0
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(sender_id)
 	):
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	var player_node := game.get_player_for_peer(sender_id)
-	if (
-		sender_id <= 0
-		or player_node == null
-		or not is_instance_valid(player_node)
-		or player_node.is_dead
-	):
-		return
-	if not _consume_peer_rate_token(
-		_production_snapshot_request_rate_buckets,
+	tower_economy_coordinator.handle_authoritative_production_command(
 		sender_id,
-		PRODUCTION_SNAPSHOT_REQUEST_RATE_PER_SECOND,
-		PRODUCTION_SNAPSHOT_REQUEST_RATE_BURST
-	):
-		return
-	var building := _get_tower_plant(
-		building_net_id
-	) as ProductionBuilding
-	if (
-		building == null
-		or not is_instance_valid(building)
-		or building.is_dead
-		or building.is_removing
-		or not building.is_operational
-		or not _is_authoritative_nearest_production_building(
-			player_node,
-			building
-		)
-		or not net_manager.is_peer_send_ready(sender_id)
-	):
-		return
-	var state := building.export_multiplayer_runtime_state()
-	var sample_time := _get_net_time()
-	_record_outbound_rpc(
-		&"net_production_state_batch",
-		[
-			PackedInt32Array([building_net_id]),
-			[state],
-			PackedFloat64Array([sample_time]),
-		]
+		command
 	)
-	net_production_state_batch.rpc_id(
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_research_command_requested(command: Dictionary) -> void:
+	var sender_id := multiplayer.get_remote_sender_id()
+	if (
+		not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(sender_id)
+	):
+		return
+	tower_economy_coordinator.handle_authoritative_research_command(
 		sender_id,
-		PackedInt32Array([building_net_id]),
-		[state],
-		PackedFloat64Array([sample_time])
+		command
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 6)
+func net_production_snapshot_requested(building_net_id: int) -> void:
+	var sender_id := multiplayer.get_remote_sender_id()
+	if (
+		not _has_tower_mode()
+		or not net_manager.is_host()
+		or game == null
+		or sender_id <= 0
+	):
+		return
+	tower_economy_coordinator.handle_authoritative_production_snapshot_request(
+		sender_id,
+		building_net_id
 	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
 func net_warehouse_command_result(result: Dictionary) -> void:
-	if not _has_tower_mode() or game == null:
-		return
-	var transaction_metric_key := _get_warehouse_transaction_metric_key(
-		int(result.get("warehouse_net_id", 0)),
-		int(result.get("request_id", 0))
-	)
-	if _warehouse_transaction_started_usec.has(transaction_metric_key):
-		var started_usec := int(
-			_warehouse_transaction_started_usec.get(transaction_metric_key, 0)
-		)
-		_warehouse_transaction_started_usec.erase(transaction_metric_key)
-		if started_usec > 0:
-			_runtime_network_metrics.record_transaction_latency_ms(
-				float(Time.get_ticks_usec() - started_usec) / 1000.0
-			)
-	var warehouse_net_id := OakWarehouseProtocolScript.get_int_field(
-		result,
-		"warehouse_net_id",
-		0
-	)
-	var warehouse := _get_tower_plant(warehouse_net_id) as OakWarehouse
-	if (
-		warehouse == null
-		or not is_instance_valid(warehouse)
-		or not warehouse.is_current_multiplayer_storage_result(result)
-	):
-		return
-	var peer_id := OakWarehouseProtocolScript.get_int_field(result, "peer_id", 0)
-	var inventory_snapshot := result.get("inventory_snapshot", {}) as Dictionary
-	var storage_snapshot := result.get("storage_snapshot", {}) as Dictionary
-	if (
-		peer_id <= 0
-		or inventory_snapshot.is_empty()
-		or storage_snapshot.is_empty()
-	):
-		return
-	if net_manager.is_host():
-		warehouse.complete_multiplayer_storage_request(result)
-		return
-	var prepared_inventory := run_state.prepare_inventory_snapshot_for_peer(
-		peer_id,
-		inventory_snapshot
-	)
-	var prepared_storage := warehouse.prepare_storage_snapshot(storage_snapshot)
-	if prepared_inventory.is_empty() or prepared_storage.is_empty():
-		return
-	# Both revisions were checked above and no signal or await can run before the
-	# two silent commits. Publish only after inventory and storage are both final.
-	if not warehouse.commit_prepared_storage_snapshot(prepared_storage, false):
-		return
-	if not run_state.commit_prepared_inventory_snapshot_for_peer(
-		prepared_inventory,
-		false
-	):
-		push_error("MpGame: inventory revision changed during warehouse result commit.")
-		return
-	run_state.notify_inventory_snapshot_committed()
-	warehouse.notify_storage_snapshot_committed()
-	warehouse.complete_multiplayer_storage_request(result)
+	tower_economy_coordinator.receive_warehouse_command_result(result)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
 func net_production_command_result(result: Dictionary) -> void:
-	if not _has_tower_mode() or game == null:
-		return
-	if (
-		typeof(result.get("success")) != TYPE_BOOL
-		or typeof(result.get("reason")) not in [TYPE_STRING, TYPE_STRING_NAME]
-		or typeof(result.get("state")) != TYPE_DICTIONARY
-		or typeof(result.get("host_sample_time")) not in [TYPE_INT, TYPE_FLOAT]
-	):
-		return
-	var host_sample_time := float(result["host_sample_time"])
-	if not is_finite(host_sample_time):
-		return
-	var building_net_id := ProductionBuildingProtocolScript.get_int_field(
-		result,
-		"building_net_id",
-		0
-	)
-	if building_net_id <= 0 or _removed_remote_plant_ids.has(building_net_id):
-		return
-	var building := _get_tower_plant(
-		building_net_id
-	) as ProductionBuilding
-	if (
-		building == null
-		or not is_instance_valid(building)
-		or not building.is_current_multiplayer_production_result(result)
-	):
-		return
-	var state := result["state"] as Dictionary
-	if not state.is_empty():
-		_apply_plant_runtime_state(building, state, host_sample_time)
-	building.complete_multiplayer_production_request(result)
+	tower_economy_coordinator.receive_production_command_result(result)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -9278,50 +8362,11 @@ func net_production_state_batch(
 	states: Array,
 	host_sample_times: PackedFloat64Array
 ) -> void:
-	if (
-		not _has_tower_mode()
-		or game == null
-		or net_manager.is_host()
-		or net_ids.is_empty()
-		or net_ids.size() > PRODUCTION_STATE_BATCH_MAX_BUILDINGS
-		or states.size() != net_ids.size()
-		or host_sample_times.size() != net_ids.size()
-	):
-		return
-	var previous_net_id := 0
-	for index in net_ids.size():
-		var net_id := int(net_ids[index])
-		var sample_time := float(host_sample_times[index])
-		if (
-			net_id <= previous_net_id
-			or not is_finite(sample_time)
-			or typeof(states[index]) != TYPE_DICTIONARY
-		):
-			return
-		previous_net_id = net_id
-	for index in net_ids.size():
-		var net_id := int(net_ids[index])
-		if _removed_remote_plant_ids.has(net_id):
-			continue
-		var state := states[index] as Dictionary
-		if (
-			typeof(state.get("schema")) != TYPE_INT
-			or typeof(state.get("revision")) != TYPE_INT
-		):
-			continue
-		var building := _get_tower_plant(net_id) as ProductionBuilding
-		if building == null or not is_instance_valid(building):
-			_cache_pending_remote_production_state(
-				net_id,
-				state,
-				float(host_sample_times[index])
-			)
-			continue
-		_apply_plant_runtime_state(
-			building,
-			state.duplicate(true),
-			float(host_sample_times[index])
-		)
+	tower_economy_coordinator.receive_production_state_batch(
+		net_ids,
+		states,
+		host_sample_times
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -9344,7 +8389,7 @@ func net_warehouse_storage_snapshot_batch(
 ) -> void:
 	if not _has_tower_mode():
 		return
-	if not _apply_warehouse_storage_snapshot_batch(
+	if not tower_economy_coordinator.receive_warehouse_storage_snapshot_batch(
 		warehouse_net_ids,
 		snapshots
 	):
@@ -9358,12 +8403,12 @@ func net_research_command_result(
 	success: bool,
 	reason: StringName
 ) -> void:
-	if not _has_tower_mode() or game == null or building_net_id <= 0:
-		return
-	var building := _get_tower_plant(building_net_id) as ResearchCenter
-	if building == null or not is_instance_valid(building):
-		return
-	building.complete_multiplayer_research_request(request_id, success, reason)
+	tower_economy_coordinator.receive_research_command_result(
+		request_id,
+		building_net_id,
+		success,
+		reason
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -9372,26 +8417,20 @@ func net_research_state_updated(
 	changed_player_peer_id: int,
 	current_xirang: int
 ) -> void:
-	if not _has_tower_mode() or state.is_empty():
-		return
-	tower_mode_adapter.apply_remote_research_runtime_state(state)
-	if changed_player_peer_id <= 0 or current_xirang < 0:
-		return
-	var changed_player := game.get_player_for_peer(changed_player_peer_id)
-	if changed_player == null or not is_instance_valid(changed_player):
-		return
-	var delta := current_xirang - changed_player.current_xirang
-	changed_player.current_xirang = current_xirang
-	changed_player.xirang_changed.emit(current_xirang, delta)
+	tower_economy_coordinator.receive_research_state_updated(
+		state,
+		changed_player_peer_id,
+		current_xirang
+	)
 
 
 func _apply_warehouse_storage_snapshot(
 	warehouse_net_id: int,
 	snapshot: Dictionary
 ) -> bool:
-	return _apply_warehouse_storage_snapshot_batch(
-		PackedInt32Array([warehouse_net_id]),
-		[snapshot]
+	return tower_economy_coordinator.apply_warehouse_storage_snapshot(
+		warehouse_net_id,
+		snapshot
 	)
 
 
@@ -9399,219 +8438,34 @@ func _apply_warehouse_storage_snapshot_batch(
 	warehouse_net_ids: PackedInt32Array,
 	snapshots: Array
 ) -> bool:
-	if (
-		not _has_tower_mode()
-		or game == null
-		or warehouse_net_ids.is_empty()
-		or warehouse_net_ids.size() > CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
-		or snapshots.size() != warehouse_net_ids.size()
-	):
-		return false
-	var previous_net_id := 0
-	var active_net_ids := PackedInt32Array()
-	var active_snapshots: Array = []
-	for index in warehouse_net_ids.size():
-		var warehouse_net_id := int(warehouse_net_ids[index])
-		if (
-			warehouse_net_id <= previous_net_id
-			or typeof(snapshots[index]) != TYPE_DICTIONARY
-		):
-			return false
-		previous_net_id = warehouse_net_id
-		var snapshot := snapshots[index] as Dictionary
-		if not OakWarehouse.is_storage_snapshot_payload_valid(
-			snapshot,
-			warehouse_net_id
-		):
-			return false
-		if _removed_remote_plant_ids.has(warehouse_net_id):
-			continue
-		active_net_ids.append(warehouse_net_id)
-		active_snapshots.append(snapshot)
-	if active_net_ids.is_empty():
-		return true
-	if (
-		not _pending_warehouse_snapshots.is_empty()
-		or not _are_warehouse_snapshot_targets_available(active_net_ids)
-	):
-		if not _cache_pending_warehouse_snapshot_batch(
-			active_net_ids,
-			active_snapshots
-		):
-			return false
-		_try_apply_pending_warehouse_snapshots_atomically()
-		return true
-	return _commit_warehouse_storage_snapshot_batch(
-		active_net_ids,
-		active_snapshots
+	return tower_economy_coordinator.receive_warehouse_storage_snapshot_batch(
+		warehouse_net_ids,
+		snapshots
 	)
 
 
-func _are_warehouse_snapshot_targets_available(
-	warehouse_net_ids: PackedInt32Array
-) -> bool:
-	for warehouse_net_id in warehouse_net_ids:
-		var warehouse := _get_tower_plant(
-			warehouse_net_id
-		) as OakWarehouse
-		if warehouse == null or not is_instance_valid(warehouse):
-			return false
-	return true
-
-
-func _commit_warehouse_storage_snapshot_batch(
-	warehouse_net_ids: PackedInt32Array,
-	snapshots: Array
-) -> bool:
-	var warehouses: Array[OakWarehouse] = []
-	warehouses.resize(warehouse_net_ids.size())
-	for index in warehouse_net_ids.size():
-		var warehouse_net_id := int(warehouse_net_ids[index])
-		var warehouse := _get_tower_plant(
-			warehouse_net_id
-		) as OakWarehouse
-		if warehouse == null or not is_instance_valid(warehouse):
-			return false
-		var already_configured := (
-			warehouse.multiplayer_storage_enabled
-			and warehouse.warehouse_net_id == warehouse_net_id
-			and warehouse.multiplayer_storage_peer_id == _get_local_peer_id()
-		)
-		if not already_configured:
-			_configure_warehouse_network(warehouse, false, false)
-		warehouses[index] = warehouse
-	return OakWarehouse.apply_storage_snapshot_batch(warehouses, snapshots)
-
-
-func _cache_pending_warehouse_snapshot_batch(
-	warehouse_net_ids: PackedInt32Array,
-	snapshots: Array
-) -> bool:
-	var new_entry_count := 0
-	for index in warehouse_net_ids.size():
-		var warehouse_net_id := int(warehouse_net_ids[index])
-		if _removed_remote_plant_ids.has(warehouse_net_id):
-			continue
-		if not _pending_warehouse_snapshots.has(warehouse_net_id):
-			new_entry_count += 1
-			continue
-		var previous_snapshot := (
-			_pending_warehouse_snapshots[warehouse_net_id] as Dictionary
-		)
-		var next_snapshot := snapshots[index] as Dictionary
-		if int(next_snapshot.get("revision", -1)) < int(
-			previous_snapshot.get("revision", -1)
-		):
-			return false
-	if (
-		_pending_warehouse_snapshots.size() + new_entry_count
-		> CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
-	):
-		return false
-	for index in warehouse_net_ids.size():
-		var warehouse_net_id := int(warehouse_net_ids[index])
-		if _removed_remote_plant_ids.has(warehouse_net_id):
-			continue
-		_cache_pending_warehouse_snapshot(
-			warehouse_net_id,
-			snapshots[index] as Dictionary
-		)
-	return true
-
-
 func _try_apply_pending_warehouse_snapshots_atomically() -> bool:
-	if game == null or _pending_warehouse_snapshots.is_empty():
-		return false
-	var pending_ids := _pending_warehouse_snapshots.keys()
-	pending_ids.sort()
-	var warehouse_net_ids := PackedInt32Array()
-	var snapshots: Array = []
-	for warehouse_id_variant in pending_ids:
-		var warehouse_net_id := int(warehouse_id_variant)
-		if _removed_remote_plant_ids.has(warehouse_net_id):
-			continue
-		var warehouse := _get_tower_plant(
-			warehouse_net_id
-		) as OakWarehouse
-		if warehouse == null or not is_instance_valid(warehouse):
-			return false
-		warehouse_net_ids.append(warehouse_net_id)
-		snapshots.append(
-			(_pending_warehouse_snapshots[warehouse_net_id] as Dictionary).duplicate(true)
-		)
-	if warehouse_net_ids.is_empty():
-		_clear_pending_warehouse_snapshots()
-		return true
-	if not _commit_warehouse_storage_snapshot_batch(
-		warehouse_net_ids,
-		snapshots
-	):
-		return false
-	_clear_pending_warehouse_snapshots()
-	return true
+	return tower_economy_coordinator.try_apply_pending_warehouse_snapshots_atomically()
 
 
 func _cache_pending_warehouse_snapshot(
 	warehouse_net_id: int,
 	snapshot: Dictionary
 ) -> void:
-	if (
-		warehouse_net_id <= 0
-		or snapshot.is_empty()
-		or _removed_remote_plant_ids.has(warehouse_net_id)
-	):
-		return
-	if _pending_warehouse_snapshots.has(warehouse_net_id):
-		_pending_warehouse_snapshots[warehouse_net_id] = snapshot.duplicate(true)
-		return
-	if (
-		_pending_warehouse_snapshots.size()
-		>= CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
-	):
-		_erase_pending_warehouse_snapshot(
-			_pending_warehouse_snapshot_oldest_id
-		)
-
-	var previous_id := _pending_warehouse_snapshot_newest_id
-	_pending_warehouse_snapshots[warehouse_net_id] = snapshot.duplicate(true)
-	_pending_warehouse_snapshot_previous_ids[warehouse_net_id] = previous_id
-	_pending_warehouse_snapshot_next_ids[warehouse_net_id] = 0
-	if previous_id > 0:
-		_pending_warehouse_snapshot_next_ids[previous_id] = warehouse_net_id
-	else:
-		_pending_warehouse_snapshot_oldest_id = warehouse_net_id
-	_pending_warehouse_snapshot_newest_id = warehouse_net_id
+	tower_economy_coordinator.cache_pending_warehouse_snapshot(
+		warehouse_net_id,
+		snapshot
+	)
 
 
 func _erase_pending_warehouse_snapshot(warehouse_net_id: int) -> bool:
-	if not _pending_warehouse_snapshots.has(warehouse_net_id):
-		return false
-	var previous_id := int(
-		_pending_warehouse_snapshot_previous_ids.get(warehouse_net_id, 0)
+	return tower_economy_coordinator.erase_pending_warehouse_snapshot(
+		warehouse_net_id
 	)
-	var next_id := int(
-		_pending_warehouse_snapshot_next_ids.get(warehouse_net_id, 0)
-	)
-	if previous_id > 0:
-		_pending_warehouse_snapshot_next_ids[previous_id] = next_id
-	else:
-		_pending_warehouse_snapshot_oldest_id = next_id
-	if next_id > 0:
-		_pending_warehouse_snapshot_previous_ids[next_id] = previous_id
-	else:
-		_pending_warehouse_snapshot_newest_id = previous_id
-	_pending_warehouse_snapshot_previous_ids.erase(warehouse_net_id)
-	_pending_warehouse_snapshot_next_ids.erase(warehouse_net_id)
-	_pending_warehouse_snapshots.erase(warehouse_net_id)
-	return true
 
 
 func _clear_pending_warehouse_snapshots() -> void:
-	_pending_warehouse_snapshots.clear()
-	_pending_warehouse_snapshot_previous_ids.clear()
-	_pending_warehouse_snapshot_next_ids.clear()
-	_pending_warehouse_snapshot_oldest_id = 0
-	_pending_warehouse_snapshot_newest_id = 0
+	tower_economy_coordinator.clear_pending_warehouse_snapshots()
 
 
 func _cache_pending_remote_production_state(
@@ -9619,90 +8473,24 @@ func _cache_pending_remote_production_state(
 	state: Dictionary,
 	host_sample_time: float
 ) -> bool:
-	if net_id <= 0 or not is_finite(host_sample_time):
-		return false
-	if _pending_remote_production_states.has(net_id):
-		var previous := (
-			_pending_remote_production_states[net_id] as Dictionary
-		)
-		var previous_state := previous.get("state", {}) as Dictionary
-		var revision := int(state.get("revision", -1))
-		var previous_revision := int(previous_state.get("revision", -1))
-		var previous_sample_time := float(
-			previous.get("host_sample_time", -INF)
-		)
-		if (
-			revision < previous_revision
-			or (
-				revision == previous_revision
-				and host_sample_time <= previous_sample_time
-			)
-		):
-			return false
-		_pending_remote_production_states[net_id] = {
-			"state": state.duplicate(true),
-			"host_sample_time": host_sample_time,
-		}
-		return true
-	if (
-		_pending_remote_production_states.size()
-		>= CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES
-	):
-		_erase_pending_remote_production_state(
-			_pending_remote_production_state_oldest_id
-		)
-	var previous_id := _pending_remote_production_state_newest_id
-	_pending_remote_production_states[net_id] = {
-		"state": state.duplicate(true),
-		"host_sample_time": host_sample_time,
-	}
-	_pending_remote_production_state_previous_ids[net_id] = previous_id
-	_pending_remote_production_state_next_ids[net_id] = 0
-	if previous_id > 0:
-		_pending_remote_production_state_next_ids[previous_id] = net_id
-	else:
-		_pending_remote_production_state_oldest_id = net_id
-	_pending_remote_production_state_newest_id = net_id
-	return true
+	return tower_economy_coordinator.cache_pending_remote_production_state(
+		net_id,
+		state,
+		host_sample_time
+	)
 
 
 func _take_pending_remote_production_state(net_id: int) -> Dictionary:
-	var pending := _pending_remote_production_states.get(net_id, {}) as Dictionary
-	if pending.is_empty():
-		return {}
-	_erase_pending_remote_production_state(net_id)
-	return pending
+	return tower_economy_coordinator.take_pending_remote_production_state(net_id)
 
 
 func _erase_pending_remote_production_state(net_id: int) -> bool:
-	if not _pending_remote_production_states.has(net_id):
-		return false
-	var previous_id := int(
-		_pending_remote_production_state_previous_ids.get(net_id, 0)
-	)
-	var next_id := int(
-		_pending_remote_production_state_next_ids.get(net_id, 0)
-	)
-	if previous_id > 0:
-		_pending_remote_production_state_next_ids[previous_id] = next_id
-	else:
-		_pending_remote_production_state_oldest_id = next_id
-	if next_id > 0:
-		_pending_remote_production_state_previous_ids[next_id] = previous_id
-	else:
-		_pending_remote_production_state_newest_id = previous_id
-	_pending_remote_production_state_previous_ids.erase(net_id)
-	_pending_remote_production_state_next_ids.erase(net_id)
-	_pending_remote_production_states.erase(net_id)
-	return true
+	return tower_economy_coordinator.erase_pending_remote_production_state(net_id)
 
 
 func _clear_pending_remote_production_states() -> void:
-	_pending_remote_production_states.clear()
-	_pending_remote_production_state_previous_ids.clear()
-	_pending_remote_production_state_next_ids.clear()
-	_pending_remote_production_state_oldest_id = 0
-	_pending_remote_production_state_newest_id = 0
+	tower_economy_coordinator.clear_pending_remote_production_states()
+
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -11790,20 +10578,13 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_luoxi_offer_states_by_peer.erase(peer_id)
 	_luoxi_offer_revision_counters.erase(peer_id)
 	_plant_placement_rate_buckets.erase(peer_id)
-	_warehouse_transaction_rate_buckets.erase(peer_id)
 	_player_action_ingress_rate_buckets.erase(peer_id)
 	_luoxi_transaction_rate_buckets.erase(peer_id)
 	_xiaocong_transaction_rate_buckets.erase(peer_id)
 	session_coordinator.clear_peer(peer_id)
-	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
 	transactions_coordinator.clear_peer(peer_id)
-	_production_command_rate_buckets.erase(peer_id)
-	_production_snapshot_request_rate_buckets.erase(peer_id)
-	_research_command_rate_buckets.erase(peer_id)
-	_last_research_request_ids.erase(peer_id)
+	tower_economy_coordinator.clear_peer(peer_id)
 	_terrain_snapshot_request_rate_buckets.erase(peer_id)
-	_warehouse_transaction_result_cache.clear_peer(peer_id)
-	_production_command_result_cache.clear_peer(peer_id)
 	projectile_coordinator.clear_peer(peer_id)
 
 
@@ -11824,11 +10605,7 @@ func _return_to_lobby() -> void:
 	_processed_collectible_effect_event_ids.clear()
 	_pending_plant_health_updates.clear()
 	_clear_remote_plant_health_state()
-	_clear_pending_warehouse_snapshots()
-	_pending_authoritative_warehouse_snapshots.clear()
-	_pending_production_state_updates.clear()
-	_clear_pending_remote_production_states()
-	_shared_production_state_flush_scheduled = false
+	tower_economy_coordinator.reset_session_state()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_client_terrain_revision = -1
@@ -11839,20 +10616,10 @@ func _return_to_lobby() -> void:
 	_last_completed_terrain_snapshot_id = 0
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
-	_warehouse_snapshot_request_rate_buckets.clear()
-	_warehouse_transaction_rate_buckets.clear()
-	_warehouse_transaction_result_cache.clear()
 	_luoxi_transaction_rate_buckets.clear()
 	_xiaocong_transaction_rate_buckets.clear()
 	session_coordinator.reset_session_state()
 	transactions_coordinator.reset_session_state()
-	_production_command_rate_buckets.clear()
-	_production_snapshot_request_rate_buckets.clear()
-	_production_command_result_cache.clear()
-	_research_command_rate_buckets.clear()
-	_last_research_request_ids.clear()
-	_research_milestone_connected = false
-	_warehouse_transaction_started_usec.clear()
 	_hoe_action_sequences_by_peer.clear()
 	_tango_charge_sequences_by_peer.clear()
 	_last_tango_volley_visual_state_by_peer.clear()
