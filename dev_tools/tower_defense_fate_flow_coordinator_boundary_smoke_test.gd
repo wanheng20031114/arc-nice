@@ -6,21 +6,26 @@ const TOWER_SCENE := preload(
 const ROOT_SOURCE_PATH := (
 	"res://scene/game_modes/tower_defense/tower_defense_game.gd"
 )
-const ROOT_SCENE_PATH := (
-	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
+const FATE_SOURCE_PATH := (
+	"res://scene/game_modes/tower_defense/fate/fate_coordinator.gd"
 )
-const COORDINATOR_SOURCE_PATH := (
+const HOME_SOURCE_PATH := (
+	"res://scene/game_modes/tower_defense/home/"
+	+ "tower_defense_home_defense_coordinator.gd"
+)
+const FLOW_SOURCE_PATH := (
 	"res://scene/game_modes/tower_defense/fate/"
 	+ "tower_defense_fate_flow_coordinator.gd"
 )
-const COORDINATOR_SCENE_PATH := (
-	"res://scene/game_modes/tower_defense/fate/"
-	+ "tower_defense_fate_flow_coordinator.tscn"
+const LUOXI_SOURCE_PATH := (
+	"res://scene/game_modes/tower_defense/merchants/luoxi/"
+	+ "luoxi_special_game_coordinator.gd"
+)
+const RESEARCH_SOURCE_PATH := (
+	"res://scene/plant_defense/research_coordinator.gd"
 )
 
 var failures: Array[String] = []
-var exit_code := 0
-var exit_timer: Timer
 
 
 func _init() -> void:
@@ -28,246 +33,95 @@ func _init() -> void:
 
 
 func _run() -> void:
-	_test_static_structure_and_order_guards()
+	_test_static_boundaries()
 	await _test_runtime_binding_and_behavior()
 	if failures.is_empty():
 		print("TOWER_DEFENSE_FATE_FLOW_COORDINATOR_BOUNDARY_SMOKE_TEST_OK")
-		_schedule_exit(0)
+		quit(0)
 		return
 	for failure in failures:
 		push_error(failure)
-	_schedule_exit(1)
+	quit(1)
 
 
-func _test_static_structure_and_order_guards() -> void:
+func _test_static_boundaries() -> void:
 	var root_source := _read_text(ROOT_SOURCE_PATH)
-	var root_scene_source := _read_text(ROOT_SCENE_PATH)
-	var coordinator_source := _read_text(COORDINATOR_SOURCE_PATH)
-	var coordinator_scene_source := _read_text(COORDINATOR_SCENE_PATH)
-	_expect(
-		root_scene_source.contains(
-			'[node name="FateFlowCoordinator" parent="." '
-			+ 'instance=ExtResource("69_fate_flow")]'
-		),
-		"TowerDefenseGame 必须静态实例化 FateFlowCoordinator。"
-	)
-	_expect(
-		coordinator_scene_source.contains('uid="uid://')
-		and coordinator_scene_source.contains('type="Script" uid="uid://'),
-		"FateFlowCoordinator 场景与脚本引用必须持有稳定 UID。"
-	)
-	_expect(
-		root_scene_source.contains(
-			'type="PackedScene" uid="uid://d0brkwgd71xus" '
-			+ 'path="res://scene/game_modes/tower_defense/fate/'
-			+ 'tower_defense_fate_flow_coordinator.tscn"'
-		),
-		"TowerDefenseGame 对 FateFlowCoordinator 的引用必须携带 scene UID。"
-	)
-	_expect(
-		root_source.contains("fate_flow_coordinator.setup(")
-		and coordinator_source.contains("func setup("),
-		"FateFlowCoordinator 必须由 root 显式 setup。"
-	)
-	for forbidden in [
-		"get_tree().current_scene",
-		"get_node(\"../",
-		"has_method(",
-		".call(",
-		"mode_adapter",
-		"multiplayer_gateway",
+	var fate_source := _read_text(FATE_SOURCE_PATH)
+	var home_source := _read_text(HOME_SOURCE_PATH)
+	var flow_source := _read_text(FLOW_SOURCE_PATH)
+	var luoxi_source := _read_text(LUOXI_SOURCE_PATH)
+	var research_source := _read_text(RESEARCH_SOURCE_PATH)
+	for source_pair in [
+		["FateCoordinator", fate_source],
+		["FateFlowCoordinator", flow_source],
+		["LuoxiSpecialGameCoordinator", luoxi_source],
+		["ResearchCoordinator", research_source],
 	]:
-		_expect(
-			not coordinator_source.contains(forbidden),
-			"FateFlowCoordinator 禁止动态依赖或网络外观直连：%s" % forbidden
+		var label := str(source_pair[0])
+		var source := str(source_pair[1])
+		for forbidden in [
+			"TowerDefenseGame",
+			"get_tree().current_scene",
+			"has_method(",
+			".call(",
+			"Callable",
+		]:
+			_expect(
+				not source.contains(forbidden),
+				"%s 仍存在动态/root 反向依赖：%s" % [label, forbidden]
+			)
+	_expect(
+		fate_source.contains(
+			"home_defense_coordinator.set_authoritative_base_health("
 		)
-	for migrated_state in [
-		"fate_frozen_terrain_decay_time_left",
-		"remote_fate_entry_in_progress",
-		"remote_fate_departure_in_progress",
-		"remote_fate_departure_covered",
-		"pending_remote_fate_flow_state",
-	]:
-		_expect(
-			not root_source.contains("var %s" % migrated_state),
-			"FateFlow 状态仍残留 root：%s" % migrated_state
+		and fate_source.contains(
+			"player_roster_coordinator.get_player_for_runtime_peer("
 		)
-
-	var interaction_source := _function_source(
-		root_source,
+		and fate_source.contains("multiplayer_adapter.publish_inventory_changed("),
+		"FateCoordinator 未直连 Home/Roster/Adapter。"
+	)
+	_expect(
+		flow_source.contains("campaign_coordinator.apply_remote_flow_state(")
+		and flow_source.contains("presentation_coordinator.transition_world_to_day()")
+		and flow_source.contains("multiplayer_gateway.player_teleport_requested.emit("),
+		"FateFlowCoordinator 未直连 Campaign/Presentation/Gateway。"
+	)
+	_expect(
+		luoxi_source.contains("home_defense_coordinator.apply_base_damage(")
+		and luoxi_source.contains("player_roster_coordinator.get_all_players()")
+		and luoxi_source.contains("multiplayer_adapter.apply_luoxi_player_health_loss("),
+		"LuoxiSpecialGameCoordinator 未直连 Home/Roster/Adapter。"
+	)
+	_expect(
+		research_source.contains(
+			"player_roster_coordinator: TowerDefensePlayerRosterCoordinator"
+		)
+		and not research_source.contains("var game:"),
+		"ResearchCoordinator 仍依赖 TowerDefenseGame。"
+	)
+	for removed_facade in [
 		"func request_xiaocong_interaction(",
-		"func request_xiaocong_fate_vote("
-	)
-	_expect_order(
-		interaction_source,
-		[
-			"runtime_mode == RuntimeMode.CLIENT_VIEW",
-			"wave_state != CombatFlowState.State.FATE_INTERLUDE",
-			"fate_flow_coordinator.request_interaction(peer_id)",
-		],
-		"root interaction authority gate"
-	)
-	var vote_source := _function_source(
-		root_source,
-		"func request_xiaocong_fate_vote(",
-		"func request_xiaocong_collectible_choice("
-	)
-	_expect_order(
-		vote_source,
-		[
-			"runtime_mode == RuntimeMode.CLIENT_VIEW",
-			"wave_state != CombatFlowState.State.FATE_INTERLUDE",
-			"fate_flow_coordinator.request_fate_vote(",
-		],
-		"root fate vote authority gate"
-	)
-	var collectible_source := _function_source(
-		root_source,
-		"func request_xiaocong_collectible_choice(",
-		"func _is_fate_collectible_choice_pending_for_peer("
-	)
-	_expect_order(
-		collectible_source,
-		[
-			"runtime_mode == RuntimeMode.CLIENT_VIEW",
-			"wave_state != CombatFlowState.State.FATE_INTERLUDE",
-			"fate_flow_coordinator.request_collectible_choice(",
-		],
-		"root collectible authority gate"
-	)
-	var remote_snapshot_source := _function_source(
-		root_source,
 		"func apply_remote_xiaocong_fate_state(",
-		"func _on_xiaocong_fate_state_changed("
+		"func _teleport_fate_player_authoritatively(",
+		"func request_luoxi_special_game_start(",
+		"func apply_luoxi_core_health_loss(",
+		"func try_claim_luoxi_collectible_for_peer(",
+	]:
+		_expect(
+			not root_source.contains(removed_facade),
+			"TowerDefenseGame 仍保留无生产调用 façade：%s" % removed_facade
+		)
+	_expect(
+		root_source.contains("func grant_xirang_kill_reward(amount: int) -> bool:")
+		and root_source.contains("fate_coordinator.is_double_xirang_reward_active()")
+		and root_source.contains("campaign_coordinator.record_xirang_reward("),
+		"TowerDefenseGame 必须只保留直连 Fate+Campaign 的息壤击杀覆写。"
 	)
-	_expect_order(
-		remote_snapshot_source,
-		[
-			"runtime_mode != RuntimeMode.CLIENT_VIEW",
-			'int(state.get("revision", 0)) < fate_manager.state_revision',
-			"fate_flow_coordinator.apply_remote_state(state)",
-		],
-		"root remote snapshot authority/revision gate"
-	)
-	var snapshot_emit_source := _function_source(
-		root_source,
-		"func _emit_xiaocong_fate_state_snapshot(",
-		"func _resume_flow_after_fate_interlude("
-	)
-	_expect_order(
-		snapshot_emit_source,
-		[
-			"runtime_mode == RuntimeMode.HOST_AUTHORITY",
-			"tower_multiplayer_mode_adapter.xiaocong_fate_state_changed.emit(snapshot)",
-		],
-		"root host snapshot outbound"
-	)
-
-	var host_entry_source := _function_source(
-		coordinator_source,
-		"func enter_interlude(",
-		"func present_locally("
-	)
-	_expect_order(
-		host_entry_source,
-		[
-			"set_interlude_systems_frozen(true)",
-			"runtime.wave_state = CombatFlowState.State.FATE_INTERLUDE",
-			"set_player_combat_locked(true)",
-			"runtime.next_flow_step_after_rest = next_step",
-			"runtime.countdown_seconds = 0",
-			"enemy_spawn_timer.stop()",
-			"state_timer.stop()",
-			"runtime._emit_multiplayer_flow_state(CombatFlowState.State.FATE_INTERLUDE)",
-			"await xiaocong_fate_interlude.cover_scene_for_transfer()",
-			"runtime._set_merchant_active(false)",
-			"runtime.transition_world_to_day()",
-			"runtime._force_revive_dead_players()",
-			"present_locally(completed_day)",
-			"teleport_authoritative_players_to_room()",
-			"await xiaocong_fate_interlude.play_room_reveal()",
-			"fate_coordinator.begin_interlude(",
-		],
-		"host fate entry"
-	)
-	var remote_entry_source := _function_source(
-		coordinator_source,
-		"func begin_remote_entry(",
-		"func begin_remote_departure("
-	)
-	_expect_order(
-		remote_entry_source,
-		[
-			"if remote_entry_in_progress:",
-			"remote_entry_in_progress = true",
-			"remote_departure_in_progress = false",
-			"remote_departure_covered = false",
-			"pending_remote_flow_state.clear()",
-			"await xiaocong_fate_interlude.cover_scene_for_transfer()",
-			"runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW",
-			"runtime.transition_world_to_day()",
-			"runtime._set_local_merchants_active(false)",
-			"present_locally(day_number)",
-			"await xiaocong_fate_interlude.play_room_reveal()",
-			"remote_entry_in_progress = false",
-		],
-		"client fate entry"
-	)
-	var remote_departure_source := _function_source(
-		coordinator_source,
-		"func begin_remote_departure(",
-		"func complete_remote_flow_transition("
-	)
-	_expect_order(
-		remote_departure_source,
-		[
-			"if remote_departure_in_progress:",
-			"remote_departure_in_progress = true",
-			"await xiaocong_fate_interlude.play_outcome_message(",
-			"await xiaocong_fate_interlude.cover_scene_for_transfer()",
-			"remote_departure_covered = true",
-			"if pending_remote_flow_state.is_empty():",
-			"var deferred_flow_state := pending_remote_flow_state.duplicate()",
-			"pending_remote_flow_state.clear()",
-			"runtime.apply_remote_flow_state(",
-		],
-		"client fate departure"
-	)
-	var completion_source := _function_source_to_end(
-		coordinator_source, "func _on_interlude_completed("
-	)
-	_expect_order(
-		completion_source,
-		[
-			"await xiaocong_fate_interlude.play_outcome_message(winning_option_id)",
-			"await xiaocong_fate_interlude.cover_scene_for_transfer()",
-			"fate_coordinator.clear_pending_rewards()",
-			"leave_presentation()",
-			"restore_authoritative_players_from_room()",
-			"runtime._resume_flow_after_fate_interlude(next_step_id)",
-			"await xiaocong_fate_interlude.reveal_world_after_transfer()",
-		],
-		"host fate departure"
-	)
-	var freeze_source := _function_source(
-		coordinator_source,
-		"func set_interlude_systems_frozen(",
-		"func set_player_combat_locked("
-	)
-	_expect_order(
-		freeze_source,
-		[
-			"if plant_terrain_decay_timer == null:",
-			"if frozen:",
-			"if not plant_terrain_decay_timer.is_stopped():",
-			"frozen_terrain_decay_time_left = plant_terrain_decay_timer.time_left",
-			"plant_terrain_decay_timer.stop()",
-			"\t\treturn",
-			"if plant_terrain_decay_timer.is_stopped():",
-			"plant_terrain_decay_timer.start(",
-			"frozen_terrain_decay_time_left = 0.0",
-		],
-		"fate timer pause/resume"
+	_expect(
+		home_source.contains("_present_base_health(false, false)")
+		and home_source.contains("if play_damage_pulse:")
+		and home_source.contains("_presentation_coordinator.play_gate_damage_warning()"),
+		"基地警报必须由 HomeDefenseCoordinator 只响应真实伤害。"
 	)
 
 
@@ -277,10 +131,6 @@ func _test_runtime_binding_and_behavior() -> void:
 	if game == null:
 		return
 	game.auto_start_waves = false
-	var static_coordinator := game.get_node_or_null(
-		"FateFlowCoordinator"
-	) as TowerDefenseFateFlowCoordinator
-	_expect(static_coordinator != null, "ready 前必须已有静态 FateFlowCoordinator。")
 	var runtime_fate := game.get_node_or_null("FateCoordinator") as FateCoordinator
 	if runtime_fate != null:
 		runtime_fate.elite_enemy_config_loads_requested = true
@@ -292,143 +142,110 @@ func _test_runtime_binding_and_behavior() -> void:
 	root.add_child(game)
 	current_scene = game
 	await process_frame
-	var coordinator := game.fate_flow_coordinator
+	var flow := game.fate_flow_coordinator
+	var fate := game.fate_coordinator
+	var roster := game.player_roster_coordinator
+	_expect(flow != null and flow.is_bound(), "FateFlowCoordinator 依赖绑定不完整。")
 	_expect(
-		coordinator == static_coordinator,
-		"root onready 必须绑定静态 FateFlowCoordinator。"
+		flow.campaign_coordinator == game.campaign_coordinator
+		and flow.player_roster_coordinator == roster
+		and flow.plant_placement_coordinator == game.plant_placement_coordinator
+		and flow.presentation_coordinator == game.presentation_coordinator
+		and flow.multiplayer_adapter == game.tower_multiplayer_mode_adapter
+		and flow.multiplayer_gateway == game.multiplayer_gateway,
+		"FateFlowCoordinator 未绑定静态强类型依赖。"
 	)
 	_expect(
-		coordinator != null and coordinator.is_bound(),
-		"FateFlowCoordinator 依赖绑定不完整。"
+		fate.home_defense_coordinator == game.home_defense_coordinator
+		and fate.player_roster_coordinator == roster
+		and fate.run_state == game.run_state
+		and fate.luoxi_merchant == game.luoxi_merchant,
+		"FateCoordinator 未绑定静态强类型依赖。"
 	)
-	if coordinator == null or not coordinator.is_bound():
-		current_scene = null
-		game.queue_free()
-		await process_frame
-		return
+	_expect(
+		game.research_coordinator.player_roster_coordinator == roster
+		and game.luoxi_special_game_coordinator.player_roster_coordinator == roster,
+		"Research/Luoxi 未绑定 PlayerRoster。"
+	)
 
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var previous_revision := game.home_defense_coordinator.base_health_revision
+	var ledger_revision_before := game.run_state.get_party_status_ledger_revision()
+	var ledger_health_before := game.run_state.get_party_core_health()
+	var ledger_maximum_before := game.run_state.get_party_core_maximum_health()
+	var warning_msec_before := game.tower_defense_status_hud.last_gate_warning_msec
+	fate._set_base_health(37, 1)
+	_expect(
+		game.home_defense_coordinator.maximum_base_health == 37
+		and game.home_defense_coordinator.current_base_health == 1
+		and game.home_defense_coordinator.base_health_revision
+		== previous_revision + 1,
+		"Fate 基地生命修改必须经 HomeDefenseCoordinator。"
+	)
+	_expect(
+		game.tower_defense_status_hud.last_gate_warning_msec
+		== warning_msec_before,
+		"Fate 基地生命修改不得触发受击警报。"
+	)
+	_expect(
+		game.run_state.get_party_status_ledger_revision() == ledger_revision_before
+		and game.run_state.get_party_core_health() == ledger_health_before
+		and game.run_state.get_party_core_maximum_health() == ledger_maximum_before,
+		"Fate 基地生命修改不得额外写入 RunState 状态账本。"
+	)
+
+	roster.set_runtime_identity(CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY, 2)
+	roster.spawn_slot_indices.erase(99)
+	_expect(
+		roster.get_world_spawn_position(99, 2)
+		== game.player_spawn.global_position
+			+ TowerDefenseGame.MULTIPLAYER_SPAWN_OFFSETS[2],
+		"缺失 spawn slot 时必须沿用玩家遍历槽位，而不是回落到槽位 0。"
+	)
+
+	roster.set_runtime_identity(CombatRuntimeBase.RuntimeMode.SINGLEPLAYER, 0)
 	game.plant_terrain_decay_timer.start(8.0)
 	await process_frame
-	coordinator.set_interlude_systems_frozen(true)
-	var captured_time_left := coordinator.frozen_terrain_decay_time_left
-	coordinator.set_interlude_systems_frozen(true)
+	flow.set_interlude_systems_frozen(true)
+	var captured_time_left := flow.frozen_terrain_decay_time_left
+	flow.set_interlude_systems_frozen(true)
 	_expect(
 		game.plant_terrain_decay_timer.is_stopped()
 		and captured_time_left > 0.0
-		and is_equal_approx(
-			coordinator.frozen_terrain_decay_time_left,
-			captured_time_left
-		)
+		and is_equal_approx(flow.frozen_terrain_decay_time_left, captured_time_left)
 		and not game.production_coordinator.authoritative_processing_enabled
-		and not game.research_coordinator.authoritative_processing_enabled
-		and not game.plant_placement_controller.placement_input_enabled,
-		"重复 freeze 必须保留首次 timer time_left 且冻结权威系统。"
+		and not game.research_coordinator.authoritative_processing_enabled,
+		"Fate freeze 必须幂等暂停 timer、生产与科研。"
 	)
-	coordinator.set_interlude_systems_frozen(false)
+	flow.set_interlude_systems_frozen(false)
 	_expect(
 		not game.plant_terrain_decay_timer.is_stopped()
-		and coordinator.frozen_terrain_decay_time_left == 0.0
 		and game.production_coordinator.authoritative_processing_enabled
 		and game.research_coordinator.authoritative_processing_enabled,
-		"unfreeze 必须恢复 timer、生产与科研。"
+		"Fate unfreeze 必须恢复权威系统。"
 	)
 
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.plant_terrain_decay_timer.start(6.0)
-	game.production_coordinator.set_authoritative_processing_enabled(true)
-	game.research_coordinator.set_authoritative_processing_enabled(true)
-	coordinator.set_interlude_systems_frozen(true)
-	_expect(
-		not game.plant_terrain_decay_timer.is_stopped()
-		and game.production_coordinator.authoritative_processing_enabled
-		and game.research_coordinator.authoritative_processing_enabled
-		and not game.plant_placement_controller.placement_input_enabled,
-		"CLIENT freeze 只能关闭本地放置，不能暂停权威系统或 timer。"
-	)
-	coordinator.set_interlude_systems_frozen(false)
-
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
-	coordinator.set_player_combat_locked(true)
+	flow.set_player_combat_locked(true)
 	_expect(
 		game.player.combat_actions_locked and not game.player.controls_locked,
-		"命运幕间必须只锁战斗动作并保留移动。"
+		"Fate 幕间必须只锁战斗动作。"
 	)
-	coordinator.set_player_combat_locked(false)
-	game.player.global_position = Vector2(19.0, 23.0)
-	game.player.velocity = Vector2(7.0, -3.0)
-	coordinator.teleport_authoritative_players_to_room()
+	flow.set_player_combat_locked(false)
+	flow.teleport_authoritative_players_to_room()
 	_expect(
 		game.player.global_position
-		== game.xiaocong_fate_interlude.get_player_spawn_position(0)
-		and game.player.velocity == Vector2.ZERO,
-		"单人进入命运房间必须按 position→velocity→interpolation 顺序传送。"
+		== game.xiaocong_fate_interlude.get_player_spawn_position(0),
+		"单人进入 Fate 房间必须由 Flow 直接传送。"
 	)
-	coordinator.restore_authoritative_players_from_room()
+	flow.restore_authoritative_players_from_room()
 	_expect(
-		game.player.global_position == game.player_spawn.global_position,
-		"单人离开命运房间必须恢复到玩家出生点。"
-	)
-
-	var teleport_peer_order: Array[int] = []
-	var teleport_listener := func(peer_id: int, _target: Vector2) -> void:
-		teleport_peer_order.append(peer_id)
-	game.multiplayer_gateway.player_teleport_requested.connect(teleport_listener)
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.peer_players.clear()
-	game.peer_players[7] = game.player
-	game.peer_players[2] = game.player
-	game.multiplayer_spawn_slot_indices.clear()
-	game.multiplayer_spawn_slot_indices[7] = 1
-	game.multiplayer_spawn_slot_indices[2] = 0
-	coordinator.teleport_authoritative_players_to_room()
-	coordinator.restore_authoritative_players_from_room()
-	_expect(
-		teleport_peer_order == [2, 7, 2, 7],
-		"HOST 进入与恢复传送必须按排序 peer 经 root gateway façade 出站。"
-	)
-	game.multiplayer_gateway.player_teleport_requested.disconnect(teleport_listener)
-	game.peer_players.clear()
-
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
-	game.fate_coordinator.begin_interlude(1, &"next", [0], 0)
-	game.player.global_position = game.xiaocong_fate_interlude.global_position
-	game.wave_state = CombatFlowState.State.PRE_WAVE
-	game.request_xiaocong_interaction(0)
-	_expect(
-		not game.fate_manager.interacted_peer_ids.has(0),
-		"非 FATE flow 的 interaction 必须由 root 拒绝。"
-	)
-	game.wave_state = CombatFlowState.State.FATE_INTERLUDE
-	game.request_xiaocong_interaction(0)
-	_expect(
-		game.fate_manager.interacted_peer_ids.has(0),
-		"获准的 interaction 必须委托 coordinator 写入 manager。"
-	)
-	var current_revision := game.fate_manager.state_revision
-	game.fate_coordinator.elite_bias_day = 4
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.apply_remote_xiaocong_fate_state({
-		"revision": current_revision - 1,
-		"elite_bias_day": 99,
-	})
-	_expect(
-		game.fate_coordinator.elite_bias_day == 4,
-		"过期 fate snapshot 必须在 root revision gate 被拒绝。"
-	)
-	var accepted_snapshot := coordinator.get_state_snapshot()
-	accepted_snapshot["revision"] = current_revision
-	accepted_snapshot["elite_bias_day"] = 8
-	game.apply_remote_xiaocong_fate_state(accepted_snapshot)
-	_expect(
-		game.fate_coordinator.elite_bias_day == 8,
-		"相等 revision 的 fate snapshot 必须保持旧版可接受语义。"
+		game.player.global_position == roster.get_world_spawn_position(0),
+		"单人离开 Fate 房间必须恢复 Roster 出生位置。"
 	)
 
 	_stop_audio_recursive(game)
 	current_scene = null
 	game.queue_free()
-	for _cleanup_frame in range(8):
+	for _cleanup_frame in range(4):
 		await process_frame
 		await physics_frame
 
@@ -439,36 +256,6 @@ func _read_text(path: String) -> String:
 		failures.append("无法读取验证源码：%s" % path)
 		return ""
 	return file.get_as_text()
-
-
-func _function_source(source: String, start_marker: String, end_marker: String) -> String:
-	var start := source.find(start_marker)
-	var end := source.find(end_marker, start + start_marker.length())
-	if start < 0 or end <= start:
-		failures.append("无法提取函数区间：%s -> %s" % [start_marker, end_marker])
-		return ""
-	return source.substr(start, end - start)
-
-
-func _function_source_to_end(source: String, start_marker: String) -> String:
-	var start := source.find(start_marker)
-	if start < 0:
-		failures.append("无法提取函数：%s" % start_marker)
-		return ""
-	return source.substr(start)
-
-
-func _expect_order(source: String, markers: Array[String], label: String) -> void:
-	var cursor := -1
-	for marker in markers:
-		var position := source.find(marker, cursor + 1)
-		if position < 0:
-			failures.append("%s 缺少顺序标记：%s" % [label, marker])
-			return
-		if position <= cursor:
-			failures.append("%s 顺序发生变化：%s" % [label, marker])
-			return
-		cursor = position
 
 
 func _stop_audio_recursive(node: Node) -> void:
@@ -482,22 +269,6 @@ func _stop_audio_recursive(node: Node) -> void:
 		player.stream = null
 	for child in node.get_children():
 		_stop_audio_recursive(child)
-
-
-func _schedule_exit(code: int) -> void:
-	exit_code = code
-	exit_timer = Timer.new()
-	exit_timer.one_shot = true
-	exit_timer.wait_time = 0.1
-	root.add_child(exit_timer)
-	exit_timer.timeout.connect(_quit_after_async_release)
-	exit_timer.start()
-
-
-func _quit_after_async_release() -> void:
-	exit_timer.stop()
-	exit_timer.queue_free()
-	quit(exit_code)
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -17,21 +17,46 @@ func _run() -> void:
 	root.add_child(coordinator)
 	await process_frame
 	var manager := coordinator.manager
-	var game := TowerDefenseGame.new()
-	game.fate_coordinator = coordinator
-	game.fate_manager = manager
-	coordinator.setup(game, game.day_cycle_config)
+	var campaign := TowerDefenseCampaignCoordinator.new()
+	var home := TowerDefenseHomeDefenseCoordinator.new()
+	var roster := TowerDefensePlayerRosterCoordinator.new()
+	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	var run_state := root.get_node("RunState") as RunStateStore
+	var merchant := TowerDefenseLuoxiMerchant.new()
+	var enemy_container := Node2D.new()
+	var boss_container := Node2D.new()
+	var day_cycle := load(
+		"res://resources/config/day_cycle/tower_defense_day_cycle.tres"
+	) as DayCycleConfig
+	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	coordinator.setup(
+		campaign,
+		home,
+		roster,
+		adapter,
+		run_state,
+		merchant,
+		enemy_container,
+		boss_container,
+		day_cycle
+	)
 	manager.resolution_requested.disconnect(coordinator._on_resolution_requested)
 
 	_test_stone_pending_disconnect(coordinator, manager)
 	_test_partial_stone_delivery_revision(coordinator, manager)
-	_test_collectible_missing_player(game, coordinator, manager)
-	_test_remote_revision_guard(game, coordinator, manager)
+	_test_collectible_missing_player(roster, coordinator, manager)
+	_test_remote_revision_guard(roster, coordinator, manager)
 	await _test_stone_inventory_access_overlay()
 	await create_timer(TowerDefenseFateManager.RESULT_DISPLAY_SECONDS + 0.1).timeout
 
 	coordinator.queue_free()
-	game.free()
+	campaign.free()
+	home.free()
+	roster.free()
+	adapter.free()
+	merchant.free()
+	enemy_container.free()
+	boss_container.free()
 	for _cleanup_frame in range(8):
 		await process_frame
 		await physics_frame
@@ -92,7 +117,7 @@ func _test_partial_stone_delivery_revision(
 
 
 func _test_collectible_missing_player(
-	game: TowerDefenseGame,
+	roster: TowerDefensePlayerRosterCoordinator,
 	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:
@@ -112,8 +137,8 @@ func _test_collectible_missing_player(
 		"An unclaimed eligible peer must remain able to choose its collectible."
 	)
 	var remaining_player := Player.new()
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.peer_players = {1: remaining_player}
+	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	roster.peer_players = {1: remaining_player}
 	coordinator._prune_missing_players()
 	_expect(
 		manager.stage == TowerDefenseFateManager.STAGE_RESOLVED,
@@ -123,25 +148,38 @@ func _test_collectible_missing_player(
 		manager.eligible_peer_ids == [1],
 		"The missing collectible recipient must be removed from eligibility."
 	)
-	game.peer_players.clear()
+	roster.peer_players.clear()
 	remaining_player.free()
 	manager.force_finish()
 
 
 func _test_remote_revision_guard(
-	game: TowerDefenseGame,
+	roster: TowerDefensePlayerRosterCoordinator,
 	coordinator: FateCoordinator,
 	manager: TowerDefenseFateManager
 ) -> void:
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var runtime := TowerDefenseGame.new()
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var flow := TowerDefenseFateFlowCoordinator.new()
+	flow.fate_coordinator = coordinator
+	flow.fate_manager = manager
+	flow.player_roster_coordinator = roster
+	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	adapter._bind_tower_runtime(runtime)
+	adapter._fate_flow_coordinator = flow
+	adapter._fate_manager = manager
 	coordinator.elite_bias_day = 4
 	manager.state_revision = 10
-	game.apply_remote_xiaocong_fate_state({"revision": 9, "elite_bias_day": 99})
+	adapter.apply_remote_xiaocong_fate_state({"revision": 9, "elite_bias_day": 99})
 	_expect(
 		coordinator.elite_bias_day == 4,
 		"A stale fate snapshot must not overwrite coordinator runtime values."
 	)
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	flow.free()
+	adapter.free()
+	runtime.free()
+	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 
 
 func _test_stone_inventory_access_overlay() -> void:

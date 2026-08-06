@@ -24,8 +24,14 @@ const ALL_ENEMY_SPEED_SOURCE_ID := 880004
 @onready var manager: TowerDefenseFateManager = $TowerDefenseFateManager
 @onready var runtime_tick_timer: Timer = $RuntimeTickTimer
 
-var game: TowerDefenseGame = null
 var campaign_coordinator: TowerDefenseCampaignCoordinator = null
+var home_defense_coordinator: TowerDefenseHomeDefenseCoordinator = null
+var player_roster_coordinator: TowerDefensePlayerRosterCoordinator = null
+var multiplayer_adapter: TowerDefenseMultiplayerModeAdapter = null
+var run_state: RunStateStore = null
+var luoxi_merchant: TowerDefenseLuoxiMerchant = null
+var enemy_container: Node2D = null
+var boss_container: Node2D = null
 var day_cycle_config: DayCycleConfig = null
 var active_permanent_buff_ids: Array[StringName] = []
 var elite_bias_day := 0
@@ -48,12 +54,24 @@ func _ready() -> void:
 
 
 func setup(
-	new_game: TowerDefenseGame,
 	new_campaign_coordinator: TowerDefenseCampaignCoordinator,
+	new_home_defense_coordinator: TowerDefenseHomeDefenseCoordinator,
+	new_player_roster_coordinator: TowerDefensePlayerRosterCoordinator,
+	new_multiplayer_adapter: TowerDefenseMultiplayerModeAdapter,
+	new_run_state: RunStateStore,
+	new_luoxi_merchant: TowerDefenseLuoxiMerchant,
+	new_enemy_container: Node2D,
+	new_boss_container: Node2D,
 	new_day_cycle_config: DayCycleConfig
 ) -> void:
-	game = new_game
 	campaign_coordinator = new_campaign_coordinator
+	home_defense_coordinator = new_home_defense_coordinator
+	player_roster_coordinator = new_player_roster_coordinator
+	multiplayer_adapter = new_multiplayer_adapter
+	run_state = new_run_state
+	luoxi_merchant = new_luoxi_merchant
+	enemy_container = new_enemy_container
+	boss_container = new_boss_container
 	day_cycle_config = new_day_cycle_config
 	request_elite_enemy_config_loads()
 	_apply_runtime_state_to_world()
@@ -138,7 +156,7 @@ func request_collectible_choice(peer_id: int, choice_index: int) -> void:
 		or not player_instance.is_collectible_compatible(item)
 		or not LuoxiMerchant.is_collectible_available_for_inventory(
 			item,
-			game.run_state,
+			run_state,
 			peer_id
 		)
 	):
@@ -230,7 +248,11 @@ func apply_remote_runtime_state(state: Dictionary) -> void:
 
 
 func resolve_enemy_config(enemy_config: EnemyConfig) -> EnemyConfig:
-	if enemy_config == null or game == null or day_cycle_config == null:
+	if (
+		enemy_config == null
+		or campaign_coordinator == null
+		or day_cycle_config == null
+	):
 		return enemy_config
 	var current_day := day_cycle_config.get_day_number(
 		campaign_coordinator.current_wave_index + 1
@@ -318,7 +340,7 @@ func configure_enemy_modifiers(enemy_instance: Enemy) -> void:
 
 func is_double_xirang_reward_active() -> bool:
 	return (
-		game != null
+		campaign_coordinator != null
 		and day_cycle_config != null
 		and campaign_coordinator.wave_state in [
 			CombatFlowState.State.WAVE_ACTIVE,
@@ -332,7 +354,7 @@ func is_double_xirang_reward_active() -> bool:
 
 
 func apply_player_modifiers_to_all() -> void:
-	if game == null:
+	if player_roster_coordinator == null:
 		return
 	var low_health_config := _get_buff_config(
 		TowerDefenseFateRegistry.BUFF_LOW_HEALTH_REDUCTION
@@ -361,9 +383,9 @@ func apply_player_modifiers_to_all() -> void:
 
 
 func apply_enemy_modifiers_to_existing() -> void:
-	if game == null:
+	if enemy_container == null or boss_container == null:
 		return
-	for container in [game.enemy_container, game.boss_container]:
+	for container in [enemy_container, boss_container]:
 		if container == null:
 			continue
 		for child in container.get_children():
@@ -376,7 +398,11 @@ func _on_resolution_requested(
 	option_id: StringName,
 	permanent_buff_id: StringName
 ) -> void:
-	if game == null or game.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+	if (
+		player_roster_coordinator == null
+		or player_roster_coordinator.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
 		return
 	var option_config := TowerDefenseFateRegistry.get_option_config(option_id)
 	if option_config == null:
@@ -390,16 +416,19 @@ func _on_resolution_requested(
 			elite_bias_day = manager.completed_day + 1
 			manager.finalize_resolution()
 		TowerDefenseFateOptionConfig.EffectType.BASE_REBUILD:
-			_set_base_health(game.maximum_base_health + roundi(option_config.primary_amount), -1)
+			_set_base_health(
+				home_defense_coordinator.maximum_base_health
+					+ roundi(option_config.primary_amount),
+				-1
+			)
 			manager.finalize_resolution()
 		TowerDefenseFateOptionConfig.EffectType.COLLECTIBLE_REWARD:
 			_begin_collectible_reward()
 		TowerDefenseFateOptionConfig.EffectType.FATE_STONE:
 			_grant_fate_stone_to_all()
 		TowerDefenseFateOptionConfig.EffectType.XIRANG_GIFT:
-			_for_each_eligible_player(
-				func(_peer_id: int, player_instance: Player) -> void:
-					player_instance.grant_xirang_reward(roundi(option_config.primary_amount))
+			_grant_xirang_to_eligible_players(
+				roundi(option_config.primary_amount)
 			)
 			manager.finalize_resolution()
 		TowerDefenseFateOptionConfig.EffectType.DASH_COOLDOWN:
@@ -415,16 +444,12 @@ func _on_resolution_requested(
 				manager.force_finish()
 				return
 			_set_base_health(
-				game.maximum_base_health,
+				home_defense_coordinator.maximum_base_health,
 				roundi(option_config.primary_amount)
 			)
 			manager.finalize_resolution()
 		TowerDefenseFateOptionConfig.EffectType.DOUBLE_XIRANG:
-			_for_each_eligible_player(
-				func(_peer_id: int, player_instance: Player) -> void:
-					if player_instance.current_xirang > 0:
-						player_instance.try_spend_xirang(player_instance.current_xirang)
-			)
+			_clear_eligible_player_xirang()
 			double_xirang_day = manager.completed_day + 1
 			manager.finalize_resolution()
 		TowerDefenseFateOptionConfig.EffectType.DANGEROUS_SPEED:
@@ -467,25 +492,18 @@ func _get_buff_config(
 
 
 func _set_base_health(new_maximum: int, new_current: int) -> void:
-	game.maximum_base_health = maxi(new_maximum, 1)
-	game.current_base_health = (
-		game.maximum_base_health
+	if home_defense_coordinator == null:
+		return
+	var resolved_maximum := maxi(new_maximum, 1)
+	var resolved_current := (
+		resolved_maximum
 		if new_current < 0
-		else clampi(new_current, 0, game.maximum_base_health)
+		else clampi(new_current, 0, resolved_maximum)
 	)
-	game.base_health_revision += 1
-	game._update_base_health_display(false)
-	game.base_health_changed.emit(
-		game.current_base_health,
-		game.maximum_base_health,
-		game.base_health_revision
+	home_defense_coordinator.set_authoritative_base_health(
+		resolved_maximum,
+		resolved_current
 	)
-	if game.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
-		game.tower_multiplayer_mode_adapter.base_health_changed.emit(
-			game.current_base_health,
-			game.maximum_base_health,
-			game.base_health_revision
-		)
 
 
 func _begin_collectible_reward() -> void:
@@ -499,7 +517,7 @@ func _begin_collectible_reward() -> void:
 		if player_instance == null or not is_instance_valid(player_instance):
 			remove_eligible_peer(peer_id)
 			continue
-		var offer_paths := game.luoxi_merchant.build_authoritative_offer_paths(
+		var offer_paths := luoxi_merchant.build_authoritative_offer_paths(
 			player_instance,
 			[],
 			random_generator,
@@ -581,33 +599,39 @@ func _fate_stone_would_benefit_any_peer(peer_ids: Array[int]) -> bool:
 
 
 func _try_store_item(peer_id: int, item: PickupConfig) -> bool:
-	if game == null or game.run_state == null:
+	if run_state == null:
 		return false
 	if peer_id > 0:
-		return game.run_state.try_add_item_for_peer(peer_id, item)
-	return game.run_state.try_add_item(item)
+		return run_state.try_add_item_for_peer(peer_id, item)
+	return run_state.try_add_item(item)
 
 
 func _peer_has_item(peer_id: int, item: PickupConfig) -> bool:
-	if game == null or game.run_state == null:
+	if run_state == null:
 		return false
 	return (
-		game.run_state.get_inventory_item_total_for_peer(peer_id, item) > 0
+		run_state.get_inventory_item_total_for_peer(peer_id, item) > 0
 		if peer_id > 0
-		else game.run_state.get_inventory_item_total(item) > 0
+		else run_state.get_inventory_item_total(item) > 0
 	)
 
 
 func _notify_inventory_changed(peer_id: int) -> void:
 	if (
-		game.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		player_roster_coordinator != null
+		and player_roster_coordinator.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 		and peer_id > 0
 	):
-		game.tower_multiplayer_mode_adapter.inventory_changed.emit(peer_id)
+		multiplayer_adapter.publish_inventory_changed(peer_id)
 
 
 func _on_runtime_tick() -> void:
-	if game == null or game.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+	if (
+		player_roster_coordinator == null
+		or player_roster_coordinator.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
 		return
 	manager.advance_stage_timeout(runtime_tick_timer.wait_time)
 	_prune_missing_players()
@@ -654,7 +678,7 @@ func _on_manager_state_changed(_state: Dictionary) -> void:
 
 
 func _apply_runtime_state_to_world() -> void:
-	if game == null:
+	if player_roster_coordinator == null:
 		return
 	apply_player_modifiers_to_all()
 	apply_enemy_modifiers_to_existing()
@@ -667,34 +691,36 @@ func _apply_runtime_state_to_world() -> void:
 		LuoxiMerchant.reset_runtime_choice_count()
 
 
-func _for_each_eligible_player(callback: Callable) -> void:
+func _grant_xirang_to_eligible_players(amount: int) -> void:
 	for peer_id in manager.eligible_peer_ids:
 		var player_instance := _get_player(peer_id)
 		if player_instance != null and is_instance_valid(player_instance):
-			callback.call(peer_id, player_instance)
+			player_instance.grant_xirang_reward(amount)
+
+
+func _clear_eligible_player_xirang() -> void:
+	for peer_id in manager.eligible_peer_ids:
+		var player_instance := _get_player(peer_id)
+		if (
+			player_instance != null
+			and is_instance_valid(player_instance)
+			and player_instance.current_xirang > 0
+		):
+			player_instance.try_spend_xirang(player_instance.current_xirang)
 
 
 func _get_player(peer_id: int) -> Player:
-	if game == null:
+	if player_roster_coordinator == null:
 		return null
-	if game.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER and peer_id == 0:
-		return game.player
-	return game.get_player_for_peer(peer_id)
+	return player_roster_coordinator.get_player_for_runtime_peer(peer_id)
 
 
 func _get_all_players() -> Array[Player]:
-	var result: Array[Player] = []
-	if game == null:
-		return result
-	if game.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
-		if game.player != null and is_instance_valid(game.player):
-			result.append(game.player)
-		return result
-	for player_variant in game.peer_players.values():
-		var player_instance := player_variant as Player
-		if player_instance != null and is_instance_valid(player_instance):
-			result.append(player_instance)
-	return result
+	return (
+		player_roster_coordinator.get_all_players()
+		if player_roster_coordinator != null
+		else []
+	)
 
 
 func _prune_missing_players() -> void:

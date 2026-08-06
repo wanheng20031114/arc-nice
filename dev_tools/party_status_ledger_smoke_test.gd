@@ -186,7 +186,7 @@ func _test_tower_defense_hydration_and_writeback(
 	)
 	var revision_before_loss := run_state.get_party_status_ledger_revision()
 	_expect(
-		game.apply_luoxi_core_health_loss(2) == 2
+		game.luoxi_special_game_coordinator._apply_core_health_loss(2) == 2
 		and game.current_base_health == 80
 		and run_state.get_party_core_health() == 80
 		and run_state.get_party_status_ledger_revision()

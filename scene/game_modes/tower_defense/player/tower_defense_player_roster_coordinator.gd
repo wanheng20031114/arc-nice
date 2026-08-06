@@ -275,6 +275,58 @@ func get_player(peer_id: int) -> Player:
 	return peer_players.get(peer_id) as Player
 
 
+func get_player_for_runtime_peer(peer_id: int) -> Player:
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER and peer_id == 0:
+		return local_player
+	return get_player(peer_id)
+
+
+func get_active_peer_ids() -> Array[int]:
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		return [0]
+	var peer_ids: Array[int] = []
+	for peer_id_variant in peer_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id > 0:
+			peer_ids.append(peer_id)
+	peer_ids.sort()
+	return peer_ids
+
+
+func get_all_players() -> Array[Player]:
+	var players: Array[Player] = []
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		if local_player != null and is_instance_valid(local_player):
+			players.append(local_player)
+		return players
+	for player_variant in peer_players.values():
+		var player_instance := player_variant as Player
+		if player_instance != null and is_instance_valid(player_instance):
+			players.append(player_instance)
+	return players
+
+
+func get_world_spawn_position(
+	peer_id: int,
+	fallback_slot_index: int = 0
+) -> Vector2:
+	if _spawn_point == null:
+		return Vector2.ZERO
+	if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER or peer_id <= 0:
+		return _spawn_point.global_position
+	return _spawn_point.global_position + _get_spawn_offset(
+		int(spawn_slot_indices.get(peer_id, maxi(fallback_slot_index, 0)))
+	)
+
+
+func set_combat_actions_locked_for_all(locked: bool) -> void:
+	for player_instance in get_all_players():
+		if player_instance.is_dead:
+			continue
+		player_instance.set_combat_actions_locked(locked)
+		player_instance.set_controls_locked(false)
+
+
 func get_fixed_respawn_position(peer_id: int) -> Variant:
 	if _spawn_point == null or not spawn_slot_indices.has(peer_id):
 		return null

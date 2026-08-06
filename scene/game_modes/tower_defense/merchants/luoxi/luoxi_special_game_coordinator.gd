@@ -18,7 +18,10 @@ enum ResultCode {
 	PLAYER_DIED,
 }
 
-var game: TowerDefenseGame = null
+var campaign_coordinator: TowerDefenseCampaignCoordinator = null
+var home_defense_coordinator: TowerDefenseHomeDefenseCoordinator = null
+var player_roster_coordinator: TowerDefensePlayerRosterCoordinator = null
+var multiplayer_adapter: TowerDefenseMultiplayerModeAdapter = null
 var run_state: RunStateStore = null
 var merchant: LuoxiMerchant = null
 var random_generator: RandomNumberGenerator = null
@@ -28,13 +31,19 @@ var revision_counters_by_peer: Dictionary = {}
 
 
 func setup(
-	new_game: TowerDefenseGame,
+	new_campaign_coordinator: TowerDefenseCampaignCoordinator,
+	new_home_defense_coordinator: TowerDefenseHomeDefenseCoordinator,
+	new_player_roster_coordinator: TowerDefensePlayerRosterCoordinator,
+	new_multiplayer_adapter: TowerDefenseMultiplayerModeAdapter,
 	new_run_state: RunStateStore,
 	new_merchant: LuoxiMerchant,
 	new_random_generator: RandomNumberGenerator,
 	new_authoritative_enabled: bool
 ) -> void:
-	game = new_game
+	campaign_coordinator = new_campaign_coordinator
+	home_defense_coordinator = new_home_defense_coordinator
+	player_roster_coordinator = new_player_roster_coordinator
+	multiplayer_adapter = new_multiplayer_adapter
 	run_state = new_run_state
 	merchant = new_merchant
 	random_generator = new_random_generator
@@ -196,7 +205,10 @@ func cancel_all() -> void:
 func _can_start_for_player(player_instance: Player) -> bool:
 	return (
 		authoritative_enabled
-		and game != null
+		and campaign_coordinator != null
+		and home_defense_coordinator != null
+		and player_roster_coordinator != null
+		and multiplayer_adapter != null
 		and run_state != null
 		and merchant != null
 		and merchant.is_active
@@ -204,7 +216,7 @@ func _can_start_for_player(player_instance: Player) -> bool:
 		and player_instance != null
 		and is_instance_valid(player_instance)
 		and not player_instance.is_dead
-		and game.campaign_coordinator.wave_state not in [
+		and campaign_coordinator.wave_state not in [
 			CombatFlowState.State.VICTORY,
 			CombatFlowState.State.DEFEAT,
 		]
@@ -215,13 +227,9 @@ func _can_start_for_player(player_instance: Player) -> bool:
 
 
 func _get_player(peer_id: int) -> Player:
-	if game == null:
+	if player_roster_coordinator == null:
 		return null
-	return (
-		game.get_player_for_peer(peer_id)
-		if peer_id > 0
-		else game.player
-	)
+	return player_roster_coordinator.get_player_for_runtime_peer(peer_id)
 
 
 func _get_session(peer_id: int) -> LuoxiSpecialGameSession:
@@ -284,7 +292,7 @@ func _apply_immediate_outcome(
 		LuoxiSpecialGameRules.OutcomeKind.HEALTH_DAMAGE:
 			_apply_health_outcome(player_instance, outcome)
 		LuoxiSpecialGameRules.OutcomeKind.CORE_DAMAGE:
-			game.apply_luoxi_core_health_loss(
+			_apply_core_health_loss(
 				maxi(int(outcome.get("amount", 0)), 0)
 			)
 
@@ -296,25 +304,63 @@ func _apply_health_outcome(
 	var amount := maxi(int(outcome.get("amount", 0)), 0)
 	match int(outcome.get("effect", -1)):
 		LuoxiSpecialGameRules.HealthEffect.SELF_FIXED:
-			game.apply_luoxi_player_health_loss(player_instance, amount)
+			_apply_player_health_loss(player_instance, amount)
 		LuoxiSpecialGameRules.HealthEffect.SELF_LEAVE_ONE:
-			game.apply_luoxi_player_health_loss(
+			_apply_player_health_loss(
 				player_instance,
 				player_instance.current_health,
 				1
 			)
 		LuoxiSpecialGameRules.HealthEffect.OTHERS_CURRENT_PERCENT:
-			for target in game.get_luoxi_damageable_players():
+			for target in player_roster_coordinator.get_all_players():
 				if target == player_instance or target.is_dead:
 					continue
 				var loss := floori(
 					float(target.current_health) * float(amount) / 100.0
 				)
-				game.apply_luoxi_player_health_loss(target, loss, 1)
+				_apply_player_health_loss(target, loss, 1)
 		LuoxiSpecialGameRules.HealthEffect.ALL_FIXED:
-			for target in game.get_luoxi_damageable_players():
+			for target in player_roster_coordinator.get_all_players():
 				if not target.is_dead:
-					game.apply_luoxi_player_health_loss(target, amount)
+					_apply_player_health_loss(target, amount)
+
+
+func _apply_core_health_loss(amount: int) -> int:
+	if (
+		amount <= 0
+		or home_defense_coordinator == null
+		or player_roster_coordinator.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		return 0
+	return home_defense_coordinator.apply_base_damage(amount)
+
+
+func _apply_player_health_loss(
+	target_player: Player,
+	amount: int,
+	minimum_health: int = 0
+) -> int:
+	if (
+		target_player == null
+		or not is_instance_valid(target_player)
+		or target_player.is_dead
+		or amount <= 0
+		or player_roster_coordinator == null
+		or player_roster_coordinator.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		return 0
+	if (
+		player_roster_coordinator.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	):
+		return target_player.apply_direct_health_loss(amount, minimum_health)
+	return multiplayer_adapter.apply_luoxi_player_health_loss(
+		target_player,
+		amount,
+		minimum_health
+	)
 
 
 func _make_result(

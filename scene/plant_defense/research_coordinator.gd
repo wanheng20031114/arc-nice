@@ -49,7 +49,7 @@ const GLOBAL_REQUIREMENTS: Array[Dictionary] = [
 
 var production_coordinator: ProductionCoordinator = null
 var plant_system: PlantSystem = null
-var game: TowerDefenseGame = null
+var player_roster_coordinator: TowerDefensePlayerRosterCoordinator = null
 var authoritative_processing_enabled := true
 var global_research_states: Dictionary = {}
 var global_research_elapsed: Dictionary = {}
@@ -87,11 +87,11 @@ func _ready() -> void:
 func setup(
 	new_production_coordinator: ProductionCoordinator,
 	new_plant_system: PlantSystem,
-	new_game: TowerDefenseGame
+	new_player_roster_coordinator: TowerDefensePlayerRosterCoordinator
 ) -> void:
 	production_coordinator = new_production_coordinator
 	plant_system = new_plant_system
-	game = new_game
+	player_roster_coordinator = new_player_roster_coordinator
 	_apply_global_bonuses()
 
 
@@ -510,15 +510,18 @@ func _apply_player_levels_to_runtime() -> void:
 			player,
 			int(player_technology_levels.get(key, 0))
 		)
-	if game == null:
+	if player_roster_coordinator == null:
 		return
-	if game.runtime_mode == TowerDefenseGame.RuntimeMode.SINGLEPLAYER:
-		if game.player != null:
-			register_player(game.player)
+	if (
+		player_roster_coordinator.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	):
+		if player_roster_coordinator.local_player != null:
+			register_player(player_roster_coordinator.local_player)
 		return
 	for key_variant in player_technology_levels:
 		var key := int(key_variant)
-		var player := game.get_player_for_peer(key)
+		var player := player_roster_coordinator.get_player(key)
 		if player != null:
 			register_player(player)
 

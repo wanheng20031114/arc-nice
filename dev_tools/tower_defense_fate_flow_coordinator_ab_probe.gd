@@ -1,211 +1,369 @@
 extends SceneTree
 
-const TOWER_SCENE := preload(
-	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
-)
 const PROBE_SEED := 852741963
-const TIME_SCALE := 4.0
+const ROUNDS := 3
 
-var trace: Array[Dictionary] = []
+
+class RecordingHomeDefenseCoordinator:
+	extends TowerDefenseHomeDefenseCoordinator
+
+	var damage_warning_count := 0
+
+	func configure_for_probe(
+		mode: int,
+		run_state: RunStateStore,
+		maximum_health: int,
+		current_health: int,
+		revision: int
+	) -> void:
+		var runtime := TowerDefenseGame.new()
+		runtime.runtime_mode = mode as CombatRuntimeBase.RuntimeMode
+		add_child(runtime)
+		_runtime = runtime
+		_run_state = run_state
+		maximum_base_health = maximum_health
+		current_base_health = current_health
+		base_health_revision = revision
+
+	func _present_base_health(
+		play_damage_pulse: bool,
+		_was_remote: bool
+	) -> void:
+		if play_damage_pulse:
+			damage_warning_count += 1
+
+
+class RecordingMultiplayerAdapter:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	var applied_losses: Array[int] = []
+
+	func apply_luoxi_player_health_loss(
+		target_player: Player,
+		amount: int,
+		minimum_health: int = 0
+	) -> int:
+		if target_player == null or target_player.is_dead or amount <= 0:
+			return 0
+		var next_health := maxi(
+			target_player.current_health - amount,
+			clampi(minimum_health, 0, target_player.current_health)
+		)
+		var applied := target_player.current_health - next_health
+		target_player.current_health = next_health
+		if target_player.current_health <= 0:
+			target_player.is_dead = true
+		applied_losses.append(applied)
+		return applied
+
+
+class SpawnProbeRoster:
+	extends TowerDefensePlayerRosterCoordinator
+
+	func configure_for_probe(
+		spawn_point: Marker2D,
+		spawn_offsets: Array[Vector2]
+	) -> void:
+		runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		_spawn_point = spawn_point
+		_spawn_offsets = spawn_offsets.duplicate()
+
+
 var failures: Array[String] = []
-var exit_code := 0
-var exit_timer: Timer
+var trajectories: Array[Dictionary] = []
+var party_ledger_signal_count := 0
 
 
 func _init() -> void:
-	Engine.time_scale = TIME_SCALE
 	call_deferred("_run")
 
 
 func _run() -> void:
-	var game := TOWER_SCENE.instantiate() as TowerDefenseGame
-	if game == null:
-		_fail("TowerDefenseGame scene failed to instantiate.")
+	var run_state := root.get_node_or_null("RunState") as RunStateStore
+	_expect(run_state != null, "A/B 边界探针缺少 RunState。")
+	if run_state == null:
 		_finish()
 		return
-	game.auto_start_waves = false
-	game.random_generator.seed = PROBE_SEED
-	var runtime_fate := game.get_node_or_null("FateCoordinator") as FateCoordinator
-	if runtime_fate != null:
-		runtime_fate.elite_enemy_config_loads_requested = true
-		runtime_fate.random_generator.seed = PROBE_SEED + 1
-	var runtime_boss := game.get_node_or_null(
-		"BossCoordinator"
-	) as TowerDefenseBossCoordinator
-	if runtime_boss != null:
-		runtime_boss.runtime_scene_loads_requested = true
-	root.add_child(game)
-	current_scene = game
-	await process_frame
-	game.fate_manager.random_generator.seed = PROBE_SEED + 2
-	var next_step := game._get_start_flow_step()
-	if next_step == null:
-		_fail("Fate A/B probe could not resolve a campaign step.")
-		await _cleanup_game(game)
-		_finish()
-		return
-	var next_step_id := game._get_flow_step_id(next_step)
-	game.current_wave_index = 3
-	game.plant_terrain_decay_timer.start(9.0)
-	game._enter_xiaocong_fate_interlude(next_step)
-	await create_timer(1.2).timeout
-	_trace_state(game, &"host_entered", next_step_id)
-	if not game.fate_manager.active:
-		_fail("Host fate entry did not activate the manager.")
-	var active_snapshot := game.get_xiaocong_fate_state_snapshot()
-	game.player.global_position = game.xiaocong_fate_interlude.global_position
-	game.request_xiaocong_interaction(0)
-	_trace_state(game, &"host_interacted", next_step_id)
-	game.fate_manager.force_finish()
-	await create_timer(3.0).timeout
-	_trace_state(game, &"host_departed", next_step_id)
-
-	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.fate_manager.state_revision = 0
-	active_snapshot["revision"] = 1
-	active_snapshot["active"] = true
-	active_snapshot["stage"] = String(
-		TowerDefenseFateManager.STAGE_WAIT_INTERACTIONS
-	)
-	active_snapshot["interacted_peer_ids"] = []
-	game.apply_remote_flow_state(
-		next_step_id,
-		int(CombatFlowState.State.FATE_INTERLUDE),
-		0
-	)
-	game.apply_remote_xiaocong_fate_state(active_snapshot)
-	await create_timer(1.2).timeout
-	_trace_state(game, &"client_entered", next_step_id)
-	var stale_snapshot := active_snapshot.duplicate(true)
-	stale_snapshot["revision"] = 0
-	stale_snapshot["elite_bias_day"] = 77
-	var elite_bias_before := game.fate_coordinator.elite_bias_day
-	game.apply_remote_xiaocong_fate_state(stale_snapshot)
-	trace.append({
-		"event": "client_stale_snapshot",
-		"rejected": game.fate_coordinator.elite_bias_day == elite_bias_before,
-	})
-	var inactive_snapshot := active_snapshot.duplicate(true)
-	inactive_snapshot["revision"] = 2
-	inactive_snapshot["active"] = false
-	inactive_snapshot["winning_option_id"] = ""
-	game.apply_remote_xiaocong_fate_state(inactive_snapshot)
-	game.apply_remote_flow_state(
-		next_step_id,
-		int(CombatFlowState.State.INTERMISSION),
-		6
-	)
-	game.apply_remote_flow_state(
-		next_step_id,
-		int(CombatFlowState.State.INTERMISSION),
-		5
-	)
-	await create_timer(3.0).timeout
-	_trace_state(game, &"client_departed", next_step_id)
-
-	await _cleanup_game(game)
+	for round_index in range(ROUNDS):
+		_run_round(round_index, run_state)
 	_finish()
 
 
-func _trace_state(
-	game: TowerDefenseGame,
-	event: StringName,
-	next_step_id: StringName
-) -> void:
-	trace.append({
-		"event": String(event),
-		"wave_state": int(game.wave_state),
-		"next_step_id": String(next_step_id),
-		"manager_active": game.fate_manager.active,
-		"manager_stage": String(game.fate_manager.stage),
-		"manager_revision": game.fate_manager.state_revision,
-		"interlude_active": game.xiaocong_fate_interlude.is_active,
-		"player_at_room_spawn": (
-			game.player.global_position
-			== game.xiaocong_fate_interlude.get_player_spawn_position(0)
-		),
-		"player_at_world_spawn": (
-			game.player.global_position == game.player_spawn.global_position
-		),
-		"combat_locked": game.player.combat_actions_locked,
-		"controls_locked": game.player.controls_locked,
-		"production_enabled": (
-			game.production_coordinator.authoritative_processing_enabled
-		),
-		"research_enabled": (
-			game.research_coordinator.authoritative_processing_enabled
-		),
-		"terrain_timer_stopped": game.plant_terrain_decay_timer.is_stopped(),
-		"eligible_peers": game.fate_manager.eligible_peer_ids.duplicate(),
-		"interacted_peers": game.fate_manager.interacted_peer_ids.duplicate(),
-		"available_options": _to_string_array(
-			game.fate_manager.available_option_ids
-		),
+func _run_round(round_index: int, run_state: RunStateStore) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = PROBE_SEED + round_index * 7919
+	var round_trace := {
+		"round": round_index,
+		"base_health": _compare_base_health_boundary(rng, run_state),
+		"luoxi_damage": _compare_luoxi_damage_boundary(rng),
+		"missing_spawn_slot": _compare_missing_spawn_slot_boundary(rng),
+		"fate_state": _compare_fate_state_boundary(round_index),
+		"research_state": _compare_research_state_boundary(round_index),
+	}
+	trajectories.append(round_trace)
+
+
+func _compare_base_health_boundary(
+	rng: RandomNumberGenerator,
+	run_state: RunStateStore
+) -> Dictionary:
+	run_state.begin_new_run(&"weishidaier", false)
+	var original_maximum := rng.randi_range(80, 140)
+	var original_current := rng.randi_range(20, original_maximum)
+	var original_revision := rng.randi_range(2, 12)
+	var requested_maximum := rng.randi_range(35, 90)
+	var requested_current := 1
+	var ledger_revision_before := run_state.get_party_status_ledger_revision()
+	var ledger_health_before := run_state.get_party_core_health()
+	var ledger_maximum_before := run_state.get_party_core_maximum_health()
+	party_ledger_signal_count = 0
+	run_state.party_status_ledger_changed.connect(_on_party_status_ledger_changed)
+
+	var legacy := {
+		"maximum": maxi(requested_maximum, 1),
+		"current": clampi(requested_current, 0, maxi(requested_maximum, 1)),
+		"revision": original_revision + 1,
+		"damage_warnings": 0,
+		"ledger_revision": ledger_revision_before,
+		"ledger_health": ledger_health_before,
+		"ledger_maximum": ledger_maximum_before,
+		"ledger_signals": 0,
+	}
+	var home := RecordingHomeDefenseCoordinator.new()
+	home.configure_for_probe(
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		run_state,
+		original_maximum,
+		original_current,
+		original_revision
+	)
+	var fate := FateCoordinator.new()
+	fate.home_defense_coordinator = home
+	fate._set_base_health(requested_maximum, requested_current)
+	var current := {
+		"maximum": home.maximum_base_health,
+		"current": home.current_base_health,
+		"revision": home.base_health_revision,
+		"damage_warnings": home.damage_warning_count,
+		"ledger_revision": run_state.get_party_status_ledger_revision(),
+		"ledger_health": run_state.get_party_core_health(),
+		"ledger_maximum": run_state.get_party_core_maximum_health(),
+		"ledger_signals": party_ledger_signal_count,
+	}
+	run_state.party_status_ledger_changed.disconnect(
+		_on_party_status_ledger_changed
+	)
+	_expect(current == legacy, "命运基地生命边界与迁移前行为不一致。")
+	_expect(home.damage_warning_count == 0, "命运基地生命修改不应触发受伤警报。")
+	fate.free()
+	home.free()
+	return {"legacy": legacy, "current": current}
+
+
+func _compare_luoxi_damage_boundary(rng: RandomNumberGenerator) -> Dictionary:
+	var actor := _make_player(1, rng.randi_range(70, 130))
+	var other := _make_player(2, rng.randi_range(90, 180))
+	var third := _make_player(3, rng.randi_range(60, 150))
+	var roster := TowerDefensePlayerRosterCoordinator.new()
+	roster.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	roster.peer_players = {1: actor, 2: other, 3: third}
+	var adapter := RecordingMultiplayerAdapter.new()
+	var home := RecordingHomeDefenseCoordinator.new()
+	var core_maximum := rng.randi_range(80, 130)
+	var core_current := rng.randi_range(15, core_maximum)
+	home.configure_for_probe(
+		CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY,
+		null,
+		core_maximum,
+		core_current,
+		0
+	)
+	var coordinator := LuoxiSpecialGameCoordinator.new()
+	coordinator.home_defense_coordinator = home
+	coordinator.player_roster_coordinator = roster
+	coordinator.multiplayer_adapter = adapter
+
+	var percent := rng.randi_range(20, 90)
+	var other_before := other.current_health
+	var third_before := third.current_health
+	var legacy_other := maxi(
+		other_before - floori(float(other_before) * float(percent) / 100.0),
+		1
+	)
+	var legacy_third := maxi(
+		third_before - floori(float(third_before) * float(percent) / 100.0),
+		1
+	)
+	coordinator._apply_health_outcome(actor, {
+		"effect": LuoxiSpecialGameRules.HealthEffect.OTHERS_CURRENT_PERCENT,
+		"amount": percent,
 	})
+	var self_loss := rng.randi_range(5, 30)
+	var actor_before_fixed := actor.current_health
+	var legacy_actor := maxi(actor_before_fixed - self_loss, 0)
+	coordinator._apply_health_outcome(actor, {
+		"effect": LuoxiSpecialGameRules.HealthEffect.SELF_FIXED,
+		"amount": self_loss,
+	})
+	var core_loss := rng.randi_range(1, 9)
+	var legacy_core := maxi(core_current - core_loss, 0)
+	var applied_core_loss := coordinator._apply_core_health_loss(core_loss)
+	var legacy := {
+		"actor_health": legacy_actor,
+		"other_health": legacy_other,
+		"third_health": legacy_third,
+		"core_health": legacy_core,
+		"core_loss": core_current - legacy_core,
+	}
+	var current := {
+		"actor_health": actor.current_health,
+		"other_health": other.current_health,
+		"third_health": third.current_health,
+		"core_health": home.current_base_health,
+		"core_loss": applied_core_loss,
+	}
+	_expect(current == legacy, "洛茜玩家/核心扣血边界与迁移前行为不一致。")
+	coordinator.free()
+	home.free()
+	adapter.free()
+	roster.free()
+	actor.free()
+	other.free()
+	third.free()
+	return {"legacy": legacy, "current": current}
 
 
-func _to_string_array(values: Array) -> Array[String]:
-	var result: Array[String] = []
-	for value in values:
-		result.append(String(value))
-	return result
+func _compare_missing_spawn_slot_boundary(
+	rng: RandomNumberGenerator
+) -> Dictionary:
+	var marker := Marker2D.new()
+	marker.position = Vector2(rng.randi_range(10, 80), rng.randi_range(10, 80))
+	var offsets: Array[Vector2] = [
+		Vector2.ZERO,
+		Vector2(24.0, 0.0),
+		Vector2(0.0, 24.0),
+		Vector2(-24.0, 0.0),
+	]
+	var fallback_slot := rng.randi_range(1, offsets.size() - 1)
+	var roster := SpawnProbeRoster.new()
+	roster.configure_for_probe(marker, offsets)
+	roster.spawn_slot_indices = {2: 0}
+	var legacy_position := marker.global_position + offsets[fallback_slot % offsets.size()]
+	var current_position := roster.get_world_spawn_position(99, fallback_slot)
+	var legacy := _vector_wire(legacy_position)
+	var current := _vector_wire(current_position)
+	_expect(current == legacy, "缺失 spawn slot 时未沿用旧的遍历槽位。")
+	roster.free()
+	marker.free()
+	return {"legacy": legacy, "current": current, "fallback_slot": fallback_slot}
 
 
-func _cleanup_game(game: TowerDefenseGame) -> void:
-	_stop_audio_recursive(game)
-	current_scene = null
-	game.queue_free()
-	for _cleanup_frame in range(8):
-		await process_frame
-		await physics_frame
+func _compare_fate_state_boundary(round_index: int) -> Dictionary:
+	var known_buffs := TowerDefenseFateRegistry.get_all_permanent_buff_ids()
+	var first_buff := known_buffs[round_index % known_buffs.size()]
+	var second_buff := known_buffs[(round_index + 1) % known_buffs.size()]
+	var incoming := {
+		"active_permanent_buff_ids": PackedStringArray([
+			String(first_buff),
+			"unknown_fate_buff",
+			String(second_buff),
+			String(first_buff),
+		]),
+		"elite_bias_day": round_index + 2,
+		"double_xirang_day": round_index + 3,
+		"player_dash_cooldown_reduction": 0.1 * float(round_index + 1),
+		"player_max_health_multiplier": 1.1 + 0.05 * float(round_index),
+		"player_move_speed_multiplier": 1.2 + 0.05 * float(round_index),
+		"hurt_speed_penalty_enabled": round_index % 2 == 0,
+		"pending_stone_peer_ids": [7, 2, 7, -1, 4],
+	}
+	var legacy := {
+		"active_permanent_buff_ids": PackedStringArray([
+			String(first_buff),
+			String(second_buff),
+		]),
+		"elite_bias_day": round_index + 2,
+		"double_xirang_day": round_index + 3,
+		"player_dash_cooldown_reduction": 0.1 * float(round_index + 1),
+		"player_max_health_multiplier": 1.1 + 0.05 * float(round_index),
+		"player_move_speed_multiplier": 1.2 + 0.05 * float(round_index),
+		"hurt_speed_penalty_enabled": round_index % 2 == 0,
+		"pending_stone_peer_ids": [2, 4, 7],
+	}
+	var fate := FateCoordinator.new()
+	fate.apply_remote_runtime_state(incoming)
+	var current := fate.export_runtime_state()
+	_expect(current == legacy, "命运运行时关键状态与迁移前 wire 语义不一致。")
+	fate.free()
+	return {"legacy": legacy, "current": current}
+
+
+func _compare_research_state_boundary(round_index: int) -> Dictionary:
+	var states := {}
+	var elapsed := {}
+	var configs := GlobalResearchRegistry.get_all_configs()
+	for config in configs:
+		var wire_id := String(config.research_id)
+		states[wire_id] = ResearchCoordinator.GlobalResearchState.AVAILABLE
+		elapsed[wire_id] = 0.0
+	var completed := configs[round_index % configs.size()] as GlobalResearchConfig
+	states[String(completed.research_id)] = (
+		ResearchCoordinator.GlobalResearchState.COMPLETED
+	)
+	elapsed[String(completed.research_id)] = completed.duration_seconds
+	var legacy := {
+		"schema": ResearchCoordinator.RUNTIME_STATE_SCHEMA,
+		"revision": round_index + 5,
+		"active_global_research_id": "",
+		"global_states": states,
+		"global_elapsed": elapsed,
+		"player_levels": {1: round_index, 4: round_index + 1},
+	}
+	var research := ResearchCoordinator.new()
+	research.apply_multiplayer_runtime_state(legacy)
+	var current := research.export_runtime_state()
+	_expect(current == legacy, "科研运行时关键状态与迁移前 wire 语义不一致。")
+	research.free()
+	return {"legacy": legacy, "current": current}
+
+
+func _make_player(peer_id: int, health: int) -> Player:
+	var player := Player.new()
+	player.peer_id = peer_id
+	player.max_health = health
+	player.current_health = health
+	player.is_dead = false
+	return player
+
+
+func _vector_wire(value: Vector2) -> Array[float]:
+	return [value.x, value.y]
+
+
+func _on_party_status_ledger_changed(_snapshot: Dictionary) -> void:
+	party_ledger_signal_count += 1
 
 
 func _finish() -> void:
-	var trace_json := JSON.stringify(trace)
+	var trace_json := JSON.stringify(trajectories)
 	var hashing := HashingContext.new()
 	hashing.start(HashingContext.HASH_SHA256)
 	hashing.update(trace_json.to_utf8_buffer())
 	var trace_hash := hashing.finish().hex_encode()
-	print("TOWER_FATE_FLOW_AB_TRACE=%s" % trace_json)
-	print("TOWER_FATE_FLOW_AB_HASH=%s" % trace_hash)
+	print("TOWER_FATE_BOUNDARY_AB_HASH=%s" % trace_hash)
 	if failures.is_empty():
-		print("TOWER_DEFENSE_FATE_FLOW_COORDINATOR_AB_PROBE_OK")
-		_schedule_exit(0)
+		print(
+			"TOWER_DEFENSE_FATE_FLOW_COORDINATOR_AB_PROBE_OK "
+			+ "scope=legacy_current_boundary rounds=%d trajectory_hash=%s"
+			% [ROUNDS, trace_hash]
+		)
+		quit(0)
 		return
 	for failure in failures:
 		push_error(failure)
-	_schedule_exit(1)
+	quit(1)
 
 
-func _fail(message: String) -> void:
-	failures.append(message)
-
-
-func _stop_audio_recursive(node: Node) -> void:
-	var player_2d := node as AudioStreamPlayer2D
-	if player_2d != null:
-		player_2d.stop()
-		player_2d.stream = null
-	var player := node as AudioStreamPlayer
-	if player != null:
-		player.stop()
-		player.stream = null
-	for child in node.get_children():
-		_stop_audio_recursive(child)
-
-
-func _schedule_exit(code: int) -> void:
-	exit_code = code
-	exit_timer = Timer.new()
-	exit_timer.one_shot = true
-	exit_timer.wait_time = 0.1
-	root.add_child(exit_timer)
-	exit_timer.timeout.connect(_quit_after_async_release)
-	exit_timer.start()
-
-
-func _quit_after_async_release() -> void:
-	Engine.time_scale = 1.0
-	exit_timer.stop()
-	exit_timer.queue_free()
-	quit(exit_code)
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		failures.append(message)

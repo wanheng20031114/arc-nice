@@ -48,13 +48,20 @@ class LightingProbe:
 		lighting_events.append(&"day")
 
 
-class CriticalCoreGameProbe:
-	extends TowerDefenseGame
+class FateProbeHomeDefenseCoordinator:
+	extends TowerDefenseHomeDefenseCoordinator
 
-	var health_display_update_count := 0
+	var damage_warning_count := 0
 
-	func _update_base_health_display(_play_damage_pulse: bool = true) -> void:
-		health_display_update_count += 1
+	func bind_probe_runtime(runtime: TowerDefenseGame) -> void:
+		_runtime = runtime
+
+	func _present_base_health(
+		play_damage_pulse: bool,
+		_was_remote: bool
+	) -> void:
+		if play_damage_pulse:
+			damage_warning_count += 1
 
 
 var failures: Array[String] = []
@@ -235,7 +242,7 @@ func _test_elite_bias_day_window() -> void:
 	var probe := TowerDefenseGame.new()
 	var coordinator := FateCoordinator.new()
 	coordinator.elite_enemy_config_loads_requested = true
-	coordinator.setup(probe, probe.day_cycle_config)
+	_bind_fate_probe(coordinator, probe)
 	probe.fate_coordinator = coordinator
 	var base_config := load(
 		"res://resources/config/enemies/capoo_knight.tres"
@@ -254,14 +261,14 @@ func _test_elite_bias_day_window() -> void:
 	probe.current_wave_index = 0
 	for sample_index in range(32):
 		_expect(
-			probe._resolve_fate_enemy_config(base_config) == base_config,
+			coordinator.resolve_enemy_config(base_config) == base_config,
 			"Elite bias must not leak into the day before its target window."
 		)
 
 	probe.current_wave_index = 4
 	var saw_elite := false
 	for sample_index in range(128):
-		if probe._resolve_fate_enemy_config(base_config) == elite_config:
+		if coordinator.resolve_enemy_config(base_config) == elite_config:
 			saw_elite = true
 			break
 	_expect(saw_elite, "The configured next day must be able to replace base enemies.")
@@ -269,7 +276,7 @@ func _test_elite_bias_day_window() -> void:
 	probe.current_wave_index = 8
 	for sample_index in range(32):
 		_expect(
-			probe._resolve_fate_enemy_config(base_config) == base_config,
+			coordinator.resolve_enemy_config(base_config) == base_config,
 			"Elite bias must expire after exactly one day."
 		)
 	coordinator.free()
@@ -280,29 +287,29 @@ func _test_double_xirang_day_combat_states() -> void:
 	var probe := TowerDefenseGame.new()
 	var coordinator := FateCoordinator.new()
 	coordinator.elite_enemy_config_loads_requested = true
-	coordinator.setup(probe, probe.day_cycle_config)
+	_bind_fate_probe(coordinator, probe)
 	probe.fate_coordinator = coordinator
 	coordinator.double_xirang_day = 2
 	probe.current_wave_index = 4
 	probe.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_expect(
-		probe._is_fate_double_xirang_reward_active(),
+		coordinator.is_double_xirang_reward_active(),
 		"The target day's ordinary waves must double Xirang kill rewards."
 	)
 	probe.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	_expect(
-		probe._is_fate_double_xirang_reward_active(),
+		coordinator.is_double_xirang_reward_active(),
 		"A target-day boss fight must retain the next-day double-Xirang reward."
 	)
 	probe.wave_state = CombatFlowState.State.INTERMISSION
 	_expect(
-		not probe._is_fate_double_xirang_reward_active(),
+		not coordinator.is_double_xirang_reward_active(),
 		"The double-Xirang fate must remain combat-only."
 	)
 	probe.current_wave_index = 8
 	probe.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_expect(
-		not probe._is_fate_double_xirang_reward_active(),
+		not coordinator.is_double_xirang_reward_active(),
 		"The double-Xirang fate must expire after its single target day."
 	)
 	coordinator.free()
@@ -368,12 +375,12 @@ func _test_xiaocong_collectible_offer_count() -> void:
 	game.fate_manager = coordinator.manager
 	game.luoxi_merchant = merchant
 	game.peer_players = {1: target_player}
-	coordinator.setup(game, game.day_cycle_config)
+	_bind_fate_probe(coordinator, game, null, merchant)
 	coordinator.manager.active = true
 	coordinator.manager.stage = TowerDefenseFateManager.STAGE_RESOLVING
 	coordinator.manager.eligible_peer_ids = [1]
 	LuoxiMerchant.set_runtime_choice_count(LuoxiMerchant.MAX_CHOICE_COUNT)
-	game._begin_fate_collectible_reward()
+	coordinator._begin_collectible_reward()
 	var offer: Array = coordinator.manager.collectible_offers.get(1, []) as Array
 	_expect(
 		coordinator.manager.stage == TowerDefenseFateManager.STAGE_COLLECTIBLE_REWARD
@@ -394,10 +401,8 @@ func _test_critical_core_follow_up_resolution() -> void:
 	coordinator.elite_enemy_config_loads_requested = true
 	root.add_child(coordinator)
 	await process_frame
-	var game := CriticalCoreGameProbe.new()
+	var game := TowerDefenseGame.new()
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
-	game.maximum_base_health = 19
-	game.current_base_health = 13
 	var all_buff_ids := TowerDefenseFateRegistry.get_all_permanent_buff_ids()
 	_expect(
 		all_buff_ids.size() >= 4,
@@ -410,7 +415,13 @@ func _test_critical_core_follow_up_resolution() -> void:
 		return
 	var previously_active_buff_id := all_buff_ids[0]
 	coordinator.active_permanent_buff_ids = [previously_active_buff_id]
-	coordinator.setup(game, game.day_cycle_config)
+	var dependencies := _bind_fate_probe(coordinator, game)
+	var home := (
+		dependencies.get("home_defense") as TowerDefenseHomeDefenseCoordinator
+	)
+	home.maximum_base_health = 19
+	home.current_base_health = 13
+	home.base_health_revision = 0
 	coordinator.manager.random_generator.seed = 7102301
 	coordinator.begin_interlude(1, &"next", [0], 0)
 	coordinator.manager.available_option_ids = [
@@ -431,8 +442,8 @@ func _test_critical_core_follow_up_resolution() -> void:
 		"Critical Core must open a three-choice follow-up containing only buffs not already active."
 	)
 	_expect(
-		game.current_base_health == 13
-		and game.maximum_base_health == 19
+		home.current_base_health == 13
+		and home.maximum_base_health == 19
 		and coordinator.active_permanent_buff_ids == [previously_active_buff_id],
 		"Winning the first Critical Core vote must not reduce health or activate a random buff before the follow-up choice."
 	)
@@ -457,10 +468,10 @@ func _test_critical_core_follow_up_resolution() -> void:
 		"The completed follow-up choice must be retained as the authoritative Critical Core result."
 	)
 	_expect(
-		game.current_base_health == 1
-		and game.maximum_base_health == 19
-		and game.base_health_revision == 1
-		and game.health_display_update_count == 1,
+		home.current_base_health == 1
+		and home.maximum_base_health == 19
+		and home.base_health_revision == 1
+		and (home as FateProbeHomeDefenseCoordinator).damage_warning_count == 0,
 		"Critical Core must set current base health to one exactly once without changing its maximum."
 	)
 	_expect(
@@ -568,7 +579,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		) != null,
 		"The fate room must use a native 27x41 nearest-neighbor Xiaocong sprite, crisp screen-space interaction UI, authored transition audio, and a full-screen shader transition."
 	)
-	game._set_fate_player_combat_locked(true)
+	game.fate_flow_coordinator.set_player_combat_locked(true)
 	_expect(
 		game.player.combat_actions_locked
 		and not game.player.controls_locked,
@@ -603,7 +614,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 	game.player.reset_physics_interpolation()
 	interlude.set_active(false)
 	await physics_frame
-	game._set_fate_player_combat_locked(false)
+	game.fate_flow_coordinator.set_player_combat_locked(false)
 	_expect(
 		XiaocongFateInterlude.DEFAULT_OUTCOME_TEXT
 		== "队伍做出了一个选择..."
@@ -665,7 +676,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		),
 		"Player fate behavior must consume magnitudes from the shared named configs."
 	)
-	game._set_fate_interlude_systems_frozen(true)
+	game.fate_flow_coordinator.set_interlude_systems_frozen(true)
 	_expect(
 		not game.production_coordinator.authoritative_processing_enabled
 		and not game.research_coordinator.authoritative_processing_enabled
@@ -705,7 +716,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		"The authoritative server must reject stale building requests during fate interlude."
 	)
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
-	game._set_fate_interlude_systems_frozen(false)
+	game.fate_flow_coordinator.set_interlude_systems_frozen(false)
 	_expect(
 		game.production_coordinator.authoritative_processing_enabled
 		and game.research_coordinator.authoritative_processing_enabled
@@ -731,7 +742,7 @@ func _test_fate_stone_zero_benefit_filter() -> void:
 	var game := TowerDefenseGame.new()
 	game.run_state = run_state
 	game.player = Player.new()
-	coordinator.setup(game, game.day_cycle_config)
+	_bind_fate_probe(coordinator, game, run_state)
 	coordinator.begin_interlude(1, &"next", [0], 0)
 	_expect(
 		not coordinator.manager.available_option_ids.has(
@@ -762,3 +773,48 @@ func _attach_campaign_coordinator(game: TowerDefenseGame) -> void:
 	coordinator.day_cycle_config = game.day_cycle_config
 	game.add_child(coordinator)
 	game.campaign_coordinator = coordinator
+
+
+func _bind_fate_probe(
+	coordinator: FateCoordinator,
+	game: TowerDefenseGame,
+	run_state: RunStateStore = null,
+	merchant: TowerDefenseLuoxiMerchant = null
+) -> Dictionary:
+	if game.campaign_coordinator == null:
+		_attach_campaign_coordinator(game)
+	var home_defense := FateProbeHomeDefenseCoordinator.new()
+	home_defense.bind_probe_runtime(game)
+	var roster := TowerDefensePlayerRosterCoordinator.new()
+	var adapter := TowerDefenseMultiplayerModeAdapter.new()
+	var enemy_container := Node2D.new()
+	var boss_container := Node2D.new()
+	roster.set_runtime_identity(game.runtime_mode, game.multiplayer_local_peer_id)
+	roster.local_player = game.player
+	roster.peer_players = game.peer_players
+	game.add_child(home_defense)
+	game.add_child(roster)
+	game.add_child(adapter)
+	game.add_child(enemy_container)
+	game.add_child(boss_container)
+	var resolved_merchant := merchant
+	if resolved_merchant == null:
+		resolved_merchant = TowerDefenseLuoxiMerchant.new()
+		game.add_child(resolved_merchant)
+	coordinator.setup(
+		game.campaign_coordinator,
+		home_defense,
+		roster,
+		adapter,
+		run_state,
+		resolved_merchant,
+		enemy_container,
+		boss_container,
+		game.day_cycle_config
+	)
+	return {
+		"home_defense": home_defense,
+		"player_roster": roster,
+		"multiplayer_adapter": adapter,
+		"merchant": resolved_merchant,
+	}

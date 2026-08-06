@@ -33,21 +33,23 @@ class TestSceneRoot:
 
 
 class TestGame:
-	extends TowerDefenseGame
+	extends Node
 
+	var runtime_mode := CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var wave_state := CombatFlowState.State.PRE_WAVE
+	var player: Player = null
 	var damageable_players: Array[Player] = []
 	var test_core_health := 100
 	var cancel_sessions_on_core_damage := false
 	var coordinator_to_cancel: LuoxiSpecialGameCoordinator = null
+	var campaign: TowerDefenseCampaignCoordinator = null
+	var home: TowerDefenseHomeDefenseCoordinator = null
+	var roster: TowerDefensePlayerRosterCoordinator = null
+	var adapter: TowerDefenseMultiplayerModeAdapter = null
 
-	func get_player_for_peer(peer_id: int) -> Player:
-		for candidate in damageable_players:
-			if candidate.peer_id == peer_id:
-				return candidate
-		return null
 
-	func get_luoxi_damageable_players() -> Array[Player]:
-		return damageable_players.duplicate()
+class TestMultiplayerAdapter:
+	extends TowerDefenseMultiplayerModeAdapter
 
 	func apply_luoxi_player_health_loss(
 		target_player: Player,
@@ -66,12 +68,24 @@ class TestGame:
 			target_player.is_dead = true
 		return applied
 
-	func apply_luoxi_core_health_loss(amount: int) -> int:
-		var previous := test_core_health
-		test_core_health = maxi(test_core_health - maxi(amount, 0), 0)
-		if cancel_sessions_on_core_damage and coordinator_to_cancel != null:
-			coordinator_to_cancel.cancel_all()
-		return previous - test_core_health
+
+class TestHomeDefenseCoordinator:
+	extends TowerDefenseHomeDefenseCoordinator
+
+	var test_game: TestGame = null
+
+	func apply_base_damage(amount: int) -> int:
+		var previous := test_game.test_core_health
+		test_game.test_core_health = maxi(
+			test_game.test_core_health - maxi(amount, 0),
+			0
+		)
+		if (
+			test_game.cancel_sessions_on_core_damage
+			and test_game.coordinator_to_cancel != null
+		):
+			test_game.coordinator_to_cancel.cancel_all()
+		return previous - test_game.test_core_health
 
 
 var failures: Array[String] = []
@@ -142,7 +156,7 @@ func _test_ticket_dialogue_and_atomic_consumption() -> void:
 	var coordinator := LuoxiSpecialGameCoordinator.new()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260729
-	coordinator.setup(game, run_state, merchant, rng, true)
+	_configure_coordinator(coordinator, game, merchant, rng)
 
 	var revision_before := run_state.get_inventory_revision()
 	var start_result := coordinator.start_for_peer(0)
@@ -178,6 +192,10 @@ func _test_ticket_dialogue_and_atomic_consumption() -> void:
 		"已结束牌局不得被重复结算。"
 	)
 	coordinator.free()
+	game.campaign.free()
+	game.home.free()
+	game.roster.free()
+	game.adapter.free()
 	game.free()
 	merchant.free()
 	player_instance.free()
@@ -188,6 +206,7 @@ func _test_delayed_rewards_and_immediate_costs() -> void:
 	var player_instance := _make_player(0, 100)
 	var other_player := _make_player(2, 200)
 	var game := TestGame.new()
+	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	game.player = player_instance
 	game.damageable_players = [player_instance, other_player]
 	var coordinator := _make_coordinator(game)
@@ -444,9 +463,39 @@ func _make_coordinator(game: TestGame) -> LuoxiSpecialGameCoordinator:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1
 	var coordinator := LuoxiSpecialGameCoordinator.new()
-	coordinator.setup(game, run_state, merchant, rng, true)
+	_configure_coordinator(coordinator, game, merchant, rng)
 	coordinator.set_meta("test_merchant", merchant)
 	return coordinator
+
+
+func _configure_coordinator(
+	coordinator: LuoxiSpecialGameCoordinator,
+	game: TestGame,
+	merchant: LuoxiMerchant,
+	rng: RandomNumberGenerator
+) -> void:
+	game.campaign = TowerDefenseCampaignCoordinator.new()
+	game.campaign.wave_state = game.wave_state
+	var home := TestHomeDefenseCoordinator.new()
+	home.test_game = game
+	game.home = home
+	game.roster = TowerDefensePlayerRosterCoordinator.new()
+	game.roster.runtime_mode = game.runtime_mode
+	game.roster.local_player = game.player
+	game.roster.peer_players.clear()
+	for player_instance in game.damageable_players:
+		game.roster.peer_players[player_instance.peer_id] = player_instance
+	game.adapter = TestMultiplayerAdapter.new()
+	coordinator.setup(
+		game.campaign,
+		game.home,
+		game.roster,
+		game.adapter,
+		run_state,
+		merchant,
+		rng,
+		true
+	)
 
 
 func _make_player(new_peer_id: int, health: int) -> Player:
@@ -491,6 +540,10 @@ func _free_flow_objects(
 	coordinator.free()
 	if merchant != null:
 		merchant.free()
+	game.campaign.free()
+	game.home.free()
+	game.roster.free()
+	game.adapter.free()
 	game.free()
 	for player_instance in players:
 		player_instance.free()
