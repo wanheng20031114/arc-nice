@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d7n2r5w8y3k6p"]
+
+[ext_resource type="Script" uid="uid://c4j8m2q6v9x3b" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.gd" id="1_placement"]
+
+[node name="PlantPlacementCoordinator" type="Node"]
+script = ExtResource("1_placement")

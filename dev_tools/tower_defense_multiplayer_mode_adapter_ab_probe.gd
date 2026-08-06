@@ -326,7 +326,7 @@ func _create_extracted_fixture() -> Dictionary:
 	var luoxi_game := LuoxiSpecialGameCoordinator.new()
 	var run_state := RunStateStore.new()
 	var research := ResearchCoordinator.new()
-	var placement := PlantPlacementController.new()
+	var placement := TowerDefensePlantPlacementCoordinator.new()
 	var state_timer := Timer.new()
 	adapter.bind_tower_dependencies(
 		runtime,

@@ -64,6 +64,7 @@
 [ext_resource type="PackedScene" uid="uid://d0brkwgd71xus" path="res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.tscn" id="69_fate_flow"]
 [ext_resource type="PackedScene" uid="uid://cs7mb1v2q9p4x" path="res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn" id="70_presentation"]
 [ext_resource type="PackedScene" uid="uid://dubxeu88obeuv" path="res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn" id="71_prewarmer"]
+[ext_resource type="PackedScene" uid="uid://d7n2r5w8y3k6p" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.tscn" id="72_plant_placement_coordinator"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -173,6 +174,8 @@ linglan_boss_enabled = true
 [node name="HomeDefenseCoordinator" parent="." instance=ExtResource("65_home_coordinator")]
 
 [node name="PlantRuntimeCoordinator" parent="." instance=ExtResource("66_plant_coordinator")]
+
+[node name="PlantPlacementCoordinator" parent="." instance=ExtResource("72_plant_placement_coordinator")]
 
 [node name="PlayerRosterCoordinator" parent="." instance=ExtResource("67_player_roster")]
 

@@ -72,6 +72,7 @@ func _test_static_contract() -> void:
 		"var _enemy_coordinator: TowerDefenseEnemyCoordinator",
 		"var _home_defense_coordinator: TowerDefenseHomeDefenseCoordinator",
 		"var _plant_runtime_coordinator: TowerDefensePlantRuntimeCoordinator",
+		"var _plant_placement_coordinator: TowerDefensePlantPlacementCoordinator",
 		"var _player_roster_coordinator: TowerDefensePlayerRosterCoordinator",
 		"var _presentation_coordinator: TowerDefensePresentationCoordinator",
 		"var _fate_flow_coordinator: TowerDefenseFateFlowCoordinator",

@@ -100,7 +100,7 @@ var _luoxi_merchant: TowerDefenseLuoxiMerchant = null
 var _luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator = null
 var _run_state: RunStateStore = null
 var _research_coordinator: ResearchCoordinator = null
-var _plant_placement_controller: PlantPlacementController = null
+var _plant_placement_coordinator: TowerDefensePlantPlacementCoordinator = null
 var _state_timer: Timer = null
 var _merchant_intermission_active := false
 var _luoxi_collectible_claim_counts: Dictionary[int, int] = {}
@@ -147,7 +147,7 @@ func bind_tower_dependencies(
 	luoxi_game: LuoxiSpecialGameCoordinator,
 	run_state: RunStateStore,
 	research: ResearchCoordinator,
-	plant_placement: PlantPlacementController,
+	plant_placement: TowerDefensePlantPlacementCoordinator,
 	state_timer: Timer
 ) -> void:
 	_bind_tower_runtime(runtime_instance)
@@ -168,7 +168,7 @@ func bind_tower_dependencies(
 	_luoxi_special_game_coordinator = luoxi_game
 	_run_state = run_state
 	_research_coordinator = research
-	_plant_placement_controller = plant_placement
+	_plant_placement_coordinator = plant_placement
 	_state_timer = state_timer
 	_connect_mode_signals()
 
@@ -194,7 +194,7 @@ func is_tower_bound() -> bool:
 		and _luoxi_special_game_coordinator != null
 		and _run_state != null
 		and _research_coordinator != null
-		and _plant_placement_controller != null
+		and _plant_placement_coordinator != null
 		and _state_timer != null
 	)
 
@@ -1859,10 +1859,9 @@ func begin_inventory_building_placement(
 	slot_index: int,
 	expected_inventory_revision: int
 ) -> bool:
-	var tower_runtime := runtime as TowerDefenseGame
 	return (
-		tower_runtime != null
-		and tower_runtime.begin_inventory_building_placement(
+		_plant_placement_coordinator != null
+		and _plant_placement_coordinator.begin_inventory_building_placement(
 			slot_index,
 			expected_inventory_revision
 		)
@@ -2289,16 +2288,16 @@ func _connect_mode_signals() -> void:
 		plant_removed.emit
 	):
 		_plant_runtime_coordinator.network_plant_removed.connect(plant_removed.emit)
-	if not _plant_placement_controller.multiplayer_placement_requested.is_connected(
+	if not _plant_placement_coordinator.plant_placement_requested.is_connected(
 		_handle_plant_placement_requested
 	):
-		_plant_placement_controller.multiplayer_placement_requested.connect(
+		_plant_placement_coordinator.plant_placement_requested.connect(
 			_handle_plant_placement_requested
 		)
-	if not _plant_placement_controller.inventory_placement_requested.is_connected(
+	if not _plant_placement_coordinator.inventory_plant_placement_requested.is_connected(
 		_handle_inventory_plant_placement_requested
 	):
-		_plant_placement_controller.inventory_placement_requested.connect(
+		_plant_placement_coordinator.inventory_plant_placement_requested.connect(
 			_handle_inventory_plant_placement_requested
 		)
 	if not _fate_flow_coordinator.local_interaction_requested.is_connected(

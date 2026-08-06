@@ -43,7 +43,6 @@ const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
 )
 const LINGLAN_SLIME_CONFIG_PATHS := TowerDefenseBossCoordinator.LINGLAN_SLIME_CONFIG_PATHS
-const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
@@ -187,6 +186,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var plant_runtime_coordinator := get_node_or_null(
 	"PlantRuntimeCoordinator"
 ) as TowerDefensePlantRuntimeCoordinator
+@onready var plant_placement_coordinator := get_node_or_null(
+	"PlantPlacementCoordinator"
+) as TowerDefensePlantPlacementCoordinator
 @onready var player_roster_coordinator := get_node_or_null(
 	"PlayerRosterCoordinator"
 ) as TowerDefensePlayerRosterCoordinator
@@ -288,7 +290,11 @@ var pending_enemy_config_index: int:
 var active_wave_enemy_ids: Dictionary = {}
 var hud_alive_enemy_ids: Dictionary = {}
 
-var wave_state: CombatFlowState.State = CombatFlowState.State.PRE_WAVE
+var wave_state: CombatFlowState.State = CombatFlowState.State.PRE_WAVE:
+	set(value):
+		wave_state = value
+		if plant_placement_coordinator != null:
+			plant_placement_coordinator.set_flow_state(value)
 var current_wave_index: int = 0
 var current_wave_total: int = 0
 var current_wave_spawned: int = 0
@@ -817,6 +823,10 @@ func _ready() -> void:
 	)
 	_configure_home_defense()
 	_configure_plant_defense_system()
+	if not _configure_plant_placement_coordinator():
+		set_process(false)
+		set_physics_process(false)
+		return
 	production_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
@@ -856,11 +866,6 @@ func _ready() -> void:
 	player_profile_panel.bind_player(player)
 	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
 	currency_hud.profile_requested.connect(_on_currency_hud_profile_requested)
-	settings_panel.opened.connect(_on_exclusive_modal_opened)
-	settings_panel.closed.connect(_on_settings_panel_closed)
-	player_profile_panel.opened.connect(_on_exclusive_modal_opened)
-	player_profile_panel.closed.connect(_on_player_profile_panel_closed)
-	debug_collectible_window.closed.connect(_on_debug_collectible_window_closed)
 	presentation_coordinator.connect_wave_hud_requests()
 	luoxi_special_game_coordinator.setup(
 		self,
@@ -1271,7 +1276,7 @@ func _bind_tower_multiplayer_adapter_dependencies() -> bool:
 		luoxi_special_game_coordinator,
 		run_state,
 		research_coordinator,
-		plant_placement_controller,
+		plant_placement_coordinator,
 		state_timer
 	)
 	if not tower_multiplayer_mode_adapter.is_tower_bound():
@@ -1620,30 +1625,33 @@ func _configure_plant_defense_system() -> void:
 	if not plant_system.plant_removed.is_connected(_on_plant_removed):
 		plant_system.plant_removed.connect(_on_plant_removed)
 
-	plant_placement_controller.setup(plant_system, player)
-	plant_placement_controller.set_multiplayer_request_mode(
-		runtime_mode != RuntimeMode.SINGLEPLAYER
-	)
-	plant_placement_controller.configure_inventory_catalog(
-		run_state,
-		multiplayer_local_peer_id if runtime_mode != RuntimeMode.SINGLEPLAYER else 0,
-		sandbox_free_building_enabled
-	)
-	if not plant_placement_controller.player_lock_requested.is_connected(
-		_on_plant_player_lock_requested
-	):
-		plant_placement_controller.player_lock_requested.connect(
-			_on_plant_player_lock_requested
-		)
-	if not plant_placement_controller.placement_mode_changed.is_connected(
-		_on_plant_placement_mode_changed
-	):
-		plant_placement_controller.placement_mode_changed.connect(
-			_on_plant_placement_mode_changed
-		)
 	if not plant_system.plant_placed.is_connected(_on_runtime_plant_placed):
 		plant_system.plant_placed.connect(_on_runtime_plant_placed)
-	_update_plant_placement_input_state()
+
+
+func _configure_plant_placement_coordinator() -> bool:
+	if plant_placement_coordinator == null:
+		push_error("TowerDefenseGame: 缺少静态 PlantPlacementCoordinator 节点。")
+		return false
+	if not plant_placement_coordinator.setup(
+		plant_placement_controller,
+		plant_system,
+		plant_runtime_coordinator,
+		run_state,
+		player,
+		session_object_pool,
+		settings_panel,
+		player_profile_panel,
+		debug_collectible_window,
+		PLANT_PLACEMENT_PARTICLES_SCENE,
+		PLANT_REMOVAL_SMOKE_SCENE,
+		int(runtime_mode),
+		multiplayer_local_peer_id,
+		sandbox_free_building_enabled,
+		wave_state
+	):
+		return false
+	return plant_placement_coordinator.is_bound()
 
 
 func _prepare_plant_runtime_signal_bindings() -> void:
@@ -1653,43 +1661,12 @@ func _prepare_plant_runtime_signal_bindings() -> void:
 		plant_runtime_coordinator.enemy_retarget_requested.connect(
 			_request_enemy_retarget_after_objective_change
 		)
-	if not plant_runtime_coordinator.placement_presentation_requested.is_connected(
-		_spawn_plant_placement_particles
-	):
-		plant_runtime_coordinator.placement_presentation_requested.connect(
-			_spawn_plant_placement_particles
-		)
-	if not plant_runtime_coordinator.removal_presentation_requested.is_connected(
-		_spawn_plant_removal_smoke
-	):
-		plant_runtime_coordinator.removal_presentation_requested.connect(
-			_spawn_plant_removal_smoke
-		)
-	if not plant_runtime_coordinator.modal_ui_visibility_changed.is_connected(
-		_on_plant_modal_ui_visibility_changed
-	):
-		plant_runtime_coordinator.modal_ui_visibility_changed.connect(
-			_on_plant_modal_ui_visibility_changed
-		)
 	if not plant_runtime_coordinator.progression_plant_placed.is_connected(
 		_track_progression_plant_placement
 	):
 		plant_runtime_coordinator.progression_plant_placed.connect(
 			_track_progression_plant_placement
 		)
-
-
-func _on_plant_player_lock_requested(_locked: bool) -> void:
-	_refresh_player_modal_ui_lock()
-
-
-func _on_plant_placement_mode_changed(active: bool) -> void:
-	if active and _has_exclusive_modal_open():
-		plant_placement_controller.cancel_placement()
-		return
-	_refresh_player_modal_ui_lock()
-
-
 func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
 	plant_runtime_coordinator.handle_plant_placed(plant)
@@ -1716,148 +1693,44 @@ func _track_progression_plant_placement(plant: PlantDefense) -> void:
 		water_chain_online_seconds = elapsed_seconds
 
 
-func _spawn_plant_placement_particles(plant: PlantDefense) -> void:
-	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(
-		self,
-		plant.get_lifecycle_vfx_global_position()
-	):
-		return
-	var effect := session_object_pool.try_acquire(
-		PLANT_PLACEMENT_PARTICLES_SCENE
-	) as PlantPlacementParticles
-	if effect == null:
-		return
-	effect.global_position = plant.get_lifecycle_vfx_global_position()
-	effect.reset_physics_interpolation()
-	effect.restart_effect(plant, plant.get_lifecycle_particle_scale())
-
-
-func _spawn_plant_removal_smoke(plant: PlantDefense) -> void:
-	if not WORLD_EFFECT_VISIBILITY.is_position_near_viewport(
-		self,
-		plant.get_lifecycle_vfx_global_position()
-	):
-		return
-	var effect := session_object_pool.try_acquire(
-		PLANT_REMOVAL_SMOKE_SCENE
-	) as PlantRemovalSmoke
-	if effect == null:
-		return
-	effect.global_position = plant.get_lifecycle_vfx_global_position()
-	effect.reset_physics_interpolation()
-	effect.restart_effect(plant.get_lifecycle_particle_scale(), plant.is_dead)
-
-
 func _on_plant_terrain_decay_timer_timeout() -> void:
 	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
 	plant_runtime_coordinator.apply_unsupported_terrain_damage_tick()
 
 
-func _on_plant_modal_ui_visibility_changed(is_open: bool) -> void:
-	if is_open:
-		_cancel_plant_placement()
-	_refresh_player_modal_ui_lock()
-	_update_plant_placement_input_state()
+func _update_plant_placement_input_state() -> void:
+	if plant_placement_coordinator != null:
+		plant_placement_coordinator.set_flow_state(wave_state)
+
+
+func _refresh_player_modal_ui_lock() -> void:
+	if plant_placement_coordinator != null:
+		plant_placement_coordinator.refresh_interaction_state()
 
 
 func _has_exclusive_modal_open() -> bool:
 	return (
-		settings_panel.is_open()
-		or player_profile_panel.is_open()
-		or debug_collectible_window.is_open()
-		or _has_open_plant_modal_ui()
+		plant_placement_coordinator != null
+		and plant_placement_coordinator.has_exclusive_modal_open()
 	)
-
-
-func _has_open_plant_modal_ui() -> bool:
-	for node in get_tree().get_nodes_in_group(&"plant_defense"):
-		var plant := node as PlantDefense
-		if plant != null and plant.is_modal_ui_open():
-			return true
-	return false
-
-
-func _update_plant_placement_input_state() -> void:
-	if plant_placement_controller == null:
-		return
-	var input_enabled := (
-		player != null
-		and not player.is_dead
-		and wave_state not in [
-			CombatFlowState.State.VICTORY,
-			CombatFlowState.State.DEFEAT,
-			CombatFlowState.State.FATE_INTERLUDE,
-		]
-		and not _has_exclusive_modal_open()
-	)
-	plant_placement_controller.set_placement_input_enabled(input_enabled)
-	plant_placement_controller.set_process_unhandled_input(input_enabled)
 
 
 func _cancel_plant_placement() -> void:
-	if plant_placement_controller != null and plant_placement_controller.is_active():
-		plant_placement_controller.cancel_placement()
+	if plant_placement_coordinator != null:
+		plant_placement_coordinator.cancel_placement()
 
 
 func begin_inventory_building_placement(
 	slot_index: int,
 	expected_inventory_revision: int = -1
 ) -> bool:
-	if (
-		plant_placement_controller == null
-		or plant_system == null
-		or player == null
-		or player.is_dead
-		or wave_state == CombatFlowState.State.FATE_INTERLUDE
-		or _has_exclusive_modal_open()
-	):
-		return false
-	var inventory_peer_id := (
-		multiplayer_local_peer_id
-		if runtime_mode != RuntimeMode.SINGLEPLAYER
-		else 0
-	)
-	var item := (
-		run_state.get_item_for_peer(inventory_peer_id, slot_index)
-		if inventory_peer_id > 0
-		else run_state.get_item(slot_index)
-	)
-	var current_revision := (
-		run_state.get_inventory_revision_for_peer(inventory_peer_id)
-		if inventory_peer_id > 0
-		else run_state.get_inventory_revision()
-	)
-	if (
-		item == null
-		or item.pickup_type != PickupConfig.PickupType.BUILDING
-		or item.placeable_plant_id == &""
-		or item.resource_path.is_empty()
-		or (
-			expected_inventory_revision >= 0
-			and expected_inventory_revision != current_revision
+	return (
+		plant_placement_coordinator != null
+		and plant_placement_coordinator.begin_inventory_building_placement(
+			slot_index,
+			expected_inventory_revision
 		)
-	):
-		return false
-	var config := plant_system.get_config(item.placeable_plant_id)
-	if (
-		config == null
-		or not config.is_valid()
-		or (
-			runtime_mode != RuntimeMode.SINGLEPLAYER
-			and not config.supports_multiplayer
-		)
-	):
-		return false
-	var started := plant_placement_controller.begin_inventory_placement(
-		config,
-		slot_index,
-		current_revision,
-		item.resource_path
 	)
-	if started:
-		_refresh_player_modal_ui_lock()
-		_update_plant_placement_input_state()
-	return started
 
 
 func _on_personal_inventory_output_committed(peer_id: int) -> void:
@@ -2120,60 +1993,15 @@ func _register_research_players() -> void:
 
 
 func _on_currency_hud_settings_requested() -> void:
-	_cancel_plant_placement()
 	if player_profile_panel.is_open():
 		player_profile_panel.close()
 	settings_panel.open()
-	_lock_player_for_modal_ui()
-	_update_plant_placement_input_state()
 
 
 func _on_currency_hud_profile_requested() -> void:
-	_cancel_plant_placement()
 	if settings_panel.is_open():
 		settings_panel.close()
 	player_profile_panel.open()
-	_update_plant_placement_input_state()
-
-
-func _on_exclusive_modal_opened() -> void:
-	_cancel_plant_placement()
-	_update_plant_placement_input_state()
-
-
-func _on_settings_panel_closed() -> void:
-	_refresh_player_modal_ui_lock()
-	_update_plant_placement_input_state()
-
-
-func _on_player_profile_panel_closed() -> void:
-	_refresh_player_modal_ui_lock()
-	_update_plant_placement_input_state()
-
-
-func _on_debug_collectible_window_closed() -> void:
-	_refresh_player_modal_ui_lock()
-	_update_plant_placement_input_state()
-
-
-func _lock_player_for_modal_ui() -> void:
-	if player != null and not player.is_dead:
-		player.set_controls_locked(true)
-
-
-func _refresh_player_modal_ui_lock() -> void:
-	if player == null or player.is_dead:
-		return
-	if (
-		_has_exclusive_modal_open()
-		or (
-			plant_placement_controller != null
-			and plant_placement_controller.is_active()
-		)
-	):
-		player.set_controls_locked(true)
-	else:
-		player.set_controls_locked(false)
 
 
 func _toggle_full_screen() -> void:
@@ -2198,14 +2026,7 @@ func _toggle_full_screen() -> void:
 func _toggle_debug_collectible_window() -> void:
 	if debug_collectible_window == null or not sandbox_free_building_enabled:
 		return
-	if not debug_collectible_window.is_open():
-		_cancel_plant_placement()
 	debug_collectible_window.toggle()
-	if debug_collectible_window.is_open():
-		_lock_player_for_modal_ui()
-	else:
-		_refresh_player_modal_ui_lock()
-	_update_plant_placement_input_state()
 
 
 func grant_debug_collectible(config_path: String) -> bool:
