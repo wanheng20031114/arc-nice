@@ -2,7 +2,7 @@ extends Area2D
 class_name WeishidaierSkill1Bomb
 
 const EXPLOSION_SCENE := preload("res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn")
-const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const WORLD_MASK := 1
 const ENEMY_BODY_MASK := 4
 const PLAYER_MASK := 2

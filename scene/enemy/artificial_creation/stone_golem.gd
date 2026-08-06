@@ -7,7 +7,7 @@ const SLAM_COLLISION_MASK := (
 	SLAM_PLAYER_COLLISION_MASK | SLAM_PLANT_COLLISION_MASK
 )
 const WARNING_BASE_RADIUS := 44.0
-const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const StoneGolemConfigScript := preload(
 	"res://resources/config/enemies/stone_golem_config.gd"
 )

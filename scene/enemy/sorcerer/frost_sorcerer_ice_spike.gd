@@ -16,7 +16,7 @@ const COMPENSATION_STEP := 1.0 / 60.0
 const MAX_UNSWEPT_DISTANCE := 4.0
 const MAX_UNSWEPT_DISTANCE_SQUARED := MAX_UNSWEPT_DISTANCE * MAX_UNSWEPT_DISTANCE
 const PROJECTILE_SHAPE_SWEEP_2D_SCRIPT := preload(
-	"res://scene/projectile_shape_sweep_2d.gd"
+	"res://scene/combat/physics/projectile_shape_sweep_2d.gd"
 )
 
 @export var speed: float = 100.0

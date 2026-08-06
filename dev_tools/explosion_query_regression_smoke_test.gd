@@ -1,6 +1,6 @@
 extends SceneTree
 
-const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const BOSS_ROCKET_SCENE := preload(
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
 )

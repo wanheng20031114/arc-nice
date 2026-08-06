@@ -15,7 +15,7 @@ const COMPENSATION_STEP := 1.0 / 60.0
 const TARGET_REFRESH_INTERVAL := 0.35
 const TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"
 const PROJECTILE_SHAPE_SWEEP_2D_SCRIPT := preload(
-	"res://scene/projectile_shape_sweep_2d.gd"
+	"res://scene/combat/physics/projectile_shape_sweep_2d.gd"
 )
 static var performance_metrics_enabled := false
 static var _performance_metrics := {

@@ -3,7 +3,7 @@ class_name AgaveCannonball
 
 signal projectile_finished(projectile_id: int, projectile: Node)
 
-const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const PROJECTILE_SHIELD_COLLISION_MASK := 1 << 12
 const WORLD_AND_ENEMY_COLLISION_MASK := 5
 const WORLD_ENEMY_AND_PROJECTILE_SHIELD_MASK := (

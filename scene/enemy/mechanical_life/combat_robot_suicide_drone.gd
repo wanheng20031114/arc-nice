@@ -3,7 +3,7 @@ class_name CombatRobotSuicideDrone
 
 signal projectile_finished(projectile_id: int, projectile: Node)
 
-const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload("res://scene/enemy_attack_audio_limiter.gd")
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const NIGHT_VFX_FLASH_POOL := preload("res://scene/lighting/night_vfx_flash_pool.gd")

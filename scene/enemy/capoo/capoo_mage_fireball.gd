@@ -4,7 +4,7 @@ class_name CapooMageFireball
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const IMPACT_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn")
-const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
 const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 512

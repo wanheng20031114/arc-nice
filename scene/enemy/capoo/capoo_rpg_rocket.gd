@@ -4,7 +4,7 @@ class_name CapooRPGRocket
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const EXPLOSION_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_explosion.tscn")
-const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const EXPLOSION_QUERY_BATCH_SIZE := 64

@@ -2,7 +2,7 @@ extends CapooAK47Bullet
 class_name CombatRobotGunnerBullet
 
 const SOURCE_TYPE := &"combat_robot_gunner_bullet"
-const PROJECTILE_SHAPE_SWEEP := preload("res://scene/projectile_shape_sweep_2d.gd")
+const PROJECTILE_SHAPE_SWEEP := preload("res://scene/combat/physics/projectile_shape_sweep_2d.gd")
 
 @onready var sweep_collision_shape: CollisionShape2D = $CollisionShape2D
 

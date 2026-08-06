@@ -3,7 +3,7 @@ class_name LinglanSkill2SakuraRocket
 
 signal projectile_finished(projectile_id: int, projectile: Node)
 
-const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/complete_shape_query_2d.gd")
+const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
 const WORLD_COLLISION_MASK := 1
 const PLAYER_COLLISION_MASK := 2
 const ENEMY_BODY_COLLISION_MASK := 4
