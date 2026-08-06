@@ -1,8 +1,8 @@
 [gd_scene load_steps=13 format=3]
 
-[ext_resource type="Script" path="res://scene/plant_defense/production_building_panel.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/economy/production/production_building_panel.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/production/production_panel_background.png" id="2_background"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_inventory_slot.tscn" id="3_slot"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/economy/shared/tower_economy_inventory_slot.tscn" id="3_slot"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]

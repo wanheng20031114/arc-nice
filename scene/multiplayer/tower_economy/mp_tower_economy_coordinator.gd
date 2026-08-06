@@ -2,10 +2,10 @@ extends Node
 class_name MpTowerEconomyCoordinator
 
 const OakWarehouseProtocolScript := preload(
-	"res://scene/plant_defense/oak_warehouse_protocol.gd"
+	"res://scene/game_modes/tower_defense/economy/warehouse/oak_warehouse_protocol.gd"
 )
 const ProductionBuildingProtocolScript := preload(
-	"res://scene/plant_defense/production_building_protocol.gd"
+	"res://scene/game_modes/tower_defense/economy/production/production_building_protocol.gd"
 )
 const PeerReplayResultCacheScript := preload(
 	"res://scene/multiplayer/peer_replay_result_cache.gd"

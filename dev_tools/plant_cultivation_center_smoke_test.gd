@@ -1,13 +1,13 @@
 extends SceneTree
 
 const COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/production_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn"
 )
 const WAREHOUSE_SCENE := preload(
 	"res://scene/plant_defense/oak_warehouse.tscn"
 )
 const PANEL_SCENE := preload(
-	"res://scene/plant_defense/production_building_panel.tscn"
+	"res://scene/game_modes/tower_defense/economy/production/production_building_panel.tscn"
 )
 const PLACEMENT_CONTROLLER_SCENE := preload(
 	"res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn"

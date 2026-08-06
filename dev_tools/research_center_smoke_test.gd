@@ -1,16 +1,16 @@
 extends SceneTree
 
 const PRODUCTION_COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/production_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn"
 )
 const RESEARCH_COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/research_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/research/research_coordinator.tscn"
 )
 const DAY_NIGHT_CONTROLLER_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"
 )
 const WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
-const PANEL_SCENE := preload("res://scene/plant_defense/research_center_panel.tscn")
+const PANEL_SCENE := preload("res://scene/game_modes/tower_defense/economy/research/research_center_panel.tscn")
 const WEISHIDAIER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )

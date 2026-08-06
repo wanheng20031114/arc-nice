@@ -1,7 +1,7 @@
 extends SceneTree
 
 const RESEARCH_COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/research_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/research/research_coordinator.tscn"
 )
 const CENTER_SCENE := preload(
 	"res://scene/plant_defense/research_center.tscn"

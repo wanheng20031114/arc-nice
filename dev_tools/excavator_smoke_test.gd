@@ -1,10 +1,10 @@
 extends SceneTree
 
 const COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/production_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn"
 )
 const PANEL_SCENE := preload(
-	"res://scene/plant_defense/production_building_panel.tscn"
+	"res://scene/game_modes/tower_defense/economy/production/production_building_panel.tscn"
 )
 const EXCAVATOR_CONFIG: PlantDefenseConfig = preload(
 	"res://resources/config/plant_defense/excavator.tres"

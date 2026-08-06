@@ -22,7 +22,7 @@ const LUOXI_SOURCE_PATH := (
 	+ "luoxi_special_game_coordinator.gd"
 )
 const RESEARCH_SOURCE_PATH := (
-	"res://scene/plant_defense/research_coordinator.gd"
+	"res://scene/game_modes/tower_defense/economy/research/research_coordinator.gd"
 )
 
 var failures: Array[String] = []

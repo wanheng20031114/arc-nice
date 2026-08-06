@@ -4,7 +4,7 @@ const WAREHOUSE_SCRIPT := preload(
 	"res://scene/plant_defense/oak_warehouse.gd"
 )
 const BRIDGE := preload(
-	"res://scene/plant_defense/shared_warehouse_ledger_bridge.gd"
+	"res://scene/game_modes/tower_defense/economy/warehouse/shared_warehouse_ledger_bridge.gd"
 )
 const PLANK := preload("res://resources/config/materials/material_plank.tres")
 const BASKETBALL := preload(

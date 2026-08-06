@@ -5,7 +5,7 @@ const CULTIVATION_CENTER_SCENE := preload(
 	"res://scene/plant_defense/plant_cultivation_center.tscn"
 )
 const PRODUCTION_COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/production_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn"
 )
 const PROGRESSION: TowerDefenseProgressionConfig = preload(
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"

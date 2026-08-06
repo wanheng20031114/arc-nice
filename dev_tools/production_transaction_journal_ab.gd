@@ -1,7 +1,7 @@
 extends SceneTree
 
 const COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/production_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn"
 )
 const WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")

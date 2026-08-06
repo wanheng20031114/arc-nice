@@ -7,7 +7,7 @@ const SIMPLE_CRAFTING_PANEL_SCENE := preload(
 	"res://scene/ui/shared/crafting/simple_crafting_panel.tscn"
 )
 const RESEARCH_COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/research_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/research/research_coordinator.tscn"
 )
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const PLAYER_SCENE := preload(

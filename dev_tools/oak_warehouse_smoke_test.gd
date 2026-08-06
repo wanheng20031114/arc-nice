@@ -1,7 +1,7 @@
 extends SceneTree
 
 const WAREHOUSE_SCENE := preload("res://scene/plant_defense/oak_warehouse.tscn")
-const WAREHOUSE_PANEL_SCENE := preload("res://scene/plant_defense/oak_warehouse_panel.tscn")
+const WAREHOUSE_PANEL_SCENE := preload("res://scene/game_modes/tower_defense/economy/warehouse/oak_warehouse_panel.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")

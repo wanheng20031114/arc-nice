@@ -1,11 +1,11 @@
 extends SceneTree
 
-const PANEL_SCENE := preload("res://scene/plant_defense/research_center_panel.tscn")
+const PANEL_SCENE := preload("res://scene/game_modes/tower_defense/economy/research/research_center_panel.tscn")
 const COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/research_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/research/research_coordinator.tscn"
 )
 const PRODUCTION_SCENE := preload(
-	"res://scene/plant_defense/production_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/economy/production/production_coordinator.tscn"
 )
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
