@@ -247,7 +247,8 @@ func _on_player_snapshot_send_requested(
 	_rpc_to_peer(
 		peer_id,
 		&"_rpc_receive_player_snapshot",
-		[host_timestamp, data]
+		[host_timestamp, data],
+		false
 	)
 
 
@@ -2069,7 +2070,8 @@ func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
 					chunk.chunk_index,
 					batch.chunk_count,
 					batch.snapshot_hz,
-				]
+				],
+				false
 			)
 
 
