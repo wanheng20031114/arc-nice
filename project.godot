@@ -27,11 +27,11 @@ RunState="*res://run_state.gd"
 NetManager="*res://scene/multiplayer/net_manager.gd"
 UIAudio="*res://scene/ui_click_audio.tscn"
 GameLoadCoordinator="*res://scene/loading/game_load_coordinator.tscn"
-StatusEffectExpiryScheduler="*res://scene/status_effect_expiry_scheduler.gd"
-BurnStatusScheduler="*res://scene/burn_status_scheduler.gd"
-BleedStatusScheduler="*res://scene/bleed_status_scheduler.gd"
-ColdStatusScheduler="*res://scene/cold_status_scheduler.gd"
-EnemyCollectibleStatusScheduler="*res://scene/enemy_collectible_status_scheduler.gd"
+StatusEffectExpiryScheduler="*res://scene/combat/status/status_effect_expiry_scheduler.gd"
+BurnStatusScheduler="*res://scene/combat/status/burn_status_scheduler.gd"
+BleedStatusScheduler="*res://scene/combat/status/bleed_status_scheduler.gd"
+ColdStatusScheduler="*res://scene/combat/status/cold_status_scheduler.gd"
+EnemyCollectibleStatusScheduler="*res://scene/combat/status/enemy_collectible_status_scheduler.gd"
 
 [display]
 

@@ -152,8 +152,8 @@ Godot 官方文档也建议将物理模拟保持在固定 Tick，并用插值把
 
 仓库内已有多个正确的“注册到共享服务、空闲时停止、按数量/时间预算处理”范例：
 
-- 状态过期：`scene/status_effect_expiry_scheduler.gd:3-12`、`:82-145`，每渲染帧最多 128 个目标 / 1500 微秒。
-- 燃烧：`scene/burn_status_scheduler.gd:4` 的权威伤害周期为 1 秒；活跃时才打开物理处理，但调度器当前仍在每个物理 Tick 推进倒计时（`:177-225`）。
+- 状态过期：`scene/combat/status/status_effect_expiry_scheduler.gd:3-12`、`:82-145`，每渲染帧最多 128 个目标 / 1500 微秒。
+- 燃烧：`scene/combat/status/burn_status_scheduler.gd:4` 的权威伤害周期为 1 秒；活跃时才打开物理处理，但调度器当前仍在每个物理 Tick 推进倒计时（`:177-225`）。
 - 守护者光环：`scene/enemy/guardian_aura_system.gd:20-32` 以 0.2 秒刷新并限制目标数、守护者数和 2500 微秒服务预算。
 - 竹加农炮战斗：`scene/plant_defense/bamboo_mortar_combat_system.gd:15-18`、`:223-245` 已集中索敌请求并实施每帧数量/时间预算。
 - AK 子弹：`scene/enemy/capoo_projectile_motion_system.gd:23-63` 已关闭每颗注册子弹的独立物理回调，改由一个系统循环。
