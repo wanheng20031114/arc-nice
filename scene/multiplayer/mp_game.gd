@@ -19,48 +19,13 @@ const MpTowerFateCoordinatorScript := preload(
 const MpCollectiblePresentationCoordinatorScript := preload(
 	"res://scene/multiplayer/collectible_presentation/mp_collectible_presentation_coordinator.gd"
 )
+const MpNetworkDiagnosticsCoordinatorScript := preload(
+	"res://scene/multiplayer/network_diagnostics/mp_network_diagnostics_coordinator.gd"
+)
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := (
 	MpProjectileCoordinatorScript.LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
 )
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
-const MultiplayerRuntimeMetricsScript := preload(
-	"res://scene/multiplayer/multiplayer_runtime_metrics.gd"
-)
-const TRANSACTION_RPC_METHODS := {
-	&"net_inventory_snapshot": true,
-	&"net_inventory_item_used": true,
-	&"net_inventory_item_discarded": true,
-	&"net_simple_crafting_result": true,
-	&"net_pickup_collected": true,
-	&"net_upgrade_confirmed": true,
-	&"net_skill1_purchase_confirmed": true,
-	&"net_luoxi_collectible_confirmed": true,
-	&"net_luoxi_collectible_offer_state": true,
-	&"net_luoxi_collectible_refresh_confirmed": true,
-	&"net_luoxi_special_game_started": true,
-	&"net_luoxi_special_game_card_revealed": true,
-	&"net_luoxi_special_game_finished": true,
-	&"net_warehouse_command_result": true,
-	&"net_warehouse_storage_snapshot_batch": true,
-	&"net_production_command_result": true,
-	&"net_production_state_batch": true,
-	&"net_research_command_result": true,
-	&"net_research_state_updated": true,
-	&"net_cheat_xirang_confirmed": true,
-	&"net_debug_collectible_granted": true,
-}
-const FEEDBACK_RPC_METHODS := {
-	&"net_collectible_visual_effect": true,
-	&"net_collectible_follow_visual_effect": true,
-	&"net_enemy_damage_feedback_batch": true,
-	&"net_enemy_damage_applied": true,
-	&"net_tiyi_high_noon_targets": true,
-	&"net_enemy_action": true,
-	&"net_enemy_target_action": true,
-	&"net_enemy_lightning_chain": true,
-	&"net_plant_health_batch": true,
-	&"net_tower_defense_wave_progress_changed": true,
-}
 const INPUT_BUTTON_RELOAD := MpPlayerCoordinator.INPUT_BUTTON_RELOAD
 const INPUT_BUTTON_DASH := MpPlayerCoordinator.INPUT_BUTTON_DASH
 const TANGO_BARRAGE_MAXIMUM_SECONDS := MpPlayerCoordinator.TANGO_BARRAGE_MAXIMUM_SECONDS
@@ -84,9 +49,6 @@ const LIGHTNING_SORCERER_CHAIN_MAX_POINTS := 6
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TANGO_LASER_PROJECTILE_TYPE: StringName = &"tango_laser_bullet"
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
-const SNAPSHOT_PACKET_WARN_BYTES := 1200
-const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
-const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
 const ENEMY_TERMINAL_DEFEATED := 0
@@ -119,6 +81,9 @@ const ENEMY_TERMINAL_REMOVED := 2
 @onready var collectible_presentation_coordinator: MpCollectiblePresentationCoordinatorScript = (
 	$CollectiblePresentationCoordinator
 )
+@onready var network_diagnostics_coordinator: MpNetworkDiagnosticsCoordinatorScript = (
+	$NetworkDiagnosticsCoordinator
+)
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var game: CombatRuntimeBase = null
@@ -140,25 +105,11 @@ var _next_collectible_effect_event_id: int = 1
 var _processed_collectible_effect_event_ids: Dictionary = {}
 var _disconnected_player_reconnect_states: Dictionary[int, Dictionary] = {}
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
-var _snapshot_packet_warn_time_left: float = 0.0
 var _host_startup_snapshot_grace_time_left: float = 0.0
 var _client_host_game_ready: bool = false
-var _max_player_snapshot_packet_bytes: int = 0
-var _max_enemy_snapshot_packet_bytes: int = 0
-var _large_player_snapshot_packet_count: int = 0
-var _large_enemy_snapshot_packet_count: int = 0
-var _enemy_snapshot_payload_bytes_total: int = 0
-var _enemy_snapshot_packet_count: int = 0
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 var _public_room_keepalive_time_left: float = 0.0
 var _public_room_keepalive_in_flight: bool = false
-var _rpc_payload_diagnostics_enabled := false
-var _rpc_payload_call_counts: Dictionary[StringName, int] = {}
-var _rpc_payload_sample_bytes: Dictionary[StringName, int] = {}
-var _rpc_payload_sample_count := 0
-var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
-	_NetConstants.CHANNEL_COUNT
-)
 var _embedded_runtime_active := false
 var _embedded_participant_peer_ids: Dictionary[int, bool] = {}
 var _suspended_embedded_participant_peer_ids: Dictionary[int, bool] = {}
@@ -428,6 +379,8 @@ func _exit_tree() -> void:
 		tower_fate_coordinator.reset_session_state()
 	if collectible_presentation_coordinator != null:
 		collectible_presentation_coordinator.reset_session_state()
+	if network_diagnostics_coordinator != null:
+		network_diagnostics_coordinator.reset_session_state()
 	_public_room_keepalive_in_flight = false
 
 
@@ -846,7 +799,7 @@ func _on_tower_economy_plant_runtime_state_apply_requested(
 func _on_tower_economy_transaction_latency_observed(
 	latency_ms: float
 ) -> void:
-	_runtime_network_metrics.record_transaction_latency_ms(latency_ms)
+	network_diagnostics_coordinator.record_transaction_latency_ms(latency_ms)
 
 
 func _on_merchant_transactions_rpc_to_host_requested(
@@ -1863,7 +1816,7 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 	if net_manager.has_method("is_peer_send_ready"):
 		if not bool(net_manager.call("is_peer_send_ready", peer_id)):
 			return
-	_runtime_network_metrics.record_state_repair()
+	network_diagnostics_coordinator.record_state_repair()
 	tower_world_coordinator.request_terrain_snapshot_for_peer(peer_id)
 	_send_live_plant_roster_to_peer(peer_id)
 	for state_peer_id_variant in game.peer_players.keys():
@@ -2213,12 +2166,12 @@ func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> voi
 	if embedded_runtime and not _embedded_runtime_active:
 		return
 	var peer_ids := _get_connected_client_peer_ids()
-	if not peer_ids.is_empty():
-		_record_outbound_rpc(method_name, args, peer_ids.size())
 	for peer_id in peer_ids:
 		var rpc_args: Array = [peer_id, method_name]
 		rpc_args.append_array(args)
 		callv("rpc_id", rpc_args)
+	if not peer_ids.is_empty():
+		_record_outbound_rpc(method_name, args, peer_ids.size())
 
 
 func _record_outbound_rpc(
@@ -2226,146 +2179,58 @@ func _record_outbound_rpc(
 	args: Array,
 	packet_count: int = 1
 ) -> void:
-	if packet_count <= 0:
-		return
-	var channel := _get_rpc_traffic_channel(method_name)
-	# Packet counts remain exact in production. Payload byte diagnostics are opt-in
-	# because serializing live RPC arguments here would duplicate Godot's real RPC
-	# serialization work. When enabled, one sample per method is refreshed every
-	# fixed number of calls and reused as an explicitly approximate byte estimate.
-	if not _rpc_payload_diagnostics_enabled:
-		_runtime_network_metrics.record_packet(channel, 0, packet_count)
-		return
-	var call_count := int(_rpc_payload_call_counts.get(method_name, 0)) + 1
-	_rpc_payload_call_counts[method_name] = call_count
-	if (
-		not _rpc_payload_sample_bytes.has(method_name)
-		or call_count % RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL == 0
-	):
-		_rpc_payload_sample_bytes[method_name] = var_to_bytes(args).size() + 16
-		_rpc_payload_sample_count += 1
-	var payload_bytes := int(_rpc_payload_sample_bytes.get(method_name, 0))
-	_runtime_network_metrics.record_packet(
-		channel,
-		payload_bytes,
+	_get_network_diagnostics_coordinator().record_outbound_rpc(
+		method_name,
+		args,
 		packet_count
 	)
 
 
 func set_rpc_payload_diagnostics_enabled(enabled: bool) -> void:
-	if _rpc_payload_diagnostics_enabled == enabled:
-		return
-	_rpc_payload_diagnostics_enabled = enabled
-	_rpc_payload_call_counts.clear()
-	_rpc_payload_sample_bytes.clear()
-	_rpc_payload_sample_count = 0
+	_get_network_diagnostics_coordinator().set_rpc_payload_diagnostics_enabled(enabled)
 
 
 func _get_rpc_traffic_channel(method_name: StringName) -> int:
-	if (
-		method_name == &"net_projectile_fired"
-		or method_name == &"net_tango_laser_volley"
-		or method_name == &"net_linglan_skill1_ring_batch"
-		or method_name == &"net_plant_projectile_visual"
-		or method_name == &"net_corn_machine_gun_burst_batch"
-		or method_name == &"net_tiyi_sniper_hit_confirmed"
-	):
-		return _NetConstants.CH_PROJECTILE
-	if TRANSACTION_RPC_METHODS.has(method_name):
-		return _NetConstants.CH_TRANSACTION
-	if FEEDBACK_RPC_METHODS.has(method_name):
-		return _NetConstants.CH_FEEDBACK
-	return _NetConstants.CH_WORLD_EVENT
+	return MpNetworkDiagnosticsCoordinatorScript.get_rpc_traffic_channel(method_name)
 
 
 func _update_snapshot_packet_warning_timer(delta: float) -> void:
-	_snapshot_packet_warn_time_left = maxf(_snapshot_packet_warn_time_left - delta, 0.0)
+	_get_network_diagnostics_coordinator().update_snapshot_packet_warning_timer(delta)
 
 
-func _record_snapshot_packet_size(snapshot_type: StringName, packet_bytes: int, entity_count: int) -> void:
-	if snapshot_type == &"player":
-		_runtime_network_metrics.record_packet(
-			_NetConstants.CH_PLAYER_STATE,
-			packet_bytes + 16
-		)
-		_max_player_snapshot_packet_bytes = maxi(_max_player_snapshot_packet_bytes, packet_bytes)
-		if packet_bytes <= SNAPSHOT_PACKET_WARN_BYTES:
-			return
-		_large_player_snapshot_packet_count += 1
-	elif snapshot_type == &"enemy":
-		_runtime_network_metrics.record_packet(
-			_NetConstants.CH_ENEMY_STATE,
-			packet_bytes + 24
-		)
-		_max_enemy_snapshot_packet_bytes = maxi(_max_enemy_snapshot_packet_bytes, packet_bytes)
-		_enemy_snapshot_payload_bytes_total += packet_bytes
-		_enemy_snapshot_packet_count += 1
-		if packet_bytes <= SNAPSHOT_PACKET_WARN_BYTES:
-			return
-		_large_enemy_snapshot_packet_count += 1
-	else:
-		return
-	if _snapshot_packet_warn_time_left > 0.0:
-		return
-	_snapshot_packet_warn_time_left = SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS
-	if is_inside_tree():
-		push_warning(
-			"MpGame: %s snapshot packet is %d bytes for %d entities; monitor bandwidth under latency/loss."
-			% [String(snapshot_type), packet_bytes, entity_count]
-		)
+func _record_snapshot_packet_size(
+	snapshot_type: StringName,
+	packet_bytes: int,
+	entity_count: int
+) -> void:
+	_get_network_diagnostics_coordinator().record_snapshot_packet_size(
+		snapshot_type,
+		packet_bytes,
+		entity_count
+	)
 
 
 func get_snapshot_packet_metrics() -> Dictionary:
-	var runtime_metrics := _runtime_network_metrics.get_summary()
 	var enemy_metrics := enemy_coordinator.get_snapshot_metrics()
 	var pool_metrics: Dictionary = {}
 	if game != null:
 		var object_pool := game.get_node_or_null("SessionObjectPool") as SessionObjectPool
 		if object_pool != null:
 			pool_metrics = object_pool.get_all_metrics()
-	return {
-		"max_player_snapshot_packet_bytes": _max_player_snapshot_packet_bytes,
-		"max_enemy_snapshot_packet_bytes": _max_enemy_snapshot_packet_bytes,
-		"large_player_snapshot_packet_count": _large_player_snapshot_packet_count,
-		"large_enemy_snapshot_packet_count": _large_enemy_snapshot_packet_count,
-		"enemy_snapshot_payload_bytes_total": _enemy_snapshot_payload_bytes_total,
-		"enemy_snapshot_packet_count": _enemy_snapshot_packet_count,
-		"enemy_snapshot_batch_count": int(enemy_metrics.get("enemy_snapshot_batch_count", 0)),
-		"player_snapshot_encode_count": player_coordinator.get_snapshot_encode_count(),
-		"enemy_snapshot_chunk_encode_count": int(
-			enemy_metrics.get("enemy_snapshot_chunk_encode_count", 0)
-		),
-		"player_snapshot_cohort_size": player_coordinator.get_snapshot_cohort_size(),
-		"enemy_snapshot_cohort_size": int(
-			enemy_metrics.get("enemy_snapshot_cohort_size", 0)
-		),
-		"enemy_snapshot_completed_batch_count": int(
-			enemy_metrics.get("enemy_snapshot_completed_batch_count", 0)
-		),
-		"enemy_snapshot_incomplete_batch_evict_count": int(
-			enemy_metrics.get("enemy_snapshot_incomplete_batch_evict_count", 0)
-		),
-		"enemy_snapshot_stale_chunk_count": int(
-			enemy_metrics.get("enemy_snapshot_stale_chunk_count", 0)
-		),
-		"offscreen_enemy_proxy_count": int(
-			enemy_metrics.get("offscreen_enemy_proxy_count", 0)
-		),
-		"rpc_payload_diagnostics_enabled": _rpc_payload_diagnostics_enabled,
-		"rpc_payload_diagnostic_sample_interval": RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL,
-		"rpc_payload_diagnostic_sample_count": _rpc_payload_sample_count,
-		"channel_metrics": runtime_metrics.get("channels", []),
-		"state_repair_count": runtime_metrics.get("state_repair_count", 0),
-		"transaction_latency_sample_count": runtime_metrics.get(
-			"transaction_latency_sample_count",
-			0
-		),
-		"transaction_latency_p95_ms": runtime_metrics.get(
-			"transaction_latency_p95_ms",
-			0.0
-		),
-		"pool_metrics": pool_metrics,
-	}
+	return _get_network_diagnostics_coordinator().get_snapshot_packet_metrics(
+		player_coordinator.get_snapshot_encode_count(),
+		player_coordinator.get_snapshot_cohort_size(),
+		enemy_metrics,
+		pool_metrics
+	)
+
+
+func _get_network_diagnostics_coordinator() -> MpNetworkDiagnosticsCoordinatorScript:
+	if network_diagnostics_coordinator != null:
+		return network_diagnostics_coordinator
+	# Packed-scene contract tests may call diagnostics before _ready assigns the
+	# cached @onready reference. The fixed NodePath still enforces static assembly.
+	return get_node(^"NetworkDiagnosticsCoordinator") as MpNetworkDiagnosticsCoordinatorScript
 
 
 func _update_public_room_keepalive(delta: float) -> void:
@@ -6662,6 +6527,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	merchant_transactions_coordinator.clear_peer(peer_id)
 	tower_fate_coordinator.clear_peer(peer_id)
 	collectible_presentation_coordinator.clear_peer(peer_id)
+	network_diagnostics_coordinator.clear_peer(peer_id)
 	projectile_coordinator.clear_peer(peer_id)
 
 
@@ -6672,6 +6538,7 @@ func _return_to_lobby() -> void:
 	world_flow_coordinator.reset_session_state()
 	_disconnected_player_reconnect_states.clear()
 	collectible_presentation_coordinator.reset_session_state()
+	network_diagnostics_coordinator.reset_session_state()
 	tower_economy_coordinator.reset_session_state()
 	tower_world_coordinator.reset_session_state()
 	merchant_transactions_coordinator.reset_session_state()

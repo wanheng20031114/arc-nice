@@ -2,6 +2,9 @@ extends SceneTree
 
 const MetricsScript := preload("res://scene/multiplayer/multiplayer_runtime_metrics.gd")
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
+const NETWORK_DIAGNOSTICS_SCENE := preload(
+	"res://scene/multiplayer/network_diagnostics/mp_network_diagnostics_coordinator.tscn"
+)
 
 var failures: Array[String] = []
 
@@ -107,9 +110,12 @@ func _test_transaction_latency_ring(metrics: Variant) -> void:
 
 
 func _test_mp_game_rpc_payload_diagnostics() -> void:
-	var mp_game := MpGameScript.new()
-	mp_game.call("_record_outbound_rpc", &"net_enemy_action", [1, Vector2.ONE], 3)
-	var production_metrics := mp_game.call("get_snapshot_packet_metrics") as Dictionary
+	var diagnostics := (
+		NETWORK_DIAGNOSTICS_SCENE.instantiate()
+		as MpNetworkDiagnosticsCoordinator
+	)
+	diagnostics.record_outbound_rpc(&"net_enemy_action", [1, Vector2.ONE], 3)
+	var production_metrics := diagnostics.get_snapshot_packet_metrics(0, 0, {}, {})
 	var production_channels := production_metrics.get("channel_metrics", []) as Array
 	_expect(
 		not bool(production_metrics.get("rpc_payload_diagnostics_enabled", true))
@@ -124,22 +130,21 @@ func _test_mp_game_rpc_payload_diagnostics() -> void:
 			"Disabled payload diagnostics must retain exact packet counts without byte serialization."
 		)
 
-	mp_game.call("set_rpc_payload_diagnostics_enabled", true)
+	diagnostics.set_rpc_payload_diagnostics_enabled(true)
 	for sample_index in range(64):
-		mp_game.call(
-			"_record_outbound_rpc",
+		diagnostics.record_outbound_rpc(
 			&"net_enemy_action",
 			[sample_index, Vector2(sample_index, -sample_index)],
 			1
 		)
-	var diagnostic_metrics := mp_game.call("get_snapshot_packet_metrics") as Dictionary
+	var diagnostic_metrics := diagnostics.get_snapshot_packet_metrics(0, 0, {}, {})
 	_expect(
 		bool(diagnostic_metrics.get("rpc_payload_diagnostics_enabled", false))
 		and int(diagnostic_metrics.get("rpc_payload_diagnostic_sample_interval", 0)) == 64
 		and int(diagnostic_metrics.get("rpc_payload_diagnostic_sample_count", 0)) == 2,
 		"Opt-in RPC bytes must sample once immediately and refresh at the documented interval."
 	)
-	mp_game.free()
+	diagnostics.free()
 
 
 func _test_outbound_rpc_channel_classification() -> void:
