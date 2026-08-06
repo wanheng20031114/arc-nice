@@ -81,3 +81,7 @@ timeout = 10.0
 [connection signal="terrain_snapshot_chunk_send_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_terrain_snapshot_chunk_send_requested"]
 [connection signal="terrain_delta_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_terrain_delta_broadcast_requested"]
 [connection signal="test_arena_manual_night_send_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_test_arena_manual_night_send_requested"]
+[connection signal="plant_projectile_visual_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_plant_projectile_visual_broadcast_requested"]
+[connection signal="bamboo_mortar_visual_batch_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_bamboo_mortar_visual_batch_broadcast_requested"]
+[connection signal="hydrangea_rain_visual_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_hydrangea_rain_visual_broadcast_requested"]
+[connection signal="corn_machine_gun_burst_batch_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_tower_world_corn_machine_gun_burst_batch_broadcast_requested"]

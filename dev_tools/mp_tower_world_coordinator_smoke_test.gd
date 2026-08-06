@@ -6,12 +6,17 @@ const TOWER_WORLD_SCENE := preload(
 const TRANSACTIONS_SCENE := preload(
 	"res://scene/multiplayer/transactions/mp_transactions_coordinator.tscn"
 )
+const ENEMY_COORDINATOR_SCENE := preload(
+	"res://scene/multiplayer/enemy/mp_enemy_coordinator.tscn"
+)
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
 
 
 class TestRuntime:
 	extends CombatRuntimeBase
+
+	var fixture_pooled_session_object: Node = null
 
 	func _ready() -> void:
 		pass
@@ -45,6 +50,17 @@ class TestRuntime:
 	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
 		pass
 
+	func has_session_object_pool_scene(_scene: PackedScene) -> bool:
+		return fixture_pooled_session_object != null
+
+	func acquire_session_object(
+		_scene: PackedScene,
+		_strict: bool = false
+	) -> Node:
+		var instance := fixture_pooled_session_object
+		fixture_pooled_session_object = null
+		return instance
+
 
 class HostNetManager:
 	extends NetManagerStore
@@ -72,6 +88,85 @@ class ClientNetManager:
 		return 2
 
 
+class TestBambooMortar:
+	extends BambooMortar
+
+	var playback_records: Array[Dictionary] = []
+
+	func play_multiplayer_action(
+		stage: int,
+		action_id: int,
+		spawn_position: Vector2,
+		landing_position: Vector2,
+		elapsed_seconds: float,
+		action_windup_duration_seconds: float
+	) -> void:
+		playback_records.append({
+			"stage": stage,
+			"action_id": action_id,
+			"spawn_position": spawn_position,
+			"landing_position": landing_position,
+			"elapsed_seconds": elapsed_seconds,
+			"windup_duration": action_windup_duration_seconds,
+		})
+
+
+class TestHydrangeaRainTower:
+	extends HydrangeaRainTower
+
+	var playback_records: Array[Dictionary] = []
+
+	func play_multiplayer_rain_action(
+		action_id: int,
+		target_position: Vector2,
+		elapsed_seconds: float
+	) -> void:
+		playback_records.append({
+			"action_id": action_id,
+			"target_position": target_position,
+			"elapsed_seconds": elapsed_seconds,
+		})
+
+
+class TestCornMachineGun:
+	extends CornMachineGun
+
+	var playback_records: Array[Dictionary] = []
+
+	func play_multiplayer_burst(
+		direction: Vector2,
+		action_id: int,
+		elapsed_seconds: float
+	) -> void:
+		playback_records.append({
+			"direction": direction,
+			"action_id": action_id,
+			"elapsed_seconds": elapsed_seconds,
+		})
+
+
+class TestEnemy:
+	extends Enemy
+
+	var received_requests: Array[DamageRequest] = []
+	var fixture_health := 100
+
+	func apply_combat_damage(request: DamageRequest) -> DamageResult:
+		received_requests.append(request)
+		var result := DamageResult.new()
+		result.request = request
+		result.accepted = true
+		result.requested_amount = request.amount
+		result.resolved_damage = request.amount
+		result.applied_damage = mini(request.amount, fixture_health)
+		result.health_before = fixture_health
+		fixture_health -= result.applied_damage
+		result.health_after = fixture_health
+		result.lethal = false
+		health_revision += 1
+		return result
+
+
 class TestTowerModeAdapter:
 	extends TowerDefenseMultiplayerModeAdapter
 
@@ -91,6 +186,10 @@ class TestTowerModeAdapter:
 	var applied_base_maximum_health := 1
 	var applied_base_health_revision := -1
 	var manual_night_enabled := false
+	var target_request_records: Array[Dictionary] = []
+	var canceled_target_owner: Node = null
+	var selected_fixture_target: Enemy = null
+	var explosion_records: Array[Dictionary] = []
 
 	func supports_terrain_state() -> bool:
 		return true
@@ -148,6 +247,51 @@ class TestTowerModeAdapter:
 
 	func apply_remote_test_arena_manual_night(enabled: bool) -> void:
 		manual_night_enabled = enabled
+
+	func request_runtime_bamboo_mortar_target(
+		owner: Node2D,
+		minimum_range: float,
+		maximum_range: float,
+		callback: Callable
+	) -> bool:
+		target_request_records.append({
+			"owner": owner,
+			"minimum_range": minimum_range,
+			"maximum_range": maximum_range,
+			"callback_valid": callback.is_valid(),
+		})
+		return true
+
+	func cancel_runtime_bamboo_mortar_target_request(owner: Node) -> void:
+		canceled_target_owner = owner
+
+	func select_runtime_bamboo_mortar_target_sync_for_fixture(
+		_center: Vector2,
+		_minimum_range: float,
+		_maximum_range: float
+	) -> Enemy:
+		return selected_fixture_target
+
+	func queue_runtime_bamboo_mortar_explosion(
+		landing_position: Vector2,
+		inner_radius: float,
+		outer_radius: float,
+		inner_damage: int,
+		outer_damage: int,
+		damage_source_id: int
+	) -> bool:
+		explosion_records.append({
+			"landing_position": landing_position,
+			"inner_radius": inner_radius,
+			"outer_radius": outer_radius,
+			"inner_damage": inner_damage,
+			"outer_damage": outer_damage,
+			"damage_source_id": damage_source_id,
+		})
+		return true
+
+	func get_runtime_bamboo_mortar_combat_metrics() -> Dictionary:
+		return {"queued_explosions": explosion_records.size()}
 
 	func get_authoritative_team_plant_count() -> int:
 		return plants.size()
@@ -263,6 +407,10 @@ var _spawn_record: Dictionary = {}
 var _terrain_chunk_records: Array[Dictionary] = []
 var _terrain_repair_revisions: Array[int] = []
 var _base_health_send_records: Array[Dictionary] = []
+var _plant_projectile_visual_records: Array[Dictionary] = []
+var _bamboo_visual_batches: Array[Dictionary] = []
+var _hydrangea_visual_records: Array[Dictionary] = []
+var _corn_visual_batches: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -278,6 +426,7 @@ func _run() -> void:
 	_test_static_boundary(mp_game)
 	_test_placement_spawn_pending_health_remove_chain(mp_game)
 	_test_terrain_repair_and_base_revision(mp_game)
+	_test_plant_combat_network(mp_game)
 	mp_game.free()
 	_finish()
 
@@ -318,6 +467,15 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 		and not source.contains("func _request_terrain_snapshot_repair")
 		and not source.contains("_pending_terrain_snapshot_batches"),
 		"MpGame 不得继续持有地形快照组装或修复状态。"
+	)
+	_expect(
+		not source.contains("_pending_bamboo_mortar_visuals")
+		and not source.contains("_pending_corn_machine_gun_burst_visuals")
+		and not source.contains("func _is_valid_bamboo_mortar_visual_payload")
+		and not source.contains("func _is_valid_corn_machine_gun_burst_payload")
+		and not source.contains("\"play_multiplayer_rain_action\"")
+		and not source.contains("\"play_multiplayer_burst\""),
+		"MpGame 不得继续持有植物战斗表现队列、校验或动态播放逻辑。"
 	)
 
 
@@ -458,6 +616,260 @@ func _test_terrain_repair_and_base_revision(
 	_dispose_fixture(session, client)
 
 
+func _test_plant_combat_network(session: MultiplayerGameplaySession) -> void:
+	var host := _make_fixture(session, true)
+	var client := _make_fixture(session, false)
+	var host_coordinator := host.coordinator as MpTowerWorldCoordinator
+	var client_coordinator := client.coordinator as MpTowerWorldCoordinator
+	var host_adapter := host.adapter as TestTowerModeAdapter
+	var client_adapter := client.adapter as TestTowerModeAdapter
+	var host_bamboo := TestBambooMortar.new()
+	var client_bamboo := TestBambooMortar.new()
+	var host_hydrangea := TestHydrangeaRainTower.new()
+	var client_hydrangea := TestHydrangeaRainTower.new()
+	var host_corn := TestCornMachineGun.new()
+	var client_corn := TestCornMachineGun.new()
+	host_adapter.plants[201] = host_bamboo
+	host_adapter.plants[202] = host_hydrangea
+	host_adapter.plants[203] = host_corn
+	client_adapter.plants[201] = client_bamboo
+	client_adapter.plants[202] = client_hydrangea
+	client_adapter.plants[203] = client_corn
+	_plant_projectile_visual_records.clear()
+	_bamboo_visual_batches.clear()
+	_hydrangea_visual_records.clear()
+	_corn_visual_batches.clear()
+	host_coordinator.plant_projectile_visual_broadcast_requested.connect(
+		_capture_plant_projectile_visual
+	)
+	host_coordinator.bamboo_mortar_visual_batch_broadcast_requested.connect(
+		_capture_bamboo_visual_batch
+	)
+	host_coordinator.hydrangea_rain_visual_broadcast_requested.connect(
+		_capture_hydrangea_visual
+	)
+	host_coordinator.corn_machine_gun_burst_batch_broadcast_requested.connect(
+		_capture_corn_visual_batch
+	)
+	host_coordinator.broadcast_plant_projectile_visual(
+		201,
+		Vector2(3.0, 4.0),
+		Vector2(4.0, 0.0),
+		180.0,
+		18.0,
+		1.25
+	)
+	for record_index in range(25):
+		host_coordinator.queue_bamboo_mortar_visual(
+			201,
+			record_index + 1,
+			record_index % 2,
+			Vector2(record_index, 1.0),
+			Vector2(record_index, 2.0),
+			BambooMortar.WINDUP_DURATION_SECONDS,
+			5.0 + record_index
+		)
+	host_coordinator.queue_hydrangea_rain_visual(
+		202,
+		31,
+		Vector2(8.0, 9.0),
+		0.25,
+		12.0
+	)
+	for record_index in range(33):
+		host_coordinator.queue_corn_machine_gun_burst_visual(
+			203,
+			record_index + 1,
+			Vector2(2.0, 0.0),
+			6.0 + record_index
+		)
+	host_coordinator.update_host(0.05)
+	_expect(
+		_plant_projectile_visual_records.size() == 1
+		and (
+			_plant_projectile_visual_records[0].get("direction", Vector2.ZERO)
+			as Vector2
+		) == Vector2.RIGHT,
+		"植物弹体视觉必须由 TowerWorld 请求根门面广播并规范化方向。"
+	)
+	var projectile_scene := load(
+		"res://scene/plant_defense/agave_cannonball.tscn"
+	) as PackedScene
+	var pooled_projectile := projectile_scene.instantiate() as AgaveCannonball
+	root.add_child(pooled_projectile)
+	root.remove_child(pooled_projectile)
+	var client_runtime := client.runtime as TestRuntime
+	client_runtime.fixture_pooled_session_object = pooled_projectile
+	var session_child_count_before := session.get_child_count()
+	client_coordinator.receive_plant_projectile_visual(
+		Vector2(3.0, 4.0),
+		Vector2(4.0, 0.0),
+		180.0,
+		18.0,
+		1.25
+	)
+	var remote_projectile := session.get_child(
+		session_child_count_before
+	) as AgaveCannonball
+	_expect(
+		remote_projectile == pooled_projectile
+		and remote_projectile.direction == Vector2.RIGHT
+		and remote_projectile.damage == 0
+		and not remote_projectile.authoritative_damage,
+		"客户端必须通过运行时对象池复用并强类型初始化植物弹体视觉。"
+	)
+	_expect(
+		_bamboo_visual_batches.size() == 2
+		and (
+			_bamboo_visual_batches[0].get("plant_net_ids", PackedInt32Array())
+			as PackedInt32Array
+		).size() == 24
+		and (
+			_bamboo_visual_batches[1].get("plant_net_ids", PackedInt32Array())
+			as PackedInt32Array
+		).size() == 1,
+		"25 条竹迫击炮视觉必须按 24 条上限稳定拆为两个批次。"
+	)
+	_expect(
+		_corn_visual_batches.size() == 2
+		and (
+			_corn_visual_batches[0].get("plant_net_ids", PackedInt32Array())
+			as PackedInt32Array
+		).size() == 32
+		and (
+			_corn_visual_batches[1].get("plant_net_ids", PackedInt32Array())
+			as PackedInt32Array
+		).size() == 1,
+		"33 条玉米 burst 必须按 32 条上限稳定拆为两个批次。"
+	)
+	for batch in _bamboo_visual_batches:
+		_deliver_bamboo_visual_batch(client_coordinator, batch)
+	for record in _hydrangea_visual_records:
+		client_coordinator.receive_hydrangea_rain_visual(
+			int(record.get("plant_net_id", 0)),
+			int(record.get("action_id", 0)),
+			record.get("target_position", Vector2.ZERO) as Vector2,
+			float(record.get("host_action_time", 0.0)),
+			50.0,
+			true,
+			0.0
+		)
+	for batch in _corn_visual_batches:
+		_deliver_corn_visual_batch(client_coordinator, batch)
+	_expect(
+		client_bamboo.playback_records.size() == 25
+		and client_hydrangea.playback_records.size() == 1
+		and client_corn.playback_records.size() == 33,
+		"客户端必须通过强类型植物索引播放竹迫击炮、绣球雨和玉米 burst。"
+	)
+
+	var owner := Node2D.new()
+	var target := TestEnemy.new()
+	host_adapter.selected_fixture_target = target
+	var callback := Callable(self, "_noop_target_callback")
+	var target_requested := host_coordinator.request_bamboo_mortar_target(
+		owner,
+		64.0,
+		224.0,
+		callback
+	)
+	host_coordinator.cancel_bamboo_mortar_target_request(owner)
+	var selected_target := (
+		host_coordinator.select_bamboo_mortar_target_sync_for_fixture(
+			Vector2.ZERO,
+			64.0,
+			224.0
+		)
+	)
+	var explosion_queued := host_coordinator.queue_bamboo_mortar_explosion(
+		Vector2(7.0, 8.0),
+		32.0,
+		64.0,
+		140,
+		70,
+		201
+	)
+	_expect(
+		target_requested
+		and host_adapter.target_request_records.size() == 1
+		and host_adapter.canceled_target_owner == owner
+		and selected_target == target
+		and explosion_queued
+		and int(
+			host_coordinator.get_bamboo_mortar_combat_metrics().get(
+				"queued_explosions",
+				0
+			)
+		) == 1,
+		"竹迫击炮目标、取消、同步选择、爆炸队列与指标必须完整委托适配器。"
+	)
+
+	var host_runtime := host.runtime as TestRuntime
+	var host_enemy_coordinator := host.enemy_coordinator as MpEnemyCoordinator
+	host_runtime.multiplayer_enemy_ids_by_instance[target.get_instance_id()] = 901
+	var single_damage_applied := (
+		host_coordinator.apply_authoritative_plant_enemy_damage(
+			201,
+			target,
+			10,
+			Vector2.RIGHT,
+			EnemyConfig.DamageType.PHYSICAL
+		)
+	)
+	var batch_damage_applied := (
+		host_coordinator.apply_authoritative_plant_enemy_damage_batch(
+			201,
+			target,
+			PackedInt64Array([3, 4]),
+			PackedInt32Array([2, 1]),
+			Vector2.UP,
+			EnemyConfig.DamageType.PHYSICAL
+		)
+	)
+	var pending_feedback := (
+		host_enemy_coordinator.pending_enemy_damage_feedback.get(901, {})
+		as Dictionary
+	)
+	_expect(
+		single_damage_applied
+		and batch_damage_applied
+		and target.received_requests.size() == 2
+		and target.received_requests[1] is DamageBatchRequest
+		and int(pending_feedback.get("damage", 0)) == 20
+		and not host_enemy_coordinator.active_enemy_damage_feedback_context.has(901),
+		"植物单次与批次伤害必须通过 EnemyCoordinator 聚合确认反馈并清理上下文。"
+	)
+
+	host_coordinator.queue_bamboo_mortar_visual(
+		201,
+		99,
+		0,
+		Vector2.ZERO,
+		Vector2.ONE,
+		BambooMortar.WINDUP_DURATION_SECONDS,
+		20.0
+	)
+	host_coordinator.reset_session_state()
+	_expect(
+		(
+			host_coordinator.get("_pending_bamboo_mortar_visuals")
+			as PackedInt32Array
+		).is_empty()
+		and (
+			host_coordinator.get("_pending_corn_machine_gun_burst_visuals")
+			as PackedInt32Array
+		).is_empty(),
+		"会话 reset 必须清空植物战斗网络聚合队列。"
+	)
+	host_runtime.multiplayer_enemy_ids_by_instance.erase(target.get_instance_id())
+	session.remove_child(remote_projectile)
+	remote_projectile.free()
+	target.free()
+	owner.free()
+	_dispose_fixture(session, host)
+	_dispose_fixture(session, client)
+
+
 func _make_fixture(
 	session: MultiplayerGameplaySession,
 	is_host: bool
@@ -468,13 +880,18 @@ func _make_fixture(
 	var transactions := (
 		TRANSACTIONS_SCENE.instantiate() as MpTransactionsCoordinator
 	)
+	var enemy_coordinator := (
+		ENEMY_COORDINATOR_SCENE.instantiate() as MpEnemyCoordinator
+	)
 	var runtime := TestRuntime.new()
 	var adapter := TestTowerModeAdapter.new()
 	var net_manager: NetManagerStore = (
 		HostNetManager.new() if is_host else ClientNetManager.new()
 	)
 	var run_state := RunStateStore.new()
+	root.add_child(coordinator)
 	adapter.bind_runtime(runtime)
+	enemy_coordinator.bind_runtime(runtime)
 	transactions.bind_session(
 		session,
 		runtime,
@@ -488,11 +905,13 @@ func _make_fixture(
 		runtime,
 		adapter,
 		net_manager,
-		transactions
+		transactions,
+		enemy_coordinator
 	)
 	return {
 		"coordinator": coordinator,
 		"transactions": transactions,
+		"enemy_coordinator": enemy_coordinator,
 		"runtime": runtime,
 		"adapter": adapter,
 		"net_manager": net_manager,
@@ -506,12 +925,15 @@ func _dispose_fixture(
 ) -> void:
 	var coordinator := fixture.coordinator as MpTowerWorldCoordinator
 	var transactions := fixture.transactions as MpTransactionsCoordinator
+	var enemy_coordinator := fixture.enemy_coordinator as MpEnemyCoordinator
 	var adapter := fixture.adapter as TestTowerModeAdapter
 	coordinator.unbind_session(session)
 	transactions.unbind_session(session)
+	enemy_coordinator.unbind_runtime(fixture.runtime as TestRuntime)
 	adapter.clear_plants()
 	coordinator.free()
 	transactions.free()
+	enemy_coordinator.free()
 	adapter.free()
 	(fixture.runtime as TestRuntime).free()
 	(fixture.net_manager as NetManagerStore).free()
@@ -568,6 +990,107 @@ func _deliver_terrain_chunk(
 		record.get("cell_xy", PackedInt32Array()) as PackedInt32Array,
 		record.get("terrain_types", PackedInt32Array()) as PackedInt32Array
 	)
+
+
+func _capture_plant_projectile_visual(
+	spawn_position: Vector2,
+	direction: Vector2,
+	speed: float,
+	explosion_radius: float,
+	lifetime: float
+) -> void:
+	_plant_projectile_visual_records.append({
+		"spawn_position": spawn_position,
+		"direction": direction,
+		"speed": speed,
+		"explosion_radius": explosion_radius,
+		"lifetime": lifetime,
+	})
+
+
+func _capture_bamboo_visual_batch(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	stages: PackedByteArray,
+	spawn_positions: PackedVector2Array,
+	landing_positions: PackedVector2Array,
+	committed_windup_durations: PackedFloat32Array,
+	host_action_times: PackedFloat64Array
+) -> void:
+	_bamboo_visual_batches.append({
+		"plant_net_ids": plant_net_ids.duplicate(),
+		"action_ids": action_ids.duplicate(),
+		"stages": stages.duplicate(),
+		"spawn_positions": spawn_positions.duplicate(),
+		"landing_positions": landing_positions.duplicate(),
+		"committed_windup_durations": committed_windup_durations.duplicate(),
+		"host_action_times": host_action_times.duplicate(),
+	})
+
+
+func _capture_hydrangea_visual(
+	plant_net_id: int,
+	action_id: int,
+	target_position: Vector2,
+	host_action_time: float
+) -> void:
+	_hydrangea_visual_records.append({
+		"plant_net_id": plant_net_id,
+		"action_id": action_id,
+		"target_position": target_position,
+		"host_action_time": host_action_time,
+	})
+
+
+func _capture_corn_visual_batch(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	directions: PackedVector2Array,
+	host_action_times: PackedFloat64Array
+) -> void:
+	_corn_visual_batches.append({
+		"plant_net_ids": plant_net_ids.duplicate(),
+		"action_ids": action_ids.duplicate(),
+		"directions": directions.duplicate(),
+		"host_action_times": host_action_times.duplicate(),
+	})
+
+
+func _deliver_bamboo_visual_batch(
+	coordinator: MpTowerWorldCoordinator,
+	record: Dictionary
+) -> void:
+	coordinator.receive_bamboo_mortar_visual_batch(
+		record.get("plant_net_ids", PackedInt32Array()) as PackedInt32Array,
+		record.get("action_ids", PackedInt32Array()) as PackedInt32Array,
+		record.get("stages", PackedByteArray()) as PackedByteArray,
+		record.get("spawn_positions", PackedVector2Array()) as PackedVector2Array,
+		record.get("landing_positions", PackedVector2Array()) as PackedVector2Array,
+		record.get("committed_windup_durations", PackedFloat32Array()) as PackedFloat32Array,
+		record.get("host_action_times", PackedFloat64Array()) as PackedFloat64Array,
+		50.0,
+		true,
+		0.0
+	)
+
+
+func _deliver_corn_visual_batch(
+	coordinator: MpTowerWorldCoordinator,
+	record: Dictionary
+) -> void:
+	coordinator.receive_corn_machine_gun_burst_batch(
+		record.get("plant_net_ids", PackedInt32Array()) as PackedInt32Array,
+		record.get("action_ids", PackedInt32Array()) as PackedInt32Array,
+		record.get("directions", PackedVector2Array()) as PackedVector2Array,
+		record.get("host_action_times", PackedFloat64Array()) as PackedFloat64Array,
+		50.0,
+		true,
+		0.0
+	)
+
+
+func _noop_target_callback(_target: Enemy) -> void:
+	pass
 
 
 func _capture_spawn(

@@ -23,6 +23,13 @@ const TERRAIN_SNAPSHOT_REPAIR_WATCHDOG_SECONDS := 2.0
 const TERRAIN_TYPE_EMPTY := -1
 const TERRAIN_TYPE_GRASS := 1
 const TERRAIN_TYPE_DIRT := 2
+const AGAVE_CANNONBALL_SCENE_PATH := (
+	"res://scene/plant_defense/agave_cannonball.tscn"
+)
+const BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS := 0.05
+const CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS := 0.05
+const BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET := 24
+const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
 
 signal plant_placement_request_to_host(
 	request_id: int,
@@ -94,12 +101,41 @@ signal test_arena_manual_night_send_requested(
 	target_peer_id: int,
 	enabled: bool
 )
+signal plant_projectile_visual_broadcast_requested(
+	spawn_position: Vector2,
+	direction: Vector2,
+	speed: float,
+	explosion_radius: float,
+	lifetime: float
+)
+signal bamboo_mortar_visual_batch_broadcast_requested(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	stages: PackedByteArray,
+	spawn_positions: PackedVector2Array,
+	landing_positions: PackedVector2Array,
+	committed_windup_durations: PackedFloat32Array,
+	host_action_times: PackedFloat64Array
+)
+signal hydrangea_rain_visual_broadcast_requested(
+	plant_net_id: int,
+	action_id: int,
+	target_position: Vector2,
+	host_action_time: float
+)
+signal corn_machine_gun_burst_batch_broadcast_requested(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	directions: PackedVector2Array,
+	host_action_times: PackedFloat64Array
+)
 
 var _session: MultiplayerGameplaySession = null
 var _runtime: CombatRuntimeBase = null
 var _mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _net_manager: NetManagerStore = null
 var _transactions: MpTransactionsCoordinator = null
+var _enemy_coordinator: MpEnemyCoordinator = null
 
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
@@ -124,6 +160,24 @@ var _client_waiting_for_terrain_snapshot := false
 var _terrain_snapshot_repair_watchdog_time_left := 0.0
 var _last_completed_terrain_snapshot_id := 0
 var _pending_terrain_snapshot_batches: Dictionary = {}
+var _agave_cannonball_scene: PackedScene = null
+var _pending_bamboo_mortar_visuals := PackedInt32Array()
+var _pending_bamboo_mortar_action_ids := PackedInt32Array()
+var _pending_bamboo_mortar_stages := PackedByteArray()
+var _pending_bamboo_mortar_spawn_positions := PackedVector2Array()
+var _pending_bamboo_mortar_landing_positions := PackedVector2Array()
+var _pending_bamboo_mortar_windup_durations := PackedFloat32Array()
+var _pending_bamboo_mortar_host_times := PackedFloat64Array()
+var _bamboo_mortar_visual_flush_time_left := (
+	BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS
+)
+var _pending_corn_machine_gun_burst_visuals := PackedInt32Array()
+var _pending_corn_machine_gun_burst_action_ids := PackedInt32Array()
+var _pending_corn_machine_gun_burst_directions := PackedVector2Array()
+var _pending_corn_machine_gun_burst_host_times := PackedFloat64Array()
+var _corn_machine_gun_burst_flush_time_left := (
+	CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS
+)
 
 
 func bind_session(
@@ -131,18 +185,21 @@ func bind_session(
 	runtime: CombatRuntimeBase,
 	mode_adapter: TowerDefenseMultiplayerModeAdapter,
 	net_manager: NetManagerStore,
-	transactions: MpTransactionsCoordinator
+	transactions: MpTransactionsCoordinator,
+	enemy_coordinator: MpEnemyCoordinator
 ) -> void:
 	assert(session != null, "MpTowerWorldCoordinator 缺少多人会话。")
 	assert(runtime != null, "MpTowerWorldCoordinator 缺少战斗运行时。")
 	assert(mode_adapter != null, "MpTowerWorldCoordinator 缺少塔防模式适配器。")
 	assert(net_manager != null, "MpTowerWorldCoordinator 缺少网络管理器。")
 	assert(transactions != null, "MpTowerWorldCoordinator 缺少事务协调器。")
+	assert(enemy_coordinator != null, "MpTowerWorldCoordinator 缺少敌人协调器。")
 	var initialize_terrain_state := (
 		_session != session
 		or _runtime != runtime
 		or _mode_adapter != mode_adapter
 		or _net_manager != net_manager
+		or _enemy_coordinator != enemy_coordinator
 	)
 	if _session != null and _session != session:
 		_disconnect_mode_adapter()
@@ -152,6 +209,7 @@ func bind_session(
 	_mode_adapter = mode_adapter
 	_net_manager = net_manager
 	_transactions = transactions
+	_enemy_coordinator = enemy_coordinator
 	if initialize_terrain_state:
 		_reset_terrain_session_state()
 		_client_has_terrain_snapshot = (
@@ -171,6 +229,7 @@ func unbind_session(session: MultiplayerGameplaySession) -> void:
 	_mode_adapter = null
 	_net_manager = null
 	_transactions = null
+	_enemy_coordinator = null
 
 
 func is_bound() -> bool:
@@ -185,6 +244,8 @@ func is_bound() -> bool:
 		and is_instance_valid(_net_manager)
 		and _transactions != null
 		and is_instance_valid(_transactions)
+		and _enemy_coordinator != null
+		and is_instance_valid(_enemy_coordinator)
 	)
 
 
@@ -195,6 +256,7 @@ func reset_session_state() -> void:
 	_plant_health_flush_time_left = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
 	_clear_remote_plant_health_state()
 	_reset_terrain_session_state()
+	_clear_plant_combat_network_state()
 
 
 func clear_peer(peer_id: int) -> void:
@@ -208,17 +270,425 @@ func clear_peer(peer_id: int) -> void:
 func update_host(delta: float) -> void:
 	if not is_bound() or not _net_manager.is_host():
 		return
-	_plant_health_flush_time_left -= maxf(delta, 0.0)
-	if _plant_health_flush_time_left > 0.0:
-		return
-	_plant_health_flush_time_left = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
-	_flush_plant_health_updates()
+	var safe_delta := maxf(delta, 0.0)
+	_bamboo_mortar_visual_flush_time_left -= safe_delta
+	if _bamboo_mortar_visual_flush_time_left <= 0.0:
+		_bamboo_mortar_visual_flush_time_left = (
+			BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS
+		)
+		_flush_bamboo_mortar_visuals()
+	_corn_machine_gun_burst_flush_time_left -= safe_delta
+	if _corn_machine_gun_burst_flush_time_left <= 0.0:
+		_corn_machine_gun_burst_flush_time_left = (
+			CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS
+		)
+		_flush_corn_machine_gun_burst_visuals()
+	_plant_health_flush_time_left -= safe_delta
+	if _plant_health_flush_time_left <= 0.0:
+		_plant_health_flush_time_left = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
+		_flush_plant_health_updates()
 
 
 func update_client(delta: float) -> void:
 	if not _is_client_bound():
 		return
 	_update_terrain_snapshot_repair_watchdog(delta)
+
+
+func broadcast_plant_projectile_visual(
+	_plant_net_id: int,
+	spawn_position: Vector2,
+	direction: Vector2,
+	speed: float,
+	explosion_radius: float,
+	lifetime: float
+) -> void:
+	if (
+		not _is_host_bound()
+		or not spawn_position.is_finite()
+		or not direction.is_finite()
+		or direction.length_squared() <= 0.001
+	):
+		return
+	plant_projectile_visual_broadcast_requested.emit(
+		spawn_position,
+		direction.normalized(),
+		maxf(speed, 0.0),
+		maxf(explosion_radius, 1.0),
+		maxf(lifetime, 0.01)
+	)
+
+
+func queue_bamboo_mortar_visual(
+	plant_net_id: int,
+	action_id: int,
+	stage: int,
+	spawn_position: Vector2,
+	landing_position: Vector2,
+	committed_windup_duration_seconds: float,
+	host_action_time: float
+) -> void:
+	if (
+		not _is_host_bound()
+		or not is_inside_tree()
+		or plant_net_id <= 0
+		or action_id <= 0
+		or stage < 0
+		or stage > 1
+		or not spawn_position.is_finite()
+		or not landing_position.is_finite()
+		or not is_finite(committed_windup_duration_seconds)
+		or committed_windup_duration_seconds
+			< BambooMortar.MIN_COMMITTED_WINDUP_DURATION_SECONDS
+		or committed_windup_duration_seconds
+			> BambooMortar.WINDUP_DURATION_SECONDS
+		or not is_finite(host_action_time)
+		or host_action_time < 0.0
+	):
+		return
+	var mortar := get_plant(plant_net_id) as BambooMortar
+	if mortar == null or not is_instance_valid(mortar):
+		return
+	_pending_bamboo_mortar_visuals.append(plant_net_id)
+	_pending_bamboo_mortar_action_ids.append(action_id)
+	_pending_bamboo_mortar_stages.append(stage)
+	_pending_bamboo_mortar_spawn_positions.append(spawn_position)
+	_pending_bamboo_mortar_landing_positions.append(landing_position)
+	_pending_bamboo_mortar_windup_durations.append(
+		committed_windup_duration_seconds
+	)
+	_pending_bamboo_mortar_host_times.append(host_action_time)
+
+
+func queue_hydrangea_rain_visual(
+	plant_net_id: int,
+	action_id: int,
+	target_position: Vector2,
+	action_elapsed_seconds: float,
+	host_now: float
+) -> void:
+	if (
+		not _is_host_bound()
+		or not is_inside_tree()
+		or plant_net_id <= 0
+		or action_id <= 0
+		or not target_position.is_finite()
+		or not is_finite(action_elapsed_seconds)
+		or action_elapsed_seconds < 0.0
+		or not is_finite(host_now)
+	):
+		return
+	var hydrangea := get_plant(plant_net_id) as HydrangeaRainTower
+	if hydrangea == null or not is_instance_valid(hydrangea):
+		return
+	hydrangea_rain_visual_broadcast_requested.emit(
+		plant_net_id,
+		action_id,
+		target_position,
+		host_now - action_elapsed_seconds
+	)
+
+
+func queue_corn_machine_gun_burst_visual(
+	plant_net_id: int,
+	action_id: int,
+	direction: Vector2,
+	host_action_time: float
+) -> void:
+	if (
+		not _is_host_bound()
+		or not is_inside_tree()
+		or plant_net_id <= 0
+		or action_id <= 0
+		or not direction.is_finite()
+		or direction.length_squared() <= 0.001
+		or not is_finite(host_action_time)
+		or host_action_time < 0.0
+	):
+		return
+	var corn := get_plant(plant_net_id) as CornMachineGun
+	if corn == null or not is_instance_valid(corn):
+		return
+	_pending_corn_machine_gun_burst_visuals.append(plant_net_id)
+	_pending_corn_machine_gun_burst_action_ids.append(action_id)
+	_pending_corn_machine_gun_burst_directions.append(direction.normalized())
+	_pending_corn_machine_gun_burst_host_times.append(host_action_time)
+
+
+func apply_authoritative_plant_enemy_damage(
+	_damage_source_id: int,
+	enemy: Enemy,
+	damage: int,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if not _is_host_bound() or enemy == null or damage <= 0:
+		return false
+	var safe_direction := (
+		impact_direction if impact_direction.is_finite() else Vector2.ZERO
+	)
+	var request := DamageRequest.new(damage, int(damage_type))
+	request.with_directions(safe_direction)
+	return _apply_authoritative_plant_damage_request(
+		enemy,
+		request,
+		safe_direction,
+		damage_type
+	)
+
+
+func apply_authoritative_plant_enemy_damage_batch(
+	_damage_source_id: int,
+	enemy: Enemy,
+	damage_amounts: PackedInt64Array,
+	hit_counts: PackedInt32Array,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if (
+		not _is_host_bound()
+		or enemy == null
+		or damage_amounts.is_empty()
+	):
+		return false
+	var safe_direction := (
+		impact_direction if impact_direction.is_finite() else Vector2.ZERO
+	)
+	var request := DamageBatchRequest.new(
+		damage_amounts,
+		hit_counts,
+		int(damage_type)
+	)
+	request.with_directions(safe_direction)
+	return _apply_authoritative_plant_damage_request(
+		enemy,
+		request,
+		safe_direction,
+		damage_type
+	)
+
+
+func request_bamboo_mortar_target(
+	owner: Node2D,
+	minimum_range: float,
+	maximum_range: float,
+	callback: Callable
+) -> bool:
+	if not _is_host_bound():
+		return false
+	return _mode_adapter.request_runtime_bamboo_mortar_target(
+		owner,
+		minimum_range,
+		maximum_range,
+		callback
+	)
+
+
+func cancel_bamboo_mortar_target_request(owner: Node) -> void:
+	if not is_bound():
+		return
+	_mode_adapter.cancel_runtime_bamboo_mortar_target_request(owner)
+
+
+func select_bamboo_mortar_target_sync_for_fixture(
+	center: Vector2,
+	minimum_range: float,
+	maximum_range: float
+) -> Enemy:
+	if not _is_host_bound():
+		return null
+	return _mode_adapter.select_runtime_bamboo_mortar_target_sync_for_fixture(
+		center,
+		minimum_range,
+		maximum_range
+	)
+
+
+func queue_bamboo_mortar_explosion(
+	landing_position: Vector2,
+	inner_radius: float,
+	outer_radius: float,
+	inner_damage: int,
+	outer_damage: int,
+	damage_source_id: int
+) -> bool:
+	if not _is_host_bound():
+		return false
+	return _mode_adapter.queue_runtime_bamboo_mortar_explosion(
+		landing_position,
+		inner_radius,
+		outer_radius,
+		inner_damage,
+		outer_damage,
+		damage_source_id
+	)
+
+
+func get_bamboo_mortar_combat_metrics() -> Dictionary:
+	if not is_bound():
+		return {}
+	return _mode_adapter.get_runtime_bamboo_mortar_combat_metrics()
+
+
+func receive_plant_projectile_visual(
+	spawn_position: Vector2,
+	direction: Vector2,
+	speed: float,
+	explosion_radius: float,
+	lifetime: float
+) -> void:
+	if (
+		not _is_client_bound()
+		or not spawn_position.is_finite()
+		or not direction.is_finite()
+		or direction.length_squared() <= 0.001
+	):
+		return
+	if _agave_cannonball_scene == null:
+		_agave_cannonball_scene = load(
+			AGAVE_CANNONBALL_SCENE_PATH
+		) as PackedScene
+	if _agave_cannonball_scene == null:
+		return
+	var projectile := _acquire_or_instantiate_projectile(
+		_agave_cannonball_scene
+	) as AgaveCannonball
+	if projectile == null:
+		return
+	projectile.top_level = true
+	if projectile.get_parent() == null:
+		_session.add_child(projectile)
+	projectile.global_position = spawn_position
+	projectile.setup(
+		direction.normalized(),
+		0,
+		maxf(speed, 0.0),
+		maxf(explosion_radius, 1.0),
+		maxf(lifetime, 0.01),
+		false,
+		0
+	)
+	projectile.reset_physics_interpolation()
+
+
+func receive_bamboo_mortar_visual_batch(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	stages: PackedByteArray,
+	spawn_positions: PackedVector2Array,
+	landing_positions: PackedVector2Array,
+	committed_windup_durations: PackedFloat32Array,
+	host_action_times: PackedFloat64Array,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> void:
+	if (
+		not _is_client_bound()
+		or not _is_valid_bamboo_mortar_visual_payload(
+			plant_net_ids,
+			action_ids,
+			stages,
+			spawn_positions,
+			landing_positions,
+			committed_windup_durations,
+			host_action_times
+		)
+	):
+		return
+	for record_index in range(plant_net_ids.size()):
+		var mortar := get_plant(plant_net_ids[record_index]) as BambooMortar
+		if mortar == null or not is_instance_valid(mortar):
+			continue
+		var elapsed := _get_remote_action_elapsed(
+			host_action_times[record_index],
+			local_net_time,
+			has_host_time_offset,
+			host_to_client_time_offset
+		)
+		if not is_finite(elapsed):
+			continue
+		mortar.play_multiplayer_action(
+			int(stages[record_index]),
+			action_ids[record_index],
+			spawn_positions[record_index],
+			landing_positions[record_index],
+			elapsed,
+			committed_windup_durations[record_index]
+		)
+
+
+func receive_hydrangea_rain_visual(
+	plant_net_id: int,
+	action_id: int,
+	target_position: Vector2,
+	host_action_time: float,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> void:
+	if (
+		not _is_client_bound()
+		or plant_net_id <= 0
+		or action_id <= 0
+		or not target_position.is_finite()
+		or not is_finite(host_action_time)
+	):
+		return
+	var hydrangea := get_plant(plant_net_id) as HydrangeaRainTower
+	if hydrangea == null or not is_instance_valid(hydrangea):
+		return
+	var elapsed := _get_remote_action_elapsed(
+		host_action_time,
+		local_net_time,
+		has_host_time_offset,
+		host_to_client_time_offset
+	)
+	if not is_finite(elapsed):
+		return
+	hydrangea.play_multiplayer_rain_action(
+		action_id,
+		target_position,
+		elapsed
+	)
+
+
+func receive_corn_machine_gun_burst_batch(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	directions: PackedVector2Array,
+	host_action_times: PackedFloat64Array,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> void:
+	if (
+		not _is_client_bound()
+		or not _is_valid_corn_machine_gun_burst_payload(
+			plant_net_ids,
+			action_ids,
+			directions,
+			host_action_times
+		)
+	):
+		return
+	for record_index in range(plant_net_ids.size()):
+		var corn := get_plant(plant_net_ids[record_index]) as CornMachineGun
+		if corn == null or not is_instance_valid(corn):
+			continue
+		var elapsed := _get_remote_action_elapsed(
+			host_action_times[record_index],
+			local_net_time,
+			has_host_time_offset,
+			host_to_client_time_offset
+		)
+		if not is_finite(elapsed):
+			continue
+		corn.play_multiplayer_burst(
+			directions[record_index].normalized(),
+			action_ids[record_index],
+			elapsed
+		)
 
 
 func begin_runtime_state_request() -> void:
@@ -1207,6 +1677,9 @@ func _on_host_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
 	if _pending_plant_health_updates.has(net_id):
 		_send_pending_plant_health_updates([net_id])
 	_pending_plant_health_updates.erase(net_id)
+	# Shell visuals share the ordered world-event channel with removal. Flush
+	# committed FIRE records while the corresponding plant proxy still exists.
+	_flush_bamboo_mortar_visuals()
 	plant_removed_broadcast_requested.emit(net_id, was_destroyed)
 
 
@@ -1401,6 +1874,259 @@ func _clear_remote_plant_health_state() -> void:
 	_removed_remote_plant_id_order.clear()
 	_remote_plant_feedback_revisions.clear()
 	_remote_plant_feedback_revision_order.clear()
+
+
+func _apply_authoritative_plant_damage_request(
+	enemy: Enemy,
+	request: DamageRequest,
+	impact_direction: Vector2,
+	damage_type: EnemyConfig.DamageType
+) -> bool:
+	if enemy == null or not is_instance_valid(enemy) or request == null:
+		return false
+	var enemy_net_id := int(
+		_runtime.multiplayer_enemy_ids_by_instance.get(
+			enemy.get_instance_id(),
+			0
+		)
+	)
+	if enemy_net_id <= 0:
+		return false
+	request.with_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES, false)
+	_enemy_coordinator.set_active_damage_feedback_context(
+		enemy_net_id,
+		impact_direction,
+		damage_type,
+		true
+	)
+	var result := enemy.apply_combat_damage(request)
+	_enemy_coordinator.clear_active_damage_feedback_context(enemy_net_id)
+	if not result.accepted:
+		return false
+	if result.lethal:
+		# The synchronous defeated signal already carries the final confirmed hit.
+		return true
+	if is_inside_tree():
+		_enemy_coordinator.queue_damage_feedback(
+			enemy_net_id,
+			result.health_after,
+			enemy.health_revision,
+			result.applied_damage,
+			impact_direction,
+			damage_type,
+			true
+		)
+	return true
+
+
+func _flush_bamboo_mortar_visuals() -> void:
+	if _pending_bamboo_mortar_visuals.is_empty():
+		return
+	assert(
+		_pending_bamboo_mortar_action_ids.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_stages.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_spawn_positions.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_landing_positions.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_windup_durations.size()
+		== _pending_bamboo_mortar_visuals.size()
+		and _pending_bamboo_mortar_host_times.size()
+		== _pending_bamboo_mortar_visuals.size()
+	)
+	for chunk_start in range(
+		0,
+		_pending_bamboo_mortar_visuals.size(),
+		BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET
+	):
+		var chunk_end := mini(
+			chunk_start + BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET,
+			_pending_bamboo_mortar_visuals.size()
+		)
+		bamboo_mortar_visual_batch_broadcast_requested.emit(
+			_pending_bamboo_mortar_visuals.slice(chunk_start, chunk_end),
+			_pending_bamboo_mortar_action_ids.slice(chunk_start, chunk_end),
+			_pending_bamboo_mortar_stages.slice(chunk_start, chunk_end),
+			_pending_bamboo_mortar_spawn_positions.slice(
+				chunk_start,
+				chunk_end
+			),
+			_pending_bamboo_mortar_landing_positions.slice(
+				chunk_start,
+				chunk_end
+			),
+			_pending_bamboo_mortar_windup_durations.slice(
+				chunk_start,
+				chunk_end
+			),
+			_pending_bamboo_mortar_host_times.slice(chunk_start, chunk_end)
+		)
+	_clear_bamboo_mortar_visuals()
+
+
+func _flush_corn_machine_gun_burst_visuals() -> void:
+	if _pending_corn_machine_gun_burst_visuals.is_empty():
+		return
+	assert(
+		_pending_corn_machine_gun_burst_action_ids.size()
+		== _pending_corn_machine_gun_burst_visuals.size()
+		and _pending_corn_machine_gun_burst_directions.size()
+		== _pending_corn_machine_gun_burst_visuals.size()
+		and _pending_corn_machine_gun_burst_host_times.size()
+		== _pending_corn_machine_gun_burst_visuals.size()
+	)
+	for chunk_start in range(
+		0,
+		_pending_corn_machine_gun_burst_visuals.size(),
+		CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET
+	):
+		var chunk_end := mini(
+			chunk_start + CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET,
+			_pending_corn_machine_gun_burst_visuals.size()
+		)
+		corn_machine_gun_burst_batch_broadcast_requested.emit(
+			_pending_corn_machine_gun_burst_visuals.slice(
+				chunk_start,
+				chunk_end
+			),
+			_pending_corn_machine_gun_burst_action_ids.slice(
+				chunk_start,
+				chunk_end
+			),
+			_pending_corn_machine_gun_burst_directions.slice(
+				chunk_start,
+				chunk_end
+			),
+			_pending_corn_machine_gun_burst_host_times.slice(
+				chunk_start,
+				chunk_end
+			)
+		)
+	_clear_corn_machine_gun_burst_visuals()
+
+
+func _clear_bamboo_mortar_visuals() -> void:
+	_pending_bamboo_mortar_visuals.clear()
+	_pending_bamboo_mortar_action_ids.clear()
+	_pending_bamboo_mortar_stages.clear()
+	_pending_bamboo_mortar_spawn_positions.clear()
+	_pending_bamboo_mortar_landing_positions.clear()
+	_pending_bamboo_mortar_windup_durations.clear()
+	_pending_bamboo_mortar_host_times.clear()
+
+
+func _clear_corn_machine_gun_burst_visuals() -> void:
+	_pending_corn_machine_gun_burst_visuals.clear()
+	_pending_corn_machine_gun_burst_action_ids.clear()
+	_pending_corn_machine_gun_burst_directions.clear()
+	_pending_corn_machine_gun_burst_host_times.clear()
+
+
+func _clear_plant_combat_network_state() -> void:
+	_clear_bamboo_mortar_visuals()
+	_clear_corn_machine_gun_burst_visuals()
+	_bamboo_mortar_visual_flush_time_left = (
+		BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS
+	)
+	_corn_machine_gun_burst_flush_time_left = (
+		CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS
+	)
+
+
+func _is_valid_bamboo_mortar_visual_payload(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	stages: PackedByteArray,
+	spawn_positions: PackedVector2Array,
+	landing_positions: PackedVector2Array,
+	committed_windup_durations: PackedFloat32Array,
+	host_action_times: PackedFloat64Array
+) -> bool:
+	var record_count := plant_net_ids.size()
+	if (
+		record_count <= 0
+		or record_count > BAMBOO_MORTAR_VISUAL_MAX_RECORDS_PER_PACKET
+		or action_ids.size() != record_count
+		or stages.size() != record_count
+		or spawn_positions.size() != record_count
+		or landing_positions.size() != record_count
+		or committed_windup_durations.size() != record_count
+		or host_action_times.size() != record_count
+	):
+		return false
+	for record_index in range(record_count):
+		if (
+			plant_net_ids[record_index] <= 0
+			or action_ids[record_index] <= 0
+			or stages[record_index] > 1
+			or not spawn_positions[record_index].is_finite()
+			or not landing_positions[record_index].is_finite()
+			or not is_finite(committed_windup_durations[record_index])
+			or committed_windup_durations[record_index]
+				< BambooMortar.MIN_COMMITTED_WINDUP_DURATION_SECONDS
+			or committed_windup_durations[record_index]
+				> BambooMortar.WINDUP_DURATION_SECONDS
+			or not is_finite(host_action_times[record_index])
+			or host_action_times[record_index] < 0.0
+		):
+			return false
+	return true
+
+
+func _is_valid_corn_machine_gun_burst_payload(
+	plant_net_ids: PackedInt32Array,
+	action_ids: PackedInt32Array,
+	directions: PackedVector2Array,
+	host_action_times: PackedFloat64Array
+) -> bool:
+	var record_count := plant_net_ids.size()
+	if (
+		record_count <= 0
+		or record_count > CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET
+		or action_ids.size() != record_count
+		or directions.size() != record_count
+		or host_action_times.size() != record_count
+	):
+		return false
+	for record_index in range(record_count):
+		var direction := directions[record_index]
+		var host_action_time := host_action_times[record_index]
+		if (
+			plant_net_ids[record_index] <= 0
+			or action_ids[record_index] <= 0
+			or not direction.is_finite()
+			or direction.length_squared() <= 0.001
+			or not is_finite(host_action_time)
+			or host_action_time < 0.0
+		):
+			return false
+	return true
+
+
+func _get_remote_action_elapsed(
+	host_action_time: float,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> float:
+	if not is_finite(local_net_time):
+		return INF
+	var mapped_action_time := local_net_time
+	if has_host_time_offset:
+		if not is_finite(host_to_client_time_offset):
+			return INF
+		mapped_action_time = host_action_time + host_to_client_time_offset
+	return maxf(local_net_time - mapped_action_time, 0.0)
+
+
+func _acquire_or_instantiate_projectile(scene: PackedScene) -> Node:
+	if scene == null:
+		return null
+	if _runtime.has_session_object_pool_scene(scene):
+		return _runtime.acquire_session_object(scene, false)
+	return scene.instantiate()
 
 
 func _request_terrain_snapshot_repair() -> void:
