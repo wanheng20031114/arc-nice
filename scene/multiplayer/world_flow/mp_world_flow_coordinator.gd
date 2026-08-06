@@ -35,6 +35,7 @@ var _enemy_coordinator: MpEnemyCoordinator = null
 var _gameplay_gateway: MultiplayerGameplayGateway = null
 var _run_state: RunStateStore = null
 var _net_manager: NetManagerStore = null
+var _linglan_boss_runtime_port: LinglanBossRuntimePort = null
 var _pending_wave_progress: Dictionary = {}
 var _wave_progress_flush_time_left := WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 var _client_has_received_flow_state := false
@@ -47,7 +48,8 @@ func bind_runtime(
 	enemy_coordinator_instance: MpEnemyCoordinator,
 	gameplay_gateway_instance: MultiplayerGameplayGateway,
 	run_state_instance: RunStateStore,
-	net_manager_instance: NetManagerStore
+	net_manager_instance: NetManagerStore,
+	linglan_boss_runtime_port_instance: LinglanBossRuntimePort = null
 ) -> void:
 	assert(runtime_instance != null, "MpWorldFlowCoordinator 缺少战斗运行时。")
 	assert(mode_adapter_instance != null, "MpWorldFlowCoordinator 缺少模式适配器。")
@@ -62,6 +64,7 @@ func bind_runtime(
 		and _gameplay_gateway == gameplay_gateway_instance
 		and _run_state == run_state_instance
 		and _net_manager == net_manager_instance
+		and _linglan_boss_runtime_port == linglan_boss_runtime_port_instance
 	):
 		return
 	if _runtime != null:
@@ -73,6 +76,7 @@ func bind_runtime(
 	_gameplay_gateway = gameplay_gateway_instance
 	_run_state = run_state_instance
 	_net_manager = net_manager_instance
+	_linglan_boss_runtime_port = linglan_boss_runtime_port_instance
 	reset_session_state()
 	_connect_runtime_signals()
 
@@ -88,6 +92,7 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	_gameplay_gateway = null
 	_run_state = null
 	_net_manager = null
+	_linglan_boss_runtime_port = null
 
 
 func is_bound() -> bool:
@@ -240,6 +245,32 @@ func receive_boss_started(
 	var boss_enemy := _runtime.get_enemy_for_net_id(net_id)
 	if boss_enemy != null and is_instance_valid(boss_enemy):
 		_enemy_coordinator.register_client_enemy(net_id, boss_enemy, now)
+
+
+func receive_linglan_airdrop_started(
+	enemy_config_path: String,
+	landing_position: Vector2,
+	warning_duration: float,
+	drop_height: float,
+	drop_duration: float
+) -> void:
+	if not is_client_view() or enemy_config_path.is_empty():
+		return
+	var enemy_config := load(enemy_config_path) as EnemyConfig
+	if enemy_config == null:
+		return
+	if (
+		_linglan_boss_runtime_port == null
+		or not is_instance_valid(_linglan_boss_runtime_port)
+	):
+		return
+	_linglan_boss_runtime_port.apply_remote_airdrop_started(
+		enemy_config,
+		landing_position,
+		warning_duration,
+		drop_height,
+		drop_duration
+	)
 
 
 func receive_defeat(failure_reason: String) -> void:

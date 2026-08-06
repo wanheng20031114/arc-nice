@@ -1650,7 +1650,8 @@ func _setup_game(mode: int) -> bool:
 		enemy_coordinator,
 		gameplay_gateway,
 		run_state,
-		net_manager
+		net_manager,
+		_linglan_boss_runtime_port
 	)
 	player_coordinator.bind_life_dependencies(
 		net_manager,
@@ -1719,6 +1720,12 @@ func _setup_game(mode: int) -> bool:
 		tower_economy_coordinator.reset_session_state()
 		tower_world_coordinator.reset_session_state()
 		tower_fate_coordinator.reset_session_state()
+	session_coordinator.bind_world_manifest_dependencies(
+		world_flow_coordinator,
+		enemy_coordinator,
+		tower_world_coordinator,
+		tower_economy_coordinator
+	)
 	if net_manager.is_host():
 		if _linglan_boss_runtime_port != null:
 			_linglan_boss_runtime_port.airdrop_started.connect(
@@ -1771,6 +1778,8 @@ func _setup_game(mode: int) -> bool:
 
 
 func _discard_unparented_game_runtime() -> void:
+	if game != null and session_coordinator != null:
+		session_coordinator.unbind_runtime(game)
 	if game != null and merchant_transactions_coordinator != null:
 		merchant_transactions_coordinator.unbind_runtime(game)
 	if game != null and tower_fate_coordinator != null:
@@ -1781,8 +1790,6 @@ func _discard_unparented_game_runtime() -> void:
 		tower_economy_coordinator.unbind_runtime(game)
 	if game != null and world_flow_coordinator != null:
 		world_flow_coordinator.unbind_runtime(game)
-	if game != null and session_coordinator != null:
-		session_coordinator.unbind_runtime(game)
 	if game != null and player_coordinator != null:
 		player_coordinator.unbind_runtime(game)
 	if game != null and enemy_coordinator != null:
@@ -2449,18 +2456,7 @@ func net_tango_electric_surge_started(
 	auto_fire_charge_sequence: int
 ) -> void:
 	var sender_id := multiplayer.get_remote_sender_id()
-	var transport_age_seconds := 0.0
-	if session_coordinator.has_host_time_offset():
-		if (
-			(sender_id <= 0 or sender_id == _get_host_peer_id())
-			and is_finite(host_sent_at)
-		):
-			var local_sent_at := _map_host_timestamp_to_client_time(
-				host_sent_at,
-				false
-			)
-			transport_age_seconds = maxf(_get_net_time() - local_sent_at, 0.0)
-	player_coordinator.apply_tango_electric_surge_started(
+	player_coordinator.receive_tango_electric_surge_started(
 		sender_id,
 		peer_id,
 		activation_id,
@@ -2469,8 +2465,7 @@ func net_tango_electric_surge_started(
 		host_sent_at,
 		buff_active,
 		request_id,
-		auto_fire_charge_sequence,
-		transport_age_seconds
+		auto_fire_charge_sequence
 	)
 
 
@@ -4067,37 +4062,11 @@ func net_runtime_world_manifest(
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
-	var manifest := session_coordinator.parse_runtime_world_manifest(
+	session_coordinator.apply_runtime_world_manifest(
 		live_enemy_ids,
 		live_pickup_ids,
 		live_plant_ids
 	)
-	enemy_coordinator.remove_enemies_missing_from_manifest(manifest.enemy_id_set)
-	for net_id_variant in game.multiplayer_pickups.keys():
-		var net_id := int(net_id_variant)
-		if not manifest.pickup_id_set.has(net_id):
-			net_pickup_removed(net_id)
-	if _has_tower_mode():
-		for plant_net_id in manifest.positive_plant_ids:
-			tower_economy_coordinator.notify_plant_available(plant_net_id)
-		var removed_plant_ids := (
-			tower_world_coordinator.find_live_plant_ids_missing_from_manifest(
-				manifest.plant_id_set
-			)
-		)
-		for plant_net_id in removed_plant_ids:
-			tower_economy_coordinator.notify_plant_removed(plant_net_id)
-		tower_world_coordinator.reconcile_runtime_manifest(
-			manifest.plant_id_set,
-			manifest.positive_plant_ids,
-			removed_plant_ids
-		)
-		_try_apply_pending_warehouse_snapshots_atomically()
-		# CH5 manifests have no total order with CH6 warehouse/production state or
-		# CH7 health batches. A pending id that has no local replica yet may belong
-		# to a Host spawn still in flight on CH5. Only prune replicas whose existence
-		# has already been established locally; unknown payloads remain bounded until
-		# spawn consumption, explicit removal, or their own FIFO eviction.
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
@@ -4385,8 +4354,8 @@ func net_enemy_spawned(
 		Vector2(pos_x, pos_y),
 		host_spawn_timestamp,
 		_get_net_time(),
-		_has_host_time_offset,
-		_host_to_client_time_offset
+		session_coordinator.has_host_time_offset(),
+		session_coordinator.get_host_to_client_time_offset()
 	)
 
 
@@ -4403,8 +4372,8 @@ func net_enemy_spawned_batch(
 		positions,
 		spawn_times,
 		_get_net_time(),
-		_has_host_time_offset,
-		_host_to_client_time_offset
+		session_coordinator.has_host_time_offset(),
+		session_coordinator.get_host_to_client_time_offset()
 	)
 
 
@@ -4689,8 +4658,8 @@ func net_enemy_action(
 		action_id,
 		host_action_timestamp,
 		_get_net_time(),
-		_has_host_time_offset,
-		_host_to_client_time_offset
+		session_coordinator.has_host_time_offset(),
+		session_coordinator.get_host_to_client_time_offset()
 	)
 
 
@@ -4711,8 +4680,8 @@ func net_enemy_target_action(
 		action_id,
 		host_action_timestamp,
 		_get_net_time(),
-		_has_host_time_offset,
-		_host_to_client_time_offset
+		session_coordinator.has_host_time_offset(),
+		session_coordinator.get_host_to_client_time_offset()
 	)
 
 
@@ -4785,35 +4754,13 @@ func net_linglan_airdrop_started(
 	drop_height: float,
 	drop_duration: float
 ) -> void:
-	if game == null or net_manager.is_host() or enemy_config_path.is_empty():
-		return
-	var enemy_config := load(enemy_config_path) as EnemyConfig
-	if enemy_config == null:
-		return
-	var runtime_port := _get_linglan_boss_runtime_port()
-	if runtime_port == null:
-		return
-	runtime_port.apply_remote_airdrop_started(
-		enemy_config,
+	world_flow_coordinator.receive_linglan_airdrop_started(
+		enemy_config_path,
 		landing_position,
 		warning_duration,
 		drop_height,
 		drop_duration
 	)
-
-
-func _get_linglan_boss_runtime_port() -> LinglanBossRuntimePort:
-	if (
-		_linglan_boss_runtime_port != null
-		and is_instance_valid(_linglan_boss_runtime_port)
-	):
-		return _linglan_boss_runtime_port
-	if game == null or not is_instance_valid(game):
-		return null
-	_linglan_boss_runtime_port = game.get_node_or_null(
-		"LinglanBossRuntimePort"
-	) as LinglanBossRuntimePort
-	return _linglan_boss_runtime_port
 
 
 @rpc("authority", "call_remote", "reliable", 5)

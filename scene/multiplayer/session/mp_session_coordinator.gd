@@ -20,6 +20,10 @@ class RuntimeWorldManifest:
 var _runtime: CombatRuntimeBase = null
 var _net_manager: NetManagerStore = null
 var _public_room_keepalive_request: HTTPRequest = null
+var _world_flow_coordinator: MpWorldFlowCoordinator = null
+var _enemy_coordinator: MpEnemyCoordinator = null
+var _tower_world_coordinator: MpTowerWorldCoordinator = null
+var _tower_economy_coordinator: MpTowerEconomyCoordinator = null
 var _runtime_state_requested := false
 var _runtime_state_request_rate_buckets: Dictionary = {}
 var _net_time_origin: float = 0.0
@@ -145,6 +149,7 @@ func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	assert(runtime_instance != null, "MpSessionCoordinator 缺少战斗运行时。")
 	if _runtime == runtime_instance:
 		return
+	_clear_world_manifest_dependencies()
 	_runtime = runtime_instance
 	reset_session_state()
 
@@ -153,11 +158,54 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	if _runtime != runtime_instance:
 		return
 	_runtime = null
+	_clear_world_manifest_dependencies()
 	reset_session_state()
 
 
 func is_bound() -> bool:
 	return _runtime != null and is_instance_valid(_runtime)
+
+
+func bind_world_manifest_dependencies(
+	world_flow_coordinator_instance: MpWorldFlowCoordinator,
+	enemy_coordinator_instance: MpEnemyCoordinator,
+	tower_world_coordinator_instance: MpTowerWorldCoordinator,
+	tower_economy_coordinator_instance: MpTowerEconomyCoordinator
+) -> void:
+	assert(
+		world_flow_coordinator_instance != null,
+		"MpSessionCoordinator 缺少世界流程协调器。"
+	)
+	assert(
+		enemy_coordinator_instance != null,
+		"MpSessionCoordinator 缺少敌人协调器。"
+	)
+	assert(
+		tower_world_coordinator_instance != null,
+		"MpSessionCoordinator 缺少塔防世界协调器。"
+	)
+	assert(
+		tower_economy_coordinator_instance != null,
+		"MpSessionCoordinator 缺少塔防经济协调器。"
+	)
+	_world_flow_coordinator = world_flow_coordinator_instance
+	_enemy_coordinator = enemy_coordinator_instance
+	_tower_world_coordinator = tower_world_coordinator_instance
+	_tower_economy_coordinator = tower_economy_coordinator_instance
+
+
+func has_world_manifest_dependencies() -> bool:
+	return (
+		is_bound()
+		and _world_flow_coordinator != null
+		and is_instance_valid(_world_flow_coordinator)
+		and _enemy_coordinator != null
+		and is_instance_valid(_enemy_coordinator)
+		and _tower_world_coordinator != null
+		and is_instance_valid(_tower_world_coordinator)
+		and _tower_economy_coordinator != null
+		and is_instance_valid(_tower_economy_coordinator)
+	)
 
 
 func try_begin_client_runtime_state_request(
@@ -209,6 +257,51 @@ func parse_runtime_world_manifest(
 	return manifest
 
 
+func apply_runtime_world_manifest(
+	live_enemy_ids: PackedInt32Array,
+	live_pickup_ids: PackedInt32Array,
+	live_plant_ids: PackedInt32Array
+) -> bool:
+	if (
+		not has_world_manifest_dependencies()
+		or _net_manager == null
+		or _net_manager.is_host()
+	):
+		return false
+	var manifest := parse_runtime_world_manifest(
+		live_enemy_ids,
+		live_pickup_ids,
+		live_plant_ids
+	)
+	_enemy_coordinator.remove_enemies_missing_from_manifest(
+		manifest.enemy_id_set
+	)
+	for net_id_variant in _runtime.multiplayer_pickups.keys():
+		var net_id := int(net_id_variant)
+		if not manifest.pickup_id_set.has(net_id):
+			_world_flow_coordinator.receive_pickup_removed(net_id)
+	if _tower_world_coordinator.is_bound():
+		for plant_net_id in manifest.positive_plant_ids:
+			_tower_economy_coordinator.notify_plant_available(plant_net_id)
+		var removed_plant_ids := (
+			_tower_world_coordinator.find_live_plant_ids_missing_from_manifest(
+				manifest.plant_id_set
+			)
+		)
+		for plant_net_id in removed_plant_ids:
+			_tower_economy_coordinator.notify_plant_removed(plant_net_id)
+		_tower_world_coordinator.reconcile_runtime_manifest(
+			manifest.plant_id_set,
+			manifest.positive_plant_ids,
+			removed_plant_ids
+		)
+		_tower_economy_coordinator.try_apply_pending_warehouse_snapshots_atomically()
+		# CH5 manifests have no total order with CH6 warehouse/production state or
+		# CH7 health batches. Unknown payloads remain bounded until their CH5 spawn,
+		# explicit removal, or FIFO eviction establishes their lifecycle.
+	return true
+
+
 func clear_peer(peer_id: int) -> void:
 	_runtime_state_request_rate_buckets.erase(peer_id)
 
@@ -226,6 +319,13 @@ func reset_transport_state() -> void:
 
 func has_requested_runtime_state() -> bool:
 	return _runtime_state_requested
+
+
+func _clear_world_manifest_dependencies() -> void:
+	_world_flow_coordinator = null
+	_enemy_coordinator = null
+	_tower_world_coordinator = null
+	_tower_economy_coordinator = null
 
 
 func _send_public_room_keepalive() -> void:
