@@ -11,20 +11,9 @@ const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/enemy/yua
 const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
 const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
 const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
-const COUNTDOWN_FINAL_SECONDS := TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS
 const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
 const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
-const SPECTATOR_CAMERA_SPEED := TowerDefensePresentationCoordinator.SPECTATOR_CAMERA_SPEED
-const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.025
-const DEFAULT_MUSIC_VOLUME_DB := TowerDefensePresentationCoordinator.DEFAULT_MUSIC_VOLUME_DB
-const MUSIC_FADE_IN_SECONDS := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_SECONDS
-const MUSIC_FADE_IN_START_VOLUME_DB := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_START_VOLUME_DB
-const BOSS_INTRO_CAMERA_FOCUS_SECONDS := TowerDefensePresentationCoordinator.BOSS_INTRO_CAMERA_FOCUS_SECONDS
-const DEFEAT_CAMERA_TRAVEL_SECONDS := TowerDefensePresentationCoordinator.DEFEAT_CAMERA_TRAVEL_SECONDS
 const DEFAULT_BASE_HEALTH := 100
-const XIAOCONG_INTERACTION_DISTANCE := (
-	TowerDefenseFateFlowCoordinator.XIAOCONG_INTERACTION_DISTANCE
-)
 const FORMAL_PROGRESSION_CONFIG_PATH := (
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
@@ -40,17 +29,6 @@ const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2(-18.0, -18.0),
 	Vector2(18.0, -18.0),
 ]
-const PLANT_PLACEMENT_REJECT_INVALID_REQUEST := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_REQUEST
-const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_PLAYER
-const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_CONFIG
-const PLANT_PLACEMENT_REJECT_INVALID_POSITION := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_POSITION
-const PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
-const PLANT_PLACEMENT_REJECT_STALE_INVENTORY := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_STALE_INVENTORY
-const PLANT_PLACEMENT_REJECT_FREE_DISABLED := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FREE_DISABLED
-const PLANT_PLACEMENT_REJECT_FLOW_LOCKED := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FLOW_LOCKED
-
-signal base_health_changed(current_health: int, maximum_health: int, revision: int)
-
 # Production defaults to loading-time prewarming. The cohort performance probe
 # can disable it before scene instantiation for a strict old/new A/B.
 static var expanded_projectile_pool_prewarm_enabled := true
@@ -109,24 +87,22 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var home_defense_coordinator: TowerDefenseHomeDefenseCoordinator = (
 	$HomeDefenseCoordinator
 )
-@onready var plant_runtime_coordinator := get_node_or_null(
-	"PlantRuntimeCoordinator"
-) as TowerDefensePlantRuntimeCoordinator
-@onready var plant_placement_coordinator := get_node_or_null(
-	"PlantPlacementCoordinator"
-) as TowerDefensePlantPlacementCoordinator
-@onready var player_roster_coordinator := get_node_or_null(
-	"PlayerRosterCoordinator"
-) as TowerDefensePlayerRosterCoordinator
-@onready var boss_coordinator := get_node_or_null(
-	"BossCoordinator"
-) as TowerDefenseBossCoordinator
-@onready var presentation_coordinator := get_node_or_null(
-	"PresentationCoordinator"
-) as TowerDefensePresentationCoordinator
-@onready var prewarmer_coordinator := get_node_or_null(
-	"PrewarmerCoordinator"
-) as TowerDefensePrewarmerCoordinator
+@onready var plant_runtime_coordinator: TowerDefensePlantRuntimeCoordinator = (
+	$PlantRuntimeCoordinator
+)
+@onready var plant_placement_coordinator: TowerDefensePlantPlacementCoordinator = (
+	$PlantPlacementCoordinator
+)
+@onready var player_roster_coordinator: TowerDefensePlayerRosterCoordinator = (
+	$PlayerRosterCoordinator
+)
+@onready var boss_coordinator: TowerDefenseBossCoordinator = $BossCoordinator
+@onready var presentation_coordinator: TowerDefensePresentationCoordinator = (
+	$PresentationCoordinator
+)
+@onready var prewarmer_coordinator: TowerDefensePrewarmerCoordinator = (
+	$PrewarmerCoordinator
+)
 @onready var tower_grid_pathfinder: GridPathfinder = grid_pathfinder as GridPathfinder
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -170,42 +146,6 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
-var _pending_music_fade_tween: Tween = null
-var music_fade_tween: Tween:
-	get:
-		return (
-			presentation_coordinator.music_fade_tween
-			if presentation_coordinator != null and presentation_coordinator.is_bound()
-			else _pending_music_fade_tween
-		)
-	set(value):
-		_pending_music_fade_tween = value
-		if presentation_coordinator != null and presentation_coordinator.is_bound():
-			presentation_coordinator.replace_music_fade_tween(value)
-var _pending_boss_intro_camera_tween: Tween = null
-var boss_intro_camera_tween: Tween:
-	get:
-		return (
-			presentation_coordinator.boss_intro_camera_tween
-			if presentation_coordinator != null and presentation_coordinator.is_bound()
-			else _pending_boss_intro_camera_tween
-		)
-	set(value):
-		_pending_boss_intro_camera_tween = value
-		if presentation_coordinator != null and presentation_coordinator.is_bound():
-			presentation_coordinator.replace_boss_intro_camera_tween(value)
-var _pending_defeat_camera_tween: Tween = null
-var defeat_camera_tween: Tween:
-	get:
-		return (
-			presentation_coordinator.defeat_camera_tween
-			if presentation_coordinator != null and presentation_coordinator.is_bound()
-			else _pending_defeat_camera_tween
-		)
-	set(value):
-		_pending_defeat_camera_tween = value
-		if presentation_coordinator != null and presentation_coordinator.is_bound():
-			presentation_coordinator.replace_defeat_camera_tween(value)
 var multiplayer_player_names: Dictionary = {}
 var multiplayer_player_character_ids: Dictionary = {}
 var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
@@ -285,18 +225,6 @@ var singleplayer_respawn_last_seconds: int:
 		_singleplayer_respawn_last_seconds = value
 		if player_roster_coordinator != null:
 			player_roster_coordinator.singleplayer_respawn_last_seconds = value
-var _pending_spectator_camera_active := false
-var spectator_camera_active: bool:
-	get:
-		return (
-			presentation_coordinator.spectator_camera_active
-			if presentation_coordinator != null and presentation_coordinator.is_bound()
-			else _pending_spectator_camera_active
-		)
-	set(value):
-		_pending_spectator_camera_active = value
-		if presentation_coordinator != null and presentation_coordinator.is_bound():
-			presentation_coordinator.spectator_camera_active = value
 var projectile_pool_registration_ms := 0.0
 var runtime_prewarm_tearing_down := false
 
@@ -407,12 +335,6 @@ func _ready() -> void:
 	production_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
-	if not production_coordinator.personal_inventory_output_committed.is_connected(
-		_on_personal_inventory_output_committed
-	):
-		production_coordinator.personal_inventory_output_committed.connect(
-			_on_personal_inventory_output_committed
-		)
 	research_coordinator.setup(
 		production_coordinator,
 		plant_system,
@@ -421,12 +343,6 @@ func _ready() -> void:
 	research_coordinator.set_authoritative_processing_enabled(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
-	if not research_coordinator.research_state_changed.is_connected(
-		plant_runtime_coordinator.notify_recipe_unlocks_changed
-	):
-		research_coordinator.research_state_changed.connect(
-			plant_runtime_coordinator.notify_recipe_unlocks_changed
-		)
 	_register_research_players()
 	_configure_minimap()
 	_apply_initial_player_xirang()
@@ -458,7 +374,7 @@ func _ready() -> void:
 		random_generator,
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
-	_set_merchant_active(false)
+	tower_multiplayer_mode_adapter.set_merchant_active(false)
 	fate_coordinator.setup(
 		campaign_coordinator,
 		home_defense_coordinator,
@@ -492,11 +408,15 @@ func _ready() -> void:
 		auto_start_waves = false
 		campaign_coordinator.start_client_flow_countdown(
 			CombatFlowState.State.PRE_WAVE,
-			_get_flow_step_id(_get_start_flow_step()),
+			campaign_coordinator.get_flow_step_id(
+				campaign_coordinator.get_start_flow_step()
+			),
 			campaign_coordinator.get_initial_preparation_seconds()
 		)
 	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
-		campaign_coordinator.enter_pre_flow_step(_get_start_flow_step())
+		campaign_coordinator.enter_pre_flow_step(
+			campaign_coordinator.get_start_flow_step()
+		)
 	else:
 		enemy_coordinator.show_wave_progress()
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
@@ -516,16 +436,19 @@ func _on_runtime_activated() -> void:
 		and auto_start_waves
 		and _is_flow_system_ready()
 	):
-		campaign_coordinator.enter_pre_flow_step(_get_start_flow_step())
+		campaign_coordinator.enter_pre_flow_step(
+			campaign_coordinator.get_start_flow_step()
+		)
 
 
 func _physics_process(delta: float) -> void:
-	_update_local_spectator_camera(delta)
-	_update_singleplayer_respawn(delta)
+	presentation_coordinator.update_local_spectator_camera(delta)
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.update_singleplayer_respawn(delta)
 	if runtime_mode != RuntimeMode.CLIENT_VIEW:
 		enemy_coordinator.update_targets(delta)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		_update_multiplayer_remote_player_passive_state(delta)
+		player_roster_coordinator.update_remote_passive_state(delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -593,12 +516,6 @@ func _configure_player_roster_coordinator() -> bool:
 	if not player_roster_coordinator.is_bound():
 		push_error("TowerDefenseGame: PlayerRosterCoordinator 依赖绑定不完整。")
 		return false
-	player_roster_coordinator.player_runtime_binding_requested.connect(
-		bind_player_runtime_context
-	)
-	player_roster_coordinator.enemy_retarget_requested.connect(
-		enemy_coordinator.request_retarget
-	)
 	return true
 
 
@@ -640,40 +557,10 @@ func _configure_presentation_coordinator() -> bool:
 		day_phase_announcement,
 		tower_defense_status_hud
 	)
-	presentation_coordinator.replace_music_fade_tween(
-		_pending_music_fade_tween
-	)
-	presentation_coordinator.replace_boss_intro_camera_tween(
-		_pending_boss_intro_camera_tween
-	)
-	presentation_coordinator.replace_defeat_camera_tween(
-		_pending_defeat_camera_tween
-	)
-	presentation_coordinator.spectator_camera_active = (
-		_pending_spectator_camera_active
-	)
 	if not presentation_coordinator.is_bound():
 		push_error("TowerDefenseGame: PresentationCoordinator 依赖绑定不完整。")
 		return false
 	return true
-
-
-func request_tango_charge_started(direction: Vector2) -> bool:
-	player_roster_coordinator.local_player = player
-	player_roster_coordinator.set_runtime_identity(runtime_mode, multiplayer_local_peer_id)
-	return player_roster_coordinator.request_tango_charge_started(direction)
-
-
-func request_tango_charge_released(direction: Vector2) -> bool:
-	player_roster_coordinator.local_player = player
-	player_roster_coordinator.set_runtime_identity(runtime_mode, multiplayer_local_peer_id)
-	return player_roster_coordinator.request_tango_charge_released(direction)
-
-
-func request_tango_charge_cancelled() -> bool:
-	player_roster_coordinator.local_player = player
-	player_roster_coordinator.set_runtime_identity(runtime_mode, multiplayer_local_peer_id)
-	return player_roster_coordinator.request_tango_charge_cancelled()
 
 
 func supports_tower_defense() -> bool:
@@ -693,43 +580,6 @@ func get_test_arena_manual_night_enabled() -> bool:
 
 func apply_remote_test_arena_manual_night(_enabled: bool) -> void:
 	pass
-
-
-func _apply_wave_start_lighting(wave_number: int) -> void:
-	presentation_coordinator.apply_wave_start_lighting(wave_number)
-
-
-func _apply_intermission_lighting(completed_wave_number: int) -> void:
-	presentation_coordinator.apply_intermission_lighting(completed_wave_number)
-
-
-func _is_night_wave(wave_number: int) -> bool:
-	return (
-		campaign_coordinator.is_night_wave(wave_number)
-		if campaign_coordinator != null
-		else day_cycle_config.is_night_wave(wave_number)
-	)
-
-
-func _get_day_number_for_wave(wave_number: int) -> int:
-	return (
-		campaign_coordinator.get_day_number_for_wave(wave_number)
-		if campaign_coordinator != null
-		else day_cycle_config.get_day_number(wave_number)
-	)
-
-
-func _announce_wave_phase_start(wave_number: int) -> bool:
-	return presentation_coordinator.announce_wave_phase_start(
-		wave_number,
-		day_phase_announcements_enabled
-	)
-
-
-func get_fixed_multiplayer_respawn_position(peer_id: int) -> Variant:
-	return tower_multiplayer_mode_adapter.get_fixed_multiplayer_respawn_position(
-		peer_id
-	)
 
 
 func _configure_active_campaign() -> bool:
@@ -994,10 +844,6 @@ func _configure_plant_placement_coordinator() -> bool:
 	return plant_placement_coordinator.is_bound()
 
 
-func _on_personal_inventory_output_committed(peer_id: int) -> void:
-	tower_multiplayer_mode_adapter.publish_inventory_changed(peer_id)
-
-
 func _apply_initial_player_xirang() -> void:
 	player_roster_coordinator.local_player = player
 	player_roster_coordinator.apply_initial_player_xirang()
@@ -1044,82 +890,13 @@ func _toggle_full_screen() -> void:
 
 
 func _toggle_debug_collectible_window() -> void:
-	if debug_collectible_window == null or not sandbox_free_building_enabled:
+	if (
+		debug_collectible_window == null
+		or not sandbox_free_building_enabled
+		or not tower_multiplayer_mode_adapter.allows_debug_collectible_grants()
+	):
 		return
 	debug_collectible_window.toggle()
-
-
-func grant_debug_collectible(config_path: String) -> bool:
-	return tower_multiplayer_mode_adapter.grant_debug_collectible(config_path)
-
-
-func show_debug_collectible_grant_result(config_path: String, success: bool) -> void:
-	tower_multiplayer_mode_adapter.show_debug_collectible_grant_result(
-		config_path, success
-	)
-
-
-func allows_debug_collectible_grants() -> bool:
-	return tower_multiplayer_mode_adapter.allows_debug_collectible_grants()
-
-
-func show_simple_crafting_result(
-	recipe_id: StringName,
-	result: StringName,
-	request_token: int
-) -> void:
-	tower_multiplayer_mode_adapter.show_simple_crafting_result(
-		recipe_id, result, request_token
-	)
-
-
-func apply_remote_merchant_active(active: bool) -> void:
-	tower_multiplayer_mode_adapter.apply_remote_merchant_active(active)
-
-
-func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
-	tower_multiplayer_mode_adapter.apply_remote_flow_state(step_id, state, seconds)
-
-
-func _on_remote_flow_state_applied(
-	_step_id: StringName,
-	_state: CombatFlowState.State,
-	_seconds: int
-) -> void:
-	pass
-
-func get_flow_state_snapshot() -> Dictionary:
-	return tower_multiplayer_mode_adapter.get_flow_state_snapshot()
-
-
-func apply_remote_victory() -> void:
-	tower_multiplayer_mode_adapter.apply_remote_victory()
-
-
-func apply_remote_enemy_count(alive_count: int) -> void:
-	tower_multiplayer_mode_adapter.apply_remote_enemy_count(alive_count)
-
-
-
-func apply_remote_defeat() -> void:
-	tower_multiplayer_mode_adapter.apply_remote_defeat()
-
-
-func show_damage_number(
-	amount: int,
-	spawn_position: Vector2,
-	impact_direction: Vector2 = Vector2.ZERO,
-	damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
-	display_priority: DamageNumberPool.DisplayPriority = DamageNumberPool.DisplayPriority.NORMAL
-) -> bool:
-	return show_combat_number(
-		amount,
-		spawn_position,
-		DamageNumberPool.CombatNumberKind.DAMAGE,
-		impact_direction,
-		damage_type,
-		display_priority
-	)
 
 
 func show_combat_number(
@@ -1140,44 +917,6 @@ func show_combat_number(
 		damage_type,
 		display_priority
 	)
-
-
-func try_purchase_skill1_for_peer(peer_id: int) -> int:
-	return tower_multiplayer_mode_adapter.try_purchase_skill1_for_peer(peer_id)
-
-
-func apply_skill1_purchase_state(
-	peer_id: int,
-	current_xirang: int,
-	skill1_unlocked: bool,
-	skill1_upgrade_level: int = -1,
-	skill1_charge_duration: float = -1.0
-) -> void:
-	tower_multiplayer_mode_adapter.apply_skill1_purchase_state(
-		peer_id,
-		current_xirang,
-		skill1_unlocked,
-		skill1_upgrade_level,
-		skill1_charge_duration
-	)
-
-
-func show_local_skill1_purchase_result(result_code: int) -> void:
-	tower_multiplayer_mode_adapter.show_local_skill1_purchase_result(result_code)
-
-
-
-
-func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
-	return campaign_coordinator.request_wave_start(requester_peer_id)
-
-
-func _set_merchant_active(active: bool) -> void:
-	tower_multiplayer_mode_adapter.set_merchant_active(active)
-
-
-func _set_local_merchants_active(active: bool) -> bool:
-	return tower_multiplayer_mode_adapter.set_local_merchants_active(active)
 
 
 func _configure_boss_coordinator() -> bool:
@@ -1305,77 +1044,11 @@ func get_progression_metrics_snapshot() -> Dictionary:
 	return campaign_coordinator.get_progression_metrics_snapshot()
 
 
-func _complete_defeat_presentation() -> void:
-	campaign_coordinator.complete_defeat_presentation()
-
-
-func consume_next_player_respawn_delay(peer_id: int) -> float:
-	return tower_multiplayer_mode_adapter.consume_next_player_respawn_delay(peer_id)
-
-
-func update_player_respawn_countdown(peer_id: int, seconds_left: int) -> void:
-	tower_multiplayer_mode_adapter.update_player_respawn_countdown(
-		peer_id,
-		seconds_left
-	)
-
-
-func clear_player_respawn_countdown(peer_id: int) -> void:
-	tower_multiplayer_mode_adapter.clear_player_respawn_countdown(peer_id)
-
-
-func _reset_player_wave_death_counts() -> void:
-	player_roster_coordinator.reset_wave_death_counts()
-
-
-func _force_revive_dead_players(emit_multiplayer: bool = true) -> void:
-	player_roster_coordinator.local_player = player
-	player_roster_coordinator.set_runtime_identity(runtime_mode, multiplayer_local_peer_id)
-	player_roster_coordinator.force_revive_dead_players(emit_multiplayer)
-
-
-func _update_singleplayer_respawn(delta: float) -> void:
-	player_roster_coordinator.local_player = player
-	player_roster_coordinator.update_singleplayer_respawn(delta)
-
-
-func _begin_local_spectator_camera() -> void:
-	presentation_coordinator.begin_local_spectator_camera(player)
-
-
-func _end_local_spectator_camera() -> void:
-	presentation_coordinator.end_local_spectator_camera(player)
-
-
-func _update_local_spectator_camera(delta: float) -> void:
-	presentation_coordinator.update_local_spectator_camera(delta)
-
-
 func _configure_multiplayer_players() -> void:
 	player_roster_coordinator.set_runtime_identity(
 		runtime_mode, multiplayer_local_peer_id
 	)
 	player = player_roster_coordinator.configure_multiplayer_players()
-
-
-func _get_multiplayer_spawn_offset(index: int) -> Vector2:
-	return MULTIPLAYER_SPAWN_OFFSETS[index % MULTIPLAYER_SPAWN_OFFSETS.size()]
-
-
-func apply_network_input_for_peer(
-	peer_id: int,
-	move_input: Vector2,
-	shoot_input: Vector2,
-	use_skill1: bool,
-	use_reload: bool = false
-) -> void:
-	player_roster_coordinator.apply_network_input_for_peer(
-		peer_id, move_input, shoot_input, use_skill1, use_reload
-	)
-
-
-func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
-	player_roster_coordinator.update_remote_passive_state(delta)
 
 
 func remove_multiplayer_player(peer_id: int) -> void:
@@ -1464,111 +1137,15 @@ func _is_flow_system_ready() -> bool:
 	if campaign_coordinator.flow_graph == null:
 		push_error("TowerDefenseGame 当前 Campaign 没有配置 FlowGraphConfig。")
 		return false
-	if not _is_spawn_system_ready():
+	if not enemy_coordinator.is_spawn_system_ready():
 		return false
 	var errors := campaign_coordinator.validate_flow_graph()
 	for error in errors:
 		push_warning(error)
 	if not errors.is_empty():
 		return false
-	return _get_start_flow_step() != null
-
-
-func _get_start_flow_step() -> FlowStepConfig:
-	return campaign_coordinator.get_start_flow_step()
-
-
-func _get_flow_step_by_id(step_id: StringName) -> FlowStepConfig:
-	return campaign_coordinator.get_flow_step_by_id(step_id)
-
-
-func _get_flow_step_id(flow_step: FlowStepConfig) -> StringName:
-	return campaign_coordinator.get_flow_step_id(flow_step)
-
-
-func _get_default_next_flow_step(flow_step: FlowStepConfig) -> FlowStepConfig:
-	return campaign_coordinator.get_default_next_flow_step(flow_step)
-
-
-func _get_wave_number_for_step(wave_config: WaveConfig) -> int:
-	return campaign_coordinator.get_wave_number_for_step(
-		wave_config,
-		campaign_coordinator.current_wave_index
-	)
-
-
-func _emit_multiplayer_flow_state(state: CombatFlowState.State) -> void:
-	tower_multiplayer_mode_adapter.publish_flow_state(state)
-
-
-func _is_spawn_system_ready() -> bool:
-	return enemy_coordinator.is_spawn_system_ready()
+	return campaign_coordinator.get_start_flow_step() != null
 
 
 func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	enemy_coordinator.spawn_enemy_spawn_effect(spawn_global_position)
-
-
-func _play_countdown_tick() -> void:
-	presentation_coordinator.play_countdown_tick()
-
-
-func _play_client_countdown_tick_if_new(
-	state: CombatFlowState.State,
-	step_id: StringName,
-	seconds: int
-) -> void:
-	presentation_coordinator.play_client_countdown_tick_if_new(
-		state,
-		step_id,
-		seconds
-	)
-
-
-func _update_wave_music(wave_config: WaveConfig) -> void:
-	presentation_coordinator.update_wave_music(wave_config)
-
-
-func _update_post_wave_music(flow_step: FlowStepConfig) -> void:
-	presentation_coordinator.update_post_wave_music(flow_step)
-
-
-func _stop_background_music_for_defeat() -> void:
-	presentation_coordinator.stop_background_music_for_defeat()
-
-
-func _play_music_stream(
-	stream: AudioStream,
-	volume_db: float,
-	loop_offset: float = 0.0,
-	fade_in: bool = false
-) -> void:
-	presentation_coordinator.play_music_stream(
-		stream,
-		volume_db,
-		loop_offset,
-		fade_in
-	)
-
-
-func _stop_music_fade_tween() -> void:
-	presentation_coordinator.stop_music_fade_tween()
-
-
-func _configure_music_loop(stream: AudioStream, loop_offset: float) -> void:
-	presentation_coordinator.configure_music_loop(stream, loop_offset)
-
-
-func _audio_stream_has_property(stream: AudioStream, property_name: StringName) -> bool:
-	return presentation_coordinator.audio_stream_has_property(
-		stream,
-		property_name
-	)
-
-
-func _pause_background_music_players(root_node: Node) -> void:
-	presentation_coordinator.pause_background_music_players(root_node)
-
-
-func _is_background_music_player(node: Node) -> bool:
-	return presentation_coordinator.is_background_music_player(node)

@@ -1146,10 +1146,9 @@ func get_tower_runtime() -> TowerDefenseGame:
 
 
 func request_authoritative_wave_start(requester_peer_id: int) -> bool:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime != null
-		and tower_runtime.request_tower_defense_wave_start(requester_peer_id)
+		_campaign_coordinator != null
+		and _campaign_coordinator.request_wave_start(requester_peer_id)
 	)
 
 

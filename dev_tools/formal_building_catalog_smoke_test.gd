@@ -62,7 +62,7 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	_expect(
 		not game.sandbox_free_building_enabled
 		and not controller.free_placement_enabled
-		and not game.allows_debug_collectible_grants(),
+		and not game.tower_multiplayer_mode_adapter.allows_debug_collectible_grants(),
 		"Formal tower defense must disable free placement and debug grants."
 	)
 	_expect(controller.open_selection(), "Formal T catalog must open.")
@@ -285,7 +285,7 @@ func _test_host_rejects_free_placement() -> void:
 		and rejections[0]["request_id"] == 77
 		and rejections[0]["peer_id"] == 2
 		and rejections[0]["reason"]
-		== TowerDefenseGame.PLANT_PLACEMENT_REJECT_FREE_DISABLED
+		== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FREE_DISABLED
 		and game.plant_container.get_child_count() == plant_count_before,
 		"Formal host must reject the legacy free-placement RPC before placement."
 	)
@@ -293,7 +293,9 @@ func _test_host_rejects_free_placement() -> void:
 	if not collectible_pool.is_empty():
 		var collectible_path := (collectible_pool[0] as PickupConfig).resource_path
 		_expect(
-			not game.grant_debug_collectible(collectible_path),
+			not game.tower_multiplayer_mode_adapter.grant_debug_collectible(
+				collectible_path
+			),
 			"Formal tower defense must reject direct debug collectible grants."
 		)
 		_test_multiplayer_debug_grant_policy(

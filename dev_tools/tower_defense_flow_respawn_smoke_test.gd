@@ -196,7 +196,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"Tower-defense flow must use separate 90/30/60 preparation durations."
 	)
 	_expect(game.player.current_xirang == 1000, "The player must enter tower defense with 1000 Xirang.")
-	var first_step := game.current_flow_step
+	var first_step: FlowStepConfig = game.current_flow_step
 	_expect(game.wave_state == CombatFlowState.State.PRE_WAVE, "The first wave must wait in PRE_WAVE instead of starting immediately.")
 	_expect(game.countdown_seconds == 90, "The first preparation period must start at 90 seconds.")
 	_expect(game.wave_hud.start_wave_button.visible and not game.wave_hud.start_wave_button.disabled, "The rest HUD must expose an enabled early-start button.")
@@ -245,7 +245,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 		"Early-start must skip preparation to one non-repeatable 3-second final countdown."
 	)
 	_expect(
-		not game.request_tower_defense_wave_start(0),
+		not game.campaign_coordinator.request_wave_start(0),
 		"The final 3-second countdown must reject repeated early-start requests."
 	)
 	_finish_final_countdown(game)
@@ -268,7 +268,10 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	)
 	_expect(game.merchant.is_active and game.merchant.visible, "Zhuangfangyi must remain standing during combat.")
 	_expect(game.luoxi_merchant.is_active and game.luoxi_merchant.visible, "Luoxi must remain standing during combat.")
-	_expect(not game.request_tower_defense_wave_start(0), "An early-start request during combat must be rejected.")
+	_expect(
+		not game.campaign_coordinator.request_wave_start(0),
+		"An early-start request during combat must be rejected."
+	)
 
 	game.enemy_spawn_timer.stop()
 	for enemy_node in game.enemy_container.get_children():
@@ -284,7 +287,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	game.luoxi_merchant.choice_visible = true
 	game.luoxi_merchant.result_visible = true
 	game.luoxi_merchant.dialogue_bubble.show()
-	game.call("_enter_intermission", first_step)
+	game.campaign_coordinator.enter_intermission(first_step)
 	_expect(game.wave_state == CombatFlowState.State.INTERMISSION, "Every cleared wave must enter a rest state.")
 	_expect(game.countdown_seconds == 30, "Every ordinary between-wave rest must start at 30 seconds.")
 	_expect(
@@ -299,9 +302,12 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(not game.luoxi_merchant.result_visible, "A new rest must clear Luoxi's previous result state.")
 	_expect(not game.luoxi_merchant.dialogue_bubble.visible, "A new rest must clear Luoxi's stale dialogue bubble.")
 	game.luoxi_merchant.refresh_counts_by_player_key[0] = 2
-	game.call("_set_merchant_active", true)
+	game.tower_multiplayer_mode_adapter.set_merchant_active(true)
 	_expect(game.luoxi_merchant.get_player_refresh_count(0) == 2, "Repeated state sync in one rest must not reset Luoxi twice.")
-	_expect(game.request_tower_defense_wave_start(0), "The between-wave rest button must also start the final countdown.")
+	_expect(
+		game.campaign_coordinator.request_wave_start(0),
+		"The between-wave rest button must also start the final countdown."
+	)
 	_expect(
 		game.wave_state == CombatFlowState.State.INTERMISSION
 		and game.countdown_seconds == 3,
@@ -449,7 +455,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 
 	var camera_before := game.map_camera.global_position
 	Input.action_press(&"move_right")
-	game.call("_update_local_spectator_camera", 0.1)
+	game.presentation_coordinator.update_local_spectator_camera(0.1)
 	Input.action_release(&"move_right")
 	_expect(game.map_camera.global_position.x > camera_before.x, "Movement input while dead must move only the spectator camera.")
 	_expect(game.player.velocity == Vector2.ZERO, "Spectator input must not move the dead player body.")
@@ -460,7 +466,7 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	)
 
 	game.singleplayer_respawn_time_left = 0.0
-	game.call("_update_singleplayer_respawn", 0.01)
+	game.player_roster_coordinator.update_singleplayer_respawn(0.01)
 	await physics_frame
 	_expect(not game.player.is_dead, "The single-player revive timer must revive the player.")
 	_expect(game.player.global_position.is_equal_approx(game.player_spawn.global_position), "The player must revive at the authored point in front of the blue gate.")
@@ -489,12 +495,19 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	)
 
 	var delays: Array[int] = []
-	game.call("_reset_player_wave_death_counts")
+	game.player_roster_coordinator.reset_wave_death_counts()
 	for _death_index in range(5):
-		delays.append(roundi(game.consume_next_player_respawn_delay(0)))
+		delays.append(roundi(
+			game.tower_multiplayer_mode_adapter.consume_next_player_respawn_delay(0)
+		))
 	_expect(delays == [5, 10, 15, 20, 20], "Per-wave revive delays must be 5/10/15/20 and cap at 20 seconds.")
-	game.call("_reset_player_wave_death_counts")
-	_expect(roundi(game.consume_next_player_respawn_delay(0)) == 5, "Starting a new wave must reset the next revive delay to five seconds.")
+	game.player_roster_coordinator.reset_wave_death_counts()
+	_expect(
+		roundi(
+			game.tower_multiplayer_mode_adapter.consume_next_player_respawn_delay(0)
+		) == 5,
+		"Starting a new wave must reset the next revive delay to five seconds."
+	)
 
 	game.current_base_health = 1
 	var defeat_zoom := game.map_camera.zoom
@@ -521,14 +534,16 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	_expect(float(death_shader.get_shader_parameter(&"center_darkness")) <= 0.03, "The death vignette center must stay nearly unchanged.")
 	_expect(float(death_shader.get_shader_parameter(&"edge_darkness")) >= 0.65, "The death vignette edges must clearly communicate the dead state.")
 	_expect(gate_shader.shader.code.contains("SCREEN_PIXEL_SIZE"), "The gate vignette must compensate for viewport aspect ratio.")
-	await create_timer(TowerDefenseGame.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
+	await create_timer(
+		TowerDefensePresentationCoordinator.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1
+	).timeout
 	_expect(game.map_camera.global_position.is_equal_approx(defeat_gate_center), "The defeat camera must finish at the authoritative blue-gate center.")
 	_expect(game.map_camera.zoom.is_equal_approx(defeat_zoom), "The completed defeat camera transition must not alter zoom.")
 	_expect(game.wave_hud.result_overlay.visible, "The shared defeat overlay must appear after camera travel completes.")
 	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "Tower defense must show the exact core-health defeat subtitle.")
 	_expect(game.defeat_audio.playing, "The defeat sound must play when the result overlay appears.")
 	var defeat_audio_playback := game.defeat_audio.get_playback_position()
-	game.call("_enter_defeat")
+	game.campaign_coordinator.enter_defeat()
 	_expect(game.defeat_audio.get_playback_position() >= defeat_audio_playback, "Duplicate defeat events must not restart the local presentation.")
 	game.wave_hud.show_tower_defense_defeat()
 	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "TowerDefenseWaveHUD must retain its dedicated exact wording.")
@@ -547,7 +562,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	current_scene = intermission_game
 	await process_frame
 	await physics_frame
-	var intermission_step := intermission_game.call("_get_start_flow_step") as FlowStepConfig
+	var intermission_step := intermission_game.campaign_coordinator.get_start_flow_step()
 	var intermission_revives := {"count": 0}
 	intermission_game.player.revived.connect(
 		func() -> void:
@@ -555,7 +570,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	)
 	intermission_game.player.call("_die")
 	_expect(intermission_game.player.is_dead, "The intermission revive test must begin with a dead single-player character.")
-	intermission_game.call("_enter_intermission", intermission_step)
+	intermission_game.campaign_coordinator.enter_intermission(intermission_step)
 	_expect(not intermission_game.player.is_dead, "Entering a tower-defense intermission must revive a dead single-player character immediately.")
 	_expect(int(intermission_revives["count"]) == 1, "Intermission entry must emit exactly one single-player revive transition.")
 	_expect(
@@ -582,7 +597,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	intermission_game.player.current_health = living_health
 	intermission_game.player.velocity = living_velocity
 	intermission_game.player.invincibility_time_left = living_invincibility
-	intermission_game.call("_enter_intermission", intermission_step)
+	intermission_game.campaign_coordinator.enter_intermission(intermission_step)
 	_expect(
 		intermission_game.player.global_position.is_equal_approx(living_position)
 		and intermission_game.player.current_health == living_health
@@ -602,7 +617,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	current_scene = zero_rest_game
 	await process_frame
 	await physics_frame
-	var zero_rest_step := zero_rest_game.call("_get_start_flow_step") as FlowStepConfig
+	var zero_rest_step := zero_rest_game.campaign_coordinator.get_start_flow_step()
 	var zero_rest_revives := {"count": 0}
 	zero_rest_game.player.revived.connect(
 		func() -> void:
@@ -611,7 +626,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	zero_rest_game.player.call("_die")
 	zero_rest_game.progression_config = zero_rest_game.progression_config.duplicate(true)
 	zero_rest_game.progression_config.wave_intermission_seconds = 0.0
-	zero_rest_game.call("_enter_intermission", zero_rest_step)
+	zero_rest_game.campaign_coordinator.enter_intermission(zero_rest_step)
 	zero_rest_game.enemy_spawn_timer.stop()
 	_expect(
 		zero_rest_game.wave_state == CombatFlowState.State.WAVE_ACTIVE,
@@ -638,7 +653,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 			victory_revives["count"] = int(victory_revives["count"]) + 1
 	)
 	victory_game.player.call("_die")
-	victory_game.call("_enter_victory")
+	victory_game.campaign_coordinator.enter_victory()
 	_expect(victory_game.wave_state == CombatFlowState.State.VICTORY, "The single-player revive policy test must enter victory.")
 	_expect(not victory_game.player.is_dead, "Victory must revive a dead single-player character immediately.")
 	_expect(int(victory_revives["count"]) == 1, "Victory must perform exactly one single-player revive transition.")
@@ -663,7 +678,7 @@ func _test_singleplayer_transition_revive_policy() -> void:
 	defeat_game.player.call("_die")
 	var defeat_position := defeat_game.player.global_position
 	var defeat_health := defeat_game.player.current_health
-	defeat_game.call("_enter_defeat")
+	defeat_game.campaign_coordinator.enter_defeat()
 	_expect(defeat_game.wave_state == CombatFlowState.State.DEFEAT, "The single-player defeat policy test must enter defeat.")
 	_expect(
 		defeat_game.player.is_dead
@@ -702,9 +717,9 @@ func _test_host_transition_revive_signal_policy() -> void:
 		func() -> void:
 			living_signals["count"] = int(living_signals["count"]) + 1
 	)
-	var living_step := living_game.call("_get_start_flow_step") as FlowStepConfig
-	living_game.call("_enter_intermission", living_step)
-	living_game.call("_enter_victory")
+	var living_step := living_game.campaign_coordinator.get_start_flow_step()
+	living_game.campaign_coordinator.enter_intermission(living_step)
+	living_game.campaign_coordinator.enter_victory()
 	_expect(
 		int(living_signals["count"]) == 0,
 		"A Host must not broadcast revive-all when every multiplayer player is already alive."
@@ -731,10 +746,10 @@ func _test_host_transition_revive_signal_policy() -> void:
 	)
 	for peer_id in [1, 2]:
 		intermission_game.get_player_for_peer(peer_id).apply_multiplayer_death_state()
-	var intermission_step := intermission_game.call("_get_start_flow_step") as FlowStepConfig
+	var intermission_step := intermission_game.campaign_coordinator.get_start_flow_step()
 	intermission_game.progression_config = intermission_game.progression_config.duplicate(true)
 	intermission_game.progression_config.wave_intermission_seconds = 0.0
-	intermission_game.call("_enter_intermission", intermission_step)
+	intermission_game.campaign_coordinator.enter_intermission(intermission_step)
 	intermission_game.enemy_spawn_timer.stop()
 	_expect(
 		int(intermission_signals["count"]) == 1,
@@ -766,7 +781,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	)
 	for peer_id in [1, 2]:
 		victory_game.get_player_for_peer(peer_id).apply_multiplayer_death_state()
-	victory_game.call("_enter_victory")
+	victory_game.campaign_coordinator.enter_victory()
 	_expect(
 		int(victory_signals["count"]) == 1,
 		"A Host victory with multiple dead players must broadcast exactly one revive-all event."
@@ -797,7 +812,7 @@ func _test_host_transition_revive_signal_policy() -> void:
 	)
 	for peer_id in [1, 2]:
 		defeat_game.get_player_for_peer(peer_id).apply_multiplayer_death_state()
-	defeat_game.call("_enter_defeat")
+	defeat_game.campaign_coordinator.enter_defeat()
 	_expect(int(defeat_signals["count"]) == 0, "A Host defeat must not broadcast revive-all.")
 	_expect(
 		_all_multiplayer_players_dead(defeat_game, [1, 2]),
@@ -835,7 +850,7 @@ func _test_host_authoritative_revive_all() -> void:
 	living_player.global_position = living_position
 	living_player.current_health = living_health
 	dead_player.apply_multiplayer_death_state()
-	game.update_player_respawn_countdown(1, 5)
+	game.tower_multiplayer_mode_adapter.update_player_respawn_countdown(1, 5)
 	_expect(
 		game.tower_defense_status_hud.dead_players_panel.visible
 		and game.tower_defense_status_hud.dead_players_label.text.contains(
@@ -878,8 +893,8 @@ func _test_host_authoritative_revive_all() -> void:
 		Callable(mp_game, "_on_host_revive_all_requested")
 	)
 
-	var next_step := game.call("_get_start_flow_step") as FlowStepConfig
-	game.call("_enter_intermission", next_step)
+	var next_step := game.campaign_coordinator.get_start_flow_step()
+	game.campaign_coordinator.enter_intermission(next_step)
 	var fixed_spawn: Variant = game.get_fixed_multiplayer_respawn_position(1)
 	_expect(
 		not dead_player.is_dead
@@ -911,7 +926,7 @@ func _test_host_authoritative_revive_all() -> void:
 	var revision_after_revive := int(
 		(mp_game.get("_player_health_revisions") as Dictionary).get(1, 0)
 	)
-	game.call("_enter_intermission", next_step)
+	game.campaign_coordinator.enter_intermission(next_step)
 	_expect(
 		int(revive_events["dead"]) == 1
 		and int((mp_game.get("_player_health_revisions") as Dictionary).get(1, 0))
@@ -952,7 +967,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 				revive_events["count"] = int(revive_events["count"]) + 1
 		)
 		player_instance.apply_multiplayer_death_state()
-	game.update_player_respawn_countdown(1, 7)
+	game.tower_multiplayer_mode_adapter.update_player_respawn_countdown(1, 7)
 	_expect(
 		game.tower_defense_status_hud.dead_players_panel.visible
 		and game.tower_defense_status_hud.dead_players_label.text.contains(
@@ -960,8 +975,8 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 		),
 		"ClientView mode must keep the right-side multiplayer dead-player list enabled."
 	)
-	var flow_step := game.call("_get_start_flow_step") as FlowStepConfig
-	game.apply_remote_flow_state(
+	var flow_step := game.campaign_coordinator.get_start_flow_step()
+	game.tower_multiplayer_mode_adapter.apply_remote_flow_state(
 		flow_step.step_id,
 		CombatFlowState.State.INTERMISSION,
 		30
@@ -971,7 +986,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 		"A ClientView intermission snapshot must wait for reliable authoritative revive events."
 	)
 	var countdown_audio := game.countdown_audio
-	game.apply_remote_flow_state(
+	game.tower_multiplayer_mode_adapter.apply_remote_flow_state(
 		flow_step.step_id,
 		CombatFlowState.State.INTERMISSION,
 		3
@@ -981,7 +996,7 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 		"A ClientView final-countdown snapshot must immediately play the 3-second tick."
 	)
 	countdown_audio.stop()
-	game.apply_remote_flow_state(
+	game.tower_multiplayer_mode_adapter.apply_remote_flow_state(
 		flow_step.step_id,
 		CombatFlowState.State.INTERMISSION,
 		3
@@ -991,13 +1006,13 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 		"A repeated ClientView countdown snapshot must not replay the same tick."
 	)
 	for expected_seconds in [2, 1]:
-		game.call("_update_client_flow_countdown")
+		game.campaign_coordinator.update_client_flow_countdown()
 		_expect(
 			game.countdown_seconds == expected_seconds and countdown_audio.playing,
 			"ClientView must play each remaining final-countdown tick exactly once."
 		)
 		countdown_audio.stop()
-	game.apply_remote_flow_state(
+	game.tower_multiplayer_mode_adapter.apply_remote_flow_state(
 		flow_step.step_id,
 		CombatFlowState.State.INTERMISSION,
 		0
@@ -1006,12 +1021,12 @@ func _test_client_view_waits_for_authoritative_revive() -> void:
 		_all_multiplayer_players_dead(game, [1, 2]),
 		"A zero-second ClientView intermission must not infer or perform revival locally."
 	)
-	game.apply_remote_victory()
+	game.tower_multiplayer_mode_adapter.apply_remote_victory()
 	_expect(
 		_all_multiplayer_players_dead(game, [1, 2]),
 		"A ClientView victory presentation must still wait for the Host's reliable revive confirmations."
 	)
-	game.apply_remote_defeat()
+	game.tower_multiplayer_mode_adapter.apply_remote_defeat()
 	_expect(
 		_all_multiplayer_players_dead(game, [1, 2]),
 		"A ClientView defeat must preserve dead player state."
@@ -1057,7 +1072,7 @@ func _test_client_gate_warning_replication() -> void:
 		"Later core-health revisions must update the centered metric independently."
 	)
 	game.wave_hud.set_tower_defense_wave_progress(2, 1, 4)
-	game.apply_remote_enemy_count(7)
+	game.tower_multiplayer_mode_adapter.apply_remote_enemy_count(7)
 	_expect(
 		game.wave_hud.enemy_value_label.text == "7"
 		and game.wave_hud.wave_value_label.text == "25%",
@@ -1068,14 +1083,19 @@ func _test_client_gate_warning_replication() -> void:
 	var client_defeat_zoom := Vector2(1.5, 1.5)
 	game.map_camera.zoom = client_defeat_zoom
 	game.music_player.play()
-	game.apply_remote_defeat()
-	var first_defeat_tween := game.defeat_camera_tween
-	game.apply_remote_defeat()
+	game.tower_multiplayer_mode_adapter.apply_remote_defeat()
+	var first_defeat_tween := game.presentation_coordinator.defeat_camera_tween
+	game.tower_multiplayer_mode_adapter.apply_remote_defeat()
 	_expect(game.wave_state == CombatFlowState.State.DEFEAT, "A reliable defeat event must enter the shared client defeat state.")
-	_expect(game.defeat_camera_tween == first_defeat_tween, "A duplicate reliable defeat event must not restart client camera travel.")
+	_expect(
+		game.presentation_coordinator.defeat_camera_tween == first_defeat_tween,
+		"A duplicate reliable defeat event must not restart client camera travel."
+	)
 	_expect(not game.music_player.playing, "A client must stop its own BGM as soon as defeat is received.")
 	_expect(not game.wave_hud.result_overlay.visible, "A client must also defer the defeat overlay until its local camera arrives.")
-	await create_timer(TowerDefenseGame.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1).timeout
+	await create_timer(
+		TowerDefensePresentationCoordinator.DEFEAT_CAMERA_TRAVEL_SECONDS + 0.1
+	).timeout
 	_expect(
 		game.map_camera.global_position.is_equal_approx(
 			game.home_defense_coordinator.get_home_targets()[0].global_position.round()
@@ -1107,15 +1127,18 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	current_scene = game
 	await process_frame
 	await physics_frame
-	var first_step := game.call("_get_start_flow_step") as FlowStepConfig
-	game.call("_enter_pre_flow_step", first_step)
-	_expect(not game.request_tower_defense_wave_start(99), "The Host must reject an early-start request from an unknown peer.")
+	var first_step := game.campaign_coordinator.get_start_flow_step()
+	game.campaign_coordinator.enter_pre_flow_step(first_step)
 	_expect(
-		not game.request_tower_defense_wave_start(2),
+		not game.campaign_coordinator.request_wave_start(99),
+		"The Host must reject an early-start request from an unknown peer."
+	)
+	_expect(
+		not game.campaign_coordinator.request_wave_start(2),
 		"A connected non-host player must not end preparation for the team."
 	)
 	_expect(
-		game.request_tower_defense_wave_start(1),
+		game.campaign_coordinator.request_wave_start(1),
 		"The Host must be able to confirm the team's final countdown."
 	)
 	_expect(
@@ -1169,8 +1192,8 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 		3.0
 	)
 	_expect(not local_player.is_dead and local_player.body_sprite.visible, "The reliable revive path must release the tower-defense death lock.")
-	game.update_player_respawn_countdown(1, 5)
-	game.update_player_respawn_countdown(2, 5)
+	game.tower_multiplayer_mode_adapter.update_player_respawn_countdown(1, 5)
+	game.tower_multiplayer_mode_adapter.update_player_respawn_countdown(2, 5)
 	_expect(game.tower_defense_status_hud.respawn_entries.size() == 2, "The right HUD must list every dead multiplayer player.")
 	var defeat_signals := {"count": 0}
 	game.get_multiplayer_mode_adapter().defeat_started.connect(
@@ -1179,7 +1202,7 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 	game.current_base_health = 1
 	game.call("_apply_base_damage", 1)
 	_expect(int(defeat_signals["count"]) == 1, "The Host must broadcast defeat immediately when core health reaches zero.")
-	game.call("_enter_defeat")
+	game.campaign_coordinator.enter_defeat()
 	_expect(int(defeat_signals["count"]) == 1, "Repeated Host defeat entry must not broadcast a second reliable event.")
 
 	_stop_audio_players(game)
@@ -1192,7 +1215,7 @@ func _test_multiplayer_all_dead_is_not_defeat() -> void:
 func _finish_final_countdown(game: TowerDefenseGame) -> void:
 	for expected_seconds in [2, 1, 0]:
 		game.countdown_audio.stop()
-		game.call("_on_state_timer_timeout")
+		game.campaign_coordinator.on_state_timer_timeout()
 		_expect(
 			game.countdown_seconds == expected_seconds,
 			"The authoritative final countdown must advance through 3, 2, 1, then 0."

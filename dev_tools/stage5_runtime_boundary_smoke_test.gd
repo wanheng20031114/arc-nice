@@ -12,6 +12,9 @@ const STANDARD_GAME_PATH := (
 const TOWER_GAME_PATH := (
 	"res://scene/game_modes/tower_defense/tower_defense_game.gd"
 )
+const TOWER_SCENE_PATH := (
+	"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
+)
 const ROGUE_COMBAT_PATH := (
 	"res://scene/game_modes/rogue/combat/rogue_combat_game.gd"
 )
@@ -70,6 +73,14 @@ const WAVE_RUNTIME_FORBIDDEN_TOKENS := [
 	"request_tango_charge",
 ]
 
+const TOWER_ROOT_REDUNDANT_FACADES := [
+	"func apply_remote_flow_state(",
+	"func request_tower_defense_wave_start(",
+	"func consume_next_player_respawn_delay(",
+	"func request_tango_charge_started(",
+	"func _update_wave_music(",
+]
+
 var failures := PackedStringArray()
 
 
@@ -82,6 +93,7 @@ func _run() -> void:
 	_test_neutral_combat_runtime_surface()
 	_test_neutral_wave_runtime_surface()
 	_test_static_mode_boundaries()
+	_test_tower_root_is_orchestration_only()
 	_test_mode_adapters_fail_closed()
 	if failures.is_empty():
 		print("STAGE5_RUNTIME_BOUNDARY_SMOKE_TEST_OK")
@@ -177,6 +189,26 @@ func _test_static_mode_boundaries() -> void:
 		_expect(
 			first_line.contains(" uid=\"uid://"),
 			"静态 Boss runtime port 场景必须声明稳定 UID：%s。" % scene_path
+		)
+
+
+func _test_tower_root_is_orchestration_only() -> void:
+	var root_source := FileAccess.get_file_as_string(TOWER_GAME_PATH)
+	var scene_source := FileAccess.get_file_as_string(TOWER_SCENE_PATH)
+	for redundant_facade in TOWER_ROOT_REDUNDANT_FACADES:
+		_expect(
+			not root_source.contains(redundant_facade),
+			"TowerDefenseGame 仍保留重复转发：%s。" % redundant_facade
+		)
+	for authored_connection in [
+		'signal="player_runtime_binding_requested" from="PlayerRosterCoordinator"',
+		'signal="enemy_retarget_requested" from="PlayerRosterCoordinator"',
+		'signal="personal_inventory_output_committed" from="ProductionCoordinator"',
+		'signal="research_state_changed" from="ResearchCoordinator"',
+	]:
+		_expect(
+			scene_source.contains(authored_connection),
+			"塔防场景缺少静态信号连接：%s。" % authored_connection
 		)
 
 

@@ -373,11 +373,11 @@ func _test_multiplayer_starting_package(player_count: int) -> void:
 			game.campaign_coordinator.get_start_flow_step()
 		)
 		_expect(
-			not game.request_tower_defense_wave_start(2),
+			not game.campaign_coordinator.request_wave_start(2),
 			"A non-host player must not end multiplayer preparation."
 		)
 		_expect(
-			game.request_tower_defense_wave_start(1),
+			game.campaign_coordinator.request_wave_start(1),
 			"The host must be able to confirm the final wave countdown."
 		)
 		_expect(

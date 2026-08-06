@@ -80,10 +80,12 @@ func _test_host_roster_and_snapshot_parity() -> void:
 		"玩家快照必须保留既有 Dictionary 插入顺序。"
 	)
 
-	game.call("_reset_player_wave_death_counts")
+	roster.reset_wave_death_counts()
 	var delays: Array[int] = []
 	for _index in range(5):
-		delays.append(roundi(game.consume_next_player_respawn_delay(0)))
+		delays.append(roundi(
+			game.tower_multiplayer_mode_adapter.consume_next_player_respawn_delay(0)
+		))
 	_expect(delays == [5, 10, 15, 20, 20], "塔防复活延迟序列必须保持不变。")
 	game.singleplayer_respawn_time_left = 7.0
 	_expect(
@@ -129,7 +131,7 @@ func _test_singleplayer_death_and_tango_paths() -> void:
 		roster.starting_package_granted,
 		"单人原子起步包必须由玩家编排完成。"
 	)
-	game.call("_reset_player_wave_death_counts")
+	roster.reset_wave_death_counts()
 	game.player.died.emit()
 	_expect(
 		game.player_wave_death_counts.get(0) == 1
@@ -144,24 +146,28 @@ func _test_singleplayer_death_and_tango_paths() -> void:
 		game.bind_player_runtime_context(tango)
 		game.player = tango
 		game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		roster.local_player = tango
+		roster.set_runtime_identity(game.runtime_mode, game.multiplayer_local_peer_id)
 		_expect(
-			game.request_tango_charge_started(Vector2.RIGHT)
-			and game.request_tango_charge_released(Vector2.RIGHT),
+			roster.request_tango_charge_started(Vector2.RIGHT)
+			and roster.request_tango_charge_released(Vector2.RIGHT),
 			"Tango 的 started/released 必须走强类型权威路径。"
 		)
 		_expect(
-			game.request_tango_charge_started(Vector2.UP),
+			roster.request_tango_charge_started(Vector2.UP),
 			"Tango 必须能再次开始权威蓄力。"
 		)
 		game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		roster.set_runtime_identity(game.runtime_mode, game.multiplayer_local_peer_id)
 		_expect(
-			not game.request_tango_charge_released(Vector2.UP)
-			and not game.request_tango_charge_cancelled(),
+			not roster.request_tango_charge_released(Vector2.UP)
+			and not roster.request_tango_charge_cancelled(),
 			"蓄力期间切换为客户端观察模式后 release/cancel 必须被拒绝。"
 		)
 		game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		roster.set_runtime_identity(game.runtime_mode, game.multiplayer_local_peer_id)
 		_expect(
-			game.request_tango_charge_cancelled(),
+			roster.request_tango_charge_cancelled(),
 			"Tango 的 started/cancelled 必须走强类型权威路径。"
 		)
 	game.queue_free()
@@ -182,10 +188,6 @@ func _test_tree_less_fixture_facade() -> void:
 	_expect(
 		states.size() == 1 and states[0].peer_id == 7,
 		"裸 TowerDefenseGame fixture 必须继续支持快照收集。"
-	)
-	_expect(
-		game.get_fixed_multiplayer_respawn_position(7) == null,
-		"没有 authored spawn 的裸 fixture 必须明确返回空固定复活点。"
 	)
 	states.clear()
 	player_instance.free()
@@ -214,8 +216,10 @@ func _test_source_boundary() -> void:
 	_expect(
 		source.contains("func grant_starting_package(")
 		and source.contains("func get_selected_singleplayer_character_id()")
-		and not root_source.contains("can_add_item_counts_for_peer("),
-		"角色选择与原子起步包必须由玩家编排拥有，根脚本只保留 façade。"
+		and not root_source.contains("can_add_item_counts_for_peer(")
+		and not root_source.contains("func request_tango_charge_started(")
+		and not root_source.contains("func consume_next_player_respawn_delay("),
+		"角色、蓄力与复活事务必须由玩家编排或多人适配器直接拥有。"
 	)
 	_expect(
 		scene_source.contains("[node name=\"PlayerRosterCoordinator\" parent=\".\" instance="),

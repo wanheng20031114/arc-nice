@@ -367,7 +367,7 @@ func begin_defeat_camera_sequence(
 	_kill_boss_intro_camera_tween()
 	cancel_defeat_camera()
 	if _map_camera == null or home_objective_targets.is_empty():
-		_runtime._complete_defeat_presentation()
+		_campaign_coordinator.complete_defeat_presentation()
 		return
 	spectator_camera_active = false
 	if _map_camera.get_parent() != _runtime:
@@ -381,7 +381,7 @@ func begin_defeat_camera_sequence(
 		or not _runtime.is_inside_tree()
 	):
 		_map_camera.global_position = gate_center
-		_runtime._complete_defeat_presentation()
+		_campaign_coordinator.complete_defeat_presentation()
 		return
 	defeat_camera_tween = create_tween()
 	defeat_camera_tween.set_trans(Tween.TRANS_SINE)
@@ -393,7 +393,7 @@ func begin_defeat_camera_sequence(
 		DEFEAT_CAMERA_TRAVEL_SECONDS
 	)
 	defeat_camera_tween.tween_callback(
-		_runtime._complete_defeat_presentation
+		_campaign_coordinator.complete_defeat_presentation
 	)
 
 

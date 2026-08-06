@@ -90,21 +90,21 @@ func _run() -> void:
 		"根脚本不得保留 PlantRuntime 的仓库、放置事务或复制算法。"
 	)
 	_expect(
-		TowerDefenseGame.PLANT_PLACEMENT_REJECT_INVALID_REQUEST
+		TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_REQUEST
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_REQUEST
-		and TowerDefenseGame.PLANT_PLACEMENT_REJECT_INVALID_PLAYER
+		and TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_PLAYER
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_PLAYER
-		and TowerDefenseGame.PLANT_PLACEMENT_REJECT_INVALID_CONFIG
+		and TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_CONFIG
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_CONFIG
-		and TowerDefenseGame.PLANT_PLACEMENT_REJECT_INVALID_POSITION
+		and TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_POSITION
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_POSITION
-		and TowerDefenseGame.PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
+		and TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
-		and TowerDefenseGame.PLANT_PLACEMENT_REJECT_STALE_INVENTORY
+		and TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_STALE_INVENTORY
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_STALE_INVENTORY
-		and TowerDefenseGame.PLANT_PLACEMENT_REJECT_FREE_DISABLED
+		and TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FREE_DISABLED
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FREE_DISABLED
-		and TowerDefenseGame.PLANT_PLACEMENT_REJECT_FLOW_LOCKED
+		and TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FLOW_LOCKED
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FLOW_LOCKED,
 		"根 façade 必须完整重导出八个稳定 rejection reason。"
 	)

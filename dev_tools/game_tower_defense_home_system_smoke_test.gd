@@ -378,19 +378,19 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	game.presentation_coordinator.focus_camera_on_boss_intro(resolved_spawn)
 	_expect(
 		game.map_camera.get_parent() == game
-		and game.boss_intro_camera_tween != null
+		and game.presentation_coordinator.boss_intro_camera_tween != null
 		and not camera_start.is_equal_approx(resolved_spawn),
 		"Boss intro camera must detach from the moving player and start a focus tween."
 	)
-	if game.boss_intro_camera_tween != null:
-		game.boss_intro_camera_tween.custom_step(0.45)
+	if game.presentation_coordinator.boss_intro_camera_tween != null:
+		game.presentation_coordinator.boss_intro_camera_tween.custom_step(0.45)
 		var halfway_position := game.map_camera.global_position
 		_expect(
 			halfway_position.distance_to(camera_start) > 1.0
 			and halfway_position.distance_to(resolved_spawn) > 1.0,
 			"Boss intro camera must move smoothly between the player and Linglan."
 		)
-		game.boss_intro_camera_tween.custom_step(0.46)
+		game.presentation_coordinator.boss_intro_camera_tween.custom_step(0.46)
 		_expect(
 			game.map_camera.global_position.is_equal_approx(resolved_spawn),
 			"Boss intro camera must finish at Linglan's red-gate spawn position."

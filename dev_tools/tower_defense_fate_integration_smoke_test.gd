@@ -712,7 +712,9 @@ func _test_scene_config_and_interlude_freeze() -> void:
 		"invalid"
 	)
 	_expect(
-		placement_rejections == [TowerDefenseGame.PLANT_PLACEMENT_REJECT_FLOW_LOCKED],
+		placement_rejections == [
+			TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FLOW_LOCKED
+		],
 		"The authoritative server must reject stale building requests during fate interlude."
 	)
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
