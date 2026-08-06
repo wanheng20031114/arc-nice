@@ -44,7 +44,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/animation/capoo_ak47.tres",
 	"res://resources/audio/capoo_ak47_fire.wav",
 	"res://resources/audio/1-27 Journey of the Prairie King (Overworld).mp3",
-	"res://scene/bullet.tscn",
+	"res://scene/combat/projectiles/bullet.tscn",
 	"res://scene/player/tango/tango_laser_bullet.tscn",
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn",
 	"res://resources/audio/Cowboy_gunshot.wav",

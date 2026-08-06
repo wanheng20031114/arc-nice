@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scene/bullet_hit_effect.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/combat/projectiles/bullet_hit_effect.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="2_texture"]
 [ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="3_emission"]
 

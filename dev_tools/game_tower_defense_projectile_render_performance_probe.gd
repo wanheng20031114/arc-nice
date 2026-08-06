@@ -7,7 +7,7 @@ const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense
 const ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
-const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const RAPID_PROJECTILE_SINGLE_PASS_MATERIAL := preload(
 	"res://resources/shader/rapid_projectile_single_pass.tres"
 )

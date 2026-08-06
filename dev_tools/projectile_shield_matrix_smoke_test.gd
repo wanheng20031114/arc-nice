@@ -1,6 +1,6 @@
 extends SceneTree
 
-const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
 const TANGO_SCENE := preload("res://scene/player/tango/tango_laser_bullet.tscn")
 const TIYI_SCENE := preload("res://scene/player/tiyi/tiyi_sniper_bullet.tscn")

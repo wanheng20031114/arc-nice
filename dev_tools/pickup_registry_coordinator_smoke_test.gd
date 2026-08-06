@@ -15,7 +15,7 @@ const STANDARD_REGISTRY_SCENE := preload(
 const TOWER_REGISTRY_SCENE := preload(
 	"res://scene/game_modes/tower_defense/pickup/tower_defense_pickup_registry.tscn"
 )
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const HEALTH_PICKUP := preload(
 	"res://resources/config/pickups/pickup_health.tres"
 )

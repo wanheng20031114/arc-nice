@@ -31,8 +31,8 @@ const LEGACY_TOWER_PRELOAD_PATHS := [
 	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn",
-	"res://scene/bullet.tscn",
-	"res://scene/bullet_hit_effect.tscn",
+	"res://scene/combat/projectiles/bullet.tscn",
+	"res://scene/combat/projectiles/bullet_hit_effect.tscn",
 	"res://scene/enemy/enemy_hit_effect.tscn",
 ]
 const SORTED_PLANT_IDS := [

@@ -51,7 +51,7 @@ const COMBAT_ROBOT_GUNNER_BULLET_POOL_PATH := (
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 )
 const CAPOO_MAGE_FIREBALL_POOL_PATH := "res://scene/enemy/capoo/capoo_mage_fireball.tscn"
-const BULLET_HIT_EFFECT_POOL_PATH := "res://scene/bullet_hit_effect.tscn"
+const BULLET_HIT_EFFECT_POOL_PATH := "res://scene/combat/projectiles/bullet_hit_effect.tscn"
 const ENEMY_HIT_EFFECT_POOL_PATH := "res://scene/enemy/enemy_hit_effect.tscn"
 const FIXTURE_CENTER := Vector2(512.0, 352.0)
 const PLAYER_PROBE_HEALTH := 1_000_000_000

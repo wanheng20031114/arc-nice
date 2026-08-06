@@ -1,7 +1,7 @@
 extends Node
 class_name MpWorldFlowCoordinator
 
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS := 0.1
 
 signal rpc_to_peer_requested(

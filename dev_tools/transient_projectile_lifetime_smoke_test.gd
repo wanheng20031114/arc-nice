@@ -3,7 +3,7 @@ extends SceneTree
 const PROJECTILE_CASES := [
 	{
 		"label": "player_bullet",
-		"scene": preload("res://scene/bullet.tscn"),
+		"scene": preload("res://scene/combat/projectiles/bullet.tscn"),
 		"expected_lifetime": 1.083,
 		"expected_speed": 320.0,
 		"view_bounded": true,

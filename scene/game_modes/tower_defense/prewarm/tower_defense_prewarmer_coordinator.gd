@@ -1,7 +1,7 @@
 extends Node2D
 class_name TowerDefensePrewarmerCoordinator
 
-const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
+const PLAYER_BULLET_POOL_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )

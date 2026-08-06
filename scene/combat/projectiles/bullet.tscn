@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://canh3iru5v7fj"]
 
 [ext_resource type="Texture2D" uid="uid://bg46042bpug12" path="res://resources/texture/道具ui.png" id="1_qwydi"]
-[ext_resource type="Script" uid="uid://muapvv1sjolt" path="res://scene/bullet.gd" id="1_xw300"]
+[ext_resource type="Script" uid="uid://muapvv1sjolt" path="res://scene/combat/projectiles/bullet.gd" id="1_xw300"]
 [ext_resource type="Material" path="res://resources/shader/rapid_projectile_single_pass.tres" id="3_single_pass"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_xw300"]

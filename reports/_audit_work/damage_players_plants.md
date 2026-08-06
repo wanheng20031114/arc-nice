@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | P1 | 死亡玩家仍在 Host 上推进并触发周期收藏品 | Player 每帧先更新收藏品周期效果，之后才检查 is_dead；权威判定又只检查“单机或 Host”，不检查存活。尸体可继续放雷、冰霜、樱花火箭、弓箭，并从尸体位置周期治疗活着的队友。证据：scene/player/player.gd:491-502,3015-3066,3232-3240,3765-3770。 |
 | P1 | 伤害来源和击杀归属尚未进入真正的结果链 | DamageRequest 已有 source/source_id/source_type；本地收藏品 fallback 已填入来源，但塔、普通玩家弹体、多人已注册敌人和多数技能桥仍只传 amount/type/direction。塔计算出的 damage_source_id 在 GameTowerDefense 和 MPGame 中被参数名以下划线显式丢弃。DoT、塔、区域连锁和普通玩家命中的击杀副作用仍分属不同调用链。证据：scene/game_tower_defense.gd:558-584；scene/multiplayer/mp_game.gd:1500-1521,1606-1641,6443-6529；scene/player/player.gd:2839-2854,3537-3566；scene/enemy/enemy.gd:3828-3854。 |
-| P2 | Hoe Cat 的两种直接挥砍漏掉“对燃烧/流血目标增伤” | 普通子弹、雪狼剑环、魏世岱尔炸弹和 Tiyi High Noon 都调用 resolve_attack_damage_against_enemy；Hoe 主挥砍和旋风只快照 get_outgoing_damage 后直接提交，却仍会触发普通 on-hit/kill。相同收藏品在不同主攻击形态上表现不一致。证据：scene/player/hoe_cat/player_hoe_cat.gd:81-89,272-350；scene/bullet.gd:240-256；scene/player/hoe_cat/hoe_cat_snow_wolf_sword_orbit.gd:188-211。 |
+| P2 | Hoe Cat 的两种直接挥砍漏掉“对燃烧/流血目标增伤” | 普通子弹、雪狼剑环、魏世岱尔炸弹和 Tiyi High Noon 都调用 resolve_attack_damage_against_enemy；Hoe 主挥砍和旋风只快照 get_outgoing_damage 后直接提交，却仍会触发普通 on-hit/kill。相同收藏品在不同主攻击形态上表现不一致。证据：scene/player/hoe_cat/player_hoe_cat.gd:81-89,272-350；scene/combat/projectiles/bullet.gd:240-256；scene/player/hoe_cat/hoe_cat_snow_wolf_sword_orbit.gd:188-211。 |
 | P2 | 同来源 DoT 刷新会同时重置首跳倒计时 | 高频重复施加同一个 source_family 时，可以不断把首跳推迟，造成“状态一直显示但不跳伤”。这是当前明确语义，不是帧率误差。证据：scene/periodic_damage_status_scheduler.gd:172-193。 |
 | P2 | 来源死亡/移除与已生成效果的生命周期并未统一 | 月盾是玩家子节点，玩家死亡不会清理；它会继续保护尸体附近队友。紫阳花被移除会停止自身玩法，但已经写入敌人的定时减攻继续到自身期限。发射前快照的敌方投射物也不会因减攻或施法者死亡而重算。 |
 | P2 | 治疗仍是 bool + 可变旁路字段 | 玩家和植物没有 HealRequest/HealResult；玩家多人治疗依赖 last_healing_received 这一可变字段把实际治疗量从 Player 交给 MPGame。以后加入治疗增益、减疗、吸收、来源统计或过量治疗时会再次分叉。证据：scene/player/player.gd:2206-2234；scene/multiplayer/mp_game.gd:7761-7827。 |
@@ -294,7 +294,7 @@ Player.get_outgoing_damage 只在传入 base_amount 上加物理或魔法 flat�
 
 | 来源 | 原始/倍率构造 | 目标 burn/bleed 增伤 | 普通 on-hit/kill |
 | --- | --- | --- | --- |
-| 普通 Bullet | 角色在生成时给 damage；命中时再解析目标状态 | 是，scene/bullet.gd:240-249 | 是，命中接受后调用，scene/bullet.gd:256 |
+| 普通 Bullet | 角色在生成时给 damage；命中时再解析目标状态 | 是，scene/combat/projectiles/bullet.gd:240-249 | 是，命中接受后调用，scene/combat/projectiles/bullet.gd:256 |
 | Hoe 主挥砍 | get_outgoing_damage(attack_damage,物理) | **否** | 是，scene/player/hoe_cat/player_hoe_cat.gd:341-350 |
 | Hoe 旋风 | floor(attack_damage×3.0) 后加物理 flat | **否** | 是；无论命中数都会再治疗 5，scene/player/hoe_cat/player_hoe_cat.gd:10-11,521-539 |
 | Hoe 雪狼剑环 | 固定 contact damage 先加物理 flat | 是 | 是，scene/player/hoe_cat/hoe_cat_snow_wolf_sword_orbit.gd:188-211 |

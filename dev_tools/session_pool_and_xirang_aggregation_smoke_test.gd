@@ -1,7 +1,7 @@
 extends SceneTree
 
 const SPAWN_EFFECT_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn")
-const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const LINGLAN_ENEMY_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const POOL_SCRIPT := preload("res://scene/combat/pooling/session_object_pool.gd")

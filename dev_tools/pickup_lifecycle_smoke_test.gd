@@ -1,6 +1,6 @@
 extends SceneTree
 
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const PICKUP_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
 const PICKUP_COUNT := 256
 const SAMPLE_RENDER_FRAMES := 120
@@ -62,7 +62,7 @@ func _test_scene_authored_timer_contract() -> void:
 		== authored_lifetime_timer.process_mode,
 		"BlinkTimer must inherit the same pause, callback and time-scale semantics as LifetimeTimer."
 	)
-	var pickup_source := FileAccess.get_file_as_string("res://scene/pickup.gd")
+	var pickup_source := FileAccess.get_file_as_string("res://scene/combat/pickups/pickup.gd")
 	_expect(
 		not pickup_source.contains("func _process("),
 		"Pickup must not retain a render-frame lifetime polling callback."

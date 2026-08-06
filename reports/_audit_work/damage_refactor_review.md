@@ -107,7 +107,7 @@
 
 - `scene/plant_defense/plant_defense.gd:158-178` 在 `apply_combat_damage` 内显式拒绝 multiplayer proxy，并返回 `NOT_AUTHORITY`。
 - `scene/enemy/enemy.gd:912-953` 在同名 sink 中没有 proxy/authority 检查；client proxy 可直接改变 health 并触发反馈/死亡。
-- `scene/bullet.gd:238-253` 在 multiplayer report 因 net-id/场景接口等原因失败时，会直接调用 Enemy sink，因此 spawn/routing 异常可以退化为仅客户端修改代理敌人。
+- `scene/combat/projectiles/bullet.gd:238-253` 在 multiplayer report 因 net-id/场景接口等原因失败时，会直接调用 Enemy sink，因此 spawn/routing 异常可以退化为仅客户端修改代理敌人。
 - `Player.apply_combat_damage` 同时承担 Host canonical 和 client prediction；`DamageResult` 本身没有 execution provenance，调用方无法从类型上区分“预测接受”与“权威接受”。
 
 影响：

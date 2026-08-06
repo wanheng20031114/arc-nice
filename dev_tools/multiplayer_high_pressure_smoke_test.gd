@@ -3,7 +3,7 @@ extends SceneTree
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const SNAPSHOT_MANAGER := preload("res://scene/multiplayer/snapshot_manager.gd")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const PICKUP_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")

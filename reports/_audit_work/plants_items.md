@@ -238,7 +238,7 @@
 
 ### 6.2 世界拾取
 
-- `Pickup` 没有逐帧逻辑：one-shot lifetime Timer + blink Timer；默认世界寿命12秒，建筑箱24秒（`scene/pickup.gd:29-73`）。
+- `Pickup` 没有逐帧逻辑：one-shot lifetime Timer + blink Timer；默认世界寿命12秒，建筑箱24秒（`scene/combat/pickups/pickup.gd:29-73`）。
 - Area body entered 后客户端直接拒绝结算；宿主/单机先尝试即时 apply，失败再尝试入背包。满血生命瓶由此自然入包；满包时道具留在世界直到过期（`:75-100`）。
 - 成功变更后先把 lifecycle 设为 CONSUMED、关碰撞，再发 signal，避免同一物理帧多人重入双领（`:102-123`）。
 

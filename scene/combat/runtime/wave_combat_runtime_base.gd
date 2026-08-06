@@ -5,7 +5,7 @@ class_name WaveCombatRuntimeBase
 # 中性波次运行时只维护确定性的流程图、刷怪队列与共享战斗实体。
 # 模式规则、Boss、商人、HUD、音乐和终局表现由具体模式根脚本拥有。
 
-const PLAYER_BULLET_POOL_SCENE := preload("res://scene/bullet.tscn")
+const PLAYER_BULLET_POOL_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const CAPOO_AK47_BULLET_POOL_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
 )

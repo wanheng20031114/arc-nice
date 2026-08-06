@@ -6,7 +6,7 @@ const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
 const MpProjectileCoordinator := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
-const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const TOWER_DEFENSE_PLANT_RUNTIME_PATH := (
 	"res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.gd"
 )

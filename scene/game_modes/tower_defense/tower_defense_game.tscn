@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://d1w121mq74kpw" path="res://scene/game_modes/tower_defense/tower_defense_game.gd" id="1_17rxn"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
-[ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/pickup.tscn" id="4_qpk70"]
+[ext_resource type="PackedScene" uid="uid://c3l67vm8hu25t" path="res://scene/combat/pickups/pickup.tscn" id="4_qpk70"]
 [ext_resource type="Resource" uid="uid://c1xwsjcqdcf0p" path="res://resources/config/pickups/pickup_spiral.tres" id="7_yq8tf"]
 [ext_resource type="Resource" uid="uid://cinkqu0uikrbf" path="res://resources/config/pickups/pickup_tenpura.tres" id="8_rrr3j"]
 [ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]

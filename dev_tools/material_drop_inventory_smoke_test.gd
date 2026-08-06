@@ -1,7 +1,7 @@
 extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const PROFILE_PANEL_SCENE := preload(
 	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
 )

@@ -6,7 +6,7 @@ signal rpc_broadcast_requested(method_name: StringName, arguments: Array)
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 
-const BULLET_SCENE_PATH := "res://scene/bullet.tscn"
+const BULLET_SCENE_PATH := "res://scene/combat/projectiles/bullet.tscn"
 const TANGO_LASER_BULLET_SCENE_PATH := (
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )

@@ -1,7 +1,7 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
+const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const PICKUP_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
 const EXPECTED_ENEMY_COUNT := 300
 const WARMUP_PHYSICS_FRAMES := 30

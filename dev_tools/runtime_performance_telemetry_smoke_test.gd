@@ -4,7 +4,7 @@ const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense
 const PERFORMANCE_CAMPAIGN := preload(
 	"res://resources/config/campaigns/tower_defense/performance/campaign.tres"
 )
-const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const TANGO_LASER_BULLET_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )

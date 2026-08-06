@@ -1,7 +1,7 @@
 extends Player
 class_name AmmoRangedPlayer
 
-const DEFAULT_BULLET_SCENE := preload("res://scene/bullet.tscn")
+const DEFAULT_BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const ARMED_ANIMATION_PREFIX := &"armed"
 const SPIRAL_PHASE_STEP := PI / 12.0
 

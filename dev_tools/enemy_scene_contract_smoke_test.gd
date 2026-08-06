@@ -151,7 +151,7 @@ const LINGLAN_BOSS_CONFIG: EnemyConfig = preload(
 	"res://resources/config/enemies/linglan_boss.tres"
 )
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
-const PLAYER_BULLET_SCENE := preload("res://scene/bullet.tscn")
+const PLAYER_BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const CAPOO_AK47_BULLET_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
 )

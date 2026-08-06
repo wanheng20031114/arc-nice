@@ -1,6 +1,6 @@
 extends SceneTree
 
-const BULLET_SCENE := preload("res://scene/bullet.tscn")
+const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
 const TANGO_LASER_BULLET_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
@@ -38,7 +38,7 @@ const COLLECTIBLE_SAKURA_ROCKET_SCENE := preload(
 const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload(
 	"res://scene/collectible_sakura_explosion.tscn"
 )
-const BULLET_HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
+const BULLET_HIT_EFFECT_SCENE := preload("res://scene/combat/projectiles/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 
 var failures: Array[String] = []
