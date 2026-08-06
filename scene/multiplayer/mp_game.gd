@@ -843,7 +843,11 @@ func _on_tower_economy_plant_runtime_state_apply_requested(
 	state: Dictionary,
 	host_sample_time: float
 ) -> void:
-	_apply_plant_runtime_state(plant, state, host_sample_time)
+	tower_world_coordinator.apply_plant_runtime_state(
+		plant,
+		state,
+		host_sample_time
+	)
 
 
 func _on_tower_economy_transaction_latency_observed(
@@ -1143,6 +1147,25 @@ func request_debug_collectible(config_path: String) -> void:
 	if merchant_transactions_coordinator == null:
 		return
 	merchant_transactions_coordinator.request_debug_collectible(config_path)
+
+
+func _on_tower_world_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	args: Array
+) -> void:
+	if not _has_tower_mode() or not net_manager.is_host() or peer_id <= 0:
+		return
+	_rpc_to_peer(peer_id, method_name, args)
+
+
+func _on_tower_world_rpc_broadcast_requested(
+	method_name: StringName,
+	args: Array
+) -> void:
+	if not _has_tower_mode() or not net_manager.is_host():
+		return
+	_rpc_to_connected_clients(method_name, args)
 
 
 func _on_tower_world_plant_placement_request_to_host(
@@ -1556,32 +1579,6 @@ func get_bamboo_mortar_combat_metrics() -> Dictionary:
 	return tower_world_coordinator.get_bamboo_mortar_combat_metrics()
 
 
-func _configure_warehouse_network(
-	plant: PlantDefense,
-	snapshot_ready: bool,
-	apply_pending_snapshots: bool = true
-) -> void:
-	tower_economy_coordinator.configure_warehouse_network(
-		plant,
-		snapshot_ready,
-		apply_pending_snapshots
-	)
-
-
-func _configure_production_network(
-	plant: PlantDefense,
-	snapshot_ready: bool
-) -> void:
-	tower_economy_coordinator.configure_production_network(
-		plant,
-		snapshot_ready
-	)
-
-
-func _configure_research_network(plant: PlantDefense) -> void:
-	tower_economy_coordinator.configure_research_network(plant)
-
-
 func _capture_shared_warehouse_ledger() -> bool:
 	return tower_economy_coordinator.capture_shared_warehouse_ledger()
 
@@ -1595,11 +1592,6 @@ func _on_host_multiplayer_inventory_changed(peer_id: int) -> void:
 	if not net_manager.is_host() or peer_id <= 0:
 		return
 	_broadcast_inventory_snapshot(peer_id)
-
-
-func _broadcast_warehouse_snapshot(warehouse: OakWarehouse) -> void:
-	tower_economy_coordinator.broadcast_warehouse_snapshot(warehouse)
-
 
 
 func is_client_view_runtime() -> bool:
@@ -1746,6 +1738,7 @@ func _setup_game(mode: int) -> bool:
 		)
 		tower_world_coordinator.bind_session(
 			self,
+			session_coordinator,
 			game,
 			tower_adapter,
 			net_manager,
@@ -1961,60 +1954,8 @@ func _send_authoritative_player_positions_to_peer(target_peer_id: int) -> void:
 
 
 func _send_live_plant_roster_to_peer(peer_id: int) -> void:
-	if not _has_tower_mode():
-		return
-	var warehouse_snapshots_by_net_id: Dictionary = {}
-	for plant_snapshot in _get_tower_plant_snapshots():
-		var plant_net_id := int(plant_snapshot.get("net_id", 0))
-		var plant := _get_tower_plant(plant_net_id)
-		_configure_warehouse_network(plant, true)
-		_configure_production_network(plant, true)
-		_configure_research_network(plant)
-		var runtime_state := _export_plant_runtime_state(plant)
-		var host_sample_time := _get_net_time()
-		_rpc_to_peer(
-			peer_id,
-			&"net_plant_spawned",
-			[
-				0,
-				int(plant_snapshot.get("owner_peer_id", 0)),
-				plant_net_id,
-				String(plant_snapshot.get("plant_id", &"")),
-				plant_snapshot.get("anchor", Vector2i.ZERO) as Vector2i,
-				int(plant_snapshot.get("current_health", 0)),
-				int(plant_snapshot.get("maximum_health", 1)),
-				int(plant_snapshot.get("health_revision", 0)),
-				runtime_state,
-				host_sample_time,
-			]
-		)
-		var warehouse := plant as OakWarehouse
-		if warehouse != null and is_instance_valid(warehouse):
-			warehouse_snapshots_by_net_id[plant_net_id] = (
-				warehouse.export_storage_snapshot()
-			)
-	var warehouse_ids := warehouse_snapshots_by_net_id.keys()
-	warehouse_ids.sort()
-	if not warehouse_ids.is_empty():
-		var warehouse_net_ids := PackedInt32Array()
-		var warehouse_snapshots: Array = []
-		for warehouse_id_variant in warehouse_ids:
-			var warehouse_net_id := int(warehouse_id_variant)
-			warehouse_net_ids.append(warehouse_net_id)
-			warehouse_snapshots.append(
-				warehouse_snapshots_by_net_id[warehouse_net_id]
-			)
-		_rpc_to_peer(
-			peer_id,
-			&"net_warehouse_storage_snapshot_batch",
-			[warehouse_net_ids, warehouse_snapshots]
-		)
-	if _has_tower_mode():
-		_rpc_to_peer(
-			peer_id,
-			&"net_research_state_updated",
-			[tower_mode_adapter.get_research_runtime_state(), 0, -1]
-		)
+	tower_world_coordinator.send_live_plant_roster_to_peer(peer_id)
+
 
 func _send_runtime_world_manifest_to_peer(peer_id: int) -> void:
 	var live_enemy_ids := PackedInt32Array()
@@ -3665,85 +3606,6 @@ func _on_host_player_teleport_requested(
 	)
 
 
-func _on_host_plant_spawned(
-	request_id: int,
-	owner_peer_id: int,
-	net_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	current_health: int,
-	maximum_health: int,
-	health_revision: int
-) -> void:
-	if not _has_tower_mode() or not is_inside_tree() or not net_manager.is_host():
-		return
-	if (
-		net_id <= 0
-		or not _NetConstants.is_valid_network_combat_value(current_health)
-		or not _NetConstants.is_valid_network_combat_value(maximum_health)
-		or not _NetConstants.is_valid_network_combat_value(health_revision)
-	):
-		push_error("MpGame: 植物生成生命值超出网络 signed int32 契约，已拒绝发送。")
-		return
-	tower_economy_coordinator.notify_plant_available(net_id)
-	var plant := _get_tower_plant(net_id)
-	_configure_warehouse_network(plant, true)
-	_configure_production_network(plant, true)
-	_configure_research_network(plant)
-	var runtime_state := _export_plant_runtime_state(plant)
-	var host_sample_time := _get_net_time()
-	_rpc_to_connected_clients(
-		&"net_plant_spawned",
-		[
-			request_id,
-			owner_peer_id,
-			net_id,
-			String(plant_id),
-			anchor,
-			current_health,
-			maximum_health,
-			health_revision,
-			runtime_state,
-			host_sample_time,
-		]
-	)
-	var warehouse := plant as OakWarehouse
-	if warehouse != null:
-		_broadcast_warehouse_snapshot(warehouse)
-
-
-func _on_tower_world_plant_placement_rejection_send_requested(
-	requester_peer_id: int,
-	request_id: int,
-	reason: StringName
-) -> void:
-	_send_plant_placement_rejected(requester_peer_id, request_id, reason)
-
-
-func _send_plant_placement_rejected(
-	requester_peer_id: int,
-	request_id: int,
-	reason: StringName
-) -> void:
-	if not _has_tower_mode() or game == null or requester_peer_id <= 0:
-		return
-	if requester_peer_id == _get_local_peer_id():
-		tower_mode_adapter.apply_remote_plant_placement_rejected(
-			request_id,
-			reason
-		)
-		return
-	if not net_manager.is_peer_send_ready(
-		requester_peer_id
-	):
-		return
-	_rpc_to_peer(
-		requester_peer_id,
-		&"net_plant_placement_rejected",
-		[request_id, String(reason)]
-	)
-
-
 func _on_host_plant_damage_status_changed(
 	net_id: int,
 	status_mask: int,
@@ -3761,77 +3623,6 @@ func _on_host_plant_damage_status_changed(
 		&"net_plant_damage_status_changed",
 		[net_id, status_mask, status_revision]
 	)
-
-
-func _on_host_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
-	if (
-		not _has_tower_mode()
-		or not is_inside_tree()
-		or not net_manager.is_host()
-		or net_id <= 0
-	):
-		return
-	tower_economy_coordinator.notify_plant_removed(net_id)
-	_rpc_to_connected_clients(&"net_plant_removed", [net_id, was_destroyed])
-
-
-func _export_plant_runtime_state(plant: PlantDefense) -> Dictionary:
-	if plant == null or not is_instance_valid(plant):
-		return {}
-	var runtime_state := plant.export_multiplayer_runtime_state().duplicate(true)
-	runtime_state["damage_status_mask"] = plant.get_damage_status_mask()
-	runtime_state["damage_status_revision"] = plant.damage_status_revision
-	return runtime_state
-
-
-func _apply_plant_runtime_state(
-	plant: PlantDefense,
-	runtime_state: Dictionary,
-	host_sample_time: float
-) -> void:
-	if plant == null or not is_instance_valid(plant) or not is_finite(host_sample_time):
-		return
-	var corrected_state := runtime_state.duplicate(true)
-	if (
-		corrected_state.has("damage_status_mask")
-		and corrected_state.has("damage_status_revision")
-	):
-		plant.apply_remote_damage_status_mask(
-			int(corrected_state.get("damage_status_mask", 0)),
-			int(corrected_state.get("damage_status_revision", 0))
-		)
-	var mapped_sample_time := _map_host_timestamp_to_client_time(host_sample_time, false)
-	var sample_age := maxf(_get_net_time() - mapped_sample_time, 0.0)
-	if corrected_state.has("spread_elapsed_seconds"):
-		var spread_elapsed := float(corrected_state.get("spread_elapsed_seconds", 0.0))
-		if not is_finite(spread_elapsed):
-			return
-		corrected_state["spread_elapsed_seconds"] = maxf(spread_elapsed, 0.0) + sample_age
-	for elapsed_key in [
-		"windup_elapsed_seconds",
-		"projectile_elapsed_seconds",
-		"cycle_elapsed_seconds",
-		"rain_elapsed_seconds",
-		"ground_effect_elapsed_seconds",
-	]:
-		if not corrected_state.has(elapsed_key):
-			continue
-		var elapsed_seconds := float(corrected_state.get(elapsed_key, 0.0))
-		if not is_finite(elapsed_seconds):
-			return
-		corrected_state[elapsed_key] = maxf(elapsed_seconds, 0.0) + sample_age
-	var production_building := plant as ProductionBuilding
-	if production_building != null:
-		production_building.apply_multiplayer_runtime_state_with_host_sample(
-			corrected_state,
-			Time.get_ticks_msec() / 1000.0 - sample_age,
-			host_sample_time
-		)
-	else:
-		plant.apply_multiplayer_runtime_state(
-			corrected_state,
-			Time.get_ticks_msec() / 1000.0
-		)
 
 
 func broadcast_enemy_action(
