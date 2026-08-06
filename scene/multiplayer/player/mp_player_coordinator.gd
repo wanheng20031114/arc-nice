@@ -20,6 +20,11 @@ signal player_state_correction_requested(
 	corrected_position: Vector2,
 	corrected_velocity: Vector2
 )
+signal tiyi_high_noon_damage_requested(
+	owner_player: PlayerTiyi,
+	enemy_net_id: int,
+	enemy: Enemy
+)
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const GAME_RUNTIME_CLIENT_VIEW := 2
@@ -48,6 +53,7 @@ const TANGO_CHARGE_PHASE_RELEASE := "release"
 const TANGO_CHARGE_PHASE_CANCEL := "cancel"
 const TANGO_ELECTRIC_SURGE_DURATION_SECONDS := 8.0
 const TANGO_ELECTRIC_SURGE_TIME_TOLERANCE_SECONDS := 0.25
+const TIYI_HIGH_NOON_MAX_TARGETS := 25
 const FIRE_SLIME_TOUCH_TYPE: StringName = &"fire_slime_touch"
 const FROST_SLIME_TOUCH_TYPE: StringName = &"frost_slime_touch"
 const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
@@ -107,6 +113,7 @@ var _local_tango_charge_request_id := 0
 var _local_tango_active_request_id := 0
 var _local_tango_release_pending := false
 var _local_tango_electric_surge_request_id := 0
+var _local_tiyi_activation_request_id := 0
 var _last_player_state_sequences: Dictionary[int, int] = {}
 var _last_dash_request_sequences: Dictionary[int, int] = {}
 var _last_dash_confirmed_sequences: Dictionary[int, int] = {}
@@ -120,6 +127,12 @@ var _tango_electric_surge_sequences_by_peer: Dictionary[int, int] = {}
 var _last_tango_electric_surge_request_ids: Dictionary[int, int] = {}
 var _active_tango_electric_surges_by_peer: Dictionary[int, Dictionary] = {}
 var _last_tango_electric_surge_seen_by_peer: Dictionary[int, int] = {}
+var _tiyi_activation_sequences_by_peer: Dictionary[int, int] = {}
+var _active_tiyi_activations_by_peer: Dictionary[int, int] = {}
+var _tiyi_target_ids_by_peer: Dictionary[int, PackedInt32Array] = {}
+var _pending_tiyi_target_updates: Dictionary[int, Dictionary] = {}
+var _pending_remote_tiyi_target_updates: Dictionary[int, Dictionary] = {}
+var _last_tiyi_activation_seen_by_peer: Dictionary[int, int] = {}
 var _accepted_player_state_positions: Dictionary[int, Vector2] = {}
 var _accepted_player_state_times: Dictionary[int, float] = {}
 var _player_action_ingress_rate_buckets: Dictionary[int, Dictionary] = {}
@@ -1282,6 +1295,479 @@ func _sanitize_tango_charge_direction(
 			return Vector2.DOWN
 		_:
 			return Vector2.RIGHT
+
+
+func request_tiyi_high_noon(client_host_game_ready: bool) -> bool:
+	if not has_player_action_dependencies() or not client_host_game_ready:
+		return false
+	var peer_id := _get_action_local_peer_id()
+	var tiyi_player := _get_tiyi_player(peer_id)
+	if (
+		tiyi_player == null
+		or tiyi_player.is_high_noon_active()
+		or _active_tiyi_activations_by_peer.has(peer_id)
+	):
+		return false
+	if _action_net_manager.is_host():
+		var activation_id := int(
+			_tiyi_activation_sequences_by_peer.get(peer_id, 0)
+		) + 1
+		return apply_authoritative_tiyi_high_noon_request(
+			peer_id,
+			activation_id
+		)
+	if not _action_net_manager.is_client():
+		return false
+	_local_tiyi_activation_request_id += 1
+	player_action_rpc_to_host_requested.emit(
+		&"net_tiyi_high_noon_requested",
+		[_local_tiyi_activation_request_id]
+	)
+	return true
+
+
+func notify_tiyi_high_noon_targets_changed(
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array
+) -> void:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or int(_active_tiyi_activations_by_peer.get(peer_id, 0))
+			!= activation_id
+	):
+		return
+	var sanitized_target_ids := sanitize_tiyi_target_ids(target_ids)
+	_tiyi_target_ids_by_peer[peer_id] = sanitized_target_ids
+	_pending_tiyi_target_updates[peer_id] = {
+		"activation_id": activation_id,
+		"target_ids": sanitized_target_ids,
+	}
+
+
+func resolve_tiyi_high_noon(
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array,
+	_hit_positions: PackedVector2Array
+) -> void:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or int(_active_tiyi_activations_by_peer.get(peer_id, 0))
+			!= activation_id
+	):
+		return
+	var tiyi_player := _get_tiyi_player(peer_id)
+	if tiyi_player == null:
+		cancel_authoritative_tiyi_high_noon(peer_id, activation_id, true)
+		return
+	var locked_ids := _tiyi_target_ids_by_peer.get(
+		peer_id,
+		PackedInt32Array()
+	) as PackedInt32Array
+	var locked_lookup: Dictionary[int, bool] = {}
+	for locked_id in locked_ids:
+		locked_lookup[int(locked_id)] = true
+	var resolved_ids := PackedInt32Array()
+	var resolved_positions := PackedVector2Array()
+	var resolved_enemies: Array[Enemy] = []
+	var seen_ids: Dictionary[int, bool] = {}
+	for target_index in range(mini(target_ids.size(), TIYI_HIGH_NOON_MAX_TARGETS)):
+		var enemy_net_id := int(target_ids[target_index])
+		if (
+			enemy_net_id <= 0
+			or seen_ids.has(enemy_net_id)
+			or not locked_lookup.has(enemy_net_id)
+		):
+			continue
+		var enemy := _get_authoritative_tiyi_enemy(enemy_net_id)
+		if enemy == null:
+			continue
+		seen_ids[enemy_net_id] = true
+		resolved_ids.append(enemy_net_id)
+		resolved_positions.append(enemy.global_position)
+		resolved_enemies.append(enemy)
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	_pending_tiyi_target_updates.erase(peer_id)
+	player_action_rpc_broadcast_requested.emit(
+		&"net_tiyi_high_noon_finished",
+		[peer_id, activation_id, resolved_ids, resolved_positions]
+	)
+	for target_index in range(resolved_enemies.size()):
+		var enemy := resolved_enemies[target_index]
+		if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+			continue
+		tiyi_high_noon_damage_requested.emit(
+			tiyi_player,
+			int(resolved_ids[target_index]),
+			enemy
+		)
+
+
+func cancel_tiyi_high_noon(peer_id: int, activation_id: int) -> void:
+	cancel_authoritative_tiyi_high_noon(peer_id, activation_id, true)
+
+
+func handle_tiyi_high_noon_request(sender_id: int, activation_id: int) -> void:
+	if (
+		not consume_remote_player_action_admission(sender_id)
+		or activation_id <= 0
+	):
+		return
+	apply_authoritative_tiyi_high_noon_request(sender_id, activation_id)
+
+
+func apply_authoritative_tiyi_high_noon_request(
+	peer_id: int,
+	activation_id: int
+) -> bool:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or peer_id <= 0
+		or activation_id <= 0
+	):
+		return false
+	var tiyi_player := _get_tiyi_player(peer_id)
+	if (
+		tiyi_player == null
+		or _active_tiyi_activations_by_peer.has(peer_id)
+		or activation_id <= int(
+			_tiyi_activation_sequences_by_peer.get(peer_id, 0)
+		)
+		or not tiyi_player.try_start_authoritative_high_noon(activation_id)
+	):
+		return false
+	_tiyi_activation_sequences_by_peer[peer_id] = activation_id
+	_active_tiyi_activations_by_peer[peer_id] = activation_id
+	_tiyi_target_ids_by_peer[peer_id] = PackedInt32Array()
+	player_action_rpc_broadcast_requested.emit(
+		&"net_tiyi_high_noon_started",
+		[peer_id, activation_id]
+	)
+	tiyi_player.sync_authoritative_high_noon_targets()
+	return true
+
+
+func apply_tiyi_high_noon_started(
+	sender_id: int,
+	peer_id: int,
+	activation_id: int
+) -> void:
+	if (
+		not _is_tiyi_authority_sender(sender_id)
+		or peer_id <= 0
+		or activation_id <= 0
+		or _active_tiyi_activations_by_peer.has(peer_id)
+		or activation_id <= int(_last_tiyi_activation_seen_by_peer.get(peer_id, 0))
+	):
+		return
+	var tiyi_player := _get_tiyi_player(peer_id)
+	if tiyi_player == null or tiyi_player.is_high_noon_active():
+		return
+	_last_tiyi_activation_seen_by_peer[peer_id] = activation_id
+	_active_tiyi_activations_by_peer[peer_id] = activation_id
+	_tiyi_target_ids_by_peer[peer_id] = PackedInt32Array()
+	tiyi_player.play_remote_high_noon_started(activation_id)
+	var pending_update := _pending_remote_tiyi_target_updates.get(
+		peer_id,
+		{}
+	) as Dictionary
+	var pending_activation_id := int(pending_update.get("activation_id", 0))
+	if pending_activation_id != activation_id:
+		if pending_activation_id > 0 and pending_activation_id < activation_id:
+			_pending_remote_tiyi_target_updates.erase(peer_id)
+		return
+	_pending_remote_tiyi_target_updates.erase(peer_id)
+	var pending_target_ids := pending_update.get(
+		"target_ids",
+		PackedInt32Array()
+	) as PackedInt32Array
+	_tiyi_target_ids_by_peer[peer_id] = pending_target_ids
+	tiyi_player.apply_remote_high_noon_targets(
+		activation_id,
+		pending_target_ids
+	)
+
+
+func apply_tiyi_high_noon_targets(
+	sender_id: int,
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array
+) -> void:
+	if (
+		not _is_tiyi_authority_sender(sender_id)
+		or peer_id <= 0
+		or activation_id <= 0
+	):
+		return
+	var sanitized_target_ids := sanitize_tiyi_target_ids(target_ids, false)
+	var active_activation_id := int(
+		_active_tiyi_activations_by_peer.get(peer_id, 0)
+	)
+	if active_activation_id != activation_id:
+		if (
+			active_activation_id == 0
+			and activation_id > int(
+				_last_tiyi_activation_seen_by_peer.get(peer_id, 0)
+			)
+		):
+			_pending_remote_tiyi_target_updates[peer_id] = {
+				"activation_id": activation_id,
+				"target_ids": sanitized_target_ids,
+			}
+		return
+	var tiyi_player := _get_tiyi_player(peer_id)
+	if tiyi_player == null:
+		return
+	_tiyi_target_ids_by_peer[peer_id] = sanitized_target_ids
+	tiyi_player.apply_remote_high_noon_targets(
+		activation_id,
+		sanitized_target_ids
+	)
+
+
+func apply_tiyi_high_noon_finished(
+	sender_id: int,
+	peer_id: int,
+	activation_id: int,
+	target_ids: PackedInt32Array,
+	hit_positions: PackedVector2Array
+) -> void:
+	if (
+		not _is_tiyi_authority_sender(sender_id)
+		or peer_id <= 0
+		or activation_id <= 0
+		or int(_active_tiyi_activations_by_peer.get(peer_id, 0))
+			!= activation_id
+	):
+		return
+	var tiyi_player := _get_tiyi_player(peer_id)
+	if tiyi_player == null:
+		return
+	var target_count := mini(
+		mini(target_ids.size(), hit_positions.size()),
+		TIYI_HIGH_NOON_MAX_TARGETS
+	)
+	var sanitized_target_ids := PackedInt32Array()
+	var sanitized_hit_positions := PackedVector2Array()
+	var seen_ids: Dictionary[int, bool] = {}
+	for target_index in range(target_count):
+		var enemy_net_id := int(target_ids[target_index])
+		var hit_position := hit_positions[target_index]
+		if (
+			enemy_net_id <= 0
+			or seen_ids.has(enemy_net_id)
+			or not _is_finite_vector2(hit_position)
+		):
+			continue
+		seen_ids[enemy_net_id] = true
+		sanitized_target_ids.append(enemy_net_id)
+		sanitized_hit_positions.append(hit_position)
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	_clear_tiyi_remote_target_update_through(peer_id, activation_id)
+	tiyi_player.play_remote_high_noon_finished(
+		activation_id,
+		sanitized_target_ids,
+		sanitized_hit_positions
+	)
+
+
+func apply_tiyi_high_noon_cancelled(
+	sender_id: int,
+	peer_id: int,
+	activation_id: int
+) -> void:
+	if (
+		not _is_tiyi_authority_sender(sender_id)
+		or peer_id <= 0
+		or activation_id <= 0
+		or int(_active_tiyi_activations_by_peer.get(peer_id, 0))
+			!= activation_id
+	):
+		return
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	_clear_tiyi_remote_target_update_through(peer_id, activation_id)
+	var tiyi_player := _get_tiyi_player(peer_id)
+	if tiyi_player != null:
+		tiyi_player.cancel_remote_high_noon(activation_id)
+
+
+func cancel_authoritative_tiyi_high_noon(
+	peer_id: int,
+	activation_id: int,
+	broadcast_cancel: bool
+) -> void:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or activation_id <= 0
+		or int(_active_tiyi_activations_by_peer.get(peer_id, 0))
+			!= activation_id
+	):
+		return
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	_pending_tiyi_target_updates.erase(peer_id)
+	if broadcast_cancel:
+		player_action_rpc_broadcast_requested.emit(
+			&"net_tiyi_high_noon_cancelled",
+			[peer_id, activation_id]
+		)
+
+
+func flush_tiyi_target_updates() -> void:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or _pending_tiyi_target_updates.is_empty()
+	):
+		return
+	var peer_ids: Array[int] = []
+	for peer_id_variant in _pending_tiyi_target_updates.keys():
+		peer_ids.append(int(peer_id_variant))
+	peer_ids.sort()
+	for peer_id in peer_ids:
+		var update := _pending_tiyi_target_updates.get(peer_id, {}) as Dictionary
+		player_action_rpc_broadcast_requested.emit(
+			&"net_tiyi_high_noon_targets",
+			[
+				peer_id,
+				int(update.get("activation_id", 0)),
+				update.get(
+					"target_ids",
+					PackedInt32Array()
+				) as PackedInt32Array,
+			]
+		)
+	_pending_tiyi_target_updates.clear()
+
+
+func send_active_tiyi_high_noon_to_peer(target_peer_id: int) -> void:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or target_peer_id <= 0
+	):
+		return
+	var owner_peer_ids: Array[int] = []
+	for owner_peer_id_variant in _active_tiyi_activations_by_peer.keys():
+		owner_peer_ids.append(int(owner_peer_id_variant))
+	owner_peer_ids.sort()
+	for owner_peer_id in owner_peer_ids:
+		var activation_id := int(
+			_active_tiyi_activations_by_peer.get(owner_peer_id, 0)
+		)
+		if activation_id <= 0:
+			continue
+		player_action_rpc_to_peer_requested.emit(
+			target_peer_id,
+			&"net_tiyi_high_noon_started",
+			[owner_peer_id, activation_id]
+		)
+		player_action_rpc_to_peer_requested.emit(
+			target_peer_id,
+			&"net_tiyi_high_noon_targets",
+			[
+				owner_peer_id,
+				activation_id,
+				get_tiyi_high_noon_target_ids(owner_peer_id),
+			]
+		)
+
+
+func sanitize_tiyi_target_ids(
+	target_ids: PackedInt32Array,
+	require_host_enemy: bool = true
+) -> PackedInt32Array:
+	var sanitized_ids := PackedInt32Array()
+	var seen_ids: Dictionary[int, bool] = {}
+	for target_id_variant in target_ids:
+		if sanitized_ids.size() >= TIYI_HIGH_NOON_MAX_TARGETS:
+			break
+		var enemy_net_id := int(target_id_variant)
+		if enemy_net_id <= 0 or seen_ids.has(enemy_net_id):
+			continue
+		if require_host_enemy and _get_authoritative_tiyi_enemy(enemy_net_id) == null:
+			continue
+		seen_ids[enemy_net_id] = true
+		sanitized_ids.append(enemy_net_id)
+	return sanitized_ids
+
+
+func has_active_tiyi_high_noon(peer_id: int) -> bool:
+	return _active_tiyi_activations_by_peer.has(peer_id)
+
+
+func get_active_tiyi_high_noon_activation_id(peer_id: int) -> int:
+	return int(_active_tiyi_activations_by_peer.get(peer_id, 0))
+
+
+func get_tiyi_high_noon_target_ids(peer_id: int) -> PackedInt32Array:
+	var target_ids := _tiyi_target_ids_by_peer.get(
+		peer_id,
+		PackedInt32Array()
+	) as PackedInt32Array
+	return target_ids.duplicate()
+
+
+func cancel_tiyi_for_life_transition(peer_id: int) -> void:
+	var activation_id := get_active_tiyi_high_noon_activation_id(peer_id)
+	if activation_id > 0:
+		cancel_authoritative_tiyi_high_noon(peer_id, activation_id, true)
+
+
+func clear_tiyi_lifecycle_state(peer_id: int) -> void:
+	_active_tiyi_activations_by_peer.erase(peer_id)
+	_tiyi_target_ids_by_peer.erase(peer_id)
+	_pending_tiyi_target_updates.erase(peer_id)
+	_pending_remote_tiyi_target_updates.erase(peer_id)
+
+
+func _clear_tiyi_remote_target_update_through(
+	peer_id: int,
+	activation_id: int
+) -> void:
+	var pending_update := _pending_remote_tiyi_target_updates.get(
+		peer_id,
+		{}
+	) as Dictionary
+	if int(pending_update.get("activation_id", 0)) <= activation_id:
+		_pending_remote_tiyi_target_updates.erase(peer_id)
+
+
+func _is_tiyi_authority_sender(sender_id: int) -> bool:
+	return (
+		has_player_action_dependencies()
+		and (
+			sender_id <= 0
+			or sender_id == _action_net_manager.get_host_peer_id()
+		)
+	)
+
+
+func _get_tiyi_player(peer_id: int) -> PlayerTiyi:
+	if not is_bound() or peer_id <= 0:
+		return null
+	var player_node := _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return null
+	return player_node as PlayerTiyi
+
+
+func _get_authoritative_tiyi_enemy(enemy_net_id: int) -> Enemy:
+	if not is_bound() or enemy_net_id <= 0:
+		return null
+	var enemy := _runtime.get_enemy_for_net_id(enemy_net_id)
+	if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
+		return null
+	return enemy
 
 
 func handle_client_player_state(
@@ -3453,6 +3939,9 @@ func clear_peer(peer_id: int) -> void:
 		_last_tango_electric_surge_request_ids.erase(peer_id)
 		_active_tango_electric_surges_by_peer.erase(peer_id)
 		_last_tango_electric_surge_seen_by_peer.erase(peer_id)
+	_tiyi_activation_sequences_by_peer.erase(peer_id)
+	clear_tiyi_lifecycle_state(peer_id)
+	_last_tiyi_activation_seen_by_peer.erase(peer_id)
 	if peer_id == _get_action_local_peer_id():
 		_local_tango_active_request_id = 0
 		_local_tango_release_pending = false
@@ -3482,6 +3971,7 @@ func reset_session_state() -> void:
 	_local_tango_active_request_id = 0
 	_local_tango_release_pending = false
 	_local_tango_electric_surge_request_id = 0
+	_local_tiyi_activation_request_id = 0
 	_last_player_state_sequences.clear()
 	_last_dash_request_sequences.clear()
 	_last_dash_confirmed_sequences.clear()
@@ -3495,6 +3985,12 @@ func reset_session_state() -> void:
 	_last_tango_electric_surge_request_ids.clear()
 	_active_tango_electric_surges_by_peer.clear()
 	_last_tango_electric_surge_seen_by_peer.clear()
+	_tiyi_activation_sequences_by_peer.clear()
+	_active_tiyi_activations_by_peer.clear()
+	_tiyi_target_ids_by_peer.clear()
+	_pending_tiyi_target_updates.clear()
+	_pending_remote_tiyi_target_updates.clear()
+	_last_tiyi_activation_seen_by_peer.clear()
 	_accepted_player_state_positions.clear()
 	_accepted_player_state_times.clear()
 	_player_action_ingress_rate_buckets.clear()

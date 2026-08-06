@@ -69,6 +69,7 @@ timeout = 10.0
 [connection signal="player_action_rpc_to_peer_requested" from="PlayerCoordinator" to="." method="_on_player_action_rpc_to_peer_requested"]
 [connection signal="player_action_rpc_broadcast_requested" from="PlayerCoordinator" to="." method="_on_player_action_rpc_broadcast_requested"]
 [connection signal="player_state_correction_requested" from="PlayerCoordinator" to="." method="_on_player_life_state_correction_requested"]
+[connection signal="tiyi_high_noon_damage_requested" from="PlayerCoordinator" to="." method="_on_tiyi_high_noon_damage_requested"]
 [connection signal="plant_placement_request_to_host" from="TowerWorldCoordinator" to="." method="_on_tower_world_plant_placement_request_to_host"]
 [connection signal="inventory_plant_placement_request_to_host" from="TowerWorldCoordinator" to="." method="_on_tower_world_inventory_plant_placement_request_to_host"]
 [connection signal="plant_spawn_broadcast_requested" from="TowerWorldCoordinator" to="." method="_on_host_plant_spawned"]

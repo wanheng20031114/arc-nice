@@ -9,6 +9,7 @@ class ProbeRuntime:
 	extends CombatRuntimeBase
 
 	var last_damage_number := 0
+	var probe_enemies: Dictionary[int, Enemy] = {}
 
 	func configure_multiplayer(
 		_mode: int,
@@ -21,8 +22,8 @@ class ProbeRuntime:
 	func get_player_for_peer(peer_id: int) -> Player:
 		return peer_players.get(peer_id) as Player
 
-	func get_enemy_for_net_id(_net_id: int) -> Enemy:
-		return null
+	func get_enemy_for_net_id(net_id: int) -> Enemy:
+		return probe_enemies.get(net_id) as Enemy
 
 	func get_pickup_for_net_id(_net_id: int) -> Pickup:
 		return null
@@ -296,6 +297,70 @@ class ProbeTangoPlayer:
 		rejected_prediction_count += 1
 
 
+class ProbeTiyiPlayer:
+	extends PlayerTiyi
+
+	var accept_authoritative_start := true
+	var high_noon_active := false
+	var authoritative_start_count := 0
+	var authoritative_sync_count := 0
+	var remote_start_count := 0
+	var remote_target_count := 0
+	var remote_finish_count := 0
+	var remote_cancel_count := 0
+	var last_activation_id := 0
+	var last_target_ids := PackedInt32Array()
+	var last_hit_positions := PackedVector2Array()
+
+	func try_start_authoritative_high_noon(activation_id: int) -> bool:
+		if not accept_authoritative_start or high_noon_active:
+			return false
+		high_noon_active = true
+		last_activation_id = activation_id
+		authoritative_start_count += 1
+		return true
+
+	func sync_authoritative_high_noon_targets() -> void:
+		authoritative_sync_count += 1
+
+	func play_remote_high_noon_started(activation_id: int) -> void:
+		high_noon_active = true
+		last_activation_id = activation_id
+		remote_start_count += 1
+
+	func apply_remote_high_noon_targets(
+		activation_id: int,
+		target_ids: PackedInt32Array
+	) -> void:
+		if activation_id != last_activation_id:
+			return
+		last_target_ids = target_ids.duplicate()
+		remote_target_count += 1
+
+	func play_remote_high_noon_finished(
+		activation_id: int,
+		target_ids: PackedInt32Array,
+		hit_positions: PackedVector2Array
+	) -> void:
+		last_activation_id = activation_id
+		last_target_ids = target_ids.duplicate()
+		last_hit_positions = hit_positions.duplicate()
+		high_noon_active = false
+		remote_finish_count += 1
+
+	func cancel_remote_high_noon(activation_id: int) -> void:
+		if activation_id != last_activation_id:
+			return
+		high_noon_active = false
+		remote_cancel_count += 1
+
+	func get_high_noon_damage_against_enemy(_enemy: Enemy) -> int:
+		return 40
+
+	func is_high_noon_active() -> bool:
+		return high_noon_active
+
+
 class ProbeModeAdapter:
 	extends MultiplayerModeAdapter
 
@@ -332,6 +397,7 @@ var _probe_action_broadcast_methods: Array[StringName] = []
 var _probe_action_to_host_methods: Array[StringName] = []
 var _probe_action_to_peer_methods: Array[StringName] = []
 var _probe_state_correction_count := 0
+var _probe_tiyi_damage_ids := PackedInt32Array()
 
 
 func _init() -> void:
@@ -373,6 +439,9 @@ func _run() -> void:
 	)
 	coordinator.player_state_correction_requested.connect(
 		_probe_on_player_state_correction
+	)
+	coordinator.tiyi_high_noon_damage_requested.connect(
+		_probe_on_tiyi_high_noon_damage_requested
 	)
 	_expect(coordinator.is_bound(), "PlayerCoordinator 必须强类型绑定战斗运行时。")
 	_expect(
@@ -887,18 +956,219 @@ func _run() -> void:
 		"电涌结束事件必须清理客户端活动记录。"
 	)
 
+	var tiyi_enemy_a := Enemy.new()
+	tiyi_enemy_a.global_position = Vector2(120.0, 80.0)
+	var tiyi_enemy_b := Enemy.new()
+	tiyi_enemy_b.global_position = Vector2(180.0, 96.0)
+	var tiyi_dead_enemy := Enemy.new()
+	tiyi_dead_enemy.is_dead = true
+	runtime.probe_enemies[101] = tiyi_enemy_a
+	runtime.probe_enemies[102] = tiyi_enemy_b
+	runtime.probe_enemies[103] = tiyi_dead_enemy
+	var tiyi_host_player := ProbeTiyiPlayer.new()
+	tiyi_host_player.peer_id = 1
+	runtime.peer_players[1] = tiyi_host_player
+	net_manager.host_mode = true
+	net_manager.client_mode = false
+	net_manager.local_peer_id = 1
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	runtime.multiplayer_local_peer_id = 1
+	action_broadcast_count = _probe_action_broadcast_methods.size()
+	_expect(
+		coordinator.request_tiyi_high_noon(true)
+		and coordinator.get_active_tiyi_high_noon_activation_id(1) == 1
+		and tiyi_host_player.authoritative_start_count == 1
+		and tiyi_host_player.authoritative_sync_count == 1
+		and _probe_action_broadcast_methods.size() == action_broadcast_count + 1
+		and _probe_action_broadcast_methods.back()
+			== &"net_tiyi_high_noon_started",
+		"Host 本地正午已到必须分配激活序列、启动角色并经根出口广播。"
+	)
+	coordinator.notify_tiyi_high_noon_targets_changed(
+		1,
+		1,
+		PackedInt32Array([101, 101, 0, 102, 103, 999])
+	)
+	_expect(
+		coordinator.get_tiyi_high_noon_target_ids(1)
+			== PackedInt32Array([101, 102]),
+		"Host 目标聚合必须去重并剔除无效、死亡或不存在的敌人。"
+	)
+	coordinator.flush_tiyi_target_updates()
+	_expect(
+		_probe_action_broadcast_methods.back() == &"net_tiyi_high_noon_targets",
+		"聚合后的提伊目标必须由根出口按既有不可靠信道批发送。"
+	)
+	var tiyi_late_join_send_count := _probe_action_to_peer_methods.size()
+	coordinator.send_active_tiyi_high_noon_to_peer(9)
+	_expect(
+		_probe_action_to_peer_methods.size() == tiyi_late_join_send_count + 2
+		and _probe_action_to_peer_methods[tiyi_late_join_send_count]
+			== &"net_tiyi_high_noon_started"
+		and _probe_action_to_peer_methods[tiyi_late_join_send_count + 1]
+			== &"net_tiyi_high_noon_targets",
+		"迟加入玩家必须依次收到正午已到开始状态和完整目标列表。"
+	)
+	_probe_tiyi_damage_ids.clear()
+	coordinator.resolve_tiyi_high_noon(
+		1,
+		1,
+		PackedInt32Array([102, 101, 102, 999]),
+		PackedVector2Array()
+	)
+	_expect(
+		not coordinator.has_active_tiyi_high_noon(1)
+		and _probe_action_broadcast_methods.back()
+			== &"net_tiyi_high_noon_finished"
+		and _probe_tiyi_damage_ids == PackedInt32Array([102, 101]),
+		"正午已到结算必须只命中锁定的存活敌人，并把实际伤害留给根确认管线。"
+	)
+	tiyi_host_player.high_noon_active = false
+
+	var tiyi_remote_host_player := ProbeTiyiPlayer.new()
+	tiyi_remote_host_player.peer_id = 11
+	runtime.peer_players[11] = tiyi_remote_host_player
+	coordinator.handle_tiyi_high_noon_request(11, 1)
+	_expect(
+		coordinator.get_active_tiyi_high_noon_activation_id(11) == 1
+		and tiyi_remote_host_player.authoritative_start_count == 1,
+		"远端正午已到请求必须经过共享玩家动作 admission 后由 Host 启动。"
+	)
+	coordinator.notify_tiyi_high_noon_targets_changed(
+		11,
+		1,
+		PackedInt32Array([101])
+	)
+	action_broadcast_count = _probe_action_broadcast_methods.size()
+	coordinator.cancel_tiyi_high_noon(11, 1)
+	coordinator.flush_tiyi_target_updates()
+	_expect(
+		not coordinator.has_active_tiyi_high_noon(11)
+		and _probe_action_broadcast_methods.size() == action_broadcast_count + 1
+		and _probe_action_broadcast_methods.back()
+			== &"net_tiyi_high_noon_cancelled",
+		"取消必须广播唯一终端并清除尚未发送的目标聚合。"
+	)
+	tiyi_remote_host_player.high_noon_active = false
+	_expect(
+		not coordinator.apply_authoritative_tiyi_high_noon_request(11, 1),
+		"重复提伊激活序列不得再次启动技能。"
+	)
+	_expect(
+		coordinator.apply_authoritative_tiyi_high_noon_request(11, 2),
+		"递增的提伊激活序列必须能够启动下一次技能。"
+	)
+	coordinator.cancel_tiyi_for_life_transition(11)
+	_expect(
+		not coordinator.has_active_tiyi_high_noon(11)
+		and _probe_action_broadcast_methods.back()
+			== &"net_tiyi_high_noon_cancelled",
+		"死亡或复活边界必须可靠取消活动中的正午已到。"
+	)
+	tiyi_remote_host_player.high_noon_active = false
+	coordinator.clear_peer(11)
+	_expect(
+		not coordinator.has_active_tiyi_high_noon(11)
+		and coordinator.get_tiyi_high_noon_target_ids(11).is_empty(),
+		"peer 清理必须释放提伊激活、目标与待发送状态。"
+	)
+
+	var tiyi_client_player := ProbeTiyiPlayer.new()
+	tiyi_client_player.peer_id = 12
+	runtime.peer_players[12] = tiyi_client_player
+	net_manager.host_mode = false
+	net_manager.client_mode = true
+	net_manager.local_peer_id = 13
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	runtime.multiplayer_local_peer_id = 13
+	coordinator.apply_tiyi_high_noon_targets(
+		1,
+		12,
+		3,
+		PackedInt32Array([101, 0, 101, 102])
+	)
+	coordinator.apply_tiyi_high_noon_started(1, 12, 3)
+	_expect(
+		tiyi_client_player.remote_start_count == 1
+		and tiyi_client_player.remote_target_count == 1
+		and tiyi_client_player.last_target_ids
+			== PackedInt32Array([101, 102]),
+		"跨信道先到的目标更新必须缓存，并在可靠开始事件后完成恢复。"
+	)
+	coordinator.apply_tiyi_high_noon_targets(
+		2,
+		12,
+		3,
+		PackedInt32Array([102])
+	)
+	_expect(
+		tiyi_client_player.remote_target_count == 1,
+		"非 Host 发送者不得修改客户端提伊目标状态。"
+	)
+	coordinator.apply_tiyi_high_noon_finished(
+		1,
+		12,
+		3,
+		PackedInt32Array([101, 101, 102, 0]),
+		PackedVector2Array([
+			Vector2(120.0, 80.0),
+			Vector2(121.0, 81.0),
+			Vector2(180.0, 96.0),
+			Vector2(INF, 0.0),
+		])
+	)
+	_expect(
+		tiyi_client_player.remote_finish_count == 1
+		and tiyi_client_player.last_target_ids
+			== PackedInt32Array([101, 102])
+		and tiyi_client_player.last_hit_positions
+			== PackedVector2Array([
+				Vector2(120.0, 80.0),
+				Vector2(180.0, 96.0),
+			]),
+		"可靠结束事件必须按 ID 与坐标成对净化后播放一次。"
+	)
+	coordinator.apply_tiyi_high_noon_started(1, 12, 4)
+	coordinator.apply_tiyi_high_noon_cancelled(1, 12, 4)
+	_expect(
+		tiyi_client_player.remote_cancel_count == 1
+		and not coordinator.has_active_tiyi_high_noon(12),
+		"可靠取消事件必须终止匹配的远端提伊表现。"
+	)
+	var tiyi_local_client_player := ProbeTiyiPlayer.new()
+	tiyi_local_client_player.peer_id = 13
+	runtime.peer_players[13] = tiyi_local_client_player
+	_expect(
+		coordinator.request_tiyi_high_noon(true)
+		and _probe_action_to_host_methods.back()
+			== &"net_tiyi_high_noon_requested",
+		"客户端正午已到请求必须经根统一出口发送。"
+	)
+
 	runtime.peer_players.erase(2)
 	runtime.peer_players.erase(3)
 	runtime.peer_players.erase(5)
 	runtime.peer_players.erase(6)
 	runtime.peer_players.erase(7)
 	runtime.peer_players.erase(8)
+	runtime.peer_players.erase(1)
+	runtime.peer_players.erase(11)
+	runtime.peer_players.erase(12)
+	runtime.peer_players.erase(13)
 	action_player.free()
 	remote_dash_player.free()
 	hoe_player.free()
 	tango_host_player.free()
 	tango_client_player.free()
 	tango_remote_player.free()
+	tiyi_host_player.free()
+	tiyi_remote_host_player.free()
+	tiyi_client_player.free()
+	tiyi_local_client_player.free()
+	runtime.probe_enemies.clear()
+	tiyi_enemy_a.free()
+	tiyi_enemy_b.free()
+	tiyi_dead_enemy.free()
 
 	net_manager.host_mode = false
 	net_manager.client_mode = true
@@ -1073,3 +1343,11 @@ func _probe_on_player_state_correction(
 	_corrected_velocity: Vector2
 ) -> void:
 	_probe_state_correction_count += 1
+
+
+func _probe_on_tiyi_high_noon_damage_requested(
+	_owner_player: PlayerTiyi,
+	enemy_net_id: int,
+	_enemy: Enemy
+) -> void:
+	_probe_tiyi_damage_ids.append(enemy_net_id)
