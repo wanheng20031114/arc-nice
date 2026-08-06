@@ -36,6 +36,7 @@
 [ext_resource type="PackedScene" uid="uid://c7r2n5v8w3j6a" path="res://scene/game_modes/standard/pickup/standard_pickup_registry.tscn" id="38_pickup_registry"]
 [ext_resource type="PackedScene" uid="uid://d6n2k9p4w8x1b" path="res://scene/game_modes/standard/merchant/standard_merchant_coordinator.tscn" id="39_merchant_coordinator"]
 [ext_resource type="PackedScene" uid="uid://d4p7k2s9x5m1c" path="res://scene/game_modes/standard/music/standard_music_coordinator.tscn" id="40_music_coordinator"]
+[ext_resource type="PackedScene" uid="uid://c8n3w6q2m9v5k" path="res://scene/game_modes/standard/prewarm/standard_prewarmer_coordinator.tscn" id="41_prewarmer_coordinator"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -153,6 +154,8 @@ mode_definition = ExtResource("31_mode_definition")
 [node name="MerchantCoordinator" parent="." instance=ExtResource("39_merchant_coordinator")]
 
 [node name="MusicCoordinator" parent="." instance=ExtResource("40_music_coordinator")]
+
+[node name="PrewarmerCoordinator" parent="." instance=ExtResource("41_prewarmer_coordinator")]
 
 [node name="PickupRegistry" parent="." instance=ExtResource("38_pickup_registry")]
 

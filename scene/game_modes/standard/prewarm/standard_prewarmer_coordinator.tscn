@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c8n3w6q2m9v5k"]
+
+[ext_resource type="Script" uid="uid://b2m8p4v7k5x9q" path="res://scene/game_modes/standard/prewarm/standard_prewarmer_coordinator.gd" id="1_coordinator"]
+
+[node name="StandardPrewarmerCoordinator" type="Node"]
+script = ExtResource("1_coordinator")

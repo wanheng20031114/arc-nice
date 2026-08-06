@@ -1,19 +1,19 @@
 extends WaveCombatRuntimeBase
 class_name StandardGame
 
-const TANGO_LASER_BULLET_POOL_SCENE := preload(
-	"res://scene/player/tango/tango_laser_bullet.tscn"
+const TANGO_LASER_BULLET_POOL_SCENE := (
+	StandardPrewarmerCoordinator.TANGO_LASER_BULLET_POOL_SCENE
 )
 const INITIAL_PLAYER_XIRANG := StandardPlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
 
-const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
-	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
+const LINGLAN_SKILL1_BULLET_POOL_SCENE := (
+	StandardPrewarmerCoordinator.LINGLAN_SKILL1_BULLET_POOL_SCENE
 )
-const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
-	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
+const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := (
+	StandardPrewarmerCoordinator.LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE
 )
 const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := (
-	"res://resources/config/enemies/capoo_sniper.tres"
+	StandardPrewarmerCoordinator.LINGLAN_ENRAGE_SNIPER_CONFIG_PATH
 )
 const DEFAULT_MUSIC_VOLUME_DB := StandardMusicCoordinator.DEFAULT_MUSIC_VOLUME_DB
 const MUSIC_FADE_IN_SECONDS := StandardMusicCoordinator.MUSIC_FADE_IN_SECONDS
@@ -56,6 +56,9 @@ var merchant_coordinator: StandardMerchantCoordinator:
 var music_coordinator: StandardMusicCoordinator:
 	get:
 		return get_node_or_null("MusicCoordinator") as StandardMusicCoordinator
+var prewarmer_coordinator: StandardPrewarmerCoordinator:
+	get:
+		return get_node_or_null("PrewarmerCoordinator") as StandardPrewarmerCoordinator
 var merchant: ZhuangfangyiMerchant:
 	get:
 		var coordinator := merchant_coordinator
@@ -176,9 +179,48 @@ var boss_health_hud: BossHealthHUD:
 		return boss_coordinator.boss_health_hud
 	set(value):
 		boss_coordinator.boss_health_hud = value
-var boss_runtime_scene_loads_requested: bool = false
-var linglan_enrage_sniper_config: EnemyConfig = null
-var boss_runtime_resources_by_path: Dictionary[String, Resource] = {}
+var _pending_boss_runtime_scene_loads_requested: bool = false
+var boss_runtime_scene_loads_requested: bool:
+	get:
+		var coordinator := prewarmer_coordinator
+		return (
+			coordinator.runtime_scene_loads_requested
+			if coordinator != null and coordinator.is_bound()
+			else _pending_boss_runtime_scene_loads_requested
+		)
+	set(value):
+		_pending_boss_runtime_scene_loads_requested = value
+		var coordinator := prewarmer_coordinator
+		if coordinator != null:
+			coordinator.replace_runtime_scene_loads_requested(value)
+var _pending_linglan_enrage_sniper_config: EnemyConfig = null
+var linglan_enrage_sniper_config: EnemyConfig:
+	get:
+		var coordinator := prewarmer_coordinator
+		return (
+			coordinator.linglan_enrage_sniper_config
+			if coordinator != null and coordinator.is_bound()
+			else _pending_linglan_enrage_sniper_config
+		)
+	set(value):
+		_pending_linglan_enrage_sniper_config = value
+		var coordinator := prewarmer_coordinator
+		if coordinator != null:
+			coordinator.replace_linglan_enrage_sniper_config(value)
+var _pending_boss_runtime_resources_by_path: Dictionary[String, Resource] = {}
+var boss_runtime_resources_by_path: Dictionary[String, Resource]:
+	get:
+		var coordinator := prewarmer_coordinator
+		return (
+			coordinator.runtime_resources_by_path
+			if coordinator != null and coordinator.is_bound()
+			else _pending_boss_runtime_resources_by_path
+		)
+	set(value):
+		_pending_boss_runtime_resources_by_path = value
+		var coordinator := prewarmer_coordinator
+		if coordinator != null:
+			coordinator.replace_runtime_resources_by_path(value)
 
 
 func _ready() -> void:
@@ -331,6 +373,22 @@ func _initialize_mode_runtime_before_validation() -> void:
 		standard_music.replace_music_fade_tween(
 			_pending_music_fade_tween
 		)
+	var standard_prewarmer := prewarmer_coordinator
+	if standard_prewarmer != null:
+		standard_prewarmer.bind_dependencies(
+			session_object_pool,
+			boss_coordinator,
+			linglan_boss_enabled
+		)
+		standard_prewarmer.replace_runtime_scene_loads_requested(
+			_pending_boss_runtime_scene_loads_requested
+		)
+		standard_prewarmer.replace_linglan_enrage_sniper_config(
+			_pending_linglan_enrage_sniper_config
+		)
+		standard_prewarmer.replace_runtime_resources_by_path(
+			_pending_boss_runtime_resources_by_path
+		)
 	pickup_registry.bind_standard_dependencies(
 		runtime_mode,
 		multiplayer_pickups,
@@ -367,16 +425,17 @@ func _initialize_mode_runtime_before_validation() -> void:
 	)
 	_connect_player_roster_coordinator_signals()
 	_connect_merchant_coordinator_signals()
-	boss_coordinator.bind_dependencies(
-		self,
-		boss_container,
-		linglan_boss_runtime_port,
-		ground_tile_map_layer,
-		overlay_tile_map_layer,
-		campaign_wave_coordinator,
-		_load_threaded_or_direct,
-		get_linglan_enrage_sniper_config
-	)
+	if standard_prewarmer != null:
+		boss_coordinator.bind_dependencies(
+			self,
+			boss_container,
+			linglan_boss_runtime_port,
+			ground_tile_map_layer,
+			overlay_tile_map_layer,
+			campaign_wave_coordinator,
+			standard_prewarmer.load_threaded_or_direct,
+			standard_prewarmer.get_linglan_enrage_sniper_config
+		)
 	(linglan_boss_runtime_port as StandardLinglanBossRuntimePort).bind_standard_dependencies(
 		boss_coordinator,
 		pause_all_background_music
@@ -479,6 +538,12 @@ func _connect_boss_coordinator_signals() -> void:
 
 
 func _validate_mode_scene_content() -> bool:
+	if prewarmer_coordinator == null:
+		push_error("StandardGame: 缺少静态 PrewarmerCoordinator 节点。")
+		return false
+	if not prewarmer_coordinator.is_bound():
+		push_error("StandardGame: PrewarmerCoordinator 依赖未完整绑定。")
+		return false
 	if music_coordinator == null:
 		push_error("StandardGame: 缺少静态 MusicCoordinator 节点。")
 		return false
@@ -531,9 +596,7 @@ func _configure_active_campaign() -> bool:
 
 
 func _register_mode_object_pools() -> void:
-	session_object_pool.register_scene(TANGO_LASER_BULLET_POOL_SCENE, 64, 768)
-	session_object_pool.register_scene(LINGLAN_SKILL1_BULLET_POOL_SCENE, 64, 768)
-	session_object_pool.register_scene(LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE, 16, 96)
+	prewarmer_coordinator.register_mode_object_pools()
 
 
 func _connect_mode_dynamic_pickup_containers() -> void:
@@ -590,7 +653,8 @@ func _initialize_mode_player_ui() -> void:
 func _initialize_mode_runtime_content() -> void:
 	_set_merchant_active(false)
 	boss_coordinator.configure_existing_runtime_nodes()
-	call_deferred("_deferred_request_boss_runtime_scene_loads")
+	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
+	prewarmer_coordinator.schedule_boss_runtime_scene_loads()
 
 
 func _apply_initial_player_resources() -> void:
@@ -747,7 +811,8 @@ func _on_boss_step_completed() -> void:
 
 
 func _prewarm_mode_runtime_data() -> void:
-	await _prewarm_boss_runtime_resources()
+	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
+	await prewarmer_coordinator.prewarm_boss_runtime_resources()
 
 
 func _on_multiplayer_peer_restored(old_peer_id: int, new_peer_id: int) -> void:
@@ -979,55 +1044,25 @@ func _set_local_merchants_active(active: bool) -> bool:
 	return merchant_coordinator.set_local_merchants_active(active)
 
 func _request_boss_runtime_scene_loads() -> void:
-	if boss_runtime_scene_loads_requested:
-		return
-	if not _uses_linglan_boss_flow():
-		return
-	boss_runtime_scene_loads_requested = true
-	for resource_path in _get_boss_runtime_resource_paths():
-		ResourceLoader.load_threaded_request(resource_path)
+	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
+	prewarmer_coordinator.request_boss_runtime_scene_loads()
 
 func _get_boss_runtime_resource_paths() -> Array[String]:
-	var paths := boss_coordinator.get_runtime_resource_paths()
-	paths.append(LINGLAN_ENRAGE_SNIPER_CONFIG_PATH)
-	return paths
+	return prewarmer_coordinator.get_boss_runtime_resource_paths()
 
 func _prewarm_boss_runtime_resources() -> void:
-	if not _uses_linglan_boss_flow():
-		return
-	_request_boss_runtime_scene_loads()
-	for resource_path in _get_boss_runtime_resource_paths():
-		if boss_runtime_resources_by_path.has(resource_path):
-			continue
-		var status := ResourceLoader.load_threaded_get_status(resource_path)
-		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
-			await get_tree().process_frame
-			if not is_inside_tree():
-				return
-			status = ResourceLoader.load_threaded_get_status(resource_path)
-		var runtime_resource := (
-			ResourceLoader.load_threaded_get(resource_path)
-			if status == ResourceLoader.THREAD_LOAD_LOADED
-			else load(resource_path)
-		)
-		if runtime_resource != null:
-			boss_runtime_resources_by_path[resource_path] = runtime_resource
+	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
+	await prewarmer_coordinator.prewarm_boss_runtime_resources()
 
 func get_linglan_enrage_sniper_config() -> EnemyConfig:
-	if linglan_enrage_sniper_config == null:
-		linglan_enrage_sniper_config = (
-			_load_threaded_or_direct(LINGLAN_ENRAGE_SNIPER_CONFIG_PATH) as EnemyConfig
-		)
-	return linglan_enrage_sniper_config
+	_sync_pending_prewarmer_state()
+	var config := prewarmer_coordinator.get_linglan_enrage_sniper_config()
+	_pending_linglan_enrage_sniper_config = config
+	return config
 
 func _deferred_request_boss_runtime_scene_loads() -> void:
-	if DisplayServer.get_name() == "headless":
-		return
-	await get_tree().process_frame
-	await get_tree().process_frame
-	if not is_inside_tree():
-		return
-	_request_boss_runtime_scene_loads()
+	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
+	await prewarmer_coordinator.request_boss_runtime_scene_loads_deferred()
 
 func _get_first_boss_config() -> Resource:
 	return boss_coordinator.get_first_boss_config()
@@ -1060,17 +1095,22 @@ func _get_boss_hud_scene_path(boss_config: Resource) -> String:
 	return boss_coordinator.get_boss_hud_scene_path(boss_config as BossConfig)
 
 func _load_threaded_or_direct(path: String) -> Resource:
-	if path.is_empty():
-		return null
-	var retained_resource := boss_runtime_resources_by_path.get(path) as Resource
-	if retained_resource != null:
-		return retained_resource
-	var status := ResourceLoader.load_threaded_get_status(path)
-	if status == ResourceLoader.THREAD_LOAD_LOADED:
-		return ResourceLoader.load_threaded_get(path)
-	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
-		return ResourceLoader.load_threaded_get(path)
-	return load(path)
+	_sync_pending_prewarmer_state()
+	return prewarmer_coordinator.load_threaded_or_direct(path)
+
+func _sync_pending_prewarmer_state() -> void:
+	var coordinator := prewarmer_coordinator
+	if coordinator == null or coordinator.is_bound():
+		return
+	coordinator.replace_runtime_scene_loads_requested(
+		_pending_boss_runtime_scene_loads_requested
+	)
+	coordinator.replace_linglan_enrage_sniper_config(
+		_pending_linglan_enrage_sniper_config
+	)
+	coordinator.replace_runtime_resources_by_path(
+		_pending_boss_runtime_resources_by_path
+	)
 
 func spawn_linglan_skill2_enemies(
 	enemy_config: EnemyConfig,

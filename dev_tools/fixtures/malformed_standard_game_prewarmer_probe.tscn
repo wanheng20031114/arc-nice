@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3 uid="uid://f4v9m2k7q5n8b"]
+
+[ext_resource type="PackedScene" uid="uid://dcqarxlpbdh8y" path="res://scene/game_modes/standard/standard_game.tscn" id="1_standard_game"]
+[ext_resource type="Script" uid="uid://dc617yu013ej" path="res://dev_tools/fixtures/malformed_standard_game_prewarmer_probe.gd" id="2_fixture"]
+
+[node name="MalformedStandardGamePrewarmerProbe" instance=ExtResource("1_standard_game")]
+script = ExtResource("2_fixture")
