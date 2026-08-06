@@ -486,6 +486,7 @@ night_energy = 0.3
 process_callback = 0
 
 [connection signal="timeout" from="OrangeChargingAuraCoordinator/ReconcileTimer" to="OrangeChargingAuraCoordinator" method="_on_reconcile_timer_timeout"]
+[connection signal="wave_completed" from="EnemyCoordinator" to="." method="_complete_current_step"]
 [connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_upgrade_requested"]
 [connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_use_requested"]
 [connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_discard_requested"]

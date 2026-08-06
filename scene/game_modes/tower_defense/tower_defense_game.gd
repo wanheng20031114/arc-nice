@@ -1506,52 +1506,15 @@ func _update_base_health_display(play_damage_pulse: bool = true) -> void:
 
 
 func _register_hud_alive_enemy(enemy: Enemy) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	if enemy == null or not is_instance_valid(enemy):
-		return
-	var enemy_id := enemy.get_instance_id()
-	var added := (
-		enemy_coordinator.add_hud_enemy(enemy_id)
-		if enemy_coordinator != null
-		else not hud_alive_enemy_ids.has(enemy_id)
-	)
-	if not added:
-		return
-	if enemy_coordinator == null:
-		hud_alive_enemy_ids[enemy_id] = true
-	_update_hud_alive_enemy_count()
+	enemy_coordinator.register_hud_alive_enemy(enemy)
 
 
 func _remove_hud_alive_enemy(enemy_id: int) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	var removed := (
-		enemy_coordinator.remove_hud_enemy(enemy_id)
-		if enemy_coordinator != null
-		else hud_alive_enemy_ids.erase(enemy_id)
-	)
-	if not removed:
-		return
-	_update_hud_alive_enemy_count()
+	enemy_coordinator.remove_hud_alive_enemy(enemy_id)
 
 
 func _clear_hud_alive_enemies() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	if enemy_coordinator != null:
-		enemy_coordinator.clear_hud_enemies()
-	else:
-		hud_alive_enemy_ids.clear()
-	_update_hud_alive_enemy_count()
-
-
-func _update_hud_alive_enemy_count() -> void:
-	presentation_coordinator.show_enemy_count(
-		enemy_coordinator.hud_enemy_count()
-		if enemy_coordinator != null
-		else hud_alive_enemy_ids.size()
-	)
+	enemy_coordinator.clear_hud_alive_enemies()
 
 
 func _complete_escaped_boss_step() -> void:
@@ -2573,7 +2536,16 @@ func _ensure_boss_health_hud_runtime_node(boss_config: Resource) -> bool:
 
 func _configure_enemy_coordinator() -> void:
 	enemy_coordinator.setup(
+		self,
 		random_generator,
+		enemy_container,
+		tower_grid_pathfinder,
+		enemy_spawn_timer,
+		multiplayer_gateway,
+		fate_coordinator,
+		presentation_coordinator,
+		session_object_pool,
+		ENEMY_SPAWN_EFFECT_SCENE,
 		enemy_spawn_points,
 		enemy_spawn_points_by_name,
 		active_wave_spawn_points,
@@ -2581,7 +2553,9 @@ func _configure_enemy_coordinator() -> void:
 		pending_enemy_xirang_kill_rewards,
 		active_wave_enemy_ids,
 		hud_alive_enemy_ids,
-		pending_multiplayer_enemy_escape_ids
+		pending_multiplayer_enemy_escape_ids,
+		multiplayer_enemy_ids_by_instance,
+		multiplayer_enemies_by_net_id
 	)
 	# Read the pre-tree façade backing fields directly. Once @onready resolves,
 	# the public getters intentionally point at the coordinator and would otherwise
@@ -2982,8 +2956,7 @@ func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
 	enemy_coordinator.begin_wave(
 		wave_config,
 		progression_config,
-		_get_progression_player_count(),
-		_resolve_fate_enemy_config
+		_get_progression_player_count()
 	)
 	pending_enemy_config_index = enemy_coordinator.pending_enemy_config_index
 
@@ -3073,31 +3046,8 @@ func _update_client_flow_countdown() -> void:
 
 
 func _spawn_wave_batch() -> void:
-	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
-		enemy_spawn_timer.stop()
-		return
-
-	var wave_config := _get_current_wave()
-	if wave_config == null:
-		enemy_spawn_timer.stop()
-		return
-
-	var spawn_count_this_tick := mini(
-		maxi(wave_config.spawn_count_per_tick, 1),
-		MAX_WAVE_SPAWN_COUNT_PER_TICK
-	)
-	current_wave_spawned += enemy_coordinator.tick(
-		wave_config.max_alive_enemies,
-		spawn_count_this_tick,
-		_try_spawn_enemy
-	)
+	enemy_coordinator.spawn_wave_batch(MAX_WAVE_SPAWN_COUNT_PER_TICK)
 	pending_enemy_config_index = enemy_coordinator.pending_enemy_config_index
-
-	if not _has_pending_enemy_configs():
-		enemy_spawn_timer.stop()
-		_clear_pending_enemy_spawn_queue()
-
-	_check_wave_completion()
 
 
 func _has_pending_enemy_configs() -> bool:
@@ -3113,39 +3063,10 @@ func _try_spawn_enemy(
 	enemy_config: EnemyConfig,
 	xirang_kill_reward_override: int = -1
 ) -> bool:
-	if not _is_spawn_system_ready() or enemy_config == null:
-		return false
-
-	var spawn_point := _pick_spawn_point()
-	if spawn_point == null:
-		return false
-
-	var spawn_scene := enemy_config.enemy_scene
-	if spawn_scene == null:
-		push_warning("敌人配置 %s 缺少 enemy_scene。" % enemy_config.resource_path)
-		return false
-	var enemy_instance := spawn_scene.instantiate() as Enemy
-	if enemy_instance == null:
-		push_warning("敌人场景实例化失败，请检查波次中的敌人配置。")
-		return false
-
-	enemy_container.add_child(enemy_instance)
-	enemy_instance.global_position = spawn_point.global_position
-	enemy_instance.setup(
+	return enemy_coordinator.try_spawn_enemy(
 		enemy_config,
-		_pick_enemy_target(spawn_point.global_position),
-		grid_pathfinder,
-		self
+		xirang_kill_reward_override
 	)
-	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
-	_assign_enemy_targets(enemy_instance, spawn_point.global_position)
-	var enemy_id := enemy_instance.get_instance_id()
-	_register_active_enemy(enemy_instance)
-	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
-	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
-	_finalize_authoritative_enemy_spawn(enemy_instance, enemy_config, enemy_instance.global_position)
-	_spawn_enemy_spawn_effect(spawn_point.global_position)
-	return true
 
 
 func spawn_linglan_skill2_enemies(
@@ -3181,21 +3102,16 @@ func _finalize_authoritative_enemy_spawn(
 	spawn_position: Vector2,
 	broadcast_spawn: bool = true
 ) -> int:
-	configure_runtime_enemy_modifiers(enemy_instance)
-	_configure_authoritative_enemy_physics_interpolation(enemy_instance)
-	var enemy_net_id := _register_multiplayer_enemy_instance(
+	return enemy_coordinator.finalize_authoritative_enemy_spawn(
 		enemy_instance,
 		enemy_config,
 		spawn_position,
 		broadcast_spawn
 	)
-	_register_hud_alive_enemy(enemy_instance)
-	return enemy_net_id
 
 
 func configure_runtime_enemy_modifiers(enemy_instance: Enemy) -> void:
-	if fate_coordinator != null:
-		fate_coordinator.configure_enemy_modifiers(enemy_instance)
+	enemy_coordinator.configure_runtime_enemy_modifiers(enemy_instance)
 
 
 func _register_multiplayer_enemy_instance(
@@ -3204,71 +3120,26 @@ func _register_multiplayer_enemy_instance(
 	spawn_position: Vector2,
 	broadcast_spawn: bool = true
 ) -> int:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return 0
-	if enemy_instance == null or enemy_config == null:
-		return 0
-	var enemy_id := enemy_instance.get_instance_id()
-	var existing_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
-	if existing_net_id > 0:
-		return existing_net_id
-	var enemy_net_id := next_multiplayer_enemy_net_id
-	next_multiplayer_enemy_net_id += 1
-	enemy_instance.set_meta("net_id", enemy_net_id)
-	multiplayer_enemy_ids_by_instance[enemy_id] = enemy_net_id
-	multiplayer_enemies_by_net_id[enemy_net_id] = enemy_instance
-	register_combat_target(enemy_net_id, enemy_instance)
-	if broadcast_spawn:
-		multiplayer_gateway.enemy_spawned.emit(enemy_net_id, enemy_config, spawn_position)
-	return enemy_net_id
+	return enemy_coordinator.register_multiplayer_enemy_instance(
+		enemy_instance,
+		enemy_config,
+		spawn_position,
+		broadcast_spawn
+	)
 
 
 func _configure_authoritative_enemy_physics_interpolation(enemy_instance: Enemy) -> void:
-	if (
-		runtime_mode == RuntimeMode.CLIENT_VIEW
-		or enemy_instance == null
-		or not is_instance_valid(enemy_instance)
-	):
-		return
-	# The local player and its following camera render on Godot's interpolated
-	# physics timeline. Authoritative enemies also move in _physics_process(), so
-	# they must use the same timeline or they visibly step against the camera.
-	# Client proxies stay out of this path because NetInterpolator already places
-	# them on the render clock.
-	enemy_instance.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
-	enemy_instance.reset_physics_interpolation()
+	enemy_coordinator.configure_authoritative_enemy_physics_interpolation(
+		enemy_instance
+	)
 
 
-func _on_wave_enemy_defeated(enemy: Enemy) -> void:
-	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
-		return
-	if enemy == null or not _has_active_enemy(enemy.get_instance_id()):
-		return
-
-	current_wave_defeated = mini(current_wave_defeated + 1, current_wave_total)
-	current_wave_resolved = mini(current_wave_resolved + 1, current_wave_total)
-	_remove_hud_alive_enemy(enemy.get_instance_id())
-	_emit_multiplayer_enemy_defeated(enemy)
-	_show_tower_defense_wave_progress()
-	_check_wave_completion()
+func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
+	enemy_coordinator.handle_wave_enemy_tree_exited(enemy_id)
 
 
 func _show_tower_defense_wave_progress() -> void:
-	presentation_coordinator.show_wave_progress(
-		current_wave_index + 1,
-		current_wave_defeated,
-		current_wave_escaped,
-		current_wave_resolved,
-		current_wave_total
-	)
-	if enemy_coordinator != null:
-		enemy_coordinator.report_progress(
-			current_wave_index + 1,
-			current_wave_defeated,
-			current_wave_escaped,
-			current_wave_resolved,
-			current_wave_total
-		)
+	enemy_coordinator.show_wave_progress()
 
 
 func _show_tower_defense_boss_progress(defeated: int, total: int) -> void:
@@ -3276,13 +3147,7 @@ func _show_tower_defense_boss_progress(defeated: int, total: int) -> void:
 
 
 func get_tower_defense_wave_progress_snapshot() -> Dictionary:
-	return enemy_coordinator.get_progress(
-		current_wave_index + 1,
-		current_wave_defeated,
-		current_wave_escaped,
-		current_wave_resolved,
-		current_wave_total
-	)
+	return enemy_coordinator.get_wave_progress_snapshot()
 
 
 func apply_remote_tower_defense_wave_progress(
@@ -3292,69 +3157,25 @@ func apply_remote_tower_defense_wave_progress(
 	resolved: int,
 	total: int
 ) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	current_wave_index = maxi(wave_number - 1, 0)
-	current_wave_total = maxi(total, 0)
-	current_wave_defeated = clampi(defeated, 0, current_wave_total)
-	current_wave_escaped = clampi(escaped, 0, current_wave_total)
-	current_wave_resolved = clampi(resolved, 0, current_wave_total)
-	_show_tower_defense_wave_progress()
+	enemy_coordinator.apply_remote_wave_progress(
+		wave_number,
+		defeated,
+		escaped,
+		resolved,
+		total
+	)
 
 
 func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if enemy == null:
-		return
-	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy.get_instance_id(), 0))
-	if enemy_net_id <= 0:
-		return
-	multiplayer_gateway.enemy_defeated.emit(enemy_net_id, enemy.global_position)
-
-
-func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
-	_remove_active_enemy(enemy_id)
-	if enemy_coordinator != null:
-		enemy_coordinator.report_enemy_removed(enemy_id)
-	_remove_hud_alive_enemy(enemy_id)
-	_mark_multiplayer_enemy_removed(enemy_id)
-	_check_wave_completion()
+	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
 
 
 func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	var enemy_net_id := int(multiplayer_enemy_ids_by_instance.get(enemy_id, 0))
-	multiplayer_enemy_ids_by_instance.erase(enemy_id)
-	if enemy_net_id > 0:
-		multiplayer_enemies_by_net_id.erase(enemy_net_id)
-		unregister_combat_target(enemy_net_id)
-	if enemy_net_id <= 0:
-		return
-	# Escape owns the terminal event and leaves exactly one short-lived marker for
-	# the ensuing tree exit. Consume it here; normal exits never become history.
-	if _consume_pending_enemy_escape(enemy_net_id):
-		return
-	multiplayer_gateway.enemy_removed.emit(enemy_net_id)
+	enemy_coordinator.mark_multiplayer_enemy_removed(enemy_id)
 
 
 func _check_wave_completion() -> void:
-	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
-		return
-	if _has_pending_enemy_configs():
-		return
-	if current_wave_spawned < current_wave_total:
-		return
-	if current_wave_resolved < current_wave_total:
-		return
-	if _has_active_enemies():
-		return
-
-	enemy_spawn_timer.stop()
-	if enemy_coordinator != null:
-		enemy_coordinator.report_wave_completed()
-	_complete_current_step()
+	enemy_coordinator.check_wave_completion()
 
 
 func _complete_current_step() -> void:
@@ -4118,12 +3939,7 @@ func _restore_camera_after_boss_intro() -> void:
 
 
 func _is_spawn_system_ready() -> bool:
-	return (
-		player != null
-		and grid_pathfinder != null
-		and grid_pathfinder.get("is_built")
-		and not enemy_spawn_points.is_empty()
-	)
+	return enemy_coordinator.is_spawn_system_ready()
 
 
 func _get_current_wave() -> WaveConfig:
@@ -4135,14 +3951,7 @@ func _pick_spawn_point() -> Marker2D:
 
 
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
-	if not try_reserve_enemy_spawn_effect(spawn_global_position):
-		return
-	var effect := session_object_pool.acquire(ENEMY_SPAWN_EFFECT_SCENE) as Node2D
-	if effect == null:
-		return
-	effect.global_position = spawn_global_position
-	if effect.has_method("restart_effect"):
-		effect.call("restart_effect")
+	enemy_coordinator.spawn_enemy_spawn_effect(spawn_global_position)
 
 
 func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
