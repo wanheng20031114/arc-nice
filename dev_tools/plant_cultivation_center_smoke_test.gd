@@ -1001,6 +1001,11 @@ func _test_authoritative_placement_rollback_sync(
 	host_game.run_state = run_state
 	host_game.plant_system = plant_system
 	host_game.peer_players = {2: player}
+	var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+	plant_runtime.name = "PlantRuntimeCoordinator"
+	host_game.add_child(plant_runtime)
+	host_game.plant_runtime_coordinator = plant_runtime
+	plant_runtime.setup(host_game.runtime_mode, null, null, plant_system, null)
 	var rejected_requests: Array[int] = []
 	var changed_inventory_peers: Array[int] = []
 	tower_adapter.plant_placement_rejected.connect(

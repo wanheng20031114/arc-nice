@@ -668,6 +668,11 @@ func _test_multiplayer_batch_bridge() -> void:
 	if enemy == null:
 		return
 	var bridge_game := TOWER_DEFENSE_GAME_SCRIPT.new()
+	var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+	plant_runtime.name = "PlantRuntimeCoordinator"
+	bridge_game.add_child(plant_runtime)
+	bridge_game.plant_runtime_coordinator = plant_runtime
+	plant_runtime.setup(bridge_game.runtime_mode, null, null, null, null)
 	var mp_game := MP_GAME_SCRIPT.new()
 	var net_manager_stub := HostFlagNetManagerStub.new()
 	var tower_mode_adapter := TowerDefenseMultiplayerModeAdapter.new()

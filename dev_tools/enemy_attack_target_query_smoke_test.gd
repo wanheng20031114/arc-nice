@@ -246,6 +246,11 @@ func _test_runtime_player_plant_merge(
 ) -> void:
 	var runtime := TowerDefenseGame.new()
 	runtime.plant_system = plant_system
+	var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+	plant_runtime.name = "PlantRuntimeCoordinator"
+	runtime.add_child(plant_runtime)
+	runtime.plant_runtime_coordinator = plant_runtime
+	plant_runtime.setup(runtime.runtime_mode, null, null, plant_system, null)
 	var local_player := Player.new()
 	local_player.position = center_world + Vector2(TILE_SIZE * 0.5, 0.0)
 	var peer_player := Player.new()

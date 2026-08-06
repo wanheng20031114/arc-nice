@@ -442,6 +442,11 @@ func _create_client_fixture(label: String, owner_peer_id: int) -> Dictionary:
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	runtime.plant_system = plant_system
 	runtime.peer_players = {owner_peer_id: host_game.player}
+	var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+	plant_runtime.name = "PlantRuntimeCoordinator"
+	runtime.add_child(plant_runtime)
+	runtime.plant_runtime_coordinator = plant_runtime
+	plant_runtime.setup(runtime.runtime_mode, null, null, plant_system, null)
 	var fixture := {
 		"runtime": runtime,
 		"plant_system": plant_system,

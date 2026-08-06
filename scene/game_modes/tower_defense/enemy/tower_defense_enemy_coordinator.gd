@@ -401,3 +401,19 @@ func process_retarget_budget(
 
 func request_retarget() -> void:
 	enemy_retarget_time_left = 0.0
+
+
+func clear_removed_plant_objective(
+	plant: PlantDefense,
+	enemy_container: Node,
+	boss_container: Node
+) -> void:
+	if plant == null:
+		return
+	for container in [enemy_container, boss_container]:
+		if container == null:
+			continue
+		for child in container.get_children():
+			var enemy := child as Enemy
+			if enemy != null and enemy.objective_target == plant:
+				enemy.set_objective_target(null)

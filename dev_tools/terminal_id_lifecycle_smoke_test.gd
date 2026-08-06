@@ -540,6 +540,12 @@ func _prepare_runtime_boundaries(
 	runtime.multiplayer_gateway = gateway
 	var adapter: MultiplayerModeAdapter = null
 	if runtime is TowerDefenseGame:
+		var tower_runtime := runtime as TowerDefenseGame
+		var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+		plant_runtime.name = "PlantRuntimeCoordinator"
+		tower_runtime.add_child(plant_runtime)
+		tower_runtime.plant_runtime_coordinator = plant_runtime
+		plant_runtime.setup(tower_runtime.runtime_mode, null, null, null, null)
 		adapter = TowerDefenseMultiplayerModeAdapter.new()
 	else:
 		adapter = StandardMultiplayerModeAdapter.new()

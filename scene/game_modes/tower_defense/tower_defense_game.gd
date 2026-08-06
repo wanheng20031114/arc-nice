@@ -99,14 +99,6 @@ const PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS := 16.0
 const PLAYER_NEAR_MOVING_DIRECT_DISTANCE := (
 	PLAYER_NEAR_MOVING_DIRECT_DISTANCE_CELLS * AUTHORED_LOGICAL_TILE_SIZE
 )
-const PLANT_PLACEMENT_REJECT_INVALID_REQUEST := &"invalid_request"
-const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := &"invalid_player"
-const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := &"invalid_config"
-const PLANT_PLACEMENT_REJECT_INVALID_POSITION := &"invalid_position"
-const PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM := &"invalid_inventory_item"
-const PLANT_PLACEMENT_REJECT_STALE_INVENTORY := &"stale_inventory"
-const PLANT_PLACEMENT_REJECT_FREE_DISABLED := &"free_placement_disabled"
-const PLANT_PLACEMENT_REJECT_FLOW_LOCKED := &"flow_locked"
 const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
 const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
 const PLANT_LIFECYCLE_VFX_PREWARM_COUNT := 8
@@ -130,6 +122,14 @@ const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2(-18.0, -18.0),
 	Vector2(18.0, -18.0),
 ]
+const PLANT_PLACEMENT_REJECT_INVALID_REQUEST := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_REQUEST
+const PLANT_PLACEMENT_REJECT_INVALID_PLAYER := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_PLAYER
+const PLANT_PLACEMENT_REJECT_INVALID_CONFIG := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_CONFIG
+const PLANT_PLACEMENT_REJECT_INVALID_POSITION := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_POSITION
+const PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
+const PLANT_PLACEMENT_REJECT_STALE_INVENTORY := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_STALE_INVENTORY
+const PLANT_PLACEMENT_REJECT_FREE_DISABLED := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FREE_DISABLED
+const PLANT_PLACEMENT_REJECT_FLOW_LOCKED := TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FLOW_LOCKED
 
 signal base_health_changed(current_health: int, maximum_health: int, revision: int)
 
@@ -189,6 +189,9 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 @onready var home_defense_coordinator: TowerDefenseHomeDefenseCoordinator = (
 	$HomeDefenseCoordinator
 )
+@onready var plant_runtime_coordinator := get_node_or_null(
+	"PlantRuntimeCoordinator"
+) as TowerDefensePlantRuntimeCoordinator
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
 )
@@ -232,9 +235,19 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
-var multiplayer_terrain_revision: int = 0
-var authored_terrain_baseline: Dictionary = {}
-var multiplayer_terrain_overrides: Dictionary = {}
+var multiplayer_terrain_revision: int:
+	get:
+		return plant_runtime_coordinator.multiplayer_terrain_revision
+	set(value):
+		plant_runtime_coordinator.multiplayer_terrain_revision = value
+var authored_terrain_baseline: Dictionary:
+	get:
+		return plant_runtime_coordinator.authored_terrain_baseline
+var multiplayer_terrain_overrides: Dictionary:
+	get:
+		return plant_runtime_coordinator.multiplayer_terrain_overrides
+	set(value):
+		plant_runtime_coordinator.multiplayer_terrain_overrides = value
 var active_campaign: WaveCampaignConfig = null
 var flow_graph: FlowGraphConfig = null
 var waves: Array[WaveConfig] = []
@@ -390,7 +403,14 @@ var next_multiplayer_enemy_net_id: int:
 		if enemy_coordinator != null:
 			enemy_coordinator.next_multiplayer_enemy_net_id = value
 var next_multiplayer_pickup_net_id: int = 1000
-var next_multiplayer_plant_net_id: int = 1
+var _next_multiplayer_plant_net_id := 1
+var next_multiplayer_plant_net_id: int:
+	get:
+		return plant_runtime_coordinator.next_multiplayer_plant_net_id if plant_runtime_coordinator != null else _next_multiplayer_plant_net_id
+	set(value):
+		_next_multiplayer_plant_net_id = value
+		if plant_runtime_coordinator != null:
+			plant_runtime_coordinator.next_multiplayer_plant_net_id = value
 var luoxi_collectible_claim_counts: Dictionary = {}
 var linglan_boss_started: bool = false
 var active_boss_config: Resource
@@ -609,10 +629,10 @@ func _ready() -> void:
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
 	if not research_coordinator.research_state_changed.is_connected(
-		_on_research_recipe_unlocks_changed
+		plant_runtime_coordinator.notify_recipe_unlocks_changed
 	):
 		research_coordinator.research_state_changed.connect(
-			_on_research_recipe_unlocks_changed
+			plant_runtime_coordinator.notify_recipe_unlocks_changed
 		)
 	_register_research_players()
 	_configure_minimap()
@@ -884,12 +904,9 @@ func request_bamboo_mortar_target(
 	maximum_range: float,
 	callback: Callable
 ) -> bool:
-	if (
-		runtime_mode == RuntimeMode.CLIENT_VIEW
-		or bamboo_mortar_combat_system == null
-	):
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return false
-	return bamboo_mortar_combat_system.request_target(
+	return plant_runtime_coordinator.request_bamboo_mortar_target(
 		owner,
 		minimum_range,
 		maximum_range,
@@ -898,9 +915,7 @@ func request_bamboo_mortar_target(
 
 
 func cancel_bamboo_mortar_target_request(owner: Node) -> void:
-	if bamboo_mortar_combat_system == null:
-		return
-	bamboo_mortar_combat_system.cancel_target_request(owner)
+	plant_runtime_coordinator.cancel_bamboo_mortar_target_request(owner)
 
 
 func select_bamboo_mortar_target_sync_for_fixture(
@@ -908,9 +923,7 @@ func select_bamboo_mortar_target_sync_for_fixture(
 	minimum_range: float,
 	maximum_range: float
 ) -> Enemy:
-	if bamboo_mortar_combat_system == null:
-		return null
-	return bamboo_mortar_combat_system.select_target_sync_for_fixture(
+	return plant_runtime_coordinator.select_bamboo_mortar_target_sync_for_fixture(
 		center,
 		minimum_range,
 		maximum_range
@@ -925,12 +938,9 @@ func queue_bamboo_mortar_explosion(
 	outer_damage: int,
 	damage_source_id: int
 ) -> bool:
-	if (
-		runtime_mode == RuntimeMode.CLIENT_VIEW
-		or bamboo_mortar_combat_system == null
-	):
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return false
-	return bamboo_mortar_combat_system.queue_explosion(
+	return plant_runtime_coordinator.queue_bamboo_mortar_explosion(
 		landing_position,
 		inner_radius,
 		outer_radius,
@@ -948,27 +958,15 @@ func apply_authoritative_plant_enemy_damage_batch(
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType
 ) -> bool:
-	if (
-		runtime_mode == RuntimeMode.CLIENT_VIEW
-		or enemy == null
-		or not is_instance_valid(enemy)
-		or enemy.is_dead
-		or damage_amounts.is_empty()
-	):
-		return false
-	var safe_direction := (
-		impact_direction
-		if impact_direction.is_finite()
-		else Vector2.ZERO
-	)
-	var request := DamageBatchRequest.new(
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	return plant_runtime_coordinator.apply_authoritative_enemy_damage_batch(
+		damage_source_id,
+		enemy,
 		damage_amounts,
 		hit_counts,
-		int(damage_type)
+		impact_direction,
+		damage_type
 	)
-	request.with_source(null, damage_source_id, &"plant_damage_batch")
-	request.with_directions(safe_direction)
-	return enemy.apply_combat_damage(request).accepted
 
 
 func query_living_plants_in_radius_into(
@@ -977,19 +975,11 @@ func query_living_plants_in_radius_into(
 	result: Array[PlantDefense]
 ) -> void:
 	result.clear()
-	if plant_system == null:
-		return
-	plant_system.query_living_plants_in_world_radius_into(
-		center,
-		radius,
-		result
-	)
+	plant_runtime_coordinator.query_living_plants_in_radius_into(center, radius, result)
 
 
 func get_bamboo_mortar_combat_metrics() -> Dictionary:
-	if bamboo_mortar_combat_system == null:
-		return {}
-	return bamboo_mortar_combat_system.get_metrics_snapshot()
+	return plant_runtime_coordinator.get_bamboo_mortar_combat_metrics()
 
 
 func get_fixed_multiplayer_respawn_position(peer_id: int) -> Variant:
@@ -1350,6 +1340,65 @@ func _configure_plant_defense_system() -> void:
 	if plant_system == null or plant_placement_controller == null or plant_container == null:
 		push_error("TowerDefenseGame: 植物防御塔节点不完整，已禁用放置功能。")
 		return
+	plant_runtime_coordinator.setup(
+		runtime_mode,
+		dual_grid_terrain,
+		vegetation_spread_system,
+		plant_system,
+		plant_placement_controller
+	)
+	plant_runtime_coordinator.configure_mode_services(
+		run_state,
+		production_coordinator,
+		research_coordinator,
+		oak_warehouse_panel,
+		production_building_panel,
+		research_center_panel,
+		bamboo_mortar_combat_system,
+		TERRAIN_NETWORK_BATCH_MAX_CELLS
+	)
+	plant_runtime_coordinator.next_multiplayer_plant_net_id = _next_multiplayer_plant_net_id
+	_prepare_plant_runtime_signal_bindings()
+	if not plant_runtime_coordinator.terrain_delta.is_connected(
+		tower_multiplayer_mode_adapter.terrain_delta.emit
+	):
+		plant_runtime_coordinator.terrain_delta.connect(
+			tower_multiplayer_mode_adapter.terrain_delta.emit
+		)
+	if not plant_runtime_coordinator.plant_health_changed.is_connected(
+		tower_multiplayer_mode_adapter.plant_health_changed.emit
+	):
+		plant_runtime_coordinator.plant_health_changed.connect(
+			tower_multiplayer_mode_adapter.plant_health_changed.emit
+		)
+	if not plant_runtime_coordinator.plant_damage_status_changed.is_connected(
+		tower_multiplayer_mode_adapter.plant_damage_status_changed.emit
+	):
+		plant_runtime_coordinator.plant_damage_status_changed.connect(
+			tower_multiplayer_mode_adapter.plant_damage_status_changed.emit
+		)
+	if not plant_runtime_coordinator.plant_damage_applied.is_connected(
+		tower_multiplayer_mode_adapter.plant_damage_applied.emit
+	):
+		plant_runtime_coordinator.plant_damage_applied.connect(
+			tower_multiplayer_mode_adapter.plant_damage_applied.emit
+		)
+	if not plant_runtime_coordinator.plant_healing_applied.is_connected(
+		tower_multiplayer_mode_adapter.plant_healing_applied.emit
+	):
+		plant_runtime_coordinator.plant_healing_applied.connect(
+			tower_multiplayer_mode_adapter.plant_healing_applied.emit
+		)
+	var clear_removed_plant_target := enemy_coordinator.clear_removed_plant_objective.bind(
+		enemy_container,
+		boss_container
+	)
+	if not plant_runtime_coordinator.plant_removed_for_target_cleanup.is_connected(
+		clear_removed_plant_target
+	):
+		plant_runtime_coordinator.plant_removed_for_target_cleanup.connect(
+			clear_removed_plant_target
+		)
 
 	var placement_rect := PlantSystem.DEFAULT_PLACEMENT_AREA
 	if dual_grid_terrain != null and dual_grid_terrain.world_map_layer != null:
@@ -1367,7 +1416,8 @@ func _configure_plant_defense_system() -> void:
 		tower_plant_gameplay_port
 	)
 	orange_charging_aura_coordinator.setup(plant_system)
-	_configure_vegetation_spread_system(placement_rect)
+	if not plant_runtime_coordinator.configure_vegetation(placement_rect):
+		push_error("TowerDefenseGame: 植被传播节点或地形节点缺失。")
 	plant_system.clear_reserved_cells()
 	for spawn_offset in MULTIPLAYER_SPAWN_OFFSETS:
 		plant_system.reserve_world_position(player_spawn.global_position + spawn_offset)
@@ -1421,6 +1471,63 @@ func _configure_plant_defense_system() -> void:
 	_update_plant_placement_input_state()
 
 
+func _prepare_plant_runtime_signal_bindings() -> void:
+	if not plant_runtime_coordinator.plant_spawned.is_connected(
+		tower_multiplayer_mode_adapter.plant_spawned.emit
+	):
+		plant_runtime_coordinator.plant_spawned.connect(
+			tower_multiplayer_mode_adapter.plant_spawned.emit
+		)
+	if not plant_runtime_coordinator.plant_placement_rejected.is_connected(
+		tower_multiplayer_mode_adapter.plant_placement_rejected.emit
+	):
+		plant_runtime_coordinator.plant_placement_rejected.connect(
+			tower_multiplayer_mode_adapter.plant_placement_rejected.emit
+		)
+	if not plant_runtime_coordinator.inventory_changed.is_connected(
+		tower_multiplayer_mode_adapter.inventory_changed.emit
+	):
+		plant_runtime_coordinator.inventory_changed.connect(
+			tower_multiplayer_mode_adapter.inventory_changed.emit
+		)
+	if not plant_runtime_coordinator.enemy_retarget_requested.is_connected(
+		_request_enemy_retarget_after_objective_change
+	):
+		plant_runtime_coordinator.enemy_retarget_requested.connect(
+			_request_enemy_retarget_after_objective_change
+		)
+	if not plant_runtime_coordinator.placement_presentation_requested.is_connected(
+		_spawn_plant_placement_particles
+	):
+		plant_runtime_coordinator.placement_presentation_requested.connect(
+			_spawn_plant_placement_particles
+		)
+	if not plant_runtime_coordinator.removal_presentation_requested.is_connected(
+		_spawn_plant_removal_smoke
+	):
+		plant_runtime_coordinator.removal_presentation_requested.connect(
+			_spawn_plant_removal_smoke
+		)
+	if not plant_runtime_coordinator.modal_ui_visibility_changed.is_connected(
+		_on_plant_modal_ui_visibility_changed
+	):
+		plant_runtime_coordinator.modal_ui_visibility_changed.connect(
+			_on_plant_modal_ui_visibility_changed
+		)
+	if not plant_runtime_coordinator.progression_plant_placed.is_connected(
+		_track_progression_plant_placement
+	):
+		plant_runtime_coordinator.progression_plant_placed.connect(
+			_track_progression_plant_placement
+		)
+	if not plant_runtime_coordinator.network_plant_removed.is_connected(
+		tower_multiplayer_mode_adapter.plant_removed.emit
+	):
+		plant_runtime_coordinator.network_plant_removed.connect(
+			tower_multiplayer_mode_adapter.plant_removed.emit
+		)
+
+
 func _on_plant_player_lock_requested(_locked: bool) -> void:
 	_refresh_player_modal_ui_lock()
 
@@ -1433,151 +1540,8 @@ func _on_plant_placement_mode_changed(active: bool) -> void:
 
 
 func _on_runtime_plant_placed(plant: PlantDefense) -> void:
-	if plant == null:
-		return
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		_assign_singleplayer_plant_net_id(plant)
-	_track_progression_plant_placement(plant)
-	var hydrangea := plant as HydrangeaRainTower
-	if hydrangea != null:
-		hydrangea.set_plant_system(plant_system)
-	var orange_charging_tower := plant as OrangeChargingTower
-	if orange_charging_tower != null:
-		orange_charging_tower.set_plant_system(plant_system)
-	if plant.config.is_proactive_enemy_target():
-		_request_enemy_retarget_after_objective_change()
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		var damage_callback := _on_authoritative_plant_damage_applied.bind(plant)
-		if not plant.damage_applied.is_connected(damage_callback):
-			plant.damage_applied.connect(damage_callback)
-		var healing_callback := _on_authoritative_plant_healing_applied.bind(plant)
-		if not plant.healing_applied.is_connected(healing_callback):
-			plant.healing_applied.connect(healing_callback)
-	if plant.is_construction_visual_active():
-		_spawn_plant_placement_particles(plant)
-	var oak_warehouse := plant as OakWarehouse
-	if oak_warehouse != null:
-		oak_warehouse.set_shared_storage_panel(oak_warehouse_panel)
-		if runtime_mode == RuntimeMode.SINGLEPLAYER:
-			_configure_singleplayer_warehouse_persistence(oak_warehouse)
-	production_coordinator.register_plant(plant)
-	var production_building := plant as ProductionBuilding
-	if production_building != null:
-		production_building.set_recipe_unlock_checker(
-			Callable(research_coordinator, "is_global_research_completed")
-		)
-		production_building.set_shared_production_panel(production_building_panel)
-	var research_center := plant as ResearchCenter
-	if research_center != null:
-		research_center.set_research_services(
-			research_coordinator,
-			research_center_panel
-		)
-	if not plant.modal_ui_visibility_changed.is_connected(_on_plant_modal_ui_visibility_changed):
-		plant.modal_ui_visibility_changed.connect(_on_plant_modal_ui_visibility_changed)
-	var vegetation_stake := plant as VegetationStake
-	if vegetation_stake == null or vegetation_spread_system == null:
-		return
-	if vegetation_stake.is_operational:
-		_activate_vegetation_stake_source(vegetation_stake)
-		return
-	var construction_callback := _on_vegetation_stake_construction_finished.bind(
-		vegetation_stake
-	)
-	if not vegetation_stake.construction_finished.is_connected(construction_callback):
-		vegetation_stake.construction_finished.connect(
-			construction_callback,
-			CONNECT_ONE_SHOT
-		)
-
-
-func _assign_singleplayer_plant_net_id(plant: PlantDefense) -> int:
-	if plant == null:
-		return 0
-	var existing_net_id := int(plant.get_meta(&"net_id", 0))
-	if existing_net_id > 0:
-		next_multiplayer_plant_net_id = maxi(
-			next_multiplayer_plant_net_id,
-			existing_net_id + 1
-		)
-		return existing_net_id
-	var assigned_net_id := next_multiplayer_plant_net_id
-	# 单人仓库只需一个本局内稳定的持久账本键；不写入 PlantSystem 的
-	# 联机复制索引，避免把纯单人实体误暴露给多人快照路径。
-	plant.set_meta(&"net_id", assigned_net_id)
-	next_multiplayer_plant_net_id += 1
-	return assigned_net_id
-
-
-func _configure_singleplayer_warehouse_persistence(warehouse: OakWarehouse) -> void:
-	if warehouse == null or run_state == null:
-		return
-	var warehouse_net_id := int(warehouse.get_meta(&"net_id", 0))
-	if warehouse_net_id <= 0:
-		push_error("TowerDefenseGame: 单人共享仓库缺少稳定运行时ID。")
-		return
-	var saved_snapshot := run_state.get_shared_warehouse_snapshot(warehouse_net_id)
-	if saved_snapshot.is_empty():
-		if not SharedWarehouseLedgerBridge.persist_to_ledger(
-			run_state,
-			warehouse,
-			warehouse_net_id
-		):
-			push_warning(
-				"TowerDefenseGame: 无法初始化共享仓库 %d 的跨场景账本。"
-				% warehouse_net_id
-			)
-	elif not SharedWarehouseLedgerBridge.restore_from_ledger(
-		run_state,
-		warehouse,
-		warehouse_net_id
-	):
-		push_warning(
-			"TowerDefenseGame: 无法恢复共享仓库 %d 的跨场景快照。"
-			% warehouse_net_id
-		)
-	var storage_callback := _on_singleplayer_warehouse_storage_changed.bind(
-		warehouse
-	)
-	if not warehouse.storage_changed.is_connected(storage_callback):
-		warehouse.storage_changed.connect(storage_callback)
-	var removal_callback := _on_singleplayer_warehouse_removal_started.bind(
-		warehouse
-	)
-	if not warehouse.removal_started.is_connected(removal_callback):
-		warehouse.removal_started.connect(removal_callback)
-
-
-func _on_singleplayer_warehouse_storage_changed(warehouse: OakWarehouse) -> void:
-	if (
-		runtime_mode != RuntimeMode.SINGLEPLAYER
-		or warehouse == null
-		or not is_instance_valid(warehouse)
-		or warehouse.is_removing
-	):
-		return
-	var warehouse_net_id := int(warehouse.get_meta(&"net_id", 0))
-	if not SharedWarehouseLedgerBridge.persist_to_ledger(
-		run_state,
-		warehouse,
-		warehouse_net_id
-	):
-		push_warning(
-			"TowerDefenseGame: 无法保存共享仓库 %d 的跨场景快照。"
-			% warehouse_net_id
-		)
-
-
-func _on_singleplayer_warehouse_removal_started(
-	_removal_mode: int,
-	warehouse: OakWarehouse
-) -> void:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER or warehouse == null:
-		return
-	SharedWarehouseLedgerBridge.remove_from_ledger(
-		run_state,
-		int(warehouse.get_meta(&"net_id", warehouse.warehouse_net_id))
-	)
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.handle_plant_placed(plant)
 
 
 func _track_progression_plant_placement(plant: PlantDefense) -> void:
@@ -1599,39 +1563,6 @@ func _track_progression_plant_placement(plant: PlantDefense) -> void:
 		and plant.config.plant_id == PlantDefenseRegistry.WATER_COLLECTOR_ID
 	):
 		water_chain_online_seconds = elapsed_seconds
-
-
-func _on_vegetation_stake_construction_finished(vegetation_stake: VegetationStake) -> void:
-	if (
-		vegetation_stake == null
-		or not is_instance_valid(vegetation_stake)
-		or not vegetation_stake.is_operational
-		or vegetation_stake.is_removing
-	):
-		return
-	_activate_vegetation_stake_source(vegetation_stake)
-
-
-func _activate_vegetation_stake_source(vegetation_stake: VegetationStake) -> void:
-	if (
-		vegetation_spread_system == null
-		or vegetation_stake == null
-		or vegetation_stake.footprint_cells.is_empty()
-	):
-		return
-	var source_id := _get_vegetation_source_id(vegetation_stake)
-	var origin_cell := vegetation_stake.footprint_cells[0]
-	vegetation_spread_system.register_source(
-		source_id,
-		origin_cell,
-		vegetation_stake.get_spread_elapsed_seconds()
-	)
-	if not vegetation_stake.spread_runtime_state_changed.is_connected(
-		_on_vegetation_runtime_state_changed.bind(source_id, origin_cell)
-	):
-		vegetation_stake.spread_runtime_state_changed.connect(
-			_on_vegetation_runtime_state_changed.bind(source_id, origin_cell)
-		)
 
 
 func _spawn_plant_placement_particles(plant: PlantDefense) -> void:
@@ -1667,55 +1598,8 @@ func _spawn_plant_removal_smoke(plant: PlantDefense) -> void:
 
 
 func _on_plant_terrain_decay_timer_timeout() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	plant_system.apply_unsupported_terrain_damage_tick()
-
-
-func _configure_vegetation_spread_system(placement_rect: Rect2i) -> void:
-	authored_terrain_baseline.clear()
-	multiplayer_terrain_overrides.clear()
-	multiplayer_terrain_revision = 0
-	if dual_grid_terrain == null or vegetation_spread_system == null:
-		push_error("TowerDefenseGame: 植被传播节点或地形节点缺失。")
-		return
-	for y in range(placement_rect.position.y, placement_rect.end.y):
-		for x in range(placement_rect.position.x, placement_rect.end.x):
-			var cell := Vector2i(x, y)
-			authored_terrain_baseline[cell] = dual_grid_terrain.get_terrain_type(cell)
-	vegetation_spread_system.setup(
-		dual_grid_terrain,
-		placement_rect,
-		runtime_mode != RuntimeMode.CLIENT_VIEW
-	)
-	if not vegetation_spread_system.authoritative_terrain_changed.is_connected(
-		_on_authoritative_vegetation_terrain_changed
-	):
-		vegetation_spread_system.authoritative_terrain_changed.connect(
-			_on_authoritative_vegetation_terrain_changed
-		)
-
-
-func _on_vegetation_runtime_state_changed(
-	elapsed_seconds: float,
-	source_id: int,
-	origin_cell: Vector2i
-) -> void:
-	if vegetation_spread_system == null:
-		return
-	vegetation_spread_system.apply_source_runtime_state(
-		source_id,
-		origin_cell,
-		{
-			"schema": VegetationSpreadSystem.RUNTIME_STATE_SCHEMA,
-			"spread_elapsed_seconds": elapsed_seconds,
-		}
-	)
-
-
-func _get_vegetation_source_id(plant: PlantDefense) -> int:
-	var net_id := int(plant.get_meta(&"net_id", 0))
-	return net_id if net_id > 0 else int(plant.get_instance_id())
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.apply_unsupported_terrain_damage_tick()
 
 
 func _on_plant_modal_ui_visibility_changed(is_open: bool) -> void:
@@ -1861,62 +1745,18 @@ func _request_singleplayer_inventory_plant_placement(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
-	if wave_state == CombatFlowState.State.FATE_INTERLUDE:
-		plant_placement_controller.notify_multiplayer_placement_rejected(
-			request_id
-		)
-		return
-	var stored_item := run_state.get_item(slot_index)
-	var config := plant_system.get_config(plant_id) if plant_system != null else null
-	if (
-		request_id <= 0
-		or stored_item == null
-		or stored_item.resource_path != item_config_path
-		or stored_item.pickup_type != PickupConfig.PickupType.BUILDING
-		or stored_item.placeable_plant_id != plant_id
-		or config == null
-		or not config.is_valid()
-		or not plant_system.is_placement_valid_for_player(
-			anchor,
-			config,
-			player
-		)
-	):
-		plant_placement_controller.notify_multiplayer_placement_rejected(
-			request_id
-		)
-		return
-	if not run_state.try_consume_item_at_slot_if_revision(
-		slot_index,
-		stored_item,
-		expected_inventory_revision,
-		false
-	):
-		plant_placement_controller.notify_multiplayer_placement_rejected(
-			request_id
-		)
-		return
-	var placed_plant := plant_system.try_place_for_player(
-		config,
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.request_singleplayer_inventory_placement(
+		request_id,
+		plant_id,
 		anchor,
-		player
+		slot_index,
+		expected_inventory_revision,
+		item_config_path,
+		run_state,
+		player,
+		wave_state == CombatFlowState.State.FATE_INTERLUDE
 	)
-	if placed_plant == null:
-		var restored := run_state.try_add_item_count_to_slot_if_revision(
-			stored_item,
-			1,
-			slot_index,
-			run_state.get_inventory_revision(),
-			false
-		)
-		if not restored:
-			push_error("Failed to restore a consumed building item after placement.")
-		run_state.notify_inventory_transaction_completed()
-		plant_placement_controller.notify_multiplayer_placement_rejected(
-			request_id
-		)
-		return
-	run_state.notify_inventory_transaction_completed()
 
 
 func _on_personal_inventory_output_committed(peer_id: int) -> void:
@@ -1940,55 +1780,17 @@ func request_multiplayer_plant_placement(
 	plant_id: StringName,
 	anchor: Vector2i
 ) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if wave_state == CombatFlowState.State.FATE_INTERLUDE:
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_FLOW_LOCKED
-		)
-		return
-	if not sandbox_free_building_enabled:
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_FREE_DISABLED
-		)
-		return
-	if request_id <= 0 or requester_peer_id <= 0:
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_REQUEST
-		)
-		return
 	var placement_player := get_player_for_peer(requester_peer_id)
-	if placement_player == null or not is_instance_valid(placement_player) or placement_player.is_dead:
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_PLAYER
-		)
-		return
-	var plant_config := plant_system.get_config(plant_id) if plant_system != null else null
-	if (
-		plant_config == null
-		or not plant_config.is_valid()
-		or not plant_config.supports_multiplayer
-	):
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_CONFIG
-		)
-		return
-	_spawn_authoritative_multiplayer_plant(
+	_prepare_plant_runtime_signal_bindings()
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.request_multiplayer_free_placement(
 		requester_peer_id,
 		request_id,
-		plant_config,
+		plant_id,
 		anchor,
-		placement_player
+		placement_player,
+		wave_state == CombatFlowState.State.FATE_INTERLUDE,
+		sandbox_free_building_enabled
 	)
 
 
@@ -2001,298 +1803,26 @@ func request_multiplayer_inventory_plant_placement(
 	expected_inventory_revision: int,
 	item_config_path: String
 ) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if wave_state == CombatFlowState.State.FATE_INTERLUDE:
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_FLOW_LOCKED
-		)
-		return
-	if (
-		request_id <= 0
-		or requester_peer_id <= 0
-		or slot_index < 0
-		or expected_inventory_revision < 0
-		or item_config_path.is_empty()
-	):
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_REQUEST
-		)
-		return
 	var placement_player := get_player_for_peer(requester_peer_id)
-	if (
-		placement_player == null
-		or not is_instance_valid(placement_player)
-		or placement_player.is_dead
-	):
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_PLAYER
-		)
-		return
-	if (
-		run_state.get_inventory_revision_for_peer(requester_peer_id)
-		!= expected_inventory_revision
-	):
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_STALE_INVENTORY
-		)
-		return
-	var stored_item := run_state.get_item_for_peer(
+	_prepare_plant_runtime_signal_bindings()
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.request_multiplayer_inventory_placement(
 		requester_peer_id,
-		slot_index
-	)
-	if (
-		stored_item == null
-		or stored_item.resource_path != item_config_path
-		or stored_item.pickup_type != PickupConfig.PickupType.BUILDING
-		or stored_item.placeable_plant_id != plant_id
-	):
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_INVENTORY_ITEM
-		)
-		return
-	var plant_config := plant_system.get_config(plant_id) if plant_system != null else null
-	if (
-		plant_config == null
-		or not plant_config.is_valid()
-		or not plant_config.supports_multiplayer
-	):
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_CONFIG
-		)
-		return
-	if not plant_system.is_placement_valid_for_player(
+		request_id,
+		plant_id,
 		anchor,
-		plant_config,
-		placement_player
-	):
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_POSITION
-		)
-		return
-	if not run_state.try_consume_item_at_slot_for_peer_if_revision(
-		requester_peer_id,
 		slot_index,
-		stored_item,
 		expected_inventory_revision,
-		false
-	):
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_STALE_INVENTORY
-		)
-		return
-	var placed_plant := _spawn_authoritative_multiplayer_plant(
-		requester_peer_id,
-		request_id,
-		plant_config,
-		anchor,
-		placement_player
-	)
-	if placed_plant == null:
-		var restored := run_state.try_add_item_count_to_slot_for_peer_if_revision(
-			requester_peer_id,
-			stored_item,
-			1,
-			slot_index,
-			run_state.get_inventory_revision_for_peer(requester_peer_id),
-			false
-		)
-		if not restored:
-			push_error(
-				"Failed to restore a peer building item after placement."
-			)
-		run_state.notify_inventory_transaction_completed()
-		tower_multiplayer_mode_adapter.inventory_changed.emit(requester_peer_id)
-		return
-	run_state.notify_inventory_transaction_completed()
-	tower_multiplayer_mode_adapter.inventory_changed.emit(requester_peer_id)
-
-
-func _spawn_authoritative_multiplayer_plant(
-	requester_peer_id: int,
-	request_id: int,
-	plant_config: PlantDefenseConfig,
-	anchor: Vector2i,
-	placement_player: Player
-) -> PlantDefense:
-	var plant_net_id := next_multiplayer_plant_net_id
-	var plant := plant_system.try_place_for_player(
-		plant_config,
-		anchor,
+		item_config_path,
+		run_state,
 		placement_player,
-		plant_net_id
-	)
-	if plant == null:
-		_reject_multiplayer_plant_placement(
-			request_id,
-			requester_peer_id,
-			PLANT_PLACEMENT_REJECT_INVALID_POSITION
-		)
-		return null
-	next_multiplayer_plant_net_id += 1
-	if not plant.authoritative_health_changed.is_connected(
-		_on_authoritative_plant_health_changed.bind(plant_net_id)
-	):
-		plant.authoritative_health_changed.connect(
-			_on_authoritative_plant_health_changed.bind(plant_net_id)
-		)
-	if not plant.authoritative_damage_status_changed.is_connected(
-		_on_authoritative_plant_damage_status_changed.bind(plant_net_id)
-	):
-		plant.authoritative_damage_status_changed.connect(
-			_on_authoritative_plant_damage_status_changed.bind(plant_net_id)
-		)
-	tower_multiplayer_mode_adapter.plant_spawned.emit(
-		request_id,
-		requester_peer_id,
-		plant_net_id,
-		plant_config.plant_id,
-		anchor,
-		plant.current_health,
-		plant.max_health,
-		plant.health_revision
-	)
-	return plant
-
-
-func _reject_multiplayer_plant_placement(
-	request_id: int,
-	requester_peer_id: int,
-	reason: StringName
-) -> void:
-	tower_multiplayer_mode_adapter.plant_placement_rejected.emit(request_id, requester_peer_id, reason)
-
-
-func _on_authoritative_plant_health_changed(
-	current_health: int,
-	maximum_health: int,
-	health_revision: int,
-	net_id: int
-) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY or net_id <= 0:
-		return
-	if plant_system == null or plant_system.get_plant_by_net_id(net_id) == null:
-		return
-	tower_multiplayer_mode_adapter.plant_health_changed.emit(
-		net_id,
-		current_health,
-		maximum_health,
-		health_revision
-	)
-
-
-func _on_authoritative_plant_damage_status_changed(
-	status_mask: int,
-	status_revision: int,
-	net_id: int
-) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY or net_id <= 0:
-		return
-	if plant_system == null or plant_system.get_plant_by_net_id(net_id) == null:
-		return
-	tower_multiplayer_mode_adapter.plant_damage_status_changed.emit(
-		net_id,
-		status_mask,
-		status_revision
-	)
-
-
-func _on_authoritative_plant_damage_applied(
-	applied_damage: int,
-	impact_direction: Vector2,
-	damage_type: EnemyConfig.DamageType,
-	plant: PlantDefense
-) -> void:
-	if (
-		runtime_mode != RuntimeMode.HOST_AUTHORITY
-		or applied_damage <= 0
-		or plant == null
-		or not is_instance_valid(plant)
-	):
-		return
-	var net_id := int(plant.get_meta(&"net_id", 0))
-	if net_id <= 0:
-		return
-	tower_multiplayer_mode_adapter.plant_damage_applied.emit(
-		net_id,
-		applied_damage,
-		impact_direction,
-		damage_type,
-		plant.get_lifecycle_vfx_global_position()
-	)
-
-
-func _on_authoritative_plant_healing_applied(
-	applied_healing: int,
-	plant: PlantDefense
-) -> void:
-	if (
-		runtime_mode != RuntimeMode.HOST_AUTHORITY
-		or applied_healing <= 0
-		or plant == null
-		or not is_instance_valid(plant)
-	):
-		return
-	var net_id := int(plant.get_meta(&"net_id", 0))
-	if net_id <= 0:
-		return
-	tower_multiplayer_mode_adapter.plant_healing_applied.emit(
-		net_id,
-		applied_healing,
-		plant.get_lifecycle_vfx_global_position()
+		wave_state == CombatFlowState.State.FATE_INTERLUDE
 	)
 
 
 func _on_plant_removed(plant: PlantDefense) -> void:
-	if plant == null:
-		return
-	production_coordinator.unregister_plant(plant)
-	if plant.config.is_proactive_enemy_target():
-		_clear_enemy_references_to_removed_plant(plant)
-		_request_enemy_retarget_after_objective_change()
-	if plant.removal_mode == PlantDefense.RemovalMode.ANIMATED:
-		_spawn_plant_removal_smoke(plant)
-	var oak_warehouse := plant as OakWarehouse
-	if oak_warehouse != null:
-		oak_warehouse.close_storage_panel()
-	var production_building := plant as ProductionBuilding
-	if production_building != null:
-		production_building.close_production_panel()
-	var net_id := int(plant.get_meta(&"net_id", 0))
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY and net_id > 0:
-		tower_multiplayer_mode_adapter.plant_removed.emit(net_id, plant.is_dead)
-	if plant is VegetationStake and vegetation_spread_system != null:
-		vegetation_spread_system.cancel_source(_get_vegetation_source_id(plant))
-
-
-func _clear_enemy_references_to_removed_plant(plant: PlantDefense) -> void:
-	# Removal is rare, so one bounded pass is preferable to letting enemies keep
-	# a direct reference to the visual-only dissolve remnant until a budgeted
-	# retarget sweep reaches them.
-	var objective_containers: Array[Node] = [enemy_container, boss_container]
-	for container in objective_containers:
-		if container == null:
-			continue
-		for child in container.get_children():
-			var enemy := child as Enemy
-			if enemy != null and enemy.objective_target == plant:
-				enemy.set_objective_target(null)
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.handle_plant_removed(plant)
 
 
 func apply_remote_plant_spawn(
@@ -2305,21 +1835,18 @@ func apply_remote_plant_spawn(
 	maximum_health: int,
 	health_revision: int
 ) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW or plant_system == null:
-		return
 	var owner := get_player_for_peer(owner_peer_id)
-	var replica := plant_system.spawn_multiplayer_replica(
-		plant_id,
-		anchor,
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.apply_remote_plant_spawn(
+		request_id,
 		owner,
 		net_id,
+		plant_id,
+		anchor,
 		current_health,
 		maximum_health,
-		health_revision,
-		request_id > 0
+		health_revision
 	)
-	if replica != null:
-		replica.apply_remote_health(current_health, maximum_health, health_revision)
 
 
 func apply_remote_plant_health(
@@ -2328,11 +1855,10 @@ func apply_remote_plant_health(
 	maximum_health: int,
 	health_revision: int
 ) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW or plant_system == null:
-		return
-	var plant := plant_system.get_plant_by_net_id(net_id)
-	if plant != null and is_instance_valid(plant):
-		plant.apply_remote_health(current_health, maximum_health, health_revision)
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.apply_remote_plant_health(
+		net_id, current_health, maximum_health, health_revision
+	)
 
 
 func apply_remote_plant_removed(net_id: int) -> void:
@@ -2343,97 +1869,34 @@ func apply_remote_plant_removed_with_reason(
 	net_id: int,
 	was_destroyed: bool
 ) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW or plant_system == null:
-		return
-	var plant := plant_system.get_plant_by_net_id(net_id)
-	if plant != null and is_instance_valid(plant) and was_destroyed:
-		plant.current_health = 0
-		plant.is_dead = true
-	plant_system.remove_plant_by_net_id(net_id, PlantDefense.RemovalMode.ANIMATED)
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.apply_remote_plant_removed(net_id, was_destroyed, false)
 
 
 func apply_remote_plant_removed_silently(net_id: int) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW or plant_system == null:
-		return
-	plant_system.remove_plant_by_net_id(net_id, PlantDefense.RemovalMode.SILENT)
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.apply_remote_plant_removed(net_id, false, true)
 
 
 func apply_remote_plant_placement_rejected(request_id: int, _reason: StringName) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER or plant_placement_controller == null:
-		return
-	plant_placement_controller.notify_multiplayer_placement_rejected(request_id)
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.apply_remote_placement_rejected(request_id)
 
 
 func has_multiplayer_plant(net_id: int) -> bool:
-	if plant_system == null or net_id <= 0:
-		return false
-	var plant := plant_system.get_plant_by_net_id(net_id)
-	return (
-		plant != null
-		and is_instance_valid(plant)
-		and not plant.is_dead
-		and not plant.is_removing
-	)
+	return plant_runtime_coordinator.has_multiplayer_plant(net_id)
 
 
 func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
-	if plant_system == null or net_id <= 0:
-		return null
-	return plant_system.get_plant_by_net_id(net_id)
+	return plant_runtime_coordinator.get_multiplayer_plant(net_id)
 
 
 func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
-	var snapshots: Array[Dictionary] = []
-	if plant_system == null:
-		return snapshots
-	var net_ids: Array[int] = []
-	for net_id_variant in plant_system.plants_by_net_id:
-		net_ids.append(int(net_id_variant))
-	net_ids.sort()
-	for net_id in net_ids:
-		var plant := plant_system.get_plant_by_net_id(net_id)
-		if (
-			plant == null
-			or not is_instance_valid(plant)
-			or plant.is_dead
-			or plant.is_removing
-			or plant.config == null
-			or plant.footprint_cells.is_empty()
-		):
-			continue
-		var owner_peer_id := (
-			plant.owner_player.peer_id
-			if plant.owner_player != null and is_instance_valid(plant.owner_player)
-			else 0
-		)
-		snapshots.append({
-			"owner_peer_id": owner_peer_id,
-			"net_id": net_id,
-			"plant_id": plant.config.plant_id,
-			"anchor": plant.footprint_cells[0],
-			"current_health": plant.current_health,
-			"maximum_health": plant.max_health,
-			"health_revision": plant.health_revision,
-		})
-	return snapshots
+	return plant_runtime_coordinator.get_multiplayer_plant_snapshots()
 
 
 func get_multiplayer_terrain_snapshot() -> Dictionary:
-	var cells: Array[Vector2i] = []
-	for cell_variant in multiplayer_terrain_overrides:
-		cells.append(cell_variant as Vector2i)
-	cells.sort_custom(_sort_terrain_cells)
-	var cell_xy := PackedInt32Array()
-	var terrain_types := PackedInt32Array()
-	for cell in cells:
-		cell_xy.append(cell.x)
-		cell_xy.append(cell.y)
-		terrain_types.append(int(multiplayer_terrain_overrides[cell]))
-	return {
-		"revision": multiplayer_terrain_revision,
-		"cell_xy": cell_xy,
-		"terrain_types": terrain_types,
-	}
+	return plant_runtime_coordinator.get_terrain_snapshot()
 
 
 func apply_remote_terrain_snapshot(
@@ -2441,35 +1904,10 @@ func apply_remote_terrain_snapshot(
 	cell_xy: PackedInt32Array,
 	terrain_types: PackedInt32Array
 ) -> bool:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW or revision < 0:
-		return false
-	if terrain_types.is_empty():
-		if not cell_xy.is_empty() or dual_grid_terrain == null:
-			return false
-	else:
-		if not _is_valid_terrain_payload(cell_xy, terrain_types):
-			return false
-	var next_overrides: Dictionary = {}
-	for index in range(terrain_types.size()):
-		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
-		var terrain_type := terrain_types[index]
-		if terrain_type == int(authored_terrain_baseline[cell]):
-			return false
-		next_overrides[cell] = terrain_type
-	for cell_variant in multiplayer_terrain_overrides:
-		var previous_cell := cell_variant as Vector2i
-		if not next_overrides.has(previous_cell):
-			dual_grid_terrain.set_tile(
-				previous_cell,
-				int(authored_terrain_baseline[previous_cell])
-			)
-	for cell_variant in next_overrides:
-		var cell := cell_variant as Vector2i
-		dual_grid_terrain.set_tile(cell, int(next_overrides[cell]))
-	multiplayer_terrain_overrides = next_overrides
-	multiplayer_terrain_revision = revision
-	_refresh_remote_vegetation_overlay()
-	return true
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	return plant_runtime_coordinator.apply_remote_terrain_snapshot(
+		revision, cell_xy, terrain_types
+	)
 
 
 func apply_remote_terrain_delta(
@@ -2477,99 +1915,27 @@ func apply_remote_terrain_delta(
 	cell_xy: PackedInt32Array,
 	terrain_types: PackedInt32Array
 ) -> bool:
-	if (
-		runtime_mode != RuntimeMode.CLIENT_VIEW
-		or revision != multiplayer_terrain_revision + 1
-		or not _is_valid_terrain_payload(cell_xy, terrain_types)
-	):
-		return false
-	for index in range(terrain_types.size()):
-		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
-		var terrain_type := terrain_types[index]
-		dual_grid_terrain.set_tile(cell, terrain_type)
-		if terrain_type == int(authored_terrain_baseline[cell]):
-			multiplayer_terrain_overrides.erase(cell)
-		else:
-			multiplayer_terrain_overrides[cell] = terrain_type
-	multiplayer_terrain_revision = revision
-	_refresh_remote_vegetation_overlay()
-	return true
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	return plant_runtime_coordinator.apply_remote_terrain_delta(
+		revision, cell_xy, terrain_types
+	)
 
 
 func _on_authoritative_vegetation_terrain_changed(
 	cell_xy: PackedInt32Array,
 	terrain_types: PackedInt32Array
 ) -> void:
-	if not _is_valid_terrain_payload(cell_xy, terrain_types):
-		push_error("TowerDefenseGame: 植被传播提交了非法地形批次。")
-		return
-	for index in range(terrain_types.size()):
-		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
-		var terrain_type := terrain_types[index]
-		if terrain_type == int(authored_terrain_baseline[cell]):
-			multiplayer_terrain_overrides.erase(cell)
-		else:
-			multiplayer_terrain_overrides[cell] = terrain_type
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	var cell_count := terrain_types.size()
-	for start_index in range(0, cell_count, TERRAIN_NETWORK_BATCH_MAX_CELLS):
-		var end_index := mini(start_index + TERRAIN_NETWORK_BATCH_MAX_CELLS, cell_count)
-		var chunk_cell_xy := PackedInt32Array()
-		var chunk_terrain_types := PackedInt32Array()
-		for index in range(start_index, end_index):
-			chunk_cell_xy.append(cell_xy[index * 2])
-			chunk_cell_xy.append(cell_xy[index * 2 + 1])
-			chunk_terrain_types.append(terrain_types[index])
-		multiplayer_terrain_revision += 1
-		tower_multiplayer_mode_adapter.terrain_delta.emit(
-			multiplayer_terrain_revision,
-			chunk_cell_xy,
-			chunk_terrain_types
-		)
+	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
+	plant_runtime_coordinator.apply_authoritative_terrain_changes(
+		cell_xy, terrain_types, TERRAIN_NETWORK_BATCH_MAX_CELLS
+	)
 
 
 func _is_valid_terrain_payload(
 	cell_xy: PackedInt32Array,
 	terrain_types: PackedInt32Array
 ) -> bool:
-	if (
-		terrain_types.is_empty()
-		or cell_xy.size() != terrain_types.size() * 2
-		or dual_grid_terrain == null
-	):
-		return false
-	var previous_cell := Vector2i.ZERO
-	var has_previous := false
-	for index in range(terrain_types.size()):
-		var cell := Vector2i(cell_xy[index * 2], cell_xy[index * 2 + 1])
-		var terrain_type := terrain_types[index]
-		if not authored_terrain_baseline.has(cell):
-			return false
-		if terrain_type not in [
-			DualGridTilemap.TerrainType.EMPTY,
-			DualGridTilemap.TerrainType.GRASS,
-			DualGridTilemap.TerrainType.DIRT,
-			DualGridTilemap.TerrainType.WATER,
-			DualGridTilemap.TerrainType.METAL,
-		]:
-			return false
-		if has_previous and not _sort_terrain_cells(previous_cell, cell):
-			return false
-		previous_cell = cell
-		has_previous = true
-	return true
-
-
-func _refresh_remote_vegetation_overlay() -> void:
-	if vegetation_spread_system != null:
-		vegetation_spread_system.advance_time(0.0)
-
-
-static func _sort_terrain_cells(a: Vector2i, b: Vector2i) -> bool:
-	if a.y == b.y:
-		return a.x < b.x
-	return a.y < b.y
+	return plant_runtime_coordinator.is_valid_terrain_payload(cell_xy, terrain_types)
 
 
 func _get_selected_singleplayer_character_id() -> StringName:
@@ -2692,13 +2058,6 @@ func _register_research_players() -> void:
 		var player_instance := player_variant as Player
 		if player_instance != null:
 			research_coordinator.register_player(player_instance)
-
-
-func _on_research_recipe_unlocks_changed() -> void:
-	for plant_variant in get_tree().get_nodes_in_group(&"plant_defense"):
-		var production_building := plant_variant as ProductionBuilding
-		if production_building != null:
-			production_building.notify_recipe_unlocks_changed()
 
 
 func _on_currency_hud_settings_requested() -> void:
@@ -6396,46 +5755,17 @@ func find_nearest_enemy_attack_target_world(
 	max_distance: float,
 	excluded_instance_ids: Dictionary = {}
 ) -> Node2D:
-	var nearest_target := super.find_nearest_enemy_attack_target_world(
+	var neutral_target := super.find_nearest_enemy_attack_target_world(
 		from_position,
 		max_distance,
 		excluded_instance_ids
 	)
-	if (
-		plant_system == null
-		or max_distance < 0.0
-		or not is_finite(max_distance)
-	):
-		return nearest_target
-	var nearest_plant := plant_system.find_nearest_enemy_attack_target_world(
+	return plant_runtime_coordinator.find_nearest_enemy_attack_target_world(
 		from_position,
 		max_distance,
-		excluded_instance_ids
+		excluded_instance_ids,
+		neutral_target
 	)
-	if nearest_plant == null:
-		return nearest_target
-	# PlantSystem already uses an allocation-free exact world-space pass here.
-	# Keep this defensive comparison beside the player/plant merge so the public
-	# runtime API retains one pixel-radius contract.
-	var plant_distance_squared := from_position.distance_squared_to(
-		nearest_plant.global_position
-	)
-	if plant_distance_squared > max_distance * max_distance:
-		return nearest_target
-	if nearest_target == null:
-		return nearest_plant
-	var target_distance_squared := from_position.distance_squared_to(
-		nearest_target.global_position
-	)
-	if plant_distance_squared < target_distance_squared:
-		return nearest_plant
-	if (
-		plant_distance_squared == target_distance_squared
-		and nearest_plant.get_instance_id()
-			< nearest_target.get_instance_id()
-	):
-		return nearest_plant
-	return nearest_target
 
 
 func _pick_enemy_objective(
@@ -6443,14 +5773,13 @@ func _pick_enemy_objective(
 	combat_player: Player,
 	include_water_plants: bool = false
 ) -> Node2D:
-	if plant_system != null:
-		var nearest_plant := plant_system.find_nearest_enemy_objective(
-			from_position,
-			PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS,
-			include_water_plants
-		)
-		if nearest_plant != null:
-			return nearest_plant
+	var nearest_plant := plant_runtime_coordinator.find_nearest_enemy_objective(
+		from_position,
+		PLANT_OBJECTIVE_AGGRO_RADIUS_CELLS,
+		include_water_plants
+	)
+	if nearest_plant != null:
+		return nearest_plant
 	if (
 		combat_player != null
 		and is_instance_valid(combat_player)

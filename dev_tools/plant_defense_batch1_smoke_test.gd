@@ -1903,6 +1903,11 @@ func _test_multiplayer_authority_contracts() -> void:
 	host_game.run_state = run_state
 	host_game.plant_system = plant_system
 	host_game.peer_players = {2: requesting_player}
+	var host_plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+	host_plant_runtime.name = "PlantRuntimeCoordinator"
+	host_game.add_child(host_plant_runtime)
+	host_game.plant_runtime_coordinator = host_plant_runtime
+	host_plant_runtime.setup(host_game.runtime_mode, null, null, plant_system, null)
 	host_game.next_multiplayer_plant_net_id = 5101
 	var host_mode_adapter := TowerDefenseMultiplayerModeAdapter.new()
 	host_game.add_child(host_mode_adapter)
@@ -2174,6 +2179,11 @@ func _test_cannonball_aoe_deduplication() -> void:
 	enemy_b.hit_audio.stream = null
 	var damage_runtime := TowerDefenseGame.new()
 	damage_runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	var damage_plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+	damage_plant_runtime.name = "PlantRuntimeCoordinator"
+	damage_runtime.add_child(damage_plant_runtime)
+	damage_runtime.plant_runtime_coordinator = damage_plant_runtime
+	damage_plant_runtime.setup(damage_runtime.runtime_mode, null, null, null, null)
 	var damage_adapter := TowerDefenseMultiplayerModeAdapter.new()
 	damage_adapter.bind_runtime(damage_runtime)
 	var damage_bridge := TowerPlantGameplayBridge.new()
