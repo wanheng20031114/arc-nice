@@ -457,10 +457,15 @@ func _run() -> void:
 func _new_mp_game(use_host: bool = false) -> Node:
 	var mp_game := MP_GAME_SCRIPT.new()
 	var tower_adapter := fixture.get_multiplayer_mode_adapter() as TestTowerModeAdapter
+	var session := MpSessionCoordinator.new()
+	session.name = "SessionCoordinator"
+	mp_game.add_child(session)
 	mp_game.set("game", fixture)
 	mp_game.set("net_manager", host_net_manager if use_host else client_net_manager)
+	mp_game.set("session_coordinator", session)
 	mp_game.set("_mode_adapter", tower_adapter)
 	mp_game.set("tower_mode_adapter", tower_adapter)
+	session.bind_runtime(fixture)
 	tower_adapter.attach_multiplayer_session(mp_game)
 	mp_games.append(mp_game)
 	return mp_game
@@ -1689,12 +1694,17 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 func _new_capturing_host_mp_game() -> CapturingMpGame:
 	var mp_game := CapturingMpGame.new()
 	mp_game.process_mode = Node.PROCESS_MODE_DISABLED
+	var session := MpSessionCoordinator.new()
+	session.name = "SessionCoordinator"
+	mp_game.add_child(session)
 	var keepalive_request := HTTPRequest.new()
 	keepalive_request.name = "PublicRoomKeepaliveRequest"
 	mp_game.add_child(keepalive_request)
 	fixture.add_child(mp_game)
 	mp_game.set("game", fixture)
 	mp_game.set("net_manager", host_net_manager)
+	mp_game.set("session_coordinator", session)
+	session.bind_runtime(fixture)
 	var tower_adapter := fixture.get_multiplayer_mode_adapter() as TestTowerModeAdapter
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter

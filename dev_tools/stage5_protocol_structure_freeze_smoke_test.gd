@@ -493,7 +493,10 @@ func _test_scene_node_paths() -> void:
 		"MpGame",
 		MP_GAME_SCENE_PATH,
 		&"MpGame",
-		[NodePath("PublicRoomKeepaliveRequest")]
+		[
+			NodePath("SessionCoordinator"),
+			NodePath("PublicRoomKeepaliveRequest"),
+		]
 	)
 	_test_packed_scene_structure(
 		"MpRogueRoute",

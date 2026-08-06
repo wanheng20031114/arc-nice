@@ -245,8 +245,6 @@ const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
 const LUOXI_TRANSACTION_RATE_BURST := 6.0
 const XIAOCONG_TRANSACTION_RATE_PER_SECOND := 6.0
 const XIAOCONG_TRANSACTION_RATE_BURST := 10.0
-const RUNTIME_STATE_REQUEST_RATE_PER_SECOND := 0.5
-const RUNTIME_STATE_REQUEST_RATE_BURST := 2.0
 const PLANT_ID_WIRE_MAX_LENGTH := 128
 const INVENTORY_ITEM_CONFIG_PATH_WIRE_MAX_LENGTH := 256
 const PRODUCTION_COMMAND_RATE_PER_SECOND := 8.0
@@ -279,6 +277,7 @@ const TERRAIN_TYPE_DIRT := 2
 
 @onready var net_manager: Node = get_node("/root/NetManager")
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
+@onready var session_coordinator: MpSessionCoordinator = $SessionCoordinator
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var snapshot_mgr := SnapshotManager.new()
@@ -375,7 +374,6 @@ var _snapshot_packet_warn_time_left: float = 0.0
 var _host_startup_snapshot_grace_time_left: float = 0.0
 var _client_host_game_ready: bool = false
 var _client_has_received_flow_state: bool = false
-var _runtime_state_requested: bool = false
 var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
@@ -403,7 +401,6 @@ var _player_action_ingress_rate_buckets: Dictionary = {}
 var _inventory_command_rate_buckets: Dictionary = {}
 var _luoxi_transaction_rate_buckets: Dictionary = {}
 var _xiaocong_transaction_rate_buckets: Dictionary = {}
-var _runtime_state_request_rate_buckets: Dictionary = {}
 var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
 var _terrain_snapshot_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_result_cache := PeerReplayResultCacheScript.new(
@@ -608,6 +605,10 @@ func _exit_tree() -> void:
 			_gameplay_gateway.detach_multiplayer_session(self)
 		if _mode_adapter != null:
 			_mode_adapter.detach_multiplayer_session(self)
+		if session_coordinator != null:
+			session_coordinator.unbind_runtime(game)
+	elif session_coordinator != null:
+		session_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -660,7 +661,6 @@ func _exit_tree() -> void:
 	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
 	_xiaocong_transaction_rate_buckets.clear()
-	_runtime_state_request_rate_buckets.clear()
 	_public_room_keepalive_in_flight = false
 
 
@@ -3214,6 +3214,7 @@ func _setup_game(mode: int) -> bool:
 		)
 		_discard_unparented_game_runtime()
 		return false
+	session_coordinator.bind_runtime(game)
 	gameplay_gateway.attach_multiplayer_session(self)
 	mode_adapter.attach_multiplayer_session(self)
 	tower_mode_adapter = mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -3319,6 +3320,8 @@ func _setup_game(mode: int) -> bool:
 
 
 func _discard_unparented_game_runtime() -> void:
+	if game != null and session_coordinator != null:
+		session_coordinator.unbind_runtime(game)
 	if game != null and is_instance_valid(game) and game.get_parent() == null:
 		game.free()
 	game = null
@@ -3336,14 +3339,11 @@ func _get_game_scene_path_for_mode(game_mode: int) -> String:
 
 
 func _request_runtime_state_from_host() -> void:
-	if (
-		_runtime_state_requested
-		or not net_manager.is_client()
-		or game == null
-		or not _client_host_game_ready
+	if not session_coordinator.try_begin_client_runtime_state_request(
+		net_manager.is_client(),
+		_client_host_game_ready
 	):
 		return
-	_runtime_state_requested = true
 	if _has_tower_mode() and tower_mode_adapter.supports_terrain_state():
 		_client_waiting_for_terrain_snapshot = true
 		_arm_terrain_snapshot_repair_watchdog()
@@ -11542,9 +11542,9 @@ func _on_game_return_to_lobby_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 0)
 func net_runtime_state_requested(include_flow_state: bool = true) -> void:
+	var sender_id := multiplayer.get_remote_sender_id()
 	if not net_manager.is_host() or game == null:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
 	_handle_authoritative_runtime_state_request(sender_id, include_flow_state)
 
 
@@ -11552,20 +11552,11 @@ func _handle_authoritative_runtime_state_request(
 	sender_id: int,
 	include_flow_state: bool
 ) -> bool:
-	if not net_manager.is_host() or game == null or sender_id <= 0:
-		return false
-	# A runtime repair serializes terrain, plants, every player's inventory,
-	# enemies, pickups and flow state. Rate-limit before even resolving the player
-	# so an authenticated peer cannot turn one small request into repeated full
-	# world snapshots.
-	if not _consume_peer_rate_token(
-		_runtime_state_request_rate_buckets,
+	if not session_coordinator.admit_authoritative_runtime_state_request(
+		net_manager.is_host(),
 		sender_id,
-		RUNTIME_STATE_REQUEST_RATE_PER_SECOND,
-		RUNTIME_STATE_REQUEST_RATE_BURST
+		_get_net_time()
 	):
-		return false
-	if game.get_player_for_peer(sender_id) == null:
 		return false
 	_send_runtime_state_to_peer(sender_id, include_flow_state)
 	return true
@@ -11751,32 +11742,26 @@ func net_runtime_world_manifest(
 ) -> void:
 	if game == null or net_manager.is_host():
 		return
-	var enemy_id_set: Dictionary = {}
-	var pickup_id_set: Dictionary = {}
-	var plant_id_set: Dictionary = {}
-	for net_id in live_enemy_ids:
-		if net_id > 0:
-			enemy_id_set[net_id] = true
-	for net_id in live_pickup_ids:
-		if net_id > 0:
-			pickup_id_set[net_id] = true
-	for net_id in live_plant_ids:
-		if net_id > 0:
-			plant_id_set[net_id] = true
-			_clear_remote_plant_removed_marker(net_id)
+	var manifest := session_coordinator.parse_runtime_world_manifest(
+		live_enemy_ids,
+		live_pickup_ids,
+		live_plant_ids
+	)
+	for net_id in manifest.positive_plant_ids:
+		_clear_remote_plant_removed_marker(net_id)
 
 	for net_id_variant in _net_enemies.keys():
 		var net_id := int(net_id_variant)
-		if not enemy_id_set.has(net_id):
+		if not manifest.enemy_id_set.has(net_id):
 			_remove_client_enemy(net_id, false)
 	for net_id_variant in game.multiplayer_pickups.keys():
 		var net_id := int(net_id_variant)
-		if not pickup_id_set.has(net_id):
+		if not manifest.pickup_id_set.has(net_id):
 			net_pickup_removed(net_id)
 	if _has_tower_mode():
 		for plant_snapshot in _get_tower_plant_snapshots():
 			var plant_net_id := int(plant_snapshot.get("net_id", 0))
-			if plant_net_id > 0 and not plant_id_set.has(plant_net_id):
+			if plant_net_id > 0 and not manifest.plant_id_set.has(plant_net_id):
 				_erase_pending_warehouse_snapshot(plant_net_id)
 				_erase_pending_remote_production_state(plant_net_id)
 				_mark_remote_plant_removed(plant_net_id)
@@ -15393,7 +15378,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_inventory_command_rate_buckets.erase(peer_id)
 	_luoxi_transaction_rate_buckets.erase(peer_id)
 	_xiaocong_transaction_rate_buckets.erase(peer_id)
-	_runtime_state_request_rate_buckets.erase(peer_id)
+	session_coordinator.clear_peer(peer_id)
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
 	_last_simple_crafting_request_ids.erase(peer_id)
 	_last_simple_crafting_result_ids.erase(peer_id)
@@ -15491,7 +15476,7 @@ func _return_to_lobby() -> void:
 	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
 	_xiaocong_transaction_rate_buckets.clear()
-	_runtime_state_request_rate_buckets.clear()
+	session_coordinator.reset_session_state()
 	_local_simple_crafting_request_id = 0
 	_clear_local_simple_crafting_request_tracking()
 	_last_simple_crafting_request_ids.clear()

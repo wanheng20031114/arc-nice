@@ -1633,9 +1633,11 @@ func _test_runtime_state_send_order() -> void:
 		and request_body.contains(
 			"_handle_authoritative_runtime_state_request(sender_id"
 		)
-		and handler_body.contains("sender_id <= 0")
-		and handler_body.contains("_consume_peer_rate_token(")
-		and handler_body.contains("game.get_player_for_peer(sender_id) == null")
+		and handler_body.contains(
+			"session_coordinator.admit_authoritative_runtime_state_request("
+		)
+		and handler_body.contains("net_manager.is_host()")
+		and handler_body.contains("_get_net_time()")
 		and handler_body.contains("_send_runtime_state_to_peer(sender_id"),
 		"Complete-state repair requests must come from a registered in-game peer."
 	)

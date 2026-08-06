@@ -131,6 +131,10 @@ func _test_scene_instantiation() -> void:
 			mp_game.get_node_or_null("PublicRoomKeepaliveRequest") is HTTPRequest,
 			"MpGame must keep a native HTTPRequest node for public room keepalive."
 		)
+		_expect(
+			mp_game.get_node_or_null("SessionCoordinator") is MpSessionCoordinator,
+			"MpGame must statically instantiate its session coordinator."
+		)
 		mp_game.free()
 
 	var game := GAME_SCENE.instantiate()

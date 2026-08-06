@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" uid="uid://dk7w3hms3n8fp" path="res://scene/multiplayer/session/mp_session_coordinator.gd" id="1_session"]
+
+[node name="SessionCoordinator" type="Node"]
+script = ExtResource("1_session")
