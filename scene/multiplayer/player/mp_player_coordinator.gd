@@ -31,6 +31,11 @@ signal player_state_correction_requested(
 	corrected_position: Vector2,
 	corrected_velocity: Vector2
 )
+signal authoritative_teleport_broadcast_requested(
+	peer_id: int,
+	target_position: Vector2,
+	snapshot_sequence_cutoff: int
+)
 signal tiyi_high_noon_damage_requested(
 	owner_player: PlayerTiyi,
 	enemy_net_id: int,
@@ -2408,6 +2413,26 @@ func commit_authoritative_player_teleport(
 			player_node.get_multiplayer_facing_id(),
 			player_node.get_multiplayer_anim_state()
 		)
+	return true
+
+
+func handle_authoritative_player_teleport_request(
+	peer_id: int,
+	target_position: Vector2
+) -> bool:
+	if (
+		not is_inside_tree()
+		or not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+	):
+		return false
+	if not commit_authoritative_player_teleport(peer_id, target_position):
+		return false
+	authoritative_teleport_broadcast_requested.emit(
+		peer_id,
+		target_position,
+		_host_snapshot_sequence
+	)
 	return true
 
 
