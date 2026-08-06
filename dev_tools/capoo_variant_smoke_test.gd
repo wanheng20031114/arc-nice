@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const MAGE_SCENE := preload("res://scene/enemy/capoo/capoo_mage.tscn")
 const SNIPER_SCENE := preload("res://scene/enemy/capoo/capoo_sniper.tscn")
 const SMG_SCENE := preload("res://scene/enemy/capoo/capoo_smg.tscn")
@@ -819,11 +822,10 @@ func _test_proxy_action_visuals() -> void:
 
 
 func _test_multiplayer_projectile_registry() -> void:
-	var mp_game := MP_GAME_SCRIPT.new()
 	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	mp_game.set("game", test_root)
-	var fireball := mp_game.call(
-		"_instantiate_projectile",
+	var coordinator := MpProjectileCoordinator.new()
+	coordinator.bind_runtime(test_root)
+	var fireball := coordinator.instantiate_projectile(
 		&"capoo_mage_fireball",
 		0,
 		Vector2.RIGHT,
@@ -837,8 +839,7 @@ func _test_multiplayer_projectile_registry() -> void:
 		_expect(is_equal_approx(fireball.speed, MAGE_CONFIG.projectile_speed), "Registry mage fireball speed mismatch.")
 		fireball.free()
 
-	var smg_bullet := mp_game.call(
-		"_instantiate_projectile",
+	var smg_bullet := coordinator.instantiate_projectile(
 		&"capoo_smg_bullet",
 		0,
 		Vector2.RIGHT,
@@ -851,7 +852,8 @@ func _test_multiplayer_projectile_registry() -> void:
 		_expect(smg_bullet.damage == 40, "Registry SMG bullet damage mismatch.")
 		_expect(is_equal_approx(smg_bullet.max_lifetime, SMG_CONFIG.projectile_lifetime), "Registry SMG bullet lifetime mismatch.")
 		smg_bullet.free()
-	mp_game.free()
+	coordinator.unbind_runtime(test_root)
+	coordinator.free()
 	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 
 

@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const TANGO_SCENE := preload("res://scene/player/tango/player_tango.tscn")
 const TANGO_LASER_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
@@ -22,6 +25,12 @@ class RecordingMpGame:
 	var sent_methods: Array[StringName] = []
 	var sent_arguments: Array[Array] = []
 
+	func _init() -> void:
+		var coordinator := MpProjectileCoordinator.new()
+		coordinator.name = "ProjectileCoordinator"
+		add_child(coordinator)
+		projectile_coordinator = coordinator
+
 	func _rpc_to_connected_clients(
 		method_name: StringName,
 		args: Array = []
@@ -31,16 +40,14 @@ class RecordingMpGame:
 
 
 class PoolRuntime:
-	extends Node2D
+	extends "res://dev_tools/fixtures/linglan_combat_test_runtime.gd"
 
 	var pool: SessionObjectPool = null
 	var tracked_peer_id := 0
 	var tracked_player: Player = null
 
 	func install_pool() -> void:
-		pool = SessionObjectPool.new()
-		pool.name = "SessionObjectPool"
-		add_child(pool)
+		pool = session_object_pool
 		pool.register_scene(TANGO_LASER_SCENE, 9, 32)
 
 	func has_session_object_pool_scene(scene: PackedScene) -> bool:
@@ -101,6 +108,7 @@ func _run() -> void:
 	var host_net := HostNetManagerStub.new()
 	host_mp.add_child(host_net)
 	host_mp.set("net_manager", host_net)
+	host_mp.projectile_coordinator.bind_runtime(runtime)
 	(host_mp.get("_tango_charge_sequences_by_peer") as Dictionary)[owner_peer_id] = 3
 	var ordinary_overflow_rejected := not bool(host_mp.call(
 		"register_local_tango_laser_volley",
@@ -176,23 +184,25 @@ func _run() -> void:
 	)
 	for projectile_id in projectile_ids:
 		_expect(
-			bool(host_mp.call(
-				"_is_projectile_id_valid_for_host_owner",
+			MpProjectileCoordinator.is_projectile_id_valid_for_host_owner(
 				int(projectile_id),
 				owner_peer_id
-			)),
+			),
 			"Every Tango projectile ID must use the Host-origin owner lane."
 		)
 	_expect(
-		(host_mp.get("_known_projectiles") as Dictionary).size() == 3
-		and (host_mp.get("_projectile_records") as Dictionary).size() == 3,
+		int(host_mp.projectile_coordinator.get_state_metrics().get(
+			"known_projectiles", -1
+		)) == 3
+		and int(host_mp.projectile_coordinator.get_state_metrics().get(
+			"projectile_records", -1
+		)) == 3,
 		"Host registration must retain exactly three identities and damage records."
 	)
 
 	var client_mp := RecordingMpGame.new()
-	var client_game := StandardGame.new()
-	client_game.peer_players[owner_peer_id] = player
-	client_mp.set("game", client_game)
+	client_mp.set("game", runtime)
+	client_mp.projectile_coordinator.bind_runtime(runtime)
 	client_mp.set("_has_host_time_offset", true)
 	client_mp.set("_host_to_client_time_offset", 0.0)
 	# Keep the direct-call fixture at zero compensation age. In production MpGame
@@ -202,10 +212,15 @@ func _run() -> void:
 	client_payload[10] = Time.get_ticks_usec() / 1000000.0 + 1.0
 	var client_host_timestamp := float(client_payload[10])
 	client_mp.callv("net_tango_laser_volley", client_payload)
-	var client_known := client_mp.get("_known_projectiles") as Dictionary
+	var client_known := _get_projectile_map(
+		client_mp.projectile_coordinator,
+		projectile_ids
+	)
 	_expect(
 		client_known.size() == 3
-		and (client_mp.get("_projectile_records") as Dictionary).size() == 3,
+		and int(client_mp.projectile_coordinator.get_state_metrics().get(
+			"projectile_records", -1
+		)) == 3,
 		"Client playback must create exactly three de-duplicated proxy bullets."
 	)
 	for projectile_id in projectile_ids:
@@ -292,8 +307,7 @@ func _run() -> void:
 	)
 
 	_expect(
-		not bool(client_mp.call(
-			"_is_valid_tango_laser_volley_payload",
+		not MpProjectileCoordinator.is_valid_tango_laser_volley_payload(
 			PackedInt64Array([projectile_ids[0], projectile_ids[0], projectile_ids[2]]),
 			spawn_positions,
 			Vector2.RIGHT,
@@ -305,9 +319,8 @@ func _run() -> void:
 			480.0,
 			0.722,
 			host_fire_timestamp
-		))
-		and not bool(client_mp.call(
-			"_is_valid_tango_laser_volley_payload",
+		)
+		and not MpProjectileCoordinator.is_valid_tango_laser_volley_payload(
 			projectile_ids,
 			spawn_positions,
 			Vector2.RIGHT,
@@ -319,9 +332,8 @@ func _run() -> void:
 			480.0,
 			0.722,
 			host_fire_timestamp
-		))
-		and not bool(client_mp.call(
-			"_is_valid_tango_laser_volley_payload",
+		)
+		and not MpProjectileCoordinator.is_valid_tango_laser_volley_payload(
 			projectile_ids,
 			spawn_positions,
 			Vector2.RIGHT,
@@ -333,9 +345,8 @@ func _run() -> void:
 			480.0,
 			0.722,
 			host_fire_timestamp
-		))
-		and not bool(client_mp.call(
-			"_is_valid_tango_laser_volley_payload",
+		)
+		and not MpProjectileCoordinator.is_valid_tango_laser_volley_payload(
 			projectile_ids,
 			spawn_positions,
 			Vector2.RIGHT,
@@ -347,16 +358,18 @@ func _run() -> void:
 			480.0,
 			0.722,
 			host_fire_timestamp
-		)),
+		),
 		"Validator must reject duplicate IDs and invalid sequence, ratio, or remaining time."
 	)
 
 	_retire_projectiles(client_known)
-	_retire_projectiles(host_mp.get("_known_projectiles") as Dictionary)
-	client_mp.call("_prune_projectile_records", INF)
-	host_mp.call("_prune_projectile_records", INF)
+	_retire_projectiles(_get_projectile_map(
+		host_mp.projectile_coordinator,
+		projectile_ids
+	))
+	client_mp.projectile_coordinator.prune_records(INF)
+	host_mp.projectile_coordinator.prune_records(INF)
 	client_mp.set("game", null)
-	client_game.free()
 	await _cleanup(runtime, host_mp, client_mp)
 	_finish()
 
@@ -371,14 +384,28 @@ func _retire_projectiles(projectiles: Dictionary) -> void:
 		projectile.call("retire")
 
 
+func _get_projectile_map(
+	coordinator: MpProjectileCoordinator,
+	projectile_ids: PackedInt64Array
+) -> Dictionary:
+	var projectiles: Dictionary = {}
+	for projectile_id in projectile_ids:
+		var projectile := coordinator.get_projectile(int(projectile_id))
+		if projectile != null:
+			projectiles[int(projectile_id)] = projectile
+	return projectiles
+
+
 func _cleanup(
 	runtime: PoolRuntime,
 	host_mp: RecordingMpGame,
 	client_mp: RecordingMpGame
 ) -> void:
 	if client_mp != null:
+		client_mp.projectile_coordinator.unbind_runtime(runtime)
 		client_mp.free()
 	if host_mp != null:
+		host_mp.projectile_coordinator.unbind_runtime(runtime)
 		host_mp.free()
 	current_scene = null
 	if runtime != null and is_instance_valid(runtime):

@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL3_CONFIG := preload("res://resources/config/bosses/linglan_skill3.tres")
@@ -822,13 +825,15 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	_expect(mp_game != null, "MP game scene must instantiate for Skill4 projectile registry.")
 	if mp_game == null:
 		return
-	mp_game.set("game", test_root)
+	var coordinator := (
+		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
+	)
+	coordinator.bind_runtime(test_root)
 	var registry_config := SKILL4_CONFIG.duplicate(true) as LinglanSkill4Config
 	registry_config.orb_radius = 11.0
 	registry_config.orb_damage_radius = 9.0
-	mp_game.set("_linglan_skill4_config", registry_config)
-	var projectile := mp_game.call(
-		"_instantiate_projectile",
+	coordinator.set("_linglan_skill4_config", registry_config)
+	var projectile := coordinator.instantiate_projectile(
 		&"linglan_skill4_orb",
 		999999,
 		Vector2.LEFT,
@@ -847,6 +852,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		_expect(is_equal_approx(projectile.orb_radius, 11.0), "Registry Skill4 orb must read radius from config.")
 		_expect(is_equal_approx(projectile.damage_radius, 9.0), "Registry Skill4 orb must read damage radius from config.")
 		projectile.free()
+	coordinator.unbind_runtime(test_root)
 	mp_game.free()
 
 

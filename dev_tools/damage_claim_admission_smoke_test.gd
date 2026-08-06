@@ -4,6 +4,14 @@ extends SceneTree
 ## five-field RPC compatibility shell, but both the client sender and Host
 ## receiver are fail-closed: canonical hits come only from Host simulation.
 
+const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
+const PROJECTILE_COORDINATOR_SOURCE_PATH := (
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
+const ENEMY_COORDINATOR_SOURCE_PATH := (
+	"res://scene/multiplayer/enemy/mp_enemy_coordinator.gd"
+)
+
 var failures: Array[String] = []
 var legacy_claim_bytes: int = 0
 var bounded_claim_bytes: int = 0
@@ -177,9 +185,15 @@ func _test_player_hit_claim_lane_is_disabled() -> void:
 
 
 func _test_enemy_hit_claim_lane_is_disabled() -> void:
-	var source := FileAccess.get_file_as_string(
-		"res://scene/multiplayer/mp_game.gd"
+	var source := FileAccess.get_file_as_string(MP_GAME_SOURCE_PATH)
+	var projectile_source := FileAccess.get_file_as_string(
+		PROJECTILE_COORDINATOR_SOURCE_PATH
 	)
+	var enemy_source := FileAccess.get_file_as_string(
+		ENEMY_COORDINATOR_SOURCE_PATH
+	)
+	_expect(not projectile_source.is_empty(), "Projectile coordinator source must be readable.")
+	_expect(not enemy_source.is_empty(), "Enemy coordinator source must be readable.")
 	var signature := _normalize_whitespace(
 		_get_function_signature(source, "_rpc_enemy_hit_report")
 	)
@@ -201,6 +215,22 @@ func _test_enemy_hit_claim_lane_is_disabled() -> void:
 		source,
 		"func _rpc_enemy_hit_report("
 	)
+	var settlement_body := _get_function_body(
+		source,
+		"func _apply_enemy_hit_report("
+	)
+	var admission_body := _get_function_body(
+		projectile_source,
+		"func prepare_enemy_hit("
+	)
+	var commit_body := _get_function_body(
+		projectile_source,
+		"func commit_enemy_hit("
+	)
+	var compatibility_body := _get_function_body(
+		enemy_source,
+		"func receive_enemy_hit_report("
+	)
 	_expect(
 		not request_body.contains("_rpc_enemy_hit_report.rpc_id")
 		and request_body.contains("net_manager.is_host()")
@@ -210,8 +240,27 @@ func _test_enemy_hit_claim_lane_is_disabled() -> void:
 	_expect(
 		not rpc_body.contains("_apply_enemy_hit_report(")
 		and not rpc_body.contains("_get_host_enemy_for_net_id(")
-		and rpc_body.contains("return"),
-		"The enemy-hit RPC compatibility shell must fail closed."
+		and rpc_body.contains("var sender_id := multiplayer.get_remote_sender_id()")
+		and rpc_body.contains("enemy_coordinator.receive_enemy_hit_report("),
+		"The root enemy-hit RPC must capture its sender and delegate to the fail-closed coordinator."
+	)
+	_expect(
+		settlement_body.contains("projectile_coordinator.prepare_enemy_hit(")
+		and settlement_body.contains("projectile_coordinator.commit_enemy_hit(")
+		and not settlement_body.contains("_projectile_records"),
+		"MpGame must retain only the Host damage sink while projectile admission remains coordinated."
+	)
+	_expect(
+		admission_body.contains("_projectile_records.get(projectile_id)")
+		and admission_body.contains("_processed_enemy_hit_ids")
+		and commit_body.contains("_remember_recent_event("),
+		"ProjectileCoordinator must remain the true source for projectile identity and hit deduplication."
+	)
+	_expect(
+		not compatibility_body.contains("apply_combat_damage(")
+		and not compatibility_body.contains("prepare_enemy_hit(")
+		and compatibility_body.contains("pass"),
+		"The enemy-hit compatibility coordinator must fail closed without touching combat state."
 	)
 
 

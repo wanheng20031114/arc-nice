@@ -3,6 +3,9 @@ extends SceneTree
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const SnapshotManager := preload("res://scene/multiplayer/snapshot_manager.gd")
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const TOWER_DEFENSE_PLANT_RUNTIME_PATH := (
 	"res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.gd"
@@ -1107,16 +1110,14 @@ func _test_corn_burst_payload_contract() -> void:
 
 func _test_linglan_skill1_ring_payload_contract() -> void:
 	var mp_game := MpGameScript.new()
-	var first_projectile_id := int(mp_game.call(
-		"_encode_projectile_id",
+	var first_projectile_id := MpProjectileCoordinator.encode_projectile_id(
 		1,
 		PROJECTILE_HOST_ORIGIN_BIT | 1000000
-	))
-	var second_projectile_id := int(mp_game.call(
-		"_encode_projectile_id",
+	)
+	var second_projectile_id := MpProjectileCoordinator.encode_projectile_id(
 		1,
 		PROJECTILE_HOST_ORIGIN_BIT | 1000001
-	))
+	)
 	var projectile_ids := PackedInt64Array([first_projectile_id, second_projectile_id])
 	var spawn_positions := PackedVector2Array([Vector2(10.0, 20.0), Vector2(30.0, 40.0)])
 	var directions := PackedVector2Array([Vector2.RIGHT, Vector2.UP])
@@ -1128,8 +1129,7 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 		"Linglan ring batches must be attributed to CH_PROJECTILE."
 	)
 	_expect(
-		bool(mp_game.call(
-			"_is_valid_linglan_skill1_ring_payload",
+		MpProjectileCoordinator.is_valid_linglan_skill1_ring_payload(
 			projectile_ids,
 			spawn_positions,
 			directions,
@@ -1138,12 +1138,11 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			300.0,
 			2.0,
 			1.25
-		)),
+		),
 		"Linglan ring batches must accept aligned, finite packed columns."
 	)
 	_expect(
-		not bool(mp_game.call(
-			"_is_valid_linglan_skill1_ring_payload",
+		not MpProjectileCoordinator.is_valid_linglan_skill1_ring_payload(
 			PackedInt64Array([first_projectile_id, first_projectile_id]),
 			spawn_positions,
 			directions,
@@ -1152,19 +1151,17 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			300.0,
 			2.0,
 			1.25
-		)),
+		),
 		"Linglan ring batches must reject duplicate projectile IDs."
 	)
 	_expect(
-		not bool(mp_game.call(
-			"_is_valid_linglan_skill1_ring_payload",
+		not MpProjectileCoordinator.is_valid_linglan_skill1_ring_payload(
 			PackedInt64Array([
 				first_projectile_id,
-				int(mp_game.call(
-					"_encode_projectile_id",
+				MpProjectileCoordinator.encode_projectile_id(
 					2,
 					PROJECTILE_HOST_ORIGIN_BIT | 1000001
-				)),
+				),
 			]),
 			spawn_positions,
 			directions,
@@ -1173,15 +1170,14 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			300.0,
 			2.0,
 			1.25
-		)),
+		),
 		"Linglan ring batches must reject an ID encoded for another owner."
 	)
 	_expect(
-		not bool(mp_game.call(
-			"_is_valid_linglan_skill1_ring_payload",
+		not MpProjectileCoordinator.is_valid_linglan_skill1_ring_payload(
 			PackedInt64Array([
-				int(mp_game.call("_encode_projectile_id", 1, 1000000)),
-				int(mp_game.call("_encode_projectile_id", 1, 1000001)),
+				MpProjectileCoordinator.encode_projectile_id(1, 1000000),
+				MpProjectileCoordinator.encode_projectile_id(1, 1000001),
 			]),
 			spawn_positions,
 			directions,
@@ -1190,25 +1186,22 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			300.0,
 			2.0,
 			1.25
-		)),
+		),
 		"Host-authored Linglan batches must reject client-origin projectile IDs."
 	)
 	var wrapped_host_ids := PackedInt64Array([
-		int(mp_game.call(
-			"_encode_projectile_id",
+		MpProjectileCoordinator.encode_projectile_id(
 			1,
 			PROJECTILE_HOST_ORIGIN_BIT | PROJECTILE_SEQUENCE_COUNTER_MAX
-		)),
-		int(mp_game.call(
-			"_encode_projectile_id",
+		),
+		MpProjectileCoordinator.encode_projectile_id(
 			1,
 			PROJECTILE_HOST_ORIGIN_BIT | 1
-		)),
+		),
 	])
 	_expect(
 		wrapped_host_ids[1] < wrapped_host_ids[0]
-		and bool(mp_game.call(
-			"_is_valid_linglan_skill1_ring_payload",
+		and MpProjectileCoordinator.is_valid_linglan_skill1_ring_payload(
 			wrapped_host_ids,
 			spawn_positions,
 			directions,
@@ -1217,31 +1210,36 @@ func _test_linglan_skill1_ring_payload_contract() -> void:
 			300.0,
 			2.0,
 			1.25
-		)),
+		),
 		"A valid Host ring must survive the 31-bit counter wrap without relying on monotonic IDs."
 	)
 	mp_game.free()
 
 
 func _test_projectile_id_codec_contract() -> void:
-	var mp_game := MpGameScript.new()
-	var below_legacy_boundary := int(
-		mp_game.call("_encode_projectile_id", 2, 999999)
-	)
-	var at_legacy_boundary := int(
-		mp_game.call("_encode_projectile_id", 2, 1000000)
-	)
-	var above_legacy_boundary := int(
-		mp_game.call("_encode_projectile_id", 2, 1000001)
-	)
-	var other_owner_same_sequence := int(
-		mp_game.call("_encode_projectile_id", 3, 1000000)
-	)
-	var host_same_owner_and_counter := int(mp_game.call(
-		"_encode_projectile_id",
+	var coordinator := MpProjectileCoordinator.new()
+	var below_legacy_boundary := MpProjectileCoordinator.encode_projectile_id(
 		2,
-		PROJECTILE_HOST_ORIGIN_BIT | 1000000
-	))
+		999999
+	)
+	var at_legacy_boundary := MpProjectileCoordinator.encode_projectile_id(
+		2,
+		1000000
+	)
+	var above_legacy_boundary := MpProjectileCoordinator.encode_projectile_id(
+		2,
+		1000001
+	)
+	var other_owner_same_sequence := MpProjectileCoordinator.encode_projectile_id(
+		3,
+		1000000
+	)
+	var host_same_owner_and_counter := (
+		MpProjectileCoordinator.encode_projectile_id(
+			2,
+			PROJECTILE_HOST_ORIGIN_BIT | 1000000
+		)
+	)
 	_expect(
 		below_legacy_boundary > 0
 		and at_legacy_boundary > below_legacy_boundary
@@ -1256,176 +1254,166 @@ func _test_projectile_id_codec_contract() -> void:
 		above_legacy_boundary,
 	]:
 		_expect(
-			int(mp_game.call("_decode_projectile_owner_peer_id", projectile_id)) == 2
-			and bool(mp_game.call(
-				"_is_projectile_id_valid_for_owner",
+			MpProjectileCoordinator.decode_projectile_owner_peer_id(projectile_id) == 2
+			and MpProjectileCoordinator.is_projectile_id_valid_for_owner(
 				projectile_id,
 				2
-			)),
+			),
 			"Cross-boundary projectile IDs must retain owner 2 exactly."
 		)
 	_expect(
-		int(mp_game.call("_decode_projectile_sequence", at_legacy_boundary)) == 1000000
-		and int(mp_game.call(
-			"_decode_projectile_owner_peer_id",
+		MpProjectileCoordinator.decode_projectile_sequence(at_legacy_boundary) == 1000000
+		and MpProjectileCoordinator.decode_projectile_owner_peer_id(
 			other_owner_same_sequence
-		)) == 3
-		and not bool(mp_game.call(
-			"_is_projectile_id_valid_for_owner",
+		) == 3
+		and not MpProjectileCoordinator.is_projectile_id_valid_for_owner(
 			other_owner_same_sequence,
 			2
-		)),
+		),
 		"Projectile ID decoding must keep owner and sequence in disjoint bit fields."
 	)
 	_expect(
-		bool(mp_game.call(
-			"_is_projectile_id_valid_for_client_owner",
+		MpProjectileCoordinator.is_projectile_id_valid_for_client_owner(
 			at_legacy_boundary,
 			2
-		))
-		and not bool(mp_game.call(
-			"_is_projectile_id_valid_for_client_owner",
+		)
+		and not MpProjectileCoordinator.is_projectile_id_valid_for_client_owner(
 			host_same_owner_and_counter,
 			2
-		))
-		and bool(mp_game.call(
-			"_is_projectile_id_valid_for_host_owner",
+		)
+		and MpProjectileCoordinator.is_projectile_id_valid_for_host_owner(
 			host_same_owner_and_counter,
 			2
-		))
-		and not bool(mp_game.call(
-			"_is_projectile_id_valid_for_host_owner",
+		)
+		and not MpProjectileCoordinator.is_projectile_id_valid_for_host_owner(
 			at_legacy_boundary,
 			2
-		))
-		and int(mp_game.call(
-			"_decode_projectile_sequence_counter",
+		)
+		and MpProjectileCoordinator.decode_projectile_sequence_counter(
 			host_same_owner_and_counter
-		)) == 1000000,
+		) == 1000000,
 		"Host and client origin lanes must be disjoint while retaining the same 31-bit counter."
 	)
-	var signed_int64_max := int(mp_game.call(
-		"_encode_projectile_id",
+	var signed_int64_max := MpProjectileCoordinator.encode_projectile_id(
 		0x7FFFFFFF,
 		PROJECTILE_SEQUENCE_MAX
-	))
+	)
 	_expect(
 		signed_int64_max == 0x7FFFFFFFFFFFFFFF
-		and int(mp_game.call(
-			"_decode_projectile_owner_peer_id",
+		and MpProjectileCoordinator.decode_projectile_owner_peer_id(
 			signed_int64_max
-		)) == 0x7FFFFFFF
-		and int(mp_game.call(
-			"_decode_projectile_sequence",
+		) == 0x7FFFFFFF
+		and MpProjectileCoordinator.decode_projectile_sequence(
 			signed_int64_max
-		)) == PROJECTILE_SEQUENCE_MAX,
+		) == PROJECTILE_SEQUENCE_MAX,
 		"The largest supported owner/sequence pair must remain a positive signed int64."
 	)
 	_expect(
-		int(mp_game.call("_encode_projectile_id", 0, 1)) == 0
-		and int(mp_game.call("_encode_projectile_id", 0x80000000, 1)) == 0
-		and int(mp_game.call("_encode_projectile_id", 2, 0)) == 0
-		and int(mp_game.call(
-			"_encode_projectile_id",
+		MpProjectileCoordinator.encode_projectile_id(0, 1) == 0
+		and MpProjectileCoordinator.encode_projectile_id(0x80000000, 1) == 0
+		and MpProjectileCoordinator.encode_projectile_id(2, 0) == 0
+		and MpProjectileCoordinator.encode_projectile_id(
 			2,
 			PROJECTILE_SEQUENCE_MAX + 1
-		)) == 0,
+		) == 0,
 		"Projectile ID encoding must reject zero and signed-overflow fields."
 	)
 	_expect(
-		not bool(mp_game.call("_is_projectile_id_valid_for_owner", 1, 0))
-		and not bool(mp_game.call(
-			"_is_projectile_id_valid_for_owner",
+		not MpProjectileCoordinator.is_projectile_id_valid_for_owner(1, 0)
+		and not MpProjectileCoordinator.is_projectile_id_valid_for_owner(
 			0x7FFFFFFF,
 			0
-		)),
+		),
 		"Owner zero must never become valid through a hand-crafted low sequence ID."
 	)
 
-	var occupied_wrapped_id := int(mp_game.call("_encode_projectile_id", 2, 1))
-	var records := mp_game.get("_projectile_records") as Dictionary
-	records[occupied_wrapped_id] = {"expires_at": INF}
-	mp_game.set("_next_projectile_sequence", PROJECTILE_SEQUENCE_COUNTER_MAX)
-	var final_sequence_id := int(mp_game.call("_allocate_projectile_id", 2, false))
-	var wrapped_sequence_id := int(mp_game.call("_allocate_projectile_id", 2, false))
+	var occupied_wrapped_id := MpProjectileCoordinator.encode_projectile_id(2, 1)
+	coordinator.remember_projectile_record(
+		occupied_wrapped_id,
+		2,
+		&"player_bullet",
+		1,
+		INF,
+		false,
+		0.0
+	)
+	coordinator.set("_next_projectile_sequence", PROJECTILE_SEQUENCE_COUNTER_MAX)
+	var final_sequence_id := coordinator.allocate_projectile_id(2, false)
+	var wrapped_sequence_id := coordinator.allocate_projectile_id(2, false)
 	_expect(
-		int(mp_game.call(
-			"_decode_projectile_sequence_counter",
+		MpProjectileCoordinator.decode_projectile_sequence_counter(
 			final_sequence_id
-		)) == PROJECTILE_SEQUENCE_COUNTER_MAX
-		and int(mp_game.call(
-			"_decode_projectile_sequence_counter",
+		) == PROJECTILE_SEQUENCE_COUNTER_MAX
+		and MpProjectileCoordinator.decode_projectile_sequence_counter(
 			wrapped_sequence_id
-		)) == 2,
+		) == 2,
 		"Sequence wrap must skip zero and any still-live/recent wrapped identity."
 	)
-	mp_game.set("_next_projectile_sequence", 42)
-	var client_lane_id := int(mp_game.call("_allocate_projectile_id", 2, false))
-	mp_game.set("_next_projectile_sequence", 42)
-	var host_lane_id := int(mp_game.call("_allocate_projectile_id", 2, true))
+	coordinator.set("_next_projectile_sequence", 42)
+	var client_lane_id := coordinator.allocate_projectile_id(2, false)
+	coordinator.set("_next_projectile_sequence", 42)
+	var host_lane_id := coordinator.allocate_projectile_id(2, true)
 	_expect(
 		client_lane_id != host_lane_id
-		and int(mp_game.call(
-			"_decode_projectile_sequence_counter",
+		and MpProjectileCoordinator.decode_projectile_sequence_counter(
 			client_lane_id
-		)) == 42
-		and int(mp_game.call(
-			"_decode_projectile_sequence_counter",
+		) == 42
+		and MpProjectileCoordinator.decode_projectile_sequence_counter(
 			host_lane_id
-		)) == 42
-		and bool(mp_game.call("_is_host_origin_projectile_id", host_lane_id))
-		and not bool(mp_game.call("_is_host_origin_projectile_id", client_lane_id)),
+		) == 42
+		and MpProjectileCoordinator.is_host_origin_projectile_id(host_lane_id)
+		and not MpProjectileCoordinator.is_host_origin_projectile_id(client_lane_id),
 		"Concurrent Host/client allocation for one owner must use collision-free origin lanes."
 	)
 	_expect(
-		bool(mp_game.call(
-			"_is_projectile_id_valid_for_client_owner",
+		MpProjectileCoordinator.is_projectile_id_valid_for_client_owner(
 			client_lane_id,
 			2
-		))
-		and not bool(mp_game.call(
-			"_is_projectile_id_valid_for_client_owner",
+		)
+		and not MpProjectileCoordinator.is_projectile_id_valid_for_client_owner(
 			host_lane_id,
 			2
-		))
-		and bool(mp_game.call(
-			"_is_projectile_id_valid_for_host_owner",
+		)
+		and MpProjectileCoordinator.is_projectile_id_valid_for_host_owner(
 			host_lane_id,
 			2
-		)),
+		),
 		"Origin lanes must remain structurally distinct even though neither lane authorizes a remote enemy-hit claim."
 	)
-	mp_game.free()
+	coordinator.free()
 
 
 func _test_projectile_origin_lane_runtime_contract() -> void:
 	var mp_game := MpGameScript.new()
+	var coordinator := MpProjectileCoordinator.new()
+	coordinator.name = "ProjectileCoordinator"
+	mp_game.add_child(coordinator)
+	mp_game.projectile_coordinator = coordinator
 	var runtime := _bind_neutral_runtime_fixture(mp_game)
-	var client_lane_id := int(mp_game.call("_encode_projectile_id", 2, 57))
-	var host_lane_id := int(mp_game.call(
-		"_encode_projectile_id",
+	coordinator.bind_runtime(runtime)
+	var client_lane_id := MpProjectileCoordinator.encode_projectile_id(2, 57)
+	var host_lane_id := MpProjectileCoordinator.encode_projectile_id(
 		2,
 		PROJECTILE_HOST_ORIGIN_BIT | 57
-	))
+	)
 	var predicted_bullet := BULLET_SCENE.instantiate() as Bullet
 	mp_game.add_child(predicted_bullet)
-	mp_game.call(
-		"_setup_projectile_network_identity",
+	coordinator.setup_projectile_network_identity(
 		predicted_bullet,
 		client_lane_id,
 		2,
 		&"player_bullet"
 	)
-	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
+	var known_projectiles := coordinator.get("_known_projectiles") as Dictionary
 	known_projectiles[client_lane_id] = predicted_bullet
-	mp_game.call(
-		"_remember_projectile_record",
+	coordinator.remember_projectile_record(
 		client_lane_id,
 		2,
 		&"player_bullet",
 		3,
 		2.0,
-		false
+		false,
+		0.0
 	)
 
 	# The Host echo for a predicted client-lane shot must update the same node
@@ -1445,9 +1433,7 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 		-1.0,
 		0
 	)
-	var reconciled_record := (
-		mp_game.get("_projectile_records") as Dictionary
-	).get(client_lane_id, {}) as Dictionary
+	var reconciled_record := coordinator.get_projectile_record(client_lane_id)
 	_expect(
 		known_projectiles.size() == 1
 		and known_projectiles.get(client_lane_id) == predicted_bullet
@@ -1487,6 +1473,7 @@ func _test_projectile_origin_lane_runtime_contract() -> void:
 		"A Host-lane projectile must coexist with the same owner's client prediction "
 		+ "without an ID collision or replacement."
 	)
+	coordinator.unbind_runtime(runtime)
 	mp_game.free()
 	runtime.free()
 

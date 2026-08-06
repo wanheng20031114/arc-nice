@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const STANDARD_GAME_SCENE_PATH := "res://scene/game_modes/standard/standard_game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.tscn"
@@ -3301,7 +3304,13 @@ func _get_projectile_ids_for_peer(mp_game: Node, peer_id: int) -> Array[int]:
 	var result: Array[int] = []
 	if mp_game == null or not is_instance_valid(mp_game):
 		return result
-	var records := mp_game.get("_projectile_records") as Dictionary
+	var coordinator := (
+		mp_game.get_node_or_null("ProjectileCoordinator")
+		as MpProjectileCoordinator
+	)
+	if coordinator == null:
+		return result
+	var records := coordinator.get("_projectile_records") as Dictionary
 	for projectile_id_variant in records:
 		var projectile_id := int(projectile_id_variant)
 		var record := records.get(projectile_id) as Dictionary

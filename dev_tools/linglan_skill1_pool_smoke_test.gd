@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const SAKURA_BULLET_SCENE := preload(
@@ -412,10 +415,9 @@ func _test_damage_trajectory_and_hit_effect_semantics() -> void:
 
 
 func _test_multiplayer_client_spawn_and_cleanup_path() -> void:
-	var mp_game := MP_GAME_SCRIPT.new()
-	mp_game.set("game", runtime)
-	var first := mp_game.call(
-		"_instantiate_projectile",
+	var coordinator := MpProjectileCoordinator.new()
+	coordinator.bind_runtime(runtime)
+	var first := coordinator.instantiate_projectile(
 		&"linglan_skill1",
 		999999,
 		Vector2.LEFT,
@@ -428,7 +430,8 @@ func _test_multiplayer_client_spawn_and_cleanup_path() -> void:
 	) as LinglanSakuraBullet
 	_expect(first != null, "Client proxy path must instantiate the Linglan Skill1 projectile.")
 	if first == null:
-		mp_game.free()
+		coordinator.unbind_runtime(runtime)
+		coordinator.free()
 		return
 	var first_id := first.get_instance_id()
 	_expect(
@@ -438,23 +441,23 @@ func _test_multiplayer_client_spawn_and_cleanup_path() -> void:
 		and is_equal_approx(first.max_lifetime, 1.5),
 		"Client proxy acquisition must use the pool without changing network payload values."
 	)
-	mp_game.call(
-		"_setup_projectile_network_identity",
+	var projectile_id := coordinator.register_local_projectile(
 		first,
-		9001,
+		&"linglan_skill1",
 		999999,
-		&"linglan_skill1"
+		41,
+		1.5,
+		false,
+		true,
+		0.0
 	)
-	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
-	known_projectiles[9001] = first
 	first.retire()
 	_expect(
-		not known_projectiles.has(9001),
+		projectile_id > 0 and not coordinator.has_projectile(projectile_id),
 		"Pooled client projectile completion must synchronously remove its network registry entry."
 	)
 	await _wait_for_quarantine()
-	var reused := mp_game.call(
-		"_instantiate_projectile",
+	var reused := coordinator.instantiate_projectile(
 		&"linglan_skill1",
 		999999,
 		Vector2.RIGHT,
@@ -472,7 +475,8 @@ func _test_multiplayer_client_spawn_and_cleanup_path() -> void:
 	if reused != null:
 		reused.retire()
 	await _wait_for_quarantine()
-	mp_game.free()
+	coordinator.unbind_runtime(runtime)
+	coordinator.free()
 
 
 func _test_offscreen_hit_keeps_damage_without_visual_lease() -> void:

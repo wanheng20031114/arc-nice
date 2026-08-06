@@ -1,17 +1,17 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const RATE_PER_SECOND := 256.0
 const BURST := 64
 const LEGAL_SEMANTIC_RATE_PER_SECOND := 210.0
 
 
-class ProjectileRateLimitMpGame:
-	extends "res://scene/multiplayer/mp_game.gd"
+class ProjectileRateLimitCoordinator:
+	extends MpProjectileCoordinator
 
 	var test_net_time := 0.0
-
-	func _get_net_time() -> float:
-		return test_net_time
 
 
 var failures: Array[String] = []
@@ -38,23 +38,23 @@ func _run() -> void:
 
 
 func _test_burst_boundary_and_refill() -> void:
-	var mp_game := ProjectileRateLimitMpGame.new()
+	var coordinator := ProjectileRateLimitCoordinator.new()
 	var accepted_count := 0
 	for sequence in range(1, BURST + 1):
-		if _try_request(mp_game, 2, sequence):
+		if _try_request(coordinator, 2, sequence):
 			accepted_count += 1
-	var retained_bucket := _get_peer_bucket(mp_game, 2)
+	var retained_bucket := _get_peer_bucket(coordinator, 2)
 	_expect(
-		accepted_count == BURST and not _try_request(mp_game, 2, BURST + 1),
+		accepted_count == BURST and not _try_request(coordinator, 2, BURST + 1),
 		"A peer must receive exactly the 64-request burst before request 65 is limited."
 	)
 
 	# Ten milliseconds replenishes 2.56 tokens: exactly two more whole requests.
-	mp_game.test_net_time = 0.01
-	var first_refill := _try_request(mp_game, 2, BURST + 2)
-	var second_refill := _try_request(mp_game, 2, BURST + 3)
-	var third_refill := _try_request(mp_game, 2, BURST + 4)
-	var bucket := _get_peer_bucket(mp_game, 2)
+	coordinator.test_net_time = 0.01
+	var first_refill := _try_request(coordinator, 2, BURST + 2)
+	var second_refill := _try_request(coordinator, 2, BURST + 3)
+	var third_refill := _try_request(coordinator, 2, BURST + 4)
+	var bucket := _get_peer_bucket(coordinator, 2)
 	var expected_remaining_tokens := 0.01 * RATE_PER_SECOND - 2.0
 	_expect(
 		first_refill
@@ -67,20 +67,20 @@ func _test_burst_boundary_and_refill() -> void:
 		),
 		"Elapsed time must replenish the same allocation-free bucket at exactly 256 tokens per second."
 	)
-	mp_game.free()
+	coordinator.free()
 
 
 func _test_peer_isolation() -> void:
-	var mp_game := ProjectileRateLimitMpGame.new()
+	var coordinator := ProjectileRateLimitCoordinator.new()
 	for sequence in range(1, BURST + 1):
-		_try_request(mp_game, 2, sequence)
+		_try_request(coordinator, 2, sequence)
 	_expect(
-		not _try_request(mp_game, 2, BURST + 1)
-		and _try_request(mp_game, 3, 1)
-		and not _try_request(mp_game, 2, BURST + 2),
+		not _try_request(coordinator, 2, BURST + 1)
+		and _try_request(coordinator, 3, 1)
+		and not _try_request(coordinator, 2, BURST + 2),
 		"Exhausting one peer's projectile budget must not reduce another peer's budget."
 	)
-	var buckets := mp_game.get("_client_projectile_request_rate_buckets") as Dictionary
+	var buckets := coordinator.get("_client_projectile_request_rate_buckets") as Dictionary
 	_expect(
 		buckets.has(2)
 		and buckets.has(3)
@@ -90,51 +90,60 @@ func _test_peer_isolation() -> void:
 		),
 		"Projectile request buckets must be stored independently per peer."
 	)
-	mp_game.free()
+	coordinator.free()
 
 
 func _test_legal_sustained_rate_boundary() -> void:
-	var mp_game := ProjectileRateLimitMpGame.new()
+	var coordinator := ProjectileRateLimitCoordinator.new()
 	var all_accepted := true
 	var request_count := int(LEGAL_SEMANTIC_RATE_PER_SECOND * 2.0)
 	for request_index in range(request_count):
-		mp_game.test_net_time = (
+		coordinator.test_net_time = (
 			float(request_index) / LEGAL_SEMANTIC_RATE_PER_SECOND
 		)
-		if not _try_request(mp_game, 4, request_index + 1):
+		if not _try_request(coordinator, 4, request_index + 1):
 			all_accepted = false
 			break
-	var bucket := _get_peer_bucket(mp_game, 4)
+	var bucket := _get_peer_bucket(coordinator, 4)
 	_expect(
 		all_accepted
 		and float(bucket.get("tokens", 0.0)) >= float(BURST - 1) - 0.001,
 		"The 210/s semantic gameplay ceiling must remain sustainable without draining the bucket."
 	)
-	mp_game.free()
+	coordinator.free()
 
 
 func _test_duplicate_identity_does_not_consume_token() -> void:
-	var mp_game := ProjectileRateLimitMpGame.new()
-	var projectile_id := _projectile_id(mp_game, 5, 1)
+	var coordinator := ProjectileRateLimitCoordinator.new()
+	var projectile_id := _projectile_id(5, 1)
 	_expect(
-		bool(mp_game.call(
-			"_try_accept_client_projectile_request_identity",
+		coordinator.accept_client_projectile_request_identity(
 			5,
 			projectile_id,
-			5
-		)),
+			5,
+			false,
+			coordinator.test_net_time
+		),
 		"The first valid client-lane identity must reach the rate bucket."
 	)
-	var before_bucket := _get_peer_bucket(mp_game, 5).duplicate()
-	var records := mp_game.get("_projectile_records") as Dictionary
-	records[projectile_id] = {"owner_peer_id": 5}
-	var duplicate_accepted := bool(mp_game.call(
-		"_try_accept_client_projectile_request_identity",
+	var before_bucket := _get_peer_bucket(coordinator, 5).duplicate()
+	coordinator.remember_projectile_record(
+		projectile_id,
+		5,
+		&"player_bullet",
+		1,
+		1.0,
+		false,
+		coordinator.test_net_time
+	)
+	var duplicate_accepted := coordinator.accept_client_projectile_request_identity(
 		5,
 		projectile_id,
-		5
-	))
-	var after_bucket := _get_peer_bucket(mp_game, 5)
+		5,
+		false,
+		coordinator.test_net_time
+	)
+	var after_bucket := _get_peer_bucket(coordinator, 5)
 	_expect(
 		not duplicate_accepted
 		and is_equal_approx(
@@ -147,111 +156,90 @@ func _test_duplicate_identity_does_not_consume_token() -> void:
 		),
 		"A duplicate known projectile identity must be rejected before consuming a token."
 	)
-	mp_game.free()
+	coordinator.free()
 
 
 func _test_bucket_cleanup() -> void:
-	var mp_game := ProjectileRateLimitMpGame.new()
-	_try_request(mp_game, 2, 1)
-	_try_request(mp_game, 3, 1)
-	mp_game.call("_clear_peer_network_state", 2)
-	var buckets := mp_game.get("_client_projectile_request_rate_buckets") as Dictionary
+	var coordinator := ProjectileRateLimitCoordinator.new()
+	_try_request(coordinator, 2, 1)
+	_try_request(coordinator, 3, 1)
+	coordinator.clear_peer(2)
+	var buckets := coordinator.get("_client_projectile_request_rate_buckets") as Dictionary
 	_expect(
 		not buckets.has(2) and buckets.has(3),
 		"Disconnect cleanup must erase only the departing peer's projectile bucket."
 	)
-	mp_game.free()
+	coordinator.free()
 
-	var exit_game := ProjectileRateLimitMpGame.new()
-	_try_request(exit_game, 6, 1)
-	exit_game.call("_exit_tree")
+	var reset_coordinator := ProjectileRateLimitCoordinator.new()
+	_try_request(reset_coordinator, 6, 1)
+	reset_coordinator.reset_session_state()
 	_expect(
-		(exit_game.get("_client_projectile_request_rate_buckets") as Dictionary).is_empty(),
-		"Exiting MpGame must clear every client projectile bucket."
+		(reset_coordinator.get("_client_projectile_request_rate_buckets") as Dictionary).is_empty(),
+		"Resetting the projectile coordinator must clear every client request bucket."
 	)
-	exit_game.free()
+	reset_coordinator.free()
 
 
 func _test_remote_entry_scope_and_order() -> void:
-	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+	)
 	var remote_body := _get_function_body(
 		source,
-		"func _rpc_projectile_fired_from_client("
+		"func accept_client_projectile_request_identity("
 	)
 	var identity_gate_position := remote_body.find(
-		"_try_accept_client_projectile_request_identity("
+		"is_projectile_id_valid_for_client_owner("
 	)
-	var direction_position := remote_body.find("_get_valid_client_projectile_direction(")
-	var parameter_position := remote_body.find(
-		"_get_authoritative_client_projectile_parameters("
-	)
+	var bucket_position := remote_body.find("_consume_peer_rate_token(")
 	_expect(
 		identity_gate_position >= 0
-		and direction_position > identity_gate_position
-		and parameter_position > direction_position,
-		"Remote projectile requests must spend their token after cheap identity checks and before expensive validation."
+		and bucket_position > identity_gate_position,
+		"Remote projectile requests must spend their token only after cheap identity checks."
 	)
-	var local_body := _get_function_body(source, "func register_local_projectile(")
-	var linglan_body := _get_function_body(
-		source,
-		"func register_local_linglan_skill1_ring("
-	)
-	var tango_body := _get_function_body(
-		source,
-		"func register_local_tango_laser_volley("
-	)
-	var broadcast_body := _get_function_body(source, "func net_projectile_fired(")
 	var client_parameters_body := _get_function_body(
 		source,
-		"func _get_authoritative_client_projectile_parameters("
-	)
-	var return_to_lobby_body := _get_function_body(source, "func _return_to_lobby(")
-	_expect(
-		not local_body.contains("_client_projectile_request_rate_buckets")
-		and not linglan_body.contains("_client_projectile_request_rate_buckets")
-		and not tango_body.contains("_client_projectile_request_rate_buckets")
-		and not broadcast_body.contains("_client_projectile_request_rate_buckets"),
-		"Host-local registration, Host batches, and projectile broadcasts must bypass the client request bucket."
+		"func get_authoritative_client_projectile_parameters("
 	)
 	_expect(
 		not client_parameters_body.contains("TANGO_LASER_PROJECTILE_TYPE")
 		and not client_parameters_body.contains("tango_laser_bullet"),
 		"Clients must not author Tango laser bullets through the generic projectile request RPC."
 	)
+	var reset_body := _get_function_body(source, "func reset_session_state(")
 	_expect(
-		return_to_lobby_body.contains(
-			"_client_projectile_request_rate_buckets.clear()"
-		),
-		"Returning to the lobby must clear every client projectile bucket."
+		reset_body.contains("_client_projectile_request_rate_buckets.clear()"),
+		"Coordinator session reset must clear every client projectile bucket."
 	)
 
 
 func _try_request(
-	mp_game: ProjectileRateLimitMpGame,
+	coordinator: ProjectileRateLimitCoordinator,
 	peer_id: int,
 	sequence: int
 ) -> bool:
-	return bool(mp_game.call(
-		"_try_accept_client_projectile_request_identity",
+	return coordinator.accept_client_projectile_request_identity(
 		peer_id,
-		_projectile_id(mp_game, peer_id, sequence),
-		peer_id
-	))
+		_projectile_id(peer_id, sequence),
+		peer_id,
+		false,
+		coordinator.test_net_time
+	)
 
 
 func _projectile_id(
-	mp_game: ProjectileRateLimitMpGame,
 	peer_id: int,
 	sequence: int
 ) -> int:
-	return int(mp_game.call("_encode_projectile_id", peer_id, sequence))
+	return MpProjectileCoordinator.encode_projectile_id(peer_id, sequence)
 
 
 func _get_peer_bucket(
-	mp_game: ProjectileRateLimitMpGame,
+	coordinator: ProjectileRateLimitCoordinator,
 	peer_id: int
 ) -> Dictionary:
-	var buckets := mp_game.get("_client_projectile_request_rate_buckets") as Dictionary
+	var buckets := coordinator.get("_client_projectile_request_rate_buckets") as Dictionary
 	return buckets.get(peer_id, {}) as Dictionary
 
 

@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tres")
@@ -403,15 +406,17 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	_expect(mp_game != null, "MP game scene must instantiate for Skill3 projectile registry.")
 	if mp_game == null:
 		return
-	mp_game.set("game", test_root)
+	var coordinator := (
+		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
+	)
+	coordinator.bind_runtime(test_root)
 	var registry_config := SKILL3_CONFIG.duplicate(true) as LinglanSkill3Config
 	registry_config.orb_base_radius = 19.0
 	registry_config.orb_grow_scale = 2.25
 	registry_config.orb_expanded_hold_duration = 0.85
 	registry_config.orb_flash_lead_time = 1.35
-	mp_game.set("_linglan_skill3_config", registry_config)
-	var projectile := mp_game.call(
-		"_instantiate_projectile",
+	coordinator.set("_linglan_skill3_config", registry_config)
+	var projectile := coordinator.instantiate_projectile(
 		&"linglan_skill3_orb",
 		999999,
 		Vector2.DOWN,
@@ -432,6 +437,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		_expect(is_equal_approx(projectile.expanded_hold_duration, 0.85), "Registry Skill3 orb must read hold duration from config.")
 		_expect(is_equal_approx(projectile.flash_lead_time, 1.35), "Registry Skill3 orb must read flash lead time from config.")
 		projectile.free()
+	coordinator.unbind_runtime(test_root)
 	mp_game.free()
 
 

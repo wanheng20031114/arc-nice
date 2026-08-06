@@ -1356,6 +1356,10 @@ func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
 	)
 
 
+func get_network_projectile_world_target(net_id: int) -> Node2D:
+	return get_multiplayer_plant_node(net_id)
+
+
 func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
 	return (
 		_plant_runtime_coordinator.get_multiplayer_plant_snapshots()

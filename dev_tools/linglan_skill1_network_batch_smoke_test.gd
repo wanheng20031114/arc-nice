@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const SAKURA_BULLET_SCENE := preload(
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
@@ -21,6 +24,12 @@ class RecordingMpGame:
 
 	var sent_methods: Array[StringName] = []
 	var sent_arguments: Array[Array] = []
+
+	func _init() -> void:
+		var coordinator := MpProjectileCoordinator.new()
+		coordinator.name = "ProjectileCoordinator"
+		add_child(coordinator)
+		projectile_coordinator = coordinator
 
 	func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> void:
 		sent_methods.append(method_name)
@@ -122,9 +131,10 @@ func _run() -> void:
 	var host_net := HostNetManagerStub.new()
 	host_mp.add_child(host_net)
 	host_mp.set("net_manager", host_net)
+	host_mp.projectile_coordinator.bind_runtime(runtime)
 	# Cross the old decimal namespace boundary inside the real PackedInt64 ring
 	# path. IDs must remain owned by the same peer on both sides of 1,000,000.
-	host_mp.set("_next_projectile_sequence", 999999)
+	host_mp.projectile_coordinator.set("_next_projectile_sequence", 999999)
 	host_mp.call(
 		"register_local_linglan_skill1_ring",
 		runtime.ring_projectiles,
@@ -167,33 +177,35 @@ func _run() -> void:
 	)
 	_verify_strictly_increasing_ids(projectile_ids)
 	_expect(
-		int(host_mp.call(
-			"_decode_projectile_sequence_counter",
+		MpProjectileCoordinator.decode_projectile_sequence_counter(
 			int(projectile_ids[0])
-		)) == 999999
-		and int(host_mp.call(
-			"_decode_projectile_sequence_counter",
+		) == 999999
+		and MpProjectileCoordinator.decode_projectile_sequence_counter(
 			int(projectile_ids[projectile_ids.size() - 1])
-		)) == 1000018,
+		) == 1000018,
 		"The real ring batch must cross the legacy one-million sequence boundary without changing owner."
 	)
 	for projectile_id in projectile_ids:
 		_expect(
-			bool(host_mp.call(
-				"_is_projectile_id_valid_for_host_owner",
+			MpProjectileCoordinator.is_projectile_id_valid_for_host_owner(
 				int(projectile_id),
 				owner_peer_id
-			)),
+			),
 			"Every PackedInt64 ring ID must decode to the authoritative owner."
 		)
 	_expect(
-		(host_mp.get("_known_projectiles") as Dictionary).size() == direction_count
-		and (host_mp.get("_projectile_records") as Dictionary).size() == direction_count,
+		int(host_mp.projectile_coordinator.get_state_metrics().get(
+			"known_projectiles", -1
+		)) == direction_count
+		and int(host_mp.projectile_coordinator.get_state_metrics().get(
+			"projectile_records", -1
+		)) == direction_count,
 		"Host batch registration must retain one identity and damage record per real projectile."
 	)
 
 	var client_mp := RecordingMpGame.new()
 	client_mp.set("game", runtime)
+	client_mp.projectile_coordinator.bind_runtime(runtime)
 	client_mp.set("_has_host_time_offset", true)
 	client_mp.set("_host_to_client_time_offset", 0.0)
 	client_mp.call(
@@ -207,10 +219,15 @@ func _run() -> void:
 		lifetime,
 		host_fire_timestamp
 	)
-	var client_known := client_mp.get("_known_projectiles") as Dictionary
-	var client_records := client_mp.get("_projectile_records") as Dictionary
+	var client_known := _get_projectile_map(
+		client_mp.projectile_coordinator,
+		projectile_ids
+	)
 	_expect(
-		client_known.size() == direction_count and client_records.size() == direction_count,
+		client_known.size() == direction_count
+		and int(client_mp.projectile_coordinator.get_state_metrics().get(
+			"projectile_records", -1
+		)) == direction_count,
 		"Client batch playback must create and track all 20 proxy projectiles."
 	)
 	_verify_client_proxy_payload(
@@ -246,17 +263,28 @@ func _run() -> void:
 	)
 
 	_retire_projectiles(client_known)
-	_retire_projectiles(host_mp.get("_known_projectiles") as Dictionary)
+	_retire_projectiles(_get_projectile_map(
+		host_mp.projectile_coordinator,
+		projectile_ids
+	))
 	_expect(
-		client_known.is_empty()
-		and (host_mp.get("_known_projectiles") as Dictionary).is_empty(),
+		int(client_mp.projectile_coordinator.get_state_metrics().get(
+			"known_projectiles", -1
+		)) == 0
+		and int(host_mp.projectile_coordinator.get_state_metrics().get(
+			"known_projectiles", -1
+		)) == 0,
 		"Pooled projectile_finished signals must synchronously clear both network registries."
 	)
-	client_mp.call("_prune_projectile_records", INF)
-	host_mp.call("_prune_projectile_records", INF)
+	client_mp.projectile_coordinator.prune_records(INF)
+	host_mp.projectile_coordinator.prune_records(INF)
 	_expect(
-		client_records.is_empty()
-		and (host_mp.get("_projectile_records") as Dictionary).is_empty(),
+		int(client_mp.projectile_coordinator.get_state_metrics().get(
+			"projectile_records", -1
+		)) == 0
+		and int(host_mp.projectile_coordinator.get_state_metrics().get(
+			"projectile_records", -1
+		)) == 0,
 		"Expired batch records must be removed by the reusable stale-ID prune buffer."
 	)
 
@@ -331,6 +359,18 @@ func _retire_projectiles(projectiles: Dictionary) -> void:
 		projectile.call("retire")
 
 
+func _get_projectile_map(
+	coordinator: MpProjectileCoordinator,
+	projectile_ids: PackedInt64Array
+) -> Dictionary:
+	var projectiles: Dictionary = {}
+	for projectile_id in projectile_ids:
+		var projectile := coordinator.get_projectile(int(projectile_id))
+		if projectile != null:
+			projectiles[int(projectile_id)] = projectile
+	return projectiles
+
+
 func _cleanup(
 	runtime: PoolRuntime,
 	boss: LinglanBoss,
@@ -338,8 +378,10 @@ func _cleanup(
 	client_mp: RecordingMpGame
 ) -> void:
 	if client_mp != null:
+		client_mp.projectile_coordinator.unbind_runtime(runtime)
 		client_mp.free()
 	if host_mp != null:
+		host_mp.projectile_coordinator.unbind_runtime(runtime)
 		host_mp.free()
 	if boss != null and is_instance_valid(boss):
 		boss.queue_free()

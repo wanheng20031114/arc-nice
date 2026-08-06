@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const BULLET_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 )
@@ -114,10 +117,15 @@ func _test_scene_and_animation_contract() -> void:
 
 func _test_multiplayer_projectile_branch_preserves_host_direction() -> void:
 	var fixture := _create_fixture("GunnerBulletMultiplayerFixture")
-	var mp_game := MP_GAME_SCRIPT.new()
+	var runtime := StandardGame.new()
+	var gameplay_gateway := MultiplayerGameplayGateway.new()
+	gameplay_gateway.name = "MultiplayerGameplayGateway"
+	runtime.add_child(gameplay_gateway)
+	gameplay_gateway.bind_runtime(runtime)
+	var coordinator := MpProjectileCoordinator.new()
+	coordinator.bind_runtime(runtime)
 	var host_direction := Vector2(0.6, 0.8)
-	var projectile := mp_game.call(
-		"_instantiate_projectile",
+	var projectile := coordinator.instantiate_projectile(
 		&"combat_robot_gunner_bullet",
 		1,
 		host_direction,
@@ -130,7 +138,6 @@ func _test_multiplayer_projectile_branch_preserves_host_direction() -> void:
 	) as CombatRobotGunnerBullet
 	_expect(projectile != null, "MpGame must instantiate the dedicated gunner projectile type.")
 	if projectile != null:
-		fixture.add_child(projectile)
 		projectile.set_physics_process(false)
 		_expect(
 			projectile.direction.is_equal_approx(host_direction),
@@ -140,7 +147,9 @@ func _test_multiplayer_projectile_branch_preserves_host_direction() -> void:
 			is_equal_approx(projectile.rotation, host_direction.angle()),
 			"Gunner projectile rotation must follow the accepted Host direction."
 		)
-	mp_game.free()
+	coordinator.unbind_runtime(runtime)
+	coordinator.free()
+	runtime.free()
 	await _dispose_fixture(fixture)
 
 

@@ -1,5 +1,9 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
+const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
@@ -812,6 +816,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		remote_player.apply_multiplayer_ammo_state(remote_player.get_ammo_capacity(), 2, false, 0.0)
 	var parameter_mp_game := MP_GAME_SCENE.instantiate()
 	_bind_multiplayer_runtime(parameter_mp_game, game)
+	var parameter_projectile_coordinator := (
+		parameter_mp_game.get_node("ProjectileCoordinator")
+		as MpProjectileCoordinator
+	)
 	var accepted_parameters := parameter_mp_game.call(
 		"_get_authoritative_client_projectile_parameters",
 		&"player_bullet",
@@ -908,41 +916,35 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 		2
 	) as Dictionary
 	_expect(rejected_parameters.is_empty(), "Host must reject client-spawned enemy projectile types.")
-	var peer_two_projectile_id := int(parameter_mp_game.call(
-		"_encode_projectile_id",
+	var peer_two_projectile_id := MpProjectileCoordinator.encode_projectile_id(
 		2,
 		1
-	))
-	var peer_three_projectile_id := int(parameter_mp_game.call(
-		"_encode_projectile_id",
+	)
+	var peer_three_projectile_id := MpProjectileCoordinator.encode_projectile_id(
 		3,
 		1
-	))
+	)
 	_expect(
-		bool(parameter_mp_game.call(
-			"_is_projectile_id_valid_for_owner",
+		MpProjectileCoordinator.is_projectile_id_valid_for_owner(
 			peer_two_projectile_id,
 			2
-		)),
+		),
 		"Projectile id namespace must match its owner peer."
 	)
 	_expect(
-		not bool(parameter_mp_game.call(
-			"_is_projectile_id_valid_for_owner",
+		not MpProjectileCoordinator.is_projectile_id_valid_for_owner(
 			peer_three_projectile_id,
 			2
-		)),
+		),
 		"Projectile id namespace must reject another peer's id."
 	)
-	var valid_direction := parameter_mp_game.call(
-		"_get_valid_client_projectile_direction",
+	var valid_direction := MpProjectileCoordinator.get_valid_client_projectile_direction(
 		Vector2(0.75, 0.0)
-	) as Vector2
+	)
 	_expect(valid_direction.is_equal_approx(Vector2.RIGHT), "Client projectile direction must be normalized.")
-	var invalid_direction := parameter_mp_game.call(
-		"_get_valid_client_projectile_direction",
+	var invalid_direction := MpProjectileCoordinator.get_valid_client_projectile_direction(
 		Vector2.ZERO
-	) as Vector2
+	)
 	_expect(invalid_direction == Vector2.ZERO, "Client projectile direction must reject zero vectors.")
 	var near_spawn := (
 		remote_player.global_position
@@ -951,39 +953,39 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	)
 	var far_spawn := remote_player.global_position + Vector2(1024.0, 0.0)
 	_expect(
-		bool(parameter_mp_game.call(
-			"_is_client_projectile_spawn_position_allowed",
+		parameter_projectile_coordinator.is_client_projectile_spawn_position_allowed(
 			&"player_bullet",
 			2,
-			near_spawn
-		)),
+			near_spawn,
+			null,
+			MpGameScript.CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
+		),
 		"Host must accept client projectile spawns near the authoritative player."
 	)
 	_expect(
-		not bool(parameter_mp_game.call(
-			"_is_client_projectile_spawn_position_allowed",
+		not parameter_projectile_coordinator.is_client_projectile_spawn_position_allowed(
 			&"player_bullet",
 			2,
-			far_spawn
-		)),
+			far_spawn,
+			null,
+			MpGameScript.CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
+		),
 		"Host must reject client projectile spawns far from the authoritative player."
 	)
 	_expect(
-		int(parameter_mp_game.call(
-			"_get_authoritative_projectile_damage",
+		parameter_projectile_coordinator.get_authoritative_projectile_damage(
 			peer_two_projectile_id,
 			2,
 			999
-		)) == 37,
+		) == 37,
 		"Host must cap recordless projectile hit damage to the authoritative player attack."
 	)
 	_expect(
-		int(parameter_mp_game.call(
-			"_get_authoritative_projectile_damage",
+		parameter_projectile_coordinator.get_authoritative_projectile_damage(
 			peer_three_projectile_id,
 			2,
 			999
-		)) == -1,
+		) == -1,
 		"Host must reject recordless projectile damage from another peer namespace."
 	)
 	if remote_player != null:
@@ -1030,6 +1032,9 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	if mp_game == null:
 		return
 	var player_coordinator := _bind_mp_game_coordinators(mp_game)
+	var projectile_coordinator := (
+		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
+	)
 	player_coordinator.reset_visual_interpolator_to_state(
 		2, Vector2.ZERO, Vector2.ZERO, 0, 0, 0.0
 	)
@@ -1049,34 +1054,37 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	var projectile := Bullet.new()
 	projectile.owner_peer_id = 2
 	root.add_child(projectile)
-	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
-	var projectile_records := mp_game.get("_projectile_records") as Dictionary
-	var cleanup_projectile_id := int(mp_game.call("_encode_projectile_id", 2, 1))
+	var known_projectiles := (
+		projectile_coordinator.get("_known_projectiles") as Dictionary
+	)
+	var cleanup_projectile_id := MpProjectileCoordinator.encode_projectile_id(
+		2,
+		1
+	)
 	known_projectiles[cleanup_projectile_id] = projectile
-	mp_game.call(
-		"_remember_projectile_record",
+	projectile_coordinator.remember_projectile_record(
 		cleanup_projectile_id,
 		2,
 		&"player_bullet",
 		19,
-		2.0
+		2.0,
+		false,
+		0.0
 	)
 	_expect(
-		int(mp_game.call(
-			"_get_authoritative_projectile_damage",
+		projectile_coordinator.get_authoritative_projectile_damage(
 			cleanup_projectile_id,
 			2,
 			999
-		)) == 19,
+		) == 19,
 		"MpGame must read projectile damage from host projectile records."
 	)
 	_expect(
-		int(mp_game.call(
-			"_get_authoritative_projectile_damage",
+		projectile_coordinator.get_authoritative_projectile_damage(
 			cleanup_projectile_id,
 			3,
 			19
-		)) == -1,
+		) == -1,
 		"MpGame must reject projectile damage records with the wrong owner."
 	)
 
@@ -1092,7 +1100,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	_expect(not revive_times.has(2), "MpGame must clear disconnected peer revive timers.")
 	_expect(not revive_seconds.has(2), "MpGame must clear disconnected peer revive countdown state.")
 	_expect(not known_projectiles.has(cleanup_projectile_id), "MpGame must erase disconnected peer projectile indexes.")
-	_expect(not projectile_records.has(cleanup_projectile_id), "MpGame must erase disconnected peer projectile records.")
+	_expect(
+		not projectile_coordinator.has_projectile_record(cleanup_projectile_id),
+		"MpGame must erase disconnected peer projectile records."
+	)
 	await process_frame
 	_expect(not is_instance_valid(projectile), "MpGame must free disconnected peer projectile nodes.")
 	mp_game.free()
@@ -1122,6 +1133,9 @@ func _test_player_snapshot_roster_reconcile() -> void:
 		await physics_frame
 		return
 	_bind_multiplayer_runtime(mp_game, game)
+	var projectile_coordinator := (
+		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
+	)
 	var player_coordinator := (
 		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
 	)
@@ -1136,17 +1150,22 @@ func _test_player_snapshot_roster_reconcile() -> void:
 	var projectile := Bullet.new()
 	projectile.owner_peer_id = 3
 	root.add_child(projectile)
-	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
-	var projectile_records := mp_game.get("_projectile_records") as Dictionary
-	var stale_projectile_id := int(mp_game.call("_encode_projectile_id", 3, 1))
+	var known_projectiles := (
+		projectile_coordinator.get("_known_projectiles") as Dictionary
+	)
+	var stale_projectile_id := MpProjectileCoordinator.encode_projectile_id(
+		3,
+		1
+	)
 	known_projectiles[stale_projectile_id] = projectile
-	mp_game.call(
-		"_remember_projectile_record",
+	projectile_coordinator.remember_projectile_record(
 		stale_projectile_id,
 		3,
 		&"player_bullet",
 		21,
-		2.0
+		2.0,
+		false,
+		0.0
 	)
 
 	mp_game.call(
@@ -1180,7 +1199,10 @@ func _test_player_snapshot_roster_reconcile() -> void:
 	_expect(not sequence_cache.has(3), "Roster reconcile must clear missing peer input sequence state.")
 	_expect(not health_revisions.has(3), "Roster reconcile must clear missing peer health revisions.")
 	_expect(not known_projectiles.has(stale_projectile_id), "Roster reconcile must clear missing peer projectiles.")
-	_expect(not projectile_records.has(stale_projectile_id), "Roster reconcile must clear missing peer projectile records.")
+	_expect(
+		not projectile_coordinator.has_projectile_record(stale_projectile_id),
+		"Roster reconcile must clear missing peer projectile records."
+	)
 	_expect(stale_player == null or not is_instance_valid(stale_player), "Roster reconcile must free missing peer player nodes.")
 	_expect(not is_instance_valid(projectile), "Roster reconcile must free missing peer projectile nodes.")
 
@@ -1534,6 +1556,9 @@ func _test_projectile_time_compensation() -> void:
 		await process_frame
 		return
 	_bind_multiplayer_runtime(mp_game, game)
+	var projectile_coordinator := (
+		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
+	)
 	var now_origin := Time.get_ticks_msec() / 1000.0 - 10.0
 	mp_game.set("_net_time_origin", now_origin)
 	mp_game.set("_has_host_time_offset", true)
@@ -1543,9 +1568,8 @@ func _test_projectile_time_compensation() -> void:
 	var direction := Vector2.RIGHT
 	var speed := 100.0
 	var lifetime := 2.0
-	var projectile_id := int(mp_game.call("_encode_projectile_id", 2, 1))
-	mp_game.call(
-		"_spawn_network_projectile",
+	var projectile_id := MpProjectileCoordinator.encode_projectile_id(2, 1)
+	projectile_coordinator.receive_projectile_fired(
 		projectile_id,
 		&"player_bullet",
 		2,
@@ -1556,10 +1580,11 @@ func _test_projectile_time_compensation() -> void:
 		lifetime,
 		false,
 		0,
-		now - 0.12
+		0,
+		0.12,
+		now
 	)
-	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
-	var projectile := known_projectiles.get(projectile_id) as Bullet
+	var projectile := projectile_coordinator.get_projectile(projectile_id) as Bullet
 	_expect(projectile != null, "Projectile compensation test must spawn a bullet.")
 	if projectile != null:
 		var actual_compensation_age := (
@@ -1575,9 +1600,11 @@ func _test_projectile_time_compensation() -> void:
 			"Client projectile visuals must reduce remaining lifetime by network age."
 		)
 		projectile.free()
-	var expired_projectile_id := int(mp_game.call("_encode_projectile_id", 2, 2))
-	mp_game.call(
-		"_spawn_network_projectile",
+	var expired_projectile_id := MpProjectileCoordinator.encode_projectile_id(
+		2,
+		2
+	)
+	projectile_coordinator.receive_projectile_fired(
 		expired_projectile_id,
 		&"player_bullet",
 		2,
@@ -1588,14 +1615,16 @@ func _test_projectile_time_compensation() -> void:
 		0.1,
 		false,
 		0,
-		now - 0.5
+		0,
+		0.1,
+		now
 	)
 	_expect(
-		not known_projectiles.has(expired_projectile_id),
+		not projectile_coordinator.has_projectile(expired_projectile_id),
 		"A view-bounded player projectile that expired in transit must not gain a 0.05s visual extension."
 	)
 	_expect(
-		(mp_game.get("_projectile_records") as Dictionary).has(expired_projectile_id),
+		projectile_coordinator.has_projectile_record(expired_projectile_id),
 		"An in-transit expiry must retain its multiplayer de-duplication record."
 	)
 	mp_game.free()
@@ -3032,39 +3061,44 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 	if host_enemy != null and second_host_enemy != null:
 		var mp_game := MP_GAME_SCENE.instantiate()
 		_bind_multiplayer_runtime(mp_game, host_game)
+		var projectile_coordinator := (
+			mp_game.get_node("ProjectileCoordinator")
+			as MpProjectileCoordinator
+		)
 		var host_net_manager := root.get_node_or_null("NetManager")
 		var previous_role := 0
 		if host_net_manager != null:
 			previous_role = int(host_net_manager.get("net_role"))
 			host_net_manager.set("net_role", 1)
 			mp_game.set("net_manager", host_net_manager)
-		var non_piercing_projectile_id := int(mp_game.call(
-			"_encode_projectile_id",
+		var non_piercing_projectile_id := (
+			MpProjectileCoordinator.encode_projectile_id(
 			2,
 			1
-		))
-		var piercing_projectile_id := int(mp_game.call(
-			"_encode_projectile_id",
+			)
+		)
+		var piercing_projectile_id := MpProjectileCoordinator.encode_projectile_id(
 			2,
 			2
-		))
-		var sniper_projectile_id := int(mp_game.call(
-			"_encode_projectile_id",
+		)
+		var sniper_projectile_id := MpProjectileCoordinator.encode_projectile_id(
 			2,
 			3
-		))
-		var skill1_bomb_projectile_id := int(mp_game.call(
-			"_encode_projectile_id",
+		)
+		var skill1_bomb_projectile_id := (
+			MpProjectileCoordinator.encode_projectile_id(
 			2,
 			4
-		))
-		mp_game.call(
-			"_remember_projectile_record",
+			)
+		)
+		projectile_coordinator.remember_projectile_record(
 			non_piercing_projectile_id,
 			2,
 			&"player_bullet",
 			11,
-			2.0
+			2.0,
+			false,
+			0.0
 		)
 		var health_before_hit := host_enemy.current_health
 		mp_game.call(
@@ -3102,22 +3136,21 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			second_host_enemy.current_health == second_health_before_non_piercing_hit,
 			"One non-piercing player bullet must accept only its first authoritative enemy hit."
 		)
-		var projectile_records := mp_game.get("_projectile_records") as Dictionary
-		var non_piercing_record := projectile_records.get(
-			non_piercing_projectile_id,
-			{}
-		) as Dictionary
+		var non_piercing_record := projectile_coordinator.get_projectile_record(
+			non_piercing_projectile_id
+		)
 		_expect(
 			bool(non_piercing_record.get("confirmed_hit_consumed", false)),
 			"A confirmed non-piercing bullet hit must consume its projectile record hit."
 		)
-		mp_game.call(
-			"_remember_projectile_record",
+		projectile_coordinator.remember_projectile_record(
 			sniper_projectile_id,
 			2,
 			&"tiyi_sniper_bullet",
 			1,
-			0.35
+			0.35,
+			false,
+			0.0
 		)
 		var health_before_forged_sniper_hit := second_host_enemy.current_health
 		mp_game.call(
@@ -3132,13 +3165,14 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			second_host_enemy.current_health == health_before_forged_sniper_hit,
 			"The disabled client enemy-hit RPC must never settle Tiyi sniper damage."
 		)
-		mp_game.call(
-			"_remember_projectile_record",
+		projectile_coordinator.remember_projectile_record(
 			skill1_bomb_projectile_id,
 			2,
 			&"skill1_bomb",
 			11,
-			2.0
+			2.0,
+			false,
+			0.0
 		)
 		var health_before_forged_bomb_hit := second_host_enemy.current_health
 		mp_game.call(
@@ -3165,14 +3199,14 @@ func _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm() -> void:
 			second_host_enemy.current_health < health_before_forged_sniper_hit,
 			"Host-simulated Tiyi sniper hits must use the authoritative projectile record."
 		)
-		mp_game.call(
-			"_remember_projectile_record",
+		projectile_coordinator.remember_projectile_record(
 			piercing_projectile_id,
 			2,
 			&"player_bullet",
 			1,
 			2.0,
-			true
+			true,
+			0.0
 		)
 		var first_health_before_piercing_hit := host_enemy.current_health
 		var second_health_before_piercing_hit := second_host_enemy.current_health
@@ -4260,11 +4294,16 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 		target_enemy.set_meta("net_id", 501)
 		game.multiplayer_enemies_by_net_id[501] = target_enemy
 
-		var sakura_rocket_projectile_id := int(mp_game.call(
-			"_encode_projectile_id",
+		var projectile_coordinator := (
+			mp_game.get_node("ProjectileCoordinator")
+			as MpProjectileCoordinator
+		)
+		var sakura_rocket_projectile_id := (
+			MpProjectileCoordinator.encode_projectile_id(
 			2,
 			1
-		))
+			)
+		)
 		mp_game.call(
 			"net_projectile_fired",
 			sakura_rocket_projectile_id,
@@ -4280,8 +4319,7 @@ func _test_client_linglan_skill2_rocket_does_not_damage_enemy_proxy() -> void:
 			-1.0,
 			501
 		)
-		var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
-		var spawned_rocket := known_projectiles.get(
+		var spawned_rocket := projectile_coordinator.get_projectile(
 			sakura_rocket_projectile_id
 		) as LinglanSkill2SakuraRocket
 		_expect(spawned_rocket != null, "Sakura rocket network spawn must create a tracked projectile.")
@@ -4961,10 +4999,15 @@ func _bind_mp_game_coordinators(
 		mp_game.get_node("EnemyCoordinator") as MpEnemyCoordinator
 	)
 	mp_game.enemy_coordinator = enemy_coordinator
+	var projectile_coordinator := (
+		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
+	)
+	mp_game.projectile_coordinator = projectile_coordinator
 	if game != null:
 		session_coordinator.bind_runtime(game)
 		player_coordinator.bind_runtime(game)
 		enemy_coordinator.bind_runtime(game)
+		projectile_coordinator.bind_runtime(game)
 	return player_coordinator
 
 

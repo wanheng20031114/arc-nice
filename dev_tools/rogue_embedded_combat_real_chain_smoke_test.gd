@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const ROGUE_COMBAT_SCENE := preload(
 	"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 )
@@ -346,6 +349,10 @@ func _test_embedded_client_view_damage_authority() -> void:
 	var keepalive_request := HTTPRequest.new()
 	keepalive_request.name = "PublicRoomKeepaliveRequest"
 	mp_game.add_child(keepalive_request)
+	var projectile_coordinator := MpProjectileCoordinator.new()
+	projectile_coordinator.name = "ProjectileCoordinator"
+	mp_game.add_child(projectile_coordinator)
+	mp_game.projectile_coordinator = projectile_coordinator
 	route_shell.add_child(mp_game)
 	var wave := _create_one_enemy_wave()
 	var battle := await _create_battle(
@@ -358,6 +365,7 @@ func _test_embedded_client_view_damage_authority() -> void:
 		await _dispose_shell(route_shell)
 		return
 	mp_game.game = battle
+	projectile_coordinator.bind_runtime(battle)
 	var gameplay_gateway := battle.get_multiplayer_gameplay_gateway()
 	_expect(
 		gameplay_gateway != null,
@@ -388,9 +396,8 @@ func _test_embedded_client_view_damage_authority() -> void:
 		-1.0,
 		0
 	)
-	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
 	var gunner_bullet := (
-		known_projectiles.get(CLIENT_GUNNER_PROJECTILE_ID)
+		projectile_coordinator.get_projectile(CLIENT_GUNNER_PROJECTILE_ID)
 		as CombatRobotGunnerBullet
 	)
 	_expect(
@@ -429,9 +436,8 @@ func _test_embedded_client_view_damage_authority() -> void:
 		-1.0,
 		0
 	)
-	known_projectiles = mp_game.get("_known_projectiles") as Dictionary
 	var drone := (
-		known_projectiles.get(CLIENT_DRONE_PROJECTILE_ID)
+		projectile_coordinator.get_projectile(CLIENT_DRONE_PROJECTILE_ID)
 		as CombatRobotSuicideDrone
 	)
 	_expect(drone != null, "MpGame 必须通过真实复制弹体工厂创建自爆无人机。")
@@ -462,6 +468,7 @@ func _test_embedded_client_view_damage_authority() -> void:
 
 	if gameplay_gateway != null:
 		gameplay_gateway.detach_multiplayer_session(mp_game)
+	projectile_coordinator.unbind_runtime(battle)
 	mp_game.game = null
 	await _dispose_shell(route_shell)
 

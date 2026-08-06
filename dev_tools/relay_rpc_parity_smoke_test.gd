@@ -1,6 +1,9 @@
 extends SceneTree
 
 const MAIN_MP_GAME_PATH := "res://scene/multiplayer/mp_game.gd"
+const MAIN_PROJECTILE_COORDINATOR_PATH := (
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const RELAY_MP_GAME_PATH := "res://relay_servers/relay_godot_project/relay_mp_game_stub.gd"
 const MAIN_ROGUE_ROUTE_PATH := "res://scene/multiplayer/mp_rogue_route.gd"
 const RELAY_ROGUE_ROUTE_PATH := (
@@ -399,14 +402,26 @@ func _test_relay_channel_count() -> void:
 
 func _test_tango_charge_authority_source() -> void:
 	var source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
+	var projectile_source := FileAccess.get_file_as_string(
+		MAIN_PROJECTILE_COORDINATOR_PATH
+	)
 	_expect(not source.is_empty(), "MpGame source must be readable for Tango authority checks.")
-	if source.is_empty():
+	_expect(
+		not projectile_source.is_empty(),
+		"ProjectileCoordinator source must be readable for Tango volley checks."
+	)
+	if source.is_empty() or projectile_source.is_empty():
 		return
 	var whitespace_regex := RegEx.new()
 	if whitespace_regex.compile("\\s+") != OK:
 		failures.append("Unable to compile Tango authority whitespace regex.")
 		return
 	var compact_source := whitespace_regex.sub(source, "", true)
+	var compact_projectile_source := whitespace_regex.sub(
+		projectile_source,
+		"",
+		true
+	)
 	_expect(
 		compact_source.contains(
 			"varelapsed:=maxf(_get_net_time()-float(charge.get(\"started_at\",0.0)),0.0)"
@@ -445,9 +460,19 @@ func _test_tango_charge_authority_source() -> void:
 	)
 	_expect(
 		compact_source.contains("funcregister_local_tango_laser_volley(")
-		and compact_source.contains("projectiles.size()!=TANGO_LASER_VOLLEY_PROJECTILE_COUNT")
+		and compact_source.contains(
+			"projectile_coordinator.register_local_tango_laser_volley("
+		)
 		and compact_source.contains("&\"net_tango_laser_volley\"")
-		and compact_source.contains("_allocate_projectile_id(owner_peer_id,true)"),
+		and compact_projectile_source.contains(
+			"funcregister_local_tango_laser_volley("
+		)
+		and compact_projectile_source.contains(
+			"projectiles.size()!=TANGO_LASER_VOLLEY_PROJECTILE_COUNT"
+		)
+		and compact_projectile_source.contains(
+			"allocate_projectile_id(owner_peer_id,true)"
+		),
 		"Tango's three projectiles must be allocated and broadcast as one Host-origin volley."
 	)
 	_expect(

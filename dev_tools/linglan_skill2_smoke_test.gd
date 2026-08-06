@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const LINGLAN_SCENE := preload("res://scene/boss/linglan/linglan_boss.tscn")
 const LINGLAN_CONFIG := preload("res://resources/config/enemies/linglan_boss.tres")
 const SKILL2_CONFIG := preload("res://resources/config/bosses/linglan_skill2.tres")
@@ -400,9 +403,11 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	_expect(mp_game != null, "MP game scene must instantiate for Skill2 projectile registry.")
 	if mp_game == null:
 		return
-	mp_game.set("game", test_root)
-	var collectible_projectile := mp_game.call(
-		"_instantiate_projectile",
+	var coordinator := (
+		mp_game.get_node("ProjectileCoordinator") as MpProjectileCoordinator
+	)
+	coordinator.bind_runtime(test_root)
+	var collectible_projectile := coordinator.instantiate_projectile(
 		&"collectible_sakura_rocket",
 		999999,
 		Vector2.RIGHT,
@@ -415,7 +420,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	) as LinglanSkill2SakuraRocket
 	_expect(collectible_projectile != null, "Multiplayer registry must instantiate collectible_sakura_rocket.")
 	_expect(
-		mp_game.get("_linglan_skill2_config") == null,
+		coordinator.get("_linglan_skill2_config") == null,
 		"Collectible Sakura multiplayer setup must not load the Boss Skill2 config."
 	)
 	if collectible_projectile != null:
@@ -452,9 +457,8 @@ func _test_multiplayer_projectile_instantiation() -> void:
 	var registry_config := SKILL2_CONFIG.duplicate(true) as LinglanSkill2Config
 	registry_config.rocket_explosion_radius = 91.0
 	registry_config.rocket_homing_turn_rate = 2.4
-	mp_game.set("_linglan_skill2_config", registry_config)
-	var projectile := mp_game.call(
-		"_instantiate_projectile",
+	coordinator.set("_linglan_skill2_config", registry_config)
+	var projectile := coordinator.instantiate_projectile(
 		&"linglan_skill2_rocket",
 		999999,
 		Vector2.DOWN,
@@ -479,8 +483,8 @@ func _test_multiplayer_projectile_instantiation() -> void:
 			"Registry Skill2 rocket must keep the Boss explosion dependency."
 		)
 	if collectible_projectile != null:
-		var boss_scene := mp_game.get("_linglan_skill2_rocket_scene") as PackedScene
-		var collectible_scene := mp_game.get("_collectible_sakura_rocket_scene") as PackedScene
+		var boss_scene := coordinator.get("_linglan_skill2_rocket_scene") as PackedScene
+		var collectible_scene := coordinator.get("_collectible_sakura_rocket_scene") as PackedScene
 		_expect(
 			boss_scene != null and collectible_scene != null and boss_scene != collectible_scene,
 			"Boss and collectible Sakura rockets must use independent PackedScenes."
@@ -509,6 +513,7 @@ func _test_multiplayer_projectile_instantiation() -> void:
 		collectible_projectile.free()
 	if projectile != null:
 		projectile.free()
+	coordinator.unbind_runtime(test_root)
 	mp_game.free()
 
 

@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const FIREBALL_VOLLEY_SCENE := preload(
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
 )
@@ -31,6 +34,12 @@ class TestMpGame:
 	var last_reported_damage_flags := 0
 	var sent_methods: Array[StringName] = []
 	var sent_arguments: Array[Array] = []
+
+	func _init() -> void:
+		var coordinator := MpProjectileCoordinator.new()
+		coordinator.name = "ProjectileCoordinator"
+		add_child(coordinator)
+		projectile_coordinator = coordinator
 
 	func request_player_hit_report(
 		source_id: int,
@@ -190,16 +199,16 @@ func _test_dedup_key_and_source_mask_contract() -> void:
 	var mp_game := TestMpGame.new()
 	var projectile_id := 81001
 	var elite_projectile_id := 81011
-	mp_game.call(
-		"_remember_projectile_record",
+	_remember_projectile_record_for_test(
+		mp_game,
 		projectile_id,
 		1,
 		FIREBALL_TYPE,
 		FIREBALL_DAMAGE,
 		7.0
 	)
-	mp_game.call(
-		"_remember_projectile_record",
+	_remember_projectile_record_for_test(
+		mp_game,
 		elite_projectile_id,
 		1,
 		ELITE_FIREBALL_TYPE,
@@ -313,8 +322,8 @@ func _test_elite_projectile_instantiation_contract() -> void:
 	var mp_game := TestMpGame.new()
 	test_scene.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	mp_game.set("game", test_scene)
-	var projectile := mp_game.call(
-		"_instantiate_projectile",
+	mp_game.projectile_coordinator.bind_runtime(test_scene)
+	var projectile := mp_game.projectile_coordinator.instantiate_projectile(
 		ELITE_FIREBALL_TYPE,
 		1,
 		Vector2.RIGHT,
@@ -332,8 +341,7 @@ func _test_elite_projectile_instantiation_contract() -> void:
 	if projectile == null:
 		mp_game.free()
 		return
-	mp_game.call(
-		"_setup_projectile_network_identity",
+	mp_game.projectile_coordinator.setup_projectile_network_identity(
 		projectile,
 		81012,
 		1,
@@ -361,13 +369,14 @@ func _test_elite_projectile_instantiation_contract() -> void:
 		+ "type, 70 damage, 115 speed, and Elite A/B/C sources."
 	)
 	projectile.free()
+	mp_game.projectile_coordinator.unbind_runtime(test_scene)
 	mp_game.free()
 
 
 func _test_elite_volley_source_family_and_first_contact() -> void:
 	var projectile_id := 81013
-	contact_authority.call(
-		"_remember_projectile_record",
+	_remember_projectile_record_for_test(
+		contact_authority,
 		projectile_id,
 		1,
 		ELITE_FIREBALL_TYPE,
@@ -425,16 +434,16 @@ func _test_host_successful_hits_register_burn_statuses() -> void:
 
 	var normal_projectile_id := 81020
 	var elite_projectile_id := 81021
-	mp_game.call(
-		"_remember_projectile_record",
+	_remember_projectile_record_for_test(
+		mp_game,
 		normal_projectile_id,
 		1,
 		FIREBALL_TYPE,
 		FIREBALL_DAMAGE,
 		7.0
 	)
-	mp_game.call(
-		"_remember_projectile_record",
+	_remember_projectile_record_for_test(
+		mp_game,
 		elite_projectile_id,
 		1,
 		ELITE_FIREBALL_TYPE,
@@ -529,8 +538,8 @@ func _test_host_invincible_first_contact_is_consumed() -> void:
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", game)
 	var projectile_id := 81002
-	mp_game.call(
-		"_remember_projectile_record",
+	_remember_projectile_record_for_test(
+		mp_game,
 		projectile_id,
 		1,
 		FIREBALL_TYPE,
@@ -607,8 +616,8 @@ func _test_client_invincible_first_contact_reports_zero() -> void:
 	mp_game.set("net_manager", net_manager)
 	mp_game.set("game", game)
 	var projectile_id := 81003
-	mp_game.call(
-		"_remember_projectile_record",
+	_remember_projectile_record_for_test(
+		mp_game,
 		projectile_id,
 		1,
 		FIREBALL_TYPE,
@@ -832,13 +841,33 @@ func _test_compensation_sweep_and_normal_path_cost() -> void:
 
 
 func _remember_contact_record(projectile_id: int) -> void:
-	contact_authority.call(
-		"_remember_projectile_record",
+	_remember_projectile_record_for_test(
+		contact_authority,
 		projectile_id,
 		1,
 		FIREBALL_TYPE,
 		FIREBALL_DAMAGE,
 		7.0
+	)
+
+
+func _remember_projectile_record_for_test(
+	session: Node,
+	projectile_id: int,
+	owner_peer_id: int,
+	projectile_type: StringName,
+	damage: int,
+	lifetime: float
+) -> void:
+	var coordinator := session.get("projectile_coordinator") as MpProjectileCoordinator
+	coordinator.remember_projectile_record(
+		projectile_id,
+		owner_peer_id,
+		projectile_type,
+		damage,
+		lifetime,
+		false,
+		0.0
 	)
 
 

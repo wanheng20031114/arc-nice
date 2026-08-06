@@ -2,6 +2,9 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
+const PROJECTILE_COORDINATOR_SOURCE_PATH := (
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const TEST_PORT := 29279
 const LINGLAN_BOSS_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://resources/config/enemies/linglan_boss.tres",
@@ -253,7 +256,14 @@ func _test_runtime_activation_gate() -> void:
 
 func _test_mode_specific_mp_game_source() -> void:
 	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var projectile_source := FileAccess.get_file_as_string(
+		PROJECTILE_COORDINATOR_SOURCE_PATH
+	)
 	_expect(not source.is_empty(), "MpGame source must be readable.")
+	_expect(
+		not projectile_source.is_empty(),
+		"ProjectileCoordinator source must be readable."
+	)
 	_expect(
 		not source.contains('preload("res://scene/game_modes/standard/standard_game.tscn")')
 		and not source.contains('preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")'),
@@ -261,35 +271,49 @@ func _test_mode_specific_mp_game_source() -> void:
 	)
 	_expect(
 		not source.contains('preload("res://scene/boss/linglan')
-		and not source.contains('preload("res://resources/config/bosses/linglan'),
+		and not source.contains('preload("res://resources/config/bosses/linglan')
+		and not projectile_source.contains('preload("res://scene/boss/linglan')
+		and not projectile_source.contains(
+			'preload("res://resources/config/bosses/linglan'
+		),
 		"Tower-defense multiplayer must not eagerly load Linglan scenes or configs."
 	)
 	_expect(
-		not source.contains("const AGAVE_CANNONBALL_SCENE := preload")
-		and not source.contains("const BULLET_SCENE := preload")
-		and not source.contains("const TIYI_SNIPER_BULLET_SCENE := preload")
-		and not source.contains("const TIYI_SNIPER_HIT_EFFECT_SCENE := preload")
-		and not source.contains("const SKILL1_BOMB_SCENE := preload"),
-		"MpGame must let the active mode and frozen character roster own projectile loading."
+		not projectile_source.contains("const BULLET_SCENE := preload")
+		and not projectile_source.contains("const TIYI_SNIPER_BULLET_SCENE := preload")
+		and not projectile_source.contains("const TIYI_SNIPER_HIT_EFFECT_SCENE := preload")
+		and not projectile_source.contains("const SKILL1_BOMB_SCENE := preload"),
+		"ProjectileCoordinator must preserve lazy loading for roster-specific player projectiles."
 	)
 	_expect(
-		source.contains("FIRE_SORCERER_FIREBALL_VOLLEY_SCENE")
-		and source.contains(
+		source.contains("@onready var projectile_coordinator:")
+		and source.contains("$ProjectileCoordinator")
+		and source.contains("projectile_coordinator.receive_projectile_fired(")
+		and not source.contains("func instantiate_projectile("),
+		"MpGame must expose only a thin façade over the static ProjectileCoordinator."
+	)
+	_expect(
+		projectile_source.contains("FIRE_SORCERER_FIREBALL_VOLLEY_SCENE")
+		and projectile_source.contains(
 			"FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE"
 		)
-		and source.contains('&"fire_sorcerer_fireball_volley"')
-		and source.contains(
+		and projectile_source.contains('&"fire_sorcerer_fireball_volley"')
+		and projectile_source.contains(
 			'&"fire_sorcerer_elite_fireball_volley"'
 		)
-		and source.contains(
-			"fireball_target = game.get_player_for_peer(target_peer_id)"
+		and projectile_source.contains(
+			"target = _get_player(target_peer_id)"
 		)
-		and source.contains("fireball_target = _get_tower_plant(")
-		and source.contains("projectile as FireSorcererFireballVolley")
-		and source.contains("_prepare_enemy_network_projectile(fire_sorcerer_volley)")
-		and source.contains('projectile.has_method("simulate_compensated_motion")'),
+		and projectile_source.contains(
+			"target = _resolve_mode_world_target(target_enemy_net_id)"
+		)
+		and projectile_source.contains("as FireSorcererFireballVolley")
+		and projectile_source.contains("_prepare_enemy_network_projectile(volley)")
+		and projectile_source.contains(
+			'projectile.has_method("simulate_compensated_motion")'
+		),
 		(
-			"MpGame must instantiate, target, time-compensate, and lifetime-compensate "
+			"ProjectileCoordinator must instantiate, target, time-compensate, and lifetime-compensate "
 			+ "Fire Sorcerer volleys."
 		)
 	)

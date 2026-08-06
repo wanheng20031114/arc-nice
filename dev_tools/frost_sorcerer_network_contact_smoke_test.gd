@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
@@ -26,6 +29,12 @@ class TestMpGame:
 	var last_reported_damage_flags := 0
 	var sent_methods: Array[StringName] = []
 	var sent_arguments: Array[Array] = []
+
+	func _init() -> void:
+		var coordinator := MpProjectileCoordinator.new()
+		coordinator.name = "ProjectileCoordinator"
+		add_child(coordinator)
+		projectile_coordinator = coordinator
 
 	func request_player_hit_report(
 		source_id: int,
@@ -297,8 +306,8 @@ func _test_network_instantiation_and_lifetime_compensation() -> void:
 	mp_game.set("net_manager", net_manager)
 	test_scene.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	mp_game.set("game", test_scene)
-	var projectile := mp_game.call(
-		"_instantiate_projectile",
+	mp_game.projectile_coordinator.bind_runtime(test_scene)
+	var projectile := mp_game.projectile_coordinator.instantiate_projectile(
 		ICE_SPIKE_TYPE,
 		1,
 		Vector2.RIGHT,
@@ -319,15 +328,14 @@ func _test_network_instantiation_and_lifetime_compensation() -> void:
 		return
 
 	var projectile_id := 82002
-	mp_game.call(
-		"_setup_projectile_network_identity",
+	mp_game.projectile_coordinator.setup_projectile_network_identity(
 		projectile,
 		projectile_id,
 		1,
 		ICE_SPIKE_TYPE
 	)
 	var finished_callable := Callable(
-		mp_game,
+		mp_game.projectile_coordinator,
 		"_on_network_projectile_finished"
 	)
 	_expect(
@@ -350,17 +358,16 @@ func _test_network_instantiation_and_lifetime_compensation() -> void:
 		"Network instantiation must preserve the Frost scene, 20 damage, 100 speed, 7-second lifetime, direction, and identity contract."
 	)
 
-	var net_time := float(mp_game.call("_get_net_time"))
-	var compensation_age := float(mp_game.call(
-		"_get_projectile_time_compensation_age",
-		net_time - 1.0,
-		ICE_SPIKE_LIFETIME
-	))
-	mp_game.call(
-		"_apply_projectile_lifetime_compensation",
+	var compensation_age := mp_game.projectile_coordinator.get_projectile_time_compensation_age(
+		1.0,
+		ICE_SPIKE_LIFETIME,
+		ICE_SPIKE_TYPE
+	)
+	mp_game.projectile_coordinator.apply_projectile_lifetime_compensation(
 		projectile,
 		ICE_SPIKE_LIFETIME,
-		compensation_age
+		compensation_age,
+		ICE_SPIKE_TYPE
 	)
 	_expect(
 		is_equal_approx(compensation_age, 0.25)
@@ -369,6 +376,7 @@ func _test_network_instantiation_and_lifetime_compensation() -> void:
 	)
 
 	projectile.free()
+	mp_game.projectile_coordinator.unbind_runtime(test_scene)
 	net_manager.free()
 	mp_game.free()
 
@@ -667,16 +675,18 @@ func _test_client_confirmation_and_revision_deduplication() -> void:
 
 
 func _remember_ice_spike_record(
-	mp_game: MultiplayerGameplaySession,
+	session: MultiplayerGameplaySession,
 	projectile_id: int
 ) -> void:
-	mp_game.call(
-		"_remember_projectile_record",
+	var coordinator := session.get("projectile_coordinator") as MpProjectileCoordinator
+	coordinator.remember_projectile_record(
 		projectile_id,
 		1,
 		ICE_SPIKE_TYPE,
 		ICE_SPIKE_DAMAGE,
-		ICE_SPIKE_LIFETIME
+		ICE_SPIKE_LIFETIME,
+		false,
+		0.0
 	)
 
 

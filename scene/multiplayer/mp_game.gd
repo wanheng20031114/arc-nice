@@ -1,6 +1,12 @@
 extends MultiplayerGameplaySession
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
+const MpProjectileCoordinatorScript := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
+const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := (
+	MpProjectileCoordinatorScript.LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
+)
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
 const MultiplayerRuntimeMetricsScript := preload(
 	"res://scene/multiplayer/multiplayer_runtime_metrics.gd"
@@ -52,55 +58,13 @@ const HYDRANGEA_RAIN_TOWER_SCRIPT := preload(
 )
 const CORN_MACHINE_GUN_SCRIPT := preload("res://scene/plant_defense/corn_machine_gun.gd")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
-const BULLET_SCENE_PATH := "res://scene/bullet.tscn"
-const TANGO_LASER_BULLET_SCENE_PATH := (
-	"res://scene/player/tango/tango_laser_bullet.tscn"
-)
 const TANGO_ELECTRIC_SURGE_FIELD_SCENE := preload(
 	"res://scene/player/tango/tango_electric_surge_field.tscn"
-)
-const TIYI_SNIPER_BULLET_SCENE_PATH := "res://scene/player/tiyi/tiyi_sniper_bullet.tscn"
-const TIYI_SNIPER_HIT_EFFECT_SCENE_PATH := (
-	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn"
-)
-const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
-const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
-const SKILL1_BOMB_SCENE_PATH := (
-	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn"
 )
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
-const CAPOO_AK47_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_ak47_bullet.tscn")
-const COMBAT_ROBOT_GUNNER_BULLET_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
-)
-const COMBAT_ROBOT_SUICIDE_DRONE_SCENE := preload(
-	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
-)
-const CAPOO_RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
-const CAPOO_MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
-const FIRE_SORCERER_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn"
-)
-const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
-	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn"
-)
-const CAPOO_SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
-const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn")
-const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
-	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
-)
-const LINGLAN_SAKURA_BULLET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
-const LINGLAN_SKILL2_CONFIG_PATH := "res://resources/config/bosses/linglan_skill2.tres"
-const LINGLAN_SKILL2_ROCKET_SCENE_PATH := "res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
-const COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH := "res://scene/collectible_sakura_rocket.tscn"
-const LINGLAN_SKILL3_CONFIG_PATH := "res://resources/config/bosses/linglan_skill3.tres"
-const LINGLAN_SKILL3_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill3_light_orb.tscn"
-const LINGLAN_SKILL4_CONFIG_PATH := "res://resources/config/bosses/linglan_skill4.tres"
-const LINGLAN_SKILL4_ORB_SCENE_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.tscn"
-const LINGLAN_SKILL4_ORB_SCRIPT_PATH := "res://scene/boss/linglan/linglan_skill4_light_orb.gd"
 const OakWarehouseProtocolScript := preload("res://scene/plant_defense/oak_warehouse_protocol.gd")
 const ProductionBuildingProtocolScript := preload(
 	"res://scene/plant_defense/production_building_protocol.gd"
@@ -136,25 +100,7 @@ const CHEAT_XIRANG_AMOUNT := 1000
 const HIT_DEDUP_RETENTION_SECONDS := 30.0
 const COLLECTIBLE_EFFECT_DEDUP_RETENTION_SECONDS := 10.0
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
-const PROJECTILE_RECORD_RETENTION_SECONDS := 5.0
-## Projectile IDs use one positive signed 64-bit value on the wire:
-## [31-bit owner peer id][1-bit origin lane][31-bit per-process counter].
-## Keeping the owner field disjoint avoids the old decimal namespace spilling
-## into the next owner after one million projectiles. The origin lane also keeps
-## Host-authored projectiles disjoint from a remote client's predicted shots
-## when both processes allocate concurrently for the same owner peer.
-const PROJECTILE_ID_SEQUENCE_BITS := 32
-const PROJECTILE_ID_SEQUENCE_MASK: int = 0xFFFFFFFF
-const PROJECTILE_ID_HOST_ORIGIN_BIT: int = 0x80000000
-const PROJECTILE_ID_SEQUENCE_COUNTER_MASK: int = 0x7FFFFFFF
-const PROJECTILE_ID_MAX_OWNER_PEER_ID: int = 0x7FFFFFFF
-const PROJECTILE_ID_FALLBACK_OWNER_PEER_ID := 999999
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
-const CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH := 0.2
-const CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH := 1.5
-const CLIENT_PROJECTILE_REQUEST_RATE_PER_SECOND := 256.0
-const CLIENT_PROJECTILE_REQUEST_RATE_BURST := 64.0
-const PROJECTILE_TIME_COMPENSATION_MAX_SECONDS := 0.25
 const FIRE_SORCERER_FIREBALL_VOLLEY_TYPE: StringName = (
 	&"fire_sorcerer_fireball_volley"
 )
@@ -163,17 +109,11 @@ const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE: StringName = (
 )
 const FIRE_SLIME_TOUCH_TYPE: StringName = &"fire_slime_touch"
 const FROST_SLIME_TOUCH_TYPE: StringName = &"frost_slime_touch"
-const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
-	&"fire_sorcerer_consumed_source_mask"
-)
 const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
-const COMBAT_ROBOT_SUICIDE_DRONE_TYPE: StringName = &"combat_robot_suicide_drone"
 const LIGHTNING_SORCERER_CHAIN_MIN_POINTS := 2
 const LIGHTNING_SORCERER_CHAIN_MAX_POINTS := 6
-const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := 32
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TANGO_LASER_PROJECTILE_TYPE: StringName = &"tango_laser_bullet"
-const TANGO_LASER_VOLLEY_PROJECTILE_COUNT := 3
 const TIYI_HIGH_NOON_MAX_TARGETS := 25
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
 const SNAPSHOT_PACKET_WARN_BYTES := 1200
@@ -255,20 +195,10 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var session_coordinator: MpSessionCoordinator = $SessionCoordinator
 @onready var player_coordinator: MpPlayerCoordinator = $PlayerCoordinator
 @onready var enemy_coordinator: MpEnemyCoordinator = $EnemyCoordinator
+@onready var projectile_coordinator: MpProjectileCoordinatorScript = $ProjectileCoordinator
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
-var _runtime_scene_cache: Dictionary = {}
-var _projectile_default_parameter_cache: Dictionary[StringName, Dictionary] = {}
 var _agave_cannonball_scene: PackedScene = null
-var _linglan_sakura_bullet_scene: PackedScene = null
-var _linglan_skill2_config: Resource = null
-var _linglan_skill2_rocket_scene: PackedScene = null
-var _collectible_sakura_rocket_scene: PackedScene = null
-var _linglan_skill3_config: Resource = null
-var _linglan_skill3_orb_scene: PackedScene = null
-var _linglan_skill4_config: Resource = null
-var _linglan_skill4_orb_scene: PackedScene = null
-var _linglan_skill4_orb_script: Script = null
 var game: CombatRuntimeBase = null
 var _gameplay_gateway: MultiplayerGameplayGateway = null
 var _mode_adapter: MultiplayerModeAdapter = null
@@ -315,11 +245,6 @@ var _pending_tiyi_target_updates: Dictionary = {}
 var _last_tiyi_activation_seen_by_peer: Dictionary = {}
 var _accepted_player_state_positions: Dictionary = {}
 var _accepted_player_state_times: Dictionary = {}
-var _next_projectile_sequence: int = 1
-var _known_projectiles: Dictionary = {}
-var _projectile_records: Dictionary = {}
-var _stale_projectile_record_ids: Array[int] = []
-var _processed_enemy_hit_ids: Dictionary = {}
 var _processed_player_hit_ids: Dictionary = {}
 var _next_collectible_effect_event_id: int = 1
 var _processed_collectible_effect_event_ids: Dictionary = {}
@@ -342,7 +267,6 @@ var _enemy_snapshot_payload_bytes_total: int = 0
 var _enemy_snapshot_packet_count: int = 0
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
-var _client_projectile_request_rate_buckets: Dictionary = {}
 var _warehouse_transaction_rate_buckets: Dictionary = {}
 var _player_transaction_ingress_rate_buckets: Dictionary = {}
 var _player_action_ingress_rate_buckets: Dictionary = {}
@@ -538,6 +462,8 @@ func _exit_tree() -> void:
 			player_coordinator.unbind_runtime(game)
 		if enemy_coordinator != null:
 			enemy_coordinator.unbind_runtime(game)
+		if projectile_coordinator != null:
+			projectile_coordinator.unbind_runtime(game)
 	else:
 		if session_coordinator != null:
 			session_coordinator.reset_session_state()
@@ -545,6 +471,8 @@ func _exit_tree() -> void:
 			player_coordinator.reset_session_state()
 		if enemy_coordinator != null:
 			enemy_coordinator.reset_session_state()
+		if projectile_coordinator != null:
+			projectile_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -567,7 +495,6 @@ func _exit_tree() -> void:
 	_pending_wave_progress.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
-	_client_projectile_request_rate_buckets.clear()
 	_terrain_snapshot_repair_watchdog_time_left = 0.0
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
@@ -3094,6 +3021,7 @@ func _setup_game(mode: int) -> bool:
 	session_coordinator.bind_runtime(game)
 	player_coordinator.bind_runtime(game)
 	enemy_coordinator.bind_runtime(game)
+	projectile_coordinator.bind_runtime(game)
 	gameplay_gateway.attach_multiplayer_session(self)
 	mode_adapter.attach_multiplayer_session(self)
 	tower_mode_adapter = mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -3205,6 +3133,8 @@ func _discard_unparented_game_runtime() -> void:
 		player_coordinator.unbind_runtime(game)
 	if game != null and enemy_coordinator != null:
 		enemy_coordinator.unbind_runtime(game)
+	if game != null and projectile_coordinator != null:
+		projectile_coordinator.unbind_runtime(game)
 	if game != null and is_instance_valid(game) and game.get_parent() == null:
 		game.free()
 	game = null
@@ -5396,13 +5326,15 @@ func register_local_projectile(
 	if not _NetConstants.is_valid_network_combat_value(damage):
 		push_error("MpGame: 投射物伤害超出网络 signed int32 契约，已拒绝发送。")
 		return
-	var projectile_id := _register_local_projectile_identity(
+	var projectile_id: int = projectile_coordinator.register_local_projectile(
 		projectile,
 		projectile_type,
 		owner_peer_id,
 		damage,
 		lifetime,
-		pierces_enemies
+		pierces_enemies,
+		net_manager.is_host(),
+		_get_net_time()
 	)
 	if projectile_id <= 0:
 		return
@@ -5471,65 +5403,29 @@ func register_local_tango_laser_volley(
 	):
 		maximum_internal_barrage_seconds = TANGO_ELECTRIC_SURGE_DURATION_SECONDS
 	if (
-		projectiles.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
-		or spawn_positions.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
-		or net_manager == null
+		net_manager == null
 		or not net_manager.is_multiplayer_active()
 		or not net_manager.is_host()
-		or charge_sequence <= 0
-		or owner_peer_id <= 0
-		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
-		or not _NetConstants.is_valid_network_combat_value(damage)
-		or not _is_finite_vector2(direction)
-		or direction.length_squared() <= 0.001
-		or not is_finite(speed)
-		or speed <= 0.0
-		or not is_finite(lifetime)
-		or lifetime <= 0.0
-		or not is_finite(charge_ratio)
-		or charge_ratio < 0.0
-		or charge_ratio > 1.0
-		or not is_finite(barrage_remaining_seconds)
-		or barrage_remaining_seconds < 0.0
-		or barrage_remaining_seconds > maximum_internal_barrage_seconds
 	):
 		return false
-	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
-		var projectile := projectiles[projectile_index]
-		if (
-			projectile == null
-			or not is_instance_valid(projectile)
-			or not _bind_player_projectile_gameplay_context(projectile)
-			or not _is_finite_vector2(spawn_positions[projectile_index])
-		):
-			return false
-
-	# Allocate the complete Host-origin triplet before touching either registry,
-	# so a failed allocation cannot leave a half-registered three-cannon volley.
-	var projectile_ids := PackedInt64Array()
-	for _projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
-		var projectile_id := _allocate_projectile_id(owner_peer_id, true)
-		if projectile_id <= 0:
-			return false
-		projectile_ids.append(projectile_id)
-	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
-		var projectile := projectiles[projectile_index]
-		var projectile_id := int(projectile_ids[projectile_index])
-		_setup_projectile_network_identity(
-			projectile,
-			projectile_id,
-			owner_peer_id,
-			TANGO_LASER_PROJECTILE_TYPE
+	var projectile_ids: PackedInt64Array = (
+		projectile_coordinator.register_local_tango_laser_volley(
+		projectiles,
+		spawn_positions,
+		direction,
+		owner_peer_id,
+		damage,
+		speed,
+		lifetime,
+		charge_sequence,
+		charge_ratio,
+		barrage_remaining_seconds,
+		maximum_internal_barrage_seconds,
+		_get_net_time()
 		)
-		_known_projectiles[projectile_id] = projectile
-		_remember_projectile_record(
-			projectile_id,
-			owner_peer_id,
-			TANGO_LASER_PROJECTILE_TYPE,
-			damage,
-			lifetime,
-			false
-		)
+	)
+	if projectile_ids.is_empty():
+		return false
 	var host_fire_timestamp := _get_net_time()
 	# The reliable Electric Surge event owns the eight-second automatic-fire
 	# lifetime. Keep the established volley payload within its ordinary five-second
@@ -5574,32 +5470,19 @@ func register_local_linglan_skill1_ring(
 		or net_manager == null
 		or not net_manager.is_multiplayer_active()
 		or not net_manager.is_host()
-		or owner_peer_id <= 0
-		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
-		or not _NetConstants.is_valid_network_combat_value(damage)
 	):
 		return
-	# Validate every projectile lease before mutating the registries so malformed
-	# callers cannot leave a partial ring. ID-space exhaustion is an unrecoverable
-	# allocator failure rather than a transactional rollback case.
-	for projectile in projectiles:
-		if projectile == null or not is_instance_valid(projectile):
-			return
-
-	var projectile_ids := PackedInt64Array()
-	for projectile_index in range(projectile_count):
-		var projectile := projectiles[projectile_index]
-		var projectile_id := _register_local_projectile_identity(
-			projectile,
-			&"linglan_skill1",
-			owner_peer_id,
-			damage,
-			lifetime,
-			false
+	var projectile_ids: PackedInt64Array = (
+		projectile_coordinator.register_local_linglan_skill1_ring(
+		projectiles,
+		owner_peer_id,
+		damage,
+		lifetime,
+		_get_net_time()
 		)
-		if projectile_id <= 0:
-			return
-		projectile_ids.append(projectile_id)
+	)
+	if projectile_ids.size() != projectile_count:
+		return
 	var host_fire_timestamp := _get_net_time()
 	if projectile_ids.size() <= LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET:
 		_rpc_to_connected_clients(
@@ -5641,74 +5524,6 @@ func register_local_linglan_skill1_ring(
 		)
 
 
-func _register_local_projectile_identity(
-	projectile: Node,
-	projectile_type: StringName,
-	owner_peer_id: int,
-	damage: int,
-	lifetime: float,
-	pierces_enemies: bool
-) -> int:
-	if not _bind_player_projectile_gameplay_context(projectile):
-		return 0
-	var projectile_namespace := owner_peer_id
-	if projectile_namespace <= 0:
-		projectile_namespace = PROJECTILE_ID_FALLBACK_OWNER_PEER_ID
-	var projectile_id := _allocate_projectile_id(
-		projectile_namespace,
-		net_manager != null and net_manager.is_host()
-	)
-	if projectile_id <= 0:
-		push_error(
-			"MpGame: unable to allocate projectile id for owner %d."
-			% projectile_namespace
-		)
-		return 0
-	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
-	_known_projectiles[projectile_id] = projectile
-	_remember_projectile_record(
-		projectile_id,
-		owner_peer_id,
-		projectile_type,
-		damage,
-		lifetime,
-		pierces_enemies
-	)
-	return projectile_id
-
-
-func _allocate_projectile_id(owner_peer_id: int, host_origin: bool) -> int:
-	if owner_peer_id <= 0 or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID:
-		return 0
-	# A zero or exhausted sequence can only occur after explicit state corruption
-	# or 2^31-1 allocations (more than 69 days at 360 projectiles/s). Wrap safely
-	# and skip any still-live/recent record instead of ever reusing its identity.
-	if (
-		_next_projectile_sequence <= 0
-		or _next_projectile_sequence > PROJECTILE_ID_SEQUENCE_COUNTER_MASK
-	):
-		_next_projectile_sequence = 1
-	var first_sequence := _next_projectile_sequence
-	while true:
-		var sequence_counter := _next_projectile_sequence
-		_next_projectile_sequence += 1
-		if _next_projectile_sequence > PROJECTILE_ID_SEQUENCE_COUNTER_MASK:
-			_next_projectile_sequence = 1
-		var sequence := sequence_counter
-		if host_origin:
-			sequence |= PROJECTILE_ID_HOST_ORIGIN_BIT
-		var projectile_id := _encode_projectile_id(owner_peer_id, sequence)
-		if (
-			projectile_id > 0
-			and not _known_projectiles.has(projectile_id)
-			and not _projectile_records.has(projectile_id)
-		):
-			return projectile_id
-		if _next_projectile_sequence == first_sequence:
-			return 0
-	return 0
-
-
 @rpc("any_peer", "call_remote", "reliable", 4)
 func _rpc_projectile_fired_from_client(
 	projectile_id: int,
@@ -5724,15 +5539,17 @@ func _rpc_projectile_fired_from_client(
 	_client_fire_timestamp: float = -1.0,
 	target_enemy_net_id: int = 0
 ) -> void:
+	var sender_id := multiplayer.get_remote_sender_id()
 	if not net_manager.is_host():
 		return
 	if not _NetConstants.is_valid_network_combat_value(damage):
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if not _try_accept_client_projectile_request_identity(
+	if not projectile_coordinator.accept_client_projectile_request_identity(
 		sender_id,
 		projectile_id,
-		owner_peer_id
+		owner_peer_id,
+		_is_embedded_participant_suspended(sender_id),
+		_get_net_time()
 	):
 		return
 	var accepted_direction := _get_valid_client_projectile_direction(direction)
@@ -5815,15 +5632,11 @@ func _resolve_authoritative_homing_target(
 	direction: Vector2,
 	should_home: bool
 ) -> int:
-	if not should_home or game == null:
-		return 0
-	var owner_player := game.get_player_for_peer(owner_peer_id) as Player
-	if owner_player == null or not is_instance_valid(owner_player):
-		return 0
-	var target := owner_player._find_homing_bullet_target(direction)
-	if target == null or not is_instance_valid(target) or target.is_dead:
-		return 0
-	return int(target.get_meta("net_id", 0))
+	return projectile_coordinator.resolve_authoritative_homing_target(
+		owner_peer_id,
+		direction,
+		should_home
+	)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
@@ -5841,26 +5654,10 @@ func net_projectile_fired(
 	host_fire_timestamp: float = -1.0,
 	target_enemy_net_id: int = 0
 ) -> void:
-	if not _NetConstants.is_valid_network_combat_value(damage):
-		return
-	if _known_projectiles.has(projectile_id):
-		_reconcile_predicted_projectile(
-			projectile_id,
-			owner_peer_id,
-			StringName(projectile_type),
-			direction,
-			damage,
-			speed,
-			lifetime,
-			pierces_enemies,
-			target_enemy_net_id
-		)
-		return
-	if _projectile_records.has(projectile_id):
-		return
-	_spawn_network_projectile(
+	var projectile_type_name := StringName(projectile_type)
+	projectile_coordinator.receive_projectile_fired(
 		projectile_id,
-		StringName(projectile_type),
+		projectile_type_name,
 		owner_peer_id,
 		spawn_position,
 		direction,
@@ -5869,34 +5666,13 @@ func net_projectile_fired(
 		lifetime,
 		pierces_enemies,
 		target_peer_id,
-		host_fire_timestamp,
-		target_enemy_net_id
-	)
-
-
-func _try_accept_client_projectile_request_identity(
-	sender_id: int,
-	projectile_id: int,
-	owner_peer_id: int
-) -> bool:
-	if (
-		sender_id <= 0
-		or owner_peer_id != sender_id
-		or _is_embedded_participant_suspended(sender_id)
-	):
-		return false
-	# Duplicate predicted-shot retries are already known and must not consume the
-	# peer's budget. The origin-lane check is likewise cheaper than validating or
-	# instantiating the requested projectile type.
-	if _known_projectiles.has(projectile_id) or _projectile_records.has(projectile_id):
-		return false
-	if not _is_projectile_id_valid_for_client_owner(projectile_id, owner_peer_id):
-		return false
-	return _consume_peer_rate_token(
-		_client_projectile_request_rate_buckets,
-		sender_id,
-		CLIENT_PROJECTILE_REQUEST_RATE_PER_SECOND,
-		CLIENT_PROJECTILE_REQUEST_RATE_BURST
+		target_enemy_net_id,
+		_get_projectile_time_compensation_age(
+			host_fire_timestamp,
+			lifetime,
+			projectile_type_name
+		),
+		_get_net_time()
 	)
 
 
@@ -5982,24 +5758,24 @@ func net_tango_laser_volley(
 			and owner_player.has_method("play_remote_tango_volley_audio")
 		):
 			owner_player.call("play_remote_tango_volley_audio")
-	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
-		var projectile_id := int(projectile_ids[projectile_index])
-		if _known_projectiles.has(projectile_id) or _projectile_records.has(projectile_id):
-			continue
-		_spawn_network_projectile(
-			projectile_id,
-			TANGO_LASER_PROJECTILE_TYPE,
-			owner_peer_id,
-			spawn_positions[projectile_index],
-			direction,
-			damage,
-			speed,
-			lifetime,
-			false,
-			0,
-			host_fire_timestamp,
-			0
-		)
+	var next_charge_sequence: int = projectile_coordinator.receive_tango_laser_volley(
+		projectile_ids,
+		spawn_positions,
+		direction,
+		owner_peer_id,
+		charge_sequence,
+		current_charge_sequence,
+		charge_ratio,
+		barrage_remaining_seconds,
+		damage,
+		speed,
+		lifetime,
+		host_fire_timestamp,
+		barrage_age,
+		_get_net_time()
+	)
+	if next_charge_sequence > current_charge_sequence:
+		_tango_charge_sequences_by_peer[owner_peer_id] = next_charge_sequence
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
@@ -6013,7 +5789,7 @@ func net_linglan_skill1_ring_batch(
 	lifetime: float,
 	host_fire_timestamp: float
 ) -> void:
-	if not _is_valid_linglan_skill1_ring_payload(
+	projectile_coordinator.receive_linglan_skill1_ring(
 		projectile_ids,
 		spawn_positions,
 		directions,
@@ -6021,137 +5797,9 @@ func net_linglan_skill1_ring_batch(
 		damage,
 		speed,
 		lifetime,
-		host_fire_timestamp
-	):
-		return
-	for projectile_index in range(projectile_ids.size()):
-		var projectile_id := int(projectile_ids[projectile_index])
-		if (
-			_known_projectiles.has(projectile_id)
-			or _projectile_records.has(projectile_id)
-		):
-			continue
-		_spawn_network_projectile(
-			projectile_id,
-			&"linglan_skill1",
-			owner_peer_id,
-			spawn_positions[projectile_index],
-			directions[projectile_index],
-			damage,
-			speed,
-			lifetime,
-			false,
-			0,
-			host_fire_timestamp,
-			0
-		)
-
-
-func _reconcile_predicted_projectile(
-	projectile_id: int,
-	owner_peer_id: int,
-	projectile_type: StringName,
-	direction: Vector2,
-	damage: int,
-	speed: float,
-	lifetime: float,
-	pierces_enemies: bool,
-	target_enemy_net_id: int
-) -> void:
-	var projectile_variant: Variant = _known_projectiles.get(projectile_id)
-	if projectile_variant == null or not is_instance_valid(projectile_variant):
-		_known_projectiles.erase(projectile_id)
-		return
-	var bullet := projectile_variant as Bullet
-	if bullet != null:
-		bullet.setup(direction, damage, pierces_enemies)
-		bullet.speed = maxf(speed, 0.0)
-		bullet.max_lifetime = maxf(lifetime, 0.01)
-		bullet.remaining_lifetime = minf(
-			bullet.remaining_lifetime,
-			bullet.max_lifetime
-		)
-		var homing_target: Enemy = null
-		if game != null and target_enemy_net_id > 0:
-			homing_target = game.get_enemy_for_net_id(target_enemy_net_id)
-		bullet.setup_homing(homing_target)
-	_remember_projectile_record(
-		projectile_id,
-		owner_peer_id,
-		projectile_type,
-		damage,
-		lifetime,
-		pierces_enemies
-	)
-
-
-func _spawn_network_projectile(
-	projectile_id: int,
-	projectile_type: StringName,
-	owner_peer_id: int,
-	spawn_position: Vector2,
-	direction: Vector2,
-	damage: int,
-	speed: float,
-	lifetime: float,
-	pierces_enemies: bool = false,
-	target_peer_id: int = 0,
-	host_fire_timestamp: float = -1.0,
-	target_enemy_net_id: int = 0
-) -> void:
-	var projectile := _instantiate_projectile(
-		projectile_type,
-		owner_peer_id,
-		direction,
-		damage,
-		speed,
-		lifetime,
-		pierces_enemies,
-		target_peer_id,
-		target_enemy_net_id
-	)
-	if projectile == null:
-		return
-	if not _bind_player_projectile_gameplay_context(projectile):
-		if not release_session_object(projectile):
-			projectile.queue_free()
-		return
-	_setup_projectile_network_identity(projectile, projectile_id, owner_peer_id, projectile_type)
-	_known_projectiles[projectile_id] = projectile
-	var compensation_age := _get_projectile_time_compensation_age(
 		host_fire_timestamp,
-		lifetime,
-		projectile_type
-	)
-	_remember_projectile_record(
-		projectile_id,
-		owner_peer_id,
-		projectile_type,
-		damage,
-		lifetime,
-		pierces_enemies
-	)
-	if projectile.get_parent() == null:
-		add_child(projectile)
-	projectile.global_position = spawn_position
-	projectile.reset_physics_interpolation()
-	if (
-		projectile.has_method("simulate_compensated_motion")
-		and (
-			compensation_age > 0.0
-			or projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE
-		)
-	):
-		projectile.call("simulate_compensated_motion", compensation_age)
-	else:
-		projectile.global_position += (
-			direction.normalized() * maxf(speed, 0.0) * compensation_age
-		)
-	_apply_projectile_lifetime_compensation(
-		projectile,
-		lifetime,
-		compensation_age,
-		projectile_type
+		_get_unbounded_host_event_age(host_fire_timestamp),
+		_get_net_time()
 	)
 
 
@@ -6163,20 +5811,10 @@ func _get_projectile_time_compensation_age(
 	if host_fire_timestamp < 0.0:
 		return 0.0
 	var age := _get_unbounded_host_event_age(host_fire_timestamp)
-	if projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
-		return clampf(
-			age,
-			0.0,
-			(
-				CombatRobotSuicideDrone.DEPLOY_DELAY
-				+ maxf(lifetime, 0.0)
-				+ CombatRobotSuicideDrone.EXPLOSION_DURATION
-			)
-		)
-	return clampf(
+	return projectile_coordinator.get_projectile_time_compensation_age(
 		age,
-		0.0,
-		minf(PROJECTILE_TIME_COMPENSATION_MAX_SECONDS, maxf(lifetime, 0.0))
+		lifetime,
+		projectile_type
 	)
 
 
@@ -6192,93 +5830,6 @@ func _get_unbounded_host_event_age(host_event_timestamp: float) -> float:
 	return maxf(_get_net_time() - mapped_fire_time, 0.0)
 
 
-func _apply_projectile_lifetime_compensation(
-	projectile: Node,
-	lifetime: float,
-	compensation_age: float,
-	projectile_type: StringName = &""
-) -> void:
-	if projectile == null or compensation_age <= 0.0:
-		return
-	# This projectile owns a fixed deploy -> flight -> explosion timeline. Its
-	# compensated elapsed value is consumed atomically by the projectile instead
-	# of being translated into an ordinary remaining flight lifetime.
-	if projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
-		return
-	var is_view_bounded_player_projectile := (
-		projectile_type == &"player_bullet"
-		or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
-		or projectile_type == TANGO_LASER_PROJECTILE_TYPE
-	)
-	var minimum_remaining := 0.0 if is_view_bounded_player_projectile else 0.05
-	var remaining := maxf(lifetime - compensation_age, minimum_remaining)
-	# 远端表现弹不能因网络补偿被强制延长权威射程。记录仍保留至原有的
-	# lifetime + retention 窗口，用于去重与迟到消息防护。
-	if is_view_bounded_player_projectile and remaining <= 0.0:
-		if projectile.has_method("retire"):
-			projectile.call("retire")
-		else:
-			projectile.queue_free()
-		return
-	var bullet := projectile as Bullet
-	if bullet != null:
-		bullet.remaining_lifetime = remaining
-		return
-	if projectile != null and projectile.get_script() == COLLECTIBLE_ARROW_PROJECTILE_SCRIPT:
-		projectile.set("remaining_lifetime", remaining)
-		return
-	var capoo_bullet := projectile as CapooAK47Bullet
-	if capoo_bullet != null:
-		capoo_bullet.remaining_lifetime = remaining
-		return
-	var rpg_rocket := projectile as CapooRPGRocket
-	if rpg_rocket != null:
-		rpg_rocket.remaining_lifetime = remaining
-		return
-	var fireball := projectile as CapooMageFireball
-	if fireball != null:
-		fireball.remaining_lifetime = remaining
-		return
-	var fire_sorcerer_volley := projectile as FireSorcererFireballVolley
-	if fire_sorcerer_volley != null:
-		fire_sorcerer_volley.remaining_lifetime = remaining
-		return
-	var fire_projectile := projectile as YuanshiInsectFireProjectile
-	if fire_projectile != null:
-		fire_projectile.remaining_lifetime = remaining
-		return
-	var frost_ice_spike := projectile as FrostSorcererIceSpike
-	if frost_ice_spike != null:
-		frost_ice_spike.remaining_lifetime = remaining
-		return
-	var projectile_script := projectile.get_script() as Script
-	var projectile_script_path := projectile_script.resource_path if projectile_script != null else ""
-	if (
-		projectile_script_path == "res://scene/player/weishidaier/weishidaier_skill1_bomb.gd"
-		or projectile_script_path == "res://scene/boss/linglan/linglan_skill1_sakura_bullet.gd"
-		or projectile_script_path == "res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd"
-	):
-		projectile.set("remaining_lifetime", remaining)
-		return
-	if (
-		projectile != null
-		and _linglan_skill4_orb_script != null
-		and projectile.get_script() == _linglan_skill4_orb_script
-	):
-		projectile.set("remaining_lifetime", remaining)
-		return
-
-
-func _get_runtime_packed_scene(path: String) -> PackedScene:
-	var cached_scene := _runtime_scene_cache.get(path) as PackedScene
-	if cached_scene != null:
-		return cached_scene
-	var loaded_scene := load(path) as PackedScene
-	if loaded_scene != null:
-		_runtime_scene_cache[path] = loaded_scene
-	return loaded_scene
-
-
 func _acquire_or_instantiate_projectile(scene: PackedScene) -> Node:
 	if scene == null:
 		return null
@@ -6287,791 +5838,14 @@ func _acquire_or_instantiate_projectile(scene: PackedScene) -> Node:
 	return scene.instantiate()
 
 
-func _bind_linglan_projectile_gameplay_context(projectile: Node) -> bool:
-	if projectile == null or not is_instance_valid(projectile) or game == null:
-		return false
-	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
-	if gameplay_gateway == null:
-		return false
-	var projectile_parent := gameplay_gateway.get_projectile_parent()
-	if projectile_parent == null:
-		return false
-
-	var context_bound := false
-	var skill1_bullet := projectile as LinglanSakuraBullet
-	if skill1_bullet != null:
-		skill1_bullet.bind_gameplay_context(game, gameplay_gateway)
-		context_bound = true
-	var skill2_rocket := projectile as LinglanSkill2SakuraRocket
-	if skill2_rocket != null:
-		skill2_rocket.bind_gameplay_context(game, gameplay_gateway)
-		context_bound = true
-	var skill3_orb := projectile as LinglanSkill3LightOrb
-	if skill3_orb != null:
-		skill3_orb.bind_gameplay_context(game, gameplay_gateway)
-		context_bound = true
-	var skill4_orb := projectile as LinglanSkill4LightOrb
-	if skill4_orb != null:
-		skill4_orb.bind_gameplay_context(game, gameplay_gateway)
-		context_bound = true
-	if not context_bound:
-		return false
-
-	if projectile.get_parent() == null:
-		projectile_parent.add_child(projectile)
-	elif (
-		projectile.get_parent() != projectile_parent
-		and not game.is_ancestor_of(projectile)
-	):
-		return false
-	return true
-
-
-func _prepare_enemy_network_projectile(projectile: Node) -> bool:
-	if projectile == null or not is_instance_valid(projectile) or game == null:
-		return false
-	var gateway := game.get_multiplayer_gameplay_gateway()
-	if gateway == null or not is_instance_valid(gateway):
-		return false
-	var capoo_bullet := projectile as CapooAK47Bullet
-	var rpg_rocket := projectile as CapooRPGRocket
-	var mage_fireball := projectile as CapooMageFireball
-	var sorcerer_volley := projectile as FireSorcererFireballVolley
-	var yuanshi_fire_projectile := projectile as YuanshiInsectFireProjectile
-	var frost_ice_spike := projectile as FrostSorcererIceSpike
-	if capoo_bullet != null:
-		capoo_bullet.bind_gameplay_context(game, gateway)
-	elif rpg_rocket != null:
-		rpg_rocket.bind_gameplay_context(game, gateway)
-	elif mage_fireball != null:
-		mage_fireball.bind_gameplay_context(game, gateway)
-	elif sorcerer_volley != null:
-		sorcerer_volley.bind_gameplay_context(game, gateway)
-	elif yuanshi_fire_projectile != null:
-		yuanshi_fire_projectile.bind_gameplay_context(game, gateway)
-	elif frost_ice_spike != null:
-		frost_ice_spike.bind_gameplay_context(game, gateway)
-	else:
-		return false
-	var projectile_parent := gateway.get_projectile_parent()
-	if projectile_parent == null or not is_instance_valid(projectile_parent):
-		return false
-	if projectile.get_parent() == null:
-		projectile_parent.add_child(projectile)
-	elif projectile.get_parent() != projectile_parent:
-		projectile.reparent(projectile_parent)
-	return true
-
-
-func _get_cached_projectile_defaults(
-	projectile_type: StringName,
-	scene: PackedScene
-) -> Dictionary:
-	var cached := _projectile_default_parameter_cache.get(projectile_type, {}) as Dictionary
-	if not cached.is_empty():
-		return cached
-	if scene == null:
-		return {}
-	var projectile := scene.instantiate()
-	if projectile == null:
-		return {}
-	var defaults := {
-		"speed": float(projectile.get("speed")),
-		"lifetime": float(projectile.get("max_lifetime")),
-	}
-	projectile.free()
-	_projectile_default_parameter_cache[projectile_type] = defaults
-	return defaults
-
-
-func _instantiate_projectile(
-	projectile_type: StringName,
-	owner_peer_id: int,
-	direction: Vector2,
-	damage: int,
-	speed: float,
-	lifetime: float,
-	pierces_enemies: bool = false,
-	target_peer_id: int = 0,
-	target_enemy_net_id: int = 0
-) -> Node:
-	match projectile_type:
-		&"player_bullet":
-			var bullet_scene := _get_runtime_packed_scene(BULLET_SCENE_PATH)
-			if bullet_scene == null:
-				return null
-			var bullet := _acquire_or_instantiate_projectile(bullet_scene) as Bullet
-			if bullet == null:
-				return null
-			bullet.top_level = true
-			bullet.setup(direction, damage, pierces_enemies)
-			if game != null and target_enemy_net_id > 0:
-				bullet.setup_homing(game.get_enemy_for_net_id(target_enemy_net_id))
-			bullet.speed = speed
-			bullet.max_lifetime = lifetime
-			bullet.remaining_lifetime = lifetime
-			return bullet
-		TANGO_LASER_PROJECTILE_TYPE:
-			var tango_laser_scene := _get_runtime_packed_scene(
-				TANGO_LASER_BULLET_SCENE_PATH
-			)
-			if tango_laser_scene == null:
-				return null
-			var tango_laser := _acquire_or_instantiate_projectile(
-				tango_laser_scene
-			) as Bullet
-			if tango_laser == null:
-				return null
-			tango_laser.top_level = true
-			tango_laser.setup(direction, damage, false)
-			tango_laser.speed = speed
-			tango_laser.max_lifetime = lifetime
-			tango_laser.remaining_lifetime = lifetime
-			if game != null:
-				tango_laser.setup_collectible_owner(
-					game.get_player_for_peer(owner_peer_id)
-				)
-			return tango_laser
-		TIYI_SNIPER_PROJECTILE_TYPE:
-			var sniper_scene := _get_runtime_packed_scene(TIYI_SNIPER_BULLET_SCENE_PATH)
-			if sniper_scene == null:
-				return null
-			var sniper_bullet := _acquire_or_instantiate_projectile(sniper_scene) as Bullet
-			if sniper_bullet == null:
-				return null
-			sniper_bullet.top_level = true
-			sniper_bullet.setup(direction, damage, pierces_enemies)
-			if game != null and target_enemy_net_id > 0:
-				sniper_bullet.setup_homing(game.get_enemy_for_net_id(target_enemy_net_id))
-			sniper_bullet.speed = speed
-			sniper_bullet.max_lifetime = lifetime
-			sniper_bullet.remaining_lifetime = lifetime
-			return sniper_bullet
-		&"collectible_arrow":
-			var collectible_arrow := _acquire_or_instantiate_projectile(
-				COLLECTIBLE_ARROW_PROJECTILE_SCENE
-			)
-			if collectible_arrow == null:
-				return null
-			collectible_arrow.top_level = true
-			collectible_arrow.call("setup", direction, damage)
-			collectible_arrow.set("speed", speed)
-			collectible_arrow.set("max_lifetime", lifetime)
-			collectible_arrow.set("remaining_lifetime", lifetime)
-			return collectible_arrow
-		&"skill1_bomb":
-			var bomb_scene := _get_runtime_packed_scene(SKILL1_BOMB_SCENE_PATH)
-			if bomb_scene == null:
-				return null
-			var bomb := bomb_scene.instantiate() as Node2D
-			if bomb == null:
-				return null
-			bomb.top_level = true
-			bomb.call("setup", game.get_player_for_peer(owner_peer_id), direction, damage)
-			bomb.set("speed", speed)
-			bomb.set("max_lifetime", lifetime)
-			bomb.set("remaining_lifetime", lifetime)
-			return bomb
-		&"capoo_ak47_bullet":
-			var capoo_bullet := (
-				_acquire_or_instantiate_projectile(CAPOO_AK47_BULLET_SCENE)
-				as CapooAK47Bullet
-			)
-			if capoo_bullet == null:
-				return null
-			capoo_bullet.top_level = true
-			if not _prepare_enemy_network_projectile(capoo_bullet):
-				if not release_session_object(capoo_bullet):
-					capoo_bullet.queue_free()
-				return null
-			capoo_bullet.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				game.grid_pathfinder as GridPathfinder if game != null else null,
-				game.capoo_projectile_motion_system if game != null else null
-			)
-			return capoo_bullet
-		&"combat_robot_gunner_bullet":
-			var gunner_bullet := (
-				_acquire_or_instantiate_projectile(COMBAT_ROBOT_GUNNER_BULLET_SCENE)
-				as CombatRobotGunnerBullet
-			)
-			if gunner_bullet == null:
-				return null
-			gunner_bullet.top_level = true
-			if game != null:
-				var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
-				var projectile_parent := (
-					gameplay_gateway.get_projectile_parent()
-					if gameplay_gateway != null
-					else null
-				)
-				if gameplay_gateway == null or projectile_parent == null:
-					if not release_session_object(gunner_bullet):
-						gunner_bullet.queue_free()
-					return null
-				gunner_bullet.bind_gameplay_context(game, gameplay_gateway)
-				if gunner_bullet.get_parent() == null:
-					projectile_parent.add_child(gunner_bullet)
-				elif gunner_bullet.get_parent() != projectile_parent:
-					gunner_bullet.reparent(projectile_parent)
-			# Direction already contains the Host-authored spread. Clients must not
-			# sample or reconstruct spread independently.
-			gunner_bullet.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				game.grid_pathfinder as GridPathfinder if game != null else null,
-				game.capoo_projectile_motion_system if game != null else null
-			)
-			return gunner_bullet
-		COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
-			var drone_motion_system: Node = (
-				game.combat_robot_drone_motion_system
-				if game != null
-				else null
-			)
-			if drone_motion_system == null:
-				return null
-			var suicide_drone := (
-				_acquire_or_instantiate_projectile(
-					COMBAT_ROBOT_SUICIDE_DRONE_SCENE
-				)
-				as CombatRobotSuicideDrone
-			)
-			if suicide_drone == null:
-				return null
-			suicide_drone.top_level = true
-			var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
-			var projectile_parent := (
-				gameplay_gateway.get_projectile_parent()
-				if gameplay_gateway != null
-				else null
-			)
-			if gameplay_gateway == null or projectile_parent == null:
-				if not release_session_object(suicide_drone):
-					suicide_drone.queue_free()
-				return null
-			suicide_drone.bind_gameplay_context(game, gameplay_gateway)
-			if suicide_drone.get_parent() == null:
-				projectile_parent.add_child(suicide_drone)
-			elif suicide_drone.get_parent() != projectile_parent:
-				suicide_drone.reparent(projectile_parent)
-			suicide_drone.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				CombatRobotSuicideDrone.DEFAULT_EXPLOSION_RADIUS,
-				drone_motion_system
-			)
-			return suicide_drone
-		&"capoo_rpg_rocket":
-			var rpg_rocket := (
-				_acquire_or_instantiate_projectile(CAPOO_RPG_ROCKET_SCENE)
-				as CapooRPGRocket
-			)
-			if rpg_rocket == null:
-				return null
-			rpg_rocket.top_level = true
-			if not _prepare_enemy_network_projectile(rpg_rocket):
-				if not release_session_object(rpg_rocket):
-					rpg_rocket.queue_free()
-				return null
-			rpg_rocket.setup(direction, damage, speed, lifetime)
-			return rpg_rocket
-		&"capoo_mage_fireball":
-			var fireball := (
-				_acquire_or_instantiate_projectile(CAPOO_MAGE_FIREBALL_SCENE)
-				as CapooMageFireball
-			)
-			if fireball == null:
-				return null
-			fireball.top_level = true
-			if not _prepare_enemy_network_projectile(fireball):
-				if not release_session_object(fireball):
-					fireball.queue_free()
-				return null
-			fireball.setup(direction, damage, speed, lifetime)
-			return fireball
-		&"fire_sorcerer_fireball_volley":
-			var fire_sorcerer_volley := (
-				_acquire_or_instantiate_projectile(
-					FIRE_SORCERER_FIREBALL_VOLLEY_SCENE
-				)
-				as FireSorcererFireballVolley
-			)
-			if fire_sorcerer_volley == null:
-				return null
-			fire_sorcerer_volley.top_level = true
-			if not _prepare_enemy_network_projectile(fire_sorcerer_volley):
-				if not release_session_object(fire_sorcerer_volley):
-					fire_sorcerer_volley.queue_free()
-				return null
-			var fireball_target: Node2D = null
-			if game != null:
-				if target_peer_id > 0:
-					fireball_target = game.get_player_for_peer(target_peer_id)
-				elif target_enemy_net_id > 0:
-					fireball_target = _get_tower_plant(
-						target_enemy_net_id
-					)
-			fire_sorcerer_volley.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				fireball_target,
-				6.0,
-				game
-			)
-			return fire_sorcerer_volley
-		&"fire_sorcerer_elite_fireball_volley":
-			var elite_fire_sorcerer_volley := (
-				_acquire_or_instantiate_projectile(
-					FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE
-				)
-				as FireSorcererFireballVolley
-			)
-			if elite_fire_sorcerer_volley == null:
-				return null
-			elite_fire_sorcerer_volley.top_level = true
-			if not _prepare_enemy_network_projectile(
-				elite_fire_sorcerer_volley
-			):
-				if not release_session_object(elite_fire_sorcerer_volley):
-					elite_fire_sorcerer_volley.queue_free()
-				return null
-			var elite_fireball_target: Node2D = null
-			if game != null:
-				if target_peer_id > 0:
-					elite_fireball_target = game.get_player_for_peer(
-						target_peer_id
-					)
-				elif target_enemy_net_id > 0:
-					elite_fireball_target = _get_tower_plant(
-						target_enemy_net_id
-					)
-			elite_fire_sorcerer_volley.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				elite_fireball_target,
-				6.0,
-				game
-			)
-			return elite_fire_sorcerer_volley
-		&"capoo_smg_bullet":
-			var smg_bullet := (
-				_acquire_or_instantiate_projectile(CAPOO_SMG_BULLET_SCENE)
-				as CapooAK47Bullet
-			)
-			if smg_bullet == null:
-				return null
-			smg_bullet.top_level = true
-			if not _prepare_enemy_network_projectile(smg_bullet):
-				if not release_session_object(smg_bullet):
-					smg_bullet.queue_free()
-				return null
-			smg_bullet.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				game.grid_pathfinder as GridPathfinder if game != null else null,
-				game.capoo_projectile_motion_system if game != null else null
-			)
-			return smg_bullet
-		&"yuanshi_fire_projectile":
-			var fire_projectile := (
-				_acquire_or_instantiate_projectile(YUANSHI_FIRE_PROJECTILE_SCENE)
-				as YuanshiInsectFireProjectile
-			)
-			if fire_projectile == null:
-				return null
-			fire_projectile.top_level = true
-			if not _prepare_enemy_network_projectile(fire_projectile):
-				if not release_session_object(fire_projectile):
-					fire_projectile.queue_free()
-				return null
-			fire_projectile.setup(direction, damage, speed, lifetime)
-			return fire_projectile
-		FROST_SORCERER_ICE_SPIKE_TYPE:
-			var frost_ice_spike := (
-				_acquire_or_instantiate_projectile(
-					FROST_SORCERER_ICE_SPIKE_SCENE
-				)
-				as FrostSorcererIceSpike
-			)
-			if frost_ice_spike == null:
-				return null
-			frost_ice_spike.top_level = true
-			if not _prepare_enemy_network_projectile(frost_ice_spike):
-				if not release_session_object(frost_ice_spike):
-					frost_ice_spike.queue_free()
-				return null
-			frost_ice_spike.setup(direction, damage, speed, lifetime)
-			return frost_ice_spike
-		&"linglan_skill1":
-			_ensure_linglan_projectile_resources(projectile_type)
-			if _linglan_sakura_bullet_scene == null:
-				return null
-			var sakura_bullet := (
-				_acquire_or_instantiate_projectile(_linglan_sakura_bullet_scene)
-				as LinglanSakuraBullet
-			)
-			if sakura_bullet == null:
-				return null
-			sakura_bullet.top_level = true
-			if not _bind_linglan_projectile_gameplay_context(sakura_bullet):
-				if not release_session_object(sakura_bullet):
-					sakura_bullet.queue_free()
-				return null
-			sakura_bullet.setup(direction, damage, speed, lifetime)
-			return sakura_bullet
-		&"linglan_skill2_rocket":
-			_ensure_linglan_projectile_resources(projectile_type)
-			if _linglan_skill2_rocket_scene == null or _linglan_skill2_config == null:
-				return null
-			var sakura_rocket := (
-				_linglan_skill2_rocket_scene.instantiate()
-				as LinglanSkill2SakuraRocket
-			)
-			if sakura_rocket == null:
-				return null
-			sakura_rocket.top_level = true
-			if not _bind_linglan_projectile_gameplay_context(sakura_rocket):
-				sakura_rocket.queue_free()
-				return null
-			var rocket_target: Player = null
-			if game != null and target_peer_id > 0:
-				rocket_target = game.get_player_for_peer(target_peer_id)
-			sakura_rocket.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				float(_linglan_skill2_config.get("rocket_explosion_radius")),
-				rocket_target,
-				float(_linglan_skill2_config.get("rocket_homing_turn_rate"))
-			)
-			return sakura_rocket
-		&"collectible_sakura_rocket":
-			_ensure_linglan_projectile_resources(projectile_type)
-			if _collectible_sakura_rocket_scene == null:
-				return null
-			var collectible_sakura_rocket := (
-				_acquire_or_instantiate_projectile(_collectible_sakura_rocket_scene)
-				as LinglanSkill2SakuraRocket
-			)
-			if collectible_sakura_rocket == null:
-				return null
-			collectible_sakura_rocket.top_level = true
-			if not _bind_linglan_projectile_gameplay_context(
-				collectible_sakura_rocket
-			):
-				if not release_session_object(collectible_sakura_rocket):
-					collectible_sakura_rocket.queue_free()
-				return null
-			var collectible_explosion_radius := (
-				collectible_sakura_rocket.explosion_radius
-			)
-			var collectible_homing_turn_rate := (
-				collectible_sakura_rocket.homing_turn_rate
-			)
-			var target_enemy: Enemy = null
-			if game != null and target_enemy_net_id > 0:
-				target_enemy = game.get_enemy_for_net_id(target_enemy_net_id)
-			collectible_sakura_rocket.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				collectible_explosion_radius,
-				null,
-				collectible_homing_turn_rate,
-				target_enemy,
-				true,
-				EnemyConfig.DamageType.MAGIC
-			)
-			return collectible_sakura_rocket
-		&"linglan_skill3_orb":
-			_ensure_linglan_projectile_resources(projectile_type)
-			if _linglan_skill3_orb_scene == null or _linglan_skill3_config == null:
-				return null
-			var light_orb := (
-				_linglan_skill3_orb_scene.instantiate()
-				as LinglanSkill3LightOrb
-			)
-			if light_orb == null:
-				return null
-			light_orb.top_level = true
-			if not _bind_linglan_projectile_gameplay_context(light_orb):
-				light_orb.queue_free()
-				return null
-			light_orb.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				float(_linglan_skill3_config.get("orb_base_radius")),
-				float(_linglan_skill3_config.get("orb_grow_scale")),
-				float(_linglan_skill3_config.get("orb_expanded_hold_duration")),
-				float(_linglan_skill3_config.get("orb_flash_lead_time"))
-			)
-			return light_orb
-		&"linglan_skill4_orb":
-			_ensure_linglan_projectile_resources(projectile_type)
-			if _linglan_skill4_orb_scene == null or _linglan_skill4_config == null:
-				return null
-			var skill4_orb := (
-				_linglan_skill4_orb_scene.instantiate()
-				as LinglanSkill4LightOrb
-			)
-			if skill4_orb == null:
-				return null
-			skill4_orb.top_level = true
-			if not _bind_linglan_projectile_gameplay_context(skill4_orb):
-				skill4_orb.queue_free()
-				return null
-			skill4_orb.setup(
-				direction,
-				damage,
-				speed,
-				lifetime,
-				float(_linglan_skill4_config.get("orb_radius")),
-				float(_linglan_skill4_config.get("orb_damage_radius"))
-			)
-			return skill4_orb
-		_:
-			return null
-
-
-func _ensure_linglan_projectile_resources(projectile_type: StringName) -> void:
-	match projectile_type:
-		&"linglan_skill1":
-			if _linglan_sakura_bullet_scene == null:
-				_linglan_sakura_bullet_scene = load(
-					LINGLAN_SAKURA_BULLET_SCENE_PATH
-				) as PackedScene
-		&"linglan_skill2_rocket":
-			if _linglan_skill2_config == null:
-				_linglan_skill2_config = load(LINGLAN_SKILL2_CONFIG_PATH)
-			if _linglan_skill2_rocket_scene == null:
-				_linglan_skill2_rocket_scene = load(
-					LINGLAN_SKILL2_ROCKET_SCENE_PATH
-				) as PackedScene
-		&"collectible_sakura_rocket":
-			if _collectible_sakura_rocket_scene == null:
-				_collectible_sakura_rocket_scene = load(
-					COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH
-				) as PackedScene
-		&"linglan_skill3_orb":
-			if _linglan_skill3_config == null:
-				_linglan_skill3_config = load(LINGLAN_SKILL3_CONFIG_PATH)
-			if _linglan_skill3_orb_scene == null:
-				_linglan_skill3_orb_scene = load(
-					LINGLAN_SKILL3_ORB_SCENE_PATH
-				) as PackedScene
-		&"linglan_skill4_orb":
-			if _linglan_skill4_config == null:
-				_linglan_skill4_config = load(LINGLAN_SKILL4_CONFIG_PATH)
-			if _linglan_skill4_orb_scene == null:
-				_linglan_skill4_orb_scene = load(
-					LINGLAN_SKILL4_ORB_SCENE_PATH
-				) as PackedScene
-			if _linglan_skill4_orb_script == null:
-				_linglan_skill4_orb_script = load(LINGLAN_SKILL4_ORB_SCRIPT_PATH) as Script
-
-
 func _get_authoritative_client_projectile_parameters(
 	projectile_type: StringName,
 	owner_peer_id: int
 ) -> Dictionary:
-	var owner_player: Player = null
-	if game != null:
-		owner_player = game.get_player_for_peer(owner_peer_id)
-	if owner_player == null or not is_instance_valid(owner_player):
-		return {}
-	match projectile_type:
-		&"player_bullet":
-			if not owner_player.can_request_multiplayer_projectile(projectile_type):
-				return {}
-			if owner_player.has_method("try_accept_authoritative_primary_shot"):
-				if not bool(owner_player.call(
-					"try_accept_authoritative_primary_shot",
-					projectile_type
-				)):
-					return {}
-			elif not owner_player.try_consume_authoritative_player_bullet_ammo():
-				return {}
-			var bullet_scene := _get_runtime_packed_scene(BULLET_SCENE_PATH)
-			if bullet_scene == null:
-				return {}
-			var bullet_defaults := _get_cached_projectile_defaults(
-				projectile_type,
-				bullet_scene
-			)
-			if bullet_defaults.is_empty():
-				return {}
-			return {
-				"damage": owner_player.get_outgoing_damage(
-					owner_player.attack_damage,
-					EnemyConfig.DamageType.PHYSICAL
-				),
-				"speed": float(bullet_defaults["speed"]),
-				"lifetime": float(bullet_defaults["lifetime"]),
-				"pierces_enemies": (
-					randf() < owner_player.get_inventory_bullet_pierce_chance()
-				),
-				"homes_to_enemy": (
-					randf() < owner_player._get_inventory_bullet_homing_chance()
-				),
-			}
-		TIYI_SNIPER_PROJECTILE_TYPE:
-			if not _is_valid_tiyi_player(owner_player):
-				return {}
-			if not owner_player.can_request_multiplayer_projectile(projectile_type):
-				return {}
-			if not owner_player.has_method("try_accept_authoritative_primary_shot"):
-				return {}
-			if not bool(
-				owner_player.call("try_accept_authoritative_primary_shot", projectile_type)
-			):
-				return {}
-			var sniper_scene := _get_runtime_packed_scene(TIYI_SNIPER_BULLET_SCENE_PATH)
-			if sniper_scene == null:
-				return {}
-			var sniper_defaults := _get_cached_projectile_defaults(
-				projectile_type,
-				sniper_scene
-			)
-			if sniper_defaults.is_empty():
-				return {}
-			return {
-				"damage": owner_player.get_outgoing_damage(
-					owner_player.attack_damage,
-					EnemyConfig.DamageType.MAGIC
-				),
-				"speed": float(sniper_defaults["speed"]),
-				"lifetime": float(sniper_defaults["lifetime"]),
-				"pierces_enemies": (
-					randf() < owner_player.get_inventory_bullet_pierce_chance()
-				),
-				"homes_to_enemy": (
-					randf() < owner_player._get_inventory_bullet_homing_chance()
-				),
-			}
-		&"skill1_bomb":
-			if not owner_player.can_request_multiplayer_projectile(projectile_type):
-				return {}
-			if not owner_player.consume_multiplayer_skill1_charge():
-				return {}
-			owner_player.activate_collectible_skill_effects_from_multiplayer()
-			var bomb_scene := _get_runtime_packed_scene(SKILL1_BOMB_SCENE_PATH)
-			if bomb_scene == null:
-				return {}
-			var bomb := bomb_scene.instantiate() as Node2D
-			if bomb == null:
-				return {}
-			var bomb_result := {
-				"damage": owner_player.get_skill1_projectile_damage(),
-				"speed": float(bomb.get("speed")),
-				"lifetime": float(bomb.get("max_lifetime")),
-			}
-			bomb.free()
-			return bomb_result
-		&"collectible_arrow":
-			var arrow_damage := _get_authoritative_collectible_arrow_damage(owner_player)
-			if arrow_damage <= 0:
-				return {}
-			var arrow := COLLECTIBLE_ARROW_PROJECTILE_SCENE.instantiate()
-			if arrow == null:
-				return {}
-			var arrow_result := {
-				"damage": arrow_damage,
-				"speed": float(arrow.get("speed")),
-				"lifetime": float(arrow.get("max_lifetime")),
-			}
-			arrow.free()
-			return arrow_result
-		_:
-			return {}
-
-
-func _get_authoritative_collectible_arrow_damage(owner_player: Player) -> int:
-	if owner_player == null or not is_instance_valid(owner_player):
-		return -1
-	var active_items_variant: Variant = owner_player.call("_get_active_collectible_items")
-	if not (active_items_variant is Array):
-		return -1
-
-	var best_damage := -1
-	for item_variant in active_items_variant:
-		var item := item_variant as PickupConfig
-		if item == null:
-			continue
-		if item.periodic_effect_id != PickupConfig.PERIODIC_EFFECT_ARCHER:
-			continue
-		var damage_multiplier := maxf(item.periodic_attack_damage_multiplier, 0.0)
-		if damage_multiplier <= 0.0:
-			damage_multiplier = 1.0
-		var arrow_damage := owner_player.get_collectible_outgoing_damage(
-			maxi(roundi(float(owner_player.attack_damage) * damage_multiplier), 1),
-			EnemyConfig.DamageType.PHYSICAL
-		)
-		best_damage = maxi(best_damage, arrow_damage)
-	return best_damage
-
-
-func _remember_projectile_record(
-	projectile_id: int,
-	owner_peer_id: int,
-	projectile_type: StringName,
-	damage: int,
-	lifetime: float,
-	pierces_enemies: bool = false
-) -> void:
-	if projectile_id <= 0:
-		return
-	var projectile_record := {
-		"owner_peer_id": owner_peer_id,
-		"projectile_type": projectile_type,
-		"damage": maxi(damage, 0),
-		"pierces_enemies": pierces_enemies,
-		"confirmed_hit_consumed": false,
-		"expires_at": _get_net_time() + maxf(lifetime, 0.0) + PROJECTILE_RECORD_RETENTION_SECONDS,
-	}
-	if _is_fire_sorcerer_volley_type(projectile_type):
-		projectile_record[FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY] = 0
-	_projectile_records[projectile_id] = projectile_record
-
-
-func _is_fire_sorcerer_volley_type(projectile_type: StringName) -> bool:
-	return (
-		projectile_type == FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
-		or projectile_type == FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE
+	return projectile_coordinator.get_authoritative_client_projectile_parameters(
+		projectile_type,
+		owner_peer_id
 	)
-
-
-func _get_fire_sorcerer_projectile_type_for_source(
-	source_type: StringName
-) -> StringName:
-	match source_type:
-		&"fire_sorcerer_fireball_a", \
-		&"fire_sorcerer_fireball_b", \
-		&"fire_sorcerer_fireball_c":
-			return FIRE_SORCERER_FIREBALL_VOLLEY_TYPE
-		&"fire_sorcerer_elite_fireball_a", \
-		&"fire_sorcerer_elite_fireball_b", \
-		&"fire_sorcerer_elite_fireball_c":
-			return FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE
-		_:
-			return &""
 
 
 func _get_fire_sorcerer_burn_family(
@@ -7118,25 +5892,10 @@ func _is_fire_sorcerer_fireball_contact_consumed(
 	projectile_id: int,
 	source_type: StringName
 ) -> bool:
-	var source_bit := _get_fire_sorcerer_fireball_source_bit(source_type)
-	if projectile_id <= 0 or source_bit == 0:
-		return false
-	var record_variant: Variant = _projectile_records.get(projectile_id)
-	if not (record_variant is Dictionary):
-		return false
-	var projectile_record := record_variant as Dictionary
-	var projectile_type := StringName(
-		projectile_record.get("projectile_type", &"")
+	return projectile_coordinator.is_fire_sorcerer_fireball_contact_consumed(
+		projectile_id,
+		source_type
 	)
-	if (
-		projectile_type
-		!= _get_fire_sorcerer_projectile_type_for_source(source_type)
-	):
-		return false
-	return (
-		int(projectile_record.get(FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY, 0))
-		& source_bit
-	) != 0
 
 
 ## 每颗火球的协议 source type 在本进程内只接受一次首碰。
@@ -7145,32 +5904,10 @@ func try_consume_fire_sorcerer_fireball_contact(
 	projectile_id: int,
 	source_type: StringName
 ) -> bool:
-	var source_bit := _get_fire_sorcerer_fireball_source_bit(source_type)
-	if projectile_id <= 0 or source_bit == 0:
-		return false
-	var record_variant: Variant = _projectile_records.get(projectile_id)
-	if not (record_variant is Dictionary):
-		return false
-	var projectile_record := record_variant as Dictionary
-	var projectile_type := StringName(
-		projectile_record.get("projectile_type", &"")
+	return projectile_coordinator.try_consume_fire_sorcerer_fireball_contact(
+		projectile_id,
+		source_type
 	)
-	if (
-		projectile_type
-		!= _get_fire_sorcerer_projectile_type_for_source(source_type)
-	):
-		return false
-	var consumed_mask := int(projectile_record.get(
-		FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY,
-		0
-	))
-	if (consumed_mask & source_bit) != 0:
-		return false
-	projectile_record[FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY] = (
-		consumed_mask | source_bit
-	)
-	_projectile_records[projectile_id] = projectile_record
-	return true
 
 
 func _get_multiplayer_player_hit_key(
@@ -7186,51 +5923,23 @@ func _get_multiplayer_player_hit_key(
 	return "%d:%d:%s" % [source_id, target_peer_id, String(source_type)]
 
 
-func _get_frost_ice_spike_record(
-	projectile_id: int,
-	source_type: StringName
-) -> Dictionary:
-	if (
-		projectile_id <= 0
-		or source_type != FROST_SORCERER_ICE_SPIKE_TYPE
-	):
-		return {}
-	var record_variant: Variant = _projectile_records.get(projectile_id)
-	if not (record_variant is Dictionary):
-		return {}
-	var projectile_record := record_variant as Dictionary
-	if (
-		StringName(projectile_record.get("projectile_type", &""))
-		!= FROST_SORCERER_ICE_SPIKE_TYPE
-	):
-		return {}
-	return projectile_record
-
-
 func _get_frost_ice_spike_record_damage(
 	projectile_id: int,
 	source_type: StringName
 ) -> int:
-	var projectile_record := _get_frost_ice_spike_record(
+	return projectile_coordinator.get_frost_ice_spike_record_damage(
 		projectile_id,
 		source_type
 	)
-	if projectile_record.is_empty():
-		return -1
-	return int(projectile_record.get("damage", -1))
 
 
 func _is_frost_ice_spike_contact_consumed(
 	projectile_id: int,
 	source_type: StringName
 ) -> bool:
-	var projectile_record := _get_frost_ice_spike_record(
+	return projectile_coordinator.is_frost_ice_spike_contact_consumed(
 		projectile_id,
 		source_type
-	)
-	return (
-		not projectile_record.is_empty()
-		and bool(projectile_record.get("confirmed_hit_consumed", false))
 	)
 
 
@@ -7238,65 +5947,10 @@ func try_consume_frost_sorcerer_ice_spike_contact(
 	projectile_id: int,
 	source_type: StringName
 ) -> bool:
-	var projectile_record := _get_frost_ice_spike_record(
+	return projectile_coordinator.try_consume_frost_sorcerer_ice_spike_contact(
 		projectile_id,
 		source_type
 	)
-	if (
-		projectile_record.is_empty()
-		or bool(projectile_record.get("confirmed_hit_consumed", false))
-	):
-		return false
-	projectile_record["confirmed_hit_consumed"] = true
-	_projectile_records[projectile_id] = projectile_record
-	return true
-
-
-func _get_authoritative_projectile_damage(
-	projectile_id: int,
-	owner_peer_id: int,
-	reported_damage: int,
-	projectile_type: StringName = &"player_bullet"
-) -> int:
-	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
-		return -1
-	var record_variant: Variant = _projectile_records.get(projectile_id)
-	if record_variant != null:
-		var record := record_variant as Dictionary
-		if record.is_empty():
-			return -1
-		if int(record.get("owner_peer_id", 0)) != owner_peer_id:
-			return -1
-		return int(record.get("damage", -1))
-	return _get_bounded_player_projectile_damage(
-		owner_peer_id,
-		reported_damage,
-		projectile_type
-	)
-
-
-func _get_bounded_player_projectile_damage(
-	owner_peer_id: int,
-	reported_damage: int,
-	projectile_type: StringName = &"player_bullet"
-) -> int:
-	if reported_damage <= 0:
-		return -1
-	var owner_player: Player = null
-	if game != null:
-		owner_player = game.get_player_for_peer(owner_peer_id)
-	if owner_player == null or not is_instance_valid(owner_player):
-		return -1
-	var max_authoritative_damage := owner_player.get_outgoing_damage(
-		owner_player.attack_damage,
-		_get_player_projectile_damage_type(projectile_type)
-	)
-	if projectile_type == &"skill1_bomb" and owner_player.has_skill1():
-		max_authoritative_damage = maxi(
-			max_authoritative_damage,
-			owner_player.get_skill1_projectile_damage()
-		)
-	return clampi(reported_damage, 1, max_authoritative_damage)
 
 
 func _get_player_projectile_damage_type(
@@ -7307,105 +5961,8 @@ func _get_player_projectile_damage_type(
 	return EnemyConfig.DamageType.PHYSICAL
 
 
-func _is_projectile_id_valid_for_owner(projectile_id: int, owner_peer_id: int) -> bool:
-	return (
-		owner_peer_id > 0
-		and owner_peer_id <= PROJECTILE_ID_MAX_OWNER_PEER_ID
-		and _decode_projectile_owner_peer_id(projectile_id) == owner_peer_id
-		and _decode_projectile_sequence(projectile_id) > 0
-	)
-
-
-func _is_projectile_id_valid_for_client_owner(
-	projectile_id: int,
-	owner_peer_id: int
-) -> bool:
-	return (
-		_is_projectile_id_valid_for_owner(projectile_id, owner_peer_id)
-		and not _is_host_origin_projectile_id(projectile_id)
-	)
-
-
-func _is_projectile_id_valid_for_host_owner(
-	projectile_id: int,
-	owner_peer_id: int
-) -> bool:
-	return (
-		_is_projectile_id_valid_for_owner(projectile_id, owner_peer_id)
-		and _is_host_origin_projectile_id(projectile_id)
-	)
-
-
-func _encode_projectile_id(owner_peer_id: int, sequence: int) -> int:
-	if (
-		owner_peer_id <= 0
-		or owner_peer_id > PROJECTILE_ID_MAX_OWNER_PEER_ID
-		or sequence <= 0
-		or sequence > PROJECTILE_ID_SEQUENCE_MASK
-	):
-		return 0
-	return (owner_peer_id << PROJECTILE_ID_SEQUENCE_BITS) | sequence
-
-
-func _decode_projectile_owner_peer_id(projectile_id: int) -> int:
-	if projectile_id <= 0:
-		return 0
-	return projectile_id >> PROJECTILE_ID_SEQUENCE_BITS
-
-
-func _decode_projectile_sequence(projectile_id: int) -> int:
-	if projectile_id <= 0:
-		return 0
-	return projectile_id & PROJECTILE_ID_SEQUENCE_MASK
-
-
-func _decode_projectile_sequence_counter(projectile_id: int) -> int:
-	return _decode_projectile_sequence(projectile_id) & PROJECTILE_ID_SEQUENCE_COUNTER_MASK
-
-
-func _is_host_origin_projectile_id(projectile_id: int) -> bool:
-	return (
-		_decode_projectile_sequence(projectile_id)
-		& PROJECTILE_ID_HOST_ORIGIN_BIT
-	) != 0
-
-
 func _get_valid_client_projectile_direction(direction: Vector2) -> Vector2:
-	if not _is_finite_vector2(direction):
-		return Vector2.ZERO
-	var direction_length := direction.length()
-	if (
-		direction_length < CLIENT_PROJECTILE_DIRECTION_MIN_LENGTH
-		or direction_length > CLIENT_PROJECTILE_DIRECTION_MAX_LENGTH
-	):
-		return Vector2.ZERO
-	return direction / direction_length
-
-
-func _validate_client_homing_target(
-	projectile_type: StringName,
-	spawn_position: Vector2,
-	direction: Vector2,
-	target_enemy_net_id: int,
-	can_home: bool
-) -> int:
-	if (
-		projectile_type != &"player_bullet"
-		and projectile_type != TIYI_SNIPER_PROJECTILE_TYPE
-	) or not can_home or target_enemy_net_id <= 0:
-		return 0
-	var enemy := _get_host_enemy_for_net_id(target_enemy_net_id)
-	if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
-		return 0
-	var target_offset := enemy.global_position - spawn_position
-	if (
-		target_offset.length_squared() <= 0.001
-		or target_offset.length() > Player.HOMING_TARGET_RADIUS + 16.0
-	):
-		return 0
-	if abs(direction.angle_to(target_offset.normalized())) > Player.HOMING_TARGET_HALF_ANGLE:
-		return 0
-	return target_enemy_net_id
+	return projectile_coordinator.get_valid_client_projectile_direction(direction)
 
 
 func _is_client_projectile_spawn_position_allowed(
@@ -7413,28 +5970,13 @@ func _is_client_projectile_spawn_position_allowed(
 	owner_peer_id: int,
 	spawn_position: Vector2
 ) -> bool:
-	if not _is_finite_vector2(spawn_position):
-		return false
-	var owner_player: Player = null
-	if game != null:
-		owner_player = game.get_player_for_peer(owner_peer_id)
-	if owner_player == null or not is_instance_valid(owner_player):
-		return false
-	var projectile_spawn_distance := (
-		owner_player.get_multiplayer_projectile_spawn_distance(projectile_type)
+	return projectile_coordinator.is_client_projectile_spawn_position_allowed(
+		projectile_type,
+		owner_peer_id,
+		spawn_position,
+		_accepted_player_state_positions.get(owner_peer_id),
+		CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
 	)
-	if projectile_spawn_distance <= 0.0:
-		return false
-	var allowed_distance := (
-		CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE + projectile_spawn_distance
-	)
-	if owner_player.global_position.distance_to(spawn_position) <= allowed_distance:
-		return true
-	if _accepted_player_state_positions.has(owner_peer_id):
-		var accepted_position := _accepted_player_state_positions[owner_peer_id] as Vector2
-		if accepted_position.distance_to(spawn_position) <= allowed_distance:
-			return true
-	return false
 
 
 func _get_authoritative_client_projectile_spawn_position(
@@ -7443,15 +5985,12 @@ func _get_authoritative_client_projectile_spawn_position(
 	reported_spawn_position: Vector2,
 	accepted_direction: Vector2
 ) -> Vector2:
-	if projectile_type != TIYI_SNIPER_PROJECTILE_TYPE:
-		return reported_spawn_position
-	var owner_player := game.get_player_for_peer(owner_peer_id) if game != null else null
-	if not _is_valid_tiyi_player(owner_player) or accepted_direction == Vector2.ZERO:
-		return Vector2(INF, INF)
-	var muzzle_distance := owner_player.get_multiplayer_projectile_spawn_distance(projectile_type)
-	if muzzle_distance <= 0.0:
-		return Vector2(INF, INF)
-	return owner_player.global_position + accepted_direction * muzzle_distance
+	return projectile_coordinator.get_authoritative_client_projectile_spawn_position(
+		projectile_type,
+		owner_peer_id,
+		reported_spawn_position,
+		accepted_direction
+	)
 
 
 func _is_finite_vector2(value: Vector2) -> bool:
@@ -7484,87 +6023,19 @@ func _is_valid_tango_laser_volley_payload(
 	lifetime: float,
 	host_fire_timestamp: float
 ) -> bool:
-	if (
-		projectile_ids.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
-		or spawn_positions.size() != TANGO_LASER_VOLLEY_PROJECTILE_COUNT
-		or owner_peer_id <= 0
-		or charge_sequence <= 0
-		or not is_finite(charge_ratio)
-		or charge_ratio < 0.0
-		or charge_ratio > 1.0
-		or not is_finite(barrage_remaining_seconds)
-		or barrage_remaining_seconds < 0.0
-		or barrage_remaining_seconds > TANGO_BARRAGE_MAXIMUM_SECONDS
-		or not _NetConstants.is_valid_network_combat_value(damage)
-		or not _is_finite_vector2(direction)
-		or direction.length_squared() <= 0.001
-		or not is_finite(speed)
-		or speed <= 0.0
-		or not is_finite(lifetime)
-		or lifetime <= 0.0
-		or not is_finite(host_fire_timestamp)
-		or host_fire_timestamp < 0.0
-	):
-		return false
-	var seen_projectile_ids: Dictionary[int, bool] = {}
-	for projectile_index in range(TANGO_LASER_VOLLEY_PROJECTILE_COUNT):
-		var projectile_id := int(projectile_ids[projectile_index])
-		if (
-			seen_projectile_ids.has(projectile_id)
-			or not _is_projectile_id_valid_for_host_owner(
-				projectile_id,
-				owner_peer_id
-			)
-			or not _is_finite_vector2(spawn_positions[projectile_index])
-		):
-			return false
-		seen_projectile_ids[projectile_id] = true
-	return true
-
-
-func _is_valid_linglan_skill1_ring_payload(
-	projectile_ids: PackedInt64Array,
-	spawn_positions: PackedVector2Array,
-	directions: PackedVector2Array,
-	owner_peer_id: int,
-	damage: int,
-	speed: float,
-	lifetime: float,
-	host_fire_timestamp: float
-) -> bool:
-	var projectile_count := projectile_ids.size()
-	if (
-		projectile_count <= 0
-		or projectile_count > LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
-		or spawn_positions.size() != projectile_count
-		or directions.size() != projectile_count
-		or owner_peer_id <= 0
-		or not _NetConstants.is_valid_network_combat_value(damage)
-		or not is_finite(speed)
-		or speed < 0.0
-		or not is_finite(lifetime)
-		or lifetime <= 0.0
-		or not is_finite(host_fire_timestamp)
-		or host_fire_timestamp < 0.0
-	):
-		return false
-	var seen_projectile_ids: Dictionary[int, bool] = {}
-	for projectile_index in range(projectile_count):
-		var projectile_id := int(projectile_ids[projectile_index])
-		var direction := directions[projectile_index]
-		if (
-			seen_projectile_ids.has(projectile_id)
-			or not _is_projectile_id_valid_for_host_owner(
-				projectile_id,
-				owner_peer_id
-			)
-			or not _is_finite_vector2(spawn_positions[projectile_index])
-			or not _is_finite_vector2(direction)
-			or direction.length_squared() <= 0.001
-		):
-			return false
-		seen_projectile_ids[projectile_id] = true
-	return true
+	return projectile_coordinator.is_valid_tango_laser_volley_payload(
+		projectile_ids,
+		spawn_positions,
+		direction,
+		owner_peer_id,
+		charge_sequence,
+		charge_ratio,
+		barrage_remaining_seconds,
+		damage,
+		speed,
+		lifetime,
+		host_fire_timestamp
+	)
 
 
 func _is_valid_bamboo_mortar_visual_payload(
@@ -7642,77 +6113,7 @@ func _is_valid_corn_machine_gun_burst_payload(
 
 
 func _prune_projectile_records(now: float) -> void:
-	_stale_projectile_record_ids.clear()
-	for projectile_id_variant in _projectile_records:
-		var projectile_id := int(projectile_id_variant)
-		var record := _projectile_records[projectile_id] as Dictionary
-		if record.is_empty() or float(record.get("expires_at", 0.0)) <= now:
-			_stale_projectile_record_ids.append(projectile_id)
-	for projectile_id in _stale_projectile_record_ids:
-		_projectile_records.erase(projectile_id)
-
-
-func _setup_projectile_network_identity(
-	projectile: Node,
-	projectile_id: int,
-	owner_peer_id: int,
-	projectile_type: StringName
-) -> void:
-	_bind_player_projectile_gameplay_context(projectile)
-	if projectile.has_method("setup_multiplayer"):
-		projectile.call("setup_multiplayer", projectile_id, owner_peer_id, projectile_type)
-	if projectile.has_signal(&"projectile_finished"):
-		var finished_callable := Callable(self, "_on_network_projectile_finished")
-		if not projectile.is_connected(&"projectile_finished", finished_callable):
-			projectile.connect(&"projectile_finished", finished_callable)
-	if not projectile.has_meta(SessionObjectPool.POOL_OWNER_META):
-		projectile.tree_exited.connect(
-			_on_network_projectile_tree_exited.bind(projectile_id, projectile),
-			CONNECT_ONE_SHOT
-		)
-
-
-func _bind_player_projectile_gameplay_context(projectile: Node) -> bool:
-	if projectile == null or not is_instance_valid(projectile):
-		return false
-	var player_projectile := false
-	var gameplay_gateway: MultiplayerGameplayGateway = null
-	if game != null:
-		gameplay_gateway = game.get_multiplayer_gameplay_gateway()
-	var bullet := projectile as Bullet
-	if bullet != null:
-		player_projectile = true
-		bullet.bind_gameplay_context(game, gameplay_gateway)
-	var arrow := projectile as CollectibleArrowProjectile
-	if arrow != null:
-		player_projectile = true
-		arrow.bind_gameplay_context(game, gameplay_gateway)
-	var bomb := projectile as WeishidaierSkill1Bomb
-	if bomb != null:
-		player_projectile = true
-		bomb.bind_gameplay_context(game, gameplay_gateway)
-	if not player_projectile:
-		return true
-	if game == null or gameplay_gateway == null:
-		return false
-	var projectile_parent := gameplay_gateway.get_projectile_parent()
-	if projectile_parent == null:
-		return false
-	if projectile.get_parent() == null:
-		projectile_parent.add_child(projectile)
-	elif projectile.get_parent() != projectile_parent:
-		projectile.reparent(projectile_parent)
-	return true
-
-
-func _on_network_projectile_finished(projectile_id: int, projectile: Node) -> void:
-	if _known_projectiles.get(projectile_id) == projectile:
-		_known_projectiles.erase(projectile_id)
-
-
-func _on_network_projectile_tree_exited(projectile_id: int, projectile: Node) -> void:
-	if _known_projectiles.get(projectile_id) == projectile:
-		_known_projectiles.erase(projectile_id)
+	projectile_coordinator.prune_records(now)
 
 
 func _update_recent_event_cache_prune(delta: float) -> void:
@@ -7724,7 +6125,6 @@ func _update_recent_event_cache_prune(delta: float) -> void:
 
 
 func _prune_recent_event_caches(now: float) -> void:
-	_prune_recent_event_cache(_processed_enemy_hit_ids, now)
 	_prune_recent_event_cache(_processed_player_hit_ids, now)
 	_prune_recent_event_cache(_processed_collectible_effect_event_ids, now)
 	_prune_projectile_records(now)
@@ -7829,39 +6229,20 @@ func _apply_enemy_hit_report(
 	reported_damage: int,
 	impact_direction: Vector2
 ) -> void:
-	if projectile_id <= 0 or owner_peer_id <= 0 or enemy_net_id <= 0:
-		return
-	if not _is_projectile_id_valid_for_owner(projectile_id, owner_peer_id):
-		return
-	var projectile_record_variant: Variant = _projectile_records.get(projectile_id)
-	if not (projectile_record_variant is Dictionary):
-		return
-	var projectile_record := projectile_record_variant as Dictionary
-	if projectile_record.is_empty():
-		return
-	var projectile_type := StringName(projectile_record.get("projectile_type", &""))
-	var consumes_first_confirmed_hit := (
-		(
-			projectile_type == &"player_bullet"
-			or projectile_type == TIYI_SNIPER_PROJECTILE_TYPE
-			or projectile_type == TANGO_LASER_PROJECTILE_TYPE
-		)
-		and not bool(projectile_record.get("pierces_enemies", false))
-	)
-	if consumes_first_confirmed_hit and bool(projectile_record.get("confirmed_hit_consumed", false)):
-		return
-	var authoritative_damage := _get_authoritative_projectile_damage(
+	var now := _get_net_time()
+	var admission: MpProjectileCoordinatorScript.EnemyHitAdmission = (
+		projectile_coordinator.prepare_enemy_hit(
 		projectile_id,
 		owner_peer_id,
+		enemy_net_id,
 		reported_damage,
-		projectile_type
+		now
+		)
 	)
-	if authoritative_damage <= 0:
+	if admission == null:
 		return
-	var hit_key := "%d:%d" % [projectile_id, enemy_net_id]
-	var now := _get_net_time()
-	if _is_recent_event_cached(_processed_enemy_hit_ids, hit_key, now):
-		return
+	var projectile_type: StringName = admission.projectile_type
+	var authoritative_damage: int = admission.authoritative_damage
 	var enemy := _get_host_enemy_for_net_id(enemy_net_id)
 	if enemy == null or not is_instance_valid(enemy):
 		return
@@ -7890,25 +6271,30 @@ func _apply_enemy_hit_report(
 		_get_player_projectile_damage_type(projectile_type)
 	):
 		return
-	if consumes_first_confirmed_hit:
-		projectile_record["confirmed_hit_consumed"] = true
-		_projectile_records[projectile_id] = projectile_record
-	_remember_recent_event(_processed_enemy_hit_ids, hit_key, HIT_DEDUP_RETENTION_SECONDS, now)
+	projectile_coordinator.commit_enemy_hit(
+		projectile_id,
+		enemy_net_id,
+		admission.consumes_first_confirmed_hit,
+		now
+	)
 	if projectile_type == TIYI_SNIPER_PROJECTILE_TYPE:
+		var projectile_record: Dictionary = projectile_coordinator.get_projectile_record(
+			projectile_id
+		)
 		var authoritative_hit_position := enemy.global_position
 		var authoritative_direction := _get_valid_client_projectile_direction(-impact_direction)
-		var projectile_variant: Variant = _known_projectiles.get(projectile_id)
-		if projectile_variant != null and is_instance_valid(projectile_variant):
-			var projectile_node := projectile_variant as Node2D
-			if projectile_node != null:
-				authoritative_hit_position = projectile_node.global_position
-				var projectile_direction_variant: Variant = projectile_node.get("direction")
-				if projectile_direction_variant is Vector2:
-					var projectile_direction := _get_valid_client_projectile_direction(
-						projectile_direction_variant as Vector2
-					)
-					if projectile_direction != Vector2.ZERO:
-						authoritative_direction = projectile_direction
+		var projectile_node := (
+			projectile_coordinator.get_projectile(projectile_id) as Node2D
+		)
+		if projectile_node != null:
+			authoritative_hit_position = projectile_node.global_position
+			var projectile_direction_variant: Variant = projectile_node.get("direction")
+			if projectile_direction_variant is Vector2:
+				var projectile_direction := _get_valid_client_projectile_direction(
+					projectile_direction_variant as Vector2
+				)
+				if projectile_direction != Vector2.ZERO:
+					authoritative_direction = projectile_direction
 		if authoritative_direction == Vector2.ZERO:
 			authoritative_direction = Vector2.RIGHT
 		_rpc_to_connected_clients(
@@ -7946,34 +6332,14 @@ func net_tiyi_sniper_hit_confirmed(
 	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id > 0 and sender_id != _get_host_peer_id():
 		return
-	var safe_direction := _get_valid_client_projectile_direction(direction)
-	if safe_direction == Vector2.ZERO:
-		safe_direction = Vector2.RIGHT
-	var projectile_variant: Variant = _known_projectiles.get(projectile_id)
-	if projectile_variant != null and is_instance_valid(projectile_variant):
-		var projectile_node := projectile_variant as Node2D
-		if projectile_node != null and projectile_node.has_method(
-			"apply_authoritative_hit_confirmation"
-		):
-			projectile_node.call(
-				"apply_authoritative_hit_confirmation",
-				enemy_net_id,
-				hit_position,
-				safe_direction,
-				continues_piercing
-			)
-			return
-	var hit_effect_scene := _get_runtime_packed_scene(TIYI_SNIPER_HIT_EFFECT_SCENE_PATH)
-	if hit_effect_scene == null:
-		return
-	var hit_effect := hit_effect_scene.instantiate() as Node2D
-	if hit_effect == null:
-		return
-	hit_effect.top_level = true
-	if hit_effect.has_method("setup"):
-		hit_effect.call("setup", safe_direction)
-	add_child(hit_effect)
-	hit_effect.global_position = hit_position
+	projectile_coordinator.apply_tiyi_sniper_hit_confirmation(
+		projectile_id,
+		enemy_net_id,
+		hit_position,
+		direction,
+		continues_piercing,
+		self
+	)
 
 
 func _apply_confirmed_enemy_damage(
@@ -13861,7 +12227,6 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_luoxi_offer_states_by_peer.erase(peer_id)
 	_luoxi_offer_revision_counters.erase(peer_id)
 	_plant_placement_rate_buckets.erase(peer_id)
-	_client_projectile_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_rate_buckets.erase(peer_id)
 	_player_transaction_ingress_rate_buckets.erase(peer_id)
 	_player_action_ingress_rate_buckets.erase(peer_id)
@@ -13881,51 +12246,21 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_terrain_snapshot_request_rate_buckets.erase(peer_id)
 	_warehouse_transaction_result_cache.clear_peer(peer_id)
 	_production_command_result_cache.clear_peer(peer_id)
-	_clear_projectiles_for_peer(peer_id)
-	_clear_projectile_records_for_peer(peer_id)
+	projectile_coordinator.clear_peer(peer_id)
 
 
 func _clear_projectiles_for_peer(peer_id: int) -> void:
-	var projectile_ids: Array[int] = []
-	for projectile_id_variant in _known_projectiles.keys():
-		var projectile_id := int(projectile_id_variant)
-		var projectile_variant: Variant = _known_projectiles.get(projectile_id)
-		if projectile_variant == null or not is_instance_valid(projectile_variant):
-			projectile_ids.append(projectile_id)
-			continue
-		var projectile_object := projectile_variant as Object
-		if projectile_object == null:
-			projectile_ids.append(projectile_id)
-			continue
-		var projectile_owner := int(projectile_object.get("owner_peer_id"))
-		if projectile_owner == peer_id:
-			projectile_ids.append(projectile_id)
-	for projectile_id in projectile_ids:
-		var projectile_variant: Variant = _known_projectiles.get(projectile_id)
-		_known_projectiles.erase(projectile_id)
-		if projectile_variant != null and is_instance_valid(projectile_variant):
-			var projectile_node := projectile_variant as Node
-			if projectile_node != null:
-				if projectile_node.has_method("retire"):
-					projectile_node.call("retire")
-				else:
-					projectile_node.queue_free()
+	projectile_coordinator.clear_projectiles_for_peer(peer_id)
 
 
 func _clear_projectile_records_for_peer(peer_id: int) -> void:
-	var projectile_ids: Array[int] = []
-	for projectile_id_variant in _projectile_records.keys():
-		var projectile_id := int(projectile_id_variant)
-		var record := _projectile_records[projectile_id] as Dictionary
-		if record.is_empty() or int(record.get("owner_peer_id", 0)) == peer_id:
-			projectile_ids.append(projectile_id)
-	for projectile_id in projectile_ids:
-		_projectile_records.erase(projectile_id)
+	projectile_coordinator.clear_projectile_records_for_peer(peer_id)
 
 
 func _return_to_lobby() -> void:
 	player_coordinator.reset_session_state()
 	enemy_coordinator.reset_session_state()
+	projectile_coordinator.reset_session_state()
 	_disconnected_player_reconnect_states.clear()
 	_processed_collectible_effect_event_ids.clear()
 	_pending_plant_health_updates.clear()
@@ -13938,7 +12273,6 @@ func _return_to_lobby() -> void:
 	_pending_wave_progress.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
-	_client_projectile_request_rate_buckets.clear()
 	_client_terrain_revision = -1
 	_last_host_terrain_revision_broadcast = 0
 	_client_has_terrain_snapshot = false

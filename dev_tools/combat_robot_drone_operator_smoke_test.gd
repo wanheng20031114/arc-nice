@@ -1,5 +1,8 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const OPERATOR_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_drone_operator.tscn"
 )
@@ -707,6 +710,9 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 	var mp_motion_system := CombatRobotDroneMotionSystem.new()
 	mp_motion_system.name = "CombatRobotDroneMotionSystem"
 	mp_game.add_child(mp_motion_system)
+	var projectile_coordinator := MpProjectileCoordinator.new()
+	projectile_coordinator.name = "ProjectileCoordinator"
+	mp_game.add_child(projectile_coordinator)
 
 	# MpGame requires a typed CombatRuntimeBase reference only to resolve the shared
 	# motion system and client-view authority. Keeping this fixture off-tree avoids
@@ -714,7 +720,13 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 	var runtime_stub := StandardGame.new()
 	runtime_stub.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	runtime_stub.combat_robot_drone_motion_system = mp_motion_system
+	var gameplay_gateway := MultiplayerGameplayGateway.new()
+	gameplay_gateway.name = "MultiplayerGameplayGateway"
+	runtime_stub.add_child(gameplay_gateway)
+	gameplay_gateway.bind_runtime(runtime_stub)
 	mp_game.game = runtime_stub
+	mp_game.projectile_coordinator = projectile_coordinator
+	projectile_coordinator.bind_runtime(runtime_stub)
 	test_root.add_child(mp_game)
 	await process_frame
 	test_root.client_view = true
@@ -737,8 +749,10 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		now - 0.04,
 		0
 	)
-	var known_projectiles := mp_game.get("_known_projectiles") as Dictionary
-	var deploy_drone := known_projectiles.get(71001) as CombatRobotSuicideDrone
+	var deploy_drone := (
+		projectile_coordinator.get_projectile(71001)
+		as CombatRobotSuicideDrone
+	)
 	_expect(
 		deploy_drone != null
 		and deploy_drone.deployment_started
@@ -764,10 +778,9 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		now,
 		0
 	)
-	known_projectiles = mp_game.get("_known_projectiles") as Dictionary
 	_expect(
-		known_projectiles.size() == 1
-		and known_projectiles.get(71001) == deploy_drone
+		int(projectile_coordinator.get_state_metrics().get("known_projectiles", -1)) == 1
+		and projectile_coordinator.get_projectile(71001) == deploy_drone
 		and deploy_drone.direction.is_equal_approx(Vector2.RIGHT)
 		and deploy_drone.damage == 50,
 		"Duplicate drone packets must not duplicate or rewrite the committed lease."
@@ -788,8 +801,10 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		now - 0.40,
 		0
 	)
-	known_projectiles = mp_game.get("_known_projectiles") as Dictionary
-	var flight_drone := known_projectiles.get(71002) as CombatRobotSuicideDrone
+	var flight_drone := (
+		projectile_coordinator.get_projectile(71002)
+		as CombatRobotSuicideDrone
+	)
 	_expect(
 		flight_drone != null
 		and flight_drone.flight_started
@@ -815,8 +830,10 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		now - 1.30,
 		0
 	)
-	known_projectiles = mp_game.get("_known_projectiles") as Dictionary
-	var explosion_drone := known_projectiles.get(71003) as CombatRobotSuicideDrone
+	var explosion_drone := (
+		projectile_coordinator.get_projectile(71003)
+		as CombatRobotSuicideDrone
+	)
 	_expect(
 		explosion_drone != null
 		and explosion_drone.explosion_started
@@ -848,14 +865,14 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		now - fully_expired_age,
 		0
 	)
-	known_projectiles = mp_game.get("_known_projectiles") as Dictionary
-	var projectile_records := mp_game.get("_projectile_records") as Dictionary
 	_expect(
-		not known_projectiles.has(71004)
-		and projectile_records.has(71004),
+		not projectile_coordinator.has_projectile(71004)
+		and projectile_coordinator.has_projectile_record(71004),
 		"A fully expired replicated drone must retire immediately while retaining its dedupe record."
 	)
-	var known_count_before_retry := known_projectiles.size()
+	var known_count_before_retry := int(
+		projectile_coordinator.get_state_metrics().get("known_projectiles", -1)
+	)
 	mp_game.net_projectile_fired(
 		71004,
 		projectile_type,
@@ -871,7 +888,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 		0
 	)
 	_expect(
-		(mp_game.get("_known_projectiles") as Dictionary).size()
+		int(projectile_coordinator.get_state_metrics().get("known_projectiles", -1))
 			== known_count_before_retry,
 		"A duplicate packet for an expired drone must not resurrect a second visual."
 	)
@@ -881,6 +898,7 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 			drone.retire()
 	await process_frame
 	test_root.client_view = false
+	projectile_coordinator.unbind_runtime(runtime_stub)
 	mp_game.game = null
 	mp_game.queue_free()
 	runtime_stub.free()
@@ -888,7 +906,9 @@ func _test_mp_game_drone_projectile_pipeline() -> void:
 
 
 func _test_multiplayer_and_runtime_source_contract() -> void:
-	var mp_source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var mp_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+	)
 	_expect(
 		mp_source.contains("COMBAT_ROBOT_SUICIDE_DRONE_TYPE")
 		and mp_source.contains("CombatRobotSuicideDrone.DEPLOY_DELAY")

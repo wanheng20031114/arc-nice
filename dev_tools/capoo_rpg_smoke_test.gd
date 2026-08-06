@@ -1,11 +1,17 @@
 extends SceneTree
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
 const CAPOO_SCENE := preload("res://scene/enemy/capoo/capoo_rpg.tscn")
 const ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const EXPLOSION_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_explosion.tscn")
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const CAPOO_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
+const COMBAT_RUNTIME_FIXTURE_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -270,9 +276,13 @@ func _test_proxy_action_visuals() -> void:
 
 
 func _test_multiplayer_projectile_registry() -> void:
-	var mp_game := MP_GAME_SCRIPT.new()
-	var projectile := mp_game.call(
-		"_instantiate_projectile",
+	var runtime := (
+		COMBAT_RUNTIME_FIXTURE_SCENE.instantiate()
+		as EnemyGameplayGatewayTestRuntime
+	)
+	var coordinator := MpProjectileCoordinator.new()
+	coordinator.bind_runtime(runtime)
+	var projectile := coordinator.instantiate_projectile(
 		&"capoo_rpg_rocket",
 		0,
 		Vector2.RIGHT,
@@ -285,7 +295,9 @@ func _test_multiplayer_projectile_registry() -> void:
 		_expect(projectile.damage == 20, "Registry rocket damage mismatch.")
 		_expect(is_equal_approx(projectile.speed, 210.0), "Registry rocket speed mismatch.")
 		projectile.free()
-	mp_game.free()
+	coordinator.unbind_runtime(runtime)
+	coordinator.free()
+	runtime.free()
 
 
 func _spawn_player(position: Vector2, health: int) -> Player:

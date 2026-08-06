@@ -84,6 +84,12 @@ func allows_enemy_pickup_drops() -> bool:
 	return true
 
 
+## Resolves a mode-owned combat target used by neutral projectile replication.
+## Standard and rogue modes have no plant-style world target and return null.
+func get_network_projectile_world_target(_net_id: int) -> Node2D:
+	return null
+
+
 func is_terminal_combat_state() -> bool:
 	return false
 

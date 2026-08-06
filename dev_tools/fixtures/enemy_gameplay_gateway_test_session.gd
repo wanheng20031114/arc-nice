@@ -1,12 +1,23 @@
 extends "res://scene/multiplayer/mp_game.gd"
 class_name EnemyGameplayGatewayTestSession
 
+const MpProjectileCoordinator := preload(
+	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
+)
+
 ## Typed recording session for entity-to-network boundary tests. It inherits
 ## the real projectile contact ledger, while player damage requests terminate
 ## here instead of reaching a fake current-scene game object.
 
 var accept_player_damage_requests := true
 var player_damage_requests: Array[Dictionary] = []
+
+
+func _init() -> void:
+	var coordinator := MpProjectileCoordinator.new()
+	coordinator.name = "ProjectileCoordinator"
+	add_child(coordinator)
+	projectile_coordinator = coordinator
 
 
 func request_multiplayer_player_damage(
