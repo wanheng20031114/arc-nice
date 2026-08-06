@@ -32,8 +32,6 @@ class PresentationRuntimeProbe:
 
 	var day_requests := 0
 	var night_requests := 0
-	var defeat_completions := 0
-	var presentation: TowerDefensePresentationCoordinator = null
 
 	func transition_world_to_day(_duration_seconds: float = -1.0) -> void:
 		day_requests += 1
@@ -41,7 +39,14 @@ class PresentationRuntimeProbe:
 	func transition_world_to_night(_duration_seconds: float = -1.0) -> void:
 		night_requests += 1
 
-	func _complete_defeat_presentation() -> void:
+
+class PresentationCampaignProbe:
+	extends TowerDefenseCampaignCoordinator
+
+	var defeat_completions := 0
+	var presentation: TowerDefensePresentationCoordinator = null
+
+	func complete_defeat_presentation() -> void:
 		defeat_completions += 1
 		presentation.complete_defeat_presentation()
 
@@ -61,6 +66,7 @@ func _run() -> void:
 		return
 	var coordinator := fixture["coordinator"] as TowerDefensePresentationCoordinator
 	var runtime := fixture["runtime"] as PresentationRuntimeProbe
+	var campaign := fixture["campaign"] as PresentationCampaignProbe
 	var wave_hud := fixture["wave_hud"] as TowerDefenseWaveHUD
 	var announcement := fixture["announcement"] as DayPhaseAnnouncement
 	var music_player := fixture["music_player"] as AudioStreamPlayer
@@ -70,19 +76,19 @@ func _run() -> void:
 	_test_hud_and_request_bridge(coordinator, wave_hud)
 	_test_countdown_deduplication(coordinator)
 	_test_music(coordinator, music_player)
-	_test_defeat_idempotency(coordinator, runtime)
+	_test_defeat_idempotency(coordinator, campaign)
 
 	for owned_node in fixture["owned_nodes"] as Array[Node]:
 		owned_node.queue_free()
 	runtime.free()
-	(fixture["campaign"] as TowerDefenseCampaignCoordinator).free()
+	campaign.free()
 	await process_frame
 	_finish()
 
 
 func _create_fixture() -> Dictionary:
 	var runtime := PresentationRuntimeProbe.new()
-	var campaign := TowerDefenseCampaignCoordinator.new()
+	var campaign := PresentationCampaignProbe.new()
 	campaign.day_cycle_config = DAY_CYCLE
 	var coordinator := PRESENTATION_SCENE.instantiate() as TowerDefensePresentationCoordinator
 	var wave_hud := WAVE_HUD_SCENE.instantiate() as TowerDefenseWaveHUD
@@ -127,7 +133,7 @@ func _create_fixture() -> Dictionary:
 		announcement,
 		status_hud
 	)
-	runtime.presentation = coordinator
+	campaign.presentation = coordinator
 	return {
 		"runtime": runtime,
 		"campaign": campaign,
@@ -163,6 +169,31 @@ func _test_static_scene_contract() -> void:
 	_expect(
 		TOWER_GAME_SCENE.resource_path.ends_with("tower_defense_game.tscn"),
 		"塔防生产场景路径必须保持稳定。"
+	)
+	var tower_scene_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
+	)
+	for expected_connection in [
+		'[connection signal="profile_requested" from="CurrencyHUD" to="PresentationCoordinator" method="open_player_profile"]',
+		'[connection signal="settings_requested" from="CurrencyHUD" to="PresentationCoordinator" method="open_settings"]',
+		'[connection signal="return_to_lobby_requested" from="WaveHUD" to="PresentationCoordinator" method="_on_wave_hud_return_to_lobby_requested"]',
+		'[connection signal="start_wave_requested" from="WaveHUD" to="PresentationCoordinator" method="_on_wave_hud_start_wave_requested"]',
+	]:
+		_expect(
+			tower_scene_source.contains(expected_connection),
+			"塔防模式 UI 请求必须在生产场景中静态连接到 PresentationCoordinator。"
+		)
+	var root_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
+	)
+	_expect(
+		not root_source.contains("func _configure_minimap")
+		and not root_source.contains("func _toggle_full_screen")
+		and not root_source.contains("settings_requested.connect")
+		and root_source.contains(
+			"presentation_coordinator.handle_unhandled_input(event)"
+		),
+		"塔防根脚本只应委托模式 UI 输入，不能重新持有表现实现或动态信号连接。"
 	)
 
 
@@ -270,15 +301,15 @@ func _test_music(
 
 func _test_defeat_idempotency(
 	coordinator: TowerDefensePresentationCoordinator,
-	runtime: PresentationRuntimeProbe
+	campaign: PresentationCampaignProbe
 ) -> void:
 	coordinator.reset_defeat_presentation()
 	coordinator.begin_defeat_camera_sequence([])
 	coordinator.complete_defeat_presentation()
 	_expect(
-		runtime.defeat_completions == 1
+		campaign.defeat_completions == 1
 		and coordinator.defeat_presentation_completed,
-		"无可用基地镜头目标时必须立即且幂等完成失败表现。"
+		"无可用基地镜头目标时必须经 CampaignCoordinator 强类型边界立即且幂等完成失败表现。"
 	)
 
 

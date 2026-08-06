@@ -30,6 +30,12 @@ var _defeat_audio: AudioStreamPlayer = null
 var _wave_hud: TowerDefenseWaveHUD = null
 var _day_phase_announcement: DayPhaseAnnouncement = null
 var _status_hud: TowerDefenseStatusHUD = null
+var _currency_hud: CurrencyHUD = null
+var _player_profile_panel: TowerDefensePlayerProfilePanel = null
+var _settings_panel: SettingsPanel = null
+var _debug_collectible_window: DebugCollectibleWindow = null
+var _multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
+var _sandbox_free_building_enabled := false
 var _last_day_phase_announcement_key: StringName = &""
 var _client_countdown_sequence_key: StringName = &""
 var _client_last_countdown_tick_seconds := COUNTDOWN_FINAL_SECONDS + 1
@@ -114,6 +120,87 @@ func configure_wave_hud(
 		if runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 		else "返回大厅"
 	)
+
+
+func configure_player_ui(
+	runtime_mode: int,
+	player_instance: Player,
+	research_coordinator: ResearchCoordinator,
+	currency_hud: CurrencyHUD,
+	player_profile_panel: TowerDefensePlayerProfilePanel,
+	settings_panel: SettingsPanel,
+	debug_collectible_window: DebugCollectibleWindow,
+	multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter,
+	sandbox_free_building_enabled: bool
+) -> void:
+	_currency_hud = currency_hud
+	_player_profile_panel = player_profile_panel
+	_settings_panel = settings_panel
+	_debug_collectible_window = debug_collectible_window
+	_multiplayer_mode_adapter = multiplayer_mode_adapter
+	_sandbox_free_building_enabled = sandbox_free_building_enabled
+	_currency_hud.bind_player(player_instance)
+	_player_profile_panel.configure_multiplayer_requests(
+		runtime_mode != CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	)
+	_player_profile_panel.set_research_coordinator(research_coordinator)
+	_player_profile_panel.bind_player(player_instance)
+
+
+func configure_minimap(
+	minimap: TowerDefenseMinimap,
+	player_instance: Player,
+	ground_tile_map_layer: TileMapLayer,
+	dual_grid_terrain: DualGridTilemap,
+	overlay_tile_map_layer: TileMapLayer,
+	enemy_container: Node2D,
+	boss_container: Node2D,
+	plant_system: PlantSystem
+) -> void:
+	minimap.setup(
+		player_instance,
+		_map_camera,
+		ground_tile_map_layer,
+		dual_grid_terrain,
+		overlay_tile_map_layer,
+		_runtime,
+		enemy_container,
+		boss_container,
+		plant_system
+	)
+
+
+func handle_unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("full_screen"):
+		_toggle_full_screen()
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("cheat_collectibles"):
+		if _sandbox_free_building_enabled:
+			_toggle_debug_collectible_window()
+		get_viewport().set_input_as_handled()
+
+
+func open_settings() -> void:
+	if _player_profile_panel.is_open():
+		_player_profile_panel.close()
+	_settings_panel.open()
+
+
+func open_player_profile() -> void:
+	if _settings_panel.is_open():
+		_settings_panel.close()
+	_player_profile_panel.open()
+
+
+func _toggle_full_screen() -> void:
+	_settings_panel.toggle_fullscreen_setting()
+
+
+func _toggle_debug_collectible_window() -> void:
+	if not _multiplayer_mode_adapter.allows_debug_collectible_grants():
+		return
+	_debug_collectible_window.toggle()
 
 
 func connect_wave_hud_requests() -> void:

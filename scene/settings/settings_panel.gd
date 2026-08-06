@@ -82,6 +82,11 @@ func refresh_from_settings() -> void:
 	_refresh_from_settings()
 
 
+func toggle_fullscreen_setting() -> void:
+	_refresh_from_settings()
+	fullscreen_check.button_pressed = not fullscreen_check.button_pressed
+
+
 func close() -> void:
 	if not visible:
 		return

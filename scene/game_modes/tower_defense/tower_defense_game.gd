@@ -346,7 +346,16 @@ func _ready() -> void:
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
 	_register_research_players()
-	_configure_minimap()
+	presentation_coordinator.configure_minimap(
+		tower_defense_minimap,
+		player,
+		ground_tile_map_layer,
+		dual_grid_terrain,
+		overlay_tile_map_layer,
+		enemy_container,
+		boss_container,
+		plant_system
+	)
 	_apply_initial_player_xirang()
 	campaign_coordinator.start_progression_metrics()
 	if (
@@ -357,15 +366,17 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
-	currency_hud.bind_player(player)
-	player_profile_panel.configure_multiplayer_requests(
-		runtime_mode != RuntimeMode.SINGLEPLAYER
+	presentation_coordinator.configure_player_ui(
+		int(runtime_mode),
+		player,
+		research_coordinator,
+		currency_hud,
+		player_profile_panel,
+		settings_panel,
+		debug_collectible_window,
+		tower_multiplayer_mode_adapter,
+		sandbox_free_building_enabled
 	)
-	player_profile_panel.set_research_coordinator(research_coordinator)
-	player_profile_panel.bind_player(player)
-	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
-	currency_hud.profile_requested.connect(_on_currency_hud_profile_requested)
-	presentation_coordinator.connect_wave_hud_requests()
 	luoxi_special_game_coordinator.setup(
 		campaign_coordinator,
 		home_defense_coordinator,
@@ -454,15 +465,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("full_screen"):
-		_toggle_full_screen()
-		get_viewport().set_input_as_handled()
-		return
-
-	if event.is_action_pressed("cheat_collectibles"):
-		if sandbox_free_building_enabled:
-			_toggle_debug_collectible_window()
-		get_viewport().set_input_as_handled()
+	presentation_coordinator.handle_unhandled_input(event)
 
 
 func configure_multiplayer(
@@ -743,20 +746,6 @@ func get_home_objective_targets() -> Array[Node2D]:
 	return home_defense_coordinator.get_home_targets()
 
 
-func _configure_minimap() -> void:
-	tower_defense_minimap.setup(
-		player,
-		map_camera,
-		ground_tile_map_layer,
-		dual_grid_terrain,
-		overlay_tile_map_layer,
-		self,
-		enemy_container,
-		boss_container,
-		plant_system
-	)
-
-
 func _apply_base_damage(amount: int) -> void:
 	home_defense_coordinator.apply_base_damage(amount)
 
@@ -806,47 +795,6 @@ func _grant_tower_defense_starting_package() -> bool:
 func _register_research_players() -> void:
 	player_roster_coordinator.local_player = player
 	player_roster_coordinator.register_research_players()
-
-
-func _on_currency_hud_settings_requested() -> void:
-	if player_profile_panel.is_open():
-		player_profile_panel.close()
-	settings_panel.open()
-
-
-func _on_currency_hud_profile_requested() -> void:
-	if settings_panel.is_open():
-		settings_panel.close()
-	player_profile_panel.open()
-
-
-func _toggle_full_screen() -> void:
-	var user_settings := get_node_or_null("/root/UserSettings")
-	if user_settings != null and user_settings.has_method("set_fullscreen_enabled"):
-		var next_fullscreen := not bool(user_settings.call("is_fullscreen_enabled"))
-		user_settings.call("set_fullscreen_enabled", next_fullscreen)
-		if settings_panel != null and settings_panel.has_method("refresh_from_settings"):
-			settings_panel.call("refresh_from_settings")
-		return
-
-	var current_mode := DisplayServer.window_get_mode()
-	var is_fullscreen := (
-		current_mode == DisplayServer.WINDOW_MODE_FULLSCREEN
-		or current_mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
-	)
-	DisplayServer.window_set_mode(
-		DisplayServer.WINDOW_MODE_WINDOWED if is_fullscreen else DisplayServer.WINDOW_MODE_FULLSCREEN
-	)
-
-
-func _toggle_debug_collectible_window() -> void:
-	if (
-		debug_collectible_window == null
-		or not sandbox_free_building_enabled
-		or not tower_multiplayer_mode_adapter.allows_debug_collectible_grants()
-	):
-		return
-	debug_collectible_window.toggle()
 
 
 func show_combat_number(
