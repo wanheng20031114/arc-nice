@@ -1,7 +1,7 @@
 extends SceneTree
 
 const COORDINATOR_SCENE := preload(
-	"res://scene/multiplayer/tower_fate/mp_tower_fate_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/multiplayer/fate/mp_tower_fate_coordinator.tscn"
 )
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")

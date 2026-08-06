@@ -1,6 +1,0 @@
-[gd_scene load_steps=2 format=3]
-
-[ext_resource type="Script" path="res://scene/multiplayer/tower_fate/mp_tower_fate_coordinator.gd" id="1_tower_fate"]
-
-[node name="TowerFateCoordinator" type="Node"]
-script = ExtResource("1_tower_fate")

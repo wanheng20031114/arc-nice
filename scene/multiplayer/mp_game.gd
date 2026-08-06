@@ -8,13 +8,13 @@ const MpWorldFlowCoordinatorScript := preload(
 	"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
 )
 const MpTowerEconomyCoordinatorScript := preload(
-	"res://scene/multiplayer/tower_economy/mp_tower_economy_coordinator.gd"
+	"res://scene/game_modes/tower_defense/multiplayer/economy/mp_tower_economy_coordinator.gd"
 )
 const MpMerchantTransactionsCoordinatorScript := preload(
 	"res://scene/multiplayer/merchant_transactions/mp_merchant_transactions_coordinator.gd"
 )
 const MpTowerFateCoordinatorScript := preload(
-	"res://scene/multiplayer/tower_fate/mp_tower_fate_coordinator.gd"
+	"res://scene/game_modes/tower_defense/multiplayer/fate/mp_tower_fate_coordinator.gd"
 )
 const MpCollectiblePresentationCoordinatorScript := preload(
 	"res://scene/multiplayer/collectible_presentation/mp_collectible_presentation_coordinator.gd"

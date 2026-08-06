@@ -1,7 +1,7 @@
 extends SceneTree
 
 const TOWER_WORLD_SCENE := preload(
-	"res://scene/multiplayer/tower_world/mp_tower_world_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.tscn"
 )
 const TRANSACTIONS_SCENE := preload(
 	"res://scene/multiplayer/transactions/mp_transactions_coordinator.tscn"
@@ -517,7 +517,7 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 			"%s 必须在 RPC 入口首行捕获 sender。" % function_name
 		)
 	var coordinator_source := FileAccess.get_file_as_string(
-		"res://scene/multiplayer/tower_world/mp_tower_world_coordinator.gd"
+		"res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.gd"
 	)
 	_expect(
 		not coordinator_source.contains("current_scene")

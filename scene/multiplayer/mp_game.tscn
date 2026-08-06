@@ -7,10 +7,10 @@
 [ext_resource type="PackedScene" path="res://scene/multiplayer/projectile/mp_projectile_coordinator.tscn" id="5_projectile"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/world_flow/mp_world_flow_coordinator.tscn" id="6_world_flow"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/transactions/mp_transactions_coordinator.tscn" id="7_transactions"]
-[ext_resource type="PackedScene" path="res://scene/multiplayer/tower_economy/mp_tower_economy_coordinator.tscn" id="8_tower_economy"]
-[ext_resource type="PackedScene" path="res://scene/multiplayer/tower_world/mp_tower_world_coordinator.tscn" id="9_tower_world"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/multiplayer/economy/mp_tower_economy_coordinator.tscn" id="8_tower_economy"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.tscn" id="9_tower_world"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/merchant_transactions/mp_merchant_transactions_coordinator.tscn" id="10_merchant_transactions"]
-[ext_resource type="PackedScene" path="res://scene/multiplayer/tower_fate/mp_tower_fate_coordinator.tscn" id="11_tower_fate"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/multiplayer/fate/mp_tower_fate_coordinator.tscn" id="11_tower_fate"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/collectible_presentation/mp_collectible_presentation_coordinator.tscn" id="12_collectible_presentation"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/network_diagnostics/mp_network_diagnostics_coordinator.tscn" id="13_network_diagnostics"]
 

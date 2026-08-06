@@ -1,7 +1,7 @@
 extends SceneTree
 
 const ECONOMY_SCENE := preload(
-	"res://scene/multiplayer/tower_economy/mp_tower_economy_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/multiplayer/economy/mp_tower_economy_coordinator.tscn"
 )
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
