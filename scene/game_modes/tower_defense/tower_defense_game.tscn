@@ -63,6 +63,7 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/enemy/tower_defense_enemy_coordinator.tscn" id="64_enemy_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/home/tower_defense_home_defense_coordinator.tscn" id="65_home_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.tscn" id="66_plant_coordinator"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.tscn" id="67_player_roster"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -175,6 +176,8 @@ linglan_boss_enabled = true
 [node name="HomeDefenseCoordinator" parent="." instance=ExtResource("65_home_coordinator")]
 
 [node name="PlantRuntimeCoordinator" parent="." instance=ExtResource("66_plant_coordinator")]
+
+[node name="PlayerRosterCoordinator" parent="." instance=ExtResource("67_player_roster")]
 
 [node name="TowerPlantGameplayPort" type="Node" parent="."]
 script = ExtResource("62_plant_gameplay_bridge")

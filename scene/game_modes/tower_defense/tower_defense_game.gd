@@ -72,7 +72,7 @@ const LINGLAN_SKILL4_AUTHORED_TARGET_CENTER := Vector2(6.5, 2.0)
 const BOSS_INTRO_CAMERA_FOCUS_SECONDS := 0.9
 const LINGLAN_AIRDROP_NEARBY_RADIUS := Vector2(96.0, 80.0)
 const DEFEAT_CAMERA_TRAVEL_SECONDS := 0.55
-const INITIAL_PLAYER_XIRANG := 1000
+const INITIAL_PLAYER_XIRANG := TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
 const DEFAULT_BASE_HEALTH := 100
 const XIAOCONG_INTERACTION_DISTANCE := 220.0
 # A full background sweep only needs to keep long-lived objectives reasonably
@@ -136,7 +136,6 @@ signal base_health_changed(current_health: int, maximum_health: int, revision: i
 # Production defaults to loading-time prewarming. The cohort performance probe
 # can disable it before scene instantiation for a strict old/new A/B.
 static var expanded_projectile_pool_prewarm_enabled := true
-var _singleplayer_tango_charge_started_at: float = -1.0
 
 @export_group("战役资源")
 @export var mode_definition: GameModeDefinition = null
@@ -192,6 +191,9 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 @onready var plant_runtime_coordinator := get_node_or_null(
 	"PlantRuntimeCoordinator"
 ) as TowerDefensePlantRuntimeCoordinator
+@onready var player_roster_coordinator := get_node_or_null(
+	"PlayerRosterCoordinator"
+) as TowerDefensePlayerRosterCoordinator
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
 )
@@ -431,8 +433,26 @@ var _previous_physics_interpolation_enabled := false
 var _owns_physics_interpolation_override := false
 var merchant_intermission_active := false
 var player_wave_death_counts: Dictionary = {}
-var singleplayer_respawn_time_left := -1.0
-var singleplayer_respawn_last_seconds := -1
+var _singleplayer_respawn_time_left := -1.0
+var singleplayer_respawn_time_left: float:
+	get:
+		if player_roster_coordinator != null:
+			return player_roster_coordinator.singleplayer_respawn_time_left
+		return _singleplayer_respawn_time_left
+	set(value):
+		_singleplayer_respawn_time_left = value
+		if player_roster_coordinator != null:
+			player_roster_coordinator.singleplayer_respawn_time_left = value
+var _singleplayer_respawn_last_seconds := -1
+var singleplayer_respawn_last_seconds: int:
+	get:
+		if player_roster_coordinator != null:
+			return player_roster_coordinator.singleplayer_respawn_last_seconds
+		return _singleplayer_respawn_last_seconds
+	set(value):
+		_singleplayer_respawn_last_seconds = value
+		if player_roster_coordinator != null:
+			player_roster_coordinator.singleplayer_respawn_last_seconds = value
 var spectator_camera_active := false
 var projectile_pool_registration_ms := 0.0
 var fate_frozen_terrain_decay_time_left := 0.0
@@ -467,6 +487,10 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	random_generator.randomize()
 	initialize_world_lighting()
+	if not _configure_player_roster_coordinator():
+		set_process(false)
+		set_physics_process(false)
+		return
 	if merchant != null:
 		merchant.bind_multiplayer_mode_adapter(multiplayer_mode_adapter)
 	if luoxi_merchant != null:
@@ -596,7 +620,7 @@ func _ready() -> void:
 		run_state.ensure_run_started()
 		run_state.set_active_multiplayer_peer(multiplayer_local_peer_id)
 		_configure_multiplayer_players()
-		production_coordinator.configure_multiplayer_output_peers(peer_players.keys())
+		player_roster_coordinator.configure_production_output_peers()
 		_register_static_multiplayer_pickups()
 	if player == null:
 		push_error("TowerDefenseGame: 无法创建当前角色，停止初始化。")
@@ -665,9 +689,6 @@ func _ready() -> void:
 		wave_hud.return_to_lobby_requested.connect(_on_wave_hud_return_to_lobby_requested)
 	if not wave_hud.start_wave_requested.is_connected(_on_wave_hud_start_wave_requested):
 		wave_hud.start_wave_requested.connect(_on_wave_hud_start_wave_requested)
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		player.died.connect(_on_player_died)
-		player.revived.connect(_on_player_revived.bind(0))
 	luoxi_special_game_coordinator.setup(
 		self,
 		run_state,
@@ -737,90 +758,91 @@ func configure_multiplayer(
 ) -> void:
 	runtime_mode = mode as RuntimeMode
 	multiplayer_local_peer_id = local_peer_id
-	multiplayer_player_names = player_names.duplicate()
-	multiplayer_player_character_ids = player_character_ids.duplicate()
+	if player_roster_coordinator != null:
+		player_roster_coordinator.set_runtime_identity(runtime_mode, local_peer_id)
+		player_roster_coordinator.configure_roster(player_names, player_character_ids)
+	else:
+		multiplayer_player_names = player_names.duplicate()
+		multiplayer_player_character_ids = player_character_ids.duplicate()
 
 
-func request_tango_charge_started(direction: Vector2) -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
+func _configure_player_roster_coordinator() -> bool:
+	if player_roster_coordinator == null:
+		push_error("TowerDefenseGame: 缺少静态 PlayerRosterCoordinator 节点。")
 		return false
-	if not _is_valid_singleplayer_tango_player(player):
+	player_roster_coordinator.setup(
+		runtime_mode,
+		multiplayer_local_peer_id,
+		self,
+		player_spawn,
+		run_state,
+		research_coordinator,
+		production_coordinator,
+		peer_players,
+		multiplayer_player_names,
+		multiplayer_player_character_ids,
+		multiplayer_spawn_slot_indices,
+		player_wave_death_counts,
+		DEFAULT_PLAYER_CHARACTER_ID,
+		MULTIPLAYER_SPAWN_OFFSETS,
+		PLAYER_RESPAWN_DELAYS,
+		PLAYER_RESPAWN_INVINCIBILITY_SECONDS,
+		TANGO_MINIMUM_CHARGE_SECONDS,
+		TANGO_MAXIMUM_CHARGE_SECONDS,
+		TANGO_CHARGE_THRESHOLD_EPSILON
+	)
+	player_roster_coordinator.singleplayer_respawn_time_left = (
+		_singleplayer_respawn_time_left
+	)
+	player_roster_coordinator.singleplayer_respawn_last_seconds = (
+		_singleplayer_respawn_last_seconds
+	)
+	if not player_roster_coordinator.is_bound():
+		push_error("TowerDefenseGame: PlayerRosterCoordinator 依赖绑定不完整。")
 		return false
-	var safe_direction := _sanitize_tango_charge_direction(player, direction)
-	if not bool(player.call("try_authoritative_tango_charge_started", safe_direction)):
-		return false
-	_singleplayer_tango_charge_started_at = Time.get_ticks_usec() / 1000000.0
+	player_roster_coordinator.player_runtime_binding_requested.connect(
+		bind_player_runtime_context
+	)
+	player_roster_coordinator.player_died.connect(_on_roster_player_died)
+	player_roster_coordinator.player_revived.connect(_on_player_revived)
+	player_roster_coordinator.enemy_retarget_requested.connect(
+		_request_enemy_retarget_after_objective_change
+	)
+	player_roster_coordinator.respawn_countdown_changed.connect(
+		update_player_respawn_countdown
+	)
+	player_roster_coordinator.respawn_countdown_cleared.connect(
+		clear_player_respawn_countdown
+	)
+	player_roster_coordinator.revive_all_requested.connect(
+		tower_multiplayer_mode_adapter.revive_all_requested.emit
+	)
 	return true
 
 
+func _on_roster_player_died(peer_id: int) -> void:
+	if runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0:
+		_on_player_died()
+	else:
+		_on_multiplayer_player_died(peer_id)
+
+
+func request_tango_charge_started(direction: Vector2) -> bool:
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.set_runtime_identity(runtime_mode, multiplayer_local_peer_id)
+	return player_roster_coordinator.request_tango_charge_started(direction)
+
+
 func request_tango_charge_released(direction: Vector2) -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER or _singleplayer_tango_charge_started_at < 0.0:
-		return false
-	var started_at := _singleplayer_tango_charge_started_at
-	_singleplayer_tango_charge_started_at = -1.0
-	if not _is_valid_singleplayer_tango_player(player):
-		return false
-	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
-	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_MINIMUM_CHARGE_SECONDS:
-		player.call("cancel_authoritative_tango_charge")
-		return true
-	var charge_ratio := clampf(
-		(elapsed - TANGO_MINIMUM_CHARGE_SECONDS)
-		/ (TANGO_MAXIMUM_CHARGE_SECONDS - TANGO_MINIMUM_CHARGE_SECONDS),
-		0.0,
-		1.0
-	)
-	var safe_direction := _sanitize_tango_charge_direction(player, direction)
-	var result_variant: Variant = player.call(
-		"try_authoritative_tango_charge_released",
-		safe_direction,
-		charge_ratio
-	)
-	if not (result_variant is Dictionary):
-		player.call("cancel_authoritative_tango_charge")
-		return false
-	var result := result_variant as Dictionary
-	var succeeded := bool(result.get("accepted", false)) and bool(result.get("fired", false))
-	if not succeeded:
-		player.call("cancel_authoritative_tango_charge")
-	return succeeded
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.set_runtime_identity(runtime_mode, multiplayer_local_peer_id)
+	return player_roster_coordinator.request_tango_charge_released(direction)
 
 
 func request_tango_charge_cancelled() -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		return false
-	var had_active_charge := _singleplayer_tango_charge_started_at >= 0.0
-	_singleplayer_tango_charge_started_at = -1.0
-	if not _is_valid_singleplayer_tango_player(player):
-		return false
-	player.call("cancel_authoritative_tango_charge")
-	return had_active_charge
-
-
-func _is_valid_singleplayer_tango_player(player_node: Player) -> bool:
-	return (
-		player_node != null
-		and is_instance_valid(player_node)
-		and player_node.has_method("is_tango")
-		and bool(player_node.call("is_tango"))
-		and player_node.has_method("try_authoritative_tango_charge_started")
-		and player_node.has_method("try_authoritative_tango_charge_released")
-		and player_node.has_method("cancel_authoritative_tango_charge")
-	)
-
-
-func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -> Vector2:
-	if is_finite(direction.x) and is_finite(direction.y) and direction.length_squared() > 0.0001:
-		return direction.normalized()
-	match player_node.get_multiplayer_facing_id():
-		1:
-			return Vector2.LEFT
-		2:
-			return Vector2.UP
-		3:
-			return Vector2.DOWN
-		_:
-			return Vector2.RIGHT
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.set_runtime_identity(runtime_mode, multiplayer_local_peer_id)
+	return player_roster_coordinator.request_tango_charge_cancelled()
 
 
 func supports_tower_defense() -> bool:
@@ -983,10 +1005,15 @@ func get_bamboo_mortar_combat_metrics() -> Dictionary:
 
 
 func get_fixed_multiplayer_respawn_position(peer_id: int) -> Variant:
+	if player_roster_coordinator != null and player_roster_coordinator.is_bound():
+		return player_roster_coordinator.get_fixed_respawn_position(peer_id)
+	# Narrow pre-tree/fixture façade. A bare runtime has no authored spawn node.
 	if player_spawn == null or not multiplayer_spawn_slot_indices.has(peer_id):
 		return null
-	var slot_index := int(multiplayer_spawn_slot_indices[peer_id])
-	return player_spawn.global_position + _get_multiplayer_spawn_offset(slot_index)
+	return (
+		player_spawn.global_position
+		+ _get_multiplayer_spawn_offset(multiplayer_spawn_slot_indices[peer_id])
+	)
 
 
 func _configure_active_campaign() -> bool:
@@ -1045,16 +1072,7 @@ func _sync_campaign_facade_from_coordinator() -> void:
 
 func _configure_singleplayer_player() -> void:
 	var character_id := _get_selected_singleplayer_character_id()
-	var player_instance := _instantiate_player_character(character_id)
-	if player_instance == null:
-		return
-	player_instance.set_run_max_health_penalty(
-		run_state.get_max_health_penalty_for_peer(0)
-	)
-	player_instance.name = "Player"
-	player_instance.position = player_spawn.position
-	add_child(player_instance)
-	player = player_instance
+	player = player_roster_coordinator.configure_singleplayer(character_id)
 
 
 func _attach_camera_to_local_player() -> void:
@@ -1950,33 +1968,9 @@ func _get_selected_singleplayer_character_id() -> StringName:
 	return character_id
 
 
-func _instantiate_player_character(character_id: StringName) -> Player:
-	var resolved_id := character_id
-	if not PlayerCharacterRegistry.is_valid_character_id(resolved_id):
-		resolved_id = DEFAULT_PLAYER_CHARACTER_ID
-	var instance := PlayerCharacterRegistry.instantiate_character(resolved_id) as Player
-	if instance == null:
-		push_error("TowerDefenseGame: 无法实例化角色 %s" % resolved_id)
-	else:
-		bind_player_runtime_context(instance)
-	return instance
-
-
 func _apply_initial_player_xirang() -> void:
-	var players: Array[Player] = []
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		if player != null:
-			players.append(player)
-	else:
-		for peer_id_variant in peer_players:
-			var player_instance := peer_players[peer_id_variant] as Player
-			if player_instance != null and is_instance_valid(player_instance):
-				players.append(player_instance)
-	for player_instance in players:
-		if player_instance.current_xirang == INITIAL_PLAYER_XIRANG:
-			continue
-		player_instance.current_xirang = INITIAL_PLAYER_XIRANG
-		player_instance.xirang_changed.emit(player_instance.current_xirang, 0)
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.apply_initial_player_xirang()
 
 
 func _grant_tower_defense_starting_package() -> bool:
@@ -2049,15 +2043,8 @@ func _get_progression_elapsed_seconds() -> float:
 
 
 func _register_research_players() -> void:
-	if research_coordinator == null:
-		return
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		research_coordinator.register_player(player)
-		return
-	for player_variant in peer_players.values():
-		var player_instance := player_variant as Player
-		if player_instance != null:
-			research_coordinator.register_player(player_instance)
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.register_research_players()
 
 
 func _on_currency_hud_settings_requested() -> void:
@@ -4926,8 +4913,7 @@ func _complete_defeat_presentation() -> void:
 
 
 func _clear_respawn_runtime_for_result() -> void:
-	singleplayer_respawn_time_left = -1.0
-	singleplayer_respawn_last_seconds = -1
+	player_roster_coordinator.clear_result_respawn_state()
 	spectator_camera_active = false
 	if tower_defense_status_hud != null:
 		tower_defense_status_hud.clear_all_respawns()
@@ -5108,10 +5094,8 @@ func _on_player_died() -> void:
 	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
 		return
 	_begin_local_spectator_camera()
-	var respawn_delay := consume_next_player_respawn_delay(0)
-	singleplayer_respawn_time_left = respawn_delay
-	singleplayer_respawn_last_seconds = ceili(respawn_delay)
-	update_player_respawn_countdown(0, singleplayer_respawn_last_seconds)
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.begin_singleplayer_respawn()
 
 
 func _on_multiplayer_player_died(peer_id: int) -> void:
@@ -5138,10 +5122,7 @@ func _on_player_revived(peer_id: int) -> void:
 
 
 func consume_next_player_respawn_delay(peer_id: int) -> float:
-	var death_count := int(player_wave_death_counts.get(peer_id, 0))
-	var delay_index := mini(death_count, PLAYER_RESPAWN_DELAYS.size() - 1)
-	player_wave_death_counts[peer_id] = death_count + 1
-	return float(PLAYER_RESPAWN_DELAYS[delay_index])
+	return player_roster_coordinator.consume_next_respawn_delay(peer_id)
 
 
 func update_player_respawn_countdown(peer_id: int, seconds_left: int) -> void:
@@ -5168,59 +5149,18 @@ func clear_player_respawn_countdown(peer_id: int) -> void:
 
 
 func _reset_player_wave_death_counts() -> void:
-	player_wave_death_counts.clear()
+	player_roster_coordinator.reset_wave_death_counts()
 
 
 func _force_revive_dead_players(emit_multiplayer: bool = true) -> void:
-	match runtime_mode:
-		RuntimeMode.SINGLEPLAYER:
-			singleplayer_respawn_time_left = -1.0
-			singleplayer_respawn_last_seconds = -1
-			clear_player_respawn_countdown(0)
-			if player == null or not is_instance_valid(player) or not player.is_dead:
-				return
-			player.revive_multiplayer(
-				player_spawn.global_position,
-				player.max_health,
-				PLAYER_RESPAWN_INVINCIBILITY_SECONDS
-			)
-		RuntimeMode.HOST_AUTHORITY:
-			if not emit_multiplayer:
-				return
-			for player_variant in peer_players.values():
-				var player_instance := player_variant as Player
-				if (
-					player_instance != null
-					and is_instance_valid(player_instance)
-					and player_instance.is_dead
-				):
-					multiplayer_mode_adapter.revive_all_requested.emit()
-					return
-		RuntimeMode.CLIENT_VIEW:
-			return
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.set_runtime_identity(runtime_mode, multiplayer_local_peer_id)
+	player_roster_coordinator.force_revive_dead_players(emit_multiplayer)
 
 
 func _update_singleplayer_respawn(delta: float) -> void:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER or singleplayer_respawn_time_left < 0.0:
-		return
-	if player == null or not player.is_dead:
-		singleplayer_respawn_time_left = -1.0
-		singleplayer_respawn_last_seconds = -1
-		return
-	singleplayer_respawn_time_left = maxf(singleplayer_respawn_time_left - delta, 0.0)
-	var seconds_left := ceili(singleplayer_respawn_time_left)
-	if seconds_left != singleplayer_respawn_last_seconds:
-		singleplayer_respawn_last_seconds = seconds_left
-		update_player_respawn_countdown(0, seconds_left)
-	if singleplayer_respawn_time_left > 0.0:
-		return
-	singleplayer_respawn_time_left = -1.0
-	singleplayer_respawn_last_seconds = -1
-	player.revive_multiplayer(
-		player_spawn.global_position,
-		player.max_health,
-		PLAYER_RESPAWN_INVINCIBILITY_SECONDS
-	)
+	player_roster_coordinator.local_player = player
+	player_roster_coordinator.update_singleplayer_respawn(delta)
 
 
 func _begin_local_spectator_camera() -> void:
@@ -5277,84 +5217,10 @@ func _clamp_spectator_camera_position(camera_position: Vector2) -> Vector2:
 
 
 func _configure_multiplayer_players() -> void:
-	player = null
-	peer_players.clear()
-	multiplayer_spawn_slot_indices.clear()
-	if multiplayer_player_names.is_empty():
-		multiplayer_player_names[multiplayer_local_peer_id if multiplayer_local_peer_id > 0 else 1] = "Player"
-
-	var peer_ids: Array[int] = []
-	for peer_id_variant in multiplayer_player_names:
-		peer_ids.append(int(peer_id_variant))
-	peer_ids.sort()
-
-	for index in range(peer_ids.size()):
-		var peer_id := peer_ids[index]
-		multiplayer_spawn_slot_indices[peer_id] = index
-		var character_id := _get_multiplayer_character_id(peer_id)
-		var player_instance := _instantiate_player_character(character_id)
-		if player_instance == null:
-			continue
-		player_instance.set_run_max_health_penalty(
-			run_state.get_max_health_penalty_for_peer(peer_id)
-		)
-		player_instance.name = "Player_%d" % peer_id
-		player_instance.position = player_spawn.position + _get_multiplayer_spawn_offset(index)
-		add_child(player_instance)
-		var accepts_local_input := (
-			peer_id == multiplayer_local_peer_id
-			and (
-				runtime_mode == RuntimeMode.HOST_AUTHORITY
-				or runtime_mode == RuntimeMode.CLIENT_VIEW
-			)
-		)
-		var predicts_local_movement := (
-			runtime_mode == RuntimeMode.CLIENT_VIEW
-			and peer_id == multiplayer_local_peer_id
-		)
-		var display_name: String = str(multiplayer_player_names.get(peer_id, "Player %d" % peer_id))
-		player_instance.configure_multiplayer_control(
-			peer_id,
-			accepts_local_input,
-			display_name,
-			predicts_local_movement,
-			peer_id == multiplayer_local_peer_id
-		)
-		player_instance.set_multiplayer_visual_smoothing_enabled(
-			runtime_mode == RuntimeMode.HOST_AUTHORITY
-			and peer_id != multiplayer_local_peer_id
-		)
-		player_instance.physics_interpolation_mode = (
-			Node.PHYSICS_INTERPOLATION_MODE_ON
-			if accepts_local_input or predicts_local_movement
-			else Node.PHYSICS_INTERPOLATION_MODE_OFF
-		)
-		player_instance.reset_physics_interpolation()
-		if (
-			(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
-			or (runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id != multiplayer_local_peer_id)
-		):
-			player_instance.set_physics_process(false)
-		if not player_instance.died.is_connected(_on_multiplayer_player_died.bind(peer_id)):
-			player_instance.died.connect(_on_multiplayer_player_died.bind(peer_id))
-		if not player_instance.revived.is_connected(_on_player_revived.bind(peer_id)):
-			player_instance.revived.connect(_on_player_revived.bind(peer_id))
-		peer_players[peer_id] = player_instance
-		if research_coordinator != null:
-			research_coordinator.register_player(player_instance)
-		if peer_id == multiplayer_local_peer_id:
-			player = player_instance
-	if player == null and not peer_ids.is_empty():
-		player = peer_players.get(peer_ids[0]) as Player
-
-
-func _get_multiplayer_character_id(peer_id: int) -> StringName:
-	var character_id := StringName(
-		multiplayer_player_character_ids.get(peer_id, DEFAULT_PLAYER_CHARACTER_ID)
+	player_roster_coordinator.set_runtime_identity(
+		runtime_mode, multiplayer_local_peer_id
 	)
-	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
-		return DEFAULT_PLAYER_CHARACTER_ID
-	return character_id
+	player = player_roster_coordinator.configure_multiplayer_players()
 
 
 func _get_multiplayer_spawn_offset(index: int) -> Vector2:
@@ -5368,38 +5234,20 @@ func apply_network_input_for_peer(
 	use_skill1: bool,
 	use_reload: bool = false
 ) -> void:
-	var player_instance: Player = peer_players.get(peer_id) as Player
-	if player_instance == null or not is_instance_valid(player_instance):
-		return
-	player_instance.apply_network_input(move_input, shoot_input, use_skill1, use_reload)
+	player_roster_coordinator.apply_network_input_for_peer(
+		peer_id, move_input, shoot_input, use_skill1, use_reload
+	)
 
 
 func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
-	for peer_id_variant in peer_players:
-		var peer_id := int(peer_id_variant)
-		if peer_id == multiplayer_local_peer_id:
-			continue
-		var player_instance := peer_players[peer_id] as Player
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		player_instance.update_multiplayer_authority_passive_state(delta)
+	player_roster_coordinator.update_remote_passive_state(delta)
 
 
 func remove_multiplayer_player(peer_id: int) -> void:
 	if peer_id <= 0 or peer_id == multiplayer_local_peer_id:
 		return
 	cancel_luoxi_special_game_for_peer(peer_id)
-	production_coordinator.deactivate_personal_output_peer(peer_id)
-	var player_instance := peer_players.get(peer_id) as Player
-	peer_players.erase(peer_id)
-	_request_enemy_retarget_after_objective_change()
-	multiplayer_spawn_slot_indices.erase(peer_id)
-	multiplayer_player_names.erase(peer_id)
-	multiplayer_player_character_ids.erase(peer_id)
-	clear_player_respawn_countdown(peer_id)
-	player_wave_death_counts.erase(peer_id)
-	if player_instance != null and is_instance_valid(player_instance):
-		player_instance.queue_free()
+	player_roster_coordinator.remove_multiplayer_player(peer_id)
 	_remove_fate_eligible_peer(peer_id)
 
 
@@ -5418,87 +5266,44 @@ func restore_multiplayer_player(
 		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
 	):
 		return null
-	multiplayer_player_names.erase(old_peer_id)
-	multiplayer_player_character_ids.erase(old_peer_id)
-	multiplayer_spawn_slot_indices.erase(old_peer_id)
-	multiplayer_player_names[new_peer_id] = player_name
-	multiplayer_player_character_ids[new_peer_id] = character_id
-	multiplayer_spawn_slot_indices[new_peer_id] = maxi(spawn_slot_index, 0)
-	if luoxi_collectible_claim_counts.has(old_peer_id):
-		luoxi_collectible_claim_counts[new_peer_id] = (
-			luoxi_collectible_claim_counts[old_peer_id]
-		)
-		luoxi_collectible_claim_counts.erase(old_peer_id)
-	var wave_death_count := int(reconnect_state.get("wave_death_count", 0))
-	if wave_death_count > 0:
-		player_wave_death_counts[new_peer_id] = wave_death_count
-	var player_instance := _instantiate_player_character(character_id)
+	if not player_roster_coordinator.prepare_restore_metadata(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id,
+		spawn_slot_index
+	):
+		return null
+	_remap_luoxi_collectible_claims(old_peer_id, new_peer_id)
+	var player_instance := player_roster_coordinator.restore_multiplayer_player_runtime(
+		old_peer_id,
+		new_peer_id,
+		character_id,
+		state,
+		spawn_slot_index,
+		reconnect_state
+	)
 	if player_instance == null:
 		return null
-	player_instance.set_run_max_health_penalty(
-		run_state.get_max_health_penalty_for_peer(new_peer_id)
-	)
-	player_instance.name = "Player_%d" % new_peer_id
-	player_instance.position = (
-		state.position
-		if state != null
-		else player_spawn.position + _get_multiplayer_spawn_offset(spawn_slot_index)
-	)
-	add_child(player_instance)
-	var accepts_local_input := new_peer_id == multiplayer_local_peer_id
-	var predicts_local_movement := (
-		runtime_mode == RuntimeMode.CLIENT_VIEW
-		and new_peer_id == multiplayer_local_peer_id
-	)
-	player_instance.configure_multiplayer_control(
-		new_peer_id,
-		accepts_local_input,
-		player_name,
-		predicts_local_movement,
-		new_peer_id == multiplayer_local_peer_id
-	)
-	player_instance.set_multiplayer_visual_smoothing_enabled(
-		runtime_mode == RuntimeMode.HOST_AUTHORITY
-		and new_peer_id != multiplayer_local_peer_id
-	)
-	player_instance.physics_interpolation_mode = (
-		Node.PHYSICS_INTERPOLATION_MODE_ON
-		if accepts_local_input or predicts_local_movement
-		else Node.PHYSICS_INTERPOLATION_MODE_OFF
-	)
-	player_instance.reset_physics_interpolation()
-	if (
-		(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
-		or (runtime_mode == RuntimeMode.HOST_AUTHORITY and new_peer_id != multiplayer_local_peer_id)
-	):
-		player_instance.set_physics_process(false)
-	if not player_instance.died.is_connected(
-		_on_multiplayer_player_died.bind(new_peer_id)
-	):
-		player_instance.died.connect(_on_multiplayer_player_died.bind(new_peer_id))
-	if not player_instance.revived.is_connected(_on_player_revived.bind(new_peer_id)):
-		player_instance.revived.connect(_on_player_revived.bind(new_peer_id))
-	peer_players[new_peer_id] = player_instance
-	if research_coordinator != null:
-		if research_coordinator.player_technology_levels.has(old_peer_id):
-			if not research_coordinator.remap_player_peer_state(
-				old_peer_id,
-				new_peer_id
-			):
-				push_error(
-					"TowerDefenseGame: 无法迁移重连玩家 %d -> %d 的个人科研状态。"
-					% [old_peer_id, new_peer_id]
-				)
-		research_coordinator.register_player(player_instance)
-	if production_coordinator != null:
-		production_coordinator.activate_personal_output_peer(new_peer_id)
 	if fate_coordinator != null:
 		fate_coordinator.apply_player_modifiers_to_all()
 	_request_enemy_retarget_after_objective_change()
 	return player_instance
 
 
+func _remap_luoxi_collectible_claims(old_peer_id: int, new_peer_id: int) -> void:
+	if luoxi_collectible_claim_counts.has(old_peer_id):
+		luoxi_collectible_claim_counts[new_peer_id] = (
+			luoxi_collectible_claim_counts[old_peer_id]
+		)
+		luoxi_collectible_claim_counts.erase(old_peer_id)
+
+
 func get_player_for_peer(peer_id: int) -> Player:
+	if player_roster_coordinator != null and player_roster_coordinator.is_bound():
+		return player_roster_coordinator.get_player(peer_id)
+	# Narrow pre-tree/fixture façade: `TowerDefenseGame.new()` has not yet
+	# resolved its statically authored coordinator child.
 	return peer_players.get(peer_id) as Player
 
 
@@ -5653,50 +5458,13 @@ func _mark_multiplayer_pickup_removed(
 
 
 func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
-	var states: Array[SnapshotManager.PlayerState] = []
-	for peer_id_variant in peer_players:
-		var peer_id := int(peer_id_variant)
-		var player_instance := peer_players[peer_id] as Player
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		var state := SnapshotManager.PlayerState.new()
-		state.peer_id = peer_id
-		state.character_id = player_instance.get_character_id()
-		state.position = player_instance.global_position
-		state.velocity = player_instance.velocity
-		state.facing = player_instance.get_multiplayer_facing_id()
-		state.anim_state = player_instance.get_multiplayer_anim_state()
-		state.current_health = player_instance.current_health
-		state.max_health = player_instance.max_health
-		state.current_xirang = player_instance.current_xirang
-		state.is_dead = player_instance.is_dead
-		state.invincibility_time_left = player_instance.invincibility_time_left
-		state.skill1_unlocked = player_instance.skill1_unlocked
-		state.skill1_charge = player_instance.skill1_charge
-		state.skill1_charge_duration = player_instance.skill1_charge_duration
-		state.skill1_upgrade_level = player_instance.skill1_upgrade_level
-		state.form_mode = player_instance.get_multiplayer_form_mode()
-		state.shot_pattern = player_instance.get_multiplayer_shot_pattern()
-		state.ammo_capacity = player_instance.get_multiplayer_ammo_capacity()
-		state.current_ammo = player_instance.get_multiplayer_current_ammo()
-		state.is_reloading = player_instance.get_multiplayer_is_reloading()
-		state.reload_progress = player_instance.get_multiplayer_reload_progress()
-		state.primary_cooldown_ratio = _get_player_primary_cooldown_ratio(player_instance)
-		state.effective_move_speed_multiplier = (
-			player_instance.get_authoritative_move_speed_multiplier()
-		)
-		states.append(state)
-	return states
-
-
-func _get_player_primary_cooldown_ratio(player_instance: Player) -> float:
-	if player_instance == null:
-		return 0.0
-	if player_instance.has_method("get_primary_cooldown_ratio"):
-		return clampf(float(player_instance.call("get_primary_cooldown_ratio")), 0.0, 1.0)
-	if player_instance.has_method("get_primary_attack_cooldown_ratio"):
-		return clampf(float(player_instance.call("get_primary_attack_cooldown_ratio")), 0.0, 1.0)
-	return 0.0
+	if player_roster_coordinator != null and player_roster_coordinator.is_bound():
+		return player_roster_coordinator.collect_snapshot_states()
+	# Explicit tree-less fixture path: retain the same stateless serializer
+	# without dynamically constructing an orchestration node.
+	return TowerDefensePlayerRosterCoordinator.collect_snapshot_states_from(
+		peer_players
+	)
 
 
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
