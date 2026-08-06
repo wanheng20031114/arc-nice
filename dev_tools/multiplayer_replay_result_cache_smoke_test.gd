@@ -90,6 +90,22 @@ func _test_stable_fifo_replacement_and_cleanup() -> void:
 
 func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 	var mp_game := MP_GAME_SCRIPT.new()
+	var transactions := MpTransactionsCoordinator.new()
+	transactions.name = "TransactionsCoordinator"
+	mp_game.add_child(transactions)
+	mp_game.transactions_coordinator = transactions
+	var session := MpSessionCoordinator.new()
+	mp_game.add_child(session)
+	mp_game.session_coordinator = session
+	var players := MpPlayerCoordinator.new()
+	mp_game.add_child(players)
+	mp_game.player_coordinator = players
+	var enemies := MpEnemyCoordinator.new()
+	mp_game.add_child(enemies)
+	mp_game.enemy_coordinator = enemies
+	var projectiles := MpProjectileCoordinator.new()
+	mp_game.add_child(projectiles)
+	mp_game.projectile_coordinator = projectiles
 	for request_id in range(1, 258):
 		mp_game.call(
 			"_cache_warehouse_transaction_result",
@@ -106,8 +122,7 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 			{"request_id": request_id, "kind": "production"}
 		)
 	for request_id in range(1, 34):
-		mp_game.call(
-			"_cache_simple_crafting_result",
+		transactions.cache_simple_crafting_result(
 			2,
 			request_id,
 			{"request_id": request_id, "kind": "crafting"}
@@ -118,7 +133,7 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 	var production_results := mp_game.get(
 		"_production_command_results_by_peer"
 	) as Dictionary
-	var crafting_results := mp_game.get(
+	var crafting_results := transactions.get(
 		"_simple_crafting_results_by_peer"
 	) as Dictionary
 	_expect(
@@ -140,12 +155,8 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 		and not (mp_game.call(
 			"_get_cached_production_command_result", 2, 7002, 257
 		) as Dictionary).is_empty()
-		and (mp_game.call(
-			"_get_cached_simple_crafting_result", 2, 1
-		) as Dictionary).is_empty()
-		and not (mp_game.call(
-			"_get_cached_simple_crafting_result", 2, 33
-		) as Dictionary).is_empty(),
+		and transactions.get_cached_simple_crafting_result(2, 1).is_empty()
+		and not transactions.get_cached_simple_crafting_result(2, 33).is_empty(),
 		"容量环绕后必须只淘汰每类缓存最老结果并保留最新结果。"
 	)
 	for peer_id in [2, 3]:
@@ -163,8 +174,7 @@ func _test_mp_game_cache_capacities_and_lifecycle() -> void:
 			900,
 			{"peer_id": peer_id}
 		)
-		mp_game.call(
-			"_cache_simple_crafting_result",
+		transactions.cache_simple_crafting_result(
 			peer_id,
 			900,
 			{"peer_id": peer_id}

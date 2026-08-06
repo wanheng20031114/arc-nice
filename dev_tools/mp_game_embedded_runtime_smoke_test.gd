@@ -140,10 +140,10 @@ func _test_embedded_participant_roster_contract() -> void:
 		and (contract.get(
 			"_suspended_embedded_participant_peer_ids"
 		) as Dictionary) == {2: true}
-		and not bool(contract.call(
-			"_consume_remote_transaction_admission",
-			2
-		)),
+		and not (
+			contract.get_node("TransactionsCoordinator")
+			as MpTransactionsCoordinator
+		).consume_remote_transaction_admission(2),
 		(
 			"A combat-only spectator downgrade must preserve the frozen identity "
 			+ "while rejecting subsequent transaction ingress."

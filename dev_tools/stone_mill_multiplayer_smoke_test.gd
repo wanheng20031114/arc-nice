@@ -30,7 +30,7 @@ var failures: Array[String] = []
 
 
 class HostNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return true
@@ -43,7 +43,7 @@ class HostNetManagerStub:
 
 
 class ClientNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return false
@@ -66,8 +66,22 @@ class CapturingMpGame:
 	func _exit_tree() -> void:
 		pass
 
-	func _send_simple_crafting_result(result: Dictionary) -> void:
-		simple_crafting_results.append(result.duplicate(true))
+	func capture_simple_crafting_result(
+		peer_id: int,
+		request_id: int,
+		recipe_id: String,
+		result_code: String,
+		inventory_snapshot: Dictionary,
+		force_inventory_repair: bool
+	) -> void:
+		simple_crafting_results.append({
+			"peer_id": peer_id,
+			"request_id": request_id,
+			"recipe_id": recipe_id,
+			"result": result_code,
+			"inventory_snapshot": inventory_snapshot.duplicate(true),
+			"force_inventory_repair": force_inventory_repair,
+		})
 
 
 class TestTowerRuntime:
@@ -169,12 +183,18 @@ func _test_host_authoritative_crafting() -> Dictionary:
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter
 	tower_adapter.attach_multiplayer_session(mp_game)
+	var transactions := _bind_transactions_coordinator(
+		mp_game,
+		runtime,
+		tower_adapter,
+		net_manager,
+		run_state
+	)
 
 	var crafting_revision := run_state.get_inventory_revision_for_peer(
 		REMOTE_PEER_ID
 	)
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		41,
 		String(SimpleCraftingRegistry.STONE_MILL_ID),
@@ -215,8 +235,7 @@ func _test_host_authoritative_crafting() -> Dictionary:
 		"Host制造结果快照必须携带石磨台建筑物品的规范资源路径。"
 	)
 
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		41,
 		String(SimpleCraftingRegistry.STONE_MILL_ID),
@@ -239,8 +258,7 @@ func _test_host_authoritative_crafting() -> Dictionary:
 		"重复request_id必须只重放当前Host快照，不能重复扣料、产出或推进revision。"
 	)
 
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		42,
 		String(SimpleCraftingRegistry.STONE_MILL_ID),
@@ -256,8 +274,7 @@ func _test_host_authoritative_crafting() -> Dictionary:
 		"新的请求携带过期背包revision时，Host必须拒绝并要求权威快照修复。"
 	)
 
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		43,
 		"res://resources/config/production/simple_stone_mill.tres",
@@ -328,12 +345,18 @@ func _test_host_research_gated_crafting() -> void:
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter
 	tower_adapter.attach_multiplayer_session(mp_game)
+	var transactions := _bind_transactions_coordinator(
+		mp_game,
+		runtime,
+		tower_adapter,
+		net_manager,
+		run_state
+	)
 
 	var locked_revision := run_state.get_inventory_revision_for_peer(
 		REMOTE_PEER_ID
 	)
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		51,
 		String(SimpleCraftingRegistry.BAMBOO_MORTAR_ID),
@@ -366,8 +389,7 @@ func _test_host_research_gated_crafting() -> void:
 	research_coordinator.global_research_elapsed[
 		GlobalResearchRegistry.BAMBOO_MORTAR_CRAFTING_ID
 	] = 30.0
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		52,
 		String(SimpleCraftingRegistry.BAMBOO_MORTAR_ID),
@@ -396,8 +418,7 @@ func _test_host_research_gated_crafting() -> void:
 		"科研完成后Host必须为所有Peer解锁迫击炮简易制作并原子结算配方。"
 	)
 
-	mp_game.call(
-		"_apply_authoritative_simple_crafting_request",
+	transactions.apply_authoritative_simple_crafting_request(
 		REMOTE_PEER_ID,
 		52,
 		String(SimpleCraftingRegistry.BAMBOO_MORTAR_ID),
@@ -555,6 +576,31 @@ func _bind_tower_multiplayer_mode_adapter(
 	return adapter
 
 
+func _bind_transactions_coordinator(
+	mp_game: CapturingMpGame,
+	runtime: CombatRuntimeBase,
+	mode_adapter: MultiplayerModeAdapter,
+	net_manager: NetManagerStore,
+	run_state: RunStateStore
+) -> MpTransactionsCoordinator:
+	var transactions := MpTransactionsCoordinator.new()
+	transactions.name = "TransactionsCoordinator"
+	mp_game.add_child(transactions)
+	mp_game.transactions_coordinator = transactions
+	transactions.bind_session(
+		mp_game,
+		runtime,
+		mode_adapter,
+		net_manager,
+		run_state,
+		{}
+	)
+	transactions.simple_crafting_result_broadcast_requested.connect(
+		mp_game.capture_simple_crafting_result
+	)
+	return transactions
+
+
 func _test_client_rejects_bad_authoritative_snapshot(
 	authoritative_snapshot: Dictionary
 ) -> void:
@@ -566,14 +612,21 @@ func _test_client_rejects_bad_authoritative_snapshot(
 	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
 	runtime.peer_players = {REMOTE_PEER_ID: player}
 	var net_manager := ClientNetManagerStub.new()
-	var mp_game := MP_GAME_SCRIPT.new()
+	var mp_game := CapturingMpGame.new()
 	mp_game.net_manager = net_manager
 	mp_game.run_state = run_state
 	mp_game.game = runtime
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter
 	tower_adapter.attach_multiplayer_session(mp_game)
-	mp_game.call("_track_local_simple_crafting_request", 77, 9001)
+	var transactions := _bind_transactions_coordinator(
+		mp_game,
+		runtime,
+		tower_adapter,
+		net_manager,
+		run_state
+	)
+	transactions.track_local_simple_crafting_request(77, 9001)
 
 	var bad_snapshot := authoritative_snapshot.duplicate(true)
 	var bad_slots := bad_snapshot.get("slots", []) as Array
@@ -593,10 +646,10 @@ func _test_client_rejects_bad_authoritative_snapshot(
 		false
 	)
 	var last_result_ids := (
-		mp_game.get("_last_simple_crafting_result_ids") as Dictionary
+		transactions.get("_last_simple_crafting_result_ids") as Dictionary
 	)
 	var ui_tokens := (
-		mp_game.get(
+		transactions.get(
 			"_local_simple_crafting_ui_tokens_by_request_id"
 		) as Dictionary
 	)
@@ -622,10 +675,10 @@ func _test_client_rejects_bad_authoritative_snapshot(
 		false
 	)
 	last_result_ids = (
-		mp_game.get("_last_simple_crafting_result_ids") as Dictionary
+		transactions.get("_last_simple_crafting_result_ids") as Dictionary
 	)
 	ui_tokens = (
-		mp_game.get(
+		transactions.get(
 			"_local_simple_crafting_ui_tokens_by_request_id"
 		) as Dictionary
 	)

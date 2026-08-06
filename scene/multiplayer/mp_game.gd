@@ -147,16 +147,8 @@ const WAREHOUSE_TRANSACTION_RATE_BURST := 20.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_PER_SECOND := 2.0
 const WAREHOUSE_SNAPSHOT_REQUEST_RATE_BURST := 4.0
 const WAREHOUSE_TRANSACTION_RESULT_CACHE_SIZE := 256
-const SIMPLE_CRAFTING_RATE_PER_SECOND := 8.0
-const SIMPLE_CRAFTING_RATE_BURST := 12.0
-const SIMPLE_CRAFTING_RESULT_CACHE_SIZE := 32
-const SIMPLE_CRAFTING_WIRE_ID_MAX_LENGTH := 128
-const PLAYER_TRANSACTION_INGRESS_RATE_PER_SECOND := 32.0
-const PLAYER_TRANSACTION_INGRESS_RATE_BURST := 48.0
 const PLAYER_ACTION_INGRESS_RATE_PER_SECOND := 24.0
 const PLAYER_ACTION_INGRESS_RATE_BURST := 32.0
-const INVENTORY_COMMAND_RATE_PER_SECOND := 12.0
-const INVENTORY_COMMAND_RATE_BURST := 20.0
 const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
 const LUOXI_TRANSACTION_RATE_BURST := 6.0
 const XIAOCONG_TRANSACTION_RATE_PER_SECOND := 6.0
@@ -198,6 +190,7 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var enemy_coordinator: MpEnemyCoordinator = $EnemyCoordinator
 @onready var projectile_coordinator: MpProjectileCoordinatorScript = $ProjectileCoordinator
 @onready var world_flow_coordinator: MpWorldFlowCoordinatorScript = $WorldFlowCoordinator
+@onready var transactions_coordinator: MpTransactionsCoordinator = $TransactionsCoordinator
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var _agave_cannonball_scene: PackedScene = null
@@ -269,9 +262,7 @@ var _enemy_snapshot_packet_count: int = 0
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
 var _warehouse_transaction_rate_buckets: Dictionary = {}
-var _player_transaction_ingress_rate_buckets: Dictionary = {}
 var _player_action_ingress_rate_buckets: Dictionary = {}
-var _inventory_command_rate_buckets: Dictionary = {}
 var _luoxi_transaction_rate_buckets: Dictionary = {}
 var _xiaocong_transaction_rate_buckets: Dictionary = {}
 var _warehouse_snapshot_request_rate_buckets: Dictionary = {}
@@ -284,20 +275,6 @@ var _warehouse_transaction_results_by_peer: Dictionary = (
 	_warehouse_transaction_result_cache.results_by_peer
 )
 var _warehouse_transaction_started_usec: Dictionary = {}
-var _local_simple_crafting_request_id: int = 0
-# Panel tokens remain local. These two indexes associate them with wire request
-# ids in O(1) without changing the RPC schema, and support O(1) timeout cleanup.
-var _local_simple_crafting_ui_tokens_by_request_id: Dictionary = {}
-var _local_simple_crafting_request_ids_by_ui_token: Dictionary = {}
-var _last_simple_crafting_request_ids: Dictionary = {}
-var _last_simple_crafting_result_ids: Dictionary = {}
-var _simple_crafting_rate_buckets: Dictionary = {}
-var _simple_crafting_result_cache := PeerReplayResultCacheScript.new(
-	SIMPLE_CRAFTING_RESULT_CACHE_SIZE
-)
-var _simple_crafting_results_by_peer: Dictionary = (
-	_simple_crafting_result_cache.results_by_peer
-)
 var _pending_warehouse_snapshots: Dictionary = {}
 # CH6 batches may arrive before one or more CH5 plant spawns. Until every target
 # exists, this map coalesces the latest full snapshot per warehouse into one
@@ -511,6 +488,8 @@ func _exit_tree() -> void:
 			projectile_coordinator.unbind_runtime(game)
 		if world_flow_coordinator != null:
 			world_flow_coordinator.unbind_runtime(game)
+		if transactions_coordinator != null:
+			transactions_coordinator.unbind_session(self)
 	else:
 		if session_coordinator != null:
 			session_coordinator.reset_session_state()
@@ -522,6 +501,8 @@ func _exit_tree() -> void:
 			projectile_coordinator.reset_session_state()
 		if world_flow_coordinator != null:
 			world_flow_coordinator.reset_session_state()
+		if transactions_coordinator != null:
+			transactions_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -547,17 +528,9 @@ func _exit_tree() -> void:
 	_luoxi_offer_states_by_peer.clear()
 	_luoxi_offer_revision_counters.clear()
 	_warehouse_transaction_started_usec.clear()
-	_local_simple_crafting_request_id = 0
-	_clear_local_simple_crafting_request_tracking()
-	_last_simple_crafting_request_ids.clear()
-	_last_simple_crafting_result_ids.clear()
-	_simple_crafting_rate_buckets.clear()
-	_simple_crafting_result_cache.clear()
 	_warehouse_transaction_result_cache.clear()
 	_production_command_result_cache.clear()
-	_player_transaction_ingress_rate_buckets.clear()
 	_player_action_ingress_rate_buckets.clear()
-	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
 	_xiaocong_transaction_rate_buckets.clear()
 	_public_room_keepalive_in_flight = false
@@ -704,145 +677,26 @@ func _process(delta: float) -> void:
 
 
 func request_multiplayer_upgrade(stat_type: int) -> void:
-	if net_manager.is_host():
-		_apply_upgrade_for_peer(_get_local_peer_id(), stat_type)
-	else:
-		net_upgrade_selected.rpc_id(_get_host_peer_id(), stat_type)
+	transactions_coordinator.request_upgrade(stat_type)
 
 
 func request_multiplayer_inventory_item_use(slot_index: int) -> void:
-	var peer_id := _get_local_peer_id()
-	var expected_revision := run_state.get_inventory_revision_for_peer(peer_id)
-	if net_manager.is_host():
-		_apply_inventory_item_use_for_peer(peer_id, slot_index, expected_revision)
-	else:
-		net_inventory_item_use_requested.rpc_id(
-			_get_host_peer_id(),
-			slot_index,
-			expected_revision
-		)
+	transactions_coordinator.request_inventory_item_use(slot_index)
 
 
 func request_multiplayer_inventory_item_discard(slot_index: int) -> void:
-	var peer_id := _get_local_peer_id()
-	var expected_revision := run_state.get_inventory_revision_for_peer(peer_id)
-	if net_manager.is_host():
-		_apply_inventory_item_discard_for_peer(peer_id, slot_index, expected_revision)
-	else:
-		net_inventory_item_discard_requested.rpc_id(
-			_get_host_peer_id(),
-			slot_index,
-			expected_revision
-		)
+	transactions_coordinator.request_inventory_item_discard(slot_index)
 
 
 func request_multiplayer_simple_crafting(
 	recipe_id: StringName,
 	ui_request_token: int
 ) -> void:
-	var peer_id := _get_local_peer_id()
-	if peer_id <= 0 or game == null or ui_request_token <= 0:
-		if _mode_adapter != null:
-			_mode_adapter.show_simple_crafting_result(
-				recipe_id,
-				&"invalid_player",
-				ui_request_token
-			)
-		return
-	_local_simple_crafting_request_id += 1
-	var request_id := _local_simple_crafting_request_id
-	_track_local_simple_crafting_request(request_id, ui_request_token)
-	var expected_revision := run_state.get_inventory_revision_for_peer(peer_id)
-	if net_manager.is_host():
-		_apply_authoritative_simple_crafting_request(
-			peer_id,
-			request_id,
-			String(recipe_id),
-			expected_revision
-		)
-	elif net_manager.is_client():
-		net_simple_crafting_requested.rpc_id(
-			_get_host_peer_id(),
-			request_id,
-			String(recipe_id),
-			expected_revision
-		)
-	else:
-		_take_local_simple_crafting_request_token(request_id)
-		if _mode_adapter != null:
-			_mode_adapter.show_simple_crafting_result(
-				recipe_id,
-				&"invalid_player",
-				ui_request_token
-			)
+	transactions_coordinator.request_simple_crafting(recipe_id, ui_request_token)
 
 
 func cancel_multiplayer_simple_crafting_request(ui_request_token: int) -> void:
-	# The Host transaction may already be running. Only release local UI tracking;
-	# a late authoritative snapshot must still be applied by the result RPC.
-	if ui_request_token <= 0:
-		return
-	var request_id := int(
-		_local_simple_crafting_request_ids_by_ui_token.get(
-			ui_request_token,
-			0
-		)
-	)
-	if request_id <= 0:
-		return
-	_local_simple_crafting_request_ids_by_ui_token.erase(ui_request_token)
-	_local_simple_crafting_ui_tokens_by_request_id.erase(request_id)
-
-
-func _track_local_simple_crafting_request(
-	request_id: int,
-	ui_request_token: int
-) -> void:
-	if request_id <= 0 or ui_request_token <= 0:
-		return
-	var previous_request_id := int(
-		_local_simple_crafting_request_ids_by_ui_token.get(
-			ui_request_token,
-			0
-		)
-	)
-	if previous_request_id > 0:
-		_local_simple_crafting_ui_tokens_by_request_id.erase(
-			previous_request_id
-		)
-	_local_simple_crafting_ui_tokens_by_request_id[request_id] = (
-		ui_request_token
-	)
-	_local_simple_crafting_request_ids_by_ui_token[ui_request_token] = (
-		request_id
-	)
-
-
-func _take_local_simple_crafting_request_token(request_id: int) -> int:
-	if request_id <= 0:
-		return 0
-	var ui_request_token := int(
-		_local_simple_crafting_ui_tokens_by_request_id.get(request_id, 0)
-	)
-	_local_simple_crafting_ui_tokens_by_request_id.erase(request_id)
-	if (
-		ui_request_token > 0
-		and int(
-			_local_simple_crafting_request_ids_by_ui_token.get(
-				ui_request_token,
-				0
-			)
-		) == request_id
-	):
-		_local_simple_crafting_request_ids_by_ui_token.erase(
-			ui_request_token
-		)
-	return ui_request_token
-
-
-func _clear_local_simple_crafting_request_tracking() -> void:
-	_local_simple_crafting_ui_tokens_by_request_id.clear()
-	_local_simple_crafting_request_ids_by_ui_token.clear()
+	transactions_coordinator.cancel_simple_crafting_request(ui_request_token)
 
 
 func begin_inventory_building_placement(
@@ -860,10 +714,190 @@ func begin_inventory_building_placement(
 
 
 func request_multiplayer_skill1_purchase() -> void:
-	if net_manager.is_host():
-		_apply_skill1_purchase_for_peer(_get_local_peer_id())
-	else:
-		net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
+	transactions_coordinator.request_skill1_purchase()
+
+
+func _on_transaction_upgrade_request_to_host(stat_type: int) -> void:
+	net_upgrade_selected.rpc_id(_get_host_peer_id(), stat_type)
+
+
+func _on_transaction_inventory_item_use_request_to_host(
+	slot_index: int,
+	expected_inventory_revision: int
+) -> void:
+	net_inventory_item_use_requested.rpc_id(
+		_get_host_peer_id(),
+		slot_index,
+		expected_inventory_revision
+	)
+
+
+func _on_transaction_inventory_item_discard_request_to_host(
+	slot_index: int,
+	expected_inventory_revision: int
+) -> void:
+	net_inventory_item_discard_requested.rpc_id(
+		_get_host_peer_id(),
+		slot_index,
+		expected_inventory_revision
+	)
+
+
+func _on_transaction_simple_crafting_request_to_host(
+	request_id: int,
+	recipe_id: String,
+	expected_inventory_revision: int
+) -> void:
+	net_simple_crafting_requested.rpc_id(
+		_get_host_peer_id(),
+		request_id,
+		recipe_id,
+		expected_inventory_revision
+	)
+
+
+func _on_transaction_skill1_purchase_request_to_host() -> void:
+	net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
+
+
+func _on_transaction_upgrade_confirmation_broadcast_requested(
+	peer_id: int,
+	stat_type: int,
+	level: int,
+	current_xirang: int,
+	success: bool,
+	free_upgrade: bool
+) -> void:
+	_rpc_to_connected_clients(
+		&"net_upgrade_confirmed",
+		[peer_id, stat_type, level, current_xirang, success, free_upgrade]
+	)
+	if peer_id == _get_local_peer_id():
+		transactions_coordinator.receive_upgrade_confirmation(
+			peer_id,
+			stat_type,
+			level,
+			current_xirang,
+			success,
+			free_upgrade
+		)
+
+
+func _on_transaction_inventory_item_used_broadcast_requested(
+	peer_id: int,
+	slot_index: int,
+	config_path: String,
+	success: bool,
+	inventory_snapshot: Dictionary,
+	force_inventory_repair: bool
+) -> void:
+	_rpc_to_connected_clients(
+		&"net_inventory_item_used",
+		[
+			peer_id,
+			slot_index,
+			config_path,
+			success,
+			inventory_snapshot,
+			force_inventory_repair,
+		]
+	)
+	if peer_id == _get_local_peer_id():
+		transactions_coordinator.receive_inventory_item_used(
+			peer_id,
+			slot_index,
+			config_path,
+			success,
+			inventory_snapshot,
+			force_inventory_repair
+		)
+
+
+func _on_transaction_inventory_item_discarded_broadcast_requested(
+	peer_id: int,
+	slot_index: int,
+	success: bool,
+	inventory_snapshot: Dictionary,
+	force_inventory_repair: bool
+) -> void:
+	_rpc_to_connected_clients(
+		&"net_inventory_item_discarded",
+		[
+			peer_id,
+			slot_index,
+			success,
+			inventory_snapshot,
+			force_inventory_repair,
+		]
+	)
+	if peer_id == _get_local_peer_id():
+		transactions_coordinator.receive_inventory_item_discarded(
+			peer_id,
+			slot_index,
+			success,
+			inventory_snapshot,
+			force_inventory_repair
+		)
+
+
+func _on_transaction_simple_crafting_result_broadcast_requested(
+	peer_id: int,
+	request_id: int,
+	recipe_id: String,
+	result_code: String,
+	inventory_snapshot: Dictionary,
+	force_inventory_repair: bool
+) -> void:
+	_rpc_to_connected_clients(
+		&"net_simple_crafting_result",
+		[
+			peer_id,
+			request_id,
+			recipe_id,
+			result_code,
+			inventory_snapshot,
+			force_inventory_repair,
+		]
+	)
+	if peer_id == _get_local_peer_id():
+		transactions_coordinator.receive_simple_crafting_result(
+			peer_id,
+			request_id,
+			recipe_id,
+			result_code,
+			inventory_snapshot,
+			force_inventory_repair
+		)
+
+
+func _on_transaction_skill1_purchase_confirmation_broadcast_requested(
+	peer_id: int,
+	current_xirang: int,
+	skill1_unlocked: bool,
+	result_code: int,
+	skill1_upgrade_level: int,
+	skill1_charge_duration: float
+) -> void:
+	_rpc_to_connected_clients(
+		&"net_skill1_purchase_confirmed",
+		[
+			peer_id,
+			current_xirang,
+			skill1_unlocked,
+			result_code,
+			skill1_upgrade_level,
+			skill1_charge_duration,
+		]
+	)
+	if peer_id == _get_local_peer_id():
+		transactions_coordinator.receive_skill1_purchase_confirmation(
+			peer_id,
+			current_xirang,
+			skill1_unlocked,
+			result_code,
+			skill1_upgrade_level,
+			skill1_charge_duration
+		)
 
 
 func request_multiplayer_start_wave() -> void:
@@ -1567,7 +1601,9 @@ func _handle_authoritative_plant_placement_request(
 ) -> void:
 	if not net_manager.is_host() or not _has_tower_mode():
 		return
-	if not _consume_remote_transaction_admission(requester_peer_id):
+	if not transactions_coordinator.consume_remote_transaction_admission(
+		requester_peer_id
+	):
 		return
 	if (
 		request_id <= 0
@@ -1609,7 +1645,9 @@ func _handle_authoritative_inventory_plant_placement_request(
 ) -> void:
 	if not net_manager.is_host() or not _has_tower_mode():
 		return
-	if not _consume_remote_transaction_admission(requester_peer_id):
+	if not transactions_coordinator.consume_remote_transaction_admission(
+		requester_peer_id
+	):
 		return
 	if (
 		request_id <= 0
@@ -1686,22 +1724,6 @@ func _consume_peer_rate_token(
 	bucket["tokens"] = tokens
 	bucket["last_time"] = now
 	return accepted
-
-
-func _consume_remote_transaction_admission(peer_id: int) -> bool:
-	# Local Host UI calls are trusted and already pass through each feature's own
-	# bucket. The shared ingress budget exists to prevent a remote peer from
-	# alternating transaction RPC types to multiply its admitted workload.
-	if peer_id == _get_local_peer_id():
-		return true
-	if _is_embedded_participant_suspended(peer_id):
-		return false
-	return _consume_peer_rate_token(
-		_player_transaction_ingress_rate_buckets,
-		peer_id,
-		PLAYER_TRANSACTION_INGRESS_RATE_PER_SECOND,
-		PLAYER_TRANSACTION_INGRESS_RATE_BURST
-	)
 
 
 func _consume_remote_player_action_admission(
@@ -2180,7 +2202,7 @@ func _apply_authoritative_research_command(
 ) -> void:
 	if not _has_tower_mode() or not net_manager.is_host() or game == null or peer_id <= 0:
 		return
-	if not _consume_remote_transaction_admission(peer_id):
+	if not transactions_coordinator.consume_remote_transaction_admission(peer_id):
 		return
 	var command := _canonicalize_research_command(raw_command, peer_id)
 	if command.is_empty():
@@ -2361,7 +2383,7 @@ func _apply_authoritative_production_command(
 ) -> void:
 	if not net_manager.is_host() or game == null or peer_id <= 0:
 		return
-	if not _consume_remote_transaction_admission(peer_id):
+	if not transactions_coordinator.consume_remote_transaction_admission(peer_id):
 		return
 	var command := ProductionBuildingProtocolScript.canonicalize_command(
 		raw_command,
@@ -2693,153 +2715,10 @@ func _get_warehouse_transaction_metric_key(
 	return "%d:%d" % [warehouse_net_id, request_id]
 
 
-func _apply_authoritative_simple_crafting_request(
-	peer_id: int,
-	request_id: int,
-	recipe_id: String,
-	expected_inventory_revision: int
-) -> void:
-	if not net_manager.is_host() or game == null or peer_id <= 0:
-		return
-	if not _consume_remote_transaction_admission(peer_id):
-		return
-	if (
-		request_id <= 0
-		or expected_inventory_revision < 0
-		or recipe_id.is_empty()
-		or recipe_id.length() > SIMPLE_CRAFTING_WIRE_ID_MAX_LENGTH
-	):
-		return
-	if not _consume_peer_rate_token(
-		_simple_crafting_rate_buckets,
-		peer_id,
-		SIMPLE_CRAFTING_RATE_PER_SECOND,
-		SIMPLE_CRAFTING_RATE_BURST
-	):
-		return
-	var cached_result := _get_cached_simple_crafting_result(peer_id, request_id)
-	if not cached_result.is_empty():
-		cached_result["inventory_snapshot"] = (
-			run_state.export_inventory_snapshot_for_peer(peer_id)
-		)
-		_cache_simple_crafting_result(peer_id, request_id, cached_result)
-		_send_simple_crafting_result(cached_result)
-		return
-	var player_node := game.get_player_for_peer(peer_id)
-	var last_request_id := int(
-		_last_simple_crafting_request_ids.get(peer_id, 0)
-	)
-	var recipe := SimpleCraftingRegistry.get_recipe_by_wire_id(recipe_id)
-	var canonical_recipe_id := (
-		recipe.recipe_id
-		if recipe != null
-		else &""
-	)
-	var result := RunStateStore.CRAFT_RESULT_INVALID_RECIPE
-	var should_cache := false
-	if request_id <= last_request_id:
-		result = &"stale_request"
-	else:
-		_last_simple_crafting_request_ids[peer_id] = request_id
-		should_cache = true
-		if (
-			player_node == null
-			or not is_instance_valid(player_node)
-			or player_node.is_dead
-		):
-			result = &"invalid_player"
-		elif recipe == null:
-			result = RunStateStore.CRAFT_RESULT_INVALID_RECIPE
-		else:
-			var completed_research_ids: Array[StringName] = []
-			if _has_tower_mode():
-				completed_research_ids = (
-					tower_mode_adapter.get_completed_global_research_ids()
-				)
-			result = run_state.try_craft_inventory_recipe_for_peer_if_revision(
-				peer_id,
-				recipe,
-				expected_inventory_revision,
-				true,
-				completed_research_ids
-			)
-	var transaction_result := {
-		"peer_id": peer_id,
-		"request_id": request_id,
-		"recipe_id": String(canonical_recipe_id),
-		"result": String(result),
-		"inventory_snapshot": run_state.export_inventory_snapshot_for_peer(
-			peer_id
-		),
-		"force_inventory_repair": (
-			result == RunStateStore.CRAFT_RESULT_STALE_REVISION
-		),
-	}
-	if should_cache:
-		_cache_simple_crafting_result(peer_id, request_id, transaction_result)
-	_send_simple_crafting_result(transaction_result)
-
-
-func _get_cached_simple_crafting_result(
-	peer_id: int,
-	request_id: int
-) -> Dictionary:
-	if peer_id <= 0 or request_id <= 0:
-		return {}
-	return _simple_crafting_result_cache.get_result(peer_id, request_id)
-
-
-func _cache_simple_crafting_result(
-	peer_id: int,
-	request_id: int,
-	result: Dictionary
-) -> void:
-	if peer_id <= 0 or request_id <= 0 or result.is_empty():
-		return
-	_simple_crafting_result_cache.store_result(peer_id, request_id, result)
-
-
-func _send_simple_crafting_result(result: Dictionary) -> void:
-	var peer_id := int(result.get("peer_id", 0))
-	var request_id := int(result.get("request_id", 0))
-	var recipe_id := str(result.get("recipe_id", ""))
-	var result_code := str(result.get(
-		"result",
-		RunStateStore.CRAFT_RESULT_INVALID_RECIPE
-	))
-	var inventory_snapshot := result.get(
-		"inventory_snapshot",
-		{}
-	) as Dictionary
-	var force_inventory_repair := bool(
-		result.get("force_inventory_repair", false)
-	)
-	_rpc_to_connected_clients(
-		&"net_simple_crafting_result",
-		[
-			peer_id,
-			request_id,
-			recipe_id,
-			result_code,
-			inventory_snapshot,
-			force_inventory_repair,
-		]
-	)
-	if peer_id == _get_local_peer_id():
-		net_simple_crafting_result(
-			peer_id,
-			request_id,
-			recipe_id,
-			result_code,
-			inventory_snapshot,
-			force_inventory_repair
-		)
-
-
 func _apply_authoritative_warehouse_command(peer_id: int, raw_command: Dictionary) -> void:
 	if not net_manager.is_host() or game == null or peer_id <= 0:
 		return
-	if not _consume_remote_transaction_admission(peer_id):
+	if not transactions_coordinator.consume_remote_transaction_admission(peer_id):
 		return
 	var command := OakWarehouseProtocolScript.canonicalize_command(
 		raw_command,
@@ -3076,6 +2955,19 @@ func _setup_game(mode: int) -> bool:
 	mode_adapter.attach_multiplayer_session(self)
 	tower_mode_adapter = mode_adapter as TowerDefenseMultiplayerModeAdapter
 	var tower_adapter := tower_mode_adapter
+	var typed_net_manager := net_manager as NetManagerStore
+	if typed_net_manager == null:
+		push_error("MpGame: TransactionsCoordinator 缺少强类型 NetManagerStore。")
+		_discard_unparented_game_runtime()
+		return false
+	transactions_coordinator.bind_session(
+		self,
+		game,
+		mode_adapter,
+		typed_net_manager,
+		run_state,
+		_suspended_embedded_participant_peer_ids
+	)
 	if net_manager.is_host():
 		gameplay_gateway.enemy_spawned.connect(_on_host_enemy_spawned)
 		gameplay_gateway.enemy_defeated.connect(_on_host_enemy_defeated)
@@ -3177,6 +3069,8 @@ func _discard_unparented_game_runtime() -> void:
 		enemy_coordinator.unbind_runtime(game)
 	if game != null and projectile_coordinator != null:
 		projectile_coordinator.unbind_runtime(game)
+	if transactions_coordinator != null:
+		transactions_coordinator.unbind_session(self)
 	if game != null and is_instance_valid(game) and game.get_parent() == null:
 		game.free()
 	game = null
@@ -9436,9 +9330,7 @@ func net_inventory_snapshot(
 	snapshot: Dictionary,
 	force_inventory_repair: bool = false
 ) -> void:
-	if peer_id <= 0 or snapshot.is_empty():
-		return
-	run_state.apply_inventory_snapshot_for_peer(
+	transactions_coordinator.receive_inventory_snapshot(
 		peer_id,
 		snapshot,
 		force_inventory_repair
@@ -10468,14 +10360,8 @@ func net_game_victory() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_upgrade_selected(stat_type: int) -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
-	if not _consume_remote_transaction_admission(sender_id):
-		return
-	_apply_upgrade_for_peer(sender_id, stat_type)
+	transactions_coordinator.handle_remote_upgrade_selection(sender_id, stat_type)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -10483,28 +10369,8 @@ func net_inventory_item_use_requested(
 	slot_index: int,
 	expected_inventory_revision: int = -1
 ) -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
-	if (
-		not _consume_remote_transaction_admission(sender_id)
-		or not _consume_peer_rate_token(
-			_inventory_command_rate_buckets,
-			sender_id,
-			INVENTORY_COMMAND_RATE_PER_SECOND,
-			INVENTORY_COMMAND_RATE_BURST
-		)
-	):
-		return
-	if expected_inventory_revision < 0:
-		# An omitted revision is converted to an impossible future revision so a
-		# remote caller can never bypass optimistic concurrency.
-		expected_inventory_revision = (
-			run_state.get_inventory_revision_for_peer(sender_id) + 1
-		)
-	_apply_inventory_item_use_for_peer(
+	transactions_coordinator.handle_remote_inventory_item_use_request(
 		sender_id,
 		slot_index,
 		expected_inventory_revision
@@ -10516,28 +10382,8 @@ func net_inventory_item_discard_requested(
 	slot_index: int,
 	expected_inventory_revision: int = -1
 ) -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
-	if (
-		not _consume_remote_transaction_admission(sender_id)
-		or not _consume_peer_rate_token(
-			_inventory_command_rate_buckets,
-			sender_id,
-			INVENTORY_COMMAND_RATE_PER_SECOND,
-			INVENTORY_COMMAND_RATE_BURST
-		)
-	):
-		return
-	if expected_inventory_revision < 0:
-		# Keep the default callable for direct tests, but never let a remote peer
-		# bypass optimistic concurrency by omitting the revision.
-		expected_inventory_revision = (
-			run_state.get_inventory_revision_for_peer(sender_id) + 1
-		)
-	_apply_inventory_item_discard_for_peer(
+	transactions_coordinator.handle_remote_inventory_item_discard_request(
 		sender_id,
 		slot_index,
 		expected_inventory_revision
@@ -10550,12 +10396,8 @@ func net_simple_crafting_requested(
 	recipe_id: String,
 	expected_inventory_revision: int
 ) -> void:
-	if not net_manager.is_host() or game == null:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
-	_apply_authoritative_simple_crafting_request(
+	transactions_coordinator.handle_remote_simple_crafting_request(
 		sender_id,
 		request_id,
 		recipe_id,
@@ -10565,14 +10407,8 @@ func net_simple_crafting_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_skill1_purchase_requested() -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
-	if not _consume_remote_transaction_admission(sender_id):
-		return
-	_apply_skill1_purchase_for_peer(sender_id)
+	transactions_coordinator.handle_remote_skill1_purchase_request(sender_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
@@ -10582,7 +10418,7 @@ func net_tower_defense_start_wave_requested() -> void:
 		return
 	if sender_id <= 0:
 		return
-	if not _consume_remote_transaction_admission(sender_id):
+	if not transactions_coordinator.consume_remote_transaction_admission(sender_id):
 		return
 	if game.get_player_for_peer(sender_id) == null:
 		return
@@ -10650,7 +10486,7 @@ func _admit_remote_xiaocong_request(sender_id: int) -> bool:
 	):
 		return false
 	return (
-		_consume_remote_transaction_admission(sender_id)
+		transactions_coordinator.consume_remote_transaction_admission(sender_id)
 		and _consume_peer_rate_token(
 			_xiaocong_transaction_rate_buckets,
 			sender_id,
@@ -10668,7 +10504,7 @@ func net_luoxi_collectible_offer_requested() -> void:
 	if sender_id <= 0:
 		return
 	if (
-		not _consume_remote_transaction_admission(sender_id)
+		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
 		or not _consume_peer_rate_token(
 			_luoxi_transaction_rate_buckets,
 			sender_id,
@@ -10691,7 +10527,7 @@ func net_luoxi_collectible_choice_requested(
 	if sender_id <= 0:
 		return
 	if (
-		not _consume_remote_transaction_admission(sender_id)
+		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
 		or not _consume_peer_rate_token(
 			_luoxi_transaction_rate_buckets,
 			sender_id,
@@ -10717,7 +10553,7 @@ func net_luoxi_collectible_refresh_requested(offer_revision: int = 0) -> void:
 	if sender_id <= 0:
 		return
 	if (
-		not _consume_remote_transaction_admission(sender_id)
+		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
 		or not _consume_peer_rate_token(
 			_luoxi_transaction_rate_buckets,
 			sender_id,
@@ -10737,7 +10573,7 @@ func net_luoxi_special_game_start_requested() -> void:
 	if sender_id <= 0:
 		return
 	if (
-		not _consume_remote_transaction_admission(sender_id)
+		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
 		or not _consume_peer_rate_token(
 			_luoxi_transaction_rate_buckets,
 			sender_id,
@@ -10760,7 +10596,7 @@ func net_luoxi_special_game_card_reveal_requested(
 	if sender_id <= 0:
 		return
 	if (
-		not _consume_remote_transaction_admission(sender_id)
+		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
 		or not _consume_peer_rate_token(
 			_luoxi_transaction_rate_buckets,
 			sender_id,
@@ -10784,7 +10620,7 @@ func net_luoxi_special_game_finish_requested(session_revision: int) -> void:
 	if sender_id <= 0:
 		return
 	if (
-		not _consume_remote_transaction_admission(sender_id)
+		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
 		or not _consume_peer_rate_token(
 			_luoxi_transaction_rate_buckets,
 			sender_id,
@@ -10804,7 +10640,12 @@ func net_cheat_xirang_requested() -> void:
 	if not net_manager.is_host() or not OS.is_debug_build():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or not _consume_remote_transaction_admission(sender_id):
+	if (
+		sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
+		)
+	):
 		return
 	_apply_cheat_xirang_for_peer(sender_id)
 
@@ -10819,7 +10660,12 @@ func net_debug_collectible_requested(config_path: String) -> void:
 	):
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0 or not _consume_remote_transaction_admission(sender_id):
+	if (
+		sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
+		)
+	):
 		return
 	_apply_debug_collectible_for_peer(sender_id, config_path)
 
@@ -10833,22 +10679,14 @@ func net_upgrade_confirmed(
 	success: bool,
 	free_upgrade: bool = false
 ) -> void:
-	if not success:
-		return
-	if peer_id <= 0 or game == null:
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	run_state.ensure_multiplayer_peer_state(peer_id)
-	run_state.set_upgrade_level_for_peer(peer_id, stat_type, level)
-	var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
-	if not already_applied_on_host:
-		_apply_confirmed_upgrade_to_player(player_node, stat_type)
-	player_node.current_xirang = current_xirang
-	player_node.xirang_changed.emit(current_xirang, 0)
-	if free_upgrade and not already_applied_on_host:
-		player_node.play_lucky_upgrade_feedback()
+	transactions_coordinator.receive_upgrade_confirmation(
+		peer_id,
+		stat_type,
+		level,
+		current_xirang,
+		success,
+		free_upgrade
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -10860,30 +10698,14 @@ func net_inventory_item_used(
 	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
 ) -> void:
-	if peer_id <= 0 or inventory_snapshot.is_empty() or game == null:
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
-	if already_applied_on_host:
-		return
-	var inventory_revision_before := run_state.get_inventory_revision_for_peer(peer_id)
-	var snapshot_applied := run_state.apply_inventory_snapshot_for_peer(
+	transactions_coordinator.receive_inventory_item_used(
 		peer_id,
+		slot_index,
+		config_path,
+		success,
 		inventory_snapshot,
 		force_inventory_repair
 	)
-	if not snapshot_applied or not success:
-		return
-	var snapshot_revision := int(inventory_snapshot.get("revision", -1))
-	if (
-		snapshot_revision > inventory_revision_before
-		and not config_path.is_empty()
-	):
-		var item := load(config_path) as PickupConfig
-		if item != null:
-			player_node.apply_pickup(item, false)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -10894,18 +10716,10 @@ func net_inventory_item_discarded(
 	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
 ) -> void:
-	if peer_id <= 0 or inventory_snapshot.is_empty() or game == null:
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var already_applied_on_host: bool = (
-		net_manager.is_host() and peer_id == _get_local_peer_id()
-	)
-	if already_applied_on_host:
-		return
-	run_state.apply_inventory_snapshot_for_peer(
+	transactions_coordinator.receive_inventory_item_discarded(
 		peer_id,
+		slot_index,
+		success,
 		inventory_snapshot,
 		force_inventory_repair
 	)
@@ -10920,75 +10734,14 @@ func net_simple_crafting_result(
 	inventory_snapshot: Dictionary,
 	force_inventory_repair: bool = false
 ) -> void:
-	if (
-		peer_id <= 0
-		or request_id <= 0
-		or inventory_snapshot.is_empty()
-		or game == null
-	):
-		return
-	var player_node := game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var last_result_id := int(
-		_last_simple_crafting_result_ids.get(peer_id, 0)
+	transactions_coordinator.receive_simple_crafting_result(
+		peer_id,
+		request_id,
+		recipe_id,
+		result,
+		inventory_snapshot,
+		force_inventory_repair
 	)
-	if request_id <= last_result_id:
-		return
-	if not net_manager.is_host():
-		var snapshot_applied := run_state.apply_inventory_snapshot_for_peer(
-			peer_id,
-			inventory_snapshot,
-			force_inventory_repair and peer_id == _get_local_peer_id()
-		)
-		if not snapshot_applied:
-			return
-	_last_simple_crafting_result_ids[peer_id] = request_id
-	if peer_id != _get_local_peer_id():
-		return
-	var ui_request_token := _take_local_simple_crafting_request_token(
-		request_id
-	)
-	var result_code := StringName(result)
-	match result_code:
-		RunStateStore.CRAFT_RESULT_SUCCESS:
-			pass
-		RunStateStore.CRAFT_RESULT_INVALID_RECIPE:
-			pass
-		RunStateStore.CRAFT_RESULT_MISSING_INPUT:
-			pass
-		RunStateStore.CRAFT_RESULT_INVENTORY_FULL:
-			pass
-		RunStateStore.CRAFT_RESULT_STALE_REVISION:
-			pass
-		RunStateStore.CRAFT_RESULT_RESEARCH_LOCKED:
-			pass
-		&"rate_limited":
-			pass
-		&"invalid_player":
-			pass
-		&"stale_request":
-			pass
-		_:
-			result_code = RunStateStore.CRAFT_RESULT_INVALID_RECIPE
-	if _mode_adapter != null:
-		_mode_adapter.show_simple_crafting_result(
-			StringName(recipe_id),
-			result_code,
-			ui_request_token
-		)
-
-
-func _apply_confirmed_upgrade_to_player(player_node: Player, stat_type: int) -> void:
-	match stat_type:
-		RunStateStore.StatType.ATTACK:
-			player_node.upgrade_attack()
-		RunStateStore.StatType.HEALTH:
-			player_node.upgrade_max_health()
-		RunStateStore.StatType.ATTACK_SPEED:
-			player_node.upgrade_attack_speed()
-		RunStateStore.StatType.DODGE:
-			player_node.upgrade_dodge()
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -11000,17 +10753,14 @@ func net_skill1_purchase_confirmed(
 	skill1_upgrade_level: int = -1,
 	skill1_charge_duration: float = -1.0
 ) -> void:
-	if game == null or _mode_adapter == null:
-		return
-	_mode_adapter.apply_skill1_purchase_state(
+	transactions_coordinator.receive_skill1_purchase_confirmation(
 		peer_id,
 		current_xirang,
 		skill1_unlocked,
+		result_code,
 		skill1_upgrade_level,
 		skill1_charge_duration
 	)
-	if peer_id == _get_local_peer_id():
-		_mode_adapter.show_local_skill1_purchase_result(result_code)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -11234,143 +10984,6 @@ func net_debug_collectible_granted(
 				config_path,
 				success
 			)
-
-
-func _apply_upgrade_for_peer(peer_id: int, stat_type: int) -> void:
-	if game == null or peer_id <= 0:
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var success := run_state.try_upgrade_for_peer(peer_id, stat_type, player_node)
-	var free_upgrade := success and player_node.consume_last_base_upgrade_free_flag()
-	var level := run_state.get_upgrade_level_for_peer(peer_id, stat_type)
-	var current_xirang := player_node.current_xirang
-	_rpc_to_connected_clients(
-		&"net_upgrade_confirmed",
-		[peer_id, stat_type, level, current_xirang, success, free_upgrade]
-	)
-	if peer_id == _get_local_peer_id():
-		net_upgrade_confirmed(peer_id, stat_type, level, current_xirang, success, free_upgrade)
-
-
-func _apply_inventory_item_use_for_peer(
-	peer_id: int,
-	slot_index: int,
-	expected_inventory_revision: int = -1
-) -> void:
-	if game == null or peer_id <= 0:
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var current_revision := run_state.get_inventory_revision_for_peer(peer_id)
-	var revision_mismatch := (
-		expected_inventory_revision >= 0
-		and expected_inventory_revision != current_revision
-	)
-	var item := run_state.get_item_for_peer(peer_id, slot_index)
-	var config_path := item.resource_path if item != null else ""
-	var success := (
-		not revision_mismatch
-		and run_state.try_use_item_for_peer(peer_id, slot_index, player_node)
-	)
-	if not success:
-		config_path = ""
-	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
-	_rpc_to_connected_clients(
-		&"net_inventory_item_used",
-		[
-			peer_id,
-			slot_index,
-			config_path,
-			success,
-			inventory_snapshot,
-			revision_mismatch,
-		]
-	)
-	if peer_id == _get_local_peer_id():
-		net_inventory_item_used(
-			peer_id,
-			slot_index,
-			config_path,
-			success,
-			inventory_snapshot,
-			revision_mismatch
-		)
-
-
-func _apply_inventory_item_discard_for_peer(
-	peer_id: int,
-	slot_index: int,
-	expected_inventory_revision: int = -1
-) -> void:
-	if game == null or peer_id <= 0:
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var current_revision := run_state.get_inventory_revision_for_peer(peer_id)
-	var revision_mismatch := (
-		expected_inventory_revision >= 0
-		and expected_inventory_revision != current_revision
-	)
-	var success := (
-		not revision_mismatch
-		and run_state.discard_item_for_peer(peer_id, slot_index)
-	)
-	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
-	_rpc_to_connected_clients(
-		&"net_inventory_item_discarded",
-		[
-			peer_id,
-			slot_index,
-			success,
-			inventory_snapshot,
-			revision_mismatch,
-		]
-	)
-	if peer_id == _get_local_peer_id():
-		net_inventory_item_discarded(
-			peer_id,
-			slot_index,
-			success,
-			inventory_snapshot,
-			revision_mismatch
-		)
-
-
-func _apply_skill1_purchase_for_peer(peer_id: int) -> void:
-	if game == null or _mode_adapter == null or peer_id <= 0:
-		return
-	var player_node := game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var result_code := _mode_adapter.try_purchase_skill1_for_peer(peer_id)
-	var current_xirang := player_node.current_xirang
-	var skill1_unlocked := player_node.has_skill1()
-	var skill1_upgrade_level := player_node.skill1_upgrade_level
-	var skill1_charge_duration := player_node.skill1_charge_duration
-	_rpc_to_connected_clients(
-		&"net_skill1_purchase_confirmed",
-		[
-			peer_id,
-			current_xirang,
-			skill1_unlocked,
-			result_code,
-			skill1_upgrade_level,
-			skill1_charge_duration,
-		]
-	)
-	if peer_id == _get_local_peer_id():
-		net_skill1_purchase_confirmed(
-			peer_id,
-			current_xirang,
-			skill1_unlocked,
-			result_code,
-			skill1_upgrade_level,
-			skill1_charge_duration
-		)
 
 
 func _get_luoxi_merchant() -> LuoxiMerchant:
@@ -12178,17 +11791,12 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_luoxi_offer_revision_counters.erase(peer_id)
 	_plant_placement_rate_buckets.erase(peer_id)
 	_warehouse_transaction_rate_buckets.erase(peer_id)
-	_player_transaction_ingress_rate_buckets.erase(peer_id)
 	_player_action_ingress_rate_buckets.erase(peer_id)
-	_inventory_command_rate_buckets.erase(peer_id)
 	_luoxi_transaction_rate_buckets.erase(peer_id)
 	_xiaocong_transaction_rate_buckets.erase(peer_id)
 	session_coordinator.clear_peer(peer_id)
 	_warehouse_snapshot_request_rate_buckets.erase(peer_id)
-	_last_simple_crafting_request_ids.erase(peer_id)
-	_last_simple_crafting_result_ids.erase(peer_id)
-	_simple_crafting_rate_buckets.erase(peer_id)
-	_simple_crafting_result_cache.clear_peer(peer_id)
+	transactions_coordinator.clear_peer(peer_id)
 	_production_command_rate_buckets.erase(peer_id)
 	_production_snapshot_request_rate_buckets.erase(peer_id)
 	_research_command_rate_buckets.erase(peer_id)
@@ -12234,17 +11842,10 @@ func _return_to_lobby() -> void:
 	_warehouse_snapshot_request_rate_buckets.clear()
 	_warehouse_transaction_rate_buckets.clear()
 	_warehouse_transaction_result_cache.clear()
-	_player_transaction_ingress_rate_buckets.clear()
-	_inventory_command_rate_buckets.clear()
 	_luoxi_transaction_rate_buckets.clear()
 	_xiaocong_transaction_rate_buckets.clear()
 	session_coordinator.reset_session_state()
-	_local_simple_crafting_request_id = 0
-	_clear_local_simple_crafting_request_tracking()
-	_last_simple_crafting_request_ids.clear()
-	_last_simple_crafting_result_ids.clear()
-	_simple_crafting_rate_buckets.clear()
-	_simple_crafting_result_cache.clear()
+	transactions_coordinator.reset_session_state()
 	_production_command_rate_buckets.clear()
 	_production_snapshot_request_rate_buckets.clear()
 	_production_command_result_cache.clear()

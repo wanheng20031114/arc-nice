@@ -215,6 +215,12 @@ func show_simple_crafting_result(
 	pass
 
 
+## Shared crafting is mode-neutral. Modes with a global research graph expose
+## only their completed recipe gates through this stable adapter boundary.
+func get_completed_global_research_ids() -> Array[StringName]:
+	return []
+
+
 func request_debug_collectible(config_path: String) -> bool:
 	if not has_multiplayer_session():
 		return false

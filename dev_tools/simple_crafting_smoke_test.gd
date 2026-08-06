@@ -1012,61 +1012,58 @@ func _test_health_potion_stack_and_use(run_state: RunStateStore) -> void:
 
 
 func _test_multiplayer_request_token_tracking() -> void:
-	var mp_game := MP_GAME_SCRIPT.new()
-	mp_game.call("_track_local_simple_crafting_request", 11, 101)
-	mp_game.call("_track_local_simple_crafting_request", 12, 102)
+	var transactions := MpTransactionsCoordinator.new()
+	transactions.track_local_simple_crafting_request(11, 101)
+	transactions.track_local_simple_crafting_request(12, 102)
 	_expect(
-		int(mp_game.call(
-			"_take_local_simple_crafting_request_token",
-			11
-		)) == 101
+		transactions.take_local_simple_crafting_request_token(11) == 101
 		and not (
-			mp_game.get(
+			transactions.get(
 				"_local_simple_crafting_ui_tokens_by_request_id"
 			) as Dictionary
 		).has(11)
 		and not (
-			mp_game.get(
+			transactions.get(
 				"_local_simple_crafting_request_ids_by_ui_token"
 			) as Dictionary
 		).has(101)
 		and (
-			mp_game.get(
+			transactions.get(
 				"_local_simple_crafting_ui_tokens_by_request_id"
 			) as Dictionary
 		).get(12, 0) == 102,
 		"正常回包必须按网络request_id取回对应面板token，且只清理本次映射。"
 	)
-	mp_game.cancel_multiplayer_simple_crafting_request(102)
+	transactions.cancel_simple_crafting_request(102)
 	_expect(
 		(
-			mp_game.get(
+			transactions.get(
 				"_local_simple_crafting_ui_tokens_by_request_id"
 			) as Dictionary
 		).is_empty()
 		and (
-			mp_game.get(
+			transactions.get(
 				"_local_simple_crafting_request_ids_by_ui_token"
 			) as Dictionary
 		).is_empty(),
 		"超时或关闭必须通过反向token索引O(1)释放本地请求映射。"
 	)
-	mp_game.call("_track_local_simple_crafting_request", 13, 103)
-	mp_game.call("_clear_local_simple_crafting_request_tracking")
+	transactions.track_local_simple_crafting_request(13, 103)
+	transactions.clear_local_simple_crafting_request_tracking()
 	_expect(
 		(
-			mp_game.get(
+			transactions.get(
 				"_local_simple_crafting_ui_tokens_by_request_id"
 			) as Dictionary
 		).is_empty()
 		and (
-			mp_game.get(
+			transactions.get(
 				"_local_simple_crafting_request_ids_by_ui_token"
 			) as Dictionary
 		).is_empty(),
 		"多人场景退出时必须清空尚未收到结果的本地制造token。"
 	)
-	mp_game.free()
+	transactions.free()
 
 
 func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
