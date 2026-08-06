@@ -45,3 +45,5 @@ timeout = 10.0
 [connection signal="inventory_snapshot_broadcast_requested" from="TowerEconomyCoordinator" to="." method="_on_tower_economy_inventory_snapshot_broadcast_requested"]
 [connection signal="plant_runtime_state_apply_requested" from="TowerEconomyCoordinator" to="." method="_on_tower_economy_plant_runtime_state_apply_requested"]
 [connection signal="transaction_latency_observed" from="TowerEconomyCoordinator" to="." method="_on_tower_economy_transaction_latency_observed"]
+[connection signal="life_rpc_broadcast_requested" from="PlayerCoordinator" to="." method="_on_player_life_rpc_broadcast_requested"]
+[connection signal="player_state_correction_requested" from="PlayerCoordinator" to="." method="_on_player_life_state_correction_requested"]
