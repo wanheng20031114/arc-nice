@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c7r2n5v8w3j6a"]
+
+[ext_resource type="Script" uid="uid://d1p4x8k2m7q5c" path="res://scene/game_modes/standard/pickup/standard_pickup_registry.gd" id="1_registry"]
+
+[node name="PickupRegistry" type="Node"]
+script = ExtResource("1_registry")

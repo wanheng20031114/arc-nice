@@ -2,6 +2,9 @@ extends SceneTree
 
 const GAME_SCRIPT := preload("res://scene/game_modes/standard/standard_game.gd")
 const TOWER_DEFENSE_GAME_SCRIPT := preload("res://scene/game_modes/tower_defense/tower_defense_game.gd")
+const STANDARD_PICKUP_REGISTRY_SCENE := preload(
+	"res://scene/game_modes/standard/pickup/standard_pickup_registry.tscn"
+)
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
@@ -181,6 +184,11 @@ func _test_tower_defense_enemy_escape_marker() -> void:
 func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -> void:
 	var gateway := _prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = HOST_AUTHORITY
+	if runtime is StandardGame:
+		_bind_tree_less_standard_pickup_registry(
+			runtime as StandardGame,
+			gateway
+		)
 	var removed_ids: Array[int] = []
 	var collected_ids: Array[int] = []
 	gateway.pickup_removed.connect(
@@ -224,6 +232,33 @@ func _test_pickup_tree_exit_markers(runtime: CombatRuntimeBase, label: String) -
 	)
 	pickup.free()
 	runtime.free()
+
+
+func _bind_tree_less_standard_pickup_registry(
+	runtime: StandardGame,
+	gateway: MultiplayerGameplayGateway
+) -> void:
+	var enemy_container := Node2D.new()
+	enemy_container.name = "EnemyContainer"
+	runtime.add_child(enemy_container)
+	var boss_container := Node2D.new()
+	boss_container.name = "BossContainer"
+	runtime.add_child(boss_container)
+	var registry := (
+		STANDARD_PICKUP_REGISTRY_SCENE.instantiate()
+		as StandardPickupRegistry
+	)
+	registry.name = "PickupRegistry"
+	runtime.add_child(registry)
+	registry.bind_standard_dependencies(
+		runtime.runtime_mode,
+		runtime.multiplayer_pickups,
+		gateway,
+		enemy_container,
+		boss_container,
+		{},
+		PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+	)
 
 
 func _test_host_terminal_pairing_cache() -> void:

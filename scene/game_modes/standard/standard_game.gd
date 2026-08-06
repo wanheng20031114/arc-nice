@@ -50,6 +50,9 @@ var boss_coordinator: StandardBossCoordinator:
 var player_roster_coordinator: StandardPlayerRosterCoordinator:
 	get:
 		return get_node("PlayerRosterCoordinator") as StandardPlayerRosterCoordinator
+var pickup_registry: StandardPickupRegistry:
+	get:
+		return get_node_or_null("PickupRegistry") as StandardPickupRegistry
 var multiplayer_player_names: Dictionary:
 	get:
 		return player_roster_coordinator.player_names
@@ -65,6 +68,36 @@ var multiplayer_defeat_check_pending: bool:
 		return player_roster_coordinator.defeat_check_pending
 	set(value):
 		player_roster_coordinator.defeat_check_pending = value
+var _pending_multiplayer_pickup_exit_ids: Dictionary = {}
+var pending_multiplayer_pickup_exit_ids: Dictionary:
+	get:
+		var registry := pickup_registry
+		return (
+			registry.pending_multiplayer_pickup_exit_ids
+			if registry != null and registry.is_bound()
+			else _pending_multiplayer_pickup_exit_ids
+		)
+	set(value):
+		_pending_multiplayer_pickup_exit_ids = value
+		var registry := pickup_registry
+		if registry != null and registry.is_bound():
+			registry.pending_multiplayer_pickup_exit_ids = value
+var _next_multiplayer_pickup_net_id := (
+	PickupRegistryBase.FIRST_DYNAMIC_PICKUP_NET_ID
+)
+var next_multiplayer_pickup_net_id: int:
+	get:
+		var registry := pickup_registry
+		return (
+			registry.next_multiplayer_pickup_net_id
+			if registry != null and registry.is_bound()
+			else _next_multiplayer_pickup_net_id
+		)
+	set(value):
+		_next_multiplayer_pickup_net_id = value
+		var registry := pickup_registry
+		if registry != null and registry.is_bound():
+			registry.next_multiplayer_pickup_net_id = value
 
 var bosses: Array[Resource]:
 	get:
@@ -185,6 +218,16 @@ func get_player_for_peer(peer_id: int) -> Player:
 	return player_roster_coordinator.get_player_for_peer(peer_id)
 
 
+func get_pickup_for_net_id(net_id: int) -> Pickup:
+	var registry := pickup_registry
+	if registry != null and registry.is_bound():
+		return registry.get_pickup_for_net_id(net_id)
+	return PickupRegistryBase.get_pickup_from_index(
+		multiplayer_pickups,
+		net_id
+	)
+
+
 func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 	return player_roster_coordinator.collect_player_snapshot_states()
 
@@ -239,6 +282,15 @@ func _get_default_mode_definition() -> GameModeDefinition:
 
 
 func _initialize_mode_runtime_before_validation() -> void:
+	pickup_registry.bind_standard_dependencies(
+		runtime_mode,
+		multiplayer_pickups,
+		get_multiplayer_gameplay_gateway(),
+		enemy_container,
+		boss_container,
+		_pending_multiplayer_pickup_exit_ids,
+		_next_multiplayer_pickup_net_id
+	)
 	player_roster_coordinator.bind_dependencies(
 		self,
 		$PlayerSpawn as Marker2D,
@@ -348,6 +400,12 @@ func _connect_boss_coordinator_signals() -> void:
 
 
 func _validate_mode_scene_content() -> bool:
+	if pickup_registry == null:
+		push_error("StandardGame: 缺少静态 PickupRegistry 节点。")
+		return false
+	if not pickup_registry.is_bound():
+		push_error("StandardGame: PickupRegistry 依赖未完整绑定。")
+		return false
 	if player_roster_coordinator == null:
 		push_error("StandardGame: 缺少静态 PlayerRosterCoordinator 节点。")
 		return false
@@ -393,17 +451,30 @@ func _register_mode_object_pools() -> void:
 
 
 func _connect_mode_dynamic_pickup_containers() -> void:
-	if not boss_container.child_entered_tree.is_connected(
-		_on_dynamic_pickup_container_child_entered
-	):
-		boss_container.child_entered_tree.connect(
-			_on_dynamic_pickup_container_child_entered
-		)
+	pickup_registry.set_runtime_mode(runtime_mode)
+	pickup_registry.connect_dynamic_containers()
 
 
-func _register_additional_dynamic_multiplayer_pickups() -> void:
-	for child in boss_container.get_children():
-		_register_dynamic_multiplayer_pickup(child as Pickup)
+func _register_static_multiplayer_pickups() -> void:
+	pickup_registry.set_runtime_mode(runtime_mode)
+	pickup_registry.register_static_pickups(self)
+
+
+func _on_multiplayer_pickup_consumed(
+	pickup: Pickup,
+	collector_peer_id: int,
+	applied_immediately: bool
+) -> void:
+	pickup_registry.handle_multiplayer_pickup_consumed(
+		pickup,
+		collector_peer_id,
+		applied_immediately
+	)
+
+
+func _on_multiplayer_pickup_tree_exited(net_id: int) -> void:
+	pickup_registry.set_runtime_mode(runtime_mode)
+	pickup_registry.handle_multiplayer_pickup_tree_exited(net_id)
 
 
 func _initialize_mode_player_ui() -> void:

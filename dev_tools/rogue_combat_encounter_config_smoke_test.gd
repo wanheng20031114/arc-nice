@@ -41,6 +41,9 @@ class SpawnBatchProbe:
 	func get_player_for_peer(_peer_id: int) -> Player:
 		return null
 
+	func get_pickup_for_net_id(_net_id: int) -> Pickup:
+		return null
+
 	func remove_multiplayer_player(_peer_id: int) -> void:
 		pass
 
@@ -57,6 +60,12 @@ class SpawnBatchProbe:
 		pass
 
 	func _update_multiplayer_remote_player_passive_state(_delta: float) -> void:
+		pass
+
+	func _connect_mode_dynamic_pickup_containers() -> void:
+		pass
+
+	func _register_static_multiplayer_pickups() -> void:
 		pass
 
 	func _try_spawn_enemy(

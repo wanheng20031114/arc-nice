@@ -333,21 +333,31 @@ func _verify_source_allocation_contract() -> void:
 		and contact_guard_offset > zero_velocity_guard_offset,
 		"Zero-velocity movement must return before scanning player or plant contacts."
 	)
-	for runtime_source_path in [
-		"res://scene/combat/runtime/wave_combat_runtime_base.gd",
-		"res://scene/game_modes/tower_defense/tower_defense_game.gd",
+	for registry_source_path in [
+		"res://scene/combat/pickup/pickup_registry_base.gd",
 	]:
-		var runtime_source := FileAccess.get_file_as_string(runtime_source_path)
+		var registry_source := FileAccess.get_file_as_string(registry_source_path)
 		_expect(
-			runtime_source.count("_register_dynamic_multiplayer_pickups()") == 1,
-			"Runtime physics must not poll the full scene tree for pickups: %s"
-			% runtime_source_path
+			not registry_source.contains("func _physics_process"),
+			"Pickup registries must not poll the full scene tree from physics: %s"
+			% registry_source_path
 		)
 		_expect(
-			runtime_source.contains("enemy_container.child_entered_tree.connect("),
-			"Runtime must register dynamic pickups from EnemyContainer events: %s"
-			% runtime_source_path
+			registry_source.contains("child_entered_tree.connect("),
+			"Pickup registry must use dynamic-container enter events: %s"
+			% registry_source_path
 		)
+	var tower_runtime_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/tower_defense/tower_defense_game.gd"
+	)
+	_expect(
+		tower_runtime_source.count("_register_dynamic_multiplayer_pickups()") == 1,
+		"Tower runtime physics must not poll the full scene tree for pickups."
+	)
+	_expect(
+		tower_runtime_source.contains("enemy_container.child_entered_tree.connect("),
+		"Tower runtime must register dynamic pickups from EnemyContainer events."
+	)
 
 
 func _verify_segmented_enemy_metrics(enemies: Array[Enemy]) -> void:

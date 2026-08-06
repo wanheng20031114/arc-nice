@@ -25,6 +25,7 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="34_mode_adapter"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres" id="35_rogue_campaign"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/player/rogue_player_roster_coordinator.tscn" id="36_player_roster"]
+[ext_resource type="PackedScene" uid="uid://d5w9j2n7r4c8p" path="res://scene/game_modes/rogue/combat/pickup/rogue_pickup_registry.tscn" id="37_pickup_registry"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -120,6 +121,8 @@ world_lighting_policy = 2
 [node name="MultiplayerModeAdapter" parent="." instance=ExtResource("34_mode_adapter")]
 
 [node name="PlayerRosterCoordinator" parent="." instance=ExtResource("36_player_roster")]
+
+[node name="PickupRegistry" parent="." instance=ExtResource("37_pickup_registry")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")

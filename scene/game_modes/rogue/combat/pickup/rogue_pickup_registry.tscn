@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d5w9j2n7r4c8p"]
+
+[ext_resource type="Script" uid="uid://b8k3q6m1x5v9d" path="res://scene/game_modes/rogue/combat/pickup/rogue_pickup_registry.gd" id="1_registry"]
+
+[node name="PickupRegistry" type="Node"]
+script = ExtResource("1_registry")
