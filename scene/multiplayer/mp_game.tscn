@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scene/multiplayer/mp_game.gd" id="1_mpgame"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/session/mp_session_coordinator.tscn" id="2_session"]
@@ -10,6 +10,7 @@
 [ext_resource type="PackedScene" path="res://scene/multiplayer/tower_economy/mp_tower_economy_coordinator.tscn" id="8_tower_economy"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/tower_world/mp_tower_world_coordinator.tscn" id="9_tower_world"]
 [ext_resource type="PackedScene" path="res://scene/multiplayer/merchant_transactions/mp_merchant_transactions_coordinator.tscn" id="10_merchant_transactions"]
+[ext_resource type="PackedScene" path="res://scene/multiplayer/tower_fate/mp_tower_fate_coordinator.tscn" id="11_tower_fate"]
 
 [node name="MpGame" type="Node2D"]
 script = ExtResource("1_mpgame")
@@ -31,6 +32,8 @@ script = ExtResource("1_mpgame")
 [node name="TowerWorldCoordinator" parent="." instance=ExtResource("9_tower_world")]
 
 [node name="MerchantTransactionsCoordinator" parent="." instance=ExtResource("10_merchant_transactions")]
+
+[node name="TowerFateCoordinator" parent="." instance=ExtResource("11_tower_fate")]
 
 [node name="PublicRoomKeepaliveRequest" type="HTTPRequest" parent="."]
 timeout = 10.0
@@ -54,6 +57,9 @@ timeout = 10.0
 [connection signal="rpc_to_host_requested" from="MerchantTransactionsCoordinator" to="." method="_on_merchant_transactions_rpc_to_host_requested"]
 [connection signal="rpc_to_peer_requested" from="MerchantTransactionsCoordinator" to="." method="_on_merchant_transactions_rpc_to_peer_requested"]
 [connection signal="rpc_broadcast_requested" from="MerchantTransactionsCoordinator" to="." method="_on_merchant_transactions_rpc_broadcast_requested"]
+[connection signal="rpc_to_host_requested" from="TowerFateCoordinator" to="." method="_on_tower_fate_rpc_to_host_requested"]
+[connection signal="rpc_to_peer_requested" from="TowerFateCoordinator" to="." method="_on_tower_fate_rpc_to_peer_requested"]
+[connection signal="rpc_broadcast_requested" from="TowerFateCoordinator" to="." method="_on_tower_fate_rpc_broadcast_requested"]
 [connection signal="life_rpc_broadcast_requested" from="PlayerCoordinator" to="." method="_on_player_life_rpc_broadcast_requested"]
 [connection signal="player_action_rpc_to_host_requested" from="PlayerCoordinator" to="." method="_on_player_action_rpc_to_host_requested"]
 [connection signal="player_action_rpc_to_peer_requested" from="PlayerCoordinator" to="." method="_on_player_action_rpc_to_peer_requested"]

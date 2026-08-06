@@ -13,6 +13,9 @@ const MpTowerEconomyCoordinatorScript := preload(
 const MpMerchantTransactionsCoordinatorScript := preload(
 	"res://scene/multiplayer/merchant_transactions/mp_merchant_transactions_coordinator.gd"
 )
+const MpTowerFateCoordinatorScript := preload(
+	"res://scene/multiplayer/tower_fate/mp_tower_fate_coordinator.gd"
+)
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := (
 	MpProjectileCoordinatorScript.LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
 )
@@ -115,8 +118,6 @@ const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
 const ENEMY_TERMINAL_DEFEATED := 0
 const ENEMY_TERMINAL_ESCAPED := 1
 const ENEMY_TERMINAL_REMOVED := 2
-const XIAOCONG_TRANSACTION_RATE_PER_SECOND := 6.0
-const XIAOCONG_TRANSACTION_RATE_BURST := 10.0
 # Multiplayer protocol map:
 # - CH_AUTH: authentication, loading barrier, and complete-state repair.
 # - CH_INPUT: client input and predicted pose reports.
@@ -140,6 +141,7 @@ const XIAOCONG_TRANSACTION_RATE_BURST := 10.0
 @onready var merchant_transactions_coordinator: MpMerchantTransactionsCoordinatorScript = (
 	$MerchantTransactionsCoordinator
 )
+@onready var tower_fate_coordinator: MpTowerFateCoordinatorScript = $TowerFateCoordinator
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var _agave_cannonball_scene: PackedScene = null
@@ -188,7 +190,6 @@ var _large_player_snapshot_packet_count: int = 0
 var _large_enemy_snapshot_packet_count: int = 0
 var _enemy_snapshot_payload_bytes_total: int = 0
 var _enemy_snapshot_packet_count: int = 0
-var _xiaocong_transaction_rate_buckets: Dictionary = {}
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 var _pending_bamboo_mortar_visuals := PackedInt32Array()
 var _pending_bamboo_mortar_action_ids := PackedInt32Array()
@@ -410,6 +411,8 @@ func _exit_tree() -> void:
 			tower_world_coordinator.unbind_session(self)
 		if merchant_transactions_coordinator != null:
 			merchant_transactions_coordinator.unbind_runtime(game)
+		if tower_fate_coordinator != null:
+			tower_fate_coordinator.unbind_runtime(game)
 	else:
 		if session_coordinator != null:
 			session_coordinator.reset_session_state()
@@ -429,6 +432,8 @@ func _exit_tree() -> void:
 			tower_world_coordinator.reset_session_state()
 		if merchant_transactions_coordinator != null:
 			merchant_transactions_coordinator.reset_session_state()
+		if tower_fate_coordinator != null:
+			tower_fate_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -450,7 +455,8 @@ func _exit_tree() -> void:
 		tower_world_coordinator.reset_session_state()
 	if merchant_transactions_coordinator != null:
 		merchant_transactions_coordinator.reset_session_state()
-	_xiaocong_transaction_rate_buckets.clear()
+	if tower_fate_coordinator != null:
+		tower_fate_coordinator.reset_session_state()
 	_public_room_keepalive_in_flight = false
 
 
@@ -903,6 +909,38 @@ func _on_merchant_transactions_rpc_broadcast_requested(
 	_rpc_to_connected_clients(method_name, args)
 
 
+func _on_tower_fate_rpc_to_host_requested(
+	method_name: StringName,
+	args: Array
+) -> void:
+	if not net_manager.is_client():
+		return
+	_record_outbound_rpc(method_name, args)
+	var rpc_args: Array = [_get_host_peer_id(), method_name]
+	rpc_args.append_array(args)
+	callv(&"rpc_id", rpc_args)
+
+
+func _on_tower_fate_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	args: Array
+) -> void:
+	if peer_id <= 0 or not net_manager.is_host():
+		return
+	_record_outbound_rpc(method_name, args)
+	var rpc_args: Array = [peer_id, method_name]
+	rpc_args.append_array(args)
+	callv(&"rpc_id", rpc_args)
+
+
+func _on_tower_fate_rpc_broadcast_requested(
+	method_name: StringName,
+	args: Array
+) -> void:
+	_rpc_to_connected_clients(method_name, args)
+
+
 func request_multiplayer_start_wave() -> void:
 	if not world_flow_coordinator.supports_wave_progress():
 		return
@@ -915,76 +953,28 @@ func request_multiplayer_start_wave() -> void:
 
 
 func _on_local_xiaocong_interaction_requested() -> void:
-	if not _has_tower_mode():
-		return
-	if net_manager.is_host():
-		tower_mode_adapter.request_xiaocong_interaction(
-			_get_local_peer_id()
-		)
-	elif net_manager.is_client():
-		net_xiaocong_interaction_requested.rpc_id(_get_host_peer_id())
+	tower_fate_coordinator.request_local_interaction()
 
 
 func _on_local_xiaocong_vote_requested(
 	option_id: StringName,
 	permanent_buff_id: StringName
 ) -> void:
-	if (
-		not _has_tower_mode()
-		or not _is_valid_xiaocong_vote_payload(option_id, permanent_buff_id)
-	):
-		return
-	if net_manager.is_host():
-		tower_mode_adapter.request_xiaocong_fate_vote(
-			_get_local_peer_id(),
-			option_id,
-			permanent_buff_id
-		)
-	elif net_manager.is_client():
-		net_xiaocong_fate_vote_requested.rpc_id(
-			_get_host_peer_id(),
-			String(option_id),
-			String(permanent_buff_id)
-		)
+	tower_fate_coordinator.request_local_vote(option_id, permanent_buff_id)
 
 
 func _on_local_xiaocong_collectible_requested(choice_index: int) -> void:
-	if (
-		not _has_tower_mode()
-		or choice_index < 0
-		or choice_index > 3
-	):
-		return
-	if net_manager.is_host():
-		tower_mode_adapter.request_xiaocong_collectible_choice(
-			_get_local_peer_id(),
-			choice_index
-		)
-	elif net_manager.is_client():
-		net_xiaocong_collectible_choice_requested.rpc_id(
-			_get_host_peer_id(),
-			choice_index
-		)
+	tower_fate_coordinator.request_local_collectible_choice(choice_index)
 
 
 func _is_valid_xiaocong_vote_payload(
 	option_id: StringName,
 	permanent_buff_id: StringName
 ) -> bool:
-	if TowerDefenseFateRegistry.get_option_config(option_id) == null:
-		return false
-	if option_id == TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT:
-		return (
-			TowerDefenseFateRegistry.get_permanent_buff_config(permanent_buff_id)
-			!= null
-		)
-	if option_id == TowerDefenseFateRegistry.OPTION_CRITICAL_CORE:
-		return (
-			permanent_buff_id.is_empty()
-			or TowerDefenseFateRegistry.get_permanent_buff_config(permanent_buff_id)
-			!= null
-		)
-	return permanent_buff_id.is_empty()
+	return MpTowerFateCoordinatorScript.is_valid_vote_payload(
+		option_id,
+		permanent_buff_id
+	)
 
 
 func notify_local_player_dash_started(direction: Vector2, start_move_input: Vector2) -> void:
@@ -2077,9 +2067,16 @@ func _setup_game(mode: int) -> bool:
 			net_manager,
 			transactions_coordinator
 		)
+		tower_fate_coordinator.bind_runtime(
+			game,
+			tower_adapter,
+			net_manager,
+			_net_time_origin
+		)
 	else:
 		tower_economy_coordinator.reset_session_state()
 		tower_world_coordinator.reset_session_state()
+		tower_fate_coordinator.reset_session_state()
 	if net_manager.is_host():
 		gameplay_gateway.enemy_spawned.connect(_on_host_enemy_spawned)
 		gameplay_gateway.enemy_defeated.connect(_on_host_enemy_defeated)
@@ -2139,6 +2136,8 @@ func _setup_game(mode: int) -> bool:
 func _discard_unparented_game_runtime() -> void:
 	if game != null and merchant_transactions_coordinator != null:
 		merchant_transactions_coordinator.unbind_runtime(game)
+	if game != null and tower_fate_coordinator != null:
+		tower_fate_coordinator.unbind_runtime(game)
 	if game != null and tower_economy_coordinator != null:
 		tower_economy_coordinator.unbind_runtime(game)
 	if game != null and world_flow_coordinator != null:
@@ -2219,12 +2218,7 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 			int(progress_snapshot.get("total", 0))
 		)
 	if _has_tower_mode():
-		var fate_snapshot := tower_mode_adapter.get_xiaocong_fate_state_snapshot()
-		if not fate_snapshot.is_empty():
-			net_xiaocong_fate_state_changed.rpc_id(
-				peer_id,
-				fate_snapshot.duplicate(true)
-			)
+		tower_fate_coordinator.send_fate_state_to_peer(peer_id)
 		if tower_mode_adapter.is_fate_interlude_active():
 			_send_authoritative_player_positions_to_peer(peer_id)
 	if _has_tower_mode():
@@ -5846,17 +5840,7 @@ func _broadcast_enemy_terminal(net_id: int, reason: int, event_position: Vector2
 
 
 func _on_host_xiaocong_fate_state_changed(state: Dictionary) -> void:
-	if (
-		not is_inside_tree()
-		or not net_manager.is_host()
-		or game == null
-		or not _has_tower_mode()
-	):
-		return
-	_rpc_to_connected_clients(
-		&"net_xiaocong_fate_state_changed",
-		[state.duplicate(true)]
-	)
+	tower_fate_coordinator.handle_host_fate_state_changed(state)
 
 
 func _on_host_player_teleport_requested(
@@ -6751,13 +6735,10 @@ func net_tower_defense_wave_progress_keyframe(
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_xiaocong_fate_state_changed(state: Dictionary) -> void:
-	if (
-		not _has_tower_mode()
-		or net_manager.is_host()
-		or multiplayer.get_remote_sender_id() != _get_host_peer_id()
-	):
-		return
-	tower_mode_adapter.apply_remote_xiaocong_fate_state(state)
+	tower_fate_coordinator.receive_fate_state(
+		state,
+		multiplayer.get_remote_sender_id()
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -7300,12 +7281,17 @@ func net_tower_defense_start_wave_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_xiaocong_interaction_requested() -> void:
-	if not net_manager.is_host() or not _has_tower_mode():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if not _admit_remote_xiaocong_request(sender_id):
+	if (
+		not net_manager.is_host()
+		or not _has_tower_mode()
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
+		)
+	):
 		return
-	tower_mode_adapter.request_xiaocong_interaction(sender_id)
+	tower_fate_coordinator.handle_remote_interaction(sender_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -7313,59 +7299,38 @@ func net_xiaocong_fate_vote_requested(
 	option_id: String,
 	permanent_buff_id: String
 ) -> void:
-	var typed_option_id := StringName(option_id)
-	var typed_buff_id := StringName(permanent_buff_id)
+	var sender_id := multiplayer.get_remote_sender_id()
 	if (
 		not net_manager.is_host()
 		or not _has_tower_mode()
-		or option_id.length() > TowerDefenseFateRegistry.MAX_WIRE_ID_LENGTH
-		or permanent_buff_id.length() > TowerDefenseFateRegistry.MAX_WIRE_ID_LENGTH
-		or not _is_valid_xiaocong_vote_payload(typed_option_id, typed_buff_id)
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
+		)
 	):
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if not _admit_remote_xiaocong_request(sender_id):
-		return
-	tower_mode_adapter.request_xiaocong_fate_vote(
+	tower_fate_coordinator.handle_remote_vote(
 		sender_id,
-		typed_option_id,
-		typed_buff_id
+		option_id,
+		permanent_buff_id
 	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_xiaocong_collectible_choice_requested(choice_index: int) -> void:
+	var sender_id := multiplayer.get_remote_sender_id()
 	if (
 		not net_manager.is_host()
 		or not _has_tower_mode()
-		or choice_index < 0
-		or choice_index > 3
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
+		)
 	):
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
-	if not _admit_remote_xiaocong_request(sender_id):
-		return
-	tower_mode_adapter.request_xiaocong_collectible_choice(
+	tower_fate_coordinator.handle_remote_collectible_choice(
 		sender_id,
 		choice_index
-	)
-
-
-func _admit_remote_xiaocong_request(sender_id: int) -> bool:
-	if (
-		sender_id <= 0
-		or game == null
-		or game.get_player_for_peer(sender_id) == null
-	):
-		return false
-	return (
-		transactions_coordinator.consume_remote_transaction_admission(sender_id)
-		and _consume_peer_rate_token(
-			_xiaocong_transaction_rate_buckets,
-			sender_id,
-			XIAOCONG_TRANSACTION_RATE_PER_SECOND,
-			XIAOCONG_TRANSACTION_RATE_BURST
-		)
 	)
 
 
@@ -8098,11 +8063,11 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_active_tiyi_activations_by_peer.erase(peer_id)
 	_tiyi_target_ids_by_peer.erase(peer_id)
 	_last_tiyi_activation_seen_by_peer.erase(peer_id)
-	_xiaocong_transaction_rate_buckets.erase(peer_id)
 	session_coordinator.clear_peer(peer_id)
 	transactions_coordinator.clear_peer(peer_id)
 	tower_economy_coordinator.clear_peer(peer_id)
 	merchant_transactions_coordinator.clear_peer(peer_id)
+	tower_fate_coordinator.clear_peer(peer_id)
 	projectile_coordinator.clear_peer(peer_id)
 
 
@@ -8116,7 +8081,7 @@ func _return_to_lobby() -> void:
 	tower_economy_coordinator.reset_session_state()
 	tower_world_coordinator.reset_session_state()
 	merchant_transactions_coordinator.reset_session_state()
-	_xiaocong_transaction_rate_buckets.clear()
+	tower_fate_coordinator.reset_session_state()
 	session_coordinator.reset_session_state()
 	transactions_coordinator.reset_session_state()
 	_tango_charge_sequences_by_peer.clear()
