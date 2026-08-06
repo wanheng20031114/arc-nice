@@ -1,6 +1,6 @@
 extends SceneTree
 
-const TargetIndexScript := preload("res://scene/combat_target_index.gd")
+const TargetIndexScript := preload("res://scene/combat/targeting/combat_target_index.gd")
 
 
 class AdaptiveProbeIndex:

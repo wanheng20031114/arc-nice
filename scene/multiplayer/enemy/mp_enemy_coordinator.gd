@@ -2,7 +2,7 @@ extends Node
 class_name MpEnemyCoordinator
 
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
-const _CombatTargetIndex := preload("res://scene/combat_target_index.gd")
+const _CombatTargetIndex := preload("res://scene/combat/targeting/combat_target_index.gd")
 
 const GAME_RUNTIME_CLIENT_VIEW := 2
 # v26 起使用上一发送状态作为 delta 基线；缺席后回归的 peer 会促使共享 cohort 发 full。

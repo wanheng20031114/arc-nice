@@ -8,7 +8,7 @@ extends SceneTree
 # nearest API directly. Each scenario gives both variants the exact same index,
 # Enemy instances, positions, origins and exclusion semantics.
 
-const TargetIndexScript := preload("res://scene/combat_target_index.gd")
+const TargetIndexScript := preload("res://scene/combat/targeting/combat_target_index.gd")
 
 const INITIAL_RADIUS := 112.0
 const BOUNCE_RADIUS := 48.0

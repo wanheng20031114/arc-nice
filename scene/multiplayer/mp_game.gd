@@ -25,7 +25,7 @@ const MpNetworkDiagnosticsCoordinatorScript := preload(
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := (
 	MpProjectileCoordinatorScript.CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
 )
-const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
+const CombatTargetIndexScript := preload("res://scene/combat/targeting/combat_target_index.gd")
 const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
