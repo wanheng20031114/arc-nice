@@ -185,6 +185,7 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 @onready var campaign_coordinator: TowerDefenseCampaignCoordinator = (
 	$CampaignCoordinator
 )
+@onready var enemy_coordinator: TowerDefenseEnemyCoordinator = $EnemyCoordinator
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
 )
@@ -238,10 +239,32 @@ var bosses: Array[Resource] = []
 var enemy_spawn_points: Array[Marker2D] = []
 var enemy_spawn_points_by_name: Dictionary[StringName, Marker2D] = {}
 var active_wave_spawn_points: Array[Marker2D] = []
-var spawn_point_configuration_valid := true
+var _spawn_point_configuration_valid := true
+var spawn_point_configuration_valid: bool:
+	get:
+		return (
+			enemy_coordinator.spawn_point_configuration_valid
+			if enemy_coordinator != null
+			else _spawn_point_configuration_valid
+		)
+	set(value):
+		_spawn_point_configuration_valid = value
+		if enemy_coordinator != null:
+			enemy_coordinator.spawn_point_configuration_valid = value
 var pending_enemy_configs: Array[EnemyConfig] = []
 var pending_enemy_xirang_kill_rewards: Array[int] = []
-var pending_enemy_config_index: int = 0
+var _pending_enemy_config_index := 0
+var pending_enemy_config_index: int:
+	get:
+		return (
+			enemy_coordinator.pending_enemy_config_index
+			if enemy_coordinator != null
+			else _pending_enemy_config_index
+		)
+	set(value):
+		_pending_enemy_config_index = value
+		if enemy_coordinator != null:
+			enemy_coordinator.pending_enemy_config_index = value
 var active_wave_enemy_ids: Dictionary = {}
 var hud_alive_enemy_ids: Dictionary = {}
 
@@ -267,16 +290,60 @@ var multiplayer_player_character_ids: Dictionary = {}
 var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
 var pending_multiplayer_pickup_exit_ids: Dictionary = {}
 var pending_multiplayer_enemy_escape_ids: Dictionary = {}
-var enemy_retarget_time_left: float = 0.0
-var enemy_retarget_sweep_remaining: int = 0
-var enemy_retarget_cursor: int = 0
+var _enemy_retarget_time_left := 0.0
+var enemy_retarget_time_left: float:
+	get:
+		return (
+			enemy_coordinator.enemy_retarget_time_left
+			if enemy_coordinator != null
+			else _enemy_retarget_time_left
+		)
+	set(value):
+		_enemy_retarget_time_left = value
+		if enemy_coordinator != null:
+			enemy_coordinator.enemy_retarget_time_left = value
+var _enemy_retarget_sweep_remaining := 0
+var enemy_retarget_sweep_remaining: int:
+	get:
+		return (
+			enemy_coordinator.enemy_retarget_sweep_remaining
+			if enemy_coordinator != null
+			else _enemy_retarget_sweep_remaining
+		)
+	set(value):
+		_enemy_retarget_sweep_remaining = value
+		if enemy_coordinator != null:
+			enemy_coordinator.enemy_retarget_sweep_remaining = value
+var _enemy_retarget_cursor := 0
+var enemy_retarget_cursor: int:
+	get:
+		return (
+			enemy_coordinator.enemy_retarget_cursor
+			if enemy_coordinator != null
+			else _enemy_retarget_cursor
+		)
+	set(value):
+		_enemy_retarget_cursor = value
+		if enemy_coordinator != null:
+			enemy_coordinator.enemy_retarget_cursor = value
 var home_objective_targets: Array[Node2D] = []
 var maximum_base_health: int = DEFAULT_BASE_HEALTH
 var current_base_health: int = DEFAULT_BASE_HEALTH
 var base_health_revision: int = 0
 var has_received_remote_base_health_snapshot := false
 var resolved_home_enemy_ids: Dictionary = {}
-var next_multiplayer_enemy_net_id: int = 1
+var _next_multiplayer_enemy_net_id := 1
+var next_multiplayer_enemy_net_id: int:
+	get:
+		return (
+			enemy_coordinator.next_multiplayer_enemy_net_id
+			if enemy_coordinator != null
+			else _next_multiplayer_enemy_net_id
+		)
+	set(value):
+		_next_multiplayer_enemy_net_id = value
+		if enemy_coordinator != null:
+			enemy_coordinator.next_multiplayer_enemy_net_id = value
 var next_multiplayer_pickup_net_id: int = 1000
 var next_multiplayer_plant_net_id: int = 1
 var luoxi_collectible_claim_counts: Dictionary = {}
@@ -366,6 +433,7 @@ func _ready() -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		_configure_singleplayer_player()
+	_configure_enemy_coordinator()
 	_collect_enemy_spawn_points()
 	_configure_timers()
 	_prewarm_enemy_visual_resources()
@@ -717,18 +785,31 @@ func _apply_wave_start_lighting(wave_number: int) -> void:
 
 
 func _apply_intermission_lighting(completed_wave_number: int) -> void:
-	if campaign_coordinator.is_night_intermission_after_wave(completed_wave_number):
+	var is_night_intermission := (
+		campaign_coordinator.is_night_intermission_after_wave(completed_wave_number)
+		if campaign_coordinator != null
+		else day_cycle_config.is_night_intermission_after_wave(completed_wave_number)
+	)
+	if is_night_intermission:
 		transition_world_to_night()
 	else:
 		transition_world_to_day()
 
 
 func _is_night_wave(wave_number: int) -> bool:
-	return campaign_coordinator.is_night_wave(wave_number)
+	return (
+		campaign_coordinator.is_night_wave(wave_number)
+		if campaign_coordinator != null
+		else day_cycle_config.is_night_wave(wave_number)
+	)
 
 
 func _get_day_number_for_wave(wave_number: int) -> int:
-	return campaign_coordinator.get_day_number_for_wave(wave_number)
+	return (
+		campaign_coordinator.get_day_number_for_wave(wave_number)
+		if campaign_coordinator != null
+		else day_cycle_config.get_day_number(wave_number)
+	)
 
 
 func _announce_wave_phase_start(wave_number: int) -> bool:
@@ -1083,20 +1164,22 @@ func _on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
 	if resolved_home_enemy_ids.has(enemy_id):
 		return
 	resolved_home_enemy_ids[enemy_id] = true
+	if enemy_coordinator != null:
+		enemy_coordinator.report_enemy_reached_home(enemy, _gate_cell)
 
 	var resolves_active_wave := (
 		wave_state == CombatFlowState.State.WAVE_ACTIVE
-		and active_wave_enemy_ids.has(enemy_id)
+		and _has_active_enemy(enemy_id)
 	)
 	var resolves_boss_step := (
 		wave_state == CombatFlowState.State.BOSS_ACTIVE
 		and enemy == linglan_boss
-		and active_wave_enemy_ids.has(enemy_id)
+		and _has_active_enemy(enemy_id)
 	)
 	if resolves_active_wave or resolves_boss_step:
 		current_wave_escaped = mini(current_wave_escaped + 1, current_wave_total)
 		current_wave_resolved = mini(current_wave_resolved + 1, current_wave_total)
-		active_wave_enemy_ids.erase(enemy_id)
+		_remove_active_enemy(enemy_id)
 
 	var home_damage := (
 		current_base_health
@@ -1122,7 +1205,7 @@ func _emit_multiplayer_enemy_escaped(enemy: Enemy) -> void:
 	if enemy_net_id > 0:
 		# Escape is the terminal replication event. Suppress the later generic
 		# tree-exit removal so clients never replay a death-style removal path.
-		pending_multiplayer_enemy_escape_ids[enemy_net_id] = true
+		_add_pending_enemy_escape(enemy_net_id)
 		multiplayer_gateway.enemy_escaped.emit(enemy_net_id)
 
 
@@ -1177,29 +1260,48 @@ func _register_hud_alive_enemy(enemy: Enemy) -> void:
 	if enemy == null or not is_instance_valid(enemy):
 		return
 	var enemy_id := enemy.get_instance_id()
-	if hud_alive_enemy_ids.has(enemy_id):
+	var added := (
+		enemy_coordinator.add_hud_enemy(enemy_id)
+		if enemy_coordinator != null
+		else not hud_alive_enemy_ids.has(enemy_id)
+	)
+	if not added:
 		return
-	hud_alive_enemy_ids[enemy_id] = true
+	if enemy_coordinator == null:
+		hud_alive_enemy_ids[enemy_id] = true
 	_update_hud_alive_enemy_count()
 
 
 func _remove_hud_alive_enemy(enemy_id: int) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or not hud_alive_enemy_ids.has(enemy_id):
+	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
-	hud_alive_enemy_ids.erase(enemy_id)
+	var removed := (
+		enemy_coordinator.remove_hud_enemy(enemy_id)
+		if enemy_coordinator != null
+		else hud_alive_enemy_ids.erase(enemy_id)
+	)
+	if not removed:
+		return
 	_update_hud_alive_enemy_count()
 
 
 func _clear_hud_alive_enemies() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
-	hud_alive_enemy_ids.clear()
+	if enemy_coordinator != null:
+		enemy_coordinator.clear_hud_enemies()
+	else:
+		hud_alive_enemy_ids.clear()
 	_update_hud_alive_enemy_count()
 
 
 func _update_hud_alive_enemy_count() -> void:
 	if wave_hud != null:
-		wave_hud.set_tower_defense_enemy_count(hud_alive_enemy_ids.size())
+		wave_hud.set_tower_defense_enemy_count(
+			enemy_coordinator.hud_enemy_count()
+			if enemy_coordinator != null
+			else hud_alive_enemy_ids.size()
+		)
 
 
 func _complete_escaped_boss_step() -> void:
@@ -3665,24 +3767,86 @@ func _load_threaded_or_direct(path: String) -> Resource:
 	return load(path)
 
 
-func _collect_enemy_spawn_points() -> void:
-	enemy_spawn_points.clear()
-	enemy_spawn_points_by_name.clear()
-	active_wave_spawn_points.clear()
-	spawn_point_configuration_valid = true
-	for child in enemy_spawn_points_root.get_children():
-		var spawn_point := child as Marker2D
-		if spawn_point != null:
-			var spawn_name := StringName(spawn_point.name)
-			if enemy_spawn_points_by_name.has(spawn_name):
-				push_error("EnemySpawnPoints 包含重复名称：%s" % String(spawn_name))
-				spawn_point_configuration_valid = false
-				continue
-			enemy_spawn_points.append(spawn_point)
-			enemy_spawn_points_by_name[spawn_name] = spawn_point
+func _configure_enemy_coordinator() -> void:
+	enemy_coordinator.setup(
+		random_generator,
+		enemy_spawn_points,
+		enemy_spawn_points_by_name,
+		active_wave_spawn_points,
+		pending_enemy_configs,
+		pending_enemy_xirang_kill_rewards,
+		active_wave_enemy_ids,
+		hud_alive_enemy_ids,
+		pending_multiplayer_enemy_escape_ids
+	)
+	# Read the pre-tree façade backing fields directly. Once @onready resolves,
+	# the public getters intentionally point at the coordinator and would otherwise
+	# hide fixture values assigned before add_child()/ready.
+	enemy_coordinator.pending_enemy_config_index = _pending_enemy_config_index
+	enemy_coordinator.next_multiplayer_enemy_net_id = _next_multiplayer_enemy_net_id
+	enemy_coordinator.enemy_retarget_time_left = _enemy_retarget_time_left
+	enemy_coordinator.enemy_retarget_sweep_remaining = _enemy_retarget_sweep_remaining
+	enemy_coordinator.enemy_retarget_cursor = _enemy_retarget_cursor
 
-	if enemy_spawn_points.is_empty():
-		push_warning("EnemySpawnPoints 下没有可用的 Marker2D 刷新点。")
+
+func _has_active_enemy(enemy_id: int) -> bool:
+	return (
+		enemy_coordinator.has_active_enemy(enemy_id)
+		if enemy_coordinator != null
+		else active_wave_enemy_ids.has(enemy_id)
+	)
+
+
+func _register_active_enemy(enemy: Enemy) -> void:
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	if enemy_coordinator != null:
+		enemy_coordinator.register_external_enemy(enemy)
+	else:
+		active_wave_enemy_ids[enemy.get_instance_id()] = true
+
+
+func _remove_active_enemy(enemy_id: int) -> bool:
+	return (
+		enemy_coordinator.remove_active_enemy(enemy_id)
+		if enemy_coordinator != null
+		else active_wave_enemy_ids.erase(enemy_id)
+	)
+
+
+func _clear_active_enemies() -> void:
+	if enemy_coordinator != null:
+		enemy_coordinator.clear_active_enemies()
+	else:
+		active_wave_enemy_ids.clear()
+
+
+func _has_active_enemies() -> bool:
+	return (
+		enemy_coordinator.has_active_enemies()
+		if enemy_coordinator != null
+		else not active_wave_enemy_ids.is_empty()
+	)
+
+
+func _add_pending_enemy_escape(net_id: int) -> void:
+	if enemy_coordinator != null:
+		enemy_coordinator.add_pending_escape(net_id)
+	else:
+		pending_multiplayer_enemy_escape_ids[net_id] = true
+
+
+func _consume_pending_enemy_escape(net_id: int) -> bool:
+	return (
+		enemy_coordinator.consume_pending_escape(net_id)
+		if enemy_coordinator != null
+		else pending_multiplayer_enemy_escape_ids.erase(net_id)
+	)
+
+
+func _collect_enemy_spawn_points() -> void:
+	enemy_coordinator.collect_spawn_points(enemy_spawn_points_root)
+	spawn_point_configuration_valid = enemy_coordinator.spawn_point_configuration_valid
 
 
 func _configure_timers() -> void:
@@ -4560,7 +4724,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	current_wave_escaped = 0
 	current_wave_resolved = 0
 	resolved_home_enemy_ids.clear()
-	active_wave_enemy_ids.clear()
+	_clear_active_enemies()
 	_clear_hud_alive_enemies()
 	_build_wave_spawn_queue(wave_config)
 	current_wave_total = pending_enemy_configs.size()
@@ -4580,74 +4744,13 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 
 
 func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
-	pending_enemy_configs.clear()
-	pending_enemy_xirang_kill_rewards.clear()
-	pending_enemy_config_index = 0
-	if wave_config.spawn_order == WaveConfig.SpawnOrder.ENTRY_ROUND_ROBIN:
-		_build_entry_round_robin_spawn_queue(wave_config)
-		return
-	for entry in wave_config.enemy_entries:
-		if entry == null or entry.enemy_config == null:
-			continue
-		var scaled_count := progression_config.get_scaled_enemy_count(
-			maxi(entry.count, 0),
-			_get_progression_player_count()
-		)
-		for _enemy_index in range(scaled_count):
-			var resolved_enemy_config := _resolve_fate_enemy_config(
-				entry.enemy_config
-			)
-			pending_enemy_configs.append(resolved_enemy_config)
-			pending_enemy_xirang_kill_rewards.append(
-				entry.resolve_xirang_kill_reward(resolved_enemy_config)
-			)
-
-	for source_index in range(pending_enemy_configs.size() - 1, 0, -1):
-		var target_index := random_generator.randi_range(0, source_index)
-		var temporary_config := pending_enemy_configs[source_index]
-		pending_enemy_configs[source_index] = pending_enemy_configs[target_index]
-		pending_enemy_configs[target_index] = temporary_config
-		var temporary_reward := pending_enemy_xirang_kill_rewards[source_index]
-		pending_enemy_xirang_kill_rewards[source_index] = (
-			pending_enemy_xirang_kill_rewards[target_index]
-		)
-		pending_enemy_xirang_kill_rewards[target_index] = temporary_reward
-
-
-func _build_entry_round_robin_spawn_queue(wave_config: WaveConfig) -> void:
-	var entries: Array[WaveEnemyEntry] = []
-	var remaining_counts: Array[int] = []
-	var remaining_total := 0
-	for entry in wave_config.enemy_entries:
-		if entry == null or entry.enemy_config == null:
-			continue
-		var scaled_count := maxi(
-			progression_config.get_scaled_enemy_count(
-				maxi(entry.count, 0),
-				_get_progression_player_count()
-			),
-			0
-		)
-		if scaled_count <= 0:
-			continue
-		entries.append(entry)
-		remaining_counts.append(scaled_count)
-		remaining_total += scaled_count
-
-	while remaining_total > 0:
-		for entry_index in range(entries.size()):
-			if remaining_counts[entry_index] <= 0:
-				continue
-			var entry := entries[entry_index]
-			var resolved_enemy_config := _resolve_fate_enemy_config(
-				entry.enemy_config
-			)
-			pending_enemy_configs.append(resolved_enemy_config)
-			pending_enemy_xirang_kill_rewards.append(
-				entry.resolve_xirang_kill_reward(resolved_enemy_config)
-			)
-			remaining_counts[entry_index] -= 1
-			remaining_total -= 1
+	enemy_coordinator.begin_wave(
+		wave_config,
+		progression_config,
+		_get_progression_player_count(),
+		_resolve_fate_enemy_config
+	)
+	pending_enemy_config_index = enemy_coordinator.pending_enemy_config_index
 
 
 func _get_progression_player_count() -> int:
@@ -4657,41 +4760,11 @@ func _get_progression_player_count() -> int:
 
 
 func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
-	active_wave_spawn_points.clear()
-	var resolution := _inspect_wave_spawn_points(wave_config)
-	if not bool(resolution.get("valid", false)):
-		var error_message := str(resolution.get("error", ""))
-		if not error_message.is_empty():
-			push_error(error_message)
-		return false
-	active_wave_spawn_points.assign(resolution.get("points", []))
-	return not active_wave_spawn_points.is_empty()
+	return enemy_coordinator.resolve_spawn_points(wave_config)
 
 
 func _inspect_wave_spawn_points(wave_config: WaveConfig) -> Dictionary:
-	var points: Array[Marker2D] = []
-	if wave_config == null or not spawn_point_configuration_valid:
-		return {"valid": false, "points": points, "error": ""}
-	var enabled_names := wave_config.get_enabled_spawn_point_names()
-	if enabled_names.is_empty():
-		return {
-			"valid": false,
-			"points": points,
-			"error": "波次 %s 没有启用任何出生点。" % wave_config.get_flow_display_name(),
-		}
-	for spawn_name in enabled_names:
-		var marker := enemy_spawn_points_by_name.get(spawn_name) as Marker2D
-		if marker == null:
-			return {
-				"valid": false,
-				"points": points,
-				"error": (
-					"波次 %s 引用了场景中不存在的出生点 %s。"
-					% [wave_config.get_flow_display_name(), String(spawn_name)]
-				),
-			}
-		points.append(marker)
-	return {"valid": true, "points": points, "error": ""}
+	return enemy_coordinator.inspect_spawn_points(wave_config)
 
 
 func _on_state_timer_timeout() -> void:
@@ -4778,21 +4851,12 @@ func _spawn_wave_batch() -> void:
 		maxi(wave_config.spawn_count_per_tick, 1),
 		MAX_WAVE_SPAWN_COUNT_PER_TICK
 	)
-	for _spawn_index in range(spawn_count_this_tick):
-		if not _has_pending_enemy_configs():
-			break
-		if active_wave_enemy_ids.size() >= maxi(wave_config.max_alive_enemies, 1):
-			break
-
-		var enemy_config := pending_enemy_configs[pending_enemy_config_index]
-		var xirang_kill_reward := pending_enemy_xirang_kill_rewards[
-			pending_enemy_config_index
-		]
-		if not _try_spawn_enemy(enemy_config, xirang_kill_reward):
-			break
-
-		pending_enemy_config_index += 1
-		current_wave_spawned += 1
+	current_wave_spawned += enemy_coordinator.tick(
+		wave_config.max_alive_enemies,
+		spawn_count_this_tick,
+		_try_spawn_enemy
+	)
+	pending_enemy_config_index = enemy_coordinator.pending_enemy_config_index
 
 	if not _has_pending_enemy_configs():
 		enemy_spawn_timer.stop()
@@ -4802,13 +4866,12 @@ func _spawn_wave_batch() -> void:
 
 
 func _has_pending_enemy_configs() -> bool:
-	return pending_enemy_config_index < pending_enemy_configs.size()
+	return enemy_coordinator.has_pending_queue()
 
 
 func _clear_pending_enemy_spawn_queue() -> void:
-	pending_enemy_configs.clear()
-	pending_enemy_xirang_kill_rewards.clear()
-	pending_enemy_config_index = 0
+	enemy_coordinator.clear_queue()
+	pending_enemy_config_index = enemy_coordinator.pending_enemy_config_index
 
 
 func _try_spawn_enemy(
@@ -4842,7 +4905,7 @@ func _try_spawn_enemy(
 	enemy_instance.set_xirang_kill_reward_override(xirang_kill_reward_override)
 	_assign_enemy_targets(enemy_instance, spawn_point.global_position)
 	var enemy_id := enemy_instance.get_instance_id()
-	active_wave_enemy_ids[enemy_id] = true
+	_register_active_enemy(enemy_instance)
 	enemy_instance.defeated.connect(_on_wave_enemy_defeated)
 	enemy_instance.tree_exited.connect(_on_wave_enemy_tree_exited.bind(enemy_id))
 	_finalize_authoritative_enemy_spawn(enemy_instance, enemy_config, enemy_instance.global_position)
@@ -4976,7 +5039,7 @@ func _finish_linglan_airdrop_sniper_spawn(
 	enemy_instance.set_physics_process(true)
 	_set_enemy_collision_shapes_disabled_recursive(enemy_instance, false)
 	var enemy_id := enemy_instance.get_instance_id()
-	active_wave_enemy_ids[enemy_id] = true
+	_register_active_enemy(enemy_instance)
 	if not enemy_instance.defeated.is_connected(_on_boss_add_defeated):
 		enemy_instance.defeated.connect(_on_boss_add_defeated)
 	if not enemy_instance.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(enemy_id)):
@@ -5062,7 +5125,7 @@ func _try_spawn_boss_add_at_position(
 	)
 	_assign_enemy_targets(enemy_instance, spawn_position)
 	var enemy_id := enemy_instance.get_instance_id()
-	active_wave_enemy_ids[enemy_id] = true
+	_register_active_enemy(enemy_instance)
 	if not enemy_instance.defeated.is_connected(_on_boss_add_defeated):
 		enemy_instance.defeated.connect(_on_boss_add_defeated)
 	if not enemy_instance.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(enemy_id)):
@@ -5139,7 +5202,7 @@ func _configure_authoritative_enemy_physics_interpolation(enemy_instance: Enemy)
 func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 	if wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		return
-	if enemy == null or not active_wave_enemy_ids.has(enemy.get_instance_id()):
+	if enemy == null or not _has_active_enemy(enemy.get_instance_id()):
 		return
 
 	current_wave_defeated = mini(current_wave_defeated + 1, current_wave_total)
@@ -5158,6 +5221,14 @@ func _show_tower_defense_wave_progress() -> void:
 		current_wave_resolved,
 		current_wave_total
 	)
+	if enemy_coordinator != null:
+		enemy_coordinator.report_progress(
+			current_wave_index + 1,
+			current_wave_defeated,
+			current_wave_escaped,
+			current_wave_resolved,
+			current_wave_total
+		)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		tower_multiplayer_mode_adapter.wave_progress_changed.emit(
 			current_wave_index + 1,
@@ -5169,13 +5240,13 @@ func _show_tower_defense_wave_progress() -> void:
 
 
 func get_tower_defense_wave_progress_snapshot() -> Dictionary:
-	return {
-		"wave_number": current_wave_index + 1,
-		"defeated": current_wave_defeated,
-		"escaped": current_wave_escaped,
-		"resolved": current_wave_resolved,
-		"total": current_wave_total,
-	}
+	return enemy_coordinator.get_progress(
+		current_wave_index + 1,
+		current_wave_defeated,
+		current_wave_escaped,
+		current_wave_resolved,
+		current_wave_total
+	)
 
 
 func apply_remote_tower_defense_wave_progress(
@@ -5207,7 +5278,9 @@ func _emit_multiplayer_enemy_defeated(enemy: Enemy) -> void:
 
 
 func _on_wave_enemy_tree_exited(enemy_id: int) -> void:
-	active_wave_enemy_ids.erase(enemy_id)
+	_remove_active_enemy(enemy_id)
+	if enemy_coordinator != null:
+		enemy_coordinator.report_enemy_removed(enemy_id)
 	_remove_hud_alive_enemy(enemy_id)
 	_mark_multiplayer_enemy_removed(enemy_id)
 	_check_wave_completion()
@@ -5225,7 +5298,7 @@ func _mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 		return
 	# Escape owns the terminal event and leaves exactly one short-lived marker for
 	# the ensuing tree exit. Consume it here; normal exits never become history.
-	if pending_multiplayer_enemy_escape_ids.erase(enemy_net_id):
+	if _consume_pending_enemy_escape(enemy_net_id):
 		return
 	multiplayer_gateway.enemy_removed.emit(enemy_net_id)
 
@@ -5239,10 +5312,12 @@ func _check_wave_completion() -> void:
 		return
 	if current_wave_resolved < current_wave_total:
 		return
-	if not active_wave_enemy_ids.is_empty():
+	if _has_active_enemies():
 		return
 
 	enemy_spawn_timer.stop()
+	if enemy_coordinator != null:
+		enemy_coordinator.report_wave_completed()
 	_complete_current_step()
 
 
@@ -5487,7 +5562,7 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_clear_pending_enemy_spawn_queue()
-	active_wave_enemy_ids.clear()
+	_clear_active_enemies()
 	current_wave_total = 1
 	current_wave_spawned = 1
 	current_wave_defeated = 0
@@ -5542,7 +5617,7 @@ func _activate_linglan_boss() -> void:
 	if not linglan_boss.is_advancing_to_home():
 		_assign_enemy_targets(linglan_boss, linglan_boss.global_position)
 	var boss_instance_id := linglan_boss.get_instance_id()
-	active_wave_enemy_ids[boss_instance_id] = true
+	_register_active_enemy(linglan_boss)
 	if not linglan_boss.tree_exited.is_connected(_on_boss_enemy_tree_exited.bind(boss_instance_id)):
 		linglan_boss.tree_exited.connect(_on_boss_enemy_tree_exited.bind(boss_instance_id))
 	var boss_net_id := _finalize_authoritative_enemy_spawn(
@@ -5561,7 +5636,7 @@ func _activate_linglan_boss() -> void:
 
 
 func _on_boss_enemy_tree_exited(enemy_id: int) -> void:
-	active_wave_enemy_ids.erase(enemy_id)
+	_remove_active_enemy(enemy_id)
 	_remove_hud_alive_enemy(enemy_id)
 	_mark_multiplayer_enemy_removed(enemy_id)
 
@@ -5593,7 +5668,7 @@ func _on_linglan_boss_defeated(enemy: Enemy) -> void:
 		return
 	if enemy != linglan_boss:
 		return
-	active_wave_enemy_ids.erase(enemy.get_instance_id())
+	_remove_active_enemy(enemy.get_instance_id())
 	_remove_hud_alive_enemy(enemy.get_instance_id())
 	current_wave_defeated = 1
 	current_wave_resolved = 1
@@ -5613,16 +5688,16 @@ func _complete_linglan_boss_after_delay() -> void:
 
 func _remove_remaining_boss_adds() -> void:
 	if enemy_container == null:
-		active_wave_enemy_ids.clear()
+		_clear_active_enemies()
 		_clear_hud_alive_enemies()
 		return
 	for child in enemy_container.get_children():
 		var enemy := child as Enemy
 		if enemy == null or not is_instance_valid(enemy):
 			continue
-		if active_wave_enemy_ids.has(enemy.get_instance_id()):
+		if _has_active_enemy(enemy.get_instance_id()):
 			enemy.queue_free()
-	active_wave_enemy_ids.clear()
+	_clear_active_enemies()
 	_clear_hud_alive_enemies()
 
 
@@ -6039,16 +6114,18 @@ func get_player_for_peer(peer_id: int) -> Player:
 func get_enemy_for_net_id(net_id: int) -> Enemy:
 	if not multiplayer_enemies_by_net_id.has(net_id):
 		return null
-	var enemy_variant: Variant = multiplayer_enemies_by_net_id.get(net_id)
-	if enemy_variant == null:
-		multiplayer_enemies_by_net_id.erase(net_id)
+	var enemy: Enemy = null
+	if enemy_coordinator != null:
+		enemy = enemy_coordinator.get_enemy(net_id, multiplayer_enemies_by_net_id)
+	else:
+		var enemy_variant: Variant = multiplayer_enemies_by_net_id.get(net_id)
+		if enemy_variant != null and is_instance_valid(enemy_variant):
+			enemy = enemy_variant as Enemy
+		else:
+			multiplayer_enemies_by_net_id.erase(net_id)
+	if enemy == null:
 		unregister_combat_target(net_id)
-		return null
-	if not is_instance_valid(enemy_variant):
-		multiplayer_enemies_by_net_id.erase(net_id)
-		unregister_combat_target(net_id)
-		return null
-	return enemy_variant as Enemy
+	return enemy
 
 
 func get_pickup_for_net_id(net_id: int) -> Pickup:
@@ -6236,42 +6313,17 @@ func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 
 
 func _update_tower_defense_enemy_targets(delta: float) -> void:
-	enemy_retarget_time_left = maxf(enemy_retarget_time_left - delta, 0.0)
-	if enemy_retarget_time_left <= 0.0 and enemy_retarget_sweep_remaining <= 0:
-		enemy_retarget_time_left = ENEMY_RETARGET_INTERVAL_SECONDS
-		enemy_retarget_sweep_remaining = enemy_container.get_child_count()
-		if (
-			linglan_boss != null
-			and is_instance_valid(linglan_boss)
-			and not linglan_boss.is_dead
-			and not linglan_boss.is_advancing_to_home()
-		):
-			_assign_enemy_targets(linglan_boss, linglan_boss.global_position)
-
-	_process_enemy_retarget_budget()
-
-
-func _process_enemy_retarget_budget() -> void:
-	var processed_count := 0
-	while (
-		enemy_retarget_sweep_remaining > 0
-		and processed_count < ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME
-	):
-		var enemy_count := enemy_container.get_child_count()
-		if enemy_count <= 0:
-			enemy_retarget_sweep_remaining = 0
-			enemy_retarget_cursor = 0
-			return
-		if enemy_retarget_cursor >= enemy_count:
-			enemy_retarget_cursor = 0
-
-		var enemy := enemy_container.get_child(enemy_retarget_cursor) as Enemy
-		enemy_retarget_cursor = (enemy_retarget_cursor + 1) % enemy_count
-		enemy_retarget_sweep_remaining -= 1
-		processed_count += 1
-		if enemy == null or enemy.is_dead:
-			continue
-		_assign_enemy_targets(enemy, enemy.global_position)
+	var active_boss_enemy: Enemy = null
+	if linglan_boss != null and is_instance_valid(linglan_boss):
+		active_boss_enemy = linglan_boss
+	enemy_coordinator.update_targets(
+		delta,
+		enemy_container,
+		active_boss_enemy,
+		ENEMY_RETARGET_INTERVAL_SECONDS,
+		ENEMY_RETARGET_MAX_PER_PHYSICS_FRAME,
+		_assign_enemy_targets
+	)
 
 
 func _assign_enemy_targets(enemy: Enemy, from_position: Vector2) -> void:
@@ -6415,7 +6467,10 @@ func _request_enemy_retarget_after_objective_change() -> void:
 	# Do not restart an in-progress budgeted sweep. Setting the timer to zero
 	# guarantees one fresh pass immediately after it finishes, while preserving
 	# the per-physics-frame cap for 300+ active enemies.
-	enemy_retarget_time_left = 0.0
+	if enemy_coordinator != null:
+		enemy_coordinator.request_retarget()
+	else:
+		enemy_retarget_time_left = 0.0
 
 
 func get_linglan_skill2_target_global_position(_target_cell: Vector2i) -> Vector2:
@@ -6529,15 +6584,7 @@ func get_linglan_skill2_target_player(from_position: Vector2) -> Player:
 
 
 func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
-	if marker_name == &"":
-		return null
-	for marker in enemy_spawn_points:
-		if marker != null and marker.name == String(marker_name):
-			return marker
-	if enemy_spawn_points_root == null:
-		return null
-	var node := enemy_spawn_points_root.get_node_or_null(NodePath(String(marker_name)))
-	return node as Marker2D
+	return enemy_coordinator.get_spawn_marker(marker_name, enemy_spawn_points_root)
 
 
 func _is_flow_system_ready() -> bool:
@@ -6678,11 +6725,7 @@ func _get_current_wave() -> WaveConfig:
 
 
 func _pick_spawn_point() -> Marker2D:
-	if active_wave_spawn_points.is_empty():
-		return null
-	return active_wave_spawn_points[
-		random_generator.randi_range(0, active_wave_spawn_points.size() - 1)
-	]
+	return enemy_coordinator.pick_spawn_point()
 
 
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:

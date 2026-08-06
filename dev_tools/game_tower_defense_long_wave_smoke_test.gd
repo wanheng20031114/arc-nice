@@ -37,7 +37,32 @@ func _run() -> void:
 		_finish(0, 0)
 		return
 
-	var first_wave := game.waves[0]
+	# Build the pressure cohort explicitly. Formal campaign content is allowed to
+	# change independently; relying on its first wave previously left this test in
+	# an infinite `spawned < 1200` loop after that wave was reduced to 24 enemies.
+	var authored_wave := game.waves[0]
+	var fixture_enemy_config: EnemyConfig = null
+	for authored_entry in authored_wave.enemy_entries:
+		if authored_entry != null and authored_entry.enemy_config != null:
+			fixture_enemy_config = authored_entry.enemy_config
+			break
+	_expect(fixture_enemy_config != null, "Long-wave fixture needs one authored enemy config.")
+	if fixture_enemy_config == null:
+		current_scene = null
+		game.queue_free()
+		_finish(0, 0)
+		return
+	var fixture_entry := WaveEnemyEntry.new()
+	fixture_entry.enemy_config = fixture_enemy_config
+	fixture_entry.count = EXPECTED_WAVE_TOTAL
+	var first_wave := WaveConfig.new()
+	first_wave.wave_name = "固定长波压力夹具"
+	first_wave.enemy_entries = [fixture_entry]
+	first_wave.spawn_point_mask = authored_wave.spawn_point_mask
+	first_wave.spawn_order = WaveConfig.SpawnOrder.ENTRY_ROUND_ROBIN
+	first_wave.spawn_interval = 0.025
+	first_wave.spawn_count_per_tick = 4
+	first_wave.max_alive_enemies = EXPECTED_MAX_ALIVE
 	var expected_xirang_value := 0
 	for entry in first_wave.enemy_entries:
 		if entry != null and entry.enemy_config != null:
