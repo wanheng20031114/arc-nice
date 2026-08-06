@@ -1,7 +1,7 @@
 extends SceneTree
 
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const SPEED_TRAIL_SCENE := preload("res://scene/move_speed_trail_effect.tscn")
+const SPEED_TRAIL_SCENE := preload("res://scene/combat/feedback/move_speed_trail_effect.tscn")
 const ENEMY_COUNT := 300
 const ACTIVE_TRAIL_COUNT := 40
 const RETAINED_CAPACITY := 32

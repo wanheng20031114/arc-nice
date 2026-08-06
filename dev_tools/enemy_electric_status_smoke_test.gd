@@ -3,7 +3,7 @@ extends SceneTree
 const BASIC_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"
 )
-const MOTION_STATUS_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
+const MOTION_STATUS_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 const ELECTRIC_OVERLAY_PARAMETER := &"electric_attachment_overlay_strength"
 const ZONE_A_ID := 91_001
 const ZONE_B_ID := 91_002

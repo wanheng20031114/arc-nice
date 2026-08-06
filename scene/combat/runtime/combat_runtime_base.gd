@@ -10,7 +10,7 @@ const ENEMY_SPAWN_EFFECT_SCENE := preload(
 const BULLET_HIT_EFFECT_POOL_SCENE := preload("res://scene/combat/projectiles/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_POOL_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
 const MOVE_SPEED_TRAIL_EFFECT_POOL_SCENE := preload(
-	"res://scene/move_speed_trail_effect.tscn"
+	"res://scene/combat/feedback/move_speed_trail_effect.tscn"
 )
 const CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn"

@@ -4,12 +4,12 @@ const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const SPEED_PICKUP := preload("res://resources/config/pickups/pickup_speed.tres")
 const TENPURA_PICKUP := preload("res://resources/config/pickups/pickup_tenpura.tres")
-const MOTION_STATUS_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
+const MOTION_STATUS_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 const SLOW_OVERLAY_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_PARAMETER := &"burn_overlay_strength"
 const BLEED_OVERLAY_PARAMETER := &"bleed_overlay_strength"
 const BLINK_PARAMETER := &"blink_enabled"
-const SPEED_TRAIL_SCENE := preload("res://scene/move_speed_trail_effect.tscn")
+const SPEED_TRAIL_SCENE := preload("res://scene/combat/feedback/move_speed_trail_effect.tscn")
 const NETWORK_STATUS_BENCHMARK_ITERATIONS := 120000
 
 var failures: Array[String] = []

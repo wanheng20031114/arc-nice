@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://b3bjc1o0cesxc"]
 
-[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="1_h08p8"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="1_h08p8"]
 [ext_resource type="Script" uid="uid://b26kjgoph1aal" path="res://scene/enemy/enemy.gd" id="2_enemy"]
 [ext_resource type="AudioStream" uid="uid://4xnlqa7gq1qw" path="res://resources/audio/cowboy_monsterhit.wav" id="3_hit_audio"]
 [ext_resource type="AudioStream" uid="uid://dtcpsyjgcfb6m" path="res://resources/audio/cowboy_monsterdie.wav" id="4_death_audio"]

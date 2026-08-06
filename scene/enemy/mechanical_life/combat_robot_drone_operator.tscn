@@ -3,7 +3,7 @@
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://dij5oj5elibqn" path="res://scene/enemy/mechanical_life/combat_robot_drone_operator.gd" id="2_script"]
 [ext_resource type="SpriteFrames" uid="uid://cmfqfaheh4fbb" path="res://resources/animation/combat_robot_drone_operator.tres" id="3_frames"]
-[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="4_shader"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="4_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]
 shader = ExtResource("4_shader")

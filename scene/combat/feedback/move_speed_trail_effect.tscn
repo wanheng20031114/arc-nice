@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://scene/move_speed_trail_effect.gd" id="1_speed_trail"]
+[ext_resource type="Script" path="res://scene/combat/feedback/move_speed_trail_effect.gd" id="1_speed_trail"]
 
 [sub_resource type="Gradient" id="Gradient_speed_line_texture"]
 offsets = PackedFloat32Array(0, 0.16, 0.82, 1)

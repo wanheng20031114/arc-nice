@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://h7x0o8vhlixl"]
 
 [ext_resource type="Script" uid="uid://d2l5e2o1funnd" path="res://scene/player/weishidaier/player_weishidaier.gd" id="1_onrkg"]
-[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_ct4mp"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="2_ct4mp"]
 [ext_resource type="Texture2D" uid="uid://b5sr8ua78d4vj" path="res://resources/texture/player/weishidaier/armed_effect.png" id="3_i3pqv"]
 [ext_resource type="AudioStream" uid="uid://dmftmglw7yqwq" path="res://resources/audio/Cowboy_gunshot.wav" id="4_r4x4y"]
 [ext_resource type="AudioStream" uid="uid://cavje5drmqudf" path="res://resources/audio/cowboy_gunload.wav" id="5_6f8ak"]
@@ -14,7 +14,7 @@
 [ext_resource type="SpriteFrames" uid="uid://m5m6keukol1c" path="res://resources/animation/player_weishidaier.tres" id="11_player_frames"]
 [ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/player/ui/skill1_charge_bar.tscn" id="12_skill1_bar"]
 [ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="13_name_settings"]
-[ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="14_speed_trail"]
+[ext_resource type="PackedScene" path="res://scene/combat/feedback/move_speed_trail_effect.tscn" id="14_speed_trail"]
 [ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="15_lucky_audio"]
 [ext_resource type="PackedScene" uid="uid://d10vpuylyb4ty" path="res://scene/player/ui/player_ammo_bar.tscn" id="16_ammo_bar"]
 [ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="17_dash_ready"]

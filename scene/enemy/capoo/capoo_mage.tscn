@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://co7r238f2qfo6" path="res://scene/enemy/capoo/capoo_mage.gd" id="2_script"]
-[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="3_shader"]
 [ext_resource type="SpriteFrames" uid="uid://bynglissk1f1v" path="res://resources/animation/capoo_mage.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_rrbks"]

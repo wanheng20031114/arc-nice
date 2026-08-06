@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c3l67vm8hu25t"]
 
 [ext_resource type="Script" uid="uid://cgrr7x2x60mie" path="res://scene/combat/pickups/pickup.gd" id="1_x228r"]
-[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/blink.gdshader" id="2_w3o6f"]
+[ext_resource type="Shader" uid="uid://b47uq42hh5vq1" path="res://scene/combat/feedback/shaders/blink.gdshader" id="2_w3o6f"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_78gox"]
 resource_local_to_scene = true

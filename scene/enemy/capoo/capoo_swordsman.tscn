@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" uid="uid://46aakmbjjqsp" path="res://scene/enemy/capoo/capoo_swordsman.gd" id="2_script"]
-[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="3_blink"]
+[ext_resource type="Shader" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="3_blink"]
 [ext_resource type="SpriteFrames" uid="uid://c6okmim07qy6i" path="res://resources/animation/capoo_swordsman.tres" id="4_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_8qkd7"]

@@ -36,7 +36,7 @@ const DEFAULT_NEAR_MOVING_TARGET_DIRECT_DISTANCE_SQUARED := (
 )
 const AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
 const HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")
-const MOVE_SPEED_TRAIL_EFFECT_SCENE := preload("res://scene/move_speed_trail_effect.tscn")
+const MOVE_SPEED_TRAIL_EFFECT_SCENE := preload("res://scene/combat/feedback/move_speed_trail_effect.tscn")
 const WORLD_EFFECT_VISIBILITY := preload("res://scene/combat/feedback/world_effect_visibility.gd")
 const ENEMY_DROP_PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const ENEMY_DROP_INNER_RING_RADIUS := 10.0

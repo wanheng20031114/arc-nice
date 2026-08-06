@@ -555,7 +555,7 @@
   "source_texture_class": "CompressedTexture2D",
   "source_texture_loaded_via_resource_loader": true,
   "sprite_scale": 4.0,
-  "status_shader_path": "res://scene/entity_motion_status.gdshader",
+  "status_shader_path": "res://scene/combat/feedback/shaders/entity_motion_status.gdshader",
   "status_shader_sha256": "10454b4a7db41abf7ec5881a4f516f919868df1bbf1b395cc86346edc4de05f6",
   "trail_body_intersection_pixels_by_sprite": {
     "v1/DOWN-RIGHT/frame_0": 0,

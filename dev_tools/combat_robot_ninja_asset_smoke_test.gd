@@ -6,7 +6,7 @@ const NINJA_FRAMES: SpriteFrames = preload(
 const NINJA_TEXTURE: Texture2D = preload(
 	"res://resources/texture/enemy/mechanical_life/combat_robot_ninja.png"
 )
-const MOTION_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
+const MOTION_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 const ANIMATION_CONTRACT := {
 	&"move": {"row": 0, "speed": 20.0, "loop": true},
 	&"boost": {"row": 1, "speed": 24.0, "loop": true},

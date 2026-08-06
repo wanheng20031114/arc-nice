@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://ci4uijyyp5877"]
 
 [ext_resource type="Script" uid="uid://b48syuls2by2e" path="res://scene/player/tango/player_tango.gd" id="1_script"]
-[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_status_shader"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="2_status_shader"]
 [ext_resource type="SpriteFrames" uid="uid://kmbt0gwv3150" path="res://resources/animation/player_tango.tres" id="3_player_frames"]
 [ext_resource type="SpriteFrames" uid="uid://bj584fdvw5xvj" path="res://resources/animation/tango_cast_unit.tres" id="4_unit_frames"]
 [ext_resource type="AudioStream" uid="uid://brmwioaechoqc" path="res://resources/audio/Cowboy_Footstep.wav" id="5_footstep_audio"]
@@ -12,7 +12,7 @@
 [ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/player/ui/skill1_charge_bar.tscn" id="10_skill_bar"]
 [ext_resource type="Shader" uid="uid://d3dvdthptsr0k" path="res://scene/player/effects/dash_ready_glow.gdshader" id="11_dash_shader"]
 [ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="12_name_settings"]
-[ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="13_speed_trail"]
+[ext_resource type="PackedScene" path="res://scene/combat/feedback/move_speed_trail_effect.tscn" id="13_speed_trail"]
 [ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="14_lucky_audio"]
 [ext_resource type="PackedScene" uid="uid://cmvetmpkqnxk4" path="res://scene/player/ui/player_attack_interval_bar.tscn" id="15_attack_bar"]
 [ext_resource type="PackedScene" path="res://scene/player/effects/dash_ready_indicator.tscn" id="16_dash_ready"]

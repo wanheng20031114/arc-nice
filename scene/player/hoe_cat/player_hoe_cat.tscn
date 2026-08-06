@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://e1gkpbspya8j"]
 
 [ext_resource type="Script" uid="uid://bac7je0inhfub" path="res://scene/player/hoe_cat/player_hoe_cat.gd" id="1_script"]
-[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_shader"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="2_shader"]
 [ext_resource type="SpriteFrames" uid="uid://bi4k38gyqjta1" path="res://resources/animation/player_hoe_cat.tres" id="3_frames"]
 [ext_resource type="AudioStream" uid="uid://brmwioaechoqc" path="res://resources/audio/Cowboy_Footstep.wav" id="4_footstep"]
 [ext_resource type="AudioStream" uid="uid://cutwkun6hroo5" path="res://resources/audio/cowboy_dead.wav" id="5_death"]
@@ -11,7 +11,7 @@
 [ext_resource type="PackedScene" uid="uid://db4l5h4j6dnqu" path="res://scene/player/ui/skill1_charge_bar.tscn" id="9_skill_bar"]
 [ext_resource type="Shader" uid="uid://d3dvdthptsr0k" path="res://scene/player/effects/dash_ready_glow.gdshader" id="10_7isae"]
 [ext_resource type="LabelSettings" path="res://resources/ui/player_name_label_settings.tres" id="10_name_settings"]
-[ext_resource type="PackedScene" path="res://scene/move_speed_trail_effect.tscn" id="11_speed_trail"]
+[ext_resource type="PackedScene" path="res://scene/combat/feedback/move_speed_trail_effect.tscn" id="11_speed_trail"]
 [ext_resource type="AudioStream" uid="uid://44ucsbesth8r" path="res://resources/audio/lucky_gem_upgrade_triad.wav" id="12_lucky_audio"]
 [ext_resource type="PackedScene" uid="uid://cmvetmpkqnxk4" path="res://scene/player/ui/player_attack_interval_bar.tscn" id="14_interval_bar"]
 [ext_resource type="AudioStream" uid="uid://c4e0l1irr62jb" path="res://resources/audio/hoe_cat_sword_slash_light.wav" id="15_primary_audio"]

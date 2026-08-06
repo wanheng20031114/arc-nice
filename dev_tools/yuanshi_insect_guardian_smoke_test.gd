@@ -12,7 +12,7 @@ const GUARDIAN_AURA_SYSTEM_SCENE := preload(
 const STANDARD_GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TOWER_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const AURA_SCRIPT := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_aura.gd")
-const ENEMY_VISUAL_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
+const ENEMY_VISUAL_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 
 class NavigationStub extends Node:
 	var is_built := true

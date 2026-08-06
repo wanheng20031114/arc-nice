@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://33e50y78yyi5"]
 
 [ext_resource type="PackedScene" path="res://scene/enemy/slime/slime.tscn" id="1_base"]
-[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/entity_motion_status.gdshader" id="2_status_shader"]
+[ext_resource type="Shader" uid="uid://hx2wb728f8lg" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="2_status_shader"]
 [ext_resource type="SpriteFrames" uid="uid://bdcp6mac2788w" path="res://resources/animation/slime.tres" id="3_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_status"]

@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://wxgwumoxoj6o"]
 
 [ext_resource type="PackedScene" uid="uid://ccvfm2ck2jkky" path="res://scene/enemy/yuanshi_insect/yuanshi_insect.tscn" id="1_base"]
-[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="2_4bgxa"]
+[ext_resource type="Shader" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="2_4bgxa"]
 [ext_resource type="SpriteFrames" uid="uid://b8bbt6bw06ogo" path="res://resources/animation/yuanshi_insect_basic.tres" id="2_frames"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_4bgxa"]

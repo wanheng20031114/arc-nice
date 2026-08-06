@@ -6,7 +6,7 @@ const SOURCE_TEXTURE_PATH := (
 )
 const SOURCE_TEXTURE_SIZE := Vector2i(320, 120)
 const SOURCE_ANIMATION_ROW := 1
-const STATUS_SHADER_PATH := "res://scene/entity_motion_status.gdshader"
+const STATUS_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 const RAW_OUTPUT_DIRECTORY := (
 	"res://dev_tools/output/combat_robot_ninja_afterimage_shader"
 )

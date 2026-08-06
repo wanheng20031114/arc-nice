@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" path="res://scene/enemy/sorcerer/frost_sorcerer.gd" id="2_script"]
-[ext_resource type="Shader" path="res://scene/entity_motion_status.gdshader" id="3_shader"]
+[ext_resource type="Shader" path="res://scene/combat/feedback/shaders/entity_motion_status.gdshader" id="3_shader"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/frost_sorcerer_elite.tres" id="4_frames"]
 [ext_resource type="SpriteFrames" path="res://resources/animation/frost_sorcerer_ice_spike.tres" id="5_ice_spike_frames"]
 
