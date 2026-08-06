@@ -16,7 +16,7 @@ const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
 const PROFILE_PANEL_SCENE := preload(
-	"res://scene/player/ui/player_profile_panel.tscn"
+	"res://scene/game_modes/tower_defense/ui/tower_defense_player_profile_panel.tscn"
 )
 const WOODEN_CORE := preload(
 	"res://resources/config/materials/material_wooden_core.tres"
@@ -400,7 +400,7 @@ func _run() -> void:
 		"橘充能塔必须在累计30秒时原子消费两种材料并进入独立背包槽位。"
 	)
 	var profile_panel := (
-		PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
+		PROFILE_PANEL_SCENE.instantiate() as TowerDefensePlayerProfilePanel
 	)
 	test_root.add_child(profile_panel)
 	await process_frame

@@ -203,8 +203,19 @@ func _test_independent_scene_contract() -> void:
 		and game.get_node_or_null("WaveHUD") == null
 		and game.wave_hud == null
 		and game.get_node_or_null("CombatDeadlineTimer") is Timer
-		and game.get_node_or_null("TowerDefenseStatusHUD") is TowerDefenseStatusHUD,
+		and game.get_node_or_null("PlayerLifeStatusLayer") is CanvasLayer
+		and game.get_node_or_null(
+			"PlayerLifeStatusLayer/PlayerLifeStatusHUD"
+		) is PlayerLifeStatusHUD
+		and game.get_node_or_null("TowerDefenseStatusHUD") == null,
 		"场景必须只保留专用作战 HUD，并静态提供权威计时 Timer 与死亡 HUD。"
+	)
+	_expect(
+		not scene_source.contains("tower_defense_status_hud.tscn")
+		and not scene_source.contains("tower_defense_death_screen.gdshader")
+		and not scene_source.contains("tower_defense_gate_warning.gdshader")
+		and not scene_source.contains("home_gate_double_warning.wav"),
+		"Rouge 作战只能组合中性生命 HUD，不能加载塔防核心警报资源。"
 	)
 	_expect(
 		is_equal_approx(game.combat_deadline_timer.wait_time, 1.0)
@@ -498,7 +509,7 @@ func _test_permanent_death_presentation() -> void:
 	game.runtime_mode = GameRuntimeBase.RuntimeMode.SINGLEPLAYER
 	game.player.is_dead = true
 	game.call("_present_permanent_death", 0)
-	var status_hud := game.tower_defense_status_hud
+	var status_hud := game.player_life_status_hud
 	_expect(
 		game.player.tower_defense_death_presentation_active,
 		"Rouge 永久死亡必须复用塔防玩家死亡遮罩呈现。"
@@ -506,9 +517,9 @@ func _test_permanent_death_presentation() -> void:
 	_expect(
 		status_hud.local_permanent_death_active
 		and status_hud.local_countdown_label.text
-		== TowerDefenseStatusHUD.PERMANENT_DEATH_FULL_TEXT
+		== PlayerLifeStatusHUD.PERMANENT_DEATH_FULL_TEXT
 		and status_hud.local_compact_countdown_label.text
-		== TowerDefenseStatusHUD.PERMANENT_DEATH_COMPACT_TEXT,
+		== PlayerLifeStatusHUD.PERMANENT_DEATH_COMPACT_TEXT,
 		"本地永久死亡 UI 必须显示“无法复活/观战中”，不能显示复活秒数。"
 	)
 	_expect(
@@ -517,7 +528,7 @@ func _test_permanent_death_presentation() -> void:
 		"永久死亡必须显示全屏死亡遮罩与本地观战卡。"
 	)
 	_expect(
-		not bool(status_hud.get("_dead_player_list_enabled"))
+		not status_hud.dead_player_list_enabled
 		and status_hud.respawn_entries.is_empty()
 		and not status_hud.dead_players_panel.visible
 		and status_hud.dead_players_label.text.is_empty(),

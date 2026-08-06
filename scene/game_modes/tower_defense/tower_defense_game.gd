@@ -62,12 +62,6 @@ const COUNTDOWN_FINAL_SECONDS := 3
 const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
 const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
 const SPECTATOR_CAMERA_SPEED := 180.0
-const PURCHASE_RESULT_SUCCESS := 0
-const PURCHASE_RESULT_ALREADY_OWNED := 1
-const PURCHASE_RESULT_INSUFFICIENT_XIRANG := 2
-const PURCHASE_RESULT_INVALID_PLAYER := 3
-const PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS := 4
-const PURCHASE_RESULT_SKILL1_UPGRADE_MAXED := 5
 const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.025
 const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
@@ -176,18 +170,18 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 @onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio
 @onready var defeat_audio: AudioStreamPlayer = $DefeatAudio
 @onready var currency_hud: CurrencyHUD = $CurrencyHUD
-@onready var wave_hud: WaveHUD = $WaveHUD
+@onready var wave_hud: TowerDefenseWaveHUD = $WaveHUD
 @onready var day_phase_announcement: DayPhaseAnnouncement = $DayPhaseAnnouncement
 @onready var tower_defense_status_hud: TowerDefenseStatusHUD = $TowerDefenseStatusHUD
 @onready var tower_defense_minimap: TowerDefenseMinimap = $TowerDefenseMinimap
 @onready var oak_warehouse_panel: OakWarehousePanel = $OakWarehousePanel
 @onready var production_building_panel: ProductionBuildingPanel = $ProductionBuildingPanel
 @onready var research_center_panel: ResearchCenterPanel = $ResearchCenterPanel
-@onready var player_profile_panel: PlayerProfilePanel = $PlayerProfilePanel
+@onready var player_profile_panel: TowerDefensePlayerProfilePanel = $PlayerProfilePanel
 @onready var settings_panel: SettingsPanel = $SettingsLayer/SettingsPanel
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
-@onready var luoxi_merchant: LuoxiMerchant = $LuoxiMerchant
+@onready var luoxi_merchant: TowerDefenseLuoxiMerchant = $LuoxiMerchant
 @onready var luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator = (
 	$LuoxiSpecialGameCoordinator
 )
@@ -497,6 +491,9 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 	currency_hud.bind_player(player)
+	player_profile_panel.configure_multiplayer_requests(
+		runtime_mode != RuntimeMode.SINGLEPLAYER
+	)
 	player_profile_panel.set_research_coordinator(research_coordinator)
 	player_profile_panel.bind_player(player)
 	currency_hud.settings_requested.connect(_on_currency_hud_settings_requested)
@@ -2658,6 +2655,49 @@ func show_simple_crafting_result(
 	)
 
 
+func _on_profile_multiplayer_upgrade_requested(stat_type: int) -> void:
+	multiplayer_profile_upgrade_requested.emit(stat_type)
+
+
+func _on_profile_multiplayer_inventory_item_use_requested(
+	slot_index: int
+) -> void:
+	multiplayer_profile_inventory_item_use_requested.emit(slot_index)
+
+
+func _on_profile_multiplayer_inventory_item_discard_requested(
+	slot_index: int
+) -> void:
+	multiplayer_profile_inventory_item_discard_requested.emit(slot_index)
+
+
+func _on_profile_multiplayer_simple_crafting_requested(
+	recipe_id: StringName,
+	request_token: int
+) -> void:
+	multiplayer_profile_simple_crafting_requested.emit(
+		recipe_id,
+		request_token
+	)
+
+
+func _on_profile_multiplayer_simple_crafting_cancel_requested(
+	request_token: int
+) -> void:
+	multiplayer_profile_simple_crafting_cancel_requested.emit(request_token)
+
+
+func _on_profile_building_placement_requested(
+	slot_index: int,
+	expected_inventory_revision: int
+) -> void:
+	if not begin_inventory_building_placement(
+		slot_index,
+		expected_inventory_revision
+	):
+		player_profile_panel.restore_after_failed_building_placement()
+
+
 func apply_remote_merchant_active(active: bool) -> void:
 	_set_local_merchants_active(active)
 
@@ -2888,17 +2928,17 @@ func show_combat_number(
 func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	var player_instance := get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
-		return PURCHASE_RESULT_INVALID_PLAYER
+		return MerchantPurchaseResult.SkillUpgrade.INVALID_PLAYER
 	if not player_instance.has_skill1():
-		return PURCHASE_RESULT_INVALID_PLAYER
+		return MerchantPurchaseResult.SkillUpgrade.INVALID_PLAYER
 	if player_instance.is_skill1_upgrade_maxed():
-		return PURCHASE_RESULT_SKILL1_UPGRADE_MAXED
+		return MerchantPurchaseResult.SkillUpgrade.UPGRADE_MAXED
 	var free_upgrade := player_instance.has_collectible_effect(
 		PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL
 	)
 	if not player_instance.try_upgrade_skill1(free_upgrade):
-		return PURCHASE_RESULT_INSUFFICIENT_XIRANG
-	return PURCHASE_RESULT_SKILL1_UPGRADE_SUCCESS
+		return MerchantPurchaseResult.SkillUpgrade.INSUFFICIENT_XIRANG
+	return MerchantPurchaseResult.SkillUpgrade.UPGRADE_SUCCESS
 
 
 func apply_skill1_purchase_state(
@@ -3121,9 +3161,9 @@ func request_luoxi_collectible_refresh() -> void:
 func try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int:
 	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance) or luoxi_merchant == null:
-		return LuoxiMerchant.REFRESH_RESULT_INVALID_PLAYER
+		return MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
 	if has_luoxi_collectible_claimed(peer_id):
-		return LuoxiMerchant.REFRESH_RESULT_INVALID_PLAYER
+		return MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
 	return luoxi_merchant.try_purchase_refresh_for_player(player_instance)
 
 
@@ -3136,11 +3176,11 @@ func get_luoxi_collectible_refresh_count(peer_id: int) -> int:
 func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: Variant) -> int:
 	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
 	if player_instance == null or not is_instance_valid(player_instance):
-		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
+		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
 
 	var claim_key := maxi(peer_id, 0)
 	if get_luoxi_collectible_claim_count(claim_key) >= LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND:
-		return LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED
+		return MerchantPurchaseResult.CollectibleClaim.ALREADY_CLAIMED
 
 	var config_path := ""
 	if typeof(config_path_or_choice) == TYPE_INT:
@@ -3149,11 +3189,11 @@ func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: V
 		config_path = String(config_path_or_choice)
 	var item := LuoxiMerchant.get_collectible_for_path(config_path)
 	if item == null:
-		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
+		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
 	if not player_instance.is_collectible_compatible(item):
-		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
+		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
 	if not LuoxiMerchant.is_collectible_available_for_inventory(item, run_state, peer_id):
-		return LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER
+		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
 
 	var stored := (
 		run_state.try_add_item_for_peer(peer_id, item)
@@ -3161,10 +3201,10 @@ func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: V
 		else run_state.try_add_item(item)
 	)
 	if not stored:
-		return LuoxiMerchant.COLLECTIBLE_RESULT_INVENTORY_FULL
+		return MerchantPurchaseResult.CollectibleClaim.INVENTORY_FULL
 
 	record_luoxi_collectible_claim(claim_key)
-	return LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS
+	return MerchantPurchaseResult.CollectibleClaim.SUCCESS
 
 
 func _resolve_luoxi_collectible_path(choice_index: int, config_path: String) -> String:

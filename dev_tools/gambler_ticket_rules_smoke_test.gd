@@ -1,7 +1,7 @@
 extends SceneTree
 
-const Rules := preload("res://scene/luoxi_special_game_rules.gd")
-const Session := preload("res://scene/luoxi_special_game_session.gd")
+const Rules := preload("res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_rules.gd")
+const Session := preload("res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_session.gd")
 
 const COMMON_COLLECTIBLE := preload(
 	"res://resources/config/collectibles/collectible_apprentice_scroll.tres"

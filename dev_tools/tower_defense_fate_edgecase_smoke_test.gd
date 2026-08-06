@@ -1,7 +1,7 @@
 extends SceneTree
 
 const FATE_COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/fate_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/fate/fate_coordinator.tscn"
 )
 
 var failures: Array[String] = []
@@ -143,7 +143,7 @@ func _test_remote_revision_guard(
 
 func _test_stone_inventory_access_overlay() -> void:
 	var overlay := preload(
-		"res://scene/xiaocong_fate_choice_overlay.tscn"
+		"res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.tscn"
 	).instantiate() as XiaocongFateChoiceOverlay
 	_expect(
 		not overlay.visible,

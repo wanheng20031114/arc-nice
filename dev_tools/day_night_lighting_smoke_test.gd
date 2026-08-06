@@ -22,11 +22,11 @@ const PLAYER_SCENES: Array[PackedScene] = [
 const NPC_SCENE_FIXTURES: Array[Dictionary] = [
 	{
 		"label": "庄方宜",
-		"scene": preload("res://scene/zhuangfangyi_merchant.tscn"),
+		"scene": preload("res://scene/merchants/zhuangfangyi/zhuangfangyi_merchant.tscn"),
 	},
 	{
 		"label": "洛曦",
-		"scene": preload("res://scene/luoxi_merchant.tscn"),
+		"scene": preload("res://scene/merchants/luoxi/luoxi_merchant.tscn"),
 	},
 ]
 const SOFT_WHITE_TEXTURE := preload(

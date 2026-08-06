@@ -3211,6 +3211,21 @@ func _setup_game(mode: int) -> bool:
 	game.multiplayer_inventory_plant_placement_requested.connect(
 		_on_local_inventory_plant_placement_requested
 	)
+	game.multiplayer_profile_upgrade_requested.connect(
+		request_multiplayer_upgrade
+	)
+	game.multiplayer_profile_inventory_item_use_requested.connect(
+		request_multiplayer_inventory_item_use
+	)
+	game.multiplayer_profile_inventory_item_discard_requested.connect(
+		request_multiplayer_inventory_item_discard
+	)
+	game.multiplayer_profile_simple_crafting_requested.connect(
+		request_multiplayer_simple_crafting
+	)
+	game.multiplayer_profile_simple_crafting_cancel_requested.connect(
+		cancel_multiplayer_simple_crafting_request
+	)
 	game.multiplayer_xiaocong_interaction_requested.connect(
 		_on_local_xiaocong_interaction_requested
 	)
@@ -13827,7 +13842,7 @@ func net_luoxi_collectible_confirmed(
 		return
 	if not inventory_snapshot.is_empty():
 		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
-	if result_code == LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS and not config_path.is_empty():
+	if result_code == MerchantPurchaseResult.CollectibleClaim.SUCCESS and not config_path.is_empty():
 		var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
 		if not already_applied_on_host:
 			game.record_luoxi_collectible_claim(peer_id)
@@ -13835,10 +13850,10 @@ func net_luoxi_collectible_confirmed(
 				var item := load(config_path) as PickupConfig
 				if item != null:
 					run_state.try_add_item_for_peer(peer_id, item)
-	elif result_code == LuoxiMerchant.COLLECTIBLE_RESULT_ALREADY_CLAIMED:
+	elif result_code == MerchantPurchaseResult.CollectibleClaim.ALREADY_CLAIMED:
 		game.mark_luoxi_collectible_claimed(peer_id)
 	if peer_id == _get_local_peer_id():
-		if result_code == LuoxiMerchant.COLLECTIBLE_RESULT_STALE_OFFER:
+		if result_code == MerchantPurchaseResult.CollectibleClaim.STALE_OFFER:
 			return
 		game.show_local_luoxi_collectible_result(result_code)
 
@@ -14316,7 +14331,7 @@ func _apply_luoxi_collectible_choice_for_peer(
 			peer_id,
 			choice_index,
 			"",
-			LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER,
+			MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER,
 			0
 		)
 		return
@@ -14330,7 +14345,7 @@ func _apply_luoxi_collectible_choice_for_peer(
 			peer_id,
 			choice_index,
 			"",
-			LuoxiMerchant.COLLECTIBLE_RESULT_STALE_OFFER,
+			MerchantPurchaseResult.CollectibleClaim.STALE_OFFER,
 			authoritative_revision
 		)
 		return
@@ -14341,7 +14356,7 @@ func _apply_luoxi_collectible_choice_for_peer(
 			peer_id,
 			choice_index,
 			"",
-			LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER,
+			MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER,
 			authoritative_revision
 		)
 		return
@@ -14350,7 +14365,7 @@ func _apply_luoxi_collectible_choice_for_peer(
 		peer_id,
 		resolved_config_path
 	)
-	if result_code != LuoxiMerchant.COLLECTIBLE_RESULT_SUCCESS:
+	if result_code != MerchantPurchaseResult.CollectibleClaim.SUCCESS:
 		resolved_config_path = ""
 	_send_luoxi_collectible_confirmation(
 		peer_id,
@@ -14412,7 +14427,7 @@ func _apply_luoxi_collectible_refresh_for_peer(
 		_send_luoxi_offer_state_to_peer(
 			peer_id,
 			state,
-			LuoxiMerchant.REFRESH_RESULT_STALE_OFFER
+			MerchantPurchaseResult.OfferRefresh.STALE_OFFER
 		)
 		return
 
@@ -14431,11 +14446,11 @@ func _apply_luoxi_collectible_refresh_for_peer(
 		_send_luoxi_offer_state_to_peer(
 			peer_id,
 			state,
-			LuoxiMerchant.REFRESH_RESULT_INVALID_PLAYER
+			MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
 		)
 		return
 	var result_code := game.try_refresh_luoxi_collectibles_for_peer(peer_id)
-	if result_code == LuoxiMerchant.REFRESH_RESULT_SUCCESS:
+	if result_code == MerchantPurchaseResult.OfferRefresh.SUCCESS:
 		state = _commit_luoxi_offer_state(peer_id, replacement_paths)
 	else:
 		state["refresh_count"] = game.get_luoxi_collectible_refresh_count(peer_id)

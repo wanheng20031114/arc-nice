@@ -1,6 +1,11 @@
 extends SceneTree
 
-const WAVE_HUD_SCENE := preload("res://scene/wave_hud.tscn")
+const STANDARD_WAVE_HUD_SCENE := preload(
+	"res://scene/game_modes/standard/ui/standard_wave_hud.tscn"
+)
+const TOWER_DEFENSE_WAVE_HUD_SCENE := preload(
+	"res://scene/game_modes/tower_defense/ui/tower_defense_wave_hud.tscn"
+)
 
 var failures: Array[String] = []
 
@@ -16,7 +21,7 @@ func _run() -> void:
 
 
 func _verify_standard_mode_compatibility() -> void:
-	var hud := WAVE_HUD_SCENE.instantiate() as WaveHUD
+	var hud := STANDARD_WAVE_HUD_SCENE.instantiate() as StandardWaveHUD
 	root.add_child(hud)
 	await process_frame
 	_expect(
@@ -52,9 +57,9 @@ func _verify_standard_mode_compatibility() -> void:
 	)
 	_expect(
 		hud.status_label.visible
-		and not hud.tower_defense_stats.visible
-		and not hud.global_wave_notice.visible,
-		"The standard HUD must keep the legacy single-label layout without tower-defense notices."
+		and hud.get_node_or_null("WaveInfoBar/Margin/TowerDefenseStats") == null
+		and hud.get_node_or_null("GlobalWaveNotice") == null,
+		"StandardWaveHUD must keep only the standard single-label layout."
 	)
 
 	hud.queue_free()
@@ -62,13 +67,12 @@ func _verify_standard_mode_compatibility() -> void:
 
 
 func _verify_tower_defense_layout_and_updates() -> void:
-	var hud := WAVE_HUD_SCENE.instantiate() as WaveHUD
+	var hud := TOWER_DEFENSE_WAVE_HUD_SCENE.instantiate() as TowerDefenseWaveHUD
 	root.add_child(hud)
 	await process_frame
 	hud.configure_tower_defense(100, 100)
 	await process_frame
 
-	_expect(hud.tower_defense_mode, "Tower-defense mode must require explicit configuration.")
 	_expect(
 		hud.top_bar.custom_minimum_size == Vector2(404.0, 50.0)
 		and is_equal_approx(hud.top_bar.offset_left, -202.0)
@@ -129,8 +133,9 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		"Rest status and early-start action must share one compact 26 px row."
 	)
 	_expect(
-		not hud.status_label.visible and hud.tower_defense_stats.visible,
-		"Tower-defense configuration must replace the legacy text with the day-cycle layout."
+		hud.get_node_or_null("WaveInfoBar/Margin/Status") == null
+		and hud.tower_defense_stats.visible,
+		"TowerDefenseWaveHUD must author only the day-cycle layout."
 	)
 	_expect(
 		hud.day_label.text == "第 1 日"
@@ -241,7 +246,8 @@ func _verify_tower_defense_layout_and_updates() -> void:
 
 	hud.set_tower_defense_core_health(25, 100)
 	_expect(
-		hud.core_value_label.self_modulate == WaveHUD.CORE_CRITICAL_COLOR,
+		hud.core_value_label.self_modulate
+		== TowerDefenseWaveHUD.CORE_CRITICAL_COLOR,
 		"Core health at 25 percent must use the critical red treatment."
 	)
 	hud.set_tower_defense_wave_progress(3, 2, 3)
@@ -274,8 +280,8 @@ func _verify_tower_defense_layout_and_updates() -> void:
 		"Tower-defense rest controls must use the short same-row countdown wording."
 	)
 	_expect(
-		hud.status_label.text == "下一波将在 00:03 后开始",
-		"The hidden compatibility label must retain the existing countdown wording."
+		hud.get_node_or_null("WaveInfoBar/Margin/Status") == null,
+		"TowerDefenseWaveHUD must not retain the hidden standard countdown label."
 	)
 	_expect(
 		hud.stage_pulse_tween != null,

@@ -1,7 +1,9 @@
 extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
-const PROFILE_PANEL_SCENE := preload("res://scene/player/ui/player_profile_panel.tscn")
+const PROFILE_PANEL_SCENE := preload(
+	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
+)
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
 const XIAOCONG_FATE_STONE := preload(
@@ -47,7 +49,9 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	run_state.begin_new_run()
 
 	var player := PLAYER_SCENE.instantiate() as Player
-	var profile_panel := PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
+	var profile_panel := (
+		PROFILE_PANEL_SCENE.instantiate() as StandardPlayerProfilePanel
+	)
 	test_root.add_child(player)
 	test_root.add_child(profile_panel)
 	await process_frame

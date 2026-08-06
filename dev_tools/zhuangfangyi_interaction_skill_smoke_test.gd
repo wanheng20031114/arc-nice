@@ -3,7 +3,7 @@ extends SceneTree
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const TIYI_PLAYER_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const HOE_CAT_PLAYER_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
-const MERCHANT_SCENE := preload("res://scene/zhuangfangyi_merchant.tscn")
+const MERCHANT_SCENE := preload("res://scene/merchants/zhuangfangyi/zhuangfangyi_merchant.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
 const EXPLOSION_STREAM := preload("res://resources/audio/cowboy_explosion.wav")

@@ -1,7 +1,7 @@
 extends NinePatchRect
 class_name RogueEncounterChoiceCard
 
-const VOTE_PORTRAIT_SCENE := preload("res://scene/xiaocong_vote_portrait.tscn")
+const VOTE_PORTRAIT_SCENE := preload("res://scene/ui/shared/vote_portrait.tscn")
 
 signal selected(option_id: StringName)
 

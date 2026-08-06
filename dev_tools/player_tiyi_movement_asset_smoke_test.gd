@@ -2,7 +2,9 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const CHARACTER_CARD_SCENE := preload("res://scene/character_selection/player_character_card.tscn")
-const PROFILE_PANEL_SCENE := preload("res://scene/player/ui/player_profile_panel.tscn")
+const PROFILE_PANEL_SCENE := preload(
+	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
+)
 const CANONICAL_PATH := "res://dev_assets/source_images/player_tiyi/movement_scale1_20px_candidate.png"
 const RUNTIME_PATH := "res://resources/texture/player/tiyi/movement.png"
 const PORTRAIT_PATH := "res://resources/texture/player/tiyi/portrait.png"
@@ -145,7 +147,9 @@ func _run() -> void:
 			and card_portrait.texture.resource_path == PORTRAIT_PATH,
 			"Tiyi's character-selection card must display normal_down frame 0."
 		)
-		var profile_panel := PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
+		var profile_panel := (
+			PROFILE_PANEL_SCENE.instantiate() as StandardPlayerProfilePanel
+		)
 		root.add_child(profile_panel)
 		profile_panel.bind_player(player)
 		_expect(

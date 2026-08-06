@@ -423,7 +423,10 @@ def main() -> None:
     for index, item in enumerate(audits, 1):
         refs = specific_test_refs(item.path.name)
         categories = audit.primary_affix_categories(item.data) or ["特殊"]
-        scene_refs = ["scene/player/player.gd", "scene/luoxi_merchant.gd"]
+        scene_refs = [
+            "scene/player/player.gd",
+            "scene/merchants/luoxi/luoxi_merchant.gd",
+        ]
         if any(c in categories for c in ["周期", "技能", "触发"]): scene_refs.append("scene/multiplayer/mp_game.gd")
         rows.append([index, item.data["display_name"], item.data["collectible_effect_id"], "是", "dev_tools/collectible_runtime_audit_smoke_test.gd", "；".join(refs) or "无逐件预载专项", "；".join(scene_refs), "；".join(categories)])
     write_rows(ws, ["序号", "名称", "效果ID", "全量运行时审计覆盖", "通用测试", "专项预载测试", "主要运行时文件", "覆盖机制"], rows); style_sheet(ws); add_table(ws, "TestReferences"); autosize(ws, 58)

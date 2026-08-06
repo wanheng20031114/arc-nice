@@ -2,7 +2,7 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const FATE_COORDINATOR_SCENE := preload(
-	"res://scene/plant_defense/fate_coordinator.tscn"
+	"res://scene/game_modes/tower_defense/fate/fate_coordinator.tscn"
 )
 
 class FlowBoundaryProbe:
@@ -303,7 +303,9 @@ func _test_wave_hud_uses_day_cycle_config() -> void:
 	var custom_cycle := DayCycleConfig.new()
 	custom_cycle.waves_per_day = 6
 	custom_cycle.night_start_wave_in_day = 4
-	var hud := preload("res://scene/wave_hud.tscn").instantiate() as WaveHUD
+	var hud := preload(
+		"res://scene/game_modes/tower_defense/ui/tower_defense_wave_hud.tscn"
+	).instantiate() as TowerDefenseWaveHUD
 	root.add_child(hud)
 	await process_frame
 	hud.configure_tower_defense(100, 100, custom_cycle)
@@ -313,7 +315,7 @@ func _test_wave_hud_uses_day_cycle_config() -> void:
 		and hud.phase_label.text == "白昼 1/3"
 		and hud.day_dial.phase_count == 6
 		and hud.day_dial.night_start_phase_index == 3,
-		"WaveHUD and its dial must derive day/night phases from DayCycleConfig."
+		"TowerDefenseWaveHUD and its dial must derive day/night phases from DayCycleConfig."
 	)
 	hud.queue_free()
 	await process_frame
@@ -324,7 +326,7 @@ func _test_xiaocong_collectible_offer_count() -> void:
 	root.add_child(coordinator)
 	await process_frame
 	var game := TowerDefenseGame.new()
-	var merchant := LuoxiMerchant.new()
+	var merchant := TowerDefenseLuoxiMerchant.new()
 	var target_player := preload(
 		"res://scene/player/weishidaier/player_weishidaier.tscn"
 	).instantiate() as Player

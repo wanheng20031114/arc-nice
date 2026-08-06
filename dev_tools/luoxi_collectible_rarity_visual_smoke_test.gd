@@ -1,6 +1,6 @@
 extends SceneTree
 
-const OVERLAY_SCENE := preload("res://scene/luoxi_collectible_choice_overlay.tscn")
+const OVERLAY_SCENE := preload("res://scene/merchants/luoxi/luoxi_collectible_choice_overlay.tscn")
 const COMMON_ITEM := preload("res://resources/config/collectibles/collectible_ruby.tres")
 const RARE_ITEM := preload("res://resources/config/collectibles/collectible_roller_skates.tres")
 const EPIC_ITEM := preload("res://resources/config/collectibles/collectible_power_wheel.tres")

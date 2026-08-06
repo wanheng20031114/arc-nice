@@ -3,7 +3,7 @@ extends SceneTree
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
-const LUOXI_SCENE := preload("res://scene/luoxi_merchant.tscn")
+const LUOXI_SCENE := preload("res://scene/merchants/luoxi/luoxi_merchant.tscn")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const INVENTORY_SLOT_SCENE := preload("res://scene/inventory_slot.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
@@ -69,7 +69,7 @@ func _test_hoe_cat_collectible_compatibility_filter() -> void:
 	_expect(not hoe_cat.is_collectible_compatible(APPLE_COLLECTIBLE), "Apple must be incompatible with Hoe Cat.")
 	_expect(
 		int(luoxi.call("_claim_local_collectible", hoe_cat, APPLE_COLLECTIBLE.resource_path))
-		== LuoxiMerchant.COLLECTIBLE_RESULT_INVALID_PLAYER,
+		== MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER,
 		"Hoe Cat must not be able to claim a projectile-only collectible by path."
 	)
 	_expect(

@@ -1,0 +1,47 @@
+[gd_scene format=3 uid="uid://dvti0j6pehsi8"]
+
+[ext_resource type="SpriteFrames" uid="uid://cuo0t6su1lihy" path="res://resources/animation/zhuangfangyi.tres" id="1_frames"]
+[ext_resource type="Script" uid="uid://b8ih17lklp3f2" path="res://scene/merchants/zhuangfangyi/zhuangfangyi_merchant.gd" id="2_script"]
+[ext_resource type="PackedScene" uid="uid://cfqjx6jj5j6gd" path="res://scene/merchants/shared/merchant_dialogue_bubble.tscn" id="3_dialogue"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="4_night_light"]
+[ext_resource type="Texture2D" uid="uid://clffculwmxi7k" path="res://resources/lighting/soft_player_point_light.tres" id="5_player_light_texture"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_3n1ro"]
+radius = 9.0
+height = 26.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_interaction"]
+radius = 30.0
+
+[node name="ZhuangfangyiMerchant" type="Node2D" unique_id=147021748]
+z_index = 2
+script = ExtResource("2_script")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=52815356]
+sprite_frames = ExtResource("1_frames")
+animation = &"idle"
+autoplay = "idle"
+frame = 5
+
+[node name="NightLight" parent="." instance=ExtResource("4_night_light")]
+texture = ExtResource("5_player_light_texture")
+texture_scale = 0.46875
+night_energy = 0.56
+starts_emitting = false
+
+[node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=621634863]
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=384137463]
+position = Vector2(-1, 1)
+shape = SubResource("CapsuleShape2D_3n1ro")
+disabled = true
+
+[node name="InteractionArea" type="Area2D" parent="." unique_id=909245032]
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="InteractionArea" unique_id=426827597]
+shape = SubResource("CircleShape2D_interaction")
+
+[node name="MerchantDialogueBubble" parent="." unique_id=144932297 instance=ExtResource("3_dialogue")]

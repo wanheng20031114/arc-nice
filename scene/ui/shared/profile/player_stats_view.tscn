@@ -1,0 +1,233 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scene/ui/shared/profile/player_stats_view.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_stat_small"]
+font = ExtResource("2_font")
+font_size = 15
+font_color = Color(0.78, 0.8, 0.75, 1)
+outline_size = 2
+outline_color = Color(0.07, 0.07, 0.065, 0.9)
+
+[sub_resource type="LabelSettings" id="LabelSettings_value_small"]
+font = ExtResource("2_font")
+font_size = 15
+font_color = Color(0.45, 0.86, 0.73, 1)
+outline_size = 2
+outline_color = Color(0.07, 0.07, 0.065, 0.9)
+
+[sub_resource type="LabelSettings" id="LabelSettings_skill_desc"]
+font = ExtResource("2_font")
+font_size = 11
+font_color = Color(0.72, 0.76, 0.7, 1)
+outline_size = 1
+outline_color = Color(0.07, 0.07, 0.065, 0.9)
+
+[node name="PlayerStatsView" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_script")
+
+[node name="Portrait" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(150, 178)
+scale = Vector2(0.85, 0.85)
+
+[node name="AttackLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 276.0
+offset_right = 150.0
+offset_bottom = 300.0
+text = "攻击力"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="AttackValue" type="Label" parent="."]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 276.0
+offset_right = 254.0
+offset_bottom = 300.0
+text = "1"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="HealthLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 300.0
+offset_right = 150.0
+offset_bottom = 324.0
+text = "生命值"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="HealthValue" type="Label" parent="."]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 300.0
+offset_right = 254.0
+offset_bottom = 324.0
+text = "5 / 5"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="AttackSpeedLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 324.0
+offset_right = 150.0
+offset_bottom = 348.0
+text = "攻击速度"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="AttackSpeedValue" type="Label" parent="."]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 324.0
+offset_right = 254.0
+offset_bottom = 348.0
+text = "5.56/s"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="MoveSpeedLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 348.0
+offset_right = 150.0
+offset_bottom = 372.0
+text = "移动速度"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="MoveSpeedValue" type="Label" parent="."]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 348.0
+offset_right = 254.0
+offset_bottom = 372.0
+text = "120"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="DodgeLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 372.0
+offset_right = 150.0
+offset_bottom = 396.0
+text = "闪避率"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="DodgeValue" type="Label" parent="."]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 372.0
+offset_right = 254.0
+offset_bottom = 396.0
+text = "0%"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="PhysicalDefenseLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 396.0
+offset_right = 150.0
+offset_bottom = 420.0
+text = "物理防御"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="PhysicalDefenseValue" type="Label" parent="."]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 396.0
+offset_right = 254.0
+offset_bottom = 420.0
+text = "0"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="MagicDefenseLabel" type="Label" parent="."]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 420.0
+offset_right = 150.0
+offset_bottom = 444.0
+text = "法术防御"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1
+
+[node name="MagicDefenseValue" type="Label" parent="."]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 420.0
+offset_right = 254.0
+offset_bottom = 444.0
+text = "0"
+label_settings = SubResource("LabelSettings_value_small")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="SkillInfo" type="Control" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 76.0
+offset_top = 211.0
+offset_right = 244.0
+offset_bottom = 251.0
+
+[node name="SkillIcon" type="TextureRect" parent="SkillInfo"]
+layout_mode = 0
+offset_right = 38.0
+offset_bottom = 38.0
+mouse_default_cursor_shape = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="SkillName" type="Label" parent="SkillInfo"]
+visible = false
+layout_mode = 0
+offset_top = 44.0
+offset_right = 148.0
+offset_bottom = 68.0
+text = "技能"
+label_settings = SubResource("LabelSettings_value_small")
+vertical_alignment = 1
+
+[node name="SkillDescription" type="Label" parent="SkillInfo"]
+visible = false
+layout_mode = 0
+offset_top = 70.0
+offset_right = 221.0
+offset_bottom = 118.0
+label_settings = SubResource("LabelSettings_skill_desc")
+autowrap_mode = 1
+vertical_alignment = 0
+
+[node name="SkillCost" type="Label" parent="SkillInfo"]
+layout_mode = 0
+offset_left = 47.0
+offset_top = 7.0
+offset_right = 168.0
+offset_bottom = 33.0
+text = "技力需求18"
+label_settings = SubResource("LabelSettings_stat_small")
+vertical_alignment = 1

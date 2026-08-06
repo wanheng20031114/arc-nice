@@ -140,6 +140,14 @@ signal multiplayer_inventory_plant_placement_requested(
 	item_config_path: String
 )
 signal multiplayer_inventory_changed(peer_id: int)
+signal multiplayer_profile_upgrade_requested(stat_type: int)
+signal multiplayer_profile_inventory_item_use_requested(slot_index: int)
+signal multiplayer_profile_inventory_item_discard_requested(slot_index: int)
+signal multiplayer_profile_simple_crafting_requested(
+	recipe_id: StringName,
+	request_token: int
+)
+signal multiplayer_profile_simple_crafting_cancel_requested(request_token: int)
 signal multiplayer_xiaocong_interaction_requested
 signal multiplayer_xiaocong_vote_requested(
 	option_id: StringName,

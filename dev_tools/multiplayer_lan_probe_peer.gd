@@ -3226,7 +3226,7 @@ func _wait_for_tower_defense_hud_metrics(
 	var end_time := _now_seconds() + timeout_seconds
 	while _now_seconds() <= end_time:
 		if game != null and is_instance_valid(game) and game.wave_hud != null:
-			var hud: WaveHUD = game.wave_hud
+			var hud: TowerDefenseWaveHUD = game.wave_hud
 			if (
 				hud.tower_defense_stats.visible
 				and hud.wave_title_label.text == "第 %d 波" % wave_number

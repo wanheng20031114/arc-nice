@@ -1,7 +1,7 @@
 extends SceneTree
 
 const PROFILE_PANEL_SCENE := preload(
-	"res://scene/player/ui/player_profile_panel.tscn"
+	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
 )
 const SIMPLE_CRAFTING_PANEL_SCENE := preload(
 	"res://scene/player/ui/simple_crafting_panel.tscn"
@@ -1398,7 +1398,16 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	)
 	crafting_panel.set_panel_active(true)
 
-	var profile_panel := PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
+	var profile_panel := (
+		PROFILE_PANEL_SCENE.instantiate() as StandardPlayerProfilePanel
+	)
+	profile_panel.configure_multiplayer_requests(true)
+	profile_panel.multiplayer_simple_crafting_requested.connect(
+		ui_root.request_multiplayer_simple_crafting
+	)
+	profile_panel.multiplayer_simple_crafting_cancel_requested.connect(
+		ui_root.cancel_multiplayer_simple_crafting_request
+	)
 	ui_root.add_child(profile_panel)
 	await process_frame
 	var tab_bar := profile_panel.get_node("Overlay/PanelRoot/TabBar") as TabBar

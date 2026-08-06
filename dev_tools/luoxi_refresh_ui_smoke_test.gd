@@ -1,6 +1,6 @@
 extends SceneTree
 
-const OVERLAY_SCENE := preload("res://scene/luoxi_collectible_choice_overlay.tscn")
+const OVERLAY_SCENE := preload("res://scene/merchants/luoxi/luoxi_collectible_choice_overlay.tscn")
 
 var failures: Array[String] = []
 var refresh_signal_count := 0

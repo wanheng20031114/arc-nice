@@ -3,6 +3,9 @@ extends SceneTree
 const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const STATUS_HUD_SCENE := preload("res://scene/tower_defense_status_hud.tscn")
+const LIFE_STATUS_HUD_SCENE := preload(
+	"res://scene/ui/shared/player_life_status_hud.tscn"
+)
 
 
 class NoRespawnTowerRuntime extends TowerDefenseGame:
@@ -79,6 +82,24 @@ func _test_respawn_policy_and_permanent_death_hud() -> void:
 	var status_hud := STATUS_HUD_SCENE.instantiate() as TowerDefenseStatusHUD
 	root.add_child(status_hud)
 	await process_frame
+	_expect(
+		status_hud.player_life_status_hud is PlayerLifeStatusHUD
+		and status_hud.player_life_status_hud.scene_file_path
+		== LIFE_STATUS_HUD_SCENE.resource_path,
+		"TowerDefenseStatusHUD must be a façade over the authored shared life-status component."
+	)
+	var shared_scene_source := FileAccess.get_file_as_string(
+		"res://scene/ui/shared/player_life_status_hud.tscn"
+	)
+	_expect(
+		shared_scene_source.contains("scene/ui/shared/player_death_screen.gdshader")
+		and not shared_scene_source.contains("tower_defense_death_screen.gdshader")
+		and not shared_scene_source.contains("tower_defense_gate_warning.gdshader")
+		and not shared_scene_source.contains("home_gate_double_warning.wav")
+		and status_hud.get_node_or_null("GateWarningOverlay") is ColorRect
+		and status_hud.get_node_or_null("GateWarningAudio") is AudioStreamPlayer,
+		"Shared death visuals must remain neutral while core warnings stay on the tower wrapper."
+	)
 	status_hud.set_dead_player_list_enabled(false)
 	status_hud.show_local_permanent_death(7)
 	_expect(
@@ -487,10 +508,8 @@ func _test_singleplayer_flow_and_respawn() -> void:
 	var defeat_audio_playback := game.defeat_audio.get_playback_position()
 	game.call("_enter_defeat")
 	_expect(game.defeat_audio.get_playback_position() >= defeat_audio_playback, "Duplicate defeat events must not restart the local presentation.")
-	game.wave_hud.show_defeat()
-	_expect(game.wave_hud.result_subtitle.text.contains("全员"), "The shared WaveHUD must retain standard-mode defeat wording.")
 	game.wave_hud.show_tower_defense_defeat()
-	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "Tower defense must reuse WaveHUD with its dedicated exact wording.")
+	_expect(game.wave_hud.result_subtitle.text == "核心生命值归0，游戏结束", "TowerDefenseWaveHUD must retain its dedicated exact wording.")
 
 	_stop_audio_players(game)
 	game.queue_free()

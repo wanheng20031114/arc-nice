@@ -1,0 +1,10 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" uid="uid://cvh5s1gowuh0r" path="res://scene/merchants/luoxi/luoxi_merchant.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/merchants/luoxi/tower_defense_luoxi_merchant.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_overlay.tscn" id="3_special_game"]
+
+[node name="LuoxiMerchant" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+
+[node name="LuoxiSpecialGameOverlay" parent="." instance=ExtResource("3_special_game")]

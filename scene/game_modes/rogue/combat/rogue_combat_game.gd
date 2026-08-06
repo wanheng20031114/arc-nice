@@ -21,8 +21,8 @@ var combat_time_limit_seconds := 90.0
 @export var enemy_pickup_drops_enabled := false
 
 @onready var rogue_combat_hud: RogueCombatHUD = $RogueCombatHUD
-@onready var tower_defense_status_hud: TowerDefenseStatusHUD = (
-	$TowerDefenseStatusHUD
+@onready var player_life_status_hud: PlayerLifeStatusHUD = (
+	$PlayerLifeStatusLayer/PlayerLifeStatusHUD
 )
 @onready var combat_deadline_timer: Timer = $CombatDeadlineTimer
 
@@ -115,7 +115,14 @@ func _append_forbidden_static_content_errors(
 
 func _ready() -> void:
 	super._ready()
-	tower_defense_status_hud.set_dead_player_list_enabled(false)
+	# MpRogueRoute does not expose the standard MpGame profile request façade.
+	# Preserve the pre-split behavior until the typed Rogue adapter is installed:
+	# inventory and crafting remain local, while a client view cannot upgrade.
+	player_profile_panel.configure_multiplayer_requests(false)
+	player_profile_panel.configure_local_upgrade_authority(
+		runtime_mode != RuntimeMode.CLIENT_VIEW
+	)
+	player_life_status_hud.set_dead_player_list_enabled(false)
 
 
 func allows_player_respawn(_peer_id: int) -> bool:
@@ -309,7 +316,7 @@ func _present_permanent_death(peer_id: int) -> void:
 		or peer_id == multiplayer_local_peer_id
 	)
 	if is_local_death:
-		tower_defense_status_hud.show_local_permanent_death(peer_id)
+		player_life_status_hud.show_local_permanent_death(peer_id)
 
 
 func _enter_victory(emit_multiplayer: bool = true) -> void:

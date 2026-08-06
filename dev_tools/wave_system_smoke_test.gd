@@ -219,7 +219,7 @@ func _test_wave_state_flow() -> void:
 	var merchant_collision := (
 		merchant.get_node("StaticBody2D/CollisionShape2D") as CollisionShape2D
 	)
-	var wave_hud := game.get_node("WaveHUD") as WaveHUD
+	var wave_hud := game.get_node("WaveHUD") as StandardWaveHUD
 	var test_waves := _configure_test_campaign(game, 3)
 	game.set("pre_wave_duration", 5.0)
 	game.call("_enter_pre_flow_step", test_waves[0])

@@ -78,9 +78,16 @@ func _run() -> void:
 	var p1b_definition := GameModeCatalog.get_definition(5)
 	var p2_definition := GameModeCatalog.get_definition(3)
 	for definition in [tower_definition, p1_definition, p1b_definition, p2_definition]:
+		var preload_paths := GameModeCatalog.get_preload_resource_paths(definition)
 		_expect(
-			GameModeCatalog.get_preload_resource_paths(definition).size() == 26,
-			"Tower-defense preload profile must contain exactly 26 paths."
+			preload_paths.size() == 49,
+			"Tower-defense preload profile must contain exactly 49 paths."
+		)
+		_expect(
+			preload_paths.has(
+				"res://scene/plant_defense/agave_cannonball.tscn"
+			),
+			"Tower-defense preload profile must retain the agave cannonball."
 		)
 	var rogue_definition := GameModeCatalog.get_definition(4)
 	_expect(

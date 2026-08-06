@@ -9,12 +9,14 @@ const DIRT := preload(
 const APPLE := preload(
 	"res://resources/config/collectibles/collectible_apple.tres"
 )
-const LUOXI_SCENE := preload("res://scene/luoxi_merchant.tscn")
+const LUOXI_SCENE := preload(
+	"res://scene/game_modes/tower_defense/merchants/luoxi/tower_defense_luoxi_merchant.tscn"
+)
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
 const OVERLAY_SCENE := preload(
-	"res://scene/luoxi_special_game_overlay.tscn"
+	"res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_overlay.tscn"
 )
 
 
@@ -115,7 +117,7 @@ func _test_ticket_dialogue_and_atomic_consumption() -> void:
 	var player_instance := _make_player(0, 100)
 	var merchant := LuoxiMerchant.new()
 	merchant.is_active = true
-	var dialogue_probe := LUOXI_SCENE.instantiate() as LuoxiMerchant
+	var dialogue_probe := LUOXI_SCENE.instantiate() as TowerDefenseLuoxiMerchant
 	test_root.add_child(dialogue_probe)
 	var lines := dialogue_probe.call("_build_dialogue_lines", player_instance) as Array
 	_expect(
@@ -371,7 +373,7 @@ func _test_overlay_copy_and_xirang_icon_contract() -> void:
 
 
 func _test_merchant_session_ui_guards() -> void:
-	var merchant := LUOXI_SCENE.instantiate() as LuoxiMerchant
+	var merchant := LUOXI_SCENE.instantiate() as TowerDefenseLuoxiMerchant
 	var player_instance := PLAYER_SCENE.instantiate() as Player
 	test_root.add_child(merchant)
 	test_root.add_child(player_instance)
@@ -396,7 +398,8 @@ func _test_merchant_session_ui_guards() -> void:
 	)
 	var resume_lines := merchant.call("_build_dialogue_lines", player_instance) as Array
 	_expect(
-		resume_lines == LuoxiMerchant.SPECIAL_GAME_RESUME_DIALOGUE_LINES,
+		resume_lines
+		== TowerDefenseLuoxiMerchant.SPECIAL_GAME_RESUME_DIALOGUE_LINES,
 		"整理背包后再次交互必须恢复原局，而不是要求第二张券。"
 	)
 

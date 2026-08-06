@@ -109,7 +109,9 @@ func _test_profile_button_does_not_fire() -> void:
 	var profile_button := game.get_node(
 		"CurrencyHUD/TopRightMargin/Content/ProfileButton"
 	) as Button
-	var profile_panel := game.get_node("PlayerProfilePanel") as PlayerProfilePanel
+	var profile_panel := (
+		game.get_node("PlayerProfilePanel") as StandardPlayerProfilePanel
+	)
 	var button_position := profile_button.get_global_rect().get_center()
 
 	_press_left_mouse(button_position)
@@ -186,7 +188,9 @@ func _test_settings_button_opens_and_closes() -> void:
 
 func _test_profile_inventory_blank_click_clears_selection() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	var profile_panel := game.get_node("PlayerProfilePanel") as PlayerProfilePanel
+	var profile_panel := (
+		game.get_node("PlayerProfilePanel") as StandardPlayerProfilePanel
+	)
 	run_state.begin_new_run()
 	run_state.set_active_multiplayer_peer(0)
 	_expect(run_state.try_add_item(APPLE_COLLECTIBLE), "Profile blank-click test must place an inventory item.")
@@ -196,8 +200,12 @@ func _test_profile_inventory_blank_click_clears_selection() -> void:
 	profile_panel.call("_on_slot_selected", 0)
 	await process_frame
 
-	var first_slot := profile_panel.get_node("Overlay/PanelRoot/InventoryGrid/Slot00") as InventorySlot
-	var item_detail_panel := profile_panel.get_node("Overlay/PanelRoot/ItemDetailPanel") as PanelContainer
+	var first_slot := profile_panel.get_node(
+		"Overlay/PanelRoot/PlayerInventoryView/InventoryGrid/Slot00"
+	) as InventorySlot
+	var item_detail_panel := profile_panel.get_node(
+		"Overlay/PanelRoot/PlayerInventoryView/ItemDetailPanel"
+	) as PanelContainer
 	_expect(first_slot.button_pressed, "Selecting an inventory item must mark the slot selected.")
 	_expect(item_detail_panel.visible, "Selecting an inventory item must show the detail panel.")
 
@@ -249,7 +257,9 @@ func _test_dodge_success_feedback() -> void:
 
 func _test_profile_upgrade_levels_and_skill_details() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
-	var profile_panel := game.get_node("PlayerProfilePanel") as PlayerProfilePanel
+	var profile_panel := (
+		game.get_node("PlayerProfilePanel") as StandardPlayerProfilePanel
+	)
 	run_state.begin_new_run()
 	run_state.set_active_multiplayer_peer(0)
 	player.current_xirang = 100000
@@ -287,18 +297,30 @@ func _test_profile_upgrade_levels_and_skill_details() -> void:
 	_expect(attack_row.upgrade_button.disabled, "Maxed upgrade row button must be disabled.")
 	_expect(attack_row.upgrade_button.text == "已满", "Maxed upgrade row button must read 已满.")
 
-	var skill_info := profile_panel.get_node("Overlay/PanelRoot/SkillInfo") as Control
+	var skill_info := profile_panel.get_node(
+		"Overlay/PanelRoot/PlayerStatsView/SkillInfo"
+	) as Control
 	_expect(player.has_skill1(), "Player must start with skill1 unlocked.")
 	_expect(skill_info.visible, "Starting skill details must be visible when the profile opens.")
 	player.skill1_charge = 4.0
 	await process_frame
 	_expect(skill_info.visible, "Starting skill details must remain visible after charge changes.")
-	var skill_description := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillDescription") as Label
-	var skill_icon := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillIcon") as TextureRect
-	var skill_name := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillName") as Label
-	var skill_cost := profile_panel.get_node("Overlay/PanelRoot/SkillInfo/SkillCost") as Label
+	var skill_description := profile_panel.get_node(
+		"Overlay/PanelRoot/PlayerStatsView/SkillInfo/SkillDescription"
+	) as Label
+	var skill_icon := profile_panel.get_node(
+		"Overlay/PanelRoot/PlayerStatsView/SkillInfo/SkillIcon"
+	) as TextureRect
+	var skill_name := profile_panel.get_node(
+		"Overlay/PanelRoot/PlayerStatsView/SkillInfo/SkillName"
+	) as Label
+	var skill_cost := profile_panel.get_node(
+		"Overlay/PanelRoot/PlayerStatsView/SkillInfo/SkillCost"
+	) as Label
 	_expect(
-		not profile_panel.has_node("Overlay/PanelRoot/SkillInfo/SkillCharge"),
+		not profile_panel.has_node(
+			"Overlay/PanelRoot/PlayerStatsView/SkillInfo/SkillCharge"
+		),
 		"Skill details must not show current charge anymore."
 	)
 	_expect(skill_icon.texture != null, "Skill details must show the dialogue skill icon.")

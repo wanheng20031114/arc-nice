@@ -1,0 +1,428 @@
+[gd_scene format=3 uid="uid://c1ykm22bhdrww"]
+
+[ext_resource type="Script" uid="uid://chqhyqkbrpo7d" path="res://scene/merchants/luoxi/luoxi_collectible_choice_overlay.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="Shader" path="res://resources/shader/luoxi_collectible_card_aura.gdshader" id="3_card_aura"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_card_aura"]
+shader = ExtResource("3_card_aura")
+
+[sub_resource type="LabelSettings" id="LabelSettings_hint"]
+font = ExtResource("2_font")
+font_size = 22
+font_color = Color(0.98, 0.96, 0.91, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card"]
+bg_color = Color(0.98, 0.955, 0.915, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.94, 0.96, 1, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0.94, 0.96, 1, 0.18)
+shadow_size = 8
+shadow_offset = Vector2(0, 3)
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("2_font")
+font_size = 20
+font_color = Color(0.12, 0.08, 0.06, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_description_padding"]
+bg_color = Color(0, 0, 0, 0)
+content_margin_left = 7.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button"]
+bg_color = Color(1, 0.13, 0.18, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
+bg_color = Color(1, 0.25, 0.3, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button_focus"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_refresh_panel"]
+bg_color = Color(0.105, 0.095, 0.105, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.86, 0.69, 0.36, 0.72)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 8
+shadow_offset = Vector2(0, 3)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_refresh_button"]
+bg_color = Color(0.82, 0.58, 0.18, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.86, 0.52, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_refresh_button_hover"]
+bg_color = Color(0.96, 0.7, 0.24, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.94, 0.7, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_refresh_button_disabled"]
+bg_color = Color(0.42, 0.42, 0.44, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.72, 0.72, 0.74, 0.58)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="LuoxiCollectibleChoiceOverlay" type="CanvasLayer" unique_id=806676433]
+layer = 24
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="." unique_id=2004211365]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="Root" unique_id=390468018]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.02, 0.02, 0.024, 0.58)
+
+[node name="Center" type="CenterContainer" parent="Root" unique_id=1517159410]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Content" type="VBoxContainer" parent="Root/Center" unique_id=511263312]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Hint" type="Label" parent="Root/Center/Content" unique_id=1993063417]
+layout_mode = 2
+text = "选择一件收藏品"
+label_settings = SubResource("LabelSettings_hint")
+horizontal_alignment = 1
+
+[node name="SubHint" type="Label" parent="Root/Center/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.76, 0.72, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 14
+text = "本次休整期仅可带走一件 · 刷新不会消耗选择机会"
+horizontal_alignment = 1
+
+[node name="CardRow" type="HBoxContainer" parent="Root/Center/Content" unique_id=150055867]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="Card0" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=291548480]
+material = SubResource("ShaderMaterial_card_aura")
+custom_minimum_size = Vector2(216, 310)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card0" unique_id=1477577521]
+layout_mode = 2
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card0/Margin" unique_id=1547430834]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=1126013106]
+custom_minimum_size = Vector2(70, 70)
+layout_mode = 2
+stretch_mode = 5
+
+[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=826438005]
+custom_minimum_size = Vector2(0, 31)
+layout_mode = 2
+text = "苹果"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=470103328]
+custom_minimum_size = Vector2(186, 112)
+layout_mode = 2
+theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
+theme_override_fonts/normal_font = ExtResource("2_font")
+theme_override_font_sizes/normal_font_size = 14
+theme_override_constants/line_separation = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_description_padding")
+bbcode_enabled = true
+scroll_active = true
+autowrap_mode = 1
+
+[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card0/Margin/Content" unique_id=370601807]
+custom_minimum_size = Vector2(174, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "选择"
+
+[node name="Card1" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=720937956]
+material = SubResource("ShaderMaterial_card_aura")
+custom_minimum_size = Vector2(216, 310)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card1" unique_id=509203194]
+layout_mode = 2
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card1/Margin" unique_id=1299720501]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1599623077]
+custom_minimum_size = Vector2(70, 70)
+layout_mode = 2
+stretch_mode = 5
+
+[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1623936676]
+custom_minimum_size = Vector2(0, 31)
+layout_mode = 2
+text = "苹果"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=105613967]
+custom_minimum_size = Vector2(186, 112)
+layout_mode = 2
+theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
+theme_override_fonts/normal_font = ExtResource("2_font")
+theme_override_font_sizes/normal_font_size = 14
+theme_override_constants/line_separation = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_description_padding")
+bbcode_enabled = true
+scroll_active = true
+autowrap_mode = 1
+
+[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card1/Margin/Content" unique_id=1090403270]
+custom_minimum_size = Vector2(174, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "选择"
+
+[node name="Card2" type="PanelContainer" parent="Root/Center/Content/CardRow" unique_id=1836196567]
+material = SubResource("ShaderMaterial_card_aura")
+custom_minimum_size = Vector2(216, 310)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card2" unique_id=1945149136]
+layout_mode = 2
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card2/Margin" unique_id=834209544]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1216970820]
+custom_minimum_size = Vector2(70, 70)
+layout_mode = 2
+stretch_mode = 5
+
+[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1426775712]
+custom_minimum_size = Vector2(0, 31)
+layout_mode = 2
+text = "苹果"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=1581851794]
+custom_minimum_size = Vector2(186, 112)
+layout_mode = 2
+theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
+theme_override_fonts/normal_font = ExtResource("2_font")
+theme_override_font_sizes/normal_font_size = 14
+theme_override_constants/line_separation = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_description_padding")
+bbcode_enabled = true
+scroll_active = true
+autowrap_mode = 1
+
+[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card2/Margin/Content" unique_id=877759733]
+custom_minimum_size = Vector2(174, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "选择"
+
+[node name="Card3" type="PanelContainer" parent="Root/Center/Content/CardRow"]
+material = SubResource("ShaderMaterial_card_aura")
+custom_minimum_size = Vector2(216, 310)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/CardRow/Card3"]
+layout_mode = 2
+theme_override_constants/margin_left = 15
+theme_override_constants/margin_top = 15
+theme_override_constants/margin_right = 15
+theme_override_constants/margin_bottom = 15
+
+[node name="Content" type="VBoxContainer" parent="Root/Center/Content/CardRow/Card3/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Icon" type="TextureRect" parent="Root/Center/Content/CardRow/Card3/Margin/Content"]
+custom_minimum_size = Vector2(70, 70)
+layout_mode = 2
+stretch_mode = 5
+
+[node name="Title" type="Label" parent="Root/Center/Content/CardRow/Card3/Margin/Content"]
+custom_minimum_size = Vector2(0, 31)
+layout_mode = 2
+text = "苹果"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Description" type="RichTextLabel" parent="Root/Center/Content/CardRow/Card3/Margin/Content"]
+custom_minimum_size = Vector2(186, 112)
+layout_mode = 2
+theme_override_colors/default_color = Color(0.18, 0.13, 0.1, 1)
+theme_override_fonts/normal_font = ExtResource("2_font")
+theme_override_font_sizes/normal_font_size = 14
+theme_override_constants/line_separation = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_description_padding")
+bbcode_enabled = true
+scroll_active = true
+autowrap_mode = 1
+
+[node name="SelectButton" type="Button" parent="Root/Center/Content/CardRow/Card3/Margin/Content"]
+custom_minimum_size = Vector2(174, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.97, 0.91, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "选择"
+
+[node name="RefreshPanel" type="PanelContainer" parent="Root/Center/Content"]
+custom_minimum_size = Vector2(0, 88)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_refresh_panel")
+
+[node name="Margin" type="MarginContainer" parent="Root/Center/Content/RefreshPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 12
+
+[node name="Layout" type="HBoxContainer" parent="Root/Center/Content/RefreshPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Info" type="VBoxContainer" parent="Root/Center/Content/RefreshPanel/Margin/Layout"]
+custom_minimum_size = Vector2(245, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="RefreshProgress" type="Label" parent="Root/Center/Content/RefreshPanel/Margin/Layout/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.82, 0.43, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 18
+text = "◇ ◇ ◇ ◇  0/4"
+
+[node name="RefreshStatus" type="Label" parent="Root/Center/Content/RefreshPanel/Margin/Layout/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.8, 0.76, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 13
+text = "本次休整期剩余 4 次刷新"
+
+[node name="RefreshButton" type="Button" parent="Root/Center/Content/RefreshPanel/Margin/Layout"]
+custom_minimum_size = Vector2(390, 54)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.09, 0.05, 1)
+theme_override_colors/font_hover_color = Color(0.08, 0.06, 0.03, 1)
+theme_override_colors/font_pressed_color = Color(0.08, 0.06, 0.03, 1)
+theme_override_colors/font_disabled_color = Color(0.86, 0.86, 0.87, 0.78)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_refresh_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_refresh_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_refresh_button_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_refresh_button_disabled")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_button_focus")
+text = "花费 100 息壤进行刷新（键盘 R / 手柄 RB）"

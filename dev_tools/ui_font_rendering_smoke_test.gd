@@ -1,13 +1,15 @@
 extends SceneTree
 
 const DIALOGUE_SCENE_PATHS: PackedStringArray = [
-	"res://scene/luoxi_dialogue_bubble.tscn",
-	"res://scene/merchant_dialogue_bubble.tscn",
+	"res://scene/merchants/luoxi/luoxi_dialogue_bubble.tscn",
+	"res://scene/merchants/shared/merchant_dialogue_bubble.tscn",
 ]
-const XIAOCONG_DIALOGUE_SCENE_PATH := "res://scene/xiaocong_dialogue_bubble.tscn"
+const XIAOCONG_DIALOGUE_SCENE_PATH := "res://scene/game_modes/tower_defense/fate/xiaocong_dialogue_bubble.tscn"
 const BOSS_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
 const AMBIENT_VFX_SCENE_PATH := "res://scene/vfx/tower_defense_ambient_vfx.tscn"
-const PLAYER_PROFILE_SCENE_PATH := "res://scene/player/ui/player_profile_panel.tscn"
+const PLAYER_PROFILE_SCENE_PATH := (
+	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
+)
 const DIALOGUE_CONTENT_ROOT := "DialogueLayer/Anchor"
 
 var failures: Array[String] = []
@@ -225,7 +227,11 @@ func _test_high_resolution_boss_nameplate() -> void:
 
 
 func _test_wave_hud_feedback() -> void:
-	var wave_hud := (load("res://scene/wave_hud.tscn") as PackedScene).instantiate() as WaveHUD
+	var wave_hud := (
+		load(
+			"res://scene/game_modes/standard/ui/standard_wave_hud.tscn"
+		) as PackedScene
+	).instantiate() as StandardWaveHUD
 	root.add_child(wave_hud)
 	await process_frame
 	wave_hud.call("_pulse_top_bar")

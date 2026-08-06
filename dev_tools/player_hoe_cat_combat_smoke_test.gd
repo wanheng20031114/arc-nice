@@ -914,8 +914,14 @@ func _test_whirlwind_damage_and_heal() -> void:
 
 
 func _test_dynamic_skill_profile() -> void:
-	var panel_scene := load("res://scene/player/ui/player_profile_panel.tscn") as PackedScene
-	var profile_panel := panel_scene.instantiate() as PlayerProfilePanel if panel_scene != null else null
+	var panel_scene := load(
+		"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
+	) as PackedScene
+	var profile_panel := (
+		panel_scene.instantiate() as StandardPlayerProfilePanel
+		if panel_scene != null
+		else null
+	)
 	_expect(profile_panel != null, "Player profile panel must instantiate for Hoe Cat presentation.")
 	if profile_panel == null:
 		return
@@ -947,7 +953,7 @@ func _test_dynamic_skill_profile() -> void:
 		profile_panel.attack_speed_value.text == "400",
 		"Profile panel must show only the 400 attack-speed value."
 	)
-	var merchant_scene := load("res://scene/zhuangfangyi_merchant.tscn") as PackedScene
+	var merchant_scene := load("res://scene/merchants/zhuangfangyi/zhuangfangyi_merchant.tscn") as PackedScene
 	var merchant := merchant_scene.instantiate() as ZhuangfangyiMerchant if merchant_scene != null else null
 	_expect(merchant != null, "Skill merchant must instantiate for Hoe Cat presentation.")
 	if merchant != null:

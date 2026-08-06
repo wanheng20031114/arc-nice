@@ -41,6 +41,32 @@ const TOWER_DEFENSE_PRELOAD_RESOURCE_PATHS := [
 	"res://scene/bullet.tscn",
 	"res://scene/bullet_hit_effect.tscn",
 	"res://scene/enemy/enemy_hit_effect.tscn",
+	# Keep the former plant registry expansion as pure paths. The order is
+	# intentionally identical to the registry's category/menu ordering so this
+	# boundary change does not alter the tower-defense loading trace.
+	"res://resources/config/plant_defense/agave_cannon.tres",
+	"res://resources/config/plant_defense/corn_machine_gun.tres",
+	"res://scene/plant_defense/corn_machine_gun.tscn",
+	"res://resources/config/plant_defense/bamboo_mortar.tres",
+	"res://scene/plant_defense/bamboo_mortar.tscn",
+	"res://resources/config/plant_defense/grape_arc_tower.tres",
+	"res://resources/config/plant_defense/hydrangea_rain_tower.tres",
+	"res://scene/plant_defense/hydrangea_rain_tower.tscn",
+	"res://resources/config/plant_defense/orange_charging_tower.tres",
+	"res://scene/plant_defense/orange_charging_tower.tscn",
+	"res://resources/config/plant_defense/wood_processing_station.tres",
+	"res://resources/config/plant_defense/water_collector.tres",
+	"res://scene/plant_defense/water_collector.tscn",
+	"res://resources/config/plant_defense/planting_base.tres",
+	"res://resources/config/plant_defense/plant_cultivation_center.tres",
+	"res://resources/config/plant_defense/excavator.tres",
+	"res://resources/config/plant_defense/stone_mill.tres",
+	"res://resources/config/plant_defense/research_center.tres",
+	"res://scene/plant_defense/research_center.tscn",
+	"res://resources/config/plant_defense/simple_fence.tres",
+	"res://resources/config/plant_defense/vegetation_stake.tres",
+	"res://scene/plant_defense/vegetation_stake.tscn",
+	"res://resources/config/plant_defense/oak_warehouse.tres",
 ]
 
 @export var definitions: Array[GameModeDefinition] = []

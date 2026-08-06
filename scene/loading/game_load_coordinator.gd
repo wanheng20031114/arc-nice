@@ -534,12 +534,6 @@ func _append_mode_preload_resources(
 ) -> void:
 	for path in GameModeCatalog.get_preload_resource_paths(definition):
 		_append_existing_resource_path(manifest, path)
-	for plant_config in PlantDefenseRegistry.get_all_configs():
-		if plant_config == null:
-			continue
-		_append_existing_resource_path(manifest, plant_config.resource_path)
-		if plant_config.plant_scene != null:
-			_append_existing_resource_path(manifest, plant_config.plant_scene.resource_path)
 	if include_all_characters:
 		for character_config in PlayerCharacterRegistry.get_all_configs():
 			if character_config != null:

@@ -1,0 +1,444 @@
+[gd_scene load_steps=21 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_card.tscn" id="2_card"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_body_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate/fate_garden_backdrop.png" id="5_backdrop"]
+[ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate/choice_panel_moon.png" id="6_choice_moon"]
+[ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate/choice_panel_dew.png" id="7_choice_dew"]
+[ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate/choice_panel_seed.png" id="8_choice_seed"]
+[ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate/xiaocong_keypose_hd.png" id="9_xiaocong_portrait"]
+[ext_resource type="Shader" path="res://resources/shader/xiaocong_fate_entrance_reveal.gdshader" id="10_entrance_reveal"]
+[ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="11_reveal_noise"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal"]
+bg_color = Color(0.025, 0.065, 0.052, 0.985)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.88, 0.72, 0.92)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.72)
+shadow_size = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button"]
+content_margin_left = 12.0
+content_margin_top = 9.0
+content_margin_right = 12.0
+content_margin_bottom = 9.0
+bg_color = Color(0.075, 0.145, 0.115, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.5, 0.68, 0.56, 0.84)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
+content_margin_left = 12.0
+content_margin_top = 9.0
+content_margin_right = 12.0
+content_margin_bottom = 9.0
+bg_color = Color(0.13, 0.23, 0.18, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.82, 0.92, 0.7, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="FontVariation" id="FontVariation_heading"]
+base_font = ExtResource("3_body_font")
+variation_embolden = 0.6
+spacing_top = 2
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("3_body_font")
+variation_embolden = 0.3
+spacing_top = 1
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = SubResource("FontVariation_heading")
+font_size = 28
+font_color = Color(0.96, 0.96, 0.84, 1)
+outline_size = 2
+outline_color = Color(0.008, 0.022, 0.017, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_shared"]
+font = SubResource("FontVariation_body")
+font_size = 15
+font_color = Color(0.58, 0.82, 0.78, 1)
+outline_size = 1
+outline_color = Color(0.008, 0.022, 0.017, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_status"]
+font = SubResource("FontVariation_body")
+font_size = 15
+font_color = Color(0.9, 0.78, 0.46, 1)
+outline_size = 1
+outline_color = Color(0.008, 0.022, 0.017, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_modal_title"]
+font = SubResource("FontVariation_heading")
+font_size = 23
+font_color = Color(0.92, 0.98, 0.9, 1)
+outline_size = 2
+outline_color = Color(0.01, 0.025, 0.018, 0.96)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_entrance_reveal"]
+resource_local_to_scene = true
+shader = ExtResource("10_entrance_reveal")
+shader_parameter/reveal_noise = ExtResource("11_reveal_noise")
+shader_parameter/growth_edge_color = Color(0.14, 0.145, 0.15, 0.2)
+shader_parameter/growth_core_color = Color(0.56, 0.57, 0.58, 0.3)
+shader_parameter/growth_edge_width = 0.02
+
+[node name="XiaocongFateChoiceOverlay" type="CanvasLayer"]
+visible = false
+layer = 24
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+texture_filter = 1
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="EntranceBackBuffer" type="BackBufferCopy" parent="Root"]
+visible = false
+copy_mode = 2
+
+[node name="Backdrop" type="TextureRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("5_backdrop")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Shade" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.005, 0.015, 0.012, 0.34)
+
+[node name="ScreenMargin" type="MarginContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 38
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 38
+theme_override_constants/margin_bottom = 24
+
+[node name="MainRow" type="HBoxContainer" parent="Root/ScreenMargin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 30
+
+[node name="PortraitStage" type="CenterContainer" parent="Root/ScreenMargin/MainRow"]
+custom_minimum_size = Vector2(390, 520)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.82
+mouse_filter = 2
+
+[node name="PortraitFrame" type="Control" parent="Root/ScreenMargin/MainRow/PortraitStage"]
+custom_minimum_size = Vector2(366, 478)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Xiaocong" type="TextureRect" parent="Root/ScreenMargin/MainRow/PortraitStage/PortraitFrame"]
+texture_filter = 1
+layout_mode = 0
+offset_right = 1098.0
+offset_bottom = 1433.0
+scale = Vector2(0.333333, 0.333333)
+mouse_filter = 2
+texture = ExtResource("9_xiaocong_portrait")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="DecisionColumn" type="VBoxContainer" parent="Root/ScreenMargin/MainRow"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.18
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="VBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="Title" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+layout_mode = 2
+text = "第 1 日已经通过 · 决定命运"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="SharedHint" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+layout_mode = 2
+text = "这是一次共同抉择 · 每位玩家的投票都会留在选项上"
+label_settings = SubResource("LabelSettings_shared")
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Status" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+layout_mode = 2
+text = "等待所有玩家投票"
+label_settings = SubResource("LabelSettings_status")
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Divider" type="ColorRect" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.68, 0.82, 0.68, 0.36)
+
+[node name="ChoiceList" type="VBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Choice0" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+background_texture = ExtResource("6_choice_moon")
+
+[node name="Choice1" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+option_index = 1
+background_texture = ExtResource("7_choice_dew")
+
+[node name="Choice2" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+option_index = 2
+background_texture = ExtResource("8_choice_seed")
+
+[node name="BuffModal" type="CenterContainer" parent="Root"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Panel" type="PanelContainer" parent="Root/BuffModal"]
+custom_minimum_size = Vector2(560, 360)
+layout_mode = 2
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_modal")
+
+[node name="Margin" type="MarginContainer" parent="Root/BuffModal/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
+
+[node name="Content" type="VBoxContainer" parent="Root/BuffModal/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Root/BuffModal/Panel/Margin/Content"]
+texture_filter = 2
+layout_mode = 2
+text = "选择你要投票的永久增益"
+label_settings = SubResource("LabelSettings_modal_title")
+horizontal_alignment = 1
+
+[node name="Buff0" type="Button" parent="Root/BuffModal/Panel/Margin/Content"]
+texture_filter = 2
+custom_minimum_size = Vector2(0, 62)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "永久增益一"
+autowrap_mode = 2
+
+[node name="Buff1" type="Button" parent="Root/BuffModal/Panel/Margin/Content"]
+texture_filter = 2
+custom_minimum_size = Vector2(0, 62)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "永久增益二"
+autowrap_mode = 2
+
+[node name="Buff2" type="Button" parent="Root/BuffModal/Panel/Margin/Content"]
+texture_filter = 2
+custom_minimum_size = Vector2(0, 62)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "永久增益三"
+autowrap_mode = 2
+
+[node name="Cancel" type="Button" parent="Root/BuffModal/Panel/Margin/Content"]
+texture_filter = 2
+custom_minimum_size = Vector2(120, 34)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "返回"
+
+[node name="CollectibleCenter" type="CenterContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Root/CollectibleCenter"]
+visible = false
+custom_minimum_size = Vector2(820, 430)
+layout_mode = 2
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_modal")
+
+[node name="Margin" type="MarginContainer" parent="Root/CollectibleCenter/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
+
+[node name="Content" type="VBoxContainer" parent="Root/CollectibleCenter/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Root/CollectibleCenter/Panel/Margin/Content"]
+texture_filter = 2
+layout_mode = 2
+text = "选择一件收藏品"
+label_settings = SubResource("LabelSettings_modal_title")
+horizontal_alignment = 1
+
+[node name="Status" type="Label" parent="Root/CollectibleCenter/Panel/Margin/Content"]
+texture_filter = 2
+layout_mode = 2
+text = "请选择一件收藏品"
+label_settings = SubResource("LabelSettings_status")
+horizontal_alignment = 1
+
+[node name="Choices" type="GridContainer" parent="Root/CollectibleCenter/Panel/Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+columns = 2
+
+[node name="Choice0" type="Button" parent="Root/CollectibleCenter/Panel/Margin/Content/Choices"]
+texture_filter = 2
+custom_minimum_size = Vector2(370, 120)
+layout_mode = 2
+icon_max_width = 44
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "收藏品一"
+autowrap_mode = 2
+
+[node name="Choice1" type="Button" parent="Root/CollectibleCenter/Panel/Margin/Content/Choices"]
+texture_filter = 2
+custom_minimum_size = Vector2(370, 120)
+layout_mode = 2
+icon_max_width = 44
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "收藏品二"
+autowrap_mode = 2
+
+[node name="Choice2" type="Button" parent="Root/CollectibleCenter/Panel/Margin/Content/Choices"]
+texture_filter = 2
+custom_minimum_size = Vector2(370, 120)
+layout_mode = 2
+icon_max_width = 44
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "收藏品三"
+autowrap_mode = 2
+
+[node name="Choice3" type="Button" parent="Root/CollectibleCenter/Panel/Margin/Content/Choices"]
+texture_filter = 2
+custom_minimum_size = Vector2(370, 120)
+layout_mode = 2
+icon_max_width = 44
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+text = "收藏品四"
+autowrap_mode = 2
+
+[node name="EntranceRevealCover" type="ColorRect" parent="Root"]
+visible = false
+z_index = 100
+material = SubResource("ShaderMaterial_entrance_reveal")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(1, 1, 1, 1)

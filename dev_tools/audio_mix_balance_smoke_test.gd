@@ -21,11 +21,11 @@ const PLANT_PLACEMENT_SCENE := preload(
 const PLANT_REMOVAL_SCENE := preload(
 	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
 )
-const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchant_dialogue_bubble.tscn")
+const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchants/shared/merchant_dialogue_bubble.tscn")
 const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const UPGRADE_ROW_SCENE := preload("res://scene/upgrade_row.tscn")
 const XIAOCONG_FATE_CHOICE_OVERLAY_SCENE := preload(
-	"res://scene/xiaocong_fate_choice_overlay.tscn"
+	"res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.tscn"
 )
 
 const AK_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")

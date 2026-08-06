@@ -5,7 +5,7 @@
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]
 [ext_resource type="PackedScene" path="res://scene/currency_hud.tscn" id="12_currency_hud"]
-[ext_resource type="PackedScene" path="res://scene/player/ui/player_profile_panel.tscn" id="13_profile_panel"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn" id="13_profile_panel"]
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]
 [ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
 [ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/damage_number_pool.gd" id="18_damage_pool"]
@@ -20,7 +20,7 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="29_night_vfx_flash_pool"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="30_combat_robot_drone_motion"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_hud.tscn" id="31_rogue_hud"]
-[ext_resource type="PackedScene" uid="uid://coffbf6d8ioi" path="res://scene/tower_defense_status_hud.tscn" id="32_death_hud"]
+[ext_resource type="PackedScene" uid="uid://d4jmq3n7wpx2a" path="res://scene/ui/shared/player_life_status_hud.tscn" id="32_life_hud"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -216,6 +216,14 @@ night_energy = 0.3
 
 [node name="RogueCombatHUD" parent="." unique_id=2078669616 instance=ExtResource("31_rogue_hud")]
 
-[node name="TowerDefenseStatusHUD" parent="." unique_id=137382043 instance=ExtResource("32_death_hud")]
+[node name="PlayerLifeStatusLayer" type="CanvasLayer" parent="."]
+layer = 90
+
+[node name="PlayerLifeStatusHUD" parent="PlayerLifeStatusLayer" instance=ExtResource("32_life_hud")]
 
 [connection signal="timeout" from="CombatDeadlineTimer" to="." method="_on_combat_deadline_timer_timeout"]
+[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_upgrade_requested"]
+[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_inventory_item_use_requested"]
+[connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_inventory_item_discard_requested"]
+[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_simple_crafting_requested"]
+[connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_simple_crafting_cancel_requested"]

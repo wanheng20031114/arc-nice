@@ -2,7 +2,9 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const PICKUP_SCENE := preload("res://scene/pickup.tscn")
-const PROFILE_PANEL_SCENE := preload("res://scene/player/ui/player_profile_panel.tscn")
+const PROFILE_PANEL_SCENE := preload(
+	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
+)
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
 const SPEED := preload("res://resources/config/pickups/pickup_speed.tres")
 const RAPID := preload("res://resources/config/pickups/pickup_rapid.tres")
@@ -761,7 +763,7 @@ func _test_material_inventory_detail() -> void:
 	run_state.begin_new_run()
 	_expect(run_state.try_add_item(WOOD) and run_state.try_add_item(WOOD), "UI setup must create a two-item wood stack.")
 	var player := PLAYER_SCENE.instantiate() as Player
-	var profile := PROFILE_PANEL_SCENE.instantiate() as PlayerProfilePanel
+	var profile := PROFILE_PANEL_SCENE.instantiate() as StandardPlayerProfilePanel
 	test_root.add_child(player)
 	test_root.add_child(profile)
 	await process_frame

@@ -10,7 +10,9 @@ func _initialize() -> void:
 	await process_frame
 	await process_frame
 	var player := game.get_node("Player") as Player
-	var profile_panel := game.get_node("PlayerProfilePanel") as PlayerProfilePanel
+	var profile_panel := (
+		game.get_node("PlayerProfilePanel") as StandardPlayerProfilePanel
+	)
 	player.unlock_skill1()
 	profile_panel.open()
 	await process_frame

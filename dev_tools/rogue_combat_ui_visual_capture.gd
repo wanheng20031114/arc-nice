@@ -62,7 +62,7 @@ func _run() -> void:
 
 func _capture_preparation_hud() -> void:
 	_result.hide_immediately()
-	_combat.tower_defense_status_hud.clear_all_respawns()
+	_combat.player_life_status_hud.clear_all_respawns()
 	_combat.rogue_combat_hud.show_preparation("狭路相逢", 3.0, 10)
 	await _wait_frames(2)
 	_expect(
@@ -148,12 +148,12 @@ func _capture_failure_result() -> void:
 func _capture_permanent_death() -> void:
 	_result.hide_immediately()
 	_combat.rogue_combat_hud.show_combat("狭路相逢", 47.0, 4, 10)
-	_combat.tower_defense_status_hud.set_dead_player_list_enabled(false)
-	_combat.tower_defense_status_hud.show_local_permanent_death(0)
+	_combat.player_life_status_hud.set_dead_player_list_enabled(false)
+	_combat.player_life_status_hud.show_local_permanent_death(0)
 	# 捕捉实际入场动画的完整提示阶段：卡片已完全显现，仍明确写出
 	# “本次作战无法复活”，同时全屏死亡遮罩正在淡入。
 	await create_timer(0.32).timeout
-	var death_hud := _combat.tower_defense_status_hud
+	var death_hud := _combat.player_life_status_hud
 	_expect(
 		death_hud.local_countdown_label.text == "本次作战无法复活"
 		and death_hud.local_permanent_death_active,
