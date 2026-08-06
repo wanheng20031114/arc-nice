@@ -186,6 +186,9 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 	$CampaignCoordinator
 )
 @onready var enemy_coordinator: TowerDefenseEnemyCoordinator = $EnemyCoordinator
+@onready var home_defense_coordinator: TowerDefenseHomeDefenseCoordinator = (
+	$HomeDefenseCoordinator
+)
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
 )
@@ -326,12 +329,54 @@ var enemy_retarget_cursor: int:
 		_enemy_retarget_cursor = value
 		if enemy_coordinator != null:
 			enemy_coordinator.enemy_retarget_cursor = value
-var home_objective_targets: Array[Node2D] = []
-var maximum_base_health: int = DEFAULT_BASE_HEALTH
-var current_base_health: int = DEFAULT_BASE_HEALTH
-var base_health_revision: int = 0
-var has_received_remote_base_health_snapshot := false
-var resolved_home_enemy_ids: Dictionary = {}
+var _home_objective_targets: Array[Node2D] = []
+var home_objective_targets: Array[Node2D]:
+	get:
+		return (
+			home_defense_coordinator.home_objective_targets
+			if home_defense_coordinator != null
+			else _home_objective_targets
+		)
+	set(value):
+		_home_objective_targets = value
+		if home_defense_coordinator != null:
+			home_defense_coordinator.home_objective_targets.assign(value)
+var _maximum_base_health := DEFAULT_BASE_HEALTH
+var maximum_base_health: int:
+	get:
+		return home_defense_coordinator.maximum_base_health if home_defense_coordinator != null else _maximum_base_health
+	set(value):
+		_maximum_base_health = value
+		if home_defense_coordinator != null:
+			home_defense_coordinator.maximum_base_health = value
+var _current_base_health := DEFAULT_BASE_HEALTH
+var current_base_health: int:
+	get:
+		return home_defense_coordinator.current_base_health if home_defense_coordinator != null else _current_base_health
+	set(value):
+		_current_base_health = value
+		if home_defense_coordinator != null:
+			home_defense_coordinator.current_base_health = value
+var _base_health_revision := 0
+var base_health_revision: int:
+	get:
+		return home_defense_coordinator.base_health_revision if home_defense_coordinator != null else _base_health_revision
+	set(value):
+		_base_health_revision = value
+		if home_defense_coordinator != null:
+			home_defense_coordinator.base_health_revision = value
+var _has_received_remote_base_health_snapshot := false
+var has_received_remote_base_health_snapshot: bool:
+	get:
+		return home_defense_coordinator.has_received_remote_base_health_snapshot if home_defense_coordinator != null else _has_received_remote_base_health_snapshot
+	set(value):
+		_has_received_remote_base_health_snapshot = value
+		if home_defense_coordinator != null:
+			home_defense_coordinator.has_received_remote_base_health_snapshot = value
+var _resolved_home_enemy_ids: Dictionary = {}
+var resolved_home_enemy_ids: Dictionary:
+	get:
+		return home_defense_coordinator.resolved_home_enemy_ids if home_defense_coordinator != null else _resolved_home_enemy_ids
 var _next_multiplayer_enemy_net_id := 1
 var next_multiplayer_enemy_net_id: int:
 	get:
@@ -1044,43 +1089,77 @@ func _attach_camera_to_local_player() -> void:
 
 
 func _configure_home_defense() -> void:
-	if run_state != null:
-		run_state.ensure_run_started()
-		maximum_base_health = run_state.get_party_core_maximum_health()
-		current_base_health = run_state.get_party_core_health()
-		# 蓝门复制revision属于当前塔防实例；队伍账本revision还会因玩家和
-		# 最大生命惩罚变化而前进，不能混用同一序列。
-		base_health_revision = 0
-	else:
-		maximum_base_health = DEFAULT_BASE_HEALTH
-		current_base_health = maximum_base_health
-		base_health_revision = 0
-	resolved_home_enemy_ids.clear()
-	home_objective_targets.clear()
-	if home_gate_controller == null:
-		push_error("TowerDefenseGame: HomeGateController 缺失。")
-	else:
-		home_gate_controller.setup(overlay_tile_map_layer)
-		home_objective_targets = home_gate_controller.get_objective_targets()
-		if not home_gate_controller.enemy_reached_home.is_connected(_on_enemy_reached_home):
-			home_gate_controller.enemy_reached_home.connect(_on_enemy_reached_home)
+	home_defense_coordinator.setup(
+		runtime_mode,
+		run_state,
+		home_gate_controller,
+		overlay_tile_map_layer,
+		DEFAULT_BASE_HEALTH,
+		_get_home_flow_state,
+		_has_active_enemy,
+		_get_active_home_boss
+	)
+	if not home_gate_controller.enemy_reached_home.is_connected(
+		enemy_coordinator.report_enemy_reached_home
+	):
+		home_gate_controller.enemy_reached_home.connect(
+			enemy_coordinator.report_enemy_reached_home
+		)
+	if not enemy_coordinator.enemy_reached_home.is_connected(
+		home_defense_coordinator.on_enemy_reached_home
+	):
+		enemy_coordinator.enemy_reached_home.connect(
+			home_defense_coordinator.on_enemy_reached_home
+		)
+	if not home_defense_coordinator.enemy_escaped.is_connected(_on_home_enemy_escaped):
+		home_defense_coordinator.enemy_escaped.connect(_on_home_enemy_escaped)
+	if not home_defense_coordinator.base_health_changed.is_connected(
+		_on_home_base_health_changed
+	):
+		home_defense_coordinator.base_health_changed.connect(_on_home_base_health_changed)
+	if not home_defense_coordinator.base_defeated.is_connected(_enter_defeat):
+		home_defense_coordinator.base_defeated.connect(_enter_defeat)
+	if not home_defense_coordinator.boss_escaped.is_connected(_on_home_boss_escaped):
+		home_defense_coordinator.boss_escaped.connect(_on_home_boss_escaped)
+	if not home_defense_coordinator.wave_escape_finished.is_connected(
+		_finish_home_wave_escape
+	):
+		home_defense_coordinator.wave_escape_finished.connect(
+		_finish_home_wave_escape
+		)
 	_update_base_health_display()
 
 
+func _get_home_flow_state() -> int:
+	return wave_state
+
+
+func _get_active_home_boss() -> Enemy:
+	return linglan_boss if linglan_boss != null and is_instance_valid(linglan_boss) else null
+
+
+func _clear_resolved_home_enemy_ids() -> void:
+	if home_defense_coordinator != null:
+		home_defense_coordinator.clear_resolved_enemy_ids()
+	else:
+		_resolved_home_enemy_ids.clear()
+
+
 func get_home_objective_targets() -> Array[Node2D]:
-	return home_objective_targets.duplicate()
+	return home_defense_coordinator.get_home_targets() if home_defense_coordinator != null else home_objective_targets.duplicate()
 
 
 func get_linglan_home_objective_target(from_position: Vector2) -> Node2D:
+	if home_defense_coordinator != null:
+		return home_defense_coordinator.get_nearest_home_target(from_position)
 	var nearest_target: Node2D = null
 	var nearest_distance_squared := INF
 	for target in home_objective_targets:
-		if target == null or not is_instance_valid(target):
-			continue
-		var distance_squared := from_position.distance_squared_to(target.global_position)
-		if distance_squared < nearest_distance_squared:
-			nearest_distance_squared = distance_squared
-			nearest_target = target
+		if target != null and is_instance_valid(target):
+			var distance_squared := from_position.distance_squared_to(target.global_position)
+			if distance_squared < nearest_distance_squared:
+				nearest_distance_squared = distance_squared
+				nearest_target = target
 	return nearest_target
 
 
@@ -1099,11 +1178,9 @@ func _configure_minimap() -> void:
 
 
 func get_base_health_snapshot() -> Dictionary:
-	return {
-		"current_health": current_base_health,
-		"maximum_health": maximum_base_health,
-		"revision": base_health_revision,
-	}
+	if home_defense_coordinator != null:
+		return home_defense_coordinator.get_base_health_snapshot()
+	return {"current_health": current_base_health, "maximum_health": maximum_base_health, "revision": base_health_revision}
 
 
 func apply_remote_base_health(
@@ -1111,34 +1188,10 @@ func apply_remote_base_health(
 	new_maximum_health: int,
 	new_revision: int
 ) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	if (
-		has_received_remote_base_health_snapshot
-		and new_revision <= base_health_revision
-	):
-		return
-	if not has_received_remote_base_health_snapshot and new_revision < base_health_revision:
-		return
-	var previous_health := current_base_health
-	var safe_maximum := maxi(new_maximum_health, 1)
-	var safe_current := clampi(new_current_health, 0, safe_maximum)
-	maximum_base_health = safe_maximum
-	current_base_health = safe_current
-	base_health_revision = new_revision
-	# 客户端只镜像房主已决定的核心值，并禁止再次发出状态信号，避免网络
-	# 消息与本地 ledger 观察者形成回写环。
-	if run_state != null:
-		run_state.set_party_core_health(safe_current, safe_maximum, false)
-	_update_base_health_display(has_received_remote_base_health_snapshot)
-	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
-	if (
-		has_received_remote_base_health_snapshot
-		and current_base_health < previous_health
-		and tower_defense_status_hud != null
-	):
-		tower_defense_status_hud.play_gate_damage_warning()
-	has_received_remote_base_health_snapshot = true
+	if home_defense_coordinator != null:
+		home_defense_coordinator.apply_remote_base_health(
+			new_current_health, new_maximum_health, new_revision
+		)
 
 
 func apply_remote_enemy_escape(net_id: int) -> void:
@@ -1150,51 +1203,41 @@ func apply_remote_enemy_escape(net_id: int) -> void:
 	multiplayer_enemies_by_net_id.erase(net_id)
 	multiplayer_enemy_ids_by_instance.erase(enemy.get_instance_id())
 	unregister_combat_target(net_id)
-	enemy.remove_for_home_escape()
+	if home_defense_coordinator != null:
+		home_defense_coordinator.apply_remote_enemy_escape(enemy)
+	else:
+		enemy.remove_for_home_escape()
 
 
 func _on_enemy_reached_home(enemy: Enemy, _gate_cell: Vector2i) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
-		return
-	if enemy == null or not is_instance_valid(enemy) or enemy.is_dead:
-		return
-	var enemy_id := enemy.get_instance_id()
-	if resolved_home_enemy_ids.has(enemy_id):
-		return
-	resolved_home_enemy_ids[enemy_id] = true
 	if enemy_coordinator != null:
 		enemy_coordinator.report_enemy_reached_home(enemy, _gate_cell)
+	elif home_defense_coordinator != null:
+		home_defense_coordinator.on_enemy_reached_home(enemy, _gate_cell)
 
-	var resolves_active_wave := (
-		wave_state == CombatFlowState.State.WAVE_ACTIVE
-		and _has_active_enemy(enemy_id)
-	)
-	var resolves_boss_step := (
-		wave_state == CombatFlowState.State.BOSS_ACTIVE
-		and enemy == linglan_boss
-		and _has_active_enemy(enemy_id)
-	)
+
+func _on_home_enemy_escaped(
+	enemy: Enemy,
+	resolves_active_wave: bool,
+	resolves_boss_step: bool
+) -> void:
+	var enemy_id := enemy.get_instance_id()
 	if resolves_active_wave or resolves_boss_step:
 		current_wave_escaped = mini(current_wave_escaped + 1, current_wave_total)
 		current_wave_resolved = mini(current_wave_resolved + 1, current_wave_total)
 		_remove_active_enemy(enemy_id)
-
-	var home_damage := (
-		current_base_health
-		if resolves_boss_step
-		else enemy.config.home_damage if enemy.config != null else 1
-	)
 	_remove_hud_alive_enemy(enemy_id)
 	_emit_multiplayer_enemy_escaped(enemy)
 	enemy.remove_for_home_escape()
-	_apply_base_damage(maxi(home_damage, 1))
 
-	if resolves_active_wave:
-		_show_tower_defense_wave_progress()
-		_check_wave_completion()
-	elif resolves_boss_step and wave_state != CombatFlowState.State.DEFEAT:
+
+func _finish_home_wave_escape() -> void:
+	_show_tower_defense_wave_progress()
+	_check_wave_completion()
+
+
+func _on_home_boss_escaped() -> void:
+	if wave_state != CombatFlowState.State.DEFEAT:
 		call_deferred("_complete_escaped_boss_step")
 
 
@@ -1210,39 +1253,28 @@ func _emit_multiplayer_enemy_escaped(enemy: Enemy) -> void:
 
 
 func _apply_base_damage(amount: int) -> void:
-	if amount <= 0 or current_base_health <= 0:
-		return
-	var request := DamageRequest.new(amount, CombatTypes.DamageType.PHYSICAL)
-	request.with_flag(CombatTypes.DamageFlag.BYPASS_MITIGATION)
-	var result := DamageResolver.resolve(
-		request,
-		DamageTargetProfile.new(current_base_health)
-	)
-	if not result.accepted:
-		return
-	current_base_health = result.health_after
-	if run_state != null and runtime_mode != RuntimeMode.CLIENT_VIEW:
-		if not run_state.set_party_core_health(
-			current_base_health,
-			maximum_base_health
-		):
-			push_error("TowerDefenseGame: 无法回写本局共享核心生命。")
-			return
-		current_base_health = run_state.get_party_core_health()
-		maximum_base_health = run_state.get_party_core_maximum_health()
-	base_health_revision += 1
-	_update_base_health_display()
-	if tower_defense_status_hud != null:
-		tower_defense_status_hud.play_gate_damage_warning()
-	base_health_changed.emit(current_base_health, maximum_base_health, base_health_revision)
+	if home_defense_coordinator != null:
+		home_defense_coordinator.apply_base_damage(amount)
+
+
+func _on_home_base_health_changed(
+	new_current_health: int,
+	new_maximum_health: int,
+	new_revision: int
+) -> void:
+	_update_base_health_display(home_defense_coordinator.last_change_play_damage_pulse)
+	if home_defense_coordinator.last_change_was_remote:
+		base_health_changed.emit(new_current_health, new_maximum_health, new_revision)
+		if home_defense_coordinator.last_change_play_damage_pulse and tower_defense_status_hud != null:
+			tower_defense_status_hud.play_gate_damage_warning()
+	else:
+		if tower_defense_status_hud != null:
+			tower_defense_status_hud.play_gate_damage_warning()
+		base_health_changed.emit(new_current_health, new_maximum_health, new_revision)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		tower_multiplayer_mode_adapter.base_health_changed.emit(
-			current_base_health,
-			maximum_base_health,
-			base_health_revision
+			new_current_health, new_maximum_health, new_revision
 		)
-	if current_base_health <= 0:
-		_enter_defeat()
 
 
 func _update_base_health_display(play_damage_pulse: bool = true) -> void:
@@ -4723,7 +4755,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	current_wave_defeated = 0
 	current_wave_escaped = 0
 	current_wave_resolved = 0
-	resolved_home_enemy_ids.clear()
+	_clear_resolved_home_enemy_ids()
 	_clear_active_enemies()
 	_clear_hud_alive_enemies()
 	_build_wave_spawn_queue(wave_config)
@@ -5568,7 +5600,7 @@ func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
 	current_wave_defeated = 0
 	current_wave_escaped = 0
 	current_wave_resolved = 0
-	resolved_home_enemy_ids.clear()
+	_clear_resolved_home_enemy_ids()
 	_clear_hud_alive_enemies()
 	_set_merchant_active(false)
 	wave_hud.show_tower_defense_boss_progress(0, 1)
