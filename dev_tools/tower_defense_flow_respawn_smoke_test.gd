@@ -5,7 +5,7 @@ const TOWER_PROGRESSION_CONFIG := preload(
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
-const STATUS_HUD_SCENE := preload("res://scene/tower_defense_status_hud.tscn")
+const STATUS_HUD_SCENE := preload("res://scene/game_modes/tower_defense/ui/tower_defense_status_hud.tscn")
 const LIFE_STATUS_HUD_SCENE := preload(
 	"res://scene/ui/shared/player_life_status_hud.tscn"
 )

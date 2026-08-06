@@ -13,7 +13,7 @@ const PLACEMENT_PREVIEW_SCENE := preload(
 const PLACEMENT_CONTROLLER_SCENE := preload(
 	"res://scene/plant_defense/plant_placement_controller.tscn"
 )
-const MINIMAP_SCENE := preload("res://scene/tower_defense_minimap.tscn")
+const MINIMAP_SCENE := preload("res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.tscn")
 
 var failures: Array[String] = []
 

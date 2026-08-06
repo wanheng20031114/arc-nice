@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://scene/day_phase_announcement.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/ui/day_phase_announcement.gd" id="1_script"]
 [ext_resource type="FontFile" uid="uid://4mguytg8qi1g" path="res://resources/font/NotoSansHans-Black.otf" id="2_font"]
 [ext_resource type="AudioStream" uid="uid://dr4ok21o1mxke" path="res://resources/audio/ui/day_phase_announcement_dong.wav" id="3_dong"]
 

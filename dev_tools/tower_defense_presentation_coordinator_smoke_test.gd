@@ -10,10 +10,10 @@ const WAVE_HUD_SCENE := preload(
 	"res://scene/game_modes/tower_defense/ui/tower_defense_wave_hud.tscn"
 )
 const DAY_ANNOUNCEMENT_SCENE := preload(
-	"res://scene/day_phase_announcement.tscn"
+	"res://scene/game_modes/tower_defense/ui/day_phase_announcement.tscn"
 )
 const STATUS_HUD_SCENE := preload(
-	"res://scene/tower_defense_status_hud.tscn"
+	"res://scene/game_modes/tower_defense/ui/tower_defense_status_hud.tscn"
 )
 const DAY_CYCLE := preload(
 	"res://resources/config/day_cycle/tower_defense_day_cycle.tres"

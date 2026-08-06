@@ -3,7 +3,7 @@ extends SceneTree
 # Focused CPU comparison for the two minimap loops that appear in the Godot
 # profiler. Each optimized path is measured against the former implementation
 # with the same 192 x 108 projection and representative horde/topology counts.
-const MINIMAP_SCENE := preload("res://scene/tower_defense_minimap.tscn")
+const MINIMAP_SCENE := preload("res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.tscn")
 
 const CANVAS_SIZE := Vector2(192.0, 108.0)
 const WORLD_SIZE := Vector2(960.0, 540.0)

@@ -1,11 +1,11 @@
 [gd_scene load_steps=16 format=3]
 
-[ext_resource type="Script" path="res://scene/tower_defense_minimap.gd" id="1_root"]
-[ext_resource type="Script" path="res://scene/tower_defense_minimap_canvas.gd" id="2_canvas"]
-[ext_resource type="Script" path="res://scene/tower_defense_minimap_static_layer.gd" id="3_static"]
-[ext_resource type="Script" path="res://scene/tower_defense_minimap_dynamic_layer.gd" id="4_dynamic"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.gd" id="1_root"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_canvas.gd" id="2_canvas"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_static_layer.gd" id="3_static"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_dynamic_layer.gd" id="4_dynamic"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]
-[ext_resource type="Shader" path="res://scene/tower_defense_minimap_enemy_marker.gdshader" id="6_enemy_marker_shader"]
+[ext_resource type="Shader" path="res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap_enemy_marker.gdshader" id="6_enemy_marker_shader"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_map"]
 bg_color = Color(0.018, 0.035, 0.03, 0.9)

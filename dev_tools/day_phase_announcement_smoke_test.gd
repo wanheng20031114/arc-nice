@@ -1,6 +1,6 @@
 extends SceneTree
 
-const ANNOUNCEMENT_SCENE := preload("res://scene/day_phase_announcement.tscn")
+const ANNOUNCEMENT_SCENE := preload("res://scene/game_modes/tower_defense/ui/day_phase_announcement.tscn")
 const PRESENTATION_SCENE := preload(
 	"res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn"
 )

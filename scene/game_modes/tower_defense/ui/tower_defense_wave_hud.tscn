@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://d0om1j0qqamd3" path="res://scene/game_modes/tower_defense/ui/tower_defense_wave_hud.gd" id="1_script"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
 [ext_resource type="Texture2D" path="res://resources/texture/defeat_window_background.png" id="3_defeat_bg"]
-[ext_resource type="Script" path="res://scene/tower_defense_day_dial.gd" id="4_day_dial"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/ui/tower_defense_day_dial.gd" id="4_day_dial"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bar"]
 bg_color = Color(0.018, 0.052, 0.043, 0.94)

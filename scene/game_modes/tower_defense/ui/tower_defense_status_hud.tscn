@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3 uid="uid://coffbf6d8ioi"]
 
-[ext_resource type="Script" uid="uid://koukhiiw1jia" path="res://scene/tower_defense_status_hud.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://koukhiiw1jia" path="res://scene/game_modes/tower_defense/ui/tower_defense_status_hud.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://d4jmq3n7wpx2a" path="res://scene/ui/shared/player_life_status_hud.tscn" id="2_life_status"]
 [ext_resource type="Shader" uid="uid://cgr1g0qc61d7n" path="res://scene/tower_defense_gate_warning.gdshader" id="3_gate_shader"]
 [ext_resource type="AudioStream" uid="uid://c6hjqkt83rb6k" path="res://resources/audio/ui/home_gate_double_warning.wav" id="4_warning_audio"]

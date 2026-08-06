@@ -1,7 +1,7 @@
 extends SceneTree
 
 const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
-const MINIMAP_SCENE := preload("res://scene/tower_defense_minimap.tscn")
+const MINIMAP_SCENE := preload("res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.tscn")
 const REMOTE_PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_basic.tscn")
 const MAX_SAMPLE_RATE_HZ := 30.0
