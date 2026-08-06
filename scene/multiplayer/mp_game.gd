@@ -4,6 +4,9 @@ const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const MpProjectileCoordinatorScript := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const MpWorldFlowCoordinatorScript := preload(
+	"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
+)
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := (
 	MpProjectileCoordinatorScript.LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
 )
@@ -57,7 +60,6 @@ const HYDRANGEA_RAIN_TOWER_SCRIPT := preload(
 	"res://scene/plant_defense/hydrangea_rain_tower.gd"
 )
 const CORN_MACHINE_GUN_SCRIPT := preload("res://scene/plant_defense/corn_machine_gun.gd")
-const PICKUP_SCENE := preload("res://scene/pickup.tscn")
 const TANGO_ELECTRIC_SURGE_FIELD_SCENE := preload(
 	"res://scene/player/tango/tango_electric_surge_field.tscn"
 )
@@ -123,7 +125,6 @@ const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
 const BAMBOO_MORTAR_VISUAL_FLUSH_INTERVAL_SECONDS := 0.05
 const CORN_MACHINE_GUN_BURST_FLUSH_INTERVAL_SECONDS := 0.05
-const WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS := 0.1
 const PLANT_HEALTH_FLUSH_INTERVAL_SECONDS := 0.05
 # Plant records carry 41 raw packed bytes before RPC/ENet framing. Twenty-four
 # records stay near 984 bytes and below the project's 1200-byte packet budget.
@@ -196,6 +197,7 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var player_coordinator: MpPlayerCoordinator = $PlayerCoordinator
 @onready var enemy_coordinator: MpEnemyCoordinator = $EnemyCoordinator
 @onready var projectile_coordinator: MpProjectileCoordinatorScript = $ProjectileCoordinator
+@onready var world_flow_coordinator: MpWorldFlowCoordinatorScript = $WorldFlowCoordinator
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var _agave_cannonball_scene: PackedScene = null
@@ -258,7 +260,6 @@ var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _snapshot_packet_warn_time_left: float = 0.0
 var _host_startup_snapshot_grace_time_left: float = 0.0
 var _client_host_game_ready: bool = false
-var _client_has_received_flow_state: bool = false
 var _max_player_snapshot_packet_bytes: int = 0
 var _max_enemy_snapshot_packet_bytes: int = 0
 var _large_player_snapshot_packet_count: int = 0
@@ -360,9 +361,6 @@ var _removed_remote_plant_ids: Dictionary = {}
 var _removed_remote_plant_id_order: Array[int] = []
 var _remote_plant_feedback_revisions: Dictionary = {}
 var _remote_plant_feedback_revision_order: Array[int] = []
-var _pending_wave_progress: Dictionary = {}
-var _wave_progress_flush_time_left: float = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
-var _last_applied_remote_enemy_count: int = -1
 var _public_room_keepalive_time_left: float = 0.0
 var _public_room_keepalive_in_flight: bool = false
 var _next_terrain_snapshot_id: int = 1
@@ -399,6 +397,7 @@ func _ready() -> void:
 		enemy_coordinator.remote_enemy_escape_requested.connect(
 			_on_remote_enemy_escape_requested
 		)
+	_connect_world_flow_coordinator_signals()
 	set_multiplayer_authority(_get_host_peer_id())
 	if not net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
 		net_manager.connection_state_changed.connect(_on_connection_state_changed)
@@ -428,6 +427,52 @@ func _ready() -> void:
 		_announce_embedded_runtime_when_prepared()
 	else:
 		_report_game_loaded_when_prepared()
+
+
+func _connect_world_flow_coordinator_signals() -> void:
+	var signal_bindings: Array[Array] = [
+		[
+			world_flow_coordinator.pickup_spawn_broadcast_requested,
+			_on_world_flow_pickup_spawn_broadcast_requested,
+		],
+		[
+			world_flow_coordinator.pickup_remove_broadcast_requested,
+			_on_world_flow_pickup_remove_broadcast_requested,
+		],
+		[
+			world_flow_coordinator.merchant_active_broadcast_requested,
+			_on_world_flow_merchant_active_broadcast_requested,
+		],
+		[
+			world_flow_coordinator.wave_progress_broadcast_requested,
+			_on_world_flow_wave_progress_broadcast_requested,
+		],
+		[
+			world_flow_coordinator.flow_state_broadcast_requested,
+			_on_world_flow_state_broadcast_requested,
+		],
+		[
+			world_flow_coordinator.boss_started_broadcast_requested,
+			_on_world_flow_boss_started_broadcast_requested,
+		],
+		[
+			world_flow_coordinator.defeat_broadcast_requested,
+			_on_world_flow_defeat_broadcast_requested,
+		],
+		[
+			world_flow_coordinator.victory_broadcast_requested,
+			_on_world_flow_victory_broadcast_requested,
+		],
+		[
+			world_flow_coordinator.terminal_flow_started,
+			_clear_pending_player_revives,
+		],
+	]
+	for binding in signal_bindings:
+		var source: Signal = binding[0]
+		var target: Callable = binding[1]
+		if not source.is_connected(target):
+			source.connect(target)
 
 
 func _exit_tree() -> void:
@@ -464,6 +509,8 @@ func _exit_tree() -> void:
 			enemy_coordinator.unbind_runtime(game)
 		if projectile_coordinator != null:
 			projectile_coordinator.unbind_runtime(game)
+		if world_flow_coordinator != null:
+			world_flow_coordinator.unbind_runtime(game)
 	else:
 		if session_coordinator != null:
 			session_coordinator.reset_session_state()
@@ -473,6 +520,8 @@ func _exit_tree() -> void:
 			enemy_coordinator.reset_session_state()
 		if projectile_coordinator != null:
 			projectile_coordinator.reset_session_state()
+		if world_flow_coordinator != null:
+			world_flow_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -492,7 +541,6 @@ func _exit_tree() -> void:
 	_clear_remote_plant_health_state()
 	_clear_pending_warehouse_snapshots()
 	_clear_pending_remote_production_states()
-	_pending_wave_progress.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_terrain_snapshot_repair_watchdog_time_left = 0.0
@@ -652,11 +700,7 @@ func _process(delta: float) -> void:
 	if net_manager.is_client() and game != null:
 		_update_terrain_snapshot_repair_watchdog(delta)
 		enemy_coordinator.update_proxy_visual_budget(delta)
-		var remote_enemy_count := enemy_coordinator.get_remote_enemy_count()
-		if remote_enemy_count != _last_applied_remote_enemy_count:
-			_last_applied_remote_enemy_count = remote_enemy_count
-			if _mode_adapter != null:
-				_mode_adapter.apply_remote_enemy_count(remote_enemy_count)
+		world_flow_coordinator.update_client_enemy_count()
 
 
 func request_multiplayer_upgrade(stat_type: int) -> void:
@@ -823,10 +867,10 @@ func request_multiplayer_skill1_purchase() -> void:
 
 
 func request_multiplayer_start_wave() -> void:
-	if not _has_tower_mode():
+	if not world_flow_coordinator.supports_wave_progress():
 		return
 	if net_manager.is_host():
-		tower_mode_adapter.request_authoritative_wave_start(
+		world_flow_coordinator.request_authoritative_wave_start(
 			_get_local_peer_id()
 		)
 	else:
@@ -3022,6 +3066,12 @@ func _setup_game(mode: int) -> bool:
 	player_coordinator.bind_runtime(game)
 	enemy_coordinator.bind_runtime(game)
 	projectile_coordinator.bind_runtime(game)
+	world_flow_coordinator.bind_runtime(
+		game,
+		mode_adapter,
+		enemy_coordinator,
+		gameplay_gateway
+	)
 	gameplay_gateway.attach_multiplayer_session(self)
 	mode_adapter.attach_multiplayer_session(self)
 	tower_mode_adapter = mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -3031,27 +3081,17 @@ func _setup_game(mode: int) -> bool:
 		gameplay_gateway.enemy_defeated.connect(_on_host_enemy_defeated)
 		gameplay_gateway.enemy_removed.connect(_on_host_enemy_removed)
 		gameplay_gateway.enemy_escaped.connect(_on_host_enemy_escaped)
-		gameplay_gateway.pickup_spawned.connect(_on_host_pickup_spawned)
 		gameplay_gateway.pickup_collected.connect(_on_host_pickup_collected)
-		gameplay_gateway.pickup_removed.connect(_on_host_pickup_removed)
-		mode_adapter.merchant_active_changed.connect(_on_host_merchant_active_changed)
-		mode_adapter.flow_state_changed.connect(_on_host_flow_state_changed)
-		mode_adapter.boss_started.connect(_on_host_boss_started)
 		if _linglan_boss_runtime_port != null:
 			_linglan_boss_runtime_port.airdrop_started.connect(
 				_on_host_linglan_airdrop_started
 			)
-		mode_adapter.defeat_started.connect(_on_host_defeat_started)
-		mode_adapter.victory_started.connect(_on_host_victory_started)
 		mode_adapter.revive_all_requested.connect(_on_host_revive_all_requested)
 		gameplay_gateway.player_teleport_requested.connect(
 			_on_host_player_teleport_requested
 		)
 		if tower_adapter != null:
 			tower_adapter.base_health_changed.connect(_on_host_base_health_changed)
-			tower_adapter.wave_progress_changed.connect(
-				_on_host_tower_defense_wave_progress_changed
-			)
 			tower_adapter.xiaocong_fate_state_changed.connect(
 				_on_host_xiaocong_fate_state_changed
 			)
@@ -3127,6 +3167,8 @@ func _setup_game(mode: int) -> bool:
 
 
 func _discard_unparented_game_runtime() -> void:
+	if game != null and world_flow_coordinator != null:
+		world_flow_coordinator.unbind_runtime(game)
 	if game != null and session_coordinator != null:
 		session_coordinator.unbind_runtime(game)
 	if game != null and player_coordinator != null:
@@ -3162,7 +3204,7 @@ func _request_runtime_state_from_host() -> void:
 		_arm_terrain_snapshot_repair_watchdog()
 	net_runtime_state_requested.rpc_id(
 		_get_host_peer_id(),
-		not _client_has_received_flow_state
+		not world_flow_coordinator.has_received_flow_state()
 	)
 
 
@@ -3201,16 +3243,17 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 				int(base_snapshot.get("maximum_health", 1)),
 				int(base_snapshot.get("revision", 0))
 			)
-		var progress_snapshot := tower_mode_adapter.get_wave_progress_snapshot()
-		if not progress_snapshot.is_empty():
-			net_tower_defense_wave_progress_keyframe.rpc_id(
-				peer_id,
-				int(progress_snapshot.get("wave_number", 1)),
-				int(progress_snapshot.get("defeated", 0)),
-				int(progress_snapshot.get("escaped", 0)),
-				int(progress_snapshot.get("resolved", 0)),
-				int(progress_snapshot.get("total", 0))
-			)
+	var progress_snapshot := world_flow_coordinator.get_wave_progress_snapshot()
+	if not progress_snapshot.is_empty():
+		net_tower_defense_wave_progress_keyframe.rpc_id(
+			peer_id,
+			int(progress_snapshot.get("wave_number", 1)),
+			int(progress_snapshot.get("defeated", 0)),
+			int(progress_snapshot.get("escaped", 0)),
+			int(progress_snapshot.get("resolved", 0)),
+			int(progress_snapshot.get("total", 0))
+		)
+	if _has_tower_mode():
 		var fate_snapshot := tower_mode_adapter.get_xiaocong_fate_state_snapshot()
 		if not fate_snapshot.is_empty():
 			net_xiaocong_fate_state_changed.rpc_id(
@@ -3228,11 +3271,7 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 			tower_mode_adapter.get_test_arena_manual_night_enabled()
 		)
 	if include_flow_state:
-		var flow_snapshot: Dictionary = (
-			_mode_adapter.get_flow_state_snapshot()
-			if _mode_adapter != null
-			else {}
-		)
+		var flow_snapshot := world_flow_coordinator.get_flow_state_snapshot()
 		if not flow_snapshot.is_empty():
 			net_flow_state_changed.rpc_id(
 				peer_id,
@@ -3447,32 +3486,25 @@ func _send_live_enemy_roster_to_peer(peer_id: int) -> void:
 
 
 func _send_live_pickup_roster_to_peer(peer_id: int) -> void:
-	var sorted_ids: Array[int] = []
-	for net_id_variant in game.multiplayer_pickups.keys():
-		sorted_ids.append(int(net_id_variant))
-	sorted_ids.sort()
-	for net_id in sorted_ids:
-		var pickup_variant: Variant = game.multiplayer_pickups.get(net_id)
-		if pickup_variant == null or not is_instance_valid(pickup_variant):
-			continue
-		var pickup := pickup_variant as Pickup
-		if pickup == null or pickup.config == null or pickup.config.resource_path.is_empty():
-			continue
+	for record in world_flow_coordinator.build_live_pickup_records():
+		var net_id := int(record.get("net_id", 0))
+		var config_path := String(record.get("config_path", ""))
+		var spawn_position := record.get("position", Vector2.ZERO) as Vector2
 		_record_outbound_rpc(
 			&"net_pickup_spawned",
 			[
 				net_id,
-				pickup.config.resource_path,
-				pickup.global_position.x,
-				pickup.global_position.y,
+				config_path,
+				spawn_position.x,
+				spawn_position.y,
 			]
 		)
 		net_pickup_spawned.rpc_id(
 			peer_id,
 			net_id,
-			pickup.config.resource_path,
-			pickup.global_position.x,
-			pickup.global_position.y
+			config_path,
+			spawn_position.x,
+			spawn_position.y
 		)
 
 
@@ -6480,10 +6512,7 @@ func _update_batched_network_events(delta: float) -> void:
 	if _plant_health_flush_time_left <= 0.0:
 		_plant_health_flush_time_left = PLANT_HEALTH_FLUSH_INTERVAL_SECONDS
 		_flush_plant_health_updates()
-	_wave_progress_flush_time_left -= maxf(delta, 0.0)
-	if _wave_progress_flush_time_left <= 0.0:
-		_wave_progress_flush_time_left = WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
-		_flush_wave_progress()
+	if world_flow_coordinator.update_host(delta):
 		_flush_tiyi_target_updates()
 
 
@@ -8264,24 +8293,6 @@ func _on_host_base_health_changed(
 	)
 
 
-func _on_host_tower_defense_wave_progress_changed(
-	wave_number: int,
-	defeated: int,
-	escaped: int,
-	resolved: int,
-	total: int
-) -> void:
-	if not _has_tower_mode() or not is_inside_tree() or not net_manager.is_host():
-		return
-	_pending_wave_progress = {
-		"wave_number": wave_number,
-		"defeated": defeated,
-		"escaped": escaped,
-		"resolved": resolved,
-		"total": total,
-	}
-
-
 func _on_host_xiaocong_fate_state_changed(state: Dictionary) -> void:
 	if (
 		not is_inside_tree()
@@ -8326,22 +8337,6 @@ func _on_host_player_teleport_requested(
 			player_coordinator.get_host_snapshot_sequence(),
 		]
 	)
-
-
-func _flush_wave_progress() -> void:
-	if not _has_tower_mode() or _pending_wave_progress.is_empty():
-		return
-	_rpc_to_connected_clients(
-		&"net_tower_defense_wave_progress_changed",
-		[
-			int(_pending_wave_progress.get("wave_number", 1)),
-			int(_pending_wave_progress.get("defeated", 0)),
-			int(_pending_wave_progress.get("escaped", 0)),
-			int(_pending_wave_progress.get("resolved", 0)),
-			int(_pending_wave_progress.get("total", 0)),
-		]
-	)
-	_pending_wave_progress.clear()
 
 
 func _broadcast_base_health_snapshot() -> void:
@@ -8694,22 +8689,22 @@ func broadcast_enemy_lightning_chain(points: PackedVector2Array) -> void:
 	_rpc_to_connected_clients(&"net_enemy_lightning_chain", [points])
 
 
-func _on_host_pickup_removed(net_id: int) -> void:
+func _on_world_flow_pickup_remove_broadcast_requested(net_id: int) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
 	_rpc_to_connected_clients(&"net_pickup_removed", [net_id])
 
 
-func _on_host_pickup_spawned(
+func _on_world_flow_pickup_spawn_broadcast_requested(
 	net_id: int,
-	pickup_config: PickupConfig,
+	config_path: String,
 	spawn_position: Vector2
 ) -> void:
-	if pickup_config == null or not is_inside_tree() or not net_manager.is_host():
+	if config_path.is_empty() or not is_inside_tree() or not net_manager.is_host():
 		return
 	_rpc_to_connected_clients(
 		&"net_pickup_spawned",
-		[net_id, pickup_config.resource_path, spawn_position.x, spawn_position.y]
+		[net_id, config_path, spawn_position.x, spawn_position.y]
 	)
 
 
@@ -8743,7 +8738,7 @@ func _on_host_pickup_collected(
 	)
 
 
-func _on_host_merchant_active_changed(active: bool) -> void:
+func _on_world_flow_merchant_active_broadcast_requested(active: bool) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
 	if active:
@@ -8751,42 +8746,48 @@ func _on_host_merchant_active_changed(active: bool) -> void:
 	_rpc_to_connected_clients(&"net_merchant_active_changed", [active])
 
 
-func _on_host_flow_state_changed(step_id: StringName, state: int, countdown_seconds: int) -> void:
+func _on_world_flow_state_broadcast_requested(
+	step_id: StringName,
+	state: int,
+	countdown_seconds: int
+) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	_flush_wave_progress()
-	_broadcast_wave_progress_keyframe()
 	_rpc_to_connected_clients(&"net_flow_state_changed", [String(step_id), state, countdown_seconds])
 
 
-func _broadcast_wave_progress_keyframe() -> void:
-	if not _has_tower_mode():
-		return
-	var snapshot := tower_mode_adapter.get_wave_progress_snapshot()
-	if snapshot.is_empty():
+func _on_world_flow_wave_progress_broadcast_requested(
+	progress: Dictionary,
+	reliable: bool
+) -> void:
+	if not is_inside_tree() or not net_manager.is_host() or progress.is_empty():
 		return
 	_rpc_to_connected_clients(
-		&"net_tower_defense_wave_progress_keyframe",
+		(
+			&"net_tower_defense_wave_progress_keyframe"
+			if reliable
+			else &"net_tower_defense_wave_progress_changed"
+		),
 		[
-			int(snapshot.get("wave_number", 1)),
-			int(snapshot.get("defeated", 0)),
-			int(snapshot.get("escaped", 0)),
-			int(snapshot.get("resolved", 0)),
-			int(snapshot.get("total", 0)),
+			int(progress.get("wave_number", 1)),
+			int(progress.get("defeated", 0)),
+			int(progress.get("escaped", 0)),
+			int(progress.get("resolved", 0)),
+			int(progress.get("total", 0)),
 		]
 	)
 
 
-func _on_host_boss_started(
+func _on_world_flow_boss_started_broadcast_requested(
 	net_id: int,
-	boss_config: BossConfig,
+	boss_config_path: String,
 	spawn_position: Vector2
 ) -> void:
-	if not is_inside_tree() or not net_manager.is_host() or boss_config == null:
+	if not is_inside_tree() or not net_manager.is_host() or boss_config_path.is_empty():
 		return
 	_rpc_to_connected_clients(
 		&"net_boss_started",
-		[net_id, boss_config.resource_path, spawn_position]
+		[net_id, boss_config_path, spawn_position]
 	)
 
 
@@ -8816,24 +8817,15 @@ func _on_host_linglan_airdrop_started(
 	)
 
 
-func _on_host_defeat_started() -> void:
+func _on_world_flow_defeat_broadcast_requested(failure_reason: String) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	_clear_pending_player_revives()
-	_rpc_to_connected_clients(
-		&"net_game_defeated",
-		[
-			_mode_adapter.get_multiplayer_defeat_reason()
-			if _mode_adapter != null
-			else ""
-		]
-	)
+	_rpc_to_connected_clients(&"net_game_defeated", [failure_reason])
 
 
-func _on_host_victory_started() -> void:
+func _on_world_flow_victory_broadcast_requested() -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	_clear_pending_player_revives()
 	_rpc_to_connected_clients(&"net_game_victory")
 
 
@@ -9936,9 +9928,7 @@ func net_tower_defense_wave_progress_changed(
 	resolved: int,
 	total: int
 ) -> void:
-	if not _has_tower_mode() or net_manager.is_host():
-		return
-	tower_mode_adapter.apply_remote_wave_progress(
+	world_flow_coordinator.receive_wave_progress(
 		wave_number,
 		defeated,
 		escaped,
@@ -10350,35 +10340,16 @@ func net_enemy_lightning_chain(points: PackedVector2Array) -> void:
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_pickup_removed(net_id: int) -> void:
-	if game == null or net_manager.is_host():
-		return
-	var pickup: Pickup = game.get_pickup_for_net_id(net_id)
-	if pickup == null or not is_instance_valid(pickup):
-		game.multiplayer_pickups.erase(net_id)
-		return
-	game.multiplayer_pickups.erase(net_id)
-	pickup.queue_free()
+	world_flow_coordinator.receive_pickup_removed(net_id)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_pickup_spawned(net_id: int, config_path: String, pos_x: float, pos_y: float) -> void:
-	if game == null or net_manager.is_host():
-		return
-	if game.get_pickup_for_net_id(net_id) != null:
-		return
-	var pickup_config := load(config_path) as PickupConfig
-	if pickup_config == null:
-		return
-	var pickup := PICKUP_SCENE.instantiate() as Pickup
-	if pickup == null:
-		return
-	pickup.config = pickup_config
-	game.enemy_container.add_child(pickup)
-	pickup.global_position = Vector2(pos_x, pos_y)
-	pickup.set_meta("net_id", net_id)
-	pickup.collision_layer = 0
-	pickup.collision_mask = 0
-	game.multiplayer_pickups[net_id] = pickup
+	world_flow_coordinator.receive_pickup_spawned(
+		net_id,
+		config_path,
+		Vector2(pos_x, pos_y)
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -10423,21 +10394,13 @@ func net_pickup_collected(
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_merchant_active_changed(active: bool) -> void:
-	if game == null or _mode_adapter == null or net_manager.is_host():
-		return
-	_mode_adapter.apply_remote_merchant_active(active)
+	world_flow_coordinator.receive_merchant_active(active)
 
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int) -> void:
-	if game == null or _mode_adapter == null or net_manager.is_host():
-		return
-	_client_has_received_flow_state = true
-	# The same count can need to repaint a newly entered wave/HUD state. Invalidate
-	# the render-frame cache at every authoritative flow transition.
-	_last_applied_remote_enemy_count = -1
-	_mode_adapter.apply_remote_flow_state(
+	world_flow_coordinator.receive_flow_state(
 		StringName(step_id),
 		state,
 		countdown_seconds
@@ -10446,19 +10409,12 @@ func net_flow_state_changed(step_id: String, state: int, countdown_seconds: int)
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_boss_started(net_id: int, boss_config_path: String, spawn_position: Vector2) -> void:
-	if game == null or _mode_adapter == null or net_manager.is_host():
-		return
-	var boss_config := load(boss_config_path) as BossConfig
-	if boss_config == null:
-		return
-	_mode_adapter.apply_remote_boss_started(net_id, boss_config, spawn_position)
-	var boss_enemy := game.get_enemy_for_net_id(net_id) as Enemy
-	if boss_enemy != null and is_instance_valid(boss_enemy):
-		enemy_coordinator.register_client_enemy(
-			net_id,
-			boss_enemy,
-			_get_net_time()
-		)
+	world_flow_coordinator.receive_boss_started(
+		net_id,
+		boss_config_path,
+		spawn_position,
+		_get_net_time()
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -10502,18 +10458,12 @@ func _get_linglan_boss_runtime_port() -> LinglanBossRuntimePort:
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_game_defeated(failure_reason: String = "") -> void:
-	if game == null or _mode_adapter == null or net_manager.is_host():
-		return
-	_clear_pending_player_revives()
-	_mode_adapter.apply_remote_defeat_with_reason(failure_reason)
+	world_flow_coordinator.receive_defeat(failure_reason)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_game_victory() -> void:
-	if game == null or _mode_adapter == null or net_manager.is_host():
-		return
-	_clear_pending_player_revives()
-	_mode_adapter.apply_remote_victory()
+	world_flow_coordinator.receive_victory()
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -10627,16 +10577,16 @@ func net_skill1_purchase_requested() -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tower_defense_start_wave_requested() -> void:
-	if not net_manager.is_host() or not _has_tower_mode():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
+	if not net_manager.is_host() or not world_flow_coordinator.supports_wave_progress():
+		return
 	if sender_id <= 0:
 		return
 	if not _consume_remote_transaction_admission(sender_id):
 		return
 	if game.get_player_for_peer(sender_id) == null:
 		return
-	tower_mode_adapter.request_authoritative_wave_start(sender_id)
+	world_flow_coordinator.request_authoritative_wave_start(sender_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -12261,6 +12211,7 @@ func _return_to_lobby() -> void:
 	player_coordinator.reset_session_state()
 	enemy_coordinator.reset_session_state()
 	projectile_coordinator.reset_session_state()
+	world_flow_coordinator.reset_session_state()
 	_disconnected_player_reconnect_states.clear()
 	_processed_collectible_effect_event_ids.clear()
 	_pending_plant_health_updates.clear()
@@ -12270,7 +12221,6 @@ func _return_to_lobby() -> void:
 	_pending_production_state_updates.clear()
 	_clear_pending_remote_production_states()
 	_shared_production_state_flush_scheduled = false
-	_pending_wave_progress.clear()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_client_terrain_revision = -1

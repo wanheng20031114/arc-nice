@@ -3,6 +3,9 @@ extends SceneTree
 const MpProjectileCoordinator := preload(
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const MpWorldFlowCoordinator := preload(
+	"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
+)
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
@@ -146,6 +149,10 @@ func _test_scene_instantiation() -> void:
 		_expect(
 			mp_game.get_node_or_null("EnemyCoordinator") is MpEnemyCoordinator,
 			"MpGame must statically instantiate its enemy synchronization coordinator."
+		)
+		_expect(
+			mp_game.get_node_or_null("WorldFlowCoordinator") is MpWorldFlowCoordinator,
+			"MpGame must statically instantiate its world-flow coordinator."
 		)
 		mp_game.free()
 

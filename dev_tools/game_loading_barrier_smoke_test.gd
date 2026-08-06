@@ -5,6 +5,9 @@ const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const PROJECTILE_COORDINATOR_SOURCE_PATH := (
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const WORLD_FLOW_COORDINATOR_SOURCE_PATH := (
+	"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
+)
 const TEST_PORT := 29279
 const LINGLAN_BOSS_RUNTIME_RESOURCE_PATHS: Array[String] = [
 	"res://resources/config/enemies/linglan_boss.tres",
@@ -259,10 +262,17 @@ func _test_mode_specific_mp_game_source() -> void:
 	var projectile_source := FileAccess.get_file_as_string(
 		PROJECTILE_COORDINATOR_SOURCE_PATH
 	)
+	var world_flow_source := FileAccess.get_file_as_string(
+		WORLD_FLOW_COORDINATOR_SOURCE_PATH
+	)
 	_expect(not source.is_empty(), "MpGame source must be readable.")
 	_expect(
 		not projectile_source.is_empty(),
 		"ProjectileCoordinator source must be readable."
+	)
+	_expect(
+		not world_flow_source.is_empty(),
+		"WorldFlowCoordinator source must be readable."
 	)
 	_expect(
 		not source.contains('preload("res://scene/game_modes/standard/standard_game.tscn")')
@@ -291,6 +301,13 @@ func _test_mode_specific_mp_game_source() -> void:
 		and source.contains("projectile_coordinator.receive_projectile_fired(")
 		and not source.contains("func instantiate_projectile("),
 		"MpGame must expose only a thin façade over the static ProjectileCoordinator."
+	)
+	_expect(
+		source.contains("@onready var world_flow_coordinator:")
+		and source.contains("$WorldFlowCoordinator")
+		and source.contains("world_flow_coordinator.receive_flow_state(")
+		and not source.contains("func _on_host_flow_state_changed("),
+		"MpGame must expose only a thin façade over the static WorldFlowCoordinator."
 	)
 	_expect(
 		projectile_source.contains("FIRE_SORCERER_FIREBALL_VOLLEY_SCENE")

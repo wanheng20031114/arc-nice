@@ -7,6 +7,13 @@ signal flow_state_changed(
 	state: int,
 	countdown_seconds: int
 )
+signal wave_progress_changed(
+	wave_number: int,
+	defeated: int,
+	escaped: int,
+	resolved: int,
+	total: int
+)
 signal boss_started(
 	net_id: int,
 	boss_config: BossConfig,
@@ -123,6 +130,28 @@ func apply_remote_flow_state(
 
 func get_flow_state_snapshot() -> Dictionary:
 	return {}
+
+
+func supports_multiplayer_wave_progress() -> bool:
+	return false
+
+
+func request_authoritative_wave_start(_requester_peer_id: int) -> bool:
+	return false
+
+
+func get_wave_progress_snapshot() -> Dictionary:
+	return {}
+
+
+func apply_remote_wave_progress(
+	_wave_number: int,
+	_defeated: int,
+	_escaped: int,
+	_resolved: int,
+	_total: int
+) -> void:
+	pass
 
 
 func apply_remote_boss_started(

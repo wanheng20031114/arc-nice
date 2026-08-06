@@ -9,13 +9,6 @@ signal base_health_changed(
 	maximum_health: int,
 	revision: int
 )
-signal wave_progress_changed(
-	wave_number: int,
-	defeated: int,
-	escaped: int,
-	resolved: int,
-	total: int
-)
 signal plant_spawned(
 	request_id: int,
 	owner_peer_id: int,
@@ -1143,6 +1136,10 @@ func get_tower_runtime() -> TowerDefenseGame:
 		return _tower_runtime
 	_tower_runtime = runtime as TowerDefenseGame
 	return _tower_runtime
+
+
+func supports_multiplayer_wave_progress() -> bool:
+	return true
 
 
 func request_authoritative_wave_start(requester_peer_id: int) -> bool:

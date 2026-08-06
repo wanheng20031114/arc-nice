@@ -212,10 +212,12 @@ func _test_authoritative_plant_registry_count() -> void:
 
 
 func _test_client_enemy_count_render_cache() -> void:
-	var source := FileAccess.get_file_as_string("res://scene/multiplayer/mp_game.gd")
+	var source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
+	)
 	_expect(
 		source.contains(
-			"if remote_enemy_count != _last_applied_remote_enemy_count:"
+			"if remote_enemy_count == _last_applied_remote_enemy_count:"
 		)
 		and source.contains(
 			"_last_applied_remote_enemy_count = remote_enemy_count"
