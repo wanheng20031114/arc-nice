@@ -540,6 +540,22 @@ func apply_authoritative_skill1_purchase(peer_id: int) -> void:
 	)
 
 
+func build_runtime_repair_inventory_rpc_arguments() -> Array[Array]:
+	var payloads: Array[Array] = []
+	if not is_bound():
+		return payloads
+	for peer_id_variant in _runtime.peer_players.keys():
+		var peer_id := int(peer_id_variant)
+		if peer_id <= 0 or not _run_state.has_multiplayer_peer_state(peer_id):
+			continue
+		payloads.append([
+			peer_id,
+			_run_state.export_inventory_snapshot_for_peer(peer_id),
+			true,
+		])
+	return payloads
+
+
 func receive_inventory_snapshot(
 	peer_id: int,
 	snapshot: Dictionary,

@@ -1,6 +1,13 @@
 extends Node
 class_name MpSessionCoordinator
 
+signal rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+)
+signal runtime_repair_plant_roster_requested(peer_id: int)
+
 const _NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 
 const RUNTIME_STATE_REQUEST_RATE_PER_SECOND := 0.5
@@ -24,6 +31,12 @@ var _world_flow_coordinator: MpWorldFlowCoordinator = null
 var _enemy_coordinator: MpEnemyCoordinator = null
 var _tower_world_coordinator: MpTowerWorldCoordinator = null
 var _tower_economy_coordinator: MpTowerEconomyCoordinator = null
+var _player_coordinator: MpPlayerCoordinator = null
+var _transactions_coordinator: MpTransactionsCoordinator = null
+var _merchant_transactions_coordinator: MpMerchantTransactionsCoordinator = null
+var _tower_fate_coordinator: MpTowerFateCoordinator = null
+var _network_diagnostics_coordinator: MpNetworkDiagnosticsCoordinator = null
+var _tower_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _runtime_state_requested := false
 var _runtime_state_request_rate_buckets: Dictionary = {}
 var _net_time_origin: float = 0.0
@@ -194,6 +207,42 @@ func bind_world_manifest_dependencies(
 	_tower_economy_coordinator = tower_economy_coordinator_instance
 
 
+func bind_runtime_repair_dependencies(
+	player_coordinator_instance: MpPlayerCoordinator,
+	transactions_coordinator_instance: MpTransactionsCoordinator,
+	merchant_transactions_coordinator_instance: MpMerchantTransactionsCoordinator,
+	tower_fate_coordinator_instance: MpTowerFateCoordinator,
+	network_diagnostics_coordinator_instance: MpNetworkDiagnosticsCoordinator,
+	tower_mode_adapter_instance: TowerDefenseMultiplayerModeAdapter = null
+) -> void:
+	assert(
+		player_coordinator_instance != null,
+		"MpSessionCoordinator 缺少玩家协调器。"
+	)
+	assert(
+		transactions_coordinator_instance != null,
+		"MpSessionCoordinator 缺少事务协调器。"
+	)
+	assert(
+		merchant_transactions_coordinator_instance != null,
+		"MpSessionCoordinator 缺少商人事务协调器。"
+	)
+	assert(
+		tower_fate_coordinator_instance != null,
+		"MpSessionCoordinator 缺少塔防命运协调器。"
+	)
+	assert(
+		network_diagnostics_coordinator_instance != null,
+		"MpSessionCoordinator 缺少网络诊断协调器。"
+	)
+	_player_coordinator = player_coordinator_instance
+	_transactions_coordinator = transactions_coordinator_instance
+	_merchant_transactions_coordinator = merchant_transactions_coordinator_instance
+	_tower_fate_coordinator = tower_fate_coordinator_instance
+	_network_diagnostics_coordinator = network_diagnostics_coordinator_instance
+	_tower_mode_adapter = tower_mode_adapter_instance
+
+
 func has_world_manifest_dependencies() -> bool:
 	return (
 		is_bound()
@@ -205,6 +254,24 @@ func has_world_manifest_dependencies() -> bool:
 		and is_instance_valid(_tower_world_coordinator)
 		and _tower_economy_coordinator != null
 		and is_instance_valid(_tower_economy_coordinator)
+	)
+
+
+func has_runtime_repair_dependencies() -> bool:
+	return (
+		has_world_manifest_dependencies()
+		and _net_manager != null
+		and is_instance_valid(_net_manager)
+		and _player_coordinator != null
+		and is_instance_valid(_player_coordinator)
+		and _transactions_coordinator != null
+		and is_instance_valid(_transactions_coordinator)
+		and _merchant_transactions_coordinator != null
+		and is_instance_valid(_merchant_transactions_coordinator)
+		and _tower_fate_coordinator != null
+		and is_instance_valid(_tower_fate_coordinator)
+		and _network_diagnostics_coordinator != null
+		and is_instance_valid(_network_diagnostics_coordinator)
 	)
 
 
@@ -233,6 +300,171 @@ func admit_authoritative_runtime_state_request(
 	if not _consume_runtime_state_request_token(sender_id, now_seconds):
 		return false
 	return _runtime.get_player_for_peer(sender_id) != null
+
+
+func handle_authoritative_runtime_state_request(
+	sender_id: int,
+	include_flow_state: bool,
+	now_seconds: float
+) -> bool:
+	if not admit_authoritative_runtime_state_request(
+		_net_manager != null and _net_manager.is_host(),
+		sender_id,
+		now_seconds
+	):
+		return false
+	return send_authoritative_runtime_state_to_peer(
+		sender_id,
+		include_flow_state
+	)
+
+
+func send_authoritative_runtime_state_to_peer(
+	peer_id: int,
+	include_flow_state: bool
+) -> bool:
+	if (
+		not has_runtime_repair_dependencies()
+		or not _net_manager.is_host()
+		or peer_id <= 0
+		or not _net_manager.is_peer_send_ready(peer_id)
+	):
+		return false
+	_network_diagnostics_coordinator.record_state_repair()
+	var has_tower_mode := (
+		_tower_mode_adapter != null
+		and is_instance_valid(_tower_mode_adapter)
+	)
+	_tower_world_coordinator.request_terrain_snapshot_for_peer(peer_id)
+	runtime_repair_plant_roster_requested.emit(peer_id)
+	for inventory_arguments in (
+		_transactions_coordinator.build_runtime_repair_inventory_rpc_arguments()
+	):
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_inventory_snapshot",
+			inventory_arguments
+		)
+	_merchant_transactions_coordinator.send_offer_state_if_present(peer_id)
+	_enemy_coordinator.send_live_spawn_roster_to_peer(peer_id)
+	_world_flow_coordinator.send_live_pickup_roster_to_peer(peer_id)
+	if has_tower_mode:
+		_tower_world_coordinator.request_base_health_snapshot_for_peer(peer_id)
+	var progress_snapshot := _world_flow_coordinator.get_wave_progress_snapshot()
+	if not progress_snapshot.is_empty():
+		rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_tower_defense_wave_progress_keyframe",
+			[
+				int(progress_snapshot.get("wave_number", 1)),
+				int(progress_snapshot.get("defeated", 0)),
+				int(progress_snapshot.get("escaped", 0)),
+				int(progress_snapshot.get("resolved", 0)),
+				int(progress_snapshot.get("total", 0)),
+			]
+		)
+	if has_tower_mode:
+		_tower_fate_coordinator.send_fate_state_to_peer(peer_id)
+		if _tower_mode_adapter.is_fate_interlude_active():
+			_player_coordinator.send_authoritative_positions_to_peer(peer_id)
+		_tower_world_coordinator.request_test_arena_manual_night_for_peer(
+			peer_id
+		)
+	if include_flow_state:
+		var flow_snapshot := _world_flow_coordinator.get_flow_state_snapshot()
+		if not flow_snapshot.is_empty():
+			rpc_to_peer_requested.emit(
+				peer_id,
+				&"net_flow_state_changed",
+				[
+					String(flow_snapshot.get("step_id", &"")),
+					int(
+						flow_snapshot.get(
+							"state",
+							CombatFlowState.State.PRE_WAVE
+						)
+					),
+					int(flow_snapshot.get("countdown_seconds", 0)),
+				]
+			)
+	_player_coordinator.send_active_tango_electric_surges_to_peer(peer_id)
+	_player_coordinator.send_active_tiyi_high_noon_to_peer(peer_id)
+	_send_runtime_world_manifest_to_peer(peer_id)
+	return true
+
+
+func _send_runtime_world_manifest_to_peer(peer_id: int) -> bool:
+	if not has_world_manifest_dependencies() or peer_id <= 0:
+		return false
+	var live_enemy_ids := PackedInt32Array()
+	var live_pickup_ids := PackedInt32Array()
+	var live_plant_ids := PackedInt32Array()
+	var sorted_enemy_ids: Array[int] = []
+	for net_id_variant in _runtime.multiplayer_enemies_by_net_id.keys():
+		sorted_enemy_ids.append(int(net_id_variant))
+	sorted_enemy_ids.sort()
+	for net_id in sorted_enemy_ids:
+		var enemy_variant: Variant = (
+			_runtime.multiplayer_enemies_by_net_id.get(net_id)
+		)
+		if enemy_variant == null or not is_instance_valid(enemy_variant):
+			continue
+		var enemy := enemy_variant as Enemy
+		if enemy != null and is_instance_valid(enemy) and not enemy.is_dead:
+			live_enemy_ids.append(net_id)
+	var sorted_pickup_ids: Array[int] = []
+	for net_id_variant in _runtime.multiplayer_pickups.keys():
+		sorted_pickup_ids.append(int(net_id_variant))
+	sorted_pickup_ids.sort()
+	for net_id in sorted_pickup_ids:
+		var pickup_variant: Variant = _runtime.multiplayer_pickups.get(net_id)
+		if pickup_variant == null or not is_instance_valid(pickup_variant):
+			continue
+		var pickup := pickup_variant as Pickup
+		if pickup != null and is_instance_valid(pickup):
+			live_pickup_ids.append(net_id)
+	if _tower_world_coordinator.is_bound():
+		live_plant_ids = _tower_world_coordinator.build_live_plant_ids()
+	rpc_to_peer_requested.emit(
+		peer_id,
+		&"net_runtime_world_manifest",
+		[live_enemy_ids, live_pickup_ids, live_plant_ids]
+	)
+	return true
+
+
+func get_connected_client_peer_ids(
+	embedded_runtime: bool,
+	embedded_participant_peer_ids: Dictionary[int, bool],
+	suspended_embedded_participant_peer_ids: Dictionary[int, bool]
+) -> Array[int]:
+	var result: Array[int] = []
+	if _net_manager == null:
+		return result
+	var host_peer_id := _net_manager.get_host_peer_id()
+	for peer_id_variant in _net_manager.connected_players:
+		var peer_id := int(peer_id_variant)
+		if peer_id <= 0 or peer_id == host_peer_id:
+			continue
+		if embedded_runtime and not embedded_participant_peer_ids.has(peer_id):
+			continue
+		if (
+			embedded_runtime
+			and suspended_embedded_participant_peer_ids.has(peer_id)
+		):
+			continue
+		if (
+			embedded_runtime
+			and (
+				_runtime == null
+				or _runtime.get_player_for_peer(peer_id) == null
+			)
+		):
+			continue
+		if not _net_manager.is_peer_send_ready(peer_id):
+			continue
+		result.append(peer_id)
+	return result
 
 
 func parse_runtime_world_manifest(
@@ -326,6 +558,12 @@ func _clear_world_manifest_dependencies() -> void:
 	_enemy_coordinator = null
 	_tower_world_coordinator = null
 	_tower_economy_coordinator = null
+	_player_coordinator = null
+	_transactions_coordinator = null
+	_merchant_transactions_coordinator = null
+	_tower_fate_coordinator = null
+	_network_diagnostics_coordinator = null
+	_tower_mode_adapter = null
 
 
 func _send_public_room_keepalive() -> void:

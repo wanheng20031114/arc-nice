@@ -358,6 +358,15 @@ func _test_static_delegation_contract() -> void:
 	var coordinator_source := FileAccess.get_file_as_string(
 		"res://scene/multiplayer/session/mp_session_coordinator.gd"
 	)
+	var player_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/player/mp_player_coordinator.gd"
+	)
+	var transactions_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/transactions/mp_transactions_coordinator.gd"
+	)
+	var world_flow_source := FileAccess.get_file_as_string(
+		"res://scene/multiplayer/world_flow/mp_world_flow_coordinator.gd"
+	)
 	_expect(
 		root_source.contains("session_coordinator.update_transport(delta)")
 		and root_source.contains("return session_coordinator.get_net_time()")
@@ -378,3 +387,79 @@ func _test_static_delegation_contract() -> void:
 		),
 		"会话协调器必须保留既有 API、JSON 载荷与 0.08 平滑常量。"
 	)
+	var repair_start := coordinator_source.find(
+		"func send_authoritative_runtime_state_to_peer("
+	)
+	var repair_end := coordinator_source.find(
+		"func _send_runtime_world_manifest_to_peer(",
+		repair_start
+	)
+	var repair_source := coordinator_source.substr(
+		repair_start,
+		repair_end - repair_start
+	)
+	_expect(
+		repair_start >= 0
+		and repair_end > repair_start
+		and _contains_in_order(
+			repair_source,
+			[
+				"record_state_repair()",
+				"request_terrain_snapshot_for_peer(peer_id)",
+				"runtime_repair_plant_roster_requested.emit(peer_id)",
+				"build_runtime_repair_inventory_rpc_arguments()",
+				"send_offer_state_if_present(peer_id)",
+				"send_live_spawn_roster_to_peer(peer_id)",
+				"send_live_pickup_roster_to_peer(peer_id)",
+				"request_base_health_snapshot_for_peer(peer_id)",
+				"get_wave_progress_snapshot()",
+				"send_fate_state_to_peer(peer_id)",
+				"send_authoritative_positions_to_peer(peer_id)",
+				"request_test_arena_manual_night_for_peer(",
+				"get_flow_state_snapshot()",
+				"send_active_tango_electric_surges_to_peer(peer_id)",
+				"send_active_tiyi_high_noon_to_peer(peer_id)",
+				"_send_runtime_world_manifest_to_peer(peer_id)",
+			]
+		),
+		"完整状态修复必须由 SessionCoordinator 保持原跨模块发送顺序。"
+	)
+	_expect(
+		not root_source.contains("func _send_runtime_world_manifest_to_peer(")
+		and not root_source.contains("func _send_runtime_state_to_peer(")
+		and root_source.contains(
+			"return session_coordinator.handle_authoritative_runtime_state_request("
+		)
+		and root_source.contains(
+			"return session_coordinator.get_connected_client_peer_ids("
+		)
+		and root_source.contains(
+			"tower_world_coordinator.send_live_plant_roster_to_peer(peer_id)"
+		),
+		"MpGame 必须只保留状态修复、peer 筛选与植物 roster 薄门面。"
+	)
+	_expect(
+		player_source.contains(
+			"func send_authoritative_positions_to_peer(target_peer_id: int)"
+		)
+		and transactions_source.contains(
+			"func build_runtime_repair_inventory_rpc_arguments() -> Array[Array]"
+		)
+		and world_flow_source.contains(
+			"_merchant_transactions_coordinator.clear_offer_states()"
+		)
+		and not root_source.contains(
+			"merchant_transactions_coordinator.clear_offer_states()"
+		),
+		"位置、背包与商人 offer 生命周期必须由各自协调器负责。"
+	)
+
+
+func _contains_in_order(source: String, tokens: Array[String]) -> bool:
+	var cursor := 0
+	for token in tokens:
+		var token_index := source.find(token, cursor)
+		if token_index < 0:
+			return false
+		cursor = token_index + token.length()
+	return true
