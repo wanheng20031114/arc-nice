@@ -144,7 +144,7 @@ func begin_intro(boss_config: BossConfig = null) -> void:
 	runtime._clear_resolved_home_enemy_ids()
 	runtime._clear_hud_alive_enemies()
 	runtime._set_merchant_active(false)
-	runtime.wave_hud.show_tower_defense_boss_progress(0, 1)
+	runtime._show_tower_defense_boss_progress(0, 1)
 	runtime._update_boss_music(boss_config)
 	prepare_arena(boss_config)
 	var spawn_position := get_linglan_spawn_global_position(boss_config)
@@ -171,7 +171,7 @@ func apply_remote_flow_state(
 			runtime.state_timer.stop()
 			runtime.wave_state = CombatFlowState.State.BOSS_INTRO
 			runtime._set_local_merchants_active(false)
-			runtime.wave_hud.show_tower_defense_boss_progress(0, 1)
+			runtime._show_tower_defense_boss_progress(0, 1)
 			if boss_config != null:
 				active_boss_config = boss_config
 				runtime._update_boss_music(boss_config)
@@ -181,7 +181,7 @@ func apply_remote_flow_state(
 			runtime.state_timer.stop()
 			runtime.wave_state = CombatFlowState.State.BOSS_ACTIVE
 			runtime._set_local_merchants_active(false)
-			runtime.wave_hud.show_tower_defense_boss_progress(0, 1)
+			runtime._show_tower_defense_boss_progress(0, 1)
 			restore_remote_camera_if_intro_complete()
 			if boss_config != null:
 				active_boss_config = boss_config
@@ -204,7 +204,7 @@ func apply_remote_started(
 	runtime.current_flow_step = boss_config
 	runtime.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	runtime.state_timer.stop()
-	runtime.wave_hud.show_tower_defense_boss_progress(0, 1)
+	runtime._show_tower_defense_boss_progress(0, 1)
 	runtime._set_local_merchants_active(false)
 	runtime._update_boss_music(boss_config)
 	var boss_enemy := runtime.get_enemy_for_net_id(net_id) as LinglanBoss
@@ -253,7 +253,7 @@ func activate_boss() -> void:
 		linglan_boss.global_position,
 		false
 	)
-	runtime.wave_hud.show_tower_defense_boss_progress(0, 1)
+	runtime._show_tower_defense_boss_progress(0, 1)
 	if boss_health_hud != null:
 		boss_health_hud.show_for_boss(
 			linglan_boss, get_boss_display_name(active_boss_config)
@@ -886,7 +886,7 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 	runtime._remove_hud_alive_enemy(enemy.get_instance_id())
 	runtime.current_wave_defeated = 1
 	runtime.current_wave_resolved = 1
-	runtime.wave_hud.show_tower_defense_boss_progress(1, 1)
+	runtime._show_tower_defense_boss_progress(1, 1)
 	runtime._emit_multiplayer_enemy_defeated(enemy)
 	remove_remaining_adds()
 	var victory_timer := runtime.get_tree().create_timer(1.3)

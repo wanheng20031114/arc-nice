@@ -52,20 +52,20 @@ const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
 const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := TowerDefenseBossCoordinator.LINGLAN_BOSS_INTRO_VFX_SCENE_PATH
 const BOSS_HEALTH_HUD_SCENE_PATH := TowerDefenseBossCoordinator.BOSS_HEALTH_HUD_SCENE_PATH
 const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := TowerDefenseBossCoordinator.LINGLAN_ENRAGE_SNIPER_CONFIG_PATH
-const COUNTDOWN_FINAL_SECONDS := 3
+const COUNTDOWN_FINAL_SECONDS := TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS
 const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
 const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
-const SPECTATOR_CAMERA_SPEED := 180.0
+const SPECTATOR_CAMERA_SPEED := TowerDefensePresentationCoordinator.SPECTATOR_CAMERA_SPEED
 const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.025
 const MAX_WAVE_SPAWN_COUNT_PER_TICK := 4
-const DEFAULT_MUSIC_VOLUME_DB := -6.0
-const MUSIC_FADE_IN_SECONDS := 3.0
-const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
+const DEFAULT_MUSIC_VOLUME_DB := TowerDefensePresentationCoordinator.DEFAULT_MUSIC_VOLUME_DB
+const MUSIC_FADE_IN_SECONDS := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_SECONDS
+const MUSIC_FADE_IN_START_VOLUME_DB := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_START_VOLUME_DB
 const LINGLAN_SPAWN_LEFT_OFFSET := TowerDefenseBossCoordinator.LINGLAN_SPAWN_LEFT_OFFSET
 const LINGLAN_SKILL4_AUTHORED_TARGET_CENTER := TowerDefenseBossCoordinator.LINGLAN_SKILL4_AUTHORED_TARGET_CENTER
-const BOSS_INTRO_CAMERA_FOCUS_SECONDS := 0.9
+const BOSS_INTRO_CAMERA_FOCUS_SECONDS := TowerDefensePresentationCoordinator.BOSS_INTRO_CAMERA_FOCUS_SECONDS
 const LINGLAN_AIRDROP_NEARBY_RADIUS := TowerDefenseBossCoordinator.LINGLAN_AIRDROP_NEARBY_RADIUS
-const DEFEAT_CAMERA_TRAVEL_SECONDS := 0.55
+const DEFEAT_CAMERA_TRAVEL_SECONDS := TowerDefensePresentationCoordinator.DEFEAT_CAMERA_TRAVEL_SECONDS
 const INITIAL_PLAYER_XIRANG := TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
 const DEFAULT_BASE_HEALTH := 100
 const XIAOCONG_INTERACTION_DISTANCE := (
@@ -193,6 +193,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var boss_coordinator := get_node_or_null(
 	"BossCoordinator"
 ) as TowerDefenseBossCoordinator
+@onready var presentation_coordinator := get_node_or_null(
+	"PresentationCoordinator"
+) as TowerDefensePresentationCoordinator
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
 )
@@ -296,15 +299,44 @@ var current_wave_defeated: int = 0
 var current_wave_escaped: int = 0
 var current_wave_resolved: int = 0
 var countdown_seconds: int = 0
-var _last_day_phase_announcement_key: StringName = &""
-var _client_countdown_sequence_key: StringName = &""
-var _client_last_countdown_tick_seconds := COUNTDOWN_FINAL_SECONDS + 1
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
-var music_fade_tween: Tween = null
-var boss_intro_camera_tween: Tween = null
-var defeat_camera_tween: Tween = null
-var defeat_presentation_completed := false
+var _pending_music_fade_tween: Tween = null
+var music_fade_tween: Tween:
+	get:
+		return (
+			presentation_coordinator.music_fade_tween
+			if presentation_coordinator != null and presentation_coordinator.is_bound()
+			else _pending_music_fade_tween
+		)
+	set(value):
+		_pending_music_fade_tween = value
+		if presentation_coordinator != null and presentation_coordinator.is_bound():
+			presentation_coordinator.replace_music_fade_tween(value)
+var _pending_boss_intro_camera_tween: Tween = null
+var boss_intro_camera_tween: Tween:
+	get:
+		return (
+			presentation_coordinator.boss_intro_camera_tween
+			if presentation_coordinator != null and presentation_coordinator.is_bound()
+			else _pending_boss_intro_camera_tween
+		)
+	set(value):
+		_pending_boss_intro_camera_tween = value
+		if presentation_coordinator != null and presentation_coordinator.is_bound():
+			presentation_coordinator.replace_boss_intro_camera_tween(value)
+var _pending_defeat_camera_tween: Tween = null
+var defeat_camera_tween: Tween:
+	get:
+		return (
+			presentation_coordinator.defeat_camera_tween
+			if presentation_coordinator != null and presentation_coordinator.is_bound()
+			else _pending_defeat_camera_tween
+		)
+	set(value):
+		_pending_defeat_camera_tween = value
+		if presentation_coordinator != null and presentation_coordinator.is_bound():
+			presentation_coordinator.replace_defeat_camera_tween(value)
 var multiplayer_player_names: Dictionary = {}
 var multiplayer_player_character_ids: Dictionary = {}
 var multiplayer_spawn_slot_indices: Dictionary[int, int] = {}
@@ -587,7 +619,18 @@ var singleplayer_respawn_last_seconds: int:
 		_singleplayer_respawn_last_seconds = value
 		if player_roster_coordinator != null:
 			player_roster_coordinator.singleplayer_respawn_last_seconds = value
-var spectator_camera_active := false
+var _pending_spectator_camera_active := false
+var spectator_camera_active: bool:
+	get:
+		return (
+			presentation_coordinator.spectator_camera_active
+			if presentation_coordinator != null and presentation_coordinator.is_bound()
+			else _pending_spectator_camera_active
+		)
+	set(value):
+		_pending_spectator_camera_active = value
+		if presentation_coordinator != null and presentation_coordinator.is_bound():
+			presentation_coordinator.spectator_camera_active = value
 var projectile_pool_registration_ms := 0.0
 var starting_package_granted := false
 var progression_started_msec := 0
@@ -630,6 +673,10 @@ func _ready() -> void:
 	LuoxiMerchant.reset_runtime_choice_count()
 	if day_cycle_config == null or not day_cycle_config.is_valid():
 		push_error("TowerDefenseGame: DayCycleConfig 无效，停止初始化。")
+		set_process(false)
+		set_physics_process(false)
+		return
+	if not _configure_presentation_coordinator():
 		set_process(false)
 		set_physics_process(false)
 		return
@@ -756,15 +803,12 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
-	tower_defense_status_hud.set_dead_player_list_enabled(
-		runtime_mode != RuntimeMode.SINGLEPLAYER
-	)
-	tower_defense_status_hud.show()
+	presentation_coordinator.configure_status_hud(int(runtime_mode))
 	_attach_camera_to_local_player()
-	wave_hud.configure_tower_defense(
+	presentation_coordinator.configure_wave_hud(
+		int(runtime_mode),
 		current_base_health,
-		maximum_base_health,
-		day_cycle_config
+		maximum_base_health
 	)
 	_configure_home_defense()
 	_configure_plant_defense_system()
@@ -813,11 +857,7 @@ func _ready() -> void:
 	player_profile_panel.closed.connect(_on_player_profile_panel_closed)
 	debug_collectible_window.collectible_requested.connect(_on_debug_collectible_requested)
 	debug_collectible_window.closed.connect(_on_debug_collectible_window_closed)
-	wave_hud.set_return_button_text("返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅")
-	if not wave_hud.return_to_lobby_requested.is_connected(_on_wave_hud_return_to_lobby_requested):
-		wave_hud.return_to_lobby_requested.connect(_on_wave_hud_return_to_lobby_requested)
-	if not wave_hud.start_wave_requested.is_connected(_on_wave_hud_start_wave_requested):
-		wave_hud.start_wave_requested.connect(_on_wave_hud_start_wave_requested)
+	presentation_coordinator.connect_wave_hud_requests()
 	luoxi_special_game_coordinator.setup(
 		self,
 		run_state,
@@ -955,6 +995,53 @@ func _configure_player_roster_coordinator() -> bool:
 	return true
 
 
+func _configure_presentation_coordinator() -> bool:
+	if presentation_coordinator == null:
+		push_error("TowerDefenseGame: 缺少静态 PresentationCoordinator 节点。")
+		return false
+	presentation_coordinator.setup(
+		self,
+		campaign_coordinator,
+		day_cycle_config,
+		map_camera,
+		music_player,
+		countdown_audio,
+		wave_start_audio,
+		defeat_audio,
+		wave_hud,
+		day_phase_announcement,
+		tower_defense_status_hud
+	)
+	presentation_coordinator.replace_music_fade_tween(
+		_pending_music_fade_tween
+	)
+	presentation_coordinator.replace_boss_intro_camera_tween(
+		_pending_boss_intro_camera_tween
+	)
+	presentation_coordinator.replace_defeat_camera_tween(
+		_pending_defeat_camera_tween
+	)
+	presentation_coordinator.spectator_camera_active = (
+		_pending_spectator_camera_active
+	)
+	if not presentation_coordinator.return_to_lobby_requested.is_connected(
+		_on_wave_hud_return_to_lobby_requested
+	):
+		presentation_coordinator.return_to_lobby_requested.connect(
+			_on_wave_hud_return_to_lobby_requested
+		)
+	if not presentation_coordinator.start_wave_requested.is_connected(
+		_on_wave_hud_start_wave_requested
+	):
+		presentation_coordinator.start_wave_requested.connect(
+			_on_wave_hud_start_wave_requested
+		)
+	if not presentation_coordinator.is_bound():
+		push_error("TowerDefenseGame: PresentationCoordinator 依赖绑定不完整。")
+		return false
+	return true
+
+
 func _on_roster_player_died(peer_id: int) -> void:
 	if runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0:
 		_on_player_died()
@@ -1000,22 +1087,11 @@ func apply_remote_test_arena_manual_night(_enabled: bool) -> void:
 
 
 func _apply_wave_start_lighting(wave_number: int) -> void:
-	if _is_night_wave(wave_number):
-		transition_world_to_night()
-	else:
-		transition_world_to_day()
+	presentation_coordinator.apply_wave_start_lighting(wave_number)
 
 
 func _apply_intermission_lighting(completed_wave_number: int) -> void:
-	var is_night_intermission := (
-		campaign_coordinator.is_night_intermission_after_wave(completed_wave_number)
-		if campaign_coordinator != null
-		else day_cycle_config.is_night_intermission_after_wave(completed_wave_number)
-	)
-	if is_night_intermission:
-		transition_world_to_night()
-	else:
-		transition_world_to_day()
+	presentation_coordinator.apply_intermission_lighting(completed_wave_number)
 
 
 func _is_night_wave(wave_number: int) -> bool:
@@ -1035,20 +1111,10 @@ func _get_day_number_for_wave(wave_number: int) -> int:
 
 
 func _announce_wave_phase_start(wave_number: int) -> bool:
-	if not day_phase_announcements_enabled or day_phase_announcement == null:
-		return false
-	var safe_wave := maxi(wave_number, 1)
-	var wave_in_day := campaign_coordinator.get_wave_in_day(safe_wave)
-	if wave_in_day not in [1, day_cycle_config.night_start_wave_in_day]:
-		return false
-	var is_night := campaign_coordinator.is_night_wave(safe_wave)
-	var day_number := campaign_coordinator.get_day_number_for_wave(safe_wave)
-	var announcement_key := StringName("%d:%d" % [day_number, int(is_night)])
-	if announcement_key == _last_day_phase_announcement_key:
-		return true
-	_last_day_phase_announcement_key = announcement_key
-	day_phase_announcement.show_day_phase(day_number, is_night)
-	return true
+	return presentation_coordinator.announce_wave_phase_start(
+		wave_number,
+		day_phase_announcements_enabled
+	)
 
 
 func supports_multiplayer_terrain_state() -> bool:
@@ -1211,24 +1277,7 @@ func _configure_singleplayer_player() -> void:
 
 
 func _attach_camera_to_local_player() -> void:
-	if map_camera == null or player == null:
-		return
-	# The local player moves on the 60 Hz physics clock while the renderer can
-	# run much faster. Interpolate this one branch so the following camera does
-	# not turn each physics step into a whole-screen judder. The scene root is
-	# explicitly opted out, keeping UI, tweens and network-smoothed proxies on
-	# their existing timing paths.
-	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
-	player.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
-	if map_camera.get_parent() != player:
-		map_camera.reparent(player)
-	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_INHERIT
-	map_camera.position = Vector2.ZERO
-	map_camera.zoom = Vector2(2.0, 2.0)
-	map_camera.position_smoothing_enabled = false
-	map_camera.enabled = true
-	player.reset_physics_interpolation()
-	map_camera.reset_physics_interpolation()
+	presentation_coordinator.attach_camera_to_local_player(player)
 
 
 func _configure_home_defense() -> void:
@@ -1408,11 +1457,10 @@ func _on_home_base_health_changed(
 	_update_base_health_display(home_defense_coordinator.last_change_play_damage_pulse)
 	if home_defense_coordinator.last_change_was_remote:
 		base_health_changed.emit(new_current_health, new_maximum_health, new_revision)
-		if home_defense_coordinator.last_change_play_damage_pulse and tower_defense_status_hud != null:
-			tower_defense_status_hud.play_gate_damage_warning()
+		if home_defense_coordinator.last_change_play_damage_pulse:
+			presentation_coordinator.play_gate_damage_warning()
 	else:
-		if tower_defense_status_hud != null:
-			tower_defense_status_hud.play_gate_damage_warning()
+		presentation_coordinator.play_gate_damage_warning()
 		base_health_changed.emit(new_current_health, new_maximum_health, new_revision)
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		tower_multiplayer_mode_adapter.base_health_changed.emit(
@@ -1421,12 +1469,11 @@ func _on_home_base_health_changed(
 
 
 func _update_base_health_display(play_damage_pulse: bool = true) -> void:
-	if wave_hud != null:
-		wave_hud.set_tower_defense_core_health(
-			current_base_health,
-			maximum_base_health,
-			play_damage_pulse
-		)
+	presentation_coordinator.show_base_health(
+		current_base_health,
+		maximum_base_health,
+		play_damage_pulse
+	)
 
 
 func _register_hud_alive_enemy(enemy: Enemy) -> void:
@@ -1471,12 +1518,11 @@ func _clear_hud_alive_enemies() -> void:
 
 
 func _update_hud_alive_enemy_count() -> void:
-	if wave_hud != null:
-		wave_hud.set_tower_defense_enemy_count(
-			enemy_coordinator.hud_enemy_count()
-			if enemy_coordinator != null
-			else hud_alive_enemy_ids.size()
-		)
+	presentation_coordinator.show_enemy_count(
+		enemy_coordinator.hud_enemy_count()
+		if enemy_coordinator != null
+		else hud_alive_enemy_ids.size()
+	)
 
 
 func _complete_escaped_boss_step() -> void:
@@ -2390,7 +2436,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 		)
 	match typed_state:
 		CombatFlowState.State.PRE_WAVE:
-			transition_world_to_day()
+			presentation_coordinator.transition_world_to_day()
 			_start_client_flow_countdown(typed_state, step_id, seconds)
 		CombatFlowState.State.INTERMISSION:
 			_apply_intermission_lighting(maxi(current_wave_index + 1, 1))
@@ -2408,7 +2454,7 @@ func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> v
 				_update_wave_music(wave_config)
 			_show_tower_defense_wave_progress()
 			if not phase_announcement_started:
-				wave_start_audio.play()
+				presentation_coordinator.play_wave_start_audio()
 		CombatFlowState.State.BOSS_INTRO:
 			boss_coordinator.apply_remote_flow_state(
 				CombatFlowState.State.BOSS_INTRO, flow_step as BossConfig
@@ -2476,7 +2522,7 @@ func apply_remote_enemy_count(alive_count: int) -> void:
 	# Enemy snapshots already carry the local proxy count. The dedicated HUD
 	# field can consume it without overwriting the independently replicated wave
 	# progress, so no additional multiplayer message is needed.
-	wave_hud.set_tower_defense_enemy_count(maxi(alive_count, 0))
+	presentation_coordinator.show_enemy_count(alive_count)
 
 
 
@@ -2888,7 +2934,7 @@ func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
 	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
 		return false
 	countdown_seconds = COUNTDOWN_FINAL_SECONDS
-	wave_hud.show_countdown(countdown_seconds, false)
+	presentation_coordinator.show_countdown(countdown_seconds, false)
 	_play_countdown_tick()
 	state_timer.start(1.0)
 	_emit_multiplayer_flow_state(wave_state)
@@ -3749,7 +3795,7 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 		_enter_victory()
 		return
 	wave_state = CombatFlowState.State.PRE_WAVE
-	transition_world_to_day()
+	presentation_coordinator.transition_world_to_day()
 	current_flow_step = flow_step
 	next_flow_step_after_rest = flow_step
 	if flow_step is WaveConfig:
@@ -3758,7 +3804,10 @@ func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
 	_set_merchant_active(true)
 	countdown_seconds = _get_initial_preparation_seconds()
 	_update_post_wave_music(flow_step)
-	wave_hud.show_countdown(countdown_seconds, _can_local_player_start_wave_early())
+	presentation_coordinator.show_countdown(
+		countdown_seconds,
+		_can_local_player_start_wave_early()
+	)
 	_schedule_enemy_navigation_prewarm()
 	_emit_multiplayer_flow_state(CombatFlowState.State.PRE_WAVE)
 
@@ -3779,7 +3828,10 @@ func _enter_intermission(next_step: FlowStepConfig = null) -> void:
 	next_flow_step_after_rest = next_step
 	countdown_seconds = _get_current_intermission_seconds()
 	_update_post_wave_music(current_flow_step)
-	wave_hud.show_countdown(countdown_seconds, _can_local_player_start_wave_early())
+	presentation_coordinator.show_countdown(
+		countdown_seconds,
+		_can_local_player_start_wave_early()
+	)
 	_emit_multiplayer_flow_state(CombatFlowState.State.INTERMISSION)
 	_force_revive_dead_players()
 
@@ -3838,7 +3890,7 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	_update_wave_music(wave_config)
 	_show_tower_defense_wave_progress()
 	if not phase_announcement_started:
-		wave_start_audio.play()
+		presentation_coordinator.play_wave_start_audio()
 	_emit_multiplayer_flow_state(CombatFlowState.State.WAVE_ACTIVE)
 
 	if current_wave_total <= 0:
@@ -3884,7 +3936,7 @@ func _on_state_timer_timeout() -> void:
 
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
 	if countdown_seconds > 0:
-		wave_hud.show_countdown(
+		presentation_coordinator.show_countdown(
 			countdown_seconds,
 			_can_local_player_start_wave_early()
 		)
@@ -3914,7 +3966,7 @@ func _start_client_flow_countdown(state: CombatFlowState.State, step_id: StringN
 		_set_local_merchants_active(true)
 		_update_post_wave_music(flow_step)
 	countdown_seconds = maxi(seconds, 0)
-	wave_hud.show_countdown(
+	presentation_coordinator.show_countdown(
 		countdown_seconds,
 		_can_local_player_start_wave_early()
 	)
@@ -3930,7 +3982,7 @@ func _update_client_flow_countdown() -> void:
 		state_timer.stop()
 		return
 	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	wave_hud.show_countdown(
+	presentation_coordinator.show_countdown(
 		countdown_seconds,
 		_can_local_player_start_wave_early()
 	)
@@ -4126,7 +4178,7 @@ func _on_wave_enemy_defeated(enemy: Enemy) -> void:
 
 
 func _show_tower_defense_wave_progress() -> void:
-	wave_hud.show_tower_defense_wave_progress(
+	presentation_coordinator.show_wave_progress(
 		current_wave_index + 1,
 		current_wave_defeated,
 		current_wave_escaped,
@@ -4149,6 +4201,10 @@ func _show_tower_defense_wave_progress() -> void:
 			current_wave_resolved,
 			current_wave_total
 		)
+
+
+func _show_tower_defense_boss_progress(defeated: int, total: int) -> void:
+	presentation_coordinator.show_boss_progress(defeated, total)
 
 
 func get_tower_defense_wave_progress_snapshot() -> Dictionary:
@@ -4345,21 +4401,18 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 	if luoxi_merchant != null:
 		luoxi_merchant.abort_special_game()
 	_cancel_plant_placement()
-	if defeat_camera_tween != null:
-		defeat_camera_tween.kill()
-		defeat_camera_tween = null
+	presentation_coordinator.cancel_defeat_camera()
 	_restore_camera_after_boss_intro()
 	wave_state = CombatFlowState.State.VICTORY
-	transition_world_to_day()
+	presentation_coordinator.transition_world_to_day()
 	_force_revive_dead_players(emit_multiplayer)
 	_clear_respawn_runtime_for_result()
-	if tower_defense_status_hud != null:
-		tower_defense_status_hud.stop_gate_damage_warning()
+	presentation_coordinator.stop_gate_damage_warning()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)
 	boss_coordinator.stop_presentation()
-	wave_hud.show_victory()
+	presentation_coordinator.show_victory()
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_mode_adapter.victory_started.emit()
 		_emit_multiplayer_flow_state(CombatFlowState.State.VICTORY)
@@ -4374,77 +4427,36 @@ func _enter_defeat(emit_multiplayer: bool = true) -> void:
 		luoxi_merchant.abort_special_game()
 	_cancel_plant_placement()
 	wave_state = CombatFlowState.State.DEFEAT
-	transition_world_to_day()
-	defeat_presentation_completed = false
+	presentation_coordinator.transition_world_to_day()
+	presentation_coordinator.reset_defeat_presentation()
 	_clear_respawn_runtime_for_result()
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	_set_merchant_active(false)
 	_stop_background_music_for_defeat()
 	boss_coordinator.stop_presentation()
-	wave_hud.hide_all()
+	presentation_coordinator.hide_wave_hud()
 	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		multiplayer_mode_adapter.defeat_started.emit()
 	_begin_defeat_camera_sequence()
 
 
 func _begin_defeat_camera_sequence() -> void:
-	if boss_intro_camera_tween != null:
-		boss_intro_camera_tween.kill()
-		boss_intro_camera_tween = null
-	if defeat_camera_tween != null:
-		defeat_camera_tween.kill()
-		defeat_camera_tween = null
-	if map_camera == null or home_objective_targets.is_empty():
-		_complete_defeat_presentation()
-		return
-
-	# Keep the player's current zoom while detaching the camera from either a
-	# living player or spectator mode. The unique blue-gate objective is the
-	# authoritative destination on every peer.
-	spectator_camera_active = false
-	if map_camera.get_parent() != self:
-		map_camera.reparent(self, true)
-	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_IDLE
-	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	map_camera.reset_physics_interpolation()
-	var gate_center := home_objective_targets[0].global_position.round()
-	if map_camera.global_position.is_equal_approx(gate_center) or not is_inside_tree():
-		map_camera.global_position = gate_center
-		_complete_defeat_presentation()
-		return
-
-	defeat_camera_tween = create_tween()
-	defeat_camera_tween.set_trans(Tween.TRANS_SINE)
-	defeat_camera_tween.set_ease(Tween.EASE_IN_OUT)
-	defeat_camera_tween.tween_method(
-		_set_map_camera_rounded_global_position,
-		map_camera.global_position,
-		gate_center,
-		DEFEAT_CAMERA_TRAVEL_SECONDS
+	presentation_coordinator.begin_defeat_camera_sequence(
+		home_objective_targets
 	)
-	defeat_camera_tween.tween_callback(_complete_defeat_presentation)
-
-
-func _set_map_camera_rounded_global_position(camera_position: Vector2) -> void:
-	if map_camera != null:
-		map_camera.global_position = camera_position.round()
 
 
 func _complete_defeat_presentation() -> void:
-	defeat_camera_tween = null
-	if wave_state != CombatFlowState.State.DEFEAT or defeat_presentation_completed:
+	presentation_coordinator.replace_defeat_camera_tween(null)
+	if wave_state != CombatFlowState.State.DEFEAT:
 		return
-	defeat_presentation_completed = true
-	wave_hud.show_tower_defense_defeat()
-	defeat_audio.play()
+	presentation_coordinator.complete_defeat_presentation()
 
 
 func _clear_respawn_runtime_for_result() -> void:
 	player_roster_coordinator.clear_result_respawn_state()
-	spectator_camera_active = false
-	if tower_defense_status_hud != null:
-		tower_defense_status_hud.clear_all_respawns()
+	presentation_coordinator.clear_result_status()
 
 
 func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
@@ -4521,7 +4533,7 @@ func _on_player_died() -> void:
 	_request_enemy_retarget_after_objective_change()
 	_cancel_plant_placement()
 	_update_plant_placement_input_state()
-	player.apply_tower_defense_death_presentation()
+	presentation_coordinator.present_player_death(player)
 	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
 		return
 	_begin_local_spectator_camera()
@@ -4533,8 +4545,7 @@ func _on_multiplayer_player_died(peer_id: int) -> void:
 	cancel_luoxi_special_game_for_peer(peer_id)
 	_request_enemy_retarget_after_objective_change()
 	var dead_player := get_player_for_peer(peer_id)
-	if dead_player != null and is_instance_valid(dead_player):
-		dead_player.apply_tower_defense_death_presentation()
+	presentation_coordinator.present_player_death(dead_player)
 	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
 		return
 	if peer_id == multiplayer_local_peer_id:
@@ -4557,8 +4568,6 @@ func consume_next_player_respawn_delay(peer_id: int) -> float:
 
 
 func update_player_respawn_countdown(peer_id: int, seconds_left: int) -> void:
-	if tower_defense_status_hud == null:
-		return
 	var is_local := (
 		(runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0)
 		or peer_id == multiplayer_local_peer_id
@@ -4566,7 +4575,7 @@ func update_player_respawn_countdown(peer_id: int, seconds_left: int) -> void:
 	var display_name := "玩家"
 	if runtime_mode != RuntimeMode.SINGLEPLAYER:
 		display_name = str(multiplayer_player_names.get(peer_id, "玩家 %d" % peer_id))
-	tower_defense_status_hud.set_player_respawn(
+	presentation_coordinator.update_player_respawn_countdown(
 		peer_id,
 		display_name,
 		seconds_left,
@@ -4575,8 +4584,7 @@ func update_player_respawn_countdown(peer_id: int, seconds_left: int) -> void:
 
 
 func clear_player_respawn_countdown(peer_id: int) -> void:
-	if tower_defense_status_hud != null:
-		tower_defense_status_hud.clear_player_respawn(peer_id)
+	presentation_coordinator.clear_player_respawn_countdown(peer_id)
 
 
 func _reset_player_wave_death_counts() -> void:
@@ -4595,37 +4603,15 @@ func _update_singleplayer_respawn(delta: float) -> void:
 
 
 func _begin_local_spectator_camera() -> void:
-	if spectator_camera_active or map_camera == null or player == null:
-		return
-	if map_camera.get_parent() != self:
-		map_camera.reparent(self, true)
-	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	map_camera.reset_physics_interpolation()
-	spectator_camera_active = true
+	presentation_coordinator.begin_local_spectator_camera(player)
 
 
 func _end_local_spectator_camera() -> void:
-	if not spectator_camera_active:
-		return
-	spectator_camera_active = false
-	_attach_camera_to_local_player()
+	presentation_coordinator.end_local_spectator_camera(player)
 
 
 func _update_local_spectator_camera(delta: float) -> void:
-	if not spectator_camera_active or map_camera == null:
-		return
-	if _has_exclusive_modal_open():
-		return
-	var move_input := Input.get_vector(
-		&"move_left",
-		&"move_right",
-		&"move_up",
-		&"move_down"
-	)
-	if move_input == Vector2.ZERO:
-		return
-	map_camera.global_position += move_input * SPECTATOR_CAMERA_SPEED * delta
-	map_camera.global_position = _clamp_spectator_camera_position(map_camera.global_position)
+	presentation_coordinator.update_local_spectator_camera(delta)
 
 
 func _clamp_spectator_camera_position(camera_position: Vector2) -> Vector2:
@@ -5138,40 +5124,11 @@ func _restore_remote_camera_if_boss_intro_complete() -> void:
 
 
 func _focus_camera_on_boss_intro(boss_position: Vector2) -> void:
-	if boss_intro_camera_tween != null:
-		boss_intro_camera_tween.kill()
-		boss_intro_camera_tween = null
-	if map_camera == null:
-		return
-	spectator_camera_active = false
-	if map_camera.get_parent() != self:
-		map_camera.reparent(self, true)
-	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_IDLE
-	map_camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	map_camera.reset_physics_interpolation()
-	var rounded_target := boss_position.round()
-	if map_camera.global_position.is_equal_approx(rounded_target) or not is_inside_tree():
-		map_camera.global_position = rounded_target
-		return
-	boss_intro_camera_tween = create_tween()
-	boss_intro_camera_tween.set_trans(Tween.TRANS_SINE)
-	boss_intro_camera_tween.set_ease(Tween.EASE_IN_OUT)
-	boss_intro_camera_tween.tween_method(
-		_set_map_camera_rounded_global_position,
-		map_camera.global_position,
-		rounded_target,
-		BOSS_INTRO_CAMERA_FOCUS_SECONDS
-	)
+	presentation_coordinator.focus_camera_on_boss_intro(boss_position)
 
 
 func _restore_camera_after_boss_intro() -> void:
-	if boss_intro_camera_tween != null:
-		boss_intro_camera_tween.kill()
-		boss_intro_camera_tween = null
-	if map_camera == null or player == null:
-		return
-	spectator_camera_active = false
-	_attach_camera_to_local_player()
+	presentation_coordinator.restore_camera_after_boss_intro(player)
 
 
 func _is_spawn_system_ready() -> bool:
@@ -5207,8 +5164,7 @@ func play_remote_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 
 
 func _play_countdown_tick() -> void:
-	countdown_audio.pitch_scale = 1.0
-	countdown_audio.play()
+	presentation_coordinator.play_countdown_tick()
 
 
 func _play_client_countdown_tick_if_new(
@@ -5216,48 +5172,31 @@ func _play_client_countdown_tick_if_new(
 	step_id: StringName,
 	seconds: int
 ) -> void:
-	var sequence_key := StringName("%d:%s" % [int(state), String(step_id)])
-	if sequence_key != _client_countdown_sequence_key:
-		_client_countdown_sequence_key = sequence_key
-		_client_last_countdown_tick_seconds = COUNTDOWN_FINAL_SECONDS + 1
-	if (
-		seconds <= 0
-		or seconds > COUNTDOWN_FINAL_SECONDS
-		or seconds >= _client_last_countdown_tick_seconds
-	):
-		return
-	_client_last_countdown_tick_seconds = seconds
-	_play_countdown_tick()
+	presentation_coordinator.play_client_countdown_tick_if_new(
+		state,
+		step_id,
+		seconds
+	)
 
 
 func _update_wave_music(wave_config: WaveConfig) -> void:
-	if wave_config.music == null:
-		return
-	_play_music_stream(wave_config.music, DEFAULT_MUSIC_VOLUME_DB, 0.0, true)
+	presentation_coordinator.update_wave_music(wave_config)
 
 
 func _update_post_wave_music(flow_step: FlowStepConfig) -> void:
-	var wave_config := flow_step as WaveConfig
-	if wave_config == null or wave_config.post_wave_music == null:
-		return
-	_play_music_stream(wave_config.post_wave_music, DEFAULT_MUSIC_VOLUME_DB, 0.0, true)
+	presentation_coordinator.update_post_wave_music(flow_step)
 
 
 func _update_boss_music(boss_config: BossConfig) -> void:
-	if boss_config == null or boss_config.music == null:
-		return
-	_play_music_stream(boss_config.music, boss_config.music_volume_db, boss_config.music_loop_offset, false)
+	presentation_coordinator.update_boss_music(boss_config)
 
 
 func pause_all_background_music() -> void:
-	_stop_music_fade_tween()
-	_pause_background_music_players(self)
+	presentation_coordinator.pause_all_background_music()
 
 
 func _stop_background_music_for_defeat() -> void:
-	_stop_music_fade_tween()
-	music_player.stream_paused = false
-	music_player.stop()
+	presentation_coordinator.stop_background_music_for_defeat()
 
 
 func _play_music_stream(
@@ -5266,73 +5205,32 @@ func _play_music_stream(
 	loop_offset: float = 0.0,
 	fade_in: bool = false
 ) -> void:
-	if stream == null:
-		return
-	_configure_music_loop(stream, loop_offset)
-	music_player.stream_paused = false
-	if music_player.stream == stream and music_player.playing:
-		return
-	_stop_music_fade_tween()
-	music_player.stream = stream
-	music_player.volume_db = MUSIC_FADE_IN_START_VOLUME_DB if fade_in else volume_db
-	music_player.play()
-	if fade_in:
-		var fade_tween := create_tween()
-		music_fade_tween = fade_tween
-		fade_tween.tween_property(
-			music_player,
-			"volume_db",
-			volume_db,
-			MUSIC_FADE_IN_SECONDS
-		)
-		fade_tween.finished.connect(
-			func() -> void:
-				if music_fade_tween == fade_tween:
-					music_fade_tween = null
-		)
+	presentation_coordinator.play_music_stream(
+		stream,
+		volume_db,
+		loop_offset,
+		fade_in
+	)
 
 
 func _stop_music_fade_tween() -> void:
-	if music_fade_tween == null:
-		return
-	music_fade_tween.kill()
-	music_fade_tween = null
+	presentation_coordinator.stop_music_fade_tween()
 
 
 func _configure_music_loop(stream: AudioStream, loop_offset: float) -> void:
-	if stream == null:
-		return
-	if _audio_stream_has_property(stream, &"loop"):
-		stream.set(&"loop", true)
-	if _audio_stream_has_property(stream, &"loop_offset"):
-		stream.set(&"loop_offset", maxf(loop_offset, 0.0))
+	presentation_coordinator.configure_music_loop(stream, loop_offset)
 
 
 func _audio_stream_has_property(stream: AudioStream, property_name: StringName) -> bool:
-	for property in stream.get_property_list():
-		if property.get("name") == property_name:
-			return true
-	return false
+	return presentation_coordinator.audio_stream_has_property(
+		stream,
+		property_name
+	)
 
 
 func _pause_background_music_players(root_node: Node) -> void:
-	if root_node == null:
-		return
-	if _is_background_music_player(root_node):
-		root_node.set(&"stream_paused", true)
-	for child in root_node.get_children():
-		_pause_background_music_players(child)
+	presentation_coordinator.pause_background_music_players(root_node)
 
 
 func _is_background_music_player(node: Node) -> bool:
-	if not (
-		node is AudioStreamPlayer
-		or node is AudioStreamPlayer2D
-		or node is AudioStreamPlayer3D
-	):
-		return false
-	if not bool(node.get(&"playing")):
-		return false
-	var bus_name := String(node.get(&"bus")).to_lower()
-	var node_name := String(node.name).to_lower()
-	return bus_name == "music" or node_name.contains("music") or node_name.contains("bgm")
+	return presentation_coordinator.is_background_music_player(node)

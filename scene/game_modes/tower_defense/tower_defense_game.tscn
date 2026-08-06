@@ -66,6 +66,7 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.tscn" id="67_player_roster"]
 [ext_resource type="PackedScene" uid="uid://b84n1wng7l2np" path="res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.tscn" id="68_boss_coordinator"]
 [ext_resource type="PackedScene" uid="uid://d0brkwgd71xus" path="res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.tscn" id="69_fate_flow"]
+[ext_resource type="PackedScene" uid="uid://cs7mb1v2q9p4x" path="res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn" id="70_presentation"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -182,6 +183,8 @@ linglan_boss_enabled = true
 [node name="PlayerRosterCoordinator" parent="." instance=ExtResource("67_player_roster")]
 
 [node name="BossCoordinator" parent="." instance=ExtResource("68_boss_coordinator")]
+
+[node name="PresentationCoordinator" parent="." instance=ExtResource("70_presentation")]
 
 [node name="TowerPlantGameplayPort" type="Node" parent="."]
 script = ExtResource("62_plant_gameplay_bridge")

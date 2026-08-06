@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cs7mb1v2q9p4x"]
+
+[ext_resource type="Script" uid="uid://b5h8n3k6t2r7w" path="res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.gd" id="1_presentation"]
+
+[node name="PresentationCoordinator" type="Node"]
+script = ExtResource("1_presentation")

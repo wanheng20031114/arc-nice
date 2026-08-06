@@ -1,6 +1,12 @@
 extends SceneTree
 
 const ANNOUNCEMENT_SCENE := preload("res://scene/day_phase_announcement.tscn")
+const PRESENTATION_SCENE := preload(
+	"res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn"
+)
+const DAY_CYCLE := preload(
+	"res://resources/config/day_cycle/tower_defense_day_cycle.tres"
+)
 
 var failures: Array[String] = []
 
@@ -166,13 +172,48 @@ func _test_presentation(announcement: DayPhaseAnnouncement) -> void:
 func _test_phase_boundary_deduplication(
 	announcement: DayPhaseAnnouncement
 ) -> void:
-	var game := TowerDefenseGame.new()
-	game.day_phase_announcement = announcement
-	game.day_phase_announcements_enabled = true
+	var runtime := TowerDefenseGame.new()
+	var campaign := TowerDefenseCampaignCoordinator.new()
+	campaign.day_cycle_config = DAY_CYCLE
+	var presentation := (
+		PRESENTATION_SCENE.instantiate()
+		as TowerDefensePresentationCoordinator
+	)
+	var camera := Camera2D.new()
+	var music_player := AudioStreamPlayer.new()
+	var countdown_audio := AudioStreamPlayer.new()
+	var wave_start_audio := AudioStreamPlayer.new()
+	var defeat_audio := AudioStreamPlayer.new()
+	var wave_hud := TowerDefenseWaveHUD.new()
+	var status_hud := TowerDefenseStatusHUD.new()
+	for dependency in [
+		camera,
+		music_player,
+		countdown_audio,
+		wave_start_audio,
+		defeat_audio,
+		wave_hud,
+		status_hud,
+	]:
+		presentation.add_child(dependency)
+	presentation.setup(
+		runtime,
+		campaign,
+		DAY_CYCLE,
+		camera,
+		music_player,
+		countdown_audio,
+		wave_start_audio,
+		defeat_audio,
+		wave_hud,
+		announcement,
+		status_hud
+	)
+	_expect(presentation.is_bound(), "昼夜报幕测试必须绑定静态表现协调器夹具。")
 	var baseline_count := announcement.presentation_count
-	var first_day_handled := bool(game.call("_announce_wave_phase_start", 1))
-	var duplicate_day_handled := bool(game.call("_announce_wave_phase_start", 1))
-	var ordinary_wave_handled := bool(game.call("_announce_wave_phase_start", 2))
+	var first_day_handled := presentation.announce_wave_phase_start(1, true)
+	var duplicate_day_handled := presentation.announce_wave_phase_start(1, true)
+	var ordinary_wave_handled := presentation.announce_wave_phase_start(2, true)
 	_expect(
 		first_day_handled
 		and duplicate_day_handled
@@ -181,20 +222,22 @@ func _test_phase_boundary_deduplication(
 		and announcement.current_text == "第一日 白昼",
 		"同一白昼阶段只能报幕一次，重复首波状态也必须继续占用开战提示音。"
 	)
-	game.call("_announce_wave_phase_start", 3)
-	game.call("_announce_wave_phase_start", 4)
+	presentation.announce_wave_phase_start(3, true)
+	presentation.announce_wave_phase_start(4, true)
 	_expect(
 		announcement.presentation_count == baseline_count + 2
 		and announcement.current_text == "第一日 黑夜",
 		"黑夜只能在夜段首波报幕一次。"
 	)
-	game.call("_announce_wave_phase_start", 5)
+	presentation.announce_wave_phase_start(5, true)
 	_expect(
 		announcement.presentation_count == baseline_count + 3
 		and announcement.current_text == "第二日 白昼",
 		"下一日首波必须显示新的白昼报幕。"
 	)
-	game.free()
+	presentation.free()
+	campaign.free()
+	runtime.free()
 
 
 func _expect(condition: bool, message: String) -> void:
