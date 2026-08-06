@@ -4,6 +4,9 @@ const MAIN_MP_GAME_PATH := "res://scene/multiplayer/mp_game.gd"
 const MAIN_PROJECTILE_COORDINATOR_PATH := (
 	"res://scene/multiplayer/projectile/mp_projectile_coordinator.gd"
 )
+const MAIN_PLAYER_COORDINATOR_PATH := (
+	"res://scene/multiplayer/player/mp_player_coordinator.gd"
+)
 const RELAY_MP_GAME_PATH := "res://relay_servers/relay_godot_project/relay_mp_game_stub.gd"
 const MAIN_ROGUE_ROUTE_PATH := "res://scene/multiplayer/mp_rogue_route.gd"
 const RELAY_ROGUE_ROUTE_PATH := (
@@ -18,7 +21,18 @@ const WAVE_RUNTIME_PATH := "res://scene/combat/runtime/wave_combat_runtime_base.
 const ROGUE_COMBAT_GAME_PATH := (
 	"res://scene/game_modes/rogue/combat/rogue_combat_game.gd"
 )
-const TOWER_DEFENSE_GAME_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.gd"
+const TOWER_DEFENSE_PLAYER_ROSTER_PATH := (
+	"res://scene/game_modes/tower_defense/player/tower_defense_player_roster_coordinator.gd"
+)
+const TOWER_WORLD_COORDINATOR_PATH := (
+	"res://scene/game_modes/tower_defense/multiplayer/world/mp_tower_world_coordinator.gd"
+)
+const TOWER_FATE_COORDINATOR_PATH := (
+	"res://scene/game_modes/tower_defense/multiplayer/fate/mp_tower_fate_coordinator.gd"
+)
+const TOWER_ECONOMY_COORDINATOR_PATH := (
+	"res://scene/game_modes/tower_defense/multiplayer/economy/mp_tower_economy_coordinator.gd"
+)
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 
@@ -402,68 +416,73 @@ func _test_relay_channel_count() -> void:
 
 func _test_tango_charge_authority_source() -> void:
 	var source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
+	var player_source := FileAccess.get_file_as_string(MAIN_PLAYER_COORDINATOR_PATH)
 	var projectile_source := FileAccess.get_file_as_string(
 		MAIN_PROJECTILE_COORDINATOR_PATH
 	)
 	_expect(not source.is_empty(), "MpGame source must be readable for Tango authority checks.")
 	_expect(
+		not player_source.is_empty(),
+		"PlayerCoordinator source must be readable for Tango authority checks."
+	)
+	_expect(
 		not projectile_source.is_empty(),
 		"ProjectileCoordinator source must be readable for Tango volley checks."
 	)
-	if source.is_empty() or projectile_source.is_empty():
+	if source.is_empty() or player_source.is_empty() or projectile_source.is_empty():
 		return
 	var whitespace_regex := RegEx.new()
 	if whitespace_regex.compile("\\s+") != OK:
 		failures.append("Unable to compile Tango authority whitespace regex.")
 		return
 	var compact_source := whitespace_regex.sub(source, "", true)
+	var compact_player_source := whitespace_regex.sub(player_source, "", true)
 	var compact_projectile_source := whitespace_regex.sub(
 		projectile_source,
 		"",
 		true
 	)
 	_expect(
-		compact_source.contains(
-			"varelapsed:=maxf(_get_net_time()-float(charge.get(\"started_at\",0.0)),0.0)"
+		compact_player_source.contains(
+			"varelapsed:=maxf(_get_action_net_time()-float(charge.get(\"started_at\",0.0)),0.0)"
 		)
-		and compact_source.contains(
+		and compact_player_source.contains(
 			"ifelapsed+TANGO_CHARGE_THRESHOLD_EPSILON<TANGO_CHARGE_MINIMUM_SECONDS:"
 		)
-		and compact_source.contains(
+		and compact_player_source.contains(
 			"(elapsed-TANGO_CHARGE_MINIMUM_SECONDS)/(TANGO_CHARGE_MAXIMUM_SECONDS-TANGO_CHARGE_MINIMUM_SECONDS)"
 		),
-		"MpGame must derive Tango charge duration and ratio from its Host clock."
+		"PlayerCoordinator must derive Tango charge duration and ratio from its Host clock."
 	)
 	_expect(
-		compact_source.contains(
-			"player_node.call(\"try_authoritative_tango_charge_released\",safe_direction,charge_ratio)"
+		compact_player_source.contains(
+			"tango_player.try_authoritative_tango_charge_released(safe_direction,charge_ratio)"
 		),
 		"Only the Host-derived Tango charge ratio may enter authoritative release."
 	)
 	_expect(
-		compact_source.contains(
-			"func_apply_authoritative_tango_charge_cancelled(peer_id:int,request_id:int)->bool:"
+		compact_player_source.contains(
+			"funcapply_authoritative_tango_charge_cancelled(peer_id:int,request_id:int)->bool:"
 		)
-		and compact_source.contains(
+		and compact_player_source.contains(
 			"int(charge.get(\"request_id\",0))!=request_id:"
 		)
-		and compact_source.contains(
-			"_cancel_authoritative_tango_charge(peer_id,true,request_id)"
+		and compact_player_source.contains(
+			"cancel_authoritative_tango_charge(peer_id,true,request_id)"
 		),
 		"Host Tango cancellation must match the sender's active request before broadcasting."
 	)
 	_expect(
-		compact_source.contains(
-			"player_node.call(\"reconcile_predicted_tango_barrage_started\",safe_direction,charge_ratio,charge_sequence)"
+		compact_player_source.contains(
+			"tango_player.reconcile_predicted_tango_barrage_started(safe_direction,charge_ratio,charge_sequence)"
 		),
 		"The owning client must reconcile its predicted Tango barrage instead of restarting it."
 	)
 	_expect(
 		compact_source.contains("funcregister_local_tango_laser_volley(")
 		and compact_source.contains(
-			"projectile_coordinator.register_local_tango_laser_volley("
+			"projectile_coordinator.submit_local_tango_laser_volley("
 		)
-		and compact_source.contains("&\"net_tango_laser_volley\"")
 		and compact_projectile_source.contains(
 			"funcregister_local_tango_laser_volley("
 		)
@@ -472,62 +491,68 @@ func _test_tango_charge_authority_source() -> void:
 		)
 		and compact_projectile_source.contains(
 			"allocate_projectile_id(owner_peer_id,true)"
+		)
+		and compact_projectile_source.contains(
+			"&\"net_tango_laser_volley\""
 		),
 		"Tango's three projectiles must be allocated and broadcast as one Host-origin volley."
 	)
 	_expect(
-		compact_source.contains("_last_tango_volley_visual_state_by_peer")
-		and compact_source.contains("charge_sequence>current_charge_sequence")
-		and compact_source.contains(
+		compact_projectile_source.contains("_last_tango_volley_visual_state_by_peer")
+		and compact_projectile_source.contains("charge_sequence>current_charge_sequence")
+		and compact_projectile_source.contains(
 			"host_fire_timestamp>previous_visual_timestamp"
 		)
-		and compact_source.contains("func_get_unbounded_host_event_age("),
+		and compact_projectile_source.contains("_get_host_event_age(host_fire_timestamp)")
+		and compact_source.contains("_get_unbounded_host_event_age,"),
 		"Tango volley visuals must reject stale sequences/timestamps and use unbounded event age."
 	)
 	_expect(
-		compact_source.contains("uses_passive_tango_mouse_aim")
-		and compact_source.contains(
-			"andnotuses_passive_tango_mouse_aim):returnVector2.ZERO"
+		compact_player_source.contains("uses_passive_tango_mouse_aim")
+		and compact_player_source.contains(
+			"andnotpassive_tango_aim):returnVector2.ZERO"
 		),
 		"Tango's released barrage must continue sending passive mouse aim input."
 	)
 	_expect(
-		compact_source.contains(
-			"func_apply_authoritative_tango_charge_snapshot_ratios("
+		compact_player_source.contains(
+			"funcapply_authoritative_tango_charge_snapshot_ratios("
 		)
-		and compact_source.contains(
+		and compact_player_source.contains(
 			"state.primary_cooldown_ratio=clampf(maxf(sample_time-started_at,0.0)/TANGO_CHARGE_MAXIMUM_SECONDS,0.0,1.0)"
 		),
 		"Host snapshots must derive Tango's charging bar from the authoritative start time."
 	)
 	_expect(
-		compact_source.contains("and_local_tango_active_request_id>0"),
+		compact_player_source.contains("has_local_tango_prediction()")
+		and compact_player_source.contains("andlocal_tango_prediction_active")
+		and compact_player_source.contains("ifsuppress_local_tango_snapshot:return"),
 		"A local Tango prediction must not be overwritten by an older zero-ratio snapshot."
 	)
 	_expect(
-		compact_source.count("orcharge_sequence<last_charge_sequence") == 2
-		and compact_source.count(
+		compact_player_source.count("orcharge_sequence<last_charge_sequence") == 2
+		and compact_player_source.count(
 			"ifcharge_sequence>last_charge_sequence:_tango_charge_sequences_by_peer[peer_id]=charge_sequence"
 		) == 2,
 		"Tango release and cancel terminals must accept a newer sequence when started was missed."
 	)
-	var reject_start := compact_source.find("funcnet_tango_charge_rejected(")
-	var reject_end := compact_source.find("@rpc(", reject_start + 1)
+	var reject_start := compact_player_source.find("funcapply_tango_charge_rejected(")
+	var reject_end := compact_player_source.find("func", reject_start + 1)
 	var reject_source := (
-		compact_source.substr(reject_start, reject_end - reject_start)
+		compact_player_source.substr(reject_start, reject_end - reject_start)
 		if reject_start >= 0 and reject_end > reject_start
 		else ""
 	)
 	_expect(
 		reject_source.contains(
-			"ifrequest_id!=_local_tango_active_request_id:return"
+			"orrequest_id!=_local_tango_active_request_id"
 		),
 		"A stale Tango rejection must not cancel a newer local prediction."
 	)
 	for game_path in [
 		STANDARD_GAME_PATH,
 		ROGUE_COMBAT_GAME_PATH,
-		TOWER_DEFENSE_GAME_PATH,
+		TOWER_DEFENSE_PLAYER_ROSTER_PATH,
 	]:
 		var game_source := FileAccess.get_file_as_string(game_path)
 		_expect(
@@ -539,8 +564,11 @@ func _test_tango_charge_authority_source() -> void:
 
 
 func _test_tango_electric_surge_authority_source() -> void:
-	var source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
-	_expect(not source.is_empty(), "MpGame source must be readable for Electric Surge checks.")
+	var source := FileAccess.get_file_as_string(MAIN_PLAYER_COORDINATOR_PATH)
+	_expect(
+		not source.is_empty(),
+		"PlayerCoordinator source must be readable for Electric Surge checks."
+	)
 	if source.is_empty():
 		return
 	var whitespace_regex := RegEx.new()
@@ -549,9 +577,9 @@ func _test_tango_electric_surge_authority_source() -> void:
 		return
 	var compact_source := whitespace_regex.sub(source, "", true)
 	_expect(
-		compact_source.contains("varorigin:=player_node.global_position")
+		compact_source.contains("varorigin:=tango_player.global_position")
 		and compact_source.contains(
-			"player_node.call(\"try_start_authoritative_electric_surge\",activation_id,origin,auto_fire_charge_sequence)"
+			"tango_player.try_start_authoritative_electric_surge(activation_id,origin,auto_fire_charge_sequence)"
 		)
 		and compact_source.contains(
 			"_active_tango_electric_surges_by_peer[peer_id]={"
@@ -559,20 +587,20 @@ func _test_tango_electric_surge_authority_source() -> void:
 		"Only the Host player's position and readiness may start an Electric Surge."
 	)
 	_expect(
-		compact_source.contains("func_send_active_tango_electric_surges_to_peer(")
+		compact_source.contains("funcsend_active_tango_electric_surges_to_peer(")
 		and compact_source.contains("remaining_seconds_at_send:float")
 		and compact_source.contains("host_sent_at:float")
 		and compact_source.contains(
-			"_map_host_timestamp_to_client_time(host_sent_at,false)"
+			"_session_coordinator.map_host_timestamp_to_client_time(host_sent_at,false)"
 		)
 		and compact_source.contains(
-			"player_node.call(\"play_remote_electric_surge_started\",activation_id,origin,remaining,false,auto_fire_charge_sequence)"
+			"tango_player.play_remote_electric_surge_started(activation_id,origin,remaining,false,auto_fire_charge_sequence)"
 		),
 		"Electric Surge recovery must use Host remaining time without poisoning clock offset."
 	)
 	_expect(
-		compact_source.contains("bool(player_node.call(\"is_electric_surge_active\"))")
-		and compact_source.contains("bool(player_node.call(\"is_tango_barrage_active\"))")
+		compact_source.contains("tango_player.is_electric_surge_active()")
+		and compact_source.contains("tango_player.is_tango_barrage_active()")
 		and compact_source.contains(
 			"[peer_id,safe_direction,1.0,charge_sequence,request_id]"
 		),
@@ -613,46 +641,56 @@ func _test_gameplay_v17_transaction_contract(rpcs: Dictionary) -> void:
 		"confirmed_healing:int",
 	]:
 		_expect_rpc_signature_contains(rpcs, "net_player_healed", signature_fragment)
-	var mp_game_source := FileAccess.get_file_as_string(MAIN_MP_GAME_PATH)
+	var tower_world_source := FileAccess.get_file_as_string(TOWER_WORLD_COORDINATOR_PATH)
+	var tower_fate_source := FileAccess.get_file_as_string(TOWER_FATE_COORDINATOR_PATH)
+	var tower_economy_source := FileAccess.get_file_as_string(
+		TOWER_ECONOMY_COORDINATOR_PATH
+	)
 	_expect(
-		mp_game_source.contains(
+		not tower_world_source.is_empty()
+		and not tower_fate_source.is_empty()
+		and not tower_economy_source.is_empty(),
+		"Tower multiplayer coordinator sources must be readable for gameplay checks."
+	)
+	_expect(
+		tower_world_source.contains(
 			'runtime_state["damage_status_mask"] = plant.get_damage_status_mask()'
 		)
-		and mp_game_source.contains(
+		and tower_world_source.contains(
 			'runtime_state["damage_status_revision"] = plant.damage_status_revision'
 		)
-		and mp_game_source.contains("plant.apply_remote_damage_status_mask("),
+		and tower_world_source.contains("plant.apply_remote_damage_status_mask("),
 		"Late-join plant runtime snapshots must carry and apply revisioned damage-status masks."
 	)
 	_expect(
-		mp_game_source.contains("tower_mode_adapter.get_xiaocong_fate_state_snapshot()")
-		and mp_game_source.contains(
-			"tower_mode_adapter.apply_remote_xiaocong_fate_state(state)"
+		tower_fate_source.contains("_tower_adapter.get_xiaocong_fate_state_snapshot()")
+		and tower_fate_source.contains(
+			"_tower_adapter.apply_remote_xiaocong_fate_state(state)"
 		)
-		and mp_game_source.contains("_admit_remote_xiaocong_request(sender_id)"),
+		and tower_fate_source.contains("_admit_domain_request(peer_id)"),
 		(
 			"Xiaocong fate state must cross the explicit tower adapter during runtime "
 			+ "repair, and all remote choices must pass Host admission."
 		)
 	)
 	_expect(
-		mp_game_source.contains("const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96")
-		and mp_game_source.contains("const TERRAIN_TYPE_EMPTY := -1")
-		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
-		and mp_game_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
+		tower_world_source.contains("const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96")
+		and tower_world_source.contains("const TERRAIN_TYPE_EMPTY := -1")
+		and tower_world_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_PER_SECOND := 1.0")
+		and tower_world_source.contains("const TERRAIN_SNAPSHOT_REQUEST_RATE_BURST := 2.0"),
 		"Protocol v25 terrain repair must use 96-cell chunks, preserve EMPTY=-1, and rate-limit repair requests."
 	)
 	_expect(
-		mp_game_source.contains(
+		tower_economy_source.contains(
 			"GlobalResearchRegistry.get_config_by_wire_id(research_id_wire)"
 		)
-		and mp_game_source.contains(
+		and tower_economy_source.contains(
 			"or int(raw_command[\"schema\"])"
 		)
-		and mp_game_source.contains(
+		and tower_economy_source.contains(
 			"!= ResearchCenter.MULTIPLAYER_RESEARCH_COMMAND_SCHEMA"
 		)
-		and mp_game_source.contains(
+		and tower_economy_source.contains(
 			"building.try_start_global_research(research_config.research_id)"
 		),
 		"Protocol v25 research commands must use schema2 and resolve a Host-owned research whitelist."
