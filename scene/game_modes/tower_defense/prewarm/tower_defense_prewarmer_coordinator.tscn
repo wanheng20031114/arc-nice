@@ -1,0 +1,41 @@
+[gd_scene load_steps=7 format=3 uid="uid://dubxeu88obeuv"]
+
+[ext_resource type="Script" uid="uid://rp1vin3a8og4" path="res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.gd" id="1_prewarm"]
+[ext_resource type="Texture2D" uid="uid://7j2elewjts2l" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="2_texture"]
+[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="3_plant_material"]
+[ext_resource type="Material" path="res://resources/shader/bamboo_mortar_split_lifecycle_material.tres" id="4_mortar_material"]
+[ext_resource type="Shader" uid="uid://d1dea7fqpou23" path="res://resources/shader/bamboo_mortar_glow.gdshader" id="5_glow_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bamboo_mortar_glow_prewarm"]
+shader = ExtResource("5_glow_shader")
+
+[node name="PrewarmerCoordinator" type="Node2D"]
+script = ExtResource("1_prewarm")
+
+[node name="PlantLifecycleShaderPrewarm" type="Sprite2D" parent="." unique_id=1407745015]
+visible = false
+modulate = Color(1, 1, 1, 0.01)
+z_index = 4095
+texture_filter = 1
+material = ExtResource("3_plant_material")
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_texture")
+
+[node name="BambooMortarLifecycleShaderPrewarm" type="Sprite2D" parent="."]
+visible = false
+modulate = Color(1, 1, 1, 0.01)
+z_index = 4095
+texture_filter = 1
+material = ExtResource("4_mortar_material")
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_texture")
+
+[node name="BambooMortarGlowShaderPrewarm" type="Polygon2D" parent="."]
+visible = false
+modulate = Color(1, 1, 1, 0.01)
+z_index = 4095
+texture_filter = 1
+material = SubResource("ShaderMaterial_bamboo_mortar_glow_prewarm")
+color = Color(0.34, 1.65, 0.18, 1)
+polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
+uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)

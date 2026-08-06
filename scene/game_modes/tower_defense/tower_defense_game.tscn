@@ -33,8 +33,6 @@
 [ext_resource type="PackedScene" path="res://scene/vfx/tower_defense_ambient_vfx.tscn" id="34_ambient_vfx"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/oak_warehouse_panel.tscn" id="35_oak_warehouse_panel"]
 [ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn" id="36_guardian_aura_system"]
-[ext_resource type="Texture2D" uid="uid://7j2elewjts2l" path="res://resources/texture/plant_defense/vegetation_stake/vegetation_stake.png" id="37_plant_lifecycle_prewarm_texture"]
-[ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="38_plant_lifecycle_material"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/production_coordinator.tscn" id="39_production_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/production_building_panel.tscn" id="40_production_panel"]
 [ext_resource type="Script" uid="uid://dfuccjc7ww0jj" path="res://scene/enemy/capoo/capoo_sniper_lock_visual_coordinator.gd" id="41_sniper_lock_visuals"]
@@ -42,8 +40,6 @@
 [ext_resource type="PackedScene" path="res://scene/plant_defense/research_coordinator.tscn" id="43_research_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/research_center_panel.tscn" id="44_research_panel"]
 [ext_resource type="PackedScene" path="res://scene/plant_defense/bamboo_mortar_combat_system.tscn" id="45_bamboo_mortar_combat"]
-[ext_resource type="Material" path="res://resources/shader/bamboo_mortar_split_lifecycle_material.tres" id="46_bamboo_mortar_lifecycle_material"]
-[ext_resource type="Shader" uid="uid://d1dea7fqpou23" path="res://resources/shader/bamboo_mortar_glow.gdshader" id="47_bamboo_mortar_glow_shader"]
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="48_day_night"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="49_night_light"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="50_night_vfx_flash_pool"]
@@ -67,14 +63,12 @@
 [ext_resource type="PackedScene" uid="uid://b84n1wng7l2np" path="res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.tscn" id="68_boss_coordinator"]
 [ext_resource type="PackedScene" uid="uid://d0brkwgd71xus" path="res://scene/game_modes/tower_defense/fate/tower_defense_fate_flow_coordinator.tscn" id="69_fate_flow"]
 [ext_resource type="PackedScene" uid="uid://cs7mb1v2q9p4x" path="res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn" id="70_presentation"]
+[ext_resource type="PackedScene" uid="uid://dubxeu88obeuv" path="res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn" id="71_prewarmer"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
 glow_bloom = 0.08
 glow_hdr_scale = 1.6
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_bamboo_mortar_glow_prewarm"]
-shader = ExtResource("47_bamboo_mortar_glow_shader")
 
 [sub_resource type="TileMapPattern" id="TileMapPattern_33cqm"]
 tile_data = PackedInt32Array(0, 0, 0, 65536, 131072, 2, 1, 0, 0, 65537, 0, 0)
@@ -185,6 +179,8 @@ linglan_boss_enabled = true
 [node name="BossCoordinator" parent="." instance=ExtResource("68_boss_coordinator")]
 
 [node name="PresentationCoordinator" parent="." instance=ExtResource("70_presentation")]
+
+[node name="PrewarmerCoordinator" parent="." instance=ExtResource("71_prewarmer")]
 
 [node name="TowerPlantGameplayPort" type="Node" parent="."]
 script = ExtResource("62_plant_gameplay_bridge")
@@ -415,34 +411,6 @@ script = ExtResource("54_luoxi_special_game")
 [node name="BossContainer" type="Node2D" parent="." unique_id=1704115178]
 
 [node name="PlantContainer" type="Node2D" parent="." unique_id=456125027]
-
-[node name="PlantLifecycleShaderPrewarm" type="Sprite2D" parent="." unique_id=1407745015]
-visible = false
-modulate = Color(1, 1, 1, 0.01)
-z_index = 4095
-texture_filter = 1
-material = ExtResource("38_plant_lifecycle_material")
-scale = Vector2(0.5, 0.5)
-texture = ExtResource("37_plant_lifecycle_prewarm_texture")
-
-[node name="BambooMortarLifecycleShaderPrewarm" type="Sprite2D" parent="."]
-visible = false
-modulate = Color(1, 1, 1, 0.01)
-z_index = 4095
-texture_filter = 1
-material = ExtResource("46_bamboo_mortar_lifecycle_material")
-scale = Vector2(0.5, 0.5)
-texture = ExtResource("37_plant_lifecycle_prewarm_texture")
-
-[node name="BambooMortarGlowShaderPrewarm" type="Polygon2D" parent="."]
-visible = false
-modulate = Color(1, 1, 1, 0.01)
-z_index = 4095
-texture_filter = 1
-material = SubResource("ShaderMaterial_bamboo_mortar_glow_prewarm")
-color = Color(0.34, 1.65, 0.18, 1)
-polygon = PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)
-uv = PackedVector2Array(0, 0, 1, 0, 1, 1, 0, 1)
 
 [node name="PlantSystem" type="Node" parent="." unique_id=92727624]
 script = ExtResource("22_plant_system")

@@ -325,17 +325,6 @@ func request_runtime_scene_loads() -> void:
 		ResourceLoader.load_threaded_request(resource_path)
 
 
-func deferred_request_runtime_scene_loads() -> void:
-	if DisplayServer.get_name() == "headless":
-		return
-	await runtime.get_tree().process_frame
-	if not runtime._can_continue_runtime_prewarm():
-		return
-	await runtime.get_tree().process_frame
-	if runtime._can_continue_runtime_prewarm():
-		request_runtime_scene_loads()
-
-
 func prewarm_runtime_resources() -> void:
 	if not enabled or not runtime._can_continue_runtime_prewarm():
 		return

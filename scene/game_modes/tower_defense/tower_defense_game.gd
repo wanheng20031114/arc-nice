@@ -196,6 +196,10 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var presentation_coordinator := get_node_or_null(
 	"PresentationCoordinator"
 ) as TowerDefensePresentationCoordinator
+@onready var prewarmer_coordinator := get_node_or_null(
+	"PrewarmerCoordinator"
+) as TowerDefensePrewarmerCoordinator
+@onready var tower_grid_pathfinder: GridPathfinder = grid_pathfinder as GridPathfinder
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
 )
@@ -227,13 +231,6 @@ static var expanded_projectile_pool_prewarm_enabled := true
 )
 @onready var research_coordinator: ResearchCoordinator = $ResearchCoordinator
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
-@onready var plant_lifecycle_shader_prewarm: Sprite2D = $PlantLifecycleShaderPrewarm
-@onready var bamboo_mortar_lifecycle_shader_prewarm: Sprite2D = (
-	$BambooMortarLifecycleShaderPrewarm
-)
-@onready var bamboo_mortar_glow_shader_prewarm: Polygon2D = (
-	$BambooMortarGlowShaderPrewarm
-)
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
 @onready var session_object_pool: SessionObjectPool = $SessionObjectPool
 @onready var bamboo_mortar_combat_system: BambooMortarCombatSystem = (
@@ -592,9 +589,15 @@ var boss_runtime_resources_by_path: Dictionary[String, Resource]:
 		_boss_runtime_resources_by_path = value
 		if boss_coordinator != null:
 			boss_coordinator.runtime_resources_by_path = value
-var navigation_prewarm_requested: bool = false
-var navigation_prewarmed: bool = false
-var plant_lifecycle_shader_prewarmed: bool = false
+var navigation_prewarm_requested: bool:
+	get:
+		return prewarmer_coordinator != null and prewarmer_coordinator.navigation_prewarm_requested
+var navigation_prewarmed: bool:
+	get:
+		return prewarmer_coordinator != null and prewarmer_coordinator.navigation_prewarmed
+var plant_lifecycle_shader_prewarmed: bool:
+	get:
+		return prewarmer_coordinator != null and prewarmer_coordinator.plant_lifecycle_shader_prewarmed
 var _previous_physics_interpolation_enabled := false
 var _owns_physics_interpolation_override := false
 var merchant_intermission_active := false
@@ -695,13 +698,17 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
+	if not _configure_prewarmer_coordinator():
+		set_process(false)
+		set_physics_process(false)
+		return
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
 		run_state.ensure_run_started()
 		_configure_singleplayer_player()
 	_configure_enemy_coordinator()
 	_collect_enemy_spawn_points()
 	_configure_timers()
-	_prewarm_enemy_visual_resources()
+	prewarmer_coordinator.prewarm_enemy_visual_resources()
 	CombatRuntimeBase.register_common_visual_effect_pools(session_object_pool)
 	session_object_pool.register_scene(
 		PLANT_PLACEMENT_PARTICLES_SCENE,
@@ -1250,6 +1257,27 @@ func _configure_active_campaign() -> bool:
 		return false
 	_sync_campaign_facade_from_coordinator()
 	return true
+
+
+func _configure_prewarmer_coordinator() -> bool:
+	if prewarmer_coordinator == null:
+		push_error("TowerDefenseGame: 缺少静态 PrewarmerCoordinator 节点。")
+		return false
+	if tower_grid_pathfinder == null:
+		push_error("TowerDefenseGame: GridPathfinder 必须为强类型 GridPathfinder。")
+		return false
+	return prewarmer_coordinator.setup(
+		self,
+		tower_grid_pathfinder,
+		map_camera,
+		session_object_pool,
+		boss_coordinator,
+		fate_coordinator,
+		waves,
+		PLANT_PLACEMENT_PARTICLES_SCENE,
+		PLANT_REMOVAL_SMOKE_SCENE,
+		GUARDIAN_POINT_LIGHT_TEXTURE
+	)
 
 
 func replace_campaign_runtime_state_for_fixture(
@@ -3015,18 +3043,6 @@ func _configure_linglan_boss() -> void:
 		boss_coordinator.configure_existing_runtime_nodes()
 
 
-func _request_boss_runtime_scene_loads() -> void:
-	boss_coordinator.request_runtime_scene_loads()
-
-
-func _get_boss_runtime_resource_paths() -> Array[String]:
-	return boss_coordinator.get_runtime_resource_paths()
-
-
-func _prewarm_boss_runtime_resources() -> void:
-	await boss_coordinator.prewarm_runtime_resources()
-
-
 func _cache_linglan_slime_configs() -> void:
 	boss_coordinator.cache_slime_configs()
 
@@ -3036,7 +3052,8 @@ func get_linglan_enrage_sniper_config() -> EnemyConfig:
 
 
 func _deferred_request_boss_runtime_scene_loads() -> void:
-	await boss_coordinator.deferred_request_runtime_scene_loads()
+	if prewarmer_coordinator != null:
+		await prewarmer_coordinator.schedule_boss_runtime_scene_loads()
 
 
 func _get_first_boss_config() -> Resource:
@@ -3238,322 +3255,18 @@ func _can_local_player_start_wave_early() -> bool:
 	)
 
 
-func _prewarm_enemy_navigation_grids() -> void:
-	if grid_pathfinder == null:
-		return
-	if not grid_pathfinder.has_method("prewarm_agent_grid"):
-		return
-	if not bool(grid_pathfinder.get("is_built")):
-		return
-
-	var seen_scene_keys: Dictionary = {}
-	var seen_extent_keys: Dictionary = {}
-	for wave_config in waves:
-		if wave_config == null:
-			continue
-		for entry in wave_config.enemy_entries:
-			if entry == null or entry.enemy_config == null:
-				continue
-			var enemy_config := entry.enemy_config
-			if enemy_config.enemy_scene == null:
-				continue
-			var scene_key := enemy_config.enemy_scene.resource_path
-			if scene_key.is_empty():
-				scene_key = enemy_config.resource_path
-			if seen_scene_keys.has(scene_key):
-				continue
-			seen_scene_keys[scene_key] = true
-
-			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
-			if body_half_extents == Vector2.ZERO:
-				continue
-			var traversal_types := enemy_config.terrain_traversal_types
-			var extent_key := "%d:%d:%d" % [
-				ceili(body_half_extents.x),
-				ceili(body_half_extents.y),
-				traversal_types,
-			]
-			if seen_extent_keys.has(extent_key):
-				continue
-			seen_extent_keys[extent_key] = true
-			grid_pathfinder.call(
-				"prewarm_agent_grid",
-				body_half_extents,
-				traversal_types
-			)
-			if grid_pathfinder.has_method("prewarm_flow_navigation_target"):
-				var navigation_targets: Array[Node2D] = []
-				if player != null:
-					navigation_targets.append(player)
-				navigation_targets.append_array(get_home_objective_targets())
-				for navigation_target in navigation_targets:
-					if navigation_target == null or not is_instance_valid(navigation_target):
-						continue
-					grid_pathfinder.call(
-						"prewarm_flow_navigation_target",
-						navigation_target.global_position,
-						body_half_extents,
-						traversal_types
-					)
-
-
 func prepare_shared_runtime_data_and_complete() -> void:
-	await _prewarm_tower_shared_runtime_data()
-	if not _can_continue_runtime_prewarm():
-		return
-	await _prewarm_plant_lifecycle_shader()
-	if _can_continue_runtime_prewarm():
-		mark_runtime_preparation_complete()
-
-
-func _prewarm_tower_shared_runtime_data() -> void:
-	await prewarm_shared_runtime_data()
-	if not _can_continue_runtime_prewarm():
-		return
-	await _prewarm_boss_runtime_resources()
-	if not _can_continue_runtime_prewarm():
-		return
-	if fate_coordinator != null:
-		await fate_coordinator.prewarm_elite_enemy_configs()
+	if prewarmer_coordinator != null:
+		await prewarmer_coordinator.prepare_shared_runtime_data_and_complete()
 
 
 func _can_continue_runtime_prewarm() -> bool:
 	return not runtime_prewarm_tearing_down and is_inside_tree()
 
 
-func _prewarm_plant_lifecycle_shader() -> void:
-	if (
-		not _can_continue_runtime_prewarm()
-		or plant_lifecycle_shader_prewarmed
-		or not runtime_activation_deferred
-		or plant_lifecycle_shader_prewarm == null
-		or bamboo_mortar_lifecycle_shader_prewarm == null
-		or bamboo_mortar_glow_shader_prewarm == null
-	):
-		return
-	update_runtime_preparation_progress("预热植物生命周期特效…", 0, 1)
-	var prewarm_position := map_camera.get_screen_center_position()
-	plant_lifecycle_shader_prewarm.global_position = prewarm_position
-	bamboo_mortar_lifecycle_shader_prewarm.global_position = (
-		prewarm_position
-	)
-	bamboo_mortar_glow_shader_prewarm.global_position = prewarm_position
-	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(
-		&"construction_progress",
-		0.5
-	)
-	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(
-		&"construction_front_strength",
-		1.0
-	)
-	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(&"removal_enabled", true)
-	plant_lifecycle_shader_prewarm.set_instance_shader_parameter(&"removal_progress", 0.5)
-	plant_lifecycle_shader_prewarm.show()
-	bamboo_mortar_lifecycle_shader_prewarm.show()
-	bamboo_mortar_glow_shader_prewarm.show()
-
-	# The pre-authored Sprite2D compiles the lifecycle shader. Briefly drawing
-	# one pooled instance of each particle effect in the same masked frame also
-	# compiles their particle and canvas pipelines without adding runtime nodes.
-	var placement_particles := session_object_pool.try_acquire(
-		PLANT_PLACEMENT_PARTICLES_SCENE
-	) as GPUParticles2D
-	if placement_particles != null:
-		placement_particles.global_position = prewarm_position
-		placement_particles.reset_physics_interpolation()
-		placement_particles.amount_ratio = 1.0
-		placement_particles.restart()
-		placement_particles.emitting = true
-	var removal_smoke := session_object_pool.try_acquire(
-		PLANT_REMOVAL_SMOKE_SCENE
-	) as GPUParticles2D
-	if removal_smoke != null:
-		removal_smoke.global_position = prewarm_position
-		removal_smoke.reset_physics_interpolation()
-		removal_smoke.restart()
-		removal_smoke.emitting = true
-	if DisplayServer.get_name() == "headless":
-		# A headless DisplayServer has no Canvas frame to compile or signal. Still
-		# advance once so the pooled leases exercise the same acquire/release path.
-		await get_tree().process_frame
-	else:
-		await RenderingServer.frame_post_draw
-	if not _can_continue_runtime_prewarm():
-		return
-	plant_lifecycle_shader_prewarm.hide()
-	bamboo_mortar_lifecycle_shader_prewarm.hide()
-	bamboo_mortar_glow_shader_prewarm.hide()
-	if placement_particles != null:
-		placement_particles.emitting = false
-		placement_particles.amount_ratio = 0.0
-		SessionObjectPool.release_to_owner(placement_particles)
-	if removal_smoke != null:
-		removal_smoke.emitting = false
-		SessionObjectPool.release_to_owner(removal_smoke)
-	if not is_inside_tree():
-		return
-	plant_lifecycle_shader_prewarmed = true
-	update_runtime_preparation_progress("预热植物生命周期特效…", 1, 1)
-
-
 func _schedule_enemy_navigation_prewarm() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return
-	if navigation_prewarmed or navigation_prewarm_requested:
-		return
-	navigation_prewarm_requested = true
-	call_deferred("_run_scheduled_enemy_navigation_prewarm")
-
-
-func _run_scheduled_enemy_navigation_prewarm() -> void:
-	await get_tree().process_frame
-	if not _can_continue_runtime_prewarm():
-		return
-	await get_tree().process_frame
-	if not _can_continue_runtime_prewarm():
-		return
-	navigation_prewarm_requested = false
-	if navigation_prewarmed:
-		await _prewarm_tower_shared_runtime_data()
-		if not _can_continue_runtime_prewarm():
-			return
-		await _prewarm_plant_lifecycle_shader()
-		if not _can_continue_runtime_prewarm():
-			return
-		mark_runtime_preparation_complete()
-		return
-	await _prewarm_enemy_navigation_grids_staged()
-	if not _can_continue_runtime_prewarm():
-		return
-	navigation_prewarmed = true
-	await _prewarm_tower_shared_runtime_data()
-	if not _can_continue_runtime_prewarm():
-		return
-	await _prewarm_plant_lifecycle_shader()
-	if not _can_continue_runtime_prewarm():
-		return
-	mark_runtime_preparation_complete()
-
-
-func _prewarm_enemy_navigation_grids_staged() -> void:
-	update_runtime_preparation_progress("分析塔防敌人体型…", 0, 1)
-	await get_tree().process_frame
-	if (
-		not _can_continue_runtime_prewarm()
-		or grid_pathfinder == null
-		or not grid_pathfinder.has_method("prewarm_agent_grid")
-		or not bool(grid_pathfinder.get("is_built"))
-	):
-		return
-
-	var profiles: Array[Dictionary] = []
-	var seen_scene_keys: Dictionary = {}
-	var seen_extent_keys: Dictionary = {}
-	for wave_config in waves:
-		if wave_config == null:
-			continue
-		for entry in wave_config.enemy_entries:
-			if entry == null or entry.enemy_config == null:
-				continue
-			var enemy_config := entry.enemy_config
-			if enemy_config.enemy_scene == null:
-				continue
-			var scene_key := enemy_config.enemy_scene.resource_path
-			if scene_key.is_empty():
-				scene_key = enemy_config.resource_path
-			if seen_scene_keys.has(scene_key):
-				continue
-			seen_scene_keys[scene_key] = true
-			var body_half_extents := _get_enemy_scene_body_half_extents(enemy_config)
-			await get_tree().process_frame
-			if not _can_continue_runtime_prewarm():
-				return
-			if body_half_extents == Vector2.ZERO:
-				continue
-			var traversal_types := enemy_config.terrain_traversal_types
-			var extent_key := "%d:%d:%d" % [
-				ceili(body_half_extents.x),
-				ceili(body_half_extents.y),
-				traversal_types,
-			]
-			if seen_extent_keys.has(extent_key):
-				continue
-			seen_extent_keys[extent_key] = true
-			profiles.append({
-				"half_extents": body_half_extents,
-				"traversal_types": traversal_types,
-			})
-
-	var navigation_targets: Array[Node2D] = []
-	if player != null:
-		navigation_targets.append(player)
-	navigation_targets.append_array(get_home_objective_targets())
-	var total_steps := maxi(profiles.size() * (1 + navigation_targets.size()), 1)
-	var completed_steps := 0
-	update_runtime_preparation_progress("预热塔防寻路网格…", completed_steps, total_steps)
-	for profile in profiles:
-		var half_extents: Vector2 = profile["half_extents"]
-		var traversal_types: int = int(profile["traversal_types"])
-		if grid_pathfinder.has_method("prewarm_agent_grid_staged"):
-			await grid_pathfinder.call(
-				"prewarm_agent_grid_staged",
-				half_extents,
-				traversal_types
-			)
-			if not _can_continue_runtime_prewarm():
-				return
-		else:
-			grid_pathfinder.call("prewarm_agent_grid", half_extents, traversal_types)
-		completed_steps += 1
-		update_runtime_preparation_progress("预热塔防寻路网格…", completed_steps, total_steps)
-		await get_tree().process_frame
-		if not _can_continue_runtime_prewarm():
-			return
-		if not grid_pathfinder.has_method("prewarm_flow_navigation_target"):
-			continue
-		for navigation_target in navigation_targets:
-			if navigation_target == null or not is_instance_valid(navigation_target):
-				completed_steps += 1
-				continue
-			if grid_pathfinder.has_method("prewarm_flow_navigation_target_staged"):
-				await grid_pathfinder.call(
-					"prewarm_flow_navigation_target_staged",
-					navigation_target.global_position,
-					half_extents,
-					traversal_types
-				)
-				if not _can_continue_runtime_prewarm():
-					return
-			else:
-				grid_pathfinder.call(
-					"prewarm_flow_navigation_target",
-					navigation_target.global_position,
-					half_extents,
-					traversal_types
-				)
-			completed_steps += 1
-			update_runtime_preparation_progress("预热 Home 防线…", completed_steps, total_steps)
-			await get_tree().process_frame
-			if not _can_continue_runtime_prewarm():
-				return
-
-
-func _prewarm_enemy_visual_resources() -> void:
-	GUARDIAN_POINT_LIGHT_TEXTURE.get_size()
-
-
-func _get_enemy_scene_body_half_extents(enemy_config: EnemyConfig) -> Vector2:
-	if enemy_config == null or enemy_config.enemy_scene == null:
-		return Vector2.ZERO
-	var instance := enemy_config.enemy_scene.instantiate()
-	var enemy_instance := instance as Enemy
-	if enemy_instance == null:
-		if instance != null:
-			instance.free()
-		return Vector2.ZERO
-	var body_half_extents := enemy_instance.get_configured_body_collision_half_extents()
-	enemy_instance.free()
-	return body_half_extents
+	if prewarmer_coordinator != null:
+		prewarmer_coordinator.schedule_enemy_navigation_prewarm()
 
 
 func _configure_xiaocong_fate_flow() -> bool:
@@ -3867,9 +3580,8 @@ func _begin_wave_config(wave_config: WaveConfig) -> void:
 	if not _resolve_wave_spawn_points(wave_config):
 		_enter_defeat()
 		return
-	if runtime_mode != RuntimeMode.CLIENT_VIEW and not navigation_prewarmed:
-		_prewarm_enemy_navigation_grids()
-		navigation_prewarmed = true
+	if prewarmer_coordinator != null:
+		prewarmer_coordinator.ensure_navigation_prewarmed_sync()
 
 	wave_state = CombatFlowState.State.WAVE_ACTIVE
 	_reset_player_wave_death_counts()
