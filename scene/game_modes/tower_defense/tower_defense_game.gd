@@ -179,6 +179,9 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var campaign_coordinator: TowerDefenseCampaignCoordinator = (
 	$CampaignCoordinator
 )
+@onready var campaign_runtime_port: TowerDefenseCampaignRuntimePort = (
+	$CampaignRuntimePort
+)
 @onready var enemy_coordinator: TowerDefenseEnemyCoordinator = $EnemyCoordinator
 @onready var home_defense_coordinator: TowerDefenseHomeDefenseCoordinator = (
 	$HomeDefenseCoordinator
@@ -254,10 +257,6 @@ var multiplayer_terrain_overrides: Dictionary:
 		return plant_runtime_coordinator.multiplayer_terrain_overrides
 	set(value):
 		plant_runtime_coordinator.multiplayer_terrain_overrides = value
-var active_campaign: WaveCampaignConfig = null
-var flow_graph: FlowGraphConfig = null
-var waves: Array[WaveConfig] = []
-var bosses: Array[Resource] = []
 var enemy_spawn_points: Array[Marker2D] = []
 var enemy_spawn_points_by_name: Dictionary[StringName, Marker2D] = {}
 var active_wave_spawn_points: Array[Marker2D] = []
@@ -290,20 +289,6 @@ var pending_enemy_config_index: int:
 var active_wave_enemy_ids: Dictionary = {}
 var hud_alive_enemy_ids: Dictionary = {}
 
-var wave_state: CombatFlowState.State = CombatFlowState.State.PRE_WAVE:
-	set(value):
-		wave_state = value
-		if plant_placement_coordinator != null:
-			plant_placement_coordinator.set_flow_state(value)
-var current_wave_index: int = 0
-var current_wave_total: int = 0
-var current_wave_spawned: int = 0
-var current_wave_defeated: int = 0
-var current_wave_escaped: int = 0
-var current_wave_resolved: int = 0
-var countdown_seconds: int = 0
-var current_flow_step: FlowStepConfig = null
-var next_flow_step_after_rest: FlowStepConfig = null
 var _pending_music_fade_tween: Tween = null
 var music_fade_tween: Tween:
 	get:
@@ -640,11 +625,6 @@ var spectator_camera_active: bool:
 			presentation_coordinator.spectator_camera_active = value
 var projectile_pool_registration_ms := 0.0
 var starting_package_granted := false
-var progression_started_msec := 0
-var first_defense_tower_seconds := -1.0
-var water_chain_online_seconds := -1.0
-var daily_xirang_rewards: Dictionary[int, int] = {}
-var progression_day_records: Array[Dictionary] = []
 var runtime_prewarm_tearing_down := false
 
 
@@ -849,7 +829,7 @@ func _ready() -> void:
 	_register_research_players()
 	_configure_minimap()
 	_apply_initial_player_xirang()
-	_start_progression_metrics()
+	campaign_coordinator.start_progression_metrics()
 	if (
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 		and not _grant_tower_defense_starting_package()
@@ -875,7 +855,7 @@ func _ready() -> void:
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)
 	_set_merchant_active(false)
-	fate_coordinator.setup(self, day_cycle_config)
+	fate_coordinator.setup(self, campaign_coordinator, day_cycle_config)
 	if not _configure_xiaocong_fate_flow():
 		set_process(false)
 		set_physics_process(false)
@@ -888,17 +868,21 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
+	if not _configure_campaign_runtime_coordinator():
+		set_process(false)
+		set_physics_process(false)
+		return
 	call_deferred("_deferred_request_boss_runtime_scene_loads")
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
-		_start_client_flow_countdown(
+		campaign_coordinator.start_client_flow_countdown(
 			CombatFlowState.State.PRE_WAVE,
 			_get_flow_step_id(_get_start_flow_step()),
-			_get_initial_preparation_seconds()
+			campaign_coordinator.get_initial_preparation_seconds()
 		)
 	elif auto_start_waves and not runtime_activation_deferred and _is_flow_system_ready():
-		_enter_pre_flow_step(_get_start_flow_step())
+		campaign_coordinator.enter_pre_flow_step(_get_start_flow_step())
 	else:
 		_show_tower_defense_wave_progress()
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
@@ -913,8 +897,12 @@ func _ready() -> void:
 func _on_runtime_activated() -> void:
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		return
-	if current_flow_step == null and auto_start_waves and _is_flow_system_ready():
-		_enter_pre_flow_step(_get_start_flow_step())
+	if (
+		campaign_coordinator.current_flow_step == null
+		and auto_start_waves
+		and _is_flow_system_ready()
+	):
+		campaign_coordinator.enter_pre_flow_step(_get_start_flow_step())
 
 
 func _physics_process(delta: float) -> void:
@@ -1219,8 +1207,7 @@ func _configure_active_campaign() -> bool:
 	)
 	singleplayer_campaign = campaign_coordinator.singleplayer_campaign
 	multiplayer_campaign = campaign_coordinator.multiplayer_campaign
-	active_campaign = campaign_coordinator.active_campaign
-	if active_campaign == null:
+	if campaign_coordinator.active_campaign == null:
 		push_error("TowerDefenseGame: 模式定义无法解析当前运行模式的 Campaign。")
 		push_error("TowerDefenseGame: 当前运行模式没有配置 WaveCampaignConfig。")
 		return false
@@ -1228,7 +1215,6 @@ func _configure_active_campaign() -> bool:
 		push_error(error)
 	if not configured:
 		return false
-	_sync_campaign_facade_from_coordinator()
 	return true
 
 
@@ -1246,11 +1232,42 @@ func _configure_prewarmer_coordinator() -> bool:
 		session_object_pool,
 		boss_coordinator,
 		fate_coordinator,
-		waves,
+		campaign_coordinator.waves,
 		PLANT_PLACEMENT_PARTICLES_SCENE,
 		PLANT_REMOVAL_SMOKE_SCENE,
 		GUARDIAN_POINT_LIGHT_TEXTURE
 	)
+
+
+func _configure_campaign_runtime_coordinator() -> bool:
+	if campaign_runtime_port == null:
+		push_error("TowerDefenseGame: 缺少静态 CampaignRuntimePort 节点。")
+		return false
+	campaign_runtime_port.bind_runtime(self)
+	var configured := campaign_coordinator.setup_runtime(
+		campaign_runtime_port,
+		enemy_coordinator,
+		presentation_coordinator,
+		boss_coordinator,
+		player_roster_coordinator,
+		prewarmer_coordinator,
+		fate_flow_coordinator,
+		tower_multiplayer_mode_adapter,
+		plant_placement_coordinator,
+		home_defense_coordinator,
+		state_timer,
+		enemy_spawn_timer,
+		progression_config,
+		run_state,
+		production_coordinator,
+		luoxi_special_game_coordinator,
+		luoxi_merchant,
+		day_phase_announcements_enabled
+	)
+	if not configured:
+		push_error("TowerDefenseGame: CampaignCoordinator 运行时依赖绑定不完整。")
+		return false
+	return true
 
 
 func _bind_tower_multiplayer_adapter_dependencies() -> bool:
@@ -1295,13 +1312,6 @@ func replace_campaign_runtime_state_for_fixture(
 		fixture_waves,
 		fixture_bosses
 	)
-	_sync_campaign_facade_from_coordinator()
-
-
-func _sync_campaign_facade_from_coordinator() -> void:
-	flow_graph = campaign_coordinator.flow_graph
-	waves.assign(campaign_coordinator.waves)
-	bosses.assign(campaign_coordinator.bosses)
 
 
 func _configure_singleplayer_player() -> void:
@@ -1342,8 +1352,12 @@ func _configure_home_defense() -> void:
 		_on_home_base_health_changed
 	):
 		home_defense_coordinator.base_health_changed.connect(_on_home_base_health_changed)
-	if not home_defense_coordinator.base_defeated.is_connected(_enter_defeat):
-		home_defense_coordinator.base_defeated.connect(_enter_defeat)
+	if not home_defense_coordinator.base_defeated.is_connected(
+		campaign_coordinator.enter_defeat
+	):
+		home_defense_coordinator.base_defeated.connect(
+			campaign_coordinator.enter_defeat
+		)
 	if not home_defense_coordinator.boss_escaped.is_connected(_on_home_boss_escaped):
 		home_defense_coordinator.boss_escaped.connect(_on_home_boss_escaped)
 	if not home_defense_coordinator.wave_escape_finished.is_connected(
@@ -1356,7 +1370,7 @@ func _configure_home_defense() -> void:
 
 
 func _get_home_flow_state() -> int:
-	return wave_state
+	return campaign_coordinator.wave_state
 
 
 func _get_active_home_boss() -> Enemy:
@@ -1448,8 +1462,14 @@ func _on_home_enemy_escaped(
 ) -> void:
 	var enemy_id := enemy.get_instance_id()
 	if resolves_active_wave or resolves_boss_step:
-		current_wave_escaped = mini(current_wave_escaped + 1, current_wave_total)
-		current_wave_resolved = mini(current_wave_resolved + 1, current_wave_total)
+		campaign_coordinator.current_wave_escaped = mini(
+			campaign_coordinator.current_wave_escaped + 1,
+			campaign_coordinator.current_wave_total
+		)
+		campaign_coordinator.current_wave_resolved = mini(
+			campaign_coordinator.current_wave_resolved + 1,
+			campaign_coordinator.current_wave_total
+		)
 		_remove_active_enemy(enemy_id)
 	_remove_hud_alive_enemy(enemy_id)
 	_emit_multiplayer_enemy_escaped(enemy)
@@ -1457,12 +1477,12 @@ func _on_home_enemy_escaped(
 
 
 func _finish_home_wave_escape() -> void:
-	_show_tower_defense_wave_progress()
-	_check_wave_completion()
+	enemy_coordinator.show_wave_progress()
+	enemy_coordinator.check_wave_completion()
 
 
 func _on_home_boss_escaped() -> void:
-	if wave_state != CombatFlowState.State.DEFEAT:
+	if campaign_coordinator.wave_state != CombatFlowState.State.DEFEAT:
 		call_deferred("_complete_escaped_boss_step")
 
 
@@ -1611,7 +1631,7 @@ func _configure_plant_placement_coordinator() -> bool:
 		int(runtime_mode),
 		multiplayer_local_peer_id,
 		sandbox_free_building_enabled,
-		wave_state
+		campaign_coordinator.wave_state
 	):
 		return false
 	return plant_placement_coordinator.is_bound()
@@ -1625,35 +1645,14 @@ func _prepare_plant_runtime_signal_bindings() -> void:
 			_request_enemy_retarget_after_objective_change
 		)
 	if not plant_runtime_coordinator.progression_plant_placed.is_connected(
-		_track_progression_plant_placement
+		campaign_coordinator.track_progression_plant_placement
 	):
 		plant_runtime_coordinator.progression_plant_placed.connect(
-			_track_progression_plant_placement
+			campaign_coordinator.track_progression_plant_placement
 		)
 func _on_runtime_plant_placed(plant: PlantDefense) -> void:
 	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
 	plant_runtime_coordinator.handle_plant_placed(plant)
-
-
-func _track_progression_plant_placement(plant: PlantDefense) -> void:
-	if (
-		runtime_mode == RuntimeMode.CLIENT_VIEW
-		or plant == null
-		or plant.config == null
-	):
-		return
-	var elapsed_seconds := _get_progression_elapsed_seconds()
-	if (
-		first_defense_tower_seconds < 0.0
-		and plant.config.building_category
-		== PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER
-	):
-		first_defense_tower_seconds = elapsed_seconds
-	if (
-		water_chain_online_seconds < 0.0
-		and plant.config.plant_id == PlantDefenseRegistry.WATER_COLLECTOR_ID
-	):
-		water_chain_online_seconds = elapsed_seconds
 
 
 func _on_plant_terrain_decay_timer_timeout() -> void:
@@ -1663,7 +1662,9 @@ func _on_plant_terrain_decay_timer_timeout() -> void:
 
 func _update_plant_placement_input_state() -> void:
 	if plant_placement_coordinator != null:
-		plant_placement_coordinator.set_flow_state(wave_state)
+		plant_placement_coordinator.set_flow_state(
+			campaign_coordinator.wave_state
+		)
 
 
 func _refresh_player_modal_ui_lock() -> void:
@@ -1715,7 +1716,7 @@ func request_multiplayer_plant_placement(
 		plant_id,
 		anchor,
 		placement_player,
-		wave_state == CombatFlowState.State.FATE_INTERLUDE,
+		campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE,
 		sandbox_free_building_enabled
 	)
 
@@ -1742,7 +1743,7 @@ func request_multiplayer_inventory_plant_placement(
 		item_config_path,
 		run_state,
 		placement_player,
-		wave_state == CombatFlowState.State.FATE_INTERLUDE
+		campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE
 	)
 
 
@@ -1934,20 +1935,6 @@ func _grant_tower_defense_starting_package() -> bool:
 	starting_package_granted = true
 	run_state.notify_inventory_snapshot_committed()
 	return true
-
-
-func _start_progression_metrics() -> void:
-	if progression_started_msec <= 0:
-		progression_started_msec = Time.get_ticks_msec()
-
-
-func _get_progression_elapsed_seconds() -> float:
-	if progression_started_msec <= 0:
-		return 0.0
-	return maxf(
-		float(Time.get_ticks_msec() - progression_started_msec) / 1000.0,
-		0.0
-	)
 
 
 func _register_research_players() -> void:
@@ -2373,33 +2360,7 @@ func show_local_luoxi_refresh_result(
 
 
 func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return false
-	if (
-		runtime_mode == RuntimeMode.HOST_AUTHORITY
-		and (
-			requester_peer_id != multiplayer_local_peer_id
-			or not peer_players.has(requester_peer_id)
-		)
-	):
-		return false
-	if wave_state != CombatFlowState.State.PRE_WAVE and wave_state != CombatFlowState.State.INTERMISSION:
-		return false
-	var flow_step := (
-		current_flow_step
-		if wave_state == CombatFlowState.State.PRE_WAVE
-		else next_flow_step_after_rest
-	)
-	if flow_step == null:
-		return false
-	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-		return false
-	countdown_seconds = COUNTDOWN_FINAL_SECONDS
-	presentation_coordinator.show_countdown(countdown_seconds, false)
-	_play_countdown_tick()
-	state_timer.start(1.0)
-	_emit_multiplayer_flow_state(wave_state)
-	return true
+	return campaign_coordinator.request_wave_start(requester_peer_id)
 
 
 func _set_merchant_active(active: bool) -> void:
@@ -2537,6 +2498,7 @@ func _ensure_boss_health_hud_runtime_node(boss_config: Resource) -> bool:
 func _configure_enemy_coordinator() -> void:
 	enemy_coordinator.setup(
 		self,
+		campaign_coordinator,
 		random_generator,
 		enemy_container,
 		tower_grid_pathfinder,
@@ -2629,14 +2591,8 @@ func _collect_enemy_spawn_points() -> void:
 
 func _configure_timers() -> void:
 	enemy_spawn_timer.one_shot = false
-	if not enemy_spawn_timer.timeout.is_connected(_on_enemy_spawn_timer_timeout):
-		enemy_spawn_timer.timeout.connect(_on_enemy_spawn_timer_timeout)
-
 	state_timer.one_shot = false
 	state_timer.wait_time = 1.0
-	if not state_timer.timeout.is_connected(_on_state_timer_timeout):
-		state_timer.timeout.connect(_on_state_timer_timeout)
-
 	plant_terrain_decay_timer.one_shot = false
 	plant_terrain_decay_timer.wait_time = UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS
 	plant_terrain_decay_timer.process_callback = Timer.TIMER_PROCESS_PHYSICS
@@ -2650,34 +2606,6 @@ func _configure_timers() -> void:
 		plant_terrain_decay_timer.stop()
 	else:
 		plant_terrain_decay_timer.start()
-
-
-func _get_initial_preparation_seconds() -> int:
-	return maxi(ceili(progression_config.initial_preparation_seconds), 0)
-
-
-func _get_wave_intermission_seconds() -> int:
-	return maxi(ceili(progression_config.wave_intermission_seconds), 0)
-
-
-func _get_new_day_preparation_seconds() -> int:
-	return maxi(ceili(progression_config.new_day_preparation_seconds), 0)
-
-
-func _get_current_intermission_seconds() -> int:
-	var completed_wave_number := maxi(current_wave_index + 1, 1)
-	return (
-		_get_new_day_preparation_seconds()
-		if campaign_coordinator.is_day_end_wave(completed_wave_number)
-		else _get_wave_intermission_seconds()
-	)
-
-
-func _can_local_player_start_wave_early() -> bool:
-	return (
-		runtime_mode != RuntimeMode.CLIENT_VIEW
-		and countdown_seconds > COUNTDOWN_FINAL_SECONDS
-	)
 
 
 func prepare_shared_runtime_data_and_complete() -> void:
@@ -2700,6 +2628,7 @@ func _configure_xiaocong_fate_flow() -> bool:
 		return false
 	fate_flow_coordinator.setup(
 		self,
+		campaign_coordinator,
 		fate_coordinator,
 		fate_manager,
 		xiaocong_fate_interlude,
@@ -2721,11 +2650,7 @@ func _configure_xiaocong_fate_flow() -> bool:
 
 
 func _resume_flow_after_fate_interlude(next_step_id: StringName) -> void:
-	var next_step := _get_flow_step_by_id(next_step_id)
-	if next_step == null:
-		_enter_victory()
-		return
-	_enter_intermission(next_step)
+	campaign_coordinator.resume_flow_after_fate_interlude(next_step_id)
 
 
 func request_xiaocong_interaction(peer_id: int) -> void:
@@ -2830,219 +2755,12 @@ func grant_xirang_kill_reward(amount: int) -> bool:
 		rewarded_amount *= 2
 	var accepted := super.grant_xirang_kill_reward(rewarded_amount)
 	if accepted:
-		var day_number := _get_day_number_for_wave(current_wave_index + 1)
-		daily_xirang_rewards[day_number] = (
-			int(daily_xirang_rewards.get(day_number, 0)) + rewarded_amount
-		)
+		campaign_coordinator.record_xirang_reward(rewarded_amount)
 	return accepted
 
 
 func _is_fate_double_xirang_reward_active() -> bool:
 	return fate_coordinator != null and fate_coordinator.is_double_xirang_reward_active()
-
-
-func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:
-	if flow_step == null:
-		_enter_victory()
-		return
-	wave_state = CombatFlowState.State.PRE_WAVE
-	presentation_coordinator.transition_world_to_day()
-	current_flow_step = flow_step
-	next_flow_step_after_rest = flow_step
-	if flow_step is WaveConfig:
-		current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	enemy_spawn_timer.stop()
-	_set_merchant_active(true)
-	countdown_seconds = _get_initial_preparation_seconds()
-	_update_post_wave_music(flow_step)
-	presentation_coordinator.show_countdown(
-		countdown_seconds,
-		_can_local_player_start_wave_early()
-	)
-	_schedule_enemy_navigation_prewarm()
-	_emit_multiplayer_flow_state(CombatFlowState.State.PRE_WAVE)
-
-	if countdown_seconds <= 0:
-		_begin_flow_step(current_flow_step)
-		return
-
-	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-		_play_countdown_tick()
-	state_timer.start(1.0)
-
-
-func _enter_intermission(next_step: FlowStepConfig = null) -> void:
-	wave_state = CombatFlowState.State.INTERMISSION
-	_apply_intermission_lighting(maxi(current_wave_index + 1, 1))
-	enemy_spawn_timer.stop()
-	_set_merchant_active(true)
-	next_flow_step_after_rest = next_step
-	countdown_seconds = _get_current_intermission_seconds()
-	_update_post_wave_music(current_flow_step)
-	presentation_coordinator.show_countdown(
-		countdown_seconds,
-		_can_local_player_start_wave_early()
-	)
-	_emit_multiplayer_flow_state(CombatFlowState.State.INTERMISSION)
-	_force_revive_dead_players()
-
-	if countdown_seconds <= 0:
-		_begin_flow_step(next_flow_step_after_rest)
-		return
-
-	if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-		_play_countdown_tick()
-	state_timer.start(1.0)
-
-
-func _begin_flow_step(flow_step: FlowStepConfig) -> void:
-	if flow_step == null:
-		_enter_victory()
-		return
-	current_flow_step = flow_step
-	next_flow_step_after_rest = null
-	if flow_step is WaveConfig:
-		_begin_wave_config(flow_step as WaveConfig)
-	elif flow_step is BossConfig:
-		_begin_linglan_boss_intro(flow_step as BossConfig)
-	else:
-		push_error("流程节点 %s 类型不支持。" % flow_step.get_flow_display_name())
-		_enter_defeat()
-
-
-func _begin_wave_config(wave_config: WaveConfig) -> void:
-	if wave_config == null:
-		push_error("流程节点缺少 WaveConfig。")
-		_enter_defeat()
-		return
-	if not _resolve_wave_spawn_points(wave_config):
-		_enter_defeat()
-		return
-	if prewarmer_coordinator != null:
-		prewarmer_coordinator.ensure_navigation_prewarmed_sync()
-
-	wave_state = CombatFlowState.State.WAVE_ACTIVE
-	_reset_player_wave_death_counts()
-	current_wave_index = _get_wave_number_for_step(wave_config) - 1
-	_apply_wave_start_lighting(current_wave_index + 1)
-	var phase_announcement_started := _announce_wave_phase_start(current_wave_index + 1)
-	state_timer.stop()
-	_set_merchant_active(false)
-	current_wave_spawned = 0
-	current_wave_defeated = 0
-	current_wave_escaped = 0
-	current_wave_resolved = 0
-	_clear_resolved_home_enemy_ids()
-	_clear_active_enemies()
-	_clear_hud_alive_enemies()
-	_build_wave_spawn_queue(wave_config)
-	current_wave_total = pending_enemy_configs.size()
-	_update_wave_music(wave_config)
-	_show_tower_defense_wave_progress()
-	if not phase_announcement_started:
-		presentation_coordinator.play_wave_start_audio()
-	_emit_multiplayer_flow_state(CombatFlowState.State.WAVE_ACTIVE)
-
-	if current_wave_total <= 0:
-		_check_wave_completion()
-		return
-
-	_spawn_wave_batch()
-	if _has_pending_enemy_configs():
-		enemy_spawn_timer.start(maxf(wave_config.spawn_interval, MIN_WAVE_SPAWN_INTERVAL_SECONDS))
-
-
-func _build_wave_spawn_queue(wave_config: WaveConfig) -> void:
-	enemy_coordinator.begin_wave(
-		wave_config,
-		progression_config,
-		_get_progression_player_count()
-	)
-	pending_enemy_config_index = enemy_coordinator.pending_enemy_config_index
-
-
-func _get_progression_player_count() -> int:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		return 1
-	return maxi(peer_players.size(), 1)
-
-
-func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
-	return enemy_coordinator.resolve_spawn_points(wave_config)
-
-
-func _inspect_wave_spawn_points(wave_config: WaveConfig) -> Dictionary:
-	return enemy_coordinator.inspect_spawn_points(wave_config)
-
-
-func _on_state_timer_timeout() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		_update_client_flow_countdown()
-		return
-	if wave_state != CombatFlowState.State.PRE_WAVE and wave_state != CombatFlowState.State.INTERMISSION:
-		state_timer.stop()
-		return
-
-	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	if countdown_seconds > 0:
-		presentation_coordinator.show_countdown(
-			countdown_seconds,
-			_can_local_player_start_wave_early()
-		)
-		if countdown_seconds <= COUNTDOWN_FINAL_SECONDS:
-			_play_countdown_tick()
-		return
-
-	state_timer.stop()
-	if wave_state == CombatFlowState.State.PRE_WAVE:
-		_begin_flow_step(current_flow_step)
-	else:
-		_begin_flow_step(next_flow_step_after_rest)
-
-
-func _on_enemy_spawn_timer_timeout() -> void:
-	_spawn_wave_batch()
-
-
-func _start_client_flow_countdown(state: CombatFlowState.State, step_id: StringName, seconds: int) -> void:
-	wave_state = state
-	var flow_step := _get_flow_step_by_id(step_id)
-	if flow_step != null:
-		current_flow_step = flow_step
-		if flow_step is WaveConfig:
-			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	if state == CombatFlowState.State.PRE_WAVE or state == CombatFlowState.State.INTERMISSION:
-		_set_local_merchants_active(true)
-		_update_post_wave_music(flow_step)
-	countdown_seconds = maxi(seconds, 0)
-	presentation_coordinator.show_countdown(
-		countdown_seconds,
-		_can_local_player_start_wave_early()
-	)
-	_play_client_countdown_tick_if_new(state, step_id, countdown_seconds)
-	if countdown_seconds <= 0:
-		state_timer.stop()
-		return
-	state_timer.start(1.0)
-
-
-func _update_client_flow_countdown() -> void:
-	if wave_state != CombatFlowState.State.PRE_WAVE and wave_state != CombatFlowState.State.INTERMISSION:
-		state_timer.stop()
-		return
-	countdown_seconds = maxi(countdown_seconds - 1, 0)
-	presentation_coordinator.show_countdown(
-		countdown_seconds,
-		_can_local_player_start_wave_early()
-	)
-	if countdown_seconds <= 0:
-		state_timer.stop()
-		return
-	_play_client_countdown_tick_if_new(
-		wave_state,
-		_get_flow_step_id(current_flow_step),
-		countdown_seconds
-	)
 
 
 func _spawn_wave_batch() -> void:
@@ -3178,174 +2896,12 @@ func _check_wave_completion() -> void:
 	enemy_coordinator.check_wave_completion()
 
 
-func _complete_current_step() -> void:
-	var next_step := _get_default_next_flow_step(current_flow_step)
-	var completed_wave := current_flow_step as WaveConfig
-	var completed_wave_number := (
-		_get_wave_number_for_step(completed_wave)
-		if completed_wave != null
-		else 0
-	)
-	var completed_day := (
-		completed_wave != null
-		and campaign_coordinator.is_day_end_wave(completed_wave_number)
-	)
-	if completed_day:
-		_record_progression_day(_get_day_number_for_wave(completed_wave_number))
-	if next_step == null:
-		_enter_victory()
-		return
-	if completed_day:
-		_enter_xiaocong_fate_interlude(next_step)
-		return
-	_enter_intermission(next_step)
-
-
-func _record_progression_day(day_number: int) -> void:
-	if not campaign_coordinator.should_record_day(
-		int(runtime_mode),
-		day_number,
-		progression_day_records
-	):
-		return
-	var inventory_materials := _get_tracked_inventory_material_totals()
-	var shared_materials := _get_tracked_shared_material_totals()
-	var combined_materials := inventory_materials.duplicate()
-	for config_path_variant in shared_materials:
-		var config_path := String(config_path_variant)
-		combined_materials[config_path] = (
-			int(combined_materials.get(config_path, 0))
-			+ int(shared_materials[config_path_variant])
-		)
-	progression_day_records.append({
-		"day": day_number,
-		"elapsed_seconds": _get_progression_elapsed_seconds(),
-		"building_count": _get_active_progression_building_count(),
-		"daily_xirang": int(daily_xirang_rewards.get(day_number, 0)),
-		"inventory_materials": inventory_materials,
-		"shared_storage_materials": shared_materials,
-		"combined_materials": combined_materials,
-	})
-
-
-func _get_active_progression_building_count() -> int:
-	var building_count := 0
-	for plant_variant in get_tree().get_nodes_in_group(&"plant_defense"):
-		var plant := plant_variant as PlantDefense
-		if (
-			plant != null
-			and is_instance_valid(plant)
-			and not plant.is_dead
-			and not plant.is_removing
-		):
-			building_count += 1
-	return building_count
-
-
-func _get_tracked_inventory_material_totals() -> Dictionary:
-	var totals := {}
-	if progression_config == null or run_state == null:
-		return totals
-	for item in progression_config.tracked_materials:
-		var total := 0
-		if runtime_mode == RuntimeMode.SINGLEPLAYER:
-			total = run_state.get_inventory_item_total(item)
-		else:
-			for peer_id_variant in peer_players:
-				total += run_state.get_inventory_item_total_for_peer(
-					int(peer_id_variant),
-					item
-				)
-		totals[item.resource_path] = total
-	return totals
-
-
-func _get_tracked_shared_material_totals() -> Dictionary:
-	var totals := {}
-	if progression_config == null or production_coordinator == null:
-		return totals
-	for item in progression_config.tracked_materials:
-		totals[item.resource_path] = production_coordinator.get_total_item_count(item)
-	return totals
-
-
 func get_progression_metrics_snapshot() -> Dictionary:
-	var first_day_building_count := -1
-	for record in progression_day_records:
-		if int(record.get("day", 0)) == 1:
-			first_day_building_count = int(record.get("building_count", -1))
-			break
-	return {
-		"first_defense_tower_seconds": first_defense_tower_seconds,
-		"water_chain_online_seconds": water_chain_online_seconds,
-		"first_day_building_count": first_day_building_count,
-		"daily_xirang_rewards": daily_xirang_rewards.duplicate(true),
-		"day_records": progression_day_records.duplicate(true),
-	}
-
-
-func _enter_victory(emit_multiplayer: bool = true) -> void:
-	if luoxi_special_game_coordinator != null:
-		luoxi_special_game_coordinator.cancel_all()
-	if luoxi_merchant != null:
-		luoxi_merchant.abort_special_game()
-	_cancel_plant_placement()
-	presentation_coordinator.cancel_defeat_camera()
-	_restore_camera_after_boss_intro()
-	wave_state = CombatFlowState.State.VICTORY
-	presentation_coordinator.transition_world_to_day()
-	_force_revive_dead_players(emit_multiplayer)
-	_clear_respawn_runtime_for_result()
-	presentation_coordinator.stop_gate_damage_warning()
-	enemy_spawn_timer.stop()
-	state_timer.stop()
-	_set_merchant_active(false)
-	boss_coordinator.stop_presentation()
-	presentation_coordinator.show_victory()
-	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_mode_adapter.victory_started.emit()
-		_emit_multiplayer_flow_state(CombatFlowState.State.VICTORY)
-
-
-func _enter_defeat(emit_multiplayer: bool = true) -> void:
-	if wave_state == CombatFlowState.State.DEFEAT:
-		return
-	if luoxi_special_game_coordinator != null:
-		luoxi_special_game_coordinator.cancel_all()
-	if luoxi_merchant != null:
-		luoxi_merchant.abort_special_game()
-	_cancel_plant_placement()
-	wave_state = CombatFlowState.State.DEFEAT
-	presentation_coordinator.transition_world_to_day()
-	presentation_coordinator.reset_defeat_presentation()
-	_clear_respawn_runtime_for_result()
-	enemy_spawn_timer.stop()
-	state_timer.stop()
-	_set_merchant_active(false)
-	_stop_background_music_for_defeat()
-	boss_coordinator.stop_presentation()
-	presentation_coordinator.hide_wave_hud()
-	if emit_multiplayer and runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_mode_adapter.defeat_started.emit()
-	_begin_defeat_camera_sequence()
-
-
-func _begin_defeat_camera_sequence() -> void:
-	presentation_coordinator.begin_defeat_camera_sequence(
-		home_objective_targets
-	)
+	return campaign_coordinator.get_progression_metrics_snapshot()
 
 
 func _complete_defeat_presentation() -> void:
-	presentation_coordinator.replace_defeat_camera_tween(null)
-	if wave_state != CombatFlowState.State.DEFEAT:
-		return
-	presentation_coordinator.complete_defeat_presentation()
-
-
-func _clear_respawn_runtime_for_result() -> void:
-	player_roster_coordinator.clear_result_respawn_state()
-	presentation_coordinator.clear_result_status()
+	campaign_coordinator.complete_defeat_presentation()
 
 
 func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
@@ -3381,7 +2937,7 @@ func _rebroadcast_linglan_boss_started_after_sync_window(
 	await get_tree().create_timer(0.75).timeout
 	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
 		return
-	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
+	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if linglan_boss == null or not is_instance_valid(linglan_boss):
 		return
@@ -3878,7 +3434,7 @@ func _get_enemy_spawn_marker(marker_name: StringName) -> Marker2D:
 
 
 func _is_flow_system_ready() -> bool:
-	if flow_graph == null:
+	if campaign_coordinator.flow_graph == null:
 		push_error("TowerDefenseGame 当前 Campaign 没有配置 FlowGraphConfig。")
 		return false
 	if not _is_spawn_system_ready():
@@ -3910,7 +3466,7 @@ func _get_default_next_flow_step(flow_step: FlowStepConfig) -> FlowStepConfig:
 func _get_wave_number_for_step(wave_config: WaveConfig) -> int:
 	return campaign_coordinator.get_wave_number_for_step(
 		wave_config,
-		current_wave_index
+		campaign_coordinator.current_wave_index
 	)
 
 
@@ -3943,7 +3499,7 @@ func _is_spawn_system_ready() -> bool:
 
 
 func _get_current_wave() -> WaveConfig:
-	return current_flow_step as WaveConfig
+	return campaign_coordinator.current_flow_step as WaveConfig
 
 
 func _pick_spawn_point() -> Marker2D:

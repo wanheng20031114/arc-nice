@@ -29,7 +29,10 @@ func _run() -> void:
 	await process_frame
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 
-	var default_completion := Callable(game, "_complete_current_step")
+	var default_completion := Callable(
+		game.campaign_coordinator,
+		"complete_current_step"
+	)
 	if game.enemy_coordinator.wave_completed.is_connected(default_completion):
 		game.enemy_coordinator.wave_completed.disconnect(default_completion)
 	var actual_trace: Array = []
@@ -83,13 +86,13 @@ func _run() -> void:
 		)
 
 		game.random_generator.seed = seed
-		game.current_flow_step = wave
-		game.wave_state = CombatFlowState.State.WAVE_ACTIVE
-		game.current_wave_index = round_index
-		game.current_wave_spawned = 0
-		game.current_wave_defeated = 0
-		game.current_wave_escaped = 0
-		game.current_wave_resolved = 0
+		game.campaign_coordinator.current_flow_step = wave
+		game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+		game.campaign_coordinator.current_wave_index = round_index
+		game.campaign_coordinator.current_wave_spawned = 0
+		game.campaign_coordinator.current_wave_defeated = 0
+		game.campaign_coordinator.current_wave_escaped = 0
+		game.campaign_coordinator.current_wave_resolved = 0
 		game.enemy_coordinator.clear_active_enemies()
 		game.enemy_coordinator.clear_hud_enemies()
 		game.enemy_coordinator.clear_queue()
@@ -97,7 +100,7 @@ func _run() -> void:
 		game.multiplayer_enemy_ids_by_instance.clear()
 		game.multiplayer_enemies_by_net_id.clear()
 		game.next_multiplayer_enemy_net_id = first_net_id
-		game.current_wave_total = game.enemy_coordinator.begin_wave(
+		game.campaign_coordinator.current_wave_total = game.enemy_coordinator.begin_wave(
 			wave,
 			PROGRESSION,
 			PLAYER_COUNT
@@ -105,7 +108,7 @@ func _run() -> void:
 		game.enemy_coordinator.spawn_wave_batch(64)
 
 		var spawned_enemies: Array[Enemy] = []
-		for enemy_offset in range(game.current_wave_total):
+		for enemy_offset in range(game.campaign_coordinator.current_wave_total):
 			var net_id := first_net_id + enemy_offset
 			var enemy := game.multiplayer_enemies_by_net_id.get(net_id) as Enemy
 			_expect(enemy != null, "A/B 普通波次未按连续 net id 注册敌人 %d。" % net_id)

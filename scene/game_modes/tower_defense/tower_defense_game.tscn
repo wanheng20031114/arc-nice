@@ -65,6 +65,7 @@
 [ext_resource type="PackedScene" uid="uid://cs7mb1v2q9p4x" path="res://scene/game_modes/tower_defense/presentation/tower_defense_presentation_coordinator.tscn" id="70_presentation"]
 [ext_resource type="PackedScene" uid="uid://dubxeu88obeuv" path="res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn" id="71_prewarmer"]
 [ext_resource type="PackedScene" uid="uid://d7n2r5w8y3k6p" path="res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.tscn" id="72_plant_placement_coordinator"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_runtime_port.tscn" id="73_campaign_runtime_port"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -168,6 +169,8 @@ linglan_boss_enabled = true
 [node name="MultiplayerModeAdapter" parent="." instance=ExtResource("60_mode_adapter")]
 
 [node name="CampaignCoordinator" parent="." instance=ExtResource("63_campaign_coordinator")]
+
+[node name="CampaignRuntimePort" parent="." instance=ExtResource("73_campaign_runtime_port")]
 
 [node name="EnemyCoordinator" parent="." instance=ExtResource("64_enemy_coordinator")]
 
@@ -486,7 +489,9 @@ night_energy = 0.3
 process_callback = 0
 
 [connection signal="timeout" from="OrangeChargingAuraCoordinator/ReconcileTimer" to="OrangeChargingAuraCoordinator" method="_on_reconcile_timer_timeout"]
-[connection signal="wave_completed" from="EnemyCoordinator" to="." method="_complete_current_step"]
+[connection signal="wave_completed" from="EnemyCoordinator" to="CampaignCoordinator" method="complete_current_step"]
+[connection signal="timeout" from="EnemySpawnTimer" to="EnemyCoordinator" method="on_spawn_timer_timeout"]
+[connection signal="timeout" from="StateTimer" to="CampaignCoordinator" method="on_state_timer_timeout"]
 [connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_upgrade_requested"]
 [connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_use_requested"]
 [connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_discard_requested"]

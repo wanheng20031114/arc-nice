@@ -5,32 +5,28 @@ class_name TestGrassArenaP2
 @onready var test_controls_layer: CanvasLayer = $TestControlsHint
 
 
-## P2 把唯一的终点波视为完整一天。正式流程会在终点波直接结算胜利，
-## 因此这里显式进入同一套小葱命运间奏，并以空后继节点表示间奏后胜利。
-func _complete_current_step() -> void:
-	var completed_wave := current_flow_step as WaveConfig
-	var campaign_waves := active_campaign.get_waves()
-	var is_only_terminal_wave := (
-		completed_wave != null
-		and campaign_waves.size() == 1
-		and campaign_waves[0] == completed_wave
-		and _get_default_next_flow_step(current_flow_step) == null
+func _ready() -> void:
+	# P2 把唯一终点波视为完整一天，并显式请求终点命运间奏。
+	campaign_coordinator.terminal_wave_enters_fate_interlude = true
+	campaign_coordinator.terminal_wave_fate_interlude_started.connect(
+		_on_terminal_wave_fate_interlude_started
 	)
-	if not is_only_terminal_wave:
-		super._complete_current_step()
-		return
-	var completed_wave_number := _get_wave_number_for_step(completed_wave)
-	_record_progression_day(_get_day_number_for_wave(completed_wave_number))
+	campaign_coordinator.result_entered.connect(_on_campaign_result_entered)
+	campaign_coordinator.remote_flow_state_applied.connect(
+		_on_campaign_remote_flow_state_applied
+	)
+	super._ready()
+
+
+func _on_terminal_wave_fate_interlude_started() -> void:
 	_set_test_controls_hint_visible(false)
-	_enter_xiaocong_fate_interlude(null)
 
 
-func _enter_victory(emit_multiplayer: bool = true) -> void:
+func _on_campaign_result_entered(_state: CombatFlowState.State) -> void:
 	_set_test_controls_hint_visible(false)
-	super._enter_victory(emit_multiplayer)
 
 
-func _on_remote_flow_state_applied(
+func _on_campaign_remote_flow_state_applied(
 	_step_id: StringName,
 	state: CombatFlowState.State,
 	_seconds: int

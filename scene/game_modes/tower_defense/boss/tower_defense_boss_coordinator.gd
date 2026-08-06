@@ -120,27 +120,27 @@ func configure_existing_runtime_nodes() -> void:
 
 func begin_intro(boss_config: BossConfig = null) -> void:
 	if not enabled:
-		runtime._enter_victory()
+		campaign_coordinator.enter_victory()
 		return
 	if boss_config == null:
-		boss_config = runtime.current_flow_step as BossConfig
+		boss_config = campaign_coordinator.current_flow_step as BossConfig
 	if boss_config == null or not ensure_runtime_nodes(boss_config):
-		runtime._enter_victory()
+		campaign_coordinator.enter_victory()
 		return
 	active_boss_config = boss_config
 	player_roster_coordinator.reset_wave_death_counts()
 	linglan_boss_started = true
-	runtime.current_flow_step = boss_config
-	runtime.wave_state = CombatFlowState.State.BOSS_INTRO
+	campaign_coordinator.current_flow_step = boss_config
+	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO
 	runtime.enemy_spawn_timer.stop()
 	runtime.state_timer.stop()
 	runtime._clear_pending_enemy_spawn_queue()
 	runtime._clear_active_enemies()
-	runtime.current_wave_total = 1
-	runtime.current_wave_spawned = 1
-	runtime.current_wave_defeated = 0
-	runtime.current_wave_escaped = 0
-	runtime.current_wave_resolved = 0
+	campaign_coordinator.current_wave_total = 1
+	campaign_coordinator.current_wave_spawned = 1
+	campaign_coordinator.current_wave_defeated = 0
+	campaign_coordinator.current_wave_escaped = 0
+	campaign_coordinator.current_wave_resolved = 0
 	runtime._clear_resolved_home_enemy_ids()
 	runtime._clear_hud_alive_enemies()
 	runtime._set_merchant_active(false)
@@ -169,7 +169,7 @@ func apply_remote_flow_state(
 	match state:
 		CombatFlowState.State.BOSS_INTRO:
 			runtime.state_timer.stop()
-			runtime.wave_state = CombatFlowState.State.BOSS_INTRO
+			campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO
 			runtime._set_local_merchants_active(false)
 			runtime._show_tower_defense_boss_progress(0, 1)
 			if boss_config != null:
@@ -179,7 +179,7 @@ func apply_remote_flow_state(
 				play_remote_intro(boss_config)
 		CombatFlowState.State.BOSS_ACTIVE:
 			runtime.state_timer.stop()
-			runtime.wave_state = CombatFlowState.State.BOSS_ACTIVE
+			campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
 			runtime._set_local_merchants_active(false)
 			runtime._show_tower_defense_boss_progress(0, 1)
 			restore_remote_camera_if_intro_complete()
@@ -201,8 +201,8 @@ func apply_remote_started(
 		return
 	restore_remote_camera_if_intro_complete()
 	active_boss_config = boss_config
-	runtime.current_flow_step = boss_config
-	runtime.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	campaign_coordinator.current_flow_step = boss_config
+	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	runtime.state_timer.stop()
 	runtime._show_tower_defense_boss_progress(0, 1)
 	runtime._set_local_merchants_active(false)
@@ -226,12 +226,12 @@ func apply_remote_started(
 func activate_boss() -> void:
 	if linglan_boss == null or not is_instance_valid(linglan_boss):
 		if not ensure_runtime_nodes(active_boss_config):
-			runtime._enter_victory()
+			campaign_coordinator.enter_victory()
 			return
 	if not boss_config_has_required_data(active_boss_config):
-		runtime._enter_victory()
+		campaign_coordinator.enter_victory()
 		return
-	runtime.wave_state = CombatFlowState.State.BOSS_ACTIVE
+	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	linglan_boss.config = get_boss_enemy_config(active_boss_config)
 	linglan_boss.global_position = get_linglan_spawn_global_position(active_boss_config)
 	linglan_boss.activate_boss(
@@ -294,13 +294,13 @@ func stop_presentation() -> void:
 
 func complete_escaped_step_if_ready() -> void:
 	if (
-		runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE
-		or runtime.current_wave_resolved < runtime.current_wave_total
+		campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE
+		or campaign_coordinator.current_wave_resolved < campaign_coordinator.current_wave_total
 	):
 		return
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
-	runtime._complete_current_step()
+	campaign_coordinator.complete_current_step()
 
 
 func remove_remaining_adds() -> void:
@@ -535,7 +535,7 @@ func spawn_skill2_enemies(
 func spawn_random_slime(spawn_position: Vector2) -> void:
 	if (
 		runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE
+		or campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE
 		or not spawn_position.is_finite()
 	):
 		return
@@ -557,7 +557,7 @@ func spawn_airdrop_sniper(
 ) -> void:
 	if (
 		runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE
+		or campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE
 		or enemy_config == null
 		or enemy_config.enemy_scene == null
 	):
@@ -683,7 +683,10 @@ func get_home_objective_target(from_position: Vector2) -> Node2D:
 
 
 func is_terminal_combat_state() -> bool:
-	return runtime.wave_state in [CombatFlowState.State.VICTORY, CombatFlowState.State.DEFEAT]
+	return campaign_coordinator.wave_state in [
+		CombatFlowState.State.VICTORY,
+		CombatFlowState.State.DEFEAT,
+	]
 
 
 func pause_background_music() -> void:
@@ -788,7 +791,7 @@ func _finish_airdrop_sniper_spawn(
 ) -> void:
 	if warning_duration > 0.0:
 		await runtime.get_tree().create_timer(warning_duration).timeout
-	if runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE:
+	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	if enemy_container == null or runtime.player == null:
 		return
@@ -816,7 +819,7 @@ func _finish_airdrop_sniper_spawn(
 	await tween.finished
 	if not is_instance_valid(enemy_instance):
 		return
-	if runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE:
+	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		enemy_instance.queue_free()
 		return
 	enemy_instance.global_position = landing_position
@@ -859,7 +862,7 @@ func _on_intro_finished() -> void:
 			linglan_boss_intro_vfx.stop_intro()
 		runtime._restore_camera_after_boss_intro()
 		return
-	if runtime.wave_state != CombatFlowState.State.BOSS_INTRO:
+	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_INTRO:
 		return
 	runtime._restore_camera_after_boss_intro()
 	activate_boss()
@@ -867,14 +870,14 @@ func _on_intro_finished() -> void:
 
 func _on_boss_defeated(enemy: Enemy) -> void:
 	if (
-		runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE
+		campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE
 		or enemy != linglan_boss
 	):
 		return
 	runtime._remove_active_enemy(enemy.get_instance_id())
 	runtime._remove_hud_alive_enemy(enemy.get_instance_id())
-	runtime.current_wave_defeated = 1
-	runtime.current_wave_resolved = 1
+	campaign_coordinator.current_wave_defeated = 1
+	campaign_coordinator.current_wave_resolved = 1
 	runtime._show_tower_defense_boss_progress(1, 1)
 	runtime._emit_multiplayer_enemy_defeated(enemy)
 	remove_remaining_adds()
@@ -883,10 +886,10 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 
 
 func _complete_boss_after_delay() -> void:
-	if runtime.wave_state != CombatFlowState.State.BOSS_ACTIVE:
+	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
 	remove_remaining_adds()
-	runtime._complete_current_step()
+	campaign_coordinator.complete_current_step()
 
 
 func _on_boss_tree_exited(enemy_id: int) -> void:

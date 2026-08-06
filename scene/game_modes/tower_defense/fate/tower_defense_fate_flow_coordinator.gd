@@ -12,6 +12,7 @@ signal local_collectible_choice_requested(choice_index: int)
 signal state_snapshot_changed(snapshot: Dictionary)
 
 var runtime: TowerDefenseGame
+var campaign_coordinator: TowerDefenseCampaignCoordinator
 var fate_coordinator: FateCoordinator
 var fate_manager: TowerDefenseFateManager
 var xiaocong_fate_interlude: XiaocongFateInterlude
@@ -35,6 +36,7 @@ var pending_remote_flow_state: Dictionary = {}
 
 func setup(
 	runtime_instance: TowerDefenseGame,
+	configured_campaign: TowerDefenseCampaignCoordinator,
 	configured_fate_coordinator: FateCoordinator,
 	configured_fate_manager: TowerDefenseFateManager,
 	configured_interlude: XiaocongFateInterlude,
@@ -50,6 +52,7 @@ func setup(
 	configured_player_spawn: Marker2D
 ) -> void:
 	runtime = runtime_instance
+	campaign_coordinator = configured_campaign
 	fate_coordinator = configured_fate_coordinator
 	fate_manager = configured_fate_manager
 	xiaocong_fate_interlude = configured_interlude
@@ -70,6 +73,7 @@ func setup(
 func is_bound() -> bool:
 	return (
 		runtime != null
+		and campaign_coordinator != null
 		and fate_coordinator != null
 		and fate_manager != null
 		and xiaocong_fate_interlude != null
@@ -221,7 +225,7 @@ func _on_fate_state_changed(_state: Dictionary) -> void:
 		):
 			present_locally(fate_manager.completed_day)
 	elif (
-		runtime.wave_state == CombatFlowState.State.FATE_INTERLUDE
+		campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE
 		and runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	):
 		begin_remote_departure()
@@ -230,18 +234,18 @@ func _on_fate_state_changed(_state: Dictionary) -> void:
 
 func enter_interlude(next_step: FlowStepConfig) -> void:
 	set_interlude_systems_frozen(true)
-	runtime.wave_state = CombatFlowState.State.FATE_INTERLUDE
+	campaign_coordinator.wave_state = CombatFlowState.State.FATE_INTERLUDE
 	set_player_combat_locked(true)
-	runtime.next_flow_step_after_rest = next_step
-	runtime.countdown_seconds = 0
+	campaign_coordinator.next_flow_step_after_rest = next_step
+	campaign_coordinator.countdown_seconds = 0
 	enemy_spawn_timer.stop()
 	state_timer.stop()
 	var completed_day := runtime._get_day_number_for_wave(
-		runtime.current_wave_index + 1
+		campaign_coordinator.current_wave_index + 1
 	)
 	runtime._emit_multiplayer_flow_state(CombatFlowState.State.FATE_INTERLUDE)
 	await xiaocong_fate_interlude.cover_scene_for_transfer()
-	if runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE:
+	if campaign_coordinator.wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
 	runtime._set_merchant_active(false)
 	runtime.transition_world_to_day()
@@ -249,7 +253,7 @@ func enter_interlude(next_step: FlowStepConfig) -> void:
 	present_locally(completed_day)
 	teleport_authoritative_players_to_room()
 	await xiaocong_fate_interlude.play_room_reveal()
-	if runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE:
+	if campaign_coordinator.wave_state != CombatFlowState.State.FATE_INTERLUDE:
 		return
 	fate_coordinator.begin_interlude(
 		completed_day,
@@ -278,7 +282,7 @@ func should_defer_remote_flow_state(
 ) -> bool:
 	var typed_state := state as CombatFlowState.State
 	if (
-		runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE
+		campaign_coordinator.wave_state != CombatFlowState.State.FATE_INTERLUDE
 		or typed_state == CombatFlowState.State.FATE_INTERLUDE
 		or not xiaocong_fate_interlude.is_active
 		or remote_departure_covered
@@ -295,7 +299,7 @@ func should_defer_remote_flow_state(
 
 func is_leaving_remote_interlude(state: CombatFlowState.State) -> bool:
 	return (
-		runtime.wave_state == CombatFlowState.State.FATE_INTERLUDE
+		campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE
 		and state != CombatFlowState.State.FATE_INTERLUDE
 		and xiaocong_fate_interlude.is_active
 	)
@@ -304,7 +308,7 @@ func is_leaving_remote_interlude(state: CombatFlowState.State) -> bool:
 func apply_remote_interlude_flow(day_number: int) -> void:
 	state_timer.stop()
 	enemy_spawn_timer.stop()
-	runtime.wave_state = CombatFlowState.State.FATE_INTERLUDE
+	campaign_coordinator.wave_state = CombatFlowState.State.FATE_INTERLUDE
 	set_player_combat_locked(true)
 	if remote_entry_in_progress:
 		return
@@ -324,7 +328,7 @@ func begin_remote_entry(day_number: int) -> void:
 	await xiaocong_fate_interlude.cover_scene_for_transfer()
 	if (
 		runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE
+		or campaign_coordinator.wave_state != CombatFlowState.State.FATE_INTERLUDE
 	):
 		remote_entry_in_progress = false
 		return

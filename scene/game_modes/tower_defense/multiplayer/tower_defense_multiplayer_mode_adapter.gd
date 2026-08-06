@@ -225,7 +225,7 @@ func is_terminal_combat_state() -> bool:
 	var tower_runtime := get_tower_runtime()
 	return (
 		tower_runtime != null
-		and tower_runtime.wave_state in [
+		and _campaign_coordinator.wave_state in [
 			CombatFlowState.State.VICTORY,
 			CombatFlowState.State.DEFEAT,
 		]
@@ -236,7 +236,7 @@ func is_fate_interlude_active() -> bool:
 	var tower_runtime := get_tower_runtime()
 	return (
 		tower_runtime != null
-		and tower_runtime.wave_state == CombatFlowState.State.FATE_INTERLUDE
+		and _campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE
 	)
 
 
@@ -415,124 +415,16 @@ func apply_remote_flow_state(
 	state: int,
 	seconds: int
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if (
-		tower_runtime == null
-		or _campaign_coordinator == null
-		or _presentation_coordinator == null
-		or _state_timer == null
-		or tower_runtime.runtime_mode
-		!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	):
-		return
-	var typed_state := state as CombatFlowState.State
-	var flow_step := _campaign_coordinator.get_flow_step_by_id(step_id)
-	if (
-		flow_step == null
-		and typed_state not in [
-			CombatFlowState.State.VICTORY,
-			CombatFlowState.State.DEFEAT,
-		]
-	):
-		push_error(
-			"TowerDefenseMultiplayerModeAdapter: 收到当前 Campaign 不存在的流程 step_id：%s"
-			% String(step_id)
-		)
-		return
-	if (
-		_fate_flow_coordinator != null
-		and _fate_flow_coordinator.should_defer_remote_flow_state(
-			step_id,
-			state,
-			seconds
-		)
-	):
-		return
-	var leaving_fate_interlude := (
-		_fate_flow_coordinator != null
-		and _fate_flow_coordinator.is_leaving_remote_interlude(typed_state)
-	)
-	if flow_step != null:
-		tower_runtime.current_flow_step = flow_step
-		if flow_step is WaveConfig:
-			tower_runtime.current_wave_index = (
-				_campaign_coordinator.get_wave_number_for_step(
-					flow_step as WaveConfig,
-					tower_runtime.current_wave_index
-				)
-				- 1
-			)
-	if _fate_flow_coordinator != null:
-		_fate_flow_coordinator.set_interlude_systems_frozen(
-			typed_state == CombatFlowState.State.FATE_INTERLUDE
-		)
-	match typed_state:
-		CombatFlowState.State.PRE_WAVE:
-			_presentation_coordinator.transition_world_to_day()
-			_start_client_flow_countdown(typed_state, step_id, seconds)
-		CombatFlowState.State.INTERMISSION:
-			_presentation_coordinator.apply_intermission_lighting(
-				maxi(tower_runtime.current_wave_index + 1, 1)
-			)
-			_start_client_flow_countdown(typed_state, step_id, seconds)
-		CombatFlowState.State.WAVE_ACTIVE:
-			_state_timer.stop()
-			tower_runtime.wave_state = CombatFlowState.State.WAVE_ACTIVE
-			var wave_number := maxi(tower_runtime.current_wave_index + 1, 1)
-			_presentation_coordinator.apply_wave_start_lighting(wave_number)
-			var phase_announcement_started := (
-				_presentation_coordinator.announce_wave_phase_start(
-					wave_number,
-					tower_runtime.day_phase_announcements_enabled
-				)
-			)
-			_set_local_merchants_active(false)
-			var wave_config := flow_step as WaveConfig
-			if wave_config != null:
-				_presentation_coordinator.update_wave_music(wave_config)
-			tower_runtime._show_tower_defense_wave_progress()
-			if not phase_announcement_started:
-				_presentation_coordinator.play_wave_start_audio()
-		CombatFlowState.State.BOSS_INTRO:
-			if _boss_coordinator != null:
-				_boss_coordinator.apply_remote_flow_state(
-					CombatFlowState.State.BOSS_INTRO,
-					flow_step as BossConfig
-				)
-		CombatFlowState.State.BOSS_ACTIVE:
-			if _boss_coordinator != null:
-				_boss_coordinator.apply_remote_flow_state(
-					CombatFlowState.State.BOSS_ACTIVE,
-					flow_step as BossConfig
-				)
-		CombatFlowState.State.FATE_INTERLUDE:
-			if _fate_flow_coordinator != null:
-				_fate_flow_coordinator.apply_remote_interlude_flow(
-					_campaign_coordinator.get_day_number_for_wave(
-						maxi(tower_runtime.current_wave_index + 1, 1)
-					)
-				)
-		CombatFlowState.State.VICTORY:
-			apply_remote_victory()
-		CombatFlowState.State.DEFEAT:
-			apply_remote_defeat()
-	if leaving_fate_interlude and _fate_flow_coordinator != null:
-		_fate_flow_coordinator.complete_remote_flow_transition()
-	tower_runtime._update_plant_placement_input_state()
-	tower_runtime._on_remote_flow_state_applied(step_id, typed_state, seconds)
+	if _campaign_coordinator != null:
+		_campaign_coordinator.apply_remote_flow_state(step_id, state, seconds)
 
 
 func get_flow_state_snapshot() -> Dictionary:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime == null or _campaign_coordinator == null:
-		return {}
-	return {
-		"step_id": _campaign_coordinator.get_flow_step_id(
-			tower_runtime.current_flow_step
-		),
-		"state": int(tower_runtime.wave_state),
-		"countdown_seconds": tower_runtime.countdown_seconds,
-	}
+	return (
+		_campaign_coordinator.get_flow_state_snapshot()
+		if _campaign_coordinator != null
+		else {}
+	)
 
 
 func apply_remote_boss_started(
@@ -549,7 +441,7 @@ func apply_remote_boss_started(
 		or boss_config == null
 	):
 		return
-	tower_runtime.current_flow_step = boss_config
+	_campaign_coordinator.current_flow_step = boss_config
 	_boss_coordinator.apply_remote_started(net_id, boss_config, spawn_position)
 
 
@@ -560,7 +452,7 @@ func apply_remote_defeat() -> void:
 		and tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	):
-		tower_runtime._enter_defeat(false)
+		_campaign_coordinator.enter_defeat(false)
 
 
 func apply_remote_victory() -> void:
@@ -570,7 +462,7 @@ func apply_remote_victory() -> void:
 		and tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	):
-		tower_runtime._enter_victory(false)
+		_campaign_coordinator.enter_victory(false)
 
 
 func apply_remote_enemy_count(alive_count: int) -> void:
@@ -678,9 +570,11 @@ func publish_flow_state(state: CombatFlowState.State) -> void:
 	):
 		return
 	flow_state_changed.emit(
-		_campaign_coordinator.get_flow_step_id(tower_runtime.current_flow_step),
+		_campaign_coordinator.get_flow_step_id(
+			_campaign_coordinator.current_flow_step
+		),
 		int(state),
-		tower_runtime.countdown_seconds
+		_campaign_coordinator.countdown_seconds
 	)
 
 
@@ -1239,18 +1133,7 @@ func apply_remote_enemy_escape(net_id: int) -> void:
 
 
 func get_wave_progress_snapshot() -> Dictionary:
-	var tower_runtime := get_tower_runtime()
-	return (
-		_enemy_coordinator.get_progress(
-			tower_runtime.current_wave_index + 1,
-			tower_runtime.current_wave_defeated,
-			tower_runtime.current_wave_escaped,
-			tower_runtime.current_wave_resolved,
-			tower_runtime.current_wave_total
-		)
-		if tower_runtime != null and _enemy_coordinator != null
-		else {}
-	)
+	return _enemy_coordinator.get_wave_progress_snapshot()
 
 
 func apply_remote_wave_progress(
@@ -1260,31 +1143,13 @@ func apply_remote_wave_progress(
 	resolved: int,
 	total: int
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if (
-		tower_runtime == null
-		or tower_runtime.runtime_mode
-		!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	):
-		return
-	tower_runtime.current_wave_index = maxi(wave_number - 1, 0)
-	tower_runtime.current_wave_total = maxi(total, 0)
-	tower_runtime.current_wave_defeated = clampi(
+	_enemy_coordinator.apply_remote_wave_progress(
+		wave_number,
 		defeated,
-		0,
-		tower_runtime.current_wave_total
-	)
-	tower_runtime.current_wave_escaped = clampi(
 		escaped,
-		0,
-		tower_runtime.current_wave_total
-	)
-	tower_runtime.current_wave_resolved = clampi(
 		resolved,
-		0,
-		tower_runtime.current_wave_total
+		total
 	)
-	tower_runtime._show_tower_defense_wave_progress()
 
 
 func request_authoritative_plant_placement(
@@ -1303,7 +1168,7 @@ func request_authoritative_plant_placement(
 		plant_id,
 		anchor,
 		_get_player(requester_peer_id),
-		tower_runtime.wave_state == CombatFlowState.State.FATE_INTERLUDE,
+		_campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE,
 		tower_runtime.sandbox_free_building_enabled
 	)
 
@@ -1335,7 +1200,7 @@ func request_authoritative_inventory_plant_placement(
 		item_config_path,
 		_run_state,
 		_get_player(requester_peer_id),
-		tower_runtime.wave_state == CombatFlowState.State.FATE_INTERLUDE
+		_campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE
 	)
 
 
@@ -1530,7 +1395,7 @@ func request_xiaocong_interaction(peer_id: int) -> void:
 		or _fate_flow_coordinator == null
 		or tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or tower_runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE
+		or _campaign_coordinator.wave_state != CombatFlowState.State.FATE_INTERLUDE
 	):
 		return
 	_fate_flow_coordinator.request_interaction(peer_id)
@@ -1547,7 +1412,7 @@ func request_xiaocong_fate_vote(
 		or _fate_flow_coordinator == null
 		or tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or tower_runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE
+		or _campaign_coordinator.wave_state != CombatFlowState.State.FATE_INTERLUDE
 	):
 		return
 	_fate_flow_coordinator.request_fate_vote(
@@ -1567,7 +1432,7 @@ func request_xiaocong_collectible_choice(
 		or _fate_flow_coordinator == null
 		or tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-		or tower_runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE
+		or _campaign_coordinator.wave_state != CombatFlowState.State.FATE_INTERLUDE
 	):
 		return
 	_fate_flow_coordinator.request_collectible_choice(peer_id, choice_index)
@@ -1781,7 +1646,7 @@ func runtime_supports_luoxi_special_game() -> bool:
 	var tower_runtime := get_tower_runtime()
 	return (
 		tower_runtime != null
-		and tower_runtime.wave_state not in [
+		and _campaign_coordinator.wave_state not in [
 			CombatFlowState.State.VICTORY,
 			CombatFlowState.State.DEFEAT,
 		]
@@ -2053,53 +1918,6 @@ func _get_player(peer_id: int) -> Player:
 		if _player_roster_coordinator != null
 		else tower_runtime.get_player_for_peer(peer_id)
 	)
-
-
-func _start_client_flow_countdown(
-	state: CombatFlowState.State,
-	step_id: StringName,
-	seconds: int
-) -> void:
-	var tower_runtime := get_tower_runtime()
-	if (
-		tower_runtime == null
-		or _campaign_coordinator == null
-		or _presentation_coordinator == null
-		or _state_timer == null
-	):
-		return
-	tower_runtime.wave_state = state
-	var flow_step := _campaign_coordinator.get_flow_step_by_id(step_id)
-	if flow_step != null:
-		tower_runtime.current_flow_step = flow_step
-		if flow_step is WaveConfig:
-			tower_runtime.current_wave_index = (
-				_campaign_coordinator.get_wave_number_for_step(
-					flow_step as WaveConfig,
-					tower_runtime.current_wave_index
-				)
-				- 1
-			)
-	if state in [
-		CombatFlowState.State.PRE_WAVE,
-		CombatFlowState.State.INTERMISSION,
-	]:
-		_set_local_merchants_active(true)
-		_presentation_coordinator.update_post_wave_music(flow_step)
-	tower_runtime.countdown_seconds = maxi(seconds, 0)
-	_presentation_coordinator.show_countdown(
-		tower_runtime.countdown_seconds,
-		false
-	)
-	_presentation_coordinator.play_client_countdown_tick_if_new(
-		state,
-		step_id,
-		tower_runtime.countdown_seconds
-	)
-	if tower_runtime.countdown_seconds <= 0:
-		_state_timer.stop()
-		return
-	_state_timer.start(1.0)
 
 
 func _set_local_merchants_active(active: bool) -> bool:

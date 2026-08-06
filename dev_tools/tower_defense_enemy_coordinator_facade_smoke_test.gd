@@ -61,7 +61,10 @@ func _run() -> void:
 
 
 func _exercise_spawn_terminal_chain(game: TowerDefenseGame) -> void:
-	var default_completion := Callable(game, "_complete_current_step")
+	var default_completion := Callable(
+		game.campaign_coordinator,
+		"complete_current_step"
+	)
 	if game.enemy_coordinator.wave_completed.is_connected(default_completion):
 		game.enemy_coordinator.wave_completed.disconnect(default_completion)
 	var completed_count := [0]
@@ -84,13 +87,13 @@ func _exercise_spawn_terminal_chain(game: TowerDefenseGame) -> void:
 	)
 
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.wave_state = CombatFlowState.State.WAVE_ACTIVE
-	game.current_wave_index = 2
-	game.current_wave_total = 1
-	game.current_wave_spawned = 1
-	game.current_wave_defeated = 0
-	game.current_wave_escaped = 0
-	game.current_wave_resolved = 0
+	game.campaign_coordinator.wave_state = CombatFlowState.State.WAVE_ACTIVE
+	game.campaign_coordinator.current_wave_index = 2
+	game.campaign_coordinator.current_wave_total = 1
+	game.campaign_coordinator.current_wave_spawned = 1
+	game.campaign_coordinator.current_wave_defeated = 0
+	game.campaign_coordinator.current_wave_escaped = 0
+	game.campaign_coordinator.current_wave_resolved = 0
 	game.enemy_coordinator.clear_queue()
 	game.enemy_coordinator.clear_active_enemies()
 	game.enemy_coordinator.clear_hud_enemies()
@@ -114,8 +117,14 @@ func _exercise_spawn_terminal_chain(game: TowerDefenseGame) -> void:
 
 	enemy.defeated.emit(enemy)
 	_expect(defeated_ids == [47], "击败广播未严格复用出生 net id。")
-	_expect(game.current_wave_defeated == 1, "击败计数未由 EnemyCoordinator 推进。")
-	_expect(game.current_wave_resolved == 1, "已结算计数未由 EnemyCoordinator 推进。")
+	_expect(
+		game.campaign_coordinator.current_wave_defeated == 1,
+		"击败计数未写入 Campaign 唯一状态。"
+	)
+	_expect(
+		game.campaign_coordinator.current_wave_resolved == 1,
+		"已结算计数未写入 Campaign 唯一状态。"
+	)
 	var enemy_instance_id := enemy.get_instance_id()
 	enemy.queue_free()
 	await process_frame

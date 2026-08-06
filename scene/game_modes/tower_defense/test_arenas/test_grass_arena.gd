@@ -23,7 +23,6 @@ const FORMAL_PROGRESSION := preload(
 
 var manual_night_enabled := false
 var _nearby_plant_destroy_scratch: Array[PlantDefense] = []
-var _test_entry_announcement_shown := false
 
 
 func _ready() -> void:
@@ -32,24 +31,13 @@ func _ready() -> void:
 	progression_config.wave_intermission_seconds = 1.0
 	progression_config.new_day_preparation_seconds = 1.0
 	progression_config.enemy_count_per_extra_player_ratio = 0.0
+	campaign_coordinator.custom_first_wave_announcement_text = (
+		test_entry_announcement_text
+	)
 	super._ready()
 	manual_night_enabled = false
 	day_night_controller.set_night_factor_immediate(0.0)
 	_update_test_controls_hint()
-
-
-func _announce_wave_phase_start(wave_number: int) -> bool:
-	if (
-		wave_number != 1
-		or test_entry_announcement_text.strip_edges().is_empty()
-		or day_phase_announcement == null
-	):
-		return false
-	if _test_entry_announcement_shown:
-		return true
-	_test_entry_announcement_shown = true
-	day_phase_announcement.show_announcement(test_entry_announcement_text)
-	return true
 
 
 ## P1A/P1B 用于综合压力测试，扩大核心血量以避免长时间测试被过早中断。

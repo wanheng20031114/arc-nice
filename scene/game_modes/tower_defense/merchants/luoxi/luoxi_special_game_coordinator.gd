@@ -204,7 +204,7 @@ func _can_start_for_player(player_instance: Player) -> bool:
 		and player_instance != null
 		and is_instance_valid(player_instance)
 		and not player_instance.is_dead
-		and game.wave_state not in [
+		and game.campaign_coordinator.wave_state not in [
 			CombatFlowState.State.VICTORY,
 			CombatFlowState.State.DEFEAT,
 		]

@@ -223,6 +223,11 @@ func show_boss_progress(defeated: int, total: int) -> void:
 	_wave_hud.show_tower_defense_boss_progress(defeated, total)
 
 
+func show_custom_phase_announcement(text: String) -> void:
+	if _day_phase_announcement != null and not text.strip_edges().is_empty():
+		_day_phase_announcement.show_announcement(text)
+
+
 func show_victory() -> void:
 	_wave_hud.show_victory()
 

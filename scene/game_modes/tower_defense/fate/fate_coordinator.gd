@@ -25,6 +25,7 @@ const ALL_ENEMY_SPEED_SOURCE_ID := 880004
 @onready var runtime_tick_timer: Timer = $RuntimeTickTimer
 
 var game: TowerDefenseGame = null
+var campaign_coordinator: TowerDefenseCampaignCoordinator = null
 var day_cycle_config: DayCycleConfig = null
 var active_permanent_buff_ids: Array[StringName] = []
 var elite_bias_day := 0
@@ -46,8 +47,13 @@ func _ready() -> void:
 	manager.state_changed.connect(_on_manager_state_changed)
 
 
-func setup(new_game: TowerDefenseGame, new_day_cycle_config: DayCycleConfig) -> void:
+func setup(
+	new_game: TowerDefenseGame,
+	new_campaign_coordinator: TowerDefenseCampaignCoordinator,
+	new_day_cycle_config: DayCycleConfig
+) -> void:
 	game = new_game
+	campaign_coordinator = new_campaign_coordinator
 	day_cycle_config = new_day_cycle_config
 	request_elite_enemy_config_loads()
 	_apply_runtime_state_to_world()
@@ -226,7 +232,9 @@ func apply_remote_runtime_state(state: Dictionary) -> void:
 func resolve_enemy_config(enemy_config: EnemyConfig) -> EnemyConfig:
 	if enemy_config == null or game == null or day_cycle_config == null:
 		return enemy_config
-	var current_day := day_cycle_config.get_day_number(game.current_wave_index + 1)
+	var current_day := day_cycle_config.get_day_number(
+		campaign_coordinator.current_wave_index + 1
+	)
 	var contract := TowerDefenseFateRegistry.get_option_config(
 		TowerDefenseFateRegistry.OPTION_PERMANENT_CONTRACT
 	)
@@ -312,11 +320,13 @@ func is_double_xirang_reward_active() -> bool:
 	return (
 		game != null
 		and day_cycle_config != null
-		and game.wave_state in [
+		and campaign_coordinator.wave_state in [
 			CombatFlowState.State.WAVE_ACTIVE,
 			CombatFlowState.State.BOSS_ACTIVE,
 		]
-		and day_cycle_config.get_day_number(game.current_wave_index + 1)
+		and day_cycle_config.get_day_number(
+			campaign_coordinator.current_wave_index + 1
+		)
 		== double_xirang_day
 	)
 
@@ -620,7 +630,7 @@ func _apply_regeneration_tick() -> void:
 	)
 	if (
 		building_regen == null
-		or game.wave_state not in [
+		or campaign_coordinator.wave_state not in [
 			CombatFlowState.State.WAVE_ACTIVE,
 			CombatFlowState.State.BOSS_ACTIVE,
 		]

@@ -14,6 +14,7 @@ signal enemy_spawned(enemy: Enemy)
 signal enemy_removed(enemy_id: int)
 
 var _runtime: TowerDefenseGame
+var _campaign_coordinator: TowerDefenseCampaignCoordinator
 var _enemy_container: Node2D
 var _grid_pathfinder: GridPathfinder
 var _enemy_spawn_timer: Timer
@@ -46,6 +47,7 @@ var _random_generator: RandomNumberGenerator
 
 func setup(
 	runtime: TowerDefenseGame,
+	campaign_coordinator: TowerDefenseCampaignCoordinator,
 	random_generator: RandomNumberGenerator,
 	enemy_container: Node2D,
 	grid_pathfinder: GridPathfinder,
@@ -67,6 +69,7 @@ func setup(
 	multiplayer_enemies_by_net_id: Dictionary
 ) -> void:
 	assert(runtime != null, "EnemyCoordinator 缺少 TowerDefenseGame 运行时。")
+	assert(campaign_coordinator != null, "EnemyCoordinator 缺少 CampaignCoordinator。")
 	assert(random_generator != null, "EnemyCoordinator 必须复用运行时 RNG。")
 	assert(enemy_container != null, "EnemyCoordinator 缺少 EnemyContainer。")
 	assert(grid_pathfinder != null, "EnemyCoordinator 缺少强类型 GridPathfinder。")
@@ -77,6 +80,7 @@ func setup(
 	assert(session_object_pool != null, "EnemyCoordinator 缺少会话对象池。")
 	assert(enemy_spawn_effect_scene != null, "EnemyCoordinator 缺少出生特效场景。")
 	_runtime = runtime
+	_campaign_coordinator = campaign_coordinator
 	_random_generator = random_generator
 	_enemy_container = enemy_container
 	_grid_pathfinder = grid_pathfinder
@@ -101,6 +105,7 @@ func setup(
 func is_bound() -> bool:
 	return (
 		_runtime != null
+		and _campaign_coordinator != null
 		and _enemy_container != null
 		and _grid_pathfinder != null
 		and _enemy_spawn_timer != null
@@ -404,11 +409,11 @@ func report_enemy_removed(enemy_id: int) -> void:
 
 
 func spawn_wave_batch(max_spawn_count_per_tick: int) -> void:
-	if _runtime.wave_state != CombatFlowState.State.WAVE_ACTIVE:
+	if _campaign_coordinator.wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		_enemy_spawn_timer.stop()
 		return
 
-	var wave_config := _runtime.current_flow_step as WaveConfig
+	var wave_config := _campaign_coordinator.current_flow_step as WaveConfig
 	if wave_config == null:
 		_enemy_spawn_timer.stop()
 		return
@@ -417,7 +422,7 @@ func spawn_wave_batch(max_spawn_count_per_tick: int) -> void:
 		maxi(wave_config.spawn_count_per_tick, 1),
 		maxi(max_spawn_count_per_tick, 1)
 	)
-	_runtime.current_wave_spawned += tick(
+	_campaign_coordinator.current_wave_spawned += tick(
 		wave_config.max_alive_enemies,
 		spawn_count_this_tick
 	)
@@ -427,6 +432,10 @@ func spawn_wave_batch(max_spawn_count_per_tick: int) -> void:
 		clear_queue()
 
 	check_wave_completion()
+
+
+func on_spawn_timer_timeout() -> void:
+	spawn_wave_batch(TowerDefenseCampaignCoordinator.MAX_WAVE_SPAWN_COUNT_PER_TICK)
 
 
 func try_spawn_enemy(
@@ -537,18 +546,18 @@ func configure_authoritative_enemy_physics_interpolation(enemy_instance: Enemy) 
 
 
 func _on_wave_enemy_defeated(enemy: Enemy) -> void:
-	if _runtime.wave_state != CombatFlowState.State.WAVE_ACTIVE:
+	if _campaign_coordinator.wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		return
 	if enemy == null or not has_active_enemy(enemy.get_instance_id()):
 		return
 
-	_runtime.current_wave_defeated = mini(
-		_runtime.current_wave_defeated + 1,
-		_runtime.current_wave_total
+	_campaign_coordinator.current_wave_defeated = mini(
+		_campaign_coordinator.current_wave_defeated + 1,
+		_campaign_coordinator.current_wave_total
 	)
-	_runtime.current_wave_resolved = mini(
-		_runtime.current_wave_resolved + 1,
-		_runtime.current_wave_total
+	_campaign_coordinator.current_wave_resolved = mini(
+		_campaign_coordinator.current_wave_resolved + 1,
+		_campaign_coordinator.current_wave_total
 	)
 	remove_hud_alive_enemy(enemy.get_instance_id())
 	emit_multiplayer_enemy_defeated(enemy)
@@ -595,13 +604,13 @@ func mark_multiplayer_enemy_removed(enemy_id: int) -> void:
 
 
 func check_wave_completion() -> void:
-	if _runtime.wave_state != CombatFlowState.State.WAVE_ACTIVE:
+	if _campaign_coordinator.wave_state != CombatFlowState.State.WAVE_ACTIVE:
 		return
 	if has_pending_queue():
 		return
-	if _runtime.current_wave_spawned < _runtime.current_wave_total:
+	if _campaign_coordinator.current_wave_spawned < _campaign_coordinator.current_wave_total:
 		return
-	if _runtime.current_wave_resolved < _runtime.current_wave_total:
+	if _campaign_coordinator.current_wave_resolved < _campaign_coordinator.current_wave_total:
 		return
 	if has_active_enemies():
 		return
@@ -641,28 +650,28 @@ func _update_hud_alive_enemy_count() -> void:
 
 func show_wave_progress() -> void:
 	_presentation_coordinator.show_wave_progress(
-		_runtime.current_wave_index + 1,
-		_runtime.current_wave_defeated,
-		_runtime.current_wave_escaped,
-		_runtime.current_wave_resolved,
-		_runtime.current_wave_total
+		_campaign_coordinator.current_wave_index + 1,
+		_campaign_coordinator.current_wave_defeated,
+		_campaign_coordinator.current_wave_escaped,
+		_campaign_coordinator.current_wave_resolved,
+		_campaign_coordinator.current_wave_total
 	)
 	report_progress(
-		_runtime.current_wave_index + 1,
-		_runtime.current_wave_defeated,
-		_runtime.current_wave_escaped,
-		_runtime.current_wave_resolved,
-		_runtime.current_wave_total
+		_campaign_coordinator.current_wave_index + 1,
+		_campaign_coordinator.current_wave_defeated,
+		_campaign_coordinator.current_wave_escaped,
+		_campaign_coordinator.current_wave_resolved,
+		_campaign_coordinator.current_wave_total
 	)
 
 
 func get_wave_progress_snapshot() -> Dictionary:
 	return get_progress(
-		_runtime.current_wave_index + 1,
-		_runtime.current_wave_defeated,
-		_runtime.current_wave_escaped,
-		_runtime.current_wave_resolved,
-		_runtime.current_wave_total
+		_campaign_coordinator.current_wave_index + 1,
+		_campaign_coordinator.current_wave_defeated,
+		_campaign_coordinator.current_wave_escaped,
+		_campaign_coordinator.current_wave_resolved,
+		_campaign_coordinator.current_wave_total
 	)
 
 
@@ -675,11 +684,17 @@ func apply_remote_wave_progress(
 ) -> void:
 	if _runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return
-	_runtime.current_wave_index = maxi(wave_number - 1, 0)
-	_runtime.current_wave_total = maxi(total, 0)
-	_runtime.current_wave_defeated = clampi(defeated, 0, _runtime.current_wave_total)
-	_runtime.current_wave_escaped = clampi(escaped, 0, _runtime.current_wave_total)
-	_runtime.current_wave_resolved = clampi(resolved, 0, _runtime.current_wave_total)
+	_campaign_coordinator.current_wave_index = maxi(wave_number - 1, 0)
+	_campaign_coordinator.current_wave_total = maxi(total, 0)
+	_campaign_coordinator.current_wave_defeated = clampi(
+		defeated, 0, _campaign_coordinator.current_wave_total
+	)
+	_campaign_coordinator.current_wave_escaped = clampi(
+		escaped, 0, _campaign_coordinator.current_wave_total
+	)
+	_campaign_coordinator.current_wave_resolved = clampi(
+		resolved, 0, _campaign_coordinator.current_wave_total
+	)
 	show_wave_progress()
 
 
