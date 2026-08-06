@@ -46,7 +46,7 @@ func _run() -> void:
 	current_scene = test_root
 
 	_test_source_boundaries()
-	await _test_static_binding_pools_paths_cache_and_facade()
+	await _test_static_binding_pools_paths_and_cache()
 	await _test_no_boss_flow_preserves_legacy_request_semantics()
 	await _test_malformed_scene_initialization_boundary()
 	await _test_leave_tree_abort()
@@ -182,35 +182,39 @@ func _test_source_boundaries() -> void:
 	)
 
 
-func _test_static_binding_pools_paths_cache_and_facade() -> void:
+func _test_static_binding_pools_paths_and_cache() -> void:
 	var game := STANDARD_GAME_SCENE.instantiate() as StandardGame
 	_expect(game != null, "StandardGame 必须可实例化用于 Prewarmer smoke。")
 	if game == null:
 		return
 	game.auto_start_waves = false
+	var coordinator := game.prewarmer_coordinator
+	_expect(coordinator != null, "场景必须静态实例化 PrewarmerCoordinator。")
+	if coordinator == null:
+		game.queue_free()
+		return
 	var pending_cache: Dictionary[String, Resource] = {}
 	var cached_sentinel: Resource = StandardGame.TANGO_LASER_BULLET_POOL_SCENE
 	var cached_sentinel_path := "res://standard_prewarmer_cache_identity_probe.tres"
 	pending_cache[cached_sentinel_path] = cached_sentinel
 	var pending_enrage := ENRAGE_SNIPER_CONFIG as EnemyConfig
-	game.boss_runtime_resources_by_path = pending_cache
-	game.boss_runtime_scene_loads_requested = true
-	game.linglan_enrage_sniper_config = pending_enrage
+	coordinator.replace_runtime_resources_by_path(pending_cache)
+	coordinator.replace_runtime_scene_loads_requested(true)
+	coordinator.replace_linglan_enrage_sniper_config(pending_enrage)
 	_expect(
-		is_same(game.boss_runtime_resources_by_path, pending_cache),
-		"pre-ready façade 必须保持传入的 Boss resource cache 同一引用。"
+		is_same(coordinator.runtime_resources_by_path, pending_cache),
+		"静态协调器必须保持传入的 Boss resource cache 同一引用。"
 	)
 	_expect(
-		game.call("_load_threaded_or_direct", cached_sentinel_path)
+		coordinator.load_threaded_or_direct(cached_sentinel_path)
 		== cached_sentinel
-		and game.get_linglan_enrage_sniper_config() == pending_enrage,
-		"pre-ready resolver/enrage façade 必须命中尚未 bind 的 pending 真源。"
+		and coordinator.get_linglan_enrage_sniper_config() == pending_enrage,
+		"静态协调器 resolver/enrage 必须命中预置缓存。"
 	)
 	test_root.add_child(game)
 	await process_frame
 	await physics_frame
 
-	var coordinator := game.prewarmer_coordinator
 	_expect(
 		coordinator != null and coordinator.is_bound(),
 		"静态 PrewarmerCoordinator 必须绑定 SessionObjectPool 与 BossCoordinator。"
@@ -220,19 +224,18 @@ func _test_static_binding_pools_paths_cache_and_facade() -> void:
 		await process_frame
 		return
 	_expect(
-		is_same(game.boss_runtime_resources_by_path, pending_cache)
-		and is_same(coordinator.runtime_resources_by_path, pending_cache),
-		"绑定后根 façade 与协调器必须直接接管同一个 pre-ready cache 容器。"
+		is_same(coordinator.runtime_resources_by_path, pending_cache),
+		"绑定后协调器必须继续接管同一个 pre-ready cache 容器。"
 	)
 	_expect(
-		game.boss_runtime_scene_loads_requested
-		and game.linglan_enrage_sniper_config == pending_enrage,
-		"绑定必须迁移 pre-ready request flag 与 enrage config 真源。"
+		coordinator.runtime_scene_loads_requested
+		and coordinator.linglan_enrage_sniper_config == pending_enrage,
+		"绑定必须保留 request flag 与 enrage config 真源。"
 	)
 	var post_bind_sentinel: Resource = StandardGame.LINGLAN_SKILL1_BULLET_POOL_SCENE
 	pending_cache["res://standard_prewarmer_post_bind_probe.tres"] = post_bind_sentinel
 	_expect(
-		game.boss_runtime_resources_by_path.get(
+		coordinator.runtime_resources_by_path.get(
 			"res://standard_prewarmer_post_bind_probe.tres"
 		) == post_bind_sentinel,
 		"绑定后原 cache 引用的原地写入必须继续对 façade 可见。"
@@ -261,10 +264,10 @@ func _test_static_binding_pools_paths_cache_and_facade() -> void:
 			]
 		)
 
-	var first_boss := game.call("_get_first_boss_config") as BossConfig
+	var first_boss := game.boss_coordinator.get_first_boss_config()
 	var original_step_count := game.flow_graph.steps.size()
 	game.flow_graph.steps.append(first_boss)
-	var runtime_paths := game.call("_get_boss_runtime_resource_paths") as Array[String]
+	var runtime_paths := coordinator.get_boss_runtime_resource_paths()
 	_expect(
 		runtime_paths == EXPECTED_BOSS_RUNTIME_PATHS,
 		"Boss threaded 路径必须按 enemy→intro→HUD 去重，最后追加 enrage sniper：%s。"
@@ -273,18 +276,18 @@ func _test_static_binding_pools_paths_cache_and_facade() -> void:
 	game.flow_graph.steps.resize(original_step_count)
 
 	game.linglan_boss_enabled = false
-	game.boss_runtime_scene_loads_requested = false
+	coordinator.replace_runtime_scene_loads_requested(false)
 	game.call("_initialize_mode_runtime_content")
 	await process_frame
 	_expect(
 		not bool(coordinator.get("_boss_flow_enabled"))
-		and not game.boss_runtime_scene_loads_requested,
+		and not coordinator.runtime_scene_loads_requested,
 		"bind 后关闭 export 时，runtime content schedule 必须刷新开关且不请求。"
 	)
-	game.call("_request_boss_runtime_scene_loads")
+	coordinator.request_boss_runtime_scene_loads()
 	_expect(
-		not game.boss_runtime_scene_loads_requested,
-		"禁用 Boss flow 时请求 façade 不得启动 threaded load。"
+		not coordinator.runtime_scene_loads_requested,
+		"禁用 Boss flow 时协调器不得启动 threaded load。"
 	)
 	coordinator.configure_boss_flow_enabled(true)
 	coordinator.replace_runtime_scene_loads_requested(false)
@@ -305,29 +308,30 @@ func _test_static_binding_pools_paths_cache_and_facade() -> void:
 	)
 
 	game.linglan_boss_enabled = true
-	game.linglan_enrage_sniper_config = null
-	await game._prewarm_boss_runtime_resources()
+	coordinator.configure_boss_flow_enabled(true)
+	coordinator.replace_linglan_enrage_sniper_config(null)
+	await coordinator.prewarm_boss_runtime_resources()
 	for resource_path in EXPECTED_BOSS_RUNTIME_PATHS:
 		_expect(
-			game.boss_runtime_resources_by_path.get(resource_path) != null,
+			coordinator.runtime_resources_by_path.get(resource_path) != null,
 			"Boss prewarm 必须按原缓存键保留资源：%s。" % resource_path
 		)
 	_expect(
-		game.call("_load_threaded_or_direct", cached_sentinel_path)
+		coordinator.load_threaded_or_direct(cached_sentinel_path)
 		== cached_sentinel,
-		"原 façade resolver 必须优先返回同路径 retained cache。"
+		"协调器 resolver 必须优先返回同路径 retained cache。"
 	)
-	var enrage_config := game.get_linglan_enrage_sniper_config()
+	var enrage_config := coordinator.get_linglan_enrage_sniper_config()
 	_expect(
 		enrage_config != null
 		and enrage_config.resource_path
 		== StandardGame.LINGLAN_ENRAGE_SNIPER_CONFIG_PATH
-		and game.get_linglan_enrage_sniper_config() == enrage_config,
-		"enrage config façade 必须保持单例懒缓存与原资源路径。"
+		and coordinator.get_linglan_enrage_sniper_config() == enrage_config,
+		"enrage config 必须保持单例懒缓存与原资源路径。"
 	)
 	_expect(
-		game.call("_load_threaded_or_direct", "") == null,
-		"空路径 resolver façade 必须保持返回 null。"
+		coordinator.load_threaded_or_direct("") == null,
+		"空路径 resolver 必须保持返回 null。"
 	)
 	coordinator.replace_runtime_scene_loads_requested(false)
 	coordinator.configure_boss_flow_enabled(true)

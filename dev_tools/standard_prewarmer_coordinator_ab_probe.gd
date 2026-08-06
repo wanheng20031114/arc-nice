@@ -145,7 +145,8 @@ func _verify_frozen_initial_state() -> void:
 	]
 	_expect(
 		legacy_logic.get_boss_runtime_resource_paths() == expected_paths
-		and game._get_boss_runtime_resource_paths() == expected_paths,
+		and game.prewarmer_coordinator.get_boss_runtime_resource_paths()
+		== expected_paths,
 		"A/B 两臂必须从同一 Boss runtime path 顺序开始。"
 	)
 	var pool_paths: Array[String] = [
@@ -204,11 +205,19 @@ func _run_extracted_event(operation: int, event_index: int) -> int:
 			game._register_mode_object_pools()
 			return _combine_hash(event_index, _pool_state_hash())
 		1:
-			return _resource_paths_hash(game._get_boss_runtime_resource_paths())
+			return _resource_paths_hash(
+				game.prewarmer_coordinator.get_boss_runtime_resource_paths()
+			)
 		_:
-			var retained := game._load_threaded_or_direct(CACHE_PROBE_PATH)
-			var empty_resource := game._load_threaded_or_direct("")
-			var enrage := game.get_linglan_enrage_sniper_config()
+			var retained := game.prewarmer_coordinator.load_threaded_or_direct(
+				CACHE_PROBE_PATH
+			)
+			var empty_resource := (
+				game.prewarmer_coordinator.load_threaded_or_direct("")
+			)
+			var enrage := (
+				game.prewarmer_coordinator.get_linglan_enrage_sniper_config()
+			)
 			return _resolver_state_hash(retained, empty_resource, enrage)
 
 

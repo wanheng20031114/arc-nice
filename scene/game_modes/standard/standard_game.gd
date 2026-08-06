@@ -182,48 +182,6 @@ var boss_health_hud: BossHealthHUD:
 		return boss_coordinator.boss_health_hud
 	set(value):
 		boss_coordinator.boss_health_hud = value
-var _pending_boss_runtime_scene_loads_requested: bool = false
-var boss_runtime_scene_loads_requested: bool:
-	get:
-		var coordinator := prewarmer_coordinator
-		return (
-			coordinator.runtime_scene_loads_requested
-			if coordinator != null and coordinator.is_bound()
-			else _pending_boss_runtime_scene_loads_requested
-		)
-	set(value):
-		_pending_boss_runtime_scene_loads_requested = value
-		var coordinator := prewarmer_coordinator
-		if coordinator != null:
-			coordinator.replace_runtime_scene_loads_requested(value)
-var _pending_linglan_enrage_sniper_config: EnemyConfig = null
-var linglan_enrage_sniper_config: EnemyConfig:
-	get:
-		var coordinator := prewarmer_coordinator
-		return (
-			coordinator.linglan_enrage_sniper_config
-			if coordinator != null and coordinator.is_bound()
-			else _pending_linglan_enrage_sniper_config
-		)
-	set(value):
-		_pending_linglan_enrage_sniper_config = value
-		var coordinator := prewarmer_coordinator
-		if coordinator != null:
-			coordinator.replace_linglan_enrage_sniper_config(value)
-var _pending_boss_runtime_resources_by_path: Dictionary[String, Resource] = {}
-var boss_runtime_resources_by_path: Dictionary[String, Resource]:
-	get:
-		var coordinator := prewarmer_coordinator
-		return (
-			coordinator.runtime_resources_by_path
-			if coordinator != null and coordinator.is_bound()
-			else _pending_boss_runtime_resources_by_path
-		)
-	set(value):
-		_pending_boss_runtime_resources_by_path = value
-		var coordinator := prewarmer_coordinator
-		if coordinator != null:
-			coordinator.replace_runtime_resources_by_path(value)
 
 
 func _ready() -> void:
@@ -359,15 +317,6 @@ func _initialize_mode_runtime_before_validation() -> void:
 			session_object_pool,
 			boss_coordinator,
 			linglan_boss_enabled
-		)
-		standard_prewarmer.replace_runtime_scene_loads_requested(
-			_pending_boss_runtime_scene_loads_requested
-		)
-		standard_prewarmer.replace_linglan_enrage_sniper_config(
-			_pending_linglan_enrage_sniper_config
-		)
-		standard_prewarmer.replace_runtime_resources_by_path(
-			_pending_boss_runtime_resources_by_path
 		)
 	pickup_registry.bind_standard_dependencies(
 		runtime_mode,
@@ -889,75 +838,6 @@ func _set_merchant_active(active: bool) -> void:
 
 func _set_local_merchants_active(active: bool) -> bool:
 	return merchant_coordinator.set_local_merchants_active(active)
-
-func _request_boss_runtime_scene_loads() -> void:
-	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
-	prewarmer_coordinator.request_boss_runtime_scene_loads()
-
-func _get_boss_runtime_resource_paths() -> Array[String]:
-	return prewarmer_coordinator.get_boss_runtime_resource_paths()
-
-func _prewarm_boss_runtime_resources() -> void:
-	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
-	await prewarmer_coordinator.prewarm_boss_runtime_resources()
-
-func get_linglan_enrage_sniper_config() -> EnemyConfig:
-	_sync_pending_prewarmer_state()
-	var config := prewarmer_coordinator.get_linglan_enrage_sniper_config()
-	_pending_linglan_enrage_sniper_config = config
-	return config
-
-func _deferred_request_boss_runtime_scene_loads() -> void:
-	prewarmer_coordinator.configure_boss_flow_enabled(_uses_linglan_boss_flow())
-	await prewarmer_coordinator.request_boss_runtime_scene_loads_deferred()
-
-func _get_first_boss_config() -> Resource:
-	return boss_coordinator.get_first_boss_config()
-
-func _get_configured_bosses() -> Array[BossConfig]:
-	return boss_coordinator.configured_bosses
-
-func _boss_config_has_required_data(boss_config: Resource) -> bool:
-	return boss_coordinator.boss_config_has_required_data(boss_config as BossConfig)
-
-func _get_boss_enemy_config(boss_config: Resource) -> EnemyConfig:
-	return boss_coordinator.get_boss_enemy_config(boss_config as BossConfig)
-
-func _get_boss_enemy_config_path(boss_config: Resource) -> String:
-	return boss_coordinator.get_boss_enemy_config_path(boss_config as BossConfig)
-
-func _get_boss_arena_center(boss_config: Resource) -> Vector2:
-	return boss_coordinator.get_boss_arena_center(boss_config as BossConfig)
-
-func _get_boss_arena_floor_rect(boss_config: Resource) -> Rect2i:
-	return boss_coordinator.get_boss_arena_floor_rect(boss_config as BossConfig)
-
-func _get_boss_display_name(boss_config: Resource) -> String:
-	return boss_coordinator.get_boss_display_name(boss_config as BossConfig)
-
-func _get_boss_intro_vfx_scene_path(boss_config: Resource) -> String:
-	return boss_coordinator.get_boss_intro_vfx_scene_path(boss_config as BossConfig)
-
-func _get_boss_hud_scene_path(boss_config: Resource) -> String:
-	return boss_coordinator.get_boss_hud_scene_path(boss_config as BossConfig)
-
-func _load_threaded_or_direct(path: String) -> Resource:
-	_sync_pending_prewarmer_state()
-	return prewarmer_coordinator.load_threaded_or_direct(path)
-
-func _sync_pending_prewarmer_state() -> void:
-	var coordinator := prewarmer_coordinator
-	if coordinator == null or coordinator.is_bound():
-		return
-	coordinator.replace_runtime_scene_loads_requested(
-		_pending_boss_runtime_scene_loads_requested
-	)
-	coordinator.replace_linglan_enrage_sniper_config(
-		_pending_linglan_enrage_sniper_config
-	)
-	coordinator.replace_runtime_resources_by_path(
-		_pending_boss_runtime_resources_by_path
-	)
 
 func spawn_linglan_skill2_enemies(
 	enemy_config: EnemyConfig,
