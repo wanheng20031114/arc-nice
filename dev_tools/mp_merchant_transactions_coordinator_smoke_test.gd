@@ -220,9 +220,10 @@ func _test_static_boundary(
 		not source.contains("func _create_luoxi_offer_for_peer")
 		and not source.contains("func _apply_luoxi_special_game_start_for_peer")
 		and not source.contains("func _apply_cheat_xirang_for_peer")
-		and source.contains("func _spawn_collectible_visual_effect")
-		and source.contains("func _spawn_collectible_follow_visual_effect"),
-		"MpGame must retain collectible visuals but delegate merchant authority."
+		and not source.contains("func _spawn_collectible_visual_effect")
+		and not source.contains("func _spawn_collectible_follow_visual_effect")
+		and source.contains("collectible_presentation_coordinator"),
+		"MpGame must keep merchant and collectible presentation boundaries separate."
 	)
 	var coordinator_source := coordinator.get_script().source_code as String
 	_expect(

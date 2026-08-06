@@ -16,6 +16,9 @@ const MpMerchantTransactionsCoordinatorScript := preload(
 const MpTowerFateCoordinatorScript := preload(
 	"res://scene/multiplayer/tower_fate/mp_tower_fate_coordinator.gd"
 )
+const MpCollectiblePresentationCoordinatorScript := preload(
+	"res://scene/multiplayer/collectible_presentation/mp_collectible_presentation_coordinator.gd"
+)
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := (
 	MpProjectileCoordinatorScript.LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
 )
@@ -66,10 +69,6 @@ const HYDRANGEA_RAIN_TOWER_SCRIPT := preload(
 	"res://scene/plant_defense/hydrangea_rain_tower.gd"
 )
 const CORN_MACHINE_GUN_SCRIPT := preload("res://scene/plant_defense/corn_machine_gun.gd")
-const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
-const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
-const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
-const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
 const INPUT_BUTTON_RELOAD := MpPlayerCoordinator.INPUT_BUTTON_RELOAD
 const INPUT_BUTTON_DASH := MpPlayerCoordinator.INPUT_BUTTON_DASH
 const TANGO_BARRAGE_MAXIMUM_SECONDS := MpPlayerCoordinator.TANGO_BARRAGE_MAXIMUM_SECONDS
@@ -79,7 +78,6 @@ const STATE_DISCONNECTED := 0
 const STATE_IN_GAME := 5
 const HOST_TIME_OFFSET_SMOOTH_WEIGHT := 0.08
 const INPUT_CHANGE_EPSILON := 0.001
-const COLLECTIBLE_EFFECT_DEDUP_RETENTION_SECONDS := 10.0
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
 const FIRE_SORCERER_FIREBALL_VOLLEY_TYPE: StringName = (
@@ -131,6 +129,9 @@ const ENEMY_TERMINAL_REMOVED := 2
 	$MerchantTransactionsCoordinator
 )
 @onready var tower_fate_coordinator: MpTowerFateCoordinatorScript = $TowerFateCoordinator
+@onready var collectible_presentation_coordinator: MpCollectiblePresentationCoordinatorScript = (
+	$CollectiblePresentationCoordinator
+)
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var _agave_cannonball_scene: PackedScene = null
@@ -155,8 +156,6 @@ var _active_tiyi_activations_by_peer: Dictionary = {}
 var _tiyi_target_ids_by_peer: Dictionary = {}
 var _pending_tiyi_target_updates: Dictionary = {}
 var _last_tiyi_activation_seen_by_peer: Dictionary = {}
-var _next_collectible_effect_event_id: int = 1
-var _processed_collectible_effect_event_ids: Dictionary = {}
 var _disconnected_player_reconnect_states: Dictionary[int, Dictionary] = {}
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _snapshot_packet_warn_time_left: float = 0.0
@@ -391,6 +390,8 @@ func _exit_tree() -> void:
 			merchant_transactions_coordinator.unbind_runtime(game)
 		if tower_fate_coordinator != null:
 			tower_fate_coordinator.unbind_runtime(game)
+		if collectible_presentation_coordinator != null:
+			collectible_presentation_coordinator.unbind_runtime(game)
 	else:
 		if session_coordinator != null:
 			session_coordinator.reset_session_state()
@@ -412,6 +413,8 @@ func _exit_tree() -> void:
 			merchant_transactions_coordinator.reset_session_state()
 		if tower_fate_coordinator != null:
 			tower_fate_coordinator.reset_session_state()
+		if collectible_presentation_coordinator != null:
+			collectible_presentation_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -421,7 +424,6 @@ func _exit_tree() -> void:
 			public_room_keepalive_request.request_completed.disconnect(_on_public_room_keepalive_completed)
 		if public_room_keepalive_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 			public_room_keepalive_request.cancel_request()
-	_processed_collectible_effect_event_ids.clear()
 	_clear_bamboo_mortar_visuals()
 	_pending_corn_machine_gun_burst_visuals.clear()
 	_pending_corn_machine_gun_burst_action_ids.clear()
@@ -435,6 +437,8 @@ func _exit_tree() -> void:
 		merchant_transactions_coordinator.reset_session_state()
 	if tower_fate_coordinator != null:
 		tower_fate_coordinator.reset_session_state()
+	if collectible_presentation_coordinator != null:
+		collectible_presentation_coordinator.reset_session_state()
 	_public_room_keepalive_in_flight = false
 
 
@@ -919,6 +923,13 @@ func _on_tower_fate_rpc_broadcast_requested(
 	_rpc_to_connected_clients(method_name, args)
 
 
+func _on_collectible_presentation_rpc_broadcast_requested(
+	method_name: StringName,
+	args: Array
+) -> void:
+	_rpc_to_connected_clients(method_name, args)
+
+
 func request_multiplayer_start_wave() -> void:
 	if not world_flow_coordinator.supports_wave_progress():
 		return
@@ -1189,13 +1200,12 @@ func broadcast_collectible_visual_effect(
 	color: Color,
 	duration: float
 ) -> void:
-	if net_manager == null or not net_manager.is_host():
-		return
-	var effect_event_id := _next_collectible_effect_event_id
-	_next_collectible_effect_event_id += 1
-	_rpc_to_connected_clients(
-		&"net_collectible_visual_effect",
-		[String(effect_type), spawn_position, radius, color, duration, effect_event_id]
+	collectible_presentation_coordinator.broadcast_visual_effect(
+		effect_type,
+		spawn_position,
+		radius,
+		color,
+		duration
 	)
 
 
@@ -1205,15 +1215,11 @@ func broadcast_collectible_follow_visual_effect(
 	radius: float,
 	duration: float
 ) -> void:
-	if net_manager == null or not net_manager.is_host():
-		return
-	if owner_peer_id <= 0:
-		return
-	var effect_event_id := _next_collectible_effect_event_id
-	_next_collectible_effect_event_id += 1
-	_rpc_to_connected_clients(
-		&"net_collectible_follow_visual_effect",
-		[String(effect_type), owner_peer_id, radius, duration, effect_event_id]
+	collectible_presentation_coordinator.broadcast_follow_visual_effect(
+		effect_type,
+		owner_peer_id,
+		radius,
+		duration
 	)
 
 
@@ -1871,6 +1877,12 @@ func _setup_game(mode: int) -> bool:
 		net_manager,
 		_net_time_origin
 	)
+	collectible_presentation_coordinator.bind_runtime(
+		game,
+		self,
+		net_manager,
+		_net_time_origin
+	)
 	if tower_adapter != null:
 		tower_economy_coordinator.bind_runtime(
 			game,
@@ -1957,6 +1969,8 @@ func _discard_unparented_game_runtime() -> void:
 		merchant_transactions_coordinator.unbind_runtime(game)
 	if game != null and tower_fate_coordinator != null:
 		tower_fate_coordinator.unbind_runtime(game)
+	if game != null and collectible_presentation_coordinator != null:
+		collectible_presentation_coordinator.unbind_runtime(game)
 	if game != null and tower_economy_coordinator != null:
 		tower_economy_coordinator.unbind_runtime(game)
 	if game != null and world_flow_coordinator != null:
@@ -4076,37 +4090,8 @@ func _update_recent_event_cache_prune(delta: float) -> void:
 
 func _prune_recent_event_caches(now: float) -> void:
 	player_coordinator.prune_recent_player_hit_events(now)
-	_prune_recent_event_cache(_processed_collectible_effect_event_ids, now)
+	collectible_presentation_coordinator.prune_recent_effect_events(now)
 	_prune_projectile_records(now)
-
-
-func _prune_recent_event_cache(cache: Dictionary, now: float) -> void:
-	var expired_keys: Array = []
-	for key in cache:
-		if float(cache[key]) <= now:
-			expired_keys.append(key)
-	for key in expired_keys:
-		cache.erase(key)
-
-
-func _is_recent_event_cached(cache: Dictionary, key: Variant, now: float) -> bool:
-	var expires_at_variant: Variant = cache.get(key)
-	if expires_at_variant == null:
-		return false
-	var expires_at := float(expires_at_variant)
-	if expires_at > now:
-		return true
-	cache.erase(key)
-	return false
-
-
-func _remember_recent_event(
-	cache: Dictionary,
-	key: Variant,
-	retention_seconds: float,
-	now: float
-) -> void:
-	cache[key] = now + retention_seconds
 
 
 func request_enemy_hit_report(
@@ -7006,9 +6991,14 @@ func net_collectible_visual_effect(
 	duration: float,
 	effect_event_id: int = 0
 ) -> void:
-	if not _accept_collectible_effect_event(effect_event_id):
-		return
-	_spawn_collectible_visual_effect(effect_type, spawn_position, radius, color, duration)
+	collectible_presentation_coordinator.receive_visual_effect(
+		effect_type,
+		spawn_position,
+		radius,
+		color,
+		duration,
+		effect_event_id
+	)
 
 
 @rpc("authority", "call_remote", "unreliable", 7)
@@ -7019,28 +7009,13 @@ func net_collectible_follow_visual_effect(
 	duration: float,
 	effect_event_id: int = 0
 ) -> void:
-	if not _accept_collectible_effect_event(effect_event_id):
-		return
-	_spawn_collectible_follow_visual_effect(effect_type, owner_peer_id, radius, duration)
-
-
-func _accept_collectible_effect_event(effect_event_id: int) -> bool:
-	if effect_event_id <= 0:
-		return true
-	var now := _get_net_time()
-	if _is_recent_event_cached(
-		_processed_collectible_effect_event_ids,
-		effect_event_id,
-		now
-	):
-		return false
-	_remember_recent_event(
-		_processed_collectible_effect_event_ids,
-		effect_event_id,
-		COLLECTIBLE_EFFECT_DEDUP_RETENTION_SECONDS,
-		now
+	collectible_presentation_coordinator.receive_follow_visual_effect(
+		effect_type,
+		owner_peer_id,
+		radius,
+		duration,
+		effect_event_id
 	)
-	return true
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -7065,61 +7040,6 @@ func net_debug_collectible_granted(
 		success,
 		inventory_snapshot
 	)
-
-
-func _spawn_collectible_visual_effect(
-	effect_type: String,
-	spawn_position: Vector2,
-	radius: float,
-	color: Color,
-	duration: float
-) -> void:
-	match effect_type:
-		"lightning":
-			var lightning := COLLECTIBLE_LIGHTNING_EFFECT_SCENE.instantiate() as CollectibleLightningEffect
-			if lightning == null:
-				return
-			lightning.top_level = true
-			lightning.setup(duration)
-			add_child(lightning)
-			lightning.global_position = spawn_position
-		"area":
-			var area := COLLECTIBLE_AREA_EFFECT_SCENE.instantiate() as CollectibleAreaEffect
-			if area == null:
-				return
-			area.top_level = true
-			area.setup(radius, color, duration)
-			add_child(area)
-			area.global_position = spawn_position
-		"frost_area":
-			var frost_area := COLLECTIBLE_FROST_AREA_EFFECT_SCENE.instantiate()
-			if frost_area == null:
-				return
-			frost_area.top_level = true
-			frost_area.call("setup", radius, duration)
-			add_child(frost_area)
-			frost_area.global_position = spawn_position
-
-
-func _spawn_collectible_follow_visual_effect(
-	effect_type: String,
-	owner_peer_id: int,
-	radius: float,
-	duration: float
-) -> void:
-	if game == null or owner_peer_id <= 0:
-		return
-	var owner_player := game.get_player_for_peer(owner_peer_id)
-	if owner_player == null or not is_instance_valid(owner_player):
-		return
-	match effect_type:
-		"moon_shield":
-			var moon_shield := COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE.instantiate() as CollectibleMoonShieldVisual
-			if moon_shield == null:
-				return
-			moon_shield.setup(radius, duration)
-			owner_player.add_child(moon_shield)
-			moon_shield.position = Vector2.ZERO
 
 
 func _apply_debug_collectible_for_peer(peer_id: int, config_path: String) -> void:
@@ -7389,6 +7309,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	tower_economy_coordinator.clear_peer(peer_id)
 	merchant_transactions_coordinator.clear_peer(peer_id)
 	tower_fate_coordinator.clear_peer(peer_id)
+	collectible_presentation_coordinator.clear_peer(peer_id)
 	projectile_coordinator.clear_peer(peer_id)
 
 
@@ -7398,7 +7319,7 @@ func _return_to_lobby() -> void:
 	projectile_coordinator.reset_session_state()
 	world_flow_coordinator.reset_session_state()
 	_disconnected_player_reconnect_states.clear()
-	_processed_collectible_effect_event_ids.clear()
+	collectible_presentation_coordinator.reset_session_state()
 	tower_economy_coordinator.reset_session_state()
 	tower_world_coordinator.reset_session_state()
 	merchant_transactions_coordinator.reset_session_state()
