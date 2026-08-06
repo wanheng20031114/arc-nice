@@ -180,7 +180,6 @@ const SNAPSHOT_PACKET_WARN_BYTES := 1200
 const SNAPSHOT_PACKET_WARN_INTERVAL_SECONDS := 5.0
 const RPC_PAYLOAD_DIAGNOSTIC_SAMPLE_INTERVAL := 64
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
-const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const ENEMY_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 ## 自协议 v26 起使用“上一发送状态”作为 delta 基线。只有连续参与每次发送的
 ## 接收端才能共享这一个负数命名空间；任何缺席者恢复时必须先随全 cohort 收到 full。
@@ -278,6 +277,7 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var net_manager: Node = get_node("/root/NetManager")
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 @onready var session_coordinator: MpSessionCoordinator = $SessionCoordinator
+@onready var player_coordinator: MpPlayerCoordinator = $PlayerCoordinator
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var snapshot_mgr := SnapshotManager.new()
@@ -293,10 +293,6 @@ var _linglan_skill3_orb_scene: PackedScene = null
 var _linglan_skill4_config: Resource = null
 var _linglan_skill4_orb_scene: PackedScene = null
 var _linglan_skill4_orb_script: Script = null
-# Client-view only: remote player visual timeline. Host gameplay never reads this.
-var player_visual_interpolators: Dictionary = {}
-var _player_snapshot_teleport_cutoff_sequences: Dictionary = {}
-var _pending_authoritative_player_teleports: Dictionary = {}
 var enemy_interpolators: Dictionary = {}
 var _stale_enemy_interpolator_ids: Array[int] = []
 var game: CombatRuntimeBase = null
@@ -330,7 +326,6 @@ var _last_player_state_sequences: Dictionary = {}
 var _last_dash_request_sequences: Dictionary = {}
 var _last_dash_confirmed_sequences: Dictionary = {}
 var _last_dash_accepted_times: Dictionary = {}
-var _player_character_mismatch_warnings: Dictionary = {}
 var _hoe_action_sequences_by_peer: Dictionary = {}
 var _last_hoe_action_request_ids: Dictionary = {}
 var _tango_charge_sequences_by_peer: Dictionary = {}
@@ -348,7 +343,6 @@ var _pending_tiyi_target_updates: Dictionary = {}
 var _last_tiyi_activation_seen_by_peer: Dictionary = {}
 var _accepted_player_state_positions: Dictionary = {}
 var _accepted_player_state_times: Dictionary = {}
-var _host_latest_client_player_snapshot_states: Dictionary = {}
 var _next_projectile_sequence: int = 1
 var _known_projectiles: Dictionary = {}
 var _projectile_records: Dictionary = {}
@@ -357,15 +351,11 @@ var _processed_enemy_hit_ids: Dictionary = {}
 var _processed_player_hit_ids: Dictionary = {}
 var _next_collectible_effect_event_id: int = 1
 var _processed_collectible_effect_event_ids: Dictionary = {}
-var _host_player_snapshot_sequence: int = 0
 var _host_enemy_snapshot_batch_sequence: int = 0
 var _host_enemy_snapshot_live_ids: Dictionary = {}
 # Highest reliable life-event revision processed per player. On Host this is
 # also the allocator; on clients it deduplicates presentation events.
 var _player_health_revisions: Dictionary = {}
-# Highest revision whose health/dead/invincibility state was applied, whether
-# it arrived through a realtime snapshot or a reliable life event.
-var _player_applied_health_revisions: Dictionary = {}
 var _disconnected_player_reconnect_states: Dictionary[int, Dictionary] = {}
 var _dead_player_revive_times: Dictionary = {}
 var _dead_player_revive_last_seconds: Dictionary = {}
@@ -384,13 +374,10 @@ var _enemy_snapshot_batch_count: int = 0
 var _enemy_snapshot_completed_batch_count: int = 0
 var _enemy_snapshot_incomplete_batch_evict_count: int = 0
 var _enemy_snapshot_stale_chunk_count: int = 0
-var _last_player_keyframe_time_by_peer: Dictionary = {}
 var _last_enemy_keyframe_time_by_peer: Dictionary = {}
-var _player_snapshot_cohort_peers: Dictionary = {}
 var _enemy_snapshot_cohort_peers: Dictionary = {}
 # Session-lifetime encode work counters. Peer detach/rejoin does not reset them;
 # returning to the lobby does, and a new MpGame instance always starts at zero.
-var _player_snapshot_encode_count: int = 0
 var _enemy_snapshot_chunk_encode_count: int = 0
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
@@ -607,8 +594,13 @@ func _exit_tree() -> void:
 			_mode_adapter.detach_multiplayer_session(self)
 		if session_coordinator != null:
 			session_coordinator.unbind_runtime(game)
-	elif session_coordinator != null:
-		session_coordinator.reset_session_state()
+		if player_coordinator != null:
+			player_coordinator.unbind_runtime(game)
+	else:
+		if session_coordinator != null:
+			session_coordinator.reset_session_state()
+		if player_coordinator != null:
+			player_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -619,7 +611,6 @@ func _exit_tree() -> void:
 		if public_room_keepalive_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 			public_room_keepalive_request.cancel_request()
 	snapshot_mgr.reset_delta_cache()
-	_player_snapshot_cohort_peers.clear()
 	_enemy_snapshot_cohort_peers.clear()
 	_pending_enemy_snapshot_batches.clear()
 	_host_enemy_snapshot_live_ids.clear()
@@ -3215,6 +3206,7 @@ func _setup_game(mode: int) -> bool:
 		_discard_unparented_game_runtime()
 		return false
 	session_coordinator.bind_runtime(game)
+	player_coordinator.bind_runtime(game)
 	gameplay_gateway.attach_multiplayer_session(self)
 	mode_adapter.attach_multiplayer_session(self)
 	tower_mode_adapter = mode_adapter as TowerDefenseMultiplayerModeAdapter
@@ -3322,6 +3314,8 @@ func _setup_game(mode: int) -> bool:
 func _discard_unparented_game_runtime() -> void:
 	if game != null and session_coordinator != null:
 		session_coordinator.unbind_runtime(game)
+	if game != null and player_coordinator != null:
+		player_coordinator.unbind_runtime(game)
 	if game != null and is_instance_valid(game) and game.get_parent() == null:
 		game.free()
 	game = null
@@ -3492,7 +3486,7 @@ func _send_authoritative_player_positions_to_peer(target_peer_id: int) -> void:
 			target_peer_id,
 			state_peer_id,
 			player_node.global_position,
-			_host_player_snapshot_sequence
+			player_coordinator.get_host_snapshot_sequence()
 		)
 
 
@@ -3777,39 +3771,26 @@ func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
 	if states.is_empty():
 		return
 	var snapshot_time := _get_net_time()
-	_apply_latest_client_player_snapshot_states(states)
 	_apply_authoritative_tango_charge_snapshot_ratios(states, snapshot_time)
-	_host_player_snapshot_sequence += 1
-	for state in states:
-		state.sequence = _host_player_snapshot_sequence
-		state.health_revision = int(
-			_player_health_revisions.get(state.peer_id, 0)
-		)
-	var force_keyframe := _snapshot_cohort_requires_keyframe(
-		_player_snapshot_cohort_peers,
-		_last_player_keyframe_time_by_peer,
-		client_peer_ids,
-		snapshot_time,
-		PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS
-	)
-	var data := snapshot_mgr.encode_player_snapshots_for_cohort(
-		SHARED_SNAPSHOT_COHORT_ID,
+	var batch := player_coordinator.build_host_snapshot_batch(
 		states,
-		force_keyframe
-	)
-	if data.is_empty():
-		return
-	_player_snapshot_encode_count += 1
-	_commit_snapshot_cohort_send(
-		_player_snapshot_cohort_peers,
-		_last_player_keyframe_time_by_peer,
 		client_peer_ids,
 		snapshot_time,
-		force_keyframe
+		_player_health_revisions
 	)
-	for peer_id in client_peer_ids:
-		_record_snapshot_packet_size(&"player", data.size(), states.size())
-		_rpc_receive_player_snapshot.rpc_id(peer_id, snapshot_time, data)
+	if batch == null or batch.is_empty():
+		return
+	for peer_id in batch.peer_ids:
+		_record_snapshot_packet_size(
+			&"player",
+			batch.data.size(),
+			batch.entity_count
+		)
+		_rpc_receive_player_snapshot.rpc_id(
+			peer_id,
+			batch.host_timestamp,
+			batch.data
+		)
 
 
 func _apply_authoritative_tango_charge_snapshot_ratios(
@@ -3829,24 +3810,6 @@ func _apply_authoritative_tango_charge_snapshot_ratios(
 			0.0,
 			1.0
 		)
-
-
-func _apply_latest_client_player_snapshot_states(states: Array[SnapshotManager.PlayerState]) -> void:
-	if _host_latest_client_player_snapshot_states.is_empty():
-		return
-	for state in states:
-		if state == null or state.is_dead:
-			continue
-		var latest_variant: Variant = _host_latest_client_player_snapshot_states.get(state.peer_id)
-		if latest_variant == null:
-			continue
-		var latest := latest_variant as Dictionary
-		if latest.is_empty():
-			continue
-		state.position = latest["position"] as Vector2
-		state.velocity = latest["velocity"] as Vector2
-		state.facing = int(latest["facing"])
-		state.anim_state = int(latest["anim_state"])
 
 
 func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
@@ -3923,29 +3886,22 @@ func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
 
 
 func _sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
+	player_coordinator.sync_snapshot_cohort_readiness(ready_peer_ids)
 	var ready_lookup: Dictionary = {}
 	for peer_id in ready_peer_ids:
 		if peer_id > 0:
 			ready_lookup[peer_id] = true
 	_detach_unready_snapshot_cohort_peers(
-		_player_snapshot_cohort_peers,
-		_last_player_keyframe_time_by_peer,
-		ready_lookup,
-		true
-	)
-	_detach_unready_snapshot_cohort_peers(
 		_enemy_snapshot_cohort_peers,
 		_last_enemy_keyframe_time_by_peer,
-		ready_lookup,
-		false
+		ready_lookup
 	)
 
 
 func _detach_unready_snapshot_cohort_peers(
 	cohort_peers: Dictionary,
 	last_keyframe_times: Dictionary,
-	ready_lookup: Dictionary,
-	is_player_stream: bool
+	ready_lookup: Dictionary
 ) -> void:
 	for peer_id_variant in cohort_peers.keys():
 		var peer_id := int(peer_id_variant)
@@ -3955,10 +3911,7 @@ func _detach_unready_snapshot_cohort_peers(
 		last_keyframe_times.erase(peer_id)
 	if not cohort_peers.is_empty():
 		return
-	if is_player_stream:
-		snapshot_mgr.clear_player_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
-	else:
-		snapshot_mgr.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
+	snapshot_mgr.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
 
 
 func _snapshot_cohort_requires_keyframe(
@@ -4167,9 +4120,9 @@ func get_snapshot_packet_metrics() -> Dictionary:
 		"enemy_snapshot_payload_bytes_total": _enemy_snapshot_payload_bytes_total,
 		"enemy_snapshot_packet_count": _enemy_snapshot_packet_count,
 		"enemy_snapshot_batch_count": _enemy_snapshot_batch_count,
-		"player_snapshot_encode_count": _player_snapshot_encode_count,
+		"player_snapshot_encode_count": player_coordinator.get_snapshot_encode_count(),
 		"enemy_snapshot_chunk_encode_count": _enemy_snapshot_chunk_encode_count,
-		"player_snapshot_cohort_size": _player_snapshot_cohort_peers.size(),
+		"player_snapshot_cohort_size": player_coordinator.get_snapshot_cohort_size(),
 		"enemy_snapshot_cohort_size": _enemy_snapshot_cohort_peers.size(),
 		"enemy_snapshot_completed_batch_count": _enemy_snapshot_completed_batch_count,
 		"enemy_snapshot_incomplete_batch_evict_count": _enemy_snapshot_incomplete_batch_evict_count,
@@ -4264,14 +4217,6 @@ func _on_public_room_keepalive_completed(
 	var parsed_dict := parsed as Dictionary
 	if parsed_dict != null and parsed_dict.has("relay_running") and not bool(parsed_dict["relay_running"]):
 		push_warning("MpGame: 公网房间续租成功，但云端 Relay 进程已不在运行。")
-
-
-func _create_player_interpolator() -> NetInterpolator:
-	return NetInterpolator.new(
-		1.0 / float(_NetConstants.PLAYER_SNAPSHOT_HZ),
-		_NetConstants.PLAYER_INTERPOLATION_DELAY_FACTOR,
-		_NetConstants.PLAYER_MAX_EXTRAPOLATION_SECONDS
-	)
 
 
 func _create_enemy_interpolator() -> NetInterpolator:
@@ -4398,21 +4343,7 @@ func _client_interpolate_entities() -> void:
 		return
 	var current_time := _get_net_time()
 	var local_peer_id: int = _get_client_view_local_peer_id()
-	if is_client_view_runtime():
-		for peer_id_variant in player_visual_interpolators:
-			var peer_id := int(peer_id_variant)
-			if peer_id == local_peer_id:
-				continue
-			var interp := player_visual_interpolators[peer_id] as NetInterpolator
-			var player_node: Player = game.get_player_for_peer(peer_id)
-			if interp != null and player_node != null and is_instance_valid(player_node):
-				var frame_state: NetInterpolator.FrameSnapshot = interp.get_current_state(current_time)
-				player_node.apply_multiplayer_snapshot_motion(
-					interp.get_interpolated_position(current_time),
-					interp.get_interpolated_velocity(current_time),
-					frame_state.facing,
-					frame_state.anim_state
-				)
+	player_coordinator.interpolate_remote_players(current_time, local_peer_id)
 	_stale_enemy_interpolator_ids.clear()
 	for net_id_variant in enemy_interpolators:
 		var net_id := int(net_id_variant)
@@ -4477,179 +4408,24 @@ func _should_interpolate_enemy_proxy(
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
-	if game == null:
-		return
-	if not is_client_view_runtime():
+	if game == null or not is_client_view_runtime():
 		return
 	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
-	var states := snapshot_mgr.decode_player_snapshots_with_baseline(data)
-	var snapshot_has_full_roster := _is_complete_player_snapshot_batch(data, states.size())
-	var seen_player_ids: Dictionary = {}
-	for state in states:
-		var player_state := state as SnapshotManager.PlayerState
-		if player_state == null:
-			continue
-		if player_state.peer_id <= 0:
-			continue
-		seen_player_ids[player_state.peer_id] = true
-		var player_node: Player = game.get_player_for_peer(player_state.peer_id)
-		if player_node != null and is_instance_valid(player_node):
-			_try_apply_pending_authoritative_player_teleport(player_state.peer_id)
-			player_node = game.get_player_for_peer(player_state.peer_id)
-		var accept_motion := _accept_player_snapshot_motion_after_teleport(
-			player_state.peer_id,
-			player_state.sequence
-		)
-		if player_node != null and is_instance_valid(player_node):
-			if player_node.get_character_id() != player_state.character_id:
-				_warn_player_character_snapshot_mismatch(
-					player_state.peer_id,
-					player_node.get_character_id(),
-					player_state.character_id
-				)
-				continue
-			_apply_player_primary_cooldown_ratio(
-				player_node,
-				player_state.primary_cooldown_ratio,
-				player_state.facing
-			)
-		if is_client_view_runtime() and player_state.peer_id == _get_client_view_local_peer_id():
-			_apply_player_realtime_snapshot(player_node, player_state)
-			continue
-		if not accept_motion:
-			if player_node != null and is_instance_valid(player_node):
-				_apply_player_realtime_snapshot(player_node, player_state)
-			continue
-		if not player_visual_interpolators.has(player_state.peer_id):
-			player_visual_interpolators[player_state.peer_id] = _create_player_interpolator()
-		var interp := player_visual_interpolators[player_state.peer_id] as NetInterpolator
-		interp.push_snapshot(
-			snapshot_time,
-			player_state.position,
-			player_state.velocity,
-			player_state.facing,
-			player_state.anim_state,
-			0,
-			false
-		)
-		if player_node != null and is_instance_valid(player_node):
-			_apply_player_realtime_snapshot(player_node, player_state)
-	if snapshot_has_full_roster:
-		_reconcile_player_roster(seen_player_ids)
-
-
-func _apply_player_primary_cooldown_ratio(
-	player_node: Player,
-	ratio: float,
-	facing_id: int = -1
-) -> void:
-	if player_node == null or not player_node.has_method("apply_multiplayer_primary_cooldown_ratio"):
-		return
-	if (
-		is_client_view_runtime()
-		and player_node.peer_id == _get_client_view_local_peer_id()
-		and _local_tango_active_request_id > 0
-		and player_node.has_method("is_tango")
-		and bool(player_node.call("is_tango"))
-	):
-		return
-	if player_node.has_method("apply_multiplayer_tango_charge_snapshot"):
-		player_node.call(
-			"apply_multiplayer_tango_charge_snapshot",
-			clampf(ratio, 0.0, 1.0),
-			facing_id
-		)
-		return
-	player_node.call("apply_multiplayer_primary_cooldown_ratio", clampf(ratio, 0.0, 1.0))
+	var stale_peer_ids := player_coordinator.apply_authoritative_snapshot(
+		snapshot_time,
+		data,
+		_get_client_view_local_peer_id(),
+		_local_tango_active_request_id > 0
+	)
+	for peer_id in stale_peer_ids:
+		_clear_peer_network_state(peer_id)
+		game.remove_multiplayer_player(peer_id)
 
 
 func _get_player_primary_cooldown_ratio(player_node: Player) -> float:
 	if player_node == null or not is_instance_valid(player_node):
 		return 0.0
 	return clampf(player_node.get_primary_cooldown_ratio(), 0.0, 1.0)
-
-
-func _apply_player_realtime_snapshot(
-	player_node: Player,
-	player_state: SnapshotManager.PlayerState
-) -> void:
-	if player_node == null or player_state == null or not is_instance_valid(player_node):
-		return
-	# Realtime snapshots and reliable damage/heal/revive events use independent
-	# ENet channels. Preserve the latest reliable life state when an older
-	# snapshot arrives after it, while still applying unrelated realtime fields.
-	var apply_snapshot_health := (
-		player_state.health_revision
-		>= int(_player_applied_health_revisions.get(player_state.peer_id, 0))
-	)
-	player_node.apply_multiplayer_realtime_state(
-		player_state.current_health if apply_snapshot_health else player_node.current_health,
-		player_state.max_health if apply_snapshot_health else player_node.max_health,
-		player_state.current_xirang,
-		player_state.is_dead if apply_snapshot_health else player_node.is_dead,
-		(
-			player_state.invincibility_time_left
-			if apply_snapshot_health
-			else player_node.invincibility_time_left
-		),
-		player_state.skill1_unlocked,
-		player_state.skill1_charge,
-		player_state.skill1_charge_duration,
-		player_state.form_mode,
-		player_state.shot_pattern,
-		player_state.skill1_upgrade_level,
-		player_state.ammo_capacity,
-		player_state.current_ammo,
-		player_state.is_reloading,
-		player_state.reload_progress
-	)
-	player_node.apply_multiplayer_effective_move_speed_multiplier(
-		player_state.effective_move_speed_multiplier
-	)
-	if apply_snapshot_health:
-		_mark_player_health_revision_applied(
-			player_state.peer_id,
-			player_state.health_revision
-		)
-
-
-func _warn_player_character_snapshot_mismatch(
-	peer_id: int,
-	local_character_id: StringName,
-	host_character_id: StringName
-) -> void:
-	if _player_character_mismatch_warnings.has(peer_id):
-		return
-	_player_character_mismatch_warnings[peer_id] = true
-	push_warning(
-		"MpGame: peer %d 角色不一致 local=%s host=%s，忽略该角色快照。"
-		% [peer_id, local_character_id, host_character_id]
-	)
-
-
-func _is_complete_player_snapshot_batch(data: PackedByteArray, decoded_count: int) -> bool:
-	if data.is_empty():
-		return false
-	var expected_count := int(data[0])
-	return expected_count > 0 and decoded_count == expected_count
-
-
-func _reconcile_player_roster(seen_player_ids: Dictionary) -> void:
-	if game == null or seen_player_ids.is_empty():
-		return
-	if int(game.runtime_mode) != GAME_RUNTIME_CLIENT_VIEW:
-		return
-	var local_peer_id := _get_local_peer_id()
-	if local_peer_id <= 0:
-		local_peer_id = game.multiplayer_local_peer_id
-	for peer_id_variant in game.peer_players.keys():
-		var peer_id := int(peer_id_variant)
-		if peer_id == local_peer_id:
-			continue
-		if seen_player_ids.has(peer_id):
-			continue
-		_clear_peer_network_state(peer_id)
-		game.remove_multiplayer_player(peer_id)
 
 
 @rpc("authority", "call_remote", "unreliable", 3)
@@ -4812,9 +4588,9 @@ func _rpc_client_player_state(
 	dash_direction: Vector2,
 	dash_start_move_input: Vector2
 ) -> void:
+	var sender_id := multiplayer.get_remote_sender_id()
 	if not net_manager.is_host() or game == null:
 		return
-	var sender_id := multiplayer.get_remote_sender_id()
 	if sender_id <= 0:
 		return
 	var player_node := game.get_player_for_peer(sender_id)
@@ -4876,7 +4652,8 @@ func _apply_accepted_client_player_state(
 		use_skill1,
 		use_reload
 	)
-	_remember_latest_client_player_snapshot_state(
+	player_coordinator.remember_latest_client_state(
+		true,
 		sender_id,
 		reported_position,
 		reported_velocity,
@@ -5933,10 +5710,10 @@ func _sanitize_hoe_action_direction(player_node: Player, direction: Vector2) -> 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
-	if game == null or game.player == null:
-		return
-	game.player.global_position = corrected_position
-	game.player.velocity = corrected_velocity
+	player_coordinator.apply_local_state_correction(
+		corrected_position,
+		corrected_velocity
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -5945,101 +5722,13 @@ func net_player_authoritative_teleported(
 	target_position: Vector2,
 	snapshot_sequence_cutoff: int
 ) -> void:
-	if (
-		peer_id <= 0
-		or snapshot_sequence_cutoff < 0
-		or not _is_finite_vector2(target_position)
-	):
-		return
-	_player_snapshot_teleport_cutoff_sequences[peer_id] = maxi(
+	player_coordinator.queue_authoritative_teleport(
+		peer_id,
+		target_position,
 		snapshot_sequence_cutoff,
-		int(_player_snapshot_teleport_cutoff_sequences.get(peer_id, -1))
+		_get_client_view_local_peer_id(),
+		_get_net_time()
 	)
-	_pending_authoritative_player_teleports[peer_id] = {
-		"position": target_position,
-		"snapshot_sequence_cutoff": snapshot_sequence_cutoff,
-	}
-	_try_apply_pending_authoritative_player_teleport(peer_id)
-
-
-func _try_apply_pending_authoritative_player_teleport(peer_id: int) -> bool:
-	if game == null or peer_id <= 0:
-		return false
-	var pending := (
-		_pending_authoritative_player_teleports.get(peer_id, {}) as Dictionary
-	)
-	if pending.is_empty():
-		return false
-	var player_node := game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return false
-	var target_position := pending.get("position", Vector2.ZERO) as Vector2
-	_apply_player_authoritative_teleport(player_node, target_position)
-	if is_client_view_runtime() and peer_id != _get_client_view_local_peer_id():
-		_reset_player_visual_interpolator_to_state(
-			peer_id,
-			target_position,
-			Vector2.ZERO,
-			player_node.get_multiplayer_facing_id(),
-			player_node.get_multiplayer_anim_state()
-		)
-	_pending_authoritative_player_teleports.erase(peer_id)
-	return true
-
-
-func _accept_player_snapshot_motion_after_teleport(
-	peer_id: int,
-	snapshot_sequence: int
-) -> bool:
-	var cutoff := int(
-		_player_snapshot_teleport_cutoff_sequences.get(peer_id, -1)
-	)
-	if cutoff < 0:
-		return true
-	if snapshot_sequence <= cutoff:
-		return false
-	_player_snapshot_teleport_cutoff_sequences.erase(peer_id)
-	return true
-
-
-func _reset_player_visual_interpolator_to_state(
-	peer_id: int,
-	player_position: Vector2,
-	player_velocity: Vector2,
-	facing_id: int,
-	anim_state: int
-) -> void:
-	if peer_id <= 0:
-		return
-	if not player_visual_interpolators.has(peer_id):
-		player_visual_interpolators[peer_id] = _create_player_interpolator()
-	var interp: NetInterpolator = player_visual_interpolators[peer_id] as NetInterpolator
-	if interp == null:
-		return
-	interp.clear()
-	interp.push_snapshot(
-		_get_net_time(),
-		player_position,
-		player_velocity,
-		facing_id,
-		anim_state,
-		0,
-		false
-	)
-
-
-func _apply_player_authoritative_teleport(
-	player_node: Player,
-	target_position: Vector2
-) -> void:
-	var smoothing_was_enabled := player_node.is_multiplayer_visual_smoothing_enabled()
-	if smoothing_was_enabled:
-		player_node.set_multiplayer_visual_smoothing_enabled(false)
-	player_node.global_position = target_position
-	player_node.velocity = Vector2.ZERO
-	player_node.reset_physics_interpolation()
-	if smoothing_was_enabled:
-		player_node.set_multiplayer_visual_smoothing_enabled(true)
 
 
 func _commit_authoritative_player_teleport(
@@ -6051,35 +5740,24 @@ func _commit_authoritative_player_teleport(
 	var player_node := game.get_player_for_peer(peer_id)
 	if player_node == null or not is_instance_valid(player_node):
 		return false
-	_apply_player_authoritative_teleport(player_node, target_position)
+	if not player_coordinator.apply_authoritative_teleport_to_player(
+		player_node,
+		target_position
+	):
+		return false
 	if peer_id != game.multiplayer_local_peer_id:
 		var now := _get_net_time()
 		_accepted_player_state_positions[peer_id] = target_position
 		_accepted_player_state_times[peer_id] = now
-		_host_latest_client_player_snapshot_states[peer_id] = {
-			"position": target_position,
-			"velocity": Vector2.ZERO,
-			"facing": player_node.get_multiplayer_facing_id(),
-			"anim_state": player_node.get_multiplayer_anim_state(),
-		}
+		player_coordinator.remember_latest_client_state(
+			true,
+			peer_id,
+			target_position,
+			Vector2.ZERO,
+			player_node.get_multiplayer_facing_id(),
+			player_node.get_multiplayer_anim_state()
+		)
 	return true
-
-
-func _remember_latest_client_player_snapshot_state(
-	peer_id: int,
-	player_position: Vector2,
-	player_velocity: Vector2,
-	facing_id: int,
-	anim_state: int
-) -> void:
-	if not net_manager.is_host() or peer_id <= 0:
-		return
-	_host_latest_client_player_snapshot_states[peer_id] = {
-		"position": player_position,
-		"velocity": player_velocity,
-		"facing": facing_id,
-		"anim_state": anim_state,
-	}
 
 
 func _accept_client_player_state(
@@ -10454,9 +10132,7 @@ func _try_apply_player_health_event(
 	if (
 		player_node == null
 		or peer_id <= 0
-		or health_revision < int(
-			_player_applied_health_revisions.get(peer_id, 0)
-		)
+		or health_revision < player_coordinator.get_applied_health_revision(peer_id)
 	):
 		return false
 	player_node.set_multiplayer_health_state(current_health, is_dead)
@@ -10465,12 +10141,7 @@ func _try_apply_player_health_event(
 
 
 func _mark_player_health_revision_applied(peer_id: int, health_revision: int) -> void:
-	if peer_id <= 0 or health_revision < 0:
-		return
-	_player_applied_health_revisions[peer_id] = maxi(
-		int(_player_applied_health_revisions.get(peer_id, 0)),
-		health_revision
-	)
+	player_coordinator.mark_health_revision_applied(peer_id, health_revision)
 
 
 func _schedule_player_revive(peer_id: int) -> void:
@@ -10486,7 +10157,7 @@ func _schedule_player_revive(peer_id: int) -> void:
 		or _mode_adapter.is_terminal_combat_state()
 	):
 		return
-	_host_latest_client_player_snapshot_states.erase(peer_id)
+	player_coordinator.erase_latest_client_state(peer_id)
 	var revive_delay := _mode_adapter.consume_next_player_respawn_delay(peer_id)
 	revive_delay = maxf(revive_delay, 0.0)
 	_dead_player_revive_times[peer_id] = _get_net_time() + revive_delay
@@ -10621,7 +10292,8 @@ func _revive_player_peer(peer_id: int, revive_position: Vector2) -> void:
 		push_error("MpGame: 玩家复活生命值超出网络 signed int32 契约，已拒绝发送。")
 		return
 	if peer_id != _get_host_peer_id():
-		_remember_latest_client_player_snapshot_state(
+		player_coordinator.remember_latest_client_state(
+			true,
 			peer_id,
 			revive_position,
 			Vector2.ZERO,
@@ -10726,12 +10398,13 @@ func net_player_revived(
 	if _mode_adapter != null:
 		_mode_adapter.clear_player_respawn_countdown(peer_id)
 	if is_client_view_runtime() and peer_id != _get_client_view_local_peer_id():
-		_reset_player_visual_interpolator_to_state(
+		player_coordinator.reset_visual_interpolator_to_state(
 			peer_id,
 			revive_position,
 			Vector2.ZERO,
 			player_node.get_multiplayer_facing_id(),
-			player_node.get_multiplayer_anim_state()
+			player_node.get_multiplayer_anim_state(),
+			_get_net_time()
 		)
 
 func _on_host_enemy_spawned(
@@ -11015,7 +10688,11 @@ func _on_host_player_teleport_requested(
 		return
 	_rpc_to_connected_clients(
 		&"net_player_authoritative_teleported",
-		[peer_id, target_position, _host_player_snapshot_sequence]
+		[
+			peer_id,
+			target_position,
+			player_coordinator.get_host_snapshot_sequence(),
+		]
 	)
 
 
@@ -15143,7 +14820,7 @@ func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 		),
 		"health_revision": int(_player_health_revisions.get(peer_id, 0)),
 		"applied_health_revision": int(
-			_player_applied_health_revisions.get(peer_id, 0)
+			player_coordinator.get_applied_health_revision(peer_id)
 		),
 	}
 
@@ -15241,8 +14918,9 @@ func _on_net_player_reconnected(
 	_player_health_revisions[new_peer_id] = int(
 		reconnect_state.get("health_revision", 0)
 	)
-	_player_applied_health_revisions[new_peer_id] = int(
-		reconnect_state.get("applied_health_revision", 0)
+	player_coordinator.set_applied_health_revision(
+		new_peer_id,
+		int(reconnect_state.get("applied_health_revision", 0))
 	)
 	var revive_at := float(reconnect_state.get("revive_at", -1.0))
 	if (
@@ -15266,37 +14944,17 @@ func _on_net_player_reconnected(
 	if luoxi_offer_revision >= 0:
 		_luoxi_offer_revision_counters[new_peer_id] = luoxi_offer_revision
 	if player_state != null:
-		player_node.apply_multiplayer_snapshot_motion(
-			player_state.position,
-			player_state.velocity,
-			player_state.facing,
-			player_state.anim_state
-		)
-		_apply_player_primary_cooldown_ratio(
+		player_coordinator.restore_reconnected_player_snapshot(
 			player_node,
-			player_state.primary_cooldown_ratio,
-			player_state.facing
+			player_state,
+			_get_net_time(),
+			net_manager.is_host(),
+			_get_client_view_local_peer_id(),
+			_local_tango_active_request_id > 0
 		)
-		_apply_player_realtime_snapshot(player_node, player_state)
 		if net_manager.is_host():
 			_accepted_player_state_positions[new_peer_id] = player_state.position
 			_accepted_player_state_times[new_peer_id] = _get_net_time()
-			_host_latest_client_player_snapshot_states[new_peer_id] = {
-				"position": player_state.position,
-				"velocity": player_state.velocity,
-				"facing": player_state.facing,
-				"anim_state": player_state.anim_state,
-			}
-		else:
-			var interpolator := _create_player_interpolator()
-			interpolator.push_snapshot(
-				_get_net_time(),
-				player_state.position,
-				player_state.velocity,
-				player_state.facing,
-				player_state.anim_state
-			)
-			player_visual_interpolators[new_peer_id] = interpolator
 	var owned_plant_ids := reconnect_state.get("owned_plant_net_ids", []) as Array
 	for plant_net_id_variant in owned_plant_ids:
 		var plant := _get_tower_plant(int(plant_net_id_variant))
@@ -15329,23 +14987,16 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	):
 		_cancel_authoritative_tango_charge(peer_id, true)
 	snapshot_mgr.clear_peer_delta_cache(peer_id)
-	_player_snapshot_cohort_peers.erase(peer_id)
 	_enemy_snapshot_cohort_peers.erase(peer_id)
-	_last_player_keyframe_time_by_peer.erase(peer_id)
 	_last_enemy_keyframe_time_by_peer.erase(peer_id)
-	if _player_snapshot_cohort_peers.is_empty():
-		snapshot_mgr.clear_player_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
 	if _enemy_snapshot_cohort_peers.is_empty():
 		snapshot_mgr.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
+	player_coordinator.clear_peer(peer_id)
 	_last_plant_placement_request_ids.erase(peer_id)
-	player_visual_interpolators.erase(peer_id)
-	_player_snapshot_teleport_cutoff_sequences.erase(peer_id)
-	_pending_authoritative_player_teleports.erase(peer_id)
 	_last_player_state_sequences.erase(peer_id)
 	_last_dash_request_sequences.erase(peer_id)
 	_last_dash_confirmed_sequences.erase(peer_id)
 	_last_dash_accepted_times.erase(peer_id)
-	_player_character_mismatch_warnings.erase(peer_id)
 	_hoe_action_sequences_by_peer.erase(peer_id)
 	_last_hoe_action_request_ids.erase(peer_id)
 	_tango_charge_sequences_by_peer.erase(peer_id)
@@ -15363,9 +15014,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_last_tiyi_activation_seen_by_peer.erase(peer_id)
 	_accepted_player_state_positions.erase(peer_id)
 	_accepted_player_state_times.erase(peer_id)
-	_host_latest_client_player_snapshot_states.erase(peer_id)
 	_player_health_revisions.erase(peer_id)
-	_player_applied_health_revisions.erase(peer_id)
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
 	_luoxi_offer_states_by_peer.erase(peer_id)
@@ -15435,10 +15084,9 @@ func _clear_projectile_records_for_peer(peer_id: int) -> void:
 
 func _return_to_lobby() -> void:
 	snapshot_mgr.reset_delta_cache()
+	player_coordinator.reset_session_state()
 	_disconnected_player_reconnect_states.clear()
-	_player_snapshot_cohort_peers.clear()
 	_enemy_snapshot_cohort_peers.clear()
-	_player_snapshot_encode_count = 0
 	_enemy_snapshot_chunk_encode_count = 0
 	_pending_enemy_snapshot_batches.clear()
 	_processed_collectible_effect_event_ids.clear()
@@ -15490,9 +15138,7 @@ func _return_to_lobby() -> void:
 	_last_research_request_ids.clear()
 	_research_milestone_connected = false
 	_warehouse_transaction_started_usec.clear()
-	_last_player_keyframe_time_by_peer.clear()
 	_last_enemy_keyframe_time_by_peer.clear()
-	_player_character_mismatch_warnings.clear()
 	_hoe_action_sequences_by_peer.clear()
 	_tango_charge_sequences_by_peer.clear()
 	_last_tango_volley_visual_state_by_peer.clear()

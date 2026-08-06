@@ -97,12 +97,13 @@ func _test_player_snapshot_revision_fence() -> void:
 	player.invincibility_time_left = 0.8
 
 	var mp_game := MpGameScript.new()
+	var player_coordinator := MpPlayerCoordinator.new()
+	player_coordinator.name = "PlayerCoordinator"
+	mp_game.add_child(player_coordinator)
+	mp_game.player_coordinator = player_coordinator
 	var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
-	var applied_revisions := (
-		mp_game.get("_player_applied_health_revisions") as Dictionary
-	)
 	health_revisions[17] = 5
-	applied_revisions[17] = 5
+	player_coordinator.set_applied_health_revision(17, 5)
 	var stale_state := _make_player_state(
 		17,
 		4,
@@ -111,7 +112,7 @@ func _test_player_snapshot_revision_fence() -> void:
 		false,
 		0.0
 	)
-	mp_game.call("_apply_player_realtime_snapshot", player, stale_state)
+	player_coordinator.call("_apply_realtime_snapshot", player, stale_state)
 	_expect(
 		player.current_health == initial_health,
 		"A stale player snapshot must not restore health after a reliable result."
@@ -129,7 +130,7 @@ func _test_player_snapshot_revision_fence() -> void:
 		false,
 		0.25
 	)
-	mp_game.call("_apply_player_realtime_snapshot", player, current_state)
+	player_coordinator.call("_apply_realtime_snapshot", player, current_state)
 	_expect(
 		player.current_health == confirmed_health,
 		"A player snapshot at the accepted revision must still apply health."
@@ -145,7 +146,7 @@ func _test_player_snapshot_revision_fence() -> void:
 		"Snapshot application must not advance the reliable event revision."
 	)
 	_expect(
-		int(applied_revisions.get(17, 0)) == 5,
+		player_coordinator.get_applied_health_revision(17) == 5,
 		"Current player snapshot must retain the applied health revision."
 	)
 
@@ -159,10 +160,10 @@ func _test_player_snapshot_revision_fence() -> void:
 		false,
 		0.1
 	)
-	mp_game.call("_apply_player_realtime_snapshot", player, ahead_state)
+	player_coordinator.call("_apply_realtime_snapshot", player, ahead_state)
 	var ahead_health := player.current_health
 	_expect(
-		int(applied_revisions.get(17, 0)) == 7,
+		player_coordinator.get_applied_health_revision(17) == 7,
 		"Newer snapshot must advance only the applied health fence."
 	)
 	_expect(

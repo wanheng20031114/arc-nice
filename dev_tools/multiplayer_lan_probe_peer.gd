@@ -382,11 +382,14 @@ func _run_mp_game_probe(
 				% [expected_players, states.size()]
 			)
 	else:
-		var interpolators := mp_game.get("player_visual_interpolators") as Dictionary
-		if interpolators.size() < expected_players - 1:
+		var player_coordinator := (
+			mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+		)
+		var interpolator_count := player_coordinator.get_visual_interpolator_count()
+		if interpolator_count < expected_players - 1:
 			_fail(
 				"Client expected at least %d remote player visual interpolators, saw %d."
-				% [expected_players - 1, interpolators.size()]
+				% [expected_players - 1, interpolator_count]
 			)
 	if events_enabled and not is_host_probe:
 		await _run_client_reliable_event_probe(mp_game, game)
@@ -2653,9 +2656,9 @@ func _prepare_host_clients_for_building_interaction(
 		"_accepted_player_state_positions"
 	) as Dictionary
 	var accepted_times := mp_game.get("_accepted_player_state_times") as Dictionary
-	var latest_snapshot_states := mp_game.get(
-		"_host_latest_client_player_snapshot_states"
-	) as Dictionary
+	var player_coordinator := (
+		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+	)
 	var authoritative_time := float(mp_game.call("_get_net_time"))
 	for peer_id in expected_client_ids:
 		var player_node := game.get_player_for_peer(peer_id) as Player
@@ -2703,12 +2706,14 @@ func _prepare_host_clients_for_building_interaction(
 		player_node.velocity = Vector2.ZERO
 		accepted_positions[peer_id] = accepted_position
 		accepted_times[peer_id] = authoritative_time
-		latest_snapshot_states[peer_id] = {
-			"position": accepted_position,
-			"velocity": Vector2.ZERO,
-			"facing": player_node.get_multiplayer_facing_id(),
-			"anim_state": player_node.get_multiplayer_anim_state(),
-		}
+		player_coordinator.remember_latest_client_state(
+			true,
+			peer_id,
+			accepted_position,
+			Vector2.ZERO,
+			player_node.get_multiplayer_facing_id(),
+			player_node.get_multiplayer_anim_state()
+		)
 		mp_game.call(
 			"_record_outbound_rpc",
 			&"net_player_state_corrected",

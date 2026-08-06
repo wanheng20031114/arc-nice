@@ -460,9 +460,14 @@ func _new_mp_game(use_host: bool = false) -> Node:
 	var session := MpSessionCoordinator.new()
 	session.name = "SessionCoordinator"
 	mp_game.add_child(session)
+	var player_coordinator := MpPlayerCoordinator.new()
+	player_coordinator.name = "PlayerCoordinator"
+	mp_game.add_child(player_coordinator)
 	mp_game.set("game", fixture)
 	mp_game.set("net_manager", host_net_manager if use_host else client_net_manager)
 	mp_game.set("session_coordinator", session)
+	mp_game.set("player_coordinator", player_coordinator)
+	player_coordinator.bind_runtime(fixture)
 	mp_game.set("_mode_adapter", tower_adapter)
 	mp_game.set("tower_mode_adapter", tower_adapter)
 	session.bind_runtime(fixture)
@@ -1697,6 +1702,9 @@ func _new_capturing_host_mp_game() -> CapturingMpGame:
 	var session := MpSessionCoordinator.new()
 	session.name = "SessionCoordinator"
 	mp_game.add_child(session)
+	var player_coordinator := MpPlayerCoordinator.new()
+	player_coordinator.name = "PlayerCoordinator"
+	mp_game.add_child(player_coordinator)
 	var keepalive_request := HTTPRequest.new()
 	keepalive_request.name = "PublicRoomKeepaliveRequest"
 	mp_game.add_child(keepalive_request)
@@ -1704,7 +1712,9 @@ func _new_capturing_host_mp_game() -> CapturingMpGame:
 	mp_game.set("game", fixture)
 	mp_game.set("net_manager", host_net_manager)
 	mp_game.set("session_coordinator", session)
+	mp_game.set("player_coordinator", player_coordinator)
 	session.bind_runtime(fixture)
+	player_coordinator.bind_runtime(fixture)
 	var tower_adapter := fixture.get_multiplayer_mode_adapter() as TestTowerModeAdapter
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter

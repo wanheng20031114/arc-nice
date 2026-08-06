@@ -635,19 +635,30 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 	)
 
 	var mp_game := MpGameScript.new()
-	var cohort_peers := mp_game.get("_player_snapshot_cohort_peers") as Dictionary
-	var keyframe_times := mp_game.get("_last_player_keyframe_time_by_peer") as Dictionary
+	var session_coordinator := MpSessionCoordinator.new()
+	session_coordinator.name = "SessionCoordinator"
+	mp_game.add_child(session_coordinator)
+	mp_game.session_coordinator = session_coordinator
+	var player_coordinator := MpPlayerCoordinator.new()
+	player_coordinator.name = "PlayerCoordinator"
+	mp_game.add_child(player_coordinator)
+	mp_game.player_coordinator = player_coordinator
+	var cohort_peers := player_coordinator.get("_snapshot_cohort_peers") as Dictionary
+	var keyframe_times := (
+		player_coordinator.get("_last_keyframe_time_by_peer") as Dictionary
+	)
 	var ready_peers: Array[int] = [2, 3, 4]
-	mp_game.call(
+	player_coordinator.call(
 		"_commit_snapshot_cohort_send",
-		cohort_peers,
-		keyframe_times,
 		ready_peers,
 		0.0,
 		true
 	)
 	var mp_snapshot_mgr := mp_game.get("snapshot_mgr") as SnapshotManager
-	mp_snapshot_mgr.encode_player_snapshots_for_cohort(
+	var player_snapshot_mgr := (
+		player_coordinator.get("_snapshot_manager") as SnapshotManager
+	)
+	player_snapshot_mgr.encode_player_snapshots_for_cohort(
 		cohort_id,
 		[player_state],
 		true
@@ -684,43 +695,32 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 		"A send-unready peer must detach immediately without disturbing ready members."
 	)
 	_expect(
-		not bool(mp_game.call(
+		not bool(player_coordinator.call(
 			"_snapshot_cohort_requires_keyframe",
-			cohort_peers,
-			keyframe_times,
 			temporarily_ready,
-			0.25,
-			0.5
+			0.25
 		)),
 		"The remaining continuously-ready members must keep using their shared delta."
 	)
 	var same_size_replacement: Array[int] = [2, 5]
 	_expect(
-		bool(mp_game.call(
+		bool(player_coordinator.call(
 			"_snapshot_cohort_requires_keyframe",
-			cohort_peers,
-			keyframe_times,
 			same_size_replacement,
-			0.25,
-			0.5
+			0.25
 		)),
 		"Replacing one member must force a keyframe even when cohort size is unchanged."
 	)
 	_expect(
-		bool(mp_game.call(
+		bool(player_coordinator.call(
 			"_snapshot_cohort_requires_keyframe",
-			cohort_peers,
-			keyframe_times,
 			ready_peers,
-			0.25,
-			0.5
+			0.25
 		)),
 		"A recovered peer must force a full frame before rejoining the cohort."
 	)
-	mp_game.call(
+	player_coordinator.call(
 		"_commit_snapshot_cohort_send",
-		cohort_peers,
-		keyframe_times,
 		ready_peers,
 		0.25,
 		true
@@ -731,13 +731,10 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 		"A shared recovery keyframe must atomically readmit every ready member."
 	)
 	_expect(
-		bool(mp_game.call(
+		bool(player_coordinator.call(
 			"_snapshot_cohort_requires_keyframe",
-			cohort_peers,
-			keyframe_times,
 			ready_peers,
-			0.75,
-			0.5
+			0.75
 		)),
 		"A stable cohort must still emit its periodic 0.5-second keyframe."
 	)
@@ -748,7 +745,7 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 		and not enemy_cohort_peers.has(3)
 		and not keyframe_times.has(3)
 		and not enemy_keyframe_times.has(3)
-		and mp_snapshot_mgr.player_send_baselines_by_peer.has(cohort_id)
+		and player_snapshot_mgr.player_send_baselines_by_peer.has(cohort_id)
 		and mp_snapshot_mgr.enemy_send_baselines_by_peer.has(cohort_id),
 		"Disconnect cleanup must detach one member while preserving a live shared baseline."
 	)
@@ -757,7 +754,7 @@ func _test_shared_snapshot_cohort_lifecycle() -> void:
 	_expect(
 		cohort_peers.is_empty()
 		and enemy_cohort_peers.is_empty()
-		and not mp_snapshot_mgr.player_send_baselines_by_peer.has(cohort_id)
+		and not player_snapshot_mgr.player_send_baselines_by_peer.has(cohort_id)
 		and not mp_snapshot_mgr.enemy_send_baselines_by_peer.has(cohort_id),
 		"An empty cohort must release both shared send baselines."
 	)

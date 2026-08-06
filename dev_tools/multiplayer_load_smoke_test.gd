@@ -135,6 +135,10 @@ func _test_scene_instantiation() -> void:
 			mp_game.get_node_or_null("SessionCoordinator") is MpSessionCoordinator,
 			"MpGame must statically instantiate its session coordinator."
 		)
+		_expect(
+			mp_game.get_node_or_null("PlayerCoordinator") is MpPlayerCoordinator,
+			"MpGame must statically instantiate its player snapshot coordinator."
+		)
 		mp_game.free()
 
 	var game := GAME_SCENE.instantiate()
@@ -690,8 +694,14 @@ func _test_delta_snapshot_peer_cache_cleanup() -> void:
 	_expect(mp_game != null, "MpGame scene must instantiate for delta snapshot cache test.")
 	if mp_game == null:
 		return
-	var snapshot_mgr := mp_game.get("snapshot_mgr") as SnapshotManager
-	_expect(snapshot_mgr != null, "MpGame must own a SnapshotManager for delta snapshot cache test.")
+	var player_coordinator := _bind_mp_game_coordinators(mp_game)
+	var snapshot_mgr := (
+		player_coordinator.get("_snapshot_manager") as SnapshotManager
+	)
+	_expect(
+		snapshot_mgr != null,
+		"PlayerCoordinator must own the player delta snapshot cache."
+	)
 	if snapshot_mgr != null:
 		var state := SnapshotManager.PlayerState.new()
 		state.peer_id = 11
@@ -1015,7 +1025,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	_expect(mp_game != null, "MpGame scene must instantiate for network peer cleanup test.")
 	if mp_game == null:
 		return
-	mp_game.player_visual_interpolators[2] = NetInterpolator.new(0.1)
+	var player_coordinator := _bind_mp_game_coordinators(mp_game)
+	player_coordinator.reset_visual_interpolator_to_state(
+		2, Vector2.ZERO, Vector2.ZERO, 0, 0, 0.0
+	)
 	var sequence_cache := mp_game.get("_last_player_state_sequences") as Dictionary
 	var accepted_positions := mp_game.get("_accepted_player_state_positions") as Dictionary
 	var accepted_times := mp_game.get("_accepted_player_state_times") as Dictionary
@@ -1064,7 +1077,10 @@ func _test_multiplayer_peer_disconnect_cleanup() -> void:
 	)
 
 	mp_game.call("_clear_peer_network_state", 2)
-	_expect(not mp_game.player_visual_interpolators.has(2), "MpGame must clear disconnected peer visual interpolators.")
+	_expect(
+		not player_coordinator.has_visual_interpolator(2),
+		"MpGame must clear disconnected peer visual interpolators."
+	)
 	_expect(not sequence_cache.has(2), "MpGame must clear disconnected peer input sequence state.")
 	_expect(not accepted_positions.has(2), "MpGame must clear disconnected peer accepted position state.")
 	_expect(not accepted_times.has(2), "MpGame must clear disconnected peer accepted time state.")
@@ -1102,7 +1118,12 @@ func _test_player_snapshot_roster_reconcile() -> void:
 		await physics_frame
 		return
 	_bind_multiplayer_runtime(mp_game, game)
-	mp_game.player_visual_interpolators[3] = NetInterpolator.new(0.1)
+	var player_coordinator := (
+		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+	)
+	player_coordinator.reset_visual_interpolator_to_state(
+		3, Vector2.ZERO, Vector2.ZERO, 0, 0, 0.0
+	)
 	var sequence_cache := mp_game.get("_last_player_state_sequences") as Dictionary
 	var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
 	sequence_cache[3] = 12
@@ -1124,14 +1145,34 @@ func _test_player_snapshot_roster_reconcile() -> void:
 		2.0
 	)
 
-	mp_game.call("_reconcile_player_roster", {})
+	mp_game.call(
+		"_rpc_receive_player_snapshot",
+		0.0,
+		PackedByteArray()
+	)
 	_expect(game.peer_players.has(3), "Empty player roster snapshots must not remove peers.")
-	mp_game.call("_reconcile_player_roster", {1: true, 2: true, 4: true})
+	var roster_states: Array[SnapshotManager.PlayerState] = []
+	for player_state in game.collect_player_snapshot_states():
+		if player_state != null and player_state.peer_id != 3:
+			roster_states.append(player_state)
+	var roster_sender := SnapshotManager.new()
+	mp_game.call(
+		"_rpc_receive_player_snapshot",
+		0.0,
+		roster_sender.encode_player_snapshots_for_peer(
+			2,
+			roster_states,
+			true
+		)
+	)
 	await process_frame
 	_expect(not game.peer_players.has(3), "Client view must remove peers missing from a complete Host snapshot.")
 	_expect(game.peer_players.has(2), "Client view roster reconcile must keep the local player.")
 	_expect(game.peer_players.has(4), "Client view roster reconcile must keep peers still present in the Host snapshot.")
-	_expect(not mp_game.player_visual_interpolators.has(3), "Roster reconcile must clear missing peer visual interpolators.")
+	_expect(
+		not player_coordinator.has_visual_interpolator(3),
+		"Roster reconcile must clear missing peer visual interpolators."
+	)
 	_expect(not sequence_cache.has(3), "Roster reconcile must clear missing peer input sequence state.")
 	_expect(not health_revisions.has(3), "Roster reconcile must clear missing peer health revisions.")
 	_expect(not known_projectiles.has(stale_projectile_id), "Roster reconcile must clear missing peer projectiles.")
@@ -1448,7 +1489,9 @@ func _test_host_remote_player_position_writeback() -> void:
 			"Host remote player visual smoothing must not move gameplay position."
 		)
 		_expect(
-			not mp_game.player_visual_interpolators.has(2),
+			not (
+				mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+			).has_visual_interpolator(2),
 			"Host must not create player visual interpolation state for accepted remote player positions."
 		)
 		if net_manager != null:
@@ -3746,7 +3789,13 @@ func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
 			remote_player.apply_multiplayer_death_state()
 			var stale_interp := NetInterpolator.new(0.1)
 			stale_interp.push_snapshot(0.0, old_position, Vector2.ZERO)
-			mp_game.player_visual_interpolators[3] = stale_interp
+			var player_coordinator := (
+				mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+			)
+			player_coordinator.reset_visual_interpolator_to_state(
+				3, old_position, Vector2.ZERO, 0, 0, 0.0
+			)
+			stale_interp = player_coordinator.get_visual_interpolator(3)
 			var health_revisions := mp_game.get("_player_health_revisions") as Dictionary
 			health_revisions[3] = 1
 
@@ -3763,7 +3812,7 @@ func _test_multiplayer_revive_resets_remote_visual_interpolator() -> void:
 				remote_player.global_position.is_equal_approx(revive_position),
 				"Revive confirm must reset remote interpolation to the revive position."
 			)
-			var refreshed_interp := mp_game.player_visual_interpolators.get(3) as NetInterpolator
+			var refreshed_interp := player_coordinator.get_visual_interpolator(3)
 			_expect(
 				refreshed_interp != null and refreshed_interp.get_buffer_size() == 1,
 				"Revive confirm must leave exactly one fresh interpolation sample."
@@ -4860,6 +4909,7 @@ func _bind_multiplayer_runtime(
 ) -> void:
 	if mp_game == null or game == null:
 		return
+	_bind_mp_game_coordinators(mp_game, game)
 	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
 	var mode_adapter := game.get_multiplayer_mode_adapter()
 	mp_game.game = game
@@ -4872,6 +4922,24 @@ func _bind_multiplayer_runtime(
 		gameplay_gateway.attach_multiplayer_session(mp_game)
 	if mode_adapter != null:
 		mode_adapter.attach_multiplayer_session(mp_game)
+
+
+func _bind_mp_game_coordinators(
+	mp_game,
+	game: CombatRuntimeBase = null
+) -> MpPlayerCoordinator:
+	var session_coordinator := (
+		mp_game.get_node("SessionCoordinator") as MpSessionCoordinator
+	)
+	mp_game.session_coordinator = session_coordinator
+	var player_coordinator := (
+		mp_game.get_node("PlayerCoordinator") as MpPlayerCoordinator
+	)
+	mp_game.player_coordinator = player_coordinator
+	if game != null:
+		session_coordinator.bind_runtime(game)
+		player_coordinator.bind_runtime(game)
+	return player_coordinator
 
 
 func _prepare_direct_enemy_spawn_points(game: StandardGame) -> bool:

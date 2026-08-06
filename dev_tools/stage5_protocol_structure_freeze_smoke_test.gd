@@ -495,6 +495,7 @@ func _test_scene_node_paths() -> void:
 		&"MpGame",
 		[
 			NodePath("SessionCoordinator"),
+			NodePath("PlayerCoordinator"),
 			NodePath("PublicRoomKeepaliveRequest"),
 		]
 	)

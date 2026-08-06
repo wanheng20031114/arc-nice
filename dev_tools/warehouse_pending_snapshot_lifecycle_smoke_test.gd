@@ -231,6 +231,9 @@ func _new_mp_game() -> TestMpGame:
 	var session := MpSessionCoordinator.new()
 	session.name = "SessionCoordinator"
 	mp_game.add_child(session)
+	var player_coordinator := MpPlayerCoordinator.new()
+	player_coordinator.name = "PlayerCoordinator"
+	mp_game.add_child(player_coordinator)
 	var tower_adapter := TestTowerModeAdapter.new()
 	tower_adapter.name = "MultiplayerModeAdapter"
 	mp_game.add_child(tower_adapter)
@@ -240,9 +243,11 @@ func _new_mp_game() -> TestMpGame:
 	mp_game.game = runtime
 	mp_game.net_manager = net_manager
 	mp_game.session_coordinator = session
+	mp_game.player_coordinator = player_coordinator
 	mp_game._mode_adapter = tower_adapter
 	mp_game.tower_mode_adapter = tower_adapter
 	session.bind_runtime(runtime)
+	player_coordinator.bind_runtime(runtime)
 	return mp_game
 
 

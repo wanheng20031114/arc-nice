@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" uid="uid://c2gy1qvp6k4rx" path="res://scene/multiplayer/player/mp_player_coordinator.gd" id="1_player"]
+
+[node name="PlayerCoordinator" type="Node"]
+script = ExtResource("1_player")

@@ -34,6 +34,10 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 	tower_defense_game.multiplayer_local_peer_id = 1
 	tower_defense_game.peer_players = {1: host_player, 2: remote_player}
 	multiplayer_game.game = tower_defense_game
+	var player_coordinator := _attach_player_coordinator(
+		multiplayer_game,
+		tower_defense_game
+	)
 
 	var old_admitted_position := Vector2(420.0, 120.0)
 	var restored_position := Vector2(16.0, 16.0)
@@ -43,12 +47,14 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 	multiplayer_game._accepted_player_state_times[2] = (
 		multiplayer_game._get_net_time() - 10.0
 	)
-	multiplayer_game._host_latest_client_player_snapshot_states[2] = {
-		"position": old_admitted_position,
-		"velocity": Vector2.ZERO,
-		"facing": 0,
-		"anim_state": 0,
-	}
+	player_coordinator.remember_latest_client_state(
+		true,
+		2,
+		old_admitted_position,
+		Vector2.ZERO,
+		0,
+		0
+	)
 
 	_expect(
 		not multiplayer_game._accept_client_player_state(
@@ -68,8 +74,7 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 		"Authoritative teleport must reset the anti-teleport admission position."
 	)
 	var latest_state := (
-		multiplayer_game._host_latest_client_player_snapshot_states.get(2, {})
-		as Dictionary
+		player_coordinator.get_latest_client_state(2)
 	)
 	_expect(
 		latest_state.get("position") == restored_position,
@@ -91,7 +96,7 @@ func _test_host_teleport_resets_client_admission_baseline() -> void:
 		"The Host's local player must use the same node teleport path."
 	)
 	_expect(
-		not multiplayer_game._host_latest_client_player_snapshot_states.has(1),
+		not player_coordinator.has_latest_client_state(1),
 		"The local Host must never be inserted into the client-authored snapshot cache."
 	)
 
@@ -113,14 +118,26 @@ func _test_client_teleport_resets_remote_interpolation() -> void:
 	tower_defense_game.peer_players = {2: remote_player, 3: local_player}
 	tower_defense_game.player = local_player
 	multiplayer_game.game = tower_defense_game
+	var player_coordinator := _attach_player_coordinator(
+		multiplayer_game,
+		tower_defense_game
+	)
 
-	var interpolator := multiplayer_game._create_player_interpolator()
+	player_coordinator.reset_visual_interpolator_to_state(
+		2,
+		Vector2.ZERO,
+		Vector2.ZERO,
+		0,
+		0,
+		multiplayer_game._get_net_time() - 2.0
+	)
+	var interpolator := player_coordinator.get_visual_interpolator(2)
+	interpolator.clear()
 	interpolator.push_snapshot(
 		multiplayer_game._get_net_time() - 1.0,
 		Vector2(600.0, 400.0),
 		Vector2(10.0, 0.0)
 	)
-	multiplayer_game.player_visual_interpolators[2] = interpolator
 	var fate_position := Vector2(8192.0, 8192.0)
 	multiplayer_game.net_player_authoritative_teleported(2, fate_position, 7)
 
@@ -129,7 +146,7 @@ func _test_client_teleport_resets_remote_interpolation() -> void:
 		"A reliable teleport must snap the remote player node to the Host position."
 	)
 	var reset_interpolator := (
-		multiplayer_game.player_visual_interpolators.get(2) as NetInterpolator
+		player_coordinator.get_visual_interpolator(2)
 	)
 	_expect(
 		reset_interpolator != null and reset_interpolator.get_buffer_size() == 1,
@@ -143,11 +160,11 @@ func _test_client_teleport_resets_remote_interpolation() -> void:
 			"The replacement interpolation sample must be the teleport target."
 		)
 	_expect(
-		not multiplayer_game._accept_player_snapshot_motion_after_teleport(2, 7),
+		not player_coordinator.accept_snapshot_motion_after_teleport(2, 7),
 		"A pre-teleport snapshot arriving on another channel must be ignored."
 	)
 	_expect(
-		multiplayer_game._accept_player_snapshot_motion_after_teleport(2, 8),
+		player_coordinator.accept_snapshot_motion_after_teleport(2, 8),
 		"The first newer Host snapshot must release the teleport motion barrier."
 	)
 	# Re-arm the exact production barrier, then traverse the complete v25 path:
@@ -173,7 +190,7 @@ func _test_client_teleport_resets_remote_interpolation() -> void:
 		post_teleport_packet
 	)
 	var post_snapshot_interpolator := (
-		multiplayer_game.player_visual_interpolators.get(2) as NetInterpolator
+		player_coordinator.get_visual_interpolator(2)
 	)
 	_expect(
 		post_snapshot_interpolator != null
@@ -205,22 +222,30 @@ func _test_client_queues_teleport_until_player_exists() -> void:
 	tower_defense_game.peer_players = {3: local_player}
 	tower_defense_game.player = local_player
 	multiplayer_game.game = tower_defense_game
+	var player_coordinator := _attach_player_coordinator(
+		multiplayer_game,
+		tower_defense_game
+	)
 
 	var fate_position := Vector2(8240.0, 8234.0)
 	multiplayer_game.net_player_authoritative_teleported(2, fate_position, 12)
 	_expect(
-		multiplayer_game._pending_authoritative_player_teleports.has(2),
+		player_coordinator.has_pending_authoritative_teleport(2),
 		"A teleport received before its player node exists must remain pending."
 	)
 	var remote_player := Player.new()
 	tower_defense_game.peer_players[2] = remote_player
 	_expect(
-		multiplayer_game._try_apply_pending_authoritative_player_teleport(2),
+		player_coordinator.try_apply_pending_authoritative_teleport(
+			2,
+			3,
+			multiplayer_game._get_net_time()
+		),
 		"The queued teleport must apply as soon as the player node exists."
 	)
 	_expect(
 		remote_player.global_position == fate_position
-		and not multiplayer_game._pending_authoritative_player_teleports.has(2),
+		and not player_coordinator.has_pending_authoritative_teleport(2),
 		"Applying the queued teleport must snap the player and clear pending state."
 	)
 
@@ -229,6 +254,18 @@ func _test_client_queues_teleport_until_player_exists() -> void:
 	remote_player.free()
 	tower_defense_game.free()
 	multiplayer_game.free()
+
+
+func _attach_player_coordinator(
+	multiplayer_game: Node,
+	runtime: CombatRuntimeBase
+) -> MpPlayerCoordinator:
+	var coordinator := MpPlayerCoordinator.new()
+	coordinator.name = "PlayerCoordinator"
+	multiplayer_game.add_child(coordinator)
+	multiplayer_game.set("player_coordinator", coordinator)
+	coordinator.bind_runtime(runtime)
+	return coordinator
 
 
 func _expect(condition: bool, message: String) -> void:

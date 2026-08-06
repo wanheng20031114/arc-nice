@@ -443,8 +443,8 @@ func _test_embedded_client_restores_unseen_participant() -> void:
 			authoritative_state.facing,
 			authoritative_state.anim_state
 		)
-		mp_game.call(
-			"_apply_player_realtime_snapshot",
+		mp_game.player_coordinator.call(
+			"_apply_realtime_snapshot",
 			restored,
 			authoritative_state
 		)
@@ -523,6 +523,16 @@ func _bind_multiplayer_runtime(
 	mp_game,
 	game: CombatRuntimeBase
 ) -> void:
+	var session_coordinator := MpSessionCoordinator.new()
+	session_coordinator.name = "SessionCoordinator"
+	mp_game.add_child(session_coordinator)
+	mp_game.session_coordinator = session_coordinator
+	session_coordinator.bind_runtime(game)
+	var player_coordinator := MpPlayerCoordinator.new()
+	player_coordinator.name = "PlayerCoordinator"
+	mp_game.add_child(player_coordinator)
+	mp_game.player_coordinator = player_coordinator
+	player_coordinator.bind_runtime(game)
 	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
 	var mode_adapter := game.get_multiplayer_mode_adapter()
 	mp_game._gameplay_gateway = gameplay_gateway
