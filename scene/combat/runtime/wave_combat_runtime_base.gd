@@ -34,10 +34,10 @@ const YUANSHI_FIRE_PROJECTILE_POOL_SCENE := preload(
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn"
 )
 const COLLECTIBLE_ARROW_POOL_SCENE := preload(
-	"res://scene/collectible_arrow_projectile.tscn"
+	"res://scene/combat/collectibles/collectible_arrow_projectile.tscn"
 )
 const COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE := preload(
-	"res://scene/collectible_sakura_rocket.tscn"
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn"
 )
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload(
 	"res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png"

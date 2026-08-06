@@ -1,10 +1,10 @@
 extends SceneTree
 
 const MOON_AMULET := preload("res://resources/config/collectibles/collectible_moon_amulet.tres")
-const MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
-const MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
-const LIGHTNING_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
-const FROST_AREA_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
+const MOON_SHIELD_SCENE := preload("res://scene/combat/collectibles/collectible_moon_shield.tscn")
+const MOON_SHIELD_VISUAL_SCENE := preload("res://scene/combat/collectibles/collectible_moon_shield_visual.tscn")
+const LIGHTNING_SCENE := preload("res://scene/combat/collectibles/collectible_lightning_effect.tscn")
+const FROST_AREA_SCENE := preload("res://scene/combat/collectibles/collectible_frost_area_effect.tscn")
 const MOON_SHIELD_FRAMES := preload("res://resources/animation/moon_shield_vfx.tres")
 const LIGHTNING_FRAMES := preload("res://resources/animation/thunder_lightning_vfx.tres")
 const FROST_FRAMES := preload("res://resources/animation/frost_area_vfx.tres")

@@ -19,7 +19,7 @@ const SELF_LIT_PROJECTILE_SCENES := [
 	"res://scene/player/tiyi/tiyi_sniper_bullet.tscn",
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn",
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn",
-	"res://scene/collectible_sakura_rocket.tscn",
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn",
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn",
 ]
 const PROJECTILE_HALO_SCENE_COUNTS := {
@@ -32,9 +32,9 @@ const PROJECTILE_HALO_SCENE_COUNTS := {
 	"res://scene/player/tiyi/tiyi_sniper_bullet.tscn": 1,
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn": 1,
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn": 1,
-	"res://scene/collectible_sakura_rocket.tscn": 1,
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn": 1,
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn": 1,
-	"res://scene/collectible_arrow_projectile.tscn": 1,
+	"res://scene/combat/collectibles/collectible_arrow_projectile.tscn": 1,
 	"res://scene/plant_defense/agave_cannonball.tscn": 1,
 	"res://scene/plant_defense/corn_machine_gun.tscn": 1,
 	"res://scene/enemy/capoo/capoo_smg.tscn": 1,
@@ -65,7 +65,7 @@ const SHARED_LIGHT_EXPLOSION_SCENES := [
 	"res://scene/enemy/capoo/capoo_rpg_explosion.tscn",
 	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn",
 	"res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn",
-	"res://scene/collectible_sakura_explosion.tscn",
+	"res://scene/combat/collectibles/collectible_sakura_explosion.tscn",
 	"res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn",
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn",
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn",
@@ -78,7 +78,7 @@ const POOLED_ANIMATED_EMISSION_SCENES := [
 	"res://scene/enemy/capoo/capoo_mage_fireball.tscn",
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn",
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn",
-	"res://scene/collectible_sakura_rocket.tscn",
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn",
 ]
 
 var failures: PackedStringArray = []

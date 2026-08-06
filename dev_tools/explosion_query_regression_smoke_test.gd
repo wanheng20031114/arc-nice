@@ -4,7 +4,7 @@ const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_sh
 const BOSS_ROCKET_SCENE := preload(
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
 )
-const COLLECTIBLE_ROCKET_SCENE := preload("res://scene/collectible_sakura_rocket.tscn")
+const COLLECTIBLE_ROCKET_SCENE := preload("res://scene/combat/collectibles/collectible_sakura_rocket.tscn")
 const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")

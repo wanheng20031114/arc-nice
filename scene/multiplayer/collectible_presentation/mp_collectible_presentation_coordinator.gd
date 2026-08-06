@@ -2,16 +2,16 @@ extends Node
 class_name MpCollectiblePresentationCoordinator
 
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload(
-	"res://scene/collectible_area_effect.tscn"
+	"res://scene/combat/collectibles/collectible_area_effect.tscn"
 )
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload(
-	"res://scene/collectible_frost_area_effect.tscn"
+	"res://scene/combat/collectibles/collectible_frost_area_effect.tscn"
 )
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload(
-	"res://scene/collectible_lightning_effect.tscn"
+	"res://scene/combat/collectibles/collectible_lightning_effect.tscn"
 )
 const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload(
-	"res://scene/collectible_moon_shield_visual.tscn"
+	"res://scene/combat/collectibles/collectible_moon_shield_visual.tscn"
 )
 const COLLECTIBLE_EFFECT_DEDUP_RETENTION_SECONDS := 10.0
 

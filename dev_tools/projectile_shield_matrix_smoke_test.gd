@@ -1,7 +1,7 @@
 extends SceneTree
 
 const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
-const ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
+const ARROW_SCENE := preload("res://scene/combat/collectibles/collectible_arrow_projectile.tscn")
 const TANGO_SCENE := preload("res://scene/player/tango/tango_laser_bullet.tscn")
 const TIYI_SCENE := preload("res://scene/player/tiyi/tiyi_sniper_bullet.tscn")
 const WEISHIDAIER_BOMB_SCENE := preload(
@@ -11,7 +11,7 @@ const AGAVE_CANNONBALL_SCENE := preload(
 	"res://scene/plant_defense/agave_cannonball.tscn"
 )
 const SAKURA_ROCKET_SCENE := preload(
-	"res://scene/collectible_sakura_rocket.tscn"
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn"
 )
 const SHIELD_BEARER_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_shield_bearer.tscn"

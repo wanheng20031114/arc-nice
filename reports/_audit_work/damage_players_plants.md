@@ -157,8 +157,8 @@ Player profile 在 scene/player/player.gd:1219-1236：
 
 CollectibleMoonShield 是跟随施法玩家的 Area2D：
 
-- 固定减伤 50%，不是配置字段（scene/collectible_moon_shield.gd:4）。
-- 进入时以 shield 实例 ID 写入 Player.damage_reduction_modifiers，离开或 shield free 时删除（scene/collectible_moon_shield.gd:23-33,44-84）。
+- 固定减伤 50%，不是配置字段（scene/combat/collectibles/collectible_moon_shield.gd:4）。
+- 进入时以 shield 实例 ID 写入 Player.damage_reduction_modifiers，离开或 shield free 时删除（scene/combat/collectibles/collectible_moon_shield.gd:23-33,44-84）。
 - 四个道具只配置半径/时长：月纹胸针 48/4s、月亮护符 64/8s、蚀月护符 72/8s、日月遗物 96/10s（resources/config/collectibles/collectible_moon_pin.tres:20-22；collectible_moon_amulet.tres:19-21；collectible_eclipse_amulet.tres:20-22；collectible_sun_moon_relic.tres:20-22）。
 - 多个月盾重叠仍只取 50% 最强项，不会变成 75%、87.5%。
 - Player 死亡流程不清空 damage_reduction_modifiers，也不 free 月盾；月盾作为子节点继续计时并检测其他玩家。因此尸体附近队友仍受保护，若玩家在 shield 到期前复活，自身也继续保留保护。
@@ -583,7 +583,7 @@ Enemy._die：
 1. **伤害类型归属错误。** DamageType 仍定义在 EnemyConfig，但玩家、植物、基地、塔和网络共同使用；CombatTypes 已建立正确域级枚举，但旧 API 仍依赖 EnemyConfig。迁移期间必须保持 ABI，最终应让 EnemyConfig 引用域类型而不是反向拥有全局概念。
 2. **玩家基础与运行时字段分裂。** PlayerCharacterConfig 配置起始生命、攻击、攻速、移速和攻击升级（resources/config/players/player_character_config.gd:22-29）；Player 场景脚本仍 export 物防、魔防、无敌时长，并硬编码技能升级/研究数组（scene/player/player.gd:15-23,95-102）。
 3. **PickupConfig 过度承载。** 同一个资源同时定义基础 heal/buff、通用战斗属性、周期伤害/治疗、技能盾、条件、受伤触发、on-hit 和 kill effect，字段集中在 resources/config/pickups/pickup_config.gd:187-327。effect ID 是字符串 DSL，未知字符串在大 match 中静默 no-op。
-4. **月盾减伤不在配置。** 四个道具配置半径和时长，但 50% 减伤固定在 scene/collectible_moon_shield.gd:4。
+4. **月盾减伤不在配置。** 四个道具配置半径和时长，但 50% 减伤固定在 scene/combat/collectibles/collectible_moon_shield.gd:4。
 5. **旧塔脚本/资源双源。** 龙舌兰、玉米、竹筒仍保留同值默认常量和只存在于脚本的战斗数值；葡萄、紫阳花的强类型子配置是更稳健范式。
 6. **敌方 burn 数值重复已由本轮解决。** CombatAttackRegistry 现在从 FireSorcererConfig 读取 burn duration/tick，并集中定义 slime burn（scene/combat/combat_attack_registry.gd:27-38,155-194）；MPGame 的 family/level/duration helper 已改成委托该注册表（scene/multiplayer/mp_game.gd:5608-5630）。MPGame 仍保留 volley family 名称和三球 source-bit 消费协议，这是接触去重/wire 语义，不再是第二份玩法数值。
 

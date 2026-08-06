@@ -86,13 +86,13 @@ var _world_movement_saved_visibility: Dictionary[StringName, bool] = {}
 	get_node_or_null("/root/NetManager") as NetManagerStore
 )
 
-const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
-const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
-const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
-const COLLECTIBLE_MOON_SHIELD_SCENE := preload("res://scene/collectible_moon_shield.tscn")
-const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
+const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_area_effect.tscn")
+const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_frost_area_effect.tscn")
+const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/combat/collectibles/collectible_lightning_effect.tscn")
+const COLLECTIBLE_MOON_SHIELD_SCENE := preload("res://scene/combat/collectibles/collectible_moon_shield.tscn")
+const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload("res://scene/combat/collectibles/collectible_arrow_projectile.tscn")
 const COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH := (
-	"res://scene/collectible_sakura_rocket.tscn"
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn"
 )
 const NORMAL_ANIMATION_PREFIX := &"normal"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0

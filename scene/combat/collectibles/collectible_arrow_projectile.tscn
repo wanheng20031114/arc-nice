@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cmyc8wie0qyvi"]
 
-[ext_resource type="Script" uid="uid://oo0t1vwci7l8" path="res://scene/collectible_arrow_projectile.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://oo0t1vwci7l8" path="res://scene/combat/collectibles/collectible_arrow_projectile.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://c1wi47m1igolh" path="res://resources/texture/collectible_arrow_projectile.png" id="2_texture"]
 [ext_resource type="PackedScene" path="res://scene/lighting/projectile_emission_halo.tscn" id="3_halo"]
 

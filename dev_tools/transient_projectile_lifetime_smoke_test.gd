@@ -29,7 +29,7 @@ const PROJECTILE_CASES := [
 	},
 	{
 		"label": "collectible_arrow",
-		"scene": preload("res://scene/collectible_arrow_projectile.tscn"),
+		"scene": preload("res://scene/combat/collectibles/collectible_arrow_projectile.tscn"),
 		"expected_lifetime": 1.8,
 	},
 	{
@@ -39,7 +39,7 @@ const PROJECTILE_CASES := [
 	},
 	{
 		"label": "collectible_sakura_rocket",
-		"scene": preload("res://scene/collectible_sakura_rocket.tscn"),
+		"scene": preload("res://scene/combat/collectibles/collectible_sakura_rocket.tscn"),
 		"expected_lifetime": 5.0,
 	},
 	{

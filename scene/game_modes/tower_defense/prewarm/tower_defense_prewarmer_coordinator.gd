@@ -39,10 +39,10 @@ const BAMBOO_MORTAR_SHELL_POOL_SCENE := preload(
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
 )
 const COLLECTIBLE_ARROW_POOL_SCENE := preload(
-	"res://scene/collectible_arrow_projectile.tscn"
+	"res://scene/combat/collectibles/collectible_arrow_projectile.tscn"
 )
 const COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE := preload(
-	"res://scene/collectible_sakura_rocket.tscn"
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn"
 )
 const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"

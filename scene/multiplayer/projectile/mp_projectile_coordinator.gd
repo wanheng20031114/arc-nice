@@ -17,7 +17,7 @@ const TIYI_SNIPER_HIT_EFFECT_SCENE_PATH := (
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn"
 )
 const COLLECTIBLE_ARROW_PROJECTILE_SCENE := preload(
-	"res://scene/collectible_arrow_projectile.tscn"
+	"res://scene/combat/collectibles/collectible_arrow_projectile.tscn"
 )
 const SKILL1_BOMB_SCENE_PATH := (
 	"res://scene/player/weishidaier/weishidaier_skill1_bomb.tscn"
@@ -62,7 +62,7 @@ const LINGLAN_SKILL2_ROCKET_SCENE_PATH := (
 	"res://scene/boss/linglan/linglan_skill2_sakura_rocket.tscn"
 )
 const COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH := (
-	"res://scene/collectible_sakura_rocket.tscn"
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn"
 )
 const LINGLAN_SKILL3_CONFIG_PATH := (
 	"res://resources/config/bosses/linglan_skill3.tres"

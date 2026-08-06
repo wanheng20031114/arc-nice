@@ -25,7 +25,7 @@ const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
 )
 const YUANSHI_FIRE_PROJECTILE_SCENE := preload("res://scene/enemy/yuanshi_insect/yuanshi_insect_fire_projectile.tscn")
 const AGAVE_CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
-const COLLECTIBLE_ARROW_SCENE := preload("res://scene/collectible_arrow_projectile.tscn")
+const COLLECTIBLE_ARROW_SCENE := preload("res://scene/combat/collectibles/collectible_arrow_projectile.tscn")
 const LINGLAN_SKILL1_BULLET_SCENE := preload(
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
 )
@@ -33,10 +33,10 @@ const LINGLAN_SAKURA_HIT_EFFECT_SCENE := preload(
 	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
 )
 const COLLECTIBLE_SAKURA_ROCKET_SCENE := preload(
-	"res://scene/collectible_sakura_rocket.tscn"
+	"res://scene/combat/collectibles/collectible_sakura_rocket.tscn"
 )
 const COLLECTIBLE_SAKURA_EXPLOSION_SCENE := preload(
-	"res://scene/collectible_sakura_explosion.tscn"
+	"res://scene/combat/collectibles/collectible_sakura_explosion.tscn"
 )
 const BULLET_HIT_EFFECT_SCENE := preload("res://scene/combat/projectiles/bullet_hit_effect.tscn")
 const ENEMY_HIT_EFFECT_SCENE := preload("res://scene/enemy/enemy_hit_effect.tscn")

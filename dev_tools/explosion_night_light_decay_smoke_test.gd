@@ -10,7 +10,7 @@ const EXPLOSION_SCENES := [
 	"res://scene/enemy/capoo/capoo_rpg_explosion.tscn",
 	"res://scene/enemy/capoo/capoo_mage_fireball_impact.tscn",
 	"res://scene/player/weishidaier/weishidaier_skill1_explosion.tscn",
-	"res://scene/collectible_sakura_explosion.tscn",
+	"res://scene/combat/collectibles/collectible_sakura_explosion.tscn",
 	"res://scene/boss/linglan/linglan_skill2_sakura_explosion.tscn",
 	"res://scene/player/tiyi/tiyi_sniper_hit_effect.tscn",
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn",

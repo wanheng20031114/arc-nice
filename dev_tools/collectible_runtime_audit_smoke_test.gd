@@ -2,7 +2,7 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
+const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/combat/collectibles/collectible_arrow_projectile.gd")
 const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd")
 const REQUIRED_NEW_COLLECTIBLE_EFFECT_IDS := [
 	&"banana",

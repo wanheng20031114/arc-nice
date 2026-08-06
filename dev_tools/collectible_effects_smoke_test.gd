@@ -44,7 +44,7 @@ const ORANGE := preload("res://resources/config/collectibles/collectible_orange.
 const ROLLER_SKATES := preload("res://resources/config/collectibles/collectible_roller_skates.tres")
 const POWER_WHEEL := preload("res://resources/config/collectibles/collectible_power_wheel.tres")
 const BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
-const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
+const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/combat/collectibles/collectible_arrow_projectile.gd")
 const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd")
 const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/combat/feedback/damage_number_pool.gd")
 

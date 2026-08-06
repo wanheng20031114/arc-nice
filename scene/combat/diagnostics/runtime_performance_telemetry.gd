@@ -12,7 +12,7 @@ const PERCENTILE_KEYS := {
 }
 const PROJECTILE_SCRIPT_PATHS := {
 	"res://scene/combat/projectiles/bullet.gd": true,
-	"res://scene/collectible_arrow_projectile.gd": true,
+	"res://scene/combat/collectibles/collectible_arrow_projectile.gd": true,
 	"res://scene/enemy/capoo/capoo_ak47_bullet.gd": true,
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.gd": true,
 	"res://scene/enemy/capoo/capoo_mage_fireball.gd": true,
