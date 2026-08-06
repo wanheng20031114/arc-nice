@@ -17,8 +17,6 @@ const DEFAULT_BASE_HEALTH := 100
 const FORMAL_PROGRESSION_CONFIG_PATH := (
 	"res://resources/config/campaigns/tower_defense/formal_progression.tres"
 )
-const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
-const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
 const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2.ZERO,
 	Vector2(18.0, 0.0),
@@ -129,13 +127,8 @@ static var expanded_projectile_pool_prewarm_enabled := true
 	$LinglanBossRuntimePort as TowerDefenseLinglanBossRuntimePort
 )
 @onready var guardian_aura_system: GuardianAuraSystem = $GuardianAuraSystem
-@onready var plant_container: Node2D = $PlantContainer
 @onready var plant_system: PlantSystem = $PlantSystem
-@onready var vegetation_spread_system: VegetationSpreadSystem = $VegetationSpreadSystem
 @onready var production_coordinator: ProductionCoordinator = $ProductionCoordinator
-@onready var orange_charging_aura_coordinator: OrangeChargingAuraCoordinator = (
-	$OrangeChargingAuraCoordinator
-)
 @onready var research_coordinator: ResearchCoordinator = $ResearchCoordinator
 @onready var plant_placement_controller: PlantPlacementController = $PlantPlacementController
 @onready var damage_number_pool: DamageNumberPool = $DamageNumberPool
@@ -327,7 +320,16 @@ func _ready() -> void:
 		home_defense_coordinator.maximum_base_health
 	)
 	_configure_home_defense()
-	_configure_plant_defense_system()
+	if not plant_runtime_coordinator.initialize_authored_runtime(
+		runtime_mode,
+		self,
+		player,
+		run_state,
+		MULTIPLAYER_SPAWN_OFFSETS
+	):
+		set_process(false)
+		set_physics_process(false)
+		return
 	if not _configure_plant_placement_coordinator():
 		set_process(false)
 		set_physics_process(false)
@@ -767,58 +769,6 @@ func _update_base_health_display(play_damage_pulse: bool = true) -> void:
 	)
 
 
-func _configure_plant_defense_system() -> void:
-	if plant_system == null or plant_placement_controller == null or plant_container == null:
-		push_error("TowerDefenseGame: 植物防御塔节点不完整，已禁用放置功能。")
-		return
-	plant_runtime_coordinator.setup(
-		runtime_mode,
-		dual_grid_terrain,
-		vegetation_spread_system,
-		plant_system,
-		plant_placement_controller
-	)
-	plant_runtime_coordinator.configure_mode_services(
-		run_state,
-		production_coordinator,
-		research_coordinator,
-		oak_warehouse_panel,
-		production_building_panel,
-		research_center_panel,
-		bamboo_mortar_combat_system,
-		TERRAIN_NETWORK_BATCH_MAX_CELLS
-	)
-
-	var placement_rect := PlantSystem.DEFAULT_PLACEMENT_AREA
-	if dual_grid_terrain != null and dual_grid_terrain.world_map_layer != null:
-		var authored_terrain_rect := dual_grid_terrain.world_map_layer.get_used_rect()
-		if authored_terrain_rect.size.x > 0 and authored_terrain_rect.size.y > 0:
-			placement_rect = authored_terrain_rect
-
-	plant_system.setup(
-		ground_tile_map_layer,
-		player,
-		plant_container,
-		placement_rect,
-		dual_grid_terrain,
-		self,
-		tower_plant_gameplay_port
-	)
-	orange_charging_aura_coordinator.setup(plant_system)
-	if not plant_runtime_coordinator.configure_vegetation(placement_rect):
-		push_error("TowerDefenseGame: 植被传播节点或地形节点缺失。")
-	plant_system.clear_reserved_cells()
-	for spawn_offset in MULTIPLAYER_SPAWN_OFFSETS:
-		plant_system.reserve_world_position(player_spawn.global_position + spawn_offset)
-	if home_gate_controller != null:
-		for home_cell in home_gate_controller.get_home_gate_cells():
-			plant_system.reserve_cell(home_cell)
-	for spawn_point in enemy_coordinator.enemy_spawn_points:
-		plant_system.reserve_world_position(spawn_point.global_position, 1)
-	if merchant != null:
-		plant_system.reserve_world_position(merchant.global_position)
-	if luoxi_merchant != null:
-		plant_system.reserve_world_position(luoxi_merchant.global_position)
 func _configure_plant_placement_coordinator() -> bool:
 	if plant_placement_coordinator == null:
 		push_error("TowerDefenseGame: 缺少静态 PlantPlacementCoordinator 节点。")
@@ -972,13 +922,6 @@ func _configure_timers() -> void:
 	enemy_spawn_timer.one_shot = false
 	state_timer.one_shot = false
 	state_timer.wait_time = 1.0
-	plant_terrain_decay_timer.one_shot = false
-	plant_terrain_decay_timer.wait_time = UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS
-	plant_terrain_decay_timer.process_callback = Timer.TIMER_PROCESS_PHYSICS
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		plant_terrain_decay_timer.stop()
-	else:
-		plant_terrain_decay_timer.start()
 
 
 func prepare_shared_runtime_data_and_complete() -> void:

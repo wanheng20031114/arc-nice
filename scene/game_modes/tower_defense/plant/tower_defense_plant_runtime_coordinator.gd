@@ -40,6 +40,30 @@ const PLACEMENT_REJECT_INVALID_INVENTORY_ITEM := &"invalid_inventory_item"
 const PLACEMENT_REJECT_STALE_INVENTORY := &"stale_inventory"
 const PLACEMENT_REJECT_FREE_DISABLED := &"free_placement_disabled"
 const PLACEMENT_REJECT_FLOW_LOCKED := &"flow_locked"
+const TERRAIN_NETWORK_BATCH_MAX_CELLS := 96
+const UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS := 1.0
+
+@export_group("场景依赖")
+@export var authored_ground_tile_map_layer: TileMapLayer
+@export var authored_dual_grid_terrain: DualGridTilemap
+@export var authored_vegetation_spread_system: VegetationSpreadSystem
+@export var authored_plant_system: PlantSystem
+@export var authored_plant_placement_controller: PlantPlacementController
+@export var authored_plant_container: Node2D
+@export var authored_gameplay_port: TowerPlantGameplayPort
+@export var authored_orange_aura_coordinator: OrangeChargingAuraCoordinator
+@export var authored_player_spawn: Marker2D
+@export var authored_home_gate_controller: HomeGateController
+@export var authored_enemy_spawn_points_root: Node2D
+@export var authored_merchant: Node2D
+@export var authored_luoxi_merchant: Node2D
+@export var authored_terrain_decay_timer: Timer
+@export var authored_production_coordinator: ProductionCoordinator
+@export var authored_research_coordinator: ResearchCoordinator
+@export var authored_oak_warehouse_panel: OakWarehousePanel
+@export var authored_production_building_panel: ProductionBuildingPanel
+@export var authored_research_center_panel: ResearchCenterPanel
+@export var authored_bamboo_mortar_combat_system: BambooMortarCombatSystem
 
 var multiplayer_terrain_revision := 0
 var authored_terrain_baseline: Dictionary = {}
@@ -60,6 +84,114 @@ var _research_center_panel: ResearchCenterPanel
 var _bamboo_mortar_combat_system: BambooMortarCombatSystem
 var _terrain_network_batch_max_cells := 1
 var _recipe_notify_buildings: Array[ProductionBuilding] = []
+
+
+func initialize_authored_runtime(
+	new_runtime_mode: int,
+	combat_runtime: CombatRuntimeBase,
+	local_player: Player,
+	run_state: RunStateStore,
+	spawn_offsets: Array[Vector2]
+) -> bool:
+	if not _has_complete_authored_bindings():
+		push_error("PlantRuntimeCoordinator: 静态植物场景依赖绑定不完整。")
+		return false
+	if combat_runtime == null or local_player == null:
+		push_error("PlantRuntimeCoordinator: 缺少战斗运行时或本地玩家。")
+		return false
+
+	setup(
+		new_runtime_mode,
+		authored_dual_grid_terrain,
+		authored_vegetation_spread_system,
+		authored_plant_system,
+		authored_plant_placement_controller
+	)
+	configure_mode_services(
+		run_state,
+		authored_production_coordinator,
+		authored_research_coordinator,
+		authored_oak_warehouse_panel,
+		authored_production_building_panel,
+		authored_research_center_panel,
+		authored_bamboo_mortar_combat_system,
+		TERRAIN_NETWORK_BATCH_MAX_CELLS
+	)
+
+	var placement_rect := PlantSystem.DEFAULT_PLACEMENT_AREA
+	if authored_dual_grid_terrain.world_map_layer != null:
+		var authored_terrain_rect := (
+			authored_dual_grid_terrain.world_map_layer.get_used_rect()
+		)
+		if authored_terrain_rect.size.x > 0 and authored_terrain_rect.size.y > 0:
+			placement_rect = authored_terrain_rect
+
+	authored_plant_system.setup(
+		authored_ground_tile_map_layer,
+		local_player,
+		authored_plant_container,
+		placement_rect,
+		authored_dual_grid_terrain,
+		combat_runtime,
+		authored_gameplay_port
+	)
+	authored_orange_aura_coordinator.setup(authored_plant_system)
+	if not configure_vegetation(placement_rect):
+		push_error("PlantRuntimeCoordinator: 植被传播节点或地形节点缺失。")
+	_reserve_authored_cells(spawn_offsets)
+	_configure_terrain_decay_timer(new_runtime_mode)
+	return true
+
+
+func _has_complete_authored_bindings() -> bool:
+	return (
+		authored_ground_tile_map_layer != null
+		and authored_dual_grid_terrain != null
+		and authored_vegetation_spread_system != null
+		and authored_plant_system != null
+		and authored_plant_placement_controller != null
+		and authored_plant_container != null
+		and authored_gameplay_port != null
+		and authored_orange_aura_coordinator != null
+		and authored_player_spawn != null
+		and authored_home_gate_controller != null
+		and authored_enemy_spawn_points_root != null
+		and authored_merchant != null
+		and authored_luoxi_merchant != null
+		and authored_terrain_decay_timer != null
+		and authored_production_coordinator != null
+		and authored_research_coordinator != null
+		and authored_oak_warehouse_panel != null
+		and authored_production_building_panel != null
+		and authored_research_center_panel != null
+		and authored_bamboo_mortar_combat_system != null
+	)
+
+
+func _reserve_authored_cells(spawn_offsets: Array[Vector2]) -> void:
+	authored_plant_system.clear_reserved_cells()
+	for spawn_offset in spawn_offsets:
+		authored_plant_system.reserve_world_position(
+			authored_player_spawn.global_position + spawn_offset
+		)
+	for home_cell in authored_home_gate_controller.get_home_gate_cells():
+		authored_plant_system.reserve_cell(home_cell)
+	for child in authored_enemy_spawn_points_root.get_children():
+		var spawn_point := child as Marker2D
+		if spawn_point != null:
+			authored_plant_system.reserve_world_position(spawn_point.global_position, 1)
+	authored_plant_system.reserve_world_position(authored_merchant.global_position)
+	authored_plant_system.reserve_world_position(authored_luoxi_merchant.global_position)
+
+
+func _configure_terrain_decay_timer(new_runtime_mode: int) -> void:
+	authored_terrain_decay_timer.one_shot = false
+	authored_terrain_decay_timer.wait_time = UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS
+	authored_terrain_decay_timer.process_callback = Timer.TIMER_PROCESS_PHYSICS
+	if new_runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		authored_terrain_decay_timer.stop()
+	else:
+		authored_terrain_decay_timer.start()
 
 
 func setup(

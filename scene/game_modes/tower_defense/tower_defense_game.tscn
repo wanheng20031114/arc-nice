@@ -177,7 +177,27 @@ linglan_boss_enabled = true
 
 [node name="HomeDefenseCoordinator" parent="." instance=ExtResource("65_home_coordinator")]
 
-[node name="PlantRuntimeCoordinator" parent="." instance=ExtResource("66_plant_coordinator")]
+[node name="PlantRuntimeCoordinator" parent="." node_paths=PackedStringArray("authored_ground_tile_map_layer", "authored_dual_grid_terrain", "authored_vegetation_spread_system", "authored_plant_system", "authored_plant_placement_controller", "authored_plant_container", "authored_gameplay_port", "authored_orange_aura_coordinator", "authored_player_spawn", "authored_home_gate_controller", "authored_enemy_spawn_points_root", "authored_merchant", "authored_luoxi_merchant", "authored_terrain_decay_timer", "authored_production_coordinator", "authored_research_coordinator", "authored_oak_warehouse_panel", "authored_production_building_panel", "authored_research_center_panel", "authored_bamboo_mortar_combat_system") instance=ExtResource("66_plant_coordinator")]
+authored_ground_tile_map_layer = NodePath("../GroundTileMapLayer")
+authored_dual_grid_terrain = NodePath("../DualGridTerrain")
+authored_vegetation_spread_system = NodePath("../VegetationSpreadSystem")
+authored_plant_system = NodePath("../PlantSystem")
+authored_plant_placement_controller = NodePath("../PlantPlacementController")
+authored_plant_container = NodePath("../PlantContainer")
+authored_gameplay_port = NodePath("../TowerPlantGameplayPort")
+authored_orange_aura_coordinator = NodePath("../OrangeChargingAuraCoordinator")
+authored_player_spawn = NodePath("../PlayerSpawn")
+authored_home_gate_controller = NodePath("../HomeGateController")
+authored_enemy_spawn_points_root = NodePath("../EnemySpawnPoints")
+authored_merchant = NodePath("../ZhuangfangyiMerchant")
+authored_luoxi_merchant = NodePath("../LuoxiMerchant")
+authored_terrain_decay_timer = NodePath("../PlantTerrainDecayTimer")
+authored_production_coordinator = NodePath("../ProductionCoordinator")
+authored_research_coordinator = NodePath("../ResearchCoordinator")
+authored_oak_warehouse_panel = NodePath("../OakWarehousePanel")
+authored_production_building_panel = NodePath("../ProductionBuildingPanel")
+authored_research_center_panel = NodePath("../ResearchCenterPanel")
+authored_bamboo_mortar_combat_system = NodePath("../BambooMortarCombatSystem")
 
 [node name="PlantPlacementCoordinator" parent="." instance=ExtResource("72_plant_placement_coordinator")]
 

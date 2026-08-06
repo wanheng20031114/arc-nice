@@ -7,6 +7,7 @@ const PRODUCTION_BUILDING_SCENE := preload(
 	"res://scene/plant_defense/plant_cultivation_center.tscn"
 )
 const ROOT_SCRIPT_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.gd"
+const ROOT_SCENE_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 const COORDINATOR_SCRIPT_PATH := (
 	"res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.gd"
 )
@@ -63,14 +64,24 @@ func _init() -> void:
 func _run() -> void:
 	var coordinator := COORDINATOR_SCENE.instantiate() as TowerDefensePlantRuntimeCoordinator
 	_expect(coordinator != null, "PlantRuntime 必须由原生 .tscn 实例化。")
-	var root_scene := load(
-		"res://scene/game_modes/tower_defense/tower_defense_game.tscn"
-	) as PackedScene
+	var root_scene := load(ROOT_SCENE_PATH) as PackedScene
 	var runtime := root_scene.instantiate() as TowerDefenseGame
-	_expect(
+	var scene_coordinator := (
 		runtime.get_node_or_null("PlantRuntimeCoordinator")
-			is TowerDefensePlantRuntimeCoordinator,
+		as TowerDefensePlantRuntimeCoordinator
+	)
+	_expect(
+		scene_coordinator != null,
 		"TowerDefenseGame 场景必须静态搭建 PlantRuntimeCoordinator 子节点。"
+	)
+	_expect(
+		scene_coordinator._has_complete_authored_bindings()
+		and scene_coordinator.authored_plant_system == runtime.get_node("PlantSystem")
+		and scene_coordinator.authored_enemy_spawn_points_root
+			== runtime.get_node("EnemySpawnPoints")
+		and scene_coordinator.authored_terrain_decay_timer
+			== runtime.get_node("PlantTerrainDecayTimer"),
+		"PlantRuntime 的 authored 节点依赖必须由根 .tscn 完整静态绑定。"
 	)
 
 	var coordinator_source := FileAccess.get_file_as_string(COORDINATOR_SCRIPT_PATH)
@@ -86,8 +97,22 @@ func _run() -> void:
 	_expect(
 		not root_source.contains("SharedWarehouseLedgerBridge.persist_to_ledger")
 		and not root_source.contains("try_consume_item_at_slot_for_peer_if_revision")
-		and not root_source.contains("spawn_multiplayer_replica("),
-		"根脚本不得保留 PlantRuntime 的仓库、放置事务或复制算法。"
+		and not root_source.contains("spawn_multiplayer_replica(")
+		and not root_source.contains("func _configure_plant_defense_system")
+		and not root_source.contains("plant_system.setup(")
+		and not root_source.contains("clear_reserved_cells(")
+		and not root_source.contains("reserve_world_position(")
+		and root_source.contains(
+			"plant_runtime_coordinator.initialize_authored_runtime("
+		),
+		"根脚本不得保留 PlantRuntime 的仓库、放置、复制或 authored 初始化算法。"
+	)
+	_expect(
+		coordinator_source.contains("func initialize_authored_runtime(")
+		and coordinator_source.contains("@export var authored_plant_system")
+		and coordinator_source.contains("func _reserve_authored_cells(")
+		and coordinator_source.contains("func _configure_terrain_decay_timer("),
+		"PlantRuntime 必须集中拥有 authored 初始化、静态绑定、占地和衰减生命周期。"
 	)
 	_expect(
 		TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_INVALID_REQUEST
@@ -106,7 +131,7 @@ func _run() -> void:
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FREE_DISABLED
 		and TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FLOW_LOCKED
 			== TowerDefensePlantRuntimeCoordinator.PLACEMENT_REJECT_FLOW_LOCKED,
-		"根 façade 必须完整重导出八个稳定 rejection reason。"
+		"PlantRuntime 必须保留八个稳定 rejection reason。"
 	)
 
 	var events: Array[String] = []
