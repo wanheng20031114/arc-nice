@@ -66,24 +66,13 @@ const HYDRANGEA_RAIN_TOWER_SCRIPT := preload(
 	"res://scene/plant_defense/hydrangea_rain_tower.gd"
 )
 const CORN_MACHINE_GUN_SCRIPT := preload("res://scene/plant_defense/corn_machine_gun.gd")
-const TANGO_ELECTRIC_SURGE_FIELD_SCENE := preload(
-	"res://scene/player/tango/tango_electric_surge_field.tscn"
-)
 const COLLECTIBLE_AREA_EFFECT_SCENE := preload("res://scene/collectible_area_effect.tscn")
 const COLLECTIBLE_FROST_AREA_EFFECT_SCENE := preload("res://scene/collectible_frost_area_effect.tscn")
 const COLLECTIBLE_LIGHTNING_EFFECT_SCENE := preload("res://scene/collectible_lightning_effect.tscn")
 const COLLECTIBLE_MOON_SHIELD_VISUAL_SCENE := preload("res://scene/collectible_moon_shield_visual.tscn")
 const INPUT_BUTTON_RELOAD := MpPlayerCoordinator.INPUT_BUTTON_RELOAD
 const INPUT_BUTTON_DASH := MpPlayerCoordinator.INPUT_BUTTON_DASH
-const TANGO_CHARGE_MINIMUM_SECONDS := 0.2
-const TANGO_CHARGE_MAXIMUM_SECONDS := 2.4
-const TANGO_BARRAGE_MAXIMUM_SECONDS := 5.0
-const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
-const TANGO_CHARGE_PHASE_START := "start"
-const TANGO_CHARGE_PHASE_RELEASE := "release"
-const TANGO_CHARGE_PHASE_CANCEL := "cancel"
-const TANGO_ELECTRIC_SURGE_DURATION_SECONDS := 8.0
-const TANGO_ELECTRIC_SURGE_TIME_TOLERANCE_SECONDS := 0.25
+const TANGO_BARRAGE_MAXIMUM_SECONDS := MpPlayerCoordinator.TANGO_BARRAGE_MAXIMUM_SECONDS
 const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
@@ -160,18 +149,7 @@ var _last_sent_shoot_input: Vector2 = Vector2.ZERO
 var _input_frames_since_last_send: int = _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
 var _client_shoot_input_was_passive_tango_aim := false
 var _local_tiyi_activation_request_id: int = 0
-var _local_tango_charge_request_id: int = 0
-var _local_tango_active_request_id: int = 0
-var _local_tango_release_pending: bool = false
-var _local_tango_electric_surge_request_id: int = 0
-var _tango_charge_sequences_by_peer: Dictionary = {}
 var _last_tango_volley_visual_state_by_peer: Dictionary = {}
-var _last_tango_charge_request_ids: Dictionary = {}
-var _active_tango_charges_by_peer: Dictionary = {}
-var _tango_electric_surge_sequences_by_peer: Dictionary = {}
-var _last_tango_electric_surge_request_ids: Dictionary = {}
-var _active_tango_electric_surges_by_peer: Dictionary = {}
-var _last_tango_electric_surge_seen_by_peer: Dictionary = {}
 var _tiyi_activation_sequences_by_peer: Dictionary = {}
 var _active_tiyi_activations_by_peer: Dictionary = {}
 var _tiyi_target_ids_by_peer: Dictionary = {}
@@ -997,31 +975,9 @@ func request_hoe_whirlwind() -> bool:
 
 
 func request_tango_electric_surge() -> bool:
-	if game == null or not _client_host_game_ready:
-		return false
-	var peer_id := _get_local_peer_id()
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		return false
-	if (
-		bool(player_node.call("is_electric_surge_active"))
-		or _active_tango_electric_surges_by_peer.has(peer_id)
-	):
-		return false
-	_local_tango_electric_surge_request_id += 1
-	var request_id := _local_tango_electric_surge_request_id
-	if net_manager.is_host():
-		return _apply_authoritative_tango_electric_surge_request(
-			peer_id,
-			request_id
-		)
-	if not net_manager.is_client():
-		return false
-	net_tango_electric_surge_requested.rpc_id(
-		_get_host_peer_id(),
-		request_id
+	return player_coordinator.request_tango_electric_surge(
+		_client_host_game_ready
 	)
-	return true
 
 
 func spawn_authoritative_tango_electric_surge_field(
@@ -1029,47 +985,11 @@ func spawn_authoritative_tango_electric_surge_field(
 	activation_id: int,
 	origin: Vector2
 ) -> bool:
-	if (
-		not net_manager.is_host()
-		or game == null
-		or owner_player == null
-		or not is_instance_valid(owner_player)
-		or activation_id <= 0
-		or not _is_finite_vector2(origin)
-	):
-		return false
-	var owner_peer_id := owner_player.peer_id
-	if owner_peer_id <= 0 or game.get_player_for_peer(owner_peer_id) != owner_player:
-		return false
-	var field := (
-		TANGO_ELECTRIC_SURGE_FIELD_SCENE.instantiate()
-		as TangoElectricSurgeField
-	)
-	if field == null:
-		return false
-	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
-	if gameplay_gateway == null:
-		field.free()
-		return false
-	field.bind_gameplay_context(game, gameplay_gateway)
-	field.connect(
-		&"finished",
-		Callable(self, "_on_authoritative_tango_electric_surge_field_finished").bind(
-			owner_peer_id,
-			activation_id
-		),
-		CONNECT_ONE_SHOT
-	)
-	game.add_child(field)
-	field.global_position = origin
-	field.call(
-		"setup",
+	return player_coordinator.spawn_authoritative_tango_electric_surge_field(
 		owner_player,
 		activation_id,
-		TANGO_ELECTRIC_SURGE_DURATION_SECONDS,
-		true
+		origin
 	)
-	return true
 
 
 func spawn_remote_tango_electric_surge_visual_field(
@@ -1077,132 +997,31 @@ func spawn_remote_tango_electric_surge_visual_field(
 	origin: Vector2,
 	remaining_seconds: float
 ) -> bool:
-	if (
-		game == null
-		or activation_id <= 0
-		or not _is_finite_vector2(origin)
-		or not is_finite(remaining_seconds)
-		or remaining_seconds <= 0.0
-	):
-		return false
-	var field := (
-		TANGO_ELECTRIC_SURGE_FIELD_SCENE.instantiate()
-		as TangoElectricSurgeField
-	)
-	if field == null:
-		return false
-	var gameplay_gateway := game.get_multiplayer_gameplay_gateway()
-	if gameplay_gateway == null:
-		field.free()
-		return false
-	field.bind_gameplay_context(game, gameplay_gateway)
-	game.add_child(field)
-	field.global_position = origin
-	field.setup_multiplayer_visual_only(
+	return player_coordinator.spawn_remote_tango_electric_surge_visual_field(
 		activation_id,
-		minf(remaining_seconds, TANGO_ELECTRIC_SURGE_DURATION_SECONDS)
+		origin,
+		remaining_seconds
 	)
-	return true
-
-
-func _on_authoritative_tango_electric_surge_field_finished(
-	_field: Node,
-	owner_peer_id: int,
-	activation_id: int
-) -> void:
-	_finish_authoritative_tango_electric_surge(owner_peer_id, activation_id)
 
 
 func request_tango_charge_started(direction: Vector2) -> bool:
-	if game == null or not _client_host_game_ready or _local_tango_active_request_id > 0:
-		return false
-	var peer_id := _get_local_peer_id()
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		return false
-	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
-	_local_tango_charge_request_id += 1
-	var request_id := _local_tango_charge_request_id
-	if net_manager.is_host():
-		var accepted := _apply_authoritative_tango_charge_started(
-			peer_id,
-			safe_direction,
-			request_id
-		)
-		if accepted and bool(player_node.call("is_tango_charge_active")):
-			_local_tango_active_request_id = request_id
-		return accepted
-	if not net_manager.is_client():
-		return false
-	_local_tango_active_request_id = request_id
-	_local_tango_release_pending = false
-	net_tango_charge_started_requested.rpc_id(
-		_get_host_peer_id(),
-		safe_direction,
-		request_id
+	return player_coordinator.request_tango_charge_started(
+		direction,
+		_client_host_game_ready
 	)
-	return true
 
 
 func request_tango_charge_released(direction: Vector2) -> bool:
-	if (
-		game == null
-		or not _client_host_game_ready
-		or _local_tango_active_request_id <= 0
-		or _local_tango_release_pending
-	):
-		return false
-	var peer_id := _get_local_peer_id()
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		return false
-	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
-	var request_id := _local_tango_active_request_id
-	_local_tango_release_pending = true
-	if net_manager.is_host():
-		var handled := _apply_authoritative_tango_charge_released(
-			peer_id,
-			safe_direction,
-			request_id
-		)
-		_local_tango_active_request_id = 0
-		_local_tango_release_pending = false
-		return handled
-	if not net_manager.is_client():
-		_local_tango_release_pending = false
-		return false
-	net_tango_charge_released_requested.rpc_id(
-		_get_host_peer_id(),
-		safe_direction,
-		request_id
+	return player_coordinator.request_tango_charge_released(
+		direction,
+		_client_host_game_ready
 	)
-	return true
 
 
 func request_tango_charge_cancelled() -> bool:
-	if (
-		game == null
-		or not _client_host_game_ready
-		or _local_tango_active_request_id <= 0
-		or _local_tango_release_pending
-	):
-		return false
-	var peer_id := _get_local_peer_id()
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		return false
-	var request_id := _local_tango_active_request_id
-	_local_tango_release_pending = true
-	if net_manager.is_host():
-		var handled := _apply_authoritative_tango_charge_cancelled(peer_id, request_id)
-		if not handled:
-			_local_tango_release_pending = false
-		return handled
-	if not net_manager.is_client():
-		_local_tango_release_pending = false
-		return false
-	net_tango_charge_cancelled_requested.rpc_id(_get_host_peer_id(), request_id)
-	return true
+	return player_coordinator.request_tango_charge_cancelled(
+		_client_host_game_ready
+	)
 
 
 func request_tiyi_high_noon() -> bool:
@@ -2234,53 +2053,8 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 				int(flow_snapshot.get("state", CombatFlowState.State.PRE_WAVE)),
 				int(flow_snapshot.get("countdown_seconds", 0))
 			)
-	_send_active_tango_electric_surges_to_peer(peer_id)
+	player_coordinator.send_active_tango_electric_surges_to_peer(peer_id)
 	_send_runtime_world_manifest_to_peer(peer_id)
-
-
-func _send_active_tango_electric_surges_to_peer(target_peer_id: int) -> void:
-	if not net_manager.is_host() or target_peer_id <= 0:
-		return
-	var now := _get_net_time()
-	var owner_peer_ids: Array[int] = []
-	for owner_peer_id_variant in _active_tango_electric_surges_by_peer.keys():
-		owner_peer_ids.append(int(owner_peer_id_variant))
-	owner_peer_ids.sort()
-	for owner_peer_id in owner_peer_ids:
-		var record := _active_tango_electric_surges_by_peer.get(
-			owner_peer_id,
-			{}
-		) as Dictionary
-		var started_at := float(record.get("started_at", now))
-		var duration := float(
-			record.get("duration", TANGO_ELECTRIC_SURGE_DURATION_SECONDS)
-		)
-		var remaining_seconds := clampf(
-			duration - maxf(now - started_at, 0.0),
-			0.0,
-			duration
-		)
-		if remaining_seconds <= 0.0:
-			# The authoritative field owns roster retirement. Skipping an event at
-			# its deadline avoids resurrecting an already-finishing visual while
-			# still allowing its final damage catch-up to complete.
-			continue
-		var owner_player := game.get_player_for_peer(owner_peer_id)
-		var buff_active := (
-			_is_valid_tango_player(owner_player)
-			and bool(owner_player.call("is_electric_surge_active"))
-		)
-		net_tango_electric_surge_started.rpc_id(
-			target_peer_id,
-			owner_peer_id,
-			int(record.get("activation_id", 0)),
-			record.get("origin", Vector2.ZERO) as Vector2,
-			remaining_seconds,
-			now,
-			buff_active,
-			int(record.get("request_id", 1)),
-			int(record.get("charge_sequence", 0))
-		)
 
 
 func _send_authoritative_player_positions_to_peer(target_peer_id: int) -> void:
@@ -2474,7 +2248,10 @@ func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
 	if states.is_empty():
 		return
 	var snapshot_time := _get_net_time()
-	_apply_authoritative_tango_charge_snapshot_ratios(states, snapshot_time)
+	player_coordinator.apply_authoritative_tango_charge_snapshot_ratios(
+		states,
+		snapshot_time
+	)
 	var batch := player_coordinator.build_host_snapshot_batch(
 		states,
 		client_peer_ids,
@@ -2494,27 +2271,6 @@ func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
 			batch.host_timestamp,
 			batch.data
 		)
-
-
-func _apply_authoritative_tango_charge_snapshot_ratios(
-	states: Array[SnapshotManager.PlayerState],
-	sample_time: float
-) -> void:
-	for state in states:
-		if state == null or state.character_id != &"tango":
-			continue
-		state.primary_cooldown_ratio = 0.0
-		var charge := _active_tango_charges_by_peer.get(state.peer_id, {}) as Dictionary
-		if charge.is_empty():
-			continue
-		var started_at := float(charge.get("started_at", sample_time))
-		state.primary_cooldown_ratio = clampf(
-			maxf(sample_time - started_at, 0.0) / TANGO_CHARGE_MAXIMUM_SECONDS,
-			0.0,
-			1.0
-		)
-
-
 func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
 	if client_peer_ids.is_empty():
 		client_peer_ids = _get_connected_client_peer_ids()
@@ -2955,7 +2711,7 @@ func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) 
 		snapshot_time,
 		data,
 		_get_client_view_local_peer_id(),
-		_local_tango_active_request_id > 0
+		player_coordinator.has_local_tango_prediction()
 	)
 	for peer_id in stale_peer_ids:
 		_clear_peer_network_state(peer_id)
@@ -3130,83 +2886,18 @@ func net_hoe_action_confirmed(
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_electric_surge_requested(request_id: int) -> void:
-	if not net_manager.is_host() or game == null:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if (
-		not _consume_remote_player_action_admission(sender_id)
-		or request_id <= 0
-	):
-		return
-	_apply_authoritative_tango_electric_surge_request(sender_id, request_id)
+	player_coordinator.handle_tango_electric_surge_request(sender_id, request_id)
 
 
 func _apply_authoritative_tango_electric_surge_request(
 	peer_id: int,
 	request_id: int
 ) -> bool:
-	if not net_manager.is_host() or game == null or peer_id <= 0 or request_id <= 0:
-		return false
-	var last_request_id := int(
-		_last_tango_electric_surge_request_ids.get(peer_id, 0)
+	return player_coordinator.apply_authoritative_tango_electric_surge_request(
+		peer_id,
+		request_id
 	)
-	if request_id <= last_request_id:
-		return false
-	_last_tango_electric_surge_request_ids[peer_id] = request_id
-	if _active_tango_electric_surges_by_peer.has(peer_id):
-		return false
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		return false
-	var activation_id := int(
-		_tango_electric_surge_sequences_by_peer.get(peer_id, 0)
-	) + 1
-	var auto_fire_charge_sequence := int(
-		_tango_charge_sequences_by_peer.get(peer_id, 0)
-	) + 1
-	var origin := player_node.global_position
-	if not bool(player_node.call(
-		"try_start_authoritative_electric_surge",
-		activation_id,
-		origin,
-		auto_fire_charge_sequence
-	)):
-		return false
-	# A successful surge owns Tango's firing state for its complete lifetime. Retire
-	# an ordinary charge first so its later release/cancel cannot overwrite the
-	# automatic barrage. Both terminal and surge events use reliable channel 5,
-	# preserving this order for replicas.
-	if _active_tango_charges_by_peer.has(peer_id):
-		_cancel_authoritative_tango_charge(peer_id, true)
-	# Automatic volleys still use the established projectile protocol. Allocate a
-	# fresh charge sequence without manufacturing a synthetic input request so Host
-	# registration and client de-duplication share one activation-owned identity.
-	_tango_charge_sequences_by_peer[peer_id] = auto_fire_charge_sequence
-	var started_at := _get_net_time()
-	var buff_active := bool(player_node.call("is_electric_surge_active"))
-	_tango_electric_surge_sequences_by_peer[peer_id] = activation_id
-	_active_tango_electric_surges_by_peer[peer_id] = {
-		"activation_id": activation_id,
-		"origin": origin,
-		"started_at": started_at,
-		"duration": TANGO_ELECTRIC_SURGE_DURATION_SECONDS,
-		"request_id": request_id,
-		"charge_sequence": auto_fire_charge_sequence,
-	}
-	_rpc_to_connected_clients(
-		&"net_tango_electric_surge_started",
-		[
-			peer_id,
-			activation_id,
-			origin,
-			TANGO_ELECTRIC_SURGE_DURATION_SECONDS,
-			started_at,
-			buff_active,
-			request_id,
-			auto_fire_charge_sequence,
-		]
-	)
-	return true
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -3220,200 +2911,76 @@ func net_tango_electric_surge_started(
 	request_id: int,
 	auto_fire_charge_sequence: int
 ) -> void:
-	if game == null:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id > 0 and sender_id != _get_host_peer_id():
-		return
-	var last_seen_activation_id := int(
-		_last_tango_electric_surge_seen_by_peer.get(peer_id, 0)
-	)
-	if (
-		peer_id <= 0
-		or activation_id <= 0
-		or request_id <= 0
-		or auto_fire_charge_sequence <= 0
-		or not _is_finite_vector2(origin)
-		or not is_finite(remaining_seconds_at_send)
-		or not is_finite(host_sent_at)
-		or remaining_seconds_at_send < 0.0
-		or remaining_seconds_at_send
-			> TANGO_ELECTRIC_SURGE_DURATION_SECONDS
-			+ TANGO_ELECTRIC_SURGE_TIME_TOLERANCE_SECONDS
-		or activation_id < last_seen_activation_id
-	):
-		return
-	var player_node := game.get_player_for_peer(peer_id)
-	var is_recovery_replay := activation_id == last_seen_activation_id
-	var recovery_record: Dictionary = {}
-	if is_recovery_replay:
-		recovery_record = _active_tango_electric_surges_by_peer.get(
-			peer_id,
-			{}
-		) as Dictionary
-		if int(recovery_record.get("activation_id", 0)) != activation_id:
-			return
-		# Buff lifetime can end before its independent world field. Once Host has
-		# reported it inactive, an older recovery state must never reactivate it.
-		buff_active = buff_active and bool(recovery_record.get("buff_active", true))
-		recovery_record["buff_active"] = buff_active
-		recovery_record["charge_sequence"] = maxi(
-			int(recovery_record.get("charge_sequence", 0)),
-			auto_fire_charge_sequence
-		)
-		_active_tango_electric_surges_by_peer[peer_id] = recovery_record
-	var remaining := clampf(
-		remaining_seconds_at_send,
-		0.0,
-		TANGO_ELECTRIC_SURGE_DURATION_SECONDS
-	)
-	# Replay packets carry a Host-computed remaining duration. A previously
-	# established clock offset may trim transport age, but this event must never
-	# establish/update the global offset: its timestamp can describe a late join
-	# and is not a fresh clock sample.
+	var transport_age_seconds := 0.0
 	if _has_host_time_offset:
-		var local_sent_at := _map_host_timestamp_to_client_time(host_sent_at, false)
-		remaining = maxf(
-			remaining - maxf(_get_net_time() - local_sent_at, 0.0),
-			0.0
-		)
-	if is_recovery_replay:
-		if remaining <= 0.0:
-			_active_tango_electric_surges_by_peer.erase(peer_id)
-			if bool(recovery_record.get("owner_disconnected", false)):
-				_clear_tango_electric_surge_sequence_guards(peer_id)
-			if _is_valid_tango_player(player_node):
-				player_node.call("cancel_remote_electric_surge", activation_id)
-			return
-		if buff_active and _is_valid_tango_player(player_node):
-			player_node.call(
-				"play_remote_electric_surge_started",
-				activation_id,
-				origin,
-				remaining,
-				false,
-				auto_fire_charge_sequence
+		if (
+			(sender_id <= 0 or sender_id == _get_host_peer_id())
+			and is_finite(host_sent_at)
+		):
+			var local_sent_at := _map_host_timestamp_to_client_time(
+				host_sent_at,
+				false
 			)
-		elif _is_valid_tango_player(player_node):
-			player_node.call("cancel_remote_electric_surge", activation_id)
-		return
-	if remaining <= 0.0:
-		return
-	_last_tango_electric_surge_seen_by_peer[peer_id] = activation_id
-	_tango_electric_surge_sequences_by_peer[peer_id] = maxi(
-		int(_tango_electric_surge_sequences_by_peer.get(peer_id, 0)),
-		activation_id
-	)
-	_tango_charge_sequences_by_peer[peer_id] = maxi(
-		int(_tango_charge_sequences_by_peer.get(peer_id, 0)),
-		auto_fire_charge_sequence
-	)
-	_active_tango_electric_surges_by_peer[peer_id] = {
-		"activation_id": activation_id,
-		"origin": origin,
-		"remaining_seconds_at_send": remaining_seconds_at_send,
-		"host_sent_at": host_sent_at,
-		"request_id": request_id,
-		"charge_sequence": auto_fire_charge_sequence,
-		"buff_active": buff_active,
-		"owner_disconnected": not _is_valid_tango_player(player_node),
-	}
-	# MpGame owns the one world-visual spawn per accepted activation. Player state
-	# recovery is separate, so a Player reconstructed after an ownerless replay
-	# cannot create a second overlapping field.
-	spawn_remote_tango_electric_surge_visual_field(
+			transport_age_seconds = maxf(_get_net_time() - local_sent_at, 0.0)
+	player_coordinator.apply_tango_electric_surge_started(
+		sender_id,
+		peer_id,
 		activation_id,
 		origin,
-		remaining
+		remaining_seconds_at_send,
+		host_sent_at,
+		buff_active,
+		request_id,
+		auto_fire_charge_sequence,
+		transport_age_seconds
 	)
-	if buff_active and _is_valid_tango_player(player_node):
-		player_node.call(
-			"play_remote_electric_surge_started",
-			activation_id,
-			origin,
-			remaining,
-			false,
-			auto_fire_charge_sequence
-		)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_tango_electric_surge_finished(peer_id: int, activation_id: int) -> void:
-	if game == null or peer_id <= 0 or activation_id <= 0:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id > 0 and sender_id != _get_host_peer_id():
-		return
-	var record := _active_tango_electric_surges_by_peer.get(peer_id, {}) as Dictionary
-	if int(record.get("activation_id", 0)) != activation_id:
-		return
-	_active_tango_electric_surges_by_peer.erase(peer_id)
-	if bool(record.get("owner_disconnected", false)):
-		_clear_tango_electric_surge_sequence_guards(peer_id)
-	var player_node := game.get_player_for_peer(peer_id)
-	if _is_valid_tango_player(player_node):
-		player_node.call("cancel_remote_electric_surge", activation_id)
+	player_coordinator.apply_tango_electric_surge_finished(
+		sender_id,
+		peer_id,
+		activation_id
+	)
 
 
 func _finish_authoritative_tango_electric_surge(
 	peer_id: int,
 	activation_id: int
 ) -> void:
-	var record := _active_tango_electric_surges_by_peer.get(peer_id, {}) as Dictionary
-	if int(record.get("activation_id", 0)) != activation_id:
-		return
-	_active_tango_electric_surges_by_peer.erase(peer_id)
-	_rpc_to_connected_clients(
-		&"net_tango_electric_surge_finished",
-		[peer_id, activation_id]
+	player_coordinator.finish_authoritative_tango_electric_surge(
+		peer_id,
+		activation_id
 	)
-	if bool(record.get("owner_disconnected", false)):
-		_clear_tango_electric_surge_sequence_guards(peer_id)
-
-
-func _clear_tango_electric_surge_sequence_guards(peer_id: int) -> void:
-	_tango_electric_surge_sequences_by_peer.erase(peer_id)
-	_last_tango_electric_surge_request_ids.erase(peer_id)
-	_last_tango_electric_surge_seen_by_peer.erase(peer_id)
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_charge_started_requested(direction: Vector2, request_id: int) -> void:
-	if not net_manager.is_host() or game == null:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if (
-		not _consume_remote_player_action_admission(sender_id)
-		or request_id <= 0
-	):
-		return
-	_apply_authoritative_tango_charge_started(sender_id, direction, request_id)
+	player_coordinator.handle_tango_charge_started_request(
+		sender_id,
+		direction,
+		request_id
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_charge_released_requested(direction: Vector2, request_id: int) -> void:
-	if not net_manager.is_host() or game == null:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if (
-		not _consume_remote_player_action_admission(sender_id)
-		or request_id <= 0
-	):
-		return
-	_apply_authoritative_tango_charge_released(sender_id, direction, request_id)
+	player_coordinator.handle_tango_charge_released_request(
+		sender_id,
+		direction,
+		request_id
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
 func net_tango_charge_cancelled_requested(request_id: int) -> void:
-	if not net_manager.is_host() or game == null:
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if (
-		not _consume_remote_player_action_admission(sender_id)
-		or request_id <= 0
-	):
-		return
-	_apply_authoritative_tango_charge_cancelled(sender_id, request_id)
+	player_coordinator.handle_tango_charge_cancelled_request(sender_id, request_id)
 
 
 func _apply_authoritative_tango_charge_started(
@@ -3421,49 +2988,11 @@ func _apply_authoritative_tango_charge_started(
 	direction: Vector2,
 	request_id: int
 ) -> bool:
-	if not net_manager.is_host() or game == null or peer_id <= 0 or request_id <= 0:
-		return false
-	var last_request_id := int(_last_tango_charge_request_ids.get(peer_id, 0))
-	if request_id <= last_request_id:
-		return false
-	_last_tango_charge_request_ids[peer_id] = request_id
-	if not _is_finite_vector2(direction) or _active_tango_charges_by_peer.has(peer_id):
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_START)
-		return false
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_START)
-		return false
-	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
-	if not bool(player_node.call("try_authoritative_tango_charge_started", safe_direction)):
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_START)
-		return false
-	var charge_sequence := int(_tango_charge_sequences_by_peer.get(peer_id, 0)) + 1
-	_tango_charge_sequences_by_peer[peer_id] = charge_sequence
-	if (
-		bool(player_node.call("is_electric_surge_active"))
-		and bool(player_node.call("is_tango_barrage_active"))
-	):
-		# 电能涌动期间由 Host 直接进入满充弹幕；客户端仍只收到既有的
-		# authoritative release 终端，因此倍率、持续时间和齐射序列都无法自报。
-		_rpc_to_connected_clients(
-			&"net_tango_charge_released",
-			[peer_id, safe_direction, 1.0, charge_sequence, request_id]
-		)
-		return true
-	if not bool(player_node.call("is_tango_charge_active")):
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_START)
-		return false
-	_active_tango_charges_by_peer[peer_id] = {
-		"request_id": request_id,
-		"sequence": charge_sequence,
-		"started_at": _get_net_time(),
-	}
-	_rpc_to_connected_clients(
-		&"net_tango_charge_started",
-		[peer_id, safe_direction, charge_sequence, request_id]
+	return player_coordinator.apply_authoritative_tango_charge_started(
+		peer_id,
+		direction,
+		request_id
 	)
-	return true
 
 
 func _apply_authoritative_tango_charge_released(
@@ -3471,64 +3000,18 @@ func _apply_authoritative_tango_charge_released(
 	direction: Vector2,
 	request_id: int
 ) -> bool:
-	if not net_manager.is_host() or game == null or peer_id <= 0 or request_id <= 0:
-		return false
-	var charge := _active_tango_charges_by_peer.get(peer_id, {}) as Dictionary
-	if charge.is_empty() or int(charge.get("request_id", 0)) != request_id:
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
-		return false
-	var charge_sequence := int(charge.get("sequence", 0))
-	if not _is_finite_vector2(direction) or charge_sequence <= 0:
-		_cancel_authoritative_tango_charge(peer_id, true, request_id)
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
-		return false
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		_cancel_authoritative_tango_charge(peer_id, true, request_id)
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
-		return false
-	var elapsed := maxf(_get_net_time() - float(charge.get("started_at", 0.0)), 0.0)
-	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_CHARGE_MINIMUM_SECONDS:
-		_cancel_authoritative_tango_charge(peer_id, true, request_id)
-		return true
-	var charge_ratio := clampf(
-		(elapsed - TANGO_CHARGE_MINIMUM_SECONDS)
-		/ (TANGO_CHARGE_MAXIMUM_SECONDS - TANGO_CHARGE_MINIMUM_SECONDS),
-		0.0,
-		1.0
+	return player_coordinator.apply_authoritative_tango_charge_released(
+		peer_id,
+		direction,
+		request_id
 	)
-	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
-	var result_variant: Variant = player_node.call(
-		"try_authoritative_tango_charge_released",
-		safe_direction,
-		charge_ratio
-	)
-	if not (result_variant is Dictionary):
-		_cancel_authoritative_tango_charge(peer_id, true, request_id)
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
-		return false
-	var result := result_variant as Dictionary
-	if not bool(result.get("accepted", false)) or not bool(result.get("fired", false)):
-		_cancel_authoritative_tango_charge(peer_id, true, request_id)
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_RELEASE)
-		return false
-	_active_tango_charges_by_peer.erase(peer_id)
-	_rpc_to_connected_clients(
-		&"net_tango_charge_released",
-		[peer_id, safe_direction, charge_ratio, charge_sequence, request_id]
-	)
-	return true
 
 
 func _apply_authoritative_tango_charge_cancelled(peer_id: int, request_id: int) -> bool:
-	if not net_manager.is_host() or game == null or peer_id <= 0 or request_id <= 0:
-		return false
-	var charge := _active_tango_charges_by_peer.get(peer_id, {}) as Dictionary
-	if charge.is_empty() or int(charge.get("request_id", 0)) != request_id:
-		_send_tango_charge_rejected(peer_id, request_id, TANGO_CHARGE_PHASE_CANCEL)
-		return false
-	_cancel_authoritative_tango_charge(peer_id, true, request_id)
-	return true
+	return player_coordinator.apply_authoritative_tango_charge_cancelled(
+		peer_id,
+		request_id
+	)
 
 
 func _cancel_authoritative_tango_charge(
@@ -3536,46 +3019,15 @@ func _cancel_authoritative_tango_charge(
 	broadcast_cancel: bool,
 	request_id: int = 0
 ) -> void:
-	var charge := _active_tango_charges_by_peer.get(peer_id, {}) as Dictionary
-	if charge.is_empty():
-		return
-	var charge_sequence := int(charge.get("sequence", 0))
-	var resolved_request_id := int(charge.get("request_id", request_id))
-	_active_tango_charges_by_peer.erase(peer_id)
-	if peer_id == _get_local_peer_id() and resolved_request_id == _local_tango_active_request_id:
-		_local_tango_active_request_id = 0
-		_local_tango_release_pending = false
-	var player_node := game.get_player_for_peer(peer_id) if game != null else null
-	if _is_valid_tango_player(player_node):
-		player_node.call("cancel_authoritative_tango_charge")
-	if broadcast_cancel and charge_sequence > 0:
-		_rpc_to_connected_clients(
-			&"net_tango_charge_cancelled",
-			[peer_id, charge_sequence, resolved_request_id]
-		)
+	player_coordinator.cancel_authoritative_tango_charge(
+		peer_id,
+		broadcast_cancel,
+		request_id
+	)
 
 
 func _update_authoritative_tango_charge_lifecycle() -> void:
-	if _active_tango_charges_by_peer.is_empty() or game == null:
-		return
-	var cancelled_peer_ids: Array[int] = []
-	for peer_id_variant in _active_tango_charges_by_peer.keys():
-		var peer_id := int(peer_id_variant)
-		var player_node := game.get_player_for_peer(peer_id)
-		if (
-			_is_valid_tango_player(player_node)
-			and bool(player_node.call("is_tango_charge_active"))
-		):
-			continue
-		cancelled_peer_ids.append(peer_id)
-	for peer_id in cancelled_peer_ids:
-		_cancel_authoritative_tango_charge(peer_id, true)
-
-
-func _send_tango_charge_rejected(peer_id: int, request_id: int, phase_text: String) -> void:
-	if peer_id <= 0 or request_id <= 0 or peer_id == _get_host_peer_id():
-		return
-	net_tango_charge_rejected.rpc_id(peer_id, peer_id, request_id, phase_text)
+	player_coordinator.update_authoritative_tango_charge_lifecycle()
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -3585,27 +3037,14 @@ func net_tango_charge_started(
 	charge_sequence: int,
 	request_id: int
 ) -> void:
-	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
-		return
-	if peer_id <= 0 or charge_sequence <= 0 or request_id <= 0 or not _is_finite_vector2(direction):
-		return
-	if charge_sequence <= int(_tango_charge_sequences_by_peer.get(peer_id, 0)):
-		return
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		return
-	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
-	_tango_charge_sequences_by_peer[peer_id] = charge_sequence
-	if peer_id == _get_client_view_local_peer_id():
-		if request_id != _local_tango_active_request_id:
-			return
-		player_node.call(
-			"reconcile_predicted_tango_charge_started",
-			safe_direction,
-			charge_sequence
-		)
-		return
-	player_node.call("play_remote_tango_charge_started", safe_direction, charge_sequence)
+	var sender_id := multiplayer.get_remote_sender_id()
+	player_coordinator.apply_tango_charge_started(
+		sender_id,
+		peer_id,
+		direction,
+		charge_sequence,
+		request_id
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -3616,43 +3055,14 @@ func net_tango_charge_released(
 	charge_sequence: int,
 	request_id: int
 ) -> void:
-	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
-		return
-	var last_charge_sequence := int(_tango_charge_sequences_by_peer.get(peer_id, 0))
-	if (
-		peer_id <= 0
-		or charge_sequence <= 0
-		or request_id <= 0
-		or not _is_finite_vector2(direction)
-		or not is_finite(charge_ratio)
-		or charge_ratio < 0.0
-		or charge_ratio > 1.0
-		or charge_sequence < last_charge_sequence
-	):
-		return
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		return
-	if charge_sequence > last_charge_sequence:
-		_tango_charge_sequences_by_peer[peer_id] = charge_sequence
-	var safe_direction := _sanitize_tango_charge_direction(player_node, direction)
-	if peer_id == _get_client_view_local_peer_id():
-		if request_id != _local_tango_active_request_id:
-			return
-		player_node.call(
-			"reconcile_predicted_tango_barrage_started",
-			safe_direction,
-			charge_ratio,
-			charge_sequence
-		)
-		_local_tango_active_request_id = 0
-		_local_tango_release_pending = false
-		return
-	player_node.call(
-		"play_remote_tango_barrage_started",
-		safe_direction,
+	var sender_id := multiplayer.get_remote_sender_id()
+	player_coordinator.apply_tango_charge_released(
+		sender_id,
+		peer_id,
+		direction,
 		charge_ratio,
-		charge_sequence
+		charge_sequence,
+		request_id
 	)
 
 
@@ -3662,54 +3072,24 @@ func net_tango_charge_cancelled(
 	charge_sequence: int,
 	request_id: int
 ) -> void:
-	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
-		return
-	var last_charge_sequence := int(_tango_charge_sequences_by_peer.get(peer_id, 0))
-	if (
-		peer_id <= 0
-		or charge_sequence <= 0
-		or request_id <= 0
-		or charge_sequence < last_charge_sequence
-	):
-		return
-	var player_node := game.get_player_for_peer(peer_id)
-	if not _is_valid_tango_player(player_node):
-		return
-	if charge_sequence > last_charge_sequence:
-		_tango_charge_sequences_by_peer[peer_id] = charge_sequence
-	if peer_id == _get_client_view_local_peer_id():
-		if request_id != _local_tango_active_request_id:
-			return
-		player_node.call("play_remote_tango_charge_cancelled", charge_sequence)
-		_local_tango_active_request_id = 0
-		_local_tango_release_pending = false
-		return
-	player_node.call("play_remote_tango_charge_cancelled", charge_sequence)
+	var sender_id := multiplayer.get_remote_sender_id()
+	player_coordinator.apply_tango_charge_cancelled(
+		sender_id,
+		peer_id,
+		charge_sequence,
+		request_id
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_tango_charge_rejected(peer_id: int, request_id: int, phase_text: String) -> void:
-	if game == null or multiplayer.get_remote_sender_id() != _get_host_peer_id():
-		return
-	if (
-		peer_id != _get_client_view_local_peer_id()
-		or request_id <= 0
-		or (
-			phase_text != TANGO_CHARGE_PHASE_START
-			and phase_text != TANGO_CHARGE_PHASE_RELEASE
-			and phase_text != TANGO_CHARGE_PHASE_CANCEL
-		)
-	):
-		return
-	# A rejection can arrive after the request it belongs to was already cancelled.
-	# Never let that stale terminal tear down a newer local prediction.
-	if request_id != _local_tango_active_request_id:
-		return
-	_local_tango_active_request_id = 0
-	_local_tango_release_pending = false
-	var player_node := game.get_player_for_peer(peer_id)
-	if _is_valid_tango_player(player_node) and player_node.has_method("reject_predicted_tango_charge"):
-		player_node.call("reject_predicted_tango_charge")
+	var sender_id := multiplayer.get_remote_sender_id()
+	player_coordinator.apply_tango_charge_rejected(
+		sender_id,
+		peer_id,
+		request_id,
+		phase_text
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 5)
@@ -3901,45 +3281,6 @@ func _is_valid_tiyi_player(player_node: Player) -> bool:
 	)
 
 
-func _is_valid_tango_player(player_node: Player) -> bool:
-	return (
-		player_node != null
-		and is_instance_valid(player_node)
-		and player_node.has_method("is_tango")
-		and bool(player_node.call("is_tango"))
-		and player_node.has_method("try_authoritative_tango_charge_started")
-		and player_node.has_method("try_authoritative_tango_charge_released")
-		and player_node.has_method("cancel_authoritative_tango_charge")
-		and player_node.has_method("is_tango_charge_active")
-		and player_node.has_method("play_remote_tango_charge_started")
-		and player_node.has_method("reconcile_predicted_tango_charge_started")
-		and player_node.has_method("play_remote_tango_barrage_started")
-		and player_node.has_method("apply_remote_tango_barrage_snapshot")
-		and player_node.has_method("play_remote_tango_charge_cancelled")
-		and player_node.has_method("reconcile_predicted_tango_barrage_started")
-		and player_node.has_method("try_start_authoritative_electric_surge")
-		and player_node.has_method("play_remote_electric_surge_started")
-		and player_node.has_method("cancel_remote_electric_surge")
-		and player_node.has_method("is_electric_surge_active")
-	)
-
-
-func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -> Vector2:
-	if _is_finite_vector2(direction) and direction.length_squared() > 0.0001:
-		return direction.normalized()
-	if player_node == null:
-		return Vector2.RIGHT
-	match player_node.get_multiplayer_facing_id():
-		1:
-			return Vector2.LEFT
-		2:
-			return Vector2.UP
-		3:
-			return Vector2.DOWN
-		_:
-			return Vector2.RIGHT
-
-
 @rpc("authority", "call_remote", "reliable", 5)
 func net_player_state_corrected(corrected_position: Vector2, corrected_velocity: Vector2) -> void:
 	player_coordinator.apply_local_state_correction(
@@ -4066,22 +3407,15 @@ func register_local_tango_laser_volley(
 	charge_ratio: float,
 	barrage_remaining_seconds: float
 ) -> bool:
-	var active_surge_record := _active_tango_electric_surges_by_peer.get(
-		owner_peer_id,
-		{}
-	) as Dictionary
-	var charge_sequence := int(
-		_tango_charge_sequences_by_peer.get(owner_peer_id, 0)
+	var charge_sequence := player_coordinator.get_tango_charge_sequence(
+		owner_peer_id
 	)
-	var maximum_internal_barrage_seconds := TANGO_BARRAGE_MAXIMUM_SECONDS
-	if (
-		not active_surge_record.is_empty()
-		and charge_sequence > 0
-		and int(active_surge_record.get("charge_sequence", 0))
-			== charge_sequence
-		and charge_ratio >= 1.0 - TANGO_CHARGE_THRESHOLD_EPSILON
-	):
-		maximum_internal_barrage_seconds = TANGO_ELECTRIC_SURGE_DURATION_SECONDS
+	var maximum_internal_barrage_seconds := (
+		player_coordinator.get_tango_laser_barrage_maximum_seconds(
+			owner_peer_id,
+			charge_ratio
+		)
+	)
 	if (
 		net_manager == null
 		or not net_manager.is_multiplayer_active()
@@ -4384,8 +3718,8 @@ func net_tango_laser_volley(
 		host_fire_timestamp
 	):
 		return
-	var current_charge_sequence := int(
-		_tango_charge_sequences_by_peer.get(owner_peer_id, 0)
+	var current_charge_sequence := player_coordinator.get_tango_charge_sequence(
+		owner_peer_id
 	)
 	var previous_visual_state := (
 		_last_tango_volley_visual_state_by_peer.get(owner_peer_id, {})
@@ -4408,7 +3742,10 @@ func net_tango_laser_volley(
 		)
 	)
 	if charge_sequence > current_charge_sequence:
-		_tango_charge_sequences_by_peer[owner_peer_id] = charge_sequence
+		player_coordinator.observe_tango_charge_sequence(
+			owner_peer_id,
+			charge_sequence
+		)
 	var barrage_age := _get_unbounded_host_event_age(host_fire_timestamp)
 	var visual_remaining := barrage_remaining_seconds - barrage_age
 	if should_apply_visual_state:
@@ -4455,7 +3792,10 @@ func net_tango_laser_volley(
 		_get_net_time()
 	)
 	if next_charge_sequence > current_charge_sequence:
-		_tango_charge_sequences_by_peer[owner_peer_id] = next_charge_sequence
+		player_coordinator.observe_tango_charge_sequence(
+			owner_peer_id,
+			next_charge_sequence
+		)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
@@ -5687,8 +5027,7 @@ func _get_valid_client_enemy_for_net_id(enemy_net_id: int) -> Enemy:
 	return enemy_coordinator.get_valid_client_enemy(enemy_net_id)
 
 func _cancel_player_life_tango_for_revive_schedule(peer_id: int) -> void:
-	if _active_tango_charges_by_peer.has(peer_id):
-		_cancel_authoritative_tango_charge(peer_id, true)
+	player_coordinator.cancel_tango_charge_for_life_transition(peer_id)
 
 
 func _cancel_player_life_actions_for_revive(peer_id: int) -> void:
@@ -5701,8 +5040,7 @@ func _cancel_player_life_actions_for_revive(peer_id: int) -> void:
 			active_tiyi_activation_id,
 			true
 		)
-	if _active_tango_charges_by_peer.has(peer_id):
-		_cancel_authoritative_tango_charge(peer_id, true)
+	player_coordinator.cancel_tango_charge_for_life_transition(peer_id)
 
 
 func _clear_player_life_tiyi_lifecycle_state(peer_id: int) -> void:
@@ -8008,7 +7346,7 @@ func _on_net_player_reconnected(
 			_get_net_time(),
 			net_manager.is_host(),
 			_get_client_view_local_peer_id(),
-			_local_tango_active_request_id > 0
+			player_coordinator.has_local_tango_prediction()
 		)
 		if net_manager.is_host():
 			player_coordinator.remember_accepted_player_pose(
@@ -8028,21 +7366,12 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	# A surge field is world-owned after activation. Keep its compact roster
 	# record (and sequence guards) across caster removal until the field's own
 	# finished signal retires it.
-	var preserve_tango_surge_world_state := (
-		_active_tango_electric_surges_by_peer.has(peer_id)
-	)
-	if preserve_tango_surge_world_state:
-		var surge_record := _active_tango_electric_surges_by_peer.get(
-			peer_id,
-			{}
-		) as Dictionary
-		surge_record["owner_disconnected"] = true
-		_active_tango_electric_surges_by_peer[peer_id] = surge_record
+	player_coordinator.mark_tango_owner_disconnected(peer_id)
 	var active_tiyi_activation_id := int(_active_tiyi_activations_by_peer.get(peer_id, 0))
 	if active_tiyi_activation_id > 0 and net_manager != null and net_manager.is_host():
 		_cancel_authoritative_tiyi_high_noon(peer_id, active_tiyi_activation_id, true)
 	if (
-		_active_tango_charges_by_peer.has(peer_id)
+		player_coordinator.has_active_tango_charge(peer_id)
 		and net_manager != null
 		and net_manager.is_host()
 	):
@@ -8050,15 +7379,7 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	enemy_coordinator.clear_peer(peer_id)
 	player_coordinator.clear_peer(peer_id)
 	tower_world_coordinator.clear_peer(peer_id)
-	_tango_charge_sequences_by_peer.erase(peer_id)
 	_last_tango_volley_visual_state_by_peer.erase(peer_id)
-	_last_tango_charge_request_ids.erase(peer_id)
-	_active_tango_charges_by_peer.erase(peer_id)
-	if not preserve_tango_surge_world_state:
-		_tango_electric_surge_sequences_by_peer.erase(peer_id)
-		_last_tango_electric_surge_request_ids.erase(peer_id)
-		_active_tango_electric_surges_by_peer.erase(peer_id)
-		_last_tango_electric_surge_seen_by_peer.erase(peer_id)
 	_tiyi_activation_sequences_by_peer.erase(peer_id)
 	_active_tiyi_activations_by_peer.erase(peer_id)
 	_tiyi_target_ids_by_peer.erase(peer_id)
@@ -8084,17 +7405,7 @@ func _return_to_lobby() -> void:
 	tower_fate_coordinator.reset_session_state()
 	session_coordinator.reset_session_state()
 	transactions_coordinator.reset_session_state()
-	_tango_charge_sequences_by_peer.clear()
 	_last_tango_volley_visual_state_by_peer.clear()
-	_last_tango_charge_request_ids.clear()
-	_active_tango_charges_by_peer.clear()
-	_tango_electric_surge_sequences_by_peer.clear()
-	_last_tango_electric_surge_request_ids.clear()
-	_active_tango_electric_surges_by_peer.clear()
-	_last_tango_electric_surge_seen_by_peer.clear()
-	_local_tango_active_request_id = 0
-	_local_tango_release_pending = false
-	_local_tango_electric_surge_request_id = 0
 	var tree: SceneTree = get_tree()
 	if tree == null:
 		return

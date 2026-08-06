@@ -172,6 +172,130 @@ class ProbeHoePlayer:
 		return 0.5
 
 
+class ProbeTangoPlayer:
+	extends PlayerTango
+
+	var charge_active := false
+	var barrage_active := false
+	var electric_surge_active := false
+	var charge_started_count := 0
+	var charge_released_count := 0
+	var charge_cancelled_count := 0
+	var reconciled_charge_count := 0
+	var reconciled_barrage_count := 0
+	var remote_charge_count := 0
+	var remote_barrage_count := 0
+	var remote_cancel_count := 0
+	var rejected_prediction_count := 0
+	var electric_surge_started_count := 0
+	var remote_electric_surge_started_count := 0
+	var remote_electric_surge_cancel_count := 0
+	var last_charge_ratio := 0.0
+	var last_remote_surge_remaining := 0.0
+
+	func try_start_authoritative_electric_surge(
+		_activation_id: int,
+		_origin: Vector2,
+		_auto_fire_charge_sequence: int = 0
+	) -> bool:
+		if electric_surge_active:
+			return false
+		electric_surge_active = true
+		electric_surge_started_count += 1
+		return true
+
+	func play_remote_electric_surge_started(
+		_activation_id: int,
+		_origin: Vector2,
+		remaining_seconds: float,
+		_spawn_visual: bool = true,
+		_auto_fire_charge_sequence: int = 0
+	) -> void:
+		electric_surge_active = true
+		remote_electric_surge_started_count += 1
+		last_remote_surge_remaining = remaining_seconds
+
+	func is_electric_surge_active() -> bool:
+		return electric_surge_active
+
+	func cancel_remote_electric_surge(_activation_id: int) -> void:
+		electric_surge_active = false
+		remote_electric_surge_cancel_count += 1
+
+	func try_authoritative_tango_charge_started(_direction: Vector2) -> bool:
+		if charge_active:
+			return false
+		charge_active = true
+		barrage_active = false
+		charge_started_count += 1
+		return true
+
+	func try_authoritative_tango_charge_released(
+		direction: Vector2,
+		authoritative_charge_ratio: float
+	) -> Dictionary:
+		if not charge_active:
+			return {
+				"accepted": false,
+				"fired": false,
+				"direction": Vector2.ZERO,
+			}
+		charge_active = false
+		barrage_active = true
+		charge_released_count += 1
+		last_charge_ratio = authoritative_charge_ratio
+		return {
+			"accepted": true,
+			"fired": true,
+			"direction": direction,
+			"charge_ratio": authoritative_charge_ratio,
+		}
+
+	func cancel_authoritative_tango_charge() -> void:
+		charge_active = false
+		charge_cancelled_count += 1
+
+	func is_tango_charge_active() -> bool:
+		return charge_active
+
+	func is_tango_barrage_active() -> bool:
+		return barrage_active
+
+	func reconcile_predicted_tango_charge_started(
+		_direction: Vector2,
+		_sequence: int
+	) -> void:
+		reconciled_charge_count += 1
+
+	func reconcile_predicted_tango_barrage_started(
+		_direction: Vector2,
+		charge_ratio: float,
+		_sequence: int
+	) -> void:
+		reconciled_barrage_count += 1
+		last_charge_ratio = charge_ratio
+
+	func play_remote_tango_charge_started(
+		_direction: Vector2,
+		_sequence: int
+	) -> void:
+		remote_charge_count += 1
+
+	func play_remote_tango_barrage_started(
+		_direction: Vector2,
+		charge_ratio: float,
+		_sequence: int
+	) -> void:
+		remote_barrage_count += 1
+		last_charge_ratio = charge_ratio
+
+	func play_remote_tango_charge_cancelled(_sequence: int) -> void:
+		remote_cancel_count += 1
+
+	func reject_predicted_tango_charge() -> void:
+		rejected_prediction_count += 1
+
+
 class ProbeModeAdapter:
 	extends MultiplayerModeAdapter
 
@@ -547,12 +671,234 @@ func _run() -> void:
 		"Hoe 本地预测必须由房主确认完成对账。"
 	)
 
+	var tango_host_player := ProbeTangoPlayer.new()
+	tango_host_player.peer_id = 6
+	runtime.peer_players[6] = tango_host_player
+	net_manager.host_mode = true
+	net_manager.client_mode = false
+	net_manager.local_peer_id = 1
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	runtime.multiplayer_local_peer_id = 1
+	_probe_net_time = 60.0
+	action_broadcast_count = _probe_action_broadcast_methods.size()
+	coordinator.handle_tango_charge_started_request(6, Vector2.RIGHT, 1)
+	_expect(
+		coordinator.has_active_tango_charge(6)
+		and tango_host_player.charge_started_count == 1
+		and coordinator.get_tango_charge_sequence(6) == 1
+		and _probe_action_broadcast_methods.size() == action_broadcast_count + 1
+		and _probe_action_broadcast_methods.back() == &"net_tango_charge_started",
+		"探戈蓄力开始必须经过共享 admission、推进序列并由根出口广播。"
+	)
+	var tango_snapshot := SnapshotManager.PlayerState.new()
+	tango_snapshot.peer_id = 6
+	tango_snapshot.character_id = &"tango"
+	var tango_states: Array[SnapshotManager.PlayerState] = [tango_snapshot]
+	_probe_net_time = 61.2
+	coordinator.apply_authoritative_tango_charge_snapshot_ratios(
+		tango_states,
+		_probe_net_time
+	)
+	_expect(
+		is_equal_approx(tango_snapshot.primary_cooldown_ratio, 0.5),
+		"Host 玩家快照必须携带权威探戈蓄力比例。"
+	)
+	_probe_net_time = 61.3
+	coordinator.handle_tango_charge_released_request(6, Vector2.RIGHT, 1)
+	_expect(
+		not coordinator.has_active_tango_charge(6)
+		and tango_host_player.charge_released_count == 1
+		and is_equal_approx(tango_host_player.last_charge_ratio, 0.5)
+		and _probe_action_broadcast_methods.back() == &"net_tango_charge_released",
+		"探戈释放必须由 Host 时钟计算倍率并广播唯一终端。"
+	)
+	_expect(
+		not coordinator.apply_authoritative_tango_charge_started(
+			6,
+			Vector2.RIGHT,
+			1
+		),
+		"重复探戈请求号不得重新开启蓄力。"
+	)
+	_probe_net_time = 62.0
+	_expect(
+		coordinator.apply_authoritative_tango_charge_started(
+			6,
+			Vector2.UP,
+			2
+		),
+		"较新的探戈蓄力请求必须被接纳。"
+	)
+	_probe_net_time = 62.1
+	_expect(
+		coordinator.apply_authoritative_tango_charge_released(
+			6,
+			Vector2.UP,
+			2
+		)
+		and tango_host_player.charge_cancelled_count == 1
+		and _probe_action_broadcast_methods.back() == &"net_tango_charge_cancelled",
+		"未达到最短蓄力时长必须可靠取消且不得发射。"
+	)
+	_expect(
+		not coordinator.apply_authoritative_tango_charge_released(
+			6,
+			Vector2.RIGHT,
+			99
+		)
+		and _probe_action_to_peer_methods.back() == &"net_tango_charge_rejected",
+		"无匹配蓄力的释放必须仅向请求端拒绝。"
+	)
+	_probe_net_time = 63.0
+	coordinator.handle_tango_electric_surge_request(6, 1)
+	var active_surge_record := coordinator.get_active_tango_electric_surge_record(6)
+	_expect(
+		coordinator.has_active_tango_electric_surge(6)
+		and tango_host_player.electric_surge_started_count == 1
+		and int(active_surge_record.get("activation_id", 0)) == 1
+		and int(active_surge_record.get("charge_sequence", 0)) == 3
+		and is_equal_approx(
+			coordinator.get_tango_laser_barrage_maximum_seconds(6, 1.0),
+			MpPlayerCoordinator.TANGO_ELECTRIC_SURGE_DURATION_SECONDS
+		)
+		and _probe_action_broadcast_methods.back()
+			== &"net_tango_electric_surge_started",
+		"电涌必须分配独立激活序列并延长对应权威弹幕生命周期。"
+	)
+	_probe_net_time = 64.0
+	coordinator.send_active_tango_electric_surges_to_peer(9)
+	_expect(
+		_probe_action_to_peer_methods.back() == &"net_tango_electric_surge_started",
+		"迟加入玩家必须收到仍在运行的电涌重建事件。"
+	)
+	coordinator.mark_tango_owner_disconnected(6)
+	coordinator.clear_peer(6)
+	active_surge_record = coordinator.get_active_tango_electric_surge_record(6)
+	_expect(
+		coordinator.has_active_tango_electric_surge(6)
+		and bool(active_surge_record.get("owner_disconnected", false)),
+		"施法者断线后世界电场及其序列栅栏必须保留到场自身结束。"
+	)
+	coordinator.finish_authoritative_tango_electric_surge(6, 1)
+	_expect(
+		not coordinator.has_active_tango_electric_surge(6)
+		and coordinator.get_tango_charge_sequence(6) == 0
+		and _probe_action_broadcast_methods.back()
+			== &"net_tango_electric_surge_finished",
+		"断线施法者的电场结束后必须广播并释放全部保留序列。"
+	)
+
+	var tango_client_player := ProbeTangoPlayer.new()
+	tango_client_player.peer_id = 7
+	runtime.peer_players[7] = tango_client_player
+	net_manager.host_mode = false
+	net_manager.client_mode = true
+	net_manager.local_peer_id = 7
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	runtime.multiplayer_local_peer_id = 7
+	_expect(
+		coordinator.request_tango_charge_started(Vector2.LEFT, true)
+		and coordinator.has_local_tango_prediction()
+		and _probe_action_to_host_methods.back()
+			== &"net_tango_charge_started_requested",
+		"客户端探戈蓄力必须登记本地预测请求并经根出口发往 Host。"
+	)
+	coordinator.apply_tango_charge_started(1, 7, Vector2.LEFT, 1, 1)
+	_expect(
+		tango_client_player.reconciled_charge_count == 1,
+		"Host 蓄力确认必须对账本地探戈预测。"
+	)
+	_expect(
+		coordinator.request_tango_charge_released(Vector2.LEFT, true)
+		and _probe_action_to_host_methods.back()
+			== &"net_tango_charge_released_requested",
+		"客户端探戈释放必须只发送当前活动请求。"
+	)
+	coordinator.apply_tango_charge_released(
+		1,
+		7,
+		Vector2.LEFT,
+		0.75,
+		1,
+		1
+	)
+	_expect(
+		tango_client_player.reconciled_barrage_count == 1
+		and not coordinator.has_local_tango_prediction(),
+		"可靠释放确认必须完成本地弹幕对账并清除预测事务。"
+	)
+	_expect(
+		coordinator.request_tango_charge_started(Vector2.DOWN, true),
+		"完成一次对账后必须允许开启新的探戈预测。"
+	)
+	coordinator.apply_tango_charge_rejected(
+		1,
+		7,
+		2,
+		MpPlayerCoordinator.TANGO_CHARGE_PHASE_START
+	)
+	_expect(
+		tango_client_player.rejected_prediction_count == 1
+		and not coordinator.has_local_tango_prediction(),
+		"Host 拒绝必须只终止匹配的本地探戈预测。"
+	)
+
+	var tango_remote_player := ProbeTangoPlayer.new()
+	tango_remote_player.peer_id = 8
+	runtime.peer_players[8] = tango_remote_player
+	coordinator.apply_tango_electric_surge_started(
+		1,
+		8,
+		1,
+		Vector2(32.0, 48.0),
+		7.0,
+		64.0,
+		true,
+		1,
+		4,
+		1.0
+	)
+	_expect(
+		coordinator.has_active_tango_electric_surge(8)
+		and tango_remote_player.remote_electric_surge_started_count == 1
+		and is_equal_approx(tango_remote_player.last_remote_surge_remaining, 6.0),
+		"客户端必须按既有 Host 时差裁剪电涌重建时长。"
+	)
+	coordinator.apply_tango_electric_surge_started(
+		1,
+		8,
+		1,
+		Vector2(32.0, 48.0),
+		5.0,
+		65.0,
+		false,
+		1,
+		4,
+		0.0
+	)
+	_expect(
+		tango_remote_player.remote_electric_surge_started_count == 1
+		and tango_remote_player.remote_electric_surge_cancel_count == 1,
+		"恢复重放不得重新生成电场，且 Host 已结束的增益不得被旧状态复活。"
+	)
+	coordinator.apply_tango_electric_surge_finished(1, 8, 1)
+	_expect(
+		not coordinator.has_active_tango_electric_surge(8),
+		"电涌结束事件必须清理客户端活动记录。"
+	)
+
 	runtime.peer_players.erase(2)
 	runtime.peer_players.erase(3)
 	runtime.peer_players.erase(5)
+	runtime.peer_players.erase(6)
+	runtime.peer_players.erase(7)
+	runtime.peer_players.erase(8)
 	action_player.free()
 	remote_dash_player.free()
 	hoe_player.free()
+	tango_host_player.free()
+	tango_client_player.free()
+	tango_remote_player.free()
 
 	net_manager.host_mode = false
 	net_manager.client_mode = true
