@@ -173,10 +173,16 @@ func _run() -> void:
 	var extracted_fixture := _create_extracted_fixture()
 	var legacy_strict := _run_legacy_trace(legacy_fixture, FIXED_SEED)
 	var extracted_strict := _run_extracted_trace(extracted_fixture, FIXED_SEED)
+	var trace_difference := _describe_trace_difference(
+		(legacy_fixture["recorder"] as TraceRecorder).events,
+		(extracted_fixture["recorder"] as TraceRecorder).events
+	)
+	if legacy_strict != extracted_strict:
+		print("TRACE_DIFFERENCE ", trace_difference)
 	_expect(
 		legacy_strict == extracted_strict,
-		"塔防 Adapter 固定 seed 边界轨迹必须严格一致：legacy=%d extracted=%d。"
-		% [legacy_strict, extracted_strict]
+		"塔防 Adapter 固定 seed 边界轨迹必须严格一致：legacy=%d extracted=%d，%s。"
+		% [legacy_strict, extracted_strict, trace_difference]
 	)
 	_warm_up(legacy_fixture, extracted_fixture, true)
 	_warm_up(legacy_fixture, extracted_fixture, false)
@@ -443,7 +449,7 @@ func _run_legacy_trace(fixture: Dictionary, seed: int) -> int:
 func _run_extracted_trace(fixture: Dictionary, seed: int) -> int:
 	var runtime := fixture["runtime"] as TowerDefenseGame
 	var adapter := fixture["adapter"] as ExtractedAdapterProbe
-	var home := fixture["home"] as TowerDefenseHomeDefenseCoordinator
+	var campaign := fixture["campaign"] as TowerDefenseCampaignCoordinator
 	var enemy := fixture["enemy"] as TowerDefenseEnemyCoordinator
 	var plant := fixture["plant"] as TowerDefensePlantRuntimeCoordinator
 	var roster := fixture["roster"] as RosterProbe
@@ -464,7 +470,7 @@ func _run_extracted_trace(fixture: Dictionary, seed: int) -> int:
 		_dispatch_extracted_event(
 			runtime,
 			adapter,
-			home,
+			campaign,
 			enemy,
 			plant,
 			recorder,
@@ -542,7 +548,7 @@ func _dispatch_legacy_event(
 func _dispatch_extracted_event(
 	runtime: TowerDefenseGame,
 	adapter: ExtractedAdapterProbe,
-	home: TowerDefenseHomeDefenseCoordinator,
+	campaign: TowerDefenseCampaignCoordinator,
 	enemy: TowerDefenseEnemyCoordinator,
 	plant: TowerDefensePlantRuntimeCoordinator,
 	recorder: TraceRecorder,
@@ -552,7 +558,7 @@ func _dispatch_extracted_event(
 ) -> void:
 	match event_kind:
 		0:
-			runtime.countdown_seconds = random_generator.randi_range(0, 90)
+			campaign.countdown_seconds = random_generator.randi_range(0, 90)
 			adapter.publish_flow_state(
 				random_generator.randi_range(
 					CombatFlowState.State.PRE_WAVE,
@@ -560,7 +566,7 @@ func _dispatch_extracted_event(
 				) as CombatFlowState.State
 			)
 		1:
-			home.base_health_changed.emit(
+			adapter.publish_authoritative_base_health(
 				random_generator.randi_range(0, 100),
 				100,
 				event_index + 1
@@ -683,3 +689,17 @@ func _nearest_rank_index(percentile: float) -> int:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _describe_trace_difference(legacy: Array[int], extracted: Array[int]) -> String:
+	var shared_size := mini(legacy.size(), extracted.size())
+	for index in range(shared_size):
+		if legacy[index] != extracted[index]:
+			return "首个差异 index=%d legacy=%d extracted=%d sizes=%d/%d" % [
+				index,
+				legacy[index],
+				extracted[index],
+				legacy.size(),
+				extracted.size(),
+			]
+	return "共同前缀一致 sizes=%d/%d" % [legacy.size(), extracted.size()]

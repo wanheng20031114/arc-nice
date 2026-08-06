@@ -235,7 +235,9 @@ func _run() -> void:
 		tree_less_plant_system,
 		null
 	)
-	var snapshots: Array[Dictionary] = tree_less_runtime.get_multiplayer_plant_snapshots()
+	var snapshots: Array[Dictionary] = (
+		tree_less_coordinator.get_multiplayer_plant_snapshots()
+	)
 	_expect(snapshots.is_empty(), "tree-less typed plant snapshot 必须安全返回空数组。")
 
 	plant.free()

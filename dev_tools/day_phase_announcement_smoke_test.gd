@@ -186,6 +186,7 @@ func _test_phase_boundary_deduplication(
 	var defeat_audio := AudioStreamPlayer.new()
 	var wave_hud := TowerDefenseWaveHUD.new()
 	var status_hud := TowerDefenseStatusHUD.new()
+	var plant_placement := TowerDefensePlantPlacementCoordinator.new()
 	for dependency in [
 		camera,
 		music_player,
@@ -194,11 +195,13 @@ func _test_phase_boundary_deduplication(
 		defeat_audio,
 		wave_hud,
 		status_hud,
+		plant_placement,
 	]:
 		presentation.add_child(dependency)
 	presentation.setup(
 		runtime,
 		campaign,
+		plant_placement,
 		DAY_CYCLE,
 		camera,
 		music_player,

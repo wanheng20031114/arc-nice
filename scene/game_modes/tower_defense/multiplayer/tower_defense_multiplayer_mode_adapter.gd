@@ -310,8 +310,10 @@ func handle_player_died(peer_id: int) -> void:
 		else tower_runtime.get_player_for_peer(peer_id)
 	)
 	if is_singleplayer:
-		tower_runtime._cancel_plant_placement()
-		tower_runtime._update_plant_placement_input_state()
+		_plant_placement_coordinator.cancel_placement()
+		_plant_placement_coordinator.set_flow_state(
+			_campaign_coordinator.wave_state
+		)
 	if _presentation_coordinator != null:
 		_presentation_coordinator.present_player_death(dead_player)
 	if is_terminal_combat_state():
@@ -347,7 +349,9 @@ func handle_player_revived(peer_id: int) -> void:
 			_presentation_coordinator.end_local_spectator_camera(
 				tower_runtime.player
 			)
-	tower_runtime._update_plant_placement_input_state()
+	_plant_placement_coordinator.set_flow_state(
+		_campaign_coordinator.wave_state
+	)
 
 
 func remove_multiplayer_player(peer_id: int) -> void:
@@ -688,7 +692,7 @@ func handle_return_to_lobby_requested() -> void:
 		tower_runtime.runtime_mode
 		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	):
-		tower_runtime._cancel_plant_placement()
+		_plant_placement_coordinator.cancel_placement()
 		get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
 		return
 	return_to_lobby_requested.emit()
@@ -874,7 +878,10 @@ func apply_authoritative_plant_enemy_damage_batch(
 	):
 		return false
 	if tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
-		return tower_runtime.apply_authoritative_plant_enemy_damage_batch(
+		if _plant_runtime_coordinator == null:
+			return false
+		_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+		return _plant_runtime_coordinator.apply_authoritative_enemy_damage_batch(
 			damage_source_id,
 			enemy,
 			damage_amounts,
@@ -1025,7 +1032,8 @@ func request_runtime_bamboo_mortar_target(
 	var tower_runtime := get_tower_runtime()
 	return (
 		tower_runtime != null
-		and tower_runtime.request_bamboo_mortar_target(
+		and _plant_runtime_coordinator != null
+		and _plant_runtime_coordinator.request_bamboo_mortar_target(
 			owner,
 			minimum_range,
 			maximum_range,
@@ -1035,9 +1043,8 @@ func request_runtime_bamboo_mortar_target(
 
 
 func cancel_runtime_bamboo_mortar_target_request(owner: Node) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.cancel_bamboo_mortar_target_request(owner)
+	if _plant_runtime_coordinator != null:
+		_plant_runtime_coordinator.cancel_bamboo_mortar_target_request(owner)
 
 
 func select_runtime_bamboo_mortar_target_sync_for_fixture(
@@ -1045,14 +1052,13 @@ func select_runtime_bamboo_mortar_target_sync_for_fixture(
 	minimum_range: float,
 	maximum_range: float
 ) -> Enemy:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.select_bamboo_mortar_target_sync_for_fixture(
+		_plant_runtime_coordinator.select_bamboo_mortar_target_sync_for_fixture(
 			center,
 			minimum_range,
 			maximum_range
 		)
-		if tower_runtime != null
+		if _plant_runtime_coordinator != null
 		else null
 	)
 
@@ -1065,10 +1071,9 @@ func queue_runtime_bamboo_mortar_explosion(
 	outer_damage: int,
 	damage_source_id: int
 ) -> bool:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime != null
-		and tower_runtime.queue_bamboo_mortar_explosion(
+		_plant_runtime_coordinator != null
+		and _plant_runtime_coordinator.queue_bamboo_mortar_explosion(
 			landing_position,
 			inner_radius,
 			outer_radius,
@@ -1080,10 +1085,9 @@ func queue_runtime_bamboo_mortar_explosion(
 
 
 func get_runtime_bamboo_mortar_combat_metrics() -> Dictionary:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_bamboo_mortar_combat_metrics()
-		if tower_runtime != null
+		_plant_runtime_coordinator.get_bamboo_mortar_combat_metrics()
+		if _plant_runtime_coordinator != null
 		else {}
 	)
 

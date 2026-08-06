@@ -702,7 +702,7 @@ func _test_scene_config_and_interlude_freeze() -> void:
 	)
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	game.wave_state = CombatFlowState.State.FATE_INTERLUDE
-	game.request_multiplayer_inventory_plant_placement(
+	game.tower_multiplayer_mode_adapter.request_authoritative_inventory_plant_placement(
 		2,
 		91,
 		PlantDefenseRegistry.AGAVE_CANNON_ID,

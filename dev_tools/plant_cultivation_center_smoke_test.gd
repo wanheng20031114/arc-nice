@@ -996,7 +996,6 @@ func _test_authoritative_placement_rollback_sync(
 	var initial_revision := run_state.get_inventory_revision_for_peer(2)
 	var plant_system := PlacementRollbackPlantSystem.new(config)
 	var host_game := TowerDefenseGame.new()
-	var tower_adapter := _bind_tower_multiplayer_mode_adapter(host_game)
 	host_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	host_game.run_state = run_state
 	host_game.plant_system = plant_system
@@ -1008,21 +1007,24 @@ func _test_authoritative_placement_rollback_sync(
 	plant_runtime.setup(host_game.runtime_mode, null, null, plant_system, null)
 	var rejected_requests: Array[int] = []
 	var changed_inventory_peers: Array[int] = []
-	tower_adapter.plant_placement_rejected.connect(
+	plant_runtime.plant_placement_rejected.connect(
 		func(request_id: int, _peer_id: int, _reason: StringName) -> void:
 			rejected_requests.append(request_id)
 	)
-	tower_adapter.inventory_changed.connect(
+	plant_runtime.inventory_changed.connect(
 		func(peer_id: int) -> void: changed_inventory_peers.append(peer_id)
 	)
-	host_game.request_multiplayer_inventory_plant_placement(
+	plant_runtime.request_multiplayer_inventory_placement(
 		2,
 		77,
 		&"agave_cannon",
 		Vector2i(2, 3),
 		0,
 		initial_revision,
-		AGAVE_BUILDING_ITEM.resource_path
+		AGAVE_BUILDING_ITEM.resource_path,
+		run_state,
+		player,
+		false
 	)
 	_expect(
 		rejected_requests == [77]
@@ -1034,20 +1036,6 @@ func _test_authoritative_placement_rollback_sync(
 	)
 	host_game.free()
 	plant_system.free()
-
-
-func _bind_tower_multiplayer_mode_adapter(
-	game: TowerDefenseGame
-) -> TowerDefenseMultiplayerModeAdapter:
-	var adapter := TowerDefenseMultiplayerModeAdapter.new()
-	adapter.name = "MultiplayerModeAdapter"
-	game.add_child(adapter)
-	adapter.bind_runtime(game)
-	game.multiplayer_mode_adapter = adapter
-	game.tower_multiplayer_mode_adapter = adapter
-	return adapter
-
-
 func _click_panel_control(control: Control) -> void:
 	var position := control.get_global_rect().get_center()
 	var motion := InputEventMouseMotion.new()

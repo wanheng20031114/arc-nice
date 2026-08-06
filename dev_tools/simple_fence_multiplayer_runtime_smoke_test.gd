@@ -69,7 +69,7 @@ func _run() -> void:
 	await process_frame
 
 	host_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	host_game.next_multiplayer_plant_net_id = FIRST_FENCE_NET_ID
+	host_game.plant_runtime_coordinator.next_multiplayer_plant_net_id = FIRST_FENCE_NET_ID
 	var owner_peer_id := maxi(host_game.player.peer_id, 1)
 	host_game.peer_players[owner_peer_id] = host_game.player
 	var run_state := root.get_node("RunState") as RunStateStore
@@ -169,7 +169,7 @@ func _run() -> void:
 		_expect(slot_index >= 0, "每次正式围栏放置前必须能解析建筑物品槽位。")
 		if slot_index < 0:
 			continue
-		host_game.request_multiplayer_inventory_plant_placement(
+		host_game.tower_multiplayer_mode_adapter.request_authoritative_inventory_plant_placement(
 			owner_peer_id,
 			placement_index + 1,
 			SIMPLE_FENCE_CONFIG.plant_id,
@@ -224,7 +224,9 @@ func _run() -> void:
 	)
 
 	var center_net_id := int(spawn_records[1]["net_id"])
-	var host_center := host_game.get_multiplayer_plant_node(center_net_id)
+	var host_center := host_game.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
+		center_net_id
+	)
 	_expect(host_center is CardinalConnectedPlant, "中心围栏必须是四向连接建筑实例。")
 	if host_center == null:
 		await _cleanup()
@@ -255,7 +257,7 @@ func _run() -> void:
 	)
 	var live_center := (
 		live_client["runtime"] as TowerDefenseGame
-	).get_multiplayer_plant_node(center_net_id)
+	).tower_multiplayer_mode_adapter.get_multiplayer_plant_node(center_net_id)
 	_expect(
 		live_center != null
 		and live_center.current_health == host_center.current_health
@@ -263,7 +265,7 @@ func _run() -> void:
 		"实时 Client 必须按 Host revision 收敛围栏血量。"
 	)
 
-	var roster := host_game.get_multiplayer_plant_snapshots()
+	var roster := host_game.tower_multiplayer_mode_adapter.get_multiplayer_plant_snapshots()
 	_expect(roster.size() == 3, "Host 晚加入 roster 必须包含三份在场围栏。")
 	for snapshot in roster:
 		_expect_roster_has_no_texture_state(snapshot)
@@ -284,7 +286,7 @@ func _run() -> void:
 	)
 	var late_center := (
 		late_client["runtime"] as TowerDefenseGame
-	).get_multiplayer_plant_node(center_net_id)
+	).tower_multiplayer_mode_adapter.get_multiplayer_plant_node(center_net_id)
 	_expect(
 		late_center != null
 		and late_center.current_health == host_center.current_health
@@ -294,7 +296,7 @@ func _run() -> void:
 	if late_center != null:
 		var late_health_before_stale := late_center.current_health
 		var late_revision_before_stale := late_center.health_revision
-		(late_client["runtime"] as TowerDefenseGame).apply_remote_plant_health(
+		(late_client["runtime"] as TowerDefenseGame).tower_multiplayer_mode_adapter.apply_remote_plant_health(
 			center_net_id,
 			late_center.max_health,
 			late_center.max_health,
@@ -359,18 +361,20 @@ func _run() -> void:
 	_expect(
 		host_center.is_dead
 		and host_center.health_revision == lethal_health_revision + 1
-		and host_game.get_multiplayer_plant_node(center_net_id) == null
+		and host_game.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
+			center_net_id
+		) == null
 		and not removal_records.is_empty()
 		and int(removal_records.back().get("net_id", 0)) == center_net_id
 		and bool(removal_records.back().get("was_destroyed", false)),
 		"Host 致命伤害必须先推进 revision，再权威移除围栏并广播 destroyed。"
 	)
 
-	(live_client["runtime"] as TowerDefenseGame).apply_remote_plant_removed_with_reason(
+	(live_client["runtime"] as TowerDefenseGame).tower_multiplayer_mode_adapter.apply_remote_plant_removed(
 		center_net_id,
 		true
 	)
-	(late_client["runtime"] as TowerDefenseGame).apply_remote_plant_removed_with_reason(
+	(late_client["runtime"] as TowerDefenseGame).tower_multiplayer_mode_adapter.apply_remote_plant_removed(
 		center_net_id,
 		true
 	)
@@ -390,10 +394,10 @@ func _run() -> void:
 		anchor_by_net_id
 	)
 	_expect(
-		(live_client["runtime"] as TowerDefenseGame).get_multiplayer_plant_node(
+		(live_client["runtime"] as TowerDefenseGame).tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
 			center_net_id
 		) == null
-		and (late_client["runtime"] as TowerDefenseGame).get_multiplayer_plant_node(
+		and (late_client["runtime"] as TowerDefenseGame).tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
 			center_net_id
 		) == null,
 		"两类 Client 都必须在可靠 remove 调用栈内释放中心围栏索引。"
@@ -472,7 +476,7 @@ func _apply_spawn_record(
 	runtime: TowerDefenseGame,
 	record: Dictionary
 ) -> void:
-	runtime.apply_remote_plant_spawn(
+	runtime.tower_multiplayer_mode_adapter.apply_remote_plant_spawn(
 		int(record.get("request_id", 0)),
 		int(record.get("owner_peer_id", 0)),
 		int(record.get("net_id", 0)),
@@ -488,7 +492,7 @@ func _apply_health_record(
 	runtime: TowerDefenseGame,
 	record: Dictionary
 ) -> void:
-	runtime.apply_remote_plant_health(
+	runtime.tower_multiplayer_mode_adapter.apply_remote_plant_health(
 		int(record.get("net_id", 0)),
 		int(record.get("current_health", 0)),
 		int(record.get("maximum_health", 1)),
@@ -504,8 +508,12 @@ func _assert_topology(
 	anchor_by_net_id: Dictionary[int, Vector2i]
 ) -> void:
 	for net_id in active_net_ids:
-		var host_plant := authority.get_multiplayer_plant_node(net_id)
-		var client_plant := replica.get_multiplayer_plant_node(net_id)
+		var host_plant := authority.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
+			net_id
+		)
+		var client_plant := replica.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
+			net_id
+		)
 		var expected_mask := _calculate_expected_mask(
 			net_id,
 			active_net_ids,
@@ -601,7 +609,9 @@ func _is_any_fence_target(target: Node2D, net_ids: Array[int]) -> bool:
 	if target == null:
 		return false
 	for net_id in net_ids:
-		if host_game.get_multiplayer_plant_node(net_id) == target:
+		if host_game.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
+			net_id
+		) == target:
 			return true
 	return false
 

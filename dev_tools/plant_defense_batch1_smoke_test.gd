@@ -1908,15 +1908,11 @@ func _test_multiplayer_authority_contracts() -> void:
 	host_game.add_child(host_plant_runtime)
 	host_game.plant_runtime_coordinator = host_plant_runtime
 	host_plant_runtime.setup(host_game.runtime_mode, null, null, plant_system, null)
-	host_game.next_multiplayer_plant_net_id = 5101
-	var host_mode_adapter := TowerDefenseMultiplayerModeAdapter.new()
-	host_game.add_child(host_mode_adapter)
-	host_mode_adapter.bind_runtime(host_game)
-	host_game.tower_multiplayer_mode_adapter = host_mode_adapter
+	host_game.plant_runtime_coordinator.next_multiplayer_plant_net_id = 5101
 	var spawned_building_records: Array[Dictionary] = []
 	var changed_inventory_peers: Array[int] = []
 	var placement_rejections: Array[Dictionary] = []
-	host_mode_adapter.plant_spawned.connect(
+	host_plant_runtime.plant_spawned.connect(
 		func(
 			request_id: int,
 			owner_peer_id: int,
@@ -1935,10 +1931,10 @@ func _test_multiplayer_authority_contracts() -> void:
 				"anchor": requested_anchor,
 			})
 	)
-	host_mode_adapter.inventory_changed.connect(
+	host_plant_runtime.inventory_changed.connect(
 		func(peer_id: int) -> void: changed_inventory_peers.append(peer_id)
 	)
-	host_mode_adapter.plant_placement_rejected.connect(
+	host_plant_runtime.plant_placement_rejected.connect(
 		func(
 			request_id: int,
 			requester_peer_id: int,
@@ -1950,14 +1946,17 @@ func _test_multiplayer_authority_contracts() -> void:
 				"reason": reason,
 			})
 	)
-	host_game.request_multiplayer_inventory_plant_placement(
+	host_plant_runtime.request_multiplayer_inventory_placement(
 		2,
 		2,
 		&"agave_cannon",
 		anchor,
 		building_item_slot,
 		building_item_revision,
-		AGAVE_BUILDING_ITEM.resource_path
+		AGAVE_BUILDING_ITEM.resource_path,
+		run_state,
+		requesting_player,
+		false
 	)
 	_expect(
 		spawned_building_records.size() == 1
@@ -2029,14 +2028,17 @@ func _test_multiplayer_authority_contracts() -> void:
 		var fence_revision_before := (
 			run_state.get_inventory_revision_for_peer(2)
 		)
-		host_game.request_multiplayer_inventory_plant_placement(
+		host_plant_runtime.request_multiplayer_inventory_placement(
 			2,
 			10,
 			&"simple_fence",
 			fence_anchors[0],
 			fence_item_slot,
 			fence_revision_before,
-			SIMPLE_FENCE_BUILDING_ITEM.resource_path
+			SIMPLE_FENCE_BUILDING_ITEM.resource_path,
+			run_state,
+			requesting_player,
+			false
 		)
 		var revision_after_first := run_state.get_inventory_revision_for_peer(2)
 		_expect(
@@ -2050,14 +2052,17 @@ func _test_multiplayer_authority_contracts() -> void:
 		)
 
 		var rejection_count_before := placement_rejections.size()
-		host_game.request_multiplayer_inventory_plant_placement(
+		host_plant_runtime.request_multiplayer_inventory_placement(
 			2,
 			11,
 			&"simple_fence",
 			fence_anchors[0],
 			fence_item_slot,
 			revision_after_first,
-			SIMPLE_FENCE_BUILDING_ITEM.resource_path
+			SIMPLE_FENCE_BUILDING_ITEM.resource_path,
+			run_state,
+			requesting_player,
+			false
 		)
 		_expect(
 			placement_rejections.size() == rejection_count_before + 1
@@ -2069,14 +2074,17 @@ func _test_multiplayer_authority_contracts() -> void:
 			"围栏位置失败必须在扣栈前原子拒绝，不得减少数量、推进revision或发送背包变更。"
 		)
 
-		host_game.request_multiplayer_inventory_plant_placement(
+		host_plant_runtime.request_multiplayer_inventory_placement(
 			2,
 			12,
 			&"simple_fence",
 			fence_anchors[1],
 			fence_item_slot,
 			fence_revision_before,
-			SIMPLE_FENCE_BUILDING_ITEM.resource_path
+			SIMPLE_FENCE_BUILDING_ITEM.resource_path,
+			run_state,
+			requesting_player,
+			false
 		)
 		_expect(
 			placement_rejections.back().get("reason") == &"stale_inventory"
@@ -2086,23 +2094,29 @@ func _test_multiplayer_authority_contracts() -> void:
 			"围栏旧背包revision必须在位置校验和扣栈前原子拒绝。"
 		)
 
-		host_game.request_multiplayer_inventory_plant_placement(
+		host_plant_runtime.request_multiplayer_inventory_placement(
 			2,
 			13,
 			&"simple_fence",
 			fence_anchors[1],
 			fence_item_slot,
 			revision_after_first,
-			AGAVE_BUILDING_ITEM.resource_path
+			AGAVE_BUILDING_ITEM.resource_path,
+			run_state,
+			requesting_player,
+			false
 		)
-		host_game.request_multiplayer_inventory_plant_placement(
+		host_plant_runtime.request_multiplayer_inventory_placement(
 			2,
 			14,
 			&"agave_cannon",
 			fence_anchors[1],
 			fence_item_slot,
 			revision_after_first,
-			SIMPLE_FENCE_BUILDING_ITEM.resource_path
+			SIMPLE_FENCE_BUILDING_ITEM.resource_path,
+			run_state,
+			requesting_player,
+			false
 		)
 		_expect(
 			placement_rejections.size() >= 4
@@ -2118,14 +2132,17 @@ func _test_multiplayer_authority_contracts() -> void:
 
 		for success_index in range(1, 3):
 			var current_revision := run_state.get_inventory_revision_for_peer(2)
-			host_game.request_multiplayer_inventory_plant_placement(
+			host_plant_runtime.request_multiplayer_inventory_placement(
 				2,
 				15 + success_index,
 				&"simple_fence",
 				fence_anchors[success_index],
 				fence_item_slot,
 				current_revision,
-				SIMPLE_FENCE_BUILDING_ITEM.resource_path
+				SIMPLE_FENCE_BUILDING_ITEM.resource_path,
+				run_state,
+				requesting_player,
+				false
 			)
 			_expect(
 				run_state.get_item_count_for_peer(2, fence_item_slot)

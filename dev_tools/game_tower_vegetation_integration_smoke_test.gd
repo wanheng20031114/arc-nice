@@ -227,14 +227,14 @@ func _test_preauthored_spread_system(game: TowerDefenseGame) -> void:
 
 func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 	_expect(
-		game.authored_terrain_baseline.size() >= AUTHORITATIVE_BATCH_CELL_COUNT,
+		game.plant_runtime_coordinator.authored_terrain_baseline.size() >= AUTHORITATIVE_BATCH_CELL_COUNT,
 		"塔防 authored baseline 必须足够覆盖193格分块测试。"
 	)
-	if game.authored_terrain_baseline.size() < AUTHORITATIVE_BATCH_CELL_COUNT:
+	if game.plant_runtime_coordinator.authored_terrain_baseline.size() < AUTHORITATIVE_BATCH_CELL_COUNT:
 		return
 
 	var cells: Array[Vector2i] = []
-	for cell_variant in game.authored_terrain_baseline.keys():
+	for cell_variant in game.plant_runtime_coordinator.authored_terrain_baseline.keys():
 		cells.append(cell_variant as Vector2i)
 	cells.sort_custom(_sort_cells)
 	cells.resize(AUTHORITATIVE_BATCH_CELL_COUNT)
@@ -243,7 +243,7 @@ func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 	var terrain_types := PackedInt32Array()
 	for cell in cells:
 		var replacement := _different_terrain_type(
-			int(game.authored_terrain_baseline[cell])
+			int(game.plant_runtime_coordinator.authored_terrain_baseline[cell])
 		)
 		cell_xy.append(cell.x)
 		cell_xy.append(cell.y)
@@ -262,14 +262,14 @@ func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 	if not tower_adapter.terrain_delta.is_connected(_on_terrain_delta):
 		tower_adapter.terrain_delta.connect(_on_terrain_delta)
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
-	game.call(
-		"_on_authoritative_vegetation_terrain_changed",
+	game.plant_runtime_coordinator.apply_authoritative_terrain_changes(
 		cell_xy,
-		terrain_types
+		terrain_types,
+		96
 	)
 
-	_expect(game.multiplayer_terrain_revision == 3, "193格权威批次必须产生3个连续revision。")
-	_expect(game.multiplayer_terrain_overrides.size() == 193, "权威批次必须完整维护193个terrain override。")
+	_expect(game.plant_runtime_coordinator.multiplayer_terrain_revision == 3, "193格权威批次必须产生3个连续revision。")
+	_expect(game.plant_runtime_coordinator.multiplayer_terrain_overrides.size() == 193, "权威批次必须完整维护193个terrain override。")
 	_expect(emitted_terrain_batches.size() == 3, "193格权威批次必须按96/96/1发出三包。")
 	var expected_sizes := [96, 96, 1]
 	for batch_index in range(emitted_terrain_batches.size()):
@@ -284,7 +284,7 @@ func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 			"第%d个权威地形包格数必须为%d。" % [batch_index + 1, expected_sizes[batch_index]]
 		)
 
-	var snapshot := game.get_multiplayer_terrain_snapshot()
+	var snapshot := game.plant_runtime_coordinator.get_terrain_snapshot()
 	_expect(int(snapshot.get("revision", -1)) == 3, "权威地形快照必须携带当前revision。")
 	_expect(
 		(snapshot.get("terrain_types", PackedInt32Array()) as PackedInt32Array).size() == 193,
@@ -295,9 +295,9 @@ func _test_authoritative_batching(game: TowerDefenseGame) -> void:
 func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> void:
 	var empty_target := Vector2i.ZERO
 	var found_empty_target := false
-	for cell_variant in game.authored_terrain_baseline.keys():
+	for cell_variant in game.plant_runtime_coordinator.authored_terrain_baseline.keys():
 		var cell := cell_variant as Vector2i
-		if int(game.authored_terrain_baseline[cell]) != int(DualGridTilemap.TerrainType.EMPTY):
+		if int(game.plant_runtime_coordinator.authored_terrain_baseline[cell]) != int(DualGridTilemap.TerrainType.EMPTY):
 			empty_target = cell
 			found_empty_target = true
 			break
@@ -307,7 +307,7 @@ func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> v
 
 	var restored_cell := Vector2i.ZERO
 	var found_restored_cell := false
-	for cell_variant in game.multiplayer_terrain_overrides.keys():
+	for cell_variant in game.plant_runtime_coordinator.multiplayer_terrain_overrides.keys():
 		var cell := cell_variant as Vector2i
 		if cell != empty_target:
 			restored_cell = cell
@@ -318,49 +318,53 @@ func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> v
 		return
 
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	var snapshot_applied := game.apply_remote_terrain_snapshot(
+	var snapshot_applied := game.tower_multiplayer_mode_adapter.apply_remote_terrain_snapshot(
 		7,
 		PackedInt32Array([empty_target.x, empty_target.y]),
 		PackedInt32Array([DualGridTilemap.TerrainType.EMPTY])
 	)
 	_expect(snapshot_applied, "客户端必须接受合法的完整地形快照。")
-	_expect(game.multiplayer_terrain_revision == 7, "完整快照必须替换客户端terrain revision。")
-	_expect(game.multiplayer_terrain_overrides.size() == 1, "完整快照必须删除所有未列出的旧override。")
+	_expect(game.plant_runtime_coordinator.multiplayer_terrain_revision == 7, "完整快照必须替换客户端terrain revision。")
+	_expect(game.plant_runtime_coordinator.multiplayer_terrain_overrides.size() == 1, "完整快照必须删除所有未列出的旧override。")
 	_expect(
-		int(game.multiplayer_terrain_overrides.get(empty_target, 99)) == -1,
+		int(game.plant_runtime_coordinator.multiplayer_terrain_overrides.get(empty_target, 99)) == -1,
 		"完整快照必须在override字典中保留EMPTY=-1。"
 	)
 	_expect(
 		game.dual_grid_terrain.get_terrain_type(restored_cell)
-		== int(game.authored_terrain_baseline[restored_cell]),
+		== int(game.plant_runtime_coordinator.authored_terrain_baseline[restored_cell]),
 		"完整快照必须把缺席的旧override恢复到authored baseline。"
 	)
-	var replaced_snapshot := game.get_multiplayer_terrain_snapshot()
+	var replaced_snapshot := game.plant_runtime_coordinator.get_terrain_snapshot()
 	_expect(
 		(replaced_snapshot.get("terrain_types", PackedInt32Array()) as PackedInt32Array)
 		== PackedInt32Array([-1]),
 		"导出的客户端快照不能丢弃EMPTY=-1。"
 	)
 
-	var baseline_type := int(game.authored_terrain_baseline[empty_target])
+	var baseline_type := int(game.plant_runtime_coordinator.authored_terrain_baseline[empty_target])
 	var delta_xy := PackedInt32Array([empty_target.x, empty_target.y])
 	var delta_types := PackedInt32Array([baseline_type])
 	_expect(
-		not game.apply_remote_terrain_delta(9, delta_xy, delta_types),
+		not game.tower_multiplayer_mode_adapter.apply_remote_terrain_delta(
+			9, delta_xy, delta_types
+		),
 		"客户端必须拒绝跳过revision 8的地形delta。"
 	)
-	_expect(game.multiplayer_terrain_revision == 7, "被拒绝的delta不能推进客户端revision。")
+	_expect(game.plant_runtime_coordinator.multiplayer_terrain_revision == 7, "被拒绝的delta不能推进客户端revision。")
 	_expect(
 		game.dual_grid_terrain.get_terrain_type(empty_target)
 		== DualGridTilemap.TerrainType.EMPTY,
 		"被拒绝的delta不能部分修改地形。"
 	)
 	_expect(
-		game.apply_remote_terrain_delta(8, delta_xy, delta_types),
+		game.tower_multiplayer_mode_adapter.apply_remote_terrain_delta(
+			8, delta_xy, delta_types
+		),
 		"客户端必须接受恰好下一个revision的合法delta。"
 	)
-	_expect(game.multiplayer_terrain_revision == 8, "合法delta必须推进一次revision。")
-	_expect(game.multiplayer_terrain_overrides.is_empty(), "恢复baseline的delta必须移除对应override。")
+	_expect(game.plant_runtime_coordinator.multiplayer_terrain_revision == 8, "合法delta必须推进一次revision。")
+	_expect(game.plant_runtime_coordinator.multiplayer_terrain_overrides.is_empty(), "恢复baseline的delta必须移除对应override。")
 
 
 func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
@@ -386,7 +390,7 @@ func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
 	var target := fixture["target"] as Vector2i
 	var pending_target := fixture["pending_target"] as Vector2i
 	var target_ring := int(fixture["target_ring"])
-	var target_baseline := int(game.authored_terrain_baseline[target])
+	var target_baseline := int(game.plant_runtime_coordinator.authored_terrain_baseline[target])
 	_expect(
 		game.dual_grid_terrain.get_terrain_type(anchor) == DualGridTilemap.TerrainType.GRASS,
 		"真实植被桩锚点必须是草地。"
@@ -411,7 +415,7 @@ func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
 		return
 	if not tower_adapter.plant_removed.is_connected(_on_lifecycle_plant_removed):
 		tower_adapter.plant_removed.connect(_on_lifecycle_plant_removed)
-	var starting_revision := game.multiplayer_terrain_revision
+	var starting_revision := game.plant_runtime_coordinator.multiplayer_terrain_revision
 	var plant := plant_system.try_place_for_player(
 		config,
 		anchor,
@@ -473,7 +477,7 @@ func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
 		"手动推进到第%d圈结算后，真实目标必须变成草地。" % target_ring
 	)
 	_expect(
-		int(game.multiplayer_terrain_overrides.get(target, 99))
+		int(game.plant_runtime_coordinator.multiplayer_terrain_overrides.get(target, 99))
 		== DualGridTilemap.TerrainType.GRASS,
 		"Host结算后的真实目标必须进入terrain override集合。"
 	)
@@ -483,7 +487,7 @@ func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
 	)
 	_expect(spread.get_overlay_cell_count() > 0, "下一圈临时覆盖必须已提交到共享MultiMesh。")
 	_expect(
-		game.multiplayer_terrain_revision == starting_revision + 1,
+		game.plant_runtime_coordinator.multiplayer_terrain_revision == starting_revision + 1,
 		"真实传播结算必须只提交一个权威terrain revision。"
 	)
 
@@ -536,12 +540,12 @@ func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
 		"真实植被桩死亡必须把目标精确恢复到authored EMPTY/DIRT baseline。"
 	)
 	_expect(
-		not game.multiplayer_terrain_overrides.has(target),
+		not game.plant_runtime_coordinator.multiplayer_terrain_overrides.has(target),
 		"恢复baseline后必须从Host terrain override集合删除目标。"
 	)
-	_expect(game.multiplayer_terrain_overrides.is_empty(), "真实来源销毁后不能残留任何传播override。")
+	_expect(game.plant_runtime_coordinator.multiplayer_terrain_overrides.is_empty(), "真实来源销毁后不能残留任何传播override。")
 	_expect(
-		game.multiplayer_terrain_revision == starting_revision + 2,
+		game.plant_runtime_coordinator.multiplayer_terrain_revision == starting_revision + 2,
 		"真实来源销毁与地形恢复必须再提交一个连续terrain revision。"
 	)
 	_expect(
@@ -566,7 +570,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	var anchor := anchors[0]
-	game.apply_remote_plant_spawn(
+	game.tower_multiplayer_mode_adapter.apply_remote_plant_spawn(
 		0,
 		2,
 		ROSTER_PLANT_NET_ID,
@@ -576,7 +580,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		config.max_health,
 		1
 	)
-	var roster_plant := game.get_multiplayer_plant_node(
+	var roster_plant := game.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
 		ROSTER_PLANT_NET_ID
 	) as VegetationStake
 	_expect(
@@ -588,17 +592,23 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		).is_empty(),
 		"迟加入roster与修复包的request_id=0必须直接显示完整建筑且保持静音。"
 	)
-	game.apply_remote_plant_removed_silently(ROSTER_PLANT_NET_ID)
+	game.tower_multiplayer_mode_adapter.apply_remote_plant_removed(
+		ROSTER_PLANT_NET_ID,
+		false,
+		true
+	)
 	_expect(
 		roster_plant != null
 		and roster_plant.is_removing
 		and roster_plant.removal_mode == PlantDefense.RemovalMode.SILENT
-		and game.get_multiplayer_plant_node(ROSTER_PLANT_NET_ID) == null,
+		and game.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
+			ROSTER_PLANT_NET_ID
+		) == null,
 		"manifest纠偏必须静默并在调用栈内释放客户端植物索引。"
 	)
 	await process_frame
 
-	game.apply_remote_plant_spawn(
+	game.tower_multiplayer_mode_adapter.apply_remote_plant_spawn(
 		77,
 		2,
 		REALTIME_PLANT_NET_ID,
@@ -608,7 +618,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		config.max_health,
 		1
 	)
-	var realtime_plant := game.get_multiplayer_plant_node(
+	var realtime_plant := game.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
 		REALTIME_PLANT_NET_ID
 	) as VegetationStake
 	_expect(
@@ -635,7 +645,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 	var progress_before_duplicate := float(
 		main_sprite.get_instance_shader_parameter(&"construction_progress")
 	)
-	game.apply_remote_plant_spawn(
+	game.tower_multiplayer_mode_adapter.apply_remote_plant_spawn(
 		0,
 		2,
 		REALTIME_PLANT_NET_ID,
@@ -646,7 +656,9 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		1
 	)
 	_expect(
-		game.get_multiplayer_plant_node(REALTIME_PLANT_NET_ID) == realtime_plant
+		game.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
+			REALTIME_PLANT_NET_ID
+		) == realtime_plant
 		and is_equal_approx(
 			float(main_sprite.get_instance_shader_parameter(&"construction_progress")),
 			progress_before_duplicate
@@ -662,12 +674,16 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 	enemy.setup(ENEMY_CONFIG, game.player)
 	enemy.set_physics_process(false)
 	enemy.set_objective_target(realtime_plant)
-	game.apply_remote_plant_removed(REALTIME_PLANT_NET_ID)
+	game.tower_multiplayer_mode_adapter.apply_remote_plant_removed(
+		REALTIME_PLANT_NET_ID
+	)
 	_expect(
 		realtime_plant.is_removing
 		and not realtime_plant.is_dead
 		and realtime_plant.removal_mode == PlantDefense.RemovalMode.ANIMATED
-		and game.get_multiplayer_plant_node(REALTIME_PLANT_NET_ID) == null
+		and game.tower_multiplayer_mode_adapter.get_multiplayer_plant_node(
+			REALTIME_PLANT_NET_ID
+		) == null
 		and enemy.objective_target == null,
 		"reliable remove必须显式溶解非死亡副本，并在同一调用栈释放索引与敌人目标引用。"
 	)
@@ -820,9 +836,9 @@ func _find_authored_spread_cell(
 ) -> Vector2i:
 	for offset in VegetationSpreadSystem.get_ring_offsets(ring):
 		var cell := anchor + offset
-		if not game.authored_terrain_baseline.has(cell):
+		if not game.plant_runtime_coordinator.authored_terrain_baseline.has(cell):
 			continue
-		var baseline := int(game.authored_terrain_baseline[cell])
+		var baseline := int(game.plant_runtime_coordinator.authored_terrain_baseline[cell])
 		if baseline in [DualGridTilemap.TerrainType.EMPTY, DualGridTilemap.TerrainType.DIRT]:
 			return cell
 	return Vector2i.MAX

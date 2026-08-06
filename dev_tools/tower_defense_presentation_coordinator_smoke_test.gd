@@ -88,6 +88,7 @@ func _create_fixture() -> Dictionary:
 	var wave_hud := WAVE_HUD_SCENE.instantiate() as TowerDefenseWaveHUD
 	var announcement := DAY_ANNOUNCEMENT_SCENE.instantiate() as DayPhaseAnnouncement
 	var status_hud := STATUS_HUD_SCENE.instantiate() as TowerDefenseStatusHUD
+	var plant_placement := TowerDefensePlantPlacementCoordinator.new()
 	var map_camera := Camera2D.new()
 	var music_player := AudioStreamPlayer.new()
 	music_player.name = "MusicPlayer"
@@ -107,6 +108,7 @@ func _create_fixture() -> Dictionary:
 		countdown_audio,
 		wave_start_audio,
 		defeat_audio,
+		plant_placement,
 		coordinator,
 	]:
 		root.add_child(node)
@@ -114,6 +116,7 @@ func _create_fixture() -> Dictionary:
 	coordinator.setup(
 		runtime,
 		campaign,
+		plant_placement,
 		DAY_CYCLE,
 		map_camera,
 		music_player,
@@ -141,6 +144,7 @@ func _create_fixture() -> Dictionary:
 			countdown_audio,
 			wave_start_audio,
 			defeat_audio,
+			plant_placement,
 			coordinator,
 		] as Array[Node],
 	}

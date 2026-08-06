@@ -444,13 +444,17 @@ func _test_inventory_building_placement_authenticity(
 	var player := Player.new()
 	var plant_system := RejectingStonePlantSystem.new()
 	var runtime := TestTowerRuntime.new()
-	var tower_adapter := _bind_tower_multiplayer_mode_adapter(runtime)
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	runtime.run_state = run_state
 	runtime.plant_system = plant_system
 	runtime.peer_players = {REMOTE_PEER_ID: player}
+	var plant_runtime := TowerDefensePlantRuntimeCoordinator.new()
+	plant_runtime.name = "PlantRuntimeCoordinator"
+	runtime.add_child(plant_runtime)
+	runtime.plant_runtime_coordinator = plant_runtime
+	plant_runtime.setup(runtime.runtime_mode, null, null, plant_system, null)
 	var rejections: Array[StringName] = []
-	tower_adapter.plant_placement_rejected.connect(
+	plant_runtime.plant_placement_rejected.connect(
 		func(
 			_request_id: int,
 			_requester_peer_id: int,
@@ -462,14 +466,17 @@ func _test_inventory_building_placement_authenticity(
 		REMOTE_PEER_ID
 	)
 
-	runtime.request_multiplayer_inventory_plant_placement(
+	plant_runtime.request_multiplayer_inventory_placement(
 		REMOTE_PEER_ID,
 		501,
 		&"stone_mill",
 		Vector2i(3, 4),
 		stone_mill_slot,
 		initial_revision,
-		WOOD_STATION_ITEM.resource_path
+		WOOD_STATION_ITEM.resource_path,
+		run_state,
+		player,
+		false
 	)
 	_expect(
 		rejections == [&"invalid_inventory_item"]
@@ -484,14 +491,17 @@ func _test_inventory_building_placement_authenticity(
 	)
 
 	rejections.clear()
-	runtime.request_multiplayer_inventory_plant_placement(
+	plant_runtime.request_multiplayer_inventory_placement(
 		REMOTE_PEER_ID,
 		502,
 		&"wood_processing_station",
 		Vector2i(3, 4),
 		stone_mill_slot,
 		initial_revision,
-		STONE_MILL_ITEM.resource_path
+		STONE_MILL_ITEM.resource_path,
+		run_state,
+		player,
+		false
 	)
 	_expect(
 		rejections == [&"invalid_inventory_item"]
@@ -502,14 +512,17 @@ func _test_inventory_building_placement_authenticity(
 	)
 
 	rejections.clear()
-	runtime.request_multiplayer_inventory_plant_placement(
+	plant_runtime.request_multiplayer_inventory_placement(
 		REMOTE_PEER_ID,
 		503,
 		&"stone_mill",
 		Vector2i(3, 4),
 		stone_mill_slot,
 		initial_revision,
-		STONE_MILL_ITEM.resource_path
+		STONE_MILL_ITEM.resource_path,
+		run_state,
+		player,
+		false
 	)
 	_expect(
 		rejections == [&"invalid_position"]

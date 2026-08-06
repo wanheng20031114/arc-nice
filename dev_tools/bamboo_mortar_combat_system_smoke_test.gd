@@ -714,8 +714,9 @@ func _test_multiplayer_batch_bridge() -> void:
 		"MpGame Client视角必须拒绝权威植物批伤，不能修改敌人生命。"
 	)
 	bridge_game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	plant_runtime.set_runtime_mode(bridge_game.runtime_mode)
 	_expect(
-		not bridge_game.apply_authoritative_plant_enemy_damage_batch(
+		not plant_runtime.apply_authoritative_enemy_damage_batch(
 			77,
 			enemy,
 			PackedInt64Array([100]),
@@ -724,7 +725,7 @@ func _test_multiplayer_batch_bridge() -> void:
 			EnemyConfig.DamageType.PHYSICAL
 		)
 		and enemy.current_health == client_health_before,
-		"TowerDefenseGame Client运行时也必须在底层拒绝植物批伤。"
+		"PlantRuntime Client运行时必须在底层拒绝植物批伤。"
 	)
 	bridge_game.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
 	net_manager_stub.host = true

@@ -20,6 +20,7 @@ var spectator_camera_active := false
 
 var _runtime: TowerDefenseGame = null
 var _campaign_coordinator: TowerDefenseCampaignCoordinator = null
+var _plant_placement_coordinator: TowerDefensePlantPlacementCoordinator = null
 var _day_cycle_config: DayCycleConfig = null
 var _map_camera: Camera2D = null
 var _music_player: AudioStreamPlayer = null
@@ -37,6 +38,7 @@ var _client_last_countdown_tick_seconds := COUNTDOWN_FINAL_SECONDS + 1
 func setup(
 	runtime: TowerDefenseGame,
 	campaign_coordinator: TowerDefenseCampaignCoordinator,
+	plant_placement_coordinator: TowerDefensePlantPlacementCoordinator,
 	day_cycle_config: DayCycleConfig,
 	map_camera: Camera2D,
 	music_player: AudioStreamPlayer,
@@ -49,6 +51,7 @@ func setup(
 ) -> void:
 	_runtime = runtime
 	_campaign_coordinator = campaign_coordinator
+	_plant_placement_coordinator = plant_placement_coordinator
 	_day_cycle_config = day_cycle_config
 	_map_camera = map_camera
 	_music_player = music_player
@@ -64,6 +67,7 @@ func is_bound() -> bool:
 	return (
 		_runtime != null
 		and _campaign_coordinator != null
+		and _plant_placement_coordinator != null
 		and _day_cycle_config != null
 		and _map_camera != null
 		and _music_player != null
@@ -305,7 +309,7 @@ func end_local_spectator_camera(player_instance: Player) -> void:
 func update_local_spectator_camera(delta: float) -> void:
 	if not spectator_camera_active or _map_camera == null:
 		return
-	if _runtime._has_exclusive_modal_open():
+	if _plant_placement_coordinator.has_exclusive_modal_open():
 		return
 	var move_input := Input.get_vector(
 		&"move_left",

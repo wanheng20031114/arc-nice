@@ -222,19 +222,6 @@ static var expanded_projectile_pool_prewarm_enabled := true
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 var random_generator := RandomNumberGenerator.new()
-var multiplayer_terrain_revision: int:
-	get:
-		return plant_runtime_coordinator.multiplayer_terrain_revision
-	set(value):
-		plant_runtime_coordinator.multiplayer_terrain_revision = value
-var authored_terrain_baseline: Dictionary:
-	get:
-		return plant_runtime_coordinator.authored_terrain_baseline
-var multiplayer_terrain_overrides: Dictionary:
-	get:
-		return plant_runtime_coordinator.multiplayer_terrain_overrides
-	set(value):
-		plant_runtime_coordinator.multiplayer_terrain_overrides = value
 var _pending_music_fade_tween: Tween = null
 var music_fade_tween: Tween:
 	get:
@@ -296,14 +283,6 @@ var has_received_remote_base_health_snapshot: bool:
 	set(value):
 		home_defense_coordinator.has_received_remote_base_health_snapshot = value
 var next_multiplayer_pickup_net_id: int = 1000
-var _next_multiplayer_plant_net_id := 1
-var next_multiplayer_plant_net_id: int:
-	get:
-		return plant_runtime_coordinator.next_multiplayer_plant_net_id if plant_runtime_coordinator != null else _next_multiplayer_plant_net_id
-	set(value):
-		_next_multiplayer_plant_net_id = value
-		if plant_runtime_coordinator != null:
-			plant_runtime_coordinator.next_multiplayer_plant_net_id = value
 var _linglan_boss_started := false
 var linglan_boss_started: bool:
 	get:
@@ -880,6 +859,7 @@ func _configure_presentation_coordinator() -> bool:
 	presentation_coordinator.setup(
 		self,
 		campaign_coordinator,
+		plant_placement_coordinator,
 		day_cycle_config,
 		map_camera,
 		music_player,
@@ -974,94 +954,6 @@ func _announce_wave_phase_start(wave_number: int) -> bool:
 		wave_number,
 		day_phase_announcements_enabled
 	)
-
-
-func supports_multiplayer_terrain_state() -> bool:
-	return true
-
-
-func request_bamboo_mortar_target(
-	owner: Node2D,
-	minimum_range: float,
-	maximum_range: float,
-	callback: Callable
-) -> bool:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return false
-	return plant_runtime_coordinator.request_bamboo_mortar_target(
-		owner,
-		minimum_range,
-		maximum_range,
-		callback
-	)
-
-
-func cancel_bamboo_mortar_target_request(owner: Node) -> void:
-	plant_runtime_coordinator.cancel_bamboo_mortar_target_request(owner)
-
-
-func select_bamboo_mortar_target_sync_for_fixture(
-	center: Vector2,
-	minimum_range: float,
-	maximum_range: float
-) -> Enemy:
-	return plant_runtime_coordinator.select_bamboo_mortar_target_sync_for_fixture(
-		center,
-		minimum_range,
-		maximum_range
-	)
-
-
-func queue_bamboo_mortar_explosion(
-	landing_position: Vector2,
-	inner_radius: float,
-	outer_radius: float,
-	inner_damage: int,
-	outer_damage: int,
-	damage_source_id: int
-) -> bool:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		return false
-	return plant_runtime_coordinator.queue_bamboo_mortar_explosion(
-		landing_position,
-		inner_radius,
-		outer_radius,
-		inner_damage,
-		outer_damage,
-		damage_source_id
-	)
-
-
-func apply_authoritative_plant_enemy_damage_batch(
-	damage_source_id: int,
-	enemy: Enemy,
-	damage_amounts: PackedInt64Array,
-	hit_counts: PackedInt32Array,
-	impact_direction: Vector2,
-	damage_type: EnemyConfig.DamageType
-) -> bool:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	return plant_runtime_coordinator.apply_authoritative_enemy_damage_batch(
-		damage_source_id,
-		enemy,
-		damage_amounts,
-		hit_counts,
-		impact_direction,
-		damage_type
-	)
-
-
-func query_living_plants_in_radius_into(
-	center: Vector2,
-	radius: float,
-	result: Array[PlantDefense]
-) -> void:
-	result.clear()
-	plant_runtime_coordinator.query_living_plants_in_radius_into(center, radius, result)
-
-
-func get_bamboo_mortar_combat_metrics() -> Dictionary:
-	return plant_runtime_coordinator.get_bamboo_mortar_combat_metrics()
 
 
 func get_fixed_multiplayer_respawn_position(peer_id: int) -> Variant:
@@ -1274,14 +1166,6 @@ func _configure_plant_defense_system() -> void:
 		bamboo_mortar_combat_system,
 		TERRAIN_NETWORK_BATCH_MAX_CELLS
 	)
-	plant_runtime_coordinator.next_multiplayer_plant_net_id = _next_multiplayer_plant_net_id
-	_prepare_plant_runtime_signal_bindings()
-	if not plant_runtime_coordinator.plant_removed_for_target_cleanup.is_connected(
-		enemy_coordinator.clear_removed_plant_objective
-	):
-		plant_runtime_coordinator.plant_removed_for_target_cleanup.connect(
-			enemy_coordinator.clear_removed_plant_objective
-		)
 
 	var placement_rect := PlantSystem.DEFAULT_PLACEMENT_AREA
 	if dual_grid_terrain != null and dual_grid_terrain.world_map_layer != null:
@@ -1313,13 +1197,6 @@ func _configure_plant_defense_system() -> void:
 		plant_system.reserve_world_position(merchant.global_position)
 	if luoxi_merchant != null:
 		plant_system.reserve_world_position(luoxi_merchant.global_position)
-	if not plant_system.plant_removed.is_connected(_on_plant_removed):
-		plant_system.plant_removed.connect(_on_plant_removed)
-
-	if not plant_system.plant_placed.is_connected(_on_runtime_plant_placed):
-		plant_system.plant_placed.connect(_on_runtime_plant_placed)
-
-
 func _configure_plant_placement_coordinator() -> bool:
 	if plant_placement_coordinator == null:
 		push_error("TowerDefenseGame: 缺少静态 PlantPlacementCoordinator 节点。")
@@ -1345,232 +1222,8 @@ func _configure_plant_placement_coordinator() -> bool:
 	return plant_placement_coordinator.is_bound()
 
 
-func _prepare_plant_runtime_signal_bindings() -> void:
-	if not plant_runtime_coordinator.enemy_retarget_requested.is_connected(
-		enemy_coordinator.request_retarget
-	):
-		plant_runtime_coordinator.enemy_retarget_requested.connect(
-			enemy_coordinator.request_retarget
-		)
-	if not plant_runtime_coordinator.progression_plant_placed.is_connected(
-		campaign_coordinator.track_progression_plant_placement
-	):
-		plant_runtime_coordinator.progression_plant_placed.connect(
-			campaign_coordinator.track_progression_plant_placement
-		)
-func _on_runtime_plant_placed(plant: PlantDefense) -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.handle_plant_placed(plant)
-
-
-func _on_plant_terrain_decay_timer_timeout() -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.apply_unsupported_terrain_damage_tick()
-
-
-func _update_plant_placement_input_state() -> void:
-	if plant_placement_coordinator != null:
-		plant_placement_coordinator.set_flow_state(
-			campaign_coordinator.wave_state
-		)
-
-
-func _refresh_player_modal_ui_lock() -> void:
-	if plant_placement_coordinator != null:
-		plant_placement_coordinator.refresh_interaction_state()
-
-
-func _has_exclusive_modal_open() -> bool:
-	return (
-		plant_placement_coordinator != null
-		and plant_placement_coordinator.has_exclusive_modal_open()
-	)
-
-
-func _cancel_plant_placement() -> void:
-	if plant_placement_coordinator != null:
-		plant_placement_coordinator.cancel_placement()
-
-
-func begin_inventory_building_placement(
-	slot_index: int,
-	expected_inventory_revision: int = -1
-) -> bool:
-	return (
-		plant_placement_coordinator != null
-		and plant_placement_coordinator.begin_inventory_building_placement(
-			slot_index,
-			expected_inventory_revision
-		)
-	)
-
-
 func _on_personal_inventory_output_committed(peer_id: int) -> void:
 	tower_multiplayer_mode_adapter.publish_inventory_changed(peer_id)
-
-
-func request_multiplayer_plant_placement(
-	requester_peer_id: int,
-	request_id: int,
-	plant_id: StringName,
-	anchor: Vector2i
-) -> void:
-	var placement_player := get_player_for_peer(requester_peer_id)
-	_prepare_plant_runtime_signal_bindings()
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.request_multiplayer_free_placement(
-		requester_peer_id,
-		request_id,
-		plant_id,
-		anchor,
-		placement_player,
-		campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE,
-		sandbox_free_building_enabled
-	)
-
-
-func request_multiplayer_inventory_plant_placement(
-	requester_peer_id: int,
-	request_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	slot_index: int,
-	expected_inventory_revision: int,
-	item_config_path: String
-) -> void:
-	var placement_player := get_player_for_peer(requester_peer_id)
-	_prepare_plant_runtime_signal_bindings()
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.request_multiplayer_inventory_placement(
-		requester_peer_id,
-		request_id,
-		plant_id,
-		anchor,
-		slot_index,
-		expected_inventory_revision,
-		item_config_path,
-		run_state,
-		placement_player,
-		campaign_coordinator.wave_state == CombatFlowState.State.FATE_INTERLUDE
-	)
-
-
-func _on_plant_removed(plant: PlantDefense) -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.handle_plant_removed(plant)
-
-
-func apply_remote_plant_spawn(
-	request_id: int,
-	owner_peer_id: int,
-	net_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	current_health: int,
-	maximum_health: int,
-	health_revision: int
-) -> void:
-	var owner := get_player_for_peer(owner_peer_id)
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.apply_remote_plant_spawn(
-		request_id,
-		owner,
-		net_id,
-		plant_id,
-		anchor,
-		current_health,
-		maximum_health,
-		health_revision
-	)
-
-
-func apply_remote_plant_health(
-	net_id: int,
-	current_health: int,
-	maximum_health: int,
-	health_revision: int
-) -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.apply_remote_plant_health(
-		net_id, current_health, maximum_health, health_revision
-	)
-
-
-func apply_remote_plant_removed(net_id: int) -> void:
-	apply_remote_plant_removed_with_reason(net_id, false)
-
-
-func apply_remote_plant_removed_with_reason(
-	net_id: int,
-	was_destroyed: bool
-) -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.apply_remote_plant_removed(net_id, was_destroyed, false)
-
-
-func apply_remote_plant_removed_silently(net_id: int) -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.apply_remote_plant_removed(net_id, false, true)
-
-
-func apply_remote_plant_placement_rejected(request_id: int, _reason: StringName) -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.apply_remote_placement_rejected(request_id)
-
-
-func has_multiplayer_plant(net_id: int) -> bool:
-	return plant_runtime_coordinator.has_multiplayer_plant(net_id)
-
-
-func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
-	return plant_runtime_coordinator.get_multiplayer_plant(net_id)
-
-
-func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
-	return plant_runtime_coordinator.get_multiplayer_plant_snapshots()
-
-
-func get_multiplayer_terrain_snapshot() -> Dictionary:
-	return plant_runtime_coordinator.get_terrain_snapshot()
-
-
-func apply_remote_terrain_snapshot(
-	revision: int,
-	cell_xy: PackedInt32Array,
-	terrain_types: PackedInt32Array
-) -> bool:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	return plant_runtime_coordinator.apply_remote_terrain_snapshot(
-		revision, cell_xy, terrain_types
-	)
-
-
-func apply_remote_terrain_delta(
-	revision: int,
-	cell_xy: PackedInt32Array,
-	terrain_types: PackedInt32Array
-) -> bool:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	return plant_runtime_coordinator.apply_remote_terrain_delta(
-		revision, cell_xy, terrain_types
-	)
-
-
-func _on_authoritative_vegetation_terrain_changed(
-	cell_xy: PackedInt32Array,
-	terrain_types: PackedInt32Array
-) -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.apply_authoritative_terrain_changes(
-		cell_xy, terrain_types, TERRAIN_NETWORK_BATCH_MAX_CELLS
-	)
-
-
-func _is_valid_terrain_payload(
-	cell_xy: PackedInt32Array,
-	terrain_types: PackedInt32Array
-) -> bool:
-	return plant_runtime_coordinator.is_valid_terrain_payload(cell_xy, terrain_types)
 
 
 func _get_selected_singleplayer_character_id() -> StringName:
@@ -1985,12 +1638,6 @@ func _configure_timers() -> void:
 	plant_terrain_decay_timer.one_shot = false
 	plant_terrain_decay_timer.wait_time = UNSUPPORTED_PLANT_DAMAGE_INTERVAL_SECONDS
 	plant_terrain_decay_timer.process_callback = Timer.TIMER_PROCESS_PHYSICS
-	if not plant_terrain_decay_timer.timeout.is_connected(
-		_on_plant_terrain_decay_timer_timeout
-	):
-		plant_terrain_decay_timer.timeout.connect(
-			_on_plant_terrain_decay_timer_timeout
-		)
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		plant_terrain_decay_timer.stop()
 	else:

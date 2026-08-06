@@ -4,7 +4,9 @@ const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const SnapshotManager := preload("res://scene/multiplayer/snapshot_manager.gd")
 const MpGameScript := preload("res://scene/multiplayer/mp_game.gd")
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
-const TOWER_DEFENSE_RUNTIME_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.gd"
+const TOWER_DEFENSE_PLANT_RUNTIME_PATH := (
+	"res://scene/game_modes/tower_defense/plant/tower_defense_plant_runtime_coordinator.gd"
+)
 const PROJECTILE_SEQUENCE_MAX: int = 0xFFFFFFFF
 const PROJECTILE_HOST_ORIGIN_BIT: int = 0x80000000
 const PROJECTILE_SEQUENCE_COUNTER_MAX: int = 0x7FFFFFFF
@@ -1658,17 +1660,15 @@ func _test_runtime_state_send_order() -> void:
 
 
 func _test_plant_removal_restore_order() -> void:
-	var source := FileAccess.get_file_as_string(TOWER_DEFENSE_RUNTIME_PATH)
-	var function_start := source.find("func _on_plant_removed(")
+	var source := FileAccess.get_file_as_string(TOWER_DEFENSE_PLANT_RUNTIME_PATH)
+	var function_start := source.find("func handle_plant_removed(")
 	var function_end := source.find("\n\nfunc ", function_start + 1)
 	var function_body := (
 		source.substr(function_start, function_end - function_start)
 		if function_start >= 0 and function_end > function_start
 		else ""
 	)
-	var removal_signal_position := function_body.find(
-		"tower_multiplayer_mode_adapter.plant_removed.emit"
-	)
+	var removal_signal_position := function_body.find("network_plant_removed.emit")
 	var cancel_position := function_body.find("vegetation_spread_system.cancel_source")
 	_expect(
 		removal_signal_position >= 0

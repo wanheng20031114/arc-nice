@@ -274,7 +274,7 @@ func _test_host_rejects_free_placement() -> void:
 			})
 	)
 	var plant_count_before := game.plant_container.get_child_count()
-	game.request_multiplayer_plant_placement(
+	game.tower_multiplayer_mode_adapter.request_authoritative_plant_placement(
 		2,
 		77,
 		PlantDefenseRegistry.AGAVE_CANNON_ID,
