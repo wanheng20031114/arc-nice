@@ -77,6 +77,20 @@ func _run() -> void:
 	var p1_definition := GameModeCatalog.get_definition(2)
 	var p1b_definition := GameModeCatalog.get_definition(5)
 	var p2_definition := GameModeCatalog.get_definition(3)
+	var standard_definition := GameModeCatalog.get_definition(0)
+	_expect(
+		standard_definition != null
+		and standard_definition.multiplayer_entry_scene_path
+		== "res://scene/game_modes/standard/multiplayer/standard_multiplayer_session.tscn",
+		"Standard mode must own its multiplayer session entry."
+	)
+	for definition in [tower_definition, p1_definition, p1b_definition, p2_definition]:
+		_expect(
+			definition != null
+			and definition.multiplayer_entry_scene_path
+			== "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_session.tscn",
+			"Tower-defense modes must share the tower-defense session entry."
+		)
 	for definition in [tower_definition, p1_definition, p1b_definition, p2_definition]:
 		var preload_paths := GameModeCatalog.get_preload_resource_paths(definition)
 		_expect(

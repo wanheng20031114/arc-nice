@@ -1,0 +1,5 @@
+[gd_scene load_steps=2 format=3 uid="uid://d3j7m9p2x6v4q"]
+
+[ext_resource type="PackedScene" path="res://scene/multiplayer/mp_game.tscn" id="1_base"]
+
+[node name="MpGame" instance=ExtResource("1_base")]
