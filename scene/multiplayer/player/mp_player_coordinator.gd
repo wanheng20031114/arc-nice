@@ -942,6 +942,33 @@ func send_active_tango_electric_surges_to_peer(target_peer_id: int) -> void:
 		)
 
 
+func send_authoritative_positions_to_peer(target_peer_id: int) -> void:
+	if (
+		target_peer_id <= 0
+		or not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+	):
+		return
+	for state_peer_id_variant in _runtime.peer_players.keys():
+		var state_peer_id := int(state_peer_id_variant)
+		var player_node := _runtime.get_player_for_peer(state_peer_id)
+		if (
+			state_peer_id <= 0
+			or player_node == null
+			or not is_instance_valid(player_node)
+		):
+			continue
+		player_action_rpc_to_peer_requested.emit(
+			target_peer_id,
+			&"net_player_authoritative_teleported",
+			[
+				state_peer_id,
+				player_node.global_position,
+				get_host_snapshot_sequence(),
+			]
+		)
+
+
 func apply_authoritative_tango_charge_snapshot_ratios(
 	states: Array[SnapshotManager.PlayerState],
 	sample_time: float

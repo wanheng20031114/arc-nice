@@ -93,6 +93,7 @@ func _ready() -> void:
 		net_manager,
 		public_room_keepalive_request
 	)
+	_connect_session_coordinator_signals()
 	player_coordinator.randomize_revive_generator()
 	merchant_transactions_coordinator.randomize_offer_generator()
 	_connect_world_flow_coordinator_signals()
@@ -123,6 +124,37 @@ func _ready() -> void:
 		_announce_embedded_runtime_when_prepared()
 	else:
 		_report_game_loaded_when_prepared()
+
+
+func _connect_session_coordinator_signals() -> void:
+	if not session_coordinator.rpc_to_peer_requested.is_connected(
+		_on_session_rpc_to_peer_requested
+	):
+		session_coordinator.rpc_to_peer_requested.connect(
+			_on_session_rpc_to_peer_requested
+		)
+	if not session_coordinator.runtime_repair_plant_roster_requested.is_connected(
+		_on_session_runtime_repair_plant_roster_requested
+	):
+		session_coordinator.runtime_repair_plant_roster_requested.connect(
+			_on_session_runtime_repair_plant_roster_requested
+		)
+
+
+func _on_session_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	if peer_id <= 0 or not is_inside_tree() or not net_manager.is_host():
+		return
+	_rpc_to_peer(peer_id, method_name, arguments)
+
+
+func _on_session_runtime_repair_plant_roster_requested(peer_id: int) -> void:
+	if peer_id <= 0 or not is_inside_tree() or not net_manager.is_host():
+		return
+	_send_live_plant_roster_to_peer(peer_id)
 
 
 func _connect_world_flow_coordinator_signals() -> void:
@@ -1722,6 +1754,9 @@ func _setup_game(mode: int) -> bool:
 		net_manager,
 		session_coordinator.get_net_time_origin()
 	)
+	world_flow_coordinator.bind_merchant_transactions_coordinator(
+		merchant_transactions_coordinator
+	)
 	collectible_presentation_coordinator.bind_runtime(
 		game,
 		self,
@@ -1761,6 +1796,14 @@ func _setup_game(mode: int) -> bool:
 		enemy_coordinator,
 		tower_world_coordinator,
 		tower_economy_coordinator
+	)
+	session_coordinator.bind_runtime_repair_dependencies(
+		player_coordinator,
+		transactions_coordinator,
+		merchant_transactions_coordinator,
+		tower_fate_coordinator,
+		network_diagnostics_coordinator,
+		tower_mode_adapter
 	)
 	if net_manager.is_host():
 		if _linglan_boss_runtime_port != null:
@@ -1866,130 +1909,8 @@ func _request_runtime_state_from_host() -> void:
 	)
 
 
-func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void:
-	if not net_manager.is_host() or game == null or peer_id <= 0:
-		return
-	if not net_manager.is_peer_send_ready(peer_id):
-		return
-	network_diagnostics_coordinator.record_state_repair()
-	tower_world_coordinator.request_terrain_snapshot_for_peer(peer_id)
-	_send_live_plant_roster_to_peer(peer_id)
-	for state_peer_id_variant in game.peer_players.keys():
-		var state_peer_id := int(state_peer_id_variant)
-		if state_peer_id <= 0 or not run_state.has_multiplayer_peer_state(state_peer_id):
-			continue
-		_rpc_to_peer(
-			peer_id,
-			&"net_inventory_snapshot",
-			[
-				state_peer_id,
-				run_state.export_inventory_snapshot_for_peer(state_peer_id),
-				true,
-			]
-		)
-	merchant_transactions_coordinator.send_offer_state_if_present(peer_id)
-	enemy_coordinator.send_live_spawn_roster_to_peer(peer_id)
-	world_flow_coordinator.send_live_pickup_roster_to_peer(peer_id)
-	if _has_tower_mode():
-		tower_world_coordinator.request_base_health_snapshot_for_peer(peer_id)
-	var progress_snapshot := world_flow_coordinator.get_wave_progress_snapshot()
-	if not progress_snapshot.is_empty():
-		_rpc_to_peer(
-			peer_id,
-			&"net_tower_defense_wave_progress_keyframe",
-			[
-				int(progress_snapshot.get("wave_number", 1)),
-				int(progress_snapshot.get("defeated", 0)),
-				int(progress_snapshot.get("escaped", 0)),
-				int(progress_snapshot.get("resolved", 0)),
-				int(progress_snapshot.get("total", 0)),
-			]
-		)
-	if _has_tower_mode():
-		tower_fate_coordinator.send_fate_state_to_peer(peer_id)
-		if tower_mode_adapter.is_fate_interlude_active():
-			_send_authoritative_player_positions_to_peer(peer_id)
-	if _has_tower_mode():
-		tower_world_coordinator.request_test_arena_manual_night_for_peer(
-			peer_id
-		)
-	if include_flow_state:
-		var flow_snapshot := world_flow_coordinator.get_flow_state_snapshot()
-		if not flow_snapshot.is_empty():
-			_rpc_to_peer(
-				peer_id,
-				&"net_flow_state_changed",
-				[
-					String(flow_snapshot.get("step_id", &"")),
-					int(flow_snapshot.get("state", CombatFlowState.State.PRE_WAVE)),
-					int(flow_snapshot.get("countdown_seconds", 0)),
-				]
-			)
-	player_coordinator.send_active_tango_electric_surges_to_peer(peer_id)
-	player_coordinator.send_active_tiyi_high_noon_to_peer(peer_id)
-	_send_runtime_world_manifest_to_peer(peer_id)
-
-
-func _send_authoritative_player_positions_to_peer(target_peer_id: int) -> void:
-	if game == null or target_peer_id <= 0:
-		return
-	for state_peer_id_variant in game.peer_players.keys():
-		var state_peer_id := int(state_peer_id_variant)
-		var player_node := game.get_player_for_peer(state_peer_id)
-		if (
-			state_peer_id <= 0
-			or player_node == null
-			or not is_instance_valid(player_node)
-		):
-			continue
-		_rpc_to_peer(
-			target_peer_id,
-			&"net_player_authoritative_teleported",
-			[
-				state_peer_id,
-				player_node.global_position,
-				player_coordinator.get_host_snapshot_sequence(),
-			]
-		)
-
-
 func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 	tower_world_coordinator.send_live_plant_roster_to_peer(peer_id)
-
-
-func _send_runtime_world_manifest_to_peer(peer_id: int) -> void:
-	var live_enemy_ids := PackedInt32Array()
-	var live_pickup_ids := PackedInt32Array()
-	var live_plant_ids := PackedInt32Array()
-	var sorted_enemy_ids: Array[int] = []
-	for net_id_variant in game.multiplayer_enemies_by_net_id.keys():
-		sorted_enemy_ids.append(int(net_id_variant))
-	sorted_enemy_ids.sort()
-	for net_id in sorted_enemy_ids:
-		var enemy_variant: Variant = game.multiplayer_enemies_by_net_id.get(net_id)
-		if enemy_variant == null or not is_instance_valid(enemy_variant):
-			continue
-		var enemy := enemy_variant as Enemy
-		if enemy != null and is_instance_valid(enemy) and not enemy.is_dead:
-			live_enemy_ids.append(net_id)
-	var sorted_pickup_ids: Array[int] = []
-	for net_id_variant in game.multiplayer_pickups.keys():
-		sorted_pickup_ids.append(int(net_id_variant))
-	sorted_pickup_ids.sort()
-	for net_id in sorted_pickup_ids:
-		var pickup_variant: Variant = game.multiplayer_pickups.get(net_id)
-		if pickup_variant == null or not is_instance_valid(pickup_variant):
-			continue
-		var pickup := pickup_variant as Pickup
-		if pickup != null and is_instance_valid(pickup):
-			live_pickup_ids.append(net_id)
-	if _has_tower_mode():
-		live_plant_ids = tower_world_coordinator.build_live_plant_ids()
-	_rpc_to_peer(
-		peer_id,
-		&"net_runtime_world_manifest",
-		[live_enemy_ids, live_pickup_ids, live_plant_ids]
-	)
 
 
 func _host_physics_tick(frame: int, _delta: float) -> void:
@@ -2023,34 +1944,11 @@ func _sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
 
 
 func _get_connected_client_peer_ids() -> Array[int]:
-	var result: Array[int] = []
-	if net_manager == null:
-		return result
-	var connected_players := net_manager.connected_players
-	var host_peer_id := _get_host_peer_id()
-	for peer_id_variant in connected_players:
-		var peer_id := int(peer_id_variant)
-		if peer_id <= 0 or peer_id == host_peer_id:
-			continue
-		if embedded_runtime and not _embedded_participant_peer_ids.has(peer_id):
-			continue
-		if (
-			embedded_runtime
-			and _suspended_embedded_participant_peer_ids.has(peer_id)
-		):
-			continue
-		if (
-			embedded_runtime
-			and (
-				game == null
-				or game.get_player_for_peer(peer_id) == null
-			)
-		):
-			continue
-		if not net_manager.is_peer_send_ready(peer_id):
-			continue
-		result.append(peer_id)
-	return result
+	return session_coordinator.get_connected_client_peer_ids(
+		embedded_runtime,
+		_embedded_participant_peer_ids,
+		_suspended_embedded_participant_peer_ids
+	)
 
 
 func _filter_embedded_peer_map(source: Dictionary) -> Dictionary:
@@ -3664,8 +3562,6 @@ func broadcast_enemy_lightning_chain(points: PackedVector2Array) -> void:
 func _on_world_flow_merchant_active_broadcast_requested(active: bool) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
-	if active:
-		merchant_transactions_coordinator.clear_offer_states()
 	_rpc_to_connected_clients(&"net_merchant_active_changed", [active])
 
 
@@ -3775,14 +3671,11 @@ func _handle_authoritative_runtime_state_request(
 	sender_id: int,
 	include_flow_state: bool
 ) -> bool:
-	if not session_coordinator.admit_authoritative_runtime_state_request(
-		net_manager.is_host(),
+	return session_coordinator.handle_authoritative_runtime_state_request(
 		sender_id,
+		include_flow_state,
 		_get_net_time()
-	):
-		return false
-	_send_runtime_state_to_peer(sender_id, include_flow_state)
-	return true
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 0)

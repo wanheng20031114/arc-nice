@@ -36,6 +36,7 @@ var _gameplay_gateway: MultiplayerGameplayGateway = null
 var _run_state: RunStateStore = null
 var _net_manager: NetManagerStore = null
 var _linglan_boss_runtime_port: LinglanBossRuntimePort = null
+var _merchant_transactions_coordinator: MpMerchantTransactionsCoordinator = null
 var _pending_wave_progress: Dictionary = {}
 var _wave_progress_flush_time_left := WAVE_PROGRESS_FLUSH_INTERVAL_SECONDS
 var _client_has_received_flow_state := false
@@ -93,6 +94,17 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	_run_state = null
 	_net_manager = null
 	_linglan_boss_runtime_port = null
+	_merchant_transactions_coordinator = null
+
+
+func bind_merchant_transactions_coordinator(
+	coordinator: MpMerchantTransactionsCoordinator
+) -> void:
+	assert(
+		coordinator != null,
+		"MpWorldFlowCoordinator 缺少商人事务协调器。"
+	)
+	_merchant_transactions_coordinator = coordinator
 
 
 func is_bound() -> bool:
@@ -559,6 +571,12 @@ func _on_host_pickup_collected(
 func _on_host_merchant_active_changed(active: bool) -> void:
 	if not is_host_authority():
 		return
+	if active:
+		assert(
+			_merchant_transactions_coordinator != null,
+			"MpWorldFlowCoordinator 激活商人前未绑定商人事务协调器。"
+		)
+		_merchant_transactions_coordinator.clear_offer_states()
 	merchant_active_broadcast_requested.emit(active)
 
 
