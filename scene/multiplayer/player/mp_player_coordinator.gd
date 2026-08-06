@@ -2,6 +2,19 @@ extends Node
 class_name MpPlayerCoordinator
 
 signal life_rpc_broadcast_requested(method_name: StringName, arguments: Array)
+signal player_action_rpc_to_host_requested(
+	method_name: StringName,
+	arguments: Array
+)
+signal player_action_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+)
+signal player_action_rpc_broadcast_requested(
+	method_name: StringName,
+	arguments: Array
+)
 signal player_state_correction_requested(
 	peer_id: int,
 	corrected_position: Vector2,
@@ -14,6 +27,18 @@ const SHARED_SNAPSHOT_COHORT_ID := -1
 const PLAYER_DELTA_KEYFRAME_INTERVAL_SECONDS := 0.5
 const PLAYER_REVIVE_INVINCIBILITY_SECONDS := 3.0
 const HIT_DEDUP_RETENTION_SECONDS := 30.0
+const INPUT_BUTTON_RELOAD := 2
+const INPUT_BUTTON_DASH := 4
+const DASH_INPUT_REDUNDANCY_PACKETS := 3
+const DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS := 0.35
+const PLAYER_STATE_MAX_ACCEPTED_JUMP_DISTANCE := 2048.0
+const PLAYER_STATE_POSITION_TOLERANCE := 24.0
+const PLAYER_STATE_MAX_VALIDATION_SECONDS := 0.25
+const PLAYER_STATE_SPEED_TOLERANCE_MULTIPLIER := 1.75
+const PLAYER_ACTION_INGRESS_RATE_PER_SECOND := 24.0
+const PLAYER_ACTION_INGRESS_RATE_BURST := 32.0
+const HOE_ACTION_PRIMARY := &"primary"
+const HOE_ACTION_WHIRLWIND := &"whirlwind"
 const FIRE_SLIME_TOUCH_TYPE: StringName = &"fire_slime_touch"
 const FROST_SLIME_TOUCH_TYPE: StringName = &"frost_slime_touch"
 const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
@@ -41,6 +66,9 @@ var _cancel_actions_for_revive_callable := Callable()
 var _clear_tiyi_lifecycle_state_callable := Callable()
 var _get_revive_anchor_position_callable := Callable()
 var _commit_revive_position_callable := Callable()
+var _action_net_manager: NetManagerStore = null
+var _get_action_net_time_callable := Callable()
+var _is_embedded_participant_suspended_callable := Callable()
 var _snapshot_manager := SnapshotManager.new()
 var _visual_interpolators: Dictionary[int, NetInterpolator] = {}
 var _teleport_cutoff_sequences: Dictionary[int, int] = {}
@@ -57,6 +85,21 @@ var _player_health_revisions: Dictionary = {}
 var _dead_player_revive_times: Dictionary = {}
 var _dead_player_revive_last_seconds: Dictionary = {}
 var _revive_random_generator := RandomNumberGenerator.new()
+var _local_dash_request_sequence := 0
+var _pending_dash_request_sequence := 0
+var _pending_dash_direction := Vector2.ZERO
+var _pending_dash_start_move_input := Vector2.ZERO
+var _pending_dash_input_packets := 0
+var _local_hoe_action_request_id := 0
+var _last_player_state_sequences: Dictionary[int, int] = {}
+var _last_dash_request_sequences: Dictionary[int, int] = {}
+var _last_dash_confirmed_sequences: Dictionary[int, int] = {}
+var _last_dash_accepted_times: Dictionary[int, float] = {}
+var _hoe_action_sequences_by_peer: Dictionary[int, int] = {}
+var _last_hoe_action_request_ids: Dictionary[int, int] = {}
+var _accepted_player_state_positions: Dictionary[int, Vector2] = {}
+var _accepted_player_state_times: Dictionary[int, float] = {}
+var _player_action_ingress_rate_buckets: Dictionary[int, Dictionary] = {}
 
 
 func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
@@ -73,11 +116,708 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 		return
 	_runtime = null
 	_clear_life_dependencies()
+	_clear_player_action_dependencies()
 	reset_session_state()
 
 
 func is_bound() -> bool:
 	return _runtime != null and is_instance_valid(_runtime)
+
+
+func bind_player_action_dependencies(
+	net_manager_instance: NetManagerStore,
+	get_net_time_callable: Callable,
+	is_embedded_participant_suspended_callable: Callable
+) -> void:
+	assert(net_manager_instance != null, "MpPlayerCoordinator 缺少动作 NetManager。")
+	assert(
+		get_net_time_callable.is_valid(),
+		"MpPlayerCoordinator 缺少动作网络时钟。"
+	)
+	assert(
+		is_embedded_participant_suspended_callable.is_valid(),
+		"MpPlayerCoordinator 缺少内嵌参战者状态入口。"
+	)
+	_action_net_manager = net_manager_instance
+	_get_action_net_time_callable = get_net_time_callable
+	_is_embedded_participant_suspended_callable = (
+		is_embedded_participant_suspended_callable
+	)
+
+
+func has_player_action_dependencies() -> bool:
+	return (
+		is_bound()
+		and _action_net_manager != null
+		and is_instance_valid(_action_net_manager)
+		and _get_action_net_time_callable.is_valid()
+		and _is_embedded_participant_suspended_callable.is_valid()
+	)
+
+
+func notify_local_player_dash_started(
+	direction: Vector2,
+	start_move_input: Vector2,
+	client_host_game_ready: bool
+) -> void:
+	if not has_player_action_dependencies() or not client_host_game_ready:
+		return
+	if not _is_finite_vector2(direction) or not _is_finite_vector2(start_move_input):
+		return
+	if direction.length_squared() <= 0.001 or start_move_input.length_squared() <= 0.001:
+		return
+	var peer_id := _get_action_local_peer_id()
+	var player_node := _runtime.get_player_for_peer(peer_id)
+	if (
+		player_node == null
+		or not is_instance_valid(player_node)
+		or not player_node.is_dashing()
+	):
+		return
+	var safe_direction := direction.normalized()
+	var safe_start_move_input := start_move_input.limit_length(1.0)
+	if safe_direction.dot(safe_start_move_input.normalized()) < 0.8:
+		return
+	_local_dash_request_sequence += 1
+	_pending_dash_request_sequence = _local_dash_request_sequence
+	_pending_dash_direction = safe_direction
+	_pending_dash_start_move_input = safe_start_move_input
+	_pending_dash_input_packets = DASH_INPUT_REDUNDANCY_PACKETS
+	if _action_net_manager.is_host():
+		_pending_dash_input_packets = 0
+		_broadcast_player_dash_confirmed(
+			peer_id,
+			safe_direction,
+			_pending_dash_request_sequence
+		)
+	elif _action_net_manager.is_client():
+		player_action_rpc_to_host_requested.emit(
+			&"net_player_dash_requested",
+			[
+				_pending_dash_request_sequence,
+				safe_direction,
+				safe_start_move_input,
+			]
+		)
+
+
+func has_pending_dash_input_packet() -> bool:
+	return _pending_dash_input_packets > 0
+
+
+func get_pending_dash_request_sequence() -> int:
+	return _pending_dash_request_sequence
+
+
+func get_pending_dash_direction() -> Vector2:
+	return _pending_dash_direction
+
+
+func get_pending_dash_start_move_input() -> Vector2:
+	return _pending_dash_start_move_input
+
+
+func consume_pending_dash_input_packet() -> void:
+	if _pending_dash_input_packets <= 0:
+		return
+	_pending_dash_input_packets -= 1
+	if _pending_dash_input_packets <= 0:
+		_clear_pending_dash_input()
+
+
+func request_hoe_primary_attack(
+	direction: Vector2,
+	client_host_game_ready: bool
+) -> bool:
+	if not has_player_action_dependencies() or not client_host_game_ready:
+		return false
+	var peer_id := _get_action_local_peer_id()
+	var hoe_player := _get_hoe_player(peer_id)
+	if hoe_player == null:
+		return false
+	var safe_direction := _sanitize_hoe_action_direction(hoe_player, direction)
+	if _action_net_manager.is_host():
+		return apply_authoritative_hoe_action(
+			peer_id,
+			HOE_ACTION_PRIMARY,
+			safe_direction
+		)
+	if not _action_net_manager.is_client():
+		return false
+	_local_hoe_action_request_id += 1
+	hoe_player.play_predicted_hoe_action(
+		HOE_ACTION_PRIMARY,
+		safe_direction,
+		_local_hoe_action_request_id
+	)
+	player_action_rpc_to_host_requested.emit(
+		&"net_hoe_primary_attack_requested",
+		[safe_direction, _local_hoe_action_request_id]
+	)
+	return true
+
+
+func request_hoe_whirlwind(client_host_game_ready: bool) -> bool:
+	if not has_player_action_dependencies() or not client_host_game_ready:
+		return false
+	var peer_id := _get_action_local_peer_id()
+	var hoe_player := _get_hoe_player(peer_id)
+	if hoe_player == null:
+		return false
+	if _action_net_manager.is_host():
+		return apply_authoritative_hoe_action(
+			peer_id,
+			HOE_ACTION_WHIRLWIND,
+			Vector2.ZERO
+		)
+	if not _action_net_manager.is_client():
+		return false
+	_local_hoe_action_request_id += 1
+	hoe_player.play_predicted_hoe_action(
+		HOE_ACTION_WHIRLWIND,
+		Vector2.ZERO,
+		_local_hoe_action_request_id
+	)
+	player_action_rpc_to_host_requested.emit(
+		&"net_hoe_whirlwind_requested",
+		[_local_hoe_action_request_id]
+	)
+	return true
+
+
+func handle_client_player_state(
+	sender_id: int,
+	sequence: int,
+	reported_position: Vector2,
+	reported_velocity: Vector2,
+	move_input: Vector2,
+	shoot_input: Vector2,
+	buttons: int,
+	dash_request_sequence: int,
+	dash_direction: Vector2,
+	dash_start_move_input: Vector2
+) -> void:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or sender_id <= 0
+	):
+		return
+	var player_node := _runtime.get_player_for_peer(sender_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	if player_node.is_dead or player_node.controls_locked:
+		player_state_correction_requested.emit(
+			sender_id,
+			player_node.global_position,
+			player_node.velocity
+		)
+		return
+	if not accept_client_player_state(
+		sender_id,
+		sequence,
+		reported_position,
+		reported_velocity
+	):
+		player_state_correction_requested.emit(
+			sender_id,
+			player_node.global_position,
+			player_node.velocity
+		)
+		return
+	var combat_actions_locked := player_node.are_combat_actions_locked()
+	if combat_actions_locked:
+		shoot_input = Vector2.ZERO
+	var use_reload := (
+		(buttons & INPUT_BUTTON_RELOAD) != 0
+		and not combat_actions_locked
+	)
+	if (buttons & INPUT_BUTTON_DASH) != 0:
+		var dash_movement_evidence := dash_start_move_input
+		if dash_movement_evidence.length_squared() <= 0.001:
+			dash_movement_evidence = move_input
+		if dash_movement_evidence.length_squared() <= 0.001:
+			dash_movement_evidence = reported_velocity
+		try_accept_client_dash_request(
+			sender_id,
+			player_node,
+			dash_request_sequence,
+			dash_direction,
+			dash_movement_evidence
+		)
+	apply_accepted_client_player_state(
+		sender_id,
+		player_node,
+		reported_position,
+		reported_velocity,
+		shoot_input,
+		false,
+		use_reload
+	)
+
+
+func accept_client_player_state(
+	peer_id: int,
+	sequence: int,
+	reported_position: Vector2,
+	reported_velocity: Vector2
+) -> bool:
+	if not has_player_action_dependencies():
+		return false
+	var last_sequence := int(_last_player_state_sequences.get(peer_id, 0))
+	if sequence <= last_sequence:
+		return false
+	_last_player_state_sequences[peer_id] = sequence
+	if not _is_finite_vector2(reported_position) or not _is_finite_vector2(reported_velocity):
+		return false
+	var now := _get_action_net_time()
+	var player_node := _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	if not _accepted_player_state_positions.has(peer_id):
+		if (
+			player_node.global_position.distance_to(reported_position)
+			> PLAYER_STATE_POSITION_TOLERANCE * 4.0
+		):
+			return false
+		remember_accepted_player_pose(peer_id, reported_position, now)
+		return true
+	var previous_position := _accepted_player_state_positions[peer_id]
+	var previous_time := float(_accepted_player_state_times.get(peer_id, now))
+	var elapsed := clampf(
+		now - previous_time,
+		1.0 / 120.0,
+		PLAYER_STATE_MAX_VALIDATION_SECONDS
+	)
+	var effective_speed := maxf(player_node.move_speed, 1.0)
+	var allowed_distance := (
+		effective_speed * elapsed * PLAYER_STATE_SPEED_TOLERANCE_MULTIPLIER
+		+ PLAYER_STATE_POSITION_TOLERANCE
+	)
+	var last_dash_time := float(_last_dash_accepted_times.get(peer_id, -INF))
+	if now - last_dash_time <= DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS:
+		allowed_distance += maxf(player_node.get_dash_distance(), 0.0)
+	allowed_distance = minf(allowed_distance, PLAYER_STATE_MAX_ACCEPTED_JUMP_DISTANCE)
+	var movement_delta := reported_position - previous_position
+	if movement_delta.length() > allowed_distance:
+		return false
+	if reported_velocity.length() > effective_speed * 3.0 + PLAYER_STATE_POSITION_TOLERANCE:
+		return false
+	if (
+		movement_delta.length_squared() > 0.001
+		and player_node.test_move(player_node.global_transform, movement_delta)
+	):
+		return false
+	remember_accepted_player_pose(peer_id, reported_position, now)
+	return true
+
+
+func apply_accepted_client_player_state(
+	sender_id: int,
+	player_node: Player,
+	reported_position: Vector2,
+	reported_velocity: Vector2,
+	shoot_input: Vector2,
+	use_skill1: bool,
+	use_reload: bool = false
+) -> void:
+	if sender_id <= 0 or player_node == null or not is_instance_valid(player_node):
+		return
+	player_node.apply_remote_multiplayer_state(
+		reported_position,
+		reported_velocity,
+		shoot_input,
+		use_skill1,
+		use_reload
+	)
+	remember_latest_client_state(
+		true,
+		sender_id,
+		reported_position,
+		reported_velocity,
+		player_node.get_multiplayer_facing_id(),
+		player_node.get_multiplayer_anim_state()
+	)
+
+
+func handle_dash_request(
+	sender_id: int,
+	dash_request_sequence: int,
+	direction: Vector2,
+	start_move_input: Vector2
+) -> void:
+	if not consume_remote_player_action_admission(sender_id):
+		return
+	try_accept_client_dash_request(
+		sender_id,
+		_runtime.get_player_for_peer(sender_id),
+		dash_request_sequence,
+		direction,
+		start_move_input
+	)
+
+
+func try_accept_client_dash_request(
+	peer_id: int,
+	player_node: Player,
+	dash_request_sequence: int,
+	direction: Vector2,
+	movement_evidence: Vector2
+) -> bool:
+	if not has_player_action_dependencies() or peer_id <= 0 or dash_request_sequence <= 0:
+		return false
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	if dash_request_sequence <= int(_last_dash_request_sequences.get(peer_id, 0)):
+		return false
+	if not _is_finite_vector2(direction) or not _is_finite_vector2(movement_evidence):
+		return false
+	if direction.length_squared() <= 0.001 or movement_evidence.length_squared() <= 0.001:
+		return false
+	var safe_direction := direction.normalized()
+	if safe_direction.dot(movement_evidence.normalized()) < 0.8:
+		return false
+	var accepted_at := _get_action_net_time()
+	var minimum_dash_interval := maxf(
+		player_node.get_dash_cooldown() - DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS,
+		0.0
+	)
+	if _last_dash_accepted_times.has(peer_id):
+		var last_accepted_at := float(_last_dash_accepted_times[peer_id])
+		if accepted_at - last_accepted_at < minimum_dash_interval:
+			return false
+	if not player_node.start_multiplayer_dash_protection(safe_direction):
+		return false
+	_last_dash_request_sequences[peer_id] = dash_request_sequence
+	_last_dash_accepted_times[peer_id] = accepted_at
+	_broadcast_player_dash_confirmed(peer_id, safe_direction, dash_request_sequence)
+	return true
+
+
+func apply_dash_confirmation(
+	player_peer_id: int,
+	direction: Vector2,
+	dash_request_sequence: int
+) -> void:
+	if (
+		not has_player_action_dependencies()
+		or int(_runtime.runtime_mode) != GAME_RUNTIME_CLIENT_VIEW
+	):
+		return
+	if player_peer_id == _get_action_local_peer_id():
+		if dash_request_sequence == _pending_dash_request_sequence:
+			_clear_pending_dash_input()
+		return
+	if dash_request_sequence <= int(
+		_last_dash_confirmed_sequences.get(player_peer_id, 0)
+	):
+		return
+	var player_node := _runtime.get_player_for_peer(player_peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return
+	_last_dash_confirmed_sequences[player_peer_id] = dash_request_sequence
+	player_node.play_remote_dash_visual(direction)
+
+
+func handle_hoe_primary_request(
+	sender_id: int,
+	direction: Vector2,
+	request_id: int
+) -> void:
+	if not consume_remote_player_action_admission(sender_id):
+		return
+	apply_authoritative_hoe_action(
+		sender_id,
+		HOE_ACTION_PRIMARY,
+		direction,
+		request_id
+	)
+
+
+func handle_hoe_whirlwind_request(sender_id: int, request_id: int) -> void:
+	if not consume_remote_player_action_admission(sender_id):
+		return
+	apply_authoritative_hoe_action(
+		sender_id,
+		HOE_ACTION_WHIRLWIND,
+		Vector2.ZERO,
+		request_id
+	)
+
+
+func apply_authoritative_hoe_action(
+	peer_id: int,
+	action_kind: StringName,
+	direction: Vector2,
+	request_id: int = 0
+) -> bool:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or peer_id <= 0
+	):
+		return false
+	var hoe_player := _get_hoe_player(peer_id)
+	if hoe_player == null:
+		return false
+	if request_id > 0:
+		var last_request_id := int(_last_hoe_action_request_ids.get(peer_id, 0))
+		if request_id <= last_request_id:
+			return false
+		_last_hoe_action_request_ids[peer_id] = request_id
+	var safe_direction := _sanitize_hoe_action_direction(hoe_player, direction)
+	var succeeded := false
+	match action_kind:
+		HOE_ACTION_PRIMARY:
+			succeeded = hoe_player.try_authoritative_hoe_primary_attack(safe_direction)
+		HOE_ACTION_WHIRLWIND:
+			succeeded = hoe_player.try_authoritative_hoe_whirlwind()
+		_:
+			return false
+	if not succeeded:
+		if request_id > 0 and peer_id != _get_action_local_peer_id():
+			player_action_rpc_to_peer_requested.emit(
+				peer_id,
+				&"net_hoe_action_confirmed",
+				[
+					peer_id,
+					String(action_kind),
+					safe_direction,
+					int(_hoe_action_sequences_by_peer.get(peer_id, 0)),
+					request_id,
+					false,
+					_get_player_primary_cooldown_ratio(hoe_player),
+					hoe_player.skill1_charge,
+				]
+			)
+		return false
+	var action_sequence := int(_hoe_action_sequences_by_peer.get(peer_id, 0)) + 1
+	_hoe_action_sequences_by_peer[peer_id] = action_sequence
+	player_action_rpc_broadcast_requested.emit(
+		&"net_hoe_action_confirmed",
+		[
+			peer_id,
+			String(action_kind),
+			safe_direction,
+			action_sequence,
+			request_id,
+			true,
+			_get_player_primary_cooldown_ratio(hoe_player),
+			hoe_player.skill1_charge,
+		]
+	)
+	return true
+
+
+func apply_hoe_action_confirmation(
+	sender_id: int,
+	peer_id: int,
+	action_kind_text: String,
+	direction: Vector2,
+	action_sequence: int,
+	request_id: int,
+	accepted: bool,
+	cooldown_ratio: float,
+	skill_charge: float
+) -> void:
+	if (
+		not has_player_action_dependencies()
+		or sender_id != _action_net_manager.get_host_peer_id()
+		or peer_id <= 0
+		or action_sequence < 0
+	):
+		return
+	var action_kind := StringName(action_kind_text)
+	if action_kind != HOE_ACTION_PRIMARY and action_kind != HOE_ACTION_WHIRLWIND:
+		return
+	var hoe_player := _get_hoe_player(peer_id)
+	if hoe_player == null:
+		return
+	var safe_direction := _sanitize_hoe_action_direction(hoe_player, direction)
+	if peer_id == _get_action_local_peer_id() and request_id > 0:
+		hoe_player.reconcile_predicted_hoe_action(
+			request_id,
+			accepted,
+			action_kind,
+			cooldown_ratio,
+			skill_charge
+		)
+		return
+	if accepted:
+		hoe_player.play_remote_hoe_action(
+			action_kind,
+			safe_direction,
+			action_sequence
+		)
+
+
+func consume_remote_player_action_admission(
+	peer_id: int,
+	now_seconds: float = -1.0
+) -> bool:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or peer_id <= 0
+		or bool(_is_embedded_participant_suspended_callable.call(peer_id))
+		or _runtime.get_player_for_peer(peer_id) == null
+	):
+		return false
+	return _consume_player_action_rate_token(peer_id, now_seconds)
+
+
+func commit_authoritative_player_teleport(
+	peer_id: int,
+	target_position: Vector2
+) -> bool:
+	if not has_player_action_dependencies() or peer_id <= 0 or not _is_finite_vector2(target_position):
+		return false
+	var player_node := _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	if not apply_authoritative_teleport_to_player(player_node, target_position):
+		return false
+	if peer_id != _runtime.multiplayer_local_peer_id:
+		var now := _get_action_net_time()
+		remember_accepted_player_pose(peer_id, target_position, now)
+		remember_latest_client_state(
+			true,
+			peer_id,
+			target_position,
+			Vector2.ZERO,
+			player_node.get_multiplayer_facing_id(),
+			player_node.get_multiplayer_anim_state()
+		)
+	return true
+
+
+func remember_accepted_player_pose(
+	peer_id: int,
+	player_position: Vector2,
+	net_time: float
+) -> void:
+	if peer_id <= 0:
+		return
+	_accepted_player_state_positions[peer_id] = player_position
+	_accepted_player_state_times[peer_id] = net_time
+
+
+func get_accepted_player_position(peer_id: int) -> Variant:
+	return _accepted_player_state_positions.get(peer_id)
+
+
+func get_player_revive_anchor_position(
+	peer_id: int,
+	player_node: Player,
+	host_peer_id: int
+) -> Vector2:
+	if peer_id != host_peer_id and _accepted_player_state_positions.has(peer_id):
+		return _accepted_player_state_positions[peer_id]
+	return player_node.global_position
+
+
+func _broadcast_player_dash_confirmed(
+	peer_id: int,
+	direction: Vector2,
+	dash_request_sequence: int
+) -> void:
+	if (
+		not has_player_action_dependencies()
+		or not _action_net_manager.is_host()
+		or peer_id <= 0
+		or dash_request_sequence <= 0
+	):
+		return
+	player_action_rpc_broadcast_requested.emit(
+		&"net_player_dash_confirmed",
+		[peer_id, direction.normalized(), dash_request_sequence]
+	)
+
+
+func _consume_player_action_rate_token(
+	peer_id: int,
+	now_seconds: float
+) -> bool:
+	var now := _get_action_net_time() if now_seconds < 0.0 else now_seconds
+	var bucket: Dictionary
+	if _player_action_ingress_rate_buckets.has(peer_id):
+		bucket = _player_action_ingress_rate_buckets[peer_id]
+	else:
+		bucket = {
+			"tokens": PLAYER_ACTION_INGRESS_RATE_BURST,
+			"last_time": now,
+		}
+		_player_action_ingress_rate_buckets[peer_id] = bucket
+	var tokens := float(
+		bucket.get("tokens", PLAYER_ACTION_INGRESS_RATE_BURST)
+	)
+	var last_time := float(bucket.get("last_time", now))
+	tokens = minf(
+		PLAYER_ACTION_INGRESS_RATE_BURST,
+		tokens
+		+ maxf(now - last_time, 0.0) * PLAYER_ACTION_INGRESS_RATE_PER_SECOND
+	)
+	var accepted := tokens >= 1.0
+	if accepted:
+		tokens -= 1.0
+	bucket["tokens"] = tokens
+	bucket["last_time"] = now
+	return accepted
+
+
+func _get_hoe_player(peer_id: int) -> PlayerHoeCat:
+	if not is_bound() or peer_id <= 0:
+		return null
+	var player_node := _runtime.get_player_for_peer(peer_id)
+	if player_node == null or not is_instance_valid(player_node):
+		return null
+	return player_node as PlayerHoeCat
+
+
+func _sanitize_hoe_action_direction(
+	player_node: PlayerHoeCat,
+	direction: Vector2
+) -> Vector2:
+	if _is_finite_vector2(direction) and direction.length_squared() > 0.0001:
+		return direction.normalized()
+	if player_node == null:
+		return Vector2.RIGHT
+	match player_node.get_multiplayer_facing_id():
+		1:
+			return Vector2.LEFT
+		2:
+			return Vector2.UP
+		3:
+			return Vector2.DOWN
+		_:
+			return Vector2.RIGHT
+
+
+func _get_player_primary_cooldown_ratio(player_node: Player) -> float:
+	if player_node == null or not is_instance_valid(player_node):
+		return 0.0
+	return clampf(player_node.get_primary_cooldown_ratio(), 0.0, 1.0)
+
+
+func _get_action_local_peer_id() -> int:
+	if _action_net_manager != null:
+		var local_peer_id := _action_net_manager.get_local_peer_id()
+		if local_peer_id > 0:
+			return local_peer_id
+	return int(_runtime.multiplayer_local_peer_id) if is_bound() else 0
+
+
+func _get_action_net_time() -> float:
+	if not _get_action_net_time_callable.is_valid():
+		return 0.0
+	return float(_get_action_net_time_callable.call())
+
+
+func _clear_pending_dash_input() -> void:
+	_pending_dash_input_packets = 0
+	_pending_dash_request_sequence = 0
+	_pending_dash_direction = Vector2.ZERO
+	_pending_dash_start_move_input = Vector2.ZERO
 
 
 func bind_life_dependencies(
@@ -1271,6 +2011,12 @@ func _clear_life_dependencies() -> void:
 	_commit_revive_position_callable = Callable()
 
 
+func _clear_player_action_dependencies() -> void:
+	_action_net_manager = null
+	_get_action_net_time_callable = Callable()
+	_is_embedded_participant_suspended_callable = Callable()
+
+
 func sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
 	var ready_lookup: Dictionary[int, bool] = {}
 	for peer_id in ready_peer_ids:
@@ -1689,6 +2435,15 @@ func clear_peer(peer_id: int) -> void:
 	_player_health_revisions.erase(peer_id)
 	_dead_player_revive_times.erase(peer_id)
 	_dead_player_revive_last_seconds.erase(peer_id)
+	_last_player_state_sequences.erase(peer_id)
+	_last_dash_request_sequences.erase(peer_id)
+	_last_dash_confirmed_sequences.erase(peer_id)
+	_last_dash_accepted_times.erase(peer_id)
+	_hoe_action_sequences_by_peer.erase(peer_id)
+	_last_hoe_action_request_ids.erase(peer_id)
+	_accepted_player_state_positions.erase(peer_id)
+	_accepted_player_state_times.erase(peer_id)
+	_player_action_ingress_rate_buckets.erase(peer_id)
 
 
 func reset_session_state() -> void:
@@ -1705,6 +2460,18 @@ func reset_session_state() -> void:
 	_player_health_revisions.clear()
 	_dead_player_revive_times.clear()
 	_dead_player_revive_last_seconds.clear()
+	_local_dash_request_sequence = 0
+	_clear_pending_dash_input()
+	_local_hoe_action_request_id = 0
+	_last_player_state_sequences.clear()
+	_last_dash_request_sequences.clear()
+	_last_dash_confirmed_sequences.clear()
+	_last_dash_accepted_times.clear()
+	_hoe_action_sequences_by_peer.clear()
+	_last_hoe_action_request_ids.clear()
+	_accepted_player_state_positions.clear()
+	_accepted_player_state_times.clear()
+	_player_action_ingress_rate_buckets.clear()
 	_host_snapshot_sequence = 0
 	_snapshot_encode_count = 0
 

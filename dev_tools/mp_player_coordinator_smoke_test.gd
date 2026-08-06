@@ -56,6 +56,13 @@ class ProbePlayer:
 	var last_healing_number := 0
 	var revive_countdown_seconds := -1
 	var revived_position := Vector2.ZERO
+	var remote_state_apply_count := 0
+	var last_remote_position := Vector2.ZERO
+	var last_remote_velocity := Vector2.ZERO
+	var dash_active := false
+	var dash_protection_accept := true
+	var dash_protection_count := 0
+	var remote_dash_visual_count := 0
 
 	func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 		current_health = new_health
@@ -78,6 +85,92 @@ class ProbePlayer:
 		is_dead = false
 		invincibility_time_left = invincible_seconds
 
+	func apply_remote_multiplayer_state(
+		remote_position: Vector2,
+		remote_velocity: Vector2,
+		_shoot_input: Vector2,
+		_use_skill1: bool = false,
+		_use_reload: bool = false
+	) -> void:
+		remote_state_apply_count += 1
+		last_remote_position = remote_position
+		last_remote_velocity = remote_velocity
+		global_position = remote_position
+		velocity = remote_velocity
+
+	func is_dashing() -> bool:
+		return dash_active
+
+	func get_dash_distance() -> float:
+		return 160.0
+
+	func get_dash_cooldown() -> float:
+		return 1.0
+
+	func start_multiplayer_dash_protection(_direction: Vector2) -> bool:
+		if not dash_protection_accept:
+			return false
+		dash_protection_count += 1
+		return true
+
+	func play_remote_dash_visual(_direction: Vector2) -> void:
+		remote_dash_visual_count += 1
+
+
+class ProbeHoePlayer:
+	extends PlayerHoeCat
+
+	var accept_primary := true
+	var accept_whirlwind := true
+	var primary_count := 0
+	var whirlwind_count := 0
+	var predicted_count := 0
+	var reconciled_count := 0
+	var remote_action_count := 0
+	var last_request_id := 0
+	var last_accepted := false
+
+	func try_authoritative_hoe_primary_attack(_attack_direction: Vector2) -> bool:
+		if not accept_primary:
+			return false
+		primary_count += 1
+		return true
+
+	func try_authoritative_hoe_whirlwind() -> bool:
+		if not accept_whirlwind:
+			return false
+		whirlwind_count += 1
+		return true
+
+	func play_predicted_hoe_action(
+		_action_kind: StringName,
+		_attack_direction: Vector2,
+		request_id: int
+	) -> void:
+		predicted_count += 1
+		last_request_id = request_id
+
+	func reconcile_predicted_hoe_action(
+		request_id: int,
+		accepted: bool,
+		_action_kind: StringName,
+		_cooldown_ratio: float,
+		_authoritative_skill_charge: float
+	) -> void:
+		reconciled_count += 1
+		last_request_id = request_id
+		last_accepted = accepted
+
+	func play_remote_hoe_action(
+		_action_kind: StringName,
+		_attack_direction: Vector2,
+		_sequence: int
+	) -> void:
+		remote_action_count += 1
+
+	func get_primary_cooldown_ratio() -> float:
+		return 0.5
+
 
 class ProbeModeAdapter:
 	extends MultiplayerModeAdapter
@@ -88,15 +181,18 @@ class ProbeModeAdapter:
 
 class ProbeNetManager:
 	extends NetManagerStore
+	var host_mode := false
+	var client_mode := true
+	var local_peer_id := 4
 
 	func is_host() -> bool:
-		return false
+		return host_mode
 
 	func is_client() -> bool:
-		return true
+		return client_mode
 
 	func get_local_peer_id() -> int:
-		return 4
+		return local_peer_id
 
 	func get_host_peer_id() -> int:
 		return 1
@@ -108,6 +204,10 @@ var _probe_tango_cancel_count := 0
 var _probe_revive_action_cancel_count := 0
 var _probe_tiyi_clear_count := 0
 var _probe_committed_revive_position := Vector2.ZERO
+var _probe_action_broadcast_methods: Array[StringName] = []
+var _probe_action_to_host_methods: Array[StringName] = []
+var _probe_action_to_peer_methods: Array[StringName] = []
+var _probe_state_correction_count := 0
 
 
 func _init() -> void:
@@ -132,6 +232,24 @@ func _run() -> void:
 		"运行时装配前到达的可靠传送必须进入等待队列。"
 	)
 	coordinator.bind_runtime(runtime)
+	var net_manager := ProbeNetManager.new()
+	coordinator.bind_player_action_dependencies(
+		net_manager,
+		_probe_get_net_time,
+		_probe_is_embedded_participant_suspended
+	)
+	coordinator.player_action_rpc_to_host_requested.connect(
+		_probe_on_action_rpc_to_host
+	)
+	coordinator.player_action_rpc_to_peer_requested.connect(
+		_probe_on_action_rpc_to_peer
+	)
+	coordinator.player_action_rpc_broadcast_requested.connect(
+		_probe_on_action_rpc_broadcast
+	)
+	coordinator.player_state_correction_requested.connect(
+		_probe_on_player_state_correction
+	)
 	_expect(coordinator.is_bound(), "PlayerCoordinator 必须强类型绑定战斗运行时。")
 	_expect(
 		coordinator.has_pending_authoritative_teleport(9),
@@ -241,8 +359,204 @@ func _run() -> void:
 		and coordinator.get_applied_health_revision(2) == 0,
 		"peer 清理必须释放全部玩家快照专属状态。"
 	)
+	runtime.peer_players.erase(2)
+	remote_player.free()
 
-	var net_manager := ProbeNetManager.new()
+	net_manager.host_mode = true
+	net_manager.client_mode = false
+	net_manager.local_peer_id = 1
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	runtime.multiplayer_local_peer_id = 1
+	_probe_net_time = 30.0
+	var action_player := ProbePlayer.new()
+	action_player.peer_id = 2
+	action_player.move_speed = 100.0
+	runtime.peer_players[2] = action_player
+	coordinator.handle_client_player_state(
+		2,
+		1,
+		Vector2(8.0, 0.0),
+		Vector2(20.0, 0.0),
+		Vector2.RIGHT,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		action_player.remote_state_apply_count == 1
+		and action_player.last_remote_position == Vector2(8.0, 0.0)
+		and coordinator.get_accepted_player_position(2) == Vector2(8.0, 0.0),
+		"客户端玩家状态接纳后必须同步更新权威姿态与快照覆盖。"
+	)
+	coordinator.handle_client_player_state(
+		2,
+		1,
+		Vector2(10.0, 0.0),
+		Vector2.ZERO,
+		Vector2.RIGHT,
+		Vector2.ZERO,
+		0,
+		0,
+		Vector2.ZERO,
+		Vector2.ZERO
+	)
+	_expect(
+		_probe_state_correction_count == 1
+		and action_player.remote_state_apply_count == 1,
+		"重复玩家状态序列必须拒绝并请求可靠位置修正。"
+	)
+	var action_broadcast_count := _probe_action_broadcast_methods.size()
+	_expect(
+		coordinator.try_accept_client_dash_request(
+			2,
+			action_player,
+			1,
+			Vector2.RIGHT,
+			Vector2.RIGHT
+		),
+		"合法 Dash 序列必须由玩家协调器接纳。"
+	)
+	_expect(
+		action_player.dash_protection_count == 1
+		and _probe_action_broadcast_methods.size() == action_broadcast_count + 1
+		and _probe_action_broadcast_methods.back() == &"net_player_dash_confirmed",
+		"Dash 接纳必须启动保护并经根出口广播确认。"
+	)
+	_expect(
+		not coordinator.try_accept_client_dash_request(
+			2,
+			action_player,
+			1,
+			Vector2.RIGHT,
+			Vector2.RIGHT
+		),
+		"重复 Dash 序列不得再次启动保护。"
+	)
+	var admitted_actions := 0
+	for _index in range(int(MpPlayerCoordinator.PLAYER_ACTION_INGRESS_RATE_BURST)):
+		if coordinator.consume_remote_player_action_admission(2, 40.0):
+			admitted_actions += 1
+	_expect(
+		admitted_actions == int(MpPlayerCoordinator.PLAYER_ACTION_INGRESS_RATE_BURST)
+		and not coordinator.consume_remote_player_action_admission(2, 40.0),
+		"玩家动作共享令牌桶必须保持既有 burst 上限。"
+	)
+	var authoritative_target := Vector2(96.0, 48.0)
+	_expect(
+		coordinator.commit_authoritative_player_teleport(2, authoritative_target)
+		and coordinator.get_accepted_player_position(2) == authoritative_target,
+		"权威传送必须原子更新玩家位置与已接纳姿态。"
+	)
+	coordinator.clear_peer(2)
+	_expect(
+		coordinator.get_accepted_player_position(2) == null
+		and coordinator.consume_remote_player_action_admission(2, 40.0),
+		"peer 清理必须释放姿态、序列与动作限流状态。"
+	)
+
+	net_manager.host_mode = false
+	net_manager.client_mode = true
+	net_manager.local_peer_id = 2
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	runtime.multiplayer_local_peer_id = 2
+	action_player.dash_active = true
+	coordinator.notify_local_player_dash_started(
+		Vector2.RIGHT,
+		Vector2.RIGHT,
+		true
+	)
+	_expect(
+		coordinator.has_pending_dash_input_packet()
+		and _probe_action_to_host_methods.back() == &"net_player_dash_requested",
+		"客户端 Dash 必须同时发送可靠请求并保留输入冗余。"
+	)
+	for _index in range(MpPlayerCoordinator.DASH_INPUT_REDUNDANCY_PACKETS):
+		coordinator.consume_pending_dash_input_packet()
+	_expect(
+		not coordinator.has_pending_dash_input_packet(),
+		"Dash 输入冗余必须保持三包后清空的既有顺序。"
+	)
+	var remote_dash_player := ProbePlayer.new()
+	remote_dash_player.peer_id = 3
+	runtime.peer_players[3] = remote_dash_player
+	coordinator.apply_dash_confirmation(3, Vector2.LEFT, 1)
+	_expect(
+		remote_dash_player.remote_dash_visual_count == 1,
+		"远端 Dash 确认必须只播放一次对应视觉。"
+	)
+
+	var hoe_player := ProbeHoePlayer.new()
+	hoe_player.peer_id = 5
+	runtime.peer_players[5] = hoe_player
+	net_manager.host_mode = true
+	net_manager.client_mode = false
+	net_manager.local_peer_id = 1
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	action_broadcast_count = _probe_action_broadcast_methods.size()
+	_expect(
+		coordinator.apply_authoritative_hoe_action(
+			5,
+			MpPlayerCoordinator.HOE_ACTION_PRIMARY,
+			Vector2.RIGHT,
+			1
+		),
+		"Hoe 普攻必须通过强类型角色入口执行。"
+	)
+	_expect(
+		hoe_player.primary_count == 1
+		and _probe_action_broadcast_methods.size() == action_broadcast_count + 1
+		and _probe_action_broadcast_methods.back() == &"net_hoe_action_confirmed",
+		"Hoe 成功动作必须推进序列并广播确认。"
+	)
+	hoe_player.accept_primary = false
+	_expect(
+		not coordinator.apply_authoritative_hoe_action(
+			5,
+			MpPlayerCoordinator.HOE_ACTION_PRIMARY,
+			Vector2.RIGHT,
+			2
+		)
+		and _probe_action_to_peer_methods.back() == &"net_hoe_action_confirmed",
+		"Hoe 拒绝结果必须仅回送请求客户端。"
+	)
+	net_manager.host_mode = false
+	net_manager.client_mode = true
+	net_manager.local_peer_id = 5
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	_expect(
+		coordinator.request_hoe_primary_attack(Vector2.RIGHT, true)
+		and hoe_player.predicted_count == 1
+		and _probe_action_to_host_methods.back() == &"net_hoe_primary_attack_requested",
+		"Hoe 客户端预测与请求顺序必须保持不变。"
+	)
+	coordinator.apply_hoe_action_confirmation(
+		1,
+		5,
+		"primary",
+		Vector2.RIGHT,
+		1,
+		hoe_player.last_request_id,
+		true,
+		0.5,
+		0.0
+	)
+	_expect(
+		hoe_player.reconciled_count == 1 and hoe_player.last_accepted,
+		"Hoe 本地预测必须由房主确认完成对账。"
+	)
+
+	runtime.peer_players.erase(2)
+	runtime.peer_players.erase(3)
+	runtime.peer_players.erase(5)
+	action_player.free()
+	remote_dash_player.free()
+	hoe_player.free()
+
+	net_manager.host_mode = false
+	net_manager.client_mode = true
+	net_manager.local_peer_id = 4
 	var mode_adapter := ProbeModeAdapter.new()
 	var projectile_coordinator := MpProjectileCoordinator.new()
 	coordinator.bind_life_dependencies(
@@ -334,7 +648,6 @@ func _run() -> void:
 	projectile_coordinator.free()
 	mode_adapter.free()
 	net_manager.free()
-	remote_player.free()
 	coordinator.unbind_runtime(runtime)
 	_expect(not coordinator.is_bound(), "解绑后不得保留旧战斗运行时。")
 	runtime.free()
@@ -380,3 +693,37 @@ func _probe_commit_revive_position(
 	_net_time: float
 ) -> void:
 	_probe_committed_revive_position = revive_position
+
+
+func _probe_is_embedded_participant_suspended(_peer_id: int) -> bool:
+	return false
+
+
+func _probe_on_action_rpc_to_host(
+	method_name: StringName,
+	_arguments: Array
+) -> void:
+	_probe_action_to_host_methods.append(method_name)
+
+
+func _probe_on_action_rpc_to_peer(
+	_peer_id: int,
+	method_name: StringName,
+	_arguments: Array
+) -> void:
+	_probe_action_to_peer_methods.append(method_name)
+
+
+func _probe_on_action_rpc_broadcast(
+	method_name: StringName,
+	_arguments: Array
+) -> void:
+	_probe_action_broadcast_methods.append(method_name)
+
+
+func _probe_on_player_state_correction(
+	_peer_id: int,
+	_corrected_position: Vector2,
+	_corrected_velocity: Vector2
+) -> void:
+	_probe_state_correction_count += 1
