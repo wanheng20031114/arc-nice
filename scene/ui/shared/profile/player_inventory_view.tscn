@@ -1,7 +1,7 @@
 [gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scene/ui/shared/profile/player_inventory_view.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/inventory_slot.tscn" id="2_slot"]
+[ext_resource type="PackedScene" path="res://scene/ui/shared/inventory/inventory_slot.tscn" id="2_slot"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
 [ext_resource type="Texture2D" path="res://resources/texture/item_detail_panel_bg.png" id="4_detail_bg"]
 [ext_resource type="Texture2D" path="res://resources/texture/item_category_badge_collectible.png" id="5_category_collectible"]

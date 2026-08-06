@@ -23,7 +23,7 @@ const PLANT_REMOVAL_SCENE := preload(
 )
 const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchants/shared/merchant_dialogue_bubble.tscn")
 const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
-const UPGRADE_ROW_SCENE := preload("res://scene/upgrade_row.tscn")
+const UPGRADE_ROW_SCENE := preload("res://scene/ui/shared/upgrade/upgrade_row.tscn")
 const XIAOCONG_FATE_CHOICE_OVERLAY_SCENE := preload(
 	"res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.tscn"
 )

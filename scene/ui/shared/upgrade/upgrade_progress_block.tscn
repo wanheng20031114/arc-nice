@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scene/upgrade_progress_block.gd" id="1_block"]
+[ext_resource type="Script" path="res://scene/ui/shared/upgrade/upgrade_progress_block.gd" id="1_block"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_glow"]
 resource_local_to_scene = true

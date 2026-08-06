@@ -251,7 +251,7 @@ func _test_wave_hud_feedback() -> void:
 
 
 func _test_currency_hud_feedback() -> void:
-	var currency_hud := (load("res://scene/currency_hud.tscn") as PackedScene).instantiate() as CurrencyHUD
+	var currency_hud := (load("res://scene/ui/shared/hud/currency_hud.tscn") as PackedScene).instantiate() as CurrencyHUD
 	root.add_child(currency_hud)
 	await process_frame
 	currency_hud.call("_on_xirang_changed", 123, 1)

@@ -1,7 +1,7 @@
 extends Button
 class_name InventorySlot
 
-const DRAG_PREVIEW_SCENE := preload("res://scene/inventory_drag_preview.tscn")
+const DRAG_PREVIEW_SCENE := preload("res://scene/ui/shared/inventory/inventory_drag_preview.tscn")
 const DOUBLE_CLICK_FALLBACK_MSEC := 420
 const DOUBLE_CLICK_MAX_DISTANCE_SQUARED := 144.0
 

@@ -1,7 +1,7 @@
 [gd_scene load_steps=8 format=3]
 
-[ext_resource type="Script" path="res://scene/upgrade_row.gd" id="1_row"]
-[ext_resource type="PackedScene" path="res://scene/upgrade_progress_block.tscn" id="2_block"]
+[ext_resource type="Script" path="res://scene/ui/shared/upgrade/upgrade_row.gd" id="1_row"]
+[ext_resource type="PackedScene" path="res://scene/ui/shared/upgrade/upgrade_progress_block.tscn" id="2_block"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_row_bg"]
 bg_color = Color(0.185, 0.185, 0.17, 0.97)

@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scene/inventory_slot.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/ui/shared/inventory/inventory_slot.gd" id="1_script"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_normal"]
 bg_color = Color(0.055, 0.04, 0.03, 0.58)

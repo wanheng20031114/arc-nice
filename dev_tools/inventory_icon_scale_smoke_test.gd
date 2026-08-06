@@ -1,8 +1,8 @@
 extends SceneTree
 
-const INVENTORY_SLOT_SCENE := preload("res://scene/inventory_slot.tscn")
+const INVENTORY_SLOT_SCENE := preload("res://scene/ui/shared/inventory/inventory_slot.tscn")
 const INVENTORY_DRAG_PREVIEW_SCENE := preload(
-	"res://scene/inventory_drag_preview.tscn"
+	"res://scene/ui/shared/inventory/inventory_drag_preview.tscn"
 )
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const WATER_COLLECTOR := preload(

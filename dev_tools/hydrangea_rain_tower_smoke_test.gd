@@ -12,7 +12,7 @@ const HYDRANGEA_SCENE := preload(
 const PLACEMENT_PREVIEW_SCENE := preload(
 	"res://scene/plant_defense/plant_placement_preview.tscn"
 )
-const INVENTORY_SLOT_SCENE := preload("res://scene/inventory_slot.tscn")
+const INVENTORY_SLOT_SCENE := preload("res://scene/ui/shared/inventory/inventory_slot.tscn")
 const PLAYER_SCENE := preload(
 	"res://scene/player/hoe_cat/player_hoe_cat.tscn"
 )

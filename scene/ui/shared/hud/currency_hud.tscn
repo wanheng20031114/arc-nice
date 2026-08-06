@@ -1,6 +1,6 @@
 [gd_scene load_steps=9 format=3]
 
-[ext_resource type="Script" path="res://scene/currency_hud.gd" id="1_hud"]
+[ext_resource type="Script" path="res://scene/ui/shared/hud/currency_hud.gd" id="1_hud"]
 [ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="2_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/profile_gun_icon.png" id="3_profile"]
 [ext_resource type="Script" path="res://scene/settings/settings_gear_icon.gd" id="4_settings_icon"]

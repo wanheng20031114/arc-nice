@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://scene/ui_click_audio.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/ui/shared/audio/ui_click_audio.gd" id="1_script"]
 [ext_resource type="AudioStream" path="res://resources/audio/ui/ui_click.wav" id="2_click"]
 
 [node name="UIAudio" type="Node"]
