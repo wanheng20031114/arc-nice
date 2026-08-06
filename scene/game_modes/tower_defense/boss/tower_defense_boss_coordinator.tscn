@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b84n1wng7l2np"]
+
+[ext_resource type="Script" uid="uid://bnflsg7yjeysu" path="res://scene/game_modes/tower_defense/boss/tower_defense_boss_coordinator.gd" id="1_boss"]
+
+[node name="BossCoordinator" type="Node"]
+script = ExtResource("1_boss")
