@@ -315,8 +315,8 @@ night_energy = 0.3
 
 [node name="StateTimer" type="Timer" parent="." unique_id=309792909]
 
-[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_upgrade_requested"]
-[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_inventory_item_use_requested"]
-[connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_inventory_item_discard_requested"]
-[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_simple_crafting_requested"]
-[connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_simple_crafting_cancel_requested"]
+[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="_on_profile_multiplayer_upgrade_requested"]
+[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="_on_profile_multiplayer_inventory_item_use_requested"]
+[connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="_on_profile_multiplayer_inventory_item_discard_requested"]
+[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="_on_profile_multiplayer_simple_crafting_requested"]
+[connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="_on_profile_multiplayer_simple_crafting_cancel_requested"]

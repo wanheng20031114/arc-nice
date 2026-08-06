@@ -59,6 +59,9 @@ var music_coordinator: StandardMusicCoordinator:
 var prewarmer_coordinator: StandardPrewarmerCoordinator:
 	get:
 		return get_node_or_null("PrewarmerCoordinator") as StandardPrewarmerCoordinator
+var standard_multiplayer_mode_adapter: StandardMultiplayerModeAdapter:
+	get:
+		return get_multiplayer_mode_adapter() as StandardMultiplayerModeAdapter
 var merchant: ZhuangfangyiMerchant:
 	get:
 		var coordinator := merchant_coordinator
@@ -233,12 +236,16 @@ func configure_multiplayer(
 	player_names: Dictionary,
 	player_character_ids: Dictionary = {}
 ) -> void:
-	runtime_mode = mode as RuntimeMode
-	multiplayer_local_peer_id = local_peer_id
-	var coordinator := merchant_coordinator
-	if coordinator != null:
-		coordinator.set_runtime_context(runtime_mode, multiplayer_local_peer_id)
-	player_roster_coordinator.configure_peer_metadata(
+	var adapter := standard_multiplayer_mode_adapter
+	if adapter == null:
+		push_error("StandardGame: 缺少静态 MultiplayerModeAdapter 节点。")
+		return
+	adapter.configure_standard_multiplayer(
+		self,
+		merchant_coordinator,
+		player_roster_coordinator,
+		mode,
+		local_peer_id,
 		player_names,
 		player_character_ids
 	)
@@ -334,39 +341,12 @@ func _on_player_died() -> void:
 	_enter_defeat()
 
 
-func _on_multiplayer_player_died(_peer_id: int) -> void:
-	if (
-		runtime_mode != RuntimeMode.HOST_AUTHORITY
-		or wave_state in [
-			CombatFlowState.State.VICTORY,
-			CombatFlowState.State.DEFEAT,
-		]
-	):
-		return
-	player_roster_coordinator.schedule_multiplayer_defeat_check()
-
-
-func _on_all_multiplayer_players_dead() -> void:
-	if (
-		runtime_mode != RuntimeMode.HOST_AUTHORITY
-		or wave_state in [
-			CombatFlowState.State.VICTORY,
-			CombatFlowState.State.DEFEAT,
-		]
-	):
-		return
-	_enter_defeat()
-
-
-func _check_multiplayer_defeat_after_grace() -> void:
-	player_roster_coordinator.run_multiplayer_defeat_check_after_grace()
-
-
 func _get_default_mode_definition() -> GameModeDefinition:
 	return GameModeCatalog.get_definition(GameModeCatalog.MODE_STANDARD)
 
 
 func _initialize_mode_runtime_before_validation() -> void:
+	var standard_adapter := standard_multiplayer_mode_adapter
 	var standard_music := music_coordinator
 	if standard_music != null:
 		standard_music.bind_dependencies(music_player, self)
@@ -416,15 +396,14 @@ func _initialize_mode_runtime_before_validation() -> void:
 		resolved_merchant,
 		resolved_luoxi_merchant,
 		player_roster_coordinator,
-		multiplayer_mode_adapter as StandardMultiplayerModeAdapter,
+		standard_adapter,
 		run_state,
 		runtime_mode,
 		multiplayer_local_peer_id,
 		standard_merchants_enabled,
 		_pending_luoxi_collectible_claim_counts
 	)
-	_connect_player_roster_coordinator_signals()
-	_connect_merchant_coordinator_signals()
+	_connect_singleplayer_death_signal()
 	if standard_prewarmer != null:
 		boss_coordinator.bind_dependencies(
 			self,
@@ -469,58 +448,29 @@ func _initialize_mode_runtime_before_validation() -> void:
 		campaign_wave_coordinator.remote_boss_state_requested.connect(
 			boss_coordinator.apply_remote_state
 		)
+	if standard_adapter != null:
+		standard_adapter.bind_standard_dependencies(
+			self,
+			player_roster_coordinator,
+			boss_coordinator,
+			merchant_coordinator,
+			player_profile_panel,
+			debug_collectible_window,
+			wave_hud
+		)
 	_connect_boss_coordinator_signals()
 
 
-func _connect_player_roster_coordinator_signals() -> void:
+func _connect_singleplayer_death_signal() -> void:
 	if not player_roster_coordinator.singleplayer_died.is_connected(
 		_on_player_died
 	):
 		player_roster_coordinator.singleplayer_died.connect(_on_player_died)
-	if not player_roster_coordinator.multiplayer_player_died.is_connected(
-		_on_multiplayer_player_died
-	):
-		player_roster_coordinator.multiplayer_player_died.connect(
-			_on_multiplayer_player_died
-		)
-	if not player_roster_coordinator.all_players_dead.is_connected(
-		_on_all_multiplayer_players_dead
-	):
-		player_roster_coordinator.all_players_dead.connect(
-			_on_all_multiplayer_players_dead
-		)
-	if not player_roster_coordinator.peer_restored.is_connected(
-		_on_multiplayer_peer_restored
-	):
-		player_roster_coordinator.peer_restored.connect(
-			_on_multiplayer_peer_restored
-		)
-
-
-func _connect_merchant_coordinator_signals() -> void:
-	if not merchant_coordinator.merchant_active_changed.is_connected(
-		_on_standard_merchant_active_changed
-	):
-		merchant_coordinator.merchant_active_changed.connect(
-			_on_standard_merchant_active_changed
-		)
-
-
-func _on_standard_merchant_active_changed(active: bool) -> void:
-	multiplayer_mode_adapter.merchant_active_changed.emit(active)
 
 
 func _connect_boss_coordinator_signals() -> void:
-	if not boss_coordinator.flow_state_requested.is_connected(
-		_on_boss_flow_state_requested
-	):
-		boss_coordinator.flow_state_requested.connect(
-			_on_boss_flow_state_requested
-		)
 	if not boss_coordinator.music_requested.is_connected(_update_boss_music):
 		boss_coordinator.music_requested.connect(_update_boss_music)
-	if not boss_coordinator.boss_started.is_connected(_on_boss_started):
-		boss_coordinator.boss_started.connect(_on_boss_started)
 	if not boss_coordinator.boss_proxy_created.is_connected(
 		_on_boss_proxy_created
 	):
@@ -561,6 +511,12 @@ func _validate_mode_scene_content() -> bool:
 		return false
 	if not player_roster_coordinator.is_bound():
 		push_error("StandardGame: PlayerRosterCoordinator 依赖未完整绑定。")
+		return false
+	if standard_multiplayer_mode_adapter == null:
+		push_error("StandardGame: 缺少静态 MultiplayerModeAdapter 节点。")
+		return false
+	if not standard_multiplayer_mode_adapter.is_standard_bound():
+		push_error("StandardGame: MultiplayerModeAdapter 依赖未完整绑定。")
 		return false
 	if merchant_coordinator == null:
 		push_error("StandardGame: 缺少静态 MerchantCoordinator 节点。")
@@ -636,17 +592,17 @@ func _initialize_mode_player_ui() -> void:
 	currency_hud.profile_requested.connect(player_profile_panel.open)
 	settings_panel.closed.connect(_on_settings_panel_closed)
 	debug_collectible_window.collectible_requested.connect(
-		_on_debug_collectible_requested
+		standard_multiplayer_mode_adapter.handle_debug_collectible_requested
 	)
 	debug_collectible_window.closed.connect(_on_debug_collectible_window_closed)
 	wave_hud.set_return_button_text(
 		"返回菜单" if runtime_mode == RuntimeMode.SINGLEPLAYER else "返回大厅"
 	)
 	if not wave_hud.return_to_lobby_requested.is_connected(
-		_on_wave_hud_return_to_lobby_requested
+		standard_multiplayer_mode_adapter.handle_return_to_lobby_requested
 	):
 		wave_hud.return_to_lobby_requested.connect(
-			_on_wave_hud_return_to_lobby_requested
+			standard_multiplayer_mode_adapter.handle_return_to_lobby_requested
 		)
 
 
@@ -732,56 +688,6 @@ func _apply_remote_mode_flow_state(
 		state,
 		flow_step
 	)
-
-
-func _on_boss_flow_state_requested(
-	state: CombatFlowState.State,
-	boss_config: BossConfig,
-	is_remote: bool
-) -> void:
-	state_timer.stop()
-	wave_state = state
-	_set_intermission_services_active(false)
-	wave_hud.hide_all()
-	active_boss_config = boss_config
-	if is_remote:
-		return
-	match state:
-		CombatFlowState.State.BOSS_INTRO:
-			current_flow_step = boss_config
-			enemy_spawn_timer.stop()
-			_clear_pending_enemy_spawn_queue()
-			active_wave_enemy_ids.clear()
-			current_wave_total = 1
-			current_wave_spawned = 1
-			current_wave_defeated = 0
-			_emit_multiplayer_flow_state(state)
-		CombatFlowState.State.BOSS_ACTIVE:
-			pass
-
-
-func _on_boss_started(boss: LinglanBoss, boss_config: BossConfig) -> void:
-	if boss == null or boss_config == null:
-		return
-	var boss_instance_id := boss.get_instance_id()
-	active_wave_enemy_ids[boss_instance_id] = true
-	var boss_net_id := _register_multiplayer_enemy_instance(
-		boss,
-		boss_coordinator.get_boss_enemy_config(boss_config),
-		boss.global_position,
-		false
-	)
-	_emit_multiplayer_flow_state(CombatFlowState.State.BOSS_ACTIVE)
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_mode_adapter.boss_started.emit(
-			boss_net_id,
-			boss_config,
-			boss.global_position
-		)
-		_rebroadcast_linglan_boss_started_after_sync_window(
-			boss_net_id,
-			boss_config
-		)
 
 
 func _on_boss_proxy_created(boss: LinglanBoss, net_id: int) -> void:
@@ -889,16 +795,6 @@ func _toggle_debug_collectible_window() -> void:
 	else:
 		_refresh_player_modal_ui_lock()
 
-func _on_debug_collectible_requested(config_path: String) -> void:
-	if config_path.is_empty():
-		return
-	if (
-		runtime_mode != RuntimeMode.SINGLEPLAYER
-		and multiplayer_mode_adapter.request_debug_collectible(config_path)
-	):
-		return
-	debug_collectible_window.show_grant_result(config_path, grant_debug_collectible(config_path))
-
 func grant_debug_collectible(config_path: String) -> bool:
 	return merchant_coordinator.grant_debug_collectible(config_path)
 
@@ -919,49 +815,6 @@ func show_simple_crafting_result(
 		result,
 		request_token
 	)
-
-func _on_profile_multiplayer_upgrade_requested(stat_type: int) -> void:
-	multiplayer_mode_adapter.profile_upgrade_requested.emit(stat_type)
-
-func _on_profile_multiplayer_inventory_item_use_requested(
-	slot_index: int
-) -> void:
-	multiplayer_mode_adapter.profile_inventory_item_use_requested.emit(slot_index)
-
-func _on_profile_multiplayer_inventory_item_discard_requested(
-	slot_index: int
-) -> void:
-	multiplayer_mode_adapter.profile_inventory_item_discard_requested.emit(slot_index)
-
-func _on_profile_multiplayer_simple_crafting_requested(
-	recipe_id: StringName,
-	request_token: int
-) -> void:
-	multiplayer_mode_adapter.profile_simple_crafting_requested.emit(
-		recipe_id,
-		request_token
-	)
-
-func _on_profile_multiplayer_simple_crafting_cancel_requested(
-	request_token: int
-) -> void:
-	multiplayer_mode_adapter.profile_simple_crafting_cancel_requested.emit(request_token)
-
-func apply_remote_merchant_active(active: bool) -> void:
-	merchant_coordinator.set_local_merchants_active(active)
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	if not active and (wave_state == CombatFlowState.State.PRE_WAVE or wave_state == CombatFlowState.State.INTERMISSION):
-		state_timer.stop()
-
-func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW and boss_config != null:
-		current_flow_step = boss_config
-		boss_coordinator.apply_remote_started(
-			net_id,
-			boss_config,
-			spawn_position
-		)
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:
 	return merchant_coordinator.try_purchase_skill1_for_peer(peer_id)
@@ -1030,12 +883,6 @@ func show_local_luoxi_refresh_result(
 		refresh_count,
 		current_xirang
 	)
-
-func _on_wave_hud_return_to_lobby_requested() -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		get_tree().change_scene_to_file("res://scene/main_menu.tscn")
-		return
-	multiplayer_mode_adapter.return_to_lobby_requested.emit()
 
 func _set_merchant_active(active: bool) -> void:
 	merchant_coordinator.set_active(active)
@@ -1147,21 +994,6 @@ func _activate_linglan_boss() -> void:
 
 func _on_boss_enemy_tree_exited(enemy_id: int) -> void:
 	_on_boss_enemy_removed(enemy_id)
-
-func _rebroadcast_linglan_boss_started_after_sync_window(
-	boss_net_id: int,
-	boss_config: BossConfig
-) -> void:
-	if boss_net_id <= 0 or boss_config == null:
-		return
-	await get_tree().create_timer(0.75).timeout
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if wave_state != CombatFlowState.State.BOSS_ACTIVE:
-		return
-	if linglan_boss == null or not is_instance_valid(linglan_boss):
-		return
-	multiplayer_mode_adapter.boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
 
 func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
 	boss_coordinator.prepare_arena(boss_config as BossConfig)
