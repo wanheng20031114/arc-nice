@@ -10,7 +10,7 @@ const HYDRANGEA_SCENE := preload(
 	"res://scene/plant_defense/hydrangea_rain_tower.tscn"
 )
 const PLACEMENT_PREVIEW_SCENE := preload(
-	"res://scene/plant_defense/plant_placement_preview.tscn"
+	"res://scene/game_modes/tower_defense/plant/placement/plant_placement_preview.tscn"
 )
 const INVENTORY_SLOT_SCENE := preload("res://scene/ui/shared/inventory/inventory_slot.tscn")
 const PLAYER_SCENE := preload(

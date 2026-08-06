@@ -6,7 +6,7 @@ const DIALOGUE_SCENE_PATHS: PackedStringArray = [
 ]
 const XIAOCONG_DIALOGUE_SCENE_PATH := "res://scene/game_modes/tower_defense/fate/xiaocong_dialogue_bubble.tscn"
 const BOSS_HUD_SCENE_PATH := "res://scene/boss/linglan/boss_health_hud.tscn"
-const AMBIENT_VFX_SCENE_PATH := "res://scene/vfx/tower_defense_ambient_vfx.tscn"
+const AMBIENT_VFX_SCENE_PATH := "res://scene/game_modes/tower_defense/presentation/tower_defense_ambient_vfx.tscn"
 const PLAYER_PROFILE_SCENE_PATH := (
 	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
 )

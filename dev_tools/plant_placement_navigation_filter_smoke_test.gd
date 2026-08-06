@@ -8,10 +8,10 @@ const SIMPLE_FENCE_CONFIG := preload(
 	"res://resources/config/plant_defense/simple_fence.tres"
 )
 const PLACEMENT_PREVIEW_SCENE := preload(
-	"res://scene/plant_defense/plant_placement_preview.tscn"
+	"res://scene/game_modes/tower_defense/plant/placement/plant_placement_preview.tscn"
 )
 const PLACEMENT_CONTROLLER_SCENE := preload(
-	"res://scene/plant_defense/plant_placement_controller.tscn"
+	"res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn"
 )
 const MINIMAP_SCENE := preload("res://scene/game_modes/tower_defense/ui/minimap/tower_defense_minimap.tscn")
 

@@ -7,7 +7,7 @@ const WAREHOUSE_SCENE := preload(
 	"res://scene/plant_defense/oak_warehouse.tscn"
 )
 const PLANT_SELECTION_HUD_SCENE := preload(
-	"res://scene/plant_defense/plant_selection_hud.tscn"
+	"res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_hud.tscn"
 )
 const CULTIVATION_CENTER_SCENE := preload(
 	"res://scene/plant_defense/plant_cultivation_center.tscn"

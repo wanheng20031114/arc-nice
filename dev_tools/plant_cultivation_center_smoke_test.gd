@@ -10,7 +10,7 @@ const PANEL_SCENE := preload(
 	"res://scene/plant_defense/production_building_panel.tscn"
 )
 const PLACEMENT_CONTROLLER_SCENE := preload(
-	"res://scene/plant_defense/plant_placement_controller.tscn"
+	"res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn"
 )
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"

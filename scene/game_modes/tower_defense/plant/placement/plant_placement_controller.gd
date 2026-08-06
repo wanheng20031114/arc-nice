@@ -29,7 +29,7 @@ enum PlacementSource {
 }
 
 const PLACEMENT_MARKER_SCENE := preload(
-	"res://scene/plant_defense/plant_placement_marker.tscn"
+	"res://scene/game_modes/tower_defense/plant/placement/plant_placement_marker.tscn"
 )
 
 @export_range(1.0, 16.0, 0.5) var click_tolerance_world := 6.0

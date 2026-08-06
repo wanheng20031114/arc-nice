@@ -2,7 +2,7 @@ extends SceneTree
 
 const GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
-const HUD_SCENE := preload("res://scene/plant_defense/plant_selection_hud.tscn")
+const HUD_SCENE := preload("res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_hud.tscn")
 const DEFAULT_VIEWPORT := Vector2i(1152, 648)
 const SMALL_VIEWPORT := Vector2i(800, 480)
 const EXPECTED_CATEGORY_COUNTS := {

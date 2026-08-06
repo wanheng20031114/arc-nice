@@ -6,7 +6,7 @@ const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
 const PLANT_SYSTEM_SCRIPT := preload("res://scene/plant_defense/plant_system.gd")
 const PLACEMENT_CONTROLLER_SCENE := preload(
-	"res://scene/plant_defense/plant_placement_controller.tscn"
+	"res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn"
 )
 const CANNONBALL_SCENE := preload("res://scene/plant_defense/agave_cannonball.tscn")
 const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")

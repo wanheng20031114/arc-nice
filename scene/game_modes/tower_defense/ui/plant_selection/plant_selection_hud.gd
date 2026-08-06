@@ -4,7 +4,7 @@ class_name PlantSelectionHUD
 signal selection_confirmed(config: PlantDefenseConfig)
 signal cancel_requested
 
-const PLANT_CARD_SCENE := preload("res://scene/plant_defense/plant_selection_card.tscn")
+const PLANT_CARD_SCENE := preload("res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_card.tscn")
 const TRANSITION_SECONDS := 0.12
 const CATEGORY_ORDER: Array[int] = [
 	PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER,

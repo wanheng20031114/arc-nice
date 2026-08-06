@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://b43m8ktg7sfho"]
 
-[ext_resource type="Script" uid="uid://mcdxuw28lbrs" path="res://scene/plant_defense/plant_placement_controller.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/plant_placement_preview.tscn" id="2_preview"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/plant_selection_hud.tscn" id="3_hud"]
+[ext_resource type="Script" uid="uid://mcdxuw28lbrs" path="res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/plant/placement/plant_placement_preview.tscn" id="2_preview"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/ui/plant_selection/plant_selection_hud.tscn" id="3_hud"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hint"]

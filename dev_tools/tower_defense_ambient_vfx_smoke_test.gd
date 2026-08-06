@@ -1,6 +1,6 @@
 extends SceneTree
 
-const AMBIENT_SCENE_PATH := "res://scene/vfx/tower_defense_ambient_vfx.tscn"
+const AMBIENT_SCENE_PATH := "res://scene/game_modes/tower_defense/presentation/tower_defense_ambient_vfx.tscn"
 const TOWER_SCENE_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.tscn"
 const NON_TOWER_ENTRY_SCENES := [
 	"res://scene/game_modes/standard/standard_game.tscn",
