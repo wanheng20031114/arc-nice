@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cx8r7t2j4p5ma"]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/combat/player/rogue_player_roster_coordinator.gd" id="1_roster"]
+
+[node name="PlayerRosterCoordinator" type="Node"]
+script = ExtResource("1_roster")

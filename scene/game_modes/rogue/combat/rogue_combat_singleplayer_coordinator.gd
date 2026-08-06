@@ -165,7 +165,7 @@ func _on_normal_combat_requested(
 			run_state.get_max_health_penalty_for_peer(SINGLEPLAYER_PEER_ID)
 		)
 
-	# WaveCombatRuntimeBase._ready() 会先应用共享波次运行时的 1000 息壤。若选择继承，则在新增
+	# RoguePlayerRosterCoordinator 会先应用肉鸽作战的 1000 息壤。若选择继承，则在新增
 	# 战场后的首个物理帧前立即覆盖，确保玩家没有一帧使用错误经济状态。
 	if (
 		encounter_config.inherit_route_xirang

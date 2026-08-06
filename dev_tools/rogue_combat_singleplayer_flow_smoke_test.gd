@@ -742,8 +742,8 @@ func _test_consumed_failure_and_non_inherited_xirang() -> void:
 	)
 	var battle := coordinator.get_active_battle()
 	_expect(
-		battle != null and battle.player.current_xirang == StandardGame.INITIAL_PLAYER_XIRANG,
-		"不继承路线息壤时必须保留普通模式初始1000息壤。"
+		battle != null and battle.player.current_xirang == RogueCombatGame.INITIAL_PLAYER_XIRANG,
+		"不继承路线息壤时必须使用肉鸽作战初始1000息壤。"
 	)
 	if battle == null:
 		_cleanup_route(route)
@@ -752,7 +752,7 @@ func _test_consumed_failure_and_non_inherited_xirang() -> void:
 	battle.call("_enter_defeat")
 	_expect(
 		await _wait_for_battle_return(coordinator)
-		and route.player.current_xirang == StandardGame.INITIAL_PLAYER_XIRANG
+		and route.player.current_xirang == RogueCombatGame.INITIAL_PLAYER_XIRANG
 		and coordinator.is_node_consumed(combat_node_id)
 		and not route.combat_result_overlay.visible,
 		"全数阵亡失败必须回写战场息壤；关闭失败结算时应直接回图并消费节点。"

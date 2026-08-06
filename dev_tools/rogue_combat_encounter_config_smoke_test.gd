@@ -30,6 +30,35 @@ class SpawnBatchProbe:
 
 	var spawn_attempts := 0
 
+	func configure_multiplayer(
+		_mode: int,
+		_local_peer_id: int,
+		_player_names: Dictionary,
+		_player_character_ids: Dictionary = {}
+	) -> void:
+		pass
+
+	func get_player_for_peer(_peer_id: int) -> Player:
+		return null
+
+	func remove_multiplayer_player(_peer_id: int) -> void:
+		pass
+
+	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+		return []
+
+	func _configure_singleplayer_player() -> void:
+		pass
+
+	func _configure_multiplayer_players() -> void:
+		pass
+
+	func _connect_mode_singleplayer_player_death_signal() -> void:
+		pass
+
+	func _update_multiplayer_remote_player_passive_state(_delta: float) -> void:
+		pass
+
 	func _try_spawn_enemy(
 		_enemy_config: EnemyConfig,
 		_xirang_kill_reward_override: int = -1

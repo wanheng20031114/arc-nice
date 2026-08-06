@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cwx6a4gub8m25"]
+
+[ext_resource type="Script" path="res://scene/game_modes/standard/player/standard_player_roster_coordinator.gd" id="1_roster"]
+
+[node name="PlayerRosterCoordinator" type="Node"]
+script = ExtResource("1_roster")

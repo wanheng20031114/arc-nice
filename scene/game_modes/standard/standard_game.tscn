@@ -32,6 +32,7 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/standard/boss/standard_linglan_boss_runtime_port.tscn" id="34_linglan_port"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/standard/campaign/standard_campaign_wave_coordinator.tscn" id="35_campaign_wave"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/standard/boss/standard_boss_coordinator.tscn" id="36_boss_coordinator"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/standard/player/standard_player_roster_coordinator.tscn" id="37_player_roster"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -143,6 +144,8 @@ mode_definition = ExtResource("31_mode_definition")
 [node name="CampaignWaveCoordinator" parent="." instance=ExtResource("35_campaign_wave")]
 
 [node name="BossCoordinator" parent="." instance=ExtResource("36_boss_coordinator")]
+
+[node name="PlayerRosterCoordinator" parent="." instance=ExtResource("37_player_roster")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")

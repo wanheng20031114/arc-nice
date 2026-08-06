@@ -1,3 +1,4 @@
+@abstract
 extends CombatRuntimeBase
 class_name WaveCombatRuntimeBase
 
@@ -41,9 +42,7 @@ const COLLECTIBLE_SAKURA_ROCKET_POOL_SCENE := preload(
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload(
 	"res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png"
 )
-const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const COUNTDOWN_FINAL_SECONDS := 3
-const MULTIPLAYER_DEFEAT_GRACE_SECONDS := 0.25
 const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.1
 const MAX_WAVE_SPAWN_COUNT_PER_TICK := 10
 
@@ -56,7 +55,6 @@ const MAX_WAVE_SPAWN_COUNT_PER_TICK := 10
 @export_range(0.0, 60.0, 1.0, "or_greater") var pre_wave_duration: float = 5.0
 @export var auto_start_waves: bool = true
 
-@onready var player_spawn: Marker2D = $PlayerSpawn
 @onready var enemy_spawn_points_root: Node2D = $EnemySpawnPoints
 @onready var enemy_spawn_timer: Timer = $EnemySpawnTimer
 @onready var state_timer: Timer = $StateTimer
@@ -86,13 +84,10 @@ var current_wave_defeated: int = 0
 var countdown_seconds: int = 0
 var current_flow_step: FlowStepConfig = null
 var next_flow_step_after_rest: FlowStepConfig = null
-var multiplayer_player_names: Dictionary = {}
-var multiplayer_player_character_ids: Dictionary = {}
 var pending_multiplayer_pickup_exit_ids: Dictionary = {}
 var enemy_retarget_time_left: float = 0.0
 var next_multiplayer_enemy_net_id: int = 1
 var next_multiplayer_pickup_net_id: int = 1000
-var multiplayer_defeat_check_pending: bool = false
 var navigation_prewarm_requested: bool = false
 var navigation_prewarmed: bool = false
 
@@ -133,6 +128,18 @@ func _initialize_mode_runtime_content() -> void:
 
 func _apply_initial_player_resources() -> void:
 	pass
+
+
+@abstract func _configure_singleplayer_player() -> void
+
+
+@abstract func _configure_multiplayer_players() -> void
+
+
+@abstract func _connect_mode_singleplayer_player_death_signal() -> void
+
+
+@abstract func _update_multiplayer_remote_player_passive_state(delta: float) -> void
 
 
 func _set_intermission_services_active(_active: bool) -> void:
@@ -192,10 +199,6 @@ func _apply_remote_mode_flow_state(
 
 
 func _prewarm_mode_runtime_data() -> void:
-	pass
-
-
-func _on_multiplayer_peer_restored(_old_peer_id: int, _new_peer_id: int) -> void:
 	pass
 
 
@@ -277,7 +280,7 @@ func _ready() -> void:
 	_apply_initial_player_resources()
 	_initialize_mode_player_ui()
 	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		player.died.connect(_on_player_died)
+		_connect_mode_singleplayer_player_death_signal()
 	_initialize_mode_runtime_content()
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
@@ -358,49 +361,6 @@ func _physics_process(delta: float) -> void:
 	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
 		_update_multiplayer_remote_player_passive_state(delta)
 		_update_multiplayer_enemy_targets(delta)
-
-func configure_multiplayer(
-	mode: int,
-	local_peer_id: int,
-	player_names: Dictionary,
-	player_character_ids: Dictionary = {}
-) -> void:
-	runtime_mode = mode as RuntimeMode
-	multiplayer_local_peer_id = local_peer_id
-	multiplayer_player_names = player_names.duplicate()
-	multiplayer_player_character_ids = player_character_ids.duplicate()
-
-func _configure_singleplayer_player() -> void:
-	var character_id := _get_selected_singleplayer_character_id()
-	var player_instance := _instantiate_player_character(character_id)
-	if player_instance == null:
-		return
-	player_instance.name = "Player"
-	player_instance.position = player_spawn.position
-	add_child(player_instance)
-	player = player_instance
-
-func _get_selected_singleplayer_character_id() -> StringName:
-	var character_id := DEFAULT_PLAYER_CHARACTER_ID
-	if run_state != null:
-		if run_state.has_method("get_selected_character_id"):
-			character_id = StringName(run_state.call("get_selected_character_id"))
-		else:
-			character_id = StringName(run_state.get("selected_character_id"))
-	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
-		return DEFAULT_PLAYER_CHARACTER_ID
-	return character_id
-
-func _instantiate_player_character(character_id: StringName) -> Player:
-	var resolved_id := character_id
-	if not PlayerCharacterRegistry.is_valid_character_id(resolved_id):
-		resolved_id = DEFAULT_PLAYER_CHARACTER_ID
-	var instance := PlayerCharacterRegistry.instantiate_character(resolved_id) as Player
-	if instance == null:
-		push_error("%s: 无法实例化角色 %s" % [get_class(), resolved_id])
-	else:
-		bind_player_runtime_context(instance)
-	return instance
 
 func apply_remote_flow_state(
 	step_id: StringName,
@@ -1162,207 +1122,6 @@ func _enter_defeat() -> void:
 		multiplayer_mode_adapter.defeat_started.emit()
 
 
-func _on_player_died() -> void:
-	if wave_state == CombatFlowState.State.VICTORY:
-		return
-	_enter_defeat()
-
-func _on_multiplayer_player_died(_peer_id: int) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
-		return
-	if multiplayer_defeat_check_pending:
-		return
-	multiplayer_defeat_check_pending = true
-	var defeat_timer := get_tree().create_timer(MULTIPLAYER_DEFEAT_GRACE_SECONDS)
-	defeat_timer.timeout.connect(_check_multiplayer_defeat_after_grace)
-
-func _check_multiplayer_defeat_after_grace() -> void:
-	multiplayer_defeat_check_pending = false
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
-		return
-	for peer_id_variant in peer_players:
-		var candidate := peer_players[peer_id_variant] as Player
-		if candidate != null and is_instance_valid(candidate) and not candidate.is_dead:
-			return
-	_enter_defeat()
-
-func _configure_multiplayer_players() -> void:
-	player = null
-	peer_players.clear()
-	if multiplayer_player_names.is_empty():
-		multiplayer_player_names[multiplayer_local_peer_id if multiplayer_local_peer_id > 0 else 1] = "Player"
-
-	var peer_ids: Array[int] = []
-	for peer_id_variant in multiplayer_player_names:
-		peer_ids.append(int(peer_id_variant))
-	peer_ids.sort()
-
-	var base_position := player_spawn.position
-	for index in range(peer_ids.size()):
-		var peer_id := peer_ids[index]
-		var character_id := _get_multiplayer_character_id(peer_id)
-		var player_instance := _instantiate_player_character(character_id)
-		if player_instance == null:
-			continue
-		player_instance.name = "Player_%d" % peer_id
-		player_instance.position = base_position + _get_multiplayer_spawn_offset(index)
-		add_child(player_instance)
-		var accepts_local_input := (
-			peer_id == multiplayer_local_peer_id
-			and (
-				runtime_mode == RuntimeMode.HOST_AUTHORITY
-				or runtime_mode == RuntimeMode.CLIENT_VIEW
-			)
-		)
-		var predicts_local_movement := (
-			runtime_mode == RuntimeMode.CLIENT_VIEW
-			and peer_id == multiplayer_local_peer_id
-		)
-		var display_name: String = str(multiplayer_player_names.get(peer_id, "Player %d" % peer_id))
-		player_instance.configure_multiplayer_control(
-			peer_id,
-			accepts_local_input,
-			display_name,
-			predicts_local_movement,
-			peer_id == multiplayer_local_peer_id
-		)
-		player_instance.set_multiplayer_visual_smoothing_enabled(
-			runtime_mode == RuntimeMode.HOST_AUTHORITY
-			and peer_id != multiplayer_local_peer_id
-		)
-		if (
-			(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
-			or (runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id != multiplayer_local_peer_id)
-		):
-			player_instance.set_physics_process(false)
-		if not player_instance.died.is_connected(_on_multiplayer_player_died.bind(peer_id)):
-			player_instance.died.connect(_on_multiplayer_player_died.bind(peer_id))
-		peer_players[peer_id] = player_instance
-		if peer_id == multiplayer_local_peer_id:
-			player = player_instance
-	if player == null and not peer_ids.is_empty():
-		player = peer_players.get(peer_ids[0]) as Player
-
-func _get_multiplayer_character_id(peer_id: int) -> StringName:
-	var character_id := StringName(
-		multiplayer_player_character_ids.get(peer_id, DEFAULT_PLAYER_CHARACTER_ID)
-	)
-	if not PlayerCharacterRegistry.is_valid_character_id(character_id):
-		return DEFAULT_PLAYER_CHARACTER_ID
-	return character_id
-
-func _get_multiplayer_spawn_offset(index: int) -> Vector2:
-	const OFFSETS := [
-		Vector2.ZERO,
-		Vector2(18.0, 0.0),
-		Vector2(0.0, 18.0),
-		Vector2(18.0, 18.0),
-		Vector2(-18.0, 0.0),
-		Vector2(0.0, -18.0),
-		Vector2(-18.0, -18.0),
-		Vector2(18.0, -18.0),
-	]
-	return OFFSETS[index % OFFSETS.size()]
-
-func apply_network_input_for_peer(
-	peer_id: int,
-	move_input: Vector2,
-	shoot_input: Vector2,
-	use_skill1: bool,
-	use_reload: bool = false
-) -> void:
-	var player_instance: Player = peer_players.get(peer_id) as Player
-	if player_instance == null or not is_instance_valid(player_instance):
-		return
-	player_instance.apply_network_input(move_input, shoot_input, use_skill1, use_reload)
-
-func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
-	for peer_id_variant in peer_players:
-		var peer_id := int(peer_id_variant)
-		if peer_id == multiplayer_local_peer_id:
-			continue
-		var player_instance := peer_players[peer_id] as Player
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		player_instance.update_multiplayer_authority_passive_state(delta)
-
-func remove_multiplayer_player(peer_id: int) -> void:
-	if peer_id <= 0 or peer_id == multiplayer_local_peer_id:
-		return
-	var player_instance := peer_players.get(peer_id) as Player
-	peer_players.erase(peer_id)
-	multiplayer_player_names.erase(peer_id)
-	multiplayer_player_character_ids.erase(peer_id)
-	if player_instance != null and is_instance_valid(player_instance):
-		player_instance.queue_free()
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		_check_multiplayer_defeat_after_grace()
-
-func restore_multiplayer_player(
-	old_peer_id: int,
-	new_peer_id: int,
-	player_name: String,
-	character_id: StringName,
-	state: SnapshotManager.PlayerState,
-	spawn_slot_index: int,
-	_reconnect_state: Dictionary = {}
-) -> Player:
-	if (
-		new_peer_id <= 0
-		or peer_players.has(new_peer_id)
-		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
-	):
-		return null
-	multiplayer_player_names.erase(old_peer_id)
-	multiplayer_player_character_ids.erase(old_peer_id)
-	multiplayer_player_names[new_peer_id] = player_name
-	multiplayer_player_character_ids[new_peer_id] = character_id
-	_on_multiplayer_peer_restored(old_peer_id, new_peer_id)
-	var player_instance := _instantiate_player_character(character_id)
-	if player_instance == null:
-		return null
-	player_instance.name = "Player_%d" % new_peer_id
-	player_instance.position = (
-		state.position
-		if state != null
-		else player_spawn.position + _get_multiplayer_spawn_offset(spawn_slot_index)
-	)
-	add_child(player_instance)
-	var accepts_local_input := new_peer_id == multiplayer_local_peer_id
-	var predicts_local_movement := (
-		runtime_mode == RuntimeMode.CLIENT_VIEW
-		and new_peer_id == multiplayer_local_peer_id
-	)
-	player_instance.configure_multiplayer_control(
-		new_peer_id,
-		accepts_local_input,
-		player_name,
-		predicts_local_movement,
-		new_peer_id == multiplayer_local_peer_id
-	)
-	player_instance.set_multiplayer_visual_smoothing_enabled(
-		runtime_mode == RuntimeMode.HOST_AUTHORITY
-		and new_peer_id != multiplayer_local_peer_id
-	)
-	if (
-		(runtime_mode == RuntimeMode.CLIENT_VIEW and not predicts_local_movement)
-		or (runtime_mode == RuntimeMode.HOST_AUTHORITY and new_peer_id != multiplayer_local_peer_id)
-	):
-		player_instance.set_physics_process(false)
-	if not player_instance.died.is_connected(
-		_on_multiplayer_player_died.bind(new_peer_id)
-	):
-		player_instance.died.connect(_on_multiplayer_player_died.bind(new_peer_id))
-	peer_players[new_peer_id] = player_instance
-	return player_instance
-
-func get_player_for_peer(peer_id: int) -> Player:
-	return peer_players.get(peer_id) as Player
-
 func get_enemy_for_net_id(net_id: int) -> Enemy:
 	if not multiplayer_enemies_by_net_id.has(net_id):
 		return null
@@ -1497,51 +1256,6 @@ func _mark_multiplayer_pickup_removed(
 	multiplayer_pickups.erase(net_id)
 	multiplayer_gateway.pickup_removed.emit(net_id)
 	return true
-
-func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
-	var states: Array[SnapshotManager.PlayerState] = []
-	for peer_id_variant in peer_players:
-		var peer_id := int(peer_id_variant)
-		var player_instance := peer_players[peer_id] as Player
-		if player_instance == null or not is_instance_valid(player_instance):
-			continue
-		var state := SnapshotManager.PlayerState.new()
-		state.peer_id = peer_id
-		state.character_id = player_instance.get_character_id()
-		state.position = player_instance.global_position
-		state.velocity = player_instance.velocity
-		state.facing = player_instance.get_multiplayer_facing_id()
-		state.anim_state = player_instance.get_multiplayer_anim_state()
-		state.current_health = player_instance.current_health
-		state.max_health = player_instance.max_health
-		state.current_xirang = player_instance.current_xirang
-		state.is_dead = player_instance.is_dead
-		state.invincibility_time_left = player_instance.invincibility_time_left
-		state.skill1_unlocked = player_instance.skill1_unlocked
-		state.skill1_charge = player_instance.skill1_charge
-		state.skill1_charge_duration = player_instance.skill1_charge_duration
-		state.skill1_upgrade_level = player_instance.skill1_upgrade_level
-		state.form_mode = player_instance.get_multiplayer_form_mode()
-		state.shot_pattern = player_instance.get_multiplayer_shot_pattern()
-		state.ammo_capacity = player_instance.get_multiplayer_ammo_capacity()
-		state.current_ammo = player_instance.get_multiplayer_current_ammo()
-		state.is_reloading = player_instance.get_multiplayer_is_reloading()
-		state.reload_progress = player_instance.get_multiplayer_reload_progress()
-		state.primary_cooldown_ratio = _get_player_primary_cooldown_ratio(player_instance)
-		state.effective_move_speed_multiplier = (
-			player_instance.get_authoritative_move_speed_multiplier()
-		)
-		states.append(state)
-	return states
-
-func _get_player_primary_cooldown_ratio(player_instance: Player) -> float:
-	if player_instance == null:
-		return 0.0
-	if player_instance.has_method("get_primary_cooldown_ratio"):
-		return clampf(float(player_instance.call("get_primary_cooldown_ratio")), 0.0, 1.0)
-	if player_instance.has_method("get_primary_attack_cooldown_ratio"):
-		return clampf(float(player_instance.call("get_primary_attack_cooldown_ratio")), 0.0, 1.0)
-	return 0.0
 
 func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 	return collect_reused_enemy_snapshot_states(enemy_container)

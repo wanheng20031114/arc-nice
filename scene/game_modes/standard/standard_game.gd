@@ -4,9 +4,7 @@ class_name StandardGame
 const TANGO_LASER_BULLET_POOL_SCENE := preload(
 	"res://scene/player/tango/tango_laser_bullet.tscn"
 )
-const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
-const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
-const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
+const INITIAL_PLAYER_XIRANG := StandardPlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
 
 const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
 	"res://scene/boss/linglan/linglan_skill1_sakura_bullet.tscn"
@@ -20,7 +18,6 @@ const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := (
 const DEFAULT_MUSIC_VOLUME_DB := -6.0
 const MUSIC_FADE_IN_SECONDS := 3.0
 const MUSIC_FADE_IN_START_VOLUME_DB := -12.0
-const INITIAL_PLAYER_XIRANG := 1000
 
 @export_group("普通模式规则")
 @export var linglan_boss_enabled: bool = true
@@ -50,8 +47,25 @@ var campaign_wave_coordinator: StandardCampaignWaveCoordinator:
 var boss_coordinator: StandardBossCoordinator:
 	get:
 		return get_node("BossCoordinator") as StandardBossCoordinator
+var player_roster_coordinator: StandardPlayerRosterCoordinator:
+	get:
+		return get_node("PlayerRosterCoordinator") as StandardPlayerRosterCoordinator
+var multiplayer_player_names: Dictionary:
+	get:
+		return player_roster_coordinator.player_names
+	set(value):
+		player_roster_coordinator.player_names = value
+var multiplayer_player_character_ids: Dictionary:
+	get:
+		return player_roster_coordinator.player_character_ids
+	set(value):
+		player_roster_coordinator.player_character_ids = value
+var multiplayer_defeat_check_pending: bool:
+	get:
+		return player_roster_coordinator.defeat_check_pending
+	set(value):
+		player_roster_coordinator.defeat_check_pending = value
 
-var _singleplayer_tango_charge_started_at: float = -1.0
 var bosses: Array[Resource]:
 	get:
 		return (
@@ -98,11 +112,139 @@ func _ready() -> void:
 	super._ready()
 
 
+func configure_multiplayer(
+	mode: int,
+	local_peer_id: int,
+	player_names: Dictionary,
+	player_character_ids: Dictionary = {}
+) -> void:
+	runtime_mode = mode as RuntimeMode
+	multiplayer_local_peer_id = local_peer_id
+	player_roster_coordinator.configure_peer_metadata(
+		player_names,
+		player_character_ids
+	)
+
+
+func _configure_singleplayer_player() -> void:
+	player_roster_coordinator.configure_singleplayer_player()
+
+
+func _configure_multiplayer_players() -> void:
+	player_roster_coordinator.configure_multiplayer_players()
+
+
+func _connect_mode_singleplayer_player_death_signal() -> void:
+	player_roster_coordinator.connect_singleplayer_death_signal()
+
+
+func apply_network_input_for_peer(
+	peer_id: int,
+	move_input: Vector2,
+	shoot_input: Vector2,
+	use_skill1: bool,
+	use_reload: bool = false
+) -> void:
+	player_roster_coordinator.apply_network_input_for_peer(
+		peer_id,
+		move_input,
+		shoot_input,
+		use_skill1,
+		use_reload
+	)
+
+
+func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
+	player_roster_coordinator.update_remote_player_passive_state(delta)
+
+
+func remove_multiplayer_player(peer_id: int) -> void:
+	player_roster_coordinator.remove_multiplayer_player(peer_id)
+
+
+func restore_multiplayer_player(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	state: SnapshotManager.PlayerState,
+	spawn_slot_index: int,
+	_reconnect_state: Dictionary = {}
+) -> Player:
+	return player_roster_coordinator.restore_multiplayer_player(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id,
+		state,
+		spawn_slot_index
+	)
+
+
+func get_player_for_peer(peer_id: int) -> Player:
+	return player_roster_coordinator.get_player_for_peer(peer_id)
+
+
+func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+	return player_roster_coordinator.collect_player_snapshot_states()
+
+
+func _get_multiplayer_character_id(peer_id: int) -> StringName:
+	return player_roster_coordinator.get_multiplayer_character_id(peer_id)
+
+
+func _get_multiplayer_spawn_offset(index: int) -> Vector2:
+	return player_roster_coordinator.get_spawn_offset(index)
+
+
+func _on_player_died() -> void:
+	if wave_state in [
+		CombatFlowState.State.VICTORY,
+		CombatFlowState.State.DEFEAT,
+	]:
+		return
+	_enter_defeat()
+
+
+func _on_multiplayer_player_died(_peer_id: int) -> void:
+	if (
+		runtime_mode != RuntimeMode.HOST_AUTHORITY
+		or wave_state in [
+			CombatFlowState.State.VICTORY,
+			CombatFlowState.State.DEFEAT,
+		]
+	):
+		return
+	player_roster_coordinator.schedule_multiplayer_defeat_check()
+
+
+func _on_all_multiplayer_players_dead() -> void:
+	if (
+		runtime_mode != RuntimeMode.HOST_AUTHORITY
+		or wave_state in [
+			CombatFlowState.State.VICTORY,
+			CombatFlowState.State.DEFEAT,
+		]
+	):
+		return
+	_enter_defeat()
+
+
+func _check_multiplayer_defeat_after_grace() -> void:
+	player_roster_coordinator.run_multiplayer_defeat_check_after_grace()
+
+
 func _get_default_mode_definition() -> GameModeDefinition:
 	return GameModeCatalog.get_definition(GameModeCatalog.MODE_STANDARD)
 
 
 func _initialize_mode_runtime_before_validation() -> void:
+	player_roster_coordinator.bind_dependencies(
+		self,
+		$PlayerSpawn as Marker2D,
+		run_state
+	)
+	_connect_player_roster_coordinator_signals()
 	boss_coordinator.bind_dependencies(
 		self,
 		boss_container,
@@ -153,6 +295,31 @@ func _initialize_mode_runtime_before_validation() -> void:
 		luoxi_merchant.bind_multiplayer_mode_adapter(multiplayer_mode_adapter)
 
 
+func _connect_player_roster_coordinator_signals() -> void:
+	if not player_roster_coordinator.singleplayer_died.is_connected(
+		_on_player_died
+	):
+		player_roster_coordinator.singleplayer_died.connect(_on_player_died)
+	if not player_roster_coordinator.multiplayer_player_died.is_connected(
+		_on_multiplayer_player_died
+	):
+		player_roster_coordinator.multiplayer_player_died.connect(
+			_on_multiplayer_player_died
+		)
+	if not player_roster_coordinator.all_players_dead.is_connected(
+		_on_all_multiplayer_players_dead
+	):
+		player_roster_coordinator.all_players_dead.connect(
+			_on_all_multiplayer_players_dead
+		)
+	if not player_roster_coordinator.peer_restored.is_connected(
+		_on_multiplayer_peer_restored
+	):
+		player_roster_coordinator.peer_restored.connect(
+			_on_multiplayer_peer_restored
+		)
+
+
 func _connect_boss_coordinator_signals() -> void:
 	if not boss_coordinator.flow_state_requested.is_connected(
 		_on_boss_flow_state_requested
@@ -181,6 +348,12 @@ func _connect_boss_coordinator_signals() -> void:
 
 
 func _validate_mode_scene_content() -> bool:
+	if player_roster_coordinator == null:
+		push_error("StandardGame: 缺少静态 PlayerRosterCoordinator 节点。")
+		return false
+	if not player_roster_coordinator.is_bound():
+		push_error("StandardGame: PlayerRosterCoordinator 依赖未完整绑定。")
+		return false
 	if campaign_wave_coordinator == null:
 		push_error("StandardGame: 缺少静态 CampaignWaveCoordinator 节点。")
 		return false
@@ -461,20 +634,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _apply_initial_player_xirang() -> void:
-	var players: Array[Player] = []
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		if player != null:
-			players.append(player)
-	else:
-		for peer_id_variant in peer_players:
-			var player_instance := peer_players[peer_id_variant] as Player
-			if player_instance != null and is_instance_valid(player_instance):
-				players.append(player_instance)
-	for player_instance in players:
-		if player_instance.current_xirang == INITIAL_PLAYER_XIRANG:
-			continue
-		player_instance.current_xirang = INITIAL_PLAYER_XIRANG
-		player_instance.xirang_changed.emit(player_instance.current_xirang, 0)
+	player_roster_coordinator.apply_initial_xirang()
 
 func _on_currency_hud_settings_requested() -> void:
 	if player_profile_panel.is_open():
@@ -1063,78 +1223,10 @@ func _is_background_music_player(node: Node) -> bool:
 	return bus_name == "music" or node_name.contains("music") or node_name.contains("bgm")
 
 func request_tango_charge_started(direction: Vector2) -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		return false
-	if not _is_valid_singleplayer_tango_player(player):
-		return false
-	var safe_direction := _sanitize_tango_charge_direction(player, direction)
-	if not bool(player.call("try_authoritative_tango_charge_started", safe_direction)):
-		return false
-	_singleplayer_tango_charge_started_at = Time.get_ticks_usec() / 1000000.0
-	return true
+	return player_roster_coordinator.request_tango_charge_started(direction)
 
 func request_tango_charge_released(direction: Vector2) -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER or _singleplayer_tango_charge_started_at < 0.0:
-		return false
-	var started_at := _singleplayer_tango_charge_started_at
-	_singleplayer_tango_charge_started_at = -1.0
-	if not _is_valid_singleplayer_tango_player(player):
-		return false
-	var elapsed := maxf(Time.get_ticks_usec() / 1000000.0 - started_at, 0.0)
-	if elapsed + TANGO_CHARGE_THRESHOLD_EPSILON < TANGO_MINIMUM_CHARGE_SECONDS:
-		player.call("cancel_authoritative_tango_charge")
-		return true
-	var charge_ratio := clampf(
-		(elapsed - TANGO_MINIMUM_CHARGE_SECONDS)
-		/ (TANGO_MAXIMUM_CHARGE_SECONDS - TANGO_MINIMUM_CHARGE_SECONDS),
-		0.0,
-		1.0
-	)
-	var safe_direction := _sanitize_tango_charge_direction(player, direction)
-	var result_variant: Variant = player.call(
-		"try_authoritative_tango_charge_released",
-		safe_direction,
-		charge_ratio
-	)
-	if not (result_variant is Dictionary):
-		player.call("cancel_authoritative_tango_charge")
-		return false
-	var result := result_variant as Dictionary
-	var succeeded := bool(result.get("accepted", false)) and bool(result.get("fired", false))
-	if not succeeded:
-		player.call("cancel_authoritative_tango_charge")
-	return succeeded
+	return player_roster_coordinator.request_tango_charge_released(direction)
 
 func request_tango_charge_cancelled() -> bool:
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		return false
-	var had_active_charge := _singleplayer_tango_charge_started_at >= 0.0
-	_singleplayer_tango_charge_started_at = -1.0
-	if not _is_valid_singleplayer_tango_player(player):
-		return false
-	player.call("cancel_authoritative_tango_charge")
-	return had_active_charge
-
-func _is_valid_singleplayer_tango_player(player_node: Player) -> bool:
-	return (
-		player_node != null
-		and is_instance_valid(player_node)
-		and player_node.has_method("is_tango")
-		and bool(player_node.call("is_tango"))
-		and player_node.has_method("try_authoritative_tango_charge_started")
-		and player_node.has_method("try_authoritative_tango_charge_released")
-		and player_node.has_method("cancel_authoritative_tango_charge")
-	)
-
-func _sanitize_tango_charge_direction(player_node: Player, direction: Vector2) -> Vector2:
-	if is_finite(direction.x) and is_finite(direction.y) and direction.length_squared() > 0.0001:
-		return direction.normalized()
-	match player_node.get_multiplayer_facing_id():
-		1:
-			return Vector2.LEFT
-		2:
-			return Vector2.UP
-		3:
-			return Vector2.DOWN
-		_:
-			return Vector2.RIGHT
+	return player_roster_coordinator.request_tango_charge_cancelled()
