@@ -136,6 +136,7 @@ var _mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _net_manager: NetManagerStore = null
 var _transactions: MpTransactionsCoordinator = null
 var _enemy_coordinator: MpEnemyCoordinator = null
+var _tower_economy: MpTowerEconomyCoordinator = null
 
 var _last_plant_placement_request_ids: Dictionary = {}
 var _plant_placement_rate_buckets: Dictionary = {}
@@ -186,7 +187,8 @@ func bind_session(
 	mode_adapter: TowerDefenseMultiplayerModeAdapter,
 	net_manager: NetManagerStore,
 	transactions: MpTransactionsCoordinator,
-	enemy_coordinator: MpEnemyCoordinator
+	enemy_coordinator: MpEnemyCoordinator,
+	tower_economy: MpTowerEconomyCoordinator
 ) -> void:
 	assert(session != null, "MpTowerWorldCoordinator 缺少多人会话。")
 	assert(runtime != null, "MpTowerWorldCoordinator 缺少战斗运行时。")
@@ -194,12 +196,14 @@ func bind_session(
 	assert(net_manager != null, "MpTowerWorldCoordinator 缺少网络管理器。")
 	assert(transactions != null, "MpTowerWorldCoordinator 缺少事务协调器。")
 	assert(enemy_coordinator != null, "MpTowerWorldCoordinator 缺少敌人协调器。")
+	assert(tower_economy != null, "MpTowerWorldCoordinator 缺少塔防经济协调器。")
 	var initialize_terrain_state := (
 		_session != session
 		or _runtime != runtime
 		or _mode_adapter != mode_adapter
 		or _net_manager != net_manager
 		or _enemy_coordinator != enemy_coordinator
+		or _tower_economy != tower_economy
 	)
 	if _session != null and _session != session:
 		_disconnect_mode_adapter()
@@ -210,6 +214,7 @@ func bind_session(
 	_net_manager = net_manager
 	_transactions = transactions
 	_enemy_coordinator = enemy_coordinator
+	_tower_economy = tower_economy
 	if initialize_terrain_state:
 		_reset_terrain_session_state()
 		_client_has_terrain_snapshot = (
@@ -230,6 +235,7 @@ func unbind_session(session: MultiplayerGameplaySession) -> void:
 	_net_manager = null
 	_transactions = null
 	_enemy_coordinator = null
+	_tower_economy = null
 
 
 func is_bound() -> bool:
@@ -246,6 +252,8 @@ func is_bound() -> bool:
 		and is_instance_valid(_transactions)
 		and _enemy_coordinator != null
 		and is_instance_valid(_enemy_coordinator)
+		and _tower_economy != null
+		and is_instance_valid(_tower_economy)
 	)
 
 
@@ -1163,7 +1171,9 @@ func receive_plant_spawn(
 	anchor: Vector2i,
 	current_health: int,
 	maximum_health: int,
-	health_revision: int
+	health_revision: int,
+	runtime_state: Dictionary,
+	host_sample_time: float
 ) -> PlantDefense:
 	if (
 		not _is_client_bound()
@@ -1184,7 +1194,26 @@ func receive_plant_spawn(
 		maximum_health,
 		health_revision
 	)
-	return get_plant(net_id)
+	var plant := get_plant(net_id)
+	if plant == null or not is_instance_valid(plant):
+		return null
+	_tower_economy.notify_plant_available(net_id)
+	_tower_economy.configure_production_network(plant, false)
+	_tower_economy.configure_research_network(plant)
+	_tower_economy.request_plant_runtime_state_apply(
+		plant,
+		runtime_state,
+		host_sample_time
+	)
+	var production_building := plant as ProductionBuilding
+	if (
+		production_building != null
+		and not production_building.multiplayer_production_snapshot_ready
+	):
+		production_building.request_multiplayer_production_snapshot()
+	_tower_economy.configure_warehouse_network(plant, false)
+	apply_pending_remote_plant_health(net_id)
+	return plant
 
 
 func receive_plant_placement_rejected(request_id: int, reason: String) -> void:
@@ -1319,10 +1348,13 @@ func receive_plant_damage_status_changed(
 
 
 func receive_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
-	if not _is_client_bound() or net_id <= 0:
+	if not is_bound() or _net_manager.is_host():
 		return
-	_mark_remote_plant_removed(net_id)
-	_mode_adapter.apply_remote_plant_removed(net_id, was_destroyed)
+	_tower_economy.notify_plant_removed(net_id)
+	if net_id > 0:
+		_mark_remote_plant_removed(net_id)
+		_mode_adapter.apply_remote_plant_removed(net_id, was_destroyed)
+	_tower_economy.try_apply_pending_warehouse_snapshots_atomically()
 
 
 func apply_pending_remote_plant_health(net_id: int) -> void:

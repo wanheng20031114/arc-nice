@@ -88,6 +88,59 @@ class ClientNetManager:
 		return 2
 
 
+class TestProductionBuilding:
+	extends ProductionBuilding
+
+	var lifecycle_records: Array[String] = []
+
+	func request_multiplayer_production_snapshot() -> bool:
+		lifecycle_records.append("production_snapshot")
+		return true
+
+
+class TestTowerEconomyCoordinator:
+	extends MpTowerEconomyCoordinator
+
+	var lifecycle_records: Array[String] = []
+
+	func notify_plant_available(_net_id: int) -> void:
+		lifecycle_records.append("economy_available")
+
+	func configure_production_network(
+		plant: PlantDefense,
+		_snapshot_ready: bool
+	) -> void:
+		lifecycle_records.append("production_config")
+		var building := plant as TestProductionBuilding
+		if building != null:
+			building.lifecycle_records = lifecycle_records
+			building.multiplayer_production_snapshot_ready = false
+
+	func configure_research_network(_plant: PlantDefense) -> void:
+		lifecycle_records.append("research_config")
+
+	func request_plant_runtime_state_apply(
+		_plant: PlantDefense,
+		_state: Dictionary,
+		_host_sample_time: float
+	) -> void:
+		lifecycle_records.append("runtime_state")
+
+	func configure_warehouse_network(
+		_plant: PlantDefense,
+		_snapshot_ready: bool,
+		_apply_pending_snapshots: bool = true
+	) -> void:
+		lifecycle_records.append("warehouse_config")
+
+	func notify_plant_removed(_net_id: int) -> void:
+		lifecycle_records.append("economy_removed")
+
+	func try_apply_pending_warehouse_snapshots_atomically() -> bool:
+		lifecycle_records.append("warehouse_retry")
+		return true
+
+
 class TestBambooMortar:
 	extends BambooMortar
 
@@ -171,6 +224,7 @@ class TestTowerModeAdapter:
 	extends TowerDefenseMultiplayerModeAdapter
 
 	var plants: Dictionary[int, PlantDefense] = {}
+	var lifecycle_records: Array[String] = []
 	var placement_requests: Array[Dictionary] = []
 	var next_net_id := 77
 	var terrain_snapshot_revision := 7
@@ -325,17 +379,19 @@ class TestTowerModeAdapter:
 		_request_id: int,
 		_owner_peer_id: int,
 		net_id: int,
-		_plant_id: StringName,
+		plant_id: StringName,
 		_anchor: Vector2i,
 		current_health: int,
 		maximum_health: int,
 		health_revision: int
 	) -> void:
+		lifecycle_records.append("spawn")
 		plants[net_id] = _create_proxy(
 			net_id,
 			current_health,
 			maximum_health,
-			health_revision
+			health_revision,
+			plant_id == &"test_production"
 		)
 
 	func apply_remote_plant_health(
@@ -346,6 +402,7 @@ class TestTowerModeAdapter:
 	) -> void:
 		var plant := get_multiplayer_plant_node(net_id)
 		if plant != null:
+			lifecycle_records.append("health")
 			plant.apply_remote_health(
 				current_health,
 				maximum_health,
@@ -357,6 +414,7 @@ class TestTowerModeAdapter:
 		_was_destroyed: bool = false,
 		_silent: bool = false
 	) -> void:
+		lifecycle_records.append("world_removed")
 		var plant := plants.get(net_id) as PlantDefense
 		plants.erase(net_id)
 		if plant != null and is_instance_valid(plant):
@@ -390,9 +448,14 @@ class TestTowerModeAdapter:
 		net_id: int,
 		current_health: int,
 		maximum_health: int,
-		health_revision: int
+		health_revision: int,
+		production_building: bool = false
 	) -> PlantDefense:
-		var plant := PlantDefense.new()
+		var plant: PlantDefense = null
+		if production_building:
+			plant = TestProductionBuilding.new()
+		else:
+			plant = PlantDefense.new()
 		plant.set_meta(&"net_id", net_id)
 		plant.configure_multiplayer_proxy(
 			current_health,
@@ -477,6 +540,27 @@ func _test_static_boundary(mp_game: MultiplayerGameplaySession) -> void:
 		and not source.contains("\"play_multiplayer_burst\""),
 		"MpGame 不得继续持有植物战斗表现队列、校验或动态播放逻辑。"
 	)
+	var plant_spawn_body := _get_rpc_body(source, "net_plant_spawned")
+	_expect(
+		plant_spawn_body.count("tower_world_coordinator.receive_plant_spawn(") == 1
+		and not plant_spawn_body.contains("tower_economy_coordinator")
+		and not plant_spawn_body.contains("_configure_")
+		and not plant_spawn_body.contains("_apply_plant_runtime_state")
+		and not plant_spawn_body.contains("\tif "),
+		"net_plant_spawned 必须仅向 TowerWorldCoordinator 参数委托。"
+	)
+	var plant_removed_body := _get_rpc_body(source, "net_plant_removed")
+	_expect(
+		plant_removed_body.strip_edges()
+		== "tower_world_coordinator.receive_plant_removed(net_id, was_destroyed)",
+		"net_plant_removed 必须仅向 TowerWorldCoordinator 参数委托。"
+	)
+	_expect(
+		coordinator_source.contains(
+			"var _tower_economy: MpTowerEconomyCoordinator = null"
+		),
+		"TowerWorldCoordinator 必须以强类型依赖协调塔防经济。"
+	)
 
 
 func _test_placement_spawn_pending_health_remove_chain(
@@ -492,7 +576,7 @@ func _test_placement_spawn_pending_health_remove_chain(
 	host_coordinator.handle_remote_plant_placement_request(
 		2,
 		1,
-		"agave_cannon",
+		"test_production",
 		Vector2i(3, 4)
 	)
 	_expect(
@@ -518,14 +602,29 @@ func _test_placement_spawn_pending_health_remove_chain(
 		_spawn_record.get("anchor", Vector2i.ZERO) as Vector2i,
 		int(_spawn_record.get("current_health", 0)),
 		int(_spawn_record.get("maximum_health", 1)),
-		int(_spawn_record.get("health_revision", 0))
+		int(_spawn_record.get("health_revision", 0)),
+		{"revision": 1},
+		42.0
 	)
-	client_coordinator.apply_pending_remote_plant_health(77)
 	_expect(
 		plant != null
 		and plant.current_health == 4
 		and plant.health_revision == 2,
 		"生成后必须把提前到达的较新生命 revision 应用到真实植物代理。"
+	)
+	var client_lifecycle := client.lifecycle_records as Array[String]
+	_expect(
+		client_lifecycle == [
+			"spawn",
+			"economy_available",
+			"production_config",
+			"research_config",
+			"runtime_state",
+			"production_snapshot",
+			"warehouse_config",
+			"health",
+		],
+		"植物生成必须保持世界生成、经济配置、状态、补包与 pending 生命的原顺序。"
 	)
 	client_coordinator.receive_plant_removed(77, true)
 	client_coordinator.receive_plant_health_changed(77, 9, 10, 3)
@@ -537,6 +636,14 @@ func _test_placement_spawn_pending_health_remove_chain(
 			as Dictionary
 		).has(77),
 		"移除必须建立 tombstone，并拒绝随后到达的陈旧生命更新。"
+	)
+	_expect(
+		client_lifecycle.slice(-3) == [
+			"economy_removed",
+			"world_removed",
+			"warehouse_retry",
+		],
+		"植物移除必须先清理经济 pending，再移除世界实体，最后原子补应用仓库快照。"
 	)
 	_dispose_fixture(session, host)
 	_dispose_fixture(session, client)
@@ -883,13 +990,18 @@ func _make_fixture(
 	var enemy_coordinator := (
 		ENEMY_COORDINATOR_SCENE.instantiate() as MpEnemyCoordinator
 	)
+	var tower_economy := TestTowerEconomyCoordinator.new()
 	var runtime := TestRuntime.new()
 	var adapter := TestTowerModeAdapter.new()
 	var net_manager: NetManagerStore = (
 		HostNetManager.new() if is_host else ClientNetManager.new()
 	)
 	var run_state := RunStateStore.new()
+	var lifecycle_records: Array[String] = []
 	root.add_child(coordinator)
+	root.add_child(tower_economy)
+	tower_economy.lifecycle_records = lifecycle_records
+	adapter.lifecycle_records = lifecycle_records
 	adapter.bind_runtime(runtime)
 	enemy_coordinator.bind_runtime(runtime)
 	transactions.bind_session(
@@ -906,12 +1018,15 @@ func _make_fixture(
 		adapter,
 		net_manager,
 		transactions,
-		enemy_coordinator
+		enemy_coordinator,
+		tower_economy
 	)
 	return {
 		"coordinator": coordinator,
 		"transactions": transactions,
 		"enemy_coordinator": enemy_coordinator,
+		"tower_economy": tower_economy,
+		"lifecycle_records": lifecycle_records,
 		"runtime": runtime,
 		"adapter": adapter,
 		"net_manager": net_manager,
@@ -926,12 +1041,14 @@ func _dispose_fixture(
 	var coordinator := fixture.coordinator as MpTowerWorldCoordinator
 	var transactions := fixture.transactions as MpTransactionsCoordinator
 	var enemy_coordinator := fixture.enemy_coordinator as MpEnemyCoordinator
+	var tower_economy := fixture.tower_economy as TestTowerEconomyCoordinator
 	var adapter := fixture.adapter as TestTowerModeAdapter
 	coordinator.unbind_session(session)
 	transactions.unbind_session(session)
 	enemy_coordinator.unbind_runtime(fixture.runtime as TestRuntime)
 	adapter.clear_plants()
 	coordinator.free()
+	tower_economy.free()
 	transactions.free()
 	enemy_coordinator.free()
 	adapter.free()
@@ -1129,6 +1246,20 @@ func _rpc_entry_captures_sender_first(source: String, function_name: String) -> 
 	return source.substr(body_offset, line_end - body_offset).strip_edges() == (
 		"var sender_id := multiplayer.get_remote_sender_id()"
 	)
+
+
+func _get_rpc_body(source: String, function_name: String) -> String:
+	var function_offset := source.find("func %s" % function_name)
+	if function_offset < 0:
+		return ""
+	var body_offset := source.find(") -> void:\n", function_offset)
+	if body_offset < 0:
+		return ""
+	body_offset += ") -> void:\n".length()
+	var body_end := source.find("\n\n@rpc(", body_offset)
+	if body_end < 0:
+		return source.substr(body_offset)
+	return source.substr(body_offset, body_end - body_offset)
 
 
 func _expect(condition: bool, message: String) -> void:

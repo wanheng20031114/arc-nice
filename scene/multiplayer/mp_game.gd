@@ -346,10 +346,10 @@ func _exit_tree() -> void:
 			world_flow_coordinator.unbind_runtime(game)
 		if transactions_coordinator != null:
 			transactions_coordinator.unbind_session(self)
-		if tower_economy_coordinator != null:
-			tower_economy_coordinator.unbind_runtime(game)
 		if tower_world_coordinator != null:
 			tower_world_coordinator.unbind_session(self)
+		if tower_economy_coordinator != null:
+			tower_economy_coordinator.unbind_runtime(game)
 		if merchant_transactions_coordinator != null:
 			merchant_transactions_coordinator.unbind_runtime(game)
 		if tower_fate_coordinator != null:
@@ -1708,7 +1708,8 @@ func _setup_game(mode: int) -> bool:
 			tower_adapter,
 			net_manager,
 			transactions_coordinator,
-			enemy_coordinator
+			enemy_coordinator,
+			tower_economy_coordinator
 		)
 		tower_fate_coordinator.bind_runtime(
 			game,
@@ -1786,8 +1787,6 @@ func _discard_unparented_game_runtime() -> void:
 		tower_fate_coordinator.unbind_runtime(game)
 	if game != null and collectible_presentation_coordinator != null:
 		collectible_presentation_coordinator.unbind_runtime(game)
-	if game != null and tower_economy_coordinator != null:
-		tower_economy_coordinator.unbind_runtime(game)
 	if game != null and world_flow_coordinator != null:
 		world_flow_coordinator.unbind_runtime(game)
 	if game != null and player_coordinator != null:
@@ -1800,6 +1799,8 @@ func _discard_unparented_game_runtime() -> void:
 		transactions_coordinator.unbind_session(self)
 	if tower_world_coordinator != null:
 		tower_world_coordinator.unbind_session(self)
+	if game != null and tower_economy_coordinator != null:
+		tower_economy_coordinator.unbind_runtime(game)
 	if game != null and is_instance_valid(game) and game.get_parent() == null:
 		game.free()
 	game = null
@@ -4496,7 +4497,7 @@ func net_plant_spawned(
 	runtime_state: Dictionary,
 	host_sample_time: float
 ) -> void:
-	var plant := tower_world_coordinator.receive_plant_spawn(
+	tower_world_coordinator.receive_plant_spawn(
 		request_id,
 		owner_peer_id,
 		net_id,
@@ -4504,22 +4505,10 @@ func net_plant_spawned(
 		anchor,
 		current_health,
 		maximum_health,
-		health_revision
+		health_revision,
+		runtime_state,
+		host_sample_time
 	)
-	if plant == null or not is_instance_valid(plant):
-		return
-	tower_economy_coordinator.notify_plant_available(net_id)
-	_configure_production_network(plant, false)
-	_configure_research_network(plant)
-	_apply_plant_runtime_state(plant, runtime_state, host_sample_time)
-	var production_building := plant as ProductionBuilding
-	if (
-		production_building != null
-		and not production_building.multiplayer_production_snapshot_ready
-	):
-		production_building.request_multiplayer_production_snapshot()
-	_configure_warehouse_network(plant, false)
-	tower_world_coordinator.apply_pending_remote_plant_health(net_id)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -4557,11 +4546,7 @@ func net_plant_damage_status_changed(
 
 @rpc("authority", "call_remote", "reliable", 5)
 func net_plant_removed(net_id: int, was_destroyed: bool = false) -> void:
-	if not _has_tower_mode() or game == null or net_manager.is_host():
-		return
-	tower_economy_coordinator.notify_plant_removed(net_id)
 	tower_world_coordinator.receive_plant_removed(net_id, was_destroyed)
-	_try_apply_pending_warehouse_snapshots_atomically()
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 4)
