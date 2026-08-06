@@ -3,7 +3,7 @@ class_name CornMachineGun
 
 signal burst_shot_emitted(shot_index: int, authoritative: bool)
 
-const AUDIO_LIMITER := preload("res://scene/plant_defense/plant_attack_audio_limiter.gd")
+const AUDIO_LIMITER := preload("res://scene/combat/audio/plant_attack_audio_limiter.gd")
 const PROJECTILE_SHIELD_COLLISION_MASK := 1 << 12
 const WORLD_AND_ENEMY_COLLISION_MASK := 5 | PROJECTILE_SHIELD_COLLISION_MASK
 const DEFAULT_ATTACK_DAMAGE := 30

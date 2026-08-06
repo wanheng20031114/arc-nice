@@ -1,7 +1,7 @@
 extends SceneTree
 
 const PlantTargetSpatialIndexScript := preload(
-	"res://scene/plant_defense/plant_target_spatial_index.gd"
+	"res://scene/combat/targeting/plant_target_spatial_index.gd"
 )
 
 

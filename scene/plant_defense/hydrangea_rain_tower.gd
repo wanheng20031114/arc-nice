@@ -2,7 +2,7 @@ extends PlantDefense
 class_name HydrangeaRainTower
 
 const AUDIO_LIMITER := preload(
-	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
+	"res://scene/combat/audio/plant_attack_audio_limiter.gd"
 )
 const RUNTIME_STATE_SCHEMA := 3
 const ATTACK_REDUCTION_STATUS_ID := &"hydrangea_attack_reduction"

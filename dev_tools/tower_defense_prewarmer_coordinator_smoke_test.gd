@@ -4,10 +4,10 @@ const PREWARMER_SCENE := preload(
 	"res://scene/game_modes/tower_defense/prewarm/tower_defense_prewarmer_coordinator.tscn"
 )
 const PLACEMENT_PARTICLES_SCENE := preload(
-	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn"
 )
 const REMOVAL_SMOKE_SCENE := preload(
-	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn"
 )
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload(
 	"res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png"

@@ -1,7 +1,7 @@
 [gd_scene format=4 uid="uid://t3adn0n2cpbu"]
 
 [ext_resource type="TileSet" path="res://resources/terrain/dual_grid/terrain_dual_grid_tileset_16.tres" id="1_tileset"]
-[ext_resource type="Script" uid="uid://dkmp2hokatbyj" path="res://scene/terrain/dual_grid_paint_demo.gd" id="2_demo"]
+[ext_resource type="Script" uid="uid://dkmp2hokatbyj" path="res://scene/game_modes/tower_defense/test_arenas/terrain/dual_grid_paint_demo.gd" id="2_demo"]
 [ext_resource type="Script" uid="uid://10rnkne5bliy" path="res://scene/terrain/dual_grid_tilemap.gd" id="3_tilemap"]
 [ext_resource type="FontFile" uid="uid://dw5sfjx6vc2eb" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 

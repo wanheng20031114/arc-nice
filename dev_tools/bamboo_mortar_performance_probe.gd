@@ -14,7 +14,7 @@ const SHELL_SCENE := preload(
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
 )
 const COMBAT_SYSTEM_SCENE := preload(
-	"res://scene/plant_defense/bamboo_mortar_combat_system.tscn"
+	"res://scene/game_modes/tower_defense/plant/combat/bamboo_mortar_combat_system.tscn"
 )
 const ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_basic.tres"

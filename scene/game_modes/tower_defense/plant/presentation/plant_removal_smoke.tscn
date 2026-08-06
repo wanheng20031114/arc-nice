@@ -1,6 +1,6 @@
 [gd_scene load_steps=13 format=3]
 
-[ext_resource type="Script" path="res://scene/plant_defense/effects/plant_removal_smoke.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.gd" id="1_script"]
 [ext_resource type="AudioStream" path="res://resources/audio/plant_collapse.wav" id="2_audio"]
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_smoke"]

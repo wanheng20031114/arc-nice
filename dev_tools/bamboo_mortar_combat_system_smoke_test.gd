@@ -1,7 +1,7 @@
 extends SceneTree
 
 const COMBAT_SYSTEM_SCENE := preload(
-	"res://scene/plant_defense/bamboo_mortar_combat_system.tscn"
+	"res://scene/game_modes/tower_defense/plant/combat/bamboo_mortar_combat_system.tscn"
 )
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const ARMORED_ENEMY_CONFIG := preload(

@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scene/plant_defense/bamboo_mortar_combat_system.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/combat/bamboo_mortar_combat_system.gd" id="1_script"]
 
 [node name="BambooMortarCombatSystem" type="Node"]
 process_physics_priority = 50

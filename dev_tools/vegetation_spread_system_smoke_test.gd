@@ -1,7 +1,7 @@
 extends SceneTree
 
 const SPREAD_SCENE := preload(
-	"res://scene/plant_defense/vegetation_spread_system.tscn"
+	"res://scene/game_modes/tower_defense/plant/vegetation/vegetation_spread_system.tscn"
 )
 
 var failures: Array[String] = []

@@ -2,10 +2,10 @@ extends CombatRuntimeBase
 class_name TowerDefenseGame
 
 const PLANT_PLACEMENT_PARTICLES_SCENE := preload(
-	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn"
 )
 const PLANT_REMOVAL_SMOKE_SCENE := preload(
-	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn"
 )
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png")
 const TANGO_MINIMUM_CHARGE_SECONDS := 0.2

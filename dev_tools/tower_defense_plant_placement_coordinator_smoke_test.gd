@@ -4,10 +4,10 @@ const COORDINATOR_SCENE := preload(
 	"res://scene/game_modes/tower_defense/plant/tower_defense_plant_placement_coordinator.tscn"
 )
 const PLACEMENT_PARTICLES_SCENE := preload(
-	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn"
 )
 const REMOVAL_SMOKE_SCENE := preload(
-	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn"
 )
 const COORDINATOR_SCRIPT_PATH := (
 	"res://scene/game_modes/tower_defense/plant/"

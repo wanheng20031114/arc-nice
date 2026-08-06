@@ -1,6 +1,6 @@
 extends SceneTree
 
-const DEMO_SCENE_PATH := "res://scene/terrain/dual_grid_paint_demo.tscn"
+const DEMO_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/terrain/dual_grid_paint_demo.tscn"
 const TILESET_PATH := "res://resources/terrain/dual_grid/terrain_dual_grid_tileset_16.tres"
 const TILESET_32_PATH := "res://resources/terrain/dual_grid/terrain_dual_grid_tileset_32.tres"
 const GRASS_TILES_PATH := "res://resources/terrain/dual_grid/meadow_grass_dual_grid_atlas_16.png"

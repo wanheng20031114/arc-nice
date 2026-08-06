@@ -626,7 +626,7 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 		and not realtime_plant.is_operational
 		and realtime_plant.is_construction_visual_active()
 		and int(game.session_object_pool.get_metrics(
-			"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+			"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn"
 		).get("in_use", 0)) == 1
 		and game.get_tree().get_nodes_in_group(
 			PlantPlacementParticles.PLACEMENT_AUDIO_GROUP
@@ -708,10 +708,10 @@ func _test_multiplayer_lifecycle_effect_routing(game: TowerDefenseGame) -> void:
 	await physics_frame
 	_expect(not is_instance_valid(realtime_plant), "reliable remove残影必须在0.7秒后释放。")
 	var placement_metrics := game.session_object_pool.get_metrics(
-		"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+		"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn"
 	)
 	var smoke_metrics := game.session_object_pool.get_metrics(
-		"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
+		"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn"
 	)
 	_expect(
 		int(placement_metrics.get("in_use", -1)) == 0

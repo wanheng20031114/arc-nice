@@ -4,7 +4,7 @@ const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const TIYI_SCENE := preload("res://scene/player/tiyi/player_tiyi.tscn")
 const HOE_CAT_SCENE := preload("res://scene/player/hoe_cat/player_hoe_cat.tscn")
-const PLANT_SYSTEM_SCRIPT := preload("res://scene/plant_defense/plant_system.gd")
+const PLANT_SYSTEM_SCRIPT := preload("res://scene/game_modes/tower_defense/plant/runtime/plant_system.gd")
 const PLACEMENT_CONTROLLER_SCENE := preload(
 	"res://scene/game_modes/tower_defense/plant/placement/plant_placement_controller.tscn"
 )

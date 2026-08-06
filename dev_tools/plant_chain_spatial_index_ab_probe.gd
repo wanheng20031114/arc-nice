@@ -290,7 +290,7 @@ class WorldAnchorIndex:
 	extends ProbeIndex
 
 	const SPATIAL_INDEX_SCRIPT := preload(
-		"res://scene/plant_defense/plant_target_spatial_index.gd"
+		"res://scene/combat/targeting/plant_target_spatial_index.gd"
 	)
 
 	var bucket_size := 64.0

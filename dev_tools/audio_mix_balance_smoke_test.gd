@@ -16,10 +16,10 @@ const BAMBOO_MORTAR_SHELL_SCENE := preload(
 	"res://scene/plant_defense/bamboo_mortar_shell.tscn"
 )
 const PLANT_PLACEMENT_SCENE := preload(
-	"res://scene/plant_defense/effects/plant_placement_particles.tscn"
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn"
 )
 const PLANT_REMOVAL_SCENE := preload(
-	"res://scene/plant_defense/effects/plant_removal_smoke.tscn"
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn"
 )
 const MERCHANT_BUBBLE_SCENE := preload("res://scene/merchants/shared/merchant_dialogue_bubble.tscn")
 const MULTIPLAYER_LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
@@ -37,7 +37,7 @@ const SWORDSMAN_CONFIG := preload("res://resources/config/enemies/capoo_swordsma
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
 const AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
 const PLANT_AUDIO_LIMITER := preload(
-	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
+	"res://scene/combat/audio/plant_attack_audio_limiter.gd"
 )
 const ENEMY_HIT_STREAM := preload("res://resources/audio/cowboy_monsterhit.wav")
 const ENEMY_DEATH_STREAM := preload("res://resources/audio/cowboy_monsterdie.wav")

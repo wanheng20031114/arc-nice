@@ -14,7 +14,7 @@ const SPLIT_LIFECYCLE_MATERIAL := preload(
 	"res://resources/shader/bamboo_mortar_split_lifecycle_material.tres"
 )
 const AUDIO_LIMITER := preload(
-	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
+	"res://scene/combat/audio/plant_attack_audio_limiter.gd"
 )
 const DEFAULT_ATTACK_DAMAGE := 140
 const OUTER_ATTACK_DAMAGE := 70

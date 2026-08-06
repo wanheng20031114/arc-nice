@@ -2,7 +2,7 @@ extends PlantDefense
 class_name GrapeArcTower
 
 const AUDIO_LIMITER := preload(
-	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
+	"res://scene/combat/audio/plant_attack_audio_limiter.gd"
 )
 const DEFAULT_ATTACK_INTERVAL := 1.4
 const TARGET_RETRY_SECONDS := 0.18

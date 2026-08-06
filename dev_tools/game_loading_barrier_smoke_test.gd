@@ -68,8 +68,8 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/shader/plant_lifecycle.gdshader",
 	"res://resources/shader/plant_lifecycle_material.tres",
 	"res://resources/shader/plant_lifecycle_noise.tres",
-	"res://scene/plant_defense/effects/plant_placement_particles.tscn",
-	"res://scene/plant_defense/effects/plant_removal_smoke.tscn",
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn",
+	"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn",
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn",
 ]
 
@@ -614,8 +614,8 @@ func _expect_lifecycle_prewarm_pool_released(runtime: CombatRuntimeBase) -> void
 	if tower_runtime == null:
 		return
 	for scene_path in [
-		"res://scene/plant_defense/effects/plant_placement_particles.tscn",
-		"res://scene/plant_defense/effects/plant_removal_smoke.tscn",
+		"res://scene/game_modes/tower_defense/plant/presentation/plant_placement_particles.tscn",
+		"res://scene/game_modes/tower_defense/plant/presentation/plant_removal_smoke.tscn",
 	]:
 		var metrics := tower_runtime.session_object_pool.get_metrics(scene_path)
 		_expect(

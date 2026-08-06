@@ -4,7 +4,7 @@ const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const CORN_SCENE := preload("res://scene/plant_defense/corn_machine_gun.tscn")
 const CORN_CONFIG := preload("res://resources/config/plant_defense/corn_machine_gun.tres")
 const FIRE_STREAM := preload("res://resources/audio/capoo_smg_fire.wav")
-const AUDIO_LIMITER := preload("res://scene/plant_defense/plant_attack_audio_limiter.gd")
+const AUDIO_LIMITER := preload("res://scene/combat/audio/plant_attack_audio_limiter.gd")
 const TEST_SEED := 20260715
 
 var failures: Array[String] = []

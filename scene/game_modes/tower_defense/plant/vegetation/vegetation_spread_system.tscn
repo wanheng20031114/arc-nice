@@ -1,7 +1,7 @@
 [gd_scene load_steps=5 format=3]
 
-[ext_resource type="Script" path="res://scene/plant_defense/vegetation_spread_system.gd" id="1_script"]
-[ext_resource type="Shader" path="res://scene/plant_defense/vegetation_growth_overlay.gdshader" id="2_shader"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/plant/vegetation/vegetation_spread_system.gd" id="1_script"]
+[ext_resource type="Shader" path="res://scene/game_modes/tower_defense/plant/vegetation/vegetation_growth_overlay.gdshader" id="2_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_growth"]
 shader = ExtResource("2_shader")
