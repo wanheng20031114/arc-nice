@@ -31,13 +31,6 @@ const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
 const STATE_IN_GAME := 5
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
-const FIRE_SORCERER_FIREBALL_VOLLEY_TYPE: StringName = (
-	&"fire_sorcerer_fireball_volley"
-)
-const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE: StringName = (
-	&"fire_sorcerer_elite_fireball_volley"
-)
-const FIRE_SLIME_TOUCH_TYPE: StringName = &"fire_slime_touch"
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 # Multiplayer protocol map:
@@ -77,8 +70,6 @@ var _gameplay_gateway: MultiplayerGameplayGateway = null
 var _mode_adapter: MultiplayerModeAdapter = null
 var tower_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _linglan_boss_runtime_port: LinglanBossRuntimePort = null
-var _next_collectible_effect_event_id: int = 1
-var _processed_collectible_effect_event_ids: Dictionary = {}
 var _disconnected_player_reconnect_states: Dictionary[int, Dictionary] = {}
 var _recent_event_prune_time_left: float = RECENT_EVENT_PRUNE_INTERVAL_SECONDS
 var _host_startup_snapshot_grace_time_left: float = 0.0
@@ -1394,36 +1385,6 @@ func _on_tower_world_corn_machine_gun_burst_batch_broadcast_requested(
 	)
 
 
-func _consume_peer_rate_token(
-	buckets: Dictionary,
-	peer_id: int,
-	rate_per_second: float,
-	burst: float,
-	now_seconds: float = -1.0
-) -> bool:
-	if peer_id <= 0 or rate_per_second <= 0.0 or burst <= 0.0:
-		return false
-	var now := _get_net_time() if now_seconds < 0.0 else now_seconds
-	var bucket: Dictionary
-	if buckets.has(peer_id):
-		bucket = buckets[peer_id] as Dictionary
-	else:
-		bucket = {"tokens": burst, "last_time": now}
-		buckets[peer_id] = bucket
-	var tokens := float(bucket.get("tokens", burst))
-	var last_time := float(bucket.get("last_time", now))
-	tokens = minf(burst, tokens + maxf(now - last_time, 0.0) * rate_per_second)
-	var accepted := tokens >= 1.0
-	if accepted:
-		tokens -= 1.0
-	# Mutate the per-peer state in place. Projectile requests can legitimately
-	# reach hundreds per second, so replacing this Dictionary on every token would
-	# turn the safety gate itself into a steady allocation hot path.
-	bucket["tokens"] = tokens
-	bucket["last_time"] = now
-	return accepted
-
-
 func _consume_remote_player_action_admission(
 	peer_id: int,
 	now_seconds: float = -1.0
@@ -2064,14 +2025,6 @@ func _client_send_input_if_needed(buttons: int) -> void:
 	player_coordinator.send_client_input_if_needed(buttons)
 
 
-func _get_client_shoot_input() -> Vector2:
-	return player_coordinator.get_client_shoot_input()
-
-
-func _uses_passive_tango_mouse_aim(player_node: Player) -> bool:
-	return player_coordinator.uses_passive_tango_mouse_aim(player_node)
-
-
 func _is_client_input_state_active(
 	move_input: Vector2,
 	shoot_input: Vector2,
@@ -2360,18 +2313,6 @@ func _apply_authoritative_tango_charge_started(
 	request_id: int
 ) -> bool:
 	return player_coordinator.apply_authoritative_tango_charge_started(
-		peer_id,
-		direction,
-		request_id
-	)
-
-
-func _apply_authoritative_tango_charge_released(
-	peer_id: int,
-	direction: Vector2,
-	request_id: int
-) -> bool:
-	return player_coordinator.apply_authoritative_tango_charge_released(
 		peer_id,
 		direction,
 		request_id
@@ -2785,19 +2726,6 @@ func _get_unbounded_host_event_age(host_event_timestamp: float) -> float:
 	return maxf(_get_net_time() - mapped_fire_time, 0.0)
 
 
-func _get_fire_sorcerer_burn_family(
-	source_type: StringName
-) -> StringName:
-	var burn_family := CombatAttackRegistry.get_burn_family(source_type)
-	if burn_family == FIRE_SLIME_TOUCH_TYPE:
-		return &""
-	return burn_family
-
-
-func _get_fire_sorcerer_burn_level(source_type: StringName) -> int:
-	return CombatAttackRegistry.get_burn_tick_damage(source_type)
-
-
 ## 每颗火球的协议 source type 在本进程内只接受一次首碰。
 ## Host 记录是最终权威；Client 使用同一入口抑制本地重复预测。
 func try_consume_fire_sorcerer_fireball_contact(
@@ -2923,24 +2851,6 @@ func net_tiyi_sniper_hit_confirmed(
 		hit_position,
 		direction,
 		continues_piercing
-	)
-
-
-func _apply_confirmed_enemy_damage(
-	enemy_net_id: int,
-	enemy: Enemy,
-	damage: int,
-	impact_direction: Vector2,
-	damage_type: EnemyConfig.DamageType,
-	show_hit_particles: bool = true
-) -> bool:
-	return enemy_coordinator.apply_confirmed_enemy_damage(
-		enemy_net_id,
-		enemy,
-		damage,
-		impact_direction,
-		damage_type,
-		show_hit_particles
 	)
 
 
@@ -3955,10 +3865,6 @@ func _apply_warehouse_storage_snapshot_batch(
 	)
 
 
-func _try_apply_pending_warehouse_snapshots_atomically() -> bool:
-	return tower_economy_coordinator.try_apply_pending_warehouse_snapshots_atomically()
-
-
 func _cache_pending_warehouse_snapshot(
 	warehouse_net_id: int,
 	snapshot: Dictionary
@@ -3966,13 +3872,6 @@ func _cache_pending_warehouse_snapshot(
 	tower_economy_coordinator.cache_pending_warehouse_snapshot(
 		warehouse_net_id,
 		snapshot
-	)
-
-
-
-func _erase_pending_warehouse_snapshot(warehouse_net_id: int) -> bool:
-	return tower_economy_coordinator.erase_pending_warehouse_snapshot(
-		warehouse_net_id
 	)
 
 
@@ -3994,10 +3893,6 @@ func _cache_pending_remote_production_state(
 
 func _take_pending_remote_production_state(net_id: int) -> Dictionary:
 	return tower_economy_coordinator.take_pending_remote_production_state(net_id)
-
-
-func _erase_pending_remote_production_state(net_id: int) -> bool:
-	return tower_economy_coordinator.erase_pending_remote_production_state(net_id)
 
 
 func _clear_pending_remote_production_states() -> void:
