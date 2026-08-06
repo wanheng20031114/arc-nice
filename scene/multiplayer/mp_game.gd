@@ -41,16 +41,11 @@ const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_TYPE: StringName = (
 	&"fire_sorcerer_elite_fireball_volley"
 )
 const FIRE_SLIME_TOUCH_TYPE: StringName = &"fire_slime_touch"
-const LIGHTNING_SORCERER_CHAIN_MIN_POINTS := 2
-const LIGHTNING_SORCERER_CHAIN_MAX_POINTS := 6
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TANGO_LASER_PROJECTILE_TYPE: StringName = &"tango_laser_bullet"
 # Application payload budget. Keep room for Godot RPC, ENet, UDP/IP headers before MTU pressure.
 const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
-const ENEMY_TERMINAL_DEFEATED := 0
-const ENEMY_TERMINAL_ESCAPED := 1
-const ENEMY_TERMINAL_REMOVED := 2
 # Multiplayer protocol map:
 # - CH_AUTH: authentication, loading barrier, and complete-state repair.
 # - CH_INPUT: client input and predicted pose reports.
@@ -113,14 +108,6 @@ func _ready() -> void:
 	)
 	player_coordinator.randomize_revive_generator()
 	merchant_transactions_coordinator.randomize_offer_generator()
-	if not enemy_coordinator.remote_enemy_spawned.is_connected(_on_remote_enemy_spawned):
-		enemy_coordinator.remote_enemy_spawned.connect(_on_remote_enemy_spawned)
-	if not enemy_coordinator.remote_enemy_escape_requested.is_connected(
-		_on_remote_enemy_escape_requested
-	):
-		enemy_coordinator.remote_enemy_escape_requested.connect(
-			_on_remote_enemy_escape_requested
-		)
 	_connect_world_flow_coordinator_signals()
 	set_multiplayer_authority(_get_host_peer_id())
 	if not net_manager.connection_state_changed.is_connected(_on_connection_state_changed):
@@ -298,6 +285,26 @@ func _on_tiyi_high_noon_damage_requested(
 		EnemyConfig.DamageType.MAGIC,
 		false
 	)
+
+
+func _on_enemy_lifecycle_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	if peer_id <= 0 or not net_manager.is_host():
+		return
+	_record_outbound_rpc(method_name, arguments)
+	var rpc_arguments: Array = [peer_id, method_name]
+	rpc_arguments.append_array(arguments)
+	callv(&"rpc_id", rpc_arguments)
+
+
+func _on_enemy_lifecycle_rpc_broadcast_requested(
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	_rpc_to_connected_clients(method_name, arguments)
 
 
 func _exit_tree() -> void:
@@ -1635,6 +1642,11 @@ func _setup_game(mode: int) -> bool:
 	session_coordinator.bind_runtime(game)
 	player_coordinator.bind_runtime(game)
 	enemy_coordinator.bind_runtime(game)
+	enemy_coordinator.bind_lifecycle_dependencies(
+		net_manager,
+		gameplay_gateway,
+		_get_net_time
+	)
 	projectile_coordinator.bind_runtime(game)
 	projectile_coordinator.bind_network_facade_dependencies(
 		net_manager,
@@ -1717,10 +1729,6 @@ func _setup_game(mode: int) -> bool:
 		tower_world_coordinator.reset_session_state()
 		tower_fate_coordinator.reset_session_state()
 	if net_manager.is_host():
-		gameplay_gateway.enemy_spawned.connect(_on_host_enemy_spawned)
-		gameplay_gateway.enemy_defeated.connect(_on_host_enemy_defeated)
-		gameplay_gateway.enemy_removed.connect(_on_host_enemy_removed)
-		gameplay_gateway.enemy_escaped.connect(_on_host_enemy_escaped)
 		gameplay_gateway.pickup_collected.connect(_on_host_pickup_collected)
 		if _linglan_boss_runtime_port != null:
 			_linglan_boss_runtime_port.airdrop_started.connect(
@@ -1844,7 +1852,7 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 			true
 		)
 	merchant_transactions_coordinator.send_offer_state_if_present(peer_id)
-	_send_live_enemy_roster_to_peer(peer_id)
+	enemy_coordinator.send_live_spawn_roster_to_peer(peer_id)
 	_send_live_pickup_roster_to_peer(peer_id)
 	if _has_tower_mode():
 		tower_world_coordinator.request_base_health_snapshot_for_peer(peer_id)
@@ -1959,21 +1967,6 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 		)
 
 
-func _send_live_enemy_roster_to_peer(peer_id: int) -> void:
-	for batch in enemy_coordinator.build_live_spawn_batches(_get_net_time()):
-		_record_outbound_rpc(
-			&"net_enemy_spawned_batch",
-			[batch.net_ids, batch.config_paths, batch.positions, batch.spawn_times]
-		)
-		net_enemy_spawned_batch.rpc_id(
-			peer_id,
-			batch.net_ids,
-			batch.config_paths,
-			batch.positions,
-			batch.spawn_times
-		)
-
-
 func _send_live_pickup_roster_to_peer(peer_id: int) -> void:
 	for record in world_flow_coordinator.build_live_pickup_records():
 		var net_id := int(record.get("net_id", 0))
@@ -2054,7 +2047,7 @@ func _host_physics_tick(frame: int, _delta: float) -> void:
 	var enemy_snapshot_interval_frames := _get_enemy_snapshot_interval_frames()
 	if frame % enemy_snapshot_interval_frames == 0:
 		_host_broadcast_enemy_snapshots(client_peer_ids)
-	_flush_pending_enemy_spawns()
+	enemy_coordinator.update_host()
 
 
 func _get_enemy_snapshot_interval_frames() -> int:
@@ -3136,19 +3129,6 @@ func _is_finite_vector2(value: Vector2) -> bool:
 	return is_finite(value.x) and is_finite(value.y)
 
 
-func _is_valid_enemy_lightning_chain_points(points: PackedVector2Array) -> bool:
-	var point_count := points.size()
-	if (
-		point_count < LIGHTNING_SORCERER_CHAIN_MIN_POINTS
-		or point_count > LIGHTNING_SORCERER_CHAIN_MAX_POINTS
-	):
-		return false
-	for point in points:
-		if not _is_finite_vector2(point):
-			return false
-	return true
-
-
 func _update_recent_event_cache_prune(delta: float) -> void:
 	_recent_event_prune_time_left = maxf(_recent_event_prune_time_left - delta, 0.0)
 	if _recent_event_prune_time_left > 0.0:
@@ -3962,21 +3942,6 @@ func net_player_revived(
 
 
 
-func _on_host_enemy_spawned(
-	net_id: int,
-	enemy_config: EnemyConfig,
-	spawn_position: Vector2
-) -> void:
-	if enemy_config == null or not is_inside_tree() or not net_manager.is_host():
-		return
-	enemy_coordinator.queue_host_spawn(
-		net_id,
-		enemy_config,
-		spawn_position,
-		_get_net_time()
-	)
-
-
 func _on_remote_enemy_spawned(enemy: Enemy) -> void:
 	if enemy == null or not _has_tower_mode():
 		return
@@ -3987,58 +3952,6 @@ func _on_remote_enemy_escape_requested(net_id: int) -> void:
 	if not _has_tower_mode():
 		return
 	tower_mode_adapter.apply_remote_enemy_escape(net_id)
-
-
-func _flush_pending_enemy_spawns() -> void:
-	if not net_manager.is_host():
-		return
-	for batch in enemy_coordinator.drain_host_spawn_batches():
-		_rpc_to_connected_clients(
-			&"net_enemy_spawned_batch",
-			[batch.net_ids, batch.config_paths, batch.positions, batch.spawn_times]
-		)
-
-
-func _on_host_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
-	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
-		return
-	_broadcast_enemy_terminal(net_id, ENEMY_TERMINAL_DEFEATED, defeat_position)
-
-
-func _on_host_enemy_removed(net_id: int) -> void:
-	if not is_inside_tree() or not net_manager.is_host():
-		return
-	_broadcast_enemy_terminal(net_id, ENEMY_TERMINAL_REMOVED, Vector2.ZERO)
-
-
-func _on_host_enemy_escaped(net_id: int) -> void:
-	if not is_inside_tree() or not net_manager.is_host() or net_id <= 0:
-		return
-	_broadcast_enemy_terminal(net_id, ENEMY_TERMINAL_ESCAPED, Vector2.ZERO)
-
-
-func _broadcast_enemy_terminal(net_id: int, reason: int, event_position: Vector2) -> void:
-	var terminal := enemy_coordinator.build_host_terminal_event(
-		net_id,
-		reason,
-		event_position
-	)
-	if terminal.is_empty():
-		return
-	_rpc_to_connected_clients(
-		&"net_enemy_terminal",
-		[
-			int(terminal.get("net_id", 0)),
-			int(terminal.get("reason", ENEMY_TERMINAL_REMOVED)),
-			terminal.get("event_position", Vector2.ZERO) as Vector2,
-			int(terminal.get("current_health", 0)),
-			int(terminal.get("health_revision", 0)),
-			int(terminal.get("damage", 0)),
-			terminal.get("impact_direction", Vector2.ZERO) as Vector2,
-			int(terminal.get("damage_type", EnemyConfig.DamageType.PHYSICAL)),
-			bool(terminal.get("show_hit_particles", false)),
-		]
-	)
 
 
 func _on_host_xiaocong_fate_state_changed(state: Dictionary) -> void:
@@ -4240,11 +4153,12 @@ func broadcast_enemy_action(
 	action_position: Vector2,
 	action_id: int
 ) -> void:
-	if not net_manager.is_host() or net_id <= 0 or action_id <= 0:
-		return
-	_rpc_to_connected_clients(
-		&"net_enemy_action",
-		[net_id, String(action_name), direction, action_position, action_id, _get_net_time()]
+	enemy_coordinator.broadcast_enemy_action(
+		net_id,
+		action_name,
+		direction,
+		action_position,
+		action_id
 	)
 
 
@@ -4255,21 +4169,17 @@ func broadcast_enemy_target_action(
 	action_position: Vector2,
 	action_id: int
 ) -> void:
-	if not net_manager.is_host() or net_id <= 0 or action_id <= 0:
-		return
-	_rpc_to_connected_clients(
-		&"net_enemy_target_action",
-		[net_id, String(action_name), target_peer_id, action_position, action_id, _get_net_time()]
+	enemy_coordinator.broadcast_enemy_target_action(
+		net_id,
+		action_name,
+		target_peer_id,
+		action_position,
+		action_id
 	)
 
 
 func broadcast_enemy_lightning_chain(points: PackedVector2Array) -> void:
-	if (
-		not net_manager.is_host()
-		or not _is_valid_enemy_lightning_chain_points(points)
-	):
-		return
-	_rpc_to_connected_clients(&"net_enemy_lightning_chain", [points])
+	enemy_coordinator.broadcast_enemy_lightning_chain(points)
 
 
 func _on_world_flow_pickup_remove_broadcast_requested(net_id: int) -> void:
@@ -4806,14 +4716,14 @@ func net_enemy_spawned(
 	pos_y: float,
 	host_spawn_timestamp: float
 ) -> void:
-	var spawn_position: Vector2 = Vector2(pos_x, pos_y)
-	var mapped_spawn_time: float = _map_host_timestamp_to_client_time(host_spawn_timestamp, false)
-	enemy_coordinator.receive_enemy_spawn(
+	enemy_coordinator.receive_enemy_spawn_packet(
 		net_id,
 		config_path,
-		spawn_position,
-		mapped_spawn_time,
-		_get_net_time()
+		Vector2(pos_x, pos_y),
+		host_spawn_timestamp,
+		_get_net_time(),
+		_has_host_time_offset,
+		_host_to_client_time_offset
 	)
 
 
@@ -4824,22 +4734,15 @@ func net_enemy_spawned_batch(
 	positions: PackedVector2Array,
 	spawn_times: PackedFloat64Array
 ) -> void:
-	var record_count := mini(
-		net_ids.size(),
-		mini(config_paths.size(), mini(positions.size(), spawn_times.size()))
+	enemy_coordinator.receive_enemy_spawn_batch(
+		net_ids,
+		config_paths,
+		positions,
+		spawn_times,
+		_get_net_time(),
+		_has_host_time_offset,
+		_host_to_client_time_offset
 	)
-	for record_index in range(record_count):
-		var mapped_spawn_time := _map_host_timestamp_to_client_time(
-			spawn_times[record_index],
-			false
-		)
-		enemy_coordinator.receive_enemy_spawn(
-			net_ids[record_index],
-			config_paths[record_index],
-			positions[record_index],
-			mapped_spawn_time,
-			_get_net_time()
-		)
 
 
 @rpc("authority", "call_remote", "reliable", 5)
@@ -5115,24 +5018,16 @@ func net_enemy_action(
 	action_id: int,
 	host_action_timestamp: float = -1.0
 ) -> void:
-	if not is_finite(host_action_timestamp):
-		return
-	var received_at := _get_net_time()
-	var mapped_action_time := received_at
-	if host_action_timestamp >= 0.0:
-		mapped_action_time = _map_host_timestamp_to_client_time(
-			host_action_timestamp,
-			false
-		)
-	enemy_coordinator.receive_enemy_action(
+	enemy_coordinator.receive_enemy_action_packet(
 		net_id,
-		StringName(action_name),
+		action_name,
 		direction,
 		action_position,
 		action_id,
-		mapped_action_time,
-		received_at,
-		host_action_timestamp
+		host_action_timestamp,
+		_get_net_time(),
+		_has_host_time_offset,
+		_host_to_client_time_offset
 	)
 
 
@@ -5145,38 +5040,22 @@ func net_enemy_target_action(
 	action_id: int,
 	host_action_timestamp: float = -1.0
 ) -> void:
-	if not is_finite(host_action_timestamp):
-		return
-	var received_at := _get_net_time()
-	var mapped_action_time := received_at
-	if host_action_timestamp >= 0.0:
-		mapped_action_time = _map_host_timestamp_to_client_time(
-			host_action_timestamp,
-			false
-		)
-	enemy_coordinator.receive_enemy_target_action(
+	enemy_coordinator.receive_enemy_target_action_packet(
 		net_id,
-		StringName(action_name),
+		action_name,
 		target_peer_id,
 		action_position,
 		action_id,
-		mapped_action_time,
-		received_at,
-		host_action_timestamp
+		host_action_timestamp,
+		_get_net_time(),
+		_has_host_time_offset,
+		_host_to_client_time_offset
 	)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 7)
 func net_enemy_lightning_chain(points: PackedVector2Array) -> void:
-	if (
-		game == null
-		or net_manager.is_host()
-		or not _is_valid_enemy_lightning_chain_points(points)
-	):
-		return
-	# Damage and chain selection are Host-only. Clients replay only the accepted
-	# endpoint list as a transient visual and never resolve targets locally.
-	game.play_lightning_sorcerer_chain_vfx(points)
+	enemy_coordinator.receive_enemy_lightning_chain(points)
 
 
 @rpc("authority", "call_remote", "reliable", 5)

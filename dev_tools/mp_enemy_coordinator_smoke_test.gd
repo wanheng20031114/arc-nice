@@ -3,10 +3,12 @@ extends SceneTree
 const ENEMY_COORDINATOR_SCENE := preload(
 	"res://scene/multiplayer/enemy/mp_enemy_coordinator.tscn"
 )
+const TEST_ENEMY_CONFIG_PATH := "res://resources/config/enemies/capoo_ak47.tres"
 
 
 class ProbeRuntime:
 	extends CombatRuntimeBase
+	var lightning_chain_replay_count := 0
 
 	func configure_multiplayer(
 		_mode: int,
@@ -37,8 +39,27 @@ class ProbeRuntime:
 	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
 		pass
 
+	func play_lightning_sorcerer_chain_vfx(_world_path: PackedVector2Array) -> bool:
+		lightning_chain_replay_count += 1
+		return true
+
+
+class ProbeNetManager:
+	extends NetManagerStore
+	var host_mode := true
+	var client_mode := false
+
+	func is_host() -> bool:
+		return host_mode
+
+	func is_client() -> bool:
+		return client_mode
+
 
 var failures: Array[String] = []
+var _probe_net_time := 30.0
+var _lifecycle_broadcasts: Array[Dictionary] = []
+var _lifecycle_peer_sends: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -52,10 +73,99 @@ func _run() -> void:
 	if coordinator == null:
 		quit(1)
 		return
+	get_root().add_child(coordinator)
 	coordinator.bind_runtime(runtime)
 	_expect(coordinator.is_bound(), "EnemyCoordinator 必须强类型绑定战斗运行时。")
+	var net_manager := ProbeNetManager.new()
+	var gameplay_gateway := MultiplayerGameplayGateway.new()
+	gameplay_gateway.bind_runtime(runtime)
+	coordinator.bind_lifecycle_dependencies(
+		net_manager,
+		gameplay_gateway,
+		_probe_get_net_time
+	)
+	coordinator.lifecycle_rpc_broadcast_requested.connect(
+		_probe_on_lifecycle_broadcast
+	)
+	coordinator.lifecycle_rpc_to_peer_requested.connect(
+		_probe_on_lifecycle_peer_send
+	)
+	_expect(
+		coordinator.has_lifecycle_dependencies(),
+		"EnemyCoordinator 必须显式绑定网络、Gateway 与网络时钟。"
+	)
 
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	var enemy_config := load(TEST_ENEMY_CONFIG_PATH) as EnemyConfig
+	_expect(enemy_config != null, "专项测试必须能加载稳定敌人配置。")
+	if enemy_config != null:
+		gameplay_gateway.enemy_spawned.emit(
+			701,
+			enemy_config,
+			Vector2(48.0, 64.0)
+		)
+		coordinator.update_host()
+		_expect(
+			_lifecycle_broadcasts.size() == 1
+			and StringName(_lifecycle_broadcasts[0].get("method", &""))
+			== &"net_enemy_spawned_batch",
+			"Host Gateway 生成事件必须汇入一次有界批广播。"
+		)
+		var live_enemy := Enemy.new()
+		live_enemy.config = enemy_config
+		live_enemy.global_position = Vector2(96.0, 112.0)
+		runtime.multiplayer_enemies_by_net_id[900] = live_enemy
+		coordinator.send_live_spawn_roster_to_peer(8)
+		_expect(
+			_lifecycle_peer_sends.size() == 1
+			and int(_lifecycle_peer_sends[0].get("peer_id", 0)) == 8
+			and StringName(_lifecycle_peer_sends[0].get("method", &""))
+			== &"net_enemy_spawned_batch",
+			"迟加入修复必须定向发送当前 live enemy roster。"
+		)
+		runtime.multiplayer_enemies_by_net_id.erase(900)
+		live_enemy.free()
+
+	coordinator.broadcast_enemy_action(
+		701,
+		&"attack",
+		Vector2.RIGHT,
+		Vector2(48.0, 64.0),
+		1
+	)
+	coordinator.broadcast_enemy_target_action(
+		701,
+		&"target_attack",
+		2,
+		Vector2(48.0, 64.0),
+		2
+	)
+	coordinator.broadcast_enemy_lightning_chain(
+		PackedVector2Array([Vector2.ZERO, Vector2(16.0, 8.0)])
+	)
+	_expect(
+		_lifecycle_broadcasts.size() == 4
+		and StringName(_lifecycle_broadcasts[1].get("method", &""))
+		== &"net_enemy_action"
+		and StringName(_lifecycle_broadcasts[2].get("method", &""))
+		== &"net_enemy_target_action"
+		and StringName(_lifecycle_broadcasts[3].get("method", &""))
+		== &"net_enemy_lightning_chain",
+		"敌人普通动作、目标动作与闪电链必须由协调器统一广播。"
+	)
+	gameplay_gateway.enemy_defeated.emit(701, Vector2(48.0, 64.0))
+	gameplay_gateway.enemy_removed.emit(701)
+	gameplay_gateway.enemy_removed.emit(702)
+	gameplay_gateway.enemy_escaped.emit(703)
+	var terminal_broadcast_count := 0
+	for record in _lifecycle_broadcasts:
+		if StringName(record.get("method", &"")) == &"net_enemy_terminal":
+			terminal_broadcast_count += 1
+	_expect(
+		terminal_broadcast_count == 3,
+		"defeated 后的配对 removed 必须去重，独立 removed/escaped 仍各广播一次。"
+	)
+
 	var states: Array[SnapshotManager.EnemyState] = []
 	for net_id in range(1, 49):
 		var state := SnapshotManager.EnemyState.new()
@@ -119,6 +229,15 @@ func _run() -> void:
 	)
 
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	net_manager.host_mode = false
+	net_manager.client_mode = true
+	coordinator.receive_enemy_lightning_chain(
+		PackedVector2Array([Vector2.ZERO, Vector2(4.0, 4.0)])
+	)
+	_expect(
+		runtime.lightning_chain_replay_count == 1,
+		"客户端只应重放合法闪电链表现。"
+	)
 	coordinator.receive_enemy_target_action(
 		401,
 		&"windup",
@@ -193,7 +312,12 @@ func _run() -> void:
 		"会话重置必须同时释放敌人动作、终结墓碑和快照计数。"
 	)
 	coordinator.unbind_runtime(runtime)
-	_expect(not coordinator.is_bound(), "解绑后不得保留旧战斗运行时。")
+	_expect(
+		not coordinator.is_bound() and not coordinator.has_lifecycle_dependencies(),
+		"解绑后不得保留旧战斗运行时或生命周期依赖。"
+	)
+	gameplay_gateway.free()
+	net_manager.free()
 	runtime.free()
 	coordinator.free()
 
@@ -209,3 +333,30 @@ func _run() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _probe_get_net_time() -> float:
+	_probe_net_time += 0.25
+	return _probe_net_time
+
+
+func _probe_on_lifecycle_broadcast(
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	_lifecycle_broadcasts.append({
+		"method": method_name,
+		"arguments": arguments.duplicate(true),
+	})
+
+
+func _probe_on_lifecycle_peer_send(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	_lifecycle_peer_sends.append({
+		"peer_id": peer_id,
+		"method": method_name,
+		"arguments": arguments.duplicate(true),
+	})

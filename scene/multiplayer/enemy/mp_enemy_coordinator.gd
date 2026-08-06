@@ -22,6 +22,10 @@ const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
 const CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES := 512
 const CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS := 5.0
 const CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES := 512
+const ENEMY_CONFIG_PATH_WIRE_MAX_LENGTH := 512
+const ENEMY_ACTION_NAME_WIRE_MAX_LENGTH := 128
+const LIGHTNING_SORCERER_CHAIN_MIN_POINTS := 2
+const LIGHTNING_SORCERER_CHAIN_MAX_POINTS := 6
 
 const ENEMY_TERMINAL_DEFEATED := 0
 const ENEMY_TERMINAL_ESCAPED := 1
@@ -31,6 +35,15 @@ const CLIENT_ENEMY_ACTION_KIND_TARGET := 1
 
 signal remote_enemy_spawned(enemy: Enemy)
 signal remote_enemy_escape_requested(net_id: int)
+signal lifecycle_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	arguments: Array
+)
+signal lifecycle_rpc_broadcast_requested(
+	method_name: StringName,
+	arguments: Array
+)
 
 
 class HostSnapshotChunk:
@@ -95,6 +108,9 @@ var client_terminal_enemy_ids: Dictionary = {}
 var host_terminal_enemy_ids: Dictionary = {}
 
 var _runtime: CombatRuntimeBase = null
+var _net_manager: NetManagerStore = null
+var _gameplay_gateway: MultiplayerGameplayGateway = null
+var _get_net_time_callable := Callable()
 var _snapshot_manager := SnapshotManager.new()
 var enemy_spawn_snapshot_times: Dictionary[int, float] = {}
 var _stale_enemy_interpolator_ids: Array[int] = []
@@ -130,6 +146,7 @@ func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	if _runtime == runtime_instance:
 		return
 	if _runtime != null:
+		_clear_lifecycle_dependencies()
 		reset_session_state()
 	_runtime = runtime_instance
 
@@ -137,12 +154,124 @@ func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	if _runtime != runtime_instance:
 		return
+	_clear_lifecycle_dependencies()
 	_runtime = null
 	reset_session_state()
 
 
 func is_bound() -> bool:
 	return _runtime != null and is_instance_valid(_runtime)
+
+
+func bind_lifecycle_dependencies(
+	net_manager_instance: NetManagerStore,
+	gameplay_gateway_instance: MultiplayerGameplayGateway,
+	get_net_time_callable: Callable
+) -> void:
+	assert(net_manager_instance != null, "MpEnemyCoordinator 缺少 NetManager。")
+	assert(
+		gameplay_gateway_instance != null,
+		"MpEnemyCoordinator 缺少 MultiplayerGameplayGateway。"
+	)
+	assert(get_net_time_callable.is_valid(), "MpEnemyCoordinator 缺少网络时钟。")
+	_disconnect_gameplay_gateway()
+	_net_manager = net_manager_instance
+	_gameplay_gateway = gameplay_gateway_instance
+	_get_net_time_callable = get_net_time_callable
+	_connect_gameplay_gateway()
+
+
+func has_lifecycle_dependencies() -> bool:
+	return (
+		is_bound()
+		and _net_manager != null
+		and is_instance_valid(_net_manager)
+		and _gameplay_gateway != null
+		and is_instance_valid(_gameplay_gateway)
+		and _get_net_time_callable.is_valid()
+	)
+
+
+func _connect_gameplay_gateway() -> void:
+	if _gameplay_gateway == null or not is_instance_valid(_gameplay_gateway):
+		return
+	if not _gameplay_gateway.enemy_spawned.is_connected(
+		_on_gameplay_enemy_spawned
+	):
+		_gameplay_gateway.enemy_spawned.connect(_on_gameplay_enemy_spawned)
+	if not _gameplay_gateway.enemy_defeated.is_connected(
+		_on_gameplay_enemy_defeated
+	):
+		_gameplay_gateway.enemy_defeated.connect(_on_gameplay_enemy_defeated)
+	if not _gameplay_gateway.enemy_removed.is_connected(
+		_on_gameplay_enemy_removed
+	):
+		_gameplay_gateway.enemy_removed.connect(_on_gameplay_enemy_removed)
+	if not _gameplay_gateway.enemy_escaped.is_connected(
+		_on_gameplay_enemy_escaped
+	):
+		_gameplay_gateway.enemy_escaped.connect(_on_gameplay_enemy_escaped)
+
+
+func _disconnect_gameplay_gateway() -> void:
+	if _gameplay_gateway == null or not is_instance_valid(_gameplay_gateway):
+		return
+	if _gameplay_gateway.enemy_spawned.is_connected(_on_gameplay_enemy_spawned):
+		_gameplay_gateway.enemy_spawned.disconnect(_on_gameplay_enemy_spawned)
+	if _gameplay_gateway.enemy_defeated.is_connected(_on_gameplay_enemy_defeated):
+		_gameplay_gateway.enemy_defeated.disconnect(_on_gameplay_enemy_defeated)
+	if _gameplay_gateway.enemy_removed.is_connected(_on_gameplay_enemy_removed):
+		_gameplay_gateway.enemy_removed.disconnect(_on_gameplay_enemy_removed)
+	if _gameplay_gateway.enemy_escaped.is_connected(_on_gameplay_enemy_escaped):
+		_gameplay_gateway.enemy_escaped.disconnect(_on_gameplay_enemy_escaped)
+
+
+func _clear_lifecycle_dependencies() -> void:
+	_disconnect_gameplay_gateway()
+	_net_manager = null
+	_gameplay_gateway = null
+	_get_net_time_callable = Callable()
+
+
+func _is_host_lifecycle_bound() -> bool:
+	return has_lifecycle_dependencies() and _net_manager.is_host()
+
+
+func _get_network_time() -> float:
+	if not _get_net_time_callable.is_valid():
+		return -1.0
+	var network_time := float(_get_net_time_callable.call())
+	return network_time if is_finite(network_time) and network_time >= 0.0 else -1.0
+
+
+func _on_gameplay_enemy_spawned(
+	net_id: int,
+	enemy_config: EnemyConfig,
+	spawn_position: Vector2
+) -> void:
+	if not _is_host_lifecycle_bound() or not is_inside_tree():
+		return
+	queue_host_spawn(
+		net_id,
+		enemy_config,
+		spawn_position,
+		_get_network_time()
+	)
+
+
+func _on_gameplay_enemy_defeated(
+	net_id: int,
+	defeat_position: Vector2
+) -> void:
+	broadcast_host_terminal(net_id, ENEMY_TERMINAL_DEFEATED, defeat_position)
+
+
+func _on_gameplay_enemy_removed(net_id: int) -> void:
+	broadcast_host_terminal(net_id, ENEMY_TERMINAL_REMOVED, Vector2.ZERO)
+
+
+func _on_gameplay_enemy_escaped(net_id: int) -> void:
+	broadcast_host_terminal(net_id, ENEMY_TERMINAL_ESCAPED, Vector2.ZERO)
 
 
 func is_client_view() -> bool:
@@ -420,7 +549,7 @@ func update_proxy_visual_budget(delta: float) -> void:
 
 func build_live_spawn_batches(host_timestamp: float) -> Array[SpawnBatch]:
 	var batches: Array[SpawnBatch] = []
-	if not is_bound():
+	if not is_bound() or not is_finite(host_timestamp) or host_timestamp < 0.0:
 		return batches
 	var sorted_ids: Array[int] = []
 	for net_id_variant in _runtime.multiplayer_enemies_by_net_id.keys():
@@ -436,12 +565,15 @@ func build_live_spawn_batches(host_timestamp: float) -> Array[SpawnBatch]:
 			var net_id := sorted_ids[record_index]
 			var enemy := _runtime.multiplayer_enemies_by_net_id.get(net_id) as Enemy
 			if (
-				enemy == null
+				net_id <= 0
+				or not _NetConstants.is_valid_network_combat_value(net_id)
+				or enemy == null
 				or not is_instance_valid(enemy)
 				or enemy.is_dead
 				or enemy is LinglanBoss
 				or enemy.config == null
 				or enemy.config.resource_path.is_empty()
+				or not enemy.global_position.is_finite()
 			):
 				continue
 			batch.net_ids.append(net_id)
@@ -453,6 +585,86 @@ func build_live_spawn_batches(host_timestamp: float) -> Array[SpawnBatch]:
 	return batches
 
 
+func send_live_spawn_roster_to_peer(peer_id: int) -> void:
+	if not _is_host_lifecycle_bound() or peer_id <= 0:
+		return
+	var host_timestamp := _get_network_time()
+	if host_timestamp < 0.0:
+		return
+	for batch in build_live_spawn_batches(host_timestamp):
+		lifecycle_rpc_to_peer_requested.emit(
+			peer_id,
+			&"net_enemy_spawned_batch",
+			[
+				batch.net_ids,
+				batch.config_paths,
+				batch.positions,
+				batch.spawn_times,
+			]
+		)
+
+
+func receive_enemy_spawn_packet(
+	net_id: int,
+	config_path: String,
+	spawn_position: Vector2,
+	host_spawn_timestamp: float,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> void:
+	if not _is_valid_spawn_record(
+		net_id,
+		config_path,
+		spawn_position,
+		host_spawn_timestamp
+	):
+		return
+	var mapped_spawn_time := _map_remote_timestamp(
+		host_spawn_timestamp,
+		local_net_time,
+		has_host_time_offset,
+		host_to_client_time_offset
+	)
+	if not is_finite(mapped_spawn_time):
+		return
+	receive_enemy_spawn(
+		net_id,
+		config_path,
+		spawn_position,
+		mapped_spawn_time,
+		local_net_time
+	)
+
+
+func receive_enemy_spawn_batch(
+	net_ids: PackedInt32Array,
+	config_paths: PackedStringArray,
+	positions: PackedVector2Array,
+	spawn_times: PackedFloat64Array,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> void:
+	if not _is_valid_spawn_batch_payload(
+		net_ids,
+		config_paths,
+		positions,
+		spawn_times
+	):
+		return
+	for record_index in range(net_ids.size()):
+		receive_enemy_spawn_packet(
+			net_ids[record_index],
+			config_paths[record_index],
+			positions[record_index],
+			spawn_times[record_index],
+			local_net_time,
+			has_host_time_offset,
+			host_to_client_time_offset
+		)
+
+
 func receive_enemy_spawn(
 	net_id: int,
 	config_path: String,
@@ -460,7 +672,16 @@ func receive_enemy_spawn(
 	mapped_spawn_time: float,
 	current_time: float
 ) -> void:
-	if not is_client_view() or net_id <= 0:
+	if (
+		not is_client_view()
+		or not _is_valid_spawn_record(
+			net_id,
+			config_path,
+			spawn_position,
+			mapped_spawn_time
+		)
+		or not is_finite(current_time)
+	):
 		return
 	var existing_enemy := get_valid_client_enemy(net_id)
 	if (
@@ -519,7 +740,16 @@ func queue_host_spawn(
 	spawn_position: Vector2,
 	spawn_time: float
 ) -> void:
-	if not is_bound() or enemy_config == null or net_id <= 0:
+	if (
+		not is_bound()
+		or enemy_config == null
+		or not _is_valid_spawn_record(
+			net_id,
+			enemy_config.resource_path,
+			spawn_position,
+			spawn_time
+		)
+	):
 		return
 	_pending_host_spawns.append({
 		"net_id": net_id,
@@ -552,30 +782,57 @@ func drain_host_spawn_batches() -> Array[SpawnBatch]:
 	return batches
 
 
+func update_host() -> void:
+	if not _is_host_lifecycle_bound():
+		return
+	for batch in drain_host_spawn_batches():
+		lifecycle_rpc_broadcast_requested.emit(
+			&"net_enemy_spawned_batch",
+			[
+				batch.net_ids,
+				batch.config_paths,
+				batch.positions,
+				batch.spawn_times,
+			]
+		)
+
+
 func build_host_terminal_event(
 	net_id: int,
 	reason: int,
 	event_position: Vector2
 ) -> Dictionary:
-	if net_id <= 0:
+	if (
+		not _NetConstants.is_valid_network_combat_value(net_id)
+		or net_id <= 0
+		or not event_position.is_finite()
+		or not _is_valid_terminal_reason(reason)
+	):
 		return {}
-	match reason:
-		ENEMY_TERMINAL_DEFEATED:
-			if host_terminal_enemy_ids.has(net_id):
-				return {}
-			host_terminal_enemy_ids[net_id] = true
-		ENEMY_TERMINAL_REMOVED:
-			if host_terminal_enemy_ids.erase(net_id):
-				return {}
-		ENEMY_TERMINAL_ESCAPED:
-			host_terminal_enemy_ids.erase(net_id)
-		_:
-			return {}
+	if reason == ENEMY_TERMINAL_DEFEATED and host_terminal_enemy_ids.has(net_id):
+		return {}
+	if reason == ENEMY_TERMINAL_REMOVED and host_terminal_enemy_ids.erase(net_id):
+		return {}
 	var feedback := collect_terminal_feedback(net_id) if reason == ENEMY_TERMINAL_DEFEATED else {}
 	for key in ["current_health", "health_revision", "damage"]:
 		if not _NetConstants.is_valid_network_combat_value(int(feedback.get(key, 0))):
 			push_error("MpEnemyCoordinator: 敌人终结事件超出网络 signed int32 契约。")
 			return {}
+	if (
+		not (feedback.get("impact_direction", Vector2.ZERO) as Vector2).is_finite()
+		or not _is_valid_damage_type(int(feedback.get(
+			"damage_type",
+			EnemyConfig.DamageType.PHYSICAL
+		)))
+	):
+		return {}
+	match reason:
+		ENEMY_TERMINAL_DEFEATED:
+			host_terminal_enemy_ids[net_id] = true
+		ENEMY_TERMINAL_REMOVED:
+			host_terminal_enemy_ids.erase(net_id)
+		ENEMY_TERMINAL_ESCAPED:
+			host_terminal_enemy_ids.erase(net_id)
 	return {
 		"net_id": net_id,
 		"reason": reason,
@@ -587,6 +844,32 @@ func build_host_terminal_event(
 		"damage_type": int(feedback.get("damage_type", EnemyConfig.DamageType.PHYSICAL)),
 		"show_hit_particles": bool(feedback.get("show_hit_particles", false)),
 	}
+
+
+func broadcast_host_terminal(
+	net_id: int,
+	reason: int,
+	event_position: Vector2
+) -> void:
+	if not _is_host_lifecycle_bound() or not is_inside_tree():
+		return
+	var terminal := build_host_terminal_event(net_id, reason, event_position)
+	if terminal.is_empty():
+		return
+	lifecycle_rpc_broadcast_requested.emit(
+		&"net_enemy_terminal",
+		[
+			int(terminal.get("net_id", 0)),
+			int(terminal.get("reason", ENEMY_TERMINAL_REMOVED)),
+			terminal.get("event_position", Vector2.ZERO) as Vector2,
+			int(terminal.get("current_health", 0)),
+			int(terminal.get("health_revision", 0)),
+			int(terminal.get("damage", 0)),
+			terminal.get("impact_direction", Vector2.ZERO) as Vector2,
+			int(terminal.get("damage_type", EnemyConfig.DamageType.PHYSICAL)),
+			bool(terminal.get("show_hit_particles", false)),
+		]
+	)
 
 
 func receive_enemy_terminal(
@@ -603,6 +886,11 @@ func receive_enemy_terminal(
 	if (
 		not is_client_view()
 		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(net_id)
+		or not _is_valid_terminal_reason(reason)
+		or not event_position.is_finite()
+		or not impact_direction.is_finite()
+		or not _is_valid_damage_type(damage_type)
 		or not _NetConstants.is_valid_network_combat_value(current_health)
 		or not _NetConstants.is_valid_network_combat_value(health_revision)
 		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
@@ -635,7 +923,12 @@ func receive_enemy_terminal(
 
 
 func receive_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
-	if not is_client_view() or net_id <= 0:
+	if (
+		not is_client_view()
+		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(net_id)
+		or not defeat_position.is_finite()
+	):
 		return
 	mark_client_terminal(net_id)
 	var enemy := get_valid_client_enemy(net_id)
@@ -645,18 +938,285 @@ func receive_enemy_defeated(net_id: int, defeat_position: Vector2) -> void:
 
 
 func receive_enemy_removed(net_id: int) -> void:
-	if not is_client_view() or net_id <= 0:
+	if (
+		not is_client_view()
+		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(net_id)
+	):
 		return
 	mark_client_terminal(net_id)
 	remove_client_enemy(net_id, true)
 
 
 func receive_enemy_escaped(net_id: int) -> void:
-	if not is_client_view() or net_id <= 0:
+	if (
+		not is_client_view()
+		or net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(net_id)
+	):
 		return
 	mark_client_terminal(net_id)
 	remote_enemy_escape_requested.emit(net_id)
 	remove_client_enemy(net_id, false)
+
+
+func broadcast_enemy_action(
+	net_id: int,
+	action_name: StringName,
+	direction: Vector2,
+	action_position: Vector2,
+	action_id: int
+) -> void:
+	if not _is_host_lifecycle_bound():
+		return
+	var host_action_time := _get_network_time()
+	var record := {
+		"kind": CLIENT_ENEMY_ACTION_KIND_GENERIC,
+		"net_id": net_id,
+		"action_name": action_name,
+		"direction": direction,
+		"action_position": action_position,
+		"action_id": action_id,
+		"action_time": host_action_time,
+		"host_action_timestamp": host_action_time,
+	}
+	if not _is_valid_action_record(record):
+		return
+	lifecycle_rpc_broadcast_requested.emit(
+		&"net_enemy_action",
+		[
+			net_id,
+			String(action_name),
+			direction,
+			action_position,
+			action_id,
+			host_action_time,
+		]
+	)
+
+
+func broadcast_enemy_target_action(
+	net_id: int,
+	action_name: StringName,
+	target_peer_id: int,
+	action_position: Vector2,
+	action_id: int
+) -> void:
+	if not _is_host_lifecycle_bound():
+		return
+	var host_action_time := _get_network_time()
+	var record := {
+		"kind": CLIENT_ENEMY_ACTION_KIND_TARGET,
+		"net_id": net_id,
+		"action_name": action_name,
+		"target_peer_id": target_peer_id,
+		"action_position": action_position,
+		"action_id": action_id,
+		"action_time": host_action_time,
+		"host_action_timestamp": host_action_time,
+	}
+	if not _is_valid_action_record(record):
+		return
+	lifecycle_rpc_broadcast_requested.emit(
+		&"net_enemy_target_action",
+		[
+			net_id,
+			String(action_name),
+			target_peer_id,
+			action_position,
+			action_id,
+			host_action_time,
+		]
+	)
+
+
+func broadcast_enemy_lightning_chain(points: PackedVector2Array) -> void:
+	if not _is_host_lifecycle_bound() or not _is_valid_lightning_chain(points):
+		return
+	lifecycle_rpc_broadcast_requested.emit(
+		&"net_enemy_lightning_chain",
+		[points]
+	)
+
+
+func receive_enemy_action_packet(
+	net_id: int,
+	action_name: String,
+	direction: Vector2,
+	action_position: Vector2,
+	action_id: int,
+	host_action_timestamp: float,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> void:
+	var mapped_action_time := _resolve_remote_action_time(
+		host_action_timestamp,
+		local_net_time,
+		has_host_time_offset,
+		host_to_client_time_offset
+	)
+	if not is_finite(mapped_action_time):
+		return
+	receive_enemy_action(
+		net_id,
+		StringName(action_name),
+		direction,
+		action_position,
+		action_id,
+		mapped_action_time,
+		local_net_time,
+		host_action_timestamp
+	)
+
+
+func receive_enemy_target_action_packet(
+	net_id: int,
+	action_name: String,
+	target_peer_id: int,
+	action_position: Vector2,
+	action_id: int,
+	host_action_timestamp: float,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> void:
+	var mapped_action_time := _resolve_remote_action_time(
+		host_action_timestamp,
+		local_net_time,
+		has_host_time_offset,
+		host_to_client_time_offset
+	)
+	if not is_finite(mapped_action_time):
+		return
+	receive_enemy_target_action(
+		net_id,
+		StringName(action_name),
+		target_peer_id,
+		action_position,
+		action_id,
+		mapped_action_time,
+		local_net_time,
+		host_action_timestamp
+	)
+
+
+func receive_enemy_lightning_chain(points: PackedVector2Array) -> void:
+	if not is_client_view() or not _is_valid_lightning_chain(points):
+		return
+	# Damage and target selection stay authoritative. Clients replay only VFX.
+	_runtime.play_lightning_sorcerer_chain_vfx(points)
+
+
+func _map_remote_timestamp(
+	host_timestamp: float,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> float:
+	if (
+		not is_finite(host_timestamp)
+		or host_timestamp < 0.0
+		or not is_finite(local_net_time)
+	):
+		return NAN
+	if not has_host_time_offset:
+		return local_net_time
+	if not is_finite(host_to_client_time_offset):
+		return NAN
+	return host_timestamp + host_to_client_time_offset
+
+
+func _resolve_remote_action_time(
+	host_action_timestamp: float,
+	local_net_time: float,
+	has_host_time_offset: bool,
+	host_to_client_time_offset: float
+) -> float:
+	if not is_finite(host_action_timestamp) or not is_finite(local_net_time):
+		return NAN
+	# v46 keeps the optional -1 timestamp default for compatibility with the
+	# original CH7 action façade. Such packets replay from their receive time.
+	if host_action_timestamp < 0.0:
+		return local_net_time
+	return _map_remote_timestamp(
+		host_action_timestamp,
+		local_net_time,
+		has_host_time_offset,
+		host_to_client_time_offset
+	)
+
+
+func _is_valid_spawn_record(
+	net_id: int,
+	config_path: String,
+	spawn_position: Vector2,
+	host_spawn_timestamp: float
+) -> bool:
+	return (
+		net_id > 0
+		and _NetConstants.is_valid_network_combat_value(net_id)
+		and not config_path.is_empty()
+		and config_path.length() <= ENEMY_CONFIG_PATH_WIRE_MAX_LENGTH
+		and config_path.begins_with("res://")
+		and spawn_position.is_finite()
+		and is_finite(host_spawn_timestamp)
+		and host_spawn_timestamp >= 0.0
+	)
+
+
+func _is_valid_spawn_batch_payload(
+	net_ids: PackedInt32Array,
+	config_paths: PackedStringArray,
+	positions: PackedVector2Array,
+	spawn_times: PackedFloat64Array
+) -> bool:
+	var record_count := net_ids.size()
+	if (
+		record_count <= 0
+		or record_count > ENEMY_SPAWN_BATCH_MAX_RECORDS
+		or config_paths.size() != record_count
+		or positions.size() != record_count
+		or spawn_times.size() != record_count
+	):
+		return false
+	for record_index in range(record_count):
+		if not _is_valid_spawn_record(
+			net_ids[record_index],
+			config_paths[record_index],
+			positions[record_index],
+			spawn_times[record_index]
+		):
+			return false
+	return true
+
+
+func _is_valid_terminal_reason(reason: int) -> bool:
+	return reason in [
+		ENEMY_TERMINAL_DEFEATED,
+		ENEMY_TERMINAL_ESCAPED,
+		ENEMY_TERMINAL_REMOVED,
+	]
+
+
+func _is_valid_damage_type(damage_type: int) -> bool:
+	return damage_type in [
+		EnemyConfig.DamageType.PHYSICAL,
+		EnemyConfig.DamageType.MAGIC,
+	]
+
+
+func _is_valid_lightning_chain(points: PackedVector2Array) -> bool:
+	var point_count := points.size()
+	if (
+		point_count < LIGHTNING_SORCERER_CHAIN_MIN_POINTS
+		or point_count > LIGHTNING_SORCERER_CHAIN_MAX_POINTS
+	):
+		return false
+	for point in points:
+		if not point.is_finite():
+			return false
+	return true
 
 
 func receive_enemy_action(
@@ -1220,6 +1780,17 @@ func clear_peer(peer_id: int) -> void:
 	_snapshot_manager.clear_peer_delta_cache(peer_id)
 	_snapshot_cohort_peers.erase(peer_id)
 	_last_keyframe_time_by_peer.erase(peer_id)
+	var pending_target_action_ids: Array[int] = []
+	for net_id_variant in pending_enemy_actions.keys():
+		var net_id := int(net_id_variant)
+		var record := pending_enemy_actions.get(net_id, {}) as Dictionary
+		if (
+			int(record.get("kind", -1)) == CLIENT_ENEMY_ACTION_KIND_TARGET
+			and int(record.get("target_peer_id", 0)) == peer_id
+		):
+			pending_target_action_ids.append(net_id)
+	for net_id in pending_target_action_ids:
+		erase_pending_enemy_action(net_id)
 	if _snapshot_cohort_peers.is_empty():
 		_snapshot_manager.clear_enemy_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
 
@@ -1411,19 +1982,37 @@ func _receive_action_record(record: Dictionary, current_time: float) -> void:
 
 func _is_valid_action_record(record: Dictionary) -> bool:
 	var kind := int(record.get("kind", -1))
+	var net_id := int(record.get("net_id", 0))
+	var action_id := int(record.get("action_id", 0))
+	var action_name := StringName(record.get("action_name", &""))
 	if (
-		int(record.get("net_id", 0)) <= 0
-		or int(record.get("action_id", 0)) <= 0
-		or StringName(record.get("action_name", &"")).is_empty()
+		net_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(net_id)
+		or action_id <= 0
+		or not _NetConstants.is_valid_network_combat_value(action_id)
+		or action_name.is_empty()
+		or String(action_name).length() > ENEMY_ACTION_NAME_WIRE_MAX_LENGTH
 		or not (record.get("action_position", Vector2.ZERO) as Vector2).is_finite()
 		or not is_finite(float(record.get("action_time", -1.0)))
+		or (
+			record.has("received_at")
+			and not is_finite(float(record.get("received_at", -1.0)))
+		)
+		or (
+			record.has("host_action_timestamp")
+			and not is_finite(float(record.get("host_action_timestamp", -1.0)))
+		)
 	):
 		return false
 	match kind:
 		CLIENT_ENEMY_ACTION_KIND_GENERIC:
 			return (record.get("direction", Vector2.ZERO) as Vector2).is_finite()
 		CLIENT_ENEMY_ACTION_KIND_TARGET:
-			return int(record.get("target_peer_id", 0)) > 0
+			var target_peer_id := int(record.get("target_peer_id", 0))
+			return (
+				target_peer_id > 0
+				and _NetConstants.is_valid_network_combat_value(target_peer_id)
+			)
 		_:
 			return false
 
