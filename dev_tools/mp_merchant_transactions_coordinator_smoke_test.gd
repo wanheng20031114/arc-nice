@@ -1,0 +1,411 @@
+extends SceneTree
+
+const COORDINATOR_SCENE := preload(
+	"res://scene/multiplayer/merchant_transactions/mp_merchant_transactions_coordinator.tscn"
+)
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
+const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
+const LUOXI_SCENE := preload("res://scene/merchants/luoxi/luoxi_merchant.tscn")
+const PLAYER_SCENE := preload(
+	"res://scene/player/weishidaier/player_weishidaier.tscn"
+)
+const OFFER_SEED := 0x4D45524348414E54
+
+
+class TestRuntime:
+	extends CombatRuntimeBase
+
+	var test_player: Player = null
+
+	func _ready() -> void:
+		pass
+
+	func configure_multiplayer(
+		_mode: int,
+		_local_peer_id: int,
+		_player_names: Dictionary,
+		_player_character_ids: Dictionary = {}
+	) -> void:
+		pass
+
+	func get_player_for_peer(peer_id: int) -> Player:
+		return test_player if test_player != null and test_player.peer_id == peer_id else null
+
+	func get_enemy_for_net_id(_net_id: int) -> Enemy:
+		return null
+
+	func get_pickup_for_net_id(_net_id: int) -> Pickup:
+		return null
+
+	func remove_multiplayer_player(_peer_id: int) -> void:
+		pass
+
+	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+		return []
+
+	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
+		return []
+
+	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
+		pass
+
+
+class HostNetManager:
+	extends NetManagerStore
+
+	func get_local_peer_id() -> int:
+		return 1
+
+	func is_peer_send_ready(peer_id: int) -> bool:
+		return peer_id > 0
+
+
+class MerchantAdapter:
+	extends MultiplayerModeAdapter
+
+	var merchant: LuoxiMerchant = null
+	var refresh_count := 0
+	var claimed := false
+	var claim_paths: Array[String] = []
+	var local_collectible_results: Array[int] = []
+	var special_calls: Array[Dictionary] = []
+	var local_special_methods: Array[StringName] = []
+
+	func get_luoxi_merchant() -> LuoxiMerchant:
+		return merchant
+
+	func runtime_try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int:
+		if peer_id <= 0 or claimed:
+			return MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
+		refresh_count += 1
+		return MerchantPurchaseResult.OfferRefresh.SUCCESS
+
+	func runtime_get_luoxi_collectible_refresh_count(_peer_id: int) -> int:
+		return refresh_count
+
+	func runtime_try_claim_luoxi_collectible_for_peer(
+		peer_id: int,
+		config_path_or_choice: Variant
+	) -> int:
+		if peer_id <= 0 or claimed:
+			return MerchantPurchaseResult.CollectibleClaim.ALREADY_CLAIMED
+		var config_path := str(config_path_or_choice)
+		if config_path.is_empty():
+			return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
+		claimed = true
+		claim_paths.append(config_path)
+		return MerchantPurchaseResult.CollectibleClaim.SUCCESS
+
+	func runtime_has_luoxi_collectible_claimed(_peer_id: int) -> bool:
+		return claimed
+
+	func runtime_record_luoxi_collectible_claim(_peer_id: int) -> void:
+		claimed = true
+
+	func runtime_mark_luoxi_collectible_claimed(_peer_id: int) -> void:
+		claimed = true
+
+	func show_local_luoxi_collectible_result(result_code: int) -> void:
+		local_collectible_results.append(result_code)
+
+	func runtime_supports_luoxi_special_game() -> bool:
+		return true
+
+	func runtime_try_start_luoxi_special_game_for_peer(peer_id: int) -> Dictionary:
+		var result := {
+			"result_code": 0,
+			"session_revision": 61,
+			"peer_id": peer_id,
+		}
+		special_calls.append({"method": &"start", "result": result})
+		return result
+
+	func runtime_try_reveal_luoxi_special_game_card_for_peer(
+		peer_id: int,
+		session_revision: int,
+		card_index: int
+	) -> Dictionary:
+		var result := {
+			"result_code": 0,
+			"session_revision": session_revision,
+			"card_index": card_index,
+			"peer_id": peer_id,
+		}
+		special_calls.append({"method": &"reveal", "result": result})
+		return result
+
+	func runtime_try_finish_luoxi_special_game_for_peer(
+		peer_id: int,
+		session_revision: int
+	) -> Dictionary:
+		var result := {
+			"result_code": 0,
+			"session_revision": session_revision,
+			"current_xirang": 800,
+			"peer_id": peer_id,
+		}
+		special_calls.append({"method": &"finish", "result": result})
+		return result
+
+	func show_local_luoxi_special_game_started(_result: Dictionary) -> void:
+		local_special_methods.append(&"start")
+
+	func show_local_luoxi_special_game_card_revealed(_result: Dictionary) -> void:
+		local_special_methods.append(&"reveal")
+
+	func show_local_luoxi_special_game_finished(_result: Dictionary) -> void:
+		local_special_methods.append(&"finish")
+
+
+var failures: Array[String] = []
+
+
+func _init() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
+	var coordinator := (
+		COORDINATOR_SCENE.instantiate() as MpMerchantTransactionsCoordinator
+	)
+	_expect(coordinator != null, "Merchant transactions scene must instantiate.")
+	if coordinator == null:
+		_finish()
+		return
+	_test_static_boundary(coordinator)
+	await _test_offer_refresh_choice_and_special_game(coordinator)
+	coordinator.free()
+	_finish()
+
+
+func _test_static_boundary(
+	coordinator: MpMerchantTransactionsCoordinator
+) -> void:
+	var mp_game := MP_GAME_SCENE.instantiate()
+	_expect(
+		mp_game != null
+		and mp_game.get_node_or_null("MerchantTransactionsCoordinator")
+		is MpMerchantTransactionsCoordinator,
+		"MpGame must statically contain MerchantTransactionsCoordinator."
+	)
+	if mp_game != null:
+		mp_game.free()
+	var source := FileAccess.get_file_as_string(MP_GAME_SOURCE_PATH)
+	var rpc_pattern := RegEx.new()
+	rpc_pattern.compile("(?m)^@rpc\\(")
+	_expect(
+		rpc_pattern.search_all(source).size() == 126,
+		"Merchant extraction must preserve all 126 MpGame RPC facades."
+	)
+	for function_name in [
+		"net_luoxi_collectible_offer_requested",
+		"net_luoxi_collectible_choice_requested",
+		"net_luoxi_collectible_refresh_requested",
+		"net_luoxi_special_game_start_requested",
+		"net_luoxi_special_game_card_reveal_requested",
+		"net_luoxi_special_game_finish_requested",
+		"net_cheat_xirang_requested",
+		"net_debug_collectible_requested",
+	]:
+		_expect(
+			_rpc_entry_captures_sender_first(source, function_name),
+			"%s must capture sender first." % function_name
+		)
+		_expect(
+			_rpc_entry_uses_shared_admission_before_delegate(source, function_name),
+			"%s must consume shared admission before its domain delegate."
+			% function_name
+		)
+	_expect(
+		not source.contains("func _create_luoxi_offer_for_peer")
+		and not source.contains("func _apply_luoxi_special_game_start_for_peer")
+		and not source.contains("func _apply_cheat_xirang_for_peer")
+		and source.contains("func _spawn_collectible_visual_effect")
+		and source.contains("func _spawn_collectible_follow_visual_effect"),
+		"MpGame must retain collectible visuals but delegate merchant authority."
+	)
+	var coordinator_source := coordinator.get_script().source_code as String
+	_expect(
+		not coordinator_source.contains("current_scene")
+		and not coordinator_source.contains("has_method")
+		and not coordinator_source.contains(".call("),
+		"Merchant coordinator must only use typed runtime dependencies."
+	)
+
+
+func _test_offer_refresh_choice_and_special_game(
+	coordinator: MpMerchantTransactionsCoordinator
+) -> void:
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run()
+	run_state.ensure_multiplayer_peer_state(1)
+	var test_root := Node2D.new()
+	test_root.name = "MerchantTransactionsSmokeTest"
+	root.add_child(test_root)
+	var merchant := LUOXI_SCENE.instantiate() as LuoxiMerchant
+	var player := PLAYER_SCENE.instantiate() as Player
+	player.peer_id = 1
+	player.current_xirang = 1000
+	test_root.add_child(merchant)
+	test_root.add_child(player)
+	merchant.set_active(true)
+	await process_frame
+	await physics_frame
+	merchant.active_player = player
+
+	var runtime := TestRuntime.new()
+	runtime.test_player = player
+	var adapter := MerchantAdapter.new()
+	adapter.merchant = merchant
+	var net_manager := HostNetManager.new()
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	coordinator.bind_runtime(runtime, adapter, run_state, net_manager, 0.0)
+	var offer_rng := coordinator.get(
+		"_luoxi_offer_random_generator"
+	) as RandomNumberGenerator
+	offer_rng.seed = OFFER_SEED
+	var expected_rng := RandomNumberGenerator.new()
+	expected_rng.seed = OFFER_SEED
+	var expected_first := merchant.build_authoritative_offer_paths(
+		player,
+		[],
+		expected_rng
+	)
+	var expected_refresh := merchant.build_authoritative_offer_paths(
+		player,
+		expected_first,
+		expected_rng
+	)
+
+	var broadcast_methods: Array[StringName] = []
+	coordinator.rpc_broadcast_requested.connect(
+		func(method_name: StringName, _args: Array) -> void:
+			broadcast_methods.append(method_name)
+	)
+	coordinator.request_luoxi_collectible_offer()
+	var first_state := _get_offer_state(coordinator, 1)
+	var first_paths := _get_offer_paths(first_state)
+	_expect(
+		int(first_state.get("offer_revision", 0)) == 1
+		and first_paths == expected_first
+		and first_paths.size() == LuoxiMerchant.get_choice_count(),
+		"The first authoritative offer must preserve deterministic three-choice RNG order."
+	)
+	coordinator.request_luoxi_collectible_refresh(1)
+	var refresh_state := _get_offer_state(coordinator, 1)
+	var refresh_paths := _get_offer_paths(refresh_state)
+	_expect(
+		int(refresh_state.get("offer_revision", 0)) == 2
+		and int(refresh_state.get("refresh_count", 0)) == 1
+		and refresh_paths == expected_refresh,
+		"A successful refresh must consume the next RNG roll and increment revision once."
+	)
+	coordinator.request_luoxi_collectible_choice(0, 2)
+	_expect(
+		adapter.claimed
+		and adapter.claim_paths == [refresh_paths[0]]
+		and adapter.local_collectible_results
+		== [MerchantPurchaseResult.CollectibleClaim.SUCCESS]
+		and broadcast_methods.has(&"net_luoxi_collectible_confirmed"),
+		"Choice confirmation must resolve the authoritative refreshed path exactly once."
+	)
+
+	_expect(
+		coordinator.supports_luoxi_special_game(),
+		"The typed adapter must expose supported Luoxi special-game capability."
+	)
+	coordinator.request_luoxi_special_game_start()
+	coordinator.request_luoxi_special_game_card_reveal(61, 2)
+	coordinator.request_luoxi_special_game_finish(61)
+	_expect(
+		adapter.special_calls.size() == 3
+		and adapter.special_calls[0].get("method") == &"start"
+		and adapter.special_calls[1].get("method") == &"reveal"
+		and adapter.special_calls[2].get("method") == &"finish"
+		and adapter.local_special_methods == [&"start", &"reveal", &"finish"]
+		and broadcast_methods.has(&"net_luoxi_special_game_started")
+		and broadcast_methods.has(&"net_luoxi_special_game_card_revealed")
+		and broadcast_methods.has(&"net_luoxi_special_game_finished"),
+		"Special-game start, reveal, and finish must keep authoritative order and confirmations."
+	)
+
+	coordinator.unbind_runtime(runtime)
+	net_manager.free()
+	adapter.free()
+	runtime.free()
+	merchant.set_active(false)
+	test_root.queue_free()
+	for _cleanup_frame in 4:
+		await process_frame
+		await physics_frame
+
+
+func _get_offer_state(
+	coordinator: MpMerchantTransactionsCoordinator,
+	peer_id: int
+) -> Dictionary:
+	return (
+		coordinator.capture_reconnect_state(peer_id).get(
+			"luoxi_offer_state",
+			{}
+		) as Dictionary
+	)
+
+
+func _get_offer_paths(state: Dictionary) -> Array[String]:
+	var paths: Array[String] = []
+	for path_variant in state.get("config_paths", []) as Array:
+		paths.append(str(path_variant))
+	return paths
+
+
+func _rpc_entry_captures_sender_first(source: String, function_name: String) -> bool:
+	var function_offset := source.find("func %s" % function_name)
+	if function_offset < 0:
+		return false
+	var body_offset := source.find(") -> void:\n", function_offset)
+	if body_offset < 0:
+		return false
+	body_offset += ") -> void:\n".length()
+	var line_end := source.find("\n", body_offset)
+	if line_end < 0:
+		return false
+	return source.substr(body_offset, line_end - body_offset).strip_edges() == (
+		"var sender_id := multiplayer.get_remote_sender_id()"
+	)
+
+
+func _rpc_entry_uses_shared_admission_before_delegate(
+	source: String,
+	function_name: String
+) -> bool:
+	var function_offset := source.find("func %s" % function_name)
+	if function_offset < 0:
+		return false
+	var next_function := source.find("\nfunc ", function_offset + 1)
+	var body := source.substr(
+		function_offset,
+		(next_function if next_function >= 0 else source.length()) - function_offset
+	)
+	var admission_offset := body.find(
+		"transactions_coordinator.consume_remote_transaction_admission("
+	)
+	var delegate_offset := body.find(
+		"merchant_transactions_coordinator.handle_remote_"
+	)
+	return admission_offset >= 0 and delegate_offset > admission_offset
+
+
+func _expect(condition: bool, message: String) -> void:
+	if not condition:
+		failures.append(message)
+
+
+func _finish() -> void:
+	if failures.is_empty():
+		print("MP_MERCHANT_TRANSACTIONS_COORDINATOR_SMOKE_TEST_OK")
+		quit(0)
+		return
+	for failure in failures:
+		push_error(failure)
+	quit(1)

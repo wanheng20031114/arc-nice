@@ -10,6 +10,9 @@ const MpWorldFlowCoordinatorScript := preload(
 const MpTowerEconomyCoordinatorScript := preload(
 	"res://scene/multiplayer/tower_economy/mp_tower_economy_coordinator.gd"
 )
+const MpMerchantTransactionsCoordinatorScript := preload(
+	"res://scene/multiplayer/merchant_transactions/mp_merchant_transactions_coordinator.gd"
+)
 const LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET := (
 	MpProjectileCoordinatorScript.LINGLAN_SKILL1_RING_MAX_PROJECTILES_PER_PACKET
 )
@@ -84,7 +87,6 @@ const STATE_DISCONNECTED := 0
 const STATE_IN_GAME := 5
 const HOST_TIME_OFFSET_SMOOTH_WEIGHT := 0.08
 const INPUT_CHANGE_EPSILON := 0.001
-const CHEAT_XIRANG_AMOUNT := 1000
 const COLLECTIBLE_EFFECT_DEDUP_RETENTION_SECONDS := 10.0
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
 const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := 224.0
@@ -113,8 +115,6 @@ const CORN_MACHINE_GUN_BURST_MAX_RECORDS_PER_PACKET := 32
 const ENEMY_TERMINAL_DEFEATED := 0
 const ENEMY_TERMINAL_ESCAPED := 1
 const ENEMY_TERMINAL_REMOVED := 2
-const LUOXI_TRANSACTION_RATE_PER_SECOND := 4.0
-const LUOXI_TRANSACTION_RATE_BURST := 6.0
 const XIAOCONG_TRANSACTION_RATE_PER_SECOND := 6.0
 const XIAOCONG_TRANSACTION_RATE_BURST := 10.0
 const TERRAIN_SNAPSHOT_CHUNK_MAX_CELLS := 96
@@ -146,6 +146,9 @@ const TERRAIN_TYPE_DIRT := 2
 @onready var transactions_coordinator: MpTransactionsCoordinator = $TransactionsCoordinator
 @onready var tower_economy_coordinator: MpTowerEconomyCoordinatorScript = $TowerEconomyCoordinator
 @onready var tower_world_coordinator: MpTowerWorldCoordinator = $TowerWorldCoordinator
+@onready var merchant_transactions_coordinator: MpMerchantTransactionsCoordinatorScript = (
+	$MerchantTransactionsCoordinator
+)
 @onready var public_room_keepalive_request: HTTPRequest = $PublicRoomKeepaliveRequest
 
 var _agave_cannonball_scene: PackedScene = null
@@ -194,11 +197,8 @@ var _large_player_snapshot_packet_count: int = 0
 var _large_enemy_snapshot_packet_count: int = 0
 var _enemy_snapshot_payload_bytes_total: int = 0
 var _enemy_snapshot_packet_count: int = 0
-var _luoxi_transaction_rate_buckets: Dictionary = {}
 var _xiaocong_transaction_rate_buckets: Dictionary = {}
 var _terrain_snapshot_request_rate_buckets: Dictionary = {}
-var _luoxi_offer_states_by_peer: Dictionary = {}
-var _luoxi_offer_revision_counters: Dictionary = {}
 var _combat_feedback_flush_time_left: float = COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS
 var _pending_bamboo_mortar_visuals := PackedInt32Array()
 var _pending_bamboo_mortar_action_ids := PackedInt32Array()
@@ -231,7 +231,6 @@ var _rpc_payload_diagnostics_enabled := false
 var _rpc_payload_call_counts: Dictionary[StringName, int] = {}
 var _rpc_payload_sample_bytes: Dictionary[StringName, int] = {}
 var _rpc_payload_sample_count := 0
-var _luoxi_offer_random_generator := RandomNumberGenerator.new()
 var _runtime_network_metrics = MultiplayerRuntimeMetricsScript.new(
 	_NetConstants.CHANNEL_COUNT
 )
@@ -243,7 +242,7 @@ var _suspended_embedded_participant_peer_ids: Dictionary[int, bool] = {}
 func _ready() -> void:
 	_net_time_origin = Time.get_ticks_msec() / 1000.0
 	player_coordinator.randomize_revive_generator()
-	_luoxi_offer_random_generator.randomize()
+	merchant_transactions_coordinator.randomize_offer_generator()
 	if not enemy_coordinator.remote_enemy_spawned.is_connected(_on_remote_enemy_spawned):
 		enemy_coordinator.remote_enemy_spawned.connect(_on_remote_enemy_spawned)
 	if not enemy_coordinator.remote_enemy_escape_requested.is_connected(
@@ -427,6 +426,8 @@ func _exit_tree() -> void:
 			tower_economy_coordinator.unbind_runtime(game)
 		if tower_world_coordinator != null:
 			tower_world_coordinator.unbind_session(self)
+		if merchant_transactions_coordinator != null:
+			merchant_transactions_coordinator.unbind_runtime(game)
 	else:
 		if session_coordinator != null:
 			session_coordinator.reset_session_state()
@@ -444,6 +445,8 @@ func _exit_tree() -> void:
 			tower_economy_coordinator.reset_session_state()
 		if tower_world_coordinator != null:
 			tower_world_coordinator.reset_session_state()
+		if merchant_transactions_coordinator != null:
+			merchant_transactions_coordinator.reset_session_state()
 	_gameplay_gateway = null
 	_mode_adapter = null
 	tower_mode_adapter = null
@@ -463,12 +466,11 @@ func _exit_tree() -> void:
 		tower_economy_coordinator.reset_session_state()
 	if tower_world_coordinator != null:
 		tower_world_coordinator.reset_session_state()
+	if merchant_transactions_coordinator != null:
+		merchant_transactions_coordinator.reset_session_state()
 	_pending_terrain_snapshot_batches.clear()
 	_terrain_snapshot_request_rate_buckets.clear()
 	_terrain_snapshot_repair_watchdog_time_left = 0.0
-	_luoxi_offer_states_by_peer.clear()
-	_luoxi_offer_revision_counters.clear()
-	_luoxi_transaction_rate_buckets.clear()
 	_xiaocong_transaction_rate_buckets.clear()
 	_public_room_keepalive_in_flight = false
 
@@ -891,6 +893,37 @@ func _on_tower_economy_transaction_latency_observed(
 	_runtime_network_metrics.record_transaction_latency_ms(latency_ms)
 
 
+func _on_merchant_transactions_rpc_to_host_requested(
+	method_name: StringName,
+	args: Array
+) -> void:
+	if not net_manager.is_client():
+		return
+	var rpc_args: Array = [_get_host_peer_id(), method_name]
+	rpc_args.append_array(args)
+	callv(&"rpc_id", rpc_args)
+
+
+func _on_merchant_transactions_rpc_to_peer_requested(
+	peer_id: int,
+	method_name: StringName,
+	args: Array
+) -> void:
+	if peer_id <= 0 or not net_manager.is_host():
+		return
+	_record_outbound_rpc(method_name, args)
+	var rpc_args: Array = [peer_id, method_name]
+	rpc_args.append_array(args)
+	callv(&"rpc_id", rpc_args)
+
+
+func _on_merchant_transactions_rpc_broadcast_requested(
+	method_name: StringName,
+	args: Array
+) -> void:
+	_rpc_to_connected_clients(method_name, args)
+
+
 func request_multiplayer_start_wave() -> void:
 	if not world_flow_coordinator.supports_wave_progress():
 		return
@@ -1309,15 +1342,11 @@ func cancel_tiyi_high_noon(peer_id: int, activation_id: int) -> void:
 
 
 func uses_authoritative_luoxi_offers() -> bool:
-	return true
+	return merchant_transactions_coordinator.uses_authoritative_luoxi_offers()
 
 
 func request_luoxi_collectible_offer() -> void:
-	var peer_id := _get_local_peer_id()
-	if net_manager.is_host():
-		_send_or_create_luoxi_offer_for_peer(peer_id)
-	elif net_manager.is_client():
-		net_luoxi_collectible_offer_requested.rpc_id(_get_host_peer_id())
+	merchant_transactions_coordinator.request_luoxi_collectible_offer()
 
 
 func request_luoxi_collectible_choice(
@@ -1325,85 +1354,44 @@ func request_luoxi_collectible_choice(
 	_legacy_config_path: String = "",
 	offer_revision: int = 0
 ) -> void:
-	if net_manager.is_host():
-		_apply_luoxi_collectible_choice_for_peer(
-			_get_local_peer_id(),
-			choice_index,
-			"",
-			offer_revision,
-			false
-		)
-	elif net_manager.is_client():
-		net_luoxi_collectible_choice_requested.rpc_id(
-			_get_host_peer_id(),
-			choice_index,
-			offer_revision
-		)
+	merchant_transactions_coordinator.request_luoxi_collectible_choice(
+		choice_index,
+		offer_revision
+	)
 
 
 func request_luoxi_collectible_refresh(offer_revision: int = 0) -> void:
-	if net_manager.is_host():
-		_apply_luoxi_collectible_refresh_for_peer(
-			_get_local_peer_id(),
-			offer_revision,
-			false
-		)
-	elif net_manager.is_client():
-		net_luoxi_collectible_refresh_requested.rpc_id(
-			_get_host_peer_id(),
-			offer_revision
-		)
+	merchant_transactions_coordinator.request_luoxi_collectible_refresh(
+		offer_revision
+	)
 
 
 func request_luoxi_special_game_start() -> void:
-	if net_manager.is_host():
-		_apply_luoxi_special_game_start_for_peer(_get_local_peer_id())
-	elif net_manager.is_client():
-		net_luoxi_special_game_start_requested.rpc_id(_get_host_peer_id())
+	merchant_transactions_coordinator.request_luoxi_special_game_start()
 
 
 func supports_luoxi_special_game() -> bool:
-	return (
-		_mode_adapter != null
-		and _mode_adapter.runtime_supports_luoxi_special_game()
-	)
+	return merchant_transactions_coordinator.supports_luoxi_special_game()
 
 
 func request_luoxi_special_game_card_reveal(
 	session_revision: int,
 	card_index: int
 ) -> void:
-	if net_manager.is_host():
-		_apply_luoxi_special_game_card_reveal_for_peer(
-			_get_local_peer_id(),
-			session_revision,
-			card_index
-		)
-	elif net_manager.is_client():
-		net_luoxi_special_game_card_reveal_requested.rpc_id(
-			_get_host_peer_id(),
-			session_revision,
-			card_index
-		)
+	merchant_transactions_coordinator.request_luoxi_special_game_card_reveal(
+		session_revision,
+		card_index
+	)
 
 
 func request_luoxi_special_game_finish(session_revision: int) -> void:
-	if net_manager.is_host():
-		_apply_luoxi_special_game_finish_for_peer(
-			_get_local_peer_id(),
-			session_revision
-		)
-	elif net_manager.is_client():
-		net_luoxi_special_game_finish_requested.rpc_id(
-			_get_host_peer_id(),
-			session_revision
-		)
+	merchant_transactions_coordinator.request_luoxi_special_game_finish(
+		session_revision
+	)
 
 
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:
-	if _mode_adapter == null:
-		return false
-	return _mode_adapter.runtime_has_luoxi_collectible_claimed(peer_id)
+	return merchant_transactions_coordinator.has_luoxi_collectible_claimed(peer_id)
 
 
 func broadcast_collectible_visual_effect(
@@ -1442,25 +1430,13 @@ func broadcast_collectible_follow_visual_effect(
 
 
 func request_multiplayer_cheat_xirang() -> void:
-	if not OS.is_debug_build():
-		return
-	if net_manager.is_host():
-		_apply_cheat_xirang_for_peer(_get_local_peer_id())
-	else:
-		net_cheat_xirang_requested.rpc_id(_get_host_peer_id())
+	merchant_transactions_coordinator.request_cheat_xirang()
 
 
 func request_debug_collectible(config_path: String) -> void:
-	if (
-		game == null
-		or _mode_adapter == null
-		or not _mode_adapter.allows_debug_collectible_grants()
-	):
+	if merchant_transactions_coordinator == null:
 		return
-	if net_manager.is_host():
-		_apply_debug_collectible_for_peer(_get_local_peer_id(), config_path)
-	else:
-		net_debug_collectible_requested.rpc_id(_get_host_peer_id(), config_path)
+	merchant_transactions_coordinator.request_debug_collectible(config_path)
 
 
 func _on_tower_world_plant_placement_request_to_host(
@@ -2011,6 +1987,13 @@ func _setup_game(mode: int) -> bool:
 		run_state,
 		_suspended_embedded_participant_peer_ids
 	)
+	merchant_transactions_coordinator.bind_runtime(
+		game,
+		mode_adapter,
+		run_state,
+		net_manager,
+		_net_time_origin
+	)
 	if tower_adapter != null:
 		tower_economy_coordinator.bind_runtime(
 			game,
@@ -2096,6 +2079,8 @@ func _setup_game(mode: int) -> bool:
 
 
 func _discard_unparented_game_runtime() -> void:
+	if game != null and merchant_transactions_coordinator != null:
+		merchant_transactions_coordinator.unbind_runtime(game)
 	if game != null and tower_economy_coordinator != null:
 		tower_economy_coordinator.unbind_runtime(game)
 	if game != null and world_flow_coordinator != null:
@@ -2162,11 +2147,7 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 			run_state.export_inventory_snapshot_for_peer(state_peer_id),
 			true
 		)
-	if _luoxi_offer_states_by_peer.has(peer_id):
-		_send_luoxi_offer_state_to_peer(
-			peer_id,
-			_luoxi_offer_states_by_peer[peer_id] as Dictionary
-		)
+	merchant_transactions_coordinator.send_offer_state_if_present(peer_id)
 	_send_live_enemy_roster_to_peer(peer_id)
 	_send_live_pickup_roster_to_peer(peer_id)
 	if _has_tower_mode():
@@ -6251,7 +6232,7 @@ func _on_world_flow_merchant_active_broadcast_requested(active: bool) -> void:
 	if not is_inside_tree() or not net_manager.is_host():
 		return
 	if active:
-		_luoxi_offer_states_by_peer.clear()
+		merchant_transactions_coordinator.clear_offer_states()
 	_rpc_to_connected_clients(&"net_merchant_active_changed", [active])
 
 
@@ -7621,22 +7602,18 @@ func _admit_remote_xiaocong_request(sender_id: int) -> bool:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_luoxi_collectible_offer_requested() -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
 	if (
-		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
-		or not _consume_peer_rate_token(
-			_luoxi_transaction_rate_buckets,
-			sender_id,
-			LUOXI_TRANSACTION_RATE_PER_SECOND,
-			LUOXI_TRANSACTION_RATE_BURST
+		not net_manager.is_host()
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
 		)
 	):
 		return
-	_send_or_create_luoxi_offer_for_peer(sender_id)
+	merchant_transactions_coordinator.handle_remote_luoxi_collectible_offer_requested(
+		sender_id
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -7644,68 +7621,53 @@ func net_luoxi_collectible_choice_requested(
 	choice_index: int,
 	offer_revision: int = 0
 ) -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
 	if (
-		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
-		or not _consume_peer_rate_token(
-			_luoxi_transaction_rate_buckets,
-			sender_id,
-			LUOXI_TRANSACTION_RATE_PER_SECOND,
-			LUOXI_TRANSACTION_RATE_BURST
+		not net_manager.is_host()
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
 		)
 	):
 		return
-	_apply_luoxi_collectible_choice_for_peer(
+	merchant_transactions_coordinator.handle_remote_luoxi_collectible_choice_requested(
 		sender_id,
 		choice_index,
-		"",
-		offer_revision,
-		true
+		offer_revision
 	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_luoxi_collectible_refresh_requested(offer_revision: int = 0) -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
 	if (
-		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
-		or not _consume_peer_rate_token(
-			_luoxi_transaction_rate_buckets,
-			sender_id,
-			LUOXI_TRANSACTION_RATE_PER_SECOND,
-			LUOXI_TRANSACTION_RATE_BURST
+		not net_manager.is_host()
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
 		)
 	):
 		return
-	_apply_luoxi_collectible_refresh_for_peer(sender_id, offer_revision, true)
+	merchant_transactions_coordinator.handle_remote_luoxi_collectible_refresh_requested(
+		sender_id,
+		offer_revision
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_luoxi_special_game_start_requested() -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
 	if (
-		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
-		or not _consume_peer_rate_token(
-			_luoxi_transaction_rate_buckets,
-			sender_id,
-			LUOXI_TRANSACTION_RATE_PER_SECOND,
-			LUOXI_TRANSACTION_RATE_BURST
+		not net_manager.is_host()
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
 		)
 	):
 		return
-	_apply_luoxi_special_game_start_for_peer(sender_id)
+	merchant_transactions_coordinator.handle_remote_luoxi_special_game_start_requested(
+		sender_id
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
@@ -7713,22 +7675,16 @@ func net_luoxi_special_game_card_reveal_requested(
 	session_revision: int,
 	card_index: int
 ) -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
 	if (
-		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
-		or not _consume_peer_rate_token(
-			_luoxi_transaction_rate_buckets,
-			sender_id,
-			LUOXI_TRANSACTION_RATE_PER_SECOND,
-			LUOXI_TRANSACTION_RATE_BURST
+		not net_manager.is_host()
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
 		)
 	):
 		return
-	_apply_luoxi_special_game_card_reveal_for_peer(
+	merchant_transactions_coordinator.handle_remote_luoxi_special_game_card_reveal_requested(
 		sender_id,
 		session_revision,
 		card_index
@@ -7737,22 +7693,16 @@ func net_luoxi_special_game_card_reveal_requested(
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_luoxi_special_game_finish_requested(session_revision: int) -> void:
-	if not net_manager.is_host():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
-	if sender_id <= 0:
-		return
 	if (
-		not transactions_coordinator.consume_remote_transaction_admission(sender_id)
-		or not _consume_peer_rate_token(
-			_luoxi_transaction_rate_buckets,
-			sender_id,
-			LUOXI_TRANSACTION_RATE_PER_SECOND,
-			LUOXI_TRANSACTION_RATE_BURST
+		not net_manager.is_host()
+		or sender_id <= 0
+		or not transactions_coordinator.consume_remote_transaction_admission(
+			sender_id
 		)
 	):
 		return
-	_apply_luoxi_special_game_finish_for_peer(
+	merchant_transactions_coordinator.handle_remote_luoxi_special_game_finish_requested(
 		sender_id,
 		session_revision
 	)
@@ -7760,37 +7710,36 @@ func net_luoxi_special_game_finish_requested(session_revision: int) -> void:
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_cheat_xirang_requested() -> void:
-	if not net_manager.is_host() or not OS.is_debug_build():
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if (
-		sender_id <= 0
+		not net_manager.is_host()
+		or not OS.is_debug_build()
+		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
 		)
 	):
 		return
-	_apply_cheat_xirang_for_peer(sender_id)
+	merchant_transactions_coordinator.handle_remote_cheat_xirang_requested(
+		sender_id
+	)
 
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func net_debug_collectible_requested(config_path: String) -> void:
-	if (
-		not net_manager.is_host()
-		or game == null
-		or _mode_adapter == null
-		or not _mode_adapter.allows_debug_collectible_grants()
-	):
-		return
 	var sender_id := multiplayer.get_remote_sender_id()
 	if (
-		sender_id <= 0
+		not net_manager.is_host()
+		or sender_id <= 0
 		or not transactions_coordinator.consume_remote_transaction_admission(
 			sender_id
 		)
 	):
 		return
-	_apply_debug_collectible_for_peer(sender_id, config_path)
+	merchant_transactions_coordinator.handle_remote_debug_collectible_requested(
+		sender_id,
+		config_path
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -7895,17 +7844,8 @@ func net_luoxi_collectible_offer_state(
 	current_xirang: int,
 	refresh_result_code: int = -1
 ) -> void:
-	if game == null or peer_id != _get_local_peer_id():
-		return
-	_luoxi_offer_states_by_peer[peer_id] = {
-		"offer_revision": offer_revision,
-		"config_paths": Array(config_paths),
-		"refresh_count": refresh_count,
-	}
-	var merchant := _get_luoxi_merchant()
-	if merchant == null:
-		return
-	merchant.apply_authoritative_offer_state(
+	merchant_transactions_coordinator.receive_luoxi_collectible_offer_state(
+		peer_id,
 		offer_revision,
 		config_paths,
 		refresh_count,
@@ -7923,24 +7863,14 @@ func net_luoxi_collectible_confirmed(
 	offer_revision: int = 0,
 	inventory_snapshot: Dictionary = {}
 ) -> void:
-	if game == null or _mode_adapter == null:
-		return
-	if not inventory_snapshot.is_empty():
-		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
-	if result_code == MerchantPurchaseResult.CollectibleClaim.SUCCESS and not config_path.is_empty():
-		var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
-		if not already_applied_on_host:
-			_mode_adapter.runtime_record_luoxi_collectible_claim(peer_id)
-			if inventory_snapshot.is_empty():
-				var item := load(config_path) as PickupConfig
-				if item != null:
-					run_state.try_add_item_for_peer(peer_id, item)
-	elif result_code == MerchantPurchaseResult.CollectibleClaim.ALREADY_CLAIMED:
-		_mode_adapter.runtime_mark_luoxi_collectible_claimed(peer_id)
-	if peer_id == _get_local_peer_id():
-		if result_code == MerchantPurchaseResult.CollectibleClaim.STALE_OFFER:
-			return
-		_mode_adapter.show_local_luoxi_collectible_result(result_code)
+	merchant_transactions_coordinator.receive_luoxi_collectible_confirmation(
+		peer_id,
+		choice_index,
+		config_path,
+		result_code,
+		offer_revision,
+		inventory_snapshot
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -7950,21 +7880,12 @@ func net_luoxi_collectible_refresh_confirmed(
 	refresh_count: int,
 	current_xirang: int
 ) -> void:
-	if game == null or _mode_adapter == null:
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node != null and is_instance_valid(player_node):
-		var already_applied_on_host: bool = net_manager.is_host() and peer_id == _get_local_peer_id()
-		if not already_applied_on_host:
-			var xirang_delta := current_xirang - player_node.current_xirang
-			player_node.current_xirang = maxi(current_xirang, 0)
-			player_node.xirang_changed.emit(player_node.current_xirang, xirang_delta)
-	if peer_id == _get_local_peer_id():
-		_mode_adapter.show_local_luoxi_refresh_result(
-			result_code,
-			refresh_count,
-			current_xirang
-		)
+	merchant_transactions_coordinator.receive_luoxi_collectible_refresh_confirmation(
+		peer_id,
+		result_code,
+		refresh_count,
+		current_xirang
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -7973,12 +7894,11 @@ func net_luoxi_special_game_started(
 	result: Dictionary,
 	inventory_snapshot: Dictionary = {}
 ) -> void:
-	if game == null or _mode_adapter == null or peer_id <= 0:
-		return
-	if not inventory_snapshot.is_empty():
-		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
-	if peer_id == _get_local_peer_id():
-		_mode_adapter.show_local_luoxi_special_game_started(result)
+	merchant_transactions_coordinator.receive_luoxi_special_game_started(
+		peer_id,
+		result,
+		inventory_snapshot
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -7986,10 +7906,10 @@ func net_luoxi_special_game_card_revealed(
 	peer_id: int,
 	result: Dictionary
 ) -> void:
-	if game == null or _mode_adapter == null or peer_id <= 0:
-		return
-	if peer_id == _get_local_peer_id():
-		_mode_adapter.show_local_luoxi_special_game_card_revealed(result)
+	merchant_transactions_coordinator.receive_luoxi_special_game_card_revealed(
+		peer_id,
+		result
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -7998,27 +7918,11 @@ func net_luoxi_special_game_finished(
 	result: Dictionary,
 	inventory_snapshot: Dictionary = {}
 ) -> void:
-	if game == null or _mode_adapter == null or peer_id <= 0:
-		return
-	if not inventory_snapshot.is_empty():
-		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
-	var player_node := game.get_player_for_peer(peer_id)
-	if player_node != null and is_instance_valid(player_node):
-		var confirmed_xirang := int(
-			result.get("current_xirang", player_node.current_xirang)
-		)
-		var already_applied_on_host: bool = (
-			net_manager.is_host() and peer_id == _get_local_peer_id()
-		)
-		if not already_applied_on_host and confirmed_xirang != player_node.current_xirang:
-			var xirang_delta := confirmed_xirang - player_node.current_xirang
-			player_node.current_xirang = maxi(confirmed_xirang, 0)
-			player_node.xirang_changed.emit(
-				player_node.current_xirang,
-				xirang_delta
-			)
-	if peer_id == _get_local_peer_id():
-		_mode_adapter.show_local_luoxi_special_game_finished(result)
+	merchant_transactions_coordinator.receive_luoxi_special_game_finished(
+		peer_id,
+		result,
+		inventory_snapshot
+	)
 
 
 @rpc("authority", "call_remote", "unreliable", 7)
@@ -8069,13 +7973,11 @@ func _accept_collectible_effect_event(effect_event_id: int) -> bool:
 
 @rpc("authority", "call_remote", "reliable", 6)
 func net_cheat_xirang_confirmed(peer_id: int, current_xirang: int, added_amount: int) -> void:
-	if game == null:
-		return
-	var player_node := game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	player_node.current_xirang = maxi(current_xirang, 0)
-	player_node.xirang_changed.emit(player_node.current_xirang, maxi(added_amount, 0))
+	merchant_transactions_coordinator.receive_cheat_xirang_confirmation(
+		peer_id,
+		current_xirang,
+		added_amount
+	)
 
 
 @rpc("authority", "call_remote", "reliable", 6)
@@ -8085,348 +7987,12 @@ func net_debug_collectible_granted(
 	success: bool,
 	inventory_snapshot: Dictionary = {}
 ) -> void:
-	if game == null:
-		return
-	if peer_id <= 0:
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	if not inventory_snapshot.is_empty():
-		run_state.apply_inventory_snapshot_for_peer(peer_id, inventory_snapshot)
-	elif success and not config_path.is_empty():
-		# Compatibility for confirmations produced before authoritative snapshots.
-		var already_applied_on_host: bool = net_manager != null and net_manager.is_host() and peer_id == _get_local_peer_id()
-		if not already_applied_on_host:
-			var item := LuoxiMerchant.get_collectible_for_path(config_path)
-			if item != null:
-				run_state.try_add_item_for_peer(peer_id, item)
-	if peer_id == _get_local_peer_id():
-		if _mode_adapter != null:
-			_mode_adapter.show_debug_collectible_grant_result(
-				config_path,
-				success
-			)
-
-
-func _get_luoxi_merchant() -> LuoxiMerchant:
-	if _mode_adapter == null:
-		return null
-	return _mode_adapter.get_luoxi_merchant()
-
-
-func _send_or_create_luoxi_offer_for_peer(peer_id: int) -> void:
-	if game == null or peer_id <= 0 or not net_manager.is_host():
-		return
-	var state := _ensure_luoxi_offer_for_peer(peer_id)
-	if state.is_empty():
-		return
-	_send_luoxi_offer_state_to_peer(peer_id, state)
-
-
-func _ensure_luoxi_offer_for_peer(peer_id: int) -> Dictionary:
-	var existing := _luoxi_offer_states_by_peer.get(peer_id, {}) as Dictionary
-	if not existing.is_empty():
-		return existing
-	return _create_luoxi_offer_for_peer(peer_id, [])
-
-
-func _create_luoxi_offer_for_peer(
-	peer_id: int,
-	excluded_paths: Array[String]
-) -> Dictionary:
-	if (
-		_mode_adapter == null
-		or peer_id <= 0
-		or _mode_adapter.runtime_has_luoxi_collectible_claimed(peer_id)
-	):
-		return {}
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	var merchant := _get_luoxi_merchant()
-	if (
-		player_node == null
-		or not is_instance_valid(player_node)
-		or merchant == null
-		or not is_instance_valid(merchant)
-	):
-		return {}
-	var config_paths := merchant.build_authoritative_offer_paths(
-		player_node,
-		excluded_paths,
-		_luoxi_offer_random_generator
-	)
-	if config_paths.size() != LuoxiMerchant.get_choice_count():
-		return {}
-	return _commit_luoxi_offer_state(peer_id, config_paths)
-
-
-func _commit_luoxi_offer_state(
-	peer_id: int,
-	config_paths: Array[String]
-) -> Dictionary:
-	var next_revision := int(_luoxi_offer_revision_counters.get(peer_id, 0)) + 1
-	_luoxi_offer_revision_counters[peer_id] = next_revision
-	var state := {
-		"offer_revision": next_revision,
-		"config_paths": config_paths.duplicate(),
-		"refresh_count": (
-			_mode_adapter.runtime_get_luoxi_collectible_refresh_count(peer_id)
-		),
-	}
-	_luoxi_offer_states_by_peer[peer_id] = state
-	return state
-
-
-func _send_luoxi_offer_state_to_peer(
-	peer_id: int,
-	state: Dictionary,
-	refresh_result_code: int = -1
-) -> void:
-	if peer_id <= 0 or state.is_empty():
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id) if game != null else null
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var packed_paths := PackedStringArray(state.get("config_paths", []) as Array)
-	var offer_revision := int(state.get("offer_revision", 0))
-	var refresh_count := int(
-		state.get(
-			"refresh_count",
-			_mode_adapter.runtime_get_luoxi_collectible_refresh_count(peer_id)
-		)
-	)
-	if peer_id == _get_local_peer_id():
-		net_luoxi_collectible_offer_state(
-			peer_id,
-			offer_revision,
-			packed_paths,
-			refresh_count,
-			player_node.current_xirang,
-			refresh_result_code
-		)
-		return
-	if (
-		net_manager.has_method("is_peer_send_ready")
-		and not bool(net_manager.call("is_peer_send_ready", peer_id))
-	):
-		return
-	net_luoxi_collectible_offer_state.rpc_id(
+	merchant_transactions_coordinator.receive_debug_collectible_granted(
 		peer_id,
-		peer_id,
-		offer_revision,
-		packed_paths,
-		refresh_count,
-		player_node.current_xirang,
-		refresh_result_code
+		config_path,
+		success,
+		inventory_snapshot
 	)
-
-
-func _apply_luoxi_special_game_start_for_peer(peer_id: int) -> void:
-	if game == null or peer_id <= 0 or not net_manager.is_host():
-		return
-	var result := (
-		_mode_adapter.runtime_try_start_luoxi_special_game_for_peer(peer_id)
-	)
-	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
-	_rpc_to_connected_clients(
-		&"net_luoxi_special_game_started",
-		[peer_id, result, inventory_snapshot]
-	)
-	if peer_id == _get_local_peer_id():
-		net_luoxi_special_game_started(
-			peer_id,
-			result,
-			inventory_snapshot
-		)
-
-
-func _apply_luoxi_special_game_card_reveal_for_peer(
-	peer_id: int,
-	session_revision: int,
-	card_index: int
-) -> void:
-	if game == null or peer_id <= 0 or not net_manager.is_host():
-		return
-	var result := _mode_adapter.runtime_try_reveal_luoxi_special_game_card_for_peer(
-		peer_id,
-		session_revision,
-		card_index
-	)
-	_rpc_to_connected_clients(
-		&"net_luoxi_special_game_card_revealed",
-		[peer_id, result]
-	)
-	if peer_id == _get_local_peer_id():
-		net_luoxi_special_game_card_revealed(peer_id, result)
-
-
-func _apply_luoxi_special_game_finish_for_peer(
-	peer_id: int,
-	session_revision: int
-) -> void:
-	if game == null or peer_id <= 0 or not net_manager.is_host():
-		return
-	var result := _mode_adapter.runtime_try_finish_luoxi_special_game_for_peer(
-		peer_id,
-		session_revision
-	)
-	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
-	_rpc_to_connected_clients(
-		&"net_luoxi_special_game_finished",
-		[peer_id, result, inventory_snapshot]
-	)
-	if peer_id == _get_local_peer_id():
-		net_luoxi_special_game_finished(
-			peer_id,
-			result,
-			inventory_snapshot
-		)
-
-
-func _apply_luoxi_collectible_choice_for_peer(
-	peer_id: int,
-	choice_index: int,
-	_legacy_config_path: String = "",
-	offer_revision: int = 0,
-	require_offer_revision: bool = false
-) -> void:
-	if game == null or peer_id <= 0 or not net_manager.is_host():
-		return
-	var state := _ensure_luoxi_offer_for_peer(peer_id)
-	if state.is_empty():
-		_send_luoxi_collectible_confirmation(
-			peer_id,
-			choice_index,
-			"",
-			MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER,
-			0
-		)
-		return
-	var authoritative_revision := int(state.get("offer_revision", 0))
-	if (
-		(require_offer_revision and offer_revision <= 0)
-		or (offer_revision > 0 and offer_revision != authoritative_revision)
-	):
-		_send_luoxi_offer_state_to_peer(peer_id, state)
-		_send_luoxi_collectible_confirmation(
-			peer_id,
-			choice_index,
-			"",
-			MerchantPurchaseResult.CollectibleClaim.STALE_OFFER,
-			authoritative_revision
-		)
-		return
-
-	var config_paths := state.get("config_paths", []) as Array
-	if choice_index < 0 or choice_index >= config_paths.size():
-		_send_luoxi_collectible_confirmation(
-			peer_id,
-			choice_index,
-			"",
-			MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER,
-			authoritative_revision
-		)
-		return
-	var resolved_config_path := str(config_paths[choice_index])
-	var result_code := _mode_adapter.runtime_try_claim_luoxi_collectible_for_peer(
-		peer_id,
-		resolved_config_path
-	)
-	if result_code != MerchantPurchaseResult.CollectibleClaim.SUCCESS:
-		resolved_config_path = ""
-	_send_luoxi_collectible_confirmation(
-		peer_id,
-		choice_index,
-		resolved_config_path,
-		result_code,
-		authoritative_revision
-	)
-
-
-func _send_luoxi_collectible_confirmation(
-	peer_id: int,
-	choice_index: int,
-	config_path: String,
-	result_code: int,
-	offer_revision: int
-) -> void:
-	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
-	_rpc_to_connected_clients(
-		&"net_luoxi_collectible_confirmed",
-		[
-			peer_id,
-			choice_index,
-			config_path,
-			result_code,
-			offer_revision,
-			inventory_snapshot,
-		]
-	)
-	if peer_id == _get_local_peer_id():
-		net_luoxi_collectible_confirmed(
-			peer_id,
-			choice_index,
-			config_path,
-			result_code,
-			offer_revision,
-			inventory_snapshot
-		)
-
-
-func _apply_luoxi_collectible_refresh_for_peer(
-	peer_id: int,
-	offer_revision: int = 0,
-	require_offer_revision: bool = false
-) -> void:
-	if game == null or peer_id <= 0 or not net_manager.is_host():
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	var state := _ensure_luoxi_offer_for_peer(peer_id)
-	if state.is_empty():
-		return
-	var authoritative_revision := int(state.get("offer_revision", 0))
-	if (
-		(require_offer_revision and offer_revision <= 0)
-		or (offer_revision > 0 and offer_revision != authoritative_revision)
-	):
-		_send_luoxi_offer_state_to_peer(
-			peer_id,
-			state,
-			MerchantPurchaseResult.OfferRefresh.STALE_OFFER
-		)
-		return
-
-	var previous_paths: Array[String] = []
-	for config_path_variant in state.get("config_paths", []) as Array:
-		previous_paths.append(str(config_path_variant))
-	var merchant := _get_luoxi_merchant()
-	if merchant == null:
-		return
-	var replacement_paths := merchant.build_authoritative_offer_paths(
-		player_node,
-		previous_paths,
-		_luoxi_offer_random_generator
-	)
-	if replacement_paths.size() != LuoxiMerchant.get_choice_count():
-		_send_luoxi_offer_state_to_peer(
-			peer_id,
-			state,
-			MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
-		)
-		return
-	var result_code := (
-		_mode_adapter.runtime_try_refresh_luoxi_collectibles_for_peer(peer_id)
-	)
-	if result_code == MerchantPurchaseResult.OfferRefresh.SUCCESS:
-		state = _commit_luoxi_offer_state(peer_id, replacement_paths)
-	else:
-		state["refresh_count"] = (
-			_mode_adapter.runtime_get_luoxi_collectible_refresh_count(peer_id)
-		)
-		_luoxi_offer_states_by_peer[peer_id] = state
-	_send_luoxi_offer_state_to_peer(peer_id, state, result_code)
 
 
 func _spawn_collectible_visual_effect(
@@ -8484,42 +8050,13 @@ func _spawn_collectible_follow_visual_effect(
 			moon_shield.position = Vector2.ZERO
 
 
-func _apply_cheat_xirang_for_peer(peer_id: int) -> void:
-	if game == null or not OS.is_debug_build():
-		return
-	var player_node: Player = game.get_player_for_peer(peer_id)
-	if player_node == null or not is_instance_valid(player_node):
-		return
-	if not player_node.grant_cheat_xirang(CHEAT_XIRANG_AMOUNT):
-		return
-	_rpc_to_connected_clients(
-		&"net_cheat_xirang_confirmed",
-		[peer_id, player_node.current_xirang, CHEAT_XIRANG_AMOUNT]
-	)
-
-
 func _apply_debug_collectible_for_peer(peer_id: int, config_path: String) -> void:
-	if (
-		game == null
-		or peer_id <= 0
-		or _mode_adapter == null
-		or not _mode_adapter.allows_debug_collectible_grants()
-	):
+	if merchant_transactions_coordinator == null:
 		return
-	var item := LuoxiMerchant.get_collectible_for_path(config_path)
-	var success := item != null and run_state.try_add_item_for_peer(peer_id, item)
-	var inventory_snapshot := run_state.export_inventory_snapshot_for_peer(peer_id)
-	_rpc_to_connected_clients(
-		&"net_debug_collectible_granted",
-		[peer_id, config_path, success, inventory_snapshot]
+	merchant_transactions_coordinator.apply_debug_collectible_for_peer(
+		peer_id,
+		config_path
 	)
-	if peer_id == _get_local_peer_id():
-		net_debug_collectible_granted(
-			peer_id,
-			config_path,
-			success,
-			inventory_snapshot
-		)
 
 
 func _get_host_peer_id() -> int:
@@ -8705,13 +8242,11 @@ func _capture_disconnected_player_reconnect_state(peer_id: int) -> void:
 		"spawn_slot_index": spawn_slot_index,
 		"wave_death_count": wave_death_count,
 		"owned_plant_net_ids": owned_plant_net_ids,
-		"luoxi_offer_state": (
-			(_luoxi_offer_states_by_peer.get(peer_id, {}) as Dictionary).duplicate(true)
-		),
-		"luoxi_offer_revision": int(
-			_luoxi_offer_revision_counters.get(peer_id, -1)
-		),
 	}
+	reconnect_state.merge(
+		merchant_transactions_coordinator.capture_reconnect_state(peer_id),
+		true
+	)
 	reconnect_state.merge(
 		player_coordinator.capture_reconnect_life_state(peer_id),
 		true
@@ -8814,16 +8349,10 @@ func _on_net_player_reconnected(
 		reconnect_state,
 		net_manager.is_host()
 	)
-	var luoxi_offer_state := (
-		reconnect_state.get("luoxi_offer_state", {}) as Dictionary
+	merchant_transactions_coordinator.restore_reconnect_state(
+		new_peer_id,
+		reconnect_state
 	)
-	if not luoxi_offer_state.is_empty():
-		_luoxi_offer_states_by_peer[new_peer_id] = luoxi_offer_state.duplicate(true)
-	var luoxi_offer_revision := int(
-		reconnect_state.get("luoxi_offer_revision", -1)
-	)
-	if luoxi_offer_revision >= 0:
-		_luoxi_offer_revision_counters[new_peer_id] = luoxi_offer_revision
 	if player_state != null:
 		player_coordinator.restore_reconnected_player_snapshot(
 			player_node,
@@ -8886,13 +8415,11 @@ func _clear_peer_network_state(peer_id: int) -> void:
 	_active_tiyi_activations_by_peer.erase(peer_id)
 	_tiyi_target_ids_by_peer.erase(peer_id)
 	_last_tiyi_activation_seen_by_peer.erase(peer_id)
-	_luoxi_offer_states_by_peer.erase(peer_id)
-	_luoxi_offer_revision_counters.erase(peer_id)
-	_luoxi_transaction_rate_buckets.erase(peer_id)
 	_xiaocong_transaction_rate_buckets.erase(peer_id)
 	session_coordinator.clear_peer(peer_id)
 	transactions_coordinator.clear_peer(peer_id)
 	tower_economy_coordinator.clear_peer(peer_id)
+	merchant_transactions_coordinator.clear_peer(peer_id)
 	_terrain_snapshot_request_rate_buckets.erase(peer_id)
 	projectile_coordinator.clear_peer(peer_id)
 
@@ -8914,9 +8441,7 @@ func _return_to_lobby() -> void:
 	_client_waiting_for_terrain_snapshot = false
 	_terrain_snapshot_repair_watchdog_time_left = 0.0
 	_last_completed_terrain_snapshot_id = 0
-	_luoxi_offer_states_by_peer.clear()
-	_luoxi_offer_revision_counters.clear()
-	_luoxi_transaction_rate_buckets.clear()
+	merchant_transactions_coordinator.reset_session_state()
 	_xiaocong_transaction_rate_buckets.clear()
 	session_coordinator.reset_session_state()
 	transactions_coordinator.reset_session_state()
