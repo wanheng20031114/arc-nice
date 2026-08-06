@@ -192,6 +192,22 @@ func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
 	return snapshots
 
 
+func get_authoritative_team_plant_count() -> int:
+	return _plant_system.plants_by_net_id.size() if _plant_system != null else -1
+
+
+func find_nearest_operational_interaction_building(
+	world_position: Vector2,
+	maximum_distance: float
+) -> PlantDefense:
+	if _plant_system == null:
+		return null
+	return _plant_system.find_nearest_operational_interaction_building_world(
+		world_position,
+		maximum_distance
+	)
+
+
 func find_nearest_enemy_attack_target_world(
 	from_position: Vector2,
 	max_distance: float,

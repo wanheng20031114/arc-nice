@@ -281,6 +281,14 @@ func get_fixed_respawn_position(peer_id: int) -> Variant:
 	return _spawn_point.global_position + _get_spawn_offset(spawn_slot_indices[peer_id])
 
 
+func get_spawn_slot_index(peer_id: int) -> int:
+	return int(spawn_slot_indices.get(peer_id, 0))
+
+
+func get_wave_death_count(peer_id: int) -> int:
+	return int(wave_death_counts.get(peer_id, 0))
+
+
 func apply_network_input_for_peer(
 	peer_id: int,
 	move_input: Vector2,

@@ -1,6 +1,8 @@
 extends MultiplayerModeAdapter
 class_name TowerDefenseMultiplayerModeAdapter
 
+const MAIN_MENU_SCENE_PATH := "res://scene/main_menu.tscn"
+
 signal test_arena_manual_night_changed(enabled: bool)
 signal base_health_changed(
 	current_health: int,
@@ -80,6 +82,127 @@ signal xiaocong_vote_requested(
 signal xiaocong_collectible_requested(choice_index: int)
 signal xiaocong_fate_state_changed(state: Dictionary)
 
+var _tower_runtime: TowerDefenseGame = null
+var _campaign_coordinator: TowerDefenseCampaignCoordinator = null
+var _enemy_coordinator: TowerDefenseEnemyCoordinator = null
+var _home_defense_coordinator: TowerDefenseHomeDefenseCoordinator = null
+var _plant_runtime_coordinator: TowerDefensePlantRuntimeCoordinator = null
+var _player_roster_coordinator: TowerDefensePlayerRosterCoordinator = null
+var _boss_coordinator: TowerDefenseBossCoordinator = null
+var _fate_coordinator: FateCoordinator = null
+var _fate_flow_coordinator: TowerDefenseFateFlowCoordinator = null
+var _fate_manager: TowerDefenseFateManager = null
+var _presentation_coordinator: TowerDefensePresentationCoordinator = null
+var _profile_panel: TowerDefensePlayerProfilePanel = null
+var _debug_collectible_window: DebugCollectibleWindow = null
+var _merchant: ZhuangfangyiMerchant = null
+var _luoxi_merchant: TowerDefenseLuoxiMerchant = null
+var _luoxi_special_game_coordinator: LuoxiSpecialGameCoordinator = null
+var _run_state: RunStateStore = null
+var _research_coordinator: ResearchCoordinator = null
+var _plant_placement_controller: PlantPlacementController = null
+var _state_timer: Timer = null
+var _merchant_intermission_active := false
+var _luoxi_collectible_claim_counts: Dictionary[int, int] = {}
+
+
+func configure_tower_multiplayer(
+	runtime_instance: TowerDefenseGame,
+	mode: int,
+	local_peer_id: int,
+	player_names: Dictionary,
+	player_character_ids: Dictionary
+) -> void:
+	_bind_tower_runtime(runtime_instance)
+	if _tower_runtime == null:
+		return
+	_tower_runtime.runtime_mode = mode as CombatRuntimeBase.RuntimeMode
+	_tower_runtime.multiplayer_local_peer_id = local_peer_id
+	_tower_runtime.multiplayer_player_names = player_names.duplicate()
+	_tower_runtime.multiplayer_player_character_ids = player_character_ids.duplicate()
+	if _player_roster_coordinator != null and _player_roster_coordinator.is_bound():
+		_player_roster_coordinator.set_runtime_identity(mode, local_peer_id)
+		_player_roster_coordinator.configure_roster(
+			player_names,
+			player_character_ids
+		)
+
+
+func bind_tower_dependencies(
+	runtime_instance: TowerDefenseGame,
+	campaign: TowerDefenseCampaignCoordinator,
+	enemy: TowerDefenseEnemyCoordinator,
+	home: TowerDefenseHomeDefenseCoordinator,
+	plant: TowerDefensePlantRuntimeCoordinator,
+	player_roster: TowerDefensePlayerRosterCoordinator,
+	boss: TowerDefenseBossCoordinator,
+	fate: FateCoordinator,
+	fate_flow: TowerDefenseFateFlowCoordinator,
+	fate_manager: TowerDefenseFateManager,
+	presentation: TowerDefensePresentationCoordinator,
+	profile_panel: TowerDefensePlayerProfilePanel,
+	debug_window: DebugCollectibleWindow,
+	merchant: ZhuangfangyiMerchant,
+	luoxi_merchant: TowerDefenseLuoxiMerchant,
+	luoxi_game: LuoxiSpecialGameCoordinator,
+	run_state: RunStateStore,
+	research: ResearchCoordinator,
+	plant_placement: PlantPlacementController,
+	state_timer: Timer
+) -> void:
+	_bind_tower_runtime(runtime_instance)
+	_campaign_coordinator = campaign
+	_enemy_coordinator = enemy
+	_home_defense_coordinator = home
+	_plant_runtime_coordinator = plant
+	_player_roster_coordinator = player_roster
+	_boss_coordinator = boss
+	_fate_coordinator = fate
+	_fate_flow_coordinator = fate_flow
+	_fate_manager = fate_manager
+	_presentation_coordinator = presentation
+	_profile_panel = profile_panel
+	_debug_collectible_window = debug_window
+	_merchant = merchant
+	_luoxi_merchant = luoxi_merchant
+	_luoxi_special_game_coordinator = luoxi_game
+	_run_state = run_state
+	_research_coordinator = research
+	_plant_placement_controller = plant_placement
+	_state_timer = state_timer
+	_connect_mode_signals()
+
+
+func is_tower_bound() -> bool:
+	return (
+		is_bound()
+		and _tower_runtime != null
+		and _campaign_coordinator != null
+		and _enemy_coordinator != null
+		and _home_defense_coordinator != null
+		and _plant_runtime_coordinator != null
+		and _player_roster_coordinator != null
+		and _boss_coordinator != null
+		and _fate_coordinator != null
+		and _fate_flow_coordinator != null
+		and _fate_manager != null
+		and _presentation_coordinator != null
+		and _profile_panel != null
+		and _debug_collectible_window != null
+		and _merchant != null
+		and _luoxi_merchant != null
+		and _luoxi_special_game_coordinator != null
+		and _run_state != null
+		and _research_coordinator != null
+		and _plant_placement_controller != null
+		and _state_timer != null
+	)
+
+
+func _bind_tower_runtime(runtime_instance: TowerDefenseGame) -> void:
+	_tower_runtime = runtime_instance
+	bind_runtime(runtime_instance)
+
 
 func accepts_game_mode_id(mode_id: int) -> bool:
 	return mode_id in [
@@ -94,7 +217,7 @@ func allows_debug_collectible_grants() -> bool:
 	var tower_runtime := get_tower_runtime()
 	return (
 		tower_runtime != null
-		and tower_runtime.allows_debug_collectible_grants()
+		and tower_runtime.sandbox_free_building_enabled
 	)
 
 
@@ -118,10 +241,9 @@ func is_fate_interlude_active() -> bool:
 
 
 func consume_next_player_respawn_delay(peer_id: int) -> float:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.consume_next_player_respawn_delay(peer_id)
-		if tower_runtime != null
+		_player_roster_coordinator.consume_next_respawn_delay(peer_id)
+		if _player_roster_coordinator != null
 		else 10.0
 	)
 
@@ -130,24 +252,162 @@ func update_player_respawn_countdown(
 	peer_id: int,
 	seconds_left: int
 ) -> void:
+	if _presentation_coordinator == null:
+		return
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.update_player_respawn_countdown(peer_id, seconds_left)
+	if tower_runtime == null:
+		return
+	var is_local := (
+		(
+			tower_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+			and peer_id == 0
+		)
+		or peer_id == tower_runtime.multiplayer_local_peer_id
+	)
+	var display_name := "玩家"
+	if tower_runtime.runtime_mode != CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		display_name = str(
+			tower_runtime.multiplayer_player_names.get(
+				peer_id,
+				"玩家 %d" % peer_id
+			)
+		)
+	_presentation_coordinator.update_player_respawn_countdown(
+		peer_id,
+		display_name,
+		seconds_left,
+		is_local
+	)
 
 
 func clear_player_respawn_countdown(peer_id: int) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.clear_player_respawn_countdown(peer_id)
+	if _presentation_coordinator != null:
+		_presentation_coordinator.clear_player_respawn_countdown(peer_id)
 
 
 func get_fixed_multiplayer_respawn_position(peer_id: int) -> Variant:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_fixed_multiplayer_respawn_position(peer_id)
-		if tower_runtime != null
+		_player_roster_coordinator.get_fixed_respawn_position(peer_id)
+		if _player_roster_coordinator != null
 		else null
 	)
+
+
+func handle_player_died(peer_id: int) -> void:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null or _player_roster_coordinator == null:
+		return
+	cancel_luoxi_special_game_for_peer(peer_id)
+	tower_runtime._request_enemy_retarget_after_objective_change()
+	var is_singleplayer := (
+		tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		and peer_id == 0
+	)
+	var dead_player := (
+		tower_runtime.player
+		if is_singleplayer
+		else tower_runtime.get_player_for_peer(peer_id)
+	)
+	if is_singleplayer:
+		tower_runtime._cancel_plant_placement()
+		tower_runtime._update_plant_placement_input_state()
+	if _presentation_coordinator != null:
+		_presentation_coordinator.present_player_death(dead_player)
+	if is_terminal_combat_state():
+		return
+	if (
+		is_singleplayer
+		or peer_id == tower_runtime.multiplayer_local_peer_id
+	):
+		if _presentation_coordinator != null:
+			_presentation_coordinator.begin_local_spectator_camera(
+				tower_runtime.player
+			)
+	if is_singleplayer:
+		_player_roster_coordinator.local_player = tower_runtime.player
+		_player_roster_coordinator.begin_singleplayer_respawn()
+
+
+func handle_player_revived(peer_id: int) -> void:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null:
+		return
+	tower_runtime._request_enemy_retarget_after_objective_change()
+	clear_player_respawn_countdown(peer_id)
+	if (
+		(
+			tower_runtime.runtime_mode
+			== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+			and peer_id == 0
+		)
+		or peer_id == tower_runtime.multiplayer_local_peer_id
+	):
+		if _presentation_coordinator != null:
+			_presentation_coordinator.end_local_spectator_camera(
+				tower_runtime.player
+			)
+	tower_runtime._update_plant_placement_input_state()
+
+
+func remove_multiplayer_player(peer_id: int) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or _player_roster_coordinator == null
+		or peer_id <= 0
+		or peer_id == tower_runtime.multiplayer_local_peer_id
+	):
+		return
+	cancel_luoxi_special_game_for_peer(peer_id)
+	_player_roster_coordinator.remove_multiplayer_player(peer_id)
+	if _fate_coordinator != null:
+		_fate_coordinator.remove_eligible_peer(peer_id)
+
+
+func restore_multiplayer_player(
+	old_peer_id: int,
+	new_peer_id: int,
+	player_name: String,
+	character_id: StringName,
+	state: SnapshotManager.PlayerState,
+	spawn_slot_index: int,
+	reconnect_state: Dictionary = {}
+) -> Player:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or _player_roster_coordinator == null
+		or new_peer_id <= 0
+		or tower_runtime.peer_players.has(new_peer_id)
+		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
+	):
+		return null
+	if not _player_roster_coordinator.prepare_restore_metadata(
+		old_peer_id,
+		new_peer_id,
+		player_name,
+		character_id,
+		spawn_slot_index
+	):
+		return null
+	remap_luoxi_collectible_claims(old_peer_id, new_peer_id)
+	var player_instance := (
+		_player_roster_coordinator.restore_multiplayer_player_runtime(
+			old_peer_id,
+			new_peer_id,
+			character_id,
+			state,
+			spawn_slot_index,
+			reconnect_state
+		)
+	)
+	if player_instance == null:
+		return null
+	if _fate_coordinator != null:
+		_fate_coordinator.apply_player_modifiers_to_all()
+	tower_runtime._request_enemy_retarget_after_objective_change()
+	return player_instance
 
 
 func apply_remote_flow_state(
@@ -156,13 +416,123 @@ func apply_remote_flow_state(
 	seconds: int
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_flow_state(step_id, state, seconds)
+	if (
+		tower_runtime == null
+		or _campaign_coordinator == null
+		or _presentation_coordinator == null
+		or _state_timer == null
+		or tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		return
+	var typed_state := state as CombatFlowState.State
+	var flow_step := _campaign_coordinator.get_flow_step_by_id(step_id)
+	if (
+		flow_step == null
+		and typed_state not in [
+			CombatFlowState.State.VICTORY,
+			CombatFlowState.State.DEFEAT,
+		]
+	):
+		push_error(
+			"TowerDefenseMultiplayerModeAdapter: 收到当前 Campaign 不存在的流程 step_id：%s"
+			% String(step_id)
+		)
+		return
+	if (
+		_fate_flow_coordinator != null
+		and _fate_flow_coordinator.should_defer_remote_flow_state(
+			step_id,
+			state,
+			seconds
+		)
+	):
+		return
+	var leaving_fate_interlude := (
+		_fate_flow_coordinator != null
+		and _fate_flow_coordinator.is_leaving_remote_interlude(typed_state)
+	)
+	if flow_step != null:
+		tower_runtime.current_flow_step = flow_step
+		if flow_step is WaveConfig:
+			tower_runtime.current_wave_index = (
+				_campaign_coordinator.get_wave_number_for_step(
+					flow_step as WaveConfig,
+					tower_runtime.current_wave_index
+				)
+				- 1
+			)
+	if _fate_flow_coordinator != null:
+		_fate_flow_coordinator.set_interlude_systems_frozen(
+			typed_state == CombatFlowState.State.FATE_INTERLUDE
+		)
+	match typed_state:
+		CombatFlowState.State.PRE_WAVE:
+			_presentation_coordinator.transition_world_to_day()
+			_start_client_flow_countdown(typed_state, step_id, seconds)
+		CombatFlowState.State.INTERMISSION:
+			_presentation_coordinator.apply_intermission_lighting(
+				maxi(tower_runtime.current_wave_index + 1, 1)
+			)
+			_start_client_flow_countdown(typed_state, step_id, seconds)
+		CombatFlowState.State.WAVE_ACTIVE:
+			_state_timer.stop()
+			tower_runtime.wave_state = CombatFlowState.State.WAVE_ACTIVE
+			var wave_number := maxi(tower_runtime.current_wave_index + 1, 1)
+			_presentation_coordinator.apply_wave_start_lighting(wave_number)
+			var phase_announcement_started := (
+				_presentation_coordinator.announce_wave_phase_start(
+					wave_number,
+					tower_runtime.day_phase_announcements_enabled
+				)
+			)
+			_set_local_merchants_active(false)
+			var wave_config := flow_step as WaveConfig
+			if wave_config != null:
+				_presentation_coordinator.update_wave_music(wave_config)
+			tower_runtime._show_tower_defense_wave_progress()
+			if not phase_announcement_started:
+				_presentation_coordinator.play_wave_start_audio()
+		CombatFlowState.State.BOSS_INTRO:
+			if _boss_coordinator != null:
+				_boss_coordinator.apply_remote_flow_state(
+					CombatFlowState.State.BOSS_INTRO,
+					flow_step as BossConfig
+				)
+		CombatFlowState.State.BOSS_ACTIVE:
+			if _boss_coordinator != null:
+				_boss_coordinator.apply_remote_flow_state(
+					CombatFlowState.State.BOSS_ACTIVE,
+					flow_step as BossConfig
+				)
+		CombatFlowState.State.FATE_INTERLUDE:
+			if _fate_flow_coordinator != null:
+				_fate_flow_coordinator.apply_remote_interlude_flow(
+					_campaign_coordinator.get_day_number_for_wave(
+						maxi(tower_runtime.current_wave_index + 1, 1)
+					)
+				)
+		CombatFlowState.State.VICTORY:
+			apply_remote_victory()
+		CombatFlowState.State.DEFEAT:
+			apply_remote_defeat()
+	if leaving_fate_interlude and _fate_flow_coordinator != null:
+		_fate_flow_coordinator.complete_remote_flow_transition()
+	tower_runtime._update_plant_placement_input_state()
+	tower_runtime._on_remote_flow_state_applied(step_id, typed_state, seconds)
 
 
 func get_flow_state_snapshot() -> Dictionary:
 	var tower_runtime := get_tower_runtime()
-	return tower_runtime.get_flow_state_snapshot() if tower_runtime != null else {}
+	if tower_runtime == null or _campaign_coordinator == null:
+		return {}
+	return {
+		"step_id": _campaign_coordinator.get_flow_step_id(
+			tower_runtime.current_flow_step
+		),
+		"state": int(tower_runtime.wave_state),
+		"countdown_seconds": tower_runtime.countdown_seconds,
+	}
 
 
 func apply_remote_boss_started(
@@ -171,39 +541,63 @@ func apply_remote_boss_started(
 	spawn_position: Vector2
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_boss_started(
-			net_id,
-			boss_config,
-			spawn_position
-		)
+	if (
+		tower_runtime == null
+		or _boss_coordinator == null
+		or tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or boss_config == null
+	):
+		return
+	tower_runtime.current_flow_step = boss_config
+	_boss_coordinator.apply_remote_started(net_id, boss_config, spawn_position)
 
 
 func apply_remote_defeat() -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_defeat()
+	if (
+		tower_runtime != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		tower_runtime._enter_defeat(false)
 
 
 func apply_remote_victory() -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_victory()
+	if (
+		tower_runtime != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		tower_runtime._enter_victory(false)
 
 
 func apply_remote_enemy_count(alive_count: int) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_enemy_count(alive_count)
+	if (
+		tower_runtime != null
+		and _presentation_coordinator != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		_presentation_coordinator.show_enemy_count(alive_count)
 
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:
-	var tower_runtime := get_tower_runtime()
-	return (
-		tower_runtime.try_purchase_skill1_for_peer(peer_id)
-		if tower_runtime != null
-		else MerchantPurchaseResult.SkillUpgrade.INVALID_PLAYER
+	var player_instance := _get_player(peer_id)
+	if player_instance == null or not is_instance_valid(player_instance):
+		return MerchantPurchaseResult.SkillUpgrade.INVALID_PLAYER
+	if not player_instance.has_skill1():
+		return MerchantPurchaseResult.SkillUpgrade.INVALID_PLAYER
+	if player_instance.is_skill1_upgrade_maxed():
+		return MerchantPurchaseResult.SkillUpgrade.UPGRADE_MAXED
+	var free_upgrade := player_instance.has_collectible_effect(
+		PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL
 	)
+	if not player_instance.try_upgrade_skill1(free_upgrade):
+		return MerchantPurchaseResult.SkillUpgrade.INSUFFICIENT_XIRANG
+	return MerchantPurchaseResult.SkillUpgrade.UPGRADE_SUCCESS
 
 
 func apply_skill1_purchase_state(
@@ -213,30 +607,32 @@ func apply_skill1_purchase_state(
 	skill1_upgrade_level: int = -1,
 	skill1_charge_duration: float = -1.0
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_skill1_purchase_state(
-			peer_id,
-			current_xirang,
-			skill1_unlocked,
+	var player_instance := _get_player(peer_id)
+	if player_instance == null or not is_instance_valid(player_instance):
+		return
+	if player_instance.current_xirang != current_xirang:
+		player_instance.current_xirang = current_xirang
+		player_instance.xirang_changed.emit(current_xirang, 0)
+	if skill1_unlocked and not player_instance.has_skill1():
+		player_instance.unlock_skill1()
+	if skill1_upgrade_level >= 0:
+		player_instance.apply_skill1_upgrade_state(
 			skill1_upgrade_level,
 			skill1_charge_duration
 		)
 
 
 func show_local_skill1_purchase_result(result_code: int) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.show_local_skill1_purchase_result(result_code)
+	if _merchant != null:
+		_merchant.show_purchase_result(result_code)
 
 
 func show_debug_collectible_grant_result(
 	config_path: String,
 	success: bool
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.show_debug_collectible_grant_result(config_path, success)
+	if _debug_collectible_window != null:
+		_debug_collectible_window.show_grant_result(config_path, success)
 
 
 func show_simple_crafting_result(
@@ -244,9 +640,8 @@ func show_simple_crafting_result(
 	result: StringName,
 	request_token: int
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.show_simple_crafting_result(
+	if _profile_panel != null:
+		_profile_panel.show_simple_crafting_result(
 			recipe_id,
 			result,
 			request_token
@@ -254,9 +649,198 @@ func show_simple_crafting_result(
 
 
 func apply_remote_merchant_active(active: bool) -> void:
+	_set_local_merchants_active(active)
+
+
+func set_merchant_active(active: bool) -> void:
+	var changed := _set_local_merchants_active(active)
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_merchant_active(active)
+	if (
+		changed
+		and tower_runtime != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		merchant_active_changed.emit(active)
+
+
+func set_local_merchants_active(active: bool) -> bool:
+	return _set_local_merchants_active(active)
+
+
+func publish_flow_state(state: CombatFlowState.State) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or _campaign_coordinator == null
+		or tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		return
+	flow_state_changed.emit(
+		_campaign_coordinator.get_flow_step_id(tower_runtime.current_flow_step),
+		int(state),
+		tower_runtime.countdown_seconds
+	)
+
+
+func publish_inventory_changed(peer_id: int) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		and peer_id > 0
+	):
+		inventory_changed.emit(peer_id)
+
+
+func _handle_plant_placement_requested(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i
+) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	):
+		return
+	plant_placement_requested.emit(request_id, plant_id, anchor)
+
+
+func _handle_inventory_plant_placement_requested(
+	request_id: int,
+	plant_id: StringName,
+	anchor: Vector2i,
+	slot_index: int,
+	expected_inventory_revision: int,
+	item_config_path: String
+) -> void:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null or _plant_runtime_coordinator == null:
+		return
+	if (
+		tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	):
+		inventory_plant_placement_requested.emit(
+			request_id,
+			plant_id,
+			anchor,
+			slot_index,
+			expected_inventory_revision,
+			item_config_path
+		)
+		return
+	_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+	_plant_runtime_coordinator.request_singleplayer_inventory_placement(
+		request_id,
+		plant_id,
+		anchor,
+		slot_index,
+		expected_inventory_revision,
+		item_config_path,
+		_run_state,
+		tower_runtime.player,
+		is_fate_interlude_active()
+	)
+
+
+func handle_debug_collectible_requested(config_path: String) -> void:
+	if config_path.is_empty() or not allows_debug_collectible_grants():
+		return
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime != null
+		and tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		and request_debug_collectible(config_path)
+	):
+		return
+	show_debug_collectible_grant_result(
+		config_path,
+		grant_debug_collectible(config_path)
+	)
+
+
+func grant_debug_collectible(config_path: String) -> bool:
+	if not allows_debug_collectible_grants() or _run_state == null:
+		return false
+	var item := LuoxiMerchant.get_collectible_for_path(config_path)
+	if item == null:
+		return false
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null:
+		return false
+	if (
+		tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		and tower_runtime.multiplayer_local_peer_id > 0
+	):
+		return _run_state.try_add_item_for_peer(
+			tower_runtime.multiplayer_local_peer_id,
+			item
+		)
+	return _run_state.try_add_item(item)
+
+
+func handle_return_to_lobby_requested() -> void:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null:
+		return
+	if (
+		tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+	):
+		tower_runtime._cancel_plant_placement()
+		get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)
+		return
+	return_to_lobby_requested.emit()
+
+
+func handle_wave_start_requested() -> void:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null:
+		return
+	if tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
+		request_wave_start()
+		return
+	request_authoritative_wave_start(tower_runtime.multiplayer_local_peer_id)
+
+
+func handle_profile_upgrade_requested(stat_type: int) -> void:
+	profile_upgrade_requested.emit(stat_type)
+
+
+func handle_profile_inventory_item_use_requested(slot_index: int) -> void:
+	profile_inventory_item_use_requested.emit(slot_index)
+
+
+func handle_profile_inventory_item_discard_requested(slot_index: int) -> void:
+	profile_inventory_item_discard_requested.emit(slot_index)
+
+
+func handle_profile_simple_crafting_requested(
+	recipe_id: StringName,
+	request_token: int
+) -> void:
+	profile_simple_crafting_requested.emit(recipe_id, request_token)
+
+
+func handle_profile_simple_crafting_cancel_requested(request_token: int) -> void:
+	profile_simple_crafting_cancel_requested.emit(request_token)
+
+
+func handle_profile_building_placement_requested(
+	slot_index: int,
+	expected_inventory_revision: int
+) -> void:
+	if begin_inventory_building_placement(slot_index, expected_inventory_revision):
+		return
+	if _profile_panel != null:
+		_profile_panel.restore_after_failed_building_placement()
 
 
 func request_wave_start() -> bool:
@@ -611,7 +1195,12 @@ func get_runtime_bamboo_mortar_combat_metrics() -> Dictionary:
 
 
 func get_tower_runtime() -> TowerDefenseGame:
-	return runtime as TowerDefenseGame
+	# Adapter and runtime share one authored scene lifetime; repeated validity
+	# probes on every replicated event only add work to the hot signal boundary.
+	if _tower_runtime != null:
+		return _tower_runtime
+	_tower_runtime = runtime as TowerDefenseGame
+	return _tower_runtime
 
 
 func request_authoritative_wave_start(requester_peer_id: int) -> bool:
@@ -623,10 +1212,9 @@ func request_authoritative_wave_start(requester_peer_id: int) -> bool:
 
 
 func get_base_health_snapshot() -> Dictionary:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_base_health_snapshot()
-		if tower_runtime != null
+		_home_defense_coordinator.get_base_health_snapshot()
+		if _home_defense_coordinator != null
 		else {}
 	)
 
@@ -636,9 +1224,8 @@ func apply_remote_base_health(
 	maximum_health: int,
 	revision: int
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_base_health(
+	if _home_defense_coordinator != null:
+		_home_defense_coordinator.apply_remote_base_health(
 			current_health,
 			maximum_health,
 			revision
@@ -654,8 +1241,14 @@ func apply_remote_enemy_escape(net_id: int) -> void:
 func get_wave_progress_snapshot() -> Dictionary:
 	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_tower_defense_wave_progress_snapshot()
-		if tower_runtime != null
+		_enemy_coordinator.get_progress(
+			tower_runtime.current_wave_index + 1,
+			tower_runtime.current_wave_defeated,
+			tower_runtime.current_wave_escaped,
+			tower_runtime.current_wave_resolved,
+			tower_runtime.current_wave_total
+		)
+		if tower_runtime != null and _enemy_coordinator != null
 		else {}
 	)
 
@@ -668,14 +1261,30 @@ func apply_remote_wave_progress(
 	total: int
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_tower_defense_wave_progress(
-			wave_number,
-			defeated,
-			escaped,
-			resolved,
-			total
-		)
+	if (
+		tower_runtime == null
+		or tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	):
+		return
+	tower_runtime.current_wave_index = maxi(wave_number - 1, 0)
+	tower_runtime.current_wave_total = maxi(total, 0)
+	tower_runtime.current_wave_defeated = clampi(
+		defeated,
+		0,
+		tower_runtime.current_wave_total
+	)
+	tower_runtime.current_wave_escaped = clampi(
+		escaped,
+		0,
+		tower_runtime.current_wave_total
+	)
+	tower_runtime.current_wave_resolved = clampi(
+		resolved,
+		0,
+		tower_runtime.current_wave_total
+	)
+	tower_runtime._show_tower_defense_wave_progress()
 
 
 func request_authoritative_plant_placement(
@@ -685,13 +1294,18 @@ func request_authoritative_plant_placement(
 	anchor: Vector2i
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.request_multiplayer_plant_placement(
-			requester_peer_id,
-			request_id,
-			plant_id,
-			anchor
-		)
+	if tower_runtime == null or _plant_runtime_coordinator == null:
+		return
+	_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+	_plant_runtime_coordinator.request_multiplayer_free_placement(
+		requester_peer_id,
+		request_id,
+		plant_id,
+		anchor,
+		_get_player(requester_peer_id),
+		tower_runtime.wave_state == CombatFlowState.State.FATE_INTERLUDE,
+		tower_runtime.sandbox_free_building_enabled
+	)
 
 
 func request_authoritative_inventory_plant_placement(
@@ -704,16 +1318,25 @@ func request_authoritative_inventory_plant_placement(
 	item_config_path: String
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.request_multiplayer_inventory_plant_placement(
-			requester_peer_id,
-			request_id,
-			plant_id,
-			anchor,
-			slot_index,
-			expected_inventory_revision,
-			item_config_path
-		)
+	if (
+		tower_runtime == null
+		or _plant_runtime_coordinator == null
+		or _run_state == null
+	):
+		return
+	_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+	_plant_runtime_coordinator.request_multiplayer_inventory_placement(
+		requester_peer_id,
+		request_id,
+		plant_id,
+		anchor,
+		slot_index,
+		expected_inventory_revision,
+		item_config_path,
+		_run_state,
+		_get_player(requester_peer_id),
+		tower_runtime.wave_state == CombatFlowState.State.FATE_INTERLUDE
+	)
 
 
 func apply_remote_plant_spawn(
@@ -726,11 +1349,14 @@ func apply_remote_plant_spawn(
 	maximum_health: int,
 	health_revision: int
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_plant_spawn(
+	if _plant_runtime_coordinator != null:
+		var tower_runtime := get_tower_runtime()
+		if tower_runtime == null:
+			return
+		_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+		_plant_runtime_coordinator.apply_remote_plant_spawn(
 			request_id,
-			owner_peer_id,
+			_get_player(owner_peer_id),
 			net_id,
 			plant_id,
 			anchor,
@@ -746,9 +1372,12 @@ func apply_remote_plant_health(
 	maximum_health: int,
 	health_revision: int
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_plant_health(
+	if _plant_runtime_coordinator != null:
+		var tower_runtime := get_tower_runtime()
+		if tower_runtime == null:
+			return
+		_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+		_plant_runtime_coordinator.apply_remote_plant_health(
 			net_id,
 			current_health,
 			maximum_health,
@@ -761,68 +1390,70 @@ func apply_remote_plant_removed(
 	was_destroyed: bool = false,
 	silent: bool = false
 ) -> void:
+	if _plant_runtime_coordinator == null:
+		return
 	var tower_runtime := get_tower_runtime()
 	if tower_runtime == null:
 		return
-	if silent:
-		tower_runtime.apply_remote_plant_removed_silently(net_id)
-	else:
-		tower_runtime.apply_remote_plant_removed_with_reason(
-			net_id,
-			was_destroyed
-		)
+	_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+	_plant_runtime_coordinator.apply_remote_plant_removed(
+		net_id,
+		was_destroyed,
+		silent
+	)
 
 
 func apply_remote_plant_placement_rejected(
 	request_id: int,
 	reason: StringName
 ) -> void:
+	if _plant_runtime_coordinator == null:
+		return
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_plant_placement_rejected(request_id, reason)
+	if tower_runtime == null:
+		return
+	_plant_runtime_coordinator.set_runtime_mode(tower_runtime.runtime_mode)
+	_plant_runtime_coordinator.apply_remote_placement_rejected(request_id)
 
 
 func has_multiplayer_plant(net_id: int) -> bool:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime != null
-		and tower_runtime.has_multiplayer_plant(net_id)
+		_plant_runtime_coordinator != null
+		and _plant_runtime_coordinator.has_multiplayer_plant(net_id)
 	)
 
 
 func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_multiplayer_plant_node(net_id)
-		if tower_runtime != null
+		_plant_runtime_coordinator.get_multiplayer_plant(net_id)
+		if _plant_runtime_coordinator != null
 		else null
 	)
 
 
 func get_multiplayer_plant_snapshots() -> Array[Dictionary]:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_multiplayer_plant_snapshots()
-		if tower_runtime != null
+		_plant_runtime_coordinator.get_multiplayer_plant_snapshots()
+		if _plant_runtime_coordinator != null
 		else []
 	)
 
 
 func get_authoritative_team_plant_count() -> int:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime == null or tower_runtime.plant_system == null:
-		return -1
-	return tower_runtime.plant_system.plants_by_net_id.size()
+	return (
+		_plant_runtime_coordinator.get_authoritative_team_plant_count()
+		if _plant_runtime_coordinator != null
+		else -1
+	)
 
 
 func find_nearest_operational_interaction_building(
 	world_position: Vector2,
 	maximum_distance: float
 ) -> PlantDefense:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime == null or tower_runtime.plant_system == null:
+	if _plant_runtime_coordinator == null:
 		return null
-	return tower_runtime.plant_system.find_nearest_operational_interaction_building_world(
+	return _plant_runtime_coordinator.find_nearest_operational_interaction_building(
 		world_position,
 		maximum_distance
 	)
@@ -833,32 +1464,31 @@ func query_living_plants_in_radius_into(
 	radius: float,
 	result: Array
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime == null:
+	if _plant_runtime_coordinator == null:
 		result.clear()
 		return
-	tower_runtime.query_living_plants_in_radius_into(center, radius, result)
+	var typed_result: Array[PlantDefense] = []
+	_plant_runtime_coordinator.query_living_plants_in_radius_into(
+		center,
+		radius,
+		typed_result
+	)
+	result.assign(typed_result)
 
 
 func configure_runtime_enemy_modifiers(enemy_instance: Enemy) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.configure_runtime_enemy_modifiers(enemy_instance)
+	if _fate_coordinator != null:
+		_fate_coordinator.configure_enemy_modifiers(enemy_instance)
 
 
 func supports_terrain_state() -> bool:
-	var tower_runtime := get_tower_runtime()
-	return (
-		tower_runtime != null
-		and tower_runtime.supports_multiplayer_terrain_state()
-	)
+	return _plant_runtime_coordinator != null
 
 
 func get_terrain_snapshot() -> Dictionary:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_multiplayer_terrain_snapshot()
-		if tower_runtime != null
+		_plant_runtime_coordinator.get_terrain_snapshot()
+		if _plant_runtime_coordinator != null
 		else {}
 	)
 
@@ -868,10 +1498,9 @@ func apply_remote_terrain_snapshot(
 	cell_xy: PackedInt32Array,
 	terrain_types: PackedInt32Array
 ) -> bool:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime != null
-		and tower_runtime.apply_remote_terrain_snapshot(
+		_plant_runtime_coordinator != null
+		and _plant_runtime_coordinator.apply_remote_terrain_snapshot(
 			revision,
 			cell_xy,
 			terrain_types
@@ -884,10 +1513,9 @@ func apply_remote_terrain_delta(
 	cell_xy: PackedInt32Array,
 	terrain_types: PackedInt32Array
 ) -> bool:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime != null
-		and tower_runtime.apply_remote_terrain_delta(
+		_plant_runtime_coordinator != null
+		and _plant_runtime_coordinator.apply_remote_terrain_delta(
 			revision,
 			cell_xy,
 			terrain_types
@@ -897,8 +1525,15 @@ func apply_remote_terrain_delta(
 
 func request_xiaocong_interaction(peer_id: int) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.request_xiaocong_interaction(peer_id)
+	if (
+		tower_runtime == null
+		or _fate_flow_coordinator == null
+		or tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or tower_runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE
+	):
+		return
+	_fate_flow_coordinator.request_interaction(peer_id)
 
 
 func request_xiaocong_fate_vote(
@@ -907,12 +1542,19 @@ func request_xiaocong_fate_vote(
 	permanent_buff_id: StringName
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.request_xiaocong_fate_vote(
-			peer_id,
-			option_id,
-			permanent_buff_id
-		)
+	if (
+		tower_runtime == null
+		or _fate_flow_coordinator == null
+		or tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or tower_runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE
+	):
+		return
+	_fate_flow_coordinator.request_fate_vote(
+		peer_id,
+		option_id,
+		permanent_buff_id
+	)
 
 
 func request_xiaocong_collectible_choice(
@@ -920,23 +1562,37 @@ func request_xiaocong_collectible_choice(
 	choice_index: int
 ) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.request_xiaocong_collectible_choice(peer_id, choice_index)
+	if (
+		tower_runtime == null
+		or _fate_flow_coordinator == null
+		or tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or tower_runtime.wave_state != CombatFlowState.State.FATE_INTERLUDE
+	):
+		return
+	_fate_flow_coordinator.request_collectible_choice(peer_id, choice_index)
 
 
 func get_xiaocong_fate_state_snapshot() -> Dictionary:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_xiaocong_fate_state_snapshot()
-		if tower_runtime != null
+		_fate_flow_coordinator.get_state_snapshot()
+		if _fate_flow_coordinator != null
 		else {}
 	)
 
 
 func apply_remote_xiaocong_fate_state(state: Dictionary) -> void:
 	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.apply_remote_xiaocong_fate_state(state)
+	if (
+		tower_runtime == null
+		or _fate_flow_coordinator == null
+		or _fate_manager == null
+		or tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		or int(state.get("revision", 0)) < _fate_manager.state_revision
+	):
+		return
+	_fate_flow_coordinator.apply_remote_state(state)
 
 
 func supports_test_arena_manual_night_sync() -> bool:
@@ -962,77 +1618,71 @@ func apply_remote_test_arena_manual_night(enabled: bool) -> void:
 
 
 func get_reconnect_spawn_slot_index(peer_id: int) -> int:
-	var tower_runtime := get_tower_runtime()
 	return (
-		int(tower_runtime.multiplayer_spawn_slot_indices.get(peer_id, 0))
-		if tower_runtime != null
+		_player_roster_coordinator.get_spawn_slot_index(peer_id)
+		if _player_roster_coordinator != null
 		else 0
 	)
 
 
 func get_reconnect_wave_death_count(peer_id: int) -> int:
-	var tower_runtime := get_tower_runtime()
 	return (
-		int(tower_runtime.player_wave_death_counts.get(peer_id, 0))
-		if tower_runtime != null
+		_player_roster_coordinator.get_wave_death_count(peer_id)
+		if _player_roster_coordinator != null
 		else 0
 	)
 
 
 func get_completed_global_research_ids() -> Array[StringName]:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime == null or tower_runtime.research_coordinator == null:
+	if _research_coordinator == null:
 		return []
-	return tower_runtime.research_coordinator.get_completed_global_research_ids()
+	return _research_coordinator.get_completed_global_research_ids()
 
 
 func get_research_runtime_state() -> Dictionary:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime == null or tower_runtime.research_coordinator == null:
+	if _research_coordinator == null:
 		return {}
-	return tower_runtime.research_coordinator.export_runtime_state()
+	return _research_coordinator.export_runtime_state()
 
 
 func apply_remote_research_runtime_state(state: Dictionary) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null and tower_runtime.research_coordinator != null:
-		tower_runtime.research_coordinator.apply_multiplayer_runtime_state(state)
+	if _research_coordinator != null:
+		_research_coordinator.apply_multiplayer_runtime_state(state)
 
 
 func connect_research_milestone_changed(callback: Callable) -> bool:
-	var tower_runtime := get_tower_runtime()
 	if (
-		tower_runtime == null
-		or tower_runtime.research_coordinator == null
+		_research_coordinator == null
 		or not callback.is_valid()
 	):
 		return false
-	if not tower_runtime.research_coordinator.research_milestone_changed.is_connected(
+	if not _research_coordinator.research_milestone_changed.is_connected(
 		callback
 	):
-		tower_runtime.research_coordinator.research_milestone_changed.connect(callback)
+		_research_coordinator.research_milestone_changed.connect(callback)
 	return true
 
 
 func get_luoxi_merchant() -> LuoxiMerchant:
-	var tower_runtime := get_tower_runtime()
-	return tower_runtime.luoxi_merchant if tower_runtime != null else null
+	return _luoxi_merchant
 
 
 func runtime_try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int:
-	var tower_runtime := get_tower_runtime()
-	return (
-		tower_runtime.try_refresh_luoxi_collectibles_for_peer(peer_id)
-		if tower_runtime != null
-		else MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
-	)
+	var player_instance := _get_player(peer_id)
+	if (
+		player_instance == null
+		or not is_instance_valid(player_instance)
+		or _luoxi_merchant == null
+		or runtime_has_luoxi_collectible_claimed(peer_id)
+	):
+		return MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
+	return _luoxi_merchant.try_purchase_refresh_for_player(player_instance)
 
 
 func runtime_get_luoxi_collectible_refresh_count(peer_id: int) -> int:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime.get_luoxi_collectible_refresh_count(peer_id)
-		if tower_runtime != null
+		_luoxi_merchant.get_player_refresh_count(maxi(peer_id, 0))
+		if _luoxi_merchant != null
 		else 0
 	)
 
@@ -1041,41 +1691,77 @@ func runtime_try_claim_luoxi_collectible_for_peer(
 	peer_id: int,
 	config_path_or_choice: Variant
 ) -> int:
-	var tower_runtime := get_tower_runtime()
-	return (
-		tower_runtime.try_claim_luoxi_collectible_for_peer(
-			peer_id,
-			config_path_or_choice
+	var player_instance := _get_player(peer_id)
+	if (
+		player_instance == null
+		or not is_instance_valid(player_instance)
+		or _run_state == null
+	):
+		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
+	var claim_key := maxi(peer_id, 0)
+	if (
+		_get_luoxi_collectible_claim_count(claim_key)
+		>= LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
+	):
+		return MerchantPurchaseResult.CollectibleClaim.ALREADY_CLAIMED
+	var config_path := ""
+	if typeof(config_path_or_choice) == TYPE_INT:
+		config_path = _resolve_luoxi_collectible_path(
+			int(config_path_or_choice),
+			""
 		)
-		if tower_runtime != null
-		else MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
+	else:
+		config_path = String(config_path_or_choice)
+	var item := LuoxiMerchant.get_collectible_for_path(config_path)
+	if (
+		item == null
+		or not player_instance.is_collectible_compatible(item)
+		or not LuoxiMerchant.is_collectible_available_for_inventory(
+			item,
+			_run_state,
+			peer_id
+		)
+	):
+		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
+	var stored := (
+		_run_state.try_add_item_for_peer(peer_id, item)
+		if peer_id > 0
+		else _run_state.try_add_item(item)
 	)
+	if not stored:
+		return MerchantPurchaseResult.CollectibleClaim.INVENTORY_FULL
+	runtime_record_luoxi_collectible_claim(claim_key)
+	return MerchantPurchaseResult.CollectibleClaim.SUCCESS
 
 
 func runtime_has_luoxi_collectible_claimed(peer_id: int) -> bool:
-	var tower_runtime := get_tower_runtime()
 	return (
-		tower_runtime != null
-		and tower_runtime.has_luoxi_collectible_claimed(peer_id)
+		_get_luoxi_collectible_claim_count(peer_id)
+		>= LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
 	)
 
 
+func runtime_get_luoxi_collectible_claim_count(peer_id: int) -> int:
+	return _get_luoxi_collectible_claim_count(peer_id)
+
+
 func runtime_record_luoxi_collectible_claim(peer_id: int) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.record_luoxi_collectible_claim(peer_id)
+	var claim_key := maxi(peer_id, 0)
+	_luoxi_collectible_claim_counts[claim_key] = mini(
+		_get_luoxi_collectible_claim_count(claim_key) + 1,
+		LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
+	)
 
 
 func runtime_mark_luoxi_collectible_claimed(peer_id: int) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.mark_luoxi_collectible_claimed(peer_id)
+	_luoxi_collectible_claim_counts[maxi(peer_id, 0)] = (
+		LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
+	)
 
 
 func show_local_luoxi_collectible_result(result_code: int) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.show_local_luoxi_collectible_result(result_code)
+	if _luoxi_merchant != null:
+		_luoxi_merchant.show_collectible_result(result_code)
 
 
 func show_local_luoxi_refresh_result(
@@ -1083,9 +1769,8 @@ func show_local_luoxi_refresh_result(
 	refresh_count: int,
 	current_xirang: int
 ) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.show_local_luoxi_refresh_result(
+	if _luoxi_merchant != null:
+		_luoxi_merchant.show_refresh_result(
 			result_code,
 			refresh_count,
 			current_xirang
@@ -1096,17 +1781,19 @@ func runtime_supports_luoxi_special_game() -> bool:
 	var tower_runtime := get_tower_runtime()
 	return (
 		tower_runtime != null
-		and tower_runtime.supports_luoxi_special_game()
+		and tower_runtime.wave_state not in [
+			CombatFlowState.State.VICTORY,
+			CombatFlowState.State.DEFEAT,
+		]
 	)
 
 
 func runtime_try_start_luoxi_special_game_for_peer(peer_id: int) -> Dictionary:
-	var tower_runtime := get_tower_runtime()
-	return (
-		tower_runtime.try_start_luoxi_special_game_for_peer(peer_id)
-		if tower_runtime != null
-		else {"result_code": 1}
-	)
+	if _luoxi_special_game_coordinator == null:
+		return {
+			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
+		}
+	return _luoxi_special_game_coordinator.start_for_peer(peer_id)
 
 
 func runtime_try_reveal_luoxi_special_game_card_for_peer(
@@ -1114,15 +1801,14 @@ func runtime_try_reveal_luoxi_special_game_card_for_peer(
 	session_revision: int,
 	card_index: int
 ) -> Dictionary:
-	var tower_runtime := get_tower_runtime()
-	return (
-		tower_runtime.try_reveal_luoxi_special_game_card_for_peer(
+	if _luoxi_special_game_coordinator == null:
+		return {
+			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
+		}
+	return _luoxi_special_game_coordinator.reveal_for_peer(
 			peer_id,
 			session_revision,
 			card_index
-		)
-		if tower_runtime != null
-		else {"result_code": 1}
 	)
 
 
@@ -1130,33 +1816,29 @@ func runtime_try_finish_luoxi_special_game_for_peer(
 	peer_id: int,
 	session_revision: int
 ) -> Dictionary:
-	var tower_runtime := get_tower_runtime()
-	return (
-		tower_runtime.try_finish_luoxi_special_game_for_peer(
+	if _luoxi_special_game_coordinator == null:
+		return {
+			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
+		}
+	return _luoxi_special_game_coordinator.finish_for_peer(
 			peer_id,
 			session_revision
-		)
-		if tower_runtime != null
-		else {"result_code": 1}
 	)
 
 
 func show_local_luoxi_special_game_started(result: Dictionary) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.show_local_luoxi_special_game_started(result)
+	if _luoxi_merchant != null:
+		_luoxi_merchant.apply_special_game_started(result)
 
 
 func show_local_luoxi_special_game_card_revealed(result: Dictionary) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.show_local_luoxi_special_game_card_revealed(result)
+	if _luoxi_merchant != null:
+		_luoxi_merchant.apply_special_game_card_revealed(result)
 
 
 func show_local_luoxi_special_game_finished(result: Dictionary) -> void:
-	var tower_runtime := get_tower_runtime()
-	if tower_runtime != null:
-		tower_runtime.show_local_luoxi_special_game_finished(result)
+	if _luoxi_merchant != null:
+		_luoxi_merchant.apply_special_game_finished(result)
 
 
 func apply_luoxi_player_health_loss(
@@ -1198,51 +1880,72 @@ func request_luoxi_collectible_choice(
 		offer_revision
 	):
 		return true
-	var tower_runtime := runtime as TowerDefenseGame
-	if tower_runtime == null:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null or tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
-	tower_runtime.request_luoxi_collectible_choice(choice_index, config_path)
+	var peer_id := (
+		tower_runtime.multiplayer_local_peer_id
+		if tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	var result_code := runtime_try_claim_luoxi_collectible_for_peer(
+		peer_id,
+		_resolve_luoxi_collectible_path(choice_index, config_path)
+	)
+	show_local_luoxi_collectible_result(result_code)
 	return true
 
 
 func request_luoxi_collectible_refresh(offer_revision: int) -> bool:
 	if super.request_luoxi_collectible_refresh(offer_revision):
 		return true
-	var tower_runtime := runtime as TowerDefenseGame
-	if tower_runtime == null:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null or tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
-	tower_runtime.request_luoxi_collectible_refresh()
+	var peer_id := (
+		tower_runtime.multiplayer_local_peer_id
+		if tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	var player_instance := _get_player(peer_id)
+	show_local_luoxi_refresh_result(
+		runtime_try_refresh_luoxi_collectibles_for_peer(peer_id),
+		runtime_get_luoxi_collectible_refresh_count(peer_id),
+		player_instance.current_xirang if player_instance != null else 0
+	)
 	return true
 
 
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:
 	if has_multiplayer_session():
 		return super.has_luoxi_collectible_claimed(peer_id)
-	var tower_runtime := runtime as TowerDefenseGame
-	return (
-		tower_runtime != null
-		and tower_runtime.has_luoxi_collectible_claimed(peer_id)
-	)
+	return runtime_has_luoxi_collectible_claimed(peer_id)
 
 
 func supports_luoxi_special_game() -> bool:
 	if has_multiplayer_session():
 		return multiplayer_session.supports_luoxi_special_game()
-	var tower_runtime := runtime as TowerDefenseGame
-	return (
-		tower_runtime != null
-		and tower_runtime.supports_luoxi_special_game()
-	)
+	return runtime_supports_luoxi_special_game()
 
 
 func request_luoxi_special_game_start() -> bool:
 	if has_multiplayer_session():
 		multiplayer_session.request_luoxi_special_game_start()
 		return true
-	var tower_runtime := runtime as TowerDefenseGame
-	if tower_runtime == null:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null or tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
-	tower_runtime.request_luoxi_special_game_start()
+	var peer_id := (
+		tower_runtime.multiplayer_local_peer_id
+		if tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	show_local_luoxi_special_game_started(
+		runtime_try_start_luoxi_special_game_for_peer(peer_id)
+	)
 	return true
 
 
@@ -1256,12 +1959,21 @@ func request_luoxi_special_game_card_reveal(
 			card_index
 		)
 		return true
-	var tower_runtime := runtime as TowerDefenseGame
-	if tower_runtime == null:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null or tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
-	tower_runtime.request_luoxi_special_game_card_reveal(
-		session_revision,
-		card_index
+	var peer_id := (
+		tower_runtime.multiplayer_local_peer_id
+		if tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	show_local_luoxi_special_game_card_revealed(
+		runtime_try_reveal_luoxi_special_game_card_for_peer(
+			peer_id,
+			session_revision,
+			card_index
+		)
 	)
 	return true
 
@@ -1270,8 +1982,352 @@ func request_luoxi_special_game_finish(session_revision: int) -> bool:
 	if has_multiplayer_session():
 		multiplayer_session.request_luoxi_special_game_finish(session_revision)
 		return true
-	var tower_runtime := runtime as TowerDefenseGame
-	if tower_runtime == null:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null or tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		return false
-	tower_runtime.request_luoxi_special_game_finish(session_revision)
+	var peer_id := (
+		tower_runtime.multiplayer_local_peer_id
+		if tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		else 0
+	)
+	show_local_luoxi_special_game_finished(
+		runtime_try_finish_luoxi_special_game_for_peer(
+			peer_id,
+			session_revision
+		)
+	)
 	return true
+
+
+func cancel_luoxi_special_game_for_peer(peer_id: int) -> void:
+	if _luoxi_special_game_coordinator != null:
+		_luoxi_special_game_coordinator.cancel_for_peer(peer_id)
+
+
+func cancel_all_luoxi_special_games() -> void:
+	if _luoxi_special_game_coordinator != null:
+		_luoxi_special_game_coordinator.cancel_all()
+	if _luoxi_merchant != null:
+		_luoxi_merchant.abort_special_game()
+
+
+func remap_luoxi_collectible_claims(old_peer_id: int, new_peer_id: int) -> void:
+	if not _luoxi_collectible_claim_counts.has(old_peer_id):
+		return
+	_luoxi_collectible_claim_counts[new_peer_id] = (
+		_luoxi_collectible_claim_counts[old_peer_id]
+	)
+	_luoxi_collectible_claim_counts.erase(old_peer_id)
+
+
+func clear_luoxi_collectible_claims() -> void:
+	_luoxi_collectible_claim_counts.clear()
+
+
+func _get_luoxi_collectible_claim_count(peer_id: int) -> int:
+	return int(_luoxi_collectible_claim_counts.get(maxi(peer_id, 0), 0))
+
+
+func _resolve_luoxi_collectible_path(
+	choice_index: int,
+	config_path: String
+) -> String:
+	if not config_path.is_empty():
+		return config_path
+	var item := LuoxiMerchant.get_collectible_for_choice(choice_index)
+	return item.resource_path if item != null else ""
+
+
+func _get_player(peer_id: int) -> Player:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null:
+		return null
+	if (
+		tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
+		and peer_id <= 0
+	):
+		return tower_runtime.player
+	return (
+		_player_roster_coordinator.get_player(peer_id)
+		if _player_roster_coordinator != null
+		else tower_runtime.get_player_for_peer(peer_id)
+	)
+
+
+func _start_client_flow_countdown(
+	state: CombatFlowState.State,
+	step_id: StringName,
+	seconds: int
+) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or _campaign_coordinator == null
+		or _presentation_coordinator == null
+		or _state_timer == null
+	):
+		return
+	tower_runtime.wave_state = state
+	var flow_step := _campaign_coordinator.get_flow_step_by_id(step_id)
+	if flow_step != null:
+		tower_runtime.current_flow_step = flow_step
+		if flow_step is WaveConfig:
+			tower_runtime.current_wave_index = (
+				_campaign_coordinator.get_wave_number_for_step(
+					flow_step as WaveConfig,
+					tower_runtime.current_wave_index
+				)
+				- 1
+			)
+	if state in [
+		CombatFlowState.State.PRE_WAVE,
+		CombatFlowState.State.INTERMISSION,
+	]:
+		_set_local_merchants_active(true)
+		_presentation_coordinator.update_post_wave_music(flow_step)
+	tower_runtime.countdown_seconds = maxi(seconds, 0)
+	_presentation_coordinator.show_countdown(
+		tower_runtime.countdown_seconds,
+		false
+	)
+	_presentation_coordinator.play_client_countdown_tick_if_new(
+		state,
+		step_id,
+		tower_runtime.countdown_seconds
+	)
+	if tower_runtime.countdown_seconds <= 0:
+		_state_timer.stop()
+		return
+	_state_timer.start(1.0)
+
+
+func _set_local_merchants_active(active: bool) -> bool:
+	var changed := _merchant_intermission_active != active
+	var entering_new_intermission := active and not _merchant_intermission_active
+	_merchant_intermission_active = active
+	# Tower-defense merchants remain authored world entities between waves. The
+	# replicated flag controls intermission state and offer reset, matching the
+	# pre-extraction behavior rather than toggling their visibility off.
+	if _merchant != null and not _merchant.is_active:
+		_merchant.set_active(true)
+		changed = true
+	if _luoxi_merchant != null:
+		if not _luoxi_merchant.is_active:
+			_luoxi_merchant.set_active(true)
+			changed = true
+		if entering_new_intermission:
+			clear_luoxi_collectible_claims()
+			if _luoxi_special_game_coordinator != null:
+				_luoxi_special_game_coordinator.cancel_all()
+			_luoxi_merchant.reset_intermission_state()
+	return changed
+
+
+func _on_base_health_changed(
+	current_health: int,
+	maximum_health: int,
+	revision: int
+) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		base_health_changed.emit(current_health, maximum_health, revision)
+
+
+func _on_wave_progress_changed(
+	wave_number: int,
+	defeated: int,
+	escaped: int,
+	resolved: int,
+	total: int
+) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		wave_progress_changed.emit(
+			wave_number,
+			defeated,
+			escaped,
+			resolved,
+			total
+		)
+
+
+func _on_local_xiaocong_interaction_requested() -> void:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null:
+		return
+	if tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		request_xiaocong_interaction(0)
+	else:
+		xiaocong_interaction_requested.emit()
+
+
+func _on_local_xiaocong_fate_vote_requested(
+	option_id: StringName,
+	permanent_buff_id: StringName
+) -> void:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null:
+		return
+	if tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		request_xiaocong_fate_vote(0, option_id, permanent_buff_id)
+	else:
+		xiaocong_vote_requested.emit(option_id, permanent_buff_id)
+
+
+func _on_local_xiaocong_collectible_choice_requested(choice_index: int) -> void:
+	var tower_runtime := get_tower_runtime()
+	if tower_runtime == null:
+		return
+	if tower_runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.SINGLEPLAYER:
+		request_xiaocong_collectible_choice(0, choice_index)
+	else:
+		xiaocong_collectible_requested.emit(choice_index)
+
+
+func _on_xiaocong_fate_state_changed(snapshot: Dictionary) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime != null
+		and tower_runtime.runtime_mode
+		== CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	):
+		xiaocong_fate_state_changed.emit(snapshot)
+
+
+func _connect_mode_signals() -> void:
+	if not _player_roster_coordinator.player_died.is_connected(handle_player_died):
+		_player_roster_coordinator.player_died.connect(handle_player_died)
+	if not _player_roster_coordinator.player_revived.is_connected(handle_player_revived):
+		_player_roster_coordinator.player_revived.connect(handle_player_revived)
+	if not _player_roster_coordinator.respawn_countdown_changed.is_connected(
+		update_player_respawn_countdown
+	):
+		_player_roster_coordinator.respawn_countdown_changed.connect(
+			update_player_respawn_countdown
+		)
+	if not _player_roster_coordinator.respawn_countdown_cleared.is_connected(
+		clear_player_respawn_countdown
+	):
+		_player_roster_coordinator.respawn_countdown_cleared.connect(
+			clear_player_respawn_countdown
+		)
+	if not _player_roster_coordinator.revive_all_requested.is_connected(
+		revive_all_requested.emit
+	):
+		_player_roster_coordinator.revive_all_requested.connect(
+			revive_all_requested.emit
+		)
+	if not _presentation_coordinator.return_to_lobby_requested.is_connected(
+		handle_return_to_lobby_requested
+	):
+		_presentation_coordinator.return_to_lobby_requested.connect(
+			handle_return_to_lobby_requested
+		)
+	if not _presentation_coordinator.start_wave_requested.is_connected(
+		handle_wave_start_requested
+	):
+		_presentation_coordinator.start_wave_requested.connect(
+			handle_wave_start_requested
+		)
+	if not _home_defense_coordinator.base_health_changed.is_connected(
+		_on_base_health_changed
+	):
+		_home_defense_coordinator.base_health_changed.connect(_on_base_health_changed)
+	if not _enemy_coordinator.wave_progress_changed.is_connected(
+		_on_wave_progress_changed
+	):
+		_enemy_coordinator.wave_progress_changed.connect(_on_wave_progress_changed)
+	if not _plant_runtime_coordinator.terrain_delta.is_connected(terrain_delta.emit):
+		_plant_runtime_coordinator.terrain_delta.connect(terrain_delta.emit)
+	if not _plant_runtime_coordinator.plant_health_changed.is_connected(
+		plant_health_changed.emit
+	):
+		_plant_runtime_coordinator.plant_health_changed.connect(
+			plant_health_changed.emit
+		)
+	if not _plant_runtime_coordinator.plant_damage_status_changed.is_connected(
+		plant_damage_status_changed.emit
+	):
+		_plant_runtime_coordinator.plant_damage_status_changed.connect(
+			plant_damage_status_changed.emit
+		)
+	if not _plant_runtime_coordinator.plant_damage_applied.is_connected(
+		plant_damage_applied.emit
+	):
+		_plant_runtime_coordinator.plant_damage_applied.connect(
+			plant_damage_applied.emit
+		)
+	if not _plant_runtime_coordinator.plant_healing_applied.is_connected(
+		plant_healing_applied.emit
+	):
+		_plant_runtime_coordinator.plant_healing_applied.connect(
+			plant_healing_applied.emit
+		)
+	if not _plant_runtime_coordinator.plant_spawned.is_connected(plant_spawned.emit):
+		_plant_runtime_coordinator.plant_spawned.connect(plant_spawned.emit)
+	if not _plant_runtime_coordinator.plant_placement_rejected.is_connected(
+		plant_placement_rejected.emit
+	):
+		_plant_runtime_coordinator.plant_placement_rejected.connect(
+			plant_placement_rejected.emit
+		)
+	if not _plant_runtime_coordinator.inventory_changed.is_connected(
+		inventory_changed.emit
+	):
+		_plant_runtime_coordinator.inventory_changed.connect(inventory_changed.emit)
+	if not _plant_runtime_coordinator.network_plant_removed.is_connected(
+		plant_removed.emit
+	):
+		_plant_runtime_coordinator.network_plant_removed.connect(plant_removed.emit)
+	if not _plant_placement_controller.multiplayer_placement_requested.is_connected(
+		_handle_plant_placement_requested
+	):
+		_plant_placement_controller.multiplayer_placement_requested.connect(
+			_handle_plant_placement_requested
+		)
+	if not _plant_placement_controller.inventory_placement_requested.is_connected(
+		_handle_inventory_plant_placement_requested
+	):
+		_plant_placement_controller.inventory_placement_requested.connect(
+			_handle_inventory_plant_placement_requested
+		)
+	if not _fate_flow_coordinator.local_interaction_requested.is_connected(
+		_on_local_xiaocong_interaction_requested
+	):
+		_fate_flow_coordinator.local_interaction_requested.connect(
+			_on_local_xiaocong_interaction_requested
+		)
+	if not _fate_flow_coordinator.local_fate_vote_requested.is_connected(
+		_on_local_xiaocong_fate_vote_requested
+	):
+		_fate_flow_coordinator.local_fate_vote_requested.connect(
+			_on_local_xiaocong_fate_vote_requested
+		)
+	if not _fate_flow_coordinator.local_collectible_choice_requested.is_connected(
+		_on_local_xiaocong_collectible_choice_requested
+	):
+		_fate_flow_coordinator.local_collectible_choice_requested.connect(
+			_on_local_xiaocong_collectible_choice_requested
+		)
+	if not _fate_flow_coordinator.state_snapshot_changed.is_connected(
+		_on_xiaocong_fate_state_changed
+	):
+		_fate_flow_coordinator.state_snapshot_changed.connect(
+			_on_xiaocong_fate_state_changed
+		)
+	if not _debug_collectible_window.collectible_requested.is_connected(
+		handle_debug_collectible_requested
+	):
+		_debug_collectible_window.collectible_requested.connect(
+			handle_debug_collectible_requested
+		)

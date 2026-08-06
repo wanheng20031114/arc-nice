@@ -444,7 +444,6 @@ var next_multiplayer_plant_net_id: int:
 		_next_multiplayer_plant_net_id = value
 		if plant_runtime_coordinator != null:
 			plant_runtime_coordinator.next_multiplayer_plant_net_id = value
-var luoxi_collectible_claim_counts: Dictionary = {}
 var _linglan_boss_started := false
 var linglan_boss_started: bool:
 	get:
@@ -600,7 +599,6 @@ var plant_lifecycle_shader_prewarmed: bool:
 		return prewarmer_coordinator != null and prewarmer_coordinator.plant_lifecycle_shader_prewarmed
 var _previous_physics_interpolation_enabled := false
 var _owns_physics_interpolation_override := false
-var merchant_intermission_active := false
 var player_wave_death_counts: Dictionary = {}
 var _singleplayer_respawn_time_left := -1.0
 var singleplayer_respawn_time_left: float:
@@ -862,7 +860,6 @@ func _ready() -> void:
 	settings_panel.closed.connect(_on_settings_panel_closed)
 	player_profile_panel.opened.connect(_on_exclusive_modal_opened)
 	player_profile_panel.closed.connect(_on_player_profile_panel_closed)
-	debug_collectible_window.collectible_requested.connect(_on_debug_collectible_requested)
 	debug_collectible_window.closed.connect(_on_debug_collectible_window_closed)
 	presentation_coordinator.connect_wave_hud_requests()
 	luoxi_special_game_coordinator.setup(
@@ -879,6 +876,10 @@ func _ready() -> void:
 		set_physics_process(false)
 		return
 	if not _configure_boss_coordinator():
+		set_process(false)
+		set_physics_process(false)
+		return
+	if not _bind_tower_multiplayer_adapter_dependencies():
 		set_process(false)
 		set_physics_process(false)
 		return
@@ -938,14 +939,17 @@ func configure_multiplayer(
 	player_names: Dictionary,
 	player_character_ids: Dictionary = {}
 ) -> void:
-	runtime_mode = mode as RuntimeMode
-	multiplayer_local_peer_id = local_peer_id
-	if player_roster_coordinator != null:
-		player_roster_coordinator.set_runtime_identity(runtime_mode, local_peer_id)
-		player_roster_coordinator.configure_roster(player_names, player_character_ids)
-	else:
-		multiplayer_player_names = player_names.duplicate()
-		multiplayer_player_character_ids = player_character_ids.duplicate()
+	var adapter := get_multiplayer_mode_adapter() as TowerDefenseMultiplayerModeAdapter
+	if adapter == null:
+		push_error("TowerDefenseGame: 缺少静态 MultiplayerModeAdapter 节点。")
+		return
+	adapter.configure_tower_multiplayer(
+		self,
+		mode,
+		local_peer_id,
+		player_names,
+		player_character_ids
+	)
 
 
 func _configure_player_roster_coordinator() -> bool:
@@ -985,19 +989,8 @@ func _configure_player_roster_coordinator() -> bool:
 	player_roster_coordinator.player_runtime_binding_requested.connect(
 		bind_player_runtime_context
 	)
-	player_roster_coordinator.player_died.connect(_on_roster_player_died)
-	player_roster_coordinator.player_revived.connect(_on_player_revived)
 	player_roster_coordinator.enemy_retarget_requested.connect(
 		_request_enemy_retarget_after_objective_change
-	)
-	player_roster_coordinator.respawn_countdown_changed.connect(
-		update_player_respawn_countdown
-	)
-	player_roster_coordinator.respawn_countdown_cleared.connect(
-		clear_player_respawn_countdown
-	)
-	player_roster_coordinator.revive_all_requested.connect(
-		tower_multiplayer_mode_adapter.revive_all_requested.emit
 	)
 	return true
 
@@ -1031,29 +1024,10 @@ func _configure_presentation_coordinator() -> bool:
 	presentation_coordinator.spectator_camera_active = (
 		_pending_spectator_camera_active
 	)
-	if not presentation_coordinator.return_to_lobby_requested.is_connected(
-		_on_wave_hud_return_to_lobby_requested
-	):
-		presentation_coordinator.return_to_lobby_requested.connect(
-			_on_wave_hud_return_to_lobby_requested
-		)
-	if not presentation_coordinator.start_wave_requested.is_connected(
-		_on_wave_hud_start_wave_requested
-	):
-		presentation_coordinator.start_wave_requested.connect(
-			_on_wave_hud_start_wave_requested
-		)
 	if not presentation_coordinator.is_bound():
 		push_error("TowerDefenseGame: PresentationCoordinator 依赖绑定不完整。")
 		return false
 	return true
-
-
-func _on_roster_player_died(peer_id: int) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0:
-		_on_player_died()
-	else:
-		_on_multiplayer_player_died(peer_id)
 
 
 func request_tango_charge_started(direction: Vector2) -> bool:
@@ -1213,14 +1187,8 @@ func get_bamboo_mortar_combat_metrics() -> Dictionary:
 
 
 func get_fixed_multiplayer_respawn_position(peer_id: int) -> Variant:
-	if player_roster_coordinator != null and player_roster_coordinator.is_bound():
-		return player_roster_coordinator.get_fixed_respawn_position(peer_id)
-	# Narrow pre-tree/fixture façade. A bare runtime has no authored spawn node.
-	if player_spawn == null or not multiplayer_spawn_slot_indices.has(peer_id):
-		return null
-	return (
-		player_spawn.global_position
-		+ _get_multiplayer_spawn_offset(multiplayer_spawn_slot_indices[peer_id])
+	return tower_multiplayer_mode_adapter.get_fixed_multiplayer_respawn_position(
+		peer_id
 	)
 
 
@@ -1278,6 +1246,38 @@ func _configure_prewarmer_coordinator() -> bool:
 		PLANT_REMOVAL_SMOKE_SCENE,
 		GUARDIAN_POINT_LIGHT_TEXTURE
 	)
+
+
+func _bind_tower_multiplayer_adapter_dependencies() -> bool:
+	if tower_multiplayer_mode_adapter == null:
+		push_error("TowerDefenseGame: 缺少静态 TowerDefenseMultiplayerModeAdapter。")
+		return false
+	tower_multiplayer_mode_adapter.bind_tower_dependencies(
+		self,
+		campaign_coordinator,
+		enemy_coordinator,
+		home_defense_coordinator,
+		plant_runtime_coordinator,
+		player_roster_coordinator,
+		boss_coordinator,
+		fate_coordinator,
+		fate_flow_coordinator,
+		fate_manager,
+		presentation_coordinator,
+		player_profile_panel,
+		debug_collectible_window,
+		merchant,
+		luoxi_merchant,
+		luoxi_special_game_coordinator,
+		run_state,
+		research_coordinator,
+		plant_placement_controller,
+		state_timer
+	)
+	if not tower_multiplayer_mode_adapter.is_tower_bound():
+		push_error("TowerDefenseGame: MultiplayerAdapter 依赖绑定不完整。")
+		return false
+	return true
 
 
 func replace_campaign_runtime_state_for_fixture(
@@ -1490,10 +1490,6 @@ func _on_home_base_health_changed(
 	else:
 		presentation_coordinator.play_gate_damage_warning()
 		base_health_changed.emit(new_current_health, new_maximum_health, new_revision)
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		tower_multiplayer_mode_adapter.base_health_changed.emit(
-			new_current_health, new_maximum_health, new_revision
-		)
 
 
 func _update_base_health_display(play_damage_pulse: bool = true) -> void:
@@ -1580,36 +1576,6 @@ func _configure_plant_defense_system() -> void:
 	)
 	plant_runtime_coordinator.next_multiplayer_plant_net_id = _next_multiplayer_plant_net_id
 	_prepare_plant_runtime_signal_bindings()
-	if not plant_runtime_coordinator.terrain_delta.is_connected(
-		tower_multiplayer_mode_adapter.terrain_delta.emit
-	):
-		plant_runtime_coordinator.terrain_delta.connect(
-			tower_multiplayer_mode_adapter.terrain_delta.emit
-		)
-	if not plant_runtime_coordinator.plant_health_changed.is_connected(
-		tower_multiplayer_mode_adapter.plant_health_changed.emit
-	):
-		plant_runtime_coordinator.plant_health_changed.connect(
-			tower_multiplayer_mode_adapter.plant_health_changed.emit
-		)
-	if not plant_runtime_coordinator.plant_damage_status_changed.is_connected(
-		tower_multiplayer_mode_adapter.plant_damage_status_changed.emit
-	):
-		plant_runtime_coordinator.plant_damage_status_changed.connect(
-			tower_multiplayer_mode_adapter.plant_damage_status_changed.emit
-		)
-	if not plant_runtime_coordinator.plant_damage_applied.is_connected(
-		tower_multiplayer_mode_adapter.plant_damage_applied.emit
-	):
-		plant_runtime_coordinator.plant_damage_applied.connect(
-			tower_multiplayer_mode_adapter.plant_damage_applied.emit
-		)
-	if not plant_runtime_coordinator.plant_healing_applied.is_connected(
-		tower_multiplayer_mode_adapter.plant_healing_applied.emit
-	):
-		plant_runtime_coordinator.plant_healing_applied.connect(
-			tower_multiplayer_mode_adapter.plant_healing_applied.emit
-		)
 	var clear_removed_plant_target := enemy_coordinator.clear_removed_plant_objective.bind(
 		enemy_container,
 		boss_container
@@ -1675,42 +1641,12 @@ func _configure_plant_defense_system() -> void:
 		plant_placement_controller.placement_mode_changed.connect(
 			_on_plant_placement_mode_changed
 		)
-	if not plant_placement_controller.multiplayer_placement_requested.is_connected(
-		_on_multiplayer_plant_placement_requested
-	):
-		plant_placement_controller.multiplayer_placement_requested.connect(
-			_on_multiplayer_plant_placement_requested
-		)
-	if not plant_placement_controller.inventory_placement_requested.is_connected(
-		_on_inventory_plant_placement_requested
-	):
-		plant_placement_controller.inventory_placement_requested.connect(
-			_on_inventory_plant_placement_requested
-		)
 	if not plant_system.plant_placed.is_connected(_on_runtime_plant_placed):
 		plant_system.plant_placed.connect(_on_runtime_plant_placed)
 	_update_plant_placement_input_state()
 
 
 func _prepare_plant_runtime_signal_bindings() -> void:
-	if not plant_runtime_coordinator.plant_spawned.is_connected(
-		tower_multiplayer_mode_adapter.plant_spawned.emit
-	):
-		plant_runtime_coordinator.plant_spawned.connect(
-			tower_multiplayer_mode_adapter.plant_spawned.emit
-		)
-	if not plant_runtime_coordinator.plant_placement_rejected.is_connected(
-		tower_multiplayer_mode_adapter.plant_placement_rejected.emit
-	):
-		plant_runtime_coordinator.plant_placement_rejected.connect(
-			tower_multiplayer_mode_adapter.plant_placement_rejected.emit
-		)
-	if not plant_runtime_coordinator.inventory_changed.is_connected(
-		tower_multiplayer_mode_adapter.inventory_changed.emit
-	):
-		plant_runtime_coordinator.inventory_changed.connect(
-			tower_multiplayer_mode_adapter.inventory_changed.emit
-		)
 	if not plant_runtime_coordinator.enemy_retarget_requested.is_connected(
 		_request_enemy_retarget_after_objective_change
 	):
@@ -1740,12 +1676,6 @@ func _prepare_plant_runtime_signal_bindings() -> void:
 	):
 		plant_runtime_coordinator.progression_plant_placed.connect(
 			_track_progression_plant_placement
-		)
-	if not plant_runtime_coordinator.network_plant_removed.is_connected(
-		tower_multiplayer_mode_adapter.plant_removed.emit
-	):
-		plant_runtime_coordinator.network_plant_removed.connect(
-			tower_multiplayer_mode_adapter.plant_removed.emit
 		)
 
 
@@ -1930,69 +1860,8 @@ func begin_inventory_building_placement(
 	return started
 
 
-func _on_inventory_plant_placement_requested(
-	request_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	slot_index: int,
-	expected_inventory_revision: int,
-	item_config_path: String
-) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		_request_singleplayer_inventory_plant_placement(
-			request_id,
-			plant_id,
-			anchor,
-			slot_index,
-			expected_inventory_revision,
-			item_config_path
-		)
-		return
-	tower_multiplayer_mode_adapter.inventory_plant_placement_requested.emit(
-		request_id,
-		plant_id,
-		anchor,
-		slot_index,
-		expected_inventory_revision,
-		item_config_path
-	)
-
-
-func _request_singleplayer_inventory_plant_placement(
-	request_id: int,
-	plant_id: StringName,
-	anchor: Vector2i,
-	slot_index: int,
-	expected_inventory_revision: int,
-	item_config_path: String
-) -> void:
-	plant_runtime_coordinator.set_runtime_mode(runtime_mode)
-	plant_runtime_coordinator.request_singleplayer_inventory_placement(
-		request_id,
-		plant_id,
-		anchor,
-		slot_index,
-		expected_inventory_revision,
-		item_config_path,
-		run_state,
-		player,
-		wave_state == CombatFlowState.State.FATE_INTERLUDE
-	)
-
-
 func _on_personal_inventory_output_committed(peer_id: int) -> void:
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY and peer_id > 0:
-		tower_multiplayer_mode_adapter.inventory_changed.emit(peer_id)
-
-
-func _on_multiplayer_plant_placement_requested(
-	request_id: int,
-	plant_id: StringName,
-	anchor: Vector2i
-) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		return
-	tower_multiplayer_mode_adapter.plant_placement_requested.emit(request_id, plant_id, anchor)
+	tower_multiplayer_mode_adapter.publish_inventory_changed(peer_id)
 
 
 func request_multiplayer_plant_placement(
@@ -2339,36 +2208,18 @@ func _toggle_debug_collectible_window() -> void:
 	_update_plant_placement_input_state()
 
 
-func _on_debug_collectible_requested(config_path: String) -> void:
-	if config_path.is_empty() or not sandbox_free_building_enabled:
-		return
-	if (
-		runtime_mode != RuntimeMode.SINGLEPLAYER
-		and multiplayer_mode_adapter.request_debug_collectible(config_path)
-	):
-		return
-	debug_collectible_window.show_grant_result(config_path, grant_debug_collectible(config_path))
-
-
 func grant_debug_collectible(config_path: String) -> bool:
-	if not sandbox_free_building_enabled:
-		return false
-	var item := LuoxiMerchant.get_collectible_for_path(config_path)
-	if item == null:
-		return false
-	if runtime_mode != RuntimeMode.SINGLEPLAYER and multiplayer_local_peer_id > 0:
-		return run_state.try_add_item_for_peer(multiplayer_local_peer_id, item)
-	return run_state.try_add_item(item)
+	return tower_multiplayer_mode_adapter.grant_debug_collectible(config_path)
 
 
 func show_debug_collectible_grant_result(config_path: String, success: bool) -> void:
-	if debug_collectible_window == null:
-		return
-	debug_collectible_window.show_grant_result(config_path, success)
+	tower_multiplayer_mode_adapter.show_debug_collectible_grant_result(
+		config_path, success
+	)
 
 
 func allows_debug_collectible_grants() -> bool:
-	return sandbox_free_building_enabled
+	return tower_multiplayer_mode_adapter.allows_debug_collectible_grants()
 
 
 func show_simple_crafting_result(
@@ -2376,144 +2227,34 @@ func show_simple_crafting_result(
 	result: StringName,
 	request_token: int
 ) -> void:
-	if player_profile_panel == null:
-		return
-	player_profile_panel.show_simple_crafting_result(
-		recipe_id,
-		result,
-		request_token
+	tower_multiplayer_mode_adapter.show_simple_crafting_result(
+		recipe_id, result, request_token
 	)
-
-
-func _on_profile_multiplayer_upgrade_requested(stat_type: int) -> void:
-	multiplayer_mode_adapter.profile_upgrade_requested.emit(stat_type)
-
-
-func _on_profile_multiplayer_inventory_item_use_requested(
-	slot_index: int
-) -> void:
-	multiplayer_mode_adapter.profile_inventory_item_use_requested.emit(slot_index)
-
-
-func _on_profile_multiplayer_inventory_item_discard_requested(
-	slot_index: int
-) -> void:
-	multiplayer_mode_adapter.profile_inventory_item_discard_requested.emit(slot_index)
-
-
-func _on_profile_multiplayer_simple_crafting_requested(
-	recipe_id: StringName,
-	request_token: int
-) -> void:
-	multiplayer_mode_adapter.profile_simple_crafting_requested.emit(
-		recipe_id,
-		request_token
-	)
-
-
-func _on_profile_multiplayer_simple_crafting_cancel_requested(
-	request_token: int
-) -> void:
-	multiplayer_mode_adapter.profile_simple_crafting_cancel_requested.emit(request_token)
-
-
-func _on_profile_building_placement_requested(
-	slot_index: int,
-	expected_inventory_revision: int
-) -> void:
-	if not begin_inventory_building_placement(
-		slot_index,
-		expected_inventory_revision
-	):
-		player_profile_panel.restore_after_failed_building_placement()
 
 
 func apply_remote_merchant_active(active: bool) -> void:
-	_set_local_merchants_active(active)
+	tower_multiplayer_mode_adapter.apply_remote_merchant_active(active)
 
 
 func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	var typed_state := state as CombatFlowState.State
-	var flow_step := _get_flow_step_by_id(step_id)
-	if flow_step == null and typed_state not in [CombatFlowState.State.VICTORY, CombatFlowState.State.DEFEAT]:
-		push_error(
-			"TowerDefenseGame: 收到当前 Campaign 不存在的流程 step_id：%s"
-			% String(step_id)
-		)
-		return
-	if (
-		fate_flow_coordinator != null
-		and fate_flow_coordinator.should_defer_remote_flow_state(
-			step_id, state, seconds
-		)
-	):
-		return
-	var leaving_fate_interlude := (
-		fate_flow_coordinator != null
-		and fate_flow_coordinator.is_leaving_remote_interlude(typed_state)
-	)
-	if flow_step != null:
-		current_flow_step = flow_step
-		if flow_step is WaveConfig:
-			current_wave_index = _get_wave_number_for_step(flow_step as WaveConfig) - 1
-	if fate_flow_coordinator != null:
-		fate_flow_coordinator.set_interlude_systems_frozen(
-			typed_state == CombatFlowState.State.FATE_INTERLUDE
-		)
-	match typed_state:
-		CombatFlowState.State.PRE_WAVE:
-			presentation_coordinator.transition_world_to_day()
-			_start_client_flow_countdown(typed_state, step_id, seconds)
-		CombatFlowState.State.INTERMISSION:
-			_apply_intermission_lighting(maxi(current_wave_index + 1, 1))
-			_start_client_flow_countdown(typed_state, step_id, seconds)
-		CombatFlowState.State.WAVE_ACTIVE:
-			state_timer.stop()
-			wave_state = CombatFlowState.State.WAVE_ACTIVE
-			_apply_wave_start_lighting(maxi(current_wave_index + 1, 1))
-			var phase_announcement_started := _announce_wave_phase_start(
-				maxi(current_wave_index + 1, 1)
-			)
-			_set_local_merchants_active(false)
-			var wave_config := flow_step as WaveConfig
-			if wave_config != null:
-				_update_wave_music(wave_config)
-			_show_tower_defense_wave_progress()
-			if not phase_announcement_started:
-				presentation_coordinator.play_wave_start_audio()
-		CombatFlowState.State.BOSS_INTRO:
-			boss_coordinator.apply_remote_flow_state(
-				CombatFlowState.State.BOSS_INTRO, flow_step as BossConfig
-			)
-		CombatFlowState.State.BOSS_ACTIVE:
-			boss_coordinator.apply_remote_flow_state(
-				CombatFlowState.State.BOSS_ACTIVE, flow_step as BossConfig
-			)
-		CombatFlowState.State.FATE_INTERLUDE:
-			if fate_flow_coordinator != null:
-				fate_flow_coordinator.apply_remote_interlude_flow(
-					_get_day_number_for_wave(maxi(current_wave_index + 1, 1))
-				)
-		CombatFlowState.State.VICTORY:
-			apply_remote_victory()
-		CombatFlowState.State.DEFEAT:
-			apply_remote_defeat()
-	if leaving_fate_interlude:
-		fate_flow_coordinator.complete_remote_flow_transition()
-	_update_plant_placement_input_state()
+	tower_multiplayer_mode_adapter.apply_remote_flow_state(step_id, state, seconds)
+
+
+func _on_remote_flow_state_applied(
+	_step_id: StringName,
+	_state: CombatFlowState.State,
+	_seconds: int
+) -> void:
+	pass
 
 func get_flow_state_snapshot() -> Dictionary:
-	return {
-		"step_id": _get_flow_step_id(current_flow_step),
-		"state": int(wave_state),
-		"countdown_seconds": countdown_seconds,
-	}
+	return tower_multiplayer_mode_adapter.get_flow_state_snapshot()
 
 
 func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2) -> void:
-	boss_coordinator.apply_remote_started(net_id, boss_config, spawn_position)
+	tower_multiplayer_mode_adapter.apply_remote_boss_started(
+		net_id, boss_config, spawn_position
+	)
 
 
 func _instantiate_remote_linglan_boss_proxy(
@@ -2539,25 +2280,16 @@ func register_remote_boss_proxy_indices(
 
 
 func apply_remote_victory() -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	_enter_victory(false)
+	tower_multiplayer_mode_adapter.apply_remote_victory()
 
 
 func apply_remote_enemy_count(alive_count: int) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	# Enemy snapshots already carry the local proxy count. The dedicated HUD
-	# field can consume it without overwriting the independently replicated wave
-	# progress, so no additional multiplayer message is needed.
-	presentation_coordinator.show_enemy_count(alive_count)
+	tower_multiplayer_mode_adapter.apply_remote_enemy_count(alive_count)
 
 
 
 func apply_remote_defeat() -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	_enter_defeat(false)
+	tower_multiplayer_mode_adapter.apply_remote_defeat()
 
 
 func show_damage_number(
@@ -2598,19 +2330,7 @@ func show_combat_number(
 
 
 func try_purchase_skill1_for_peer(peer_id: int) -> int:
-	var player_instance := get_player_for_peer(peer_id)
-	if player_instance == null or not is_instance_valid(player_instance):
-		return MerchantPurchaseResult.SkillUpgrade.INVALID_PLAYER
-	if not player_instance.has_skill1():
-		return MerchantPurchaseResult.SkillUpgrade.INVALID_PLAYER
-	if player_instance.is_skill1_upgrade_maxed():
-		return MerchantPurchaseResult.SkillUpgrade.UPGRADE_MAXED
-	var free_upgrade := player_instance.has_collectible_effect(
-		PickupConfig.COLLECTIBLE_EFFECT_ADMIN_DOLL
-	)
-	if not player_instance.try_upgrade_skill1(free_upgrade):
-		return MerchantPurchaseResult.SkillUpgrade.INSUFFICIENT_XIRANG
-	return MerchantPurchaseResult.SkillUpgrade.UPGRADE_SUCCESS
+	return tower_multiplayer_mode_adapter.try_purchase_skill1_for_peer(peer_id)
 
 
 func apply_skill1_purchase_state(
@@ -2620,25 +2340,17 @@ func apply_skill1_purchase_state(
 	skill1_upgrade_level: int = -1,
 	skill1_charge_duration: float = -1.0
 ) -> void:
-	var player_instance := get_player_for_peer(peer_id)
-	if player_instance == null or not is_instance_valid(player_instance):
-		return
-	if player_instance.current_xirang != current_xirang:
-		player_instance.current_xirang = current_xirang
-		player_instance.xirang_changed.emit(current_xirang, 0)
-	if skill1_unlocked and not player_instance.has_skill1():
-		player_instance.unlock_skill1()
-	if skill1_upgrade_level >= 0:
-		player_instance.apply_skill1_upgrade_state(
-			skill1_upgrade_level,
-			skill1_charge_duration
-		)
+	tower_multiplayer_mode_adapter.apply_skill1_purchase_state(
+		peer_id,
+		current_xirang,
+		skill1_unlocked,
+		skill1_upgrade_level,
+		skill1_charge_duration
+	)
 
 
 func show_local_skill1_purchase_result(result_code: int) -> void:
-	if merchant == null:
-		return
-	merchant.show_purchase_result(result_code)
+	tower_multiplayer_mode_adapter.show_local_skill1_purchase_result(result_code)
 
 
 func player_has_luoxi_special_ticket(player_instance: Player) -> bool:
@@ -2650,7 +2362,7 @@ func player_has_luoxi_special_ticket(player_instance: Player) -> bool:
 
 
 func supports_luoxi_special_game() -> bool:
-	return wave_state not in [CombatFlowState.State.VICTORY, CombatFlowState.State.DEFEAT]
+	return tower_multiplayer_mode_adapter.runtime_supports_luoxi_special_game()
 
 
 func request_luoxi_special_game_start() -> void:
@@ -2700,11 +2412,9 @@ func request_luoxi_special_game_finish(session_revision: int) -> void:
 
 
 func try_start_luoxi_special_game_for_peer(peer_id: int) -> Dictionary:
-	if luoxi_special_game_coordinator == null:
-		return {
-			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
-		}
-	return luoxi_special_game_coordinator.start_for_peer(peer_id)
+	return tower_multiplayer_mode_adapter.runtime_try_start_luoxi_special_game_for_peer(
+		peer_id
+	)
 
 
 func try_reveal_luoxi_special_game_card_for_peer(
@@ -2712,11 +2422,7 @@ func try_reveal_luoxi_special_game_card_for_peer(
 	session_revision: int,
 	card_index: int
 ) -> Dictionary:
-	if luoxi_special_game_coordinator == null:
-		return {
-			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
-		}
-	return luoxi_special_game_coordinator.reveal_for_peer(
+	return tower_multiplayer_mode_adapter.runtime_try_reveal_luoxi_special_game_card_for_peer(
 		peer_id,
 		session_revision,
 		card_index
@@ -2727,34 +2433,28 @@ func try_finish_luoxi_special_game_for_peer(
 	peer_id: int,
 	session_revision: int
 ) -> Dictionary:
-	if luoxi_special_game_coordinator == null:
-		return {
-			"result_code": LuoxiSpecialGameCoordinator.ResultCode.INVALID_PLAYER,
-		}
-	return luoxi_special_game_coordinator.finish_for_peer(
+	return tower_multiplayer_mode_adapter.runtime_try_finish_luoxi_special_game_for_peer(
 		peer_id,
 		session_revision
 	)
 
 
 func cancel_luoxi_special_game_for_peer(peer_id: int) -> void:
-	if luoxi_special_game_coordinator != null:
-		luoxi_special_game_coordinator.cancel_for_peer(peer_id)
+	tower_multiplayer_mode_adapter.cancel_luoxi_special_game_for_peer(peer_id)
 
 
 func show_local_luoxi_special_game_started(result: Dictionary) -> void:
-	if luoxi_merchant != null:
-		luoxi_merchant.apply_special_game_started(result)
+	tower_multiplayer_mode_adapter.show_local_luoxi_special_game_started(result)
 
 
 func show_local_luoxi_special_game_card_revealed(result: Dictionary) -> void:
-	if luoxi_merchant != null:
-		luoxi_merchant.apply_special_game_card_revealed(result)
+	tower_multiplayer_mode_adapter.show_local_luoxi_special_game_card_revealed(
+		result
+	)
 
 
 func show_local_luoxi_special_game_finished(result: Dictionary) -> void:
-	if luoxi_merchant != null:
-		luoxi_merchant.apply_special_game_finished(result)
+	tower_multiplayer_mode_adapter.show_local_luoxi_special_game_finished(result)
 
 
 func get_luoxi_damageable_players() -> Array[Player]:
@@ -2829,52 +2529,22 @@ func request_luoxi_collectible_refresh() -> void:
 
 
 func try_refresh_luoxi_collectibles_for_peer(peer_id: int) -> int:
-	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
-	if player_instance == null or not is_instance_valid(player_instance) or luoxi_merchant == null:
-		return MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
-	if has_luoxi_collectible_claimed(peer_id):
-		return MerchantPurchaseResult.OfferRefresh.INVALID_PLAYER
-	return luoxi_merchant.try_purchase_refresh_for_player(player_instance)
+	return tower_multiplayer_mode_adapter.runtime_try_refresh_luoxi_collectibles_for_peer(
+		peer_id
+	)
 
 
 func get_luoxi_collectible_refresh_count(peer_id: int) -> int:
-	if luoxi_merchant == null:
-		return 0
-	return luoxi_merchant.get_player_refresh_count(maxi(peer_id, 0))
+	return tower_multiplayer_mode_adapter.runtime_get_luoxi_collectible_refresh_count(
+		peer_id
+	)
 
 
 func try_claim_luoxi_collectible_for_peer(peer_id: int, config_path_or_choice: Variant) -> int:
-	var player_instance := player if peer_id <= 0 else get_player_for_peer(peer_id)
-	if player_instance == null or not is_instance_valid(player_instance):
-		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
-
-	var claim_key := maxi(peer_id, 0)
-	if get_luoxi_collectible_claim_count(claim_key) >= LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND:
-		return MerchantPurchaseResult.CollectibleClaim.ALREADY_CLAIMED
-
-	var config_path := ""
-	if typeof(config_path_or_choice) == TYPE_INT:
-		config_path = _resolve_luoxi_collectible_path(int(config_path_or_choice), "")
-	else:
-		config_path = String(config_path_or_choice)
-	var item := LuoxiMerchant.get_collectible_for_path(config_path)
-	if item == null:
-		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
-	if not player_instance.is_collectible_compatible(item):
-		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
-	if not LuoxiMerchant.is_collectible_available_for_inventory(item, run_state, peer_id):
-		return MerchantPurchaseResult.CollectibleClaim.INVALID_PLAYER
-
-	var stored := (
-		run_state.try_add_item_for_peer(peer_id, item)
-		if peer_id > 0
-		else run_state.try_add_item(item)
+	return tower_multiplayer_mode_adapter.runtime_try_claim_luoxi_collectible_for_peer(
+		peer_id,
+		config_path_or_choice
 	)
-	if not stored:
-		return MerchantPurchaseResult.CollectibleClaim.INVENTORY_FULL
-
-	record_luoxi_collectible_claim(claim_key)
-	return MerchantPurchaseResult.CollectibleClaim.SUCCESS
 
 
 func _resolve_luoxi_collectible_path(choice_index: int, config_path: String) -> String:
@@ -2885,29 +2555,25 @@ func _resolve_luoxi_collectible_path(choice_index: int, config_path: String) -> 
 
 
 func has_luoxi_collectible_claimed(peer_id: int) -> bool:
-	return get_luoxi_collectible_claim_count(peer_id) >= LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
+	return tower_multiplayer_mode_adapter.runtime_has_luoxi_collectible_claimed(peer_id)
 
 
 func get_luoxi_collectible_claim_count(peer_id: int) -> int:
-	return int(luoxi_collectible_claim_counts.get(maxi(peer_id, 0), 0))
-
-
-func record_luoxi_collectible_claim(peer_id: int) -> void:
-	var claim_key := maxi(peer_id, 0)
-	luoxi_collectible_claim_counts[claim_key] = mini(
-		get_luoxi_collectible_claim_count(claim_key) + 1,
-		LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
+	return tower_multiplayer_mode_adapter.runtime_get_luoxi_collectible_claim_count(
+		peer_id
 	)
 
 
+func record_luoxi_collectible_claim(peer_id: int) -> void:
+	tower_multiplayer_mode_adapter.runtime_record_luoxi_collectible_claim(peer_id)
+
+
 func mark_luoxi_collectible_claimed(peer_id: int) -> void:
-	luoxi_collectible_claim_counts[maxi(peer_id, 0)] = LuoxiMerchant.COLLECTIBLE_CLAIMS_PER_ROUND
+	tower_multiplayer_mode_adapter.runtime_mark_luoxi_collectible_claimed(peer_id)
 
 
 func show_local_luoxi_collectible_result(result_code: int) -> void:
-	if luoxi_merchant == null:
-		return
-	luoxi_merchant.show_collectible_result(result_code)
+	tower_multiplayer_mode_adapter.show_local_luoxi_collectible_result(result_code)
 
 
 func show_local_luoxi_refresh_result(
@@ -2915,28 +2581,11 @@ func show_local_luoxi_refresh_result(
 	refresh_count: int,
 	current_xirang: int
 ) -> void:
-	if luoxi_merchant == null:
-		return
-	luoxi_merchant.show_refresh_result(result_code, refresh_count, current_xirang)
-
-
-func _on_wave_hud_return_to_lobby_requested() -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		_cancel_plant_placement()
-		get_tree().change_scene_to_file("res://scene/main_menu.tscn")
-		return
-	multiplayer_mode_adapter.return_to_lobby_requested.emit()
-
-
-func _on_wave_hud_start_wave_requested() -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW:
-		var tower_adapter := (
-			multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
-		)
-		if tower_adapter != null:
-			tower_adapter.request_wave_start()
-		return
-	request_tower_defense_wave_start(multiplayer_local_peer_id)
+	tower_multiplayer_mode_adapter.show_local_luoxi_refresh_result(
+		result_code,
+		refresh_count,
+		current_xirang
+	)
 
 
 func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
@@ -2970,30 +2619,11 @@ func request_tower_defense_wave_start(requester_peer_id: int = 0) -> bool:
 
 
 func _set_merchant_active(active: bool) -> void:
-	var changed := _set_local_merchants_active(active)
-	if not changed:
-		return
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		multiplayer_mode_adapter.merchant_active_changed.emit(active)
+	tower_multiplayer_mode_adapter.set_merchant_active(active)
 
 
 func _set_local_merchants_active(active: bool) -> bool:
-	var changed := merchant_intermission_active != active
-	var entering_new_intermission := active and not merchant_intermission_active
-	merchant_intermission_active = active
-	if merchant != null and not merchant.is_active:
-		merchant.set_active(true)
-		changed = true
-	if luoxi_merchant != null:
-		if not luoxi_merchant.is_active:
-			luoxi_merchant.set_active(true)
-			changed = true
-		if entering_new_intermission:
-			luoxi_collectible_claim_counts.clear()
-			if luoxi_special_game_coordinator != null:
-				luoxi_special_game_coordinator.cancel_all()
-			luoxi_merchant.reset_intermission_state()
-	return changed
+	return tower_multiplayer_mode_adapter.set_local_merchants_active(active)
 
 
 func _configure_boss_coordinator() -> bool:
@@ -3289,56 +2919,10 @@ func _configure_xiaocong_fate_flow() -> bool:
 		tower_defense_minimap,
 		player_spawn
 	)
-	if not fate_flow_coordinator.local_interaction_requested.is_connected(
-		_on_local_xiaocong_interaction_requested
-	):
-		fate_flow_coordinator.local_interaction_requested.connect(
-			_on_local_xiaocong_interaction_requested
-		)
-	if not fate_flow_coordinator.local_fate_vote_requested.is_connected(
-		_on_local_xiaocong_fate_choice_submitted
-	):
-		fate_flow_coordinator.local_fate_vote_requested.connect(
-			_on_local_xiaocong_fate_choice_submitted
-		)
-	if not fate_flow_coordinator.local_collectible_choice_requested.is_connected(
-		_on_local_xiaocong_collectible_choice_submitted
-	):
-		fate_flow_coordinator.local_collectible_choice_requested.connect(
-			_on_local_xiaocong_collectible_choice_submitted
-		)
-	if not fate_flow_coordinator.state_snapshot_changed.is_connected(
-		_on_xiaocong_fate_state_changed
-	):
-		fate_flow_coordinator.state_snapshot_changed.connect(
-			_on_xiaocong_fate_state_changed
-		)
 	if not fate_flow_coordinator.is_bound():
 		push_error("TowerDefenseGame: FateFlowCoordinator 依赖绑定失败。")
 		return false
 	return true
-
-
-func _emit_xiaocong_interaction_request() -> void:
-	tower_multiplayer_mode_adapter.xiaocong_interaction_requested.emit()
-
-
-func _emit_xiaocong_vote_request(
-	option_id: StringName,
-	permanent_buff_id: StringName
-) -> void:
-	tower_multiplayer_mode_adapter.xiaocong_vote_requested.emit(
-		option_id, permanent_buff_id
-	)
-
-
-func _emit_xiaocong_collectible_request(choice_index: int) -> void:
-	tower_multiplayer_mode_adapter.xiaocong_collectible_requested.emit(choice_index)
-
-
-func _emit_xiaocong_fate_state_snapshot(snapshot: Dictionary) -> void:
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		tower_multiplayer_mode_adapter.xiaocong_fate_state_changed.emit(snapshot)
 
 
 func _resume_flow_after_fate_interlude(next_step_id: StringName) -> void:
@@ -3349,35 +2933,8 @@ func _resume_flow_after_fate_interlude(next_step_id: StringName) -> void:
 	_enter_intermission(next_step)
 
 
-func _on_local_xiaocong_interaction_requested() -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		request_xiaocong_interaction(0)
-	else:
-		_emit_xiaocong_interaction_request()
-
-
-func _on_local_xiaocong_fate_choice_submitted(
-	option_id: StringName,
-	permanent_buff_id: StringName
-) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		request_xiaocong_fate_vote(0, option_id, permanent_buff_id)
-	else:
-		_emit_xiaocong_vote_request(option_id, permanent_buff_id)
-
-
-func _on_local_xiaocong_collectible_choice_submitted(choice_index: int) -> void:
-	if runtime_mode == RuntimeMode.SINGLEPLAYER:
-		request_xiaocong_collectible_choice(0, choice_index)
-	else:
-		_emit_xiaocong_collectible_request(choice_index)
-
-
 func request_xiaocong_interaction(peer_id: int) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
-		return
-	if fate_flow_coordinator != null:
-		fate_flow_coordinator.request_interaction(peer_id)
+	tower_multiplayer_mode_adapter.request_xiaocong_interaction(peer_id)
 
 
 func request_xiaocong_fate_vote(
@@ -3385,19 +2942,18 @@ func request_xiaocong_fate_vote(
 	option_id: StringName,
 	permanent_buff_id: StringName
 ) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
-		return
-	if fate_flow_coordinator != null:
-		fate_flow_coordinator.request_fate_vote(
-			peer_id, option_id, permanent_buff_id
-		)
+	tower_multiplayer_mode_adapter.request_xiaocong_fate_vote(
+		peer_id,
+		option_id,
+		permanent_buff_id
+	)
 
 
 func request_xiaocong_collectible_choice(peer_id: int, choice_index: int) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or wave_state != CombatFlowState.State.FATE_INTERLUDE:
-		return
-	if fate_flow_coordinator != null:
-		fate_flow_coordinator.request_collectible_choice(peer_id, choice_index)
+	tower_multiplayer_mode_adapter.request_xiaocong_collectible_choice(
+		peer_id,
+		choice_index
+	)
 
 
 func _is_fate_collectible_choice_pending_for_peer(peer_id: int) -> bool:
@@ -3408,24 +2964,11 @@ func _is_fate_collectible_choice_pending_for_peer(peer_id: int) -> bool:
 
 
 func get_xiaocong_fate_state_snapshot() -> Dictionary:
-	return (
-		fate_flow_coordinator.get_state_snapshot()
-		if fate_flow_coordinator != null
-		else {}
-	)
+	return tower_multiplayer_mode_adapter.get_xiaocong_fate_state_snapshot()
 
 
 func apply_remote_xiaocong_fate_state(state: Dictionary) -> void:
-	if runtime_mode != RuntimeMode.CLIENT_VIEW:
-		return
-	if int(state.get("revision", 0)) < fate_manager.state_revision:
-		return
-	if fate_flow_coordinator != null:
-		fate_flow_coordinator.apply_remote_state(state)
-
-
-func _on_xiaocong_fate_state_changed(_state: Dictionary) -> void:
-	_emit_xiaocong_fate_state_snapshot(_state)
+	tower_multiplayer_mode_adapter.apply_remote_xiaocong_fate_state(state)
 
 func _enter_xiaocong_fate_interlude(next_step: FlowStepConfig) -> void:
 	if fate_flow_coordinator != null:
@@ -3905,14 +3448,6 @@ func _show_tower_defense_wave_progress() -> void:
 			current_wave_resolved,
 			current_wave_total
 		)
-	if runtime_mode == RuntimeMode.HOST_AUTHORITY:
-		tower_multiplayer_mode_adapter.wave_progress_changed.emit(
-			current_wave_index + 1,
-			current_wave_defeated,
-			current_wave_escaped,
-			current_wave_resolved,
-			current_wave_total
-		)
 
 
 func _show_tower_defense_boss_progress(defeated: int, total: int) -> void:
@@ -4240,63 +3775,19 @@ func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
 	boss_coordinator.prepare_arena(boss_config as BossConfig)
 
 
-func _on_player_died() -> void:
-	cancel_luoxi_special_game_for_peer(0)
-	_request_enemy_retarget_after_objective_change()
-	_cancel_plant_placement()
-	_update_plant_placement_input_state()
-	presentation_coordinator.present_player_death(player)
-	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
-		return
-	_begin_local_spectator_camera()
-	player_roster_coordinator.local_player = player
-	player_roster_coordinator.begin_singleplayer_respawn()
-
-
-func _on_multiplayer_player_died(peer_id: int) -> void:
-	cancel_luoxi_special_game_for_peer(peer_id)
-	_request_enemy_retarget_after_objective_change()
-	var dead_player := get_player_for_peer(peer_id)
-	presentation_coordinator.present_player_death(dead_player)
-	if wave_state == CombatFlowState.State.VICTORY or wave_state == CombatFlowState.State.DEFEAT:
-		return
-	if peer_id == multiplayer_local_peer_id:
-		_begin_local_spectator_camera()
-
-
-func _on_player_revived(peer_id: int) -> void:
-	_request_enemy_retarget_after_objective_change()
-	clear_player_respawn_countdown(peer_id)
-	if (
-		(runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0)
-		or peer_id == multiplayer_local_peer_id
-	):
-		_end_local_spectator_camera()
-	_update_plant_placement_input_state()
-
-
 func consume_next_player_respawn_delay(peer_id: int) -> float:
-	return player_roster_coordinator.consume_next_respawn_delay(peer_id)
+	return tower_multiplayer_mode_adapter.consume_next_player_respawn_delay(peer_id)
 
 
 func update_player_respawn_countdown(peer_id: int, seconds_left: int) -> void:
-	var is_local := (
-		(runtime_mode == RuntimeMode.SINGLEPLAYER and peer_id == 0)
-		or peer_id == multiplayer_local_peer_id
-	)
-	var display_name := "玩家"
-	if runtime_mode != RuntimeMode.SINGLEPLAYER:
-		display_name = str(multiplayer_player_names.get(peer_id, "玩家 %d" % peer_id))
-	presentation_coordinator.update_player_respawn_countdown(
+	tower_multiplayer_mode_adapter.update_player_respawn_countdown(
 		peer_id,
-		display_name,
-		seconds_left,
-		is_local
+		seconds_left
 	)
 
 
 func clear_player_respawn_countdown(peer_id: int) -> void:
-	presentation_coordinator.clear_player_respawn_countdown(peer_id)
+	tower_multiplayer_mode_adapter.clear_player_respawn_countdown(peer_id)
 
 
 func _reset_player_wave_death_counts() -> void:
@@ -4373,11 +3864,7 @@ func _update_multiplayer_remote_player_passive_state(delta: float) -> void:
 
 
 func remove_multiplayer_player(peer_id: int) -> void:
-	if peer_id <= 0 or peer_id == multiplayer_local_peer_id:
-		return
-	cancel_luoxi_special_game_for_peer(peer_id)
-	player_roster_coordinator.remove_multiplayer_player(peer_id)
-	_remove_fate_eligible_peer(peer_id)
+	tower_multiplayer_mode_adapter.remove_multiplayer_player(peer_id)
 
 
 func restore_multiplayer_player(
@@ -4389,43 +3876,15 @@ func restore_multiplayer_player(
 	spawn_slot_index: int,
 	reconnect_state: Dictionary = {}
 ) -> Player:
-	if (
-		new_peer_id <= 0
-		or peer_players.has(new_peer_id)
-		or not PlayerCharacterRegistry.is_valid_character_id(character_id)
-	):
-		return null
-	if not player_roster_coordinator.prepare_restore_metadata(
+	return tower_multiplayer_mode_adapter.restore_multiplayer_player(
 		old_peer_id,
 		new_peer_id,
 		player_name,
-		character_id,
-		spawn_slot_index
-	):
-		return null
-	_remap_luoxi_collectible_claims(old_peer_id, new_peer_id)
-	var player_instance := player_roster_coordinator.restore_multiplayer_player_runtime(
-		old_peer_id,
-		new_peer_id,
 		character_id,
 		state,
 		spawn_slot_index,
 		reconnect_state
 	)
-	if player_instance == null:
-		return null
-	if fate_coordinator != null:
-		fate_coordinator.apply_player_modifiers_to_all()
-	_request_enemy_retarget_after_objective_change()
-	return player_instance
-
-
-func _remap_luoxi_collectible_claims(old_peer_id: int, new_peer_id: int) -> void:
-	if luoxi_collectible_claim_counts.has(old_peer_id):
-		luoxi_collectible_claim_counts[new_peer_id] = (
-			luoxi_collectible_claim_counts[old_peer_id]
-		)
-		luoxi_collectible_claim_counts.erase(old_peer_id)
 
 
 func get_player_for_peer(peer_id: int) -> Player:
@@ -4814,13 +4273,7 @@ func _get_wave_number_for_step(wave_config: WaveConfig) -> int:
 
 
 func _emit_multiplayer_flow_state(state: CombatFlowState.State) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	multiplayer_mode_adapter.flow_state_changed.emit(
-		_get_flow_step_id(current_flow_step),
-		int(state),
-		countdown_seconds
-	)
+	tower_multiplayer_mode_adapter.publish_flow_state(state)
 
 
 func _play_remote_boss_intro(boss_config: BossConfig) -> void:

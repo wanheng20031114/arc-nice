@@ -30,10 +30,12 @@ func _enter_victory(emit_multiplayer: bool = true) -> void:
 	super._enter_victory(emit_multiplayer)
 
 
-func apply_remote_flow_state(step_id: StringName, state: int, seconds: int) -> void:
-	super.apply_remote_flow_state(step_id, state, seconds)
-	var typed_state := state as CombatFlowState.State
-	if typed_state in [
+func _on_remote_flow_state_applied(
+	_step_id: StringName,
+	state: CombatFlowState.State,
+	_seconds: int
+) -> void:
+	if state in [
 		CombatFlowState.State.FATE_INTERLUDE,
 		CombatFlowState.State.VICTORY,
 		CombatFlowState.State.DEFEAT,
