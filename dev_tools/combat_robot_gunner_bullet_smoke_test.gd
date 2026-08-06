@@ -186,7 +186,7 @@ func _test_runtime_registration_contract() -> void:
 		"GameModeCatalog must stage-load the gunner projectile scene."
 	)
 	var telemetry_source := FileAccess.get_file_as_string(
-		"res://scene/runtime_performance_telemetry.gd"
+		"res://scene/combat/diagnostics/runtime_performance_telemetry.gd"
 	)
 	_expect(
 		telemetry_source.contains(

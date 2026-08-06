@@ -1,7 +1,7 @@
 extends RefCounted
 class_name ExplosionAudioLimiter
 
-const SPATIAL_VOICE_LIMITER := preload("res://scene/spatial_audio_voice_limiter.gd")
+const SPATIAL_VOICE_LIMITER := preload("res://scene/combat/audio/spatial_audio_voice_limiter.gd")
 const EXPLOSION_AUDIO_GROUP := &"limited_explosion_audio_players"
 const ENEMY_HIT_AUDIO_GROUP := &"limited_enemy_hit_audio_players"
 const ENEMY_DEATH_AUDIO_GROUP := &"limited_enemy_death_audio_players"

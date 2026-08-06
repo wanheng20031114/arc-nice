@@ -46,7 +46,7 @@ const POWER_WHEEL := preload("res://resources/config/collectibles/collectible_po
 const BULLET_SCENE := preload("res://scene/bullet.tscn")
 const COLLECTIBLE_ARROW_PROJECTILE_SCRIPT := preload("res://scene/collectible_arrow_projectile.gd")
 const LINGLAN_SKILL2_ROCKET_SCRIPT := preload("res://scene/boss/linglan/linglan_skill2_sakura_rocket.gd")
-const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
+const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/combat/feedback/damage_number_pool.gd")
 
 class DamageNumberTestRoot:
 	extends Node2D

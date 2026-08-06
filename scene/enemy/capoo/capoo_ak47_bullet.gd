@@ -7,7 +7,7 @@ const WORLD_COLLISION_MASK := 1
 const DAMAGEABLE_COLLISION_MASK := 2 | 512
 const WORLD_COLLISION_CHECK_INTERVAL_FRAMES := 2
 const HIT_EFFECT_SCENE := preload("res://scene/bullet_hit_effect.tscn")
-const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/combat/feedback/world_effect_visibility.gd")
 
 static var world_collision_certificate_enabled := false
 static var batched_motion_enabled := true

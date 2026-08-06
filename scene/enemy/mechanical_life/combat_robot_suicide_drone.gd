@@ -4,11 +4,11 @@ class_name CombatRobotSuicideDrone
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const COMPLETE_SHAPE_QUERY_2D := preload("res://scene/combat/physics/complete_shape_query_2d.gd")
-const ENEMY_ATTACK_AUDIO_LIMITER := preload("res://scene/enemy_attack_audio_limiter.gd")
-const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const ENEMY_ATTACK_AUDIO_LIMITER := preload("res://scene/combat/audio/enemy_attack_audio_limiter.gd")
+const EXPLOSION_AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
 const NIGHT_VFX_FLASH_POOL := preload("res://scene/lighting/night_vfx_flash_pool.gd")
 const SPATIAL_AUDIO_VOICE_LIMITER := preload(
-	"res://scene/spatial_audio_voice_limiter.gd"
+	"res://scene/combat/audio/spatial_audio_voice_limiter.gd"
 )
 
 const SOURCE_TYPE: StringName = &"combat_robot_suicide_drone"

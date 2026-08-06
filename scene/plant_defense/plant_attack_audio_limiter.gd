@@ -1,7 +1,7 @@
 extends RefCounted
 class_name PlantAttackAudioLimiter
 
-const SPATIAL_VOICE_LIMITER := preload("res://scene/spatial_audio_voice_limiter.gd")
+const SPATIAL_VOICE_LIMITER := preload("res://scene/combat/audio/spatial_audio_voice_limiter.gd")
 const AUDIO_GROUP := &"limited_plant_attack_audio_players"
 const MAX_SIMULTANEOUS_VOICES := 6
 

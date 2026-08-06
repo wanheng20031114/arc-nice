@@ -5,7 +5,7 @@ const NinjaConfig := preload(
 	"res://resources/config/enemies/combat_robot_ninja_config.gd"
 )
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const ACTION_BOOST: StringName = &"combat_robot_ninja_boost"
 const BOOST_VISUAL_STATUS_MASK := 1 << 5

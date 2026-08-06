@@ -1,6 +1,6 @@
 extends SceneTree
 
-const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
+const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/combat/feedback/damage_number_pool.gd")
 const SLOT_COUNT := 96
 const SAMPLE_PAIRS := 12
 const STEPS_PER_SAMPLE := 320

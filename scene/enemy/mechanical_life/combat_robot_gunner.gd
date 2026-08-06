@@ -5,7 +5,7 @@ const GunnerConfig := preload(
 	"res://resources/config/enemies/combat_robot_gunner_config.gd"
 )
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const ACTION_FIRE: StringName = &"combat_robot_gunner_fire"
 const PROJECTILE_TYPE: StringName = &"combat_robot_gunner_bullet"

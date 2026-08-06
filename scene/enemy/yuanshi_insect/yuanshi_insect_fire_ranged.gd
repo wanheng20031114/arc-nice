@@ -4,7 +4,7 @@ class_name YuanshiInsectFireRanged
 const WORLD_COLLISION_MASK := 1
 const FireConfig := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 
 enum CombatState {

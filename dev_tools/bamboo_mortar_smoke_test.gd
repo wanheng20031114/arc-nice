@@ -38,7 +38,7 @@ const MORTAR_EXPLOSION_AUDIO := preload(
 	"res://resources/audio/cowboy_explosion.wav"
 )
 const EXPLOSION_AUDIO_LIMITER := preload(
-	"res://scene/explosion_audio_limiter.gd"
+	"res://scene/combat/audio/explosion_audio_limiter.gd"
 )
 const ARMORED_ENEMY_CONFIG := preload(
 	"res://resources/config/enemies/yuanshi_insect_shell.tres"

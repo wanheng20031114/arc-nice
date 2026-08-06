@@ -5,7 +5,7 @@ class_name NightVfxFlashPool
 ## its additive hot-core sprite, while only the most important simultaneous
 ## flashes receive real world illumination.
 
-const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/combat/feedback/world_effect_visibility.gd")
 const POOL_GROUP := &"night_vfx_flash_pool"
 
 var _slots: Array[NightVfxFlash2D] = []

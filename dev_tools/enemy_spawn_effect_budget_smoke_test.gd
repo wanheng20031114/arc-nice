@@ -1,6 +1,6 @@
 extends SceneTree
 
-const BUDGET_SCRIPT := preload("res://scene/enemy_spawn_effect_budget.gd")
+const BUDGET_SCRIPT := preload("res://scene/combat/feedback/enemy_spawn_effect_budget.gd")
 const SPAWN_EFFECT_SCENE := preload(
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn"
 )

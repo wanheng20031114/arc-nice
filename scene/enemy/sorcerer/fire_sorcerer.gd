@@ -5,7 +5,7 @@ const FireConfig := preload(
 	"res://resources/config/enemies/fire_sorcerer_config.gd"
 )
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const ATTACK_TARGET_REFRESH_INTERVAL := 0.35
 const ATTACK_TARGET_QUERY_METHOD := &"find_nearest_enemy_attack_target_world"

@@ -3,7 +3,7 @@ extends Node2D
 class_name CombatRuntimeBase
 
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
-const EnemySpawnEffectBudgetScript := preload("res://scene/enemy_spawn_effect_budget.gd")
+const EnemySpawnEffectBudgetScript := preload("res://scene/combat/feedback/enemy_spawn_effect_budget.gd")
 const ENEMY_SPAWN_EFFECT_SCENE := preload(
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_spawn_effect.tscn"
 )

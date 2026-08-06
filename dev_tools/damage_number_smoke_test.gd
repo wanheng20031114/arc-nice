@@ -5,7 +5,7 @@ const ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_bas
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const TIYI_PLAYER_SCRIPT := preload("res://scene/player/tiyi/player_tiyi.gd")
 const AGAVE_CONFIG := preload("res://resources/config/plant_defense/agave_cannon.tres")
-const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/damage_number_pool.gd")
+const DAMAGE_NUMBER_POOL_SCRIPT := preload("res://scene/combat/feedback/damage_number_pool.gd")
 
 
 class DamageNumberOwner:

@@ -14,7 +14,7 @@
 [ext_resource type="PackedScene" uid="uid://dvti0j6pehsi8" path="res://scene/merchants/zhuangfangyi/zhuangfangyi_merchant.tscn" id="15_merchant"]
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="16_countdown"]
 [ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="17_wave_start"]
-[ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/damage_number_pool.gd" id="18_damage_pool"]
+[ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/combat/feedback/damage_number_pool.gd" id="18_damage_pool"]
 [ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="19_settings_panel"]
 [ext_resource type="PackedScene" uid="uid://cvh5s1gowuh0r" path="res://scene/merchants/luoxi/luoxi_merchant.tscn" id="20_luoxi"]
 [ext_resource type="PackedScene" path="res://scene/ui/shared/debug/debug_collectible_window.tscn" id="21_debug_collectibles"]

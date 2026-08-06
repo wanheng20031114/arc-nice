@@ -4,7 +4,7 @@ class_name LinglanBoss
 signal health_changed(current_health: int, maximum_health: int)
 signal boss_defeated
 
-const SKILL2_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const SKILL2_AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
 const LinglanSkill4ConfigScript := preload("res://resources/config/bosses/linglan_skill4_config.gd")
 const LinglanSkill4LaserFieldScript := preload("res://scene/boss/linglan/linglan_skill4_laser_field.gd")
 const LinglanSkill4LightOrbScript := preload("res://scene/boss/linglan/linglan_skill4_light_orb.gd")

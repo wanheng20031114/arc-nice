@@ -2,7 +2,7 @@ extends GPUParticles2D
 class_name PlantPlacementParticles
 
 const SPATIAL_AUDIO_VOICE_LIMITER := preload(
-	"res://scene/spatial_audio_voice_limiter.gd"
+	"res://scene/combat/audio/spatial_audio_voice_limiter.gd"
 )
 const FULL_EMISSION_DURATION := 0.7
 const EMISSION_FADE_DURATION := 0.9

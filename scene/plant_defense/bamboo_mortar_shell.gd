@@ -4,10 +4,10 @@ class_name BambooMortarShell
 signal projectile_finished(projectile_id: int, projectile: Node)
 
 const EXPLOSION_AUDIO_LIMITER := preload(
-	"res://scene/explosion_audio_limiter.gd"
+	"res://scene/combat/audio/explosion_audio_limiter.gd"
 )
 const SPATIAL_AUDIO_VOICE_LIMITER := preload(
-	"res://scene/spatial_audio_voice_limiter.gd"
+	"res://scene/combat/audio/spatial_audio_voice_limiter.gd"
 )
 const NIGHT_VFX_FLASH_POOL := preload(
 	"res://scene/lighting/night_vfx_flash_pool.gd"

@@ -4,7 +4,7 @@ class_name CapooAK47
 const WORLD_COLLISION_MASK := 1
 const CapooConfig := preload("res://resources/config/enemies/capoo_ak47_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 # Center-first ordering keeps every complete five-agent group at zero mean while
 # spreading the five-physics-tick authored burst cadence across all five phases.

@@ -2,7 +2,7 @@ extends GPUParticles2D
 class_name PlantRemovalSmoke
 
 const SPATIAL_AUDIO_VOICE_LIMITER := preload(
-	"res://scene/spatial_audio_voice_limiter.gd"
+	"res://scene/combat/audio/spatial_audio_voice_limiter.gd"
 )
 const COLLAPSE_AUDIO_GROUP := &"limited_plant_collapse_audio_players"
 const MAX_SIMULTANEOUS_COLLAPSE_VOICES := 4

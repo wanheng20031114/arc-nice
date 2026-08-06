@@ -12,7 +12,7 @@ const StoneGolemConfigScript := preload(
 	"res://resources/config/enemies/stone_golem_config.gd"
 )
 const SLAM_WORLD_EFFECT_VISIBILITY := preload(
-	"res://scene/world_effect_visibility.gd"
+	"res://scene/combat/feedback/world_effect_visibility.gd"
 )
 
 @onready var slam_impact_ring: Line2D = $SlamImpactRing

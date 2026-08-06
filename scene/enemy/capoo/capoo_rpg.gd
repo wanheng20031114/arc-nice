@@ -4,7 +4,7 @@ class_name CapooRPG
 const WORLD_COLLISION_MASK := 1
 const CapooRPGConfigScript := preload("res://resources/config/enemies/capoo_rpg_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 
 enum CombatState {

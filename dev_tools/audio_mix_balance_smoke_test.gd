@@ -35,7 +35,7 @@ const KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight.tres
 const ELITE_KNIGHT_CONFIG := preload("res://resources/config/enemies/capoo_knight_elite.tres")
 const SWORDSMAN_CONFIG := preload("res://resources/config/enemies/capoo_swordsman.tres")
 const FIRE_RANGED_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_fire_ranged.tres")
-const AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
+const AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
 const PLANT_AUDIO_LIMITER := preload(
 	"res://scene/plant_defense/plant_attack_audio_limiter.gd"
 )

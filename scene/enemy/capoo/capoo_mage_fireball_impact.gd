@@ -1,8 +1,8 @@
 extends Node2D
 class_name CapooMageFireballImpact
 
-const EXPLOSION_AUDIO_LIMITER := preload("res://scene/explosion_audio_limiter.gd")
-const SPATIAL_AUDIO_VOICE_LIMITER := preload("res://scene/spatial_audio_voice_limiter.gd")
+const EXPLOSION_AUDIO_LIMITER := preload("res://scene/combat/audio/explosion_audio_limiter.gd")
+const SPATIAL_AUDIO_VOICE_LIMITER := preload("res://scene/combat/audio/spatial_audio_voice_limiter.gd")
 const NIGHT_VFX_FLASH_POOL := preload("res://scene/lighting/night_vfx_flash_pool.gd")
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D

@@ -17,7 +17,7 @@ const FIRE_SORCERER_ELITE_FIREBALL_VOLLEY_SCENE := preload(
 const FROST_SORCERER_ICE_SPIKE_SCENE := preload(
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn"
 )
-const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
+const TELEMETRY_SCRIPT := preload("res://scene/combat/diagnostics/runtime_performance_telemetry.gd")
 const EXPECTED_WAVE_TOTAL := 1200
 const EXPECTED_MAX_ALIVE := 300
 

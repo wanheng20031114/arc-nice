@@ -16,9 +16,9 @@ extends SceneTree
 # retargeting, projectile/effect pools, camera, player collision and audio/VFX
 # budgets. Timings are diagnostic; semantic/lifecycle invariants are the gates.
 const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
-const TELEMETRY_SCRIPT := preload("res://scene/runtime_performance_telemetry.gd")
+const TELEMETRY_SCRIPT := preload("res://scene/combat/diagnostics/runtime_performance_telemetry.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const CAPOO_MAGE_FIREBALL_SCRIPT := preload(
 	"res://scene/enemy/capoo/capoo_mage_fireball.gd"

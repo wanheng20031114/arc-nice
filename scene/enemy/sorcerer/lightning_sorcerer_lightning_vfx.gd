@@ -4,7 +4,7 @@ class_name LightningSorcererLightningVfx
 ## Purely visual, pooled chain-lightning trace. Damage is resolved immediately
 ## by the enemy before this effect is requested; this node owns no collision.
 
-const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/combat/feedback/world_effect_visibility.gd")
 const NIGHT_VFX_FLASH_POOL := preload("res://scene/lighting/night_vfx_flash_pool.gd")
 
 const EFFECT_SCENE_PATH := "res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"

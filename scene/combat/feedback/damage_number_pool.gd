@@ -12,7 +12,7 @@ enum CombatNumberKind {
 }
 
 const DAMAGE_FONT := preload("res://resources/font/ResourceHanRoundedCN-Medium.ttf")
-const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/combat/feedback/world_effect_visibility.gd")
 const BASE_SIZE := Vector2(38.0, 20.0)
 const LIFETIME := 0.72
 const FONT_SIZE := 9

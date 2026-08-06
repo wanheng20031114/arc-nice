@@ -7,7 +7,7 @@ const SLASH_COLLISION_MASK := PLAYER_COLLISION_MASK | PLANT_COLLISION_MASK
 const WORLD_COLLISION_MASK := 1
 const CapooKnightConfigScript := preload("res://resources/config/enemies/capoo_knight_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const WINDUP_WARNING_SEGMENTS := 12
 

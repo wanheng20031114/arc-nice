@@ -3,7 +3,7 @@ class_name CapooSniper
 
 const SniperConfig := preload("res://resources/config/enemies/capoo_sniper_config.gd")
 const ENEMY_ATTACK_AUDIO_LIMITER := preload(
-	"res://scene/enemy_attack_audio_limiter.gd"
+	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const AIM_LINE_START_DISTANCE := 10.0
 const AIM_LINE_TARGET_PADDING := 10.0

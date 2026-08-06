@@ -5,7 +5,7 @@ signal projectile_finished(projectile_id: int, projectile: Node)
 
 const WORLD_COLLISION_MASK := 1
 const HIT_EFFECT_SCENE := preload("res://scene/boss/linglan/linglan_sakura_hit_effect.tscn")
-const WORLD_EFFECT_VISIBILITY := preload("res://scene/world_effect_visibility.gd")
+const WORLD_EFFECT_VISIBILITY := preload("res://scene/combat/feedback/world_effect_visibility.gd")
 const LIFETIME_DESPAWN_SHRINK_DURATION := 0.2
 
 @export var speed: float = 300.0

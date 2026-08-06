@@ -1,6 +1,6 @@
 extends SceneTree
 
-const LIMITER := preload("res://scene/enemy_attack_audio_limiter.gd")
+const LIMITER := preload("res://scene/combat/audio/enemy_attack_audio_limiter.gd")
 const RAPID_STREAM := preload("res://resources/audio/capoo_smg_fire.wav")
 const HEAVY_STREAM := preload("res://resources/audio/capoo_rpg_launch.wav")
 
