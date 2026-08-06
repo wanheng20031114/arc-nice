@@ -15,6 +15,17 @@ signal player_action_rpc_broadcast_requested(
 	method_name: StringName,
 	arguments: Array
 )
+signal realtime_rpc_to_host_requested(
+	method_name: StringName,
+	arguments: Array
+)
+signal player_snapshot_send_requested(
+	peer_id: int,
+	host_timestamp: float,
+	data: PackedByteArray,
+	entity_count: int
+)
+signal stale_player_peer_detected(peer_id: int)
 signal player_state_correction_requested(
 	peer_id: int,
 	corrected_position: Vector2,
@@ -34,6 +45,7 @@ const PLAYER_REVIVE_INVINCIBILITY_SECONDS := 3.0
 const HIT_DEDUP_RETENTION_SECONDS := 30.0
 const INPUT_BUTTON_RELOAD := 2
 const INPUT_BUTTON_DASH := 4
+const INPUT_CHANGE_EPSILON := 0.001
 const DASH_INPUT_REDUNDANCY_PACKETS := 3
 const DASH_COOLDOWN_NETWORK_TOLERANCE_SECONDS := 0.35
 const PLAYER_STATE_MAX_ACCEPTED_JUMP_DISTANCE := 2048.0
@@ -75,6 +87,8 @@ class HostSnapshotBatch:
 
 
 var _runtime: CombatRuntimeBase = null
+var _realtime_net_manager: NetManagerStore = null
+var _session_coordinator: MpSessionCoordinator = null
 var _net_manager: NetManagerStore = null
 var _mode_adapter: MultiplayerModeAdapter = null
 var _projectile_coordinator: MpProjectileCoordinator = null
@@ -136,6 +150,12 @@ var _last_tiyi_activation_seen_by_peer: Dictionary[int, int] = {}
 var _accepted_player_state_positions: Dictionary[int, Vector2] = {}
 var _accepted_player_state_times: Dictionary[int, float] = {}
 var _player_action_ingress_rate_buckets: Dictionary[int, Dictionary] = {}
+var _realtime_input_sequence := 0
+var _has_sent_realtime_input := false
+var _last_sent_move_input := Vector2.ZERO
+var _last_sent_shoot_input := Vector2.ZERO
+var _input_frames_since_last_send := _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
+var _client_shoot_input_was_passive_tango_aim := false
 
 
 func bind_runtime(runtime_instance: CombatRuntimeBase) -> void:
@@ -151,6 +171,7 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 	if _runtime != runtime_instance:
 		return
 	_runtime = null
+	_clear_realtime_dependencies()
 	_clear_life_dependencies()
 	_clear_player_action_dependencies()
 	reset_session_state()
@@ -158,6 +179,175 @@ func unbind_runtime(runtime_instance: CombatRuntimeBase) -> void:
 
 func is_bound() -> bool:
 	return _runtime != null and is_instance_valid(_runtime)
+
+
+func bind_realtime_dependencies(
+	net_manager_instance: NetManagerStore,
+	session_coordinator_instance: MpSessionCoordinator
+) -> void:
+	assert(
+		net_manager_instance != null,
+		"MpPlayerCoordinator 缺少实时同步 NetManagerStore。"
+	)
+	assert(
+		session_coordinator_instance != null,
+		"MpPlayerCoordinator 缺少实时同步 MpSessionCoordinator。"
+	)
+	_realtime_net_manager = net_manager_instance
+	_session_coordinator = session_coordinator_instance
+
+
+func has_realtime_dependencies() -> bool:
+	return (
+		is_bound()
+		and _realtime_net_manager != null
+		and is_instance_valid(_realtime_net_manager)
+		and _session_coordinator != null
+		and is_instance_valid(_session_coordinator)
+	)
+
+
+func update_client_realtime_input(
+	frame: int,
+	client_host_game_ready: bool
+) -> void:
+	if (
+		not has_realtime_dependencies()
+		or not _realtime_net_manager.is_client()
+		or not client_host_game_ready
+	):
+		return
+	_input_frames_since_last_send += 1
+	var buttons := 0
+	if Input.is_action_just_pressed("reload"):
+		buttons |= INPUT_BUTTON_RELOAD
+	if has_pending_dash_input_packet():
+		buttons |= INPUT_BUTTON_DASH
+	if frame % _NetConstants.INPUT_SEND_INTERVAL_FRAMES == 0 or buttons != 0:
+		send_client_input_if_needed(buttons)
+		if (buttons & INPUT_BUTTON_DASH) != 0:
+			consume_pending_dash_input_packet()
+
+
+func send_client_input_if_needed(buttons: int) -> bool:
+	if not has_realtime_dependencies() or not _realtime_net_manager.is_client():
+		return false
+	var move_input := Input.get_vector(
+		"move_left",
+		"move_right",
+		"move_up",
+		"move_down"
+	)
+	var player_node := _runtime.player
+	if player_node == null or not is_instance_valid(player_node):
+		return false
+	_client_shoot_input_was_passive_tango_aim = false
+	var combat_actions_locked := player_node.are_combat_actions_locked()
+	var shoot_input := (
+		Vector2.ZERO
+		if combat_actions_locked
+		else get_client_shoot_input()
+	)
+	var uses_passive_tango_mouse_aim := (
+		_client_shoot_input_was_passive_tango_aim
+	)
+	if combat_actions_locked:
+		buttons &= ~INPUT_BUTTON_RELOAD
+	if player_node.is_dead:
+		_last_sent_move_input = Vector2.ZERO
+		_last_sent_shoot_input = Vector2.ZERO
+		return false
+	var input_changed := (
+		not _has_sent_realtime_input
+		or move_input.distance_squared_to(_last_sent_move_input)
+		> INPUT_CHANGE_EPSILON
+		or shoot_input.distance_squared_to(_last_sent_shoot_input)
+		> INPUT_CHANGE_EPSILON
+	)
+	var keepalive_due := (
+		_input_frames_since_last_send
+		>= _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
+	)
+	var active_input_state := is_client_input_state_active(
+		move_input,
+		shoot_input,
+		player_node.velocity,
+		uses_passive_tango_mouse_aim
+	)
+	if (
+		not input_changed
+		and not keepalive_due
+		and buttons == 0
+		and not active_input_state
+	):
+		return false
+	_realtime_input_sequence += 1
+	_has_sent_realtime_input = true
+	_last_sent_move_input = move_input
+	_last_sent_shoot_input = shoot_input
+	_input_frames_since_last_send = 0
+	realtime_rpc_to_host_requested.emit(
+		&"_rpc_client_player_state",
+		[
+			_realtime_input_sequence,
+			player_node.global_position,
+			player_node.velocity,
+			move_input,
+			shoot_input,
+			buttons,
+			get_pending_dash_request_sequence(),
+			get_pending_dash_direction(),
+			get_pending_dash_start_move_input(),
+		]
+	)
+	return true
+
+
+func get_client_shoot_input() -> Vector2:
+	var shoot_input := Input.get_vector(
+		"shoot_left",
+		"shoot_right",
+		"shoot_up",
+		"shoot_down"
+	)
+	if shoot_input != Vector2.ZERO:
+		return shoot_input
+	if not is_bound() or _runtime.player == null:
+		return Vector2.ZERO
+	var passive_tango_aim := uses_passive_tango_mouse_aim(
+		_runtime.player
+	)
+	if (
+		not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		and not passive_tango_aim
+	):
+		return Vector2.ZERO
+	_client_shoot_input_was_passive_tango_aim = passive_tango_aim
+	return _runtime.player.global_position.direction_to(
+		_runtime.player.get_global_mouse_position()
+	)
+
+
+func uses_passive_tango_mouse_aim(player_node: Player) -> bool:
+	var tango_player := player_node as PlayerTango
+	return tango_player != null and tango_player.uses_passive_tango_mouse_aim()
+
+
+func is_client_input_state_active(
+	move_input: Vector2,
+	shoot_input: Vector2,
+	velocity: Vector2,
+	uses_passive_tango_aim: bool
+) -> bool:
+	return (
+		move_input != Vector2.ZERO
+		or (shoot_input != Vector2.ZERO and not uses_passive_tango_aim)
+		or velocity.length_squared() > INPUT_CHANGE_EPSILON
+	)
+
+
+func get_realtime_input_sequence() -> int:
+	return _realtime_input_sequence
 
 
 func bind_player_action_dependencies(
@@ -3478,6 +3668,14 @@ func _get_client_view_local_peer_id() -> int:
 	return int(_runtime.multiplayer_local_peer_id) if is_bound() else 0
 
 
+func _get_realtime_local_peer_id() -> int:
+	if _realtime_net_manager != null:
+		var local_peer_id := _realtime_net_manager.get_local_peer_id()
+		if local_peer_id > 0:
+			return local_peer_id
+	return int(_runtime.multiplayer_local_peer_id) if is_bound() else 0
+
+
 func _get_net_time() -> float:
 	if not _get_net_time_callable.is_valid():
 		return 0.0
@@ -3502,6 +3700,11 @@ func _clear_player_action_dependencies() -> void:
 	_is_embedded_participant_suspended_callable = Callable()
 
 
+func _clear_realtime_dependencies() -> void:
+	_realtime_net_manager = null
+	_session_coordinator = null
+
+
 func sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
 	var ready_lookup: Dictionary[int, bool] = {}
 	for peer_id in ready_peer_ids:
@@ -3515,6 +3718,85 @@ func sync_snapshot_cohort_readiness(ready_peer_ids: Array[int]) -> void:
 		_last_keyframe_time_by_peer.erase(peer_id)
 	if _snapshot_cohort_peers.is_empty():
 		_snapshot_manager.clear_player_send_baseline(SHARED_SNAPSHOT_COHORT_ID)
+
+
+func update_host_realtime_snapshots(
+	frame: int,
+	ready_peer_ids: Array[int]
+) -> void:
+	if (
+		not has_realtime_dependencies()
+		or not _realtime_net_manager.is_host()
+		or frame % _NetConstants.PLAYER_SNAPSHOT_INTERVAL_FRAMES != 0
+	):
+		return
+	broadcast_host_player_snapshots(ready_peer_ids)
+
+
+func broadcast_host_player_snapshots(ready_peer_ids: Array[int]) -> int:
+	if (
+		not has_realtime_dependencies()
+		or not _realtime_net_manager.is_host()
+		or ready_peer_ids.is_empty()
+	):
+		return 0
+	var states := _runtime.collect_player_snapshot_states()
+	if states.is_empty():
+		return 0
+	var snapshot_time := _session_coordinator.get_net_time()
+	apply_authoritative_tango_charge_snapshot_ratios(states, snapshot_time)
+	var batch := build_host_snapshot_batch(
+		states,
+		ready_peer_ids,
+		snapshot_time,
+		get_health_revisions_for_snapshot()
+	)
+	if batch == null or batch.is_empty():
+		return 0
+	for peer_id in batch.peer_ids:
+		player_snapshot_send_requested.emit(
+			peer_id,
+			batch.host_timestamp,
+			batch.data,
+			batch.entity_count
+		)
+	return batch.peer_ids.size()
+
+
+func receive_authoritative_player_snapshot(
+	host_timestamp: float,
+	data: PackedByteArray
+) -> void:
+	if (
+		not has_realtime_dependencies()
+		or not _realtime_net_manager.is_client()
+		or int(_runtime.runtime_mode) != GAME_RUNTIME_CLIENT_VIEW
+	):
+		return
+	var snapshot_time := _session_coordinator.map_host_timestamp_to_client_time(
+		host_timestamp
+	)
+	var stale_peer_ids := apply_authoritative_snapshot(
+		snapshot_time,
+		data,
+		_get_realtime_local_peer_id(),
+		has_local_tango_prediction()
+	)
+	for peer_id in stale_peer_ids:
+		stale_player_peer_detected.emit(peer_id)
+
+
+func interpolate_client_players() -> void:
+	if (
+		not has_realtime_dependencies()
+		or not _realtime_net_manager.is_client()
+		or int(_runtime.runtime_mode) != GAME_RUNTIME_CLIENT_VIEW
+	):
+		return
+	interpolate_remote_players(
+		_session_coordinator.get_net_time(),
+		_get_realtime_local_peer_id()
+	)
 
 
 func build_host_snapshot_batch(
@@ -3964,6 +4246,14 @@ func reset_session_state() -> void:
 	_player_health_revisions.clear()
 	_dead_player_revive_times.clear()
 	_dead_player_revive_last_seconds.clear()
+	_realtime_input_sequence = 0
+	_has_sent_realtime_input = false
+	_last_sent_move_input = Vector2.ZERO
+	_last_sent_shoot_input = Vector2.ZERO
+	_input_frames_since_last_send = (
+		_NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
+	)
+	_client_shoot_input_was_passive_tango_aim = false
 	_local_dash_request_sequence = 0
 	_clear_pending_dash_input()
 	_local_hoe_action_request_id = 0

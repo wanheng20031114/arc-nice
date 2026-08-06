@@ -26,13 +26,10 @@ const CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE := (
 	MpProjectileCoordinatorScript.CLIENT_PROJECTILE_SPAWN_POSITION_TOLERANCE
 )
 const CombatTargetIndexScript := preload("res://scene/combat_target_index.gd")
-const INPUT_BUTTON_RELOAD := MpPlayerCoordinator.INPUT_BUTTON_RELOAD
-const INPUT_BUTTON_DASH := MpPlayerCoordinator.INPUT_BUTTON_DASH
 const GAME_RUNTIME_HOST_AUTHORITY := 1
 const GAME_RUNTIME_CLIENT_VIEW := 2
 const STATE_DISCONNECTED := 0
 const STATE_IN_GAME := 5
-const INPUT_CHANGE_EPSILON := 0.001
 const RECENT_EVENT_PRUNE_INTERVAL_SECONDS := 5.0
 const FIRE_SORCERER_FIREBALL_VOLLEY_TYPE: StringName = (
 	&"fire_sorcerer_fireball_volley"
@@ -83,12 +80,6 @@ var _gameplay_gateway: MultiplayerGameplayGateway = null
 var _mode_adapter: MultiplayerModeAdapter = null
 var tower_mode_adapter: TowerDefenseMultiplayerModeAdapter = null
 var _linglan_boss_runtime_port: LinglanBossRuntimePort = null
-var input_sequence: int = 0
-var _has_sent_input: bool = false
-var _last_sent_move_input: Vector2 = Vector2.ZERO
-var _last_sent_shoot_input: Vector2 = Vector2.ZERO
-var _input_frames_since_last_send: int = _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
-var _client_shoot_input_was_passive_tango_aim := false
 var _next_collectible_effect_event_id: int = 1
 var _processed_collectible_effect_event_ids: Dictionary = {}
 var _disconnected_player_reconnect_states: Dictionary[int, Dictionary] = {}
@@ -259,6 +250,25 @@ func _on_player_action_rpc_broadcast_requested(
 	arguments: Array
 ) -> void:
 	_rpc_to_connected_clients(method_name, arguments)
+
+
+func _on_player_snapshot_send_requested(
+	peer_id: int,
+	host_timestamp: float,
+	data: PackedByteArray,
+	entity_count: int
+) -> void:
+	if peer_id <= 0 or not net_manager.is_host():
+		return
+	_record_snapshot_packet_size(&"player", data.size(), entity_count)
+	_rpc_receive_player_snapshot.rpc_id(peer_id, host_timestamp, data)
+
+
+func _on_stale_player_peer_detected(peer_id: int) -> void:
+	if peer_id <= 0 or game == null or not net_manager.is_client():
+		return
+	_clear_peer_network_state(peer_id)
+	game.remove_multiplayer_player(peer_id)
 
 
 func _on_projectile_rpc_to_host_requested(
@@ -1663,6 +1673,10 @@ func _setup_game(mode: int) -> bool:
 		return false
 	session_coordinator.bind_runtime(game)
 	player_coordinator.bind_runtime(game)
+	player_coordinator.bind_realtime_dependencies(
+		net_manager,
+		session_coordinator
+	)
 	enemy_coordinator.bind_runtime(game)
 	enemy_coordinator.bind_lifecycle_dependencies(
 		net_manager,
@@ -2041,8 +2055,10 @@ func _host_physics_tick(frame: int, _delta: float) -> void:
 		return
 	var client_peer_ids := _get_connected_client_peer_ids()
 	_sync_snapshot_cohort_readiness(client_peer_ids)
-	if frame % _NetConstants.PLAYER_SNAPSHOT_INTERVAL_FRAMES == 0:
-		_host_broadcast_player_snapshots(client_peer_ids)
+	player_coordinator.update_host_realtime_snapshots(
+		frame,
+		client_peer_ids
+	)
 	var enemy_snapshot_interval_frames := _get_enemy_snapshot_interval_frames()
 	if frame % enemy_snapshot_interval_frames == 0:
 		_host_broadcast_enemy_snapshots(client_peer_ids)
@@ -2057,35 +2073,9 @@ func _host_broadcast_player_snapshots(client_peer_ids: Array[int] = []) -> void:
 	if client_peer_ids.is_empty():
 		client_peer_ids = _get_connected_client_peer_ids()
 		_sync_snapshot_cohort_readiness(client_peer_ids)
-	if client_peer_ids.is_empty():
-		return
-	var states: Array[SnapshotManager.PlayerState] = game.collect_player_snapshot_states()
-	if states.is_empty():
-		return
-	var snapshot_time := _get_net_time()
-	player_coordinator.apply_authoritative_tango_charge_snapshot_ratios(
-		states,
-		snapshot_time
-	)
-	var batch := player_coordinator.build_host_snapshot_batch(
-		states,
-		client_peer_ids,
-		snapshot_time,
-		player_coordinator.get_health_revisions_for_snapshot()
-	)
-	if batch == null or batch.is_empty():
-		return
-	for peer_id in batch.peer_ids:
-		_record_snapshot_packet_size(
-			&"player",
-			batch.data.size(),
-			batch.entity_count
-		)
-		_rpc_receive_player_snapshot.rpc_id(
-			peer_id,
-			batch.host_timestamp,
-			batch.data
-		)
+	player_coordinator.broadcast_host_player_snapshots(client_peer_ids)
+
+
 func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
 	if client_peer_ids.is_empty():
 		client_peer_ids = _get_connected_client_peer_ids()
@@ -2240,97 +2230,22 @@ func _get_network_diagnostics_coordinator() -> MpNetworkDiagnosticsCoordinatorSc
 
 
 func _client_physics_tick(frame: int) -> void:
-	if not _client_host_game_ready:
-		return
-	_input_frames_since_last_send += 1
-	var buttons := 0
-	if Input.is_action_just_pressed("reload"):
-		buttons |= INPUT_BUTTON_RELOAD
-	if player_coordinator.has_pending_dash_input_packet():
-		buttons |= INPUT_BUTTON_DASH
-	if frame % _NetConstants.INPUT_SEND_INTERVAL_FRAMES == 0 or buttons != 0:
-		_client_send_input_if_needed(buttons)
-		if (buttons & INPUT_BUTTON_DASH) != 0:
-			player_coordinator.consume_pending_dash_input_packet()
+	player_coordinator.update_client_realtime_input(
+		frame,
+		_client_host_game_ready
+	)
 
 
 func _client_send_input_if_needed(buttons: int) -> void:
-	var move_input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	var player_node: Player = null
-	if game != null:
-		player_node = game.player
-	if player_node == null:
-		return
-	_client_shoot_input_was_passive_tango_aim = false
-	var shoot_input := (
-		Vector2.ZERO
-		if player_node.are_combat_actions_locked()
-		else _get_client_shoot_input()
-	)
-	var uses_passive_tango_mouse_aim := _client_shoot_input_was_passive_tango_aim
-	if player_node.are_combat_actions_locked():
-		buttons &= ~INPUT_BUTTON_RELOAD
-	if player_node.is_dead:
-		_last_sent_move_input = Vector2.ZERO
-		_last_sent_shoot_input = Vector2.ZERO
-		return
-	var input_changed := (
-		not _has_sent_input
-		or move_input.distance_squared_to(_last_sent_move_input) > INPUT_CHANGE_EPSILON
-		or shoot_input.distance_squared_to(_last_sent_shoot_input) > INPUT_CHANGE_EPSILON
-	)
-	var keepalive_due := (
-		_input_frames_since_last_send >= _NetConstants.INPUT_KEEPALIVE_INTERVAL_FRAMES
-	)
-	var active_input_state := _is_client_input_state_active(
-		move_input,
-		shoot_input,
-		player_node.velocity,
-		uses_passive_tango_mouse_aim
-	)
-	if not input_changed and not keepalive_due and buttons == 0 and not active_input_state:
-		return
-	input_sequence += 1
-	_has_sent_input = true
-	_last_sent_move_input = move_input
-	_last_sent_shoot_input = shoot_input
-	_input_frames_since_last_send = 0
-	_rpc_client_player_state.rpc_id(
-		_get_host_peer_id(),
-		input_sequence,
-		player_node.global_position,
-		player_node.velocity,
-		move_input,
-		shoot_input,
-		buttons,
-		player_coordinator.get_pending_dash_request_sequence(),
-		player_coordinator.get_pending_dash_direction(),
-		player_coordinator.get_pending_dash_start_move_input()
-	)
+	player_coordinator.send_client_input_if_needed(buttons)
 
 
 func _get_client_shoot_input() -> Vector2:
-	var shoot_input := Input.get_vector("shoot_left", "shoot_right", "shoot_up", "shoot_down")
-	if shoot_input != Vector2.ZERO:
-		return shoot_input
-	if game == null or game.player == null:
-		return Vector2.ZERO
-	var uses_passive_tango_mouse_aim := _uses_passive_tango_mouse_aim(game.player)
-	if (
-		not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-		and not uses_passive_tango_mouse_aim
-	):
-		return Vector2.ZERO
-	_client_shoot_input_was_passive_tango_aim = uses_passive_tango_mouse_aim
-	return game.player.global_position.direction_to(game.player.get_global_mouse_position())
+	return player_coordinator.get_client_shoot_input()
 
 
 func _uses_passive_tango_mouse_aim(player_node: Player) -> bool:
-	return (
-		player_node != null
-		and player_node.has_method("uses_passive_tango_mouse_aim")
-		and bool(player_node.call("uses_passive_tango_mouse_aim"))
-	)
+	return player_coordinator.uses_passive_tango_mouse_aim(player_node)
 
 
 func _is_client_input_state_active(
@@ -2339,36 +2254,27 @@ func _is_client_input_state_active(
 	velocity: Vector2,
 	uses_passive_tango_mouse_aim: bool
 ) -> bool:
-	return (
-		move_input != Vector2.ZERO
-		or (shoot_input != Vector2.ZERO and not uses_passive_tango_mouse_aim)
-		or velocity.length_squared() > INPUT_CHANGE_EPSILON
+	return player_coordinator.is_client_input_state_active(
+		move_input,
+		shoot_input,
+		velocity,
+		uses_passive_tango_mouse_aim
 	)
 
 
 func _client_interpolate_entities() -> void:
 	if game == null:
 		return
-	var current_time := _get_net_time()
-	var local_peer_id: int = _get_client_view_local_peer_id()
-	player_coordinator.interpolate_remote_players(current_time, local_peer_id)
-	enemy_coordinator.interpolate_remote_enemies(current_time)
+	player_coordinator.interpolate_client_players()
+	enemy_coordinator.interpolate_remote_enemies(_get_net_time())
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _rpc_receive_player_snapshot(host_timestamp: float, data: PackedByteArray) -> void:
-	if game == null or not is_client_view_runtime():
-		return
-	var snapshot_time := _map_host_timestamp_to_client_time(host_timestamp)
-	var stale_peer_ids := player_coordinator.apply_authoritative_snapshot(
-		snapshot_time,
-		data,
-		_get_client_view_local_peer_id(),
-		player_coordinator.has_local_tango_prediction()
+	player_coordinator.receive_authoritative_player_snapshot(
+		host_timestamp,
+		data
 	)
-	for peer_id in stale_peer_ids:
-		_clear_peer_network_state(peer_id)
-		game.remove_multiplayer_player(peer_id)
 
 
 @rpc("authority", "call_remote", "unreliable", 3)

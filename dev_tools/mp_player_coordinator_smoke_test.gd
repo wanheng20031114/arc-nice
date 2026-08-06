@@ -10,6 +10,7 @@ class ProbeRuntime:
 
 	var last_damage_number := 0
 	var probe_enemies: Dictionary[int, Enemy] = {}
+	var probe_player_snapshot_states: Array[SnapshotManager.PlayerState] = []
 
 	func configure_multiplayer(
 		_mode: int,
@@ -32,7 +33,7 @@ class ProbeRuntime:
 		peer_players.erase(peer_id)
 
 	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
-		return []
+		return probe_player_snapshot_states
 
 	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
 		return []
@@ -64,6 +65,10 @@ class ProbePlayer:
 	var dash_protection_accept := true
 	var dash_protection_count := 0
 	var remote_dash_visual_count := 0
+	var snapshot_motion_apply_count := 0
+	var realtime_snapshot_apply_count := 0
+	var move_speed_multiplier_apply_count := 0
+	var primary_cooldown_apply_count := 0
 
 	func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
 		current_health = new_health
@@ -116,6 +121,47 @@ class ProbePlayer:
 
 	func play_remote_dash_visual(_direction: Vector2) -> void:
 		remote_dash_visual_count += 1
+
+	func apply_multiplayer_snapshot_motion(
+		remote_position: Vector2,
+		remote_velocity: Vector2,
+		_facing_id: int,
+		_anim_state: int
+	) -> void:
+		snapshot_motion_apply_count += 1
+		global_position = remote_position
+		velocity = remote_velocity
+
+	func apply_multiplayer_realtime_state(
+		new_current_health: int,
+		new_max_health: int,
+		_new_current_xirang: int,
+		new_is_dead: bool,
+		new_invincibility_time_left: float,
+		_new_skill1_unlocked: bool,
+		_new_skill1_charge: float,
+		_new_skill1_charge_duration: float,
+		_new_form_mode: int,
+		_new_shot_pattern: int,
+		_new_skill1_upgrade_level: int = -1,
+		_new_ammo_capacity: int = -1,
+		_new_current_ammo: int = -1,
+		_new_is_reloading: bool = false,
+		_new_reload_progress: float = 0.0
+	) -> void:
+		realtime_snapshot_apply_count += 1
+		current_health = new_current_health
+		max_health = new_max_health
+		is_dead = new_is_dead
+		invincibility_time_left = new_invincibility_time_left
+
+	func apply_multiplayer_effective_move_speed_multiplier(
+		_multiplier: float
+	) -> void:
+		move_speed_multiplier_apply_count += 1
+
+	func apply_multiplayer_primary_cooldown_ratio(_ratio: float) -> void:
+		primary_cooldown_apply_count += 1
 
 
 class ProbeHoePlayer:
@@ -398,6 +444,9 @@ var _probe_action_to_host_methods: Array[StringName] = []
 var _probe_action_to_peer_methods: Array[StringName] = []
 var _probe_state_correction_count := 0
 var _probe_tiyi_damage_ids := PackedInt32Array()
+var _probe_realtime_rpc_packets: Array[Dictionary] = []
+var _probe_player_snapshot_packets: Array[Dictionary] = []
+var _probe_stale_player_ids: Array[int] = []
 
 
 func _init() -> void:
@@ -405,6 +454,7 @@ func _init() -> void:
 
 
 func _run() -> void:
+	_run_realtime_orchestration_smoke()
 	var coordinator := (
 		PLAYER_COORDINATOR_SCENE.instantiate() as MpPlayerCoordinator
 	)
@@ -1278,6 +1328,133 @@ func _run() -> void:
 	quit(1)
 
 
+func _run_realtime_orchestration_smoke() -> void:
+	var coordinator := (
+		PLAYER_COORDINATOR_SCENE.instantiate() as MpPlayerCoordinator
+	)
+	var runtime := ProbeRuntime.new()
+	var net_manager := ProbeNetManager.new()
+	var session_coordinator := MpSessionCoordinator.new()
+	coordinator.bind_runtime(runtime)
+	coordinator.bind_realtime_dependencies(net_manager, session_coordinator)
+	coordinator.realtime_rpc_to_host_requested.connect(
+		_probe_on_realtime_rpc_to_host
+	)
+	coordinator.player_snapshot_send_requested.connect(
+		_probe_on_player_snapshot_send
+	)
+	coordinator.stale_player_peer_detected.connect(
+		_probe_on_stale_player_peer
+	)
+
+	_probe_realtime_rpc_packets.clear()
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	runtime.multiplayer_local_peer_id = 4
+	var local_player := ProbePlayer.new()
+	local_player.peer_id = 4
+	local_player.character_id = &"weishidaier"
+	local_player.global_position = Vector2(120.0, 72.0)
+	local_player.velocity = Vector2.ZERO
+	runtime.player = local_player
+	runtime.peer_players[4] = local_player
+	_expect(
+		coordinator.send_client_input_if_needed(0),
+		"客户端首次实时输入必须由玩家协调器发出。"
+	)
+	_expect(
+		_probe_realtime_rpc_packets.size() == 1,
+		"客户端实时输入必须只请求一次根 RPC 发送。"
+	)
+	if _probe_realtime_rpc_packets.size() == 1:
+		var realtime_packet := _probe_realtime_rpc_packets[0]
+		var realtime_arguments := realtime_packet.get("arguments", []) as Array
+		_expect(
+			realtime_packet.get("method_name", &"")
+			== &"_rpc_client_player_state"
+			and realtime_arguments.size() == 9
+			and int(realtime_arguments[0]) == 1
+			and realtime_arguments[1] == Vector2(120.0, 72.0),
+			"实时输入请求必须保持既有 RPC 名称、参数顺序与首序列。"
+		)
+	_expect(
+		not coordinator.send_client_input_if_needed(0)
+		and _probe_realtime_rpc_packets.size() == 1,
+		"无变化且未到 keepalive 时不得重复发送静止输入。"
+	)
+
+	coordinator.reset_session_state()
+	_probe_player_snapshot_packets.clear()
+	net_manager.host_mode = true
+	net_manager.client_mode = false
+	net_manager.local_peer_id = 1
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+	runtime.multiplayer_local_peer_id = 1
+	var host_state := SnapshotManager.PlayerState.new()
+	host_state.peer_id = 2
+	host_state.character_id = &"weishidaier"
+	host_state.position = Vector2(240.0, 96.0)
+	host_state.velocity = Vector2(12.0, 0.0)
+	host_state.current_health = 75
+	host_state.max_health = 100
+	runtime.probe_player_snapshot_states = [host_state]
+	coordinator.sync_snapshot_cohort_readiness([2])
+	_expect(
+		coordinator.broadcast_host_player_snapshots([2]) == 1,
+		"Host 玩家快照编排必须返回实际发送 peer 数。"
+	)
+	_expect(
+		_probe_player_snapshot_packets.size() == 1
+		and int(_probe_player_snapshot_packets[0].get("peer_id", 0)) == 2
+		and int(_probe_player_snapshot_packets[0].get("entity_count", 0)) == 1,
+		"Host 玩家快照必须经根节点发送信号携带接收者与实体数。"
+	)
+
+	if _probe_player_snapshot_packets.size() == 1:
+		var snapshot_packet := _probe_player_snapshot_packets[0]
+		coordinator.reset_session_state()
+		_probe_stale_player_ids.clear()
+		net_manager.host_mode = false
+		net_manager.client_mode = true
+		net_manager.local_peer_id = 4
+		runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+		runtime.multiplayer_local_peer_id = 4
+		var remote_player := ProbePlayer.new()
+		remote_player.peer_id = 2
+		remote_player.character_id = &"weishidaier"
+		var stale_player := ProbePlayer.new()
+		stale_player.peer_id = 5
+		stale_player.character_id = &"weishidaier"
+		runtime.peer_players.clear()
+		runtime.peer_players[2] = remote_player
+		runtime.peer_players[5] = stale_player
+		coordinator.receive_authoritative_player_snapshot(
+			float(snapshot_packet.get("host_timestamp", 0.0)),
+			snapshot_packet.get("data", PackedByteArray()) as PackedByteArray
+		)
+		coordinator.interpolate_client_players()
+		_expect(
+			remote_player.realtime_snapshot_apply_count == 1
+			and remote_player.snapshot_motion_apply_count == 1,
+			"客户端玩家快照必须应用实时状态并进入远端插值。"
+		)
+		_expect(
+			_probe_stale_player_ids == [5],
+			"完整玩家名单快照必须通知根节点清理陈旧 peer。"
+		)
+		runtime.peer_players.clear()
+		remote_player.free()
+		stale_player.free()
+
+	runtime.player = null
+	runtime.peer_players.clear()
+	local_player.free()
+	coordinator.unbind_runtime(runtime)
+	runtime.free()
+	net_manager.free()
+	session_coordinator.free()
+	coordinator.free()
+
+
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
@@ -1313,6 +1490,34 @@ func _probe_commit_revive_position(
 
 func _probe_is_embedded_participant_suspended(_peer_id: int) -> bool:
 	return false
+
+
+func _probe_on_realtime_rpc_to_host(
+	method_name: StringName,
+	arguments: Array
+) -> void:
+	_probe_realtime_rpc_packets.append({
+		"method_name": method_name,
+		"arguments": arguments.duplicate(true),
+	})
+
+
+func _probe_on_player_snapshot_send(
+	peer_id: int,
+	host_timestamp: float,
+	data: PackedByteArray,
+	entity_count: int
+) -> void:
+	_probe_player_snapshot_packets.append({
+		"peer_id": peer_id,
+		"host_timestamp": host_timestamp,
+		"data": data.duplicate(),
+		"entity_count": entity_count,
+	})
+
+
+func _probe_on_stale_player_peer(peer_id: int) -> void:
+	_probe_stale_player_ids.append(peer_id)
 
 
 func _probe_on_action_rpc_to_host(
