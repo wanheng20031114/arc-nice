@@ -68,6 +68,7 @@ func _init() -> void:
 
 
 func _run() -> void:
+	await _test_campaign_coordinator_contract()
 	_test_progression_resource()
 	_test_player_count_scaling()
 	_test_formal_economy()
@@ -86,6 +87,64 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_campaign_coordinator_contract() -> void:
+	var empty_definition := GameModeDefinition.new()
+	var isolated_coordinator := TowerDefenseCampaignCoordinator.new()
+	_expect(
+		not isolated_coordinator.configure(
+			int(CombatRuntimeBase.RuntimeMode.SINGLEPLAYER),
+			empty_definition,
+			null,
+			null,
+			null
+		)
+		and isolated_coordinator.configuration_errors.size() == 1,
+		"Empty mode paths must fail as campaign configuration, without calling load on an empty path."
+	)
+	isolated_coordinator.free()
+	var game := GAME_SCENE.instantiate() as TowerDefenseGame
+	_disable_tower_fixture_background_loads(game)
+	game.auto_start_waves = false
+	root.add_child(game)
+	await process_frame
+	var coordinator := game.get_node_or_null(
+		"CampaignCoordinator"
+	) as TowerDefenseCampaignCoordinator
+	_expect(
+		coordinator != null
+		and game.campaign_coordinator == coordinator
+		and coordinator.active_campaign == game.active_campaign
+		and coordinator.flow_graph == game.flow_graph
+		and coordinator.waves == game.waves
+		and coordinator.bosses == game.bosses,
+		"Tower campaign rules must be authored as one static coordinator and remain the root façade source."
+	)
+	var wave_trace: Array[String] = []
+	if coordinator != null:
+		for wave_index in range(coordinator.waves.size()):
+			var wave := coordinator.waves[wave_index]
+			wave_trace.append("%s:%d:%d:%d:%d" % [
+				String(wave.step_id),
+				coordinator.get_wave_number_for_step(wave, -1),
+				coordinator.get_day_number_for_wave(wave_index + 1),
+				int(coordinator.is_night_wave(wave_index + 1)),
+				int(coordinator.is_day_end_wave(wave_index + 1)),
+			])
+	_expect(
+		wave_trace == [
+			"wave_01:1:1:0:0", "wave_02:2:1:0:0",
+			"wave_03:3:1:1:0", "wave_04:4:1:1:1",
+			"wave_05:5:2:0:0", "wave_06:6:2:0:0",
+			"wave_07:7:2:1:0", "wave_08:8:2:1:1",
+			"wave_09:9:3:0:0", "wave_10:10:3:0:0",
+			"wave_11:11:3:1:0", "wave_12:12:3:1:1",
+		],
+		"Fixed tower campaign trace must preserve wave order, day mapping, night phases and day endings."
+	)
+	game.queue_free()
+	await _wait_for_freed(game)
 
 
 func _test_progression_resource() -> void:

@@ -182,6 +182,9 @@ var _singleplayer_tango_charge_started_at: float = -1.0
 @onready var debug_collectible_window: DebugCollectibleWindow = $SettingsLayer/DebugCollectibleWindow
 @onready var merchant: ZhuangfangyiMerchant = $ZhuangfangyiMerchant
 @onready var luoxi_merchant: TowerDefenseLuoxiMerchant = $LuoxiMerchant
+@onready var campaign_coordinator: TowerDefenseCampaignCoordinator = (
+	$CampaignCoordinator
+)
 @onready var tower_multiplayer_mode_adapter: TowerDefenseMultiplayerModeAdapter = (
 	multiplayer_mode_adapter as TowerDefenseMultiplayerModeAdapter
 )
@@ -714,29 +717,29 @@ func _apply_wave_start_lighting(wave_number: int) -> void:
 
 
 func _apply_intermission_lighting(completed_wave_number: int) -> void:
-	if day_cycle_config.is_night_intermission_after_wave(completed_wave_number):
+	if campaign_coordinator.is_night_intermission_after_wave(completed_wave_number):
 		transition_world_to_night()
 	else:
 		transition_world_to_day()
 
 
 func _is_night_wave(wave_number: int) -> bool:
-	return day_cycle_config.is_night_wave(wave_number)
+	return campaign_coordinator.is_night_wave(wave_number)
 
 
 func _get_day_number_for_wave(wave_number: int) -> int:
-	return day_cycle_config.get_day_number(wave_number)
+	return campaign_coordinator.get_day_number_for_wave(wave_number)
 
 
 func _announce_wave_phase_start(wave_number: int) -> bool:
 	if not day_phase_announcements_enabled or day_phase_announcement == null:
 		return false
 	var safe_wave := maxi(wave_number, 1)
-	var wave_in_day := day_cycle_config.get_wave_in_day(safe_wave)
+	var wave_in_day := campaign_coordinator.get_wave_in_day(safe_wave)
 	if wave_in_day not in [1, day_cycle_config.night_start_wave_in_day]:
 		return false
-	var is_night := day_cycle_config.is_night_wave(safe_wave)
-	var day_number := day_cycle_config.get_day_number(safe_wave)
+	var is_night := campaign_coordinator.is_night_wave(safe_wave)
+	var day_number := campaign_coordinator.get_day_number_for_wave(safe_wave)
 	var announcement_key := StringName("%d:%d" % [day_number, int(is_night)])
 	if announcement_key == _last_day_phase_announcement_key:
 		return true
@@ -883,37 +886,45 @@ func _configure_active_campaign() -> bool:
 		definition = GameModeCatalog.get_definition(
 			GameModeCatalog.MODE_TOWER_DEFENSE
 		)
-	if definition != null and singleplayer_campaign == null:
-		singleplayer_campaign = load(
-			definition.singleplayer_campaign_path
-		) as WaveCampaignConfig
-	if definition != null and multiplayer_campaign == null:
-		multiplayer_campaign = load(
-			definition.multiplayer_campaign_path
-		) as WaveCampaignConfig
-	active_campaign = (
-		singleplayer_campaign
-		if runtime_mode == RuntimeMode.SINGLEPLAYER
-		else multiplayer_campaign
+	var configured := campaign_coordinator.configure(
+		int(runtime_mode),
+		definition,
+		singleplayer_campaign,
+		multiplayer_campaign,
+		day_cycle_config
 	)
+	singleplayer_campaign = campaign_coordinator.singleplayer_campaign
+	multiplayer_campaign = campaign_coordinator.multiplayer_campaign
+	active_campaign = campaign_coordinator.active_campaign
 	if active_campaign == null:
 		push_error("TowerDefenseGame: 模式定义无法解析当前运行模式的 Campaign。")
-	flow_graph = null
-	waves.clear()
-	bosses.clear()
-	if active_campaign == null:
 		push_error("TowerDefenseGame: 当前运行模式没有配置 WaveCampaignConfig。")
 		return false
-	var campaign_errors := active_campaign.validate_campaign()
-	if not campaign_errors.is_empty():
-		for error in campaign_errors:
-			push_error(error)
+	for error in campaign_coordinator.configuration_errors:
+		push_error(error)
+	if not configured:
 		return false
-	flow_graph = active_campaign.flow_graph
-	waves.assign(active_campaign.get_waves())
-	for boss_config in active_campaign.get_bosses():
-		bosses.append(boss_config)
+	_sync_campaign_facade_from_coordinator()
 	return true
+
+
+func replace_campaign_runtime_state_for_fixture(
+	fixture_flow_graph: FlowGraphConfig,
+	fixture_waves: Array[WaveConfig],
+	fixture_bosses: Array[Resource]
+) -> void:
+	campaign_coordinator.replace_runtime_state_for_fixture(
+		fixture_flow_graph,
+		fixture_waves,
+		fixture_bosses
+	)
+	_sync_campaign_facade_from_coordinator()
+
+
+func _sync_campaign_facade_from_coordinator() -> void:
+	flow_graph = campaign_coordinator.flow_graph
+	waves.assign(campaign_coordinator.waves)
+	bosses.assign(campaign_coordinator.bosses)
 
 
 func _configure_singleplayer_player() -> void:
@@ -3475,18 +3486,7 @@ func _get_first_boss_config() -> Resource:
 
 
 func _get_configured_bosses() -> Array[BossConfig]:
-	var result: Array[BossConfig] = []
-	if flow_graph != null:
-		for step in flow_graph.steps:
-			var boss_step := step as BossConfig
-			if boss_step != null:
-				result.append(boss_step)
-	if result.is_empty():
-		for boss_resource in bosses:
-			var boss_config := boss_resource as BossConfig
-			if boss_config != null:
-				result.append(boss_config)
-	return result
+	return campaign_coordinator.get_configured_bosses()
 
 
 func _boss_config_has_required_data(boss_config: Resource) -> bool:
@@ -3726,7 +3726,7 @@ func _get_current_intermission_seconds() -> int:
 	var completed_wave_number := maxi(current_wave_index + 1, 1)
 	return (
 		_get_new_day_preparation_seconds()
-		if day_cycle_config.is_day_end_wave(completed_wave_number)
+		if campaign_coordinator.is_day_end_wave(completed_wave_number)
 		else _get_wave_intermission_seconds()
 	)
 
@@ -5256,7 +5256,7 @@ func _complete_current_step() -> void:
 	)
 	var completed_day := (
 		completed_wave != null
-		and day_cycle_config.is_day_end_wave(completed_wave_number)
+		and campaign_coordinator.is_day_end_wave(completed_wave_number)
 	)
 	if completed_day:
 		_record_progression_day(_get_day_number_for_wave(completed_wave_number))
@@ -5270,11 +5270,12 @@ func _complete_current_step() -> void:
 
 
 func _record_progression_day(day_number: int) -> void:
-	if runtime_mode == RuntimeMode.CLIENT_VIEW or day_number <= 0:
+	if not campaign_coordinator.should_record_day(
+		int(runtime_mode),
+		day_number,
+		progression_day_records
+	):
 		return
-	for record in progression_day_records:
-		if int(record.get("day", 0)) == day_number:
-			return
 	var inventory_materials := _get_tracked_inventory_material_totals()
 	var shared_materials := _get_tracked_shared_material_totals()
 	var combined_materials := inventory_materials.duplicate()
@@ -6545,7 +6546,7 @@ func _is_flow_system_ready() -> bool:
 		return false
 	if not _is_spawn_system_ready():
 		return false
-	var errors := flow_graph.validate_graph()
+	var errors := campaign_coordinator.validate_flow_graph()
 	for error in errors:
 		push_warning(error)
 	if not errors.is_empty():
@@ -6554,41 +6555,26 @@ func _is_flow_system_ready() -> bool:
 
 
 func _get_start_flow_step() -> FlowStepConfig:
-	return flow_graph.start_step if flow_graph != null else null
+	return campaign_coordinator.get_start_flow_step()
 
 
 func _get_flow_step_by_id(step_id: StringName) -> FlowStepConfig:
-	if step_id == &"":
-		return null
-	return flow_graph.get_step_by_id(step_id) if flow_graph != null else null
+	return campaign_coordinator.get_flow_step_by_id(step_id)
 
 
 func _get_flow_step_id(flow_step: FlowStepConfig) -> StringName:
-	return flow_step.step_id if flow_step != null else &""
+	return campaign_coordinator.get_flow_step_id(flow_step)
 
 
 func _get_default_next_flow_step(flow_step: FlowStepConfig) -> FlowStepConfig:
-	if flow_step == null:
-		return null
-	if flow_graph == null or flow_graph.get_step_index(flow_step) < 0:
-		return null
-	return flow_graph.get_default_next_step(flow_step)
+	return campaign_coordinator.get_default_next_flow_step(flow_step)
 
 
 func _get_wave_number_for_step(wave_config: WaveConfig) -> int:
-	if wave_config == null:
-		return current_wave_index + 1
-	var wave_index := waves.find(wave_config)
-	if wave_index >= 0:
-		return wave_index + 1
-	if flow_graph != null:
-		var wave_number := 0
-		for step in flow_graph.steps:
-			if step is WaveConfig:
-				wave_number += 1
-			if step == wave_config:
-				return maxi(wave_number, 1)
-	return current_wave_index + 1
+	return campaign_coordinator.get_wave_number_for_step(
+		wave_config,
+		current_wave_index
+	)
 
 
 func _emit_multiplayer_flow_state(state: CombatFlowState.State) -> void:

@@ -59,6 +59,7 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_mode_adapter.tscn" id="60_mode_adapter"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/boss/tower_defense_linglan_boss_runtime_port.tscn" id="61_linglan_port"]
 [ext_resource type="Script" path="res://scene/game_modes/tower_defense/multiplayer/tower_plant_gameplay_bridge.gd" id="62_plant_gameplay_bridge"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/campaign/tower_defense_campaign_coordinator.tscn" id="63_campaign_coordinator"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -163,6 +164,8 @@ linglan_boss_enabled = true
 [node name="MultiplayerGameplayGateway" parent="." instance=ExtResource("59_gameplay_gateway")]
 
 [node name="MultiplayerModeAdapter" parent="." instance=ExtResource("60_mode_adapter")]
+
+[node name="CampaignCoordinator" parent="." instance=ExtResource("63_campaign_coordinator")]
 
 [node name="TowerPlantGameplayPort" type="Node" parent="."]
 script = ExtResource("62_plant_gameplay_bridge")

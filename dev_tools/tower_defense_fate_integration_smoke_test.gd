@@ -151,6 +151,7 @@ func _test_elite_config_prewarm() -> void:
 
 func _test_day_and_lighting_boundaries() -> void:
 	var probe := LightingProbe.new()
+	_attach_campaign_coordinator(probe)
 	var expected_days := [1, 1, 1, 1, 2, 2, 2, 2, 3]
 	for wave_index in range(expected_days.size()):
 		var wave_number := wave_index + 1
@@ -193,6 +194,7 @@ func _test_wave_completion_boundaries() -> void:
 	var next_wave := WaveConfig.new()
 	for wave_number in [1, 3, 5]:
 		var probe := FlowBoundaryProbe.new()
+		_attach_campaign_coordinator(probe)
 		probe.current_flow_step = WaveConfig.new()
 		probe.probe_wave_number = wave_number
 		probe.probe_next_step = next_wave
@@ -204,6 +206,7 @@ func _test_wave_completion_boundaries() -> void:
 		probe.free()
 
 	var day_end_probe := FlowBoundaryProbe.new()
+	_attach_campaign_coordinator(day_end_probe)
 	day_end_probe.current_flow_step = WaveConfig.new()
 	day_end_probe.probe_wave_number = 4
 	day_end_probe.probe_next_step = next_wave
@@ -216,6 +219,7 @@ func _test_wave_completion_boundaries() -> void:
 	day_end_probe.free()
 
 	var terminal_probe := FlowBoundaryProbe.new()
+	_attach_campaign_coordinator(terminal_probe)
 	terminal_probe.current_flow_step = WaveConfig.new()
 	terminal_probe.probe_wave_number = 12
 	terminal_probe.probe_next_step = null
@@ -751,3 +755,10 @@ func _disable_tower_fixture_background_loads(game: TowerDefenseGame) -> void:
 	var coordinator := game.get_node_or_null("FateCoordinator") as FateCoordinator
 	if coordinator != null:
 		coordinator.elite_enemy_config_loads_requested = true
+
+
+func _attach_campaign_coordinator(game: TowerDefenseGame) -> void:
+	var coordinator := TowerDefenseCampaignCoordinator.new()
+	coordinator.day_cycle_config = game.day_cycle_config
+	game.add_child(coordinator)
+	game.campaign_coordinator = coordinator

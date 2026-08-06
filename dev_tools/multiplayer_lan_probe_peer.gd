@@ -24,7 +24,7 @@ const TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
 )
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const LINGLAN_BOSS_ENTRY := preload("res://resources/config/bosses/boss_01_linglan.tres")
+const LINGLAN_BOSS_ENTRY_PATH := "res://resources/config/bosses/boss_01_linglan.tres"
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
 const PLANK_MATERIAL := preload("res://resources/config/materials/material_plank.tres")
 const AGAVE_BUILDING_ITEM := preload(
@@ -64,6 +64,7 @@ var failures: Array[String] = []
 var probe_scenario := PROBE_SCENARIO_FULL
 var probe_game_mode := "standard"
 var probe_transport_mode := PROBE_MODE_LAN
+var probe_linglan_boss_entry: BossConfig = null
 var tower_defense_warehouse_transaction_submitted := false
 var probe_reconnect_attempt := false
 
@@ -1848,7 +1849,7 @@ func _run_host_boss_probe(game: Variant) -> void:
 			var config_path := boss_config.resource_path if boss_config != null else ""
 			print("LAN_PROBE_EVENT host_boss_started_signal net_id=%d config=%s" % [net_id, config_path])
 	)
-	game.call("_enter_pre_flow_step", LINGLAN_BOSS_ENTRY)
+	game.call("_enter_pre_flow_step", probe_linglan_boss_entry)
 	await _wait_frames(2)
 	if not await _wait_for_game_wave_state(game, CombatFlowState.State.BOSS_INTRO, 4.0):
 		_fail("Host boss probe did not enter boss intro.")
@@ -3393,14 +3394,23 @@ func _disable_probe_wave_flow(game: Variant) -> void:
 
 func _configure_probe_wave_flow(game: Variant) -> void:
 	_disable_probe_wave_flow(game)
-	game.waves = _create_probe_waves()
+	var probe_waves := _create_probe_waves()
 	var flow_graph := FlowGraphConfig.new()
 	flow_graph.graph_name = "Probe Flow"
-	for wave_config in game.waves:
+	for wave_config in probe_waves:
 		flow_graph.steps.append(wave_config)
 	if not flow_graph.steps.is_empty():
 		flow_graph.start_step = flow_graph.steps[0]
-	game.flow_graph = flow_graph
+	if _runtime_uses_tower_defense(game):
+		var no_bosses: Array[Resource] = []
+		(game as TowerDefenseGame).replace_campaign_runtime_state_for_fixture(
+			flow_graph,
+			probe_waves,
+			no_bosses
+		)
+	else:
+		game.waves = probe_waves
+		game.flow_graph = flow_graph
 	# The probe starts wave one directly, but still needs a non-zero ordinary
 	# intermission so clearing it can be observed before wave two begins. Keep
 	# this one-enemy transport fixture independent from formal player scaling;
@@ -3424,15 +3434,23 @@ func _configure_probe_wave_flow(game: Variant) -> void:
 
 func _configure_probe_boss_flow(game: Variant) -> void:
 	_disable_probe_wave_flow(game)
-	var boss_resources: Array[Resource] = [LINGLAN_BOSS_ENTRY]
-	game.bosses = boss_resources
+	probe_linglan_boss_entry = load(LINGLAN_BOSS_ENTRY_PATH) as BossConfig
+	if probe_linglan_boss_entry == null:
+		_fail("Boss probe could not load the Linglan flow entry.")
+		return
+	var boss_resources: Array[Resource] = [probe_linglan_boss_entry]
 	var flow_graph := FlowGraphConfig.new()
 	flow_graph.graph_name = "Probe Boss Flow"
-	flow_graph.start_step = LINGLAN_BOSS_ENTRY
-	var flow_steps: Array[FlowStepConfig] = [LINGLAN_BOSS_ENTRY]
+	flow_graph.start_step = probe_linglan_boss_entry
+	var flow_steps: Array[FlowStepConfig] = [probe_linglan_boss_entry]
 	flow_graph.steps = flow_steps
-	game.flow_graph = flow_graph
 	if _runtime_uses_tower_defense(game):
+		var no_waves: Array[WaveConfig] = []
+		(game as TowerDefenseGame).replace_campaign_runtime_state_for_fixture(
+			flow_graph,
+			no_waves,
+			boss_resources
+		)
 		var boss_progression := (
 			game.progression_config.duplicate(true)
 			as TowerDefenseProgressionConfig
@@ -3442,6 +3460,8 @@ func _configure_probe_boss_flow(game: Variant) -> void:
 		boss_progression.new_day_preparation_seconds = 0.0
 		game.progression_config = boss_progression
 	else:
+		game.bosses = boss_resources
+		game.flow_graph = flow_graph
 		game.pre_wave_duration = 0.0
 	game.current_flow_step = null
 	game.next_flow_step_after_rest = null
@@ -3486,8 +3506,14 @@ func _detach_probe_scene_disconnect_handlers(net_manager: Node, mp_game, game) -
 		net_manager.player_left.disconnect(player_left_callable)
 	if is_instance_valid(game):
 		var lobby_callable := Callable(mp_game, "_on_game_return_to_lobby_requested")
-		if game.return_to_lobby_requested.is_connected(lobby_callable):
-			game.return_to_lobby_requested.disconnect(lobby_callable)
+		var mode_adapter := (
+			game.get_multiplayer_mode_adapter() as MultiplayerModeAdapter
+		)
+		if (
+			mode_adapter != null
+			and mode_adapter.return_to_lobby_requested.is_connected(lobby_callable)
+		):
+			mode_adapter.return_to_lobby_requested.disconnect(lobby_callable)
 
 
 func _cleanup_current_scene() -> void:
