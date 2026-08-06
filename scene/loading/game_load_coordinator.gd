@@ -50,6 +50,7 @@ var _target_progress := 0.0
 var _load_started_msec := 0
 var _scene_switch_frame := 0
 var _request_generation := 0
+var _net_manager: NetManagerStore = null
 
 
 func _ready() -> void:
@@ -57,12 +58,14 @@ func _ready() -> void:
 	overlay.hide()
 	retry_button.pressed.connect(_on_retry_pressed)
 	back_button.pressed.connect(_on_back_pressed)
-	var net_manager := get_node_or_null("/root/NetManager")
-	if net_manager != null:
-		if net_manager.has_signal("game_load_progress_changed"):
-			net_manager.game_load_progress_changed.connect(_on_game_load_progress_changed)
-		if net_manager.has_signal("connection_state_changed"):
-			net_manager.connection_state_changed.connect(_on_connection_state_changed)
+	_net_manager = NetManagerStore.get_autoload_instance()
+	if _net_manager != null:
+		_net_manager.game_load_progress_changed.connect(
+			_on_game_load_progress_changed
+		)
+		_net_manager.connection_state_changed.connect(
+			_on_connection_state_changed
+		)
 
 
 func begin_singleplayer(scene_path: String) -> void:
@@ -128,23 +131,25 @@ func _get_definition_for_runtime_or_entry(scene_path: String) -> GameModeDefinit
 func begin_multiplayer() -> void:
 	if _state != LoadState.IDLE and _state != LoadState.FAILED:
 		return
-	var net_manager := get_node_or_null("/root/NetManager")
-	if net_manager == null:
+	if _net_manager == null:
 		_is_multiplayer_load = true
 		_show_error("无法读取多人会话。")
 		return
-	var game_mode := int(net_manager.get("current_game_mode"))
+	var game_mode := int(_net_manager.get_current_game_mode())
 	var definition := GameModeCatalog.get_definition(game_mode)
 	if definition == null:
 		_is_multiplayer_load = true
 		_show_error("无法识别多人游戏模式：%d" % game_mode)
 		return
 	var entry_path := definition.multiplayer_entry_scene_path
-	var manifest := _build_multiplayer_manifest(game_mode, net_manager)
+	var manifest := _build_multiplayer_manifest(game_mode, _net_manager)
 	_begin_load(entry_path, manifest, true)
 
 
-func _build_multiplayer_manifest(game_mode: int, net_manager: Node) -> Array[String]:
+func _build_multiplayer_manifest(
+	game_mode: int,
+	net_manager: NetManagerStore
+) -> Array[String]:
 	var definition := GameModeCatalog.get_definition(game_mode)
 	if definition == null:
 		return []
@@ -153,7 +158,7 @@ func _build_multiplayer_manifest(game_mode: int, net_manager: Node) -> Array[Str
 	var manifest: Array[String] = [entry_path]
 	if runtime_path != entry_path:
 		manifest.append(runtime_path)
-	var character_map: Dictionary = net_manager.call("get_player_character_map") as Dictionary
+	var character_map := net_manager.get_player_character_map()
 	for character_id_variant in character_map.values():
 		_append_character_scene(manifest, StringName(character_id_variant))
 	if definition.uses_wave_campaign:
@@ -384,10 +389,9 @@ func _poll_scene_switch() -> void:
 		back_button.text = "取消并返回大厅"
 		action_row.show()
 		_update_multiplayer_readiness_from_manager()
-		var net_manager := get_node_or_null("/root/NetManager")
 		if (
-			net_manager != null
-			and int(net_manager.get("connection_state")) == MULTIPLAYER_STATE_IN_GAME
+			_net_manager != null
+			and int(_net_manager.connection_state) == MULTIPLAYER_STATE_IN_GAME
 		):
 			_complete_loading()
 	else:
@@ -430,15 +434,13 @@ func _on_game_load_progress_changed(ready_count: int, total_count: int) -> void:
 
 
 func _update_multiplayer_readiness_from_manager() -> void:
-	var net_manager := get_node_or_null("/root/NetManager")
-	if net_manager == null:
+	if _net_manager == null:
 		return
-	if net_manager.has_method("get_game_load_progress"):
-		var progress: Dictionary = net_manager.call("get_game_load_progress") as Dictionary
-		_on_game_load_progress_changed(
-			int(progress.get("ready", 0)),
-			int(progress.get("total", 0))
-		)
+	var progress := _net_manager.get_game_load_progress()
+	_on_game_load_progress_changed(
+		int(progress.get("ready", 0)),
+		int(progress.get("total", 0))
+	)
 
 
 func _on_connection_state_changed(new_state: int) -> void:
@@ -512,9 +514,8 @@ func _on_back_pressed() -> void:
 	_state = LoadState.IDLE
 	overlay.hide()
 	if _is_multiplayer_load:
-		var net_manager := get_node_or_null("/root/NetManager")
-		if net_manager != null and net_manager.has_method("disconnect_from_game"):
-			net_manager.call("disconnect_from_game")
+		if _net_manager != null:
+			_net_manager.disconnect_from_game()
 		get_tree().change_scene_to_file(MULTIPLAYER_LOBBY_SCENE_PATH)
 	elif get_tree().current_scene == null or get_tree().current_scene.scene_file_path != MAIN_MENU_SCENE_PATH:
 		get_tree().change_scene_to_file(MAIN_MENU_SCENE_PATH)

@@ -50,7 +50,7 @@ const HOST_STARTUP_SNAPSHOT_GRACE_SECONDS := 0.5
 # - CH_FEEDBACK: discardable combat numbers, status visuals, and progress batches.
 # Host owns enemy AI, player damage confirmation, death, revive, pickups, upgrades, and wave lifecycle.
 
-@onready var net_manager: NetManagerStore = get_node("/root/NetManager") as NetManagerStore
+@onready var net_manager: NetManagerStore = NetManagerStore.get_autoload_instance()
 @onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 @onready var session_coordinator: MpSessionCoordinator = $SessionCoordinator
 @onready var player_coordinator: MpPlayerCoordinator = $PlayerCoordinator
@@ -113,7 +113,7 @@ func _ready() -> void:
 		if not _setup_game(GAME_RUNTIME_CLIENT_VIEW):
 			call_deferred("_return_to_lobby")
 			return
-		_client_host_game_ready = bool(net_manager.get("host_game_ready"))
+		_client_host_game_ready = net_manager.host_game_ready
 	else:
 		push_warning("MpGame 启动时没有有效的多人连接，返回大厅。")
 		call_deferred("_return_to_lobby")
@@ -1571,7 +1571,7 @@ func _setup_game(mode: int) -> bool:
 	if embedded_runtime and _embedded_participant_peer_ids.is_empty():
 		push_error("MpGame: 内嵌战斗缺少冻结的参战玩家名单。")
 		return false
-	var game_mode := int(net_manager.get("current_game_mode"))
+	var game_mode := int(net_manager.get_current_game_mode())
 	var game_scene_path := _get_game_scene_path_for_mode(game_mode)
 	var game_scene := load(game_scene_path) as PackedScene
 	if game_scene == null:
@@ -1594,7 +1594,7 @@ func _setup_game(mode: int) -> bool:
 		net_manager.connected_players
 	)
 	var runtime_character_ids := _filter_embedded_peer_map(
-		net_manager.call("get_player_character_map") as Dictionary
+		net_manager.get_player_character_map()
 	)
 	game.configure_multiplayer(
 		mode,
@@ -1835,9 +1835,8 @@ func _request_runtime_state_from_host() -> void:
 func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void:
 	if not net_manager.is_host() or game == null or peer_id <= 0:
 		return
-	if net_manager.has_method("is_peer_send_ready"):
-		if not bool(net_manager.call("is_peer_send_ready", peer_id)):
-			return
+	if not net_manager.is_peer_send_ready(peer_id):
+		return
 	network_diagnostics_coordinator.record_state_repair()
 	tower_world_coordinator.request_terrain_snapshot_for_peer(peer_id)
 	_send_live_plant_roster_to_peer(peer_id)
@@ -2085,7 +2084,7 @@ func _get_connected_client_peer_ids() -> Array[int]:
 	var result: Array[int] = []
 	if net_manager == null:
 		return result
-	var connected_players := net_manager.get("connected_players") as Dictionary
+	var connected_players := net_manager.connected_players
 	var host_peer_id := _get_host_peer_id()
 	for peer_id_variant in connected_players:
 		var peer_id := int(peer_id_variant)
@@ -2106,10 +2105,7 @@ func _get_connected_client_peer_ids() -> Array[int]:
 			)
 		):
 			continue
-		if (
-			net_manager.has_method("is_peer_send_ready")
-			and not bool(net_manager.call("is_peer_send_ready", peer_id))
-		):
+		if not net_manager.is_peer_send_ready(peer_id):
 			continue
 		result.append(peer_id)
 	return result
@@ -3754,8 +3750,7 @@ func _send_plant_placement_rejected(
 			reason
 		)
 		return
-	var typed_net_manager := net_manager as NetManagerStore
-	if typed_net_manager == null or not typed_net_manager.is_peer_send_ready(
+	if not net_manager.is_peer_send_ready(
 		requester_peer_id
 	):
 		return
@@ -3988,7 +3983,7 @@ func _clear_pending_player_revives() -> void:
 
 
 func _on_game_return_to_lobby_requested() -> void:
-	if net_manager != null and net_manager.has_method("disconnect_from_game") and net_manager.is_multiplayer_active():
+	if net_manager != null and net_manager.is_multiplayer_active():
 		net_manager.disconnect_from_game()
 		return
 	_return_to_lobby()
@@ -5277,9 +5272,7 @@ func _apply_debug_collectible_for_peer(peer_id: int, config_path: String) -> voi
 
 
 func _get_host_peer_id() -> int:
-	if net_manager != null and net_manager.has_method("get_host_peer_id"):
-		return int(net_manager.get_host_peer_id())
-	return 1
+	return net_manager.get_host_peer_id() if net_manager != null else 1
 
 
 func _get_local_peer_id() -> int:

@@ -43,7 +43,7 @@ enum ProtocolPhase {
 )
 
 var _route: RogueRouteGame = null
-var _net_manager: Node = null
+var _net_manager: NetManagerStore = null
 var _run_state: RunStateStore = null
 var _enabled := false
 var _phase := ProtocolPhase.IDLE
@@ -94,18 +94,33 @@ var _consumed_node_ids: Dictionary = {}
 var _terminal_sequence_serial := 0
 
 
-func _ready() -> void:
-	_route = get_node_or_null("../RogueRoute") as RogueRouteGame
-	_net_manager = get_node_or_null("/root/NetManager")
-	_run_state = get_node_or_null("/root/RunState") as RunStateStore
-	_enabled = (
-		_route != null
-		and _net_manager != null
-		and _run_state != null
-		and is_config_enabled_for_multiplayer(encounter_config)
+func bind_network_dependencies(
+	route_instance: RogueRouteGame,
+	net_manager_instance: NetManagerStore,
+	run_state_instance: RunStateStore
+) -> void:
+	assert(route_instance != null, "肉鸽作战协调器缺少路线运行时。")
+	assert(net_manager_instance != null, "肉鸽作战协调器缺少 NetManagerStore。")
+	assert(run_state_instance != null, "肉鸽作战协调器缺少 RunStateStore。")
+	assert(
+		_route == null or _route == route_instance,
+		"肉鸽作战协调器不得在会话中途更换路线运行时。"
 	)
-	if _net_manager != null:
-		set_multiplayer_authority(_get_host_peer_id())
+	assert(
+		_net_manager == null or _net_manager == net_manager_instance,
+		"肉鸽作战协调器不得在会话中途更换网络管理器。"
+	)
+	assert(
+		_run_state == null or _run_state == run_state_instance,
+		"肉鸽作战协调器不得在会话中途更换 RunState。"
+	)
+	_route = route_instance
+	_net_manager = net_manager_instance
+	_run_state = run_state_instance
+	_enabled = (
+		is_config_enabled_for_multiplayer(encounter_config)
+	)
+	set_multiplayer_authority(_get_host_peer_id())
 	if not _enabled:
 		return
 
@@ -2238,7 +2253,7 @@ func _remap_pending_settlement_peer(
 
 func _capture_current_participants() -> PackedInt32Array:
 	var result := PackedInt32Array()
-	var connected_players := _net_manager.get("connected_players") as Dictionary
+	var connected_players := _net_manager.connected_players
 	for peer_id_variant in connected_players.keys():
 		var peer_id := int(peer_id_variant)
 		if peer_id > 0 and _route.get_player_for_peer(peer_id) != null:
@@ -2404,39 +2419,28 @@ static func _contains_all_keys(values: Dictionary, expected: Dictionary) -> bool
 
 
 func _get_host_peer_id() -> int:
-	if _net_manager != null and _net_manager.has_method("get_host_peer_id"):
-		return int(_net_manager.call("get_host_peer_id"))
-	return 0
+	return _net_manager.get_host_peer_id() if _net_manager != null else 0
 
 
 func _get_local_peer_id() -> int:
-	if _net_manager != null and _net_manager.has_method("get_local_peer_id"):
-		var local_peer_id := int(_net_manager.call("get_local_peer_id"))
+	if _net_manager != null:
+		var local_peer_id := _net_manager.get_local_peer_id()
 		if local_peer_id > 0:
 			return local_peer_id
 	return _get_host_peer_id() if _is_host() else 0
 
 
 func _is_host() -> bool:
-	return (
-		_net_manager != null
-		and _net_manager.has_method("is_host")
-		and bool(_net_manager.call("is_host"))
-	)
+	return _net_manager != null and _net_manager.is_host()
 
 
 func _is_client() -> bool:
-	return (
-		_net_manager != null
-		and _net_manager.has_method("is_client")
-		and bool(_net_manager.call("is_client"))
-	)
+	return _net_manager != null and _net_manager.is_client()
 
 
 func _is_peer_send_ready(peer_id: int) -> bool:
 	return (
 		_net_manager != null
 		and peer_id > 0
-		and _net_manager.has_method("is_peer_send_ready")
-		and bool(_net_manager.call("is_peer_send_ready", peer_id))
+		and _net_manager.is_peer_send_ready(peer_id)
 	)

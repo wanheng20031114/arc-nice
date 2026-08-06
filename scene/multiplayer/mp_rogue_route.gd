@@ -32,7 +32,9 @@ const ROUTE_ENCOUNTER_COMMAND_RATE_BURST := 6.0
 const BRIEFING_COVER_BARRIER_TIMEOUT_MSEC := 10_000
 
 var _route: RogueRouteGame = null
-var _net_manager: Node = null
+var _combat_coordinator: RogueCombatMultiplayerCoordinator = null
+var _net_manager: NetManagerStore = null
+var _run_state: RunStateStore = null
 var _runtime_prepared := false
 var _return_scheduled := false
 var _snapshot_request_pending := false
@@ -65,11 +67,25 @@ var _route_encounter_command_rate_buckets: Dictionary = {}
 
 func _ready() -> void:
 	_route = get_node_or_null("RogueRoute") as RogueRouteGame
-	_net_manager = get_node_or_null("/root/NetManager")
-	if _net_manager == null or _route == null:
+	_combat_coordinator = get_node_or_null(
+		"RogueCombatCoordinator"
+	) as RogueCombatMultiplayerCoordinator
+	_net_manager = NetManagerStore.get_autoload_instance()
+	_run_state = get_node_or_null("/root/RunState") as RunStateStore
+	if (
+		_net_manager == null
+		or _run_state == null
+		or _route == null
+		or _combat_coordinator == null
+	):
 		push_error("MpRogueRoute: P3 多人运行时契约不完整。")
 		call_deferred("_return_to_lobby")
 		return
+	_combat_coordinator.bind_network_dependencies(
+		_route,
+		_net_manager,
+		_run_state
+	)
 
 	_connect_route_signals()
 	set_multiplayer_authority(_get_host_peer_id())
@@ -280,9 +296,8 @@ func _report_game_loaded() -> void:
 		_runtime_prepared
 		and is_inside_tree()
 		and _get_connection_state() == STATE_LOADING_GAME
-		and _net_manager.has_method("report_game_loaded")
 	):
-		_net_manager.call("report_game_loaded")
+		_net_manager.report_game_loaded()
 
 
 func _synchronize_after_barrier() -> void:
@@ -571,13 +586,10 @@ func _on_player_joined(peer_id: int, player_name: String) -> void:
 	):
 		return
 	var character_id := PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
-	if _net_manager.has_method("get_player_character_map"):
-		var character_ids := (
-			_net_manager.call("get_player_character_map") as Dictionary
-		)
-		character_id = StringName(
-			character_ids.get(peer_id, character_id)
-		)
+	var character_ids := _net_manager.get_player_character_map()
+	character_id = StringName(
+		character_ids.get(peer_id, character_id)
+	)
 	var anchor := _route.get_player_for_peer(_get_host_peer_id())
 	var spawn_position := (
 		anchor.global_position
@@ -973,7 +985,7 @@ func _admit_route_encounter_command(peer_id: int) -> bool:
 func _is_registered_route_peer(peer_id: int) -> bool:
 	if _net_manager == null or _get_connection_state() != STATE_IN_GAME:
 		return false
-	var connected_players := _net_manager.get("connected_players") as Dictionary
+	var connected_players := _net_manager.connected_players
 	return (
 		peer_id > 0
 		and peer_id != _get_host_peer_id()
@@ -1056,10 +1068,8 @@ func _reset_snapshot_request_state() -> void:
 func _configure_route_players() -> bool:
 	if _route == null or _net_manager == null:
 		return false
-	var player_names := _net_manager.get("connected_players") as Dictionary
-	var character_ids: Dictionary = {}
-	if _net_manager.has_method("get_player_character_map"):
-		character_ids = _net_manager.call("get_player_character_map") as Dictionary
+	var player_names := _net_manager.connected_players
+	var character_ids := _net_manager.get_player_character_map()
 	var local_peer_id := _get_local_peer_id()
 	if local_peer_id <= 0 or not player_names.has(local_peer_id):
 		return false
@@ -1069,12 +1079,11 @@ func _configure_route_players() -> bool:
 		character_ids.duplicate()
 	):
 		return false
-	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
-	if shared_run_state == null:
+	if _run_state == null:
 		return false
 	# 与 MpGame 保持相同生命周期：进入多人运行时绑定本机 peer；切场不清空，
 	# 让路线、战斗与遭遇继续共享同一背包。
-	shared_run_state.set_active_multiplayer_peer(local_peer_id)
+	_run_state.set_active_multiplayer_peer(local_peer_id)
 	return true
 
 
@@ -1105,7 +1114,7 @@ func _broadcast_avatar_snapshot() -> void:
 		return
 	var host_peer_id := _get_host_peer_id()
 	_enforce_host_avatar_bounds(host_peer_id)
-	var player_names := _net_manager.get("connected_players") as Dictionary
+	var player_names := _net_manager.connected_players
 	var peer_ids: Array[int] = []
 	for peer_id_variant in player_names:
 		var peer_id := int(peer_id_variant)
@@ -1655,17 +1664,16 @@ func _apply_full_snapshot_from_peer(
 func _prune_client_inventory_states_to_connected_players() -> int:
 	if not is_inside_tree() or not _is_client() or _net_manager == null:
 		return 0
-	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
-	if shared_run_state == null:
+	if _run_state == null:
 		return 0
-	var connected_players := _net_manager.get("connected_players") as Dictionary
+	var connected_players := _net_manager.connected_players
 	var allowed_peer_ids := PackedInt32Array()
 	for raw_peer_id in connected_players.keys():
 		var peer_id := int(raw_peer_id)
 		if peer_id > 0:
 			allowed_peer_ids.append(peer_id)
 	allowed_peer_ids.sort()
-	return shared_run_state.prune_multiplayer_peer_states(allowed_peer_ids)
+	return _run_state.prune_multiplayer_peer_states(allowed_peer_ids)
 
 
 @rpc("authority", "call_remote", "reliable", 0)
@@ -1735,8 +1743,8 @@ func net_route_briefing_cover_ready(
 
 
 func _on_return_requested() -> void:
-	if _net_manager != null and _net_manager.has_method("disconnect_from_game"):
-		_net_manager.call("disconnect_from_game")
+	if _net_manager != null:
+		_net_manager.disconnect_from_game()
 	_return_to_lobby()
 
 
@@ -1760,13 +1768,11 @@ func _generate_session_seed() -> int:
 func _get_connection_state() -> int:
 	if _net_manager == null:
 		return STATE_DISCONNECTED
-	return int(_net_manager.get("connection_state"))
+	return int(_net_manager.connection_state)
 
 
 func _get_host_peer_id() -> int:
-	if _net_manager != null and _net_manager.has_method("get_host_peer_id"):
-		return int(_net_manager.call("get_host_peer_id"))
-	return 0
+	return _net_manager.get_host_peer_id() if _net_manager != null else 0
 
 
 func _get_local_peer_id() -> int:
@@ -1778,34 +1784,22 @@ func _get_local_peer_id() -> int:
 
 
 func _is_host() -> bool:
-	return (
-		_net_manager != null
-		and _net_manager.has_method("is_host")
-		and bool(_net_manager.call("is_host"))
-	)
+	return _net_manager != null and _net_manager.is_host()
 
 
 func _is_client() -> bool:
-	return (
-		_net_manager != null
-		and _net_manager.has_method("is_client")
-		and bool(_net_manager.call("is_client"))
-	)
+	return _net_manager != null and _net_manager.is_client()
 
 
 func _is_peer_send_ready(peer_id: int) -> bool:
-	return (
-		_net_manager != null
-		and _net_manager.has_method("is_peer_send_ready")
-		and bool(_net_manager.call("is_peer_send_ready", peer_id))
-	)
+	return _net_manager != null and _net_manager.is_peer_send_ready(peer_id)
 
 
 func _get_remote_player_peer_ids() -> Array[int]:
 	var result: Array[int] = []
 	if _net_manager == null:
 		return result
-	var connected_players := _net_manager.get("connected_players") as Dictionary
+	var connected_players := _net_manager.connected_players
 	var host_peer_id := _get_host_peer_id()
 	for peer_id_variant in connected_players:
 		var peer_id := int(peer_id_variant)

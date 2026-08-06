@@ -29,6 +29,8 @@ const LOBBY_COMMAND_RATE_BURST := 12.0
 const MAX_LOBBY_PLAYER_NAME_WIRE_LENGTH := 64
 const MAX_LOBBY_CHARACTER_ID_WIRE_LENGTH := 64
 
+static var _autoload_instance: NetManagerStore = null
+
 enum NetRole { NONE, HOST, CLIENT }
 enum ConnMode { DIRECT, RELAY }
 enum GameMode {
@@ -90,8 +92,27 @@ var _late_registration_deadlines: Dictionary[int, int] = {}
 var _lobby_command_rate_buckets: Dictionary[int, Dictionary] = {}
 
 
+func _enter_tree() -> void:
+	if name != &"NetManager" or get_parent() != get_tree().root:
+		return
+	assert(
+		_autoload_instance == null or _autoload_instance == self,
+		"NetManagerStore 只允许一个项目级自动加载实例。"
+	)
+	_autoload_instance = self
+
+
 func _ready() -> void:
 	_ensure_local_reconnect_token()
+
+
+func _exit_tree() -> void:
+	if _autoload_instance == self:
+		_autoload_instance = null
+
+
+static func get_autoload_instance() -> NetManagerStore:
+	return _autoload_instance
 
 
 func _physics_process(_delta: float) -> void:

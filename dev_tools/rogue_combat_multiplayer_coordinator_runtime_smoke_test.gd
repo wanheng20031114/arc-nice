@@ -20,16 +20,7 @@ const WOOD_MATERIAL: PickupConfig = preload(
 )
 
 
-class FakeNetManager extends Node:
-	signal player_left(peer_id: int)
-	signal player_joined(peer_id: int, player_name: String)
-	signal player_reconnected(
-		old_peer_id: int,
-		new_peer_id: int,
-		player_name: String,
-		character_id: StringName
-	)
-
+class FakeNetManager extends NetManagerStore:
 	var send_ready_peer_ids: Dictionary = {}
 	var host_role := true
 	var local_peer_id := 1
@@ -171,9 +162,11 @@ func _create_fixture() -> void:
 	root.add_child(_fixture_root)
 	await process_frame
 
-	# _ready() 先完成正式场景绑定，再替换成可预测的本地主机网络门面。
-	_coordinator._net_manager = _fake_net_manager
-	_coordinator._enabled = true
+	_coordinator.bind_network_dependencies(
+		_route,
+		_fake_net_manager,
+		root.get_node("RunState") as RunStateStore
+	)
 	_expect(
 		_coordinator.encounter_config.is_ready_to_enable(),
 		"正式 encounter_01 配置应处于已确认、可启用状态。"
