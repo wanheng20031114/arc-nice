@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ExpectedBaseline = "b6ed967ab98fe3e4d834ba539b6401955bde66dd"
+$ExpectedBaseline = "b08bdeeb1a9faf2922d078f28c9dc01c3a368413"
 $ProbePath = Join-Path $CurrentPath "dev_tools\tower_defense_boss_coordinator_ab_probe.gd"
 $GodotPath = (Get-Command Godot.exe).Source
 

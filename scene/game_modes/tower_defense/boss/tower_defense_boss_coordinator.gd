@@ -24,7 +24,7 @@ const LINGLAN_AIRDROP_NEARBY_RADIUS := Vector2(96.0, 80.0)
 const AUTHORED_LOGICAL_TILE_SIZE := 16.0
 
 var enabled := false
-var runtime: TowerDefenseGame
+var runtime: CombatRuntimeBase
 var boss_container: Node2D
 var enemy_container: Node2D
 var runtime_port: TowerDefenseLinglanBossRuntimePort
@@ -33,6 +33,9 @@ var campaign_coordinator: TowerDefenseCampaignCoordinator
 var enemy_coordinator: TowerDefenseEnemyCoordinator
 var home_defense_coordinator: TowerDefenseHomeDefenseCoordinator
 var player_roster_coordinator: TowerDefensePlayerRosterCoordinator
+var presentation_coordinator: TowerDefensePresentationCoordinator
+var multiplayer_adapter: TowerDefenseMultiplayerModeAdapter
+var prewarmer_coordinator: TowerDefensePrewarmerCoordinator
 var grid_pathfinder: GridPathfinder
 var random_generator: RandomNumberGenerator
 
@@ -51,7 +54,7 @@ var runtime_resources_by_path: Dictionary[String, Resource] = {}
 
 
 func setup(
-	runtime_instance: TowerDefenseGame,
+	runtime_instance: CombatRuntimeBase,
 	configured_enabled: bool,
 	configured_boss_container: Node2D,
 	configured_enemy_container: Node2D,
@@ -61,6 +64,9 @@ func setup(
 	configured_enemy_coordinator: TowerDefenseEnemyCoordinator,
 	configured_home_coordinator: TowerDefenseHomeDefenseCoordinator,
 	configured_player_roster: TowerDefensePlayerRosterCoordinator,
+	configured_presentation: TowerDefensePresentationCoordinator,
+	configured_multiplayer_adapter: TowerDefenseMultiplayerModeAdapter,
+	configured_prewarmer: TowerDefensePrewarmerCoordinator,
 	configured_pathfinder: GridPathfinder,
 	configured_random: RandomNumberGenerator
 ) -> void:
@@ -74,6 +80,9 @@ func setup(
 	enemy_coordinator = configured_enemy_coordinator
 	home_defense_coordinator = configured_home_coordinator
 	player_roster_coordinator = configured_player_roster
+	presentation_coordinator = configured_presentation
+	multiplayer_adapter = configured_multiplayer_adapter
+	prewarmer_coordinator = configured_prewarmer
 	grid_pathfinder = configured_pathfinder
 	random_generator = configured_random
 	if runtime_port != null:
@@ -91,6 +100,9 @@ func is_bound() -> bool:
 		and enemy_coordinator != null
 		and home_defense_coordinator != null
 		and player_roster_coordinator != null
+		and presentation_coordinator != null
+		and multiplayer_adapter != null
+		and prewarmer_coordinator != null
 		and grid_pathfinder != null
 		and random_generator != null
 	)
@@ -128,8 +140,8 @@ func begin_intro(boss_config: BossConfig = null) -> void:
 	linglan_boss_started = true
 	campaign_coordinator.current_flow_step = boss_config
 	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO
-	runtime.enemy_spawn_timer.stop()
-	runtime.state_timer.stop()
+	campaign_coordinator.stop_enemy_spawn_timer()
+	campaign_coordinator.stop_state_timer()
 	enemy_coordinator.clear_queue()
 	enemy_coordinator.clear_active_enemies()
 	campaign_coordinator.current_wave_total = 1
@@ -139,19 +151,19 @@ func begin_intro(boss_config: BossConfig = null) -> void:
 	campaign_coordinator.current_wave_resolved = 0
 	home_defense_coordinator.clear_resolved_enemy_ids()
 	enemy_coordinator.clear_hud_alive_enemies()
-	runtime._set_merchant_active(false)
-	runtime._show_tower_defense_boss_progress(0, 1)
-	runtime._update_boss_music(boss_config)
+	multiplayer_adapter.set_merchant_active(false)
+	presentation_coordinator.show_boss_progress(0, 1)
+	presentation_coordinator.update_boss_music(boss_config)
 	prepare_arena(boss_config)
 	var spawn_position := get_linglan_spawn_global_position(boss_config)
 	linglan_skill4_orb_anchor_valid = false
 	linglan_boss.config = get_boss_enemy_config(boss_config)
 	linglan_boss.global_position = spawn_position
 	linglan_boss.set_active(false)
-	runtime._focus_camera_on_boss_intro(spawn_position)
+	presentation_coordinator.focus_camera_on_boss_intro(spawn_position)
 	if boss_health_hud != null:
 		boss_health_hud.hide_all()
-	runtime._emit_multiplayer_flow_state(CombatFlowState.State.BOSS_INTRO)
+	multiplayer_adapter.publish_flow_state(CombatFlowState.State.BOSS_INTRO)
 	if linglan_boss_intro_vfx != null:
 		linglan_boss_intro_vfx.play_intro(spawn_position)
 	else:
@@ -164,24 +176,24 @@ func apply_remote_flow_state(
 ) -> void:
 	match state:
 		CombatFlowState.State.BOSS_INTRO:
-			runtime.state_timer.stop()
+			campaign_coordinator.stop_state_timer()
 			campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO
-			runtime._set_local_merchants_active(false)
-			runtime._show_tower_defense_boss_progress(0, 1)
+			multiplayer_adapter.set_local_merchants_active(false)
+			presentation_coordinator.show_boss_progress(0, 1)
 			if boss_config != null:
 				active_boss_config = boss_config
-				runtime._update_boss_music(boss_config)
+				presentation_coordinator.update_boss_music(boss_config)
 				prepare_arena(boss_config)
 				play_remote_intro(boss_config)
 		CombatFlowState.State.BOSS_ACTIVE:
-			runtime.state_timer.stop()
+			campaign_coordinator.stop_state_timer()
 			campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
-			runtime._set_local_merchants_active(false)
-			runtime._show_tower_defense_boss_progress(0, 1)
+			multiplayer_adapter.set_local_merchants_active(false)
+			presentation_coordinator.show_boss_progress(0, 1)
 			restore_remote_camera_if_intro_complete()
 			if boss_config != null:
 				active_boss_config = boss_config
-				runtime._update_boss_music(boss_config)
+				presentation_coordinator.update_boss_music(boss_config)
 
 
 func apply_remote_started(
@@ -199,11 +211,11 @@ func apply_remote_started(
 	active_boss_config = boss_config
 	campaign_coordinator.current_flow_step = boss_config
 	campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE
-	runtime.state_timer.stop()
-	runtime._show_tower_defense_boss_progress(0, 1)
-	runtime._set_local_merchants_active(false)
-	runtime._update_boss_music(boss_config)
-	var boss_enemy := runtime.get_enemy_for_net_id(net_id) as LinglanBoss
+	campaign_coordinator.stop_state_timer()
+	presentation_coordinator.show_boss_progress(0, 1)
+	multiplayer_adapter.set_local_merchants_active(false)
+	presentation_coordinator.update_boss_music(boss_config)
+	var boss_enemy := enemy_coordinator.get_enemy(net_id) as LinglanBoss
 	if boss_enemy == null or not is_instance_valid(boss_enemy):
 		boss_enemy = instantiate_remote_proxy(net_id, boss_config, spawn_position)
 	if boss_enemy == null or not is_instance_valid(boss_enemy):
@@ -231,7 +243,7 @@ func activate_boss() -> void:
 	linglan_boss.config = get_boss_enemy_config(active_boss_config)
 	linglan_boss.global_position = get_linglan_spawn_global_position(active_boss_config)
 	linglan_boss.activate_boss(
-		runtime.player,
+		player_roster_coordinator.local_player,
 		grid_pathfinder,
 		runtime,
 		runtime_port
@@ -252,14 +264,14 @@ func activate_boss() -> void:
 		linglan_boss.global_position,
 		false
 	)
-	runtime._show_tower_defense_boss_progress(0, 1)
+	presentation_coordinator.show_boss_progress(0, 1)
 	if boss_health_hud != null:
 		boss_health_hud.show_for_boss(
 			linglan_boss, get_boss_display_name(active_boss_config)
 		)
-	runtime._emit_multiplayer_flow_state(CombatFlowState.State.BOSS_ACTIVE)
+	multiplayer_adapter.publish_flow_state(CombatFlowState.State.BOSS_ACTIVE)
 	if runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY:
-		runtime._emit_tower_boss_started_authoritatively(
+		multiplayer_adapter.publish_boss_started(
 			boss_net_id, active_boss_config, linglan_boss.global_position
 		)
 
@@ -325,7 +337,7 @@ func request_runtime_scene_loads() -> void:
 
 
 func prewarm_runtime_resources() -> void:
-	if not enabled or not runtime._can_continue_runtime_prewarm():
+	if not enabled or not prewarmer_coordinator.can_continue_runtime_prewarm():
 		return
 	request_runtime_scene_loads()
 	for resource_path in get_runtime_resource_paths():
@@ -334,7 +346,7 @@ func prewarm_runtime_resources() -> void:
 		var status := ResourceLoader.load_threaded_get_status(resource_path)
 		while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await runtime.get_tree().process_frame
-			if not runtime._can_continue_runtime_prewarm():
+			if not prewarmer_coordinator.can_continue_runtime_prewarm():
 				return
 			status = ResourceLoader.load_threaded_get_status(resource_path)
 		var resource := (
@@ -647,7 +659,7 @@ func prepare_arena(_boss_config: BossConfig) -> void:
 
 func play_remote_intro(boss_config: BossConfig) -> void:
 	var spawn_position := get_linglan_spawn_global_position(boss_config)
-	runtime._focus_camera_on_boss_intro(spawn_position)
+	presentation_coordinator.focus_camera_on_boss_intro(spawn_position)
 	var scene := _load_threaded_or_direct(
 		get_boss_intro_vfx_scene_path(boss_config)
 	) as PackedScene
@@ -674,7 +686,9 @@ func restore_remote_camera_if_intro_complete() -> void:
 		return
 	if linglan_boss_intro_vfx != null:
 		linglan_boss_intro_vfx.stop_intro()
-	runtime._restore_camera_after_boss_intro()
+	presentation_coordinator.restore_camera_after_boss_intro(
+		player_roster_coordinator.local_player
+	)
 
 
 func get_home_objective_target(from_position: Vector2) -> Node2D:
@@ -689,7 +703,7 @@ func is_terminal_combat_state() -> bool:
 
 
 func pause_background_music() -> void:
-	runtime.pause_all_background_music()
+	presentation_coordinator.pause_all_background_music()
 
 
 func instantiate_remote_proxy(
@@ -710,7 +724,13 @@ func instantiate_remote_proxy(
 		return null
 	boss_container.add_child(boss_enemy)
 	boss_enemy.global_position = spawn_position
-	boss_enemy.setup(enemy_config, runtime.player, grid_pathfinder, runtime, runtime_port)
+	boss_enemy.setup(
+		enemy_config,
+		player_roster_coordinator.local_player,
+		grid_pathfinder,
+		runtime,
+		runtime_port
+	)
 	enemy_coordinator.configure_runtime_enemy_modifiers(boss_enemy)
 	boss_enemy.configure_multiplayer_proxy()
 	boss_enemy.set_meta("net_id", net_id)
@@ -734,7 +754,11 @@ func _try_spawn_boss_add_at_position(
 	enemy_config: EnemyConfig,
 	spawn_position: Vector2
 ) -> bool:
-	if enemy_config == null or enemy_container == null or runtime.player == null:
+	if (
+		enemy_config == null
+		or enemy_container == null
+		or player_roster_coordinator.local_player == null
+	):
 		return false
 	if enemy_config.enemy_scene == null:
 		push_warning("Boss 召唤敌人配置 %s 缺少 enemy_scene。" % enemy_config.resource_path)
@@ -792,7 +816,7 @@ func _finish_airdrop_sniper_spawn(
 		await runtime.get_tree().create_timer(warning_duration).timeout
 	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE:
 		return
-	if enemy_container == null or runtime.player == null:
+	if enemy_container == null or player_roster_coordinator.local_player == null:
 		return
 	var enemy_instance := enemy_config.enemy_scene.instantiate() as Enemy
 	if enemy_instance == null:
@@ -845,7 +869,7 @@ func _get_random_arena_position() -> Vector2:
 				-LINGLAN_AIRDROP_NEARBY_RADIUS.y, LINGLAN_AIRDROP_NEARBY_RADIUS.y
 			)
 		)
-		candidate = runtime._clamp_spectator_camera_position(candidate).round()
+		candidate = presentation_coordinator.clamp_camera_position(candidate).round()
 		if (
 			grid_pathfinder == null
 			or not grid_pathfinder.is_built
@@ -859,11 +883,15 @@ func _on_intro_finished() -> void:
 	if runtime.runtime_mode == CombatRuntimeBase.RuntimeMode.CLIENT_VIEW:
 		if linglan_boss_intro_vfx != null:
 			linglan_boss_intro_vfx.stop_intro()
-		runtime._restore_camera_after_boss_intro()
+		presentation_coordinator.restore_camera_after_boss_intro(
+			player_roster_coordinator.local_player
+		)
 		return
 	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_INTRO:
 		return
-	runtime._restore_camera_after_boss_intro()
+	presentation_coordinator.restore_camera_after_boss_intro(
+		player_roster_coordinator.local_player
+	)
 	activate_boss()
 
 
@@ -877,7 +905,7 @@ func _on_boss_defeated(enemy: Enemy) -> void:
 	enemy_coordinator.remove_hud_alive_enemy(enemy.get_instance_id())
 	campaign_coordinator.current_wave_defeated = 1
 	campaign_coordinator.current_wave_resolved = 1
-	runtime._show_tower_defense_boss_progress(1, 1)
+	presentation_coordinator.show_boss_progress(1, 1)
 	enemy_coordinator.emit_multiplayer_enemy_defeated(enemy)
 	remove_remaining_adds()
 	var victory_timer := runtime.get_tree().create_timer(1.3)

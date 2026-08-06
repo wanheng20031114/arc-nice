@@ -180,6 +180,16 @@ func is_runtime_bound() -> bool:
 	)
 
 
+func stop_state_timer() -> void:
+	if _state_timer != null:
+		_state_timer.stop()
+
+
+func stop_enemy_spawn_timer() -> void:
+	if _enemy_spawn_timer != null:
+		_enemy_spawn_timer.stop()
+
+
 func clear() -> void:
 	active_campaign = null
 	singleplayer_campaign = null

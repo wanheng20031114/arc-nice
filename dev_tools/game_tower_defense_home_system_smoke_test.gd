@@ -268,15 +268,15 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 		+ Vector2.LEFT * 96.0
 	).round()
 	var boss_config := game.bosses[0] as BossConfig
-	var resolved_spawn: Vector2 = game.call(
-		"_get_linglan_spawn_global_position",
+	var boss_coordinator := game.boss_coordinator
+	var resolved_spawn := boss_coordinator.get_linglan_spawn_global_position(
 		boss_config
 	)
 	_expect(
 		resolved_spawn.is_equal_approx(expected_spawn),
 		"Linglan must spawn in the clearing 96px before the two far-right red gates."
 	)
-	var home_target: Node2D = game.get_linglan_home_objective_target(
+	var home_target: Node2D = boss_coordinator.get_home_objective_target(
 		resolved_spawn
 	)
 	_expect(
@@ -284,8 +284,8 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 		and home_target.global_position.is_equal_approx(Vector2(50.0, 368.0)),
 		"Linglan's forced advance must resolve the authored blue-gate objective."
 	)
-	game.call("_cache_linglan_slime_configs")
-	var sniper_config := game.get_linglan_enrage_sniper_config()
+	boss_coordinator.cache_slime_configs()
+	var sniper_config := boss_coordinator.get_enrage_sniper_config()
 	_expect(
 		sniper_config != null
 		and sniper_config.resource_path
@@ -306,7 +306,7 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 		"res://resources/config/enemies/slime_fire.tres": true,
 	}
 	var actual_slime_paths := {}
-	for slime_config in game.linglan_slime_configs:
+	for slime_config in boss_coordinator.linglan_slime_configs:
 		if slime_config != null:
 			actual_slime_paths[slime_config.resource_path] = true
 	_expect(
@@ -320,7 +320,7 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	var original_random_state := game.random_generator.state
 	game.wave_state = CombatFlowState.State.BOSS_ACTIVE
 	var slime_spawn_position := resolved_spawn + Vector2(-12.0, 8.0)
-	game.spawn_linglan_random_slime(slime_spawn_position)
+	boss_coordinator.spawn_random_slime(slime_spawn_position)
 	var spawned_slime: Enemy = null
 	for enemy_child in game.enemy_container.get_children():
 		var enemy := enemy_child as Enemy
@@ -340,20 +340,20 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	game.wave_state = original_wave_state
 	game.random_generator.state = original_random_state
 	_expect(
-		game.get_linglan_skill2_target_global_position(Vector2i.ZERO).is_equal_approx(
+		boss_coordinator.get_skill_target_global_position(Vector2i.ZERO).is_equal_approx(
 			resolved_spawn
 		)
-		and game.get_linglan_skill3_target_global_position(Vector2i.ZERO).is_equal_approx(
+		and boss_coordinator.get_skill_target_global_position(Vector2i.ZERO).is_equal_approx(
 			resolved_spawn
 		),
 		"Linglan Skills 2/3 must stay on the current tower-defense front line."
 	)
-	var skill4_anchor := game.get_linglan_skill4_target_global_position(
+	var skill4_anchor := boss_coordinator.get_skill4_target_global_position(
 		Vector2i(6, 2),
 		Vector2i(7, 2)
 	)
-	var left_orb_spawn := game.get_linglan_skill4_orb_spawn_global_position(-3, 2)
-	var right_orb_spawn := game.get_linglan_skill4_orb_spawn_global_position(18, 2)
+	var left_orb_spawn := boss_coordinator.get_skill4_orb_spawn_global_position(-3, 2)
+	var right_orb_spawn := boss_coordinator.get_skill4_orb_spawn_global_position(18, 2)
 	_expect(
 		skill4_anchor.is_equal_approx(resolved_spawn)
 		and left_orb_spawn.is_equal_approx(resolved_spawn + Vector2(-152.0, 0.0))
@@ -375,7 +375,7 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 	)
 
 	var camera_start := game.map_camera.global_position
-	game.call("_focus_camera_on_boss_intro", resolved_spawn)
+	game.presentation_coordinator.focus_camera_on_boss_intro(resolved_spawn)
 	_expect(
 		game.map_camera.get_parent() == game
 		and game.boss_intro_camera_tween != null
@@ -395,7 +395,7 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 			game.map_camera.global_position.is_equal_approx(resolved_spawn),
 			"Boss intro camera must finish at Linglan's red-gate spawn position."
 		)
-	game.call("_restore_camera_after_boss_intro")
+	game.presentation_coordinator.restore_camera_after_boss_intro(game.player)
 	_expect(
 		game.map_camera.get_parent() == game.player
 		and game.map_camera.position.is_equal_approx(Vector2.ZERO),
@@ -404,17 +404,17 @@ func _verify_linglan_tower_contract(game: TowerDefenseGame) -> void:
 
 	var original_runtime_mode := game.runtime_mode
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.call("_play_remote_boss_intro", boss_config)
-	game.call("_restore_remote_camera_if_boss_intro_complete")
+	boss_coordinator.play_remote_intro(boss_config)
+	boss_coordinator.restore_remote_camera_if_intro_complete()
 	_expect(
-		game.linglan_boss_intro_vfx != null
-		and game.linglan_boss_intro_vfx.intro_tween != null
+		boss_coordinator.linglan_boss_intro_vfx != null
+		and boss_coordinator.linglan_boss_intro_vfx.intro_tween != null
 		and game.map_camera.get_parent() == game,
 		"A remote BOSS_ACTIVE event must not cut short the local birth animation."
 	)
-	if game.linglan_boss_intro_vfx != null:
-		game.linglan_boss_intro_vfx.stop_intro()
-		game.linglan_boss_intro_vfx.intro_finished.emit()
+	if boss_coordinator.linglan_boss_intro_vfx != null:
+		boss_coordinator.linglan_boss_intro_vfx.stop_intro()
+		boss_coordinator.linglan_boss_intro_vfx.intro_finished.emit()
 	_expect(
 		game.map_camera.get_parent() == game.player
 		and game.map_camera.position.is_equal_approx(Vector2.ZERO),
@@ -1116,7 +1116,7 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 	if linglan != null:
 		game.boss_container.add_child(linglan)
 		linglan.config = linglan_config
-		game.linglan_boss = linglan
+		game.boss_coordinator.linglan_boss = linglan
 		game.maximum_base_health = 250
 		game.current_base_health = 250
 		game.wave_state = CombatFlowState.State.BOSS_ACTIVE
@@ -1138,7 +1138,7 @@ func _verify_escape_resolution(game: TowerDefenseGame) -> void:
 		)
 		await process_frame
 		await process_frame
-		game.linglan_boss = null
+		game.boss_coordinator.linglan_boss = null
 
 	game.current_base_health = game.maximum_base_health
 	game.wave_state = CombatFlowState.State.WAVE_ACTIVE

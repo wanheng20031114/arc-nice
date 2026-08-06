@@ -320,8 +320,37 @@ func update_local_spectator_camera(delta: float) -> void:
 	if move_input == Vector2.ZERO:
 		return
 	_map_camera.global_position += move_input * SPECTATOR_CAMERA_SPEED * delta
-	_map_camera.global_position = _runtime._clamp_spectator_camera_position(
+	_map_camera.global_position = clamp_camera_position(
 		_map_camera.global_position
+	)
+
+
+func clamp_camera_position(camera_position: Vector2) -> Vector2:
+	if _map_camera == null:
+		return camera_position
+	var ground_layer := _runtime.ground_tile_map_layer
+	if ground_layer == null or ground_layer.tile_set == null:
+		return camera_position
+	var used_rect := ground_layer.get_used_rect()
+	if used_rect.size.x <= 0 or used_rect.size.y <= 0:
+		return camera_position
+	var top_left := ground_layer.to_global(
+		ground_layer.map_to_local(used_rect.position)
+	)
+	var bottom_right := ground_layer.to_global(
+		ground_layer.map_to_local(used_rect.end - Vector2i.ONE)
+	)
+	return Vector2(
+		clampf(
+			camera_position.x,
+			minf(top_left.x, bottom_right.x),
+			maxf(top_left.x, bottom_right.x)
+		),
+		clampf(
+			camera_position.y,
+			minf(top_left.y, bottom_right.y),
+			maxf(top_left.y, bottom_right.y)
+		)
 	)
 
 

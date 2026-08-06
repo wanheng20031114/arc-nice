@@ -549,11 +549,10 @@ func _prepare_runtime() -> void:
 		_expect(active_boss_config != null, "Linglan BossConfig must load.")
 		if active_boss_config != null:
 			game.linglan_boss_enabled = true
-			game.active_boss_config = active_boss_config
-			var boss_spawn_position := game.call(
-				"_get_linglan_spawn_global_position",
+			game.boss_coordinator.active_boss_config = active_boss_config
+			var boss_spawn_position := game.boss_coordinator.get_linglan_spawn_global_position(
 				active_boss_config
-			) as Vector2
+			)
 			game.player.global_position = boss_spawn_position + Vector2(120.0, 80.0)
 			game.player.reset_physics_interpolation()
 	if game.map_camera != null:
@@ -1007,7 +1006,8 @@ func _spawn_cohort() -> void:
 			enemy.navigation_update_interval_frames = requested_navigation_interval
 		enemy.current_health = ENEMY_PROBE_HEALTH if not is_boss else enemy.current_health
 		enemy.set_near_moving_target_direct_distance(
-			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS
+			TowerDefenseEnemyCoordinator.PLAYER_OBJECTIVE_AGGRO_RADIUS_CELLS
+			* TowerDefenseEnemyCoordinator.AUTHORED_LOGICAL_TILE_SIZE
 		)
 		if phase != ProbePhase.APPROACH:
 			enemy.set_target_player(game.player)
@@ -1110,10 +1110,10 @@ func _assert_random_stream_matches_seed(
 func _build_candidate_positions() -> PackedVector2Array:
 	var candidates := PackedVector2Array()
 	if phase == ProbePhase.BOSS and active_boss_config != null:
-		candidates.append(game.call(
-			"_get_linglan_spawn_global_position",
+		candidates.append(
+			game.boss_coordinator.get_linglan_spawn_global_position(
 			active_boss_config
-		) as Vector2)
+		))
 		return candidates
 	var center_cell := pathfinder.call("_global_to_map", FIXTURE_CENTER) as Vector2i
 	var minimum_distance := 24.0

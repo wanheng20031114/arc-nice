@@ -1862,7 +1862,10 @@ func _run_host_boss_probe(game: Variant) -> void:
 		_fail("Host boss probe did not enter boss intro.")
 		return
 	print("LAN_PROBE_EVENT host_boss_intro_confirmed")
-	game.call("_on_linglan_boss_intro_finished")
+	if _runtime_uses_tower_defense(game):
+		(game as TowerDefenseGame).boss_coordinator.finish_intro()
+	else:
+		game.call("_on_linglan_boss_intro_finished")
 	if not await _wait_for_game_wave_state(game, CombatFlowState.State.BOSS_ACTIVE, 4.0):
 		_fail("Host boss probe did not activate boss.")
 		return
@@ -1904,7 +1907,7 @@ func _run_client_boss_probe(mp_game: Node, game: Variant) -> void:
 	if boss_id <= 0:
 		_fail("Client boss probe did not receive boss spawn.")
 		return
-	var boss: LinglanBoss = game.linglan_boss
+	var boss := _get_runtime_linglan_boss(game)
 	if boss == null or not is_instance_valid(boss):
 		_fail("Client boss probe did not bind Linglan boss proxy.")
 		return
@@ -3164,11 +3167,17 @@ func _wait_for_boss_health_below(game: Variant, previous_health: int, timeout_se
 	while _now_seconds() <= end_time:
 		if game == null or not is_instance_valid(game):
 			return false
-		var boss: LinglanBoss = game.linglan_boss
+		var boss := _get_runtime_linglan_boss(game)
 		if boss != null and is_instance_valid(boss) and boss.current_health < previous_health:
 			return true
 		await process_frame
 	return false
+
+
+func _get_runtime_linglan_boss(game: Variant) -> LinglanBoss:
+	if game is TowerDefenseGame:
+		return (game as TowerDefenseGame).boss_coordinator.linglan_boss
+	return game.linglan_boss as LinglanBoss
 
 
 func _wait_for_first_host_enemy_net_id(game: Variant, timeout_seconds: float) -> int:
@@ -3472,7 +3481,10 @@ func _configure_probe_boss_flow(game: Variant) -> void:
 		game.pre_wave_duration = 0.0
 	game.current_flow_step = null
 	game.next_flow_step_after_rest = null
-	game.linglan_boss_started = false
+	if _runtime_uses_tower_defense(game):
+		(game as TowerDefenseGame).boss_coordinator.linglan_boss_started = false
+	else:
+		game.linglan_boss_started = false
 	game.current_wave_index = 0
 	game.current_wave_total = 0
 	game.current_wave_spawned = 0

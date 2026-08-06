@@ -3988,7 +3988,7 @@ func _test_linglan_airdrop_replication_contract() -> void:
 	var warning_scene := load(
 		"res://scene/boss/linglan/linglan_airdrop_warning_marker.tscn"
 	) as PackedScene
-	game.spawn_linglan_airdrop_sniper(
+	game.boss_coordinator.spawn_airdrop_sniper(
 		SNIPER_CONFIG,
 		warning_scene,
 		0.01,
@@ -4027,7 +4027,7 @@ func _test_linglan_airdrop_replication_contract() -> void:
 
 	var slime_spawn_position := Vector2(512.0, 320.0)
 	var spawn_count_before_slime := spawned_events.size()
-	game.spawn_linglan_random_slime(slime_spawn_position)
+	game.boss_coordinator.spawn_random_slime(slime_spawn_position)
 	_expect(
 		spawned_events.size() == spawn_count_before_slime + 1,
 		"A Linglan random slime must enter the normal multiplayer enemy-spawn stream."
@@ -4434,7 +4434,7 @@ func _test_test_arena_multiplayer_runtime_modes() -> void:
 		root.add_child(arena)
 		await process_frame
 		await physics_frame
-		var waves := arena.active_campaign.get_waves()
+		var waves: Array[WaveConfig] = arena.active_campaign.get_waves()
 		_expect(
 			arena.active_campaign == arena_contract["campaign"]
 			and arena.multiplayer_campaign == arena_contract["campaign"],

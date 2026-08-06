@@ -582,6 +582,50 @@ func publish_flow_state(state: CombatFlowState.State) -> void:
 	)
 
 
+func publish_boss_started(
+	net_id: int,
+	boss_config: BossConfig,
+	spawn_position: Vector2
+) -> void:
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		or boss_config == null
+	):
+		return
+	boss_started.emit(net_id, boss_config, spawn_position)
+	_rebroadcast_boss_started_after_sync_window(net_id, boss_config)
+
+
+func _rebroadcast_boss_started_after_sync_window(
+	net_id: int,
+	boss_config: BossConfig
+) -> void:
+	if net_id <= 0 or boss_config == null:
+		return
+	await get_tree().create_timer(0.75).timeout
+	var tower_runtime := get_tower_runtime()
+	if (
+		tower_runtime == null
+		or tower_runtime.runtime_mode
+		!= CombatRuntimeBase.RuntimeMode.HOST_AUTHORITY
+		or _campaign_coordinator == null
+		or _campaign_coordinator.wave_state
+		!= CombatFlowState.State.BOSS_ACTIVE
+		or _boss_coordinator == null
+		or _boss_coordinator.linglan_boss == null
+		or not is_instance_valid(_boss_coordinator.linglan_boss)
+	):
+		return
+	boss_started.emit(
+		net_id,
+		boss_config,
+		_boss_coordinator.linglan_boss.global_position
+	)
+
+
 func publish_inventory_changed(peer_id: int) -> void:
 	var tower_runtime := get_tower_runtime()
 	if (

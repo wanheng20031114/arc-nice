@@ -37,54 +37,62 @@ func _run() -> void:
 	game.random_generator.seed = FIXED_SEED
 	game.multiplayer_mode_adapter.flow_state_changed.connect(_on_flow_state_changed)
 	game.multiplayer_mode_adapter.boss_started.connect(_on_boss_started)
+	var boss_coordinator := game.get_node_or_null(
+		"BossCoordinator"
+	) as TowerDefenseBossCoordinator
+	if boss_coordinator == null:
+		_finish_with_failure("TowerDefenseGame 未绑定静态 BossCoordinator。")
+		return
 
-	game.call("_begin_linglan_boss_intro", BOSS_CONFIG)
-	var boss := game.linglan_boss as LinglanBoss
+	boss_coordinator.begin_intro(BOSS_CONFIG)
+	var boss := boss_coordinator.linglan_boss as LinglanBoss
 	trace["intro"] = {
-		"state": int(game.wave_state),
-		"total": game.current_wave_total,
-		"spawned": game.current_wave_spawned,
-		"defeated": game.current_wave_defeated,
-		"escaped": game.current_wave_escaped,
-		"resolved": game.current_wave_resolved,
-		"boss_started": game.linglan_boss_started,
+		"state": int(game.campaign_coordinator.wave_state),
+		"total": game.campaign_coordinator.current_wave_total,
+		"spawned": game.campaign_coordinator.current_wave_spawned,
+		"defeated": game.campaign_coordinator.current_wave_defeated,
+		"escaped": game.campaign_coordinator.current_wave_escaped,
+		"resolved": game.campaign_coordinator.current_wave_resolved,
+		"boss_started": boss_coordinator.linglan_boss_started,
 		"boss_position": _vector_key(boss.global_position if boss != null else Vector2.INF),
 		"boss_active": boss != null and boss.is_active,
 	}
 	if boss == null:
 		failures.append("Boss intro 未创建 LinglanBoss。")
 	else:
-		game.call("_on_linglan_boss_intro_finished")
+		boss_coordinator.finish_intro()
 		boss.set_process(false)
 		boss.set_physics_process(false)
-		if game.linglan_boss_intro_vfx != null:
-			game.linglan_boss_intro_vfx.stop_intro()
+		if boss_coordinator.linglan_boss_intro_vfx != null:
+			boss_coordinator.linglan_boss_intro_vfx.stop_intro()
 
-	var skill4_target := game.get_linglan_skill4_target_global_position(
+	var skill4_target: Vector2 = boss_coordinator.get_skill4_target_global_position(
 		Vector2i(-3, -1), Vector2i(18, 16)
 	)
-	var skill4_bounds := game.get_linglan_skill4_laser_bounds(-3, 18, -1, 16, 5)
+	var skill4_bounds: Dictionary = boss_coordinator.get_skill4_laser_bounds(
+		-3, 18, -1, 16, 5
+	)
 	trace["active"] = {
-		"state": int(game.wave_state),
+		"state": int(game.campaign_coordinator.wave_state),
 		"active_enemy_count": game.enemy_coordinator.active_wave_enemy_ids.size(),
 		"boss_active": boss != null and boss.is_active,
 		"skill2_target": _vector_key(
-			game.get_linglan_skill2_target_global_position(Vector2i(7, 8))
+			boss_coordinator.get_skill_target_global_position(Vector2i(7, 8))
 		),
 		"skill3_target": _vector_key(
-			game.get_linglan_skill3_target_global_position(Vector2i(9, 10))
+			boss_coordinator.get_skill_target_global_position(Vector2i(9, 10))
 		),
 		"skill4_target": _vector_key(skill4_target),
 		"skill4_orb": _vector_key(
-			game.get_linglan_skill4_orb_spawn_global_position(6, 2)
+			boss_coordinator.get_skill4_orb_spawn_global_position(6, 2)
 		),
 		"skill4_bounds": _bounds_key(skill4_bounds),
 	}
 
-	game.spawn_linglan_skill2_enemies(
+	boss_coordinator.spawn_skill2_enemies(
 		SLIME_CONFIG, [&"Spawn1", &"Spawn2"] as Array[StringName]
 	)
-	game.spawn_linglan_random_slime(Vector2(321.0, 234.0))
+	boss_coordinator.spawn_random_slime(Vector2(321.0, 234.0))
 	var adds: Array[String] = []
 	for child in game.enemy_container.get_children():
 		var enemy := child as Enemy
@@ -112,12 +120,12 @@ func _run() -> void:
 		"boss_events": boss_events.duplicate(),
 	}
 	if boss != null:
-		game.call("_on_linglan_boss_defeated", boss)
+		boss_coordinator.handle_boss_defeated(boss)
 		await create_timer(1.35).timeout
 	trace["result"] = {
-		"state": int(game.wave_state),
-		"defeated": game.current_wave_defeated,
-		"resolved": game.current_wave_resolved,
+		"state": int(game.campaign_coordinator.wave_state),
+		"defeated": game.campaign_coordinator.current_wave_defeated,
+		"resolved": game.campaign_coordinator.current_wave_resolved,
 		"active_enemy_count": game.enemy_coordinator.active_wave_enemy_ids.size(),
 		"hud_enemy_count": game.enemy_coordinator.hud_alive_enemy_ids.size(),
 	}

@@ -81,15 +81,120 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect(
 		root_source.contains("boss_coordinator.setup(")
 		and coordinator_source.contains("func setup(")
+		and coordinator_source.contains("var runtime: CombatRuntimeBase")
+		and coordinator_source.contains(
+			"var presentation_coordinator: TowerDefensePresentationCoordinator"
+		)
+		and coordinator_source.contains(
+			"var multiplayer_adapter: TowerDefenseMultiplayerModeAdapter"
+		)
+		and coordinator_source.contains(
+			"presentation_coordinator.restore_camera_after_boss_intro("
+		)
 		and coordinator_source.contains("runtime_port.bind_boss_coordinator(self)"),
-		"BossCoordinator 必须由 root 显式 setup，并显式绑定 runtime port。"
+		"BossCoordinator 必须由 root 显式注入中性 runtime、表现/多人边界和 runtime port。"
 	)
+	for root_boss_mirror in [
+		"var _linglan_boss_started",
+		"var linglan_boss_started:",
+		"var _active_boss_config",
+		"var active_boss_config:",
+		"var _linglan_boss:",
+		"var linglan_boss:",
+		"var _linglan_boss_intro_vfx:",
+		"var linglan_boss_intro_vfx:",
+		"var _boss_health_hud:",
+		"var boss_health_hud:",
+		"var _linglan_skill4_orb_anchor_global_position",
+		"var linglan_skill4_orb_anchor_global_position:",
+		"var _linglan_skill4_orb_authored_center",
+		"var linglan_skill4_orb_authored_center:",
+		"var _linglan_skill4_orb_anchor_valid",
+		"var linglan_skill4_orb_anchor_valid:",
+		"var _linglan_slime_configs",
+		"var linglan_slime_configs:",
+		"var _linglan_enrage_sniper_config",
+		"var linglan_enrage_sniper_config:",
+		"var _boss_runtime_scene_loads_requested",
+		"var boss_runtime_scene_loads_requested:",
+		"var _boss_runtime_resources_by_path",
+		"var boss_runtime_resources_by_path:",
+	]:
+		_expect(
+			not root_source.contains(root_boss_mirror),
+			"TowerDefenseGame 不得继续镜像 Boss 状态：%s" % root_boss_mirror
+		)
+	for root_boss_facade in [
+		"func _configure_linglan_boss(",
+		"func _cache_linglan_slime_configs(",
+		"func get_linglan_enrage_sniper_config(",
+		"func _deferred_request_boss_runtime_scene_loads(",
+		"func _get_first_boss_config(",
+		"func _get_configured_bosses(",
+		"func _boss_config_has_required_data(",
+		"func _get_boss_enemy_config(",
+		"func _get_boss_enemy_config_path(",
+		"func _get_boss_arena_center(",
+		"func _get_linglan_spawn_global_position(",
+		"func _get_boss_arena_floor_rect(",
+		"func _get_boss_floor_source_id(",
+		"func _get_boss_floor_atlas_coords(",
+		"func _should_clear_boss_inner_overlay_cells(",
+		"func _get_boss_display_name(",
+		"func _get_boss_intro_vfx_scene_path(",
+		"func _get_boss_hud_scene_path(",
+		"func _ensure_linglan_boss_runtime_nodes(",
+		"func _ensure_boss_health_hud_runtime_node(",
+		"func _begin_linglan_boss_intro(",
+		"func _on_linglan_boss_intro_finished(",
+		"func _activate_linglan_boss(",
+		"func _on_linglan_boss_defeated(",
+		"func _complete_linglan_boss_after_delay(",
+		"func _remove_remaining_boss_adds(",
+		"func _prepare_linglan_boss_arena(",
+		"func spawn_linglan_skill2_enemies(",
+		"func spawn_linglan_random_slime(",
+		"func spawn_linglan_airdrop_sniper(",
+		"func get_linglan_skill2_target_player(",
+		"func get_linglan_skill2_target_global_position(",
+		"func get_linglan_skill3_target_global_position(",
+		"func get_linglan_skill4_target_global_position(",
+		"func get_linglan_skill4_laser_bounds(",
+		"func get_linglan_skill4_orb_spawn_global_position(",
+		"func _play_remote_boss_intro(",
+		"func _on_remote_linglan_boss_intro_finished(",
+		"func _restore_remote_camera_if_boss_intro_complete(",
+		"func _show_tower_defense_boss_progress(",
+		"func _focus_camera_on_boss_intro(",
+		"func _restore_camera_after_boss_intro(",
+		"func _update_boss_music(",
+		"func _rebroadcast_linglan_boss_started_after_sync_window(",
+		"func _emit_tower_boss_started_authoritatively(",
+		"func apply_remote_boss_started(",
+		"func _instantiate_remote_linglan_boss_proxy(",
+	]:
+		_expect(
+			not root_source.contains(root_boss_facade),
+			"TowerDefenseGame 不得继续转发 Boss 行为：%s" % root_boss_facade
+		)
+	for coordinator_owned_state in [
+		"var linglan_boss_started := false",
+		"var active_boss_config: BossConfig",
+		"var linglan_boss: LinglanBoss",
+		"var linglan_boss_intro_vfx: LinglanBossIntroVFX",
+		"var linglan_slime_configs: Array[EnemyConfig] = []",
+		"var runtime_resources_by_path: Dictionary[String, Resource] = {}",
+	]:
+		_expect(
+			coordinator_source.contains(coordinator_owned_state),
+			"BossCoordinator 必须直接持有 Boss 状态：%s" % coordinator_owned_state
+		)
 	for forbidden in [
 		"get_tree().current_scene",
 		"get_node(\"../",
 		"has_method(",
 		".call(",
-		"mode_adapter",
+		"runtime._",
 		"multiplayer_gateway",
 	]:
 		_expect(
@@ -108,14 +213,17 @@ func _test_static_structure_and_order_guards() -> void:
 			"reset_wave_death_counts",
 			"linglan_boss_started = true",
 			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO",
+			"campaign_coordinator.stop_enemy_spawn_timer()",
+			"campaign_coordinator.stop_state_timer()",
 			"enemy_coordinator.clear_queue()",
 			"enemy_coordinator.clear_active_enemies()",
 			"home_defense_coordinator.clear_resolved_enemy_ids()",
 			"enemy_coordinator.clear_hud_alive_enemies()",
-			"runtime._set_merchant_active(false)",
-			"runtime._update_boss_music(boss_config)",
-			"runtime._focus_camera_on_boss_intro(spawn_position)",
-			"runtime._emit_multiplayer_flow_state(CombatFlowState.State.BOSS_INTRO)",
+			"multiplayer_adapter.set_merchant_active(false)",
+			"presentation_coordinator.show_boss_progress(0, 1)",
+			"presentation_coordinator.update_boss_music(boss_config)",
+			"presentation_coordinator.focus_camera_on_boss_intro(spawn_position)",
+			"multiplayer_adapter.publish_flow_state(CombatFlowState.State.BOSS_INTRO)",
 			"linglan_boss_intro_vfx.play_intro(spawn_position)",
 		],
 		"host Boss intro"
@@ -133,12 +241,12 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect_order(
 		remote_intro_source,
 		[
-			"runtime.state_timer.stop()",
+			"campaign_coordinator.stop_state_timer()",
 			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_INTRO",
-			"runtime._set_local_merchants_active(false)",
-			"runtime._show_tower_defense_boss_progress(0, 1)",
+			"multiplayer_adapter.set_local_merchants_active(false)",
+			"presentation_coordinator.show_boss_progress(0, 1)",
 			"active_boss_config = boss_config",
-			"runtime._update_boss_music(boss_config)",
+			"presentation_coordinator.update_boss_music(boss_config)",
 			"prepare_arena(boss_config)",
 			"play_remote_intro(boss_config)",
 		],
@@ -150,13 +258,13 @@ func _test_static_structure_and_order_guards() -> void:
 	_expect_order(
 		remote_active_source,
 		[
-			"runtime.state_timer.stop()",
+			"campaign_coordinator.stop_state_timer()",
 			"campaign_coordinator.wave_state = CombatFlowState.State.BOSS_ACTIVE",
-			"runtime._set_local_merchants_active(false)",
-			"runtime._show_tower_defense_boss_progress(0, 1)",
+			"multiplayer_adapter.set_local_merchants_active(false)",
+			"presentation_coordinator.show_boss_progress(0, 1)",
 			"restore_remote_camera_if_intro_complete()",
 			"active_boss_config = boss_config",
-			"runtime._update_boss_music(boss_config)",
+			"presentation_coordinator.update_boss_music(boss_config)",
 		],
 		"client BOSS_ACTIVE"
 	)
@@ -169,9 +277,9 @@ func _test_static_structure_and_order_guards() -> void:
 			"enemy_coordinator.register_external_enemy(linglan_boss)",
 			"linglan_boss.tree_exited.connect(exited_callback)",
 			"enemy_coordinator.finalize_authoritative_enemy_spawn(",
-			"runtime._show_tower_defense_boss_progress(0, 1)",
-			"runtime._emit_multiplayer_flow_state(CombatFlowState.State.BOSS_ACTIVE)",
-			"runtime._emit_tower_boss_started_authoritatively(",
+			"presentation_coordinator.show_boss_progress(0, 1)",
+			"multiplayer_adapter.publish_flow_state(CombatFlowState.State.BOSS_ACTIVE)",
+			"multiplayer_adapter.publish_boss_started(",
 		],
 		"host Boss activate"
 	)
@@ -270,20 +378,23 @@ func _test_runtime_binding_and_behavior() -> void:
 	if game == null:
 		return
 	game.auto_start_waves = false
-	game.linglan_boss_started = true
-	game.active_boss_config = BOSS_CONFIG
-	game.linglan_skill4_orb_anchor_global_position = Vector2(31.0, 47.0)
-	game.linglan_skill4_orb_anchor_valid = true
-	var retained_slimes: Array[EnemyConfig] = [SLIME_CONFIG]
-	var retained_resources: Dictionary[String, Resource] = {
-		"res://boss_boundary_probe": SLIME_CONFIG,
-	}
-	game.linglan_slime_configs = retained_slimes
-	game.boss_runtime_resources_by_path = retained_resources
 	var static_coordinator := game.get_node_or_null(
 		"BossCoordinator"
 	) as TowerDefenseBossCoordinator
 	_expect(static_coordinator != null, "ready 前必须已有静态 BossCoordinator 子节点。")
+	if static_coordinator == null:
+		game.free()
+		return
+	static_coordinator.linglan_boss_started = true
+	static_coordinator.active_boss_config = BOSS_CONFIG
+	static_coordinator.linglan_skill4_orb_anchor_global_position = Vector2(31.0, 47.0)
+	static_coordinator.linglan_skill4_orb_anchor_valid = true
+	var retained_slimes: Array[EnemyConfig] = [SLIME_CONFIG]
+	var retained_resources: Dictionary[String, Resource] = {
+		"res://boss_boundary_probe": SLIME_CONFIG,
+	}
+	static_coordinator.linglan_slime_configs = retained_slimes
+	static_coordinator.runtime_resources_by_path = retained_resources
 
 	root.add_child(game)
 	current_scene = game
@@ -296,14 +407,12 @@ func _test_runtime_binding_and_behavior() -> void:
 		"TowerDefenseLinglanBossRuntimePort 未绑定 BossCoordinator。"
 	)
 	_expect(
-		is_same(retained_slimes, game.linglan_slime_configs)
-		and is_same(retained_slimes, coordinator.linglan_slime_configs),
-		"史莱姆配置 Array 必须跨 ready 保持同一引用。"
+		is_same(retained_slimes, coordinator.linglan_slime_configs),
+		"BossCoordinator 直接持有的史莱姆配置 Array 必须跨 ready 保持同一引用。"
 	)
 	_expect(
-		is_same(retained_resources, game.boss_runtime_resources_by_path)
-		and is_same(retained_resources, coordinator.runtime_resources_by_path),
-		"Boss 预热资源 Dictionary 必须跨 ready 保持同一引用。"
+		is_same(retained_resources, coordinator.runtime_resources_by_path),
+		"BossCoordinator 直接持有的预热资源 Dictionary 必须跨 ready 保持同一引用。"
 	)
 	_expect(
 		coordinator.linglan_boss_started
@@ -314,12 +423,12 @@ func _test_runtime_binding_and_behavior() -> void:
 	)
 	var replacement_slimes: Array[EnemyConfig] = []
 	var replacement_resources: Dictionary[String, Resource] = {}
-	game.linglan_slime_configs = replacement_slimes
-	game.boss_runtime_resources_by_path = replacement_resources
+	coordinator.linglan_slime_configs = replacement_slimes
+	coordinator.runtime_resources_by_path = replacement_resources
 	_expect(
 		is_same(replacement_slimes, coordinator.linglan_slime_configs)
 		and is_same(replacement_resources, coordinator.runtime_resources_by_path),
-		"ready 后容器整体赋值必须转发同一引用。"
+		"ready 后 BossCoordinator 容器整体赋值必须保持同一引用。"
 	)
 	game.state_timer.start(5.0)
 	coordinator.apply_remote_flow_state(
@@ -343,7 +452,7 @@ func _test_runtime_binding_and_behavior() -> void:
 	)
 
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.apply_remote_boss_started(0, BOSS_CONFIG, Vector2(123.0, 234.0))
+	coordinator.apply_remote_started(0, BOSS_CONFIG, Vector2(123.0, 234.0))
 	_expect(
 		game.campaign_coordinator.wave_state == CombatFlowState.State.BOSS_ACTIVE
 		and game.campaign_coordinator.current_flow_step == BOSS_CONFIG
@@ -351,25 +460,25 @@ func _test_runtime_binding_and_behavior() -> void:
 		"net_id=0 的迟到/异常 Boss started 仍须先更新 client 状态。"
 	)
 	_expect(
-		game.get_enemy_for_net_id(0) == null and coordinator.linglan_boss == null,
+		game.enemy_coordinator.get_enemy(0) == null and coordinator.linglan_boss == null,
 		"net_id=0 必须在 proxy 创建边界被拒绝。"
 	)
 
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
-	game.call("_begin_linglan_boss_intro", BOSS_CONFIG)
+	coordinator.begin_intro(BOSS_CONFIG)
 	_expect(
 		game.campaign_coordinator.wave_state == CombatFlowState.State.BOSS_INTRO
 		and coordinator.linglan_boss != null,
 		"塔防 Boss intro 未进入预期状态或未准备实体。"
 	)
-	game.call("_on_linglan_boss_intro_finished")
+	coordinator.finish_intro()
 	_expect(
 		game.campaign_coordinator.wave_state == CombatFlowState.State.BOSS_ACTIVE
 		and coordinator.linglan_boss != null
 		and game.enemy_coordinator.has_active_enemy(
 			coordinator.linglan_boss.get_instance_id()
 		),
-		"Boss activate 必须在 root 活跃索引登记实体。"
+		"Boss activate 必须在 EnemyCoordinator 活跃索引登记实体。"
 	)
 	var active_boss := coordinator.linglan_boss
 	coordinator.handle_boss_defeated(active_boss)
@@ -383,15 +492,15 @@ func _test_runtime_binding_and_behavior() -> void:
 	# Drain the second legacy-compatible timer scheduled by the duplicate signal.
 	await create_timer(0.35).timeout
 	game.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
-	game.apply_remote_boss_started(73, BOSS_CONFIG, Vector2(222.0, 333.0))
-	var proxy := game.get_enemy_for_net_id(73) as LinglanBoss
+	coordinator.apply_remote_started(73, BOSS_CONFIG, Vector2(222.0, 333.0))
+	var proxy := game.enemy_coordinator.get_enemy(73) as LinglanBoss
 	_expect(proxy != null and coordinator.linglan_boss == proxy, "正 net_id 未创建 Boss proxy。")
 	if proxy != null:
 		_expect(
 			game.multiplayer_enemies_by_net_id.get(73) == proxy
 			and game.combat_target_index.get_enemy(73) == proxy
 			and int(game.multiplayer_enemy_ids_by_instance.get(proxy.get_instance_id(), 0)) == 73,
-			"Boss proxy 必须按 root 三索引契约完整登记。"
+			"Boss proxy 必须按共享三索引契约完整登记。"
 		)
 
 	_stop_audio_recursive(game)

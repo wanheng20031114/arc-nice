@@ -42,15 +42,11 @@ const LINGLAN_SKILL1_BULLET_POOL_SCENE := preload(
 const LINGLAN_SAKURA_HIT_EFFECT_POOL_SCENE := preload(
 	"res://scene/boss/linglan/linglan_sakura_hit_effect.tscn"
 )
-const LINGLAN_SLIME_CONFIG_PATHS := TowerDefenseBossCoordinator.LINGLAN_SLIME_CONFIG_PATHS
 const GUARDIAN_POINT_LIGHT_TEXTURE := preload("res://resources/texture/enemy/yuanshi_insect/guardian_point_light.png")
 const DEFAULT_PLAYER_CHARACTER_ID := &"weishidaier"
 const TANGO_MINIMUM_CHARGE_SECONDS := 0.2
 const TANGO_MAXIMUM_CHARGE_SECONDS := 2.4
 const TANGO_CHARGE_THRESHOLD_EPSILON := 0.0001
-const LINGLAN_BOSS_INTRO_VFX_SCENE_PATH := TowerDefenseBossCoordinator.LINGLAN_BOSS_INTRO_VFX_SCENE_PATH
-const BOSS_HEALTH_HUD_SCENE_PATH := TowerDefenseBossCoordinator.BOSS_HEALTH_HUD_SCENE_PATH
-const LINGLAN_ENRAGE_SNIPER_CONFIG_PATH := TowerDefenseBossCoordinator.LINGLAN_ENRAGE_SNIPER_CONFIG_PATH
 const COUNTDOWN_FINAL_SECONDS := TowerDefensePresentationCoordinator.COUNTDOWN_FINAL_SECONDS
 const PLAYER_RESPAWN_DELAYS: Array[int] = [5, 10, 15, 20]
 const PLAYER_RESPAWN_INVINCIBILITY_SECONDS := 3.0
@@ -59,10 +55,7 @@ const MIN_WAVE_SPAWN_INTERVAL_SECONDS := 0.025
 const DEFAULT_MUSIC_VOLUME_DB := TowerDefensePresentationCoordinator.DEFAULT_MUSIC_VOLUME_DB
 const MUSIC_FADE_IN_SECONDS := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_SECONDS
 const MUSIC_FADE_IN_START_VOLUME_DB := TowerDefensePresentationCoordinator.MUSIC_FADE_IN_START_VOLUME_DB
-const LINGLAN_SPAWN_LEFT_OFFSET := TowerDefenseBossCoordinator.LINGLAN_SPAWN_LEFT_OFFSET
-const LINGLAN_SKILL4_AUTHORED_TARGET_CENTER := TowerDefenseBossCoordinator.LINGLAN_SKILL4_AUTHORED_TARGET_CENTER
 const BOSS_INTRO_CAMERA_FOCUS_SECONDS := TowerDefensePresentationCoordinator.BOSS_INTRO_CAMERA_FOCUS_SECONDS
-const LINGLAN_AIRDROP_NEARBY_RADIUS := TowerDefenseBossCoordinator.LINGLAN_AIRDROP_NEARBY_RADIUS
 const DEFEAT_CAMERA_TRAVEL_SECONDS := TowerDefensePresentationCoordinator.DEFEAT_CAMERA_TRAVEL_SECONDS
 const INITIAL_PLAYER_XIRANG := TowerDefensePlayerRosterCoordinator.INITIAL_PLAYER_XIRANG
 const DEFAULT_BASE_HEALTH := 100
@@ -84,7 +77,6 @@ const LEGACY_CAPOO_AK47_BULLET_PREWARM_COUNT := 32
 const EXPANDED_CAPOO_AK47_BULLET_PREWARM_COUNT := 128
 const LEGACY_CAPOO_MAGE_FIREBALL_PREWARM_COUNT := 24
 const EXPANDED_CAPOO_MAGE_FIREBALL_PREWARM_COUNT := 64
-const LINGLAN_SKILL_REFERENCE_ARENA_POSITION := TowerDefenseBossCoordinator.LINGLAN_SKILL_REFERENCE_ARENA_POSITION
 const MULTIPLAYER_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2.ZERO,
 	Vector2(18.0, 0.0),
@@ -283,150 +275,6 @@ var has_received_remote_base_health_snapshot: bool:
 	set(value):
 		home_defense_coordinator.has_received_remote_base_health_snapshot = value
 var next_multiplayer_pickup_net_id: int = 1000
-var _linglan_boss_started := false
-var linglan_boss_started: bool:
-	get:
-		return (
-			boss_coordinator.linglan_boss_started
-			if boss_coordinator != null
-			else _linglan_boss_started
-		)
-	set(value):
-		_linglan_boss_started = value
-		if boss_coordinator != null:
-			boss_coordinator.linglan_boss_started = value
-var _active_boss_config: BossConfig
-var active_boss_config: Resource:
-	get:
-		return (
-			boss_coordinator.active_boss_config
-			if boss_coordinator != null
-			else _active_boss_config
-		)
-	set(value):
-		_active_boss_config = value as BossConfig
-		if boss_coordinator != null:
-			boss_coordinator.active_boss_config = value as BossConfig
-var _linglan_boss: LinglanBoss
-var linglan_boss: LinglanBoss:
-	get:
-		return (
-			boss_coordinator.linglan_boss
-			if boss_coordinator != null
-			else _linglan_boss
-		)
-	set(value):
-		_linglan_boss = value
-		if boss_coordinator != null:
-			boss_coordinator.linglan_boss = value
-var _linglan_boss_intro_vfx: LinglanBossIntroVFX
-var linglan_boss_intro_vfx: LinglanBossIntroVFX:
-	get:
-		return (
-			boss_coordinator.linglan_boss_intro_vfx
-			if boss_coordinator != null
-			else _linglan_boss_intro_vfx
-		)
-	set(value):
-		_linglan_boss_intro_vfx = value
-		if boss_coordinator != null:
-			boss_coordinator.linglan_boss_intro_vfx = value
-var _boss_health_hud: BossHealthHUD
-var boss_health_hud: BossHealthHUD:
-	get:
-		return (
-			boss_coordinator.boss_health_hud
-			if boss_coordinator != null
-			else _boss_health_hud
-		)
-	set(value):
-		_boss_health_hud = value
-		if boss_coordinator != null:
-			boss_coordinator.boss_health_hud = value
-var _linglan_skill4_orb_anchor_global_position := Vector2.ZERO
-var linglan_skill4_orb_anchor_global_position: Vector2:
-	get:
-		return (
-			boss_coordinator.linglan_skill4_orb_anchor_global_position
-			if boss_coordinator != null
-			else _linglan_skill4_orb_anchor_global_position
-		)
-	set(value):
-		_linglan_skill4_orb_anchor_global_position = value
-		if boss_coordinator != null:
-			boss_coordinator.linglan_skill4_orb_anchor_global_position = value
-var _linglan_skill4_orb_authored_center := LINGLAN_SKILL4_AUTHORED_TARGET_CENTER
-var linglan_skill4_orb_authored_center: Vector2:
-	get:
-		return (
-			boss_coordinator.linglan_skill4_orb_authored_center
-			if boss_coordinator != null
-			else _linglan_skill4_orb_authored_center
-		)
-	set(value):
-		_linglan_skill4_orb_authored_center = value
-		if boss_coordinator != null:
-			boss_coordinator.linglan_skill4_orb_authored_center = value
-var _linglan_skill4_orb_anchor_valid := false
-var linglan_skill4_orb_anchor_valid: bool:
-	get:
-		return (
-			boss_coordinator.linglan_skill4_orb_anchor_valid
-			if boss_coordinator != null
-			else _linglan_skill4_orb_anchor_valid
-		)
-	set(value):
-		_linglan_skill4_orb_anchor_valid = value
-		if boss_coordinator != null:
-			boss_coordinator.linglan_skill4_orb_anchor_valid = value
-var _linglan_slime_configs: Array[EnemyConfig] = []
-var linglan_slime_configs: Array[EnemyConfig]:
-	get:
-		return (
-			boss_coordinator.linglan_slime_configs
-			if boss_coordinator != null
-			else _linglan_slime_configs
-		)
-	set(value):
-		_linglan_slime_configs = value
-		if boss_coordinator != null:
-			boss_coordinator.linglan_slime_configs = value
-var _linglan_enrage_sniper_config: EnemyConfig
-var linglan_enrage_sniper_config: EnemyConfig:
-	get:
-		return (
-			boss_coordinator.linglan_enrage_sniper_config
-			if boss_coordinator != null
-			else _linglan_enrage_sniper_config
-		)
-	set(value):
-		_linglan_enrage_sniper_config = value
-		if boss_coordinator != null:
-			boss_coordinator.linglan_enrage_sniper_config = value
-var _boss_runtime_scene_loads_requested := false
-var boss_runtime_scene_loads_requested: bool:
-	get:
-		return (
-			boss_coordinator.runtime_scene_loads_requested
-			if boss_coordinator != null
-			else _boss_runtime_scene_loads_requested
-		)
-	set(value):
-		_boss_runtime_scene_loads_requested = value
-		if boss_coordinator != null:
-			boss_coordinator.runtime_scene_loads_requested = value
-var _boss_runtime_resources_by_path: Dictionary[String, Resource] = {}
-var boss_runtime_resources_by_path: Dictionary[String, Resource]:
-	get:
-		return (
-			boss_coordinator.runtime_resources_by_path
-			if boss_coordinator != null
-			else _boss_runtime_resources_by_path
-		)
-	set(value):
-		_boss_runtime_resources_by_path = value
-		if boss_coordinator != null:
-			boss_coordinator.runtime_resources_by_path = value
 var navigation_prewarm_requested: bool:
 	get:
 		return prewarmer_coordinator != null and prewarmer_coordinator.navigation_prewarm_requested
@@ -736,7 +584,7 @@ func _ready() -> void:
 		set_process(false)
 		set_physics_process(false)
 		return
-	call_deferred("_deferred_request_boss_runtime_scene_loads")
+	prewarmer_coordinator.schedule_boss_runtime_scene_loads()
 
 	if runtime_mode == RuntimeMode.CLIENT_VIEW:
 		auto_start_waves = false
@@ -1383,22 +1231,6 @@ func get_flow_state_snapshot() -> Dictionary:
 	return tower_multiplayer_mode_adapter.get_flow_state_snapshot()
 
 
-func apply_remote_boss_started(net_id: int, boss_config: BossConfig, spawn_position: Vector2) -> void:
-	tower_multiplayer_mode_adapter.apply_remote_boss_started(
-		net_id, boss_config, spawn_position
-	)
-
-
-func _instantiate_remote_linglan_boss_proxy(
-	net_id: int,
-	boss_config: BossConfig,
-	spawn_position: Vector2
-) -> LinglanBoss:
-	return boss_coordinator.instantiate_remote_proxy(
-		net_id, boss_config, spawn_position
-	)
-
-
 func apply_remote_victory() -> void:
 	tower_multiplayer_mode_adapter.apply_remote_victory()
 
@@ -1502,112 +1334,17 @@ func _configure_boss_coordinator() -> bool:
 		enemy_coordinator,
 		home_defense_coordinator,
 		player_roster_coordinator,
+		presentation_coordinator,
+		tower_multiplayer_mode_adapter,
+		prewarmer_coordinator,
 		grid_pathfinder,
 		random_generator
 	)
-	boss_coordinator.linglan_boss_started = _linglan_boss_started
-	boss_coordinator.active_boss_config = _active_boss_config
-	boss_coordinator.linglan_boss = _linglan_boss
-	boss_coordinator.linglan_boss_intro_vfx = _linglan_boss_intro_vfx
-	boss_coordinator.boss_health_hud = _boss_health_hud
-	boss_coordinator.linglan_skill4_orb_anchor_global_position = (
-		_linglan_skill4_orb_anchor_global_position
-	)
-	boss_coordinator.linglan_skill4_orb_authored_center = (
-		_linglan_skill4_orb_authored_center
-	)
-	boss_coordinator.linglan_skill4_orb_anchor_valid = _linglan_skill4_orb_anchor_valid
-	boss_coordinator.linglan_slime_configs = _linglan_slime_configs
-	boss_coordinator.linglan_enrage_sniper_config = _linglan_enrage_sniper_config
-	boss_coordinator.runtime_scene_loads_requested = _boss_runtime_scene_loads_requested
-	boss_coordinator.runtime_resources_by_path = _boss_runtime_resources_by_path
 	if not boss_coordinator.is_bound():
 		push_error("TowerDefenseGame: BossCoordinator 依赖绑定不完整。")
 		return false
 	boss_coordinator.configure_existing_runtime_nodes()
 	return true
-
-
-func _configure_linglan_boss() -> void:
-	if boss_coordinator != null and boss_coordinator.is_bound():
-		boss_coordinator.configure_existing_runtime_nodes()
-
-
-func _cache_linglan_slime_configs() -> void:
-	boss_coordinator.cache_slime_configs()
-
-
-func get_linglan_enrage_sniper_config() -> EnemyConfig:
-	return boss_coordinator.get_enrage_sniper_config()
-
-
-func _deferred_request_boss_runtime_scene_loads() -> void:
-	if prewarmer_coordinator != null:
-		await prewarmer_coordinator.schedule_boss_runtime_scene_loads()
-
-
-func _get_first_boss_config() -> Resource:
-	return boss_coordinator.get_first_boss_config()
-
-
-func _get_configured_bosses() -> Array[BossConfig]:
-	return boss_coordinator.get_configured_bosses()
-
-
-func _boss_config_has_required_data(boss_config: Resource) -> bool:
-	return boss_coordinator.boss_config_has_required_data(boss_config as BossConfig)
-
-
-func _get_boss_enemy_config(boss_config: Resource) -> EnemyConfig:
-	return boss_coordinator.get_boss_enemy_config(boss_config as BossConfig)
-
-
-func _get_boss_enemy_config_path(boss_config: Resource) -> String:
-	return boss_coordinator.get_boss_enemy_config_path(boss_config as BossConfig)
-
-
-func _get_boss_arena_center(boss_config: Resource) -> Vector2:
-	return boss_coordinator.get_boss_arena_center(boss_config as BossConfig)
-
-
-func _get_linglan_spawn_global_position(boss_config: Resource) -> Vector2:
-	return boss_coordinator.get_linglan_spawn_global_position(boss_config as BossConfig)
-
-
-func _get_boss_arena_floor_rect(boss_config: Resource) -> Rect2i:
-	return boss_coordinator.get_boss_arena_floor_rect(boss_config as BossConfig)
-
-
-func _get_boss_floor_source_id(boss_config: Resource) -> int:
-	return boss_coordinator.get_boss_floor_source_id(boss_config as BossConfig)
-
-
-func _get_boss_floor_atlas_coords(boss_config: Resource) -> Vector2i:
-	return boss_coordinator.get_boss_floor_atlas_coords(boss_config as BossConfig)
-
-
-func _should_clear_boss_inner_overlay_cells(boss_config: Resource) -> bool:
-	return boss_coordinator.should_clear_boss_inner_overlay_cells(boss_config as BossConfig)
-
-
-func _get_boss_display_name(boss_config: Resource) -> String:
-	return boss_coordinator.get_boss_display_name(boss_config as BossConfig)
-
-
-func _get_boss_intro_vfx_scene_path(boss_config: Resource) -> String:
-	return boss_coordinator.get_boss_intro_vfx_scene_path(boss_config as BossConfig)
-
-
-func _get_boss_hud_scene_path(boss_config: Resource) -> String:
-	return boss_coordinator.get_boss_hud_scene_path(boss_config as BossConfig)
-
-
-func _ensure_linglan_boss_runtime_nodes(boss_config: Resource) -> bool:
-	return boss_coordinator.ensure_runtime_nodes(boss_config as BossConfig)
-
-
-func _ensure_boss_health_hud_runtime_node(boss_config: Resource) -> bool:
-	return boss_coordinator.ensure_health_hud(boss_config as BossConfig)
 
 
 func _configure_enemy_coordinator() -> void:
@@ -1703,100 +1440,12 @@ func grant_xirang_kill_reward(amount: int) -> bool:
 	return accepted
 
 
-func spawn_linglan_skill2_enemies(
-	enemy_config: EnemyConfig,
-	marker_names: Array[StringName]
-) -> void:
-	boss_coordinator.spawn_skill2_enemies(enemy_config, marker_names)
-
-
-func spawn_linglan_random_slime(spawn_position: Vector2) -> void:
-	boss_coordinator.spawn_random_slime(spawn_position)
-
-
-func spawn_linglan_airdrop_sniper(
-	enemy_config: EnemyConfig,
-	warning_scene: PackedScene,
-	warning_duration: float,
-	drop_height: float,
-	drop_duration: float
-) -> void:
-	boss_coordinator.spawn_airdrop_sniper(
-		enemy_config,
-		warning_scene,
-		warning_duration,
-		drop_height,
-		drop_duration
-	)
-
-
-func _show_tower_defense_boss_progress(defeated: int, total: int) -> void:
-	presentation_coordinator.show_boss_progress(defeated, total)
-
-
 func get_progression_metrics_snapshot() -> Dictionary:
 	return campaign_coordinator.get_progression_metrics_snapshot()
 
 
 func _complete_defeat_presentation() -> void:
 	campaign_coordinator.complete_defeat_presentation()
-
-
-func _begin_linglan_boss_intro(boss_config: BossConfig = null) -> void:
-	boss_coordinator.begin_intro(boss_config)
-
-
-func _on_linglan_boss_intro_finished() -> void:
-	boss_coordinator.finish_intro()
-
-
-func _activate_linglan_boss() -> void:
-	boss_coordinator.activate_boss()
-
-
-func _rebroadcast_linglan_boss_started_after_sync_window(
-	boss_net_id: int,
-	boss_config: BossConfig
-) -> void:
-	if boss_net_id <= 0 or boss_config == null:
-		return
-	await get_tree().create_timer(0.75).timeout
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	if campaign_coordinator.wave_state != CombatFlowState.State.BOSS_ACTIVE:
-		return
-	if linglan_boss == null or not is_instance_valid(linglan_boss):
-		return
-	multiplayer_mode_adapter.boss_started.emit(boss_net_id, boss_config, linglan_boss.global_position)
-
-
-func _emit_tower_boss_started_authoritatively(
-	boss_net_id: int,
-	boss_config: BossConfig,
-	spawn_position: Vector2
-) -> void:
-	if runtime_mode != RuntimeMode.HOST_AUTHORITY:
-		return
-	multiplayer_mode_adapter.boss_started.emit(
-		boss_net_id, boss_config, spawn_position
-	)
-	_rebroadcast_linglan_boss_started_after_sync_window(boss_net_id, boss_config)
-
-
-func _on_linglan_boss_defeated(enemy: Enemy) -> void:
-	boss_coordinator.handle_boss_defeated(enemy)
-
-
-func _complete_linglan_boss_after_delay() -> void:
-	boss_coordinator.complete_boss_after_delay()
-
-
-func _remove_remaining_boss_adds() -> void:
-	boss_coordinator.remove_remaining_adds()
-
-
-func _prepare_linglan_boss_arena(boss_config: Resource) -> void:
-	boss_coordinator.prepare_arena(boss_config as BossConfig)
 
 
 func consume_next_player_respawn_delay(peer_id: int) -> float:
@@ -1839,25 +1488,6 @@ func _end_local_spectator_camera() -> void:
 
 func _update_local_spectator_camera(delta: float) -> void:
 	presentation_coordinator.update_local_spectator_camera(delta)
-
-
-func _clamp_spectator_camera_position(camera_position: Vector2) -> Vector2:
-	if ground_tile_map_layer == null or ground_tile_map_layer.tile_set == null:
-		return camera_position
-	var used_rect := ground_tile_map_layer.get_used_rect()
-	if used_rect.size.x <= 0 or used_rect.size.y <= 0:
-		return camera_position
-	var top_left := ground_tile_map_layer.to_global(
-		ground_tile_map_layer.map_to_local(used_rect.position)
-	)
-	var bottom_right_cell := used_rect.end - Vector2i.ONE
-	var bottom_right := ground_tile_map_layer.to_global(
-		ground_tile_map_layer.map_to_local(bottom_right_cell)
-	)
-	return Vector2(
-		clampf(camera_position.x, minf(top_left.x, bottom_right.x), maxf(top_left.x, bottom_right.x)),
-		clampf(camera_position.y, minf(top_left.y, bottom_right.y), maxf(top_left.y, bottom_right.y))
-	)
 
 
 func _configure_multiplayer_players() -> void:
@@ -2091,47 +1721,6 @@ func find_nearest_enemy_attack_target_world(
 	)
 
 
-func get_linglan_skill2_target_global_position(target_cell: Vector2i) -> Vector2:
-	return boss_coordinator.get_skill_target_global_position(target_cell)
-
-
-func get_linglan_skill3_target_global_position(target_cell: Vector2i) -> Vector2:
-	return boss_coordinator.get_skill_target_global_position(target_cell)
-
-
-func get_linglan_skill4_target_global_position(
-	target_cell_a: Vector2i,
-	target_cell_b: Vector2i
-) -> Vector2:
-	return boss_coordinator.get_skill4_target_global_position(
-		target_cell_a, target_cell_b
-	)
-
-
-func get_linglan_skill4_laser_bounds(
-	left_cell_x: int,
-	right_cell_x: int,
-	top_cell_y: int,
-	bottom_cell_y: int,
-	inward_cell_distance: int
-) -> Dictionary:
-	return boss_coordinator.get_skill4_laser_bounds(
-		left_cell_x,
-		right_cell_x,
-		top_cell_y,
-		bottom_cell_y,
-		inward_cell_distance
-	)
-
-
-func get_linglan_skill4_orb_spawn_global_position(x_cell: int, y_cell: int) -> Vector2:
-	return boss_coordinator.get_skill4_orb_spawn_global_position(x_cell, y_cell)
-
-
-func get_linglan_skill2_target_player(from_position: Vector2) -> Player:
-	return boss_coordinator.get_skill2_target_player(from_position)
-
-
 func _is_flow_system_ready() -> bool:
 	if campaign_coordinator.flow_graph == null:
 		push_error("TowerDefenseGame 当前 Campaign 没有配置 FlowGraphConfig。")
@@ -2173,26 +1762,6 @@ func _emit_multiplayer_flow_state(state: CombatFlowState.State) -> void:
 	tower_multiplayer_mode_adapter.publish_flow_state(state)
 
 
-func _play_remote_boss_intro(boss_config: BossConfig) -> void:
-	boss_coordinator.play_remote_intro(boss_config)
-
-
-func _on_remote_linglan_boss_intro_finished() -> void:
-	boss_coordinator.finish_intro()
-
-
-func _restore_remote_camera_if_boss_intro_complete() -> void:
-	boss_coordinator.restore_remote_camera_if_intro_complete()
-
-
-func _focus_camera_on_boss_intro(boss_position: Vector2) -> void:
-	presentation_coordinator.focus_camera_on_boss_intro(boss_position)
-
-
-func _restore_camera_after_boss_intro() -> void:
-	presentation_coordinator.restore_camera_after_boss_intro(player)
-
-
 func _is_spawn_system_ready() -> bool:
 	return enemy_coordinator.is_spawn_system_ready()
 
@@ -2223,14 +1792,6 @@ func _update_wave_music(wave_config: WaveConfig) -> void:
 
 func _update_post_wave_music(flow_step: FlowStepConfig) -> void:
 	presentation_coordinator.update_post_wave_music(flow_step)
-
-
-func _update_boss_music(boss_config: BossConfig) -> void:
-	presentation_coordinator.update_boss_music(boss_config)
-
-
-func pause_all_background_music() -> void:
-	presentation_coordinator.pause_all_background_music()
 
 
 func _stop_background_music_for_defeat() -> void:

@@ -83,6 +83,10 @@ func is_bound() -> bool:
 	)
 
 
+func can_continue_runtime_prewarm() -> bool:
+	return is_bound() and runtime._can_continue_runtime_prewarm()
+
+
 func prewarm_enemy_visual_resources() -> void:
 	if guardian_point_light_texture != null:
 		guardian_point_light_texture.get_size()
