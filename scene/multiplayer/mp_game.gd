@@ -178,10 +178,7 @@ func _on_world_flow_rpc_to_peer_requested(
 ) -> void:
 	if peer_id <= 0 or not is_inside_tree() or not net_manager.is_host():
 		return
-	_record_outbound_rpc(method_name, arguments)
-	var rpc_arguments: Array = [peer_id, method_name]
-	rpc_arguments.append_array(arguments)
-	callv(&"rpc_id", rpc_arguments)
+	_rpc_to_peer(peer_id, method_name, arguments)
 
 
 func _on_world_flow_rpc_broadcast_requested(
@@ -205,14 +202,10 @@ func _on_player_life_state_correction_requested(
 	corrected_position: Vector2,
 	corrected_velocity: Vector2
 ) -> void:
-	_record_outbound_rpc(
+	_rpc_to_peer(
+		peer_id,
 		&"net_player_state_corrected",
 		[corrected_position, corrected_velocity]
-	)
-	net_player_state_corrected.rpc_id(
-		peer_id,
-		corrected_position,
-		corrected_velocity
 	)
 
 
@@ -222,10 +215,7 @@ func _on_player_action_rpc_to_host_requested(
 ) -> void:
 	if not net_manager.is_client():
 		return
-	_record_outbound_rpc(method_name, arguments)
-	var rpc_arguments: Array = [_get_host_peer_id(), method_name]
-	rpc_arguments.append_array(arguments)
-	callv(&"rpc_id", rpc_arguments)
+	_rpc_to_peer(_get_host_peer_id(), method_name, arguments)
 
 
 func _on_player_action_rpc_to_peer_requested(
@@ -235,10 +225,7 @@ func _on_player_action_rpc_to_peer_requested(
 ) -> void:
 	if peer_id <= 0 or not net_manager.is_host():
 		return
-	_record_outbound_rpc(method_name, arguments)
-	var rpc_arguments: Array = [peer_id, method_name]
-	rpc_arguments.append_array(arguments)
-	callv(&"rpc_id", rpc_arguments)
+	_rpc_to_peer(peer_id, method_name, arguments)
 
 
 func _on_player_action_rpc_broadcast_requested(
@@ -257,7 +244,11 @@ func _on_player_snapshot_send_requested(
 	if peer_id <= 0 or not net_manager.is_host():
 		return
 	_record_snapshot_packet_size(&"player", data.size(), entity_count)
-	_rpc_receive_player_snapshot.rpc_id(peer_id, host_timestamp, data)
+	_rpc_to_peer(
+		peer_id,
+		&"_rpc_receive_player_snapshot",
+		[host_timestamp, data]
+	)
 
 
 func _on_stale_player_peer_detected(peer_id: int) -> void:
@@ -273,10 +264,7 @@ func _on_projectile_rpc_to_host_requested(
 ) -> void:
 	if not net_manager.is_client():
 		return
-	_record_outbound_rpc(method_name, arguments)
-	var rpc_arguments: Array = [_get_host_peer_id(), method_name]
-	rpc_arguments.append_array(arguments)
-	callv(&"rpc_id", rpc_arguments)
+	_rpc_to_peer(_get_host_peer_id(), method_name, arguments)
 
 
 func _on_projectile_rpc_broadcast_requested(
@@ -303,10 +291,7 @@ func _on_enemy_lifecycle_rpc_to_peer_requested(
 ) -> void:
 	if peer_id <= 0 or not net_manager.is_host():
 		return
-	_record_outbound_rpc(method_name, arguments)
-	var rpc_arguments: Array = [peer_id, method_name]
-	rpc_arguments.append_array(arguments)
-	callv(&"rpc_id", rpc_arguments)
+	_rpc_to_peer(peer_id, method_name, arguments)
 
 
 func _on_enemy_lifecycle_rpc_broadcast_requested(
@@ -596,17 +581,17 @@ func request_multiplayer_skill1_purchase() -> void:
 
 
 func _on_transaction_upgrade_request_to_host(stat_type: int) -> void:
-	net_upgrade_selected.rpc_id(_get_host_peer_id(), stat_type)
+	_rpc_to_peer(_get_host_peer_id(), &"net_upgrade_selected", [stat_type])
 
 
 func _on_transaction_inventory_item_use_request_to_host(
 	slot_index: int,
 	expected_inventory_revision: int
 ) -> void:
-	net_inventory_item_use_requested.rpc_id(
+	_rpc_to_peer(
 		_get_host_peer_id(),
-		slot_index,
-		expected_inventory_revision
+		&"net_inventory_item_use_requested",
+		[slot_index, expected_inventory_revision]
 	)
 
 
@@ -614,10 +599,10 @@ func _on_transaction_inventory_item_discard_request_to_host(
 	slot_index: int,
 	expected_inventory_revision: int
 ) -> void:
-	net_inventory_item_discard_requested.rpc_id(
+	_rpc_to_peer(
 		_get_host_peer_id(),
-		slot_index,
-		expected_inventory_revision
+		&"net_inventory_item_discard_requested",
+		[slot_index, expected_inventory_revision]
 	)
 
 
@@ -626,16 +611,15 @@ func _on_transaction_simple_crafting_request_to_host(
 	recipe_id: String,
 	expected_inventory_revision: int
 ) -> void:
-	net_simple_crafting_requested.rpc_id(
+	_rpc_to_peer(
 		_get_host_peer_id(),
-		request_id,
-		recipe_id,
-		expected_inventory_revision
+		&"net_simple_crafting_requested",
+		[request_id, recipe_id, expected_inventory_revision]
 	)
 
 
 func _on_transaction_skill1_purchase_request_to_host() -> void:
-	net_skill1_purchase_requested.rpc_id(_get_host_peer_id())
+	_rpc_to_peer(_get_host_peer_id(), &"net_skill1_purchase_requested")
 
 
 func _on_transaction_upgrade_confirmation_broadcast_requested(
@@ -784,9 +768,7 @@ func _on_tower_economy_rpc_to_host_requested(
 ) -> void:
 	if not net_manager.is_client():
 		return
-	var rpc_args: Array = [_get_host_peer_id(), method_name]
-	rpc_args.append_array(args)
-	callv(&"rpc_id", rpc_args)
+	_rpc_to_peer(_get_host_peer_id(), method_name, args)
 
 
 func _on_tower_economy_rpc_to_peer_requested(
@@ -797,11 +779,7 @@ func _on_tower_economy_rpc_to_peer_requested(
 ) -> void:
 	if peer_id <= 0 or not net_manager.is_host():
 		return
-	if record_outbound:
-		_record_outbound_rpc(method_name, args)
-	var rpc_args: Array = [peer_id, method_name]
-	rpc_args.append_array(args)
-	callv(&"rpc_id", rpc_args)
+	_rpc_to_peer(peer_id, method_name, args, record_outbound)
 
 
 func _on_tower_economy_rpc_broadcast_requested(
@@ -838,9 +816,7 @@ func _on_merchant_transactions_rpc_to_host_requested(
 ) -> void:
 	if not net_manager.is_client():
 		return
-	var rpc_args: Array = [_get_host_peer_id(), method_name]
-	rpc_args.append_array(args)
-	callv(&"rpc_id", rpc_args)
+	_rpc_to_peer(_get_host_peer_id(), method_name, args)
 
 
 func _on_merchant_transactions_rpc_to_peer_requested(
@@ -850,10 +826,7 @@ func _on_merchant_transactions_rpc_to_peer_requested(
 ) -> void:
 	if peer_id <= 0 or not net_manager.is_host():
 		return
-	_record_outbound_rpc(method_name, args)
-	var rpc_args: Array = [peer_id, method_name]
-	rpc_args.append_array(args)
-	callv(&"rpc_id", rpc_args)
+	_rpc_to_peer(peer_id, method_name, args)
 
 
 func _on_merchant_transactions_rpc_broadcast_requested(
@@ -869,10 +842,7 @@ func _on_tower_fate_rpc_to_host_requested(
 ) -> void:
 	if not net_manager.is_client():
 		return
-	_record_outbound_rpc(method_name, args)
-	var rpc_args: Array = [_get_host_peer_id(), method_name]
-	rpc_args.append_array(args)
-	callv(&"rpc_id", rpc_args)
+	_rpc_to_peer(_get_host_peer_id(), method_name, args)
 
 
 func _on_tower_fate_rpc_to_peer_requested(
@@ -882,10 +852,7 @@ func _on_tower_fate_rpc_to_peer_requested(
 ) -> void:
 	if peer_id <= 0 or not net_manager.is_host():
 		return
-	_record_outbound_rpc(method_name, args)
-	var rpc_args: Array = [peer_id, method_name]
-	rpc_args.append_array(args)
-	callv(&"rpc_id", rpc_args)
+	_rpc_to_peer(peer_id, method_name, args)
 
 
 func _on_tower_fate_rpc_broadcast_requested(
@@ -910,7 +877,7 @@ func request_multiplayer_start_wave() -> void:
 			_get_local_peer_id()
 		)
 	else:
-		net_tower_defense_start_wave_requested.rpc_id(_get_host_peer_id())
+		_rpc_to_peer(_get_host_peer_id(), &"net_tower_defense_start_wave_requested")
 
 
 func _on_local_xiaocong_interaction_requested() -> void:
@@ -1143,11 +1110,10 @@ func _on_tower_world_plant_placement_request_to_host(
 ) -> void:
 	if not _has_tower_mode() or not net_manager.is_client():
 		return
-	net_plant_placement_requested.rpc_id(
+	_rpc_to_peer(
 		_get_host_peer_id(),
-		request_id,
-		plant_id,
-		anchor
+		&"net_plant_placement_requested",
+		[request_id, plant_id, anchor]
 	)
 
 
@@ -1161,21 +1127,28 @@ func _on_tower_world_inventory_plant_placement_request_to_host(
 ) -> void:
 	if not _has_tower_mode() or not net_manager.is_client():
 		return
-	net_inventory_plant_placement_requested.rpc_id(
+	_rpc_to_peer(
 		_get_host_peer_id(),
-		request_id,
-		plant_id,
-		anchor,
-		slot_index,
-		expected_inventory_revision,
-		item_config_path
+		&"net_inventory_plant_placement_requested",
+		[
+			request_id,
+			plant_id,
+			anchor,
+			slot_index,
+			expected_inventory_revision,
+			item_config_path,
+		]
 	)
 
 
 func _on_tower_world_terrain_snapshot_request_to_host(known_revision: int) -> void:
 	if not _has_tower_mode() or not net_manager.is_client():
 		return
-	net_terrain_snapshot_requested.rpc_id(_get_host_peer_id(), known_revision)
+	_rpc_to_peer(
+		_get_host_peer_id(),
+		&"net_terrain_snapshot_requested",
+		[known_revision]
+	)
 
 
 func _on_tower_world_base_health_send_requested(
@@ -1187,11 +1160,10 @@ func _on_tower_world_base_health_send_requested(
 	if not _has_tower_mode() or not net_manager.is_host():
 		return
 	if target_peer_id > 0:
-		net_base_health_changed.rpc_id(
+		_rpc_to_peer(
 			target_peer_id,
-			current_health,
-			maximum_health,
-			revision
+			&"net_base_health_changed",
+			[current_health, maximum_health, revision]
 		)
 		return
 	_rpc_to_connected_clients(
@@ -1211,7 +1183,8 @@ func _on_tower_world_terrain_snapshot_chunk_send_requested(
 ) -> void:
 	if not _has_tower_mode() or not net_manager.is_host() or target_peer_id <= 0:
 		return
-	_record_outbound_rpc(
+	_rpc_to_peer(
+		target_peer_id,
 		&"net_terrain_snapshot_chunk",
 		[
 			snapshot_id,
@@ -1221,15 +1194,6 @@ func _on_tower_world_terrain_snapshot_chunk_send_requested(
 			cell_xy,
 			terrain_types,
 		]
-	)
-	net_terrain_snapshot_chunk.rpc_id(
-		target_peer_id,
-		snapshot_id,
-		revision,
-		chunk_index,
-		chunk_count,
-		cell_xy,
-		terrain_types
 	)
 
 
@@ -1253,7 +1217,11 @@ func _on_tower_world_test_arena_manual_night_send_requested(
 	if not _has_tower_mode() or not net_manager.is_host():
 		return
 	if target_peer_id > 0:
-		net_test_arena_manual_night_changed.rpc_id(target_peer_id, enabled)
+		_rpc_to_peer(
+			target_peer_id,
+			&"net_test_arena_manual_night_changed",
+			[enabled]
+		)
 		return
 	_rpc_to_connected_clients(
 		&"net_test_arena_manual_night_changed",
@@ -1848,9 +1816,10 @@ func _request_runtime_state_from_host() -> void:
 	):
 		return
 	tower_world_coordinator.begin_runtime_state_request()
-	net_runtime_state_requested.rpc_id(
+	_rpc_to_peer(
 		_get_host_peer_id(),
-		not world_flow_coordinator.has_received_flow_state()
+		&"net_runtime_state_requested",
+		[not world_flow_coordinator.has_received_flow_state()]
 	)
 
 
@@ -1867,11 +1836,14 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 		var state_peer_id := int(state_peer_id_variant)
 		if state_peer_id <= 0 or not run_state.has_multiplayer_peer_state(state_peer_id):
 			continue
-		net_inventory_snapshot.rpc_id(
+		_rpc_to_peer(
 			peer_id,
-			state_peer_id,
-			run_state.export_inventory_snapshot_for_peer(state_peer_id),
-			true
+			&"net_inventory_snapshot",
+			[
+				state_peer_id,
+				run_state.export_inventory_snapshot_for_peer(state_peer_id),
+				true,
+			]
 		)
 	merchant_transactions_coordinator.send_offer_state_if_present(peer_id)
 	enemy_coordinator.send_live_spawn_roster_to_peer(peer_id)
@@ -1880,13 +1852,16 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 		tower_world_coordinator.request_base_health_snapshot_for_peer(peer_id)
 	var progress_snapshot := world_flow_coordinator.get_wave_progress_snapshot()
 	if not progress_snapshot.is_empty():
-		net_tower_defense_wave_progress_keyframe.rpc_id(
+		_rpc_to_peer(
 			peer_id,
-			int(progress_snapshot.get("wave_number", 1)),
-			int(progress_snapshot.get("defeated", 0)),
-			int(progress_snapshot.get("escaped", 0)),
-			int(progress_snapshot.get("resolved", 0)),
-			int(progress_snapshot.get("total", 0))
+			&"net_tower_defense_wave_progress_keyframe",
+			[
+				int(progress_snapshot.get("wave_number", 1)),
+				int(progress_snapshot.get("defeated", 0)),
+				int(progress_snapshot.get("escaped", 0)),
+				int(progress_snapshot.get("resolved", 0)),
+				int(progress_snapshot.get("total", 0)),
+			]
 		)
 	if _has_tower_mode():
 		tower_fate_coordinator.send_fate_state_to_peer(peer_id)
@@ -1899,11 +1874,14 @@ func _send_runtime_state_to_peer(peer_id: int, include_flow_state: bool) -> void
 	if include_flow_state:
 		var flow_snapshot := world_flow_coordinator.get_flow_state_snapshot()
 		if not flow_snapshot.is_empty():
-			net_flow_state_changed.rpc_id(
+			_rpc_to_peer(
 				peer_id,
-				String(flow_snapshot.get("step_id", &"")),
-				int(flow_snapshot.get("state", CombatFlowState.State.PRE_WAVE)),
-				int(flow_snapshot.get("countdown_seconds", 0))
+				&"net_flow_state_changed",
+				[
+					String(flow_snapshot.get("step_id", &"")),
+					int(flow_snapshot.get("state", CombatFlowState.State.PRE_WAVE)),
+					int(flow_snapshot.get("countdown_seconds", 0)),
+				]
 			)
 	player_coordinator.send_active_tango_electric_surges_to_peer(peer_id)
 	player_coordinator.send_active_tiyi_high_noon_to_peer(peer_id)
@@ -1922,11 +1900,14 @@ func _send_authoritative_player_positions_to_peer(target_peer_id: int) -> void:
 			or not is_instance_valid(player_node)
 		):
 			continue
-		net_player_authoritative_teleported.rpc_id(
+		_rpc_to_peer(
 			target_peer_id,
-			state_peer_id,
-			player_node.global_position,
-			player_coordinator.get_host_snapshot_sequence()
+			&"net_player_authoritative_teleported",
+			[
+				state_peer_id,
+				player_node.global_position,
+				player_coordinator.get_host_snapshot_sequence(),
+			]
 		)
 
 
@@ -1942,18 +1923,21 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 		_configure_research_network(plant)
 		var runtime_state := _export_plant_runtime_state(plant)
 		var host_sample_time := _get_net_time()
-		net_plant_spawned.rpc_id(
+		_rpc_to_peer(
 			peer_id,
-			0,
-			int(plant_snapshot.get("owner_peer_id", 0)),
-			plant_net_id,
-			String(plant_snapshot.get("plant_id", &"")),
-			plant_snapshot.get("anchor", Vector2i.ZERO) as Vector2i,
-			int(plant_snapshot.get("current_health", 0)),
-			int(plant_snapshot.get("maximum_health", 1)),
-			int(plant_snapshot.get("health_revision", 0)),
-			runtime_state,
-			host_sample_time
+			&"net_plant_spawned",
+			[
+				0,
+				int(plant_snapshot.get("owner_peer_id", 0)),
+				plant_net_id,
+				String(plant_snapshot.get("plant_id", &"")),
+				plant_snapshot.get("anchor", Vector2i.ZERO) as Vector2i,
+				int(plant_snapshot.get("current_health", 0)),
+				int(plant_snapshot.get("maximum_health", 1)),
+				int(plant_snapshot.get("health_revision", 0)),
+				runtime_state,
+				host_sample_time,
+			]
 		)
 		var warehouse := plant as OakWarehouse
 		if warehouse != null and is_instance_valid(warehouse):
@@ -1971,21 +1955,16 @@ func _send_live_plant_roster_to_peer(peer_id: int) -> void:
 			warehouse_snapshots.append(
 				warehouse_snapshots_by_net_id[warehouse_net_id]
 			)
-		_record_outbound_rpc(
+		_rpc_to_peer(
+			peer_id,
 			&"net_warehouse_storage_snapshot_batch",
 			[warehouse_net_ids, warehouse_snapshots]
 		)
-		net_warehouse_storage_snapshot_batch.rpc_id(
-			peer_id,
-			warehouse_net_ids,
-			warehouse_snapshots
-		)
 	if _has_tower_mode():
-		net_research_state_updated.rpc_id(
+		_rpc_to_peer(
 			peer_id,
-			tower_mode_adapter.get_research_runtime_state(),
-			0,
-			-1
+			&"net_research_state_updated",
+			[tower_mode_adapter.get_research_runtime_state(), 0, -1]
 		)
 
 func _send_runtime_world_manifest_to_peer(peer_id: int) -> void:
@@ -2016,15 +1995,10 @@ func _send_runtime_world_manifest_to_peer(peer_id: int) -> void:
 			live_pickup_ids.append(net_id)
 	if _has_tower_mode():
 		live_plant_ids = tower_world_coordinator.build_live_plant_ids()
-	_record_outbound_rpc(
+	_rpc_to_peer(
+		peer_id,
 		&"net_runtime_world_manifest",
 		[live_enemy_ids, live_pickup_ids, live_plant_ids]
-	)
-	net_runtime_world_manifest.rpc_id(
-		peer_id,
-		live_enemy_ids,
-		live_pickup_ids,
-		live_plant_ids
 	)
 
 
@@ -2078,14 +2052,17 @@ func _host_broadcast_enemy_snapshots(client_peer_ids: Array[int] = []) -> void:
 	for chunk in batch.chunks:
 		for peer_id in batch.peer_ids:
 			_record_snapshot_packet_size(&"enemy", chunk.data.size(), chunk.entity_count)
-			_rpc_receive_enemy_snapshot.rpc_id(
+			_rpc_to_peer(
 				peer_id,
-				batch.host_timestamp,
-				chunk.data,
-				batch.batch_id,
-				chunk.chunk_index,
-				batch.chunk_count,
-				batch.snapshot_hz
+				&"_rpc_receive_enemy_snapshot",
+				[
+					batch.host_timestamp,
+					chunk.data,
+					batch.batch_id,
+					chunk.chunk_index,
+					batch.chunk_count,
+					batch.snapshot_hz,
+				]
 			)
 
 
@@ -2143,6 +2120,22 @@ func _filter_embedded_peer_map(source: Dictionary) -> Dictionary:
 # inventory signals before that barrier; suppress those transient packets so
 # they never target a client path that has not been created yet. Activation's
 # runtime-state request repairs every authoritative state channel.
+func _rpc_to_peer(
+	peer_id: int,
+	method_name: StringName,
+	args: Array = [],
+	record_outbound: bool = true
+) -> bool:
+	if peer_id <= 0:
+		return false
+	var rpc_args: Array = [peer_id, method_name]
+	rpc_args.append_array(args)
+	callv(&"rpc_id", rpc_args)
+	if record_outbound:
+		_record_outbound_rpc(method_name, args)
+	return true
+
+
 func _rpc_to_connected_clients(method_name: StringName, args: Array = []) -> void:
 	if embedded_runtime and not _embedded_runtime_active:
 		return
@@ -3417,6 +3410,7 @@ func net_xirang_orb_spawned(orb_id: int, amount: int, spawn_position: Vector2) -
 
 @rpc("any_peer", "call_remote", "reliable", 6)
 func _rpc_xirang_orb_collected(orb_id: int) -> void:
+	var _sender_id := multiplayer.get_remote_sender_id()
 	pass
 
 
@@ -3767,10 +3761,10 @@ func _send_plant_placement_rejected(
 		requester_peer_id
 	):
 		return
-	net_plant_placement_rejected.rpc_id(
+	_rpc_to_peer(
 		requester_peer_id,
-		request_id,
-		String(reason)
+		&"net_plant_placement_rejected",
+		[request_id, String(reason)]
 	)
 
 
