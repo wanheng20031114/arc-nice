@@ -34,6 +34,7 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/standard/boss/standard_boss_coordinator.tscn" id="36_boss_coordinator"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/standard/player/standard_player_roster_coordinator.tscn" id="37_player_roster"]
 [ext_resource type="PackedScene" uid="uid://c7r2n5v8w3j6a" path="res://scene/game_modes/standard/pickup/standard_pickup_registry.tscn" id="38_pickup_registry"]
+[ext_resource type="PackedScene" uid="uid://d6n2k9p4w8x1b" path="res://scene/game_modes/standard/merchant/standard_merchant_coordinator.tscn" id="39_merchant_coordinator"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -147,6 +148,8 @@ mode_definition = ExtResource("31_mode_definition")
 [node name="BossCoordinator" parent="." instance=ExtResource("36_boss_coordinator")]
 
 [node name="PlayerRosterCoordinator" parent="." instance=ExtResource("37_player_roster")]
+
+[node name="MerchantCoordinator" parent="." instance=ExtResource("39_merchant_coordinator")]
 
 [node name="PickupRegistry" parent="." instance=ExtResource("38_pickup_registry")]
 

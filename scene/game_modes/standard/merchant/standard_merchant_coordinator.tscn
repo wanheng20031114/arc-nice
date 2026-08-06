@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d6n2k9p4w8x1b"]
+
+[ext_resource type="Script" uid="uid://c3m8q1v7s5a2d" path="res://scene/game_modes/standard/merchant/standard_merchant_coordinator.gd" id="1_coordinator"]
+
+[node name="MerchantCoordinator" type="Node"]
+script = ExtResource("1_coordinator")

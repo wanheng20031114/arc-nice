@@ -204,6 +204,14 @@ func get_player_for_peer(peer_id: int) -> Player:
 	return runtime.peer_players.get(peer_id) as Player if runtime != null else null
 
 
+func get_player_for_peer_or_singleplayer(peer_id: int) -> Player:
+	if runtime == null:
+		return null
+	if peer_id <= 0:
+		return runtime.player
+	return get_player_for_peer(peer_id)
+
+
 func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
 	return _snapshot_encoder.collect(runtime.peer_players)
 
