@@ -41,10 +41,17 @@ func replace_bosses(configured_bosses: Array[Resource]) -> void:
 	bosses.assign(configured_bosses)
 
 
-func get_configured_bosses() -> Array[BossConfig]:
+func get_configured_bosses(
+	runtime_flow_graph: FlowGraphConfig = null
+) -> Array[BossConfig]:
 	var result: Array[BossConfig] = []
-	if flow_graph != null:
-		for step in flow_graph.steps:
+	var active_flow_graph := (
+		runtime_flow_graph
+		if runtime_flow_graph != null
+		else flow_graph
+	)
+	if active_flow_graph != null:
+		for step in active_flow_graph.steps:
 			var boss_step := step as BossConfig
 			if boss_step != null:
 				result.append(boss_step)

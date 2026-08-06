@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bq7m4k2n9x6ts"]
+
+[ext_resource type="Script" path="res://scene/game_modes/standard/boss/standard_boss_coordinator.gd" id="1_coordinator"]
+
+[node name="BossCoordinator" type="Node"]
+script = ExtResource("1_coordinator")
