@@ -4,7 +4,7 @@ const DEFAULT_CONFIG: RogueRouteGenerationConfig = preload(
 	"res://resources/config/rogue_route/p3_generation_config.tres"
 )
 const BOARD_SCENE: PackedScene = preload(
-	"res://scene/rogue_route/rogue_route_board.tscn"
+	"res://scene/game_modes/rogue/route/rogue_route_board.tscn"
 )
 
 var failures: Array[String] = []

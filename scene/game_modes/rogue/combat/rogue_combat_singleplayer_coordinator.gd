@@ -21,7 +21,7 @@ const BATTLE_NODE_NAME := "RogueCombatBattle"
 
 @export var encounter_config: RogueCombatEncounterConfig = ENCOUNTER_CONFIG
 
-var route: TestRogueRouteP3 = null
+var route: RogueRouteGame = null
 var active_battle: RogueCombatGame = null
 
 var _enabled := false
@@ -38,7 +38,7 @@ var _victory_sequence_serial := 0
 
 
 func _ready() -> void:
-	var parent_route := get_parent() as TestRogueRouteP3
+	var parent_route := get_parent() as RogueRouteGame
 	if (
 		parent_route == null
 		or not parent_route.manage_return_locally

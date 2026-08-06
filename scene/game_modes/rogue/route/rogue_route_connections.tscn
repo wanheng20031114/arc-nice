@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scene/rogue_route/rogue_route_connections.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_connections.gd" id="1_script"]
 
 [node name="RogueRouteConnections" type="Node2D"]
 texture_filter = 2

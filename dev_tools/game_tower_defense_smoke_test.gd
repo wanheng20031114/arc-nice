@@ -2,12 +2,12 @@ extends SceneTree
 
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
 const GAME_TOWER_DEFENSE_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
-const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn"
 const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p1b.tscn"
+	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn"
 )
 const TEST_GRASS_ARENA_P2_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p2.tscn"
+	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 )
 
 var failures: Array[String] = []

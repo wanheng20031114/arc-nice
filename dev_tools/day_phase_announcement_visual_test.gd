@@ -1,6 +1,6 @@
 extends SceneTree
 
-const ARENA_SCENE := preload("res://scene/test_arena/test_grass_arena.tscn")
+const ARENA_SCENE := preload("res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn")
 const PREVIEW_PATHS := {
 	false: {
 		false: "user://day_phase_announcement_p1_preview.png",

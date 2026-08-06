@@ -4,8 +4,8 @@ const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
-const TEST_ARENA_SCENE := preload("res://scene/test_arena/test_grass_arena.tscn")
-const TEST_ARENA_P2_SCENE := preload("res://scene/test_arena/test_grass_arena_p2.tscn")
+const TEST_ARENA_SCENE := preload("res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn")
+const TEST_ARENA_P2_SCENE := preload("res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn")
 const TEST_ARENA_MULTIPLAYER_CAMPAIGN := preload(
 	"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres"
 )

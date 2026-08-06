@@ -1,7 +1,7 @@
 [gd_scene load_steps=23 format=3]
 
-[ext_resource type="Script" path="res://scene/rogue_encounter/rogue_encounter_overlay.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/rogue_encounter/rogue_encounter_choice_card.tscn" id="2_card"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/encounter/rogue_encounter_choice_card.tscn" id="2_card"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_encounter/chicken_bro.png" id="3_chicken"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_encounter/encounter_panel_frame.png" id="4_frame"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="5_font"]

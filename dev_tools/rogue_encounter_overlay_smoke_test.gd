@@ -1,7 +1,7 @@
 extends SceneTree
 
 const OVERLAY_SCENE := preload(
-	"res://scene/rogue_encounter/rogue_encounter_overlay.tscn"
+	"res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.tscn"
 )
 
 var failures: Array[String] = []

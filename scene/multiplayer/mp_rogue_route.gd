@@ -31,7 +31,7 @@ const ROUTE_ENCOUNTER_COMMAND_RATE_PER_SECOND := 4.0
 const ROUTE_ENCOUNTER_COMMAND_RATE_BURST := 6.0
 const BRIEFING_COVER_BARRIER_TIMEOUT_MSEC := 10_000
 
-var _route: TestRogueRouteP3 = null
+var _route: RogueRouteGame = null
 var _net_manager: Node = null
 var _runtime_prepared := false
 var _return_scheduled := false
@@ -64,7 +64,7 @@ var _route_encounter_command_rate_buckets: Dictionary = {}
 
 
 func _ready() -> void:
-	_route = get_node_or_null("RogueRoute") as TestRogueRouteP3
+	_route = get_node_or_null("RogueRoute") as RogueRouteGame
 	_net_manager = get_node_or_null("/root/NetManager")
 	if _net_manager == null or _route == null:
 		push_error("MpRogueRoute: P3 多人运行时契约不完整。")
@@ -644,7 +644,7 @@ func _configure_briefing_cover_barrier(snapshot: Dictionary) -> void:
 	_reset_briefing_cover_barrier()
 	if (
 		int(snapshot.get("phase", -1))
-		!= TestRogueRouteP3.BriefingPhase.ENTERING
+		!= RogueRouteGame.BriefingPhase.ENTERING
 	):
 		return
 	_briefing_cover_occurrence_key = str(

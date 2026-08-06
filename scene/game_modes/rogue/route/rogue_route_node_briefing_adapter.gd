@@ -2,7 +2,7 @@ extends RefCounted
 class_name RogueRouteNodeBriefingAdapter
 
 const BRIEFING_MODEL_SCRIPT := preload(
-	"res://scene/rogue_route/rogue_route_node_briefing_model.gd"
+	"res://scene/game_modes/rogue/route/rogue_route_node_briefing_model.gd"
 )
 
 ## 作战节点到通用简报模型的适配器接口。

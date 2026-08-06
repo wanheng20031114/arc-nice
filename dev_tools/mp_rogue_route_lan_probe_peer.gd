@@ -64,7 +64,7 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	if not await _wait_for_state(net_manager, STATE_IN_GAME, TIMEOUT_SECONDS):
 		_fail("Host did not pass loading barrier")
 		return
-	var route := wrapper.get_node("RogueRoute") as TestRogueRouteP3
+	var route := wrapper.get_node("RogueRoute") as RogueRouteGame
 	if not route.is_route_ready():
 		_fail("Host route was not generated")
 		return
@@ -131,7 +131,7 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	if not await _wait_for_state(net_manager, STATE_IN_GAME, TIMEOUT_SECONDS):
 		_fail("Client did not pass loading barrier")
 		return
-	var route := wrapper.get_node("RogueRoute") as TestRogueRouteP3
+	var route := wrapper.get_node("RogueRoute") as RogueRouteGame
 	if not await _wait_until(route.is_route_ready, TIMEOUT_SECONDS):
 		_fail("Client did not receive reliable full snapshot")
 		return

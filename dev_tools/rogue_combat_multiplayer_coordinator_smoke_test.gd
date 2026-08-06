@@ -1,7 +1,7 @@
 extends SceneTree
 
 const COORDINATOR := preload(
-	"res://scene/rogue_combat/rogue_combat_multiplayer_coordinator.gd"
+	"res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd"
 )
 const FORMAL_CONFIG := preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
@@ -119,8 +119,51 @@ func _test_kill_reward_policy_is_explicit() -> void:
 
 
 func _test_protocol_contract_is_static_and_order_safe() -> void:
+	var rpc_config: Dictionary = (COORDINATOR as Script).get_rpc_config()
+	var actual_rpc_names := PackedStringArray()
+	for rpc_name_variant in rpc_config.keys():
+		actual_rpc_names.append(String(rpc_name_variant))
+	actual_rpc_names.sort()
+	var expected_rpc_names := PackedStringArray([
+		"net_combat_abort_requested",
+		"net_combat_aborted",
+		"net_combat_activate",
+		"net_combat_activated",
+		"net_combat_prepare",
+		"net_combat_prepared",
+		"net_combat_route_spectator",
+		"net_combat_safe_to_teardown",
+		"net_combat_settlement",
+		"net_combat_terminal_ready",
+	])
+	expected_rpc_names.sort()
+	var any_peer_rpc_names := {
+		"net_combat_abort_requested": true,
+		"net_combat_activated": true,
+		"net_combat_prepared": true,
+		"net_combat_terminal_ready": true,
+	}
+	_expect(
+		actual_rpc_names == expected_rpc_names,
+		"肉鸽作战协调器必须严格保留既有 10 个 RPC 入口。"
+	)
+	for rpc_name in expected_rpc_names:
+		var config := rpc_config.get(StringName(rpc_name), {}) as Dictionary
+		_expect(
+			int(config.get("transfer_mode", -1))
+			== MultiplayerPeer.TRANSFER_MODE_RELIABLE
+			and int(config.get("channel", -1)) == 0
+			and not bool(config.get("call_local", true))
+			and int(config.get("rpc_mode", -1))
+			== (
+				MultiplayerAPI.RPC_MODE_ANY_PEER
+				if any_peer_rpc_names.has(rpc_name)
+				else MultiplayerAPI.RPC_MODE_AUTHORITY
+			),
+			"肉鸽作战 RPC %s 必须保持 ch0 reliable/call_remote。" % rpc_name
+		)
 	var source := FileAccess.get_file_as_string(
-		"res://scene/rogue_combat/rogue_combat_multiplayer_coordinator.gd"
+		"res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd"
 	)
 	_expect(not source.is_empty(), "多人协调器源码必须可读取。")
 	_expect(

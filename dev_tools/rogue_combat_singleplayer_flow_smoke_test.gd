@@ -1,7 +1,7 @@
 extends SceneTree
 
 const ROUTE_SCENE := preload(
-	"res://scene/test_arena/test_rogue_route_p3.tscn"
+	"res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 )
 const BASE_ENCOUNTER_CONFIG := preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
@@ -43,7 +43,7 @@ func _run() -> void:
 
 
 func _test_formal_configuration_gate_and_multiplayer_isolation() -> void:
-	var default_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var default_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	default_route.auto_initialize = false
 	default_route.manage_return_locally = true
 	root.add_child(default_route)
@@ -61,7 +61,7 @@ func _test_formal_configuration_gate_and_multiplayer_isolation() -> void:
 	_cleanup_route(default_route)
 	await process_frame
 
-	var disabled_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var disabled_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	disabled_route.auto_initialize = false
 	disabled_route.manage_return_locally = true
 	var disabled_coordinator := _get_coordinator(disabled_route)
@@ -80,7 +80,7 @@ func _test_formal_configuration_gate_and_multiplayer_isolation() -> void:
 	_cleanup_route(disabled_route)
 	await process_frame
 
-	var multiplayer_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var multiplayer_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	multiplayer_route.auto_initialize = false
 	multiplayer_route.manage_return_locally = false
 	var multiplayer_coordinator := _get_coordinator(multiplayer_route)
@@ -122,7 +122,7 @@ func _test_normal_combat_briefing_cancel_confirm_and_entry() -> void:
 		and route.node_briefing.confirm_button.text == "进入作战"
 		and not route.move_confirmation.visible
 		and int(presented_snapshot.get("phase", -1))
-		== TestRogueRouteP3.BriefingPhase.PRESENTED,
+		== RogueRouteGame.BriefingPhase.PRESENTED,
 		"点击相邻普通作战节点必须显示原生作战简报，并替代旧移动确认框。"
 	)
 	route.node_briefing.cancel_button.pressed.emit()
@@ -135,7 +135,7 @@ func _test_normal_combat_briefing_cancel_confirm_and_entry() -> void:
 		and not route.node_briefing.visible
 		and not route.combat_scene_transition.visible
 		and int(route.export_briefing_state_snapshot().get("phase", -1))
-		== TestRogueRouteP3.BriefingPhase.NONE,
+		== RogueRouteGame.BriefingPhase.NONE,
 		"取消简报不得扣行动力、推进 revision/访问次数或遗留简报与黑幕。"
 	)
 
@@ -194,7 +194,7 @@ func _test_normal_combat_briefing_cancel_confirm_and_entry() -> void:
 		and route.combat_scene_transition.visible
 		and not route.combat_scene_transition.is_covered()
 		and int(route.export_briefing_state_snapshot().get("phase", -1))
-		== TestRogueRouteP3.BriefingPhase.ENTERING,
+		== RogueRouteGame.BriefingPhase.ENTERING,
 		"确认后必须先锁定并关闭简报、播放遮盖，遮盖完成前不能移动或创建战场。"
 	)
 
@@ -778,9 +778,9 @@ func _test_consumed_failure_and_non_inherited_xirang() -> void:
 
 func _create_ready_route(
 	config: RogueCombatEncounterConfig
-) -> TestRogueRouteP3:
+) -> RogueRouteGame:
 	_expect(config.validate_config().is_empty(), "测试注入的确认配置必须合法。")
-	var route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	if route == null:
 		_expect(false, "P3 路线场景必须能实例化。")
 		return null
@@ -918,7 +918,7 @@ func _wait_for_active_battle(
 
 
 func _wait_for_briefing_entry_cleanup(
-	route: TestRogueRouteP3,
+	route: RogueRouteGame,
 	coordinator: RogueCombatSingleplayerCoordinator,
 	runtime: RogueRouteRuntimeState,
 	expected_revision: int
@@ -932,7 +932,7 @@ func _wait_for_briefing_entry_cleanup(
 			and not route.combat_scene_transition.visible
 			and route.get_node("World").visible
 			and int(route.export_briefing_state_snapshot().get("phase", -1))
-			== TestRogueRouteP3.BriefingPhase.NONE
+			== RogueRouteGame.BriefingPhase.NONE
 		):
 			return true
 		await process_frame
@@ -981,7 +981,7 @@ func _wait_for_battle_return(
 	return false
 
 
-func _wait_for_victory_presentation(route: TestRogueRouteP3) -> bool:
+func _wait_for_victory_presentation(route: RogueRouteGame) -> bool:
 	for _frame in 60:
 		if route.combat_victory_presentation.visible:
 			return true
@@ -989,7 +989,7 @@ func _wait_for_victory_presentation(route: TestRogueRouteP3) -> bool:
 	return false
 
 
-func _wait_for_result_overlay(route: TestRogueRouteP3) -> bool:
+func _wait_for_result_overlay(route: RogueRouteGame) -> bool:
 	for _frame in 240:
 		if route.combat_result_overlay.visible:
 			return true
@@ -1015,7 +1015,7 @@ func _find_adjacent_normal_combat_fixture() -> Dictionary:
 
 
 func _get_coordinator(
-	route: TestRogueRouteP3
+	route: RogueRouteGame
 ) -> RogueCombatSingleplayerCoordinator:
 	return route.get_node_or_null(
 		"SingleplayerCombatCoordinator"
@@ -1043,7 +1043,7 @@ func _set_player_xirang(player: Player, amount: int) -> void:
 	player.xirang_changed.emit(amount, 0)
 
 
-func _cleanup_route(route: TestRogueRouteP3) -> void:
+func _cleanup_route(route: RogueRouteGame) -> void:
 	if route == null or not is_instance_valid(route):
 		return
 	if route.get_parent() != null:

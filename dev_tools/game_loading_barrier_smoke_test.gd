@@ -123,9 +123,9 @@ func _test_loading_scene_contract() -> void:
 	)
 	coordinator.call("_append_character_scene", manifest, &"weishidaier")
 	_expect(manifest.size() == 1, "Loading manifest must deduplicate player scenes.")
-	var test_scene_path := "res://scene/test_arena/test_grass_arena.tscn"
-	var test_p1b_scene_path := "res://scene/test_arena/test_grass_arena_p1b.tscn"
-	var test_p2_scene_path := "res://scene/test_arena/test_grass_arena_p2.tscn"
+	var test_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn"
+	var test_p1b_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn"
+	var test_p2_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_scene_path))
 		== "res://resources/config/campaigns/test_arena/singleplayer/campaign.tres",
@@ -446,7 +446,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 
 	load_errors.clear()
 	coordinator.loading_failed.connect(failure_callback)
-	coordinator.begin_singleplayer("res://scene/test_arena/test_grass_arena_p2.tscn")
+	coordinator.begin_singleplayer("res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn")
 	deadline_msec = Time.get_ticks_msec() + 30000
 	while Time.get_ticks_msec() < deadline_msec:
 		if not coordinator.is_loading():
@@ -458,7 +458,7 @@ func _test_singleplayer_coordinator_flow() -> void:
 	_expect(
 		p2_runtime != null
 		and p2_runtime.scene_file_path
-		== "res://scene/test_arena/test_grass_arena_p2.tscn"
+		== "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 		and p2_runtime.supports_tower_defense()
 		and p2_runtime.is_runtime_preparation_complete()
 		and p2_runtime.runtime_activated
@@ -508,17 +508,17 @@ func _test_mp_game_preparation_barrier() -> void:
 	var test_arena_contracts := [
 		[
 			NetManagerStore.GameMode.TEST_ARENA_P1,
-			"res://scene/test_arena/test_grass_arena.tscn",
+			"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn",
 			"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres",
 		],
 		[
 			NetManagerStore.GameMode.TEST_ARENA_P1B,
-			"res://scene/test_arena/test_grass_arena_p1b.tscn",
+			"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn",
 			"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres",
 		],
 		[
 			NetManagerStore.GameMode.TEST_ARENA_P2,
-			"res://scene/test_arena/test_grass_arena_p2.tscn",
+			"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn",
 			"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres",
 		],
 	]

@@ -5,7 +5,7 @@ signal confirmed
 signal canceled
 
 const BRIEFING_MODEL_SCRIPT := preload(
-	"res://scene/rogue_route/rogue_route_node_briefing_model.gd"
+	"res://scene/game_modes/rogue/route/rogue_route_node_briefing_model.gd"
 )
 const PANEL_OPEN_SECONDS := 0.20
 const HERO_REVEAL_SECONDS := 0.25

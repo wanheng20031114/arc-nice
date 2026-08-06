@@ -1,10 +1,10 @@
 extends SceneTree
 
 const VICTORY_SCENE := preload(
-	"res://scene/rogue_combat/rogue_combat_victory_presentation.tscn"
+	"res://scene/game_modes/rogue/combat/rogue_combat_victory_presentation.tscn"
 )
 const TRANSITION_SCENE := preload(
-	"res://scene/rogue_route/rogue_scene_transition.tscn"
+	"res://scene/game_modes/rogue/route/rogue_scene_transition.tscn"
 )
 const COMBAT_MUSIC := preload(
 	"res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3"

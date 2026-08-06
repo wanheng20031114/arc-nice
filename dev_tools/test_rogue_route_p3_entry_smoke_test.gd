@@ -1,10 +1,10 @@
 extends SceneTree
 
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
-const P1A_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
-const P1B_SCENE_PATH := "res://scene/test_arena/test_grass_arena_p1b.tscn"
-const P2_SCENE_PATH := "res://scene/test_arena/test_grass_arena_p2.tscn"
-const P3_SCENE_PATH := "res://scene/test_arena/test_rogue_route_p3.tscn"
+const P1A_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn"
+const P1B_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn"
+const P2_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
+const P3_SCENE_PATH := "res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 const P1A_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/singleplayer/campaign.tres"
 )

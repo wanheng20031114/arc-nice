@@ -3,11 +3,11 @@ extends SceneTree
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const STANDARD_GAME_SCENE_PATH := "res://scene/game_modes/standard/standard_game.tscn"
 const TOWER_DEFENSE_GAME_SCENE_PATH := "res://scene/game_modes/tower_defense/tower_defense_game.tscn"
-const TEST_ARENA_P1_SCENE_PATH := "res://scene/test_arena/test_grass_arena.tscn"
+const TEST_ARENA_P1_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn"
 const TEST_ARENA_P1B_SCENE_PATH := (
-	"res://scene/test_arena/test_grass_arena_p1b.tscn"
+	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn"
 )
-const TEST_ARENA_P2_SCENE_PATH := "res://scene/test_arena/test_grass_arena_p2.tscn"
+const TEST_ARENA_P2_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 const STANDARD_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
 )

@@ -1,13 +1,13 @@
 extends SceneTree
 
 const BRIEFING_SCENE := preload(
-	"res://scene/rogue_route/rogue_route_node_briefing.tscn"
+	"res://scene/game_modes/rogue/route/rogue_route_node_briefing.tscn"
 )
 const BRIEFING_SCRIPT := preload(
-	"res://scene/rogue_route/rogue_route_node_briefing.gd"
+	"res://scene/game_modes/rogue/route/rogue_route_node_briefing.gd"
 )
 const NORMAL_ADAPTER_SCRIPT := preload(
-	"res://scene/rogue_route/rogue_normal_combat_briefing_adapter.gd"
+	"res://scene/game_modes/rogue/route/rogue_normal_combat_briefing_adapter.gd"
 )
 const NORMAL_NODE_CONFIG: RogueRouteNodeTypeConfig = preload(
 	"res://resources/config/rogue_route/normal_combat.tres"

@@ -1,6 +1,6 @@
 [gd_scene load_steps=7 format=3]
 
-[ext_resource type="Script" path="res://scene/rogue_route/rogue_scene_transition.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_scene_transition.gd" id="1_script"]
 [ext_resource type="Shader" path="res://resources/shader/xiaocong_fate_scene_transition.gdshader" id="2_shader"]
 [ext_resource type="Texture2D" path="res://resources/shader/plant_lifecycle_noise.tres" id="3_noise"]
 [ext_resource type="AudioStream" path="res://resources/audio/ui/xiaocong_transition_cover.wav" id="4_cover_audio"]

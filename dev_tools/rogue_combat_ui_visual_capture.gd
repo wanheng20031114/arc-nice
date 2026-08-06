@@ -3,10 +3,10 @@ extends SceneTree
 const VIEWPORT_SIZE := Vector2i(1280, 720)
 const OUTPUT_DIRECTORY := "res://dev_tools/visual_output"
 const COMBAT_SCENE := preload(
-	"res://scene/rogue_combat/rogue_combat_game_01.tscn"
+	"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 )
 const RESULT_SCENE := preload(
-	"res://scene/rogue_combat/rogue_combat_result_overlay.tscn"
+	"res://scene/game_modes/rogue/combat/rogue_combat_result_overlay.tscn"
 )
 const COMMON_LOOT := preload(
 	"res://resources/config/collectibles/collectible_candle_stub.tres"

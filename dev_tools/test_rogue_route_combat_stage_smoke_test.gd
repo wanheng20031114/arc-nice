@@ -1,7 +1,7 @@
 extends SceneTree
 
 const ROUTE_SCENE := preload(
-	"res://scene/test_arena/test_rogue_route_p3.tscn"
+	"res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 )
 const GENERATION_CONFIG := preload(
 	"res://resources/config/rogue_route/p3_generation_config.tres"
@@ -22,7 +22,7 @@ func _run() -> void:
 		_finish()
 		return
 
-	var host := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var host := ROUTE_SCENE.instantiate() as RogueRouteGame
 	host.auto_initialize = false
 	host.manage_return_locally = false
 	root.add_child(host)
@@ -78,7 +78,7 @@ func _run() -> void:
 		host.node_briefing.visible
 		and not host.move_confirmation.visible
 		and int(first_presented_briefing["phase"])
-		== TestRogueRouteP3.BriefingPhase.PRESENTED
+		== RogueRouteGame.BriefingPhase.PRESENTED
 		and int(first_presented_briefing["node_id"]) == combat_node_id
 		and int(first_presented_briefing["expected_route_revision"])
 		== int(initial_state["revision"]),
@@ -95,7 +95,7 @@ func _run() -> void:
 	_expect(
 		_same_route_runtime_fields(canceled_state, initial_state)
 		and int(canceled_briefing["phase"])
-		== TestRogueRouteP3.BriefingPhase.NONE
+		== RogueRouteGame.BriefingPhase.NONE
 		and int(canceled_briefing["revision"])
 		== int(first_presented_briefing["revision"]) + 1
 		and not host.node_briefing.visible
@@ -112,11 +112,11 @@ func _run() -> void:
 		and host.node_briefing.visible
 		and not host.move_confirmation.visible
 		and int(presented_briefing["phase"])
-		== TestRogueRouteP3.BriefingPhase.PRESENTED,
+		== RogueRouteGame.BriefingPhase.PRESENTED,
 		"再次点击普通作战必须恢复唯一的新简报，不提前提交路线移动。"
 	)
 
-	var client := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var client := ROUTE_SCENE.instantiate() as RogueRouteGame
 	client.auto_initialize = false
 	client.manage_return_locally = false
 	root.add_child(client)
@@ -145,7 +145,7 @@ func _run() -> void:
 	var conflicting_briefing := (
 		conflicting_state["briefing_state"] as Dictionary
 	)
-	conflicting_briefing["phase"] = TestRogueRouteP3.BriefingPhase.ENTERING
+	conflicting_briefing["phase"] = RogueRouteGame.BriefingPhase.ENTERING
 	_expect(
 		not client.apply_full_snapshot(layout_snapshot, conflicting_state),
 		"相同简报 revision 但内容冲突的全量包必须被拒绝。"
@@ -172,7 +172,7 @@ func _run() -> void:
 	_expect(
 		_same_route_runtime_fields(entering_pre_move_state, state_before_confirm)
 		and int(entering_pre_move_briefing["phase"])
-		== TestRogueRouteP3.BriefingPhase.ENTERING
+		== RogueRouteGame.BriefingPhase.ENTERING
 		and int(entering_pre_move_briefing["revision"])
 		== int(presented_briefing["revision"]) + 1
 		and not host.node_briefing.visible
@@ -182,7 +182,7 @@ func _run() -> void:
 	_expect(
 		client.apply_full_snapshot(layout_snapshot, entering_pre_move_state)
 		and int(client.export_briefing_state_snapshot()["phase"])
-		== TestRogueRouteP3.BriefingPhase.ENTERING
+		== RogueRouteGame.BriefingPhase.ENTERING
 		and not client.node_briefing.visible,
 		"移动提交前的 ENTERING 全量快照必须同步关闭客户端简报并开始遮盖。"
 	)
@@ -193,7 +193,7 @@ func _run() -> void:
 	)
 	_expect(
 		int(entering_post_move_briefing["phase"])
-		== TestRogueRouteP3.BriefingPhase.ENTERING,
+		== RogueRouteGame.BriefingPhase.ENTERING,
 		"遮盖后、准备屏障完成前，简报状态必须保持 ENTERING。"
 	)
 	_expect(
@@ -296,10 +296,10 @@ func _run() -> void:
 	var completed_briefing := host.export_briefing_state_snapshot()
 	_expect(
 		int(completed_briefing["phase"])
-		== TestRogueRouteP3.BriefingPhase.NONE
+		== RogueRouteGame.BriefingPhase.NONE
 		and client.apply_briefing_state_snapshot(completed_briefing)
 		and int(client.export_briefing_state_snapshot()["phase"])
-		== TestRogueRouteP3.BriefingPhase.NONE,
+		== RogueRouteGame.BriefingPhase.NONE,
 		"准备屏障结束后，双方简报状态必须收敛到 NONE。"
 	)
 
@@ -428,7 +428,7 @@ func _run() -> void:
 	_finish()
 
 
-func _test_result_overlay(route: TestRogueRouteP3) -> void:
+func _test_result_overlay(route: RogueRouteGame) -> void:
 	var common_items := CollectibleRegistry.get_by_rarity(
 		PickupConfig.CollectibleRarity.COMMON
 	)
@@ -508,7 +508,7 @@ func _visit_count(snapshot: Dictionary, node_id: int) -> int:
 	return int(visits[node_id])
 
 
-func _cleanup_route(route: TestRogueRouteP3) -> void:
+func _cleanup_route(route: RogueRouteGame) -> void:
 	if route == null:
 		return
 	if route.get_parent() != null:

@@ -1,6 +1,6 @@
 [gd_scene format=4 uid="uid://cxpm27hl7fmro"]
 
-[ext_resource type="Script" uid="uid://ctfnnphhg0fm" path="res://scene/rogue_combat/rogue_combat_game.gd" id="1_17rxn"]
+[ext_resource type="Script" uid="uid://ctfnnphhg0fm" path="res://scene/game_modes/rogue/combat/rogue_combat_game.gd" id="1_17rxn"]
 [ext_resource type="Texture2D" uid="uid://cbrmpw5d481ci" path="res://resources/texture/瓦片.png" id="1_80nbo"]
 [ext_resource type="Texture2D" uid="uid://ciwwo78eluybc" path="res://resources/texture/动态瓦片.png" id="2_e2o6t"]
 [ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/grid_pathfinder.gd" id="9_5wjd4"]
@@ -19,7 +19,7 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="28_night_light"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="29_night_vfx_flash_pool"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="30_combat_robot_drone_motion"]
-[ext_resource type="PackedScene" path="res://scene/rogue_combat/rogue_combat_hud.tscn" id="31_rogue_hud"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_hud.tscn" id="31_rogue_hud"]
 [ext_resource type="PackedScene" uid="uid://coffbf6d8ioi" path="res://scene/tower_defense_status_hud.tscn" id="32_death_hud"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]

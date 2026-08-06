@@ -1,6 +1,6 @@
 extends SceneTree
 
-const ROUTE_SCENE := preload("res://scene/test_arena/test_rogue_route_p3.tscn")
+const ROUTE_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_game.tscn")
 const EXPECTED_WORLD_SIZE := Vector2(1072.0, 576.0)
 const EXPECTED_CELL_SPACING := Vector2(88.0, 48.0)
 const EXPECTED_BOARD_MARGIN := Vector2(96.0, 96.0)
@@ -27,7 +27,7 @@ func _run() -> void:
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID, false)
-	var route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	_expect(route != null, "P3 世界场景必须能够实例化。")
 	if route == null:
 		_finish()
@@ -68,7 +68,7 @@ func _run() -> void:
 	_finish()
 
 
-func _audit_backdrop(route: TestRogueRouteP3) -> void:
+func _audit_backdrop(route: RogueRouteGame) -> void:
 	var backdrop := route.get_node_or_null("World/Backdrop") as Parallax2D
 	var ruins_background := (
 		route.get_node_or_null("World/Backdrop/RuinsBackground") as Sprite2D
@@ -124,7 +124,7 @@ func _audit_backdrop(route: TestRogueRouteP3) -> void:
 
 
 func _audit_board(
-	route: TestRogueRouteP3,
+	route: RogueRouteGame,
 	board: RogueRouteBoard,
 	player_layer: Node2D,
 	camera: Camera2D
@@ -273,7 +273,7 @@ func _audit_event_cell_scale(
 
 
 func _audit_density_budget(
-	route: TestRogueRouteP3,
+	route: RogueRouteGame,
 	camera: Camera2D,
 	metrics: RogueRouteWorldMetrics
 ) -> void:
@@ -311,7 +311,7 @@ func _audit_density_budget(
 
 
 func _audit_world_bounds(
-	route: TestRogueRouteP3,
+	route: RogueRouteGame,
 	board: RogueRouteBoard,
 	camera: Camera2D,
 	metrics: RogueRouteWorldMetrics
@@ -386,7 +386,7 @@ func _audit_boundary_shape(
 	)
 
 
-func _audit_snapshot_contract(route: TestRogueRouteP3) -> void:
+func _audit_snapshot_contract(route: RogueRouteGame) -> void:
 	var layout_snapshot := route.export_layout_snapshot()
 	var state_snapshot := route.export_state_snapshot()
 	var expected_hash := route.get_runtime_contract_hash()
@@ -409,7 +409,7 @@ func _audit_snapshot_contract(route: TestRogueRouteP3) -> void:
 
 
 func _audit_player_and_camera(
-	route: TestRogueRouteP3,
+	route: RogueRouteGame,
 	local_player: Player,
 	camera: Camera2D
 ) -> void:
@@ -608,7 +608,7 @@ func _expect_state_unchanged(
 	)
 
 
-func _audit_hud(route: TestRogueRouteP3) -> void:
+func _audit_hud(route: RogueRouteGame) -> void:
 	var hud := route.get_node_or_null("HUD") as CanvasLayer
 	var top_bar := route.get_node_or_null("HUD/Root/TopBar") as PanelContainer
 	var bottom_bar := route.get_node_or_null("HUD/Root/BottomBar") as PanelContainer

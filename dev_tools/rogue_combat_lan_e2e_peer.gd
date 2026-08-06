@@ -101,7 +101,7 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 		_fail("Host did not pass the P3 loading barrier")
 		return
 
-	var route := wrapper.get_node("RogueRoute") as TestRogueRouteP3
+	var route := wrapper.get_node("RogueRoute") as RogueRouteGame
 	var coordinator := wrapper.get_node(
 		"RogueCombatCoordinator"
 	) as RogueCombatMultiplayerCoordinator
@@ -379,7 +379,7 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	if not await _wait_for_state(net_manager, STATE_IN_GAME, NETWORK_TIMEOUT_SECONDS):
 		_fail("Client did not pass the P3 loading barrier")
 		return
-	var route := wrapper.get_node("RogueRoute") as TestRogueRouteP3
+	var route := wrapper.get_node("RogueRoute") as RogueRouteGame
 	var coordinator := wrapper.get_node(
 		"RogueCombatCoordinator"
 	) as RogueCombatMultiplayerCoordinator
@@ -474,7 +474,7 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 			return (
 				not route.node_briefing.visible
 				and int(route.export_briefing_state_snapshot().get("phase", -1))
-				== TestRogueRouteP3.BriefingPhase.NONE
+				== RogueRouteGame.BriefingPhase.NONE
 			),
 		NETWORK_TIMEOUT_SECONDS
 	):
@@ -815,7 +815,7 @@ func _capture_expected_loot(
 
 
 func _capture_route_and_inventory_baseline(
-	route: TestRogueRouteP3,
+	route: RogueRouteGame,
 	peer_ids: Array[int]
 ) -> Dictionary:
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
@@ -841,7 +841,7 @@ func _capture_route_and_inventory_baseline(
 
 func _wait_for_settlement_and_result(
 	coordinator: RogueCombatMultiplayerCoordinator,
-	route: TestRogueRouteP3,
+	route: RogueRouteGame,
 	label: String
 ) -> Dictionary:
 	var captured := {}
@@ -879,7 +879,7 @@ func _wait_for_settlement_and_result(
 
 func _start_settlement_watch(
 	coordinator: RogueCombatMultiplayerCoordinator,
-	route: TestRogueRouteP3
+	route: RogueRouteGame
 ) -> void:
 	# terminal-safe 会立即释放战场协议并清空 _pending_settlement，但会按设计
 	# 保留各端独立的可见结算。探针从进入战斗起缓存结算，并监听结果层
@@ -926,7 +926,7 @@ func _stop_settlement_watch() -> void:
 
 func _validate_victory_settlement(
 	settlement: Dictionary,
-	route: TestRogueRouteP3,
+	route: RogueRouteGame,
 	peer_ids: Array[int],
 	baseline: Dictionary,
 	expected_loot: Dictionary,
@@ -1039,7 +1039,7 @@ func _snapshot_item_total(snapshot: Dictionary) -> int:
 	return total
 
 
-func _route_dismiss_result(route: TestRogueRouteP3) -> void:
+func _route_dismiss_result(route: RogueRouteGame) -> void:
 	# Same signal path as the real close button, without synthesizing GUI input.
 	route.call("_on_combat_result_overlay_dismissed")
 

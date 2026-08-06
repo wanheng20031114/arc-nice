@@ -1,6 +1,6 @@
 [gd_scene load_steps=11 format=3]
 
-[ext_resource type="Script" path="res://scene/rogue_route/rogue_route_cell.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_cell.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/empty_node.png" id="3_empty_node"]
 

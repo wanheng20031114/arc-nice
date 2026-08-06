@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scene/rogue_combat/rogue_combat_victory_presentation.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/combat/rogue_combat_victory_presentation.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
 [ext_resource type="AudioStream" path="res://resources/audio/ui/rogue_combat_victory.wav" id="3_victory_audio"]
 

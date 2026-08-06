@@ -1,6 +1,6 @@
 [gd_scene load_steps=17 format=3]
 
-[ext_resource type="Script" path="res://scene/rogue_route/rogue_route_move_confirmation.gd" id="1_script"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_move_confirmation.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/route_move_confirmation_frame.png" id="2_frame"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud_location_icon.png" id="4_location"]

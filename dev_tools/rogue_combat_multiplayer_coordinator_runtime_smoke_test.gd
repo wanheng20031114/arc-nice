@@ -7,10 +7,10 @@ extends SceneTree
 ## 仅替换 MpGame 的创建结果，避免在单元测试里启动完整联网战场。
 
 const COORDINATOR := preload(
-	"res://scene/rogue_combat/rogue_combat_multiplayer_coordinator.gd"
+	"res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd"
 )
 const ROUTE_SCENE := preload(
-	"res://scene/test_arena/test_rogue_route_p3.tscn"
+	"res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 )
 const WOOD_MATERIAL: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
@@ -135,7 +135,7 @@ class RuntimeCoordinatorHarness extends RogueCombatMultiplayerCoordinator:
 
 var _failures: PackedStringArray = []
 var _fixture_root: Node2D = null
-var _route: TestRogueRouteP3 = null
+var _route: RogueRouteGame = null
 var _coordinator: RuntimeCoordinatorHarness = null
 var _fake_net_manager: FakeNetManager = null
 
@@ -185,7 +185,7 @@ func _run() -> void:
 func _create_fixture() -> void:
 	_fixture_root = Node2D.new()
 	_fixture_root.name = "RogueCombatCoordinatorRuntimeFixture"
-	_route = ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	_route = ROUTE_SCENE.instantiate() as RogueRouteGame
 	_route.name = "RogueRoute"
 	_route.auto_initialize = false
 	_route.manage_return_locally = false
@@ -1269,7 +1269,7 @@ func _test_dispatch_window_reconnect_skips_completed_barrier() -> void:
 
 	_coordinator._finish_player_reconnected(2, 3)
 	var coordinator_source := FileAccess.get_file_as_string(
-		"res://scene/rogue_combat/rogue_combat_multiplayer_coordinator.gd"
+		"res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd"
 	)
 	_expect(
 		not _coordinator._participant_peer_ids.has(2)

@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3]
 
-[ext_resource type="PackedScene" path="res://scene/test_arena/test_grass_arena.tscn" id="1_p1a"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn" id="1_p1a"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1b.tres" id="4_mode_definition"]
 
 [node name="TestGrassArenaP1B" instance=ExtResource("1_p1a")]

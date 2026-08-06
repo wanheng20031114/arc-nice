@@ -1,6 +1,6 @@
 extends SceneTree
 
-const ROUTE_SCENE := preload("res://scene/test_arena/test_rogue_route_p3.tscn")
+const ROUTE_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_game.tscn")
 const PREVIEW_PATH := "user://rogue_route_p3_preview.png"
 const PREVIEW_SIZE := Vector2i(1280, 720)
 const FIXED_SEED := 424242
@@ -13,7 +13,7 @@ func _init() -> void:
 func _run() -> void:
 	DisplayServer.window_set_size(PREVIEW_SIZE)
 	await process_frame
-	var route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	if route == null:
 		push_error("无法实例化 P3 路线视觉测试场景。")
 		quit(1)

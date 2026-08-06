@@ -1,7 +1,7 @@
 extends SceneTree
 
 const ROGUE_COMBAT_SCENE_01 := preload(
-	"res://scene/rogue_combat/rogue_combat_game_01.tscn"
+	"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 )
 const COMBAT_ROBOT_CONFIG := preload(
 	"res://resources/config/enemies/combat_robot.tres"
@@ -9,8 +9,8 @@ const COMBAT_ROBOT_CONFIG := preload(
 const ROGUE_COMBAT_MUSIC := preload(
 	"res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3"
 )
-const ROGUE_COMBAT_SCRIPT_PATH := "res://scene/rogue_combat/rogue_combat_game.gd"
-const ROGUE_COMBAT_SCENE_PATH := "res://scene/rogue_combat/rogue_combat_game_01.tscn"
+const ROGUE_COMBAT_SCRIPT_PATH := "res://scene/game_modes/rogue/combat/rogue_combat_game.gd"
+const ROGUE_COMBAT_SCENE_PATH := "res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 const EXPECTED_STANDARD_NIGHT_COLOR := Color(
 	87.0 / 255.0,
 	123.0 / 255.0,

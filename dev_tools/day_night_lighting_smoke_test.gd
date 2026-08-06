@@ -3,7 +3,7 @@ extends SceneTree
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TOWER_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const ROGUE_COMBAT_SCENE_01 := preload(
-	"res://scene/rogue_combat/rogue_combat_game_01.tscn"
+	"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 )
 const DAY_NIGHT_SCENE := preload(
 	"res://scene/lighting/day_night_controller.tscn"

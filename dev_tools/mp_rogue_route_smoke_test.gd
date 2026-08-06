@@ -1,7 +1,7 @@
 extends SceneTree
 
 const WRAPPER_SCENE := preload("res://scene/multiplayer/mp_rogue_route.tscn")
-const ROUTE_SCENE := preload("res://scene/test_arena/test_rogue_route_p3.tscn")
+const ROUTE_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_game.tscn")
 const LOBBY_SCENE := preload("res://scene/multiplayer/multiplayer_lobby.tscn")
 const NetManagerScript := preload("res://scene/multiplayer/net_manager.gd")
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
@@ -11,7 +11,7 @@ const OAK_WAREHOUSE_SCENE := preload(
 )
 const PLANK := preload("res://resources/config/materials/material_plank.tres")
 const WRAPPER_SCENE_PATH := "res://scene/multiplayer/mp_rogue_route.tscn"
-const ROUTE_SCENE_PATH := "res://scene/test_arena/test_rogue_route_p3.tscn"
+const ROUTE_SCENE_PATH := "res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 const WEISHIDAIER_SCENE_PATH := (
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
@@ -98,7 +98,7 @@ class ReconnectWrapperStub:
 
 
 class BriefingTimeoutRouteStub:
-	extends TestRogueRouteP3
+	extends RogueRouteGame
 
 	var aborted_occurrence_key := ""
 
@@ -259,8 +259,8 @@ func _test_lobby_contract() -> void:
 
 
 func _test_snapshot_and_delta_contract() -> void:
-	var host_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
-	var client_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var host_route := ROUTE_SCENE.instantiate() as RogueRouteGame
+	var client_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	host_route.auto_initialize = false
 	host_route.manage_return_locally = false
 	client_route.auto_initialize = false
@@ -285,13 +285,17 @@ func _test_snapshot_and_delta_contract() -> void:
 	)
 
 	var wrapper := WRAPPER_SCENE.instantiate() as Node
-	var wrapped_route := wrapper.get_node("RogueRoute") as TestRogueRouteP3
+	var wrapped_route := wrapper.get_node("RogueRoute") as RogueRouteGame
 	_expect(
 		not wrapped_route.auto_initialize and not wrapped_route.manage_return_locally,
 		"多人包装必须关闭 P3 的自动初始化与本地返回管理。"
 	)
 	var wrapper_script := wrapper.get_script() as Script
 	var rpc_config: Dictionary = wrapper_script.get_rpc_config()
+	_expect(
+		rpc_config.size() == 12,
+		"MpRogueRoute 必须严格保留 12 个稳定 RPC 入口。"
+	)
 	for rpc_name in [
 		&"net_request_route_full_snapshot",
 		&"net_route_full_snapshot",
@@ -651,7 +655,7 @@ func _test_snapshot_and_delta_contract() -> void:
 
 
 func _test_briefing_network_contract() -> void:
-	var probe_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var probe_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	probe_route.auto_initialize = false
 	probe_route.manage_return_locally = false
 	var fixture := _find_adjacent_normal_combat_fixture(
@@ -665,10 +669,10 @@ func _test_briefing_network_contract() -> void:
 	if fixture.is_empty():
 		return
 
-	var host_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
-	var client_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
-	var pre_move_rejoin := ROUTE_SCENE.instantiate() as TestRogueRouteP3
-	var post_move_rejoin := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var host_route := ROUTE_SCENE.instantiate() as RogueRouteGame
+	var client_route := ROUTE_SCENE.instantiate() as RogueRouteGame
+	var pre_move_rejoin := ROUTE_SCENE.instantiate() as RogueRouteGame
+	var post_move_rejoin := ROUTE_SCENE.instantiate() as RogueRouteGame
 	for route in [host_route, client_route, pre_move_rejoin, post_move_rejoin]:
 		route.auto_initialize = false
 		route.manage_return_locally = false
@@ -705,7 +709,7 @@ func _test_briefing_network_contract() -> void:
 	)
 	_expect(
 		int(presented.get("phase", -1))
-		== TestRogueRouteP3.BriefingPhase.PRESENTED
+		== RogueRouteGame.BriefingPhase.PRESENTED
 		and int(presented_state.get("revision", -1)) == route_revision_before
 		and int(presented_state.get("action_points", -1))
 		== action_points_before,
@@ -736,7 +740,7 @@ func _test_briefing_network_contract() -> void:
 	await process_frame
 	_expect(
 		int(client_route.get("_briefing_phase"))
-		== TestRogueRouteP3.BriefingPhase.PRESENTED
+		== RogueRouteGame.BriefingPhase.PRESENTED
 		and client_route.node_briefing.visible
 		and not client_route.node_briefing.can_decide()
 		and int(client_route.export_state_snapshot()["revision"])
@@ -748,7 +752,7 @@ func _test_briefing_network_contract() -> void:
 
 	var entering := presented.duplicate(true)
 	entering["revision"] = int(presented["revision"]) + 1
-	entering["phase"] = TestRogueRouteP3.BriefingPhase.ENTERING
+	entering["phase"] = RogueRouteGame.BriefingPhase.ENTERING
 	var pre_move_state := presented_state.duplicate(true)
 	pre_move_state["briefing_state"] = entering.duplicate(true)
 	_expect(
@@ -758,7 +762,7 @@ func _test_briefing_network_contract() -> void:
 	await process_frame
 	_expect(
 		int(pre_move_rejoin.get("_briefing_phase"))
-		== TestRogueRouteP3.BriefingPhase.ENTERING
+		== RogueRouteGame.BriefingPhase.ENTERING
 		and not pre_move_rejoin.node_briefing.visible
 		and pre_move_rejoin.combat_scene_transition.visible,
 		"move 前重连必须关闭简报并恢复本地 shader cover。"
@@ -835,7 +839,7 @@ func _test_briefing_network_contract() -> void:
 		"相同或旧简报包必须幂等忽略，不能重启 cover 动画。"
 	)
 	var same_revision_conflict := entering.duplicate(true)
-	same_revision_conflict["phase"] = TestRogueRouteP3.BriefingPhase.PRESENTED
+	same_revision_conflict["phase"] = RogueRouteGame.BriefingPhase.PRESENTED
 	_expect(
 		not bool(wrapper.call(
 			"_apply_briefing_state_from_peer",
@@ -853,7 +857,7 @@ func _test_briefing_network_contract() -> void:
 	var authoritative_entering := host_route.export_briefing_state_snapshot()
 	_expect(
 		int(authoritative_entering.get("phase", -1))
-		== TestRogueRouteP3.BriefingPhase.ENTERING
+		== RogueRouteGame.BriefingPhase.ENTERING
 		and int(host_route.export_state_snapshot()["revision"])
 		== route_revision_before,
 		"Host 确认后必须先进入 ENTERING，等待全员 cover-ready 才提交 move。"
@@ -943,7 +947,7 @@ func _test_briefing_network_contract() -> void:
 	await process_frame
 	_expect(
 		int(post_move_rejoin.get("_briefing_phase"))
-		== TestRogueRouteP3.BriefingPhase.ENTERING,
+		== RogueRouteGame.BriefingPhase.ENTERING,
 		"move 后重连必须保留 ENTERING 简报阶段。"
 	)
 	_expect(
@@ -1005,8 +1009,8 @@ func _test_briefing_network_contract() -> void:
 
 
 func _test_encounter_network_contract(
-	host_route: TestRogueRouteP3,
-	client_route: TestRogueRouteP3,
+	host_route: RogueRouteGame,
+	client_route: RogueRouteGame,
 	wrapper: Node,
 	fake_net_manager: FakeNetManager,
 	layout: Dictionary
@@ -1363,7 +1367,7 @@ func _test_fluorescent_pit_route_integration() -> void:
 	# 放射性分支必须把最终生效后的真实最大生命前后值交给本地结果页，
 	# 而不是只显示累计惩罚账本的 0 -> 20。
 	run_state.begin_new_run(&"weishidaier", false)
-	var radiation_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var radiation_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	radiation_route.auto_initialize = false
 	radiation_route.manage_return_locally = true
 	root.add_child(radiation_route)
@@ -1463,7 +1467,7 @@ func _test_fluorescent_pit_route_integration() -> void:
 		run_state.set_party_core_health(2, 100),
 		"核心归零外层测试应设置 2/100。"
 	)
-	var failure_route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var failure_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	failure_route.auto_initialize = false
 	failure_route.manage_return_locally = true
 	root.add_child(failure_route)
@@ -1595,7 +1599,7 @@ func _find_fluorescent_pit_seed_for_bucket(
 
 
 func _test_avatar_validation_contract(
-	host_route: TestRogueRouteP3,
+	host_route: RogueRouteGame,
 	wrapper: Node,
 	fake_net_manager: FakeNetManager
 ) -> void:
@@ -1709,7 +1713,7 @@ func _test_avatar_validation_contract(
 
 
 func _test_incremental_avatar_reconnect(
-	host_route: TestRogueRouteP3,
+	host_route: RogueRouteGame,
 	wrapper: Node,
 	fake_net_manager: FakeNetManager,
 	old_peer_id: int,

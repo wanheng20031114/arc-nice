@@ -1,16 +1,16 @@
 extends SceneTree
 
 const HUD_SCENE := preload(
-	"res://scene/rogue_combat/rogue_combat_hud.tscn"
+	"res://scene/game_modes/rogue/combat/rogue_combat_hud.tscn"
 )
 const HUD_SCRIPT := preload(
-	"res://scene/rogue_combat/rogue_combat_hud.gd"
+	"res://scene/game_modes/rogue/combat/rogue_combat_hud.gd"
 )
 const RESULT_SCENE := preload(
-	"res://scene/rogue_combat/rogue_combat_result_overlay.tscn"
+	"res://scene/game_modes/rogue/combat/rogue_combat_result_overlay.tscn"
 )
 const RESULT_SCRIPT := preload(
-	"res://scene/rogue_combat/rogue_combat_result_overlay.gd"
+	"res://scene/game_modes/rogue/combat/rogue_combat_result_overlay.gd"
 )
 const COMMON_LOOT_ICON := preload(
 	"res://resources/texture/collectibles/candle_stub.png"

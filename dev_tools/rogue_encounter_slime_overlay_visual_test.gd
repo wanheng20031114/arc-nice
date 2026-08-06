@@ -1,7 +1,7 @@
 extends SceneTree
 
 const OVERLAY_SCENE := preload(
-	"res://scene/rogue_encounter/rogue_encounter_overlay.tscn"
+	"res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.tscn"
 )
 const PREVIEW_PATH := "user://rogue_encounter_slime_talkers_preview.png"
 

@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3]
 
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/tower_defense_game.tscn" id="1_base"]
-[ext_resource type="Script" path="res://scene/test_arena/test_grass_arena.gd" id="2_script"]
+[ext_resource type="Script" path="res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.gd" id="2_script"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1.tres" id="5_mode_definition"]
 
 [node name="TestGrassArena" instance=ExtResource("1_base")]

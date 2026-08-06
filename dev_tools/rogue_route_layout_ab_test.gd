@@ -3,9 +3,9 @@ extends SceneTree
 const METRICS := preload(
 	"res://resources/config/rogue_route/p3_world_metrics.tres"
 )
-const CELL_SCENE := preload("res://scene/rogue_route/rogue_route_cell.tscn")
+const CELL_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_cell.tscn")
 const CONNECTIONS_SCENE := preload(
-	"res://scene/rogue_route/rogue_route_connections.tscn"
+	"res://scene/game_modes/rogue/route/rogue_route_connections.tscn"
 )
 
 const CAMERA_ZOOM := 2.0

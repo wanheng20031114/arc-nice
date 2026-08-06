@@ -42,7 +42,7 @@ enum ProtocolPhase {
 	DEFAULT_ENCOUNTER_CONFIG
 )
 
-var _route: TestRogueRouteP3 = null
+var _route: RogueRouteGame = null
 var _net_manager: Node = null
 var _run_state: RunStateStore = null
 var _enabled := false
@@ -95,7 +95,7 @@ var _terminal_sequence_serial := 0
 
 
 func _ready() -> void:
-	_route = get_node_or_null("../RogueRoute") as TestRogueRouteP3
+	_route = get_node_or_null("../RogueRoute") as RogueRouteGame
 	_net_manager = get_node_or_null("/root/NetManager")
 	_run_state = get_node_or_null("/root/RunState") as RunStateStore
 	_enabled = (

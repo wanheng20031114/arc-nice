@@ -6,7 +6,7 @@ signal layout_bounds_changed(bounds: Rect2)
 signal entry_reveal_finished
 
 const CELL_SCENE: PackedScene = preload(
-	"res://scene/rogue_route/rogue_route_cell.tscn"
+	"res://scene/game_modes/rogue/route/rogue_route_cell.tscn"
 )
 const INVALID_NODE_ID := -1
 const CELL_ANCHOR_FALLBACK := Vector2(24.0, 16.0)

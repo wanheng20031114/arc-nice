@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://scene/rogue_encounter/rogue_encounter_scene.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/rogue_encounter/rogue_encounter_overlay.tscn" id="2_presentation"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/encounter/rogue_encounter_scene.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/encounter/rogue_encounter_overlay.tscn" id="2_presentation"]
 
 [sub_resource type="Gradient" id="Gradient_backdrop"]
 offsets = PackedFloat32Array(0, 0.48, 1)

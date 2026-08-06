@@ -23,7 +23,7 @@ func _run() -> void:
 	var heavyweight_paths := PackedStringArray([
 		"res://scene/game_modes/standard/standard_game.tscn",
 		"res://scene/game_modes/tower_defense/tower_defense_game.tscn",
-		"res://scene/test_arena/test_rogue_route_p3.tscn",
+		"res://scene/game_modes/rogue/route/rogue_route_game.tscn",
 		"res://resources/config/campaigns/tower_defense/singleplayer/campaign.tres",
 	])
 	var cached_before := {}
@@ -89,7 +89,39 @@ func _run() -> void:
 		and not rogue_definition.uses_wave_campaign,
 		"P3 must retain its no-starting-inventory/no-wave-campaign policy."
 	)
+	_test_moved_uid_contracts()
 	_finish()
+
+
+func _test_moved_uid_contracts() -> void:
+	for contract in [
+		{
+			"path": "res://scene/game_modes/standard/standard_game.gd.uid",
+			"uid": "uid://7lyj58pu4nvs",
+		},
+		{
+			"path": "res://scene/game_modes/tower_defense/tower_defense_game.gd.uid",
+			"uid": "uid://d1w121mq74kpw",
+		},
+		{
+			"path": "res://scene/game_modes/rogue/route/rogue_route_game.gd.uid",
+			"uid": "uid://djtb4iw8wk0m6",
+		},
+	]:
+		_expect(
+			FileAccess.get_file_as_string(contract["path"]).strip_edges()
+			== contract["uid"],
+			"Moved script UID changed: %s" % contract["path"]
+		)
+	var combat_scene_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
+	)
+	_expect(
+		combat_scene_source.begins_with(
+			'[gd_scene format=4 uid="uid://cxpm27hl7fmro"]'
+		),
+		"Rogue combat scene UID changed during the mode move."
+	)
 
 
 func _expect(condition: bool, message: String) -> void:

@@ -1,9 +1,9 @@
 extends SceneTree
 
 const CONFIRMATION_SCENE := preload(
-	"res://scene/rogue_route/rogue_route_move_confirmation.tscn"
+	"res://scene/game_modes/rogue/route/rogue_route_move_confirmation.tscn"
 )
-const ROUTE_SCENE := preload("res://scene/test_arena/test_rogue_route_p3.tscn")
+const ROUTE_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_game.tscn")
 const GENERATION_CONFIG := preload(
 	"res://resources/config/rogue_route/p3_generation_config.tres"
 )
@@ -111,7 +111,7 @@ func _audit_p3_integration() -> void:
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID, false)
-	var route := ROUTE_SCENE.instantiate() as TestRogueRouteP3
+	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	_expect(route != null, "P3 路线场景必须能够实例化自定义确认层。")
 	if route == null:
 		return
@@ -161,7 +161,7 @@ func _audit_p3_integration() -> void:
 		and route.move_confirmation.visible
 		and not route.node_briefing.visible
 		and int(route.get("_briefing_phase"))
-		== TestRogueRouteP3.BriefingPhase.NONE,
+		== RogueRouteGame.BriefingPhase.NONE,
 		"紧急作战仍必须使用旧移动确认框，不得误接入普通作战简报。"
 	)
 	_expect(
@@ -198,7 +198,7 @@ func _audit_p3_integration() -> void:
 		and route.move_confirmation.visible
 		and not route.node_briefing.visible
 		and int(route.get("_briefing_phase"))
-		== TestRogueRouteP3.BriefingPhase.NONE,
+		== RogueRouteGame.BriefingPhase.NONE,
 		"遗址物资、黑市或未雨绸缪节点仍必须使用旧移动确认框。"
 	)
 	var state_before_move := route.export_state_snapshot()

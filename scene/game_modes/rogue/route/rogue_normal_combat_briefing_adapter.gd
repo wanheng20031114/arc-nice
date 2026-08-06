@@ -1,4 +1,4 @@
-extends "res://scene/rogue_route/rogue_route_node_briefing_adapter.gd"
+extends "res://scene/game_modes/rogue/route/rogue_route_node_briefing_adapter.gd"
 class_name RogueNormalCombatBriefingAdapter
 
 const DEFAULT_ENCOUNTER_CONFIG: RogueCombatEncounterConfig = preload(

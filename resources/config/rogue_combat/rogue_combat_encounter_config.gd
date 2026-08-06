@@ -17,7 +17,7 @@ enum DeadlineStart {
 const DEFAULT_ENCOUNTER_ID := &"narrow_road_01"
 const DEFAULT_EVENT_TITLE := "狭路相逢"
 const DEFAULT_COMBAT_SCENE_PATH := (
-	"res://scene/rogue_combat/rogue_combat_game_01.tscn"
+	"res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 )
 const DEFAULT_PREPARATION_SECONDS := 3
 const DEFAULT_COMBAT_LIMIT_SECONDS := 90

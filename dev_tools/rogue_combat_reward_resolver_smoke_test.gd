@@ -1,7 +1,7 @@
 extends SceneTree
 
 const REWARD_RESOLVER := preload(
-	"res://scene/rogue_combat/rogue_combat_reward_resolver.gd"
+	"res://scene/game_modes/rogue/combat/rogue_combat_reward_resolver.gd"
 )
 
 var _failures: PackedStringArray = []

@@ -1,6 +1,6 @@
 extends SceneTree
 
-const ARENA_SCENE := preload("res://scene/test_arena/test_grass_arena_p1b.tscn")
+const ARENA_SCENE := preload("res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn")
 const TEST_CAMPAIGN := preload(
 	"res://resources/config/campaigns/test_arena/p1b/singleplayer/campaign.tres"
 )

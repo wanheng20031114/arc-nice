@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://scene/rogue_route/rogue_route_board.gd" id="1_script"]
-[ext_resource type="PackedScene" path="res://scene/rogue_route/rogue_route_connections.tscn" id="2_connections"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_board.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_connections.tscn" id="2_connections"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/p3_world_metrics.tres" id="5_metrics"]
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_world_border"]

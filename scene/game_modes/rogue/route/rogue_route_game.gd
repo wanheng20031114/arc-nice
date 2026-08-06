@@ -1,5 +1,5 @@
 extends Node2D
-class_name TestRogueRouteP3
+class_name RogueRouteGame
 
 signal host_layout_committed(
 	layout_snapshot: Dictionary,
@@ -46,7 +46,7 @@ const SINGLEPLAYER_PEER_ID := 0
 const BRIEFING_STATE_FIELD := "briefing_state"
 const BRIEFING_SCHEMA_VERSION := 1
 const NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT := preload(
-	"res://scene/rogue_route/rogue_normal_combat_briefing_adapter.gd"
+	"res://scene/game_modes/rogue/route/rogue_normal_combat_briefing_adapter.gd"
 )
 const AVATAR_SPAWN_OFFSETS := [
 	Vector2.ZERO,
@@ -1995,7 +1995,7 @@ func configure_multiplayer_players(
 			_get_avatar_spawn_position(index)
 		)
 	if player == null:
-		push_error("TestRogueRouteP3: 多人路线场景缺少本地角色。")
+		push_error("RogueRouteGame: 多人路线场景缺少本地角色。")
 		return false
 	_sync_route_player_xirang_from_run_state()
 	_sync_party_status_from_run_state()
@@ -2438,7 +2438,7 @@ func _instantiate_route_player(character_id: StringName) -> Player:
 		resolved_id = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	var player_instance := PlayerCharacterRegistry.instantiate_character(resolved_id)
 	if player_instance == null:
-		push_error("TestRogueRouteP3: 无法实例化路线角色 %s。" % resolved_id)
+		push_error("RogueRouteGame: 无法实例化路线角色 %s。" % resolved_id)
 	else:
 		# P3 的背景、节点和 HUD 使用平滑过滤；低像素玩家单独保持清晰。
 		player_instance.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
