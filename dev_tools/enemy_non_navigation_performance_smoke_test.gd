@@ -41,7 +41,7 @@ func _run() -> void:
 		await _finish(game)
 		return
 
-	game.call("_begin_flow_step", game.waves[0])
+	game.campaign_coordinator.begin_flow_step(game.waves[0])
 	game.enemy_spawn_timer.stop()
 	for _spawn_index in range(EXPECTED_ENEMY_COUNT):
 		game.enemy_coordinator.spawn_wave_batch(

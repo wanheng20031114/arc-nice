@@ -38,12 +38,14 @@ func _run() -> void:
 		"Render probe must finish staged preparation."
 	)
 
-	var first_wave := game.waves[0] if not game.waves.is_empty() else null
+	var first_wave: WaveConfig = (
+		game.waves[0] if not game.waves.is_empty() else null
+	)
 	_expect(first_wave != null, "Render probe requires the first tower-defense wave.")
 	if first_wave == null:
 		await _finish()
 		return
-	game.call("_begin_flow_step", first_wave)
+	game.campaign_coordinator.begin_flow_step(first_wave)
 	game.enemy_spawn_timer.stop()
 	while game.current_wave_spawned < EXPECTED_ENEMIES:
 		game.enemy_coordinator.spawn_wave_batch(

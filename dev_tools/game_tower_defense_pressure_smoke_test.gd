@@ -41,14 +41,14 @@ func _run() -> void:
 		return
 
 	for early_wave_index in range(2):
-		var early_wave := game.waves[early_wave_index]
+		var early_wave: WaveConfig = game.waves[early_wave_index]
 		_expect(
 			is_equal_approx(early_wave.spawn_interval, EXPECTED_EARLY_WAVE_INTERVAL)
 			and early_wave.spawn_count_per_tick == 1,
 			"Tower-defense waves 1-2 must spawn one enemy every 0.1 seconds."
 		)
 
-	var sequential_wave := game.waves[2]
+	var sequential_wave: WaveConfig = game.waves[2]
 	_expect(
 		sequential_wave.get_total_enemy_count() == EXPECTED_WAVE_TOTAL,
 		"Pressure wave must queue exactly 1200 enemies."
@@ -67,7 +67,7 @@ func _run() -> void:
 	)
 
 	var started_at_msec := Time.get_ticks_msec()
-	game.call("_begin_flow_step", sequential_wave)
+	game.campaign_coordinator.begin_flow_step(sequential_wave)
 	_expect(
 		is_equal_approx(
 			game.enemy_spawn_timer.wait_time,
@@ -75,10 +75,10 @@ func _run() -> void:
 		),
 		"Tower-defense runtime must preserve the configured 0.025-second interval."
 	)
-	var timed_spawn_start := game.current_wave_spawned
+	var timed_spawn_start: int = game.current_wave_spawned
 	await create_timer(1.0).timeout
 	game.enemy_spawn_timer.stop()
-	var timed_spawn_count := game.current_wave_spawned - timed_spawn_start
+	var timed_spawn_count: int = game.current_wave_spawned - timed_spawn_start
 	_expect(
 		absi(timed_spawn_count - EXPECTED_SEQUENTIAL_SPAWNS_PER_SECOND)
 		<= SPAWN_RATE_TOLERANCE,

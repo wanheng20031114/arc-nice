@@ -80,7 +80,7 @@ func _run() -> void:
 	if game.waves.is_empty():
 		await _finish()
 		return
-	var first_wave := game.waves[0]
+	var first_wave: WaveConfig = game.waves[0]
 	_expect(
 		first_wave.get_total_enemy_count() == EXPECTED_WAVE_TOTAL,
 		"Telemetry pressure fixture requires the 1200-enemy first wave."
@@ -90,7 +90,7 @@ func _run() -> void:
 		"Telemetry pressure fixture requires the 300-enemy active cap."
 	)
 
-	game.call("_begin_flow_step", first_wave)
+	game.campaign_coordinator.begin_flow_step(first_wave)
 	game.enemy_spawn_timer.stop()
 	telemetry.sample_runtime_counts(game)
 	var pressure_spawn_frames := 0

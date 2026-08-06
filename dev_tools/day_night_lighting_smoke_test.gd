@@ -679,7 +679,7 @@ func _test_every_wave_gradual_transition() -> void:
 			and player_light.energy > 0.0,
 			"第一波黑夜中玩家柔白灯必须启用。"
 		)
-		var next_wave := (
+		var next_wave: WaveConfig = (
 			game.waves[1]
 			if game.waves.size() > 1
 			else game.waves[0]
@@ -761,7 +761,7 @@ func _test_tower_wave_lighting() -> void:
 
 	controller.transition_duration = 0.12
 	tower.current_flow_step = tower.waves[0]
-	tower.call("_begin_wave_config", tower.waves[0])
+	tower.campaign_coordinator.begin_wave_config(tower.waves[0])
 	tower.enemy_spawn_timer.stop()
 	await create_timer(0.18).timeout
 	_expect(
@@ -770,12 +770,12 @@ func _test_tower_wave_lighting() -> void:
 		"塔防第一波必须按 DayCycleConfig 保持白昼。"
 	)
 
-	var next_wave := (
+	var next_wave: WaveConfig = (
 		tower.waves[1]
 		if tower.waves.size() > 1
 		else tower.waves[0]
 	)
-	tower.call("_enter_intermission", next_wave)
+	tower.campaign_coordinator.enter_intermission(next_wave)
 	await create_timer(0.18).timeout
 	_expect(
 		is_zero_approx(controller.night_factor)
@@ -856,8 +856,8 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 		if controller != null and not waves.is_empty():
 			controller.transition_duration = 0.12
 			var first_wave := waves[0] as WaveConfig
-			game.call(
-				"apply_remote_flow_state",
+			_apply_remote_flow_state_for_lighting_probe(
+				game,
 				first_wave.step_id,
 				CombatFlowState.State.WAVE_ACTIVE,
 				0
@@ -876,8 +876,8 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 					and _all_lights_enabled(player_lights),
 					"普通模式客户端收到第一波激活状态时必须同步黑夜和玩家灯。"
 				)
-			game.call(
-				"apply_remote_flow_state",
+			_apply_remote_flow_state_for_lighting_probe(
+				game,
 				first_wave.step_id,
 				CombatFlowState.State.INTERMISSION,
 				1
@@ -891,8 +891,8 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 				% label
 			)
 			controller.set_night_factor_immediate(1.0)
-			game.call(
-				"apply_remote_flow_state",
+			_apply_remote_flow_state_for_lighting_probe(
+				game,
 				&"",
 				CombatFlowState.State.VICTORY,
 				0
@@ -906,8 +906,8 @@ func _test_fresh_client_remote_flow_lighting() -> void:
 				% label
 			)
 			controller.set_night_factor_immediate(1.0)
-			game.call(
-				"apply_remote_flow_state",
+			_apply_remote_flow_state_for_lighting_probe(
+				game,
 				&"",
 				CombatFlowState.State.DEFEAT,
 				0
@@ -950,6 +950,22 @@ func _await_runtime_preparation(game: CombatRuntimeBase) -> void:
 		game.is_runtime_preparation_complete(),
 		"昼夜流程测试必须先完成游戏运行时预热。"
 	)
+
+
+func _apply_remote_flow_state_for_lighting_probe(
+	game: CombatRuntimeBase,
+	step_id: StringName,
+	state: CombatFlowState.State,
+	seconds: int
+) -> void:
+	if game is TowerDefenseGame:
+		(game as TowerDefenseGame).tower_multiplayer_mode_adapter.apply_remote_flow_state(
+			step_id,
+			state,
+			seconds
+		)
+		return
+	game.call("apply_remote_flow_state", step_id, state, seconds)
 
 
 func _collect_night_lights(node: Node) -> Array[NightPointLight2D]:

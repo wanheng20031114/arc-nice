@@ -221,7 +221,7 @@ func _test_client_enemy_count_render_cache() -> void:
 			"_last_applied_remote_enemy_count = remote_enemy_count"
 		)
 		and source.contains(
-			"_last_applied_remote_enemy_count = -1\n\tgame.apply_remote_flow_state"
+			"_last_applied_remote_enemy_count = -1\n\t_mode_adapter.apply_remote_flow_state"
 		),
 		"Client enemy-count HUD writes must occur only on count changes and invalidate on flow transitions."
 	)

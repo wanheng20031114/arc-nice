@@ -1532,7 +1532,7 @@ func _run_host_tower_defense_fate_probe(
 	game: TowerDefenseGame
 ) -> void:
 	var fate_manager := game.fate_manager
-	var resume_step := game.call("_get_start_flow_step") as FlowStepConfig
+	var resume_step := game.campaign_coordinator.get_start_flow_step()
 	if fate_manager == null or resume_step == null:
 		_fail("Host fate probe could not resolve its authored coordinator or resume step.")
 		return
@@ -1542,7 +1542,7 @@ func _run_host_tower_defense_fate_probe(
 		var player_instance := game.get_player_for_peer(peer_id) as Player
 		if player_instance != null and is_instance_valid(player_instance):
 			xirang_before_by_peer[peer_id] = player_instance.current_xirang
-	game.call("_enter_xiaocong_fate_interlude", resume_step)
+	game.fate_flow_coordinator.enter_interlude(resume_step)
 	if not await _wait_for_game_wave_state(
 		game,
 		CombatFlowState.State.FATE_INTERLUDE,
@@ -1753,7 +1753,12 @@ func _wait_for_player_xirang(
 
 
 func _run_host_wave_probe(game: Variant) -> void:
-	game.call("_begin_flow_step", game.flow_graph.start_step)
+	if game is TowerDefenseGame:
+		(game as TowerDefenseGame).campaign_coordinator.begin_flow_step(
+			game.flow_graph.start_step
+		)
+	else:
+		game.call("_begin_flow_step", game.flow_graph.start_step)
 	if not await _wait_for_game_wave_state(game, CombatFlowState.State.WAVE_ACTIVE, 3.0):
 		_fail("Host wave probe did not enter wave active state.")
 		return
@@ -1776,9 +1781,12 @@ func _run_host_wave_probe(game: Variant) -> void:
 		_fail("Host wave probe enemy was not removed after defeat.")
 		return
 	if not await _wait_for_game_wave_state(game, CombatFlowState.State.INTERMISSION, 5.0):
-		var next_step: FlowStepConfig = game.call(
-			"_get_default_next_flow_step",
-			game.current_flow_step
+		var next_step: FlowStepConfig = (
+			(game as TowerDefenseGame).campaign_coordinator.get_default_next_flow_step(
+				game.current_flow_step
+			)
+			if game is TowerDefenseGame
+			else game.call("_get_default_next_flow_step", game.current_flow_step)
 		)
 		_fail(
 			(
@@ -1856,7 +1864,12 @@ func _run_host_boss_probe(game: Variant) -> void:
 			var config_path := boss_config.resource_path if boss_config != null else ""
 			print("LAN_PROBE_EVENT host_boss_started_signal net_id=%d config=%s" % [net_id, config_path])
 	)
-	game.call("_enter_pre_flow_step", probe_linglan_boss_entry)
+	if game is TowerDefenseGame:
+		(game as TowerDefenseGame).campaign_coordinator.enter_pre_flow_step(
+			probe_linglan_boss_entry
+		)
+	else:
+		game.call("_enter_pre_flow_step", probe_linglan_boss_entry)
 	await _wait_frames(2)
 	if not await _wait_for_game_wave_state(game, CombatFlowState.State.BOSS_INTRO, 4.0):
 		_fail("Host boss probe did not enter boss intro.")

@@ -627,7 +627,9 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 
 	game.player.global_position = near_gate + Vector2(logical_tile_width * 10.0, 0.0)
 	_expect(
-		game.call("_pick_enemy_objective", near_gate, game.player) == game.player,
+		game.enemy_coordinator.call(
+			"_pick_enemy_objective", near_gate, game.player
+		) == game.player,
 		"A player exactly 10 tiles away must outrank even a much closer Home gate."
 	)
 
@@ -640,17 +642,23 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 		near_gate + Vector2(logical_tile_width * 3.0, 0.0)
 	)
 	_expect(
-		game.call("_pick_enemy_objective", near_gate, game.player) == nearer_plant,
+		game.enemy_coordinator.call(
+			"_pick_enemy_objective", near_gate, game.player
+		) == nearer_plant,
 		"The nearest living plant inside eight tiles must be the highest-priority objective."
 	)
 	nearer_plant.is_dead = true
 	_expect(
-		game.call("_pick_enemy_objective", near_gate, game.player) == boundary_plant,
+		game.enemy_coordinator.call(
+			"_pick_enemy_objective", near_gate, game.player
+		) == boundary_plant,
 		"A dead plant must be ignored and the exact eight-tile boundary must remain inclusive."
 	)
 	boundary_plant.is_dead = true
 	_expect(
-		game.call("_pick_enemy_objective", near_gate, game.player) == game.player,
+		game.enemy_coordinator.call(
+			"_pick_enemy_objective", near_gate, game.player
+		) == game.player,
 		"The player must become the objective after all nearby plants die."
 	)
 	game.enemy_coordinator.enemy_retarget_time_left = 1.0
@@ -661,13 +669,13 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 		"Removing a plant objective must request a fresh budgeted retarget sweep."
 	)
 	game.enemy_coordinator.enemy_retarget_time_left = 1.0
-	game.call("_on_player_revived", 0)
+	game.tower_multiplayer_mode_adapter.handle_player_revived(0)
 	_expect(
 		is_zero_approx(game.enemy_coordinator.enemy_retarget_time_left),
 		"A revived player must request an immediate budgeted retarget sweep."
 	)
 	game.enemy_coordinator.enemy_retarget_time_left = 1.0
-	game.call("_on_multiplayer_player_died", 999)
+	game.tower_multiplayer_mode_adapter.handle_player_died(999)
 	_expect(
 		is_zero_approx(game.enemy_coordinator.enemy_retarget_time_left),
 		"A player death must request an immediate budgeted retarget sweep."
@@ -675,7 +683,9 @@ func _verify_target_selection(game: TowerDefenseGame) -> void:
 
 	game.player.global_position = near_gate + Vector2(logical_tile_width * 10.01, 0.0)
 	_expect(
-		game.call("_pick_enemy_objective", near_gate, game.player) == gate,
+		game.enemy_coordinator.call(
+			"_pick_enemy_objective", near_gate, game.player
+		) == gate,
 		"A player beyond 10 tiles must not pull an enemy away from Home."
 	)
 	var water_plant := _register_target_probe_plant(

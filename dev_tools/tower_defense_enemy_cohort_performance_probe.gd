@@ -1013,8 +1013,8 @@ func _spawn_cohort() -> void:
 			enemy.set_target_player(game.player)
 			enemy.set_objective_target(game.player)
 		else:
-			game.call("_assign_enemy_targets", enemy, enemy.global_position)
-		game.call("_configure_authoritative_enemy_physics_interpolation", enemy)
+			game.enemy_coordinator.assign_enemy_targets(enemy, enemy.global_position)
+		game.enemy_coordinator.configure_authoritative_enemy_physics_interpolation(enemy)
 		if is_boss:
 			(enemy as LinglanBoss).activate_boss(game.player, pathfinder)
 		enemy.velocity = Vector2.ZERO

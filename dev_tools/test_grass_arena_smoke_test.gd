@@ -102,9 +102,9 @@ func _test_deferred_entry_announcement() -> void:
 		deferred_arena.day_phase_announcement.presentation_count == 0,
 		"P1A运行时激活后仍必须先等待三声倒计时。"
 	)
-	var first_step := deferred_arena.call("_get_start_flow_step") as FlowStepConfig
+	var first_step := deferred_arena.campaign_coordinator.get_start_flow_step()
 	var countdown_audio := deferred_arena.countdown_audio
-	deferred_arena.call("_enter_pre_flow_step", first_step)
+	deferred_arena.campaign_coordinator.enter_pre_flow_step(first_step)
 	_expect(
 		deferred_arena.countdown_seconds == 3
 		and countdown_audio.playing

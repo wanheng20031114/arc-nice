@@ -40,7 +40,7 @@ func _run() -> void:
 	# Build the pressure cohort explicitly. Formal campaign content is allowed to
 	# change independently; relying on its first wave previously left this test in
 	# an infinite `spawned < 1200` loop after that wave was reduced to 24 enemies.
-	var authored_wave := game.waves[0]
+	var authored_wave: WaveConfig = game.waves[0]
 	var fixture_enemy_config: EnemyConfig = null
 	for authored_entry in authored_wave.enemy_entries:
 		if authored_entry != null and authored_entry.enemy_config != null:
@@ -77,7 +77,7 @@ func _run() -> void:
 	var started_msec := Time.get_ticks_msec()
 	var initial_xirang := game.player.current_xirang
 	game.player.xirang_changed.connect(_on_xirang_changed)
-	game.call("_begin_flow_step", first_wave)
+	game.campaign_coordinator.begin_flow_step(first_wave)
 	game.enemy_spawn_timer.stop()
 	var observed_peak_enemies := 0
 	var cycle_guard := 0
