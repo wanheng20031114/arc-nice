@@ -56,7 +56,7 @@ func _run() -> void:
 	probe_enemy.setup(BASIC_ENEMY_CONFIG, game.player, pathfinder)
 	probe_enemy.set_physics_process(false)
 	var half_extents := probe_enemy.get_configured_body_collision_half_extents()
-	var traversal_types := BASIC_ENEMY_CONFIG.terrain_traversal_types
+	var traversal_types: int = BASIC_ENEMY_CONFIG.terrain_traversal_types
 	pathfinder.prewarm_agent_grid(half_extents, traversal_types)
 	var profile := pathfinder.try_get_agent_navigation_profile(
 		half_extents,
@@ -93,7 +93,7 @@ func _run() -> void:
 		return
 	var source_cohort_signature := _get_source_cohort_signature(source_cells)
 	probe_enemy.set_near_moving_target_direct_distance(
-		TowerDefenseGame.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
+		TowerDefenseEnemyCoordinator.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 	)
 	probe_enemy.navigation_update_interval_frames = 1
 	var cold_fixture := _find_cold_handoff_fixture(
@@ -1169,7 +1169,7 @@ func _spawn_enemies(source_cells: Array[Vector2i]) -> void:
 		game.enemy_container.add_child(enemy)
 		enemy.setup(BASIC_ENEMY_CONFIG, game.player, pathfinder)
 		enemy.set_near_moving_target_direct_distance(
-			TowerDefenseGame.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
+			TowerDefenseEnemyCoordinator.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 		)
 		enemy.global_position = pathfinder.call("_map_to_global", cell) as Vector2
 		enemy.navigation_update_interval_frames = 1

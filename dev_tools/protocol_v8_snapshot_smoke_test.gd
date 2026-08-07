@@ -16,7 +16,7 @@ const PROJECTILE_SEQUENCE_COUNTER_MAX: int = 0x7FFFFFFF
 
 
 class TerrainClientNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return false

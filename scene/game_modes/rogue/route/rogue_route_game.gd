@@ -75,14 +75,12 @@ enum BriefingPhase {
 @onready var route_board: RogueRouteBoard = $World/RouteBoard
 @onready var player_container: Node2D = $World/Players
 @onready var map_camera: Camera2D = $World/Camera2D
-@onready var role_value: Label = %RoleValue
-@onready var character_value: Label = %CharacterValue
 @onready var action_points_value: Label = %ActionPointsValue
-@onready var seed_value: Label = %SeedValue
-@onready var position_value: Label = %PositionValue
+@onready var light_stone_value: Label = %LightStoneValue
+@onready var xirang_value: Label = %XirangValue
 @onready var core_value: Label = %CoreValue
 @onready var core_progress: ProgressBar = %CoreProgress
-@onready var core_stat: VBoxContainer = $HUD/Root/TopBar/TopLayout/TopStats/CoreStat
+@onready var core_stat: VBoxContainer = $HUD/Root/TopBar/TopLayout/CoreStat
 @onready var content_overline: Label = %ContentOverline
 @onready var content_title: Label = %ContentTitle
 @onready var content_body: Label = %ContentBody
@@ -91,6 +89,12 @@ enum BriefingPhase {
 @onready var hint_label: Label = %Hint
 @onready var status_message: Label = %StatusMessage
 @onready var route_hud: CanvasLayer = $HUD
+@onready var route_inventory_strip: RogueRouteInventoryStrip = (
+	$HUD/Root/BottomBar/RogueRouteInventoryStrip
+)
+@onready var player_profile_panel: RoguePlayerProfilePanel = (
+	$RoguePlayerProfilePanel
+)
 @onready var move_confirmation: RogueRouteMoveConfirmation = $MoveConfirmation
 @onready var node_briefing: RogueRouteNodeBriefing = $NodeBriefing
 @onready var encounter_scene: RogueEncounterScene = $EncounterScene
@@ -157,9 +161,12 @@ var _cached_core_current := -1
 var _run_failure_presented := false
 var _cached_max_health_penalties: Dictionary = {}
 var _max_health_transition_by_peer: Dictionary = {}
+var _pixel_snap_viewport: Viewport = null
+var _previous_snap_2d_transforms_to_pixel := false
 
 
 func _ready() -> void:
+	_enable_route_pixel_snap()
 	_normal_combat_briefing_adapter = (
 		NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT.new()
 	)
@@ -179,7 +186,6 @@ func _ready() -> void:
 		_on_run_defeat_confirmed
 	):
 		run_defeat_overlay.confirmed.connect(_on_run_defeat_confirmed)
-	_update_character_display()
 	_update_authority_ui()
 	_update_route_hud()
 	_show_node_content(INVALID_NODE_ID, false)
@@ -188,6 +194,28 @@ func _ready() -> void:
 	else:
 		_set_status("等待外部会话初始化。", false)
 	call_deferred("_activate_runtime_when_loader_is_idle")
+
+
+func _exit_tree() -> void:
+	_restore_route_pixel_snap()
+
+
+func _enable_route_pixel_snap() -> void:
+	_pixel_snap_viewport = get_viewport()
+	if _pixel_snap_viewport == null:
+		return
+	_previous_snap_2d_transforms_to_pixel = (
+		_pixel_snap_viewport.snap_2d_transforms_to_pixel
+	)
+	_pixel_snap_viewport.snap_2d_transforms_to_pixel = true
+
+
+func _restore_route_pixel_snap() -> void:
+	if _pixel_snap_viewport != null and is_instance_valid(_pixel_snap_viewport):
+		_pixel_snap_viewport.snap_2d_transforms_to_pixel = (
+			_previous_snap_2d_transforms_to_pixel
+		)
+	_pixel_snap_viewport = null
 
 
 func _process(delta: float) -> void:
@@ -579,12 +607,22 @@ func host_commit_briefed_move(
 		not _authority_enabled
 		or not is_route_ready()
 		or _briefing_phase != BriefingPhase.ENTERING
+		or _briefing_node_id < 0
+		or _briefing_node_id >= _runtime_state.visited_counts.size()
 		or occurrence_key.is_empty()
 		or occurrence_key != _briefing_occurrence_key
 		or briefing_revision != _briefing_revision
 		or expected_route_revision != _briefing_expected_route_revision
 		or _runtime_state.state_revision != expected_route_revision
 	):
+		return false
+	# 普通作战仅在首次踏入时允许提交。即便出现被篡改或过时的简报包，
+	# 已访问节点也不能再因该包扣行动力、转场或重开战斗。
+	if int(_runtime_state.visited_counts[_briefing_node_id]) != 0:
+		call_deferred(
+			&"_recover_failed_briefing_entry",
+			"该普通作战节点已完成探索。"
+		)
 		return false
 	var rejection_reason := _runtime_state.get_move_rejection_reason(
 		_briefing_node_id,
@@ -1120,7 +1158,7 @@ func _validate_normal_combat_start(
 		return false
 	var visit_count := int(_runtime_state.visited_counts[node_id])
 	return (
-		visit_count > 0
+		visit_count == 1
 		and occurrence_key == _make_normal_combat_occurrence_key(
 			node_id,
 			content_seed,
@@ -1137,7 +1175,7 @@ func _make_normal_combat_occurrence_key(
 	if (
 		_route_graph == null
 		or not _route_graph.is_valid_node_id(node_id)
-		or visit_count <= 0
+		or visit_count != 1
 	):
 		return ""
 	return "combat:%s:%d:%d:%d" % [
@@ -1238,6 +1276,7 @@ func _validate_briefing_state_against(
 	if state.state_revision == expected_route_revision:
 		if (
 			not graph.has_edge(state.current_node_id, node_id)
+			or int(state.visited_counts[node_id]) != 0
 			or not state.get_move_rejection_reason(
 				node_id,
 				generation_config.move_action_cost,
@@ -1245,7 +1284,7 @@ func _validate_briefing_state_against(
 			).is_empty()
 		):
 			return false
-		visit_count = int(state.visited_counts[node_id]) + 1
+		visit_count = 1
 		if (
 			_normal_combat_briefing_adapter == null
 			or _build_normal_combat_briefing_model(
@@ -1258,8 +1297,9 @@ func _validate_briefing_state_against(
 		phase == BriefingPhase.ENTERING
 		and state.state_revision == expected_route_revision + 1
 		and state.current_node_id == node_id
+		and int(state.visited_counts[node_id]) == 1
 	):
-		visit_count = int(state.visited_counts[node_id])
+		visit_count = 1
 	else:
 		return false
 	var expected_occurrence_key := "combat:%s:%d:%d:%d" % [
@@ -1467,7 +1507,7 @@ func _try_start_normal_combat_for_node(
 		or _route_graph.get_node_type(node_id)
 		!= RogueRouteGraph.NodeType.NORMAL_COMBAT
 		or node_id >= _runtime_state.visited_counts.size()
-		or target_visit_count <= 0
+		or target_visit_count != 1
 		or int(_runtime_state.visited_counts[node_id]) != target_visit_count
 		or get_signal_connection_list(&"normal_combat_requested").is_empty()
 		or (
@@ -1790,6 +1830,7 @@ func _on_route_board_node_pressed(node_id: int) -> void:
 	if (
 		_route_graph.get_node_type(node_id)
 		== RogueRouteGraph.NodeType.NORMAL_COMBAT
+		and int(_runtime_state.visited_counts[node_id]) == 0
 	):
 		var occurrence_key := _make_normal_combat_occurrence_key(
 			node_id,
@@ -2002,7 +2043,6 @@ func configure_multiplayer_players(
 	_sync_party_status_from_run_state()
 	_attach_camera_to_local_player()
 	_configure_encounter_overlay_context()
-	_update_character_display()
 	return true
 
 
@@ -2122,6 +2162,7 @@ func _configure_multiplayer_player_node(
 	player_instance.set_physics_process(accepts_local_input)
 	if accepts_local_input:
 		player = player_instance
+		_bind_player_profile(player_instance)
 
 
 func get_player_for_peer(peer_id: int) -> Player:
@@ -2189,6 +2230,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	_sync_encounter_player_character_ids()
 	if player_instance == player:
 		player = null
+		_bind_player_profile(null)
 	if map_camera.get_parent() == player_instance:
 		world.detach_camera_from_player()
 	player_container.remove_child(player_instance)
@@ -2213,6 +2255,7 @@ func _configure_singleplayer_player() -> void:
 	player_instance.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	player_instance.reset_physics_interpolation()
 	player = player_instance
+	_bind_player_profile(player_instance)
 	_local_peer_id = SINGLEPLAYER_PEER_ID
 	_player_names = {SINGLEPLAYER_PEER_ID: "玩家"}
 	_player_character_ids = {SINGLEPLAYER_PEER_ID: character_id}
@@ -2250,6 +2293,8 @@ func _apply_route_player_xirang(player_instance: Player, amount: int) -> void:
 	if player_instance == null or not is_instance_valid(player_instance):
 		return
 	var resolved_amount := maxi(amount, 0)
+	if player_instance == player:
+		_update_personal_xirang_hud(resolved_amount)
 	if player_instance.current_xirang == resolved_amount:
 		return
 	var delta := resolved_amount - player_instance.current_xirang
@@ -2257,17 +2302,43 @@ func _apply_route_player_xirang(player_instance: Player, amount: int) -> void:
 	player_instance.xirang_changed.emit(resolved_amount, delta)
 
 
+func _update_personal_xirang_hud(amount: int) -> void:
+	if not is_node_ready():
+		return
+	xirang_value.text = str(maxi(amount, 0))
+
+
+## 光石的持久化与结算规则尚未进入 RunState；路线会话接入后只需调用此入口更新 UI。
+func set_shared_light_stone_amount(amount: int) -> void:
+	if not is_node_ready():
+		return
+	light_stone_value.text = str(maxi(amount, 0))
+
+
+func _on_party_xirang_ledger_changed(_snapshot: Dictionary) -> void:
+	_sync_route_player_xirang_from_run_state()
+
+
 func _connect_party_status_ledger() -> void:
 	_run_state = get_node_or_null("/root/RunState") as RunStateStore
 	if _run_state == null:
+		_bind_local_inventory_strip(null)
 		_update_core_hud(100, 100)
 		return
+	_bind_local_inventory_strip(player)
 	if not _run_state.party_status_ledger_changed.is_connected(
 		_on_party_status_ledger_changed
 	):
 		_run_state.party_status_ledger_changed.connect(
 			_on_party_status_ledger_changed
 		)
+	if not _run_state.party_xirang_ledger_changed.is_connected(
+		_on_party_xirang_ledger_changed
+	):
+		_run_state.party_xirang_ledger_changed.connect(
+			_on_party_xirang_ledger_changed
+		)
+	_sync_route_player_xirang_from_run_state()
 	_sync_party_status_from_run_state()
 	_cache_max_health_penalties(_run_state.export_party_status_ledger())
 
@@ -2445,7 +2516,7 @@ func _instantiate_route_player(character_id: StringName) -> Player:
 	if player_instance == null:
 		push_error("RogueRouteGame: 无法实例化路线角色 %s。" % resolved_id)
 	else:
-		# P3 的背景、节点和 HUD 使用平滑过滤；低像素玩家单独保持清晰。
+		# Rogue 路线使用像素素材；角色与路线节点都固定走最近邻采样。
 		player_instance.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	return player_instance
 
@@ -2487,12 +2558,36 @@ func _on_recenter_button_pressed() -> void:
 	_recenter_camera_on_player()
 
 
+func _on_route_inventory_bag_requested() -> void:
+	if player_profile_panel != null:
+		player_profile_panel.open()
+
+
+func _bind_player_profile(player_instance: Player) -> void:
+	if player_profile_panel != null:
+		player_profile_panel.bind_player(player_instance)
+	_bind_local_inventory_strip(player_instance)
+
+
+func _bind_local_inventory_strip(player_instance: Player) -> void:
+	if route_inventory_strip == null:
+		return
+	if player_instance == null or _run_state == null:
+		route_inventory_strip.bind_run_state(null)
+		return
+	route_inventory_strip.bind_run_state(
+		_run_state,
+		maxi(player_instance.peer_id, SINGLEPLAYER_PEER_ID)
+	)
+
+
 func _set_local_player_controls_locked(locked: bool) -> void:
 	if player != null and is_instance_valid(player):
 		player.set_controls_locked(locked)
 
 
 func _clear_player_instances() -> void:
+	_bind_player_profile(null)
 	world.detach_camera_from_player()
 	for child in player_container.get_children():
 		player_container.remove_child(child)
@@ -2532,31 +2627,13 @@ func _finish_pending_move() -> void:
 func _update_route_hud() -> void:
 	if not is_route_ready():
 		action_points_value.text = "—"
-		seed_value.text = "—"
-		position_value.text = "等待同步"
 		return
 	action_points_value.text = str(_runtime_state.action_points)
-	seed_value.text = str(_route_graph.generation_seed)
-	var coord := _route_graph.id_to_coord(_runtime_state.current_node_id)
-	position_value.text = "#%d · (%d, %d)" % [
-		_runtime_state.current_node_id,
-		coord.x,
-		coord.y,
-	]
 
 
 func _update_authority_ui() -> void:
 	if not is_node_ready():
 		return
-	role_value.text = (
-		("单人房主" if manage_return_locally else "房主 · 可操作")
-		if _authority_enabled
-		else "队伍成员 · 只读"
-	)
-	role_value.add_theme_color_override(
-		&"font_color",
-		Color("7fe7dc") if _authority_enabled else Color("a4b0ad")
-	)
 	regenerate_button.disabled = not _authority_enabled or _is_route_input_locked()
 	hint_label.text = (
 		"遭遇或作战进行中；路线移动与地图拖动已锁定。"
@@ -2569,19 +2646,6 @@ func _update_authority_ui() -> void:
 		if _authority_enabled and generation_config != null
 		else "WASD / 左摇杆自由探索 · 拖动空白处查看地图；路线由房主确认。"
 	)
-
-
-func _update_character_display() -> void:
-	if player == null or not is_instance_valid(player):
-		character_value.text = "等待角色"
-		return
-	var config := PlayerCharacterRegistry.get_config(player.get_character_id())
-	character_value.text = (
-		config.display_name
-		if config != null and not config.display_name.is_empty()
-		else str(player.get_character_id())
-	)
-
 
 func _show_node_content(node_id: int, is_preview: bool) -> void:
 	if not is_route_ready() or not _route_graph.is_valid_node_id(node_id):

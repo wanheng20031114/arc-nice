@@ -15,7 +15,7 @@ var failures: Array[String] = []
 
 
 class HostNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	var local_peer_id := 2
 	var peer_send_ready_checks := 0

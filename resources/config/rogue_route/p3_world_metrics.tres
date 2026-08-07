@@ -4,3 +4,5 @@
 
 [resource]
 script = ExtResource("1_script")
+cell_spacing = Vector2(112, 80)
+board_margin = Vector2(128, 112)

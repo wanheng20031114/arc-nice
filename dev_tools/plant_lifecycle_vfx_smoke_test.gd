@@ -588,8 +588,8 @@ func _test_particle_scenes_and_pool_release() -> void:
 	)
 	smoke.free()
 	_expect(
-		TowerDefenseGame.PLANT_LIFECYCLE_VFX_PREWARM_COUNT == 8
-		and TowerDefenseGame.PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY == 32,
+		TowerDefensePrewarmerCoordinator.PLANT_LIFECYCLE_VFX_PREWARM_COUNT == 8
+		and TowerDefensePrewarmerCoordinator.PLANT_LIFECYCLE_VFX_RETAINED_CAPACITY == 32,
 		"两种建筑生命周期粒子池必须预热8个并最多保留32个。"
 	)
 

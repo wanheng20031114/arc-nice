@@ -393,7 +393,7 @@ func _spawn_live_enemies() -> void:
 		enemy.setup(enemy_config, game.player, pathfinder)
 		enemy.current_health = PROBE_ENEMY_HEALTH
 		enemy.set_near_moving_target_direct_distance(
-			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS
+			TowerDefenseEnemyCoordinator.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 		)
 		enemy.material_drop_random_generator.seed = FIXED_SEED + enemy_index * 2 + 1
 		var insect := enemy as YuanshiInsect

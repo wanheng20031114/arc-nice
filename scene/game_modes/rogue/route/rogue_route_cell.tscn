@@ -1,138 +1,46 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_cell.gd" id="1_script"]
-[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
-[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/empty_node.png" id="3_empty_node"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/nodes/node_empty_ref_v4.png" id="2_empty_node"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/nodes/containers/node_ring_active_ref_v3.png" id="3_active_ring"]
+[ext_resource type="Shader" path="res://scene/game_modes/rogue/route/shaders/rogue_route_current_node_glow.gdshader" id="4_current_glow_shader"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disc"]
-bg_color = Color(0.025, 0.043, 0.058, 0.96)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.36, 0.45, 0.5, 0.82)
-corner_radius_top_left = 11
-corner_radius_top_right = 11
-corner_radius_bottom_right = 11
-corner_radius_bottom_left = 11
-corner_detail = 8
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_reachable"]
-draw_center = false
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.32, 0.76, 0.82, 0.72)
-corner_radius_top_left = 15
-corner_radius_top_right = 15
-corner_radius_bottom_right = 15
-corner_radius_bottom_left = 15
-corner_detail = 8
-shadow_color = Color(0.13, 0.66, 0.74, 0.2)
-shadow_size = 1
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_current"]
-bg_color = Color(0.11, 0.75, 0.84, 0.08)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.42, 0.91, 0.96, 0.92)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-corner_detail = 8
-shadow_color = Color(0.18, 0.75, 0.84, 0.27)
-shadow_size = 2
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_selected"]
-bg_color = Color(0.95, 0.72, 0.22, 0.055)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 0.81, 0.38, 0.94)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-corner_detail = 8
-shadow_color = Color(0.92, 0.65, 0.18, 0.25)
-shadow_size = 2
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_empty_halo"]
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 1, 1, 0.92)
-corner_radius_top_left = 7
-corner_radius_top_right = 7
-corner_radius_bottom_right = 7
-corner_radius_bottom_left = 7
-corner_detail = 8
-shadow_color = Color(1, 1, 1, 0.18)
-shadow_size = 1
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_visited"]
-bg_color = Color(0.42, 0.84, 0.69, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.08, 0.13, 0.12, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-corner_detail = 8
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_current_glow"]
+resource_local_to_scene = true
+shader = ExtResource("4_current_glow_shader")
+shader_parameter/beacon_color = Color(1, 0.73, 0.28, 1)
+shader_parameter/hdr_energy = 3.2
+shader_parameter/strength = 0.4
+shader_parameter/pulse_speed = 0.7
+shader_parameter/pulse_amount = 0.06
 
 [node name="RogueRouteCell" type="Control"]
-custom_minimum_size = Vector2(48, 50)
-offset_right = 48.0
-offset_bottom = 50.0
+custom_minimum_size = Vector2(64, 64)
+offset_right = 64.0
+offset_bottom = 64.0
 mouse_filter = 2
+texture_filter = 1
 script = ExtResource("1_script")
 
-[node name="SelectedHalo" type="Panel" parent="."]
+[node name="CurrentGlow" type="ColorRect" parent="."]
 visible = false
+material = SubResource("ShaderMaterial_current_glow")
 layout_mode = 0
-offset_left = 6.0
-offset_top = -2.0
-offset_right = 42.0
-offset_bottom = 34.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 54.0
+offset_bottom = 54.0
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_selected")
-
-[node name="CurrentHalo" type="Panel" parent="."]
-visible = false
-layout_mode = 0
-offset_left = 8.0
-offset_right = 40.0
-offset_bottom = 32.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_current")
-
-[node name="ReachableHalo" type="Panel" parent="."]
-visible = false
-layout_mode = 0
-offset_left = 9.0
-offset_top = 1.0
-offset_right = 39.0
-offset_bottom = 31.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_reachable")
+color = Color(1, 1, 1, 1)
 
 [node name="NodeButton" type="Button" parent="."]
 layout_mode = 0
-offset_left = 8.0
-offset_right = 40.0
-offset_bottom = 32.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 48.0
+offset_bottom = 48.0
 focus_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
@@ -141,86 +49,44 @@ theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
 theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_button")
 
-[node name="ContentDisc" type="Panel" parent="NodeButton"]
+[node name="NodeArt" type="TextureRect" parent="NodeButton"]
+texture_filter = 1
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 5.0
-offset_top = 5.0
-offset_right = -5.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_disc")
-
-[node name="Icon" type="TextureRect" parent="NodeButton"]
-texture_filter = 2
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 7.0
-offset_top = 7.0
-offset_right = -7.0
-offset_bottom = -7.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="EmptyStateHalo" type="Panel" parent="NodeButton"]
+[node name="EmptyRing" type="TextureRect" parent="NodeButton"]
 visible = false
-layout_mode = 0
-offset_left = 9.0
-offset_top = 9.0
-offset_right = 23.0
-offset_bottom = 23.0
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_empty_halo")
-
-[node name="EmptyBead" type="TextureRect" parent="NodeButton"]
-texture_filter = 2
-layout_mode = 0
-offset_left = 12.0
-offset_top = 12.0
-offset_right = 20.0
-offset_bottom = 20.0
-mouse_filter = 2
-texture = ExtResource("3_empty_node")
+texture = ExtResource("2_empty_node")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="VisitedMark" type="Panel" parent="."]
+[node name="ActiveRing" type="TextureRect" parent="."]
 visible = false
+texture_filter = 1
 layout_mode = 0
-offset_left = 34.0
-offset_top = 26.0
-offset_right = 40.0
-offset_bottom = 32.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 48.0
+offset_bottom = 48.0
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_visited")
-
-[node name="NameLabel" type="Label" parent="."]
-visible = false
-layout_mode = 0
-offset_left = -20.0
-offset_top = 34.0
-offset_right = 156.0
-offset_bottom = 64.0
-scale = Vector2(0.5, 0.5)
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.91, 0.95, 0.96, 1)
-theme_override_colors/font_outline_color = Color(0.012, 0.02, 0.027, 0.98)
-theme_override_constants/outline_size = 2
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 18
-text = "路线节点"
-horizontal_alignment = 1
-vertical_alignment = 1
-text_overrun_behavior = 3
+texture = ExtResource("3_active_ring")
+expand_mode = 1
+stretch_mode = 5
 
 [connection signal="focus_entered" from="NodeButton" to="." method="_on_node_button_focus_entered"]
 [connection signal="focus_exited" from="NodeButton" to="." method="_on_node_button_focus_exited"]

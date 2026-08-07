@@ -17,14 +17,14 @@ const UNSEEN_NEW_PEER_ID := 606
 
 
 class HostNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return true
 
 
 class ClientNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return false
@@ -284,7 +284,7 @@ func _test_authoritative_player_state_remap() -> void:
 	mp_game.net_manager = net_stub
 	_bind_multiplayer_runtime(mp_game, game)
 	var admitted_actions_at_once := 0
-	for _attempt in range(int(MP_GAME_SCRIPT.PLAYER_ACTION_INGRESS_RATE_BURST) + 1):
+	for _attempt in range(int(MpPlayerCoordinator.PLAYER_ACTION_INGRESS_RATE_BURST) + 1):
 		if mp_game._consume_remote_player_action_admission(
 			OLD_PEER_ID,
 			200.0
@@ -298,7 +298,7 @@ func _test_authoritative_player_state_remap() -> void:
 	)
 	_expect(
 		admitted_actions_at_once
-		== int(MP_GAME_SCRIPT.PLAYER_ACTION_INGRESS_RATE_BURST)
+		== int(MpPlayerCoordinator.PLAYER_ACTION_INGRESS_RATE_BURST)
 		and admitted_action_after_refill,
 		(
 			"Reliable player actions must share a bounded per-peer ingress budget "

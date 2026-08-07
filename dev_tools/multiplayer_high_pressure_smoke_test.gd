@@ -1414,7 +1414,7 @@ func _test_plant_health_before_spawn_debt() -> void:
 	)
 
 	mp_game.call("_clear_remote_plant_health_state")
-	var limit := MP_GAME_SCRIPT.CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES
+	var limit: int = MpTowerWorldCoordinator.CLIENT_PENDING_PLANT_HEALTH_MAX_ENTRIES
 	for index in range(limit + 5):
 		mp_game.call(
 			"_apply_or_defer_remote_plant_health",
@@ -1468,7 +1468,7 @@ func _test_plant_health_before_spawn_debt() -> void:
 		and not pending.has(newest_debt_id),
 		"Debt retained by a live manifest entry must settle when its snapshot spawn registers."
 	)
-	var tombstone_limit := MP_GAME_SCRIPT.CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES
+	var tombstone_limit: int = MpTowerWorldCoordinator.CLIENT_REMOVED_PLANT_TOMBSTONE_MAX_ENTRIES
 	for index in range(tombstone_limit + 5):
 		mp_game.call("_mark_remote_plant_removed", 2000 + index)
 	removed_ids = mp_game.get("_removed_remote_plant_ids") as Dictionary
@@ -1652,8 +1652,8 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 	mp_game.queue_free()
 
 	var chunk_mp_game := _new_capturing_host_mp_game()
-	var plant_limit := MP_GAME_SCRIPT.MULTIPLAYER_TEAM_PLANT_LIMIT
-	var chunk_limit := MP_GAME_SCRIPT.PLANT_HEALTH_MAX_RECORDS_PER_PACKET
+	var plant_limit: int = MpTowerWorldCoordinator.MULTIPLAYER_TEAM_PLANT_LIMIT
+	var chunk_limit: int = MpTowerWorldCoordinator.PLANT_HEALTH_MAX_RECORDS_PER_PACKET
 	for record_index in range(plant_limit):
 		chunk_mp_game.call(
 			"_on_host_plant_health_changed",
@@ -1697,7 +1697,7 @@ func _test_host_plant_damage_aggregation_and_fatal_flush() -> void:
 		== ceili(float(plant_limit) / float(chunk_limit))
 		and chunked_record_count == plant_limit
 		and chunks_with_valid_size
-		and maximum_estimated_packet_bytes <= MP_GAME_SCRIPT.SNAPSHOT_PACKET_WARN_BYTES,
+		and maximum_estimated_packet_bytes <= MpNetworkDiagnosticsCoordinator.SNAPSHOT_PACKET_WARN_BYTES,
 		"The full plant limit with healing metadata must chunk into actual MTU-safe batches without dropping records."
 	)
 	chunk_mp_game.queue_free()

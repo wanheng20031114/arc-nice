@@ -46,7 +46,7 @@ class RecordingMpGame:
 
 
 class ClientNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return false
@@ -56,16 +56,7 @@ class ClientNetManagerStub:
 
 
 class HostNetManagerStub:
-	extends Node
-
-	signal connection_state_changed
-	signal player_left
-	signal player_reconnected(
-		old_peer_id: int,
-		new_peer_id: int,
-		player_name: String,
-		character_id: StringName
-	)
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return true

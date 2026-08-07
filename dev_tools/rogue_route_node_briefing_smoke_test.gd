@@ -127,6 +127,19 @@ func _run() -> void:
 		and briefing.node_icon.texture == NORMAL_NODE_CONFIG.icon,
 		"表现层必须使用模型提供的主视觉与节点图标。"
 	)
+	var action_point_icon := briefing.get_node_or_null(
+		"Root/PanelStage/Frame/ContentMargin/Content/InfoStack/InfoBottom/ActionPointCard/Margin/Row/Icon"
+	) as TextureRect
+	_expect(
+		action_point_icon != null
+		and action_point_icon.texture != null
+		and action_point_icon.texture.resource_path
+		== "res://resources/texture/rogue_route/hud/hud_action_points_v4.png"
+		and action_point_icon.custom_minimum_size.is_equal_approx(Vector2(40.0, 40.0))
+		and action_point_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and action_point_icon.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED,
+		"作战简报必须复用顶部 HUD 的 40×40 行动力像素图标，且不得进行非整数缩放。"
+	)
 	_expect(
 		root.gui_get_focus_owner() == briefing.confirm_button,
 		"房主打开简报时，唯一主操作必须获得键鼠/手柄焦点。"

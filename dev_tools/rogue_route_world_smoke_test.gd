@@ -1,19 +1,15 @@
 extends SceneTree
 
 const ROUTE_SCENE := preload("res://scene/game_modes/rogue/route/rogue_route_game.tscn")
-const EXPECTED_WORLD_SIZE := Vector2(1072.0, 576.0)
-const EXPECTED_CELL_SPACING := Vector2(88.0, 48.0)
-const EXPECTED_BOARD_MARGIN := Vector2(96.0, 96.0)
-const EXPECTED_VISUAL_JITTER := Vector2(5.0, 2.0)
+const EXPECTED_WORLD_SIZE := Vector2(1376.0, 864.0)
+const EXPECTED_CELL_SPACING := Vector2(112.0, 80.0)
+const EXPECTED_BOARD_MARGIN := Vector2(128.0, 112.0)
 const EXPECTED_BACKGROUND_SIZE := Vector2(2304.0, 1296.0)
 const EXPECTED_CAMERA_ZOOM := 2.0
-const PLAYER_BODY_HEIGHT := 24.0
-const MIN_VISIBLE_COLUMNS := 7
-const MIN_VISIBLE_ROWS := 5
-const EXPECTED_EMPTY_BEAD_SIZE := Vector2(8.0, 8.0)
-const EXPECTED_NODE_HIT_SIZE := Vector2(32.0, 32.0)
-const EXPECTED_SCREEN_FONT_SIZE := 18.0
-const MAX_SCREEN_LINE_WIDTH := 3.0
+const MIN_VISIBLE_COLUMNS := 5
+const MIN_VISIBLE_ROWS := 3
+const EXPECTED_NODE_DISPLAY_SIZE := Vector2(32.0, 32.0)
+const EXPECTED_NODE_DISPLAY_OFFSET := Vector2(16.0, 16.0)
 const ROUTE_CONTRACT_FIELD := "runtime_contract_hash"
 
 var failures: Array[String] = []
@@ -24,6 +20,10 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var render_viewport := root.get_viewport()
+	var snap_2d_transforms_before := (
+		render_viewport.snap_2d_transforms_to_pixel
+	)
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID, false)
@@ -65,6 +65,11 @@ func _run() -> void:
 	root.remove_child(route)
 	route.free()
 	await process_frame
+	_expect(
+		render_viewport.snap_2d_transforms_to_pixel
+		== snap_2d_transforms_before,
+		"离开路线场景后必须恢复进入前的 2D 像素对齐状态。"
+	)
 	_finish()
 
 
@@ -84,6 +89,10 @@ func _audit_backdrop(route: RogueRouteGame) -> void:
 			"地下遗址背景必须以约 0.1 的 scroll_scale 轻微同向视差移动。"
 		)
 		_expect(backdrop.follow_viewport, "地下遗址视差层必须跟随活动视口。")
+		_expect(
+			backdrop.repeat_times >= 2,
+			"背景视差层必须保留至少两圈原生重复，覆盖不同窗口比例下的镜头边缘。"
+		)
 	if ruins_background != null:
 		_expect(ruins_background.texture != null, "RuinsBackground 必须绑定生成背景。")
 		if ruins_background.texture != null:
@@ -94,33 +103,40 @@ func _audit_backdrop(route: RogueRouteGame) -> void:
 				"地下遗址母图必须保持 2304×1296。"
 			)
 		_expect(
-			ruins_background.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
-			"非像素地下遗址背景必须使用 LINEAR 过滤。"
+			ruins_background.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+			"像素地下遗址背景必须使用 NEAREST 过滤。"
 		)
 		_expect(
 			ruins_background.scale.is_equal_approx(Vector2(0.5, 0.5)),
 			"2304×1296 地下遗址母图必须以 0.5 倍覆盖路线世界。"
 		)
-		var texture_half_size := ruins_background.texture.get_size() * 0.5
-		var canvas_transform := ruins_background.get_global_transform_with_canvas()
-		var screen_bounds := Rect2(
-			canvas_transform * -texture_half_size,
-			Vector2.ZERO
-		)
-		screen_bounds = screen_bounds.expand(
-			canvas_transform * Vector2(texture_half_size.x, -texture_half_size.y)
-		)
-		screen_bounds = screen_bounds.expand(canvas_transform * texture_half_size)
-		screen_bounds = screen_bounds.expand(
-			canvas_transform * Vector2(-texture_half_size.x, texture_half_size.y)
-		)
 		_expect(
-			screen_bounds.encloses(route.get_viewport_rect()),
-			"地下遗址背景必须覆盖完整活动视口：背景=%s 视口=%s"
-			% [screen_bounds, route.get_viewport_rect()]
+			backdrop != null
+			and backdrop.repeat_size.is_equal_approx(
+				ruins_background.texture.get_size() * ruins_background.scale.abs()
+			),
+			"地下遗址背景的重复尺寸必须由原图显示尺寸派生，避免固定比例窗口露底。"
 		)
 	var title := route.get_node_or_null("HUD/Root/TopBar/TopLayout/TitleBlock/Title") as Label
-	_expect(title != null and title.text == "地下遗址勘探", "P3 顶部标题必须使用地下遗址主题。")
+	_expect(title != null and title.text == "浅层矿洞", "路线顶部必须显示当前层名“浅层矿洞”。")
+	var beacon_environment_node := route.get_node_or_null(
+		"RouteBeaconGlowEnvironment"
+	) as WorldEnvironment
+	var beacon_environment := (
+		beacon_environment_node.environment
+		if beacon_environment_node != null
+		else null
+	)
+	_expect(
+		bool(ProjectSettings.get_setting("rendering/viewport/hdr_2d"))
+		and beacon_environment != null
+		and beacon_environment.background_mode == Environment.BG_CANVAS
+		and beacon_environment.background_canvas_max_layer == 0
+		and beacon_environment.glow_enabled
+		and beacon_environment.glow_intensity <= 0.25
+		and is_zero_approx(beacon_environment.glow_bloom),
+		"路线 HDR 信标必须只处理世界层，并以低强度、无全局 Bloom 的方式保留像素外溢。"
+	)
 
 
 func _audit_board(
@@ -139,7 +155,7 @@ func _audit_board(
 	)
 	_expect(
 		board.size.is_equal_approx(EXPECTED_WORLD_SIZE),
-		"11×9 路线世界必须由统一度量计算为 1072×576。"
+		"11×9 路线世界必须由统一度量计算为 1376×864。"
 	)
 	_expect(metrics != null, "路线板必须绑定统一 RogueRouteWorldMetrics。")
 	if metrics == null:
@@ -155,8 +171,12 @@ func _audit_board(
 		"路线间距、边距、镜头缩放与世界尺寸必须来自同一份度量资源。"
 	)
 	_expect(
-		board.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
-		"路线节点与界面素材必须使用 LINEAR 过滤。"
+		board.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		"路线节点与界面素材必须使用 NEAREST 过滤。"
+	)
+	_expect(
+		route.get_viewport().snap_2d_transforms_to_pixel,
+		"路线相机跟随期间必须启用原生 2D 变换像素对齐，避免节点落入子像素。"
 	)
 
 	var graph := board.graph
@@ -169,11 +189,10 @@ func _audit_board(
 			metrics.board_margin
 			+ Vector2(coord.x, coord.y) * metrics.cell_spacing
 		)
-		var jitter := board.get_node_position(node_id) - base_position
+		var offset := board.get_node_position(node_id) - base_position
 		_expect(
-			absf(jitter.x) <= EXPECTED_VISUAL_JITTER.x
-			and absf(jitter.y) <= EXPECTED_VISUAL_JITTER.y,
-			"节点 #%d 的位置必须服从统一间距，视觉抖动不得越界。" % node_id
+			offset.is_zero_approx(),
+			"节点 #%d 必须精确落在方正网格上，不应存在视觉抖动。" % node_id
 		)
 
 	var connections := board.get_node_or_null("Connections") as RogueRouteConnections
@@ -181,6 +200,7 @@ func _audit_board(
 	_expect(connections != null, "路线板必须包含独立连接线层。")
 	_expect(cell_layer != null, "路线板必须包含独立节点层。")
 	if connections != null:
+		var rail_material := connections.material as ShaderMaterial
 		_expect(
 			connections.get_base_line_count() == graph.edges.size() / 2,
 			"连接层绘制结果必须覆盖每条逻辑边。"
@@ -195,20 +215,25 @@ func _audit_board(
 		)
 		_expect(
 			connections.get_child_count() == 0,
-			"连接层必须单 Canvas 自绘，不能再为每条边生成 Line2D 子节点。"
+			"连接层必须单 Canvas 自绘独立金属轨道，不能生成 Line2D 子节点。"
 		)
-		if camera != null:
-			var maximum_screen_width := maxf(
-				connections.base_line_width,
-				connections.reachable_line_width
-			) * camera.zoom.x
-			_expect(
-				maximum_screen_width <= MAX_SCREEN_LINE_WIDTH + 0.001,
-				"最粗路线在屏幕上不得超过 %.1f 像素（当前 %.2f）。"
-				% [MAX_SCREEN_LINE_WIDTH, maximum_screen_width]
-			)
+		_expect(
+			connections.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+			"金属轨道必须使用 NEAREST 过滤。"
+		)
+		_expect(
+			rail_material != null
+			and rail_material.shader != null
+			and float(rail_material.get_shader_parameter(&"wave_frequency")) > 0.0
+			and is_equal_approx(
+				float(rail_material.get_shader_parameter(&"wave_amplitude_pixels")),
+				1.0
+			),
+			"连接线必须由着色器驱动 1 像素分段起伏，而不是使用扫光或逐帧重绘。"
+		)
 	_audit_empty_cell(board, graph)
 	_audit_event_cell_scale(board, graph, camera)
+	_audit_current_node_glow(board)
 	_audit_density_budget(route, camera, metrics)
 	_audit_world_bounds(route, board, camera, metrics)
 
@@ -223,15 +248,18 @@ func _audit_empty_cell(board: RogueRouteBoard, graph: RogueRouteGraph) -> void:
 	if empty_cell == null:
 		return
 	var button := empty_cell.get_node_or_null("NodeButton") as Button
-	var bead := empty_cell.get_node_or_null("NodeButton/EmptyBead") as Control
+	var empty_ring := empty_cell.get_node_or_null("NodeButton/EmptyRing") as TextureRect
 	_expect(
-		button != null and button.size.is_equal_approx(EXPECTED_NODE_HIT_SIZE),
-		"空节点必须以 8×8 视觉和 32×32 命中区解耦。"
+		button != null
+		and button.position.is_equal_approx(EXPECTED_NODE_DISPLAY_OFFSET)
+		and button.size.is_equal_approx(EXPECTED_NODE_DISPLAY_SIZE),
+		"2× 镜头下空节点必须使用居中的 32×32 世界像素圆环命中区。"
 	)
 	_expect(
-		bead != null and bead.size.is_equal_approx(EXPECTED_EMPTY_BEAD_SIZE),
-		"空节点视觉主体必须为 8×8 小圆珠（当前 %s）。"
-		% (bead.size if bead != null else Vector2.ZERO)
+		empty_ring != null
+		and empty_ring.size.is_equal_approx(EXPECTED_NODE_DISPLAY_SIZE)
+		and empty_ring.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		"空节点必须使用与事件节点同构的 32×32 世界像素深铁圆环。"
 	)
 
 
@@ -248,27 +276,42 @@ func _audit_event_cell_scale(
 	_expect(event_cell != null, "固定 seed 必须生成至少一个事件节点。")
 	if event_cell == null:
 		return
-	var disc_size := event_cell.content_disc.size
-	var largest_disc_side := maxf(disc_size.x, disc_size.y)
+	var node_art := event_cell.get_node_or_null("NodeButton/NodeArt") as TextureRect
+	var active_ring := event_cell.get_node_or_null("ActiveRing") as TextureRect
 	_expect(
-		largest_disc_side >= PLAYER_BODY_HEIGHT * 0.75
-		and largest_disc_side <= PLAYER_BODY_HEIGHT * 1.25,
-		"事件圆盘必须与 24px 高角色同量级（当前 %s）。" % disc_size
-	)
-	var name_label := event_cell.name_label
-	var net_scale := name_label.scale
-	if camera != null:
-		net_scale *= camera.zoom
-	var screen_font_size := (
-		float(name_label.get_theme_font_size(&"font_size")) * net_scale.y
+		node_art != null
+		and node_art.texture != null
+		and node_art.size.is_equal_approx(EXPECTED_NODE_DISPLAY_SIZE)
+		and node_art.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		"2× 镜头下事件节点必须显示为 32×32 世界像素素材。"
 	)
 	_expect(
-		net_scale.is_equal_approx(Vector2.ONE),
-		"世界节点名称必须在 2×镜头下保持净 1× 栅格化，避免二次缩放模糊。"
+		active_ring != null
+		and active_ring.position.is_equal_approx(EXPECTED_NODE_DISPLAY_OFFSET)
+		and active_ring.size.is_equal_approx(EXPECTED_NODE_DISPLAY_SIZE)
+		and event_cell.get_node_or_null("NameLabel") == null,
+		"事件节点必须以独立激活环表示状态，且不得渲染下方文字。"
+	)
+
+
+func _audit_current_node_glow(board: RogueRouteBoard) -> void:
+	var current_cell := board.get_cell(board.current_node_id)
+	var current_glow := (
+		current_cell.get_node_or_null("CurrentGlow") as ColorRect
+		if current_cell != null
+		else null
 	)
 	_expect(
-		is_equal_approx(screen_font_size, EXPECTED_SCREEN_FONT_SIZE),
-		"节点名称屏幕字号必须稳定为 18px（当前 %.2f）。" % screen_font_size
+		current_cell != null
+		and current_glow != null
+		and current_glow.visible
+		and current_glow.position.is_equal_approx(Vector2(10.0, 10.0))
+		and current_glow.size.is_equal_approx(Vector2(44.0, 44.0))
+		and current_glow.material is ShaderMaterial
+		and float((current_glow.material as ShaderMaterial).get_shader_parameter(
+			&"hdr_energy"
+		)) > 1.0,
+		"玩家所在路线节点必须使用紧凑的 HDR 像素外缘信标，而非大面积雾状光圈。"
 	)
 
 
@@ -610,8 +653,8 @@ func _expect_state_unchanged(
 
 func _audit_hud(route: RogueRouteGame) -> void:
 	var hud := route.get_node_or_null("HUD") as CanvasLayer
-	var top_bar := route.get_node_or_null("HUD/Root/TopBar") as PanelContainer
-	var bottom_bar := route.get_node_or_null("HUD/Root/BottomBar") as PanelContainer
+	var top_bar := route.get_node_or_null("HUD/Root/TopBar") as Control
+	var bottom_bar := route.get_node_or_null("HUD/Root/BottomBar") as Control
 	var old_right_panel := route.get_node_or_null("HUD/Root/RightPanel")
 	_expect(hud != null, "P3 信息层必须位于独立 CanvasLayer HUD。")
 	_expect(top_bar != null, "P3 HUD 必须在顶部布置 TopBar。")
@@ -625,14 +668,112 @@ func _audit_hud(route: RogueRouteGame) -> void:
 		bottom_bar != null and bottom_bar.mouse_filter == Control.MOUSE_FILTER_STOP,
 		"底部 HUD 必须拦截鼠标，避免误触下方地图。"
 	)
+	var core_icon := route.get_node_or_null(
+		"HUD/Root/TopBar/TopLayout/CoreStat/CoreRow/CoreIcon"
+	) as TextureRect
 	var ap_icon := route.get_node_or_null(
-		"HUD/Root/TopBar/TopLayout/TopStats/ApIcon"
+		"HUD/Root/TopBar/TopLayout/TopStats/ActionStat/ApIcon"
+	) as TextureRect
+	var light_stone_icon := route.get_node_or_null(
+		"HUD/Root/TopBar/TopLayout/TopStats/LightStoneStat/LightStoneIcon"
+	) as TextureRect
+	var xirang_icon := route.get_node_or_null(
+		"HUD/Root/TopBar/TopLayout/TopStats/XirangStat/XirangIcon"
 	) as TextureRect
 	_expect(
-		ap_icon != null
-		and ap_icon.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
-		"HUD 图标必须使用 LINEAR 过滤。"
+		core_icon != null
+		and ap_icon != null
+		and light_stone_icon != null
+		and xirang_icon != null
+		and core_icon.texture != null
+		and ap_icon.texture != null
+		and light_stone_icon.texture != null
+		and xirang_icon.texture != null
+		and core_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and ap_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and light_stone_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and xirang_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and core_icon.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED
+		and ap_icon.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED
+		and light_stone_icon.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED
+		and xirang_icon.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED,
+		"顶部资源图标必须使用 NEAREST，并以原生像素尺寸居中显示。"
 	)
+	var light_stone_value := route.get_node_or_null(
+		"HUD/Root/TopBar/TopLayout/TopStats/LightStoneStat/LightStoneValue"
+	) as Label
+	var xirang_value := route.get_node_or_null(
+		"HUD/Root/TopBar/TopLayout/TopStats/XirangStat/XirangValue"
+	) as Label
+	route.set_shared_light_stone_amount(128)
+	_expect(
+		light_stone_value != null and light_stone_value.text == "128",
+		"顶部全队光石显示必须可由路线会话更新。"
+	)
+	var inventory_strip := route.get_node_or_null(
+		"HUD/Root/BottomBar/RogueRouteInventoryStrip"
+	) as RogueRouteInventoryStrip
+	_expect(
+		inventory_strip != null
+		and inventory_strip.get_node_or_null("BagButton") is Button
+		and inventory_strip.get_node_or_null("Slot0") is Button,
+		"底部 HUD 必须接入可打开背包的横向物品栏。"
+	)
+	if inventory_strip == null:
+		return
+	var run_state := route.get_node_or_null("/root/RunState") as RunStateStore
+	_expect(
+		run_state != null and inventory_strip.inventory_owner_peer_id == 0,
+		"单人路线物品栏必须绑定本地玩家的背包。"
+	)
+	if run_state != null:
+		_expect(
+			run_state.set_party_xirang_balance(0, 46),
+			"测试前提：应能写入本地玩家的个人息壤余额。"
+		)
+		_expect(
+			xirang_value != null and xirang_value.text == "46",
+			"顶部个人息壤显示必须监听 RunState 的账本更新。"
+		)
+		_expect(
+			run_state.try_add_item_count(RunStateStore.STARTING_WOOD, 5),
+			"测试前提：应能向本地玩家背包放入木头。"
+		)
+		var first_icon := inventory_strip.get_node_or_null(
+			"Slot0/ItemIcon"
+		) as TextureRect
+		var first_stack_count := inventory_strip.get_node_or_null(
+			"Slot0/StackCount"
+		) as Label
+		_expect(
+			first_icon != null
+			and first_icon.visible
+			and first_icon.texture == RunStateStore.STARTING_WOOD.icon_texture
+			and first_stack_count != null
+			and first_stack_count.visible
+			and first_stack_count.text == "5",
+			"底部物品栏必须实时显示本地玩家背包中的物品与叠放数量。"
+		)
+	inventory_strip.call("_on_next_button_pressed")
+	_expect(
+		inventory_strip.first_slot_index == 1,
+		"底部物品栏的右箭头必须按槽位向后滚动。"
+	)
+	inventory_strip.call("_on_previous_button_pressed")
+	_expect(
+		inventory_strip.first_slot_index == 0,
+		"底部物品栏的左箭头必须回到首个槽位。"
+	)
+	inventory_strip.bag_requested.emit()
+	var profile_panel := route.get_node_or_null(
+		"RoguePlayerProfilePanel"
+	) as RoguePlayerProfilePanel
+	_expect(
+		profile_panel != null and profile_panel.is_open(),
+		"点击背包按钮必须打开复用的玩家背包界面。"
+	)
+	if profile_panel != null:
+		profile_panel.close()
 
 
 func _expect(condition: bool, message: String) -> void:

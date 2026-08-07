@@ -43,7 +43,7 @@ class RecordingMpGame:
 
 
 class ClientNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return false

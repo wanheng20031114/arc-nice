@@ -1,7 +1,17 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_connections.gd" id="1_script"]
+[ext_resource type="Shader" path="res://scene/game_modes/rogue/route/shaders/rogue_route_connection_flow.gdshader" id="2_flow_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_connection_flow"]
+resource_local_to_scene = true
+shader = ExtResource("2_flow_shader")
+shader_parameter/base_rail_color = Color(0.86, 0.89, 0.88, 0.82)
+shader_parameter/reachable_rail_color = Color(1, 0.84, 0.52, 0.98)
+shader_parameter/wave_frequency = 0.85
+shader_parameter/wave_amplitude_pixels = 1.0
 
 [node name="RogueRouteConnections" type="Node2D"]
-texture_filter = 2
+material = SubResource("ShaderMaterial_connection_flow")
+texture_filter = 1
 script = ExtResource("1_script")

@@ -6,7 +6,7 @@ const PRESSURE_INSERT_COUNT := 10_000
 
 
 class ClientNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return false
@@ -408,7 +408,7 @@ func _test_repeated_snapshot_replaces_in_place() -> void:
 
 func _test_bounded_fifo_removal_and_wraparound() -> void:
 	var mp_game := _new_mp_game()
-	var limit := MP_GAME_SCRIPT.CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
+	var limit: int = MpTowerEconomyCoordinator.CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
 	for offset in range(limit):
 		mp_game.call(
 			"_cache_pending_warehouse_snapshot",
@@ -443,14 +443,14 @@ func _test_bounded_fifo_removal_and_wraparound() -> void:
 	# Drive several complete capacity turnovers. A fixed linked FIFO has no
 	# growing historical array: every insertion reuses the same bounded state.
 	var wrap_start := 2000
-	var wrap_count := limit * 3 + 17
+	var wrap_count: int = limit * 3 + 17
 	for offset in range(wrap_count):
 		mp_game.call(
 			"_cache_pending_warehouse_snapshot",
 			wrap_start + offset,
 			{"revision": offset}
 		)
-	var expected_oldest := wrap_start + wrap_count - limit
+	var expected_oldest: int = wrap_start + wrap_count - limit
 	var order := _collect_pending_order(mp_game)
 	_expect(
 		pending.size() == limit
@@ -517,7 +517,7 @@ func _test_session_cleanup_paths() -> void:
 
 
 func _test_ten_thousand_insert_ab() -> void:
-	var limit := MP_GAME_SCRIPT.CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
+	var limit: int = MpTowerEconomyCoordinator.CLIENT_PENDING_WAREHOUSE_SNAPSHOT_MAX_ENTRIES
 	var unbounded_legacy: Dictionary = {}
 	var payload := {"revision": 1}
 	var unbounded_started_usec := Time.get_ticks_usec()

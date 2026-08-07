@@ -213,7 +213,7 @@ func _spawn_live_enemies() -> void:
 		game.enemy_container.add_child(enemy)
 		enemy.setup(enemy_config, game.player, pathfinder)
 		enemy.set_near_moving_target_direct_distance(
-			TowerDefenseGame.PLAYER_OBJECTIVE_AGGRO_RADIUS
+			TowerDefenseEnemyCoordinator.PLAYER_NEAR_MOVING_DIRECT_DISTANCE
 		)
 		enemy.global_position = candidate_positions[enemy_index]
 		enemy.velocity = Vector2.ZERO

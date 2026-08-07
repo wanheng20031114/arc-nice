@@ -23,7 +23,7 @@ width = 32
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_dust"]
 particle_flag_disable_z = true
 emission_shape = 3
-emission_box_extents = Vector3(600, 340, 1)
+emission_box_extents = Vector3(720, 456, 1)
 direction = Vector3(0.35, -1, 0)
 spread = 72.0
 initial_velocity_min = 2.0
@@ -42,7 +42,7 @@ color = Color(0.78, 0.78, 0.78, 1)
 color_ramp = SubResource("GradientTexture1D_dust_lifetime")
 
 [node name="RogueRouteAmbientVfx" type="Node2D"]
-position = Vector2(536, 288)
+position = Vector2(688, 432)
 z_index = -20
 
 [node name="GrayDust" type="GPUParticles2D" parent="."]
@@ -51,7 +51,7 @@ amount = 28
 lifetime = 5.2
 preprocess = 5.2
 randomness = 0.88
-visibility_rect = Rect2(-640, -360, 1280, 720)
+visibility_rect = Rect2(-720, -456, 1440, 912)
 local_coords = false
 fixed_fps = 24
 fract_delta = true

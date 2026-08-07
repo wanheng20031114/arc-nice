@@ -7,17 +7,14 @@ const INVALID_NODE_ID := -1
 const ENTRY_REVEAL_START_SCALE := 0.78
 const ENTRY_REVEAL_OVERSHOOT_SCALE := 1.04
 const ENTRY_REVEAL_OVERSHOOT_POINT := 0.78
+const NODE_CENTER := Vector2(32.0, 32.0)
+const VISITED_NODE_MODULATE := Color(0.48, 0.52, 0.54, 0.74)
 
-@onready var current_halo: Panel = $CurrentHalo
-@onready var selected_halo: Panel = $SelectedHalo
-@onready var reachable_halo: Panel = $ReachableHalo
+@onready var current_glow: ColorRect = $CurrentGlow
 @onready var node_button: Button = $NodeButton
-@onready var content_disc: Panel = $NodeButton/ContentDisc
-@onready var icon_rect: TextureRect = $NodeButton/Icon
-@onready var empty_state_halo: Panel = $NodeButton/EmptyStateHalo
-@onready var empty_bead: TextureRect = $NodeButton/EmptyBead
-@onready var visited_mark: Panel = $VisitedMark
-@onready var name_label: Label = $NameLabel
+@onready var node_art: TextureRect = $NodeButton/NodeArt
+@onready var empty_ring: TextureRect = $NodeButton/EmptyRing
+@onready var active_ring: TextureRect = $ActiveRing
 
 var node_id: int = INVALID_NODE_ID
 var display_name := ""
@@ -79,7 +76,7 @@ func set_near(enabled: bool) -> void:
 		return
 	_is_near = enabled
 	if is_node_ready():
-		_update_name_visibility()
+		_update_visual_state()
 
 
 func set_selected(enabled: bool) -> void:
@@ -116,7 +113,7 @@ func get_focus_control() -> Button:
 
 func get_connection_anchor() -> Vector2:
 	if not is_node_ready():
-		return Vector2(24.0, 16.0)
+		return NODE_CENTER
 	return node_button.position + node_button.size * 0.5
 
 
@@ -209,68 +206,24 @@ func _update_interaction_state() -> void:
 
 
 func _apply_content() -> void:
-	name_label.text = display_name
-	icon_rect.texture = _icon
 	node_button.tooltip_text = "" if is_empty else display_name
-	content_disc.visible = not is_empty
-	empty_bead.visible = is_empty
+	node_art.texture = _icon
 
 
 func _update_visual_state() -> void:
-	var is_reachable := is_interaction_enabled()
-	current_halo.visible = not is_empty and _is_current
-	selected_halo.visible = not is_empty and _is_selected and not _is_current
-	reachable_halo.visible = (
-		not is_empty
-		and is_reachable
-		and not _is_current
-		and not _is_selected
-	)
-	visited_mark.visible = _is_visited and not _is_current and not is_empty
-
 	var content_modulate := Color.WHITE
-	if not is_interaction_enabled():
-		content_modulate = Color(0.64, 0.69, 0.72, 0.84)
-	elif _is_visited and not _is_current:
-		content_modulate = Color(0.78, 0.88, 0.85, 0.94)
+	# 探索进度与“当前是否可点击”是不同概念：远处未探索节点依然
+	# 保持完整亮度，只有已经走过的节点才退到背景中。
+	if _is_visited and not _is_current:
+		content_modulate = VISITED_NODE_MODULATE
 	if _is_hovered or _is_focused or _is_selected or _is_current:
-		content_modulate = content_modulate.lightened(0.14)
-	icon_rect.modulate = content_modulate
-	content_disc.modulate = content_modulate
+		content_modulate = content_modulate.lightened(0.10)
 
-	icon_rect.visible = not is_empty and icon_rect.texture != null
-	_update_empty_node_state(is_reachable, content_modulate)
-	if _is_selected:
-		name_label.add_theme_color_override(&"font_color", Color("ffe28a"))
-	elif _is_current:
-		name_label.add_theme_color_override(&"font_color", Color("8df2ff"))
-	elif _is_visited:
-		name_label.add_theme_color_override(&"font_color", Color("b7d4cc"))
-	else:
-		name_label.add_theme_color_override(&"font_color", Color("edf4f2"))
-	_update_name_visibility()
-
-
-func _update_name_visibility() -> void:
-	name_label.visible = not is_empty and not display_name.is_empty()
-
-
-func _update_empty_node_state(
-	is_reachable: bool,
-	content_modulate: Color
-) -> void:
-	if not is_empty:
-		empty_state_halo.visible = false
-		return
-	var halo_color := Color.TRANSPARENT
-	if _is_current:
-		halo_color = Color(0.42, 0.91, 0.96, 0.92)
-	elif _is_selected:
-		halo_color = Color(1.0, 0.81, 0.38, 0.94)
-	elif is_reachable:
-		halo_color = Color(0.32, 0.76, 0.82, 0.7)
-	elif _is_hovered or _is_focused:
-		halo_color = Color(0.78, 0.88, 0.9, 0.64)
-	empty_state_halo.visible = halo_color.a > 0.0
-	empty_state_halo.modulate = halo_color
-	empty_bead.modulate = content_modulate
+	current_glow.visible = _is_current
+	node_art.visible = not is_empty and node_art.texture != null
+	node_art.modulate = content_modulate
+	empty_ring.visible = is_empty
+	empty_ring.modulate = content_modulate
+	# 选中和当前节点共用同一张金属圆环；不再额外画发光圆或标签。
+	active_ring.visible = _is_current or _is_selected
+	active_ring.modulate = Color.WHITE

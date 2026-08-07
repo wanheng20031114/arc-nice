@@ -216,7 +216,7 @@ func _test_preauthored_spread_system(game: TowerDefenseGame) -> void:
 		"塔防场景必须预置并启动权威端1秒植物失地衰败Timer。"
 	)
 	_expect(
-		TowerDefenseGame.TERRAIN_NETWORK_BATCH_MAX_CELLS == 96,
+		TowerDefensePlantRuntimeCoordinator.TERRAIN_NETWORK_BATCH_MAX_CELLS == 96,
 		"塔防权威地形网络批次上限必须为96格。"
 	)
 	_expect(
@@ -368,14 +368,14 @@ func _test_client_snapshot_replacement_and_revision(game: TowerDefenseGame) -> v
 
 
 func _test_real_plant_lifecycle(game: TowerDefenseGame) -> void:
-	var spread := game.vegetation_spread_system
+	var spread: VegetationSpreadSystem = game.vegetation_spread_system
 	var plant_system := game.plant_system
 	var config := VEGETATION_STAKE_CONFIG as PlantDefenseConfig
 	_expect(spread != null and plant_system != null, "真实生命周期测试需要GameTower完整植物与传播系统。")
 	if spread == null or plant_system == null or config == null:
 		return
 
-	var was_processing := spread.is_processing()
+	var was_processing: bool = spread.is_processing()
 	spread.set_process(false)
 	var fixture := _find_lifecycle_fixture(game, config)
 	_expect(

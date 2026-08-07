@@ -2,7 +2,7 @@ extends SceneTree
 
 const AMBIENT_SCENE_PATH := "res://scene/game_modes/rogue/route/rogue_route_ambient_vfx.tscn"
 const ROUTE_SCENE_PATH := "res://scene/game_modes/rogue/route/rogue_route_game.tscn"
-const EXPECTED_WORLD_SIZE := Vector2(1072.0, 576.0)
+const EXPECTED_WORLD_SIZE := Vector2(1376.0, 864.0)
 const MINIMUM_PARTICLE_AMOUNT := 20
 const MAXIMUM_PARTICLE_AMOUNT := 30
 const MAXIMUM_PARTICLE_SPEED := 12.0

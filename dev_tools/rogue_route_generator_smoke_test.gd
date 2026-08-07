@@ -129,12 +129,12 @@ func _test_runtime_contract_hash() -> void:
 		return
 	_expect(
 		WORLD_METRICS.validate_metrics().is_empty()
-		and WORLD_METRICS.cell_spacing.is_equal_approx(Vector2(88.0, 48.0))
-		and WORLD_METRICS.board_margin.is_equal_approx(Vector2(96.0, 96.0))
+		and WORLD_METRICS.cell_spacing.is_equal_approx(Vector2(112.0, 80.0))
+		and WORLD_METRICS.board_margin.is_equal_approx(Vector2(128.0, 112.0))
 		and WORLD_METRICS.get_layout_size(Vector2i(11, 9)).is_equal_approx(
-			Vector2(1072.0, 576.0)
+			Vector2(1376.0, 864.0)
 		),
-		"P3 世界度量必须稳定定义 88×48 间距、96 边距和 1072×576 布局。"
+		"P3 世界度量必须稳定定义 112×80 正交间距、128×112 边距和 1376×864 布局。"
 	)
 	var baseline_hash := DEFAULT_CONFIG.compute_runtime_contract_hash(
 		WORLD_METRICS
@@ -206,15 +206,15 @@ func _test_random_stream_isolation() -> void:
 		_expect(false, "随机流隔离基线必须成功生成。")
 		return
 
-	var no_jitter_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
-	no_jitter_config.visual_jitter_pixels = Vector2i.ZERO
-	var no_jitter := RogueRouteGenerator.generate(no_jitter_config, seed_value)
+	var jittered_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
+	jittered_config.visual_jitter_pixels = Vector2i(5, 2)
+	var jittered := RogueRouteGenerator.generate(jittered_config, seed_value)
 	_expect(
-		no_jitter != null
-		and no_jitter.compute_topology_hash() == baseline.compute_topology_hash()
-		and no_jitter.compute_content_hash() == baseline.compute_content_hash()
-		and no_jitter.compute_layout_hash() != baseline.compute_layout_hash(),
-		"改变视觉抖动只能改变 visual 流，不能改变拓扑或内容。"
+		jittered != null
+		and jittered.compute_topology_hash() == baseline.compute_topology_hash()
+		and jittered.compute_content_hash() == baseline.compute_content_hash()
+		and jittered.compute_layout_hash() != baseline.compute_layout_hash(),
+		"临时启用视觉抖动只能改变 visual 流，不能改变拓扑或内容。"
 	)
 
 	var dense_config := DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig

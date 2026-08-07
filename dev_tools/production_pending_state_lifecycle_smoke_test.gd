@@ -5,7 +5,7 @@ const PRESSURE_INSERT_COUNT := 10_000
 
 
 class ClientNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return false
@@ -417,7 +417,7 @@ func _test_revision_replacement_preserves_fifo_age() -> void:
 
 func _test_bounded_fifo_removal_and_turnover() -> void:
 	var mp_game := _new_mp_game()
-	var limit := MP_GAME_SCRIPT.CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES
+	var limit: int = MpTowerEconomyCoordinator.CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES
 	for offset in range(limit):
 		mp_game.call(
 			"_cache_pending_remote_production_state",
@@ -453,7 +453,7 @@ func _test_bounded_fifo_removal_and_turnover() -> void:
 	)
 
 	var turnover_start := 2000
-	var turnover_count := limit * 3 + 17
+	var turnover_count: int = limit * 3 + 17
 	for offset in range(turnover_count):
 		mp_game.call(
 			"_cache_pending_remote_production_state",
@@ -462,7 +462,7 @@ func _test_bounded_fifo_removal_and_turnover() -> void:
 			float(offset)
 		)
 	var order := _collect_pending_order(mp_game)
-	var expected_oldest := turnover_start + turnover_count - limit
+	var expected_oldest: int = turnover_start + turnover_count - limit
 	_expect(
 		pending.size() == limit
 		and order.size() == limit
@@ -660,7 +660,7 @@ func _test_session_cleanup_paths() -> void:
 
 
 func _test_ten_thousand_insert_ab_and_source_guard() -> void:
-	var limit := MP_GAME_SCRIPT.CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES
+	var limit: int = MpTowerEconomyCoordinator.CLIENT_PENDING_PRODUCTION_STATE_MAX_ENTRIES
 	var state := _make_state(1)
 	var unbounded_legacy: Dictionary = {}
 	var unbounded_started_usec := Time.get_ticks_usec()

@@ -381,24 +381,10 @@ func _run() -> void:
 		"房主必须能离开并再次进入同一普通作战节点。"
 	)
 	_expect(
-		host_starts.size() == 2
-		and str(host_starts[1]["occurrence_key"]) == (
-			"combat:%s:%d:%d:2" % [
-				graph.compute_layout_hash(),
-				combat_node_id,
-				content_seed,
-			]
-		),
-		"同节点再次访问必须生成访问次数为2的新 occurrence。"
-	)
-	var second_key := (
-		str(host_starts[1]["occurrence_key"])
-		if host_starts.size() >= 2
-		else ""
-	)
-	_expect(
-		host.complete_normal_combat(second_key),
-		"房主必须能完成第二次作战阶段。"
+		host_starts.size() == 1
+		and not host.is_normal_combat_active()
+		and not host.is_encounter_active(),
+		"已走过的普通作战节点只能作为普通移动目标，不能生成第二份简报或作战 occurrence。"
 	)
 	host.normal_combat_requested.disconnect(host_combat_consumer)
 	host.briefing_cover_completed.disconnect(host_cover_consumer)
@@ -416,10 +402,10 @@ func _run() -> void:
 		"无协调器夹具仍必须能移动进入普通作战节点。"
 	)
 	_expect(
-		host_starts.size() == 2
+		host_starts.size() == 1
 		and not host.is_encounter_active()
 		and not bool(host.route_board.get("_interaction_locked")),
-		"没有 normal_combat_requested 消费者时不得进入状态或锁死测试地图。"
+		"重复进入已走过作战节点时，即使没有 normal_combat_requested 消费者也不得进入状态或锁死测试地图。"
 	)
 
 	_cleanup_route(client)

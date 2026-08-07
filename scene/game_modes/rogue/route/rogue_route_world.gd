@@ -145,6 +145,12 @@ func _on_layout_bounds_changed(bounds: Rect2) -> void:
 		local_bounds.end.y + half_thickness
 	)
 	ruins_background.position = center
+	if ruins_background.texture != null:
+		# 保持原背景像素比例，同时让 Parallax2D 按实际显示尺寸平铺；
+		# 宽屏、方形和竖屏窗口都不会露出地图底色。
+		backdrop.repeat_size = (
+			ruins_background.texture.get_size() * ruins_background.scale.abs()
+		)
 	backdrop.scroll_scale = Vector2(
 		metrics.parallax_scroll_scale,
 		metrics.parallax_scroll_scale

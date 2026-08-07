@@ -398,15 +398,20 @@ func _test_board_contract(
 	var empty_cell := board.get_cell(empty_neighbor_id)
 	var far_node_id := _find_non_neighbor(graph, graph.start_node_id)
 	var far_cell := board.get_cell(far_node_id)
+	var empty_ring := (
+		empty_cell.get_node_or_null("NodeButton/EmptyRing") as TextureRect
+		if empty_cell != null
+		else null
+	)
 	_expect(
 		start_cell != null
 		and empty_cell != null
 		and empty_cell.is_empty
-		and empty_cell.empty_bead.visible
-		and not empty_cell.content_disc.visible
-		and not empty_cell.name_label.visible
+		and empty_ring != null
+		and empty_ring.visible
+		and empty_cell.get_node_or_null("NameLabel") == null
 		and empty_cell.is_interaction_enabled(),
-		"相邻空节点必须仅显示小圆珠、隐藏名称，并且无需玩家位置即可点击移动。"
+		"相邻空节点必须显示深铁圆环、没有名称，并且无需玩家位置即可点击移动。"
 	)
 	var named_cell: RogueRouteCell = null
 	for node_id in range(graph.get_node_count()):
@@ -415,10 +420,11 @@ func _test_board_contract(
 			break
 	_expect(
 		named_cell != null
-		and named_cell.name_label.visible
+		and named_cell.get_node_or_null("NodeButton/NodeArt") is TextureRect
+		and named_cell.get_node_or_null("NameLabel") == null
 		and far_cell != null
 		and not far_cell.is_interaction_enabled(),
-		"事件节点名称必须常显，未连接远端不得可交互。"
+		"事件节点必须显示独立像素素材，未连接远端不得可交互。"
 	)
 
 	var pressed_node_ids: Array[int] = []
@@ -452,8 +458,8 @@ func _test_board_contract(
 	)
 	_expect(
 		board.current_node_id == empty_neighbor_id
-		and empty_cell.visited_mark.visible == false,
-		"群体当前位置必须切换到目标；当前格不应叠加已访问角标。"
+		and empty_cell.active_ring.visible,
+		"群体当前位置必须切换到目标，并以独立金属激活环表示。"
 	)
 
 	var previous_node_id := board.current_node_id

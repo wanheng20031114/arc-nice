@@ -37,7 +37,7 @@ func _run() -> void:
 	await _test_victory_presentation_route_reset_cancels_sequence()
 	await _test_victory_reveal_route_reset_discards_old_result()
 	await _test_full_inventory_and_runtime_content_policy()
-	await _test_timeout_result_then_retry()
+	await _test_timeout_result_does_not_reenter()
 	await _test_consumed_failure_and_non_inherited_xirang()
 	_finish()
 
@@ -403,24 +403,20 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 	route.route_board.node_pressed.emit(combat_node_id)
 	await process_frame
 	_expect(
-		route.node_briefing.visible,
-		"复访已消费普通作战节点仍必须沿真实简报确认入口执行。"
+		not route.node_briefing.visible
+		and route.move_confirmation.visible,
+		"复访已走过普通作战节点不得短暂打开作战简报，只能走普通移动确认。"
 	)
-	route.node_briefing.confirm_button.pressed.emit()
-	route.node_briefing.confirm_button.pressed.emit()
+	route.move_confirmation.confirm_button.pressed.emit()
+	await process_frame
 	_expect(
-		await _wait_for_briefing_entry_cleanup(
-			route,
-			coordinator,
-			runtime,
-			revisit_revision_before + 1
-		)
+		runtime.state_revision == revisit_revision_before + 1
 		and battle_starts.size() == 1
 		and coordinator.get_active_battle() == null
 		and not route.is_normal_combat_active()
 		and not route.node_briefing.visible
 		and not route.combat_scene_transition.visible,
-		"胜利后复访已消费节点必须立即完成，不得重开战斗或遗留简报/黑幕。"
+		"胜利后复访已走过节点只能完成普通移动，不得重开战斗或遗留简报/黑幕。"
 	)
 	_cleanup_route(route)
 	await process_frame
@@ -617,7 +613,7 @@ func _test_full_inventory_and_runtime_content_policy() -> void:
 	await process_frame
 
 
-func _test_timeout_result_then_retry() -> void:
+func _test_timeout_result_does_not_reenter() -> void:
 	run_state.begin_new_run(&"weishidaier", false)
 	var config := _make_confirmed_config({
 		"return_to_route_before_result": RogueCombatEncounterConfig.Decision.NO,
@@ -688,7 +684,7 @@ func _test_timeout_result_then_retry() -> void:
 		and route.player.current_xirang == 777
 		and not coordinator.is_node_consumed(combat_node_id)
 		and int(victory_playback_count[0]) == 0,
-		"超时失败不得发奖励；不消费策略必须允许后续重试。"
+		"超时失败不得发奖励；节点未消费不影响其已被路线访问的事实。"
 	)
 	_expect(
 		runtime.try_move(
@@ -701,8 +697,9 @@ func _test_timeout_result_then_retry() -> void:
 			route.generation_config.move_action_cost,
 			runtime.state_revision
 		)
-		and coordinator.get_active_battle() != null,
-		"失败不消费节点时，再次访问必须生成新的作战实例。"
+		and coordinator.get_active_battle() == null
+		and not route.is_normal_combat_active(),
+		"即使失败未消费，已走过的普通作战节点再次访问也不得生成新的作战实例。"
 	)
 	_cleanup_route(route)
 	await process_frame

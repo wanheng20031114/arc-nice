@@ -145,7 +145,7 @@ func _test_f10_collectible_then_place(
 
 	var anchor := controller.valid_anchors[0]
 	controller.call("_set_hovered_anchor", anchor, true)
-	var plant_count_before := game.plant_container.get_child_count()
+	var plant_count_before: int = game.plant_container.get_child_count()
 	controller.call("_try_place_hovered")
 	await process_frame
 	_expect(

@@ -11,7 +11,7 @@ var failures: Array[String] = []
 
 
 class HostNetManagerStub:
-	extends Node
+	extends NetManagerStore
 
 	func is_host() -> bool:
 		return true

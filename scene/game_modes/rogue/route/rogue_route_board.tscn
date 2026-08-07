@@ -14,7 +14,7 @@ border_color = Color(0.09, 0.16, 0.17, 1)
 
 [node name="RogueRouteBoard" type="Control"]
 mouse_filter = 1
-texture_filter = 2
+texture_filter = 1
 script = ExtResource("1_script")
 world_metrics = ExtResource("5_metrics")
 

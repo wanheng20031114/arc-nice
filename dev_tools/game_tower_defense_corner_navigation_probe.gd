@@ -115,7 +115,7 @@ func _scan_static_corner_positions(
 	objectives: Array[Node2D]
 ) -> void:
 	var extents := enemy.get_configured_body_collision_half_extents()
-	var traversal_types := BASIC_CONFIG.terrain_traversal_types
+	var traversal_types: int = BASIC_CONFIG.terrain_traversal_types
 	var agent_grid := pathfinder.call(
 		"_get_or_create_agent_grid",
 		extents,
@@ -174,7 +174,7 @@ func _scan_legacy_cardinal_corner_positions(
 	objectives: Array[Node2D]
 ) -> void:
 	var extents := enemy.get_configured_body_collision_half_extents()
-	var traversal_types := BASIC_CONFIG.terrain_traversal_types
+	var traversal_types: int = BASIC_CONFIG.terrain_traversal_types
 	var agent_grid := pathfinder.call(
 		"_get_or_create_agent_grid",
 		extents,
@@ -271,7 +271,7 @@ func _scan_inflated_grid_transition_band(
 	objectives: Array[Node2D]
 ) -> void:
 	var extents := enemy.get_configured_body_collision_half_extents()
-	var traversal_types := enemy.terrain_traversal_types
+	var traversal_types: int = enemy.terrain_traversal_types
 	var agent_grid := pathfinder.call(
 		"_get_or_create_agent_grid",
 		extents,
@@ -527,7 +527,7 @@ func _collect_unique_agent_profile_configs(game: TowerDefenseGame) -> Array[Enem
 			if probe == null:
 				continue
 			var extents := probe.get_configured_body_collision_half_extents()
-			var traversal_types := entry.enemy_config.terrain_traversal_types
+			var traversal_types: int = entry.enemy_config.terrain_traversal_types
 			var profile_key := "%d:%d:%d" % [
 				ceili(extents.x),
 				ceili(extents.y),

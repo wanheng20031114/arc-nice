@@ -63,8 +63,10 @@ def _cover_sound() -> list[float]:
         envelope = attack * release
         frequency = 250.0 * math.pow(0.42, progress)
         phase = math.tau * frequency * time
-        tone = math.sin(phase) * 0.34 + math.sin(phase * 0.5) * 0.16
-        samples.append((tone + air * 0.72) * envelope)
+        # 保留低沉的“du”音作为转场主体，只留下很轻的空气质感，
+        # 不再让噪声扫频压过主音。
+        tone = math.sin(phase) * 0.46 + math.sin(phase * 0.5) * 0.18
+        samples.append((tone + air * 0.18) * envelope)
     return samples
 
 
@@ -82,7 +84,8 @@ def _reveal_sound() -> list[float]:
             _smoothstep(progress / 0.09)
             * _smoothstep((1.0 - progress) / 0.22)
         )
-        sweep = (math.sin(phase) * 0.30 + air * 0.62) * sweep_envelope
+        # 揭示阶段也以音高上行与短促提示音为主，避免静电感。
+        sweep = (math.sin(phase) * 0.42 + air * 0.16) * sweep_envelope
 
         chime_time = time - 0.13
         chime = 0.0

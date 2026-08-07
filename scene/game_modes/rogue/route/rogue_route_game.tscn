@@ -1,12 +1,12 @@
-[gd_scene load_steps=33 format=3]
+[gd_scene load_steps=37 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_game.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_board.tscn" id="2_board"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/p3_generation_config.tres" id="3_config"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
-[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud_ap_icon.png" id="5_ap_icon"]
-[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud_seed_icon.png" id="6_seed_icon"]
-[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud_location_icon.png" id="7_location_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud/hud_action_points_v4.png" id="5_ap_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud/hud_core_life_v4.png" id="6_core_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud/hud_light_stone_v1.png" id="7_light_stone_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/underground_ruins_background.png" id="8_ruins"]
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_world.gd" id="9_world_script"]
 [ext_resource type="Script" path="res://scene/game_modes/rogue/encounter/rogue_encounter_economy_coordinator.gd" id="10_encounter_economy"]
@@ -21,6 +21,9 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_victory_presentation.tscn" id="19_combat_victory"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_scene_transition.tscn" id="20_scene_transition"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_node_briefing.tscn" id="21_node_briefing"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_inventory_strip.tscn" id="22_inventory_strip"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/ui/rogue_player_profile_panel.tscn" id="23_player_profile"]
+[ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="24_xirang_icon"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -141,9 +144,29 @@ corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
+[sub_resource type="Environment" id="Environment_route_beacon_hdr"]
+background_mode = 3
+background_canvas_max_layer = 0
+glow_enabled = true
+glow_intensity = 0.22
+glow_strength = 0.55
+glow_bloom = 0.0
+glow_hdr_threshold = 1.0
+glow_hdr_scale = 1.0
+glow_levels/1 = 0.32
+glow_levels/2 = 0.0
+glow_levels/3 = 0.0
+glow_levels/4 = 0.0
+glow_levels/5 = 0.0
+glow_levels/6 = 0.0
+glow_levels/7 = 0.0
+
 [node name="RogueRouteGame" type="Node2D"]
 script = ExtResource("1_script")
 generation_config = ExtResource("3_config")
+
+[node name="RouteBeaconGlowEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_route_beacon_hdr")
 
 [node name="EncounterEconomy" type="Node" parent="."]
 script = ExtResource("10_encounter_economy")
@@ -162,16 +185,17 @@ script = ExtResource("9_world_script")
 
 [node name="Backdrop" type="Parallax2D" parent="World"]
 z_index = -100
+repeat_times = 2
 
 [node name="RuinsBackground" type="Sprite2D" parent="World/Backdrop"]
-texture_filter = 2
+texture_filter = 1
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("8_ruins")
 
 [node name="RogueRouteAmbientVfx" parent="World" instance=ExtResource("18_route_ambient_vfx")]
 
 [node name="RouteBoard" parent="World" instance=ExtResource("2_board")]
-texture_filter = 2
+texture_filter = 1
 z_index = 0
 
 [node name="Players" type="Node2D" parent="World"]
@@ -209,147 +233,77 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="TopBar" type="PanelContainer" parent="HUD/Root"]
+[node name="TopBar" type="Control" parent="HUD/Root"]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 12.0
+offset_left = 18.0
 offset_top = 12.0
-offset_right = -12.0
-offset_bottom = 78.0
+offset_right = -18.0
+offset_bottom = 66.0
 grow_horizontal = 2
 mouse_filter = 0
-theme_override_styles/panel = SubResource("StyleBoxFlat_top")
+texture_filter = 1
 
-[node name="TopLayout" type="HBoxContainer" parent="HUD/Root/TopBar"]
-layout_mode = 2
-theme_override_constants/separation = 12
+[node name="TopLayout" type="Control" parent="HUD/Root/TopBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="ReturnButton" type="Button" parent="HUD/Root/TopBar/TopLayout"]
-custom_minimum_size = Vector2(70, 46)
-layout_mode = 2
+layout_mode = 0
+offset_top = 7.0
+offset_right = 40.0
+offset_bottom = 47.0
 theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 18
 theme_override_styles/normal = SubResource("StyleBoxFlat_button")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button")
 theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
-text = "← 返回"
+text = "←"
+tooltip_text = "返回"
 
-[node name="Identity" type="VBoxContainer" parent="HUD/Root/TopBar/TopLayout"]
-custom_minimum_size = Vector2(210, 0)
-layout_mode = 2
-theme_override_constants/separation = 0
-
-[node name="RoleValue" type="Label" parent="HUD/Root/TopBar/TopLayout/Identity"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.49, 0.87, 0.85, 1)
-theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 11
-text = "单人房主"
-
-[node name="CharacterValue" type="Label" parent="HUD/Root/TopBar/TopLayout/Identity"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.94, 0.97, 0.98, 1)
-theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 18
-text = "等待角色"
-
-[node name="DividerA" type="Panel" parent="HUD/Root/TopBar/TopLayout"]
-custom_minimum_size = Vector2(1, 0)
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_divider")
-
-[node name="TitleBlock" type="VBoxContainer" parent="HUD/Root/TopBar/TopLayout"]
-layout_mode = 2
-size_flags_horizontal = 3
+[node name="CoreStat" type="VBoxContainer" parent="HUD/Root/TopBar/TopLayout"]
+layout_mode = 0
+offset_left = 50.0
+offset_right = 194.0
+offset_bottom = 50.0
 alignment = 1
 theme_override_constants/separation = 0
+tooltip_text = "塔防核心生命"
 
-[node name="Title" type="Label" parent="HUD/Root/TopBar/TopLayout/TitleBlock"]
+[node name="CoreRow" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout/CoreStat"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
-theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 21
-text = "地下遗址勘探"
-horizontal_alignment = 1
-
-[node name="SeedRow" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout/TitleBlock"]
-layout_mode = 2
-alignment = 1
 theme_override_constants/separation = 5
 
-[node name="Icon" type="TextureRect" parent="HUD/Root/TopBar/TopLayout/TitleBlock/SeedRow"]
-custom_minimum_size = Vector2(20, 20)
+[node name="CoreIcon" type="TextureRect" parent="HUD/Root/TopBar/TopLayout/CoreStat/CoreRow"]
+custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
-texture_filter = 2
-texture = ExtResource("6_seed_icon")
+texture_filter = 1
+texture = ExtResource("6_core_icon")
 expand_mode = 1
-stretch_mode = 5
+stretch_mode = 3
 
-[node name="SeedLabel" type="Label" parent="HUD/Root/TopBar/TopLayout/TitleBlock/SeedRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.48, 0.65, 0.73, 1)
-theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 10
-text = "SEED"
-vertical_alignment = 1
-
-[node name="SeedValue" type="Label" parent="HUD/Root/TopBar/TopLayout/TitleBlock/SeedRow"]
+[node name="CoreValue" type="Label" parent="HUD/Root/TopBar/TopLayout/CoreStat/CoreRow"]
 unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.86, 0.9, 1)
-theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 11
-text = "—"
-vertical_alignment = 1
-
-[node name="DividerB" type="Panel" parent="HUD/Root/TopBar/TopLayout"]
-custom_minimum_size = Vector2(1, 0)
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_divider")
-
-[node name="TopStats" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout"]
-custom_minimum_size = Vector2(485, 0)
-layout_mode = 2
-alignment = 2
-theme_override_constants/separation = 8
-
-[node name="CoreStat" type="VBoxContainer" parent="HUD/Root/TopBar/TopLayout/TopStats"]
-custom_minimum_size = Vector2(132, 0)
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 0
-
-[node name="CoreRow" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout/TopStats/CoreStat"]
-layout_mode = 2
-alignment = 1
-theme_override_constants/separation = 5
-
-[node name="CoreTitle" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats/CoreStat/CoreRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.65, 0.75, 0.69, 1)
-theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 10
-text = "核心生命"
-vertical_alignment = 1
-
-[node name="CoreValue" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats/CoreStat/CoreRow"]
-unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.42, 0.82, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0.03, 0.05, 0.92)
+theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 21
 text = "100/100"
 vertical_alignment = 1
 
-[node name="CoreProgress" type="ProgressBar" parent="HUD/Root/TopBar/TopLayout/TopStats/CoreStat"]
+[node name="CoreProgress" type="ProgressBar" parent="HUD/Root/TopBar/TopLayout/CoreStat"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(132, 3)
+custom_minimum_size = Vector2(141, 3)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/background = SubResource("StyleBoxFlat_core_background")
@@ -357,66 +311,137 @@ theme_override_styles/fill = SubResource("StyleBoxFlat_core_fill")
 value = 100.0
 show_percentage = false
 
-[node name="ApIcon" type="TextureRect" parent="HUD/Root/TopBar/TopLayout/TopStats"]
-custom_minimum_size = Vector2(34, 34)
+[node name="TitleBlock" type="VBoxContainer" parent="HUD/Root/TopBar/TopLayout"]
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -160.0
+offset_top = 5.0
+offset_right = 160.0
+offset_bottom = 45.0
+grow_horizontal = 2
+alignment = 1
+
+[node name="TopStats" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -326.0
+offset_bottom = 40.0
+grow_horizontal = 0
+alignment = 2
+theme_override_constants/separation = 10
+
+[node name="ActionStat" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout/TopStats"]
+custom_minimum_size = Vector2(82, 40)
 layout_mode = 2
-texture_filter = 2
+alignment = 1
+theme_override_constants/separation = 3
+tooltip_text = "行动力"
+
+[node name="ApIcon" type="TextureRect" parent="HUD/Root/TopBar/TopLayout/TopStats/ActionStat"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+texture_filter = 1
 texture = ExtResource("5_ap_icon")
 expand_mode = 1
-stretch_mode = 5
+stretch_mode = 3
 
-[node name="ApLabel" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.69, 0.75, 0.8, 1)
-theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 12
-text = "行动力"
-vertical_alignment = 1
-
-[node name="ActionPointsValue" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats"]
+[node name="ActionPointsValue" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats/ActionStat"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(42, 0)
+custom_minimum_size = Vector2(39, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.8, 0.28, 1)
+theme_override_colors/font_outline_color = Color(0.08, 0.04, 0, 0.95)
+theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 23
 text = "—"
 vertical_alignment = 1
 
-[node name="LocationIcon" type="TextureRect" parent="HUD/Root/TopBar/TopLayout/TopStats"]
-custom_minimum_size = Vector2(30, 30)
+[node name="LightStoneStat" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout/TopStats"]
+custom_minimum_size = Vector2(106, 40)
 layout_mode = 2
-texture_filter = 2
-texture = ExtResource("7_location_icon")
-expand_mode = 1
-stretch_mode = 5
+alignment = 1
+theme_override_constants/separation = 4
+tooltip_text = "全队共享光石"
 
-[node name="PositionValue" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(130, 0)
+[node name="LightStoneIcon" type="TextureRect" parent="HUD/Root/TopBar/TopLayout/TopStats/LightStoneStat"]
+custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.48, 0.88, 0.9, 1)
+texture_filter = 1
+texture = ExtResource("7_light_stone_icon")
+expand_mode = 1
+stretch_mode = 3
+
+[node name="LightStoneValue" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats/LightStoneStat"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(62, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.86, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0.12, 0.07, 0.01, 0.95)
+theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("4_font")
-theme_override_font_sizes/font_size = 12
-text = "等待同步"
+theme_override_font_sizes/font_size = 20
+text = "0"
 vertical_alignment = 1
 
-[node name="BottomBar" type="PanelContainer" parent="HUD/Root"]
+[node name="XirangStat" type="HBoxContainer" parent="HUD/Root/TopBar/TopLayout/TopStats"]
+custom_minimum_size = Vector2(118, 40)
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 4
+tooltip_text = "个人息壤"
+
+[node name="XirangIcon" type="TextureRect" parent="HUD/Root/TopBar/TopLayout/TopStats/XirangStat"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+texture_filter = 1
+texture = ExtResource("24_xirang_icon")
+expand_mode = 1
+stretch_mode = 3
+
+[node name="XirangValue" type="Label" parent="HUD/Root/TopBar/TopLayout/TopStats/XirangStat"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(74, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.57, 0.96, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.11, 0.03, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 20
+text = "0"
+vertical_alignment = 1
+
+[node name="Title" type="Label" parent="HUD/Root/TopBar/TopLayout/TitleBlock"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0.02, 0.03, 0.94)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 24
+text = "浅层矿洞"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BottomBar" type="Control" parent="HUD/Root"]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 12.0
-offset_top = -112.0
+offset_top = -140.0
 offset_right = -12.0
 offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 0
-theme_override_styles/panel = SubResource("StyleBoxFlat_bottom")
 
 [node name="BottomLayout" type="HBoxContainer" parent="HUD/Root/BottomBar"]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 12
 
@@ -532,6 +557,9 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
 text = "定位角色"
 tooltip_text = "回到本地角色（Home）"
 
+[node name="RogueRouteInventoryStrip" parent="HUD/Root/BottomBar" instance=ExtResource("22_inventory_strip")]
+layout_mode = 1
+
 [node name="MoveConfirmation" parent="." instance=ExtResource("13_move_confirmation")]
 
 [node name="NodeBriefing" parent="." instance=ExtResource("21_node_briefing")]
@@ -544,10 +572,13 @@ tooltip_text = "回到本地角色（Home）"
 
 [node name="RunDefeatOverlay" parent="." instance=ExtResource("17_run_defeat")]
 
+[node name="RoguePlayerProfilePanel" parent="." instance=ExtResource("23_player_profile")]
+
 [connection signal="node_pressed" from="World/RouteBoard" to="." method="_on_route_board_node_pressed"]
 [connection signal="pressed" from="HUD/Root/TopBar/TopLayout/ReturnButton" to="." method="_on_return_button_pressed"]
 [connection signal="pressed" from="HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RegenerateButton" to="." method="_on_regenerate_button_pressed"]
 [connection signal="pressed" from="HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RecenterButton" to="." method="_on_recenter_button_pressed"]
+[connection signal="bag_requested" from="HUD/Root/BottomBar/RogueRouteInventoryStrip" to="." method="_on_route_inventory_bag_requested"]
 [connection signal="canceled" from="MoveConfirmation" to="." method="_on_move_confirmation_canceled"]
 [connection signal="confirmed" from="MoveConfirmation" to="." method="_on_move_confirmation_confirmed"]
 [connection signal="canceled" from="NodeBriefing" to="." method="_on_node_briefing_canceled"]

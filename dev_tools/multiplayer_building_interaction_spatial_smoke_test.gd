@@ -4,7 +4,9 @@ const INTERACTION_BUILDING_CONFIG := preload(
 	"res://resources/config/plant_defense/wood_processing_station.tres"
 )
 
-const MP_GAME_PATH := "res://scene/multiplayer/mp_game.gd"
+const MP_TOWER_ECONOMY_COORDINATOR_PATH := (
+	"res://scene/game_modes/tower_defense/multiplayer/economy/mp_tower_economy_coordinator.gd"
+)
 const INTERACTION_DISTANCE := 48.0
 const FAR_BUILDING_COUNT := 512
 const PERFORMANCE_ITERATIONS := 2_000
@@ -25,23 +27,47 @@ class QueryProbePlantSystem:
 		_plant_target_spatial_index.update(plant, world_position)
 
 
-class TestMpGame:
-	extends "res://scene/multiplayer/mp_game.gd"
+class TestInteractionAuthority:
+	extends RefCounted
+
+	var plant_system: PlantSystem
+
+	func _init(plant_system_instance: PlantSystem) -> void:
+		plant_system = plant_system_instance
 
 	func accepts_warehouse(player: Player, building: OakWarehouse) -> bool:
-		return _is_authoritative_nearest_warehouse(player, building)
+		return _is_authoritative_nearest_building(player, building)
 
 	func accepts_production(player: Player, building: ProductionBuilding) -> bool:
-		return _is_authoritative_nearest_production_building(player, building)
+		return _is_authoritative_nearest_building(player, building)
 
 	func accepts_research(player: Player, building: ResearchCenter) -> bool:
-		return _is_authoritative_nearest_research_center(player, building)
+		return _is_authoritative_nearest_building(player, building)
+
+	func _is_authoritative_nearest_building(
+		player: Player,
+		building: PlantDefense
+	) -> bool:
+		if (
+			player == null
+			or building == null
+			or not PlantDefense.is_operational_interaction_candidate(building)
+			or player.global_position.distance_squared_to(building.global_position)
+			> INTERACTION_DISTANCE * INTERACTION_DISTANCE
+		):
+			return false
+		return (
+			plant_system.find_nearest_operational_interaction_building_world(
+				player.global_position,
+				INTERACTION_DISTANCE
+			)
+			== building
+		)
 
 
 var failures: Array[String] = []
 var plant_system := QueryProbePlantSystem.new()
-var runtime := TowerDefenseGame.new()
-var mp_game := TestMpGame.new()
+var interaction_authority := TestInteractionAuthority.new(plant_system)
 var player := Player.new()
 var all_buildings: Array[PlantDefense] = []
 
@@ -51,8 +77,6 @@ func _init() -> void:
 
 
 func _run() -> void:
-	runtime.plant_system = plant_system
-	mp_game.game = runtime
 	player.global_position = Vector2.ZERO
 
 	var warehouse := OakWarehouse.new()
@@ -83,12 +107,12 @@ func _test_cross_type_authority(
 	research: ResearchCenter
 ) -> void:
 	_expect(
-		mp_game.accepts_research(player, research),
+		interaction_authority.accepts_research(player, research),
 		"最近的研究中心必须通过 Host 授权。"
 	)
 	_expect(
-		not mp_game.accepts_production(player, production)
-		and not mp_game.accepts_warehouse(player, warehouse),
+		not interaction_authority.accepts_production(player, production)
+		and not interaction_authority.accepts_warehouse(player, warehouse),
 		"更近的另一类型交互建筑存在时，Host 必须拒绝较远的生产/仓库请求。"
 	)
 
@@ -98,7 +122,7 @@ func _test_cross_type_authority(
 	plant_system.register_probe_plant(non_interactive)
 	all_buildings.append(non_interactive)
 	_expect(
-		mp_game.accepts_research(player, research),
+		interaction_authority.accepts_research(player, research),
 		"更近的普通防御植物不得阻塞建筑交互选择。"
 	)
 
@@ -110,12 +134,12 @@ func _test_lifecycle_and_tie_breaks(
 ) -> void:
 	research.is_operational = false
 	_expect(
-		mp_game.accepts_production(player, production),
+		interaction_authority.accepts_production(player, production),
 		"未投入运行的最近建筑必须被过滤并选择下一座生产建筑。"
 	)
 	production.is_removing = true
 	_expect(
-		mp_game.accepts_warehouse(player, warehouse),
+		interaction_authority.accepts_warehouse(player, warehouse),
 		"正在拆除的最近建筑必须被过滤并选择下一座仓库。"
 	)
 
@@ -127,15 +151,15 @@ func _test_lifecycle_and_tie_breaks(
 	warehouse.set_meta(&"net_id", 10)
 	research.set_meta(&"net_id", 30)
 	_expect(
-		mp_game.accepts_warehouse(player, warehouse)
-		and not mp_game.accepts_research(player, research),
+		interaction_authority.accepts_warehouse(player, warehouse)
+		and not interaction_authority.accepts_research(player, research),
 		"等距跨类型建筑必须按较小网络 ID 选择，保持客户端与 Host 一致。"
 	)
 	warehouse.set_meta(&"net_id", 40)
 	research.set_meta(&"net_id", 5)
 	_expect(
-		mp_game.accepts_research(player, research)
-		and not mp_game.accepts_warehouse(player, warehouse),
+		interaction_authority.accepts_research(player, research)
+		and not interaction_authority.accepts_warehouse(player, warehouse),
 		"网络 ID 变化后，等距选择必须稳定切换到较小 ID。"
 	)
 
@@ -143,7 +167,7 @@ func _test_lifecycle_and_tie_breaks(
 	warehouse.is_dead = true
 	production.is_dead = true
 	_expect(
-		mp_game.accepts_research(player, research),
+		interaction_authority.accepts_research(player, research),
 		"Host 交互圆必须精确包含 48 像素边界。"
 	)
 	plant_system.move_probe_plant(
@@ -151,7 +175,7 @@ func _test_lifecycle_and_tie_breaks(
 		Vector2(INTERACTION_DISTANCE + 0.01, 0.0)
 	)
 	_expect(
-		not mp_game.accepts_research(player, research),
+		not interaction_authority.accepts_research(player, research),
 		"Host 交互圆必须拒绝刚刚越过 48 像素边界的建筑。"
 	)
 	warehouse.is_dead = false
@@ -254,7 +278,18 @@ func _legacy_full_scan_nearest() -> PlantDefense:
 
 
 func _test_authority_source_delegation() -> void:
-	var source := FileAccess.get_file_as_string(MP_GAME_PATH)
+	var source := FileAccess.get_file_as_string(MP_TOWER_ECONOMY_COORDINATOR_PATH)
+	var shared_authority_source := _extract_function_source(
+		source,
+		"_is_authoritative_nearest_building"
+	)
+	_expect(
+		shared_authority_source.contains(
+			"_find_authoritative_nearest_interaction_building"
+		)
+		and not shared_authority_source.contains("get_multiplayer_plant_snapshots"),
+		"通用建筑授权必须委托统一空间查询，禁止恢复完整植物快照扫描。"
+	)
 	for function_name in [
 		"_is_authoritative_nearest_warehouse",
 		"_is_authoritative_nearest_production_building",
@@ -262,8 +297,11 @@ func _test_authority_source_delegation() -> void:
 	]:
 		var function_source := _extract_function_source(source, function_name)
 		_expect(
-			function_source.contains(
-				"_find_authoritative_nearest_interaction_building"
+			(
+				function_source.contains(
+					"_find_authoritative_nearest_interaction_building"
+				)
+				or function_source.contains("_is_authoritative_nearest_building")
 			)
 			and not function_source.contains("get_multiplayer_plant_snapshots"),
 			"%s 必须委托统一空间查询，禁止恢复完整植物快照扫描。" % function_name
@@ -298,10 +336,7 @@ func _cleanup() -> void:
 		if building != null and is_instance_valid(building):
 			building.free()
 	all_buildings.clear()
-	if mp_game != null and is_instance_valid(mp_game):
-		mp_game.free()
-	if runtime != null and is_instance_valid(runtime):
-		runtime.free()
+	interaction_authority = null
 	if plant_system != null and is_instance_valid(plant_system):
 		plant_system.free()
 	if player != null and is_instance_valid(player):

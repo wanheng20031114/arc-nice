@@ -166,7 +166,7 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	if not controller.valid_anchors.is_empty():
 		var anchor := controller.valid_anchors[0]
 		controller.call("_set_hovered_anchor", anchor, true)
-		var plant_count_before := game.plant_container.get_child_count()
+		var plant_count_before: int = game.plant_container.get_child_count()
 		controller.call("_try_place_hovered")
 		await process_frame
 		_expect(
@@ -273,7 +273,7 @@ func _test_host_rejects_free_placement() -> void:
 				"reason": reason,
 			})
 	)
-	var plant_count_before := game.plant_container.get_child_count()
+	var plant_count_before: int = game.plant_container.get_child_count()
 	game.tower_multiplayer_mode_adapter.request_authoritative_plant_placement(
 		2,
 		77,

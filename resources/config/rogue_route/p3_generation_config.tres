@@ -12,4 +12,4 @@
 [resource]
 script = ExtResource("1_script")
 node_type_catalog = Array[ExtResource("2_type_script")]([ExtResource("3_magical"), ExtResource("4_emergency"), ExtResource("5_normal"), ExtResource("6_resource"), ExtResource("7_market"), ExtResource("8_prepare")])
-visual_jitter_pixels = Vector2i(5, 2)
+visual_jitter_pixels = Vector2i(0, 0)

@@ -47,28 +47,50 @@ var enemy_ids := PackedInt32Array()
 
 
 class MortarPerformanceRuntime:
-	extends Node2D
+	extends CombatRuntimeBase
 
 	var target_index := CombatTargetIndex.new()
 	var session_object_pool: SessionObjectPool = null
 	var combat_system: BambooMortarCombatSystem = null
+	var gameplay_port: TowerPlantGameplayPort = null
 	var query_count := 0
 	var visual_record_count := 0
 	var batch_call_count := 0
 	var damage_number_count := 0
+
+	func _init() -> void:
+		_add_required_runtime_child(&"EnemyContainer", Node2D.new())
+		_add_required_runtime_child(&"GridPathfinder", Node.new())
+		_add_required_runtime_child(&"CapooProjectileMotionSystem", Node.new())
+		_add_required_runtime_child(
+			&"CombatRobotDroneMotionSystem",
+			CombatRobotDroneMotionSystem.new()
+		)
+		_add_required_runtime_child(&"DayNightController", DayNightController.new())
+		_add_required_runtime_child(
+			&"MultiplayerGameplayGateway",
+			MultiplayerGameplayGateway.new()
+		)
+		_add_required_runtime_child(&"MultiplayerModeAdapter", MultiplayerModeAdapter.new())
+
+	func _add_required_runtime_child(node_name: StringName, node: Node) -> void:
+		node.name = node_name
+		add_child(node)
 
 	func install_runtime_systems() -> void:
 		session_object_pool = SessionObjectPool.new()
 		session_object_pool.name = "SessionObjectPool"
 		add_child(session_object_pool)
 		session_object_pool.register_scene(SHELL_SCENE, 100, 384)
+		gameplay_port = MortarPerformanceGameplayPort.new(self)
+		add_child(gameplay_port)
 		combat_system = (
 			COMBAT_SYSTEM_SCENE.instantiate()
 			as BambooMortarCombatSystem
 		)
 		combat_system.name = "BambooMortarCombatSystem"
 		add_child(combat_system)
-		combat_system.setup(self)
+		combat_system.setup(self, gameplay_port)
 		combat_system.set_authoritative_processing_enabled(true)
 		# The probe explicitly invokes the production service step so target and
 		# explosion wall time can be measured without an automatic second flush.
@@ -120,14 +142,17 @@ class MortarPerformanceRuntime:
 
 	func apply_authoritative_plant_enemy_damage_batch(
 		_source_id: int,
-		enemy: Enemy,
+		enemy: Node2D,
 		damage_amounts: PackedInt64Array,
 		hit_counts: PackedInt32Array,
 		impact_direction: Vector2,
-		damage_type: EnemyConfig.DamageType
+		damage_type: int
 	) -> bool:
+		var target_enemy := enemy as Enemy
+		if target_enemy == null:
+			return false
 		batch_call_count += 1
-		return enemy.apply_damage_batch(
+		return target_enemy.apply_damage_batch(
 			damage_amounts,
 			hit_counts,
 			impact_direction,
@@ -148,10 +173,14 @@ class MortarPerformanceRuntime:
 	func show_damage_number(
 		_amount: int,
 		_world_position: Vector2,
-		_impact_direction: Vector2,
-		_damage_type: EnemyConfig.DamageType
-	) -> void:
+		_impact_direction: Vector2 = Vector2.ZERO,
+		_damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		_display_priority: DamageNumberPool.DisplayPriority = (
+			DamageNumberPool.DisplayPriority.NORMAL
+		)
+	) -> bool:
 		damage_number_count += 1
+		return true
 
 	func has_session_object_pool_scene(scene: PackedScene) -> bool:
 		return session_object_pool.is_registered(scene)
@@ -165,6 +194,152 @@ class MortarPerformanceRuntime:
 			if strict
 			else session_object_pool.acquire(scene)
 		)
+
+	func configure_multiplayer(
+		_mode: int,
+		_local_peer_id: int,
+		_player_names: Dictionary,
+		_player_character_ids: Dictionary = {}
+	) -> void:
+		pass
+
+	func get_player_for_peer(_peer_id: int) -> Player:
+		return null
+
+	func get_enemy_for_net_id(_net_id: int) -> Enemy:
+		return null
+
+	func get_pickup_for_net_id(_net_id: int) -> Pickup:
+		return null
+
+	func remove_multiplayer_player(_peer_id: int) -> void:
+		pass
+
+	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+		return []
+
+	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
+		return []
+
+	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
+		pass
+
+
+class MortarPerformanceGameplayPort:
+	extends TowerPlantGameplayPort
+
+	var runtime: MortarPerformanceRuntime
+
+	func _init(runtime_instance: MortarPerformanceRuntime) -> void:
+		runtime = runtime_instance
+
+	func broadcast_plant_projectile_visual(
+		_plant_net_id: int,
+		_spawn_position: Vector2,
+		_direction: Vector2,
+		_speed: float,
+		_explosion_radius: float,
+		_lifetime: float
+	) -> bool:
+		return true
+
+	func queue_bamboo_mortar_visual(
+		_plant_net_id: int,
+		_action_id: int,
+		_stage: int,
+		_spawn_position: Vector2,
+		_landing_position: Vector2,
+		_committed_windup_duration_seconds: float
+	) -> bool:
+		runtime.visual_record_count += 1
+		return true
+
+	func queue_hydrangea_rain_visual(
+		_plant_net_id: int,
+		_action_id: int,
+		_target_position: Vector2,
+		_action_elapsed_seconds: float
+	) -> bool:
+		return true
+
+	func queue_corn_machine_gun_burst_visual(
+		_plant_net_id: int,
+		_action_id: int,
+		_direction: Vector2
+	) -> bool:
+		return true
+
+	func apply_authoritative_plant_enemy_damage(
+		_damage_source_id: int,
+		_enemy: Node2D,
+		_damage: int,
+		_impact_direction: Vector2,
+		_damage_type: int
+	) -> bool:
+		return false
+
+	func apply_authoritative_plant_enemy_damage_batch(
+		_damage_source_id: int,
+		enemy: Node2D,
+		damage_amounts: PackedInt64Array,
+		hit_counts: PackedInt32Array,
+		impact_direction: Vector2,
+		damage_type: int
+	) -> bool:
+		return runtime.apply_authoritative_plant_enemy_damage_batch(
+			0,
+			enemy,
+			damage_amounts,
+			hit_counts,
+			impact_direction,
+			damage_type
+		)
+
+	func request_bamboo_mortar_target(
+		owner: Node2D,
+		minimum_range: float,
+		maximum_range: float,
+		callback: Callable
+	) -> bool:
+		return runtime.combat_system.request_target(
+			owner,
+			minimum_range,
+			maximum_range,
+			callback
+		)
+
+	func cancel_bamboo_mortar_target_request(owner: Node) -> void:
+		runtime.combat_system.cancel_target_request(owner)
+
+	func queue_bamboo_mortar_explosion(
+		landing_position: Vector2,
+		inner_radius: float,
+		outer_radius: float,
+		inner_damage: int,
+		outer_damage: int,
+		damage_source_id: int
+	) -> bool:
+		return runtime.combat_system.queue_explosion(
+			landing_position,
+			inner_radius,
+			outer_radius,
+			inner_damage,
+			outer_damage,
+			damage_source_id
+		)
+
+	func query_living_plants_in_radius_into(
+		_center: Vector2,
+		_radius: float,
+		result: Array
+	) -> void:
+		result.clear()
+
+	func begin_inventory_building_placement(
+		_slot_index: int,
+		_expected_inventory_revision: int
+	) -> bool:
+		return false
 
 
 func _init() -> void:
@@ -633,6 +808,7 @@ func _spawn_mortars() -> void:
 		mortar.set_meta(&"net_id", mortar_index + 1)
 		runtime.add_child(mortar)
 		mortar.collision_layer = 0
+		mortar.bind_gameplay_context(runtime, runtime.gameplay_port)
 		mortar.setup(MORTAR_CONFIG, null, [], false)
 		_reset_mortar_after_sample(mortar)
 		mortars.append(mortar)
@@ -646,6 +822,7 @@ func _spawn_proxy_mortars() -> void:
 		proxy.set_meta(&"net_id", 1001 + proxy_index)
 		runtime.add_child(proxy)
 		proxy.collision_layer = 0
+		proxy.bind_gameplay_context(runtime, runtime.gameplay_port)
 		proxy.setup(MORTAR_CONFIG, null, [], true)
 		proxy_mortars.append(proxy)
 
