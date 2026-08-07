@@ -40,6 +40,7 @@ shader_parameter/dash_effect_strength = 0.0
 shader_parameter/dash_direction = Vector2(1, 0)
 shader_parameter/dash_color = Color(0.12, 1.45, 1.3, 1)
 shader_parameter/dash_trail_pixels = 4.0
+shader_parameter/ninja_afterimage_pixels = 4.0
 shader_parameter/slow_overlay_color = Color(0.55, 0.86, 1, 1)
 shader_parameter/burn_overlay_color = Color(1, 0.56, 0.18, 0.46)
 shader_parameter/burn_edge_width = 2.0
@@ -121,8 +122,8 @@ autoplay = "orbit"
 
 [node name="DashReadyIndicator" parent="." unique_id=2099222769 instance=ExtResource("16_dash_ready")]
 material = SubResource("ShaderMaterial_uajji")
-offset_top = 3.0
-offset_bottom = 11.0
+offset_top = 5.0
+offset_bottom = 13.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=774315759]
 position = Vector2(0, 1)
