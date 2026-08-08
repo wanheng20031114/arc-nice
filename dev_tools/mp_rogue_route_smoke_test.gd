@@ -1492,14 +1492,10 @@ func _test_fluorescent_pit_route_integration() -> void:
 	failure_route.manage_return_locally = false
 	failure_route.call("_reset_encounter_runtime", true)
 	var core_value := failure_route.get_node(
-		"HUD/Root/TopBar/TopLayout/TopStats/CoreStat/CoreRow/CoreValue"
+		"HUD/Root/TopBar/TopLayout/CoreStat/CoreRow/CoreValue"
 	) as Label
-	var core_progress := failure_route.get_node(
-		"HUD/Root/TopBar/TopLayout/TopStats/CoreStat/CoreProgress"
-	) as ProgressBar
 	_expect(
-		core_value.text == "2/100"
-		and is_equal_approx(core_progress.value, 2.0),
+		core_value.text == "2/100",
 		"P3 静态核心 HUD 必须读取共享账本当前值。"
 	)
 	var failure_session := failure_route.get_node(
@@ -1537,8 +1533,7 @@ func _test_fluorescent_pit_route_integration() -> void:
 	var failure_result := failure_session.export_state()
 	_expect(
 		bool(failure_result.get("run_failed", false))
-		and core_value.text == "0/100"
-		and is_zero_approx(core_progress.value),
+		and core_value.text == "0/100",
 		"共享核心 2 -> 0 时 P3 HUD 必须同步归零且 Session 标记败局。"
 	)
 	var failure_ack_forwarder := func(

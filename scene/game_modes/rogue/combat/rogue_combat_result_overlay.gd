@@ -8,8 +8,8 @@ const FAILURE_TITLE := "作战失败"
 const COMMON_RARITY_TEXT := "普通品质"
 const VICTORY_TITLE_COLOR := Color(0.58, 0.94, 0.62, 1.0)
 const FAILURE_TITLE_COLOR := Color(1.0, 0.43, 0.36, 1.0)
-const VICTORY_ACCENT_COLOR := Color(0.46, 0.86, 0.51, 0.92)
-const FAILURE_ACCENT_COLOR := Color(0.92, 0.3, 0.25, 0.92)
+const VICTORY_RULE_COLOR := Color(0.46, 0.86, 0.51, 0.58)
+const FAILURE_RULE_COLOR := Color(0.92, 0.3, 0.25, 0.58)
 const LOOT_RECEIVED_COLOR := Color(0.58, 0.9, 0.61, 1.0)
 const LOOT_LOST_COLOR := Color(1.0, 0.46, 0.38, 1.0)
 const LOOT_EMPTY_COLOR := Color(0.68, 0.69, 0.67, 1.0)
@@ -19,8 +19,9 @@ const OPEN_DURATION_SECONDS := 0.22
 @onready var result_panel: PanelContainer = %ResultPanel
 @onready var panel_margin: MarginContainer = %PanelMargin
 @onready var result_content: VBoxContainer = %ResultContent
-@onready var result_accent: ColorRect = %ResultAccent
+@onready var left_state_rule: ColorRect = %LeftStateRule
 @onready var result_title_label: Label = %ResultTitle
+@onready var right_state_rule: ColorRect = %RightStateRule
 @onready var result_subtitle_label: Label = %ResultSubtitle
 @onready var extra_xirang_value_label: Label = %ExtraXirangValue
 @onready var loot_card: PanelContainer = %LootCard
@@ -80,9 +81,9 @@ func present_result(
 	result_title_label.self_modulate = (
 		VICTORY_TITLE_COLOR if victory else FAILURE_TITLE_COLOR
 	)
-	result_accent.color = (
-		VICTORY_ACCENT_COLOR if victory else FAILURE_ACCENT_COLOR
-	)
+	var state_rule_color := VICTORY_RULE_COLOR if victory else FAILURE_RULE_COLOR
+	left_state_rule.color = state_rule_color
+	right_state_rule.color = state_rule_color
 	result_subtitle_label.text = (
 		"所有敌人已被击败，作战区域已经安全。"
 		if victory

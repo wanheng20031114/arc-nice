@@ -231,13 +231,6 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="ResultAccent" type="ColorRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 5)
-layout_mode = 2
-mouse_filter = 2
-color = Color(0.46, 0.86, 0.51, 0.92)
-
 [node name="PanelMargin" type="MarginContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -252,13 +245,36 @@ layout_mode = 2
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="ResultTitle" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+[node name="ResultHeader" type="HBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="LeftStateRule" type="ColorRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/ResultHeader"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(44, 2)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.46, 0.86, 0.51, 0.58)
+
+[node name="ResultTitle" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/ResultHeader"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "通过作战"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="RightStateRule" type="ColorRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/ResultHeader"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(44, 2)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.46, 0.86, 0.51, 0.58)
 
 [node name="ResultSubtitle" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
 unique_name_in_owner = true

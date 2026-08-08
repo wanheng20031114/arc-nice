@@ -770,6 +770,12 @@ func _audit_hud(route: RogueRouteGame) -> void:
 	var core_icon := route.get_node_or_null(
 		"HUD/Root/TopBar/TopLayout/CoreStat/CoreRow/CoreIcon"
 	) as TextureRect
+	var core_value := route.get_node_or_null(
+		"HUD/Root/TopBar/TopLayout/CoreStat/CoreRow/CoreValue"
+	) as Label
+	var obsolete_core_progress := route.get_node_or_null(
+		"HUD/Root/TopBar/TopLayout/CoreStat/CoreProgress"
+	)
 	var ap_icon := route.get_node_or_null(
 		"HUD/Root/TopBar/TopLayout/TopStats/ActionStat/ApIcon"
 	) as TextureRect
@@ -788,6 +794,8 @@ func _audit_hud(route: RogueRouteGame) -> void:
 		and ap_icon.texture != null
 		and light_stone_icon.texture != null
 		and xirang_icon.texture != null
+		and core_icon.texture.get_size().is_equal_approx(Vector2(40.0, 40.0))
+		and ap_icon.texture.get_size().is_equal_approx(Vector2(40.0, 40.0))
 		and core_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 		and ap_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 		and light_stone_icon.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
@@ -797,6 +805,12 @@ func _audit_hud(route: RogueRouteGame) -> void:
 		and light_stone_icon.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED
 		and xirang_icon.stretch_mode == TextureRect.STRETCH_KEEP_CENTERED,
 		"顶部资源图标必须使用 NEAREST，并以原生像素尺寸居中显示。"
+	)
+	_expect(
+		core_value != null
+		and core_value.text.contains("/")
+		and obsolete_core_progress == null,
+		"核心生命 HUD 必须只显示当前值/上限，不得保留蓝色进度条。"
 	)
 	var light_stone_value := route.get_node_or_null(
 		"HUD/Root/TopBar/TopLayout/TopStats/LightStoneStat/LightStoneValue"

@@ -44,6 +44,10 @@ func _run() -> void:
 	await process_frame
 	_expect(not hud.visible, "HUD 在作战控制器首次同步状态前必须保持隐藏。")
 	_expect(not result.visible, "结算层在收到本地结果前必须保持隐藏。")
+	_expect(
+		result.result_panel.get_node_or_null("PanelStack/ResultAccent") == null,
+		"结算面板不得保留侵入圆角边框的整宽红绿状态条。"
+	)
 
 	hud.show_preparation("狭路相逢", 3.0, 10)
 	await process_frame
@@ -130,6 +134,12 @@ func _run() -> void:
 		)
 		and result.result_title_label.self_modulate.is_equal_approx(
 			RESULT_SCRIPT.VICTORY_TITLE_COLOR
+		)
+		and result.left_state_rule.color.is_equal_approx(
+			RESULT_SCRIPT.VICTORY_RULE_COLOR
+		)
+		and result.right_state_rule.color.is_equal_approx(
+			RESULT_SCRIPT.VICTORY_RULE_COLOR
 		),
 		"胜利结算必须显示“通过作战”和额外息壤 500。"
 	)
@@ -155,6 +165,7 @@ func _run() -> void:
 		"背包已满时必须明确标记战利品未获得，并弱化失效图标。"
 	)
 	await _verify_render_output()
+	_expect_state_rule_layout(result)
 
 	result.close_button.pressed.emit()
 	_expect(
@@ -171,6 +182,12 @@ func _run() -> void:
 		and not result.rarity_badge.visible
 		and result.result_title_label.self_modulate.is_equal_approx(
 			RESULT_SCRIPT.FAILURE_TITLE_COLOR
+		)
+		and result.left_state_rule.color.is_equal_approx(
+			RESULT_SCRIPT.FAILURE_RULE_COLOR
+		)
+		and result.right_state_rule.color.is_equal_approx(
+			RESULT_SCRIPT.FAILURE_RULE_COLOR
 		),
 		"失败结算必须显示失败原因、零额外息壤和无战利品状态。"
 	)
@@ -220,6 +237,30 @@ func _expect_control_inside_viewport(
 		and rect.end.x <= viewport_size.x + 1.0
 		and rect.end.y <= viewport_size.y + 1.0,
 		"%s 当前范围：%s。" % [message, str(rect)]
+	)
+
+
+func _expect_state_rule_layout(result: RogueCombatResultOverlay) -> void:
+	var panel_rect := result.result_panel.get_global_rect()
+	var title_rect := result.result_title_label.get_global_rect()
+	var left_rect := result.left_state_rule.get_global_rect()
+	var right_rect := result.right_state_rule.get_global_rect()
+	_expect(
+		result.left_state_rule.get_parent() == result.result_title_label.get_parent()
+		and result.right_state_rule.get_parent() == result.result_title_label.get_parent()
+		and left_rect.end.x <= title_rect.position.x + 1.0
+		and right_rect.position.x + 1.0 >= title_rect.end.x
+		and absf(left_rect.get_center().y - title_rect.get_center().y) <= 1.0
+		and absf(right_rect.get_center().y - title_rect.get_center().y) <= 1.0,
+		"胜败状态短线必须与标题位于同一行、左右对称并垂直居中。"
+	)
+	_expect(
+		left_rect.size.x <= 48.0
+		and right_rect.size.x <= 48.0
+		and left_rect.position.x >= panel_rect.position.x + 20.0
+		and right_rect.end.x <= panel_rect.end.x - 20.0
+		and left_rect.position.y >= panel_rect.position.y + 20.0,
+		"状态色必须收束为面板内部的短规则线，不得再次碰触圆角或黄铜边框。"
 	)
 
 

@@ -8,7 +8,6 @@ const CORE_DAMAGE_FLASH_SECONDS := 0.42
 
 @onready var core_stat: VBoxContainer = $TopLayout/CoreStat
 @onready var core_value: Label = %CoreValue
-@onready var core_progress: ProgressBar = %CoreProgress
 @onready var action_points_value: Label = %ActionPointsValue
 @onready var light_stone_value: Label = %LightStoneValue
 @onready var xirang_value: Label = %XirangValue
@@ -46,8 +45,6 @@ func set_core_health(current_health: int, maximum_health: int) -> void:
 	var was_damaged := _cached_core_current >= 0 and safe_current < _cached_core_current
 	_cached_core_current = safe_current
 	core_value.text = "%d/%d" % [safe_current, safe_maximum]
-	core_progress.max_value = float(safe_maximum)
-	core_progress.value = float(safe_current)
 	var ratio := float(safe_current) / float(safe_maximum)
 	core_value.add_theme_color_override(
 		&"font_color",
