@@ -8,8 +8,9 @@ resource_local_to_scene = true
 shader = ExtResource("2_flow_shader")
 shader_parameter/base_rail_color = Color(0.86, 0.89, 0.88, 0.82)
 shader_parameter/reachable_rail_color = Color(1, 0.84, 0.52, 0.98)
-shader_parameter/wave_frequency = 0.85
+shader_parameter/wave_cycle_seconds = 4.8
 shader_parameter/wave_amplitude_pixels = 1.0
+shader_parameter/source_to_world_scale = 0.25
 
 [node name="RogueRouteConnections" type="Node2D"]
 material = SubResource("ShaderMaterial_connection_flow")

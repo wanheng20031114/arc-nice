@@ -1,0 +1,217 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/route/ui/rogue_route_top_bar.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud/hud_action_points_v4.png" id="3_ap_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud/hud_core_life_v4.png" id="4_core_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud/hud_light_stone_v1.png" id="5_light_stone_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="6_xirang_icon"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top"]
+content_margin_left = 14.0
+content_margin_top = 7.0
+content_margin_right = 14.0
+content_margin_bottom = 7.0
+bg_color = Color(0.12, 0.125, 0.13, 0.78)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.4, 0.41, 0.72)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(0, 0, 0, 0.48)
+shadow_size = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_core_background"]
+bg_color = Color(0.006, 0.023, 0.019, 0.92)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_core_fill"]
+bg_color = Color(0.28, 0.72, 0.94, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[node name="RogueRouteTopBar" type="PanelContainer"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 18.0
+offset_top = 12.0
+offset_right = -18.0
+offset_bottom = 74.0
+grow_horizontal = 2
+mouse_filter = 0
+texture_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_top")
+script = ExtResource("1_script")
+
+[node name="TopLayout" type="Control" parent="."]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="CoreStat" type="VBoxContainer" parent="TopLayout"]
+layout_mode = 0
+offset_left = 4.0
+offset_right = 148.0
+offset_bottom = 48.0
+alignment = 1
+theme_override_constants/separation = 0
+tooltip_text = "塔防核心生命"
+
+[node name="CoreRow" type="HBoxContainer" parent="TopLayout/CoreStat"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="CoreIcon" type="TextureRect" parent="TopLayout/CoreStat/CoreRow"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+texture_filter = 1
+texture = ExtResource("4_core_icon")
+expand_mode = 1
+stretch_mode = 3
+
+[node name="CoreValue" type="Label" parent="TopLayout/CoreStat/CoreRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.42, 0.82, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0.03, 0.05, 0.92)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 21
+text = "100/100"
+vertical_alignment = 1
+
+[node name="CoreProgress" type="ProgressBar" parent="TopLayout/CoreStat"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(141, 3)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_core_background")
+theme_override_styles/fill = SubResource("StyleBoxFlat_core_fill")
+value = 100.0
+show_percentage = false
+
+[node name="TitleBlock" type="VBoxContainer" parent="TopLayout"]
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -160.0
+offset_top = 4.0
+offset_right = 160.0
+offset_bottom = 44.0
+grow_horizontal = 2
+alignment = 1
+
+[node name="TopStats" type="HBoxContainer" parent="TopLayout"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -326.0
+offset_top = 4.0
+offset_bottom = 44.0
+grow_horizontal = 0
+alignment = 2
+theme_override_constants/separation = 10
+
+[node name="ActionStat" type="HBoxContainer" parent="TopLayout/TopStats"]
+custom_minimum_size = Vector2(82, 40)
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 3
+tooltip_text = "行动力"
+
+[node name="ApIcon" type="TextureRect" parent="TopLayout/TopStats/ActionStat"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+texture_filter = 1
+texture = ExtResource("3_ap_icon")
+expand_mode = 1
+stretch_mode = 3
+
+[node name="ActionPointsValue" type="Label" parent="TopLayout/TopStats/ActionStat"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(39, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.28, 1)
+theme_override_colors/font_outline_color = Color(0.08, 0.04, 0, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 23
+text = "—"
+vertical_alignment = 1
+
+[node name="LightStoneStat" type="HBoxContainer" parent="TopLayout/TopStats"]
+custom_minimum_size = Vector2(106, 40)
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 4
+tooltip_text = "全队共享光石"
+
+[node name="LightStoneIcon" type="TextureRect" parent="TopLayout/TopStats/LightStoneStat"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+texture_filter = 1
+texture = ExtResource("5_light_stone_icon")
+expand_mode = 1
+stretch_mode = 3
+
+[node name="LightStoneValue" type="Label" parent="TopLayout/TopStats/LightStoneStat"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(62, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.86, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0.12, 0.07, 0.01, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 20
+text = "0"
+vertical_alignment = 1
+
+[node name="XirangStat" type="HBoxContainer" parent="TopLayout/TopStats"]
+custom_minimum_size = Vector2(118, 40)
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 4
+tooltip_text = "个人息壤"
+
+[node name="XirangIcon" type="TextureRect" parent="TopLayout/TopStats/XirangStat"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+texture_filter = 1
+texture = ExtResource("6_xirang_icon")
+expand_mode = 1
+stretch_mode = 3
+
+[node name="XirangValue" type="Label" parent="TopLayout/TopStats/XirangStat"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(74, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.57, 0.96, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.11, 0.03, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 20
+text = "0"
+vertical_alignment = 1
+
+[node name="Title" type="Label" parent="TopLayout/TitleBlock"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0.02, 0.03, 0.94)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1

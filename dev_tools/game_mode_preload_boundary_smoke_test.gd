@@ -59,13 +59,6 @@ const EAGER_CACHE_SENTINELS := [
 	AGAVE_CANNONBALL_PATH,
 ]
 
-class EmptyPlayerMapNetManager:
-	extends Node
-
-	func get_player_character_map() -> Dictionary:
-		return {}
-
-
 var failures := PackedStringArray()
 
 
@@ -148,7 +141,13 @@ func _test_loading_manifests(expected_profile: Array[String]) -> void:
 		) as Array
 		_expect_no_tower_plants(manifest, "single-player mode %d" % mode_id)
 
-	var net_manager := EmptyPlayerMapNetManager.new()
+	var net_manager := get_root().get_node_or_null("NetManager") as NetManagerStore
+	_expect(
+		net_manager != null,
+		"NetManager autoload must satisfy the typed multiplayer manifest boundary."
+	)
+	if net_manager == null:
+		return
 	for mode_id in TOWER_MODE_IDS:
 		var definition := GameModeCatalog.get_definition(mode_id)
 		if definition == null:
@@ -172,7 +171,6 @@ func _test_loading_manifests(expected_profile: Array[String]) -> void:
 			expected_profile,
 			"multiplayer mode %d" % mode_id
 		)
-	net_manager.free()
 
 
 func _build_expected_tower_profile() -> Array[String]:

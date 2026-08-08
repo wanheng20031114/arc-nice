@@ -3,10 +3,11 @@ extends SceneTree
 const BACKGROUND_PATH := (
 	"res://resources/texture/rogue_route/underground_ruins_background.png"
 )
-const EMPTY_NODE_PATH := "res://resources/texture/rogue_route/empty_node.png"
+const EMPTY_NODE_PATH := (
+	"res://resources/texture/rogue_route/nodes/node_empty_ref_v4.png"
+)
 const HUD_ICON_PATHS := [
 	"res://resources/texture/rogue_route/hud_ap_icon.png",
-	"res://resources/texture/rogue_route/hud_seed_icon.png",
 	"res://resources/texture/rogue_route/hud_location_icon.png",
 ]
 const SOURCE_IGNORE_PATH := (
@@ -15,7 +16,7 @@ const SOURCE_IGNORE_PATH := (
 const BACKGROUND_SIZE := Vector2i(2304, 1296)
 const MAX_CENTER_MEAN_LUMINANCE := 0.11
 const MAX_CENTER_LUMINANCE_RANGE := 0.20
-const EMPTY_NODE_SIZE := Vector2i(32, 32)
+const EMPTY_NODE_SIZE := Vector2i(128, 128)
 const HUD_ICON_SIZE := Vector2i(48, 48)
 const MAX_SIMPLE_ICON_RGB_COLORS := 6
 
@@ -28,12 +29,13 @@ func _init() -> void:
 		_audit_background(background)
 	var empty_node := _load_image(EMPTY_NODE_PATH)
 	if empty_node != null:
-		_audit_simple_transparent_asset(
-			empty_node,
-			EMPTY_NODE_PATH,
-			EMPTY_NODE_SIZE,
-			MAX_SIMPLE_ICON_RGB_COLORS
+		_expect(
+			empty_node.get_size() == EMPTY_NODE_SIZE,
+			"%s 必须为 %s。" % [EMPTY_NODE_PATH, EMPTY_NODE_SIZE]
 		)
+		_expect(_corners_are_transparent(empty_node), "%s 四角必须透明。" % (
+			EMPTY_NODE_PATH
+		))
 	for icon_path in HUD_ICON_PATHS:
 		var path := str(icon_path)
 		var image := _load_image(path)

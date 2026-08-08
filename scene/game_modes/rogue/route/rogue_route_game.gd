@@ -48,6 +48,9 @@ const BRIEFING_SCHEMA_VERSION := 1
 const NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT := preload(
 	"res://scene/game_modes/rogue/route/rogue_normal_combat_briefing_adapter.gd"
 )
+const FLOOR_DEFINITION_SCRIPT := preload(
+	"res://resources/config/rogue_route/rogue_route_floor_definition.gd"
+)
 const AVATAR_SPAWN_OFFSETS := [
 	Vector2.ZERO,
 	Vector2(12.0, 0.0),
@@ -65,7 +68,7 @@ enum BriefingPhase {
 	ENTERING,
 }
 
-@export var generation_config: RogueRouteGenerationConfig
+@export var floor_definition: FLOOR_DEFINITION_SCRIPT
 @export var auto_initialize := true
 @export var manage_return_locally := true
 ## 0 表示每次进入时生成新 seed；非零值便于复现指定地图。
@@ -75,12 +78,7 @@ enum BriefingPhase {
 @onready var route_board: RogueRouteBoard = $World/RouteBoard
 @onready var player_container: Node2D = $World/Players
 @onready var map_camera: Camera2D = $World/Camera2D
-@onready var action_points_value: Label = %ActionPointsValue
-@onready var light_stone_value: Label = %LightStoneValue
-@onready var xirang_value: Label = %XirangValue
-@onready var core_value: Label = %CoreValue
-@onready var core_progress: ProgressBar = %CoreProgress
-@onready var core_stat: VBoxContainer = $HUD/Root/TopBar/TopLayout/CoreStat
+@onready var top_bar: RogueRouteTopBar = $HUD/Root/TopBar
 @onready var content_overline: Label = %ContentOverline
 @onready var content_title: Label = %ContentTitle
 @onready var content_body: Label = %ContentBody
@@ -123,6 +121,15 @@ var encounter_overlay: RogueEncounterOverlay:
 			else null
 		)
 
+## 兼容既有外部调用者的只读入口；楼层资源是唯一可配置来源。
+var generation_config: RogueRouteGenerationConfig:
+	get:
+		return (
+			floor_definition.generation_config
+			if floor_definition != null
+			else null
+		)
+
 var _route_graph: RogueRouteGraph = null
 var _runtime_state: RogueRouteRuntimeState = null
 var _authority_enabled := true
@@ -156,20 +163,31 @@ var _route_presentation_restore_state: Dictionary = {}
 var _player_names: Dictionary = {}
 var _player_character_ids: Dictionary = {}
 var _run_state: RunStateStore = null
-var _core_damage_tween: Tween = null
-var _cached_core_current := -1
 var _run_failure_presented := false
 var _cached_max_health_penalties: Dictionary = {}
 var _max_health_transition_by_peer: Dictionary = {}
-var _pixel_snap_viewport: Viewport = null
-var _previous_snap_2d_transforms_to_pixel := false
+var _previous_physics_interpolation_enabled := false
+var _owns_physics_interpolation_override := false
+var _floor_definition_applied := false
+
+
+func _enter_tree() -> void:
+	_floor_definition_applied = _apply_floor_definition_before_children_ready()
+	_previous_physics_interpolation_enabled = get_tree().physics_interpolation
+	get_tree().physics_interpolation = true
+	_owns_physics_interpolation_override = true
 
 
 func _ready() -> void:
-	_enable_route_pixel_snap()
+	if not _floor_definition_applied:
+		_set_status("路线楼层定义无效，无法初始化路线。", true)
+		return
 	_normal_combat_briefing_adapter = (
-		NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT.new()
+		NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT.new(
+			floor_definition.default_combat_config
+		)
 	)
+	top_bar.set_floor_title(floor_definition.display_name)
 	_connect_runtime_activation_signal()
 	_create_encounter_runtime()
 	route_board.show_waiting_for_host()
@@ -197,25 +215,52 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	_restore_route_pixel_snap()
+	if _owns_physics_interpolation_override:
+		get_tree().physics_interpolation = _previous_physics_interpolation_enabled
+		_owns_physics_interpolation_override = false
 
 
-func _enable_route_pixel_snap() -> void:
-	_pixel_snap_viewport = get_viewport()
-	if _pixel_snap_viewport == null:
-		return
-	_previous_snap_2d_transforms_to_pixel = (
-		_pixel_snap_viewport.snap_2d_transforms_to_pixel
-	)
-	_pixel_snap_viewport.snap_2d_transforms_to_pixel = true
-
-
-func _restore_route_pixel_snap() -> void:
-	if _pixel_snap_viewport != null and is_instance_valid(_pixel_snap_viewport):
-		_pixel_snap_viewport.snap_2d_transforms_to_pixel = (
-			_previous_snap_2d_transforms_to_pixel
+## 父节点先于子节点进入 SceneTree；在这里统一分发楼层依赖，确保
+## Board、World 与战斗协调器各自执行 _ready() 时只看到同一份资源。
+func _apply_floor_definition_before_children_ready() -> bool:
+	var board := get_node_or_null("World/RouteBoard") as RogueRouteBoard
+	var background := get_node_or_null(
+		"World/Backdrop/RuinsBackground"
+	) as Sprite2D
+	var combat_coordinator := get_node_or_null(
+		"SingleplayerCombatCoordinator"
+	) as RogueCombatSingleplayerCoordinator
+	if board == null or background == null or combat_coordinator == null:
+		_report_floor_definition_error(
+			"RogueRouteGame 的楼层依赖节点结构不完整。"
 		)
-	_pixel_snap_viewport = null
+		return false
+	# 先清除子脚本默认值，失败路径也不得让协调器带着隐藏兜底启用。
+	board.world_metrics = null
+	background.texture = null
+	combat_coordinator.encounter_config = null
+	if floor_definition == null:
+		_report_floor_definition_error("RogueRouteGame 缺少 floor_definition。")
+		return false
+	var definition_errors := floor_definition.validate_definition()
+	if not definition_errors.is_empty():
+		_report_floor_definition_error(
+			"RogueRouteGame 的 floor_definition 无效：%s"
+			% [definition_errors]
+		)
+		return false
+	board.world_metrics = floor_definition.world_metrics
+	background.texture = floor_definition.background_texture
+	combat_coordinator.encounter_config = (
+		floor_definition.default_combat_config
+	)
+	return true
+
+
+func _report_floor_definition_error(message: String) -> void:
+	# 离树状态允许工具先做无副作用预检；真实场景生命周期中的失败必须可见。
+	if is_inside_tree():
+		push_error(message)
 
 
 func _process(delta: float) -> void:
@@ -1982,21 +2027,6 @@ func _on_regenerate_button_pressed() -> void:
 	start_authoritative_session()
 
 
-func _on_return_button_pressed() -> void:
-	if _briefing_phase == BriefingPhase.PRESENTED:
-		_on_node_briefing_canceled()
-		return
-	if _briefing_phase == BriefingPhase.ENTERING:
-		return
-	if _pending_node_id != INVALID_NODE_ID:
-		_on_move_confirmation_canceled()
-		return
-	_clear_pending_move(true)
-	return_requested.emit()
-	if manage_return_locally:
-		call_deferred("_return_to_main_menu")
-
-
 func _return_to_main_menu() -> void:
 	if not is_inside_tree():
 		return
@@ -2303,16 +2333,16 @@ func _apply_route_player_xirang(player_instance: Player, amount: int) -> void:
 
 
 func _update_personal_xirang_hud(amount: int) -> void:
-	if not is_node_ready():
+	if not is_node_ready() or top_bar == null:
 		return
-	xirang_value.text = str(maxi(amount, 0))
+	top_bar.set_personal_xirang(amount)
 
 
 ## 光石的持久化与结算规则尚未进入 RunState；路线会话接入后只需调用此入口更新 UI。
 func set_shared_light_stone_amount(amount: int) -> void:
-	if not is_node_ready():
+	if not is_node_ready() or top_bar == null:
 		return
-	light_stone_value.text = str(maxi(amount, 0))
+	top_bar.set_shared_light_stone(amount)
 
 
 func _on_party_xirang_ledger_changed(_snapshot: Dictionary) -> void:
@@ -2477,35 +2507,9 @@ func _sync_party_status_from_run_state() -> void:
 
 
 func _update_core_hud(current_health: int, maximum_health: int) -> void:
-	if not is_node_ready() or core_value == null or core_progress == null:
+	if not is_node_ready() or top_bar == null:
 		return
-	var safe_maximum := maxi(maximum_health, 1)
-	var safe_current := clampi(current_health, 0, safe_maximum)
-	var was_damaged := _cached_core_current >= 0 and safe_current < _cached_core_current
-	_cached_core_current = safe_current
-	core_value.text = "%d/%d" % [safe_current, safe_maximum]
-	core_progress.max_value = float(safe_maximum)
-	core_progress.value = float(safe_current)
-	var ratio := float(safe_current) / float(safe_maximum)
-	core_value.add_theme_color_override(
-		&"font_color",
-		Color(1.0, 0.31, 0.28, 1.0)
-		if ratio <= 0.25
-		else Color(0.42, 0.82, 1.0, 1.0)
-	)
-	if not was_damaged or core_stat == null:
-		return
-	if _core_damage_tween != null:
-		_core_damage_tween.kill()
-	core_stat.self_modulate = Color(1.32, 0.58, 0.52, 1.0)
-	_core_damage_tween = create_tween()
-	_core_damage_tween.tween_property(
-		core_stat,
-		"self_modulate",
-		Color.WHITE,
-		0.42
-	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_core_damage_tween.finished.connect(func() -> void: _core_damage_tween = null)
+	top_bar.set_core_health(current_health, maximum_health)
 
 
 func _instantiate_route_player(character_id: StringName) -> Player:
@@ -2626,9 +2630,9 @@ func _finish_pending_move() -> void:
 
 func _update_route_hud() -> void:
 	if not is_route_ready():
-		action_points_value.text = "—"
+		top_bar.set_action_points(-1)
 		return
-	action_points_value.text = str(_runtime_state.action_points)
+	top_bar.set_action_points(_runtime_state.action_points)
 
 
 func _update_authority_ui() -> void:
@@ -2701,11 +2705,9 @@ func _get_node_display_name(node_id: int) -> String:
 
 
 func _get_runtime_contract_hash() -> String:
-	if generation_config == null:
+	if floor_definition == null:
 		return ""
-	return generation_config.compute_runtime_contract_hash(
-		route_board.get_world_metrics()
-	)
+	return floor_definition.compute_runtime_contract_hash()
 
 
 func _set_status(message: String, is_error: bool) -> void:

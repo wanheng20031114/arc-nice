@@ -153,6 +153,7 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 		main_menu.queue_free()
 		await process_frame
 		return
+	p3_button.set_meta(&"skip_ui_click_audio", true)
 
 	selector.open(TestArenaChoiceOverlay.ARENA_P3_ID)
 	await process_frame
@@ -233,6 +234,7 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 			"Root/Center/Panel/PanelMargin/Layout/Tabs/%s/PageMargin/Content/EnterButton"
 			% str(tower_entry[3])
 		) as Button
+		enter_button.set_meta(&"skip_ui_click_audio", true)
 		enter_button.pressed.emit()
 		await process_frame
 		_expect(

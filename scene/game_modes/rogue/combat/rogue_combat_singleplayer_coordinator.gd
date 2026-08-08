@@ -12,14 +12,11 @@ signal battle_returned(
 	result: Dictionary
 )
 
-const ENCOUNTER_CONFIG := preload(
-	"res://resources/config/rogue_combat/encounter_01.tres"
-)
 const SINGLEPLAYER_PEER_ID := 0
 const INVALID_NODE_ID := -1
 const BATTLE_NODE_NAME := "RogueCombatBattle"
 
-@export var encounter_config: RogueCombatEncounterConfig = ENCOUNTER_CONFIG
+@export var encounter_config: RogueCombatEncounterConfig
 
 var route: RogueRouteGame = null
 var active_battle: RogueCombatGame = null

@@ -18,8 +18,9 @@ const VERTICAL_RAIL_TEXTURE: Texture2D = preload(
 	"res://resources/texture/rogue_route/links/route_link_vertical_ref_v3.png"
 )
 
-# 轨道颜色和动态状态由 ShaderMaterial 统一解释。蓝通道只作为“可起伏”
-# 标记使用，不会直接参与最终像素颜色，避免为了动效逐帧重绘节点或 Line2D。
+# 轨道颜色和动态状态由 ShaderMaterial 统一解释。蓝通道表示“可起伏”，
+# 绿通道表示竖直轨道；两个信号都不直接参与最终像素颜色。
+# 着色器据此让横轨上下、竖轨左右移动，避免沿轨道方向拉扯图块。
 const RAIL_SIGNAL_STATIC_BASE := Color(0.0, 0.0, 0.0, 1.0)
 const RAIL_SIGNAL_STATIC_REACHABLE := Color(1.0, 0.0, 0.0, 1.0)
 const RAIL_SIGNAL_WAVY_BASE := Color(0.0, 0.0, 1.0, 1.0)
@@ -283,6 +284,8 @@ func _draw_tiled_rail(
 		return
 	var tile_length := tile_size.x if horizontal else tile_size.y
 	var complete_tile_count := floori(length / tile_length)
+	var oriented_signal := rail_signal
+	oriented_signal.g = 0.0 if horizontal else 1.0
 	for tile_index in range(complete_tile_count):
 		var tile_rect := rail_rect
 		if horizontal:
@@ -291,7 +294,7 @@ func _draw_tiled_rail(
 		else:
 			tile_rect.position.y += float(tile_index) * tile_length
 			tile_rect.size.y = tile_length
-		draw_texture_rect(texture, tile_rect, false, rail_signal)
+		draw_texture_rect(texture, tile_rect, false, oriented_signal)
 	var remainder := length - float(complete_tile_count) * tile_length
 	if remainder <= AXIS_ALIGNMENT_EPSILON:
 		return
@@ -302,7 +305,11 @@ func _draw_tiled_rail(
 	else:
 		remainder_rect.position.y += float(complete_tile_count) * tile_length
 		remainder_rect.size.y = remainder
-	draw_texture_rect(texture, remainder_rect, false, rail_signal)
+	# 入口展开期间最后一段可能不是完整图块。它没有稳定的原图到世界尺寸比例，
+	# 因此保持静止，避免着色器从不同顶点反推出不同锚点而产生斜切。
+	var remainder_signal := oriented_signal
+	remainder_signal.b = 0.0
+	draw_texture_rect(texture, remainder_rect, false, remainder_signal)
 
 
 func _get_oriented_edge(first_id: int, second_id: int) -> Vector2i:

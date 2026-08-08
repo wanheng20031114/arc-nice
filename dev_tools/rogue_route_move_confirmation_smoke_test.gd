@@ -37,6 +37,7 @@ func _run() -> void:
 	var confirmation := CONFIRMATION_SCENE.instantiate() as RogueRouteMoveConfirmation
 	root.add_child(confirmation)
 	await process_frame
+	_disable_click_audio_for_confirmation(confirmation)
 	_expect(not confirmation.visible, "路线移动确认层初始必须隐藏。")
 	_expect(confirmation.layer == 30, "确认层必须位于路线 HUD 与遭遇层之间。")
 
@@ -121,6 +122,7 @@ func _audit_p3_integration() -> void:
 	current_scene = route
 	for _frame in range(8):
 		await process_frame
+	_disable_click_audio_for_confirmation(route.move_confirmation)
 
 	var runtime := route.get("_runtime_state") as RogueRouteRuntimeState
 	var board := route.get_node_or_null("World/RouteBoard") as RogueRouteBoard
@@ -181,7 +183,7 @@ func _audit_p3_integration() -> void:
 		and int(route.get("_pending_node_id")) == emergency_node_id,
 		"确认期间重生成、定位与 Home 输入均不得穿透到底层地图。"
 	)
-	route.call(&"_on_return_button_pressed")
+	route.move_confirmation.cancel_button.pressed.emit()
 	_expect(
 		return_requested_count == 0
 		and int(route.get("_pending_node_id")) == -1
@@ -189,7 +191,7 @@ func _audit_p3_integration() -> void:
 		and not route.node_briefing.visible
 		and not bool(board.get("_interaction_locked"))
 		and not local_player.controls_locked,
-		"紧急作战确认期间按返回只能取消本次移动并恢复输入。"
+		"紧急作战确认期间按取消只能取消本次移动并恢复输入。"
 	)
 
 	route.call(&"_on_route_board_node_pressed", non_combat_node_id)
@@ -278,6 +280,17 @@ func _save_preview() -> void:
 	_expect(error == OK, "确认弹窗视觉预览必须能够保存。")
 	if error == OK:
 		print("ROGUE_ROUTE_MOVE_CONFIRMATION_PREVIEW=", ProjectSettings.globalize_path(path))
+
+
+func _disable_click_audio_for_confirmation(
+	confirmation: RogueRouteMoveConfirmation
+) -> void:
+	for button in [
+		confirmation.close_button,
+		confirmation.cancel_button,
+		confirmation.confirm_button,
+	]:
+		button.set_meta(&"skip_ui_click_audio", true)
 
 
 func _expect(condition: bool, message: String) -> void:

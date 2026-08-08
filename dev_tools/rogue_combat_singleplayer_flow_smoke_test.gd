@@ -6,6 +6,12 @@ const ROUTE_SCENE := preload(
 const BASE_ENCOUNTER_CONFIG := preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
 )
+const FLOOR_DEFINITION_SCRIPT := preload(
+	"res://resources/config/rogue_route/rogue_route_floor_definition.gd"
+)
+const SHALLOW_MINE_FLOOR := preload(
+	"res://resources/config/rogue_route/shallow_mine_floor.tres"
+)
 const GENERATION_CONFIG := preload(
 	"res://resources/config/rogue_route/p3_generation_config.tres"
 )
@@ -67,24 +73,22 @@ func _test_formal_configuration_gate_and_multiplayer_isolation() -> void:
 	var disabled_coordinator := _get_coordinator(disabled_route)
 	var unconfirmed := _make_confirmed_config()
 	unconfirmed.decisions_confirmed = false
-	disabled_coordinator.encounter_config = unconfirmed
-	root.add_child(disabled_route)
-	await process_frame
+	_set_route_combat_config(disabled_route, unconfirmed)
 	_expect(
-		not disabled_coordinator.is_enabled()
+		not disabled_route.floor_definition.validate_definition().is_empty()
+		and not disabled_coordinator.is_enabled()
 		and disabled_route.get_signal_connection_list(
 			&"normal_combat_requested"
 		).is_empty(),
-		"任一未确认配置仍必须保持硬门控，不能锁定路线。"
+		"任一未确认配置必须先被 FloorDefinition 硬门控，不能进入路线生命周期。"
 	)
-	_cleanup_route(disabled_route)
-	await process_frame
+	disabled_route.free()
 
 	var multiplayer_route := ROUTE_SCENE.instantiate() as RogueRouteGame
 	multiplayer_route.auto_initialize = false
 	multiplayer_route.manage_return_locally = false
 	var multiplayer_coordinator := _get_coordinator(multiplayer_route)
-	multiplayer_coordinator.encounter_config = _make_confirmed_config()
+	_set_route_combat_config(multiplayer_route, _make_confirmed_config())
 	root.add_child(multiplayer_route)
 	await process_frame
 	_expect(
@@ -245,8 +249,14 @@ func _test_briefing_start_failure_cleanup() -> void:
 	route.route_board.node_pressed.emit(combat_node_id)
 	await process_frame
 	_expect(route.node_briefing.visible, "启动失败夹具必须先进入真实简报路径。")
-	# 简报展示后令正式配置门控失效，覆盖移动已提交但战场无法启动的恢复分支。
-	coordinator.encounter_config.decisions_confirmed = false
+	# 简报展示后只替换协调器侧夹具，保持 FloorDefinition/Adapter 的合法
+	# 简报契约不变，从而覆盖“移动已提交、战场启动失败”的恢复分支。
+	var rejected_start_config := (
+		coordinator.encounter_config.duplicate(true)
+		as RogueCombatEncounterConfig
+	)
+	rejected_start_config.decisions_confirmed = false
+	coordinator.encounter_config = rejected_start_config
 	route.node_briefing.confirm_button.pressed.emit()
 	route.node_briefing.confirm_button.pressed.emit()
 	_expect(
@@ -784,7 +794,7 @@ func _create_ready_route(
 	route.auto_initialize = false
 	route.manage_return_locally = true
 	var coordinator := _get_coordinator(route)
-	coordinator.encounter_config = config
+	_set_route_combat_config(route, config)
 	root.add_child(route)
 	await process_frame
 	_expect(coordinator.is_enabled(), "确认后的单人配置必须启用协调器。")
@@ -794,6 +804,17 @@ func _create_ready_route(
 	)
 	await process_frame
 	return route
+
+
+func _set_route_combat_config(
+	route: RogueRouteGame,
+	config: RogueCombatEncounterConfig
+) -> void:
+	var floor_definition := (
+		SHALLOW_MINE_FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
+	)
+	floor_definition.default_combat_config = config
+	route.floor_definition = floor_definition
 
 
 func _make_confirmed_config(overrides: Dictionary = {}) -> RogueCombatEncounterConfig:

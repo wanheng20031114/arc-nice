@@ -1,9 +1,6 @@
 extends "res://scene/game_modes/rogue/route/rogue_route_node_briefing_adapter.gd"
 class_name RogueNormalCombatBriefingAdapter
 
-const DEFAULT_ENCOUNTER_CONFIG: RogueCombatEncounterConfig = preload(
-	"res://resources/config/rogue_combat/encounter_01.tres"
-)
 const DEFAULT_HERO_VISUAL_PATH := (
 	"res://resources/texture/rogue_route/normal_combat_briefing_visual.png"
 )
@@ -15,7 +12,7 @@ var hero_visual: Texture2D
 
 
 func _init(
-	new_encounter_config: RogueCombatEncounterConfig = DEFAULT_ENCOUNTER_CONFIG,
+	new_encounter_config: RogueCombatEncounterConfig,
 	new_hero_visual: Texture2D = null
 ) -> void:
 	encounter_config = new_encounter_config

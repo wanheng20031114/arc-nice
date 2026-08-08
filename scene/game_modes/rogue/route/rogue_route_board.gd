@@ -13,27 +13,6 @@ const ENTRY_REVEAL_DURATION_SECONDS := 1.45
 const NODE_ROOT_REVEAL_SPAN := 0.16
 const NODE_REVEAL_EDGE_OFFSET := 0.10
 const NODE_REVEAL_SPAN := 0.12
-const NODE_ART_BY_TYPE := {
-	RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER: preload(
-		"res://resources/texture/rogue_route/nodes/node_magical_encounter_b_ref_v3.png"
-	),
-	RogueRouteGraph.NodeType.EMERGENCY_COMBAT: preload(
-		"res://resources/texture/rogue_route/nodes/node_emergency_combat_a_ref_v3.png"
-	),
-	RogueRouteGraph.NodeType.NORMAL_COMBAT: preload(
-		"res://resources/texture/rogue_route/nodes/node_normal_combat_b_ref_v3.png"
-	),
-	RogueRouteGraph.NodeType.WILDERNESS_RESOURCE: preload(
-		"res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png"
-	),
-	RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET: preload(
-		"res://resources/texture/rogue_route/nodes/node_black_market_b_ref_v3.png"
-	),
-	RogueRouteGraph.NodeType.PREPARE_AHEAD: preload(
-		"res://resources/texture/rogue_route/nodes/node_gift_b_ref_v3.png"
-	),
-}
-
 @export var world_metrics: RogueRouteWorldMetrics
 
 @onready var connections: RogueRouteConnections = $Connections
@@ -118,7 +97,7 @@ func present_graph(
 			var type_config := generation_config.get_type_config(node_type)
 			if type_config != null:
 				display_name = type_config.display_name
-			icon = NODE_ART_BY_TYPE.get(node_type) as Texture2D
+				icon = type_config.icon
 		cell.setup(node_id, display_name, icon, is_empty)
 		cell.node_pressed.connect(_on_cell_pressed)
 		_cells[node_id] = cell

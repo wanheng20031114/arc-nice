@@ -1,24 +1,23 @@
 extends SceneTree
 
-## 内容节点采用 128×128 简洁图标；允许抗锯齿 alpha，但锁定少色和留白。
+## 内容节点采用最终选定的 128×128 完整节点图；锁定透明边缘和像素预算。
 
 const CONTENT_ICON_PATHS := [
-	"res://resources/texture/rogue_route/magical_encounter.png",
-	"res://resources/texture/rogue_route/emergency_combat.png",
-	"res://resources/texture/rogue_route/normal_combat.png",
-	"res://resources/texture/rogue_route/wilderness_resource.png",
-	"res://resources/texture/rogue_route/mystery_black_market.png",
-	"res://resources/texture/rogue_route/prepare_ahead.png",
+	"res://resources/texture/rogue_route/nodes/node_magical_encounter_b_ref_v3.png",
+	"res://resources/texture/rogue_route/nodes/node_emergency_combat_a_ref_v3.png",
+	"res://resources/texture/rogue_route/nodes/node_normal_combat_b_ref_v3.png",
+	"res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png",
+	"res://resources/texture/rogue_route/nodes/node_black_market_b_ref_v3.png",
+	"res://resources/texture/rogue_route/nodes/node_gift_b_ref_v3.png",
 ]
 const PARTY_MARKER_PATH := "res://resources/texture/rogue_route/party_marker.png"
 const CONTENT_ICON_SIZE := Vector2i(128, 128)
 const PARTY_MARKER_SIZE := Vector2i(16, 16)
-const MAX_CONTENT_RGB_COLORS := 6
 const MAX_PARTY_MARKER_COLORS := 8
 const MAX_PARTY_MARKER_VISIBLE_PIXELS := 192
-const MIN_CONTENT_BOUNDS := Vector2i(48, 60)
-const MAX_CONTENT_BOUNDS := Vector2i(104, 104)
-const MIN_CONTENT_MARGIN := 12
+const MIN_CONTENT_BOUNDS := Vector2i(112, 112)
+const MAX_CONTENT_BOUNDS := Vector2i(124, 124)
+const MIN_CONTENT_MARGIN := 2
 
 
 func _init() -> void:
@@ -31,10 +30,9 @@ func _init() -> void:
 			push_error(failure)
 		quit(1)
 		return
-	print(
-		"ROGUE_ROUTE_ICON_SMOKE_TEST_OK content=%d size=128x128 rgb_colors<=%d"
-		% [CONTENT_ICON_PATHS.size(), MAX_CONTENT_RGB_COLORS]
-	)
+	print("ROGUE_ROUTE_ICON_SMOKE_TEST_OK content=%d size=128x128" % (
+		CONTENT_ICON_PATHS.size()
+	))
 	quit(0)
 
 
@@ -54,7 +52,6 @@ func _audit_content_icon(
 	if not _corners_are_transparent(image):
 		failures.append("内容节点图标四角必须透明：%s" % icon_path)
 
-	var rgb_palette: Dictionary[int, bool] = {}
 	var visible_bounds := Rect2i()
 	var has_visible_pixel := false
 	for y in range(image.get_height()):
@@ -62,7 +59,6 @@ func _audit_content_icon(
 			var pixel := image.get_pixel(x, y)
 			if pixel.a <= 0.001:
 				continue
-			rgb_palette[_rgb_key(pixel)] = true
 			var point_rect := Rect2i(x, y, 1, 1)
 			visible_bounds = (
 				visible_bounds.merge(point_rect)
@@ -73,11 +69,6 @@ func _audit_content_icon(
 	if not has_visible_pixel:
 		failures.append("内容节点图标必须包含可见主体：%s" % icon_path)
 		return
-	if rgb_palette.size() > MAX_CONTENT_RGB_COLORS:
-		failures.append(
-			"内容节点图标可见 RGB 色超出预算：%s 为 %d 色"
-			% [icon_path, rgb_palette.size()]
-		)
 	var right_margin := image.get_width() - visible_bounds.end.x
 	var bottom_margin := image.get_height() - visible_bounds.end.y
 	if (
@@ -154,12 +145,4 @@ func _corners_are_transparent(image: Image) -> bool:
 		and image.get_pixel(last_x, 0).a <= 0.001
 		and image.get_pixel(0, last_y).a <= 0.001
 		and image.get_pixel(last_x, last_y).a <= 0.001
-	)
-
-
-func _rgb_key(pixel: Color) -> int:
-	return (
-		(roundi(pixel.r * 255.0) << 16)
-		| (roundi(pixel.g * 255.0) << 8)
-		| roundi(pixel.b * 255.0)
 	)

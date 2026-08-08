@@ -3,6 +3,9 @@ extends SceneTree
 const DEFAULT_CONFIG: RogueRouteGenerationConfig = preload(
 	"res://resources/config/rogue_route/p3_generation_config.tres"
 )
+const FLOOR: RogueRouteFloorDefinition = preload(
+	"res://resources/config/rogue_route/shallow_mine_floor.tres"
+)
 const BOARD_SCENE: PackedScene = preload(
 	"res://scene/game_modes/rogue/route/rogue_route_board.tscn"
 )
@@ -30,6 +33,7 @@ func _run() -> void:
 	if board == null:
 		_finish()
 		return
+	board.world_metrics = FLOOR.world_metrics
 	root.add_child(board)
 	await process_frame
 

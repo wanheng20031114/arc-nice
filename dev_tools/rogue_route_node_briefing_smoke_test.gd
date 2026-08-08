@@ -16,7 +16,7 @@ const ENCOUNTER_CONFIG: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
 )
 const TEST_HERO_VISUAL: Texture2D = preload(
-	"res://resources/texture/rogue_route/normal_combat.png"
+	"res://resources/texture/rogue_route/normal_combat_briefing_visual.png"
 )
 
 var failures: Array[String] = []
@@ -84,6 +84,12 @@ func _run() -> void:
 	var briefing := BRIEFING_SCENE.instantiate() as BRIEFING_SCRIPT
 	root.add_child(briefing)
 	await process_frame
+	for button in [
+		briefing.close_button,
+		briefing.cancel_button,
+		briefing.confirm_button,
+	]:
+		button.set_meta(&"skip_ui_click_audio", true)
 	_expect(not briefing.visible, "简报层初始必须隐藏。")
 	_expect(
 		briefing.layer == 50
@@ -243,6 +249,11 @@ func _run() -> void:
 	briefing.dismiss()
 	root.remove_child(briefing)
 	briefing.free()
+	var click_audio := root.get_node_or_null(
+		"UIAudio/ClickAudio"
+	) as AudioStreamPlayer
+	if click_audio != null:
+		click_audio.stop()
 	await process_frame
 	_finish()
 

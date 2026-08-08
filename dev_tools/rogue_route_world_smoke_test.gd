@@ -21,9 +21,9 @@ func _init() -> void:
 
 func _run() -> void:
 	var render_viewport := root.get_viewport()
-	var snap_2d_transforms_before := (
-		render_viewport.snap_2d_transforms_to_pixel
-	)
+	var original_physics_interpolation := physics_interpolation
+	var original_transform_pixel_snap := render_viewport.snap_2d_transforms_to_pixel
+	var original_vertex_pixel_snap := render_viewport.snap_2d_vertices_to_pixel
 	var run_state := root.get_node_or_null("RunState") as RunStateStore
 	if run_state != null:
 		run_state.begin_new_run(PlayerCharacterRegistry.TANGO_ID, false)
@@ -32,6 +32,11 @@ func _run() -> void:
 	if route == null:
 		_finish()
 		return
+	# 使用与旧路线覆盖相反的哨兵值，确保局部像素画问题不会再次通过
+	# 篡改共享 Viewport 解决，同时覆盖场景拥有的物理插值生命周期。
+	physics_interpolation = false
+	render_viewport.snap_2d_transforms_to_pixel = false
+	render_viewport.snap_2d_vertices_to_pixel = true
 	route.initial_generation_seed = 424242
 	root.add_child(route)
 	current_scene = route
@@ -53,6 +58,22 @@ func _run() -> void:
 	_expect(player_layer != null, "P3 必须保留独立玩家渲染层。")
 	_expect(local_player != null, "P3 必须实例化所选角色。")
 	_expect(camera != null, "P3 必须保留唯一 Camera2D。")
+	_expect(
+		physics_interpolation,
+		"路线运行期必须启用原生物理插值，平滑玩家与跟随镜头的渲染位置。"
+	)
+	_expect(
+		not render_viewport.snap_2d_transforms_to_pixel,
+		"路线运行期不得篡改共享 Viewport 的 2D Transform 像素吸附。"
+	)
+	_expect(
+		render_viewport.snap_2d_vertices_to_pixel,
+		"路线运行期不得篡改共享 Viewport 的 2D 顶点像素吸附。"
+	)
+	_expect(
+		route.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF,
+		"路线静态世界与视差背景必须保持在物理插值之外。"
+	)
 	_audit_backdrop(route)
 	if board != null:
 		_audit_board(route, board, player_layer, camera)
@@ -66,10 +87,20 @@ func _run() -> void:
 	route.free()
 	await process_frame
 	_expect(
-		render_viewport.snap_2d_transforms_to_pixel
-		== snap_2d_transforms_before,
-		"离开路线场景后必须恢复进入前的 2D 像素对齐状态。"
+		not physics_interpolation,
+		"离开路线场景后必须恢复进入前的 SceneTree 物理插值状态。"
 	)
+	_expect(
+		not render_viewport.snap_2d_transforms_to_pixel,
+		"路线运行与退出全过程不得改变共享 Transform 像素吸附。"
+	)
+	_expect(
+		render_viewport.snap_2d_vertices_to_pixel,
+		"路线运行与退出全过程不得改变共享顶点像素吸附。"
+	)
+	physics_interpolation = original_physics_interpolation
+	render_viewport.snap_2d_transforms_to_pixel = original_transform_pixel_snap
+	render_viewport.snap_2d_vertices_to_pixel = original_vertex_pixel_snap
 	_finish()
 
 
@@ -174,11 +205,6 @@ func _audit_board(
 		board.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 		"路线节点与界面素材必须使用 NEAREST 过滤。"
 	)
-	_expect(
-		route.get_viewport().snap_2d_transforms_to_pixel,
-		"路线相机跟随期间必须启用原生 2D 变换像素对齐，避免节点落入子像素。"
-	)
-
 	var graph := board.graph
 	if graph == null:
 		_expect(false, "路线板必须持有已生成图数据。")
@@ -224,12 +250,19 @@ func _audit_board(
 		_expect(
 			rail_material != null
 			and rail_material.shader != null
-			and float(rail_material.get_shader_parameter(&"wave_frequency")) > 0.0
+			and is_equal_approx(
+				float(rail_material.get_shader_parameter(&"wave_cycle_seconds")),
+				4.8
+			)
 			and is_equal_approx(
 				float(rail_material.get_shader_parameter(&"wave_amplitude_pixels")),
 				1.0
+			)
+			and is_equal_approx(
+				float(rail_material.get_shader_parameter(&"source_to_world_scale")),
+				0.25
 			),
-			"连接线必须由着色器驱动 1 像素分段起伏，而不是使用扫光或逐帧重绘。"
+			"连接线必须由着色器驱动慢速、带停顿的 1 像素分段起伏，而不是扫光或逐帧重绘。"
 		)
 	_audit_empty_cell(board, graph)
 	_audit_event_cell_scale(board, graph, camera)
@@ -269,21 +302,28 @@ func _audit_event_cell_scale(
 	camera: Camera2D
 ) -> void:
 	var event_cell: RogueRouteCell = null
+	var event_node_id := -1
 	for node_id in range(graph.get_node_count()):
 		if graph.get_node_type(node_id) != RogueRouteGraph.NodeType.EMPTY:
 			event_cell = board.get_cell(node_id)
+			event_node_id = node_id
 			break
 	_expect(event_cell != null, "固定 seed 必须生成至少一个事件节点。")
 	if event_cell == null:
 		return
 	var node_art := event_cell.get_node_or_null("NodeButton/NodeArt") as TextureRect
 	var active_ring := event_cell.get_node_or_null("ActiveRing") as TextureRect
+	var type_config := board.generation_config.get_type_config(
+		graph.get_node_type(event_node_id)
+	)
 	_expect(
 		node_art != null
 		and node_art.texture != null
+		and type_config != null
+		and node_art.texture == type_config.icon
 		and node_art.size.is_equal_approx(EXPECTED_NODE_DISPLAY_SIZE)
 		and node_art.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
-		"2× 镜头下事件节点必须显示为 32×32 世界像素素材。"
+		"事件节点必须直接使用类型配置中的唯一图标真源，并以 32×32 世界像素显示。"
 	)
 	_expect(
 		active_ring != null
@@ -478,6 +518,18 @@ func _audit_player_and_camera(
 		camera != null and camera.get_parent() == local_player,
 		"Camera2D 必须挂到本地角色并跟随移动。"
 	)
+	_expect(
+		local_player.physics_interpolation_mode
+		== Node.PHYSICS_INTERPOLATION_MODE_ON,
+		"本地玩家必须使用原生物理插值。"
+	)
+	_expect(
+		camera != null
+		and camera.physics_interpolation_mode
+		== Node.PHYSICS_INTERPOLATION_MODE_INHERIT
+		and camera.process_callback == Camera2D.CAMERA2D_PROCESS_PHYSICS,
+		"跟随 Camera2D 必须继承玩家插值并在物理回调中采样。"
+	)
 
 	var state_before := route.export_state_snapshot()
 	local_player.global_position += Vector2(24.0, 0.0)
@@ -653,16 +705,37 @@ func _expect_state_unchanged(
 
 func _audit_hud(route: RogueRouteGame) -> void:
 	var hud := route.get_node_or_null("HUD") as CanvasLayer
-	var top_bar := route.get_node_or_null("HUD/Root/TopBar") as Control
+	var top_bar := route.get_node_or_null("HUD/Root/TopBar") as RogueRouteTopBar
 	var bottom_bar := route.get_node_or_null("HUD/Root/BottomBar") as Control
 	var old_right_panel := route.get_node_or_null("HUD/Root/RightPanel")
+	var obsolete_return_button := route.get_node_or_null(
+		"HUD/Root/TopBar/TopLayout/ReturnButton"
+	)
 	_expect(hud != null, "P3 信息层必须位于独立 CanvasLayer HUD。")
-	_expect(top_bar != null, "P3 HUD 必须在顶部布置 TopBar。")
+	_expect(top_bar != null, "P3 HUD 必须实例化独立 RogueRouteTopBar 组件。")
 	_expect(bottom_bar != null, "P3 HUD 必须在底部布置 BottomBar。")
 	_expect(old_right_panel == null, "新版 HUD 不得保留挤占地图的 RightPanel。")
 	_expect(
+		obsolete_return_button == null,
+		"路线顶部 HUD 不得保留返回按钮或占位节点。"
+	)
+	_expect(
 		top_bar != null and top_bar.mouse_filter == Control.MOUSE_FILTER_STOP,
 		"顶部 HUD 必须拦截鼠标，避免误触下方地图。"
+	)
+	var top_panel_style := (
+		top_bar.get_theme_stylebox(&"panel") as StyleBoxFlat
+		if top_bar != null
+		else null
+	)
+	_expect(
+		top_panel_style != null
+		and top_panel_style.bg_color.a >= 0.7
+		and top_panel_style.bg_color.a < 0.9
+		and top_bar.anchor_right == 1.0
+		and top_bar.offset_left > 0.0
+		and top_bar.offset_right < 0.0,
+		"顶部状态应收纳在响应式、半透明的长条灰色像素面板中。"
 	)
 	_expect(
 		bottom_bar != null and bottom_bar.mouse_filter == Control.MOUSE_FILTER_STOP,

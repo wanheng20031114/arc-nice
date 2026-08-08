@@ -8,17 +8,17 @@ const WORLD_METRICS: RogueRouteWorldMetrics = preload(
 )
 const EXPECTED_ICON_PATHS := {
 	RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER:
-		"res://resources/texture/rogue_route/magical_encounter.png",
+		"res://resources/texture/rogue_route/nodes/node_magical_encounter_b_ref_v3.png",
 	RogueRouteGraph.NodeType.EMERGENCY_COMBAT:
-		"res://resources/texture/rogue_route/emergency_combat.png",
+		"res://resources/texture/rogue_route/nodes/node_emergency_combat_a_ref_v3.png",
 	RogueRouteGraph.NodeType.NORMAL_COMBAT:
-		"res://resources/texture/rogue_route/normal_combat.png",
+		"res://resources/texture/rogue_route/nodes/node_normal_combat_b_ref_v3.png",
 	RogueRouteGraph.NodeType.WILDERNESS_RESOURCE:
-		"res://resources/texture/rogue_route/wilderness_resource.png",
+		"res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png",
 	RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET:
-		"res://resources/texture/rogue_route/mystery_black_market.png",
+		"res://resources/texture/rogue_route/nodes/node_black_market_b_ref_v3.png",
 	RogueRouteGraph.NodeType.PREPARE_AHEAD:
-		"res://resources/texture/rogue_route/prepare_ahead.png",
+		"res://resources/texture/rogue_route/nodes/node_gift_b_ref_v3.png",
 }
 const SEED_SWEEP_COUNT := 256
 const STATISTICAL_SEED_COUNT := 64

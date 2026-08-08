@@ -130,8 +130,8 @@ Godot 官方文档也建议将物理模拟保持在固定 Tick，并用插值把
 
 - `scene/enemy/enemy.gd:47` 把默认导航刷新间隔设为 6 个物理帧，即在 60 Hz 下约 10 Hz。
 - `scene/enemy/enemy.gd:2571-2636` 负责相位错峰、刷新准入和静态远目标的进一步延迟。
-- `scene/grid_pathfinder.gd:245-272` 已限制每帧路径查询、流场构建、敌人导航刷新、运行时扩展量和微秒预算；`scene/grid_pathfinder.gd:1538-1688` 与 `:2060-2095` 还有公平排队和运行时任务调度。
-- 但 `scene/enemy/yuanshi_insect.gd:13-31`、`scene/enemy/capoo_ak47.gd:44-95`、`scene/enemy/capoo_knight.gd:44-75` 等仍为每个权威敌人保留独立 `_physics_process`。每次都进入触碰伤害、朝向、速度和 `_move_until_player_contact()`。
+- `scene/combat/navigation/grid_pathfinder.gd:245-272` 已限制每帧路径查询、流场构建、敌人导航刷新、运行时扩展量和微秒预算；`scene/combat/navigation/grid_pathfinder.gd:1538-1688` 与 `:2060-2095` 还有公平排队和运行时任务调度。
+- 但 `scene/enemy/yuanshi_insect/yuanshi_insect.gd:13-31`、`scene/enemy/capoo/capoo_ak47.gd:44-95`、`scene/enemy/capoo/capoo_knight.gd:44-75` 等仍为每个权威敌人保留独立 `_physics_process`。每次都进入触碰伤害、朝向、速度和 `_move_until_player_contact()`。
 - `scene/enemy/enemy.gd:2748-2800` 的移动即使复用了导航方向，仍会每个实体每 Tick 执行直接位移或 `move_and_slide()`；`scene/enemy/enemy.gd:2955-2999` 的触碰伤害也仍从每个敌人的 Tick 入口被调用。
 
 这解释了为什么继续只优化寻路不会解决截图中的根因：方向计算已降频，但“读取缓存方向后的移动、接触和通知”仍为 60 Hz × 实体数。
@@ -154,17 +154,17 @@ Godot 官方文档也建议将物理模拟保持在固定 Tick，并用插值把
 
 - 状态过期：`scene/combat/status/status_effect_expiry_scheduler.gd:3-12`、`:82-145`，每渲染帧最多 128 个目标 / 1500 微秒。
 - 燃烧：`scene/combat/status/burn_status_scheduler.gd:4` 的权威伤害周期为 1 秒；活跃时才打开物理处理，但调度器当前仍在每个物理 Tick 推进倒计时（`:177-225`）。
-- 守护者光环：`scene/enemy/guardian_aura_system.gd:20-32` 以 0.2 秒刷新并限制目标数、守护者数和 2500 微秒服务预算。
-- 竹加农炮战斗：`scene/plant_defense/bamboo_mortar_combat_system.gd:15-18`、`:223-245` 已集中索敌请求并实施每帧数量/时间预算。
-- AK 子弹：`scene/enemy/capoo_projectile_motion_system.gd:23-63` 已关闭每颗注册子弹的独立物理回调，改由一个系统循环。
+- 守护者光环：`scene/enemy/yuanshi_insect/guardian_aura_system.gd:20-32` 以 0.2 秒刷新并限制目标数、守护者数和 2500 微秒服务预算。
+- 竹加农炮战斗：`scene/game_modes/tower_defense/plant/combat/bamboo_mortar_combat_system.gd:15-18`、`:223-245` 已集中索敌请求并实施每帧数量/时间预算。
+- AK 子弹：`scene/enemy/capoo/capoo_projectile_motion_system.gd:23-63` 已关闭每颗注册子弹的独立物理回调，改由一个系统循环。
 
 这些实现证明项目已经接受共享调度器模式。问题是各服务使用各自的 `_physics_process` / `_process` 和时间概念，AK 批处理虽然消除了 Node 回调开销，仍在 60 Hz 遍历全部子弹。
 
 ### 3.5 弹体热点并非只靠批处理就会消失
 
-- `scene/enemy/capoo_projectile_motion_system.gd:63-89` 每个物理 Tick 遍历所有注册 AK 子弹。
-- `scene/enemy/capoo_ak47_bullet.gd:192-234` 的每次推进还会执行世界碰撞凭证判断或物理射线。
-- 当前 `world_collision_certificate_enabled` 默认是 `false`（`scene/enemy/capoo_ak47_bullet.gd:12`），所以大量在途子弹会稳定地产生射线压力。
+- `scene/enemy/capoo/capoo_projectile_motion_system.gd:63-89` 每个物理 Tick 遍历所有注册 AK 子弹。
+- `scene/enemy/capoo/capoo_ak47_bullet.gd:192-234` 的每次推进还会执行世界碰撞凭证判断或物理射线。
+- 当前 `world_collision_certificate_enabled` 默认是 `false`（`scene/enemy/capoo/capoo_ak47_bullet.gd:12`），所以大量在途子弹会稳定地产生射线压力。
 - 对象池的 `retained_capacity=384` 只是回收后的保留上限，不是活跃上限；池耗尽后仍会创建溢出对象，归还时再丢弃。扩大容量只会用更高常驻内存换取下一轮较少实例化，不能消除峰值时的 Area、节点与渲染成本。
 - 当前 `Performance.PHYSICS_2D_ACTIVE_OBJECTS` 探针在大量 Area 存在时仍可能报告 0，不能把它当作 Area 数量。后续基准必须直接记录逻辑弹体数、监控 Area 数、视觉实例数和主线程单核等价值；外部 CPU 百分比除以全部逻辑核心会掩盖主线程饱和。
 
@@ -174,7 +174,7 @@ Godot 官方文档也建议将物理模拟保持在固定 Tick，并用插值把
 
 部分权威事件由 `AnimatedSprite2D.frame_changed` 触发：
 
-- 火焰远程原石虫在 `scene/enemy/yuanshi_insect_fire_ranged.gd:24-27` 连接动画信号，并在 `:199-219` 到达 `attack_fire_frame` 时真正生成弹体。
+- 火焰远程原石虫在 `scene/enemy/yuanshi_insect/yuanshi_insect_fire_ranged.gd:24-27` 连接动画信号，并在 `:199-219` 到达 `attack_fire_frame` 时真正生成弹体。
 - 龙舌兰炮和竹加农炮也在动画帧回调中发射（`scene/plant_defense/agave_cannon.gd:142-170`、`scene/plant_defense/bamboo_mortar.gd:312-389`）。
 
 如果先降动画帧率或把动画移出权威时间线，攻击节奏会变化。迁移原则必须反转依赖：**权威模拟在整数 Tick 上决定“何时发射/伤害”，动画只消费事件并展示对应帧**。植物不应被拉入第一批敌人迁移，先把此模式在基础原石虫和 AK 上验证。
@@ -374,7 +374,7 @@ flowchart TD
 ### 9.1 当前不能做确定性锁步的证据
 
 - 敌人在初始化时调用 `RandomNumberGenerator.randomize()`（`scene/enemy/enemy.gd:279-282`）。
-- 部分攻击散布和塔空闲朝向也使用各自随机源，例如 `scene/enemy/capoo_smg.gd:211-224`、`scene/plant_defense/agave_cannon.gd:79`。
+- 部分攻击散布和塔空闲朝向也使用各自随机源，例如 `scene/enemy/capoo/capoo_smg.gd:211-224`、`scene/plant_defense/agave_cannon.gd:79`。
 - 部分伤害来源 ID 使用 `Time.get_ticks_msec()`（`scene/enemy/enemy.gd:3051-3054`）。
 - `CharacterBody2D` / Physics2D 的碰撞结果不应被假定为跨平台逐位一致。
 
@@ -499,7 +499,7 @@ flowchart TD
 性能架构稳定后再进行：
 
 - 本文建立基线时，原 `scene/game.gd` 与 `scene/game_tower_defense.gd` 分别约 2688 / 5032 行，并有约 174 个共同函数名；现已迁移为 `scene/game_modes/standard/standard_game.gd` 与 `scene/game_modes/tower_defense/tower_defense_game.gd`，共享中性能力下沉至 `scene/combat/runtime/combat_runtime_base.gd`，模式流程继续由各自协调器承载。
-- `path_refresh_interval`、`direct_chase_extra_distance` 在多种敌人脚本与场景中保留导出项，例如 `scene/enemy/capoo_ak47.gd:16-18`、`scene/enemy/capoo_knight.gd:20-22`、`scene/enemy/capoo_ranged_enemy.gd:9-11`；当前搜索只发现声明/序列化，没有运行时读取。确认场景迁移与兼容后再删除。
+- `path_refresh_interval`、`direct_chase_extra_distance` 在多种敌人脚本与场景中保留导出项，例如 `scene/enemy/capoo/capoo_ak47.gd:16-18`、`scene/enemy/capoo/capoo_knight.gd:20-22`、`scene/enemy/capoo_ranged_enemy.gd:9-11`；当前搜索只发现声明/序列化，没有运行时读取。确认场景迁移与兼容后再删除。
 - 开发探针和 `runtime_performance_telemetry.gd` 属于验证基础设施，不应当作“垃圾代码”随意删除。
 
 验收：每次清理提交只做结构等价重构，固定种子签名和性能基准均不回退。

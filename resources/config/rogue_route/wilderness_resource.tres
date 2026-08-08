@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="RogueRouteNodeTypeConfig" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_node_type_config.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/wilderness_resource.png" id="2_icon"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png" id="2_icon"]
 
 [resource]
 script = ExtResource("1_script")

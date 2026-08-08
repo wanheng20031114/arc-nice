@@ -3,6 +3,9 @@ extends SceneTree
 const DEFAULT_CONFIG: RogueRouteGenerationConfig = preload(
 	"res://resources/config/rogue_route/p3_generation_config.tres"
 )
+const FLOOR: RogueRouteFloorDefinition = preload(
+	"res://resources/config/rogue_route/shallow_mine_floor.tres"
+)
 const BOARD_SCENE: PackedScene = preload(
 	"res://scene/game_modes/rogue/route/rogue_route_board.tscn"
 )
@@ -334,6 +337,7 @@ func _test_board_contract(
 	_expect(board != null, "路线棋盘场景必须实例化为 RogueRouteBoard。")
 	if board == null:
 		return
+	board.world_metrics = FLOOR.world_metrics
 	root.add_child(board)
 	board.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	board.size = Vector2(1000.0, 560.0)
