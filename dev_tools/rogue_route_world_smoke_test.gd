@@ -813,11 +813,40 @@ func _audit_hud(route: RogueRouteGame) -> void:
 	_expect(
 		inventory_strip != null
 		and inventory_strip.get_node_or_null("BagButton") is Button
-		and inventory_strip.get_node_or_null("Slot0") is Button,
-		"底部 HUD 必须接入可打开背包的横向物品栏。"
+		and inventory_strip.get_node_or_null("Slot0") is Button
+		and inventory_strip.get_node_or_null("Slot10") is Button,
+		"底部 HUD 必须接入可打开背包、完整展示十一格的横向物品栏。"
 	)
 	if inventory_strip == null:
 		return
+	var last_visible_slot := inventory_strip.get_node_or_null(
+		"Slot10"
+	) as Button
+	var previous_inventory_button := inventory_strip.get_node_or_null(
+		"PreviousButton"
+	) as Button
+	var next_inventory_button := inventory_strip.get_node_or_null(
+		"NextButton"
+	) as Button
+	_expect(
+		RogueRouteInventoryStrip.VISIBLE_SLOT_COUNT == 11
+		and inventory_strip.slot_buttons.size() == 11
+		and inventory_strip.slot_frames.size() == 11
+		and inventory_strip.item_icons.size() == 11
+		and inventory_strip.stack_labels.size() == 11,
+		"底部物品栏的节点、图标、边框与数量标签必须共同扩展到十一格。"
+	)
+	_expect(
+		last_visible_slot != null
+		and next_inventory_button != null
+		and is_equal_approx(last_visible_slot.position.x, 896.0)
+		and is_equal_approx(last_visible_slot.size.x, 64.0)
+		and (
+			last_visible_slot.position.x + last_visible_slot.size.x
+			<= next_inventory_button.position.x
+		),
+		"第十一格必须利用右箭头左侧空间，且不得与翻页按钮重叠。"
+	)
 	var run_state := route.get_node_or_null("/root/RunState") as RunStateStore
 	_expect(
 		run_state != null and inventory_strip.inventory_owner_peer_id == 0,
@@ -860,6 +889,27 @@ func _audit_hud(route: RogueRouteGame) -> void:
 	_expect(
 		inventory_strip.first_slot_index == 0,
 		"底部物品栏的左箭头必须回到首个槽位。"
+	)
+	for _step in range(RunStateStore.INVENTORY_CAPACITY):
+		inventory_strip.call("_on_next_button_pressed")
+	_expect(
+		inventory_strip.first_slot_index == 9
+		and next_inventory_button != null
+		and next_inventory_button.disabled,
+		"十一格物品栏的末页必须稳定覆盖背包索引 9 到 19，且不能越界。"
+	)
+	inventory_strip.call("_on_next_button_pressed")
+	_expect(
+		inventory_strip.first_slot_index == 9,
+		"物品栏到达末页后继续点击右箭头不得越过背包容量。"
+	)
+	for _step in range(RunStateStore.INVENTORY_CAPACITY):
+		inventory_strip.call("_on_previous_button_pressed")
+	_expect(
+		inventory_strip.first_slot_index == 0
+		and previous_inventory_button != null
+		and previous_inventory_button.disabled,
+		"十一格物品栏必须能够回到首格，并在起点禁用左箭头。"
 	)
 	inventory_strip.bag_requested.emit()
 	var profile_panel := route.get_node_or_null(

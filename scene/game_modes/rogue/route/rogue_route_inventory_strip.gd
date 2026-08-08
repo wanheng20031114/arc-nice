@@ -3,7 +3,7 @@ class_name RogueRouteInventoryStrip
 
 signal bag_requested
 
-const VISIBLE_SLOT_COUNT := 6
+const VISIBLE_SLOT_COUNT := 11
 const EMPTY_SLOT_TEXTURE: Texture2D = preload(
 	"res://resources/texture/rogue_route/inventory/inventory_slot_empty_ref_v3.png"
 )
@@ -21,6 +21,11 @@ const SELECTED_SLOT_TEXTURE: Texture2D = preload(
 	$Slot3,
 	$Slot4,
 	$Slot5,
+	$Slot6,
+	$Slot7,
+	$Slot8,
+	$Slot9,
+	$Slot10,
 ]
 @onready var slot_frames: Array[TextureRect] = [
 	$Slot0/Frame,
@@ -29,6 +34,11 @@ const SELECTED_SLOT_TEXTURE: Texture2D = preload(
 	$Slot3/Frame,
 	$Slot4/Frame,
 	$Slot5/Frame,
+	$Slot6/Frame,
+	$Slot7/Frame,
+	$Slot8/Frame,
+	$Slot9/Frame,
+	$Slot10/Frame,
 ]
 @onready var item_icons: Array[TextureRect] = [
 	$Slot0/ItemIcon,
@@ -37,6 +47,11 @@ const SELECTED_SLOT_TEXTURE: Texture2D = preload(
 	$Slot3/ItemIcon,
 	$Slot4/ItemIcon,
 	$Slot5/ItemIcon,
+	$Slot6/ItemIcon,
+	$Slot7/ItemIcon,
+	$Slot8/ItemIcon,
+	$Slot9/ItemIcon,
+	$Slot10/ItemIcon,
 ]
 @onready var stack_labels: Array[Label] = [
 	$Slot0/StackCount,
@@ -45,6 +60,11 @@ const SELECTED_SLOT_TEXTURE: Texture2D = preload(
 	$Slot3/StackCount,
 	$Slot4/StackCount,
 	$Slot5/StackCount,
+	$Slot6/StackCount,
+	$Slot7/StackCount,
+	$Slot8/StackCount,
+	$Slot9/StackCount,
+	$Slot10/StackCount,
 ]
 
 var run_state: RunStateStore = null
