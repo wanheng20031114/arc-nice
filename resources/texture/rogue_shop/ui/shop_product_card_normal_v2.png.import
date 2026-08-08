@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b5proqxlhejcg"
-path="res://.godot/imported/node_black_market_b_ref_v3.png-b24325e43d08687cee460b5426a562c7.ctex"
+uid="uid://cq8u5h6gpn5s5"
+path="res://.godot/imported/shop_product_card_normal_v2.png-847d2fd1d8571c027679fd4d54d8a7d8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/rogue_route/nodes/node_black_market_b_ref_v3.png"
-dest_files=["res://.godot/imported/node_black_market_b_ref_v3.png-b24325e43d08687cee460b5426a562c7.ctex"]
+source_file="res://resources/texture/rogue_shop/ui/shop_product_card_normal_v2.png"
+dest_files=["res://.godot/imported/shop_product_card_normal_v2.png-847d2fd1d8571c027679fd4d54d8a7d8.ctex"]
 
 [params]
 

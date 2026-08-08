@@ -201,7 +201,7 @@ func _audit_p3_integration() -> void:
 		and not route.node_briefing.visible
 		and int(route.get("_briefing_phase"))
 		== RogueRouteGame.BriefingPhase.NONE,
-		"遗址物资、黑市或未雨绸缪节点仍必须使用旧移动确认框。"
+		"遗址物资、地下商店或未雨绸缪节点仍必须使用旧移动确认框。"
 	)
 	var state_before_move := route.export_state_snapshot()
 	var player_position_before_move := local_player.global_position
@@ -255,7 +255,7 @@ func _find_legacy_confirmation_fixture() -> Dictionary:
 				RogueRouteGraph.NodeType.EMERGENCY_COMBAT:
 					emergency_node_id = int(neighbor_id)
 				RogueRouteGraph.NodeType.WILDERNESS_RESOURCE, \
-				RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET, \
+				RogueRouteGraph.NodeType.UNDERGROUND_SHOP, \
 				RogueRouteGraph.NodeType.PREPARE_AHEAD:
 					non_combat_node_id = int(neighbor_id)
 		if emergency_node_id >= 0 and non_combat_node_id >= 0:

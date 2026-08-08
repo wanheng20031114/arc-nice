@@ -6,10 +6,10 @@
 [ext_resource type="Resource" path="res://resources/config/rogue_route/emergency_combat.tres" id="4_emergency"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/normal_combat.tres" id="5_normal"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/wilderness_resource.tres" id="6_resource"]
-[ext_resource type="Resource" path="res://resources/config/rogue_route/mystery_black_market.tres" id="7_market"]
+[ext_resource type="Resource" path="res://resources/config/rogue_route/underground_shop.tres" id="7_shop"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/prepare_ahead.tres" id="8_prepare"]
 
 [resource]
 script = ExtResource("1_script")
-node_type_catalog = Array[ExtResource("2_type_script")]([ExtResource("3_magical"), ExtResource("4_emergency"), ExtResource("5_normal"), ExtResource("6_resource"), ExtResource("7_market"), ExtResource("8_prepare")])
+node_type_catalog = Array[ExtResource("2_type_script")]([ExtResource("3_magical"), ExtResource("4_emergency"), ExtResource("5_normal"), ExtResource("6_resource"), ExtResource("7_shop"), ExtResource("8_prepare")])
 visual_jitter_pixels = Vector2i(0, 0)

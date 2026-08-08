@@ -7,7 +7,7 @@ const CONTENT_ICON_PATHS := [
 	"res://resources/texture/rogue_route/nodes/node_emergency_combat_a_ref_v3.png",
 	"res://resources/texture/rogue_route/nodes/node_normal_combat_b_ref_v3.png",
 	"res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png",
-	"res://resources/texture/rogue_route/nodes/node_black_market_b_ref_v3.png",
+	"res://resources/texture/rogue_route/nodes/node_underground_shop_b_ref_v3.png",
 	"res://resources/texture/rogue_route/nodes/node_gift_b_ref_v3.png",
 ]
 const PARTY_MARKER_PATH := "res://resources/texture/rogue_route/party_marker.png"

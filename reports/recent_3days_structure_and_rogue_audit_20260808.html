@@ -782,7 +782,7 @@ reports/                           # 面向开发的结构与系统报告</pre>
       </div>
 
       <div class="callout red" style="margin-top:16px">
-        <strong>扩展缺口：</strong>六类非空节点的名称、图标、权重与 <code>content_pool_id</code> 已数据化，但行为只有神奇遭遇和普通作战进入正式流程；紧急作战、黑市、馈赠与遗址物资仍落入“正式内容尚未接入”的通用占位分支。若继续在 RouteGame 中加 <code>if/elif</code>，目录整理带来的收益会迅速被抵消。
+        <strong>扩展缺口：</strong>六类非空节点的名称、图标、权重与 <code>content_pool_id</code> 已数据化，但行为只有神奇遭遇和普通作战进入正式流程；紧急作战、地下商店、馈赠与遗址物资仍落入“正式内容尚未接入”的通用占位分支。若继续在 RouteGame 中加 <code>if/elif</code>，目录整理带来的收益会迅速被抵消。
       </div>
     </section>
 
@@ -853,7 +853,7 @@ reports/                           # 面向开发的结构与系统报告</pre>
         <div class="risk-row">
           <div><span class="priority p0">P0</span></div>
           <div><h3>光石没有权威账本</h3></div>
-          <div><p>当前只有 <code>set_shared_light_stone_amount()</code> 的 UI 入口，代码注释明确说明持久化和结算尚未进入 RunState。黑市、馈赠或节点奖励一旦读写光石，就会出现 Host、客户端、晚加入与跨场景事实不一致。</p></div>
+          <div><p>当前只有 <code>set_shared_light_stone_amount()</code> 的 UI 入口，代码注释明确说明持久化和结算尚未进入 RunState。地下商店、馈赠或节点奖励一旦读写光石，就会出现 Host、客户端、晚加入与跨场景事实不一致。</p></div>
           <div><span class="exit">退出：建立 PartyLightStoneLedger，Host 独占 credit/debit，带 revision、全量快照、晚加入和跨路线/塔防持久化测试。</span></div>
         </div>
         <div class="risk-row">
@@ -930,7 +930,7 @@ reports/                           # 面向开发的结构与系统报告</pre>
           <div><h3>拆分 RunState ledger，并建立光石与原子快照 staging</h3><p>先把库存、升级、仓库、息壤和队伍状态的事实所有权从 2,851 行 Autoload 拆出，再实现 Host 权威共享光石；把 layout/state/briefing/encounter/ledger 的完整快照变成 validate → stage → commit。</p></div>
         </article>
         <article class="phase">
-          <div><h3>提取 NodeContentRouter 与 Handler</h3><p>先把现有 NormalCombat 和 MagicalEncounter 迁成 handler，确保行为不变；再新增 EmergencyCombat、BlackMarket、Gift 和 WildernessResource，避免一次性改六种流程。</p></div>
+          <div><h3>提取 NodeContentRouter 与 Handler</h3><p>先把现有 NormalCombat 和 MagicalEncounter 迁成 handler，确保行为不变；再新增 EmergencyCombat、UndergroundShop、Gift 和 WildernessResource，避免一次性改六种流程。</p></div>
         </article>
         <article class="phase">
           <div><h3>分离 EncounterResolver</h3><p>让 session 只维护参与者和阶段，overlay 只显示，resolver 只从 seed/选项生成效果命令，ledger/runtime 执行命令并写入 revision。</p></div>

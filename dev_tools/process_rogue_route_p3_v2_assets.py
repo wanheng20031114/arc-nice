@@ -43,7 +43,7 @@ ICON_NAMES = (
     "emergency_combat",
     "normal_combat",
     "wilderness_resource",
-    "mystery_black_market",
+    "underground_shop",
     "prepare_ahead",
 )
 
@@ -59,7 +59,7 @@ HUD_ICON_NAMES = (
 # The purple hood occupies less area than its dark face and outline, so an
 # unconstrained six-colour median-cut palette discards the type's identity.
 ICON_PALETTE_OVERRIDES = {
-    "mystery_black_market": (
+    "underground_shop": (
         (24, 32, 31),
         (46, 48, 56),
         (70, 58, 100),

@@ -16,7 +16,7 @@
 - 普通作战 B：`nodes/node_normal_combat_b_ref_v3.png`
 - 紧急作战 A：`nodes/node_emergency_combat_a_ref_v3.png`
 - 神奇遭遇 B：`nodes/node_magical_encounter_b_ref_v3.png`
-- 黑市 B：`nodes/node_black_market_b_ref_v3.png`
+- 地下商店 B：`nodes/node_underground_shop_b_ref_v3.png`
 - 馈赠 B：`nodes/node_gift_b_ref_v3.png`
 - 遗址物资：`nodes/node_wilderness_resource_ref_v3.png`
 - 空节点：`nodes/node_empty_ref_v4.png`（沿用中性环，中心为无纹理的平整深灰空面）

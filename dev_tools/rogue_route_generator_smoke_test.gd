@@ -15,8 +15,8 @@ const EXPECTED_ICON_PATHS := {
 		"res://resources/texture/rogue_route/nodes/node_normal_combat_b_ref_v3.png",
 	RogueRouteGraph.NodeType.WILDERNESS_RESOURCE:
 		"res://resources/texture/rogue_route/nodes/node_wilderness_resource_ref_v3.png",
-	RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET:
-		"res://resources/texture/rogue_route/nodes/node_black_market_b_ref_v3.png",
+	RogueRouteGraph.NodeType.UNDERGROUND_SHOP:
+		"res://resources/texture/rogue_route/nodes/node_underground_shop_b_ref_v3.png",
 	RogueRouteGraph.NodeType.PREPARE_AHEAD:
 		"res://resources/texture/rogue_route/nodes/node_gift_b_ref_v3.png",
 }
@@ -66,18 +66,22 @@ func _test_default_config_contract() -> void:
 		DEFAULT_CONFIG.node_type_catalog.size() == 6,
 		"P3 路线图必须注册六种非空节点。"
 	)
-	var black_market_config := DEFAULT_CONFIG.get_type_config(
-		RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET
+	var underground_shop_config := DEFAULT_CONFIG.get_type_config(
+		RogueRouteGraph.NodeType.UNDERGROUND_SHOP
 	)
 	var ruins_resource_config := DEFAULT_CONFIG.get_type_config(
 		RogueRouteGraph.NodeType.WILDERNESS_RESOURCE
 	)
 	_expect(
-		black_market_config != null
-		and black_market_config.minimum_count == 4
-		and black_market_config.maximum_count == 7
-		and is_equal_approx(black_market_config.generation_weight, 0.2),
-		"神秘黑市必须使用 4–7 个硬数量约束与 0.2 生成权重。"
+		RogueRouteGraph.NodeType.UNDERGROUND_SHOP == 5
+		and underground_shop_config != null
+		and underground_shop_config.type_id == &"underground_shop"
+		and underground_shop_config.content_pool_id == &"underground_shop"
+		and underground_shop_config.display_name == "地下商店"
+		and underground_shop_config.minimum_count == 4
+		and underground_shop_config.maximum_count == 7
+		and is_equal_approx(underground_shop_config.generation_weight, 0.2),
+		"地下商店必须稳定使用数值类型 5、统一内容标识、4–7 个硬数量约束与 0.2 生成权重。"
 	)
 	_expect(
 		ruins_resource_config != null
@@ -110,10 +114,12 @@ func _test_default_config_contract() -> void:
 	var invalid_maximum_config := (
 		DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
 	)
-	var invalid_black_market := invalid_maximum_config.get_type_config(
-		RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET
+	var invalid_underground_shop := invalid_maximum_config.get_type_config(
+		RogueRouteGraph.NodeType.UNDERGROUND_SHOP
 	)
-	invalid_black_market.maximum_count = invalid_black_market.minimum_count - 1
+	invalid_underground_shop.maximum_count = (
+		invalid_underground_shop.minimum_count - 1
+	)
 	_expect(
 		_has_error_containing(
 			invalid_maximum_config.validate_config(),
@@ -154,7 +160,7 @@ func _test_runtime_contract_hash() -> void:
 		DEFAULT_CONFIG.duplicate(true) as RogueRouteGenerationConfig
 	)
 	changed_cap_config.get_type_config(
-		RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET
+		RogueRouteGraph.NodeType.UNDERGROUND_SHOP
 	).maximum_count += 1
 	_expect(
 		DEFAULT_CONFIG.compute_runtime_contract_hash(changed_metrics) != baseline_hash
@@ -307,13 +313,13 @@ func _validate_graph_invariants(
 			"%s：%s 数量必须位于 minimum_count/maximum_count 约束内。"
 			% [label, type_config.display_name]
 		)
-	var black_market_count := graph.get_node_ids_by_type(
-		RogueRouteGraph.NodeType.MYSTERY_BLACK_MARKET
+	var underground_shop_count := graph.get_node_ids_by_type(
+		RogueRouteGraph.NodeType.UNDERGROUND_SHOP
 	).size()
 	_expect(
-		black_market_count >= 4 and black_market_count <= 7,
-		"%s：神秘黑市总数必须始终位于 4–7，实际为 %d。"
-		% [label, black_market_count]
+		underground_shop_count >= 4 and underground_shop_count <= 7,
+		"%s：地下商店总数必须始终位于 4–7，实际为 %d。"
+		% [label, underground_shop_count]
 	)
 
 	var maximum_edge_count := graph.get_max_cardinal_edge_count()
