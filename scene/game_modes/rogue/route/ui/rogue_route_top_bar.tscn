@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/ui/rogue_route_top_bar.gd" id="1_script"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
@@ -7,23 +7,18 @@
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/hud/hud_light_stone_v1.png" id="5_light_stone_icon"]
 [ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="6_xirang_icon"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top"]
-content_margin_left = 14.0
-content_margin_top = 7.0
-content_margin_right = 14.0
-content_margin_bottom = 7.0
-bg_color = Color(0.12, 0.125, 0.13, 0.78)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.38, 0.4, 0.41, 0.72)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-shadow_color = Color(0, 0, 0, 0.48)
-shadow_size = 4
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_top"]
+
+[sub_resource type="Gradient" id="Gradient_top_fade"]
+offsets = PackedFloat32Array(0, 0.48, 0.82, 1)
+colors = PackedColorArray(0.12, 0.125, 0.13, 0.56, 0.12, 0.125, 0.13, 0.42, 0.12, 0.125, 0.13, 0.14, 0.12, 0.125, 0.13, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_top_fade"]
+gradient = SubResource("Gradient_top_fade")
+width = 2
+height = 120
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_core_background"]
 bg_color = Color(0.006, 0.023, 0.019, 0.92)
@@ -43,15 +38,21 @@ corner_radius_bottom_left = 2
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 18.0
-offset_top = 12.0
-offset_right = -18.0
-offset_bottom = 74.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 120.0
 grow_horizontal = 2
 mouse_filter = 0
 texture_filter = 1
-theme_override_styles/panel = SubResource("StyleBoxFlat_top")
+theme_override_styles/panel = SubResource("StyleBoxEmpty_top")
 script = ExtResource("1_script")
+
+[node name="BackdropFade" type="TextureRect" parent="."]
+layout_mode = 2
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_top_fade")
+expand_mode = 1
 
 [node name="TopLayout" type="Control" parent="."]
 layout_mode = 2
@@ -59,9 +60,10 @@ mouse_filter = 2
 
 [node name="CoreStat" type="VBoxContainer" parent="TopLayout"]
 layout_mode = 0
-offset_left = 4.0
-offset_right = 148.0
-offset_bottom = 48.0
+offset_left = 22.0
+offset_top = 12.0
+offset_right = 166.0
+offset_bottom = 60.0
 alignment = 1
 theme_override_constants/separation = 0
 tooltip_text = "塔防核心生命"
@@ -106,9 +108,9 @@ anchors_preset = 10
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -160.0
-offset_top = 4.0
+offset_top = 16.0
 offset_right = 160.0
-offset_bottom = 44.0
+offset_bottom = 56.0
 grow_horizontal = 2
 alignment = 1
 
@@ -117,9 +119,10 @@ layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -326.0
-offset_top = 4.0
-offset_bottom = 44.0
+offset_left = -344.0
+offset_top = 16.0
+offset_right = -18.0
+offset_bottom = 56.0
 grow_horizontal = 0
 alignment = 2
 theme_override_constants/separation = 10

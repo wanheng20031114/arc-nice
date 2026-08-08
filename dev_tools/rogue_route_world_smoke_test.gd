@@ -724,18 +724,42 @@ func _audit_hud(route: RogueRouteGame) -> void:
 		"顶部 HUD 必须拦截鼠标，避免误触下方地图。"
 	)
 	var top_panel_style := (
-		top_bar.get_theme_stylebox(&"panel") as StyleBoxFlat
+		top_bar.get_theme_stylebox(&"panel")
 		if top_bar != null
 		else null
 	)
+	var top_backdrop := route.get_node_or_null(
+		"HUD/Root/TopBar/BackdropFade"
+	) as TextureRect
+	var top_gradient_texture := (
+		top_backdrop.texture as GradientTexture2D
+		if top_backdrop != null
+		else null
+	)
+	var top_gradient := (
+		top_gradient_texture.gradient
+		if top_gradient_texture != null
+		else null
+	)
+	var top_gradient_colors := (
+		top_gradient.colors
+		if top_gradient != null
+		else PackedColorArray()
+	)
 	_expect(
-		top_panel_style != null
-		and top_panel_style.bg_color.a >= 0.7
-		and top_panel_style.bg_color.a < 0.9
+		top_panel_style is StyleBoxEmpty
+		and top_backdrop != null
+		and top_gradient_colors.size() >= 3
+		and top_gradient_colors[0].a < 0.7
+		and top_gradient_colors[0].a > top_gradient_colors[1].a
+		and top_gradient_colors[1].a > top_gradient_colors[-1].a
+		and top_gradient_colors[-1].a <= 0.01
 		and top_bar.anchor_right == 1.0
-		and top_bar.offset_left > 0.0
-		and top_bar.offset_right < 0.0,
-		"顶部状态应收纳在响应式、半透明的长条灰色像素面板中。"
+		and is_zero_approx(top_bar.offset_left)
+		and is_zero_approx(top_bar.offset_top)
+		and is_zero_approx(top_bar.offset_right)
+		and top_bar.offset_bottom >= 100.0,
+		"顶部状态背景必须无边框覆盖全宽，并以较低透明度向下渐隐。"
 	)
 	_expect(
 		bottom_bar != null and bottom_bar.mouse_filter == Control.MOUSE_FILTER_STOP,
