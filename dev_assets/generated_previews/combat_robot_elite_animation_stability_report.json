@@ -1,0 +1,518 @@
+{
+  "asset": "combat_robot_elite_animation_stability",
+  "approved_anchor": "A1",
+  "runtime_written": false,
+  "contracts": {
+    "ordinary_inheritance": "Outside original accent pixels and explicit A1 reinforcement whitelists, every RGBA pixel equals the ordinary frame.",
+    "accent_mask": "Purple coordinates equal the ordinary red/orange coordinate set exactly; no new functional-light area is introduced.",
+    "rigid_candidates": [
+      "move_m1",
+      "dash_c1"
+    ],
+    "alpha_stable_candidates": [
+      "move_m1",
+      "move_m2",
+      "dash_c1",
+      "dash_c2"
+    ],
+    "death": "Eight explicit point tables; no morphology, rotation helper, or inferred runtime attachment."
+  },
+  "candidates": {
+    "move_m1": {
+      "reinforcement_masks_unique": 1,
+      "reinforcement_color_states": 1,
+      "frame_rgba_sha256": [
+        "b7a234710e0f182f58ffa854885223cabf6bf10ab83368b19053e196425e1c6b",
+        "2c53677d4ebbe279d784dcfc04fec09455e82197244745b531583901e420aa1c",
+        "8b9a6369d17a77024b1fa3a8cb1957eb445315fb6bb99dd8f0909e09fcf9493e",
+        "3f98ce5e79390ad9b1b98129c14ca8893a7a5ada6bffe23bbb4882989761b3e4",
+        "c05fc49ccb6f829ebddfa00e1514a3a67ffe349cdcceeb163f59ebe03e6a0584",
+        "25427c3e08262112787aa00b882895e8e35d3cae68a7474e4f6013b0e9bf5102",
+        "ef9205ba2c7596e80b7ff6c595146dbf7b6bafe6006f65a3ed04bce7752eff39",
+        "13e3e26df9e12984ee3bb2fa25d90ec295a5ecbb03f7094eb2f608fee033987a"
+      ],
+      "reinforcement_mask_sha256": [
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f"
+      ],
+      "reinforcement_color_sha256": [
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207"
+      ],
+      "connected_components": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "visible_sizes": [
+        [
+          20,
+          21
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          19,
+          21
+        ],
+        [
+          19,
+          21
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          19,
+          21
+        ]
+      ]
+    },
+    "move_m2": {
+      "reinforcement_masks_unique": 1,
+      "reinforcement_color_states": 2,
+      "frame_rgba_sha256": [
+        "579ee3a67642304d0cdf5fb98701eaf0c8776ac098ffa1be9d9e3240f7458192",
+        "3af4b06b8ab436d9d23ecee23deba9fcd48d803d1510cb633c7a93272b737a86",
+        "53a06d2f420327923594c8a51223ae9f6343b3d74ea7b8f4b6eec6ebf809c4cf",
+        "445ceb3e0e04a6b8ed1facfe29858344d6722e832c02c8b274450587023113ae",
+        "c13b60da2f41cea9a4f8688d5453fd986a99759950f3330d5fa4b2f5ac88c654",
+        "6a2421fa15a3f90b241528233dae6013bc64ea7181231d3b1b87c95300f9b70c",
+        "712dca245c6c06c8ac052b3a76c9ca675804740784d8d714f51b40be3a1ed03c",
+        "8e225d79ce3e7a9ea0c0863b34c5d9b667bb1e0e3c4205041c438444dcdcab0a"
+      ],
+      "reinforcement_mask_sha256": [
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f"
+      ],
+      "reinforcement_color_sha256": [
+        "62d32350a67f4b94ff099c7a2a7175607925c56e1ef359c697c9c7c9540dc3d7",
+        "62d32350a67f4b94ff099c7a2a7175607925c56e1ef359c697c9c7c9540dc3d7",
+        "5b41ffbf8681acfcc4194ebb428af4d9b82b75147a179cecd179d643e4664086",
+        "5b41ffbf8681acfcc4194ebb428af4d9b82b75147a179cecd179d643e4664086",
+        "5b41ffbf8681acfcc4194ebb428af4d9b82b75147a179cecd179d643e4664086",
+        "5b41ffbf8681acfcc4194ebb428af4d9b82b75147a179cecd179d643e4664086",
+        "62d32350a67f4b94ff099c7a2a7175607925c56e1ef359c697c9c7c9540dc3d7",
+        "62d32350a67f4b94ff099c7a2a7175607925c56e1ef359c697c9c7c9540dc3d7"
+      ],
+      "connected_components": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "visible_sizes": [
+        [
+          20,
+          21
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          19,
+          21
+        ],
+        [
+          19,
+          21
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          19,
+          21
+        ]
+      ]
+    },
+    "windup_w1": {
+      "reinforcement_masks_unique": 4,
+      "reinforcement_color_states": 4,
+      "frame_rgba_sha256": [
+        "fa2f894076400d6182ffaf1a9874ae817addb2b5a07de040d6218e129329898f",
+        "71f2a4ff6d9f8c858ce86117821448eb4ea8521eaf22d90e14df9a1fee261f67",
+        "7d563cf1cfc75aca79ae47100db402806105a6531b785c9ad29c7cec1b39b04c",
+        "05916c72f63ce035d79cc60de49160fb8de90bf46cb7a5a6fe1801c83ffd0561"
+      ],
+      "reinforcement_mask_sha256": [
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "4636cfbb6423738900bc17e88ef71213a8c4c906610ea7ab2f5538e8705b49c4",
+        "ab2311ff77db5acbd20c2c4f5fcc949c54726f1868e40fec029f32432fd4d228",
+        "63abdc828b2d23579aba05a90079559117e61f31cd57086e038f13b2203dd839"
+      ],
+      "reinforcement_color_sha256": [
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "3593847917e1671171bb741332b94ef3e150eb8688a160b074cd428ef4fcc97f",
+        "7d930777f39a3ce29f395b19150b23f8935a7d79b79be9b694c505875c2a57c8",
+        "67d3e5f94fffd43c0466536e2250f85381609020447961dd0142e702593d49ba"
+      ],
+      "connected_components": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "visible_sizes": [
+        [
+          23,
+          21
+        ],
+        [
+          25,
+          22
+        ],
+        [
+          19,
+          27
+        ],
+        [
+          23,
+          21
+        ]
+      ]
+    },
+    "windup_w2": {
+      "reinforcement_masks_unique": 4,
+      "reinforcement_color_states": 4,
+      "frame_rgba_sha256": [
+        "fa2f894076400d6182ffaf1a9874ae817addb2b5a07de040d6218e129329898f",
+        "5bb38350839795526da8fc4b9dda8a0ab92627923aff2e8641a150f44315bbf6",
+        "61c6be0007516ff582302642c64e2defef851dbbd29d78100306a66a8a91072a",
+        "a5fe0df4c422d319047182aea15e6068fb3c3c503f5b1a7bf7f81887a92d5471"
+      ],
+      "reinforcement_mask_sha256": [
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "4636cfbb6423738900bc17e88ef71213a8c4c906610ea7ab2f5538e8705b49c4",
+        "ab2311ff77db5acbd20c2c4f5fcc949c54726f1868e40fec029f32432fd4d228",
+        "63abdc828b2d23579aba05a90079559117e61f31cd57086e038f13b2203dd839"
+      ],
+      "reinforcement_color_sha256": [
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "3593847917e1671171bb741332b94ef3e150eb8688a160b074cd428ef4fcc97f",
+        "7d930777f39a3ce29f395b19150b23f8935a7d79b79be9b694c505875c2a57c8",
+        "67d3e5f94fffd43c0466536e2250f85381609020447961dd0142e702593d49ba"
+      ],
+      "connected_components": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "visible_sizes": [
+        [
+          23,
+          21
+        ],
+        [
+          25,
+          22
+        ],
+        [
+          19,
+          27
+        ],
+        [
+          23,
+          21
+        ]
+      ]
+    },
+    "dash_c1": {
+      "reinforcement_masks_unique": 1,
+      "reinforcement_color_states": 1,
+      "frame_rgba_sha256": [
+        "e5ac0c559230251c2a75646bd1edfdaeec2046de3d7bdbf079cb144692476b86",
+        "096291467e6d336fdda46ac5eda6b265670a20ea74417daa286e527876ff3194",
+        "021f91401bca0ac3ab299916b4730ab2c24b9cf09a0b81c6ab5e3329f83840a9",
+        "b984bcda97fb9baaa1bc0d19b07c7de3524f6f4d2b716e63e374e7875d30cb6e"
+      ],
+      "reinforcement_mask_sha256": [
+        "00b5b9e0a25b81d16b7a899295453560416e03de9409bba07c73b5810b6d1727",
+        "00b5b9e0a25b81d16b7a899295453560416e03de9409bba07c73b5810b6d1727",
+        "00b5b9e0a25b81d16b7a899295453560416e03de9409bba07c73b5810b6d1727",
+        "00b5b9e0a25b81d16b7a899295453560416e03de9409bba07c73b5810b6d1727"
+      ],
+      "reinforcement_color_sha256": [
+        "93bae8a6c1e0bac072ae09ab2ba8b36db6b1005114bac8db1a21deb374ed1ccc",
+        "93bae8a6c1e0bac072ae09ab2ba8b36db6b1005114bac8db1a21deb374ed1ccc",
+        "93bae8a6c1e0bac072ae09ab2ba8b36db6b1005114bac8db1a21deb374ed1ccc",
+        "93bae8a6c1e0bac072ae09ab2ba8b36db6b1005114bac8db1a21deb374ed1ccc"
+      ],
+      "connected_components": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "visible_sizes": [
+        [
+          27,
+          21
+        ],
+        [
+          25,
+          21
+        ],
+        [
+          28,
+          21
+        ],
+        [
+          25,
+          21
+        ]
+      ]
+    },
+    "dash_c2": {
+      "reinforcement_masks_unique": 1,
+      "reinforcement_color_states": 1,
+      "frame_rgba_sha256": [
+        "9c3c8651651d10986bcfe7490ae6703f3d8d6876f52546ff8e13be23adb5ef7b",
+        "f428378bd63720bfde81dcfa6a7c02a9ebbb4db6afc0275b6319357767589e01",
+        "92ddac5f0220ab2565da51afce41c9f07962104eab33dbd08341ba52561f2718",
+        "d15996f916c1a93293102015c339cc990ad0ad69762902f3b9d40f3fd7169586"
+      ],
+      "reinforcement_mask_sha256": [
+        "00b5b9e0a25b81d16b7a899295453560416e03de9409bba07c73b5810b6d1727",
+        "00b5b9e0a25b81d16b7a899295453560416e03de9409bba07c73b5810b6d1727",
+        "00b5b9e0a25b81d16b7a899295453560416e03de9409bba07c73b5810b6d1727",
+        "00b5b9e0a25b81d16b7a899295453560416e03de9409bba07c73b5810b6d1727"
+      ],
+      "reinforcement_color_sha256": [
+        "cab5649d5d3e25603636aa0764fde8b4b57118adeda14b1fb93710d734a06abd",
+        "cab5649d5d3e25603636aa0764fde8b4b57118adeda14b1fb93710d734a06abd",
+        "cab5649d5d3e25603636aa0764fde8b4b57118adeda14b1fb93710d734a06abd",
+        "cab5649d5d3e25603636aa0764fde8b4b57118adeda14b1fb93710d734a06abd"
+      ],
+      "connected_components": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "visible_sizes": [
+        [
+          27,
+          21
+        ],
+        [
+          25,
+          21
+        ],
+        [
+          28,
+          21
+        ],
+        [
+          25,
+          21
+        ]
+      ]
+    },
+    "death_d1": {
+      "reinforcement_masks_unique": 8,
+      "reinforcement_color_states": 8,
+      "frame_rgba_sha256": [
+        "bcc6a61daaabde03dc4272ed4ac8c7331f55ada41d8406bb050ca4a7f02bb635",
+        "715b82206dff519aea51bce7f524a7ce178772a2c5038764162fef84bd706ee7",
+        "ba41e8382205c3c415e5d5218eb966456901b00a58a3fffb4145c62a973c3756",
+        "050049316f14600eb76f27d90a6b2046887bfd0408370eb3a2c622174b878e2f",
+        "5d144677e7f58b025fbe882587df187619e70657fcd765be0c44c6e3ce0f715a",
+        "9fd5005d18fbf12c703063b19aaeed8d0ecc25035a1705d213d42e3f3e7d9631",
+        "5722fa163e3387d0531bee479b69998c946150fb0fb811ddee978bec5ffbf32f",
+        "e0b4cbb0f5c738ce2ef703452c7d5a2de89bd0fdf759662e02bb971fa88224d7"
+      ],
+      "reinforcement_mask_sha256": [
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "10689b9b24ee4945c4b5c5ee346cdfa991eff0c622a74d29f0a7b123438fa9e2",
+        "db6bc2e6fb8efc8539ea297aa9117d35f756e4b5f606310861a3624d837eece5",
+        "20a21f0085788592a1c8d882f1affb78d1651a34a58382895379cec102610957",
+        "af444a3cd36d05cf134b8bd6649717114b7fb35bcac8968babe9f8736afa7f13",
+        "a6de2f25ce77c3c4893e687bafd5c5d4eff3cc544178cf58fbd6b3395daa58bc",
+        "0ee4c123008139e6d62532e7bc9a07afb09415fe8d37942b2ce39ee61e60c58d",
+        "f7fb5df0351a7e414d8a4751266089b483e51b1c0eb22148753887a9dab9cd82"
+      ],
+      "reinforcement_color_sha256": [
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "7af437ba2ab75354d0e245312b3715aa6020f420a0d94cebcb12877700b4f25a",
+        "416b3609ebdec20ba461ac5f8eb75bacad5d6713a268a1d08d95f8eb54849f90",
+        "9c4078d084360197ed8bd43f93be76ccc804d6bb041fff045e29db09868ef64f",
+        "3472ef1b79f2ec5814db4755540b0cf5985628c35467c3bca3aaa8eb1eabcafa",
+        "e5f432e588d9f594f667f20e4c8fe24bcae4f5fafcec330bbf2b25e859086f69",
+        "096ff01a892ebcd49bcc41b8ee4371dc4bb242381f3ae28b13223129c058759b",
+        "557b3424e8b93d170ab972d368999939c5ac88017a0ee4af1dbf7537a3216c76"
+      ],
+      "connected_components": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "visible_sizes": [
+        [
+          20,
+          21
+        ],
+        [
+          19,
+          20
+        ],
+        [
+          18,
+          19
+        ],
+        [
+          20,
+          18
+        ],
+        [
+          19,
+          16
+        ],
+        [
+          20,
+          14
+        ],
+        [
+          20,
+          12
+        ],
+        [
+          19,
+          11
+        ]
+      ]
+    },
+    "death_d2": {
+      "reinforcement_masks_unique": 8,
+      "reinforcement_color_states": 8,
+      "frame_rgba_sha256": [
+        "2e7151a76fa86804fcd41e6a96bc16ebfd560ce540390b2c77e084c7268965bf",
+        "715b82206dff519aea51bce7f524a7ce178772a2c5038764162fef84bd706ee7",
+        "057a2acb7da4e3992cfb22ce747b9462e38288d11e56082b79df14fa85457016",
+        "93da3e2c2d4cde8c1052e1fd133fc936e42027341539003a36941e457aea35c7",
+        "f67005b516c82b80130a2c0ce5f6069e73b858d1ac1e64a208f543c2b7df8df3",
+        "dddc78397435231a67ff2befef8e72bd581492952bb477a58d7b2735cf15185e",
+        "70a5a17db1070ede02dbd4de26347c67676badb6ce358036e6bb339ccdbb70aa",
+        "6c3d998794fd7a1698b14bf837da6c7bdb470903ff566553dde44e3826b2d534"
+      ],
+      "reinforcement_mask_sha256": [
+        "02a6c8c4d503a670f98f789eddeb1b6f30fe3437a79d6619ce3ccf4c2ab26e8f",
+        "10689b9b24ee4945c4b5c5ee346cdfa991eff0c622a74d29f0a7b123438fa9e2",
+        "db6bc2e6fb8efc8539ea297aa9117d35f756e4b5f606310861a3624d837eece5",
+        "20a21f0085788592a1c8d882f1affb78d1651a34a58382895379cec102610957",
+        "738243c557dcddcaf5aecf6eed6601b33df88f902fd78f54963aa5e11896eb3e",
+        "7bff87bc695da4c85d002226e2429e98c81e572e3524f8f8d441d9df169d9cc8",
+        "6828d1c918b6beda703880dfdb7cfcfd752b692ddfb7ea6e9000676b9364928d",
+        "8942721bc9fb8637dfa159f57a136ac6cfe134526eb39969ed6d9ee6a0010c85"
+      ],
+      "reinforcement_color_sha256": [
+        "185d9c32679d71578f2826b2d2b63b997ab0afc1988d8bf912514b23c910e207",
+        "7af437ba2ab75354d0e245312b3715aa6020f420a0d94cebcb12877700b4f25a",
+        "416b3609ebdec20ba461ac5f8eb75bacad5d6713a268a1d08d95f8eb54849f90",
+        "9c4078d084360197ed8bd43f93be76ccc804d6bb041fff045e29db09868ef64f",
+        "3c74eba2bbedac6c3b70716be0193da2b93439421cb161eb894aec4ef68bbddf",
+        "2f744342725493105c91527d8afc7fe3c965f3e245e7ace1fb99143a3f5f72b4",
+        "7594833ba806439766b346426892433468829f654632d06f85f4d00051728c41",
+        "a64660d80adb4e80a6062357cca36a5d2625e4ae33f0a44972183e29bc40c9b6"
+      ],
+      "connected_components": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "visible_sizes": [
+        [
+          20,
+          21
+        ],
+        [
+          19,
+          20
+        ],
+        [
+          18,
+          19
+        ],
+        [
+          20,
+          18
+        ],
+        [
+          19,
+          16
+        ],
+        [
+          20,
+          14
+        ],
+        [
+          20,
+          12
+        ],
+        [
+          19,
+          11
+        ]
+      ]
+    }
+  }
+}

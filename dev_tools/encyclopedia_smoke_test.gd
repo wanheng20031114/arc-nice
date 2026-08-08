@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 56,
+	CodexSection.ENEMY: 57,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
@@ -34,12 +34,12 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 2,
-	&"mechanical_life": 5,
+	&"mechanical_life": 6,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
 	EnemyCodexEntryConfig.Rank.NORMAL: 49,
-	EnemyCodexEntryConfig.Rank.ELITE: 6,
+	EnemyCodexEntryConfig.Rank.ELITE: 7,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
 const ATTACK_STAT_LABELS := [
@@ -112,7 +112,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 56 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 57 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -201,7 +201,7 @@ func _test_enemy_rank_counts(catalog: CodexCatalog) -> void:
 		actual_counts[source.rank] = int(actual_counts.get(source.rank, 0)) + 1
 	_expect(
 		actual_counts == EXPECTED_ENEMY_RANK_COUNTS,
-		"Enemy ranks must contain 49 normal, six elite, and one Boss entry."
+		"Enemy ranks must contain 49 normal, seven elite, and one Boss entry."
 	)
 
 
@@ -257,6 +257,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_green_slime := false
 	var saw_guardian := false
 	var saw_combat_robot := false
+	var saw_combat_robot_elite := false
 	var saw_combat_robot_gunner := false
 	var saw_combat_robot_drone_operator := false
 	var saw_combat_robot_shield_bearer := false
@@ -497,7 +498,46 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				),
 				"Ninja robot must keep its normal-rank mechanical codex contract."
 			)
-		if config is CombatRobotConfig:
+		if config is CombatRobotEliteConfig:
+			saw_combat_robot_elite = true
+			var elite_robot := config as CombatRobotEliteConfig
+			_expect(
+				String(stats.get("生命", "")) == "360"
+				and String(stats.get("单次伤害", "")) == "70"
+				and String(stats.get("物理防御", "")) == "15 点"
+				and String(stats.get("法术防御", "")) == "20"
+				and String(stats.get("移动速度", "")) == "40"
+				and String(stats.get("基地伤害", "")) == "2"
+				and String(stats.get("击杀息壤", "")) == "10",
+				"Elite combat robot codex must expose its authored core attributes."
+			)
+			_expect(
+				String(stats.get("锁定范围", ""))
+				== _format_number(elite_robot.dash_trigger_range)
+				and String(stats.get("冲刺前摇", ""))
+				== "%s 秒" % _format_number(elite_robot.dash_windup)
+				and String(stats.get("冲刺速度", ""))
+				== _format_number(elite_robot.dash_speed)
+				and String(stats.get("最长冲刺", ""))
+				== "%s 秒" % _format_number(elite_robot.dash_duration)
+				and String(stats.get("冲刺冷却", ""))
+				== "%s 秒" % _format_number(elite_robot.dash_cooldown),
+				"Elite combat robot codex stats must use its typed dash config."
+			)
+			_expect(
+				source.sort_order == 525
+				and source.family_id == &"mechanical_life"
+				and source.rank == EnemyCodexEntryConfig.Rank.ELITE
+				and entry.primary_badge == "机械生命"
+				and entry.secondary_badge == "精英"
+				and source.description
+				== "由紫能核心与轻度重装结构强化的精英战斗机器人。它拥有更高的生命、攻击与追踪速度，并会以更快的冲刺速度贯穿目标，在前方留下长达182像素的紫色冲刺走廊。"
+				and entry.notes == PackedStringArray(
+					["精英", "强化冲刺", "紫能重装"]
+				),
+				"Elite combat robot must keep its elite mechanical codex contract."
+			)
+		elif config is CombatRobotConfig:
 			saw_combat_robot = true
 			var robot := config as CombatRobotConfig
 			_expect(
@@ -533,12 +573,13 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 		saw_green_slime
 		and saw_guardian
 		and saw_combat_robot
+		and saw_combat_robot_elite
 		and saw_combat_robot_gunner
 		and saw_combat_robot_drone_operator
 		and saw_combat_robot_shield_bearer
 		and saw_combat_robot_ninja
 		and saw_linglan,
-		"Enemy stat contract must cover regeneration, aura, dash, burst-fire, drone deployment, projectile shields, ninja boosts and Boss adapters."
+		"Enemy stat contract must cover regeneration, aura, normal and elite dash, burst-fire, drone deployment, projectile shields, ninja boosts and Boss adapters."
 	)
 
 

@@ -1,0 +1,903 @@
+{
+  "asset": "combat_robot_elite_final_candidate",
+  "stage": "third_human_gate",
+  "status": "awaiting_final_user_approval",
+  "approved_selection": {
+    "move": "M1",
+    "windup": "W2",
+    "dash": "C1",
+    "death": "D2"
+  },
+  "final_human_approved": false,
+  "runtime_written": false,
+  "construction": {
+    "pixel_sources": "approved native M1/W2/C1/D2 strips only",
+    "imagegen_pixels_imported": false,
+    "frames_regenerated": false,
+    "runtime_resources_written": false,
+    "ordinary_sheet": "resources/texture/enemy/mechanical_life/combat_robot.png",
+    "ordinary_sheet_sha256": "5cba75330a8e9fe8035cc8fe0a07c9b688e70a170cd34ed4532ecf03773bdb1a",
+    "stage2_report": "dev_assets/generated_previews/combat_robot_elite_animation_preview_report.json",
+    "stage2_report_sha256": "e3c69509323004173ad89e325552060a8dfcdefbd563bb17de963ac8af1b5e8c"
+  },
+  "approved_inputs": {
+    "move": {
+      "selection": "M1",
+      "candidate_key": "move_m1",
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_move_m1_candidate_native.png",
+      "size": [
+        256,
+        32
+      ],
+      "sha256": "83cd6695b84b563069cc1922ae3e0fb219a0272100c6a3f12637a72a25e37ed1",
+      "candidate_sha_matches_constant": true,
+      "candidate_sha_matches_stage2_report": true,
+      "frame_count": 8,
+      "fps": 14,
+      "loop": true
+    },
+    "windup": {
+      "selection": "W2",
+      "candidate_key": "windup_w2",
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_windup_w2_candidate_native.png",
+      "size": [
+        128,
+        32
+      ],
+      "sha256": "cdece91c77011c5bfd65b106f028921bd7519576911fab3b121bcb70ea59dc5b",
+      "candidate_sha_matches_constant": true,
+      "candidate_sha_matches_stage2_report": true,
+      "frame_count": 4,
+      "fps": 10,
+      "loop": false
+    },
+    "dash": {
+      "selection": "C1",
+      "candidate_key": "dash_c1",
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_dash_c1_candidate_native.png",
+      "size": [
+        128,
+        32
+      ],
+      "sha256": "9fafec02ebd496f3733c08539571f141dff65c87f38e19d6242e5d5e1f1b699e",
+      "candidate_sha_matches_constant": true,
+      "candidate_sha_matches_stage2_report": true,
+      "frame_count": 4,
+      "fps": 12,
+      "loop": true
+    },
+    "death": {
+      "selection": "D2",
+      "candidate_key": "death_d2",
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_death_d2_candidate_native.png",
+      "size": [
+        256,
+        32
+      ],
+      "sha256": "d2054e276becc0f98bbe33dabecc90d95350890455a13b0a4e25b73d242b4f65",
+      "candidate_sha_matches_constant": true,
+      "candidate_sha_matches_stage2_report": true,
+      "frame_count": 8,
+      "fps": 12,
+      "loop": false
+    }
+  },
+  "sheet_audit": {
+    "sheet_size": [
+      256,
+      128
+    ],
+    "frame_size": [
+      32,
+      32
+    ],
+    "grid": [
+      8,
+      4
+    ],
+    "registered_frame_origin": [
+      16.0,
+      28
+    ],
+    "binary_alpha": true,
+    "transparent_rgb_zero": true,
+    "red_orange_remaining": 0,
+    "animations": {
+      "move": {
+        "selection": "M1",
+        "candidate_key": "move_m1",
+        "row": 0,
+        "frame_count": 8,
+        "fps": 14,
+        "loop": true,
+        "source_strip_sha256": "83cd6695b84b563069cc1922ae3e0fb219a0272100c6a3f12637a72a25e37ed1",
+        "final_frames_equal_approved_strip": true,
+        "unused_right_cells_transparent": true,
+        "frames": [
+          {
+            "bbox": [
+              8,
+              7,
+              28,
+              28
+            ],
+            "visible_size": [
+              20,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 202,
+            "rgba_sha256": "b7a234710e0f182f58ffa854885223cabf6bf10ab83368b19053e196425e1c6b",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.0,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 28,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              7,
+              27,
+              28
+            ],
+            "visible_size": [
+              18,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 204,
+            "rgba_sha256": "2c53677d4ebbe279d784dcfc04fec09455e82197244745b531583901e420aa1c",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 17.5,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              7,
+              27,
+              28
+            ],
+            "visible_size": [
+              18,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 186,
+            "rgba_sha256": "8b9a6369d17a77024b1fa3a8cb1957eb445315fb6bb99dd8f0909e09fcf9493e",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 17.5,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              7,
+              28,
+              28
+            ],
+            "visible_size": [
+              19,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 198,
+            "rgba_sha256": "3f98ce5e79390ad9b1b98129c14ca8893a7a5ada6bffe23bbb4882989761b3e4",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.0,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 28,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              7,
+              28,
+              28
+            ],
+            "visible_size": [
+              19,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 203,
+            "rgba_sha256": "c05fc49ccb6f829ebddfa00e1514a3a67ffe349cdcceeb163f59ebe03e6a0584",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.0,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 28,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              7,
+              27,
+              28
+            ],
+            "visible_size": [
+              18,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 198,
+            "rgba_sha256": "25427c3e08262112787aa00b882895e8e35d3cae68a7474e4f6013b0e9bf5102",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 17.0,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              7,
+              27,
+              28
+            ],
+            "visible_size": [
+              18,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 181,
+            "rgba_sha256": "ef9205ba2c7596e80b7ff6c595146dbf7b6bafe6006f65a3ed04bce7752eff39",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 17.0,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              7,
+              28,
+              28
+            ],
+            "visible_size": [
+              19,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 195,
+            "rgba_sha256": "13e3e26df9e12984ee3bb2fa25d90ec295a5ecbb03f7094eb2f608fee033987a",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.0,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 28,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          }
+        ]
+      },
+      "windup": {
+        "selection": "W2",
+        "candidate_key": "windup_w2",
+        "row": 1,
+        "frame_count": 4,
+        "fps": 10,
+        "loop": false,
+        "source_strip_sha256": "cdece91c77011c5bfd65b106f028921bd7519576911fab3b121bcb70ea59dc5b",
+        "final_frames_equal_approved_strip": true,
+        "unused_right_cells_transparent": true,
+        "frames": [
+          {
+            "bbox": [
+              7,
+              7,
+              30,
+              28
+            ],
+            "visible_size": [
+              23,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 211,
+            "rgba_sha256": "fa2f894076400d6182ffaf1a9874ae817addb2b5a07de040d6218e129329898f",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.0,
+            "ordinary_accent_pixels": 8,
+            "purple_pixels": 8,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 25,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              6,
+              6,
+              31,
+              28
+            ],
+            "visible_size": [
+              25,
+              22
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 230,
+            "rgba_sha256": "5bb38350839795526da8fc4b9dda8a0ab92627923aff2e8641a150f44315bbf6",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.0,
+            "ordinary_accent_pixels": 8,
+            "purple_pixels": 8,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 26,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              6,
+              1,
+              25,
+              28
+            ],
+            "visible_size": [
+              19,
+              27
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 217,
+            "rgba_sha256": "61c6be0007516ff582302642c64e2defef851dbbd29d78100306a66a8a91072a",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 15.5,
+            "ordinary_accent_pixels": 8,
+            "purple_pixels": 8,
+            "reinforcement_whitelist_pixels": 17,
+            "changed_pixels": 23,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              0,
+              7,
+              23,
+              28
+            ],
+            "visible_size": [
+              23,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 215,
+            "rgba_sha256": "a5fe0df4c422d319047182aea15e6068fb3c3c503f5b1a7bf7f81887a92d5471",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.0,
+            "ordinary_accent_pixels": 8,
+            "purple_pixels": 8,
+            "reinforcement_whitelist_pixels": 20,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          }
+        ]
+      },
+      "dash": {
+        "selection": "C1",
+        "candidate_key": "dash_c1",
+        "row": 2,
+        "frame_count": 4,
+        "fps": 12,
+        "loop": true,
+        "source_strip_sha256": "9fafec02ebd496f3733c08539571f141dff65c87f38e19d6242e5d5e1f1b699e",
+        "final_frames_equal_approved_strip": true,
+        "unused_right_cells_transparent": true,
+        "frames": [
+          {
+            "bbox": [
+              4,
+              7,
+              31,
+              28
+            ],
+            "visible_size": [
+              27,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 212,
+            "rgba_sha256": "e5ac0c559230251c2a75646bd1edfdaeec2046de3d7bdbf079cb144692476b86",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.5,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 18,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              6,
+              7,
+              31,
+              28
+            ],
+            "visible_size": [
+              25,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 200,
+            "rgba_sha256": "096291467e6d336fdda46ac5eda6b265670a20ea74417daa286e527876ff3194",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.5,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 18,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              3,
+              7,
+              31,
+              28
+            ],
+            "visible_size": [
+              28,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 220,
+            "rgba_sha256": "021f91401bca0ac3ab299916b4730ab2c24b9cf09a0b81c6ab5e3329f83840a9",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.5,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 18,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              6,
+              7,
+              31,
+              28
+            ],
+            "visible_size": [
+              25,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 208,
+            "rgba_sha256": "b984bcda97fb9baaa1bc0d19b07c7de3524f6f4d2b716e63e374e7875d30cb6e",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": 16.5,
+            "ordinary_accent_pixels": 9,
+            "purple_pixels": 9,
+            "reinforcement_whitelist_pixels": 18,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          }
+        ]
+      },
+      "death": {
+        "selection": "D2",
+        "candidate_key": "death_d2",
+        "row": 3,
+        "frame_count": 8,
+        "fps": 12,
+        "loop": false,
+        "source_strip_sha256": "d2054e276becc0f98bbe33dabecc90d95350890455a13b0a4e25b73d242b4f65",
+        "final_frames_equal_approved_strip": true,
+        "unused_right_cells_transparent": true,
+        "frames": [
+          {
+            "bbox": [
+              9,
+              7,
+              29,
+              28
+            ],
+            "visible_size": [
+              20,
+              21
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 199,
+            "rgba_sha256": "2e7151a76fa86804fcd41e6a96bc16ebfd560ce540390b2c77e084c7268965bf",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": null,
+            "ordinary_accent_pixels": 8,
+            "purple_pixels": 8,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 27,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              8,
+              28,
+              28
+            ],
+            "visible_size": [
+              19,
+              20
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 203,
+            "rgba_sha256": "715b82206dff519aea51bce7f524a7ce178772a2c5038764162fef84bd706ee7",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": null,
+            "ordinary_accent_pixels": 7,
+            "purple_pixels": 7,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 25,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              9,
+              9,
+              27,
+              28
+            ],
+            "visible_size": [
+              18,
+              19
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 162,
+            "rgba_sha256": "057a2acb7da4e3992cfb22ce747b9462e38288d11e56082b79df14fa85457016",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": null,
+            "ordinary_accent_pixels": 7,
+            "purple_pixels": 7,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 25,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              8,
+              10,
+              28,
+              28
+            ],
+            "visible_size": [
+              20,
+              18
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 182,
+            "rgba_sha256": "93da3e2c2d4cde8c1052e1fd133fc936e42027341539003a36941e457aea35c7",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": null,
+            "ordinary_accent_pixels": 2,
+            "purple_pixels": 2,
+            "reinforcement_whitelist_pixels": 19,
+            "changed_pixels": 19,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              6,
+              12,
+              25,
+              28
+            ],
+            "visible_size": [
+              19,
+              16
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 147,
+            "rgba_sha256": "f67005b516c82b80130a2c0ce5f6069e73b858d1ac1e64a208f543c2b7df8df3",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": null,
+            "ordinary_accent_pixels": 1,
+            "purple_pixels": 1,
+            "reinforcement_whitelist_pixels": 16,
+            "changed_pixels": 12,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              6,
+              14,
+              26,
+              28
+            ],
+            "visible_size": [
+              20,
+              14
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 140,
+            "rgba_sha256": "dddc78397435231a67ff2befef8e72bd581492952bb477a58d7b2735cf15185e",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": null,
+            "ordinary_accent_pixels": 1,
+            "purple_pixels": 1,
+            "reinforcement_whitelist_pixels": 14,
+            "changed_pixels": 12,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              6,
+              16,
+              26,
+              28
+            ],
+            "visible_size": [
+              20,
+              12
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 109,
+            "rgba_sha256": "70a5a17db1070ede02dbd4de26347c67676badb6ce358036e6bb339ccdbb70aa",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": null,
+            "ordinary_accent_pixels": 1,
+            "purple_pixels": 1,
+            "reinforcement_whitelist_pixels": 9,
+            "changed_pixels": 7,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          },
+          {
+            "bbox": [
+              7,
+              17,
+              26,
+              28
+            ],
+            "visible_size": [
+              19,
+              11
+            ],
+            "baseline_bottom": 28,
+            "visible_pixels": 101,
+            "rgba_sha256": "6c3d998794fd7a1698b14bf837da6c7bdb470903ff566553dde44e3826b2d534",
+            "registered_frame_origin": [
+              16.0,
+              28
+            ],
+            "living_torso_center_x": null,
+            "ordinary_accent_pixels": 2,
+            "purple_pixels": 2,
+            "reinforcement_whitelist_pixels": 8,
+            "changed_pixels": 8,
+            "ordinary_inheritance_outside_whitelist": true,
+            "red_orange_remaining": 0,
+            "binary_alpha": true,
+            "transparent_rgb_zero": true
+          }
+        ]
+      }
+    }
+  },
+  "outputs": {
+    "final_candidate": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_final_candidate.png",
+    "final_candidate_size": [
+      256,
+      128
+    ],
+    "final_candidate_sha256": "ef45598db927517c52024bd758b93bb2e3b7c1bc7cc21cc5dca399e775353688",
+    "integer_16x": "dev_assets/generated_previews/combat_robot_elite_final_candidate_16x.png",
+    "integer_16x_sha256": "7ad01d2bde03c37492dd2623813cbff54df987cdce877b023e66d9148f31b7ef",
+    "comparison": "dev_assets/generated_previews/combat_robot_elite_final_comparison.png",
+    "comparison_sha256": "0ada16c1a1a6c02fd858135f8b8412f3bf9e7c88c294629f65e5904a45a0d1cf",
+    "state_transition": "dev_assets/generated_previews/combat_robot_elite_final_state_transition.gif",
+    "state_transition_sha256": "029742436e1d2dcd60e533b8e450db4eabe926c19a7a2c336738ffec62eee848",
+    "gifs": {
+      "move": {
+        "right_facing": "dev_assets/generated_previews/combat_robot_elite_final_move_right.gif",
+        "right_facing_sha256": "c1fdc0347019e935f49198c46aafb2a1845954cd6c5f40b1432faad8472e0b8b",
+        "left_facing_mirrored": "dev_assets/generated_previews/combat_robot_elite_final_move_left_mirrored.gif",
+        "left_facing_mirrored_sha256": "2718d8ce571801285fe5175ba9c31dc7b26862f4dd64a100ff0c426e4edf42e8",
+        "frame_count": 8,
+        "fps": 14,
+        "runtime_loop": true
+      },
+      "windup": {
+        "right_facing": "dev_assets/generated_previews/combat_robot_elite_final_windup_right.gif",
+        "right_facing_sha256": "a0dd7260abbadc4ddf6fa855ca36b005a3992e9389f23515868d01b6d528b289",
+        "left_facing_mirrored": "dev_assets/generated_previews/combat_robot_elite_final_windup_left_mirrored.gif",
+        "left_facing_mirrored_sha256": "d7420c8c6772a14fdde95af081e9313eb68b6b79b038c4b8f2923e4d98ee6894",
+        "frame_count": 4,
+        "fps": 10,
+        "runtime_loop": false
+      },
+      "dash": {
+        "right_facing": "dev_assets/generated_previews/combat_robot_elite_final_dash_right.gif",
+        "right_facing_sha256": "25a01a22fc0d790f17feba643967d01d80965cc06093370ba0c7610da7461d90",
+        "left_facing_mirrored": "dev_assets/generated_previews/combat_robot_elite_final_dash_left_mirrored.gif",
+        "left_facing_mirrored_sha256": "74b4284b066fcd1b4a67dd870fe5c4b869efc4464bce3421940462198ce850a9",
+        "frame_count": 4,
+        "fps": 12,
+        "runtime_loop": true
+      },
+      "death": {
+        "right_facing": "dev_assets/generated_previews/combat_robot_elite_final_death_right.gif",
+        "right_facing_sha256": "7dfe0757af52033867a544737c97e1d1da7143c60e51fdb7c556203241acd0bc",
+        "left_facing_mirrored": "dev_assets/generated_previews/combat_robot_elite_final_death_left_mirrored.gif",
+        "left_facing_mirrored_sha256": "b6511ce835367973e61242ae01fd805981e775a6834c3a7c70247e46a1289b3e",
+        "frame_count": 8,
+        "fps": 12,
+        "runtime_loop": false
+      }
+    }
+  },
+  "manifest": {
+    "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_animation_manifest.json",
+    "sha256": "58cbdf19e83fa1dc3952c68372a3536eb1ebcfec0730869293775d25810c8aad",
+    "stage": "final_candidate_pending_third_human_gate",
+    "approved_selection": {
+      "move": "M1",
+      "windup": "W2",
+      "dash": "C1",
+      "death": "D2"
+    },
+    "final_human_approved": false,
+    "runtime_written": false,
+    "third_stage_status": "awaiting_final_user_approval"
+  },
+  "determinism_contract": {
+    "all_inputs_sha256_pinned": true,
+    "no_timestamps_or_randomness": true,
+    "output_sha256": "ef45598db927517c52024bd758b93bb2e3b7c1bc7cc21cc5dca399e775353688"
+  }
+}

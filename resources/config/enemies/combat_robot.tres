@@ -8,6 +8,7 @@
 script = ExtResource("1_config")
 windup_animation_name = &"windup"
 dash_animation_name = &"dash"
+windup_warning_color = Color(1, 0.28, 0.08, 1)
 dash_trigger_range = 140.0
 dash_windup = 0.4
 dash_speed = 100.0

@@ -18,7 +18,7 @@ const AGAVE_CONFIG := preload(
 const WORLD_COLLISION_LAYER := 1
 const WATER_TERRAIN_COLLISION_LAYER := 1 << 11
 
-class EnemyActionRecorder extends Node2D:
+class EnemyActionRecorder extends MultiplayerGameplayGateway:
 	var enemy_actions: Array[Dictionary] = []
 
 	func broadcast_enemy_action(
@@ -494,6 +494,7 @@ func _spawn_robot(spawn_position: Vector2, player: Player) -> CombatRobot:
 	test_root.add_child(robot)
 	robot.global_position = spawn_position
 	robot.setup(ROBOT_CONFIG, player)
+	robot.bind_gameplay_gateway(test_root)
 	robot.set_physics_process(false)
 	return robot
 

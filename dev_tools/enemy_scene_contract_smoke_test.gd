@@ -20,6 +20,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot.tres"),
+	preload("res://resources/config/enemies/combat_robot_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
 	preload("res://resources/config/enemies/combat_robot_drone_operator.tres"),
 	preload("res://resources/config/enemies/combat_robot_shield_bearer.tres"),
@@ -127,6 +128,7 @@ const ARTIFICIAL_CREATION_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 ]
 const MECHANICAL_LIFE_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot.tres"),
+	preload("res://resources/config/enemies/combat_robot_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
 	preload("res://resources/config/enemies/combat_robot_drone_operator.tres"),
 	preload("res://resources/config/enemies/combat_robot_shield_bearer.tres"),
@@ -410,8 +412,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golem configs must carry the artificial_creation category tag."
 	)
 	_expect(
-		int(category_counts["mechanical_life"]) == 5,
-		"Exactly the five combat robot configs must carry the mechanical_life category tag."
+		int(category_counts["mechanical_life"]) == 6,
+		"Exactly the six normal and elite combat robot configs must carry the mechanical_life category tag."
 	)
 	_expect(
 		int(category_counts["slime"]) == 10,

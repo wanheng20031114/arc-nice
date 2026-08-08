@@ -9,6 +9,8 @@ const ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH: Dictionary = {
 		"res://resources/config/enemies/capoo_knight_elite.tres",
 	"res://resources/config/enemies/stone_golem.tres":
 		"res://resources/config/enemies/stone_golem_elite.tres",
+	"res://resources/config/enemies/combat_robot.tres":
+		"res://resources/config/enemies/combat_robot_elite.tres",
 	"res://resources/config/enemies/fire_sorcerer.tres":
 		"res://resources/config/enemies/fire_sorcerer_elite.tres",
 	"res://resources/config/enemies/frost_sorcerer.tres":

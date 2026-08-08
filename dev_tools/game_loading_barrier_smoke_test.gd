@@ -37,6 +37,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn",
 	"res://resources/config/enemies/capoo_knight_elite.tres",
 	"res://resources/config/enemies/stone_golem_elite.tres",
+	"res://resources/config/enemies/combat_robot_elite.tres",
 	"res://resources/config/enemies/fire_sorcerer_elite.tres",
 	"res://resources/config/enemies/frost_sorcerer_elite.tres",
 	"res://resources/config/enemies/lightning_sorcerer_elite.tres",

@@ -327,18 +327,22 @@ func _play_proxy_windup_warning(
 func _set_windup_warning(progress: float, direction: Vector2) -> void:
 	if windup_warning == null:
 		return
+	var robot_config := config as CombatRobotConfigScript
+	if robot_config == null:
+		return
 	var safe_direction := (
 		direction.normalized()
 		if direction != Vector2.ZERO
 		else Vector2.RIGHT
 	)
 	var clamped_progress := clampf(progress, 0.0, 1.0)
+	var warning_color := robot_config.windup_warning_color
 	windup_warning.visible = true
 	windup_warning.rotation = safe_direction.angle()
 	windup_warning.color = Color(
-		1.0,
-		0.28,
-		0.08,
+		warning_color.r,
+		warning_color.g,
+		warning_color.b,
 		lerpf(0.06, 0.34, clamped_progress)
 	)
 

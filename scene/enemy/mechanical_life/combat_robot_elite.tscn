@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_elite.tres" id="2_frames"]
+
+[node name="CombatRobotElite" instance=ExtResource("1_base")]
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+sprite_frames = ExtResource("2_frames")
+
+[node name="WindupWarning" parent="." index="6"]
+color = Color(0.615686, 0.305882, 0.866667, 0.06)
+polygon = PackedVector2Array(0, -3, 182, -3, 182, 3, 0, 3)

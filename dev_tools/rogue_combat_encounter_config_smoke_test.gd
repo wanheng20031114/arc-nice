@@ -15,6 +15,15 @@ const ROGUE_COMBAT_MUSIC := preload(
 const COMBAT_ROBOT := preload(
 	"res://resources/config/enemies/combat_robot.tres"
 )
+const COMBAT_ROBOT_ELITE_CONFIG_PATH := (
+	"res://resources/config/enemies/combat_robot_elite.tres"
+)
+const ROGUE_COMBAT_AUTHORED_RESOURCE_PATHS := [
+	"res://resources/config/rogue_combat/encounter_01.tres",
+	"res://resources/config/campaigns/rogue_combat/encounter_01/wave_01.tres",
+	"res://resources/config/campaigns/rogue_combat/encounter_01/flow.tres",
+	"res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres",
+]
 const STANDARD_SINGLEPLAYER_CAMPAIGN := preload(
 	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
 )
@@ -91,6 +100,7 @@ func _run() -> void:
 	_test_fixed_contract_rejects_drift()
 	_test_spawn_policy_matches_authored_scene()
 	_test_single_wave_campaign()
+	_test_elite_combat_robot_stays_out_of_rogue_content()
 	_test_ten_enemy_spawn_batch()
 	_test_standard_spawn_batch_values_unchanged()
 
@@ -336,6 +346,22 @@ func _test_ten_enemy_spawn_batch() -> void:
 	)
 	probe.enemy_spawn_timer.free()
 	probe.free()
+
+
+func _test_elite_combat_robot_stays_out_of_rogue_content() -> void:
+	var direct_reference_count := 0
+	for resource_path in ROGUE_COMBAT_AUTHORED_RESOURCE_PATHS:
+		_expect(
+			FileAccess.file_exists(resource_path),
+			"精英战斗机器人肉鸽隔离测试必须能读取资源 %s。" % resource_path
+		)
+		direct_reference_count += FileAccess.get_file_as_string(
+			resource_path
+		).count(COMBAT_ROBOT_ELITE_CONFIG_PATH)
+	_expect(
+		direct_reference_count == 0,
+		"精英战斗机器人不得直接写入肉鸽遭遇或其战役资源。"
+	)
 
 
 func _test_standard_spawn_batch_values_unchanged() -> void:

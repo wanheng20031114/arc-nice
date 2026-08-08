@@ -1,0 +1,2 @@
+extends CombatRobotConfig
+class_name CombatRobotEliteConfig

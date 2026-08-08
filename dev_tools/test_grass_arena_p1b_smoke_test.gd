@@ -31,6 +31,17 @@ const COMBAT_ROBOT_SHIELD_BEARER_CONFIG_PATH := (
 const COMBAT_ROBOT_NINJA_CONFIG_PATH := (
 	"res://resources/config/enemies/combat_robot_ninja.tres"
 )
+const COMBAT_ROBOT_ELITE_CONFIG_PATH := (
+	"res://resources/config/enemies/combat_robot_elite.tres"
+)
+const P1B_AUTHORED_RESOURCE_PATHS := [
+	"res://resources/config/campaigns/test_arena/p1b/singleplayer/wave_01.tres",
+	"res://resources/config/campaigns/test_arena/p1b/singleplayer/flow.tres",
+	"res://resources/config/campaigns/test_arena/p1b/singleplayer/campaign.tres",
+	"res://resources/config/campaigns/test_arena/p1b/multiplayer/wave_01.tres",
+	"res://resources/config/campaigns/test_arena/p1b/multiplayer/flow.tres",
+	"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres",
+]
 const FORMAL_WAVE_DIRECTORIES := [
 	"res://resources/config/campaigns/standard/singleplayer",
 	"res://resources/config/campaigns/standard/multiplayer",
@@ -163,9 +174,24 @@ func _validate_campaign_wave(campaign: WaveCampaignConfig, mode_label: String) -
 
 
 func _test_new_robots_stay_out_of_formal_waves() -> void:
+	var elite_p1b_reference_count := 0
+	for resource_path in P1B_AUTHORED_RESOURCE_PATHS:
+		_expect(
+			FileAccess.file_exists(resource_path),
+			"精英战斗机器人 P1B 隔离测试必须能读取资源 %s。" % resource_path
+		)
+		elite_p1b_reference_count += FileAccess.get_file_as_string(
+			resource_path
+		).count(COMBAT_ROBOT_ELITE_CONFIG_PATH)
+	_expect(
+		elite_p1b_reference_count == 0,
+		"精英战斗机器人不得直接写入 P1B 单人或多人资源。"
+	)
+
 	var operator_reference_count := 0
 	var shield_bearer_reference_count := 0
 	var ninja_reference_count := 0
+	var elite_reference_count := 0
 	for directory_path in FORMAL_WAVE_DIRECTORIES:
 		var directory := DirAccess.open(directory_path)
 		_expect(
@@ -187,6 +213,7 @@ func _test_new_robots_stay_out_of_formal_waves() -> void:
 				COMBAT_ROBOT_SHIELD_BEARER_CONFIG_PATH
 			)
 			ninja_reference_count += wave_text.count(COMBAT_ROBOT_NINJA_CONFIG_PATH)
+			elite_reference_count += wave_text.count(COMBAT_ROBOT_ELITE_CONFIG_PATH)
 	_expect(
 		operator_reference_count == 0,
 		"爆炸无人机操作员只能进入 P1B，所有正式波次引用次数必须为0。"
@@ -198,6 +225,10 @@ func _test_new_robots_stay_out_of_formal_waves() -> void:
 	_expect(
 		ninja_reference_count == 0,
 		"忍者战斗机器人只能进入 P1B，所有正式波次引用次数必须为0。"
+	)
+	_expect(
+		elite_reference_count == 0,
+		"精英战斗机器人只能由命运替换生成，所有正式波次直接引用次数必须为0。"
 	)
 
 

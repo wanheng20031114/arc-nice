@@ -1,0 +1,280 @@
+{
+  "version": 1,
+  "stage": "runtime_integrated",
+  "mode": "built-in image_gen references plus deterministic native reconstruction",
+  "approved_anchor": {
+    "selection": "A1",
+    "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a1_approved_native32.png",
+    "sha256": "a6fc77fc8cb3802b53fac5beebfe6227e32c6a022f9c75abec656823141022f2"
+  },
+  "approved_selection": {
+    "move": "M1",
+    "windup": "W2",
+    "dash": "C1",
+    "death": "D2"
+  },
+  "runtime_written": true,
+  "imagegen_sources": {
+    "move_m1": {
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_move_m1_imagegen.png",
+      "sha256": "99c3644a7163886f83c5745d6593d34685dc0028905c9dc9cc629d3d421ecf91",
+      "transparent": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_move_m1_transparent.png",
+      "role": "language reference only",
+      "pixels_imported": false
+    },
+    "move_m2": {
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_move_m2_imagegen.png",
+      "sha256": "9baf78c96a22c430fb4af55167d58a7e64d65d92c54a6caeeae46b64ff44fba1",
+      "transparent": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_move_m2_transparent.png",
+      "role": "language reference only",
+      "pixels_imported": false
+    },
+    "windup_w1": {
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_windup_w1_imagegen.png",
+      "sha256": "57ea542156444d05758b64d39b8799e9ec23f39cf13511fd4f7a90e90eced70f",
+      "transparent": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_windup_w1_transparent.png",
+      "role": "language reference only",
+      "pixels_imported": false
+    },
+    "windup_w2": {
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_windup_w2_imagegen.png",
+      "sha256": "67f41b1fe07f3913855dd3d3e8f01ffd9ee7d4b83294dc0258237cf11d5c5cd2",
+      "transparent": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_windup_w2_transparent.png",
+      "role": "language reference only",
+      "pixels_imported": false
+    },
+    "dash_c1": {
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_dash_c1_imagegen.png",
+      "sha256": "9ef43008c8e9349c374c8ec99f71dc91de89a5db47ccb153c8217762b7e00166",
+      "transparent": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_dash_c1_transparent.png",
+      "role": "language reference only",
+      "pixels_imported": false
+    },
+    "dash_c2": {
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_dash_c2_imagegen.png",
+      "sha256": "340309dea4343e7506b8ca39e07fb493d8ed5daebcab0efc4bd1126d1f2a94d1",
+      "transparent": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_dash_c2_transparent.png",
+      "role": "language reference only",
+      "pixels_imported": false
+    },
+    "death_d1": {
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_death_d1_imagegen.png",
+      "sha256": "b844113afb1b91e4343a9c5cc62ef7fbe61d5b59593da72ec6333b5e5608432f",
+      "transparent": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_death_d1_transparent.png",
+      "role": "language reference only",
+      "pixels_imported": false
+    },
+    "death_d2": {
+      "path": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_death_d2_imagegen.png",
+      "sha256": "55b9588f0f3808a49806f9af444ba0618d4f3e8d78e2c5809bf4a00f408df607",
+      "transparent": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_death_d2_transparent.png",
+      "role": "language reference only",
+      "pixels_imported": false
+    }
+  },
+  "candidate_contract": {
+    "move_m1": {
+      "animation": "move",
+      "frames": 8,
+      "fps": 14,
+      "loop": true,
+      "label": "M1 刚性稳定肩盖",
+      "native_strip": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_move_m1_candidate_native.png"
+    },
+    "move_m2": {
+      "animation": "move",
+      "frames": 8,
+      "fps": 14,
+      "loop": true,
+      "label": "M2 承重侧高光",
+      "native_strip": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_move_m2_candidate_native.png"
+    },
+    "windup_w1": {
+      "animation": "windup",
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "label": "W1 整体递增充能",
+      "native_strip": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_windup_w1_candidate_native.png"
+    },
+    "windup_w2": {
+      "animation": "windup",
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "label": "W2 横向锁定扫描",
+      "native_strip": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_windup_w2_candidate_native.png"
+    },
+    "dash_c1": {
+      "animation": "dash",
+      "frames": 4,
+      "fps": 12,
+      "loop": true,
+      "label": "C1 刚性持续高能",
+      "native_strip": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_dash_c1_candidate_native.png"
+    },
+    "dash_c2": {
+      "animation": "dash",
+      "frames": 4,
+      "fps": 12,
+      "loop": true,
+      "label": "C2 前向高光脉冲",
+      "native_strip": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_dash_c2_candidate_native.png"
+    },
+    "death_d1": {
+      "animation": "death",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "label": "D1 完整重装外露",
+      "native_strip": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_death_d1_candidate_native.png"
+    },
+    "death_d2": {
+      "animation": "death",
+      "frames": 8,
+      "fps": 12,
+      "loop": false,
+      "label": "D2 遮挡式倒地断电",
+      "native_strip": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_death_d2_candidate_native.png"
+    }
+  },
+  "native_contract": {
+    "frame_size": [
+      32,
+      32
+    ],
+    "visible_bbox_max": [
+      28,
+      28
+    ],
+    "registered_body_center_x": 16.0,
+    "baseline_bottom": 28,
+    "ordinary_motion_and_weapon_positions_inherited": true,
+    "purple_mask_equals_ordinary_accent_mask": true,
+    "fixed_palette": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        21,
+        22,
+        19,
+        255
+      ],
+      [
+        29,
+        28,
+        30,
+        255
+      ],
+      [
+        42,
+        21,
+        60,
+        255
+      ],
+      [
+        55,
+        59,
+        63,
+        255
+      ],
+      [
+        74,
+        36,
+        105,
+        255
+      ],
+      [
+        82,
+        88,
+        94,
+        255
+      ],
+      [
+        112,
+        121,
+        128,
+        255
+      ],
+      [
+        115,
+        84,
+        134,
+        255
+      ],
+      [
+        125,
+        54,
+        179,
+        255
+      ],
+      [
+        151,
+        159,
+        164,
+        255
+      ],
+      [
+        157,
+        78,
+        221,
+        255
+      ],
+      [
+        190,
+        196,
+        198,
+        255
+      ],
+      [
+        197,
+        138,
+        255,
+        255
+      ],
+      [
+        226,
+        229,
+        226,
+        255
+      ]
+    ],
+    "binary_alpha": true,
+    "transparent_rgb_zero": true,
+    "imagegen_pixels_imported": false,
+    "death_explicit_frame_tables": 8
+  },
+  "third_stage": {
+    "status": "approved_and_written_to_runtime",
+    "final_human_approved": true,
+    "final_candidate": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_final_candidate.png",
+    "final_candidate_size": [
+      256,
+      128
+    ],
+    "final_candidate_sha256": "ef45598db927517c52024bd758b93bb2e3b7c1bc7cc21cc5dca399e775353688",
+    "integer_16x": "dev_assets/generated_previews/combat_robot_elite_final_candidate_16x.png",
+    "comparison": "dev_assets/generated_previews/combat_robot_elite_final_comparison.png",
+    "state_transition": "dev_assets/generated_previews/combat_robot_elite_final_state_transition.gif",
+    "runtime_written": true,
+    "runtime_texture": "resources/texture/enemy/mechanical_life/combat_robot_elite.png",
+    "runtime_texture_sha256": "ef45598db927517c52024bd758b93bb2e3b7c1bc7cc21cc5dca399e775353688"
+  },
+  "final_human_approved": true,
+  "runtime_approval": {
+    "approved_selection": {
+      "move": "M1",
+      "windup": "W2",
+      "dash": "C1",
+      "death": "D2"
+    },
+    "approved_candidate_sha256": "ef45598db927517c52024bd758b93bb2e3b7c1bc7cc21cc5dca399e775353688",
+    "runtime_texture": "resources/texture/enemy/mechanical_life/combat_robot_elite.png",
+    "runtime_texture_sha256": "ef45598db927517c52024bd758b93bb2e3b7c1bc7cc21cc5dca399e775353688",
+    "imagegen_pixels_imported": false
+  }
+}

@@ -145,8 +145,8 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 46,
-		"协议 v46 必须保留既有遭遇与忍者机器人加速表现，并隔离重连激活确认。"
+		NetConstants.PROTOCOL_VERSION == 47,
+		"协议 v47 必须保留既有遭遇、忍者加速与重连激活确认，并隔离精英战斗机器人资源。"
 	)
 
 	_expect(

@@ -1,0 +1,283 @@
+{
+  "asset": "combat_robot_elite_anchor_candidates",
+  "stage": "first_human_gate",
+  "approval": "a1",
+  "approved_outputs": {
+    "native": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a1_approved_native32.png",
+    "preview_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a1_approved_16x.png"
+  },
+  "pixel_policy": "ImageGen pixels are never downscaled into native review art",
+  "registration_source": "resources/texture/enemy/mechanical_life/combat_robot.png",
+  "registration_frame": [
+    0,
+    0,
+    32,
+    32
+  ],
+  "contract": {
+    "frame_size": [
+      32,
+      32
+    ],
+    "max_visible_size": [
+      28,
+      28
+    ],
+    "baseline_bottom": 28,
+    "registered_center_x": 16.0,
+    "binary_alpha": true,
+    "transparent_rgb_zero": true,
+    "fixed_palette": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        21,
+        22,
+        19,
+        255
+      ],
+      [
+        29,
+        28,
+        30,
+        255
+      ],
+      [
+        42,
+        21,
+        60,
+        255
+      ],
+      [
+        55,
+        59,
+        63,
+        255
+      ],
+      [
+        74,
+        36,
+        105,
+        255
+      ],
+      [
+        82,
+        88,
+        94,
+        255
+      ],
+      [
+        112,
+        121,
+        128,
+        255
+      ],
+      [
+        115,
+        84,
+        134,
+        255
+      ],
+      [
+        125,
+        54,
+        179,
+        255
+      ],
+      [
+        151,
+        159,
+        164,
+        255
+      ],
+      [
+        157,
+        78,
+        221,
+        255
+      ],
+      [
+        190,
+        196,
+        198,
+        255
+      ],
+      [
+        197,
+        138,
+        255,
+        255
+      ],
+      [
+        226,
+        229,
+        226,
+        255
+      ]
+    ]
+  },
+  "base_metrics": {
+    "bbox": [
+      8,
+      7,
+      28,
+      28
+    ],
+    "visible_width": 20,
+    "visible_height": 21,
+    "visible_pixels": 187,
+    "alpha_center_x": 16.607,
+    "baseline_bottom": 28
+  },
+  "candidates": {
+    "a1": {
+      "title": "A1 STRAIGHT",
+      "summary": "平直肩盖 / 直顶框 / 矩形剑格",
+      "imagegen_source": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a1_imagegen.png",
+      "transparent_source": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a1_transparent.png",
+      "native": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a1_native32.png",
+      "preview_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a1_16x.png",
+      "overlay_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a1_overlay_16x.png",
+      "mask_difference_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a1_mask_diff_16x.png",
+      "source_grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "approximate",
+        "grid_cell_width": 10.35,
+        "grid_cell_height": 10.7,
+        "grid_cell_size": 11,
+        "confidence": 0.822,
+        "subject_bbox": {
+          "left": 447,
+          "top": 396,
+          "right": 905,
+          "bottom": 832
+        },
+        "subject_pixel_width": 458,
+        "subject_pixel_height": 436,
+        "subject_grid_width": 44,
+        "subject_grid_height": 41,
+        "recommended_canvas_grid_width": 121,
+        "recommended_canvas_grid_height": 117
+      },
+      "metrics": {
+        "bbox": [
+          8,
+          7,
+          28,
+          28
+        ],
+        "visible_width": 20,
+        "visible_height": 21,
+        "visible_pixels": 202,
+        "alpha_center_x": 16.743,
+        "baseline_bottom": 28
+      },
+      "accent_pixels_mapped": 9,
+      "authored_reinforcement_points": 19,
+      "rgba_sha256": "a6fc77fc8cb3802b53fac5beebfe6227e32c6a022f9c75abec656823141022f2"
+    },
+    "a2": {
+      "title": "A2 CHAMFER",
+      "summary": "单切角肩盖 / 轻切角顶框 / 收角剑格",
+      "imagegen_source": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a2_imagegen.png",
+      "transparent_source": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a2_transparent.png",
+      "native": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a2_native32.png",
+      "preview_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a2_16x.png",
+      "overlay_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a2_overlay_16x.png",
+      "mask_difference_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a2_mask_diff_16x.png",
+      "source_grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "approximate",
+        "grid_cell_width": 10.85,
+        "grid_cell_height": 11.15,
+        "grid_cell_size": 11,
+        "confidence": 0.797,
+        "subject_bbox": {
+          "left": 441,
+          "top": 390,
+          "right": 918,
+          "bottom": 849
+        },
+        "subject_pixel_width": 477,
+        "subject_pixel_height": 459,
+        "subject_grid_width": 44,
+        "subject_grid_height": 41,
+        "recommended_canvas_grid_width": 116,
+        "recommended_canvas_grid_height": 112
+      },
+      "metrics": {
+        "bbox": [
+          8,
+          7,
+          28,
+          28
+        ],
+        "visible_width": 20,
+        "visible_height": 21,
+        "visible_pixels": 197,
+        "alpha_center_x": 16.688,
+        "baseline_bottom": 28
+      },
+      "accent_pixels_mapped": 9,
+      "authored_reinforcement_points": 16,
+      "rgba_sha256": "884be7180c3616a30d2409241f56034c62d83d7668afc40c12a93b21522beea7"
+    },
+    "a3": {
+      "title": "A3 STEPPED",
+      "summary": "内收阶梯肩盖 / 分段顶框 / 阶梯T形剑格",
+      "imagegen_source": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a3_imagegen.png",
+      "transparent_source": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a3_transparent.png",
+      "native": "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a3_native32.png",
+      "preview_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a3_16x.png",
+      "overlay_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a3_overlay_16x.png",
+      "mask_difference_16x": "dev_assets/generated_previews/combat_robot_elite_anchor_a3_mask_diff_16x.png",
+      "source_grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "approximate",
+        "grid_cell_width": 12.45,
+        "grid_cell_height": 12.5,
+        "grid_cell_size": 12,
+        "confidence": 0.809,
+        "subject_bbox": {
+          "left": 408,
+          "top": 345,
+          "right": 955,
+          "bottom": 873
+        },
+        "subject_pixel_width": 547,
+        "subject_pixel_height": 528,
+        "subject_grid_width": 44,
+        "subject_grid_height": 42,
+        "recommended_canvas_grid_width": 101,
+        "recommended_canvas_grid_height": 100
+      },
+      "metrics": {
+        "bbox": [
+          8,
+          7,
+          28,
+          28
+        ],
+        "visible_width": 20,
+        "visible_height": 21,
+        "visible_pixels": 202,
+        "alpha_center_x": 16.802,
+        "baseline_bottom": 28
+      },
+      "accent_pixels_mapped": 9,
+      "authored_reinforcement_points": 20,
+      "rgba_sha256": "8e03c790a5f741911ee5888dddf332f7d7787f4bf3be0c7c8447354e44e93e91"
+    }
+  },
+  "comparison": "dev_assets/generated_previews/combat_robot_elite_anchor_comparison.png"
+}
