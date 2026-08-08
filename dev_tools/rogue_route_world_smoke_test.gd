@@ -750,7 +750,9 @@ func _audit_hud(route: RogueRouteGame) -> void:
 		top_panel_style is StyleBoxEmpty
 		and top_backdrop != null
 		and top_gradient_colors.size() >= 3
-		and top_gradient_colors[0].a < 0.7
+		and top_gradient_colors[0].a >= 0.92
+		and top_gradient_colors[0].a <= 0.97
+		and top_gradient_colors[1].a >= 0.8
 		and top_gradient_colors[0].a > top_gradient_colors[1].a
 		and top_gradient_colors[1].a > top_gradient_colors[-1].a
 		and top_gradient_colors[-1].a <= 0.01
@@ -759,7 +761,7 @@ func _audit_hud(route: RogueRouteGame) -> void:
 		and is_zero_approx(top_bar.offset_top)
 		and is_zero_approx(top_bar.offset_right)
 		and top_bar.offset_bottom >= 100.0,
-		"顶部状态背景必须无边框覆盖全宽，并以较低透明度向下渐隐。"
+		"顶部状态背景必须无边框覆盖全宽，以清晰深灰层向下渐隐。"
 	)
 	_expect(
 		bottom_bar != null and bottom_bar.mouse_filter == Control.MOUSE_FILTER_STOP,
