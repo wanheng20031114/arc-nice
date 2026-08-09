@@ -6,6 +6,18 @@
 `#ff00ff` 背景上生成，再使用系统 ImageGen 技能附带的
 `remove_chroma_key.py` 去除背景。生产图由
 `dev_tools/process_rogue_supply_assets.py` 确定性构建。
+共用卡框在系统色键工具处理后仍有一圈边缘色键，因此最终中间稿改由仓库内
+`dev_tools/connected_background_remover.py` 直接从 ImageGen 原图生成，只清除与画布边缘
+连通的洋红背景，未改动木框主体。完整确定性命令为：
+
+```powershell
+python dev_tools/connected_background_remover.py `
+  dev_assets/source_images/rogue_supply/supply_choice_panel_shared_imagegen.png `
+  dev_assets/source_images/rogue_supply/supply_choice_panel_shared_alpha.png `
+  --rgb-tolerance 24 --hue-tolerance 0.08 --radius 1
+```
+
+处理脚本和连通背景移除脚本的 SHA-256 同时记录在 `asset_manifest.json`。
 
 ## 物资场景
 
@@ -16,14 +28,15 @@
   纯 `#ff00ff` 色键背景。
 - 像素量：先压至 `122×159` 逻辑画布，再最近邻 3 倍显示到 `366×477`，底部补 1px 透明行。
 
-## 三张选项卡背景
+## 共用选项卡背景
 
-- 输出：`supply_choice_panel_a.png`、`supply_choice_panel_b.png`、
-  `supply_choice_panel_c.png`。
-- 用途：三张随机奖励卡的通用背景；背景不能暗示任何具体奖励。
-- 最终提示词要点：简洁方块沙盒 UI，三种面板分别为深灰石板、暗色木板和布面石角；只有
-  平直块状边缘与安静文字区，不含铆钉、雕花、灯笼、宝箱、文字或任何奖励符号。
-- 像素量：每张先压至 `130×37`、最多 8 色，再最近邻 4 倍成为原生 `520×148`。
+- 输出：`resources/texture/rogue_route/supply/supply_choice_panel.png`。
+- 用途：右侧三张随机奖励卡共用同一背景；纹理本身不暗示具体奖励，选中、禁用和投票状态
+  继续由 Godot 原生节点表达。
+- 最终提示词要点：温暖朴素的农场生活 RPG 像素 UI；蜂蜜色木框、深可可描边和浅奶油纸面，
+  不复制任何商业游戏的具体边框纹样，不含文字、奖励图标或华丽装饰。
+- 像素量：色键移除并人工核对后压至 `130×37`、最多 12 色，再最近邻 4 倍成为原生
+  `520×148`。
 
 ## 会飞的信封
 
@@ -36,8 +49,7 @@
 
 ## 网格与透明处理
 
-ImageGen 源图的逻辑网格置信度不足 `0.65`。用户明确要求降低像素量，且已在 1×与放大视图中
-人工核对轮廓；物资场景与信封均由用户直接确认了源图。因此信封使用显式不安全压缩许可生成
-32×32 图，其余素材由确定性脚本采用最近邻缩放与有限色板处理。透明像素 RGB 归零、Alpha 仅
-0/255。
+早期 ImageGen 源图的逻辑网格置信度不足 `0.65`；最终共用卡框源图经色键处理后的近似网格
+置信度超过 `0.7`。所有生产素材仍由确定性脚本按显式逻辑画布做最近邻缩放与有限色板处理。
+透明像素 RGB 归零、Alpha 仅 0/255。
 详细输入与输出 SHA-256 见 `asset_manifest.json`。

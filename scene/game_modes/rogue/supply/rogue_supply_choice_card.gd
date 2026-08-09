@@ -4,8 +4,8 @@ class_name RogueSupplyChoiceCard
 signal selected(option_id: StringName)
 
 const MAX_VOTER_PORTRAITS := 8
-const DISABLED_MODULATE := Color(0.58, 0.63, 0.66, 0.76)
-const LOSER_MODULATE := Color(0.36, 0.41, 0.44, 0.54)
+const DISABLED_MODULATE := Color(0.82, 0.8, 0.74, 1.0)
+const LOSER_MODULATE := Color(0.66, 0.64, 0.6, 1.0)
 
 @export var background_texture: Texture2D
 

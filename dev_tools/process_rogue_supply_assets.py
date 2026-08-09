@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Deterministically build the Rogue supply-node production textures.
 
-The ImageGen sources are intentionally retained under dev_assets.  Chroma-key
-removal is performed before this script for the two transparent sources.  The
+The ImageGen sources are intentionally retained under dev_assets. Chroma-key
+removal is performed before this script for transparent sources. The
 production assets intentionally use a small logical canvas and nearest-neighbour
 upscale so the result stays chunky instead of drifting back toward dense UI art.
 """
@@ -112,14 +112,18 @@ def _build_tableau() -> Path:
     return output_path
 
 
-def _build_panel(variant: str) -> Path:
-    source_path = SOURCE_DIR / f"supply_choice_panel_{variant}_blocky_imagegen.png"
-    source = Image.open(source_path).convert("RGB")
-    logical = source.resize(PANEL_LOGICAL_SIZE, Image.Resampling.NEAREST)
-    logical = _quantize_rgb(logical, color_count=8)
+def _build_panel() -> Path:
+    source_path = SOURCE_DIR / "supply_choice_panel_shared_alpha.png"
+    source = _hard_alpha(Image.open(source_path))
+    bbox = source.getchannel("A").getbbox()
+    if bbox is None:
+        raise ValueError("shared panel source has no subject")
+    subject = source.crop(bbox)
+    logical = subject.resize(PANEL_LOGICAL_SIZE, Image.Resampling.NEAREST)
+    logical = _quantize_rgba(logical, color_count=12)
     canvas = logical.resize(PANEL_SIZE, Image.Resampling.NEAREST)
 
-    output_path = SUPPLY_TEXTURE_DIR / f"supply_choice_panel_{variant}.png"
+    output_path = SUPPLY_TEXTURE_DIR / "supply_choice_panel.png"
     canvas.save(output_path, optimize=False)
     return output_path
 
@@ -137,13 +141,25 @@ def _build_envelope() -> Path:
 def _write_manifest(outputs: list[Path]) -> None:
     inputs = sorted(SOURCE_DIR.glob("*.png"))
     payload = {
-        "pipeline": "built-in ImageGen -> chroma-key removal where needed -> low-resolution palette reduction -> nearest 4x/3x upscale",
+        "pipeline": "built-in ImageGen -> border-connected chroma-key removal where needed -> low-resolution palette reduction -> nearest 4x/3x upscale",
+        "panel_chroma_key_command": (
+            "python dev_tools/connected_background_remover.py "
+            "dev_assets/source_images/rogue_supply/"
+            "supply_choice_panel_shared_imagegen.png "
+            "dev_assets/source_images/rogue_supply/"
+            "supply_choice_panel_shared_alpha.png "
+            "--rgb-tolerance 24 --hue-tolerance 0.08 --radius 1"
+        ),
+        "processing_script_sha256": _sha256(Path(__file__)),
+        "background_remover_sha256": _sha256(
+            PROJECT_ROOT / "dev_tools/connected_background_remover.py"
+        ),
         "grid_review": (
             "The generated sources were inspected manually after pixel_grid_analyzer. "
             "The user explicitly requested lower pixel density without voxelizing the "
             "scene. The user then explicitly selected the final ruined supply-cache "
             "tableau, which uses a 122x159 logical canvas, while the "
-            "cards use 130x37. The user explicitly approved the first flying-envelope "
+            "shared card uses 130x37. The user explicitly approved the first flying-envelope "
             "source; it uses the project crop tool directly at 32x32 after manual review."
         ),
         "inputs": {
@@ -167,8 +183,7 @@ def _write_manifest(outputs: list[Path]) -> None:
 def main() -> None:
     SUPPLY_TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
     COLLECTIBLE_TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
-    outputs = [_build_tableau()]
-    outputs.extend(_build_panel(variant) for variant in ("a", "b", "c"))
+    outputs = [_build_tableau(), _build_panel()]
     outputs.append(_build_envelope())
     _write_manifest(outputs)
 

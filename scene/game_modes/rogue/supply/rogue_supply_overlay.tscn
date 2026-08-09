@@ -1,13 +1,11 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/supply/rogue_supply_overlay.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/supply/rogue_supply_choice_card.tscn" id="2_card"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/supply/rogue_supply_collectible_choice_panel.tscn" id="3_collectible_panel"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_tableau.png" id="5_tableau"]
-[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel_a.png" id="6_choice_a"]
-[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel_b.png" id="7_choice_b"]
-[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel_c.png" id="8_choice_c"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel.png" id="6_choice_panel"]
 
 [sub_resource type="FontVariation" id="FontVariation_heading"]
 base_font = ExtResource("4_font")
@@ -243,15 +241,15 @@ alignment = 1
 
 [node name="Choice0" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
 layout_mode = 2
-background_texture = ExtResource("6_choice_a")
+background_texture = ExtResource("6_choice_panel")
 
 [node name="Choice1" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
 layout_mode = 2
-background_texture = ExtResource("7_choice_b")
+background_texture = ExtResource("6_choice_panel")
 
 [node name="Choice2" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
 layout_mode = 2
-background_texture = ExtResource("8_choice_c")
+background_texture = ExtResource("6_choice_panel")
 
 [node name="ResultFooter" type="HBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
 layout_mode = 2

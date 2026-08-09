@@ -65,6 +65,8 @@ func _make_voting_state() -> Dictionary:
 		"active_peer_ids": [1, 2],
 		"disconnected_peer_ids": [],
 		"intro_confirmed_peer_ids": [1, 2],
+		"remaining_seconds": 47,
+		"timer_running": true,
 		"option_ids": [
 			String(RogueSupplyRegistry.OPTION_CORE_REPAIR),
 			String(RogueSupplyRegistry.OPTION_LIGHT_STONE_COLLECTIBLES),
@@ -75,7 +77,7 @@ func _make_voting_state() -> Dictionary:
 			String(RogueSupplyRegistry.OPTION_LIGHT_STONE_COLLECTIBLES): true,
 			String(RogueSupplyRegistry.OPTION_FLYING_ENVELOPE): true,
 		},
-		"light_stone_amount": 1,
+		"light_stone_amount": 0,
 		"votes": [
 			{"peer_id": 1, "option_id": "core_repair"},
 			{"peer_id": 2, "option_id": "flying_envelope"},

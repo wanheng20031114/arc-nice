@@ -75,6 +75,9 @@ func _run() -> void:
 
 func _test_authored_layout() -> void:
 	_expect(overlay.choice_cards.size() == 3, "物资界面必须原生配置三张主选项卡。")
+	var shared_background_path := (
+		"res://resources/texture/rogue_route/supply/supply_choice_panel.png"
+	)
 	for card in overlay.choice_cards:
 		_expect(
 			card.custom_minimum_size == Vector2(520, 148)
@@ -84,7 +87,42 @@ func _test_authored_layout() -> void:
 		_expect(
 			card.background.texture_filter
 			== CanvasItem.TEXTURE_FILTER_NEAREST,
-			"主选项卡背景必须使用 nearest，保持方块沙盒像素边缘。"
+			"主选项卡背景必须使用 nearest，保持清晰像素边缘。"
+		)
+		_expect(
+			card.background_texture != null
+			and card.background_texture.resource_path == shared_background_path
+			and card.background.texture == card.background_texture,
+			"三张主选项卡必须共用同一张背景纹理。"
+		)
+		var normal_style := card.button.get_theme_stylebox("normal") as StyleBoxFlat
+		_expect(
+			normal_style != null
+			and normal_style.corner_radius_top_left == 16
+			and normal_style.corner_radius_top_right == 16
+			and normal_style.corner_radius_bottom_left == 16
+			and normal_style.corner_radius_bottom_right == 16,
+			"卡片交互描边必须与背景的 16px 透明切角对齐。"
+		)
+		var content_margin := card.get_node("Content/Margin") as MarginContainer
+		var footer := card.get_node("Content/Margin/Rows/Footer") as HBoxContainer
+		_expect(
+			content_margin.get_theme_constant("margin_left") == 28
+			and content_margin.get_theme_constant("margin_top") == 18
+			and content_margin.get_theme_constant("margin_right") == 28
+			and content_margin.get_theme_constant("margin_bottom") == 20,
+			"卡片文字必须保持在木框内侧安全区。"
+		)
+		_expect(
+			card.number_label.label_settings.font_size >= 22
+			and card.title_label.label_settings.font_size >= 23
+			and card.description_label.label_settings.font_size >= 18
+			and card.disabled_reason_label.label_settings.font_size >= 15,
+			"卡片标题、正文与条件文字必须保持可读字号。"
+		)
+		_expect(
+			footer.position.y + footer.size.y <= card.size.y - 16.0,
+			"卡片底部条件行不能进入木质边框区域。"
 		)
 		_expect(
 			card.voter_portraits.size() == 8,
@@ -146,6 +184,11 @@ func _test_vote_state() -> void:
 	var paid_card := overlay.choice_cards[1]
 	_expect(not free_card.button.disabled, "免费物资选项应可投票。")
 	_expect(paid_card.button.disabled, "0 光石时付费选项必须禁用。")
+	_expect(
+		is_equal_approx(paid_card.self_modulate.a, 1.0)
+		and paid_card.self_modulate.r >= 0.8,
+		"浅色卡片的禁用状态必须保持不透明与可读对比。"
+	)
 	_expect(paid_card.light_stone_cost.visible, "付费选项必须显示光石图标。")
 	_expect(
 		paid_card.light_stone_amount.text == "0/1",
@@ -227,6 +270,11 @@ func _test_result_state() -> void:
 	_expect(
 		overlay.result_text.text.contains("核心恢复完成"),
 		"结果阶段必须合并本地玩家消息。"
+	)
+	_expect(
+		is_equal_approx(overlay.choice_cards[1].self_modulate.a, 1.0)
+		and overlay.choice_cards[1].self_modulate.r >= 0.6,
+		"结算落选卡必须保持不透明与可读对比。"
 	)
 	overlay.result_button.pressed.emit()
 	_expect(

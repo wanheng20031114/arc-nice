@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d2xl4deww82iw"
-path="res://.godot/imported/supply_choice_panel_b.png-f47130e508e39de7d2943b6da0fa421b.ctex"
+uid="uid://dfdscustt3ikf"
+path="res://.godot/imported/supply_choice_panel.png-64693f31dbf942c156ecf5e4455b458a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/rogue_route/supply/supply_choice_panel_b.png"
-dest_files=["res://.godot/imported/supply_choice_panel_b.png-f47130e508e39de7d2943b6da0fa421b.ctex"]
+source_file="res://resources/texture/rogue_route/supply/supply_choice_panel.png"
+dest_files=["res://.godot/imported/supply_choice_panel.png-64693f31dbf942c156ecf5e4455b458a.ctex"]
 
 [params]
 

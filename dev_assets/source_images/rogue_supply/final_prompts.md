@@ -19,43 +19,19 @@ Constraints: original design; uniform #ff00ff outside subject; no shadows or tex
 Avoid: copying any commercial game asset, legendary browser-RPG ornament, high pixel density, photorealism, painterly blur, dramatic cinematic light, excessive props
 ```
 
-## `supply_choice_panel_a_blocky_imagegen.png`
+## `supply_choice_panel_shared_imagegen.png`
 
 ```text
 Use case: stylized-concept
-Asset type: simple wide pixel-art choice-card background for an original block-building sandbox roguelite UI
-Primary request: variant A, a plain dark stone-slab panel
-Style/medium: very low-detail chunky pixel art; large square clusters; flat block faces; simple sandbox inventory-screen feeling with slightly more detail than a 16px texture
-Composition/framing: exact visual proportion 520:148; one simple rectangular stone border about 10 percent thick; quiet dark charcoal center for text; only two tiny cyan stone chips in opposite corners
-Color palette: 5 colors maximum: near-black, charcoal, medium stone gray, pale gray edge, muted cyan
-Constraints: original design; no text, numbers, symbols, characters, item/reward icons, ornate metal, rivets, filigree, lantern, rope, chest, gems, gradients, shine, drop shadow, logo, watermark; crisp hard rectangular edges; no transparency
-Avoid: legendary browser-RPG panel, elaborate fantasy frame, high pixel density, realistic stone, painterly texture, dramatic lighting, rounded mobile-game card
-```
-
-## `supply_choice_panel_b_blocky_imagegen.png`
-
-```text
-Use case: stylized-concept
-Asset type: simple wide pixel-art choice-card background for an original block-building sandbox roguelite UI
-Primary request: variant B, a plain dark wooden-plank panel
-Style/medium: very low-detail chunky pixel art; large square clusters; flat block faces; simple sandbox inventory-screen feeling with slightly more detail than a 16px texture
-Composition/framing: exact visual proportion 520:148; one simple rectangular border made from broad dark wood blocks, about 10 percent thick; quiet nearly black brown center for text; tiny plain iron corner blocks only
-Color palette: 6 colors maximum: near-black brown, dark brown, medium muted wood, tan edge, dark iron, one desaturated blue-gray accent
-Constraints: original design; no text, numbers, symbols, characters, item/reward icons, ornate metal, rivets, filigree, straps, buckles, lantern, rope, chest, gems, gradients, shine, drop shadow, logo, watermark; crisp hard rectangular edges; no transparency
-Avoid: legendary browser-RPG panel, elaborate fantasy frame, high pixel density, realistic wood grain, painterly texture, dramatic lighting, rounded mobile-game card
-```
-
-## `supply_choice_panel_c_blocky_imagegen.png`
-
-```text
-Use case: stylized-concept
-Asset type: simple wide pixel-art choice-card background for an original block-building sandbox roguelite UI
-Primary request: variant C, a plain muted canvas-and-stone supply panel
-Style/medium: very low-detail chunky pixel art; large square clusters; flat block faces; simple sandbox inventory-screen feeling with slightly more detail than a 16px texture
-Composition/framing: exact visual proportion 520:148; one simple rectangular border made from broad dusty canvas strips held by four square dark-stone corners; quiet dark olive-charcoal center for text
-Color palette: 6 colors maximum: near-black olive, dark charcoal, muted tan canvas, dusty beige edge, medium stone gray, one desaturated cyan stitch accent
-Constraints: original design; no text, numbers, symbols, characters, item/reward icons, ornate metal, rivets, filigree, decorative buckles, lantern, rope, chest, gems, gradients, shine, drop shadow, logo, watermark; crisp hard rectangular edges; no transparency
-Avoid: legendary browser-RPG panel, elaborate fantasy frame, high pixel density, realistic fabric, painterly texture, dramatic lighting, rounded mobile-game card
+Asset type: reusable horizontal game UI dialogue/choice panel background
+Primary request: create one original cozy farming-life RPG pixel-art choice panel, using the warm readable language of classic 16-bit countryside RPG interfaces without copying any specific commercial frame, motif, or exact palette
+Scene/backdrop: perfectly flat solid #ff00ff chroma-key background for local removal; one isolated panel only
+Subject: a wide 3.5:1 rectangular dialogue card with gently clipped pixel corners; warm honey-brown wooden outer frame, slim dark cocoa outline, small cream edge highlights, and a calm pale butter/parchment inner field suitable for dark-brown Chinese text
+Style/medium: crisp moderate-resolution pixel art, approximately a 130×37 logical-pixel design enlarged with nearest-neighbor; more detailed than 8-bit and less dense than painted UI
+Composition/framing: single centered panel, straight-on orthographic view, symmetrical and simple, with generous flat magenta padding; visually quiet center
+Color palette: dark cocoa, chestnut, honey wood, pale wheat, warm cream; restrained 8–12 production colors
+Constraints: no text, numbers, icons, buttons, gems, leaves, vines, metal, stone, teal, blue, separate compartments, ornamental side objects, external shadow, logo, or watermark; hard pixel edges; do not use #ff00ff in the panel
+Avoid: copying proprietary artwork, legendary browser-RPG ornament, industrial frames, material patchwork, painterly blur, soft gradients, photorealism
 ```
 
 ## `flying_envelope_approved_imagegen.png`
