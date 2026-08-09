@@ -11,7 +11,7 @@ const STAGE_SHIFT := 5
 
 
 class EnemyActionRecorder:
-	extends Node2D
+	extends MultiplayerGameplayGateway
 
 	var enemy_actions: Array[Dictionary] = []
 
@@ -504,6 +504,7 @@ func _spawn_robot(as_proxy: bool) -> CombatRobotShieldBearer:
 	var robot := SHIELD_BEARER_SCENE.instantiate() as CombatRobotShieldBearer
 	test_root.add_child(robot)
 	robot.setup(SHIELD_BEARER_CONFIG, null, null)
+	robot.bind_gameplay_gateway(test_root)
 	robot.set_meta(&"net_id", 7001)
 	if as_proxy:
 		robot.configure_multiplayer_proxy()

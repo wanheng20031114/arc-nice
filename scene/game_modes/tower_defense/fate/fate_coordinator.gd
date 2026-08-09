@@ -15,6 +15,8 @@ const ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH: Dictionary = {
 		"res://resources/config/enemies/combat_robot_gunner_elite.tres",
 	"res://resources/config/enemies/combat_robot_drone_operator.tres":
 		"res://resources/config/enemies/combat_robot_drone_operator_elite.tres",
+	"res://resources/config/enemies/combat_robot_shield_bearer.tres":
+		"res://resources/config/enemies/combat_robot_shield_bearer_elite.tres",
 	"res://resources/config/enemies/fire_sorcerer.tres":
 		"res://resources/config/enemies/fire_sorcerer_elite.tres",
 	"res://resources/config/enemies/frost_sorcerer.tres":

@@ -1,0 +1,61 @@
+{
+  "asset": "combat_robot_shield_bearer_elite",
+  "stage": "final_candidate_approved_runtime_written",
+  "approved_anchor": "h1c",
+  "approved_animation_selection": {
+    "move": "m1",
+    "shield_states": "r1",
+    "death": "d1"
+  },
+  "approved_fx_selection": {
+    "block": "b1",
+    "break": "x1"
+  },
+  "final_human_approved": true,
+  "runtime_written": true,
+  "imagegen_pixels_imported": false,
+  "report": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_final_preview_report.json",
+  "report_sha256": "1703fa96a8db47eef05c9766e59761f35556f8e4d4da4d4bc610e4757984c07d",
+  "main_atlas": {
+    "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_final_candidate.png",
+    "sha256": "7f36a88b08f5cdb3e37817f9aa4da3b53a09a8ffbef9863683db77dcd01bcf57",
+    "size": [
+      256,
+      256
+    ],
+    "mode": "RGBA"
+  },
+  "fx_atlas": {
+    "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_fx_final_candidate.png",
+    "sha256": "7547a4a5993cfd9373875341afe615cded24967a464f41ba71a2f798721cb01f",
+    "size": [
+      256,
+      32
+    ],
+    "mode": "RGBA"
+  },
+  "preview_only": false,
+  "approval_source_manifest_sha256": "6c93b38f8bd95fe2b2b546b6f15be4f1b2ee773120059d1ca3e01c45ff9dc14d",
+  "runtime_assets": {
+    "main_atlas": {
+      "source": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_final_candidate.png",
+      "path": "resources/texture/enemy/mechanical_life/combat_robot_shield_bearer_elite.png",
+      "sha256": "7f36a88b08f5cdb3e37817f9aa4da3b53a09a8ffbef9863683db77dcd01bcf57",
+      "size": [
+        256,
+        256
+      ],
+      "byte_identical": true
+    },
+    "fx_atlas": {
+      "source": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_fx_final_candidate.png",
+      "path": "resources/texture/enemy/mechanical_life/combat_robot_shield_bearer_elite_fx.png",
+      "sha256": "7547a4a5993cfd9373875341afe615cded24967a464f41ba71a2f798721cb01f",
+      "size": [
+        256,
+        32
+      ],
+      "byte_identical": true
+    }
+  }
+}

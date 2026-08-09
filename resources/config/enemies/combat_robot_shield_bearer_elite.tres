@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="CombatRobotShieldBearerEliteConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/combat_robot_shield_bearer_elite_config.gd" id="1_config"]
+[ext_resource type="Resource" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_drop_table"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_shield_bearer_elite.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_config")
+shield_max_blocks = 50
+shield_cracked_remaining = 33
+shield_critical_remaining = 16
+shield_block_animation_name = &"shield_block"
+shield_break_animation_name = &"shield_break"
+display_name = "精英举盾战斗机器人"
+category_tags = PackedStringArray("mechanical_life")
+enemy_scene = ExtResource("3_scene")
+max_health = 400
+attack_damage = 60
+physical_defense = 35
+magic_defense = 20
+move_speed = 40.0
+home_damage = 2
+xirang_kill_reward = 10
+drop_table = ExtResource("2_drop_table")

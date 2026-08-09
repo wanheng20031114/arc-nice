@@ -35,9 +35,9 @@ func _run() -> void:
 
 func _test_protocol_and_compensation_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 51
+		NetConstants.PROTOCOL_VERSION == 52
 		and NetConstants.CHANNEL_COUNT == 8,
-		"精英无人机资源合同必须使用协议v51，且不能增加ENet频道。"
+		"精英无人机资源合同必须保留在协议v52中，且不能增加ENet频道。"
 	)
 	_expect(
 		MpProjectileCoordinatorScript._is_combat_robot_suicide_drone_type(
@@ -235,12 +235,12 @@ func _test_registration_fate_and_loading_contract() -> void:
 		"加载目录必须包含精英无人机场景。"
 	)
 	_expect(
-		FateCoordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 8
+		FateCoordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 9
 		and str(FateCoordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(
 			"res://resources/config/enemies/combat_robot_drone_operator.tres",
 			""
 		)) == "res://resources/config/enemies/combat_robot_drone_operator_elite.tres",
-		"命运替换必须将普通操作员稳定映射到精英操作员，且映射总数为8。"
+		"命运替换必须将普通操作员稳定映射到精英操作员，且映射总数为9。"
 	)
 
 

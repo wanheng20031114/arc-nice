@@ -1,0 +1,627 @@
+{
+  "asset": "combat_robot_shield_bearer_elite_anchor_candidates",
+  "stage": "anchor_approved_pending_animation_candidates",
+  "preview_only": true,
+  "approved_selection": "h1c",
+  "approved_outputs": {
+    "native32": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1c_approved_native32.png",
+      "sha256": "6101e6b68fa442f2294c90a052f3e000cac0dff0076714e160853547d1bb9fb5",
+      "rgba_sha256": "c838576b0d2c321190ee08a936b8d1feea3685fd9645f12b6ad506cf18922e4c"
+    },
+    "preview_16x": {
+      "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1c_approved_16x.png",
+      "sha256": "c9228f292ea115b56e750cb2fa3bb0ab1968b71bcd04e8c5670b9e656a9ba81d"
+    }
+  },
+  "runtime_written": false,
+  "imagegen_pixels_imported": false,
+  "builder": {
+    "path": "dev_tools/process_combat_robot_shield_bearer_elite_anchors.py",
+    "sha256": "8c1f65c47831462911d700515c582e273f40bad74be77ad9b4d885ffa6e3ee3c"
+  },
+  "ordinary_runtime_source": {
+    "path": "resources/texture/enemy/mechanical_life/combat_robot_shield_bearer.png",
+    "expected_sha256": "07e5996a7048f4a469e247ee4aa7ce3c9f9c54a829d6a839ff3c94b2cac72ab4",
+    "actual_sha256": "07e5996a7048f4a469e247ee4aa7ce3c9f9c54a829d6a839ff3c94b2cac72ab4",
+    "frame_rect": [
+      0,
+      0,
+      32,
+      32
+    ],
+    "frame_rgba_sha256": "70a534827a325aa759354fcc626b4f5187d4ccb5bc68b27c76cd44f1f24be698",
+    "opaque_pixels": 297
+  },
+  "contract": {
+    "maximum_visible_size": [
+      28,
+      28
+    ],
+    "baseline_bottom": 28,
+    "registered_center_x": 16,
+    "ordinary_frame0_alpha_immutable": true,
+    "expected_rgba_differences_per_candidate": 27,
+    "expected_accent_differences": 15,
+    "expected_added_alpha_pixels": 8,
+    "expected_removed_alpha_pixels": 0,
+    "common_a1_points": [
+      [
+        9,
+        12
+      ],
+      [
+        9,
+        13
+      ],
+      [
+        10,
+        8
+      ],
+      [
+        10,
+        12
+      ],
+      [
+        21,
+        8
+      ],
+      [
+        21,
+        12
+      ],
+      [
+        22,
+        12
+      ],
+      [
+        22,
+        13
+      ]
+    ],
+    "accent_points": [
+      [
+        13,
+        5
+      ],
+      [
+        15,
+        11
+      ],
+      [
+        15,
+        12
+      ],
+      [
+        16,
+        11
+      ],
+      [
+        16,
+        12
+      ],
+      [
+        17,
+        11
+      ],
+      [
+        17,
+        12
+      ],
+      [
+        27,
+        15
+      ],
+      [
+        27,
+        16
+      ],
+      [
+        27,
+        17
+      ],
+      [
+        27,
+        18
+      ],
+      [
+        27,
+        19
+      ],
+      [
+        27,
+        20
+      ],
+      [
+        27,
+        21
+      ],
+      [
+        27,
+        22
+      ]
+    ],
+    "authored_y7_pixels": 0,
+    "shield_rect": [
+      24,
+      8,
+      30,
+      26
+    ],
+    "shield_alpha_opaque_pixels": 102,
+    "shield_alpha_sha256": "c8e71e3d07a7c69d35953fbe3f1d7dad3f85d7175f88a8a4675218e16697931e",
+    "protected_observation_slit": [
+      [
+        26,
+        12
+      ],
+      [
+        27,
+        12
+      ],
+      [
+        28,
+        12
+      ]
+    ],
+    "protected_grip": [
+      [
+        24,
+        16
+      ],
+      [
+        24,
+        17
+      ],
+      [
+        24,
+        18
+      ]
+    ],
+    "single_8_connected_component": true,
+    "fixed_steel_palette_plus_six_purples": true,
+    "binary_alpha": true,
+    "transparent_rgb_zero": true
+  },
+  "candidates": {
+    "h1a": {
+      "title": "H1A 对称平直锁扣",
+      "summary": "纵脊上下两组平直对称锁扣",
+      "imagegen_reference": {
+        "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1a_imagegen.png",
+        "sha256": "c012aedd54917d54d778c4ff61b189d29ee8b7535cd3586be10cbf74f11cc3b3"
+      },
+      "imagegen_grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "native_or_unknown",
+        "grid_cell_width": 1.0,
+        "grid_cell_height": 1.0,
+        "grid_cell_size": 1,
+        "confidence": 0.183,
+        "subject_bbox": {
+          "left": 0,
+          "top": 0,
+          "right": 1254,
+          "bottom": 1254
+        },
+        "subject_pixel_width": 1254,
+        "subject_pixel_height": 1254,
+        "subject_grid_width": 1254,
+        "subject_grid_height": 1254,
+        "recommended_canvas_grid_width": 1254,
+        "recommended_canvas_grid_height": 1254
+      },
+      "native32": {
+        "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1a_native32.png",
+        "sha256": "c82e664c28e35be4690c8fba9f5dae8ffc49e1bac7bed814d4feca7afe747d4c",
+        "rgba_sha256": "507b34011e5d539e5d492775e7c53b11d975aca68610260e922111eb903af2d6"
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1a_16x.png",
+        "sha256": "3a529167482d5db7def456c97fe39ba3897f886e1094e51747ef33bdb47a47d1"
+      },
+      "mirrored_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1a_mirrored_16x.png",
+        "sha256": "bd0424e8a2a30355e05f8bc940365ba0b3d787b4c2d50dbfdc0f18dbd83a408a"
+      },
+      "ordinary_delta_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1a_ordinary_delta_16x.png",
+        "sha256": "f53049218403f2349303c37024eb75a5bc921bad6023342bc53cc7d26cdc6be6"
+      },
+      "ordinary_overlay_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1a_ordinary_overlay_16x.png",
+        "sha256": "e577c9c3810325af30bfb4be4a4e8de35f430583ee3670c21d99fa1a5ce85612"
+      },
+      "facing_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1a_facing.gif",
+        "sha256": "faf077b4b97ef9514acc1b3aa3da096dade5070f33144c745094d62e147f641b"
+      },
+      "review_panel": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1a_review_panel.png",
+        "sha256": "0dc5c49303cda86f37c67eb31e672d496cc4b9506a7c699fddc31be22c05877a"
+      },
+      "shield_recolor_table": [
+        {
+          "point": [
+            26,
+            17
+          ],
+          "rgba": [
+            151,
+            159,
+            164,
+            255
+          ]
+        },
+        {
+          "point": [
+            26,
+            20
+          ],
+          "rgba": [
+            151,
+            159,
+            164,
+            255
+          ]
+        },
+        {
+          "point": [
+            28,
+            17
+          ],
+          "rgba": [
+            29,
+            28,
+            30,
+            255
+          ]
+        },
+        {
+          "point": [
+            28,
+            20
+          ],
+          "rgba": [
+            29,
+            28,
+            30,
+            255
+          ]
+        }
+      ],
+      "audit": {
+        "bbox": [
+          8,
+          4,
+          30,
+          28
+        ],
+        "visible_size": [
+          22,
+          24
+        ],
+        "baseline_bottom": 28,
+        "registered_center_x": 16,
+        "opaque_pixels": 305,
+        "added_alpha_pixels": 8,
+        "removed_alpha_pixels": 0,
+        "total_rgba_differences": 27,
+        "accent_differences": 15,
+        "a1_added_points": 8,
+        "shield_recolor_points": 4,
+        "shield_alpha_rect": [
+          24,
+          8,
+          30,
+          26
+        ],
+        "shield_alpha_opaque_pixels": 102,
+        "shield_alpha_sha256": "c8e71e3d07a7c69d35953fbe3f1d7dad3f85d7175f88a8a4675218e16697931e",
+        "protected_slit_and_grip_exact": true,
+        "y7_exactly_preserved": true,
+        "connected_components_8": 1,
+        "red_orange_remaining": 0,
+        "binary_alpha": true,
+        "transparent_rgb_zero": true
+      },
+      "deterministic_in_memory_rebuild": true,
+      "imagegen_pixels_imported": false
+    },
+    "h1b": {
+      "title": "H1B 反向错位阶梯",
+      "summary": "上、下锁扣沿纵脊反向错位",
+      "imagegen_reference": {
+        "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1b_imagegen.png",
+        "sha256": "9aa3a29dd31725b8fc444ddd5a2ad106b212bdd5d9a9df372f2d7b6af3820a0c"
+      },
+      "imagegen_grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "native_or_unknown",
+        "grid_cell_width": 1.0,
+        "grid_cell_height": 1.0,
+        "grid_cell_size": 1,
+        "confidence": 0.268,
+        "subject_bbox": {
+          "left": 0,
+          "top": 0,
+          "right": 1254,
+          "bottom": 1254
+        },
+        "subject_pixel_width": 1254,
+        "subject_pixel_height": 1254,
+        "subject_grid_width": 1254,
+        "subject_grid_height": 1254,
+        "recommended_canvas_grid_width": 1254,
+        "recommended_canvas_grid_height": 1254
+      },
+      "native32": {
+        "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1b_native32.png",
+        "sha256": "c06566004dd218c615df83f4ea58a8fbe87c3a47ae6fc771b0f5d7be081aea76",
+        "rgba_sha256": "f7664890c35d54b05e6a50daea805dbef354bf4b980827092163c2cfc2e62512"
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1b_16x.png",
+        "sha256": "e01bff601f945ccf4affc07a69b4e98d11fef99b1add9e784b55ebab548ad66c"
+      },
+      "mirrored_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1b_mirrored_16x.png",
+        "sha256": "f42044e933b6eacd82362647810cbe015fb063fc7875c2c70015eb60f1b5d49b"
+      },
+      "ordinary_delta_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1b_ordinary_delta_16x.png",
+        "sha256": "c51d2328038172240299cc443e027d20ff3c8d51857858571f25e36e0ce27429"
+      },
+      "ordinary_overlay_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1b_ordinary_overlay_16x.png",
+        "sha256": "48c0fe1c49868f6acc1a9a646b41f5d2a45a8bb71bb986fdb8840ee8b8e67caa"
+      },
+      "facing_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1b_facing.gif",
+        "sha256": "2297866e543fe0792c8cc1e89c3ff9ea4bed6d7b9466715d2a2add2b026f1a92"
+      },
+      "review_panel": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1b_review_panel.png",
+        "sha256": "fe3bcfbe3a318f63bb03e183fb1ae01ea80e198a90826a2d54bba3090538efc5"
+      },
+      "shield_recolor_table": [
+        {
+          "point": [
+            26,
+            16
+          ],
+          "rgba": [
+            151,
+            159,
+            164,
+            255
+          ]
+        },
+        {
+          "point": [
+            26,
+            21
+          ],
+          "rgba": [
+            29,
+            28,
+            30,
+            255
+          ]
+        },
+        {
+          "point": [
+            28,
+            17
+          ],
+          "rgba": [
+            29,
+            28,
+            30,
+            255
+          ]
+        },
+        {
+          "point": [
+            28,
+            20
+          ],
+          "rgba": [
+            151,
+            159,
+            164,
+            255
+          ]
+        }
+      ],
+      "audit": {
+        "bbox": [
+          8,
+          4,
+          30,
+          28
+        ],
+        "visible_size": [
+          22,
+          24
+        ],
+        "baseline_bottom": 28,
+        "registered_center_x": 16,
+        "opaque_pixels": 305,
+        "added_alpha_pixels": 8,
+        "removed_alpha_pixels": 0,
+        "total_rgba_differences": 27,
+        "accent_differences": 15,
+        "a1_added_points": 8,
+        "shield_recolor_points": 4,
+        "shield_alpha_rect": [
+          24,
+          8,
+          30,
+          26
+        ],
+        "shield_alpha_opaque_pixels": 102,
+        "shield_alpha_sha256": "c8e71e3d07a7c69d35953fbe3f1d7dad3f85d7175f88a8a4675218e16697931e",
+        "protected_slit_and_grip_exact": true,
+        "y7_exactly_preserved": true,
+        "connected_components_8": 1,
+        "red_orange_remaining": 0,
+        "binary_alpha": true,
+        "transparent_rgb_zero": true
+      },
+      "deterministic_in_memory_rebuild": true,
+      "imagegen_pixels_imported": false
+    },
+    "h1c": {
+      "title": "H1C 紧凑双端盖",
+      "summary": "纵脊两端形成紧凑T形套环",
+      "imagegen_reference": {
+        "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1c_imagegen.png",
+        "sha256": "d8654c42f782818d0b2c43fbdc667dea90577cc24211d599a696ac7782cdf362"
+      },
+      "imagegen_grid_analysis": {
+        "image_width": 1254,
+        "image_height": 1254,
+        "image_mode": "RGBA",
+        "detection_mode": "approximate",
+        "grid_cell_width": 20.35,
+        "grid_cell_height": 23.0,
+        "grid_cell_size": 22,
+        "confidence": 0.5,
+        "subject_bbox": {
+          "left": 0,
+          "top": 0,
+          "right": 1254,
+          "bottom": 1254
+        },
+        "subject_pixel_width": 1254,
+        "subject_pixel_height": 1254,
+        "subject_grid_width": 62,
+        "subject_grid_height": 55,
+        "recommended_canvas_grid_width": 62,
+        "recommended_canvas_grid_height": 55
+      },
+      "native32": {
+        "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1c_native32.png",
+        "sha256": "6101e6b68fa442f2294c90a052f3e000cac0dff0076714e160853547d1bb9fb5",
+        "rgba_sha256": "c838576b0d2c321190ee08a936b8d1feea3685fd9645f12b6ad506cf18922e4c"
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1c_16x.png",
+        "sha256": "c9228f292ea115b56e750cb2fa3bb0ab1968b71bcd04e8c5670b9e656a9ba81d"
+      },
+      "mirrored_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1c_mirrored_16x.png",
+        "sha256": "43d2fa132b0e260f953869391445a796cf7376c8b4c304bb3313feee6f566c55"
+      },
+      "ordinary_delta_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1c_ordinary_delta_16x.png",
+        "sha256": "0ebcad7fc57ee523360f6966e70504b776292eb552354ed3984c825f5d47d990"
+      },
+      "ordinary_overlay_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1c_ordinary_overlay_16x.png",
+        "sha256": "71df63615b857d0934d2fd1e44188b3481fe067c7c1765ab37f200ac97f5d6c8"
+      },
+      "facing_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1c_facing.gif",
+        "sha256": "0ecd0c25c30ac49d089c7a4056c5bd68eb0a8a7a168b2367f0fb8c05f0e70447"
+      },
+      "review_panel": {
+        "path": "dev_assets/generated_previews/combat_robot_shield_bearer_elite_anchor_h1c_review_panel.png",
+        "sha256": "ba97ce577659f12ecc443089d36f03efcc2344f3ec6dfbd98221205895e7da45"
+      },
+      "shield_recolor_table": [
+        {
+          "point": [
+            26,
+            15
+          ],
+          "rgba": [
+            151,
+            159,
+            164,
+            255
+          ]
+        },
+        {
+          "point": [
+            26,
+            22
+          ],
+          "rgba": [
+            151,
+            159,
+            164,
+            255
+          ]
+        },
+        {
+          "point": [
+            28,
+            15
+          ],
+          "rgba": [
+            29,
+            28,
+            30,
+            255
+          ]
+        },
+        {
+          "point": [
+            28,
+            22
+          ],
+          "rgba": [
+            29,
+            28,
+            30,
+            255
+          ]
+        }
+      ],
+      "audit": {
+        "bbox": [
+          8,
+          4,
+          30,
+          28
+        ],
+        "visible_size": [
+          22,
+          24
+        ],
+        "baseline_bottom": 28,
+        "registered_center_x": 16,
+        "opaque_pixels": 305,
+        "added_alpha_pixels": 8,
+        "removed_alpha_pixels": 0,
+        "total_rgba_differences": 27,
+        "accent_differences": 15,
+        "a1_added_points": 8,
+        "shield_recolor_points": 4,
+        "shield_alpha_rect": [
+          24,
+          8,
+          30,
+          26
+        ],
+        "shield_alpha_opaque_pixels": 102,
+        "shield_alpha_sha256": "c8e71e3d07a7c69d35953fbe3f1d7dad3f85d7175f88a8a4675218e16697931e",
+        "protected_slit_and_grip_exact": true,
+        "y7_exactly_preserved": true,
+        "connected_components_8": 1,
+        "red_orange_remaining": 0,
+        "binary_alpha": true,
+        "transparent_rgb_zero": true
+      },
+      "deterministic_in_memory_rebuild": true,
+      "imagegen_pixels_imported": false
+    }
+  },
+  "prompt_manifest": "dev_assets/source_images/combat_robot_shield_bearer_elite/imagegen_prompt_manifest.json"
+}

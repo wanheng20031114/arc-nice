@@ -121,9 +121,9 @@ func _test_elite_config_prewarm() -> void:
 	)
 	await coordinator.prewarm_elite_enemy_configs()
 	_expect(
-		coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 8
-		and coordinator.elite_enemy_config_by_base_path.size() == 8,
-		"All eight fate elite enemy configs must be cached before combat activation."
+		coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 9
+		and coordinator.elite_enemy_config_by_base_path.size() == 9,
+		"All nine fate elite enemy configs must be cached before combat activation."
 	)
 	_expect(
 		str(coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(
@@ -145,6 +145,13 @@ func _test_elite_config_prewarm() -> void:
 			""
 		)) == "res://resources/config/enemies/combat_robot_drone_operator_elite.tres",
 		"Fate elite replacement map must include the Elite Drone Operator."
+	)
+	_expect(
+		str(coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(
+			"res://resources/config/enemies/combat_robot_shield_bearer.tres",
+			""
+		)) == "res://resources/config/enemies/combat_robot_shield_bearer_elite.tres",
+		"Fate elite replacement map must include the Elite Shield Bearer."
 	)
 	_expect(
 		str(coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(

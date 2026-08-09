@@ -191,26 +191,26 @@ func _test_registry_and_fate_contract() -> void:
 		"res://resources/config/encyclopedia/codex_catalog.gd"
 	)
 	_expect(
-		registry_text.contains("const ENTRY_COUNT := 59")
-		and registry_text.contains("&\"mechanical_life\": 8")
+		registry_text.contains("const ENTRY_COUNT := 60")
+		and registry_text.contains("&\"mechanical_life\": 9")
 		and registry_text.contains("EnemyCodexEntryConfig.Rank.NORMAL: 49")
-		and registry_text.contains("EnemyCodexEntryConfig.Rank.ELITE: 9")
+		and registry_text.contains("EnemyCodexEntryConfig.Rank.ELITE: 10")
 		and registry_text.contains("EnemyCodexEntryConfig.Rank.BOSS: 1")
 		and registry_text.count(
 			"resources/config/encyclopedia/enemies/combat_robot_drone_operator_elite.tres"
 		) == 1
-		and catalog_text.contains("CodexSection.ENEMY: 59"),
-		"图鉴计数必须保持59总数、49普通、9精英、1 Boss、8机械生命。"
+		and catalog_text.contains("CodexSection.ENEMY: 60"),
+		"图鉴计数必须保持60总数、49普通、10精英、1 Boss、9机械生命。"
 	)
 
 	var fate_coordinator := FATE_COORDINATOR_SCRIPT.new()
 	_expect(
-		fate_coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 8
+		fate_coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 9
 		and str(fate_coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(
 			"res://resources/config/enemies/combat_robot_drone_operator.tres",
 			""
 		)) == ELITE_CONFIG_PATH,
-		"命运系统必须把普通操作员映射到精英操作员，并保持八组替换。"
+		"命运系统必须把普通操作员映射到精英操作员，并保持九组替换。"
 	)
 	fate_coordinator.free()
 

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "asset": "combat_robot_shield_bearer_elite_anchor_candidates",
+  "stage": "first_human_gate",
+  "mode": "built-in image_gen",
+  "normalized_prompt_contract": {
+    "h1a": "单体精英举盾战斗机器人像素概念；冷灰方盒身体、线性四肢、A1平直肩盖与贴顶短护框；身前6x18窄高塔盾保持普通外轮廓，单条紫能纵脊；纯绿色背景；无文字、无特效。盾面采用上下对称的平直机械锁扣。",
+    "h1b": "单体精英举盾战斗机器人像素概念；冷灰方盒身体、线性四肢、A1平直肩盖与贴顶短护框；身前6x18窄高塔盾保持普通外轮廓，单条紫能纵脊；纯绿色背景；无文字、无特效。盾面采用上下反向错位的阶梯机械锁扣。",
+    "h1c": "单体精英举盾战斗机器人像素概念；冷灰方盒身体、线性四肢、A1平直肩盖与贴顶短护框；身前6x18窄高塔盾保持普通外轮廓，单条紫能纵脊；纯绿色背景；无文字、无特效。盾面采用紧凑双端盖与T形套环。"
+  },
+  "generated_sources": {
+    "h1a": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1a_imagegen.png",
+      "sha256": "c012aedd54917d54d778c4ff61b189d29ee8b7535cd3586be10cbf74f11cc3b3"
+    },
+    "h1b": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1b_imagegen.png",
+      "sha256": "9aa3a29dd31725b8fc444ddd5a2ad106b212bdd5d9a9df372f2d7b6af3820a0c"
+    },
+    "h1c": {
+      "path": "dev_assets/source_images/combat_robot_shield_bearer_elite/combat_robot_shield_bearer_elite_anchor_h1c_imagegen.png",
+      "sha256": "d8654c42f782818d0b2c43fbdc667dea90577cc24211d599a696ac7782cdf362"
+    }
+  },
+  "pixel_policy": "ImageGen outputs are analyzed and displayed only; no generated pixel enters native32.",
+  "approved_selection": "h1c",
+  "runtime_written": false,
+  "imagegen_pixels_imported": false
+}

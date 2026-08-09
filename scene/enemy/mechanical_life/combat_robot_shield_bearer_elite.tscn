@@ -1,0 +1,20 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_shield_bearer.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_elite_intact.tres" id="2_intact"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_elite_cracked.tres" id="3_cracked"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_elite_critical.tres" id="4_critical"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_elite_broken.tres" id="5_broken"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_shield_bearer_elite_fx.tres" id="6_fx"]
+
+[node name="CombatRobotShieldBearerElite" instance=ExtResource("1_base")]
+intact_sprite_frames = ExtResource("2_intact")
+cracked_sprite_frames = ExtResource("3_cracked")
+critical_sprite_frames = ExtResource("4_critical")
+broken_sprite_frames = ExtResource("5_broken")
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+sprite_frames = ExtResource("2_intact")
+
+[node name="ShieldFxSprite" parent="ShieldFacingRoot" index="1"]
+sprite_frames = ExtResource("6_fx")

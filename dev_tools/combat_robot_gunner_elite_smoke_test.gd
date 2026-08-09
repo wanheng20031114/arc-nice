@@ -298,9 +298,9 @@ func _test_burst_scheduler_and_half_speed() -> void:
 
 func _test_network_pool_and_fate_contract() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 51
+		NET_CONSTANTS.PROTOCOL_VERSION == 52
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"协议v51必须保留精英紫弹的v49资源合同、v50消耗品合同且不增加ENet频道。"
+		"协议v52必须保留精英紫弹的v49资源合同、v50消耗品合同且不增加ENet频道。"
 	)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(
@@ -334,8 +334,8 @@ func _test_network_pool_and_fate_contract() -> void:
 			"res://resources/config/enemies/combat_robot_gunner.tres",
 			""
 		)) == "res://resources/config/enemies/combat_robot_gunner_elite.tres"
-		and fate_coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 8,
-		"命运系统必须把普通枪手映射到精英枪手，并保持八组精英替换。"
+		and fate_coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 9,
+		"命运系统必须把普通枪手映射到精英枪手，并保持九组精英替换。"
 	)
 	fate_coordinator.free()
 

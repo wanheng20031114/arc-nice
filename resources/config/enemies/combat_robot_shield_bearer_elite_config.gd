@@ -1,0 +1,2 @@
+extends CombatRobotShieldBearerConfig
+class_name CombatRobotShieldBearerEliteConfig
