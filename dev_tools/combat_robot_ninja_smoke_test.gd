@@ -16,9 +16,10 @@ const BOOST_STATUS_MASK := 1 << 5
 
 
 class EnemyActionRecorder:
-	extends Node2D
+	extends MultiplayerGameplayGateway
 
 	var enemy_actions: Array[Dictionary] = []
+	var damage_target: Player = null
 
 
 	func broadcast_enemy_action(
@@ -35,6 +36,25 @@ class EnemyActionRecorder:
 			"action_position": action_position,
 			"action_id": action_id,
 		})
+
+
+	func request_player_damage(
+		_source_id: int,
+		target_peer_id: int,
+		damage: int,
+		_source_type: StringName,
+		damage_type: EnemyConfig.DamageType = EnemyConfig.DamageType.PHYSICAL,
+		_source_direction: Vector2 = Vector2.ZERO,
+		_is_ranged: bool = false,
+		_contact_preconsumed: bool = false
+	) -> bool:
+		if (
+			damage_target == null
+			or not is_instance_valid(damage_target)
+			or damage_target.peer_id != target_peer_id
+		):
+			return false
+		return damage_target.apply_damage(damage, damage_type)
 
 
 var failures: Array[String] = []
@@ -779,6 +799,7 @@ func _spawn_ninja(proxy: bool) -> CombatRobotNinja:
 	var ninja := NINJA_SCENE.instantiate() as CombatRobotNinja
 	test_root.add_child(ninja)
 	ninja.setup(NINJA_CONFIG, null, null)
+	ninja.bind_gameplay_gateway(test_root)
 	if proxy:
 		ninja.configure_multiplayer_proxy()
 	return ninja
@@ -796,6 +817,7 @@ func _spawn_contact_player(spawn_position: Vector2) -> Player:
 	player.health_bar.setup(player.max_health, player.current_health)
 	player.set_physics_process(false)
 	player.set_process(false)
+	test_root.damage_target = player
 	return player
 
 

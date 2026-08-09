@@ -1,0 +1,2 @@
+extends CombatRobotNinjaConfig
+class_name CombatRobotNinjaEliteConfig

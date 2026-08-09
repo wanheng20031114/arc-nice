@@ -1,7 +1,7 @@
 extends RefCounted
 class_name EnemyCodexRegistry
 
-const ENTRY_COUNT := 60
+const ENTRY_COUNT := 61
 const SORCERER_ENTRY_COUNT := 6
 const EXPECTED_FAMILY_COUNTS := {
 	&"yuanshi_insect": 16,
@@ -9,12 +9,12 @@ const EXPECTED_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 2,
-	&"mechanical_life": 9,
+	&"mechanical_life": 10,
 	&"boss": 1,
 }
 const EXPECTED_RANK_COUNTS := {
 	EnemyCodexEntryConfig.Rank.NORMAL: 49,
-	EnemyCodexEntryConfig.Rank.ELITE: 10,
+	EnemyCodexEntryConfig.Rank.ELITE: 11,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
 
@@ -78,6 +78,7 @@ const ENTRIES: Array[EnemyCodexEntryConfig] = [
 	preload("res://resources/config/encyclopedia/enemies/combat_robot_shield_bearer.tres"),
 	preload("res://resources/config/encyclopedia/enemies/combat_robot_shield_bearer_elite.tres"),
 	preload("res://resources/config/encyclopedia/enemies/combat_robot_ninja.tres"),
+	preload("res://resources/config/encyclopedia/enemies/combat_robot_ninja_elite.tres"),
 	preload("res://resources/config/encyclopedia/enemies/linglan_boss.tres"),
 ]
 

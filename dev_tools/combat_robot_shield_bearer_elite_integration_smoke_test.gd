@@ -85,31 +85,31 @@ func _test_codex_and_fate() -> void:
 		"res://resources/config/encyclopedia/codex_catalog.gd"
 	)
 	_expect(
-		registry_text.contains("const ENTRY_COUNT := 60")
-		and registry_text.contains("&\"mechanical_life\": 9")
+		registry_text.contains("const ENTRY_COUNT := 61")
+		and registry_text.contains("&\"mechanical_life\": 10")
 		and registry_text.contains("EnemyCodexEntryConfig.Rank.NORMAL: 49")
-		and registry_text.contains("EnemyCodexEntryConfig.Rank.ELITE: 10")
+		and registry_text.contains("EnemyCodexEntryConfig.Rank.ELITE: 11")
 		and registry_text.contains("EnemyCodexEntryConfig.Rank.BOSS: 1")
 		and registry_text.count(
 			"resources/config/encyclopedia/enemies/combat_robot_shield_bearer_elite.tres"
 		) == 1
-		and catalog_text.contains("CodexSection.ENEMY: 60"),
-		"图鉴计数必须为60/49/10/1/9且精英盾兵仅注册一次。"
+		and catalog_text.contains("CodexSection.ENEMY: 61"),
+		"图鉴计数必须为61/49/11/1/10且精英盾兵仅注册一次。"
 	)
 
 	var fate_coordinator := FATE_COORDINATOR_SCRIPT.new()
 	_expect(
-		fate_coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 9
+		fate_coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.size() == 10
 		and str(fate_coordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH.get(
 			ORDINARY_CONFIG_PATH, ""
 		)) == ELITE_CONFIG_PATH,
-		"命运系统必须把普通盾兵映射到精英盾兵，并保持九组替换。"
+		"命运系统必须把普通盾兵映射到精英盾兵，并保持十组替换。"
 	)
 	fate_coordinator.free()
 
 
 func _test_protocol_attack_registry_and_pool_absence() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 52, "精英盾兵资源合同必须使用协议v52。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 53, "精英盾兵资源合同必须保留在协议v53中。")
 	_expect(
 		CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET == 18
 		and CombatAttackRegistry.encode_player_hit_source(

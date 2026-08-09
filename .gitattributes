@@ -1,6 +1,10 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
 
+# 第一门审批证书以原始 CRLF 字节 SHA 锁定，必须按二进制证据保存。
+/dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_anchor_manifest.json binary
+/dev_assets/generated_previews/combat_robot_ninja_elite_anchor_report.json binary
+
 # 即使通过 git archive 制作源码包，也排除本地参考资料目录。
 /参考用 export-ignore
 /参考用/** export-ignore

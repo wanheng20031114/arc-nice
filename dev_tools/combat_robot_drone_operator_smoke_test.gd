@@ -921,10 +921,10 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 		)
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 52
+		NET_CONSTANTS.PROTOCOL_VERSION == 53
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
 		(
-			"Protocol v52 must retain the v38 projectile, v39 shield-state, and "
+			"Protocol v53 must retain the v38 projectile, v39 shield-state, and "
 			+ "v40 slime semantics while isolating ninja boost visuals, ghost IDs, "
 			+ "reconnect activation, and the elite robot resource contract without adding channels."
 		)

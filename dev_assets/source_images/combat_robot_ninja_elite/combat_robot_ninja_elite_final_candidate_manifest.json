@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "asset": "combat_robot_ninja_elite",
+  "stage": "final_candidate_approved_runtime_written",
+  "preview_only": false,
+  "approved_anchor": "n1c",
+  "approved_animation_selection": {
+    "move": "m1",
+    "boost": "s2",
+    "death": "d1"
+  },
+  "first_human_approved": true,
+  "second_human_approved": true,
+  "third_human_approved": true,
+  "final_human_approved": true,
+  "runtime_written": true,
+  "runtime_paths_written": [
+    "resources/texture/enemy/mechanical_life/combat_robot_ninja_elite.png",
+    "resources/animation/combat_robot_ninja_elite.tres",
+    "resources/config/enemies/combat_robot_ninja_elite_config.gd",
+    "resources/config/enemies/combat_robot_ninja_elite.tres",
+    "scene/enemy/mechanical_life/combat_robot_ninja_elite.tscn",
+    "resources/texture/enemy/mechanical_life/combat_robot_ninja_elite.png.import",
+    "resources/config/enemies/combat_robot_ninja_elite_config.gd.uid"
+  ],
+  "imagegen_pixels_imported": false,
+  "native_atlas": {
+    "path": "dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_final_candidate_atlas.png",
+    "sha256": "6c0f50f2e02be51264ba92b269d26366653a0608cbed2b186e6c43c8ae2bd23b",
+    "size": [
+      320,
+      120
+    ],
+    "mode": "RGBA",
+    "rgba_sha256": "5fc943f0369c1e6a6f26f374c5c07542e2d92dd780e9a8ea7157220dca7001d3"
+  },
+  "report": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_report.json",
+  "report_sha256": "09ba3bf7679b8691b3ecb8699333e4968e1510bbb7fabc601a109805760a083c",
+  "outputs": {
+    "native_atlas": {
+      "path": "dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_final_candidate_atlas.png",
+      "sha256": "6c0f50f2e02be51264ba92b269d26366653a0608cbed2b186e6c43c8ae2bd23b"
+    },
+    "integer_16x": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_atlas_16x.png",
+      "sha256": "7a782ab66b49a39df351057a1256dd638379547c3cb0fe70d2d76b0524478961"
+    },
+    "ordinary_delta_16x": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_ordinary_delta_16x.png",
+      "sha256": "e3eedb470fde2b14439dbeae2182b4d69c255c6ba743d01f34ba4c71e88b10e1"
+    },
+    "ordinary_overlay_16x": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_ordinary_overlay_16x.png",
+      "sha256": "2ab360e8142d11c1609b174b3967853b4920d7fdbb8e5d74f2de2759a9757a87"
+    },
+    "move_forward_gif": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_move.gif",
+      "sha256": "42e6233edd0326522f29fca19e39b5b6f88ebf3c80ce223ae1f4bc8b77caf254"
+    },
+    "move_mirrored_gif": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_move_mirrored.gif",
+      "sha256": "54dec3c48b32314c179679db5df0d3b68d4ef403d83e3bbc8fe27d7a500a29b9"
+    },
+    "boost_forward_gif": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_boost.gif",
+      "sha256": "c61316001a84bfd09bafea0fc08dcd46109ce1f2310e451eb43e8c87f9c087b8"
+    },
+    "boost_mirrored_gif": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_boost_mirrored.gif",
+      "sha256": "ed8d40700b1cee7b95ae9c333887c9336b6e31c8436886c7a9205c2d6108e747"
+    },
+    "death_forward_gif": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_death.gif",
+      "sha256": "35b0c91c649c59279dd354f8b79d2a40b482f65432eae30b86dd62e324c8429c"
+    },
+    "death_mirrored_gif": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_death_mirrored.gif",
+      "sha256": "187592e0b442398d9b6463928fdc47a874db8934ba246645ead38791586b4ef5"
+    },
+    "move_to_boost_gif": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_move_to_boost.gif",
+      "sha256": "2599334442c0fd42f25c546f5640f79f04ed5aa90c3d89704c0793f344e4fae3"
+    },
+    "boost_to_move_gif": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_final_candidate_boost_to_move.gif",
+      "sha256": "78a6964b9b498fb22ab555dceee3aec00e4d02aa0b130b0992e4310072ae20d9"
+    }
+  },
+  "afterimage_references": {
+    "direction_right": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_right.gif",
+      "sha256": "e069aec97e6b46bbc73bd9724fb2a0ec423f560feb9fcf321452904b131ec3b9"
+    },
+    "direction_left": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_left.gif",
+      "sha256": "4ec03c4caf3f37eae8e92f54969256b476522cc2026bfe6ec5e5e63557772347"
+    },
+    "direction_up": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_up.gif",
+      "sha256": "8c3e22e5f9e902d3ccba5f358b9c0065db129c1beabf00eb71a214b48601178d"
+    },
+    "direction_down": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_down.gif",
+      "sha256": "3a402f986c24ba6c3e25ee8e7226bb2c7fa3136c9bca6536dcf3e18f1c571042"
+    },
+    "direction_down_right": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_down_right.gif",
+      "sha256": "63429aff422056b4744161a5ba239b259415f079aff39e9472cb03189ecfa408"
+    },
+    "direction_up_left": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_up_left.gif",
+      "sha256": "701c24657c244efe5e9b8a54af91fa572a7d17eeaeb90b7bde9898b31bae373e"
+    },
+    "move_to_boost": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_move_to_boost.gif",
+      "sha256": "c42b5d014e8dcbba01e1e17ac90313aa181c7121fb48e0a9ae4bc82020643c76"
+    },
+    "boost_to_move": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_boost_to_move.gif",
+      "sha256": "1263e21212dfe05450bc6c1dbb48b523d54e2ea82a3e108ff5ed1078a7ad21e4"
+    },
+    "boost_to_death_cleanup": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_boost_to_death_cleanup.gif",
+      "sha256": "438d27e4f7808f91f600a132cec999bd5fd449346028b96fcb5af9c2fbc9064c"
+    },
+    "status_slow": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_slow.gif",
+      "sha256": "09a02be20a084ff41c40ce2e274db430615acb13c648f28e9eaf30835b484a61"
+    },
+    "status_burn": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_burn.gif",
+      "sha256": "48ac7ac468129341509735780a6858cd155307fce815ca86bfd4f3cb38c815ba"
+    },
+    "status_slow_burn": {
+      "path": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_slow_burn.gif",
+      "sha256": "525c35b9e2fc0910dde6a085f3b998820834ddb310f0ba4875489ff67e8ab034"
+    }
+  },
+  "gate3_certificate": {
+    "manifest": "dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_afterimage_manifest.json",
+    "manifest_sha256": "ba3e9338e2515a1cad5d414639bacb9276a4b8019007ea47f893b95ea923e759",
+    "report": "dev_assets/generated_previews/combat_robot_ninja_elite_afterimage_preview_report.json",
+    "report_sha256": "67ba9810e813836e6984b80744bd35bb173b71280db55572fa2c73e33c5c4c32"
+  },
+  "approval_source_manifest_sha256": "08c31b54c97ffffdb67e114e74c60fba219443da4b44461ca5eedb55a2ab98a3",
+  "approval_source_report_sha256": "8b2e3a9da05fc69a6796284917dd27c0eea32769943af0a0489767df0f92627b",
+  "final_human_approval": {
+    "decision": "approved",
+    "approved_selection": {
+      "move": "m1",
+      "boost": "s2",
+      "death": "d1"
+    },
+    "pending_manifest_sha256": "08c31b54c97ffffdb67e114e74c60fba219443da4b44461ca5eedb55a2ab98a3",
+    "pending_report_sha256": "8b2e3a9da05fc69a6796284917dd27c0eea32769943af0a0489767df0f92627b",
+    "imagegen_pixels_imported": false
+  },
+  "runtime_assets": {
+    "texture": {
+      "source": "dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_final_candidate_atlas.png",
+      "path": "resources/texture/enemy/mechanical_life/combat_robot_ninja_elite.png",
+      "sha256": "6c0f50f2e02be51264ba92b269d26366653a0608cbed2b186e6c43c8ae2bd23b",
+      "size": [
+        320,
+        120
+      ],
+      "byte_identical": true
+    },
+    "animation": {
+      "path": "resources/animation/combat_robot_ninja_elite.tres",
+      "sha256": "d358cf0f9cdbd5002dc6d9a61d690bad4b3d18addc4bfd38eba74bc243c5bbfd",
+      "animations": {
+        "move": [
+          8,
+          20.0,
+          true
+        ],
+        "boost": [
+          8,
+          24.0,
+          true
+        ],
+        "death": [
+          8,
+          12.0,
+          false
+        ]
+      }
+    },
+    "config_script": {
+      "path": "resources/config/enemies/combat_robot_ninja_elite_config.gd",
+      "sha256": "a67d79e8ecc80a6a3f9b54e2e68a4fd6ada25f1bd1ea3e794c96df142898ea67"
+    },
+    "config": {
+      "path": "resources/config/enemies/combat_robot_ninja_elite.tres",
+      "sha256": "68044a27a1c712eead2692c784eee1431c5456880bc150576fe8bb71725a1aff"
+    },
+    "scene": {
+      "path": "scene/enemy/mechanical_life/combat_robot_ninja_elite.tscn",
+      "sha256": "8ea0212ef02cb1d8c182857c9293a10d9aa6a0c2a2e5c389ac7f943108df0b55",
+      "pure_inherited_override": true
+    },
+    "texture_import": {
+      "path": "resources/texture/enemy/mechanical_life/combat_robot_ninja_elite.png.import",
+      "sha256": "617cee20d80866e2cb76b4f7554f47534f2ac18034da38e5d21a67a6133df2a5",
+      "uid": "uid://dm0skoata3q4q"
+    },
+    "config_script_uid": {
+      "path": "resources/config/enemies/combat_robot_ninja_elite_config.gd.uid",
+      "sha256": "1acf2391bb99c86c039f109a28dcf50e6759eb81b5eb9f6bc2b64d185809a5e2",
+      "uid": "uid://dan6spha2lqid"
+    }
+  }
+}

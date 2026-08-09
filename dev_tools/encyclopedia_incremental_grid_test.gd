@@ -29,7 +29,7 @@ func _run() -> void:
 		))
 	)
 	var expected_initial_count := mini(
-		60,
+		61,
 		screen.entry_grid.columns * initial_enemy_rows
 	)
 	_expect(
@@ -37,12 +37,12 @@ func _run() -> void:
 		"敌人首批卡片数量应按两行预算创建，而不是同步创建完整目录。"
 	)
 	_expect(
-		initial_enemy_count < 60,
-		"敌人首批构建必须在完整 60 张卡片之前让出主线程。"
+		initial_enemy_count < 61,
+		"敌人首批构建必须在完整 61 张卡片之前让出主线程。"
 	)
 	await _wait_for_build_complete(screen)
 	_expect(
-		(screen.get("_cards") as Array).size() == 60,
+		(screen.get("_cards") as Array).size() == 61,
 		"分帧构建结束后必须补齐全部敌人卡片。"
 	)
 

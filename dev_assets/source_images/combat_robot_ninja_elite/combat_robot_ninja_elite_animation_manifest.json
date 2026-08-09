@@ -1,0 +1,46 @@
+{
+  "asset": "combat_robot_ninja_elite",
+  "stage": "second_human_gate_approved",
+  "approved_anchor": "n1c",
+  "approved_animation_selection": {
+    "move": "m1",
+    "boost": "s2",
+    "death": "d1"
+  },
+  "approved_native_locks": {
+    "move": {
+      "candidate": "m1",
+      "path": "dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_move_m1_candidate_native.png",
+      "sha256": "0d2abb9e49f38d1d9ff09a6e874485168e15798d78cd503a241fe601e1a5f3d9",
+      "rgba_sha256": "cfb00c5e0c1e330d41a0bfcee6827576b52f39e8a7ca3c6875fb3511eed921ba"
+    },
+    "boost": {
+      "candidate": "s2",
+      "path": "dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_boost_s2_candidate_native.png",
+      "sha256": "d227677c16a89685489649ddb56362c84356f81181792a920f1f0180638058b2",
+      "rgba_sha256": "e44ebfa9e6ba7f4cba50a38acf3f114ae87829f8fc1e047b6610243f2936cb37"
+    },
+    "death": {
+      "candidate": "d1",
+      "path": "dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_death_d1_candidate_native.png",
+      "sha256": "e886670c43fece56df7462ce8fb8b8bacae69bd8ab0d7ff82fc1c431e4aa7ffe",
+      "rgba_sha256": "616bff1518b607e5f58e60e1375eeb0fc339f41ec92e4280062d739757357ed0"
+    }
+  },
+  "second_human_approved": true,
+  "final_human_approved": false,
+  "runtime_written": false,
+  "imagegen_pixels_imported": false,
+  "candidate_order": [
+    "m1",
+    "m2",
+    "s1",
+    "s2",
+    "d1",
+    "d2"
+  ],
+  "report": "dev_assets/generated_previews/combat_robot_ninja_elite_animation_preview_report.json",
+  "report_sha256": "f56de52b7793a318d66d64a61c7608b45d1b16e4563a2eec90ca80e5d7a61b18",
+  "stability_report": "dev_assets/generated_previews/combat_robot_ninja_elite_animation_stability_report.json",
+  "stability_report_sha256": "44b087e576afbc798eea2aa80c51ec365d5fec67759adba2b5f42b45a5466865"
+}

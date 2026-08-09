@@ -65,7 +65,10 @@ extends RefCounted
 ## 行动力的路线快照 schema；精英盾兵继续复用既有盾况快照位和格挡/破盾动作。
 ## RPC 表面、投射物类型、攻击来源 ID 与 8 个 ENet 通道均不变；v51 客户端既
 ## 缺少精英盾兵资源合同，也无法验证新增的 party economy 与路线状态字段。
-const PROTOCOL_VERSION := 52
+## v53：新增精英忍者战斗机器人的独立配置、场景与紫能强化资源合同；继续复用
+## 既有忍者受击加速动作、视觉状态 bit5 与共享无染色尾影着色器。RPC 表面、
+## 投射物类型、攻击来源 ID 与 8 个 ENet 通道均不变；v52 客户端缺少对应资源合同。
+const PROTOCOL_VERSION := 53
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

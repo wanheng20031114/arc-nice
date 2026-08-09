@@ -150,11 +150,12 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 52,
+		NetConstants.PROTOCOL_VERSION == 53,
 		(
-			"协议 v52 必须同时承载目标玩家私有的地下商店会话，并隔离"
+			"协议 v53 必须同时承载目标玩家私有的地下商店会话，并隔离"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
-			+ "精英操作员无人机资源、既有遭遇、忍者加速与重连激活确认。"
+			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
+			+ "精英忍者资源、既有遭遇、忍者加速与重连激活确认。"
 		)
 	)
 	_expect(
