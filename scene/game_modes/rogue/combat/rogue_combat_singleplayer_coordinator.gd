@@ -420,8 +420,8 @@ func _play_victory_return_sequence() -> void:
 		return
 	_copy_battle_xirang_to_route()
 	route.complete_normal_combat(completed_occurrence_key)
-	route.set_route_presentation_enabled(true)
 	_dispose_active_battle()
+	route.set_route_presentation_enabled(true)
 	var reveal_completed := await transition.reveal()
 	if not reveal_completed:
 		transition.hide_immediately()
@@ -480,9 +480,9 @@ func _recover_interrupted_victory_sequence(
 			and occurrence_key == route.get_normal_combat_occurrence_key()
 		):
 			route.complete_normal_combat(occurrence_key)
-		route.set_route_presentation_enabled(true)
 	_dispose_active_battle()
 	if route != null and is_instance_valid(route):
+		route.set_route_presentation_enabled(true)
 		route.show_combat_result(result)
 	_complete_return_lifecycle(true, occurrence_key, result)
 
@@ -530,8 +530,8 @@ func _finalize_return_from_battle() -> void:
 	var completed_victory := _pending_victory
 	_copy_battle_xirang_to_route()
 	route.complete_normal_combat(completed_occurrence_key)
-	route.set_route_presentation_enabled(true)
 	_dispose_active_battle()
+	route.set_route_presentation_enabled(true)
 	_complete_return_lifecycle(
 		completed_victory,
 		completed_occurrence_key,

@@ -29,7 +29,8 @@ func attach_camera_to_player(player: Player) -> void:
 	var metrics := route_board.get_world_metrics()
 	if metrics == null:
 		return
-	map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
+	if map_camera.process_callback != Camera2D.CAMERA2D_PROCESS_PHYSICS:
+		map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 	player.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	if map_camera.get_parent() != player:
 		map_camera.reparent(player)
@@ -43,6 +44,49 @@ func attach_camera_to_player(player: Player) -> void:
 	configure_world_bounds()
 	player.reset_physics_interpolation()
 	map_camera.reset_physics_interpolation()
+	map_camera.make_current()
+	map_camera.force_update_scroll()
+
+
+## 外部战斗场景拥有过同一 Viewport 的 Camera2D 后，单纯恢复 enabled
+## 并不会重新取得 current。保留玩家此前的拖拽偏移，重新声明路线相机
+## 的父子、采样、边界与插值契约，再强制刷新共享 Canvas 变换。
+func restore_camera_after_external_scene(
+	player: Player,
+	viewport_size: Vector2
+) -> bool:
+	if player == null or not is_instance_valid(player):
+		return false
+	var metrics := route_board.get_world_metrics()
+	if metrics == null:
+		return false
+	var preserved_offset := map_camera.position
+	if map_camera.get_parent() != player:
+		map_camera.physics_interpolation_mode = (
+			Node.PHYSICS_INTERPOLATION_MODE_OFF
+		)
+		if map_camera.process_callback != Camera2D.CAMERA2D_PROCESS_PHYSICS:
+			map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
+		map_camera.reparent(player, false)
+		# 异常父节点下的 local offset 不属于路线玩家坐标系，直接回到玩家中心。
+		preserved_offset = Vector2.ZERO
+	if map_camera.process_callback != Camera2D.CAMERA2D_PROCESS_PHYSICS:
+		map_camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
+	player.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	map_camera.physics_interpolation_mode = (
+		Node.PHYSICS_INTERPOLATION_MODE_INHERIT
+	)
+	map_camera.position = preserved_offset
+	map_camera.zoom = metrics.get_camera_zoom_vector()
+	map_camera.position_smoothing_enabled = false
+	configure_world_bounds()
+	clamp_camera_drag(player, viewport_size)
+	map_camera.enabled = true
+	map_camera.make_current()
+	map_camera.force_update_scroll()
+	player.reset_physics_interpolation()
+	map_camera.reset_physics_interpolation()
+	return map_camera.get_viewport().get_camera_2d() == map_camera
 
 
 func detach_camera_from_player() -> void:

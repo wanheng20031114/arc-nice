@@ -1008,7 +1008,13 @@ func complete_normal_combat(occurrence_key: String) -> bool:
 
 
 func set_route_presentation_enabled(enabled: bool) -> void:
-	if not is_node_ready() or enabled == _route_presentation_enabled:
+	if not is_node_ready():
+		return
+	if enabled == _route_presentation_enabled:
+		# 另一个 Camera2D 可能在路线可见期间取得过同一 Viewport；即使
+		# presentation 布尔值未改变，返回路线仍必须重新声明 current。
+		if enabled and map_camera.enabled:
+			_restore_route_camera_after_external_scene()
 		return
 	_route_presentation_enabled = enabled
 	if not enabled:
@@ -1048,6 +1054,18 @@ func set_route_presentation_enabled(enabled: bool) -> void:
 		_route_presentation_restore_state.get("camera_enabled", true)
 	)
 	_route_presentation_restore_state.clear()
+	if map_camera.enabled:
+		_restore_route_camera_after_external_scene()
+
+
+func _restore_route_camera_after_external_scene() -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	if not world.restore_camera_after_external_scene(
+		player,
+		get_viewport_rect().size
+	):
+		push_error("RogueRouteGame: 返回路线后无法重新取得 Viewport 相机所有权。")
 
 
 func show_combat_result(result: Dictionary) -> bool:
@@ -1059,6 +1077,7 @@ func show_combat_result(result: Dictionary) -> bool:
 		if typeof(failure_reason_value) not in [TYPE_STRING, TYPE_STRING_NAME]:
 			return false
 		combat_result_overlay.show_failure(str(failure_reason_value))
+		_refresh_route_input_lock()
 		return true
 	if typeof(result.get("extra_xirang")) != TYPE_INT:
 		return false
@@ -1085,12 +1104,14 @@ func show_combat_result(result: Dictionary) -> bool:
 		loot_config.icon_texture if loot_config != null else null,
 		inventory_full
 	)
+	_refresh_route_input_lock()
 	return true
 
 
 func hide_combat_result() -> void:
 	if combat_result_overlay != null:
 		combat_result_overlay.hide_immediately()
+	_refresh_route_input_lock()
 
 
 func get_route_revision() -> int:
@@ -2160,6 +2181,10 @@ func _is_route_input_locked() -> bool:
 		or _route_reveal_input_locked
 		or _briefing_phase != BriefingPhase.NONE
 		or _is_local_shop_presentation_active()
+		or (
+			combat_result_overlay != null
+			and combat_result_overlay.visible
+		)
 	)
 
 
@@ -2422,6 +2447,7 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 
 
 func _on_combat_result_overlay_dismissed() -> void:
+	_refresh_route_input_lock()
 	combat_result_dismissed.emit()
 
 

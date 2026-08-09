@@ -33,6 +33,7 @@ var combat_time_limit_seconds := 90.0
 	$PlayerLifeStatusLayer/PlayerLifeStatusHUD
 )
 @onready var combat_deadline_timer: Timer = $CombatDeadlineTimer
+@onready var presentation_camera: Camera2D = $Camera2D
 @onready var music_player: AudioStreamPlayer = $MusicPlayer
 @onready var countdown_audio: AudioStreamPlayer = $CountdownAudio
 @onready var wave_start_audio: AudioStreamPlayer = $WaveStartAudio

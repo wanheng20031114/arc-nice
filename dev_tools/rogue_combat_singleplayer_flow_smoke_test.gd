@@ -395,11 +395,19 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		and route.combat_result_overlay.extra_xirang_value_label.text == "+500"
 		and not route.is_normal_combat_active()
 		and route.get_node("World").visible
+		and route.player.controls_locked
+		and bool(route.route_board.get("_interaction_locked"))
 		and coordinator.is_node_consumed(combat_node_id)
 		and int(victory_playback_count[0]) == 1,
 		"先回图策略必须先完成/释放战斗，再在路线中央显示胜利结算并消费节点。"
 	)
+	_expect_route_camera_contract(route, "胜利返回路线后")
 	route.combat_result_overlay.close_button.pressed.emit()
+	_expect(
+		not route.player.controls_locked
+		and not bool(route.route_board.get("_interaction_locked")),
+		"关闭作战结算后必须同步释放路线玩家与节点交互锁。"
+	)
 
 	_expect(
 		runtime.try_move(
@@ -764,6 +772,7 @@ func _test_consumed_failure_and_non_inherited_xirang() -> void:
 		and not route.combat_result_overlay.visible,
 		"全数阵亡失败必须回写战场息壤；关闭失败结算时应直接回图并消费节点。"
 	)
+	_expect_route_camera_contract(route, "失败返回路线后")
 	_expect(
 		runtime.try_move(
 			start_node_id,
@@ -997,6 +1006,29 @@ func _wait_for_battle_return(
 			return true
 		await process_frame
 	return false
+
+
+func _expect_route_camera_contract(route: RogueRouteGame, context: String) -> void:
+	var camera := route.map_camera
+	var route_player := route.player
+	_expect(
+		camera != null
+		and route_player != null
+		and is_instance_valid(camera)
+		and is_instance_valid(route_player)
+		and camera.enabled
+		and camera.get_parent() == route_player
+		and route.get_viewport().get_camera_2d() == camera
+		and (
+			route.get_viewport().get_canvas_transform().affine_inverse()
+			* (route.get_viewport_rect().size * 0.5)
+		).distance_to(camera.get_screen_center_position()) <= 0.51
+		and camera.physics_interpolation_mode
+		== Node.PHYSICS_INTERPOLATION_MODE_INHERIT
+		and route_player.physics_interpolation_mode
+		== Node.PHYSICS_INTERPOLATION_MODE_ON,
+		"%s必须重新建立本地玩家跟随相机并取得 Viewport 当前相机所有权。" % context
+	)
 
 
 func _wait_for_victory_presentation(route: RogueRouteGame) -> bool:

@@ -1590,6 +1590,10 @@ func _stop_local_combat_processing() -> void:
 
 
 func _set_combat_presentation_visible(visible: bool) -> void:
+	if _combat_game != null and is_instance_valid(_combat_game):
+		# 隐藏 Node2D 不会释放其 Camera2D 的 Viewport 所有权；终局安全
+		# 屏障期间 runtime 仍会留树，必须先显式停用战斗相机再恢复路线。
+		_combat_game.presentation_camera.enabled = visible
 	if _combat_network != null and is_instance_valid(_combat_network):
 		_combat_network.visible = visible
 
