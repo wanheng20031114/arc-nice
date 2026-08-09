@@ -2,8 +2,8 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const BASIC_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const SPEED_PICKUP := preload("res://resources/config/pickups/pickup_speed.tres")
-const TENPURA_PICKUP := preload("res://resources/config/pickups/pickup_tenpura.tres")
+const SPEED_PICKUP := preload("res://resources/config/pickup_triggered_items/speed_boots.tres")
+const TENPURA_PICKUP := preload("res://resources/config/pickup_triggered_items/tenpura.tres")
 const MOTION_STATUS_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 const SLOW_OVERLAY_PARAMETER := &"slow_overlay_strength"
 const BURN_OVERLAY_PARAMETER := &"burn_overlay_strength"

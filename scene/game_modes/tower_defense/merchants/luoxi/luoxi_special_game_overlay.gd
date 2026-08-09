@@ -6,7 +6,7 @@ signal finish_requested
 
 const Rules := preload("res://scene/game_modes/tower_defense/merchants/luoxi/luoxi_special_game_rules.gd")
 
-const HEALTH_ICON := preload("res://resources/texture/pickup_health.png")
+const HEALTH_ICON := preload("res://resources/texture/consumables/healing_potion.png")
 const CORE_ICON := preload("res://resources/texture/materials/wooden_core.png")
 const XIRANG_ICON := preload("res://resources/texture/xirang_icon.png")
 

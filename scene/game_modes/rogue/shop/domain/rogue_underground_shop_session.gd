@@ -361,9 +361,11 @@ func _are_valid_offers(offers: Array) -> bool:
 		if typeof(offers[offer_index]) != TYPE_DICTIONARY:
 			return false
 		var offer := offers[offer_index] as Dictionary
+		var kind := str(offer.get("kind", ""))
 		if (
 			int(offer.get("offer_index", -1)) != offer_index
 			or str(offer.get("config_path", "")).is_empty()
+			or kind not in ["collectible", "consumable"]
 			or int(offer.get("price", 0)) <= 0
 			or typeof(offer.get("purchased", false)) != TYPE_BOOL
 		):

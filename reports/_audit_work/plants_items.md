@@ -9,7 +9,7 @@
 1. **葡萄电弧塔已经进入植物注册表，却还没有进入物品/生产闭环。** `PlantDefenseRegistry` 已注册 `grape_arc_tower`（`resources/config/plant_defense/plant_defense_registry.gd:15,50-52,65,86`），但 `resources/config/buildings/` 只有 11 个建筑箱，没有 `building_grape_arc_tower.tres`；植物培育中心也只配置龙舌兰、玉米、竹筒、紫阳花四条塔配方（`scene/plant_defense/plant_cultivation_center.tscn:8-19,117`）。因此普通流程无法制造/获得葡萄塔，只能走调试免费放置或直接调用注册表。
 2. **本地交互建筑存在重复的全组扫描。** 橡木仓库、生产建筑、科研中心在玩家进入范围后各自每 `0.08s` 调用 `get_tree().get_nodes_in_group()` 并重选最近交互对象（`oak_warehouse.gd:10,59-69,1271-1313`；`production_building.gd:11,73-83,822-862`；`research_center.gd:13,74-84,469-509`）。同一玩家同时覆盖 N 个建筑时会由 N 个节点重复扫描全部 B 个交互建筑，趋近 `O(N×B)`/80ms。`PlantSystem` 已有空间索引版最近交互建筑查询（`plant_system.gd:578-624`），但这些本地路径没有复用。
 3. **玩法数值仍分散在资源和脚本常量两处。** 龙舌兰、玉米、竹筒均在 `.tres` 之外保留同值默认常量；竹筒的最小射程、外圈伤害、蓄力，龙舌兰的炮弹速度/爆炸半径等只在脚本。紫阳花和葡萄已经采用子类配置，结构更稳健。继续新增塔时应把全部“会改变结算”的数值收进强类型配置，脚本只保留纯视觉常量。
-4. **`PickupConfig` 是过度承载的单体资源。** 一个类同时表示 5 种临时/治疗掉落、材料、建筑箱、123 个收藏品，并携带约 120 行收藏品 DSL 字段（`resources/config/pickups/pickup_config.gd:6-15,116-204,206-328`）。它没有统一 `is_valid()`，收藏品又由文件名前缀隐式注册，新增错类型/空 effect ID/未知字符串时运行时可静默无效。
+4. **`PickupConfig` 是过度承载的单体资源。** 一个类同时表示拾取触发道具、消耗品、材料、建筑箱和收藏品，并携带约 120 行收藏品 DSL 字段（`resources/config/pickup_config.gd`）。它没有统一 `is_valid()`，收藏品又由文件名前缀隐式注册，新增错类型/空 effect ID/未知字符串时运行时可静默无效。
 5. **葡萄塔空场轮询偏频繁，且客户端代理也做同样索敌。** 找不到目标时每 `0.18s` 重新查询，约 `5.56` 次/秒/塔（`grape_arc_tower.gd:8,233-250`）；多人代理也启动该计时器并查询复制敌人，只是不结算伤害（`:164-168`）。大量葡萄塔且空场时，这一频率远高于其 1.6 秒攻击节奏。
 
 ### 中优先级
@@ -213,7 +213,7 @@
 | `pickup_tenpura` | 5s 攻击×1.1 | 0.4% | 不存，重复只刷新时长 |
 | `pickup_health` | 治疗20 | 0.4% | 满血时存入背包，999叠；使用成功才消耗1 |
 
-实际字段见 `resources/config/pickups/*.tres:6-18`。`Player.apply_pickup()` 明确拒绝 MATERIAL/BUILDING，其他道具按字段应用（`player.gd:656-704`）；收藏品无即时字段时不会被“使用”消耗。
+实际字段见 `resources/config/pickup_triggered_items/*.tres` 与 `resources/config/consumables/*.tres`。`Player.apply_pickup()` 明确拒绝非即时效果分类，消耗品由背包使用事务调用；收藏品不会被通用“使用”入口消耗。
 
 ### 5.5 123 个收藏品：注册、数量与运行时
 

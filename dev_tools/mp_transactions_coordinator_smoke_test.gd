@@ -5,10 +5,17 @@ const TRANSACTIONS_SCENE := preload(
 )
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const MP_GAME_SOURCE_PATH := "res://scene/multiplayer/mp_game.gd"
+const PLAYER_SCENE := preload(
+	"res://scene/player/weishidaier/player_weishidaier.tscn"
+)
+const ROCK_POTION: PickupConfig = preload(
+	"res://resources/config/consumables/rock_potion.tres"
+)
 
 
 class TestRuntime:
 	extends CombatRuntimeBase
+	var players: Dictionary = {}
 
 	func _ready() -> void:
 		pass
@@ -21,8 +28,8 @@ class TestRuntime:
 	) -> void:
 		pass
 
-	func get_player_for_peer(_peer_id: int) -> Player:
-		return null
+	func get_player_for_peer(peer_id: int) -> Player:
+		return players.get(peer_id) as Player
 
 	func get_enemy_for_net_id(_net_id: int) -> Enemy:
 		return null
@@ -62,6 +69,7 @@ func _run() -> void:
 	_test_local_request_tracking(coordinator)
 	_test_replay_cache(coordinator)
 	_test_shared_ingress_budget(coordinator)
+	_test_consumable_single_settlement(coordinator)
 	coordinator.free()
 	_finish()
 
@@ -193,6 +201,170 @@ func _test_shared_ingress_budget(coordinator: MpTransactionsCoordinator) -> void
 	runtime.free()
 	session.free()
 	run_state.free()
+
+
+func _test_consumable_single_settlement(
+	coordinator: MpTransactionsCoordinator
+) -> void:
+	const PEER_ID := 7
+	var session := MP_GAME_SCENE.instantiate() as MultiplayerGameplaySession
+	var runtime := TestRuntime.new()
+	var adapter := MultiplayerModeAdapter.new()
+	var net_manager := NetManagerStore.new()
+	var host_run_state := RunStateStore.new()
+	var suspended_peers: Dictionary[int, bool] = {}
+	var host_player := PLAYER_SCENE.instantiate() as Player
+	root.add_child(net_manager)
+	root.add_child(host_player)
+	host_player.set_physics_process(false)
+	runtime.players[PEER_ID] = host_player
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	coordinator.bind_session(
+		session,
+		runtime,
+		adapter,
+		net_manager,
+		host_run_state,
+		suspended_peers
+	)
+	var broadcasts: Array[Dictionary] = []
+	coordinator.inventory_item_used_broadcast_requested.connect(
+		func(
+			peer_id: int,
+			slot_index: int,
+			config_path: String,
+			success: bool,
+			inventory_snapshot: Dictionary,
+			force_inventory_repair: bool
+		) -> void:
+			broadcasts.append({
+				"peer_id": peer_id,
+				"slot_index": slot_index,
+				"config_path": config_path,
+				"success": success,
+				"inventory_snapshot": inventory_snapshot.duplicate(true),
+				"force_inventory_repair": force_inventory_repair,
+			})
+	)
+	_expect(
+		host_run_state.try_add_item_count_for_peer(PEER_ID, ROCK_POTION, 2),
+		"多人药水事务测试必须建立两瓶岩石药水。"
+	)
+	var potion_slot := _find_item_slot_for_peer(
+		host_run_state,
+		PEER_ID,
+		ROCK_POTION
+	)
+	var expected_revision := host_run_state.get_inventory_revision_for_peer(
+		PEER_ID
+	)
+	var base_physical_defense := host_player.physical_defense
+	coordinator.apply_authoritative_inventory_item_use(
+		PEER_ID,
+		potion_slot,
+		expected_revision
+	)
+	_expect(
+		broadcasts.size() == 1
+		and bool(broadcasts[0].get("success", false))
+		and str(broadcasts[0].get("config_path", ""))
+		== ROCK_POTION.resource_path
+		and host_run_state.get_item_count_for_peer(PEER_ID, potion_slot) == 1
+		and host_player.physical_defense == base_physical_defense + 15
+		and is_equal_approx(host_player.potion_physical_defense_time_left, 10.0),
+		"Host 权威药水事务必须只扣一瓶、应用一次并广播新 revision。"
+	)
+	var successful_snapshot := (
+		broadcasts[0].get("inventory_snapshot", {}) as Dictionary
+	).duplicate(true)
+	host_player.call("_update_pickup_effects", 2.0)
+	coordinator.apply_authoritative_inventory_item_use(
+		PEER_ID,
+		potion_slot,
+		expected_revision
+	)
+	_expect(
+		broadcasts.size() == 2
+		and not bool(broadcasts[1].get("success", true))
+		and bool(broadcasts[1].get("force_inventory_repair", false))
+		and host_run_state.get_item_count_for_peer(PEER_ID, potion_slot) == 1
+		and is_equal_approx(host_player.potion_physical_defense_time_left, 8.0),
+		"重复的旧 revision 使用请求必须失败，不能再次扣除或刷新药水。"
+	)
+	coordinator.unbind_session(session)
+
+	var client_run_state := RunStateStore.new()
+	var client_player := PLAYER_SCENE.instantiate() as Player
+	root.add_child(client_player)
+	client_player.set_physics_process(false)
+	runtime.players[PEER_ID] = client_player
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	coordinator.bind_session(
+		session,
+		runtime,
+		adapter,
+		net_manager,
+		client_run_state,
+		suspended_peers
+	)
+	var client_base_physical_defense := client_player.physical_defense
+	coordinator.receive_inventory_item_used(
+		PEER_ID,
+		potion_slot,
+		ROCK_POTION.resource_path,
+		true,
+		successful_snapshot
+	)
+	_expect(
+		client_player.physical_defense == client_base_physical_defense + 15
+		and is_equal_approx(client_player.potion_physical_defense_time_left, 10.0)
+		and client_run_state.get_item_count_for_peer(PEER_ID, potion_slot) == 1,
+		"客户端必须在新背包 revision 首次到达时重放一次药水效果。"
+	)
+	client_player.call("_update_pickup_effects", 2.0)
+	coordinator.receive_inventory_item_used(
+		PEER_ID,
+		potion_slot,
+		ROCK_POTION.resource_path,
+		true,
+		successful_snapshot
+	)
+	_expect(
+		client_run_state.get_item_count_for_peer(PEER_ID, potion_slot) == 1
+		and is_equal_approx(client_player.potion_physical_defense_time_left, 8.0),
+		"重复确认的相同 revision 不得在客户端二次重放或刷新药水。"
+	)
+	coordinator.unbind_session(session)
+	_stop_audio_players(host_player)
+	_stop_audio_players(client_player)
+	host_player.free()
+	client_player.free()
+	net_manager.free()
+	adapter.free()
+	runtime.free()
+	session.free()
+	host_run_state.free()
+	client_run_state.free()
+
+
+func _find_item_slot_for_peer(
+	run_state: RunStateStore,
+	peer_id: int,
+	expected_item: PickupConfig
+) -> int:
+	for slot_index in RunStateStore.INVENTORY_CAPACITY:
+		if run_state.get_item_for_peer(peer_id, slot_index) == expected_item:
+			return slot_index
+	return -1
+
+
+func _stop_audio_players(node: Node) -> void:
+	if node is AudioStreamPlayer:
+		(node as AudioStreamPlayer).stop()
+	elif node is AudioStreamPlayer2D:
+		(node as AudioStreamPlayer2D).stop()
+	for child in node.get_children():
+		_stop_audio_players(child)
 
 
 func _rpc_entry_captures_sender_first(source: String, function_name: String) -> bool:

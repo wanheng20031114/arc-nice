@@ -2,10 +2,10 @@ extends SceneTree
 
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
-const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
+const HEALTH_PICKUP := preload("res://resources/config/consumables/healing_potion.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
 const XIAOCONG_FATE_STONE := preload(
-	"res://resources/config/pickups/xiaocong_fate_stone.tres"
+	"res://resources/config/fate/xiaocong_fate_stone.tres"
 )
 
 var failures: Array[String] = []

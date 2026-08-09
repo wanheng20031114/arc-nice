@@ -6,11 +6,10 @@ const PROFILE_PANEL_SCENE := preload(
 	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
 )
 const BASIC_ENEMY_CONFIG := preload("res://resources/config/enemies/yuanshi_insect_basic.tres")
-const SPEED := preload("res://resources/config/pickups/pickup_speed.tres")
-const RAPID := preload("res://resources/config/pickups/pickup_rapid.tres")
-const TEMPURA := preload("res://resources/config/pickups/pickup_tenpura.tres")
-const HEALTH := preload("res://resources/config/pickups/pickup_health.tres")
-const SPIRAL := preload("res://resources/config/pickups/pickup_spiral.tres")
+const SPEED := preload("res://resources/config/pickup_triggered_items/speed_boots.tres")
+const RAPID := preload("res://resources/config/pickup_triggered_items/rapid_magazine.tres")
+const TEMPURA := preload("res://resources/config/pickup_triggered_items/tenpura.tres")
+const SPIRAL := preload("res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const SAPLING := preload("res://resources/config/materials/material_sapling.tres")
 const WHITE_CRYSTAL := preload(
@@ -48,13 +47,19 @@ const GLOBAL_DROP_CONFIGS: Array[PickupConfig] = [
 	SPEED,
 	RAPID,
 	TEMPURA,
-	HEALTH,
 	SPIRAL,
 ]
 
 var failures: Array[String] = []
 var test_root: Node2D
 var run_state: RunStateStore
+
+
+class DropAllowingGameplayGateway:
+	extends MultiplayerGameplayGateway
+
+	func allows_enemy_pickup_drops() -> bool:
+		return true
 
 
 func _init() -> void:
@@ -210,12 +215,19 @@ func _test_material_config_and_icons() -> void:
 
 
 func _test_deterministic_independent_drop_resolution() -> void:
+	for rule in DEFAULT_ENEMY_DROP_TABLE.rules:
+		_expect(
+			rule != null
+			and rule.pickup_config != null
+			and not rule.pickup_config.is_consumable_item(),
+			"普通敌人默认掉落表不得包含任何消耗品。"
+		)
 	var global_rules := DEFAULT_ENEMY_DROP_TABLE.get_eligible_rules(
 		PackedStringArray()
 	)
 	_expect(
-		global_rules.size() == 8,
-		"An untagged enemy must independently evaluate three common materials and five consumables."
+		global_rules.size() == 7,
+		"An untagged enemy must independently evaluate three common materials and four pickup-triggered items, with no consumables."
 	)
 
 	var successful_rolls: Array[float] = []
@@ -291,10 +303,10 @@ func _test_deterministic_independent_drop_resolution() -> void:
 
 	var capoo_drops := DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
 		PackedStringArray(["capoo"]),
-		_zero_rolls(9)
+		_zero_rolls(8)
 	)
 	_expect(
-		capoo_drops.size() == 9
+		capoo_drops.size() == 8
 		and CAPOO_BLUE_CRYSTAL in capoo_drops
 		and SORCERER_VIOLET_POWDER not in capoo_drops
 		and GEL not in capoo_drops
@@ -304,11 +316,11 @@ func _test_deterministic_independent_drop_resolution() -> void:
 	var sorcerer_drops := (
 		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
 			PackedStringArray(["sorcerer"]),
-			_zero_rolls(9)
+			_zero_rolls(8)
 		)
 	)
 	_expect(
-		sorcerer_drops.size() == 9
+		sorcerer_drops.size() == 8
 		and SORCERER_VIOLET_POWDER in sorcerer_drops
 		and CAPOO_BLUE_CRYSTAL not in sorcerer_drops
 		and GEL not in sorcerer_drops
@@ -318,10 +330,10 @@ func _test_deterministic_independent_drop_resolution() -> void:
 	var slime_tags := PackedStringArray(["slime"])
 	var slime_drops := DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
 		slime_tags,
-		_zero_rolls(9)
+		_zero_rolls(8)
 	)
 	_expect(
-		slime_drops.size() == 9
+		slime_drops.size() == 8
 		and GEL in slime_drops
 		and CAPOO_BLUE_CRYSTAL not in slime_drops
 		and SORCERER_VIOLET_POWDER not in slime_drops
@@ -352,11 +364,11 @@ func _test_deterministic_independent_drop_resolution() -> void:
 	var small_stone_drops := (
 		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
 			artificial_creation_tags,
-			_zero_rolls(9)
+			_zero_rolls(8)
 		)
 	)
 	_expect(
-		small_stone_drops.size() == 9
+		small_stone_drops.size() == 8
 		and SMALL_STONE in small_stone_drops
 		and CAPOO_BLUE_CRYSTAL not in small_stone_drops
 		and SORCERER_VIOLET_POWDER not in small_stone_drops
@@ -399,11 +411,11 @@ func _test_deterministic_independent_drop_resolution() -> void:
 			PackedStringArray(
 				["capoo", "sorcerer", "slime", "artificial_creation"]
 			),
-			_zero_rolls(12)
+			_zero_rolls(11)
 		)
 	)
 	_expect(
-		all_tagged_drops.size() == 12
+		all_tagged_drops.size() == 11
 		and CAPOO_BLUE_CRYSTAL in all_tagged_drops
 		and SORCERER_VIOLET_POWDER in all_tagged_drops
 		and GEL in all_tagged_drops
@@ -585,11 +597,14 @@ func _test_authoritative_death_drop_gate() -> void:
 
 	var player := PLAYER_SCENE.instantiate() as Player
 	var enemy := always_drop_config.enemy_scene.instantiate() as Enemy
+	var gameplay_gateway := DropAllowingGameplayGateway.new()
 	test_root.add_child(player)
+	test_root.add_child(gameplay_gateway)
 	test_root.add_child(enemy)
 	player.global_position = Vector2(1000.0, 1000.0)
 	enemy.global_position = Vector2(100.0, 100.0)
 	enemy.setup(always_drop_config, player, null)
+	enemy.bind_gameplay_gateway(gameplay_gateway)
 	await process_frame
 	enemy.call("_die")
 	enemy.call("_die")
@@ -599,13 +614,17 @@ func _test_authoritative_death_drop_gate() -> void:
 	)
 	_expect(
 		authoritative_drop_count == 2,
-		"One authoritative death must defer exactly one batch, and repeated death calls must not duplicate it."
+		(
+			"One authoritative death must defer exactly one batch, and repeated death "
+			+ "calls must not duplicate it (actual=%d)." % authoritative_drop_count
+		)
 	)
 
 	var proxy_enemy := always_drop_config.enemy_scene.instantiate() as Enemy
 	test_root.add_child(proxy_enemy)
 	proxy_enemy.global_position = Vector2(200.0, 100.0)
 	proxy_enemy.setup(always_drop_config, player, null)
+	proxy_enemy.bind_gameplay_gateway(gameplay_gateway)
 	proxy_enemy.is_multiplayer_proxy = true
 	await process_frame
 	proxy_enemy.call("_die")
@@ -621,6 +640,7 @@ func _test_authoritative_death_drop_gate() -> void:
 			pickup.queue_free()
 	enemy.queue_free()
 	proxy_enemy.queue_free()
+	gameplay_gateway.queue_free()
 	player.queue_free()
 	await process_frame
 	await physics_frame

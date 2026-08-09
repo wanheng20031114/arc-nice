@@ -1,8 +1,8 @@
 extends SceneTree
 
 const HOE_CAT_SCENE_PATH := "res://scene/player/hoe_cat/player_hoe_cat.tscn"
-const SPIRAL_PICKUP := preload("res://resources/config/pickups/pickup_spiral.tres")
-const RAPID_PICKUP := preload("res://resources/config/pickups/pickup_rapid.tres")
+const SPIRAL_PICKUP := preload("res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres")
+const RAPID_PICKUP := preload("res://resources/config/pickup_triggered_items/rapid_magazine.tres")
 const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
 const TEST_PRIMARY_DIRECTION := Vector2(0.9396926, 0.34202015)

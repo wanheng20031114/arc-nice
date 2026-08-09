@@ -11,7 +11,7 @@
     {
       "name": "water_bottle",
       "source": "../../items/water_bottle/water_bottle_imagegen_magenta.png",
-      "reference": "res://resources/texture/pickup_health.png",
+      "reference": "res://resources/texture/consumables/healing_potion.png",
       "prompt_summary": "Create a strict 32x32 pixel-art inventory bottle matching the health bottle silhouette, replacing the liquid with bright blue water and using a brown wooden cork on a flat magenta key background."
     },
     {

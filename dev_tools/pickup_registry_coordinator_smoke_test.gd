@@ -17,7 +17,7 @@ const TOWER_REGISTRY_SCENE := preload(
 )
 const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const HEALTH_PICKUP := preload(
-	"res://resources/config/pickups/pickup_health.tres"
+	"res://resources/config/consumables/healing_potion.tres"
 )
 
 var failures: Array[String] = []

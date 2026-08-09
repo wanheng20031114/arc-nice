@@ -289,11 +289,10 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"res://resources/config/materials/material_sorcerer_violet_powder.tres",
 		"res://resources/config/materials/material_gel.tres",
 		"res://resources/config/materials/material_small_stone.tres",
-		"res://resources/config/pickups/pickup_speed.tres",
-		"res://resources/config/pickups/pickup_rapid.tres",
-		"res://resources/config/pickups/pickup_tenpura.tres",
-		"res://resources/config/pickups/pickup_health.tres",
-		"res://resources/config/pickups/pickup_spiral.tres",
+		"res://resources/config/pickup_triggered_items/speed_boots.tres",
+		"res://resources/config/pickup_triggered_items/rapid_magazine.tres",
+		"res://resources/config/pickup_triggered_items/tenpura.tres",
+		"res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres",
 	]
 	var expected_chances: Array[float] = [
 		0.02,
@@ -304,7 +303,6 @@ func _test_enemy_drop_and_category_contract() -> void:
 		0.01,
 		0.02,
 		0.5,
-		0.004,
 		0.004,
 		0.004,
 		0.004,
@@ -322,11 +320,10 @@ func _test_enemy_drop_and_category_contract() -> void:
 		PackedStringArray(),
 		PackedStringArray(),
 		PackedStringArray(),
-		PackedStringArray(),
 	]
 	_expect(
 		DEFAULT_ENEMY_DROP_TABLE.rules.size() == expected_paths.size(),
-		"The shared enemy drop table must contain exactly twelve independent rules."
+		"The shared enemy drop table must contain exactly eleven independent rules and no consumables."
 	)
 	for index in range(
 		mini(DEFAULT_ENEMY_DROP_TABLE.rules.size(), expected_paths.size())

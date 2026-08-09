@@ -2,7 +2,7 @@ extends RefCounted
 class_name RogueUndergroundShopOfferGenerator
 
 const OFFER_KIND_COLLECTIBLE := &"collectible"
-const OFFER_KIND_HEALTH_POTION := &"health_potion"
+const OFFER_KIND_CONSUMABLE := &"consumable"
 
 
 static func generate_offers(
@@ -31,26 +31,28 @@ static func generate_offers_from_pool(
 		or participant_stable_key.is_empty()
 	):
 		return []
-	var potion := load(config.health_potion_path) as PickupConfig
-	if potion == null:
-		return []
 	var pool := _normalize_collectible_pool(compatible_collectibles)
+	var consumable_pool := _normalize_consumable_pool(config)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = _stable_seed(
 		node_content_seed,
 		participant_stable_key,
 		config.compute_runtime_contract_hash()
 	)
+	var count_choices := config.collectible_count_choices.duplicate()
+	count_choices.sort()
 	var count_choice_index := rng.randi_range(
 		0,
-		config.collectible_count_choices.size() - 1
+		count_choices.size() - 1
 	)
-	var collectible_count := int(
-		config.collectible_count_choices[count_choice_index]
-	)
+	var collectible_count := int(count_choices[count_choice_index])
 	if pool.size() < collectible_count:
 		return []
+	var consumable_count := config.offer_count - collectible_count
+	if consumable_pool.size() < consumable_count:
+		return []
 	_shuffle_items(pool, rng)
+	_shuffle_listings(consumable_pool, rng)
 
 	var offers: Array[Dictionary] = []
 	for pool_index in collectible_count:
@@ -63,13 +65,14 @@ static func generate_offers_from_pool(
 			"price": _roll_collectible_price(config, item, rng),
 			"purchased": false,
 		})
-	for _offer_index in range(collectible_count, config.offer_count):
+	for consumable_index in consumable_count:
+		var listing := consumable_pool[consumable_index]
 		offers.append({
 			"offer_index": -1,
-			"config_path": config.health_potion_path,
-			"kind": String(OFFER_KIND_HEALTH_POTION),
+			"config_path": listing.get_config_path(),
+			"kind": String(OFFER_KIND_CONSUMABLE),
 			"rarity": -1,
-			"price": config.health_potion_purchase_price,
+			"price": listing.purchase_price,
 			"purchased": false,
 		})
 	_shuffle_offers(offers, rng)
@@ -114,6 +117,22 @@ static func _normalize_collectible_pool(
 	return result
 
 
+static func _normalize_consumable_pool(
+	config: RogueUndergroundShopConfig
+) -> Array[RogueUndergroundShopListing]:
+	var by_path: Dictionary = {}
+	for listing in config.consumable_listings:
+		if listing == null or listing.get_config_path().is_empty():
+			continue
+		by_path[listing.get_config_path()] = listing
+	var paths := PackedStringArray(by_path.keys())
+	paths.sort()
+	var result: Array[RogueUndergroundShopListing] = []
+	for path in paths:
+		result.append(by_path[path] as RogueUndergroundShopListing)
+	return result
+
+
 static func _roll_collectible_price(
 	config: RogueUndergroundShopConfig,
 	item: PickupConfig,
@@ -148,6 +167,17 @@ static func _shuffle_items(
 		var temporary := items[index]
 		items[index] = items[swap_index]
 		items[swap_index] = temporary
+
+
+static func _shuffle_listings(
+	listings: Array[RogueUndergroundShopListing],
+	rng: RandomNumberGenerator
+) -> void:
+	for index in range(listings.size() - 1, 0, -1):
+		var swap_index := rng.randi_range(0, index)
+		var temporary := listings[index]
+		listings[index] = listings[swap_index]
+		listings[swap_index] = temporary
 
 
 static func _shuffle_offers(

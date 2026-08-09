@@ -4,7 +4,7 @@
 [ext_resource type="Resource" path="res://resources/config/materials/material_wooden_core.tres" id="2_core"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_capoo_blue_crystal_powder.tres" id="3_powder"]
 [ext_resource type="Resource" path="res://resources/config/buildings/building_hydrangea_rain_tower.tres" id="4_building"]
-[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="5_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="5_pickup_script"]
 
 [resource]
 script = ExtResource("1_script")

@@ -298,9 +298,9 @@ func _test_burst_scheduler_and_half_speed() -> void:
 
 func _test_network_pool_and_fate_contract() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 49
+		NET_CONSTANTS.PROTOCOL_VERSION == 50
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"精英紫弹资源合同必须使用协议v49且不增加ENet频道。"
+		"精英紫弹资源合同必须由协议v50保留且不增加ENet频道。"
 	)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(

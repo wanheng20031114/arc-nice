@@ -360,7 +360,7 @@ func try_use_item(slot_index: int, player: Player) -> bool:
 	var item := inventory[slot_index]
 	if item == null:
 		return false
-	if item.inventory_locked:
+	if item.inventory_locked or not item.is_consumable_item():
 		return false
 	if not player.apply_pickup(item):
 		return false
@@ -714,7 +714,7 @@ func try_use_item_for_peer(peer_id: int, slot_index: int, player: Player) -> boo
 	var item := peer_inventory[slot_index] as PickupConfig
 	if item == null:
 		return false
-	if item.inventory_locked:
+	if item.inventory_locked or not item.is_consumable_item():
 		return false
 	if not player.apply_pickup(item):
 		return false

@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="PickupConfig" format=3 uid="uid://lcx308am0rq6"]
 
 [ext_resource type="Texture2D" uid="uid://cxcpgjpysqwww" path="res://resources/texture/collectibles/magic_ring.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickups/pickup_config.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="2_script"]
 
 [resource]
 script = ExtResource("2_script")

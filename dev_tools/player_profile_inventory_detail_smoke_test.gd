@@ -5,9 +5,9 @@ const PROFILE_PANEL_SCENE := preload(
 	"res://scene/game_modes/standard/ui/standard_player_profile_panel.tscn"
 )
 const APPLE_COLLECTIBLE := preload("res://resources/config/collectibles/collectible_apple.tres")
-const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
+const HEALTH_PICKUP := preload("res://resources/config/consumables/healing_potion.tres")
 const XIAOCONG_FATE_STONE := preload(
-	"res://resources/config/pickups/xiaocong_fate_stone.tres"
+	"res://resources/config/fate/xiaocong_fate_stone.tres"
 )
 const ITEM_DETAIL_PANEL_BG := preload("res://resources/texture/item_detail_panel_bg.png")
 const ITEM_CATEGORY_BADGE_COLLECTIBLE := preload("res://resources/texture/item_category_badge_collectible.png")
@@ -187,8 +187,8 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	profile_panel.slots[3].emit_signal("pressed")
 	await process_frame
 	_expect(profile_panel.item_detail_panel.visible, "Selecting a stored consumable must show the item detail panel.")
-	_expect(profile_panel.item_detail_title.text == "生命药瓶", "The item detail panel title must show only the consumable name.")
-	_expect(profile_panel.item_detail_category_label.text == "道具", "The item detail panel must show the consumable category in its own label.")
+	_expect(profile_panel.item_detail_title.text == "治疗血瓶", "The item detail panel title must show only the consumable name.")
+	_expect(profile_panel.item_detail_category_label.text == "消耗品", "The item detail panel must show the consumable category in its own label.")
 	_expect(profile_panel.item_detail_category_backing.texture == ITEM_CATEGORY_BADGE_ITEM, "Consumables must use the generated item badge texture.")
 	_expect(profile_panel.item_detail_use_button.visible, "Consumable items must show a green use button.")
 	_expect(profile_panel.item_detail_discard_button.visible, "Consumable items must show a red discard button.")

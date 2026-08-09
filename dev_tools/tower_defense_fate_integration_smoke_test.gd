@@ -748,7 +748,7 @@ func _test_fate_stone_zero_benefit_filter() -> void:
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
 	var stone := load(
-		"res://resources/config/pickups/xiaocong_fate_stone.tres"
+		"res://resources/config/fate/xiaocong_fate_stone.tres"
 	) as PickupConfig
 	_expect(run_state.try_add_item(stone), "The fate-stone filter fixture must be stored.")
 	var coordinator := FATE_COORDINATOR_SCENE.instantiate() as FateCoordinator

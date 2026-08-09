@@ -35,7 +35,7 @@ const CAPOO_BLUE_CRYSTAL_POWDER := preload(
 	"res://resources/config/materials/material_capoo_blue_crystal_powder.tres"
 )
 const HEALTH_PICKUP := preload(
-	"res://resources/config/pickups/pickup_health.tres"
+	"res://resources/config/consumables/healing_potion.tres"
 )
 const WOOD_PROCESSING_STATION_ITEM := preload(
 	"res://resources/config/buildings/building_wood_processing_station.tres"
@@ -152,7 +152,7 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 	var gel_to_water_bottle_recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.GEL_TO_WATER_BOTTLE_ID
 	)
-	_expect(recipe != null, "简易制造白名单必须能解析草药生命药瓶配方。")
+	_expect(recipe != null, "简易制造白名单必须能解析草药治疗血瓶配方。")
 	_expect(
 		wood_station_recipe != null
 		and oak_warehouse_recipe != null
@@ -265,7 +265,7 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		and recipe.input_amounts == [1, 1]
 		and recipe.output_items == [HEALTH_PICKUP]
 		and recipe.output_amounts == [1],
-		"草药生命药瓶配方必须消耗1树苗和1水瓶并产出1生命药瓶。"
+		"草药治疗血瓶配方必须消耗1树苗和1水瓶并产出1治疗血瓶。"
 	)
 	_expect(
 		gel_to_water_bottle_recipe.input_items == [GEL]
@@ -279,7 +279,7 @@ func _test_registry_contract(run_state: RunStateStore) -> void:
 		HEALTH_PICKUP.stackable
 		and HEALTH_PICKUP.inventory_stack_limit == 999
 		and HEALTH_PICKUP.heal_amount == 20,
-		"生命药瓶必须可堆叠至999，并且每次恢复20点生命。"
+		"治疗血瓶必须可堆叠至999，并且每次恢复20点生命。"
 	)
 	_expect(
 		wood_station_recipe.input_items == [WOOD]
@@ -978,14 +978,14 @@ func _test_health_potion_stack_and_use(run_state: RunStateStore) -> void:
 	await process_frame
 	_expect(
 		run_state.try_add_item_count(HEALTH_PICKUP, 2),
-		"生命药瓶堆叠测试必须能一次放入两瓶。"
+		"治疗血瓶堆叠测试必须能一次放入两瓶。"
 	)
 	var potion_slot := _find_local_item_slot(run_state, HEALTH_PICKUP)
 	_expect(
 		potion_slot >= 0
 		and run_state.get_item_count(potion_slot) == 2
 		and _count_occupied_local_slots(run_state) == 2,
-		"两瓶生命药瓶必须在初始木头之外只占用一个背包槽。"
+		"两瓶治疗血瓶必须在初始木头之外只占用一个背包槽。"
 	)
 	if potion_slot >= 0 and player != null:
 		var initial_health := maxi(player.max_health - 40, 1)
@@ -998,14 +998,14 @@ func _test_health_potion_stack_and_use(run_state: RunStateStore) -> void:
 			and player.current_health == expected_after_first
 			and run_state.get_item(potion_slot) == HEALTH_PICKUP
 			and run_state.get_item_count(potion_slot) == 1,
-			"使用一瓶生命药瓶必须恢复20点生命且只扣除堆叠中的1瓶。"
+			"使用一瓶治疗血瓶必须恢复20点生命且只扣除堆叠中的1瓶。"
 		)
 		_expect(
 			run_state.try_use_item(potion_slot, player)
 			and player.current_health == expected_after_second
 			and run_state.get_item(potion_slot) == null
 			and run_state.get_item_count(potion_slot) == 0,
-			"再次使用生命药瓶必须再恢复20点生命并清空最后1瓶。"
+			"再次使用治疗血瓶必须再恢复20点生命并清空最后1瓶。"
 		)
 	player.queue_free()
 	await process_frame
@@ -1155,7 +1155,7 @@ func _test_simple_crafting_ui(run_state: RunStateStore) -> void:
 	)
 	_expect(
 		_count_visible_recipe_buttons(crafting_panel) == 7
-		and crafting_panel.recipe_buttons[0].text == "草药生命药瓶"
+		and crafting_panel.recipe_buttons[0].text == "草药治疗血瓶"
 		and crafting_panel.recipe_buttons[1].text == "木头加工站"
 		and crafting_panel.recipe_buttons[2].text == "橡木仓库"
 		and crafting_panel.recipe_buttons[3].text == "植被桩"
@@ -1481,7 +1481,7 @@ func _get_recipe() -> ProductionRecipe:
 	var recipe := SimpleCraftingRegistry.get_recipe(
 		SimpleCraftingRegistry.HERBAL_HEALTH_POTION_ID
 	)
-	_expect(recipe != null, "测试需要白名单中的草药生命药瓶配方。")
+	_expect(recipe != null, "测试需要白名单中的草药治疗血瓶配方。")
 	return recipe
 
 

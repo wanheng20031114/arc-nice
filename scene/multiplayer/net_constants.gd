@@ -54,7 +54,9 @@ extends RefCounted
 ## v49：在 v48 地下商店契约上新增精英持枪战斗机器人、独立紫色弹丸类型及
 ## 玩家受击来源 wire ID 18。RPC 表面和 8 个 ENet 通道不变，但 v48 客户端
 ## 无法实例化新的敌人与投射物资源合同。
-const PROTOCOL_VERSION := 49
+## v50：拾取配置拆分为拾取触发道具与消耗品资源合同，普通敌人默认掉落表不再
+## 产出消耗品。RPC 与 ENet 通道数不变；v49 客户端缺少新的资源分类与路径合同。
+const PROTOCOL_VERSION := 50
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

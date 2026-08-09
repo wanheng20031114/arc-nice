@@ -9,7 +9,7 @@ const MpWorldFlowCoordinatorScript := preload(
 const BOSS_CONFIG_PATH := "res://resources/config/bosses/boss_01_linglan.tres"
 const PICKUP_CONFIG_PATH := "res://resources/config/materials/material_wood.tres"
 const IMMEDIATE_PICKUP_CONFIG_PATH := (
-	"res://resources/config/pickups/pickup_speed.tres"
+	"res://resources/config/pickup_triggered_items/speed_boots.tres"
 )
 
 

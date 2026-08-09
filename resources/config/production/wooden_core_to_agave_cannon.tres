@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://resources/config/production/production_recipe.gd" id="1_script"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_wooden_core.tres" id="2_core"]
 [ext_resource type="Resource" path="res://resources/config/buildings/building_agave_cannon.tres" id="3_building"]
-[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="4_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="4_pickup_script"]
 
 [resource]
 script = ExtResource("1_script")

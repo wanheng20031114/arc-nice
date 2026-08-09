@@ -2,16 +2,14 @@
 extends Resource
 class_name RogueUndergroundShopConfig
 
-const RUNTIME_CONTRACT_SCHEMA := 1
+const RUNTIME_CONTRACT_SCHEMA := 2
+const CONSUMABLE_SELECTION_RULE := "uniform_without_replacement"
 
 @export_range(1, 32, 1) var offer_count := 8
 @export var collectible_count_choices := PackedInt32Array([4, 5, 6])
-@export_file("*.tres") var health_potion_path := (
-	"res://resources/config/pickups/pickup_health.tres"
-)
+@export var consumable_listings: Array[RogueUndergroundShopListing] = []
 
-@export_group("购买价格")
-@export_range(0, 100000, 10) var health_potion_purchase_price := 50
+@export_group("收藏品购买价格")
 @export_range(0, 100000, 10) var common_price_minimum := 200
 @export_range(0, 100000, 10) var common_price_maximum := 500
 @export_range(1, 10000, 1) var common_price_step := 10
@@ -25,10 +23,9 @@ const RUNTIME_CONTRACT_SCHEMA := 1
 @export_range(0, 100000, 100) var legendary_price_maximum := 10000
 @export_range(1, 10000, 1) var legendary_price_step := 100
 
-@export_group("出售价格")
+@export_group("通用出售价格")
 @export_range(0, 100000, 1) var material_sell_price := 10
 @export_range(0, 100000, 1) var collectible_sell_price := 100
-@export_range(0, 100000, 1) var health_potion_sell_price := 50
 
 
 func validate_config() -> PackedStringArray:
@@ -51,16 +48,7 @@ func validate_config() -> PackedStringArray:
 			and seen_counts.has(6)
 		):
 			errors.append("地下商店收藏品数量候选必须恰好为 4、5、6。")
-	if health_potion_path.is_empty():
-		errors.append("地下商店缺少生命药瓶资源路径。")
-	else:
-		var potion := load(health_potion_path) as PickupConfig
-		if (
-			potion == null
-			or potion.pickup_type != PickupConfig.PickupType.HEALTH
-			or not potion.can_store_in_inventory
-		):
-			errors.append("地下商店生命药瓶资源无效。")
+	_validate_consumable_listings(errors)
 	_validate_price_band(
 		errors,
 		"普通",
@@ -89,13 +77,8 @@ func validate_config() -> PackedStringArray:
 		legendary_price_maximum,
 		legendary_price_step
 	)
-	if (
-		health_potion_purchase_price <= 0
-		or material_sell_price <= 0
-		or collectible_sell_price <= 0
-		or health_potion_sell_price <= 0
-	):
-		errors.append("地下商店买卖价格必须大于 0。")
+	if material_sell_price <= 0 or collectible_sell_price <= 0:
+		errors.append("地下商店通用出售价格必须大于 0。")
 	return errors
 
 
@@ -129,6 +112,31 @@ func get_collectible_price_band(rarity: int) -> Vector3i:
 			return Vector3i.ZERO
 
 
+func get_consumable_listing_by_path(
+	config_path: String
+) -> RogueUndergroundShopListing:
+	if config_path.is_empty():
+		return null
+	for listing in consumable_listings:
+		if listing != null and listing.get_config_path() == config_path:
+			return listing
+	return null
+
+
+func get_consumable_purchase_price(item: PickupConfig) -> int:
+	if item == null:
+		return 0
+	var listing := get_consumable_listing_by_path(item.resource_path)
+	return listing.purchase_price if listing != null else 0
+
+
+func get_consumable_sell_price(item: PickupConfig) -> int:
+	if item == null:
+		return 0
+	var listing := get_consumable_listing_by_path(item.resource_path)
+	return listing.sell_price if listing != null else 0
+
+
 func compute_runtime_contract_hash() -> String:
 	if not validate_config().is_empty():
 		return ""
@@ -137,13 +145,21 @@ func compute_runtime_contract_hash() -> String:
 	var choice_parts := PackedStringArray()
 	for choice in choices:
 		choice_parts.append(str(choice))
+	var listing_parts := PackedStringArray()
+	for listing in consumable_listings:
+		listing_parts.append("%s,%d,%d" % [
+			listing.get_config_path(),
+			listing.purchase_price,
+			listing.sell_price,
+		])
+	listing_parts.sort()
 	return "\n".join(PackedStringArray([
 		"schema=%d" % RUNTIME_CONTRACT_SCHEMA,
 		"offers=%d" % offer_count,
 		"collectible_counts=%s" % ",".join(choice_parts),
-		"health_path=%s" % health_potion_path,
-		"purchase=%d;%d,%d,%d;%d,%d,%d;%d,%d,%d;%d,%d,%d" % [
-			health_potion_purchase_price,
+		"consumable_selection=%s" % CONSUMABLE_SELECTION_RULE,
+		"consumables=%s" % ";".join(listing_parts),
+		"collectible_purchase=%d,%d,%d;%d,%d,%d;%d,%d,%d;%d,%d,%d" % [
 			common_price_minimum,
 			common_price_maximum,
 			common_price_step,
@@ -157,12 +173,30 @@ func compute_runtime_contract_hash() -> String:
 			legendary_price_maximum,
 			legendary_price_step,
 		],
-		"sell=%d,%d,%d" % [
+		"generic_sell=%d,%d" % [
 			material_sell_price,
 			collectible_sell_price,
-			health_potion_sell_price,
 		],
 	])).sha256_text()
+
+
+func _validate_consumable_listings(errors: PackedStringArray) -> void:
+	if consumable_listings.size() != 4:
+		errors.append("地下商店消耗品池必须恰好配置 4 个条目。")
+	var seen_paths: Dictionary = {}
+	for listing_index in consumable_listings.size():
+		var listing := consumable_listings[listing_index]
+		if listing == null:
+			errors.append("地下商店消耗品条目 %d 为空。" % listing_index)
+			continue
+		for listing_error in listing.validate_listing():
+			errors.append("消耗品条目 %d：%s" % [listing_index, listing_error])
+		var config_path := listing.get_config_path()
+		if config_path.is_empty():
+			continue
+		if seen_paths.has(config_path):
+			errors.append("地下商店消耗品路径不可重复：%s" % config_path)
+		seen_paths[config_path] = true
 
 
 func _validate_price_band(

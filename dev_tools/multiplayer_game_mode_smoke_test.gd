@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 49,
-		"协议v49必须保留忍者加速与重连激活确认、隔离精英战斗机器人资源和精英枪手弹丸资源，并保留既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 50,
+		"协议v50必须保留忍者加速与重连激活确认，隔离精英战斗机器人、精英枪手弹丸及消耗品资源，并保留既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

@@ -327,17 +327,13 @@ func get_sell_price(item: PickupConfig) -> int:
 		or not item.can_store_in_inventory
 	):
 		return 0
+	if item.is_consumable_item():
+		return _config.get_consumable_sell_price(item)
 	match item.pickup_type:
 		PickupConfig.PickupType.MATERIAL:
 			return _config.material_sell_price
 		PickupConfig.PickupType.COLLECTIBLE:
 			return _config.collectible_sell_price
-		PickupConfig.PickupType.HEALTH:
-			return (
-				_config.health_potion_sell_price
-				if item.resource_path == _config.health_potion_path
-				else 0
-			)
 		_:
 			return 0
 

@@ -150,11 +150,11 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 49,
+		NetConstants.PROTOCOL_VERSION == 50,
 		(
-			"协议 v49 必须同时承载目标玩家私有的地下商店会话，并隔离"
-			+ "精英战斗机器人资源与精英持枪机器人弹丸资源，且保留既有遭遇、"
-			+ "忍者加速与重连激活确认。"
+			"协议 v50 必须同时承载目标玩家私有的地下商店会话，并隔离"
+			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
+			+ "既有遭遇、忍者加速与重连激活确认。"
 		)
 	)
 	_expect(
@@ -356,7 +356,7 @@ func _test_snapshot_and_delta_contract() -> void:
 	var rpc_config: Dictionary = wrapper_script.get_rpc_config()
 	_expect(
 		rpc_config.size() == 16,
-		"MpRogueRoute 必须严格保留 16 个 v48 RPC 入口。"
+		"MpRogueRoute 必须严格保留 16 个 v49 RPC 入口。"
 	)
 	for rpc_name in [
 		&"net_request_route_full_snapshot",

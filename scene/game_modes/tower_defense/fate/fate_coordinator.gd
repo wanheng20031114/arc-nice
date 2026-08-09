@@ -2,7 +2,7 @@ extends Node
 class_name FateCoordinator
 
 const FATE_STONE_CONFIG: PickupConfig = preload(
-	"res://resources/config/pickups/xiaocong_fate_stone.tres"
+	"res://resources/config/fate/xiaocong_fate_stone.tres"
 )
 const ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH: Dictionary = {
 	"res://resources/config/enemies/capoo_knight.tres":

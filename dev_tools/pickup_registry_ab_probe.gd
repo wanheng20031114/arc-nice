@@ -1,7 +1,7 @@
 extends SceneTree
 
 const HEALTH_PICKUP := preload(
-	"res://resources/config/pickups/pickup_health.tres"
+	"res://resources/config/consumables/healing_potion.tres"
 )
 const SAMPLE_COUNT := 21
 const EVENTS_PER_SAMPLE := 4096

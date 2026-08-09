@@ -32,9 +32,9 @@ const LINGLAN_SLIME_CONFIG_PATHS: Array[String] = [
 	"res://resources/config/enemies/slime_frost.tres",
 	"res://resources/config/enemies/slime_fire.tres",
 ]
-const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickups/pickup_speed.tres")
-const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickups/pickup_spiral.tres")
-const HEALTH_PICKUP := preload("res://resources/config/pickups/pickup_health.tres")
+const PICKUP_SPEED_CONFIG := preload("res://resources/config/pickup_triggered_items/speed_boots.tres")
+const PICKUP_SPIRAL_CONFIG := preload("res://resources/config/pickup_triggered_items/snow_wolf_pojun.tres")
+const HEALTH_PICKUP := preload("res://resources/config/consumables/healing_potion.tres")
 const WOOD_MATERIAL := preload("res://resources/config/materials/material_wood.tres")
 const SAPLING_MATERIAL := preload("res://resources/config/materials/material_sapling.tres")
 const WHITE_CRYSTAL_MATERIAL := preload(
@@ -274,8 +274,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 49, "The multiplayer protocol version must be 49.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v49 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 50, "The multiplayer protocol version must be 50.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v50 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -326,7 +326,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v49 must reject v48 and all older or unversioned clients."
+		"Protocol v50 must reject v49 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []

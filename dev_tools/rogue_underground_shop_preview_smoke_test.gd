@@ -4,7 +4,7 @@ const PREVIEW_SCENE := preload(
 	"res://dev_tools/visual_prototypes/underground_shop/underground_shop_preview.tscn"
 )
 const VIEWPORT_SIZE := Vector2i(1152, 648)
-const HEALTH_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
+const HEALTH_CONFIG := preload("res://resources/config/consumables/healing_potion.tres")
 
 var failures: Array[String] = []
 
@@ -104,6 +104,22 @@ func _audit_authored_scene(view: RogueUndergroundShopView) -> void:
 			),
 			"交易卡价格必须使用个人息壤图标，而不是光石。"
 		)
+	var consumable_prices: Dictionary = {}
+	for card in view.get_item_cards():
+		var payload := card.get_payload()
+		if str(payload.get("kind", "")) == "consumable":
+			consumable_prices[str(payload.get("config_path", ""))] = int(
+				payload.get("price", 0)
+			)
+	_expect(
+		consumable_prices == {
+			"res://resources/config/consumables/healing_potion.tres": 50,
+			"res://resources/config/consumables/large_healing_potion.tres": 200,
+			"res://resources/config/consumables/rock_potion.tres": 70,
+			"res://resources/config/consumables/large_rock_potion.tres": 280,
+		},
+		"正式 UI 预览必须展示四种 consumable 及其 typed listing 买价。"
+	)
 
 
 func _audit_buy_interaction(view: RogueUndergroundShopView) -> void:

@@ -477,7 +477,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if not event.is_action_pressed(&"ui_accept"):
 		return
-	if selected_source == ItemSource.PLAYER and _is_consumable_item(_get_selected_item()):
+	if (
+		selected_source == ItemSource.PLAYER
+		and _is_player_inventory_action_item(_get_selected_item())
+	):
 		_on_use_pressed()
 	else:
 		_on_move_pressed()
@@ -678,7 +681,7 @@ func _on_use_pressed() -> void:
 	if selected_source != ItemSource.PLAYER or selected_slot_index < 0:
 		return
 	var item := _get_selected_item()
-	if not _is_consumable_item(item) or tracked_player == null:
+	if not _is_player_inventory_action_item(item) or tracked_player == null:
 		return
 	if item.pickup_type == PickupConfig.PickupType.BUILDING:
 		if (
@@ -1027,7 +1030,7 @@ func _refresh_detail() -> void:
 	use_button.disabled = (
 		_is_multiplayer_inventory_context()
 		or selected_source != ItemSource.PLAYER
-		or not _is_consumable_item(item)
+		or not _is_player_inventory_action_item(item)
 	)
 	use_button.text = (
 		"建造"
@@ -1171,14 +1174,22 @@ func _to_protocol_container(source: int) -> int:
 
 
 func _is_consumable_item(item: PickupConfig) -> bool:
+	return item != null and item.is_consumable_item()
+
+
+func _is_player_inventory_action_item(item: PickupConfig) -> bool:
 	return (
-		item != null
-		and item.pickup_type != PickupConfig.PickupType.COLLECTIBLE
-		and item.pickup_type != PickupConfig.PickupType.MATERIAL
+		_is_consumable_item(item)
+		or (
+			item != null
+			and item.pickup_type == PickupConfig.PickupType.BUILDING
+		)
 	)
 
 
 func _get_item_type_label(item: PickupConfig) -> String:
+	if item.is_consumable_item():
+		return "消耗品"
 	if item.pickup_type == PickupConfig.PickupType.COLLECTIBLE:
 		return "收藏品"
 	if item.pickup_type == PickupConfig.PickupType.MATERIAL:

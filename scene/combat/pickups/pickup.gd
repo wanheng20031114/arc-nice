@@ -84,7 +84,7 @@ func _on_body_entered(body: Node2D) -> void:
 	if net_manager != null and net_manager.is_client():
 		return
 
-	if player.apply_pickup(config):
+	if config.is_pickup_triggered_item() and player.apply_pickup(config):
 		_commit_consumption(player.peer_id, true)
 		return
 

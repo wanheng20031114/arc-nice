@@ -148,6 +148,12 @@ func _request_use(slot_index: int) -> void:
 	if item.inventory_locked:
 		_refresh_item_detail()
 		return
+	if (
+		not item.is_consumable_item()
+		and item.pickup_type != PickupConfig.PickupType.BUILDING
+	):
+		_refresh_item_detail()
+		return
 	item_use_requested.emit(slot_index)
 
 
@@ -176,7 +182,7 @@ func _refresh_item_detail() -> void:
 	if item == null:
 		clear_selection()
 		return
-	var is_consumable := _is_consumable_item(item)
+	var is_consumable := item.is_consumable_item()
 	var is_material := item.pickup_type == PickupConfig.PickupType.MATERIAL
 	var is_building := item.pickup_type == PickupConfig.PickupType.BUILDING
 	var is_inventory_locked := item.inventory_locked
@@ -189,13 +195,13 @@ func _refresh_item_detail() -> void:
 	item_detail_category_label.text = _get_item_type_label(item)
 	item_detail_category_backing.texture = (
 		ITEM_CATEGORY_ITEM_TEXTURE
-		if is_consumable or is_material
+		if is_consumable or is_material or is_building
 		else ITEM_CATEGORY_COLLECTIBLE_TEXTURE
 	)
 	item_detail_description.text = (
 		item.description if not item.description.is_empty() else "暂无描述"
 	)
-	item_detail_hint.visible = is_inventory_locked or is_consumable
+	item_detail_hint.visible = is_inventory_locked or is_consumable or is_building
 	if is_inventory_locked:
 		item_detail_hint.text = "命运物品 · 无法使用、移动或删除"
 	else:
@@ -204,7 +210,9 @@ func _refresh_item_detail() -> void:
 			if is_building
 			else "也可以双击槽位使用"
 		)
-	item_detail_use_button.visible = is_consumable and not is_inventory_locked
+	item_detail_use_button.visible = (
+		(is_consumable or is_building) and not is_inventory_locked
+	)
 	item_detail_use_button.text = "建造" if is_building else "使用"
 	item_detail_discard_button.visible = not is_inventory_locked
 	item_detail_discard_button.text = (
@@ -258,15 +266,9 @@ func _on_detail_discard_pressed() -> void:
 	item_discard_requested.emit(selected_slot_index)
 
 
-func _is_consumable_item(item: PickupConfig) -> bool:
-	return (
-		item != null
-		and item.pickup_type != PickupConfig.PickupType.COLLECTIBLE
-		and item.pickup_type != PickupConfig.PickupType.MATERIAL
-	)
-
-
 func _get_item_type_label(item: PickupConfig) -> String:
+	if item != null and item.is_consumable_item():
+		return "消耗品"
 	if item != null and item.pickup_type == PickupConfig.PickupType.COLLECTIBLE:
 		return "收藏品"
 	if item != null and item.pickup_type == PickupConfig.PickupType.MATERIAL:

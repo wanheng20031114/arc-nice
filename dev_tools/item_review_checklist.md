@@ -8,11 +8,14 @@
 
 | 检查 | ID | 名称 | 类型 | 持续时间 | 描述 | 配置 | 备注 |
 | --- | --- | --- | --- | ---: | --- | --- | --- |
-| [ ] | `pickup_health` | 生命药瓶 | 生命 | 0.0 | 恢复20点生命值；满血拾取时放入背包。 | `resources/config/pickups/pickup_health.tres` |  |
-| [ ] | `pickup_rapid` | 射速道具 | 射速 | 5.0 | 5秒内射速x2。 | `resources/config/pickups/pickup_rapid.tres` |  |
-| [ ] | `pickup_speed` | 移速道具 | 移速 | 5.0 | 5秒内移动速度+25%。 | `resources/config/pickups/pickup_speed.tres` |  |
-| [ ] | `pickup_spiral` | 雪狼破军 | 专属强化 | 5.0 | 远程角色武装螺旋射击；锄头猫猫召出四剑，接触造成30点物理伤害。 | `resources/config/pickups/pickup_spiral.tres` |  |
-| [ ] | `pickup_tenpura` | 天妇罗道具 | 天妇罗 | 5.0 | 5秒内移动速度变为20%。 | `resources/config/pickups/pickup_tenpura.tres` |  |
+| [ ] | `healing_potion` | 治疗血瓶 | 消耗品 | 0.0 | 使用后恢复20点生命值；满血时无法使用。 | `resources/config/consumables/healing_potion.tres` |  |
+| [ ] | `large_healing_potion` | 大号治疗血瓶 | 消耗品 | 0.0 | 使用后恢复50点生命值；满血时无法使用。 | `resources/config/consumables/large_healing_potion.tres` |  |
+| [ ] | `rock_potion` | 岩石药水 | 消耗品 | 10.0 | 使用后物理防御+15；再次饮用会覆盖并刷新。 | `resources/config/consumables/rock_potion.tres` |  |
+| [ ] | `large_rock_potion` | 大号岩石药水 | 消耗品 | 10.0 | 使用后物理防御+45；再次饮用会覆盖并刷新。 | `resources/config/consumables/large_rock_potion.tres` |  |
+| [ ] | `rapid_magazine` | 急速弹匣 | 拾取触发 | 5.0 | 5秒内射速x2。 | `resources/config/pickup_triggered_items/rapid_magazine.tres` |  |
+| [ ] | `speed_boots` | 加速鞋子 | 拾取触发 | 5.0 | 5秒内移动速度+25%。 | `resources/config/pickup_triggered_items/speed_boots.tres` |  |
+| [ ] | `snow_wolf_pojun` | 雪狼破军 | 拾取触发 | 5.0 | 远程角色武装螺旋射击；锄头猫猫召出四剑，接触造成30点物理伤害。 | `resources/config/pickup_triggered_items/snow_wolf_pojun.tres` |  |
+| [ ] | `tenpura` | 天妇罗 | 拾取触发 | 5.0 | 5秒内移动速度变为20%。 | `resources/config/pickup_triggered_items/tenpura.tres` |  |
 
 ## 收藏品
 

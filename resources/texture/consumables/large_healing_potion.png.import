@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ckcjulj0iftq7"
-path="res://.godot/imported/pickup_health.png-f772a032d8acf9597457b14c223f598c.ctex"
+uid="uid://vj58t3srye6j"
+path="res://.godot/imported/large_healing_potion.png-3d7e9d7ac1bf5766609c598a5db29333.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://resources/texture/pickup_health.png"
-dest_files=["res://.godot/imported/pickup_health.png-f772a032d8acf9597457b14c223f598c.ctex"]
+source_file="res://resources/texture/consumables/large_healing_potion.png"
+dest_files=["res://.godot/imported/large_healing_potion.png-3d7e9d7ac1bf5766609c598a5db29333.ctex"]
 
 [params]
 

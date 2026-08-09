@@ -188,6 +188,8 @@ var speed_buff_time_left: float = 0.0
 var rapid_buff_time_left: float = 0.0
 var attack_buff_time_left: float = 0.0
 var temporary_attack_damage_multiplier: float = 1.0
+var potion_physical_defense_bonus: int = 0
+var potion_physical_defense_time_left: float = 0.0
 var footstep_time_left: float = 0.0
 var dodge_chance: float = 0.0
 var skill1_unlocked: bool = true
@@ -549,6 +551,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # 物理帧更新，处理玩家移动、射击和无敌/增益状态更新
 func _physics_process(delta: float) -> void:
 	if world_movement_mode:
+		_update_potion_physical_defense_effect(delta)
 		_physics_process_world_movement(delta)
 		return
 	_update_invincibility(delta)
@@ -780,10 +783,10 @@ func notify_primary_attack_performed() -> void:
 func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 	if config == null:
 		return false
-	if config.pickup_type in [
-		PickupConfig.PickupType.MATERIAL,
-		PickupConfig.PickupType.BUILDING,
-	]:
+	if config.is_consumable_item():
+		if is_dead or world_movement_mode:
+			return false
+	elif not config.is_pickup_triggered_item():
 		return false
 		
 	var applied := false
@@ -813,6 +816,16 @@ func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 	elif not apply_healing and config.heal_amount > 0:
 		# The authoritative health event is delivered separately, but this reliable
 		# replay still represents a successfully consumed healing pickup/item.
+		applied = true
+
+	if (
+		config.is_consumable_item()
+		and config.potion_physical_defense_bonus > 0
+		and buff_duration > 0.0
+	):
+		potion_physical_defense_bonus = config.potion_physical_defense_bonus
+		potion_physical_defense_time_left = buff_duration
+		_refresh_collectible_stats(false)
 		applied = true
 
 	# 普通射速道具与形态专属射速提升维护，避免螺旋形态的射速被其他 Buff 状态覆盖。
@@ -2917,7 +2930,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	physical_defense = maxi(
 		_base_physical_defense
 		+ physical_defense_bonus
-		+ research_temporary_physical_defense_bonus,
+		+ research_temporary_physical_defense_bonus
+		+ potion_physical_defense_bonus,
 		0
 	)
 	magic_defense = clampi(
@@ -4689,7 +4703,21 @@ func _update_pickup_effects(delta: float) -> void:
 		if attack_buff_time_left <= 0.0:
 			temporary_attack_damage_multiplier = 1.0
 			_refresh_collectible_stats(false)
+
+	_update_potion_physical_defense_effect(delta)
 	_update_character_pickup_effects(delta)
+
+
+func _update_potion_physical_defense_effect(delta: float) -> void:
+	if potion_physical_defense_time_left <= 0.0:
+		return
+	potion_physical_defense_time_left = maxf(
+		potion_physical_defense_time_left - delta,
+		0.0
+	)
+	if potion_physical_defense_time_left <= 0.0:
+		potion_physical_defense_bonus = 0
+		_refresh_collectible_stats(false)
 
 
 func _update_character_pickup_effects(_delta: float) -> void:

@@ -4,7 +4,7 @@ const WOOD: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
 )
 const HEALTH_POTION: PickupConfig = preload(
-	"res://resources/config/pickups/pickup_health.tres"
+	"res://resources/config/consumables/healing_potion.tres"
 )
 
 var failures: Array[String] = []

@@ -140,8 +140,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 49,
-		"多人协议v49必须保留既有wire类型、忍者加速与重连确认，并隔离精英战斗机器人资源与精英枪手弹丸资源。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 50,
+		"多人协议v50必须保留既有wire类型、忍者加速与重连确认，并隔离精英战斗机器人、精英枪手弹丸与消耗品资源。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

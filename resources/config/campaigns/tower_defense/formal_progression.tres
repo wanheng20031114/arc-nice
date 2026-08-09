@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="TowerDefenseProgressionConfig" format=3]
 
 [ext_resource type="Script" path="res://resources/config/campaigns/tower_defense/tower_defense_progression_config.gd" id="1_script"]
-[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="2_pickup_script"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="2_pickup_script"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_wood.tres" id="6_wood"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="7_plank"]
 [ext_resource type="Resource" path="res://resources/config/materials/material_sapling.tres" id="8_sapling"]

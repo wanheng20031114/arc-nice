@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="PickupConfig" load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://resources/config/pickups/pickup_config.gd" id="1_script"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/xiaocong_fate_stone.png" id="2_icon"]
 
 [resource]

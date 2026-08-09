@@ -3,15 +3,18 @@ extends Control
 signal preview_purchase_requested(offer_index: int)
 signal exit_requested
 
+const SHOP_CONFIG: RogueUndergroundShopConfig = preload(
+	"res://resources/config/rogue_shop/shallow_mine_underground_shop.tres"
+)
 const SAMPLE_ITEMS: Array[PickupConfig] = [
-	preload("res://resources/config/pickups/pickup_health.tres"),
+	preload("res://resources/config/consumables/healing_potion.tres"),
+	preload("res://resources/config/consumables/large_healing_potion.tres"),
+	preload("res://resources/config/consumables/rock_potion.tres"),
+	preload("res://resources/config/consumables/large_rock_potion.tres"),
 	preload("res://resources/config/collectibles/collectible_iron_dagger.tres"),
 	preload("res://resources/config/collectibles/collectible_oil_lamp.tres"),
 	preload("res://resources/config/collectibles/collectible_apprentice_scroll.tres"),
 	preload("res://resources/config/collectibles/collectible_obsidian_key.tres"),
-	preload("res://resources/config/collectibles/collectible_frost_crystal.tres"),
-	preload("res://resources/config/collectibles/collectible_royal_goblet.tres"),
-	preload("res://resources/config/pickups/pickup_health.tres"),
 ]
 
 @onready var shop_view: RogueUndergroundShopView = %ShopView
@@ -46,7 +49,12 @@ func _build_sample_offers() -> Array[Dictionary]:
 			"offer_index": index,
 			"config_path": item.resource_path,
 			"item": item,
-			"price": 50 if item.pickup_type == PickupConfig.PickupType.HEALTH else 200 + index * 70,
+			"kind": "consumable" if item.is_consumable_item() else "collectible",
+			"price": (
+				SHOP_CONFIG.get_consumable_purchase_price(item)
+				if item.is_consumable_item()
+				else 200 + index * 70
+			),
 			"purchased": false,
 		})
 	return offers
@@ -60,8 +68,12 @@ func _build_sample_sell_slots() -> Array[Dictionary]:
 			"slot_index": index,
 			"config_path": item.resource_path,
 			"item": item,
-			"stack_count": 3 if index == 0 else 1,
-			"sell_price": 50 if item.pickup_type == PickupConfig.PickupType.HEALTH else 100,
+			"stack_count": 3 if item.is_consumable_item() else 1,
+			"sell_price": (
+				SHOP_CONFIG.get_consumable_sell_price(item)
+				if item.is_consumable_item()
+				else SHOP_CONFIG.collectible_sell_price
+			),
 			"can_sell": true,
 		})
 	return slots

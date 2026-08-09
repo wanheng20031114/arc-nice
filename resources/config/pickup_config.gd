@@ -8,7 +8,7 @@ enum PickupType {
 	RAPID,
 	SPIRAL,
 	TENPURA,
-	HEALTH,
+	CONSUMABLE,
 	COLLECTIBLE,
 	MATERIAL,
 	BUILDING,
@@ -168,6 +168,19 @@ static func get_inventory_stack_limit(item: PickupConfig) -> int:
 		return 1
 	return clampi(item.inventory_stack_limit, 1, 999)
 
+
+func is_pickup_triggered_item() -> bool:
+	return pickup_type in [
+		PickupType.SPEED,
+		PickupType.RAPID,
+		PickupType.SPIRAL,
+		PickupType.TENPURA,
+	]
+
+
+func is_consumable_item() -> bool:
+	return pickup_type == PickupType.CONSUMABLE
+
 @export_group("显示资源")
 @export var icon_texture : Texture2D
 # 仅控制物品作为世界掉落物时的显示尺寸；背包图标按源纹理尺寸独立适配。
@@ -192,6 +205,8 @@ func get_inventory_icon_scale() -> Vector2:
 @export_group("Buff 效果")
 # 拾取后回复的生命值，0 表示该道具不回复生命。
 @export_range(0, 99, 1, "or_greater") var heal_amount: int = 0
+# 消耗药水提供的临时物理防御；与研究、收藏品加成分别维护并在属性重算时相加。
+@export_range(0, 999, 1, "or_greater") var potion_physical_defense_bonus: int = 0
 # 道具效果持续时间，单位为秒。
 @export_range(0.0, 120.0, 0.1, "or_greater") var duration: float = 5.0
 # 玩家移速倍率，1.0 表示不改变，1.2 表示提升 20%。

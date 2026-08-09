@@ -1,6 +1,40 @@
-[gd_resource type="Resource" script_class="RogueUndergroundShopConfig" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="RogueUndergroundShopConfig" load_steps=11 format=3]
 
-[ext_resource type="Script" path="res://resources/config/rogue_shop/rogue_underground_shop_config.gd" id="1_script"]
+[ext_resource type="Script" path="res://resources/config/rogue_shop/rogue_underground_shop_config.gd" id="1_config"]
+[ext_resource type="Script" uid="uid://dc2v7m5x9q4kn" path="res://resources/config/rogue_shop/rogue_underground_shop_listing.gd" id="2_listing"]
+[ext_resource type="Resource" uid="uid://dy5n57oaij0qo" path="res://resources/config/consumables/healing_potion.tres" id="3_healing"]
+[ext_resource type="Resource" uid="uid://c83hqx1v5k2na" path="res://resources/config/consumables/large_healing_potion.tres" id="4_large_healing"]
+[ext_resource type="Resource" uid="uid://d1q7m4v8s2kpe" path="res://resources/config/consumables/rock_potion.tres" id="5_rock"]
+[ext_resource type="Resource" uid="uid://c5w9n2r7x4hka" path="res://resources/config/consumables/large_rock_potion.tres" id="6_large_rock"]
+
+[sub_resource type="Resource" id="ShopListing_healing"]
+script = ExtResource("2_listing")
+item = ExtResource("3_healing")
+purchase_price = 50
+sell_price = 50
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_large_healing"]
+script = ExtResource("2_listing")
+item = ExtResource("4_large_healing")
+purchase_price = 200
+sell_price = 200
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_rock"]
+script = ExtResource("2_listing")
+item = ExtResource("5_rock")
+purchase_price = 70
+sell_price = 70
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_large_rock"]
+script = ExtResource("2_listing")
+item = ExtResource("6_large_rock")
+purchase_price = 280
+sell_price = 280
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
 
 [resource]
-script = ExtResource("1_script")
+script = ExtResource("1_config")
+consumable_listings = Array[ExtResource("2_listing")]([SubResource("ShopListing_healing"), SubResource("ShopListing_large_healing"), SubResource("ShopListing_rock"), SubResource("ShopListing_large_rock")])

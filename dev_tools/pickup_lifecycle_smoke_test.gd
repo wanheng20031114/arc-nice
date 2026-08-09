@@ -1,7 +1,7 @@
 extends SceneTree
 
 const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
-const PICKUP_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
+const PICKUP_CONFIG := preload("res://resources/config/consumables/healing_potion.tres")
 const PICKUP_COUNT := 256
 const SAMPLE_RENDER_FRAMES := 120
 
