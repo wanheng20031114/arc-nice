@@ -48,6 +48,7 @@ const LIFE_CRYSTAL := preload("res://resources/config/collectibles/collectible_l
 const LINGLAN_BOSS_CONFIG := preload("res://resources/config/bosses/boss_01_linglan.tres")
 const NetConstants := preload("res://scene/multiplayer/net_constants.gd")
 const PROJECTILE_EVENTS_ONLY_ARG := "--projectile-events-only"
+const PROTOCOL_ONLY_ARG := "--protocol-only"
 
 var failures: Array[String] = []
 
@@ -57,6 +58,10 @@ func _init() -> void:
 
 
 func _run() -> void:
+	if OS.get_cmdline_user_args().has(PROTOCOL_ONLY_ARG):
+		_test_net_manager_protocol_version_gate()
+		_finish_test_run()
+		return
 	if OS.get_cmdline_user_args().has(PROJECTILE_EVENTS_ONLY_ARG):
 		await _test_enemy_hit_dedupe_enemy_removed_and_pickup_confirm()
 		for _cleanup_frame in range(4):
@@ -274,14 +279,15 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 53, "The multiplayer protocol version must be 53.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v53 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 54, "The multiplayer protocol version must be 54.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v54 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 52))
+		not bool(net_manager.call("_is_protocol_version_compatible", 53))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 52))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 51))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 50))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 49))
@@ -330,7 +336,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v53 must reject v52 and all older or unversioned clients."
+		"Protocol v54 must reject v53 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []

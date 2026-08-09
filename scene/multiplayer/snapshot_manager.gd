@@ -28,6 +28,7 @@ const ENEMY_LOCOMOTION_IDLE := 0
 const ENEMY_LOCOMOTION_MOVING := 1
 
 const PLAYER_SNAPSHOT_HEADER_BYTES := 9
+const PLAYER_REALTIME_STATUS_BYTES := 1
 const ENEMY_SNAPSHOT_HEADER_BYTES := 5
 const PACKED_VECTOR2_I16_BYTES := 4
 const PACKED_VECTOR2_I32_BYTES := 8
@@ -105,6 +106,8 @@ class PlayerState:
 	var is_reloading: bool = false
 	var reload_progress: float = 0.0
 	var primary_cooldown_ratio: float = 0.0
+	## 每帧绝对发送，收敛物品事务与技能确认跨 ENet 频道的乱序。
+	var void_battery_charged: bool = false
 	## Host 权威的最终移动倍率；包含角色形态与收藏品等运行时修正。
 	var effective_move_speed_multiplier: float = 1.0
 
@@ -195,6 +198,10 @@ static func encode_player_snapshot(
 			current.effective_move_speed_multiplier,
 			MOVE_MULTIPLIER_SCALE
 		))
+	# Transient item state is absolute each frame instead of delta/meta. It may
+	# arm and discharge between adjacent snapshots, while the reliable inventory
+	# transaction is delivered on another ENet channel.
+	buf.put_u8(1 if current.void_battery_charged else 0)
 
 	return buf.data_array
 
@@ -301,6 +308,7 @@ static func decode_player_snapshot(
 		target.effective_move_speed_multiplier = (
 			float(buf.get_u16()) / MOVE_MULTIPLIER_SCALE
 		)
+	target.void_battery_charged = buf.get_u8() != 0
 
 	return buf.get_position()
 
@@ -309,7 +317,7 @@ static func _get_player_snapshot_size(data: PackedByteArray, offset: int) -> int
 	if offset < 0 or offset + PLAYER_SNAPSHOT_HEADER_BYTES > data.size():
 		return -1
 	var mask := int(data[offset + PLAYER_SNAPSHOT_HEADER_BYTES - 1])
-	var size := PLAYER_SNAPSHOT_HEADER_BYTES
+	var size := PLAYER_SNAPSHOT_HEADER_BYTES + PLAYER_REALTIME_STATUS_BYTES
 	if mask & MASK_POSITION:
 		size += PACKED_VECTOR2_I32_BYTES
 	if mask & MASK_VELOCITY:
@@ -584,6 +592,7 @@ static func _copy_player_state_into(source: PlayerState, target: PlayerState) ->
 	target.reload_progress = source.reload_progress
 	target.primary_cooldown_ratio = source.primary_cooldown_ratio
 	target.effective_move_speed_multiplier = source.effective_move_speed_multiplier
+	target.void_battery_charged = source.void_battery_charged
 
 
 static func _copy_enemy_state(source: EnemyState) -> EnemyState:
@@ -608,6 +617,7 @@ static func _copy_enemy_state_into(source: EnemyState, target: EnemyState) -> vo
 static func _apply_player_delta(target: PlayerState, delta: PlayerState, mask: int) -> void:
 	target.peer_id = delta.peer_id
 	target.sequence = delta.sequence
+	target.void_battery_charged = delta.void_battery_charged
 	if mask & MASK_POSITION:
 		target.position = delta.position
 	if mask & MASK_VELOCITY:

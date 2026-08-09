@@ -187,7 +187,7 @@ func _try_use_skill1() -> bool:
 	):
 		return false
 	_sync_skill1_charge_duration_to_upgrade_level()
-	if skill1_charge < skill1_charge_duration:
+	if not has_void_battery_charge() and skill1_charge < skill1_charge_duration:
 		return false
 	if _requires_multiplayer_gameplay_gateway():
 		return gameplay_gateway != null and gameplay_gateway.request_hoe_whirlwind()

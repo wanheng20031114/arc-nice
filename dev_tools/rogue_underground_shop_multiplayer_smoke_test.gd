@@ -89,8 +89,11 @@ func _test_controller_route_and_snapshot_contracts() -> void:
 	)
 	var old_shopping := host_controller.export_snapshot_for_peer(1)
 	_expect(
-		(old_shopping.get("offers", []) as Array).size() == 8,
-		"目标私有快照必须恰好携带 8 个报价。"
+		(old_shopping.get("offers", []) as Array).size() == 8
+		and int(old_shopping.get("schema_version", -1)) == 2
+		and (old_shopping.get("consumable_prices", []) as Array).size()
+		== SHOP_CONFIG.consumable_listings.size(),
+		"目标私有快照必须携带8个报价与完整的 schema v2 会话价格表。"
 	)
 
 	var purchase_offer := (old_shopping.get("offers", []) as Array)[0] as Dictionary
@@ -381,6 +384,31 @@ func _test_full_snapshot_atomic_rejection(
 			route_before
 		),
 		"坏 party_economy 必须在路线呈现前原子拒绝，不能写入任一状态。"
+	)
+
+	var bad_session_price := valid_shop_snapshot.duplicate(true)
+	var consumable_prices := bad_session_price["consumable_prices"] as Array
+	var first_price_entry := (consumable_prices[0] as Dictionary).duplicate(true)
+	first_price_entry["price"] = int(first_price_entry["price"]) + 1
+	consumable_prices[0] = first_price_entry
+	bad_session_price["consumable_prices"] = consumable_prices
+	_expect(
+		not route.apply_full_snapshot(
+			layout_snapshot,
+			state_snapshot,
+			{},
+			{},
+			bad_session_price
+		)
+		and _route_and_economy_are_unchanged(
+			route,
+			controller,
+			client_run_state,
+			phase_before,
+			economy_before,
+			route_before
+		),
+		"未按10量化的个人会话价格表必须在全量快照提交前原子拒绝。"
 	)
 
 	var bad_price := valid_shop_snapshot.duplicate(true)

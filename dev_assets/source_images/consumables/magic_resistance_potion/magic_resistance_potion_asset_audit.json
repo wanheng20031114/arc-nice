@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "asset": "magic_resistance_potion",
+  "display_name": "紫晶法抗药水",
+  "status": "passed",
+  "tier": "low",
+  "shape": "small_bottle",
+  "chroma_key": "#FF00FF",
+  "pipeline": [
+    "built-in ImageGen, one distinct source per item",
+    "flat #FF00FF border-connected chroma-key extraction",
+    "retained foreground RGB preserved without palette quantization",
+    "strict pixel-grid analysis with no unsafe compression override",
+    "one final pixel center-sampled per measured logical cell",
+    "nearest-neighbour upscale only when needed for a readable inventory bbox",
+    "centered placement on a transparent 32x32 RGBA canvas",
+    "binary alpha, clean transparent RGB, and one-pixel border audit",
+    "lossless PNG encoding"
+  ],
+  "commands": {
+    "build": "python dev_tools/process_consumable_assets.py --asset magic_resistance_potion",
+    "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+  },
+  "processing_parameters": {
+    "background_remover": "connected_background_remover.remove_connected_background",
+    "rgb_tolerance": 72,
+    "hue_tolerance": 0.035,
+    "expansion_radius": 12,
+    "hard_alpha": true,
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "logical_sampler": "Pillow nearest center sample",
+    "production_upscale": "nearest only; shrinking forbidden",
+    "palette_quantization": "none",
+    "png": "optimize=true, compress_level=9 (lossless)"
+  },
+  "prompt_record": {
+    "status": "linked",
+    "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+    "asset_entry_found": true,
+    "selected_source": "magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+    "selected_source_matches": true,
+    "referenced_images": [
+      "resources/texture/consumables/healing_potion.png"
+    ],
+    "prompt_lines": [
+      "Use case: stylized-concept",
+      "Asset type: deliberately LOW-RES chunky pixel-art consumable icon source for final native 32x32",
+      "Input image: existing small potion is style reference only.",
+      "Primary request: Create exactly one small purple-crystal magic-resistance potion: narrow corked glass bottle, deep violet liquid, one simple angular lavender amethyst shard visible inside, dark outline and cyan-white glass highlights.",
+      "Pixel-grid contract: draw as if on a 24x24 logical grid enlarged by strict nearest-neighbor. Use large uniform square pixels. Entire bottle silhouette at most 15 logical pixels wide by 22 tall, with at least 2 logical pixels empty background on every side. The crystal motif uses only 4-6 logical pixels. No fine half-scale details.",
+      "Backdrop: perfectly flat uniform #ff00ff chroma key.",
+      "Style: crisp limited-palette retro pixel art, thick near-black outline, hard edges, designed for 32x32 readability.",
+      "Composition: exactly one centered narrow small-tier bottle.",
+      "Constraints: opaque shapes, no alpha translucency, no antialiasing/blur, no floor/shadow/text/runes outside bottle/logo/props, no #ff00ff in object.",
+      "Avoid: 48x/64x detail density, wide large bottle, smooth vector rendering, tiny facets, multiple bottles."
+    ],
+    "prompt_sha256": "6c2ad0476f8461e4071c439863112f1819d2f0f21cec2423b487e6bc7a178eca"
+  },
+  "paths": {
+    "source_master": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+    "alpha_source": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_alpha.png",
+    "logical_preview": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_logical_preview.png",
+    "production_texture": "resources/texture/consumables/magic_resistance_potion.png",
+    "atlas": "resources/atlas/magic_resistance_potion.tres",
+    "config": "resources/config/consumables/magic_resistance_potion.tres"
+  },
+  "source_selection": {
+    "approved": {
+      "path": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+      "sha256": "95b3e976e2618b5a7ce554c774d17df2cbef2739c011beb0d631c24dc5867d60"
+    },
+    "rejected": [
+      {
+        "path": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta.png",
+        "sha256": "5caaa1208f746872716099cbfc0abdc32f6fa50af0635b9e523eec19605386a5",
+        "reason": "rejected: measured 32x54 logical subject exceeds the lossless 22x30 contract"
+      }
+    ],
+    "manual_review_note": "",
+    "global_unsafe_override_enabled": false
+  },
+  "hashes": {
+    "source_master_sha256": "95b3e976e2618b5a7ce554c774d17df2cbef2739c011beb0d631c24dc5867d60",
+    "alpha_source_sha256": "d932989abc459168d903b4226ea859097316acf8ba7b578061b8782f1bf184b0",
+    "logical_preview_sha256": "e4c7e073b407d8cc60ca88513abae1cc85e2461ff402d0933b68a07c395dfbda",
+    "production_texture_sha256": "f7f6a473bbf9144b88607c1262cc68fe1f7a7731d2f676234bda0e776fdc0d54",
+    "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+  },
+  "source": {
+    "path": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+    "normalization_mode": "measured_grid_center_sample",
+    "detected_logical_subject_size": [
+      8,
+      20
+    ],
+    "logical_subject_size": [
+      8,
+      20
+    ],
+    "logical_fit_scale": 1.0,
+    "grid_analysis": {
+      "image_width": 1254,
+      "image_height": 1254,
+      "image_mode": "RGBA",
+      "detection_mode": "approximate",
+      "grid_cell_width": 39.1,
+      "grid_cell_height": 39.05,
+      "grid_cell_size": 39,
+      "confidence": 0.931,
+      "subject_bbox": {
+        "left": 471,
+        "top": 238,
+        "right": 784,
+        "bottom": 1017
+      },
+      "subject_pixel_width": 313,
+      "subject_pixel_height": 779,
+      "subject_grid_width": 8,
+      "subject_grid_height": 20,
+      "recommended_canvas_grid_width": 32,
+      "recommended_canvas_grid_height": 32
+    }
+  },
+  "max_subject_size": [
+    22,
+    30
+  ],
+  "logical_subject_size": [
+    8,
+    20
+  ],
+  "production_subject_size": [
+    12,
+    30
+  ],
+  "production_upscale": 1.5,
+  "paste_origin": [
+    10,
+    1
+  ],
+  "output_bbox_exclusive": [
+    10,
+    1,
+    22,
+    31
+  ],
+  "visible_color_count": 92,
+  "alpha_values": [
+    0,
+    255
+  ],
+  "checks": {
+    "canvas_32x32": true,
+    "one_pixel_transparent_border": true,
+    "binary_alpha": true,
+    "transparent_rgb_clean": true,
+    "logical_pixels_preserved": true,
+    "no_near_chroma_key_foreground": true
+  }
+}

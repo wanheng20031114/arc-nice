@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3 uid="uid://b8r5n2q7v4sxc"]
+
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://d7s3n6q9v2kma" path="res://resources/atlas/void_battery.tres" id="2_icon"]
+
+[resource]
+script = ExtResource("1_script")
+pickup_type = 4
+display_name = "虚空电池"
+description = "使用后为虚空电池充能；下一次成功使用技能时不消耗技力。已充能时无法再次使用。"
+can_store_in_inventory = true
+stackable = true
+inventory_stack_limit = 999
+icon_texture = ExtResource("2_icon")
+icon_scale = Vector2(0.5, 0.5)
+grants_next_skill_free = true
+duration = 0.0
+metadata/_custom_type_script = "uid://qucrregg4cq0"

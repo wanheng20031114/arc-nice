@@ -33,6 +33,16 @@ static func generate_offers_from_pool(
 		return []
 	var pool := _normalize_collectible_pool(compatible_collectibles)
 	var consumable_pool := _normalize_consumable_pool(config)
+	var consumable_prices := generate_consumable_prices(
+		config,
+		node_content_seed,
+		participant_stable_key
+	)
+	if consumable_prices.size() != consumable_pool.size():
+		return []
+	var consumable_price_by_path: Dictionary = {}
+	for entry in consumable_prices:
+		consumable_price_by_path[str(entry["config_path"])] = int(entry["price"])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = _stable_seed(
 		node_content_seed,
@@ -67,18 +77,54 @@ static func generate_offers_from_pool(
 		})
 	for consumable_index in consumable_count:
 		var listing := consumable_pool[consumable_index]
+		var config_path := listing.get_config_path()
 		offers.append({
 			"offer_index": -1,
-			"config_path": listing.get_config_path(),
+			"config_path": config_path,
 			"kind": String(OFFER_KIND_CONSUMABLE),
 			"rarity": -1,
-			"price": listing.purchase_price,
+			"price": int(consumable_price_by_path.get(config_path, 0)),
 			"purchased": false,
 		})
 	_shuffle_offers(offers, rng)
 	for offer_index in offers.size():
 		offers[offer_index]["offer_index"] = offer_index
 	return offers
+
+
+static func generate_consumable_prices(
+	config: RogueUndergroundShopConfig,
+	node_content_seed: int,
+	participant_stable_key: String
+) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if (
+		config == null
+		or not config.validate_config().is_empty()
+		or participant_stable_key.is_empty()
+	):
+		return result
+	var config_hash := config.compute_runtime_contract_hash()
+	for listing in _normalize_consumable_pool(config):
+		var config_path := listing.get_config_path()
+		var price_tier := int(listing.price_tier)
+		var band := config.get_consumable_price_band(price_tier)
+		if band.z <= 0 or band.y < band.x:
+			return []
+		var price_rng := RandomNumberGenerator.new()
+		price_rng.seed = _stable_consumable_price_seed(
+			node_content_seed,
+			participant_stable_key,
+			config_hash,
+			config_path,
+			price_tier
+		)
+		result.append({
+			"config_path": config_path,
+			"price_tier": price_tier,
+			"price": _roll_price_band(band, price_rng),
+		})
+	return result
 
 
 static func get_compatible_collectible_pool(
@@ -139,6 +185,13 @@ static func _roll_collectible_price(
 	rng: RandomNumberGenerator
 ) -> int:
 	var band := config.get_collectible_price_band(item.collectible_rarity)
+	return _roll_price_band(band, rng)
+
+
+static func _roll_price_band(
+	band: Vector3i,
+	rng: RandomNumberGenerator
+) -> int:
 	if band.z <= 0 or band.y < band.x:
 		return 0
 	var step_count := (band.y - band.x) / band.z
@@ -155,6 +208,26 @@ static func _stable_seed(
 		% [node_content_seed, participant_stable_key, config_hash]
 	).sha256_text()
 	# Keep the parsed value within signed 64-bit range on every platform.
+	return digest.substr(0, 15).hex_to_int()
+
+
+static func _stable_consumable_price_seed(
+	node_content_seed: int,
+	participant_stable_key: String,
+	config_hash: String,
+	config_path: String,
+	price_tier: int
+) -> int:
+	var digest := (
+		"underground-shop-consumable-price|%d|%s|%s|%s|%d"
+		% [
+			node_content_seed,
+			participant_stable_key,
+			config_hash,
+			config_path,
+			price_tier,
+		]
+	).sha256_text()
 	return digest.substr(0, 15).hex_to_int()
 
 

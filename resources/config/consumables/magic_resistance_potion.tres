@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3 uid="uid://b6p3t8k5n2vqa"]
+
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://d2q9m5v7s4kxa" path="res://resources/atlas/magic_resistance_potion.tres" id="2_icon"]
+
+[resource]
+script = ExtResource("1_script")
+pickup_type = 4
+display_name = "紫晶法抗药水"
+description = "使用后魔法防御提升15点，持续10秒。再次饮用同族药水会覆盖并刷新持续时间。"
+can_store_in_inventory = true
+stackable = true
+inventory_stack_limit = 999
+icon_texture = ExtResource("2_icon")
+icon_scale = Vector2(0.5, 0.5)
+potion_magic_defense_bonus = 15
+duration = 10.0
+metadata/_custom_type_script = "uid://qucrregg4cq0"

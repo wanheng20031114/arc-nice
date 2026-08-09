@@ -625,7 +625,7 @@ func receive_inventory_item_used(
 	):
 		var item := load(config_path) as PickupConfig
 		if item != null:
-			player_node.apply_pickup(item, false)
+			player_node.apply_inventory_item_use_replay(item)
 
 
 func receive_inventory_item_discarded(

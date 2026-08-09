@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RogueUndergroundShopConfig" load_steps=11 format=3]
+[gd_resource type="Resource" script_class="RogueUndergroundShopConfig" load_steps=35 format=3]
 
 [ext_resource type="Script" path="res://resources/config/rogue_shop/rogue_underground_shop_config.gd" id="1_config"]
 [ext_resource type="Script" uid="uid://dc2v7m5x9q4kn" path="res://resources/config/rogue_shop/rogue_underground_shop_listing.gd" id="2_listing"]
@@ -6,35 +6,115 @@
 [ext_resource type="Resource" uid="uid://c83hqx1v5k2na" path="res://resources/config/consumables/large_healing_potion.tres" id="4_large_healing"]
 [ext_resource type="Resource" uid="uid://d1q7m4v8s2kpe" path="res://resources/config/consumables/rock_potion.tres" id="5_rock"]
 [ext_resource type="Resource" uid="uid://c5w9n2r7x4hka" path="res://resources/config/consumables/large_rock_potion.tres" id="6_large_rock"]
+[ext_resource type="Resource" uid="uid://c4j2n8s6v3kpa" path="res://resources/config/consumables/skill_charge_battery.tres" id="7_skill_charge"]
+[ext_resource type="Resource" uid="uid://d7m5q2w9r4hxb" path="res://resources/config/consumables/large_skill_charge_battery.tres" id="8_large_skill_charge"]
+[ext_resource type="Resource" uid="uid://b6p3t8k5n2vqa" path="res://resources/config/consumables/magic_resistance_potion.tres" id="9_magic_resistance"]
+[ext_resource type="Resource" uid="uid://c9r4m7x2j5swd" path="res://resources/config/consumables/large_magic_resistance_potion.tres" id="10_large_magic_resistance"]
+[ext_resource type="Resource" uid="uid://d2v8k6p3n9qfa" path="res://resources/config/consumables/regeneration_potion.tres" id="11_regeneration"]
+[ext_resource type="Resource" uid="uid://b5x7m4r2t8jkc" path="res://resources/config/consumables/large_regeneration_potion.tres" id="12_large_regeneration"]
+[ext_resource type="Resource" uid="uid://c3n9q6v5p2hsa" path="res://resources/config/consumables/guardian_mixture.tres" id="13_guardian"]
+[ext_resource type="Resource" uid="uid://d8k4t7m3w6rpb" path="res://resources/config/consumables/battle_spirit_potion.tres" id="14_battle_spirit"]
+[ext_resource type="Resource" uid="uid://b2q6s9x4n7vma" path="res://resources/config/consumables/focus_potion.tres" id="15_focus"]
+[ext_resource type="Resource" uid="uid://c7v3p8k5r2mqd" path="res://resources/config/consumables/windwalk_potion.tres" id="16_windwalk"]
+[ext_resource type="Resource" uid="uid://d4m9w6t2x7kpa" path="res://resources/config/consumables/phantom_potion.tres" id="17_phantom"]
+[ext_resource type="Resource" uid="uid://b8r5n2q7v4sxc" path="res://resources/config/consumables/void_battery.tres" id="18_void"]
 
 [sub_resource type="Resource" id="ShopListing_healing"]
 script = ExtResource("2_listing")
 item = ExtResource("3_healing")
-purchase_price = 50
-sell_price = 50
+price_tier = 0
 metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
 
 [sub_resource type="Resource" id="ShopListing_large_healing"]
 script = ExtResource("2_listing")
 item = ExtResource("4_large_healing")
-purchase_price = 200
-sell_price = 200
+price_tier = 1
 metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
 
 [sub_resource type="Resource" id="ShopListing_rock"]
 script = ExtResource("2_listing")
 item = ExtResource("5_rock")
-purchase_price = 70
-sell_price = 70
+price_tier = 0
 metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
 
 [sub_resource type="Resource" id="ShopListing_large_rock"]
 script = ExtResource("2_listing")
 item = ExtResource("6_large_rock")
-purchase_price = 280
-sell_price = 280
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_skill_charge"]
+script = ExtResource("2_listing")
+item = ExtResource("7_skill_charge")
+price_tier = 0
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_large_skill_charge"]
+script = ExtResource("2_listing")
+item = ExtResource("8_large_skill_charge")
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_magic_resistance"]
+script = ExtResource("2_listing")
+item = ExtResource("9_magic_resistance")
+price_tier = 0
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_large_magic_resistance"]
+script = ExtResource("2_listing")
+item = ExtResource("10_large_magic_resistance")
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_regeneration"]
+script = ExtResource("2_listing")
+item = ExtResource("11_regeneration")
+price_tier = 0
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_large_regeneration"]
+script = ExtResource("2_listing")
+item = ExtResource("12_large_regeneration")
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_guardian"]
+script = ExtResource("2_listing")
+item = ExtResource("13_guardian")
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_battle_spirit"]
+script = ExtResource("2_listing")
+item = ExtResource("14_battle_spirit")
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_focus"]
+script = ExtResource("2_listing")
+item = ExtResource("15_focus")
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_windwalk"]
+script = ExtResource("2_listing")
+item = ExtResource("16_windwalk")
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_phantom"]
+script = ExtResource("2_listing")
+item = ExtResource("17_phantom")
+price_tier = 1
+metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
+
+[sub_resource type="Resource" id="ShopListing_void"]
+script = ExtResource("2_listing")
+item = ExtResource("18_void")
+price_tier = 2
 metadata/_custom_type_script = "uid://dc2v7m5x9q4kn"
 
 [resource]
 script = ExtResource("1_config")
-consumable_listings = Array[ExtResource("2_listing")]([SubResource("ShopListing_healing"), SubResource("ShopListing_large_healing"), SubResource("ShopListing_rock"), SubResource("ShopListing_large_rock")])
+consumable_listings = Array[ExtResource("2_listing")]([SubResource("ShopListing_healing"), SubResource("ShopListing_large_healing"), SubResource("ShopListing_rock"), SubResource("ShopListing_large_rock"), SubResource("ShopListing_skill_charge"), SubResource("ShopListing_large_skill_charge"), SubResource("ShopListing_magic_resistance"), SubResource("ShopListing_large_magic_resistance"), SubResource("ShopListing_regeneration"), SubResource("ShopListing_large_regeneration"), SubResource("ShopListing_guardian"), SubResource("ShopListing_battle_spirit"), SubResource("ShopListing_focus"), SubResource("ShopListing_windwalk"), SubResource("ShopListing_phantom"), SubResource("ShopListing_void")])

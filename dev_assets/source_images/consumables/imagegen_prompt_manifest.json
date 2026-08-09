@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "generated_on": "2026-08-10",
+  "mode": "builtin_imagegen",
+  "chroma_key": "#ff00ff",
+  "items": [
+    {
+      "stem": "skill_charge_battery",
+      "selected_source": "skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+      "referenced_images": ["resources/texture/consumables/healing_potion.png"],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: deliberately LOW-RES chunky pixel-art inventory icon source for a final native 32x32 game texture",
+        "Input image: style reference only.",
+        "Primary request: Create one small blue-crystal skill-charge battery: a short compact upright magical cell with dark metal cap/base, cyan glass, and one saturated sky-blue faceted crystal core. It is not a potion bottle.",
+        "Pixel-grid contract: design it as if drawn on a 24x24 logical pixel canvas, then enlarged with strict nearest-neighbor blocks. Use very large uniform square pixels. The entire object silhouette must fit within at most 16 logical pixels wide by 22 logical pixels tall, with at least 2 logical pixels of empty background on every side. No subpixel details and no fine 1/2-scale pixels.",
+        "Scene/backdrop: perfectly flat uniform #ff00ff chroma-key.",
+        "Style: extremely crisp hand-authored retro pixel art, limited palette, thick near-black outline, simple cyan-white highlights, readable at actual 32x32.",
+        "Composition: exactly one centered object, shorter and simpler than a tall battery tower.",
+        "Constraints: hard opaque shapes, no antialiasing, no gradients between logical pixels, no shadow/floor/text/logo/sparks/props, no #ff00ff in object.",
+        "Avoid: 48x48 or 64x64 detail density, tall slender silhouette, smooth rendering, tiny bevels, multiple objects."
+      ]
+    },
+    {
+      "stem": "large_skill_charge_battery",
+      "selected_source": "large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png",
+      "referenced_images": [
+        "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+        "resources/texture/consumables/large_healing_potion.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: deliberately LOW-RES chunky pixel-art inventory icon source for final native 32x32",
+        "Input images: Image 1 defines the small blue-crystal battery family; Image 2 defines broad large-tier mass. References only.",
+        "Primary request: Create exactly one large blue-crystal skill-charge battery, clearly upgraded from Image 1: broader/heavier dark metal cap and base, wider cyan chamber, one larger saturated sky-blue crystal. Same family, not merely enlarged.",
+        "Pixel-grid contract: draw as if on a 24x24 logical grid enlarged by strict nearest-neighbor. Large uniform square pixels only. Object silhouette must fit at most 19 logical pixels wide by 23 logical pixels tall, leaving at least 1 logical pixel of background on each side. No half-scale micro-pixels.",
+        "Backdrop: perfectly uniform flat #ff00ff chroma key.",
+        "Style: crisp limited-palette retro pixel art, thick near-black outline, simple white/cyan highlights, readable at 32x32.",
+        "Composition: one centered object, broad and sturdy.",
+        "Constraints: hard opaque shapes, no antialiasing, no gradients between logical blocks, no floor/shadow/text/logo/sparks/props, no #ff00ff in object.",
+        "Avoid: 48x/64x detail density, thin tower silhouette, smooth rendering, tiny bevels, multiple objects."
+      ]
+    },
+    {
+      "stem": "magic_resistance_potion",
+      "selected_source": "magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+      "referenced_images": ["resources/texture/consumables/healing_potion.png"],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: deliberately LOW-RES chunky pixel-art consumable icon source for final native 32x32",
+        "Input image: existing small potion is style reference only.",
+        "Primary request: Create exactly one small purple-crystal magic-resistance potion: narrow corked glass bottle, deep violet liquid, one simple angular lavender amethyst shard visible inside, dark outline and cyan-white glass highlights.",
+        "Pixel-grid contract: draw as if on a 24x24 logical grid enlarged by strict nearest-neighbor. Use large uniform square pixels. Entire bottle silhouette at most 15 logical pixels wide by 22 tall, with at least 2 logical pixels empty background on every side. The crystal motif uses only 4-6 logical pixels. No fine half-scale details.",
+        "Backdrop: perfectly flat uniform #ff00ff chroma key.",
+        "Style: crisp limited-palette retro pixel art, thick near-black outline, hard edges, designed for 32x32 readability.",
+        "Composition: exactly one centered narrow small-tier bottle.",
+        "Constraints: opaque shapes, no alpha translucency, no antialiasing/blur, no floor/shadow/text/runes outside bottle/logo/props, no #ff00ff in object.",
+        "Avoid: 48x/64x detail density, wide large bottle, smooth vector rendering, tiny facets, multiple bottles."
+      ]
+    },
+    {
+      "stem": "large_magic_resistance_potion",
+      "selected_source": "large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
+      "referenced_images": [
+        "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+        "resources/texture/consumables/large_rock_potion.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: EXTRA-COARSE low-resolution pixel-art consumable icon source for final native 32x32",
+        "Input images: purple potion family and large-tier silhouette references only.",
+        "Primary request: exactly one large purple-crystal magic-resistance potion: broad squat corked bottle, deep violet liquid, two simple lavender amethyst shards, dark thick outline and cyan-white glass rim.",
+        "Strict pixel-grid contract: draw the entire artwork as if on a 16x16 logical pixel canvas and enlarge each logical pixel into one huge uniform square block using nearest-neighbor. The bottle may use at most 14 logical pixels wide by 15 tall. Crystal cluster uses no more than 5x6 logical pixels total. ABSOLUTELY NO half-size pixels, diagonal substeps smaller than the main block, gradients, antialiasing, or high-resolution facets.",
+        "Backdrop: perfectly uniform #ff00ff.",
+        "Style: very chunky limited-palette retro pixel art, comparable to an intentional 16-bit inventory sprite, readable after placement into 32x32.",
+        "Composition: one centered broad bottle with one logical pixel padding minimum.",
+        "Constraints: opaque hard shapes; no shadow/floor/text/logo/runes outside bottle/props; no #ff00ff inside object.",
+        "Avoid: detailed crystal rendering, 24/32/48 logical pixel density, smoothness, tiny highlights, multiple bottles."
+      ]
+    },
+    {
+      "stem": "regeneration_potion",
+      "selected_source": "regeneration_potion/regeneration_potion_imagegen_magenta.png",
+      "referenced_images": [
+        "resources/texture/consumables/healing_potion.png",
+        "resources/texture/consumables/rock_potion.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: deliberately low-resolution chunky pixel-art consumable icon source for final native 32x32",
+        "Input images: existing small-tier potion style references only.",
+        "Primary request: Create exactly one small gel regeneration tonic. A narrow upright corked glass bottle in the same family, containing luminous turquoise-green gel. Inside, use two or three large rounded blocky gel bubbles and one simple upward-growing leaf/spiral motif to suggest gradual healing, without text or symbols outside the bottle.",
+        "Pixel-grid contract: design as if on a 24x24 logical grid enlarged with strict nearest-neighbor. Uniform large square pixels. Bottle silhouette at most 16 logical pixels wide by 22 tall, leaving at least 2 logical pixels background on all sides. No fine micro-pixels.",
+        "Backdrop: perfectly uniform flat #ff00ff chroma key.",
+        "Style: crisp hand-authored retro pixel art, thick near-black outline, cyan-white glass highlight, limited teal/green palette, hard edges, readable at 32x32.",
+        "Composition: exactly one centered narrow small-tier bottle.",
+        "Constraints: opaque shapes, no alpha translucency, no antialiasing/blur, no floor/shadow/text/logo/watermark/extra props, no #ff00ff in object.",
+        "Avoid: wide large bottle, photorealism, smooth vector art, thin details, dense noise, multiple bottles."
+      ]
+    },
+    {
+      "stem": "large_regeneration_potion",
+      "selected_source": "large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
+      "referenced_images": [
+        "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_imagegen_magenta.png",
+        "resources/texture/consumables/large_healing_potion.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: EXTRA-COARSE low-resolution pixel-art consumable icon source for final native 32x32",
+        "Input images: small regeneration family and large-tier silhouette references only.",
+        "Primary request: exactly one large gel regeneration tonic: broad squat corked bottle, luminous turquoise-green gel, three large blocky gel cells, one simple upward spiral/leaf shape, thick dark outline and cyan-white rim.",
+        "Strict pixel-grid contract: draw as if on a 16x16 logical pixel canvas, each logical pixel one huge uniform square block enlarged nearest-neighbor. Bottle at most 14 logical pixels wide by 15 tall. No half-size pixels, no micro-bubbles, no small diagonal substeps, no gradients.",
+        "Backdrop: perfectly uniform #ff00ff.",
+        "Style: very chunky limited-palette retro pixel art, hard edges, readable at 32x32.",
+        "Composition: one centered broad bottle with at least one logical pixel padding.",
+        "Constraints: opaque shapes; no antialiasing/blur/soft glow/floor/shadow/text/logo/props; no #ff00ff inside object.",
+        "Avoid: narrow tall bottle, 24/32/48 logical density, detailed spiral, multiple bottles."
+      ]
+    },
+    {
+      "stem": "guardian_mixture",
+      "selected_source": "guardian_mixture/guardian_mixture_imagegen_magenta.png",
+      "referenced_images": [
+        "resources/texture/consumables/rock_potion.png",
+        "resources/texture/consumables/large_healing_potion.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+        "Input images: game consumable style references only.",
+        "Primary request: Create exactly one guardian mixture bottle. Use a sturdy medium-width glass flask with dark near-black outline, a steel-blue lower liquid and warm amber-gold upper glow. Inside is one bold simple shield silhouette made from 5-7 logical pixels, communicating temporary protection from all damage. Distinct from the brown rock potion.",
+        "Strict pixel-grid contract: artwork behaves like an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels only. Object at most 15 logical pixels wide by 16 tall, at least one logical pixel background around it. No half-size pixels.",
+        "Backdrop: perfectly uniform flat #ff00ff.",
+        "Style: crisp limited-palette retro pixel art, chunky outline, cyan-white glass highlight, hard edges, readable at 32x32.",
+        "Composition: one centered object only.",
+        "Constraints: opaque shapes, no antialiasing/blur/soft glow, no floor/shadow/text/logo/props, no #ff00ff inside object.",
+        "Avoid: detailed heraldry, gradients, high pixel density, photorealism, multiple bottles."
+      ]
+    },
+    {
+      "stem": "battle_spirit_potion",
+      "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+      "referenced_images": [
+        "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
+        "resources/texture/consumables/rock_potion.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: EXTRA-COARSE low-resolution pixel-art consumable icon source for final native 32x32",
+        "Input images: Image 1 defines ember/sword battle-spirit contents but is too tall/detailed; Image 2 defines compact bottle proportions. References only.",
+        "Primary request: exactly one shorter, compact battle-spirit potion. Medium-width angular corked bottle, ember-orange/deep crimson liquid, one extremely simple yellow-orange upward flame/sword-tip motif inside. Preserve attack-power identity, but simplify.",
+        "Strict pixel-grid contract: draw as if on a 16x16 logical canvas enlarged strict nearest-neighbor. Bottle at most 13 logical pixels wide by 15 tall. Motif at most 5x7 logical pixels. Uniform huge square blocks only; absolutely no half-size pixels, micro-sparks, fine stair steps, gradients, or dense bevels.",
+        "Backdrop: perfectly uniform #ff00ff.",
+        "Style: crisp limited-palette retro pixel art, thick near-black outline, cyan-white glass rim, hard edges, readable at 32x32.",
+        "Composition: one centered compact bottle, one logical pixel border minimum.",
+        "Constraints: opaque; no antialiasing/blur/shadow/floor/text/logo/weapon outside bottle/props; no #ff00ff inside object.",
+        "Avoid: round healing potion, tall thin bottle, 24/32/48 logical density, multiple objects."
+      ]
+    },
+    {
+      "stem": "focus_potion",
+      "selected_source": "focus_potion/focus_potion_imagegen_magenta.png",
+      "referenced_images": [
+        "resources/texture/consumables/healing_potion.png",
+        "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+        "Input images: game consumable style references only.",
+        "Primary request: Create exactly one focus potion that communicates heightened concentration and faster attacks. A compact diamond-shouldered glass flask with dark near-black outline and deep indigo/cobalt liquid. Inside is one minimal pale-cyan eye/bullseye motif: a horizontal diamond eye with a bright center dot, only a few logical pixels, plus cyan-white glass highlights. Distinct from purple magic-resistance crystals.",
+        "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 14x16 logical pixels, at least one pixel empty border. No half-scale details.",
+        "Backdrop: perfectly uniform flat #ff00ff.",
+        "Style: crisp limited-palette retro pixel art, hard edges, thick outline, readable at 32x32.",
+        "Composition: one centered bottle only.",
+        "Constraints: opaque shapes, no antialiasing/blur/soft glow, no floor/shadow/text/logo/props, no #ff00ff inside object.",
+        "Avoid: literal clock, lightning bolt, detailed realistic eye, gradients, high pixel density, multiple objects."
+      ]
+    },
+    {
+      "stem": "windwalk_potion",
+      "selected_source": "windwalk_potion/windwalk_potion_imagegen_magenta.png",
+      "referenced_images": [
+        "resources/texture/consumables/healing_potion.png",
+        "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+        "Input images: game consumable style references only.",
+        "Primary request: Create exactly one windwalk potion. A compact teardrop-shaped glass bottle with dark near-black outline, bright sky-blue liquid, pale cyan-white highlights, and one simple white wind curl inside: a short S-shaped gust with two blocky trailing strokes. It should communicate faster movement without using a lightning bolt or shoe.",
+        "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 14x16 logical pixels, at least one logical pixel empty border. No half-size details.",
+        "Backdrop: perfectly uniform flat #ff00ff.",
+        "Style: crisp limited-palette retro pixel art, hard edges, thick outline, readable at 32x32.",
+        "Composition: one centered bottle only.",
+        "Constraints: opaque shapes, no antialiasing/blur/transparency, no floor/shadow/text/logo/cloud outside bottle/props, no #ff00ff inside object.",
+        "Avoid: lightning, footwear, detailed swirls, gradients, high pixel density, multiple objects."
+      ]
+    },
+    {
+      "stem": "phantom_potion",
+      "selected_source": "phantom_potion/phantom_potion_imagegen_magenta.png",
+      "referenced_images": [
+        "resources/texture/consumables/rock_potion.png",
+        "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+        "Input images: game consumable style references only.",
+        "Primary request: Create exactly one phantom potion for temporary dodge. A compact crescent-shouldered glass flask with dark near-black outline, smoky slate-gray and muted lilac liquid, pale blue-white highlights. Inside is one minimal drifting phantom silhouette: a soft blocky hood/veil shape with two tiny cyan eyes and a tapering side trail, entirely contained inside the bottle. It should suggest evasiveness, not death or poison.",
+        "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 14x16 logical pixels, at least one logical pixel empty border. No half-size details.",
+        "Backdrop: perfectly uniform flat #ff00ff.",
+        "Style: crisp limited-palette retro pixel art, hard edges, thick outline, readable at 32x32.",
+        "Composition: one centered bottle only.",
+        "Constraints: opaque shapes, no antialiasing/blur/transparency, no floor/shadow/text/logo/ghost outside bottle/props, no #ff00ff inside object.",
+        "Avoid: skull, poison iconography, detailed face, gradients, high pixel density, multiple objects."
+      ]
+    },
+    {
+      "stem": "void_battery",
+      "selected_source": "void_battery/void_battery_imagegen_magenta.png",
+      "referenced_images": [
+        "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+        "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png"
+      ],
+      "prompt_lines": [
+        "Use case: stylized-concept",
+        "Asset type: extra-coarse premium pixel-art consumable icon source for final native 32x32",
+        "Input images: blue skill-charge battery family references only.",
+        "Primary request: Create exactly one high-tier void battery whose effect makes the next skill free. It belongs to the same magical cell family but is unmistakably rarer: a broad compact dark-metal battery with reinforced four-corner clamps, a near-black glass chamber, and one central void orb made of a black core surrounded by a saturated violet ring and a tiny cold-white star highlight. Use restrained purple/cyan accents, not blue crystal.",
+        "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 16 logical pixels wide by 16 tall, at least one logical pixel empty border. Void orb at most 7x7 logical pixels. No half-size details.",
+        "Backdrop: perfectly uniform flat #ff00ff.",
+        "Style: crisp limited-palette retro pixel art, thick near-black outline, hard edges, premium but simple, readable at 32x32.",
+        "Composition: exactly one centered battery only.",
+        "Constraints: opaque shapes, no antialiasing/blur/soft aura, no floating particles, floor, shadow, text, logo, props, or #ff00ff inside object.",
+        "Avoid: potion bottle silhouette, colorful galaxy texture, gradients, high pixel density, multiple objects."
+      ]
+    }
+  ]
+}

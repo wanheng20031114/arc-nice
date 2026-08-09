@@ -3,7 +3,7 @@ class_name RogueUndergroundShopSession
 
 signal session_changed(session_revision: int)
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 const OFFER_COUNT := 8
 
 enum Phase {
@@ -22,6 +22,7 @@ var _participant_peer_ids: Array[int] = []
 var _exited_peer_ids: Dictionary = {}
 var _exited_spectator_peer_ids: Dictionary = {}
 var _offers_by_peer: Dictionary = {}
+var _consumable_prices_by_peer: Dictionary = {}
 var _shelf_revisions: Dictionary = {}
 var _purchase_reservations: Dictionary = {}
 
@@ -29,34 +30,51 @@ var _purchase_reservations: Dictionary = {}
 func start_authoritative(
 	occurrence_key: String,
 	route_revision: int,
-	participant_offers: Dictionary
+	participant_offers: Dictionary,
+	participant_consumable_prices: Dictionary
 ) -> bool:
 	if (
 		_phase not in [Phase.IDLE, Phase.CLOSED]
 		or occurrence_key.is_empty()
 		or route_revision < 0
 		or participant_offers.is_empty()
+		or participant_consumable_prices.size() != participant_offers.size()
 	):
 		return false
 	var normalized_peer_ids: Array[int] = []
 	var normalized_offers: Dictionary = {}
+	var normalized_consumable_prices: Dictionary = {}
 	for raw_peer_id in participant_offers.keys():
 		if typeof(raw_peer_id) != TYPE_INT:
 			return false
 		var peer_id := int(raw_peer_id)
 		if peer_id < 0 or normalized_offers.has(peer_id):
 			return false
+		if (
+			typeof(participant_offers[raw_peer_id]) != TYPE_ARRAY
+			or not participant_consumable_prices.has(raw_peer_id)
+			or typeof(participant_consumable_prices[raw_peer_id]) != TYPE_ARRAY
+		):
+			return false
 		var offers := participant_offers[raw_peer_id] as Array
-		if not _are_valid_offers(offers):
+		var consumable_prices := (
+			participant_consumable_prices[raw_peer_id] as Array
+		)
+		if (
+			not _are_valid_consumable_prices(consumable_prices)
+			or not _are_valid_offers(offers, consumable_prices)
+		):
 			return false
 		normalized_peer_ids.append(peer_id)
 		normalized_offers[peer_id] = offers.duplicate(true)
+		normalized_consumable_prices[peer_id] = consumable_prices.duplicate(true)
 	normalized_peer_ids.sort()
 	_occurrence_key = occurrence_key
 	_route_revision = route_revision
 	_session_revision = 1
 	_participant_peer_ids = normalized_peer_ids
 	_offers_by_peer = normalized_offers
+	_consumable_prices_by_peer = normalized_consumable_prices
 	_exited_peer_ids.clear()
 	_exited_spectator_peer_ids.clear()
 	_purchase_reservations.clear()
@@ -93,11 +111,16 @@ func apply_snapshot(snapshot: Dictionary) -> bool:
 	for peer_id in snapshot["exited_peer_ids"] as Array:
 		_exited_peer_ids[int(peer_id)] = true
 	_offers_by_peer.clear()
+	_consumable_prices_by_peer.clear()
 	_shelf_revisions.clear()
 	var target_peer_id := int(snapshot["target_peer_id"])
 	var target_offers := snapshot["offers"] as Array
+	var target_consumable_prices := snapshot["consumable_prices"] as Array
 	if not target_offers.is_empty():
 		_offers_by_peer[target_peer_id] = target_offers.duplicate(true)
+		_consumable_prices_by_peer[target_peer_id] = (
+			target_consumable_prices.duplicate(true)
+		)
 		_shelf_revisions[target_peer_id] = int(snapshot["shelf_revision"])
 	elif bool(snapshot["target_exited"]):
 		_exited_spectator_peer_ids[target_peer_id] = true
@@ -128,6 +151,11 @@ func export_snapshot_for_peer(target_peer_id: int) -> Dictionary:
 		"offers": (
 			(_offers_by_peer[target_peer_id] as Array).duplicate(true)
 			if _offers_by_peer.has(target_peer_id)
+			else []
+		),
+		"consumable_prices": (
+			(_consumable_prices_by_peer[target_peer_id] as Array).duplicate(true)
+			if _consumable_prices_by_peer.has(target_peer_id)
 			else []
 		),
 	}
@@ -305,6 +333,15 @@ func get_shelf_revision(peer_id: int) -> int:
 	return int(_shelf_revisions.get(peer_id, -1))
 
 
+func get_consumable_price(peer_id: int, config_path: String) -> int:
+	if config_path.is_empty() or not _consumable_prices_by_peer.has(peer_id):
+		return 0
+	for entry in _consumable_prices_by_peer[peer_id] as Array:
+		if str((entry as Dictionary).get("config_path", "")) == config_path:
+			return int((entry as Dictionary).get("price", 0))
+	return 0
+
+
 func get_waiting_peer_ids() -> Array[int]:
 	var waiting: Array[int] = []
 	for peer_id in _participant_peer_ids:
@@ -354,9 +391,13 @@ func get_snapshot_target_peer_ids() -> Array[int]:
 	return result
 
 
-func _are_valid_offers(offers: Array) -> bool:
+func _are_valid_offers(offers: Array, consumable_prices: Array) -> bool:
 	if offers.size() != OFFER_COUNT:
 		return false
+	var price_by_path: Dictionary = {}
+	for entry in consumable_prices:
+		var price_entry := entry as Dictionary
+		price_by_path[str(price_entry["config_path"])] = int(price_entry["price"])
 	for offer_index in offers.size():
 		if typeof(offers[offer_index]) != TYPE_DICTIONARY:
 			return false
@@ -370,7 +411,55 @@ func _are_valid_offers(offers: Array) -> bool:
 			or typeof(offer.get("purchased", false)) != TYPE_BOOL
 		):
 			return false
+		if (
+			kind == "consumable"
+			and int(price_by_path.get(str(offer["config_path"]), 0))
+			!= int(offer["price"])
+		):
+			return false
 	return true
+
+
+func _are_valid_consumable_prices(prices: Array) -> bool:
+	if prices.size() < RogueUndergroundShopConfig.MINIMUM_CONSUMABLE_LISTING_COUNT:
+		return false
+	var seen_paths: Dictionary = {}
+	for entry_value in prices:
+		if typeof(entry_value) != TYPE_DICTIONARY:
+			return false
+		var entry := entry_value as Dictionary
+		if (
+			typeof(entry.get("config_path")) != TYPE_STRING
+			or str(entry["config_path"]).is_empty()
+			or seen_paths.has(str(entry["config_path"]))
+			or typeof(entry.get("price_tier")) != TYPE_INT
+			or typeof(entry.get("price")) != TYPE_INT
+		):
+			return false
+		var price_tier := int(entry["price_tier"])
+		var price := int(entry["price"])
+		var band := _get_consumable_price_band(price_tier)
+		if (
+			band.z <= 0
+			or price < band.x
+			or price > band.y
+			or price % band.z != 0
+		):
+			return false
+		seen_paths[str(entry["config_path"])] = true
+	return true
+
+
+func _get_consumable_price_band(price_tier: int) -> Vector3i:
+	match price_tier:
+		RogueUndergroundShopListing.PriceTier.LOW:
+			return RogueUndergroundShopConfig.LOW_CONSUMABLE_PRICE_BAND
+		RogueUndergroundShopListing.PriceTier.MEDIUM:
+			return RogueUndergroundShopConfig.MEDIUM_CONSUMABLE_PRICE_BAND
+		RogueUndergroundShopListing.PriceTier.HIGH:
+			return RogueUndergroundShopConfig.HIGH_CONSUMABLE_PRICE_BAND
+		_:
+			return Vector3i.ZERO
 
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
@@ -392,6 +481,7 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 		or typeof(snapshot.get("target_exited")) != TYPE_BOOL
 		or typeof(snapshot.get("shelf_revision")) != TYPE_INT
 		or typeof(snapshot.get("offers")) != TYPE_ARRAY
+		or typeof(snapshot.get("consumable_prices")) != TYPE_ARRAY
 	):
 		return false
 	var participant_ids: Array[int] = []
@@ -437,14 +527,17 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 	if target_peer_id < 0:
 		return false
 	var offers := snapshot["offers"] as Array
+	var consumable_prices := snapshot["consumable_prices"] as Array
 	if participant_set.has(target_peer_id):
 		return (
-			_are_valid_offers(offers)
+			_are_valid_consumable_prices(consumable_prices)
+			and _are_valid_offers(offers, consumable_prices)
 			and int(snapshot["shelf_revision"]) >= 0
 			and bool(snapshot["target_exited"]) == exited_set.has(target_peer_id)
 		)
 	return (
 		offers.is_empty()
+		and consumable_prices.is_empty()
 		and int(snapshot["shelf_revision"]) == -1
 		and bool(snapshot["target_exited"])
 	)
@@ -470,6 +563,9 @@ func _get_authoritative_snapshot_core(snapshot: Dictionary) -> Dictionary:
 		"target_exited": snapshot.get("target_exited"),
 		"shelf_revision": snapshot.get("shelf_revision"),
 		"offers": (snapshot.get("offers", []) as Array).duplicate(true),
+		"consumable_prices": (
+			(snapshot.get("consumable_prices", []) as Array).duplicate(true)
+		),
 	}
 
 

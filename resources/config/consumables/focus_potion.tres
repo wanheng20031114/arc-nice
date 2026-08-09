@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3 uid="uid://b2q6tax4n7vma"]
+
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://d4v8m2q6s9kpa" path="res://resources/atlas/focus_potion.tres" id="2_icon"]
+
+[resource]
+script = ExtResource("1_script")
+pickup_type = 4
+display_name = "专注药水"
+description = "使用后攻击速度提高30%，持续8秒。"
+can_store_in_inventory = true
+stackable = true
+inventory_stack_limit = 999
+icon_texture = ExtResource("2_icon")
+icon_scale = Vector2(0.5, 0.5)
+potion_fire_rate_multiplier = 1.3
+duration = 8.0
+metadata/_custom_type_script = "uid://qucrregg4cq0"

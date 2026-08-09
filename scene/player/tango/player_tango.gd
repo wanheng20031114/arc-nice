@@ -142,7 +142,7 @@ func _try_use_skill1() -> bool:
 	):
 		return false
 	_sync_skill1_charge_duration_to_upgrade_level()
-	if skill1_charge < skill1_charge_duration:
+	if not has_void_battery_charge() and skill1_charge < skill1_charge_duration:
 		return false
 
 	if _requires_multiplayer_gameplay_gateway():
@@ -171,6 +171,8 @@ func try_start_authoritative_electric_surge(
 		or not _has_valid_combat_runtime()
 	):
 		return false
+	var had_void_battery_charge := has_void_battery_charge()
+	var previous_skill1_charge := skill1_charge
 	if not try_begin_skill1_activation(true):
 		return false
 	var previous_last_seen_activation_id := _electric_surge_last_seen_activation_id
@@ -187,7 +189,9 @@ func try_start_authoritative_electric_surge(
 		# or making the Host retry the same id forever without the skill effect.
 		_clear_electric_surge_state()
 		_electric_surge_last_seen_activation_id = previous_last_seen_activation_id
-		skill1_charge = skill1_charge_duration
+		skill1_charge = previous_skill1_charge
+		if had_void_battery_charge:
+			void_battery_charged = true
 		_update_skill1_charge_bar()
 		return false
 	_play_electric_surge_audio()

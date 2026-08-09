@@ -25,7 +25,7 @@ func _try_use_skill1() -> bool:
 	if is_dead or are_combat_actions_locked():
 		return false
 	_sync_skill1_charge_duration_to_upgrade_level()
-	if skill1_charge < skill1_charge_duration:
+	if not has_void_battery_charge() and skill1_charge < skill1_charge_duration:
 		return false
 
 	var spawn_parent := _get_combat_spawn_parent()
@@ -42,7 +42,14 @@ func _try_use_skill1() -> bool:
 	bomb.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	var bomb_damage := get_skill1_projectile_damage()
 	bomb.setup(self, shoot_direction, bomb_damage)
-	if not try_begin_skill1_activation(_uses_authoritative_skill_preserve_roll()):
+	var defer_void_battery_consumption := (
+		gameplay_gateway != null and gameplay_gateway.is_client_view()
+	)
+	if not try_begin_skill1_activation(
+		_uses_authoritative_skill_preserve_roll(),
+		defer_void_battery_consumption,
+		bomb.get_instance_id()
+	):
 		bomb.free()
 		return false
 	spawn_parent.add_child(bomb)

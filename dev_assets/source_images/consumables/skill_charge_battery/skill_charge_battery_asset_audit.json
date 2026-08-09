@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "asset": "skill_charge_battery",
+  "display_name": "蓝晶技力电池",
+  "status": "passed",
+  "tier": "low",
+  "shape": "small_battery",
+  "chroma_key": "#FF00FF",
+  "pipeline": [
+    "built-in ImageGen, one distinct source per item",
+    "flat #FF00FF border-connected chroma-key extraction",
+    "retained foreground RGB preserved without palette quantization",
+    "strict pixel-grid analysis with no unsafe compression override",
+    "one final pixel center-sampled per measured logical cell",
+    "nearest-neighbour upscale only when needed for a readable inventory bbox",
+    "centered placement on a transparent 32x32 RGBA canvas",
+    "binary alpha, clean transparent RGB, and one-pixel border audit",
+    "lossless PNG encoding"
+  ],
+  "commands": {
+    "build": "python dev_tools/process_consumable_assets.py --asset skill_charge_battery",
+    "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+  },
+  "processing_parameters": {
+    "background_remover": "connected_background_remover.remove_connected_background",
+    "rgb_tolerance": 72,
+    "hue_tolerance": 0.035,
+    "expansion_radius": 12,
+    "hard_alpha": true,
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "logical_sampler": "Pillow nearest center sample",
+    "production_upscale": "nearest only; shrinking forbidden",
+    "palette_quantization": "none",
+    "png": "optimize=true, compress_level=9 (lossless)"
+  },
+  "prompt_record": {
+    "status": "linked",
+    "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+    "asset_entry_found": true,
+    "selected_source": "skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+    "selected_source_matches": true,
+    "referenced_images": [
+      "resources/texture/consumables/healing_potion.png"
+    ],
+    "prompt_lines": [
+      "Use case: stylized-concept",
+      "Asset type: deliberately LOW-RES chunky pixel-art inventory icon source for a final native 32x32 game texture",
+      "Input image: style reference only.",
+      "Primary request: Create one small blue-crystal skill-charge battery: a short compact upright magical cell with dark metal cap/base, cyan glass, and one saturated sky-blue faceted crystal core. It is not a potion bottle.",
+      "Pixel-grid contract: design it as if drawn on a 24x24 logical pixel canvas, then enlarged with strict nearest-neighbor blocks. Use very large uniform square pixels. The entire object silhouette must fit within at most 16 logical pixels wide by 22 logical pixels tall, with at least 2 logical pixels of empty background on every side. No subpixel details and no fine 1/2-scale pixels.",
+      "Scene/backdrop: perfectly flat uniform #ff00ff chroma-key.",
+      "Style: extremely crisp hand-authored retro pixel art, limited palette, thick near-black outline, simple cyan-white highlights, readable at actual 32x32.",
+      "Composition: exactly one centered object, shorter and simpler than a tall battery tower.",
+      "Constraints: hard opaque shapes, no antialiasing, no gradients between logical pixels, no shadow/floor/text/logo/sparks/props, no #ff00ff in object.",
+      "Avoid: 48x48 or 64x64 detail density, tall slender silhouette, smooth rendering, tiny bevels, multiple objects."
+    ],
+    "prompt_sha256": "a9ff09c47cffe199b99db708c183243a76f3534e649580f50df34d164296659b"
+  },
+  "paths": {
+    "source_master": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+    "alpha_source": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_alpha.png",
+    "logical_preview": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_logical_preview.png",
+    "production_texture": "resources/texture/consumables/skill_charge_battery.png",
+    "atlas": "resources/atlas/skill_charge_battery.tres",
+    "config": "resources/config/consumables/skill_charge_battery.tres"
+  },
+  "source_selection": {
+    "approved": {
+      "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+      "sha256": "89d7bc7fb3557896342a8ee5430e00152488134078f11c6abfd674c4496f1ccd"
+    },
+    "rejected": [
+      {
+        "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta.png",
+        "sha256": "b0b13bc689c4e9d5c095c763df56b16505d2dc70c8ac255ba7f5d07409f97ad3",
+        "reason": "rejected: unreliable primary grid (confidence 0.388) and approximately 16x38 logical subject"
+      }
+    ],
+    "manual_review_note": "",
+    "global_unsafe_override_enabled": false
+  },
+  "hashes": {
+    "source_master_sha256": "89d7bc7fb3557896342a8ee5430e00152488134078f11c6abfd674c4496f1ccd",
+    "alpha_source_sha256": "99a0294b4f87a64b9aec7a312a7ab6f79cecf980bf165b80e5a5fb2a17e32735",
+    "logical_preview_sha256": "d50aab134f81578d30c0fe3474113a30d95457add8beb590b949d8266051b347",
+    "production_texture_sha256": "36336c712753b555cf0f4e79dcae2faee31f0245031f9f37a90e700f260bca0b",
+    "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+  },
+  "source": {
+    "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+    "normalization_mode": "measured_grid_center_sample",
+    "detected_logical_subject_size": [
+      10,
+      18
+    ],
+    "logical_subject_size": [
+      10,
+      18
+    ],
+    "logical_fit_scale": 1.0,
+    "grid_analysis": {
+      "image_width": 1254,
+      "image_height": 1254,
+      "image_mode": "RGBA",
+      "detection_mode": "approximate",
+      "grid_cell_width": 40.65,
+      "grid_cell_height": 39.6,
+      "grid_cell_size": 40,
+      "confidence": 0.85,
+      "subject_bbox": {
+        "left": 424,
+        "top": 326,
+        "right": 829,
+        "bottom": 1038
+      },
+      "subject_pixel_width": 405,
+      "subject_pixel_height": 712,
+      "subject_grid_width": 10,
+      "subject_grid_height": 18,
+      "recommended_canvas_grid_width": 31,
+      "recommended_canvas_grid_height": 32
+    }
+  },
+  "max_subject_size": [
+    22,
+    30
+  ],
+  "logical_subject_size": [
+    10,
+    18
+  ],
+  "production_subject_size": [
+    17,
+    30
+  ],
+  "production_upscale": 1.666667,
+  "paste_origin": [
+    7,
+    1
+  ],
+  "output_bbox_exclusive": [
+    7,
+    1,
+    24,
+    31
+  ],
+  "visible_color_count": 106,
+  "alpha_values": [
+    0,
+    255
+  ],
+  "checks": {
+    "canvas_32x32": true,
+    "one_pixel_transparent_border": true,
+    "binary_alpha": true,
+    "transparent_rgb_clean": true,
+    "logical_pixels_preserved": true,
+    "no_near_chroma_key_foreground": true
+  }
+}

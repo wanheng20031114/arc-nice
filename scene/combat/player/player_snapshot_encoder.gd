@@ -55,6 +55,7 @@ func collect(
 		state.effective_move_speed_multiplier = (
 			player_instance.get_authoritative_move_speed_multiplier()
 		)
+		state.void_battery_charged = player_instance.has_void_battery_charge()
 		_output.append(state)
 	for peer_id_variant in _states_by_peer_id:
 		if not _live_peer_ids.has(int(peer_id_variant)):

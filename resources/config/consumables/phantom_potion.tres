@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="PickupConfig" format=3 uid="uid://d4naw6t2x7kpa"]
+
+[ext_resource type="Script" uid="uid://qucrregg4cq0" path="res://resources/config/pickup_config.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://c2m8v4q7s5kpd" path="res://resources/atlas/phantom_potion.tres" id="2_icon"]
+
+[resource]
+script = ExtResource("1_script")
+pickup_type = 4
+display_name = "幻影药剂"
+description = "使用后闪避率提高10%，持续8秒。"
+can_store_in_inventory = true
+stackable = true
+inventory_stack_limit = 999
+icon_texture = ExtResource("2_icon")
+icon_scale = Vector2(0.5, 0.5)
+potion_dodge_chance_bonus = 0.1
+duration = 8.0
+metadata/_custom_type_script = "uid://qucrregg4cq0"

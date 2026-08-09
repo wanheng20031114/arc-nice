@@ -190,6 +190,24 @@ var attack_buff_time_left: float = 0.0
 var temporary_attack_damage_multiplier: float = 1.0
 var potion_physical_defense_bonus: int = 0
 var potion_physical_defense_time_left: float = 0.0
+var potion_magic_defense_bonus: int = 0
+var potion_magic_defense_time_left: float = 0.0
+var potion_regeneration_per_second: float = 0.0
+var potion_regeneration_time_left: float = 0.0
+var potion_regeneration_heal_accumulator: float = 0.0
+var potion_damage_reduction: float = 0.0
+var potion_damage_reduction_time_left: float = 0.0
+var potion_attack_damage_multiplier: float = 1.0
+var potion_attack_damage_time_left: float = 0.0
+var potion_fire_rate_multiplier: float = 1.0
+var potion_fire_rate_time_left: float = 0.0
+var potion_move_speed_multiplier: float = 1.0
+var potion_move_speed_time_left: float = 0.0
+var potion_dodge_chance_bonus: float = 0.0
+var potion_dodge_time_left: float = 0.0
+var void_battery_charged: bool = false
+var _void_battery_prediction_pending: bool = false
+var _void_battery_prediction_token: int = 0
 var footstep_time_left: float = 0.0
 var dodge_chance: float = 0.0
 var skill1_unlocked: bool = true
@@ -551,7 +569,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # 物理帧更新，处理玩家移动、射击和无敌/增益状态更新
 func _physics_process(delta: float) -> void:
 	if world_movement_mode:
-		_update_potion_physical_defense_effect(delta)
+		_update_potion_effects(delta)
 		_physics_process_world_movement(delta)
 		return
 	_update_invincibility(delta)
@@ -781,10 +799,37 @@ func notify_primary_attack_performed() -> void:
 
 # 应用道具效果，更新玩家形态、射速、移速等增益状态
 func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
+	return _apply_pickup_effects(config, apply_healing, true, true, true)
+
+
+## Reliable inventory replay owns presentation and non-snapshotted effects.
+## Skill charge and the void-battery bit are absolute PlayerState fields, so
+## replaying either additively across ENet channels would create ordering races.
+func apply_inventory_item_use_replay(config: PickupConfig) -> bool:
+	return _apply_pickup_effects(config, false, false, false, false)
+
+
+func _apply_pickup_effects(
+	config: PickupConfig,
+	apply_healing: bool,
+	apply_skill_charge_restore: bool,
+	apply_void_battery_charge: bool,
+	validate_local_life_state: bool
+) -> bool:
 	if config == null:
 		return false
 	if config.is_consumable_item():
-		if is_dead or world_movement_mode:
+		# A reliable Host-confirmed replay may arrive after the death event on a
+		# different ENet channel. Timed effects keep counting while dead, so that
+		# ordering must not discard them. Route mode still rejects the replay
+		# because changing scene intentionally clears all potion state.
+		if world_movement_mode or (validate_local_life_state and is_dead):
+			return false
+		if (
+			apply_void_battery_charge
+			and config.grants_next_skill_free
+			and void_battery_charged
+		):
 			return false
 	elif not config.is_pickup_triggered_item():
 		return false
@@ -803,7 +848,13 @@ func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 		DEFAULT_FIRE_RATE_MULTIPLIER
 	)
 
-	if not is_equal_approx(config.move_speed_multiplier, DEFAULT_MOVE_SPEED_MULTIPLIER):
+	if (
+		not config.is_consumable_item()
+		and not is_equal_approx(
+			config.move_speed_multiplier,
+			DEFAULT_MOVE_SPEED_MULTIPLIER
+		)
+	):
 		current_move_speed_multiplier = config.move_speed_multiplier
 		speed_buff_time_left = buff_duration
 		applied = true
@@ -818,6 +869,16 @@ func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 		# replay still represents a successfully consumed healing pickup/item.
 		applied = true
 
+	if config.is_consumable_item() and config.skill_charge_restore_amount > 0.0:
+		if apply_skill_charge_restore:
+			applied = try_restore_skill1_charge(
+				config.skill_charge_restore_amount
+			) or applied
+		else:
+			# The reliable inventory event still represents a successful use;
+			# realtime player state owns the authoritative charge value.
+			applied = true
+
 	if (
 		config.is_consumable_item()
 		and config.potion_physical_defense_bonus > 0
@@ -828,13 +889,113 @@ func apply_pickup(config: PickupConfig, apply_healing: bool = true) -> bool:
 		_refresh_collectible_stats(false)
 		applied = true
 
+	if (
+		config.is_consumable_item()
+		and config.potion_magic_defense_bonus > 0
+		and buff_duration > 0.0
+	):
+		potion_magic_defense_bonus = config.potion_magic_defense_bonus
+		potion_magic_defense_time_left = buff_duration
+		_refresh_collectible_stats(false)
+		applied = true
+
+	if (
+		config.is_consumable_item()
+		and config.potion_regeneration_per_second > 0.0
+		and buff_duration > 0.0
+	):
+		potion_regeneration_per_second = config.potion_regeneration_per_second
+		potion_regeneration_time_left = buff_duration
+		potion_regeneration_heal_accumulator = 0.0
+		applied = true
+
+	if (
+		config.is_consumable_item()
+		and config.potion_damage_reduction > 0.0
+		and buff_duration > 0.0
+	):
+		potion_damage_reduction = clampf(
+			config.potion_damage_reduction,
+			0.0,
+			0.95
+		)
+		potion_damage_reduction_time_left = buff_duration
+		applied = true
+
+	if (
+		config.is_consumable_item()
+		and not is_equal_approx(config.potion_attack_damage_multiplier, 1.0)
+		and buff_duration > 0.0
+	):
+		potion_attack_damage_multiplier = maxf(
+			config.potion_attack_damage_multiplier,
+			1.0
+		)
+		potion_attack_damage_time_left = buff_duration
+		_refresh_collectible_stats(false)
+		applied = true
+
+	if (
+		config.is_consumable_item()
+		and not is_equal_approx(config.potion_fire_rate_multiplier, 1.0)
+		and buff_duration > 0.0
+	):
+		potion_fire_rate_multiplier = maxf(
+			config.potion_fire_rate_multiplier,
+			1.0
+		)
+		potion_fire_rate_time_left = buff_duration
+		should_refresh_shooting_timer = true
+		applied = true
+
+	if (
+		config.is_consumable_item()
+		and not is_equal_approx(config.potion_move_speed_multiplier, 1.0)
+		and buff_duration > 0.0
+	):
+		potion_move_speed_multiplier = maxf(
+			config.potion_move_speed_multiplier,
+			1.0
+		)
+		potion_move_speed_time_left = buff_duration
+		_update_movement_status_visuals(Vector2.ZERO)
+		applied = true
+
+	if (
+		config.is_consumable_item()
+		and config.potion_dodge_chance_bonus > 0.0
+		and buff_duration > 0.0
+	):
+		potion_dodge_chance_bonus = clampf(
+			config.potion_dodge_chance_bonus,
+			0.0,
+			1.0
+		)
+		potion_dodge_time_left = buff_duration
+		applied = true
+
+	if config.is_consumable_item() and config.grants_next_skill_free:
+		if apply_void_battery_charge:
+			void_battery_charged = true
+			_void_battery_prediction_pending = false
+			_void_battery_prediction_token = 0
+			_update_skill1_charge_bar()
+		applied = true
+
 	# 普通射速道具与形态专属射速提升维护，避免螺旋形态的射速被其他 Buff 状态覆盖。
-	if has_fire_rate_override and not requests_character_form_override:
+	if (
+		not config.is_consumable_item()
+		and has_fire_rate_override
+		and not requests_character_form_override
+	):
 		rapid_fire_rate_multiplier = config.fire_rate_multiplier
 		rapid_buff_time_left = buff_duration
 		should_refresh_shooting_timer = true
 		applied = true
-	if not is_equal_approx(config.attack_damage_multiplier, 1.0):
+	if (
+		not config.is_consumable_item()
+		and not is_equal_approx(config.attack_damage_multiplier, 1.0)
+	):
 		temporary_attack_damage_multiplier = maxf(config.attack_damage_multiplier, 0.1)
 		attack_buff_time_left = buff_duration
 		_refresh_collectible_stats(false)
@@ -939,7 +1100,8 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 			CombatTypes.DamageRejectionReason.INVULNERABLE
 		)
 	if not request.has_flag(CombatTypes.DamageFlag.BYPASS_DODGE):
-		if dodge_chance > 0.0 and randf() < dodge_chance:
+		var effective_dodge_chance := get_effective_dodge_chance()
+		if effective_dodge_chance > 0.0 and randf() < effective_dodge_chance:
 			_start_dodge_feedback()
 			_start_invincibility(false)
 			return _reject_combat_damage(
@@ -1365,6 +1527,7 @@ func _create_damage_target_profile(request: DamageRequest) -> DamageTargetProfil
 	var strongest_reduction := 0.0
 	for reduction in damage_reduction_modifiers.values():
 		strongest_reduction = maxf(strongest_reduction, float(reduction))
+	strongest_reduction = maxf(strongest_reduction, potion_damage_reduction)
 	if (
 		tower_defense_fate_low_health_damage_reduction > 0.0
 		and tower_defense_fate_low_health_ratio > 0.0
@@ -1522,6 +1685,10 @@ func add_damage_reduction_modifier(source_id: int, reduction: float) -> void:
 
 func remove_damage_reduction_modifier(source_id: int) -> void:
 	damage_reduction_modifiers.erase(source_id)
+
+
+func get_effective_dodge_chance() -> float:
+	return clampf(dodge_chance + potion_dodge_chance_bonus, 0.0, 1.0)
 
 
 ## Sets one external source's additive skill-charge bonus per second. Reusing a
@@ -1951,22 +2118,92 @@ func consume_multiplayer_skill1_charge() -> bool:
 	return try_begin_skill1_activation(true)
 
 
-func try_begin_skill1_activation(authoritative_preserve_roll: bool = true) -> bool:
+func try_begin_skill1_activation(
+	authoritative_preserve_roll: bool = true,
+	defer_predicted_void_battery_consumption: bool = false,
+	predicted_void_battery_token: int = 0
+) -> bool:
 	if not skill1_unlocked:
 		return false
 	if is_dead or are_combat_actions_locked():
 		return false
 	_sync_skill1_charge_duration_to_upgrade_level()
-	if skill1_charge < skill1_charge_duration:
+	if _void_battery_prediction_pending:
+		return false
+	if not void_battery_charged and skill1_charge < skill1_charge_duration:
 		return false
 	var now_msec := Time.get_ticks_msec()
 	if now_msec - _last_skill_activation_msec < MIN_SKILL_ACTIVATION_INTERVAL_MSEC:
 		return false
 	_last_skill_activation_msec = now_msec
-	if not _should_preserve_skill1_charge(authoritative_preserve_roll):
+	if void_battery_charged:
+		if defer_predicted_void_battery_consumption:
+			_void_battery_prediction_pending = true
+			_void_battery_prediction_token = maxi(
+				predicted_void_battery_token,
+				0
+			)
+		else:
+			void_battery_charged = false
+	elif not _should_preserve_skill1_charge(authoritative_preserve_roll):
 		skill1_charge = 0.0
 	_update_skill1_charge_bar()
 	return true
+
+
+func has_void_battery_charge() -> bool:
+	return void_battery_charged
+
+
+## The Host's absolute realtime state is the sole replica authority for this
+## bit. Keeping it off skill-start RPC channels avoids an older cast clearing a
+## newer battery use when reliable ENet channels arrive in different orders.
+func apply_authoritative_void_battery_state(charged: bool) -> void:
+	var previous_charged := void_battery_charged
+	var previous_prediction_pending := _void_battery_prediction_pending
+	if _void_battery_prediction_pending:
+		if not charged:
+			_void_battery_prediction_pending = false
+			_void_battery_prediction_token = 0
+			void_battery_charged = false
+		else:
+			void_battery_charged = true
+	else:
+		void_battery_charged = charged
+	if (
+		void_battery_charged != previous_charged
+		or _void_battery_prediction_pending != previous_prediction_pending
+	):
+		_update_skill1_charge_bar()
+
+
+func cancel_predicted_void_battery_activation(prediction_token: int = 0) -> void:
+	if not _matches_void_battery_prediction(prediction_token):
+		return
+	_void_battery_prediction_pending = false
+	_void_battery_prediction_token = 0
+	_update_skill1_charge_bar()
+
+
+## An accepted projectile closes only the local prediction reservation. The
+## absolute PlayerState bit decides whether the consumed layer was already
+## replaced by a newer battery (true -> false -> true between snapshots).
+func confirm_predicted_void_battery_activation(prediction_token: int = 0) -> void:
+	if not _matches_void_battery_prediction(prediction_token):
+		return
+	_void_battery_prediction_pending = false
+	_void_battery_prediction_token = 0
+	_update_skill1_charge_bar()
+
+
+func _matches_void_battery_prediction(prediction_token: int) -> bool:
+	return (
+		_void_battery_prediction_pending
+		and (
+			_void_battery_prediction_token <= 0
+			or prediction_token == _void_battery_prediction_token
+		)
+	)
 
 
 func _should_preserve_skill1_charge(authoritative_roll: bool) -> bool:
@@ -2691,6 +2928,17 @@ func _update_skill1_charge(delta: float) -> void:
 	_update_skill1_charge_bar()
 
 
+func try_restore_skill1_charge(amount: float) -> bool:
+	if amount <= 0.0 or not is_finite(amount) or not skill1_unlocked or is_dead:
+		return false
+	_sync_skill1_charge_duration_to_upgrade_level()
+	if skill1_charge >= skill1_charge_duration:
+		return false
+	skill1_charge = minf(skill1_charge + amount, skill1_charge_duration)
+	_update_skill1_charge_bar()
+	return true
+
+
 func _try_use_skill1() -> bool:
 	return false
 
@@ -2911,6 +3159,7 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		ceili(
 			float(roundi(_base_attack_damage) + attack_bonus)
 			* maxf(temporary_attack_damage_multiplier, 0.1)
+			* maxf(potion_attack_damage_multiplier, 1.0)
 		),
 		1
 	)
@@ -2937,7 +3186,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	magic_defense = clampi(
 		_base_magic_defense
 		+ magic_defense_bonus
-		+ research_temporary_magic_defense_bonus,
+		+ research_temporary_magic_defense_bonus
+		+ potion_magic_defense_bonus,
 		0,
 		DEFAULT_MAGIC_DEFENSE_LIMIT
 	)
@@ -3285,14 +3535,7 @@ func _try_start_collectible_aux_cooldown(item: PickupConfig, suffix: String, coo
 
 
 func _add_collectible_skill_charge(amount: float) -> bool:
-	if amount <= 0.0 or not skill1_unlocked or is_dead:
-		return false
-	_sync_skill1_charge_duration_to_upgrade_level()
-	if skill1_charge >= skill1_charge_duration:
-		return false
-	skill1_charge = minf(skill1_charge + amount, skill1_charge_duration)
-	_update_skill1_charge_bar()
-	return true
+	return try_restore_skill1_charge(amount)
 
 
 func apply_collectible_attack_hit_effects(enemy: Enemy, hit_damage: int) -> void:
@@ -4299,7 +4542,13 @@ func _update_skill1_charge_bar() -> void:
 	skill1_charge_bar.set_charge(
 		skill1_charge,
 		skill1_charge_duration,
-		skill1_unlocked and skill1_charge >= skill1_charge_duration
+		(
+			skill1_unlocked
+			and (
+				(void_battery_charged and not _void_battery_prediction_pending)
+				or skill1_charge >= skill1_charge_duration
+			)
+		)
 	)
 
 
@@ -4566,6 +4815,7 @@ func get_authoritative_move_speed_multiplier() -> float:
 		)
 	return (
 		current_move_speed_multiplier
+		* potion_move_speed_multiplier
 		* collectible_swift_move_speed_multiplier
 		* cold_move_speed_multiplier
 		* tower_defense_fate_move_speed_multiplier
@@ -4627,7 +4877,10 @@ func _get_effective_fire_interval() -> float:
 
 # 获取当前实际射速倍率
 func _get_effective_fire_rate_multiplier() -> float:
-	return maxf(_get_character_fire_rate_multiplier(), 0.01)
+	return maxf(
+		_get_character_fire_rate_multiplier() * potion_fire_rate_multiplier,
+		0.01
+	)
 
 
 func _get_character_fire_rate_multiplier() -> float:
@@ -4704,20 +4957,114 @@ func _update_pickup_effects(delta: float) -> void:
 			temporary_attack_damage_multiplier = 1.0
 			_refresh_collectible_stats(false)
 
-	_update_potion_physical_defense_effect(delta)
+	_update_potion_effects(delta)
 	_update_character_pickup_effects(delta)
 
 
-func _update_potion_physical_defense_effect(delta: float) -> void:
-	if potion_physical_defense_time_left <= 0.0:
+func _update_potion_effects(delta: float) -> void:
+	var safe_delta := maxf(delta, 0.0)
+	if safe_delta <= 0.0:
 		return
-	potion_physical_defense_time_left = maxf(
-		potion_physical_defense_time_left - delta,
-		0.0
-	)
-	if potion_physical_defense_time_left <= 0.0:
-		potion_physical_defense_bonus = 0
+	var should_refresh_stats := false
+	var should_refresh_fire_rate := false
+	var should_refresh_movement_visuals := false
+
+	if potion_physical_defense_time_left > 0.0:
+		potion_physical_defense_time_left = maxf(
+			potion_physical_defense_time_left - safe_delta,
+			0.0
+		)
+		if potion_physical_defense_time_left <= 0.0:
+			potion_physical_defense_bonus = 0
+			should_refresh_stats = true
+
+	if potion_magic_defense_time_left > 0.0:
+		potion_magic_defense_time_left = maxf(
+			potion_magic_defense_time_left - safe_delta,
+			0.0
+		)
+		if potion_magic_defense_time_left <= 0.0:
+			potion_magic_defense_bonus = 0
+			should_refresh_stats = true
+
+	if potion_attack_damage_time_left > 0.0:
+		potion_attack_damage_time_left = maxf(
+			potion_attack_damage_time_left - safe_delta,
+			0.0
+		)
+		if potion_attack_damage_time_left <= 0.0:
+			potion_attack_damage_multiplier = 1.0
+			should_refresh_stats = true
+
+	if potion_fire_rate_time_left > 0.0:
+		potion_fire_rate_time_left = maxf(
+			potion_fire_rate_time_left - safe_delta,
+			0.0
+		)
+		if potion_fire_rate_time_left <= 0.0:
+			potion_fire_rate_multiplier = 1.0
+			should_refresh_fire_rate = true
+
+	if potion_move_speed_time_left > 0.0:
+		potion_move_speed_time_left = maxf(
+			potion_move_speed_time_left - safe_delta,
+			0.0
+		)
+		if potion_move_speed_time_left <= 0.0:
+			potion_move_speed_multiplier = 1.0
+			should_refresh_movement_visuals = true
+
+	if potion_dodge_time_left > 0.0:
+		potion_dodge_time_left = maxf(
+			potion_dodge_time_left - safe_delta,
+			0.0
+		)
+		if potion_dodge_time_left <= 0.0:
+			potion_dodge_chance_bonus = 0.0
+
+	if potion_damage_reduction_time_left > 0.0:
+		potion_damage_reduction_time_left = maxf(
+			potion_damage_reduction_time_left - safe_delta,
+			0.0
+		)
+		if potion_damage_reduction_time_left <= 0.0:
+			potion_damage_reduction = 0.0
+
+	if potion_regeneration_time_left > 0.0:
+		var regeneration_delta := minf(
+			safe_delta,
+			potion_regeneration_time_left
+		)
+		potion_regeneration_time_left = maxf(
+			potion_regeneration_time_left - safe_delta,
+			0.0
+		)
+		potion_regeneration_heal_accumulator += (
+			potion_regeneration_per_second * regeneration_delta
+		)
+		var regeneration_heal := floori(
+			potion_regeneration_heal_accumulator + 0.00001
+		)
+		if regeneration_heal > 0:
+			potion_regeneration_heal_accumulator = maxf(
+				potion_regeneration_heal_accumulator
+				- float(regeneration_heal),
+				0.0
+			)
+			if not _has_valid_combat_runtime() and peer_id <= 0:
+				_try_heal(regeneration_heal)
+			else:
+				_apply_authoritative_player_heal(self, regeneration_heal)
+		if potion_regeneration_time_left <= 0.0:
+			potion_regeneration_per_second = 0.0
+			potion_regeneration_heal_accumulator = 0.0
+
+	if should_refresh_stats:
 		_refresh_collectible_stats(false)
+	if should_refresh_fire_rate:
+		_refresh_shooting_timer_wait_time()
+	if should_refresh_movement_visuals:
+		_update_movement_status_visuals(Vector2.ZERO)
 
 
 func _update_character_pickup_effects(_delta: float) -> void:
@@ -4750,6 +5097,10 @@ func _update_movement_status_visuals(move_direction: Vector2) -> void:
 		or (
 			collectible_swift_time_left > 0.0
 			and collectible_swift_move_speed_multiplier > 1.0
+		)
+		or (
+			potion_move_speed_time_left > 0.0
+			and potion_move_speed_multiplier > 1.0
 		)
 	)
 	var visual_direction := move_direction

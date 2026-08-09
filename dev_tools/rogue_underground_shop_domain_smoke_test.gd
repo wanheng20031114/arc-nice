@@ -56,10 +56,19 @@ func _test_config_and_offer_generation() -> void:
 		"地下商店配置必须通过校验：%s" % [SHOP_CONFIG.validate_config()]
 	)
 	_expect(
-		RogueUndergroundShopConfig.RUNTIME_CONTRACT_SCHEMA == 2,
-		"地下商店运行契约 schema 必须升级为 2。"
+		RogueUndergroundShopConfig.RUNTIME_CONTRACT_SCHEMA == 3,
+		"地下商店运行契约 schema 必须升级为 3。"
 	)
-	var expected_consumable_prices := _get_expected_consumable_prices()
+	_expect(
+		RogueUndergroundShopConfig.LOW_CONSUMABLE_PRICE_BAND
+		== Vector3i(80, 130, 10)
+		and RogueUndergroundShopConfig.MEDIUM_CONSUMABLE_PRICE_BAND
+		== Vector3i(160, 300, 10)
+		and RogueUndergroundShopConfig.HIGH_CONSUMABLE_PRICE_BAND
+		== Vector3i(700, 1000, 10),
+		"消耗品低/中/高价格档必须分别为80–130、160–300、700–1000，步长10。"
+	)
+	var expected_consumable_tiers := _get_expected_consumable_tiers()
 	var configured_consumable_paths: Dictionary = {}
 	for listing in SHOP_CONFIG.consumable_listings:
 		if listing == null:
@@ -67,14 +76,15 @@ func _test_config_and_offer_generation() -> void:
 		var listing_path := listing.get_config_path()
 		configured_consumable_paths[listing_path] = true
 		_expect(
-			expected_consumable_prices.has(listing_path)
-			and listing.purchase_price == int(expected_consumable_prices[listing_path])
-			and listing.sell_price == int(expected_consumable_prices[listing_path]),
-			"四种消耗品 listing 必须使用约定的同买同卖价格：%s" % listing_path
+			expected_consumable_tiers.has(listing_path)
+			and int(listing.price_tier)
+			== int(expected_consumable_tiers[listing_path]),
+			"消耗品 listing 必须使用约定的类型化价格档：%s" % listing_path
 		)
 	_expect(
-		configured_consumable_paths.size() == expected_consumable_prices.size(),
-		"地下商店必须且仅配置四种计划内消耗品。"
+		configured_consumable_paths.size() == expected_consumable_tiers.size()
+		and configured_consumable_paths.size() == 16,
+		"地下商店必须且仅配置16种计划内消耗品。"
 	)
 	_expect(
 		FLOOR_DEFINITION.underground_shop_config == SHOP_CONFIG,
@@ -105,7 +115,27 @@ func _test_config_and_offer_generation() -> void:
 		"player:alpha",
 		character_id
 	)
+	var first_consumable_prices := (
+		RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+			SHOP_CONFIG,
+			71031,
+			"player:alpha"
+		)
+	)
+	var repeated_consumable_prices := (
+		RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+			SHOP_CONFIG,
+			71031,
+			"player:alpha"
+		)
+	)
 	_expect(first == repeated, "同节点、同稳定参与键的货架必须逐字段一致。")
+	_expect(
+		first_consumable_prices == repeated_consumable_prices
+		and first_consumable_prices.size() == 16,
+		"同一地下商店会话的完整消耗品价格表必须稳定且覆盖整个池。"
+	)
+	_audit_consumable_price_table(first_consumable_prices)
 	_expect(first.size() == 8, "每名玩家的地下商店货架必须固定为 8 格。")
 	_audit_offer_set(first, compatible_paths)
 	var reordered_config := SHOP_CONFIG.duplicate() as RogueUndergroundShopConfig
@@ -129,8 +159,32 @@ func _test_config_and_offer_generation() -> void:
 			71031,
 			"player:alpha",
 			character_id
-		) == first,
+		) == first
+		and RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+			reordered_config,
+			71031,
+			"player:alpha"
+		) == first_consumable_prices,
 		"数量候选与 listing 顺序不属于 contract，重排后必须仍生成同一货架。"
+	)
+	var changed_tier_config := SHOP_CONFIG.duplicate() as RogueUndergroundShopConfig
+	var changed_tier_listings := changed_tier_config.consumable_listings.duplicate()
+	var changed_tier_listing := (
+		changed_tier_listings[0] as RogueUndergroundShopListing
+	).duplicate() as RogueUndergroundShopListing
+	changed_tier_listing.price_tier = RogueUndergroundShopListing.PriceTier.MEDIUM
+	changed_tier_listings[0] = changed_tier_listing
+	changed_tier_config.consumable_listings = changed_tier_listings
+	_expect(
+		changed_tier_config.validate_config().is_empty()
+		and changed_tier_config.compute_runtime_contract_hash()
+		!= SHOP_CONFIG.compute_runtime_contract_hash()
+		and RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+			changed_tier_config,
+			71031,
+			"player:alpha"
+		) != first_consumable_prices,
+		"listing 档位必须进入 runtime contract，并改变确定性会话价格。"
 	)
 	var changed := false
 	for seed_offset in range(1, 12):
@@ -144,6 +198,16 @@ func _test_config_and_offer_generation() -> void:
 			changed = true
 			break
 	_expect(changed, "不同商店节点内容种子必须能够生成不同货架。")
+	var changed_prices := false
+	for seed_offset in range(1, 24):
+		if RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+			SHOP_CONFIG,
+			71031 + seed_offset,
+			"player:alpha"
+		) != first_consumable_prices:
+			changed_prices = true
+			break
+	_expect(changed_prices, "不同地下商店必须能够重抽消耗品会话价格。")
 	_expect(
 		RogueUndergroundShopOfferGenerator.generate_offers(
 			SHOP_CONFIG,
@@ -152,6 +216,14 @@ func _test_config_and_offer_generation() -> void:
 			character_id
 		) != first,
 		"同节点的不同稳定参与键应生成个人独立货架。"
+	)
+	_expect(
+		RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+			SHOP_CONFIG,
+			71031,
+			"player:beta"
+		) != first_consumable_prices,
+		"同节点不同玩家的个人价格表应由稳定参与键独立派生。"
 	)
 
 	var collectible_count_distribution := {4: 0, 5: 0, 6: 0}
@@ -185,14 +257,16 @@ func _test_config_and_offer_generation() -> void:
 	var total_consumable_selections := 0
 	for selection_count in consumable_selection_counts.values():
 		total_consumable_selections += int(selection_count)
-	var expected_selections_per_consumable := total_consumable_selections / 4.0
+	var expected_selections_per_consumable := (
+		total_consumable_selections / float(SHOP_CONFIG.consumable_listings.size())
+	)
 	for consumable_path in consumable_selection_counts:
 		_expect(
 			abs(
 				int(consumable_selection_counts[consumable_path])
 				- expected_selections_per_consumable
-			) < 100.0,
-			"四种消耗品应等概率入选，当前分布：%s" % [consumable_selection_counts]
+			) < 80.0,
+			"扩展消耗品池应等概率入选，当前分布：%s" % [consumable_selection_counts]
 		)
 
 
@@ -202,7 +276,7 @@ func _audit_offer_set(
 ) -> void:
 	var collectible_paths: Dictionary = {}
 	var consumable_paths: Dictionary = {}
-	var expected_consumable_prices := _get_expected_consumable_prices()
+	var expected_consumable_tiers := _get_expected_consumable_tiers()
 	for offer_index in offers.size():
 		var offer := offers[offer_index]
 		_expect(
@@ -214,19 +288,24 @@ func _audit_offer_set(
 		var kind := str(offer.get("kind", ""))
 		if kind == "consumable":
 			_expect(
-				expected_consumable_prices.has(config_path),
-				"消耗品报价必须来自四条 typed listing：%s" % config_path
+				expected_consumable_tiers.has(config_path),
+				"消耗品报价必须来自扩展 typed listing：%s" % config_path
 			)
 			_expect(
 				not consumable_paths.has(config_path),
 				"同一货架的消耗品必须不放回抽取。"
 			)
 			consumable_paths[config_path] = true
-			if expected_consumable_prices.has(config_path):
+			if expected_consumable_tiers.has(config_path):
+				var band := SHOP_CONFIG.get_consumable_price_band(
+					int(expected_consumable_tiers[config_path])
+				)
+				var price := int(offer.get("price", 0))
 				_expect(
-					int(offer.get("price", 0))
-					== int(expected_consumable_prices[config_path]),
-					"消耗品购买价必须来自 typed listing。"
+					price >= band.x
+					and price <= band.y
+					and price % band.z == 0,
+					"消耗品购买价必须处于 listing 对应档位并按10量化。"
 				)
 			continue
 		_expect(kind == "collectible", "报价 kind 只能为 collectible 或 consumable。")
@@ -269,18 +348,38 @@ func _test_session_contract() -> void:
 		"stable:b",
 		PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	)
+	var prices_a := RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+		SHOP_CONFIG,
+		9001,
+		"stable:a"
+	)
+	var prices_b := RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+		SHOP_CONFIG,
+		9001,
+		"stable:b"
+	)
 	var session := RogueUndergroundShopSession.new()
 	_expect(
 		session.start_authoritative(
 			"floor:1|node:5|visit:1",
 			12,
-			{1: offers_a, 2: offers_b}
+			{1: offers_a, 2: offers_b},
+			{1: prices_a, 2: prices_b}
 		),
 		"Host 必须能够以每人私有报价启动商店会话。"
 	)
 	var snapshot_a := session.export_snapshot_for_peer(1)
 	_expect(snapshot_a.get("offers", []) == offers_a, "目标快照只应携带目标玩家报价。")
+	_expect(
+		int(snapshot_a.get("schema_version", -1)) == 2
+		and snapshot_a.get("consumable_prices", []) == prices_a,
+		"schema v2 快照必须携带目标玩家完整且稳定的消耗品价格表。"
+	)
 	_expect(not snapshot_a.has("offers_by_peer"), "快照不得泄漏其他玩家的私有货架。")
+	_expect(
+		not snapshot_a.has("consumable_prices_by_peer"),
+		"快照不得泄漏其他玩家的私有价格表。"
+	)
 	var client_session := RogueUndergroundShopSession.new()
 	_expect(client_session.apply_snapshot(snapshot_a), "客户端必须能够应用目标快照。")
 	_expect(client_session.apply_snapshot(snapshot_a), "完全相同的同 revision 快照必须幂等。")
@@ -299,6 +398,20 @@ func _test_session_contract() -> void:
 	_expect(
 		not client_session.apply_snapshot(conflicting_snapshot),
 		"同 occurrence、同 revision 的不同内容必须拒绝。"
+	)
+	var conflicting_price_snapshot := snapshot_a.duplicate(true)
+	(conflicting_price_snapshot["consumable_prices"] as Array)[0]["price"] = 999999
+	_expect(
+		not RogueUndergroundShopSession.new().apply_snapshot(
+			conflicting_price_snapshot
+		),
+		"超出档位的会话价格必须拒绝。"
+	)
+	var legacy_schema_snapshot := snapshot_a.duplicate(true)
+	legacy_schema_snapshot["schema_version"] = 1
+	_expect(
+		not RogueUndergroundShopSession.new().apply_snapshot(legacy_schema_snapshot),
+		"旧 schema v1 商店快照必须拒绝。"
 	)
 	var legacy_kind_snapshot := snapshot_a.duplicate(true)
 	(legacy_kind_snapshot["offers"] as Array)[0]["kind"] = "health_potion"
@@ -320,7 +433,8 @@ func _test_session_contract() -> void:
 		reconnect_session.start_authoritative(
 			"shop:reconnect",
 			20,
-			{7: offers_a, 8: offers_b}
+			{7: offers_a, 8: offers_b},
+			{7: prices_a, 8: prices_b}
 		),
 		"重连原子迁移测试会话必须启动。"
 	)
@@ -340,6 +454,7 @@ func _test_session_contract() -> void:
 		and migration_revisions.size() == 1
 		and bool(migrated_snapshot.get("target_exited", false))
 		and (migrated_snapshot.get("offers", []) as Array).is_empty()
+		and (migrated_snapshot.get("consumable_prices", []) as Array).is_empty()
 		and RogueUndergroundShopSession.new().apply_snapshot(migrated_snapshot),
 		"old→new 迁移必须只发布一次 revision，且发布的目标快照始终可解码。"
 	)
@@ -355,6 +470,7 @@ func _test_session_contract() -> void:
 	_expect(
 		bool(spectator_snapshot.get("target_exited", false))
 		and (spectator_snapshot.get("offers", []) as Array).is_empty()
+		and (spectator_snapshot.get("consumable_prices", []) as Array).is_empty()
 		and RogueUndergroundShopSession.new().apply_snapshot(spectator_snapshot),
 		"重连玩家快照必须不含货架并直接保持路线地图状态。"
 	)
@@ -389,18 +505,32 @@ func _test_session_contract() -> void:
 
 func _test_four_player_exit_barrier() -> void:
 	var participant_offers: Dictionary = {}
+	var participant_consumable_prices: Dictionary = {}
 	for peer_id in range(1, 5):
+		var stable_key := "four-player:%d" % peer_id
 		var offers := RogueUndergroundShopOfferGenerator.generate_offers(
 			SHOP_CONFIG,
 			91_337,
-			"four-player:%d" % peer_id,
+			stable_key,
 			PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 		)
 		_expect(offers.size() == 8, "四人会话中的每名玩家都必须拥有独立 8 格货架。")
 		participant_offers[peer_id] = offers
+		participant_consumable_prices[peer_id] = (
+			RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+				SHOP_CONFIG,
+				91_337,
+				stable_key
+			)
+		)
 	var session := RogueUndergroundShopSession.new()
 	_expect(
-		session.start_authoritative("shop:four-player", 31, participant_offers),
+		session.start_authoritative(
+			"shop:four-player",
+			31,
+			participant_offers,
+			participant_consumable_prices
+		),
 		"四人地下商店会话必须能够启动。"
 	)
 	for peer_id in range(1, 4):
@@ -449,9 +579,24 @@ func _test_economy_transactions() -> void:
 		"economy:b",
 		PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 	)
+	var prices_a := RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+		SHOP_CONFIG,
+		1771,
+		"economy:a"
+	)
+	var prices_b := RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+		SHOP_CONFIG,
+		1771,
+		"economy:b"
+	)
 	var session := RogueUndergroundShopSession.new()
 	_expect(
-		session.start_authoritative("shop:economy", 4, {1: offers_a, 2: offers_b}),
+		session.start_authoritative(
+			"shop:economy",
+			4,
+			{1: offers_a, 2: offers_b},
+			{1: prices_a, 2: prices_b}
+		),
 		"经济测试会话必须启动。"
 	)
 	var coordinator := RogueUndergroundShopEconomyCoordinator.new()
@@ -588,7 +733,8 @@ func _test_economy_transactions() -> void:
 	_expect(
 		bool(potion_sell.get("success", false))
 		and int(potion_sell.get("remaining_stack_count", -1)) == 2
-		and int(potion_sell.get("price", 0)) == 50,
+		and int(potion_sell.get("price", 0))
+		== session.get_consumable_price(1, HEALTH_POTION.resource_path),
 		"出售堆叠药瓶每次只能回收 1 件并原地更新数量。"
 	)
 	_expect(run_state.try_add_item_for_peer(1, MATERIAL_WOOD), "测试材料必须可加入背包。")
@@ -634,31 +780,35 @@ func _test_economy_transactions() -> void:
 	)
 	_expect(run_state.try_add_item_for_peer(1, LOCKED_ITEM), "测试锁定物品必须可加入背包。")
 	_expect(run_state.try_add_item_for_peer(1, BUILDING_ITEM), "测试建筑物品必须可加入背包。")
-	_expect(coordinator.get_sell_price(MATERIAL_WOOD) == 10, "物资回收价必须为 10。")
-	_expect(coordinator.get_sell_price(HEALTH_POTION) == 50, "治疗血瓶回收价必须为 50。")
+	_expect(coordinator.get_sell_price(1, MATERIAL_WOOD) == 10, "物资回收价必须为 10。")
 	_expect(
-		coordinator.get_sell_price(LARGE_HEALING_POTION) == 200,
-		"大号治疗血瓶回收价必须为 200。"
+		coordinator.get_sell_price(1, HEALTH_POTION)
+		== session.get_consumable_price(1, HEALTH_POTION.resource_path),
+		"治疗血瓶回收价必须复用当前会话低档价格。"
 	)
-	_expect(coordinator.get_sell_price(ROCK_POTION) == 70, "岩石药水回收价必须为 70。")
 	_expect(
-		coordinator.get_sell_price(LARGE_ROCK_POTION) == 280,
-		"大号岩石药水回收价必须为 280。"
+		coordinator.get_sell_price(1, LARGE_HEALING_POTION)
+		== session.get_consumable_price(1, LARGE_HEALING_POTION.resource_path)
+		and coordinator.get_sell_price(1, ROCK_POTION)
+		== session.get_consumable_price(1, ROCK_POTION.resource_path)
+		and coordinator.get_sell_price(1, LARGE_ROCK_POTION)
+		== session.get_consumable_price(1, LARGE_ROCK_POTION.resource_path),
+		"既有大小治疗/岩石药水都必须复用当前个人会话价格。"
 	)
 	var unlisted_consumable := PickupConfig.new()
 	unlisted_consumable.pickup_type = PickupConfig.PickupType.CONSUMABLE
 	unlisted_consumable.can_store_in_inventory = true
 	_expect(
-		coordinator.get_sell_price(unlisted_consumable) == 0,
+		coordinator.get_sell_price(1, unlisted_consumable) == 0,
 		"未进入 typed listing 的消耗品必须禁售。"
 	)
-	_expect(coordinator.get_sell_price(LOCKED_ITEM) == 0, "锁定物品必须禁售。")
+	_expect(coordinator.get_sell_price(1, LOCKED_ITEM) == 0, "锁定物品必须禁售。")
 	_expect(
-		coordinator.get_sell_price(FLYING_ENVELOPE) == 0,
+		coordinator.get_sell_price(1, FLYING_ENVELOPE) == 0,
 		"会飞的信封是全队唯一事件收藏品，地下商店必须禁售。"
 	)
-	_expect(coordinator.get_sell_price(BUILDING_ITEM) == 0, "建筑物品必须禁售。")
-	_expect(coordinator.get_sell_price(UNSUPPORTED_ITEM) == 0, "未定义类型必须禁售。")
+	_expect(coordinator.get_sell_price(1, BUILDING_ITEM) == 0, "建筑物品必须禁售。")
+	_expect(coordinator.get_sell_price(1, UNSUPPORTED_ITEM) == 0, "未定义类型必须禁售。")
 	for blocked_case in [
 		{"request_id": "sell-locked", "item": LOCKED_ITEM},
 		{"request_id": "sell-building", "item": BUILDING_ITEM},
@@ -824,20 +974,57 @@ func _find_available_offer_by_kind(
 	return -1
 
 
-func _get_expected_consumable_prices() -> Dictionary:
+func _get_expected_consumable_tiers() -> Dictionary:
 	return {
-		HEALTH_POTION.resource_path: 50,
-		LARGE_HEALING_POTION.resource_path: 200,
-		ROCK_POTION.resource_path: 70,
-		LARGE_ROCK_POTION.resource_path: 280,
+		HEALTH_POTION.resource_path: RogueUndergroundShopListing.PriceTier.LOW,
+		ROCK_POTION.resource_path: RogueUndergroundShopListing.PriceTier.LOW,
+		"res://resources/config/consumables/skill_charge_battery.tres": RogueUndergroundShopListing.PriceTier.LOW,
+		"res://resources/config/consumables/magic_resistance_potion.tres": RogueUndergroundShopListing.PriceTier.LOW,
+		"res://resources/config/consumables/regeneration_potion.tres": RogueUndergroundShopListing.PriceTier.LOW,
+		LARGE_HEALING_POTION.resource_path: RogueUndergroundShopListing.PriceTier.MEDIUM,
+		LARGE_ROCK_POTION.resource_path: RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/large_skill_charge_battery.tres": RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/large_magic_resistance_potion.tres": RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/large_regeneration_potion.tres": RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/guardian_mixture.tres": RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/battle_spirit_potion.tres": RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/focus_potion.tres": RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/windwalk_potion.tres": RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/phantom_potion.tres": RogueUndergroundShopListing.PriceTier.MEDIUM,
+		"res://resources/config/consumables/void_battery.tres": RogueUndergroundShopListing.PriceTier.HIGH,
 	}
 
 
 func _get_empty_consumable_counts() -> Dictionary:
 	var result: Dictionary = {}
-	for config_path in _get_expected_consumable_prices():
+	for config_path in _get_expected_consumable_tiers():
 		result[config_path] = 0
 	return result
+
+
+func _audit_consumable_price_table(prices: Array[Dictionary]) -> void:
+	var expected_tiers := _get_expected_consumable_tiers()
+	var seen_paths: Dictionary = {}
+	for entry in prices:
+		var config_path := str(entry.get("config_path", ""))
+		var price_tier := int(entry.get("price_tier", -1))
+		var price := int(entry.get("price", 0))
+		_expect(
+			expected_tiers.has(config_path)
+			and int(expected_tiers[config_path]) == price_tier,
+			"会话价格表路径与档位必须匹配 typed listing：%s" % config_path
+		)
+		_expect(not seen_paths.has(config_path), "会话价格表不得重复物品路径。")
+		seen_paths[config_path] = true
+		var band := SHOP_CONFIG.get_consumable_price_band(price_tier)
+		_expect(
+			price >= band.x and price <= band.y and price % band.z == 0,
+			"会话价格必须位于档位区间并按10量化：%s" % [entry]
+		)
+	_expect(
+		seen_paths.size() == expected_tiers.size(),
+		"会话价格表必须覆盖全部16种消耗品。"
+	)
 
 
 func _find_inventory_slot_for_path(

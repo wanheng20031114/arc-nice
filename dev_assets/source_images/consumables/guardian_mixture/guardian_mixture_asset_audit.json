@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "asset": "guardian_mixture",
+  "display_name": "守护合剂",
+  "status": "passed",
+  "tier": "medium",
+  "shape": "single_bottle",
+  "chroma_key": "#FF00FF",
+  "pipeline": [
+    "built-in ImageGen, one distinct source per item",
+    "flat #FF00FF border-connected chroma-key extraction",
+    "retained foreground RGB preserved without palette quantization",
+    "strict pixel-grid analysis with no unsafe compression override",
+    "one final pixel center-sampled per measured logical cell",
+    "nearest-neighbour upscale only when needed for a readable inventory bbox",
+    "centered placement on a transparent 32x32 RGBA canvas",
+    "binary alpha, clean transparent RGB, and one-pixel border audit",
+    "lossless PNG encoding"
+  ],
+  "commands": {
+    "build": "python dev_tools/process_consumable_assets.py --asset guardian_mixture",
+    "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+  },
+  "processing_parameters": {
+    "background_remover": "connected_background_remover.remove_connected_background",
+    "rgb_tolerance": 72,
+    "hue_tolerance": 0.035,
+    "expansion_radius": 12,
+    "hard_alpha": true,
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "logical_sampler": "Pillow nearest center sample",
+    "production_upscale": "nearest only; shrinking forbidden",
+    "palette_quantization": "none",
+    "png": "optimize=true, compress_level=9 (lossless)"
+  },
+  "prompt_record": {
+    "status": "linked",
+    "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+    "asset_entry_found": true,
+    "selected_source": "guardian_mixture/guardian_mixture_imagegen_magenta.png",
+    "selected_source_matches": true,
+    "referenced_images": [
+      "resources/texture/consumables/rock_potion.png",
+      "resources/texture/consumables/large_healing_potion.png"
+    ],
+    "prompt_lines": [
+      "Use case: stylized-concept",
+      "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+      "Input images: game consumable style references only.",
+      "Primary request: Create exactly one guardian mixture bottle. Use a sturdy medium-width glass flask with dark near-black outline, a steel-blue lower liquid and warm amber-gold upper glow. Inside is one bold simple shield silhouette made from 5-7 logical pixels, communicating temporary protection from all damage. Distinct from the brown rock potion.",
+      "Strict pixel-grid contract: artwork behaves like an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels only. Object at most 15 logical pixels wide by 16 tall, at least one logical pixel background around it. No half-size pixels.",
+      "Backdrop: perfectly uniform flat #ff00ff.",
+      "Style: crisp limited-palette retro pixel art, chunky outline, cyan-white glass highlight, hard edges, readable at 32x32.",
+      "Composition: one centered object only.",
+      "Constraints: opaque shapes, no antialiasing/blur/soft glow, no floor/shadow/text/logo/props, no #ff00ff inside object.",
+      "Avoid: detailed heraldry, gradients, high pixel density, photorealism, multiple bottles."
+    ],
+    "prompt_sha256": "35e50309915132b85851c95d9f251eb8587c6e5e2c058aa27f2493a8417ecf9d"
+  },
+  "paths": {
+    "source_master": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png",
+    "alpha_source": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_alpha.png",
+    "logical_preview": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_logical_preview.png",
+    "production_texture": "resources/texture/consumables/guardian_mixture.png",
+    "atlas": "resources/atlas/guardian_mixture.tres",
+    "config": "resources/config/consumables/guardian_mixture.tres"
+  },
+  "source_selection": {
+    "approved": {
+      "path": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png",
+      "sha256": "832bfe7546e25b41657ab00e1f8ed3fc835d67e9c39ce3f3d2bb23feef1964f8"
+    },
+    "rejected": [],
+    "manual_review_note": "",
+    "global_unsafe_override_enabled": false
+  },
+  "hashes": {
+    "source_master_sha256": "832bfe7546e25b41657ab00e1f8ed3fc835d67e9c39ce3f3d2bb23feef1964f8",
+    "alpha_source_sha256": "4f21098e8afea654f4d0ae55923e586d6fa058a469496eda28732aa5d19a45f7",
+    "logical_preview_sha256": "dddbdf170edefb6530860602e3199e19df3809b938e34426cf7fce53dd592b00",
+    "production_texture_sha256": "35b8107a8401f603314e51f79c0e0e062b6afb295ee5e205e98a83796cccf46e",
+    "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+  },
+  "source": {
+    "path": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png",
+    "normalization_mode": "measured_grid_center_sample",
+    "detected_logical_subject_size": [
+      17,
+      24
+    ],
+    "logical_subject_size": [
+      17,
+      24
+    ],
+    "logical_fit_scale": 1.0,
+    "grid_analysis": {
+      "image_width": 1254,
+      "image_height": 1254,
+      "image_mode": "RGBA",
+      "detection_mode": "approximate",
+      "grid_cell_width": 38.15,
+      "grid_cell_height": 38.95,
+      "grid_cell_size": 39,
+      "confidence": 0.962,
+      "subject_bbox": {
+        "left": 302,
+        "top": 159,
+        "right": 953,
+        "bottom": 1092
+      },
+      "subject_pixel_width": 651,
+      "subject_pixel_height": 933,
+      "subject_grid_width": 17,
+      "subject_grid_height": 24,
+      "recommended_canvas_grid_width": 33,
+      "recommended_canvas_grid_height": 32
+    }
+  },
+  "max_subject_size": [
+    24,
+    30
+  ],
+  "logical_subject_size": [
+    17,
+    24
+  ],
+  "production_subject_size": [
+    21,
+    30
+  ],
+  "production_upscale": 1.25,
+  "paste_origin": [
+    5,
+    1
+  ],
+  "output_bbox_exclusive": [
+    5,
+    1,
+    26,
+    31
+  ],
+  "visible_color_count": 220,
+  "alpha_values": [
+    0,
+    255
+  ],
+  "checks": {
+    "canvas_32x32": true,
+    "one_pixel_transparent_border": true,
+    "binary_alpha": true,
+    "transparent_rgb_clean": true,
+    "logical_pixels_preserved": true,
+    "no_near_chroma_key_foreground": true
+  }
+}

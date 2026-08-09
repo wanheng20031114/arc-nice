@@ -6,6 +6,8 @@ signal exit_requested
 const SHOP_CONFIG: RogueUndergroundShopConfig = preload(
 	"res://resources/config/rogue_shop/shallow_mine_underground_shop.tres"
 )
+const PREVIEW_NODE_SEED := 71031
+const PREVIEW_STABLE_KEY := "underground-shop-preview"
 const SAMPLE_ITEMS: Array[PickupConfig] = [
 	preload("res://resources/config/consumables/healing_potion.tres"),
 	preload("res://resources/config/consumables/large_healing_potion.tres"),
@@ -43,6 +45,7 @@ func get_product_cards() -> Array[RogueUndergroundShopItemCard]:
 
 func _build_sample_offers() -> Array[Dictionary]:
 	var offers: Array[Dictionary] = []
+	var consumable_prices := _build_consumable_price_lookup()
 	for index in range(SAMPLE_ITEMS.size()):
 		var item := SAMPLE_ITEMS[index]
 		offers.append({
@@ -51,7 +54,7 @@ func _build_sample_offers() -> Array[Dictionary]:
 			"item": item,
 			"kind": "consumable" if item.is_consumable_item() else "collectible",
 			"price": (
-				SHOP_CONFIG.get_consumable_purchase_price(item)
+				int(consumable_prices.get(item.resource_path, 0))
 				if item.is_consumable_item()
 				else 200 + index * 70
 			),
@@ -62,6 +65,7 @@ func _build_sample_offers() -> Array[Dictionary]:
 
 func _build_sample_sell_slots() -> Array[Dictionary]:
 	var slots: Array[Dictionary] = []
+	var consumable_prices := _build_consumable_price_lookup()
 	for index in range(SAMPLE_ITEMS.size()):
 		var item := SAMPLE_ITEMS[index]
 		slots.append({
@@ -70,13 +74,24 @@ func _build_sample_sell_slots() -> Array[Dictionary]:
 			"item": item,
 			"stack_count": 3 if item.is_consumable_item() else 1,
 			"sell_price": (
-				SHOP_CONFIG.get_consumable_sell_price(item)
+				int(consumable_prices.get(item.resource_path, 0))
 				if item.is_consumable_item()
 				else SHOP_CONFIG.collectible_sell_price
 			),
 			"can_sell": true,
 		})
 	return slots
+
+
+func _build_consumable_price_lookup() -> Dictionary:
+	var result: Dictionary = {}
+	for entry in RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+		SHOP_CONFIG,
+		PREVIEW_NODE_SEED,
+		PREVIEW_STABLE_KEY
+	):
+		result[str(entry["config_path"])] = int(entry["price"])
+	return result
 
 
 func _on_purchase_requested(offer_index: int) -> void:

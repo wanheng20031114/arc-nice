@@ -4202,6 +4202,9 @@ func restore_reconnected_player_snapshot(
 ) -> void:
 	if player_node == null or player_state == null or not is_instance_valid(player_node):
 		return
+	# Potion/consumable runtime state intentionally does not survive reconnect.
+	# Clear the captured transient bit before it reaches the replacement Player.
+	player_state.void_battery_charged = false
 	player_node.apply_multiplayer_snapshot_motion(
 		player_state.position,
 		player_state.velocity,
@@ -4489,6 +4492,9 @@ func _apply_realtime_snapshot(
 	)
 	player_node.apply_multiplayer_effective_move_speed_multiplier(
 		player_state.effective_move_speed_multiplier
+	)
+	player_node.apply_authoritative_void_battery_state(
+		player_state.void_battery_charged
 	)
 	if apply_snapshot_health:
 		mark_health_revision_applied(

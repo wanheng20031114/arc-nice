@@ -116,6 +116,10 @@ func _make_legacy_unchanged_delta(
 	stream.put_32(state.peer_id)
 	stream.put_32(state.sequence)
 	stream.put_u8(0)
+	# v54 appends one absolute realtime-status byte even when the delta mask is
+	# empty. This arm remains "legacy" only in its lost-motion semantics, not in
+	# its wire version.
+	stream.put_u8(0)
 	var packet := PackedByteArray([1])
 	packet.append_array(stream.data_array)
 	return packet
@@ -237,12 +241,12 @@ func _run_eight_player_packet_budget() -> void:
 		% [full_packet.size(), steady_packet.size()]
 	)
 	assert(
-		full_packet.size() == 553,
-		"Eight-player full snapshot must remain at the established 553-byte budget."
+		full_packet.size() == 561,
+		"Eight-player full snapshot must remain at the v54 561-byte budget."
 	)
 	assert(
-		steady_packet.size() == 185,
-		"Eight-player repeated-motion snapshot must remain within the 185-byte budget."
+		steady_packet.size() == 193,
+		"Eight-player repeated-motion snapshot must remain at the v54 193-byte budget."
 	)
 
 

@@ -1,0 +1,7 @@
+[gd_resource type="AtlasTexture" format=3 uid="uid://d2ram5v7s4kxa"]
+
+[ext_resource type="Texture2D" path="res://resources/texture/consumables/magic_resistance_potion.png" id="1_texture"]
+
+[resource]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 0, 32, 32)

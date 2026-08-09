@@ -470,6 +470,7 @@ static func collect_snapshot_states_from(
 		state.effective_move_speed_multiplier = (
 			player_instance.get_authoritative_move_speed_multiplier()
 		)
+		state.void_battery_charged = player_instance.has_void_battery_charge()
 		states.append(state)
 	return states
 

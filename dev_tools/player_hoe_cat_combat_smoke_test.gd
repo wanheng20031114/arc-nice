@@ -5,6 +5,9 @@ const SPIRAL_PICKUP := preload("res://resources/config/pickup_triggered_items/sn
 const RAPID_PICKUP := preload("res://resources/config/pickup_triggered_items/rapid_magazine.tres")
 const PICKUP_SCENE := preload("res://scene/combat/pickups/pickup.tscn")
 const ENEMY_SCENE := preload("res://scene/enemy/enemy.tscn")
+const PLAYER_TEST_RUNTIME := preload(
+	"res://dev_tools/player_test_combat_runtime.gd"
+)
 const TEST_PRIMARY_DIRECTION := Vector2(0.9396926, 0.34202015)
 
 
@@ -30,7 +33,7 @@ class TestEnemy:
 
 
 var failures: Array[String] = []
-var test_root: Node2D = null
+var test_root: PlayerTestCombatRuntime = null
 var player: PlayerHoeCat = null
 var front_enemy: TestEnemy = null
 var back_enemy: TestEnemy = null
@@ -53,7 +56,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = PLAYER_TEST_RUNTIME.new() as PlayerTestCombatRuntime
 	test_root.name = "PlayerHoeCatCombatSmokeRoot"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -69,6 +72,7 @@ func _run() -> void:
 		await _finish()
 		return
 	test_root.add_child(player)
+	player.bind_combat_runtime(test_root)
 	front_enemy = _spawn_test_enemy(TEST_PRIMARY_DIRECTION * 6.0)
 	var duplicate_collision_shape := CollisionShape2D.new()
 	var duplicate_circle := CircleShape2D.new()
@@ -205,6 +209,7 @@ func _test_attack_upgrade_progression() -> void:
 	if upgrade_player == null:
 		return
 	test_root.add_child(upgrade_player)
+	upgrade_player.bind_combat_runtime(test_root)
 	await process_frame
 	_stop_audio_players(upgrade_player)
 	var expected_attack_damage := [21, 26, 32, 37, 43, 48, 54, 59, 65, 70]
@@ -642,6 +647,7 @@ func _test_generic_collectible_hooks_for_both_characters() -> void:
 	if weishidaier == null:
 		return
 	test_root.add_child(weishidaier)
+	weishidaier.bind_combat_runtime(test_root)
 	await process_frame
 	_stop_audio_players(weishidaier)
 	weishidaier.current_xirang = 0
@@ -813,6 +819,7 @@ func _test_whirlwind_interrupts_pending_primary_attack() -> void:
 		return
 	interrupt_player.position = Vector2(500.0, 0.0)
 	test_root.add_child(interrupt_player)
+	interrupt_player.bind_combat_runtime(test_root)
 	var interrupt_target := _spawn_test_enemy(interrupt_player.position + Vector2.RIGHT * 6.0)
 	await process_frame
 	await physics_frame

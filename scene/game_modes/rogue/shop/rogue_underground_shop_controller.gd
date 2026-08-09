@@ -143,6 +143,7 @@ func start_authoritative_for_node(
 	):
 		return false
 	var offers_by_peer: Dictionary = {}
+	var consumable_prices_by_peer: Dictionary = {}
 	for peer_id in participant_peer_ids:
 		var character_id := StringName(
 			_player_character_ids.get(
@@ -161,7 +162,17 @@ func start_authoritative_for_node(
 		)
 		if offers.size() != RogueUndergroundShopSession.OFFER_COUNT:
 			return false
+		var consumable_prices := (
+			RogueUndergroundShopOfferGenerator.generate_consumable_prices(
+				_config,
+				node_seed,
+				stable_key
+			)
+		)
+		if consumable_prices.size() != _config.consumable_listings.size():
+			return false
 		offers_by_peer[peer_id] = offers
+		consumable_prices_by_peer[peer_id] = consumable_prices
 	var occurrence_key := make_occurrence_key(
 		layout_hash,
 		node_id,
@@ -170,7 +181,8 @@ func start_authoritative_for_node(
 	return _session.start_authoritative(
 		occurrence_key,
 		route_revision,
-		offers_by_peer
+		offers_by_peer,
+		consumable_prices_by_peer
 	)
 
 
@@ -229,7 +241,7 @@ func preflight_snapshot(
 		or not _validate_snapshot_against_route(snapshot, graph, state)
 		or int(snapshot.get("target_peer_id", -1)) != _local_peer_id
 		or typeof(snapshot.get("party_economy")) != TYPE_DICTIONARY
-		or not _validate_snapshot_economy_enrichment(snapshot)
+		or not _validate_snapshot_consumable_prices(snapshot)
 	):
 		return false
 	var probe := RogueUndergroundShopSession.new()
@@ -239,10 +251,47 @@ func preflight_snapshot(
 		# export(new) 不是可解码快照。单调性已由真实 Session 字段检查，
 		# 用空 probe 验证 Host 下发的 new spectator 快照即可恢复。
 		probe = RogueUndergroundShopSession.new()
-	return probe.apply_snapshot(_extract_session_snapshot(snapshot))
+	if not probe.apply_snapshot(_extract_session_snapshot(snapshot)):
+		return false
+	return _validate_snapshot_economy_enrichment(snapshot, probe)
 
 
-func _validate_snapshot_economy_enrichment(snapshot: Dictionary) -> bool:
+func _validate_snapshot_consumable_prices(snapshot: Dictionary) -> bool:
+	if _config == null or typeof(snapshot.get("consumable_prices")) != TYPE_ARRAY:
+		return false
+	var participant_ids := snapshot.get("participant_peer_ids", []) as Array
+	var target_peer_id := int(snapshot.get("target_peer_id", -1))
+	var prices := snapshot.get("consumable_prices", []) as Array
+	if not participant_ids.has(target_peer_id):
+		return prices.is_empty()
+	if prices.size() != _config.consumable_listings.size():
+		return false
+	var expected_tiers: Dictionary = {}
+	for listing in _config.consumable_listings:
+		if listing == null:
+			return false
+		expected_tiers[listing.get_config_path()] = int(listing.price_tier)
+	var seen_paths: Dictionary = {}
+	for entry_value in prices:
+		if typeof(entry_value) != TYPE_DICTIONARY:
+			return false
+		var entry := entry_value as Dictionary
+		var config_path := str(entry.get("config_path", ""))
+		if (
+			not expected_tiers.has(config_path)
+			or seen_paths.has(config_path)
+			or int(entry.get("price_tier", -1))
+			!= int(expected_tiers[config_path])
+		):
+			return false
+		seen_paths[config_path] = true
+	return seen_paths.size() == expected_tiers.size()
+
+
+func _validate_snapshot_economy_enrichment(
+	snapshot: Dictionary,
+	price_session: RogueUndergroundShopSession
+) -> bool:
 	if (
 		_run_state == null
 		or typeof(snapshot.get("sell_slots")) != TYPE_ARRAY
@@ -316,7 +365,11 @@ func _validate_snapshot_economy_enrichment(snapshot: Dictionary) -> bool:
 			if not config_path.is_empty()
 			else null
 		)
-		var sell_price := economy.get_sell_price(item)
+		var sell_price := economy.get_sell_price_for_session(
+			_local_peer_id,
+			item,
+			price_session
+		)
 		var disabled_reason := ""
 		if item == null:
 			disabled_reason = "empty"
@@ -624,6 +677,7 @@ func _extract_session_snapshot(snapshot: Dictionary) -> Dictionary:
 		"target_exited",
 		"shelf_revision",
 		"offers",
+		"consumable_prices",
 	]:
 		if snapshot.has(field_name):
 			result[field_name] = snapshot[field_name]

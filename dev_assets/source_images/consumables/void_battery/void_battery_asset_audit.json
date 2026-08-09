@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "asset": "void_battery",
+  "display_name": "虚空电池",
+  "status": "passed",
+  "tier": "high",
+  "shape": "battery",
+  "chroma_key": "#FF00FF",
+  "pipeline": [
+    "built-in ImageGen, one distinct source per item",
+    "flat #FF00FF border-connected chroma-key extraction",
+    "retained foreground RGB preserved without palette quantization",
+    "strict pixel-grid analysis with no unsafe compression override",
+    "one final pixel center-sampled per measured logical cell",
+    "nearest-neighbour upscale only when needed for a readable inventory bbox",
+    "centered placement on a transparent 32x32 RGBA canvas",
+    "binary alpha, clean transparent RGB, and one-pixel border audit",
+    "lossless PNG encoding"
+  ],
+  "commands": {
+    "build": "python dev_tools/process_consumable_assets.py --asset void_battery",
+    "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+  },
+  "processing_parameters": {
+    "background_remover": "connected_background_remover.remove_connected_background",
+    "rgb_tolerance": 72,
+    "hue_tolerance": 0.035,
+    "expansion_radius": 12,
+    "hard_alpha": true,
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "logical_sampler": "Pillow nearest center sample",
+    "production_upscale": "nearest only; shrinking forbidden",
+    "palette_quantization": "none",
+    "png": "optimize=true, compress_level=9 (lossless)"
+  },
+  "prompt_record": {
+    "status": "linked",
+    "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+    "asset_entry_found": true,
+    "selected_source": "void_battery/void_battery_imagegen_magenta.png",
+    "selected_source_matches": true,
+    "referenced_images": [
+      "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+      "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png"
+    ],
+    "prompt_lines": [
+      "Use case: stylized-concept",
+      "Asset type: extra-coarse premium pixel-art consumable icon source for final native 32x32",
+      "Input images: blue skill-charge battery family references only.",
+      "Primary request: Create exactly one high-tier void battery whose effect makes the next skill free. It belongs to the same magical cell family but is unmistakably rarer: a broad compact dark-metal battery with reinforced four-corner clamps, a near-black glass chamber, and one central void orb made of a black core surrounded by a saturated violet ring and a tiny cold-white star highlight. Use restrained purple/cyan accents, not blue crystal.",
+      "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 16 logical pixels wide by 16 tall, at least one logical pixel empty border. Void orb at most 7x7 logical pixels. No half-size details.",
+      "Backdrop: perfectly uniform flat #ff00ff.",
+      "Style: crisp limited-palette retro pixel art, thick near-black outline, hard edges, premium but simple, readable at 32x32.",
+      "Composition: exactly one centered battery only.",
+      "Constraints: opaque shapes, no antialiasing/blur/soft aura, no floating particles, floor, shadow, text, logo, props, or #ff00ff inside object.",
+      "Avoid: potion bottle silhouette, colorful galaxy texture, gradients, high pixel density, multiple objects."
+    ],
+    "prompt_sha256": "1e9e98e3ce30a5ce969be16bc837085c4384175fae7eb7fce7eaa2102ac11d8f"
+  },
+  "paths": {
+    "source_master": "dev_assets/source_images/consumables/void_battery/void_battery_imagegen_magenta.png",
+    "alpha_source": "dev_assets/source_images/consumables/void_battery/void_battery_alpha.png",
+    "logical_preview": "dev_assets/source_images/consumables/void_battery/void_battery_logical_preview.png",
+    "production_texture": "resources/texture/consumables/void_battery.png",
+    "atlas": "resources/atlas/void_battery.tres",
+    "config": "resources/config/consumables/void_battery.tres"
+  },
+  "source_selection": {
+    "approved": {
+      "path": "dev_assets/source_images/consumables/void_battery/void_battery_imagegen_magenta.png",
+      "sha256": "c6616d608b4844dd723b9c66a55da1e0e3b04be94f3b6093c29ec123828642ad"
+    },
+    "rejected": [],
+    "manual_review_note": "Manual per-source review accepted the 18x26 grid. The automatic analyzer reported confidence 0.574 with near-square periods 30.7x30.2 physical pixels; the low score is caused by a local 14px Y-axis harmonic, not a continuous or ungridded illustration.",
+    "global_unsafe_override_enabled": false
+  },
+  "hashes": {
+    "source_master_sha256": "c6616d608b4844dd723b9c66a55da1e0e3b04be94f3b6093c29ec123828642ad",
+    "alpha_source_sha256": "8fca08dd374279d6eb0482d4d7bdaf72edfd554b3e8d1076dbb74b1f663a61bb",
+    "logical_preview_sha256": "5554b37eeb0e151e947640fde1e98868ae756ab71e30e5c1bb619a8fda50c036",
+    "production_texture_sha256": "0a57cae94abd82015f5cdfd459b3e1b5765a52065f33b5ea5d2f04bef6587275",
+    "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+  },
+  "source": {
+    "path": "dev_assets/source_images/consumables/void_battery/void_battery_imagegen_magenta.png",
+    "normalization_mode": "manual_reviewed_grid_center_sample",
+    "detected_logical_subject_size": [
+      18,
+      26
+    ],
+    "logical_subject_size": [
+      18,
+      26
+    ],
+    "logical_fit_scale": 1.0,
+    "grid_analysis": {
+      "image_width": 1254,
+      "image_height": 1254,
+      "image_mode": "RGBA",
+      "detection_mode": "approximate",
+      "grid_cell_width": 30.7,
+      "grid_cell_height": 30.2,
+      "grid_cell_size": 30,
+      "confidence": 0.574,
+      "subject_bbox": {
+        "left": 346,
+        "top": 233,
+        "right": 909,
+        "bottom": 1031
+      },
+      "subject_pixel_width": 563,
+      "subject_pixel_height": 798,
+      "subject_grid_width": 18,
+      "subject_grid_height": 26,
+      "recommended_canvas_grid_width": 41,
+      "recommended_canvas_grid_height": 42,
+      "manual_review": {
+        "approved_logical_size": [
+          18,
+          26
+        ],
+        "cell_width": 31.278,
+        "cell_height": 30.692,
+        "cell_aspect_ratio": 1.019,
+        "note": "Manual per-source review accepted the 18x26 grid. The automatic analyzer reported confidence 0.574 with near-square periods 30.7x30.2 physical pixels; the low score is caused by a local 14px Y-axis harmonic, not a continuous or ungridded illustration.",
+        "global_unsafe_override_enabled": false
+      }
+    }
+  },
+  "max_subject_size": [
+    28,
+    30
+  ],
+  "logical_subject_size": [
+    18,
+    26
+  ],
+  "production_subject_size": [
+    21,
+    30
+  ],
+  "production_upscale": 1.153846,
+  "paste_origin": [
+    5,
+    1
+  ],
+  "output_bbox_exclusive": [
+    5,
+    1,
+    26,
+    31
+  ],
+  "visible_color_count": 285,
+  "alpha_values": [
+    0,
+    255
+  ],
+  "checks": {
+    "canvas_32x32": true,
+    "one_pixel_transparent_border": true,
+    "binary_alpha": true,
+    "transparent_rgb_clean": true,
+    "logical_pixels_preserved": true,
+    "no_near_chroma_key_foreground": true
+  }
+}

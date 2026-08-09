@@ -2048,18 +2048,18 @@ func get_authoritative_client_projectile_parameters(
 				),
 			}
 		&"skill1_bomb":
-			if (
-				not owner_player.can_request_multiplayer_projectile(projectile_type)
-				or not owner_player.consume_multiplayer_skill1_charge()
-			):
+			if not owner_player.can_request_multiplayer_projectile(projectile_type):
 				return {}
-			owner_player.activate_collectible_skill_effects_from_multiplayer()
 			var bomb_scene := _get_runtime_packed_scene(SKILL1_BOMB_SCENE_PATH)
 			if bomb_scene == null:
 				return {}
 			var bomb := bomb_scene.instantiate() as Node2D
 			if bomb == null:
 				return {}
+			if not owner_player.consume_multiplayer_skill1_charge():
+				bomb.free()
+				return {}
+			owner_player.activate_collectible_skill_effects_from_multiplayer()
 			var result := {
 				"damage": owner_player.get_skill1_projectile_damage(),
 				"speed": float(bomb.get("speed")),
@@ -2471,6 +2471,16 @@ func _reconcile_predicted_projectile(
 		pierces_enemies,
 		now
 	)
+	var confirmed_record := get_projectile_record(projectile_id)
+	if not confirmed_record.is_empty():
+		confirmed_record["authority_confirmed"] = true
+		_projectile_records[projectile_id] = confirmed_record
+	if projectile_type == &"skill1_bomb":
+		var owner_player := _get_player(owner_peer_id)
+		if owner_player != null:
+			owner_player.confirm_predicted_void_battery_activation(
+				projectile.get_instance_id()
+			)
 
 
 func remember_projectile_record(
@@ -2490,6 +2500,7 @@ func remember_projectile_record(
 		"damage": maxi(damage, 0),
 		"pierces_enemies": pierces_enemies,
 		"confirmed_hit_consumed": false,
+		"authority_confirmed": false,
 		"expires_at": now + maxf(lifetime, 0.0) + PROJECTILE_RECORD_RETENTION_SECONDS,
 	}
 	if _is_fire_sorcerer_volley_type(projectile_type):
@@ -2747,6 +2758,7 @@ func _release_projectile(projectile: Node) -> void:
 
 
 func _on_network_projectile_finished(projectile_id: int, projectile: Node) -> void:
+	_cancel_rejected_void_battery_prediction(projectile_id, projectile)
 	if _known_projectiles.get(projectile_id) == projectile:
 		_known_projectiles.erase(projectile_id)
 
@@ -2756,8 +2768,27 @@ func notify_projectile_finished(projectile_id: int, projectile: Node) -> void:
 
 
 func _on_network_projectile_tree_exited(projectile_id: int, projectile: Node) -> void:
+	_cancel_rejected_void_battery_prediction(projectile_id, projectile)
 	if _known_projectiles.get(projectile_id) == projectile:
 		_known_projectiles.erase(projectile_id)
+
+
+func _cancel_rejected_void_battery_prediction(
+	projectile_id: int,
+	projectile: Node
+) -> void:
+	var record := get_projectile_record(projectile_id)
+	if (
+		record.is_empty()
+		or bool(record.get("authority_confirmed", false))
+		or StringName(record.get("projectile_type", &"")) != &"skill1_bomb"
+	):
+		return
+	var owner_player := _get_player(int(record.get("owner_peer_id", 0)))
+	if owner_player != null:
+		owner_player.cancel_predicted_void_battery_activation(
+			projectile.get_instance_id() if projectile != null else 0
+		)
 
 
 func notify_projectile_tree_exited(projectile_id: int, projectile: Node) -> void:

@@ -13,6 +13,7 @@ const TOWER_DEFENSE_PLANT_RUNTIME_PATH := (
 const PROJECTILE_SEQUENCE_MAX: int = 0xFFFFFFFF
 const PROJECTILE_HOST_ORIGIN_BIT: int = 0x80000000
 const PROJECTILE_SEQUENCE_COUNTER_MAX: int = 0x7FFFFFFF
+const PLAYER_SNAPSHOT_ONLY_ARG := "--player-snapshot-only"
 
 
 class TerrainClientNetManagerStub:
@@ -207,6 +208,18 @@ func _init() -> void:
 
 
 func _run() -> void:
+	if OS.get_cmdline_user_args().has(PLAYER_SNAPSHOT_ONLY_ARG):
+		_test_channel_contract()
+		_test_v25_high_value_player_snapshot_contract()
+		_test_player_codec_and_reuse()
+		if failures.is_empty():
+			print("PROTOCOL_V54_PLAYER_SNAPSHOT_SMOKE_TEST_OK")
+			quit()
+			return
+		for failure in failures:
+			push_error(failure)
+		quit(1)
+		return
 	_test_channel_contract()
 	_test_v25_high_value_player_snapshot_contract()
 	_test_terrain_payload_contract()
@@ -224,7 +237,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V49_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V54_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -233,10 +246,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 53, "Protocol must be v53.")
+	_expect(NetConstants.PROTOCOL_VERSION == 54, "Protocol must be v54.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v53 must retain the scene-specific v45 bits 5..6 for shield stages and ninja boost."
+		"Protocol v54 must retain the scene-specific v45 bits 5..6 for shield stages and ninja boost."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -254,7 +267,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v53 channel assignments must remain stable."
+		"Protocol v54 channel assignments must remain stable."
 	)
 
 
@@ -346,8 +359,8 @@ func _test_v25_high_value_player_snapshot_contract() -> void:
 		full_roster.append(roster_state)
 	var full_packet := SnapshotManager.new().encode_all_player_snapshots(full_roster)
 	_expect(
-		full_packet.size() == 553,
-		"Eight full v25 player snapshots must use exactly 553 bytes. actual=%d"
+		full_packet.size() == 561,
+		"Eight full v54 player snapshots must use exactly 561 bytes. actual=%d"
 		% full_packet.size()
 	)
 

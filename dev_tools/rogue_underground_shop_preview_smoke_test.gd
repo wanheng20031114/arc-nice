@@ -120,14 +120,39 @@ func _audit_authored_scene(view: RogueUndergroundShopView) -> void:
 			consumable_prices[str(payload.get("config_path", ""))] = int(
 				payload.get("price", 0)
 			)
+	var low_band := RogueUndergroundShopConfig.LOW_CONSUMABLE_PRICE_BAND
+	var medium_band := RogueUndergroundShopConfig.MEDIUM_CONSUMABLE_PRICE_BAND
 	_expect(
-		consumable_prices == {
-			"res://resources/config/consumables/healing_potion.tres": 50,
-			"res://resources/config/consumables/large_healing_potion.tres": 200,
-			"res://resources/config/consumables/rock_potion.tres": 70,
-			"res://resources/config/consumables/large_rock_potion.tres": 280,
-		},
-		"正式 UI 预览必须展示四种 consumable 及其 typed listing 买价。"
+		consumable_prices.size() == 4
+		and _price_matches_band(
+			int(consumable_prices.get(
+				"res://resources/config/consumables/healing_potion.tres",
+				0
+			)),
+			low_band
+		)
+		and _price_matches_band(
+			int(consumable_prices.get(
+				"res://resources/config/consumables/rock_potion.tres",
+				0
+			)),
+			low_band
+		)
+		and _price_matches_band(
+			int(consumable_prices.get(
+				"res://resources/config/consumables/large_healing_potion.tres",
+				0
+			)),
+			medium_band
+		)
+		and _price_matches_band(
+			int(consumable_prices.get(
+				"res://resources/config/consumables/large_rock_potion.tres",
+				0
+			)),
+			medium_band
+		),
+		"正式 UI 预览必须展示四种样例 consumable 及其类型化会话价格。"
 	)
 
 
@@ -358,6 +383,15 @@ func _audit_responsive_layout(view: RogueUndergroundShopView) -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _price_matches_band(price: int, band: Vector3i) -> bool:
+	return (
+		band.z > 0
+		and price >= band.x
+		and price <= band.y
+		and price % band.z == 0
+	)
 
 
 func _finish() -> void:

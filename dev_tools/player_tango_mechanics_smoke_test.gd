@@ -1117,7 +1117,7 @@ func _test_animation_and_pixel_contract() -> void:
 		&"normal_up": {"frames": 8, "fps": 14.0, "loop": true},
 		&"normal_right": {"frames": 8, "fps": 14.0, "loop": true},
 		&"normal_left": {"frames": 8, "fps": 14.0, "loop": true},
-		&"death": {"frames": 8, "fps": 12.0, "loop": false},
+		&"death": {"frames": 8, "fps": 20.0, "loop": false},
 	}
 	for animation_name_variant in expected_animations:
 		var animation_name := animation_name_variant as StringName

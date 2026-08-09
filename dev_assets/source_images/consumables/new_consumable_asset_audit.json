@@ -1,0 +1,1998 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "asset_count": 12,
+  "contract": {
+    "canvas": [
+      32,
+      32
+    ],
+    "mode": "RGBA",
+    "alpha_values": [
+      0,
+      255
+    ],
+    "minimum_transparent_border": 1,
+    "chroma_key": "#FF00FF",
+    "palette_quantization": "none",
+    "resampling": "one center sample per verified logical source cell",
+    "png_encoding": "lossless",
+    "godot_texture_filter": "project default nearest"
+  },
+  "prompt_manifest": {
+    "status": "linked",
+    "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987"
+  },
+  "contact_previews": {
+    "1x": "dev_assets/source_images/consumables/new_consumables_contact_preview_1x.png",
+    "8x_nearest": "dev_assets/source_images/consumables/new_consumables_contact_preview_8x.png"
+  },
+  "assets": [
+    {
+      "schema_version": 1,
+      "asset": "skill_charge_battery",
+      "display_name": "蓝晶技力电池",
+      "status": "passed",
+      "tier": "low",
+      "shape": "small_battery",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset skill_charge_battery",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "resources/texture/consumables/healing_potion.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: deliberately LOW-RES chunky pixel-art inventory icon source for a final native 32x32 game texture",
+          "Input image: style reference only.",
+          "Primary request: Create one small blue-crystal skill-charge battery: a short compact upright magical cell with dark metal cap/base, cyan glass, and one saturated sky-blue faceted crystal core. It is not a potion bottle.",
+          "Pixel-grid contract: design it as if drawn on a 24x24 logical pixel canvas, then enlarged with strict nearest-neighbor blocks. Use very large uniform square pixels. The entire object silhouette must fit within at most 16 logical pixels wide by 22 logical pixels tall, with at least 2 logical pixels of empty background on every side. No subpixel details and no fine 1/2-scale pixels.",
+          "Scene/backdrop: perfectly flat uniform #ff00ff chroma-key.",
+          "Style: extremely crisp hand-authored retro pixel art, limited palette, thick near-black outline, simple cyan-white highlights, readable at actual 32x32.",
+          "Composition: exactly one centered object, shorter and simpler than a tall battery tower.",
+          "Constraints: hard opaque shapes, no antialiasing, no gradients between logical pixels, no shadow/floor/text/logo/sparks/props, no #ff00ff in object.",
+          "Avoid: 48x48 or 64x64 detail density, tall slender silhouette, smooth rendering, tiny bevels, multiple objects."
+        ],
+        "prompt_sha256": "a9ff09c47cffe199b99db708c183243a76f3534e649580f50df34d164296659b"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+        "alpha_source": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_logical_preview.png",
+        "production_texture": "resources/texture/consumables/skill_charge_battery.png",
+        "atlas": "resources/atlas/skill_charge_battery.tres",
+        "config": "resources/config/consumables/skill_charge_battery.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+          "sha256": "89d7bc7fb3557896342a8ee5430e00152488134078f11c6abfd674c4496f1ccd"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta.png",
+            "sha256": "b0b13bc689c4e9d5c095c763df56b16505d2dc70c8ac255ba7f5d07409f97ad3",
+            "reason": "rejected: unreliable primary grid (confidence 0.388) and approximately 16x38 logical subject"
+          }
+        ],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "89d7bc7fb3557896342a8ee5430e00152488134078f11c6abfd674c4496f1ccd",
+        "alpha_source_sha256": "99a0294b4f87a64b9aec7a312a7ab6f79cecf980bf165b80e5a5fb2a17e32735",
+        "logical_preview_sha256": "d50aab134f81578d30c0fe3474113a30d95457add8beb590b949d8266051b347",
+        "production_texture_sha256": "36336c712753b555cf0f4e79dcae2faee31f0245031f9f37a90e700f260bca0b",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          10,
+          18
+        ],
+        "logical_subject_size": [
+          10,
+          18
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 40.65,
+          "grid_cell_height": 39.6,
+          "grid_cell_size": 40,
+          "confidence": 0.85,
+          "subject_bbox": {
+            "left": 424,
+            "top": 326,
+            "right": 829,
+            "bottom": 1038
+          },
+          "subject_pixel_width": 405,
+          "subject_pixel_height": 712,
+          "subject_grid_width": 10,
+          "subject_grid_height": 18,
+          "recommended_canvas_grid_width": 31,
+          "recommended_canvas_grid_height": 32
+        }
+      },
+      "max_subject_size": [
+        22,
+        30
+      ],
+      "logical_subject_size": [
+        10,
+        18
+      ],
+      "production_subject_size": [
+        17,
+        30
+      ],
+      "production_upscale": 1.666667,
+      "paste_origin": [
+        7,
+        1
+      ],
+      "output_bbox_exclusive": [
+        7,
+        1,
+        24,
+        31
+      ],
+      "visible_color_count": 106,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "large_skill_charge_battery",
+      "display_name": "大型蓝晶技力电池",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "large_battery",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset large_skill_charge_battery",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+          "resources/texture/consumables/large_healing_potion.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: deliberately LOW-RES chunky pixel-art inventory icon source for final native 32x32",
+          "Input images: Image 1 defines the small blue-crystal battery family; Image 2 defines broad large-tier mass. References only.",
+          "Primary request: Create exactly one large blue-crystal skill-charge battery, clearly upgraded from Image 1: broader/heavier dark metal cap and base, wider cyan chamber, one larger saturated sky-blue crystal. Same family, not merely enlarged.",
+          "Pixel-grid contract: draw as if on a 24x24 logical grid enlarged by strict nearest-neighbor. Large uniform square pixels only. Object silhouette must fit at most 19 logical pixels wide by 23 logical pixels tall, leaving at least 1 logical pixel of background on each side. No half-scale micro-pixels.",
+          "Backdrop: perfectly uniform flat #ff00ff chroma key.",
+          "Style: crisp limited-palette retro pixel art, thick near-black outline, simple white/cyan highlights, readable at 32x32.",
+          "Composition: one centered object, broad and sturdy.",
+          "Constraints: hard opaque shapes, no antialiasing, no gradients between logical blocks, no floor/shadow/text/logo/sparks/props, no #ff00ff in object.",
+          "Avoid: 48x/64x detail density, thin tower silhouette, smooth rendering, tiny bevels, multiple objects."
+        ],
+        "prompt_sha256": "9084c7bad3d3d752cb5b6505dee5a19719887bf4d38bcedd2b477e2d169c9db8"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png",
+        "alpha_source": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_logical_preview.png",
+        "production_texture": "resources/texture/consumables/large_skill_charge_battery.png",
+        "atlas": "resources/atlas/large_skill_charge_battery.tres",
+        "config": "resources/config/consumables/large_skill_charge_battery.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png",
+          "sha256": "569fc1e96886dd3bb2a5e9e658b5c33a5063b694acea416113cbb27e58ffac08"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta.png",
+            "sha256": "b60ae00caa3f2ee5dba2379efe3f29883a789a913345f5e54ebb000e5000ec30",
+            "reason": "rejected: measured 28x51 logical subject exceeds the lossless 27x30 contract"
+          }
+        ],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "569fc1e96886dd3bb2a5e9e658b5c33a5063b694acea416113cbb27e58ffac08",
+        "alpha_source_sha256": "1de6eb3616b8f77dd1ac6ca6070e7560beacd50865dc169a8c16fc17845672d2",
+        "logical_preview_sha256": "14e73a8f058219450863e08127c99907add2abe19cc9ea86548c97eafa31f1a0",
+        "production_texture_sha256": "08ff2df49e4af107ba3adba08d63238e3e619d960d37bbe5d34ecca11f8c339d",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          20,
+          28
+        ],
+        "logical_subject_size": [
+          20,
+          28
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 37.9,
+          "grid_cell_height": 37.05,
+          "grid_cell_size": 37,
+          "confidence": 0.857,
+          "subject_bbox": {
+            "left": 253,
+            "top": 121,
+            "right": 1004,
+            "bottom": 1141
+          },
+          "subject_pixel_width": 751,
+          "subject_pixel_height": 1020,
+          "subject_grid_width": 20,
+          "subject_grid_height": 28,
+          "recommended_canvas_grid_width": 33,
+          "recommended_canvas_grid_height": 34
+        }
+      },
+      "max_subject_size": [
+        27,
+        30
+      ],
+      "logical_subject_size": [
+        20,
+        28
+      ],
+      "production_subject_size": [
+        21,
+        30
+      ],
+      "production_upscale": 1.071429,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        26,
+        31
+      ],
+      "visible_color_count": 326,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "magic_resistance_potion",
+      "display_name": "紫晶法抗药水",
+      "status": "passed",
+      "tier": "low",
+      "shape": "small_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset magic_resistance_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "resources/texture/consumables/healing_potion.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: deliberately LOW-RES chunky pixel-art consumable icon source for final native 32x32",
+          "Input image: existing small potion is style reference only.",
+          "Primary request: Create exactly one small purple-crystal magic-resistance potion: narrow corked glass bottle, deep violet liquid, one simple angular lavender amethyst shard visible inside, dark outline and cyan-white glass highlights.",
+          "Pixel-grid contract: draw as if on a 24x24 logical grid enlarged by strict nearest-neighbor. Use large uniform square pixels. Entire bottle silhouette at most 15 logical pixels wide by 22 tall, with at least 2 logical pixels empty background on every side. The crystal motif uses only 4-6 logical pixels. No fine half-scale details.",
+          "Backdrop: perfectly flat uniform #ff00ff chroma key.",
+          "Style: crisp limited-palette retro pixel art, thick near-black outline, hard edges, designed for 32x32 readability.",
+          "Composition: exactly one centered narrow small-tier bottle.",
+          "Constraints: opaque shapes, no alpha translucency, no antialiasing/blur, no floor/shadow/text/runes outside bottle/logo/props, no #ff00ff in object.",
+          "Avoid: 48x/64x detail density, wide large bottle, smooth vector rendering, tiny facets, multiple bottles."
+        ],
+        "prompt_sha256": "6c2ad0476f8461e4071c439863112f1819d2f0f21cec2423b487e6bc7a178eca"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+        "alpha_source": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/magic_resistance_potion.png",
+        "atlas": "resources/atlas/magic_resistance_potion.tres",
+        "config": "resources/config/consumables/magic_resistance_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+          "sha256": "95b3e976e2618b5a7ce554c774d17df2cbef2739c011beb0d631c24dc5867d60"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta.png",
+            "sha256": "5caaa1208f746872716099cbfc0abdc32f6fa50af0635b9e523eec19605386a5",
+            "reason": "rejected: measured 32x54 logical subject exceeds the lossless 22x30 contract"
+          }
+        ],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "95b3e976e2618b5a7ce554c774d17df2cbef2739c011beb0d631c24dc5867d60",
+        "alpha_source_sha256": "d932989abc459168d903b4226ea859097316acf8ba7b578061b8782f1bf184b0",
+        "logical_preview_sha256": "e4c7e073b407d8cc60ca88513abae1cc85e2461ff402d0933b68a07c395dfbda",
+        "production_texture_sha256": "f7f6a473bbf9144b88607c1262cc68fe1f7a7731d2f676234bda0e776fdc0d54",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          8,
+          20
+        ],
+        "logical_subject_size": [
+          8,
+          20
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 39.1,
+          "grid_cell_height": 39.05,
+          "grid_cell_size": 39,
+          "confidence": 0.931,
+          "subject_bbox": {
+            "left": 471,
+            "top": 238,
+            "right": 784,
+            "bottom": 1017
+          },
+          "subject_pixel_width": 313,
+          "subject_pixel_height": 779,
+          "subject_grid_width": 8,
+          "subject_grid_height": 20,
+          "recommended_canvas_grid_width": 32,
+          "recommended_canvas_grid_height": 32
+        }
+      },
+      "max_subject_size": [
+        22,
+        30
+      ],
+      "logical_subject_size": [
+        8,
+        20
+      ],
+      "production_subject_size": [
+        12,
+        30
+      ],
+      "production_upscale": 1.5,
+      "paste_origin": [
+        10,
+        1
+      ],
+      "output_bbox_exclusive": [
+        10,
+        1,
+        22,
+        31
+      ],
+      "visible_color_count": 92,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "large_magic_resistance_potion",
+      "display_name": "大型紫晶法抗药水",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "large_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset large_magic_resistance_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+          "resources/texture/consumables/large_rock_potion.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: EXTRA-COARSE low-resolution pixel-art consumable icon source for final native 32x32",
+          "Input images: purple potion family and large-tier silhouette references only.",
+          "Primary request: exactly one large purple-crystal magic-resistance potion: broad squat corked bottle, deep violet liquid, two simple lavender amethyst shards, dark thick outline and cyan-white glass rim.",
+          "Strict pixel-grid contract: draw the entire artwork as if on a 16x16 logical pixel canvas and enlarge each logical pixel into one huge uniform square block using nearest-neighbor. The bottle may use at most 14 logical pixels wide by 15 tall. Crystal cluster uses no more than 5x6 logical pixels total. ABSOLUTELY NO half-size pixels, diagonal substeps smaller than the main block, gradients, antialiasing, or high-resolution facets.",
+          "Backdrop: perfectly uniform #ff00ff.",
+          "Style: very chunky limited-palette retro pixel art, comparable to an intentional 16-bit inventory sprite, readable after placement into 32x32.",
+          "Composition: one centered broad bottle with one logical pixel padding minimum.",
+          "Constraints: opaque hard shapes; no shadow/floor/text/logo/runes outside bottle/props; no #ff00ff inside object.",
+          "Avoid: detailed crystal rendering, 24/32/48 logical pixel density, smoothness, tiny highlights, multiple bottles."
+        ],
+        "prompt_sha256": "6976ac41fa6d2bd976f2a4ff7d0078945d942d0a02485db91d64acff6b5662a0"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
+        "alpha_source": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/large_magic_resistance_potion.png",
+        "atlas": "resources/atlas/large_magic_resistance_potion.tres",
+        "config": "resources/config/consumables/large_magic_resistance_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
+          "sha256": "a423206fed92a33f82ab00f698954dce916c2c6f7f4b96955ed79ada288044d6"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta.png",
+            "sha256": "626cec66efbcceeb3a7136fc257b7318f2325a33e92347c4b249d738f8ea85fe",
+            "reason": "rejected: independent square-grid audit measured approximately 36x42 logical cells"
+          }
+        ],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "a423206fed92a33f82ab00f698954dce916c2c6f7f4b96955ed79ada288044d6",
+        "alpha_source_sha256": "bf5ed3c4ed9139b35f9fdb1fb40a165acfa0795308f48c9176c0ebab40edc364",
+        "logical_preview_sha256": "9a539e1b4a1cad260cf2f32050bf491708975f30d1a515ccd722fdc5b1d6e95e",
+        "production_texture_sha256": "35e857fabce6c09fbc8c8d07fe6b0f11c7e6fa66398f20e1ad085ddc21e74042",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          12,
+          16
+        ],
+        "logical_subject_size": [
+          12,
+          16
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 57.7,
+          "grid_cell_height": 58.65,
+          "grid_cell_size": 58,
+          "confidence": 0.973,
+          "subject_bbox": {
+            "left": 278,
+            "top": 152,
+            "right": 972,
+            "bottom": 1089
+          },
+          "subject_pixel_width": 694,
+          "subject_pixel_height": 937,
+          "subject_grid_width": 12,
+          "subject_grid_height": 16,
+          "recommended_canvas_grid_width": 22,
+          "recommended_canvas_grid_height": 21
+        }
+      },
+      "max_subject_size": [
+        27,
+        30
+      ],
+      "logical_subject_size": [
+        12,
+        16
+      ],
+      "production_subject_size": [
+        22,
+        30
+      ],
+      "production_upscale": 1.875,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        27,
+        31
+      ],
+      "visible_color_count": 106,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "regeneration_potion",
+      "display_name": "凝胶再生剂",
+      "status": "passed",
+      "tier": "low",
+      "shape": "small_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset regeneration_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "regeneration_potion/regeneration_potion_imagegen_magenta.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "resources/texture/consumables/healing_potion.png",
+          "resources/texture/consumables/rock_potion.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: deliberately low-resolution chunky pixel-art consumable icon source for final native 32x32",
+          "Input images: existing small-tier potion style references only.",
+          "Primary request: Create exactly one small gel regeneration tonic. A narrow upright corked glass bottle in the same family, containing luminous turquoise-green gel. Inside, use two or three large rounded blocky gel bubbles and one simple upward-growing leaf/spiral motif to suggest gradual healing, without text or symbols outside the bottle.",
+          "Pixel-grid contract: design as if on a 24x24 logical grid enlarged with strict nearest-neighbor. Uniform large square pixels. Bottle silhouette at most 16 logical pixels wide by 22 tall, leaving at least 2 logical pixels background on all sides. No fine micro-pixels.",
+          "Backdrop: perfectly uniform flat #ff00ff chroma key.",
+          "Style: crisp hand-authored retro pixel art, thick near-black outline, cyan-white glass highlight, limited teal/green palette, hard edges, readable at 32x32.",
+          "Composition: exactly one centered narrow small-tier bottle.",
+          "Constraints: opaque shapes, no alpha translucency, no antialiasing/blur, no floor/shadow/text/logo/watermark/extra props, no #ff00ff in object.",
+          "Avoid: wide large bottle, photorealism, smooth vector art, thin details, dense noise, multiple bottles."
+        ],
+        "prompt_sha256": "a1f6880aa03aa6984fd8891c0e48f49c395901ebc832afd0e4b39a86cde1e9f4"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_imagegen_magenta.png",
+        "alpha_source": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/regeneration_potion.png",
+        "atlas": "resources/atlas/regeneration_potion.tres",
+        "config": "resources/config/consumables/regeneration_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_imagegen_magenta.png",
+          "sha256": "52e0e42bfebe8b9995c41c403c886b42c08afdf0eaeb0e9f2d99bea68f518cf1"
+        },
+        "rejected": [],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "52e0e42bfebe8b9995c41c403c886b42c08afdf0eaeb0e9f2d99bea68f518cf1",
+        "alpha_source_sha256": "2d3b83bff45a5a07279268ceddca4fc459a7ff910127873dfb4f1d6d03339b96",
+        "logical_preview_sha256": "20c531cf38762164e01ebcb1f667b75b32e0f750d29b4baa60d5405c4c98d31b",
+        "production_texture_sha256": "a6096e6057b20ff4241e9ef955629f6324bf006a86b5d18a06fae61572e9673d",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_imagegen_magenta.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          10,
+          22
+        ],
+        "logical_subject_size": [
+          10,
+          22
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 38.4,
+          "grid_cell_height": 39.35,
+          "grid_cell_size": 39,
+          "confidence": 0.96,
+          "subject_bbox": {
+            "left": 439,
+            "top": 198,
+            "right": 812,
+            "bottom": 1059
+          },
+          "subject_pixel_width": 373,
+          "subject_pixel_height": 861,
+          "subject_grid_width": 10,
+          "subject_grid_height": 22,
+          "recommended_canvas_grid_width": 33,
+          "recommended_canvas_grid_height": 32
+        }
+      },
+      "max_subject_size": [
+        22,
+        30
+      ],
+      "logical_subject_size": [
+        10,
+        22
+      ],
+      "production_subject_size": [
+        14,
+        30
+      ],
+      "production_upscale": 1.363636,
+      "paste_origin": [
+        9,
+        1
+      ],
+      "output_bbox_exclusive": [
+        9,
+        1,
+        23,
+        31
+      ],
+      "visible_color_count": 131,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "large_regeneration_potion",
+      "display_name": "大型凝胶再生剂",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "large_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset large_regeneration_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_imagegen_magenta.png",
+          "resources/texture/consumables/large_healing_potion.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: EXTRA-COARSE low-resolution pixel-art consumable icon source for final native 32x32",
+          "Input images: small regeneration family and large-tier silhouette references only.",
+          "Primary request: exactly one large gel regeneration tonic: broad squat corked bottle, luminous turquoise-green gel, three large blocky gel cells, one simple upward spiral/leaf shape, thick dark outline and cyan-white rim.",
+          "Strict pixel-grid contract: draw as if on a 16x16 logical pixel canvas, each logical pixel one huge uniform square block enlarged nearest-neighbor. Bottle at most 14 logical pixels wide by 15 tall. No half-size pixels, no micro-bubbles, no small diagonal substeps, no gradients.",
+          "Backdrop: perfectly uniform #ff00ff.",
+          "Style: very chunky limited-palette retro pixel art, hard edges, readable at 32x32.",
+          "Composition: one centered broad bottle with at least one logical pixel padding.",
+          "Constraints: opaque shapes; no antialiasing/blur/soft glow/floor/shadow/text/logo/props; no #ff00ff inside object.",
+          "Avoid: narrow tall bottle, 24/32/48 logical density, detailed spiral, multiple bottles."
+        ],
+        "prompt_sha256": "9216cc7b714f7dcf9d668df2498767c56a1e5da914c5785b3753722d362cc5e5"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
+        "alpha_source": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/large_regeneration_potion.png",
+        "atlas": "resources/atlas/large_regeneration_potion.tres",
+        "config": "resources/config/consumables/large_regeneration_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
+          "sha256": "b85c95c9388816f68603c0273c1877503eaf757f7b2c16804c12991fc3b16697"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta.png",
+            "sha256": "bf5f69fe91736d101d6bf1d1a5e2cdd0a8d33d7e9db767f5637718b501048790",
+            "reason": "rejected: measured 26x33 logical subject exceeds the lossless 27x30 contract"
+          }
+        ],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "b85c95c9388816f68603c0273c1877503eaf757f7b2c16804c12991fc3b16697",
+        "alpha_source_sha256": "ccd20989391d39b1e59472655375f688210b7961e824211c7b127788a687243f",
+        "logical_preview_sha256": "21d0255d3b65a8c2660fd21c46a8381fb932748de3a24bc2eaaa557f6c2677d6",
+        "production_texture_sha256": "6d263304fcc77717dd747fe329032bd8724a52719f2d71582c4c6ce14e31d48d",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          15,
+          20
+        ],
+        "logical_subject_size": [
+          15,
+          20
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 51.35,
+          "grid_cell_height": 49.4,
+          "grid_cell_size": 50,
+          "confidence": 0.966,
+          "subject_bbox": {
+            "left": 247,
+            "top": 150,
+            "right": 1008,
+            "bottom": 1137
+          },
+          "subject_pixel_width": 761,
+          "subject_pixel_height": 987,
+          "subject_grid_width": 15,
+          "subject_grid_height": 20,
+          "recommended_canvas_grid_width": 24,
+          "recommended_canvas_grid_height": 25
+        }
+      },
+      "max_subject_size": [
+        27,
+        30
+      ],
+      "logical_subject_size": [
+        15,
+        20
+      ],
+      "production_subject_size": [
+        22,
+        30
+      ],
+      "production_upscale": 1.5,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        27,
+        31
+      ],
+      "visible_color_count": 175,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "guardian_mixture",
+      "display_name": "守护合剂",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "single_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset guardian_mixture",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "guardian_mixture/guardian_mixture_imagegen_magenta.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "resources/texture/consumables/rock_potion.png",
+          "resources/texture/consumables/large_healing_potion.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+          "Input images: game consumable style references only.",
+          "Primary request: Create exactly one guardian mixture bottle. Use a sturdy medium-width glass flask with dark near-black outline, a steel-blue lower liquid and warm amber-gold upper glow. Inside is one bold simple shield silhouette made from 5-7 logical pixels, communicating temporary protection from all damage. Distinct from the brown rock potion.",
+          "Strict pixel-grid contract: artwork behaves like an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels only. Object at most 15 logical pixels wide by 16 tall, at least one logical pixel background around it. No half-size pixels.",
+          "Backdrop: perfectly uniform flat #ff00ff.",
+          "Style: crisp limited-palette retro pixel art, chunky outline, cyan-white glass highlight, hard edges, readable at 32x32.",
+          "Composition: one centered object only.",
+          "Constraints: opaque shapes, no antialiasing/blur/soft glow, no floor/shadow/text/logo/props, no #ff00ff inside object.",
+          "Avoid: detailed heraldry, gradients, high pixel density, photorealism, multiple bottles."
+        ],
+        "prompt_sha256": "35e50309915132b85851c95d9f251eb8587c6e5e2c058aa27f2493a8417ecf9d"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png",
+        "alpha_source": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_logical_preview.png",
+        "production_texture": "resources/texture/consumables/guardian_mixture.png",
+        "atlas": "resources/atlas/guardian_mixture.tres",
+        "config": "resources/config/consumables/guardian_mixture.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png",
+          "sha256": "832bfe7546e25b41657ab00e1f8ed3fc835d67e9c39ce3f3d2bb23feef1964f8"
+        },
+        "rejected": [],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "832bfe7546e25b41657ab00e1f8ed3fc835d67e9c39ce3f3d2bb23feef1964f8",
+        "alpha_source_sha256": "4f21098e8afea654f4d0ae55923e586d6fa058a469496eda28732aa5d19a45f7",
+        "logical_preview_sha256": "dddbdf170edefb6530860602e3199e19df3809b938e34426cf7fce53dd592b00",
+        "production_texture_sha256": "35b8107a8401f603314e51f79c0e0e062b6afb295ee5e205e98a83796cccf46e",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          17,
+          24
+        ],
+        "logical_subject_size": [
+          17,
+          24
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 38.15,
+          "grid_cell_height": 38.95,
+          "grid_cell_size": 39,
+          "confidence": 0.962,
+          "subject_bbox": {
+            "left": 302,
+            "top": 159,
+            "right": 953,
+            "bottom": 1092
+          },
+          "subject_pixel_width": 651,
+          "subject_pixel_height": 933,
+          "subject_grid_width": 17,
+          "subject_grid_height": 24,
+          "recommended_canvas_grid_width": 33,
+          "recommended_canvas_grid_height": 32
+        }
+      },
+      "max_subject_size": [
+        24,
+        30
+      ],
+      "logical_subject_size": [
+        17,
+        24
+      ],
+      "production_subject_size": [
+        21,
+        30
+      ],
+      "production_upscale": 1.25,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        26,
+        31
+      ],
+      "visible_color_count": 220,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "battle_spirit_potion",
+      "display_name": "战意药水",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "single_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset battle_spirit_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
+          "resources/texture/consumables/rock_potion.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: EXTRA-COARSE low-resolution pixel-art consumable icon source for final native 32x32",
+          "Input images: Image 1 defines ember/sword battle-spirit contents but is too tall/detailed; Image 2 defines compact bottle proportions. References only.",
+          "Primary request: exactly one shorter, compact battle-spirit potion. Medium-width angular corked bottle, ember-orange/deep crimson liquid, one extremely simple yellow-orange upward flame/sword-tip motif inside. Preserve attack-power identity, but simplify.",
+          "Strict pixel-grid contract: draw as if on a 16x16 logical canvas enlarged strict nearest-neighbor. Bottle at most 13 logical pixels wide by 15 tall. Motif at most 5x7 logical pixels. Uniform huge square blocks only; absolutely no half-size pixels, micro-sparks, fine stair steps, gradients, or dense bevels.",
+          "Backdrop: perfectly uniform #ff00ff.",
+          "Style: crisp limited-palette retro pixel art, thick near-black outline, cyan-white glass rim, hard edges, readable at 32x32.",
+          "Composition: one centered compact bottle, one logical pixel border minimum.",
+          "Constraints: opaque; no antialiasing/blur/shadow/floor/text/logo/weapon outside bottle/props; no #ff00ff inside object.",
+          "Avoid: round healing potion, tall thin bottle, 24/32/48 logical density, multiple objects."
+        ],
+        "prompt_sha256": "c39c08f011a93a7cd01b45bad02352850898cd82b5caed810498aec52a82c525"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+        "alpha_source": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/battle_spirit_potion.png",
+        "atlas": "resources/atlas/battle_spirit_potion.tres",
+        "config": "resources/config/consumables/battle_spirit_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+          "sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
+            "sha256": "744346fdaccc4e01195fd8c823a9ad6cd129b3728789fa645eef15769efce8f8",
+            "reason": "rejected: measured 19x34 logical subject exceeds the lossless 24x30 contract"
+          }
+        ],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808",
+        "alpha_source_sha256": "3b0a9c71c6d8bde0e74f4f7796f104bcc09391f1162e57f87309e21fc6e0c8a8",
+        "logical_preview_sha256": "989a8cc600fbd4944263f5c66087c935d6a3eafc478469037b4cb03781314150",
+        "production_texture_sha256": "7a5462c5d57b5202c0c5137a24845d41d814960ed59ab8576fa0b8347a793e5f",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          11,
+          16
+        ],
+        "logical_subject_size": [
+          11,
+          16
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 46.05,
+          "grid_cell_height": 50.85,
+          "grid_cell_size": 48,
+          "confidence": 0.91,
+          "subject_bbox": {
+            "left": 369,
+            "top": 248,
+            "right": 885,
+            "bottom": 1059
+          },
+          "subject_pixel_width": 516,
+          "subject_pixel_height": 811,
+          "subject_grid_width": 11,
+          "subject_grid_height": 16,
+          "recommended_canvas_grid_width": 27,
+          "recommended_canvas_grid_height": 25
+        }
+      },
+      "max_subject_size": [
+        24,
+        30
+      ],
+      "logical_subject_size": [
+        11,
+        16
+      ],
+      "production_subject_size": [
+        21,
+        30
+      ],
+      "production_upscale": 1.875,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        26,
+        31
+      ],
+      "visible_color_count": 107,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "focus_potion",
+      "display_name": "专注药水",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "single_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset focus_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "focus_potion/focus_potion_imagegen_magenta.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "resources/texture/consumables/healing_potion.png",
+          "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+          "Input images: game consumable style references only.",
+          "Primary request: Create exactly one focus potion that communicates heightened concentration and faster attacks. A compact diamond-shouldered glass flask with dark near-black outline and deep indigo/cobalt liquid. Inside is one minimal pale-cyan eye/bullseye motif: a horizontal diamond eye with a bright center dot, only a few logical pixels, plus cyan-white glass highlights. Distinct from purple magic-resistance crystals.",
+          "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 14x16 logical pixels, at least one pixel empty border. No half-scale details.",
+          "Backdrop: perfectly uniform flat #ff00ff.",
+          "Style: crisp limited-palette retro pixel art, hard edges, thick outline, readable at 32x32.",
+          "Composition: one centered bottle only.",
+          "Constraints: opaque shapes, no antialiasing/blur/soft glow, no floor/shadow/text/logo/props, no #ff00ff inside object.",
+          "Avoid: literal clock, lightning bolt, detailed realistic eye, gradients, high pixel density, multiple objects."
+        ],
+        "prompt_sha256": "78167df254a8023c03811a737e47823de2803ca3243f5fe49ea0846cdd8cc80e"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png",
+        "alpha_source": "dev_assets/source_images/consumables/focus_potion/focus_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/focus_potion/focus_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/focus_potion.png",
+        "atlas": "resources/atlas/focus_potion.tres",
+        "config": "resources/config/consumables/focus_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png",
+          "sha256": "95abbc0fb2d85d996013dae33a7dd404e27cfdb0ad1902dc460bdae5a9fa83b8"
+        },
+        "rejected": [],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "95abbc0fb2d85d996013dae33a7dd404e27cfdb0ad1902dc460bdae5a9fa83b8",
+        "alpha_source_sha256": "d91cc1002a633cc07839bc035565bed048456eb86b755091e4428512d966f162",
+        "logical_preview_sha256": "a79d75b87b1f878e6348e52b30515e630da5d7ff7648ef6b125d7b1165f243ef",
+        "production_texture_sha256": "19c69e07066f3d251cc1f50d184f0492ce77d9610ee2e874810cea18ef06828f",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          17,
+          24
+        ],
+        "logical_subject_size": [
+          17,
+          24
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 36.3,
+          "grid_cell_height": 38.9,
+          "grid_cell_size": 38,
+          "confidence": 0.949,
+          "subject_bbox": {
+            "left": 314,
+            "top": 159,
+            "right": 941,
+            "bottom": 1092
+          },
+          "subject_pixel_width": 627,
+          "subject_pixel_height": 933,
+          "subject_grid_width": 17,
+          "subject_grid_height": 24,
+          "recommended_canvas_grid_width": 35,
+          "recommended_canvas_grid_height": 32
+        }
+      },
+      "max_subject_size": [
+        24,
+        30
+      ],
+      "logical_subject_size": [
+        17,
+        24
+      ],
+      "production_subject_size": [
+        21,
+        30
+      ],
+      "production_upscale": 1.25,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        26,
+        31
+      ],
+      "visible_color_count": 216,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "windwalk_potion",
+      "display_name": "风行药水",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "single_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset windwalk_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "windwalk_potion/windwalk_potion_imagegen_magenta.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "resources/texture/consumables/healing_potion.png",
+          "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+          "Input images: game consumable style references only.",
+          "Primary request: Create exactly one windwalk potion. A compact teardrop-shaped glass bottle with dark near-black outline, bright sky-blue liquid, pale cyan-white highlights, and one simple white wind curl inside: a short S-shaped gust with two blocky trailing strokes. It should communicate faster movement without using a lightning bolt or shoe.",
+          "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 14x16 logical pixels, at least one logical pixel empty border. No half-size details.",
+          "Backdrop: perfectly uniform flat #ff00ff.",
+          "Style: crisp limited-palette retro pixel art, hard edges, thick outline, readable at 32x32.",
+          "Composition: one centered bottle only.",
+          "Constraints: opaque shapes, no antialiasing/blur/transparency, no floor/shadow/text/logo/cloud outside bottle/props, no #ff00ff inside object.",
+          "Avoid: lightning, footwear, detailed swirls, gradients, high pixel density, multiple objects."
+        ],
+        "prompt_sha256": "716e7174466132416c94f442ddfa853a9752467c741cc08260f65897a2bb2577"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta.png",
+        "alpha_source": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/windwalk_potion.png",
+        "atlas": "resources/atlas/windwalk_potion.tres",
+        "config": "resources/config/consumables/windwalk_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta.png",
+          "sha256": "725f514693a0dc512109f40f81b136c17ea779b2cf77268220c9f1b3e15b0f90"
+        },
+        "rejected": [],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "725f514693a0dc512109f40f81b136c17ea779b2cf77268220c9f1b3e15b0f90",
+        "alpha_source_sha256": "ee2af849b057f8f08a0465ee529eb2b95cb5c3e0680d1cfbb2af68cb2fbe785f",
+        "logical_preview_sha256": "2f417b3e6a6db9aeb2543cfa5ebf9b6d42a04349232f39b9bc6528dce47feb42",
+        "production_texture_sha256": "dbaba33cb5211032f2a6ea9a7ef83da554f1ca25f0e89a0a3bd589440cebd02d",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          15,
+          23
+        ],
+        "logical_subject_size": [
+          15,
+          23
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 37.75,
+          "grid_cell_height": 37.5,
+          "grid_cell_size": 38,
+          "confidence": 0.793,
+          "subject_bbox": {
+            "left": 343,
+            "top": 199,
+            "right": 911,
+            "bottom": 1066
+          },
+          "subject_pixel_width": 568,
+          "subject_pixel_height": 867,
+          "subject_grid_width": 15,
+          "subject_grid_height": 23,
+          "recommended_canvas_grid_width": 33,
+          "recommended_canvas_grid_height": 33
+        }
+      },
+      "max_subject_size": [
+        24,
+        30
+      ],
+      "logical_subject_size": [
+        15,
+        23
+      ],
+      "production_subject_size": [
+        20,
+        30
+      ],
+      "production_upscale": 1.304348,
+      "paste_origin": [
+        6,
+        1
+      ],
+      "output_bbox_exclusive": [
+        6,
+        1,
+        26,
+        31
+      ],
+      "visible_color_count": 158,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "phantom_potion",
+      "display_name": "幻影药剂",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "single_bottle",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset phantom_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "phantom_potion/phantom_potion_imagegen_magenta.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "resources/texture/consumables/rock_potion.png",
+          "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
+          "Input images: game consumable style references only.",
+          "Primary request: Create exactly one phantom potion for temporary dodge. A compact crescent-shouldered glass flask with dark near-black outline, smoky slate-gray and muted lilac liquid, pale blue-white highlights. Inside is one minimal drifting phantom silhouette: a soft blocky hood/veil shape with two tiny cyan eyes and a tapering side trail, entirely contained inside the bottle. It should suggest evasiveness, not death or poison.",
+          "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 14x16 logical pixels, at least one logical pixel empty border. No half-size details.",
+          "Backdrop: perfectly uniform flat #ff00ff.",
+          "Style: crisp limited-palette retro pixel art, hard edges, thick outline, readable at 32x32.",
+          "Composition: one centered bottle only.",
+          "Constraints: opaque shapes, no antialiasing/blur/transparency, no floor/shadow/text/logo/ghost outside bottle/props, no #ff00ff inside object.",
+          "Avoid: skull, poison iconography, detailed face, gradients, high pixel density, multiple objects."
+        ],
+        "prompt_sha256": "1916a328e9ab9cc2a05dc7d0b3b7391f3f1fdec2fb90cafc2691912f3a03c115"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_imagegen_magenta.png",
+        "alpha_source": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/phantom_potion.png",
+        "atlas": "resources/atlas/phantom_potion.tres",
+        "config": "resources/config/consumables/phantom_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_imagegen_magenta.png",
+          "sha256": "538bcd011606c0490ba3df672d5dd7aa42650e59a6e2d3cd93a0b26e5a7fb1aa"
+        },
+        "rejected": [],
+        "manual_review_note": "",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "538bcd011606c0490ba3df672d5dd7aa42650e59a6e2d3cd93a0b26e5a7fb1aa",
+        "alpha_source_sha256": "18f23b7c10df1ac12aebc8a45c5dd08a5809f246a7ffa65b12b77b4a75f643d2",
+        "logical_preview_sha256": "4c13e6a8d6092df2d24cbbe5882964ecd686d743b7725121246c20b1a08071e3",
+        "production_texture_sha256": "43bae93f720f3fa3ccf08a4ed349f1fd49c9248fdf3e093e2c27c3d07d1a20c5",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_imagegen_magenta.png",
+        "normalization_mode": "measured_grid_center_sample",
+        "detected_logical_subject_size": [
+          18,
+          24
+        ],
+        "logical_subject_size": [
+          18,
+          24
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 39.6,
+          "grid_cell_height": 40.45,
+          "grid_cell_size": 40,
+          "confidence": 0.852,
+          "subject_bbox": {
+            "left": 275,
+            "top": 142,
+            "right": 981,
+            "bottom": 1111
+          },
+          "subject_pixel_width": 706,
+          "subject_pixel_height": 969,
+          "subject_grid_width": 18,
+          "subject_grid_height": 24,
+          "recommended_canvas_grid_width": 32,
+          "recommended_canvas_grid_height": 31
+        }
+      },
+      "max_subject_size": [
+        24,
+        30
+      ],
+      "logical_subject_size": [
+        18,
+        24
+      ],
+      "production_subject_size": [
+        22,
+        30
+      ],
+      "production_upscale": 1.25,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        27,
+        31
+      ],
+      "visible_color_count": 219,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "asset": "void_battery",
+      "display_name": "虚空电池",
+      "status": "passed",
+      "tier": "high",
+      "shape": "battery",
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "nearest-neighbour upscale only when needed for a readable inventory bbox",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset void_battery",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "nearest only; shrinking forbidden",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+        "asset_entry_found": true,
+        "selected_source": "void_battery/void_battery_imagegen_magenta.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
+          "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png"
+        ],
+        "prompt_lines": [
+          "Use case: stylized-concept",
+          "Asset type: extra-coarse premium pixel-art consumable icon source for final native 32x32",
+          "Input images: blue skill-charge battery family references only.",
+          "Primary request: Create exactly one high-tier void battery whose effect makes the next skill free. It belongs to the same magical cell family but is unmistakably rarer: a broad compact dark-metal battery with reinforced four-corner clamps, a near-black glass chamber, and one central void orb made of a black core surrounded by a saturated violet ring and a tiny cold-white star highlight. Use restrained purple/cyan accents, not blue crystal.",
+          "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 16 logical pixels wide by 16 tall, at least one logical pixel empty border. Void orb at most 7x7 logical pixels. No half-size details.",
+          "Backdrop: perfectly uniform flat #ff00ff.",
+          "Style: crisp limited-palette retro pixel art, thick near-black outline, hard edges, premium but simple, readable at 32x32.",
+          "Composition: exactly one centered battery only.",
+          "Constraints: opaque shapes, no antialiasing/blur/soft aura, no floating particles, floor, shadow, text, logo, props, or #ff00ff inside object.",
+          "Avoid: potion bottle silhouette, colorful galaxy texture, gradients, high pixel density, multiple objects."
+        ],
+        "prompt_sha256": "1e9e98e3ce30a5ce969be16bc837085c4384175fae7eb7fce7eaa2102ac11d8f"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/void_battery/void_battery_imagegen_magenta.png",
+        "alpha_source": "dev_assets/source_images/consumables/void_battery/void_battery_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/void_battery/void_battery_logical_preview.png",
+        "production_texture": "resources/texture/consumables/void_battery.png",
+        "atlas": "resources/atlas/void_battery.tres",
+        "config": "resources/config/consumables/void_battery.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/void_battery/void_battery_imagegen_magenta.png",
+          "sha256": "c6616d608b4844dd723b9c66a55da1e0e3b04be94f3b6093c29ec123828642ad"
+        },
+        "rejected": [],
+        "manual_review_note": "Manual per-source review accepted the 18x26 grid. The automatic analyzer reported confidence 0.574 with near-square periods 30.7x30.2 physical pixels; the low score is caused by a local 14px Y-axis harmonic, not a continuous or ungridded illustration.",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "c6616d608b4844dd723b9c66a55da1e0e3b04be94f3b6093c29ec123828642ad",
+        "alpha_source_sha256": "8fca08dd374279d6eb0482d4d7bdaf72edfd554b3e8d1076dbb74b1f663a61bb",
+        "logical_preview_sha256": "5554b37eeb0e151e947640fde1e98868ae756ab71e30e5c1bb619a8fda50c036",
+        "production_texture_sha256": "0a57cae94abd82015f5cdfd459b3e1b5765a52065f33b5ea5d2f04bef6587275",
+        "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/void_battery/void_battery_imagegen_magenta.png",
+        "normalization_mode": "manual_reviewed_grid_center_sample",
+        "detected_logical_subject_size": [
+          18,
+          26
+        ],
+        "logical_subject_size": [
+          18,
+          26
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 30.7,
+          "grid_cell_height": 30.2,
+          "grid_cell_size": 30,
+          "confidence": 0.574,
+          "subject_bbox": {
+            "left": 346,
+            "top": 233,
+            "right": 909,
+            "bottom": 1031
+          },
+          "subject_pixel_width": 563,
+          "subject_pixel_height": 798,
+          "subject_grid_width": 18,
+          "subject_grid_height": 26,
+          "recommended_canvas_grid_width": 41,
+          "recommended_canvas_grid_height": 42,
+          "manual_review": {
+            "approved_logical_size": [
+              18,
+              26
+            ],
+            "cell_width": 31.278,
+            "cell_height": 30.692,
+            "cell_aspect_ratio": 1.019,
+            "note": "Manual per-source review accepted the 18x26 grid. The automatic analyzer reported confidence 0.574 with near-square periods 30.7x30.2 physical pixels; the low score is caused by a local 14px Y-axis harmonic, not a continuous or ungridded illustration.",
+            "global_unsafe_override_enabled": false
+          }
+        }
+      },
+      "max_subject_size": [
+        28,
+        30
+      ],
+      "logical_subject_size": [
+        18,
+        26
+      ],
+      "production_subject_size": [
+        21,
+        30
+      ],
+      "production_upscale": 1.153846,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        26,
+        31
+      ],
+      "visible_color_count": 285,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true
+      }
+    }
+  ]
+}

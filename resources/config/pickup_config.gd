@@ -206,8 +206,23 @@ func get_inventory_icon_scale() -> Vector2:
 @export_group("Buff 效果")
 # 拾取后回复的生命值，0 表示该道具不回复生命。
 @export_range(0, 99, 1, "or_greater") var heal_amount: int = 0
+# 使用后立即恢复的技力，0 表示不恢复。满技力或技能未解锁时使用失败。
+@export_range(0.0, 999.0, 0.1, "or_greater") var skill_charge_restore_amount: float = 0.0
 # 消耗药水提供的临时物理防御；与研究、收藏品加成分别维护并在属性重算时相加。
 @export_range(0, 999, 1, "or_greater") var potion_physical_defense_bonus: int = 0
+# 消耗药水提供的临时魔法防御；与研究、收藏品加成分别维护并在属性重算时相加。
+@export_range(0, 100, 1) var potion_magic_defense_bonus: int = 0
+# 再生剂每秒回复的生命；同族药剂共用一个覆盖并刷新的状态。
+@export_range(0.0, 999.0, 0.1, "or_greater") var potion_regeneration_per_second: float = 0.0
+# 守护合剂提供的全伤害减免；与其他来源同时存在时只取最高值。
+@export_range(0.0, 0.95, 0.01) var potion_damage_reduction: float = 0.0
+# 下列药水倍率使用独立状态，不覆盖即时拾取触发道具的通用倍率。
+@export_range(1.0, 5.0, 0.05, "or_greater") var potion_attack_damage_multiplier: float = 1.0
+@export_range(1.0, 5.0, 0.05, "or_greater") var potion_fire_rate_multiplier: float = 1.0
+@export_range(1.0, 5.0, 0.05, "or_greater") var potion_move_speed_multiplier: float = 1.0
+@export_range(0.0, 1.0, 0.01) var potion_dodge_chance_bonus: float = 0.0
+# 虚空电池只可维持一层充能；下一次成功发动技能时消耗该层而不清空技力。
+@export var grants_next_skill_free: bool = false
 # 道具效果持续时间，单位为秒。
 @export_range(0.0, 120.0, 0.1, "or_greater") var duration: float = 5.0
 # 玩家移速倍率，1.0 表示不改变，1.2 表示提升 20%。

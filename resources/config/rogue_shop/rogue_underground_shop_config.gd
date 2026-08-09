@@ -2,8 +2,13 @@
 extends Resource
 class_name RogueUndergroundShopConfig
 
-const RUNTIME_CONTRACT_SCHEMA := 2
+const RUNTIME_CONTRACT_SCHEMA := 3
 const CONSUMABLE_SELECTION_RULE := "uniform_without_replacement"
+const CONSUMABLE_PRICE_RULE := "stable_per_session_item"
+const MINIMUM_CONSUMABLE_LISTING_COUNT := 4
+const LOW_CONSUMABLE_PRICE_BAND := Vector3i(80, 130, 10)
+const MEDIUM_CONSUMABLE_PRICE_BAND := Vector3i(160, 300, 10)
+const HIGH_CONSUMABLE_PRICE_BAND := Vector3i(700, 1000, 10)
 
 @export_range(1, 32, 1) var offer_count := 8
 @export var collectible_count_choices := PackedInt32Array([4, 5, 6])
@@ -123,18 +128,16 @@ func get_consumable_listing_by_path(
 	return null
 
 
-func get_consumable_purchase_price(item: PickupConfig) -> int:
-	if item == null:
-		return 0
-	var listing := get_consumable_listing_by_path(item.resource_path)
-	return listing.purchase_price if listing != null else 0
-
-
-func get_consumable_sell_price(item: PickupConfig) -> int:
-	if item == null:
-		return 0
-	var listing := get_consumable_listing_by_path(item.resource_path)
-	return listing.sell_price if listing != null else 0
+func get_consumable_price_band(price_tier: int) -> Vector3i:
+	match price_tier:
+		RogueUndergroundShopListing.PriceTier.LOW:
+			return LOW_CONSUMABLE_PRICE_BAND
+		RogueUndergroundShopListing.PriceTier.MEDIUM:
+			return MEDIUM_CONSUMABLE_PRICE_BAND
+		RogueUndergroundShopListing.PriceTier.HIGH:
+			return HIGH_CONSUMABLE_PRICE_BAND
+		_:
+			return Vector3i.ZERO
 
 
 func compute_runtime_contract_hash() -> String:
@@ -147,10 +150,9 @@ func compute_runtime_contract_hash() -> String:
 		choice_parts.append(str(choice))
 	var listing_parts := PackedStringArray()
 	for listing in consumable_listings:
-		listing_parts.append("%s,%d,%d" % [
+		listing_parts.append("%s,%d" % [
 			listing.get_config_path(),
-			listing.purchase_price,
-			listing.sell_price,
+			int(listing.price_tier),
 		])
 	listing_parts.sort()
 	return "\n".join(PackedStringArray([
@@ -158,6 +160,18 @@ func compute_runtime_contract_hash() -> String:
 		"offers=%d" % offer_count,
 		"collectible_counts=%s" % ",".join(choice_parts),
 		"consumable_selection=%s" % CONSUMABLE_SELECTION_RULE,
+		"consumable_pricing=%s" % CONSUMABLE_PRICE_RULE,
+		"consumable_price_bands=%d,%d,%d;%d,%d,%d;%d,%d,%d" % [
+			LOW_CONSUMABLE_PRICE_BAND.x,
+			LOW_CONSUMABLE_PRICE_BAND.y,
+			LOW_CONSUMABLE_PRICE_BAND.z,
+			MEDIUM_CONSUMABLE_PRICE_BAND.x,
+			MEDIUM_CONSUMABLE_PRICE_BAND.y,
+			MEDIUM_CONSUMABLE_PRICE_BAND.z,
+			HIGH_CONSUMABLE_PRICE_BAND.x,
+			HIGH_CONSUMABLE_PRICE_BAND.y,
+			HIGH_CONSUMABLE_PRICE_BAND.z,
+		],
 		"consumables=%s" % ";".join(listing_parts),
 		"collectible_purchase=%d,%d,%d;%d,%d,%d;%d,%d,%d;%d,%d,%d" % [
 			common_price_minimum,
@@ -181,8 +195,8 @@ func compute_runtime_contract_hash() -> String:
 
 
 func _validate_consumable_listings(errors: PackedStringArray) -> void:
-	if consumable_listings.size() != 4:
-		errors.append("地下商店消耗品池必须恰好配置 4 个条目。")
+	if consumable_listings.size() < MINIMUM_CONSUMABLE_LISTING_COUNT:
+		errors.append("地下商店消耗品池必须至少配置 4 个条目。")
 	var seen_paths: Dictionary = {}
 	for listing_index in consumable_listings.size():
 		var listing := consumable_listings[listing_index]

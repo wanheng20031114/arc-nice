@@ -112,7 +112,7 @@ func _test_codex_and_fate() -> void:
 
 
 func _test_protocol_and_no_new_attack_resources() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 53, "精英忍者必须使用协议v53。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 54, "精英忍者必须使用协议v54。")
 	_expect(
 		CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET == 18
 		and CombatAttackRegistry.encode_player_hit_source(

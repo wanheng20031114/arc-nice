@@ -222,7 +222,7 @@ func submit_sell(
 			_make_result(peer_id, false, RESULT_ITEM_MISMATCH)
 		)
 	var item := load(expected_config_path) as PickupConfig
-	var sell_price := get_sell_price(item)
+	var sell_price := get_sell_price(peer_id, item)
 	if sell_price <= 0:
 		return _finish_request(
 			peer_id,
@@ -292,7 +292,7 @@ func get_sell_inventory_page(peer_id: int, page_index: int) -> Dictionary:
 			if not config_path.is_empty()
 			else null
 		)
-		var sell_price := get_sell_price(item)
+		var sell_price := get_sell_price(peer_id, item)
 		var reason := ""
 		if item == null:
 			reason = "empty"
@@ -319,9 +319,19 @@ func get_sell_inventory_page(peer_id: int, page_index: int) -> Dictionary:
 	}
 
 
-func get_sell_price(item: PickupConfig) -> int:
+func get_sell_price(peer_id: int, item: PickupConfig) -> int:
+	return get_sell_price_for_session(peer_id, item, _session)
+
+
+func get_sell_price_for_session(
+	peer_id: int,
+	item: PickupConfig,
+	price_session: RogueUndergroundShopSession
+) -> int:
 	if (
 		_config == null
+		or price_session == null
+		or peer_id < 0
 		or item == null
 		or item.inventory_locked
 		or not item.can_store_in_inventory
@@ -330,7 +340,9 @@ func get_sell_price(item: PickupConfig) -> int:
 	):
 		return 0
 	if item.is_consumable_item():
-		return _config.get_consumable_sell_price(item)
+		if _config.get_consumable_listing_by_path(item.resource_path) == null:
+			return 0
+		return price_session.get_consumable_price(peer_id, item.resource_path)
 	match item.pickup_type:
 		PickupConfig.PickupType.MATERIAL:
 			return _config.material_sell_price

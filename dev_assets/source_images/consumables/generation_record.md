@@ -61,3 +61,55 @@ Composition/framing: centered single bottle with even padding; subject occupies 
 Constraints: one object only; perfectly uniform #00ff00 background with no shadows, gradients, texture, floor, reflections, or lighting variation; crisp silhouette; no semi-transparent glass; do not use #00ff00 in the bottle; warm gray and stone-brown contents; no text, label, logo, watermark, cast shadow, or extra props.
 Avoid: narrow small-tier silhouette, copying Image 3 pixel-for-pixel, smooth vector art, photorealism, soft antialiasing, blur, thin fragile details, multiple bottles.
 ```
+
+## 2026-08-10 twelve-item expansion
+
+The twelve new consumables were generated with twelve distinct built-in
+ImageGen calls on flat `#FF00FF` backgrounds. Exact selected-source prompts and
+reference-image paths are retained in `imagegen_prompt_manifest.json`; the
+manifest SHA-256 is embedded by the deterministic build into
+`new_consumable_asset_audit.json` and every per-item `*_asset_audit.json`.
+
+Rebuild and verification commands:
+
+```text
+python dev_tools/process_consumable_assets.py
+python dev_tools/consumable_asset_pipeline_smoke_test.py
+```
+
+The processing script performs border-connected key removal with RGB tolerance
+72, hue tolerance 0.035, expansion radius 12, and hard alpha. It then samples
+one output pixel per verified logical source cell, preserves the foreground
+palette without quantization, permits nearest-neighbour enlargement only, and
+centers the result on a 32x32 RGBA canvas with at least one transparent pixel
+on every edge. Shrinking and the project pixel tool's unsafe grid-compression
+override are never enabled.
+
+Selected source/grid summary:
+
+| Item | Selected source | Logical subject | Confidence |
+| --- | --- | ---: | ---: |
+| Blue Crystal Skill Battery | `skill_charge_battery_imagegen_magenta_v2.png` | 10x18 | 0.850 |
+| Large Blue Crystal Skill Battery | `large_skill_charge_battery_imagegen_magenta_v2.png` | 20x28 | 0.857 |
+| Purple Crystal Magic-Resistance Potion | `magic_resistance_potion_imagegen_magenta_v2.png` | 8x20 | 0.931 |
+| Large Purple Crystal Magic-Resistance Potion | `large_magic_resistance_potion_imagegen_magenta_v2.png` | 12x16 | 0.973 |
+| Gel Regeneration Tonic | `regeneration_potion_imagegen_magenta.png` | 10x22 | 0.960 |
+| Large Gel Regeneration Tonic | `large_regeneration_potion_imagegen_magenta_v2.png` | 15x20 | 0.966 |
+| Guardian Mixture | `guardian_mixture_imagegen_magenta.png` | 17x24 | 0.962 |
+| Battle-Spirit Potion | `battle_spirit_potion_imagegen_magenta_v2.png` | 11x16 | 0.910 |
+| Focus Potion | `focus_potion_imagegen_magenta.png` | 17x24 | 0.949 |
+| Windwalk Potion | `windwalk_potion_imagegen_magenta.png` | 15x23 | 0.793 |
+| Phantom Potion | `phantom_potion_imagegen_magenta.png` | 18x24 | 0.852 |
+| Void Battery | `void_battery_imagegen_magenta.png` | 18x26 | 0.574 (manual review) |
+
+The Void Battery is the only per-source manual grid approval. Automatic
+analysis found near-square periods of 30.7x30.2 physical pixels but confidence
+0.574 because of a local 14-pixel Y-axis harmonic. Manual review locked its
+logical subject to 18x26; the audit records a 1.019 cell aspect ratio and
+explicitly confirms that no global unsafe override was enabled.
+
+Rejected sources remain beside their accepted revisions and are hash-locked in
+the audit: small and large skill batteries v1, small and large magic-resistance
+potions v1, large regeneration potion v1, and battle-spirit potion v1. Their
+measured rejection reasons are recorded per item rather than inferred from
+filename version numbers.

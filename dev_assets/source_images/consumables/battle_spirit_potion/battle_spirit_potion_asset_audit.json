@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "asset": "battle_spirit_potion",
+  "display_name": "战意药水",
+  "status": "passed",
+  "tier": "medium",
+  "shape": "single_bottle",
+  "chroma_key": "#FF00FF",
+  "pipeline": [
+    "built-in ImageGen, one distinct source per item",
+    "flat #FF00FF border-connected chroma-key extraction",
+    "retained foreground RGB preserved without palette quantization",
+    "strict pixel-grid analysis with no unsafe compression override",
+    "one final pixel center-sampled per measured logical cell",
+    "nearest-neighbour upscale only when needed for a readable inventory bbox",
+    "centered placement on a transparent 32x32 RGBA canvas",
+    "binary alpha, clean transparent RGB, and one-pixel border audit",
+    "lossless PNG encoding"
+  ],
+  "commands": {
+    "build": "python dev_tools/process_consumable_assets.py --asset battle_spirit_potion",
+    "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+  },
+  "processing_parameters": {
+    "background_remover": "connected_background_remover.remove_connected_background",
+    "rgb_tolerance": 72,
+    "hue_tolerance": 0.035,
+    "expansion_radius": 12,
+    "hard_alpha": true,
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "logical_sampler": "Pillow nearest center sample",
+    "production_upscale": "nearest only; shrinking forbidden",
+    "palette_quantization": "none",
+    "png": "optimize=true, compress_level=9 (lossless)"
+  },
+  "prompt_record": {
+    "status": "linked",
+    "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+    "asset_entry_found": true,
+    "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+    "selected_source_matches": true,
+    "referenced_images": [
+      "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
+      "resources/texture/consumables/rock_potion.png"
+    ],
+    "prompt_lines": [
+      "Use case: stylized-concept",
+      "Asset type: EXTRA-COARSE low-resolution pixel-art consumable icon source for final native 32x32",
+      "Input images: Image 1 defines ember/sword battle-spirit contents but is too tall/detailed; Image 2 defines compact bottle proportions. References only.",
+      "Primary request: exactly one shorter, compact battle-spirit potion. Medium-width angular corked bottle, ember-orange/deep crimson liquid, one extremely simple yellow-orange upward flame/sword-tip motif inside. Preserve attack-power identity, but simplify.",
+      "Strict pixel-grid contract: draw as if on a 16x16 logical canvas enlarged strict nearest-neighbor. Bottle at most 13 logical pixels wide by 15 tall. Motif at most 5x7 logical pixels. Uniform huge square blocks only; absolutely no half-size pixels, micro-sparks, fine stair steps, gradients, or dense bevels.",
+      "Backdrop: perfectly uniform #ff00ff.",
+      "Style: crisp limited-palette retro pixel art, thick near-black outline, cyan-white glass rim, hard edges, readable at 32x32.",
+      "Composition: one centered compact bottle, one logical pixel border minimum.",
+      "Constraints: opaque; no antialiasing/blur/shadow/floor/text/logo/weapon outside bottle/props; no #ff00ff inside object.",
+      "Avoid: round healing potion, tall thin bottle, 24/32/48 logical density, multiple objects."
+    ],
+    "prompt_sha256": "c39c08f011a93a7cd01b45bad02352850898cd82b5caed810498aec52a82c525"
+  },
+  "paths": {
+    "source_master": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+    "alpha_source": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_alpha.png",
+    "logical_preview": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_logical_preview.png",
+    "production_texture": "resources/texture/consumables/battle_spirit_potion.png",
+    "atlas": "resources/atlas/battle_spirit_potion.tres",
+    "config": "resources/config/consumables/battle_spirit_potion.tres"
+  },
+  "source_selection": {
+    "approved": {
+      "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+      "sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808"
+    },
+    "rejected": [
+      {
+        "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
+        "sha256": "744346fdaccc4e01195fd8c823a9ad6cd129b3728789fa645eef15769efce8f8",
+        "reason": "rejected: measured 19x34 logical subject exceeds the lossless 24x30 contract"
+      }
+    ],
+    "manual_review_note": "",
+    "global_unsafe_override_enabled": false
+  },
+  "hashes": {
+    "source_master_sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808",
+    "alpha_source_sha256": "3b0a9c71c6d8bde0e74f4f7796f104bcc09391f1162e57f87309e21fc6e0c8a8",
+    "logical_preview_sha256": "989a8cc600fbd4944263f5c66087c935d6a3eafc478469037b4cb03781314150",
+    "production_texture_sha256": "7a5462c5d57b5202c0c5137a24845d41d814960ed59ab8576fa0b8347a793e5f",
+    "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+  },
+  "source": {
+    "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+    "normalization_mode": "measured_grid_center_sample",
+    "detected_logical_subject_size": [
+      11,
+      16
+    ],
+    "logical_subject_size": [
+      11,
+      16
+    ],
+    "logical_fit_scale": 1.0,
+    "grid_analysis": {
+      "image_width": 1254,
+      "image_height": 1254,
+      "image_mode": "RGBA",
+      "detection_mode": "approximate",
+      "grid_cell_width": 46.05,
+      "grid_cell_height": 50.85,
+      "grid_cell_size": 48,
+      "confidence": 0.91,
+      "subject_bbox": {
+        "left": 369,
+        "top": 248,
+        "right": 885,
+        "bottom": 1059
+      },
+      "subject_pixel_width": 516,
+      "subject_pixel_height": 811,
+      "subject_grid_width": 11,
+      "subject_grid_height": 16,
+      "recommended_canvas_grid_width": 27,
+      "recommended_canvas_grid_height": 25
+    }
+  },
+  "max_subject_size": [
+    24,
+    30
+  ],
+  "logical_subject_size": [
+    11,
+    16
+  ],
+  "production_subject_size": [
+    21,
+    30
+  ],
+  "production_upscale": 1.875,
+  "paste_origin": [
+    5,
+    1
+  ],
+  "output_bbox_exclusive": [
+    5,
+    1,
+    26,
+    31
+  ],
+  "visible_color_count": 107,
+  "alpha_values": [
+    0,
+    255
+  ],
+  "checks": {
+    "canvas_32x32": true,
+    "one_pixel_transparent_border": true,
+    "binary_alpha": true,
+    "transparent_rgb_clean": true,
+    "logical_pixels_preserved": true,
+    "no_near_chroma_key_foreground": true
+  }
+}
