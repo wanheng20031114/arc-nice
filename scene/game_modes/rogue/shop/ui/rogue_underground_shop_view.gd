@@ -39,6 +39,7 @@ enum ShopTab {
 @onready var detail_action_button: TextureButton = %DetailActionButton
 @onready var detail_action_label: Label = %DetailActionLabel
 @onready var detail_cancel_button: TextureButton = %DetailCancelButton
+@onready var run_state: RunStateStore = get_node("/root/RunState") as RunStateStore
 
 @onready var item_cards: Array[RogueUndergroundShopItemCard] = [
 	%ItemCard00,
@@ -66,6 +67,12 @@ func _ready() -> void:
 	_sell_slots.resize(SELL_SLOT_CAPACITY)
 	for card in item_cards:
 		card.clear_card()
+	if not run_state.quick_use_binding_changed.is_connected(
+		_on_quick_use_binding_changed
+	):
+		run_state.quick_use_binding_changed.connect(
+			_on_quick_use_binding_changed
+		)
 	detail_overlay.hide()
 	_show_tab(ShopTab.BUY, false)
 	close_immediately()
@@ -265,10 +272,25 @@ func _refresh_grid() -> void:
 		if slot.is_empty() or str(slot.get("config_path", "")).is_empty():
 			item_cards[card_index].clear_card()
 			continue
-		item_cards[card_index].present_sell_slot(slot)
+		item_cards[card_index].present_sell_slot(
+			slot,
+			run_state.is_quick_use_slot(int(slot.get("slot_index", -1)))
+		)
 	page_label.text = "%d / %d" % [_sell_page + 1, SELL_PAGE_COUNT]
 	previous_page_button.disabled = _sell_page <= 0
 	next_page_button.disabled = _sell_page >= SELL_PAGE_COUNT - 1
+
+
+func _on_quick_use_binding_changed(
+	owner_peer_id: int,
+	_config_path: String,
+	_preferred_slot_index: int
+) -> void:
+	if (
+		owner_peer_id == run_state.active_multiplayer_peer_id
+		and _active_tab == ShopTab.SELL
+	):
+		_refresh_grid()
 
 
 func _refresh_or_close_detail() -> void:

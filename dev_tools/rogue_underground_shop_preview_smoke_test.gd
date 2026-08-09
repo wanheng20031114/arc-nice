@@ -17,6 +17,8 @@ func _run() -> void:
 	root.content_scale_size = VIEWPORT_SIZE
 	root.size = VIEWPORT_SIZE
 	_audit_source_boundaries()
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
 
 	var preview := PREVIEW_SCENE.instantiate() as Control
 	_expect(preview != null, "正式地下商店拼装预览必须能够实例化。")
@@ -33,7 +35,7 @@ func _run() -> void:
 	if view != null:
 		_audit_authored_scene(view)
 		_audit_buy_interaction(view)
-		_audit_sell_interaction(view)
+		_audit_sell_interaction(view, run_state)
 		await _audit_responsive_layout(view)
 		_audit_exit_boundary(view)
 
@@ -98,6 +100,13 @@ func _audit_authored_scene(view: RogueUndergroundShopView) -> void:
 	for card_index in range(view.get_item_cards().size()):
 		var card := view.get_item_cards()[card_index]
 		_expect(card.size == Vector2(128, 128), "商品卡必须保持 128×128 像素尺寸。")
+		var quick_use_badge := card.get_node("QuickUseBadge") as TextureRect
+		_expect(
+			quick_use_badge.size == Vector2(10, 10)
+			and quick_use_badge.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+			and quick_use_badge.texture.get_size() == Vector2(10, 10),
+			"出售卡必须 authored 原生10×10快捷使用徽记。"
+		)
 		_expect(
 			(card.get_node("XirangIcon") as TextureRect).texture.resource_path.ends_with(
 				"xirang_icon.png"
@@ -142,6 +151,10 @@ func _audit_buy_interaction(view: RogueUndergroundShopView) -> void:
 	)
 	_expect(view.get_active_tab() == 0, "商店打开后默认位于购买页。")
 	_expect(not (cards[0].get_node("CountLabel") as Label).visible, "购买卡不得显示库存或持有数量。")
+	_expect(
+		not (cards[0].get_node("QuickUseBadge") as TextureRect).visible,
+		"购买卡不得显示玩家快捷使用绑定。"
+	)
 	cards[6].pressed.emit()
 	_expect(detail.visible, "点击购买卡必须打开 authored 详情模态。")
 	_expect(detail.mouse_filter == Control.MOUSE_FILTER_STOP, "详情模态必须阻断底层鼠标。")
@@ -163,7 +176,15 @@ func _audit_buy_interaction(view: RogueUndergroundShopView) -> void:
 		_expect(card.focus_mode == Control.FOCUS_ALL, "关闭详情后必须恢复卡片焦点导航。")
 
 
-func _audit_sell_interaction(view: RogueUndergroundShopView) -> void:
+func _audit_sell_interaction(
+	view: RogueUndergroundShopView,
+	run_state: RunStateStore
+) -> void:
+	_expect(
+		run_state.try_add_item_count(HEALTH_CONFIG, 5)
+		and run_state.set_quick_use_binding(0),
+		"出售卡徽记测试必须准备已绑定的治疗血瓶。"
+	)
 	var slots: Array[Dictionary] = []
 	for slot_index in range(20):
 		slots.append({
@@ -185,6 +206,15 @@ func _audit_sell_interaction(view: RogueUndergroundShopView) -> void:
 	)
 	var second_count := view.get_item_cards()[1].get_node("CountLabel") as Label
 	_expect(second_count.visible and second_count.text == "×2", "出售卡必须显示实际堆叠数。")
+	var first_badge := view.get_item_cards()[0].get_node("QuickUseBadge") as TextureRect
+	var second_badge := view.get_item_cards()[1].get_node("QuickUseBadge") as TextureRect
+	_expect(
+		first_badge.visible
+		and not second_badge.visible
+		and first_badge.position == Vector2(100, 66)
+		and first_count.position == Vector2(84, 12),
+		"SELL卡必须仅在绑定槽显示右下徽记，并保持数量位于右上。"
+	)
 	var next_button := view.get_node("Root/ShopPanel/PageControls/NextPageButton") as TextureButton
 	next_button.set_meta(&"skip_ui_click_audio", true)
 	next_button.pressed.emit()
@@ -240,6 +270,7 @@ func _audit_sell_interaction(view: RogueUndergroundShopView) -> void:
 	var empty_page := _build_sell_page(16, 0)
 	view.present_sell_inventory_page(empty_page)
 	_expect(not detail.visible, "出售最后1件后空槽详情必须立即关闭。")
+	run_state.clear_quick_use_binding()
 
 
 func _build_sell_page(selected_slot: int, selected_count: int) -> Dictionary:

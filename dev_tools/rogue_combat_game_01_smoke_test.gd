@@ -11,6 +11,7 @@ const ROGUE_COMBAT_MUSIC := preload(
 )
 const ROGUE_COMBAT_SCRIPT_PATH := "res://scene/game_modes/rogue/combat/rogue_combat_game.gd"
 const ROGUE_COMBAT_SCENE_PATH := "res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
+const MP_GAME_SCRIPT_PATH := "res://scene/multiplayer/mp_game.gd"
 const EXPECTED_STANDARD_NIGHT_COLOR := Color(
 	87.0 / 255.0,
 	123.0 / 255.0,
@@ -69,6 +70,7 @@ func _run() -> void:
 	)
 
 	_test_independent_scene_contract()
+	_test_multiplayer_profile_forwarding_contract()
 	_test_fixed_underground_night_contract()
 	_test_deadline_start_policies()
 	_test_authoritative_deadline_and_outcomes()
@@ -119,6 +121,24 @@ func _test_independent_scene_contract() -> void:
 		not scene_source.is_empty()
 		and not scene_source.contains("night_color ="),
 		"场景 01 不得重新声明 night_color 覆盖，必须继承控制器标准夜色。"
+	)
+	_expect(
+		script_source.contains(
+			"player_profile_panel.configure_multiplayer_requests(\n"
+			+ "\t\truntime_mode != RuntimeMode.SINGLEPLAYER\n"
+			+ "\t)"
+		),
+		"Rouge Profile 必须在 Host 与 Client 模式启用权威多人请求。"
+	)
+	_expect(
+		scene_source.count(
+			"from=\"PlayerProfilePanel\" to=\"MultiplayerModeAdapter\""
+		) == 5
+		and not scene_source.contains(
+			"from=\"PlayerProfilePanel\" to=\".\" "
+			+ "method=\"_on_profile_multiplayer_"
+		),
+		"Profile 五个多人请求必须静态直连 Rogue adapter，不能连接到根节点的空处理器。"
 	)
 	_expect(
 		game.get_node_or_null("GroundTileMapLayer") is TileMapLayer
@@ -243,6 +263,74 @@ func _test_independent_scene_contract() -> void:
 		and wave.enemy_entries.size() == 1
 		and wave.enemy_entries[0].enemy_config == COMBAT_ROBOT_CONFIG,
 		"测试 Campaign 必须以一波 10 个基础作战机器人驱动契约。"
+	)
+
+
+func _test_multiplayer_profile_forwarding_contract() -> void:
+	var adapter := game.multiplayer_mode_adapter as RogueMultiplayerModeAdapter
+	var profile_events: Array[String] = []
+	_expect(adapter != null, "场景必须提供 RogueMultiplayerModeAdapter。")
+	if adapter == null:
+		return
+	adapter.profile_upgrade_requested.connect(
+		func(stat_type: int) -> void:
+			profile_events.append("upgrade:%d" % stat_type)
+	)
+	adapter.profile_inventory_item_use_requested.connect(
+		func(slot_index: int) -> void:
+			profile_events.append("use:%d" % slot_index)
+	)
+	adapter.profile_inventory_item_discard_requested.connect(
+		func(slot_index: int) -> void:
+			profile_events.append("discard:%d" % slot_index)
+	)
+	adapter.profile_simple_crafting_requested.connect(
+		func(recipe_id: StringName, request_token: int) -> void:
+			profile_events.append(
+				"craft:%s:%d" % [String(recipe_id), request_token]
+			)
+	)
+	adapter.profile_simple_crafting_cancel_requested.connect(
+		func(request_token: int) -> void:
+			profile_events.append("cancel:%d" % request_token)
+	)
+
+	game.player_profile_panel.multiplayer_upgrade_requested.emit(2)
+	game.player_profile_panel.multiplayer_inventory_item_use_requested.emit(3)
+	game.player_profile_panel.multiplayer_inventory_item_discard_requested.emit(4)
+	game.player_profile_panel.multiplayer_simple_crafting_requested.emit(
+		&"rogue_profile_probe",
+		51
+	)
+	game.player_profile_panel.multiplayer_simple_crafting_cancel_requested.emit(51)
+	_expect(
+		profile_events == [
+			"upgrade:2",
+			"use:3",
+			"discard:4",
+			"craft:rogue_profile_probe:51",
+			"cancel:51",
+		],
+		"Rogue Profile 请求必须经 adapter 一次转发并保持参数与顺序。"
+	)
+
+	var mp_game_source := FileAccess.get_file_as_string(MP_GAME_SCRIPT_PATH)
+	_expect(
+		mp_game_source.contains(
+			"mode_adapter.profile_inventory_item_use_requested.connect(\n"
+			+ "\t\trequest_multiplayer_inventory_item_use\n"
+			+ "\t)"
+		)
+		and mp_game_source.contains(
+			"func request_multiplayer_inventory_item_use(slot_index: int) -> void:\n"
+			+ "\ttransactions_coordinator.request_inventory_item_use(slot_index)"
+		)
+		and mp_game_source.contains(
+			"mode_adapter.profile_inventory_item_discard_requested.connect(\n"
+			+ "\t\trequest_multiplayer_inventory_item_discard\n"
+			+ "\t)"
+		),
+		"Rogue 的手动与快捷使用请求必须复用 MpTransactionsCoordinator 链路。"
 	)
 
 

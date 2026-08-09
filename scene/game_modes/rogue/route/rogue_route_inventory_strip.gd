@@ -53,6 +53,19 @@ const SELECTED_SLOT_TEXTURE: Texture2D = preload(
 	$Slot9/ItemIcon,
 	$Slot10/ItemIcon,
 ]
+@onready var quick_use_badges: Array[TextureRect] = [
+	$Slot0/QuickUseBadge,
+	$Slot1/QuickUseBadge,
+	$Slot2/QuickUseBadge,
+	$Slot3/QuickUseBadge,
+	$Slot4/QuickUseBadge,
+	$Slot5/QuickUseBadge,
+	$Slot6/QuickUseBadge,
+	$Slot7/QuickUseBadge,
+	$Slot8/QuickUseBadge,
+	$Slot9/QuickUseBadge,
+	$Slot10/QuickUseBadge,
+]
 @onready var stack_labels: Array[Label] = [
 	$Slot0/StackCount,
 	$Slot1/StackCount,
@@ -100,12 +113,24 @@ func bind_run_state(
 		_on_inventory_changed
 	):
 		run_state.inventory_changed.disconnect(_on_inventory_changed)
+	if run_state != null and run_state.quick_use_binding_changed.is_connected(
+		_on_quick_use_binding_changed
+	):
+		run_state.quick_use_binding_changed.disconnect(
+			_on_quick_use_binding_changed
+		)
 	run_state = new_run_state
 	inventory_owner_peer_id = normalized_owner_peer_id
 	if run_state != null and not run_state.inventory_changed.is_connected(
 		_on_inventory_changed
 	):
 		run_state.inventory_changed.connect(_on_inventory_changed)
+	if run_state != null and not run_state.quick_use_binding_changed.is_connected(
+		_on_quick_use_binding_changed
+	):
+		run_state.quick_use_binding_changed.connect(
+			_on_quick_use_binding_changed
+		)
 	_refresh()
 
 
@@ -114,6 +139,12 @@ func _exit_tree() -> void:
 		_on_inventory_changed
 	):
 		run_state.inventory_changed.disconnect(_on_inventory_changed)
+	if run_state != null and run_state.quick_use_binding_changed.is_connected(
+		_on_quick_use_binding_changed
+	):
+		run_state.quick_use_binding_changed.disconnect(
+			_on_quick_use_binding_changed
+		)
 
 
 func _on_bag_button_pressed() -> void:
@@ -141,6 +172,15 @@ func _on_slot_button_pressed(visual_slot_index: int) -> void:
 
 func _on_inventory_changed() -> void:
 	_refresh()
+
+
+func _on_quick_use_binding_changed(
+	owner_peer_id: int,
+	_config_path: String,
+	_preferred_slot_index: int
+) -> void:
+	if owner_peer_id == inventory_owner_peer_id:
+		_refresh()
 
 
 func _refresh() -> void:
@@ -172,6 +212,14 @@ func _refresh() -> void:
 			item.icon_texture if item != null else null
 		)
 		item_icons[visual_slot_index].visible = item != null and item.icon_texture != null
+		quick_use_badges[visual_slot_index].visible = (
+			item != null
+			and run_state != null
+			and run_state.is_quick_use_slot(
+				inventory_slot_index,
+				inventory_owner_peer_id
+			)
+		)
 		stack_labels[visual_slot_index].visible = stack_count > 1
 		stack_labels[visual_slot_index].text = str(stack_count) if stack_count > 1 else ""
 		slot_buttons[visual_slot_index].tooltip_text = (

@@ -9,6 +9,7 @@ enum PresentationMode {
 }
 
 @onready var item_icon: TextureRect = %ItemIcon
+@onready var quick_use_badge: TextureRect = %QuickUseBadge
 @onready var xirang_icon: TextureRect = %XirangIcon
 @onready var price_label: Label = %PriceLabel
 @onready var count_label: Label = %CountLabel
@@ -28,6 +29,7 @@ func present_buy_offer(offer: Dictionary) -> void:
 	_mode = PresentationMode.BUY
 	_payload = offer.duplicate(true)
 	_apply_common_payload(offer, int(offer.get("price", 0)))
+	quick_use_badge.hide()
 	count_label.hide()
 	var sold_out := bool(offer.get("purchased", offer.get("sold_out", false)))
 	state_label.text = "售罄" if sold_out else ""
@@ -38,7 +40,7 @@ func present_buy_offer(offer: Dictionary) -> void:
 	visible = true
 
 
-func present_sell_slot(slot: Dictionary) -> void:
+func present_sell_slot(slot: Dictionary, quick_use_bound: bool = false) -> void:
 	_mode = PresentationMode.SELL
 	_payload = slot.duplicate(true)
 	_apply_common_payload(
@@ -51,6 +53,7 @@ func present_sell_slot(slot: Dictionary) -> void:
 	)
 	count_label.text = "×%d" % count
 	var item := _resolve_item(slot)
+	quick_use_badge.visible = quick_use_bound
 	count_label.visible = count > 1 or (item != null and item.stackable)
 	var cannot_sell := (
 		not bool(slot.get("can_sell", true))
@@ -69,6 +72,8 @@ func clear_card() -> void:
 	_payload = {}
 	if item_icon != null:
 		item_icon.texture = null
+	if quick_use_badge != null:
+		quick_use_badge.hide()
 	if price_label != null:
 		price_label.text = ""
 	if xirang_icon != null:

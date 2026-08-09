@@ -3,9 +3,11 @@ class_name PlayerInventoryView
 
 signal item_use_requested(slot_index: int)
 signal item_discard_requested(slot_index: int)
+signal item_quick_use_toggle_requested(slot_index: int)
 
 const DESIGN_SIZE := Vector2(724.0, 543.0)
-const ITEM_DETAIL_SIZE := Vector2(254.0, 166.0)
+const ITEM_DETAIL_BASE_SIZE := Vector2(254.0, 166.0)
+const ITEM_DETAIL_QUICK_USE_SIZE := Vector2(254.0, 208.0)
 const ITEM_DETAIL_MARGIN := 14.0
 const ITEM_CATEGORY_COLLECTIBLE_TEXTURE := preload(
 	"res://resources/texture/item_category_badge_collectible.png"
@@ -37,6 +39,9 @@ const ITEM_CATEGORY_ITEM_TEXTURE := preload(
 @onready var item_detail_discard_button: Button = (
 	$ItemDetailPanel/Margin/Content/ButtonRow/DiscardButton
 )
+@onready var item_detail_quick_use_button: Button = (
+	$ItemDetailPanel/Margin/Content/QuickUseButton
+)
 
 var run_state: RunStateStore = null
 var slots: Array[InventorySlot] = []
@@ -47,14 +52,47 @@ var panel_active := true
 func _ready() -> void:
 	item_detail_use_button.pressed.connect(_on_detail_use_pressed)
 	item_detail_discard_button.pressed.connect(_on_detail_discard_pressed)
+	item_detail_quick_use_button.pressed.connect(
+		_on_detail_quick_use_pressed
+	)
 	inventory_grid.gui_input.connect(_on_inventory_grid_gui_input)
 	_collect_slots()
 	_hide_item_detail()
 
 
 func bind_run_state(new_run_state: RunStateStore) -> void:
+	if (
+		run_state != null
+		and run_state.quick_use_binding_changed.is_connected(
+			_on_quick_use_binding_changed
+		)
+	):
+		run_state.quick_use_binding_changed.disconnect(
+			_on_quick_use_binding_changed
+		)
 	run_state = new_run_state
+	if (
+		run_state != null
+		and not run_state.quick_use_binding_changed.is_connected(
+			_on_quick_use_binding_changed
+		)
+	):
+		run_state.quick_use_binding_changed.connect(
+			_on_quick_use_binding_changed
+		)
 	refresh()
+
+
+func _exit_tree() -> void:
+	if (
+		run_state != null
+		and run_state.quick_use_binding_changed.is_connected(
+			_on_quick_use_binding_changed
+		)
+	):
+		run_state.quick_use_binding_changed.disconnect(
+			_on_quick_use_binding_changed
+		)
 
 
 func set_panel_active(active: bool) -> void:
@@ -74,6 +112,9 @@ func refresh() -> void:
 		slots[slot_index].set_item(
 			run_state.get_item(slot_index),
 			run_state.get_item_count(slot_index)
+		)
+		slots[slot_index].set_quick_use_marked(
+			run_state.is_quick_use_slot(slot_index)
 		)
 		slots[slot_index].set_selected(slot_index == selected_slot_index)
 	_refresh_item_detail()
@@ -218,16 +259,32 @@ func _refresh_item_detail() -> void:
 	item_detail_discard_button.text = (
 		"销毁" if is_building else ("删除" if is_material else "丢弃")
 	)
+	item_detail_quick_use_button.visible = (
+		is_consumable and not is_inventory_locked
+	)
+	item_detail_quick_use_button.text = (
+		"取消快捷使用"
+		if run_state.is_quick_use_slot(selected_slot_index)
+		else "设置快捷使用"
+	)
 	item_detail_panel.visible = true
 	item_detail_panel.move_to_front()
-	_update_item_detail_position(slots[selected_slot_index])
+	_update_item_detail_position(
+		slots[selected_slot_index],
+		ITEM_DETAIL_QUICK_USE_SIZE
+		if item_detail_quick_use_button.visible
+		else ITEM_DETAIL_BASE_SIZE
+	)
 
 
 func _hide_item_detail() -> void:
 	item_detail_panel.visible = false
 
 
-func _update_item_detail_position(slot: InventorySlot) -> void:
+func _update_item_detail_position(
+	slot: InventorySlot,
+	detail_size: Vector2
+) -> void:
 	if slot == null:
 		return
 	var slot_size := slot.size
@@ -235,20 +292,20 @@ func _update_item_detail_position(slot: InventorySlot) -> void:
 		slot_size = slot.custom_minimum_size
 	var slot_position := inventory_grid.position + slot.position
 	var target_x := slot_position.x + slot_size.x + ITEM_DETAIL_MARGIN
-	if target_x + ITEM_DETAIL_SIZE.x > DESIGN_SIZE.x - ITEM_DETAIL_MARGIN:
-		target_x = slot_position.x - ITEM_DETAIL_MARGIN - ITEM_DETAIL_SIZE.x
+	if target_x + detail_size.x > DESIGN_SIZE.x - ITEM_DETAIL_MARGIN:
+		target_x = slot_position.x - ITEM_DETAIL_MARGIN - detail_size.x
 	target_x = clampf(
 		target_x,
 		ITEM_DETAIL_MARGIN,
-		DESIGN_SIZE.x - ITEM_DETAIL_SIZE.x - ITEM_DETAIL_MARGIN
+		DESIGN_SIZE.x - detail_size.x - ITEM_DETAIL_MARGIN
 	)
 	var target_y := clampf(
 		slot_position.y,
 		ITEM_DETAIL_MARGIN,
-		DESIGN_SIZE.y - ITEM_DETAIL_SIZE.y - ITEM_DETAIL_MARGIN
+		DESIGN_SIZE.y - detail_size.y - ITEM_DETAIL_MARGIN
 	)
 	item_detail_panel.position = Vector2(roundf(target_x), roundf(target_y))
-	item_detail_panel.size = ITEM_DETAIL_SIZE
+	item_detail_panel.size = detail_size
 
 
 func _on_detail_use_pressed() -> void:
@@ -264,6 +321,28 @@ func _on_detail_discard_pressed() -> void:
 		_refresh_item_detail()
 		return
 	item_discard_requested.emit(selected_slot_index)
+
+
+func _on_detail_quick_use_pressed() -> void:
+	if selected_slot_index < 0 or run_state == null:
+		return
+	var item := run_state.get_item(selected_slot_index)
+	if (
+		item == null
+		or item.inventory_locked
+		or not item.is_consumable_item()
+	):
+		_refresh_item_detail()
+		return
+	item_quick_use_toggle_requested.emit(selected_slot_index)
+
+
+func _on_quick_use_binding_changed(
+	_owner_peer_id: int,
+	_config_path: String,
+	_preferred_slot_index: int
+) -> void:
+	refresh()
 
 
 func _get_item_type_label(item: PickupConfig) -> String:

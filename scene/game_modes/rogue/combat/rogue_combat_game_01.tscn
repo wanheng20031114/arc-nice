@@ -235,8 +235,8 @@ layer = 90
 [node name="PlayerLifeStatusHUD" parent="PlayerLifeStatusLayer" instance=ExtResource("32_life_hud")]
 
 [connection signal="timeout" from="CombatDeadlineTimer" to="." method="_on_combat_deadline_timer_timeout"]
-[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_upgrade_requested"]
-[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_inventory_item_use_requested"]
-[connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_inventory_item_discard_requested"]
-[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_simple_crafting_requested"]
-[connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="." method="_on_profile_multiplayer_simple_crafting_cancel_requested"]
+[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_upgrade_requested"]
+[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_use_requested"]
+[connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_discard_requested"]
+[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_requested"]
+[connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_cancel_requested"]

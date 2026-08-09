@@ -5,6 +5,9 @@ const WAREHOUSE_PANEL_SCENE := preload("res://scene/game_modes/tower_defense/eco
 const PLAYER_SCENE := preload("res://scene/player/weishidaier/player_weishidaier.tscn")
 const WOOD := preload("res://resources/config/materials/material_wood.tres")
 const APPLE := preload("res://resources/config/collectibles/collectible_apple.tres")
+const HEALING_POTION := preload(
+	"res://resources/config/consumables/healing_potion.tres"
+)
 const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")
 const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
 const OAK_WAREHOUSE_CONFIG := preload(
@@ -49,6 +52,7 @@ func _init() -> void:
 
 func _run() -> void:
 	var inventory_only := OS.get_cmdline_user_args().has("--inventory-only")
+	var quick_use_only := OS.get_cmdline_user_args().has("--quick-use-only")
 	var run_state := root.get_node("RunState") as RunStateStore
 	run_state.begin_new_run(&"weishidaier", false)
 
@@ -71,22 +75,27 @@ func _run() -> void:
 	)
 	await process_frame
 
-	if not inventory_only:
-		_test_config_and_scene(config, warehouse)
-		await _test_plant_health_bar(warehouse)
-		_test_interaction_lock(player, warehouse)
-	_test_detail_layout(warehouse.storage_panel)
-	await _test_slot_transfer_interactions(run_state, warehouse)
-	await _test_drag_and_controller_slot_moves(run_state, warehouse)
-	_test_authoritative_shared_storage(run_state, warehouse)
-	if not inventory_only:
-		await _test_unique_nearest_interaction(
-			run_state,
-			player,
-			warehouse,
-			config,
-			fixture
-		)
+	if quick_use_only:
+		_test_quick_use_presentation(run_state, warehouse)
+	else:
+		if not inventory_only:
+			_test_config_and_scene(config, warehouse)
+			await _test_plant_health_bar(warehouse)
+			_test_interaction_lock(player, warehouse)
+		_test_detail_layout(warehouse.storage_panel)
+		_test_quick_use_presentation(run_state, warehouse)
+		run_state.begin_new_run(&"weishidaier", false)
+		await _test_slot_transfer_interactions(run_state, warehouse)
+		await _test_drag_and_controller_slot_moves(run_state, warehouse)
+		_test_authoritative_shared_storage(run_state, warehouse)
+		if not inventory_only:
+			await _test_unique_nearest_interaction(
+				run_state,
+				player,
+				warehouse,
+				config,
+				fixture
+			)
 	warehouse.configure_multiplayer_storage(44, 2, true)
 	fixture.remove_child(warehouse)
 	_expect(
@@ -275,6 +284,77 @@ func _test_config_and_scene(config: PlantDefenseConfig, warehouse: OakWarehouse)
 	_expect(prompt.position == Vector2(-22, -33), "仓库提示静止时必须回到-33整数Y坐标。")
 
 
+func _test_quick_use_presentation(
+	run_state: RunStateStore,
+	warehouse: OakWarehouse
+) -> void:
+	var panel := warehouse.storage_panel
+	panel.open_for(warehouse, warehouse.owner_player)
+	_expect(
+		panel.storage_slots.size() == 20
+		and panel.player_slots.size() == 20
+		and panel.storage_slots.all(
+			func(slot: InventorySlot) -> bool: return slot.quick_use_marker != null
+		)
+		and panel.player_slots.all(
+			func(slot: InventorySlot) -> bool: return slot.quick_use_marker != null
+		),
+		"仓库两侧槽位必须各自持有 authored 快捷使用徽记节点。"
+	)
+	var player_badge := panel.player_slots[0].quick_use_marker
+	var storage_badge := panel.storage_slots[0].quick_use_marker
+	var player_count := panel.player_slots[0].stack_count_label
+	_expect(
+		player_badge.size == Vector2(10, 10)
+		and player_badge.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+		and player_badge.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"仓库快捷徽记必须原生保持10×10、最近邻且不拦截槽位输入。"
+	)
+	_expect(
+		is_zero_approx(player_count.anchor_top)
+		and is_zero_approx(player_count.anchor_bottom)
+		and is_equal_approx(player_count.offset_top, 3.0),
+		"仓库堆叠数量必须移到右上，为右下快捷徽记让位。"
+	)
+	_expect(
+		run_state.try_add_item_count(HEALING_POTION, 2),
+		"仓库快捷绑定测试必须准备治疗血瓶。"
+	)
+	panel.call("_refresh_all")
+	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.PLAYER)
+	_expect(
+		panel.quick_use_button.visible
+		and panel.quick_use_button.text == "设置快捷使用"
+		and not player_badge.visible,
+		"PLAYER侧选中未绑定消耗品时必须显示设置快捷按钮。"
+	)
+	panel.quick_use_button.pressed.emit()
+	_expect(
+		run_state.is_quick_use_slot(0)
+		and player_badge.visible
+		and panel.quick_use_button.text == "取消快捷使用",
+		"仓库设置快捷后必须立即刷新PLAYER槽徽记与取消按钮。"
+	)
+	warehouse.storage_items[0] = HEALING_POTION
+	warehouse.storage_stack_counts[0] = 1
+	panel.call("_refresh_all")
+	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.STORAGE)
+	_expect(
+		not storage_badge.visible and not panel.quick_use_button.visible,
+		"STORAGE侧即使包含同类型消耗品也不得显示徽记或快捷绑定按钮。"
+	)
+	panel.call("_on_slot_selected", 0, OakWarehousePanel.ItemSource.PLAYER)
+	panel.quick_use_button.pressed.emit()
+	_expect(
+		run_state.get_quick_use_bound_config_path().is_empty()
+		and not player_badge.visible,
+		"仓库取消快捷后必须清除绑定并隐藏PLAYER槽徽记。"
+	)
+	warehouse.storage_items[0] = null
+	warehouse.storage_stack_counts[0] = 0
+	panel.close()
+
+
 func _test_interaction_lock(player: Player, warehouse: OakWarehouse) -> void:
 	warehouse.call("_on_interaction_area_body_entered", player)
 	_expect(warehouse.interaction_prompt.visible, "玩家靠近后必须显示按F打开提示。")
@@ -393,6 +473,7 @@ func _test_shared_panel_rebinding(
 ) -> void:
 	var panel := first_warehouse.storage_panel
 	var refresh_callback := Callable(panel, "_refresh_all")
+	var quick_use_callback := Callable(panel, "_on_quick_use_binding_changed")
 	for warehouse in [first_warehouse, second_warehouse]:
 		warehouse.storage_items.fill(null)
 		warehouse.storage_stack_counts.fill(0)
@@ -463,7 +544,10 @@ func _test_shared_panel_rebinding(
 		and panel.warehouse == null
 		and panel.tracked_player == null
 		and not first_warehouse.storage_changed.is_connected(refresh_callback)
-		and not run_state.inventory_changed.is_connected(refresh_callback),
+		and not run_state.inventory_changed.is_connected(refresh_callback)
+		and not run_state.quick_use_binding_changed.is_connected(
+			quick_use_callback
+		),
 		"关闭共享面板必须解绑仓库、玩家以及所有内容变更信号。"
 	)
 	_expect(run_state.try_add_item_count(WOOD, 1), "隐藏面板断连测试必须准备一份木材。")
@@ -531,11 +615,15 @@ func _test_detail_layout(panel: OakWarehousePanel) -> void:
 	var button_specs := [
 		{
 			"path": "Overlay/PanelRoot/UseButton",
-			"rect": Rect2(50.0, 421.0, 61.0, 59.0),
+			"rect": Rect2(24.0, 421.0, 61.0, 59.0),
 		},
 		{
 			"path": "Overlay/PanelRoot/MoveButton",
-			"rect": Rect2(117.0, 421.0, 61.0, 59.0),
+			"rect": Rect2(91.0, 421.0, 61.0, 59.0),
+		},
+		{
+			"path": "Overlay/PanelRoot/QuickUseButton",
+			"rect": Rect2(158.0, 421.0, 61.0, 59.0),
 		},
 		{
 			"path": "Overlay/PanelRoot/DiscardButton",

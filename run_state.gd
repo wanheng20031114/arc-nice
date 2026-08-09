@@ -2,6 +2,11 @@ extends Node
 class_name RunStateStore
 
 signal inventory_changed
+signal quick_use_binding_changed(
+	owner_peer_id: int,
+	config_path: String,
+	preferred_slot_index: int
+)
 signal upgrade_changed
 signal selected_character_changed(character_id: StringName)
 signal shared_warehouse_ledger_changed(snapshot: Dictionary)
@@ -61,6 +66,11 @@ var multiplayer_inventories: Dictionary = {}
 var multiplayer_inventory_stack_counts: Dictionary = {}
 var multiplayer_inventory_revisions: Dictionary = {}
 var multiplayer_upgrade_levels: Dictionary = {}
+## Per-run, presentation-facing shortcut preferences. These are deliberately
+## separate from authoritative inventory snapshots and revisions: clients resolve
+## their own binding to a concrete slot, then reuse the normal reliable use
+## transaction. A missing stack leaves the binding dormant until the item returns.
+var _quick_use_bindings_by_owner: Dictionary[int, Dictionary] = {}
 ## OakWarehouse 的跨场景 wire 快照。路线场景没有仓库节点，因此只保留
 ## 可验证的 config_path/count 数据，不持有已卸载场景中的 Node 引用。
 var shared_warehouse_snapshots: Dictionary = {}
@@ -120,6 +130,7 @@ func begin_new_run(
 	multiplayer_inventory_stack_counts.clear()
 	multiplayer_inventory_revisions.clear()
 	multiplayer_upgrade_levels.clear()
+	_clear_all_quick_use_bindings()
 	shared_warehouse_snapshots.clear()
 	shared_warehouse_ledger_revision = 0
 	party_xirang_balances = {0: 0}
@@ -406,6 +417,112 @@ func get_item_count(slot_index: int) -> int:
 	if slot_index < 0 or slot_index >= inventory.size() or inventory[slot_index] == null:
 		return 0
 	return maxi(inventory_stack_counts[slot_index], 1)
+
+
+## Binds one consumable stack for the current run without mutating inventory
+## contents or its optimistic-concurrency revision. owner_peer_id=-1 means the
+## currently active local inventory; 0 is single-player and positive ids are
+## multiplayer inventory owners.
+func set_quick_use_binding(
+	slot_index: int,
+	owner_peer_id: int = -1
+) -> bool:
+	ensure_run_started()
+	var resolved_owner := _resolve_quick_use_owner_peer_id(owner_peer_id)
+	var item := _get_quick_use_item_at_slot(resolved_owner, slot_index)
+	if (
+		item == null
+		or item.inventory_locked
+		or not item.is_consumable_item()
+		or item.resource_path.is_empty()
+	):
+		return false
+	var config_path := item.resource_path
+	var current := _quick_use_bindings_by_owner.get(resolved_owner, {}) as Dictionary
+	if (
+		str(current.get("config_path", "")) == config_path
+		and int(current.get("preferred_slot_index", -1)) == slot_index
+	):
+		return true
+	_quick_use_bindings_by_owner[resolved_owner] = {
+		"config_path": config_path,
+		"preferred_slot_index": slot_index,
+	}
+	quick_use_binding_changed.emit(resolved_owner, config_path, slot_index)
+	return true
+
+
+func toggle_quick_use_binding(
+	slot_index: int,
+	owner_peer_id: int = -1
+) -> bool:
+	var resolved_owner := _resolve_quick_use_owner_peer_id(owner_peer_id)
+	if is_quick_use_slot(slot_index, resolved_owner):
+		return clear_quick_use_binding(resolved_owner)
+	return set_quick_use_binding(slot_index, resolved_owner)
+
+
+func clear_quick_use_binding(owner_peer_id: int = -1) -> bool:
+	var resolved_owner := _resolve_quick_use_owner_peer_id(owner_peer_id)
+	if not _quick_use_bindings_by_owner.has(resolved_owner):
+		return false
+	_quick_use_bindings_by_owner.erase(resolved_owner)
+	quick_use_binding_changed.emit(resolved_owner, "", -1)
+	return true
+
+
+func get_quick_use_bound_config_path(owner_peer_id: int = -1) -> String:
+	var resolved_owner := _resolve_quick_use_owner_peer_id(owner_peer_id)
+	var binding := _quick_use_bindings_by_owner.get(resolved_owner, {}) as Dictionary
+	return str(binding.get("config_path", ""))
+
+
+## Resolves a binding against the latest inventory shape. The preferred slot is
+## retained while it still contains that item; otherwise the lowest matching
+## slot becomes preferred. No match keeps the item path dormant and returns -1.
+func get_quick_use_slot_index(owner_peer_id: int = -1) -> int:
+	var resolved_owner := _resolve_quick_use_owner_peer_id(owner_peer_id)
+	if not _quick_use_bindings_by_owner.has(resolved_owner):
+		return -1
+	var binding := _quick_use_bindings_by_owner[resolved_owner] as Dictionary
+	var config_path := str(binding.get("config_path", ""))
+	if config_path.is_empty():
+		return -1
+	var preferred_slot_index := int(binding.get("preferred_slot_index", -1))
+	if _quick_use_slot_matches_path(
+		resolved_owner,
+		preferred_slot_index,
+		config_path
+	):
+		return preferred_slot_index
+	for slot_index in INVENTORY_CAPACITY:
+		if not _quick_use_slot_matches_path(resolved_owner, slot_index, config_path):
+			continue
+		binding["preferred_slot_index"] = slot_index
+		_quick_use_bindings_by_owner[resolved_owner] = binding
+		return slot_index
+	binding["preferred_slot_index"] = -1
+	_quick_use_bindings_by_owner[resolved_owner] = binding
+	return -1
+
+
+func is_quick_use_slot(
+	slot_index: int,
+	owner_peer_id: int = -1
+) -> bool:
+	return slot_index >= 0 and slot_index == get_quick_use_slot_index(owner_peer_id)
+
+
+func is_quick_use_item(
+	item: PickupConfig,
+	owner_peer_id: int = -1
+) -> bool:
+	return (
+		item != null
+		and item.is_consumable_item()
+		and not item.resource_path.is_empty()
+		and item.resource_path == get_quick_use_bound_config_path(owner_peer_id)
+	)
 
 
 func try_upgrade(stat_type: int, player: Player) -> bool:
@@ -812,6 +929,7 @@ func remap_multiplayer_peer_state(
 	multiplayer_inventories[new_peer_id] = remapped_inventory
 	multiplayer_inventory_stack_counts[new_peer_id] = remapped_counts
 	multiplayer_inventory_revisions[new_peer_id] = remapped_revision
+	_remap_quick_use_binding(old_peer_id, new_peer_id, keep_target_inventory)
 	if multiplayer_upgrade_levels.has(old_peer_id):
 		multiplayer_upgrade_levels[new_peer_id] = multiplayer_upgrade_levels[old_peer_id]
 	if party_xirang_balances.has(old_peer_id):
@@ -852,6 +970,7 @@ func prune_multiplayer_peer_states(
 	if stale_peer_ids.is_empty():
 		return 0
 	for peer_id in stale_peer_ids:
+		clear_quick_use_binding(peer_id)
 		multiplayer_inventories.erase(peer_id)
 		multiplayer_inventory_stack_counts.erase(peer_id)
 		multiplayer_inventory_revisions.erase(peer_id)
@@ -2481,6 +2600,83 @@ func _ensure_local_inventory_shape() -> void:
 			inventory_stack_counts[slot_index] = 0
 		elif inventory_stack_counts[slot_index] <= 0:
 			inventory_stack_counts[slot_index] = 1
+
+
+func _resolve_quick_use_owner_peer_id(owner_peer_id: int) -> int:
+	return active_multiplayer_peer_id if owner_peer_id < 0 else maxi(owner_peer_id, 0)
+
+
+func _get_quick_use_item_at_slot(
+	owner_peer_id: int,
+	slot_index: int
+) -> PickupConfig:
+	if slot_index < 0 or slot_index >= INVENTORY_CAPACITY:
+		return null
+	if owner_peer_id == 0:
+		_ensure_local_inventory_shape()
+		return inventory[slot_index] as PickupConfig
+	if not has_multiplayer_peer_state(owner_peer_id):
+		return null
+	var peer_inventory := multiplayer_inventories[owner_peer_id] as Array
+	return peer_inventory[slot_index] as PickupConfig
+
+
+func _quick_use_slot_matches_path(
+	owner_peer_id: int,
+	slot_index: int,
+	config_path: String
+) -> bool:
+	var item := _get_quick_use_item_at_slot(owner_peer_id, slot_index)
+	return (
+		item != null
+		and not item.inventory_locked
+		and item.is_consumable_item()
+		and item.resource_path == config_path
+	)
+
+
+func _clear_all_quick_use_bindings() -> void:
+	if _quick_use_bindings_by_owner.is_empty():
+		return
+	var owner_peer_ids := _quick_use_bindings_by_owner.keys()
+	_quick_use_bindings_by_owner.clear()
+	for owner_peer_id_variant in owner_peer_ids:
+		quick_use_binding_changed.emit(int(owner_peer_id_variant), "", -1)
+
+
+func _remap_quick_use_binding(
+	old_peer_id: int,
+	new_peer_id: int,
+	keep_target_inventory: bool
+) -> void:
+	var old_binding_exists := _quick_use_bindings_by_owner.has(old_peer_id)
+	var target_binding_exists := _quick_use_bindings_by_owner.has(new_peer_id)
+	if not old_binding_exists and not target_binding_exists:
+		return
+	if keep_target_inventory:
+		# The target's newer authoritative inventory snapshot does not carry this
+		# client-local preference. Preserve an already-remapped target binding, or
+		# migrate the old peer's binding when the target has none.
+		if old_binding_exists and not target_binding_exists:
+			_quick_use_bindings_by_owner[new_peer_id] = (
+				_quick_use_bindings_by_owner[old_peer_id] as Dictionary
+			).duplicate(true)
+	else:
+		if old_binding_exists:
+			_quick_use_bindings_by_owner[new_peer_id] = (
+				_quick_use_bindings_by_owner[old_peer_id] as Dictionary
+			).duplicate(true)
+		else:
+			_quick_use_bindings_by_owner.erase(new_peer_id)
+	_quick_use_bindings_by_owner.erase(old_peer_id)
+	if old_binding_exists:
+		quick_use_binding_changed.emit(old_peer_id, "", -1)
+	if old_binding_exists or target_binding_exists:
+		quick_use_binding_changed.emit(
+			new_peer_id,
+			get_quick_use_bound_config_path(new_peer_id),
+			get_quick_use_slot_index(new_peer_id)
+		)
 
 
 func _seed_starting_inventory(items: Array, counts: Array) -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_item_card.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_shop/ui/shop_product_card_normal_v2.png" id="2_normal"]
@@ -7,6 +7,7 @@
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_shop/ui/shop_product_card_disabled_v2.png" id="5_disabled"]
 [ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="6_xirang"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="7_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/inventory/quick_use_badge.png" id="8_quick_use_badge"]
 
 [node name="RogueUndergroundShopItemCard" type="TextureButton"]
 custom_minimum_size = Vector2(128, 128)
@@ -32,6 +33,20 @@ offset_right = 96.0
 offset_bottom = 78.0
 mouse_filter = 2
 texture_filter = 1
+expand_mode = 1
+stretch_mode = 5
+
+[node name="QuickUseBadge" type="TextureRect" parent="."]
+unique_name_in_owner = true
+visible = false
+texture_filter = 1
+layout_mode = 0
+offset_left = 100.0
+offset_top = 66.0
+offset_right = 110.0
+offset_bottom = 76.0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
 expand_mode = 1
 stretch_mode = 5
 

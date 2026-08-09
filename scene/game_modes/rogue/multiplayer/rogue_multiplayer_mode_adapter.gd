@@ -147,3 +147,26 @@ func show_simple_crafting_result(
 			result,
 			request_token
 		)
+
+
+func handle_profile_upgrade_requested(stat_type: int) -> void:
+	profile_upgrade_requested.emit(stat_type)
+
+
+func handle_profile_inventory_item_use_requested(slot_index: int) -> void:
+	profile_inventory_item_use_requested.emit(slot_index)
+
+
+func handle_profile_inventory_item_discard_requested(slot_index: int) -> void:
+	profile_inventory_item_discard_requested.emit(slot_index)
+
+
+func handle_profile_simple_crafting_requested(
+	recipe_id: StringName,
+	request_token: int
+) -> void:
+	profile_simple_crafting_requested.emit(recipe_id, request_token)
+
+
+func handle_profile_simple_crafting_cancel_requested(request_token: int) -> void:
+	profile_simple_crafting_cancel_requested.emit(request_token)

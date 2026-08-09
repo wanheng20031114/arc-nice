@@ -357,7 +357,9 @@ func _on_multiplayer_pickup_tree_exited(net_id: int) -> void:
 
 func _initialize_mode_player_ui() -> void:
 	currency_hud.bind_player(player)
-	player_profile_panel.configure_multiplayer_requests(false)
+	player_profile_panel.configure_multiplayer_requests(
+		runtime_mode != RuntimeMode.SINGLEPLAYER
+	)
 	player_profile_panel.configure_local_upgrade_authority(
 		runtime_mode != RuntimeMode.CLIENT_VIEW
 	)

@@ -12,6 +12,9 @@ const XIAOCONG_FATE_STONE := preload(
 const ITEM_DETAIL_PANEL_BG := preload("res://resources/texture/item_detail_panel_bg.png")
 const ITEM_CATEGORY_BADGE_COLLECTIBLE := preload("res://resources/texture/item_category_badge_collectible.png")
 const ITEM_CATEGORY_BADGE_ITEM := preload("res://resources/texture/item_category_badge_item.png")
+const QUICK_USE_BADGE := preload(
+	"res://resources/texture/ui/inventory/quick_use_badge.png"
+)
 
 var failures: Array[String] = []
 var test_root: Node2D
@@ -27,6 +30,7 @@ func _run() -> void:
 	root.add_child(test_root)
 	current_scene = test_root
 
+	_test_quick_use_badge_asset_contract()
 	await _test_inventory_detail_panel_and_item_actions()
 
 	test_root.queue_free()
@@ -42,6 +46,61 @@ func _run() -> void:
 	for failure in failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_quick_use_badge_asset_contract() -> void:
+	var source_bytes := FileAccess.get_file_as_bytes(
+		"res://resources/texture/ui/inventory/quick_use_badge.png"
+	)
+	var source_image := Image.new()
+	_expect(
+		source_image.load_png_from_buffer(source_bytes) == OK,
+		"Quick-use badge source PNG must decode successfully."
+	)
+	if source_image.is_empty():
+		return
+	_expect(
+		source_image.get_size() == Vector2i(10, 10)
+		and source_image.get_used_rect() == Rect2i(2, 1, 6, 8),
+		"Quick-use badge must remain a 10x10 canvas with its reviewed inset silhouette."
+	)
+	var visible_colors := {}
+	var alpha_values := {}
+	var transparent_rgb_is_zero := true
+	for y in source_image.get_height():
+		for x in source_image.get_width():
+			var pixel := source_image.get_pixel(x, y)
+			alpha_values[pixel.a8] = true
+			if pixel.a8 == 0:
+				transparent_rgb_is_zero = (
+					transparent_rgb_is_zero
+					and pixel.r8 == 0
+					and pixel.g8 == 0
+					and pixel.b8 == 0
+				)
+			else:
+				visible_colors[pixel] = true
+	_expect(
+		alpha_values.keys() == [0, 255]
+		and transparent_rgb_is_zero,
+		"Quick-use badge must use binary alpha and zero RGB in transparent pixels."
+	)
+	_expect(
+		visible_colors.size() == 2
+		and visible_colors.has(Color8(169, 232, 255, 255))
+		and visible_colors.has(Color8(22, 143, 209, 255)),
+		"Quick-use badge must retain the approved pale/saturated sky-blue palette."
+	)
+	var import_source := FileAccess.get_file_as_string(
+		"res://resources/texture/ui/inventory/quick_use_badge.png.import"
+	)
+	_expect(
+		import_source.contains("compress/mode=0")
+		and import_source.contains("mipmaps/generate=false")
+		and import_source.contains("process/premult_alpha=false")
+		and import_source.contains("process/size_limit=0"),
+		"Quick-use badge import must stay lossless, unmipped, and native-sized."
+	)
 
 
 func _test_inventory_detail_panel_and_item_actions() -> void:
@@ -160,6 +219,18 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	)
 	_expect(not profile_panel.item_detail_use_button.visible, "Collectibles must not show a use button.")
 	_expect(profile_panel.item_detail_discard_button.visible, "Collectibles must show a discard button.")
+	var quick_use_button := (
+		profile_panel.inventory_view.item_detail_quick_use_button
+	)
+	_expect(
+		not quick_use_button.visible,
+		"Collectibles must not show a quick-use binding button."
+	)
+	_expect(
+		not profile_panel.slots[1].quick_use_marker.visible,
+		"Collectible slots must not show the quick-use marker."
+	)
+	var base_detail_height := profile_panel.item_detail_panel.size.y
 
 	var blank_click := InputEventMouseButton.new()
 	blank_click.button_index = MOUSE_BUTTON_LEFT
@@ -194,19 +265,89 @@ func _test_inventory_detail_panel_and_item_actions() -> void:
 	_expect(profile_panel.item_detail_discard_button.visible, "Consumable items must show a red discard button.")
 	_expect(profile_panel.item_detail_hint.visible, "Consumable items must show the double-click use hint.")
 	_expect(profile_panel.item_detail_hint.text.contains("双击"), "The consumable hint must mention double-click use.")
+	_expect(
+		quick_use_button.visible
+		and quick_use_button.text == "设置快捷使用"
+		and quick_use_button.size.x >= 230.0,
+		"Consumables must expose the full-width quick-use binding action."
+	)
+	_expect(
+		profile_panel.item_detail_panel.size.y > base_detail_height + 30.0,
+		"Showing the quick-use action must expand the item detail panel vertically."
+	)
+	_expect(
+		profile_panel.item_detail_panel.position.y >= 14.0
+		and (
+			profile_panel.item_detail_panel.position.y
+			+ profile_panel.item_detail_panel.size.y
+			<= 543.0 - 14.0
+		),
+		"The expanded consumable detail panel must remain inside the authored design area."
+	)
+	_expect(
+		profile_panel.slots[3].quick_use_marker.texture == QUICK_USE_BADGE
+		and profile_panel.slots[3].quick_use_marker.size == Vector2(10.0, 10.0)
+		and (
+			profile_panel.slots[3].quick_use_marker.position
+			+ profile_panel.slots[3].quick_use_marker.size
+		).is_equal_approx(profile_panel.slots[3].size - Vector2(2.0, 2.0)),
+		"The inventory slot must own the authored 10x10 quick-use badge overlay."
+	)
+	quick_use_button.emit_signal("pressed")
+	await process_frame
+	_expect(
+		run_state.is_quick_use_slot(3)
+		and profile_panel.slots[3].quick_use_marker.visible,
+		"Setting quick use must mark the selected consumable slot."
+	)
+	_expect(
+		quick_use_button.text == "取消快捷使用"
+		and profile_panel.slots[3].tooltip_text.contains("已设置快捷使用"),
+		"A bound slot must expose both toggle text and an accessible tooltip status."
+	)
+	quick_use_button.emit_signal("pressed")
+	await process_frame
+	_expect(
+		run_state.get_quick_use_bound_config_path().is_empty()
+		and not profile_panel.slots[3].quick_use_marker.visible
+		and quick_use_button.text == "设置快捷使用",
+		"Pressing the bound action again must cancel quick use and clear its marker."
+	)
+	quick_use_button.emit_signal("pressed")
+	await process_frame
 
 	player.current_health = maxi(player.max_health - HEALTH_PICKUP.heal_amount, 1)
 	profile_panel.item_detail_use_button.emit_signal("pressed")
 	await process_frame
 	_expect(run_state.get_item(3) == null, "Using a consumable from the detail panel must remove it from inventory.")
 	_expect(player.current_health == player.max_health, "Using a health bottle from the detail panel must heal the player.")
+	_expect(
+		run_state.get_quick_use_bound_config_path() == HEALTH_PICKUP.resource_path
+		and not profile_panel.slots[3].quick_use_marker.visible,
+		"Consuming the last bound item must hide its marker while keeping the item-type binding dormant."
+	)
 
 	_expect(run_state.try_add_item(HEALTH_PICKUP), "A replacement health pickup must fit for discard testing.")
+	_expect(run_state.try_add_item(HEALTH_PICKUP), "A second replacement health pickup must join the discard-test stack.")
 	profile_panel.slots[1].emit_signal("pressed")
 	await process_frame
+	_expect(
+		profile_panel.slots[1].quick_use_marker.visible
+		and profile_panel.slots[1].stack_count_label.visible
+		and quick_use_button.text == "取消快捷使用"
+		and not profile_panel.slots[1].quick_use_marker.get_rect().intersects(
+			profile_panel.slots[1].stack_count_label.get_rect()
+		),
+		"Reacquiring the bound item must restore its bottom-right marker without overlapping the top-right stack count."
+	)
 	profile_panel.item_detail_discard_button.emit_signal("pressed")
 	await process_frame
 	_expect(run_state.get_item(1) == null, "Discarding a consumable from the detail panel must destroy it.")
+	_expect(
+		run_state.get_quick_use_bound_config_path() == HEALTH_PICKUP.resource_path
+		and not profile_panel.slots[1].quick_use_marker.visible,
+		"Discarding the bound stack must leave its item-type binding dormant and hide the marker."
+	)
 
 	_expect(run_state.try_add_item(HEALTH_PICKUP), "A replacement health pickup must fit for double-click testing.")
 	profile_panel.slots[1].emit_signal("pressed")

@@ -14,9 +14,13 @@ signal slot_selected(slot_index: int)
 
 @onready var item_icon: Sprite2D = $Icon
 @onready var stack_count_label: Label = $StackCount
+@onready var quick_use_marker: TextureRect = (
+	get_node_or_null(^"QuickUseMarker") as TextureRect
+)
 
 var item: PickupConfig = null
 var stack_count: int = 0
+var quick_use_marked := false
 var drag_container := -1
 var drag_coordinator: Node = null
 var last_mouse_click_msec := 0
@@ -57,11 +61,24 @@ func set_item(
 		)
 	stack_count_label.visible = item != null and stack_count > 1
 	stack_count_label.text = str(stack_count)
+	_refresh_quick_use_marker()
 	tooltip_text = _get_tooltip_text()
 
 
 func set_selected(selected: bool) -> void:
 	button_pressed = selected
+
+
+func set_quick_use_marked(marked: bool) -> void:
+	quick_use_marked = marked
+	_refresh_quick_use_marker()
+	tooltip_text = _get_tooltip_text()
+
+
+func _refresh_quick_use_marker() -> void:
+	if quick_use_marker == null:
+		return
+	quick_use_marker.visible = quick_use_marked and item != null
 
 
 func configure_drag_context(container: int, coordinator: Node) -> void:
@@ -263,7 +280,13 @@ func _get_mouse_press_sequence(mouse_event: InputEventMouseButton) -> int:
 func _get_tooltip_text() -> String:
 	if item == null:
 		return "空槽位"
+	var quick_use_text := "\n已设置快捷使用" if quick_use_marked else ""
 	if item.description.is_empty():
-		return "%s ×%d" % [item.display_name, stack_count] if stack_count > 1 else item.display_name
+		var title_text := (
+			"%s ×%d" % [item.display_name, stack_count]
+			if stack_count > 1
+			else item.display_name
+		)
+		return "%s%s" % [title_text, quick_use_text]
 	var name_text := "%s ×%d" % [item.display_name, stack_count] if stack_count > 1 else item.display_name
-	return "%s\n%s" % [name_text, item.description]
+	return "%s\n%s%s" % [name_text, item.description, quick_use_text]

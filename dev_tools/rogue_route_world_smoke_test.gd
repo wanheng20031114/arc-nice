@@ -11,6 +11,9 @@ const MIN_VISIBLE_ROWS := 3
 const EXPECTED_NODE_DISPLAY_SIZE := Vector2(32.0, 32.0)
 const EXPECTED_NODE_DISPLAY_OFFSET := Vector2(16.0, 16.0)
 const ROUTE_CONTRACT_FIELD := "runtime_contract_hash"
+const HEALING_POTION := preload(
+	"res://resources/config/consumables/healing_potion.tres"
+)
 
 var failures: Array[String] = []
 
@@ -849,8 +852,9 @@ func _audit_hud(route: RogueRouteGame) -> void:
 		and inventory_strip.slot_buttons.size() == 11
 		and inventory_strip.slot_frames.size() == 11
 		and inventory_strip.item_icons.size() == 11
+		and inventory_strip.quick_use_badges.size() == 11
 		and inventory_strip.stack_labels.size() == 11,
-		"底部物品栏的节点、图标、边框与数量标签必须共同扩展到十一格。"
+		"底部物品栏的节点、图标、徽记、边框与数量标签必须共同扩展到十一格。"
 	)
 	_expect(
 		last_visible_slot != null
@@ -896,6 +900,34 @@ func _audit_hud(route: RogueRouteGame) -> void:
 			and first_stack_count.text == "5",
 			"底部物品栏必须实时显示本地玩家背包中的物品与叠放数量。"
 		)
+		var first_badge := inventory_strip.get_node_or_null(
+			"Slot0/QuickUseBadge"
+		) as TextureRect
+		var second_badge := inventory_strip.get_node_or_null(
+			"Slot1/QuickUseBadge"
+		) as TextureRect
+		_expect(
+			first_badge != null
+			and second_badge != null
+			and first_badge.size == Vector2(10, 10)
+			and first_badge.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
+			and not first_badge.visible,
+			"路线栏必须 authored 原生10×10快捷徽记，普通物资槽默认隐藏。"
+		)
+		_expect(
+			run_state.try_add_item_count(HEALING_POTION, 2)
+			and run_state.set_quick_use_binding(1),
+			"路线栏徽记测试必须准备并绑定第二格治疗血瓶。"
+		)
+		_expect(
+			second_badge.visible
+			and not first_badge.visible
+			and inventory_strip.stack_labels[1].anchor_top == 0.0
+			and inventory_strip.stack_labels[1].anchor_bottom == 0.0,
+			"路线栏只能在绑定槽右下显示徽记，堆叠数量必须移至右上。"
+		)
+		run_state.clear_quick_use_binding()
+		_expect(not second_badge.visible, "取消绑定后路线栏徽记必须立即隐藏。")
 	inventory_strip.call("_on_next_button_pressed")
 	_expect(
 		inventory_strip.first_slot_index == 1,

@@ -27,6 +27,7 @@ const PANEL_MOUSE_PRESS_SEQUENCE_META := &"_oak_warehouse_mouse_press_sequence"
 @onready var status_label: Label = $Overlay/PanelRoot/StatusLabel
 @onready var use_button: Button = $Overlay/PanelRoot/UseButton
 @onready var move_button: Button = $Overlay/PanelRoot/MoveButton
+@onready var quick_use_button: Button = $Overlay/PanelRoot/QuickUseButton
 @onready var half_button: Button = $Overlay/PanelRoot/HalfButton
 @onready var quantity_button: Button = $Overlay/PanelRoot/QuantityButton
 @onready var discard_button: Button = $Overlay/PanelRoot/DiscardButton
@@ -78,10 +79,19 @@ func _ready() -> void:
 	set_process(false)
 	set_process_input(false)
 	set_process_unhandled_input(false)
-	_collect_slots(storage_grid, storage_slots, ItemSource.STORAGE)
-	_collect_slots(player_grid, player_slots, ItemSource.PLAYER)
+	_collect_slots(
+		storage_grid,
+		storage_slots,
+		ItemSource.STORAGE
+	)
+	_collect_slots(
+		player_grid,
+		player_slots,
+		ItemSource.PLAYER
+	)
 	use_button.pressed.connect(_on_use_pressed)
 	move_button.pressed.connect(_on_move_pressed)
+	quick_use_button.pressed.connect(_on_quick_use_pressed)
 	half_button.pressed.connect(_on_half_pressed)
 	quantity_button.pressed.connect(_on_quantity_pressed)
 	discard_button.pressed.connect(_on_discard_pressed)
@@ -118,6 +128,12 @@ func bind_warehouse(new_warehouse: OakWarehouse, player: Player) -> void:
 		warehouse.storage_changed.connect(_refresh_all)
 	if not run_state.inventory_changed.is_connected(_refresh_all):
 		run_state.inventory_changed.connect(_refresh_all)
+	if not run_state.quick_use_binding_changed.is_connected(
+		_on_quick_use_binding_changed
+	):
+		run_state.quick_use_binding_changed.connect(
+			_on_quick_use_binding_changed
+		)
 	if warehouse != null:
 		set_multiplayer_storage_state(
 			warehouse.multiplayer_storage_enabled,
@@ -264,6 +280,12 @@ func _unbind_warehouse() -> void:
 		tracked_player.died.disconnect(_on_tracked_player_died)
 	if run_state.inventory_changed.is_connected(_refresh_all):
 		run_state.inventory_changed.disconnect(_refresh_all)
+	if run_state.quick_use_binding_changed.is_connected(
+		_on_quick_use_binding_changed
+	):
+		run_state.quick_use_binding_changed.disconnect(
+			_on_quick_use_binding_changed
+		)
 	warehouse = null
 	tracked_player = null
 
@@ -271,9 +293,11 @@ func _unbind_warehouse() -> void:
 func _clear_slot_contents() -> void:
 	for slot in storage_slots:
 		slot.set_item(null, 0)
+		slot.set_quick_use_marked(false)
 		slot.set_selected(false)
 	for slot in player_slots:
 		slot.set_item(null, 0)
+		slot.set_quick_use_marked(false)
 		slot.set_selected(false)
 
 
@@ -641,14 +665,16 @@ func _refresh_all() -> void:
 		storage_slots[slot_index].set_selected(
 			selected_source == ItemSource.STORAGE and selected_slot_index == slot_index
 		)
+		storage_slots[slot_index].set_quick_use_marked(false)
 
 	for slot_index in range(player_slots.size()):
-		player_slots[slot_index].set_item(
-			run_state.get_item(slot_index),
-			run_state.get_item_count(slot_index)
-		)
+		var item := run_state.get_item(slot_index)
+		player_slots[slot_index].set_item(item, run_state.get_item_count(slot_index))
 		player_slots[slot_index].set_selected(
 			selected_source == ItemSource.PLAYER and selected_slot_index == slot_index
+		)
+		player_slots[slot_index].set_quick_use_marked(
+			item != null and run_state.is_quick_use_slot(slot_index)
 		)
 
 	if selected_source != ItemSource.NONE and _get_selected_item() == null:
@@ -672,6 +698,40 @@ func _on_slot_activated(slot_index: int, source: int) -> void:
 	_on_slot_selected(slot_index, source)
 	if selected_source == source and selected_slot_index == slot_index:
 		_on_move_pressed()
+
+
+func _on_quick_use_binding_changed(
+	owner_peer_id: int,
+	_config_path: String,
+	_preferred_slot_index: int
+) -> void:
+	if owner_peer_id != run_state.active_multiplayer_peer_id:
+		return
+	_refresh_all()
+
+
+func _on_quick_use_pressed() -> void:
+	var item := _get_selected_item()
+	if (
+		selected_source != ItemSource.PLAYER
+		or selected_slot_index < 0
+		or item == null
+		or not item.is_consumable_item()
+		or item.inventory_locked
+	):
+		_refresh_detail()
+		return
+	var was_bound := run_state.is_quick_use_slot(selected_slot_index)
+	if not run_state.toggle_quick_use_binding(selected_slot_index):
+		status_label.text = "当前无法修改快捷使用绑定"
+		_refresh_all()
+		return
+	status_label.text = (
+		"已取消快捷使用：%s" % item.display_name
+		if was_bound
+		else "已设为快捷使用：%s" % item.display_name
+	)
+	_refresh_all()
 
 
 func _on_use_pressed() -> void:
@@ -1007,6 +1067,9 @@ func _refresh_detail() -> void:
 		item_description.tooltip_text = item_description.text
 		use_button.disabled = true
 		use_button.text = "使用"
+		quick_use_button.hide()
+		quick_use_button.disabled = true
+		quick_use_button.text = "设置快捷使用"
 		move_button.disabled = true
 		half_button.disabled = true
 		quantity_button.disabled = true
@@ -1027,6 +1090,18 @@ func _refresh_detail() -> void:
 	item_description.text = item.description if not item.description.is_empty() else "暂无描述"
 	item_description.tooltip_text = item_description.text
 	var network_locked := _is_network_locked()
+	var can_bind_quick_use := (
+		selected_source == ItemSource.PLAYER
+		and item.is_consumable_item()
+		and not item.inventory_locked
+	)
+	quick_use_button.visible = can_bind_quick_use
+	quick_use_button.disabled = not can_bind_quick_use
+	quick_use_button.text = (
+		"取消快捷使用"
+		if can_bind_quick_use and run_state.is_quick_use_slot(selected_slot_index)
+		else "设置快捷使用"
+	)
 	use_button.disabled = (
 		_is_multiplayer_inventory_context()
 		or selected_source != ItemSource.PLAYER

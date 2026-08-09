@@ -90,6 +90,9 @@ func _ready() -> void:
 	inventory_view.item_discard_requested.connect(
 		_on_inventory_item_discard_requested
 	)
+	inventory_view.item_quick_use_toggle_requested.connect(
+		_on_inventory_item_quick_use_toggle_requested
+	)
 	slots = inventory_view.slots
 	stats_view.player_died.connect(_on_player_died)
 	stats_view.xirang_changed.connect(_refresh_upgrades)
@@ -176,6 +179,10 @@ func show_simple_crafting_result(
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("use_item") and not event.is_echo():
+		if _request_quick_use_item():
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("bag"):
 		toggle()
 		get_viewport().set_input_as_handled()
@@ -188,6 +195,27 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("ui_accept") and current_tab == 0:
 		if inventory_view.handle_accept():
 			get_viewport().set_input_as_handled()
+
+
+func _request_quick_use_item() -> bool:
+	if (
+		tracked_player == null
+		or not is_instance_valid(tracked_player)
+		or not tracked_player.uses_local_input
+		or tracked_player.is_dead
+		or tracked_player.world_movement_mode
+		or tracked_player.are_combat_actions_locked()
+		or overlay.visible
+	):
+		return false
+	var owner_peer_id := tracked_player.peer_id if tracked_player.peer_id > 0 else 0
+	if run_state.active_multiplayer_peer_id != owner_peer_id:
+		return false
+	var slot_index := run_state.get_quick_use_slot_index(owner_peer_id)
+	if slot_index < 0:
+		return false
+	_on_inventory_item_use_requested(slot_index)
+	return true
 
 
 func _on_inventory_changed() -> void:
@@ -256,6 +284,15 @@ func _on_inventory_item_discard_requested(slot_index: int) -> void:
 		stats_view.refresh()
 	else:
 		inventory_view.refresh()
+
+
+func _on_inventory_item_quick_use_toggle_requested(slot_index: int) -> void:
+	if tracked_player == null or not is_instance_valid(tracked_player):
+		return
+	var owner_peer_id := tracked_player.peer_id if tracked_player.peer_id > 0 else 0
+	if run_state.active_multiplayer_peer_id != owner_peer_id:
+		return
+	run_state.toggle_quick_use_binding(slot_index, owner_peer_id)
 
 
 func _on_tab_changed(tab_index: int) -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_inventory_strip.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/inventory/inventory_bar_center_tile_ref_v4.png" id="2_center_tile"]
@@ -7,6 +7,7 @@
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/inventory/inventory_scroll_right_ref_v3.png" id="5_right"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/inventory/inventory_slot_empty_ref_v3.png" id="6_empty_slot"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="7_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/inventory/quick_use_badge.png" id="8_quick_use_badge"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
 
@@ -134,17 +135,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot0"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot0"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot0"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -197,17 +218,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot1"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot1"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot1"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -260,17 +301,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot2"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot2"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot2"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -323,17 +384,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot3"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot3"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot3"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -386,17 +467,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot4"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot4"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot4"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -449,17 +550,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot5"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot5"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot5"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -512,17 +633,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot6"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot6"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot6"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -575,17 +716,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot7"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot7"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot7"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -638,17 +799,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot8"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot8"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot8"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -701,17 +882,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot9"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot9"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot9"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)
@@ -764,17 +965,37 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="StackCount" type="Label" parent="Slot10"]
+[node name="QuickUseBadge" type="TextureRect" parent="Slot10"]
+visible = false
+texture_filter = 1
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 30.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("8_quick_use_badge")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StackCount" type="Label" parent="Slot10"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -34.0
+offset_top = 3.0
 offset_right = -6.0
-offset_bottom = -5.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = 28.0
+grow_horizontal = 0
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.83, 0.93, 1, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.025, 0.03, 1)

@@ -116,12 +116,14 @@ func _run() -> void:
 	)
 	_expect(
 		rogue_combat_source.contains(
-			"player_profile_panel.configure_multiplayer_requests(false)"
+			"player_profile_panel.configure_multiplayer_requests(\n"
+			+ "\t\truntime_mode != RuntimeMode.SINGLEPLAYER\n"
+			+ "\t)"
 		)
 		and rogue_combat_source.contains(
 			"runtime_mode != RuntimeMode.CLIENT_VIEW"
 		),
-		"肉鸽多人尚未接入 Profile 网关前必须保持旧的显式权限边界。"
+		"肉鸽 Host/Client 必须启用共享 Profile 多人请求，同时保持客户端升级权限边界。"
 	)
 
 	_expect(

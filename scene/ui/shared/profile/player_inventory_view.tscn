@@ -1,10 +1,11 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://scene/ui/shared/profile/player_inventory_view.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/ui/shared/inventory/inventory_slot.tscn" id="2_slot"]
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
 [ext_resource type="Texture2D" path="res://resources/texture/item_detail_panel_bg.png" id="4_detail_bg"]
 [ext_resource type="Texture2D" path="res://resources/texture/item_category_badge_collectible.png" id="5_category_collectible"]
+[ext_resource type="Texture2D" path="res://resources/texture/ui/inventory/quick_use_badge.png" id="6_quick_use_badge"]
 
 [sub_resource type="StyleBoxTexture" id="StyleBoxTexture_item_detail"]
 texture = ExtResource("4_detail_bg")
@@ -63,6 +64,30 @@ border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
 border_color = Color(1, 0.45, 0.4, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_quick_use"]
+bg_color = Color(0.1, 0.29, 0.38, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.88, 0.65, 0.24, 0.9)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_quick_use_hover"]
+bg_color = Color(0.14, 0.4, 0.5, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.79, 0.34, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
@@ -353,4 +378,21 @@ theme_override_colors/font_color = Color(1, 0.92, 0.9, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_detail_discard")
 theme_override_styles/hover = SubResource("StyleBoxFlat_detail_discard_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_detail_discard_hover")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_detail_button_focus")
+
+[node name="QuickUseButton" type="Button" parent="ItemDetailPanel/Margin/Content"]
+visible = false
+custom_minimum_size = Vector2(230, 30)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "设置快捷使用"
+icon = ExtResource("6_quick_use_badge")
+icon_max_width = 10
+expand_icon = true
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(1, 0.94, 0.76, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_detail_quick_use")
+theme_override_styles/hover = SubResource("StyleBoxFlat_detail_quick_use_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_detail_quick_use_hover")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_detail_button_focus")
