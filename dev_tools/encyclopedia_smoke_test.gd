@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 57,
+	CodexSection.ENEMY: 58,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
@@ -34,12 +34,12 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 2,
-	&"mechanical_life": 6,
+	&"mechanical_life": 7,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
 	EnemyCodexEntryConfig.Rank.NORMAL: 49,
-	EnemyCodexEntryConfig.Rank.ELITE: 7,
+	EnemyCodexEntryConfig.Rank.ELITE: 8,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
 const ATTACK_STAT_LABELS := [
@@ -112,7 +112,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 57 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 58 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -201,7 +201,7 @@ func _test_enemy_rank_counts(catalog: CodexCatalog) -> void:
 		actual_counts[source.rank] = int(actual_counts.get(source.rank, 0)) + 1
 	_expect(
 		actual_counts == EXPECTED_ENEMY_RANK_COUNTS,
-		"Enemy ranks must contain 49 normal, seven elite, and one Boss entry."
+		"Enemy ranks must contain 49 normal, eight elite, and one Boss entry."
 	)
 
 
@@ -259,6 +259,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_combat_robot := false
 	var saw_combat_robot_elite := false
 	var saw_combat_robot_gunner := false
+	var saw_combat_robot_gunner_elite := false
 	var saw_combat_robot_drone_operator := false
 	var saw_combat_robot_shield_bearer := false
 	var saw_combat_robot_ninja := false
@@ -385,7 +386,60 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				),
 				"Drone operator must keep its normal-rank mechanical codex contract."
 			)
-		if config is CombatRobotGunnerConfig:
+		if config is CombatRobotGunnerEliteConfig:
+			saw_combat_robot_gunner_elite = true
+			var elite_gunner := config as CombatRobotGunnerEliteConfig
+			_expect(
+				String(stats.get("生命", "")) == "360"
+				and String(stats.get("单次伤害", "")) == "50"
+				and String(stats.get("物理防御", "")) == "20 点"
+				and String(stats.get("法术防御", "")) == "15"
+				and String(stats.get("移动速度", "")) == "50"
+				and String(stats.get("基地伤害", "")) == "2"
+				and String(stats.get("击杀息壤", "")) == "10",
+				"Elite combat robot gunner codex must expose its authored core attributes."
+			)
+			_expect(
+				String(stats.get("攻击距离", ""))
+				== _format_number(elite_gunner.attack_range)
+				and String(stats.get("射击前摇", "")) == "0 秒"
+				and String(stats.get("每轮射击", ""))
+				== "%d 发" % elite_gunner.burst_count
+				and String(stats.get("连射间隔", ""))
+				== "%s 秒" % _format_number(elite_gunner.burst_fire_interval)
+				and String(stats.get("散布范围", ""))
+				== "±%s°" % _format_number(elite_gunner.spread_angle_degrees)
+				and String(stats.get("射击移速", ""))
+				== "%s%%（基础有效速度 %s）" % [
+					_format_number(elite_gunner.burst_move_speed_multiplier * 100.0),
+					_format_number(
+						elite_gunner.move_speed
+						* elite_gunner.burst_move_speed_multiplier
+					),
+				]
+				and String(stats.get("攻击冷却", ""))
+				== "%s 秒" % _format_number(elite_gunner.attack_cooldown)
+				and String(stats.get("弹体速度", ""))
+				== _format_number(elite_gunner.projectile_speed)
+				and String(stats.get("弹体寿命", ""))
+				== "%s 秒" % _format_number(elite_gunner.projectile_lifetime),
+				"Elite combat robot gunner codex stats must use its typed burst-fire config."
+			)
+			_expect(
+				elite_gunner.projectile_type == &"combat_robot_gunner_elite_bullet"
+				and source.sort_order == 535
+				and source.family_id == &"mechanical_life"
+				and source.rank == EnemyCodexEntryConfig.Rank.ELITE
+				and entry.primary_badge == "机械生命"
+				and entry.secondary_badge == "精英"
+				and source.description
+				== "由紫能核心、轻度重装机体与强化卡宾枪构成的精英持枪战斗机器人。它会锁死目标方向，在追击中快速连射十二发紫能弹；更高的移动速度与更短的冷却使连续火力更加密集。"
+				and entry.notes == PackedStringArray(
+					["精英", "紫能连射", "强化追击"]
+				),
+				"Elite gunner must keep its elite mechanical codex contract."
+			)
+		elif config is CombatRobotGunnerConfig:
 			saw_combat_robot_gunner = true
 			var gunner := config as CombatRobotGunnerConfig
 			_expect(
@@ -575,11 +629,12 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 		and saw_combat_robot
 		and saw_combat_robot_elite
 		and saw_combat_robot_gunner
+		and saw_combat_robot_gunner_elite
 		and saw_combat_robot_drone_operator
 		and saw_combat_robot_shield_bearer
 		and saw_combat_robot_ninja
 		and saw_linglan,
-		"Enemy stat contract must cover regeneration, aura, normal and elite dash, burst-fire, drone deployment, projectile shields, ninja boosts and Boss adapters."
+		"Enemy stat contract must cover regeneration, aura, normal and elite dash, normal and elite burst-fire, drone deployment, projectile shields, ninja boosts and Boss adapters."
 	)
 
 

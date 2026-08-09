@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "asset": "combat_robot_gunner_elite_final_candidate",
+  "stage": "runtime_integrated",
+  "status": "approved_and_written_to_runtime",
+  "approved_anchor": "G1",
+  "approved_selection": {
+    "move": "M1",
+    "fire": "S2",
+    "death": "D2",
+    "bullet": "B1"
+  },
+  "final_human_approved": true,
+  "runtime_written": true,
+  "preview_only": false,
+  "imagegen_pixels_imported": false,
+  "second_stage_certificates": {
+    "report": {
+      "path": "dev_assets/generated_previews/combat_robot_gunner_elite_animation_preview_report.json",
+      "sha256": "50b67ea4662c154b6bd816a05b81b77c6962c73643eca60104f130e403cf1606"
+    },
+    "manifest": {
+      "path": "dev_assets/source_images/combat_robot_gunner_elite/combat_robot_gunner_elite_animation_manifest.json",
+      "sha256": "c24dcd597aa2365664e57739062f3e46cb5f691368880c073a3b1738f339780c",
+      "approved_selection": null
+    },
+    "stability_report": {
+      "path": "dev_assets/generated_previews/combat_robot_gunner_elite_animation_stability_report.json",
+      "sha256": "dde449df16e3e17771202aa0821147855f7682ba2fbbe4bafb95f27bf0a0e4cd",
+      "approved_selection": null
+    }
+  },
+  "third_stage": {
+    "status": "approved_and_written_to_runtime",
+    "selection": {
+      "move": "M1",
+      "fire": "S2",
+      "death": "D2",
+      "bullet": "B1"
+    },
+    "selected_native_inputs": {
+      "M1": {
+        "path": "dev_assets/generated_previews/combat_robot_gunner_elite_m1_candidate_strip.png",
+        "size": [
+          256,
+          32
+        ],
+        "sha256": "06558e8d935137f742d7fbb00e10f15d28c8674c90469e85287f0b6289544354",
+        "rgba_sha256": "223eebf9c6609ddc22fb83aadc6965ea8c31ac805d25da6decb6119beb8d0821",
+        "frame_count": 8,
+        "frame_rgba_sha256": [
+          "0361a5df2ce2655fcb05250199723582b445e7b0ee446ea8eabc6b744cd54b3f",
+          "5c2ca296d7a1dab6b89a407d1071021fee98a0b0199ccfd37bc1951f0ce0eb82",
+          "656e85ad466fb37451885f5accf74ab58d9ca9a0510bac6d787b81d9d4cad374",
+          "dd5022154d5bd0153e87f1316586edb20d45515557e7bc7e01bf9a1c92ede7be",
+          "1b8520d39b0a2768ddf9fe2c2bd0f07287c021408f7392a9de9744f54045d3c2",
+          "78086e6b763c312e9662f72ee33946887bc7e97eb41973acb610914853ec5906",
+          "1a0cab3a04c8b6bf9e367a5265ba0f6e543277bf0157489ec094597b9f89efb8",
+          "bc0f78ea3de3aae12d65fef0f66581b24eef8ad1573a7ed06cb1a8f735eb45b3"
+        ],
+        "byte_sha_matches_constant": true,
+        "frames_match_stage2_report": true
+      },
+      "S2": {
+        "path": "dev_assets/generated_previews/combat_robot_gunner_elite_s2_candidate_strip.png",
+        "size": [
+          256,
+          128
+        ],
+        "sha256": "c12f781660c2a98746b731278acf176dcdda2efd2af9c828c09cf43093969dff",
+        "rgba_sha256": "591019c053cb8930c6b7e4906800a282b1370dbde44791f06f86487afee4eec7",
+        "frame_count": 32,
+        "frame_rgba_sha256": [
+          "8c2dcdf7b93002be78c24a5d888f2f4250b1c2daa958273a5bd8119169d209b4",
+          "656c55ae64292400041120d669d2f0c142a034befa5d14bb799d02d748dadb11",
+          "e971e3ae0287ff06c102764e562b3aab0054005df63a7bb9253c76aab85f4382",
+          "47c9116726ec201092b66d72cb9bef9de131edfe639b008ee7b487ce65bbbd40",
+          "995fb5c08d40add9b8a72e7d1c6c42fefd8e6e45ac8e1f6e4f37d309d7226c44",
+          "fe618aa9f4dc154dd729ba93ba2ac33e19174f3bb82ed23b3862ef8f8544f56d",
+          "c21025fbef17541d6f82010fc431bb38229649ad370428df6f8defb9643ae6ee",
+          "5f75555efcf8b1428e339de57af6246dac9734426faa28061ac139636b10c9a9",
+          "1f78ab4eef37181deeb9979bac64b4999d30731e4565d632f1e9c8faeff3aa63",
+          "df883b493e643e1cd4517a24ce1d80027aa16eabacfbe67f3b44cda3b78065a1",
+          "f7c52eb463bfdc1c53faad9934aa5eec8d2fc362ffb0174de05cf9484aff1410",
+          "26deb7152b51537cce6db9007a251ea43000cca4149d87895f9b11fe85a4ff69",
+          "cd7a41256cfad5be0cec7c1625cd325615456ce819164377fa253135fd9b02f0",
+          "4b1591b8030fc503d9d61cfed4c1e3ce0c105757f8034efa11a4688885ae600e",
+          "be53f36e0554353ead6a24eba6665a4e9afaf0a915d973b0deb1a119db7347ca",
+          "d14bc4c73f311199b0f6387e9759d8f9db26114fd20678c36c4177b8bf1010c2",
+          "4ed97d902216bcc2380fe24fa43713d5b2baf730d8484a0f94167480bd75f638",
+          "72b4315d0fd7e8da1bddc96ebaafc609d686be22fa22ab27dbe04c02a91936e3",
+          "9e1dd569a8718ee2157aeeb89d5413d0f40ade5703aae7075587631e50fb9532",
+          "a43647c6f5744864efd92578658d6f60f602db2e323bdbef42dac75bc3b736e0",
+          "195fe7ea3e3b0a11ad9ebb25c0b825932e13ae3ba3084e7af319fcca513c760b",
+          "56ec354d7d3dbf3a7ba9af41c923e3711179ab62a588dd3352936c7afa937cd8",
+          "7162ece5016651ba833e20d1b335f7994058b46665676ae29d6c41c2fbb21ef5",
+          "2d28387ae8477c22e8bfe52d7d60b9cfa416f797c4f9dff1c4af11171e2a8ed7",
+          "1f78ab4eef37181deeb9979bac64b4999d30731e4565d632f1e9c8faeff3aa63",
+          "df883b493e643e1cd4517a24ce1d80027aa16eabacfbe67f3b44cda3b78065a1",
+          "f7c52eb463bfdc1c53faad9934aa5eec8d2fc362ffb0174de05cf9484aff1410",
+          "26deb7152b51537cce6db9007a251ea43000cca4149d87895f9b11fe85a4ff69",
+          "cd7a41256cfad5be0cec7c1625cd325615456ce819164377fa253135fd9b02f0",
+          "4b1591b8030fc503d9d61cfed4c1e3ce0c105757f8034efa11a4688885ae600e",
+          "be53f36e0554353ead6a24eba6665a4e9afaf0a915d973b0deb1a119db7347ca",
+          "d14bc4c73f311199b0f6387e9759d8f9db26114fd20678c36c4177b8bf1010c2"
+        ],
+        "byte_sha_matches_constant": true,
+        "frames_match_stage2_report": true
+      },
+      "D2": {
+        "path": "dev_assets/generated_previews/combat_robot_gunner_elite_d2_candidate_strip.png",
+        "size": [
+          256,
+          32
+        ],
+        "sha256": "27b795298fc3f1e443751c347e537e9e774850841e3eb851ddde0c20304fddff",
+        "rgba_sha256": "3971f3dfbeb5f86ce86d94549a9491844c5e010792a684c91b112ceedaf65635",
+        "frame_count": 8,
+        "frame_rgba_sha256": [
+          "cea851a0945df35b350223b7a534c3538c74d1486a9a86182ea03343dcea8952",
+          "6de8af741eb0cdc48bcecd0f77bbb0d33abc1ff0b2aaed29136a271e468c2554",
+          "db117f96d32f733d8851bb3a0af8a3aaff110fed316927b69f514fed12612a44",
+          "dc4826e9352673441d91ba8f0b2ece05d5b2c21ecdf26241ed4ef0d5511dc1be",
+          "17cbc1d43fd2b9698d05e448bbb5279ce4d4f20d347bafc412693d32df1b2d39",
+          "f1666d79597ef8b46d95ea1c7eb10bb99bc6b7c8b146aa951290d1835715353e",
+          "b9793d95734cbe616652c0ab48cbc76d799dcd09763304e2f733f8f39d80200d",
+          "d80b10da6311af5609a3cf904bc44a2d9e4f0e0fd6f94f88fe8abfa19302a53b"
+        ],
+        "byte_sha_matches_constant": true,
+        "frames_match_stage2_report": true
+      },
+      "B1": {
+        "path": "dev_assets/generated_previews/combat_robot_gunner_elite_b1_candidate_strip.png",
+        "size": [
+          36,
+          8
+        ],
+        "sha256": "600016b26f904bdde24485474100ed91757c3a8bc479be6e8337e25d6a7fb830",
+        "rgba_sha256": "970835a8e0094a7b7db267c35b6c842b5c5d7bbad273bac7c185c1f860a8f591",
+        "frame_count": 3,
+        "frame_rgba_sha256": [
+          "e223a71950f8cc76ac6056d3fc0bb83fc808bdf020f3408eb9ad513eb26eacd1",
+          "b12a94dcdf8756ce0a941c45dbdda569a28b08197682a9a299dc84b8b1a927df",
+          "036eaa0d8c138bb0e5ed26025b09ecb2db5e4f222a3e4a10cab65b5bbf43a2b6"
+        ],
+        "byte_sha_matches_constant": true,
+        "frames_match_stage2_report": true
+      }
+    },
+    "final_sheet": "dev_assets/source_images/combat_robot_gunner_elite/combat_robot_gunner_elite_final_candidate.png",
+    "final_sheet_size": [
+      256,
+      192
+    ],
+    "final_sheet_sha256": "5c19a616ab277c27df25089a20ba9260deb37428bd531856a48b844f8284b03f",
+    "final_bullet": "dev_assets/source_images/combat_robot_gunner_elite/combat_robot_gunner_elite_bullet_final_candidate.png",
+    "final_bullet_size": [
+      36,
+      8
+    ],
+    "final_bullet_sha256": "600016b26f904bdde24485474100ed91757c3a8bc479be6e8337e25d6a7fb830",
+    "integer_sheet_8x": "dev_assets/generated_previews/combat_robot_gunner_elite_final_candidate_8x.png",
+    "integer_sheet_8x_sha256": "59274ce96bc4067742d0c47abe33bbbb1a5a1233767d586ad6ee7a5e6c4e3ccc",
+    "integer_sheet_16x": "dev_assets/generated_previews/combat_robot_gunner_elite_final_candidate_16x.png",
+    "integer_sheet_16x_sha256": "c5f7ab00307cb53ed2ad404a2cb637a1885598a889a55c8c0d35df82cef32bd6",
+    "integer_bullet_16x": "dev_assets/generated_previews/combat_robot_gunner_elite_bullet_final_candidate_16x.png",
+    "integer_bullet_16x_sha256": "51a231138db2407d37c2ba43b364ddf3d04fe70fd6c66ae4bb42ee081a6e90c2",
+    "integer_bullet_24x": "dev_assets/generated_previews/combat_robot_gunner_elite_bullet_final_candidate_24x.png",
+    "integer_bullet_24x_sha256": "c6f4e5784a939dd0004fbcc2d4056bd5a0e6ecaee28d932255a13c55b52736c8",
+    "integer_preview_audit": {
+      "nearest_neighbor_only": true,
+      "sheet_8x_exact": true,
+      "sheet_16x_exact": true,
+      "bullet_16x_exact": true,
+      "bullet_24x_exact": true
+    },
+    "comparison": "dev_assets/generated_previews/combat_robot_gunner_elite_final_comparison.png",
+    "fire_timing": {
+      "upper_fps": 25,
+      "leg_fps": 7,
+      "preview_fps": 25,
+      "loop_seconds": 8,
+      "gif_frames": 200,
+      "schedule_sha256": "133bb0a453b48c745235a469c398d452fc7b1ad273a64b85cebde40b8e73cb7a",
+      "formula": {
+        "upper_phase": "floor(t * 25) % 4",
+        "leg_phase": "floor(t * 7) % 8",
+        "matrix_index": "upper_phase * 8 + leg_phase"
+      }
+    },
+    "bullet_timing": {
+      "fps": 25,
+      "frames": 3,
+      "loop": true
+    },
+    "final_human_approved": true,
+    "runtime_written": true,
+    "runtime_resources": {
+      "sheet": {
+        "path": "resources/texture/enemy/mechanical_life/combat_robot_gunner_elite.png",
+        "sha256": "5c19a616ab277c27df25089a20ba9260deb37428bd531856a48b844f8284b03f"
+      },
+      "bullet": {
+        "path": "resources/texture/enemy/mechanical_life/combat_robot_gunner_elite_bullet.png",
+        "sha256": "600016b26f904bdde24485474100ed91757c3a8bc479be6e8337e25d6a7fb830"
+      },
+      "animation": {
+        "path": "resources/animation/combat_robot_gunner_elite.tres",
+        "sha256": "27e8a8077e9e82467ada8989af9dac5247e4ea6148e454308bf5502c3bdea51c"
+      },
+      "bullet_animation": {
+        "path": "resources/animation/combat_robot_gunner_elite_bullet.tres",
+        "sha256": "e63e86571e30f03b85958b059a783d9afcde8c459f51abb62df39fb3efab283b"
+      }
+    }
+  },
+  "runtime_approval": {
+    "approved_anchor": "G1",
+    "approved_selection": {
+      "move": "M1",
+      "fire": "S2",
+      "death": "D2",
+      "bullet": "B1"
+    },
+    "runtime_resources": {
+      "sheet": {
+        "path": "resources/texture/enemy/mechanical_life/combat_robot_gunner_elite.png",
+        "sha256": "5c19a616ab277c27df25089a20ba9260deb37428bd531856a48b844f8284b03f"
+      },
+      "bullet": {
+        "path": "resources/texture/enemy/mechanical_life/combat_robot_gunner_elite_bullet.png",
+        "sha256": "600016b26f904bdde24485474100ed91757c3a8bc479be6e8337e25d6a7fb830"
+      },
+      "animation": {
+        "path": "resources/animation/combat_robot_gunner_elite.tres",
+        "sha256": "27e8a8077e9e82467ada8989af9dac5247e4ea6148e454308bf5502c3bdea51c"
+      },
+      "bullet_animation": {
+        "path": "resources/animation/combat_robot_gunner_elite_bullet.tres",
+        "sha256": "e63e86571e30f03b85958b059a783d9afcde8c459f51abb62df39fb3efab283b"
+      }
+    },
+    "imagegen_pixels_imported": false
+  }
+}

@@ -194,6 +194,9 @@ func _test_source_boundaries() -> void:
 	_expect(
 		coordinator_source.contains("func register_runtime_object_pools(")
 		and coordinator_source.contains(
+			"CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool("
+		)
+		and coordinator_source.contains(
 			"register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)"
 		)
 		and coordinator_source.contains(

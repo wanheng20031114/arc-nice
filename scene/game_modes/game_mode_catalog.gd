@@ -3,7 +3,7 @@ class_name GameModeCatalog
 
 const CATALOG_RESOURCE_PATH := "res://scene/game_modes/game_mode_catalog.tres"
 
-# These values are part of the v48 room/wire contract. Keep every assignment
+# These values are part of the v49 room/wire contract. Keep every assignment
 # explicit so inserting or reordering a lobby item can never renumber a mode.
 const MODE_STANDARD := 0
 const MODE_TOWER_DEFENSE := 1
@@ -30,6 +30,7 @@ const TOWER_DEFENSE_PRELOAD_RESOURCE_PATHS := [
 	"res://scene/combat/collectibles/collectible_sakura_explosion.tscn",
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
 	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",
@@ -195,7 +196,7 @@ func validate_definitions() -> PackedStringArray:
 	var seen_keys := {}
 	var seen_orders := {}
 	if definitions.size() != 6:
-		errors.append("catalog must contain exactly 6 frozen v48 modes")
+		errors.append("catalog must contain exactly 6 frozen v49 modes")
 	for definition in definitions:
 		if definition == null:
 			errors.append("catalog contains a null definition")

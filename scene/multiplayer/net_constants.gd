@@ -51,7 +51,10 @@ extends RefCounted
 ## v48：肉鸽地下商店新增 Host 权威的购买、出售、退出回执与逐人私有货架快照，
 ## 路线完整快照追加目标玩家的商店状态。8 个 ENet 通道保持不变；v47 客户端
 ## 无法解释新增 RPC 与完整快照参数。
-const PROTOCOL_VERSION := 48
+## v49：在 v48 地下商店契约上新增精英持枪战斗机器人、独立紫色弹丸类型及
+## 玩家受击来源 wire ID 18。RPC 表面和 8 个 ENet 通道不变，但 v48 客户端
+## 无法实例化新的敌人与投射物资源合同。
+const PROTOCOL_VERSION := 49
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

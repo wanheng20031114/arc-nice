@@ -12,6 +12,7 @@ class_name CombatRobotGunnerConfig
 @export_range(0.0, 45.0, 0.1) var spread_angle_degrees: float = 5.0
 @export_range(0.0, 1.0, 0.01) var burst_move_speed_multiplier: float = 0.5
 @export_range(0.0, 60.0, 0.01, "or_greater") var attack_cooldown: float = 2.5
+@export var projectile_type: StringName = &"combat_robot_gunner_bullet"
 @export var projectile_scene: PackedScene
 @export_range(0.0, 2000.0, 0.1, "or_greater") var projectile_speed: float = 80.0
 @export_range(0.01, 30.0, 0.01, "or_greater") var projectile_lifetime: float = 1.5

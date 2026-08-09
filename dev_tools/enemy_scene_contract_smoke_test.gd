@@ -22,6 +22,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot.tres"),
 	preload("res://resources/config/enemies/combat_robot_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
+	preload("res://resources/config/enemies/combat_robot_gunner_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_drone_operator.tres"),
 	preload("res://resources/config/enemies/combat_robot_shield_bearer.tres"),
 	preload("res://resources/config/enemies/combat_robot_ninja.tres"),
@@ -130,6 +131,7 @@ const MECHANICAL_LIFE_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot.tres"),
 	preload("res://resources/config/enemies/combat_robot_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
+	preload("res://resources/config/enemies/combat_robot_gunner_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_drone_operator.tres"),
 	preload("res://resources/config/enemies/combat_robot_shield_bearer.tres"),
 	preload("res://resources/config/enemies/combat_robot_ninja.tres"),
@@ -159,6 +161,9 @@ const CAPOO_AK47_BULLET_SCENE := preload(
 )
 const COMBAT_ROBOT_GUNNER_BULLET_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
+)
+const COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn"
 )
 const COMBAT_ROBOT_SUICIDE_DRONE_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
@@ -215,6 +220,7 @@ func _test_enemy_projectile_z_contract() -> void:
 	for projectile_scene in [
 		CAPOO_AK47_BULLET_SCENE,
 		COMBAT_ROBOT_GUNNER_BULLET_SCENE,
+		COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE,
 		CAPOO_SMG_BULLET_SCENE,
 	]:
 		var projectile := projectile_scene.instantiate() as Area2D
@@ -412,8 +418,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golem configs must carry the artificial_creation category tag."
 	)
 	_expect(
-		int(category_counts["mechanical_life"]) == 6,
-		"Exactly the six normal and elite combat robot configs must carry the mechanical_life category tag."
+		int(category_counts["mechanical_life"]) == 7,
+		"Exactly the seven normal and elite combat robot configs must carry the mechanical_life category tag."
 	)
 	_expect(
 		int(category_counts["slime"]) == 10,

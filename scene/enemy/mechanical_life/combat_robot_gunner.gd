@@ -8,7 +8,6 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const ACTION_FIRE: StringName = &"combat_robot_gunner_fire"
-const PROJECTILE_TYPE: StringName = &"combat_robot_gunner_bullet"
 const WORLD_COLLISION_MASK := 1
 const MUZZLE_RIGHT_POSITION := Vector2(14.0, 1.0)
 const MUZZLE_WORLD_CLEARANCE := 5.0
@@ -414,7 +413,7 @@ func _fire_locked_bullet() -> bool:
 	projectile.reset_physics_interpolation()
 	gameplay_gateway.register_local_projectile(
 		projectile,
-		PROJECTILE_TYPE,
+		gunner_config_cache.projectile_type,
 		0,
 		projectile.global_position,
 		shot_direction,

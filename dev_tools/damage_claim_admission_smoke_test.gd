@@ -79,6 +79,7 @@ func _test_attack_registry_wire_contract() -> void:
 		_case(&"linglan_skill3_orb", 15, magic),
 		_case(&"linglan_skill4_orb", 16, magic),
 		_case(&"combat_robot_gunner_bullet", 17, physical),
+		_case(&"combat_robot_gunner_elite_bullet", 18, physical),
 	]
 	_expect(
 		cases.size() == CombatAttackRegistry.PlayerHitWireId.size() - 1,

@@ -28,6 +28,9 @@ const CAPOO_AK47_BULLET_SCENE := preload(
 const COMBAT_ROBOT_GUNNER_BULLET_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 )
+const COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn"
+)
 const COMBAT_ROBOT_SUICIDE_DRONE_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
@@ -1649,10 +1652,15 @@ func instantiate_projectile(
 				_runtime.capoo_projectile_motion_system
 			)
 			return capoo_bullet
-		&"combat_robot_gunner_bullet":
+		&"combat_robot_gunner_bullet", &"combat_robot_gunner_elite_bullet":
+			var gunner_bullet_scene := (
+				COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE
+				if projectile_type == &"combat_robot_gunner_elite_bullet"
+				else COMBAT_ROBOT_GUNNER_BULLET_SCENE
+			)
 			var gunner_bullet := (
 				_acquire_or_instantiate_projectile(
-					COMBAT_ROBOT_GUNNER_BULLET_SCENE
+					gunner_bullet_scene
 				)
 				as CombatRobotGunnerBullet
 			)

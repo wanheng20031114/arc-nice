@@ -4,6 +4,8 @@ class_name CombatRobotGunnerBullet
 const SOURCE_TYPE := &"combat_robot_gunner_bullet"
 const PROJECTILE_SHAPE_SWEEP := preload("res://scene/combat/physics/projectile_shape_sweep_2d.gd")
 
+@export var authored_source_type: StringName = SOURCE_TYPE
+
 @onready var sweep_collision_shape: CollisionShape2D = $CollisionShape2D
 
 var damageable_sweep = PROJECTILE_SHAPE_SWEEP.new()
@@ -12,13 +14,13 @@ var sweep_exclude: Array[RID] = []
 
 func _ready() -> void:
 	super()
-	source_type = SOURCE_TYPE
+	source_type = authored_source_type
 	_configure_damageable_sweep()
 
 
 func on_pool_acquired(generation: int) -> void:
 	super(generation)
-	source_type = SOURCE_TYPE
+	source_type = authored_source_type
 	_clear_sweep_exclusions()
 	damageable_sweep.reset_runtime_state()
 
@@ -27,6 +29,7 @@ func on_pool_released(generation: int) -> void:
 	_clear_sweep_exclusions()
 	damageable_sweep.reset_runtime_state()
 	super(generation)
+	source_type = authored_source_type
 
 
 func simulate_compensated_motion(compensation_age: float) -> void:

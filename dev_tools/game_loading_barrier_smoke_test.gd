@@ -31,6 +31,8 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_shell.tscn",
 	"res://scene/enemy/capoo/capoo_ak47.tscn",
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 	"res://scene/enemy/sorcerer/fire_sorcerer_fireball_volley.tscn",
 	"res://scene/enemy/sorcerer/fire_sorcerer_elite_fireball_volley.tscn",
@@ -38,6 +40,7 @@ const TOWER_DEFENSE_HIGH_FREQUENCY_RESOURCE_PATHS: Array[String] = [
 	"res://resources/config/enemies/capoo_knight_elite.tres",
 	"res://resources/config/enemies/stone_golem_elite.tres",
 	"res://resources/config/enemies/combat_robot_elite.tres",
+	"res://resources/config/enemies/combat_robot_gunner_elite.tres",
 	"res://resources/config/enemies/fire_sorcerer_elite.tres",
 	"res://resources/config/enemies/frost_sorcerer_elite.tres",
 	"res://resources/config/enemies/lightning_sorcerer_elite.tres",
@@ -691,17 +694,19 @@ func _expect_gunner_projectile_pool(runtime: CombatRuntimeBase) -> void:
 	_expect(object_pool != null, "Runtime must expose the gunner projectile object pool.")
 	if object_pool == null:
 		return
-	var scene_path := (
-		"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
-	)
-	var metrics := object_pool.get_metrics(scene_path)
-	_expect(
-		int(metrics.get("created", -1)) == 0
-		and int(metrics.get("inactive", -1)) == 0
-		and int(metrics.get("in_use", -1)) == 0
-		and int(metrics.get("retained_capacity", -1)) == 96,
-		"Gunner bullet pool must register lazily with retained capacity 96."
-	)
+	for scene_path in [
+		"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
+		"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
+	]:
+		var metrics := object_pool.get_metrics(scene_path)
+		_expect(
+			int(metrics.get("created", -1)) == 0
+			and int(metrics.get("inactive", -1)) == 0
+			and int(metrics.get("in_use", -1)) == 0
+			and int(metrics.get("retained_capacity", -1)) == 96,
+			"Gunner bullet pool must register lazily with retained capacity 96: %s"
+			% scene_path
+		)
 
 
 func _expect_drone_projectile_pool(runtime: CombatRuntimeBase) -> void:

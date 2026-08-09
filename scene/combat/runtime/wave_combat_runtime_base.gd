@@ -228,6 +228,7 @@ func _ready() -> void:
 	session_object_pool.register_scene(PLAYER_BULLET_POOL_SCENE, 64, 768)
 	session_object_pool.register_scene(CAPOO_AK47_BULLET_POOL_SCENE, 32, 384)
 	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
+	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(session_object_pool)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 12, 96)

@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="CombatRobotGunnerEliteConfig" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/combat_robot_gunner_elite_config.gd" id="1_config"]
+[ext_resource type="Resource" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_drop_table"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_gunner_elite.tscn" id="3_scene"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn" id="4_bullet"]
+[ext_resource type="AudioStream" path="res://resources/audio/capoo_ak47_fire.wav" id="5_audio"]
+
+[resource]
+script = ExtResource("1_config")
+fire_animation_name = &"fire"
+fire_walk_animation_name = &"fire_walk"
+attack_range = 84.0
+stop_distance = 24.0
+burst_count = 12
+burst_fire_interval = 0.08
+spread_angle_degrees = 5.0
+burst_move_speed_multiplier = 0.5
+attack_cooldown = 2.0
+projectile_type = &"combat_robot_gunner_elite_bullet"
+projectile_scene = ExtResource("4_bullet")
+projectile_speed = 80.0
+projectile_lifetime = 1.5
+attack_audio_stream = ExtResource("5_audio")
+display_name = "精英持枪战斗机器人"
+category_tags = PackedStringArray("mechanical_life")
+enemy_scene = ExtResource("3_scene")
+max_health = 360
+attack_damage = 50
+physical_defense = 20
+magic_defense = 15
+move_speed = 50.0
+home_damage = 2
+xirang_kill_reward = 10
+drop_table = ExtResource("2_drop_table")

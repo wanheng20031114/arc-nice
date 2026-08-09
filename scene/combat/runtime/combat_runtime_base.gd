@@ -18,6 +18,9 @@ const CAPOO_MAGE_FIREBALL_IMPACT_POOL_SCENE := preload(
 const COMBAT_ROBOT_GUNNER_BULLET_POOL_SCENE_PATH := (
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn"
 )
+const COMBAT_ROBOT_GUNNER_ELITE_BULLET_POOL_SCENE_PATH := (
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn"
+)
 const LIGHTNING_SORCERER_LIGHTNING_VFX_POOL_SCENE := preload(
 	"res://scene/enemy/sorcerer/lightning_sorcerer_lightning_vfx.tscn"
 )
@@ -30,6 +33,8 @@ const LIGHTNING_SORCERER_LIGHTNING_VFX_PREWARM_COUNT := 64
 const LIGHTNING_SORCERER_LIGHTNING_VFX_RETAINED_CAPACITY := 96
 const COMBAT_ROBOT_GUNNER_BULLET_PREWARM_COUNT := 0
 const COMBAT_ROBOT_GUNNER_BULLET_RETAINED_CAPACITY := 96
+const COMBAT_ROBOT_GUNNER_ELITE_BULLET_PREWARM_COUNT := 0
+const COMBAT_ROBOT_GUNNER_ELITE_BULLET_RETAINED_CAPACITY := 96
 const SINGLEPLAYER_BULK_INDEX_MIN_TARGETS := 512
 
 # The cohort probe overrides these before scene creation for isolated A/B runs.
@@ -253,6 +258,24 @@ static func register_combat_robot_gunner_bullet_pool(
 		projectile_scene,
 		maxi(combat_robot_gunner_bullet_pool_prewarm_count, 0),
 		maxi(combat_robot_gunner_bullet_pool_retained_capacity, 1)
+	)
+
+
+static func register_combat_robot_gunner_elite_bullet_pool(
+	pool: SessionObjectPool
+) -> void:
+	if pool == null:
+		return
+	var projectile_scene := load(
+		COMBAT_ROBOT_GUNNER_ELITE_BULLET_POOL_SCENE_PATH
+	) as PackedScene
+	if projectile_scene == null:
+		push_error("无法加载精英持枪战斗机器人弹丸池场景。")
+		return
+	pool.register_scene(
+		projectile_scene,
+		COMBAT_ROBOT_GUNNER_ELITE_BULLET_PREWARM_COUNT,
+		COMBAT_ROBOT_GUNNER_ELITE_BULLET_RETAINED_CAPACITY
 	)
 
 

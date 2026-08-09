@@ -23,6 +23,7 @@ const LEGACY_TOWER_PRELOAD_PATHS := [
 	"res://scene/combat/collectibles/collectible_sakura_explosion.tscn",
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn",
 	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",

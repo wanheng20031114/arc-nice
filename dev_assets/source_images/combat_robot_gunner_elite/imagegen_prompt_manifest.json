@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "asset": "combat_robot_gunner_elite_anchor_candidates",
+  "stage": "first_human_gate",
+  "mode": "built-in image_gen",
+  "reference_paths": [
+    "resources/texture/enemy/mechanical_life/combat_robot_gunner.png",
+    "dev_assets/source_images/combat_robot_gunner/combat_robot_gunner_anchor_b_approved_32x.png",
+    "dev_assets/source_images/combat_robot_elite/combat_robot_elite_anchor_a1_approved_native32.png"
+  ],
+  "generated_sources": {
+    "g1": {
+      "path": "dev_assets/source_images/combat_robot_gunner_elite/combat_robot_gunner_elite_anchor_g1_imagegen.png",
+      "sha256": "2768bfbfc5d46259eea06ab2a8f04e75309a654e932f8427ab2c7d322ae2f742",
+      "purpose": "A1平直机体 / 上导轨 + 弹匣护圈"
+    },
+    "g2": {
+      "path": "dev_assets/source_images/combat_robot_gunner_elite/combat_robot_gunner_elite_anchor_g2_imagegen.png",
+      "sha256": "c8d7259412893aaa3633f791aad0761d4ed009a548f187161ecc210a6679c491",
+      "purpose": "A1平直机体 / 下挂稳定器 + 短前握块"
+    },
+    "g3": {
+      "path": "dev_assets/source_images/combat_robot_gunner_elite/combat_robot_gunner_elite_anchor_g3_imagegen.png",
+      "sha256": "51a74e2ed61daa7ae416c1d65115e5b43ac9036b8e39ff21fefe17f5d2d6fc97",
+      "purpose": "A1平直机体 / 枪托阻尼框 + 后接收机支撑"
+    }
+  },
+  "pixel_policy": "All three ImageGen outputs are visual-language references only; native pixels come exclusively from ordinary runtime frame0, the fixed purple mapping, and explicit neutral-gray attachment tables.",
+  "pixels_imported": false,
+  "approved_selection": "G1",
+  "runtime_written": false,
+  "approved_anchor": {
+    "selection": "G1",
+    "source_candidate": "dev_assets/source_images/combat_robot_gunner_elite/combat_robot_gunner_elite_anchor_g1_native32.png",
+    "path": "dev_assets/source_images/combat_robot_gunner_elite/combat_robot_gunner_elite_anchor_g1_approved_native32.png",
+    "preview_16x": "dev_assets/generated_previews/combat_robot_gunner_elite_anchor_g1_approved_16x.png",
+    "sha256": "f5ef499bad24267d1f06d84c3bedf1b1b590a409bf019736cbb0320c6e9f4cf5",
+    "rgba_sha256": "0361a5df2ce2655fcb05250199723582b445e7b0ee446ea8eabc6b744cd54b3f",
+    "copied_byte_identical": true
+  }
+}

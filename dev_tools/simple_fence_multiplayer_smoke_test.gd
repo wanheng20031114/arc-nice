@@ -145,8 +145,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 48,
-		"协议v48必须保留既有wire类型、忍者加速与重连确认，并隔离精英机器人资源。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 49,
+		"协议v49必须保留既有wire类型、忍者加速与重连确认，并隔离精英战斗机器人资源与精英枪手弹丸资源。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_fence_crafting()
 	_test_inventory_placement_replay_admission(authoritative_snapshot)

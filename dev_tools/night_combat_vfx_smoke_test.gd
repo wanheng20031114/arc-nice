@@ -53,6 +53,7 @@ const SINGLE_PASS_PROJECTILE_SCENE_MATERIALS := {
 	"res://scene/player/tango/tango_laser_bullet.tscn": TANGO_LASER_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
+	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn": FROST_PROJECTILE_MATERIAL_PATH,

@@ -150,10 +150,11 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 48,
+		NetConstants.PROTOCOL_VERSION == 49,
 		(
-			"协议 v48 必须同时承载精英战斗机器人与目标玩家私有的地下商店"
-			+ "会话，且保留既有遭遇、忍者加速与重连激活确认。"
+			"协议 v49 必须同时承载目标玩家私有的地下商店会话，并隔离"
+			+ "精英战斗机器人资源与精英持枪机器人弹丸资源，且保留既有遭遇、"
+			+ "忍者加速与重连激活确认。"
 		)
 	)
 	_expect(

@@ -17,6 +17,7 @@ burst_fire_interval = 0.08
 spread_angle_degrees = 5.0
 burst_move_speed_multiplier = 0.5
 attack_cooldown = 2.5
+projectile_type = &"combat_robot_gunner_bullet"
 projectile_scene = ExtResource("4_bullet")
 projectile_speed = 80.0
 projectile_lifetime = 1.5

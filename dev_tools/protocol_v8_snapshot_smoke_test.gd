@@ -224,7 +224,7 @@ func _run() -> void:
 	_test_shared_snapshot_cohort_lifecycle()
 	_test_enemy_codec_reuse_and_packet_budget()
 	if failures.is_empty():
-		print("PROTOCOL_V48_SNAPSHOT_SMOKE_TEST_OK")
+		print("PROTOCOL_V49_SNAPSHOT_SMOKE_TEST_OK")
 		quit()
 		return
 	for failure in failures:
@@ -233,10 +233,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 48, "Protocol must be v48.")
+	_expect(NetConstants.PROTOCOL_VERSION == 49, "Protocol must be v49.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v48 must retain the scene-specific v45 bits 5..6 for shield stages and ninja boost."
+		"Protocol v49 must retain the scene-specific v45 bits 5..6 for shield stages and ninja boost."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -254,7 +254,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v48 channel assignments must remain stable."
+		"Protocol v49 channel assignments must remain stable."
 	)
 
 

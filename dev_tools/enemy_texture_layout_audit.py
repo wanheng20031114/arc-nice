@@ -43,6 +43,8 @@ EXPECTED_PNGS: dict[str, tuple[str, ...]] = {
         "combat_robot_drone_target_marker.png",
         "combat_robot_gunner.png",
         "combat_robot_gunner_bullet.png",
+        "combat_robot_gunner_elite.png",
+        "combat_robot_gunner_elite_bullet.png",
         "combat_robot_ninja.png",
         "combat_robot_shield_bearer.png",
         "combat_robot_shield_bearer_fx.png",
@@ -135,6 +137,16 @@ PIPELINE_MARKERS = {
     ),
     "dev_tools/combat_robot_gunner_asset_audit.py": (
         "resources/texture/enemy/mechanical_life",
+    ),
+    "dev_tools/build_combat_robot_gunner_elite_runtime_assets.py": (
+        '"mechanical_life"',
+        '"combat_robot_gunner_elite.png"',
+        '"combat_robot_gunner_elite_bullet.png"',
+    ),
+    "dev_tools/combat_robot_gunner_elite_asset_audit.py": (
+        '"mechanical_life"',
+        '"combat_robot_gunner_elite.png"',
+        '"combat_robot_gunner_elite_bullet.png"',
     ),
     "dev_tools/process_combat_robot_drone_operator_assets.py": (
         'RUNTIME_DIR = PROJECT_ROOT / "resources" / "texture" / "enemy" / "mechanical_life"',
@@ -241,8 +253,8 @@ def main() -> int:
     import_uids: dict[str, Path] = {}
 
     expected_total = sum(len(names) for names in EXPECTED_PNGS.values())
-    if expected_total != 76:
-        failures.append(f"Audit inventory must contain 76 PNGs, found {expected_total}.")
+    if expected_total != 78:
+        failures.append(f"Audit inventory must contain 78 PNGs, found {expected_total}.")
 
     actual_categories = {
         path.name for path in ENEMY_ROOT.iterdir() if path.is_dir()

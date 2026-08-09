@@ -183,6 +183,7 @@ func register_runtime_object_pools(expanded_projectile_prewarm: bool) -> void:
 		384
 	)
 	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
+	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(session_object_pool)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 24, 192)
