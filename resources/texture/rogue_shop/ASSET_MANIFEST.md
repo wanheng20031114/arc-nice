@@ -5,6 +5,10 @@
 `rogue_route/underground_ruins_background.png`，小葱直接复用权威立绘
 `xiaocong_fate/xiaocong_keypose_hd.png`。这里不复制、不重处理背景、柜台或人物。
 
+正式界面由 `rogue_underground_shop_view.tscn` 直接拼装这些交互素材；购买和出售
+共用同一组 4×2 authored 商品卡。专用菱形转场使用
+`rogue_underground_shop_diamond_transition.gdshader`，不依赖额外位图。
+
 ## UI
 
 | 路径 | 尺寸 | 用途 | 九宫格 / 状态约束 |
@@ -24,11 +28,11 @@
 
 - `rogue_route/inventory/inventory_slot_empty_ref_v3.png`
 - `rogue_route/inventory/inventory_slot_selected_ref_v3.png`
-- `rogue_route/hud/hud_light_stone_v1.png`
 
 售价底座位于卡框本体的 `y=78..108`，不再叠加突兀的半透明价格条。所有商品名称、
-说明和价格均由 Godot `Label` 绘制；商品图标以现有 32×32 PNG 精确 2×显示。
-每个商品格固定代表 1 件商品，不显示库存、叠加数量或持有数量。
+说明和价格均由 Godot `Label` 绘制；息壤图标与商品图标使用现有资源，商品图标以
+32×32 PNG 精确 2×显示。购买页每个报价固定代表 1 件商品，不显示库存或持有数量；
+出售页复用同一框体，并只在可堆叠物品上显示玩家背包中的实际数量。
 素材不包含购买逻辑，也不依赖 `RunState`、网络会话或肉鸽路线根场景。
 
 ## 来源与重建

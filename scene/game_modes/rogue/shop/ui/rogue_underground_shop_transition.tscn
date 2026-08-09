@@ -1,0 +1,42 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_transition.gd" id="1_script"]
+[ext_resource type="Shader" path="res://resources/shader/rogue_underground_shop_diamond_transition.gdshader" id="2_shader"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/xiaocong_transition_cover.wav" id="3_cover_audio"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/xiaocong_transition_reveal.wav" id="4_reveal_audio"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_diamond_transition"]
+resource_local_to_scene = true
+shader = ExtResource("2_shader")
+shader_parameter/cover_color = Color(0.018, 0.019, 0.018, 1)
+shader_parameter/hdr_edge_color = Color(1.28, 0.58, 0.16, 0.72)
+shader_parameter/edge_width_pixels = 1.5
+shader_parameter/target_rows = 18.0
+
+[node name="RogueUndergroundShopTransition" type="CanvasLayer"]
+process_mode = 3
+visible = false
+layer = 120
+script = ExtResource("1_script")
+
+[node name="Cover" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_diamond_transition")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="CoverAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_cover_audio")
+volume_db = -8.0
+max_polyphony = 1
+bus = &"SFX"
+
+[node name="RevealAudio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("4_reveal_audio")
+volume_db = -7.0
+max_polyphony = 1
+bus = &"SFX"

@@ -1,0 +1,24 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/shop/rogue_underground_shop_controller.gd" id="1_controller"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/shop/domain/rogue_underground_shop_economy_coordinator.gd" id="2_economy"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.tscn" id="3_view"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_transition.tscn" id="4_transition"]
+
+[node name="UndergroundShopController" type="Node"]
+script = ExtResource("1_controller")
+view_path = NodePath("View")
+transition_path = NodePath("Transition")
+
+[node name="Economy" type="Node" parent="."]
+script = ExtResource("2_economy")
+
+[node name="View" parent="." instance=ExtResource("3_view")]
+
+[node name="Transition" parent="." instance=ExtResource("4_transition")]
+
+[connection signal="exit_requested" from="View" to="." method="_on_view_exit_requested"]
+[connection signal="purchase_requested" from="View" to="." method="_on_view_purchase_requested"]
+[connection signal="sell_inventory_requested" from="View" to="." method="_on_view_sell_inventory_requested"]
+[connection signal="sell_page_requested" from="View" to="." method="_on_view_sell_page_requested"]
+[connection signal="sell_requested" from="View" to="." method="_on_view_sell_requested"]

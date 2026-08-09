@@ -29,6 +29,32 @@ signal encounter_result_ack_requested(
 	occurrence_key: String,
 	result_sequence: int
 )
+signal host_shop_snapshot_committed(
+	target_peer_id: int,
+	shop_snapshot: Dictionary
+)
+signal shop_purchase_requested(
+	request_id: String,
+	occurrence_key: String,
+	offer_index: int,
+	expected_session_revision: int,
+	expected_shelf_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+)
+signal shop_sell_requested(
+	request_id: String,
+	occurrence_key: String,
+	slot_index: int,
+	expected_config_path: String,
+	expected_session_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+)
+signal shop_exit_ack_requested(
+	occurrence_key: String,
+	expected_session_revision: int
+)
 signal normal_combat_requested(
 	node_id: int,
 	content_seed: int,
@@ -100,6 +126,9 @@ enum BriefingPhase {
 	$EncounterEconomy
 )
 @onready var encounter_session: RogueEncounterSession = $EncounterSession
+@onready var underground_shop_controller: RogueUndergroundShopController = (
+	$UndergroundShopController
+)
 @onready var combat_result_overlay: RogueCombatResultOverlay = (
 	$CombatResultOverlay
 )
@@ -160,8 +189,10 @@ var _normal_combat_visit_count := 0
 var _normal_combat_occurrence_key := ""
 var _route_presentation_enabled := true
 var _route_presentation_restore_state: Dictionary = {}
+var _shop_route_presentation_restore_state: Dictionary = {}
 var _player_names: Dictionary = {}
 var _player_character_ids: Dictionary = {}
+var _player_stable_keys: Dictionary = {SINGLEPLAYER_PEER_ID: "singleplayer:local"}
 var _run_state: RunStateStore = null
 var _run_failure_presented := false
 var _cached_max_health_penalties: Dictionary = {}
@@ -200,6 +231,7 @@ func _ready() -> void:
 	if manage_return_locally:
 		_configure_singleplayer_player()
 	_connect_party_status_ledger()
+	_create_underground_shop_runtime()
 	if run_defeat_overlay != null and not run_defeat_overlay.confirmed.is_connected(
 		_on_run_defeat_confirmed
 	):
@@ -336,6 +368,7 @@ func start_authoritative_session(
 	_reset_briefing_runtime(true)
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(true)
+	_reset_underground_shop_runtime(true)
 
 	_set_route_reveal_input_locked(false)
 	_clear_pending_move(true)
@@ -371,6 +404,7 @@ func start_client_waiting() -> void:
 	_clear_pending_move(true)
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(false)
+	_reset_underground_shop_runtime(false)
 	_disconnect_runtime_state()
 	_route_graph = null
 	_runtime_state = null
@@ -386,7 +420,8 @@ func apply_full_snapshot(
 	layout_snapshot: Dictionary,
 	state_snapshot: Dictionary,
 	encounter_snapshot: Dictionary = {},
-	economy_snapshot: Dictionary = {}
+	economy_snapshot: Dictionary = {},
+	shop_snapshot: Dictionary = {}
 ) -> bool:
 	var briefing_value: Variant = state_snapshot.get(BRIEFING_STATE_FIELD)
 	if typeof(briefing_value) != TYPE_DICTIONARY:
@@ -419,6 +454,19 @@ func apply_full_snapshot(
 		imported_state
 	):
 		_set_status("房主作战简报状态与路线不匹配。", true)
+		return false
+	if (
+		not shop_snapshot.is_empty()
+		and (
+			underground_shop_controller == null
+			or not underground_shop_controller.preflight_snapshot(
+			shop_snapshot,
+			imported_graph,
+			imported_state
+			)
+		)
+	):
+		_set_status("房主地下商店快照无效或已过期。", true)
 		return false
 	var layout_changed := (
 		_route_graph == null
@@ -470,6 +518,7 @@ func apply_full_snapshot(
 		_reset_briefing_runtime(true)
 		_reset_normal_combat_stage(true)
 		_reset_encounter_runtime(false)
+		_reset_underground_shop_runtime(false)
 
 	_set_route_reveal_input_locked(false)
 	if _briefing_phase == BriefingPhase.NONE:
@@ -504,6 +553,9 @@ func apply_full_snapshot(
 		)
 	):
 		_set_status("房主遭遇或经济快照无效。", true)
+		return false
+	if not shop_snapshot.is_empty() and not apply_shop_snapshot(shop_snapshot):
+		_set_status("房主地下商店快照无效或已过期。", true)
 		return false
 	_configure_camera_world_bounds()
 	_update_route_hud()
@@ -680,11 +732,18 @@ func host_commit_briefed_move(
 			rejection_reason
 		)
 		return false
+	if not _begin_shop_departure_for_route_move():
+		call_deferred(
+			&"_recover_failed_briefing_entry",
+			"仍有玩家停留在地下商店。"
+		)
+		return false
 	if not _runtime_state.try_move(
 		_briefing_node_id,
 		generation_config.move_action_cost,
 		expected_route_revision
 	):
+		_cancel_shop_departure_for_failed_move()
 		call_deferred(
 			&"_recover_failed_briefing_entry",
 			"路线状态已变化，本次作战未启动。"
@@ -761,11 +820,131 @@ func apply_encounter_snapshot(
 	return encounter_session.apply_remote_state(atomic_snapshot)
 
 
+func export_shop_snapshot_for_peer(
+	target_peer_id: int,
+	transaction_result: Dictionary = {}
+) -> Dictionary:
+	if underground_shop_controller == null:
+		return {}
+	return underground_shop_controller.export_snapshot_for_peer(
+		target_peer_id,
+		transaction_result
+	)
+
+
+func apply_shop_snapshot(snapshot: Dictionary) -> bool:
+	if (
+		underground_shop_controller == null
+		or _route_graph == null
+		or _runtime_state == null
+	):
+		return false
+	return underground_shop_controller.apply_snapshot(
+		snapshot,
+		_route_graph,
+		_runtime_state
+	)
+
+
+func host_submit_shop_purchase(
+	peer_id: int,
+	request_id: String,
+	occurrence_key: String,
+	offer_index: int,
+	expected_session_revision: int,
+	expected_shelf_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> bool:
+	if not _authority_enabled or underground_shop_controller == null:
+		return false
+	return underground_shop_controller.host_submit_purchase(
+		peer_id,
+		request_id,
+		occurrence_key,
+		offer_index,
+		expected_session_revision,
+		expected_shelf_revision,
+		expected_inventory_revision,
+		expected_xirang_revision
+	)
+
+
+func host_submit_shop_sell(
+	peer_id: int,
+	request_id: String,
+	occurrence_key: String,
+	slot_index: int,
+	expected_config_path: String,
+	expected_session_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> bool:
+	if not _authority_enabled or underground_shop_controller == null:
+		return false
+	return underground_shop_controller.host_submit_sell(
+		peer_id,
+		request_id,
+		occurrence_key,
+		slot_index,
+		expected_config_path,
+		expected_session_revision,
+		expected_inventory_revision,
+		expected_xirang_revision
+	)
+
+
+func host_submit_shop_exit(
+	peer_id: int,
+	occurrence_key: String,
+	expected_session_revision: int
+) -> bool:
+	if not _authority_enabled or underground_shop_controller == null:
+		return false
+	return underground_shop_controller.host_submit_exit(
+		peer_id,
+		occurrence_key,
+		expected_session_revision
+	)
+
+
+func host_remove_shop_peer(peer_id: int) -> void:
+	if _authority_enabled and underground_shop_controller != null:
+		underground_shop_controller.remove_peer(peer_id)
+
+
+func host_migrate_shop_peer_as_exited(old_peer_id: int, new_peer_id: int) -> void:
+	if _authority_enabled and underground_shop_controller != null:
+		underground_shop_controller.migrate_peer_as_exited(
+			old_peer_id,
+			new_peer_id
+		)
+
+
+func host_add_shop_spectator(peer_id: int) -> void:
+	if _authority_enabled and underground_shop_controller != null:
+		underground_shop_controller.add_spectator(peer_id)
+
+
+func get_shop_waiting_peer_ids() -> Array[int]:
+	if underground_shop_controller == null:
+		return []
+	return underground_shop_controller.get_waiting_peer_ids()
+
+
+func is_shop_departure_ready() -> bool:
+	return (
+		underground_shop_controller != null
+		and underground_shop_controller.is_departure_ready()
+	)
+
+
 func is_encounter_active() -> bool:
 	return (
 		_normal_combat_active
 		or
 		_encounter_input_locked
+		or _is_local_shop_presentation_active()
 		or (
 			encounter_session != null
 			and encounter_session.is_active()
@@ -938,6 +1117,7 @@ func set_authority_enabled(enabled: bool) -> void:
 	if not _authority_enabled:
 		_clear_pending_move(true)
 	route_board.set_authority_enabled(_authority_enabled)
+	_sync_underground_shop_identity_context()
 	_update_authority_ui()
 
 
@@ -1072,6 +1252,192 @@ func host_add_encounter_spectator(peer_id: int) -> void:
 func _initialize_default_session() -> void:
 	if auto_initialize and not is_route_ready():
 		start_authoritative_session(initial_generation_seed)
+
+
+func _create_underground_shop_runtime() -> void:
+	if (
+		underground_shop_controller == null
+		or floor_definition == null
+		or floor_definition.underground_shop_config == null
+		or _run_state == null
+		or not underground_shop_controller.configure(
+			floor_definition.underground_shop_config,
+			_run_state
+		)
+	):
+		push_error("RogueRouteGame: 地下商店控制器配置失败。")
+		return
+	_sync_underground_shop_identity_context()
+
+
+func _sync_underground_shop_identity_context() -> void:
+	if underground_shop_controller == null:
+		return
+	underground_shop_controller.set_identity_context(
+		_authority_enabled,
+		_get_local_encounter_peer_id(),
+		_player_names,
+		_player_character_ids,
+		_player_stable_keys
+	)
+
+
+func _reset_underground_shop_runtime(authority: bool) -> void:
+	if underground_shop_controller == null:
+		return
+	if not underground_shop_controller.reset_runtime(
+		authority,
+		_get_local_encounter_peer_id(),
+		_player_names,
+		_player_character_ids,
+		_player_stable_keys
+	):
+		push_error("RogueRouteGame: 地下商店控制器重置失败。")
+
+
+func _try_start_underground_shop_for_node(
+	node_id: int,
+	visit_count: int
+) -> bool:
+	if (
+		not _authority_enabled
+		or not is_route_ready()
+		or visit_count != 1
+		or not _route_graph.is_valid_node_id(node_id)
+		or _route_graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.UNDERGROUND_SHOP
+		or underground_shop_controller == null
+	):
+		return false
+	return underground_shop_controller.start_authoritative_for_node(
+		_route_graph.compute_layout_hash(),
+		node_id,
+		_route_graph.get_node_content_seed(node_id),
+		visit_count,
+		_runtime_state.state_revision,
+		_get_active_encounter_peer_ids()
+	)
+
+
+func _on_shop_controller_host_snapshot_committed(
+	target_peer_id: int,
+	snapshot: Dictionary
+) -> void:
+	host_shop_snapshot_committed.emit(target_peer_id, snapshot.duplicate(true))
+
+
+func _on_shop_controller_purchase_requested(
+	request_id: String,
+	occurrence_key: String,
+	offer_index: int,
+	expected_session_revision: int,
+	expected_shelf_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> void:
+	shop_purchase_requested.emit(
+		request_id,
+		occurrence_key,
+		offer_index,
+		expected_session_revision,
+		expected_shelf_revision,
+		expected_inventory_revision,
+		expected_xirang_revision
+	)
+
+
+func _on_shop_controller_sell_requested(
+	request_id: String,
+	occurrence_key: String,
+	slot_index: int,
+	expected_config_path: String,
+	expected_session_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> void:
+	shop_sell_requested.emit(
+		request_id,
+		occurrence_key,
+		slot_index,
+		expected_config_path,
+		expected_session_revision,
+		expected_inventory_revision,
+		expected_xirang_revision
+	)
+
+
+func _on_shop_controller_exit_ack_requested(
+	occurrence_key: String,
+	expected_session_revision: int
+) -> void:
+	shop_exit_ack_requested.emit(occurrence_key, expected_session_revision)
+
+
+func _on_shop_controller_presentation_state_changed() -> void:
+	_refresh_route_input_lock()
+
+
+
+
+
+
+func _set_shop_route_presentation_active(active: bool) -> void:
+	if not is_node_ready():
+		return
+	var bottom_bar := $HUD/Root/BottomBar as Control
+	if not active:
+		if _shop_route_presentation_restore_state.is_empty():
+			_shop_route_presentation_restore_state = {
+				"world_visible": world.visible,
+				"world_process_mode": world.process_mode,
+				"bottom_bar_visible": bottom_bar.visible,
+				"camera_enabled": map_camera.enabled,
+			}
+		if move_confirmation.visible:
+			move_confirmation.dismiss()
+		world.hide()
+		world.process_mode = Node.PROCESS_MODE_DISABLED
+		bottom_bar.hide()
+		map_camera.enabled = false
+		_camera_drag_active = false
+		return
+	if _shop_route_presentation_restore_state.is_empty():
+		return
+	world.visible = bool(
+		_shop_route_presentation_restore_state.get("world_visible", true)
+	)
+	world.process_mode = int(
+		_shop_route_presentation_restore_state.get(
+			"world_process_mode",
+			Node.PROCESS_MODE_INHERIT
+		)
+	)
+	bottom_bar.visible = bool(
+		_shop_route_presentation_restore_state.get(
+			"bottom_bar_visible",
+			true
+		)
+	)
+	map_camera.enabled = bool(
+		_shop_route_presentation_restore_state.get("camera_enabled", true)
+	)
+	_shop_route_presentation_restore_state.clear()
+	world.reset_physics_interpolation()
+
+
+func _is_local_shop_presentation_active() -> bool:
+	return (
+		underground_shop_controller != null
+		and underground_shop_controller.is_presentation_active()
+	)
+
+
+func _get_shop_waiting_player_names() -> PackedStringArray:
+	if underground_shop_controller == null:
+		return PackedStringArray()
+	return underground_shop_controller.get_waiting_player_names()
+
+
 
 
 func _create_encounter_runtime() -> void:
@@ -1793,6 +2159,7 @@ func _is_route_input_locked() -> bool:
 		_encounter_input_locked
 		or _route_reveal_input_locked
 		or _briefing_phase != BriefingPhase.NONE
+		or _is_local_shop_presentation_active()
 	)
 
 
@@ -1806,6 +2173,25 @@ func _refresh_route_input_lock() -> void:
 	route_board.set_interaction_locked(locked)
 	_set_local_player_controls_locked(locked)
 	_update_authority_ui()
+
+
+func _is_shop_departure_blocked() -> bool:
+	return (
+		underground_shop_controller != null
+		and underground_shop_controller.is_departure_blocked()
+	)
+
+
+func _begin_shop_departure_for_route_move() -> bool:
+	return (
+		underground_shop_controller == null
+		or underground_shop_controller.begin_departing()
+	)
+
+
+func _cancel_shop_departure_for_failed_move() -> void:
+	if underground_shop_controller != null:
+		underground_shop_controller.cancel_departing()
 
 
 func _set_route_presentation_active(active: bool) -> void:
@@ -1850,9 +2236,16 @@ func _on_route_board_node_pressed(node_id: int) -> void:
 	if (
 		not _authority_enabled
 		or not is_route_ready()
-		or _is_route_input_locked()
-		or _pending_node_id != INVALID_NODE_ID
 	):
+		return
+	if _is_shop_departure_blocked():
+		_set_status(
+			"仍在等待这些玩家退出地下商店：%s"
+			% "、".join(_get_shop_waiting_player_names()),
+			true
+		)
+		return
+	if _is_route_input_locked() or _pending_node_id != INVALID_NODE_ID:
 		return
 	if not route_board.can_interact_with_node(node_id):
 		_set_status("该节点当前不可移动。", true)
@@ -1915,11 +2308,20 @@ func _on_move_confirmation_confirmed() -> void:
 		_set_status(rejection_reason, true)
 		_finish_pending_move()
 		return
+	if not _begin_shop_departure_for_route_move():
+		_set_status(
+			"仍在等待这些玩家退出地下商店：%s"
+			% "、".join(_get_shop_waiting_player_names()),
+			true
+		)
+		_finish_pending_move()
+		return
 	if not _runtime_state.try_move(
 		target_node_id,
 		generation_config.move_action_cost,
 		expected_revision
 	):
+		_cancel_shop_departure_for_failed_move()
 		_set_status("路线状态已变化，本次移动未执行。", true)
 	_finish_pending_move()
 
@@ -1990,6 +2392,8 @@ func _on_runtime_state_changed(_snapshot: Dictionary) -> void:
 func _on_runtime_move_committed(delta: Dictionary) -> void:
 	if not _authority_enabled:
 		return
+	if underground_shop_controller != null:
+		underground_shop_controller.close_departing()
 	host_move_committed.emit(delta.duplicate(true))
 	_set_status(
 		"已移动至%s，消耗 %d 行动力。"
@@ -2010,6 +2414,10 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 		and _briefing_node_id == target_node_id
 	):
 		abort_briefing_entry(_briefing_occurrence_key)
+	_try_start_underground_shop_for_node(
+		target_node_id,
+		int(delta.get("target_visit_count", 0))
+	)
 	_try_start_encounter_for_node(target_node_id)
 
 
@@ -2038,13 +2446,15 @@ func _return_to_main_menu() -> void:
 func configure_multiplayer_players(
 	local_peer_id: int,
 	player_names: Dictionary,
-	player_character_ids: Dictionary
+	player_character_ids: Dictionary,
+	participant_stable_keys: Dictionary = {}
 ) -> bool:
 	_clear_player_instances()
 	_multiplayer_avatar_mode = true
 	_local_peer_id = local_peer_id
 	_player_names = player_names.duplicate(true)
 	_player_character_ids = player_character_ids.duplicate(true)
+	_player_stable_keys = participant_stable_keys.duplicate(true)
 	_sync_encounter_player_character_ids()
 	var peer_ids: Array[int] = []
 	for peer_id_variant in player_names:
@@ -2073,6 +2483,7 @@ func configure_multiplayer_players(
 	_sync_party_status_from_run_state()
 	_attach_camera_to_local_player()
 	_configure_encounter_overlay_context()
+	_sync_underground_shop_identity_context()
 	return true
 
 
@@ -2102,7 +2513,23 @@ func add_multiplayer_player(
 		_sync_route_player_xirang_from_run_state()
 		_sync_party_status_from_run_state()
 		_configure_encounter_overlay_context()
+		_sync_underground_shop_identity_context()
 	return added
+
+
+func set_multiplayer_participant_stable_key(
+	peer_id: int,
+	stable_key: String
+) -> bool:
+	if (
+		peer_id <= 0
+		or stable_key.is_empty()
+		or not peer_players.has(peer_id)
+	):
+		return false
+	_player_stable_keys[peer_id] = stable_key
+	_sync_underground_shop_identity_context()
+	return true
 
 
 func migrate_multiplayer_player(
@@ -2131,8 +2558,12 @@ func migrate_multiplayer_player(
 	peer_players[new_peer_id] = player_instance
 	_player_names.erase(old_peer_id)
 	_player_character_ids.erase(old_peer_id)
+	var stable_key := str(_player_stable_keys.get(old_peer_id, ""))
+	_player_stable_keys.erase(old_peer_id)
 	_player_names[new_peer_id] = player_name
 	_player_character_ids[new_peer_id] = character_id
+	if not stable_key.is_empty():
+		_player_stable_keys[new_peer_id] = stable_key
 	_sync_encounter_player_character_ids()
 	player_instance.name = "RoutePlayer_%d" % new_peer_id
 	if old_peer_id == _local_peer_id:
@@ -2147,6 +2578,7 @@ func migrate_multiplayer_player(
 	_sync_route_player_xirang_from_run_state()
 	_sync_party_status_from_run_state()
 	_configure_encounter_overlay_context()
+	_sync_underground_shop_identity_context()
 	return true
 
 
@@ -2257,6 +2689,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	peer_players.erase(peer_id)
 	_player_names.erase(peer_id)
 	_player_character_ids.erase(peer_id)
+	_player_stable_keys.erase(peer_id)
 	_sync_encounter_player_character_ids()
 	if player_instance == player:
 		player = null
@@ -2266,6 +2699,7 @@ func remove_multiplayer_player(peer_id: int) -> void:
 	player_container.remove_child(player_instance)
 	player_instance.queue_free()
 	_configure_encounter_overlay_context()
+	_sync_underground_shop_identity_context()
 
 
 func _configure_singleplayer_player() -> void:
@@ -2289,11 +2723,13 @@ func _configure_singleplayer_player() -> void:
 	_local_peer_id = SINGLEPLAYER_PEER_ID
 	_player_names = {SINGLEPLAYER_PEER_ID: "玩家"}
 	_player_character_ids = {SINGLEPLAYER_PEER_ID: character_id}
+	_player_stable_keys = {SINGLEPLAYER_PEER_ID: "singleplayer:local"}
 	_sync_encounter_player_character_ids()
 	_sync_route_player_xirang_from_run_state()
 	_sync_party_status_from_run_state()
 	_attach_camera_to_local_player()
 	_configure_encounter_overlay_context()
+	_sync_underground_shop_identity_context()
 
 
 func _sync_route_player_xirang_from_run_state() -> void:

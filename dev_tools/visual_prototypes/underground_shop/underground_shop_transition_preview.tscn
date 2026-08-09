@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://dev_tools/visual_prototypes/underground_shop/underground_shop_preview.tscn" id="1_preview"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_transition.tscn" id="2_transition"]
+
+[node name="UndergroundShopTransitionPreview" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ShopPreview" parent="." instance=ExtResource("1_preview")]
+
+[node name="Transition" parent="." instance=ExtResource("2_transition")]
+unique_name_in_owner = true

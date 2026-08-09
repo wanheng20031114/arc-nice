@@ -1869,6 +1869,25 @@ func apply_party_economy_snapshot(
 	return _commit_prepared_party_economy_snapshot(prepared)
 
 
+## 只读校验一份完整经济快照。复用正式应用路径的全部字段解码与
+## 当前 revision 基线，但不进入 commit，也不会创建 Run、改写账本或发信号。
+func validate_party_economy_snapshot(
+	snapshot: Dictionary,
+	allow_revision_rewind: bool = false
+) -> bool:
+	if not run_started:
+		return false
+	return not _prepare_party_economy_snapshot(
+		snapshot,
+		allow_revision_rewind,
+		false,
+		-1,
+		{},
+		-1,
+		-1
+	).is_empty()
+
+
 ## 遭遇等房主事务使用的单步 CAS。next snapshot 中每个发生变化的 store
 ## 必须只前进一个 revision；全部基准 revision 在首个写入前统一复核。
 func apply_authoritative_party_transaction(

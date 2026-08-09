@@ -212,6 +212,10 @@ func _run() -> void:
 		"net_route_encounter_vote",
 		"net_route_encounter_result_ack",
 		"net_route_encounter_snapshot",
+		"net_shop_purchase_request",
+		"net_shop_sell_request",
+		"net_shop_exit_ack",
+		"net_shop_snapshot",
 		"net_route_avatar_input",
 		"net_route_avatar_snapshot",
 		"net_route_avatar_corrected",
@@ -221,6 +225,27 @@ func _run() -> void:
 			"P3 route RPC %s must be registered in main and Relay projects."
 			% required_method
 		)
+	for shop_request_method in [
+		"net_shop_purchase_request",
+		"net_shop_sell_request",
+		"net_shop_exit_ack",
+	]:
+		_expect_rpc_mode(
+			main_rogue_route_rpcs,
+			shop_request_method,
+			"any_peer"
+		)
+		_expect_rpc_channel(
+			main_rogue_route_rpcs,
+			shop_request_method,
+			0
+		)
+	_expect_rpc_mode(
+		main_rogue_route_rpcs,
+		"net_shop_snapshot",
+		"authority"
+	)
+	_expect_rpc_channel(main_rogue_route_rpcs, "net_shop_snapshot", 0)
 	_expect_rpc_channel(
 		main_rogue_route_rpcs,
 		"net_route_avatar_input",
@@ -282,10 +307,10 @@ func _run() -> void:
 		)
 	_test_registration_protocol_handshake_source()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 47,
-		"协议v47必须同步忍者加速、重连激活确认与精英战斗机器人资源，并隔离旧客户端。"
+		NetConstants.PROTOCOL_VERSION == 48,
+		"协议v48必须同步忍者加速、重连激活确认、精英战斗机器人与地下商店RPC，并隔离旧客户端。"
 	)
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v47 must retain eight ENet channels.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v48 must retain eight ENet channels.")
 	_test_relay_channel_count()
 
 	if failures.is_empty():
@@ -324,7 +349,7 @@ func _test_registration_protocol_handshake_source() -> void:
 		and not net_manager._is_protocol_version_compatible(
 			NetConstants.PROTOCOL_VERSION - 1
 		),
-		"Protocol v47 hosts must accept exactly v47 and reject v46."
+		"Protocol v48 hosts must accept exactly v48 and reject v47."
 	)
 	net_manager.free()
 	var source := FileAccess.get_file_as_string(MAIN_NET_MANAGER_PATH)
@@ -392,11 +417,11 @@ func _test_relay_channel_count() -> void:
 	_expect(not relay_source.is_empty(), "Relay server source must be readable.")
 	_expect(
 		relay_source.contains("const CHANNEL_COUNT := 8")
-		and relay_source.contains("const PROTOCOL_VERSION := 47")
+		and relay_source.contains("const PROTOCOL_VERSION := 48")
 		and relay_source.contains("--max-clients=")
 		and relay_source.contains("create_server(_port, _max_clients, CHANNEL_COUNT)"),
 		(
-			"Relay server must declare v47, accept the room capacity, and provision "
+			"Relay server must declare v48, accept the room capacity, and provision "
 			+ "the same eight ENet channels as clients."
 		)
 	)
@@ -1106,6 +1131,16 @@ func _expect_rpc_channel(rpcs: Dictionary, method_name: String, expected_channel
 	_expect(
 		String(rpcs[method_name]).contains(",%d)func" % expected_channel),
 		"Gameplay RPC %s must use channel %d." % [method_name, expected_channel]
+	)
+
+
+func _expect_rpc_mode(rpcs: Dictionary, method_name: String, expected_mode: String) -> void:
+	_expect(rpcs.has(method_name), "Gameplay RPC %s must be registered." % method_name)
+	if not rpcs.has(method_name):
+		return
+	_expect(
+		String(rpcs[method_name]).begins_with('@rpc("%s"' % expected_mode),
+		"Gameplay RPC %s must use RPC mode %s." % [method_name, expected_mode]
 	)
 
 

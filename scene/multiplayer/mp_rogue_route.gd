@@ -29,6 +29,9 @@ const ROUTE_REPAIR_RATE_PER_SECOND := 0.5
 const ROUTE_REPAIR_RATE_BURST := 2.0
 const ROUTE_ENCOUNTER_COMMAND_RATE_PER_SECOND := 4.0
 const ROUTE_ENCOUNTER_COMMAND_RATE_BURST := 6.0
+const ROUTE_SHOP_COMMAND_RATE_PER_SECOND := 6.0
+const ROUTE_SHOP_COMMAND_RATE_BURST := 8.0
+const SHOP_EXIT_ACK_RETRY_MSEC := 500
 const BRIEFING_COVER_BARRIER_TIMEOUT_MSEC := 10_000
 
 var _route: RogueRouteGame = null
@@ -44,6 +47,7 @@ var _latest_layout_snapshot: Dictionary = {}
 var _latest_state_snapshot: Dictionary = {}
 var _latest_encounter_snapshot: Dictionary = {}
 var _latest_economy_snapshot: Dictionary = {}
+var _latest_shop_snapshot: Dictionary = {}
 var _briefing_cover_expected_peers: Dictionary = {}
 var _briefing_cover_ready_peers: Dictionary = {}
 var _briefing_cover_occurrence_key := ""
@@ -63,6 +67,9 @@ var _last_avatar_correction_times_msec: Dictionary = {}
 var _last_avatar_correction_sequences: Dictionary = {}
 var _route_repair_request_rate_buckets: Dictionary = {}
 var _route_encounter_command_rate_buckets: Dictionary = {}
+var _route_shop_command_rate_buckets: Dictionary = {}
+var _pending_shop_exit_ack: Dictionary = {}
+var _pending_shop_exit_retry_at_msec := 0
 
 
 func _ready() -> void:
@@ -130,6 +137,8 @@ func _physics_process(delta: float) -> void:
 		_poll_briefing_cover_timeout()
 	if _is_client() and _snapshot_request_pending:
 		_retry_full_snapshot_if_due()
+	if _is_client() and not _pending_shop_exit_ack.is_empty():
+		_retry_pending_shop_exit_ack_if_due()
 	if not _route.is_route_ready():
 		return
 	if _route.is_encounter_active():
@@ -147,6 +156,9 @@ func _physics_process(delta: float) -> void:
 func _exit_tree() -> void:
 	_route_repair_request_rate_buckets.clear()
 	_route_encounter_command_rate_buckets.clear()
+	_route_shop_command_rate_buckets.clear()
+	_pending_shop_exit_ack.clear()
+	_pending_shop_exit_retry_at_msec = 0
 	_disconnect_net_manager_signals()
 	_disconnect_route_signals()
 
@@ -210,6 +222,28 @@ func _connect_route_signals() -> void:
 		_route.encounter_result_ack_requested.connect(
 			_on_local_encounter_result_ack_requested
 		)
+	if not _route.host_shop_snapshot_committed.is_connected(
+		_on_host_shop_snapshot_committed
+	):
+		_route.host_shop_snapshot_committed.connect(
+			_on_host_shop_snapshot_committed
+		)
+	if not _route.shop_purchase_requested.is_connected(
+		_on_local_shop_purchase_requested
+	):
+		_route.shop_purchase_requested.connect(
+			_on_local_shop_purchase_requested
+		)
+	if not _route.shop_sell_requested.is_connected(
+		_on_local_shop_sell_requested
+	):
+		_route.shop_sell_requested.connect(_on_local_shop_sell_requested)
+	if not _route.shop_exit_ack_requested.is_connected(
+		_on_local_shop_exit_ack_requested
+	):
+		_route.shop_exit_ack_requested.connect(
+			_on_local_shop_exit_ack_requested
+		)
 	if not _route.return_requested.is_connected(_on_return_requested):
 		_route.return_requested.connect(_on_return_requested)
 
@@ -256,6 +290,28 @@ func _disconnect_route_signals() -> void:
 	):
 		_route.encounter_result_ack_requested.disconnect(
 			_on_local_encounter_result_ack_requested
+		)
+	if _route.host_shop_snapshot_committed.is_connected(
+		_on_host_shop_snapshot_committed
+	):
+		_route.host_shop_snapshot_committed.disconnect(
+			_on_host_shop_snapshot_committed
+		)
+	if _route.shop_purchase_requested.is_connected(
+		_on_local_shop_purchase_requested
+	):
+		_route.shop_purchase_requested.disconnect(
+			_on_local_shop_purchase_requested
+		)
+	if _route.shop_sell_requested.is_connected(
+		_on_local_shop_sell_requested
+	):
+		_route.shop_sell_requested.disconnect(_on_local_shop_sell_requested)
+	if _route.shop_exit_ack_requested.is_connected(
+		_on_local_shop_exit_ack_requested
+	):
+		_route.shop_exit_ack_requested.disconnect(
+			_on_local_shop_exit_ack_requested
 		)
 	if _route.return_requested.is_connected(_on_return_requested):
 		_route.return_requested.disconnect(_on_return_requested)
@@ -363,6 +419,15 @@ func _finish_player_reconnect(
 		character_id
 	):
 		return false
+	var stable_participant_key := _net_manager.get_stable_participant_key(
+		new_peer_id
+	)
+	if _is_host() and stable_participant_key.is_empty():
+		push_error(
+			"MpRogueRoute: 重连玩家 %d 缺少已认证的稳定参与者身份。"
+			% new_peer_id
+		)
+		return false
 	var shared_run_state := get_node_or_null("/root/RunState") as RunStateStore
 	var had_old_run_state := (
 		shared_run_state != null
@@ -391,12 +456,27 @@ func _finish_player_reconnect(
 		if _is_host() and had_old_run_state and not had_new_run_state:
 			_rollback_reconnected_run_state(old_peer_id, new_peer_id)
 		return false
+	if (
+		not stable_participant_key.is_empty()
+		and not _route.set_multiplayer_participant_stable_key(
+			new_peer_id,
+			stable_participant_key
+		)
+	):
+		push_error(
+			"MpRogueRoute: 无法为重连玩家 %d 恢复稳定参与者身份。"
+			% new_peer_id
+		)
+		return false
 	if _is_host():
 		_route_repair_request_rate_buckets.erase(old_peer_id)
 		_route_repair_request_rate_buckets.erase(new_peer_id)
 		_route_encounter_command_rate_buckets.erase(old_peer_id)
 		_route_encounter_command_rate_buckets.erase(new_peer_id)
+		_route_shop_command_rate_buckets.erase(old_peer_id)
+		_route_shop_command_rate_buckets.erase(new_peer_id)
 		_route.host_migrate_encounter_peer(old_peer_id, new_peer_id)
+		_route.host_migrate_shop_peer_as_exited(old_peer_id, new_peer_id)
 		if _briefing_cover_expected_peers.has(old_peer_id):
 			_briefing_cover_expected_peers.erase(old_peer_id)
 			_briefing_cover_ready_peers.erase(old_peer_id)
@@ -561,6 +641,7 @@ func _get_reconnect_avatar_fallback_position() -> Vector2:
 func _on_player_left(peer_id: int) -> void:
 	_route_repair_request_rate_buckets.erase(peer_id)
 	_route_encounter_command_rate_buckets.erase(peer_id)
+	_route_shop_command_rate_buckets.erase(peer_id)
 	if _is_host() and _briefing_cover_expected_peers.has(peer_id):
 		_briefing_cover_expected_peers.erase(peer_id)
 		_briefing_cover_ready_peers.erase(peer_id)
@@ -568,6 +649,7 @@ func _on_player_left(peer_id: int) -> void:
 	if _route != null:
 		if _is_host():
 			_route.host_remove_encounter_peer(peer_id)
+			_route.host_remove_shop_peer(peer_id)
 		_prune_disconnected_avatar_poses()
 		var preserved_pose := _get_avatar_pose_for_peer(peer_id)
 		if not preserved_pose.is_empty():
@@ -586,6 +668,13 @@ func _on_player_joined(peer_id: int, player_name: String) -> void:
 	):
 		return
 	var character_id := PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
+	var stable_participant_key := _net_manager.get_stable_participant_key(peer_id)
+	if _is_host() and stable_participant_key.is_empty():
+		push_error(
+			"MpRogueRoute: 新加入玩家 %d 缺少已认证的稳定参与者身份。"
+			% peer_id
+		)
+		return
 	var character_ids := _net_manager.get_player_character_map()
 	character_id = StringName(
 		character_ids.get(peer_id, character_id)
@@ -603,8 +692,19 @@ func _on_player_joined(peer_id: int, player_name: String) -> void:
 		spawn_position
 	):
 		return
+	if not stable_participant_key.is_empty():
+		if not _route.set_multiplayer_participant_stable_key(
+			peer_id,
+			stable_participant_key
+		):
+			push_error(
+				"MpRogueRoute: 无法记录新加入玩家 %d 的稳定参与者身份。"
+				% peer_id
+			)
+			return
 	if _is_host():
 		_route.host_add_encounter_spectator(peer_id)
+		_route.host_add_shop_spectator(peer_id)
 		if (
 			not _briefing_move_commit_started
 			and not _briefing_cover_occurrence_key.is_empty()
@@ -864,6 +964,181 @@ func _on_local_encounter_result_ack_requested(
 			)
 
 
+func _on_host_shop_snapshot_committed(
+	target_peer_id: int,
+	shop_snapshot: Dictionary
+) -> void:
+	if not _is_host() or target_peer_id <= 0 or shop_snapshot.is_empty():
+		return
+	if target_peer_id == _get_local_peer_id():
+		_latest_shop_snapshot = shop_snapshot.duplicate(true)
+		return
+	if (
+		_get_connection_state() == STATE_IN_GAME
+		and _has_network_peer()
+		and _is_peer_send_ready(target_peer_id)
+	):
+		net_shop_snapshot.rpc_id(
+			target_peer_id,
+			shop_snapshot.duplicate(true)
+		)
+
+
+func _on_local_shop_purchase_requested(
+	request_id: String,
+	occurrence_key: String,
+	offer_index: int,
+	expected_session_revision: int,
+	expected_shelf_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> void:
+	if _route == null:
+		return
+	var local_peer_id := _get_local_peer_id()
+	if _is_host():
+		_route.host_submit_shop_purchase(
+			local_peer_id,
+			request_id,
+			occurrence_key,
+			offer_index,
+			expected_session_revision,
+			expected_shelf_revision,
+			expected_inventory_revision,
+			expected_xirang_revision
+		)
+		return
+	if not _is_client() or not _has_network_peer():
+		return
+	var host_peer_id := _get_host_peer_id()
+	if host_peer_id <= 0 or not _is_peer_send_ready(host_peer_id):
+		return
+	net_shop_purchase_request.rpc_id(
+		host_peer_id,
+		request_id,
+		occurrence_key,
+		offer_index,
+		expected_session_revision,
+		expected_shelf_revision,
+		expected_inventory_revision,
+		expected_xirang_revision
+	)
+
+
+func _on_local_shop_sell_requested(
+	request_id: String,
+	occurrence_key: String,
+	slot_index: int,
+	expected_config_path: String,
+	expected_session_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> void:
+	if _route == null:
+		return
+	var local_peer_id := _get_local_peer_id()
+	if _is_host():
+		_route.host_submit_shop_sell(
+			local_peer_id,
+			request_id,
+			occurrence_key,
+			slot_index,
+			expected_config_path,
+			expected_session_revision,
+			expected_inventory_revision,
+			expected_xirang_revision
+		)
+		return
+	if not _is_client() or not _has_network_peer():
+		return
+	var host_peer_id := _get_host_peer_id()
+	if host_peer_id <= 0 or not _is_peer_send_ready(host_peer_id):
+		return
+	net_shop_sell_request.rpc_id(
+		host_peer_id,
+		request_id,
+		occurrence_key,
+		slot_index,
+		expected_config_path,
+		expected_session_revision,
+		expected_inventory_revision,
+		expected_xirang_revision
+	)
+
+
+func _on_local_shop_exit_ack_requested(
+	occurrence_key: String,
+	expected_session_revision: int
+) -> void:
+	if _route == null:
+		return
+	var local_peer_id := _get_local_peer_id()
+	if _is_host():
+		_route.host_submit_shop_exit(
+			local_peer_id,
+			occurrence_key,
+			expected_session_revision
+		)
+		return
+	if not _is_client():
+		return
+	_pending_shop_exit_ack = {
+		"occurrence_key": occurrence_key,
+		"expected_session_revision": expected_session_revision,
+	}
+	_pending_shop_exit_retry_at_msec = 0
+	_try_send_pending_shop_exit_ack()
+
+
+func _try_send_pending_shop_exit_ack(now_msec: int = -1) -> bool:
+	if (
+		not _is_client()
+		or _pending_shop_exit_ack.is_empty()
+		or not _has_network_peer()
+	):
+		return false
+	var host_peer_id := _get_host_peer_id()
+	if host_peer_id <= 0 or not _is_peer_send_ready(host_peer_id):
+		return false
+	var resolved_now := Time.get_ticks_msec() if now_msec < 0 else now_msec
+	net_shop_exit_ack.rpc_id(
+		host_peer_id,
+		str(_pending_shop_exit_ack.get("occurrence_key", "")),
+		int(_pending_shop_exit_ack.get("expected_session_revision", -1))
+	)
+	_pending_shop_exit_retry_at_msec = resolved_now + SHOP_EXIT_ACK_RETRY_MSEC
+	return true
+
+
+func _retry_pending_shop_exit_ack_if_due(now_msec: int = -1) -> void:
+	var resolved_now := Time.get_ticks_msec() if now_msec < 0 else now_msec
+	if resolved_now < _pending_shop_exit_retry_at_msec:
+		return
+	_pending_shop_exit_retry_at_msec = resolved_now + SHOP_EXIT_ACK_RETRY_MSEC
+	_try_send_pending_shop_exit_ack(resolved_now)
+
+
+func _reconcile_pending_shop_exit_ack(shop_state: Dictionary) -> void:
+	if _pending_shop_exit_ack.is_empty() or shop_state.is_empty():
+		return
+	var pending_occurrence := str(
+		_pending_shop_exit_ack.get("occurrence_key", "")
+	)
+	var incoming_occurrence := str(shop_state.get("occurrence_key", ""))
+	if incoming_occurrence != pending_occurrence:
+		_pending_shop_exit_ack.clear()
+		_pending_shop_exit_retry_at_msec = 0
+		return
+	if bool(shop_state.get("target_exited", false)):
+		_pending_shop_exit_ack.clear()
+		_pending_shop_exit_retry_at_msec = 0
+		return
+	_pending_shop_exit_ack["expected_session_revision"] = int(
+		shop_state.get("session_revision", -1)
+	)
+	_pending_shop_exit_retry_at_msec = 0
+
+
 func _refresh_authoritative_snapshot_cache() -> bool:
 	if (
 		_route == null
@@ -917,12 +1192,14 @@ func _send_full_snapshot_to_peer(peer_id: int) -> void:
 		or not _refresh_authoritative_snapshot_cache()
 	):
 		return
+	var shop_state := _route.export_shop_snapshot_for_peer(peer_id)
 	net_route_full_snapshot.rpc_id(
 		peer_id,
 		_latest_layout_snapshot.duplicate(true),
 		_latest_state_snapshot.duplicate(true),
 		_latest_encounter_snapshot.duplicate(true),
-		_latest_economy_snapshot.duplicate(true)
+		_latest_economy_snapshot.duplicate(true),
+		shop_state.duplicate(true)
 	)
 
 
@@ -978,6 +1255,18 @@ func _admit_route_encounter_command(peer_id: int) -> bool:
 			peer_id,
 			ROUTE_ENCOUNTER_COMMAND_RATE_PER_SECOND,
 			ROUTE_ENCOUNTER_COMMAND_RATE_BURST
+		)
+	)
+
+
+func _admit_route_shop_command(peer_id: int) -> bool:
+	return (
+		_is_registered_route_peer(peer_id)
+		and _consume_peer_rate_token(
+			_route_shop_command_rate_buckets,
+			peer_id,
+			ROUTE_SHOP_COMMAND_RATE_PER_SECOND,
+			ROUTE_SHOP_COMMAND_RATE_BURST
 		)
 	)
 
@@ -1073,10 +1362,23 @@ func _configure_route_players() -> bool:
 	var local_peer_id := _get_local_peer_id()
 	if local_peer_id <= 0 or not player_names.has(local_peer_id):
 		return false
+	var participant_stable_keys: Dictionary = {}
+	for peer_id_variant in player_names:
+		var peer_id := int(peer_id_variant)
+		var stable_key := _net_manager.get_stable_participant_key(peer_id)
+		if _is_host() and stable_key.is_empty():
+			push_error(
+				"MpRogueRoute: 玩家 %d 缺少已认证的稳定参与者身份，拒绝启动路线。"
+				% peer_id
+			)
+			return false
+		if not stable_key.is_empty():
+			participant_stable_keys[peer_id] = stable_key
 	if not _route.configure_multiplayer_players(
 		local_peer_id,
 		player_names.duplicate(),
-		character_ids.duplicate()
+		character_ids.duplicate(),
+		participant_stable_keys
 	):
 		return false
 	if _run_state == null:
@@ -1354,6 +1656,106 @@ func _send_encounter_snapshot_to_peer(peer_id: int) -> bool:
 	return true
 
 
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_shop_purchase_request(
+	request_id: String,
+	occurrence_key: String,
+	offer_index: int,
+	expected_session_revision: int,
+	expected_shelf_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> void:
+	if not _is_host() or _route == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if not _admit_route_shop_command(sender_id):
+		return
+	_route.host_submit_shop_purchase(
+		sender_id,
+		request_id,
+		occurrence_key,
+		offer_index,
+		expected_session_revision,
+		expected_shelf_revision,
+		expected_inventory_revision,
+		expected_xirang_revision
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_shop_sell_request(
+	request_id: String,
+	occurrence_key: String,
+	slot_index: int,
+	expected_config_path: String,
+	expected_session_revision: int,
+	expected_inventory_revision: int,
+	expected_xirang_revision: int
+) -> void:
+	if not _is_host() or _route == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if not _admit_route_shop_command(sender_id):
+		return
+	_route.host_submit_shop_sell(
+		sender_id,
+		request_id,
+		occurrence_key,
+		slot_index,
+		expected_config_path,
+		expected_session_revision,
+		expected_inventory_revision,
+		expected_xirang_revision
+	)
+
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func net_shop_exit_ack(
+	occurrence_key: String,
+	expected_session_revision: int
+) -> void:
+	if not _is_host() or _route == null:
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	# 退出回执关闭本地 UI 后没有人工重试入口，不能与高频买卖共用会
+	# 静默耗尽的 token bucket；仍严格要求已注册、可发送的 RPC sender。
+	if not _is_registered_route_peer(sender_id):
+		return
+	_route.host_submit_shop_exit(
+		sender_id,
+		occurrence_key,
+		expected_session_revision
+	)
+
+
+@rpc("authority", "call_remote", "reliable", 0)
+func net_shop_snapshot(shop_state: Dictionary) -> void:
+	_apply_shop_snapshot_from_peer(
+		multiplayer.get_remote_sender_id(),
+		shop_state
+	)
+
+
+func _apply_shop_snapshot_from_peer(
+	sender_id: int,
+	shop_state: Dictionary
+) -> bool:
+	if (
+		not _is_client()
+		or sender_id != _get_host_peer_id()
+		or shop_state.is_empty()
+		or _route == null
+	):
+		return false
+	if _route.apply_shop_snapshot(shop_state.duplicate(true)):
+		_latest_shop_snapshot = shop_state.duplicate(true)
+		_reconcile_pending_shop_exit_ack(shop_state)
+		return true
+	_request_full_snapshot()
+	return false
+
+
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
 func net_route_avatar_input(
 	sequence: int,
@@ -1610,14 +2012,16 @@ func net_route_full_snapshot(
 	layout: Dictionary,
 	state: Dictionary,
 	encounter_state: Dictionary,
-	economy_state: Dictionary
+	economy_state: Dictionary,
+	shop_state: Dictionary
 ) -> void:
 	_apply_full_snapshot_from_peer(
 		multiplayer.get_remote_sender_id(),
 		layout,
 		state,
 		encounter_state,
-		economy_state
+		economy_state,
+		shop_state
 	)
 
 
@@ -1626,7 +2030,8 @@ func _apply_full_snapshot_from_peer(
 	layout: Dictionary,
 	state: Dictionary,
 	encounter_state: Dictionary,
-	economy_state: Dictionary
+	economy_state: Dictionary,
+	shop_state: Dictionary = {}
 ) -> bool:
 	if (
 		not _is_client()
@@ -1646,7 +2051,8 @@ func _apply_full_snapshot_from_peer(
 		layout.duplicate(true),
 		state.duplicate(true),
 		encounter_state.duplicate(true),
-		economy_state.duplicate(true)
+		economy_state.duplicate(true),
+		shop_state.duplicate(true)
 	):
 		_schedule_full_snapshot_retry()
 		return false
@@ -1657,6 +2063,8 @@ func _apply_full_snapshot_from_peer(
 	_reset_avatar_validation_positions()
 	_latest_encounter_snapshot = encounter_state.duplicate(true)
 	_latest_economy_snapshot = economy_state.duplicate(true)
+	_latest_shop_snapshot = shop_state.duplicate(true)
+	_reconcile_pending_shop_exit_ack(shop_state)
 	_prune_client_inventory_states_to_connected_players()
 	return true
 

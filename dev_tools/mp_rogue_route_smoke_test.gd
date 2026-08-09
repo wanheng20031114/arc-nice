@@ -49,6 +49,10 @@ class FakeNetManager:
 		return connected_player_characters.duplicate(true)
 
 
+	func get_stable_participant_key(peer_id: int) -> String:
+		return "test-participant:%d" % peer_id if peer_id > 0 else ""
+
+
 class ManifestNetManager:
 	extends NetManagerStore
 
@@ -133,6 +137,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_mode_and_loading_contract()
+	_test_stable_participant_identity_contract()
 	_test_briefing_cover_timeout_contract()
 	await _test_lobby_contract()
 	await _test_snapshot_and_delta_contract()
@@ -145,10 +150,12 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 47,
-		"协议 v47 必须保留既有遭遇、忍者加速与重连激活确认，并隔离精英战斗机器人资源。"
+		NetConstants.PROTOCOL_VERSION == 48,
+		(
+			"协议 v48 必须同时承载精英战斗机器人与目标玩家私有的地下商店"
+			+ "会话，且保留既有遭遇、忍者加速与重连激活确认。"
+		)
 	)
-
 	_expect(
 		NetConstants.ROGUE_ROUTE_AVATAR_SYNC_HZ == 12,
 		"P3 轻量角色姿态同步必须保持约 12Hz。"
@@ -196,6 +203,43 @@ func _test_mode_and_loading_contract() -> void:
 		and not bool(coordinator.call("_uses_tower_defense_runtime", ROUTE_SCENE_PATH)),
 		"P3 必须绕过 campaign、背包和塔防运行时，但保留角色场景。"
 	)
+
+
+func _test_stable_participant_identity_contract() -> void:
+	var net_manager := NetManagerScript.new() as NetManagerStore
+	net_manager.net_role = NetManagerStore.NetRole.HOST
+	net_manager.connection_state = NetManagerStore.ConnectionState.IN_GAME
+	var first_token := "00112233445566778899aabbccddeeff"
+	var second_token := "ffeeddccbbaa99887766554433221100"
+	var reconnect_tokens := (
+		net_manager.get("_peer_reconnect_tokens") as Dictionary
+	)
+	reconnect_tokens[41] = first_token
+	reconnect_tokens[42] = second_token
+	var first_key := net_manager.get_stable_participant_key(41)
+	var second_key := net_manager.get_stable_participant_key(42)
+	_expect(
+		not first_key.is_empty()
+		and not second_key.is_empty()
+		and first_key != second_key
+		and first_key.begins_with("rogue-participant:v1:")
+		and not first_key.contains(first_token),
+		"同名同角色但重连身份不同的玩家必须得到不同且不泄露令牌的稳定参与键。"
+	)
+	reconnect_tokens.clear()
+	reconnect_tokens[84] = first_token
+	_expect(
+		net_manager.get_stable_participant_key(84) == first_key,
+		"old→new peer 迁移同一重连令牌后，稳定参与键必须保持不变。"
+	)
+	net_manager.net_role = NetManagerStore.NetRole.NONE
+	net_manager.connection_state = NetManagerStore.ConnectionState.DISCONNECTED
+	_expect(
+		net_manager.get_stable_participant_key(0)
+		== "rogue-participant:v1:singleplayer",
+		"单机 peer 0 必须使用固定参与键。"
+	)
+	net_manager.free()
 
 
 func _test_briefing_cover_timeout_contract() -> void:
@@ -310,8 +354,8 @@ func _test_snapshot_and_delta_contract() -> void:
 	var wrapper_script := wrapper.get_script() as Script
 	var rpc_config: Dictionary = wrapper_script.get_rpc_config()
 	_expect(
-		rpc_config.size() == 12,
-		"MpRogueRoute 必须严格保留 12 个稳定 RPC 入口。"
+		rpc_config.size() == 16,
+		"MpRogueRoute 必须严格保留 16 个 v48 RPC 入口。"
 	)
 	for rpc_name in [
 		&"net_request_route_full_snapshot",
@@ -322,6 +366,10 @@ func _test_snapshot_and_delta_contract() -> void:
 		&"net_route_encounter_vote",
 		&"net_route_encounter_result_ack",
 		&"net_route_encounter_snapshot",
+		&"net_shop_purchase_request",
+		&"net_shop_sell_request",
+		&"net_shop_exit_ack",
+		&"net_shop_snapshot",
 	]:
 		var config := rpc_config.get(rpc_name, {}) as Dictionary
 		_expect(
@@ -330,6 +378,27 @@ func _test_snapshot_and_delta_contract() -> void:
 			and int(config.get("channel", -1)) == 0,
 			"P3 完整快照与移动 delta 必须在可靠有序信道同步。"
 		)
+	for request_rpc_name in [
+		&"net_shop_purchase_request",
+		&"net_shop_sell_request",
+		&"net_shop_exit_ack",
+	]:
+		var request_config := rpc_config.get(request_rpc_name, {}) as Dictionary
+		_expect(
+			int(request_config.get("rpc_mode", -1))
+			== MultiplayerAPI.RPC_MODE_ANY_PEER
+			and not bool(request_config.get("call_local", true)),
+			"地下商店命令必须由客户端发往 Host，Host 从 RPC sender 取得身份。"
+		)
+	var shop_snapshot_config := rpc_config.get(
+		&"net_shop_snapshot", {}
+	) as Dictionary
+	_expect(
+		int(shop_snapshot_config.get("rpc_mode", -1))
+		== MultiplayerAPI.RPC_MODE_AUTHORITY
+		and not bool(shop_snapshot_config.get("call_local", true)),
+		"地下商店目标私有快照只能由 Host 下发。"
+	)
 	var briefing_state_config := rpc_config.get(
 		&"net_route_briefing_state", {}
 	) as Dictionary
@@ -418,6 +487,54 @@ func _test_snapshot_and_delta_contract() -> void:
 		"Encounter commands must admit a six-request burst and reject the seventh."
 	)
 	wrapper.set("_route_encounter_command_rate_buckets", {})
+	var shop_command_buckets := (
+		wrapper.get("_route_shop_command_rate_buckets") as Dictionary
+	)
+	var shop_admission_count := 0
+	for _command_index in 9:
+		if bool(wrapper.call(
+			"_consume_peer_rate_token",
+			shop_command_buckets,
+			32,
+			6.0,
+			8.0,
+			1000.0
+		)):
+			shop_admission_count += 1
+	_expect(
+		shop_admission_count == 8,
+		"地下商店命令必须允许八请求突发并拒绝第九个请求。"
+	)
+	wrapper.call(
+		"_on_local_shop_exit_ack_requested",
+		"shop:exit-retry",
+		7
+	)
+	var pending_exit := wrapper.get("_pending_shop_exit_ack") as Dictionary
+	_expect(
+		str(pending_exit.get("occurrence_key", "")) == "shop:exit-retry",
+		"买卖预算耗尽后，退出回执仍必须进入独立可靠重试状态。"
+	)
+	wrapper.call("_reconcile_pending_shop_exit_ack", {
+		"occurrence_key": "shop:exit-retry",
+		"session_revision": 8,
+		"target_exited": false,
+	})
+	pending_exit = wrapper.get("_pending_shop_exit_ack") as Dictionary
+	_expect(
+		int(pending_exit.get("expected_session_revision", -1)) == 8,
+		"Host 尚未确认退出时，客户端必须依据新快照 revision 继续重试。"
+	)
+	wrapper.call("_reconcile_pending_shop_exit_ack", {
+		"occurrence_key": "shop:exit-retry",
+		"session_revision": 9,
+		"target_exited": true,
+	})
+	_expect(
+		(wrapper.get("_pending_shop_exit_ack") as Dictionary).is_empty(),
+		"只有目标私有快照确认 target_exited 后才能停止退出回执重试。"
+	)
+	wrapper.set("_route_shop_command_rate_buckets", {})
 	_expect(
 		not bool(wrapper.call(
 			"_apply_full_snapshot_from_peer",
@@ -652,8 +769,11 @@ func _test_snapshot_and_delta_contract() -> void:
 		).has(client_peer_id)
 		and not (
 			wrapper.get("_route_encounter_command_rate_buckets") as Dictionary
+		).has(client_peer_id)
+		and not (
+			wrapper.get("_route_shop_command_rate_buckets") as Dictionary
 		).has(client_peer_id),
-		"Disconnect cleanup must erase both route request budgets."
+		"断线清理必须同时移除路线修复、遭遇和地下商店命令预算。"
 	)
 
 	# 重连背包迁移必须在单一运行时中验证；同进程客户端夹具持有相同 peer

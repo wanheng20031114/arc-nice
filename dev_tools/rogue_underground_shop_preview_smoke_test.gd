@@ -4,30 +4,7 @@ const PREVIEW_SCENE := preload(
 	"res://dev_tools/visual_prototypes/underground_shop/underground_shop_preview.tscn"
 )
 const VIEWPORT_SIZE := Vector2i(1152, 648)
-const EXPECTED_ASSET_SIZES := {
-	"res://resources/texture/rogue_shop/ui/shop_panel_frame_v1.png": Vector2i(136, 136),
-	"res://resources/texture/rogue_shop/ui/shop_title_plaque_v1.png": Vector2i(136, 32),
-	"res://resources/texture/rogue_shop/ui/shop_button_normal_v1.png": Vector2i(104, 28),
-	"res://resources/texture/rogue_shop/ui/shop_button_hover_v1.png": Vector2i(104, 28),
-	"res://resources/texture/rogue_shop/ui/shop_button_pressed_v1.png": Vector2i(104, 28),
-	"res://resources/texture/rogue_shop/ui/shop_button_disabled_v1.png": Vector2i(104, 28),
-	"res://resources/texture/rogue_shop/ui/shop_product_card_normal_v2.png": Vector2i(128, 128),
-	"res://resources/texture/rogue_shop/ui/shop_product_card_hover_v2.png": Vector2i(128, 128),
-	"res://resources/texture/rogue_shop/ui/shop_product_card_pressed_v2.png": Vector2i(128, 128),
-	"res://resources/texture/rogue_shop/ui/shop_product_card_disabled_v2.png": Vector2i(128, 128),
-}
-const GENERATED_ALPHA_ASSETS := [
-	"res://resources/texture/rogue_shop/ui/shop_panel_frame_v1.png",
-	"res://resources/texture/rogue_shop/ui/shop_title_plaque_v1.png",
-	"res://resources/texture/rogue_shop/ui/shop_button_normal_v1.png",
-	"res://resources/texture/rogue_shop/ui/shop_button_hover_v1.png",
-	"res://resources/texture/rogue_shop/ui/shop_button_pressed_v1.png",
-	"res://resources/texture/rogue_shop/ui/shop_button_disabled_v1.png",
-	"res://resources/texture/rogue_shop/ui/shop_product_card_normal_v2.png",
-	"res://resources/texture/rogue_shop/ui/shop_product_card_hover_v2.png",
-	"res://resources/texture/rogue_shop/ui/shop_product_card_pressed_v2.png",
-	"res://resources/texture/rogue_shop/ui/shop_product_card_disabled_v2.png",
-]
+const HEALTH_CONFIG := preload("res://resources/config/pickups/pickup_health.tres")
 
 var failures: Array[String] = []
 
@@ -39,11 +16,10 @@ func _init() -> void:
 func _run() -> void:
 	root.content_scale_size = VIEWPORT_SIZE
 	root.size = VIEWPORT_SIZE
-	_audit_asset_contracts()
-	_audit_preview_source_boundary()
+	_audit_source_boundaries()
 
 	var preview := PREVIEW_SCENE.instantiate() as Control
-	_expect(preview != null, "地下商店拼装原型必须能够独立实例化。")
+	_expect(preview != null, "正式地下商店拼装预览必须能够实例化。")
 	if preview == null:
 		call_deferred("_finish")
 		return
@@ -52,310 +28,284 @@ func _run() -> void:
 	for _frame in range(5):
 		await process_frame
 
-	_audit_authored_scene(preview)
-	_audit_layout(preview)
-	_audit_interaction(preview)
+	var view := preview.get_node_or_null("ShopView") as RogueUndergroundShopView
+	_expect(view != null, "dev 预览必须直接实例化正式 RogueUndergroundShopView。")
+	if view != null:
+		_audit_authored_scene(view)
+		_audit_buy_interaction(view)
+		_audit_sell_interaction(view)
+		await _audit_responsive_layout(view)
+		_audit_exit_boundary(view)
 
 	current_scene = null
 	root.remove_child(preview)
 	preview.free()
 	await process_frame
-	# 让本帧中的纹理、Image 与信号闭包局部引用先离开调用栈，再退出
-	# SceneTree。否则 Godot 会把仍在测试函数栈上的合法临时资源误报为退出泄漏。
 	call_deferred("_finish")
 
 
-func _audit_asset_contracts() -> void:
-	for asset_path in EXPECTED_ASSET_SIZES:
-		var texture := load(asset_path) as Texture2D
-		_expect(texture != null, "必须能够导入地下商店素材：%s" % asset_path)
-		if texture == null:
-			continue
-		_expect(
-			texture.get_size() == Vector2(EXPECTED_ASSET_SIZES[asset_path]),
-			"地下商店素材尺寸必须固定：%s 当前为 %s"
-			% [asset_path, texture.get_size()]
-		)
-	for asset_path in GENERATED_ALPHA_ASSETS:
-		var texture := load(asset_path) as Texture2D
-		if texture == null:
-			continue
-		var image := texture.get_image()
-		_expect(image != null and not image.is_empty(), "透明素材必须可读回：%s" % asset_path)
-		if image == null or image.is_empty():
-			continue
-		_expect(image.detect_alpha() != Image.ALPHA_NONE, "素材必须保留透明通道：%s" % asset_path)
-		_expect(image.get_used_rect().has_area(), "素材必须包含可见像素：%s" % asset_path)
-		_audit_hard_alpha_and_green_fringe(image, asset_path)
-
-	var button_hashes: Dictionary = {}
-	for state_name in ["normal", "hover", "pressed", "disabled"]:
-		var path := "res://resources/texture/rogue_shop/ui/shop_button_%s_v1.png" % state_name
-		var bytes := FileAccess.get_file_as_bytes(path)
-		button_hashes[bytes.hex_encode().hash()] = true
-	_expect(button_hashes.size() == 4, "四种按钮状态必须使用四份不同的图像。")
-	var product_card_hashes: Dictionary = {}
-	for state_name in ["normal", "hover", "pressed", "disabled"]:
-		var path := "res://resources/texture/rogue_shop/ui/shop_product_card_%s_v2.png" % state_name
-		var bytes := FileAccess.get_file_as_bytes(path)
-		product_card_hashes[bytes.hex_encode().hash()] = true
-	_expect(product_card_hashes.size() == 4, "商品卡四态必须使用四份同几何独立图像。")
-
-
-func _audit_hard_alpha_and_green_fringe(image: Image, asset_path: String) -> void:
-	for y in range(image.get_height()):
-		for x in range(image.get_width()):
-			var pixel := image.get_pixel(x, y)
-			_expect(
-				pixel.a <= 0.001 or pixel.a >= 0.999,
-				"透明边缘必须使用硬 Alpha：%s @ %s" % [asset_path, Vector2i(x, y)]
-			)
-			if pixel.a <= 0.001:
-				continue
-			_expect(
-				not (
-					pixel.g > 0.3
-					and pixel.g > pixel.r + 0.10
-					and pixel.g > pixel.b + 0.10
-				),
-				"色键去除后不得残留亮绿色边缘：%s @ %s" % [asset_path, Vector2i(x, y)]
-			)
-
-
-func _audit_preview_source_boundary() -> void:
-	var combined_source := ""
-	for source_path in [
-		"res://dev_tools/visual_prototypes/underground_shop/underground_shop_preview.gd",
-		"res://dev_tools/visual_prototypes/underground_shop/underground_shop_product_card_preview.gd",
-	]:
-		var source := FileAccess.get_file_as_string(source_path)
-		combined_source += "\n" + source
-		_expect(not source.is_empty(), "原型脚本必须可读取：%s" % source_path)
-		for forbidden in ["RunState", "NetManager", "MultiplayerSynchronizer", ".instantiate()", ".new()"]:
-			_expect(
-				not source.contains(forbidden),
-				"视觉原型不得接入正式状态或动态创建节点：%s 命中 %s"
-				% [source_path, forbidden]
-			)
-	var preview_scene_source := FileAccess.get_file_as_string(
-		"res://dev_tools/visual_prototypes/underground_shop/underground_shop_preview.tscn"
+func _audit_source_boundaries() -> void:
+	var view_scene_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.tscn"
 	)
-	var card_scene_source := FileAccess.get_file_as_string(
-		"res://dev_tools/visual_prototypes/underground_shop/underground_shop_product_card_preview.tscn"
-	)
-	combined_source += "\n" + preview_scene_source + "\n" + card_scene_source
-	for forbidden in [
-		"owned_count",
-		"OwnedLabel",
-		"DetailOwned",
-		"StockLabel",
-		"QuantitySelector",
-		"PriceShade",
-		"PriceDivider",
-		"持有",
-		"库存",
-		"rogue_shop/environment",
-		"rogue_shop/characters",
-	]:
-		_expect(
-			not combined_source.contains(forbidden),
-			"商品原型不得保留数量语义、浮贴售价或派生背景角色：%s" % forbidden
-		)
-
-
-func _audit_authored_scene(preview: Control) -> void:
-	var top_bar := preview.get_node_or_null("TopBar") as RogueRouteTopBar
-	_expect(top_bar != null, "拼装原型必须复用 RogueRouteTopBar，而不是复制顶部 HUD。")
-	if top_bar != null:
-		_expect(
-			top_bar.floor_title.text == "浅层矿洞"
-			and top_bar.core_value.text == "100/100"
-			and top_bar.action_points_value.text == "12"
-			and top_bar.light_stone_value.text == "128"
-			and top_bar.xirang_value.text == "46",
-			"复用顶部 HUD 必须展示拼装样例值。"
-		)
-	var grid := preview.get_node_or_null("ShopPanel/ProductGrid") as GridContainer
-	_expect(grid != null and grid.columns == 5, "商品区域必须使用原生五列 GridContainer。")
-	if grid == null:
-		return
-	_expect(grid.get_child_count() == 10, "商品区域必须静态拼装 10 张商品卡。")
-	for card_node in grid.get_children():
-		var card := card_node as TextureButton
-		_expect(card != null, "商品网格子节点必须全部是可聚焦的 TextureButton。")
-		if card == null:
-			continue
-		_expect(card.focus_mode == Control.FOCUS_ALL, "商品卡必须支持键盘/手柄聚焦。")
-		var payload: Dictionary = card.call("get_offer_payload")
-		var icon := payload.get("texture") as Texture2D
-		_expect(icon != null and icon.get_size() == Vector2(32, 32), "真实商品图标必须以 32×32 原生素材进入卡片。")
-		_expect(int(payload.get("price", -1)) >= 0, "每张商品卡必须在卡内提供光石价格。")
-		_expect(not payload.has("owned_count"), "商品卡固定为单件，不得携带库存或持有数量。")
-		_expect(
-			card.texture_normal.resource_path.ends_with("shop_product_card_normal_v2.png")
-			and card.texture_hover.resource_path.ends_with("shop_product_card_hover_v2.png")
-			and card.texture_pressed.resource_path.ends_with("shop_product_card_pressed_v2.png")
-			and card.texture_disabled.resource_path.ends_with("shop_product_card_disabled_v2.png"),
-			"商品卡必须使用售价底座已经画入框体的四态素材。"
-		)
-		var price_icon := card.get_node("LightStoneIcon") as TextureRect
-		var price_label := card.get_node("PriceLabel") as Label
-		_expect(
-			price_icon.position.y == 76.0
-			and price_icon.size == Vector2(32, 32)
-			and price_label.position.y == 78.0
-			and price_label.get_rect().end.y <= 108.0,
-			"售价内容必须完整落在卡框内建的 y=78..108 底座中。"
-		)
-
-	var panel := preview.get_node_or_null("ShopPanel") as NinePatchRect
-	var plaque := preview.get_node_or_null("ShopPanel/TitlePlaque") as NinePatchRect
-	_audit_nine_patch(panel, 16, "商店主面板")
-	if plaque != null:
-		_expect(
-			plaque.patch_margin_left == 16
-			and plaque.patch_margin_right == 16
-			and plaque.patch_margin_top == 12
-			and plaque.patch_margin_bottom == 12,
-			"标题牌必须使用约定的整数九宫格边距。"
-		)
-		_expect(
-			plaque.axis_stretch_horizontal == NinePatchRect.AXIS_STRETCH_MODE_TILE
-			and plaque.axis_stretch_vertical == NinePatchRect.AXIS_STRETCH_MODE_TILE,
-			"标题牌边缘必须平铺而不是任意拉伸。"
-		)
-
-
-func _audit_nine_patch(panel: NinePatchRect, expected_margin: int, label: String) -> void:
-	_expect(panel != null, "%s必须存在。" % label)
-	if panel == null:
-		return
-	_expect(
-		panel.patch_margin_left == expected_margin
-		and panel.patch_margin_top == expected_margin
-		and panel.patch_margin_right == expected_margin
-		and panel.patch_margin_bottom == expected_margin,
-		"%s必须使用一致的整数九宫格边距。" % label
+	var view_script_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.gd"
 	)
 	_expect(
-		panel.axis_stretch_horizontal == NinePatchRect.AXIS_STRETCH_MODE_TILE
-		and panel.axis_stretch_vertical == NinePatchRect.AXIS_STRETCH_MODE_TILE,
-		"%s边缘必须使用原生 TILE 九宫格。" % label
+		view_scene_source.count("instance=ExtResource(\"10_item_card\")") == 8,
+		"正式场景必须 authored 8 张且仅 8 张商品卡。"
 	)
-
-
-func _audit_layout(preview: Control) -> void:
-	_expect(preview.size == Vector2(VIEWPORT_SIZE), "拼装原型必须以项目 1152×648 基础画布验证。")
-	var backdrop := preview.get_node("SceneBackdrop") as TextureRect
-	var xiaocong := preview.get_node("XiaocongStage/Xiaocong") as TextureRect
-	var panel := preview.get_node("ShopPanel") as Control
-	var grid := preview.get_node("ShopPanel/ProductGrid") as GridContainer
-	for entry in [backdrop, xiaocong, panel, grid]:
-		_expect(_inside_viewport(entry.get_global_rect()), "所有拼装组件必须位于基础画布内：%s" % entry.name)
+	for forbidden in [".new()", ".instantiate()", "RogueRouteTopBar", "rogue_route_top_bar.tscn"]:
+		_expect(
+			not view_script_source.contains(forbidden)
+			and not view_scene_source.contains(forbidden),
+			"正式商店不得动态创建节点或复制顶部 HUD：%s" % forbidden
+		)
 	_expect(
-		backdrop.size == Vector2(VIEWPORT_SIZE)
-		and backdrop.texture.resource_path.ends_with("underground_ruins_background.png"),
-		"原型必须直接复用项目已有的整张地下遗迹背景，不创建商店背景拆件。"
+		not FileAccess.file_exists(
+			"res://dev_tools/visual_prototypes/underground_shop/underground_shop_product_card_preview.tscn"
+		),
+		"旧 10 格商品卡原型必须退役，避免与正式布局漂移。"
 	)
-	var xiaocong_atlas := xiaocong.texture as AtlasTexture
+
+
+func _audit_authored_scene(view: RogueUndergroundShopView) -> void:
+	_expect(view.layer == 10, "正式商店背景与交互应位于可复用顶部 HUD 的下层。")
+	_expect(view.get_item_cards().size() == 8, "正式购买/出售必须共用 4×2 的 8 张卡。")
+	_expect(
+		view.get_node_or_null("Root/TopBar") == null,
+		"正式商店不得复制路线顶部 HUD。"
+	)
+	var backdrop := view.get_node("Root/SceneBackdrop") as TextureRect
+	_expect(
+		backdrop.texture.resource_path.ends_with("underground_ruins_background.png"),
+		"正式商店必须直接复用地下遗迹背景。"
+	)
+	var xiaocong := view.get_node("Root/XiaocongStage/Xiaocong") as TextureRect
+	var atlas := xiaocong.texture as AtlasTexture
 	_expect(
 		xiaocong.size == Vector2(366, 477)
-		and xiaocong_atlas != null
-		and xiaocong_atlas.atlas.resource_path.ends_with("xiaocong_keypose_hd.png"),
-		"小葱必须直接复用项目权威立绘，并固定为精确 1/3 的 366×477 显示。"
+		and atlas != null
+		and atlas.region == Rect2(0, 0, 1098, 1431)
+		and atlas.atlas.resource_path.ends_with("xiaocong_keypose_hd.png"),
+		"小葱必须用 1098×1431→366×477 的精确 1/3 nearest 采样。"
 	)
+	var grid := view.get_node("Root/ShopPanel/ItemGrid") as GridContainer
 	_expect(
-		preview.get_node_or_null("MerchantBackdrop") == null
-		and preview.get_node_or_null("MerchantStage") == null
-		and preview.get_node_or_null("CounterForeground") == null,
-		"场景树不得重新拆出商店背景、柜台或派生商人舞台。"
+		grid.columns == 4 and grid.get_child_count() == 8,
+		"商品网格必须是 authored 4×2。"
 	)
-
-	var cards := grid.get_children()
-	if cards.size() != 10:
-		return
-	for card_index in range(cards.size()):
-		var card := cards[card_index] as Control
-		_expect(card.size == Vector2(128, 128), "商品卡必须保持 128×128 原生槽位尺寸。")
-		var expected_column := card_index % 5
-		var expected_row := card_index / 5
+	for card_index in range(view.get_item_cards().size()):
+		var card := view.get_item_cards()[card_index]
+		_expect(card.size == Vector2(128, 128), "商品卡必须保持 128×128 像素尺寸。")
 		_expect(
-			is_equal_approx(card.position.x, float(expected_column * 136))
-			and is_equal_approx(card.position.y, float(expected_row * 136)),
-			"商品卡必须形成整齐的 5×2 像素网格：index=%d position=%s"
-			% [card_index, card.position]
+			(card.get_node("XirangIcon") as TextureRect).texture.resource_path.ends_with(
+				"xirang_icon.png"
+			),
+			"交易卡价格必须使用个人息壤图标，而不是光石。"
 		)
 
 
-func _audit_interaction(preview: Control) -> void:
-	var detail := preview.get_node("DetailOverlay") as Control
-	var detail_id := detail.get_instance_id()
-	var grid := preview.get_node("ShopPanel/ProductGrid") as GridContainer
-	var exit_button := preview.get_node("ShopPanel/ExitButton") as TextureButton
-	var purchase_button := preview.get_node(
-		"DetailOverlay/DetailFrame/PreviewPurchaseButton"
+func _audit_buy_interaction(view: RogueUndergroundShopView) -> void:
+	var cards := view.get_item_cards()
+	var detail := view.get_node("Root/DetailOverlay") as Control
+	var action_button := view.get_node(
+		"Root/DetailOverlay/DetailFrame/DetailActionButton"
 	) as TextureButton
-	var cancel_button := preview.get_node(
-		"DetailOverlay/DetailFrame/DetailCancelButton"
+	var cancel_button := view.get_node(
+		"Root/DetailOverlay/DetailFrame/DetailCancelButton"
 	) as TextureButton
-	# 交互测试直接发出 pressed 信号，不验证全局 UI 点击音。阻止自动
-	# UIAudio 为这些合成点击创建播放实例，确保无头测试退出时资源干净。
-	for button in [exit_button, purchase_button, cancel_button]:
+	for button in [action_button, cancel_button]:
 		button.set_meta(&"skip_ui_click_audio", true)
-	for card_node in grid.get_children():
-		(card_node as BaseButton).set_meta(&"skip_ui_click_audio", true)
-	var initial_child_count := grid.get_child_count()
-	var selected_card := grid.get_child(7) as TextureButton
-	var purchase_indices: Array[int] = []
-	var exit_events: Array[bool] = []
-	preview.connect(
-		"preview_purchase_requested",
+	for card in cards:
+		card.set_meta(&"skip_ui_click_audio", true)
+	var requests: Array[int] = []
+	view.purchase_requested.connect(
 		func(offer_index: int) -> void:
-			purchase_indices.append(offer_index)
+			requests.append(offer_index)
 	)
-	preview.connect(
-		"exit_requested",
-		func() -> void:
-			exit_events.append(true)
-	)
-	_expect(not detail.visible, "商品详情层初始必须隐藏。")
-	selected_card.grab_focus()
-	selected_card.pressed.emit()
-	_expect(detail.visible, "选择商品后必须显示预制的详情层。")
-	_expect(detail.mouse_filter == Control.MOUSE_FILTER_STOP, "详情层必须截断鼠标输入，避免穿透到底层商品。")
-	_expect((preview.get_node("DetailOverlay/DetailFrame/DetailName") as Label).text == "王家圣杯", "详情层必须读取真实点击的商品名称。")
-	_expect((preview.get_node("DetailOverlay/DetailFrame/DetailPrice") as Label).text == "30", "详情层必须读取真实点击商品的卡内售价。")
-	for card_node in grid.get_children():
-		_expect((card_node as Control).focus_mode == Control.FOCUS_NONE, "详情显示时底层商品卡必须退出焦点导航。")
-	_expect(exit_button.focus_mode == Control.FOCUS_NONE, "详情显示时退出按钮必须退出焦点导航。")
-	purchase_button.pressed.emit()
-	_expect(
-		detail.visible
-		and (preview.get_node("DetailOverlay/DetailFrame/DetailPrice") as Label).text == "30"
-		and purchase_indices == [7],
-		"购买按钮必须通过真实信号链发出所选单件商品索引，且不得修改详情或货币状态。"
-	)
+	_expect(view.get_active_tab() == 0, "商店打开后默认位于购买页。")
+	_expect(not (cards[0].get_node("CountLabel") as Label).visible, "购买卡不得显示库存或持有数量。")
+	cards[6].pressed.emit()
+	_expect(detail.visible, "点击购买卡必须打开 authored 详情模态。")
+	_expect(detail.mouse_filter == Control.MOUSE_FILTER_STOP, "详情模态必须阻断底层鼠标。")
+	for card in cards:
+		_expect(card.focus_mode == Control.FOCUS_NONE, "详情打开时底层卡片必须退出焦点导航。")
+	view.set_transaction_pending(true)
+	var cancel_event := InputEventAction.new()
+	cancel_event.action = &"ui_cancel"
+	cancel_event.pressed = true
+	view.call("_unhandled_input", cancel_event)
+	_expect(detail.visible, "交易等待 Host 回包时，Esc 不得关闭详情或解除事务锁。")
+	view.set_transaction_pending(false)
+	action_button.pressed.emit()
+	_expect(requests == [6], "购买确认必须只发出选中报价索引。")
+	view.set_transaction_pending(false)
 	cancel_button.pressed.emit()
-	_expect(not detail.visible, "取消详情后必须复用同一隐藏层。")
-	_expect(selected_card.has_focus(), "取消详情后必须把键盘/手柄焦点还给刚才选择的商品。")
-	for card_node in grid.get_children():
-		_expect((card_node as Control).focus_mode == Control.FOCUS_ALL, "关闭详情后商品卡必须恢复焦点导航。")
-	_expect(exit_button.focus_mode == Control.FOCUS_ALL, "关闭详情后退出按钮必须恢复焦点导航。")
-	exit_button.pressed.emit()
-	_expect(exit_events.size() == 1, "退出按钮必须通过真实场景连接发出退出请求。")
+	_expect(not detail.visible, "取消详情必须复用并隐藏 authored 模态。")
+	for card in cards:
+		_expect(card.focus_mode == Control.FOCUS_ALL, "关闭详情后必须恢复卡片焦点导航。")
+
+
+func _audit_sell_interaction(view: RogueUndergroundShopView) -> void:
+	var slots: Array[Dictionary] = []
+	for slot_index in range(20):
+		slots.append({
+			"slot_index": slot_index,
+			"config_path": HEALTH_CONFIG.resource_path,
+			"item": HEALTH_CONFIG,
+			"stack_count": slot_index + 1,
+			"sell_price": 50,
+			"can_sell": slot_index != 17,
+			"disabled_reason": "locked" if slot_index == 17 else "",
+		})
+	view.present_sell_inventory(slots)
+	view.show_sell_tab()
+	_expect(view.get_active_tab() == 1, "出售页签必须切换到出售模式。")
+	var first_count := view.get_item_cards()[0].get_node("CountLabel") as Label
 	_expect(
-		detail.get_instance_id() == detail_id and grid.get_child_count() == initial_child_count,
-		"交互不得在运行时生成或销毁 UI 节点。"
+		first_count.visible and first_count.text == "×1",
+		"可堆叠出售物品必须显示玩家实际持有数，即使当前仅1件。"
 	)
+	var second_count := view.get_item_cards()[1].get_node("CountLabel") as Label
+	_expect(second_count.visible and second_count.text == "×2", "出售卡必须显示实际堆叠数。")
+	var next_button := view.get_node("Root/ShopPanel/PageControls/NextPageButton") as TextureButton
+	next_button.set_meta(&"skip_ui_click_audio", true)
+	next_button.pressed.emit()
+	next_button.pressed.emit()
+	_expect(view.get_sell_page() == 2, "20格背包必须提供第三页。")
+	for card_index in range(4):
+		_expect(
+			int(view.get_item_cards()[card_index].get_payload().get("slot_index", -1)) == 16 + card_index,
+			"第三页前4张卡必须保持原背包槽位顺序。"
+		)
+	for card_index in range(4, 8):
+		_expect(
+			view.get_item_cards()[card_index].get_payload().is_empty()
+			and view.get_item_cards()[card_index].disabled,
+			"第三页越过20格容量的后4张卡必须为空且不可交互。"
+		)
+	var locked_card := view.get_item_cards()[1]
+	_expect(
+		locked_card.disabled
+		and locked_card.tooltip_text.contains("锁定物品不可出售"),
+		"domain禁售原因必须映射为简洁中文，且卡片不可交互。"
+	)
+	var detail_before_locked_click := view.get_node("Root/DetailOverlay") as Control
+	locked_card.pressed.emit()
+	_expect(not detail_before_locked_click.visible, "空槽与禁售卡不得打开详情。")
+	var sell_requests: Array[Dictionary] = []
+	view.sell_requested.connect(
+		func(slot_index: int, expected_path: String) -> void:
+			sell_requests.append({"slot": slot_index, "path": expected_path})
+	)
+	view.get_item_cards()[0].pressed.emit()
+	var action_button := view.get_node(
+		"Root/DetailOverlay/DetailFrame/DetailActionButton"
+	) as TextureButton
+	action_button.pressed.emit()
+	_expect(
+		sell_requests.size() == 1
+		and int(sell_requests[0].get("slot", -1)) == 16
+		and str(sell_requests[0].get("path", "")) == HEALTH_CONFIG.resource_path,
+		"出售确认必须携带原槽位与预期物品路径。"
+	)
+	view.set_transaction_pending(false)
+	var remaining_page := _build_sell_page(16, 2)
+	view.present_sell_inventory_page(remaining_page)
+	var detail := view.get_node("Root/DetailOverlay") as Control
+	var detail_quantity := view.get_node(
+		"Root/DetailOverlay/DetailFrame/DetailQuantity"
+	) as Label
+	_expect(
+		detail.visible and detail_quantity.text == "背包内 ×2",
+		"出售后堆叠仍存在时详情必须原地更新实际数量。"
+	)
+	var empty_page := _build_sell_page(16, 0)
+	view.present_sell_inventory_page(empty_page)
+	_expect(not detail.visible, "出售最后1件后空槽详情必须立即关闭。")
 
 
-func _inside_viewport(rect: Rect2) -> bool:
-	return (
-		rect.position.x >= -1.0
-		and rect.position.y >= -1.0
-		and rect.end.x <= float(VIEWPORT_SIZE.x) + 1.0
-		and rect.end.y <= float(VIEWPORT_SIZE.y) + 1.0
-	)
+func _build_sell_page(selected_slot: int, selected_count: int) -> Dictionary:
+	var page_slots: Array[Dictionary] = []
+	for card_index in range(8):
+		var slot_index := 16 + card_index
+		if slot_index >= 20 or (slot_index == selected_slot and selected_count <= 0):
+			page_slots.append({
+				"slot_index": slot_index,
+				"config_path": "",
+				"stack_count": 0,
+				"can_sell": false,
+				"sell_price": 0,
+				"disabled_reason": "empty",
+			})
+			continue
+		page_slots.append({
+			"slot_index": slot_index,
+			"config_path": HEALTH_CONFIG.resource_path,
+			"item": HEALTH_CONFIG,
+			"stack_count": selected_count if slot_index == selected_slot else 1,
+			"can_sell": true,
+			"sell_price": 50,
+			"disabled_reason": "",
+		})
+	return {"page_index": 2, "page_count": 3, "slots": page_slots}
+
+
+func _audit_exit_boundary(view: RogueUndergroundShopView) -> void:
+	var exit_events: Array[bool] = []
+	view.exit_requested.connect(func() -> void: exit_events.append(true))
+	var exit_button := view.get_node("Root/ShopPanel/ExitButton") as TextureButton
+	exit_button.set_meta(&"skip_ui_click_audio", true)
+	exit_button.pressed.emit()
+	_expect(exit_events.size() == 1, "退出按钮必须只发出本地退出请求。")
+	_expect(view.visible, "UI 不得在本地点击时自行隐藏，需等待 Route 完成菱形转场。")
+
+
+func _audit_responsive_layout(view: RogueUndergroundShopView) -> void:
+	var logical_sizes := [
+		Vector2i(1280, 720),
+		Vector2i(1920, 1080),
+		Vector2i(960, 720),
+		Vector2i(2560, 1080),
+	]
+	view.show_buy_tab()
+	for logical_size in logical_sizes:
+		root.content_scale_size = logical_size
+		root.size = logical_size
+		for _frame in range(2):
+			await process_frame
+		var viewport_rect := Rect2(Vector2.ZERO, Vector2(logical_size))
+		var panel := view.get_node("Root/ShopPanel") as Control
+		var xiaocong := view.get_node("Root/XiaocongStage/Xiaocong") as Control
+		var grid := view.get_node("Root/ShopPanel/ItemGrid") as Control
+		var exit_button := view.get_node("Root/ShopPanel/ExitButton") as Control
+		for control in [panel, xiaocong, grid, exit_button]:
+			_expect(
+				viewport_rect.encloses(control.get_global_rect()),
+				"%s 逻辑尺寸下 %s 不得被裁出视口。"
+				% [logical_size, control.name]
+			)
+		_expect(
+			not grid.get_global_rect().intersects(xiaocong.get_global_rect()),
+			"%s 下小葱不得遮挡可交互商品网格。" % logical_size
+		)
+		_expect(
+			not grid.get_global_rect().intersects(exit_button.get_global_rect()),
+			"%s 下商品网格不得与退出按钮重叠。" % logical_size
+		)
+		for card in view.get_item_cards():
+			_expect(
+				card.size == Vector2(128, 128),
+				"%s 下商品卡仍须保持 128×128 整数像素几何。" % logical_size
+			)
+		view.get_item_cards()[0].pressed.emit()
+		var detail_frame := view.get_node("Root/DetailOverlay/DetailFrame") as Control
+		_expect(
+			viewport_rect.encloses(detail_frame.get_global_rect()),
+			"%s 下详情模态不得被裁切。" % logical_size
+		)
+		view.close_detail()
 
 
 func _expect(condition: bool, message: String) -> void:
@@ -365,7 +315,7 @@ func _expect(condition: bool, message: String) -> void:
 
 func _finish() -> void:
 	if failures.is_empty():
-		print("ROGUE_UNDERGROUND_SHOP_PREVIEW_SMOKE_TEST_OK assets=%d products=10" % EXPECTED_ASSET_SIZES.size())
+		print("ROGUE_UNDERGROUND_SHOP_PREVIEW_SMOKE_TEST_OK cards=8 sell_pages=3")
 		quit(0)
 		return
 	for failure in failures:

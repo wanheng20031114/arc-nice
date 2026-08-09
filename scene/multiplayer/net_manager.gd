@@ -28,6 +28,7 @@ const LOBBY_COMMAND_RATE_PER_SECOND := 6.0
 const LOBBY_COMMAND_RATE_BURST := 12.0
 const MAX_LOBBY_PLAYER_NAME_WIRE_LENGTH := 64
 const MAX_LOBBY_CHARACTER_ID_WIRE_LENGTH := 64
+const STABLE_PARTICIPANT_KEY_DOMAIN := "arc-nice:rogue-participant:v1:"
 
 static var _autoload_instance: NetManagerStore = null
 
@@ -151,6 +152,26 @@ func _is_valid_reconnect_token(token: String) -> bool:
 		and token == token.to_lower()
 		and token.is_valid_hex_number(false)
 	)
+
+
+## 为需要跨重连保持确定性的运行时系统提供不透明参与者身份。
+## 只暴露带域前缀的 SHA-256 摘要，绝不把重连令牌交给玩法或网络快照层。
+func get_stable_participant_key(peer_id: int) -> String:
+	if peer_id == 0 and not is_multiplayer_active():
+		return "rogue-participant:v1:singleplayer"
+	if peer_id <= 0:
+		return ""
+	var reconnect_token := ""
+	var local_peer_id := get_local_peer_id() if is_inside_tree() else 0
+	if peer_id == local_peer_id:
+		reconnect_token = local_reconnect_token
+	elif is_host():
+		reconnect_token = str(_peer_reconnect_tokens.get(peer_id, ""))
+	if not _is_valid_reconnect_token(reconnect_token):
+		return ""
+	return "rogue-participant:v1:%s" % (
+		STABLE_PARTICIPANT_KEY_DOMAIN + reconnect_token
+	).sha256_text()
 
 
 func set_public_room_context(room_id: String, host_token: String, is_public_host: bool) -> void:

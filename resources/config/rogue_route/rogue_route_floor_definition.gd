@@ -2,8 +2,8 @@
 extends Resource
 class_name RogueRouteFloorDefinition
 
-const RUNTIME_CONTRACT_SCHEMA := 1
-const CONTENT_CONTRACT_SCHEMA := 1
+const RUNTIME_CONTRACT_SCHEMA := 2
+const CONTENT_CONTRACT_SCHEMA := 2
 
 @export var floor_id: StringName = &""
 @export var display_name := ""
@@ -11,6 +11,7 @@ const CONTENT_CONTRACT_SCHEMA := 1
 @export var world_metrics: RogueRouteWorldMetrics
 @export var background_texture: Texture2D
 @export var default_combat_config: RogueCombatEncounterConfig
+@export var underground_shop_config: RogueUndergroundShopConfig
 
 
 func validate_definition() -> PackedStringArray:
@@ -35,6 +36,10 @@ func validate_definition() -> PackedStringArray:
 		errors.append("路线楼层缺少 default_combat_config。")
 	else:
 		errors.append_array(default_combat_config.validate_config())
+	if underground_shop_config == null:
+		errors.append("路线楼层缺少 underground_shop_config。")
+	else:
+		errors.append_array(underground_shop_config.validate_config())
 	if generation_config != null and world_metrics != null:
 		var generation_size := Vector2i(
 			generation_config.width,
@@ -56,7 +61,12 @@ func compute_runtime_contract_hash() -> String:
 		world_metrics
 	)
 	var combat_hash := _compute_default_combat_runtime_contract_hash()
-	if generation_hash.is_empty() or combat_hash.is_empty():
+	var shop_hash := underground_shop_config.compute_runtime_contract_hash()
+	if (
+		generation_hash.is_empty()
+		or combat_hash.is_empty()
+		or shop_hash.is_empty()
+	):
 		return ""
 	return "\n".join(PackedStringArray([
 		"schema=%d" % RUNTIME_CONTRACT_SCHEMA,
@@ -69,6 +79,7 @@ func compute_runtime_contract_hash() -> String:
 		"extra_edge_ratio=%.6f" % generation_config.extra_edge_ratio,
 		"initial_action_points=%d" % generation_config.initial_action_points,
 		"combat=%s" % combat_hash,
+		"underground_shop=%s" % shop_hash,
 	])).sha256_text()
 
 
@@ -151,6 +162,7 @@ func _has_contract_inputs() -> bool:
 		and world_metrics != null
 		and background_texture != null
 		and default_combat_config != null
+		and underground_shop_config != null
 	)
 
 
