@@ -24,6 +24,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
 	preload("res://resources/config/enemies/combat_robot_gunner_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_drone_operator.tres"),
+	preload("res://resources/config/enemies/combat_robot_drone_operator_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_shield_bearer.tres"),
 	preload("res://resources/config/enemies/combat_robot_ninja.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
@@ -133,6 +134,7 @@ const MECHANICAL_LIFE_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
 	preload("res://resources/config/enemies/combat_robot_gunner_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_drone_operator.tres"),
+	preload("res://resources/config/enemies/combat_robot_drone_operator_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_shield_bearer.tres"),
 	preload("res://resources/config/enemies/combat_robot_ninja.tres"),
 ]
@@ -167,6 +169,9 @@ const COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE := preload(
 )
 const COMBAT_ROBOT_SUICIDE_DRONE_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
+)
+const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn"
 )
 const CAPOO_SMG_BULLET_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
@@ -232,18 +237,19 @@ func _test_enemy_projectile_z_contract() -> void:
 		)
 		if projectile != null:
 			projectile.free()
-	var suicide_drone := (
-		COMBAT_ROBOT_SUICIDE_DRONE_SCENE.instantiate()
-		as CombatRobotSuicideDrone
-	)
-	_expect(
-		suicide_drone != null
-		and suicide_drone.z_index == 3
-		and suicide_drone.z_index > ENEMY_BODY_VISUAL_Z_INDEX,
-		"自杀式无人机必须使用z=3，严格位于普通敌人身体z=2之上。"
-	)
-	if suicide_drone != null:
-		suicide_drone.free()
+	for drone_scene in [
+		COMBAT_ROBOT_SUICIDE_DRONE_SCENE,
+		COMBAT_ROBOT_SUICIDE_DRONE_ELITE_SCENE,
+	]:
+		var suicide_drone := drone_scene.instantiate() as CombatRobotSuicideDrone
+		_expect(
+			suicide_drone != null
+			and suicide_drone.z_index == 3
+			and suicide_drone.z_index > ENEMY_BODY_VISUAL_Z_INDEX,
+			"普通与精英自杀式无人机必须使用z=3，严格位于普通敌人身体z=2之上。"
+		)
+		if suicide_drone != null:
+			suicide_drone.free()
 
 
 func _test_yuanshi_xirang_reward_tiers() -> void:
@@ -415,8 +421,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golem configs must carry the artificial_creation category tag."
 	)
 	_expect(
-		int(category_counts["mechanical_life"]) == 7,
-		"Exactly the seven normal and elite combat robot configs must carry the mechanical_life category tag."
+		int(category_counts["mechanical_life"]) == 8,
+		"Exactly the eight normal and elite combat robot configs must carry the mechanical_life category tag."
 	)
 	_expect(
 		int(category_counts["slime"]) == 10,

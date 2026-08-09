@@ -1219,7 +1219,7 @@ func _resolve_remote_action_time(
 ) -> float:
 	if not is_finite(host_action_timestamp) or not is_finite(local_net_time):
 		return NAN
-	# v49 keeps the optional -1 timestamp default for compatibility with the
+	# v51 keeps the optional -1 timestamp default for compatibility with the
 	# original CH7 action façade. Such packets replay from their receive time.
 	if host_action_timestamp < 0.0:
 		return local_net_time

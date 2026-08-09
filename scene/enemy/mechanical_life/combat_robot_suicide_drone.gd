@@ -28,6 +28,8 @@ const DEFAULT_EXPLOSION_RADIUS := 28.0
 const DEFAULT_DAMAGE := 50
 
 @export var explosion_shape: Shape2D
+@export var authored_source_type: StringName = SOURCE_TYPE
+@export var explosion_flash_color := Color(1.0, 0.34, 0.12, 1.0)
 
 @onready var drone_sprite: AnimatedSprite2D = $DroneSprite
 @onready var target_marker: AnimatedSprite2D = $TargetMarker
@@ -69,6 +71,7 @@ var _explosion_audio_done := true
 
 func _ready() -> void:
 	pool_active = not has_meta(SessionObjectPool.POOL_OWNER_META)
+	source_type = authored_source_type
 	explosion_query.collide_with_bodies = true
 	explosion_query.collide_with_areas = false
 	explosion_audio.set_meta(
@@ -95,7 +98,7 @@ func on_pool_acquired(_generation: int) -> void:
 	explosion_radius = DEFAULT_EXPLOSION_RADIUS
 	projectile_id = 0
 	owner_peer_id = 0
-	source_type = SOURCE_TYPE
+	source_type = authored_source_type
 	authoritative_damage = true
 	deployment_started = false
 	flight_started = false
@@ -132,6 +135,7 @@ func on_pool_released(_generation: int) -> void:
 	_explosion_audio_done = true
 	combat_runtime = null
 	gameplay_gateway = null
+	source_type = authored_source_type
 	_unregister_from_motion_system()
 	_stop_audio()
 	_reset_visuals()
@@ -178,7 +182,11 @@ func setup_multiplayer(
 ) -> void:
 	projectile_id = maxi(new_projectile_id, 0)
 	owner_peer_id = new_owner_peer_id
-	source_type = new_source_type if new_source_type != &"" else SOURCE_TYPE
+	source_type = (
+		new_source_type
+		if new_source_type != &""
+		else authored_source_type
+	)
 
 
 func begin_deployment() -> bool:
@@ -312,7 +320,7 @@ func _enter_explosion(
 	NIGHT_VFX_FLASH_POOL.request_from(
 		self,
 		target_position,
-		Color(1.0, 0.34, 0.12, 1.0),
+		explosion_flash_color,
 		1.0,
 		0.62,
 		0.035,

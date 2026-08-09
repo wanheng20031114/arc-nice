@@ -94,8 +94,8 @@ func _run() -> void:
 	for definition in [tower_definition, p1_definition, p1b_definition, p2_definition]:
 		var preload_paths := GameModeCatalog.get_preload_resource_paths(definition)
 		_expect(
-			preload_paths.size() == 49,
-			"Tower-defense preload profile must contain exactly 49 paths."
+			preload_paths.size() == 51,
+			"Tower-defense preload profile must contain exactly 51 paths."
 		)
 		_expect(
 			preload_paths.has(

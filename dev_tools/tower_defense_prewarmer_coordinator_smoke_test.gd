@@ -200,6 +200,9 @@ func _test_source_boundaries() -> void:
 			"register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)"
 		)
 		and coordinator_source.contains(
+			"register_scene(COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE, 0, 384)"
+		)
+		and coordinator_source.contains(
 			"register_scene(AGAVE_CANNONBALL_POOL_SCENE, 48, 384)"
 		)
 		and root_source.contains(

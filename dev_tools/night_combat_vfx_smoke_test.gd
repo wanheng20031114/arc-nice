@@ -55,6 +55,7 @@ const SINGLE_PASS_PROJECTILE_SCENE_MATERIALS := {
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/mechanical_life/combat_robot_gunner_elite_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn": RAPID_PROJECTILE_MATERIAL_PATH,
 	"res://scene/enemy/sorcerer/frost_sorcerer_ice_spike.tscn": FROST_PROJECTILE_MATERIAL_PATH,
 }
@@ -73,6 +74,7 @@ const SHARED_LIGHT_EXPLOSION_SCENES := [
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_bomber.tscn",
 	"res://scene/enemy/yuanshi_insect/yuanshi_insect_purple_bomber.tscn",
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn",
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn",
 ]
 const POOLED_ANIMATED_EMISSION_SCENES := [
 	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn",

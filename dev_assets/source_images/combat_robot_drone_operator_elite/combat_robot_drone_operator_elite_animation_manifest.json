@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "asset": "combat_robot_drone_operator_elite_animation_candidates",
+  "stage": "animation_candidates_pending_second_human_gate",
+  "approved_anchor": {
+    "selection": "O3",
+    "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o3_approved_native32.png",
+    "sha256": "0a85f0f78adcbff8ad827a47b291fb20420070b2e87bbb9098875cee33df536e",
+    "rgba_sha256": "a4dd5561ba7953f487afbd1be746df075e63290911ee03f2d12e295f5dfe18dc"
+  },
+  "runtime_source_sha256": "9f987244da55ed3d89bae38a3eda40998518dcd3935f2bb7a1551eb94cd15395",
+  "prompt_manifest": {
+    "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_animation_prompt_manifest.json",
+    "sha256": "94cbec8fab1f1338719645586120ae113e0f24ac7692e0045c7f0a3dcf9f488a"
+  },
+  "preview_report": {
+    "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_animation_preview_report.json",
+    "sha256": "5e50d4812953971286ac0c1f076660835f61b4e67c27e894389587380d493f40"
+  },
+  "stability_report": {
+    "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_animation_stability_report.json",
+    "sha256": "461bfd390210c632a1e27febcf7ef8b5dca920cddc1e6b312e9e1b0bce19035d"
+  },
+  "comparison": {
+    "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_animation_comparison.png",
+    "sha256": "c6da1446b179f60645d1e8e0a4d6e8dbda0bb47502919e376ac3e137fb899dbd"
+  },
+  "candidate_native_strips": {
+    "M1": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_m1_candidate_native_strip.png",
+      "sha256": "baa1e2dbd34a74dd91c1bd2a885640804d0d251fbeec29603e0a975fa163cb03",
+      "rgba_sha256": "6038dff07b83674bf2488b42afb06fc5cc86f9f321341eab3adbf1f4777e0b83",
+      "size": [
+        256,
+        32
+      ]
+    },
+    "M2": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_m2_candidate_native_strip.png",
+      "sha256": "8e99cb7fe985afc28d47db0bf728396a100f2703aabbe18b0038ba086f8f24b6",
+      "rgba_sha256": "7203e660c807b1be471463469516bd53f0d641cee121154cbb7281b6303e0e0b",
+      "size": [
+        256,
+        32
+      ]
+    },
+    "P1": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_p1_candidate_native_strip.png",
+      "sha256": "5ba012793ee2389ced8bb6d1e39eb7e3231fc44b94de1c0115e36013fb468272",
+      "rgba_sha256": "92e070440c613473c0b29d9bf4312e91fb3a4f3253d9d01c0b330a82ebee4c50",
+      "size": [
+        96,
+        32
+      ]
+    },
+    "P2": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_p2_candidate_native_strip.png",
+      "sha256": "68c6f0d008c6178268018d33d55faffdf30c51b88d64c18e00275368299b5b30",
+      "rgba_sha256": "66292816247f3bfd9b1b073c640d39f0a659b0288cdc8c6bb548d00cd5b60511",
+      "size": [
+        96,
+        32
+      ]
+    },
+    "K1": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_k1_candidate_native_strip.png",
+      "sha256": "5b1533d6e1439a8c932dfbf1ccec9f986bd5ef55e32b48f8e94210563ad239a1",
+      "rgba_sha256": "d9abd2caac109eb539cbec3eefdf6965ce87aac64bb65625c100a0e7ae4aa2eb",
+      "size": [
+        256,
+        32
+      ]
+    },
+    "K2": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_k2_candidate_native_strip.png",
+      "sha256": "b0e6ac9606e0806aff0b5b5782cb0060b80ce63c5915e035611b3c8022a7998f",
+      "rgba_sha256": "376841f107b75da78691c883b607b7296d0862495fd9db15e5eb245fa825c0e6",
+      "size": [
+        256,
+        32
+      ]
+    }
+  },
+  "death_point_table_contract": {
+    "explicit_per_frame": true,
+    "no_rotation_inference_or_fallback": true,
+    "k1_added_counts": [
+      18,
+      18,
+      17,
+      16,
+      17,
+      17,
+      16,
+      18
+    ],
+    "k2_added_counts": [
+      18,
+      18,
+      17,
+      16,
+      10,
+      6,
+      4,
+      2
+    ],
+    "k2_frames_0_to_3_equal_k1": true
+  },
+  "approved_selection": null,
+  "imagegen_pixels_imported": false,
+  "runtime_written": false
+}

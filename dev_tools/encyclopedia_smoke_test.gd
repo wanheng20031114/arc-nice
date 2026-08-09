@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 58,
+	CodexSection.ENEMY: 59,
 	CodexSection.COLLECTIBLE: 124,
 	CodexSection.BUILDING: 16,
 }
@@ -34,12 +34,12 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 2,
-	&"mechanical_life": 7,
+	&"mechanical_life": 8,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
 	EnemyCodexEntryConfig.Rank.NORMAL: 49,
-	EnemyCodexEntryConfig.Rank.ELITE: 8,
+	EnemyCodexEntryConfig.Rank.ELITE: 9,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
 const ATTACK_STAT_LABELS := [
@@ -112,7 +112,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 58 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 59 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -201,7 +201,7 @@ func _test_enemy_rank_counts(catalog: CodexCatalog) -> void:
 		actual_counts[source.rank] = int(actual_counts.get(source.rank, 0)) + 1
 	_expect(
 		actual_counts == EXPECTED_ENEMY_RANK_COUNTS,
-		"Enemy ranks must contain 49 normal, eight elite, and one Boss entry."
+		"Enemy ranks must contain 49 normal, nine elite, and one Boss entry."
 	)
 
 
@@ -261,6 +261,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_combat_robot_gunner := false
 	var saw_combat_robot_gunner_elite := false
 	var saw_combat_robot_drone_operator := false
+	var saw_combat_robot_drone_operator_elite := false
 	var saw_combat_robot_shield_bearer := false
 	var saw_combat_robot_ninja := false
 	var saw_linglan := false
@@ -345,7 +346,49 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				== "+%d 点" % guardian.aura_physical_defense_bonus,
 				"Guardian codex stats must use its typed aura config."
 			)
-		if config is CombatRobotDroneOperatorConfig:
+		if config is CombatRobotDroneOperatorEliteConfig:
+			saw_combat_robot_drone_operator_elite = true
+			var elite_operator := config as CombatRobotDroneOperatorEliteConfig
+			_expect(
+				String(stats.get("生命", "")) == "360"
+				and String(stats.get("单次伤害", "")) == "100"
+				and String(stats.get("物理防御", "")) == "20 点"
+				and String(stats.get("法术防御", "")) == "15"
+				and String(stats.get("移动速度", "")) == "40"
+				and String(stats.get("基地伤害", "")) == "2"
+				and String(stats.get("击杀息壤", "")) == "10",
+				"Elite drone operator codex must expose its authored core attributes."
+			)
+			_expect(
+				String(stats.get("搜索范围", ""))
+				== _format_number(elite_operator.attack_range)
+				and String(stats.get("停步距离", ""))
+				== _format_number(elite_operator.stop_distance)
+				and String(stats.get("部署延迟", ""))
+				== "%s 秒" % _format_number(elite_operator.deploy_delay)
+				and String(stats.get("攻击冷却", ""))
+				== "%s 秒" % _format_number(elite_operator.attack_cooldown)
+				and String(stats.get("无人机速度", ""))
+				== _format_number(elite_operator.drone_speed)
+				and String(stats.get("爆炸半径", ""))
+				== _format_number(elite_operator.explosion_radius),
+				"Elite drone operator codex stats must use its typed deployment config."
+			)
+			_expect(
+				elite_operator.projectile_type == &"combat_robot_suicide_drone_elite"
+				and source.sort_order == 545
+				and source.family_id == &"mechanical_life"
+				and source.rank == EnemyCodexEntryConfig.Rank.ELITE
+				and entry.primary_badge == "机械生命"
+				and entry.secondary_badge == "精英"
+				and source.description
+				== "以紫能核心与强化遥控终端驱动的精英爆炸无人机操作员。它会锁死可见目标所在位置，以90的速度投送不可阻挡的紫能无人机；标记出现后落点不会改变，及时离开标记范围仍可躲避爆炸。"
+				and entry.notes == PackedStringArray(
+					["精英", "紫能投送", "高速无人机"]
+				),
+				"Elite drone operator must keep its elite mechanical codex contract."
+			)
+		elif config is CombatRobotDroneOperatorConfig:
 			saw_combat_robot_drone_operator = true
 			var operator := config as CombatRobotDroneOperatorConfig
 			_expect(
@@ -631,10 +674,11 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 		and saw_combat_robot_gunner
 		and saw_combat_robot_gunner_elite
 		and saw_combat_robot_drone_operator
+		and saw_combat_robot_drone_operator_elite
 		and saw_combat_robot_shield_bearer
 		and saw_combat_robot_ninja
 		and saw_linglan,
-		"Enemy stat contract must cover regeneration, aura, normal and elite dash, normal and elite burst-fire, drone deployment, projectile shields, ninja boosts and Boss adapters."
+		"Enemy stat contract must cover regeneration, aura, normal and elite dash, normal and elite burst-fire, normal and elite drone deployment, projectile shields, ninja boosts and Boss adapters."
 	)
 
 

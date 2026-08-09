@@ -12,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEXTURE_ROOT = ROOT / "resources" / "texture"
 ENEMY_ROOT = TEXTURE_ROOT / "enemy"
+EXPECTED_TOTAL_PNG_COUNT = 82
+EXPECTED_MECHANICAL_LIFE_PNG_COUNT = 17
 
 EXPECTED_PNGS: dict[str, tuple[str, ...]] = {
     "artificial_creation": (
@@ -40,7 +42,9 @@ EXPECTED_PNGS: dict[str, tuple[str, ...]] = {
         "combat_robot.png",
         "combat_robot_elite.png",
         "combat_robot_drone_operator.png",
+        "combat_robot_drone_operator_elite.png",
         "combat_robot_drone_target_marker.png",
+        "combat_robot_drone_target_marker_elite.png",
         "combat_robot_gunner.png",
         "combat_robot_gunner_bullet.png",
         "combat_robot_gunner_elite.png",
@@ -49,7 +53,9 @@ EXPECTED_PNGS: dict[str, tuple[str, ...]] = {
         "combat_robot_shield_bearer.png",
         "combat_robot_shield_bearer_fx.png",
         "combat_robot_mechanical_explosion.png",
+        "combat_robot_mechanical_explosion_elite.png",
         "combat_robot_suicide_drone.png",
+        "combat_robot_suicide_drone_elite.png",
     ),
     "slime": (
         "slime.png",
@@ -155,6 +161,20 @@ PIPELINE_MARKERS = {
         "combat_robot_mechanical_explosion.png",
         "combat_robot_suicide_drone.png",
     ),
+    "dev_tools/write_combat_robot_drone_operator_elite_runtime_assets.py": (
+        'RUNTIME_DIR = ROOT / "resources" / "texture" / "enemy" / "mechanical_life"',
+        "combat_robot_drone_operator_elite.png",
+        "combat_robot_drone_target_marker_elite.png",
+        "combat_robot_mechanical_explosion_elite.png",
+        "combat_robot_suicide_drone_elite.png",
+    ),
+    "dev_tools/combat_robot_drone_operator_elite_asset_audit.py": (
+        'RUNTIME_DIR = ROOT / "resources" / "texture" / "enemy" / "mechanical_life"',
+        "combat_robot_drone_operator_elite.png",
+        "combat_robot_drone_target_marker_elite.png",
+        "combat_robot_mechanical_explosion_elite.png",
+        "combat_robot_suicide_drone_elite.png",
+    ),
     "dev_tools/process_combat_robot_shield_bearer_assets.py": (
         "resources/texture/enemy/mechanical_life",
         "combat_robot_shield_bearer.png",
@@ -253,8 +273,17 @@ def main() -> int:
     import_uids: dict[str, Path] = {}
 
     expected_total = sum(len(names) for names in EXPECTED_PNGS.values())
-    if expected_total != 78:
-        failures.append(f"Audit inventory must contain 78 PNGs, found {expected_total}.")
+    if expected_total != EXPECTED_TOTAL_PNG_COUNT:
+        failures.append(
+            "Audit inventory must contain "
+            f"{EXPECTED_TOTAL_PNG_COUNT} PNGs, found {expected_total}."
+        )
+    mechanical_total = len(EXPECTED_PNGS["mechanical_life"])
+    if mechanical_total != EXPECTED_MECHANICAL_LIFE_PNG_COUNT:
+        failures.append(
+            "Mechanical-life inventory must contain "
+            f"{EXPECTED_MECHANICAL_LIFE_PNG_COUNT} PNGs, found {mechanical_total}."
+        )
 
     actual_categories = {
         path.name for path in ENEMY_ROOT.iterdir() if path.is_dir()

@@ -5,7 +5,6 @@ const OperatorConfig := preload(
 	"res://resources/config/enemies/combat_robot_drone_operator_config.gd"
 )
 const ACTION_DEPLOY: StringName = &"combat_robot_drone_operator_deploy"
-const PROJECTILE_TYPE: StringName = &"combat_robot_suicide_drone"
 const WORLD_COLLISION_MASK := 1
 const DEPLOY_ANIMATION_FPS := 30.0
 const DEPLOY_ANIMATION_FRAME_COUNT := 3
@@ -381,7 +380,7 @@ func _spawn_committed_drone(
 
 	gameplay_gateway.register_local_projectile(
 		drone,
-		PROJECTILE_TYPE,
+		operator_config_cache.projectile_type,
 		0,
 		spawn_position,
 		flight_direction,

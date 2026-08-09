@@ -1,0 +1,29 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn" id="1_base"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_suicide_drone_elite.tres" id="2_frames"]
+[ext_resource type="Shader" path="res://resources/shader/night_vfx_emission_mask.gdshader" id="3_emission_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_elite_explosion_emission"]
+shader = ExtResource("3_emission_shader")
+shader_parameter/luminance_threshold = 0.42
+shader_parameter/threshold_softness = 0.12
+shader_parameter/emission_strength = 0.9
+shader_parameter/emission_tint = Color(0.78, 0.38, 1.18, 0.78)
+
+[node name="CombatRobotSuicideDroneElite" instance=ExtResource("1_base")]
+authored_source_type = &"combat_robot_suicide_drone_elite"
+explosion_flash_color = Color(0.62, 0.31, 1, 1)
+
+[node name="DroneSprite" parent="." index="0"]
+sprite_frames = ExtResource("2_frames")
+
+[node name="TargetMarker" parent="." index="1"]
+sprite_frames = ExtResource("2_frames")
+
+[node name="ExplosionSprite" parent="." index="2"]
+sprite_frames = ExtResource("2_frames")
+
+[node name="EmissionOverlay" parent="ExplosionSprite" index="0"]
+material = SubResource("ShaderMaterial_elite_explosion_emission")
+sprite_frames = ExtResource("2_frames")

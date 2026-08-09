@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "asset": "combat_robot_drone_operator_elite_effect_imagegen_references",
+  "sources": {
+    "V1": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_drone_v1_imagegen.png",
+      "sha256": "5807896ba6dddde37bb63d54de434fb0840bcc3477e1f11347c9d67441379cf1",
+      "design": "purple core scans toward the nose",
+      "pixels_imported": false
+    },
+    "V2": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_drone_v2_imagegen.png",
+      "sha256": "e5c70927f9d40736993dde892f156d12bb597c4d21a8424dd6029544c0e55cb4",
+      "design": "purple core contracts inward and relaxes",
+      "pixels_imported": false
+    },
+    "T1": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_target_t1_imagegen.png",
+      "sha256": "ed7d9a253d2136862822c5cb990f3b4afb3f6f1e74599770d440ef5c4b2111bb",
+      "design": "constant cold-white center with orthogonal purple pulse",
+      "pixels_imported": false
+    },
+    "T2": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_target_t2_imagegen.png",
+      "sha256": "6ad8003e7873ea27d4149428942d679be754aaf8518e4dbafcff72379bd124a4",
+      "design": "cold-white confirmation then sequential outer-corner emphasis",
+      "pixels_imported": false
+    },
+    "X1": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_explosion_x1_imagegen.png",
+      "sha256": "2b3f8f8f40007f4e79bf22d1e394700f5feba28c21d3574d54cc58cb047b090b",
+      "design": "cold-white hot core and concentric violet mechanical rings",
+      "pixels_imported": false
+    },
+    "X2": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_explosion_x2_imagegen.png",
+      "sha256": "a88936d7318f805bb02884209be5a3682bcf5817fe3f080094fc7e75f4d2da73",
+      "design": "cold-white hot core with segmented orthogonal violet rhythm",
+      "pixels_imported": false
+    }
+  },
+  "ordinary_runtime_sources": {
+    "drone": {
+      "path": "resources/texture/enemy/mechanical_life/combat_robot_suicide_drone.png",
+      "sha256": "21fe9ddf09a72b080a06d346cb47ab4f3572852d9f0dae3242bc4476a7b1e06b"
+    },
+    "target": {
+      "path": "resources/texture/enemy/mechanical_life/combat_robot_drone_target_marker.png",
+      "sha256": "a2694c49e2dc04a5a7a46ebc7be5fb4078ea78c1dc4282e68ad4f6557b501436"
+    },
+    "explosion": {
+      "path": "resources/texture/enemy/mechanical_life/combat_robot_mechanical_explosion.png",
+      "sha256": "6edc04d40612bb626b9d0880c250f869cd7f7bdd892296887dd0b57dd058e589"
+    }
+  },
+  "imagegen_pixels_imported": false,
+  "runtime_written": false
+}

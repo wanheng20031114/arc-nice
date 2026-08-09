@@ -1,0 +1,701 @@
+{
+  "stage": "anchor_approved_pending_animation_candidates",
+  "approved_selection": {
+    "selection": "o3",
+    "native": {
+      "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o3_approved_native32.png",
+      "sha256": "0a85f0f78adcbff8ad827a47b291fb20420070b2e87bbb9098875cee33df536e",
+      "rgba_sha256": "a4dd5561ba7953f487afbd1be746df075e63290911ee03f2d12e295f5dfe18dc"
+    },
+    "preview_16x": {
+      "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o3_approved_16x.png",
+      "sha256": "ac93b5db5673295030a95d305b90efff229be14d8f26ee2983c5d37cd1daed49"
+    }
+  },
+  "runtime_written": false,
+  "imagegen_pixels_imported": false,
+  "ordinary_runtime_source": {
+    "path": "resources/texture/enemy/mechanical_life/combat_robot_drone_operator.png",
+    "expected_sha256": "9f987244da55ed3d89bae38a3eda40998518dcd3935f2bb7a1551eb94cd15395",
+    "actual_sha256": "9f987244da55ed3d89bae38a3eda40998518dcd3935f2bb7a1551eb94cd15395",
+    "frame_rect": [
+      0,
+      0,
+      32,
+      32
+    ],
+    "pixel_grid_analysis": {
+      "image_width": 32,
+      "image_height": 32,
+      "image_mode": "RGBA",
+      "detection_mode": "native_or_unknown",
+      "grid_cell_width": 1.0,
+      "grid_cell_height": 1.0,
+      "grid_cell_size": 1,
+      "confidence": 0.192,
+      "subject_bbox": {
+        "left": 10,
+        "top": 4,
+        "right": 24,
+        "bottom": 28
+      },
+      "subject_pixel_width": 14,
+      "subject_pixel_height": 24,
+      "subject_grid_width": 14,
+      "subject_grid_height": 24,
+      "recommended_canvas_grid_width": 32,
+      "recommended_canvas_grid_height": 32
+    }
+  },
+  "construction": "current runtime frame0 + fixed accent map + explicit transparent-point attachments",
+  "registered_center": [
+    16,
+    16
+  ],
+  "maximum_visible_size": [
+    28,
+    28
+  ],
+  "baseline_y": 28,
+  "common_a1_points": [
+    [
+      9,
+      12
+    ],
+    [
+      9,
+      13
+    ],
+    [
+      10,
+      8
+    ],
+    [
+      10,
+      12
+    ],
+    [
+      21,
+      8
+    ],
+    [
+      21,
+      12
+    ],
+    [
+      22,
+      12
+    ],
+    [
+      22,
+      13
+    ]
+  ],
+  "candidates": {
+    "o1": {
+      "title": "O1  上置指挥导轨",
+      "subtitle": "短导轨 + 天线护耳；轮廓集中在控制器右上",
+      "candidate_only_points": [
+        [
+          23,
+          13
+        ],
+        [
+          23,
+          15
+        ],
+        [
+          24,
+          13
+        ],
+        [
+          24,
+          14
+        ],
+        [
+          24,
+          15
+        ]
+      ],
+      "audit": {
+        "bbox": [
+          9,
+          4,
+          25,
+          28
+        ],
+        "visible_size": [
+          16,
+          24
+        ],
+        "baseline_y": 28,
+        "registered_center_x": 16,
+        "opaque_pixels": 211,
+        "ordinary_pixels_preserved": 198,
+        "accent_points": [
+          [
+            13,
+            5
+          ],
+          [
+            15,
+            11
+          ],
+          [
+            15,
+            12
+          ],
+          [
+            16,
+            11
+          ],
+          [
+            16,
+            12
+          ],
+          [
+            17,
+            11
+          ],
+          [
+            17,
+            12
+          ],
+          [
+            20,
+            17
+          ]
+        ],
+        "added_points": [
+          [
+            9,
+            12
+          ],
+          [
+            9,
+            13
+          ],
+          [
+            10,
+            8
+          ],
+          [
+            10,
+            12
+          ],
+          [
+            21,
+            8
+          ],
+          [
+            21,
+            12
+          ],
+          [
+            22,
+            12
+          ],
+          [
+            22,
+            13
+          ],
+          [
+            23,
+            13
+          ],
+          [
+            23,
+            15
+          ],
+          [
+            24,
+            13
+          ],
+          [
+            24,
+            14
+          ],
+          [
+            24,
+            15
+          ]
+        ],
+        "added_pixel_count": 13,
+        "new_y7_pixels": 0,
+        "connected_components_8": 1,
+        "red_orange_remaining": 0,
+        "binary_alpha": true,
+        "transparent_rgb_zero": true
+      },
+      "outputs": {
+        "native": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o1_native32.png",
+          "sha256": "e1ef5ff6dbf4133cbfd56e8fe7d14c190e3adc01f8225239348d2e3386903386",
+          "rgba_sha256": "0ca3f6347b67ba86a01e598aa435922ca240b0af333b2dd5da953d6d5099b0e7"
+        },
+        "preview_16x": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o1_16x.png",
+          "sha256": "60a6cafe6d4f8895d0c0d8b9320e8c464974dfbf9a24c483a90fb10297686ca6"
+        },
+        "mirrored_16x": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o1_mirrored_16x.png",
+          "sha256": "f9486cd545de39ef4c8ff717014faf81ae0cc467a6164d94d06a14a49b9feda3"
+        },
+        "overlay": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o1_ordinary_overlay_16x.png",
+          "sha256": "5b86d5ee67c39bc3c9b6f83df2c85520c7b5cef2798d7a5e41de723a16ba0e1a"
+        },
+        "delta": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o1_ordinary_delta_16x.png",
+          "sha256": "43ad0f778f10e237941eb7959d24898a9187c895614cc03bfd2fcbd1cef9bd02"
+        },
+        "facing_pair": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o1_facing_pair.png",
+          "sha256": "6023f4b81e4bf982a0f88bd1a222221ce17af997408a83d717b6b7dd7f4885b9"
+        },
+        "facing_gif": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o1_facing.gif",
+          "sha256": "981539457c3043f0bcbc5026fd1b840ad32b9099449f184105a92de8069032be"
+        },
+        "imagegen_reference": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o1_imagegen.png",
+          "sha256": "b0d68834c02f08088da3231512a8f05eb590f5d0fbaa444939ea8645dcab8962"
+        },
+        "transparent_reference": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o1_transparent_reference.png",
+          "sha256": "e8bd5843392ee659c30db2c6a9077d82b086d602d4384e6528dec003d30af226"
+        }
+      }
+    },
+    "o2": {
+      "title": "O2  侧框加固终端",
+      "subtitle": "薄 U 形侧框 + 握持护圈；控制器主体不变",
+      "candidate_only_points": [
+        [
+          22,
+          19
+        ],
+        [
+          23,
+          19
+        ],
+        [
+          24,
+          15
+        ],
+        [
+          24,
+          19
+        ],
+        [
+          25,
+          15
+        ],
+        [
+          25,
+          16
+        ],
+        [
+          25,
+          17
+        ],
+        [
+          25,
+          18
+        ],
+        [
+          25,
+          19
+        ]
+      ],
+      "audit": {
+        "bbox": [
+          9,
+          4,
+          26,
+          28
+        ],
+        "visible_size": [
+          17,
+          24
+        ],
+        "baseline_y": 28,
+        "registered_center_x": 16,
+        "opaque_pixels": 215,
+        "ordinary_pixels_preserved": 198,
+        "accent_points": [
+          [
+            13,
+            5
+          ],
+          [
+            15,
+            11
+          ],
+          [
+            15,
+            12
+          ],
+          [
+            16,
+            11
+          ],
+          [
+            16,
+            12
+          ],
+          [
+            17,
+            11
+          ],
+          [
+            17,
+            12
+          ],
+          [
+            20,
+            17
+          ]
+        ],
+        "added_points": [
+          [
+            9,
+            12
+          ],
+          [
+            9,
+            13
+          ],
+          [
+            10,
+            8
+          ],
+          [
+            10,
+            12
+          ],
+          [
+            21,
+            8
+          ],
+          [
+            21,
+            12
+          ],
+          [
+            22,
+            12
+          ],
+          [
+            22,
+            13
+          ],
+          [
+            22,
+            19
+          ],
+          [
+            23,
+            19
+          ],
+          [
+            24,
+            15
+          ],
+          [
+            24,
+            19
+          ],
+          [
+            25,
+            15
+          ],
+          [
+            25,
+            16
+          ],
+          [
+            25,
+            17
+          ],
+          [
+            25,
+            18
+          ],
+          [
+            25,
+            19
+          ]
+        ],
+        "added_pixel_count": 17,
+        "new_y7_pixels": 0,
+        "connected_components_8": 1,
+        "red_orange_remaining": 0,
+        "binary_alpha": true,
+        "transparent_rgb_zero": true
+      },
+      "outputs": {
+        "native": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o2_native32.png",
+          "sha256": "53b70f8831e120424c7be15e696b3989e58dddae8a9567abdca74049bf4f66b8",
+          "rgba_sha256": "b59549c4e45327959886fa66a1b11e21a9cd63ca9cce41b641b0498efda348d2"
+        },
+        "preview_16x": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o2_16x.png",
+          "sha256": "df05b2a2fc346c21f22e33c54dbe019762d725cc13bc51cf19e8afcb65be58f8"
+        },
+        "mirrored_16x": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o2_mirrored_16x.png",
+          "sha256": "2912dd060d786ed27703b2c0731ea297cb49c5275acdb719fc697e9537e2fe75"
+        },
+        "overlay": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o2_ordinary_overlay_16x.png",
+          "sha256": "0965b323391013c3c8eccf5c41ae7b39274752f31b5eb653d37ba40b678a2163"
+        },
+        "delta": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o2_ordinary_delta_16x.png",
+          "sha256": "de787b3a5b1b9376a033e4b47e1035595d7c5b18cb866eed3d442cf3365ae0e5"
+        },
+        "facing_pair": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o2_facing_pair.png",
+          "sha256": "1693bcaea88b82dde65afe621555a5e743016688e236ecf26a461b604d531d5a"
+        },
+        "facing_gif": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o2_facing.gif",
+          "sha256": "8047b833660a1826e25ade97d2944df4e45b806d3070338660ab5c8feda140f3"
+        },
+        "imagegen_reference": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o2_imagegen.png",
+          "sha256": "0858a21649196a91997860a3817057a478dadbb65c45a8269171b2d87d54706a"
+        },
+        "transparent_reference": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o2_transparent_reference.png",
+          "sha256": "9c4b93bfad049765a96991a22913c1ecd811a08266c2a697f7657f9cc4755605"
+        }
+      }
+    },
+    "o3": {
+      "title": "O3  下置信号增幅器",
+      "subtitle": "贴底中空稳定模块；不悬垂、不进入腿区",
+      "candidate_only_points": [
+        [
+          20,
+          21
+        ],
+        [
+          20,
+          22
+        ],
+        [
+          20,
+          23
+        ],
+        [
+          21,
+          21
+        ],
+        [
+          21,
+          23
+        ],
+        [
+          22,
+          21
+        ],
+        [
+          22,
+          22
+        ],
+        [
+          22,
+          23
+        ],
+        [
+          23,
+          22
+        ],
+        [
+          23,
+          23
+        ]
+      ],
+      "audit": {
+        "bbox": [
+          9,
+          4,
+          24,
+          28
+        ],
+        "visible_size": [
+          15,
+          24
+        ],
+        "baseline_y": 28,
+        "registered_center_x": 16,
+        "opaque_pixels": 216,
+        "ordinary_pixels_preserved": 198,
+        "accent_points": [
+          [
+            13,
+            5
+          ],
+          [
+            15,
+            11
+          ],
+          [
+            15,
+            12
+          ],
+          [
+            16,
+            11
+          ],
+          [
+            16,
+            12
+          ],
+          [
+            17,
+            11
+          ],
+          [
+            17,
+            12
+          ],
+          [
+            20,
+            17
+          ]
+        ],
+        "added_points": [
+          [
+            9,
+            12
+          ],
+          [
+            9,
+            13
+          ],
+          [
+            10,
+            8
+          ],
+          [
+            10,
+            12
+          ],
+          [
+            20,
+            21
+          ],
+          [
+            20,
+            22
+          ],
+          [
+            20,
+            23
+          ],
+          [
+            21,
+            8
+          ],
+          [
+            21,
+            12
+          ],
+          [
+            21,
+            21
+          ],
+          [
+            21,
+            23
+          ],
+          [
+            22,
+            12
+          ],
+          [
+            22,
+            13
+          ],
+          [
+            22,
+            21
+          ],
+          [
+            22,
+            22
+          ],
+          [
+            22,
+            23
+          ],
+          [
+            23,
+            22
+          ],
+          [
+            23,
+            23
+          ]
+        ],
+        "added_pixel_count": 18,
+        "new_y7_pixels": 0,
+        "connected_components_8": 1,
+        "red_orange_remaining": 0,
+        "binary_alpha": true,
+        "transparent_rgb_zero": true
+      },
+      "outputs": {
+        "native": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o3_native32.png",
+          "sha256": "0a85f0f78adcbff8ad827a47b291fb20420070b2e87bbb9098875cee33df536e",
+          "rgba_sha256": "a4dd5561ba7953f487afbd1be746df075e63290911ee03f2d12e295f5dfe18dc"
+        },
+        "preview_16x": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o3_16x.png",
+          "sha256": "ac93b5db5673295030a95d305b90efff229be14d8f26ee2983c5d37cd1daed49"
+        },
+        "mirrored_16x": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o3_mirrored_16x.png",
+          "sha256": "219d382b47fb36ea79964a121933b5f08a524087df34cef64dd3f04caa8656d3"
+        },
+        "overlay": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o3_ordinary_overlay_16x.png",
+          "sha256": "80bdc54ce9130cf6b4244e5041f5b7778b79615b077db81502ac43c906e02435"
+        },
+        "delta": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o3_ordinary_delta_16x.png",
+          "sha256": "3d8e5bba3767fdc42f678e6e5dc676fec20e8c17ef0fd44a87cb5d14e0d890be"
+        },
+        "facing_pair": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o3_facing_pair.png",
+          "sha256": "c2f1c1c05f785b8c319c66d8d45017ba31b6afe70dfee48c12f22563d78550c1"
+        },
+        "facing_gif": {
+          "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_o3_facing.gif",
+          "sha256": "30a07db22ef66688ed05f32de0233fac894feeb66dc46b986401a27973befa5b"
+        },
+        "imagegen_reference": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o3_imagegen.png",
+          "sha256": "d09aa024948071bf5ab6a37be5d3e2daa50f30a1fda3c4364d8aa4674b2758aa"
+        },
+        "transparent_reference": {
+          "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o3_transparent_reference.png",
+          "sha256": "8d50bcf277135dbd3aab459cf44a0e13d08f24e30f6fc29a9e2ca321d7c94cab"
+        }
+      }
+    }
+  },
+  "comparison": {
+    "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_anchor_comparison.png",
+    "sha256": "7376495efd213eade2f6a71b1bf91b49ce559ecd15173c37d2b16ffce9ee5728"
+  },
+  "script": {
+    "path": "dev_tools/process_combat_robot_drone_operator_elite_anchors.py",
+    "sha256": "69b3ccdafbe80293f945e3268aeef6dc5aa3eeebfbe8ccd262702c9901d4a16d"
+  }
+}

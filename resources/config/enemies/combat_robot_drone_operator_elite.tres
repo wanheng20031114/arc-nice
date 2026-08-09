@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="CombatRobotDroneOperatorEliteConfig" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/combat_robot_drone_operator_elite_config.gd" id="1_config"]
+[ext_resource type="Resource" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_drop_table"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_operator_elite.tscn" id="3_scene"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn" id="4_drone"]
+
+[resource]
+script = ExtResource("1_config")
+deploy_animation_name = &"deploy"
+attack_range = 80.0
+stop_distance = 40.0
+deploy_delay = 0.1
+attack_cooldown = 2.5
+visible_target_check_limit = 4
+blocked_retry_interval = 0.35
+drone_speed = 90.0
+projectile_type = &"combat_robot_suicide_drone_elite"
+drone_scene = ExtResource("4_drone")
+display_name = "精英爆炸无人机操作员"
+category_tags = PackedStringArray("mechanical_life")
+enemy_scene = ExtResource("3_scene")
+max_health = 360
+attack_damage = 100
+physical_defense = 20
+magic_defense = 15
+move_speed = 40.0
+home_damage = 2
+explosion_radius = 28.0
+xirang_kill_reward = 10
+drop_table = ExtResource("2_drop_table")

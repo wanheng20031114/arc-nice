@@ -34,6 +34,9 @@ const COMBAT_ROBOT_GUNNER_ELITE_BULLET_SCENE := preload(
 const COMBAT_ROBOT_SUICIDE_DRONE_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
+const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn"
+)
 const CAPOO_RPG_ROCKET_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_rpg_rocket.tscn"
 )
@@ -104,6 +107,9 @@ const FIRE_SORCERER_CONSUMED_SOURCE_MASK_KEY: StringName = (
 )
 const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
 const COMBAT_ROBOT_SUICIDE_DRONE_TYPE: StringName = &"combat_robot_suicide_drone"
+const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_TYPE: StringName = (
+	&"combat_robot_suicide_drone_elite"
+)
 const TIYI_SNIPER_PROJECTILE_TYPE: StringName = &"tiyi_sniper_bullet"
 const TANGO_LASER_PROJECTILE_TYPE: StringName = &"tango_laser_bullet"
 const TANGO_LASER_VOLLEY_PROJECTILE_COUNT := 3
@@ -1093,12 +1099,21 @@ func receive_linglan_skill1_ring(
 		)
 
 
+static func _is_combat_robot_suicide_drone_type(
+	projectile_type: StringName
+) -> bool:
+	return (
+		projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE
+		or projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_ELITE_TYPE
+	)
+
+
 func get_projectile_time_compensation_age(
 	unbounded_event_age: float,
 	lifetime: float,
 	projectile_type: StringName = &""
 ) -> float:
-	if projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
+	if _is_combat_robot_suicide_drone_type(projectile_type):
 		return clampf(
 			unbounded_event_age,
 			0.0,
@@ -1688,12 +1703,17 @@ func instantiate_projectile(
 				_runtime.capoo_projectile_motion_system
 			)
 			return gunner_bullet
-		COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
+		COMBAT_ROBOT_SUICIDE_DRONE_TYPE, COMBAT_ROBOT_SUICIDE_DRONE_ELITE_TYPE:
 			if _runtime.combat_robot_drone_motion_system == null:
 				return null
+			var drone_scene := (
+				COMBAT_ROBOT_SUICIDE_DRONE_ELITE_SCENE
+				if projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_ELITE_TYPE
+				else COMBAT_ROBOT_SUICIDE_DRONE_SCENE
+			)
 			var drone := (
 				_acquire_or_instantiate_projectile(
-					COMBAT_ROBOT_SUICIDE_DRONE_SCENE
+					drone_scene
 				)
 				as CombatRobotSuicideDrone
 			)
@@ -2398,7 +2418,7 @@ func _spawn_network_projectile(
 		projectile.has_method("simulate_compensated_motion")
 		and (
 			compensation_age > 0.0
-			or projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE
+			or _is_combat_robot_suicide_drone_type(projectile_type)
 		)
 	):
 		projectile.call("simulate_compensated_motion", compensation_age)
@@ -2543,7 +2563,7 @@ func apply_projectile_lifetime_compensation(
 ) -> void:
 	if projectile == null or compensation_age <= 0.0:
 		return
-	if projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE:
+	if _is_combat_robot_suicide_drone_type(projectile_type):
 		return
 	var view_bounded := (
 		projectile_type == &"player_bullet"

@@ -233,10 +233,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 50, "Protocol must be v50.")
+	_expect(NetConstants.PROTOCOL_VERSION == 51, "Protocol must be v51.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v50 must retain the scene-specific v45 bits 5..6 for shield stages and ninja boost."
+		"Protocol v51 must retain the scene-specific v45 bits 5..6 for shield stages and ninja boost."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -254,7 +254,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v50 channel assignments must remain stable."
+		"Protocol v51 channel assignments must remain stable."
 	)
 
 

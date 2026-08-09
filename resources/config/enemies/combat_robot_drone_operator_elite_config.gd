@@ -1,0 +1,2 @@
+extends CombatRobotDroneOperatorConfig
+class_name CombatRobotDroneOperatorEliteConfig

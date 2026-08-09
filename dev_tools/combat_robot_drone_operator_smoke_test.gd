@@ -382,7 +382,7 @@ func _test_player_lock_and_independent_drone() -> void:
 		var record := test_root.registered_projectiles[0]
 		var drone := record.projectile as CombatRobotSuicideDrone
 		_expect(
-			record.projectile_type == CombatRobotDroneOperator.PROJECTILE_TYPE
+			record.projectile_type == OPERATOR_CONFIG.projectile_type
 			and record.damage == 50
 			and is_equal_approx(record.speed, 60.0)
 			and is_equal_approx(record.lifetime, 1.0)
@@ -911,16 +911,20 @@ func _test_multiplayer_and_runtime_source_contract() -> void:
 	)
 	_expect(
 		mp_source.contains("COMBAT_ROBOT_SUICIDE_DRONE_TYPE")
+		and mp_source.contains("COMBAT_ROBOT_SUICIDE_DRONE_ELITE_TYPE")
 		and mp_source.contains("CombatRobotSuicideDrone.DEPLOY_DELAY")
 		and mp_source.contains("CombatRobotSuicideDrone.EXPLOSION_DURATION")
-		and mp_source.contains("projectile_type == COMBAT_ROBOT_SUICIDE_DRONE_TYPE"),
-		"MpGame must own the dedicated type and full three-stage elapsed compensation."
+		and mp_source.contains("_is_combat_robot_suicide_drone_type(projectile_type)"),
+		(
+			"MpProjectileCoordinator must share full three-stage elapsed compensation "
+			+ "between the ordinary and elite drone types."
+		)
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 50
+		NET_CONSTANTS.PROTOCOL_VERSION == 51
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
 		(
-			"Protocol v50 must retain the v38 projectile, v39 shield-state, and "
+			"Protocol v51 must retain the v38 projectile, v39 shield-state, and "
 			+ "v40 slime semantics while isolating ninja boost visuals, ghost IDs, "
 			+ "reconnect activation, and the elite robot resource contract without adding channels."
 		)

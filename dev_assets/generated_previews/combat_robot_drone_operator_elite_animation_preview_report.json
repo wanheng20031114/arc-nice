@@ -1,0 +1,3931 @@
+{
+  "asset": "combat_robot_drone_operator_elite_animation_candidates",
+  "stage": "animation_candidates_pending_second_human_gate",
+  "approved_anchor": {
+    "selection": "O3",
+    "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_anchor_o3_approved_native32.png",
+    "sha256": "0a85f0f78adcbff8ad827a47b291fb20420070b2e87bbb9098875cee33df536e",
+    "rgba_sha256": "a4dd5561ba7953f487afbd1be746df075e63290911ee03f2d12e295f5dfe18dc"
+  },
+  "ordinary_runtime_source": {
+    "path": "resources/texture/enemy/mechanical_life/combat_robot_drone_operator.png",
+    "expected_sha256": "9f987244da55ed3d89bae38a3eda40998518dcd3935f2bb7a1551eb94cd15395",
+    "actual_sha256": "9f987244da55ed3d89bae38a3eda40998518dcd3935f2bb7a1551eb94cd15395"
+  },
+  "animation_contract": {
+    "M1/M2": "move 8 frames @ 14 FPS loop",
+    "P1/P2": "deploy 3 frames @ 30 FPS non-loop (exactly 0.10 s)",
+    "K1/K2": "death 8 frames @ 12 FPS non-loop"
+  },
+  "candidate_outputs": {
+    "M1": {
+      "design": "强化件与冷灰高光逐帧完全刚性；继承普通八相腿部",
+      "runtime_contract": {
+        "frames": 8,
+        "fps": 14,
+        "loop": true
+      },
+      "native_strip": {
+        "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_m1_candidate_native_strip.png",
+        "sha256": "baa1e2dbd34a74dd91c1bd2a885640804d0d251fbeec29603e0a975fa163cb03",
+        "rgba_sha256": "6038dff07b83674bf2488b42afb06fc5cc86f9f321341eab3adbf1f4777e0b83",
+        "size": [
+          256,
+          32
+        ]
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m1_candidate_16x.png",
+        "sha256": "bc786f363a6369d641eb1374ca226a75a158415cbd1862ec97e744e53b71f6d3"
+      },
+      "ordinary_delta_8x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m1_ordinary_delta_8x.png",
+        "sha256": "9d54d400fb4131beda43be6c75d774ff7cbc7ca3ca47d272cbbc90aae94110ab"
+      },
+      "gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m1.gif",
+        "sha256": "5fde36f514e8c496eddae67461193d748e1ba1e32014c0637ed7dc2cac098134",
+        "frame_count": 8,
+        "duration_ms_per_frame": 70,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "8b0232e7add5df34bc91740ed37ea8ad8d73f53c3efc81145ae57956277642d6",
+          "9044564a6e6accb409ea2ab3a3c90a4911e07fdff8e872a6fd553bf20f5bf3fa",
+          "826a54913f03be3f9b698e6245ab37a7bb3356ce4b188664e2b8534a224ec44c",
+          "05d66e70b0508c83870c87038aa7d68fd4aba95ad28094dc8028f4bbfee18bc4",
+          "e28e6a007440ee8ca8dd74615323d66d4885852a08c3f3bc190fd007cb8bad41",
+          "8a6e35a927556dfaa97122b7c1fdf60e51338aeb19dfc3fccd0eef146a9f0343",
+          "68042ae0c4970fcd7ac271cf0d197d23b20cd7145112eb50781d1be6251faace",
+          "abafd9ed1a62e65fdf63c321e98e7bc717abf26c45689155b550669e89c02081"
+        ]
+      },
+      "mirrored_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m1_mirrored.gif",
+        "sha256": "dc9ded38b73ae00e08f95ba818ea4d012a067130fa886c12c8fa891cd7a8c46c",
+        "frame_count": 8,
+        "duration_ms_per_frame": 70,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "0353ec8f2bb5fe31e561949a8ac9d166fad372fae1b974d3bd23e660be1d07ce",
+          "8a7d9c050487b2a07bbb14352971d692d729f2fd5b33a78a407ad766f2c6efc5",
+          "7df963d3983ef192df45afa841aa707279d3a43f7eefd9e49eedc86df386f527",
+          "cbe65937dd287adbee68ba788091f93023283d3cd4092e5923ba2814ce875323",
+          "9f58030beba93de99a0892906ec664cf0b53b6a1982f04eb5610ad00c8d48faa",
+          "c58004111b83579bf9c42c8ba2aae5098e5ce08adb1b3ad5fd158eeb6563599d",
+          "ff8dd115ebcdc9996dfdc763303bcd6f891fb4abeadf45c72f3be098fbb2eaaf",
+          "18235ffa9b139e368f58d598155567994a497f03e74b086e3ec8b922afb33649"
+        ]
+      },
+      "imagegen_transparent_preview": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m1_imagegen_transparent_preview.png",
+        "sha256": "403561429caf97830ecb4f3c7c51c56622ef399a24a672d9075fffb918ec54c5"
+      },
+      "frame_rgba_sha256": [
+        "a4dd5561ba7953f487afbd1be746df075e63290911ee03f2d12e295f5dfe18dc",
+        "440e0ad399e54561f291222e58480dea5ec7b2196c64a746f999203a677ee6fe",
+        "759351f993206c37c3aad159026b4b0541c509f1b93c68c7cfae0ac67c584b54",
+        "cab00a5b5814a24999543e19342adacfbd15620bcfc3e775a663e403ae60037b",
+        "3a6e1ff42917916ba3ce9723cd5bc4e52dca06ceea02bff6287ddcf0eb82ddba",
+        "4aee10adc2be70f33d7da8c150ed728d538df254fbd44ed4c84db64432e09667",
+        "48e66a0da2113998770bc72d24652e56074f96d5fbd4589067597c894f16b4c9",
+        "8a734e822a6e7c0162479c014e03c93f31424e52b4bcf8a8afedeb3132cc50bc"
+      ],
+      "frame_metrics": [
+        {
+          "frame": 0,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 216,
+          "inherited_pixels": 198,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 1,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 2,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 209,
+          "inherited_pixels": 191,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 3,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 208,
+          "inherited_pixels": 190,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 4,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 216,
+          "inherited_pixels": 198,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 5,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 6,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 209,
+          "inherited_pixels": 191,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 7,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 208,
+          "inherited_pixels": 190,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        }
+      ],
+      "imagegen_pixels_imported": false
+    },
+    "M2": {
+      "design": "强化轮廓不动；增幅器承重灰色高光按腿相受控换相",
+      "runtime_contract": {
+        "frames": 8,
+        "fps": 14,
+        "loop": true
+      },
+      "native_strip": {
+        "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_m2_candidate_native_strip.png",
+        "sha256": "8e99cb7fe985afc28d47db0bf728396a100f2703aabbe18b0038ba086f8f24b6",
+        "rgba_sha256": "7203e660c807b1be471463469516bd53f0d641cee121154cbb7281b6303e0e0b",
+        "size": [
+          256,
+          32
+        ]
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m2_candidate_16x.png",
+        "sha256": "e90c9d8d238290fdb8af1b76e9f3602031bbfaaf1fb0d3c4723fef7ae732921f"
+      },
+      "ordinary_delta_8x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m2_ordinary_delta_8x.png",
+        "sha256": "9d54d400fb4131beda43be6c75d774ff7cbc7ca3ca47d272cbbc90aae94110ab"
+      },
+      "gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m2.gif",
+        "sha256": "7839907b2b37deea6193172cf57e7d0836d1bc429db21c21725f3e5c6c9ba211",
+        "frame_count": 8,
+        "duration_ms_per_frame": 70,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "e5b1db28aa434da0178e2c042e9def4c7194f6e54bc2baa4c2993746222a717a",
+          "7548a09c4af19396068b06a4eefbe62160694533a8b930ea5973fec023cf84b1",
+          "63a072c990961a438f019533af713f17657571b38c575d4729e0ab67e2411b64",
+          "f826974725decbbb335a11d814aa72f2bda843c777007ead38fd782f650024af",
+          "98f1ae707322b6fcd0781571befe3df0cf8509c0cbb25d50c82f6c66c659b079",
+          "6356bb073ce411bb4a8a399232a532f5e1bee130b2bb33e3cc7b3122cd95f69d",
+          "8f11c5d192c6d0343e157cc1c0fd1603f8f3f3c7957ab2afdf10a0572e826ffc",
+          "8571a63c00fe59f7a3d5615e17cd55c0779b68a876c77d371ecd2a2a4729d275"
+        ]
+      },
+      "mirrored_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m2_mirrored.gif",
+        "sha256": "18ae832eacd37fe882a44d563f5e0878077303ece6f30a428a23460d78cf3fad",
+        "frame_count": 8,
+        "duration_ms_per_frame": 70,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "10a15e4b1c532a4194d897ba477ca9d194999c38e1cdecbd3a612ffaf8f39162",
+          "974818ea8871763b6c421d988da2fb57e79ccbcb3a21dd96d1fb4dc480947c4f",
+          "94e0c26aeeb9b3842f0a7cfd2300701119c2ee27da5c87c7daaf55b7b71ee6ac",
+          "d0f271e330339fe70983d6e22fab3cf3254639c37e6ffc5cd4c00870127558d2",
+          "a50719f811e00357cf9b200d838fa27106c5aec4c9a053c9f1c95231b5c0e93b",
+          "fc9e0579a84784921ffc111b834c8364bbb7c71ee8ec61a25932312658c830b7",
+          "d8c0c27ae85f2b3c61562166e7a480d122afd7217c994a3046a5cde4357188d0",
+          "14498ab7b7313113bede8221810ed95c34557d3ee8e79adfd82ef08a9a22918a"
+        ]
+      },
+      "imagegen_transparent_preview": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_m2_imagegen_transparent_preview.png",
+        "sha256": "4621391ff1882da3e02dc87d53d894d2360cb8f51741738f63adcd0c242672da"
+      },
+      "frame_rgba_sha256": [
+        "84dadf5a7de8a6ed51dfe193eef5e8f1be6a7b8202e8a97e5dc5f8f33e53a30e",
+        "b06a56becddaddea658c0bb1b20ce1066e57025448091da4e1ba9283fd32c058",
+        "74af033e7299be3cac73dfd33bf7a78c7aa442004415d74a59cede9be2a8164e",
+        "e78644fe5c41ac10064c4b644174fb7975efa0ca5fc72a86a5710ef277f9fe1f",
+        "5bae7395ecc5f4fd70c20add05d68faa3e77cbc02b6cf7330d1f81f430106380",
+        "1e57dbbccc1197ea936bca32549cc5451b0e44ab7adcb8ba27597cfc0a0dfd03",
+        "599164d73fcca11a0b33b09168cfb48d414a265e5f23c9b9b8efad782ced959f",
+        "0260b7b800392d6bc091781455c53068563224a3aa3216a2f66ace90d090d256"
+      ],
+      "frame_metrics": [
+        {
+          "frame": 0,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 216,
+          "inherited_pixels": 198,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 1,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 2,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 209,
+          "inherited_pixels": 191,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 3,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 208,
+          "inherited_pixels": 190,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 4,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 216,
+          "inherited_pixels": 198,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 5,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 6,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 209,
+          "inherited_pixels": 191,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 7,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 208,
+          "inherited_pixels": 190,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        }
+      ],
+      "imagegen_pixels_imported": false
+    },
+    "P1": {
+      "design": "眼槽稳定；遥控器紫能逐级充亮，第三帧完成按键",
+      "runtime_contract": {
+        "frames": 3,
+        "fps": 30,
+        "loop": false
+      },
+      "native_strip": {
+        "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_p1_candidate_native_strip.png",
+        "sha256": "5ba012793ee2389ced8bb6d1e39eb7e3231fc44b94de1c0115e36013fb468272",
+        "rgba_sha256": "92e070440c613473c0b29d9bf4312e91fb3a4f3253d9d01c0b330a82ebee4c50",
+        "size": [
+          96,
+          32
+        ]
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p1_candidate_16x.png",
+        "sha256": "897fc0b0a0c02fe936d901373d7a26fef3d74e6dcc3aa63184eda22320c089c4"
+      },
+      "ordinary_delta_8x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p1_ordinary_delta_8x.png",
+        "sha256": "935d4ac43d449dbc3145f5022a006550bd4d6201dd278975dbd69f99d5789493"
+      },
+      "gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p1.gif",
+        "sha256": "84efde4894fa29da44fd5c44ed3e12056c12223aa56eb3bff9badfe1b22a1401",
+        "frame_count": 3,
+        "duration_ms_per_frame": 30,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "a1d3be5ebaff144ccea1f7699fd1441680b3a7e4cf8899ace49f6f1303403c37",
+          "b5e28eb1796ab70d1f9d7248568b457c137de3d2c9283529595564a3b0e90ae3",
+          "9fbdfc957243c9775ceac79c2d85cf434ca217c17b32f0c092f87b8acf055829"
+        ]
+      },
+      "mirrored_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p1_mirrored.gif",
+        "sha256": "bc77f52e09d7b4fa41442b2aac4cdd648165505ed982cff8afafe46d9034a970",
+        "frame_count": 3,
+        "duration_ms_per_frame": 30,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "14bffde1d06891c8a4444b622ac4c10e95a67ff40ebb29675c0e702932c5f64b",
+          "2ff4e509b1eadded86d449a7f85d8dd241eecd8b57d087252f25ddfc806a2c8a",
+          "4e9533a9dd37d83e0092f979dda3855a5448a77d8cc573b9c3aa9241a32d7f4d"
+        ]
+      },
+      "imagegen_transparent_preview": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p1_imagegen_transparent_preview.png",
+        "sha256": "4b89f4cb13e8ccd8b1f27944d3e67187ac0a781e494a2faafe0582d5f67f0ee9"
+      },
+      "frame_rgba_sha256": [
+        "30f4ebe104b56c3a5f30e1a170bdd1eb7fb0fe23e627ef45724b73fefa6da55f",
+        "542fae2f6c04f693b4e65edaf9160e19b97de14200d8ed80ed509d347aa99cb5",
+        "bc225d02ba5c936de7a419da642ccef3726e425ed562bc4f206fa02f64c45678"
+      ],
+      "frame_metrics": [
+        {
+          "frame": 0,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 1,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 2,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        }
+      ],
+      "imagegen_pixels_imported": false
+    },
+    "P2": {
+      "design": "眼槽亮列与遥控器同步由左至右扫描，第三帧完成按键",
+      "runtime_contract": {
+        "frames": 3,
+        "fps": 30,
+        "loop": false
+      },
+      "native_strip": {
+        "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_p2_candidate_native_strip.png",
+        "sha256": "68c6f0d008c6178268018d33d55faffdf30c51b88d64c18e00275368299b5b30",
+        "rgba_sha256": "66292816247f3bfd9b1b073c640d39f0a659b0288cdc8c6bb548d00cd5b60511",
+        "size": [
+          96,
+          32
+        ]
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p2_candidate_16x.png",
+        "sha256": "7f9052ae0dc2ca343d11adef775b8f90a897444a9d100e027a39b451360503d5"
+      },
+      "ordinary_delta_8x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p2_ordinary_delta_8x.png",
+        "sha256": "e2669a8a1aa54e60c5a2b57fb502f86368466426af11e587e572e5450fd22c2c"
+      },
+      "gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p2.gif",
+        "sha256": "e05ea012c21880f61705b7820603c4389122181d3b4648213c0fbce564a3d64c",
+        "frame_count": 3,
+        "duration_ms_per_frame": 30,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "75a8ead515327cf8cb3a6bbd16b0f2b43161a1d7c40a25a7113f87b19e2cab56",
+          "00f665603df63621eae86760f69f1655fd2f4c945c5a4e1bedf982485f8360e6",
+          "c8a7efafcc1005503df65a114654a0bf18621b7cb00ca48f33dd663a98a75ab0"
+        ]
+      },
+      "mirrored_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p2_mirrored.gif",
+        "sha256": "7f0f2ef20d80968c2f5e88ec9827de72143c80fc277fbbbee02ea4d1202e2928",
+        "frame_count": 3,
+        "duration_ms_per_frame": 30,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "11a84ac58ab0e70d8bae120fab5349400e4956541f31bb44329f97d50355c1a0",
+          "58f97dbeae5aae7c579404de2d6048497b6062b565b2c567098cb118b6752481",
+          "6e1ec5f34a8e550d8a3c40932d68878f245e1b7b0299a17c498483881a061b3f"
+        ]
+      },
+      "imagegen_transparent_preview": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_p2_imagegen_transparent_preview.png",
+        "sha256": "184b00722ca1e60e13d9d824ba098af9203e40cc639edde9a2a882530b5ca5ee"
+      },
+      "frame_rgba_sha256": [
+        "281498c7310abb52fec5267214f574b7fe98d81e1208147100f36cd8145abfa4",
+        "08def155ff340a1e89e36d9083483747a0cfcddd542c8ab222c02a7e7563a686",
+        "ff8d00804a540af733d0dfd7da065c7f852e90260c9bf0625a1d904c0333496b"
+      ],
+      "frame_metrics": [
+        {
+          "frame": 0,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 1,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 2,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        }
+      ],
+      "imagegen_pixels_imported": false
+    },
+    "K1": {
+      "design": "强化件与增幅器完整连接并沿普通死亡轨迹倒下",
+      "runtime_contract": {
+        "frames": 8,
+        "fps": 12,
+        "loop": false
+      },
+      "native_strip": {
+        "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_k1_candidate_native_strip.png",
+        "sha256": "5b1533d6e1439a8c932dfbf1ccec9f986bd5ef55e32b48f8e94210563ad239a1",
+        "rgba_sha256": "d9abd2caac109eb539cbec3eefdf6965ce87aac64bb65625c100a0e7ae4aa2eb",
+        "size": [
+          256,
+          32
+        ]
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k1_candidate_16x.png",
+        "sha256": "86def4d9a458aa9fdf38b9438bdd0a0e9fd621643b471618ce56ac22bdc407a0"
+      },
+      "ordinary_delta_8x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k1_ordinary_delta_8x.png",
+        "sha256": "bb5f7952d6360ebe78171b3db854b24efbac19bd4b7de44e9202dc5a0520d5c0"
+      },
+      "gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k1.gif",
+        "sha256": "eaefa8e4509549c9ae87d69311e88a199eac5ebbf0143737cbc8a292181d3ce3",
+        "frame_count": 8,
+        "duration_ms_per_frame": 80,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "c922d30045769e542509db541a01d5f7649b31383aae98946783b24b74416544",
+          "ccc6ae2fd328b36c33d61dd87103d2d8fd7d71d57cd88fac0605557364f069df",
+          "19af49b7eb7cb2a78a918ece3a11964166c78bd28a0b0d676b3a22501f055155",
+          "8fd27e224a337ad1a79bb9d8d37816b50acd0abdf00243ff42c6053828275949",
+          "2c0e1eaa31180b1d8986fe934504b9b32d04371c3b19f84eeffc7831ef5d574f",
+          "89d5bad3f1d1fd9c7c9c246c736e4d225f918518ff793375969fd909840bbc8b",
+          "5f757c0ad8703369353128db1124c511052e7cdd310bee3fed9fcdbe6a01e732",
+          "50fde25972d0384042929b2d6da5d14386302d4247f8809fbe37d37a89a79d33"
+        ]
+      },
+      "mirrored_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k1_mirrored.gif",
+        "sha256": "b08fde2ec2d7360c35c1f9de1b957db8bdc7e4a5ce0e8494bfbd00379097bec2",
+        "frame_count": 8,
+        "duration_ms_per_frame": 80,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "bf1d14f3247d8c3f584420489e6eb245642dd5b140a1e107f85891c2c7970ca8",
+          "ab4ecdad287edd31539052f9618b5374e7d0be2f58dce10fe28930d60638c6d6",
+          "16f4f33a43695b0cb6436918721634f06f5efd8c120fc00f0d9518f6495e66bd",
+          "4148b3f6dd611f1675b401b842f18716c33a032d1d7af63e21f24d2893377e25",
+          "0a3dffab41a7dd15b8e4c45a15d828c6f08058a17610f7981c49a388d1cdf7ef",
+          "433e7620896f082d2f97b3d0220eefacfdc2de9ee67d79e5ddd8fe9ace09695b",
+          "8f63c3c5fc987f96811c2f2490c12986f5f2b3939781a78000cb051e7a4432c0",
+          "df3108bbbf46c51f16a668ace40cb8d5a2f8e75f5d212c14c65b9dd4054886fd"
+        ]
+      },
+      "imagegen_transparent_preview": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k1_imagegen_transparent_preview.png",
+        "sha256": "778f2b76429f5b9bc2a45ff8d318f2446737fdc9d7c908b7f77df508ffcc0df8"
+      },
+      "frame_rgba_sha256": [
+        "4ba05a7b06b8462b1fe61dc02c560303845256742c58cbb731a24d7ce632ab9d",
+        "97d320999bbcf506dc6f703000525de8f2a4a2eefb130dbb3b338159f8014ffd",
+        "f32450c5e16cd9f4b5c98ffcdd9be51fedcbd8110fb2aca858725bc42f0fb20b",
+        "8e1c781387cc2474ef2af4a7dc8a0f4fb4a7b13e81faeaaf4b575fef7b0ec0c8",
+        "eb0281819673dabb0047841d7bc363b2ef6db7998c1ee239aa8c8e88b0b11fe8",
+        "7b01b1e9582d55ad49467f7ecc9eab68bec45b4b5f92f0ca6e60569c01280148",
+        "b76376bf92431fcf2179b650357af3d8c361ed4853cac632de1fa750f6ba28de",
+        "5ffdda2f1f7c04e7f95db5c5911163dd172b5a9fe774f60f7bc93ecf1e78e836"
+      ],
+      "frame_metrics": [
+        {
+          "frame": 0,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 1,
+          "bbox": [
+            8,
+            5,
+            25,
+            28
+          ],
+          "visible_size": [
+            17,
+            23
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              13
+            ],
+            [
+              9,
+              14
+            ],
+            [
+              10,
+              9
+            ],
+            [
+              10,
+              13
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              20,
+              24
+            ],
+            [
+              21,
+              9
+            ],
+            [
+              21,
+              13
+            ],
+            [
+              21,
+              22
+            ],
+            [
+              21,
+              24
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              14
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              22,
+              24
+            ],
+            [
+              23,
+              23
+            ],
+            [
+              23,
+              24
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 2,
+          "bbox": [
+            7,
+            6,
+            26,
+            28
+          ],
+          "visible_size": [
+            19,
+            22
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 215,
+          "inherited_pixels": 198,
+          "added_pixels": 17,
+          "added_points": [
+            [
+              10,
+              14
+            ],
+            [
+              10,
+              15
+            ],
+            [
+              11,
+              10
+            ],
+            [
+              11,
+              14
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              21,
+              24
+            ],
+            [
+              22,
+              10
+            ],
+            [
+              22,
+              14
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              22,
+              25
+            ],
+            [
+              23,
+              14
+            ],
+            [
+              23,
+              15
+            ],
+            [
+              23,
+              23
+            ],
+            [
+              23,
+              24
+            ],
+            [
+              23,
+              25
+            ],
+            [
+              24,
+              24
+            ],
+            [
+              24,
+              25
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 3,
+          "bbox": [
+            9,
+            6,
+            26,
+            28
+          ],
+          "visible_size": [
+            17,
+            22
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 197,
+          "inherited_pixels": 181,
+          "added_pixels": 16,
+          "added_points": [
+            [
+              9,
+              11
+            ],
+            [
+              9,
+              15
+            ],
+            [
+              9,
+              16
+            ],
+            [
+              10,
+              15
+            ],
+            [
+              19,
+              9
+            ],
+            [
+              21,
+              13
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              23
+            ],
+            [
+              24,
+              21
+            ],
+            [
+              24,
+              22
+            ],
+            [
+              24,
+              23
+            ],
+            [
+              25,
+              22
+            ],
+            [
+              25,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 4,
+          "bbox": [
+            8,
+            10,
+            28,
+            28
+          ],
+          "visible_size": [
+            20,
+            18
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 194,
+          "inherited_pixels": 177,
+          "added_pixels": 17,
+          "added_points": [
+            [
+              8,
+              15
+            ],
+            [
+              9,
+              19
+            ],
+            [
+              9,
+              20
+            ],
+            [
+              10,
+              19
+            ],
+            [
+              17,
+              10
+            ],
+            [
+              20,
+              13
+            ],
+            [
+              21,
+              13
+            ],
+            [
+              21,
+              14
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ],
+            [
+              24,
+              23
+            ],
+            [
+              25,
+              21
+            ],
+            [
+              25,
+              22
+            ],
+            [
+              25,
+              23
+            ],
+            [
+              26,
+              21
+            ],
+            [
+              26,
+              22
+            ],
+            [
+              27,
+              22
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 5,
+          "bbox": [
+            8,
+            11,
+            31,
+            28
+          ],
+          "visible_size": [
+            23,
+            17
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 187,
+          "inherited_pixels": 170,
+          "added_pixels": 17,
+          "added_points": [
+            [
+              10,
+              19
+            ],
+            [
+              12,
+              23
+            ],
+            [
+              13,
+              23
+            ],
+            [
+              17,
+              11
+            ],
+            [
+              20,
+              14
+            ],
+            [
+              21,
+              14
+            ],
+            [
+              22,
+              14
+            ],
+            [
+              26,
+              21
+            ],
+            [
+              27,
+              20
+            ],
+            [
+              27,
+              21
+            ],
+            [
+              28,
+              20
+            ],
+            [
+              28,
+              22
+            ],
+            [
+              29,
+              19
+            ],
+            [
+              29,
+              20
+            ],
+            [
+              29,
+              21
+            ],
+            [
+              29,
+              22
+            ],
+            [
+              30,
+              20
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 6,
+          "bbox": [
+            8,
+            12,
+            31,
+            28
+          ],
+          "visible_size": [
+            23,
+            16
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 186,
+          "inherited_pixels": 170,
+          "added_pixels": 16,
+          "added_points": [
+            [
+              11,
+              22
+            ],
+            [
+              14,
+              24
+            ],
+            [
+              14,
+              25
+            ],
+            [
+              15,
+              12
+            ],
+            [
+              15,
+              25
+            ],
+            [
+              19,
+              13
+            ],
+            [
+              20,
+              13
+            ],
+            [
+              26,
+              18
+            ],
+            [
+              27,
+              17
+            ],
+            [
+              27,
+              18
+            ],
+            [
+              28,
+              17
+            ],
+            [
+              29,
+              16
+            ],
+            [
+              29,
+              17
+            ],
+            [
+              29,
+              18
+            ],
+            [
+              29,
+              19
+            ],
+            [
+              30,
+              16
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 7,
+          "bbox": [
+            7,
+            13,
+            27,
+            28
+          ],
+          "visible_size": [
+            20,
+            15
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 188,
+          "inherited_pixels": 170,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              7,
+              24
+            ],
+            [
+              7,
+              25
+            ],
+            [
+              7,
+              26
+            ],
+            [
+              7,
+              27
+            ],
+            [
+              8,
+              24
+            ],
+            [
+              8,
+              26
+            ],
+            [
+              8,
+              27
+            ],
+            [
+              9,
+              24
+            ],
+            [
+              9,
+              25
+            ],
+            [
+              9,
+              26
+            ],
+            [
+              17,
+              13
+            ],
+            [
+              17,
+              26
+            ],
+            [
+              18,
+              13
+            ],
+            [
+              18,
+              14
+            ],
+            [
+              18,
+              25
+            ],
+            [
+              18,
+              26
+            ],
+            [
+              22,
+              14
+            ],
+            [
+              22,
+              25
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        }
+      ],
+      "imagegen_pixels_imported": false
+    },
+    "K2": {
+      "design": "前四帧同K1；后四帧保持连接并逐步被机体遮挡",
+      "runtime_contract": {
+        "frames": 8,
+        "fps": 12,
+        "loop": false
+      },
+      "native_strip": {
+        "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_k2_candidate_native_strip.png",
+        "sha256": "b0e6ac9606e0806aff0b5b5782cb0060b80ce63c5915e035611b3c8022a7998f",
+        "rgba_sha256": "376841f107b75da78691c883b607b7296d0862495fd9db15e5eb245fa825c0e6",
+        "size": [
+          256,
+          32
+        ]
+      },
+      "preview_16x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k2_candidate_16x.png",
+        "sha256": "5e6f1b66617e258717914a315edb1db48687f85877d94683cdfe47de23b571e0"
+      },
+      "ordinary_delta_8x": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k2_ordinary_delta_8x.png",
+        "sha256": "2ae89002fe3f8594517974c0c829533c127a6873096f33c17aadce4297ef8028"
+      },
+      "gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k2.gif",
+        "sha256": "44b1d29c98e29e2aeb6e80fbf6b9faca4790e146ac2be01ae5c78438db47640e",
+        "frame_count": 8,
+        "duration_ms_per_frame": 80,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "c922d30045769e542509db541a01d5f7649b31383aae98946783b24b74416544",
+          "ccc6ae2fd328b36c33d61dd87103d2d8fd7d71d57cd88fac0605557364f069df",
+          "19af49b7eb7cb2a78a918ece3a11964166c78bd28a0b0d676b3a22501f055155",
+          "8fd27e224a337ad1a79bb9d8d37816b50acd0abdf00243ff42c6053828275949",
+          "df8e4d951bd0a3626e82496760fea7336754a56fda758ba0c492104979f96fd1",
+          "84609bdf6e6c33fb0ff72e4b6afcd49dc0204a126350c148b44d82eaac035f16",
+          "7312a4b4d3c3ce768c8dfb03a664a81ea4f4db2446bab467ed4eb5651036e031",
+          "320a86275d78bc8a1843ec5d052dd83d7477048fa568b8779c3ee63a58bb1f52"
+        ]
+      },
+      "mirrored_gif": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k2_mirrored.gif",
+        "sha256": "9d7f97e7564b68c1ea06f5bf2cb14e5b967be9b349995bf4ae966c001c678f1a",
+        "frame_count": 8,
+        "duration_ms_per_frame": 80,
+        "fixed_palette": true,
+        "decoded_frames_exact": true,
+        "decoded_rgb_sha256": [
+          "bf1d14f3247d8c3f584420489e6eb245642dd5b140a1e107f85891c2c7970ca8",
+          "ab4ecdad287edd31539052f9618b5374e7d0be2f58dce10fe28930d60638c6d6",
+          "16f4f33a43695b0cb6436918721634f06f5efd8c120fc00f0d9518f6495e66bd",
+          "4148b3f6dd611f1675b401b842f18716c33a032d1d7af63e21f24d2893377e25",
+          "ee3ced29d4859b1143f45b8c9ebdfbc4d3aaa8d6620dfd30a48080c27c753eb5",
+          "c525ec9c111c4d00fe7cbd18a78c732e6c3c171e6726480aaf97238e4b8d15d8",
+          "603e1c30d6e1033a54978b27fb991c6702a0e31b25106620b77b0457581ac7e7",
+          "908a504d2e1f289faec4a8b86368430f10e88d2be5f1a504f4b8fede4818f3e1"
+        ]
+      },
+      "imagegen_transparent_preview": {
+        "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_k2_imagegen_transparent_preview.png",
+        "sha256": "175915a76cb9448b3dbdf5981bc2ce47f4c35c70c693fda64d3a0e64ea799946"
+      },
+      "frame_rgba_sha256": [
+        "4ba05a7b06b8462b1fe61dc02c560303845256742c58cbb731a24d7ce632ab9d",
+        "97d320999bbcf506dc6f703000525de8f2a4a2eefb130dbb3b338159f8014ffd",
+        "f32450c5e16cd9f4b5c98ffcdd9be51fedcbd8110fb2aca858725bc42f0fb20b",
+        "8e1c781387cc2474ef2af4a7dc8a0f4fb4a7b13e81faeaaf4b575fef7b0ec0c8",
+        "d80b0edb210337331661d624fdc990b62edbad53df74713fa970f032c1ac1c31",
+        "15895da0f60a14ffda7e10826911143b80968b1808abc53ae4db5e59a7096ddc",
+        "1dd32160c8499b47a6c6a02e0b5ba7fc57ffb443be6742616759cb0a85187595",
+        "64a62b56a6065e4a705b542a0efbff4ca2a26b849797d1ff5e84d536b888edd3"
+      ],
+      "frame_metrics": [
+        {
+          "frame": 0,
+          "bbox": [
+            9,
+            4,
+            24,
+            28
+          ],
+          "visible_size": [
+            15,
+            24
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              12
+            ],
+            [
+              9,
+              13
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              10,
+              12
+            ],
+            [
+              20,
+              21
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              21,
+              8
+            ],
+            [
+              21,
+              12
+            ],
+            [
+              21,
+              21
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              21
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 1,
+          "bbox": [
+            8,
+            5,
+            25,
+            28
+          ],
+          "visible_size": [
+            17,
+            23
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 214,
+          "inherited_pixels": 196,
+          "added_pixels": 18,
+          "added_points": [
+            [
+              9,
+              13
+            ],
+            [
+              9,
+              14
+            ],
+            [
+              10,
+              9
+            ],
+            [
+              10,
+              13
+            ],
+            [
+              20,
+              22
+            ],
+            [
+              20,
+              23
+            ],
+            [
+              20,
+              24
+            ],
+            [
+              21,
+              9
+            ],
+            [
+              21,
+              13
+            ],
+            [
+              21,
+              22
+            ],
+            [
+              21,
+              24
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              14
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              22,
+              24
+            ],
+            [
+              23,
+              23
+            ],
+            [
+              23,
+              24
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 2,
+          "bbox": [
+            7,
+            6,
+            26,
+            28
+          ],
+          "visible_size": [
+            19,
+            22
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 215,
+          "inherited_pixels": 198,
+          "added_pixels": 17,
+          "added_points": [
+            [
+              10,
+              14
+            ],
+            [
+              10,
+              15
+            ],
+            [
+              11,
+              10
+            ],
+            [
+              11,
+              14
+            ],
+            [
+              21,
+              23
+            ],
+            [
+              21,
+              24
+            ],
+            [
+              22,
+              10
+            ],
+            [
+              22,
+              14
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              22,
+              25
+            ],
+            [
+              23,
+              14
+            ],
+            [
+              23,
+              15
+            ],
+            [
+              23,
+              23
+            ],
+            [
+              23,
+              24
+            ],
+            [
+              23,
+              25
+            ],
+            [
+              24,
+              24
+            ],
+            [
+              24,
+              25
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 3,
+          "bbox": [
+            9,
+            6,
+            26,
+            28
+          ],
+          "visible_size": [
+            17,
+            22
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 197,
+          "inherited_pixels": 181,
+          "added_pixels": 16,
+          "added_points": [
+            [
+              9,
+              11
+            ],
+            [
+              9,
+              15
+            ],
+            [
+              9,
+              16
+            ],
+            [
+              10,
+              15
+            ],
+            [
+              19,
+              9
+            ],
+            [
+              21,
+              13
+            ],
+            [
+              22,
+              12
+            ],
+            [
+              22,
+              13
+            ],
+            [
+              22,
+              22
+            ],
+            [
+              22,
+              23
+            ],
+            [
+              23,
+              23
+            ],
+            [
+              24,
+              21
+            ],
+            [
+              24,
+              22
+            ],
+            [
+              24,
+              23
+            ],
+            [
+              25,
+              22
+            ],
+            [
+              25,
+              23
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 4,
+          "bbox": [
+            8,
+            10,
+            28,
+            28
+          ],
+          "visible_size": [
+            20,
+            18
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 187,
+          "inherited_pixels": 177,
+          "added_pixels": 10,
+          "added_points": [
+            [
+              17,
+              10
+            ],
+            [
+              23,
+              22
+            ],
+            [
+              23,
+              23
+            ],
+            [
+              24,
+              23
+            ],
+            [
+              25,
+              21
+            ],
+            [
+              25,
+              22
+            ],
+            [
+              25,
+              23
+            ],
+            [
+              26,
+              21
+            ],
+            [
+              26,
+              22
+            ],
+            [
+              27,
+              22
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 5,
+          "bbox": [
+            8,
+            12,
+            31,
+            28
+          ],
+          "visible_size": [
+            23,
+            16
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 176,
+          "inherited_pixels": 170,
+          "added_pixels": 6,
+          "added_points": [
+            [
+              26,
+              21
+            ],
+            [
+              27,
+              20
+            ],
+            [
+              27,
+              21
+            ],
+            [
+              28,
+              20
+            ],
+            [
+              29,
+              20
+            ],
+            [
+              30,
+              20
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 6,
+          "bbox": [
+            8,
+            13,
+            29,
+            28
+          ],
+          "visible_size": [
+            21,
+            15
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 174,
+          "inherited_pixels": 170,
+          "added_pixels": 4,
+          "added_points": [
+            [
+              26,
+              18
+            ],
+            [
+              27,
+              17
+            ],
+            [
+              27,
+              18
+            ],
+            [
+              28,
+              17
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        },
+        {
+          "frame": 7,
+          "bbox": [
+            9,
+            14,
+            27,
+            28
+          ],
+          "visible_size": [
+            18,
+            14
+          ],
+          "baseline_y": 28,
+          "registered_center_x": 16,
+          "visible_pixels": 172,
+          "inherited_pixels": 170,
+          "added_pixels": 2,
+          "added_points": [
+            [
+              9,
+              24
+            ],
+            [
+              9,
+              25
+            ]
+          ],
+          "connected_components_8": 1,
+          "binary_alpha": true,
+          "transparent_rgb_zero": true,
+          "red_orange_remaining": 0,
+          "nonaccent_runtime_pixels_preserved_exactly": true
+        }
+      ],
+      "imagegen_pixels_imported": false
+    }
+  },
+  "comparison": {
+    "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_animation_comparison.png",
+    "sha256": "c6da1446b179f60645d1e8e0a4d6e8dbda0bb47502919e376ac3e137fb899dbd",
+    "size": [
+      1320,
+      932
+    ]
+  },
+  "prompt_manifest": {
+    "path": "dev_assets/source_images/combat_robot_drone_operator_elite/combat_robot_drone_operator_elite_animation_prompt_manifest.json",
+    "sha256": "94cbec8fab1f1338719645586120ae113e0f24ac7692e0045c7f0a3dcf9f488a"
+  },
+  "stability_report": {
+    "path": "dev_assets/generated_previews/combat_robot_drone_operator_elite_animation_stability_report.json",
+    "sha256": "461bfd390210c632a1e27febcf7ef8b5dca920cddc1e6b312e9e1b0bce19035d"
+  },
+  "script": {
+    "path": "dev_tools/build_combat_robot_drone_operator_elite_animation_previews.py",
+    "sha256": "96caf2358440066ef97db3217ca4716094a66664221b72a89da53dc307518cc5"
+  },
+  "two_builds_equal": true,
+  "fixed_gif_palette_and_exact_decode": true,
+  "imagegen_pixels_imported": false,
+  "approved_selection": null,
+  "runtime_written": false
+}

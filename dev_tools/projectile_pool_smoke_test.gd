@@ -14,6 +14,9 @@ const ELITE_GUNNER_BULLET_SCENE := preload(
 const SUICIDE_DRONE_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
+const ELITE_SUICIDE_DRONE_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn"
+)
 const SMG_BULLET_SCENE := preload("res://scene/enemy/capoo/capoo_smg_bullet.tscn")
 const RPG_ROCKET_SCENE := preload("res://scene/enemy/capoo/capoo_rpg_rocket.tscn")
 const MAGE_FIREBALL_SCENE := preload("res://scene/enemy/capoo/capoo_mage_fireball.tscn")
@@ -68,6 +71,7 @@ func _run() -> void:
 	pool.register_scene(GUNNER_BULLET_SCENE, 1, 2)
 	pool.register_scene(ELITE_GUNNER_BULLET_SCENE, 1, 2)
 	pool.register_scene(SUICIDE_DRONE_SCENE, 1, 2)
+	pool.register_scene(ELITE_SUICIDE_DRONE_SCENE, 1, 2)
 	pool.register_scene(SMG_BULLET_SCENE, 1, 2)
 	pool.register_scene(RPG_ROCKET_SCENE, 1, 2)
 	pool.register_scene(MAGE_FIREBALL_SCENE, 1, 2)
@@ -93,7 +97,16 @@ func _run() -> void:
 	await _verify_tango_laser_bullet_reuse()
 	await _verify_real_collision_callback_release()
 	await _verify_capoo_bullet_reuse()
-	await _verify_suicide_drone_reuse()
+	await _verify_suicide_drone_reuse(
+		SUICIDE_DRONE_SCENE,
+		&"combat_robot_suicide_drone",
+		"ordinary"
+	)
+	await _verify_suicide_drone_reuse(
+		ELITE_SUICIDE_DRONE_SCENE,
+		&"combat_robot_suicide_drone_elite",
+		"elite"
+	)
 	await _verify_linglan_skill1_reuse()
 	await _verify_extended_projectile_reuse()
 	await _verify_strict_hit_effect_budget()
@@ -624,12 +637,16 @@ func _verify_capoo_bullet_reuse() -> void:
 	await _wait_for_quarantine()
 
 
-func _verify_suicide_drone_reuse() -> void:
+func _verify_suicide_drone_reuse(
+	drone_scene: PackedScene,
+	expected_source_type: StringName,
+	variant_label: String
+) -> void:
 	var motion_system := CombatRobotDroneMotionSystem.new()
 	motion_system.name = "CombatRobotDroneMotionSystemFixture"
 	fixture.add_child(motion_system)
-	var drone := pool.acquire(SUICIDE_DRONE_SCENE) as CombatRobotSuicideDrone
-	_expect(drone != null, "Suicide-drone pool must provide its prewarmed lease.")
+	var drone := pool.acquire(drone_scene) as CombatRobotSuicideDrone
+	_expect(drone != null, "%s suicide-drone pool must provide its prewarmed lease." % variant_label)
 	if drone == null:
 		motion_system.queue_free()
 		return
@@ -652,10 +669,10 @@ func _verify_suicide_drone_reuse() -> void:
 		"Pool release must unregister the suicide drone from the shared batch system."
 	)
 	await _wait_for_quarantine()
-	var reused := pool.acquire(SUICIDE_DRONE_SCENE) as CombatRobotSuicideDrone
+	var reused := pool.acquire(drone_scene) as CombatRobotSuicideDrone
 	_expect(
 		reused != null and reused.get_instance_id() == first_instance_id,
-		"Suicide-drone pool must reuse its retained instance."
+		"%s suicide-drone pool must reuse its retained instance." % variant_label
 	)
 	if reused != null:
 		_expect(
@@ -663,10 +680,12 @@ func _verify_suicide_drone_reuse() -> void:
 			and not reused.deployment_started
 			and not reused.flight_started
 			and not reused.explosion_started
-			and reused.source_type == CombatRobotSuicideDrone.SOURCE_TYPE
+			and reused.authored_source_type == expected_source_type
+			and reused.source_type == expected_source_type
 			and reused.projectile_id == 0
 			and reused.owner_peer_id == 0,
-			"Reused suicide drone must clear all phase and network identity fields."
+			"Reused %s suicide drone must restore its authored source and clear all phase/network fields."
+			% variant_label
 		)
 		_expect(
 			is_same(reused.explosion_query, retained_query),

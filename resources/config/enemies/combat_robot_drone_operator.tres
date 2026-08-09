@@ -15,6 +15,7 @@ attack_cooldown = 3.0
 visible_target_check_limit = 4
 blocked_retry_interval = 0.35
 drone_speed = 60.0
+projectile_type = &"combat_robot_suicide_drone"
 drone_scene = ExtResource("4_drone")
 display_name = "爆炸无人机操作员"
 category_tags = PackedStringArray("mechanical_life")

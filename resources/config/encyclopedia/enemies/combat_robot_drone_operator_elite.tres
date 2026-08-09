@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_drone_operator_elite.tres" id="2_config"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_drone_operator_elite.tres" id="3_frames"]
+
+[resource]
+script = ExtResource("1_script")
+entry_id = &"combat_robot_drone_operator_elite"
+enemy_config = ExtResource("2_config")
+family_id = &"mechanical_life"
+family_label = "机械生命"
+rank = 1
+sort_order = 545
+visible_in_codex = true
+description = "以紫能核心与强化遥控终端驱动的精英爆炸无人机操作员。它会锁死可见目标所在位置，以90的速度投送不可阻挡的紫能无人机；标记出现后落点不会改变，及时离开标记范围仍可躲避爆炸。"
+traits = PackedStringArray("精英", "紫能投送", "高速无人机")
+preview_frames = ExtResource("3_frames")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

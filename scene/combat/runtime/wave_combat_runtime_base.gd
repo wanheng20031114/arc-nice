@@ -12,6 +12,9 @@ const CAPOO_AK47_BULLET_POOL_SCENE := preload(
 const COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE := preload(
 	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone.tscn"
 )
+const COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE := preload(
+	"res://scene/enemy/mechanical_life/combat_robot_suicide_drone_elite.tscn"
+)
 const CAPOO_SMG_BULLET_POOL_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_smg_bullet.tscn"
 )
@@ -230,6 +233,7 @@ func _ready() -> void:
 	CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(session_object_pool)
 	CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(session_object_pool)
 	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_POOL_SCENE, 0, 384)
+	session_object_pool.register_scene(COMBAT_ROBOT_SUICIDE_DRONE_ELITE_POOL_SCENE, 0, 384)
 	session_object_pool.register_scene(CAPOO_SMG_BULLET_POOL_SCENE, 48, 512)
 	session_object_pool.register_scene(CAPOO_RPG_ROCKET_POOL_SCENE, 12, 96)
 	session_object_pool.register_scene(CAPOO_MAGE_FIREBALL_POOL_SCENE, 12, 96)
