@@ -282,7 +282,7 @@ def main() -> None:
     ws["D3"] = "工作表"; ws["E3"] = "内容"
     sheet_notes = [
         ("收藏品总表", "一行一件，适合筛选、策划审阅和横向比较。"), ("全参数矩阵", "所有配置字段的有效值，包含未显式写出的默认值。"),
-        ("图标图鉴", "124件图标、名称、ID、品质/分类的可视化总览。"), ("审计与资源", "配置/图标/导入文件状态、像素包围盒、文件大小、SHA-256。"),
+        ("图标图鉴", "125件图标、名称、ID、品质/分类的可视化总览。"), ("审计与资源", "配置/图标/导入文件状态、像素包围盒、文件大小、SHA-256。"),
         ("统计分析", "品质/分类、机制类别、叠加规则、角色兼容性统计。"), ("系统与运行时", "获取、去重、叠加、背包、处理函数和联网实现说明。"),
         ("字段字典", "字段中文名、分组、默认值、单位/语义提示。"), ("测试与引用", "逐件的全量运行时覆盖与专项测试引用。"),
         ("文案改写记录", "本次倍率文案自然语言化的前后对照，底层数值未改。"),
@@ -298,14 +298,16 @@ def main() -> None:
     rows = []
     for index, item in enumerate(audits, 1):
         data = item.data; rarity = int(data["collectible_rarity"]); stacks = bool(data.get("collectible_stacks_by_copy", False)); cap = int(data.get("collectible_max_copies", 0))
-        is_event_repeatable = data.get("collectible_effect_id") == "basketball"
+        effect_id = data.get("collectible_effect_id")
+        is_event_repeatable = effect_id == "basketball"
+        is_party_unique = effect_id == "flying_envelope"
         actual_cap = INVENTORY_CAPACITY if is_event_repeatable else 1 if not stacks else min(cap, INVENTORY_CAPACITY) if cap > 0 else INVENTORY_CAPACITY
         categories = audit.primary_affix_categories(data) or (["特殊"] if data.get("collectible_effect_id") == "admin_doll" else [])
         handlers = sorted({RUNTIME_HANDLERS.get(c, "专用逻辑") for c in categories})
         refs = specific_test_refs(item.path.name)
         requires_projectile = bool(data.get("requires_projectile_primary_attack", False))
         requires_ammunition = bool(data.get("requires_ammunition", False))
-        repeat_rule = "事件可重复获得；每次结算发放1份" if is_event_repeatable else "可重复至上限" if stacks else "同效果ID仅一份参与效果"
+        repeat_rule = "全队本局限1份" if is_party_unique else "事件可重复获得；每次结算发放1份" if is_event_repeatable else "可重复至上限" if stacks else "同效果ID仅一份参与效果"
         rows.append([index, "原有" if item.path.name in audit.ORIGINAL_CONFIG_NAMES else "扩展", data["display_name"], audit.RARITY_LABELS[rarity], RARITY_CARD_MARGINAL_PROBABILITIES[rarity], data["collectible_effect_id"], data["description"], item.effect_summary, "；".join(categories), "；".join(handlers), stacks, cap if stacks else 1, actual_cap, repeat_rule, requires_projectile, requires_ammunition, not (requires_projectile or requires_ammunition), True, True, len(explicit_by_name[item.path.name]), json.dumps(dict(item.effect_signature), ensure_ascii=False), data.get("collectible_design_id", ""), data.get("collectible_design_note", ""), "res://" + item.path.relative_to(PROJECT_ROOT).as_posix(), "res://" + item.icon_path.relative_to(PROJECT_ROOT).as_posix(), "；".join(refs) or "无单件预载专项；由全量运行时审计覆盖", "通过" if not item.issues else "；".join(item.issues)])
     write_rows(ws, headers, rows); style_sheet(ws); add_table(ws, "CollectiblesSummary"); autosize(ws, 52)
     ws.column_dimensions["G"].width = 58; ws.column_dimensions["H"].width = 44; ws.column_dimensions["U"].width = 52; ws.column_dimensions["W"].width = 46
@@ -402,7 +404,7 @@ def main() -> None:
         ("全量刷新", "Player._refresh_collectible_stats", "从背包一次性聚合并缓存静态、条件、息壤动态、概率、弹药和防御倍率等效果。"),
         ("联网", "MpGame收藏品RPC/广播路径", "同步有效容量、当前弹数与换弹进度；有效容量不会覆盖角色基础ammo_capacity，避免重复乘算。"),
         ("通用运行时审计", "dev_tools/collectible_runtime_audit_smoke_test.gd", "遍历全部收藏品，验证字段、聚合属性、触发、命中、击杀、周期和技能效果。"),
-        ("静态审计", "dev_tools/audit_collectibles.py", "检查124件数量、品质/分类、字段逻辑、唯一性、效果或事件用途、图标尺寸/像素/导入文件和设计元数据。"),
+        ("静态审计", "dev_tools/audit_collectibles.py", "检查125件数量、品质/分类、字段逻辑、唯一性、效果或事件用途、图标尺寸/像素/导入文件和设计元数据。"),
     ]
     write_rows(ws, ["主题", "代码入口/常量", "详细说明"], rules); style_sheet(ws); add_table(ws, "RuntimeRules"); autosize(ws, 80)
     ws.column_dimensions["A"].width = 22; ws.column_dimensions["B"].width = 52; ws.column_dimensions["C"].width = 88

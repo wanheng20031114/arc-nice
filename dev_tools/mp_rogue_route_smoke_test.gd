@@ -2100,6 +2100,10 @@ func _test_incremental_avatar_reconnect(
 		host_route.get_node("EncounterEconomy")
 		as RogueEncounterEconomyCoordinator
 	).export_snapshot([collision_peer_id])
+	authoritative_economy["supply_economy"] = (
+		host_route.get_node("SupplyEconomy")
+		as RogueSupplyEconomyCoordinator
+	).export_snapshot([collision_peer_id])
 	_expect(
 		bool(reconnect_wrapper.call(
 			"_apply_full_snapshot_from_peer",
@@ -2145,6 +2149,9 @@ func _build_first_move_delta(layout: Dictionary, state: Dictionary) -> Dictionar
 		"schema_version": RogueRouteRuntimeState.SCHEMA_VERSION,
 		"layout_hash": str(state.get("layout_hash", "")),
 		"revision": int(state.get("revision", -1)) + 1,
+		"action_points_revision": int(
+			state.get("action_points_revision", -1)
+		),
 		"from_node_id": current_node_id,
 		"to_node_id": target_node_id,
 		"move_cost": 1,

@@ -308,7 +308,7 @@ func _run() -> void:
 	_test_registration_protocol_handshake_source()
 	_expect(
 		NetConstants.PROTOCOL_VERSION == 52,
-		"协议v52必须同步忍者加速、重连激活确认、精英战斗机器人、地下商店RPC、精英枪手弹丸、受击来源wire、消耗品、精英操作员无人机及精英盾兵资源合同，并隔离旧客户端。"
+		"协议v52必须同步忍者加速、重连激活确认、精英战斗机器人、地下商店RPC、精英枪手弹丸、受击来源wire、消耗品、精英操作员无人机、精英盾兵资源合同及物资节点共享光石/行动力状态，并隔离旧客户端。"
 	)
 	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v52 must retain eight ENet channels.")
 	_test_relay_channel_count()

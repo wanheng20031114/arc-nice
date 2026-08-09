@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="PickupConfig" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://resources/texture/collectibles/flying_envelope.png" id="1_icon"]
+[ext_resource type="Script" path="res://resources/config/pickup_config.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+pickup_type = 5
+display_name = "会飞的信封"
+drop_weight = 0.0
+description = "一封不愿安分停留的信，似乎正寻找着某位收件人。"
+can_store_in_inventory = true
+stackable = false
+inventory_locked = false
+icon_texture = ExtResource("1_icon")
+icon_scale = Vector2(1, 1)
+duration = 0.0
+collectible_effect_id = "flying_envelope"
+collectible_rarity = 4
+collectible_design_id = "flying_envelope"
+collectible_design_note = "会飞的信封规则：当前没有战斗效果；仅由肉鸽物资节点发放。系统会在有背包空位的参与玩家中随机选择接收者，全员满包时奖励直接丢弃。副本规则：全队本局最多持有1份；允许放入共享仓库或主动丢弃，地下商店不可出售。"
+metadata/_custom_type_script = "uid://qucrregg4cq0"

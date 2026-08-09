@@ -21,7 +21,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
 	CodexSection.ENEMY: 60,
-	CodexSection.COLLECTIBLE: 124,
+	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 16,
 }
 const COLLECTIBLE_ACCENTS: Array[Color] = [
@@ -506,7 +506,14 @@ func _build_collectible_notes(item: PickupConfig) -> PackedStringArray:
 	if PickupConfig.is_special_collectible_category(item.collectible_rarity):
 		notes.append("当前战斗效果：无")
 		notes.append("获取方式：事件限定")
-		notes.append("持有规则：可重复获得，每份独立占用一个背包或仓库槽位")
+		if (
+			item.collectible_effect_id
+			== PickupConfig.COLLECTIBLE_EFFECT_FLYING_ENVELOPE
+		):
+			notes.append("持有规则：全队本局限一份，可放入背包或共享仓库")
+			notes.append("出售规则：地下商店不回收")
+		else:
+			notes.append("持有规则：可重复获得，每份独立占用一个背包或仓库槽位")
 		return notes
 	if item.collectible_stacks_by_copy:
 		if item.collectible_max_copies > 0:

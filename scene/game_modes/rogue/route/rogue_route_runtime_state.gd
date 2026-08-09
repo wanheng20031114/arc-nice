@@ -9,12 +9,16 @@ class_name RogueRouteRuntimeState
 signal state_changed(snapshot: Dictionary)
 signal move_committed(delta: Dictionary)
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 const INVALID_NODE_ID := -1
+const MAX_ACTION_POINTS := 0x7FFFFFFF
 
 var graph: RogueRouteGraph = null
 var layout_hash := ""
 var state_revision := 0
+## 行动力奖励与移动使用不同 revision。移动 revision 仍严格对应访问次数；
+## 奖励只推进该 revision，避免把“访问一次”与“获得行动力”混为一谈。
+var action_points_revision := 0
 var current_node_id := INVALID_NODE_ID
 var action_points := 0
 var visited_counts := PackedInt32Array()
@@ -26,11 +30,12 @@ func initialize(
 ) -> bool:
 	if new_graph == null or not new_graph.validate_layout().is_empty():
 		return false
-	if initial_action_points < 0:
+	if initial_action_points < 0 or initial_action_points > MAX_ACTION_POINTS:
 		return false
 	graph = new_graph
 	layout_hash = graph.compute_layout_hash()
 	state_revision = 0
+	action_points_revision = 0
 	current_node_id = graph.start_node_id
 	action_points = initial_action_points
 	visited_counts.resize(graph.get_node_count())
@@ -45,6 +50,7 @@ func is_initialized() -> bool:
 		and not layout_hash.is_empty()
 		and graph.is_valid_node_id(current_node_id)
 		and state_revision >= 0
+		and action_points_revision >= 0
 		and action_points >= 0
 		and visited_counts.size() == graph.get_node_count()
 		and visited_counts[current_node_id] > 0
@@ -101,6 +107,7 @@ func try_move(
 		"schema_version": SCHEMA_VERSION,
 		"layout_hash": layout_hash,
 		"revision": state_revision,
+		"action_points_revision": action_points_revision,
 		"from_node_id": from_node_id,
 		"to_node_id": target_node_id,
 		"move_cost": move_cost,
@@ -112,11 +119,27 @@ func try_move(
 	return true
 
 
+## 仅由 Host 的权威内容结算调用。行动力奖励通过 full route snapshot 同步；
+## 它不会伪装成移动 delta，也不会改变位置或访问次数。
+func grant_action_points(amount: int) -> bool:
+	if (
+		not is_initialized()
+		or amount <= 0
+		or action_points > MAX_ACTION_POINTS - amount
+	):
+		return false
+	action_points += amount
+	action_points_revision += 1
+	state_changed.emit(export_state())
+	return true
+
+
 func export_state() -> Dictionary:
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"layout_hash": layout_hash,
 		"revision": state_revision,
+		"action_points_revision": action_points_revision,
 		"current_node_id": current_node_id,
 		"action_points": action_points,
 		"visited_counts": visited_counts.duplicate(),
@@ -128,13 +151,24 @@ func apply_remote_state(snapshot: Dictionary) -> bool:
 		return false
 	if not _has_integer_fields(
 		snapshot,
-		["revision", "current_node_id", "action_points"]
+		[
+			"revision",
+			"action_points_revision",
+			"current_node_id",
+			"action_points",
+		]
 	):
 		return false
 	if not snapshot.has("visited_counts"):
 		return false
 	var incoming_revision := int(snapshot["revision"])
-	if incoming_revision < state_revision:
+	var incoming_action_points_revision := int(
+		snapshot["action_points_revision"]
+	)
+	if (
+		incoming_revision < state_revision
+		or incoming_action_points_revision < action_points_revision
+	):
 		return false
 	var incoming_node_id := int(snapshot["current_node_id"])
 	var incoming_action_points := int(snapshot["action_points"])
@@ -144,6 +178,8 @@ func apply_remote_state(snapshot: Dictionary) -> bool:
 	if (
 		not graph.is_valid_node_id(incoming_node_id)
 		or incoming_action_points < 0
+		or incoming_action_points > MAX_ACTION_POINTS
+		or incoming_action_points_revision < 0
 		or incoming_visited.size() != graph.get_node_count()
 		or not _has_consistent_visit_counts(
 			incoming_visited,
@@ -152,18 +188,27 @@ func apply_remote_state(snapshot: Dictionary) -> bool:
 		)
 	):
 		return false
-	if incoming_revision == state_revision:
+	if (
+		incoming_revision == state_revision
+		and incoming_action_points_revision == action_points_revision
+	):
 		return (
 			incoming_node_id == current_node_id
 			and incoming_action_points == action_points
 			and incoming_visited == visited_counts
 		)
-	if incoming_action_points > action_points:
+	# 未收到新的奖励 revision 时，行动力只能被移动消耗。奖励 revision 前进
+	# 后则接受 Host 全量绝对值；这也覆盖以当前行动力初始化的中途加入水合。
+	if (
+		incoming_action_points_revision == action_points_revision
+		and incoming_action_points > action_points
+	):
 		return false
 	for node_id in range(incoming_visited.size()):
 		if incoming_visited[node_id] < visited_counts[node_id]:
 			return false
 	state_revision = incoming_revision
+	action_points_revision = incoming_action_points_revision
 	current_node_id = incoming_node_id
 	action_points = incoming_action_points
 	visited_counts = incoming_visited
@@ -178,6 +223,7 @@ func apply_remote_move_delta(delta: Dictionary) -> bool:
 		delta,
 		[
 			"revision",
+			"action_points_revision",
 			"from_node_id",
 			"to_node_id",
 			"move_cost",
@@ -187,6 +233,7 @@ func apply_remote_move_delta(delta: Dictionary) -> bool:
 	):
 		return false
 	var incoming_revision := int(delta["revision"])
+	var incoming_action_points_revision := int(delta["action_points_revision"])
 	var from_node_id := int(delta["from_node_id"])
 	var to_node_id := int(delta["to_node_id"])
 	var move_cost := int(delta["move_cost"])
@@ -194,6 +241,7 @@ func apply_remote_move_delta(delta: Dictionary) -> bool:
 	var target_visit_count := int(delta["target_visit_count"])
 	if (
 		incoming_revision != state_revision + 1
+		or incoming_action_points_revision != action_points_revision
 		or from_node_id != current_node_id
 		or move_cost <= 0
 		or remaining_action_points != action_points - move_cost

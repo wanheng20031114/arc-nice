@@ -30,6 +30,9 @@ const BUILDING_ITEM: PickupConfig = preload(
 const UNSUPPORTED_ITEM: PickupConfig = preload(
 	"res://resources/config/pickup_triggered_items/speed_boots.tres"
 )
+const FLYING_ENVELOPE: PickupConfig = preload(
+	"res://resources/config/collectibles/collectible_flying_envelope.tres"
+)
 
 var failures: Array[String] = []
 
@@ -650,6 +653,10 @@ func _test_economy_transactions() -> void:
 		"未进入 typed listing 的消耗品必须禁售。"
 	)
 	_expect(coordinator.get_sell_price(LOCKED_ITEM) == 0, "锁定物品必须禁售。")
+	_expect(
+		coordinator.get_sell_price(FLYING_ENVELOPE) == 0,
+		"会飞的信封是全队唯一事件收藏品，地下商店必须禁售。"
+	)
 	_expect(coordinator.get_sell_price(BUILDING_ITEM) == 0, "建筑物品必须禁售。")
 	_expect(coordinator.get_sell_price(UNSUPPORTED_ITEM) == 0, "未定义类型必须禁售。")
 	for blocked_case in [

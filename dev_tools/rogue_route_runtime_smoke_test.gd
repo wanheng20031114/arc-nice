@@ -153,6 +153,7 @@ func _test_local_movement(graph: RogueRouteGraph, empty_neighbor_id: int) -> voi
 	_expect(
 		runtime.current_node_id == graph.start_node_id
 		and runtime.state_revision == 0
+		and runtime.action_points_revision == 0
 		and runtime.action_points == 3
 		and runtime.visited_counts[graph.start_node_id] == 1,
 		"初始化必须把共享小队放在中心并记录一次访问。"
@@ -213,6 +214,22 @@ func _test_local_movement(graph: RogueRouteGraph, empty_neighbor_id: int) -> voi
 		and not runtime.try_move(graph.start_node_id, 1, 3)
 		and runtime.export_state() == exhausted_snapshot,
 		"行动力耗尽后所有后续移动必须零副作用拒绝。"
+	)
+	_expect(
+		runtime.grant_action_points(2)
+		and runtime.action_points == 2
+		and runtime.action_points_revision == 1
+		and runtime.state_revision == 3
+		and runtime.current_node_id == empty_neighbor_id
+		and runtime.visited_counts[empty_neighbor_id] == 2,
+		"权威奖励必须只增加行动力并推进独立revision，不得伪造路线访问。"
+	)
+	var rewarded_snapshot := runtime.export_state()
+	_expect(
+		not runtime.grant_action_points(0)
+		and not runtime.grant_action_points(-1)
+		and runtime.export_state() == rewarded_snapshot,
+		"非法行动力奖励必须零副作用拒绝。"
 	)
 	_expect(
 		int(initial_snapshot["revision"]) == 0,
@@ -326,6 +343,50 @@ func _test_remote_state_and_delta_boundaries(
 	_expect(
 		not late_client.apply_remote_state(wrong_scalar_type),
 		"运行态快照不得把字符串 revision 宽泛转换为整数。"
+	)
+
+	var reward_host := RogueRouteRuntimeState.new()
+	var reward_client := RogueRouteRuntimeState.new()
+	var stale_reward_client := RogueRouteRuntimeState.new()
+	var reward_deltas: Array[Dictionary] = []
+	reward_host.move_committed.connect(func(delta: Dictionary) -> void:
+		reward_deltas.append(delta)
+	)
+	_expect(
+		reward_host.initialize(graph, 2)
+		and reward_client.initialize(graph, 2)
+		and stale_reward_client.initialize(graph, 2)
+		and reward_host.grant_action_points(3),
+		"奖励同步夹具必须建立独立行动力revision。"
+	)
+	var reward_snapshot := reward_host.export_state()
+	_expect(
+		reward_client.apply_remote_state(reward_snapshot)
+		and reward_client.action_points == 5
+		and reward_client.action_points_revision == 1
+		and reward_client.state_revision == 0,
+		"Client必须通过全量快照接受Host权威增加的行动力。"
+	)
+	var hydrated_reward_client := RogueRouteRuntimeState.new()
+	_expect(
+		hydrated_reward_client.initialize(
+			graph,
+			int(reward_snapshot["action_points"])
+		)
+		and hydrated_reward_client.apply_remote_state(reward_snapshot)
+		and hydrated_reward_client.action_points_revision == 1,
+		"以快照绝对行动力创建的中途加入Client也必须能水合奖励revision。"
+	)
+	_expect(
+		reward_host.try_move(empty_neighbor_id, 1, 0)
+		and reward_deltas.size() == 1
+		and reward_client.apply_remote_move_delta(reward_deltas[0])
+		and reward_client.export_state() == reward_host.export_state(),
+		"奖励快照后的移动delta必须携带相同AP revision并继续只做精确扣除。"
+	)
+	_expect(
+		not stale_reward_client.apply_remote_move_delta(reward_deltas[0]),
+		"未收到奖励快照的Client必须拒绝跨AP revision的移动delta。"
 	)
 
 

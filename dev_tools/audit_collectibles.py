@@ -140,7 +140,7 @@ GAMEPLAY_EFFECT_FIELDS = tuple(
     for field in FIELD_DEFAULTS.keys()
     if field not in STACKING_METADATA_FIELDS and field not in DESIGN_METADATA_FIELDS
 )
-SPECIAL_EFFECT_IDS = {"admin_doll", "basketball"}
+SPECIAL_EFFECT_IDS = {"admin_doll", "basketball", "flying_envelope"}
 VALID_PERIODIC_EFFECTS = {"thunder", "frost", "heal", "archer", "sakura_rocket"}
 VALID_SKILL_EFFECTS = {"moon_shield", "swift"}
 VALID_CONDITIONAL_EFFECTS = {"health_below", "health_above", "xirang_at_least", "xirang_below", "skill_unlocked", "skill_locked"}
@@ -243,8 +243,8 @@ DESIGN_PROFILE_FIELDS = (
     "defense_xirang_step",
     "defense_bonus_per_xirang_step",
 )
-NEW_COLLECTIBLE_COUNT = 100
-EXPECTED_TOTAL_COUNT = 124
+NEW_COLLECTIBLE_COUNT = 101
+EXPECTED_TOTAL_COUNT = 125
 STATIC_STAT_FIELDS = (
     "collectible_attack_bonus",
     "collectible_max_health_bonus",
@@ -440,6 +440,8 @@ def summarize_effect(data: dict[str, Any]) -> str:
         return "庄方宜后续技能升级免费"
     if data.get("collectible_effect_id") == "basketball":
         return "事件限定：后续特殊节点道具"
+    if data.get("collectible_effect_id") == "flying_envelope":
+        return "事件限定：物资节点全队唯一奖励"
 
     parts: list[str] = []
     labels = [
@@ -512,7 +514,7 @@ def _has_non_default(data: dict[str, Any], fields: tuple[str, ...]) -> bool:
 
 
 def primary_affix_categories(data: dict[str, Any]) -> list[str]:
-    if data.get("collectible_effect_id") == "basketball":
+    if data.get("collectible_effect_id") in {"basketball", "flying_envelope"}:
         return ["特殊"]
     categories: list[str] = []
     if _has_non_default(data, STATIC_STAT_FIELDS):
@@ -939,6 +941,8 @@ def audit_collectibles() -> list[CollectibleAudit]:
 
     signature_map: dict[tuple[tuple[str, Any], ...], list[CollectibleAudit]] = defaultdict(list)
     for audit in new_audits:
+        if str(audit.data.get("collectible_effect_id", "")) in SPECIAL_EFFECT_IDS:
+            continue
         signature_map[audit.effect_signature].append(audit)
     for duplicates in signature_map.values():
         if len(duplicates) <= 1:

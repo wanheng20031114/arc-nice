@@ -1,0 +1,176 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/supply/rogue_supply_collectible_card.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.025, 0.102, 0.125, 0.97)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.68, 0.76, 0.85)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.42)
+shadow_size = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_normal"]
+bg_color = Color(0, 0, 0, 0)
+draw_center = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hover"]
+bg_color = Color(0.26, 0.7, 0.82, 0.1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.93, 0.98, 0.96)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pressed"]
+bg_color = Color(0.93, 0.76, 0.32, 0.12)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.98, 0.79, 0.34, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disabled"]
+bg_color = Color(0.01, 0.03, 0.04, 0.46)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_icon_frame"]
+bg_color = Color(0.01, 0.045, 0.06, 0.82)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.82, 0.88, 0.66)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="FontVariation" id="FontVariation_title"]
+base_font = ExtResource("2_font")
+variation_embolden = 0.45
+spacing_top = 2
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("2_font")
+spacing_top = 1
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = SubResource("FontVariation_title")
+font_size = 20
+font_color = Color(0.94, 0.98, 1, 1)
+outline_size = 1
+outline_color = Color(0.005, 0.025, 0.035, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_body"]
+font = SubResource("FontVariation_body")
+font_size = 14
+font_color = Color(0.82, 0.9, 0.92, 1)
+
+[node name="RogueSupplyCollectibleCard" type="PanelContainer"]
+texture_filter = 1
+custom_minimum_size = Vector2(276, 252)
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+script = ExtResource("1_script")
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_disabled")
+
+[node name="Content" type="Control" parent="."]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Margin" type="MarginContainer" parent="Content"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="Rows" type="VBoxContainer" parent="Content/Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 5
+
+[node name="IconCenter" type="CenterContainer" parent="Content/Margin/Rows"]
+custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="IconFrame" type="PanelContainer" parent="Content/Margin/Rows/IconCenter"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_icon_frame")
+
+[node name="Icon" type="TextureRect" parent="Content/Margin/Rows/IconCenter"]
+texture_filter = 1
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Title" type="Label" parent="Content/Margin/Rows"]
+texture_filter = 2
+layout_mode = 2
+text = "收藏品"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Rarity" type="Label" parent="Content/Margin/Rows"]
+texture_filter = 2
+layout_mode = 2
+text = "普通"
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.94, 0.89, 0.75, 1)
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="Content/Margin/Rows"]
+texture_filter = 2
+custom_minimum_size = Vector2(0, 94)
+layout_mode = 2
+size_flags_vertical = 3
+text = "收藏品说明"
+label_settings = SubResource("LabelSettings_body")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2

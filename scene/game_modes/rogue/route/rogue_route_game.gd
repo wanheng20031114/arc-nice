@@ -74,6 +74,8 @@ const BRIEFING_SCHEMA_VERSION := 1
 const NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT := preload(
 	"res://scene/game_modes/rogue/route/rogue_normal_combat_briefing_adapter.gd"
 )
+const SUPPLY_COLLECTIBLE_CHOICE_WIRE_PREFIX := "supply_collectible_choice:"
+const SUPPLY_INVENTORY_DISCARD_WIRE_PREFIX := "supply_inventory_discard|"
 const FLOOR_DEFINITION_SCRIPT := preload(
 	"res://resources/config/rogue_route/rogue_route_floor_definition.gd"
 )
@@ -126,6 +128,9 @@ enum BriefingPhase {
 	$EncounterEconomy
 )
 @onready var encounter_session: RogueEncounterSession = $EncounterSession
+@onready var supply_economy: RogueSupplyEconomyCoordinator = $SupplyEconomy
+@onready var supply_session: RogueSupplySession = $SupplySession
+@onready var supply_overlay: RogueSupplyOverlay = $SupplyOverlay
 @onready var underground_shop_controller: RogueUndergroundShopController = (
 	$UndergroundShopController
 )
@@ -182,6 +187,7 @@ var _runtime_activated := false
 var _encounter_presented_active := false
 var _encounter_presentation_serial := 0
 var _local_result_hold_completed_occurrence_key := ""
+var _last_supply_ap_broadcast_occurrence_key := ""
 var _normal_combat_active := false
 var _normal_combat_node_id := INVALID_NODE_ID
 var _normal_combat_content_seed := 0
@@ -221,6 +227,15 @@ func _ready() -> void:
 	top_bar.set_floor_title(floor_definition.display_name)
 	_connect_runtime_activation_signal()
 	_create_encounter_runtime()
+	_create_supply_runtime()
+	if not player_profile_panel.closed.is_connected(_on_player_profile_closed):
+		player_profile_panel.closed.connect(_on_player_profile_closed)
+	if not player_profile_panel.multiplayer_inventory_item_discard_requested.is_connected(
+		_on_supply_profile_inventory_discard_requested
+	):
+		player_profile_panel.multiplayer_inventory_item_discard_requested.connect(
+			_on_supply_profile_inventory_discard_requested
+		)
 	route_board.show_waiting_for_host()
 	if not route_board.entry_reveal_finished.is_connected(
 		_on_route_entry_reveal_finished
@@ -298,6 +313,8 @@ func _report_floor_definition_error(message: String) -> void:
 func _process(delta: float) -> void:
 	if _authority_enabled and encounter_session != null:
 		encounter_session.tick(maxf(delta, 0.0))
+	if _authority_enabled and supply_session != null:
+		supply_session.tick(maxf(delta, 0.0))
 
 
 func _physics_process(_delta: float) -> void:
@@ -368,6 +385,7 @@ func start_authoritative_session(
 	_reset_briefing_runtime(true)
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(true)
+	_reset_supply_runtime(true)
 	_reset_underground_shop_runtime(true)
 
 	_set_route_reveal_input_locked(false)
@@ -404,6 +422,7 @@ func start_client_waiting() -> void:
 	_clear_pending_move(true)
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(false)
+	_reset_supply_runtime(false)
 	_reset_underground_shop_runtime(false)
 	_disconnect_runtime_state()
 	_route_graph = null
@@ -498,6 +517,30 @@ func apply_full_snapshot(
 				!= str(current_encounter_snapshot.get("occurrence_key", ""))
 			)
 		)
+	var incoming_supply_state := encounter_snapshot.get(
+		"supply_state",
+		{}
+	) as Dictionary
+	if supply_session != null and not incoming_supply_state.is_empty():
+		var current_supply_state := supply_session.export_state()
+		var incoming_supply_revision := int(
+			incoming_supply_state.get("revision", -1)
+		)
+		var current_supply_revision := int(
+			current_supply_state.get("revision", -1)
+		)
+		encounter_rewound = encounter_rewound or (
+			incoming_supply_revision < current_supply_revision
+			or (
+				incoming_supply_revision == current_supply_revision
+				and not str(current_supply_state.get(
+					"occurrence_key",
+					""
+				)).is_empty()
+				and str(incoming_supply_state.get("occurrence_key", ""))
+				!= str(current_supply_state.get("occurrence_key", ""))
+			)
+		)
 	var presentation_rewound := (
 		layout_changed or route_rewound or encounter_rewound
 	)
@@ -518,6 +561,7 @@ func apply_full_snapshot(
 		_reset_briefing_runtime(true)
 		_reset_normal_combat_stage(true)
 		_reset_encounter_runtime(false)
+		_reset_supply_runtime(false)
 		_reset_underground_shop_runtime(false)
 
 	_set_route_reveal_input_locked(false)
@@ -578,10 +622,16 @@ func _is_full_snapshot_rewound(
 		!= imported_graph.compute_layout_hash()
 	):
 		return false
-	if imported_state.state_revision < _runtime_state.state_revision:
+	if (
+		imported_state.state_revision < _runtime_state.state_revision
+		or imported_state.action_points_revision
+		< _runtime_state.action_points_revision
+	):
 		return true
 	return (
 		imported_state.state_revision == _runtime_state.state_revision
+		and imported_state.action_points_revision
+		== _runtime_state.action_points_revision
 		and imported_state.export_state() != _runtime_state.export_state()
 	)
 
@@ -781,20 +831,42 @@ func export_encounter_snapshot() -> Dictionary:
 	# 线路协议会把经济账本作为独立字段发送。保留 Session 内部完整快照，
 	# 但在线路视图中只留下空占位，避免每次倒计时广播重复携带仓库与背包。
 	snapshot["economy_snapshot"] = {}
+	if supply_session != null:
+		var supply_state := supply_session.export_state().duplicate(true)
+		supply_state["economy_snapshot"] = {}
+		snapshot["supply_state"] = supply_state
 	return snapshot
 
 
 func export_encounter_economy_snapshot() -> Dictionary:
 	if encounter_economy == null:
 		return {}
+	var encounter_peer_ids := _get_active_encounter_peer_ids()
 	if encounter_session != null:
 		var session_snapshot := encounter_session.export_state()
-		var embedded := session_snapshot.get("economy_snapshot", {}) as Dictionary
-		if not embedded.is_empty():
-			return embedded.duplicate(true)
-	return encounter_economy.export_snapshot(
-		_get_active_encounter_peer_ids()
+		var session_peer_ids := session_snapshot.get(
+			"participant_peer_ids",
+			[]
+		) as Array
+		if not session_peer_ids.is_empty():
+			encounter_peer_ids.clear()
+			for raw_peer_id in session_peer_ids:
+				encounter_peer_ids.append(int(raw_peer_id))
+	var snapshot := encounter_economy.export_snapshot(
+		encounter_peer_ids
 	).duplicate(true)
+	if supply_economy != null:
+		var supply_peer_ids := (
+			supply_session.get_economy_peer_ids()
+			if supply_session != null
+			else []
+		)
+		if supply_peer_ids.is_empty():
+			supply_peer_ids = _get_active_encounter_peer_ids()
+		snapshot["supply_economy"] = supply_economy.export_snapshot(
+			supply_peer_ids
+		)
+	return snapshot
 
 
 func apply_encounter_snapshot(
@@ -803,18 +875,43 @@ func apply_encounter_snapshot(
 ) -> bool:
 	if encounter_session == null or encounter_snapshot.is_empty():
 		return false
+	var supply_state := encounter_snapshot.get("supply_state", {}) as Dictionary
+	var supply_economy_snapshot := economy_snapshot.get(
+		"supply_economy",
+		{}
+	) as Dictionary
+	if (
+		supply_session == null
+		or supply_state.is_empty()
+		or supply_economy_snapshot.is_empty()
+	):
+		return false
+	var atomic_supply_state := supply_state.duplicate(true)
+	atomic_supply_state["economy_snapshot"] = supply_economy_snapshot.duplicate(true)
 	var atomic_snapshot := encounter_snapshot.duplicate(true)
+	atomic_snapshot.erase("supply_state")
+	var base_economy_snapshot := economy_snapshot.duplicate(true)
+	base_economy_snapshot.erase("supply_economy")
 	var embedded := atomic_snapshot.get("economy_snapshot", {}) as Dictionary
 	if (
 		not embedded.is_empty()
-		and not economy_snapshot.is_empty()
-		and embedded != economy_snapshot
+		and not base_economy_snapshot.is_empty()
+		and embedded != base_economy_snapshot
 	):
 		return false
 	if embedded.is_empty():
-		if economy_snapshot.is_empty():
+		if base_economy_snapshot.is_empty():
 			return false
-		atomic_snapshot["economy_snapshot"] = economy_snapshot.duplicate(true)
+		atomic_snapshot["economy_snapshot"] = base_economy_snapshot
+	# 两个 Session 共享同一个 RunState。必须在任一账本落地前同时完成
+	# schema/revision/内容预检，避免一边成功、一边拒绝造成半应用快照。
+	if (
+		not supply_session.validate_remote_state(atomic_supply_state)
+		or not encounter_session.validate_remote_state(atomic_snapshot)
+	):
+		return false
+	if not supply_session.apply_remote_state(atomic_supply_state):
+		return false
 	# Session 会先让 Economy 校验并提交账本，成功后才写入自身阶段字段；
 	# 任一经济字段无效时，遭遇 revision/phase 也保持原值。
 	return encounter_session.apply_remote_state(atomic_snapshot)
@@ -949,6 +1046,10 @@ func is_encounter_active() -> bool:
 			encounter_session != null
 			and encounter_session.is_active()
 		)
+		or (
+			supply_session != null
+			and supply_session.is_active()
+		)
 	)
 
 
@@ -985,6 +1086,7 @@ func apply_normal_combat_started(
 			encounter_session != null
 			and encounter_session.is_active()
 		)
+		or (supply_session != null and supply_session.is_active())
 	):
 		return false
 	_begin_normal_combat_stage(node_id, content_seed, occurrence_key)
@@ -1210,10 +1312,21 @@ func host_submit_encounter_intro_ack(
 	occurrence_key: String,
 	expected_revision: int
 ) -> bool:
-	return (
+	var accepted := (
 		_authority_enabled
 		and encounter_session != null
 		and encounter_session.submit_intro_ack(
+			peer_id,
+			occurrence_key,
+			expected_revision
+		)
+	)
+	if accepted:
+		return true
+	return (
+		_authority_enabled
+		and supply_session != null
+		and supply_session.submit_intro_ack(
 			peer_id,
 			occurrence_key,
 			expected_revision
@@ -1227,10 +1340,49 @@ func host_submit_encounter_vote(
 	expected_revision: int,
 	option_id: StringName
 ) -> bool:
-	return (
+	var accepted := (
 		_authority_enabled
 		and encounter_session != null
 		and encounter_session.submit_vote(
+			peer_id,
+			occurrence_key,
+			expected_revision,
+			option_id
+		)
+	)
+	if accepted:
+		return true
+	var wire_option_id := String(option_id)
+	if wire_option_id.begins_with(SUPPLY_INVENTORY_DISCARD_WIRE_PREFIX):
+		var parts := wire_option_id.split("|", false)
+		if (
+			parts.size() == 4
+			and parts[1].is_valid_int()
+			and parts[2].is_valid_int()
+		):
+			return host_submit_supply_inventory_discard(
+				peer_id,
+				occurrence_key,
+				expected_revision,
+				int(parts[1]),
+				int(parts[2]),
+				parts[3]
+			)
+	if wire_option_id.begins_with(SUPPLY_COLLECTIBLE_CHOICE_WIRE_PREFIX):
+		var raw_index := wire_option_id.trim_prefix(
+			SUPPLY_COLLECTIBLE_CHOICE_WIRE_PREFIX
+		)
+		if raw_index.is_valid_int():
+			return host_submit_supply_collectible_choice(
+				peer_id,
+				occurrence_key,
+				expected_revision,
+				int(raw_index)
+			)
+	return (
+		_authority_enabled
+		and supply_session != null
+		and supply_session.submit_vote(
 			peer_id,
 			occurrence_key,
 			expected_revision,
@@ -1244,7 +1396,7 @@ func host_submit_encounter_result_ack(
 	occurrence_key: String,
 	result_sequence: int
 ) -> bool:
-	return (
+	var accepted := (
 		_authority_enabled
 		and encounter_session != null
 		and encounter_session.submit_result_ack(
@@ -1253,21 +1405,112 @@ func host_submit_encounter_result_ack(
 			result_sequence
 		)
 	)
+	if accepted:
+		return true
+	return (
+		_authority_enabled
+		and supply_session != null
+		and supply_session.submit_completion(
+			peer_id,
+			occurrence_key,
+			result_sequence
+		)
+	)
+
+
+func host_submit_supply_collectible_choice(
+	peer_id: int,
+	occurrence_key: String,
+	expected_revision: int,
+	offer_index: int
+) -> bool:
+	return (
+		_authority_enabled
+		and supply_session != null
+		and supply_session.submit_collectible_choice(
+			peer_id,
+			occurrence_key,
+			expected_revision,
+			offer_index
+		)
+	)
+
+
+func host_submit_supply_inventory_discard(
+	peer_id: int,
+	occurrence_key: String,
+	expected_supply_revision: int,
+	slot_index: int,
+	expected_inventory_revision: int,
+	expected_config_hash: String
+) -> bool:
+	if (
+		not _authority_enabled
+		or supply_session == null
+		or not supply_session.has_pending_collectible_for_peer(peer_id)
+		or supply_session.get_pending_collectible_occurrence_for_peer(peer_id)
+		!= occurrence_key
+		or supply_session.get_revision() != expected_supply_revision
+		or _run_state == null
+		or expected_config_hash.is_empty()
+	):
+		return false
+	var current_inventory_revision := (
+		_run_state.get_inventory_revision()
+		if peer_id == 0
+		else _run_state.get_inventory_revision_for_peer(peer_id)
+	)
+	if current_inventory_revision != expected_inventory_revision:
+		return false
+	var item := (
+		_run_state.get_item(slot_index)
+		if peer_id == 0
+		else _run_state.get_item_for_peer(peer_id, slot_index)
+	)
+	if (
+		item == null
+		or item.inventory_locked
+		or item.resource_path.sha256_text() != expected_config_hash
+	):
+		return false
+	var discarded := (
+		_run_state.discard_item(slot_index)
+		if peer_id == 0
+		else _run_state.discard_item_for_peer(peer_id, slot_index)
+	)
+	if discarded:
+		_emit_host_encounter_snapshot()
+	return discarded
 
 
 func host_remove_encounter_peer(peer_id: int) -> void:
 	if _authority_enabled and encounter_session != null:
 		encounter_session.remove_peer(peer_id)
+	if _authority_enabled and supply_session != null:
+		supply_session.remove_peer(peer_id)
 
 
 func host_migrate_encounter_peer(old_peer_id: int, new_peer_id: int) -> void:
 	if _authority_enabled and encounter_session != null:
 		encounter_session.migrate_peer(old_peer_id, new_peer_id)
+	if _authority_enabled and supply_session != null:
+		var session_migrated := supply_session.migrate_peer(
+			old_peer_id,
+			new_peer_id
+		)
+		if not session_migrated and supply_economy != null:
+			if supply_economy.migrate_peer_references(
+				old_peer_id,
+				new_peer_id
+			):
+				_emit_host_encounter_snapshot()
 
 
 func host_add_encounter_spectator(peer_id: int) -> void:
 	if _authority_enabled and encounter_session != null:
 		encounter_session.add_spectator(peer_id)
+	if _authority_enabled and supply_session != null:
+		supply_session.add_spectator(peer_id)
 
 
 func _initialize_default_session() -> void:
@@ -1521,6 +1764,66 @@ func _reset_encounter_runtime(authority: bool) -> void:
 	if authority:
 		encounter_session.reset_authority(
 			encounter_economy,
+			_get_active_encounter_peer_ids()
+		)
+
+
+func _create_supply_runtime() -> void:
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	supply_economy.reset_runtime(
+		run_state,
+		_runtime_state,
+		_player_character_ids
+	)
+	supply_session.reset_remote(supply_economy)
+	if not supply_session.state_changed.is_connected(_on_supply_state_changed):
+		supply_session.state_changed.connect(_on_supply_state_changed)
+	if not supply_session.economy_changed.is_connected(
+		_on_supply_economy_changed
+	):
+		supply_session.economy_changed.connect(_on_supply_economy_changed)
+	if supply_overlay != null:
+		if not supply_overlay.intro_ack_requested.is_connected(
+			_on_supply_intro_ack_requested
+		):
+			supply_overlay.intro_ack_requested.connect(
+				_on_supply_intro_ack_requested
+			)
+		if not supply_overlay.vote_requested.is_connected(
+			_on_supply_vote_requested
+		):
+			supply_overlay.vote_requested.connect(_on_supply_vote_requested)
+		if not supply_overlay.collectible_choice_requested.is_connected(
+			_on_supply_collectible_choice_requested
+		):
+			supply_overlay.collectible_choice_requested.connect(
+				_on_supply_collectible_choice_requested
+			)
+		if not supply_overlay.completed_requested.is_connected(
+			_on_supply_completed_requested
+		):
+			supply_overlay.completed_requested.connect(
+				_on_supply_completed_requested
+			)
+		if not supply_overlay.inventory_requested.is_connected(
+			_on_supply_inventory_requested
+		):
+			supply_overlay.inventory_requested.connect(
+				_on_supply_inventory_requested
+			)
+	_configure_supply_overlay_context()
+
+
+func _reset_supply_runtime(authority: bool) -> void:
+	_last_supply_ap_broadcast_occurrence_key = ""
+	if player_profile_panel != null and player_profile_panel.is_open():
+		player_profile_panel.close()
+	if supply_overlay != null:
+		supply_overlay.hide_supply_immediately()
+	_create_supply_runtime()
+	if authority:
+		supply_session.reset_authority(
+			supply_economy,
 			_get_active_encounter_peer_ids()
 		)
 
@@ -1883,6 +2186,23 @@ func _configure_encounter_overlay_context() -> void:
 	)
 
 
+func _configure_supply_overlay_context() -> void:
+	if supply_overlay == null:
+		return
+	var local_peer_id := _get_local_encounter_peer_id()
+	var names := _player_names.duplicate(true)
+	var character_ids := _player_character_ids.duplicate(true)
+	if names.is_empty():
+		names[local_peer_id] = "玩家"
+	if character_ids.is_empty() and player != null:
+		character_ids[local_peer_id] = player.get_character_id()
+	supply_overlay.configure_local_context(
+		local_peer_id,
+		names,
+		character_ids
+	)
+
+
 func _get_local_encounter_peer_id() -> int:
 	return _local_peer_id if _local_peer_id > 0 else SINGLEPLAYER_PEER_ID
 
@@ -1925,6 +2245,28 @@ func _try_start_encounter_for_node(node_id: int) -> bool:
 	)
 
 
+func _try_start_supply_for_node(node_id: int, target_visit_count: int) -> bool:
+	if (
+		not _authority_enabled
+		or _normal_combat_active
+		or supply_session == null
+		or _route_graph == null
+		or not _route_graph.is_valid_node_id(node_id)
+		or _route_graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.WILDERNESS_RESOURCE
+		or target_visit_count != 1
+		or supply_session.is_active()
+		or supply_session.is_node_resolved(node_id)
+		or (encounter_session != null and encounter_session.is_active())
+	):
+		return false
+	return supply_session.start_for_node(
+		node_id,
+		_route_graph.get_node_content_seed(node_id),
+		_get_active_encounter_peer_ids()
+	)
+
+
 func _try_start_normal_combat_for_node(
 	node_id: int,
 	target_visit_count: int
@@ -1946,6 +2288,7 @@ func _try_start_normal_combat_for_node(
 			encounter_session != null
 			and encounter_session.is_active()
 		)
+		or (supply_session != null and supply_session.is_active())
 	):
 		return false
 	var content_seed := _route_graph.get_node_content_seed(node_id)
@@ -2050,6 +2393,140 @@ func _on_encounter_result_ack_requested(
 			result_sequence
 		)
 	_try_dismiss_locally_completed_encounter()
+
+
+func _on_supply_intro_ack_requested(
+	occurrence_key: String,
+	expected_revision: int
+) -> void:
+	if manage_return_locally:
+		host_submit_encounter_intro_ack(
+			_get_local_encounter_peer_id(),
+			occurrence_key,
+			expected_revision
+		)
+		return
+	encounter_intro_ack_requested.emit(occurrence_key, expected_revision)
+
+
+func _on_supply_vote_requested(
+	occurrence_key: String,
+	expected_revision: int,
+	option_id: StringName
+) -> void:
+	if manage_return_locally:
+		host_submit_encounter_vote(
+			_get_local_encounter_peer_id(),
+			occurrence_key,
+			expected_revision,
+			option_id
+		)
+		return
+	encounter_vote_requested.emit(
+		occurrence_key,
+		expected_revision,
+		option_id
+	)
+
+
+func _on_supply_collectible_choice_requested(
+	occurrence_key: String,
+	expected_revision: int,
+	offer_index: int
+) -> void:
+	if manage_return_locally:
+		host_submit_supply_collectible_choice(
+			_get_local_encounter_peer_id(),
+			occurrence_key,
+			expected_revision,
+			offer_index
+		)
+		return
+	encounter_vote_requested.emit(
+		occurrence_key,
+		expected_revision,
+		StringName(
+			SUPPLY_COLLECTIBLE_CHOICE_WIRE_PREFIX + str(offer_index)
+		)
+	)
+
+
+func _on_supply_completed_requested(
+	occurrence_key: String,
+	expected_revision: int
+) -> void:
+	if manage_return_locally:
+		host_submit_encounter_result_ack(
+			_get_local_encounter_peer_id(),
+			occurrence_key,
+			expected_revision
+		)
+		return
+	encounter_result_ack_requested.emit(occurrence_key, expected_revision)
+
+
+func _on_supply_inventory_requested() -> void:
+	var peer_id := _get_local_encounter_peer_id()
+	if (
+		supply_session == null
+		or not supply_session.has_pending_collectible_for_peer(peer_id)
+		or player_profile_panel == null
+	):
+		return
+	player_profile_panel.configure_multiplayer_requests(not manage_return_locally)
+	player_profile_panel.open()
+
+
+func _on_supply_state_changed(snapshot: Dictionary) -> void:
+	if supply_overlay != null:
+		supply_overlay.apply_state(snapshot)
+	var phase := StringName(snapshot.get("phase", &"idle"))
+	var active := phase not in [&"idle", &"completed"]
+	var local_has_pending_collectible := (
+		supply_session != null
+		and supply_session.has_pending_collectible_for_peer(
+			_get_local_encounter_peer_id()
+		)
+	)
+	if active:
+		_set_encounter_input_locked(true)
+		if supply_overlay != null:
+			supply_overlay.show_supply()
+	elif phase == &"completed":
+		if supply_overlay != null and local_has_pending_collectible:
+			supply_overlay.show_supply()
+		elif supply_overlay != null:
+			supply_overlay.hide_supply_immediately()
+		_set_encounter_input_locked(
+			encounter_session != null and encounter_session.is_active()
+		)
+	var result := snapshot.get("result", {}) as Dictionary
+	var occurrence_key := str(snapshot.get("occurrence_key", ""))
+	if (
+		_authority_enabled
+		and int(result.get("action_points_delta", 0)) > 0
+		and not occurrence_key.is_empty()
+		and occurrence_key != _last_supply_ap_broadcast_occurrence_key
+		and is_route_ready()
+	):
+		_last_supply_ap_broadcast_occurrence_key = occurrence_key
+		host_layout_committed.emit(
+			export_layout_snapshot(),
+			export_state_snapshot()
+		)
+	if _authority_enabled:
+		_emit_host_encounter_snapshot()
+
+
+func _on_supply_economy_changed(_snapshot: Dictionary) -> void:
+	_sync_route_player_xirang_from_run_state()
+	_sync_party_status_from_run_state()
+	if _run_state != null:
+		set_shared_light_stone_amount(
+			_run_state.get_party_light_stone_amount()
+		)
+	if _authority_enabled:
+		_emit_host_encounter_snapshot()
 
 
 func _on_encounter_state_changed(snapshot: Dictionary) -> void:
@@ -2244,6 +2721,8 @@ func _bind_runtime_state(
 	_runtime_state = new_state
 	_runtime_state.state_changed.connect(_on_runtime_state_changed)
 	_runtime_state.move_committed.connect(_on_runtime_move_committed)
+	if supply_economy != null:
+		supply_economy.set_route_state(_runtime_state)
 
 
 func _disconnect_runtime_state() -> void:
@@ -2444,6 +2923,10 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 		int(delta.get("target_visit_count", 0))
 	)
 	_try_start_encounter_for_node(target_node_id)
+	_try_start_supply_for_node(
+		target_node_id,
+		int(delta.get("target_visit_count", 0))
+	)
 
 
 func _on_combat_result_overlay_dismissed() -> void:
@@ -2657,6 +3140,23 @@ func get_player_for_peer(peer_id: int) -> Player:
 	return peer_players.get(peer_id) as Player
 
 
+## 重连身份迁移会先提交 RunState；在其 inventory_changed 信号发出前，
+## 同步暂存本地路线栏的背包 owner，避免 UI 读取已删除的旧 peer 并重建空键。
+func stage_inventory_owner_peer_remap(
+	old_peer_id: int,
+	new_peer_id: int
+) -> bool:
+	if (
+		route_inventory_strip == null
+		or old_peer_id <= 0
+		or new_peer_id <= 0
+		or route_inventory_strip.inventory_owner_peer_id != old_peer_id
+	):
+		return false
+	route_inventory_strip.inventory_owner_peer_id = new_peer_id
+	return true
+
+
 func get_local_avatar_snapshot() -> Dictionary:
 	if player == null or not is_instance_valid(player):
 		return {}
@@ -2770,9 +3270,15 @@ func _sync_route_player_xirang_from_run_state() -> void:
 				peer_ids.append(peer_id)
 		peer_ids.sort()
 		for peer_id in peer_ids:
+			var peer_player := peer_players.get(peer_id) as Player
+			var ledger_peer_id := (
+				peer_player.peer_id
+				if peer_player != null and peer_player.peer_id > 0
+				else peer_id
+			)
 			_apply_route_player_xirang(
-				peer_players.get(peer_id) as Player,
-				run_state.get_party_xirang_balance(peer_id)
+				peer_player,
+				run_state.get_party_xirang_balance(ledger_peer_id)
 			)
 		return
 	_apply_route_player_xirang(
@@ -2800,7 +3306,6 @@ func _update_personal_xirang_hud(amount: int) -> void:
 	top_bar.set_personal_xirang(amount)
 
 
-## 光石的持久化与结算规则尚未进入 RunState；路线会话接入后只需调用此入口更新 UI。
 func set_shared_light_stone_amount(amount: int) -> void:
 	if not is_node_ready() or top_bar == null:
 		return
@@ -2811,11 +3316,16 @@ func _on_party_xirang_ledger_changed(_snapshot: Dictionary) -> void:
 	_sync_route_player_xirang_from_run_state()
 
 
+func _on_party_light_stone_ledger_changed(snapshot: Dictionary) -> void:
+	set_shared_light_stone_amount(int(snapshot.get("amount", 0)))
+
+
 func _connect_party_status_ledger() -> void:
 	_run_state = get_node_or_null("/root/RunState") as RunStateStore
 	if _run_state == null:
 		_bind_local_inventory_strip(null)
 		_update_core_hud(100, 100)
+		set_shared_light_stone_amount(0)
 		return
 	_bind_local_inventory_strip(player)
 	if not _run_state.party_status_ledger_changed.is_connected(
@@ -2830,8 +3340,15 @@ func _connect_party_status_ledger() -> void:
 		_run_state.party_xirang_ledger_changed.connect(
 			_on_party_xirang_ledger_changed
 		)
+	if not _run_state.party_light_stone_ledger_changed.is_connected(
+		_on_party_light_stone_ledger_changed
+	):
+		_run_state.party_light_stone_ledger_changed.connect(
+			_on_party_light_stone_ledger_changed
+		)
 	_sync_route_player_xirang_from_run_state()
 	_sync_party_status_from_run_state()
+	set_shared_light_stone_amount(_run_state.get_party_light_stone_amount())
 	_cache_max_health_penalties(_run_state.export_party_status_ledger())
 
 
@@ -3029,6 +3546,61 @@ func _on_route_inventory_bag_requested() -> void:
 		player_profile_panel.open()
 
 
+func _on_player_profile_closed() -> void:
+	player_profile_panel.configure_multiplayer_requests(false)
+	_refresh_route_input_lock()
+
+
+func _on_supply_profile_inventory_discard_requested(slot_index: int) -> void:
+	var peer_id := _get_local_encounter_peer_id()
+	if (
+		supply_session == null
+		or not supply_session.has_pending_collectible_for_peer(peer_id)
+		or _run_state == null
+	):
+		return
+	var item := (
+		_run_state.get_item(slot_index)
+		if peer_id == 0
+		else _run_state.get_item_for_peer(peer_id, slot_index)
+	)
+	if item == null or item.inventory_locked or item.resource_path.is_empty():
+		return
+	var inventory_revision := (
+		_run_state.get_inventory_revision()
+		if peer_id == 0
+		else _run_state.get_inventory_revision_for_peer(peer_id)
+	)
+	var occurrence_key := (
+		supply_session.get_pending_collectible_occurrence_for_peer(peer_id)
+	)
+	var supply_revision := supply_session.get_revision()
+	var config_hash := item.resource_path.sha256_text()
+	if manage_return_locally:
+		host_submit_supply_inventory_discard(
+			peer_id,
+			occurrence_key,
+			supply_revision,
+			slot_index,
+			inventory_revision,
+			config_hash
+		)
+		return
+	var wire_option := StringName(
+		"%s%d|%d|%s" % [
+			SUPPLY_INVENTORY_DISCARD_WIRE_PREFIX,
+			slot_index,
+			inventory_revision,
+			config_hash,
+		]
+	)
+	encounter_vote_requested.emit(
+		occurrence_key,
+		supply_revision,
+		wire_option
+	)
+
+
 func _bind_player_profile(player_instance: Player) -> void:
 	if player_profile_panel != null:
 		player_profile_panel.bind_player(player_instance)
@@ -3068,6 +3640,9 @@ func _clear_player_instances() -> void:
 func _sync_encounter_player_character_ids() -> void:
 	if encounter_economy != null:
 		encounter_economy.set_player_character_ids(_player_character_ids)
+	if supply_economy != null:
+		supply_economy.set_player_character_ids(_player_character_ids)
+	_configure_supply_overlay_context()
 
 
 func _clear_pending_move(hide_dialog: bool) -> void:
@@ -3138,6 +3713,11 @@ func _show_node_content(node_id: int, is_preview: bool) -> void:
 		content_body.text = (
 			"抵达前将显示全队共享的作战简报；仅房主能够确认，"
 			+ "确认前不会扣除行动力。"
+		)
+	elif node_type == RogueRouteGraph.NodeType.WILDERNESS_RESOURCE:
+		content_body.text = (
+			"首次抵达会开启全队共享的物资抉择；从三项补给中投票选出"
+			+ "一项，已完成节点回访时不会重复结算。"
 		)
 	else:
 		content_body.text = (

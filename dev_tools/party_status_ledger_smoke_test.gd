@@ -56,7 +56,7 @@ func _test_default_state_and_atomic_transaction(run_state: RunStateStore) -> voi
 		int(party_snapshot.get("schema_version", 0))
 		== RunStateStore.PARTY_ECONOMY_SCHEMA_VERSION
 		and party_snapshot.has("party_status_ledger"),
-		"Party economy schema 3必须携带状态账本。"
+		"Party economy schema 4必须携带状态账本。"
 	)
 	var status_before := party_snapshot["party_status_ledger"] as Dictionary
 	var next_status := status_before.duplicate(true)

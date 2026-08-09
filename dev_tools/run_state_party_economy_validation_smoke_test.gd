@@ -121,6 +121,7 @@ func _connect_economy_signal_counts(store: RunStateStore) -> Dictionary:
 		"inventory": 0,
 		"warehouse": 0,
 		"xirang": 0,
+		"light_stone": 0,
 		"status": 0,
 	}
 	store.inventory_changed.connect(func() -> void:
@@ -131,6 +132,9 @@ func _connect_economy_signal_counts(store: RunStateStore) -> Dictionary:
 	)
 	store.party_xirang_ledger_changed.connect(func(_snapshot: Dictionary) -> void:
 		counts["xirang"] = int(counts["xirang"]) + 1
+	)
+	store.party_light_stone_ledger_changed.connect(func(_snapshot: Dictionary) -> void:
+		counts["light_stone"] = int(counts["light_stone"]) + 1
 	)
 	store.party_status_ledger_changed.connect(func(_snapshot: Dictionary) -> void:
 		counts["status"] = int(counts["status"]) + 1
@@ -144,6 +148,7 @@ func _capture_revisions(store: RunStateStore) -> Dictionary:
 		"peer_inventory": store.get_inventory_revision_for_peer(1),
 		"warehouse": store.get_shared_warehouse_ledger_revision(),
 		"xirang": store.get_party_xirang_ledger_revision(),
+		"light_stone": store.get_party_light_stone_ledger_revision(),
 		"status": store.get_party_status_ledger_revision(),
 	}
 

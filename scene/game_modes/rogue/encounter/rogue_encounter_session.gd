@@ -523,6 +523,27 @@ func apply_remote_state(snapshot: Dictionary) -> bool:
 	return true
 
 
+func validate_remote_state(snapshot: Dictionary) -> bool:
+	var decoded := _decode_state(snapshot)
+	if decoded.is_empty():
+		return false
+	var incoming_revision := int(decoded["revision"])
+	if incoming_revision < _revision:
+		return false
+	if (
+		incoming_revision == _revision
+		and not _occurrence_key.is_empty()
+		and str(decoded["occurrence_key"]) != _occurrence_key
+	):
+		return false
+	var incoming_economy := decoded["economy_snapshot"] as Dictionary
+	return (
+		_economy == null
+		or incoming_economy.is_empty()
+		or _economy.validate_remote_snapshot(incoming_economy)
+	)
+
+
 func is_active() -> bool:
 	return _phase in [
 		PHASE_INTRO,

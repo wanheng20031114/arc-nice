@@ -1,0 +1,320 @@
+[gd_scene load_steps=17 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/supply/rogue_supply_overlay.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/supply/rogue_supply_choice_card.tscn" id="2_card"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/supply/rogue_supply_collectible_choice_panel.tscn" id="3_collectible_panel"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="4_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_tableau.png" id="5_tableau"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel_a.png" id="6_choice_a"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel_b.png" id="7_choice_b"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel_c.png" id="8_choice_c"]
+
+[sub_resource type="FontVariation" id="FontVariation_heading"]
+base_font = ExtResource("4_font")
+variation_embolden = 0.6
+spacing_top = 2
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("4_font")
+variation_embolden = 0.25
+spacing_top = 1
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = SubResource("FontVariation_heading")
+font_size = 28
+font_color = Color(0.93, 0.98, 1, 1)
+outline_size = 2
+outline_color = Color(0.005, 0.025, 0.035, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_shared"]
+font = SubResource("FontVariation_body")
+font_size = 15
+font_color = Color(0.55, 0.83, 0.88, 1)
+outline_size = 1
+outline_color = Color(0.005, 0.025, 0.035, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_status"]
+font = SubResource("FontVariation_body")
+font_size = 15
+font_color = Color(0.98, 0.78, 0.39, 1)
+outline_size = 1
+outline_color = Color(0.005, 0.025, 0.035, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_result"]
+font = SubResource("FontVariation_body")
+font_size = 14
+font_color = Color(0.84, 0.93, 0.95, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tableau_frame"]
+bg_color = Color(0.012, 0.052, 0.066, 0.72)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.7, 0.76, 0.76)
+corner_radius_top_left = 9
+corner_radius_top_right = 9
+corner_radius_bottom_right = 9
+corner_radius_bottom_left = 9
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button"]
+content_margin_left = 18.0
+content_margin_top = 8.0
+content_margin_right = 18.0
+content_margin_bottom = 8.0
+bg_color = Color(0.055, 0.18, 0.215, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.48, 0.76, 0.82, 0.86)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_hover"]
+content_margin_left = 18.0
+content_margin_top = 8.0
+content_margin_right = 18.0
+content_margin_bottom = 8.0
+bg_color = Color(0.1, 0.3, 0.35, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.76, 0.94, 0.98, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_button_disabled"]
+content_margin_left = 18.0
+content_margin_top = 8.0
+content_margin_right = 18.0
+content_margin_bottom = 8.0
+bg_color = Color(0.03, 0.08, 0.095, 0.86)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.27, 0.4, 0.43, 0.56)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="RogueSupplyOverlay" type="CanvasLayer"]
+visible = false
+layer = 24
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+texture_filter = 1
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Shade" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.003, 0.017, 0.023, 0.9)
+
+[node name="AmbientTop" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 130.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.055, 0.26, 0.31, 0.2)
+
+[node name="ScreenMargin" type="MarginContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 38
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 38
+theme_override_constants/margin_bottom = 24
+
+[node name="MainRow" type="HBoxContainer" parent="Root/ScreenMargin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 30
+
+[node name="TableauStage" type="CenterContainer" parent="Root/ScreenMargin/MainRow"]
+custom_minimum_size = Vector2(390, 520)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.82
+mouse_filter = 2
+
+[node name="TableauFrame" type="PanelContainer" parent="Root/ScreenMargin/MainRow/TableauStage"]
+custom_minimum_size = Vector2(366, 478)
+layout_mode = 2
+mouse_filter = 2
+clip_children = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_tableau_frame")
+
+[node name="TableauLayer" type="Control" parent="Root/ScreenMargin/MainRow/TableauStage/TableauFrame"]
+clip_contents = true
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Tableau" type="TextureRect" parent="Root/ScreenMargin/MainRow/TableauStage/TableauFrame/TableauLayer"]
+texture_filter = 1
+layout_mode = 0
+offset_right = 366.0
+offset_bottom = 478.0
+mouse_filter = 2
+texture = ExtResource("5_tableau")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="DecisionColumn" type="VBoxContainer" parent="Root/ScreenMargin/MainRow"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.18
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="VBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="Title" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+layout_mode = 2
+text = "遗址物资"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="SharedHint" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+layout_mode = 2
+text = "共同清点物资 · 每位玩家的选择都会显示在卡片上"
+label_settings = SubResource("LabelSettings_shared")
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Status" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+text = "发现一处尚未清空的物资点"
+label_settings = SubResource("LabelSettings_status")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Divider" type="ColorRect" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.42, 0.72, 0.78, 0.42)
+
+[node name="ChoiceList" type="VBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Choice0" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+background_texture = ExtResource("6_choice_a")
+
+[node name="Choice1" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+background_texture = ExtResource("7_choice_b")
+
+[node name="Choice2" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+background_texture = ExtResource("8_choice_c")
+
+[node name="ResultFooter" type="HBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="ResultText" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/ResultFooter"]
+visible = false
+texture_filter = 2
+layout_mode = 2
+size_flags_horizontal = 3
+text = "物资已完成分配"
+label_settings = SubResource("LabelSettings_result")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="CompleteButton" type="Button" parent="Root/ScreenMargin/MainRow/DecisionColumn/ResultFooter"]
+visible = false
+texture_filter = 2
+custom_minimum_size = Vector2(138, 38)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_fonts/font = SubResource("FontVariation_body")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_button")
+theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/focus = SubResource("StyleBoxFlat_button_hover")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_button_disabled")
+text = "确认离开"
+
+[node name="CollectibleModal" type="Control" parent="Root"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Shade" type="ColorRect" parent="Root/CollectibleModal"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.002, 0.012, 0.016, 0.82)
+
+[node name="Center" type="CenterContainer" parent="Root/CollectibleModal"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="CollectibleChoicePanel" parent="Root/CollectibleModal/Center" instance=ExtResource("3_collectible_panel")]
+layout_mode = 2
+
+[node name="ResultAutoCompleteTimer" type="Timer" parent="."]
+wait_time = 2.4
+one_shot = true

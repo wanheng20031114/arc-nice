@@ -301,6 +301,8 @@ def generate_description(data: dict[str, Any]) -> str:
         return "庄方宜为你升级技能时不消耗息壤。"
     if data.get("collectible_effect_id") == "basketball":
         return "会在某个特殊节点发挥作用。"
+    if data.get("collectible_effect_id") == "flying_envelope":
+        return "一封不愿安分停留的信，似乎正寻找着某位收件人。"
 
     parts: list[str] = []
     ammo_additive = int(data.get("collectible_ammo_capacity_additive_bonus", 0))

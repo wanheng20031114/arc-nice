@@ -1,4 +1,4 @@
-[gd_scene load_steps=30 format=3]
+[gd_scene load_steps=33 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_game.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_board.tscn" id="2_board"]
@@ -20,6 +20,9 @@
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/ui/rogue_player_profile_panel.tscn" id="23_player_profile"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/ui/rogue_route_top_bar.tscn" id="25_top_bar"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/shop/rogue_underground_shop_controller.tscn" id="26_shop_controller"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/supply/domain/rogue_supply_economy_coordinator.gd" id="27_supply_economy"]
+[ext_resource type="Script" path="res://scene/game_modes/rogue/supply/rogue_supply_session.gd" id="28_supply_session"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/supply/rogue_supply_overlay.tscn" id="29_supply_overlay"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -139,12 +142,20 @@ script = ExtResource("10_encounter_economy")
 [node name="EncounterSession" type="Node" parent="."]
 script = ExtResource("11_encounter_session")
 
+[node name="SupplyEconomy" type="Node" parent="."]
+script = ExtResource("27_supply_economy")
+
+[node name="SupplySession" type="Node" parent="."]
+script = ExtResource("28_supply_session")
+
 [node name="UndergroundShopController" parent="." instance=ExtResource("26_shop_controller")]
 
 [node name="SingleplayerCombatCoordinator" type="Node" parent="."]
 script = ExtResource("15_single_combat_coordinator")
 
 [node name="EncounterScene" parent="." instance=ExtResource("12_encounter_scene")]
+
+[node name="SupplyOverlay" parent="." instance=ExtResource("29_supply_overlay")]
 
 [node name="World" type="Node2D" parent="."]
 script = ExtResource("9_world_script")
@@ -347,6 +358,7 @@ layout_mode = 1
 [node name="RunDefeatOverlay" parent="." instance=ExtResource("17_run_defeat")]
 
 [node name="RoguePlayerProfilePanel" parent="." instance=ExtResource("23_player_profile")]
+layer = 25
 
 [connection signal="node_pressed" from="World/RouteBoard" to="." method="_on_route_board_node_pressed"]
 [connection signal="pressed" from="HUD/Root/BottomBar/BottomLayout/ActionBlock/Buttons/RegenerateButton" to="." method="_on_regenerate_button_pressed"]

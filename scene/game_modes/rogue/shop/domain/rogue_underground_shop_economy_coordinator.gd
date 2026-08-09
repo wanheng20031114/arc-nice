@@ -325,6 +325,8 @@ func get_sell_price(item: PickupConfig) -> int:
 		or item == null
 		or item.inventory_locked
 		or not item.can_store_in_inventory
+		or item.collectible_effect_id
+		== PickupConfig.COLLECTIBLE_EFFECT_FLYING_ENVELOPE
 	):
 		return 0
 	if item.is_consumable_item():

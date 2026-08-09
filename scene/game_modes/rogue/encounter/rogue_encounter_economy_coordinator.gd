@@ -1198,15 +1198,7 @@ func export_snapshot(peer_ids: Array[int] = []) -> Dictionary:
 
 
 func apply_remote_snapshot(snapshot: Dictionary) -> bool:
-	if (
-		_run_state == null
-		or typeof(snapshot.get("schema_version")) != TYPE_INT
-		or int(snapshot["schema_version"]) != SCHEMA_VERSION
-		or typeof(snapshot.get("revision")) != TYPE_INT
-		or int(snapshot["revision"]) < _economy_revision
-		or typeof(snapshot.get("party_economy")) != TYPE_DICTIONARY
-		or typeof(snapshot.get("settled_occurrences")) != TYPE_ARRAY
-	):
+	if not validate_remote_snapshot(snapshot):
 		return false
 	var decoded_occurrences: Variant = _decode_settled_occurrences(
 		snapshot["settled_occurrences"] as Array
@@ -1223,6 +1215,26 @@ func apply_remote_snapshot(snapshot: Dictionary) -> bool:
 	if changed:
 		economy_changed.emit(export_snapshot())
 	return true
+
+
+func validate_remote_snapshot(snapshot: Dictionary) -> bool:
+	if (
+		_run_state == null
+		or typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"]) != SCHEMA_VERSION
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or int(snapshot["revision"]) < _economy_revision
+		or typeof(snapshot.get("party_economy")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("settled_occurrences")) != TYPE_ARRAY
+	):
+		return false
+	if _decode_settled_occurrences(
+		snapshot["settled_occurrences"] as Array
+	) == null:
+		return false
+	return _run_state.validate_party_economy_snapshot(
+		snapshot["party_economy"] as Dictionary
+	)
 
 
 func _finalize_resolution(

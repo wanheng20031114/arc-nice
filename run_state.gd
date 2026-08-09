@@ -11,12 +11,14 @@ signal upgrade_changed
 signal selected_character_changed(character_id: StringName)
 signal shared_warehouse_ledger_changed(snapshot: Dictionary)
 signal party_xirang_ledger_changed(snapshot: Dictionary)
+signal party_light_stone_ledger_changed(snapshot: Dictionary)
 signal party_status_ledger_changed(snapshot: Dictionary)
 
 const INVENTORY_CAPACITY := 20
-const PARTY_ECONOMY_SCHEMA_VERSION := 3
+const PARTY_ECONOMY_SCHEMA_VERSION := 4
 const SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION := 1
 const PARTY_XIRANG_LEDGER_SCHEMA_VERSION := 1
+const PARTY_LIGHT_STONE_LEDGER_SCHEMA_VERSION := 1
 const PARTY_STATUS_LEDGER_SCHEMA_VERSION := 1
 const DEFAULT_PARTY_CORE_HEALTH := 100
 const STARTING_WOOD_COUNT := 5
@@ -79,6 +81,10 @@ var shared_warehouse_ledger_revision: int = 0
 ## 余额与背包、仓库一同进入 party economy 快照，避免重复快照重复加钱。
 var party_xirang_balances: Dictionary = {}
 var party_xirang_ledger_revision: int = 0
+## Rogue 路线共用的共享光石。该资源属于全队而非某个 peer，并以独立
+## revision 参与 party economy CAS，确保扣除光石与发放奖励可以原子提交。
+var party_light_stone_amount: int = 0
+var party_light_stone_ledger_revision: int = 0
 ## Rouge 路线、遭遇、战斗与塔防共享的本局队伍状态。最大生命惩罚按
 ## peer 累计；单人使用 peer=0。运行时内部使用 int 键，wire 快照使用字符串键。
 var party_core_current: int = DEFAULT_PARTY_CORE_HEALTH
@@ -135,6 +141,8 @@ func begin_new_run(
 	shared_warehouse_ledger_revision = 0
 	party_xirang_balances = {0: 0}
 	party_xirang_ledger_revision = 0
+	party_light_stone_amount = 0
+	party_light_stone_ledger_revision = 0
 	party_core_current = DEFAULT_PARTY_CORE_HEALTH
 	party_core_maximum = DEFAULT_PARTY_CORE_HEALTH
 	max_health_penalties = {0: 0}
@@ -1772,6 +1780,97 @@ func export_party_xirang_ledger() -> Dictionary:
 	}
 
 
+func get_party_light_stone_ledger_revision() -> int:
+	ensure_run_started()
+	return party_light_stone_ledger_revision
+
+
+func get_party_light_stone_amount() -> int:
+	ensure_run_started()
+	return party_light_stone_amount
+
+
+func set_party_light_stone_amount(
+	amount: int,
+	emit_change_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	if amount < 0:
+		return false
+	if party_light_stone_amount == amount:
+		return true
+	party_light_stone_amount = amount
+	party_light_stone_ledger_revision += 1
+	if emit_change_signal:
+		party_light_stone_ledger_changed.emit(export_party_light_stone_ledger())
+	return true
+
+
+## 对共享光石账本执行一次 revision-fenced 权威变更。负数代表扣除；余额
+## 不足或 revision 已陈旧时整笔拒绝，且不会产生 signal 或 revision 空洞。
+func try_change_party_light_stone_amount(
+	delta: int,
+	expected_revision: int = -1,
+	emit_change_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	if (
+		expected_revision >= 0
+		and expected_revision != party_light_stone_ledger_revision
+	):
+		return false
+	if delta == 0:
+		return true
+	var next_amount := party_light_stone_amount + delta
+	if next_amount < 0:
+		return false
+	party_light_stone_amount = next_amount
+	party_light_stone_ledger_revision += 1
+	if emit_change_signal:
+		party_light_stone_ledger_changed.emit(export_party_light_stone_ledger())
+	return true
+
+
+func export_party_light_stone_ledger() -> Dictionary:
+	ensure_run_started()
+	return {
+		"schema_version": PARTY_LIGHT_STONE_LEDGER_SCHEMA_VERSION,
+		"revision": party_light_stone_ledger_revision,
+		"amount": party_light_stone_amount,
+	}
+
+
+func apply_party_light_stone_ledger(
+	snapshot: Dictionary,
+	allow_revision_rewind: bool = false,
+	emit_change_signal: bool = true
+) -> bool:
+	ensure_run_started()
+	var decoded := _decode_party_light_stone_ledger(
+		snapshot,
+		-1 if allow_revision_rewind else party_light_stone_ledger_revision
+	)
+	if decoded.is_empty():
+		return false
+	var incoming_revision := int(decoded["revision"])
+	var incoming_amount := int(decoded["amount"])
+	if (
+		not allow_revision_rewind
+		and incoming_revision == party_light_stone_ledger_revision
+		and incoming_amount != party_light_stone_amount
+	):
+		return false
+	var changed := (
+		incoming_revision != party_light_stone_ledger_revision
+		or incoming_amount != party_light_stone_amount
+	)
+	party_light_stone_amount = incoming_amount
+	party_light_stone_ledger_revision = incoming_revision
+	if changed and emit_change_signal:
+		party_light_stone_ledger_changed.emit(export_party_light_stone_ledger())
+	return true
+
+
 func get_party_status_ledger_revision() -> int:
 	ensure_run_started()
 	return party_status_ledger_revision
@@ -1967,6 +2066,7 @@ func export_party_economy_snapshot(
 		"warehouse_ledger": export_shared_warehouse_ledger(),
 		"inventories": inventories,
 		"xirang_ledger": export_party_xirang_ledger(),
+		"light_stone_ledger": export_party_light_stone_ledger(),
 		"party_status_ledger": export_party_status_ledger(),
 	}
 
@@ -1982,6 +2082,7 @@ func apply_party_economy_snapshot(
 		false,
 		-1,
 		{},
+		-1,
 		-1,
 		-1
 	)
@@ -2003,6 +2104,7 @@ func validate_party_economy_snapshot(
 		-1,
 		{},
 		-1,
+		-1,
 		-1
 	).is_empty()
 
@@ -2016,15 +2118,25 @@ func apply_authoritative_party_transaction(
 	expected_xirang_ledger_revision: int = -1,
 	next_xirang_ledger: Dictionary = {},
 	expected_status_ledger_revision: int = -1,
-	next_status_ledger: Dictionary = {}
+	next_status_ledger: Dictionary = {},
+	expected_light_stone_ledger_revision: int = -1,
+	next_light_stone_ledger: Dictionary = {}
 ) -> bool:
 	var resolved_snapshot := next_snapshot
-	if not next_xirang_ledger.is_empty() or not next_status_ledger.is_empty():
+	if (
+		not next_xirang_ledger.is_empty()
+		or not next_status_ledger.is_empty()
+		or not next_light_stone_ledger.is_empty()
+	):
 		resolved_snapshot = next_snapshot.duplicate(true)
 	if not next_xirang_ledger.is_empty():
 		resolved_snapshot["xirang_ledger"] = next_xirang_ledger.duplicate(true)
 	if not next_status_ledger.is_empty():
 		resolved_snapshot["party_status_ledger"] = next_status_ledger.duplicate(true)
+	if not next_light_stone_ledger.is_empty():
+		resolved_snapshot["light_stone_ledger"] = (
+			next_light_stone_ledger.duplicate(true)
+		)
 	var prepared := _prepare_party_economy_snapshot(
 		resolved_snapshot,
 		false,
@@ -2032,7 +2144,8 @@ func apply_authoritative_party_transaction(
 		expected_warehouse_ledger_revision,
 		expected_inventory_revisions,
 		expected_xirang_ledger_revision,
-		expected_status_ledger_revision
+		expected_status_ledger_revision,
+		expected_light_stone_ledger_revision
 	)
 	return _commit_prepared_party_economy_snapshot(prepared)
 
@@ -2290,6 +2403,32 @@ func _decode_party_xirang_ledger(
 	}
 
 
+func _decode_party_light_stone_ledger(
+	snapshot: Dictionary,
+	minimum_revision: int
+) -> Dictionary:
+	if (
+		typeof(snapshot.get("schema_version")) != TYPE_INT
+		or int(snapshot["schema_version"])
+		!= PARTY_LIGHT_STONE_LEDGER_SCHEMA_VERSION
+		or typeof(snapshot.get("revision")) != TYPE_INT
+		or typeof(snapshot.get("amount")) != TYPE_INT
+	):
+		return {}
+	var incoming_revision := int(snapshot["revision"])
+	var incoming_amount := int(snapshot["amount"])
+	if (
+		incoming_revision < 0
+		or incoming_revision < minimum_revision
+		or incoming_amount < 0
+	):
+		return {}
+	return {
+		"revision": incoming_revision,
+		"amount": incoming_amount,
+	}
+
+
 func _decode_party_status_ledger(
 	snapshot: Dictionary,
 	minimum_revision: int
@@ -2354,7 +2493,8 @@ func _prepare_party_economy_snapshot(
 	expected_warehouse_revision: int,
 	expected_inventory_revisions: Dictionary,
 	expected_xirang_revision: int,
-	expected_status_revision: int
+	expected_status_revision: int,
+	expected_light_stone_revision: int
 ) -> Dictionary:
 	ensure_run_started()
 	if (
@@ -2363,6 +2503,7 @@ func _prepare_party_economy_snapshot(
 		or typeof(snapshot.get("warehouse_ledger")) != TYPE_DICTIONARY
 		or typeof(snapshot.get("inventories")) != TYPE_ARRAY
 		or typeof(snapshot.get("xirang_ledger")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("light_stone_ledger")) != TYPE_DICTIONARY
 		or typeof(snapshot.get("party_status_ledger")) != TYPE_DICTIONARY
 	):
 		return {}
@@ -2381,6 +2522,12 @@ func _prepare_party_economy_snapshot(
 		require_single_revision_step
 		and expected_status_revision >= 0
 		and expected_status_revision != party_status_ledger_revision
+	):
+		return {}
+	if (
+		require_single_revision_step
+		and expected_light_stone_revision >= 0
+		and expected_light_stone_revision != party_light_stone_ledger_revision
 	):
 		return {}
 	var decoded_ledger := _decode_shared_warehouse_ledger(
@@ -2413,6 +2560,28 @@ func _prepare_party_economy_snapshot(
 		not allow_revision_rewind
 		and incoming_xirang_revision == party_xirang_ledger_revision
 		and decoded_xirang_ledger["values"] != party_xirang_balances
+	):
+		return {}
+	var decoded_light_stone_ledger := _decode_party_light_stone_ledger(
+		snapshot["light_stone_ledger"] as Dictionary,
+		-1 if allow_revision_rewind else party_light_stone_ledger_revision
+	)
+	if decoded_light_stone_ledger.is_empty():
+		return {}
+	var incoming_light_stone_revision := int(
+		decoded_light_stone_ledger["revision"]
+	)
+	if (
+		require_single_revision_step
+		and incoming_light_stone_revision != party_light_stone_ledger_revision
+		and incoming_light_stone_revision != party_light_stone_ledger_revision + 1
+	):
+		return {}
+	if (
+		not allow_revision_rewind
+		and incoming_light_stone_revision == party_light_stone_ledger_revision
+		and int(decoded_light_stone_ledger["amount"])
+		!= party_light_stone_amount
 	):
 		return {}
 	var decoded_status_ledger := _decode_party_status_ledger(
@@ -2481,8 +2650,10 @@ func _prepare_party_economy_snapshot(
 		"expected_warehouse_revision": shared_warehouse_ledger_revision,
 		"expected_xirang_revision": party_xirang_ledger_revision,
 		"expected_status_revision": party_status_ledger_revision,
+		"expected_light_stone_revision": party_light_stone_ledger_revision,
 		"warehouse_ledger": decoded_ledger,
 		"xirang_ledger": decoded_xirang_ledger,
+		"light_stone_ledger": decoded_light_stone_ledger,
 		"party_status_ledger": decoded_status_ledger,
 		"inventories": prepared_inventories,
 	}
@@ -2497,6 +2668,8 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		!= party_xirang_ledger_revision
 		or int(prepared.get("expected_status_revision", -1))
 		!= party_status_ledger_revision
+		or int(prepared.get("expected_light_stone_revision", -1))
+		!= party_light_stone_ledger_revision
 	):
 		return false
 	var prepared_inventories := prepared.get("inventories", {}) as Dictionary
@@ -2525,6 +2698,19 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		prepared_xirang_ledger["values"] as Dictionary
 	).duplicate(true)
 	party_xirang_ledger_revision = int(prepared_xirang_ledger["revision"])
+	var prepared_light_stone_ledger := (
+		prepared["light_stone_ledger"] as Dictionary
+	)
+	var light_stone_changed: bool = (
+		int(prepared_light_stone_ledger["revision"])
+		!= party_light_stone_ledger_revision
+		or int(prepared_light_stone_ledger["amount"])
+		!= party_light_stone_amount
+	)
+	party_light_stone_amount = int(prepared_light_stone_ledger["amount"])
+	party_light_stone_ledger_revision = int(
+		prepared_light_stone_ledger["revision"]
+	)
 	var prepared_status_ledger := prepared["party_status_ledger"] as Dictionary
 	var status_changed: bool = (
 		int(prepared_status_ledger["revision"]) != party_status_ledger_revision
@@ -2577,6 +2763,8 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		shared_warehouse_ledger_changed.emit(export_shared_warehouse_ledger())
 	if xirang_changed:
 		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
+	if light_stone_changed:
+		party_light_stone_ledger_changed.emit(export_party_light_stone_ledger())
 	if status_changed:
 		party_status_ledger_changed.emit(export_party_status_ledger())
 	return true

@@ -177,9 +177,9 @@ func _test_preload_feedback_and_transition() -> void:
 	)
 	var collectible_paths := CollectibleRegistry.get_config_paths()
 	_expect(
-		collectible_paths.size() == 124
+		collectible_paths.size() == 125
 		and CollectibleRegistry.get_all().size() == collectible_paths.size(),
-		"The completed warmup must cache all 124 registered collectible configs."
+		"The completed warmup must cache all 125 registered collectible configs."
 	)
 	if (
 		int(main_menu.get("_encyclopedia_load_state"))

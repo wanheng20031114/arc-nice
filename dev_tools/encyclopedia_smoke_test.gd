@@ -9,7 +9,7 @@ const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
 	CodexSection.ENEMY: 60,
-	CodexSection.COLLECTIBLE: 124,
+	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 16,
 }
 const EXPECTED_COLLECTIBLE_RARITY_COUNTS := {
@@ -17,7 +17,7 @@ const EXPECTED_COLLECTIBLE_RARITY_COUNTS := {
 	&"rare": 43,
 	&"epic": 26,
 	&"legendary": 13,
-	&"special": 1,
+	&"special": 2,
 }
 const EXPECTED_BUILDING_CATEGORY_COUNTS := {
 	&"defense_tower": 4,
@@ -861,7 +861,7 @@ func _test_scene_contract() -> void:
 
 	_expect(
 		screen.enemy_button.text == "敌人  %d" % expected_enemy_count
-		and screen.collectible_button.text == "收藏品  124"
+		and screen.collectible_button.text == "收藏品  125"
 		and screen.building_button.text == "建筑物  16",
 		"Sidebar must display all three section totals."
 	)

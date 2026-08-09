@@ -604,6 +604,11 @@ def _copy_rule(data: dict[str, Any]) -> str:
             "副本规则：允许重复获得、放入背包或共享仓库；"
             "每次鸡哥交易只发放1份，本配置不设置全局或整局唯一限制"
         )
+    if str(data.get("collectible_effect_id", "")) == "flying_envelope":
+        return (
+            "副本规则：全队本局最多持有1份；允许放入共享仓库或主动丢弃，"
+            "地下商店不可出售"
+        )
     if bool(data.get("collectible_stacks_by_copy", False)):
         maximum = int(data.get("collectible_max_copies", 0))
         if maximum > 0:
@@ -637,6 +642,12 @@ def _effect_rules(data: dict[str, Any]) -> list[str]:
         return [
             "当前没有战斗效果；作为事件限定道具，仅预留给后续特殊节点检测是否持有，"
             "不限制全局或整局持有数量"
+        ]
+    if str(data.get("collectible_effect_id", "")) == "flying_envelope":
+        return [
+            "当前没有战斗效果；仅由肉鸽物资节点发放",
+            "系统会在有背包空位的参与玩家中随机选择接收者，"
+            "全员满包时奖励直接丢弃",
         ]
 
     rules: list[str] = []

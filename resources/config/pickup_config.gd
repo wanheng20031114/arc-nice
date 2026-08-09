@@ -61,6 +61,7 @@ const COLLECTIBLE_EFFECT_LUCKY_GEM := "lucky_gem"
 const COLLECTIBLE_EFFECT_MEDIEVAL_SHIELD := "medieval_shield"
 const COLLECTIBLE_EFFECT_SAKURA := "sakura"
 const COLLECTIBLE_EFFECT_BASKETBALL := "basketball"
+const COLLECTIBLE_EFFECT_FLYING_ENVELOPE := "flying_envelope"
 
 const PERIODIC_EFFECT_THUNDER := "thunder"
 const PERIODIC_EFFECT_FROST := "frost"

@@ -534,6 +534,13 @@ func _migrate_reconnected_run_state(
 		and is_instance_valid(live_player)
 		and live_player.peer_id == old_peer_id
 	)
+	var staged_inventory_owner := (
+		_route != null
+		and _route.stage_inventory_owner_peer_remap(
+			old_peer_id,
+			new_peer_id
+		)
+	)
 	if staged_live_peer:
 		live_player.peer_id = new_peer_id
 	var migrated := true
@@ -549,6 +556,8 @@ func _migrate_reconnected_run_state(
 		migrated = shared_run_state.has_multiplayer_peer_state(new_peer_id)
 	if not migrated and staged_live_peer:
 		live_player.peer_id = old_peer_id
+	if not migrated and staged_inventory_owner:
+		_route.stage_inventory_owner_peer_remap(new_peer_id, old_peer_id)
 	return migrated
 
 
