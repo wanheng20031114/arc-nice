@@ -34,6 +34,7 @@ func _run() -> void:
 	_expect(view != null, "dev 预览必须直接实例化正式 RogueUndergroundShopView。")
 	if view != null:
 		_audit_authored_scene(view)
+		_audit_dialogue_interaction(view)
 		_audit_buy_interaction(view)
 		_audit_sell_interaction(view, run_state)
 		await _audit_responsive_layout(view)
@@ -56,6 +57,18 @@ func _audit_source_boundaries() -> void:
 	_expect(
 		view_scene_source.count("instance=ExtResource(\"10_item_card\")") == 8,
 		"正式场景必须 authored 8 张且仅 8 张商品卡。"
+	)
+	_expect(
+		view_scene_source.contains(
+			"res://scene/game_modes/tower_defense/fate/xiaocong_dialogue_bubble.tscn"
+		),
+		"正式商店必须 authored 复用小葱专属对话框。"
+	)
+	_expect(
+		not view_scene_source.contains("StatusLabel")
+		and not view_script_source.contains("等待退出：")
+		and not view_script_source.contains("所有玩家均已退出商店"),
+		"商店视图不得再渲染等待玩家退出的内部会话状态。"
 	)
 	for forbidden in [".new()", ".instantiate()", "RogueRouteTopBar", "rogue_route_top_bar.tscn"]:
 		_expect(
@@ -91,6 +104,31 @@ func _audit_authored_scene(view: RogueUndergroundShopView) -> void:
 		and atlas.region == Rect2(0, 0, 1098, 1431)
 		and atlas.atlas.resource_path.ends_with("xiaocong_keypose_hd.png"),
 		"小葱必须用 1098×1431→366×477 的精确 1/3 nearest 采样。"
+	)
+	var dialogue := view.get_node(
+		"Root/XiaocongDialogueBubble"
+	) as MerchantDialogueBubble
+	var dialogue_panel := dialogue.get_node(
+		"DialogueLayer/Anchor/BubblePanel"
+	) as PanelContainer
+	var dialogue_name := dialogue.get_node(
+		"DialogueLayer/Anchor/NamePlate/Name"
+	) as Label
+	var dialogue_text := dialogue.get_node(
+		"DialogueLayer/Anchor/BubblePanel/Margin/Content/Text"
+	) as RichTextLabel
+	_expect(
+		dialogue != null
+		and dialogue.scene_file_path.ends_with("xiaocong_dialogue_bubble.tscn")
+		and dialogue.dialogue_layer.layer == 11
+		and dialogue.position == dialogue.position.round(),
+		"小葱商店对白必须复用专属 authored 场景，并位于商店层级之上。"
+	)
+	_expect(
+		dialogue_panel.custom_minimum_size == Vector2(308, 122)
+		and dialogue_name.text == "小葱"
+		and dialogue_text.text == "在这地下矿洞中只有我这一家商店物美价廉",
+		"小葱商店对白必须保留专属姓名/配色结构并显示指定台词。"
 	)
 	var grid := view.get_node("Root/ShopPanel/ItemGrid") as GridContainer
 	_expect(
@@ -154,6 +192,30 @@ func _audit_authored_scene(view: RogueUndergroundShopView) -> void:
 		),
 		"正式 UI 预览必须展示四种样例 consumable 及其类型化会话价格。"
 	)
+
+
+func _audit_dialogue_interaction(view: RogueUndergroundShopView) -> void:
+	var dialogue := view.get_node(
+		"Root/XiaocongDialogueBubble"
+	) as MerchantDialogueBubble
+	_expect(
+		dialogue.visible and dialogue.is_revealing,
+		"商店打开时必须以打字机效果显示小葱台词。"
+	)
+	var interact_event := InputEventAction.new()
+	interact_event.action = &"interact"
+	interact_event.pressed = true
+	view.call("_unhandled_input", interact_event)
+	_expect(
+		dialogue.visible and not dialogue.is_revealing,
+		"首次按下交互键必须先补完小葱台词。"
+	)
+	view.call("_unhandled_input", interact_event)
+	_expect(
+		not dialogue.visible,
+		"台词补完后再次按下交互键必须隐藏小葱对话框。"
+	)
+	view.open_session()
 
 
 func _audit_buy_interaction(view: RogueUndergroundShopView) -> void:
@@ -341,18 +403,21 @@ func _audit_responsive_layout(view: RogueUndergroundShopView) -> void:
 		Vector2i(960, 720),
 		Vector2i(2560, 1080),
 	]
-	view.show_buy_tab()
 	for logical_size in logical_sizes:
 		root.content_scale_size = logical_size
 		root.size = logical_size
+		view.open_session()
 		for _frame in range(2):
 			await process_frame
 		var viewport_rect := Rect2(Vector2.ZERO, Vector2(logical_size))
 		var panel := view.get_node("Root/ShopPanel") as Control
 		var xiaocong := view.get_node("Root/XiaocongStage/Xiaocong") as Control
+		var dialogue_panel := view.get_node(
+			"Root/XiaocongDialogueBubble/DialogueLayer/Anchor/BubblePanel"
+		) as Control
 		var grid := view.get_node("Root/ShopPanel/ItemGrid") as Control
 		var exit_button := view.get_node("Root/ShopPanel/ExitButton") as Control
-		for control in [panel, xiaocong, grid, exit_button]:
+		for control in [panel, xiaocong, dialogue_panel, grid, exit_button]:
 			_expect(
 				viewport_rect.encloses(control.get_global_rect()),
 				"%s 逻辑尺寸下 %s 不得被裁出视口。"
@@ -361,6 +426,10 @@ func _audit_responsive_layout(view: RogueUndergroundShopView) -> void:
 		_expect(
 			not grid.get_global_rect().intersects(xiaocong.get_global_rect()),
 			"%s 下小葱不得遮挡可交互商品网格。" % logical_size
+		)
+		_expect(
+			not dialogue_panel.get_global_rect().intersects(panel.get_global_rect()),
+			"%s 下小葱对话框不得遮挡商店主面板。" % logical_size
 		)
 		_expect(
 			not grid.get_global_rect().intersects(exit_button.get_global_rect()),

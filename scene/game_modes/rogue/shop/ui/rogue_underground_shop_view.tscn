@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.gd" id="1_script"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/underground_ruins_background.png" id="2_background"]
@@ -13,6 +13,8 @@
 [ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="11_font"]
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/inventory/inventory_slot_selected_ref_v3.png" id="12_selected_slot"]
 [ext_resource type="Texture2D" path="res://resources/texture/xirang_icon.png" id="13_xirang"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/fate/xiaocong_dialogue_bubble.tscn" id="14_xiaocong_dialogue"]
+[ext_resource type="AudioStream" path="res://resources/audio/ui/rogue_shop_purchase_success.wav" id="15_purchase_success"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_xiaocong_third"]
 atlas = ExtResource("3_xiaocong")
@@ -95,6 +97,11 @@ texture_filter = 1
 texture = SubResource("AtlasTexture_xiaocong_third")
 expand_mode = 1
 stretch_mode = 0
+
+[node name="XiaocongDialogueBubble" parent="Root" instance=ExtResource("14_xiaocong_dialogue")]
+unique_name_in_owner = true
+position = Vector2(40, 28)
+dialogue_layer_index = 11
 
 [node name="ShopPanel" type="NinePatchRect" parent="Root"]
 layout_mode = 1
@@ -346,24 +353,6 @@ theme_override_fonts/font = ExtResource("11_font")
 theme_override_font_sizes/font_size = 13
 text = "下一页"
 horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="StatusLabel" type="Label" parent="Root/ShopPanel"]
-unique_name_in_owner = true
-layout_mode = 1
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = -94.0
-offset_right = -250.0
-offset_bottom = -30.0
-grow_horizontal = 2
-grow_vertical = 0
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.68, 0.7, 0.68, 1)
-theme_override_fonts/font = ExtResource("11_font")
-theme_override_font_sizes/font_size = 13
-autowrap_mode = 2
 vertical_alignment = 1
 
 [node name="ExitButton" type="TextureButton" parent="Root/ShopPanel"]
@@ -666,6 +655,13 @@ theme_override_font_sizes/font_size = 19
 text = "取消"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="PurchaseSuccessAudio" type="AudioStreamPlayer" parent="."]
+unique_name_in_owner = true
+stream = ExtResource("15_purchase_success")
+volume_db = -7.0
+max_polyphony = 1
+bus = &"SFX"
 
 [connection signal="pressed" from="Root/ShopPanel/BuyTabButton" to="." method="_on_buy_tab_pressed"]
 [connection signal="pressed" from="Root/ShopPanel/SellTabButton" to="." method="_on_sell_tab_pressed"]

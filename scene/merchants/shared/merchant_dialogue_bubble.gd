@@ -8,6 +8,8 @@ const NO_BREAK_MARK := DialogueTypewriterController.NO_BREAK_MARK
 # World and ambient effects occupy layers 0-1; player-facing UI starts at 5.
 const CANVAS_LAYER := 4
 
+@export var dialogue_layer_index := CANVAS_LAYER
+
 @onready var dialogue_layer: CanvasLayer = $DialogueLayer
 @onready var canvas_anchor: Node2D = $DialogueLayer/Anchor
 @onready var text_label: RichTextLabel = (
@@ -22,6 +24,7 @@ var is_revealing: bool:
 
 
 func _ready() -> void:
+	dialogue_layer.layer = dialogue_layer_index
 	typewriter.configure(text_label, blip_audio)
 	visibility_changed.connect(_on_visibility_changed)
 	dialogue_layer.visible = is_visible_in_tree()

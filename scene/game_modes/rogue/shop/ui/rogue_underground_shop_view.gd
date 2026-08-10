@@ -11,6 +11,11 @@ const CARD_COUNT := 8
 const SELL_SLOT_CAPACITY := 20
 const SELL_PAGE_SIZE := 8
 const SELL_PAGE_COUNT := 3
+const XIAOCONG_SHOP_LINE := "在这地下矿洞中只有我这一家商店物美价廉"
+const XIAOCONG_DIALOGUE_DESIRED_LEFT := 40.0
+const XIAOCONG_DIALOGUE_MIN_LEFT := 12.0
+const XIAOCONG_DIALOGUE_PANEL_WIDTH := 308.0
+const XIAOCONG_DIALOGUE_PANEL_GAP := 4.0
 
 enum ShopTab {
 	BUY,
@@ -26,8 +31,11 @@ enum ShopTab {
 @onready var previous_page_button: TextureButton = %PreviousPageButton
 @onready var next_page_button: TextureButton = %NextPageButton
 @onready var page_label: Label = %PageLabel
-@onready var status_label: Label = %StatusLabel
 @onready var exit_button: TextureButton = %ExitButton
+@onready var xiaocong_dialogue_bubble: MerchantDialogueBubble = (
+	%XiaocongDialogueBubble
+)
+@onready var purchase_success_audio: AudioStreamPlayer = %PurchaseSuccessAudio
 @onready var detail_overlay: Control = %DetailOverlay
 @onready var detail_icon: TextureRect = %DetailIcon
 @onready var detail_name: Label = %DetailName
@@ -73,6 +81,9 @@ func _ready() -> void:
 		run_state.quick_use_binding_changed.connect(
 			_on_quick_use_binding_changed
 		)
+	if not root_control.resized.is_connected(_layout_xiaocong_dialogue):
+		root_control.resized.connect(_layout_xiaocong_dialogue)
+	_layout_xiaocong_dialogue()
 	detail_overlay.hide()
 	_show_tab(ShopTab.BUY, false)
 	close_immediately()
@@ -83,9 +94,10 @@ func open_session() -> void:
 	_transaction_pending = false
 	_sell_page = 0
 	exit_button.disabled = false
-	status_label.text = ""
 	close_detail()
 	_show_tab(ShopTab.BUY, false)
+	_layout_xiaocong_dialogue()
+	xiaocong_dialogue_bubble.say(XIAOCONG_SHOP_LINE)
 	_focus_first_available_card()
 
 
@@ -94,6 +106,8 @@ func close_immediately() -> void:
 	_selected_card_index = -1
 	if detail_overlay != null:
 		detail_overlay.hide()
+	if xiaocong_dialogue_bubble != null:
+		xiaocong_dialogue_bubble.hide_bubble()
 	visible = false
 
 
@@ -115,12 +129,6 @@ func present_shop_snapshot(snapshot: Dictionary) -> void:
 	var offers := snapshot.get("offers", snapshot.get("target_offers", [])) as Array
 	if offers != null:
 		present_buy_offers(offers)
-	var waiting_names: Variant = snapshot.get(
-		"waiting_player_names",
-		PackedStringArray()
-	)
-	if waiting_names is PackedStringArray:
-		set_waiting_departure(waiting_names as PackedStringArray)
 
 
 func present_sell_inventory(slots: Array) -> void:
@@ -168,19 +176,13 @@ func present_transaction_error(message: String) -> void:
 		detail_action_button.grab_focus()
 
 
-func set_status_message(message: String) -> void:
-	status_label.text = message
-
-
-func set_waiting_departure(player_names: PackedStringArray) -> void:
-	if player_names.is_empty():
-		status_label.text = "所有玩家均已退出商店，房主可以继续选择路线。"
-		return
-	status_label.text = "等待退出：%s" % "、".join(player_names)
-
-
 func set_exit_enabled(enabled: bool) -> void:
 	exit_button.disabled = not enabled
+
+
+func play_purchase_success_audio() -> void:
+	purchase_success_audio.stop()
+	purchase_success_audio.play()
 
 
 func close_detail() -> void:
@@ -220,7 +222,19 @@ func get_sell_page() -> int:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not visible or not detail_overlay.visible:
+	if not visible:
+		return
+	if (
+		event.is_action_pressed(&"interact")
+		and xiaocong_dialogue_bubble.visible
+	):
+		if xiaocong_dialogue_bubble.is_revealing:
+			xiaocong_dialogue_bubble.finish_line()
+		else:
+			xiaocong_dialogue_bubble.hide_bubble()
+		get_viewport().set_input_as_handled()
+		return
+	if not detail_overlay.visible:
 		return
 	if event.is_action_pressed(&"ui_cancel"):
 		if not _transaction_pending:
@@ -354,6 +368,7 @@ func _on_item_card_selected(card: RogueUndergroundShopItemCard) -> void:
 		return
 	_selected_card_index = card_index
 	_selected_payload = card.get_payload()
+	xiaocong_dialogue_bubble.hide_bubble()
 	_present_detail(_selected_payload)
 	_set_background_focus_enabled(false)
 	detail_overlay.show()
@@ -488,5 +503,21 @@ func _on_exit_pressed() -> void:
 	if _transaction_pending:
 		return
 	exit_button.disabled = true
-	status_label.text = "正在离开地下商店……"
+	xiaocong_dialogue_bubble.hide_bubble()
 	exit_requested.emit()
+
+
+func _layout_xiaocong_dialogue() -> void:
+	if xiaocong_dialogue_bubble == null or root_control == null:
+		return
+	var shop_panel_left := root_control.size.x * 0.34
+	var safe_left := shop_panel_left - (
+		XIAOCONG_DIALOGUE_PANEL_WIDTH + XIAOCONG_DIALOGUE_PANEL_GAP
+	)
+	xiaocong_dialogue_bubble.position = Vector2(
+		maxf(
+			XIAOCONG_DIALOGUE_MIN_LEFT,
+			minf(XIAOCONG_DIALOGUE_DESIRED_LEFT, safe_left)
+		),
+		28.0
+	).round()

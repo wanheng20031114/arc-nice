@@ -50,6 +50,7 @@ var _local_exit_requested := false
 var _transition_active := false
 var _presentation_serial := 0
 var _request_sequence := 0
+var _last_purchase_success_audio_signature := ""
 
 
 func _ready() -> void:
@@ -105,6 +106,7 @@ func reset_runtime(
 	_local_snapshot.clear()
 	_local_occurrence_key = ""
 	_local_exit_requested = false
+	_last_purchase_success_audio_signature = ""
 	_transition_active = false
 	transition.hide_immediately()
 	view.close_immediately()
@@ -691,16 +693,29 @@ func _sync_local_presentation(snapshot: Dictionary) -> void:
 	if occurrence_key != _local_occurrence_key:
 		_local_occurrence_key = occurrence_key
 		_local_exit_requested = false
+		_last_purchase_success_audio_signature = ""
 	view.present_shop_snapshot(snapshot)
 	view.present_sell_inventory(snapshot.get("sell_slots", []) as Array)
 	var transaction_result := snapshot.get("transaction_result", {}) as Dictionary
 	if not transaction_result.is_empty():
 		view.set_transaction_pending(false)
-		if not bool(transaction_result.get("success", false)):
+		var transaction_succeeded := bool(
+			transaction_result.get("success", false)
+		)
+		var result_code := StringName(
+			transaction_result.get("result_code", "")
+		)
+		if transaction_succeeded and result_code == &"purchased":
+			var audio_signature := _make_purchase_success_audio_signature(
+				occurrence_key,
+				transaction_result
+			)
+			if audio_signature != _last_purchase_success_audio_signature:
+				_last_purchase_success_audio_signature = audio_signature
+				view.play_purchase_success_audio()
+		elif not transaction_succeeded:
 			view.present_transaction_error(
-				_get_result_message(
-					StringName(transaction_result.get("result_code", ""))
-				)
+				_get_result_message(result_code)
 			)
 	var target_exited := bool(snapshot.get("target_exited", false))
 	if target_exited:
@@ -721,6 +736,20 @@ func _sync_local_presentation(snapshot: Dictionary) -> void:
 		and not _transition_active
 	):
 		call_deferred(&"_enter_presentation", occurrence_key)
+
+
+func _make_purchase_success_audio_signature(
+	occurrence_key: String,
+	transaction_result: Dictionary
+) -> String:
+	return "%s|%d|%d|%d|%d|%d" % [
+		occurrence_key,
+		int(transaction_result.get("offer_index", -1)),
+		int(transaction_result.get("session_revision", -1)),
+		int(transaction_result.get("shelf_revision", -1)),
+		int(transaction_result.get("inventory_revision", -1)),
+		int(transaction_result.get("xirang_revision", -1)),
+	]
 
 
 func _enter_presentation(occurrence_key: String) -> void:

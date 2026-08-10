@@ -27,6 +27,9 @@ func _run() -> void:
 	current_scene = preview
 	for _frame in range(6):
 		await process_frame
+	var shop_view := preview.get_node("ShopView") as RogueUndergroundShopView
+	shop_view.xiaocong_dialogue_bubble.finish_line()
+	await process_frame
 	if not await _capture("underground_shop_assembly.png"):
 		_finish(preview, 1)
 		return

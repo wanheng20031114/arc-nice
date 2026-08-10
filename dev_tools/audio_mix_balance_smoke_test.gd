@@ -27,6 +27,9 @@ const UPGRADE_ROW_SCENE := preload("res://scene/ui/shared/upgrade/upgrade_row.ts
 const XIAOCONG_FATE_CHOICE_OVERLAY_SCENE := preload(
 	"res://scene/game_modes/tower_defense/fate/xiaocong_fate_choice_overlay.tscn"
 )
+const ROGUE_UNDERGROUND_SHOP_VIEW_SCENE := preload(
+	"res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_view.tscn"
+)
 
 const AK_CONFIG := preload("res://resources/config/enemies/capoo_ak47.tres")
 const RPG_CONFIG := preload("res://resources/config/enemies/capoo_rpg.tres")
@@ -503,6 +506,12 @@ func _test_spatial_audio_priority() -> void:
 
 func _test_ui_mix() -> void:
 	await _expect_scene_audio_volume(MERCHANT_BUBBLE_SCENE, "BlipAudio", 4.0, "Dialogue blip must compensate for the quiet source file.")
+	await _expect_scene_audio_volume(
+		ROGUE_UNDERGROUND_SHOP_VIEW_SCENE,
+		"PurchaseSuccessAudio",
+		-7.0,
+		"Underground-shop purchase confirmation must remain below major UI cues."
+	)
 
 	var lobby := MULTIPLAYER_LOBBY_SCENE.instantiate()
 	_expect(lobby != null, "Multiplayer lobby must instantiate for typing audio mix test.")
