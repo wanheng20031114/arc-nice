@@ -10,6 +10,10 @@ const KNIGHT_SCENE := preload("res://scene/enemy/capoo/capoo_knight.tscn")
 const PLAYER_SCENE := preload(
 	"res://scene/player/weishidaier/player_weishidaier.tscn"
 )
+const AGAVE_SCENE := preload("res://scene/plant_defense/agave_cannon.tscn")
+const AGAVE_CONFIG := preload(
+	"res://resources/config/plant_defense/agave_cannon.tres"
+)
 const DEFAULT_DROP_TABLE_PATH := (
 	"res://resources/config/enemies/default_enemy_drop_table.tres"
 )
@@ -69,6 +73,8 @@ func _run() -> void:
 	await _test_fixed_damage_profile()
 	await _test_facing_windup_lock_and_slash_geometry()
 	await _test_slash_damage_frame_timing()
+	await _test_automatic_diagonal_contact_slash()
+	await _test_automatic_large_plant_contact_slash()
 	await _test_touch_damage_interval()
 
 	fake_runtime.free()
@@ -95,7 +101,7 @@ func _test_resource_and_scene_contract() -> void:
 	_expect(CARDBOARD_CONFIG.display_name == "纸箱怪", "Display name mismatch.")
 	_expect(CARDBOARD_CONFIG.enemy_scene == CARDBOARD_SCENE, "Enemy scene mismatch.")
 	_expect(CARDBOARD_CONFIG.category_tags == PackedStringArray(["artificial_creation"]), "Category must be artificial_creation only.")
-	_expect(CARDBOARD_CONFIG.max_health == 10, "Health must be 10.")
+	_expect(CARDBOARD_CONFIG.max_health == 6, "Health must be 6.")
 	_expect(CARDBOARD_CONFIG.attack_damage == 25, "Attack damage must be 25.")
 	_expect(CARDBOARD_CONFIG.physical_defense == 0, "Physical defense must be 0.")
 	_expect(CARDBOARD_CONFIG.magic_defense == 0, "Magic defense must be 0.")
@@ -169,10 +175,18 @@ func _test_resource_and_scene_contract() -> void:
 					paper_stick_max_x = maxi(paper_stick_max_x, x)
 	_expect(paper_stick_min_x > 16 and paper_stick_max_x >= 28, "Right-facing move F0 paper stick must remain on +X.")
 	_expect(enemy.call("_get_slash_damage_source_type") == &"cardboard_monster_slash", "Cardboard slash source type mismatch.")
+	_expect(
+		enemy.call("_uses_contact_shape_slash_reach"),
+		"Cardboard monster must opt into collider-aware reach at a real contact boundary."
+	)
 	enemy.free()
 
 	var knight := KNIGHT_SCENE.instantiate() as CapooKnight
 	_expect(knight.call("_get_slash_damage_source_type") == &"capoo_knight_slash", "CapooKnight default slash source must remain unchanged.")
+	_expect(
+		not knight.call("_uses_contact_shape_slash_reach"),
+		"Other knight-family enemies must retain their authored center-distance reach."
+	)
 	knight.free()
 
 
@@ -184,11 +198,11 @@ func _test_fixed_damage_profile() -> void:
 	var profile := enemy.call("_create_damage_target_profile") as DamageTargetProfile
 	_expect(profile != null and is_equal_approx(profile.fixed_damage_per_accepted_hit, 1.0), "Cardboard target profile must fix every accepted hit to 1 damage.")
 	var accepted := enemy.apply_damage(999, Vector2.RIGHT, EnemyConfig.DamageType.PHYSICAL, false)
-	_expect(accepted and enemy.current_health == 9 and enemy.last_damage_taken == 1, "A large physical hit must remove exactly 1 HP.")
+	_expect(accepted and enemy.current_health == 5 and enemy.last_damage_taken == 1, "A large physical hit must remove exactly 1 HP.")
 	accepted = enemy.apply_damage(999, Vector2.LEFT, EnemyConfig.DamageType.MAGIC, false)
-	_expect(accepted and enemy.current_health == 8 and enemy.last_damage_taken == 1, "A large magic hit must remove exactly 1 HP.")
+	_expect(accepted and enemy.current_health == 4 and enemy.last_damage_taken == 1, "A large magic hit must remove exactly 1 HP.")
 	var rejected := enemy.apply_damage(0, Vector2.ZERO, EnemyConfig.DamageType.PHYSICAL, false)
-	_expect(not rejected and enemy.current_health == 8, "A rejected zero-damage request must not consume HP.")
+	_expect(not rejected and enemy.current_health == 4, "A rejected zero-damage request must not consume HP.")
 	enemy.queue_free()
 	await process_frame
 
@@ -267,6 +281,126 @@ func _test_slash_damage_frame_timing() -> void:
 	)
 	enemy.queue_free()
 	player.queue_free()
+	await physics_frame
+
+
+func _test_automatic_diagonal_contact_slash() -> void:
+	var previous_combat_sense_throttling := Enemy.combat_sense_throttling_enabled
+	Enemy.combat_sense_throttling_enabled = true
+	var player := _spawn_player(Vector2(12, 12))
+	var enemy := CARDBOARD_SCENE.instantiate() as CardboardMonster
+	# Keep the initial contact hit, but isolate the authored slash from the next
+	# 0.5-second contact tick; that cadence has its own focused test below.
+	enemy.touch_damage_interval = 99.0
+	test_root.add_child(enemy)
+	enemy.global_position = Vector2.ZERO
+	enemy.setup(CARDBOARD_CONFIG, player, null, fake_runtime)
+	var center_distance := enemy.global_position.distance_to(player.global_position)
+	_expect(
+		center_distance > CARDBOARD_CONFIG.slash_outer_radius,
+		"Diagonal contact fixture must keep the target center beyond the 16px slash radius."
+	)
+
+	var saw_contact := false
+	var saw_windup := false
+	var saw_slash := false
+	var health_after_contact := player.current_health
+	var health_after_slash := player.current_health
+	for _physics_step in range(90):
+		await physics_frame
+		if not saw_contact and enemy.call("_has_player_contact"):
+			saw_contact = true
+			health_after_contact = player.current_health
+		if enemy.combat_state == CapooKnight.CombatState.WINDUP:
+			saw_windup = true
+			_expect(
+				enemy.animated_sprite.animation == &"windup",
+				"Automatic diagonal contact must play the authored windup animation."
+			)
+		elif enemy.combat_state == CapooKnight.CombatState.SLASH:
+			saw_slash = true
+			_expect(
+				enemy.animated_sprite.animation == &"slash",
+				"Automatic diagonal contact must play the authored slash animation."
+			)
+		if enemy.slash_damage_done:
+			health_after_slash = player.current_health
+			break
+
+	_expect(saw_contact, "Diagonal fixture must produce a real TouchDamageArea overlap.")
+	_expect(saw_windup, "A contacted target beyond 16px center distance must automatically enter windup.")
+	_expect(saw_slash, "Automatic windup must transition into slash without direct method calls.")
+	_expect(
+		health_after_contact == 75,
+		"Initial diagonal body contact must remain an independent 25-damage hit."
+	)
+	_expect(
+		health_after_slash == health_after_contact - 25,
+		"The automatic paper-stick slash must deal a separate 25-damage hit at the contact boundary."
+	)
+
+	Enemy.combat_sense_throttling_enabled = previous_combat_sense_throttling
+	enemy.queue_free()
+	player.queue_free()
+	await physics_frame
+
+
+func _test_automatic_large_plant_contact_slash() -> void:
+	var previous_combat_sense_throttling := Enemy.combat_sense_throttling_enabled
+	Enemy.combat_sense_throttling_enabled = true
+	var plant := AGAVE_SCENE.instantiate() as AgaveCannon
+	plant.global_position = Vector2(18, 0)
+	test_root.add_child(plant)
+	plant.setup(AGAVE_CONFIG, null, [Vector2i.ZERO])
+	plant.attack_timer.stop()
+	var initial_health := plant.current_health
+
+	var enemy := CARDBOARD_SCENE.instantiate() as CardboardMonster
+	enemy.touch_damage_interval = 99.0
+	test_root.add_child(enemy)
+	enemy.global_position = Vector2.ZERO
+	enemy.setup(CARDBOARD_CONFIG, null, null, fake_runtime)
+	enemy.set_objective_target(plant)
+	_expect(
+		enemy.global_position.distance_to(plant.global_position)
+			> CARDBOARD_CONFIG.slash_outer_radius,
+		"Large-plant fixture must keep the building center beyond the 16px slash radius."
+	)
+
+	var saw_plant_contact := false
+	var saw_windup := false
+	var saw_slash := false
+	var health_after_contact := initial_health
+	var health_after_slash := initial_health
+	for _physics_step in range(90):
+		await physics_frame
+		if (
+			not saw_plant_contact
+			and enemy.touching_plants.has(plant.get_instance_id())
+		):
+			saw_plant_contact = true
+			health_after_contact = plant.current_health
+		if enemy.combat_state == CapooKnight.CombatState.WINDUP:
+			saw_windup = true
+		elif enemy.combat_state == CapooKnight.CombatState.SLASH:
+			saw_slash = true
+		if enemy.slash_damage_done:
+			health_after_slash = plant.current_health
+			break
+
+	var contact_damage := initial_health - health_after_contact
+	var slash_damage := health_after_contact - health_after_slash
+	_expect(saw_plant_contact, "The 28x27 plant collider must enter the real touch tracker.")
+	_expect(saw_windup and saw_slash, "A contacted large plant must automatically reach windup and slash.")
+	_expect(contact_damage > 0, "Large-plant body contact must remain independently damaging.")
+	_expect(
+		slash_damage == contact_damage,
+		"The paper-stick slash and body contact must submit the same independent 25 physical damage before defense."
+	)
+
+	Enemy.combat_sense_throttling_enabled = previous_combat_sense_throttling
+	enemy.queue_free()
+	plant.queue_free()
 	await physics_frame
 
 

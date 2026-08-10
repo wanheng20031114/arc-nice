@@ -11,6 +11,10 @@ func _uses_inherited_touch_damage() -> bool:
 	return true
 
 
+func _uses_contact_shape_slash_reach() -> bool:
+	return true
+
+
 func _get_slash_damage_source_type() -> StringName:
 	return &"cardboard_monster_slash"
 

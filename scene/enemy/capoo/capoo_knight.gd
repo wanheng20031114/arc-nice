@@ -137,7 +137,7 @@ func _try_start_windup(candidate_target: Node2D = null) -> bool:
 		candidate_target = _get_preferred_ranged_combat_target()
 	if not _is_ranged_combat_target_valid(candidate_target):
 		return false
-	if not _is_ranged_combat_target_in_range(
+	if not _is_slash_target_in_start_range(
 		candidate_target,
 		knight_config.attack_range
 	):
@@ -278,7 +278,12 @@ func _apply_slash_damage() -> void:
 			continue
 		var offset := hit_target.global_position - global_position
 		var distance := offset.length()
-		if distance < knight_config.slash_inner_radius or distance > knight_config.slash_outer_radius:
+		if not _is_slash_target_in_radial_range(
+			hit_target,
+			distance,
+			knight_config.slash_inner_radius,
+			knight_config.slash_outer_radius
+		):
 			continue
 		if offset == Vector2.ZERO or abs(slash_direction.angle_to(offset.normalized())) > half_angle:
 			continue
@@ -469,6 +474,45 @@ func _try_deal_touch_damage() -> void:
 
 func _uses_inherited_touch_damage() -> bool:
 	return false
+
+
+func _uses_contact_shape_slash_reach() -> bool:
+	return false
+
+
+func _is_slash_target_in_start_range(
+	target: Node2D,
+	attack_range: float
+) -> bool:
+	return (
+		_is_ranged_combat_target_in_range(target, attack_range)
+		or _is_contact_shape_slash_target(target)
+	)
+
+
+func _is_slash_target_in_radial_range(
+	target: Node2D,
+	distance: float,
+	inner_radius: float,
+	outer_radius: float
+) -> bool:
+	if distance < inner_radius:
+		return false
+	return distance <= outer_radius or _is_contact_shape_slash_target(target)
+
+
+func _is_contact_shape_slash_target(target: Node2D) -> bool:
+	# The authored radius still limits the physics query itself. This opt-in only
+	# prevents a large or diagonal collider from being rejected a second time by
+	# its node-center distance after its surface is already within reach.
+	if (
+		not _uses_contact_shape_slash_reach()
+		or target == null
+		or not is_instance_valid(target)
+	):
+		return false
+	var target_id := target.get_instance_id()
+	return touching_players.has(target_id) or touching_plants.has(target_id)
 
 
 func _get_attack_interval() -> float:
