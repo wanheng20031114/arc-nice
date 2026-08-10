@@ -1,5 +1,4 @@
 interface:
-  display_name: "敌人生成 Pipeline"
-  short_description: "生成并接入 Godot 敌人像素动画素材"
-  default_prompt: "使用 $enemy-generation-pipeline 通过内置 image_gen 生成并接入新的 Godot 敌人像素动画资源。"
- 
+  display_name: "新敌人制作 Pipeline"
+  short_description: "从视觉确认到运行时、联机与测试交付的新敌人流水线"
+  default_prompt: "使用 $enemy-generation-pipeline 规划、制作并接入一个按影响面分阶段确认和验证的新 Godot 敌人。"

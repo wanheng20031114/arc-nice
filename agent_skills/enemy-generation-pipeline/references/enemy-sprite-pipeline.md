@@ -1,5 +1,14 @@
 # 敌人精灵 Pipeline 参考
 
+本文保留少量历史案例来解释技术原因；其中角色名、帧数、画布、背景色和动作编排都不是默认参数，实际任务必须重新测量和确认。
+
+先选择且只选择一种素材来源分支：
+
+- **确定性原生像素分支**：ImageGen 只提供结构语言，显式重建后的原生帧才是 canonical texture，任何生成图像素都不得静默进入运行素材。
+- **批准后直接使用分支**：只有用户明确批准直接使用生成的 alpha/sheet 时，干净源图才可成为 canonical texture，并执行本参考中的锚点切分与导入审计。
+
+后文提到保留 alpha 源图时，均只适用于“批准后直接使用分支”；确定性原生像素分支只借用测量与锚点方法。
+
 ## 目录
 
 - 成功模式
@@ -7,7 +16,7 @@
 - 主体锚点策略
 - 背景色选择
 - 动画 Sheet Prompt 契约
-- Linglan Attack Prompt 复盘
+- 攻击动作 Prompt 复盘
 - 安全框契约
 - 切图策略
 - 缩放与居中
@@ -17,9 +26,9 @@
 
 ## 成功模式
 
-Capoo mage 替换成功的关键，是不再把整张图当成普通固定网格，而是把每一帧当成“由主体锚点控制的 sprite”：
+一次非均匀动画 sheet 替换成功的关键，是不再把整张图当成普通固定网格，而是把每一帧当成“由主体锚点控制的 sprite”：
 
-- 保留干净 alpha 源图作为 canonical texture，不要过早缩小。
+- 直接使用分支保留干净 alpha 源图作为 canonical texture，不要过早缩小；确定性分支保留重建后的原生帧。
 - 每帧独立测量。
 - 从稳定主体部位提取脚底/身体锚点，不从武器、帽子、投射物或 VFX 提取。
 - 所有帧使用一致的逻辑帧尺寸。
@@ -27,7 +36,7 @@ Capoo mage 替换成功的关键，是不再把整张图当成普通固定网格
 - 根据逻辑帧锚点重新计算 `AnimatedSprite2D` 的 scale 和 position。
 - 用带锚点十字线的预览图先发现串帧、裁切和主体漂移。
 
-这是后续敌人和 boss 精灵替换的默认模式。
+这是直接使用非均匀 sheet 时的默认锚点模式，不是所有低分辨率敌人的固定素材来源。
 
 ## 设计阶段
 
@@ -103,9 +112,9 @@ Capoo mage 替换成功的关键，是不再把整张图当成普通固定网格
 
 如果必须使用英文 prompt，也要保留等价约束：`same body pixel size`, `same body center`, `same feet/body anchor`, `large safe padding inside every cell`, `props and VFX fully inside the cell`, `no cropped tail/staff/effects`。
 
-## Linglan Attack Prompt 复盘
+## 攻击动作 Prompt 复盘
 
-Linglan attack 源图风格可用，是因为 prompt 成功约束了 Q 版像素风狐娘 boss、举起法杖、挥动法杖、攻击动作节奏，以及相对一致的角色设计。这里采用 6 帧只是因为这次“举杖到挥杖”的动作适合 6 个关键姿势，不应写成通用规则。
+某次攻击源图风格可用，是因为 prompt 成功约束了角色身份、武器动作、攻击节奏和跨帧一致性。该任务采用 6 帧，只是因为当次动作适合 6 个关键姿势，不应写成通用规则。
 
 暴露的问题：
 
@@ -187,7 +196,7 @@ sprite_position = desired_world_anchor - local_anchor_offset
 
 - 只使用无损或 nearest-neighbor 操作。
 - 不要在最终切图策略确定前缩放源图。
-- 干净 alpha 源图优先作为 canonical texture。
+- 直接使用分支优先保留干净 alpha 源图；确定性分支以批准后的原生重建图为 canonical texture。
 - 只做无损 PNG 优化。
 - 除非人工检查过，否则不要做会改变 alpha 边缘的 palette conversion。
 - Godot 小像素精灵默认关闭 mipmaps，除非项目有明确缩放 pipeline。
