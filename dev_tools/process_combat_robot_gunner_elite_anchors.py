@@ -25,6 +25,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont
 
 from pixel_grid_analyzer import analyze_image
@@ -229,7 +231,7 @@ def _relative(path: Path) -> str:
 def _assert_dev_output(path: Path) -> None:
     resolved = path.resolve()
     dev_root = (PROJECT_ROOT / "dev_assets").resolve()
-    if resolved != dev_root and dev_root not in resolved.parents:
+    if resolved != dev_root and dev_root not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Preview builder refused non-dev output: {path}")
 
 
@@ -798,7 +800,7 @@ def main() -> None:
             + ", ".join(missing_references)
         )
 
-    prompt_manifest_path = SOURCE_DIR / "imagegen_prompt_manifest.json"
+    prompt_manifest_path = enemy_asset_report_path("combat_robot_gunner_elite_anchor_prompt_manifest.json")
     prompt_manifest = {
         "version": 1,
         "asset": "combat_robot_gunner_elite_anchor_candidates",
@@ -1018,7 +1020,7 @@ def main() -> None:
         "comparison": _relative(comparison_path),
     }
     report_path = (
-        PREVIEW_DIR / "combat_robot_gunner_elite_anchor_report.json"
+        enemy_asset_report_path("combat_robot_gunner_elite_anchor_report.json")
     )
     _assert_dev_output(report_path)
     report_path.write_text(

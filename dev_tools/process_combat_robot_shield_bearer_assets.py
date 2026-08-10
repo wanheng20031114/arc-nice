@@ -18,6 +18,8 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Sequence
 
 from PIL import Image
@@ -65,7 +67,7 @@ SELECTED_DEATH_GIF_PATH = (
     PREVIEW_DIR / "combat_robot_shield_bearer_selected_death_states.gif"
 )
 REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_shield_bearer_asset_build_report.json"
+    enemy_asset_report_path("combat_robot_shield_bearer_asset_build_report.json")
 )
 
 FRAME_SIZE = 32

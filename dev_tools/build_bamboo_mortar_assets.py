@@ -42,7 +42,7 @@ CHARGE_REFERENCE_PATH = (
 FIRE_REFERENCE_PATH = (
     SOURCE_ROOT / "bamboo_mortar_fire_burst_imagegen_magenta.png"
 )
-AUDIT_PATH = SOURCE_ROOT / "bamboo_mortar_asset_audit.json"
+AUDIT_PATH = ROOT / "dev_tools/output/plant_defense/bamboo_mortar_asset_audit.json"
 
 CANVAS_SIZE = (64, 64)
 NATIVE_LOGICAL_SIZE = (64, 64)
@@ -1057,7 +1057,8 @@ def main() -> int:
         mismatches = [
             path
             for path, expected in outputs.items()
-            if not path.is_file() or path.read_bytes() != expected
+            if path != AUDIT_PATH
+            and (not path.is_file() or path.read_bytes() != expected)
         ]
         if mismatches:
             for path in mismatches:

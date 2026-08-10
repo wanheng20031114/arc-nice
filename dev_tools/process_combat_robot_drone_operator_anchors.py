@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw
 
 from process_combat_robot_assets import PALETTE, snap_palette
@@ -323,7 +325,7 @@ def main() -> None:
     comparison_path = _write_comparison(candidates)
     report["comparison"] = str(comparison_path.relative_to(PROJECT_ROOT))
     report_path = (
-        PREVIEW_DIR / "combat_robot_drone_operator_anchor_report.json"
+        enemy_asset_report_path("combat_robot_drone_operator_anchor_report.json")
     )
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",

@@ -1,8 +1,6 @@
 extends Node
 
 const SOURCE_PATH := "res://dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_afterimage_review_source.png"
-const SOURCE_MANIFEST_PATH := "res://dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_afterimage_review_source_manifest.json"
-const ANIMATION_MANIFEST_PATH := "res://dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_animation_manifest.json"
 const STATUS_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 const ENEMY_SCENE_PATH := "res://scene/enemy/enemy.tscn"
 const NINJA_SCENE_PATH := "res://scene/enemy/mechanical_life/combat_robot_ninja.tscn"
@@ -11,7 +9,6 @@ const RAW_OUTPUT_DIRECTORY := "res://dev_tools/output/combat_robot_ninja_elite_a
 
 const EXPECTED_SOURCE_SHA := "6c0f50f2e02be51264ba92b269d26366653a0608cbed2b186e6c43c8ae2bd23b"
 const EXPECTED_SOURCE_RGBA_SHA := "5fc943f0369c1e6a6f26f374c5c07542e2d92dd780e9a8ea7157220dca7001d3"
-const EXPECTED_ANIMATION_MANIFEST_SHA := "a2589f42897f714ffbd99300b8136c6a9eac30ff5f1aaffb4e85941e7041be61"
 const EXPECTED_SHADER_SHA := "10454b4a7db41abf7ec5881a4f516f919868df1bbf1b395cc86346edc4de05f6"
 const EXPECTED_ENEMY_SCENE_SHA := "48127a5e51bdcdce48c299a3185dd0b0bfcd684e4041850b3e419d9e306458ee"
 const EXPECTED_NINJA_SCRIPT_SHA := "ded06d64d7e10ac74dd4015f1daccb968e0ab80aec230e7208dd455e0225db21"
@@ -20,6 +17,16 @@ const EXPECTED_ROW_RGBA_SHA := {
 	"move": "cfb00c5e0c1e330d41a0bfcee6827576b52f39e8a7ca3c6875fb3511eed921ba",
 	"boost": "e44ebfa9e6ba7f4cba50a38acf3f114ae87829f8fc1e047b6610243f2936cb37",
 	"death": "616bff1518b607e5f58e60e1375eeb0fc339f41ec92e4280062d739757357ed0",
+}
+const APPROVED_ROW_PATHS := {
+	"move": "res://dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_move_m1_candidate_native.png",
+	"boost": "res://dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_boost_s2_candidate_native.png",
+	"death": "res://dev_assets/source_images/combat_robot_ninja_elite/combat_robot_ninja_elite_death_d1_candidate_native.png",
+}
+const EXPECTED_ROW_FILE_SHA := {
+	"move": "0d2abb9e49f38d1d9ff09a6e874485168e15798d78cd503a241fe601e1a5f3d9",
+	"boost": "d227677c16a89685489649ddb56362c84356f81181792a920f1f0180638058b2",
+	"death": "e886670c43fece56df7462ce8fb8b8bacae69bd8ab0d7ff82fc1c431e4aa7ffe",
 }
 
 const FRAME_SIZE := 40
@@ -83,7 +90,6 @@ var production_material_instance_id := 0
 var production_material_rid := 0
 var production_shader_instance_id := 0
 var production_shader_rid := 0
-var source_manifest_sha := ""
 var direction_audit := {
 	"body_changed_pixels": {},
 	"trail_only_pixels": {},
@@ -141,7 +147,6 @@ func _clear_stale_raw_outputs(output_absolute: String) -> void:
 func _verify_locked_inputs() -> void:
 	var locks := {
 		SOURCE_PATH: EXPECTED_SOURCE_SHA,
-		ANIMATION_MANIFEST_PATH: EXPECTED_ANIMATION_MANIFEST_SHA,
 		STATUS_SHADER_PATH: EXPECTED_SHADER_SHA,
 		ENEMY_SCENE_PATH: EXPECTED_ENEMY_SCENE_SHA,
 		NINJA_SCRIPT_PATH: EXPECTED_NINJA_SCRIPT_SHA,
@@ -151,20 +156,14 @@ func _verify_locked_inputs() -> void:
 		_expect(FileAccess.file_exists(path), "Missing locked input: %s" % path)
 		if FileAccess.file_exists(path):
 			_expect(FileAccess.get_sha256(path) == locks[path], "Locked SHA drifted: %s" % path)
-	_expect(FileAccess.file_exists(SOURCE_MANIFEST_PATH), "Missing prepared source manifest.")
-	if FileAccess.file_exists(SOURCE_MANIFEST_PATH):
-		source_manifest_sha = FileAccess.get_sha256(SOURCE_MANIFEST_PATH)
-	var manifest_value: Variant = JSON.parse_string(FileAccess.get_file_as_string(ANIMATION_MANIFEST_PATH))
-	_expect(manifest_value is Dictionary, "Animation manifest is not a JSON object.")
-	if manifest_value is Dictionary:
-		var manifest: Dictionary = manifest_value
-		_expect(manifest.get("stage") == "second_human_gate_approved", "Animation gate is not approved.")
-		_expect(manifest.get("second_human_approved") == true, "Second human gate flag is false.")
-		_expect(manifest.get("runtime_written") == false, "Animation manifest unexpectedly claims runtime output.")
-		_expect(
-			manifest.get("approved_animation_selection") == {"move": "m1", "boost": "s2", "death": "d1"},
-			"Approved animation selection is not M1/S2/D1."
-		)
+	for row_name in APPROVED_ROW_PATHS:
+		var row_path: String = APPROVED_ROW_PATHS[row_name]
+		_expect(FileAccess.file_exists(row_path), "Missing approved row: %s" % row_path)
+		if FileAccess.file_exists(row_path):
+			_expect(
+				FileAccess.get_sha256(row_path) == EXPECTED_ROW_FILE_SHA[row_name],
+				"Approved row SHA drifted: %s" % row_path
+			)
 
 
 func _load_source() -> void:
@@ -711,9 +710,8 @@ func _write_runtime_report() -> void:
 			"rgba_sha256": _sha256_bytes(source_image.get_data()),
 			"size": [source_image.get_width(), source_image.get_height()],
 			"rows": source_rows,
-			"prepared_manifest_path": SOURCE_MANIFEST_PATH,
-			"prepared_manifest_sha256": source_manifest_sha,
-			"animation_manifest_sha256": EXPECTED_ANIMATION_MANIFEST_SHA,
+			"approved_row_paths": APPROVED_ROW_PATHS,
+			"approved_row_file_sha256": EXPECTED_ROW_FILE_SHA,
 		},
 		"shader": {
 			"path": STATUS_SHADER_PATH,

@@ -15,6 +15,8 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Sequence
 
 from PIL import Image, ImageDraw, ImageFont
@@ -35,10 +37,10 @@ ORDINARY_SHEET_PATH = (
     / "combat_robot.png"
 )
 STAGE2_REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_elite_animation_preview_report.json"
+    enemy_asset_report_path("combat_robot_elite_animation_preview_report.json")
 )
 ANIMATION_MANIFEST_PATH = (
-    SOURCE_DIR / "combat_robot_elite_animation_manifest.json"
+    enemy_asset_report_path("combat_robot_elite_animation_manifest.json")
 )
 FINAL_SHEET_PATH = SOURCE_DIR / "combat_robot_elite_final_candidate.png"
 
@@ -704,7 +706,7 @@ def build() -> dict[str, object]:
             "output_sha256": outputs["final_candidate_sha256"],
         },
     }
-    report_path = PREVIEW_DIR / "combat_robot_elite_final_preview_report.json"
+    report_path = enemy_asset_report_path("combat_robot_elite_final_preview_report.json")
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

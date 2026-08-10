@@ -38,7 +38,7 @@ OUTPUT_PATH = (
     / "player_tiyi"
     / "movement_logical_candidate.png"
 )
-REPORT_PATH = OUTPUT_PATH.with_suffix(".json")
+REPORT_PATH = ROOT / "dev_tools/output/player_tiyi/movement_logical_candidate.json"
 FRAME_COLUMNS = 4
 FRAME_ROWS = 4
 ANALYZER_PADDING = 18
@@ -297,6 +297,7 @@ def main() -> None:
         ),
         "frames": frame_reports,
     }
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

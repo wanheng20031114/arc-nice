@@ -8,6 +8,8 @@ import json
 import re
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -15,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = (
     ROOT / "dev_assets" / "source_images" / "combat_robot_gunner_elite"
 )
-MANIFEST_PATH = SOURCE_ROOT / "combat_robot_gunner_elite_final_candidate_manifest.json"
+MANIFEST_PATH = enemy_asset_report_path("combat_robot_gunner_elite_final_candidate_manifest.json")
 APPROVED_SHEET_PATH = SOURCE_ROOT / "combat_robot_gunner_elite_final_candidate.png"
 APPROVED_BULLET_PATH = (
     SOURCE_ROOT / "combat_robot_gunner_elite_bullet_final_candidate.png"

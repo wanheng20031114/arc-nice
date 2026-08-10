@@ -32,7 +32,7 @@ BUILDING_OUTPUT = (
     ROOT / "resources/texture/plant_defense/research_center/research_center.png"
 )
 PANEL_OUTPUT = ROOT / "resources/texture/research/research_center_panel_background.png"
-AUDIT_OUTPUT = SOURCE_DIR / "research_center_asset_audit.json"
+AUDIT_OUTPUT = ROOT / "dev_tools/output/plant_defense/research_center_asset_audit.json"
 
 BUILDING_MAX_SIZE = (60, 62)
 BUILDING_FOOT_TARGET = (32, 62)
@@ -141,6 +141,7 @@ def main() -> None:
     PANEL_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     assets["building"].save(BUILDING_OUTPUT)
     assets["panel"].save(PANEL_OUTPUT)
+    AUDIT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

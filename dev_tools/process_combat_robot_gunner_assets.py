@@ -26,6 +26,8 @@ import argparse
 import json
 import math
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from statistics import median
 from typing import Iterable
 
@@ -81,7 +83,7 @@ MOVE_GIF_PATH = PREVIEW_DIR / "combat_robot_gunner_move.gif"
 FIRE_GIF_PATH = PREVIEW_DIR / "combat_robot_gunner_fire.gif"
 DEATH_GIF_PATH = PREVIEW_DIR / "combat_robot_gunner_death.gif"
 BULLET_GIF_PATH = PREVIEW_DIR / "combat_robot_gunner_bullet.gif"
-REPORT_PATH = PREVIEW_DIR / "combat_robot_gunner_asset_build_report.json"
+REPORT_PATH = enemy_asset_report_path("combat_robot_gunner_asset_build_report.json")
 
 TRANSPARENT = (0, 0, 0, 0)
 REVIEW_BACKGROUND = (13, 19, 31, 255)

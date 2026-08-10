@@ -43,8 +43,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/corn_machine_gun"
 DEFAULT_INPUT = SOURCE_DIR / "corn_machine_gun_selected_imagegen_magenta.png"
 OUTPUT_DIR = ROOT / "resources/texture/plant_defense/corn_machine_gun"
-AUDIT_PATH = SOURCE_DIR / "corn_asset_audit.json"
-MANIFEST_PATH = SOURCE_DIR / "imagegen_prompt_manifest.json"
+AUDIT_PATH = ROOT / "dev_tools/output/plant_defense/corn_asset_audit.json"
+MANIFEST_PATH = (
+    ROOT / "dev_tools/output/plant_defense/corn_imagegen_prompt_manifest.json"
+)
 
 OUTPUT_FILES = {
     **{f"body_idle_{index}": f"corn_body_idle_{index}.png" for index in range(4)},

@@ -22,6 +22,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont
 
 from pixel_grid_analyzer import analyze_image
@@ -531,7 +533,7 @@ def main() -> None:
         "candidates": report_candidates,
         "comparison": _relative(comparison_path),
     }
-    report_path = PREVIEW_DIR / "combat_robot_elite_anchor_report.json"
+    report_path = enemy_asset_report_path("combat_robot_elite_anchor_report.json")
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2, ensure_ascii=False))
 

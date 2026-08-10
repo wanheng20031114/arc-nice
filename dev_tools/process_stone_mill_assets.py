@@ -39,7 +39,7 @@ BLUE_POWDER_OUTPUT = (
     ROOT / "resources/texture/materials/capoo_blue_crystal_powder.png"
 )
 WHITE_POWDER_OUTPUT = ROOT / "resources/texture/materials/white_crystal_powder.png"
-AUDIT_OUTPUT = SOURCE_DIR / "stone_mill_asset_audit.json"
+AUDIT_OUTPUT = ROOT / "dev_tools/output/plant_defense/stone_mill_asset_audit.json"
 
 BUILDING_MAX_SIZE = (32, 32)
 BUILDING_EXPECTED_SIZE = (25, 27)
@@ -259,6 +259,7 @@ def main() -> None:
     building.save(BUILDING_OUTPUT, optimize=True, compress_level=9)
     blue_powder.save(BLUE_POWDER_OUTPUT, optimize=True, compress_level=9)
     white_powder.save(WHITE_POWDER_OUTPUT, optimize=True, compress_level=9)
+    AUDIT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

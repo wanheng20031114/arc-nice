@@ -17,6 +17,8 @@ import io
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageChops
 
 
@@ -25,11 +27,11 @@ SOURCE_DIRECTORY = ROOT / "dev_assets/source_images/combat_robot_ninja_elite"
 PREVIEW_DIRECTORY = ROOT / "dev_assets/generated_previews"
 RAW_DIRECTORY = ROOT / "dev_tools/output/combat_robot_ninja_elite_afterimage"
 
-ANIMATION_MANIFEST = SOURCE_DIRECTORY / "combat_robot_ninja_elite_animation_manifest.json"
+ANIMATION_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_animation_manifest.json")
 REVIEW_SOURCE = SOURCE_DIRECTORY / "combat_robot_ninja_elite_afterimage_review_source.png"
-REVIEW_SOURCE_MANIFEST = SOURCE_DIRECTORY / "combat_robot_ninja_elite_afterimage_review_source_manifest.json"
-AFTERIMAGE_MANIFEST = SOURCE_DIRECTORY / "combat_robot_ninja_elite_afterimage_manifest.json"
-FINAL_REPORT = PREVIEW_DIRECTORY / "combat_robot_ninja_elite_afterimage_preview_report.json"
+REVIEW_SOURCE_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_afterimage_review_source_manifest.json")
+AFTERIMAGE_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_afterimage_manifest.json")
+FINAL_REPORT = enemy_asset_report_path("combat_robot_ninja_elite_afterimage_preview_report.json")
 
 FRAME_SIZE = 40
 FRAME_COUNT = 8
@@ -150,7 +152,7 @@ def require_file(path: Path) -> Path:
 def ensure_dev_asset_output(path: Path) -> None:
     resolved = path.resolve()
     dev_assets = (ROOT / "dev_assets").resolve()
-    if resolved != dev_assets and dev_assets not in resolved.parents:
+    if resolved != dev_assets and dev_assets not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Refused non-dev_assets output: {path}")
 
 

@@ -8,6 +8,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 import build_combat_robot_shield_bearer_elite_animation_previews as anim
@@ -19,8 +21,8 @@ SOURCE_DIR = anim.SOURCE_DIR
 PREVIEW_DIR = anim.PREVIEW_DIR
 RUNTIME_FX = ROOT / "resources/texture/enemy/mechanical_life/combat_robot_shield_bearer_fx.png"
 R1_NATIVE = SOURCE_DIR / "combat_robot_shield_bearer_elite_shield_states_r1_candidate_native.png"
-ANIMATION_MANIFEST = SOURCE_DIR / "combat_robot_shield_bearer_elite_animation_manifest.json"
-FX_MANIFEST = SOURCE_DIR / "combat_robot_shield_bearer_elite_fx_manifest.json"
+ANIMATION_MANIFEST = enemy_asset_report_path("combat_robot_shield_bearer_elite_animation_manifest.json")
+FX_MANIFEST = enemy_asset_report_path("combat_robot_shield_bearer_elite_fx_manifest.json")
 
 EXPECTED_SHA = {
     RUNTIME_FX: "366d362355555235b7e3bf49112392d29995a7282de14dc00750229467318f9b",
@@ -322,7 +324,7 @@ def main() -> None:
             "whole_frame_alpha_inherited": True,
         },
     }
-    stability_path = PREVIEW_DIR / "combat_robot_shield_bearer_elite_fx_stability_report.json"
+    stability_path = enemy_asset_report_path("combat_robot_shield_bearer_elite_fx_stability_report.json")
     anim.write_json(stability_path, stability)
     report = {
         "asset": "combat_robot_shield_bearer_elite_fx_candidates",
@@ -351,7 +353,7 @@ def main() -> None:
             "deterministic_in_memory_rebuild": True,
         },
     }
-    report_path = PREVIEW_DIR / "combat_robot_shield_bearer_elite_fx_preview_report.json"
+    report_path = enemy_asset_report_path("combat_robot_shield_bearer_elite_fx_preview_report.json")
     anim.write_json(report_path, report)
     manifest = {
         "asset": "combat_robot_shield_bearer_elite",

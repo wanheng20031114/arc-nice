@@ -18,6 +18,8 @@ from collections.abc import Iterable
 import json
 import math
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Any
 
 import numpy as np
@@ -125,7 +127,7 @@ COMPARISON_PATH = (
     PREVIEW_DIR / "combat_robot_drone_operator_drone_fx_comparison.png"
 )
 REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_drone_operator_drone_fx_preview_report.json"
+    enemy_asset_report_path("combat_robot_drone_operator_drone_fx_preview_report.json")
 )
 
 DRONE_CELL_SIZE = 16

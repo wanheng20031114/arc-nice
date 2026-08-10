@@ -16,6 +16,8 @@ from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
 
 from pixel_crop_tool import crop_to_square
@@ -138,6 +140,7 @@ def ensure_preview_path(path: Path) -> None:
     if not (
         resolved.is_relative_to(SOURCE_DIR.resolve())
         or resolved.is_relative_to(PREVIEW_DIR.resolve())
+        or is_enemy_asset_report_path(path)
     ):
         raise AssertionError(f"Refusing non-preview output: {path}")
 
@@ -671,7 +674,7 @@ def build_once(approved_selection: str | None) -> tuple[dict[str, object], dict[
         "runtime_written": False,
         "runtime_paths_written": [],
         "imagegen_pixels_imported": False,
-        "stability_proof_path": "dev_assets/generated_previews/cardboard_monster_anchor_stability.json",
+        "stability_proof_path": rel(enemy_asset_report_path("cardboard_monster_anchor_stability.json")),
         "builder": {"path": rel(builder_path), "sha256": sha256(builder_path)},
         "raw_sha256": RAW_SHA256,
         "user_references": {
@@ -703,7 +706,7 @@ def build_once(approved_selection: str | None) -> tuple[dict[str, object], dict[
         },
         "candidates": candidates,
     }
-    report_path = PREVIEW_DIR / "cardboard_monster_anchor_report.json"
+    report_path = enemy_asset_report_path("cardboard_monster_anchor_report.json")
     ensure_preview_path(report_path)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     output_paths.append(report_path)
@@ -724,7 +727,7 @@ def build_once(approved_selection: str | None) -> tuple[dict[str, object], dict[
         "approved_anchor": approved_anchor,
         "report": {"path": rel(report_path), "sha256": sha256(report_path)},
     }
-    manifest_path = SOURCE_DIR / "cardboard_monster_anchor_manifest.json"
+    manifest_path = enemy_asset_report_path("cardboard_monster_anchor_manifest.json")
     ensure_preview_path(manifest_path)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     output_paths.append(manifest_path)
@@ -744,11 +747,11 @@ def snapshot_outputs() -> dict[str, str]:
         SOURCE_DIR / "cardboard_monster_reference_icon.png",
         SOURCE_DIR / "cardboard_monster_reference_ingame_boxes.png",
         SOURCE_DIR / "cardboard_monster_anchor_approved_native32.png",
-        SOURCE_DIR / "cardboard_monster_anchor_manifest.json",
+        enemy_asset_report_path("cardboard_monster_anchor_manifest.json"),
         PREVIEW_DIR / "cardboard_monster_anchor_approved_16x.png",
         PREVIEW_DIR / "cardboard_monster_anchor_approved_facing.gif",
         PREVIEW_DIR / "cardboard_monster_anchor_approved_collision_fan_overlay.png",
-        PREVIEW_DIR / "cardboard_monster_anchor_report.json",
+        enemy_asset_report_path("cardboard_monster_anchor_report.json"),
     ]
     for spec in SPECS:
         paths.extend(SOURCE_DIR.glob(f"cardboard_monster_anchor_{spec.key}_*"))
@@ -760,7 +763,7 @@ def snapshot_outputs() -> dict[str, str]:
 def preserved_selection(requested: str | None) -> str | None:
     if requested is not None:
         return requested
-    manifest_path = SOURCE_DIR / "cardboard_monster_anchor_manifest.json"
+    manifest_path = enemy_asset_report_path("cardboard_monster_anchor_manifest.json")
     if not manifest_path.is_file():
         return None
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -783,7 +786,7 @@ def build(requested_selection: str | None = None) -> dict[str, object]:
             if first_snapshot.get(key) != second_snapshot.get(key)
         )
         raise AssertionError(f"Two-pass anchor rebuild drifted: {changed}")
-    stability_path = PREVIEW_DIR / "cardboard_monster_anchor_stability.json"
+    stability_path = enemy_asset_report_path("cardboard_monster_anchor_stability.json")
     ensure_preview_path(stability_path)
     stability = {
         "asset": "cardboard_monster_anchor_candidates",
@@ -792,8 +795,12 @@ def build(requested_selection: str | None = None) -> dict[str, object]:
         "drift_count": 0,
         "first_snapshot": first_snapshot,
         "second_snapshot": second_snapshot,
-        "report_sha256": second_snapshot["dev_assets/generated_previews/cardboard_monster_anchor_report.json"],
-        "manifest_sha256": second_snapshot["dev_assets/source_images/cardboard_monster/cardboard_monster_anchor_manifest.json"],
+        "report_sha256": second_snapshot[
+            rel(enemy_asset_report_path("cardboard_monster_anchor_report.json"))
+        ],
+        "manifest_sha256": second_snapshot[
+            rel(enemy_asset_report_path("cardboard_monster_anchor_manifest.json"))
+        ],
         "approved_selection": approved_selection,
         "runtime_written": False,
     }

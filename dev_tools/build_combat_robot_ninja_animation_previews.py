@@ -20,6 +20,8 @@ import sys
 from collections import deque
 from dataclasses import dataclass, replace
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Sequence
 
 from PIL import Image, ImageDraw, ImageFont
@@ -1120,7 +1122,7 @@ def _write_manifest(
             "runtime_written": False,
         },
     }
-    path = SOURCE_DIR / "combat_robot_ninja_animation_manifest.json"
+    path = enemy_asset_report_path("combat_robot_ninja_animation_manifest.json")
     path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -1196,7 +1198,7 @@ def build() -> dict[str, object]:
         "comparison": _relative(comparison_path),
         "manifest": _relative(manifest_path),
     }
-    report_path = PREVIEW_DIR / "combat_robot_ninja_animation_preview_report.json"
+    report_path = enemy_asset_report_path("combat_robot_ninja_animation_preview_report.json")
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

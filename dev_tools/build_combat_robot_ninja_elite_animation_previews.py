@@ -13,6 +13,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont
 
 from pixel_crop_tool import crop_to_square
@@ -26,8 +28,8 @@ SOURCE_DIR = ROOT / "dev_assets/source_images/combat_robot_ninja_elite"
 PREVIEW_DIR = ROOT / "dev_assets/generated_previews"
 RUNTIME = ROOT / "resources/texture/enemy/mechanical_life/combat_robot_ninja.png"
 ANCHOR = SOURCE_DIR / "combat_robot_ninja_elite_anchor_n1c_approved_native40.png"
-ANCHOR_MANIFEST = SOURCE_DIR / "combat_robot_ninja_elite_anchor_manifest.json"
-ANIMATION_MANIFEST = SOURCE_DIR / "combat_robot_ninja_elite_animation_manifest.json"
+ANCHOR_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_anchor_manifest.json")
+ANIMATION_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_animation_manifest.json")
 
 FRAME = 40
 FRAMES = 8
@@ -133,7 +135,7 @@ def rel(path: Path) -> str:
 def ensure_dev(path: Path) -> None:
     resolved = path.resolve()
     dev = (ROOT / "dev_assets").resolve()
-    if resolved != dev and dev not in resolved.parents:
+    if resolved != dev and dev not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Refused non-dev output: {path}")
 
 
@@ -624,7 +626,7 @@ def main() -> None:
             "d2_tables": [[{"point": list(point), "rgba": list(color)} for point, color in sorted(table.items())] for table in DEATH_D2_POINT_TABLES],
         },
     }
-    stability_path = PREVIEW_DIR / "combat_robot_ninja_elite_animation_stability_report.json"
+    stability_path = enemy_asset_report_path("combat_robot_ninja_elite_animation_stability_report.json")
     write_json(stability_path, stability)
     report = {
         "asset": "combat_robot_ninja_elite_animation_candidates",
@@ -656,7 +658,7 @@ def main() -> None:
             "deterministic_in_memory_rebuild": True, "runtime_paths_written": [],
         },
     }
-    report_path = PREVIEW_DIR / "combat_robot_ninja_elite_animation_preview_report.json"
+    report_path = enemy_asset_report_path("combat_robot_ninja_elite_animation_preview_report.json")
     write_json(report_path, report)
     manifest = {
         "asset": "combat_robot_ninja_elite", "stage": stage,

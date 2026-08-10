@@ -18,6 +18,7 @@ from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = PROJECT_ROOT / "dev_assets/source_images/rogue_supply"
+REPORT_PATH = PROJECT_ROOT / "dev_tools/output/rogue_supply/asset_manifest.json"
 SUPPLY_TEXTURE_DIR = PROJECT_ROOT / "resources/texture/rogue_route/supply"
 COLLECTIBLE_TEXTURE_DIR = PROJECT_ROOT / "resources/texture/collectibles"
 
@@ -174,7 +175,8 @@ def _write_manifest(outputs: list[Path]) -> None:
             for path in outputs
         },
     }
-    (SOURCE_DIR / "asset_manifest.json").write_text(
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    REPORT_PATH.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )

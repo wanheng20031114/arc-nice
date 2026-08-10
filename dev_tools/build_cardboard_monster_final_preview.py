@@ -14,6 +14,8 @@ import json
 import math
 from collections import deque
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Iterable
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
@@ -26,9 +28,9 @@ SOURCE_DIR = DEV_ASSETS / "source_images" / "cardboard_monster"
 PREVIEW_DIR = DEV_ASSETS / "generated_previews"
 
 APPROVED_BUILDER = ROOT / "dev_tools" / "build_cardboard_monster_animation_previews.py"
-APPROVED_REPORT = PREVIEW_DIR / "cardboard_monster_animation_preview_report.json"
-APPROVED_MANIFEST = SOURCE_DIR / "cardboard_monster_animation_manifest.json"
-APPROVED_STABILITY = PREVIEW_DIR / "cardboard_monster_animation_stability.json"
+APPROVED_REPORT = enemy_asset_report_path("cardboard_monster_animation_preview_report.json")
+APPROVED_MANIFEST = enemy_asset_report_path("cardboard_monster_animation_manifest.json")
+APPROVED_STABILITY = enemy_asset_report_path("cardboard_monster_animation_stability.json")
 APPROVED_ANCHOR = SOURCE_DIR / "cardboard_monster_anchor_approved_native32.png"
 
 SELECTED_PATHS = {
@@ -84,9 +86,9 @@ COLLISION_RIGHT_PATH = PREVIEW_DIR / "cardboard_monster_final_candidate_collisio
 COLLISION_LEFT_PATH = PREVIEW_DIR / "cardboard_monster_final_candidate_collision_fan_left.png"
 CHAIN_RIGHT_PATH = PREVIEW_DIR / "cardboard_monster_final_candidate_tracking_windup_slash_right.gif"
 CHAIN_LEFT_PATH = PREVIEW_DIR / "cardboard_monster_final_candidate_tracking_windup_slash_left.gif"
-REPORT_PATH = PREVIEW_DIR / "cardboard_monster_final_candidate_report.json"
-MANIFEST_PATH = SOURCE_DIR / "cardboard_monster_final_candidate_manifest.json"
-STABILITY_PATH = PREVIEW_DIR / "cardboard_monster_final_candidate_stability.json"
+REPORT_PATH = enemy_asset_report_path("cardboard_monster_final_candidate_report.json")
+MANIFEST_PATH = enemy_asset_report_path("cardboard_monster_final_candidate_manifest.json")
+STABILITY_PATH = enemy_asset_report_path("cardboard_monster_final_candidate_stability.json")
 
 ANIMATION_GIF_PATHS = {
     (animation, facing): PREVIEW_DIR / f"cardboard_monster_final_candidate_{animation}_{facing}.gif"

@@ -46,4 +46,5 @@
 
 处理脚本使用项目内 MIT 许可的 PerfectPixel 无 OpenCV 实现统一 UI 母稿的逻辑像素
 网格，再执行色键移除、硬 Alpha 与限制色板；商品卡从项目现有背包槽素材派生。
-精确输入哈希、输出哈希和可见包围盒记录在 `asset_build_manifest.json` 中。
+精确输入哈希、输出哈希和可见包围盒会临时写入
+`dev_tools/output/underground_shop/asset_build_manifest.json`。

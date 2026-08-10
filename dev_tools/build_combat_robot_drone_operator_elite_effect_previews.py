@@ -15,6 +15,8 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
 
@@ -23,8 +25,26 @@ SCRIPT_PATH = Path(__file__).resolve()
 SOURCE_DIR = ROOT / "dev_assets" / "source_images" / "combat_robot_drone_operator_elite"
 PREVIEW_DIR = ROOT / "dev_assets" / "generated_previews"
 
-SELECTION_PATH = SOURCE_DIR / "combat_robot_drone_operator_elite_animation_selection.json"
-EXPECTED_SELECTION_SHA = "bb4930ffa196f5adc9327a79d1e9516c5957901d2ae549aaa73de4a07eed146b"
+LOCKED_ANIMATION_SELECTION = {
+    "move": {
+        "selection": "M1",
+        "path": SOURCE_DIR / "combat_robot_drone_operator_elite_m1_candidate_native_strip.png",
+        "sha256": "baa1e2dbd34a74dd91c1bd2a885640804d0d251fbeec29603e0a975fa163cb03",
+        "rgba_sha256": "6038dff07b83674bf2488b42afb06fc5cc86f9f321341eab3adbf1f4777e0b83",
+    },
+    "deploy": {
+        "selection": "P1",
+        "path": SOURCE_DIR / "combat_robot_drone_operator_elite_p1_candidate_native_strip.png",
+        "sha256": "5ba012793ee2389ced8bb6d1e39eb7e3231fc44b94de1c0115e36013fb468272",
+        "rgba_sha256": "92e070440c613473c0b29d9bf4312e91fb3a4f3253d9d01c0b330a82ebee4c50",
+    },
+    "death": {
+        "selection": "K2",
+        "path": SOURCE_DIR / "combat_robot_drone_operator_elite_k2_candidate_native_strip.png",
+        "sha256": "b0e6ac9606e0806aff0b5b5782cb0060b80ce63c5915e035611b3c8022a7998f",
+        "rgba_sha256": "376841f107b75da78691c883b607b7296d0862495fd9db15e5eb245fa825c0e6",
+    },
+}
 
 DRONE_PATH = ROOT / "resources" / "texture" / "enemy" / "mechanical_life" / "combat_robot_suicide_drone.png"
 MARKER_PATH = ROOT / "resources" / "texture" / "enemy" / "mechanical_life" / "combat_robot_drone_target_marker.png"
@@ -60,10 +80,10 @@ SPECS = (
     CandidateSpec("X2", "explosion", "combat_robot_drone_operator_elite_explosion_x2_imagegen.png", "a88936d7318f805bb02884209be5a3682bcf5817fe3f080094fc7e75f4d2da73", "cold-white hot core with segmented orthogonal violet rhythm", 14, False, 64, 8, 4),
 )
 
-PROMPT_MANIFEST = SOURCE_DIR / "combat_robot_drone_operator_elite_effect_prompt_manifest.json"
-MANIFEST = SOURCE_DIR / "combat_robot_drone_operator_elite_effect_manifest.json"
-REPORT = PREVIEW_DIR / "combat_robot_drone_operator_elite_effect_preview_report.json"
-STABILITY = PREVIEW_DIR / "combat_robot_drone_operator_elite_effect_stability_report.json"
+PROMPT_MANIFEST = enemy_asset_report_path("combat_robot_drone_operator_elite_effect_prompt_manifest.json")
+MANIFEST = enemy_asset_report_path("combat_robot_drone_operator_elite_effect_manifest.json")
+REPORT = enemy_asset_report_path("combat_robot_drone_operator_elite_effect_preview_report.json")
+STABILITY = enemy_asset_report_path("combat_robot_drone_operator_elite_effect_stability_report.json")
 COMPARISON = PREVIEW_DIR / "combat_robot_drone_operator_elite_effect_comparison.png"
 
 TRANSPARENT = (0, 0, 0, 0)
@@ -116,7 +136,7 @@ def rel(path: Path) -> str:
 def assert_dev_output(path: Path) -> None:
     resolved = path.resolve()
     dev_root = (ROOT / "dev_assets").resolve()
-    if resolved != dev_root and dev_root not in resolved.parents:
+    if resolved != dev_root and dev_root not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"preview-only builder refused output {path}")
 
 
@@ -156,19 +176,14 @@ def build_strip(frames: list[Image.Image], cell: int) -> Image.Image:
 
 
 def validate_selection() -> dict:
-    if sha256(SELECTION_PATH) != EXPECTED_SELECTION_SHA:
-        raise AssertionError("M1/P1/K2 selection certificate drifted")
-    payload = json.loads(SELECTION_PATH.read_text(encoding="utf-8"))
-    selected = payload.get("approved_selection") or {}
-    expected = {"move": "M1", "deploy": "P1", "death": "K2"}
-    actual = {key: (selected.get(key) or {}).get("selection") for key in expected}
-    if actual != expected or payload.get("runtime_written") is not False:
-        raise AssertionError(f"animation selection is not locked to {expected}: {actual}")
-    for item in selected.values():
-        path = ROOT / item["path"]
+    for item in LOCKED_ANIMATION_SELECTION.values():
+        path = item["path"]
         if sha256(path) != item["sha256"] or rgba_sha(Image.open(path)) != item["rgba_sha256"]:
             raise AssertionError(f"selected animation strip drifted: {path.name}")
-    return payload
+    return {
+        key: item["selection"]
+        for key, item in LOCKED_ANIMATION_SELECTION.items()
+    }
 
 
 def validate_inputs() -> tuple[dict[str, list[Image.Image]], dict]:
@@ -541,7 +556,7 @@ def main() -> None:
     report = {
         "asset": "combat_robot_drone_operator_elite_effect_candidates",
         "stage": "effect_candidates_pending_third_human_gate",
-        "animation_selection_certificate": {"path": rel(SELECTION_PATH), "sha256": EXPECTED_SELECTION_SHA, "selection": {"move": "M1", "deploy": "P1", "death": "K2"}},
+        "animation_selection_certificate": {"embedded_lock": True, "selection": selection},
         "ordinary_runtime_sources": {key: {"path": rel(path), "expected_sha256": EXPECTED_RUNTIME_SHA[key], "actual_sha256": sha256(path)} for key, path in {"drone": DRONE_PATH, "target": MARKER_PATH, "explosion": EXPLOSION_PATH}.items()},
         "candidate_outputs": outputs,
         "candidate_audits": audits,
@@ -560,7 +575,7 @@ def main() -> None:
         "stage": "effect_candidates_pending_third_human_gate",
         "approved_anchor": "O3",
         "approved_animation_selection": {"move": "M1", "deploy": "P1", "death": "K2"},
-        "animation_selection_certificate": {"path": rel(SELECTION_PATH), "sha256": EXPECTED_SELECTION_SHA},
+        "animation_selection_certificate": {"embedded_lock": True, "selection": selection},
         "prompt_manifest": {"path": rel(PROMPT_MANIFEST), "sha256": sha256(PROMPT_MANIFEST)},
         "preview_report": {"path": rel(REPORT), "sha256": sha256(REPORT)},
         "stability_report": {"path": rel(STABILITY), "sha256": sha256(STABILITY)},

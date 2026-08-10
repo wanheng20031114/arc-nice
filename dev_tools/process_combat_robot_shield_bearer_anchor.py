@@ -17,6 +17,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw
 
 from process_combat_robot_assets import PALETTE, snap_palette
@@ -86,7 +88,7 @@ COMPARISON_PATH = (
     PREVIEW_DIR / "combat_robot_shield_bearer_anchor_comparison.png"
 )
 REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_shield_bearer_anchor_audit.json"
+    enemy_asset_report_path("combat_robot_shield_bearer_anchor_audit.json")
 )
 
 FRAME_SIZE = 32

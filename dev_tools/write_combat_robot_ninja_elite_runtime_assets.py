@@ -9,6 +9,8 @@ import json
 import re
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -16,8 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/combat_robot_ninja_elite"
 PREVIEW_DIR = ROOT / "dev_assets/generated_previews"
 FINAL_ATLAS = SOURCE_DIR / "combat_robot_ninja_elite_final_candidate_atlas.png"
-FINAL_MANIFEST = SOURCE_DIR / "combat_robot_ninja_elite_final_candidate_manifest.json"
-FINAL_REPORT = PREVIEW_DIR / "combat_robot_ninja_elite_final_candidate_report.json"
+FINAL_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_final_candidate_manifest.json")
+FINAL_REPORT = enemy_asset_report_path("combat_robot_ninja_elite_final_candidate_report.json")
 RUNTIME_TEXTURE = ROOT / "resources/texture/enemy/mechanical_life/combat_robot_ninja_elite.png"
 RUNTIME_TEXTURE_IMPORT = Path(str(RUNTIME_TEXTURE) + ".import")
 ORDINARY_ANIMATION = ROOT / "resources/animation/combat_robot_ninja.tres"

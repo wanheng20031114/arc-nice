@@ -43,7 +43,9 @@ INVENTORY_SLOT_EMPTY = PROJECT_ROOT / "resources" / "texture" / "rogue_route" / 
 INVENTORY_SLOT_SELECTED = PROJECT_ROOT / "resources" / "texture" / "rogue_route" / "inventory" / "inventory_slot_selected_ref_v3.png"
 RUNTIME_ROOT = PROJECT_ROOT / "resources" / "texture" / "rogue_shop"
 UI_DIR = RUNTIME_ROOT / "ui"
-BUILD_MANIFEST = SOURCE_DIR / "asset_build_manifest.json"
+BUILD_MANIFEST = (
+	PROJECT_ROOT / "dev_tools/output/underground_shop/asset_build_manifest.json"
+)
 
 GREEN_KEY_OPTIONS = ConnectedBackgroundOptions(
 	sample=(0, 0),
@@ -364,6 +366,7 @@ def main() -> int:
 		"sources": sources,
 		"outputs": outputs,
 	}
+	BUILD_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
 	BUILD_MANIFEST.write_text(
 		json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
 		encoding="utf-8",

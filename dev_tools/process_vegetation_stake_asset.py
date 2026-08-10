@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/vegetation_stake"
 DEFAULT_INPUT = SOURCE_DIR / "vegetation_stake_selected_imagegen_magenta.png"
 OUTPUT_DIR = ROOT / "resources/texture/plant_defense/vegetation_stake"
-AUDIT_PATH = SOURCE_DIR / "vegetation_stake_asset_audit.json"
+AUDIT_PATH = ROOT / "dev_tools/output/plant_defense/vegetation_stake_asset_audit.json"
 # The selected square-core source is natively 22x30 logical pixels including
 # three detached glow motes. Once those motes are delegated to particles, the
 # connected opaque building is exactly 22x23 and needs no secondary downscale.

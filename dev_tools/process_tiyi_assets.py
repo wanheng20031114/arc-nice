@@ -27,7 +27,7 @@ SOURCE_DIR = ROOT / "dev_assets" / "source_images" / "player_tiyi"
 OUTPUT_DIR = ROOT / "resources" / "texture" / "player" / "tiyi"
 ANIMATION_PATH = ROOT / "resources" / "animation" / "player_tiyi.tres"
 APPROVED_MOVEMENT_PATH = SOURCE_DIR / "movement_scale1_20px_candidate.png"
-APPROVED_MOVEMENT_REPORT_PATH = APPROVED_MOVEMENT_PATH.with_suffix(".json")
+REPORT_DIR = ROOT / "dev_tools" / "output" / "player_tiyi"
 WEISH_ARMED_EFFECT = (
     ROOT / "resources" / "texture" / "player" / "weishidaier" / "armed_effect.png"
 )
@@ -876,7 +876,12 @@ def _write_readme() -> None:
 适配固定画布的图集才使用最近邻。死亡和武装特效固定使用
 `#3B1C4E / #75409A / #B05ADD / #E7B6FF`。
 """
-    (SOURCE_DIR / "README.md").write_text(readme, encoding="utf-8", newline="\n")
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    (REPORT_DIR / "README.md").write_text(
+        readme,
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def main() -> None:
@@ -888,9 +893,8 @@ def main() -> None:
             path = SOURCE_DIR / f"{name}_{suffix}.png"
             if not path.is_file():
                 raise FileNotFoundError(path)
-    for approved_path in (APPROVED_MOVEMENT_PATH, APPROVED_MOVEMENT_REPORT_PATH):
-        if not approved_path.is_file():
-            raise FileNotFoundError(approved_path)
+    if not APPROVED_MOVEMENT_PATH.is_file():
+        raise FileNotFoundError(APPROVED_MOVEMENT_PATH)
 
     analyses, crop_logs = _run_pixel_tools()
     body, movement_diagnostics = _build_body()
@@ -996,8 +1000,6 @@ def main() -> None:
         "provenance": {
             "approved_movement_source": APPROVED_MOVEMENT_PATH.relative_to(ROOT).as_posix(),
             "approved_movement_source_sha256": _sha256(APPROVED_MOVEMENT_PATH),
-            "approved_movement_report": APPROVED_MOVEMENT_REPORT_PATH.relative_to(ROOT).as_posix(),
-            "approved_movement_report_sha256": _sha256(APPROVED_MOVEMENT_REPORT_PATH),
             "portrait_source": APPROVED_MOVEMENT_PATH.relative_to(ROOT).as_posix(),
             "portrait_source_region": [0, 0, 32, 32],
             "portrait_integer_scale": 4,
@@ -1009,7 +1011,8 @@ def main() -> None:
             "armed_effect_geometry_sha256": _sha256(WEISH_ARMED_EFFECT),
         },
     }
-    manifest_path = SOURCE_DIR / "manifest.json"
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    manifest_path = REPORT_DIR / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

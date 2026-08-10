@@ -43,7 +43,7 @@ EXCAVATOR_OUTPUT = (
     ROOT / "resources/texture/plant_defense/excavator/excavator.png"
 )
 DIRT_BLOCK_OUTPUT = ROOT / "resources/texture/materials/dirt_block.png"
-AUDIT_OUTPUT = EXCAVATOR_SOURCE_DIR / "excavator_asset_audit.json"
+AUDIT_OUTPUT = ROOT / "dev_tools/output/plant_defense/excavator_asset_audit.json"
 
 EXCAVATOR_EXPECTED_SIZE = (46, 50)
 EXCAVATOR_MAX_SIZE = (64, 64)
@@ -344,6 +344,7 @@ def main() -> None:
         optimize=True,
         compress_level=9,
     )
+    AUDIT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

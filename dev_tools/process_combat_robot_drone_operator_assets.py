@@ -14,6 +14,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 from process_combat_robot_assets import PALETTE
@@ -36,7 +38,7 @@ EXPLOSION_OUTPUT = RUNTIME_DIR / "combat_robot_mechanical_explosion.png"
 
 MARKER_PREVIEW = PREVIEW_DIR / "combat_robot_drone_target_marker_x2_animated_16x.png"
 MARKER_GIF = PREVIEW_DIR / "combat_robot_drone_target_marker_x2_animated.gif"
-REPORT_PATH = PREVIEW_DIR / "combat_robot_drone_operator_runtime_asset_report.json"
+REPORT_PATH = enemy_asset_report_path("combat_robot_drone_operator_runtime_asset_report.json")
 
 EXPECTED_HASHES = {
     MOVE_PATH.name: "1a822675f7103749da50ff25f004e1926db0b47c60faae2f0f31672223a9b534",

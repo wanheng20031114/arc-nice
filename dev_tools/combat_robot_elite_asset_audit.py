@@ -6,6 +6,8 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 import re
 
 from PIL import Image
@@ -37,11 +39,7 @@ ORDINARY_PATH = (
 )
 ANIMATION_PATH = ROOT / "resources" / "animation" / "combat_robot_elite.tres"
 MANIFEST_PATH = (
-    ROOT
-    / "dev_assets"
-    / "source_images"
-    / "combat_robot_elite"
-    / "combat_robot_elite_animation_manifest.json"
+    enemy_asset_report_path("combat_robot_elite_animation_manifest.json")
 )
 
 APPROVED_SHA256 = "ef45598db927517c52024bd758b93bb2e3b7c1bc7cc21cc5dca399e775353688"

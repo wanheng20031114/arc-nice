@@ -37,8 +37,7 @@ LOGICAL_OUTPUT = (
 OUTPUT = ROOT / "resources/texture/materials/wooden_core.png"
 AUDIT_OUTPUT = (
     ROOT
-    / "dev_assets/source_images/materials/wooden_core"
-    / "wooden_core_asset_audit.json"
+    / "dev_tools/output/materials/wooden_core_asset_audit.json"
 )
 
 CANVAS_SIZE = (32, 32)
@@ -147,6 +146,7 @@ def main() -> None:
     alpha_source.save(ALPHA_SOURCE, format="PNG", optimize=True, compress_level=9)
     logical.save(LOGICAL_OUTPUT, format="PNG", optimize=True, compress_level=9)
     output.save(OUTPUT, format="PNG", optimize=True, compress_level=9)
+    AUDIT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

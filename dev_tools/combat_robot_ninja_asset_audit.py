@@ -9,6 +9,8 @@ import json
 import re
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 from process_combat_robot_assets import PALETTE
@@ -36,10 +38,7 @@ BUILDER_PATH = PROJECT_ROOT / "dev_tools" / "build_combat_robot_ninja_runtime_as
 SHADER_PATH = PROJECT_ROOT / "scene" / "entity_motion_status.gdshader"
 PROJECT_SETTINGS_PATH = PROJECT_ROOT / "project.godot"
 REPORT_PATH = (
-    PROJECT_ROOT
-    / "dev_assets"
-    / "generated_previews"
-    / "combat_robot_ninja_runtime_asset_report.json"
+    enemy_asset_report_path("combat_robot_ninja_runtime_asset_report.json")
 )
 
 FRAME_SIZE = 40

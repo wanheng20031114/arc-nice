@@ -14,6 +14,8 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Iterable
 
 from PIL import Image, ImageDraw, ImageFont
@@ -39,8 +41,8 @@ RUNTIME_SHEET = (
 APPROVED_ANCHOR = (
     SOURCE_DIR / "combat_robot_drone_operator_elite_anchor_o3_approved_native32.png"
 )
-ANCHOR_MANIFEST = SOURCE_DIR / "combat_robot_drone_operator_elite_anchor_manifest.json"
-ANCHOR_REPORT = PREVIEW_DIR / "combat_robot_drone_operator_elite_anchor_report.json"
+ANCHOR_MANIFEST = enemy_asset_report_path("combat_robot_drone_operator_elite_anchor_manifest.json")
+ANCHOR_REPORT = enemy_asset_report_path("combat_robot_drone_operator_elite_anchor_report.json")
 
 EXPECTED_RUNTIME_SHA256 = (
     "9f987244da55ed3d89bae38a3eda40998518dcd3935f2bb7a1551eb94cd15395"
@@ -134,15 +136,15 @@ SOURCE_SPECS: tuple[SourceSpec, ...] = (
     ),
 )
 
-MANIFEST_PATH = SOURCE_DIR / "combat_robot_drone_operator_elite_animation_manifest.json"
+MANIFEST_PATH = enemy_asset_report_path("combat_robot_drone_operator_elite_animation_manifest.json")
 PROMPT_MANIFEST_PATH = (
-    SOURCE_DIR / "combat_robot_drone_operator_elite_animation_prompt_manifest.json"
+    enemy_asset_report_path("combat_robot_drone_operator_elite_animation_prompt_manifest.json")
 )
 REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_drone_operator_elite_animation_preview_report.json"
+    enemy_asset_report_path("combat_robot_drone_operator_elite_animation_preview_report.json")
 )
 STABILITY_PATH = (
-    PREVIEW_DIR / "combat_robot_drone_operator_elite_animation_stability_report.json"
+    enemy_asset_report_path("combat_robot_drone_operator_elite_animation_stability_report.json")
 )
 COMPARISON_PATH = (
     PREVIEW_DIR / "combat_robot_drone_operator_elite_animation_comparison.png"
@@ -168,7 +170,7 @@ def rel(path: Path) -> str:
 def assert_dev_path(path: Path) -> None:
     resolved = path.resolve()
     dev_root = (ROOT / "dev_assets").resolve()
-    if resolved != dev_root and dev_root not in resolved.parents:
+    if resolved != dev_root and dev_root not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Preview-only builder refused non-dev output: {path}")
 
 

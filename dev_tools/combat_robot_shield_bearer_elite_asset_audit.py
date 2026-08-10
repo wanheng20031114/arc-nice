@@ -9,6 +9,8 @@ import re
 from collections import deque
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -19,12 +21,9 @@ SOURCE_DIR = (
 RUNTIME_DIR = ROOT / "resources" / "texture" / "enemy" / "mechanical_life"
 ANIMATION_DIR = ROOT / "resources" / "animation"
 
-MANIFEST_PATH = SOURCE_DIR / "combat_robot_shield_bearer_elite_final_candidate_manifest.json"
+MANIFEST_PATH = enemy_asset_report_path("combat_robot_shield_bearer_elite_final_candidate_manifest.json")
 REPORT_PATH = (
-    ROOT
-    / "dev_assets"
-    / "generated_previews"
-    / "combat_robot_shield_bearer_elite_final_preview_report.json"
+    enemy_asset_report_path("combat_robot_shield_bearer_elite_final_preview_report.json")
 )
 FINAL_MAIN_PATH = SOURCE_DIR / "combat_robot_shield_bearer_elite_final_candidate.png"
 FINAL_FX_PATH = SOURCE_DIR / "combat_robot_shield_bearer_elite_fx_final_candidate.png"

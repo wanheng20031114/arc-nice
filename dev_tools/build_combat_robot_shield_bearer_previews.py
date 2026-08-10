@@ -19,6 +19,8 @@ from collections import deque
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from enemy_asset_report_paths import enemy_asset_report_path
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -32,7 +34,7 @@ PREVIEW_DIR = PROJECT_ROOT / "dev_assets/generated_previews"
 ANCHOR_PATH = SOURCE_DIR / "combat_robot_shield_bearer_anchor_c_approved_native32.png"
 
 OUTPUT_PREFIX = "combat_robot_shield_bearer"
-REPORT_PATH = PREVIEW_DIR / f"{OUTPUT_PREFIX}_preview_audit.json"
+REPORT_PATH = enemy_asset_report_path(f"{OUTPUT_PREFIX}_preview_audit.json")
 COMPARISON_PATH = PREVIEW_DIR / f"{OUTPUT_PREFIX}_comparison.png"
 
 FRAME_SIZE = 32

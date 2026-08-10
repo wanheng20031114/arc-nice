@@ -16,6 +16,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont
 
 from pixel_grid_analyzer import analyze_image
@@ -26,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = Path(__file__).resolve()
 SOURCE_DIR = ROOT / "dev_assets/source_images/combat_robot_shield_bearer_elite"
 PREVIEW_DIR = ROOT / "dev_assets/generated_previews"
-ANCHOR_MANIFEST = SOURCE_DIR / "combat_robot_shield_bearer_elite_anchor_manifest.json"
+ANCHOR_MANIFEST = enemy_asset_report_path("combat_robot_shield_bearer_elite_anchor_manifest.json")
 BASE_SHEET = ROOT / "resources/texture/enemy/mechanical_life/combat_robot_shield_bearer.png"
 EXPECTED_BASE_SHA256 = "07e5996a7048f4a469e247ee4aa7ce3c9f9c54a829d6a839ff3c94b2cac72ab4"
 EXPECTED_IMAGEGEN_SHA256 = {
@@ -132,7 +134,7 @@ def relative(path: Path) -> str:
 def assert_dev_output(path: Path) -> None:
     resolved = path.resolve()
     dev_root = (ROOT / "dev_assets").resolve()
-    if resolved != dev_root and dev_root not in resolved.parents:
+    if resolved != dev_root and dev_root not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Refusing non-dev output: {path}")
 
 
@@ -446,7 +448,7 @@ def main() -> None:
             "imagegen_pixels_imported": False,
         }
 
-    manifest_path = SOURCE_DIR / "imagegen_prompt_manifest.json"
+    manifest_path = enemy_asset_report_path("combat_robot_shield_bearer_elite_anchor_prompt_manifest.json")
     manifest = prompt_manifest(imagegen_paths, approval)
     assert_dev_output(manifest_path)
     manifest_path.write_text(
@@ -527,7 +529,7 @@ def main() -> None:
         "candidates": reports,
         "prompt_manifest": relative(manifest_path),
     }
-    report_path = PREVIEW_DIR / "combat_robot_shield_bearer_elite_anchor_report.json"
+    report_path = enemy_asset_report_path("combat_robot_shield_bearer_elite_anchor_report.json")
     assert_dev_output(report_path)
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",

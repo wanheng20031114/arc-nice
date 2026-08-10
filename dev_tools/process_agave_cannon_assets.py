@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/plant_defense/agave_cannon"
 DEFAULT_INPUT = SOURCE_DIR / "agave_cannon_selected_imagegen_magenta.png"
 OUTPUT_DIR = ROOT / "resources/texture/plant_defense/agave_cannon"
-AUDIT_PATH = SOURCE_DIR / "agave_asset_audit.json"
+AUDIT_PATH = ROOT / "dev_tools/output/plant_defense/agave_asset_audit.json"
 
 OUTPUT_FILES = {
     **{f"body_idle_{index}": f"agave_body_idle_{index}.png" for index in range(4)},

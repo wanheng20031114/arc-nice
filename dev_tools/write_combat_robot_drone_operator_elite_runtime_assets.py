@@ -15,6 +15,8 @@ import json
 import shutil
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = (
@@ -24,8 +26,8 @@ SOURCE_DIR = (
     / "combat_robot_drone_operator_elite"
 )
 RUNTIME_DIR = ROOT / "resources" / "texture" / "enemy" / "mechanical_life"
-FINAL_SELECTION = SOURCE_DIR / "combat_robot_drone_operator_elite_final_selection.json"
-FINAL_MANIFEST = SOURCE_DIR / "combat_robot_drone_operator_elite_final_candidate_manifest.json"
+FINAL_SELECTION = enemy_asset_report_path("combat_robot_drone_operator_elite_final_selection.json")
+FINAL_MANIFEST = enemy_asset_report_path("combat_robot_drone_operator_elite_final_candidate_manifest.json")
 
 LOCKED_SELECTION = {
     "approved_anchor": "O3",

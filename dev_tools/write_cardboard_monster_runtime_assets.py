@@ -8,6 +8,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -15,9 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "dev_assets/source_images/cardboard_monster"
 PREVIEW_DIR = ROOT / "dev_assets/generated_previews"
 FINAL_ATLAS = SOURCE_DIR / "cardboard_monster_final_candidate_atlas.png"
-FINAL_REPORT = PREVIEW_DIR / "cardboard_monster_final_candidate_report.json"
-FINAL_MANIFEST = SOURCE_DIR / "cardboard_monster_final_candidate_manifest.json"
-FINAL_STABILITY = PREVIEW_DIR / "cardboard_monster_final_candidate_stability.json"
+FINAL_REPORT = enemy_asset_report_path("cardboard_monster_final_candidate_report.json")
+FINAL_MANIFEST = enemy_asset_report_path("cardboard_monster_final_candidate_manifest.json")
+FINAL_STABILITY = enemy_asset_report_path("cardboard_monster_final_candidate_stability.json")
 FINAL_BUILDER = ROOT / "dev_tools/build_cardboard_monster_final_preview.py"
 
 RUNTIME_TEXTURE = ROOT / "resources/texture/enemy/artificial_creation/cardboard_monster.png"

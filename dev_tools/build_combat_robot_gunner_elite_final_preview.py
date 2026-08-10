@@ -13,6 +13,8 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Sequence
 
 from PIL import Image, ImageDraw, ImageFont
@@ -26,16 +28,16 @@ SOURCE_DIR = (
 )
 PREVIEW_DIR = PROJECT_ROOT / "dev_assets" / "generated_previews"
 STAGE2_REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_gunner_elite_animation_preview_report.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_animation_preview_report.json")
 )
 ANIMATION_MANIFEST_PATH = (
-    SOURCE_DIR / "combat_robot_gunner_elite_animation_manifest.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_animation_manifest.json")
 )
 STABILITY_REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_gunner_elite_animation_stability_report.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_animation_stability_report.json")
 )
 FINAL_MANIFEST_PATH = (
-    SOURCE_DIR / "combat_robot_gunner_elite_final_candidate_manifest.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_final_candidate_manifest.json")
 )
 ORDINARY_SHEET_PATH = (
     PROJECT_ROOT
@@ -59,7 +61,7 @@ FINAL_BULLET_PATH = (
     SOURCE_DIR / "combat_robot_gunner_elite_bullet_final_candidate.png"
 )
 FINAL_REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_gunner_elite_final_preview_report.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_final_preview_report.json")
 )
 
 FRAME_SIZE = 32
@@ -172,7 +174,7 @@ def _relative(path: Path) -> str:
 def _assert_dev_output(path: Path) -> None:
     resolved = path.resolve()
     dev_root = (PROJECT_ROOT / "dev_assets").resolve()
-    if resolved != dev_root and dev_root not in resolved.parents:
+    if resolved != dev_root and dev_root not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Third-gate builder refused non-dev output: {path}")
 
 

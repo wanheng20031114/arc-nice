@@ -8,6 +8,8 @@ import json
 import re
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -22,12 +24,12 @@ SHADER = ROOT / "scene/combat/feedback/shaders/entity_motion_status.gdshader"
 CANDIDATE = SOURCE / "combat_robot_ninja_elite_final_candidate_atlas.png"
 RUNTIME_ATLAS = RUNTIME / "combat_robot_ninja_elite.png"
 ORDINARY_ATLAS = RUNTIME / "combat_robot_ninja.png"
-MANIFEST = SOURCE / "combat_robot_ninja_elite_final_candidate_manifest.json"
-ANCHOR_MANIFEST = SOURCE / "combat_robot_ninja_elite_anchor_manifest.json"
-ANIMATION_MANIFEST = SOURCE / "combat_robot_ninja_elite_animation_manifest.json"
-AFTERIMAGE_MANIFEST = SOURCE / "combat_robot_ninja_elite_afterimage_manifest.json"
-AFTERIMAGE_REPORT = PREVIEW / "combat_robot_ninja_elite_afterimage_preview_report.json"
-FINAL_REPORT = PREVIEW / "combat_robot_ninja_elite_final_candidate_report.json"
+MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_final_candidate_manifest.json")
+ANCHOR_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_anchor_manifest.json")
+ANIMATION_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_animation_manifest.json")
+AFTERIMAGE_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_afterimage_manifest.json")
+AFTERIMAGE_REPORT = enemy_asset_report_path("combat_robot_ninja_elite_afterimage_preview_report.json")
+FINAL_REPORT = enemy_asset_report_path("combat_robot_ninja_elite_final_candidate_report.json")
 RUNTIME_REPORT = OUTPUT / "runtime_report.json"
 
 ATLAS_SHA256 = "6c0f50f2e02be51264ba92b269d26366653a0608cbed2b186e6c43c8ae2bd23b"

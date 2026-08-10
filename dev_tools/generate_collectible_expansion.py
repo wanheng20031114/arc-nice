@@ -24,8 +24,9 @@ from update_collectible_design_notes import generate_design_note
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEXTURE_DIR = PROJECT_ROOT / "resources" / "texture" / "collectibles"
 CONFIG_DIR = PROJECT_ROOT / "resources" / "config" / "collectibles"
-AUDIT_PATH = PROJECT_ROOT / "dev_tools" / "collectible_expansion_audit.png"
-DESIGN_MANIFEST_PATH = PROJECT_ROOT / "dev_tools" / "collectible_redesign_manifest.md"
+REPORT_DIR = PROJECT_ROOT / "dev_tools/output/collectibles"
+AUDIT_PATH = REPORT_DIR / "collectible_expansion_audit.png"
+DESIGN_MANIFEST_PATH = REPORT_DIR / "collectible_redesign_manifest.md"
 
 COMMON = 0
 RARE = 1
@@ -1589,6 +1590,7 @@ def render_design_manifest(configs: list[dict[str, Any]]) -> str:
 
 def build_design_manifest(configs: list[dict[str, Any]]) -> None:
     rendered = render_design_manifest(configs)
+    DESIGN_MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not DESIGN_MANIFEST_PATH.is_file() or DESIGN_MANIFEST_PATH.read_text(encoding="utf-8") != rendered:
         DESIGN_MANIFEST_PATH.write_text(rendered, encoding="utf-8")
 
@@ -1599,6 +1601,7 @@ def save_image_if_changed(path: Path, image: Image.Image) -> None:
             current = current_source.convert("RGBA")
             if current.size == image.size and current.tobytes() == image.convert("RGBA").tobytes():
                 return
+    path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
 
 

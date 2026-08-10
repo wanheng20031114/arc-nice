@@ -14,6 +14,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -25,12 +27,9 @@ SOURCE_DIR = (
     / "combat_robot_shield_bearer_elite"
 )
 RUNTIME_DIR = ROOT / "resources" / "texture" / "enemy" / "mechanical_life"
-MANIFEST = SOURCE_DIR / "combat_robot_shield_bearer_elite_final_candidate_manifest.json"
+MANIFEST = enemy_asset_report_path("combat_robot_shield_bearer_elite_final_candidate_manifest.json")
 REPORT = (
-    ROOT
-    / "dev_assets"
-    / "generated_previews"
-    / "combat_robot_shield_bearer_elite_final_preview_report.json"
+    enemy_asset_report_path("combat_robot_shield_bearer_elite_final_preview_report.json")
 )
 
 PENDING_MANIFEST_SHA256 = (

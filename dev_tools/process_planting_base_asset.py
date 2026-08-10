@@ -53,7 +53,7 @@ OUTPUT_DIR = (
 OUTPUT = OUTPUT_DIR / "planting_base.png"
 LOWER_LAYER_OUTPUT = OUTPUT_DIR / "layers/lower_body.png"
 UPPER_LAYER_OUTPUT = OUTPUT_DIR / "layers/upper_canopy.png"
-AUDIT_OUTPUT = SOURCE_DIR / "planting_base_asset_audit.json"
+AUDIT_OUTPUT = ROOT / "dev_tools/output/plant_defense/planting_base_asset_audit.json"
 
 SUBJECT_LIMIT = (60, 60)
 # An even-width 56px subject is geometrically centered on the 64px canvas at
@@ -404,6 +404,7 @@ def main() -> None:
         optimize=True,
         compress_level=9,
     )
+    AUDIT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

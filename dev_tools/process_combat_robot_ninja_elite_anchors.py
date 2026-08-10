@@ -17,6 +17,8 @@ from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
 from pixel_crop_tool import crop_to_square
@@ -184,6 +186,7 @@ def ensure_review_path(path: Path) -> None:
     if not (
         resolved.is_relative_to(SOURCE_DIR.resolve())
         or resolved.is_relative_to(PREVIEW_DIR.resolve())
+        or is_enemy_asset_report_path(path)
     ):
         raise AssertionError(f"Preview-only builder refused non-dev_assets output: {path}")
 
@@ -645,7 +648,7 @@ def build(approval: str | None) -> dict[str, object]:
         },
         "candidates": outputs,
     }
-    report_path = PREVIEW_DIR / "combat_robot_ninja_elite_anchor_report.json"
+    report_path = enemy_asset_report_path("combat_robot_ninja_elite_anchor_report.json")
     save_report = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     ensure_review_path(report_path)
     report_path.write_text(save_report, encoding="utf-8")
@@ -664,7 +667,7 @@ def build(approval: str | None) -> dict[str, object]:
         "runtime_source_sha256": EXPECTED_RUNTIME_SHA256,
         "report": {"path": relative(report_path), "sha256": sha256(report_path)},
     }
-    manifest_path = SOURCE_DIR / "combat_robot_ninja_elite_anchor_manifest.json"
+    manifest_path = enemy_asset_report_path("combat_robot_ninja_elite_anchor_manifest.json")
     ensure_review_path(manifest_path)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report["report_path"] = relative(report_path)

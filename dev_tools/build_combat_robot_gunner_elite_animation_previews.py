@@ -18,6 +18,8 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Iterable
 
 from PIL import Image, ImageDraw, ImageFont
@@ -51,9 +53,9 @@ ORDINARY_BULLET_PATH = (
     / "mechanical_life"
     / "combat_robot_gunner_bullet.png"
 )
-ANCHOR_MANIFEST_PATH = SOURCE_DIR / "imagegen_prompt_manifest.json"
+ANCHOR_MANIFEST_PATH = enemy_asset_report_path("combat_robot_gunner_elite_anchor_prompt_manifest.json")
 ANCHOR_REPORT_PATH = (
-    PREVIEW_DIR / "combat_robot_gunner_elite_anchor_report.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_anchor_report.json")
 )
 APPROVED_ANCHOR_PATH = (
     SOURCE_DIR
@@ -151,18 +153,16 @@ SOURCE_SPECS: tuple[SourceSpec, ...] = (
 )
 
 ANIMATION_MANIFEST_PATH = (
-    SOURCE_DIR / "combat_robot_gunner_elite_animation_manifest.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_animation_manifest.json")
 )
 ANIMATION_PROMPT_MANIFEST_PATH = (
-    SOURCE_DIR / "combat_robot_gunner_elite_animation_prompt_manifest.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_animation_prompt_manifest.json")
 )
 REPORT_PATH = (
-    PREVIEW_DIR
-    / "combat_robot_gunner_elite_animation_preview_report.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_animation_preview_report.json")
 )
 STABILITY_REPORT_PATH = (
-    PREVIEW_DIR
-    / "combat_robot_gunner_elite_animation_stability_report.json"
+    enemy_asset_report_path("combat_robot_gunner_elite_animation_stability_report.json")
 )
 COMPARISON_PATH = (
     PREVIEW_DIR / "combat_robot_gunner_elite_animation_comparison.png"
@@ -188,7 +188,7 @@ def _relative(path: Path) -> str:
 def _assert_dev_output(path: Path) -> None:
     resolved = path.resolve()
     dev_root = (PROJECT_ROOT / "dev_assets").resolve()
-    if resolved != dev_root and dev_root not in resolved.parents:
+    if resolved != dev_root and dev_root not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Preview builder refused non-dev output: {path}")
 
 

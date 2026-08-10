@@ -16,6 +16,8 @@ from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
 
 from pixel_crop_tool import crop_to_square
@@ -28,11 +30,11 @@ SCRIPT = Path(__file__).resolve()
 SOURCE_DIR = ROOT / "dev_assets" / "source_images" / "cardboard_monster"
 PREVIEW_DIR = ROOT / "dev_assets" / "generated_previews"
 ANCHOR = SOURCE_DIR / "cardboard_monster_anchor_approved_native32.png"
-ANCHOR_MANIFEST = SOURCE_DIR / "cardboard_monster_anchor_manifest.json"
-ANCHOR_REPORT = PREVIEW_DIR / "cardboard_monster_anchor_report.json"
-ANIMATION_MANIFEST = SOURCE_DIR / "cardboard_monster_animation_manifest.json"
-REPORT_PATH = PREVIEW_DIR / "cardboard_monster_animation_preview_report.json"
-STABILITY_PATH = PREVIEW_DIR / "cardboard_monster_animation_stability.json"
+ANCHOR_MANIFEST = enemy_asset_report_path("cardboard_monster_anchor_manifest.json")
+ANCHOR_REPORT = enemy_asset_report_path("cardboard_monster_anchor_report.json")
+ANIMATION_MANIFEST = enemy_asset_report_path("cardboard_monster_animation_manifest.json")
+REPORT_PATH = enemy_asset_report_path("cardboard_monster_animation_preview_report.json")
+STABILITY_PATH = enemy_asset_report_path("cardboard_monster_animation_stability.json")
 
 FRAME = 32
 COUNT = 8
@@ -419,7 +421,7 @@ def rel(path: Path) -> str:
 def ensure_dev(path: Path) -> None:
     resolved = path.resolve()
     dev = (ROOT / "dev_assets").resolve()
-    if resolved != dev and dev not in resolved.parents:
+    if resolved != dev and dev not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Refused non-dev output: {path}")
 
 

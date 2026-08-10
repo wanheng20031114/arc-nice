@@ -13,6 +13,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -22,8 +24,8 @@ SOURCE_DIR = ROOT / "dev_assets/source_images/combat_robot_shield_bearer_elite"
 PREVIEW_DIR = ROOT / "dev_assets/generated_previews"
 RUNTIME = ROOT / "resources/texture/enemy/mechanical_life/combat_robot_shield_bearer.png"
 ANCHOR = SOURCE_DIR / "combat_robot_shield_bearer_elite_anchor_h1c_approved_native32.png"
-ANCHOR_MANIFEST = SOURCE_DIR / "combat_robot_shield_bearer_elite_anchor_manifest.json"
-ANIMATION_MANIFEST = SOURCE_DIR / "combat_robot_shield_bearer_elite_animation_manifest.json"
+ANCHOR_MANIFEST = enemy_asset_report_path("combat_robot_shield_bearer_elite_anchor_manifest.json")
+ANIMATION_MANIFEST = enemy_asset_report_path("combat_robot_shield_bearer_elite_animation_manifest.json")
 
 EXPECTED_SHA = {
     RUNTIME: "07e5996a7048f4a469e247ee4aa7ce3c9f9c54a829d6a839ff3c94b2cac72ab4",
@@ -130,7 +132,7 @@ def rel(path: Path) -> str:
 def assert_dev(path: Path) -> None:
     resolved = path.resolve()
     dev = (ROOT / "dev_assets").resolve()
-    if resolved != dev and dev not in resolved.parents:
+    if resolved != dev and dev not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Preview builder refused non-dev output: {path}")
 
 
@@ -626,7 +628,7 @@ def main() -> None:
             "d2_visible_points": [[list(point) for point in sorted(points)] for points in DEATH_D2_VISIBLE],
         },
     }
-    stability_path = PREVIEW_DIR / "combat_robot_shield_bearer_elite_animation_stability_report.json"
+    stability_path = enemy_asset_report_path("combat_robot_shield_bearer_elite_animation_stability_report.json")
     write_json(stability_path, stability)
     report = {
         "asset": "combat_robot_shield_bearer_elite_animation_candidates",
@@ -659,7 +661,7 @@ def main() -> None:
             "deterministic_in_memory_rebuild": True,
         },
     }
-    report_path = PREVIEW_DIR / "combat_robot_shield_bearer_elite_animation_preview_report.json"
+    report_path = enemy_asset_report_path("combat_robot_shield_bearer_elite_animation_preview_report.json")
     write_json(report_path, report)
     manifest = {
         "asset": "combat_robot_shield_bearer_elite",

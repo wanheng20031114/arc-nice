@@ -12,6 +12,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw
 
 import build_combat_robot_shield_bearer_elite_animation_previews as anim
@@ -25,7 +27,7 @@ PREVIEW_DIR = anim.PREVIEW_DIR
 RUNTIME_MAIN = anim.RUNTIME
 RUNTIME_FX = fx.RUNTIME_FX
 ANIMATION_MANIFEST = anim.ANIMATION_MANIFEST
-FX_MANIFEST = SOURCE_DIR / "combat_robot_shield_bearer_elite_fx_manifest.json"
+FX_MANIFEST = enemy_asset_report_path("combat_robot_shield_bearer_elite_fx_manifest.json")
 
 M1_NATIVE = SOURCE_DIR / "combat_robot_shield_bearer_elite_move_m1_candidate_native.png"
 R1_NATIVE = SOURCE_DIR / "combat_robot_shield_bearer_elite_shield_states_r1_candidate_native.png"
@@ -35,8 +37,8 @@ X1_NATIVE = SOURCE_DIR / "combat_robot_shield_bearer_elite_break_x1_candidate_na
 
 FINAL_MAIN = SOURCE_DIR / "combat_robot_shield_bearer_elite_final_candidate.png"
 FINAL_FX = SOURCE_DIR / "combat_robot_shield_bearer_elite_fx_final_candidate.png"
-FINAL_MANIFEST = SOURCE_DIR / "combat_robot_shield_bearer_elite_final_candidate_manifest.json"
-FINAL_REPORT = PREVIEW_DIR / "combat_robot_shield_bearer_elite_final_preview_report.json"
+FINAL_MANIFEST = enemy_asset_report_path("combat_robot_shield_bearer_elite_final_candidate_manifest.json")
+FINAL_REPORT = enemy_asset_report_path("combat_robot_shield_bearer_elite_final_preview_report.json")
 
 EXPECTED_SHA = {
     RUNTIME_MAIN: "07e5996a7048f4a469e247ee4aa7ce3c9f9c54a829d6a839ff3c94b2cac72ab4",

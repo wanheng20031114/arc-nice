@@ -19,6 +19,8 @@ import sys
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from typing import Iterable, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
@@ -906,7 +908,7 @@ def _write_stability_report(
             for key, audit in audits.items()
         },
     }
-    path = PREVIEW_DIR / "combat_robot_elite_animation_stability_report.json"
+    path = enemy_asset_report_path("combat_robot_elite_animation_stability_report.json")
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 
@@ -961,7 +963,7 @@ def _write_manifest(
             "death_explicit_frame_tables": 8,
         },
     }
-    path = SOURCE_DIR / "combat_robot_elite_animation_manifest.json"
+    path = enemy_asset_report_path("combat_robot_elite_animation_manifest.json")
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 
@@ -1034,7 +1036,7 @@ def build() -> dict[str, object]:
         "manifest": _relative(manifest_path),
         "manifest_sha256": _sha256(manifest_path),
     }
-    report_path = PREVIEW_DIR / "combat_robot_elite_animation_preview_report.json"
+    report_path = enemy_asset_report_path("combat_robot_elite_animation_preview_report.json")
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report["report"] = _relative(report_path)
     return report

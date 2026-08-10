@@ -26,7 +26,7 @@ from plant_pixel_asset_pipeline import (
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT / "dev_assets/source_images/material_drops"
 OUTPUT_ROOT = ROOT / "resources/texture/materials"
-APPROVAL_MANIFEST_PATH = SOURCE_ROOT / "imagegen_prompt_manifest.json"
+AUDIT_PATH = ROOT / "dev_tools/output/material_drops/material_drop_asset_audit.json"
 CANVAS_SIZE = (32, 32)
 MAX_SUBJECT_SIZE = (30, 30)
 MAX_VISIBLE_COLORS = 32
@@ -71,6 +71,8 @@ ASSETS = (
         "reference": SOURCE_ROOT / "capoo_blue_crystal_reference.png",
         "source": SOURCE_ROOT / "capoo_blue_crystal_imagegen_magenta.png",
         "helper_alpha": SOURCE_ROOT / "capoo_blue_crystal_helper_alpha.png",
+        "approved_master_sha256": "9ecf54ce3f296c0736eb840a64db3eb8b045d9fd862a8c0051f67bdd277a6604",
+        "helper_alpha_sha256": "961bd15688444ccfbcb81a6c1ec5cb4fefc534106f18b09e65988f300d7273ed",
         "alpha": SOURCE_ROOT / "capoo_blue_crystal_alpha.png",
         "logical": SOURCE_ROOT / "capoo_blue_crystal_logical_preview.png",
         "output": OUTPUT_ROOT / "capoo_blue_crystal.png",
@@ -87,6 +89,8 @@ ASSETS = (
         "reference": SOURCE_ROOT / "white_crystal_reference.png",
         "source": SOURCE_ROOT / "white_crystal_imagegen_magenta.png",
         "helper_alpha": SOURCE_ROOT / "white_crystal_helper_alpha.png",
+        "approved_master_sha256": "66a754abe526eaef0e5c9a5b6c1132e490f397ddf46564253c8d2ca048118df8",
+        "helper_alpha_sha256": "755d28eb5195036b9a7d86a7f1b5649275c214a3ad145d23faba3eaa009776f2",
         "alpha": SOURCE_ROOT / "white_crystal_alpha.png",
         "logical": SOURCE_ROOT / "white_crystal_logical_preview.png",
         "output": OUTPUT_ROOT / "white_crystal.png",
@@ -103,6 +107,8 @@ ASSETS = (
         "reference": SOURCE_ROOT / "reserved_pale_blue_powder_reference.png",
         "source": SOURCE_ROOT / "sorcerer_violet_powder_imagegen_magenta.png",
         "helper_alpha": SOURCE_ROOT / "sorcerer_violet_powder_helper_alpha.png",
+        "approved_master_sha256": "56a0a8b5c9902767a6a8eab19e2dd5ee881ad278918220cbcb80bd84e1405967",
+        "helper_alpha_sha256": "a14e2303644c431d5dd00aded3af5063547bfb4b7dac5ef33c4162a0b19ae15b",
         "alpha": SOURCE_ROOT / "sorcerer_violet_powder_alpha.png",
         "logical": SOURCE_ROOT / "sorcerer_violet_powder_logical_preview.png",
         "output": OUTPUT_ROOT / "sorcerer_violet_powder.png",
@@ -130,29 +136,10 @@ def _mask_sha256(image: Image.Image) -> str:
     return hashlib.sha256(alpha.tobytes()).hexdigest()
 
 
-def _load_and_validate_approval_manifest() -> dict:
-    if not APPROVAL_MANIFEST_PATH.is_file():
-        raise FileNotFoundError(APPROVAL_MANIFEST_PATH)
-    manifest = json.loads(
-        APPROVAL_MANIFEST_PATH.read_text(encoding="utf-8")
-    )
-    manifest_assets = {
-        entry.get("id"): entry
-        for entry in manifest.get("assets", [])
-        if isinstance(entry, dict)
-    }
+def _validate_approved_sources() -> None:
     for spec in ASSETS:
-        entry = manifest_assets.get(spec["id"])
-        if entry is None:
-            raise RuntimeError(
-                f"Approval manifest has no entry for {spec['id']}"
-            )
-        expected_source_sha = entry.get("approved_master_sha256")
-        expected_helper_sha = entry.get("helper_alpha_sha256")
-        if not expected_source_sha or not expected_helper_sha:
-            raise RuntimeError(
-                f"Approval manifest hashes are incomplete for {spec['id']}"
-            )
+        expected_source_sha = spec["approved_master_sha256"]
+        expected_helper_sha = spec["helper_alpha_sha256"]
         actual_source_sha = _sha256(spec["source"])
         actual_helper_sha = _sha256(spec["helper_alpha"])
         if actual_source_sha != expected_source_sha:
@@ -165,7 +152,6 @@ def _load_and_validate_approval_manifest() -> dict:
                 f"Approved helper alpha drifted for {spec['id']}: "
                 f"expected {expected_helper_sha}, got {actual_helper_sha}"
             )
-    return manifest
 
 
 def _validate_source_helper_pixels(
@@ -509,7 +495,7 @@ def _build_asset(spec: dict) -> tuple[dict, Image.Image]:
         "status": "passed",
         "identity_reference": portable_path(spec["reference"]),
         "approved_imagegen_master": portable_path(spec["source"]),
-        "approval_manifest": portable_path(APPROVAL_MANIFEST_PATH),
+        "approval_record": "approved source hashes embedded in processor",
         "installed_helper_alpha": helper_audit,
         "source_helper_pair": source_helper_audit,
         "connected_alpha_source": portable_path(spec["alpha"]),
@@ -564,7 +550,7 @@ def _build_contact_preview(outputs: list[Image.Image]) -> Path:
 
 
 def main() -> None:
-    approval_manifest = _load_and_validate_approval_manifest()
+    _validate_approved_sources()
     built = [_build_asset(spec) for spec in ASSETS]
     results = [result for result, _output in built]
     outputs = [output for _result, output in built]
@@ -572,13 +558,9 @@ def main() -> None:
     report = {
         "schema_version": 3,
         "status": "passed",
-        "approval_manifest": {
-            "path": portable_path(APPROVAL_MANIFEST_PATH),
-            "schema_version": approval_manifest.get("schema_version"),
-            "classification": approval_manifest.get("classification"),
-        },
+        "approval_record": "approved source hashes embedded in processor",
         "pipeline": [
-            "approved imagegen master/helper pairs hash-locked by manifest",
+            "approved imagegen master/helper pairs hash-locked in processor",
             "helper foreground RGB verified pixel-identical to its master",
             "approved generated masters treated as silhouette authorities",
             "flat magenta removed with connected chroma-key extraction",
@@ -593,14 +575,14 @@ def main() -> None:
         "contact_preview": portable_path(preview_path),
         "assets": results,
     }
-    audit_path = SOURCE_ROOT / "material_drop_asset_audit.json"
-    audit_path.write_text(
+    AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    AUDIT_PATH.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(f"Built {len(results)} generated-edge material-drop icons.")
     print(f"Preview: {preview_path}")
-    print(f"Audit report: {audit_path}")
+    print(f"Audit report: {AUDIT_PATH}")
 
 
 if __name__ == "__main__":

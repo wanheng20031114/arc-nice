@@ -51,8 +51,7 @@ PANEL_OUTPUT = ROOT / "resources/texture/production/production_panel_background.
 PLANK_OUTPUT = ROOT / "resources/texture/materials/plank.png"
 AUDIT_OUTPUT = (
     ROOT
-    / "dev_assets/source_images/plant_defense/wood_processing_station"
-    / "wood_processing_station_asset_audit.json"
+    / "dev_tools/output/plant_defense/wood_processing_station_asset_audit.json"
 )
 
 BUILDING_MAX_SIZE = (30, 31)
@@ -227,6 +226,7 @@ def main() -> None:
     building.save(BUILDING_OUTPUT)
     panel.save(PANEL_OUTPUT)
     PLANK_OUTPUT.write_bytes(plank_payload)
+    AUDIT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

@@ -20,6 +20,8 @@ from collections import deque
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from enemy_asset_report_paths import enemy_asset_report_path
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -80,7 +82,7 @@ REVIEW_BACKGROUND = (13, 19, 31, 255)
 REVIEW_TEXT = (226, 229, 226, 255)
 
 OUTPUT_PREFIX = "combat_robot_drone_operator"
-REPORT_PATH = PREVIEW_DIR / f"{OUTPUT_PREFIX}_robot_preview_audit.json"
+REPORT_PATH = enemy_asset_report_path(f"{OUTPUT_PREFIX}_robot_preview_audit.json")
 COMPARISON_PATH = PREVIEW_DIR / f"{OUTPUT_PREFIX}_robot_comparison.png"
 
 # One name, frame count and exact playback contract per review strip.

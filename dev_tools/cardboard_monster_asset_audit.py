@@ -8,6 +8,8 @@ import json
 import re
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -16,9 +18,9 @@ SOURCE = ROOT / "dev_assets/source_images/cardboard_monster/cardboard_monster_fi
 TEXTURE = ROOT / "resources/texture/enemy/artificial_creation/cardboard_monster.png"
 TEXTURE_IMPORT = Path(str(TEXTURE) + ".import")
 ANIMATION = ROOT / "resources/animation/cardboard_monster.tres"
-REPORT = ROOT / "dev_assets/generated_previews/cardboard_monster_final_candidate_report.json"
-MANIFEST = ROOT / "dev_assets/source_images/cardboard_monster/cardboard_monster_final_candidate_manifest.json"
-STABILITY = ROOT / "dev_assets/generated_previews/cardboard_monster_final_candidate_stability.json"
+REPORT = enemy_asset_report_path("cardboard_monster_final_candidate_report.json")
+MANIFEST = enemy_asset_report_path("cardboard_monster_final_candidate_manifest.json")
+STABILITY = enemy_asset_report_path("cardboard_monster_final_candidate_stability.json")
 
 ATLAS_SHA256 = "73bad923829c873b83c808954d610735826884e2786a5fb1da21a04240578f2c"
 ATLAS_RGBA_SHA256 = "81e4a17fc6288a6204df5e67af864b4fc02e3644eaef92d1ca01b6b7504a44cf"

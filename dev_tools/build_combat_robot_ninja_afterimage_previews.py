@@ -6,6 +6,8 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
 from shutil import copyfile
 
 from PIL import Image
@@ -140,7 +142,7 @@ def main() -> None:
         "gif_frame_duration_ms": FRAME_DURATION_MS,
     }
     report_output = (
-        OUTPUT_DIRECTORY / "combat_robot_ninja_afterimage_shader_report.json"
+        enemy_asset_report_path("combat_robot_ninja_afterimage_shader_report.json")
     )
     report_output.write_text(
         json.dumps(final_report, ensure_ascii=False, indent=2) + "\n",

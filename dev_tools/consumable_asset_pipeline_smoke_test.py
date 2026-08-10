@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lightweight contract coverage for the consumable icon pipeline."""
+"""Contract and deterministic-output coverage for the consumable icon pipeline."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ from process_consumable_assets import (
     _delete_logical_rows,
     _duplicate_logical_rows_after,
     _enforce_uniform_outer_boundary,
-    _load_fresh_audit,
     _nearest_upscale_to_contract,
     _redraw_metrics,
     plan_payload,
+    validate_asset_outputs,
 )
 
 
@@ -165,9 +165,10 @@ def main() -> None:
         payload["repair_asset_count"] == 1 and len(payload["assets"]) == 13,
         "Plan payload must expose the healing repair without changing expansion count",
     )
+    validation_reports = [validate_asset_outputs(spec) for spec in ALL_ASSETS]
     _expect(
-        all(_load_fresh_audit(spec) is not None for spec in ALL_ASSETS),
-        "Every aggregate input audit must match the current source, PNG, prompt manifest, and processor",
+        all(all(report["checks"].values()) for report in validation_reports),
+        "Every configured source must reproduce the tracked PNGs and pass validation",
     )
     _expect(
         payload["contract"]["palette_quantization"] == "none"

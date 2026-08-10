@@ -14,6 +14,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -21,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = (
     PROJECT_ROOT / "dev_assets" / "source_images" / "combat_robot_elite"
 )
-MANIFEST_PATH = SOURCE_DIR / "combat_robot_elite_animation_manifest.json"
+MANIFEST_PATH = enemy_asset_report_path("combat_robot_elite_animation_manifest.json")
 FINAL_CANDIDATE_PATH = SOURCE_DIR / "combat_robot_elite_final_candidate.png"
 RUNTIME_TEXTURE_PATH = (
     PROJECT_ROOT

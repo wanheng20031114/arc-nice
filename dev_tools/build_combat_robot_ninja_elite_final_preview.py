@@ -7,6 +7,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image
 
 
@@ -16,15 +18,15 @@ SOURCE = ROOT / "dev_assets/source_images/combat_robot_ninja_elite"
 PREVIEW = ROOT / "dev_assets/generated_previews"
 ORDINARY = ROOT / "resources/texture/enemy/mechanical_life/combat_robot_ninja.png"
 ANCHOR = SOURCE / "combat_robot_ninja_elite_anchor_n1c_approved_native40.png"
-ANCHOR_MANIFEST = SOURCE / "combat_robot_ninja_elite_anchor_manifest.json"
-ANIMATION_MANIFEST = SOURCE / "combat_robot_ninja_elite_animation_manifest.json"
-ANIMATION_REPORT = PREVIEW / "combat_robot_ninja_elite_animation_preview_report.json"
-AFTERIMAGE_MANIFEST = SOURCE / "combat_robot_ninja_elite_afterimage_manifest.json"
-AFTERIMAGE_REPORT = PREVIEW / "combat_robot_ninja_elite_afterimage_preview_report.json"
+ANCHOR_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_anchor_manifest.json")
+ANIMATION_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_animation_manifest.json")
+ANIMATION_REPORT = enemy_asset_report_path("combat_robot_ninja_elite_animation_preview_report.json")
+AFTERIMAGE_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_afterimage_manifest.json")
+AFTERIMAGE_REPORT = enemy_asset_report_path("combat_robot_ninja_elite_afterimage_preview_report.json")
 REVIEW_SOURCE = SOURCE / "combat_robot_ninja_elite_afterimage_review_source.png"
 FINAL_ATLAS = SOURCE / "combat_robot_ninja_elite_final_candidate_atlas.png"
-FINAL_MANIFEST = SOURCE / "combat_robot_ninja_elite_final_candidate_manifest.json"
-FINAL_REPORT = PREVIEW / "combat_robot_ninja_elite_final_candidate_report.json"
+FINAL_MANIFEST = enemy_asset_report_path("combat_robot_ninja_elite_final_candidate_manifest.json")
+FINAL_REPORT = enemy_asset_report_path("combat_robot_ninja_elite_final_candidate_report.json")
 
 FRAME = 40
 FRAMES = 8
@@ -81,7 +83,7 @@ def rel(path: Path) -> str:
 def ensure_dev(path: Path) -> None:
     resolved = path.resolve()
     dev = (ROOT / "dev_assets").resolve()
-    if resolved != dev and dev not in resolved.parents:
+    if resolved != dev and dev not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Refused non-dev output: {path}")
 
 

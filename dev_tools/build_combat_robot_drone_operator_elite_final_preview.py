@@ -14,6 +14,8 @@ import json
 import math
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
 
@@ -22,17 +24,9 @@ SCRIPT_PATH = Path(__file__).resolve()
 SOURCE_DIR = ROOT / "dev_assets" / "source_images" / "combat_robot_drone_operator_elite"
 PREVIEW_DIR = ROOT / "dev_assets" / "generated_previews"
 
-ANIMATION_SELECTION = SOURCE_DIR / "combat_robot_drone_operator_elite_animation_selection.json"
-EFFECT_MANIFEST = SOURCE_DIR / "combat_robot_drone_operator_elite_effect_manifest.json"
-EFFECT_REPORT = PREVIEW_DIR / "combat_robot_drone_operator_elite_effect_preview_report.json"
-EFFECT_STABILITY = PREVIEW_DIR / "combat_robot_drone_operator_elite_effect_stability_report.json"
-
-EXPECTED_CERTIFICATE_SHA = {
-    ANIMATION_SELECTION: "bb4930ffa196f5adc9327a79d1e9516c5957901d2ae549aaa73de4a07eed146b",
-    EFFECT_MANIFEST: "a0960eb688b1a351c7f21ff611ee54f0bd95a994c48046c08d4c4de44e991acc",
-    EFFECT_REPORT: "b1896e341ba8f53969019539a0029d60d1bb59e8a5da1b72173c743ba6cdc366",
-    EFFECT_STABILITY: "7c136883d4a50be7d215b47831125af903f3e704d9012627557322a542b45baf",
-}
+EFFECT_MANIFEST = enemy_asset_report_path("combat_robot_drone_operator_elite_effect_manifest.json")
+EFFECT_REPORT = enemy_asset_report_path("combat_robot_drone_operator_elite_effect_preview_report.json")
+EFFECT_STABILITY = enemy_asset_report_path("combat_robot_drone_operator_elite_effect_stability_report.json")
 
 SELECTED_INPUTS = {
     "M1": {
@@ -86,13 +80,13 @@ EXPECTED_ORDINARY_SHA = {
     "explosion": "6edc04d40612bb626b9d0880c250f869cd7f7bdd892296887dd0b57dd058e589",
 }
 
-FINAL_SELECTION = SOURCE_DIR / "combat_robot_drone_operator_elite_final_selection.json"
+FINAL_SELECTION = enemy_asset_report_path("combat_robot_drone_operator_elite_final_selection.json")
 BODY_CANDIDATE = SOURCE_DIR / "combat_robot_drone_operator_elite_final_candidate.png"
 DRONE_CANDIDATE = SOURCE_DIR / "combat_robot_suicide_drone_elite_final_candidate.png"
 TARGET_CANDIDATE = SOURCE_DIR / "combat_robot_drone_target_marker_elite_final_candidate.png"
 EXPLOSION_CANDIDATE = SOURCE_DIR / "combat_robot_mechanical_explosion_elite_final_candidate.png"
-FINAL_MANIFEST = SOURCE_DIR / "combat_robot_drone_operator_elite_final_candidate_manifest.json"
-FINAL_REPORT = PREVIEW_DIR / "combat_robot_drone_operator_elite_final_preview_report.json"
+FINAL_MANIFEST = enemy_asset_report_path("combat_robot_drone_operator_elite_final_candidate_manifest.json")
+FINAL_REPORT = enemy_asset_report_path("combat_robot_drone_operator_elite_final_preview_report.json")
 FINAL_COMPARISON = PREVIEW_DIR / "combat_robot_drone_operator_elite_final_comparison.png"
 SEQUENCE_GIF = PREVIEW_DIR / "combat_robot_drone_operator_elite_deploy_flight_explosion.gif"
 SEQUENCE_CONTACT = PREVIEW_DIR / "combat_robot_drone_operator_elite_deploy_flight_explosion_contact.png"
@@ -122,7 +116,7 @@ def rel(path: Path) -> str:
 def assert_dev_output(path: Path) -> None:
     resolved = path.resolve()
     dev_root = (ROOT / "dev_assets").resolve()
-    if resolved != dev_root and dev_root not in resolved.parents:
+    if resolved != dev_root and dev_root not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"final preview builder refused output {path}")
 
 
@@ -161,15 +155,18 @@ def build_strip(frames: list[Image.Image], cell: int) -> Image.Image:
 
 
 def validate_inputs() -> dict[str, Image.Image]:
-    for path, expected in EXPECTED_CERTIFICATE_SHA.items():
-        if sha256(path) != expected:
-            raise AssertionError(f"certificate drifted: {path.name}")
-    animation = json.loads(ANIMATION_SELECTION.read_text(encoding="utf-8"))
-    selected_animation = animation.get("approved_selection") or {}
-    if {key: selected_animation[key]["selection"] for key in ("move", "deploy", "death")} != {"move": "M1", "deploy": "P1", "death": "K2"}:
-        raise AssertionError("animation certificate is not M1/P1/K2")
+    for path in (EFFECT_MANIFEST, EFFECT_REPORT, EFFECT_STABILITY):
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"Run the elite drone-operator effect preview stage first: {path}"
+            )
     effects = json.loads(EFFECT_MANIFEST.read_text(encoding="utf-8"))
-    if effects.get("approved_selection") is not None or effects.get("runtime_written") is not False:
+    if (
+        effects.get("approved_animation_selection")
+        != {"move": "M1", "deploy": "P1", "death": "K2"}
+        or effects.get("approved_selection") is not None
+        or effects.get("runtime_written") is not False
+    ):
         raise AssertionError("third-gate evidence was mutated before final selection")
     loaded = {}
     for key, payload in SELECTED_INPUTS.items():
@@ -442,7 +439,10 @@ def main() -> None:
         "approved_animation_selection": {"move": "M1", "deploy": "P1", "death": "K2"},
         "approved_effect_selection": {"drone": "V1", "target": "T1", "explosion": "X1"},
         "selection_interpretation": "User entered V1 T1 T1; the third slot was interpreted as X1 because that slot accepts X1/X2 and the prior recommendation was X1.",
-        "input_certificates": {rel(path): expected for path, expected in EXPECTED_CERTIFICATE_SHA.items()},
+        "input_certificates": {
+            rel(path): sha256(path)
+            for path in (EFFECT_MANIFEST, EFFECT_REPORT, EFFECT_STABILITY)
+        },
         "selected_native_inputs": {key: {"path": rel(payload["path"]), "sha256": payload["sha256"], "rgba_sha256": payload["rgba_sha256"]} for key, payload in SELECTED_INPUTS.items()},
         "final_human_approved": False,
         "imagegen_pixels_imported": False,

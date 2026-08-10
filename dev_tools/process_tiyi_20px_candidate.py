@@ -19,7 +19,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PATH = ROOT / "dev_assets" / "source_images" / "player_tiyi" / "movement_logical_lossless.png"
 OUTPUT_PATH = ROOT / "dev_assets" / "source_images" / "player_tiyi" / "movement_scale1_20px_candidate.png"
-REPORT_PATH = OUTPUT_PATH.with_suffix(".json")
+REPORT_PATH = ROOT / "dev_tools/output/player_tiyi/movement_scale1_20px_candidate.json"
 COMPARISON_PATH = ROOT / "dev_assets" / "source_images" / "player_tiyi" / "movement_20px_comparison_4x.png"
 FRAME_SIZE = 32
 TARGET_TOP = 5
@@ -292,6 +292,7 @@ def main() -> None:
         "target_body_limit_excluding_rifle_extension": [20, 20],
         "directions": direction_reports,
     }
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

@@ -42,7 +42,7 @@ BOTTLE_OUTPUT = ROOT / "resources/texture/materials/water_bottle.png"
 PANEL_OUTPUT = (
     ROOT / "resources/texture/production/water_collector_panel_background.png"
 )
-AUDIT_OUTPUT = SOURCE_DIR / "water_collector_asset_audit.json"
+AUDIT_OUTPUT = ROOT / "dev_tools/output/plant_defense/water_collector_asset_audit.json"
 
 BUILDING_MAX_SIZE = (58, 62)
 BUILDING_FOOT_TARGET = (32, 62)
@@ -243,6 +243,7 @@ def main() -> None:
     assets["building"].save(BUILDING_OUTPUT)
     assets["bottle"].save(BOTTLE_OUTPUT)
     assets["panel"].save(PANEL_OUTPUT)
+    AUDIT_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     AUDIT_OUTPUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

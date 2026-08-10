@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministically build and audit consumable icons and native repairs.
+"""Deterministically build and validate consumable icons and native repairs.
 
 Each approved ImageGen master is retained beside its processing artifacts.
 Rejected rasters are removed after approval unless an accepted precise edit
@@ -8,7 +8,7 @@ one pixel is sampled per *measured* logical source cell, and the result is
 centered on a transparent 32x32 canvas.  The pipeline intentionally has no
 unsafe resize or palette-reduction escape hatch: an unreliable or oversized
 source must be regenerated instead of being hidden behind destructive
-downscaling.  Human-authored native masters are audit-only inputs and are
+downscaling.  Human-authored native masters are validation-only inputs and are
 never overwritten by the ImageGen rebuild path.
 
 Examples:
@@ -43,7 +43,6 @@ from pixel_grid_analyzer import analyze_image
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT / "dev_assets/source_images/consumables"
 OUTPUT_ROOT = ROOT / "resources/texture/consumables"
-PROMPT_MANIFEST_PATH = SOURCE_ROOT / "imagegen_prompt_manifest.json"
 CANVAS_SIZE = (32, 32)
 MIN_SUBJECT_SIZE = (8, 8)
 CHROMA_KEY = "#FF00FF"
@@ -97,10 +96,6 @@ class AssetSpec:
     @property
     def logical_preview_path(self) -> Path:
         return self.source_directory / f"{self.slug}_logical_preview.png"
-
-    @property
-    def audit_path(self) -> Path:
-        return self.source_directory / f"{self.slug}_asset_audit.json"
 
     @property
     def output_path(self) -> Path:
@@ -654,45 +649,6 @@ def _save_lossless(image: Image.Image, path: Path) -> None:
     image.save(path, format="PNG", optimize=True, compress_level=9)
 
 
-def _prompt_record(spec: AssetSpec) -> dict:
-    if not PROMPT_MANIFEST_PATH.is_file():
-        return {
-            "status": "missing",
-            "required_path": portable_path(PROMPT_MANIFEST_PATH),
-            "note": "Exact ImageGen prompt must be copied from the original generation call; never reconstruct it from the image.",
-        }
-    manifest = json.loads(PROMPT_MANIFEST_PATH.read_text(encoding="utf-8"))
-    entries = manifest.get("assets", manifest.get("items", []))
-    entry = next(
-        (
-            candidate
-            for candidate in entries
-            if isinstance(candidate, dict)
-            and candidate.get(
-                "slug",
-                candidate.get("id", candidate.get("stem")),
-            )
-            == spec.slug
-        ),
-        None,
-    )
-    expected_source = portable_path(spec.source_path.relative_to(SOURCE_ROOT))
-    selected_source = entry.get("selected_source") if entry is not None else None
-    prompt_lines = entry.get("prompt_lines", []) if entry is not None else []
-    prompt_text = "\n".join(str(line) for line in prompt_lines)
-    return {
-        "status": "linked" if entry is not None else "asset_entry_missing",
-        "path": portable_path(PROMPT_MANIFEST_PATH),
-        "sha256": _sha256(PROMPT_MANIFEST_PATH),
-        "asset_entry_found": entry is not None,
-        "selected_source": selected_source,
-        "selected_source_matches": selected_source == expected_source,
-        "referenced_images": entry.get("referenced_images", []) if entry is not None else [],
-        "prompt_lines": prompt_lines,
-        "prompt_sha256": hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
-    }
-
-
 def _normalize_source(spec: AssetSpec, keyed: Image.Image) -> NormalizedSubject:
     if spec.reviewed_logical_size is None:
         return normalize_imagegen_subject(
@@ -754,7 +710,7 @@ def _normalize_source(spec: AssetSpec, keyed: Image.Image) -> NormalizedSubject:
 
 
 def _build_native_manual_asset(spec: AssetSpec) -> dict:
-    """Audit a user-authored native master without writing production pixels."""
+    """Validate a user-authored native master without writing production pixels."""
     if spec.native_manual_master_filename is None:
         raise RuntimeError(f"{spec.slug} is not a native manual-master asset")
     if not spec.source_path.is_file():
@@ -802,7 +758,7 @@ def _build_native_manual_asset(spec: AssetSpec) -> dict:
         "tier": spec.tier,
         "shape": spec.shape,
         "repair_asset": spec.repair_asset,
-        "pipeline_mode": "native_manual_master_audit_only",
+        "pipeline_mode": "native_manual_master_validation_only",
         "production_overwrite_policy": "never",
         "manual_master_note": spec.manual_master_note,
         "paths": {
@@ -841,29 +797,34 @@ def _build_native_manual_asset(spec: AssetSpec) -> dict:
         "alpha_values": sorted(set(production.getchannel("A").getdata())),
         "checks": checks,
     }
-    spec.audit_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
     return report
 
 
-def _build_asset(spec: AssetSpec) -> dict:
+def _assert_existing_png_matches(
+    expected: Image.Image,
+    path: Path,
+    *,
+    label: str,
+) -> None:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    with Image.open(path) as opened:
+        actual = opened.convert("RGBA")
+    expected_rgba = expected.convert("RGBA")
+    if (
+        actual.size != expected_rgba.size
+        or actual.tobytes() != expected_rgba.tobytes()
+    ):
+        raise RuntimeError(
+            f"Configured {label} no longer matches its deterministic build: {path}"
+        )
+
+
+def _build_asset(spec: AssetSpec, *, write_outputs: bool = True) -> dict:
     if spec.native_manual_master_filename is not None:
         return _build_native_manual_asset(spec)
     if not spec.source_path.is_file():
         raise FileNotFoundError(spec.source_path)
-
-    prompt_record = _prompt_record(spec)
-    if PROMPT_MANIFEST_PATH.is_file() and (
-        prompt_record["status"] != "linked"
-        or not prompt_record["selected_source_matches"]
-        or not prompt_record["prompt_lines"]
-    ):
-        raise RuntimeError(
-            f"Prompt manifest is incomplete or selects another source for {spec.slug}: "
-            f"{prompt_record}"
-        )
 
     keyed = _key_magenta_source(spec.source_path)
     normalized = _normalize_source(spec, keyed)
@@ -902,9 +863,26 @@ def _build_asset(spec: AssetSpec) -> dict:
     if redraw_record is not None:
         checks.update(redraw_record["assertions"])
 
-    _save_lossless(keyed, spec.alpha_path)
-    _save_lossless(logical, spec.logical_preview_path)
-    _save_lossless(output, spec.output_path)
+    if write_outputs:
+        _save_lossless(keyed, spec.alpha_path)
+        _save_lossless(logical, spec.logical_preview_path)
+        _save_lossless(output, spec.output_path)
+    else:
+        _assert_existing_png_matches(
+            keyed,
+            spec.alpha_path,
+            label=f"{spec.slug} alpha source",
+        )
+        _assert_existing_png_matches(
+            logical,
+            spec.logical_preview_path,
+            label=f"{spec.slug} logical preview",
+        )
+        _assert_existing_png_matches(
+            output,
+            spec.output_path,
+            label=f"{spec.slug} production texture",
+        )
 
     report = {
         "schema_version": 2,
@@ -950,7 +928,6 @@ def _build_asset(spec: AssetSpec) -> dict:
             "palette_quantization": "none",
             "png": "optimize=true, compress_level=9 (lossless)",
         },
-        "prompt_record": prompt_record,
         "paths": {
             "source_master": portable_path(spec.source_path),
             "alpha_source": portable_path(spec.alpha_path),
@@ -995,192 +972,12 @@ def _build_asset(spec: AssetSpec) -> dict:
         "alpha_values": sorted(set(output.getchannel("A").getdata())),
         "checks": checks,
     }
-    spec.audit_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
     return report
 
 
-def _build_contact_previews(
-    specs: tuple[AssetSpec, ...],
-    filename_stem: str,
-    *,
-    columns: int,
-) -> tuple[Path, Path]:
-    margin = 2
-    gap = 2
-    rows = (len(specs) + columns - 1) // columns
-    logical = Image.new(
-        "RGBA",
-        (
-            margin * 2 + columns * CANVAS_SIZE[0] + (columns - 1) * gap,
-            margin * 2 + rows * CANVAS_SIZE[1] + (rows - 1) * gap,
-        ),
-        (30, 34, 38, 255),
-    )
-    for index, spec in enumerate(specs):
-        with Image.open(spec.output_path) as opened:
-            icon = opened.convert("RGBA")
-        x = margin + (index % columns) * (CANVAS_SIZE[0] + gap)
-        y = margin + (index // columns) * (CANVAS_SIZE[1] + gap)
-        logical.alpha_composite(icon, (x, y))
-
-    preview_1x = SOURCE_ROOT / f"{filename_stem}_1x.png"
-    preview_8x = SOURCE_ROOT / f"{filename_stem}_8x.png"
-    _save_lossless(logical, preview_1x)
-    _save_lossless(
-        logical.resize(
-            (logical.width * 8, logical.height * 8),
-            Image.Resampling.NEAREST,
-        ),
-        preview_8x,
-    )
-    return preview_1x, preview_8x
-
-
-def _load_fresh_audit(spec: AssetSpec) -> dict | None:
-    """Load an audit only when every recorded build input is still current."""
-    if not spec.audit_path.is_file() or not spec.output_path.is_file():
-        return None
-    report = json.loads(spec.audit_path.read_text(encoding="utf-8"))
-    if report.get("schema_version") != 2 or report.get("asset") != spec.slug:
-        return None
-    hashes = report.get("hashes", {})
-    if hashes.get("production_texture_sha256") != _sha256(spec.output_path):
-        return None
-    if hashes.get("processing_script_sha256") != _sha256(Path(__file__)):
-        return None
-    checks = report.get("checks", {})
-    if not checks or not all(value is True for value in checks.values()):
-        return None
-
-    if spec.native_manual_master_filename is not None:
-        if (
-            not spec.source_path.is_file()
-            or hashes.get("native_manual_master_sha256") != _sha256(spec.source_path)
-            or report.get("production_overwrite_policy") != "never"
-        ):
-            return None
-        return report
-
-    if (
-        not spec.source_path.is_file()
-        or not spec.alpha_path.is_file()
-        or not spec.logical_preview_path.is_file()
-        or hashes.get("source_master_sha256") != _sha256(spec.source_path)
-        or hashes.get("alpha_source_sha256") != _sha256(spec.alpha_path)
-        or hashes.get("logical_preview_sha256") != _sha256(spec.logical_preview_path)
-    ):
-        return None
-    prompt_record = report.get("prompt_record", {})
-    if (
-        not PROMPT_MANIFEST_PATH.is_file()
-        or prompt_record.get("sha256") != _sha256(PROMPT_MANIFEST_PATH)
-        or prompt_record.get("selected_source_matches") is not True
-    ):
-        return None
-    return report
-
-
-def _write_global_audit_if_complete() -> Path | None:
-    reports = [_load_fresh_audit(spec) for spec in ASSETS]
-    if any(report is None for report in reports):
-        return None
-    preview_1x, preview_8x = _build_contact_previews(
-        ASSETS,
-        "new_consumables_contact_preview",
-        columns=6,
-    )
-    report = {
-        "schema_version": 2,
-        "status": "passed",
-        "asset_count": len(ASSETS),
-        "contract": {
-            "canvas": [32, 32],
-            "mode": "RGBA",
-            "alpha_values": [0, 255],
-            "minimum_transparent_border": 1,
-            "chroma_key": CHROMA_KEY,
-            "palette_quantization": "none",
-            "resampling": "one center sample per verified logical source cell",
-            "png_encoding": "lossless",
-            "godot_texture_filter": "project default nearest",
-        },
-        "prompt_manifest": (
-            {
-                "status": "linked",
-                "path": portable_path(PROMPT_MANIFEST_PATH),
-                "sha256": _sha256(PROMPT_MANIFEST_PATH),
-            }
-            if PROMPT_MANIFEST_PATH.is_file()
-            else {
-                "status": "missing",
-                "required_path": portable_path(PROMPT_MANIFEST_PATH),
-            }
-        ),
-        "contact_previews": {
-            "1x": portable_path(preview_1x),
-            "8x_nearest": portable_path(preview_8x),
-        },
-        "assets": reports,
-    }
-    path = SOURCE_ROOT / "new_consumable_asset_audit.json"
-    path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    return path
-
-
-def _write_redraw_audit_if_complete() -> Path | None:
-    specs = (
-        next(spec for spec in ASSETS if spec.slug == "battle_spirit_potion"),
-        next(spec for spec in ASSETS if spec.slug == "windwalk_potion"),
-        *REPAIR_ASSETS,
-    )
-    reports = [_load_fresh_audit(spec) for spec in specs]
-    if any(report is None for report in reports):
-        return None
-    preview_1x, preview_8x = _build_contact_previews(
-        specs,
-        "redrawn_consumables_contact_preview",
-        columns=3,
-    )
-    report = {
-        "schema_version": 1,
-        "status": "passed",
-        "asset_count": len(specs),
-        "new_expansion_asset_count": 2,
-        "repair_asset_count": 1,
-        "assets_in_order": [spec.slug for spec in specs],
-        "contract": {
-            "canvas": [32, 32],
-            "mode": "RGBA",
-            "alpha_values": [0, 255],
-            "transparent_rgb": [0, 0, 0],
-            "minimum_transparent_border_on_all_four_edges": 1,
-            "production_resampling": "none",
-            "uniform_outer_boundary_rgba": list(OUTER_BOUNDARY_COLOR),
-            "outer_boundary_connectivity": 4,
-            "outer_boundary_dark_ratio": 1.0,
-            "maximum_second_layer_dark_ratio": MAX_SECOND_LAYER_DARK_RATIO,
-            "maximum_aligned_tolerance8_same_color_2x2_coverage": (
-                MAX_ALIGNED_SAME_COLOR_2X2_COVERAGE
-            ),
-        },
-        "contact_previews": {
-            "1x": portable_path(preview_1x),
-            "8x_nearest": portable_path(preview_8x),
-        },
-        "assets": reports,
-    }
-    path = SOURCE_ROOT / "redrawn_consumable_asset_audit.json"
-    path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    return path
+def validate_asset_outputs(spec: AssetSpec) -> dict:
+    """Rebuild in memory and compare every configured PNG without writing files."""
+    return _build_asset(spec, write_outputs=False)
 
 
 def plan_payload() -> dict:
@@ -1228,6 +1025,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print the exact file/size contract without requiring generated sources",
     )
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Rebuild in memory and validate configured PNGs without writing files",
+    )
     return parser.parse_args()
 
 
@@ -1241,19 +1043,17 @@ def main() -> None:
     specs = [
         spec for spec in ALL_ASSETS if not requested or spec.slug in requested
     ]
-    reports = [_build_asset(spec) for spec in specs]
+    reports = [
+        validate_asset_outputs(spec) if args.check_only else _build_asset(spec)
+        for spec in specs
+    ]
+    action = "Checked" if args.check_only else "Built"
     for report in reports:
         print(
-            f"Built {report['asset']}: "
+            f"{action} {report['asset']}: "
             f"{report['logical_subject_size']} -> 32x32, "
             f"{report['hashes']['production_texture_sha256']}"
         )
-    global_audit = _write_global_audit_if_complete()
-    if global_audit is not None:
-        print(f"Global audit: {global_audit}")
-    redraw_audit = _write_redraw_audit_if_complete()
-    if redraw_audit is not None:
-        print(f"Redraw audit: {redraw_audit}")
 
 
 if __name__ == "__main__":

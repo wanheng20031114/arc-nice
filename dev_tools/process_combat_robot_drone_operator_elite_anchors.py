@@ -15,6 +15,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from enemy_asset_report_paths import enemy_asset_report_path, is_enemy_asset_report_path
+
 from PIL import Image, ImageDraw, ImageFont
 
 from pixel_grid_analyzer import analyze_image
@@ -157,7 +159,7 @@ def rel(path: Path) -> str:
 def assert_dev_path(path: Path) -> None:
     resolved = path.resolve()
     dev_root = (ROOT / "dev_assets").resolve()
-    if resolved != dev_root and dev_root not in resolved.parents:
+    if resolved != dev_root and dev_root not in resolved.parents and not is_enemy_asset_report_path(path):
         raise AssertionError(f"Refusing non-dev output: {path}")
 
 
@@ -494,7 +496,7 @@ def main() -> None:
 
     comparison = PREVIEW_DIR / "combat_robot_drone_operator_elite_anchor_comparison.png"
     save_png(build_comparison(base, built, transparent_refs), comparison)
-    manifest_path = SOURCE_DIR / "combat_robot_drone_operator_elite_anchor_manifest.json"
+    manifest_path = enemy_asset_report_path("combat_robot_drone_operator_elite_anchor_manifest.json")
     existing_selection: str | None = None
     if manifest_path.is_file():
         existing_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -564,7 +566,7 @@ def main() -> None:
         "comparison": {"path": rel(comparison), "sha256": sha256(comparison)},
         "script": {"path": rel(SCRIPT_PATH), "sha256": sha256(SCRIPT_PATH)},
     }
-    report_path = PREVIEW_DIR / "combat_robot_drone_operator_elite_anchor_report.json"
+    report_path = enemy_asset_report_path("combat_robot_drone_operator_elite_anchor_report.json")
     for path, payload in ((report_path, report), (manifest_path, report)):
         assert_dev_path(path)
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
