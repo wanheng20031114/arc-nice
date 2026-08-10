@@ -21,11 +21,11 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="30_combat_robot_drone_motion"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_hud.tscn" id="31_rogue_hud"]
 [ext_resource type="PackedScene" uid="uid://d4jmq3n7wpx2a" path="res://scene/ui/shared/player_life_status_hud.tscn" id="32_life_hud"]
-[ext_resource type="PackedScene" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="33_gameplay_gateway"]
-[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="34_mode_adapter"]
+[ext_resource type="PackedScene" uid="uid://b2h7qgwej5n3a" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="33_gameplay_gateway"]
+[ext_resource type="PackedScene" uid="uid://bwy4m8w6x0rae" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="34_mode_adapter"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres" id="35_rogue_campaign"]
-[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/player/rogue_player_roster_coordinator.tscn" id="36_player_roster"]
-[ext_resource type="PackedScene" uid="uid://d5w9j2n7r4c8p" path="res://scene/game_modes/rogue/combat/pickup/rogue_pickup_registry.tscn" id="37_pickup_registry"]
+[ext_resource type="PackedScene" uid="uid://cx8r7t2j4p5ma" path="res://scene/game_modes/rogue/combat/player/rogue_player_roster_coordinator.tscn" id="36_player_roster"]
+[ext_resource type="PackedScene" uid="uid://bjex0qx7whhx" path="res://scene/game_modes/rogue/combat/pickup/rogue_pickup_registry.tscn" id="37_pickup_registry"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -110,19 +110,19 @@ sources/0 = SubResource("TileSetAtlasSource_fc0e3")
 [node name="RogueCombatGame01" type="Node2D" unique_id=20737211]
 position = Vector2(1, 0)
 script = ExtResource("1_17rxn")
-pre_wave_duration = 3.0
-auto_start_waves = false
 singleplayer_campaign = ExtResource("35_rogue_campaign")
 multiplayer_campaign = ExtResource("35_rogue_campaign")
+pre_wave_duration = 3.0
+auto_start_waves = false
 world_lighting_policy = 2
 
-[node name="MultiplayerGameplayGateway" parent="." instance=ExtResource("33_gameplay_gateway")]
+[node name="MultiplayerGameplayGateway" parent="." unique_id=993492004 instance=ExtResource("33_gameplay_gateway")]
 
-[node name="MultiplayerModeAdapter" parent="." instance=ExtResource("34_mode_adapter")]
+[node name="MultiplayerModeAdapter" parent="." unique_id=1682816444 instance=ExtResource("34_mode_adapter")]
 
-[node name="PlayerRosterCoordinator" parent="." instance=ExtResource("36_player_roster")]
+[node name="PlayerRosterCoordinator" parent="." unique_id=378809074 instance=ExtResource("36_player_roster")]
 
-[node name="PickupRegistry" parent="." instance=ExtResource("37_pickup_registry")]
+[node name="PickupRegistry" parent="." unique_id=1169060591 instance=ExtResource("37_pickup_registry")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2059488462]
 environment = SubResource("Environment_revive_glow")
@@ -229,14 +229,14 @@ night_energy = 0.3
 
 [node name="RogueCombatHUD" parent="." unique_id=2078669616 instance=ExtResource("31_rogue_hud")]
 
-[node name="PlayerLifeStatusLayer" type="CanvasLayer" parent="."]
+[node name="PlayerLifeStatusLayer" type="CanvasLayer" parent="." unique_id=2054910556]
 layer = 90
 
-[node name="PlayerLifeStatusHUD" parent="PlayerLifeStatusLayer" instance=ExtResource("32_life_hud")]
+[node name="PlayerLifeStatusHUD" parent="PlayerLifeStatusLayer" unique_id=317332438 instance=ExtResource("32_life_hud")]
 
-[connection signal="timeout" from="CombatDeadlineTimer" to="." method="_on_combat_deadline_timer_timeout"]
-[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_upgrade_requested"]
-[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_use_requested"]
 [connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_discard_requested"]
-[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_requested"]
+[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_use_requested"]
 [connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_cancel_requested"]
+[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_requested"]
+[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_upgrade_requested"]
+[connection signal="timeout" from="CombatDeadlineTimer" to="." method="_on_combat_deadline_timer_timeout"]

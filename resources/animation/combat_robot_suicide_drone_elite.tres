@@ -1,8 +1,8 @@
-[gd_resource type="SpriteFrames" format=3]
+[gd_resource type="SpriteFrames" format=3 uid="uid://dy331sh8lqus8"]
 
-[ext_resource type="Texture2D" path="res://resources/texture/enemy/mechanical_life/combat_robot_suicide_drone_elite.png" id="1_drone"]
-[ext_resource type="Texture2D" path="res://resources/texture/enemy/mechanical_life/combat_robot_drone_target_marker_elite.png" id="2_marker"]
-[ext_resource type="Texture2D" path="res://resources/texture/enemy/mechanical_life/combat_robot_mechanical_explosion_elite.png" id="3_explosion"]
+[ext_resource type="Texture2D" uid="uid://otgh2gf2ia5i" path="res://resources/texture/enemy/mechanical_life/combat_robot_suicide_drone_elite.png" id="1_drone"]
+[ext_resource type="Texture2D" uid="uid://bmkk87ees6eq4" path="res://resources/texture/enemy/mechanical_life/combat_robot_drone_target_marker_elite.png" id="2_marker"]
+[ext_resource type="Texture2D" uid="uid://q60uoi4hjm4r" path="res://resources/texture/enemy/mechanical_life/combat_robot_mechanical_explosion_elite.png" id="3_explosion"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_explode_0"]
 atlas = ExtResource("3_explosion")
