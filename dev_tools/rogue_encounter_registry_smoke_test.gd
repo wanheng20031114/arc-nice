@@ -25,8 +25,9 @@ func _test_pool_and_deterministic_selection() -> void:
 			RogueEncounterRegistry.SLIME_TALKERS,
 			RogueEncounterRegistry.GHOST_SHADOW,
 			RogueEncounterRegistry.FLUORESCENT_PIT,
+			RogueEncounterRegistry.SUITCASE_FRENZY,
 		],
-		"四种神奇遭遇必须等权注册且保持稳定顺序。"
+		"五种神奇遭遇必须等权注册且保持稳定顺序。"
 	)
 	var selected: Dictionary = {}
 	for seed_value in range(128):
@@ -44,8 +45,9 @@ func _test_pool_and_deterministic_selection() -> void:
 		selected.has(RogueEncounterRegistry.CHICKEN_BRO)
 		and selected.has(RogueEncounterRegistry.SLIME_TALKERS)
 		and selected.has(RogueEncounterRegistry.GHOST_SHADOW)
-		and selected.has(RogueEncounterRegistry.FLUORESCENT_PIT),
-		"固定seed样本必须能够覆盖池中的四种遭遇。"
+		and selected.has(RogueEncounterRegistry.FLUORESCENT_PIT)
+		and selected.has(RogueEncounterRegistry.SUITCASE_FRENZY),
+		"固定seed样本必须能够覆盖池中的五种遭遇。"
 	)
 
 
@@ -61,6 +63,9 @@ func _test_content_configs() -> void:
 	)
 	var pit := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.FLUORESCENT_PIT
+	)
+	var suitcase := RogueEncounterRegistry.get_encounter_config(
+		RogueEncounterRegistry.SUITCASE_FRENZY
 	)
 	_expect(
 		str(chicken.get("intro_text", ""))
@@ -111,10 +116,14 @@ func _test_content_configs() -> void:
 	var pit_options := RogueEncounterRegistry.get_option_configs(
 		RogueEncounterRegistry.FLUORESCENT_PIT
 	)
+	var suitcase_options := RogueEncounterRegistry.get_option_configs(
+		RogueEncounterRegistry.SUITCASE_FRENZY
+	)
 	_expect(chicken_options.size() == 2, "鸡哥必须继续显示两个选项。")
 	_expect(slime_options.size() == 3, "史莱姆遭遇必须显示三个选项。")
 	_expect(ghost_options.size() == 2, "鬼影遭遇必须显示两个选项。")
 	_expect(pit_options.size() == 2, "荧光坑洞必须显示两个选项。")
+	_expect(suitcase_options.size() == 3, "疯穿箱子必须显示三个选项。")
 	_expect(
 		RogueEncounterRegistry.get_option_ids(
 			RogueEncounterRegistry.SLIME_TALKERS
@@ -165,6 +174,56 @@ func _test_content_configs() -> void:
 		and str(pit_options[1].get("description", ""))
 		== "这么深的坑还是别继续了",
 		"荧光坑洞选项ID、顺序与策划文案必须稳定。"
+	)
+	var suitcase_intro_pages := RogueEncounterRegistry.get_intro_pages(
+		RogueEncounterRegistry.SUITCASE_FRENZY
+	)
+	_expect(
+		str(suitcase.get("display_name", "")) == "疯穿箱子"
+		and str(suitcase.get("portrait_texture_path", ""))
+		== "res://resources/texture/rogue_encounter/suitcase_frenzy.png"
+		and suitcase_intro_pages.size() == 2
+		and str(suitcase_intro_pages[0].get("text", ""))
+		== "发现了一群失控的战斗机器人正在开枪疯穿箱子。"
+		and str(suitcase_intro_pages[1].get("text", ""))
+		== "也不知道这皮箱有什么特别的"
+		and RogueEncounterRegistry.requires_result_ack(
+			RogueEncounterRegistry.SUITCASE_FRENZY
+		)
+		and RogueEncounterRegistry.get_no_vote_option_id(
+			RogueEncounterRegistry.SUITCASE_FRENZY
+		) == RogueEncounterRegistry.OPTION_IGNORE_SUITCASE,
+		"疯穿箱子必须注册双页旁白、素材路径、结果屏障与安全超时项。"
+	)
+	_expect(
+		RogueEncounterRegistry.get_option_ids(
+			RogueEncounterRegistry.SUITCASE_FRENZY
+		) == [
+			RogueEncounterRegistry.OPTION_CLAIM_SUITCASE,
+			RogueEncounterRegistry.OPTION_JOIN_SUITCASE_SHOOTING,
+			RogueEncounterRegistry.OPTION_IGNORE_SUITCASE,
+		]
+		and str(suitcase_options[0].get("title", "")) == "箱子是我的！"
+		and str(suitcase_options[0].get("description", ""))
+		== "朝着机器人开火"
+		and str(suitcase_options[1].get("title", "")) == "凑热闹！"
+		and str(suitcase_options[1].get("description", ""))
+		== "跟着一起射击皮箱！"
+		and str(suitcase_options[2].get("title", ""))
+		== "一个皮箱有什么好在意的！"
+		and str(suitcase_options[2].get("description", ""))
+		== "趁没被机器人发现前离开",
+		"疯穿箱子的三个选项ID、顺序与大小字必须精确。"
+	)
+	var legacy_intro_pages := RogueEncounterRegistry.get_intro_pages(
+		RogueEncounterRegistry.CHICKEN_BRO
+	)
+	_expect(
+		legacy_intro_pages.size() == 1
+		and str(legacy_intro_pages[0].get("text", ""))
+		== "鸡哥：练习时长2年半，会唱跳rap篮球。"
+		and not bool(legacy_intro_pages[0].get("is_narration", true)),
+		"旧遭遇必须继续从intro_text兼容生成单页开场。"
 	)
 	var mutated := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.CHICKEN_BRO

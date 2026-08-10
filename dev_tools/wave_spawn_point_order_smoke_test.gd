@@ -6,6 +6,7 @@ const POINT_NAMES: Array[StringName] = [
 	&"Spawn3",
 ]
 const SAMPLE_COUNT := 30
+const SUITCASE_BATTLE_SAMPLE_COUNT := 100
 const PRIMARY_SEED := 184467
 const SECONDARY_SEED := 918273
 
@@ -63,6 +64,7 @@ func _run() -> void:
 	_test_balanced_order_can_vary_by_seed()
 	_test_balanced_order_covers_each_point_per_bag()
 	_test_balanced_order_keeps_prefix_counts_even()
+	_test_suitcase_battle_hundred_spawns_are_34_33_33()
 	_test_uniform_random_preserves_legacy_selection()
 
 	if _failures.is_empty():
@@ -140,6 +142,27 @@ func _test_balanced_order_keeps_prefix_counts_even() -> void:
 			"均衡随机袋任意前缀的点位生成次数最大差不得超过1：%s。"
 			% (index + 1)
 		)
+
+
+func _test_suitcase_battle_hundred_spawns_are_34_33_33() -> void:
+	var order := _sample_order(
+		WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG,
+		PRIMARY_SEED,
+		SUITCASE_BATTLE_SAMPLE_COUNT
+	)
+	var counts: Dictionary[StringName, int] = {}
+	for point_name in POINT_NAMES:
+		counts[point_name] = 0
+	for point_name in order:
+		counts[point_name] += 1
+	var sorted_counts: Array[int] = []
+	for count_value in counts.values():
+		sorted_counts.append(int(count_value))
+	sorted_counts.sort()
+	_expect(
+		sorted_counts == [33, 33, 34],
+		"皮箱之战的100次出生必须在三扇红门形成34/33/33级别分布。"
+	)
 
 
 func _test_uniform_random_preserves_legacy_selection() -> void:

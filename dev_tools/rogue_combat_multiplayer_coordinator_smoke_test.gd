@@ -192,6 +192,9 @@ func _test_protocol_contract_is_static_and_order_safe() -> void:
 	var source := FileAccess.get_file_as_string(
 		"res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd"
 	)
+	var reward_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/rogue/combat/rogue_combat_reward_resolver.gd"
+	)
 	_expect(not source.is_empty(), "多人协调器源码必须可读取。")
 	_expect(
 		source.contains("func net_combat_prepared(occurrence_key: String)")
@@ -204,9 +207,10 @@ func _test_protocol_contract_is_static_and_order_safe() -> void:
 		"本地退出必须同时等待 MpGame outcome 与房主 settlement。"
 	)
 	_expect(
-		source.contains("RogueCombatRewardResolver.resolve_reward(")
+		source.contains("RogueCombatRewardResolver.resolve_party_rewards(")
+		and reward_source.contains("apply_authoritative_party_transaction(")
 		and source.contains("export_inventory_snapshot_for_peer(peer_id)"),
-		"房主必须逐 peer 独立结算收藏品并同步权威背包快照。"
+		"房主必须用一次Party Economy CAS结算多奖励并同步权威背包快照。"
 	)
 	_expect(
 		source.contains("_combat_game.auto_start_waves = true"),
@@ -276,8 +280,15 @@ func _test_protocol_contract_is_static_and_order_safe() -> void:
 	_expect(
 		player_left_source.contains("_disconnected_participants[peer_id]")
 		and not player_left_source.contains("_participant_peer_ids.erase(peer_id)")
-		and source.contains("func _remap_pending_settlement_peer("),
-		"断线只应退出 barrier，不得丢失可供重连迁移的参战身份与结算映射。"
+		and source.contains("func _remap_pending_settlement_peer(")
+		and source.contains("_participant_character_ids")
+		and source.contains("_participant_stable_keys")
+		and source.contains("_last_combat_xirang_by_peer")
+		and source.contains("get_followup_combat_participant_peer_ids("),
+		(
+			"断线只应退出 barrier；角色、稳定身份、最后息壤与跟随作战参战名单"
+			+ "都必须独立冻结并参与后续结算。"
+		)
 	)
 	_expect(
 		source.contains("func net_combat_abort_requested(")

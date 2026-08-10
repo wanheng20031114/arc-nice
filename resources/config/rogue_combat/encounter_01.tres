@@ -1,7 +1,8 @@
-[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" format=3 uid="uid://bgo01u0bqbesa"]
+[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" load_steps=4 format=3 uid="uid://bgo01u0bqbesa"]
 
 [ext_resource type="Script" uid="uid://cvx2f5hh6lh4n" path="res://resources/config/rogue_combat/rogue_combat_encounter_config.gd" id="1_config_script"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres" id="2_campaign"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/reward_encounter_01.tres" id="3_reward"]
 
 [resource]
 script = ExtResource("1_config_script")
@@ -13,6 +14,7 @@ campaign = ExtResource("2_campaign")
 preparation_seconds = 3
 combat_limit_seconds = 90
 extra_xirang = 500
+reward_config = ExtResource("3_reward")
 decisions_confirmed = true
 deadline_start = 2
 keep_enemy_kill_xirang = 2

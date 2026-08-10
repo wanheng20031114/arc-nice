@@ -9,14 +9,26 @@ const BRIEFING_SCRIPT := preload(
 const NORMAL_ADAPTER_SCRIPT := preload(
 	"res://scene/game_modes/rogue/route/rogue_normal_combat_briefing_adapter.gd"
 )
+const SPECIAL_ADAPTER_SCRIPT := preload(
+	"res://scene/game_modes/rogue/route/rogue_special_combat_briefing_adapter.gd"
+)
 const NORMAL_NODE_CONFIG: RogueRouteNodeTypeConfig = preload(
 	"res://resources/config/rogue_route/normal_combat.tres"
 )
 const ENCOUNTER_CONFIG: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
 )
+const SUITCASE_BATTLE_CONFIG: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/suitcase_battle.tres"
+)
+const MAGICAL_NODE_CONFIG: RogueRouteNodeTypeConfig = preload(
+	"res://resources/config/rogue_route/magical_encounter.tres"
+)
 const TEST_HERO_VISUAL: Texture2D = preload(
 	"res://resources/texture/rogue_route/normal_combat_briefing_visual.png"
+)
+const SUITCASE_HERO_VISUAL: Texture2D = preload(
+	"res://resources/texture/rogue_encounter/suitcase_frenzy.png"
 )
 
 var failures: Array[String] = []
@@ -53,6 +65,13 @@ func _run() -> void:
 		return
 	_expect(model.is_valid(), "普通作战适配器生成的模型必须通过强类型校验。")
 	_expect(
+		model.source_kind
+		== RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT
+		and model.config_id == &"narrow_road_01"
+		and model.can_cancel,
+		"普通作战模型必须保留 default_combat/config_id 与可取消契约。"
+	)
+	_expect(
 		model.title == "普通作战" and model.summary == "狭路相逢",
 		"模型标题与摘要必须来自现有节点和遭遇配置。"
 	)
@@ -79,6 +98,41 @@ func _run() -> void:
 	_expect(
 		adapter.build_model(wrong_node_config, 8, 1) == null,
 		"普通作战适配器不得接管紧急作战占位节点。"
+	)
+	var special_adapter := SPECIAL_ADAPTER_SCRIPT.new(
+		SUITCASE_BATTLE_CONFIG,
+		SUITCASE_HERO_VISUAL,
+		"胜利后夺取神秘皮箱"
+	)
+	_expect(
+		special_adapter.get_node_type()
+		== RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER,
+		"特殊作战适配器必须只声明遭遇节点类型。"
+	)
+	var special_model := special_adapter.build_model(
+		MAGICAL_NODE_CONFIG,
+		0,
+		1
+	)
+	_expect(
+		special_model != null and special_model.is_valid(),
+		"皮箱之战必须能够在零行动力时生成特殊作战简报。"
+	)
+	if special_model != null:
+		_expect(
+			special_model.source_kind
+			== RogueRouteNodeBriefingModel.SOURCE_KIND_SPECIAL_COMBAT
+			and special_model.config_id == &"suitcase_battle"
+			and special_model.action_point_delta == 0
+			and not special_model.can_cancel
+			and special_model.primary_action_text == "进入作战"
+			and special_model.time_limit_seconds == 300
+			and special_model.enemy_count == 100,
+			"特殊简报必须携带来源、配置、零 AP、不可取消、进入作战与 100 敌人契约。"
+		)
+	_expect(
+		special_adapter.build_model(NORMAL_NODE_CONFIG, 0, 1) == null,
+		"特殊作战适配器不得接管普通作战节点。"
 	)
 
 	var briefing := BRIEFING_SCENE.instantiate() as BRIEFING_SCRIPT
@@ -205,6 +259,35 @@ func _run() -> void:
 		and not briefing.is_decision_locked()
 		and canceled_count == 1,
 		"客户端的返回键或遮罩点击不得取消房主的待决简报。"
+	)
+	briefing.dismiss()
+
+	briefing.present(special_model, true)
+	await process_frame
+	_expect(
+		briefing.visible
+		and briefing.can_decide()
+		and not briefing.can_cancel()
+		and briefing.action_point_label.text == "0"
+		and not briefing.close_button.visible
+		and not briefing.cancel_button.visible
+		and briefing.decision_status_label.text
+		== BRIEFING_SCRIPT.REQUIRED_COMBAT_STATUS_TEXT,
+		"零 AP 特殊作战必须只显示确认入口，并明确不可取消。"
+	)
+	briefing._input(cancel_event)
+	briefing.cancel_button.pressed.emit()
+	briefing.map_shade.gui_input.emit(shade_click)
+	_expect(
+		briefing.visible
+		and not briefing.is_decision_locked()
+		and canceled_count == 1,
+		"不可取消简报必须忽略返回键、隐藏按钮信号与遮罩点击。"
+	)
+	briefing.confirm_button.pressed.emit()
+	_expect(
+		confirmed_count == 2 and briefing.is_decision_locked(),
+		"不可取消简报仍必须允许房主且只允许房主确认进入作战。"
 	)
 	briefing.dismiss()
 

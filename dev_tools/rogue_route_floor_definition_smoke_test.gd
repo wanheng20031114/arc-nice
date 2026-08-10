@@ -9,6 +9,15 @@ const FLOOR: FLOOR_DEFINITION_SCRIPT = preload(
 const ROUTE_SCENE: PackedScene = preload(
 	"res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 )
+const SUITCASE_BATTLE: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/suitcase_battle.tres"
+)
+const ELITE_GUNNER: EnemyConfig = preload(
+	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
+)
+const ELITE_SHIELD_BEARER: EnemyConfig = preload(
+	"res://resources/config/enemies/combat_robot_shield_bearer_elite.tres"
+)
 
 var failures: Array[String] = []
 
@@ -47,6 +56,7 @@ func _test_definition_contract() -> void:
 		== Vector2i(FLOOR.generation_config.width, FLOOR.generation_config.height),
 		"楼层世界默认网格必须与生成尺寸同源。"
 	)
+	_test_special_combat_catalog()
 	var runtime_hash := FLOOR.compute_runtime_contract_hash()
 	var content_hash := FLOOR.compute_content_contract_hash()
 	_expect(
@@ -55,9 +65,9 @@ func _test_definition_contract() -> void:
 		"楼层 runtime contract hash 必须是稳定的 64 位 SHA-256。"
 	)
 	_expect(
-		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 4
-		and RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 2,
-		"楼层与作战运行契约必须分别升级至 schema4/schema2。"
+		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 5
+		and RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 3,
+		"楼层与作战运行契约必须分别升级至 schema5/schema3。"
 	)
 	_expect(
 		content_hash.length() == 64
@@ -95,6 +105,19 @@ func _test_definition_contract() -> void:
 		changed_combat_floor.compute_runtime_contract_hash() != runtime_hash,
 		"作战 Wave 的场上敌人上限变化必须传导至楼层运行契约。"
 	)
+	var changed_special_floor := FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
+	var changed_special := (
+		SUITCASE_BATTLE.duplicate(false) as RogueCombatEncounterConfig
+	)
+	changed_special.campaign = SUITCASE_BATTLE.build_occurrence_campaign(
+		"combat:test:suitcase-floor-contract"
+	)
+	changed_special.campaign.get_waves()[0].max_alive_enemies = 39
+	changed_special_floor.special_combat_configs = [changed_special]
+	_expect(
+		changed_special_floor.compute_runtime_contract_hash() != runtime_hash,
+		"特殊作战 Wave 变化必须传导至楼层运行契约。"
+	)
 	var mismatched_floor := FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
 	mismatched_floor.world_metrics = (
 		FLOOR.world_metrics.duplicate(true) as RogueRouteWorldMetrics
@@ -104,6 +127,72 @@ func _test_definition_contract() -> void:
 		_has_error_containing(mismatched_floor.validate_definition(), "不一致"),
 		"FloorDefinition 必须拒绝生成尺寸与世界网格不一致。"
 	)
+
+
+func _test_special_combat_catalog() -> void:
+	_expect(
+		FLOOR.special_combat_configs.size() == 1
+		and FLOOR.get_combat_config(
+			FLOOR.default_combat_config.encounter_id
+		) == FLOOR.default_combat_config
+		and FLOOR.get_combat_config(&"suitcase_battle")
+		== SUITCASE_BATTLE
+		and FLOOR.get_combat_config(&"missing") == null,
+		"楼层必须按 config_id 统一解析默认作战与唯一的皮箱特殊作战。"
+	)
+	_expect(
+		SUITCASE_BATTLE.is_ready_to_enable()
+		and SUITCASE_BATTLE.preparation_seconds == 3
+		and SUITCASE_BATTLE.combat_limit_seconds == 300
+		and SUITCASE_BATTLE.get_total_enemy_count() == 100,
+		"皮箱之战必须是 3 秒准备、300 秒时限、共 100 敌人的可启用配置。"
+	)
+	var waves := SUITCASE_BATTLE.campaign.get_waves()
+	_expect(waves.size() == 1, "皮箱之战 Campaign 必须只有一个波次。")
+	if waves.size() != 1:
+		return
+	var wave := waves[0]
+	_expect(
+		is_equal_approx(wave.spawn_interval, 0.1)
+		and wave.spawn_count_per_tick == 1
+		and wave.max_alive_enemies == 40
+		and wave.spawn_point_mask
+		== RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
+		and wave.spawn_point_order
+		== WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG,
+		"皮箱之战必须使用 0.1 秒、批 1、cap40 与三红门均衡生成。"
+	)
+	_expect(
+		_count_enemy(wave, ELITE_GUNNER) == 95
+		and _count_enemy(wave, ELITE_SHIELD_BEARER) == 5,
+		"皮箱之战敌人组成必须严格为 95 精英枪手与 5 精英盾兵。"
+	)
+
+	var alpha := SUITCASE_BATTLE.duplicate(false) as RogueCombatEncounterConfig
+	alpha.encounter_id = &"alpha_test_special"
+	var first_order := FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
+	first_order.special_combat_configs = [SUITCASE_BATTLE, alpha]
+	var second_order := FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
+	second_order.special_combat_configs = [alpha, SUITCASE_BATTLE]
+	_expect(
+		first_order.compute_runtime_contract_hash()
+		== second_order.compute_runtime_contract_hash(),
+		"特殊作战目录的 authored 顺序不得改变排序后的运行契约。"
+	)
+	var duplicate_ids := FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
+	duplicate_ids.special_combat_configs = [SUITCASE_BATTLE, SUITCASE_BATTLE]
+	_expect(
+		_has_error_containing(duplicate_ids.validate_definition(), "重复 ID"),
+		"楼层必须拒绝重复的特殊作战 config_id。"
+	)
+
+
+func _count_enemy(wave: WaveConfig, enemy_config: EnemyConfig) -> int:
+	var result := 0
+	for entry in wave.enemy_entries:
+		if entry != null and entry.enemy_config == enemy_config:
+			result += entry.count
+	return result
 
 
 func _test_floor_application() -> void:

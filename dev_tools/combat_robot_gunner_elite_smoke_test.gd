@@ -34,6 +34,9 @@ const NET_CONSTANTS := preload("res://scene/multiplayer/net_constants.gd")
 const ELITE_CONFIG_REFERENCE := (
 	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
 )
+const SUITCASE_BATTLE_GUNNER_ENTRY := (
+	"res://resources/config/campaigns/rogue_combat/suitcase_battle/entries/gunner_elite.tres"
+)
 const ZERO_DIRECT_REFERENCE_ROOTS := {
 	"正式标准单人波次": "res://resources/config/campaigns/standard/singleplayer",
 	"正式标准多人波次": "res://resources/config/campaigns/standard/multiplayer",
@@ -298,9 +301,9 @@ func _test_burst_scheduler_and_half_speed() -> void:
 
 func _test_network_pool_and_fate_contract() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 57
+		NET_CONSTANTS.PROTOCOL_VERSION == 58
 		and NET_CONSTANTS.CHANNEL_COUNT == 8,
-		"协议v57必须保留精英紫弹的v49资源合同、v50消耗品合同且不增加ENet频道。"
+		"协议v58必须保留精英紫弹的v49资源合同、v50消耗品合同且不增加ENet频道。"
 	)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(
@@ -377,9 +380,16 @@ func _test_zero_direct_wave_references() -> void:
 	for label: String in ZERO_DIRECT_REFERENCE_ROOTS:
 		var directory_path: String = ZERO_DIRECT_REFERENCE_ROOTS[label]
 		var references := _find_text_references(directory_path, ELITE_CONFIG_REFERENCE)
+		references.sort()
+		var expected: Array[String] = []
+		if label == "肉鸽战斗波次":
+			expected.append(SUITCASE_BATTLE_GUNNER_ENTRY)
 		_expect(
-			references.is_empty(),
-			"%s不得直接引用精英枪手配置：%s" % [label, references]
+			references == expected,
+			(
+				"%s只允许皮箱之战的唯一精英枪手条目；expected=%s actual=%s"
+				% [label, expected, references]
+			)
 		)
 
 

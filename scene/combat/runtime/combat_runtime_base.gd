@@ -262,7 +262,9 @@ static func register_combat_robot_gunner_bullet_pool(
 
 
 static func register_combat_robot_gunner_elite_bullet_pool(
-	pool: SessionObjectPool
+	pool: SessionObjectPool,
+	prewarm_count: int = COMBAT_ROBOT_GUNNER_ELITE_BULLET_PREWARM_COUNT,
+	retained_capacity: int = COMBAT_ROBOT_GUNNER_ELITE_BULLET_RETAINED_CAPACITY
 ) -> void:
 	if pool == null:
 		return
@@ -274,8 +276,8 @@ static func register_combat_robot_gunner_elite_bullet_pool(
 		return
 	pool.register_scene(
 		projectile_scene,
-		COMBAT_ROBOT_GUNNER_ELITE_BULLET_PREWARM_COUNT,
-		COMBAT_ROBOT_GUNNER_ELITE_BULLET_RETAINED_CAPACITY
+		maxi(prewarm_count, 0),
+		maxi(retained_capacity, 1)
 	)
 
 

@@ -232,10 +232,10 @@ func _test_kill_reward_policy_applies_to_every_entry() -> void:
 func _test_runtime_contract_hash() -> void:
 	var baseline := ENCOUNTER_CONFIG.compute_runtime_contract_hash()
 	_expect(
-		RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 2
+		RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 3
 		and baseline.length() == 64
 		and baseline == ENCOUNTER_CONFIG.compute_runtime_contract_hash(),
-		"作战 runtime contract 必须使用 schema2 的稳定 SHA-256。"
+		"作战 runtime contract 必须使用包含奖励资源的schema3稳定SHA-256。"
 	)
 
 	var presentation_only := ENCOUNTER_CONFIG.duplicate(false) as RogueCombatEncounterConfig
@@ -260,6 +260,9 @@ func _test_runtime_contract_hash() -> void:
 			config.campaign.get_waves()[0].spawn_point_order = (
 				WaveConfig.SpawnPointOrder.UNIFORM_RANDOM
 			),
+		func(config: RogueCombatEncounterConfig) -> void:
+			config.reward_config = config.reward_config.duplicate(true)
+			config.reward_config.xirang_maximum += 100,
 	]
 	for mutation_index in range(mutations.size()):
 		var changed := _make_isolated_config("hash:%d" % mutation_index)
@@ -267,7 +270,7 @@ func _test_runtime_contract_hash() -> void:
 		mutations[mutation_index].call(changed)
 		_expect(
 			changed.compute_runtime_contract_hash() != isolated_baseline,
-			"敌人组成或生成规则变更%d必须改变作战运行契约。" % mutation_index
+			"敌人、生成规则或奖励变更%d必须改变作战运行契约。" % mutation_index
 		)
 
 
@@ -317,6 +320,17 @@ func _test_invalid_authored_content_is_rejected() -> void:
 	_expect(
 		_has_error_containing(missing_objective.validate_config(), "目标文本"),
 		"作战配置必须拒绝空目标文本。"
+	)
+	var drifting_reward_summary := (
+		ENCOUNTER_CONFIG.duplicate(true) as RogueCombatEncounterConfig
+	)
+	drifting_reward_summary.extra_xirang = 400
+	_expect(
+		_has_error_containing(
+			drifting_reward_summary.validate_config(),
+			"旧息壤摘要"
+		),
+		"旧extra_xirang摘要不得与正式奖励资源下限漂移。"
 	)
 
 	var invalid_cap := _make_isolated_config("invalid:cap")

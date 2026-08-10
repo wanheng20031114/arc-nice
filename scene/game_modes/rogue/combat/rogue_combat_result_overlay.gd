@@ -32,6 +32,22 @@ const OPEN_DURATION_SECONDS := 0.22
 @onready var rarity_label: Label = %RarityLabel
 @onready var loot_name_label: Label = %LootName
 @onready var loot_status_label: Label = %LootStatus
+@onready var loot_card_2: PanelContainer = %LootCard2
+@onready var loot_card_margin_2: MarginContainer = %LootCardMargin2
+@onready var loot_icon_frame_2: PanelContainer = %LootIconFrame2
+@onready var loot_icon_rect_2: TextureRect = %LootIcon2
+@onready var rarity_badge_2: PanelContainer = %RarityBadge2
+@onready var rarity_label_2: Label = %RarityLabel2
+@onready var loot_name_label_2: Label = %LootName2
+@onready var loot_status_label_2: Label = %LootStatus2
+@onready var loot_card_3: PanelContainer = %LootCard3
+@onready var loot_card_margin_3: MarginContainer = %LootCardMargin3
+@onready var loot_icon_frame_3: PanelContainer = %LootIconFrame3
+@onready var loot_icon_rect_3: TextureRect = %LootIcon3
+@onready var rarity_badge_3: PanelContainer = %RarityBadge3
+@onready var rarity_label_3: Label = %RarityLabel3
+@onready var loot_name_label_3: Label = %LootName3
+@onready var loot_status_label_3: Label = %LootStatus3
 @onready var close_button: Button = %CloseButton
 
 var _open_tween: Tween = null
@@ -67,6 +83,56 @@ func show_failure(reason: String = "队伍已全数阵亡") -> void:
 	present_result(false, 0, "", null, false, reason)
 
 
+func present_reward_result(result: Dictionary) -> void:
+	var victory := bool(result.get("victory", false))
+	if not victory:
+		present_result(
+			false,
+			0,
+			"",
+			null,
+			false,
+			str(result.get("failure_reason", ""))
+		)
+		return
+	var raw_rewards := result.get("item_rewards", []) as Array
+	if raw_rewards.is_empty():
+		return
+	var first_reward := raw_rewards[0] as Dictionary
+	var first_item := _load_reward_item(first_reward)
+	present_result(
+		true,
+		int(result.get("extra_xirang", 0)),
+		str(first_reward.get("name", "")),
+		first_item.icon_texture if first_item != null else null,
+		int(first_reward.get("granted_count", 0))
+		< int(first_reward.get("rolled_count", 1))
+	)
+	var cards: Array[PanelContainer] = [loot_card, loot_card_2, loot_card_3]
+	var icons: Array[TextureRect] = [loot_icon_rect, loot_icon_rect_2, loot_icon_rect_3]
+	var badges: Array[PanelContainer] = [rarity_badge, rarity_badge_2, rarity_badge_3]
+	var rarity_labels: Array[Label] = [rarity_label, rarity_label_2, rarity_label_3]
+	var name_labels: Array[Label] = [loot_name_label, loot_name_label_2, loot_name_label_3]
+	var status_labels: Array[Label] = [
+		loot_status_label,
+		loot_status_label_2,
+		loot_status_label_3,
+	]
+	for row_index in range(cards.size()):
+		if row_index >= raw_rewards.size():
+			cards[row_index].hide()
+			continue
+		cards[row_index].show()
+		_bind_reward_row(
+			raw_rewards[row_index] as Dictionary,
+			icons[row_index],
+			badges[row_index],
+			rarity_labels[row_index],
+			name_labels[row_index],
+			status_labels[row_index]
+		)
+
+
 func present_result(
 	victory: bool,
 	extra_xirang: int = 0,
@@ -91,6 +157,9 @@ func present_result(
 	)
 	extra_xirang_value_label.text = "+%d" % maxi(extra_xirang, 0)
 	loot_name_label.text = normalized_loot_name if has_loot else "无"
+	loot_card.show()
+	loot_card_2.hide()
+	loot_card_3.hide()
 	loot_icon_rect.texture = loot_icon if has_loot else null
 	rarity_badge.visible = has_loot
 	rarity_label.text = COMMON_RARITY_TEXT
@@ -110,6 +179,55 @@ func present_result(
 	set_process_unhandled_input(true)
 	_play_open_animation()
 	call_deferred("_focus_close_button")
+
+
+func _bind_reward_row(
+	reward: Dictionary,
+	icon_rect: TextureRect,
+	badge: PanelContainer,
+	badge_label: Label,
+	name_label: Label,
+	status_label: Label
+) -> void:
+	var item := _load_reward_item(reward)
+	var rolled_count := maxi(int(reward.get("rolled_count", 1)), 1)
+	var granted_count := clampi(
+		int(reward.get("granted_count", 0)),
+		0,
+		rolled_count
+	)
+	var display_name := str(reward.get("name", "未知战利品")).strip_edges()
+	name_label.text = (
+		"%s ×%d" % [display_name, rolled_count]
+		if rolled_count > 1
+		else display_name
+	)
+	icon_rect.texture = item.icon_texture if item != null else null
+	var rarity_text := str(reward.get("rarity_name", "")).strip_edges()
+	badge.visible = not rarity_text.is_empty()
+	badge_label.text = rarity_text
+	if granted_count == rolled_count:
+		status_label.text = "已放入背包"
+		status_label.self_modulate = LOOT_RECEIVED_COLOR
+		icon_rect.modulate = Color.WHITE
+	elif granted_count > 0:
+		status_label.text = "获得%d，另有%d因背包空间不足而丢失" % [
+			granted_count,
+			rolled_count - granted_count,
+		]
+		status_label.self_modulate = LOOT_LOST_COLOR
+		icon_rect.modulate = Color(0.9, 0.9, 0.9, 0.72)
+	else:
+		status_label.text = "未获得（背包已满）"
+		status_label.self_modulate = LOOT_LOST_COLOR
+		icon_rect.modulate = Color(0.72, 0.72, 0.72, 0.45)
+
+
+func _load_reward_item(reward: Dictionary) -> PickupConfig:
+	var config_path := str(reward.get("config_path", ""))
+	if config_path.is_empty() or not ResourceLoader.exists(config_path):
+		return null
+	return load(config_path) as PickupConfig
 
 
 func hide_immediately() -> void:
@@ -204,12 +322,20 @@ func _update_responsive_layout() -> void:
 	loot_card_margin.add_theme_constant_override("margin_right", 10 if compact else 14)
 	loot_card_margin.add_theme_constant_override("margin_top", 9 if compact else 12)
 	loot_card_margin.add_theme_constant_override("margin_bottom", 9 if compact else 12)
-	loot_icon_frame.custom_minimum_size = (
-		Vector2(66.0, 66.0) if compact else Vector2(82.0, 82.0)
-	)
+	for margin in [loot_card_margin, loot_card_margin_2, loot_card_margin_3]:
+		margin.add_theme_constant_override("margin_left", 10 if compact else 14)
+		margin.add_theme_constant_override("margin_right", 10 if compact else 14)
+		margin.add_theme_constant_override("margin_top", 7 if compact else 12)
+		margin.add_theme_constant_override("margin_bottom", 7 if compact else 12)
+	for icon_frame in [loot_icon_frame, loot_icon_frame_2, loot_icon_frame_3]:
+		icon_frame.custom_minimum_size = (
+			Vector2(54.0, 54.0) if compact else Vector2(72.0, 72.0)
+		)
 	_set_label_font_size(result_title_label, 30 if compact else 38)
 	_set_label_font_size(result_subtitle_label, 13 if compact else 15)
 	_set_label_font_size(loot_name_label, 18 if compact else 21)
+	_set_label_font_size(loot_name_label_2, 18 if compact else 21)
+	_set_label_font_size(loot_name_label_3, 18 if compact else 21)
 	_refresh_panel_pivot()
 
 

@@ -140,8 +140,8 @@ func _init() -> void:
 
 func _run() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 57,
-		"多人协议v57必须保留狭路相逢波次资源合同、稀有宝箱私人快照、既有wire类型、忍者加速与重连确认，并隔离P1C、纸箱怪、精英战斗机器人、精英枪手弹丸、消耗品、精英操作员无人机、精英盾兵、精英忍者资源及物资节点状态。"
+		NET_CONSTANTS.PROTOCOL_VERSION == 58,
+		"多人协议v58必须保留遭遇跟随作战、狭路相逢、稀有宝箱与既有wire合同。"
 	)
 	var authoritative_snapshot := _test_host_authoritative_crafting()
 	_test_host_research_gated_crafting()

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="RogueCombatRewardConfig" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_reward_config.gd" id="1_reward_script"]
+[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_reward_item_entry.gd" id="2_entry_script"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_plank.tres" id="3_plank"]
+
+[sub_resource type="Resource" id="Resource_plank_reward"]
+script = ExtResource("2_entry_script")
+item = ExtResource("3_plank")
+count = 6
+
+[resource]
+script = ExtResource("1_reward_script")
+xirang_minimum = 2000
+xirang_maximum = 3000
+xirang_step = 100
+collectible_count = 2
+collectible_rarity = 0
+deduplicate_collectibles = true
+item_rewards = Array[ExtResource("2_entry_script")]([SubResource("Resource_plank_reward")])

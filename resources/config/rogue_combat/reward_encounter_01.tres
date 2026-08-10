@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="RogueCombatRewardConfig" format=3]
+
+[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_reward_config.gd" id="1_reward_script"]
+
+[resource]
+script = ExtResource("1_reward_script")
+xirang_minimum = 500
+xirang_maximum = 500
+xirang_step = 100
+collectible_count = 1
+collectible_rarity = 0
+deduplicate_collectibles = true

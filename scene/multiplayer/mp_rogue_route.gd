@@ -874,7 +874,7 @@ func _try_commit_briefed_move_after_cover_barrier() -> void:
 		if not _briefing_cover_ready_peers.has(int(peer_id_variant)):
 			return
 	_briefing_move_commit_started = true
-	if not _route.host_commit_briefed_move(
+	if not _route.host_commit_briefing_entry(
 		_briefing_cover_occurrence_key,
 		_briefing_cover_revision,
 		_briefing_cover_expected_route_revision

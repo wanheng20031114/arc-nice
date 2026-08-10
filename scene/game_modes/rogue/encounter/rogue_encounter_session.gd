@@ -6,7 +6,7 @@ signal encounter_started(snapshot: Dictionary)
 signal encounter_finished(snapshot: Dictionary)
 signal economy_changed(snapshot: Dictionary)
 
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 const VOTING_TIMEOUT_SECONDS := 60.0
 const MAX_RESULT_PAGE_COUNT := 4
 
@@ -679,6 +679,9 @@ func _begin_resolution() -> void:
 	_settlement_committed = true
 	if _terminal_result:
 		_resolved_node_ids[_node_id] = true
+	if _result_presentation_is_immediate(_economy_result):
+		_complete_encounter()
+		return
 	_phase = PHASE_RESULT
 	_bump_and_emit()
 
@@ -736,7 +739,7 @@ func _complete_encounter() -> void:
 
 
 func _encounter_uses_result_ack() -> bool:
-	return _encounter_id == RogueEncounterRegistry.FLUORESCENT_PIT
+	return RogueEncounterRegistry.requires_result_ack(_encounter_id)
 
 
 func _disable_option_permanently(option_id: StringName) -> void:
@@ -769,6 +772,11 @@ func _select_winning_option() -> StringName:
 			continue
 		tallies[option_id] = int(tallies.get(option_id, 0)) + 1
 	if tallies.is_empty():
+		var configured_no_vote := (
+			RogueEncounterRegistry.get_no_vote_option_id(_encounter_id)
+		)
+		if available_options.has(configured_no_vote):
+			return configured_no_vote
 		return available_options[
 			RogueEncounterRandom.choose_index(
 				_node_content_seed,
@@ -893,14 +901,19 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		return {}
 	if decoded_personal_result_pages == null:
 		return {}
+	var raw_economy_result: Variant = snapshot.get("economy_result")
+	if typeof(raw_economy_result) != TYPE_DICTIONARY:
+		return {}
 	if (
 		decoded_phase in [PHASE_RESULT, PHASE_COMPLETED]
 		and (decoded_result_pages as Array[Dictionary]).is_empty()
+		and not _result_presentation_is_immediate(
+			raw_economy_result as Dictionary
+		)
 	):
 		return {}
 	if (
 		typeof(snapshot.get("option_availability")) != TYPE_DICTIONARY
-		or typeof(snapshot.get("economy_result")) != TYPE_DICTIONARY
 		or typeof(snapshot.get("economy_snapshot")) != TYPE_DICTIONARY
 		or typeof(snapshot.get("settlement_committed")) != TYPE_BOOL
 	):
@@ -1242,6 +1255,22 @@ func _build_result_pages(
 					"鬼影什么也没有说，消失了",
 					true
 				)]
+	elif encounter_id == RogueEncounterRegistry.SUITCASE_FRENZY:
+		match result_code:
+			RogueEncounterEconomyCoordinator.RESULT_SUITCASE_ROBOTS_ALERTED:
+				return [_make_result_page(
+					"",
+					"机器人注意到了你！",
+					true
+				)]
+			RogueEncounterEconomyCoordinator.RESULT_SUITCASE_DESTROYED:
+				return [_make_result_page(
+					"",
+					"皮箱很快就变得千疮百孔，什么都不剩下了。",
+					true
+				)]
+			RogueEncounterEconomyCoordinator.RESULT_SUITCASE_LEFT:
+				return []
 	var definition := RogueEncounterRegistry.get_definition(encounter_id)
 	return [_make_result_page(
 		str(definition.get("default_result_speaker", "")),
@@ -1266,6 +1295,12 @@ func _get_result_text() -> String:
 	if _result_pages.is_empty():
 		return ""
 	return str(_result_pages[_result_pages.size() - 1].get("text", ""))
+
+
+func _result_presentation_is_immediate(economy_result: Dictionary) -> bool:
+	return StringName(economy_result.get("result_presentation", &"")) == (
+		RogueEncounterEconomyCoordinator.RESULT_PRESENTATION_IMMEDIATE
+	)
 
 
 func _export_votes() -> Array[Dictionary]:

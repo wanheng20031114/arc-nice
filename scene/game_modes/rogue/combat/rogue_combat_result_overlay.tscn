@@ -402,6 +402,158 @@ text = "已放入背包"
 label_settings = SubResource("LabelSettings_loot_status")
 autowrap_mode = 2
 
+[node name="LootCard2" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_loot_card")
+
+[node name="LootCardMargin2" type="MarginContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="LootRow" type="HBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="LootIconFrame2" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_icon_frame")
+
+[node name="IconMargin" type="MarginContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow/LootIconFrame2"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="LootIcon2" type="TextureRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow/LootIconFrame2/IconMargin"]
+unique_name_in_owner = true
+texture_filter = 1
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LootText" type="VBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="RarityBadge2" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_rarity")
+
+[node name="RarityLabel2" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow/LootText/RarityBadge2"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "普通品质"
+label_settings = SubResource("LabelSettings_rarity")
+
+[node name="LootName2" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+text = "收藏品"
+label_settings = SubResource("LabelSettings_loot_name")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="LootStatus2" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard2/LootCardMargin2/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "已放入背包"
+label_settings = SubResource("LabelSettings_loot_status")
+autowrap_mode = 2
+
+[node name="LootCard3" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_loot_card")
+
+[node name="LootCardMargin3" type="MarginContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="LootRow" type="HBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="LootIconFrame3" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_icon_frame")
+
+[node name="IconMargin" type="MarginContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow/LootIconFrame3"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="LootIcon3" type="TextureRect" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow/LootIconFrame3/IconMargin"]
+unique_name_in_owner = true
+texture_filter = 1
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LootText" type="VBoxContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="RarityBadge3" type="PanelContainer" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_rarity")
+
+[node name="RarityLabel3" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow/LootText/RarityBadge3"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "物资"
+label_settings = SubResource("LabelSettings_rarity")
+
+[node name="LootName3" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+text = "木板 ×6"
+label_settings = SubResource("LabelSettings_loot_name")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="LootStatus3" type="Label" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent/LootCard3/LootCardMargin3/LootRow/LootText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "已放入背包"
+label_settings = SubResource("LabelSettings_loot_status")
+autowrap_mode = 2
+
 [node name="CloseButton" type="Button" parent="Root/SafeMargin/Center/ResultPanel/PanelStack/PanelMargin/ResultContent"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(196, 42)

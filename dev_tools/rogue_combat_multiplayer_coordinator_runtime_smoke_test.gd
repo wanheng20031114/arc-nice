@@ -18,6 +18,9 @@ const FAKE_EMBEDDED_RUNTIME := preload(
 const WOOD_MATERIAL: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
 )
+const SUITCASE_CONFIG: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/suitcase_battle.tres"
+)
 
 
 class FakeNetManager extends NetManagerStore:
@@ -60,16 +63,31 @@ class RuntimeCoordinatorHarness extends RogueCombatMultiplayerCoordinator:
 	func _create_embedded_runtime() -> bool:
 		return create_runtime_result
 
+	func _freeze_participant_reward_identities() -> bool:
+		_participant_character_ids.clear()
+		_participant_stable_keys.clear()
+		_last_combat_xirang_by_peer.clear()
+		for peer_id_variant in _participant_peer_ids.keys():
+			var peer_id := int(peer_id_variant)
+			_participant_character_ids[peer_id] = &"weishidaier"
+			_participant_stable_keys[peer_id] = "runtime-fixture:%d" % peer_id
+			_last_combat_xirang_by_peer[peer_id] = int(
+				_entry_xirang_by_peer.get(peer_id, 0)
+			)
+		return not _participant_peer_ids.is_empty()
+
 	func _dispatch_terminal_spectator_sync(
 		peer_id: int,
 		occurrence_key: String,
-		settlement: Dictionary
+		settlement: Dictionary,
+		include_route_spectator: bool = true
 	) -> void:
 		settlement_event_order.append("spectator:%d" % peer_id)
 		terminal_spectator_dispatches.append({
 			"peer_id": peer_id,
 			"occurrence_key": occurrence_key,
 			"settlement": settlement.duplicate(true),
+			"include_route_spectator": include_route_spectator,
 		})
 
 	func _commit_host_settlement_locally(settlement: Dictionary) -> bool:
@@ -116,6 +134,7 @@ func _run() -> void:
 	_test_pending_reconnect_is_spectator_before_settlement_broadcast()
 	_test_late_activation_cannot_rewind_settled_phase()
 	await _test_real_reward_mutation_rolls_back_after_commit_failure()
+	await _test_disconnected_original_participant_receives_victory_rewards()
 	_test_player_left_preserves_participant_and_shrinks_barriers()
 	_test_client_abort_admission_is_prepare_only()
 	_test_reconnect_prepare_marker_lifecycle()
@@ -125,6 +144,7 @@ func _run() -> void:
 	_test_terminal_barrier_timeout_forces_safe_release()
 	_test_reconnect_remaps_terminal_settlement()
 	_test_host_missing_reconnect_runtime_becomes_spectator()
+	_test_active_reconnect_spectator_receives_later_settlement()
 	_test_precombat_disconnect_reconnect_stays_route_spectator()
 	_test_route_spectator_settlement_converges_economy()
 	await _test_prepared_barrier_reveals_before_single_activation()
@@ -583,6 +603,89 @@ func _test_real_reward_mutation_rolls_back_after_commit_failure() -> void:
 	_reset_fixture_state()
 
 
+func _test_disconnected_original_participant_receives_victory_rewards() -> void:
+	_reset_fixture_state()
+	var run_state := root.get_node("RunState") as RunStateStore
+	run_state.begin_new_run(&"weishidaier", false)
+	run_state.ensure_multiplayer_peer_state(1)
+	run_state.ensure_multiplayer_peer_state(2)
+	var occurrence_key := "followup_combat:runtime:disconnected-reward:2g"
+	var combat_game := RewardCombatGameHarness.new()
+	var connected_player := PlayerCharacterRegistry.instantiate_character(
+		&"weishidaier"
+	) as Player
+	_fixture_root.add_child(connected_player)
+	await process_frame
+	await physics_frame
+	connected_player.configure_multiplayer_control(1, true, "Host")
+	connected_player.current_xirang = 1210
+	combat_game.fixture_players[1] = connected_player
+
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_node_id = 21
+	_coordinator._active_content_seed = 2102
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._active_combat_config_id = &"suitcase_battle"
+	_coordinator._active_encounter_config = SUITCASE_CONFIG
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 1000, 2: 1000}
+	_coordinator._participant_character_ids = {
+		1: &"weishidaier",
+		2: &"tiyi",
+	}
+	_coordinator._participant_stable_keys = {
+		1: "account:connected:1",
+		2: "account:disconnected:2",
+	}
+	_coordinator._last_combat_xirang_by_peer = {1: 1210, 2: 1460}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 1000,
+			"last_combat_xirang": 1460,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_coordinator._combat_game = combat_game
+	_coordinator._settlement_scheduled = true
+	_coordinator._settle_host_outcome(occurrence_key, true, "")
+
+	var observation := (
+		_coordinator.host_settlement_commit_observations[0] as Dictionary
+		if not _coordinator.host_settlement_commit_observations.is_empty()
+		else {}
+	)
+	var settlement := observation.get("settlement", {}) as Dictionary
+	var results := settlement.get("results_by_peer", {}) as Dictionary
+	var final_xirang := settlement.get("final_xirang_by_peer", {}) as Dictionary
+	var disconnected_result := results.get(2, {}) as Dictionary
+	var extra_xirang := int(disconnected_result.get("extra_xirang", 0))
+	_expect(
+		(disconnected_result.get("item_rewards", []) as Array).size() == 3
+		and extra_xirang >= 2000
+		and extra_xirang <= 3000
+		and extra_xirang % 100 == 0,
+		"战斗中断线的原始参战者仍应获得两件收藏品、六块木板和整百息壤。"
+	)
+	_expect(
+		int(final_xirang.get(2, -1)) == 1460 + extra_xirang,
+		"断线参战者的胜利奖励必须叠加到断线前最后的战场息壤。"
+	)
+	var disconnected_inventory := run_state.export_inventory_snapshot_for_peer(2)
+	var occupied_slots := 0
+	for slot_value in disconnected_inventory.get("slots", []) as Array:
+		if not str((slot_value as Dictionary).get("config_path", "")).is_empty():
+			occupied_slots += 1
+	_expect(occupied_slots >= 3, "断线参战者的奖励必须实际提交到其RunState背包。")
+
+	connected_player.queue_free()
+	combat_game.free()
+	for _frame in 2:
+		await process_frame
+		await physics_frame
+	_reset_fixture_state()
+
+
 func _test_player_left_preserves_participant_and_shrinks_barriers() -> void:
 	_reset_fixture_state()
 	_coordinator._phase = COORDINATOR.ProtocolPhase.PREPARING
@@ -927,6 +1030,9 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 	_coordinator._active_occurrence_key = occurrence_key
 	_coordinator._participant_peer_ids = {1: true, 2: true}
 	_coordinator._entry_xirang_by_peer = {1: 500, 2: 800}
+	_coordinator._participant_character_ids = {1: &"weishidaier", 2: &"tiyi"}
+	_coordinator._participant_stable_keys = {1: "account:1", 2: "account:2"}
+	_coordinator._last_combat_xirang_by_peer = {1: 600, 2: 1120}
 	_coordinator._disconnected_participants = {
 		2: {
 			"entry_xirang": 800,
@@ -974,6 +1080,17 @@ func _test_reconnect_remaps_terminal_settlement() -> void:
 		not _coordinator._entry_xirang_by_peer.has(2)
 		and int(_coordinator._entry_xirang_by_peer.get(3, -1)) == 800,
 		"重连必须迁移入口息壤。"
+	)
+	_expect(
+		not _coordinator._participant_character_ids.has(2)
+		and StringName(_coordinator._participant_character_ids.get(3, &""))
+		== &"tiyi"
+		and not _coordinator._participant_stable_keys.has(2)
+		and str(_coordinator._participant_stable_keys.get(3, ""))
+		== "account:2"
+		and not _coordinator._last_combat_xirang_by_peer.has(2)
+		and int(_coordinator._last_combat_xirang_by_peer.get(3, -1)) == 1120,
+		"重连必须同步迁移冻结角色、稳定身份与最后战场息壤。"
 	)
 	_expect(
 		not _coordinator._disconnected_participants.has(2)
@@ -1044,6 +1161,91 @@ func _test_host_missing_reconnect_runtime_becomes_spectator() -> void:
 		runtime.suspended_peers == [PackedInt32Array([3, 2])],
 		"Host 缺 Player 的身份链必须同步迁移为 suspended roster。"
 	)
+	_reset_fixture_state()
+
+
+func _test_active_reconnect_spectator_receives_later_settlement() -> void:
+	_reset_fixture_state()
+	var occurrence_key := "combat:runtime:late-spectator-settlement:4bb"
+	_coordinator._phase = COORDINATOR.ProtocolPhase.ACTIVE
+	_coordinator._active_occurrence_key = occurrence_key
+	_coordinator._participant_peer_ids = {1: true, 2: true}
+	_coordinator._entry_xirang_by_peer = {1: 500, 2: 900}
+	_coordinator._participant_character_ids = {1: &"weishidaier", 2: &"tiyi"}
+	_coordinator._participant_stable_keys = {1: "account:1", 2: "account:2"}
+	_coordinator._last_combat_xirang_by_peer = {1: 600, 2: 1120}
+	_coordinator._disconnected_participants = {
+		2: {
+			"entry_xirang": 900,
+			"last_combat_xirang": 1120,
+			"was_prepared": true,
+			"was_terminal_ready": false,
+		},
+	}
+	_coordinator._reconnecting_peer_ids[3] = true
+	_fake_net_manager.send_ready_peer_ids[3] = true
+	var runtime := (
+		FAKE_EMBEDDED_RUNTIME.instantiate()
+		as RogueCombatMultiplayerTestSession
+	)
+	runtime.game_runtime = RewardCombatGameHarness.new()
+	_coordinator.add_child(runtime)
+	_coordinator._combat_network = runtime
+
+	_coordinator._finish_player_reconnected(2, 3)
+	var first_dispatch := (
+		_coordinator.terminal_spectator_dispatches[0]
+		if not _coordinator.terminal_spectator_dispatches.is_empty()
+		else {}
+	) as Dictionary
+	_expect(
+		_coordinator._pending_terminal_spectator_syncs.has(3)
+		and _coordinator.terminal_spectator_dispatches.size() == 1
+		and bool(first_dispatch.get("include_route_spectator", false))
+		and (first_dispatch.get("settlement", {}) as Dictionary).is_empty(),
+		(
+			"ACTIVE 重连无法恢复战场时，必须先发路线旁观状态，"
+			+ "并保留等待权威结算的定向同步记录。"
+		)
+	)
+
+	_coordinator._pending_settlement = {
+		"occurrence_key": occurrence_key,
+		"victory": true,
+		"final_xirang_by_peer": {1: 2600, 3: 3120},
+		"inventory_snapshots_by_peer": {
+			1: {"peer_id": 1, "slots": []},
+			3: {"peer_id": 3, "slots": ["rewarded"]},
+		},
+		"results_by_peer": {
+			1: {"peer_id": 1, "victory": true},
+			3: {"peer_id": 3, "victory": true, "item_rewards": []},
+		},
+	}
+	_coordinator._settlement_received = true
+	_coordinator._poll_pending_terminal_spectator_syncs()
+	var second_dispatch := (
+		_coordinator.terminal_spectator_dispatches[1]
+		if _coordinator.terminal_spectator_dispatches.size() > 1
+		else {}
+	) as Dictionary
+	var delivered_settlement := (
+		second_dispatch.get("settlement", {}) as Dictionary
+	)
+	_expect(
+		not _coordinator._pending_terminal_spectator_syncs.has(3)
+		and _coordinator.terminal_spectator_dispatches.size() == 2
+		and not bool(second_dispatch.get("include_route_spectator", true))
+		and int(
+			(delivered_settlement.get("final_xirang_by_peer", {}) as Dictionary)
+			.get(3, -1)
+		) == 3120,
+		(
+			"权威胜利结算生成后，已降级的新 peer 必须恰好再收到一次"
+			+ "背包/息壤/奖励 settlement，且不能重复发送旁观切换。"
+		)
+	)
+	_fake_net_manager.send_ready_peer_ids.erase(3)
 	_reset_fixture_state()
 
 

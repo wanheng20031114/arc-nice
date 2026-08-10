@@ -179,6 +179,7 @@ func _run() -> void:
 	await _test_slime_content_three_choices_and_result_pages()
 	await _test_ghost_shadow_presentation_and_results()
 	await _test_personal_result_page_and_ack_request()
+	await _test_suitcase_intro_results_and_immediate_exit()
 
 	if failures.is_empty():
 		print("ROGUE_ENCOUNTER_OVERLAY_SMOKE_TEST_OK")
@@ -191,7 +192,7 @@ func _run() -> void:
 
 func _make_intro_state() -> Dictionary:
 	return {
-		"schema_version": 3,
+		"schema_version": 4,
 		"revision": 1,
 		"phase": "intro",
 		"node_id": 12,
@@ -239,9 +240,23 @@ func _make_slime_intro_state() -> Dictionary:
 	return state
 
 
+func _make_suitcase_intro_state() -> Dictionary:
+	var state := _make_intro_state()
+	state["node_id"] = 31
+	state["node_content_seed"] = 88331
+	state["occurrence_key"] = "31:88331"
+	state["encounter_id"] = "suitcase_frenzy"
+	state["option_availability"] = {
+		"claim_suitcase": true,
+		"join_suitcase_shooting": true,
+		"ignore_suitcase": true,
+	}
+	return state
+
+
 func _make_ghost_state() -> Dictionary:
 	return {
-		"schema_version": 3,
+		"schema_version": 4,
 		"revision": 1,
 		"phase": "intro",
 		"node_id": 81,
@@ -717,6 +732,138 @@ func _test_personal_result_page_and_ack_request() -> void:
 	_expect(
 		ack_requests.size() == 1,
 		"同一结果序号的ACK快照更新不得重复触发结果播放或ACK请求。"
+	)
+	overlay.hide_immediately()
+	overlay.free()
+
+
+func _test_suitcase_intro_results_and_immediate_exit() -> void:
+	var overlay := OVERLAY_SCENE.instantiate() as RogueEncounterOverlay
+	root.add_child(overlay)
+	overlay.configure_local_context(1, {1: "玩家"}, {1: &""})
+	var intro_acks: Array[Dictionary] = []
+	var result_acks: Array[Dictionary] = []
+	var hold_completions: Array[String] = []
+	overlay.intro_ack_requested.connect(
+		func(key: String, revision: int) -> void:
+			intro_acks.append({"key": key, "revision": revision})
+	)
+	overlay.result_ack_requested.connect(
+		func(key: String, sequence: int) -> void:
+			result_acks.append({"key": key, "sequence": sequence})
+	)
+	overlay.result_hold_completed.connect(
+		func(key: String, _revision: int) -> void:
+			hold_completions.append(key)
+	)
+	overlay.visible = true
+	overlay.encounter_content.visible = true
+	overlay.encounter_is_revealed = true
+	var intro := _make_suitcase_intro_state()
+	overlay.apply_state(intro)
+	_expect(
+		overlay.intro_pages.size() == 2
+		and overlay.intro_page_index == 0
+		and overlay.dialogue_text.text.replace(
+			DialogueTypewriterController.NO_BREAK_MARK,
+			""
+		) == "发现了一群失控的战斗机器人正在开枪疯穿箱子。",
+		"疯穿箱子必须先显示第一段精确旁白。"
+	)
+	var confirm := InputEventAction.new()
+	confirm.action = &"interact"
+	confirm.pressed = true
+	overlay.typewriter.finish_line()
+	overlay._input(confirm)
+	_expect(
+		overlay.intro_page_index == 1
+		and intro_acks.is_empty()
+		and overlay.dialogue_text.text.replace(
+			DialogueTypewriterController.NO_BREAK_MARK,
+			""
+		) == "也不知道这皮箱有什么特别的",
+		"第一段读完后只能进入第二段，不得提前提交intro ACK。"
+	)
+	overlay.typewriter.finish_line()
+	overlay._input(confirm)
+	await create_timer(
+		RogueEncounterOverlay.OPTION_REVEAL_DURATION_SECONDS + 0.08
+	).timeout
+	_expect(
+		intro_acks == [{"key": "31:88331", "revision": 1}]
+		and overlay.options_page.visible
+		and overlay.choice_first.title_label.text == "箱子是我的！"
+		and overlay.choice_first.description_label.text == "朝着机器人开火"
+		and overlay.choice_second.title_label.text == "凑热闹！"
+		and overlay.choice_second.description_label.text
+		== "跟着一起射击皮箱！"
+		and overlay.choice_third.title_label.text
+		== "一个皮箱有什么好在意的！"
+		and overlay.choice_third.description_label.text
+		== "趁没被机器人发现前离开",
+		"第二段读完后才可显示三张精确选项卡并提交一次ACK。"
+	)
+
+	var fight_result := intro.duplicate(true)
+	fight_result["revision"] = 5
+	fight_result["phase"] = "result"
+	fight_result["intro_confirmed_peer_ids"] = [1]
+	fight_result["winning_option"] = "claim_suitcase"
+	fight_result["result_sequence"] = 1
+	fight_result["round_recipient_peer_ids"] = [1]
+	fight_result["terminal_result"] = true
+	fight_result["result_pages"] = [{
+		"speaker": "",
+		"text": "机器人注意到了你！",
+		"is_narration": true,
+	}]
+	fight_result["result_text"] = "机器人注意到了你！"
+	fight_result["economy_result"] = {
+		"resolved": true,
+		"result_code": "suitcase_robots_alerted",
+		"result_presentation": "pages",
+		"followup_combat_id": "suitcase_battle",
+	}
+	overlay.apply_state(fight_result)
+	overlay.typewriter.finish_line()
+	await create_timer(RogueEncounterOverlay.RESULT_HOLD_SECONDS + 0.08).timeout
+	_expect(
+		result_acks == [{"key": "31:88331", "sequence": 1}]
+		and hold_completions == ["31:88331"],
+		"疯穿箱子开火结果必须复用结果序号ACK屏障并完成本地停留。"
+	)
+
+	var immediate := _make_suitcase_intro_state()
+	immediate["node_id"] = 32
+	immediate["node_content_seed"] = 88332
+	immediate["occurrence_key"] = "32:88332"
+	immediate["revision"] = 4
+	immediate["phase"] = "completed"
+	immediate["intro_confirmed_peer_ids"] = [1]
+	immediate["winning_option"] = "ignore_suitcase"
+	immediate["terminal_result"] = true
+	immediate["result_pages"] = []
+	immediate["result_text"] = ""
+	immediate["economy_result"] = {
+		"resolved": true,
+		"result_code": "suitcase_left",
+		"result_presentation": "immediate",
+		"followup_combat_id": "",
+	}
+	overlay.apply_state(immediate)
+	await process_frame
+	_expect(
+		hold_completions == ["31:88331", "32:88332"]
+		and overlay.result_pages.is_empty()
+		and not overlay.intro_page.visible
+		and not overlay.options_page.visible,
+		"安全离开必须不生成兜底结果文案，并立即请求关闭遭遇表现。"
+	)
+	overlay.apply_state(immediate)
+	await process_frame
+	_expect(
+		hold_completions.size() == 2,
+		"同一immediate完成快照重放不得重复请求关闭。"
 	)
 	overlay.hide_immediately()
 	overlay.free()

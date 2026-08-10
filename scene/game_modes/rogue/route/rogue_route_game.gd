@@ -55,6 +55,14 @@ signal shop_exit_ack_requested(
 	occurrence_key: String,
 	expected_session_revision: int
 )
+signal combat_requested(
+	node_id: int,
+	content_seed: int,
+	occurrence_key: String,
+	combat_config_id: StringName
+)
+## 仅保留给既有测试和只读观察者的普通作战兼容信号；正式协调器统一订阅
+## combat_requested，特殊作战绝不会通过此信号分发。
 signal normal_combat_requested(
 	node_id: int,
 	content_seed: int,
@@ -70,10 +78,19 @@ const AUTO_SEED := 0
 const ROUTE_CONTRACT_FIELD := "runtime_contract_hash"
 const SINGLEPLAYER_PEER_ID := 0
 const BRIEFING_STATE_FIELD := "briefing_state"
-const BRIEFING_SCHEMA_VERSION := 1
+const BRIEFING_SCHEMA_VERSION := 2
 const NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT := preload(
 	"res://scene/game_modes/rogue/route/rogue_normal_combat_briefing_adapter.gd"
 )
+const SPECIAL_COMBAT_BRIEFING_ADAPTER_SCRIPT := preload(
+	"res://scene/game_modes/rogue/route/rogue_special_combat_briefing_adapter.gd"
+)
+const DEFAULT_COMBAT_BRIEFING_VISUAL_PATH := (
+	"res://resources/texture/rogue_route/normal_combat_briefing_visual.png"
+)
+const SUITCASE_FOLLOWUP_COMBAT_ID := &"suitcase_battle"
+const SUITCASE_FOLLOWUP_RESULT_CODE := &"suitcase_robots_alerted"
+const SUITCASE_FOLLOWUP_PRESENTATION := &"pages"
 const SUPPLY_COLLECTIBLE_CHOICE_WIRE_PREFIX := "supply_collectible_choice:"
 const SUPPLY_INVENTORY_DISCARD_WIRE_PREFIX := "supply_inventory_discard|"
 const FLOOR_DEFINITION_SCRIPT := preload(
@@ -180,7 +197,11 @@ var _briefing_phase := BriefingPhase.NONE
 var _briefing_node_id := INVALID_NODE_ID
 var _briefing_occurrence_key := ""
 var _briefing_expected_route_revision := -1
+var _briefing_source_kind: StringName = &""
+var _briefing_combat_config_id: StringName = &""
+var _briefing_source_encounter_occurrence_key := ""
 var _normal_combat_briefing_adapter: RefCounted = null
+var _special_combat_briefing_adapters: Dictionary = {}
 var player: Player = null
 var peer_players: Dictionary[int, Player] = {}
 var _local_peer_id := 0
@@ -202,6 +223,7 @@ var _normal_combat_node_id := INVALID_NODE_ID
 var _normal_combat_content_seed := 0
 var _normal_combat_visit_count := 0
 var _normal_combat_occurrence_key := ""
+var _normal_combat_config_id: StringName = &""
 var _route_presentation_enabled := true
 var _route_presentation_restore_state: Dictionary = {}
 var _shop_route_presentation_restore_state: Dictionary = {}
@@ -233,6 +255,7 @@ func _ready() -> void:
 			floor_definition.default_combat_config
 		)
 	)
+	_create_special_combat_briefing_adapters()
 	top_bar.set_floor_title(floor_definition.display_name)
 	_connect_runtime_activation_signal()
 	_create_encounter_runtime()
@@ -482,7 +505,8 @@ func apply_full_snapshot(
 	if not _validate_briefing_state_against(
 		briefing_snapshot,
 		imported_graph,
-		imported_state
+		imported_state,
+		encounter_snapshot
 	):
 		_set_status("房主作战简报状态与路线不匹配。", true)
 		return false
@@ -657,12 +681,6 @@ func apply_full_snapshot(
 		return false
 	_bind_runtime_state(imported_graph, imported_state)
 	_route_ready = true
-	if not apply_briefing_state_snapshot(briefing_snapshot):
-		_set_status("房主作战简报状态与路线不匹配。", true)
-		return false
-	if _briefing_phase != BriefingPhase.NONE:
-		route_board.select_node(_briefing_node_id)
-	_refresh_route_input_lock()
 	if (
 		not encounter_snapshot.is_empty()
 		and not apply_encounter_snapshot(
@@ -672,6 +690,12 @@ func apply_full_snapshot(
 	):
 		_set_status("房主遭遇或经济快照无效。", true)
 		return false
+	if not apply_briefing_state_snapshot(briefing_snapshot):
+		_set_status("房主作战简报状态与路线不匹配。", true)
+		return false
+	if _briefing_phase != BriefingPhase.NONE:
+		route_board.select_node(_briefing_node_id)
+	_refresh_route_input_lock()
 	if not shop_snapshot.is_empty() and not apply_shop_snapshot(shop_snapshot):
 		_set_status("房主地下商店快照无效或已过期。", true)
 		return false
@@ -752,6 +776,11 @@ func export_briefing_state_snapshot() -> Dictionary:
 		"node_id": _briefing_node_id,
 		"occurrence_key": _briefing_occurrence_key,
 		"expected_route_revision": _briefing_expected_route_revision,
+		"source_kind": String(_briefing_source_kind),
+		"combat_config_id": String(_briefing_combat_config_id),
+		"source_encounter_occurrence_key": (
+			_briefing_source_encounter_occurrence_key
+		),
 	}
 
 
@@ -764,7 +793,8 @@ func apply_briefing_state_snapshot(snapshot: Dictionary) -> bool:
 		or not _validate_briefing_state_against(
 			snapshot,
 			_route_graph,
-			_runtime_state
+			_runtime_state,
+			encounter_session.export_state() if encounter_session != null else {}
 		)
 	):
 		return false
@@ -819,7 +849,7 @@ func complete_briefing_entry(occurrence_key: String) -> bool:
 ## 单机由本地 cover 完成后直接调用；联机仅由 MpRogueRoute 的全员
 ## cover-ready 屏障调用。tuple 与当前权威状态必须完全一致，且 route revision
 ## 仍停留在确认前，因而重复 ready 不可能再次扣除行动力。
-func host_commit_briefed_move(
+func host_commit_briefing_entry(
 	occurrence_key: String,
 	briefing_revision: int,
 	expected_route_revision: int
@@ -837,6 +867,40 @@ func host_commit_briefed_move(
 		or _runtime_state.state_revision != expected_route_revision
 	):
 		return false
+	if _briefing_source_kind == RogueRouteNodeBriefingModel.SOURCE_KIND_SPECIAL_COMBAT:
+		if (
+			_normal_combat_active
+			or _briefing_combat_config_id == &""
+			or get_signal_connection_list(&"combat_requested").is_empty()
+			or not _validate_followup_encounter_snapshot(
+				encounter_session.export_state() if encounter_session != null else {},
+				_briefing_node_id,
+				_briefing_source_encounter_occurrence_key,
+				_briefing_combat_config_id
+			)
+		):
+			call_deferred(
+				&"_recover_failed_briefing_entry",
+				"特殊作战配置或来源遭遇已经失效。"
+			)
+			return false
+		var content_seed := _route_graph.get_node_content_seed(
+			_briefing_node_id
+		)
+		_begin_normal_combat_stage(
+			_briefing_node_id,
+			content_seed,
+			occurrence_key,
+			_briefing_combat_config_id
+		)
+		_set_status("遭遇已转入特殊作战，正在准备战斗。", false)
+		combat_requested.emit(
+			_briefing_node_id,
+			content_seed,
+			occurrence_key,
+			_briefing_combat_config_id
+		)
+		return true
 	# 普通作战仅在首次踏入时允许提交。即便出现被篡改或过时的简报包，
 	# 已访问节点也不能再因该包扣行动力、转场或重开战斗。
 	if int(_runtime_state.visited_counts[_briefing_node_id]) != 0:
@@ -874,6 +938,19 @@ func host_commit_briefed_move(
 		)
 		return false
 	return true
+
+
+## 兼容旧协调器/聚焦测试的入口；通用实现同时处理默认与遭遇跟随作战。
+func host_commit_briefed_move(
+	occurrence_key: String,
+	briefing_revision: int,
+	expected_route_revision: int
+) -> bool:
+	return host_commit_briefing_entry(
+		occurrence_key,
+		briefing_revision,
+		expected_route_revision
+	)
 
 
 func abort_briefing_entry(occurrence_key: String) -> void:
@@ -1301,17 +1378,78 @@ func get_normal_combat_occurrence_key() -> String:
 	return _normal_combat_occurrence_key
 
 
+func get_active_combat_config_id() -> StringName:
+	return _normal_combat_config_id
+
+
+func resolve_combat_config(
+	combat_config_id: StringName
+) -> RogueCombatEncounterConfig:
+	if floor_definition == null:
+		return null
+	return floor_definition.get_combat_config(combat_config_id)
+
+
+func export_participant_stable_keys() -> Dictionary:
+	return _player_stable_keys.duplicate(true)
+
+
+func is_special_combat_config_id(combat_config_id: StringName) -> bool:
+	return (
+		floor_definition != null
+		and floor_definition.get_special_combat_config(combat_config_id) != null
+	)
+
+
+func get_followup_combat_participant_peer_ids(
+	combat_occurrence_key: String,
+	combat_config_id: StringName
+) -> PackedInt32Array:
+	var result := PackedInt32Array()
+	if (
+		not is_special_combat_config_id(combat_config_id)
+		or encounter_session == null
+		or _normal_combat_node_id < 0
+	):
+		return result
+	var source_occurrence_key := _get_followup_source_occurrence_from_combat_key(
+		combat_occurrence_key,
+		_normal_combat_node_id,
+		_normal_combat_content_seed,
+		combat_config_id
+	)
+	var encounter_snapshot := encounter_session.export_state()
+	if not _validate_followup_encounter_snapshot(
+		encounter_snapshot,
+		_normal_combat_node_id,
+		source_occurrence_key,
+		combat_config_id
+	):
+		return result
+	for peer_id_variant in encounter_snapshot.get("active_peer_ids", []) as Array:
+		var peer_id := int(peer_id_variant)
+		if peer_id > 0 and get_player_for_peer(peer_id) != null:
+			result.append(peer_id)
+	result.sort()
+	return result
+
+
 ## 客户端只接受能由当前权威路线状态完整复算出的作战启动数据。
 ## 相同启动包可安全重放；不同 occurrence 不会覆盖正在进行的作战。
 func apply_normal_combat_started(
 	node_id: int,
 	content_seed: int,
-	occurrence_key: String
+	occurrence_key: String,
+	combat_config_id: StringName = &""
 ) -> bool:
-	if _authority_enabled or not _validate_normal_combat_start(
+	var resolved_config_id := combat_config_id
+	if resolved_config_id == &"" and floor_definition != null:
+		resolved_config_id = floor_definition.default_combat_config.encounter_id
+	if _authority_enabled or not _validate_combat_start(
 		node_id,
 		content_seed,
-		occurrence_key
+		occurrence_key,
+		resolved_config_id
 	):
 		return false
 	if _normal_combat_active:
@@ -1319,6 +1457,7 @@ func apply_normal_combat_started(
 			node_id == _normal_combat_node_id
 			and content_seed == _normal_combat_content_seed
 			and occurrence_key == _normal_combat_occurrence_key
+			and resolved_config_id == _normal_combat_config_id
 		)
 	if (
 		_encounter_input_locked
@@ -1330,8 +1469,13 @@ func apply_normal_combat_started(
 		or (rare_chest_session != null and rare_chest_session.is_active())
 	):
 		return false
-	_begin_normal_combat_stage(node_id, content_seed, occurrence_key)
-	_set_status("房主已发起普通作战，正在进入战斗区域。", false)
+	_begin_normal_combat_stage(
+		node_id,
+		content_seed,
+		occurrence_key,
+		resolved_config_id
+	)
+	_set_status("房主已发起作战，正在进入战斗区域。", false)
 	return true
 
 
@@ -2188,45 +2332,100 @@ func _clear_normal_combat_state() -> void:
 	_normal_combat_content_seed = 0
 	_normal_combat_visit_count = 0
 	_normal_combat_occurrence_key = ""
+	_normal_combat_config_id = &""
 
 
 func _begin_normal_combat_stage(
 	node_id: int,
 	content_seed: int,
-	occurrence_key: String
+	occurrence_key: String,
+	combat_config_id: StringName = &""
 ) -> void:
+	var resolved_config_id := combat_config_id
+	if resolved_config_id == &"" and floor_definition != null:
+		resolved_config_id = floor_definition.default_combat_config.encounter_id
 	_normal_combat_active = true
 	_normal_combat_node_id = node_id
 	_normal_combat_content_seed = content_seed
 	_normal_combat_visit_count = int(_runtime_state.visited_counts[node_id])
 	_normal_combat_occurrence_key = occurrence_key
+	_normal_combat_config_id = resolved_config_id
 	_set_encounter_input_locked(true)
 
 
-func _validate_normal_combat_start(
+func _validate_combat_start(
 	node_id: int,
 	content_seed: int,
-	occurrence_key: String
+	occurrence_key: String,
+	combat_config_id: StringName
 ) -> bool:
 	if (
 		not is_route_ready()
 		or occurrence_key.is_empty()
+		or combat_config_id == &""
+		or resolve_combat_config(combat_config_id) == null
 		or not _route_graph.is_valid_node_id(node_id)
 		or _runtime_state.current_node_id != node_id
-		or _route_graph.get_node_type(node_id)
-		!= RogueRouteGraph.NodeType.NORMAL_COMBAT
 		or _route_graph.get_node_content_seed(node_id) != content_seed
 		or node_id >= _runtime_state.visited_counts.size()
 	):
 		return false
 	var visit_count := int(_runtime_state.visited_counts[node_id])
+	if (
+		floor_definition != null
+		and floor_definition.default_combat_config != null
+		and combat_config_id
+		== floor_definition.default_combat_config.encounter_id
+	):
+		return (
+			_route_graph.get_node_type(node_id)
+			== RogueRouteGraph.NodeType.NORMAL_COMBAT
+			and visit_count == 1
+			and occurrence_key == _make_normal_combat_occurrence_key(
+				node_id,
+				content_seed,
+				visit_count
+			)
+		)
+	if _route_graph.get_node_type(node_id) != RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER:
+		return false
+	var source_occurrence_key := _get_followup_source_occurrence_from_combat_key(
+		occurrence_key,
+		node_id,
+		content_seed,
+		combat_config_id
+	)
 	return (
-		visit_count == 1
-		and occurrence_key == _make_normal_combat_occurrence_key(
+		visit_count >= 1
+		and not source_occurrence_key.is_empty()
+		and occurrence_key == _make_followup_combat_occurrence_key(
 			node_id,
 			content_seed,
-			visit_count
+			source_occurrence_key,
+			combat_config_id
 		)
+		and _validate_followup_encounter_snapshot(
+			encounter_session.export_state() if encounter_session != null else {},
+			node_id,
+			source_occurrence_key,
+			combat_config_id
+		)
+	)
+
+
+## 兼容仍直接调用旧私有名称的聚焦测试。
+func _validate_normal_combat_start(
+	node_id: int,
+	content_seed: int,
+	occurrence_key: String
+) -> bool:
+	if floor_definition == null or floor_definition.default_combat_config == null:
+		return false
+	return _validate_combat_start(
+		node_id,
+		content_seed,
+		occurrence_key,
+		floor_definition.default_combat_config.encounter_id
 	)
 
 
@@ -2249,14 +2448,167 @@ func _make_normal_combat_occurrence_key(
 	]
 
 
+func _make_followup_combat_occurrence_key(
+	node_id: int,
+	content_seed: int,
+	source_encounter_occurrence_key: String,
+	combat_config_id: StringName
+) -> String:
+	if (
+		_route_graph == null
+		or not _route_graph.is_valid_node_id(node_id)
+		or source_encounter_occurrence_key.is_empty()
+		or combat_config_id == &""
+		or resolve_combat_config(combat_config_id) == null
+	):
+		return ""
+	return "followup_combat:%s:%d:%d:%s:%s" % [
+		_route_graph.compute_layout_hash(),
+		node_id,
+		content_seed,
+		source_encounter_occurrence_key,
+		String(combat_config_id),
+	]
+
+
+func _get_followup_source_occurrence_from_combat_key(
+	combat_occurrence_key: String,
+	node_id: int,
+	content_seed: int,
+	combat_config_id: StringName
+) -> String:
+	if (
+		_route_graph == null
+		or combat_occurrence_key.is_empty()
+		or combat_config_id == &""
+		or not _route_graph.is_valid_node_id(node_id)
+	):
+		return ""
+	var prefix := "followup_combat:%s:%d:%d:" % [
+		_route_graph.compute_layout_hash(),
+		node_id,
+		content_seed,
+	]
+	var suffix := ":%s" % String(combat_config_id)
+	if (
+		not combat_occurrence_key.begins_with(prefix)
+		or not combat_occurrence_key.ends_with(suffix)
+		or combat_occurrence_key.length() <= prefix.length() + suffix.length()
+	):
+		return ""
+	return combat_occurrence_key.substr(
+		prefix.length(),
+		combat_occurrence_key.length() - prefix.length() - suffix.length()
+	)
+
+
+func _validate_followup_encounter_snapshot(
+	snapshot: Dictionary,
+	node_id: int,
+	source_occurrence_key: String,
+	combat_config_id: StringName,
+	validation_graph: RogueRouteGraph = null
+) -> bool:
+	var graph := validation_graph if validation_graph != null else _route_graph
+	if (
+		snapshot.is_empty()
+		or node_id < 0
+		or source_occurrence_key.is_empty()
+		or combat_config_id == &""
+		or combat_config_id != SUITCASE_FOLLOWUP_COMBAT_ID
+		or graph == null
+		or not graph.is_valid_node_id(node_id)
+		or graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+		or floor_definition == null
+		or floor_definition.get_special_combat_config(combat_config_id) == null
+		or StringName(snapshot.get("phase", &""))
+		!= RogueEncounterSession.PHASE_COMPLETED
+		or int(snapshot.get("node_id", INVALID_NODE_ID)) != node_id
+		or str(snapshot.get("occurrence_key", ""))
+		!= source_occurrence_key
+		or StringName(snapshot.get("encounter_id", &""))
+		!= RogueEncounterRegistry.SUITCASE_FRENZY
+		or StringName(snapshot.get("winning_option", &""))
+		!= RogueEncounterRegistry.OPTION_CLAIM_SUITCASE
+	):
+		return false
+	var expected_node_seed := graph.get_node_content_seed(node_id)
+	var expected_source_occurrence := "%d:%d" % [node_id, expected_node_seed]
+	var resolved_node_ids_variant: Variant = snapshot.get("resolved_node_ids")
+	var round_recipient_ids_variant: Variant = snapshot.get(
+		"round_recipient_peer_ids"
+	)
+	var result_ack_ids_variant: Variant = snapshot.get("result_ack_peer_ids")
+	if (
+		int(snapshot.get("node_content_seed", -1)) != expected_node_seed
+		or source_occurrence_key != expected_source_occurrence
+		or not bool(snapshot.get("terminal_result", false))
+		or not bool(snapshot.get("settlement_committed", false))
+		or bool(snapshot.get("run_failed", true))
+		or int(snapshot.get("result_sequence", 0)) <= 0
+		or typeof(resolved_node_ids_variant) != TYPE_ARRAY
+		or not (resolved_node_ids_variant as Array).has(node_id)
+		or typeof(round_recipient_ids_variant) != TYPE_ARRAY
+		or typeof(result_ack_ids_variant) != TYPE_ARRAY
+	):
+		return false
+	var result_ack_ids := result_ack_ids_variant as Array
+	for recipient_peer_id in round_recipient_ids_variant as Array:
+		if not result_ack_ids.has(recipient_peer_id):
+			return false
+	var result := snapshot.get("economy_result", {}) as Dictionary
+	return (
+		bool(result.get("resolved", false))
+		and StringName(result.get("encounter_id", &""))
+		== RogueEncounterRegistry.SUITCASE_FRENZY
+		and StringName(result.get("option_id", &""))
+		== RogueEncounterRegistry.OPTION_CLAIM_SUITCASE
+		and StringName(result.get("result_code", &""))
+		== SUITCASE_FOLLOWUP_RESULT_CODE
+		and bool(result.get("terminal", false))
+		and StringName(result.get("result_presentation", &""))
+		== SUITCASE_FOLLOWUP_PRESENTATION
+		and StringName(result.get("followup_combat_id", &""))
+		== SUITCASE_FOLLOWUP_COMBAT_ID
+	)
+
+
 func _commit_host_briefing_state(
 	phase: int,
 	node_id: int,
 	occurrence_key: String,
-	expected_route_revision: int
+	expected_route_revision: int,
+	source_kind: StringName = &"",
+	combat_config_id: StringName = &"",
+	source_encounter_occurrence_key: String = ""
 ) -> bool:
 	if not _authority_enabled or not is_route_ready():
 		return false
+	if phase == BriefingPhase.NONE:
+		source_kind = &""
+		combat_config_id = &""
+		source_encounter_occurrence_key = ""
+	elif source_kind == &"":
+		if (
+			node_id == _briefing_node_id
+			and occurrence_key == _briefing_occurrence_key
+			and _briefing_source_kind != &""
+		):
+			source_kind = _briefing_source_kind
+			combat_config_id = _briefing_combat_config_id
+			source_encounter_occurrence_key = (
+				_briefing_source_encounter_occurrence_key
+			)
+		elif (
+			_route_graph.is_valid_node_id(node_id)
+			and _route_graph.get_node_type(node_id)
+			== RogueRouteGraph.NodeType.NORMAL_COMBAT
+			and floor_definition != null
+			and floor_definition.default_combat_config != null
+		):
+			source_kind = RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT
+			combat_config_id = floor_definition.default_combat_config.encounter_id
 	var snapshot := {
 		"schema_version": BRIEFING_SCHEMA_VERSION,
 		"layout_hash": _route_graph.compute_layout_hash(),
@@ -2265,11 +2617,15 @@ func _commit_host_briefing_state(
 		"node_id": node_id,
 		"occurrence_key": occurrence_key,
 		"expected_route_revision": expected_route_revision,
+		"source_kind": String(source_kind),
+		"combat_config_id": String(combat_config_id),
+		"source_encounter_occurrence_key": source_encounter_occurrence_key,
 	}
 	if not _validate_briefing_state_against(
 		snapshot,
 		_route_graph,
-		_runtime_state
+		_runtime_state,
+		encounter_session.export_state() if encounter_session != null else {}
 	):
 		return false
 	var previous_phase := _briefing_phase
@@ -2287,12 +2643,18 @@ func _assign_briefing_state(snapshot: Dictionary) -> void:
 	_briefing_expected_route_revision = int(
 		snapshot["expected_route_revision"]
 	)
+	_briefing_source_kind = StringName(snapshot["source_kind"])
+	_briefing_combat_config_id = StringName(snapshot["combat_config_id"])
+	_briefing_source_encounter_occurrence_key = str(
+		snapshot["source_encounter_occurrence_key"]
+	)
 
 
 func _validate_briefing_state_against(
 	snapshot: Dictionary,
 	graph: RogueRouteGraph,
-	state: RogueRouteRuntimeState
+	state: RogueRouteRuntimeState,
+	encounter_state_snapshot: Dictionary = {}
 ) -> bool:
 	if (
 		graph == null
@@ -2308,6 +2670,10 @@ func _validate_briefing_state_against(
 		or typeof(snapshot.get("node_id")) != TYPE_INT
 		or typeof(snapshot.get("occurrence_key")) != TYPE_STRING
 		or typeof(snapshot.get("expected_route_revision")) != TYPE_INT
+		or typeof(snapshot.get("source_kind")) != TYPE_STRING
+		or typeof(snapshot.get("combat_config_id")) != TYPE_STRING
+		or typeof(snapshot.get("source_encounter_occurrence_key"))
+		!= TYPE_STRING
 	):
 		return false
 	var phase := int(snapshot["phase"])
@@ -2316,11 +2682,19 @@ func _validate_briefing_state_against(
 	var expected_route_revision := int(
 		snapshot["expected_route_revision"]
 	)
+	var source_kind := StringName(snapshot["source_kind"])
+	var combat_config_id := StringName(snapshot["combat_config_id"])
+	var source_encounter_occurrence_key := str(
+		snapshot["source_encounter_occurrence_key"]
+	)
 	if phase == BriefingPhase.NONE:
 		return (
 			node_id == INVALID_NODE_ID
 			and occurrence_key.is_empty()
 			and expected_route_revision == -1
+			and source_kind == &""
+			and combat_config_id == &""
+			and source_encounter_occurrence_key.is_empty()
 		)
 	if phase not in [BriefingPhase.PRESENTED, BriefingPhase.ENTERING]:
 		return false
@@ -2328,10 +2702,51 @@ func _validate_briefing_state_against(
 		node_id < 0
 		or not graph.is_valid_node_id(node_id)
 		or node_id >= state.visited_counts.size()
-		or graph.get_node_type(node_id)
-		!= RogueRouteGraph.NodeType.NORMAL_COMBAT
 		or occurrence_key.is_empty()
 		or expected_route_revision < 0
+		or source_kind not in [
+			RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT,
+			RogueRouteNodeBriefingModel.SOURCE_KIND_SPECIAL_COMBAT,
+		]
+		or combat_config_id == &""
+		or floor_definition == null
+		or floor_definition.get_combat_config(combat_config_id) == null
+	):
+		return false
+	if source_kind == RogueRouteNodeBriefingModel.SOURCE_KIND_SPECIAL_COMBAT:
+		if (
+			graph.get_node_type(node_id)
+			!= RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+			or state.current_node_id != node_id
+			or int(state.visited_counts[node_id]) < 1
+			or state.state_revision != expected_route_revision
+			or source_encounter_occurrence_key.is_empty()
+			or floor_definition.get_special_combat_config(combat_config_id) == null
+			or not _special_combat_briefing_adapters.has(combat_config_id)
+			or not _validate_followup_encounter_snapshot(
+				encounter_state_snapshot,
+				node_id,
+				source_encounter_occurrence_key,
+				combat_config_id,
+				graph
+			)
+		):
+			return false
+		var expected_followup_occurrence := (
+			"followup_combat:%s:%d:%d:%s:%s" % [
+				graph.compute_layout_hash(),
+				node_id,
+				graph.get_node_content_seed(node_id),
+				source_encounter_occurrence_key,
+				String(combat_config_id),
+			]
+		)
+		return occurrence_key == expected_followup_occurrence
+	if (
+		graph.get_node_type(node_id) != RogueRouteGraph.NodeType.NORMAL_COMBAT
+		or floor_definition.default_combat_config == null
+		or combat_config_id != floor_definition.default_combat_config.encounter_id
+		or not source_encounter_occurrence_key.is_empty()
 	):
 		return false
 
@@ -2395,6 +2810,81 @@ func _build_normal_combat_briefing_model(
 	) as RogueRouteNodeBriefingModel
 
 
+func _create_special_combat_briefing_adapters() -> void:
+	_special_combat_briefing_adapters.clear()
+	if floor_definition == null:
+		return
+	var hero_visual := load(DEFAULT_COMBAT_BRIEFING_VISUAL_PATH) as Texture2D
+	if hero_visual == null:
+		return
+	for config in floor_definition.get_sorted_special_combat_configs():
+		if config == null or not config.is_ready_to_enable():
+			continue
+		_special_combat_briefing_adapters[config.encounter_id] = (
+			SPECIAL_COMBAT_BRIEFING_ADAPTER_SCRIPT.new(
+				config,
+				hero_visual,
+				_build_special_combat_reward_summary(config)
+			)
+		)
+
+
+func _build_special_combat_reward_summary(
+	config: RogueCombatEncounterConfig
+) -> String:
+	if config == null or config.reward_config == null:
+		return "特殊作战胜利奖励"
+	var reward := config.reward_config
+	if config.encounter_id == SUITCASE_FOLLOWUP_COMBAT_ID:
+		return "全队额外 +%d～%d 息壤 · 每人 2 件普通收藏品 · 每人 6 块木板" % [
+			reward.xirang_minimum,
+			reward.xirang_maximum,
+		]
+	return "额外 +%d～%d 息壤 · 随机 %d 件收藏品" % [
+		reward.xirang_minimum,
+		reward.xirang_maximum,
+		reward.collectible_count,
+	]
+
+
+func _build_special_combat_briefing_model(
+	node_id: int,
+	combat_config_id: StringName,
+	current_action_points: int
+) -> RogueRouteNodeBriefingModel:
+	if (
+		generation_config == null
+		or node_id < 0
+		or not _special_combat_briefing_adapters.has(combat_config_id)
+	):
+		return null
+	var node_config := generation_config.get_type_config(
+		RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
+	)
+	var adapter := _special_combat_briefing_adapters[combat_config_id] as RefCounted
+	return adapter.call(
+		&"build_model",
+		node_config,
+		current_action_points,
+		0
+	) as RogueRouteNodeBriefingModel
+
+
+func _build_current_briefing_model() -> RogueRouteNodeBriefingModel:
+	if _briefing_source_kind == RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT:
+		return _build_normal_combat_briefing_model(
+			_briefing_node_id,
+			_runtime_state.action_points
+		)
+	if _briefing_source_kind == RogueRouteNodeBriefingModel.SOURCE_KIND_SPECIAL_COMBAT:
+		return _build_special_combat_briefing_model(
+			_briefing_node_id,
+			_briefing_combat_config_id,
+			_runtime_state.action_points
+		)
+	return null
+
+
 func _sync_briefing_presentation(previous_phase: int) -> void:
 	if not is_node_ready():
 		return
@@ -2417,12 +2907,9 @@ func _sync_briefing_presentation(previous_phase: int) -> void:
 	_set_local_player_controls_locked(true)
 	_camera_drag_active = false
 	if _briefing_phase == BriefingPhase.PRESENTED:
-		var model := _build_normal_combat_briefing_model(
-			_briefing_node_id,
-			_runtime_state.action_points
-		)
+		var model := _build_current_briefing_model()
 		if model == null:
-			push_error("普通作战简报模型构建失败。")
+			push_error("作战简报模型构建失败。")
 			return
 		node_briefing.present(model, _authority_enabled)
 		return
@@ -2459,7 +2946,7 @@ func _cover_then_submit_briefed_move(
 		_briefing_expected_route_revision
 	)
 	if _authority_enabled and manage_return_locally:
-		host_commit_briefed_move(
+		host_commit_briefing_entry(
 			occurrence_key,
 			briefing_revision,
 			_briefing_expected_route_revision
@@ -2488,6 +2975,9 @@ func _reset_briefing_runtime(interrupt_transition: bool) -> void:
 	_briefing_node_id = INVALID_NODE_ID
 	_briefing_occurrence_key = ""
 	_briefing_expected_route_revision = -1
+	_briefing_source_kind = &""
+	_briefing_combat_config_id = &""
+	_briefing_source_encounter_occurrence_key = ""
 	if not is_node_ready():
 		return
 	node_briefing.dismiss()
@@ -2654,7 +3144,10 @@ func _try_start_normal_combat_for_node(
 		or node_id >= _runtime_state.visited_counts.size()
 		or target_visit_count != 1
 		or int(_runtime_state.visited_counts[node_id]) != target_visit_count
-		or get_signal_connection_list(&"normal_combat_requested").is_empty()
+		or (
+			get_signal_connection_list(&"combat_requested").is_empty()
+			and get_signal_connection_list(&"normal_combat_requested").is_empty()
+		)
 		or (
 			encounter_session != null
 			and encounter_session.is_active()
@@ -2671,8 +3164,21 @@ func _try_start_normal_combat_for_node(
 	)
 	if occurrence_key.is_empty():
 		return false
-	_begin_normal_combat_stage(node_id, content_seed, occurrence_key)
+	var combat_config_id := floor_definition.default_combat_config.encounter_id
+	_begin_normal_combat_stage(
+		node_id,
+		content_seed,
+		occurrence_key,
+		combat_config_id
+	)
 	_set_status("已进入普通作战节点，正在准备战斗。", false)
+	if not get_signal_connection_list(&"combat_requested").is_empty():
+		combat_requested.emit(
+			node_id,
+			content_seed,
+			occurrence_key,
+			combat_config_id
+		)
 	normal_combat_requested.emit(node_id, content_seed, occurrence_key)
 	return true
 
@@ -3135,6 +3641,78 @@ func _dismiss_encounter(presentation_serial: int) -> void:
 		(supply_session != null and supply_session.is_active())
 		or (rare_chest_session != null and rare_chest_session.is_active())
 	)
+	if _authority_enabled:
+		_try_present_followup_combat_briefing(completed_state)
+
+
+func _try_present_followup_combat_briefing(
+	completed_encounter_state: Dictionary
+) -> bool:
+	if (
+		not _authority_enabled
+		or not is_route_ready()
+		or completed_encounter_state.is_empty()
+		or _normal_combat_active
+	):
+		return false
+	var economy_result := completed_encounter_state.get(
+		"economy_result",
+		{}
+	) as Dictionary
+	var combat_config_id := StringName(
+		economy_result.get("followup_combat_id", &"")
+	)
+	if combat_config_id == &"":
+		return false
+	var node_id := int(
+		completed_encounter_state.get("node_id", INVALID_NODE_ID)
+	)
+	var source_occurrence_key := str(
+		completed_encounter_state.get("occurrence_key", "")
+	)
+	if (
+		not _route_graph.is_valid_node_id(node_id)
+		or not _validate_followup_encounter_snapshot(
+		completed_encounter_state,
+		node_id,
+		source_occurrence_key,
+		combat_config_id
+		)
+	):
+		return false
+	var content_seed := _route_graph.get_node_content_seed(node_id)
+	var combat_occurrence_key := _make_followup_combat_occurrence_key(
+		node_id,
+		content_seed,
+		source_occurrence_key,
+		combat_config_id
+	)
+	if combat_occurrence_key.is_empty():
+		return false
+	if _briefing_phase != BriefingPhase.NONE:
+		return (
+			_briefing_node_id == node_id
+			and _briefing_occurrence_key == combat_occurrence_key
+			and _briefing_combat_config_id == combat_config_id
+		)
+	if _build_special_combat_briefing_model(
+		node_id,
+		combat_config_id,
+		_runtime_state.action_points
+	) == null:
+		return false
+	if not _commit_host_briefing_state(
+		BriefingPhase.PRESENTED,
+		node_id,
+		combat_occurrence_key,
+		_runtime_state.state_revision,
+		RogueRouteNodeBriefingModel.SOURCE_KIND_SPECIAL_COMBAT,
+		combat_config_id,
+		source_occurrence_key
+	):
+		return false
+	_set_status("机器人已经追来，必须进入“皮箱之战”。", false)
+	return true
 
 
 func _show_run_defeat() -> void:
@@ -3390,6 +3968,8 @@ func _on_node_briefing_canceled() -> void:
 		not _authority_enabled
 		or not is_route_ready()
 		or _briefing_phase != BriefingPhase.PRESENTED
+		or _briefing_source_kind
+		!= RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT
 	):
 		return
 	if not _commit_host_briefing_state(

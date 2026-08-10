@@ -15,6 +15,15 @@ const RESULT_SCRIPT := preload(
 const COMMON_LOOT_ICON := preload(
 	"res://resources/texture/collectibles/candle_stub.png"
 )
+const COMMON_LOOT_CONFIG: PickupConfig = preload(
+	"res://resources/config/collectibles/collectible_candle_stub.tres"
+)
+const SECOND_COMMON_LOOT_CONFIG: PickupConfig = preload(
+	"res://resources/config/collectibles/collectible_apple.tres"
+)
+const PLANK_CONFIG: PickupConfig = preload(
+	"res://resources/config/materials/material_plank.tres"
+)
 const PREVIEW_PATH := "user://rogue_combat_ui_preview.png"
 
 var failures: Array[String] = []
@@ -164,6 +173,36 @@ func _run() -> void:
 		and result.loot_icon_rect.modulate.a < 0.5,
 		"背包已满时必须明确标记战利品未获得，并弱化失效图标。"
 	)
+	_set_viewport_size(Vector2i(1280, 720))
+	await process_frame
+	result.present_reward_result({
+		"victory": true,
+		"extra_xirang": 2600,
+		"item_rewards": [
+			_make_reward_row(COMMON_LOOT_CONFIG, 1, 1, "普通品质"),
+			_make_reward_row(SECOND_COMMON_LOOT_CONFIG, 1, 0, "普通品质"),
+			_make_reward_row(PLANK_CONFIG, 6, 4, "物资"),
+		],
+	})
+	await process_frame
+	_expect(
+		result.extra_xirang_value_label.text == "+2600"
+		and result.loot_card.visible
+		and result.loot_card_2.visible
+		and result.loot_card_3.visible,
+		"多奖励结算必须同时显示额外息壤和三条战利品。"
+	)
+	_expect(
+		result.loot_name_label_3.text == "木板 ×6"
+		and result.loot_status_label_2.text == "未获得（背包已满）"
+		and result.loot_status_label_3.text == "获得4，另有2因背包空间不足而丢失",
+		"多奖励结算必须精确显示整项与部分溢出的丢失结果。"
+	)
+	_expect_control_inside_viewport(
+		result.result_panel,
+		Vector2(1280.0, 720.0),
+		"三条战利品的正式结算面板必须完整落在720p可视区域内。"
+	)
 	await _verify_render_output()
 	_expect_state_rule_layout(result)
 
@@ -211,6 +250,21 @@ func _set_viewport_size(viewport_size: Vector2i) -> void:
 	root.size = viewport_size
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_size(viewport_size)
+
+
+func _make_reward_row(
+	item: PickupConfig,
+	rolled_count: int,
+	granted_count: int,
+	rarity_name: String
+) -> Dictionary:
+	return {
+		"config_path": item.resource_path,
+		"name": item.display_name,
+		"rarity_name": rarity_name,
+		"rolled_count": rolled_count,
+		"granted_count": granted_count,
+	}
 
 
 func _expect_control_inside_width(

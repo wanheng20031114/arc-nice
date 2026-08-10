@@ -7,6 +7,7 @@ const CHICKEN_BRO := &"chicken_bro"
 const SLIME_TALKERS := &"slime_talkers"
 const GHOST_SHADOW := &"ghost_shadow"
 const FLUORESCENT_PIT := &"fluorescent_pit"
+const SUITCASE_FRENZY := &"suitcase_frenzy"
 
 const OPTION_PURCHASE_BASKETBALL := &"purchase_basketball"
 const OPTION_ASK_FOR_FREE := &"ask_for_free"
@@ -17,6 +18,9 @@ const OPTION_GHOST_RUN_AWAY := &"ghost_run_away"
 const OPTION_GHOST_WHO_ARE_YOU := &"ghost_who_are_you"
 const OPTION_EXPLORE_PIT := &"explore_pit"
 const OPTION_LEAVE_PIT := &"leave_pit"
+const OPTION_CLAIM_SUITCASE := &"claim_suitcase"
+const OPTION_JOIN_SUITCASE_SHOOTING := &"join_suitcase_shooting"
+const OPTION_IGNORE_SUITCASE := &"ignore_suitcase"
 
 const MAX_VISIBLE_OPTIONS := 3
 
@@ -138,6 +142,7 @@ const _CONTENT_CONFIGS := {
 		"result_status": "坑洞深处传来了新的动静",
 		"default_result_speaker": "",
 		"default_result_is_narration": true,
+		"requires_result_ack": true,
 		"options": [
 			{
 				"option_id": OPTION_EXPLORE_PIT,
@@ -153,6 +158,59 @@ const _CONTENT_CONFIGS := {
 			},
 		],
 	},
+	SUITCASE_FRENZY: {
+		"display_name": "疯穿箱子",
+		"portrait_texture_path": (
+			"res://resources/texture/rogue_encounter/suitcase_frenzy.png"
+		),
+		"encounter_hint": "失控机器人围住的神秘皮箱",
+		# intro_text 三字段保留给旧表现层；新表现层优先读取 intro_pages。
+		"intro_speaker": "",
+		"intro_text": "发现了一群失控的战斗机器人正在开枪疯穿箱子。",
+		"intro_is_narration": true,
+		"intro_pages": [
+			{
+				"speaker": "",
+				"text": "发现了一群失控的战斗机器人正在开枪疯穿箱子。",
+				"is_narration": true,
+			},
+			{
+				"speaker": "",
+				"text": "也不知道这皮箱有什么特别的",
+				"is_narration": true,
+			},
+		],
+		"resolving_speaker": "",
+		"resolving_text": "机器人们仍在疯狂开火……",
+		"resolving_is_narration": true,
+		"result_status": "这次遭遇已经有了结果",
+		"default_result_speaker": "",
+		"default_result_is_narration": true,
+		# 开火结果必须等所有当轮在线玩家读完，才能衔接特殊作战简报。
+		"requires_result_ack": true,
+		# 全员超时不得随机把队伍送入高难作战，固定采用安全离开。
+		"no_vote_option_id": OPTION_IGNORE_SUITCASE,
+		"options": [
+			{
+				"option_id": OPTION_CLAIM_SUITCASE,
+				"title": "箱子是我的！",
+				"description": "朝着机器人开火",
+				"icon_texture_path": "",
+			},
+			{
+				"option_id": OPTION_JOIN_SUITCASE_SHOOTING,
+				"title": "凑热闹！",
+				"description": "跟着一起射击皮箱！",
+				"icon_texture_path": "",
+			},
+			{
+				"option_id": OPTION_IGNORE_SUITCASE,
+				"title": "一个皮箱有什么好在意的！",
+				"description": "趁没被机器人发现前离开",
+				"icon_texture_path": "",
+			},
+		],
+	},
 }
 
 const _POOLS := {
@@ -161,6 +219,7 @@ const _POOLS := {
 		SLIME_TALKERS,
 		GHOST_SHADOW,
 		FLUORESCENT_PIT,
+		SUITCASE_FRENZY,
 	],
 }
 
@@ -232,6 +291,51 @@ static func get_option_ids(encounter_id: StringName) -> Array[StringName]:
 		if not option_id.is_empty():
 			result.append(option_id)
 	return result
+
+
+## 多页开场是公开的确定性内容，不进入权威快照。旧事件会从既有
+## intro_text / intro_speaker / intro_is_narration 字段合成单页。
+static func get_intro_pages(encounter_id: StringName) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var config := get_encounter_config(encounter_id)
+	var raw_pages: Variant = config.get("intro_pages", [])
+	if typeof(raw_pages) == TYPE_ARRAY:
+		for raw_page in raw_pages as Array:
+			if typeof(raw_page) != TYPE_DICTIONARY:
+				continue
+			var page := raw_page as Dictionary
+			var text := str(page.get("text", ""))
+			if text.is_empty():
+				continue
+			result.append({
+				"speaker": str(page.get("speaker", "")),
+				"text": text,
+				"is_narration": bool(page.get("is_narration", true)),
+			})
+	if not result.is_empty():
+		return result
+	var legacy_text := str(config.get("intro_text", ""))
+	if legacy_text.is_empty():
+		return result
+	result.append({
+		"speaker": str(config.get("intro_speaker", "")),
+		"text": legacy_text,
+		"is_narration": bool(config.get("intro_is_narration", true)),
+	})
+	return result
+
+
+static func requires_result_ack(encounter_id: StringName) -> bool:
+	return bool(
+		get_encounter_config(encounter_id).get("requires_result_ack", false)
+	)
+
+
+static func get_no_vote_option_id(encounter_id: StringName) -> StringName:
+	var option_id := StringName(
+		get_encounter_config(encounter_id).get("no_vote_option_id", &"")
+	)
+	return option_id if is_valid_option(encounter_id, option_id) else &""
 
 static func is_valid_option(
 	encounter_id: StringName,

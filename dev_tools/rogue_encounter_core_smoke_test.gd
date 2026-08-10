@@ -25,6 +25,7 @@ func _run() -> void:
 	_test_slime_session_options_and_result_pages()
 	_test_slime_result_page_contract()
 	_test_ghost_shadow_results_and_no_economy()
+	_test_suitcase_frenzy_results_and_safe_timeout()
 	_test_fluorescent_pit_multiround_session()
 	_test_fluorescent_pit_core_failure_session()
 	if _failures.is_empty():
@@ -713,12 +714,13 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
 	)
 	_expect(
-		pool_entries.size() == 4
+		pool_entries.size() == 5
 		and pool_entries.has(RogueEncounterRegistry.CHICKEN_BRO)
 		and pool_entries.has(RogueEncounterRegistry.SLIME_TALKERS)
 		and pool_entries.has(RogueEncounterRegistry.GHOST_SHADOW)
-		and pool_entries.has(RogueEncounterRegistry.FLUORESCENT_PIT),
-		"神奇遭遇池必须同时包含鸡哥、会说话的史莱姆、鬼影与荧光坑洞。"
+		and pool_entries.has(RogueEncounterRegistry.FLUORESCENT_PIT)
+		and pool_entries.has(RogueEncounterRegistry.SUITCASE_FRENZY),
+		"神奇遭遇池必须同时包含鸡哥、史莱姆、鬼影、坑洞与疯穿箱子。"
 	)
 	var ghost_config := RogueEncounterRegistry.get_encounter_config(
 		RogueEncounterRegistry.GHOST_SHADOW
@@ -873,6 +875,181 @@ func _test_ghost_shadow_results_and_no_economy() -> void:
 	run_state.free()
 
 
+func _test_suitcase_frenzy_results_and_safe_timeout() -> void:
+	var run_state := _new_run_state()
+	for peer_id in [81, 82]:
+		run_state.ensure_multiplayer_peer_state(peer_id)
+	var economy := RogueEncounterEconomyCoordinator.new()
+	economy.configure(run_state)
+	var economy_before := economy.export_snapshot([81, 82])
+	var seed := _seed_for_encounter(
+		810_000,
+		RogueEncounterRegistry.SUITCASE_FRENZY
+	)
+
+	var fight_session := RogueEncounterSession.new()
+	fight_session.initialize_authority(economy, [81, 82])
+	_expect(
+		fight_session.start_for_node(
+			811,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			seed,
+			[81, 82]
+		),
+		"疯穿箱子开火用例应从神奇遭遇池启动。"
+	)
+	var availability := (
+		fight_session.export_state().get("option_availability", {})
+		as Dictionary
+	)
+	_expect(
+		bool(availability.get("claim_suitcase", false))
+		and bool(availability.get("join_suitcase_shooting", false))
+		and bool(availability.get("ignore_suitcase", false)),
+		"疯穿箱子的三个选项必须全部可用。"
+	)
+	for peer_id in [81, 82]:
+		_expect(
+			fight_session.submit_intro_ack(
+				peer_id,
+				fight_session.get_occurrence_key(),
+				fight_session.get_revision()
+			),
+			"疯穿箱子参与者应分别确认开场。"
+		)
+	for peer_id in [81, 82]:
+		_expect(
+			fight_session.submit_vote(
+				peer_id,
+				fight_session.get_occurrence_key(),
+				fight_session.get_revision(),
+				RogueEncounterRegistry.OPTION_CLAIM_SUITCASE
+			),
+			"疯穿箱子参与者应能共同选择开火。"
+		)
+	var fight_result := fight_session.export_state()
+	var fight_payload := fight_result.get("economy_result", {}) as Dictionary
+	var fight_pages := fight_result.get("result_pages", []) as Array
+	_expect(
+		int(fight_result.get("schema_version", -1)) == 4
+		and fight_session.get_phase() == RogueEncounterSession.PHASE_RESULT
+		and fight_pages.size() == 1
+		and str((fight_pages[0] as Dictionary).get("text", ""))
+		== "机器人注意到了你！"
+		and str(fight_payload.get("followup_combat_id", ""))
+		== "suitcase_battle"
+		and StringName(fight_payload.get("result_code", &""))
+		== RogueEncounterEconomyCoordinator.RESULT_SUITCASE_ROBOTS_ALERTED
+		and fight_session.is_node_resolved(811),
+		"开火必须生成精确结果页、显式后续作战ID并进入结果屏障。"
+	)
+	_expect(
+		fight_session.submit_result_ack(
+			81,
+			fight_session.get_occurrence_key(),
+			int(fight_result.get("result_sequence", -1))
+		)
+		and fight_session.get_phase() == RogueEncounterSession.PHASE_RESULT
+		and fight_session.submit_result_ack(
+			82,
+			fight_session.get_occurrence_key(),
+			int(fight_result.get("result_sequence", -1))
+		)
+		and fight_session.get_phase() == RogueEncounterSession.PHASE_COMPLETED,
+		"开火结果必须等当轮所有玩家ACK后才完成遭遇。"
+	)
+
+	var join_session := RogueEncounterSession.new()
+	join_session.initialize_authority(economy, [81])
+	_expect(
+		join_session.start_for_node(
+			812,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			seed,
+			[81]
+		)
+		and join_session.submit_intro_ack(
+			81,
+			join_session.get_occurrence_key(),
+			join_session.get_revision()
+		)
+		and join_session.submit_vote(
+			81,
+			join_session.get_occurrence_key(),
+			join_session.get_revision(),
+			RogueEncounterRegistry.OPTION_JOIN_SUITCASE_SHOOTING
+		),
+		"跟着开火选项应完成权威结算。"
+	)
+	var join_result := join_session.export_state()
+	var join_pages := join_result.get("result_pages", []) as Array
+	_expect(
+		join_pages.size() == 1
+		and str((join_pages[0] as Dictionary).get("text", ""))
+		== "皮箱很快就变得千疮百孔，什么都不剩下了。"
+		and str((join_result.get("economy_result", {}) as Dictionary).get(
+			"followup_combat_id",
+			"missing"
+		)).is_empty(),
+		"凑热闹只能显示精确结果文本，不得触发后续作战。"
+	)
+
+	var timeout_session := RogueEncounterSession.new()
+	timeout_session.initialize_authority(economy, [81, 82])
+	_expect(
+		timeout_session.start_for_node(
+			813,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			seed,
+			[81, 82]
+		)
+		and timeout_session.start_voting_timer(
+			timeout_session.get_occurrence_key(),
+			timeout_session.get_revision()
+		),
+		"疯穿箱子安全超时用例应启动计时。"
+	)
+	timeout_session.tick(RogueEncounterSession.VOTING_TIMEOUT_SECONDS)
+	var timeout_result := timeout_session.export_state()
+	var timeout_payload := (
+		timeout_result.get("economy_result", {}) as Dictionary
+	)
+	_expect(
+		timeout_session.get_phase() == RogueEncounterSession.PHASE_COMPLETED
+		and StringName(timeout_result.get("winning_option", &""))
+		== RogueEncounterRegistry.OPTION_IGNORE_SUITCASE
+		and (timeout_result.get("result_pages", []) as Array).is_empty()
+		and StringName(timeout_payload.get("result_presentation", &""))
+		== RogueEncounterEconomyCoordinator.RESULT_PRESENTATION_IMMEDIATE
+		and str(timeout_payload.get("followup_combat_id", "missing")).is_empty()
+		and timeout_session.is_node_resolved(813),
+		"全员超时必须固定安全离开、无结果页立即完成且不触发战斗。"
+	)
+	var remote_run_state := _new_run_state()
+	var remote_economy := RogueEncounterEconomyCoordinator.new()
+	remote_economy.configure(remote_run_state)
+	var remote_session := RogueEncounterSession.new()
+	remote_session.initialize_remote(remote_economy)
+	_expect(
+		remote_session.apply_remote_state(timeout_result)
+		and remote_session.export_state() == timeout_result,
+		"schema 4必须允许无结果页的immediate终局快照无损同步。"
+	)
+	_expect(
+		economy.export_snapshot([81, 82]) == economy_before,
+		"疯穿箱子的三个结果都不得改动队伍经济快照。"
+	)
+
+	remote_session.free()
+	remote_economy.free()
+	remote_run_state.free()
+	timeout_session.free()
+	join_session.free()
+	fight_session.free()
+	economy.free()
+	run_state.free()
+
+
 func _test_fluorescent_pit_multiround_session() -> void:
 	var run_state := _new_run_state()
 	for peer_id in [1, 2]:
@@ -914,7 +1091,7 @@ func _test_fluorescent_pit_multiround_session() -> void:
 	_expect(
 		StringName(first_result.get("phase", &""))
 		== RogueEncounterSession.PHASE_RESULT
-		and int(first_result.get("schema_version", -1)) == 3
+		and int(first_result.get("schema_version", -1)) == 4
 		and int(first_result.get("round_index", -1)) == 0
 		and int(first_result.get("result_sequence", -1)) == 1
 		and not bool(first_result.get("terminal_result", true))
@@ -1022,7 +1199,7 @@ func _test_fluorescent_pit_multiround_session() -> void:
 	_expect(
 		remote_session.apply_remote_state(completed)
 		and remote_session.export_state() == completed,
-		"schema 3多轮终局快照必须可无损同步。"
+		"schema 4多轮终局快照必须可无损同步。"
 	)
 	remote_session.free()
 	remote_economy.free()

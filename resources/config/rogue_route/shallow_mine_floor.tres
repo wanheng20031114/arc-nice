@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="RogueRouteFloorDefinition" load_steps=7 format=3]
+[gd_resource type="Resource" script_class="RogueRouteFloorDefinition" load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://resources/config/rogue_route/rogue_route_floor_definition.gd" id="1_script"]
 [ext_resource type="Resource" path="res://resources/config/rogue_route/p3_generation_config.tres" id="2_generation"]
@@ -6,6 +6,7 @@
 [ext_resource type="Texture2D" path="res://resources/texture/rogue_route/underground_ruins_background.png" id="4_background"]
 [ext_resource type="Resource" path="res://resources/config/rogue_combat/encounter_01.tres" id="5_combat"]
 [ext_resource type="Resource" path="res://resources/config/rogue_shop/shallow_mine_underground_shop.tres" id="6_shop"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/suitcase_battle.tres" id="7_suitcase_battle"]
 
 [resource]
 script = ExtResource("1_script")
@@ -15,4 +16,5 @@ generation_config = ExtResource("2_generation")
 world_metrics = ExtResource("3_metrics")
 background_texture = ExtResource("4_background")
 default_combat_config = ExtResource("5_combat")
+special_combat_configs = Array[RogueCombatEncounterConfig]([ExtResource("7_suitcase_battle")])
 underground_shop_config = ExtResource("6_shop")

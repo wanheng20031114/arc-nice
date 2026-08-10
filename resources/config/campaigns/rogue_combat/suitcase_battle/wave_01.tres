@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="WaveConfig" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="1_wave_script"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/suitcase_battle/entries/gunner_elite.tres" id="2_gunner_entry"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/suitcase_battle/entries/shield_bearer_elite.tres" id="3_shield_entry"]
+[ext_resource type="AudioStream" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="4_music"]
+
+[resource]
+script = ExtResource("1_wave_script")
+wave_name = "皮箱之战"
+enemy_entries = Array[WaveEnemyEntry]([ExtResource("2_gunner_entry"), ExtResource("3_shield_entry")])
+spawn_point_mask = 7
+spawn_point_order = 1
+spawn_order = 0
+spawn_interval = 0.1
+spawn_count_per_tick = 1
+max_alive_enemies = 40
+music = ExtResource("4_music")
+step_id = &"suitcase_battle_wave"
+display_name = "皮箱之战：击败全部精英战斗机器人"

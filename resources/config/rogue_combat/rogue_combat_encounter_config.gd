@@ -14,7 +14,7 @@ enum DeadlineStart {
 	WAVE_START,
 }
 
-const RUNTIME_CONTRACT_SCHEMA := 2
+const RUNTIME_CONTRACT_SCHEMA := 3
 const DEFAULT_ENCOUNTER_ID := &"narrow_road_01"
 const DEFAULT_EVENT_TITLE := "狭路相逢"
 const DEFAULT_OBJECTIVE_TEXT := "击败全部战斗机器人"
@@ -41,6 +41,8 @@ var preparation_seconds: int = DEFAULT_PREPARATION_SECONDS
 @export_range(1, 3600, 1, "or_greater")
 var combat_limit_seconds: int = DEFAULT_COMBAT_LIMIT_SECONDS
 @export_range(0, 999999, 1, "or_greater") var extra_xirang: int = DEFAULT_EXTRA_XIRANG
+## 结算实际以此资源为准；extra_xirang 继续作为旧简报与旧调用方的最低奖励摘要。
+@export var reward_config: RogueCombatRewardConfig
 
 @export_group("作战规则")
 @export var decisions_confirmed: bool = false
@@ -150,6 +152,12 @@ func compute_runtime_contract_hash() -> String:
 		"preparation=%d" % preparation_seconds,
 		"limit=%d" % combat_limit_seconds,
 		"extra_xirang=%d" % extra_xirang,
+		"reward_path=%s" % (reward_config.resource_path if reward_config != null else ""),
+		"reward_hash=%s" % (
+			reward_config.compute_runtime_contract_hash()
+			if reward_config != null
+			else ""
+		),
 		"decisions_confirmed=%d" % int(decisions_confirmed),
 		"deadline_start=%d" % int(deadline_start),
 		"decisions=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d" % [
@@ -216,6 +224,15 @@ func _validate_content_fields(errors: PackedStringArray) -> void:
 		errors.append("Rouge 战斗的作战时限必须大于0秒。")
 	if extra_xirang < 0:
 		errors.append("Rouge 战斗的额外息壤不能为负数。")
+	if reward_config == null:
+		errors.append("Rouge 战斗配置缺少奖励资源。")
+	else:
+		errors.append_array(reward_config.validate_config())
+		if extra_xirang != reward_config.xirang_minimum:
+			errors.append(
+				"Rouge 战斗的旧息壤摘要必须等于奖励资源下限：%d。"
+				% reward_config.xirang_minimum
+			)
 
 
 func _validate_campaign(errors: PackedStringArray) -> void:

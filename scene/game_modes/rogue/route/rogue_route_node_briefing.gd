@@ -15,6 +15,7 @@ const MAP_SHADE_COLOR := Color(0.012, 0.018, 0.02, 0.78)
 const PANEL_OPEN_OFFSET := Vector2(0.0, 18.0)
 const HOST_STATUS_TEXT := "确认前不会扣除行动力"
 const CLIENT_STATUS_TEXT := "等待房主决定"
+const REQUIRED_COMBAT_STATUS_TEXT := "该特殊作战不可取消"
 const CONFIRMING_STATUS_TEXT := "正在进入作战…"
 const CANCELING_STATUS_TEXT := "正在返回路线…"
 
@@ -38,6 +39,7 @@ const CANCELING_STATUS_TEXT := "正在返回路线…"
 var _open_tween: Tween
 var _panel_rest_position := Vector2.ZERO
 var _can_decide := false
+var _can_cancel := true
 var _decision_locked := false
 var _info_cards: Array[Control] = []
 
@@ -66,6 +68,7 @@ func present(model: BRIEFING_MODEL_SCRIPT, can_decide: bool) -> void:
 
 	_apply_model(model)
 	_can_decide = can_decide
+	_can_cancel = model.can_cancel
 	_decision_locked = false
 	visible = true
 	set_process_input(true)
@@ -80,6 +83,7 @@ func dismiss() -> void:
 	visible = false
 	set_process_input(false)
 	_can_decide = false
+	_can_cancel = true
 	_decision_locked = false
 	panel_stage.position = _panel_rest_position
 	hero_reveal_mask.scale.x = 0.0
@@ -96,11 +100,15 @@ func is_decision_locked() -> bool:
 	return _decision_locked
 
 
+func can_cancel() -> bool:
+	return _can_cancel
+
+
 func _input(event: InputEvent) -> void:
 	if not visible or not event.is_action_pressed(&"ui_cancel"):
 		return
 	get_viewport().set_input_as_handled()
-	if _can_decide:
+	if _can_decide and _can_cancel:
 		_cancel()
 
 
@@ -113,24 +121,31 @@ func _apply_model(model: BRIEFING_MODEL_SCRIPT) -> void:
 	time_limit_label.text = "%d 秒" % model.time_limit_seconds
 	enemy_count_label.text = "%d" % model.enemy_count
 	reward_label.text = model.reward_summary
-	action_point_label.text = "%+d" % model.action_point_delta
+	action_point_label.text = (
+		"0" if model.action_point_delta == 0 else "%+d" % model.action_point_delta
+	)
 	confirm_button.text = model.primary_action_text
 
 
 func _configure_decision_controls() -> void:
-	close_button.visible = _can_decide
-	close_button.disabled = not _can_decide
-	cancel_button.disabled = not _can_decide
+	close_button.visible = _can_decide and _can_cancel
+	close_button.disabled = not _can_decide or not _can_cancel
+	cancel_button.visible = _can_cancel
+	cancel_button.disabled = not _can_decide or not _can_cancel
 	confirm_button.disabled = not _can_decide
 	cancel_button.focus_mode = (
-		Control.FOCUS_ALL if _can_decide else Control.FOCUS_NONE
+		Control.FOCUS_ALL
+		if _can_decide and _can_cancel
+		else Control.FOCUS_NONE
 	)
 	confirm_button.focus_mode = (
 		Control.FOCUS_ALL if _can_decide else Control.FOCUS_NONE
 	)
-	decision_status_label.text = (
-		HOST_STATUS_TEXT if _can_decide else CLIENT_STATUS_TEXT
-	)
+	decision_status_label.text = CLIENT_STATUS_TEXT
+	if _can_decide:
+		decision_status_label.text = (
+			HOST_STATUS_TEXT if _can_cancel else REQUIRED_COMBAT_STATUS_TEXT
+		)
 	decision_status_label.modulate = (
 		Color(0.39, 0.25, 0.14, 0.76)
 		if _can_decide
@@ -201,7 +216,7 @@ func _on_map_shade_gui_input(event: InputEvent) -> void:
 	if mouse_event.button_index != MOUSE_BUTTON_LEFT or not mouse_event.pressed:
 		return
 	map_shade.accept_event()
-	if _can_decide:
+	if _can_decide and _can_cancel:
 		_cancel()
 
 
@@ -213,7 +228,7 @@ func _confirm() -> void:
 
 
 func _cancel() -> void:
-	if not visible or not _can_decide or _decision_locked:
+	if not visible or not _can_decide or not _can_cancel or _decision_locked:
 		return
 	_lock_decision(CANCELING_STATUS_TEXT)
 	canceled.emit()

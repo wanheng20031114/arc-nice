@@ -20,6 +20,8 @@ const PREPARE_BARRIER_TIMEOUT_MSEC := 30_000
 const RECONNECT_ACTIVATION_TIMEOUT_MSEC := 15_000
 const TERMINAL_BARRIER_TIMEOUT_MSEC := 15_000
 const TERMINAL_SPECTATOR_SYNC_TIMEOUT_MSEC := 30_000
+const SUITCASE_COMBAT_CONFIG_ID := &"suitcase_battle"
+const SUITCASE_ELITE_BULLET_POOL_CAPACITY := 480
 const CLIENT_PREPARATION_ABORT_REASONS := {
 	&"local_config_disabled": true,
 	&"config_mismatch": true,
@@ -51,9 +53,14 @@ var _phase := ProtocolPhase.IDLE
 var _active_node_id := INVALID_NODE_ID
 var _active_content_seed := 0
 var _active_occurrence_key := ""
+var _active_combat_config_id: StringName = &""
+var _active_encounter_config: RogueCombatEncounterConfig = null
 var _active_config_signature := ""
 var _participant_peer_ids: Dictionary = {}
 var _entry_xirang_by_peer: Dictionary = {}
+var _participant_character_ids: Dictionary = {}
+var _participant_stable_keys: Dictionary = {}
+var _last_combat_xirang_by_peer: Dictionary = {}
 var _disconnected_participants: Dictionary = {}
 var _pending_spectator_peers: Dictionary = {}
 var _reconnecting_peer_ids: Dictionary = {}
@@ -124,10 +131,10 @@ func bind_network_dependencies(
 	if not _enabled:
 		return
 
-	if not _route.normal_combat_requested.is_connected(
-		_on_normal_combat_requested
+	if not _route.combat_requested.is_connected(
+		_on_combat_requested
 	):
-		_route.normal_combat_requested.connect(_on_normal_combat_requested)
+		_route.combat_requested.connect(_on_combat_requested)
 	if not _route.combat_result_dismissed.is_connected(
 		_on_combat_result_dismissed
 	):
@@ -152,6 +159,7 @@ func _physics_process(_delta: float) -> void:
 	_poll_pending_terminal_spectator_syncs(now_msec)
 	if _phase == ProtocolPhase.IDLE:
 		return
+	_capture_live_combat_xirang()
 	_poll_prepare_barrier_timeout(now_msec)
 	_poll_reconnect_activation_timeouts(now_msec)
 	_poll_terminal_barrier_timeout(now_msec)
@@ -246,6 +254,19 @@ func _poll_pending_terminal_spectator_syncs(
 		var pending := (
 			_pending_terminal_spectator_syncs.get(peer_id, {}) as Dictionary
 		)
+		var occurrence_key := str(pending.get("occurrence_key", ""))
+		var settlement := pending.get("settlement", {}) as Dictionary
+		if (
+			settlement.is_empty()
+			and _settlement_received
+			and occurrence_key == _active_occurrence_key
+			and not _pending_settlement.is_empty()
+		):
+			pending["settlement"] = _pending_settlement.duplicate(true)
+			pending["expires_msec"] = (
+				now + TERMINAL_SPECTATOR_SYNC_TIMEOUT_MSEC
+			)
+			_pending_terminal_spectator_syncs[peer_id] = pending
 		var expires_msec := int(pending.get("expires_msec", 0))
 		if expires_msec > 0 and now >= expires_msec:
 			_pending_terminal_spectator_syncs.erase(peer_id)
@@ -319,10 +340,10 @@ func _connect_net_manager_signals() -> void:
 func _disconnect_route_signals() -> void:
 	if _route == null or not is_instance_valid(_route):
 		return
-	if _route.normal_combat_requested.is_connected(
-		_on_normal_combat_requested
+	if _route.combat_requested.is_connected(
+		_on_combat_requested
 	):
-		_route.normal_combat_requested.disconnect(_on_normal_combat_requested)
+		_route.combat_requested.disconnect(_on_combat_requested)
 	if _route.combat_result_dismissed.is_connected(
 		_on_combat_result_dismissed
 	):
@@ -366,16 +387,22 @@ func _disconnect_net_manager_signals() -> void:
 		_net_manager.player_reconnected.disconnect(_on_player_reconnected)
 
 
-func _on_normal_combat_requested(
+func _on_combat_requested(
 	node_id: int,
 	content_seed: int,
-	occurrence_key: String
+	occurrence_key: String,
+	combat_config_id: StringName
 ) -> void:
+	var resolved_config: RogueCombatEncounterConfig = (
+		_route.resolve_combat_config(combat_config_id) as RogueCombatEncounterConfig
+		if _route != null
+		else null
+	)
 	if (
 		not _enabled
 		or not _is_host()
 		or _phase != ProtocolPhase.IDLE
-		or not is_config_enabled_for_multiplayer(encounter_config)
+		or not is_config_enabled_for_multiplayer(resolved_config)
 		or node_id < 0
 		or occurrence_key.is_empty()
 	):
@@ -392,12 +419,19 @@ func _on_normal_combat_requested(
 		_route.complete_normal_combat(occurrence_key)
 		return
 
-	var participants := _capture_current_participants()
+	var participants := (
+		_route.get_followup_combat_participant_peer_ids(
+			occurrence_key,
+			combat_config_id
+		)
+		if _route.is_special_combat_config_id(combat_config_id)
+		else _capture_current_participants()
+	)
 	if participants.is_empty():
 		_route.abort_briefing_entry(occurrence_key)
 		_route.complete_normal_combat(occurrence_key)
 		return
-	var entry_xirang := _capture_entry_xirang(participants)
+	var entry_xirang := _capture_entry_xirang(participants, resolved_config)
 	if entry_xirang.size() != participants.size():
 		push_error("RogueCombatMultiplayerCoordinator: 无法捕获完整入口息壤。")
 		_route.abort_briefing_entry(occurrence_key)
@@ -410,7 +444,9 @@ func _on_normal_combat_requested(
 		occurrence_key,
 		participants,
 		entry_xirang,
-		false
+		false,
+		combat_config_id,
+		resolved_config
 	):
 		_abort_authoritative_protocol(&"host_runtime_create_failed")
 		return
@@ -423,6 +459,7 @@ func _on_normal_combat_requested(
 			_active_node_id,
 			_active_content_seed,
 			_active_occurrence_key,
+			_active_combat_config_id,
 			_active_config_signature,
 			_pack_peer_ids(_participant_peer_ids),
 			_entry_xirang_by_peer.duplicate(true),
@@ -436,13 +473,25 @@ func _begin_protocol(
 	occurrence_key: String,
 	participant_peer_ids: PackedInt32Array,
 	entry_xirang_by_peer: Dictionary,
-	activate_when_prepared: bool
+	activate_when_prepared: bool,
+	combat_config_id: StringName = &"",
+	resolved_config: RogueCombatEncounterConfig = null
 ) -> bool:
+	var protocol_config: RogueCombatEncounterConfig = (
+		resolved_config if resolved_config != null else encounter_config
+	)
+	var protocol_config_id: StringName = (
+		combat_config_id
+		if combat_config_id != &""
+		else protocol_config.encounter_id if protocol_config != null else &""
+	)
 	if (
 		_phase != ProtocolPhase.IDLE
 		or node_id < 0
 		or occurrence_key.is_empty()
 		or participant_peer_ids.is_empty()
+		or protocol_config_id == &""
+		or not is_config_enabled_for_multiplayer(protocol_config)
 	):
 		return false
 	_discard_pending_terminal_spectator_syncs_except(occurrence_key)
@@ -451,9 +500,14 @@ func _begin_protocol(
 	_active_node_id = node_id
 	_active_content_seed = content_seed
 	_active_occurrence_key = occurrence_key
-	_active_config_signature = _make_config_signature(encounter_config)
+	_active_combat_config_id = protocol_config_id
+	_active_encounter_config = protocol_config
+	_active_config_signature = _make_config_signature(_active_encounter_config)
 	_participant_peer_ids = _index_peer_ids(participant_peer_ids)
 	_entry_xirang_by_peer = entry_xirang_by_peer.duplicate(true)
+	_last_combat_xirang_by_peer = _entry_xirang_by_peer.duplicate(true)
+	if not _freeze_participant_reward_identities() and _is_host():
+		return false
 	_disconnected_participants.clear()
 	_pending_reconnect_prepare_peers.clear()
 	_expected_prepared_peers = _participant_peer_ids.duplicate()
@@ -487,6 +541,7 @@ func net_combat_prepare(
 	node_id: int,
 	content_seed: int,
 	occurrence_key: String,
+	combat_config_id: StringName,
 	config_signature: String,
 	participant_peer_ids: PackedInt32Array,
 	entry_xirang_by_peer: Dictionary,
@@ -500,11 +555,22 @@ func net_combat_prepare(
 	if not _enabled:
 		_request_authoritative_abort(occurrence_key, &"local_config_disabled")
 		return
-	if config_signature != _make_config_signature(encounter_config):
+	var resolved_config: RogueCombatEncounterConfig = (
+		_route.resolve_combat_config(combat_config_id) as RogueCombatEncounterConfig
+		if _route != null
+		else null
+	)
+	if (
+		not is_config_enabled_for_multiplayer(resolved_config)
+		or config_signature != _make_config_signature(resolved_config)
+	):
 		_request_authoritative_abort(occurrence_key, &"config_mismatch")
 		return
 	if _phase != ProtocolPhase.IDLE:
-		if occurrence_key != _active_occurrence_key:
+		if (
+			occurrence_key != _active_occurrence_key
+			or combat_config_id != _active_combat_config_id
+		):
 			return
 		_activate_when_prepared = (
 			_activate_when_prepared or activate_when_prepared
@@ -516,7 +582,8 @@ func net_combat_prepare(
 	if not _route.apply_normal_combat_started(
 		node_id,
 		content_seed,
-		occurrence_key
+		occurrence_key,
+		combat_config_id
 	):
 		push_error(
 			"RogueCombatMultiplayerCoordinator: 客户端拒绝了无法复算的作战启动包。"
@@ -529,7 +596,9 @@ func net_combat_prepare(
 		occurrence_key,
 		participant_peer_ids,
 		entry_xirang_by_peer,
-		activate_when_prepared
+		activate_when_prepared,
+		combat_config_id,
+		resolved_config
 	):
 		_request_authoritative_abort(occurrence_key, &"runtime_create_failed")
 
@@ -556,7 +625,7 @@ func _create_embedded_runtime() -> bool:
 		)
 		instance.free()
 		return false
-	instance.runtime_scene_path_override = encounter_config.combat_scene_path
+	instance.runtime_scene_path_override = _active_encounter_config.combat_scene_path
 	if not instance.embedded_runtime_prepared.is_connected(
 		_on_embedded_runtime_prepared
 	):
@@ -621,14 +690,14 @@ func _configure_occurrence_runtime() -> bool:
 	if _combat_game == null or _combat_game.current_flow_step != null:
 		return false
 	var scene_contract_errors := _combat_game.validate_encounter_scene_contract(
-		encounter_config.get_spawn_point_mask()
+		_active_encounter_config.get_spawn_point_mask()
 	)
 	if not scene_contract_errors.is_empty():
 		for error in scene_contract_errors:
 			push_error(error)
 		return false
 	var campaign := build_occurrence_campaign(
-		encounter_config,
+		_active_encounter_config,
 		_active_occurrence_key
 	)
 	if campaign == null or not campaign.validate_campaign().is_empty():
@@ -640,23 +709,29 @@ func _configure_occurrence_runtime() -> bool:
 	_combat_game.active_campaign = campaign
 	_combat_game.flow_graph = campaign.flow_graph
 	_combat_game.waves.assign(campaign.get_waves())
-	_combat_game.event_title = encounter_config.event_title
+	_combat_game.event_title = _active_encounter_config.event_title
 	_combat_game.pre_wave_duration = float(
-		encounter_config.preparation_seconds
+		_active_encounter_config.preparation_seconds
 	)
 	_combat_game.combat_time_limit_seconds = float(
-		encounter_config.combat_limit_seconds
+		_active_encounter_config.combat_limit_seconds
 	)
 	_combat_game.deadline_start = (
 		RogueCombatGame.DeadlineStart.PREPARATION_START
-		if encounter_config.deadline_start
+		if _active_encounter_config.deadline_start
 		== RogueCombatEncounterConfig.DeadlineStart.PREPARATION_START
 		else RogueCombatGame.DeadlineStart.WAVE_START
 	)
 	_combat_game.enemy_pickup_drops_enabled = (
-		encounter_config.enemy_pickup_drops
+		_active_encounter_config.enemy_pickup_drops
 		== RogueCombatEncounterConfig.Decision.YES
 	)
+	if _active_combat_config_id == SUITCASE_COMBAT_CONFIG_ID:
+		CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(
+			_combat_game.session_object_pool,
+			SUITCASE_ELITE_BULLET_POOL_CAPACITY,
+			SUITCASE_ELITE_BULLET_POOL_CAPACITY
+		)
 	_apply_xirang_map_to_game(_combat_game, _entry_xirang_by_peer)
 	for raw_peer_id in _participant_peer_ids.keys():
 		var peer_id := int(raw_peer_id)
@@ -894,69 +969,111 @@ func _settle_host_outcome(
 	var inventory_snapshots_by_peer: Dictionary = {}
 	var results_by_peer: Dictionary = {}
 	var filter_by_character := (
-		encounter_config.filter_loot_by_character
+		_active_encounter_config.filter_loot_by_character
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	var reward_dead_players := (
-		encounter_config.reward_dead_players_on_victory
+		_active_encounter_config.reward_dead_players_on_victory
 		== RogueCombatEncounterConfig.Decision.YES
 	)
+	var eligible_peer_ids: Array[int] = []
+	var reward_players_by_peer: Dictionary = {}
+	var base_xirang_by_peer: Dictionary = {}
+	_capture_live_combat_xirang()
 	for peer_id_variant in _participant_peer_ids.keys():
 		var peer_id := int(peer_id_variant)
 		var battle_player := _combat_game.get_player_for_peer(peer_id)
 		if battle_player == null or not is_instance_valid(battle_player):
-			var route_player := _route.get_player_for_peer(peer_id)
-			final_xirang_by_peer[peer_id] = (
-				route_player.get_xirang()
-				if route_player != null and is_instance_valid(route_player)
-				else int(_entry_xirang_by_peer.get(peer_id, 0))
-			)
+			var last_combat_xirang := int(_last_combat_xirang_by_peer.get(
+				peer_id,
+				_entry_xirang_by_peer.get(peer_id, 0)
+			))
+			final_xirang_by_peer[peer_id] = last_combat_xirang
 			inventory_snapshots_by_peer[peer_id] = (
 				_run_state.export_inventory_snapshot_for_peer(peer_id)
 			)
-			results_by_peer[peer_id] = (
-				_make_unrewarded_victory_result(peer_id)
-				if victory
-				else {
+			if victory and reward_dead_players:
+				eligible_peer_ids.append(peer_id)
+				base_xirang_by_peer[peer_id] = last_combat_xirang
+			elif victory:
+				results_by_peer[peer_id] = _make_unrewarded_victory_result(peer_id)
+			else:
+				results_by_peer[peer_id] = {
 					"victory": false,
 					"failure_reason": failure_reason,
 					"peer_id": peer_id,
 				}
-			)
 			continue
-		var result: Dictionary
 		var eligible := reward_dead_players or not battle_player.is_dead
 		if victory and eligible:
-			battle_player.grant_xirang_reward(
-				encounter_config.extra_xirang,
-				false
-			)
-			result = RogueCombatRewardResolver.resolve_reward(
-				_run_state,
-				StringName(occurrence_key),
-				_active_content_seed,
-				peer_id,
-				encounter_config.extra_xirang,
-				filter_by_character,
-				battle_player
-			)
-			result["victory"] = true
+			eligible_peer_ids.append(peer_id)
+			reward_players_by_peer[peer_id] = battle_player
+			base_xirang_by_peer[peer_id] = battle_player.get_xirang()
 		elif victory:
-			result = _make_unrewarded_victory_result(peer_id)
+			results_by_peer[peer_id] = _make_unrewarded_victory_result(peer_id)
 		else:
-			result = {
+			results_by_peer[peer_id] = {
 				"victory": false,
 				"failure_reason": failure_reason,
 				"peer_id": peer_id,
 			}
 		final_xirang_by_peer[peer_id] = battle_player.get_xirang()
+
+	if victory and not eligible_peer_ids.is_empty():
+		var reward_batch := RogueCombatRewardResolver.resolve_party_rewards(
+			_run_state,
+			StringName(occurrence_key),
+			_active_content_seed,
+			eligible_peer_ids,
+			_active_encounter_config.reward_config,
+			filter_by_character,
+			reward_players_by_peer,
+			base_xirang_by_peer,
+			_participant_stable_keys,
+			_participant_character_ids
+		)
+		if not bool(reward_batch.get("resolved", false)):
+			push_error(
+				"RogueCombatMultiplayerCoordinator: 全队奖励原子结算失败：%s"
+				% str(reward_batch.get("failure_reason", "unknown"))
+			)
+			_abort_authoritative_protocol(&"reward_transaction_failed")
+			return
+		var rewarded_results := reward_batch.get("results_by_peer", {}) as Dictionary
+		var rewarded_xirang := (
+			reward_batch.get("final_xirang_by_peer", {}) as Dictionary
+		)
+		for peer_id in eligible_peer_ids:
+			if (
+				not rewarded_results.has(peer_id)
+				or not rewarded_results[peer_id] is Dictionary
+				or not rewarded_xirang.has(peer_id)
+			):
+				push_error(
+					"RogueCombatMultiplayerCoordinator: 奖励事务缺少玩家%d结果。"
+					% peer_id
+				)
+				if not _rollback_host_reward_mutations(reward_rollback_state):
+					push_error(
+						"RogueCombatMultiplayerCoordinator: 缺失奖励结果后的回滚失败。"
+					)
+				_abort_authoritative_protocol(&"reward_result_missing")
+				return
+			var result := (rewarded_results[peer_id] as Dictionary).duplicate(true)
+			result["victory"] = true
+			results_by_peer[peer_id] = result
+			final_xirang_by_peer[peer_id] = int(rewarded_xirang[peer_id])
+		_apply_xirang_map_to_game(_combat_game, rewarded_xirang)
+
+	# 奖励 CAS 完成后统一导出正式快照，避免 settlement 携带奖励前的 revision。
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
 		inventory_snapshots_by_peer[peer_id] = (
 			_run_state.export_inventory_snapshot_for_peer(peer_id)
 		)
-		results_by_peer[peer_id] = result
 
 	var consume_node := victory or (
-		encounter_config.consume_node_on_failure
+		_active_encounter_config.consume_node_on_failure
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	var settlement := {
@@ -1015,6 +1132,7 @@ func _publish_host_settlement(
 		occurrence_key
 	)
 	_broadcast_authoritative_settlement(occurrence_key, settlement)
+	_poll_pending_terminal_spectator_syncs()
 	_try_broadcast_safe_teardown()
 	return true
 
@@ -1042,6 +1160,7 @@ func _capture_host_reward_rollback_state() -> Dictionary:
 	return {
 		"inventory_snapshots_by_peer": inventory_snapshots_by_peer,
 		"combat_xirang_by_peer": combat_xirang_by_peer,
+		"party_xirang_by_peer": _get_party_xirang_balances_for_participants(),
 	}
 
 
@@ -1052,6 +1171,8 @@ func _rollback_host_reward_mutations(rollback_state: Dictionary) -> bool:
 		or typeof(rollback_state.get("inventory_snapshots_by_peer"))
 		!= TYPE_DICTIONARY
 		or typeof(rollback_state.get("combat_xirang_by_peer"))
+		!= TYPE_DICTIONARY
+		or typeof(rollback_state.get("party_xirang_by_peer"))
 		!= TYPE_DICTIONARY
 	):
 		return false
@@ -1108,7 +1229,9 @@ func _rollback_host_reward_mutations(rollback_state: Dictionary) -> bool:
 		_combat_game,
 		rollback_state["combat_xirang_by_peer"] as Dictionary
 	)
-	return true
+	return _run_state.set_party_xirang_balances(
+		rollback_state["party_xirang_by_peer"] as Dictionary
+	)
 
 
 func _downgrade_pending_reconnects_before_settlement_broadcast(
@@ -1354,11 +1477,11 @@ func _try_finalize_local_terminal() -> void:
 		_play_local_victory_terminal(_active_occurrence_key)
 		return
 	var should_show_result := victory or (
-		encounter_config.show_failure_result
+		_active_encounter_config.show_failure_result
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	var return_before_result := (
-		encounter_config.return_to_route_before_result
+		_active_encounter_config.return_to_route_before_result
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	if return_before_result or not should_show_result:
@@ -1555,9 +1678,23 @@ func _show_local_result() -> bool:
 	# return_to_route_before_result=NO 时被仍保留的战场 UI 覆盖。
 	if _route.combat_result_overlay != null:
 		_route.combat_result_overlay.layer = 100
-	if not _route.show_combat_result(result):
+	if not _show_route_combat_result(result):
 		return false
 	_local_result_visible = true
+	return true
+
+
+func _show_route_combat_result(result: Dictionary) -> bool:
+	if _route == null or not is_instance_valid(_route):
+		return false
+	if not _route.show_combat_result(result):
+		return false
+	if (
+		bool(result.get("victory", false))
+		and not (result.get("item_rewards", []) as Array).is_empty()
+		and _route.combat_result_overlay != null
+	):
+		_route.combat_result_overlay.present_reward_result(result)
 	return true
 
 
@@ -1630,9 +1767,14 @@ func _reset_protocol_state() -> void:
 	_active_node_id = INVALID_NODE_ID
 	_active_content_seed = 0
 	_active_occurrence_key = ""
+	_active_combat_config_id = &""
+	_active_encounter_config = null
 	_active_config_signature = ""
 	_participant_peer_ids.clear()
 	_entry_xirang_by_peer.clear()
+	_participant_character_ids.clear()
+	_participant_stable_keys.clear()
+	_last_combat_xirang_by_peer.clear()
 	_disconnected_participants.clear()
 	_reconnecting_peer_ids.clear()
 	_pending_reconnect_prepare_peers.clear()
@@ -1860,8 +2002,13 @@ func _on_player_left(peer_id: int) -> void:
 func _mark_participant_disconnected_from_barriers(peer_id: int) -> void:
 	if peer_id <= 0 or not _participant_peer_ids.has(peer_id):
 		return
+	_capture_live_combat_xirang(peer_id)
 	_disconnected_participants[peer_id] = {
 		"entry_xirang": int(_entry_xirang_by_peer.get(peer_id, 0)),
+		"last_combat_xirang": int(_last_combat_xirang_by_peer.get(
+			peer_id,
+			_entry_xirang_by_peer.get(peer_id, 0)
+		)),
 		"was_prepared": _prepared_peers.has(peer_id),
 		"was_terminal_ready": _terminal_ready_peers.has(peer_id),
 	}
@@ -2071,6 +2218,7 @@ func _finish_player_reconnected(old_peer_id: int, new_peer_id: int) -> void:
 		_active_node_id,
 		_active_content_seed,
 		_active_occurrence_key,
+		_active_combat_config_id,
 		_active_config_signature,
 		_pack_peer_ids(_participant_peer_ids),
 		_entry_xirang_by_peer.duplicate(true),
@@ -2129,6 +2277,10 @@ func _remap_reconnected_participant_identity(
 		if _disconnected_participants.has(old_peer_id)
 		else {
 			"entry_xirang": int(_entry_xirang_by_peer.get(old_peer_id, 0)),
+			"last_combat_xirang": int(_last_combat_xirang_by_peer.get(
+				old_peer_id,
+				_entry_xirang_by_peer.get(old_peer_id, 0)
+			)),
 			"was_prepared": _prepared_peers.has(old_peer_id),
 			"was_terminal_ready": _terminal_ready_peers.has(old_peer_id),
 		}
@@ -2143,6 +2295,7 @@ func _remap_reconnected_participant_identity(
 		_entry_xirang_by_peer[new_peer_id] = int(
 			record.get("entry_xirang", 0)
 		)
+	_remap_frozen_reward_identity(old_peer_id, new_peer_id)
 	_disconnected_participants.erase(old_peer_id)
 	_pending_reconnect_prepare_peers.erase(old_peer_id)
 	_expected_prepared_peers.erase(old_peer_id)
@@ -2158,6 +2311,18 @@ func _remap_reconnected_participant_identity(
 		_expected_terminal_peers[new_peer_id] = true
 		_remap_pending_settlement_peer(old_peer_id, new_peer_id)
 	return disconnected_record
+
+
+func _remap_frozen_reward_identity(old_peer_id: int, new_peer_id: int) -> void:
+	for peer_map in [
+		_participant_character_ids,
+		_participant_stable_keys,
+		_last_combat_xirang_by_peer,
+	]:
+		if not peer_map.has(old_peer_id):
+			continue
+		peer_map[new_peer_id] = peer_map[old_peer_id]
+		peer_map.erase(old_peer_id)
 
 
 func _send_terminal_reconnect_spectator(
@@ -2177,8 +2342,11 @@ func _send_terminal_reconnect_spectator(
 	_pending_terminal_spectator_syncs[peer_id] = {
 		"occurrence_key": occurrence_key,
 		"settlement": settlement,
+		"route_spectator_sent": false,
 		"expires_msec": (
 			Time.get_ticks_msec() + TERMINAL_SPECTATOR_SYNC_TIMEOUT_MSEC
+			if not settlement.is_empty()
+			else 0
 		),
 	}
 	_flush_pending_terminal_spectator_sync(peer_id)
@@ -2189,7 +2357,6 @@ func _flush_pending_terminal_spectator_sync(peer_id: int) -> bool:
 		not _is_host()
 		or peer_id <= 0
 		or not _pending_terminal_spectator_syncs.has(peer_id)
-		or not _is_peer_send_ready(peer_id)
 	):
 		return false
 	var pending := (
@@ -2207,10 +2374,32 @@ func _flush_pending_terminal_spectator_sync(peer_id: int) -> bool:
 		and not _pending_settlement.is_empty()
 	):
 		settlement = _pending_settlement.duplicate(true)
+		pending["settlement"] = settlement
+		pending["expires_msec"] = (
+			Time.get_ticks_msec() + TERMINAL_SPECTATOR_SYNC_TIMEOUT_MSEC
+		)
+		_pending_terminal_spectator_syncs[peer_id] = pending
+	if not _is_peer_send_ready(peer_id):
+		return false
+	var route_spectator_sent := bool(
+		pending.get("route_spectator_sent", false)
+	)
+	if settlement.is_empty():
+		if not route_spectator_sent:
+			_dispatch_terminal_spectator_sync(
+				peer_id,
+				occurrence_key,
+				{},
+				true
+			)
+			pending["route_spectator_sent"] = true
+			_pending_terminal_spectator_syncs[peer_id] = pending
+		return true
 	_dispatch_terminal_spectator_sync(
 		peer_id,
 		occurrence_key,
-		settlement
+		settlement,
+		not route_spectator_sent
 	)
 	_pending_terminal_spectator_syncs.erase(peer_id)
 	return true
@@ -2219,9 +2408,11 @@ func _flush_pending_terminal_spectator_sync(peer_id: int) -> bool:
 func _dispatch_terminal_spectator_sync(
 	peer_id: int,
 	occurrence_key: String,
-	settlement: Dictionary
+	settlement: Dictionary,
+	include_route_spectator: bool = true
 ) -> void:
-	net_combat_route_spectator.rpc_id(peer_id, occurrence_key)
+	if include_route_spectator:
+		net_combat_route_spectator.rpc_id(peer_id, occurrence_key)
 	if not settlement.is_empty():
 		net_combat_settlement.rpc_id(
 			peer_id,
@@ -2265,10 +2456,57 @@ func _capture_current_participants() -> PackedInt32Array:
 	return result
 
 
-func _capture_entry_xirang(peer_ids: PackedInt32Array) -> Dictionary:
+func _freeze_participant_reward_identities() -> bool:
+	_participant_character_ids.clear()
+	_participant_stable_keys.clear()
+	if _route == null or not is_instance_valid(_route):
+		return false
+	var route_stable_keys := _route.export_participant_stable_keys()
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
+		var route_player := _route.get_player_for_peer(peer_id)
+		if route_player == null or not is_instance_valid(route_player):
+			return false
+		var character_id := route_player.get_character_id()
+		if not PlayerCharacterRegistry.is_valid_character_id(character_id):
+			return false
+		_participant_character_ids[peer_id] = character_id
+		var stable_key := str(route_stable_keys.get(
+			peer_id,
+			route_stable_keys.get(str(peer_id), "")
+		)).strip_edges()
+		_participant_stable_keys[peer_id] = (
+			stable_key if not stable_key.is_empty() else "peer:%d" % peer_id
+		)
+	return (
+		_participant_character_ids.size() == _participant_peer_ids.size()
+		and _participant_stable_keys.size() == _participant_peer_ids.size()
+	)
+
+
+func _capture_live_combat_xirang(peer_id: int = -1) -> void:
+	if _combat_game == null or not is_instance_valid(_combat_game):
+		return
+	var peer_ids: Array = (
+		[peer_id] if peer_id > 0 else _participant_peer_ids.keys()
+	)
+	for peer_id_variant in peer_ids:
+		var resolved_peer_id := int(peer_id_variant)
+		var battle_player := _combat_game.get_player_for_peer(resolved_peer_id)
+		if battle_player != null and is_instance_valid(battle_player):
+			_last_combat_xirang_by_peer[resolved_peer_id] = (
+				battle_player.get_xirang()
+			)
+
+
+func _capture_entry_xirang(
+	peer_ids: PackedInt32Array,
+	config: RogueCombatEncounterConfig
+) -> Dictionary:
 	var result: Dictionary = {}
 	var inherit_route_xirang := (
-		encounter_config.inherit_route_xirang
+		config != null
+		and config.inherit_route_xirang
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	for peer_id in peer_ids:
@@ -2318,6 +2556,18 @@ func _apply_xirang_map_to_route(xirang_by_peer: Dictionary) -> void:
 		player.xirang_changed.emit(amount, delta)
 
 
+func _get_party_xirang_balances_for_participants() -> Dictionary:
+	var result: Dictionary = {}
+	if _run_state == null:
+		return result
+	var ledger := _run_state.export_party_xirang_ledger()
+	var values := ledger.get("values", {}) as Dictionary
+	for peer_id_variant in _participant_peer_ids.keys():
+		var peer_id := int(peer_id_variant)
+		result[peer_id] = maxi(int(values.get(str(peer_id), 0)), 0)
+	return result
+
+
 func _validate_authoritative_peer_maps(
 	xirang_by_peer: Dictionary,
 	inventory_snapshots_by_peer: Dictionary,
@@ -2365,6 +2615,7 @@ func _make_unrewarded_victory_result(peer_id: int) -> Dictionary:
 			"granted": false,
 			"failure_reason": &"player_dead_not_rewarded",
 		},
+		"item_rewards": [],
 	}
 
 

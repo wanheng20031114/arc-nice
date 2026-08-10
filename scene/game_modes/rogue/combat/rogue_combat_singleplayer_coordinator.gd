@@ -15,6 +15,8 @@ signal battle_returned(
 const SINGLEPLAYER_PEER_ID := 0
 const INVALID_NODE_ID := -1
 const BATTLE_NODE_NAME := "RogueCombatBattle"
+const SUITCASE_COMBAT_CONFIG_ID := &"suitcase_battle"
+const SUITCASE_ELITE_BULLET_POOL_CAPACITY := 480
 
 @export var encounter_config: RogueCombatEncounterConfig
 
@@ -27,6 +29,7 @@ var _waiting_for_result_dismissal := false
 var _active_node_id := INVALID_NODE_ID
 var _active_content_seed := 0
 var _active_occurrence_key := ""
+var _active_encounter_config: RogueCombatEncounterConfig = null
 var _pending_victory := false
 var _pending_result: Dictionary = {}
 var _consumed_node_ids: Dictionary[int, bool] = {}
@@ -46,7 +49,7 @@ func _ready() -> void:
 	):
 		return
 	route = parent_route
-	route.normal_combat_requested.connect(_on_normal_combat_requested)
+	route.combat_requested.connect(_on_combat_requested)
 	route.combat_result_dismissed.connect(_on_combat_result_dismissed)
 	route.host_layout_committed.connect(_on_host_layout_committed)
 	route.normal_combat_stage_reset.connect(_on_normal_combat_stage_reset)
@@ -88,10 +91,11 @@ func _on_host_layout_committed(
 		_consumed_node_ids.clear()
 
 
-func _on_normal_combat_requested(
+func _on_combat_requested(
 	node_id: int,
 	content_seed: int,
-	occurrence_key: String
+	occurrence_key: String,
+	combat_config_id: StringName
 ) -> void:
 	if not _enabled or route == null:
 		return
@@ -102,7 +106,16 @@ func _on_normal_combat_requested(
 	if active_battle != null or _settling_outcome:
 		push_error("单人 Rouge 作战协调器收到重叠的战斗请求。")
 		return
-	if not encounter_config.is_ready_to_enable():
+	var resolved_config: RogueCombatEncounterConfig = (
+		route.resolve_combat_config(combat_config_id) as RogueCombatEncounterConfig
+	)
+	_active_encounter_config = resolved_config
+	if (
+		_active_encounter_config == null
+		or not _active_encounter_config.is_ready_to_enable()
+		or _active_encounter_config.support_singleplayer
+		!= RogueCombatEncounterConfig.Decision.YES
+	):
 		_recover_route_from_start_failure(occurrence_key)
 		return
 
@@ -110,11 +123,11 @@ func _on_normal_combat_requested(
 	if occurrence_campaign == null:
 		_recover_route_from_start_failure(occurrence_key)
 		return
-	var combat_scene := load(encounter_config.combat_scene_path) as PackedScene
+	var combat_scene := load(_active_encounter_config.combat_scene_path) as PackedScene
 	if combat_scene == null:
 		push_error(
 			"无法加载单人 Rouge 作战场景：%s"
-			% encounter_config.combat_scene_path
+			% _active_encounter_config.combat_scene_path
 		)
 		_recover_route_from_start_failure(occurrence_key)
 		return
@@ -128,7 +141,7 @@ func _on_normal_combat_requested(
 		return
 
 	var scene_contract_errors := battle.validate_encounter_scene_contract(
-		encounter_config.get_spawn_point_mask()
+		_active_encounter_config.get_spawn_point_mask()
 	)
 	if not scene_contract_errors.is_empty():
 		for error in scene_contract_errors:
@@ -156,6 +169,12 @@ func _on_normal_combat_requested(
 		_dispose_active_battle()
 		_recover_route_from_start_failure(occurrence_key)
 		return
+	if _active_encounter_config.encounter_id == SUITCASE_COMBAT_CONFIG_ID:
+		CombatRuntimeBase.register_combat_robot_gunner_elite_bullet_pool(
+			battle.session_object_pool,
+			SUITCASE_ELITE_BULLET_POOL_CAPACITY,
+			SUITCASE_ELITE_BULLET_POOL_CAPACITY
+		)
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:
 		battle.player.set_run_max_health_penalty(
@@ -165,7 +184,7 @@ func _on_normal_combat_requested(
 	# RoguePlayerRosterCoordinator 会先应用肉鸽作战的 1000 息壤。若选择继承，则在新增
 	# 战场后的首个物理帧前立即覆盖，确保玩家没有一帧使用错误经济状态。
 	if (
-		encounter_config.inherit_route_xirang
+		_active_encounter_config.inherit_route_xirang
 		== RogueCombatEncounterConfig.Decision.YES
 		and route.player != null
 		and is_instance_valid(route.player)
@@ -184,19 +203,19 @@ func _configure_battle_before_tree(
 	battle.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	battle.singleplayer_campaign = campaign
 	battle.multiplayer_campaign = campaign
-	battle.event_title = encounter_config.event_title
-	battle.pre_wave_duration = float(encounter_config.preparation_seconds)
+	battle.event_title = _active_encounter_config.event_title
+	battle.pre_wave_duration = float(_active_encounter_config.preparation_seconds)
 	battle.combat_time_limit_seconds = float(
-		encounter_config.combat_limit_seconds
+		_active_encounter_config.combat_limit_seconds
 	)
 	battle.deadline_start = (
 		RogueCombatGame.DeadlineStart.PREPARATION_START
-		if encounter_config.deadline_start
+		if _active_encounter_config.deadline_start
 		== RogueCombatEncounterConfig.DeadlineStart.PREPARATION_START
 		else RogueCombatGame.DeadlineStart.WAVE_START
 	)
 	battle.enemy_pickup_drops_enabled = (
-		encounter_config.enemy_pickup_drops
+		_active_encounter_config.enemy_pickup_drops
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	# 派生场景本身保持关闭；只有确认过完整策略的协调器才会打开自动流程。
@@ -207,7 +226,7 @@ func _configure_battle_before_tree(
 func _build_occurrence_campaign(
 	occurrence_key: String
 ) -> WaveCampaignConfig:
-	return encounter_config.build_occurrence_campaign(occurrence_key)
+	return _active_encounter_config.build_occurrence_campaign(occurrence_key)
 
 
 func _activate_battle_when_prepared(
@@ -287,7 +306,7 @@ func _resolve_active_outcome(victory: bool, failure_reason: String) -> void:
 	if victory:
 		_consumed_node_ids[_active_node_id] = true
 	elif (
-		encounter_config.consume_node_on_failure
+		_active_encounter_config.consume_node_on_failure
 		== RogueCombatEncounterConfig.Decision.YES
 	):
 		_consumed_node_ids[_active_node_id] = true
@@ -296,24 +315,24 @@ func _resolve_active_outcome(victory: bool, failure_reason: String) -> void:
 		return
 
 	var should_show_result := (
-		encounter_config.show_failure_result
+		_active_encounter_config.show_failure_result
 		== RogueCombatEncounterConfig.Decision.YES
 	)
 	if not should_show_result:
 		_finalize_return_from_battle()
 		return
 	if (
-		encounter_config.return_to_route_before_result
+		_active_encounter_config.return_to_route_before_result
 		== RogueCombatEncounterConfig.Decision.YES
 	):
 		var returned_result := _pending_result.duplicate(true)
 		_finalize_return_from_battle()
 		if route != null:
-			route.show_combat_result(returned_result)
+			_show_route_combat_result(returned_result)
 		return
 
 	_waiting_for_result_dismissal = true
-	if not route.show_combat_result(_pending_result):
+	if not _show_route_combat_result(_pending_result):
 		_waiting_for_result_dismissal = false
 		_finalize_return_from_battle()
 
@@ -325,7 +344,7 @@ func _resolve_victory_result() -> Dictionary:
 		and is_instance_valid(reward_player)
 		and (
 			not reward_player.is_dead
-			or encounter_config.reward_dead_players_on_victory
+			or _active_encounter_config.reward_dead_players_on_victory
 			== RogueCombatEncounterConfig.Decision.YES
 		)
 	)
@@ -334,18 +353,56 @@ func _resolve_victory_result() -> Dictionary:
 			"victory": true,
 			"extra_xirang": 0,
 			"loot": _make_empty_loot_result(),
+			"item_rewards": [],
 		}
 
-	reward_player.grant_xirang_reward(encounter_config.extra_xirang, false)
-	var result := RogueCombatRewardResolver.resolve_reward(
+	var peer_ids: Array[int] = [SINGLEPLAYER_PEER_ID]
+	var batch_result := RogueCombatRewardResolver.resolve_party_rewards(
 		active_battle.run_state,
 		StringName(_active_occurrence_key),
 		_active_content_seed,
-		SINGLEPLAYER_PEER_ID,
-		encounter_config.extra_xirang,
-		encounter_config.filter_loot_by_character
+		peer_ids,
+		_active_encounter_config.reward_config,
+		_active_encounter_config.filter_loot_by_character
 		== RogueCombatEncounterConfig.Decision.YES,
-		reward_player
+		{SINGLEPLAYER_PEER_ID: reward_player},
+		{SINGLEPLAYER_PEER_ID: reward_player.get_xirang()},
+		{SINGLEPLAYER_PEER_ID: "singleplayer:local"}
+	)
+	if not bool(batch_result.get("resolved", false)):
+		push_error(
+			"单人 Rouge 作战奖励原子结算失败：%s"
+			% str(batch_result.get("failure_reason", "unknown"))
+		)
+		return {
+			"victory": true,
+			"extra_xirang": 0,
+			"loot": _make_empty_loot_result(),
+			"item_rewards": [],
+			"reward_failure_reason": batch_result.get(
+				"failure_reason",
+				RogueCombatRewardResolver.FAILURE_TRANSACTION_CONFLICT
+			),
+		}
+	var results_by_peer := batch_result.get("results_by_peer", {}) as Dictionary
+	var result := results_by_peer.get(SINGLEPLAYER_PEER_ID, {}) as Dictionary
+	if result.is_empty():
+		return {
+			"victory": true,
+			"extra_xirang": 0,
+			"loot": _make_empty_loot_result(),
+			"item_rewards": [],
+			"reward_failure_reason": &"missing_local_reward_result",
+		}
+	var final_xirang_by_peer := (
+		batch_result.get("final_xirang_by_peer", {}) as Dictionary
+	)
+	_set_player_xirang(
+		reward_player,
+		int(final_xirang_by_peer.get(
+			SINGLEPLAYER_PEER_ID,
+			reward_player.get_xirang()
+		))
 	)
 	result["victory"] = true
 	return result
@@ -361,6 +418,20 @@ func _make_empty_loot_result() -> Dictionary:
 		"granted": false,
 		"failure_reason": &"reward_ineligible",
 	}
+
+
+func _show_route_combat_result(result: Dictionary) -> bool:
+	if route == null or not is_instance_valid(route):
+		return false
+	if not route.show_combat_result(result):
+		return false
+	if (
+		bool(result.get("victory", false))
+		and not (result.get("item_rewards", []) as Array).is_empty()
+		and route.combat_result_overlay != null
+	):
+		route.combat_result_overlay.present_reward_result(result)
+	return true
 
 
 func _on_combat_result_dismissed() -> void:
@@ -433,7 +504,7 @@ func _play_victory_return_sequence() -> void:
 		or not is_instance_valid(route)
 	):
 		return
-	route.show_combat_result(completed_result)
+	_show_route_combat_result(completed_result)
 	_complete_return_lifecycle(
 		true,
 		completed_occurrence_key,
@@ -483,7 +554,7 @@ func _recover_interrupted_victory_sequence(
 	_dispose_active_battle()
 	if route != null and is_instance_valid(route):
 		route.set_route_presentation_enabled(true)
-		route.show_combat_result(result)
+		_show_route_combat_result(result)
 	_complete_return_lifecycle(true, occurrence_key, result)
 
 
@@ -520,6 +591,7 @@ func _cancel_pending_victory_sequence(
 	_active_node_id = INVALID_NODE_ID
 	_active_content_seed = 0
 	_active_occurrence_key = ""
+	_active_encounter_config = null
 
 
 func _finalize_return_from_battle() -> void:
@@ -551,6 +623,7 @@ func _complete_return_lifecycle(
 	_active_node_id = INVALID_NODE_ID
 	_active_content_seed = 0
 	_active_occurrence_key = ""
+	_active_encounter_config = null
 	battle_returned.emit(
 		completed_victory,
 		completed_occurrence_key,
@@ -590,6 +663,7 @@ func _dispose_active_battle() -> void:
 
 
 func _recover_route_from_start_failure(occurrence_key: String) -> void:
+	_active_encounter_config = null
 	if route == null:
 		return
 	_victory_sequence_serial += 1
@@ -603,9 +677,9 @@ func _disconnect_route_signals() -> void:
 	_enabled = false
 	if route == null or not is_instance_valid(route):
 		return
-	var request_callable := Callable(self, "_on_normal_combat_requested")
-	if route.normal_combat_requested.is_connected(request_callable):
-		route.normal_combat_requested.disconnect(request_callable)
+	var request_callable := Callable(self, "_on_combat_requested")
+	if route.combat_requested.is_connected(request_callable):
+		route.combat_requested.disconnect(request_callable)
 	var dismissed_callable := Callable(self, "_on_combat_result_dismissed")
 	if route.combat_result_dismissed.is_connected(dismissed_callable):
 		route.combat_result_dismissed.disconnect(dismissed_callable)

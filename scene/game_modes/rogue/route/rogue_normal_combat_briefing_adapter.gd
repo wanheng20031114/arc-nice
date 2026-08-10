@@ -36,22 +36,22 @@ func build_model(
 	if not _can_build(node_config, current_action_points, move_action_cost):
 		return null
 
-	var model := BRIEFING_MODEL_SCRIPT.new(
+	return build_encounter_model(
+		BRIEFING_MODEL_SCRIPT.SOURCE_KIND_DEFAULT_COMBAT,
+		encounter_config.encounter_id,
 		node_config.display_name,
 		encounter_config.event_title,
+		encounter_config,
 		hero_visual,
 		node_config.icon,
-		encounter_config.objective_text,
-		encounter_config.combat_limit_seconds,
-		encounter_config.get_total_enemy_count(),
 		"额外 +%d 息壤 · %s" % [
 			encounter_config.extra_xirang,
 			COMMON_COLLECTIBLE_REWARD_TEXT,
 		],
 		-move_action_cost,
-		PRIMARY_ACTION_TEXT
+		PRIMARY_ACTION_TEXT,
+		true
 	)
-	return model if model.is_valid() else null
 
 
 func _can_build(

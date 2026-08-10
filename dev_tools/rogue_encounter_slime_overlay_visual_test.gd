@@ -25,7 +25,7 @@ func _run() -> void:
 		{1: PlayerCharacterRegistry.get_default_character_id(), 2: &"tiyi"}
 	)
 	overlay.apply_state({
-		"schema_version": 3,
+		"schema_version": 4,
 		"revision": 4,
 		"phase": "voting",
 		"node_id": 21,

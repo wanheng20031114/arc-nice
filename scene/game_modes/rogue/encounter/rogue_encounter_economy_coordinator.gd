@@ -15,6 +15,7 @@ const ENCOUNTER_CHICKEN_BRO := &"chicken_bro"
 const ENCOUNTER_SLIME_TALKERS := &"slime_talkers"
 const ENCOUNTER_GHOST_SHADOW := &"ghost_shadow"
 const ENCOUNTER_FLUORESCENT_PIT := &"fluorescent_pit"
+const ENCOUNTER_SUITCASE_FRENZY := &"suitcase_frenzy"
 const OPTION_PURCHASE := &"purchase_basketball"
 const OPTION_FREE := &"ask_for_free"
 const OPTION_HELP_SLIMES := &"help_slimes"
@@ -24,6 +25,9 @@ const OPTION_GHOST_RUN_AWAY := &"ghost_run_away"
 const OPTION_GHOST_WHO_ARE_YOU := &"ghost_who_are_you"
 const OPTION_EXPLORE_PIT := &"explore_pit"
 const OPTION_LEAVE_PIT := &"leave_pit"
+const OPTION_CLAIM_SUITCASE := &"claim_suitcase"
+const OPTION_JOIN_SUITCASE_SHOOTING := &"join_suitcase_shooting"
+const OPTION_IGNORE_SUITCASE := &"ignore_suitcase"
 const PLANK_PATH := "res://resources/config/materials/material_plank.tres"
 const BASKETBALL_PATH := "res://resources/config/collectibles/collectible_basketball.tres"
 const WATER_BOTTLE_PATH := "res://resources/config/materials/material_water_bottle.tres"
@@ -52,7 +56,13 @@ const RESULT_PIT_COLLECTIBLE := &"pit_collectible"
 const RESULT_PIT_BOTTOM := &"pit_bottom"
 const RESULT_PIT_RADIATION := &"pit_radiation"
 const RESULT_PIT_LEFT := &"pit_left"
+const RESULT_SUITCASE_ROBOTS_ALERTED := &"suitcase_robots_alerted"
+const RESULT_SUITCASE_DESTROYED := &"suitcase_destroyed"
+const RESULT_SUITCASE_LEFT := &"suitcase_left"
 const GHOST_IDENTITY_SPECIAL_OUTCOME := &"ghost_identity_special"
+const SUITCASE_FOLLOWUP_COMBAT_ID := &"suitcase_battle"
+const RESULT_PRESENTATION_PAGES := &"pages"
+const RESULT_PRESENTATION_IMMEDIATE := &"immediate"
 
 const PIT_XIRANG_MINIMUM := 5
 const PIT_XIRANG_MAXIMUM := 100
@@ -152,6 +162,12 @@ func get_option_availability(
 				String(OPTION_EXPLORE_PIT): true,
 				String(OPTION_LEAVE_PIT): true,
 			}
+		ENCOUNTER_SUITCASE_FRENZY:
+			return {
+				String(OPTION_CLAIM_SUITCASE): true,
+				String(OPTION_JOIN_SUITCASE_SHOOTING): true,
+				String(OPTION_IGNORE_SUITCASE): true,
+			}
 		_:
 			return {}
 
@@ -197,8 +213,52 @@ func resolve_encounter(
 				occurrence_key,
 				round_index
 			)
+		ENCOUNTER_SUITCASE_FRENZY:
+			return resolve_suitcase_frenzy(
+				option_id,
+				eligible_peer_ids
+			)
 		_:
 			return _make_result(false, RESULT_INVALID_REQUEST)
+
+
+## “疯穿箱子”本身没有资源收支；结果只声明遭遇表现和后续作战意图。
+## 路线层必须读取显式 followup_combat_id，不能从文案或 result_code 猜测。
+func resolve_suitcase_frenzy(
+	option_id: StringName,
+	eligible_peer_ids: Array[int]
+) -> Dictionary:
+	if (
+		_run_state == null
+		or option_id not in [
+			OPTION_CLAIM_SUITCASE,
+			OPTION_JOIN_SUITCASE_SHOOTING,
+			OPTION_IGNORE_SUITCASE,
+		]
+		or _normalize_peer_ids(eligible_peer_ids).is_empty()
+	):
+		return _make_result(false, RESULT_INVALID_REQUEST)
+	match option_id:
+		OPTION_CLAIM_SUITCASE:
+			return _make_suitcase_result(
+				RESULT_SUITCASE_ROBOTS_ALERTED,
+				option_id,
+				RESULT_PRESENTATION_PAGES,
+				SUITCASE_FOLLOWUP_COMBAT_ID
+			)
+		OPTION_JOIN_SUITCASE_SHOOTING:
+			return _make_suitcase_result(
+				RESULT_SUITCASE_DESTROYED,
+				option_id,
+				RESULT_PRESENTATION_PAGES
+			)
+		OPTION_IGNORE_SUITCASE:
+			return _make_suitcase_result(
+				RESULT_SUITCASE_LEFT,
+				option_id,
+				RESULT_PRESENTATION_IMMEDIATE
+			)
+	return _make_result(false, RESULT_INVALID_REQUEST)
 
 
 ## 鬼影没有资源收支，因此不会推进经济 revision 或写入结算账本。
@@ -1348,6 +1408,23 @@ func _make_ghost_result(
 		"encounter_id": String(ENCOUNTER_GHOST_SHADOW),
 		"option_id": String(option_id),
 		"special_outcome_key": String(special_outcome_key),
+	}, true)
+	return result
+
+
+func _make_suitcase_result(
+	result_code: StringName,
+	option_id: StringName,
+	result_presentation: StringName,
+	followup_combat_id: StringName = &""
+) -> Dictionary:
+	var result := _make_result(true, result_code)
+	result.merge({
+		"encounter_id": String(ENCOUNTER_SUITCASE_FRENZY),
+		"option_id": String(option_id),
+		"terminal": true,
+		"result_presentation": String(result_presentation),
+		"followup_combat_id": String(followup_combat_id),
 	}, true)
 	return result
 

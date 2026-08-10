@@ -59,10 +59,10 @@ func _test_formal_configuration_gate_and_multiplayer_isolation() -> void:
 		default_coordinator != null
 		and default_coordinator.is_enabled()
 		and not default_route.get_signal_connection_list(
-			&"normal_combat_requested"
+			&"combat_requested"
 		).is_empty()
 		and not default_route.is_encounter_active(),
-		"正式确认配置必须订阅 normal_combat_requested，但不能在移动前锁定路线。"
+		"正式确认配置必须订阅统一combat_requested，但不能在移动前锁定路线。"
 	)
 	_cleanup_route(default_route)
 	await process_frame
@@ -78,7 +78,7 @@ func _test_formal_configuration_gate_and_multiplayer_isolation() -> void:
 		not disabled_route.floor_definition.validate_definition().is_empty()
 		and not disabled_coordinator.is_enabled()
 		and disabled_route.get_signal_connection_list(
-			&"normal_combat_requested"
+			&"combat_requested"
 		).is_empty(),
 		"任一未确认配置必须先被 FloorDefinition 硬门控，不能进入路线生命周期。"
 	)
@@ -94,7 +94,7 @@ func _test_formal_configuration_gate_and_multiplayer_isolation() -> void:
 	_expect(
 		not multiplayer_coordinator.is_enabled()
 		and multiplayer_route.get_signal_connection_list(
-			&"normal_combat_requested"
+			&"combat_requested"
 		).is_empty(),
 		"MpRogueRoute 内嵌同一地图时，单人协调器绝不能连接或双重消费。"
 	)

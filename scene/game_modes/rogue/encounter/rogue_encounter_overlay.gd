@@ -84,6 +84,9 @@ var result_pages: Array[Dictionary] = []
 var result_page_index := 0
 var rendered_result_sequence := -1
 var last_ack_requested_result_sequence := -1
+var intro_pages: Array[Dictionary] = []
+var intro_page_index := 0
+var last_immediate_completion_occurrence_key := ""
 
 
 func _ready() -> void:
@@ -123,6 +126,8 @@ func apply_state(new_state: Dictionary) -> void:
 		pending_intro_revision = -1
 		rendered_line = ""
 		rendered_phase = PHASE_IDLE
+		intro_page_index = 0
+		last_immediate_completion_occurrence_key = ""
 		_reset_result_pages()
 		rendered_result_sequence = -1
 		last_ack_requested_result_sequence = -1
@@ -318,6 +323,10 @@ func _input(event: InputEvent) -> void:
 	if typewriter.is_revealing():
 		typewriter.finish_line()
 		return
+	if intro_page_index + 1 < intro_pages.size():
+		intro_page_index += 1
+		_show_current_intro_page(true)
+		return
 	local_intro_advanced = true
 	pending_intro_revision = expected_revision
 	_play_option_reveal()
@@ -330,6 +339,12 @@ func _render_state(force: bool) -> void:
 		return
 	var previous_phase := rendered_phase
 	rendered_phase = phase
+	if (
+		phase in [PHASE_RESULT, PHASE_COMPLETED]
+		and _result_presentation_is_immediate()
+	):
+		_show_immediate_result_completion()
+		return
 	if phase == PHASE_RESULT or phase == PHASE_COMPLETED:
 		_show_result(force)
 		return
@@ -349,14 +364,29 @@ func _render_state(force: bool) -> void:
 	if _local_intro_page_is_advanced() or not _local_can_participate():
 		_show_options_page()
 	else:
+		_show_current_intro_page(force)
+	_update_vote_state()
+
+
+func _show_current_intro_page(force: bool) -> void:
+	if intro_pages.is_empty():
 		_show_dialogue_page(
-			str(encounter_config.get("intro_text", "发生了一次神奇遭遇。")),
-			str(encounter_config.get("intro_speaker", "")),
-			bool(encounter_config.get("intro_is_narration", true)),
+			"发生了一次神奇遭遇。",
+			"",
+			true,
 			true,
 			force
 		)
-	_update_vote_state()
+		return
+	intro_page_index = clampi(intro_page_index, 0, intro_pages.size() - 1)
+	var page := intro_pages[intro_page_index]
+	_show_dialogue_page(
+		str(page.get("text", "")),
+		str(page.get("speaker", "")),
+		bool(page.get("is_narration", true)),
+		true,
+		force
+	)
 
 
 func _show_dialogue_page(
@@ -651,7 +681,7 @@ func _local_personal_result_pages() -> Array[Dictionary]:
 
 func _result_requires_ack() -> bool:
 	if (
-		rendered_encounter_id != RogueEncounterRegistry.FLUORESCENT_PIT
+		not RogueEncounterRegistry.requires_result_ack(rendered_encounter_id)
 		or rendered_result_sequence <= 0
 	):
 		return false
@@ -668,6 +698,8 @@ func _reset_result_pages() -> void:
 func _bind_encounter_content(encounter_id: StringName) -> void:
 	rendered_encounter_id = encounter_id
 	encounter_config = RogueEncounterRegistry.get_encounter_config(encounter_id)
+	intro_pages = RogueEncounterRegistry.get_intro_pages(encounter_id)
+	intro_page_index = 0
 	if encounter_config.is_empty():
 		actor_portrait.texture = null
 		actor_name.text = "神秘来客"
@@ -683,6 +715,45 @@ func _bind_encounter_content(encounter_id: StringName) -> void:
 	encounter_hint.text = str(encounter_config.get("encounter_hint", ""))
 	encounter_hint.visible = not encounter_hint.text.is_empty()
 	name_plate.visible = not actor_name.text.is_empty()
+
+
+func _result_presentation_is_immediate() -> bool:
+	var economy_result := state.get("economy_result", {}) as Dictionary
+	return StringName(economy_result.get("result_presentation", &"")) == (
+		RogueEncounterEconomyCoordinator.RESULT_PRESENTATION_IMMEDIATE
+	)
+
+
+func _show_immediate_result_completion() -> void:
+	_stop_option_tween()
+	intro_page.visible = false
+	options_page.visible = false
+	typewriter.clear()
+	if (
+		occurrence_key.is_empty()
+		or last_immediate_completion_occurrence_key == occurrence_key
+	):
+		return
+	last_immediate_completion_occurrence_key = occurrence_key
+	call_deferred(
+		&"_emit_immediate_result_completion",
+		occurrence_key,
+		expected_revision
+	)
+
+
+func _emit_immediate_result_completion(
+	expected_occurrence_key: String,
+	completion_revision: int
+) -> void:
+	if (
+		not visible
+		or occurrence_key != expected_occurrence_key
+		or rendered_phase != PHASE_COMPLETED
+		or not _result_presentation_is_immediate()
+	):
+		return
+	result_hold_completed.emit(expected_occurrence_key, completion_revision)
 
 
 func _load_texture(resource_path: String) -> Texture2D:
