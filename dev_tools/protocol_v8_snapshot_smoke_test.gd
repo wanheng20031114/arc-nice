@@ -246,10 +246,10 @@ func _run() -> void:
 
 
 func _test_channel_contract() -> void:
-	_expect(NetConstants.PROTOCOL_VERSION == 55, "Protocol must be v55.")
+	_expect(NetConstants.PROTOCOL_VERSION == 56, "Protocol must be v56.")
 	_expect(
 		Enemy.NETWORK_VISUAL_STATUS_MASK == 0x7f,
-		"Protocol v55 must retain the scene-specific v45 bits 5..6 for shield stages and ninja boost."
+		"Protocol v56 must retain the scene-specific v45 bits 5..6 for shield stages and ninja boost."
 	)
 	_expect(
 		NetConstants.NETWORK_COMBAT_VALUE_MIN == 0
@@ -267,7 +267,7 @@ func _test_channel_contract() -> void:
 		and NetConstants.CH_WORLD_EVENT == 5
 		and NetConstants.CH_TRANSACTION == 6
 		and NetConstants.CH_FEEDBACK == 7,
-		"Protocol v55 channel assignments must remain stable."
+		"Protocol v56 channel assignments must remain stable."
 	)
 
 
@@ -360,7 +360,7 @@ func _test_v25_high_value_player_snapshot_contract() -> void:
 	var full_packet := SnapshotManager.new().encode_all_player_snapshots(full_roster)
 	_expect(
 		full_packet.size() == 561,
-		"Eight full v55 player snapshots must use exactly 561 bytes. actual=%d"
+		"Eight full v56 player snapshots must use exactly 561 bytes. actual=%d"
 		% full_packet.size()
 	)
 

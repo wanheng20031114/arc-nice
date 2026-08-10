@@ -13,16 +13,33 @@ const FORMAL_CONFIG := preload(
 const COMBAT_ROBOT_CONFIG_PATH := (
 	"res://resources/config/enemies/combat_robot.tres"
 )
+const COMBAT_ROBOT_DRONE_OPERATOR_CONFIG_PATH := (
+	"res://resources/config/enemies/combat_robot_drone_operator.tres"
+)
+const COMBAT_ROBOT_GUNNER_CONFIG_PATH := (
+	"res://resources/config/enemies/combat_robot_gunner.tres"
+)
 const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
 const STATE_IN_GAME := NetManagerStore.ConnectionState.IN_GAME
 const PLAYER_COUNT := 2
 const ROUTE_SEED_SEARCH_LIMIT := 4096
 const NETWORK_TIMEOUT_SECONDS := 30.0
-const COMBAT_TIMEOUT_SECONDS := 35.0
-const EXPECTED_ENEMY_COUNT := 10
-const EXPECTED_KILL_XIRANG := 100
+const COMBAT_TIMEOUT_SECONDS := 55.0
+const EXPECTED_ENEMY_COUNT := 22
+const EXPECTED_MAX_ALIVE_ENEMIES := 10
+const EXPECTED_SPAWN_INTERVAL_MSEC := 300
+const SPAWN_INTERVAL_SCHEDULING_TOLERANCE_MSEC := 75
+const EXPECTED_SPAWN_BATCH_TARGETS: Array[int] = [10, 20, 22]
+const EXPECTED_CONFIG_COUNTS := {
+	COMBAT_ROBOT_CONFIG_PATH: 10,
+	COMBAT_ROBOT_DRONE_OPERATOR_CONFIG_PATH: 4,
+	COMBAT_ROBOT_GUNNER_CONFIG_PATH: 8,
+}
+const EXPECTED_KILL_XIRANG := 220
 const EXPECTED_EXTRA_XIRANG := 500
-const EXPECTED_TOTAL_XIRANG_DELTA := 600
+const EXPECTED_TOTAL_XIRANG_DELTA := (
+	EXPECTED_KILL_XIRANG + EXPECTED_EXTRA_XIRANG
+)
 
 var failures: Array[String] = []
 var sync_dir := ""
@@ -30,6 +47,8 @@ var host_spawn_ids: Array[int] = []
 var host_spawn_positions: Array[Vector2] = []
 var host_spawn_config_paths: PackedStringArray = []
 var host_spawn_ticks: PackedInt64Array = []
+var watched_host_game: RogueCombatGame = null
+var host_peak_alive_count := 0
 var watched_coordinator: RogueCombatMultiplayerCoordinator = null
 var watched_result_overlay: RogueCombatResultOverlay = null
 var watched_settlement: Dictionary = {}
@@ -253,56 +272,59 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	if gameplay_gateway == null:
 		_fail("Host combat runtime is missing MultiplayerGameplayGateway")
 		return
+	watched_host_game = game
 	if not gameplay_gateway.enemy_spawned.is_connected(_on_host_enemy_spawned):
 		gameplay_gateway.enemy_spawned.connect(_on_host_enemy_spawned)
-	if not await _wait_until(
-		func() -> bool:
-			return (
-				game.current_wave_spawned == EXPECTED_ENEMY_COUNT
-				and game.multiplayer_enemies_by_net_id.size()
-				== EXPECTED_ENEMY_COUNT
-				and host_spawn_ids.size() == EXPECTED_ENEMY_COUNT
-			),
-		COMBAT_TIMEOUT_SECONDS
-	):
-		_fail(
-			"Host did not spawn the full robot batch: wave=%d network=%d signals=%d"
-			% [
-				game.current_wave_spawned,
-				game.multiplayer_enemies_by_net_id.size(),
-				host_spawn_ids.size(),
-			]
+	var previous_spawn_count := 0
+	for target_count in EXPECTED_SPAWN_BATCH_TARGETS:
+		var expected_active_count := mini(
+			EXPECTED_MAX_ALIVE_ENEMIES,
+			EXPECTED_ENEMY_COUNT - previous_spawn_count
 		)
-		return
-	if not _validate_host_spawn_batch(game):
-		return
-	_freeze_host_enemies(game)
-	var sorted_spawn_ids := host_spawn_ids.duplicate()
-	sorted_spawn_ids.sort()
-	var batch_msec := _get_spawn_batch_duration_msec()
-	if not _write_marker("host_spawn.json", JSON.stringify({
-		"occurrence_key": occurrence_key,
-		"enemy_ids": sorted_spawn_ids,
-		"batch_msec": batch_msec,
-	})):
+		if not await _wait_for_host_spawn_target(
+			game,
+			target_count,
+			expected_active_count,
+			COMBAT_TIMEOUT_SECONDS
+		):
+			return
+		_freeze_host_enemies(game)
+		var batch_ids: Array[int] = []
+		for spawn_index in range(previous_spawn_count, target_count):
+			batch_ids.append(host_spawn_ids[spawn_index])
+		var cumulative_ids := host_spawn_ids.duplicate()
+		cumulative_ids.sort()
+		var marker_name := _host_spawn_marker_name(target_count)
+		if not _write_marker(marker_name, JSON.stringify({
+			"occurrence_key": occurrence_key,
+			"target_count": target_count,
+			"batch_ids": batch_ids,
+			"all_enemy_ids": cumulative_ids,
+			"spawn_ticks": Array(host_spawn_ticks),
+			"spawn_positions": _vector2_array_to_json(host_spawn_positions),
+		})):
+			return
+		if not await _wait_for_marker(
+			_client_spawn_ready_marker_name(target_count),
+			NETWORK_TIMEOUT_SECONDS
+		):
+			_fail(
+				"Host timed out waiting for Client spawn batch %d confirmation"
+				% target_count
+			)
+			return
+		if not await _defeat_host_enemy_batch(game, batch_ids):
+			return
+		previous_spawn_count = target_count
+	if not _validate_host_spawn_contract(game):
 		return
 	print(
-		"ROGUE_COMBAT_LAN_HOST_SPAWN occurrence=%s count=10 batch_ms=%d"
-		% [occurrence_key, batch_msec]
+		(
+			"ROGUE_COMBAT_LAN_HOST_SPAWN occurrence=%s count=22 "
+			+ "types=10/4/8 max_alive=10 interval_ms=%d"
+		)
+		% [occurrence_key, _get_minimum_adjacent_spawn_interval_msec()]
 	)
-	if not await _wait_for_marker("client_spawn_ready", NETWORK_TIMEOUT_SECONDS):
-		_fail("Host timed out waiting for Client's ten synchronized robots")
-		return
-
-	for enemy_id in sorted_spawn_ids:
-		var enemy := game.get_enemy_for_net_id(enemy_id) as Enemy
-		if enemy == null or not is_instance_valid(enemy):
-			_fail("Host robot disappeared before authoritative defeat: %d" % enemy_id)
-			continue
-		if not enemy.apply_damage(99999, Vector2.ZERO, EnemyConfig.DamageType.PHYSICAL, false):
-			_fail("Host could not apply lethal damage to robot %d" % enemy_id)
-	if not failures.is_empty():
-		return
 	if not await _wait_until(
 		func() -> bool:
 			return (
@@ -541,53 +563,89 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	)
 	if expected_loot.size() != PLAYER_COUNT:
 		return
-	var spawn_marker := await _wait_for_json_marker(
-		"host_spawn.json",
-		COMBAT_TIMEOUT_SECONDS
-	)
-	if spawn_marker.is_empty():
-		return
-	var host_ids := _variant_array_to_sorted_ints(
-		spawn_marker.get("enemy_ids", []) as Array
-	)
-	if host_ids.size() != EXPECTED_ENEMY_COUNT:
-		_fail("Host spawn marker did not contain ten network enemy IDs")
-		return
-	if not await _wait_until(
-		func() -> bool:
-			return game.multiplayer_enemies_by_net_id.size() == EXPECTED_ENEMY_COUNT,
-		NETWORK_TIMEOUT_SECONDS
-	):
-		_fail(
-			"Client did not materialize ten robot proxies; saw %d"
-			% game.multiplayer_enemies_by_net_id.size()
+	var observed_ids: Dictionary[int, bool] = {}
+	var observed_config_counts: Dictionary[String, int] = {}
+	var observed_door_counts: Array[int] = [0, 0, 0]
+	var final_host_ids: Array[int] = []
+	var final_host_spawn_ticks: PackedInt64Array = []
+	var final_host_spawn_positions: Array[Vector2] = []
+	for target_count in EXPECTED_SPAWN_BATCH_TARGETS:
+		var spawn_marker := await _wait_for_json_marker(
+			_host_spawn_marker_name(target_count),
+			COMBAT_TIMEOUT_SECONDS
 		)
-		return
-	var client_ids: Array[int] = []
-	for peer_id_variant in game.multiplayer_enemies_by_net_id.keys():
-		client_ids.append(int(peer_id_variant))
-	client_ids.sort()
-	if client_ids != host_ids:
-		_fail("Client network enemy IDs differ from Host's batch")
-		return
-	for enemy_id in client_ids:
-		var enemy := game.get_enemy_for_net_id(enemy_id) as Enemy
+		if spawn_marker.is_empty():
+			return
 		if (
-			enemy == null
-			or not is_instance_valid(enemy)
-			or not enemy.is_multiplayer_proxy
-			or enemy.config == null
-			or enemy.config.resource_path != COMBAT_ROBOT_CONFIG_PATH
+			str(spawn_marker.get("occurrence_key", "")) != occurrence_key
+			or int(spawn_marker.get("target_count", -1)) != target_count
 		):
-			_fail("Client enemy %d is not a synchronized combat robot proxy" % enemy_id)
-	if not failures.is_empty():
+			_fail("Host spawn marker %d describes the wrong occurrence" % target_count)
+			return
+		var batch_ids := _variant_array_to_sorted_ints(
+			spawn_marker.get("batch_ids", []) as Array
+		)
+		var expected_batch_size := mini(
+			EXPECTED_MAX_ALIVE_ENEMIES,
+			EXPECTED_ENEMY_COUNT - observed_ids.size()
+		)
+		if batch_ids.size() != expected_batch_size:
+			_fail(
+				"Host spawn marker %d has wrong batch size: %d"
+				% [target_count, batch_ids.size()]
+			)
+			return
+		if not await _wait_for_client_enemy_batch(game, batch_ids):
+			return
+		for enemy_id in batch_ids:
+			if observed_ids.has(enemy_id):
+				_fail("Client observed duplicate network enemy ID %d" % enemy_id)
+				continue
+			var enemy := game.get_enemy_for_net_id(enemy_id) as Enemy
+			if not _record_client_enemy_contract(
+				enemy_id,
+				enemy,
+				observed_config_counts
+			):
+				continue
+			observed_ids[enemy_id] = true
+		if not failures.is_empty():
+			return
+		final_host_ids = _variant_array_to_sorted_ints(
+			spawn_marker.get("all_enemy_ids", []) as Array
+		)
+		final_host_spawn_ticks = _variant_array_to_packed_int64(
+			spawn_marker.get("spawn_ticks", []) as Array
+		)
+		final_host_spawn_positions = _variant_array_to_vector2s(
+			spawn_marker.get("spawn_positions", []) as Array
+		)
+		if not _write_marker(
+			_client_spawn_ready_marker_name(target_count),
+			"ok"
+		):
+			return
+	if not _validate_client_spawn_contract(
+		observed_ids,
+		observed_config_counts,
+		observed_door_counts,
+		final_host_ids,
+		final_host_spawn_ticks,
+		final_host_spawn_positions,
+		game
+	):
 		return
 	print(
-		"ROGUE_COMBAT_LAN_CLIENT_SPAWN occurrence=%s count=10 ids_match=true"
-		% occurrence_key
+		(
+			"ROGUE_COMBAT_LAN_CLIENT_SPAWN occurrence=%s count=22 "
+			+ "types=10/4/8 doors=%s ids_match=true interval_ms=%d"
+		)
+		% [
+			occurrence_key,
+			observed_door_counts,
+			_get_minimum_interval_from_ticks(final_host_spawn_ticks),
+		]
 	)
-	if not _write_marker("client_spawn_ready", "ok"):
-		return
 
 	var settlement := await _wait_for_settlement_and_result(
 		coordinator,
@@ -737,22 +795,130 @@ func _on_host_enemy_spawned(
 		enemy_config.resource_path if enemy_config != null else ""
 	)
 	host_spawn_ticks.append(Time.get_ticks_msec())
+	if watched_host_game != null and is_instance_valid(watched_host_game):
+		host_peak_alive_count = maxi(
+			host_peak_alive_count,
+			watched_host_game.multiplayer_enemies_by_net_id.size()
+		)
+		if host_peak_alive_count > EXPECTED_MAX_ALIVE_ENEMIES:
+			_fail(
+				"Host exceeded the configured ten-enemy alive cap: %d"
+				% host_peak_alive_count
+			)
 
 
-func _validate_host_spawn_batch(game: RogueCombatGame) -> bool:
+func _wait_for_host_spawn_target(
+	game: RogueCombatGame,
+	target_count: int,
+	expected_active_count: int,
+	timeout_seconds: float
+) -> bool:
+	var deadline := Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		_freeze_host_enemies(game)
+		var active_count := game.multiplayer_enemies_by_net_id.size()
+		if active_count > EXPECTED_MAX_ALIVE_ENEMIES:
+			_fail(
+				"Host exceeded the configured ten-enemy alive cap: %d"
+				% active_count
+			)
+			return false
+		if (
+			game.current_wave_spawned == target_count
+			and host_spawn_ids.size() == target_count
+			and active_count == expected_active_count
+		):
+			return true
+		await process_frame
+	_fail(
+		(
+			"Host did not reach spawn target %d: wave=%d network=%d "
+			+ "signals=%d defeated=%d"
+		)
+		% [
+			target_count,
+			game.current_wave_spawned,
+			game.multiplayer_enemies_by_net_id.size(),
+			host_spawn_ids.size(),
+			game.current_wave_defeated,
+		]
+	)
+	return false
+
+
+func _defeat_host_enemy_batch(
+	game: RogueCombatGame,
+	batch_ids: Array[int]
+) -> bool:
+	for enemy_id in batch_ids:
+		var enemy := game.get_enemy_for_net_id(enemy_id) as Enemy
+		if enemy == null or not is_instance_valid(enemy):
+			_fail("Host robot disappeared before authoritative defeat: %d" % enemy_id)
+			continue
+		if not enemy.apply_damage(
+			99999,
+			Vector2.ZERO,
+			EnemyConfig.DamageType.PHYSICAL,
+			false
+		):
+			_fail("Host could not apply lethal damage to robot %d" % enemy_id)
+			continue
+		if enemy.has_method("_finish_after_death_animation"):
+			enemy.call_deferred("_finish_after_death_animation")
+	if not failures.is_empty():
+		return false
+	if not await _wait_until(
+		func() -> bool:
+			for enemy_id in batch_ids:
+				if game.get_enemy_for_net_id(enemy_id) != null:
+					return false
+			return true,
+		12.0
+	):
+		_fail("Host authoritative defeated batch did not leave the network roster")
+		return false
+	return true
+
+
+func _validate_host_spawn_contract(game: RogueCombatGame) -> bool:
 	if game.current_wave_total != EXPECTED_ENEMY_COUNT:
-		_fail("Host formal wave total is not ten")
+		_fail("Host formal wave total is not twenty-two")
 		return false
 	if host_spawn_ids.size() != _unique_int_count(host_spawn_ids):
-		_fail("Host spawn batch contains duplicate network IDs")
+		_fail("Host spawn sequence contains duplicate network IDs")
 		return false
+	if host_spawn_ids.size() != EXPECTED_ENEMY_COUNT:
+		_fail("Host did not emit all twenty-two network enemy IDs")
+		return false
+	var wave := game.current_flow_step as WaveConfig
+	if (
+		wave == null
+		or not is_equal_approx(wave.spawn_interval, 0.3)
+		or wave.spawn_count_per_tick != 1
+		or wave.max_alive_enemies != EXPECTED_MAX_ALIVE_ENEMIES
+		or wave.spawn_point_order
+		!= WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
+	):
+		_fail("Host formal wave does not use 0.3s/one/ten/balanced spawn policy")
+		return false
+	if host_peak_alive_count != EXPECTED_MAX_ALIVE_ENEMIES:
+		_fail(
+			"Host peak alive count must reach but never exceed ten: %d"
+			% host_peak_alive_count
+		)
+		return false
+	var config_counts: Dictionary[String, int] = {}
 	for config_path in host_spawn_config_paths:
-		if config_path != COMBAT_ROBOT_CONFIG_PATH:
+		if not EXPECTED_CONFIG_COUNTS.has(config_path):
 			_fail(
-				"Host spawn used a non-serializable/non-robot config path: %s"
+				"Host spawn used an unexpected/non-serializable config path: %s"
 				% config_path
 			)
 			return false
+		config_counts[config_path] = config_counts.get(config_path, 0) + 1
+	if not _config_counts_match_expected(config_counts):
+		_fail("Host enemy composition is not 10 combat / 4 drone / 8 gunner")
+		return false
 	var door_positions: Array[Vector2] = []
 	for marker in game.active_wave_spawn_points:
 		if marker != null and is_instance_valid(marker):
@@ -760,17 +926,30 @@ func _validate_host_spawn_batch(game: RogueCombatGame) -> bool:
 	if door_positions.size() != 3:
 		_fail("Host formal wave did not activate all three red doors")
 		return false
+	var door_counts: Array[int] = [0, 0, 0]
 	for spawn_position in host_spawn_positions:
-		var found_door := false
-		for door_position in door_positions:
+		var found_door_index := -1
+		for door_index in range(door_positions.size()):
+			var door_position := door_positions[door_index]
 			if spawn_position.distance_to(door_position) <= 0.1:
-				found_door = true
+				found_door_index = door_index
 				break
-		if not found_door:
+		if found_door_index < 0:
 			_fail("Host robot did not originate at an active red door")
 			return false
-	if _get_spawn_batch_duration_msec() > 50:
-		_fail("Ten robots were not emitted in one spawn batch")
+		door_counts[found_door_index] += 1
+	if _int_count_spread(door_counts) > 1:
+		_fail("Host red-door spawn distribution is not balanced: %s" % [door_counts])
+		return false
+	var minimum_interval := _get_minimum_adjacent_spawn_interval_msec()
+	if minimum_interval < (
+		EXPECTED_SPAWN_INTERVAL_MSEC
+		- SPAWN_INTERVAL_SCHEDULING_TOLERANCE_MSEC
+	):
+		_fail(
+			"Host spawned adjacent enemies too quickly: %d ms"
+			% minimum_interval
+		)
 		return false
 	return true
 
@@ -784,15 +963,178 @@ func _freeze_host_enemies(game: RogueCombatGame) -> void:
 		enemy.set_physics_process(false)
 
 
-func _get_spawn_batch_duration_msec() -> int:
-	if host_spawn_ticks.is_empty():
+func _get_minimum_adjacent_spawn_interval_msec() -> int:
+	return _get_minimum_interval_from_ticks(host_spawn_ticks)
+
+
+func _get_minimum_interval_from_ticks(ticks: PackedInt64Array) -> int:
+	if ticks.size() < 2:
 		return -1
-	var minimum_tick := int(host_spawn_ticks[0])
-	var maximum_tick := minimum_tick
-	for tick in host_spawn_ticks:
-		minimum_tick = mini(minimum_tick, int(tick))
-		maximum_tick = maxi(maximum_tick, int(tick))
-	return maximum_tick - minimum_tick
+	var minimum_interval := 2147483647
+	for index in range(1, ticks.size()):
+		minimum_interval = mini(
+			minimum_interval,
+			int(ticks[index] - ticks[index - 1])
+		)
+	return minimum_interval
+
+
+func _wait_for_client_enemy_batch(
+	game: RogueCombatGame,
+	batch_ids: Array[int]
+) -> bool:
+	var ready := await _wait_until(
+		func() -> bool:
+			if (
+				game.multiplayer_enemies_by_net_id.size()
+				> EXPECTED_MAX_ALIVE_ENEMIES
+			):
+				return false
+			for enemy_id in batch_ids:
+				var enemy := game.get_enemy_for_net_id(enemy_id) as Enemy
+				if (
+					enemy == null
+					or not is_instance_valid(enemy)
+					or not enemy.is_multiplayer_proxy
+					or enemy.config == null
+				):
+					return false
+			return true,
+		NETWORK_TIMEOUT_SECONDS
+	)
+	if not ready:
+		_fail(
+			"Client did not materialize synchronized proxy batch: %s"
+			% [batch_ids]
+		)
+		return false
+	if game.multiplayer_enemies_by_net_id.size() > EXPECTED_MAX_ALIVE_ENEMIES:
+		_fail("Client observed more than ten simultaneous enemy proxies")
+		return false
+	return true
+
+
+func _record_client_enemy_contract(
+	enemy_id: int,
+	enemy: Enemy,
+	config_counts: Dictionary[String, int]
+) -> bool:
+	if (
+		enemy == null
+		or not is_instance_valid(enemy)
+		or not enemy.is_multiplayer_proxy
+		or enemy.config == null
+	):
+		_fail("Client enemy %d is not a synchronized proxy" % enemy_id)
+		return false
+	var config_path := enemy.config.resource_path
+	if not EXPECTED_CONFIG_COUNTS.has(config_path):
+		_fail(
+			"Client enemy %d used unexpected config path %s"
+			% [enemy_id, config_path]
+		)
+		return false
+	config_counts[config_path] = config_counts.get(config_path, 0) + 1
+	return true
+
+
+func _validate_client_spawn_contract(
+	observed_ids: Dictionary[int, bool],
+	config_counts: Dictionary[String, int],
+	door_counts: Array[int],
+	host_ids: Array[int],
+	host_spawn_ticks: PackedInt64Array,
+	host_spawn_positions: Array[Vector2],
+	game: RogueCombatGame
+) -> bool:
+	if observed_ids.size() != EXPECTED_ENEMY_COUNT:
+		_fail("Client did not observe twenty-two unique network enemy IDs")
+		return false
+	var client_ids: Array[int] = []
+	for enemy_id in observed_ids.keys():
+		client_ids.append(enemy_id)
+	client_ids.sort()
+	if (
+		host_ids.size() != EXPECTED_ENEMY_COUNT
+		or host_ids.size() != _unique_int_count(host_ids)
+		or client_ids != host_ids
+	):
+		_fail("Client cumulative enemy IDs differ from Host's twenty-two IDs")
+		return false
+	if not _config_counts_match_expected(config_counts):
+		_fail("Client enemy composition is not 10 combat / 4 drone / 8 gunner")
+		return false
+	if host_spawn_positions.size() != EXPECTED_ENEMY_COUNT:
+		_fail("Client did not receive twenty-two authoritative spawn positions")
+		return false
+	var client_door_positions := _get_authored_red_door_positions(game)
+	if client_door_positions.size() != 3:
+		_fail("Client formal wave did not activate all three red doors")
+		return false
+	for spawn_position in host_spawn_positions:
+		var found_door_index := -1
+		for door_index in range(client_door_positions.size()):
+			if spawn_position.distance_to(client_door_positions[door_index]) <= 0.1:
+				found_door_index = door_index
+				break
+		if found_door_index < 0:
+			_fail("Client received a spawn outside all active red doors")
+			return false
+		door_counts[found_door_index] += 1
+	if door_counts.size() != 3 or _int_count_spread(door_counts) > 1:
+		_fail("Client red-door spawn distribution is not balanced: %s" % [door_counts])
+		return false
+	if host_spawn_ticks.size() != EXPECTED_ENEMY_COUNT:
+		_fail("Client did not receive twenty-two authoritative spawn timestamps")
+		return false
+	var minimum_interval := _get_minimum_interval_from_ticks(host_spawn_ticks)
+	if minimum_interval < (
+		EXPECTED_SPAWN_INTERVAL_MSEC
+		- SPAWN_INTERVAL_SCHEDULING_TOLERANCE_MSEC
+	):
+		_fail(
+			"Client found adjacent authoritative spawns too close: %d ms"
+			% minimum_interval
+		)
+		return false
+	return true
+
+
+func _config_counts_match_expected(counts: Dictionary[String, int]) -> bool:
+	if counts.size() != EXPECTED_CONFIG_COUNTS.size():
+		return false
+	for config_path in EXPECTED_CONFIG_COUNTS:
+		if int(counts.get(config_path, 0)) != int(
+			EXPECTED_CONFIG_COUNTS[config_path]
+		):
+			return false
+	return true
+
+
+func _int_count_spread(counts: Array[int]) -> int:
+	if counts.is_empty():
+		return 0
+	return int(counts.max()) - int(counts.min())
+
+
+func _get_authored_red_door_positions(game: RogueCombatGame) -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	var spawn_root := game.get_node_or_null("EnemySpawnPoints") as Node2D
+	if spawn_root == null:
+		return result
+	for spawn_name in [&"Spawn1", &"Spawn2", &"Spawn3"]:
+		var marker := spawn_root.get_node_or_null(NodePath(String(spawn_name))) as Marker2D
+		if marker != null:
+			result.append(marker.global_position)
+	return result
+
+
+func _host_spawn_marker_name(target_count: int) -> String:
+	return "host_spawn_%d.json" % target_count
+
+
+func _client_spawn_ready_marker_name(target_count: int) -> String:
+	return "client_spawn_%d_ready" % target_count
 
 
 func _capture_expected_loot(
@@ -974,7 +1316,7 @@ func _validate_victory_settlement(
 		var route_player := route.get_player_for_peer(peer_id) as Player
 		if int(final_xirang.get(peer_id, -1)) != expected_final_xirang:
 			_fail(
-				"%s peer %d did not receive 100 kill + 500 extra Xirang"
+				"%s peer %d did not receive 220 kill + 500 extra Xirang"
 				% [label, peer_id]
 			)
 		if route_player == null or route_player.get_xirang() != expected_final_xirang:
@@ -1053,6 +1395,31 @@ func _variant_array_to_sorted_ints(values: Array) -> Array[int]:
 	for value in values:
 		result.append(int(value))
 	result.sort()
+	return result
+
+
+func _variant_array_to_packed_int64(values: Array) -> PackedInt64Array:
+	var result := PackedInt64Array()
+	for value in values:
+		result.append(int(value))
+	return result
+
+
+func _vector2_array_to_json(values: Array[Vector2]) -> Array:
+	var result := []
+	for value in values:
+		result.append([value.x, value.y])
+	return result
+
+
+func _variant_array_to_vector2s(values: Array) -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	for value_variant in values:
+		var components := value_variant as Array
+		if components.size() != 2:
+			_fail("Spawn marker contains an invalid Vector2 encoding")
+			continue
+		result.append(Vector2(float(components[0]), float(components[1])))
 	return result
 
 

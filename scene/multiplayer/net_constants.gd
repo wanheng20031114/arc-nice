@@ -75,7 +75,10 @@ extends RefCounted
 ## v55：肉鸽“稀有宝箱”节点新增逐玩家私有候选、永久属性奖励与
 ## 共享状态账本 CAS；完整路线快照按目标 peer 导出私有候选与结算记录。
 ## RPC 表面与 8 个 ENet 通道不变；v54 客户端缺少 rare-chest schema 与运行合同。
-const PROTOCOL_VERSION := 55
+## v56：肉鸽“狭路相逢”作战将敌人组成、生成节奏、同时存活上限与红门
+## 均衡随机策略统一收归波次资源，并将完整波次内容纳入运行时合同。
+## RPC 表面与 8 个 ENet 通道不变；v55 客户端缺少新的资源与合同语义。
+const PROTOCOL_VERSION := 56
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

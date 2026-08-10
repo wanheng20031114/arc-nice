@@ -5,11 +5,16 @@
 
 [resource]
 script = ExtResource("1_config_script")
+encounter_id = &"narrow_road_01"
+event_title = "狭路相逢"
+objective_text = "击败全部战斗机器人"
+combat_scene_path = "res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 campaign = ExtResource("2_campaign")
+preparation_seconds = 3
+combat_limit_seconds = 90
+extra_xirang = 500
 decisions_confirmed = true
 deadline_start = 2
-spawn_point_mask = 7
-spawn_count_per_tick = 10
 keep_enemy_kill_xirang = 2
 filter_loot_by_character = 2
 reward_dead_players_on_victory = 2

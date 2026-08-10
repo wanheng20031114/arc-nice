@@ -2,7 +2,7 @@
 extends Resource
 class_name RogueRouteFloorDefinition
 
-const RUNTIME_CONTRACT_SCHEMA := 3
+const RUNTIME_CONTRACT_SCHEMA := 4
 const CONTENT_CONTRACT_SCHEMA := 2
 
 @export var floor_id: StringName = &""
@@ -127,35 +127,9 @@ func compute_content_contract_hash() -> String:
 
 func _compute_default_combat_runtime_contract_hash() -> String:
 	var config := default_combat_config
-	if config == null or config.campaign == null:
+	if config == null:
 		return ""
-	return "\n".join(PackedStringArray([
-		"schema=1",
-		"config_path=%s" % _resource_path(config),
-		"encounter_id=%s" % String(config.encounter_id),
-		"combat_scene=%s" % config.combat_scene_path,
-		"campaign_path=%s" % _resource_path(config.campaign),
-		"campaign_id=%s" % String(config.campaign.campaign_id),
-		"preparation=%d" % config.preparation_seconds,
-		"limit=%d" % config.combat_limit_seconds,
-		"enemy_count=%d" % config.enemy_count,
-		"extra_xirang=%d" % config.extra_xirang,
-		"decisions_confirmed=%d" % int(config.decisions_confirmed),
-		"deadline_start=%d" % int(config.deadline_start),
-		"spawn=%d,%d" % [config.spawn_point_mask, config.spawn_count_per_tick],
-		"decisions=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d" % [
-			int(config.keep_enemy_kill_xirang),
-			int(config.filter_loot_by_character),
-			int(config.reward_dead_players_on_victory),
-			int(config.return_to_route_before_result),
-			int(config.show_failure_result),
-			int(config.consume_node_on_failure),
-			int(config.enemy_pickup_drops),
-			int(config.inherit_route_xirang),
-			int(config.support_singleplayer),
-			int(config.support_multiplayer),
-		],
-	])).sha256_text()
+	return config.compute_runtime_contract_hash()
 
 
 func _has_contract_inputs() -> bool:

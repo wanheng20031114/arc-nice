@@ -621,7 +621,7 @@ func _configure_occurrence_runtime() -> bool:
 	if _combat_game == null or _combat_game.current_flow_step != null:
 		return false
 	var scene_contract_errors := _combat_game.validate_encounter_scene_contract(
-		encounter_config.spawn_point_mask
+		encounter_config.get_spawn_point_mask()
 	)
 	if not scene_contract_errors.is_empty():
 		for error in scene_contract_errors:
@@ -640,7 +640,6 @@ func _configure_occurrence_runtime() -> bool:
 	_combat_game.active_campaign = campaign
 	_combat_game.flow_graph = campaign.flow_graph
 	_combat_game.waves.assign(campaign.get_waves())
-	_combat_game.bosses.clear()
 	_combat_game.event_title = encounter_config.event_title
 	_combat_game.pre_wave_duration = float(
 		encounter_config.preparation_seconds
@@ -2372,29 +2371,7 @@ func _make_unrewarded_victory_result(peer_id: int) -> Dictionary:
 static func _make_config_signature(
 	config: RogueCombatEncounterConfig
 ) -> String:
-	if config == null or config.campaign == null:
-		return ""
-	return "%s|%s|%s|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d" % [
-		String(config.encounter_id),
-		config.combat_scene_path,
-		String(config.campaign.campaign_id),
-		config.preparation_seconds,
-		config.combat_limit_seconds,
-		config.enemy_count,
-		config.extra_xirang,
-		int(config.deadline_start),
-		config.spawn_point_mask,
-		config.spawn_count_per_tick,
-		int(config.keep_enemy_kill_xirang),
-		int(config.filter_loot_by_character),
-		int(config.reward_dead_players_on_victory),
-		int(config.return_to_route_before_result),
-		int(config.show_failure_result),
-		int(config.consume_node_on_failure),
-		int(config.enemy_pickup_drops),
-		int(config.inherit_route_xirang),
-		int(config.support_multiplayer),
-	]
+	return config.compute_runtime_contract_hash() if config != null else ""
 
 
 static func _index_peer_ids(peer_ids: PackedInt32Array) -> Dictionary:

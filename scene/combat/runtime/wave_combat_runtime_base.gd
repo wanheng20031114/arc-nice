@@ -74,6 +74,7 @@ var waves: Array[WaveConfig] = []
 var enemy_spawn_points: Array[Marker2D] = []
 var enemy_spawn_points_by_name: Dictionary[StringName, Marker2D] = {}
 var active_wave_spawn_points: Array[Marker2D] = []
+var _balanced_spawn_point_bag: Array[Marker2D] = []
 var spawn_point_configuration_valid := true
 var pending_enemy_configs: Array[EnemyConfig] = []
 var pending_enemy_xirang_kill_rewards: Array[int] = []
@@ -468,6 +469,7 @@ func _collect_enemy_spawn_points() -> void:
 	enemy_spawn_points.clear()
 	enemy_spawn_points_by_name.clear()
 	active_wave_spawn_points.clear()
+	_balanced_spawn_point_bag.clear()
 	spawn_point_configuration_valid = true
 	for child in enemy_spawn_points_root.get_children():
 		var spawn_point := child as Marker2D
@@ -823,6 +825,7 @@ func _build_entry_round_robin_spawn_queue(wave_config: WaveConfig) -> void:
 
 func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
 	active_wave_spawn_points.clear()
+	_balanced_spawn_point_bag.clear()
 	var resolution := _inspect_wave_spawn_points(wave_config)
 	if not bool(resolution.get("valid", false)):
 		var error_message := str(resolution.get("error", ""))
@@ -1230,9 +1233,33 @@ func _get_current_wave() -> WaveConfig:
 func _pick_spawn_point() -> Marker2D:
 	if active_wave_spawn_points.is_empty():
 		return null
+	var wave_config := _get_current_wave()
+	if (
+		wave_config != null
+		and wave_config.spawn_point_order
+		== WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
+	):
+		return _pick_balanced_spawn_point()
 	return active_wave_spawn_points[
 		random_generator.randi_range(0, active_wave_spawn_points.size() - 1)
 	]
+
+
+func _pick_balanced_spawn_point() -> Marker2D:
+	if _balanced_spawn_point_bag.is_empty():
+		_refill_balanced_spawn_point_bag()
+	if _balanced_spawn_point_bag.is_empty():
+		return null
+	return _balanced_spawn_point_bag.pop_back()
+
+
+func _refill_balanced_spawn_point_bag() -> void:
+	_balanced_spawn_point_bag.assign(active_wave_spawn_points)
+	for source_index in range(_balanced_spawn_point_bag.size() - 1, 0, -1):
+		var target_index := random_generator.randi_range(0, source_index)
+		var temporary_point := _balanced_spawn_point_bag[source_index]
+		_balanced_spawn_point_bag[source_index] = _balanced_spawn_point_bag[target_index]
+		_balanced_spawn_point_bag[target_index] = temporary_point
 
 func _spawn_enemy_spawn_effect(spawn_global_position: Vector2) -> void:
 	if not try_reserve_enemy_spawn_effect(spawn_global_position):

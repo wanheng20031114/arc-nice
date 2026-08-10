@@ -7,6 +7,11 @@ enum SpawnOrder {
 	ENTRY_ROUND_ROBIN,
 }
 
+enum SpawnPointOrder {
+	UNIFORM_RANDOM,
+	BALANCED_SHUFFLE_BAG,
+}
+
 const SPAWN_POINT_1_MASK := 1 << 0
 const SPAWN_POINT_2_MASK := 1 << 1
 const SPAWN_POINT_3_MASK := 1 << 2
@@ -37,6 +42,7 @@ const SPAWN_POINT_NAMES: Array[StringName] = [
 @export_group("出生点")
 @export_flags("Spawn1", "Spawn2", "Spawn3", "Spawn4", "Spawn5", "Spawn6")
 var spawn_point_mask: int = STANDARD_SPAWN_POINT_MASK
+@export var spawn_point_order: SpawnPointOrder = SpawnPointOrder.UNIFORM_RANDOM
 
 @export_group("生成节奏")
 @export var spawn_order: SpawnOrder = SpawnOrder.SHUFFLED

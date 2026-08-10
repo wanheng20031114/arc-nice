@@ -109,7 +109,7 @@ func _test_codex_and_fate() -> void:
 
 
 func _test_protocol_attack_registry_and_pool_absence() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 55, "精英盾兵资源合同必须保留在协议v55中。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 56, "精英盾兵资源合同必须保留在协议v56中。")
 	_expect(
 		CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET == 18
 		and CombatAttackRegistry.encode_player_hit_source(

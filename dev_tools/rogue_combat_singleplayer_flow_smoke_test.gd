@@ -322,7 +322,7 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 	)
 	_expect(
 		_validate_battle_campaign(battle, -1, true),
-		"胜利夹具必须生成保留击杀息壤的一波十机器人 Campaign。"
+		"胜利夹具必须生成保留击杀息壤的一波22机器人 Campaign。"
 	)
 	var preparation_ready := await _wait_for_preparation(battle)
 	_expect(
@@ -342,23 +342,30 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 		battle.call("_on_state_timer_timeout")
 	_expect(
 		battle.wave_state == CombatFlowState.State.WAVE_ACTIVE
-		and battle.current_wave_spawned == 10
-		and battle.current_wave_total == 10
-		and battle.active_wave_enemy_ids.size() == 10
+		and battle.current_wave_spawned == 1
+		and battle.current_wave_total == 22
+		and battle.active_wave_enemy_ids.size() == 1
 		and bool(battle.get("_combat_deadline_started"))
 		and battle.combat_seconds_remaining == 90,
-		"三秒结束时必须同批生成10台机器人，并从此刻开始完整90秒计时。"
+		"三秒结束时必须生成首台机器人，并从此刻开始完整90秒计时。"
+	)
+	for _spawn_tick in 9:
+		battle.call("_on_enemy_spawn_timer_timeout")
+	_expect(
+		battle.current_wave_spawned == 10
+		and battle.active_wave_enemy_ids.size() == 10,
+		"逐个生成达到10名场上上限后必须暂停并保留后续队列。"
 	)
 	_expect_fixed_underground_night(battle, "ACTIVE 阶段")
 	_expect(
 		_validate_spawned_robots_at_red_doors(battle),
-		"10台机器人必须全部从三扇红门生成，轮转刷怪必须覆盖全部三门。"
+		"前10台机器人必须从三扇红门低方差随机生成并覆盖全部三门。"
 	)
 
 	var inventory_revision_before := run_state.inventory_revision
 	_expect(
-		_defeat_all_active_enemies(battle) == 10,
-		"正式战斗夹具必须实际击败刚生成的10台机器人。"
+		await _defeat_entire_authored_wave(battle) == 22,
+		"正式战斗夹具必须分批实际击败全部22台机器人。"
 	)
 	_expect(
 		await _wait_for_victory_presentation(route),
@@ -380,14 +387,14 @@ func _test_victory_reward_return_and_consumed_revisit() -> void:
 	var loot := result.get("loot", {}) as Dictionary
 	var loot_config := load(str(loot.get("config_path", ""))) as PickupConfig
 	_expect(
-		route.player.current_xirang == 921
+		route.player.current_xirang == 1041
 		and int(result.get("extra_xirang", -1)) == 500
 		and bool(loot.get("granted", false))
 		and loot_config != null
 		and loot_config.collectible_rarity
 		== PickupConfig.CollectibleRarity.COMMON
 		and run_state.inventory_revision == inventory_revision_before + 1,
-		"胜利必须保留100击杀息壤、额外发放500，并独立抽取一次普通收藏品。"
+		"胜利必须保留220击杀息壤、额外发放500，并独立抽取一次普通收藏品。"
 	)
 	_expect(
 		route.combat_result_overlay.visible
@@ -830,10 +837,6 @@ func _make_confirmed_config(overrides: Dictionary = {}) -> RogueCombatEncounterC
 	var result := BASE_ENCOUNTER_CONFIG.duplicate(true) as RogueCombatEncounterConfig
 	result.decisions_confirmed = true
 	result.deadline_start = RogueCombatEncounterConfig.DeadlineStart.WAVE_START
-	result.spawn_point_mask = (
-		RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
-	)
-	result.spawn_count_per_tick = result.enemy_count
 	result.keep_enemy_kill_xirang = RogueCombatEncounterConfig.Decision.YES
 	result.filter_loot_by_character = RogueCombatEncounterConfig.Decision.YES
 	result.reward_dead_players_on_victory = RogueCombatEncounterConfig.Decision.YES
@@ -863,25 +866,31 @@ func _validate_battle_campaign(
 		return false
 	var wave := waves[0]
 	if (
-		wave.get_total_enemy_count() != 10
-		or wave.enemy_entries.size() != 1
+		wave.get_total_enemy_count() != 22
+		or wave.enemy_entries.size() != 3
 		or wave.spawn_point_mask
 		!= RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
-		or wave.spawn_count_per_tick != 10
-		or wave.max_alive_enemies < 10
+		or not is_equal_approx(wave.spawn_interval, 0.3)
+		or wave.spawn_count_per_tick != 1
+		or wave.max_alive_enemies != 10
+		or wave.spawn_point_order
+		!= WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
 	):
 		return false
-	var entry := wave.enemy_entries[0]
-	return (
-		entry != null
-		and entry.enemy_config != null
-		and entry.enemy_config.display_name == "战斗机器人"
-		and entry.enemy_config.xirang_kill_reward == 10
-		and not entry.enemy_config.resource_path.is_empty()
-		and entry.enemy_config.drop_table != null
-		and entry.xirang_kill_reward_override == expected_kill_reward_override
-		and battle.allows_enemy_pickup_drops() != expect_drop_disabled
-	)
+	var expected_counts: Array[int] = [10, 4, 8]
+	for entry_index in range(wave.enemy_entries.size()):
+		var entry := wave.enemy_entries[entry_index]
+		if (
+			entry == null
+			or entry.enemy_config == null
+			or entry.count != expected_counts[entry_index]
+			or entry.enemy_config.xirang_kill_reward != 10
+			or entry.enemy_config.resource_path.is_empty()
+			or entry.enemy_config.drop_table == null
+			or entry.xirang_kill_reward_override != expected_kill_reward_override
+		):
+			return false
+	return battle.allows_enemy_pickup_drops() != expect_drop_disabled
 
 
 func _validate_spawned_robots_at_red_doors(battle: RogueCombatGame) -> bool:
@@ -902,6 +911,27 @@ func _validate_spawned_robots_at_red_doors(battle: RogueCombatGame) -> bool:
 				used_spawn_points[spawn_point.name] = true
 				break
 	return matched_enemy_count == 10 and used_spawn_points.size() == 3
+
+
+func _defeat_entire_authored_wave(battle: RogueCombatGame) -> int:
+	var defeated_total := 0
+	while (
+		battle != null
+		and is_instance_valid(battle)
+		and battle.current_wave_defeated < battle.current_wave_total
+	):
+		while (
+			battle.pending_enemy_config_index < battle.pending_enemy_configs.size()
+			and battle.active_wave_enemy_ids.size() < 10
+		):
+			battle.call("_on_enemy_spawn_timer_timeout")
+		var defeated_batch := _defeat_all_active_enemies(battle)
+		if defeated_batch <= 0:
+			return defeated_total
+		defeated_total += defeated_batch
+		await process_frame
+		await process_frame
+	return defeated_total
 
 
 func _defeat_all_active_enemies(battle: RogueCombatGame) -> int:

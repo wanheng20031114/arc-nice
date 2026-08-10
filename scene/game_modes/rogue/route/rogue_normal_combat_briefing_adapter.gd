@@ -36,17 +36,14 @@ func build_model(
 	if not _can_build(node_config, current_action_points, move_action_cost):
 		return null
 
-	var wave := encounter_config.campaign.get_waves()[0]
-	var enemy_entry := wave.enemy_entries[0]
-	var enemy_name := enemy_entry.enemy_config.display_name.strip_edges()
 	var model := BRIEFING_MODEL_SCRIPT.new(
 		node_config.display_name,
 		encounter_config.event_title,
 		hero_visual,
 		node_config.icon,
-		"消灭全部%s" % enemy_name,
+		encounter_config.objective_text,
 		encounter_config.combat_limit_seconds,
-		encounter_config.enemy_count,
+		encounter_config.get_total_enemy_count(),
 		"额外 +%d 息壤 · %s" % [
 			encounter_config.extra_xirang,
 			COMMON_COLLECTIBLE_REWARD_TEXT,
@@ -77,11 +74,4 @@ func _can_build(
 	if waves.size() != 1:
 		return false
 	var wave := waves[0]
-	if wave == null or wave.enemy_entries.size() != 1:
-		return false
-	var enemy_entry := wave.enemy_entries[0]
-	return (
-		enemy_entry != null
-		and enemy_entry.enemy_config != null
-		and not enemy_entry.enemy_config.display_name.strip_edges().is_empty()
-	)
+	return wave != null and wave.get_total_enemy_count() > 0

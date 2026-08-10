@@ -55,6 +55,11 @@ func _test_definition_contract() -> void:
 		"楼层 runtime contract hash 必须是稳定的 64 位 SHA-256。"
 	)
 	_expect(
+		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 4
+		and RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 2,
+		"楼层与作战运行契约必须分别升级至 schema4/schema2。"
+	)
+	_expect(
 		content_hash.length() == 64
 		and content_hash == FLOOR.compute_content_contract_hash(),
 		"楼层 content contract hash 必须是稳定的 64 位 SHA-256。"
@@ -75,6 +80,20 @@ func _test_definition_contract() -> void:
 	_expect(
 		changed_runtime_floor.compute_runtime_contract_hash() != runtime_hash,
 		"生成规则变化必须改变楼层运行契约。"
+	)
+	var changed_combat_floor := FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
+	changed_combat_floor.default_combat_config = (
+		FLOOR.default_combat_config.duplicate(false) as RogueCombatEncounterConfig
+	)
+	changed_combat_floor.default_combat_config.campaign = (
+		FLOOR.default_combat_config.build_occurrence_campaign(
+			"combat:test:floor-contract"
+		)
+	)
+	changed_combat_floor.default_combat_config.campaign.get_waves()[0].max_alive_enemies = 9
+	_expect(
+		changed_combat_floor.compute_runtime_contract_hash() != runtime_hash,
+		"作战 Wave 的场上敌人上限变化必须传导至楼层运行契约。"
 	)
 	var mismatched_floor := FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
 	mismatched_floor.world_metrics = (

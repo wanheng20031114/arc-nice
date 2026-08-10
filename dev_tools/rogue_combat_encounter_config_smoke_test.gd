@@ -1,40 +1,34 @@
 extends SceneTree
 
-const ENCOUNTER_CONFIG := preload(
+const ENCOUNTER_CONFIG: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
 )
-const ENCOUNTER_CONFIG_SCRIPT := preload(
-	"res://resources/config/rogue_combat/rogue_combat_encounter_config.gd"
-)
-const ROGUE_CAMPAIGN := preload(
+const ROGUE_CAMPAIGN: WaveCampaignConfig = preload(
 	"res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres"
 )
 const ROGUE_COMBAT_MUSIC := preload(
 	"res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3"
 )
-const COMBAT_ROBOT := preload(
+const COMBAT_ROBOT: EnemyConfig = preload(
 	"res://resources/config/enemies/combat_robot.tres"
 )
-const COMBAT_ROBOT_ELITE_CONFIG_PATH := (
-	"res://resources/config/enemies/combat_robot_elite.tres"
+const DRONE_OPERATOR: EnemyConfig = preload(
+	"res://resources/config/enemies/combat_robot_drone_operator.tres"
 )
-const ROGUE_COMBAT_AUTHORED_RESOURCE_PATHS := [
-	"res://resources/config/rogue_combat/encounter_01.tres",
-	"res://resources/config/campaigns/rogue_combat/encounter_01/wave_01.tres",
-	"res://resources/config/campaigns/rogue_combat/encounter_01/flow.tres",
-	"res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres",
-]
-const STANDARD_SINGLEPLAYER_CAMPAIGN := preload(
+const GUNNER: EnemyConfig = preload(
+	"res://resources/config/enemies/combat_robot_gunner.tres"
+)
+const STANDARD_SINGLEPLAYER_CAMPAIGN: WaveCampaignConfig = preload(
 	"res://resources/config/campaigns/standard/singleplayer/campaign.tres"
 )
-const STANDARD_MULTIPLAYER_CAMPAIGN := preload(
+const STANDARD_MULTIPLAYER_CAMPAIGN: WaveCampaignConfig = preload(
 	"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
 )
 
 var _failures := PackedStringArray()
 
 
-class SpawnBatchProbe:
+class SpawnCapProbe:
 	extends WaveCombatRuntimeBase
 
 	var spawn_attempts := 0
@@ -94,15 +88,14 @@ func _init() -> void:
 
 
 func _run() -> void:
-	_test_confirmed_fixed_contract()
-	_test_unconfirmed_config_is_rejected()
-	_test_all_explicit_decisions_enable_a_copy()
-	_test_fixed_contract_rejects_drift()
-	_test_spawn_policy_matches_authored_scene()
-	_test_single_wave_campaign()
-	_test_elite_combat_robot_stays_out_of_rogue_content()
-	_test_ten_enemy_spawn_batch()
-	_test_standard_spawn_batch_values_unchanged()
+	_test_formal_encounter_resource()
+	_test_formal_wave_resource()
+	_test_occurrence_campaign_is_isolated()
+	_test_kill_reward_policy_applies_to_every_entry()
+	_test_runtime_contract_hash()
+	_test_wave_alive_cap()
+	_test_invalid_authored_content_is_rejected()
+	_test_standard_spawn_batches_unchanged()
 
 	if _failures.is_empty():
 		print("ROGUE_COMBAT_ENCOUNTER_CONFIG_SMOKE_TEST_OK")
@@ -113,267 +106,259 @@ func _run() -> void:
 	quit(1)
 
 
-func _test_confirmed_fixed_contract() -> void:
+func _test_formal_encounter_resource() -> void:
+	_expect(ENCOUNTER_CONFIG.encounter_id == &"narrow_road_01", "狭路相逢 ID 漂移。")
+	_expect(ENCOUNTER_CONFIG.event_title == "狭路相逢", "狭路相逢标题漂移。")
 	_expect(
-		ENCOUNTER_CONFIG.encounter_id == &"narrow_road_01",
-		"战斗事件 ID 必须固定为 narrow_road_01。"
+		ENCOUNTER_CONFIG.objective_text == "击败全部战斗机器人",
+		"狭路相逢必须配置独立目标文本。"
 	)
-	_expect(ENCOUNTER_CONFIG.event_title == "狭路相逢", "战斗事件标题必须为狭路相逢。")
 	_expect(
 		ENCOUNTER_CONFIG.combat_scene_path
 		== "res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn",
-		"战斗事件必须指向独立 Rouge 战斗场景。"
+		"狭路相逢必须使用 rogue_combat_game_01。"
 	)
-	_expect(ENCOUNTER_CONFIG.campaign == ROGUE_CAMPAIGN, "战斗事件必须绑定独立 Campaign。")
-	_expect(ENCOUNTER_CONFIG.preparation_seconds == 3, "准备倒计时必须固定为 3 秒。")
-	_expect(ENCOUNTER_CONFIG.combat_limit_seconds == 90, "作战时限必须固定为 90 秒。")
-	_expect(ENCOUNTER_CONFIG.enemy_count == 10, "战斗事件必须固定生成 10 个敌人。")
-	_expect(ENCOUNTER_CONFIG.extra_xirang == 500, "通关额外息壤必须固定为 500。")
+	_expect(ENCOUNTER_CONFIG.campaign == ROGUE_CAMPAIGN, "狭路相逢 Campaign 绑定错误。")
+	_expect(
+		ENCOUNTER_CONFIG.get_total_enemy_count() == 22
+		and ENCOUNTER_CONFIG.get_spawn_point_mask() == 7,
+		"EncounterConfig 必须从 Wave 派生22名敌人与三扇红门。"
+	)
+	_expect(
+		ENCOUNTER_CONFIG.preparation_seconds == 3
+		and ENCOUNTER_CONFIG.combat_limit_seconds == 90
+		and ENCOUNTER_CONFIG.extra_xirang == 500,
+		"狭路相逢既有倒计时与额外奖励不得漂移。"
+	)
 	_expect(
 		ENCOUNTER_CONFIG.is_ready_to_enable(),
-		"玩家确认后的正式狭路相逢配置必须允许启用。"
-	)
-	_expect(
-		ENCOUNTER_CONFIG.deadline_start
-		== ENCOUNTER_CONFIG_SCRIPT.DeadlineStart.WAVE_START
-		and ENCOUNTER_CONFIG.spawn_point_mask
-		== ENCOUNTER_CONFIG_SCRIPT.REQUIRED_SCENE_SPAWN_POINT_MASK
-		and ENCOUNTER_CONFIG.spawn_count_per_tick == 10,
-		"正式配置必须在三秒后开始90秒计时，并从三门同批生成10台机器人。"
-	)
-	_expect(
-		ENCOUNTER_CONFIG.keep_enemy_kill_xirang
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.filter_loot_by_character
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.reward_dead_players_on_victory
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.return_to_route_before_result
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.show_failure_result
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.consume_node_on_failure
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.enemy_pickup_drops
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.NO
-		and ENCOUNTER_CONFIG.inherit_route_xirang
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.support_singleplayer
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-		and ENCOUNTER_CONFIG.support_multiplayer
-		== ENCOUNTER_CONFIG_SCRIPT.Decision.YES,
-		"正式配置必须完整保存玩家确认的奖励、返回、内容与模式口径。"
+		"正式狭路相逢配置必须通过校验：%s" % [ENCOUNTER_CONFIG.validate_config()]
 	)
 
 
-func _test_unconfirmed_config_is_rejected() -> void:
-	var unconfirmed := ENCOUNTER_CONFIG.duplicate(true) as RogueCombatEncounterConfig
-	unconfirmed.decisions_confirmed = false
-	unconfirmed.deadline_start = ENCOUNTER_CONFIG_SCRIPT.DeadlineStart.UNSPECIFIED
-	unconfirmed.spawn_point_mask = 0
-	unconfirmed.spawn_count_per_tick = 0
-	unconfirmed.inherit_route_xirang = ENCOUNTER_CONFIG_SCRIPT.Decision.UNSPECIFIED
-	var errors := unconfirmed.validate_config()
-	_expect(not errors.is_empty(), "存在未确认决策的配置副本必须校验失败。")
-	_expect(
-		not unconfirmed.is_ready_to_enable(),
-		"存在未确认决策的配置副本绝不能启用。"
-	)
-	_expect(
-		_has_error_containing(errors, "尚未由玩家确认"),
-		"未确认配置必须明确报告玩家尚未确认。"
-	)
-	_expect(
-		_has_error_containing(errors, "时限起点尚未指定")
-		and _has_error_containing(errors, "哪些红门尚未指定")
-		and _has_error_containing(errors, "单次生成数量尚未指定"),
-		"未确认配置必须逐项报告计时与刷怪策略。"
-	)
-	_expect(
-		_has_error_containing(errors, "是否继承 Rouge 路线息壤尚未指定"),
-		"继承路线息壤必须是独立且显式的待确认决策。"
-	)
-
-
-func _test_all_explicit_decisions_enable_a_copy() -> void:
-	var ready := _make_ready_config()
-
-	var errors: PackedStringArray = ready.call("validate_config")
-	_expect(
-		errors.is_empty(),
-		"填满全部显式决策的配置副本应通过校验：%s" % [errors]
-	)
-	_expect(bool(ready.call("is_ready_to_enable")), "完整配置副本必须允许启用。")
-
-	ready.inherit_route_xirang = ENCOUNTER_CONFIG_SCRIPT.Decision.UNSPECIFIED
-	_expect(
-		not bool(ready.call("is_ready_to_enable"))
-		and _has_error_containing(ready.call("validate_config"), "继承 Rouge 路线息壤"),
-		"仅遗漏 inherit_route_xirang 时也必须重新禁用。"
-	)
-
-
-func _test_fixed_contract_rejects_drift() -> void:
-	var mutations := [
-		[&"encounter_id", &"wrong_encounter"],
-		[&"event_title", "错误标题"],
-		[&"combat_scene_path", "res://scene/game_modes/standard/standard_game.tscn"],
-		[&"preparation_seconds", 4],
-		[&"combat_limit_seconds", 91],
-		[&"enemy_count", 11],
-		[&"extra_xirang", 501],
-	]
-	for mutation in mutations:
-		var ready := _make_ready_config()
-		ready.set(mutation[0], mutation[1])
-		_expect(
-			not ready.is_ready_to_enable(),
-			"固定规则字段 %s 漂移后必须禁止启用。" % String(mutation[0])
-		)
-
-
-func _test_spawn_policy_matches_authored_scene() -> void:
-	var ready := _make_ready_config()
-	ready.spawn_point_mask = 1
-	_expect(
-		not ready.is_ready_to_enable(),
-		"只启用 Spawn1 必须被拒绝，场景 01 必须完整使用三扇红门。"
-	)
-	ready = _make_ready_config()
-	ready.spawn_point_mask = 8
-	_expect(
-		not ready.is_ready_to_enable(),
-		"引用场景中不存在的 Spawn4 必须被配置校验拒绝。"
-	)
-	ready = _make_ready_config()
-	ready.spawn_count_per_tick = 2
-	_expect(
-		ready.is_ready_to_enable(),
-		"三门掩码固定时，合法的 occurrence 刷怪批量仍应允许调整。"
-	)
-	ready.spawn_count_per_tick = 11
-	_expect(
-		not ready.is_ready_to_enable(),
-		"单次生成数量不得超过本场固定的 10 个敌人。"
-	)
-
-
-func _make_ready_config() -> RogueCombatEncounterConfig:
-	var ready := ENCOUNTER_CONFIG.duplicate(true) as RogueCombatEncounterConfig
-	ready.decisions_confirmed = true
-	ready.deadline_start = ENCOUNTER_CONFIG_SCRIPT.DeadlineStart.WAVE_START
-	ready.spawn_point_mask = (
-		ENCOUNTER_CONFIG_SCRIPT.REQUIRED_SCENE_SPAWN_POINT_MASK
-	)
-	ready.spawn_count_per_tick = 10
-	ready.keep_enemy_kill_xirang = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.filter_loot_by_character = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.reward_dead_players_on_victory = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.return_to_route_before_result = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.show_failure_result = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.consume_node_on_failure = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.enemy_pickup_drops = (
-		ENCOUNTER_CONFIG_SCRIPT.Decision.NO
-	)
-	ready.inherit_route_xirang = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.support_singleplayer = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	ready.support_multiplayer = ENCOUNTER_CONFIG_SCRIPT.Decision.YES
-	return ready
-
-
-func _test_single_wave_campaign() -> void:
-	_expect(
-		ROGUE_CAMPAIGN.validate_campaign().is_empty(),
-		"Rouge 战斗 Campaign 必须通过流程资源校验。"
-	)
+func _test_formal_wave_resource() -> void:
+	_expect(ROGUE_CAMPAIGN.validate_campaign().is_empty(), "狭路相逢 Campaign 必须有效。")
 	var waves := ROGUE_CAMPAIGN.get_waves()
-	_expect(waves.size() == 1, "Rouge 战斗 Campaign 必须只有一个波次。")
+	_expect(waves.size() == 1, "狭路相逢必须只有一个终点波次。")
 	if waves.size() != 1:
 		return
 	var wave := waves[0]
-	_expect(wave.exits.is_empty(), "唯一战斗波次必须是无出口的终点。")
-	_expect(wave.enemy_entries.size() == 1, "唯一波次必须只有一个敌人条目。")
-	_expect(wave.get_total_enemy_count() == 10, "唯一波次必须精确生成 10 台机器人。")
+	_expect(wave.exits.is_empty(), "狭路相逢唯一波次必须是终点。")
 	_expect(
-		wave.spawn_point_mask
-		== ENCOUNTER_CONFIG_SCRIPT.REQUIRED_SCENE_SPAWN_POINT_MASK,
-		"技术波次必须预置与场景一致的三扇红门掩码 7。"
+		wave.enemy_entries.size() == 3 and wave.get_total_enemy_count() == 22,
+		"狭路相逢必须由三个条目共22名敌人组成。"
 	)
-	_expect(wave.spawn_count_per_tick == 10, "技术波次必须支持单次生成 10 台机器人。")
-	_expect(wave.max_alive_enemies == 10, "技术波次必须允许 10 台机器人同时存活。")
+	if wave.enemy_entries.size() == 3:
+		_expect_entry(wave.enemy_entries[0], COMBAT_ROBOT, 10, "普通战斗机器人")
+		_expect_entry(wave.enemy_entries[1], DRONE_OPERATOR, 4, "无人机操作员")
+		_expect_entry(wave.enemy_entries[2], GUNNER, 8, "持枪战斗机器人")
+	_expect(
+		wave.spawn_point_mask == 7
+		and wave.spawn_point_order == WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG,
+		"狭路相逢必须从三扇红门进行低方差随机生成。"
+	)
+	_expect(
+		wave.spawn_order == WaveConfig.SpawnOrder.SHUFFLED
+		and is_equal_approx(wave.spawn_interval, 0.3)
+		and wave.spawn_count_per_tick == 1
+		and wave.max_alive_enemies == 10,
+		"狭路相逢必须每0.3秒生成1名敌人且场上最多10名。"
+	)
 	_expect(
 		wave.music == ROGUE_COMBAT_MUSIC
 		and ROGUE_COMBAT_MUSIC is AudioStreamMP3
 		and (ROGUE_COMBAT_MUSIC as AudioStreamMP3).loop,
-		"唯一波次必须使用循环导入的 1-28 作为作战音乐来源。"
+		"狭路相逢必须保留循环作战音乐。"
 	)
-	var singleplayer_occurrence := ENCOUNTER_CONFIG.build_occurrence_campaign(
-		"combat:music:singleplayer"
-	)
-	var multiplayer_occurrence := ENCOUNTER_CONFIG.build_occurrence_campaign(
-		"combat:music:multiplayer"
+
+
+func _test_occurrence_campaign_is_isolated() -> void:
+	var occurrence := ENCOUNTER_CONFIG.build_occurrence_campaign("combat:test:isolated")
+	_expect(occurrence != null, "必须能创建 occurrence-local Campaign。")
+	if occurrence == null:
+		return
+	var source_wave := ROGUE_CAMPAIGN.get_waves()[0]
+	var wave := occurrence.get_waves()[0]
+	_expect(
+		occurrence != ROGUE_CAMPAIGN
+		and occurrence.flow_graph != ROGUE_CAMPAIGN.flow_graph
+		and wave != source_wave,
+		"Occurrence 必须隔离 Campaign、FlowGraph 与 Wave 实例。"
 	)
 	_expect(
-		singleplayer_occurrence != null
-		and multiplayer_occurrence != null
-		and singleplayer_occurrence.get_waves()[0].music == ROGUE_COMBAT_MUSIC
-		and multiplayer_occurrence.get_waves()[0].music == ROGUE_COMBAT_MUSIC,
-		"单人和多人 occurrence Campaign 必须继承同一份 1-28 波次音乐。"
+		wave.enemy_entries.size() == source_wave.enemy_entries.size(),
+		"Occurrence 必须完整复制全部敌人条目。"
 	)
-	if wave.enemy_entries.size() == 1:
-		var entry := wave.enemy_entries[0]
-		_expect(entry.enemy_config == COMBAT_ROBOT, "唯一敌人条目必须是基础作战机器人。")
-		_expect(entry.count == 10, "作战机器人条目数量必须精确为 10。")
+	for entry_index in range(mini(wave.enemy_entries.size(), source_wave.enemy_entries.size())):
+		var source_entry := source_wave.enemy_entries[entry_index]
+		var entry := wave.enemy_entries[entry_index]
 		_expect(
-			entry.xirang_kill_reward_override == -1,
-			"技术资源必须暂时继承机器人默认击杀息壤，不冒充最终决策。"
+			entry != source_entry
+			and entry.enemy_config == source_entry.enemy_config
+			and entry.count == source_entry.count,
+			"Occurrence 条目%d必须隔离实例并保留正式敌人资源与数量。" % entry_index
+		)
+	_expect(
+		is_equal_approx(wave.spawn_interval, source_wave.spawn_interval)
+		and wave.spawn_count_per_tick == source_wave.spawn_count_per_tick
+		and wave.max_alive_enemies == 10
+		and wave.spawn_point_order == source_wave.spawn_point_order,
+		"Occurrence 不得覆盖 Wave 的生成节奏与场上上限。"
+	)
+	if not wave.enemy_entries.is_empty():
+		wave.enemy_entries[0].count = 99
+		_expect(
+			source_wave.enemy_entries[0].count == 10,
+			"修改 occurrence 条目不得污染 authored Wave。"
 		)
 
 
-func _test_ten_enemy_spawn_batch() -> void:
+func _test_kill_reward_policy_applies_to_every_entry() -> void:
+	var inherited := ENCOUNTER_CONFIG.build_occurrence_campaign("combat:test:reward:inherit")
+	_expect(inherited != null, "保留击杀息壤时必须能创建 occurrence。")
+	if inherited != null:
+		for entry in inherited.get_waves()[0].enemy_entries:
+			_expect(entry.xirang_kill_reward_override == -1, "全部条目都必须继承击杀息壤。")
+
+	var no_kill_reward := ENCOUNTER_CONFIG.duplicate(true) as RogueCombatEncounterConfig
+	no_kill_reward.keep_enemy_kill_xirang = RogueCombatEncounterConfig.Decision.NO
+	var suppressed := no_kill_reward.build_occurrence_campaign("combat:test:reward:none")
+	_expect(suppressed != null, "关闭击杀息壤时必须能创建 occurrence。")
+	if suppressed != null:
+		for entry in suppressed.get_waves()[0].enemy_entries:
+			_expect(entry.xirang_kill_reward_override == 0, "全部条目都必须关闭击杀息壤。")
+
+
+func _test_runtime_contract_hash() -> void:
+	var baseline := ENCOUNTER_CONFIG.compute_runtime_contract_hash()
+	_expect(
+		RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 2
+		and baseline.length() == 64
+		and baseline == ENCOUNTER_CONFIG.compute_runtime_contract_hash(),
+		"作战 runtime contract 必须使用 schema2 的稳定 SHA-256。"
+	)
+
+	var presentation_only := ENCOUNTER_CONFIG.duplicate(false) as RogueCombatEncounterConfig
+	var presentation_baseline := presentation_only.compute_runtime_contract_hash()
+	presentation_only.event_title = "仅修改表现标题"
+	presentation_only.objective_text = "仅修改表现目标"
+	_expect(
+		presentation_only.compute_runtime_contract_hash() == presentation_baseline,
+		"表现标题与目标文本不得改变权威运行契约。"
+	)
+
+	var mutations: Array[Callable] = [
+		func(config: RogueCombatEncounterConfig) -> void:
+			config.campaign.get_waves()[0].enemy_entries[0].enemy_config = DRONE_OPERATOR,
+		func(config: RogueCombatEncounterConfig) -> void:
+			config.campaign.get_waves()[0].enemy_entries[0].count += 1,
+		func(config: RogueCombatEncounterConfig) -> void:
+			config.campaign.get_waves()[0].spawn_interval = 0.4,
+		func(config: RogueCombatEncounterConfig) -> void:
+			config.campaign.get_waves()[0].max_alive_enemies = 9,
+		func(config: RogueCombatEncounterConfig) -> void:
+			config.campaign.get_waves()[0].spawn_point_order = (
+				WaveConfig.SpawnPointOrder.UNIFORM_RANDOM
+			),
+	]
+	for mutation_index in range(mutations.size()):
+		var changed := _make_isolated_config("hash:%d" % mutation_index)
+		var isolated_baseline := changed.compute_runtime_contract_hash()
+		mutations[mutation_index].call(changed)
+		_expect(
+			changed.compute_runtime_contract_hash() != isolated_baseline,
+			"敌人组成或生成规则变更%d必须改变作战运行契约。" % mutation_index
+		)
+
+
+func _test_wave_alive_cap() -> void:
 	var wave := ROGUE_CAMPAIGN.get_waves()[0]
-	var probe := SpawnBatchProbe.new()
+	var probe := SpawnCapProbe.new()
 	probe.wave_state = CombatFlowState.State.WAVE_ACTIVE
 	probe.current_flow_step = wave
 	probe.enemy_spawn_timer = Timer.new()
 	probe.call("_build_wave_spawn_queue", wave)
-	probe.call("_spawn_wave_batch")
-	_expect(probe.spawn_attempts == 10, "WaveCombatRuntimeBase 单个刷怪 tick 必须实际尝试生成 10 个敌人。")
-	_expect(probe.current_wave_spawned == 10, "WaveCombatRuntimeBase 单个刷怪 tick 必须记录 10 个已生成敌人。")
+	for _tick in range(15):
+		probe.call("_spawn_wave_batch")
 	_expect(
-		probe.pending_enemy_configs.is_empty(),
-		"单次批量生成 10 个敌人后不应残留待生成队列。"
+		probe.spawn_attempts == 10
+		and probe.current_wave_spawned == 10
+		and probe.active_wave_enemy_ids.size() == 10
+		and probe.pending_enemy_config_index == 10,
+		"场上达到10名敌人后必须暂停生成并保留剩余12名队列：attempts=%d spawned=%d active=%d cursor=%d queue=%d"
+		% [
+			probe.spawn_attempts,
+			probe.current_wave_spawned,
+			probe.active_wave_enemy_ids.size(),
+			probe.pending_enemy_config_index,
+			probe.pending_enemy_configs.size(),
+		]
+	)
+	probe.active_wave_enemy_ids.erase(1)
+	probe.call("_spawn_wave_batch")
+	_expect(
+		probe.spawn_attempts == 11
+		and probe.current_wave_spawned == 11
+		and probe.active_wave_enemy_ids.size() == 10,
+		"一名敌人离场后，下个生成 tick 必须补回到场上10名：attempts=%d spawned=%d active=%d"
+		% [
+			probe.spawn_attempts,
+			probe.current_wave_spawned,
+			probe.active_wave_enemy_ids.size(),
+		]
 	)
 	probe.enemy_spawn_timer.free()
 	probe.free()
 
 
-func _test_elite_combat_robot_stays_out_of_rogue_content() -> void:
-	var direct_reference_count := 0
-	for resource_path in ROGUE_COMBAT_AUTHORED_RESOURCE_PATHS:
-		_expect(
-			FileAccess.file_exists(resource_path),
-			"精英战斗机器人肉鸽隔离测试必须能读取资源 %s。" % resource_path
-		)
-		direct_reference_count += FileAccess.get_file_as_string(
-			resource_path
-		).count(COMBAT_ROBOT_ELITE_CONFIG_PATH)
+func _test_invalid_authored_content_is_rejected() -> void:
+	var missing_objective := ENCOUNTER_CONFIG.duplicate(true) as RogueCombatEncounterConfig
+	missing_objective.objective_text = ""
 	_expect(
-		direct_reference_count == 0,
-		"精英战斗机器人不得直接写入肉鸽遭遇或其战役资源。"
+		_has_error_containing(missing_objective.validate_config(), "目标文本"),
+		"作战配置必须拒绝空目标文本。"
+	)
+
+	var invalid_cap := _make_isolated_config("invalid:cap")
+	var wave := invalid_cap.campaign.get_waves()[0]
+	wave.spawn_count_per_tick = 2
+	wave.max_alive_enemies = 1
+	_expect(
+		_has_error_containing(invalid_cap.validate_config(), "不能超过场上敌人上限"),
+		"单次生成量超过场上上限时必须校验失败。"
 	)
 
 
-func _test_standard_spawn_batch_values_unchanged() -> void:
+func _test_standard_spawn_batches_unchanged() -> void:
 	var expected: Array[int] = [1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2]
 	_expect(
-		_get_spawn_batch_values(STANDARD_SINGLEPLAYER_CAMPAIGN) == expected,
-		"扩展 Rouge 批量能力不得改变标准单人 12 波的刷怪批量值。"
+		_get_spawn_batch_values(STANDARD_SINGLEPLAYER_CAMPAIGN) == expected
+		and _get_spawn_batch_values(STANDARD_MULTIPLAYER_CAMPAIGN) == expected,
+		"狭路相逢资源化不得改变标准模式12波的刷怪批量。"
 	)
+
+
+func _expect_entry(
+	entry: WaveEnemyEntry,
+	expected_config: EnemyConfig,
+	expected_count: int,
+	label: String
+) -> void:
 	_expect(
-		_get_spawn_batch_values(STANDARD_MULTIPLAYER_CAMPAIGN) == expected,
-		"扩展 Rouge 批量能力不得改变标准多人 12 波的刷怪批量值。"
+		entry != null
+		and entry.enemy_config == expected_config
+		and entry.count == expected_count
+		and entry.xirang_kill_reward_override == -1,
+		"%s条目配置或数量错误。" % label
 	)
+
+
+func _make_isolated_config(suffix: String) -> RogueCombatEncounterConfig:
+	var result := ENCOUNTER_CONFIG.duplicate(false) as RogueCombatEncounterConfig
+	result.campaign = ENCOUNTER_CONFIG.build_occurrence_campaign(
+		"combat:test:isolated:%s" % suffix
+	)
+	return result
 
 
 func _get_spawn_batch_values(campaign: WaveCampaignConfig) -> Array[int]:

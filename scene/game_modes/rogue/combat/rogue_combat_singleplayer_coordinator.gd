@@ -128,7 +128,7 @@ func _on_normal_combat_requested(
 		return
 
 	var scene_contract_errors := battle.validate_encounter_scene_contract(
-		encounter_config.spawn_point_mask
+		encounter_config.get_spawn_point_mask()
 	)
 	if not scene_contract_errors.is_empty():
 		for error in scene_contract_errors:

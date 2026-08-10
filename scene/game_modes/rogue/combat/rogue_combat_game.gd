@@ -96,7 +96,6 @@ var combat_seconds_remaining := 0
 var _combat_deadline_started := false
 var _outcome_emitted := false
 var _failure_reason := DEFAULT_FAILURE_REASON
-var _spawn_point_rotation_index := 0
 var music_fade_tween: Tween = null
 
 
@@ -438,28 +437,6 @@ func allows_player_respawn(_peer_id: int) -> bool:
 
 func allows_enemy_pickup_drops() -> bool:
 	return enemy_pickup_drops_enabled
-
-
-func _resolve_wave_spawn_points(wave_config: WaveConfig) -> bool:
-	var resolved := super._resolve_wave_spawn_points(wave_config)
-	if not resolved:
-		_spawn_point_rotation_index = 0
-		return false
-	_spawn_point_rotation_index = random_generator.randi_range(
-		0,
-		active_wave_spawn_points.size() - 1
-	)
-	return true
-
-
-func _pick_spawn_point() -> Marker2D:
-	if active_wave_spawn_points.is_empty():
-		return null
-	var marker := active_wave_spawn_points[
-		_spawn_point_rotation_index % active_wave_spawn_points.size()
-	]
-	_spawn_point_rotation_index += 1
-	return marker
 
 
 func _enter_pre_flow_step(flow_step: FlowStepConfig) -> void:

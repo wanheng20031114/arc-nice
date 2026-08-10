@@ -18,6 +18,7 @@ func _run() -> void:
 	_test_confirmed_formal_config_is_enabled()
 	_test_occurrence_campaign_is_isolated()
 	_test_kill_reward_policy_is_explicit()
+	_test_config_signature_uses_complete_runtime_contract()
 	_test_protocol_contract_is_static_and_order_safe()
 
 	if _failures.is_empty():
@@ -68,25 +69,33 @@ func _test_occurrence_campaign_is_isolated() -> void:
 		return
 	var source_wave := config.campaign.get_waves()[0]
 	var wave := campaign.get_waves()[0]
-	var source_entry := source_wave.enemy_entries[0]
-	var entry := wave.enemy_entries[0]
 	_expect(campaign != config.campaign, "Campaign 不得复用共享资源实例。")
 	_expect(campaign.flow_graph != config.campaign.flow_graph, "FlowGraph 必须复制。")
 	_expect(wave != source_wave, "WaveConfig 必须复制。")
-	_expect(entry != source_entry, "WaveEnemyEntry 必须复制。")
 	_expect(
-		entry.enemy_config == source_entry.enemy_config
-		and not entry.enemy_config.resource_path.is_empty(),
-		"EnemyConfig 必须保留可供多人刷怪序列化的正式资源身份。"
+		wave.enemy_entries.size() == 3
+		and wave.enemy_entries.size() == source_wave.enemy_entries.size(),
+		"多人 occurrence 必须完整复制三个正式敌人条目。"
 	)
+	for entry_index in range(mini(wave.enemy_entries.size(), source_wave.enemy_entries.size())):
+		var source_entry := source_wave.enemy_entries[entry_index]
+		var entry := wave.enemy_entries[entry_index]
+		_expect(entry != source_entry, "WaveEnemyEntry %d 必须复制。" % entry_index)
+		_expect(
+			entry.enemy_config == source_entry.enemy_config
+			and not entry.enemy_config.resource_path.is_empty()
+			and entry.enemy_config.drop_table != null
+			and entry.count == source_entry.count,
+			"EnemyConfig %d 必须保留正式资源身份、掉落表与数量。" % entry_index
+		)
+	_expect(wave.spawn_point_mask == config.get_spawn_point_mask(), "应保留 Wave 红门掩码。")
 	_expect(
-		entry.enemy_config.drop_table != null,
-		"关闭掉落不得污染或复制无路径的共享敌人配置。"
-	)
-	_expect(wave.spawn_point_mask == config.spawn_point_mask, "应应用已确认红门掩码。")
-	_expect(
-		wave.spawn_count_per_tick == config.spawn_count_per_tick,
-		"应应用已确认的同批生成数量。"
+		is_equal_approx(wave.spawn_interval, 0.3)
+		and wave.spawn_count_per_tick == 1
+		and wave.max_alive_enemies == 10
+		and wave.spawn_point_order
+		== WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG,
+		"Occurrence 必须保留0.3秒单刷、10名上限与低方差红门策略。"
 	)
 	_expect(
 		wave.music == source_wave.music
@@ -97,7 +106,7 @@ func _test_occurrence_campaign_is_isolated() -> void:
 		and (wave.music as AudioStreamMP3).loop,
 		"多人 occurrence 波次必须继承共享的循环 1-28 音乐。"
 	)
-	_expect(wave.get_total_enemy_count() == 10, "本次波次必须恰好包含10个作战机器人。")
+	_expect(wave.get_total_enemy_count() == 22, "本次波次必须恰好包含22个战斗机器人。")
 
 
 func _test_kill_reward_policy_is_explicit() -> void:
@@ -113,9 +122,27 @@ func _test_kill_reward_policy_is_explicit() -> void:
 	_expect(campaign != null, "关闭击杀息壤仍应能构造合法波次。")
 	if campaign == null:
 		return
-	var entry := campaign.get_waves()[0].enemy_entries[0]
-	_expect(entry.xirang_kill_reward_override == 0, "关闭时必须明确覆盖为0。")
-	_expect(entry.enemy_config.drop_table != null, "开启敌人拾取物掉落时不得清空掉落表。")
+	for entry in campaign.get_waves()[0].enemy_entries:
+		_expect(entry.xirang_kill_reward_override == 0, "关闭时全部条目必须明确覆盖为0。")
+		_expect(entry.enemy_config.drop_table != null, "开启敌人拾取物掉落时不得清空掉落表。")
+
+
+func _test_config_signature_uses_complete_runtime_contract() -> void:
+	var baseline := FORMAL_CONFIG.compute_runtime_contract_hash()
+	_expect(
+		COORDINATOR._make_config_signature(FORMAL_CONFIG) == baseline,
+		"多人准备签名必须直接委托 EncounterConfig 的完整运行契约。"
+	)
+	var changed := FORMAL_CONFIG.duplicate(false) as RogueCombatEncounterConfig
+	changed.campaign = FORMAL_CONFIG.build_occurrence_campaign(
+		"combat:test:signature:isolation"
+	)
+	var isolated_baseline := COORDINATOR._make_config_signature(changed)
+	changed.campaign.get_waves()[0].enemy_entries[2].count += 1
+	_expect(
+		COORDINATOR._make_config_signature(changed) != isolated_baseline,
+		"任一敌人条目数量变化必须触发多人配置签名不匹配。"
+	)
 
 
 func _test_protocol_contract_is_static_and_order_safe() -> void:
@@ -265,8 +292,6 @@ func _make_confirmed_config() -> RogueCombatEncounterConfig:
 	var config := FORMAL_CONFIG.duplicate(false) as RogueCombatEncounterConfig
 	config.decisions_confirmed = true
 	config.deadline_start = RogueCombatEncounterConfig.DeadlineStart.WAVE_START
-	config.spawn_point_mask = RogueCombatEncounterConfig.REQUIRED_SCENE_SPAWN_POINT_MASK
-	config.spawn_count_per_tick = 10
 	config.keep_enemy_kill_xirang = RogueCombatEncounterConfig.Decision.YES
 	config.filter_loot_by_character = RogueCombatEncounterConfig.Decision.YES
 	config.reward_dead_players_on_victory = RogueCombatEncounterConfig.Decision.YES

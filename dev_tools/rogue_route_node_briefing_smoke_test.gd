@@ -57,9 +57,9 @@ func _run() -> void:
 		"模型标题与摘要必须来自现有节点和遭遇配置。"
 	)
 	_expect(
-		model.objective == "消灭全部战斗机器人"
+		model.objective == "击败全部战斗机器人"
 		and model.time_limit_seconds == 90
-		and model.enemy_count == 10,
+		and model.enemy_count == 22,
 		"目标、时限和敌人数必须来自现有波次与遭遇配置。"
 	)
 	_expect(
@@ -118,12 +118,12 @@ func _run() -> void:
 	_expect(
 		briefing.title_label.text == "普通作战"
 		and briefing.summary_label.text == "狭路相逢"
-		and briefing.objective_label.text == "消灭全部战斗机器人",
+		and briefing.objective_label.text == "击败全部战斗机器人",
 		"简报表现层必须完整呈现模型的标题、摘要和目标。"
 	)
 	_expect(
 		briefing.time_limit_label.text == "90 秒"
-		and briefing.enemy_count_label.text == "10"
+		and briefing.enemy_count_label.text == "22"
 		and briefing.reward_label.text == model.reward_summary
 		and briefing.action_point_label.text == "-1",
 		"简报表现层必须准确格式化全部决策信息。"
