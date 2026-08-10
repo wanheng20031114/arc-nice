@@ -900,11 +900,7 @@ func _on_host_encounter_snapshot_committed(
 		return
 	for peer_id in _get_remote_player_peer_ids():
 		if _is_peer_send_ready(peer_id):
-			net_route_encounter_snapshot.rpc_id(
-				peer_id,
-				_latest_encounter_snapshot.duplicate(true),
-				_latest_economy_snapshot.duplicate(true)
-			)
+			_send_encounter_snapshot_to_peer(peer_id)
 
 
 func _on_local_encounter_intro_ack_requested(
@@ -1202,12 +1198,16 @@ func _send_full_snapshot_to_peer(peer_id: int) -> void:
 	):
 		return
 	var shop_state := _route.export_shop_snapshot_for_peer(peer_id)
+	var encounter_state := _route.export_encounter_snapshot(peer_id)
+	var economy_state := _route.export_encounter_economy_snapshot(peer_id)
+	if encounter_state.is_empty() or economy_state.is_empty():
+		return
 	net_route_full_snapshot.rpc_id(
 		peer_id,
 		_latest_layout_snapshot.duplicate(true),
 		_latest_state_snapshot.duplicate(true),
-		_latest_encounter_snapshot.duplicate(true),
-		_latest_economy_snapshot.duplicate(true),
+		encounter_state.duplicate(true),
+		economy_state.duplicate(true),
 		shop_state.duplicate(true)
 	)
 
@@ -1651,16 +1651,14 @@ func _send_encounter_snapshot_to_peer(peer_id: int) -> bool:
 		or _route == null
 	):
 		return false
-	var encounter_state := _route.export_encounter_snapshot()
-	var economy_state := _route.export_encounter_economy_snapshot()
+	var encounter_state := _route.export_encounter_snapshot(peer_id)
+	var economy_state := _route.export_encounter_economy_snapshot(peer_id)
 	if encounter_state.is_empty() or economy_state.is_empty():
 		return false
-	_latest_encounter_snapshot = encounter_state.duplicate(true)
-	_latest_economy_snapshot = economy_state.duplicate(true)
 	net_route_encounter_snapshot.rpc_id(
 		peer_id,
-		_latest_encounter_snapshot.duplicate(true),
-		_latest_economy_snapshot.duplicate(true)
+		encounter_state.duplicate(true),
+		economy_state.duplicate(true)
 	)
 	return true
 

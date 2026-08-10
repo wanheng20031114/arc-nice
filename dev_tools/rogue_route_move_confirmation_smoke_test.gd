@@ -201,7 +201,7 @@ func _audit_p3_integration() -> void:
 		and not route.node_briefing.visible
 		and int(route.get("_briefing_phase"))
 		== RogueRouteGame.BriefingPhase.NONE,
-		"遗址物资、地下商店或未雨绸缪节点仍必须使用旧移动确认框。"
+		"遗址物资、地下商店或稀有宝箱节点仍必须使用旧移动确认框。"
 	)
 	var state_before_move := route.export_state_snapshot()
 	var player_position_before_move := local_player.global_position

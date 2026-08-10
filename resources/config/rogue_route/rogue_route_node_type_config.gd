@@ -9,7 +9,7 @@ class_name RogueRouteNodeTypeConfig
 	"普通作战:3",
 	"遗址物资:4",
 	"地下商店:5",
-	"未雨绸缪:6"
+	"稀有宝箱:6"
 ) var node_type: int = RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
 @export var display_name: String = ""
 @export var icon: Texture2D = null

@@ -72,7 +72,10 @@ extends RefCounted
 ## 肉鸽地下商店会话升级为逐人同步完整消耗品价格表，并按低/中/高档位确定性抽价。
 ## RPC 表面与 8 个 ENet 通道均不变；v53 客户端无法解释新增玩家状态字节、商店
 ## session schema 与资源路径合同。
-const PROTOCOL_VERSION := 54
+## v55：肉鸽“稀有宝箱”节点新增逐玩家私有候选、永久属性奖励与
+## 共享状态账本 CAS；完整路线快照按目标 peer 导出私有候选与结算记录。
+## RPC 表面与 8 个 ENet 通道不变；v54 客户端缺少 rare-chest schema 与运行合同。
+const PROTOCOL_VERSION := 55
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

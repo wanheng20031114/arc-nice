@@ -15,12 +15,30 @@ signal party_light_stone_ledger_changed(snapshot: Dictionary)
 signal party_status_ledger_changed(snapshot: Dictionary)
 
 const INVENTORY_CAPACITY := 20
-const PARTY_ECONOMY_SCHEMA_VERSION := 4
+const PARTY_ECONOMY_SCHEMA_VERSION := 5
 const SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION := 1
 const PARTY_XIRANG_LEDGER_SCHEMA_VERSION := 1
 const PARTY_LIGHT_STONE_LEDGER_SCHEMA_VERSION := 1
-const PARTY_STATUS_LEDGER_SCHEMA_VERSION := 1
+const PARTY_STATUS_LEDGER_SCHEMA_VERSION := 2
 const DEFAULT_PARTY_CORE_HEALTH := 100
+const PLAYER_STAT_BONUS_KEYS: Array[StringName] = [
+	&"max_health",
+	&"physical_defense",
+	&"magic_defense",
+	&"move_speed",
+	&"ammo_capacity",
+	&"attack_damage",
+	&"dodge_percent_points",
+]
+const PLAYER_STAT_BONUS_HARD_CAPS := {
+	&"max_health": 2147483647,
+	&"physical_defense": 2147483647,
+	&"magic_defense": 100,
+	&"move_speed": 2147483647,
+	&"ammo_capacity": 65535,
+	&"attack_damage": 2147483647,
+	&"dodge_percent_points": 100,
+}
 const STARTING_WOOD_COUNT := 5
 const STARTING_WOOD: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
@@ -90,6 +108,9 @@ var party_light_stone_ledger_revision: int = 0
 var party_core_current: int = DEFAULT_PARTY_CORE_HEALTH
 var party_core_maximum: int = DEFAULT_PARTY_CORE_HEALTH
 var max_health_penalties: Dictionary = {}
+## 稀有宝箱等本局永久来源提供的玩家属性绝对总值。内部与 wire 均使用
+## 固定七字段字典，避免重连、重复快照或换场时再次按 delta 叠加。
+var player_stat_bonuses: Dictionary = {}
 var party_status_ledger_revision: int = 0
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 var _include_starting_inventory_for_new_peers := true
@@ -146,6 +167,7 @@ func begin_new_run(
 	party_core_current = DEFAULT_PARTY_CORE_HEALTH
 	party_core_maximum = DEFAULT_PARTY_CORE_HEALTH
 	max_health_penalties = {0: 0}
+	player_stat_bonuses = {0: _make_empty_player_stat_bonuses()}
 	party_status_ledger_revision = 0
 	run_started = true
 	inventory_changed.emit()
@@ -631,8 +653,14 @@ func ensure_multiplayer_peer_state(peer_id: int) -> void:
 		party_xirang_balances[peer_id] = 0
 		party_xirang_ledger_revision += 1
 		party_xirang_ledger_changed.emit(export_party_xirang_ledger())
+	var status_ledger_changed := false
 	if not max_health_penalties.has(peer_id):
 		max_health_penalties[peer_id] = 0
+		status_ledger_changed = true
+	if not player_stat_bonuses.has(peer_id):
+		player_stat_bonuses[peer_id] = _make_empty_player_stat_bonuses()
+		status_ledger_changed = true
+	if status_ledger_changed:
 		party_status_ledger_revision += 1
 		party_status_ledger_changed.emit(export_party_status_ledger())
 
@@ -944,9 +972,18 @@ func remap_multiplayer_peer_state(
 		party_xirang_balances[new_peer_id] = int(party_xirang_balances[old_peer_id])
 		party_xirang_balances.erase(old_peer_id)
 		party_xirang_ledger_revision += 1
+	var status_ledger_remapped := false
 	if max_health_penalties.has(old_peer_id):
 		max_health_penalties[new_peer_id] = int(max_health_penalties[old_peer_id])
 		max_health_penalties.erase(old_peer_id)
+		status_ledger_remapped = true
+	if player_stat_bonuses.has(old_peer_id):
+		player_stat_bonuses[new_peer_id] = (
+			player_stat_bonuses[old_peer_id] as Dictionary
+		).duplicate(true)
+		player_stat_bonuses.erase(old_peer_id)
+		status_ledger_remapped = true
+	if status_ledger_remapped:
 		party_status_ledger_revision += 1
 	multiplayer_inventories.erase(old_peer_id)
 	multiplayer_inventory_stack_counts.erase(old_peer_id)
@@ -985,6 +1022,7 @@ func prune_multiplayer_peer_states(
 		multiplayer_upgrade_levels.erase(peer_id)
 		party_xirang_balances.erase(peer_id)
 		max_health_penalties.erase(peer_id)
+		player_stat_bonuses.erase(peer_id)
 		if active_multiplayer_peer_id == peer_id:
 			active_multiplayer_peer_id = 0
 	inventory_changed.emit()
@@ -1978,26 +2016,95 @@ func add_max_health_penalty_for_peer(
 	return previous_amount + amount
 
 
+func get_player_stat_bonuses(peer_id: int) -> Dictionary:
+	ensure_run_started()
+	if peer_id < 0:
+		return _make_empty_player_stat_bonuses()
+	if peer_id > 0 and not has_multiplayer_peer_state(peer_id):
+		return _make_empty_player_stat_bonuses()
+	if not player_stat_bonuses.has(peer_id):
+		player_stat_bonuses[peer_id] = _make_empty_player_stat_bonuses()
+	return _normalize_player_stat_bonuses(
+		player_stat_bonuses[peer_id] as Dictionary
+	)
+
+
+func get_player_stat_bonus_value(peer_id: int, stat_id: StringName) -> int:
+	if not PLAYER_STAT_BONUS_HARD_CAPS.has(stat_id):
+		return 0
+	return int(get_player_stat_bonuses(peer_id).get(str(stat_id), 0))
+
+
+func get_player_stat_bonus_hard_cap(stat_id: StringName) -> int:
+	return int(PLAYER_STAT_BONUS_HARD_CAPS.get(stat_id, -1))
+
+
+## Builds a complete schema-valid party-status snapshot for the existing CAS.
+## The caller must still pass the current status revision to
+## apply_authoritative_party_transaction; this helper never mutates state.
+func build_party_status_ledger_with_player_stat_bonus(
+	peer_id: int,
+	stat_id: StringName,
+	delta: int
+) -> Dictionary:
+	ensure_run_started()
+	if (
+		peer_id < 0
+		or delta <= 0
+		or not PLAYER_STAT_BONUS_HARD_CAPS.has(stat_id)
+		or (peer_id > 0 and not has_multiplayer_peer_state(peer_id))
+	):
+		return {}
+	var current_bonuses := get_player_stat_bonuses(peer_id)
+	var stat_key := str(stat_id)
+	var previous_value := int(current_bonuses.get(stat_key, 0))
+	var hard_cap := get_player_stat_bonus_hard_cap(stat_id)
+	if hard_cap < 0 or previous_value > hard_cap - delta:
+		return {}
+	var next_snapshot := export_party_status_ledger()
+	next_snapshot["revision"] = party_status_ledger_revision + 1
+	var exported_bonuses := (
+		next_snapshot["player_stat_bonuses"] as Dictionary
+	)
+	var peer_key := str(peer_id)
+	var next_bonuses := (
+		exported_bonuses.get(peer_key, _make_empty_player_stat_bonuses())
+		as Dictionary
+	).duplicate(true)
+	next_bonuses[stat_key] = previous_value + delta
+	exported_bonuses[peer_key] = next_bonuses
+	return next_snapshot
+
+
 func export_party_status_ledger() -> Dictionary:
 	ensure_run_started()
 	var exported_penalties: Dictionary = {}
+	var exported_bonuses: Dictionary = {}
 	var peer_ids: Array[int] = []
 	for raw_peer_id in max_health_penalties.keys():
 		var peer_id := int(raw_peer_id)
 		if peer_id >= 0 and not peer_ids.has(peer_id):
 			peer_ids.append(peer_id)
+	for raw_peer_id in player_stat_bonuses.keys():
+		var peer_id := int(raw_peer_id)
+		if peer_id >= 0 and not peer_ids.has(peer_id):
+			peer_ids.append(peer_id)
+	if not peer_ids.has(0):
+		peer_ids.append(0)
 	peer_ids.sort()
 	for peer_id in peer_ids:
 		exported_penalties[str(peer_id)] = maxi(
 			int(max_health_penalties.get(peer_id, 0)),
 			0
 		)
+		exported_bonuses[str(peer_id)] = get_player_stat_bonuses(peer_id)
 	return {
 		"schema_version": PARTY_STATUS_LEDGER_SCHEMA_VERSION,
 		"revision": party_status_ledger_revision,
 		"core_current": party_core_current,
 		"core_maximum": party_core_maximum,
 		"max_health_penalties": exported_penalties,
+		"player_stat_bonuses": exported_bonuses,
 	}
 
 
@@ -2015,6 +2122,7 @@ func apply_party_status_ledger(
 		return false
 	var incoming_revision := int(decoded["revision"])
 	var incoming_penalties := decoded["max_health_penalties"] as Dictionary
+	var incoming_bonuses := decoded["player_stat_bonuses"] as Dictionary
 	if (
 		not allow_revision_rewind
 		and incoming_revision == party_status_ledger_revision
@@ -2022,6 +2130,7 @@ func apply_party_status_ledger(
 			int(decoded["core_current"]) != party_core_current
 			or int(decoded["core_maximum"]) != party_core_maximum
 			or incoming_penalties != max_health_penalties
+			or incoming_bonuses != player_stat_bonuses
 		)
 	):
 		return false
@@ -2030,10 +2139,12 @@ func apply_party_status_ledger(
 		or int(decoded["core_current"]) != party_core_current
 		or int(decoded["core_maximum"]) != party_core_maximum
 		or incoming_penalties != max_health_penalties
+		or incoming_bonuses != player_stat_bonuses
 	)
 	party_core_current = int(decoded["core_current"])
 	party_core_maximum = int(decoded["core_maximum"])
 	max_health_penalties = incoming_penalties.duplicate(true)
+	player_stat_bonuses = incoming_bonuses.duplicate(true)
 	party_status_ledger_revision = incoming_revision
 	if changed and emit_change_signal:
 		party_status_ledger_changed.emit(export_party_status_ledger())
@@ -2441,6 +2552,7 @@ func _decode_party_status_ledger(
 		or typeof(snapshot.get("core_current")) != TYPE_INT
 		or typeof(snapshot.get("core_maximum")) != TYPE_INT
 		or typeof(snapshot.get("max_health_penalties")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("player_stat_bonuses")) != TYPE_DICTIONARY
 	):
 		return {}
 	var incoming_revision := int(snapshot["revision"])
@@ -2478,12 +2590,83 @@ func _decode_party_status_ledger(
 		decoded_penalties[peer_id] = int(penalty_value)
 	if not decoded_penalties.has(0):
 		decoded_penalties[0] = 0
+	var decoded_bonuses: Dictionary = {}
+	for raw_peer_id in (snapshot["player_stat_bonuses"] as Dictionary).keys():
+		if (
+			typeof(raw_peer_id) != TYPE_INT
+			and (
+				typeof(raw_peer_id) != TYPE_STRING
+				or not str(raw_peer_id).is_valid_int()
+			)
+		):
+			return {}
+		var peer_id := int(raw_peer_id)
+		var raw_bonuses: Variant = (
+			snapshot["player_stat_bonuses"] as Dictionary
+		)[raw_peer_id]
+		if (
+			peer_id < 0
+			or decoded_bonuses.has(peer_id)
+			or typeof(raw_bonuses) != TYPE_DICTIONARY
+		):
+			return {}
+		var decoded_entry := _decode_player_stat_bonuses(
+			raw_bonuses as Dictionary
+		)
+		if decoded_entry.is_empty():
+			return {}
+		decoded_bonuses[peer_id] = decoded_entry
+	if not decoded_bonuses.has(0):
+		return {}
+	if decoded_bonuses.keys().size() != decoded_penalties.keys().size():
+		return {}
+	for raw_peer_id in decoded_penalties.keys():
+		if not decoded_bonuses.has(int(raw_peer_id)):
+			return {}
 	return {
 		"revision": incoming_revision,
 		"core_current": core_current,
 		"core_maximum": core_maximum,
 		"max_health_penalties": decoded_penalties,
+		"player_stat_bonuses": decoded_bonuses,
 	}
+
+
+func _make_empty_player_stat_bonuses() -> Dictionary:
+	var result: Dictionary = {}
+	for stat_id in PLAYER_STAT_BONUS_KEYS:
+		result[str(stat_id)] = 0
+	return result
+
+
+func _normalize_player_stat_bonuses(source: Dictionary) -> Dictionary:
+	var result := _make_empty_player_stat_bonuses()
+	for stat_id in PLAYER_STAT_BONUS_KEYS:
+		var stat_key := str(stat_id)
+		result[stat_key] = clampi(
+			int(source.get(stat_key, source.get(stat_id, 0))),
+			0,
+			get_player_stat_bonus_hard_cap(stat_id)
+		)
+	return result
+
+
+func _decode_player_stat_bonuses(source: Dictionary) -> Dictionary:
+	if source.size() != PLAYER_STAT_BONUS_KEYS.size():
+		return {}
+	var decoded: Dictionary = {}
+	for stat_id in PLAYER_STAT_BONUS_KEYS:
+		var stat_key := str(stat_id)
+		if not source.has(stat_key):
+			return {}
+		var raw_value: Variant = source[stat_key]
+		if typeof(raw_value) != TYPE_INT:
+			return {}
+		var value := int(raw_value)
+		if value < 0 or value > get_player_stat_bonus_hard_cap(stat_id):
+			return {}
+		decoded[stat_key] = value
+	return decoded
 
 
 func _prepare_party_economy_snapshot(
@@ -2605,6 +2788,8 @@ func _prepare_party_economy_snapshot(
 			or int(decoded_status_ledger["core_maximum"]) != party_core_maximum
 			or decoded_status_ledger["max_health_penalties"]
 			!= max_health_penalties
+			or decoded_status_ledger["player_stat_bonuses"]
+			!= player_stat_bonuses
 		)
 	):
 		return {}
@@ -2635,6 +2820,10 @@ func _prepare_party_economy_snapshot(
 			return {}
 		if not (
 			decoded_status_ledger["max_health_penalties"] as Dictionary
+		).has(peer_id):
+			return {}
+		if not (
+			decoded_status_ledger["player_stat_bonuses"] as Dictionary
 		).has(peer_id):
 			return {}
 		var incoming_revision := int(decoded_inventory["revision"])
@@ -2718,11 +2907,16 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		or int(prepared_status_ledger["core_maximum"]) != party_core_maximum
 		or prepared_status_ledger["max_health_penalties"]
 		!= max_health_penalties
+		or prepared_status_ledger["player_stat_bonuses"]
+		!= player_stat_bonuses
 	)
 	party_core_current = int(prepared_status_ledger["core_current"])
 	party_core_maximum = int(prepared_status_ledger["core_maximum"])
 	max_health_penalties = (
 		prepared_status_ledger["max_health_penalties"] as Dictionary
+	).duplicate(true)
+	player_stat_bonuses = (
+		prepared_status_ledger["player_stat_bonuses"] as Dictionary
 	).duplicate(true)
 	party_status_ledger_revision = int(prepared_status_ledger["revision"])
 

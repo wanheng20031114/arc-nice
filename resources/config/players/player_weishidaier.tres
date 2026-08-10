@@ -12,6 +12,7 @@ description = "以浮游炮压制远处的敌人，并用高爆炸弹清理密�
 playstyle = "远程 · 火力覆盖"
 player_scene = "res://scene/player/weishidaier/player_weishidaier.tscn"
 portrait_texture = "res://resources/texture/player/weishidaier/portrait.png"
+supports_ammunition = true
 skill_display_name = "经典技能"
 skill_description = "向上一次射击位置发射一枚炸弹造成攻击力330%的大范围伤害"
 skill_icon_texture = "res://resources/texture/player/weishidaier/skill1_icon.png"

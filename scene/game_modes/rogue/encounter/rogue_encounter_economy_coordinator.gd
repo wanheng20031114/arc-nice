@@ -1218,12 +1218,19 @@ func apply_remote_snapshot(snapshot: Dictionary) -> bool:
 
 
 func validate_remote_snapshot(snapshot: Dictionary) -> bool:
+	return (
+		validate_remote_snapshot_structure(snapshot)
+		and int(snapshot["revision"]) >= _economy_revision
+	)
+
+
+func validate_remote_snapshot_structure(snapshot: Dictionary) -> bool:
 	if (
 		_run_state == null
 		or typeof(snapshot.get("schema_version")) != TYPE_INT
 		or int(snapshot["schema_version"]) != SCHEMA_VERSION
 		or typeof(snapshot.get("revision")) != TYPE_INT
-		or int(snapshot["revision"]) < _economy_revision
+		or int(snapshot["revision"]) < 0
 		or typeof(snapshot.get("party_economy")) != TYPE_DICTIONARY
 		or typeof(snapshot.get("settled_occurrences")) != TYPE_ARRAY
 	):
@@ -1420,10 +1427,9 @@ func _is_collectible_compatible_with_character(
 	# 与当前角色脚本保持同一能力口径：Weishidaier/Tiyi 继承
 	# AmmoRangedPlayer；Hoe Cat 使用默认 false；Tango 虽重写投射物方法，
 	# 但为避免批量齐射 RPC 分歧，当前实现明确返回 false。
-	var supports_ammunition := character_id in [
-		PlayerCharacterRegistry.WEISHIDAIER_ID,
-		PlayerCharacterRegistry.TIYI_ID,
-	]
+	var supports_ammunition := (
+		PlayerCharacterRegistry.supports_ammunition_reward(character_id)
+	)
 	var supports_projectile_patterns := supports_ammunition
 	if item.requires_projectile_primary_attack and not supports_projectile_patterns:
 		return false
@@ -1495,7 +1501,8 @@ func _bump_touched_inventory_revisions(
 func _is_valid_xirang_ledger(ledger: Dictionary) -> bool:
 	if (
 		typeof(ledger.get("schema_version")) != TYPE_INT
-		or int(ledger["schema_version"]) != 1
+		or int(ledger["schema_version"])
+		!= RunStateStore.PARTY_XIRANG_LEDGER_SCHEMA_VERSION
 		or typeof(ledger.get("revision")) != TYPE_INT
 		or int(ledger["revision"]) < 0
 		or typeof(ledger.get("values")) != TYPE_DICTIONARY
@@ -1516,7 +1523,8 @@ func _is_valid_xirang_ledger(ledger: Dictionary) -> bool:
 func _is_valid_party_status_ledger(ledger: Dictionary) -> bool:
 	if (
 		typeof(ledger.get("schema_version")) != TYPE_INT
-		or int(ledger["schema_version"]) != 1
+		or int(ledger["schema_version"])
+		!= RunStateStore.PARTY_STATUS_LEDGER_SCHEMA_VERSION
 		or typeof(ledger.get("revision")) != TYPE_INT
 		or int(ledger["revision"]) < 0
 		or typeof(ledger.get("core_current")) != TYPE_INT
@@ -1525,8 +1533,10 @@ func _is_valid_party_status_ledger(ledger: Dictionary) -> bool:
 		or int(ledger["core_current"]) < 0
 		or int(ledger["core_current"]) > int(ledger["core_maximum"])
 		or typeof(ledger.get("max_health_penalties")) != TYPE_DICTIONARY
+		or typeof(ledger.get("player_stat_bonuses")) != TYPE_DICTIONARY
 	):
 		return false
+	var penalty_peer_ids: Dictionary = {}
 	for raw_peer_key in (ledger["max_health_penalties"] as Dictionary).keys():
 		if typeof(raw_peer_key) != TYPE_STRING:
 			return false
@@ -1538,6 +1548,39 @@ func _is_valid_party_status_ledger(ledger: Dictionary) -> bool:
 		)[raw_peer_key]
 		if typeof(raw_penalty) != TYPE_INT or int(raw_penalty) < 0:
 			return false
+		penalty_peer_ids[peer_key] = true
+	var bonuses_by_peer := ledger["player_stat_bonuses"] as Dictionary
+	if bonuses_by_peer.size() != penalty_peer_ids.size():
+		return false
+	for raw_peer_key in bonuses_by_peer.keys():
+		if typeof(raw_peer_key) != TYPE_STRING:
+			return false
+		var peer_key := str(raw_peer_key)
+		if (
+			not penalty_peer_ids.has(peer_key)
+			or not peer_key.is_valid_int()
+			or str(peer_key.to_int()) != peer_key
+		):
+			return false
+		var raw_bonuses: Variant = bonuses_by_peer[raw_peer_key]
+		if (
+			typeof(raw_bonuses) != TYPE_DICTIONARY
+			or (raw_bonuses as Dictionary).size()
+			!= RunStateStore.PLAYER_STAT_BONUS_KEYS.size()
+		):
+			return false
+		for stat_id in RunStateStore.PLAYER_STAT_BONUS_KEYS:
+			var stat_key := str(stat_id)
+			if not (raw_bonuses as Dictionary).has(stat_key):
+				return false
+			var raw_value: Variant = (raw_bonuses as Dictionary)[stat_key]
+			if (
+				typeof(raw_value) != TYPE_INT
+				or int(raw_value) < 0
+				or int(raw_value)
+				> _run_state.get_player_stat_bonus_hard_cap(stat_id)
+			):
+				return false
 	return true
 
 

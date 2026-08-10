@@ -2,7 +2,7 @@
 extends Resource
 class_name RogueRouteFloorDefinition
 
-const RUNTIME_CONTRACT_SCHEMA := 2
+const RUNTIME_CONTRACT_SCHEMA := 3
 const CONTENT_CONTRACT_SCHEMA := 2
 
 @export var floor_id: StringName = &""
@@ -62,10 +62,12 @@ func compute_runtime_contract_hash() -> String:
 	)
 	var combat_hash := _compute_default_combat_runtime_contract_hash()
 	var shop_hash := underground_shop_config.compute_runtime_contract_hash()
+	var rare_chest_hash := RogueRareChestRegistry.compute_runtime_contract_hash()
 	if (
 		generation_hash.is_empty()
 		or combat_hash.is_empty()
 		or shop_hash.is_empty()
+		or rare_chest_hash.is_empty()
 	):
 		return ""
 	return "\n".join(PackedStringArray([
@@ -80,6 +82,7 @@ func compute_runtime_contract_hash() -> String:
 		"initial_action_points=%d" % generation_config.initial_action_points,
 		"combat=%s" % combat_hash,
 		"underground_shop=%s" % shop_hash,
+		"rare_chest=%s" % rare_chest_hash,
 	])).sha256_text()
 
 

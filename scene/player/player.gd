@@ -284,6 +284,14 @@ var _run_max_health_penalty: int = 0
 var _base_attack_damage: float = 0.0
 var _base_physical_defense: int = 0
 var _base_magic_defense: int = 0
+var _run_max_health_bonus: int = 0
+var _run_physical_defense_bonus: int = 0
+var _run_magic_defense_bonus: int = 0
+var _run_move_speed_bonus: float = 0.0
+var _run_ammo_capacity_bonus: int = 0
+var _run_attack_damage_bonus: int = 0
+var _run_dodge_percent_points: int = 0
+var _base_dodge_chance: float = 0.0
 var _base_fire_interval: float = 0.0
 var multiplayer_visual_smoothing_enabled: bool = false
 var multiplayer_visual_offset: Vector2 = Vector2.ZERO
@@ -404,6 +412,7 @@ func _ready() -> void:
 	_wall_overlap_expected_position = global_position
 	_initialize_base_stats()
 	_connect_collectible_refresh_signals()
+	_sync_run_stat_bonuses_from_run_state(false)
 	_rebuild_active_collectible_items_cache()
 	# Conditional health effects must evaluate an entering player as healthy,
 	# rather than against the construction-time current_health value of zero.
@@ -498,6 +507,7 @@ func _initialize_base_stats() -> void:
 	_base_attack_damage = attack_damage
 	_base_physical_defense = physical_defense
 	_base_magic_defense = magic_defense
+	_base_dodge_chance = dodge_chance
 	_base_fire_interval = fire_interval
 	_base_stats_initialized = true
 
@@ -506,6 +516,15 @@ func _connect_collectible_refresh_signals() -> void:
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null and not run_state.inventory_changed.is_connected(_on_collectible_inventory_changed):
 		run_state.inventory_changed.connect(_on_collectible_inventory_changed)
+	if (
+		run_state != null
+		and not run_state.party_status_ledger_changed.is_connected(
+			_on_party_status_ledger_changed
+		)
+	):
+		run_state.party_status_ledger_changed.connect(
+			_on_party_status_ledger_changed
+		)
 	if not xirang_changed.is_connected(_on_collectible_xirang_changed):
 		xirang_changed.connect(_on_collectible_xirang_changed)
 
@@ -1919,6 +1938,7 @@ func configure_multiplayer_control(
 		and current_health >= max_health
 	)
 	peer_id = new_peer_id
+	_sync_run_stat_bonuses_from_run_state(false)
 	# Multiplayer inventories are keyed by peer. Rebind the immutable item cache
 	# as soon as this scene instance receives its authoritative peer identity.
 	_rebuild_active_collectible_items_cache()
@@ -3059,6 +3079,73 @@ func _on_collectible_inventory_changed() -> void:
 	_refresh_collectible_stats()
 
 
+func _on_party_status_ledger_changed(_snapshot: Dictionary) -> void:
+	_sync_run_stat_bonuses_from_run_state(true)
+
+
+func _sync_run_stat_bonuses_from_run_state(refresh_stats: bool) -> void:
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	if run_state == null:
+		configure_run_stat_bonuses({}, refresh_stats)
+		return
+	configure_run_stat_bonuses(
+		run_state.get_player_stat_bonuses(peer_id),
+		refresh_stats
+	)
+
+
+## Applies absolute per-run totals. Replaying the same route snapshot is
+## idempotent and never grants health by itself; reward settlement performs its
+## one-time heal only after the ledger CAS succeeds.
+func configure_run_stat_bonuses(
+	bonuses: Dictionary,
+	refresh_stats: bool = true
+) -> bool:
+	var next_max_health := maxi(int(bonuses.get("max_health", 0)), 0)
+	var next_physical_defense := maxi(
+		int(bonuses.get("physical_defense", 0)),
+		0
+	)
+	var next_magic_defense := clampi(
+		int(bonuses.get("magic_defense", 0)),
+		0,
+		DEFAULT_MAGIC_DEFENSE_LIMIT
+	)
+	var next_move_speed := maxf(float(bonuses.get("move_speed", 0)), 0.0)
+	var next_ammo_capacity := clampi(
+		int(bonuses.get("ammo_capacity", 0)),
+		0,
+		65535
+	)
+	var next_attack_damage := maxi(int(bonuses.get("attack_damage", 0)), 0)
+	var next_dodge_points := clampi(
+		int(bonuses.get("dodge_percent_points", 0)),
+		0,
+		100
+	)
+	var changed := (
+		next_max_health != _run_max_health_bonus
+		or next_physical_defense != _run_physical_defense_bonus
+		or next_magic_defense != _run_magic_defense_bonus
+		or not is_equal_approx(next_move_speed, _run_move_speed_bonus)
+		or next_ammo_capacity != _run_ammo_capacity_bonus
+		or next_attack_damage != _run_attack_damage_bonus
+		or next_dodge_points != _run_dodge_percent_points
+	)
+	if not changed:
+		return false
+	_run_max_health_bonus = next_max_health
+	_run_physical_defense_bonus = next_physical_defense
+	_run_magic_defense_bonus = next_magic_defense
+	_run_move_speed_bonus = next_move_speed
+	_run_ammo_capacity_bonus = next_ammo_capacity
+	_run_attack_damage_bonus = next_attack_damage
+	_run_dodge_percent_points = next_dodge_points
+	if refresh_stats and _base_stats_initialized:
+		_refresh_collectible_stats()
+	return true
+
+
 func _on_collectible_xirang_changed(_total: int, _added_amount: int) -> void:
 	_refresh_collectible_stats()
 
@@ -3070,6 +3157,7 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	var previous_move_speed := move_speed
 	var previous_physical_defense := physical_defense
 	var previous_magic_defense := magic_defense
+	var previous_dodge_chance := dodge_chance
 
 	var attack_bonus := 0
 	var max_health_bonus := 0
@@ -3157,7 +3245,11 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	# 允许角色以半点为单位配置成长，但对外战斗伤害始终保持整数。
 	attack_damage = maxi(
 		ceili(
-			float(roundi(_base_attack_damage) + attack_bonus)
+			float(
+				roundi(_base_attack_damage)
+				+ attack_bonus
+				+ _run_attack_damage_bonus
+			)
 			* maxf(temporary_attack_damage_multiplier, 0.1)
 			* maxf(potion_attack_damage_multiplier, 1.0)
 		),
@@ -3165,7 +3257,11 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	)
 	max_health = maxi(
 		roundi(
-			float(_base_max_health + max_health_bonus)
+			float(
+				_base_max_health
+				+ max_health_bonus
+				+ _run_max_health_bonus
+			)
 			* tower_defense_fate_max_health_multiplier
 		) - _run_max_health_penalty,
 		1
@@ -3173,12 +3269,14 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	move_speed = maxf(
 		_base_move_speed
 		+ move_speed_bonus
-		+ research_global_move_speed_bonus,
+		+ research_global_move_speed_bonus
+		+ _run_move_speed_bonus,
 		0.0
 	)
 	physical_defense = maxi(
 		_base_physical_defense
 		+ physical_defense_bonus
+		+ _run_physical_defense_bonus
 		+ research_temporary_physical_defense_bonus
 		+ potion_physical_defense_bonus,
 		0
@@ -3186,10 +3284,16 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 	magic_defense = clampi(
 		_base_magic_defense
 		+ magic_defense_bonus
+		+ _run_magic_defense_bonus
 		+ research_temporary_magic_defense_bonus
 		+ potion_magic_defense_bonus,
 		0,
 		DEFAULT_MAGIC_DEFENSE_LIMIT
+	)
+	dodge_chance = clampf(
+		_base_dodge_chance + float(_run_dodge_percent_points) / 100.0,
+		0.0,
+		1.0
 	)
 	fire_interval = maxf(_base_fire_interval, 0.01)
 	collectible_physical_damage_bonus = physical_damage_bonus
@@ -3215,6 +3319,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 			health_bar.set_health(current_health, max_health)
 		if emit_changes:
 			health_changed.emit(current_health, max_health)
+	if not is_equal_approx(previous_dodge_chance, dodge_chance) and emit_changes:
+		dodge_changed.emit(dodge_chance)
 	_on_collectible_ammunition_stats_refreshed()
 	_refresh_shooting_timer_wait_time()
 	if (
@@ -3222,6 +3328,7 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		or not is_equal_approx(move_speed, previous_move_speed)
 		or physical_defense != previous_physical_defense
 		or magic_defense != previous_magic_defense
+		or not is_equal_approx(dodge_chance, previous_dodge_chance)
 	):
 		profile_display_changed.emit()
 
@@ -3239,7 +3346,7 @@ func _get_active_collectible_items() -> Array[PickupConfig]:
 func _get_collectible_health_condition_maximum(
 	active_items: Array[PickupConfig]
 ) -> int:
-	var result := _base_max_health
+	var result := _base_max_health + _run_max_health_bonus
 	for item in active_items:
 		result += item.collectible_max_health_bonus
 	return maxi(
@@ -5512,5 +5619,8 @@ func upgrade_attack_speed() -> void:
 
 # 升级闪避能力，每级闪避率 +2%
 func upgrade_dodge() -> void:
-	dodge_chance = minf(dodge_chance + DODGE_UPGRADE_CHANCE_STEP, 1.0)
-	dodge_changed.emit(dodge_chance)
+	_base_dodge_chance = minf(
+		_base_dodge_chance + DODGE_UPGRADE_CHANCE_STEP,
+		1.0
+	)
+	_refresh_collectible_stats()

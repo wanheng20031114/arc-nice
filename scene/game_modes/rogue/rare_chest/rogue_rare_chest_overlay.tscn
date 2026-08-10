@@ -1,0 +1,238 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_overlay.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_choice_card.tscn" id="2_card"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="3_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/prepare_ahead/rare_chest_tableau.png" id="4_tableau"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel.png" id="5_choice_panel"]
+
+[sub_resource type="FontVariation" id="FontVariation_heading"]
+base_font = ExtResource("3_font")
+variation_embolden = 0.6
+spacing_top = 2
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("3_font")
+variation_embolden = 0.25
+spacing_top = 1
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = SubResource("FontVariation_heading")
+font_size = 28
+font_color = Color(0.93, 0.98, 1, 1)
+outline_size = 2
+outline_color = Color(0.005, 0.025, 0.035, 0.98)
+
+[sub_resource type="LabelSettings" id="LabelSettings_private"]
+font = SubResource("FontVariation_body")
+font_size = 15
+font_color = Color(0.55, 0.83, 0.88, 1)
+outline_size = 1
+outline_color = Color(0.005, 0.025, 0.035, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_status"]
+font = SubResource("FontVariation_body")
+font_size = 15
+font_color = Color(0.98, 0.78, 0.39, 1)
+outline_size = 1
+outline_color = Color(0.005, 0.025, 0.035, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_result"]
+font = SubResource("FontVariation_body")
+font_size = 15
+font_color = Color(0.95, 0.84, 0.55, 1)
+outline_size = 1
+outline_color = Color(0.005, 0.025, 0.035, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_waiting"]
+font = SubResource("FontVariation_body")
+font_size = 14
+font_color = Color(0.7, 0.88, 0.9, 1)
+outline_size = 1
+outline_color = Color(0.005, 0.025, 0.035, 0.95)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tableau_frame"]
+bg_color = Color(0.012, 0.052, 0.066, 0.72)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.7, 0.76, 0.76)
+corner_radius_top_left = 9
+corner_radius_top_right = 9
+corner_radius_bottom_right = 9
+corner_radius_bottom_left = 9
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 8
+
+[node name="RogueRareChestOverlay" type="CanvasLayer"]
+visible = false
+layer = 24
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+texture_filter = 1
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Shade" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.003, 0.017, 0.023, 0.9)
+
+[node name="AmbientTop" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 130.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.055, 0.26, 0.31, 0.2)
+
+[node name="ScreenMargin" type="MarginContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 38
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 38
+theme_override_constants/margin_bottom = 24
+
+[node name="MainRow" type="HBoxContainer" parent="Root/ScreenMargin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 30
+
+[node name="TableauStage" type="CenterContainer" parent="Root/ScreenMargin/MainRow"]
+custom_minimum_size = Vector2(390, 520)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.82
+mouse_filter = 2
+
+[node name="TableauFrame" type="PanelContainer" parent="Root/ScreenMargin/MainRow/TableauStage"]
+custom_minimum_size = Vector2(366, 478)
+layout_mode = 2
+mouse_filter = 2
+clip_children = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_tableau_frame")
+
+[node name="TableauLayer" type="Control" parent="Root/ScreenMargin/MainRow/TableauStage/TableauFrame"]
+clip_contents = true
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Tableau" type="TextureRect" parent="Root/ScreenMargin/MainRow/TableauStage/TableauFrame/TableauLayer"]
+texture_filter = 2
+layout_mode = 0
+offset_right = 366.0
+offset_bottom = 478.0
+mouse_filter = 2
+texture = ExtResource("4_tableau")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="DecisionColumn" type="VBoxContainer" parent="Root/ScreenMargin/MainRow"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.18
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="VBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="Title" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+layout_mode = 2
+text = "稀有宝箱"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="PrivateHint" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+layout_mode = 2
+text = "每位玩家独立选择 · 你的候选仅自己可见"
+label_settings = SubResource("LabelSettings_private")
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Status" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Header"]
+texture_filter = 2
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+text = "请选择一项永久增益"
+label_settings = SubResource("LabelSettings_status")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Divider" type="ColorRect" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.42, 0.72, 0.78, 0.42)
+
+[node name="ChoiceList" type="VBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Choice0" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+background_texture = ExtResource("5_choice_panel")
+
+[node name="Choice1" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+background_texture = ExtResource("5_choice_panel")
+
+[node name="Choice2" parent="Root/ScreenMargin/MainRow/DecisionColumn/ChoiceList" instance=ExtResource("2_card")]
+layout_mode = 2
+background_texture = ExtResource("5_choice_panel")
+
+[node name="Footer" type="VBoxContainer" parent="Root/ScreenMargin/MainRow/DecisionColumn"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="LocalResult" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Footer"]
+visible = false
+texture_filter = 2
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+text = "最大生命值已永久提高10点"
+label_settings = SubResource("LabelSettings_result")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="WaitingList" type="Label" parent="Root/ScreenMargin/MainRow/DecisionColumn/Footer"]
+texture_filter = 2
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+text = "等待：队友"
+label_settings = SubResource("LabelSettings_waiting")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2

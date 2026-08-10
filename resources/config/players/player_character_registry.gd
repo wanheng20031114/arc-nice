@@ -45,6 +45,11 @@ static func is_valid_character_id(character_id: StringName) -> bool:
 	return config != null and config.is_valid()
 
 
+static func supports_ammunition_reward(character_id: StringName) -> bool:
+	var config := get_config(character_id)
+	return config != null and config.supports_ammunition
+
+
 static func instantiate_character(character_id: StringName) -> Player:
 	var config := get_config(character_id)
 	if config == null:

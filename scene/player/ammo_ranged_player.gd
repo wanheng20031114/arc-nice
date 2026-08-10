@@ -141,15 +141,18 @@ func get_ammo_capacity() -> int:
 	if _network_ammo_capacity_override > 0:
 		return _network_ammo_capacity_override
 	var additive_capacity := maxi(
-		ammo_capacity + collectible_ammo_capacity_additive_bonus,
+		ammo_capacity
+		+ collectible_ammo_capacity_additive_bonus
+		+ _run_ammo_capacity_bonus,
 		1
 	)
-	return maxi(
+	return clampi(
 		floori(
 			float(additive_capacity)
 			* (1.0 + maxf(collectible_ammo_capacity_bonus_ratio, 0.0))
 		),
-		1
+		1,
+		65535
 	)
 
 

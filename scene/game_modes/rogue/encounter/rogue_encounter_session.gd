@@ -525,7 +525,7 @@ func apply_remote_state(snapshot: Dictionary) -> bool:
 
 func validate_remote_state(snapshot: Dictionary) -> bool:
 	var decoded := _decode_state(snapshot)
-	if decoded.is_empty():
+	if decoded.is_empty() or not validate_remote_state_structure(snapshot):
 		return false
 	var incoming_revision := int(decoded["revision"])
 	if incoming_revision < _revision:
@@ -541,6 +541,18 @@ func validate_remote_state(snapshot: Dictionary) -> bool:
 		_economy == null
 		or incoming_economy.is_empty()
 		or _economy.validate_remote_snapshot(incoming_economy)
+	)
+
+
+func validate_remote_state_structure(snapshot: Dictionary) -> bool:
+	var decoded := _decode_state(snapshot)
+	if decoded.is_empty():
+		return false
+	var incoming_economy := decoded["economy_snapshot"] as Dictionary
+	return (
+		_economy == null
+		or incoming_economy.is_empty()
+		or _economy.validate_remote_snapshot_structure(incoming_economy)
 	)
 
 

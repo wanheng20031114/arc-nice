@@ -150,9 +150,9 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 54,
+		NetConstants.PROTOCOL_VERSION == 55,
 		(
-			"协议 v54 必须同时承载目标玩家私有的地下商店会话，并隔离"
+			"协议 v55 必须同时承载目标玩家私有的地下商店与稀有宝箱会话，并隔离"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
 			+ "精英忍者资源、既有遭遇、忍者加速与重连激活确认。"
@@ -339,8 +339,8 @@ func _test_snapshot_and_delta_contract() -> void:
 	client_route.start_client_waiting()
 	var layout := host_route.export_layout_snapshot()
 	var state := host_route.export_state_snapshot()
-	var encounter_state := host_route.export_encounter_snapshot()
-	var economy_state := host_route.export_encounter_economy_snapshot()
+	var encounter_state := host_route.export_encounter_snapshot(0)
+	var economy_state := host_route.export_encounter_economy_snapshot(0)
 	_expect(
 		(encounter_state.get("economy_snapshot", {}) as Dictionary).is_empty()
 		and not economy_state.is_empty(),
@@ -863,8 +863,8 @@ func _test_briefing_network_contract() -> void:
 	}
 	wrapper.set("_route", client_route)
 	wrapper.set("_net_manager", fake_net_manager)
-	var encounter_state := host_route.export_encounter_snapshot()
-	var economy_state := host_route.export_encounter_economy_snapshot()
+	var encounter_state := host_route.export_encounter_snapshot(0)
+	var economy_state := host_route.export_encounter_economy_snapshot(0)
 	_expect(
 		bool(wrapper.call(
 			"_apply_full_snapshot_from_peer",
@@ -1213,7 +1213,8 @@ func _test_encounter_network_contract(
 		bool(host_route.call("_try_start_encounter_for_node", magical_node_id)),
 		"Host 必须能为未解决的神奇遭遇节点创建唯一 Session。"
 	)
-	var started := host_route.export_encounter_snapshot()
+	var client_peer_id := fake_net_manager.host_peer_id + 1
+	var started := host_route.export_encounter_snapshot(client_peer_id)
 	var occurrence_key := str(started.get("occurrence_key", ""))
 	var initial_revision := int(started.get("revision", -1))
 	var participants := started.get("participant_peer_ids", []) as Array
@@ -1235,7 +1236,7 @@ func _test_encounter_network_contract(
 		+ RogueEncounterOverlay.REVEAL_DURATION_SECONDS
 		+ 0.08
 	).timeout
-	var voting := host_route.export_encounter_snapshot()
+	var voting := host_route.export_encounter_snapshot(client_peer_id)
 	_expect(
 		bool(voting.get("voting_timer_running", false))
 		and float(voting.get("remaining_seconds", 0.0)) > 0.0
@@ -1245,7 +1246,7 @@ func _test_encounter_network_contract(
 	var remaining_after_host_reveal := float(
 		voting.get("remaining_seconds", 0.0)
 	)
-	var economy := host_route.export_encounter_economy_snapshot()
+	var economy := host_route.export_encounter_economy_snapshot(client_peer_id)
 	var client_state_before := client_route.export_encounter_snapshot()
 	_expect(
 		not bool(wrapper.call(
@@ -1343,7 +1344,7 @@ func _test_encounter_network_contract(
 		),
 		"Host 必须只接受当前 occurrence/revision 的投票。"
 	)
-	var result := host_route.export_encounter_snapshot()
+	var result := host_route.export_encounter_snapshot(client_peer_id)
 	var result_pages := result.get("result_pages", []) as Array
 	_expect(
 		StringName(result.get("phase", &"")) == &"result"
@@ -1353,7 +1354,9 @@ func _test_encounter_network_contract(
 		== str((result_pages[0] as Dictionary).get("text", "")),
 		"投票完成后必须得到一次性权威结算及可无损同步的结果页。"
 	)
-	var result_economy := host_route.export_encounter_economy_snapshot()
+	var result_economy := host_route.export_encounter_economy_snapshot(
+		client_peer_id
+	)
 	_expect(
 		bool(wrapper.call(
 			"_apply_encounter_snapshot_from_peer",
@@ -1383,8 +1386,10 @@ func _test_encounter_network_contract(
 		)),
 		"结果停留期 revision 变化不得锁死退出，退出转场完成前仍须保持输入锁。"
 	)
-	var completed := host_route.export_encounter_snapshot()
-	var completed_economy := host_route.export_encounter_economy_snapshot()
+	var completed := host_route.export_encounter_snapshot(client_peer_id)
+	var completed_economy := host_route.export_encounter_economy_snapshot(
+		client_peer_id
+	)
 	_expect(
 		bool(wrapper.call(
 			"_apply_encounter_snapshot_from_peer",
@@ -1456,8 +1461,12 @@ func _test_encounter_network_contract(
 	)
 	var regenerated_layout := host_route.export_layout_snapshot()
 	var regenerated_state := host_route.export_state_snapshot()
-	var regenerated_encounter := host_route.export_encounter_snapshot()
-	var regenerated_economy := host_route.export_encounter_economy_snapshot()
+	var regenerated_encounter := host_route.export_encounter_snapshot(
+		client_peer_id
+	)
+	var regenerated_economy := host_route.export_encounter_economy_snapshot(
+		client_peer_id
+	)
 	_expect(
 		str(regenerated_layout.get("layout_hash", "")) == previous_layout_hash
 		and client_route.apply_full_snapshot(
@@ -2097,21 +2106,19 @@ func _test_incremental_avatar_reconnect(
 		observer_peer_id: "Observer",
 		collision_peer_id: "ReconnectedClient",
 	}
+	# 此段把同一 Route 实例切作“重连者本人”夹具；私人 encounter 快照
+	# 必须绑定其真实本地 transport id，不能再喂公共 target=-1。
+	host_route.set("_local_peer_id", collision_peer_id)
 	var authoritative_economy := (
-		host_route.get_node("EncounterEconomy")
-		as RogueEncounterEconomyCoordinator
-	).export_snapshot([collision_peer_id])
-	authoritative_economy["supply_economy"] = (
-		host_route.get_node("SupplyEconomy")
-		as RogueSupplyEconomyCoordinator
-	).export_snapshot([collision_peer_id])
+		host_route.export_encounter_economy_snapshot(collision_peer_id)
+	)
 	_expect(
 		bool(reconnect_wrapper.call(
 			"_apply_full_snapshot_from_peer",
 			fake_net_manager.host_peer_id,
 			host_route.export_layout_snapshot(),
 			host_route.export_state_snapshot(),
-			host_route.export_encounter_snapshot(),
+			host_route.export_encounter_snapshot(collision_peer_id),
 			authoritative_economy
 		))
 		and not shared_run_state.has_multiplayer_peer_state(

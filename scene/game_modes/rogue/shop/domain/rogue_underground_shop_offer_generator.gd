@@ -272,10 +272,9 @@ static func _is_collectible_compatible_with_character(
 		return false
 	# This mirrors Player.is_collectible_compatible without instantiating a
 	# gameplay character in the host's route-only scene.
-	var supports_ammunition := character_id in [
-		PlayerCharacterRegistry.WEISHIDAIER_ID,
-		PlayerCharacterRegistry.TIYI_ID,
-	]
+	var supports_ammunition := (
+		PlayerCharacterRegistry.supports_ammunition_reward(character_id)
+	)
 	var supports_projectile_patterns := supports_ammunition
 	if item.requires_projectile_primary_attack and not supports_projectile_patterns:
 		return false

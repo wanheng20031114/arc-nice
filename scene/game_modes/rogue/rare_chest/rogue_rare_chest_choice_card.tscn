@@ -1,0 +1,234 @@
+[gd_scene load_steps=18 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_choice_card.gd" id="1_script"]
+[ext_resource type="FontFile" path="res://resources/font/ResourceHanRoundedCN-Medium.ttf" id="2_font"]
+[ext_resource type="Texture2D" path="res://resources/texture/rogue_route/supply/supply_choice_panel.png" id="3_background"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_mask"]
+bg_color = Color(0, 0, 0, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_normal"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.31, 0.17, 0.08, 0.58)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+draw_center = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hover"]
+bg_color = Color(1, 0.78, 0.34, 0.12)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.91, 0.64, 0.98)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pressed"]
+bg_color = Color(0.95, 0.58, 0.13, 0.16)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.46, 0.22, 0.06, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disabled"]
+bg_color = Color(0.22, 0.15, 0.1, 0.14)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.37, 0.3, 0.24, 0.58)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.93, 0.7, 0.96)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+draw_center = false
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_selected"]
+bg_color = Color(1, 0.72, 0.2, 0.08)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.88, 0.48, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+draw_center = false
+
+[sub_resource type="FontVariation" id="FontVariation_number"]
+base_font = ExtResource("2_font")
+spacing_top = 2
+
+[sub_resource type="FontVariation" id="FontVariation_effect"]
+base_font = ExtResource("2_font")
+variation_embolden = 0.48
+spacing_top = 2
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("2_font")
+spacing_top = 1
+
+[sub_resource type="LabelSettings" id="LabelSettings_number"]
+font = SubResource("FontVariation_number")
+font_size = 22
+font_color = Color(0.56, 0.28, 0.06, 1)
+outline_size = 1
+outline_color = Color(1, 0.91, 0.68, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_effect"]
+font = SubResource("FontVariation_effect")
+font_size = 24
+font_color = Color(0.24, 0.11, 0.04, 1)
+outline_size = 1
+outline_color = Color(1, 0.93, 0.74, 0.95)
+
+[sub_resource type="LabelSettings" id="LabelSettings_detail"]
+font = SubResource("FontVariation_body")
+font_size = 17
+font_color = Color(0.3, 0.17, 0.08, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_state"]
+font = SubResource("FontVariation_body")
+font_size = 14
+font_color = Color(0.62, 0.2, 0.07, 1)
+outline_size = 1
+outline_color = Color(1, 0.9, 0.65, 0.94)
+
+[node name="RogueRareChestChoiceCard" type="PanelContainer"]
+texture_filter = 1
+custom_minimum_size = Vector2(520, 148)
+pivot_offset = Vector2(260, 74)
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_mask")
+script = ExtResource("1_script")
+background_texture = ExtResource("3_background")
+
+[node name="Background" type="TextureRect" parent="."]
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_background")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_pressed")
+theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_disabled")
+
+[node name="SelectionBorder" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_selected")
+
+[node name="Content" type="Control" parent="."]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Margin" type="MarginContainer" parent="Content"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 18
+
+[node name="Rows" type="VBoxContainer" parent="Content/Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="Header" type="HBoxContainer" parent="Content/Margin/Rows"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Number" type="Label" parent="Content/Margin/Rows/Header"]
+texture_filter = 2
+custom_minimum_size = Vector2(44, 32)
+layout_mode = 2
+text = "01"
+label_settings = SubResource("LabelSettings_number")
+vertical_alignment = 1
+
+[node name="Effect" type="Label" parent="Content/Margin/Rows/Header"]
+texture_filter = 2
+layout_mode = 2
+size_flags_horizontal = 3
+text = "生命值永久+10"
+label_settings = SubResource("LabelSettings_effect")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Detail" type="Label" parent="Content/Margin/Rows"]
+texture_filter = 2
+custom_minimum_size = Vector2(0, 31)
+layout_mode = 2
+size_flags_vertical = 3
+text = "同时回复10点生命值"
+label_settings = SubResource("LabelSettings_detail")
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="State" type="Label" parent="Content/Margin/Rows"]
+visible = false
+texture_filter = 2
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+text = "当前条件不可用"
+label_settings = SubResource("LabelSettings_state")
+vertical_alignment = 1
+autowrap_mode = 2

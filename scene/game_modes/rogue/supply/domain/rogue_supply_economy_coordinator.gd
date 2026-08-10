@@ -308,12 +308,19 @@ func apply_remote_snapshot(snapshot: Dictionary) -> bool:
 
 
 func validate_remote_snapshot(snapshot: Dictionary) -> bool:
+	return (
+		validate_remote_snapshot_structure(snapshot)
+		and int(snapshot["revision"]) >= _economy_revision
+	)
+
+
+func validate_remote_snapshot_structure(snapshot: Dictionary) -> bool:
 	if (
 		_run_state == null
 		or typeof(snapshot.get("schema_version")) != TYPE_INT
 		or int(snapshot["schema_version"]) != SCHEMA_VERSION
 		or typeof(snapshot.get("revision")) != TYPE_INT
-		or int(snapshot["revision"]) < _economy_revision
+		or int(snapshot["revision"]) < 0
 		or typeof(snapshot.get("settled_occurrences")) != TYPE_ARRAY
 		or typeof(snapshot.get("pending_collectible_offers")) != TYPE_ARRAY
 		or typeof(snapshot.get("party_economy")) != TYPE_DICTIONARY
@@ -731,10 +738,9 @@ func _is_collectible_compatible_with_character(
 	item: PickupConfig,
 	character_id: StringName
 ) -> bool:
-	var supports_ammunition := character_id in [
-		PlayerCharacterRegistry.WEISHIDAIER_ID,
-		PlayerCharacterRegistry.TIYI_ID,
-	]
+	var supports_ammunition := (
+		PlayerCharacterRegistry.supports_ammunition_reward(character_id)
+	)
 	if item.requires_projectile_primary_attack and not supports_ammunition:
 		return false
 	if item.requires_ammunition and not supports_ammunition:

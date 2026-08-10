@@ -131,6 +131,11 @@ enum BriefingPhase {
 @onready var supply_economy: RogueSupplyEconomyCoordinator = $SupplyEconomy
 @onready var supply_session: RogueSupplySession = $SupplySession
 @onready var supply_overlay: RogueSupplyOverlay = $SupplyOverlay
+@onready var rare_chest_economy: RogueRareChestEconomyCoordinator = (
+	$RareChestEconomy
+)
+@onready var rare_chest_session: RogueRareChestSession = $RareChestSession
+@onready var rare_chest_overlay: RogueRareChestOverlay = $RareChestOverlay
 @onready var underground_shop_controller: RogueUndergroundShopController = (
 	$UndergroundShopController
 )
@@ -188,6 +193,10 @@ var _encounter_presented_active := false
 var _encounter_presentation_serial := 0
 var _local_result_hold_completed_occurrence_key := ""
 var _last_supply_ap_broadcast_occurrence_key := ""
+var _rare_chest_presented_active := false
+var _rare_chest_presentation_serial := 0
+var _rare_chest_local_offer_seen_occurrences: Dictionary = {}
+var _rare_chest_local_heal_applied_occurrences: Dictionary = {}
 var _normal_combat_active := false
 var _normal_combat_node_id := INVALID_NODE_ID
 var _normal_combat_content_seed := 0
@@ -228,6 +237,7 @@ func _ready() -> void:
 	_connect_runtime_activation_signal()
 	_create_encounter_runtime()
 	_create_supply_runtime()
+	_create_rare_chest_runtime()
 	if not player_profile_panel.closed.is_connected(_on_player_profile_closed):
 		player_profile_panel.closed.connect(_on_player_profile_closed)
 	if not player_profile_panel.multiplayer_inventory_item_discard_requested.is_connected(
@@ -386,6 +396,7 @@ func start_authoritative_session(
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(true)
 	_reset_supply_runtime(true)
+	_reset_rare_chest_runtime(true)
 	_reset_underground_shop_runtime(true)
 
 	_set_route_reveal_input_locked(false)
@@ -423,6 +434,7 @@ func start_client_waiting() -> void:
 	_reset_normal_combat_stage(true)
 	_reset_encounter_runtime(false)
 	_reset_supply_runtime(false)
+	_reset_rare_chest_runtime(false)
 	_reset_underground_shop_runtime(false)
 	_disconnect_runtime_state()
 	_route_graph = null
@@ -487,6 +499,16 @@ func apply_full_snapshot(
 	):
 		_set_status("房主地下商店快照无效或已过期。", true)
 		return false
+	if (
+		not encounter_snapshot.is_empty()
+		and _prepare_encounter_snapshot_application(
+			encounter_snapshot,
+			economy_snapshot,
+			true
+		).is_empty()
+	):
+		_set_status("房主遭遇或经济快照结构无效。", true)
+		return false
 	var layout_changed := (
 		_route_graph == null
 		or _route_graph.compute_layout_hash()
@@ -497,6 +519,7 @@ func apply_full_snapshot(
 		imported_state
 	)
 	var encounter_rewound := false
+	var rare_chest_rewind_occurrence_key := ""
 	if encounter_session != null and not encounter_snapshot.is_empty():
 		var incoming_encounter_revision := int(
 			encounter_snapshot.get("revision", -1)
@@ -541,9 +564,56 @@ func apply_full_snapshot(
 				!= str(current_supply_state.get("occurrence_key", ""))
 			)
 		)
+	var incoming_rare_chest_state := encounter_snapshot.get(
+		"rare_chest_state",
+		{}
+	) as Dictionary
+	if rare_chest_session != null and not incoming_rare_chest_state.is_empty():
+		var current_rare_chest_state := rare_chest_session.export_state_for_peer(
+			_get_local_encounter_peer_id()
+		)
+		var incoming_rare_revision := int(
+			incoming_rare_chest_state.get("revision", -1)
+		)
+		var current_rare_revision := int(
+			current_rare_chest_state.get("revision", -1)
+		)
+		var incoming_rare_occurrence := str(
+			incoming_rare_chest_state.get("occurrence_key", "")
+		)
+		if (
+			not incoming_rare_occurrence.is_empty()
+			and incoming_rare_occurrence == str(
+				current_rare_chest_state.get("occurrence_key", "")
+			)
+		):
+			rare_chest_rewind_occurrence_key = incoming_rare_occurrence
+		encounter_rewound = encounter_rewound or (
+			incoming_rare_revision < current_rare_revision
+			or (
+				incoming_rare_revision == current_rare_revision
+				and not str(current_rare_chest_state.get(
+					"occurrence_key",
+					""
+				)).is_empty()
+				and str(incoming_rare_chest_state.get("occurrence_key", ""))
+				!= str(current_rare_chest_state.get("occurrence_key", ""))
+			)
+		)
 	var presentation_rewound := (
 		layout_changed or route_rewound or encounter_rewound
 	)
+	if (
+		not presentation_rewound
+		and not encounter_snapshot.is_empty()
+		and _prepare_encounter_snapshot_application(
+			encounter_snapshot,
+			economy_snapshot,
+			false
+		).is_empty()
+	):
+		_set_status("房主遭遇或经济快照无效或已过期。", true)
+		return false
 	if not presentation_rewound and is_route_ready():
 		var incoming_briefing_revision := int(
 			briefing_snapshot["revision"]
@@ -562,6 +632,10 @@ func apply_full_snapshot(
 		_reset_normal_combat_stage(true)
 		_reset_encounter_runtime(false)
 		_reset_supply_runtime(false)
+		_reset_rare_chest_runtime(
+			false,
+			rare_chest_rewind_occurrence_key
+		)
 		_reset_underground_shop_runtime(false)
 
 	_set_route_reveal_input_locked(false)
@@ -824,7 +898,7 @@ func hide_combat_entry_transition() -> void:
 	combat_scene_transition.hide_immediately()
 
 
-func export_encounter_snapshot() -> Dictionary:
+func export_encounter_snapshot(target_peer_id: int = -1) -> Dictionary:
 	if encounter_session == null:
 		return {}
 	var snapshot := encounter_session.export_state().duplicate(true)
@@ -835,10 +909,14 @@ func export_encounter_snapshot() -> Dictionary:
 		var supply_state := supply_session.export_state().duplicate(true)
 		supply_state["economy_snapshot"] = {}
 		snapshot["supply_state"] = supply_state
+	if rare_chest_session != null:
+		snapshot["rare_chest_state"] = (
+			rare_chest_session.export_state_for_peer(target_peer_id)
+		)
 	return snapshot
 
 
-func export_encounter_economy_snapshot() -> Dictionary:
+func export_encounter_economy_snapshot(target_peer_id: int = -1) -> Dictionary:
 	if encounter_economy == null:
 		return {}
 	var encounter_peer_ids := _get_active_encounter_peer_ids()
@@ -852,6 +930,11 @@ func export_encounter_economy_snapshot() -> Dictionary:
 			encounter_peer_ids.clear()
 			for raw_peer_id in session_peer_ids:
 				encounter_peer_ids.append(int(raw_peer_id))
+	if rare_chest_session != null:
+		for peer_id in rare_chest_session.get_economy_peer_ids():
+			if not encounter_peer_ids.has(peer_id):
+				encounter_peer_ids.append(peer_id)
+	encounter_peer_ids.sort()
 	var snapshot := encounter_economy.export_snapshot(
 		encounter_peer_ids
 	).duplicate(true)
@@ -866,6 +949,10 @@ func export_encounter_economy_snapshot() -> Dictionary:
 		snapshot["supply_economy"] = supply_economy.export_snapshot(
 			supply_peer_ids
 		)
+	if rare_chest_economy != null:
+		snapshot["rare_chest_economy"] = (
+			rare_chest_economy.export_snapshot(target_peer_id)
+		)
 	return snapshot
 
 
@@ -873,48 +960,197 @@ func apply_encounter_snapshot(
 	encounter_snapshot: Dictionary,
 	economy_snapshot: Dictionary
 ) -> bool:
-	if encounter_session == null or encounter_snapshot.is_empty():
+	var prepared := _prepare_encounter_snapshot_application(
+		encounter_snapshot,
+		economy_snapshot,
+		false
+	)
+	if prepared.is_empty():
 		return false
+	var atomic_supply_state := prepared["supply_state"] as Dictionary
+	var atomic_snapshot := prepared["encounter_state"] as Dictionary
+	var rare_chest_state := prepared["rare_chest_state"] as Dictionary
+	var rare_chest_economy_snapshot := prepared[
+		"rare_chest_economy"
+	] as Dictionary
+	if not supply_session.apply_remote_state(atomic_supply_state):
+		return false
+	# Session 会先让 Economy 校验并提交账本，成功后才写入自身阶段字段；
+	# 任一经济字段无效时，遭遇 revision/phase 也保持原值。
+	if not encounter_session.apply_remote_state(atomic_snapshot):
+		return false
+	if not rare_chest_economy.apply_remote_snapshot(
+		rare_chest_economy_snapshot
+	):
+		return false
+	return rare_chest_session.apply_remote_state(rare_chest_state)
+
+
+func _prepare_encounter_snapshot_application(
+	encounter_snapshot: Dictionary,
+	economy_snapshot: Dictionary,
+	structure_only: bool
+) -> Dictionary:
+	if encounter_session == null or encounter_snapshot.is_empty():
+		return {}
 	var supply_state := encounter_snapshot.get("supply_state", {}) as Dictionary
 	var supply_economy_snapshot := economy_snapshot.get(
 		"supply_economy",
+		{}
+	) as Dictionary
+	var rare_chest_state := encounter_snapshot.get(
+		"rare_chest_state",
+		{}
+	) as Dictionary
+	var rare_chest_economy_snapshot := economy_snapshot.get(
+		"rare_chest_economy",
 		{}
 	) as Dictionary
 	if (
 		supply_session == null
 		or supply_state.is_empty()
 		or supply_economy_snapshot.is_empty()
+		or rare_chest_session == null
+		or rare_chest_economy == null
+		or rare_chest_state.is_empty()
+		or rare_chest_economy_snapshot.is_empty()
+		or int(rare_chest_state.get("target_peer_id", -2))
+		!= int(rare_chest_economy_snapshot.get("target_peer_id", -3))
+		or int(rare_chest_state.get("target_peer_id", -2))
+		!= _get_local_encounter_peer_id()
 	):
-		return false
+		return {}
 	var atomic_supply_state := supply_state.duplicate(true)
 	atomic_supply_state["economy_snapshot"] = supply_economy_snapshot.duplicate(true)
 	var atomic_snapshot := encounter_snapshot.duplicate(true)
 	atomic_snapshot.erase("supply_state")
+	atomic_snapshot.erase("rare_chest_state")
 	var base_economy_snapshot := economy_snapshot.duplicate(true)
 	base_economy_snapshot.erase("supply_economy")
+	base_economy_snapshot.erase("rare_chest_economy")
 	var embedded := atomic_snapshot.get("economy_snapshot", {}) as Dictionary
 	if (
 		not embedded.is_empty()
 		and not base_economy_snapshot.is_empty()
 		and embedded != base_economy_snapshot
 	):
-		return false
+		return {}
 	if embedded.is_empty():
 		if base_economy_snapshot.is_empty():
-			return false
+			return {}
 		atomic_snapshot["economy_snapshot"] = base_economy_snapshot
 	# 两个 Session 共享同一个 RunState。必须在任一账本落地前同时完成
 	# schema/revision/内容预检，避免一边成功、一边拒绝造成半应用快照。
-	if (
-		not supply_session.validate_remote_state(atomic_supply_state)
-		or not encounter_session.validate_remote_state(atomic_snapshot)
+	var valid := (
+		(
+			supply_session.validate_remote_state_structure(
+				atomic_supply_state
+			)
+			and encounter_session.validate_remote_state_structure(
+				atomic_snapshot
+			)
+			and rare_chest_economy.validate_remote_snapshot_structure(
+				rare_chest_economy_snapshot
+			)
+			and rare_chest_session.validate_remote_state_structure(
+				rare_chest_state
+			)
+		)
+		if structure_only
+		else (
+			supply_session.validate_remote_state(atomic_supply_state)
+			and encounter_session.validate_remote_state(atomic_snapshot)
+			and rare_chest_economy.validate_remote_snapshot(
+				rare_chest_economy_snapshot
+			)
+			and rare_chest_session.validate_remote_state(rare_chest_state)
+		)
+	)
+	if not valid:
+		return {}
+	if not _validate_rare_chest_snapshot_consistency(
+		rare_chest_state,
+		rare_chest_economy_snapshot,
+		base_economy_snapshot
+	):
+		return {}
+	return {
+		"supply_state": atomic_supply_state,
+		"encounter_state": atomic_snapshot,
+		"rare_chest_state": rare_chest_state,
+		"rare_chest_economy": rare_chest_economy_snapshot,
+	}
+
+
+func _validate_rare_chest_snapshot_consistency(
+	rare_chest_state: Dictionary,
+	rare_chest_economy_snapshot: Dictionary,
+	base_economy_snapshot: Dictionary
+) -> bool:
+	var target_peer_id := int(rare_chest_state.get("target_peer_id", -2))
+	var occurrence_key := str(rare_chest_state.get("occurrence_key", ""))
+	var selected_option := StringName(
+		rare_chest_state.get("local_selected_option_id", &"")
+	)
+	var matching_settlement: Dictionary = {}
+	var required_stat_totals: Dictionary = {}
+	for raw_entry_value in rare_chest_economy_snapshot.get(
+		"settled_choices",
+		[]
+	) as Array:
+		var entry := raw_entry_value as Dictionary
+		var result := entry.get("result", {}) as Dictionary
+		var settled_option := StringName(result.get("option_id", &""))
+		var settled_stat_id := RogueRareChestRegistry.get_stat_id(
+			settled_option
+		)
+		var settled_delta := RogueRareChestRegistry.get_stat_delta(
+			settled_option
+		)
+		required_stat_totals[String(settled_stat_id)] = int(
+			required_stat_totals.get(String(settled_stat_id), 0)
+		) + settled_delta
+		if (
+			int(result.get("peer_id", -1)) != target_peer_id
+			or str(result.get("occurrence_key", "")) != occurrence_key
+		):
+			continue
+		if not matching_settlement.is_empty():
+			return false
+		matching_settlement = result
+	if selected_option.is_empty():
+		if not matching_settlement.is_empty():
+			return false
+	elif (
+		matching_settlement.is_empty()
+		or StringName(matching_settlement.get("option_id", &""))
+		!= selected_option
+		or not RogueRareChestRegistry.has_option(selected_option)
 	):
 		return false
-	if not supply_session.apply_remote_state(atomic_supply_state):
-		return false
-	# Session 会先让 Economy 校验并提交账本，成功后才写入自身阶段字段；
-	# 任一经济字段无效时，遭遇 revision/phase 也保持原值。
-	return encounter_session.apply_remote_state(atomic_snapshot)
+	var party_economy := base_economy_snapshot.get(
+		"party_economy",
+		{}
+	) as Dictionary
+	var status_ledger := party_economy.get(
+		"party_status_ledger",
+		{}
+	) as Dictionary
+	var bonuses_by_peer := status_ledger.get(
+		"player_stat_bonuses",
+		{}
+	) as Dictionary
+	var peer_bonuses := bonuses_by_peer.get(
+		str(target_peer_id),
+		bonuses_by_peer.get(target_peer_id, {})
+	) as Dictionary
+	for raw_stat_id in required_stat_totals.keys():
+		var stat_id := str(raw_stat_id)
+		if int(peer_bonuses.get(stat_id, 0)) < int(
+			required_stat_totals[stat_id]
+		):
+			return false
+	return true
 
 
 func export_shop_snapshot_for_peer(
@@ -1050,6 +1286,10 @@ func is_encounter_active() -> bool:
 			supply_session != null
 			and supply_session.is_active()
 		)
+		or (
+			rare_chest_session != null
+			and rare_chest_session.is_active()
+		)
 	)
 
 
@@ -1087,6 +1327,7 @@ func apply_normal_combat_started(
 			and encounter_session.is_active()
 		)
 		or (supply_session != null and supply_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
 	):
 		return false
 	_begin_normal_combat_stage(node_id, content_seed, occurrence_key)
@@ -1103,7 +1344,9 @@ func complete_normal_combat(occurrence_key: String) -> bool:
 		return false
 	_clear_normal_combat_state()
 	_set_encounter_input_locked(
-		encounter_session != null and encounter_session.is_active()
+		(encounter_session != null and encounter_session.is_active())
+		or (supply_session != null and supply_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
 	)
 	_set_status("普通作战阶段已结束。", false)
 	return true
@@ -1352,6 +1595,18 @@ func host_submit_encounter_vote(
 	)
 	if accepted:
 		return true
+	accepted = (
+		_authority_enabled
+		and rare_chest_session != null
+		and rare_chest_session.submit_choice(
+			peer_id,
+			occurrence_key,
+			expected_revision,
+			option_id
+		)
+	)
+	if accepted:
+		return true
 	var wire_option_id := String(option_id)
 	if wire_option_id.begins_with(SUPPLY_INVENTORY_DISCARD_WIRE_PREFIX):
 		var parts := wire_option_id.split("|", false)
@@ -1488,6 +1743,8 @@ func host_remove_encounter_peer(peer_id: int) -> void:
 		encounter_session.remove_peer(peer_id)
 	if _authority_enabled and supply_session != null:
 		supply_session.remove_peer(peer_id)
+	if _authority_enabled and rare_chest_session != null:
+		rare_chest_session.remove_peer(peer_id)
 
 
 func host_migrate_encounter_peer(old_peer_id: int, new_peer_id: int) -> void:
@@ -1504,6 +1761,8 @@ func host_migrate_encounter_peer(old_peer_id: int, new_peer_id: int) -> void:
 				new_peer_id
 			):
 				_emit_host_encounter_snapshot()
+	if _authority_enabled and rare_chest_session != null:
+		rare_chest_session.migrate_peer(old_peer_id, new_peer_id)
 
 
 func host_add_encounter_spectator(peer_id: int) -> void:
@@ -1511,6 +1770,8 @@ func host_add_encounter_spectator(peer_id: int) -> void:
 		encounter_session.add_spectator(peer_id)
 	if _authority_enabled and supply_session != null:
 		supply_session.add_spectator(peer_id)
+	if _authority_enabled and rare_chest_session != null:
+		rare_chest_session.add_spectator(peer_id)
 
 
 func _initialize_default_session() -> void:
@@ -1828,6 +2089,71 @@ func _reset_supply_runtime(authority: bool) -> void:
 		)
 
 
+func _create_rare_chest_runtime() -> void:
+	var run_state := get_node_or_null("/root/RunState") as RunStateStore
+	rare_chest_economy.reset_runtime(run_state, _player_character_ids)
+	rare_chest_session.reset_remote(rare_chest_economy)
+	if not rare_chest_session.state_changed.is_connected(
+		_on_rare_chest_state_changed
+	):
+		rare_chest_session.state_changed.connect(_on_rare_chest_state_changed)
+	if not rare_chest_session.choice_committed.is_connected(
+		_on_rare_chest_choice_committed
+	):
+		rare_chest_session.choice_committed.connect(
+			_on_rare_chest_choice_committed
+		)
+	if (
+		rare_chest_overlay != null
+		and not rare_chest_overlay.choice_requested.is_connected(
+			_on_rare_chest_choice_requested
+		)
+	):
+		rare_chest_overlay.choice_requested.connect(
+			_on_rare_chest_choice_requested
+		)
+	_configure_rare_chest_overlay_context()
+
+
+func _reset_rare_chest_runtime(
+	authority: bool,
+	preserve_local_reward_occurrence_key: String = ""
+) -> void:
+	var preserve_offer_seen := (
+		not preserve_local_reward_occurrence_key.is_empty()
+		and _rare_chest_local_offer_seen_occurrences.has(
+			preserve_local_reward_occurrence_key
+		)
+	)
+	var preserve_heal_applied := (
+		not preserve_local_reward_occurrence_key.is_empty()
+		and _rare_chest_local_heal_applied_occurrences.has(
+			preserve_local_reward_occurrence_key
+		)
+	)
+	var preserve_presented_active := (
+		not preserve_local_reward_occurrence_key.is_empty()
+		and _rare_chest_presented_active
+	)
+	_rare_chest_presented_active = preserve_presented_active
+	_rare_chest_presentation_serial += 1
+	_rare_chest_local_offer_seen_occurrences.clear()
+	_rare_chest_local_heal_applied_occurrences.clear()
+	if preserve_offer_seen:
+		_rare_chest_local_offer_seen_occurrences[
+			preserve_local_reward_occurrence_key
+		] = true
+	if preserve_heal_applied:
+		_rare_chest_local_heal_applied_occurrences[
+			preserve_local_reward_occurrence_key
+		] = true
+	if rare_chest_overlay != null:
+		rare_chest_overlay.hide_rare_chest_immediately()
+	_create_rare_chest_runtime()
+	if authority:
+		rare_chest_session.reset_authority(rare_chest_economy)
+
+
 func _reset_normal_combat_stage(restore_presentation: bool) -> void:
 	var interrupted_occurrence_key := _normal_combat_occurrence_key
 	if _briefing_phase != BriefingPhase.NONE:
@@ -1849,7 +2175,9 @@ func _reset_normal_combat_stage(restore_presentation: bool) -> void:
 	if restore_presentation:
 		set_route_presentation_enabled(true)
 	_set_encounter_input_locked(
-		encounter_session != null and encounter_session.is_active()
+		(encounter_session != null and encounter_session.is_active())
+		or (supply_session != null and supply_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
 	)
 	normal_combat_stage_reset.emit(interrupted_occurrence_key)
 
@@ -2203,6 +2531,16 @@ func _configure_supply_overlay_context() -> void:
 	)
 
 
+func _configure_rare_chest_overlay_context() -> void:
+	if rare_chest_overlay == null:
+		return
+	var local_peer_id := _get_local_encounter_peer_id()
+	var names := _player_names.duplicate(true)
+	if names.is_empty():
+		names[local_peer_id] = "玩家"
+	rare_chest_overlay.configure_local_context(local_peer_id, names)
+
+
 func _get_local_encounter_peer_id() -> int:
 	return _local_peer_id if _local_peer_id > 0 else SINGLEPLAYER_PEER_ID
 
@@ -2230,6 +2568,8 @@ func _try_start_encounter_for_node(node_id: int) -> bool:
 		!= RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
 		or encounter_session.is_active()
 		or encounter_session.is_node_resolved(node_id)
+		or (supply_session != null and supply_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
 	):
 		return false
 	var type_config := generation_config.get_type_config(
@@ -2258,12 +2598,43 @@ func _try_start_supply_for_node(node_id: int, target_visit_count: int) -> bool:
 		or supply_session.is_active()
 		or supply_session.is_node_resolved(node_id)
 		or (encounter_session != null and encounter_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
 	):
 		return false
 	return supply_session.start_for_node(
 		node_id,
 		_route_graph.get_node_content_seed(node_id),
 		_get_active_encounter_peer_ids()
+	)
+
+
+func _try_start_rare_chest_for_node(
+	node_id: int,
+	target_visit_count: int
+) -> bool:
+	if (
+		not _authority_enabled
+		or _normal_combat_active
+		or rare_chest_session == null
+		or not is_route_ready()
+		or not _route_graph.is_valid_node_id(node_id)
+		or _runtime_state.current_node_id != node_id
+		or _route_graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.PREPARE_AHEAD
+		or node_id >= _runtime_state.visited_counts.size()
+		or target_visit_count != 1
+		or int(_runtime_state.visited_counts[node_id]) != target_visit_count
+		or rare_chest_session.is_active()
+		or rare_chest_session.is_node_resolved(node_id)
+		or (encounter_session != null and encounter_session.is_active())
+		or (supply_session != null and supply_session.is_active())
+	):
+		return false
+	return rare_chest_session.start_for_node(
+		node_id,
+		_route_graph.get_node_content_seed(node_id),
+		_get_active_encounter_peer_ids(),
+		_player_stable_keys
 	)
 
 
@@ -2289,6 +2660,7 @@ func _try_start_normal_combat_for_node(
 			and encounter_session.is_active()
 		)
 		or (supply_session != null and supply_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
 	):
 		return false
 	var content_seed := _route_graph.get_node_content_seed(node_id)
@@ -2477,6 +2849,155 @@ func _on_supply_inventory_requested() -> void:
 	player_profile_panel.open()
 
 
+func _on_rare_chest_choice_requested(
+	occurrence_key: String,
+	expected_offer_revision: int,
+	option_id: StringName
+) -> void:
+	if manage_return_locally:
+		host_submit_encounter_vote(
+			_get_local_encounter_peer_id(),
+			occurrence_key,
+			expected_offer_revision,
+			option_id
+		)
+		return
+	encounter_vote_requested.emit(
+		occurrence_key,
+		expected_offer_revision,
+		option_id
+	)
+
+
+func _on_rare_chest_choice_committed(
+	peer_id: int,
+	result: Dictionary
+) -> void:
+	var heal_delta := int(result.get("heal_delta", 0))
+	if heal_delta > 0:
+		var target_player := (
+			player
+			if peer_id == SINGLEPLAYER_PEER_ID and not _multiplayer_avatar_mode
+			else get_player_for_peer(peer_id)
+		)
+		if target_player != null and is_instance_valid(target_player):
+			target_player.heal(heal_delta, false)
+	_sync_party_status_from_run_state()
+
+
+func _on_rare_chest_state_changed(snapshot: Dictionary) -> void:
+	var local_snapshot := (
+		rare_chest_session.export_state_for_peer(
+			_get_local_encounter_peer_id()
+		)
+		if _authority_enabled and rare_chest_session != null
+		else snapshot
+	)
+	var active := (
+		rare_chest_session != null and rare_chest_session.is_active()
+	)
+	var local_phase := StringName(local_snapshot.get("phase", &""))
+	var completing_presented_occurrence := (
+		not active
+		and _rare_chest_presented_active
+		and local_phase == RogueRareChestSession.PHASE_COMPLETED
+	)
+	# Completed 是可重放的权威终态。只有本机确实呈现过这一 occurrence 时
+	# 才展示最后 0.8 秒；迟到旁观者和后续同 revision 快照不能重新打开界面。
+	if rare_chest_overlay != null:
+		if active or completing_presented_occurrence:
+			rare_chest_overlay.apply_state(local_snapshot)
+		elif local_phase == RogueRareChestSession.PHASE_IDLE:
+			rare_chest_overlay.hide_rare_chest_immediately()
+	if active or completing_presented_occurrence:
+		_apply_remote_rare_chest_local_health_reward(local_snapshot)
+	if active:
+		if not _rare_chest_presented_active:
+			_rare_chest_presentation_serial += 1
+		_rare_chest_presented_active = true
+		_set_encounter_input_locked(true)
+	elif _rare_chest_presented_active:
+		_rare_chest_presented_active = false
+		_rare_chest_presentation_serial += 1
+		var presentation_serial := _rare_chest_presentation_serial
+		var occurrence_key := str(local_snapshot.get("occurrence_key", ""))
+		if local_phase == (
+			RogueRareChestSession.PHASE_COMPLETED
+		):
+			_finish_rare_chest_presentation(
+				presentation_serial,
+				occurrence_key
+			)
+		else:
+			_hide_rare_chest_presentation(presentation_serial)
+	if _authority_enabled:
+		_emit_host_encounter_snapshot()
+
+
+func _finish_rare_chest_presentation(
+	presentation_serial: int,
+	occurrence_key: String
+) -> void:
+	await get_tree().create_timer(0.8).timeout
+	if (
+		presentation_serial != _rare_chest_presentation_serial
+		or rare_chest_session == null
+		or rare_chest_session.get_phase()
+		!= RogueRareChestSession.PHASE_COMPLETED
+		or rare_chest_session.get_occurrence_key() != occurrence_key
+	):
+		return
+	_hide_rare_chest_presentation(presentation_serial)
+
+
+func _hide_rare_chest_presentation(presentation_serial: int) -> void:
+	if presentation_serial != _rare_chest_presentation_serial:
+		return
+	if rare_chest_overlay != null:
+		rare_chest_overlay.hide_rare_chest_immediately()
+	_set_encounter_input_locked(
+		(encounter_session != null and encounter_session.is_active())
+		or (supply_session != null and supply_session.is_active())
+	)
+
+
+func _apply_remote_rare_chest_local_health_reward(
+	local_snapshot: Dictionary
+) -> void:
+	if _authority_enabled:
+		return
+	var occurrence_key := str(local_snapshot.get("occurrence_key", ""))
+	if occurrence_key.is_empty():
+		return
+	var selected_option := StringName(
+		local_snapshot.get("local_selected_option_id", &"")
+	)
+	var local_options := local_snapshot.get("local_option_ids", []) as Array
+	if (
+		selected_option.is_empty()
+		and StringName(local_snapshot.get("phase", &""))
+		== RogueRareChestSession.PHASE_CHOOSING
+		and local_options.size() == RogueRareChestRegistry.CHOICE_COUNT
+	):
+		_rare_chest_local_offer_seen_occurrences[occurrence_key] = true
+		return
+	if (
+		selected_option != RogueRareChestRegistry.OPTION_MAX_HEALTH
+		or not _rare_chest_local_offer_seen_occurrences.has(occurrence_key)
+		or _rare_chest_local_heal_applied_occurrences.has(occurrence_key)
+	):
+		return
+	var local_player := (
+		player
+		if not _multiplayer_avatar_mode
+		else get_player_for_peer(_get_local_encounter_peer_id())
+	)
+	if local_player == null or not is_instance_valid(local_player):
+		return
+	local_player.heal(10, false)
+	_rare_chest_local_heal_applied_occurrences[occurrence_key] = true
+
+
 func _on_supply_state_changed(snapshot: Dictionary) -> void:
 	if supply_overlay != null:
 		supply_overlay.apply_state(snapshot)
@@ -2498,7 +3019,8 @@ func _on_supply_state_changed(snapshot: Dictionary) -> void:
 		elif supply_overlay != null:
 			supply_overlay.hide_supply_immediately()
 		_set_encounter_input_locked(
-			encounter_session != null and encounter_session.is_active()
+			(encounter_session != null and encounter_session.is_active())
+			or (rare_chest_session != null and rare_chest_session.is_active())
 		)
 	var result := snapshot.get("result", {}) as Dictionary
 	var occurrence_key := str(snapshot.get("occurrence_key", ""))
@@ -2609,7 +3131,10 @@ func _dismiss_encounter(presentation_serial: int) -> void:
 	if bool(completed_state.get("run_failed", false)):
 		_show_run_defeat()
 		return
-	_set_encounter_input_locked(false)
+	_set_encounter_input_locked(
+		(supply_session != null and supply_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
+	)
 
 
 func _show_run_defeat() -> void:
@@ -2908,9 +3433,11 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 		false
 	)
 	var target_node_id := int(delta.get("to_node_id", INVALID_NODE_ID))
+	var target_visit_count := int(delta.get("target_visit_count", 0))
+	_try_start_rare_chest_for_node(target_node_id, target_visit_count)
 	var normal_combat_started := _try_start_normal_combat_for_node(
 		target_node_id,
-		int(delta.get("target_visit_count", 0))
+		target_visit_count
 	)
 	if (
 		not normal_combat_started
@@ -2920,12 +3447,12 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 		abort_briefing_entry(_briefing_occurrence_key)
 	_try_start_underground_shop_for_node(
 		target_node_id,
-		int(delta.get("target_visit_count", 0))
+		target_visit_count
 	)
 	_try_start_encounter_for_node(target_node_id)
 	_try_start_supply_for_node(
 		target_node_id,
-		int(delta.get("target_visit_count", 0))
+		target_visit_count
 	)
 
 
@@ -3276,6 +3803,14 @@ func _sync_route_player_xirang_from_run_state() -> void:
 				if peer_player != null and peer_player.peer_id > 0
 				else peer_id
 			)
+			# RunState remap 会先删除 old transport，再同步发账本信号。此时
+			# Route 的 peer 字典可能尚未换键；跳过缺失状态，禁止创建型 getter
+			# 把已删除的 old peer 背包/账本重新建回来。
+			if (
+				ledger_peer_id > 0
+				and not run_state.has_multiplayer_peer_state(ledger_peer_id)
+			):
+				continue
 			_apply_route_player_xirang(
 				peer_player,
 				run_state.get_party_xirang_balance(ledger_peer_id)
@@ -3642,7 +4177,10 @@ func _sync_encounter_player_character_ids() -> void:
 		encounter_economy.set_player_character_ids(_player_character_ids)
 	if supply_economy != null:
 		supply_economy.set_player_character_ids(_player_character_ids)
+	if rare_chest_economy != null:
+		rare_chest_economy.set_player_character_ids(_player_character_ids)
 	_configure_supply_overlay_context()
+	_configure_rare_chest_overlay_context()
 
 
 func _clear_pending_move(hide_dialog: bool) -> void:

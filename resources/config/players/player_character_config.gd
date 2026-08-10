@@ -12,6 +12,7 @@ class_name PlayerCharacterConfig
 @export_file("*.tscn") var player_scene: String = ""
 @export_file("*.png", "*.webp", "*.svg") var portrait_texture: String = ""
 @export var portrait_offset: Vector2 = Vector2.ZERO
+@export var supports_ammunition: bool = false
 
 @export_group("Skill")
 @export var skill_display_name: String = ""
