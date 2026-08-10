@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "focus_potion/focus_potion_imagegen_magenta.png",
     "selected_source_matches": true,
@@ -85,7 +85,7 @@
     "alpha_source_sha256": "d91cc1002a633cc07839bc035565bed048456eb86b755091e4428512d966f162",
     "logical_preview_sha256": "a79d75b87b1f878e6348e52b30515e630da5d7ff7648ef6b125d7b1165f243ef",
     "production_texture_sha256": "19c69e07066f3d251cc1f50d184f0492ce77d9610ee2e874810cea18ef06828f",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png",

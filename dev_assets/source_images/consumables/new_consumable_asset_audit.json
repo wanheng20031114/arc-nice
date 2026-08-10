@@ -22,7 +22,7 @@
   "prompt_manifest": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f"
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6"
   },
   "contact_previews": {
     "1x": "dev_assets/source_images/consumables/new_consumables_contact_preview_1x.png",
@@ -72,7 +72,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
         "selected_source_matches": true,
@@ -106,13 +106,7 @@
           "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
           "sha256": "89d7bc7fb3557896342a8ee5430e00152488134078f11c6abfd674c4496f1ccd"
         },
-        "rejected": [
-          {
-            "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta.png",
-            "sha256": "b0b13bc689c4e9d5c095c763df56b16505d2dc70c8ac255ba7f5d07409f97ad3",
-            "reason": "rejected: unreliable primary grid (confidence 0.388) and approximately 16x38 logical subject"
-          }
-        ],
+        "rejected": [],
         "manual_review_note": "",
         "global_unsafe_override_enabled": false
       },
@@ -121,7 +115,7 @@
         "alpha_source_sha256": "99a0294b4f87a64b9aec7a312a7ab6f79cecf980bf165b80e5a5fb2a17e32735",
         "logical_preview_sha256": "d50aab134f81578d30c0fe3474113a30d95457add8beb590b949d8266051b347",
         "production_texture_sha256": "36336c712753b555cf0f4e79dcae2faee31f0245031f9f37a90e700f260bca0b",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
@@ -239,7 +233,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png",
         "selected_source_matches": true,
@@ -274,13 +268,7 @@
           "path": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png",
           "sha256": "569fc1e96886dd3bb2a5e9e658b5c33a5063b694acea416113cbb27e58ffac08"
         },
-        "rejected": [
-          {
-            "path": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta.png",
-            "sha256": "b60ae00caa3f2ee5dba2379efe3f29883a789a913345f5e54ebb000e5000ec30",
-            "reason": "rejected: measured 28x51 logical subject exceeds the lossless 27x30 contract"
-          }
-        ],
+        "rejected": [],
         "manual_review_note": "",
         "global_unsafe_override_enabled": false
       },
@@ -289,7 +277,7 @@
         "alpha_source_sha256": "1de6eb3616b8f77dd1ac6ca6070e7560beacd50865dc169a8c16fc17845672d2",
         "logical_preview_sha256": "14e73a8f058219450863e08127c99907add2abe19cc9ea86548c97eafa31f1a0",
         "production_texture_sha256": "08ff2df49e4af107ba3adba08d63238e3e619d960d37bbe5d34ecca11f8c339d",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta_v2.png",
@@ -387,18 +375,12 @@
           "sha256": "1ed48d007216cd44e1f1a38653497480dfca69e830241055ef5510a0edf9eefc",
           "kind": "user_authored_native_manual_master"
         },
-        "rejected": [
-          {
-            "path": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta.png",
-            "sha256": "5caaa1208f746872716099cbfc0abdc32f6fa50af0635b9e523eec19605386a5",
-            "reason": "rejected: measured 32x54 logical subject exceeds the lossless 22x30 contract"
-          }
-        ]
+        "rejected": []
       },
       "hashes": {
         "native_manual_master_sha256": "1ed48d007216cd44e1f1a38653497480dfca69e830241055ef5510a0edf9eefc",
         "production_texture_sha256": "1ed48d007216cd44e1f1a38653497480dfca69e830241055ef5510a0edf9eefc",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "logical_subject_size": [
         10,
@@ -478,7 +460,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
         "selected_source_matches": true,
@@ -513,13 +495,7 @@
           "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
           "sha256": "a423206fed92a33f82ab00f698954dce916c2c6f7f4b96955ed79ada288044d6"
         },
-        "rejected": [
-          {
-            "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta.png",
-            "sha256": "626cec66efbcceeb3a7136fc257b7318f2325a33e92347c4b249d738f8ea85fe",
-            "reason": "rejected: independent square-grid audit measured approximately 36x42 logical cells"
-          }
-        ],
+        "rejected": [],
         "manual_review_note": "",
         "global_unsafe_override_enabled": false
       },
@@ -528,7 +504,7 @@
         "alpha_source_sha256": "bf5ed3c4ed9139b35f9fdb1fb40a165acfa0795308f48c9176c0ebab40edc364",
         "logical_preview_sha256": "9a539e1b4a1cad260cf2f32050bf491708975f30d1a515ccd722fdc5b1d6e95e",
         "production_texture_sha256": "35e857fabce6c09fbc8c8d07fe6b0f11c7e6fa66398f20e1ad085ddc21e74042",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
@@ -631,7 +607,7 @@
       "hashes": {
         "native_manual_master_sha256": "129a8562969bacfa3185f152564d55c9719bd89f196f709d387771a1ba1b581f",
         "production_texture_sha256": "129a8562969bacfa3185f152564d55c9719bd89f196f709d387771a1ba1b581f",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "logical_subject_size": [
         14,
@@ -711,7 +687,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
         "selected_source_matches": true,
@@ -746,13 +722,7 @@
           "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
           "sha256": "b85c95c9388816f68603c0273c1877503eaf757f7b2c16804c12991fc3b16697"
         },
-        "rejected": [
-          {
-            "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta.png",
-            "sha256": "bf5f69fe91736d101d6bf1d1a5e2cdd0a8d33d7e9db767f5637718b501048790",
-            "reason": "rejected: measured 26x33 logical subject exceeds the lossless 27x30 contract"
-          }
-        ],
+        "rejected": [],
         "manual_review_note": "",
         "global_unsafe_override_enabled": false
       },
@@ -761,7 +731,7 @@
         "alpha_source_sha256": "ccd20989391d39b1e59472655375f688210b7961e824211c7b127788a687243f",
         "logical_preview_sha256": "21d0255d3b65a8c2660fd21c46a8381fb932748de3a24bc2eaaa557f6c2677d6",
         "production_texture_sha256": "6d263304fcc77717dd747fe329032bd8724a52719f2d71582c4c6ce14e31d48d",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
@@ -879,7 +849,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "guardian_mixture/guardian_mixture_imagegen_magenta.png",
         "selected_source_matches": true,
@@ -923,7 +893,7 @@
         "alpha_source_sha256": "4f21098e8afea654f4d0ae55923e586d6fa058a469496eda28732aa5d19a45f7",
         "logical_preview_sha256": "dddbdf170edefb6530860602e3199e19df3809b938e34426cf7fce53dd592b00",
         "production_texture_sha256": "35b8107a8401f603314e51f79c0e0e062b6afb295ee5e205e98a83796cccf46e",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png",
@@ -1041,7 +1011,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
         "selected_source_matches": true,
@@ -1078,29 +1048,9 @@
         },
         "rejected": [
           {
-            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
-            "sha256": "744346fdaccc4e01195fd8c823a9ad6cd129b3728789fa645eef15769efce8f8",
-            "reason": "rejected: measured 19x34 logical subject is too tall"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
-            "sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808",
-            "reason": "rejected: only 11x16 logical pixels and previously enlarged by a non-integer scale to 21x30, causing the user-rejected macroblock appearance"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v3.png",
-            "sha256": "ba432b677462777274c8e1e87000bfa0313ef7a0c38ff643390aa08d470c13cd",
-            "reason": "rejected: measured 29x39 logical subject is too tall"
-          },
-          {
             "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v4.png",
             "sha256": "dbc900b659c3ae268be434bdafe375af92fe0d5626d10b5a6e5b4df6beddb877",
             "reason": "rejected alternate: measured 25x33 and technically row-editable, but its round bottle is too close to the healing-potion silhouette"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v5.png",
-            "sha256": "ae5032eab155aaa16a91e9dc6aa4eddbfd2fb8a52b55dd0d6b174d6edd870915",
-            "reason": "rejected: measured 25x34 logical subject is too tall"
           }
         ],
         "manual_review_note": "PerfectPixel and gradient reviews both locked 20x31; the 262x419 source bbox yields near-square 13.10x13.52 cells.",
@@ -1111,7 +1061,7 @@
         "alpha_source_sha256": "32f1136650766d8bf083e48651e413f835fe5f5c49f16cfd5cde99350f61975f",
         "logical_preview_sha256": "5547d3d8c89b1fe42144c63654ddc5374803f6de22bec24639670f7fb954059a",
         "production_texture_sha256": "32ea2c5522bc2556985529e52292d22320505e675bfd6fca8b42d30057d50762",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
@@ -1279,7 +1229,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "focus_potion/focus_potion_imagegen_magenta.png",
         "selected_source_matches": true,
@@ -1323,7 +1273,7 @@
         "alpha_source_sha256": "d91cc1002a633cc07839bc035565bed048456eb86b755091e4428512d966f162",
         "logical_preview_sha256": "a79d75b87b1f878e6348e52b30515e630da5d7ff7648ef6b125d7b1165f243ef",
         "production_texture_sha256": "19c69e07066f3d251cc1f50d184f0492ce77d9610ee2e874810cea18ef06828f",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png",
@@ -1441,7 +1391,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
         "selected_source_matches": true,
@@ -1477,16 +1427,6 @@
         },
         "rejected": [
           {
-            "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta.png",
-            "sha256": "725f514693a0dc512109f40f81b136c17ea779b2cf77268220c9f1b3e15b0f90",
-            "reason": "rejected: measured 15x23 and previously enlarged to 20x30, causing avoidable macroblock repetition"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v2.png",
-            "sha256": "a4911ef5d56a30fda5d7b458b73427dd2cf87d1db0b792c6852ad5ee06c1b7d2",
-            "reason": "rejected: automatic normalization measured 27x35 and PerfectPixel review approximately 28x40; both are too tall"
-          },
-          {
             "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v3.png",
             "sha256": "56281b76750209c1b9f7e8ac9d32a20c4be6b03883d7973aa80aca3badfaf184",
             "reason": "rejected: measured 18x36 logical subject is too tall"
@@ -1500,7 +1440,7 @@
         "alpha_source_sha256": "3c1ca8581ca5e368642e83e63c05263c8488993991a87d13416a555f1a5fe43f",
         "logical_preview_sha256": "5f5743097689ededf1a5f415f861199e8ba9e84fa76766ee2276cab55eb28d91",
         "production_texture_sha256": "c9941bcd27a56f2ef5f61773e538e44828f99012473cd7e6e8c34d6ee84a992b",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
@@ -1654,7 +1594,7 @@
       "hashes": {
         "native_manual_master_sha256": "95644056ef9a04deb3e11be3b6507888a3511741b57a411228c1d23b03371a3c",
         "production_texture_sha256": "95644056ef9a04deb3e11be3b6507888a3511741b57a411228c1d23b03371a3c",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "logical_subject_size": [
         22,
@@ -1734,7 +1674,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "void_battery/void_battery_imagegen_magenta.png",
         "selected_source_matches": true,
@@ -1778,7 +1718,7 @@
         "alpha_source_sha256": "8fca08dd374279d6eb0482d4d7bdaf72edfd554b3e8d1076dbb74b1f663a61bb",
         "logical_preview_sha256": "5554b37eeb0e151e947640fde1e98868ae756ab71e30e5c1bb619a8fda50c036",
         "production_texture_sha256": "0a57cae94abd82015f5cdfd459b3e1b5765a52065f33b5ea5d2f04bef6587275",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/void_battery/void_battery_imagegen_magenta.png",

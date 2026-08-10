@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
     "selected_source_matches": true,
@@ -75,13 +75,7 @@
       "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",
       "sha256": "89d7bc7fb3557896342a8ee5430e00152488134078f11c6abfd674c4496f1ccd"
     },
-    "rejected": [
-      {
-        "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta.png",
-        "sha256": "b0b13bc689c4e9d5c095c763df56b16505d2dc70c8ac255ba7f5d07409f97ad3",
-        "reason": "rejected: unreliable primary grid (confidence 0.388) and approximately 16x38 logical subject"
-      }
-    ],
+    "rejected": [],
     "manual_review_note": "",
     "global_unsafe_override_enabled": false
   },
@@ -90,7 +84,7 @@
     "alpha_source_sha256": "99a0294b4f87a64b9aec7a312a7ab6f79cecf980bf165b80e5a5fb2a17e32735",
     "logical_preview_sha256": "d50aab134f81578d30c0fe3474113a30d95457add8beb590b949d8266051b347",
     "production_texture_sha256": "36336c712753b555cf0f4e79dcae2faee31f0245031f9f37a90e700f260bca0b",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/skill_charge_battery/skill_charge_battery_imagegen_magenta_v2.png",

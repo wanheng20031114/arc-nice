@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "void_battery/void_battery_imagegen_magenta.png",
     "selected_source_matches": true,
@@ -85,7 +85,7 @@
     "alpha_source_sha256": "8fca08dd374279d6eb0482d4d7bdaf72edfd554b3e8d1076dbb74b1f663a61bb",
     "logical_preview_sha256": "5554b37eeb0e151e947640fde1e98868ae756ab71e30e5c1bb619a8fda50c036",
     "production_texture_sha256": "0a57cae94abd82015f5cdfd459b3e1b5765a52065f33b5ea5d2f04bef6587275",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/void_battery/void_battery_imagegen_magenta.png",

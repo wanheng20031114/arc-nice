@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
     "selected_source_matches": true,
@@ -76,13 +76,7 @@
       "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",
       "sha256": "b85c95c9388816f68603c0273c1877503eaf757f7b2c16804c12991fc3b16697"
     },
-    "rejected": [
-      {
-        "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta.png",
-        "sha256": "bf5f69fe91736d101d6bf1d1a5e2cdd0a8d33d7e9db767f5637718b501048790",
-        "reason": "rejected: measured 26x33 logical subject exceeds the lossless 27x30 contract"
-      }
-    ],
+    "rejected": [],
     "manual_review_note": "",
     "global_unsafe_override_enabled": false
   },
@@ -91,7 +85,7 @@
     "alpha_source_sha256": "ccd20989391d39b1e59472655375f688210b7961e824211c7b127788a687243f",
     "logical_preview_sha256": "21d0255d3b65a8c2660fd21c46a8381fb932748de3a24bc2eaaa557f6c2677d6",
     "production_texture_sha256": "6d263304fcc77717dd747fe329032bd8724a52719f2d71582c4c6ce14e31d48d",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/large_regeneration_potion/large_regeneration_potion_imagegen_magenta_v2.png",

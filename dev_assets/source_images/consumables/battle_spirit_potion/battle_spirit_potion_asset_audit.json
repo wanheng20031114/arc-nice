@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
     "selected_source_matches": true,
@@ -78,29 +78,9 @@
     },
     "rejected": [
       {
-        "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
-        "sha256": "744346fdaccc4e01195fd8c823a9ad6cd129b3728789fa645eef15769efce8f8",
-        "reason": "rejected: measured 19x34 logical subject is too tall"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
-        "sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808",
-        "reason": "rejected: only 11x16 logical pixels and previously enlarged by a non-integer scale to 21x30, causing the user-rejected macroblock appearance"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v3.png",
-        "sha256": "ba432b677462777274c8e1e87000bfa0313ef7a0c38ff643390aa08d470c13cd",
-        "reason": "rejected: measured 29x39 logical subject is too tall"
-      },
-      {
         "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v4.png",
         "sha256": "dbc900b659c3ae268be434bdafe375af92fe0d5626d10b5a6e5b4df6beddb877",
         "reason": "rejected alternate: measured 25x33 and technically row-editable, but its round bottle is too close to the healing-potion silhouette"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v5.png",
-        "sha256": "ae5032eab155aaa16a91e9dc6aa4eddbfd2fb8a52b55dd0d6b174d6edd870915",
-        "reason": "rejected: measured 25x34 logical subject is too tall"
       }
     ],
     "manual_review_note": "PerfectPixel and gradient reviews both locked 20x31; the 262x419 source bbox yields near-square 13.10x13.52 cells.",
@@ -111,7 +91,7 @@
     "alpha_source_sha256": "32f1136650766d8bf083e48651e413f835fe5f5c49f16cfd5cde99350f61975f",
     "logical_preview_sha256": "5547d3d8c89b1fe42144c63654ddc5374803f6de22bec24639670f7fb954059a",
     "production_texture_sha256": "32ea2c5522bc2556985529e52292d22320505e675bfd6fca8b42d30057d50762",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",

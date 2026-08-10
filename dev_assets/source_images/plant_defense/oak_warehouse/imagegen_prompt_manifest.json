@@ -45,11 +45,10 @@
     "derived_from": "oak_warehouse_candidate_b",
     "rule": "Choose the candidate with the clearest top/front/right plane separation and cleanest readable 64px silhouette; do not average or blend candidates.",
     "selected_candidate": "oak_warehouse_candidate_b_refined",
-    "refined_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_candidate_b_refined_imagegen_magenta.png",
     "refinement_spec": "Refine candidate B only: preserve the exact living-oak warehouse identity, arched door, storage motifs, silhouette, upper-left light, and top/front/right plane separation; regularize the logical pixel clusters and pure #FF00FF background for clean keying; do not add ground, external shadow, text, UI, props, or new architecture.",
     "selected_source": "dev_assets/source_images/plant_defense/oak_warehouse/oak_warehouse_selected_imagegen_magenta.png",
     "selected_sha256": "693F037B3D1D7F937748C73742CB72D1C65D29F1CF58DCB02DB4755BC3FA06CF",
-    "selected_source_action": "Copy the refined candidate B byte-for-byte to selected_source without resizing or filtering before running the processor."
+    "selected_source_action": "The refined candidate B was copied byte-for-byte to selected_source before processing; the duplicate refined-source file was removed, and selected_source remains the sole retained master."
   },
   "processor": {
     "path": "dev_tools/process_oak_warehouse_asset.py",

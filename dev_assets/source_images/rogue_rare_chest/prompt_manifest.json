@@ -13,15 +13,16 @@
   "original_generated_path": "C:/Users/wh/.codex/generated_images/019fe451-20f2-77b2-9257-0471f82a8195/exec-99ecc880-8248-46f3-b716-fa3ca8f2eafd.png",
   "references": [
     {
-      "path": "dev_assets/source_images/rogue_rare_chest/rare_chest_tableau_imagegen_v1.png",
-      "sha256": "a6e9f36ad7dc3e737fe7d47dffb0671d53930fec7ea88b97b3ada62efd31cde8",
-      "role": "edit target; preserve chest geometry, composition, fittings, props, pixel density, and chroma-key layout"
-    },
-    {
       "path": "resources/texture/xiaocong_fate/xiaocong_keypose_hd.png",
       "sha256": "415688823169a7f55c0cb36d1def0f408f4c7459b1b722f8f5044c03a6829336",
       "role": "color reference only; use Xiaocong's pale sage gray-green hair ramp without copying character motifs"
     }
   ],
+  "cleaned_legacy_input": {
+    "removed_path": "dev_assets/source_images/rogue_rare_chest/rare_chest_tableau_imagegen_v1.png",
+    "sha256": "a6e9f36ad7dc3e737fe7d47dffb0671d53930fec7ea88b97b3ada62efd31cde8",
+    "role": "original edit target; removed after the approved v2 source and hard-alpha production input were locked",
+    "retained_as_file": false
+  },
   "exact_prompt": "Use case: precise-object-edit\nAsset type: portrait game UI tableau asset for a restrained Japanese RPG pixel-art roguelike route node\n\nInput images:\n- Image 1 is the edit target. Preserve its treasure chest, exact three-quarter viewpoint, proportions, slightly open lid, dark empty interior, iron fittings, small brass lock, hanging paper seal, old plank patch, leaves, contact shadow, framing, pixel density, and flat chroma-key background.\n- Image 2 is a color reference only. Use the character's hair palette—pale sage gray-green, muted mint-gray midtones, creamy ivory highlights, and deep desaturated green-gray shadows. Do not copy hair texture, strands, the character, costume, antlers, face, or any design motif.\n\nPrimary request: change only the vermilion/red lacquered wooden panels of the chest in Image 1 into a restrained Xiaocong-hair-inspired pale sage gray-green lacquer palette.\nColor behavior: the broad chest panels should read as pale sage gray-green rather than white or blue. Use creamy ivory only for small upper-left highlights, muted mint-gray for the main lacquer, medium sage for form shading, and deep desaturated green-gray for lower/right shadows. Keep enough value separation from the pale cyan-white paper seal.\nInvariants: keep the chest structure and silhouette unchanged; keep the lid slightly ajar with a completely dark interior; preserve the simple charcoal iron bands/corners, muted brass lock, pale cyan-white paper seal, old brown planks, autumn leaves, and compact hard-edged contact shadow. Keep the existing restrained medium-density pixel-art rendering and crisp pixel steps.\nScene/backdrop: preserve a perfectly flat solid #FF00FF chroma-key background with no gradient, texture, floor plane, reflection, or lighting variation.\nConstraints: no text, logo, watermark, character, hair strands, plant motif, face, antlers, coins, gems, glow, particles, or reward effects. Do not recolor the iron, lock, seal, ground planks, or leaves into the hair palette.\nAvoid: legendary browser-RPG styling, ornate UI frame, crown, wings, loot explosion, light beam, saturated emerald green, icy bright blue, pure-white chest body, Minecraft-like voxel cubes, uniform huge square pixels, thick double outline, blur, antialiasing, or changing the composition."
 }

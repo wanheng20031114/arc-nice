@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
     "selected_source_matches": true,
@@ -76,13 +76,7 @@
       "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
       "sha256": "a423206fed92a33f82ab00f698954dce916c2c6f7f4b96955ed79ada288044d6"
     },
-    "rejected": [
-      {
-        "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta.png",
-        "sha256": "626cec66efbcceeb3a7136fc257b7318f2325a33e92347c4b249d738f8ea85fe",
-        "reason": "rejected: independent square-grid audit measured approximately 36x42 logical cells"
-      }
-    ],
+    "rejected": [],
     "manual_review_note": "",
     "global_unsafe_override_enabled": false
   },
@@ -91,7 +85,7 @@
     "alpha_source_sha256": "bf5ed3c4ed9139b35f9fdb1fb40a165acfa0795308f48c9176c0ebab40edc364",
     "logical_preview_sha256": "9a539e1b4a1cad260cf2f32050bf491708975f30d1a515ccd722fdc5b1d6e95e",
     "production_texture_sha256": "35e857fabce6c09fbc8c8d07fe6b0f11c7e6fa66398f20e1ad085ddc21e74042",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",

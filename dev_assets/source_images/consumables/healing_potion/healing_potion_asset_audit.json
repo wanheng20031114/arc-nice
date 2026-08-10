@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "healing_potion/healing_potion_imagegen_magenta_v7.png",
     "selected_source_matches": true,
@@ -78,39 +78,9 @@
     },
     "rejected": [
       {
-        "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta.png",
-        "sha256": "8153223fd067052587f58ff5127741c097029bdf3bb85c44dd8e5aa60d12b78d",
-        "reason": "rejected: measured 14x36 logical subject is too tall and slender"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v2.png",
-        "sha256": "b9209d830fa0f12001805e8e205145891e6acc22e1d82c7050193d7e2bdd5743",
-        "reason": "rejected superseded: 22x32 pear-shaped source does not match the newly approved broad round-flask volume"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v3.png",
-        "sha256": "5497e02a397eae4e0061d3dd2c3fab7f43020641c3243934161897a7feee60dd",
-        "reason": "rejected: automatic grid analysis is unreliable; PerfectPixel review is approximately 24x32 and still too tall"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v4.png",
-        "sha256": "d407be70d6a8dbbf40f2882fe0bfef48c6fcff292f1c3438e6fbc2b2fd28f389",
-        "reason": "rejected: measured 21x22 and has insufficient native pixel density"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v5.png",
-        "sha256": "4f689d4f2aa2da544b5c3ff34023f4d1eb21ec8276978959d5067db0b3c6378b",
-        "reason": "rejected: measured 22x34 logical subject is too tall"
-      },
-      {
         "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v6.png",
         "sha256": "0ceae9f2e7524073dcf1c01a243be9d76fb0d7c8d0f669d3c80de0e5ad72b0f6",
         "reason": "rejected: measured approximately 20x24 and is visibly smaller than the approved 22x30 reference volume"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v8.png",
-        "sha256": "c7f770b35244c2b1684fa916ae5ba92f8f3f065d970c4bd3634329e94436cc7f",
-        "reason": "rejected: measured approximately 25x31 with anisotropic source cells and exceeds the 22x30 contract"
       }
     ],
     "manual_review_note": "Manual review locked 22x28: the 568x710 source bbox yields near-square 25.82x25.36 cells. Two reviewed belly rows are authored by duplicating existing native rows without scaling.",
@@ -121,7 +91,7 @@
     "alpha_source_sha256": "f8c0b0d02bb2a76d05052004e6127a51c24ea80e5a999a55f63bd91f96402cc6",
     "logical_preview_sha256": "5f1c15f9cc325653d00b3e1a65dda39e19e25c97a1bac45428e192dbda2b1110",
     "production_texture_sha256": "055519b89122af106a9758092c62400dd901bedb217739993d2d126cda2bb39b",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v7.png",

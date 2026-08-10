@@ -26,7 +26,7 @@
   "hashes": {
     "native_manual_master_sha256": "129a8562969bacfa3185f152564d55c9719bd89f196f709d387771a1ba1b581f",
     "production_texture_sha256": "129a8562969bacfa3185f152564d55c9719bd89f196f709d387771a1ba1b581f",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "logical_subject_size": [
     14,

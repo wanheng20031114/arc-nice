@@ -6,6 +6,36 @@
   "new_expansion_asset_count": 12,
   "repair_asset_count": 1,
   "native_manual_master_policy": "The 609532c5 user corrections are production-authoritative native 32x32 masters. Full ImageGen rebuilds audit but never overwrite them.",
+  "intermediate_cleanup": {
+    "status": "rejected_candidate_rasters_removed_after_final_approval",
+    "decision_records_and_hashes_retained": true,
+    "removed_count": 17,
+    "removed_bytes": 16886375,
+    "retained_rejected_reference_inputs": [
+      "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v4.png",
+      "windwalk_potion/windwalk_potion_imagegen_magenta_v3.png",
+      "healing_potion/healing_potion_imagegen_magenta_v6.png"
+    ],
+    "removed_rejected_sources": [
+      {"path": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png", "sha256": "744346fdaccc4e01195fd8c823a9ad6cd129b3728789fa645eef15769efce8f8", "reason": "19x34 logical subject is too tall"},
+      {"path": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png", "sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808", "reason": "11x16 logical source caused the user-rejected macroblock appearance"},
+      {"path": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v3.png", "sha256": "ba432b677462777274c8e1e87000bfa0313ef7a0c38ff643390aa08d470c13cd", "reason": "29x39 logical subject is too tall"},
+      {"path": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v5.png", "sha256": "ae5032eab155aaa16a91e9dc6aa4eddbfd2fb8a52b55dd0d6b174d6edd870915", "reason": "25x34 logical subject is too tall"},
+      {"path": "healing_potion/healing_potion_imagegen_magenta.png", "sha256": "8153223fd067052587f58ff5127741c097029bdf3bb85c44dd8e5aa60d12b78d", "reason": "14x36 logical subject is too tall and slender"},
+      {"path": "healing_potion/healing_potion_imagegen_magenta_v2.png", "sha256": "b9209d830fa0f12001805e8e205145891e6acc22e1d82c7050193d7e2bdd5743", "reason": "superseded pear-shaped source does not match the approved round-flask volume"},
+      {"path": "healing_potion/healing_potion_imagegen_magenta_v3.png", "sha256": "5497e02a397eae4e0061d3dd2c3fab7f43020641c3243934161897a7feee60dd", "reason": "grid analysis is unreliable and the subject remains too tall"},
+      {"path": "healing_potion/healing_potion_imagegen_magenta_v4.png", "sha256": "d407be70d6a8dbbf40f2882fe0bfef48c6fcff292f1c3438e6fbc2b2fd28f389", "reason": "21x22 result has insufficient native pixel density"},
+      {"path": "healing_potion/healing_potion_imagegen_magenta_v5.png", "sha256": "4f689d4f2aa2da544b5c3ff34023f4d1eb21ec8276978959d5067db0b3c6378b", "reason": "22x34 logical subject is too tall"},
+      {"path": "healing_potion/healing_potion_imagegen_magenta_v8.png", "sha256": "c7f770b35244c2b1684fa916ae5ba92f8f3f065d970c4bd3634329e94436cc7f", "reason": "anisotropic source cells exceed the 22x30 contract"},
+      {"path": "large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta.png", "sha256": "626cec66efbcceeb3a7136fc257b7318f2325a33e92347c4b249d738f8ea85fe", "reason": "approximately 36x42 logical cells exceed the contract"},
+      {"path": "large_regeneration_potion/large_regeneration_potion_imagegen_magenta.png", "sha256": "bf5f69fe91736d101d6bf1d1a5e2cdd0a8d33d7e9db767f5637718b501048790", "reason": "26x33 logical subject exceeds the 27x30 contract"},
+      {"path": "large_skill_charge_battery/large_skill_charge_battery_imagegen_magenta.png", "sha256": "b60ae00caa3f2ee5dba2379efe3f29883a789a913345f5e54ebb000e5000ec30", "reason": "28x51 logical subject exceeds the 27x30 contract"},
+      {"path": "magic_resistance_potion/magic_resistance_potion_imagegen_magenta.png", "sha256": "5caaa1208f746872716099cbfc0abdc32f6fa50af0635b9e523eec19605386a5", "reason": "32x54 logical subject exceeds the 22x30 contract"},
+      {"path": "skill_charge_battery/skill_charge_battery_imagegen_magenta.png", "sha256": "b0b13bc689c4e9d5c095c763df56b16505d2dc70c8ac255ba7f5d07409f97ad3", "reason": "unreliable primary grid and an approximately 16x38 logical subject"},
+      {"path": "windwalk_potion/windwalk_potion_imagegen_magenta.png", "sha256": "725f514693a0dc512109f40f81b136c17ea779b2cf77268220c9f1b3e15b0f90", "reason": "15x23 source caused avoidable macroblock repetition"},
+      {"path": "windwalk_potion/windwalk_potion_imagegen_magenta_v2.png", "sha256": "a4911ef5d56a30fda5d7b458b73427dd2cf87d1db0b792c6852ad5ee06c1b7d2", "reason": "27x35 or approximately 28x40 review result is too tall"}
+    ]
+  },
   "items": [
     {
       "stem": "skill_charge_battery",

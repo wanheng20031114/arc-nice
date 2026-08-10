@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Deterministically build and audit consumable icons and native repairs.
 
-Each built-in ImageGen master is retained beside its processing artifacts.  A
-flat magenta background is removed without changing retained foreground RGB,
+Each approved ImageGen master is retained beside its processing artifacts.
+Rejected rasters are removed after approval unless an accepted precise edit
+uses them as an input.  A flat magenta background is removed without changing retained foreground RGB,
 one pixel is sampled per *measured* logical source cell, and the result is
 centered on a transparent 32x32 canvas.  The pipeline intentionally has no
 unsafe resize or palette-reduction escape hatch: an unreliable or oversized
@@ -126,10 +127,6 @@ ASSETS = (
         "small_battery",
         (22, 30),
         "skill_charge_battery_imagegen_magenta_v2.png",
-        ((
-            "skill_charge_battery_imagegen_magenta.png",
-            "rejected: unreliable primary grid (confidence 0.388) and approximately 16x38 logical subject",
-        ),),
     ),
     AssetSpec(
         "large_skill_charge_battery",
@@ -138,10 +135,6 @@ ASSETS = (
         "large_battery",
         (27, 30),
         "large_skill_charge_battery_imagegen_magenta_v2.png",
-        ((
-            "large_skill_charge_battery_imagegen_magenta.png",
-            "rejected: measured 28x51 logical subject exceeds the lossless 27x30 contract",
-        ),),
     ),
     AssetSpec(
         "magic_resistance_potion",
@@ -149,10 +142,6 @@ ASSETS = (
         "low",
         "small_bottle",
         (22, 30),
-        rejected_sources=((
-            "magic_resistance_potion_imagegen_magenta.png",
-            "rejected: measured 32x54 logical subject exceeds the lossless 22x30 contract",
-        ),),
         native_manual_master_filename="magic_resistance_potion_native_manual_master.png",
         manual_master_note=(
             "Native 32x32 manual correction committed by the user in 609532c5. "
@@ -167,10 +156,6 @@ ASSETS = (
         "large_bottle",
         (27, 30),
         "large_magic_resistance_potion_imagegen_magenta_v2.png",
-        ((
-            "large_magic_resistance_potion_imagegen_magenta.png",
-            "rejected: independent square-grid audit measured approximately 36x42 logical cells",
-        ),),
     ),
     AssetSpec(
         "regeneration_potion",
@@ -192,10 +177,6 @@ ASSETS = (
         "large_bottle",
         (27, 30),
         "large_regeneration_potion_imagegen_magenta_v2.png",
-        ((
-            "large_regeneration_potion_imagegen_magenta.png",
-            "rejected: measured 26x33 logical subject exceeds the lossless 27x30 contract",
-        ),),
     ),
     AssetSpec("guardian_mixture", "守护合剂", "medium", "single_bottle", (24, 30)),
     AssetSpec(
@@ -207,24 +188,8 @@ ASSETS = (
         "battle_spirit_potion_imagegen_magenta_v6.png",
         (
             (
-                "battle_spirit_potion_imagegen_magenta.png",
-                "rejected: measured 19x34 logical subject is too tall",
-            ),
-            (
-                "battle_spirit_potion_imagegen_magenta_v2.png",
-                "rejected: only 11x16 logical pixels and previously enlarged by a non-integer scale to 21x30, causing the user-rejected macroblock appearance",
-            ),
-            (
-                "battle_spirit_potion_imagegen_magenta_v3.png",
-                "rejected: measured 29x39 logical subject is too tall",
-            ),
-            (
                 "battle_spirit_potion_imagegen_magenta_v4.png",
                 "rejected alternate: measured 25x33 and technically row-editable, but its round bottle is too close to the healing-potion silhouette",
-            ),
-            (
-                "battle_spirit_potion_imagegen_magenta_v5.png",
-                "rejected: measured 25x34 logical subject is too tall",
             ),
         ),
         reviewed_logical_size=(20, 31),
@@ -246,14 +211,6 @@ ASSETS = (
         (24, 32),
         "windwalk_potion_imagegen_magenta_v4.png",
         (
-            (
-                "windwalk_potion_imagegen_magenta.png",
-                "rejected: measured 15x23 and previously enlarged to 20x30, causing avoidable macroblock repetition",
-            ),
-            (
-                "windwalk_potion_imagegen_magenta_v2.png",
-                "rejected: automatic normalization measured 27x35 and PerfectPixel review approximately 28x40; both are too tall",
-            ),
             (
                 "windwalk_potion_imagegen_magenta_v3.png",
                 "rejected: measured 18x36 logical subject is too tall",
@@ -309,32 +266,8 @@ REPAIR_ASSETS = (
         "healing_potion_imagegen_magenta_v7.png",
         (
             (
-                "healing_potion_imagegen_magenta.png",
-                "rejected: measured 14x36 logical subject is too tall and slender",
-            ),
-            (
-                "healing_potion_imagegen_magenta_v2.png",
-                "rejected superseded: 22x32 pear-shaped source does not match the newly approved broad round-flask volume",
-            ),
-            (
-                "healing_potion_imagegen_magenta_v3.png",
-                "rejected: automatic grid analysis is unreliable; PerfectPixel review is approximately 24x32 and still too tall",
-            ),
-            (
-                "healing_potion_imagegen_magenta_v4.png",
-                "rejected: measured 21x22 and has insufficient native pixel density",
-            ),
-            (
-                "healing_potion_imagegen_magenta_v5.png",
-                "rejected: measured 22x34 logical subject is too tall",
-            ),
-            (
                 "healing_potion_imagegen_magenta_v6.png",
                 "rejected: measured approximately 20x24 and is visibly smaller than the approved 22x30 reference volume",
-            ),
-            (
-                "healing_potion_imagegen_magenta_v8.png",
-                "rejected: measured approximately 25x31 with anisotropic source cells and exceeds the 22x30 contract",
             ),
         ),
         reviewed_logical_size=(22, 28),

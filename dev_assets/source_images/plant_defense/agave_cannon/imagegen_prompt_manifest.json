@@ -52,11 +52,10 @@
     "chosen_source": "agave_cannon_candidate_b_refined",
     "derived_from": "agave_cannon_candidate_b",
     "selected_candidate": "agave_cannon_concept_b_refined",
-    "refined_source": "dev_assets/source_images/plant_defense/agave_cannon/agave_cannon_candidate_b_refined_imagegen_magenta.png",
     "refinement_spec": "Refine candidate B only: preserve its exact Agave Cannon identity, pose, palette family, upper-left light, and volumetric layered-leaf construction; make the logical pixel clusters more regular and the pure #FF00FF background easier to key; keep the amber right-facing cannon materially separable from the green/olive body; do not add ground, shadow, text, UI, projectile, flash, or new objects.",
     "selected_source": "dev_assets/source_images/plant_defense/agave_cannon/agave_cannon_selected_imagegen_magenta.png",
     "selected_sha256": "771357FA627C55EF3D67048B44316F0B9209CE652CA5AAE660E71DA05B4F146C",
-    "selected_source_action": "Copy the refined candidate B byte-for-byte to selected_source before processing; do not resize, filter, or blend candidates."
+    "selected_source_action": "The refined candidate B was copied byte-for-byte to selected_source before processing; the duplicate refined-source file was removed, and selected_source remains the sole retained master."
   },
   "production_derivation": {
     "single_master": true,

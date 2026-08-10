@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "guardian_mixture/guardian_mixture_imagegen_magenta.png",
     "selected_source_matches": true,
@@ -85,7 +85,7 @@
     "alpha_source_sha256": "4f21098e8afea654f4d0ae55923e586d6fa058a469496eda28732aa5d19a45f7",
     "logical_preview_sha256": "dddbdf170edefb6530860602e3199e19df3809b938e34426cf7fce53dd592b00",
     "production_texture_sha256": "35b8107a8401f603314e51f79c0e0e062b6afb295ee5e205e98a83796cccf46e",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/guardian_mixture/guardian_mixture_imagegen_magenta.png",

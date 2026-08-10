@@ -11,9 +11,9 @@
   },
   "pipeline": {
     "prompt_manifest": "dev_assets/source_images/rogue_rare_chest/prompt_manifest.json",
-    "prompt_manifest_sha256": "1d3d7fec5b38fbfc2dc8e0f140fce653a074f519dedaf77039663d739bcaa1a2",
+    "prompt_manifest_sha256": "1f14fc6cd89f4005a837898264297fc4e29e9cb22547fa4969332207323f8e2d",
     "generation_record": "dev_assets/source_images/rogue_rare_chest/generation_record.md",
-    "generation_record_sha256": "91fc8eb2b73ff8ba008fdda63663ce2ad74739968287a138c3742c80eda4d77f",
+    "generation_record_sha256": "b269887d7b5298becb040ddad65b686d3919973fb34e6c928f95f81c3cddf82e",
     "background_remover": "dev_tools/connected_background_remover.py",
     "background_remover_sha256": "5816e6cc093ade078b390011860a4d6b4cb853f63da96a71e5476a1b8fcbeaac",
     "processing_script": "dev_tools/process_rare_chest_assets.py",
@@ -90,8 +90,10 @@
     "voxel_or_minecraft_scene": false
   },
   "legacy_review_artifacts": {
-    "retained_for_history": true,
+    "retained_for_history": false,
     "production_eligible": false,
+    "cleanup_status": "deleted_after_v2_approval",
+    "trace_retained_in": "dev_assets/source_images/rogue_rare_chest/prompt_manifest.json",
     "variants": [
       "v1 vermilion source and hard-alpha image",
       "122x159 logical previews",

@@ -85,7 +85,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
         "selected_source_matches": true,
@@ -122,29 +122,9 @@
         },
         "rejected": [
           {
-            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
-            "sha256": "744346fdaccc4e01195fd8c823a9ad6cd129b3728789fa645eef15769efce8f8",
-            "reason": "rejected: measured 19x34 logical subject is too tall"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
-            "sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808",
-            "reason": "rejected: only 11x16 logical pixels and previously enlarged by a non-integer scale to 21x30, causing the user-rejected macroblock appearance"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v3.png",
-            "sha256": "ba432b677462777274c8e1e87000bfa0313ef7a0c38ff643390aa08d470c13cd",
-            "reason": "rejected: measured 29x39 logical subject is too tall"
-          },
-          {
             "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v4.png",
             "sha256": "dbc900b659c3ae268be434bdafe375af92fe0d5626d10b5a6e5b4df6beddb877",
             "reason": "rejected alternate: measured 25x33 and technically row-editable, but its round bottle is too close to the healing-potion silhouette"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v5.png",
-            "sha256": "ae5032eab155aaa16a91e9dc6aa4eddbfd2fb8a52b55dd0d6b174d6edd870915",
-            "reason": "rejected: measured 25x34 logical subject is too tall"
           }
         ],
         "manual_review_note": "PerfectPixel and gradient reviews both locked 20x31; the 262x419 source bbox yields near-square 13.10x13.52 cells.",
@@ -155,7 +135,7 @@
         "alpha_source_sha256": "32f1136650766d8bf083e48651e413f835fe5f5c49f16cfd5cde99350f61975f",
         "logical_preview_sha256": "5547d3d8c89b1fe42144c63654ddc5374803f6de22bec24639670f7fb954059a",
         "production_texture_sha256": "32ea2c5522bc2556985529e52292d22320505e675bfd6fca8b42d30057d50762",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
@@ -323,7 +303,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
         "selected_source_matches": true,
@@ -359,16 +339,6 @@
         },
         "rejected": [
           {
-            "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta.png",
-            "sha256": "725f514693a0dc512109f40f81b136c17ea779b2cf77268220c9f1b3e15b0f90",
-            "reason": "rejected: measured 15x23 and previously enlarged to 20x30, causing avoidable macroblock repetition"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v2.png",
-            "sha256": "a4911ef5d56a30fda5d7b458b73427dd2cf87d1db0b792c6852ad5ee06c1b7d2",
-            "reason": "rejected: automatic normalization measured 27x35 and PerfectPixel review approximately 28x40; both are too tall"
-          },
-          {
             "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v3.png",
             "sha256": "56281b76750209c1b9f7e8ac9d32a20c4be6b03883d7973aa80aca3badfaf184",
             "reason": "rejected: measured 18x36 logical subject is too tall"
@@ -382,7 +352,7 @@
         "alpha_source_sha256": "3c1ca8581ca5e368642e83e63c05263c8488993991a87d13416a555f1a5fe43f",
         "logical_preview_sha256": "5f5743097689ededf1a5f415f861199e8ba9e84fa76766ee2276cab55eb28d91",
         "production_texture_sha256": "c9941bcd27a56f2ef5f61773e538e44828f99012473cd7e6e8c34d6ee84a992b",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
@@ -551,7 +521,7 @@
       "prompt_record": {
         "status": "linked",
         "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
         "asset_entry_found": true,
         "selected_source": "healing_potion/healing_potion_imagegen_magenta_v7.png",
         "selected_source_matches": true,
@@ -588,39 +558,9 @@
         },
         "rejected": [
           {
-            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta.png",
-            "sha256": "8153223fd067052587f58ff5127741c097029bdf3bb85c44dd8e5aa60d12b78d",
-            "reason": "rejected: measured 14x36 logical subject is too tall and slender"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v2.png",
-            "sha256": "b9209d830fa0f12001805e8e205145891e6acc22e1d82c7050193d7e2bdd5743",
-            "reason": "rejected superseded: 22x32 pear-shaped source does not match the newly approved broad round-flask volume"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v3.png",
-            "sha256": "5497e02a397eae4e0061d3dd2c3fab7f43020641c3243934161897a7feee60dd",
-            "reason": "rejected: automatic grid analysis is unreliable; PerfectPixel review is approximately 24x32 and still too tall"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v4.png",
-            "sha256": "d407be70d6a8dbbf40f2882fe0bfef48c6fcff292f1c3438e6fbc2b2fd28f389",
-            "reason": "rejected: measured 21x22 and has insufficient native pixel density"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v5.png",
-            "sha256": "4f689d4f2aa2da544b5c3ff34023f4d1eb21ec8276978959d5067db0b3c6378b",
-            "reason": "rejected: measured 22x34 logical subject is too tall"
-          },
-          {
             "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v6.png",
             "sha256": "0ceae9f2e7524073dcf1c01a243be9d76fb0d7c8d0f669d3c80de0e5ad72b0f6",
             "reason": "rejected: measured approximately 20x24 and is visibly smaller than the approved 22x30 reference volume"
-          },
-          {
-            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v8.png",
-            "sha256": "c7f770b35244c2b1684fa916ae5ba92f8f3f065d970c4bd3634329e94436cc7f",
-            "reason": "rejected: measured approximately 25x31 with anisotropic source cells and exceeds the 22x30 contract"
           }
         ],
         "manual_review_note": "Manual review locked 22x28: the 568x710 source bbox yields near-square 25.82x25.36 cells. Two reviewed belly rows are authored by duplicating existing native rows without scaling.",
@@ -631,7 +571,7 @@
         "alpha_source_sha256": "f8c0b0d02bb2a76d05052004e6127a51c24ea80e5a999a55f63bd91f96402cc6",
         "logical_preview_sha256": "5f1c15f9cc325653d00b3e1a65dda39e19e25c97a1bac45428e192dbda2b1110",
         "production_texture_sha256": "055519b89122af106a9758092c62400dd901bedb217739993d2d126cda2bb39b",
-        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+        "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
       },
       "source": {
         "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v7.png",

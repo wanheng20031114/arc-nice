@@ -41,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+    "sha256": "b8986dfc89530c06f966a5ffeee2f38bd5a41786079c0f093b8dc13c2765e1b6",
     "asset_entry_found": true,
     "selected_source": "windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
     "selected_source_matches": true,
@@ -77,16 +77,6 @@
     },
     "rejected": [
       {
-        "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta.png",
-        "sha256": "725f514693a0dc512109f40f81b136c17ea779b2cf77268220c9f1b3e15b0f90",
-        "reason": "rejected: measured 15x23 and previously enlarged to 20x30, causing avoidable macroblock repetition"
-      },
-      {
-        "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v2.png",
-        "sha256": "a4911ef5d56a30fda5d7b458b73427dd2cf87d1db0b792c6852ad5ee06c1b7d2",
-        "reason": "rejected: automatic normalization measured 27x35 and PerfectPixel review approximately 28x40; both are too tall"
-      },
-      {
         "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v3.png",
         "sha256": "56281b76750209c1b9f7e8ac9d32a20c4be6b03883d7973aa80aca3badfaf184",
         "reason": "rejected: measured 18x36 logical subject is too tall"
@@ -100,7 +90,7 @@
     "alpha_source_sha256": "3c1ca8581ca5e368642e83e63c05263c8488993991a87d13416a555f1a5fe43f",
     "logical_preview_sha256": "5f5743097689ededf1a5f415f861199e8ba9e84fa76766ee2276cab55eb28d91",
     "production_texture_sha256": "c9941bcd27a56f2ef5f61773e538e44828f99012473cd7e6e8c34d6ee84a992b",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",

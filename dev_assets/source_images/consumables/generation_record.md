@@ -109,11 +109,10 @@ analysis found near-square periods of 30.7x30.2 physical pixels but confidence
 logical subject to 18x26; the audit records a 1.019 cell aspect ratio and
 explicitly confirms that no global unsafe override was enabled.
 
-Rejected sources remain beside their accepted revisions and are hash-locked in
-the audit: small and large skill batteries v1, small and large magic-resistance
-potions v1, large regeneration potion v1, and battle-spirit potion v1. Their
-measured rejection reasons are recorded per item rather than inferred from
-filename version numbers.
+Rejected-source decisions, SHA-256 values, and measured reasons remain in
+`imagegen_prompt_manifest.json`, but rejected rasters that were neither production
+inputs nor inputs to an approved ImageGen edit were removed after final approval.
+The current rebuild consumes only approved sources and explicit native masters.
 
 ## 2026-08-10 native-density redraw and healing repair
 
@@ -140,9 +139,10 @@ modified. Every rebuilt icon must pass these recorded assertions:
 - alpha values are exactly `0/255`, transparent RGB is zero, and all four
   canvas edges retain at least one transparent pixel
 
-All generated candidates remain in their item directories. The exact selected
-prompts, referenced-image paths, candidate decisions, and rejection reasons
-are stored in `imagegen_prompt_manifest.json`. In summary: battle v1/v3/v5
+The exact selected prompts, referenced-image paths, candidate decisions, removed
+source hashes, and rejection reasons are stored in `imagegen_prompt_manifest.json`.
+Only three rejected candidates remain because the approved redraw prompts consume
+them as exact image inputs: battle v4, wind v3, and healing v6. In summary: battle v1/v3/v5
 were too tall, v2 was the rejected low-density 11x16 source, and v4 was a
 technically viable but overly round alternate; wind v1 was the previously
 upscaled low-density source while v2/v3 were too tall; healing v1/v3/v5 were

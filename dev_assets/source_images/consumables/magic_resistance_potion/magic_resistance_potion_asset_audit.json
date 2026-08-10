@@ -21,18 +21,12 @@
       "sha256": "1ed48d007216cd44e1f1a38653497480dfca69e830241055ef5510a0edf9eefc",
       "kind": "user_authored_native_manual_master"
     },
-    "rejected": [
-      {
-        "path": "dev_assets/source_images/consumables/magic_resistance_potion/magic_resistance_potion_imagegen_magenta.png",
-        "sha256": "5caaa1208f746872716099cbfc0abdc32f6fa50af0635b9e523eec19605386a5",
-        "reason": "rejected: measured 32x54 logical subject exceeds the lossless 22x30 contract"
-      }
-    ]
+    "rejected": []
   },
   "hashes": {
     "native_manual_master_sha256": "1ed48d007216cd44e1f1a38653497480dfca69e830241055ef5510a0edf9eefc",
     "production_texture_sha256": "1ed48d007216cd44e1f1a38653497480dfca69e830241055ef5510a0edf9eefc",
-    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+    "processing_script_sha256": "d24359417d27f92675fe406b0c2b18cae6d51f31e0a692290231514a2c261928"
   },
   "logical_subject_size": [
     10,
