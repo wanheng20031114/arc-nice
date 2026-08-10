@@ -85,9 +85,10 @@ centers the result on a 32x32 RGBA canvas with at least one transparent pixel
 on every edge. Shrinking and the project pixel tool's unsafe grid-compression
 override are never enabled.
 
-Selected source/grid summary:
+Initial twelve-item source/grid summary (the three user-authored native masters
+and the two later redraws are superseded by the current records below):
 
-| Item | Selected source | Logical subject | Confidence |
+| Item | Initial source | Initial logical subject | Confidence |
 | --- | --- | ---: | ---: |
 | Blue Crystal Skill Battery | `skill_charge_battery_imagegen_magenta_v2.png` | 10x18 | 0.850 |
 | Large Blue Crystal Skill Battery | `large_skill_charge_battery_imagegen_magenta_v2.png` | 20x28 | 0.857 |
@@ -113,3 +114,63 @@ the audit: small and large skill batteries v1, small and large magic-resistance
 potions v1, large regeneration potion v1, and battle-spirit potion v1. Their
 measured rejection reasons are recorded per item rather than inferred from
 filename version numbers.
+
+## 2026-08-10 native-density redraw and healing repair
+
+The battle-spirit and windwalk icons from the twelve-item expansion were
+redrawn after the user identified the enlarged-16x16/macroblock appearance.
+The original healing potion is included in the same three-icon review set as a
+repair asset; it remains excluded from the twelve-new-item count.
+
+| Asset | Approved source | Reviewed source grid | Logical row edit | Native result |
+| --- | --- | ---: | --- | ---: |
+| Battle-Spirit Potion | `battle_spirit_potion_imagegen_magenta_v6.png` | 20x31 | remove original row `[2]` | 20x30 |
+| Windwalk Potion | `windwalk_potion_imagegen_magenta_v4.png` | 24x32 | remove original rows `[2, 10]` | 24x30 |
+| Healing Potion (repair) | `healing_potion_imagegen_magenta_v7.png` | 22x28 | duplicate belly rows after `[18, 20]` | 22x30 |
+
+The reviewed row edits are native row deletions or duplications, not resizes.
+Retained logical pixels are never resampled and production upscale is forbidden
+for all three. After the row edit the processor changes only the 4-connected outermost silhouette to
+uniform near-black RGBA `(5, 8, 12, 255)`. Internal colour blocks are not
+modified. Every rebuilt icon must pass these recorded assertions:
+
+- `outer_boundary_dark_ratio == 1.0`
+- `second_layer_dark_ratio <= 0.20`
+- origin-aligned, RGB-tolerance-8 same-colour 2x2 coverage `<= 0.25`
+- alpha values are exactly `0/255`, transparent RGB is zero, and all four
+  canvas edges retain at least one transparent pixel
+
+All generated candidates remain in their item directories. The exact selected
+prompts, referenced-image paths, candidate decisions, and rejection reasons
+are stored in `imagegen_prompt_manifest.json`. In summary: battle v1/v3/v5
+were too tall, v2 was the rejected low-density 11x16 source, and v4 was a
+technically viable but overly round alternate; wind v1 was the previously
+upscaled low-density source while v2/v3 were too tall; healing v1/v3/v5 were
+too tall or unreliable and v4 had insufficient native density. The later
+round-flask revision uses v7: v6 was too small, while v8 exceeded the target
+grid and used anisotropic source cells. The user-supplied 22x30 purple bottle
+is retained as `healing_potion_volume_reference.png`; it defines volume and
+silhouette only, never the healing potion's colour identity.
+
+### User-authored native masters
+
+Commit `609532c5` manually corrected `magic_resistance_potion.png`,
+`regeneration_potion.png`, and `phantom_potion.png`. Their exact production
+PNGs are retained beside the generation sources as
+`*_native_manual_master.png`. These are authoritative native 32x32 masters:
+the full processor verifies pixel equality, hard alpha, transparent RGB, and
+four-edge padding, writes an audit, and deliberately skips every production
+write. Future ImageGen rebuilds therefore cannot replace the user's manual
+work.
+
+Targeted rebuild and audit commands:
+
+```text
+python dev_tools/process_consumable_assets.py --asset battle_spirit_potion --asset windwalk_potion --asset healing_potion
+python dev_tools/process_consumable_assets.py --asset magic_resistance_potion --asset regeneration_potion --asset phantom_potion
+```
+
+The three-redraw contact sheets and aggregate audit are written separately as
+`redrawn_consumables_contact_preview_{1x,8x}.png` and
+`redrawn_consumable_asset_audit.json`; the existing new-consumables aggregate
+continues to contain exactly twelve entries.

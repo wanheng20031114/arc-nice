@@ -1,10 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "asset": "large_magic_resistance_potion",
   "display_name": "大型紫晶法抗药水",
   "status": "passed",
   "tier": "medium",
   "shape": "large_bottle",
+  "repair_asset": false,
   "chroma_key": "#FF00FF",
   "pipeline": [
     "built-in ImageGen, one distinct source per item",
@@ -40,7 +41,7 @@
   "prompt_record": {
     "status": "linked",
     "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
+    "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
     "asset_entry_found": true,
     "selected_source": "large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
     "selected_source_matches": true,
@@ -90,7 +91,7 @@
     "alpha_source_sha256": "bf5ed3c4ed9139b35f9fdb1fb40a165acfa0795308f48c9176c0ebab40edc364",
     "logical_preview_sha256": "9a539e1b4a1cad260cf2f32050bf491708975f30d1a515ccd722fdc5b1d6e95e",
     "production_texture_sha256": "35e857fabce6c09fbc8c8d07fe6b0f11c7e6fa66398f20e1ad085ddc21e74042",
-    "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
   },
   "source": {
     "path": "dev_assets/source_images/consumables/large_magic_resistance_potion/large_magic_resistance_potion_imagegen_magenta_v2.png",
@@ -127,6 +128,7 @@
       "recommended_canvas_grid_height": 21
     }
   },
+  "reviewed_redraw": null,
   "max_subject_size": [
     27,
     30

@@ -1,0 +1,761 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "asset_count": 3,
+  "new_expansion_asset_count": 2,
+  "repair_asset_count": 1,
+  "assets_in_order": [
+    "battle_spirit_potion",
+    "windwalk_potion",
+    "healing_potion"
+  ],
+  "contract": {
+    "canvas": [
+      32,
+      32
+    ],
+    "mode": "RGBA",
+    "alpha_values": [
+      0,
+      255
+    ],
+    "transparent_rgb": [
+      0,
+      0,
+      0
+    ],
+    "minimum_transparent_border_on_all_four_edges": 1,
+    "production_resampling": "none",
+    "uniform_outer_boundary_rgba": [
+      5,
+      8,
+      12,
+      255
+    ],
+    "outer_boundary_connectivity": 4,
+    "outer_boundary_dark_ratio": 1.0,
+    "maximum_second_layer_dark_ratio": 0.2,
+    "maximum_aligned_tolerance8_same_color_2x2_coverage": 0.25
+  },
+  "contact_previews": {
+    "1x": "dev_assets/source_images/consumables/redrawn_consumables_contact_preview_1x.png",
+    "8x_nearest": "dev_assets/source_images/consumables/redrawn_consumables_contact_preview_8x.png"
+  },
+  "assets": [
+    {
+      "schema_version": 2,
+      "asset": "battle_spirit_potion",
+      "display_name": "战意药水",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "single_bottle",
+      "repair_asset": false,
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "no production upscale or shrink for reviewed redraw",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset battle_spirit_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "forbidden; native logical pixels are placed 1:1",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "asset_entry_found": true,
+        "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v4.png",
+          "resources/texture/consumables/guardian_mixture.png"
+        ],
+        "prompt_lines": [
+          "Use case: precise-object-edit",
+          "Asset type: native 32x32 pixel-art game inventory icon source",
+          "Input images: Image 1 supplies the approved fine pixel density and battle emblem; Image 2 supplies a distinct faceted defensive-bottle silhouette reference.",
+          "Primary request: Redraw the battle-spirit potion with the same crimson liquid and small gold sword/flame emblem, but change ONLY the bottle silhouette from round healing-flask style to a compact FACETED OCTAGONAL combat vial with slightly squared shoulders and angled lower corners.",
+          "Scene/backdrop: perfectly flat uniform #ff00ff chroma key.",
+          "Logical size: keep the same approximately 11-source-pixel grid-cell size as Image 1. Target 22–24 logical pixels wide and 29–31 rows tall; physical bbox about 255–280px wide and 320–350px tall. Large empty margins; do not zoom.",
+          "Pixel construction: continuous one-logical-pixel near-black boundary; fine 1x1 diagonals and highlights; crisp angled shoulder steps; no thick double outline. Gold emblem uses a one-pixel vertical blade/flame with small guard, not an anchor.",
+          "Palette: brown cork, cyan-white glass, deep crimson/red liquid, orange-gold emblem, near-black outline.",
+          "Constraints: one object, hard opaque pixel art, no antialiasing, blur, smooth gradients, text, shadow, floor, props, watermark or #ff00ff in subject.",
+          "Avoid: round healing-potion silhouette, 16x16 macroblocks, 2x2 piles, any 32+ row subject, irregular outline."
+        ],
+        "prompt_sha256": "a756e88505f212003a2978db1948af77e2c43b171afbf5f567304d1b4756fe99"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
+        "alpha_source": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/battle_spirit_potion.png",
+        "atlas": "resources/atlas/battle_spirit_potion.tres",
+        "config": "resources/config/consumables/battle_spirit_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
+          "sha256": "36a3517ba71b19836261cc8bb0f3929217088daf8a9cd603a5deda36fa835e0f"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
+            "sha256": "744346fdaccc4e01195fd8c823a9ad6cd129b3728789fa645eef15769efce8f8",
+            "reason": "rejected: measured 19x34 logical subject is too tall"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+            "sha256": "d310ff6bdc8c67ad28823cda660be8333ac3be806537dfcbfaf6128f4b313808",
+            "reason": "rejected: only 11x16 logical pixels and previously enlarged by a non-integer scale to 21x30, causing the user-rejected macroblock appearance"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v3.png",
+            "sha256": "ba432b677462777274c8e1e87000bfa0313ef7a0c38ff643390aa08d470c13cd",
+            "reason": "rejected: measured 29x39 logical subject is too tall"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v4.png",
+            "sha256": "dbc900b659c3ae268be434bdafe375af92fe0d5626d10b5a6e5b4df6beddb877",
+            "reason": "rejected alternate: measured 25x33 and technically row-editable, but its round bottle is too close to the healing-potion silhouette"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v5.png",
+            "sha256": "ae5032eab155aaa16a91e9dc6aa4eddbfd2fb8a52b55dd0d6b174d6edd870915",
+            "reason": "rejected: measured 25x34 logical subject is too tall"
+          }
+        ],
+        "manual_review_note": "PerfectPixel and gradient reviews both locked 20x31; the 262x419 source bbox yields near-square 13.10x13.52 cells.",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "36a3517ba71b19836261cc8bb0f3929217088daf8a9cd603a5deda36fa835e0f",
+        "alpha_source_sha256": "32f1136650766d8bf083e48651e413f835fe5f5c49f16cfd5cde99350f61975f",
+        "logical_preview_sha256": "5547d3d8c89b1fe42144c63654ddc5374803f6de22bec24639670f7fb954059a",
+        "production_texture_sha256": "32ea2c5522bc2556985529e52292d22320505e675bfd6fca8b42d30057d50762",
+        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
+        "normalization_mode": "manual_reviewed_grid_center_sample",
+        "detected_logical_subject_size": [
+          20,
+          31
+        ],
+        "logical_subject_size": [
+          20,
+          31
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 13.1,
+          "grid_cell_height": 11.5,
+          "grid_cell_size": 12,
+          "confidence": 0.592,
+          "subject_bbox": {
+            "left": 496,
+            "top": 414,
+            "right": 758,
+            "bottom": 833
+          },
+          "subject_pixel_width": 262,
+          "subject_pixel_height": 419,
+          "subject_grid_width": 20,
+          "subject_grid_height": 36,
+          "recommended_canvas_grid_width": 96,
+          "recommended_canvas_grid_height": 109,
+          "manual_review": {
+            "approved_logical_size": [
+              20,
+              31
+            ],
+            "cell_width": 13.1,
+            "cell_height": 13.516,
+            "cell_aspect_ratio": 1.032,
+            "note": "PerfectPixel and gradient reviews both locked 20x31; the 262x419 source bbox yields near-square 13.10x13.52 cells.",
+            "global_unsafe_override_enabled": false
+          }
+        }
+      },
+      "reviewed_redraw": {
+        "expected_normalized_size": [
+          20,
+          31
+        ],
+        "deleted_original_logical_rows": [
+          2
+        ],
+        "duplicated_post_deletion_logical_rows_after": [],
+        "expected_final_size": [
+          20,
+          30
+        ],
+        "retained_pixel_resampling": "none",
+        "internal_color_blocks_modified": false,
+        "outer_boundary_recolour_only": true,
+        "metrics": {
+          "boundary_connectivity": 4,
+          "uniform_outer_boundary_rgba": [
+            5,
+            8,
+            12,
+            255
+          ],
+          "dark_rgb_tolerance": 8,
+          "outer_boundary_pixel_count": 78,
+          "second_layer_pixel_count": 74,
+          "outer_boundary_dark_ratio": 1.0,
+          "second_layer_dark_ratio": 0.0,
+          "aligned_tolerance8_same_color_2x2_coverage": 0.0
+        },
+        "assertions": {
+          "outer_boundary_dark_ratio_is_1_0": true,
+          "second_layer_dark_ratio_at_most_0_20": true,
+          "aligned_tolerance8_same_color_2x2_coverage_at_most_0_25": true
+        }
+      },
+      "max_subject_size": [
+        20,
+        31
+      ],
+      "logical_subject_size": [
+        20,
+        30
+      ],
+      "production_subject_size": [
+        20,
+        30
+      ],
+      "production_upscale": 1.0,
+      "paste_origin": [
+        6,
+        1
+      ],
+      "output_bbox_exclusive": [
+        6,
+        1,
+        26,
+        31
+      ],
+      "visible_color_count": 380,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true,
+        "outer_boundary_dark_ratio_is_1_0": true,
+        "second_layer_dark_ratio_at_most_0_20": true,
+        "aligned_tolerance8_same_color_2x2_coverage_at_most_0_25": true
+      }
+    },
+    {
+      "schema_version": 2,
+      "asset": "windwalk_potion",
+      "display_name": "风行药水",
+      "status": "passed",
+      "tier": "medium",
+      "shape": "single_bottle",
+      "repair_asset": false,
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "no production upscale or shrink for reviewed redraw",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset windwalk_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "forbidden; native logical pixels are placed 1:1",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "asset_entry_found": true,
+        "selected_source": "windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v3.png"
+        ],
+        "prompt_lines": [
+          "Use case: precise-object-edit",
+          "Asset type: native 32x32 pixel-art game inventory icon source",
+          "Input image: Image 1 is the edit target.",
+          "Primary request: Keep this exact wind-potion palette and one-pixel wind glyph, but rebuild the bottle as a SHORT SQUAT DROPLET FLASK. Delete the long neck and remove eight authored rows from the silhouette.",
+          "Hard contract: keep the current uniform 17-source-pixel grid cells. Final subject bbox must be 340–380px wide and 450–485px tall, equivalent to about 20–22 logical pixels wide by 26–28 rows tall. Do not make grid cells smaller.",
+          "Shape: 2-row cork, 2-row glass lip, 2-row neck, 3-row shoulders, 17-row droplet body, 2-row base. The lip sits close to the shoulders.",
+          "Scene/backdrop: perfectly flat uniform #ff00ff chroma key, one centered object with huge empty margins.",
+          "Invariants: sky-blue liquid, cyan-white glass, delicate one-pixel S-shaped wind curl and short streaks, continuous one-pixel near-black outer contour, rich 1x1 highlight detail.",
+          "Constraints: hard opaque pixels, no antialiasing, blur, smooth gradients, text, snowflake, water-drop symbol, shadow, floor, props or watermark; no #ff00ff in subject.",
+          "Avoid: original 36-row silhouette, long neck, macroblocks, any subject over 28 rows, uneven outline."
+        ],
+        "prompt_sha256": "5ad2491dbeca693b05e68314644c91d02353d5c46c26243e43d007feda644cb8"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
+        "alpha_source": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/windwalk_potion.png",
+        "atlas": "resources/atlas/windwalk_potion.tres",
+        "config": "resources/config/consumables/windwalk_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
+          "sha256": "2a0f25a82b47c8bf3e7e18e679ef47e7872d42b3be597c4fcb1d9abe2011545a"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta.png",
+            "sha256": "725f514693a0dc512109f40f81b136c17ea779b2cf77268220c9f1b3e15b0f90",
+            "reason": "rejected: measured 15x23 and previously enlarged to 20x30, causing avoidable macroblock repetition"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v2.png",
+            "sha256": "a4911ef5d56a30fda5d7b458b73427dd2cf87d1db0b792c6852ad5ee06c1b7d2",
+            "reason": "rejected: automatic normalization measured 27x35 and PerfectPixel review approximately 28x40; both are too tall"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v3.png",
+            "sha256": "56281b76750209c1b9f7e8ac9d32a20c4be6b03883d7973aa80aca3badfaf184",
+            "reason": "rejected: measured 18x36 logical subject is too tall"
+          }
+        ],
+        "manual_review_note": "PerfectPixel independent review locked 24x32. The automatic analyzer proposed 26x32 with a less plausible X/Y cell ratio.",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "2a0f25a82b47c8bf3e7e18e679ef47e7872d42b3be597c4fcb1d9abe2011545a",
+        "alpha_source_sha256": "3c1ca8581ca5e368642e83e63c05263c8488993991a87d13416a555f1a5fe43f",
+        "logical_preview_sha256": "5f5743097689ededf1a5f415f861199e8ba9e84fa76766ee2276cab55eb28d91",
+        "production_texture_sha256": "c9941bcd27a56f2ef5f61773e538e44828f99012473cd7e6e8c34d6ee84a992b",
+        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
+        "normalization_mode": "manual_reviewed_grid_center_sample",
+        "detected_logical_subject_size": [
+          24,
+          32
+        ],
+        "logical_subject_size": [
+          24,
+          32
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 14.6,
+          "grid_cell_height": 16.1,
+          "grid_cell_size": 15,
+          "confidence": 0.682,
+          "subject_bbox": {
+            "left": 440,
+            "top": 389,
+            "right": 813,
+            "bottom": 910
+          },
+          "subject_pixel_width": 373,
+          "subject_pixel_height": 521,
+          "subject_grid_width": 26,
+          "subject_grid_height": 32,
+          "recommended_canvas_grid_width": 86,
+          "recommended_canvas_grid_height": 78,
+          "manual_review": {
+            "approved_logical_size": [
+              24,
+              32
+            ],
+            "cell_width": 15.542,
+            "cell_height": 16.281,
+            "cell_aspect_ratio": 1.048,
+            "note": "PerfectPixel independent review locked 24x32. The automatic analyzer proposed 26x32 with a less plausible X/Y cell ratio.",
+            "global_unsafe_override_enabled": false
+          }
+        }
+      },
+      "reviewed_redraw": {
+        "expected_normalized_size": [
+          24,
+          32
+        ],
+        "deleted_original_logical_rows": [
+          2,
+          10
+        ],
+        "duplicated_post_deletion_logical_rows_after": [],
+        "expected_final_size": [
+          24,
+          30
+        ],
+        "retained_pixel_resampling": "none",
+        "internal_color_blocks_modified": false,
+        "outer_boundary_recolour_only": true,
+        "metrics": {
+          "boundary_connectivity": 4,
+          "uniform_outer_boundary_rgba": [
+            5,
+            8,
+            12,
+            255
+          ],
+          "dark_rgb_tolerance": 8,
+          "outer_boundary_pixel_count": 78,
+          "second_layer_pixel_count": 72,
+          "outer_boundary_dark_ratio": 1.0,
+          "second_layer_dark_ratio": 0.0,
+          "aligned_tolerance8_same_color_2x2_coverage": 0.119522
+        },
+        "assertions": {
+          "outer_boundary_dark_ratio_is_1_0": true,
+          "second_layer_dark_ratio_at_most_0_20": true,
+          "aligned_tolerance8_same_color_2x2_coverage_at_most_0_25": true
+        }
+      },
+      "max_subject_size": [
+        24,
+        32
+      ],
+      "logical_subject_size": [
+        24,
+        30
+      ],
+      "production_subject_size": [
+        24,
+        30
+      ],
+      "production_upscale": 1.0,
+      "paste_origin": [
+        4,
+        1
+      ],
+      "output_bbox_exclusive": [
+        4,
+        1,
+        28,
+        31
+      ],
+      "visible_color_count": 363,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true,
+        "outer_boundary_dark_ratio_is_1_0": true,
+        "second_layer_dark_ratio_at_most_0_20": true,
+        "aligned_tolerance8_same_color_2x2_coverage_at_most_0_25": true
+      }
+    },
+    {
+      "schema_version": 2,
+      "asset": "healing_potion",
+      "display_name": "治疗血瓶",
+      "status": "passed",
+      "tier": "low",
+      "shape": "small_bottle",
+      "repair_asset": true,
+      "chroma_key": "#FF00FF",
+      "pipeline": [
+        "built-in ImageGen, one distinct source per item",
+        "flat #FF00FF border-connected chroma-key extraction",
+        "retained foreground RGB preserved without palette quantization",
+        "strict pixel-grid analysis with no unsafe compression override",
+        "one final pixel center-sampled per measured logical cell",
+        "no production upscale or shrink for reviewed redraw",
+        "centered placement on a transparent 32x32 RGBA canvas",
+        "binary alpha, clean transparent RGB, and one-pixel border audit",
+        "lossless PNG encoding"
+      ],
+      "commands": {
+        "build": "python dev_tools/process_consumable_assets.py --asset healing_potion",
+        "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
+      },
+      "processing_parameters": {
+        "background_remover": "connected_background_remover.remove_connected_background",
+        "rgb_tolerance": 72,
+        "hue_tolerance": 0.035,
+        "expansion_radius": 12,
+        "hard_alpha": true,
+        "transparent_rgb": [
+          0,
+          0,
+          0
+        ],
+        "logical_sampler": "Pillow nearest center sample",
+        "production_upscale": "forbidden; native logical pixels are placed 1:1",
+        "palette_quantization": "none",
+        "png": "optimize=true, compress_level=9 (lossless)"
+      },
+      "prompt_record": {
+        "status": "linked",
+        "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
+        "sha256": "de84a3ed6b4ca51155252a24470ccaefee3342d7ea2937fa165e56be9c65e54f",
+        "asset_entry_found": true,
+        "selected_source": "healing_potion/healing_potion_imagegen_magenta_v7.png",
+        "selected_source_matches": true,
+        "referenced_images": [
+          "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v6.png",
+          "dev_assets/source_images/consumables/healing_potion/healing_potion_volume_reference.png"
+        ],
+        "prompt_lines": [
+          "Use case: precise-object-edit",
+          "Asset type: source artwork for a native 32x32 pixel-art inventory icon",
+          "Input images: Image 1 is the red healing-potion edit target; Image 2 is the exact approved 22x30 occupancy and round-bellied volume reference.",
+          "Primary request: Keep Image 1's red liquid, cyan-white glass, cork, fine one-pixel detail, and compact round-flask identity. Change ONLY its native authored dimensions and silhouette occupancy so it matches Image 2's 22 logical pixels wide by 30 rows tall volume.",
+          "Hard pixel-grid contract: retain Image 1's approximately 26-source-pixel square grid cells. Physical subject bbox must be approximately 570px wide by 780px tall, equivalent to 22x30 native logical pixels. Do not make the grid cells smaller and do not zoom the whole canvas.",
+          "Exact body proportions: top and short neck about 9 rows; shoulders expand over 4 rows; broad 22px-wide round bottle belly remains near full width for 10-13 rows; bottom closes in only 4 rows. Keep a flattened rounded base. This must look fuller and more jar-like than Image 1, not pear-shaped.",
+          "Scene/backdrop: perfectly flat uniform #ff00ff chroma-key with large empty margins.",
+          "Invariants: one centered object; vivid red/crimson liquid; pale cyan-white glass; brown cork; continuous one-logical-pixel near-black contour; native 1x1 highlights and diagonal steps.",
+          "Constraints: hard opaque pixel art, no antialiasing, blur, smooth gradients, text, medical cross, label, shadow, floor, extra objects, watermark, or #ff00ff inside the subject.",
+          "Avoid: 20x24 undersized result, long tapered pear body, thick double outline, enlarged 16x16 look, repeated 2x2 macroblocks, any subject under 28 or over 30 logical rows."
+        ],
+        "prompt_sha256": "a0c43ac1e10f9464863bdfbb958a0ffed1ab7606db177880dacef3683bdbe0a0"
+      },
+      "paths": {
+        "source_master": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v7.png",
+        "alpha_source": "dev_assets/source_images/consumables/healing_potion/healing_potion_alpha.png",
+        "logical_preview": "dev_assets/source_images/consumables/healing_potion/healing_potion_logical_preview.png",
+        "production_texture": "resources/texture/consumables/healing_potion.png",
+        "atlas": "resources/atlas/healing_potion.tres",
+        "config": "resources/config/consumables/healing_potion.tres"
+      },
+      "source_selection": {
+        "approved": {
+          "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v7.png",
+          "sha256": "ff76f19fe9123bf90d34a73979e3bfb59aadabfd2af8f87c78cae0f97de80c6f"
+        },
+        "rejected": [
+          {
+            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta.png",
+            "sha256": "8153223fd067052587f58ff5127741c097029bdf3bb85c44dd8e5aa60d12b78d",
+            "reason": "rejected: measured 14x36 logical subject is too tall and slender"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v2.png",
+            "sha256": "b9209d830fa0f12001805e8e205145891e6acc22e1d82c7050193d7e2bdd5743",
+            "reason": "rejected superseded: 22x32 pear-shaped source does not match the newly approved broad round-flask volume"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v3.png",
+            "sha256": "5497e02a397eae4e0061d3dd2c3fab7f43020641c3243934161897a7feee60dd",
+            "reason": "rejected: automatic grid analysis is unreliable; PerfectPixel review is approximately 24x32 and still too tall"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v4.png",
+            "sha256": "d407be70d6a8dbbf40f2882fe0bfef48c6fcff292f1c3438e6fbc2b2fd28f389",
+            "reason": "rejected: measured 21x22 and has insufficient native pixel density"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v5.png",
+            "sha256": "4f689d4f2aa2da544b5c3ff34023f4d1eb21ec8276978959d5067db0b3c6378b",
+            "reason": "rejected: measured 22x34 logical subject is too tall"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v6.png",
+            "sha256": "0ceae9f2e7524073dcf1c01a243be9d76fb0d7c8d0f669d3c80de0e5ad72b0f6",
+            "reason": "rejected: measured approximately 20x24 and is visibly smaller than the approved 22x30 reference volume"
+          },
+          {
+            "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v8.png",
+            "sha256": "c7f770b35244c2b1684fa916ae5ba92f8f3f065d970c4bd3634329e94436cc7f",
+            "reason": "rejected: measured approximately 25x31 with anisotropic source cells and exceeds the 22x30 contract"
+          }
+        ],
+        "manual_review_note": "Manual review locked 22x28: the 568x710 source bbox yields near-square 25.82x25.36 cells. Two reviewed belly rows are authored by duplicating existing native rows without scaling.",
+        "global_unsafe_override_enabled": false
+      },
+      "hashes": {
+        "source_master_sha256": "ff76f19fe9123bf90d34a73979e3bfb59aadabfd2af8f87c78cae0f97de80c6f",
+        "alpha_source_sha256": "f8c0b0d02bb2a76d05052004e6127a51c24ea80e5a999a55f63bd91f96402cc6",
+        "logical_preview_sha256": "5f1c15f9cc325653d00b3e1a65dda39e19e25c97a1bac45428e192dbda2b1110",
+        "production_texture_sha256": "055519b89122af106a9758092c62400dd901bedb217739993d2d126cda2bb39b",
+        "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
+      },
+      "source": {
+        "path": "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v7.png",
+        "normalization_mode": "manual_reviewed_grid_center_sample",
+        "detected_logical_subject_size": [
+          22,
+          28
+        ],
+        "logical_subject_size": [
+          22,
+          28
+        ],
+        "logical_fit_scale": 1.0,
+        "grid_analysis": {
+          "image_width": 1254,
+          "image_height": 1254,
+          "image_mode": "RGBA",
+          "detection_mode": "approximate",
+          "grid_cell_width": 25.2,
+          "grid_cell_height": 25.4,
+          "grid_cell_size": 25,
+          "confidence": 0.624,
+          "subject_bbox": {
+            "left": 343,
+            "top": 272,
+            "right": 911,
+            "bottom": 982
+          },
+          "subject_pixel_width": 568,
+          "subject_pixel_height": 710,
+          "subject_grid_width": 23,
+          "subject_grid_height": 28,
+          "recommended_canvas_grid_width": 50,
+          "recommended_canvas_grid_height": 49,
+          "manual_review": {
+            "approved_logical_size": [
+              22,
+              28
+            ],
+            "cell_width": 25.818,
+            "cell_height": 25.357,
+            "cell_aspect_ratio": 1.018,
+            "note": "Manual review locked 22x28: the 568x710 source bbox yields near-square 25.82x25.36 cells. Two reviewed belly rows are authored by duplicating existing native rows without scaling.",
+            "global_unsafe_override_enabled": false
+          }
+        }
+      },
+      "reviewed_redraw": {
+        "expected_normalized_size": [
+          22,
+          28
+        ],
+        "deleted_original_logical_rows": [],
+        "duplicated_post_deletion_logical_rows_after": [
+          18,
+          20
+        ],
+        "expected_final_size": [
+          22,
+          30
+        ],
+        "retained_pixel_resampling": "none",
+        "internal_color_blocks_modified": false,
+        "outer_boundary_recolour_only": true,
+        "metrics": {
+          "boundary_connectivity": 4,
+          "uniform_outer_boundary_rgba": [
+            5,
+            8,
+            12,
+            255
+          ],
+          "dark_rgb_tolerance": 8,
+          "outer_boundary_pixel_count": 81,
+          "second_layer_pixel_count": 72,
+          "outer_boundary_dark_ratio": 1.0,
+          "second_layer_dark_ratio": 0.0,
+          "aligned_tolerance8_same_color_2x2_coverage": 0.100629
+        },
+        "assertions": {
+          "outer_boundary_dark_ratio_is_1_0": true,
+          "second_layer_dark_ratio_at_most_0_20": true,
+          "aligned_tolerance8_same_color_2x2_coverage_at_most_0_25": true
+        }
+      },
+      "max_subject_size": [
+        22,
+        30
+      ],
+      "logical_subject_size": [
+        22,
+        30
+      ],
+      "production_subject_size": [
+        22,
+        30
+      ],
+      "production_upscale": 1.0,
+      "paste_origin": [
+        5,
+        1
+      ],
+      "output_bbox_exclusive": [
+        5,
+        1,
+        27,
+        31
+      ],
+      "visible_color_count": 309,
+      "alpha_values": [
+        0,
+        255
+      ],
+      "checks": {
+        "canvas_32x32": true,
+        "one_pixel_transparent_border": true,
+        "binary_alpha": true,
+        "transparent_rgb_clean": true,
+        "logical_pixels_preserved": true,
+        "no_near_chroma_key_foreground": true,
+        "outer_boundary_dark_ratio_is_1_0": true,
+        "second_layer_dark_ratio_at_most_0_20": true,
+        "aligned_tolerance8_same_color_2x2_coverage_at_most_0_25": true
+      }
+    }
+  ]
+}

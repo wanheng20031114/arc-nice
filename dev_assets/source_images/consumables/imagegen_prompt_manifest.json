@@ -1,8 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "generated_on": "2026-08-10",
   "mode": "builtin_imagegen",
   "chroma_key": "#ff00ff",
+  "new_expansion_asset_count": 12,
+  "repair_asset_count": 1,
+  "native_manual_master_policy": "The 609532c5 user corrections are production-authoritative native 32x32 masters. Full ImageGen rebuilds audit but never overwrite them.",
   "items": [
     {
       "stem": "skill_charge_battery",
@@ -43,7 +46,11 @@
     },
     {
       "stem": "magic_resistance_potion",
-      "selected_source": "magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+      "selected_source": "magic_resistance_potion/magic_resistance_potion_native_manual_master.png",
+      "source_kind": "user_authored_native_manual_master",
+      "base_imagegen_source": "magic_resistance_potion/magic_resistance_potion_imagegen_magenta_v2.png",
+      "manual_override_commit": "609532c5",
+      "production_overwrite_policy": "never",
       "referenced_images": ["resources/texture/consumables/healing_potion.png"],
       "prompt_lines": [
         "Use case: stylized-concept",
@@ -80,7 +87,11 @@
     },
     {
       "stem": "regeneration_potion",
-      "selected_source": "regeneration_potion/regeneration_potion_imagegen_magenta.png",
+      "selected_source": "regeneration_potion/regeneration_potion_native_manual_master.png",
+      "source_kind": "user_authored_native_manual_master",
+      "base_imagegen_source": "regeneration_potion/regeneration_potion_imagegen_magenta.png",
+      "manual_override_commit": "609532c5",
+      "production_overwrite_policy": "never",
       "referenced_images": [
         "resources/texture/consumables/healing_potion.png",
         "resources/texture/consumables/rock_potion.png"
@@ -140,22 +151,31 @@
     },
     {
       "stem": "battle_spirit_potion",
-      "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png",
+      "selected_source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png",
+      "source_kind": "builtin_imagegen_redraw",
+      "candidate_review": [
+        {"source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png", "decision": "rejected", "reason": "19x34 logical subject is too tall"},
+        {"source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v2.png", "decision": "rejected", "reason": "11x16 logical source was enlarged by a non-integer scale to 21x30, producing the user-rejected macroblock appearance"},
+        {"source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v3.png", "decision": "rejected", "reason": "29x39 logical subject is too tall"},
+        {"source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v4.png", "decision": "rejected_alternate", "reason": "25x33 is technically row-editable, but its round bottle is too close to the healing-potion silhouette"},
+        {"source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v5.png", "decision": "rejected", "reason": "25x34 logical subject is too tall"},
+        {"source": "battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v6.png", "decision": "approved", "reason": "PerfectPixel and gradient reviews agree on 20x31; remove original logical row 2 for a native 20x30 result"}
+      ],
       "referenced_images": [
-        "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta.png",
-        "resources/texture/consumables/rock_potion.png"
+        "dev_assets/source_images/consumables/battle_spirit_potion/battle_spirit_potion_imagegen_magenta_v4.png",
+        "resources/texture/consumables/guardian_mixture.png"
       ],
       "prompt_lines": [
-        "Use case: stylized-concept",
-        "Asset type: EXTRA-COARSE low-resolution pixel-art consumable icon source for final native 32x32",
-        "Input images: Image 1 defines ember/sword battle-spirit contents but is too tall/detailed; Image 2 defines compact bottle proportions. References only.",
-        "Primary request: exactly one shorter, compact battle-spirit potion. Medium-width angular corked bottle, ember-orange/deep crimson liquid, one extremely simple yellow-orange upward flame/sword-tip motif inside. Preserve attack-power identity, but simplify.",
-        "Strict pixel-grid contract: draw as if on a 16x16 logical canvas enlarged strict nearest-neighbor. Bottle at most 13 logical pixels wide by 15 tall. Motif at most 5x7 logical pixels. Uniform huge square blocks only; absolutely no half-size pixels, micro-sparks, fine stair steps, gradients, or dense bevels.",
-        "Backdrop: perfectly uniform #ff00ff.",
-        "Style: crisp limited-palette retro pixel art, thick near-black outline, cyan-white glass rim, hard edges, readable at 32x32.",
-        "Composition: one centered compact bottle, one logical pixel border minimum.",
-        "Constraints: opaque; no antialiasing/blur/shadow/floor/text/logo/weapon outside bottle/props; no #ff00ff inside object.",
-        "Avoid: round healing potion, tall thin bottle, 24/32/48 logical density, multiple objects."
+        "Use case: precise-object-edit",
+        "Asset type: native 32x32 pixel-art game inventory icon source",
+        "Input images: Image 1 supplies the approved fine pixel density and battle emblem; Image 2 supplies a distinct faceted defensive-bottle silhouette reference.",
+        "Primary request: Redraw the battle-spirit potion with the same crimson liquid and small gold sword/flame emblem, but change ONLY the bottle silhouette from round healing-flask style to a compact FACETED OCTAGONAL combat vial with slightly squared shoulders and angled lower corners.",
+        "Scene/backdrop: perfectly flat uniform #ff00ff chroma key.",
+        "Logical size: keep the same approximately 11-source-pixel grid-cell size as Image 1. Target 22–24 logical pixels wide and 29–31 rows tall; physical bbox about 255–280px wide and 320–350px tall. Large empty margins; do not zoom.",
+        "Pixel construction: continuous one-logical-pixel near-black boundary; fine 1x1 diagonals and highlights; crisp angled shoulder steps; no thick double outline. Gold emblem uses a one-pixel vertical blade/flame with small guard, not an anchor.",
+        "Palette: brown cork, cyan-white glass, deep crimson/red liquid, orange-gold emblem, near-black outline.",
+        "Constraints: one object, hard opaque pixel art, no antialiasing, blur, smooth gradients, text, shadow, floor, props, watermark or #ff00ff in subject.",
+        "Avoid: round healing-potion silhouette, 16x16 macroblocks, 2x2 piles, any 32+ row subject, irregular outline."
       ]
     },
     {
@@ -180,27 +200,37 @@
     },
     {
       "stem": "windwalk_potion",
-      "selected_source": "windwalk_potion/windwalk_potion_imagegen_magenta.png",
+      "selected_source": "windwalk_potion/windwalk_potion_imagegen_magenta_v4.png",
+      "source_kind": "builtin_imagegen_redraw",
+      "candidate_review": [
+        {"source": "windwalk_potion/windwalk_potion_imagegen_magenta.png", "decision": "rejected", "reason": "15x23 logical source was enlarged to 20x30, causing avoidable macroblock repetition"},
+        {"source": "windwalk_potion/windwalk_potion_imagegen_magenta_v2.png", "decision": "rejected", "reason": "automatic normalization is 27x35 and PerfectPixel review is approximately 28x40; both are too tall"},
+        {"source": "windwalk_potion/windwalk_potion_imagegen_magenta_v3.png", "decision": "rejected", "reason": "18x36 logical subject is too tall"},
+        {"source": "windwalk_potion/windwalk_potion_imagegen_magenta_v4.png", "decision": "approved", "reason": "PerfectPixel review locks 24x32; remove original logical rows 2 and 10 for a native 24x30 result"}
+      ],
       "referenced_images": [
-        "resources/texture/consumables/healing_potion.png",
-        "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png"
+        "dev_assets/source_images/consumables/windwalk_potion/windwalk_potion_imagegen_magenta_v3.png"
       ],
       "prompt_lines": [
-        "Use case: stylized-concept",
-        "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
-        "Input images: game consumable style references only.",
-        "Primary request: Create exactly one windwalk potion. A compact teardrop-shaped glass bottle with dark near-black outline, bright sky-blue liquid, pale cyan-white highlights, and one simple white wind curl inside: a short S-shaped gust with two blocky trailing strokes. It should communicate faster movement without using a lightning bolt or shoe.",
-        "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 14x16 logical pixels, at least one logical pixel empty border. No half-size details.",
-        "Backdrop: perfectly uniform flat #ff00ff.",
-        "Style: crisp limited-palette retro pixel art, hard edges, thick outline, readable at 32x32.",
-        "Composition: one centered bottle only.",
-        "Constraints: opaque shapes, no antialiasing/blur/transparency, no floor/shadow/text/logo/cloud outside bottle/props, no #ff00ff inside object.",
-        "Avoid: lightning, footwear, detailed swirls, gradients, high pixel density, multiple objects."
+        "Use case: precise-object-edit",
+        "Asset type: native 32x32 pixel-art game inventory icon source",
+        "Input image: Image 1 is the edit target.",
+        "Primary request: Keep this exact wind-potion palette and one-pixel wind glyph, but rebuild the bottle as a SHORT SQUAT DROPLET FLASK. Delete the long neck and remove eight authored rows from the silhouette.",
+        "Hard contract: keep the current uniform 17-source-pixel grid cells. Final subject bbox must be 340–380px wide and 450–485px tall, equivalent to about 20–22 logical pixels wide by 26–28 rows tall. Do not make grid cells smaller.",
+        "Shape: 2-row cork, 2-row glass lip, 2-row neck, 3-row shoulders, 17-row droplet body, 2-row base. The lip sits close to the shoulders.",
+        "Scene/backdrop: perfectly flat uniform #ff00ff chroma key, one centered object with huge empty margins.",
+        "Invariants: sky-blue liquid, cyan-white glass, delicate one-pixel S-shaped wind curl and short streaks, continuous one-pixel near-black outer contour, rich 1x1 highlight detail.",
+        "Constraints: hard opaque pixels, no antialiasing, blur, smooth gradients, text, snowflake, water-drop symbol, shadow, floor, props or watermark; no #ff00ff in subject.",
+        "Avoid: original 36-row silhouette, long neck, macroblocks, any subject over 28 rows, uneven outline."
       ]
     },
     {
       "stem": "phantom_potion",
-      "selected_source": "phantom_potion/phantom_potion_imagegen_magenta.png",
+      "selected_source": "phantom_potion/phantom_potion_native_manual_master.png",
+      "source_kind": "user_authored_native_manual_master",
+      "base_imagegen_source": "phantom_potion/phantom_potion_imagegen_magenta.png",
+      "manual_override_commit": "609532c5",
+      "production_overwrite_policy": "never",
       "referenced_images": [
         "resources/texture/consumables/rock_potion.png",
         "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png"
@@ -236,6 +266,38 @@
         "Composition: exactly one centered battery only.",
         "Constraints: opaque shapes, no antialiasing/blur/soft aura, no floating particles, floor, shadow, text, logo, props, or #ff00ff inside object.",
         "Avoid: potion bottle silhouette, colorful galaxy texture, gradients, high pixel density, multiple objects."
+      ]
+    },
+    {
+      "stem": "healing_potion",
+      "classification": "repair_asset_excluded_from_twelve_item_expansion_count",
+      "selected_source": "healing_potion/healing_potion_imagegen_magenta_v7.png",
+      "source_kind": "builtin_imagegen_redraw",
+      "candidate_review": [
+        {"source": "healing_potion/healing_potion_imagegen_magenta.png", "decision": "rejected", "reason": "14x36 logical subject is too tall and slender"},
+        {"source": "healing_potion/healing_potion_imagegen_magenta_v2.png", "decision": "rejected_superseded", "reason": "22x32 pear-shaped source does not match the newly approved broad round-flask volume"},
+        {"source": "healing_potion/healing_potion_imagegen_magenta_v3.png", "decision": "rejected", "reason": "automatic grid analysis is unreliable and PerfectPixel review is approximately 24x32, still too tall"},
+        {"source": "healing_potion/healing_potion_imagegen_magenta_v4.png", "decision": "rejected", "reason": "21x22 result has insufficient native pixel density"},
+        {"source": "healing_potion/healing_potion_imagegen_magenta_v5.png", "decision": "rejected", "reason": "22x34 logical subject is too tall"},
+        {"source": "healing_potion/healing_potion_imagegen_magenta_v6.png", "decision": "rejected", "reason": "approximately 20x24 and visibly smaller than the approved 22x30 reference volume"},
+        {"source": "healing_potion/healing_potion_imagegen_magenta_v7.png", "decision": "approved", "reason": "manual review locks a near-square 22x28 native source; duplicate two reviewed belly rows after 18 and 20 for a 22x30 round-flask result without scaling"},
+        {"source": "healing_potion/healing_potion_imagegen_magenta_v8.png", "decision": "rejected", "reason": "approximately 25x31 with anisotropic source cells and exceeds the 22x30 contract"}
+      ],
+      "referenced_images": [
+        "dev_assets/source_images/consumables/healing_potion/healing_potion_imagegen_magenta_v6.png",
+        "dev_assets/source_images/consumables/healing_potion/healing_potion_volume_reference.png"
+      ],
+      "prompt_lines": [
+        "Use case: precise-object-edit",
+        "Asset type: source artwork for a native 32x32 pixel-art inventory icon",
+        "Input images: Image 1 is the red healing-potion edit target; Image 2 is the exact approved 22x30 occupancy and round-bellied volume reference.",
+        "Primary request: Keep Image 1's red liquid, cyan-white glass, cork, fine one-pixel detail, and compact round-flask identity. Change ONLY its native authored dimensions and silhouette occupancy so it matches Image 2's 22 logical pixels wide by 30 rows tall volume.",
+        "Hard pixel-grid contract: retain Image 1's approximately 26-source-pixel square grid cells. Physical subject bbox must be approximately 570px wide by 780px tall, equivalent to 22x30 native logical pixels. Do not make the grid cells smaller and do not zoom the whole canvas.",
+        "Exact body proportions: top and short neck about 9 rows; shoulders expand over 4 rows; broad 22px-wide round bottle belly remains near full width for 10-13 rows; bottom closes in only 4 rows. Keep a flattened rounded base. This must look fuller and more jar-like than Image 1, not pear-shaped.",
+        "Scene/backdrop: perfectly flat uniform #ff00ff chroma-key with large empty margins.",
+        "Invariants: one centered object; vivid red/crimson liquid; pale cyan-white glass; brown cork; continuous one-logical-pixel near-black contour; native 1x1 highlights and diagonal steps.",
+        "Constraints: hard opaque pixel art, no antialiasing, blur, smooth gradients, text, medical cross, label, shadow, floor, extra objects, watermark, or #ff00ff inside the subject.",
+        "Avoid: 20x24 undersized result, long tapered pear body, thick double outline, enlarged 16x16 look, repeated 2x2 macroblocks, any subject under 28 or over 30 logical rows."
       ]
     }
   ]

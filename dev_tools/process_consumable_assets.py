@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministically build and audit the twelve new consumable icons.
+"""Deterministically build and audit consumable icons and native repairs.
 
 Each built-in ImageGen master is retained beside its processing artifacts.  A
 flat magenta background is removed without changing retained foreground RGB,
@@ -7,7 +7,8 @@ one pixel is sampled per *measured* logical source cell, and the result is
 centered on a transparent 32x32 canvas.  The pipeline intentionally has no
 unsafe resize or palette-reduction escape hatch: an unreliable or oversized
 source must be regenerated instead of being hidden behind destructive
-downscaling.
+downscaling.  Human-authored native masters are audit-only inputs and are
+never overwritten by the ImageGen rebuild path.
 
 Examples:
   python dev_tools/process_consumable_assets.py --list-plan
@@ -18,6 +19,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+from collections import deque
 from dataclasses import asdict, dataclass
 import hashlib
 import json
@@ -46,6 +48,10 @@ MIN_SUBJECT_SIZE = (8, 8)
 CHROMA_KEY = "#FF00FF"
 TRANSPARENT_BORDER = 1
 KEY_REMAINDER_TOLERANCE = 12
+OUTER_BOUNDARY_COLOR = (5, 8, 12, 255)
+OUTER_BOUNDARY_TOLERANCE = 8
+MAX_SECOND_LAYER_DARK_RATIO = 0.20
+MAX_ALIGNED_SAME_COLOR_2X2_COVERAGE = 0.25
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,14 @@ class AssetSpec:
     rejected_sources: tuple[tuple[str, str], ...] = ()
     reviewed_logical_size: tuple[int, int] | None = None
     review_note: str = ""
+    expected_normalized_size: tuple[int, int] | None = None
+    logical_row_deletions: tuple[int, ...] = ()
+    logical_row_duplications_after: tuple[int, ...] = ()
+    expected_final_size: tuple[int, int] | None = None
+    forbid_production_upscale: bool = False
+    repair_asset: bool = False
+    native_manual_master_filename: str | None = None
+    manual_master_note: str = ""
 
     @property
     def source_directory(self) -> Path:
@@ -66,6 +80,8 @@ class AssetSpec:
 
     @property
     def source_path(self) -> Path:
+        if self.native_manual_master_filename is not None:
+            return self.source_directory / self.native_manual_master_filename
         filename = (
             self.approved_source_filename
             if self.approved_source_filename is not None
@@ -99,8 +115,9 @@ class AssetSpec:
 
 
 # Small/large pairs intentionally use the same 20-ish/25-ish width language as
-# the existing healing and rock bottles.  Every cap remains <=30 on both axes,
-# which guarantees at least one fully transparent pixel around a centered icon.
+# the existing healing and rock bottles.  A redraw source may temporarily be
+# taller than 30 logical rows only when a reviewed, explicit row-removal recipe
+# brings the native result back under the 30x30 production contract.
 ASSETS = (
     AssetSpec(
         "skill_charge_battery",
@@ -132,11 +149,16 @@ ASSETS = (
         "low",
         "small_bottle",
         (22, 30),
-        "magic_resistance_potion_imagegen_magenta_v2.png",
-        ((
+        rejected_sources=((
             "magic_resistance_potion_imagegen_magenta.png",
             "rejected: measured 32x54 logical subject exceeds the lossless 22x30 contract",
         ),),
+        native_manual_master_filename="magic_resistance_potion_native_manual_master.png",
+        manual_master_note=(
+            "Native 32x32 manual correction committed by the user in 609532c5. "
+            "The production texture is authoritative; full ImageGen rebuilds "
+            "audit it but never overwrite it."
+        ),
     ),
     AssetSpec(
         "large_magic_resistance_potion",
@@ -150,7 +172,19 @@ ASSETS = (
             "rejected: independent square-grid audit measured approximately 36x42 logical cells",
         ),),
     ),
-    AssetSpec("regeneration_potion", "凝胶再生剂", "low", "small_bottle", (22, 30)),
+    AssetSpec(
+        "regeneration_potion",
+        "凝胶再生剂",
+        "low",
+        "small_bottle",
+        (22, 30),
+        native_manual_master_filename="regeneration_potion_native_manual_master.png",
+        manual_master_note=(
+            "Native 32x32 manual correction committed by the user in 609532c5. "
+            "The production texture is authoritative; full ImageGen rebuilds "
+            "audit it but never overwrite it."
+        ),
+    ),
     AssetSpec(
         "large_regeneration_potion",
         "大型凝胶再生剂",
@@ -169,16 +203,85 @@ ASSETS = (
         "战意药水",
         "medium",
         "single_bottle",
-        (24, 30),
-        "battle_spirit_potion_imagegen_magenta_v2.png",
-        ((
-            "battle_spirit_potion_imagegen_magenta.png",
-            "rejected: measured 19x34 logical subject exceeds the lossless 24x30 contract",
-        ),),
+        (20, 31),
+        "battle_spirit_potion_imagegen_magenta_v6.png",
+        (
+            (
+                "battle_spirit_potion_imagegen_magenta.png",
+                "rejected: measured 19x34 logical subject is too tall",
+            ),
+            (
+                "battle_spirit_potion_imagegen_magenta_v2.png",
+                "rejected: only 11x16 logical pixels and previously enlarged by a non-integer scale to 21x30, causing the user-rejected macroblock appearance",
+            ),
+            (
+                "battle_spirit_potion_imagegen_magenta_v3.png",
+                "rejected: measured 29x39 logical subject is too tall",
+            ),
+            (
+                "battle_spirit_potion_imagegen_magenta_v4.png",
+                "rejected alternate: measured 25x33 and technically row-editable, but its round bottle is too close to the healing-potion silhouette",
+            ),
+            (
+                "battle_spirit_potion_imagegen_magenta_v5.png",
+                "rejected: measured 25x34 logical subject is too tall",
+            ),
+        ),
+        reviewed_logical_size=(20, 31),
+        review_note=(
+            "PerfectPixel and gradient reviews both locked 20x31; the "
+            "262x419 source bbox yields near-square 13.10x13.52 cells."
+        ),
+        expected_normalized_size=(20, 31),
+        logical_row_deletions=(2,),
+        expected_final_size=(20, 30),
+        forbid_production_upscale=True,
     ),
     AssetSpec("focus_potion", "专注药水", "medium", "single_bottle", (24, 30)),
-    AssetSpec("windwalk_potion", "风行药水", "medium", "single_bottle", (24, 30)),
-    AssetSpec("phantom_potion", "幻影药剂", "medium", "single_bottle", (24, 30)),
+    AssetSpec(
+        "windwalk_potion",
+        "风行药水",
+        "medium",
+        "single_bottle",
+        (24, 32),
+        "windwalk_potion_imagegen_magenta_v4.png",
+        (
+            (
+                "windwalk_potion_imagegen_magenta.png",
+                "rejected: measured 15x23 and previously enlarged to 20x30, causing avoidable macroblock repetition",
+            ),
+            (
+                "windwalk_potion_imagegen_magenta_v2.png",
+                "rejected: automatic normalization measured 27x35 and PerfectPixel review approximately 28x40; both are too tall",
+            ),
+            (
+                "windwalk_potion_imagegen_magenta_v3.png",
+                "rejected: measured 18x36 logical subject is too tall",
+            ),
+        ),
+        reviewed_logical_size=(24, 32),
+        review_note=(
+            "PerfectPixel independent review locked 24x32. The automatic "
+            "analyzer proposed 26x32 with a less plausible X/Y cell ratio."
+        ),
+        expected_normalized_size=(24, 32),
+        logical_row_deletions=(2, 10),
+        expected_final_size=(24, 30),
+        forbid_production_upscale=True,
+    ),
+    AssetSpec(
+        "phantom_potion",
+        "幻影药剂",
+        "medium",
+        "single_bottle",
+        (24, 30),
+        native_manual_master_filename="phantom_potion_native_manual_master.png",
+        manual_master_note=(
+            "Native 32x32 manual correction committed by the user in 609532c5. "
+            "The production texture is authoritative; full ImageGen rebuilds "
+            "audit it but never overwrite it."
+        ),
+    ),
     AssetSpec(
         "void_battery",
         "虚空电池",
@@ -194,6 +297,62 @@ ASSETS = (
         ),
     ),
 )
+
+
+REPAIR_ASSETS = (
+    AssetSpec(
+        "healing_potion",
+        "治疗血瓶",
+        "low",
+        "small_bottle",
+        (22, 30),
+        "healing_potion_imagegen_magenta_v7.png",
+        (
+            (
+                "healing_potion_imagegen_magenta.png",
+                "rejected: measured 14x36 logical subject is too tall and slender",
+            ),
+            (
+                "healing_potion_imagegen_magenta_v2.png",
+                "rejected superseded: 22x32 pear-shaped source does not match the newly approved broad round-flask volume",
+            ),
+            (
+                "healing_potion_imagegen_magenta_v3.png",
+                "rejected: automatic grid analysis is unreliable; PerfectPixel review is approximately 24x32 and still too tall",
+            ),
+            (
+                "healing_potion_imagegen_magenta_v4.png",
+                "rejected: measured 21x22 and has insufficient native pixel density",
+            ),
+            (
+                "healing_potion_imagegen_magenta_v5.png",
+                "rejected: measured 22x34 logical subject is too tall",
+            ),
+            (
+                "healing_potion_imagegen_magenta_v6.png",
+                "rejected: measured approximately 20x24 and is visibly smaller than the approved 22x30 reference volume",
+            ),
+            (
+                "healing_potion_imagegen_magenta_v8.png",
+                "rejected: measured approximately 25x31 with anisotropic source cells and exceeds the 22x30 contract",
+            ),
+        ),
+        reviewed_logical_size=(22, 28),
+        review_note=(
+            "Manual review locked 22x28: the 568x710 source bbox yields "
+            "near-square 25.82x25.36 cells. Two reviewed belly rows are "
+            "authored by duplicating existing native rows without scaling."
+        ),
+        expected_normalized_size=(22, 28),
+        logical_row_duplications_after=(18, 20),
+        expected_final_size=(22, 30),
+        forbid_production_upscale=True,
+        repair_asset=True,
+    ),
+)
+
+
+ALL_ASSETS = ASSETS + REPAIR_ASSETS
 
 
 def _sha256(path: Path) -> str:
@@ -219,6 +378,258 @@ def _has_near_key_foreground(image: Image.Image) -> bool:
         if max(abs(red - 255), abs(green), abs(blue - 255)) <= KEY_REMAINDER_TOLERANCE:
             return True
     return False
+
+
+def _delete_logical_rows(
+    image: Image.Image,
+    row_indices: tuple[int, ...],
+) -> Image.Image:
+    """Remove reviewed logical rows without resampling any retained pixel."""
+    if not row_indices:
+        return clean_transparency(image)
+    if len(set(row_indices)) != len(row_indices):
+        raise RuntimeError(f"Logical row deletion contains duplicates: {row_indices}")
+    invalid = [row for row in row_indices if row < 0 or row >= image.height]
+    if invalid:
+        raise RuntimeError(
+            f"Logical row deletion is outside 0..{image.height - 1}: {invalid}"
+        )
+    deleted = set(row_indices)
+    retained_rows = [row for row in range(image.height) if row not in deleted]
+    result = Image.new("RGBA", (image.width, len(retained_rows)), TRANSPARENT)
+    source = image.convert("RGBA")
+    for target_row, source_row in enumerate(retained_rows):
+        result.paste(
+            source.crop((0, source_row, source.width, source_row + 1)),
+            (0, target_row),
+        )
+    return clean_transparency(result)
+
+
+def _duplicate_logical_rows_after(
+    image: Image.Image,
+    row_indices: tuple[int, ...],
+) -> Image.Image:
+    """Duplicate reviewed native rows without resizing any authored pixel."""
+    if not row_indices:
+        return clean_transparency(image)
+    if len(set(row_indices)) != len(row_indices):
+        raise RuntimeError(f"Logical row duplication contains duplicates: {row_indices}")
+    invalid = [row for row in row_indices if row < 0 or row >= image.height]
+    if invalid:
+        raise RuntimeError(
+            f"Logical row duplication is outside 0..{image.height - 1}: {invalid}"
+        )
+    duplicated = set(row_indices)
+    source = image.convert("RGBA")
+    result = Image.new(
+        "RGBA",
+        (image.width, image.height + len(row_indices)),
+        TRANSPARENT,
+    )
+    target_row = 0
+    for source_row in range(source.height):
+        row = source.crop((0, source_row, source.width, source_row + 1))
+        result.paste(row, (0, target_row))
+        target_row += 1
+        if source_row in duplicated:
+            result.paste(row, (0, target_row))
+            target_row += 1
+    return clean_transparency(result)
+
+
+def _outer_boundary_pixels(image: Image.Image) -> set[tuple[int, int]]:
+    """Return opaque pixels touching 4-connected exterior transparency.
+
+    A transparent one-pixel pad makes the outside explicit.  Flood filling it
+    prevents transparent decorative holes inside an icon from being mistaken
+    for the silhouette's outer edge.
+    """
+    rgba = clean_transparency(image)
+    padded = Image.new(
+        "RGBA",
+        (rgba.width + 2, rgba.height + 2),
+        TRANSPARENT,
+    )
+    padded.alpha_composite(rgba, (1, 1))
+    pixels = padded.load()
+    exterior: set[tuple[int, int]] = {(0, 0)}
+    queue: deque[tuple[int, int]] = deque(((0, 0),))
+    while queue:
+        x, y = queue.popleft()
+        for delta_x, delta_y in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            neighbour = (x + delta_x, y + delta_y)
+            if not (
+                0 <= neighbour[0] < padded.width
+                and 0 <= neighbour[1] < padded.height
+            ):
+                continue
+            if neighbour in exterior or pixels[neighbour][3] > 0:
+                continue
+            exterior.add(neighbour)
+            queue.append(neighbour)
+
+    boundary: set[tuple[int, int]] = set()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            if rgba.getpixel((x, y))[3] == 0:
+                continue
+            padded_point = (x + 1, y + 1)
+            if any(
+                (padded_point[0] + delta_x, padded_point[1] + delta_y)
+                in exterior
+                for delta_x, delta_y in ((1, 0), (-1, 0), (0, 1), (0, -1))
+            ):
+                boundary.add((x, y))
+    return boundary
+
+
+def _is_boundary_dark(pixel: tuple[int, int, int, int]) -> bool:
+    return pixel[3] == 255 and all(
+        abs(pixel[channel] - OUTER_BOUNDARY_COLOR[channel])
+        <= OUTER_BOUNDARY_TOLERANCE
+        for channel in range(3)
+    )
+
+
+def _enforce_uniform_outer_boundary(
+    image: Image.Image,
+) -> tuple[Image.Image, set[tuple[int, int]]]:
+    """Recolour only the 4-neighbour outermost silhouette pixels."""
+    result = clean_transparency(image)
+    boundary = _outer_boundary_pixels(result)
+    if not boundary:
+        raise RuntimeError("Cannot enforce an outer boundary on an empty subject")
+    pixels = result.load()
+    for point in boundary:
+        pixels[point] = OUTER_BOUNDARY_COLOR
+    return result, boundary
+
+
+def _aligned_same_color_2x2_coverage(image: Image.Image) -> float:
+    """Measure non-overlapping, origin-aligned 2x2 macroblock coverage.
+
+    Four opaque pixels count as the same colour when every RGB channel spans at
+    most eight values.  Coverage is the fraction of all opaque subject pixels
+    contained in such a block; this catches the rejected 16x16-upscaled look.
+    """
+    rgba = image.convert("RGBA")
+    opaque_count = sum(alpha > 0 for *_, alpha in rgba.getdata())
+    if opaque_count == 0:
+        return 0.0
+    pixels = rgba.load()
+    covered: set[tuple[int, int]] = set()
+    for y in range(0, rgba.height - 1, 2):
+        for x in range(0, rgba.width - 1, 2):
+            points = ((x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1))
+            colors = [pixels[point] for point in points]
+            if not all(color[3] == 255 for color in colors):
+                continue
+            if all(
+                max(color[channel] for color in colors)
+                - min(color[channel] for color in colors)
+                <= OUTER_BOUNDARY_TOLERANCE
+                for channel in range(3)
+            ):
+                covered.update(points)
+    return len(covered) / opaque_count
+
+
+def _redraw_metrics(
+    image: Image.Image,
+    boundary: set[tuple[int, int]],
+) -> dict:
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    second_layer: set[tuple[int, int]] = set()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            point = (x, y)
+            if pixels[point][3] == 0 or point in boundary:
+                continue
+            if any(
+                (x + delta_x, y + delta_y) in boundary
+                for delta_x, delta_y in ((1, 0), (-1, 0), (0, 1), (0, -1))
+            ):
+                second_layer.add(point)
+
+    outer_ratio = sum(_is_boundary_dark(pixels[point]) for point in boundary) / len(
+        boundary
+    )
+    second_ratio = (
+        sum(_is_boundary_dark(pixels[point]) for point in second_layer)
+        / len(second_layer)
+        if second_layer
+        else 0.0
+    )
+    aligned_coverage = _aligned_same_color_2x2_coverage(rgba)
+    return {
+        "boundary_connectivity": 4,
+        "uniform_outer_boundary_rgba": list(OUTER_BOUNDARY_COLOR),
+        "dark_rgb_tolerance": OUTER_BOUNDARY_TOLERANCE,
+        "outer_boundary_pixel_count": len(boundary),
+        "second_layer_pixel_count": len(second_layer),
+        "outer_boundary_dark_ratio": round(outer_ratio, 6),
+        "second_layer_dark_ratio": round(second_ratio, 6),
+        "aligned_tolerance8_same_color_2x2_coverage": round(
+            aligned_coverage,
+            6,
+        ),
+    }
+
+
+def _apply_reviewed_redraw(
+    spec: AssetSpec,
+    normalized: NormalizedSubject,
+) -> tuple[Image.Image, dict]:
+    logical = clean_transparency(normalized.image)
+    if spec.expected_normalized_size is None or spec.expected_final_size is None:
+        raise RuntimeError(f"Incomplete redraw contract for {spec.slug}")
+    if logical.size != spec.expected_normalized_size:
+        raise RuntimeError(
+            f"Normalized source changed for {spec.slug}: expected "
+            f"{spec.expected_normalized_size}, received {logical.size}"
+        )
+    edited = _delete_logical_rows(logical, spec.logical_row_deletions)
+    edited = _duplicate_logical_rows_after(
+        edited,
+        spec.logical_row_duplications_after,
+    )
+    if edited.size != spec.expected_final_size:
+        raise RuntimeError(
+            f"Reviewed row edit changed for {spec.slug}: expected "
+            f"{spec.expected_final_size}, received {edited.size}"
+        )
+    outlined, boundary = _enforce_uniform_outer_boundary(edited)
+    metrics = _redraw_metrics(outlined, boundary)
+    assertions = {
+        "outer_boundary_dark_ratio_is_1_0": (
+            metrics["outer_boundary_dark_ratio"] == 1.0
+        ),
+        "second_layer_dark_ratio_at_most_0_20": (
+            metrics["second_layer_dark_ratio"] <= MAX_SECOND_LAYER_DARK_RATIO
+        ),
+        "aligned_tolerance8_same_color_2x2_coverage_at_most_0_25": (
+            metrics["aligned_tolerance8_same_color_2x2_coverage"]
+            <= MAX_ALIGNED_SAME_COLOR_2X2_COVERAGE
+        ),
+    }
+    failures = [name for name, passed in assertions.items() if not passed]
+    if failures:
+        raise RuntimeError(f"{spec.slug} strict redraw audit failed: {failures}")
+    return outlined, {
+        "expected_normalized_size": list(spec.expected_normalized_size),
+        "deleted_original_logical_rows": list(spec.logical_row_deletions),
+        "duplicated_post_deletion_logical_rows_after": list(
+            spec.logical_row_duplications_after
+        ),
+        "expected_final_size": list(spec.expected_final_size),
+        "retained_pixel_resampling": "none",
+        "internal_color_blocks_modified": False,
+        "outer_boundary_recolour_only": True,
+        "metrics": metrics,
+        "assertions": assertions,
+    }
 
 
 def _center_on_canvas(subject: Image.Image) -> tuple[Image.Image, tuple[int, int]]:
@@ -409,7 +820,104 @@ def _normalize_source(spec: AssetSpec, keyed: Image.Image) -> NormalizedSubject:
     )
 
 
+def _build_native_manual_asset(spec: AssetSpec) -> dict:
+    """Audit a user-authored native master without writing production pixels."""
+    if spec.native_manual_master_filename is None:
+        raise RuntimeError(f"{spec.slug} is not a native manual-master asset")
+    if not spec.source_path.is_file():
+        raise FileNotFoundError(spec.source_path)
+    if not spec.output_path.is_file():
+        raise FileNotFoundError(spec.output_path)
+
+    with Image.open(spec.source_path) as opened:
+        master = opened.convert("RGBA")
+    with Image.open(spec.output_path) as opened:
+        production = opened.convert("RGBA")
+    if master.size != CANVAS_SIZE or production.size != CANVAS_SIZE:
+        raise RuntimeError(
+            f"Native manual master must remain 32x32 for {spec.slug}: "
+            f"master={master.size}, production={production.size}"
+        )
+    master_matches_production = master.tobytes() == production.tobytes()
+    if not master_matches_production:
+        raise RuntimeError(
+            f"Native manual master drifted from production for {spec.slug}; "
+            "refresh the reviewed master explicitly instead of rebuilding it"
+        )
+    bbox = production.getchannel("A").getbbox()
+    if bbox is None:
+        raise RuntimeError(f"Native manual master is empty: {spec.slug}")
+    subject = production.crop(bbox)
+    checks, output_bbox = _audit_output(
+        production,
+        subject,
+        (bbox[0], bbox[1]),
+    )
+    checks.update(
+        {
+            "native_manual_master_matches_production_pixels": (
+                master_matches_production
+            ),
+            "production_write_skipped": True,
+        }
+    )
+    report = {
+        "schema_version": 2,
+        "asset": spec.slug,
+        "display_name": spec.display_name,
+        "status": "passed_native_manual_master",
+        "tier": spec.tier,
+        "shape": spec.shape,
+        "repair_asset": spec.repair_asset,
+        "pipeline_mode": "native_manual_master_audit_only",
+        "production_overwrite_policy": "never",
+        "manual_master_note": spec.manual_master_note,
+        "paths": {
+            "native_manual_master": portable_path(spec.source_path),
+            "production_texture": portable_path(spec.output_path),
+            "atlas": portable_path(spec.atlas_path),
+            "config": portable_path(spec.config_path),
+        },
+        "source_selection": {
+            "approved": {
+                "path": portable_path(spec.source_path),
+                "sha256": _sha256(spec.source_path),
+                "kind": "user_authored_native_manual_master",
+            },
+            "rejected": [
+                {
+                    "path": portable_path(spec.source_directory / filename),
+                    "sha256": _sha256(spec.source_directory / filename),
+                    "reason": reason,
+                }
+                for filename, reason in spec.rejected_sources
+                if (spec.source_directory / filename).is_file()
+            ],
+        },
+        "hashes": {
+            "native_manual_master_sha256": _sha256(spec.source_path),
+            "production_texture_sha256": _sha256(spec.output_path),
+            "processing_script_sha256": _sha256(Path(__file__)),
+        },
+        "logical_subject_size": [bbox[2] - bbox[0], bbox[3] - bbox[1]],
+        "production_subject_size": [bbox[2] - bbox[0], bbox[3] - bbox[1]],
+        "production_upscale": 1.0,
+        "paste_origin": [bbox[0], bbox[1]],
+        "output_bbox_exclusive": list(output_bbox),
+        "visible_color_count": len(_visible_colors(production)),
+        "alpha_values": sorted(set(production.getchannel("A").getdata())),
+        "checks": checks,
+    }
+    spec.audit_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return report
+
+
 def _build_asset(spec: AssetSpec) -> dict:
+    if spec.native_manual_master_filename is not None:
+        return _build_native_manual_asset(spec)
     if not spec.source_path.is_file():
         raise FileNotFoundError(spec.source_path)
 
@@ -427,6 +935,9 @@ def _build_asset(spec: AssetSpec) -> dict:
     keyed = _key_magenta_source(spec.source_path)
     normalized = _normalize_source(spec, keyed)
     logical = clean_transparency(normalized.image)
+    redraw_record: dict | None = None
+    if spec.logical_row_deletions or spec.logical_row_duplications_after:
+        logical, redraw_record = _apply_reviewed_redraw(spec, normalized)
     if logical.width < MIN_SUBJECT_SIZE[0] or logical.height < MIN_SUBJECT_SIZE[1]:
         raise RuntimeError(
             f"Logical subject {logical.size} is too small to remain legible: {spec.slug}"
@@ -437,10 +948,14 @@ def _build_asset(spec: AssetSpec) -> dict:
             f"scale={normalized.logical_fit_scale}"
         )
 
-    production_subject, production_upscale = _nearest_upscale_to_contract(
-        logical,
-        spec.max_subject_size,
-    )
+    if spec.forbid_production_upscale:
+        production_subject = logical.copy()
+        production_upscale = 1.0
+    else:
+        production_subject, production_upscale = _nearest_upscale_to_contract(
+            logical,
+            spec.max_subject_size,
+        )
     if _visible_colors(production_subject) != _visible_colors(logical):
         raise RuntimeError(
             f"Nearest production upscale changed the authored palette: {spec.slug}"
@@ -451,18 +966,21 @@ def _build_asset(spec: AssetSpec) -> dict:
         production_subject,
         paste_origin,
     )
+    if redraw_record is not None:
+        checks.update(redraw_record["assertions"])
 
     _save_lossless(keyed, spec.alpha_path)
     _save_lossless(logical, spec.logical_preview_path)
     _save_lossless(output, spec.output_path)
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "asset": spec.slug,
         "display_name": spec.display_name,
         "status": "passed",
         "tier": spec.tier,
         "shape": spec.shape,
+        "repair_asset": spec.repair_asset,
         "chroma_key": CHROMA_KEY,
         "pipeline": [
             "built-in ImageGen, one distinct source per item",
@@ -470,7 +988,11 @@ def _build_asset(spec: AssetSpec) -> dict:
             "retained foreground RGB preserved without palette quantization",
             "strict pixel-grid analysis with no unsafe compression override",
             "one final pixel center-sampled per measured logical cell",
-            "nearest-neighbour upscale only when needed for a readable inventory bbox",
+            (
+                "no production upscale or shrink for reviewed redraw"
+                if spec.forbid_production_upscale
+                else "nearest-neighbour upscale only when needed for a readable inventory bbox"
+            ),
             "centered placement on a transparent 32x32 RGBA canvas",
             "binary alpha, clean transparent RGB, and one-pixel border audit",
             "lossless PNG encoding",
@@ -487,7 +1009,11 @@ def _build_asset(spec: AssetSpec) -> dict:
             "hard_alpha": True,
             "transparent_rgb": [0, 0, 0],
             "logical_sampler": "Pillow nearest center sample",
-            "production_upscale": "nearest only; shrinking forbidden",
+            "production_upscale": (
+                "forbidden; native logical pixels are placed 1:1"
+                if spec.forbid_production_upscale
+                else "nearest only; shrinking forbidden"
+            ),
             "palette_quantization": "none",
             "png": "optimize=true, compress_level=9 (lossless)",
         },
@@ -525,6 +1051,7 @@ def _build_asset(spec: AssetSpec) -> dict:
             "processing_script_sha256": _sha256(Path(__file__)),
         },
         "source": source_audit(normalized),
+        "reviewed_redraw": redraw_record,
         "max_subject_size": list(spec.max_subject_size),
         "logical_subject_size": list(logical.size),
         "production_subject_size": list(production_subject.size),
@@ -542,11 +1069,15 @@ def _build_asset(spec: AssetSpec) -> dict:
     return report
 
 
-def _build_contact_previews() -> tuple[Path, Path]:
+def _build_contact_previews(
+    specs: tuple[AssetSpec, ...],
+    filename_stem: str,
+    *,
+    columns: int,
+) -> tuple[Path, Path]:
     margin = 2
     gap = 2
-    columns = 6
-    rows = 2
+    rows = (len(specs) + columns - 1) // columns
     logical = Image.new(
         "RGBA",
         (
@@ -555,15 +1086,15 @@ def _build_contact_previews() -> tuple[Path, Path]:
         ),
         (30, 34, 38, 255),
     )
-    for index, spec in enumerate(ASSETS):
+    for index, spec in enumerate(specs):
         with Image.open(spec.output_path) as opened:
             icon = opened.convert("RGBA")
         x = margin + (index % columns) * (CANVAS_SIZE[0] + gap)
         y = margin + (index // columns) * (CANVAS_SIZE[1] + gap)
         logical.alpha_composite(icon, (x, y))
 
-    preview_1x = SOURCE_ROOT / "new_consumables_contact_preview_1x.png"
-    preview_8x = SOURCE_ROOT / "new_consumables_contact_preview_8x.png"
+    preview_1x = SOURCE_ROOT / f"{filename_stem}_1x.png"
+    preview_8x = SOURCE_ROOT / f"{filename_stem}_8x.png"
     _save_lossless(logical, preview_1x)
     _save_lossless(
         logical.resize(
@@ -575,16 +1106,61 @@ def _build_contact_previews() -> tuple[Path, Path]:
     return preview_1x, preview_8x
 
 
-def _write_global_audit_if_complete() -> Path | None:
-    if not all(spec.audit_path.is_file() and spec.output_path.is_file() for spec in ASSETS):
+def _load_fresh_audit(spec: AssetSpec) -> dict | None:
+    """Load an audit only when every recorded build input is still current."""
+    if not spec.audit_path.is_file() or not spec.output_path.is_file():
         return None
-    reports = [
-        json.loads(spec.audit_path.read_text(encoding="utf-8"))
-        for spec in ASSETS
-    ]
-    preview_1x, preview_8x = _build_contact_previews()
+    report = json.loads(spec.audit_path.read_text(encoding="utf-8"))
+    if report.get("schema_version") != 2 or report.get("asset") != spec.slug:
+        return None
+    hashes = report.get("hashes", {})
+    if hashes.get("production_texture_sha256") != _sha256(spec.output_path):
+        return None
+    if hashes.get("processing_script_sha256") != _sha256(Path(__file__)):
+        return None
+    checks = report.get("checks", {})
+    if not checks or not all(value is True for value in checks.values()):
+        return None
+
+    if spec.native_manual_master_filename is not None:
+        if (
+            not spec.source_path.is_file()
+            or hashes.get("native_manual_master_sha256") != _sha256(spec.source_path)
+            or report.get("production_overwrite_policy") != "never"
+        ):
+            return None
+        return report
+
+    if (
+        not spec.source_path.is_file()
+        or not spec.alpha_path.is_file()
+        or not spec.logical_preview_path.is_file()
+        or hashes.get("source_master_sha256") != _sha256(spec.source_path)
+        or hashes.get("alpha_source_sha256") != _sha256(spec.alpha_path)
+        or hashes.get("logical_preview_sha256") != _sha256(spec.logical_preview_path)
+    ):
+        return None
+    prompt_record = report.get("prompt_record", {})
+    if (
+        not PROMPT_MANIFEST_PATH.is_file()
+        or prompt_record.get("sha256") != _sha256(PROMPT_MANIFEST_PATH)
+        or prompt_record.get("selected_source_matches") is not True
+    ):
+        return None
+    return report
+
+
+def _write_global_audit_if_complete() -> Path | None:
+    reports = [_load_fresh_audit(spec) for spec in ASSETS]
+    if any(report is None for report in reports):
+        return None
+    preview_1x, preview_8x = _build_contact_previews(
+        ASSETS,
+        "new_consumables_contact_preview",
+        columns=6,
+    )
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "passed",
         "asset_count": len(ASSETS),
         "contract": {
@@ -624,10 +1200,62 @@ def _write_global_audit_if_complete() -> Path | None:
     return path
 
 
+def _write_redraw_audit_if_complete() -> Path | None:
+    specs = (
+        next(spec for spec in ASSETS if spec.slug == "battle_spirit_potion"),
+        next(spec for spec in ASSETS if spec.slug == "windwalk_potion"),
+        *REPAIR_ASSETS,
+    )
+    reports = [_load_fresh_audit(spec) for spec in specs]
+    if any(report is None for report in reports):
+        return None
+    preview_1x, preview_8x = _build_contact_previews(
+        specs,
+        "redrawn_consumables_contact_preview",
+        columns=3,
+    )
+    report = {
+        "schema_version": 1,
+        "status": "passed",
+        "asset_count": len(specs),
+        "new_expansion_asset_count": 2,
+        "repair_asset_count": 1,
+        "assets_in_order": [spec.slug for spec in specs],
+        "contract": {
+            "canvas": [32, 32],
+            "mode": "RGBA",
+            "alpha_values": [0, 255],
+            "transparent_rgb": [0, 0, 0],
+            "minimum_transparent_border_on_all_four_edges": 1,
+            "production_resampling": "none",
+            "uniform_outer_boundary_rgba": list(OUTER_BOUNDARY_COLOR),
+            "outer_boundary_connectivity": 4,
+            "outer_boundary_dark_ratio": 1.0,
+            "maximum_second_layer_dark_ratio": MAX_SECOND_LAYER_DARK_RATIO,
+            "maximum_aligned_tolerance8_same_color_2x2_coverage": (
+                MAX_ALIGNED_SAME_COLOR_2X2_COVERAGE
+            ),
+        },
+        "contact_previews": {
+            "1x": portable_path(preview_1x),
+            "8x_nearest": portable_path(preview_8x),
+        },
+        "assets": reports,
+    }
+    path = SOURCE_ROOT / "redrawn_consumable_asset_audit.json"
+    path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def plan_payload() -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "asset_count": len(ASSETS),
+        "new_expansion_asset_count": len(ASSETS),
+        "repair_asset_count": len(REPAIR_ASSETS),
         "contract": {
             "source_chroma_key": CHROMA_KEY,
             "production_canvas": [32, 32],
@@ -647,7 +1275,7 @@ def plan_payload() -> dict:
                 "atlas": portable_path(spec.atlas_path),
                 "config": portable_path(spec.config_path),
             }
-            for spec in ASSETS
+            for spec in ALL_ASSETS
         ],
     }
 
@@ -659,7 +1287,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--asset",
         action="append",
-        choices=[spec.slug for spec in ASSETS],
+        choices=[spec.slug for spec in ALL_ASSETS],
         help="Build only one named asset; repeat to build several",
     )
     parser.add_argument(
@@ -677,7 +1305,9 @@ def main() -> None:
         return
 
     requested = set(args.asset or [])
-    specs = [spec for spec in ASSETS if not requested or spec.slug in requested]
+    specs = [
+        spec for spec in ALL_ASSETS if not requested or spec.slug in requested
+    ]
     reports = [_build_asset(spec) for spec in specs]
     for report in reports:
         print(
@@ -688,6 +1318,9 @@ def main() -> None:
     global_audit = _write_global_audit_if_complete()
     if global_audit is not None:
         print(f"Global audit: {global_audit}")
+    redraw_audit = _write_redraw_audit_if_complete()
+    if redraw_audit is not None:
+        print(f"Redraw audit: {redraw_audit}")
 
 
 if __name__ == "__main__":

@@ -1,139 +1,42 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "asset": "regeneration_potion",
   "display_name": "凝胶再生剂",
-  "status": "passed",
+  "status": "passed_native_manual_master",
   "tier": "low",
   "shape": "small_bottle",
-  "chroma_key": "#FF00FF",
-  "pipeline": [
-    "built-in ImageGen, one distinct source per item",
-    "flat #FF00FF border-connected chroma-key extraction",
-    "retained foreground RGB preserved without palette quantization",
-    "strict pixel-grid analysis with no unsafe compression override",
-    "one final pixel center-sampled per measured logical cell",
-    "nearest-neighbour upscale only when needed for a readable inventory bbox",
-    "centered placement on a transparent 32x32 RGBA canvas",
-    "binary alpha, clean transparent RGB, and one-pixel border audit",
-    "lossless PNG encoding"
-  ],
-  "commands": {
-    "build": "python dev_tools/process_consumable_assets.py --asset regeneration_potion",
-    "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
-  },
-  "processing_parameters": {
-    "background_remover": "connected_background_remover.remove_connected_background",
-    "rgb_tolerance": 72,
-    "hue_tolerance": 0.035,
-    "expansion_radius": 12,
-    "hard_alpha": true,
-    "transparent_rgb": [
-      0,
-      0,
-      0
-    ],
-    "logical_sampler": "Pillow nearest center sample",
-    "production_upscale": "nearest only; shrinking forbidden",
-    "palette_quantization": "none",
-    "png": "optimize=true, compress_level=9 (lossless)"
-  },
-  "prompt_record": {
-    "status": "linked",
-    "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
-    "asset_entry_found": true,
-    "selected_source": "regeneration_potion/regeneration_potion_imagegen_magenta.png",
-    "selected_source_matches": true,
-    "referenced_images": [
-      "resources/texture/consumables/healing_potion.png",
-      "resources/texture/consumables/rock_potion.png"
-    ],
-    "prompt_lines": [
-      "Use case: stylized-concept",
-      "Asset type: deliberately low-resolution chunky pixel-art consumable icon source for final native 32x32",
-      "Input images: existing small-tier potion style references only.",
-      "Primary request: Create exactly one small gel regeneration tonic. A narrow upright corked glass bottle in the same family, containing luminous turquoise-green gel. Inside, use two or three large rounded blocky gel bubbles and one simple upward-growing leaf/spiral motif to suggest gradual healing, without text or symbols outside the bottle.",
-      "Pixel-grid contract: design as if on a 24x24 logical grid enlarged with strict nearest-neighbor. Uniform large square pixels. Bottle silhouette at most 16 logical pixels wide by 22 tall, leaving at least 2 logical pixels background on all sides. No fine micro-pixels.",
-      "Backdrop: perfectly uniform flat #ff00ff chroma key.",
-      "Style: crisp hand-authored retro pixel art, thick near-black outline, cyan-white glass highlight, limited teal/green palette, hard edges, readable at 32x32.",
-      "Composition: exactly one centered narrow small-tier bottle.",
-      "Constraints: opaque shapes, no alpha translucency, no antialiasing/blur, no floor/shadow/text/logo/watermark/extra props, no #ff00ff in object.",
-      "Avoid: wide large bottle, photorealism, smooth vector art, thin details, dense noise, multiple bottles."
-    ],
-    "prompt_sha256": "a1f6880aa03aa6984fd8891c0e48f49c395901ebc832afd0e4b39a86cde1e9f4"
-  },
+  "repair_asset": false,
+  "pipeline_mode": "native_manual_master_audit_only",
+  "production_overwrite_policy": "never",
+  "manual_master_note": "Native 32x32 manual correction committed by the user in 609532c5. The production texture is authoritative; full ImageGen rebuilds audit it but never overwrite it.",
   "paths": {
-    "source_master": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_imagegen_magenta.png",
-    "alpha_source": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_alpha.png",
-    "logical_preview": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_logical_preview.png",
+    "native_manual_master": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_native_manual_master.png",
     "production_texture": "resources/texture/consumables/regeneration_potion.png",
     "atlas": "resources/atlas/regeneration_potion.tres",
     "config": "resources/config/consumables/regeneration_potion.tres"
   },
   "source_selection": {
     "approved": {
-      "path": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_imagegen_magenta.png",
-      "sha256": "52e0e42bfebe8b9995c41c403c886b42c08afdf0eaeb0e9f2d99bea68f518cf1"
+      "path": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_native_manual_master.png",
+      "sha256": "129a8562969bacfa3185f152564d55c9719bd89f196f709d387771a1ba1b581f",
+      "kind": "user_authored_native_manual_master"
     },
-    "rejected": [],
-    "manual_review_note": "",
-    "global_unsafe_override_enabled": false
+    "rejected": []
   },
   "hashes": {
-    "source_master_sha256": "52e0e42bfebe8b9995c41c403c886b42c08afdf0eaeb0e9f2d99bea68f518cf1",
-    "alpha_source_sha256": "2d3b83bff45a5a07279268ceddca4fc459a7ff910127873dfb4f1d6d03339b96",
-    "logical_preview_sha256": "20c531cf38762164e01ebcb1f667b75b32e0f750d29b4baa60d5405c4c98d31b",
-    "production_texture_sha256": "a6096e6057b20ff4241e9ef955629f6324bf006a86b5d18a06fae61572e9673d",
-    "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+    "native_manual_master_sha256": "129a8562969bacfa3185f152564d55c9719bd89f196f709d387771a1ba1b581f",
+    "production_texture_sha256": "129a8562969bacfa3185f152564d55c9719bd89f196f709d387771a1ba1b581f",
+    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
   },
-  "source": {
-    "path": "dev_assets/source_images/consumables/regeneration_potion/regeneration_potion_imagegen_magenta.png",
-    "normalization_mode": "measured_grid_center_sample",
-    "detected_logical_subject_size": [
-      10,
-      22
-    ],
-    "logical_subject_size": [
-      10,
-      22
-    ],
-    "logical_fit_scale": 1.0,
-    "grid_analysis": {
-      "image_width": 1254,
-      "image_height": 1254,
-      "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 38.4,
-      "grid_cell_height": 39.35,
-      "grid_cell_size": 39,
-      "confidence": 0.96,
-      "subject_bbox": {
-        "left": 439,
-        "top": 198,
-        "right": 812,
-        "bottom": 1059
-      },
-      "subject_pixel_width": 373,
-      "subject_pixel_height": 861,
-      "subject_grid_width": 10,
-      "subject_grid_height": 22,
-      "recommended_canvas_grid_width": 33,
-      "recommended_canvas_grid_height": 32
-    }
-  },
-  "max_subject_size": [
-    22,
-    30
-  ],
   "logical_subject_size": [
-    10,
-    22
+    14,
+    30
   ],
   "production_subject_size": [
     14,
     30
   ],
-  "production_upscale": 1.363636,
+  "production_upscale": 1.0,
   "paste_origin": [
     9,
     1
@@ -155,6 +58,8 @@
     "binary_alpha": true,
     "transparent_rgb_clean": true,
     "logical_pixels_preserved": true,
-    "no_near_chroma_key_foreground": true
+    "no_near_chroma_key_foreground": true,
+    "native_manual_master_matches_production_pixels": true,
+    "production_write_skipped": true
   }
 }

@@ -127,13 +127,13 @@ func _test_icon_contract() -> void:
 		{
 			"item": HEALING_POTION,
 			"path": "res://resources/texture/consumables/healing_potion.png",
-			"bbox": Rect2i(6, 1, 20, 30),
+			"bbox": Rect2i(5, 1, 22, 30),
 			"scale": Vector2(0.5, 0.5),
 		},
 		{
 			"item": LARGE_HEALING_POTION,
 			"path": "res://resources/texture/consumables/large_healing_potion.png",
-			"bbox": Rect2i(4, 1, 24, 30),
+			"bbox": Rect2i(3, 1, 26, 30),
 			"scale": Vector2(0.625, 0.625),
 		},
 		{
@@ -145,7 +145,7 @@ func _test_icon_contract() -> void:
 		{
 			"item": LARGE_ROCK_POTION,
 			"path": "res://resources/texture/consumables/large_rock_potion.png",
-			"bbox": Rect2i(4, 1, 25, 30),
+			"bbox": Rect2i(3, 1, 26, 30),
 			"scale": Vector2(0.625, 0.625),
 		},
 	]

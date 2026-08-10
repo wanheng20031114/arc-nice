@@ -1,139 +1,42 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "asset": "phantom_potion",
   "display_name": "幻影药剂",
-  "status": "passed",
+  "status": "passed_native_manual_master",
   "tier": "medium",
   "shape": "single_bottle",
-  "chroma_key": "#FF00FF",
-  "pipeline": [
-    "built-in ImageGen, one distinct source per item",
-    "flat #FF00FF border-connected chroma-key extraction",
-    "retained foreground RGB preserved without palette quantization",
-    "strict pixel-grid analysis with no unsafe compression override",
-    "one final pixel center-sampled per measured logical cell",
-    "nearest-neighbour upscale only when needed for a readable inventory bbox",
-    "centered placement on a transparent 32x32 RGBA canvas",
-    "binary alpha, clean transparent RGB, and one-pixel border audit",
-    "lossless PNG encoding"
-  ],
-  "commands": {
-    "build": "python dev_tools/process_consumable_assets.py --asset phantom_potion",
-    "pipeline_smoke": "python dev_tools/consumable_asset_pipeline_smoke_test.py"
-  },
-  "processing_parameters": {
-    "background_remover": "connected_background_remover.remove_connected_background",
-    "rgb_tolerance": 72,
-    "hue_tolerance": 0.035,
-    "expansion_radius": 12,
-    "hard_alpha": true,
-    "transparent_rgb": [
-      0,
-      0,
-      0
-    ],
-    "logical_sampler": "Pillow nearest center sample",
-    "production_upscale": "nearest only; shrinking forbidden",
-    "palette_quantization": "none",
-    "png": "optimize=true, compress_level=9 (lossless)"
-  },
-  "prompt_record": {
-    "status": "linked",
-    "path": "dev_assets/source_images/consumables/imagegen_prompt_manifest.json",
-    "sha256": "03c4b56832387ec612757f6951b0e7721b78a9768ee1f8473fc409aa0494a987",
-    "asset_entry_found": true,
-    "selected_source": "phantom_potion/phantom_potion_imagegen_magenta.png",
-    "selected_source_matches": true,
-    "referenced_images": [
-      "resources/texture/consumables/rock_potion.png",
-      "dev_assets/source_images/consumables/focus_potion/focus_potion_imagegen_magenta.png"
-    ],
-    "prompt_lines": [
-      "Use case: stylized-concept",
-      "Asset type: extra-coarse pixel-art consumable icon source for final native 32x32",
-      "Input images: game consumable style references only.",
-      "Primary request: Create exactly one phantom potion for temporary dodge. A compact crescent-shouldered glass flask with dark near-black outline, smoky slate-gray and muted lilac liquid, pale blue-white highlights. Inside is one minimal drifting phantom silhouette: a soft blocky hood/veil shape with two tiny cyan eyes and a tapering side trail, entirely contained inside the bottle. It should suggest evasiveness, not death or poison.",
-      "Strict pixel-grid contract: draw as if on an 18x18 logical canvas enlarged strict nearest-neighbor. Uniform huge square pixels; object at most 14x16 logical pixels, at least one logical pixel empty border. No half-size details.",
-      "Backdrop: perfectly uniform flat #ff00ff.",
-      "Style: crisp limited-palette retro pixel art, hard edges, thick outline, readable at 32x32.",
-      "Composition: one centered bottle only.",
-      "Constraints: opaque shapes, no antialiasing/blur/transparency, no floor/shadow/text/logo/ghost outside bottle/props, no #ff00ff inside object.",
-      "Avoid: skull, poison iconography, detailed face, gradients, high pixel density, multiple objects."
-    ],
-    "prompt_sha256": "1916a328e9ab9cc2a05dc7d0b3b7391f3f1fdec2fb90cafc2691912f3a03c115"
-  },
+  "repair_asset": false,
+  "pipeline_mode": "native_manual_master_audit_only",
+  "production_overwrite_policy": "never",
+  "manual_master_note": "Native 32x32 manual correction committed by the user in 609532c5. The production texture is authoritative; full ImageGen rebuilds audit it but never overwrite it.",
   "paths": {
-    "source_master": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_imagegen_magenta.png",
-    "alpha_source": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_alpha.png",
-    "logical_preview": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_logical_preview.png",
+    "native_manual_master": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_native_manual_master.png",
     "production_texture": "resources/texture/consumables/phantom_potion.png",
     "atlas": "resources/atlas/phantom_potion.tres",
     "config": "resources/config/consumables/phantom_potion.tres"
   },
   "source_selection": {
     "approved": {
-      "path": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_imagegen_magenta.png",
-      "sha256": "538bcd011606c0490ba3df672d5dd7aa42650e59a6e2d3cd93a0b26e5a7fb1aa"
+      "path": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_native_manual_master.png",
+      "sha256": "95644056ef9a04deb3e11be3b6507888a3511741b57a411228c1d23b03371a3c",
+      "kind": "user_authored_native_manual_master"
     },
-    "rejected": [],
-    "manual_review_note": "",
-    "global_unsafe_override_enabled": false
+    "rejected": []
   },
   "hashes": {
-    "source_master_sha256": "538bcd011606c0490ba3df672d5dd7aa42650e59a6e2d3cd93a0b26e5a7fb1aa",
-    "alpha_source_sha256": "18f23b7c10df1ac12aebc8a45c5dd08a5809f246a7ffa65b12b77b4a75f643d2",
-    "logical_preview_sha256": "4c13e6a8d6092df2d24cbbe5882964ecd686d743b7725121246c20b1a08071e3",
-    "production_texture_sha256": "43bae93f720f3fa3ccf08a4ed349f1fd49c9248fdf3e093e2c27c3d07d1a20c5",
-    "processing_script_sha256": "26a3b2cd3d80e3f038c792bd343e40891d7f389f9df18359ca54e9c90757d18a"
+    "native_manual_master_sha256": "95644056ef9a04deb3e11be3b6507888a3511741b57a411228c1d23b03371a3c",
+    "production_texture_sha256": "95644056ef9a04deb3e11be3b6507888a3511741b57a411228c1d23b03371a3c",
+    "processing_script_sha256": "80157c3b3edb0c0bb4bc33b90f2a56301446e3fa2d4074039886408aab9785a5"
   },
-  "source": {
-    "path": "dev_assets/source_images/consumables/phantom_potion/phantom_potion_imagegen_magenta.png",
-    "normalization_mode": "measured_grid_center_sample",
-    "detected_logical_subject_size": [
-      18,
-      24
-    ],
-    "logical_subject_size": [
-      18,
-      24
-    ],
-    "logical_fit_scale": 1.0,
-    "grid_analysis": {
-      "image_width": 1254,
-      "image_height": 1254,
-      "image_mode": "RGBA",
-      "detection_mode": "approximate",
-      "grid_cell_width": 39.6,
-      "grid_cell_height": 40.45,
-      "grid_cell_size": 40,
-      "confidence": 0.852,
-      "subject_bbox": {
-        "left": 275,
-        "top": 142,
-        "right": 981,
-        "bottom": 1111
-      },
-      "subject_pixel_width": 706,
-      "subject_pixel_height": 969,
-      "subject_grid_width": 18,
-      "subject_grid_height": 24,
-      "recommended_canvas_grid_width": 32,
-      "recommended_canvas_grid_height": 31
-    }
-  },
-  "max_subject_size": [
-    24,
-    30
-  ],
   "logical_subject_size": [
-    18,
-    24
+    22,
+    30
   ],
   "production_subject_size": [
     22,
     30
   ],
-  "production_upscale": 1.25,
+  "production_upscale": 1.0,
   "paste_origin": [
     5,
     1
@@ -155,6 +58,8 @@
     "binary_alpha": true,
     "transparent_rgb_clean": true,
     "logical_pixels_preserved": true,
-    "no_near_chroma_key_foreground": true
+    "no_near_chroma_key_foreground": true,
+    "native_manual_master_matches_production_pixels": true,
+    "production_write_skipped": true
   }
 }
