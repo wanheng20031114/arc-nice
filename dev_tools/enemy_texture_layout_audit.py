@@ -12,11 +12,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEXTURE_ROOT = ROOT / "resources" / "texture"
 ENEMY_ROOT = TEXTURE_ROOT / "enemy"
-EXPECTED_TOTAL_PNG_COUNT = 85
+EXPECTED_TOTAL_PNG_COUNT = 86
 EXPECTED_MECHANICAL_LIFE_PNG_COUNT = 20
 
 EXPECTED_PNGS: dict[str, tuple[str, ...]] = {
     "artificial_creation": (
+        "cardboard_monster.png",
         "stone_golem.png",
         "stone_golem_elite.png",
     ),
@@ -203,6 +204,14 @@ PIPELINE_MARKERS = {
     "dev_tools/write_combat_robot_ninja_elite_runtime_assets.py": (
         "combat_robot_ninja_elite.png",
         "COMBAT_ROBOT_NINJA_ELITE_RUNTIME_ASSETS_OK",
+    ),
+    "dev_tools/write_cardboard_monster_runtime_assets.py": (
+        "resources/texture/enemy/artificial_creation/cardboard_monster.png",
+        "CARDBOARD_MONSTER_RUNTIME_ASSETS_OK",
+    ),
+    "dev_tools/cardboard_monster_asset_audit.py": (
+        "resources/texture/enemy/artificial_creation/cardboard_monster.png",
+        "CARDBOARD_MONSTER_ASSET_AUDIT_OK",
     ),
     "dev_tools/process_fire_sorcerer_assets.py": (
         "resources/texture/enemy/sorcerer",

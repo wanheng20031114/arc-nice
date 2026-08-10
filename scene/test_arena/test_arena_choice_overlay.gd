@@ -7,13 +7,15 @@ signal selection_closed
 const ARENA_P1A_ID: StringName = &"p1"
 const ARENA_P1_ID: StringName = ARENA_P1A_ID
 const ARENA_P1B_ID: StringName = &"p1b"
+const ARENA_P1C_ID: StringName = &"p1c"
 const ARENA_P2_ID: StringName = &"p2"
 const ARENA_P3_ID: StringName = &"p3"
 const P1A_TAB_INDEX := 0
 const P1_TAB_INDEX := P1A_TAB_INDEX
 const P1B_TAB_INDEX := 1
-const P2_TAB_INDEX := 2
-const P3_TAB_INDEX := 3
+const P1C_TAB_INDEX := 2
+const P2_TAB_INDEX := 3
+const P3_TAB_INDEX := 4
 const OPEN_FADE_DURATION := 0.14
 const OPEN_PANEL_DURATION := 0.18
 
@@ -26,6 +28,9 @@ const OPEN_PANEL_DURATION := 0.18
 )
 @onready var p1b_enter_button: Button = (
 	$Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/EnterButton
+)
+@onready var p1c_enter_button: Button = (
+	$Root/Center/Panel/PanelMargin/Layout/Tabs/P1C/PageMargin/Content/EnterButton
 )
 @onready var p2_enter_button: Button = (
 	$Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton
@@ -80,6 +85,10 @@ func _on_p1b_pressed() -> void:
 	_choose_arena(ARENA_P1B_ID)
 
 
+func _on_p1c_pressed() -> void:
+	_choose_arena(ARENA_P1C_ID)
+
+
 func _on_p2_pressed() -> void:
 	_choose_arena(ARENA_P2_ID)
 
@@ -120,6 +129,8 @@ func _select_tab(arena_id: StringName) -> void:
 	match arena_id:
 		ARENA_P1B_ID:
 			tabs.current_tab = P1B_TAB_INDEX
+		ARENA_P1C_ID:
+			tabs.current_tab = P1C_TAB_INDEX
 		ARENA_P2_ID:
 			tabs.current_tab = P2_TAB_INDEX
 		ARENA_P3_ID:
@@ -134,6 +145,8 @@ func _focus_current_action() -> void:
 	match tabs.current_tab:
 		P1B_TAB_INDEX:
 			p1b_enter_button.grab_focus()
+		P1C_TAB_INDEX:
+			p1c_enter_button.grab_focus()
 		P2_TAB_INDEX:
 			p2_enter_button.grab_focus()
 		P3_TAB_INDEX:

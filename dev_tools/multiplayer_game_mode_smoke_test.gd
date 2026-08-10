@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 56,
-		"协议v56必须保留狭路相逢波次资源合同、稀有宝箱私人快照、忍者加速与重连激活确认，隔离精英战斗机器人、精英枪手弹丸、消耗品、精英操作员无人机、精英盾兵、精英忍者资源及物资节点状态，并保留既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 57,
+		"协议v57必须隔离P1C与纸箱怪资源，保留狭路相逢波次资源合同、稀有宝箱私人快照、忍者加速与重连激活确认，隔离精英战斗机器人、精英枪手弹丸、消耗品、精英操作员无人机、精英盾兵、精英忍者资源及物资节点状态，并保留既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
@@ -47,7 +47,7 @@ func _run() -> void:
 	var room_capacity_label := lobby.get_node_or_null(
 		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel"
 	) as Label
-	_expect(selector != null and selector.item_count == 6, "Lobby must expose all six native mode options.")
+	_expect(selector != null and selector.item_count == 7, "Lobby must expose all seven native mode options.")
 	_expect(room_mode_label != null, "Room wait panel must display the synchronized mode.")
 	_expect(room_capacity_label != null, "Room wait panel must display synchronized room capacity.")
 	if selector != null:
@@ -60,6 +60,7 @@ func _run() -> void:
 				NetManagerStore.GameMode.TOWER_DEFENSE,
 				NetManagerStore.GameMode.TEST_ARENA_P1,
 				NetManagerStore.GameMode.TEST_ARENA_P1B,
+				NetManagerStore.GameMode.TEST_ARENA_P1C,
 				NetManagerStore.GameMode.TEST_ARENA_P2,
 				NetManagerStore.GameMode.TEST_ARENA_P3,
 			],
@@ -109,6 +110,14 @@ func _run() -> void:
 			"game_mode": "test_arena_p1b",
 		},
 		{
+			"id": "test-p1c-room",
+			"name": "Test P1C",
+			"host_name": "G",
+			"player_count": 2,
+			"max_players": 6,
+			"game_mode": "test_arena_p1c",
+		},
+		{
 			"id": "test-p2-room",
 			"name": "Test P2",
 			"host_name": "D",
@@ -125,15 +134,16 @@ func _run() -> void:
 			"game_mode": "test_arena_p3",
 		},
 	])
-	_expect(room_list.get_child_count() == 6, "Room list must retain all six valid game modes.")
-	if room_list.get_child_count() == 6:
+	_expect(room_list.get_child_count() == 7, "Room list must retain all seven valid game modes.")
+	if room_list.get_child_count() == 7:
 		_expect(
 			(room_list.get_child(0) as Button).text.contains("普通模式")
 			and (room_list.get_child(1) as Button).text.contains("塔防模式")
 			and (room_list.get_child(2) as Button).text.contains("测试场景 P1A")
 			and (room_list.get_child(3) as Button).text.contains("测试场景 P1B")
-			and (room_list.get_child(4) as Button).text.contains("测试场景 P2")
-			and (room_list.get_child(5) as Button).text.contains("测试场景 P3"),
+			and (room_list.get_child(4) as Button).text.contains("测试场景 P1C")
+			and (room_list.get_child(5) as Button).text.contains("测试场景 P2")
+			and (room_list.get_child(6) as Button).text.contains("测试场景 P3"),
 			"Room buttons must visibly identify every game mode."
 		)
 

@@ -1,0 +1,377 @@
+{
+  "schema_version": 1,
+  "asset": "cardboard_monster_final_candidate",
+  "stage": "final_candidate_approved_runtime_written",
+  "preview_only": false,
+  "approved_animation_selection": {
+    "move": "m2",
+    "attack": "a2",
+    "death": "d2"
+  },
+  "first_human_approved": true,
+  "second_human_approved": true,
+  "third_human_approved": true,
+  "final_human_approved": true,
+  "runtime_written": true,
+  "runtime_paths_written": [
+    "resources/animation/cardboard_monster.tres",
+    "resources/config/enemies/cardboard_monster.tres",
+    "resources/config/enemies/cardboard_monster_config.gd",
+    "resources/config/enemies/cardboard_monster_config.gd.uid",
+    "resources/texture/enemy/artificial_creation/cardboard_monster.png",
+    "resources/texture/enemy/artificial_creation/cardboard_monster.png.import",
+    "scene/enemy/artificial_creation/cardboard_monster.gd",
+    "scene/enemy/artificial_creation/cardboard_monster.gd.uid",
+    "scene/enemy/artificial_creation/cardboard_monster.tscn",
+    "scene/enemy/capoo/capoo_knight.gd"
+  ],
+  "imagegen_pixels_imported": false,
+  "builder": {
+    "path": "dev_tools/build_cardboard_monster_final_preview.py",
+    "sha256": "98772cc03d1acbfcc2932e360215b7cdbd5231071679e976aebbf18dfc2c6dd2"
+  },
+  "report": {
+    "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_report.json",
+    "sha256": "9fe95d91dba3b03a1be9259b4e53dc63b174c47f0b59cc53b415cf2c05fa6bc0"
+  },
+  "stability": {
+    "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_stability.json",
+    "sha256": "7683b586f1b1bab04cb35d1105a49c4d2aa315ec9d737a363516b59d4fa61dbc"
+  },
+  "source_atlas": {
+    "path": "dev_assets/source_images/cardboard_monster/cardboard_monster_final_candidate_atlas.png",
+    "sha256": "73bad923829c873b83c808954d610735826884e2786a5fb1da21a04240578f2c",
+    "size": [
+      256,
+      96
+    ],
+    "mode": "RGBA",
+    "rgba_sha256": "81e4a17fc6288a6204df5e67af864b4fc02e3644eaef92d1ca01b6b7504a44cf"
+  },
+  "selected_locks": {
+    "m2": {
+      "file_sha256": "d3ceed3890ea35e7650ff4143fec139392c49c0c02bd389c1ae11713731840b5",
+      "rgba_sha256": "57f6c81d3c2f0f02d4fca07037553d581648d91f6c4066ad0f8ef20b4637fe6f"
+    },
+    "a2": {
+      "file_sha256": "591f9d8c0d4578691b10251407d887961b72655c400e996369c9783e73d1bb08",
+      "rgba_sha256": "902dc0a494cf00df383757872ff7d2ac1e9308623310b73820241cff2911fed8"
+    },
+    "d2": {
+      "file_sha256": "b785d42a4ea07773c8931193baec43e10b50405bc8b29bb7ff3833e1540a822c",
+      "rgba_sha256": "1caafb0e2db08c15e99fc87ab88c80b493a939b3af601d9a74266715804fb169"
+    }
+  },
+  "outputs": {
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_final_candidate_atlas.png": {
+      "path": "dev_assets/source_images/cardboard_monster/cardboard_monster_final_candidate_atlas.png",
+      "sha256": "73bad923829c873b83c808954d610735826884e2786a5fb1da21a04240578f2c",
+      "size": [
+        256,
+        96
+      ],
+      "mode": "RGBA"
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_atlas_16x.png": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_atlas_16x.png",
+      "sha256": "84a4561166d284aec0aaf90879d00d9a2009915058a4950e75bdbff6230a6a22",
+      "size": [
+        4096,
+        1536
+      ],
+      "mode": "RGBA"
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_move_right.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_move_right.gif",
+      "sha256": "1a285ee9ee4e0abf5bbd6c445e16c67b8fd106c7ee1dccfa14b1bbdd76a4e7fc",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "P",
+      "frames": 8
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_move_left.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_move_left.gif",
+      "sha256": "96d0551883286bc10eac9118ca3a2449ae90198bb6f947738193158d69342834",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "P",
+      "frames": 8
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_windup_right.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_windup_right.gif",
+      "sha256": "5354422ae8bc0c62b25d93422b3e1440a12b7fce248691921464d3e78e89db43",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "P",
+      "frames": 3
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_windup_left.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_windup_left.gif",
+      "sha256": "5cf7f82a480f18804b19e24808dfc31e38d10adc864c4f08d284542e970c2450",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "P",
+      "frames": 3
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_slash_right.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_slash_right.gif",
+      "sha256": "54db45a6ae2f91a234e5790cdf1314eb1e69bc0d9efddc536a8905b783694445",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "P",
+      "frames": 5
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_slash_left.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_slash_left.gif",
+      "sha256": "a0d860e2d6b827193aff92e25f70d4d647909f7f94bc3468ad06bd07e7f957d4",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "P",
+      "frames": 5
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_death_right.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_death_right.gif",
+      "sha256": "ea27339c0a71433d7b7311d4c4e1e7d9872fc1d3ed950875715981ced7720009",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "P",
+      "frames": 8
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_death_left.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_death_left.gif",
+      "sha256": "5e6a4f5cca4b3f9d504f52cbdf0eccd5c90c6f344cb0b1803f8aff060f5855e6",
+      "size": [
+        512,
+        512
+      ],
+      "mode": "P",
+      "frames": 8
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_tracking_windup_slash_right.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_tracking_windup_slash_right.gif",
+      "sha256": "048187993450c4babe85ebc10921c453fa0cb65a1e2020c4f8bb4dd1dac8a902",
+      "size": [
+        640,
+        384
+      ],
+      "mode": "P",
+      "frames": 10
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_tracking_windup_slash_left.gif": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_tracking_windup_slash_left.gif",
+      "sha256": "1076f6507364cc7108b7d47800fba214e049460ee8acb807156f15cf12511db3",
+      "size": [
+        640,
+        384
+      ],
+      "mode": "P",
+      "frames": 10
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_collision_fan_right.png": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_collision_fan_right.png",
+      "sha256": "94b1f529866a4628c4efe177da6e6b817a93d978458cb736114970a0e171fe32",
+      "size": [
+        512,
+        384
+      ],
+      "mode": "RGBA"
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_collision_fan_left.png": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_collision_fan_left.png",
+      "sha256": "be52bd2327ea05a8ee172b1c8fab05e690bc6009edd53d1c1b4ce8a319367384",
+      "size": [
+        512,
+        384
+      ],
+      "mode": "RGBA"
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_size_comparison.png": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_size_comparison.png",
+      "sha256": "6c1d32884a71479fae5dad0dca8e94a4209e86737db389e622c08322f463f812",
+      "size": [
+        1450,
+        330
+      ],
+      "mode": "RGBA"
+    },
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_anchor_frame_delta_8x.png": {
+      "path": "dev_assets/generated_previews/cardboard_monster_final_candidate_anchor_frame_delta_8x.png",
+      "sha256": "f9f5a024e6698a325866d30b92e5c4856ac821cea50d1ded69184de7314de65b",
+      "size": [
+        2048,
+        768
+      ],
+      "mode": "RGBA"
+    }
+  },
+  "allowlist_count": 19,
+  "determinism_snapshot_scope": "16 visual outputs",
+  "determinism_snapshot_count": 16,
+  "self_referential_json_excluded_from_snapshot": true,
+  "snapshot_excluded_json_paths": [
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_report.json",
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_final_candidate_manifest.json",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_stability.json"
+  ],
+  "certificate_structure_comparison": {
+    "report_full_payload_equal": true,
+    "manifest_full_payload_equal": true,
+    "comparison_method": "canonical_prewrite_json_bytes"
+  },
+  "output_allowlist": [
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_final_candidate_atlas.png",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_atlas_16x.png",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_move_right.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_move_left.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_windup_right.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_windup_left.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_slash_right.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_slash_left.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_death_right.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_death_left.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_tracking_windup_slash_right.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_tracking_windup_slash_left.gif",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_collision_fan_right.png",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_collision_fan_left.png",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_size_comparison.png",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_anchor_frame_delta_8x.png",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_report.json",
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_final_candidate_manifest.json",
+    "dev_assets/generated_previews/cardboard_monster_final_candidate_stability.json"
+  ],
+  "final_human_approval": {
+    "builder_sha256": "29754589660f938c10d6b14a52dff01bcb29f4c944b6d42450599fe2addb30e1",
+    "report_sha256": "2d6124b627afd3c0543bf9d1aed796f93b9f4b6b7d8e41be488d14d3b5b909f8",
+    "manifest_sha256": "1e11998a5df2e2d8a357f4e37ec3cf55b4c8dabd1ba1bc3bb68532a99a8a3bfe",
+    "stability_sha256": "a65ec805de4d7b0fb5cae4323fdc26b0c7b260ab769182a16a860a4e05ba9460",
+    "atlas_sha256": "73bad923829c873b83c808954d610735826884e2786a5fb1da21a04240578f2c",
+    "atlas_rgba_sha256": "81e4a17fc6288a6204df5e67af864b4fc02e3644eaef92d1ca01b6b7504a44cf",
+    "decision": "approved",
+    "approved_animation_selection": {
+      "move": "m2",
+      "attack": "a2",
+      "death": "d2"
+    },
+    "damage_frame_local_index": 1,
+    "damage_frame_source_cell": {
+      "row": 1,
+      "column": 4
+    },
+    "runtime_written": false,
+    "imagegen_pixels_imported": false
+  },
+  "approval_source_builder_sha256": "98772cc03d1acbfcc2932e360215b7cdbd5231071679e976aebbf18dfc2c6dd2",
+  "approval_source_report_sha256": "a35112200ef21ec42791fe6878480743db544bd679e421f1b27528e99929c4ff",
+  "approval_source_manifest_sha256": "dae0b6263dfb2a667504327565dd2142ed8f708a8dc74cda38ceb5e328776a49",
+  "approval_source_stability_sha256": "7683b586f1b1bab04cb35d1105a49c4d2aa315ec9d737a363516b59d4fa61dbc",
+  "runtime_assets": {
+    "texture": {
+      "path": "resources/texture/enemy/artificial_creation/cardboard_monster.png",
+      "source": "dev_assets/source_images/cardboard_monster/cardboard_monster_final_candidate_atlas.png",
+      "sha256": "73bad923829c873b83c808954d610735826884e2786a5fb1da21a04240578f2c",
+      "byte_identical_to_approved_atlas": true,
+      "size": [
+        256,
+        96
+      ]
+    },
+    "animation": {
+      "path": "resources/animation/cardboard_monster.tres",
+      "sha256": "ac9c1e6e1cf3b718dcebf9f21dda04fc3c506c1697b7d181e02ca3b7977ff311",
+      "atlas_texture_count": 24,
+      "filter_clip_count": 24,
+      "animations": {
+        "move": {
+          "frames": 8,
+          "fps": 12.0,
+          "loop": true,
+          "row": 0
+        },
+        "windup": {
+          "frames": 3,
+          "fps": 9.0,
+          "loop": false,
+          "row": 1,
+          "columns": [
+            0,
+            1,
+            2
+          ]
+        },
+        "slash": {
+          "frames": 5,
+          "fps": 15.0,
+          "loop": false,
+          "row": 1,
+          "columns": [
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "damage_frame_local_index": 1,
+          "damage_frame_source_cell": {
+            "row": 1,
+            "column": 4
+          }
+        },
+        "death": {
+          "frames": 8,
+          "fps": 8.0,
+          "loop": false,
+          "row": 2
+        }
+      }
+    },
+    "config_script": {
+      "path": "resources/config/enemies/cardboard_monster_config.gd",
+      "sha256": "9692b9e6a4e31da27811dbb6cc3fef935cca86bd6917e1cade27cbf91c87ed3b"
+    },
+    "config": {
+      "path": "resources/config/enemies/cardboard_monster.tres",
+      "sha256": "eaeb308eaad60ce804385c0b5a58ab66942e87d14a416aae3e635e0ebfc3e9e0"
+    },
+    "enemy_script": {
+      "path": "scene/enemy/artificial_creation/cardboard_monster.gd",
+      "sha256": "cb57b806cc45a75091122c9246612fb437a689cd5069f781a8d534a30bee51df"
+    },
+    "enemy_scene": {
+      "path": "scene/enemy/artificial_creation/cardboard_monster.tscn",
+      "sha256": "8e48d7b5ffb4045deee15974f089a21fd8c918a1fe94f2895d71f5b61dd95ab7"
+    },
+    "capoo_knight_virtual_source": {
+      "path": "scene/enemy/capoo/capoo_knight.gd",
+      "sha256": "83472eaaa0a5d8abe0eba2b1f3f227f8e98002a11b5c66007bf7a13070d41026"
+    },
+    "texture_import": {
+      "path": "resources/texture/enemy/artificial_creation/cardboard_monster.png.import",
+      "sha256": "06e2e3cf47f95435fa630f181aa141d58c9e36809d09d96dbf4f643e58474471",
+      "uid": "uid://bk6bv3sf3ersw"
+    },
+    "config_script_uid": {
+      "path": "resources/config/enemies/cardboard_monster_config.gd.uid",
+      "sha256": "7cfd065159f3cec7df3856cc42130746ae2cdf88b2afb43ac2403e5bf55cc820",
+      "uid": "uid://breelwcx2ml6w"
+    },
+    "enemy_script_uid": {
+      "path": "scene/enemy/artificial_creation/cardboard_monster.gd.uid",
+      "sha256": "1216d0563734675a6c126ea3ade239ccef35900e5c8a1a8db6a069dc475d1d2f",
+      "uid": "uid://blqspia1h5c3v"
+    }
+  }
+}

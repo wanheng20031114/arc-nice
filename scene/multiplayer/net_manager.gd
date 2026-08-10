@@ -41,6 +41,7 @@ enum GameMode {
 	TEST_ARENA_P2 = GameModeCatalog.MODE_TEST_ARENA_P2,
 	TEST_ARENA_P3 = GameModeCatalog.MODE_TEST_ARENA_P3,
 	TEST_ARENA_P1B = GameModeCatalog.MODE_TEST_ARENA_P1B,
+	TEST_ARENA_P1C = GameModeCatalog.MODE_TEST_ARENA_P1C,
 }
 enum ConnectionState {
 	DISCONNECTED,

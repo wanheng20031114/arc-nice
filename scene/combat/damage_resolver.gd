@@ -54,6 +54,10 @@ static func resolve(
 		target.post_multiplier_rounding,
 		target.minimum_damage
 	)
+	result.resolved_damage = _apply_fixed_damage_per_accepted_hit(
+		result.resolved_damage,
+		target.fixed_damage_per_accepted_hit
+	)
 	_finalize_health_delta(result)
 	return result
 
@@ -122,6 +126,10 @@ static func _resolve_batch(
 		)
 		if resolved_per_hit <= 0:
 			continue
+		resolved_per_hit = _apply_fixed_damage_per_accepted_hit(
+			resolved_per_hit,
+			target.fixed_damage_per_accepted_hit
+		)
 		# 两个正整数直接做向上整除，避免高生命/高伤害在 float 中丢失精度。
 		@warning_ignore("integer_division")
 		var hits_until_lethal := 1 + (remaining_health - 1) / resolved_per_hit
@@ -203,3 +211,15 @@ static func _apply_multiplier(
 		_:
 			rounded = roundi(scaled)
 	return maxi(rounded, minimum_damage)
+
+
+static func _apply_fixed_damage_per_accepted_hit(
+	resolved_damage: int,
+	fixed_damage_per_accepted_hit: float
+) -> int:
+	if resolved_damage <= 0 or fixed_damage_per_accepted_hit <= 0.0:
+		return resolved_damage
+	# DamageResult is a signed-int64 contract. Keep any enabled positive fixed
+	# value positive after conversion so it cannot resurrect a zero hit or turn
+	# an already accepted hit back into an invalid result.
+	return maxi(roundi(fixed_damage_per_accepted_hit), 1)

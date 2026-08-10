@@ -28,6 +28,15 @@ const SMALL_STONE := preload(
 const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
 	"res://resources/config/enemies/default_enemy_drop_table.tres"
 )
+const STONE_GOLEM_DROP_TABLE: EnemyDropTable = preload(
+	"res://resources/config/enemies/stone_golem_drop_table.tres"
+)
+const STONE_GOLEM_CONFIG: EnemyConfig = preload(
+	"res://resources/config/enemies/stone_golem.tres"
+)
+const STONE_GOLEM_ELITE_CONFIG: EnemyConfig = preload(
+	"res://resources/config/enemies/stone_golem_elite.tres"
+)
 const EnemyDropRuleScript := preload(
 	"res://resources/config/enemies/enemy_drop_rule.gd"
 )
@@ -361,39 +370,44 @@ func _test_deterministic_independent_drop_resolution() -> void:
 		"A gel roll equal to its 2% chance must fail the strict probability boundary."
 	)
 	var artificial_creation_tags := PackedStringArray(["artificial_creation"])
-	var small_stone_drops := (
+	var default_artificial_drops := (
 		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
 			artificial_creation_tags,
-			_zero_rolls(8)
+			_zero_rolls(7)
 		)
 	)
 	_expect(
-		small_stone_drops.size() == 8
-		and SMALL_STONE in small_stone_drops
-		and CAPOO_BLUE_CRYSTAL not in small_stone_drops
-		and SORCERER_VIOLET_POWDER not in small_stone_drops
-		and GEL not in small_stone_drops,
-		"Artificial-creation tags must add only the independent small-stone rule."
+		default_artificial_drops.size() == 7
+		and SMALL_STONE not in default_artificial_drops,
+		"The shared table must not grant small stone to arbitrary artificial creations."
+	)
+	var stone_golem_rules := STONE_GOLEM_DROP_TABLE.get_eligible_rules(
+		artificial_creation_tags
+	)
+	_expect(
+		stone_golem_rules.size() == 8
+		and stone_golem_rules.slice(0, 7)
+		== DEFAULT_ENEMY_DROP_TABLE.get_eligible_rules(artificial_creation_tags)
+		and stone_golem_rules[7].pickup_config == SMALL_STONE,
+		"The stone-golem table must expand the shared base rules first and append its local small-stone rule."
 	)
 	var small_stone_only_rolls: Array[float] = []
 	var small_stone_boundary_rolls: Array[float] = []
-	for rule in DEFAULT_ENEMY_DROP_TABLE.get_eligible_rules(
-		artificial_creation_tags
-	):
+	for rule in stone_golem_rules:
 		var is_small_stone_rule := rule.pickup_config == SMALL_STONE
 		small_stone_only_rolls.append(0.0 if is_small_stone_rule else 1.0)
 		small_stone_boundary_rolls.append(
 			rule.chance if is_small_stone_rule else 1.0
 		)
 	_expect(
-		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+		STONE_GOLEM_DROP_TABLE.resolve_drop_configs_from_rolls(
 			artificial_creation_tags,
 			small_stone_only_rolls
 		) == [SMALL_STONE],
 		"The stone-golem small-stone roll must succeed independently of every other eligible rule."
 	)
 	_expect(
-		DEFAULT_ENEMY_DROP_TABLE.resolve_drop_configs_from_rolls(
+		STONE_GOLEM_DROP_TABLE.resolve_drop_configs_from_rolls(
 			artificial_creation_tags,
 			small_stone_boundary_rolls
 		).is_empty(),
@@ -411,15 +425,15 @@ func _test_deterministic_independent_drop_resolution() -> void:
 			PackedStringArray(
 				["capoo", "sorcerer", "slime", "artificial_creation"]
 			),
-			_zero_rolls(11)
+			_zero_rolls(10)
 		)
 	)
 	_expect(
-		all_tagged_drops.size() == 11
+		all_tagged_drops.size() == 10
 		and CAPOO_BLUE_CRYSTAL in all_tagged_drops
 		and SORCERER_VIOLET_POWDER in all_tagged_drops
 		and GEL in all_tagged_drops
-		and SMALL_STONE in all_tagged_drops,
+		and SMALL_STONE not in all_tagged_drops,
 		"Tag filters must remain composable without turning the table into a weighted choice."
 	)
 
@@ -437,13 +451,17 @@ func _test_deterministic_independent_drop_resolution() -> void:
 		and gel_rule.required_tags == PackedStringArray(["slime"]),
 		"Gel must remain an independent slime-only 2% drop."
 	)
-	var small_stone_rule = _find_drop_rule(SMALL_STONE)
+	var small_stone_rule = _find_drop_rule(
+		SMALL_STONE,
+		STONE_GOLEM_DROP_TABLE
+	)
 	_expect(
 		small_stone_rule != null
 		and is_equal_approx(small_stone_rule.chance, 0.5)
-		and small_stone_rule.required_tags
-		== PackedStringArray(["artificial_creation"]),
-		"Small stone must remain an independent stone-golem-only 50% drop."
+		and small_stone_rule.required_tags.is_empty()
+		and STONE_GOLEM_CONFIG.drop_table == STONE_GOLEM_DROP_TABLE
+		and STONE_GOLEM_ELITE_CONFIG.drop_table == STONE_GOLEM_DROP_TABLE,
+		"Both stone golems must explicitly use the inherited table with its local 50% small-stone rule."
 	)
 	var powder_rule_count := 0
 	for rule in DEFAULT_ENEMY_DROP_TABLE.rules:
@@ -662,8 +680,11 @@ func _zero_rolls(count: int) -> Array[float]:
 	return rolls
 
 
-func _find_drop_rule(pickup_config: PickupConfig):
-	for rule in DEFAULT_ENEMY_DROP_TABLE.rules:
+func _find_drop_rule(
+	pickup_config: PickupConfig,
+	table: EnemyDropTable = DEFAULT_ENEMY_DROP_TABLE
+):
+	for rule in table.rules:
 		if rule != null and rule.pickup_config == pickup_config:
 			return rule
 	return null

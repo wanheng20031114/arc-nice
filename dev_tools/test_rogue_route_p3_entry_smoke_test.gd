@@ -3,6 +3,7 @@ extends SceneTree
 const MAIN_MENU_SCENE := preload("res://scene/main_menu.tscn")
 const P1A_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn"
 const P1B_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn"
+const P1C_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1c.tscn"
 const P2_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 const P3_SCENE_PATH := "res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 const P1A_CAMPAIGN_PATH := (
@@ -10,6 +11,9 @@ const P1A_CAMPAIGN_PATH := (
 )
 const P1B_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/p1b/singleplayer/campaign.tres"
+)
+const P1C_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/p1c/singleplayer/campaign.tres"
 )
 const P2_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres"
@@ -78,6 +82,7 @@ func _test_lightweight_manifest(coordinator: Node) -> void:
 	for tower_contract in [
 		[P1A_SCENE_PATH, P1A_CAMPAIGN_PATH],
 		[P1B_SCENE_PATH, P1B_CAMPAIGN_PATH],
+		[P1C_SCENE_PATH, P1C_CAMPAIGN_PATH],
 		[P2_SCENE_PATH, P2_CAMPAIGN_PATH],
 	]:
 		var scene_path := str(tower_contract[0])
@@ -91,7 +96,7 @@ func _test_lightweight_manifest(coordinator: Node) -> void:
 			and manifest.has(campaign_path)
 			and manifest.has(WEISHIDAIER_SCENE_PATH)
 			and bool(coordinator.call("_uses_tower_defense_runtime", scene_path)),
-			"P1A/P1B/P2必须加载各自战役、所选角色与塔防运行时。"
+			"P1A/P1B/P1C/P2必须加载各自战役、所选角色与塔防运行时。"
 		)
 
 
@@ -135,7 +140,7 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 		p3_title != null
 		and p3_title.text == "P3 · 肉鸽路线框架"
 		and entry_subtitle != null
-		and entry_subtitle.text.contains("P1A / P1B / P2 / P3")
+		and entry_subtitle.text.contains("P1A / P1B / P1C / P2 / P3")
 		and entry_subtitle.text.contains("均先选择角色")
 		and p3_description != null
 		and p3_description.text.contains("正中心")
@@ -220,6 +225,12 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 			"P1B",
 		],
 		[
+			TestArenaChoiceOverlay.ARENA_P1C_ID,
+			P1C_SCENE_PATH,
+			TestArenaChoiceOverlay.P1C_TAB_INDEX,
+			"P1C",
+		],
+		[
 			TestArenaChoiceOverlay.ARENA_P2_ID,
 			P2_SCENE_PATH,
 			TestArenaChoiceOverlay.P2_TAB_INDEX,
@@ -241,7 +252,7 @@ func _test_main_menu_selector(coordinator: Node) -> void:
 			character_selector.is_open()
 			and str(main_menu.call("_get_pending_singleplayer_scene_path"))
 			== str(tower_entry[1]),
-			"P1A/P1B/P2必须进入角色选择并保留各自场景路径。"
+			"P1A/P1B/P1C/P2必须进入角色选择并保留各自场景路径。"
 		)
 		character_selector.close()
 		await process_frame

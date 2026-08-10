@@ -1,0 +1,1356 @@
+{
+  "asset": "cardboard_monster",
+  "stage": "second_human_gate_approved",
+  "approved_anchor": "f2",
+  "anchor_revision": "flat_bright_top_edge_and_diagonal_paper_stick",
+  "first_human_approved": true,
+  "approved_animation_selection": {
+    "move": "m2",
+    "attack": "a2",
+    "death": "d2"
+  },
+  "second_human_approved": true,
+  "final_human_approved": false,
+  "runtime_written": false,
+  "runtime_paths_written": [],
+  "approval_basis": {
+    "builder_sha256": "02e66e08710af38a3c08b7c45e9bef0515127dd47d079e21a3a71dff84b4b766",
+    "report_sha256": "8bdca8cea1f7b2ae7ea37081c7b7b6c3fc482795a3e907498888d2ac729ea922",
+    "manifest_sha256": "e9b75d5606eba7142cee4474704422f5f3d1826b646d506dc90582d1e4cb7d6e",
+    "stability_sha256": "40b40cf20d9ed39823268adedb3457c54c1c702e7c7dbc16ec90a5196f0924a3",
+    "stage": "animation_candidates_pending_second_human_gate"
+  },
+  "approved_selected_locks": {
+    "m2": {
+      "native_png_sha256": "d3ceed3890ea35e7650ff4143fec139392c49c0c02bd389c1ae11713731840b5",
+      "native_rgba_sha256": "57f6c81d3c2f0f02d4fca07037553d581648d91f6c4066ad0f8ef20b4637fe6f"
+    },
+    "a2": {
+      "native_png_sha256": "591f9d8c0d4578691b10251407d887961b72655c400e996369c9783e73d1bb08",
+      "native_rgba_sha256": "902dc0a494cf00df383757872ff7d2ac1e9308623310b73820241cff2911fed8"
+    },
+    "d2": {
+      "native_png_sha256": "b785d42a4ea07773c8931193baec43e10b50405bc8b29bb7ff3833e1540a822c",
+      "native_rgba_sha256": "1caafb0e2db08c15e99fc87ab88c80b493a939b3af601d9a74266715804fb169"
+    }
+  },
+  "second_gate_draft_selection": {
+    "move": {
+      "candidate": "m2",
+      "status": "refinement_ready_for_human_recheck"
+    },
+    "attack": {
+      "candidate": "a2",
+      "status": "human_selected"
+    },
+    "death": {
+      "candidate": "d2",
+      "status": "human_selected"
+    }
+  },
+  "selected_fixed_locks": {
+    "attack_a2": {
+      "native_png_sha256": "591f9d8c0d4578691b10251407d887961b72655c400e996369c9783e73d1bb08",
+      "native_rgba_sha256": "902dc0a494cf00df383757872ff7d2ac1e9308623310b73820241cff2911fed8"
+    },
+    "death_d2": {
+      "native_png_sha256": "b785d42a4ea07773c8931193baec43e10b50405bc8b29bb7ff3833e1540a822c",
+      "native_rgba_sha256": "1caafb0e2db08c15e99fc87ab88c80b493a939b3af601d9a74266715804fb169"
+    }
+  },
+  "superseded_m2_lock": {
+    "native_png_sha256": "b879d83c211ca7a3691334553d7e002a95d31da7377fd5a0fb557690edac013a",
+    "native_rgba_sha256": "39373ad19a91b671dab852db6aa947f7dc5dc11349293f4b68a08aed2fa9d479",
+    "reason": "双脚全程接地，读形更像同步蹲动而不是行走"
+  },
+  "imagegen_pixels_imported": false,
+  "builder": {
+    "path": "dev_tools/build_cardboard_monster_animation_previews.py",
+    "sha256": "7bf3d2a732f7d0f933cf3ecfa555bad1470eab74c9b356d19d15d03ef6b91e1e"
+  },
+  "inputs": {
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_anchor_approved_native32.png": {
+      "sha256": "745cc7ec73e3d2268a91f6fb97db996821f32c49b3dc80eb1a4b122ebc298a3d",
+      "locked": true
+    },
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_anchor_manifest.json": {
+      "sha256": "d634689313146886a52f865dcb2b13fe1eb8b2102df8e9e98cedd5c2487ecff3",
+      "locked": true
+    },
+    "dev_assets/generated_previews/cardboard_monster_anchor_report.json": {
+      "sha256": "687cd19cad87c0cc12fee5447181c719a777e8ef792e621a0462bd874459330f",
+      "locked": true
+    },
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_move_m1_imagegen.png": {
+      "sha256": "e94130eb76da5019dbd24a111f5662d3560b6a153da5e8aa0d4ca1ad0923658c",
+      "locked": true,
+      "pixels_imported_into_native": false
+    },
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_move_m2_walk_refinement_imagegen.png": {
+      "sha256": "8c4568c809ee98fcac255ff907ea342e9134817af2adde620ecf3c703ba4c86a",
+      "locked": true,
+      "pixels_imported_into_native": false
+    },
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_attack_a1_imagegen.png": {
+      "sha256": "d70f399250981372bb7ed654d1e9520ed6f4a013fc59bd2cecb2dc3fd477a6fc",
+      "locked": true,
+      "pixels_imported_into_native": false
+    },
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_attack_a2_imagegen.png": {
+      "sha256": "766edecaa0308bbc16b1b91ccd5fdab23d44c33ea3d3194be683fe8976372e9a",
+      "locked": true,
+      "pixels_imported_into_native": false
+    },
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_death_d1_imagegen.png": {
+      "sha256": "b496ba3dda91475a95286bfc25baee665462efac14a42d47f8eac3a1e490176b",
+      "locked": true,
+      "pixels_imported_into_native": false
+    },
+    "dev_assets/source_images/cardboard_monster/cardboard_monster_death_d2_imagegen.png": {
+      "sha256": "ec2ad08792bb93d5e95be70751abe468ad8764693af44531b1004d4a5c8dd535",
+      "locked": true,
+      "pixels_imported_into_native": false
+    }
+  },
+  "candidates": {
+    "m1": {
+      "title": "M1 守棒蹒跚",
+      "author_fps": 10,
+      "gif_durations_ms": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "native_rgba_sha256": "12389b2ad72e6d27421d0aaaa1dc0e133988aea602338fb0b6ed65662234dcc6",
+      "frame_audit": [
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "df9d86e7cc661bdd566e6d067a061863581aab59fa72524025d713159be8aa8d"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "c366810c6c1acfbc6f88f15750e2d09419f89f741ad9e2311ab1d36cf7d36e70"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "23dc848e04928683ebeab6b408bcf584d7230bc1c80a4d9f12332d0604c32183"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 235,
+          "components_8": 1,
+          "rgba_sha256": "d94394686a8ea7be19d70d9ee9effb0adcc0838f717ec3d09ceeb77c8f5b28fa"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 235,
+          "components_8": 1,
+          "rgba_sha256": "9e12b126ce09279fc1637fa2d50e0d495934d4221c9d2c052eb8d21a71a86425"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "c8bc8dc96024c67ed84192361c8ee2823503117d8ac5f12c0edcfe9363173db4"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "ba8ff6e451f99cc4fcd486256676aa9cae2ae3b12c534ea2748e7f5414d1f873"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "1c8caa24fc6f5b91ce0f4d88885abb0cbd67424e6af20a7dbf406a3128266d68"
+        }
+      ],
+      "outputs": [
+        {
+          "path": "dev_assets/source_images/cardboard_monster/cardboard_monster_move_m1_candidate_native.png",
+          "sha256": "fe318d7dec62ef70e84008ce177c78a2b82e8c92da940483740afa9c0c83659d",
+          "size": [
+            256,
+            32
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m1_candidate_8x.png",
+          "sha256": "9d7c5347cf40cef74c44246be775df30245418e2a6b4095d37258332c384c707",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m1_ordinary_delta_8x.png",
+          "sha256": "130d549c775b0df9dee58509a8c5185ecacd413769756697d643ed390e54704b",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m1_candidate.gif",
+          "sha256": "7668be0b4f687195a5a7a94057c435a0904a03fd0636a815782f7b47bfe2c38f",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m1_candidate_mirror.gif",
+          "sha256": "9f707d58ab06c8eab3f2dafee604195c4383bc5c9af662907265c9928ba304e1",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m1_review_panel.png",
+          "sha256": "8b4aa980caaa24bb8624e9fe4d213910759a22137b1d6884d1b5ed2b8d11b5b3",
+          "size": [
+            1600,
+            760
+          ],
+          "mode": "RGBA"
+        }
+      ],
+      "transparent_reference": {
+        "path": "dev_assets/generated_previews/cardboard_monster_move_m1_reference_transparent.png",
+        "sha256": "b3a7756f24bd44d0f1513bcee68e97b79c6a44e5490e6f7d78594f9a1fb8cdf0",
+        "size": [
+          1458,
+          1458
+        ],
+        "mode": "RGBA"
+      },
+      "grid_analysis": {
+        "image_width": 1458,
+        "image_height": 1458,
+        "image_mode": "RGBA",
+        "detection_mode": "native_or_unknown",
+        "grid_cell_width": 1.0,
+        "grid_cell_height": 1.0,
+        "grid_cell_size": 1,
+        "confidence": 0.291,
+        "subject_bbox": {
+          "left": 12,
+          "top": 416,
+          "right": 1446,
+          "bottom": 1041
+        },
+        "subject_pixel_width": 1434,
+        "subject_pixel_height": 625,
+        "subject_grid_width": 1434,
+        "subject_grid_height": 625,
+        "recommended_canvas_grid_width": 1458,
+        "recommended_canvas_grid_height": 1458,
+        "unsafe_for_direct_resize": true,
+        "imagegen_pixels_imported_into_native": false
+      }
+    },
+    "m2": {
+      "title": "M2 纸脚碎步（八相步态优化）",
+      "author_fps": 12,
+      "gif_durations_ms": [
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80,
+        80
+      ],
+      "native_rgba_sha256": "57f6c81d3c2f0f02d4fca07037553d581648d91f6c4066ad0f8ef20b4637fe6f",
+      "frame_audit": [
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "df9d86e7cc661bdd566e6d067a061863581aab59fa72524025d713159be8aa8d"
+        },
+        {
+          "bbox": [
+            7,
+            13,
+            31,
+            28
+          ],
+          "opaque": 234,
+          "components_8": 1,
+          "rgba_sha256": "850d7b45c8ae461bb51d554f95615f70ff946feb2b15cf64575824bf12542b8e"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "b7c1e705623e5476fa0f5c6f267d9e409cb3a6cc6773b3c9066803aa1f3a2402"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "06be6c73f0470cd59038f3796872e02d51e6f122d301724092a1406175be4146"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "42a8ce19edc374cb06e41fd14445b10e6a1996b53bad39d61d962056ced34fb9"
+        },
+        {
+          "bbox": [
+            7,
+            13,
+            31,
+            28
+          ],
+          "opaque": 234,
+          "components_8": 1,
+          "rgba_sha256": "7a56723f269e330c4ed8162f8e5283b0a437aec6fa2bcb3dad94fab97eba9c8c"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 235,
+          "components_8": 1,
+          "rgba_sha256": "be75b7ba478d9dae395bdf32051ed6cbe9ef535e5b9b816c94829d7a43b267bf"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 235,
+          "components_8": 1,
+          "rgba_sha256": "e2ff4b9b3bd6446d5302c7ecfa58b5ece39cece15b7753b8c8285d4b113da313"
+        }
+      ],
+      "outputs": [
+        {
+          "path": "dev_assets/source_images/cardboard_monster/cardboard_monster_move_m2_candidate_native.png",
+          "sha256": "d3ceed3890ea35e7650ff4143fec139392c49c0c02bd389c1ae11713731840b5",
+          "size": [
+            256,
+            32
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m2_candidate_8x.png",
+          "sha256": "c577d50023989ae8bde6d8e66a543074123c076a292d48d28d54e3658f7e4c7f",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m2_ordinary_delta_8x.png",
+          "sha256": "5c3f0b858073ae1d83f2167cd96d6a9ce75c37aaeb487d434759aeb6ed190bf6",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m2_candidate.gif",
+          "sha256": "e82229b7fe74a8230b588552ed099004aedb2d78dbb6060396da881e9def1d05",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m2_candidate_mirror.gif",
+          "sha256": "fefd4aab0afb6fff42f6b97853d0102b697ac7f8dff7da9dab8472488a72ea76",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_move_m2_review_panel.png",
+          "sha256": "3c6081bae0e2e5f23b09647b9ecdfafb25e0d4585abe8ad9f4b9ac0e1f6e4126",
+          "size": [
+            1600,
+            760
+          ],
+          "mode": "RGBA"
+        }
+      ],
+      "transparent_reference": {
+        "path": "dev_assets/generated_previews/cardboard_monster_move_m2_reference_transparent.png",
+        "sha256": "5da495305b7785e658df0b674f9ab1ad07fd27e023914a8fd1bd03c3fb94e4c9",
+        "size": [
+          1312,
+          1312
+        ],
+        "mode": "RGBA"
+      },
+      "grid_analysis": {
+        "image_width": 1312,
+        "image_height": 1312,
+        "image_mode": "RGBA",
+        "detection_mode": "native_or_unknown",
+        "grid_cell_width": 1.0,
+        "grid_cell_height": 1.0,
+        "grid_cell_size": 1,
+        "confidence": 0.264,
+        "subject_bbox": {
+          "left": 12,
+          "top": 312,
+          "right": 1300,
+          "bottom": 999
+        },
+        "subject_pixel_width": 1288,
+        "subject_pixel_height": 687,
+        "subject_grid_width": 1288,
+        "subject_grid_height": 687,
+        "recommended_canvas_grid_width": 1312,
+        "recommended_canvas_grid_height": 1312,
+        "unsafe_for_direct_resize": true,
+        "imagegen_pixels_imported_into_native": false
+      },
+      "gait_contract": {
+        "revision": "contact_down_pass_up_with_alternating_support",
+        "phases": [
+          "contact",
+          "down",
+          "pass",
+          "up",
+          "opposite_contact",
+          "down",
+          "pass",
+          "up"
+        ],
+        "body_y_offsets": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "left_swing_off_floor_frames": [
+          2,
+          3
+        ],
+        "right_swing_off_floor_frames": [
+          6,
+          7
+        ],
+        "support_floor_y": 27,
+        "swing_floor_y": 26,
+        "horizontal_body_or_stick_drift": 0
+      }
+    },
+    "a1": {
+      "title": "A1 短弧下挥",
+      "author_fps": [
+        9,
+        15
+      ],
+      "gif_durations_ms": [
+        110,
+        110,
+        110,
+        70,
+        70,
+        70,
+        70,
+        70
+      ],
+      "native_rgba_sha256": "ebf4d4c005fb9bcd329360a01ffa35c2444bec9633d437710251ff26126cb3d7",
+      "frame_audit": [
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "df9d86e7cc661bdd566e6d067a061863581aab59fa72524025d713159be8aa8d"
+        },
+        {
+          "bbox": [
+            7,
+            11,
+            30,
+            28
+          ],
+          "opaque": 238,
+          "components_8": 1,
+          "rgba_sha256": "83201fcff926868b4a1d865bc716a5794c8769c474d48c9198f50bda6d3a7803"
+        },
+        {
+          "bbox": [
+            7,
+            11,
+            28,
+            28
+          ],
+          "opaque": 237,
+          "components_8": 1,
+          "rgba_sha256": "c727525a1fc21567f9f1cf974f9ccdac5333415b499c5bebd6a9f5a8ddcac0c1"
+        },
+        {
+          "bbox": [
+            7,
+            11,
+            30,
+            28
+          ],
+          "opaque": 239,
+          "components_8": 1,
+          "rgba_sha256": "244750dfcd9834a26dd0709af55219d822e5452889249788088d3754a702842f"
+        },
+        {
+          "bbox": [
+            6,
+            12,
+            32,
+            28
+          ],
+          "opaque": 238,
+          "components_8": 1,
+          "rgba_sha256": "bddf57ecd4da8eee37271c8fe652f2fef2d620ea93293b60fb0733a188b67691"
+        },
+        {
+          "bbox": [
+            6,
+            12,
+            32,
+            28
+          ],
+          "opaque": 238,
+          "components_8": 1,
+          "rgba_sha256": "910c530368434f621d139cc3b164f1aa0d275e82d9c8254cd2a95184a1551dad"
+        },
+        {
+          "bbox": [
+            6,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "1c50a7c09cd46d987d9c5909f402e080b14c6bf9337060f347c5a9f2c9ea09a1"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 235,
+          "components_8": 1,
+          "rgba_sha256": "a497c5bc7696ad7867eef1d9fcb3160f13a51d9bf9aea04743151baed28959ab"
+        }
+      ],
+      "outputs": [
+        {
+          "path": "dev_assets/source_images/cardboard_monster/cardboard_monster_attack_a1_candidate_native.png",
+          "sha256": "feb2fe38397f9a9e62356e1bdb9a5a51ac2b54843ac26ee7eee5fb54b3daa6a6",
+          "size": [
+            256,
+            32
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a1_candidate_8x.png",
+          "sha256": "33027e0f47ef8dc5a924b6394c1e5dd74c78553af94131fc34abd9f894bb178f",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a1_ordinary_delta_8x.png",
+          "sha256": "269ed5bbc71106b1acc71b1a36aa15845412a6a06069673bee1ebcd379b4c223",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a1_candidate.gif",
+          "sha256": "64fa9a7cdc03ad23ac7b3b2a48ba8596bf70c5640ebd7992c4acb730d3519568",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a1_candidate_mirror.gif",
+          "sha256": "9765ef9737de29a7314311c28886a69665a26eabf370fae2d17cbe4c4b4f294e",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a1_review_panel.png",
+          "sha256": "06b5cf86fd40eb81bddec0f8bdc421c82ee68f40618ad0a8ca2d18de16c3e858",
+          "size": [
+            1600,
+            760
+          ],
+          "mode": "RGBA"
+        }
+      ],
+      "transparent_reference": {
+        "path": "dev_assets/generated_previews/cardboard_monster_attack_a1_reference_transparent.png",
+        "sha256": "1b0f4b1e184968159a0638b2a4c3aa13c0788528508aa1c5cee93af7d34593cb",
+        "size": [
+          1479,
+          1479
+        ],
+        "mode": "RGBA"
+      },
+      "grid_analysis": {
+        "image_width": 1479,
+        "image_height": 1479,
+        "image_mode": "RGBA",
+        "detection_mode": "native_or_unknown",
+        "grid_cell_width": 1.0,
+        "grid_cell_height": 1.0,
+        "grid_cell_size": 1,
+        "confidence": 0.314,
+        "subject_bbox": {
+          "left": 12,
+          "top": 412,
+          "right": 1467,
+          "bottom": 1067
+        },
+        "subject_pixel_width": 1455,
+        "subject_pixel_height": 655,
+        "subject_grid_width": 1455,
+        "subject_grid_height": 655,
+        "recommended_canvas_grid_width": 1479,
+        "recommended_canvas_grid_height": 1479,
+        "unsafe_for_direct_resize": true,
+        "imagegen_pixels_imported_into_native": false
+      }
+    },
+    "a2": {
+      "title": "A2 短弧横扫",
+      "author_fps": [
+        9,
+        15
+      ],
+      "gif_durations_ms": [
+        110,
+        110,
+        110,
+        70,
+        70,
+        70,
+        70,
+        70
+      ],
+      "native_rgba_sha256": "902dc0a494cf00df383757872ff7d2ac1e9308623310b73820241cff2911fed8",
+      "frame_audit": [
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "df9d86e7cc661bdd566e6d067a061863581aab59fa72524025d713159be8aa8d"
+        },
+        {
+          "bbox": [
+            7,
+            11,
+            30,
+            28
+          ],
+          "opaque": 238,
+          "components_8": 1,
+          "rgba_sha256": "83201fcff926868b4a1d865bc716a5794c8769c474d48c9198f50bda6d3a7803"
+        },
+        {
+          "bbox": [
+            7,
+            11,
+            28,
+            28
+          ],
+          "opaque": 237,
+          "components_8": 1,
+          "rgba_sha256": "c727525a1fc21567f9f1cf974f9ccdac5333415b499c5bebd6a9f5a8ddcac0c1"
+        },
+        {
+          "bbox": [
+            7,
+            11,
+            28,
+            28
+          ],
+          "opaque": 238,
+          "components_8": 1,
+          "rgba_sha256": "0fae01994b24499145ec9c8994d96019c398834c02e992ecb6fd5617e892e823"
+        },
+        {
+          "bbox": [
+            6,
+            12,
+            32,
+            28
+          ],
+          "opaque": 238,
+          "components_8": 1,
+          "rgba_sha256": "bddf57ecd4da8eee37271c8fe652f2fef2d620ea93293b60fb0733a188b67691"
+        },
+        {
+          "bbox": [
+            6,
+            12,
+            32,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "7b6cea77fc63faf199cb82837b18b4f232cc34553f067e8a7a64369755f3167b"
+        },
+        {
+          "bbox": [
+            6,
+            12,
+            32,
+            28
+          ],
+          "opaque": 237,
+          "components_8": 1,
+          "rgba_sha256": "d55430ab8ddee103434466fd5eda0d40eac9572b54a1351c17546eb64fece60f"
+        },
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 235,
+          "components_8": 1,
+          "rgba_sha256": "a497c5bc7696ad7867eef1d9fcb3160f13a51d9bf9aea04743151baed28959ab"
+        }
+      ],
+      "outputs": [
+        {
+          "path": "dev_assets/source_images/cardboard_monster/cardboard_monster_attack_a2_candidate_native.png",
+          "sha256": "591f9d8c0d4578691b10251407d887961b72655c400e996369c9783e73d1bb08",
+          "size": [
+            256,
+            32
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a2_candidate_8x.png",
+          "sha256": "bd4856ccc03ff0521df0778276aaf20184cf6ca4fbe57c766085e0f14296e121",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a2_ordinary_delta_8x.png",
+          "sha256": "64e2ef66629c812950429c0717768e5949efe29e683c52f26afc288ed81f709a",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a2_candidate.gif",
+          "sha256": "30d9ec807e02ad5d2e41c8d8c57c403eef1f06cebf0ed09d95f46aeafa0b57f1",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a2_candidate_mirror.gif",
+          "sha256": "ac3fe7ee0b13a406bfbc737097d2c0be00ac10ce5dfdd4b5163fc3101e72a1c5",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_attack_a2_review_panel.png",
+          "sha256": "5122f36e349226e845c11a9279547f798a69983b26173eaf77ac9cabd3619119",
+          "size": [
+            1600,
+            760
+          ],
+          "mode": "RGBA"
+        }
+      ],
+      "transparent_reference": {
+        "path": "dev_assets/generated_previews/cardboard_monster_attack_a2_reference_transparent.png",
+        "sha256": "41512646886a8c097d384bc411692616f8f3b5c45097f0af057bb51b97f47112",
+        "size": [
+          1405,
+          1405
+        ],
+        "mode": "RGBA"
+      },
+      "grid_analysis": {
+        "image_width": 1405,
+        "image_height": 1405,
+        "image_mode": "RGBA",
+        "detection_mode": "native_or_unknown",
+        "grid_cell_width": 1.0,
+        "grid_cell_height": 1.0,
+        "grid_cell_size": 1,
+        "confidence": 0.14,
+        "subject_bbox": {
+          "left": 12,
+          "top": 397,
+          "right": 1393,
+          "bottom": 1008
+        },
+        "subject_pixel_width": 1381,
+        "subject_pixel_height": 611,
+        "subject_grid_width": 1381,
+        "subject_grid_height": 611,
+        "recommended_canvas_grid_width": 1405,
+        "recommended_canvas_grid_height": 1405,
+        "unsafe_for_direct_resize": true,
+        "imagegen_pixels_imported_into_native": false
+      }
+    },
+    "d1": {
+      "title": "D1 持棒侧倒",
+      "author_fps": 10,
+      "gif_durations_ms": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "native_rgba_sha256": "97c65ee9de2a729d9942453c1ce5eb2a51ffe3ae60c8d7840fc602e242e4e127",
+      "frame_audit": [
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "df9d86e7cc661bdd566e6d067a061863581aab59fa72524025d713159be8aa8d"
+        },
+        {
+          "bbox": [
+            7,
+            13,
+            32,
+            28
+          ],
+          "opaque": 226,
+          "components_8": 1,
+          "rgba_sha256": "f0668ee2b6357f58154fa89f942b06fc523586d002aaf3724266f2f4ae5c53c2"
+        },
+        {
+          "bbox": [
+            8,
+            14,
+            32,
+            28
+          ],
+          "opaque": 207,
+          "components_8": 1,
+          "rgba_sha256": "90ae7ca001b7fb14065d3c0c3ad6bcf28318e54766ed0c65d7a41e062e1ce53e"
+        },
+        {
+          "bbox": [
+            9,
+            15,
+            32,
+            28
+          ],
+          "opaque": 202,
+          "components_8": 1,
+          "rgba_sha256": "cda7b5ec821c3bf7d147553326f96d0fd4b631812e0e999a09b3fdb72b6a99e3"
+        },
+        {
+          "bbox": [
+            9,
+            17,
+            32,
+            28
+          ],
+          "opaque": 179,
+          "components_8": 1,
+          "rgba_sha256": "9ccbff7ba4c1635b103f98f1e18c3d211fc96e3fde35057c2e93edacd85bf78e"
+        },
+        {
+          "bbox": [
+            8,
+            19,
+            32,
+            28
+          ],
+          "opaque": 150,
+          "components_8": 1,
+          "rgba_sha256": "d9f0c021a53fd893771644b4e6a9f0a5fc90e2a1ce5a13b169601ce934c45156"
+        },
+        {
+          "bbox": [
+            7,
+            21,
+            32,
+            28
+          ],
+          "opaque": 124,
+          "components_8": 1,
+          "rgba_sha256": "17c31b2159c4c72488ac224b6c195e821a95056e8e709cdfb9a5438d0608402b"
+        },
+        {
+          "bbox": [
+            6,
+            23,
+            32,
+            28
+          ],
+          "opaque": 101,
+          "components_8": 1,
+          "rgba_sha256": "98b107e06655549c5c4feaeeba9fd01c2e0109c3c40543635db337628765f7e2"
+        }
+      ],
+      "outputs": [
+        {
+          "path": "dev_assets/source_images/cardboard_monster/cardboard_monster_death_d1_candidate_native.png",
+          "sha256": "7814132d73722f695b26382e27b1155bb42c0c64d613035ce0e3b57028d45335",
+          "size": [
+            256,
+            32
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d1_candidate_8x.png",
+          "sha256": "4a5ede8c788321001f3825e925eee04cc4fd9b7a824a07615d08db0a3ce4fc05",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d1_ordinary_delta_8x.png",
+          "sha256": "bb4696df2bdb4a947345a531a0798f516e6a4ff9f3b5935fa64ef6ecff044b30",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d1_candidate.gif",
+          "sha256": "0caf8fc654fca29cbbcc59ecbcc74fc4968065dd14ffa9cab5d6d5adcb977ad6",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d1_candidate_mirror.gif",
+          "sha256": "38d8585439a433638d8697859dd148a8ab64500958b748670bac2fbbe6e66ec8",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d1_review_panel.png",
+          "sha256": "38f3c5a59874e499ac9ac70b2bd8034db91920b371d82d066af725ebb96f4486",
+          "size": [
+            1600,
+            760
+          ],
+          "mode": "RGBA"
+        }
+      ],
+      "transparent_reference": {
+        "path": "dev_assets/generated_previews/cardboard_monster_death_d1_reference_transparent.png",
+        "sha256": "686bf4d77b0a7107f63566978ecbe9693553b0e9f912edc49bf7a3a837ac01dd",
+        "size": [
+          1670,
+          1670
+        ],
+        "mode": "RGBA"
+      },
+      "grid_analysis": {
+        "image_width": 1670,
+        "image_height": 1670,
+        "image_mode": "RGBA",
+        "detection_mode": "native_or_unknown",
+        "grid_cell_width": 1.0,
+        "grid_cell_height": 1.0,
+        "grid_cell_size": 1,
+        "confidence": 0.063,
+        "subject_bbox": {
+          "left": 12,
+          "top": 537,
+          "right": 1658,
+          "bottom": 1133
+        },
+        "subject_pixel_width": 1646,
+        "subject_pixel_height": 596,
+        "subject_grid_width": 1646,
+        "subject_grid_height": 596,
+        "recommended_canvas_grid_width": 1670,
+        "recommended_canvas_grid_height": 1670,
+        "unsafe_for_direct_resize": true,
+        "imagegen_pixels_imported_into_native": false
+      }
+    },
+    "d2": {
+      "title": "D2 连棒折叠",
+      "author_fps": 8,
+      "gif_durations_ms": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ],
+      "native_rgba_sha256": "1caafb0e2db08c15e99fc87ab88c80b493a939b3af601d9a74266715804fb169",
+      "frame_audit": [
+        {
+          "bbox": [
+            7,
+            12,
+            31,
+            28
+          ],
+          "opaque": 236,
+          "components_8": 1,
+          "rgba_sha256": "df9d86e7cc661bdd566e6d067a061863581aab59fa72524025d713159be8aa8d"
+        },
+        {
+          "bbox": [
+            7,
+            13,
+            31,
+            28
+          ],
+          "opaque": 216,
+          "components_8": 1,
+          "rgba_sha256": "45fa88f2eed5110527953bae775328e3e27b358c06682bf570dd053a9928488c"
+        },
+        {
+          "bbox": [
+            7,
+            14,
+            30,
+            28
+          ],
+          "opaque": 212,
+          "components_8": 1,
+          "rgba_sha256": "531778f472d387b19d9c25a25cd5062edbab0681bd2d77363f71f0e0bc80698d"
+        },
+        {
+          "bbox": [
+            7,
+            15,
+            29,
+            28
+          ],
+          "opaque": 194,
+          "components_8": 1,
+          "rgba_sha256": "899837f2f152adc10d0524339bf447bac79efbba7c8cadd67f7b1220ccf301c1"
+        },
+        {
+          "bbox": [
+            6,
+            17,
+            29,
+            28
+          ],
+          "opaque": 194,
+          "components_8": 1,
+          "rgba_sha256": "6ae80973dd178791ac6848b012d896d00da61cc3fa6bf325e3fb0408c48d8bc6"
+        },
+        {
+          "bbox": [
+            5,
+            19,
+            28,
+            28
+          ],
+          "opaque": 168,
+          "components_8": 1,
+          "rgba_sha256": "000b9b5e8697580bebcd44c15a5d7190a5dd244f6c8c2d43b226c7382bb49684"
+        },
+        {
+          "bbox": [
+            4,
+            21,
+            27,
+            28
+          ],
+          "opaque": 156,
+          "components_8": 1,
+          "rgba_sha256": "044fc781cad3240afa17dccbb64647fe40b2288da6edb3fa224781ebd2f73779"
+        },
+        {
+          "bbox": [
+            4,
+            23,
+            28,
+            28
+          ],
+          "opaque": 120,
+          "components_8": 1,
+          "rgba_sha256": "7ce15f36fd3d4df111430fbca1c4a4329f24bd4e05fd0b64efbe207379fb82cc"
+        }
+      ],
+      "outputs": [
+        {
+          "path": "dev_assets/source_images/cardboard_monster/cardboard_monster_death_d2_candidate_native.png",
+          "sha256": "b785d42a4ea07773c8931193baec43e10b50405bc8b29bb7ff3833e1540a822c",
+          "size": [
+            256,
+            32
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d2_candidate_8x.png",
+          "sha256": "76b0009455891edd9ab5976b474e97c74d0bcdbee0e288c6df6cc39281079b3d",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d2_ordinary_delta_8x.png",
+          "sha256": "a054c6d17ba0c82867b2103acfce54054cf87773e71e242fbb113e6490638eee",
+          "size": [
+            2048,
+            256
+          ],
+          "mode": "RGBA"
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d2_candidate.gif",
+          "sha256": "0e1eb5aec85875c77ac189ef8800353b0a53117bbf278bb689b35caa891283b3",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d2_candidate_mirror.gif",
+          "sha256": "6328f65b1ca0ce284e0ecec5f295019566d017c3b80f75ff8fec77bd35ac9aa6",
+          "size": [
+            512,
+            512
+          ],
+          "mode": "P",
+          "frames": 8
+        },
+        {
+          "path": "dev_assets/generated_previews/cardboard_monster_death_d2_review_panel.png",
+          "sha256": "b179a73e4663d14d0481e5aae925a008ef046156568db27a5d6023db42bb38a9",
+          "size": [
+            1600,
+            760
+          ],
+          "mode": "RGBA"
+        }
+      ],
+      "transparent_reference": {
+        "path": "dev_assets/generated_previews/cardboard_monster_death_d2_reference_transparent.png",
+        "sha256": "ce3e9be539c51c71f70ef889c8ae182297cb08a4c0c98193c48a115e96d3a854",
+        "size": [
+          1674,
+          1674
+        ],
+        "mode": "RGBA"
+      },
+      "grid_analysis": {
+        "image_width": 1674,
+        "image_height": 1674,
+        "image_mode": "RGBA",
+        "detection_mode": "native_or_unknown",
+        "grid_cell_width": 1.0,
+        "grid_cell_height": 1.0,
+        "grid_cell_size": 1,
+        "confidence": 0.11,
+        "subject_bbox": {
+          "left": 12,
+          "top": 524,
+          "right": 1662,
+          "bottom": 1149
+        },
+        "subject_pixel_width": 1650,
+        "subject_pixel_height": 625,
+        "subject_grid_width": 1650,
+        "subject_grid_height": 625,
+        "recommended_canvas_grid_width": 1674,
+        "recommended_canvas_grid_height": 1674,
+        "unsafe_for_direct_resize": true,
+        "imagegen_pixels_imported_into_native": false
+      }
+    }
+  },
+  "stability": {
+    "path": "dev_assets/generated_previews/cardboard_monster_animation_stability.json",
+    "sha256": "5737a67188df8057c20e3f9fb5e9373597982efa6b17302edfd035946b2fe44f",
+    "passes": 2,
+    "drift_count": 0
+  },
+  "contracts": {
+    "frame_size": [
+      32,
+      32
+    ],
+    "frame_count": 8,
+    "center_x": 16,
+    "baseline_bottom_exclusive": 28,
+    "flat_top_silhouette": true,
+    "bright_top_lighting_band": true,
+    "visible_top_plane": false,
+    "stick_runtime_rotation": false,
+    "stick_explicit_frame_tables": true,
+    "windup_frames": 3,
+    "slash_frames": 5,
+    "slash_damage_frame_within_slash": 1
+  }
+}

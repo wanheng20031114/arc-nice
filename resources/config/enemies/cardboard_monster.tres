@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="CardboardMonsterConfig" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/cardboard_monster_config.gd" id="1_config"]
+[ext_resource type="Resource" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_drop_table"]
+[ext_resource type="PackedScene" path="res://scene/enemy/artificial_creation/cardboard_monster.tscn" id="3_scene"]
+[ext_resource type="AudioStream" uid="uid://druowpv8vg1x0" path="res://resources/audio/capoo_sword_slash_light.wav" id="4_audio"]
+
+[resource]
+script = ExtResource("1_config")
+windup_animation_name = &"windup"
+attack_animation_name = &"slash"
+attack_range = 16.0
+attack_windup = 0.33333334
+attack_interval = 1.8
+slash_outer_radius = 16.0
+slash_inner_radius = 5.0
+slash_angle_degrees = 45.0
+slash_damage_delay = 0.06666667
+slash_duration = 0.33333334
+attack_audio_stream = ExtResource("4_audio")
+display_name = "纸箱怪"
+category_tags = PackedStringArray("artificial_creation")
+enemy_scene = ExtResource("3_scene")
+max_health = 10
+attack_damage = 25
+physical_defense = 0
+magic_defense = 0
+move_speed = 32.0
+home_damage = 1
+xirang_kill_reward = 3
+drop_table = ExtResource("2_drop_table")

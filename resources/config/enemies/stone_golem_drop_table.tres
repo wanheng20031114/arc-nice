@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EnemyDropTable" format=3]
+
+[ext_resource type="Script" uid="uid://jr4vkrpwk146" path="res://resources/config/enemies/enemy_drop_table.gd" id="1_table"]
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_base"]
+[ext_resource type="Script" uid="uid://cwp4vev27our7" path="res://resources/config/enemies/enemy_drop_rule.gd" id="3_rule"]
+[ext_resource type="Resource" path="res://resources/config/materials/material_small_stone.tres" id="4_small_stone"]
+
+[sub_resource type="Resource" id="EnemyDropRule_small_stone"]
+script = ExtResource("3_rule")
+pickup_config = ExtResource("4_small_stone")
+chance = 0.5
+required_tags = null
+
+[resource]
+script = ExtResource("1_table")
+base_table = ExtResource("2_base")
+rules = Array[ExtResource("3_rule")]([SubResource("EnemyDropRule_small_stone")])

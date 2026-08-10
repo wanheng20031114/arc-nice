@@ -279,14 +279,15 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 56, "The multiplayer protocol version must be 56.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v56 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 57, "The multiplayer protocol version must be 57.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v57 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 55))
+		not bool(net_manager.call("_is_protocol_version_compatible", 56))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 55))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 54))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 53))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 52))
@@ -338,7 +339,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v56 must reject v55 and all older or unversioned clients."
+		"Protocol v57 must reject v56 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -422,8 +423,9 @@ func _test_net_manager_game_mode_authority() -> void:
 		and int(NetManagerStore.GameMode.TEST_ARENA_P1) == 2
 		and int(NetManagerStore.GameMode.TEST_ARENA_P2) == 3
 		and int(NetManagerStore.GameMode.TEST_ARENA_P3) == 4
-		and int(NetManagerStore.GameMode.TEST_ARENA_P1B) == 5,
-		"P1B must append wire value 5 without renumbering existing game modes."
+		and int(NetManagerStore.GameMode.TEST_ARENA_P1B) == 5
+		and int(NetManagerStore.GameMode.TEST_ARENA_P1C) == 6,
+		"P1B/P1C must append wire values 5/6 without renumbering existing game modes."
 	)
 	for mode_contract in [
 		[NetManagerStore.GameMode.STANDARD, "standard", "普通模式"],
@@ -432,6 +434,7 @@ func _test_net_manager_game_mode_authority() -> void:
 		[NetManagerStore.GameMode.TEST_ARENA_P2, "test_arena_p2", "测试场景 P2"],
 		[NetManagerStore.GameMode.TEST_ARENA_P3, "test_arena_p3", "测试场景 P3 · 肉鸽路线"],
 		[NetManagerStore.GameMode.TEST_ARENA_P1B, "test_arena_p1b", "测试场景 P1B"],
+		[NetManagerStore.GameMode.TEST_ARENA_P1C, "test_arena_p1c", "测试场景 P1C"],
 	]:
 		var mode := int(mode_contract[0]) as NetManagerStore.GameMode
 		var key := str(mode_contract[1])

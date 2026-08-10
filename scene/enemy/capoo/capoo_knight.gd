@@ -288,7 +288,7 @@ func _apply_slash_damage() -> void:
 				player,
 				outgoing_damage,
 				_get_multiplayer_damage_source_id(action_sequence),
-				&"capoo_knight_slash"
+				_get_slash_damage_source_type()
 			)
 		elif plant != null:
 			plant.receive_damage(
@@ -474,6 +474,10 @@ func _uses_inherited_touch_damage() -> bool:
 func _get_attack_interval() -> float:
 	var knight_config := config as CapooKnightConfigScript
 	return maxf(knight_config.attack_interval, 0.01) if knight_config != null else 4.0
+
+
+func _get_slash_damage_source_type() -> StringName:
+	return &"capoo_knight_slash"
 
 
 func _get_move_speed() -> float:

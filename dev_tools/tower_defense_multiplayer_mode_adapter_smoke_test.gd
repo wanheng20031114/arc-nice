@@ -116,9 +116,9 @@ func _test_static_contract() -> void:
 		"TowerDefenseGame 必须显式注入并核验塔防 MultiplayerAdapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 56
+		NET_CONSTANTS.PROTOCOL_VERSION == 57
 		and GameModeCatalog.MODE_TOWER_DEFENSE == 1,
-		"塔防 wire=1 与协议 v56 必须保持冻结。"
+		"塔防 wire=1 与协议 v57 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")
@@ -171,8 +171,9 @@ func _test_host_binding_and_authority_bridges() -> void:
 	_expect(
 		adapter.accepts_game_mode_id(GameModeCatalog.MODE_TOWER_DEFENSE)
 		and adapter.accepts_game_mode_id(GameModeCatalog.MODE_TEST_ARENA_P2)
+		and adapter.accepts_game_mode_id(GameModeCatalog.MODE_TEST_ARENA_P1C)
 		and not adapter.accepts_game_mode_id(GameModeCatalog.MODE_STANDARD),
-		"塔防 Adapter 只能接受塔防及其三个稳定测试场 wire。"
+		"塔防 Adapter 只能接受塔防及其四个稳定测试场 wire。"
 	)
 
 	var flow_events: Array[Array] = []

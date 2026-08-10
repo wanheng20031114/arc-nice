@@ -137,6 +137,7 @@ func _test_loading_scene_contract() -> void:
 	_expect(manifest.size() == 1, "Loading manifest must deduplicate player scenes.")
 	var test_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn"
 	var test_p1b_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn"
+	var test_p1c_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1c.tscn"
 	var test_p2_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_scene_path))
@@ -159,6 +160,13 @@ func _test_loading_scene_contract() -> void:
 	_expect(
 		float(coordinator.call("_get_resource_weight", test_p1b_scene_path)) == 7.0,
 		"Test-arena P1B scene must use the tower-defense scene loading weight."
+	)
+	_expect(
+		str(coordinator.call("_get_singleplayer_campaign_path", test_p1c_scene_path))
+		== "res://resources/config/campaigns/test_arena/p1c/singleplayer/campaign.tres"
+		and bool(coordinator.call("_uses_tower_defense_runtime", test_p1c_scene_path))
+		and float(coordinator.call("_get_resource_weight", test_p1c_scene_path)) == 7.0,
+		"Test-arena P1C loading must use its cardboard campaign and tower-defense profile."
 	)
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_p2_scene_path))
@@ -193,6 +201,11 @@ func _test_loading_scene_contract() -> void:
 			NetManagerStore.GameMode.TEST_ARENA_P1B,
 			test_p1b_scene_path,
 			"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P1C,
+			test_p1c_scene_path,
+			"res://resources/config/campaigns/test_arena/p1c/multiplayer/campaign.tres",
 		],
 		[
 			NetManagerStore.GameMode.TEST_ARENA_P2,
@@ -561,6 +574,11 @@ func _test_mp_game_preparation_barrier() -> void:
 			NetManagerStore.GameMode.TEST_ARENA_P1B,
 			"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn",
 			"res://resources/config/campaigns/test_arena/p1b/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P1C,
+			"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1c.tscn",
+			"res://resources/config/campaigns/test_arena/p1c/multiplayer/campaign.tres",
 		],
 		[
 			NetManagerStore.GameMode.TEST_ARENA_P2,

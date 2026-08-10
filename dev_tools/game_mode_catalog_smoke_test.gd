@@ -1,7 +1,7 @@
 extends SceneTree
 
 const CATALOG_PATH := "res://scene/game_modes/game_mode_catalog.tres"
-const EXPECTED_MODE_IDS := [0, 1, 2, 3, 4, 5]
+const EXPECTED_MODE_IDS := [0, 1, 2, 3, 4, 5, 6]
 const EXPECTED_WIRE_KEYS := [
 	"standard",
 	"tower_defense",
@@ -9,8 +9,9 @@ const EXPECTED_WIRE_KEYS := [
 	"test_arena_p2",
 	"test_arena_p3",
 	"test_arena_p1b",
+	"test_arena_p1c",
 ]
-const EXPECTED_LOBBY_ORDER := [0, 1, 2, 5, 3, 4]
+const EXPECTED_LOBBY_ORDER := [0, 1, 2, 5, 6, 3, 4]
 
 var failures := PackedStringArray()
 
@@ -76,6 +77,7 @@ func _run() -> void:
 	var tower_definition := GameModeCatalog.get_definition(1)
 	var p1_definition := GameModeCatalog.get_definition(2)
 	var p1b_definition := GameModeCatalog.get_definition(5)
+	var p1c_definition := GameModeCatalog.get_definition(6)
 	var p2_definition := GameModeCatalog.get_definition(3)
 	var standard_definition := GameModeCatalog.get_definition(0)
 	_expect(
@@ -84,14 +86,14 @@ func _run() -> void:
 		== "res://scene/game_modes/standard/multiplayer/standard_multiplayer_session.tscn",
 		"Standard mode must own its multiplayer session entry."
 	)
-	for definition in [tower_definition, p1_definition, p1b_definition, p2_definition]:
+	for definition in [tower_definition, p1_definition, p1b_definition, p1c_definition, p2_definition]:
 		_expect(
 			definition != null
 			and definition.multiplayer_entry_scene_path
 			== "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_session.tscn",
 			"Tower-defense modes must share the tower-defense session entry."
 		)
-	for definition in [tower_definition, p1_definition, p1b_definition, p2_definition]:
+	for definition in [tower_definition, p1_definition, p1b_definition, p1c_definition, p2_definition]:
 		var preload_paths := GameModeCatalog.get_preload_resource_paths(definition)
 		_expect(
 			preload_paths.size() == 51,

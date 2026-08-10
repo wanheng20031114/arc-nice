@@ -19,6 +19,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/capoo_smg.tres"),
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
+	preload("res://resources/config/enemies/cardboard_monster.tres"),
 	preload("res://resources/config/enemies/combat_robot.tres"),
 	preload("res://resources/config/enemies/combat_robot_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
@@ -129,6 +130,7 @@ const SORCERER_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 const ARTIFICIAL_CREATION_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
+	preload("res://resources/config/enemies/cardboard_monster.tres"),
 ]
 const MECHANICAL_LIFE_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot.tres"),
@@ -156,6 +158,9 @@ const SLIME_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 ]
 const DEFAULT_ENEMY_DROP_TABLE: EnemyDropTable = preload(
 	"res://resources/config/enemies/default_enemy_drop_table.tres"
+)
+const STONE_GOLEM_DROP_TABLE: EnemyDropTable = preload(
+	"res://resources/config/enemies/stone_golem_drop_table.tres"
 )
 const LINGLAN_BOSS_CONFIG: EnemyConfig = preload(
 	"res://resources/config/enemies/linglan_boss.tres"
@@ -298,7 +303,6 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"res://resources/config/materials/material_capoo_blue_crystal.tres",
 		"res://resources/config/materials/material_sorcerer_violet_powder.tres",
 		"res://resources/config/materials/material_gel.tres",
-		"res://resources/config/materials/material_small_stone.tres",
 		"res://resources/config/pickup_triggered_items/speed_boots.tres",
 		"res://resources/config/pickup_triggered_items/rapid_magazine.tres",
 		"res://resources/config/pickup_triggered_items/tenpura.tres",
@@ -312,7 +316,6 @@ func _test_enemy_drop_and_category_contract() -> void:
 		# 紫粉未指定概率；暂按同为标签专属素材的蓝晶 1% 配置。
 		0.01,
 		0.02,
-		0.5,
 		0.004,
 		0.004,
 		0.004,
@@ -325,7 +328,6 @@ func _test_enemy_drop_and_category_contract() -> void:
 		PackedStringArray(["capoo"]),
 		PackedStringArray(["sorcerer"]),
 		PackedStringArray(["slime"]),
-		PackedStringArray(["artificial_creation"]),
 		PackedStringArray(),
 		PackedStringArray(),
 		PackedStringArray(),
@@ -333,7 +335,7 @@ func _test_enemy_drop_and_category_contract() -> void:
 	]
 	_expect(
 		DEFAULT_ENEMY_DROP_TABLE.rules.size() == expected_paths.size(),
-		"The shared enemy drop table must contain exactly eleven independent rules and no consumables."
+		"The shared enemy drop table must contain exactly ten independent rules and no consumables."
 	)
 	for index in range(
 		mini(DEFAULT_ENEMY_DROP_TABLE.rules.size(), expected_paths.size())
@@ -369,10 +371,24 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"slime": 0,
 		"stone_eroded": 0,
 	}
+	_expect(
+		STONE_GOLEM_DROP_TABLE.base_table == DEFAULT_ENEMY_DROP_TABLE
+		and STONE_GOLEM_DROP_TABLE.rules.size() == 1
+		and STONE_GOLEM_DROP_TABLE.rules[0].pickup_config.resource_path
+		== "res://resources/config/materials/material_small_stone.tres"
+		and is_equal_approx(STONE_GOLEM_DROP_TABLE.rules[0].chance, 0.5)
+		and STONE_GOLEM_DROP_TABLE.rules[0].required_tags.is_empty(),
+		"Stone golems must extend the shared default table with only the 50% small-stone rule."
+	)
 	for enemy_config in all_drop_configs:
+		var is_stone_golem := enemy_config.resource_path in [
+			"res://resources/config/enemies/stone_golem.tres",
+			"res://resources/config/enemies/stone_golem_elite.tres",
+		]
 		_expect(
-			enemy_config.drop_table == DEFAULT_ENEMY_DROP_TABLE,
-			"%s must inherit the complete shared table so global drops cannot be removed."
+			enemy_config.drop_table
+			== (STONE_GOLEM_DROP_TABLE if is_stone_golem else DEFAULT_ENEMY_DROP_TABLE),
+			"%s must use its exact authored shared drop-table contract."
 			% enemy_config.resource_path
 		)
 		for category_tag in enemy_config.category_tags:
@@ -421,8 +437,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the six normal and elite fire, frost, and lightning configs must carry the sorcerer category tag."
 	)
 	_expect(
-		int(category_counts["artificial_creation"]) == 2,
-		"Exactly the two stone golem configs must carry the artificial_creation category tag."
+		int(category_counts["artificial_creation"]) == 3,
+		"Exactly the two stone golems and cardboard monster must carry the artificial_creation category tag."
 	)
 	_expect(
 		int(category_counts["mechanical_life"]) == 10,

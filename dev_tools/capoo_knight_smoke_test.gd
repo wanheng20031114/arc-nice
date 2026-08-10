@@ -21,6 +21,40 @@ const EXPECTED_WAVE_TOTALS := [470, 440, 420, 400, 465, 480]
 const WINDUP_WARNING_ONLY_ARG := "--windup-warning-only"
 var failures: Array[String] = []
 var test_root: Node2D
+var fake_runtime: FakeCombatRuntime
+
+
+class FakeCombatRuntime:
+	extends CombatRuntimeBase
+
+	func configure_multiplayer(
+		_mode: int,
+		_local_peer_id: int,
+		_player_names: Dictionary,
+		_player_character_ids: Dictionary = {}
+	) -> void:
+		pass
+
+	func get_player_for_peer(_peer_id: int) -> Player:
+		return null
+
+	func get_enemy_for_net_id(_net_id: int) -> Enemy:
+		return null
+
+	func get_pickup_for_net_id(_net_id: int) -> Pickup:
+		return null
+
+	func remove_multiplayer_player(_peer_id: int) -> void:
+		pass
+
+	func collect_player_snapshot_states() -> Array[SnapshotManager.PlayerState]:
+		return []
+
+	func collect_enemy_snapshot_states() -> Array[SnapshotManager.EnemyState]:
+		return []
+
+	func play_remote_enemy_spawn_effect(_spawn_global_position: Vector2) -> void:
+		pass
 
 
 class FakePathfinder:
@@ -60,6 +94,8 @@ func _run() -> void:
 	test_root.name = "CapooKnightSmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
+	fake_runtime = FakeCombatRuntime.new()
+	fake_runtime.name = "CapooKnightSmokeRuntime"
 
 	if OS.get_cmdline_user_args().has(WINDUP_WARNING_ONLY_ARG):
 		await _test_windup_warning_geometry_and_progress()
@@ -79,6 +115,7 @@ func _run() -> void:
 		await _test_navigation_budget_retry_keeps_existing_path()
 		await _test_knight_touch_damage_remains_disabled()
 
+	fake_runtime.free()
 	test_root.queue_free()
 	await process_frame
 	await physics_frame
@@ -669,7 +706,7 @@ func _spawn_knight(position: Vector2, player: Player) -> CapooKnight:
 	var enemy := KNIGHT_SCENE.instantiate() as CapooKnight
 	test_root.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(KNIGHT_CONFIG, player)
+	enemy.setup(KNIGHT_CONFIG, player, null, fake_runtime)
 	return enemy
 
 
@@ -712,6 +749,10 @@ func _count_slash_effects() -> int:
 	for child in test_root.get_children():
 		if child is CapooKnightSlashEffect:
 			total += 1
+	if fake_runtime != null and is_instance_valid(fake_runtime):
+		for child in fake_runtime.get_children():
+			if child is CapooKnightSlashEffect:
+				total += 1
 	return total
 
 

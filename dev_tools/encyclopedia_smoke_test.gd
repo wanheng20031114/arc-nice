@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 61,
+	CodexSection.ENEMY: 62,
 	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 16,
 }
@@ -33,12 +33,12 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"slime": 10,
 	&"capoo": 16,
 	&"sorcerer": 6,
-	&"artificial_creation": 2,
+	&"artificial_creation": 3,
 	&"mechanical_life": 10,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
-	EnemyCodexEntryConfig.Rank.NORMAL: 49,
+	EnemyCodexEntryConfig.Rank.NORMAL: 50,
 	EnemyCodexEntryConfig.Rank.ELITE: 11,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
@@ -201,7 +201,7 @@ func _test_enemy_rank_counts(catalog: CodexCatalog) -> void:
 		actual_counts[source.rank] = int(actual_counts.get(source.rank, 0)) + 1
 	_expect(
 		actual_counts == EXPECTED_ENEMY_RANK_COUNTS,
-		"Enemy ranks must contain 49 normal, eleven elite, and one Boss entry."
+		"Enemy ranks must contain 50 normal, eleven elite, and one Boss entry."
 	)
 
 

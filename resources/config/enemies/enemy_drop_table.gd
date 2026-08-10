@@ -6,15 +6,34 @@ const EnemyDropRuleResource := preload(
 )
 
 
+@export var base_table: EnemyDropTable
 @export var rules: Array[EnemyDropRuleResource] = []
 
 
 func get_eligible_rules(tags: PackedStringArray) -> Array[EnemyDropRuleResource]:
 	var eligible_rules: Array[EnemyDropRuleResource] = []
+	_append_eligible_rules(tags, {}, eligible_rules)
+	return eligible_rules
+
+
+func _append_eligible_rules(
+	tags: PackedStringArray,
+	visited_tables: Dictionary,
+	eligible_rules: Array[EnemyDropRuleResource]
+) -> void:
+	var table_id := get_instance_id()
+	if visited_tables.has(table_id):
+		return
+	visited_tables[table_id] = true
+	if base_table != null:
+		base_table._append_eligible_rules(
+			tags,
+			visited_tables,
+			eligible_rules
+		)
 	for rule in rules:
 		if rule != null and rule.matches_tags(tags):
 			eligible_rules.append(rule)
-	return eligible_rules
 
 
 func resolve_drop_configs(

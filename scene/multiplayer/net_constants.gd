@@ -78,7 +78,10 @@ extends RefCounted
 ## v56：肉鸽“狭路相逢”作战将敌人组成、生成节奏、同时存活上限与红门
 ## 均衡随机策略统一收归波次资源，并将完整波次内容纳入运行时合同。
 ## RPC 表面与 8 个 ENet 通道不变；v55 客户端缺少新的资源与合同语义。
-const PROTOCOL_VERSION := 56
+## v57：新增测试场景 P1C 的稳定 wire 游戏模式值 6，并加入纸箱怪人工造物资源
+## 合同。RPC 表面、投射物类型、攻击来源 ID 与 8 个 ENet 通道均不变；v56
+## 客户端无法识别 P1C 房间或加载对应 Campaign 与敌人资源。
+const PROTOCOL_VERSION := 57
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

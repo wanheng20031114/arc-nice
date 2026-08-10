@@ -6,6 +6,9 @@ const TEST_GRASS_ARENA_SCENE_PATH := "res://scene/game_modes/tower_defense/test_
 const TEST_GRASS_ARENA_P1B_SCENE_PATH := (
 	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn"
 )
+const TEST_GRASS_ARENA_P1C_SCENE_PATH := (
+	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1c.tscn"
+)
 const TEST_GRASS_ARENA_P2_SCENE_PATH := (
 	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 )
@@ -145,7 +148,7 @@ func _test_main_menu_entry() -> void:
 		and test_choice_overlay.arena_selected.is_connected(
 			Callable(main_menu, "_on_test_arena_selected")
 		),
-		"Main menu must own and connect the P1A/P1B/P2/P3 test-arena selector."
+		"Main menu must own and connect the P1A/P1B/P1C/P2/P3 test-arena selector."
 	)
 	if test_choice_overlay == null or character_overlay == null:
 		return
@@ -161,6 +164,9 @@ func _test_main_menu_entry() -> void:
 	var p1b_button := test_choice_overlay.get_node(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/EnterButton"
 	) as Button
+	var p1c_button := test_choice_overlay.get_node(
+		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1C/PageMargin/Content/EnterButton"
+	) as Button
 	var p1b_description := test_choice_overlay.get_node(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/Description"
 	) as Label
@@ -173,8 +179,9 @@ func _test_main_menu_entry() -> void:
 	_expect(
 		p1a_button.text == "进入 P1A 史莱姆测试"
 		and p1b_button.text == "进入 P1B 机器人测试"
+		and p1c_button.text == "进入 P1C 纸箱怪测试"
 		and p2_button.text == "进入 P2 单日流程",
-		"Test selector must expose authored P1A, P1B and P2 actions."
+		"Test selector must expose authored P1A, P1B, P1C and P2 actions."
 	)
 	_expect(
 		p1b_description.text
@@ -226,6 +233,28 @@ func _test_main_menu_entry() -> void:
 		test_choice_overlay.is_open()
 		and test_choice_overlay.tabs.current_tab == TestArenaChoiceOverlay.P1B_TAB_INDEX,
 		"Backing out of P1B character selection must restore the P1B tab."
+	)
+	test_choice_overlay.close()
+	await process_frame
+
+	test_arena_button.pressed.emit()
+	await process_frame
+	tabs.current_tab = TestArenaChoiceOverlay.P1C_TAB_INDEX
+	await process_frame
+	p1c_button.pressed.emit()
+	await process_frame
+	_expect(
+		character_overlay.is_open()
+		and str(main_menu.call("_get_pending_singleplayer_scene_path"))
+		== TEST_GRASS_ARENA_P1C_SCENE_PATH,
+		"Selecting P1C must route character confirmation to its independent arena."
+	)
+	character_overlay.close()
+	await process_frame
+	_expect(
+		test_choice_overlay.is_open()
+		and test_choice_overlay.tabs.current_tab == TestArenaChoiceOverlay.P1C_TAB_INDEX,
+		"Backing out of P1C character selection must restore the P1C tab."
 	)
 	test_choice_overlay.close()
 	await process_frame
