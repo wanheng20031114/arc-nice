@@ -86,7 +86,9 @@ extends RefCounted
 ## 解释 Briefing schema 2、Encounter Session schema 4 或新的作战准备参数。
 ## v59：新增测试场景 P1D 的稳定 wire 游戏模式值 7，并加入地下教堂地图与
 ## 独立纸箱怪 Campaign 资源合同。v58 客户端无法识别 P1D 房间或加载对应资源。
-const PROTOCOL_VERSION := 59
+## v60：普通作战由单一配置升级为按节点内容种子确定性选择的带权资源池，并将
+## 完整普通作战池纳入楼层运行时合同。v59 客户端无法复算普通节点对应作战。
+const PROTOCOL_VERSION := 60
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

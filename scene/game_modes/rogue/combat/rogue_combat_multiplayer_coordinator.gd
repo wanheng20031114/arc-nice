@@ -4,13 +4,10 @@ class_name RogueCombatMultiplayerCoordinator
 ## 多人 Rouge 路线与一次性作战运行时之间的权威协调器。
 ##
 ## 此节点必须静态存在于 MpRogueRoute 场景中，保证所有 peer 的 RPC
-## NodePath 恒定。encounter 配置无效或未确认时，本节点不会连接路线的
+## NodePath 恒定。楼层普通作战池无效或未确认时，本节点不会连接路线的
 ## normal_combat_requested 信号，因此不会意外锁住测试地图。
 
 const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
-const DEFAULT_ENCOUNTER_CONFIG := preload(
-	"res://resources/config/rogue_combat/encounter_01.tres"
-)
 
 const COMBAT_RUNTIME_NODE_NAME := &"RogueCombatNetwork"
 const STANDARD_BATTLE_XIRANG := 1000
@@ -22,6 +19,8 @@ const TERMINAL_BARRIER_TIMEOUT_MSEC := 15_000
 const TERMINAL_SPECTATOR_SYNC_TIMEOUT_MSEC := 30_000
 const SUITCASE_COMBAT_CONFIG_ID := &"suitcase_battle"
 const SUITCASE_ELITE_BULLET_POOL_CAPACITY := 480
+const UNDERGROUND_CHURCH_COMBAT_CONFIG_ID := &"underground_church_01"
+const UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY := 240
 const CLIENT_PREPARATION_ABORT_REASONS := {
 	&"local_config_disabled": true,
 	&"config_mismatch": true,
@@ -39,10 +38,6 @@ enum ProtocolPhase {
 	ACTIVE,
 	SETTLED,
 }
-
-@export var encounter_config: RogueCombatEncounterConfig = (
-	DEFAULT_ENCOUNTER_CONFIG
-)
 
 var _route: RogueRouteGame = null
 var _net_manager: NetManagerStore = null
@@ -124,9 +119,7 @@ func bind_network_dependencies(
 	_route = route_instance
 	_net_manager = net_manager_instance
 	_run_state = run_state_instance
-	_enabled = (
-		is_config_enabled_for_multiplayer(encounter_config)
-	)
+	_enabled = _has_enabled_multiplayer_combat_pool(_route)
 	set_multiplayer_authority(_get_host_peer_id())
 	if not _enabled:
 		return
@@ -314,6 +307,27 @@ static func is_config_enabled_for_multiplayer(
 	)
 
 
+static func _has_enabled_multiplayer_combat_pool(
+	route_instance: RogueRouteGame
+) -> bool:
+	if (
+		route_instance == null
+		or route_instance.floor_definition == null
+		or route_instance.floor_definition.normal_combat_pool == null
+		or not route_instance.floor_definition.normal_combat_pool.is_ready_to_enable()
+	):
+		return false
+	var configs := (
+		route_instance.floor_definition.get_sorted_normal_combat_configs()
+	)
+	if configs.is_empty():
+		return false
+	for config in configs:
+		if not is_config_enabled_for_multiplayer(config):
+			return false
+	return true
+
+
 ## 复制完整 occurrence 资源图，调用方可安全修改而不污染共享 .tres。
 static func build_occurrence_campaign(
 	config: RogueCombatEncounterConfig,
@@ -474,24 +488,17 @@ func _begin_protocol(
 	participant_peer_ids: PackedInt32Array,
 	entry_xirang_by_peer: Dictionary,
 	activate_when_prepared: bool,
-	combat_config_id: StringName = &"",
-	resolved_config: RogueCombatEncounterConfig = null
+	combat_config_id: StringName,
+	resolved_config: RogueCombatEncounterConfig
 ) -> bool:
-	var protocol_config: RogueCombatEncounterConfig = (
-		resolved_config if resolved_config != null else encounter_config
-	)
-	var protocol_config_id: StringName = (
-		combat_config_id
-		if combat_config_id != &""
-		else protocol_config.encounter_id if protocol_config != null else &""
-	)
 	if (
 		_phase != ProtocolPhase.IDLE
 		or node_id < 0
 		or occurrence_key.is_empty()
 		or participant_peer_ids.is_empty()
-		or protocol_config_id == &""
-		or not is_config_enabled_for_multiplayer(protocol_config)
+		or combat_config_id == &""
+		or not is_config_enabled_for_multiplayer(resolved_config)
+		or resolved_config.encounter_id != combat_config_id
 	):
 		return false
 	_discard_pending_terminal_spectator_syncs_except(occurrence_key)
@@ -500,8 +507,8 @@ func _begin_protocol(
 	_active_node_id = node_id
 	_active_content_seed = content_seed
 	_active_occurrence_key = occurrence_key
-	_active_combat_config_id = protocol_config_id
-	_active_encounter_config = protocol_config
+	_active_combat_config_id = combat_config_id
+	_active_encounter_config = resolved_config
 	_active_config_signature = _make_config_signature(_active_encounter_config)
 	_participant_peer_ids = _index_peer_ids(participant_peer_ids)
 	_entry_xirang_by_peer = entry_xirang_by_peer.duplicate(true)
@@ -731,6 +738,12 @@ func _configure_occurrence_runtime() -> bool:
 			_combat_game.session_object_pool,
 			SUITCASE_ELITE_BULLET_POOL_CAPACITY,
 			SUITCASE_ELITE_BULLET_POOL_CAPACITY
+		)
+	elif _active_combat_config_id == UNDERGROUND_CHURCH_COMBAT_CONFIG_ID:
+		CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(
+			_combat_game.session_object_pool,
+			UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY,
+			UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY
 		)
 	_apply_xirang_map_to_game(_combat_game, _entry_xirang_by_peer)
 	for raw_peer_id in _participant_peer_ids.keys():

@@ -2,15 +2,18 @@
 extends Resource
 class_name RogueRouteFloorDefinition
 
-const RUNTIME_CONTRACT_SCHEMA := 5
-const CONTENT_CONTRACT_SCHEMA := 2
+const RUNTIME_CONTRACT_SCHEMA := 6
+const CONTENT_CONTRACT_SCHEMA := 3
+const COMBAT_POOL_SCRIPT := preload(
+	"res://resources/config/rogue_combat/rogue_combat_pool_config.gd"
+)
 
 @export var floor_id: StringName = &""
 @export var display_name := ""
 @export var generation_config: RogueRouteGenerationConfig
 @export var world_metrics: RogueRouteWorldMetrics
 @export var background_texture: Texture2D
-@export var default_combat_config: RogueCombatEncounterConfig
+@export var normal_combat_pool: COMBAT_POOL_SCRIPT
 @export var special_combat_configs: Array[RogueCombatEncounterConfig] = []
 @export var underground_shop_config: RogueUndergroundShopConfig
 
@@ -33,10 +36,11 @@ func validate_definition() -> PackedStringArray:
 		errors.append("路线楼层缺少 background_texture。")
 	elif background_texture.get_width() <= 0 or background_texture.get_height() <= 0:
 		errors.append("路线楼层背景纹理尺寸无效。")
-	if default_combat_config == null:
-		errors.append("路线楼层缺少 default_combat_config。")
+	if normal_combat_pool == null:
+		errors.append("路线楼层缺少 normal_combat_pool。")
 	else:
-		errors.append_array(default_combat_config.validate_config())
+		errors.append_array(normal_combat_pool.validate_config())
+		_validate_normal_combat_pool_binding(errors)
 	_validate_special_combat_configs(errors)
 	if underground_shop_config == null:
 		errors.append("路线楼层缺少 underground_shop_config。")
@@ -62,7 +66,7 @@ func compute_runtime_contract_hash() -> String:
 	var generation_hash := generation_config.compute_runtime_contract_hash(
 		world_metrics
 	)
-	var combat_hash := _compute_default_combat_runtime_contract_hash()
+	var combat_hash := normal_combat_pool.compute_runtime_contract_hash()
 	var special_combat_hashes := _compute_special_combat_runtime_contracts()
 	var shop_hash := underground_shop_config.compute_runtime_contract_hash()
 	var rare_chest_hash := RogueRareChestRegistry.compute_runtime_contract_hash()
@@ -84,7 +88,7 @@ func compute_runtime_contract_hash() -> String:
 		% generation_config.empty_cluster_strength,
 		"extra_edge_ratio=%.6f" % generation_config.extra_edge_ratio,
 		"initial_action_points=%d" % generation_config.initial_action_points,
-		"combat=%s" % combat_hash,
+		"normal_combat_pool=%s" % combat_hash,
 		"special_combat_count=%d" % special_combat_hashes.size(),
 		"underground_shop=%s" % shop_hash,
 		"rare_chest=%s" % rare_chest_hash,
@@ -129,26 +133,48 @@ func compute_content_contract_hash() -> String:
 				"node_icon=%d:%s"
 				% [type_config.node_type, _resource_path(type_config.icon)]
 			)
+	for config in get_sorted_normal_combat_configs():
+		parts.append(_combat_content_contract("normal_combat", config))
+	for config in get_sorted_special_combat_configs():
+		parts.append(_combat_content_contract("special_combat", config))
 	return "\n".join(parts).sha256_text()
 
 
-func _compute_default_combat_runtime_contract_hash() -> String:
-	var config := default_combat_config
-	if config == null:
-		return ""
-	return config.compute_runtime_contract_hash()
-
-
-## 统一解析当前楼层的默认作战与特殊作战配置。
+## 统一解析当前楼层的普通作战池与特殊作战配置。
 func get_combat_config(config_id: StringName) -> RogueCombatEncounterConfig:
 	if config_id == &"":
 		return null
-	if (
-		default_combat_config != null
-		and default_combat_config.encounter_id == config_id
-	):
-		return default_combat_config
+	if normal_combat_pool != null:
+		var normal_config := normal_combat_pool.get_combat_config(config_id)
+		if normal_config != null:
+			return normal_config
 	return get_special_combat_config(config_id)
+
+
+func get_normal_combat_config(
+	config_id: StringName
+) -> RogueCombatEncounterConfig:
+	if normal_combat_pool == null:
+		return null
+	return normal_combat_pool.get_combat_config(config_id)
+
+
+func select_normal_combat_config(
+	node_content_seed: int
+) -> RogueCombatEncounterConfig:
+	if normal_combat_pool == null:
+		return null
+	return normal_combat_pool.select_config(node_content_seed)
+
+
+func get_sorted_normal_combat_configs() -> Array[RogueCombatEncounterConfig]:
+	var result: Array[RogueCombatEncounterConfig] = []
+	if normal_combat_pool == null:
+		return result
+	for entry in normal_combat_pool.get_sorted_entries():
+		if entry != null and entry.combat_config != null:
+			result.append(entry.combat_config)
+	return result
 
 
 func get_special_combat_config(
@@ -182,12 +208,9 @@ func _validate_special_combat_configs(errors: PackedStringArray) -> void:
 		var config_id := config.encounter_id
 		if config_id == &"":
 			continue
-		if (
-			default_combat_config != null
-			and config_id == default_combat_config.encounter_id
-		):
+		if get_normal_combat_config(config_id) != null:
 			errors.append(
-				"路线楼层特殊作战 ID 与默认作战重复：%s。"
+				"路线楼层特殊作战 ID 与普通作战池重复：%s。"
 				% String(config_id)
 			)
 		if seen_ids.has(config_id):
@@ -208,10 +231,7 @@ func _compute_special_combat_runtime_contracts() -> PackedStringArray:
 			or not config.is_ready_to_enable()
 			or config.encounter_id == &""
 			or seen_ids.has(config.encounter_id)
-			or (
-				default_combat_config != null
-				and config.encounter_id == default_combat_config.encounter_id
-			)
+			or get_normal_combat_config(config.encounter_id) != null
 		):
 			return PackedStringArray()
 		var config_hash := config.compute_runtime_contract_hash()
@@ -223,6 +243,64 @@ func _compute_special_combat_runtime_contracts() -> PackedStringArray:
 			% [String(config.encounter_id), config_hash]
 		)
 	return result
+
+
+func _validate_normal_combat_pool_binding(errors: PackedStringArray) -> void:
+	if generation_config == null or normal_combat_pool == null:
+		return
+	var type_config := generation_config.get_type_config(
+		RogueRouteGraph.NodeType.NORMAL_COMBAT
+	)
+	if type_config == null:
+		errors.append("路线楼层缺少普通作战节点类型配置。")
+	elif type_config.content_pool_id != normal_combat_pool.pool_id:
+		errors.append(
+			"普通作战节点内容池与楼层作战池不一致：%s != %s。" % [
+				String(type_config.content_pool_id),
+				String(normal_combat_pool.pool_id),
+			]
+		)
+
+
+func _combat_content_contract(
+	kind: String,
+	config: RogueCombatEncounterConfig
+) -> String:
+	if config == null:
+		return "%s=null" % kind
+	return "%s=%s:%s:%s:%s" % [
+		kind,
+		String(config.encounter_id),
+		config.event_title,
+		config.objective_text,
+		_texture_content_contract(config.briefing_visual),
+	]
+
+
+func _texture_content_contract(texture: Texture2D) -> String:
+	if texture == null:
+		return "null"
+	if texture is AtlasTexture:
+		var atlas_texture := texture as AtlasTexture
+		var region := atlas_texture.region
+		var margin := atlas_texture.margin
+		return "atlas(%s|%.6f,%.6f,%.6f,%.6f|%.6f,%.6f,%.6f,%.6f|%d)" % [
+			_resource_path(atlas_texture.atlas),
+			region.position.x,
+			region.position.y,
+			region.size.x,
+			region.size.y,
+			margin.position.x,
+			margin.position.y,
+			margin.size.x,
+			margin.size.y,
+			int(atlas_texture.filter_clip),
+		]
+	return "texture(%s|%d,%d)" % [
+		_resource_path(texture),
+		texture.get_width(),
+		texture.get_height(),
+	]
 
 
 func _special_combat_config_less(
@@ -242,7 +320,7 @@ func _has_contract_inputs() -> bool:
 		and generation_config != null
 		and world_metrics != null
 		and background_texture != null
-		and default_combat_config != null
+		and normal_combat_pool != null
 		and underground_shop_config != null
 	)
 

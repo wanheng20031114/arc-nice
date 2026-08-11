@@ -504,7 +504,7 @@ theme_override_colors/font_color = Color(0.96, 0.91, 0.7, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "P1D · 地下教堂纸箱怪测试"
+text = "P1D · 地下教会纸箱怪测试"
 
 [node name="Description" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1D/PageMargin/Content"]
 layout_mode = 2
@@ -513,7 +513,7 @@ theme_override_colors/font_color = Color(0.82, 0.86, 0.79, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "在新的地下教堂地图中连续生成纸箱怪，每3秒1只，用于验证完整背景、墙体与出生点。"
+text = "在新的地下教会地图中连续生成纸箱怪，每3秒1只，用于验证完整背景、墙体与出生点。"
 autowrap_mode = 2
 
 [node name="Focus" type="Label" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1D/PageMargin/Content"]
@@ -523,7 +523,7 @@ theme_override_colors/font_color = Color(0.52, 0.68, 0.59, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxEmpty_label_padding")
-text = "适合验证：20×20地下教堂地图、墙体寻路、三门生成与纸箱怪持续追踪"
+text = "适合验证：20×20地下教会地图、墙体寻路、三门生成与纸箱怪持续追踪"
 
 [node name="Spacer" type="Control" parent="Root/Center/Panel/PanelMargin/Layout/Tabs/P1D/PageMargin/Content"]
 custom_minimum_size = Vector2(0, 6)
@@ -541,7 +541,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_button_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/focus = SubResource("StyleBoxFlat_focus")
-text = "进入 P1D 地下教堂测试"
+text = "进入 P1D 地下教会测试"
 
 [node name="P2" type="MarginContainer" parent="Root/Center/Panel/PanelMargin/Layout/Tabs"]
 visible = false

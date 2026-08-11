@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scene/lighting/underground_church_wall_torch.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://resources/texture/lighting/underground_church_wall_torch.png" id="2_texture"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="3_night_light"]
+
+[node name="UndergroundChurchWallTorch" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="Sprite" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(0, -12)
+texture = ExtResource("2_texture")
+
+[node name="NightPointLight" parent="." instance=ExtResource("3_night_light")]
+position = Vector2(0, -18)
+color = Color(1, 0.58, 0.26, 1)
+texture_scale = 0.42
+night_energy = 0.36

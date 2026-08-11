@@ -1,9 +1,10 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn" id="1_p1a"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1d.tres" id="2_mode_definition"]
 [ext_resource type="Texture2D" uid="uid://d18lghok7cs8w" path="res://resources/texture/rogue_combat/underground_church/underground_church_background.png" id="3_background"]
 [ext_resource type="Texture2D" path="res://resources/texture/瓦片.png" id="4_nav_texture"]
+[ext_resource type="PackedScene" path="res://scene/lighting/underground_church_wall_torch_layout.tscn" id="5_torch_layout"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_church_nav"]
 texture = ExtResource("4_nav_texture")
@@ -52,13 +53,15 @@ size = Vector2(67, 32)
 mode_definition = ExtResource("2_mode_definition")
 test_scene_label = "P1D"
 test_entry_announcement_text = "测试场景 P1D"
-test_environment_title = "地下教堂测试场景"
+test_environment_title = "地下教会测试场景"
 
 [node name="UndergroundChurchBackground" type="Sprite2D" parent="."]
 z_index = -10
 texture_filter = 1
 position = Vector2(160, 128)
 texture = ExtResource("3_background")
+
+[node name="UndergroundChurchWallTorchLayout" parent="." instance=ExtResource("5_torch_layout")]
 
 [node name="GroundTileMapLayer" parent="." index="8"]
 visible = false
@@ -145,4 +148,4 @@ position = Vector2(51.5, 228)
 shape = SubResource("RectangleShape2D_lower_left")
 
 [node name="Hint" parent="TestControlsHint" index="0"]
-text = "地下教堂测试场景 P1D｜当前：白天\nT：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"
+text = "地下教会测试场景 P1D｜当前：白天\nT：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"

@@ -17,8 +17,8 @@ const INVALID_NODE_ID := -1
 const BATTLE_NODE_NAME := "RogueCombatBattle"
 const SUITCASE_COMBAT_CONFIG_ID := &"suitcase_battle"
 const SUITCASE_ELITE_BULLET_POOL_CAPACITY := 480
-
-@export var encounter_config: RogueCombatEncounterConfig
+const UNDERGROUND_CHURCH_COMBAT_CONFIG_ID := &"underground_church_01"
+const UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY := 240
 
 var route: RogueRouteGame = null
 var active_battle: RogueCombatGame = null
@@ -42,10 +42,7 @@ func _ready() -> void:
 	if (
 		parent_route == null
 		or not parent_route.manage_return_locally
-		or encounter_config == null
-		or not encounter_config.is_ready_to_enable()
-		or encounter_config.support_singleplayer
-		!= RogueCombatEncounterConfig.Decision.YES
+		or not _has_enabled_singleplayer_combat_pool(parent_route)
 	):
 		return
 	route = parent_route
@@ -54,6 +51,32 @@ func _ready() -> void:
 	route.host_layout_committed.connect(_on_host_layout_committed)
 	route.normal_combat_stage_reset.connect(_on_normal_combat_stage_reset)
 	_enabled = true
+
+
+static func _has_enabled_singleplayer_combat_pool(
+	parent_route: RogueRouteGame
+) -> bool:
+	if (
+		parent_route == null
+		or parent_route.floor_definition == null
+		or parent_route.floor_definition.normal_combat_pool == null
+		or not parent_route.floor_definition.normal_combat_pool.is_ready_to_enable()
+	):
+		return false
+	var configs := (
+		parent_route.floor_definition.get_sorted_normal_combat_configs()
+	)
+	if configs.is_empty():
+		return false
+	for config in configs:
+		if (
+			config == null
+			or not config.is_ready_to_enable()
+			or config.support_singleplayer
+			!= RogueCombatEncounterConfig.Decision.YES
+		):
+			return false
+	return true
 
 
 func _exit_tree() -> void:
@@ -174,6 +197,15 @@ func _on_combat_requested(
 			battle.session_object_pool,
 			SUITCASE_ELITE_BULLET_POOL_CAPACITY,
 			SUITCASE_ELITE_BULLET_POOL_CAPACITY
+		)
+	elif (
+		_active_encounter_config.encounter_id
+		== UNDERGROUND_CHURCH_COMBAT_CONFIG_ID
+	):
+		CombatRuntimeBase.register_combat_robot_gunner_bullet_pool(
+			battle.session_object_pool,
+			UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY,
+			UNDERGROUND_CHURCH_GUNNER_BULLET_POOL_CAPACITY
 		)
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	if run_state != null:

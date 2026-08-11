@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scene/lighting/underground_church_wall_torch.tscn" id="1_torch"]
+
+[node name="UndergroundChurchWallTorchLayout" type="Node2D"]
+
+[node name="UpperLeftTorch" parent="." instance=ExtResource("1_torch")]
+position = Vector2(104, 52)
+half_cycle_seconds = 1.35
+
+[node name="UpperRightTorch" parent="." instance=ExtResource("1_torch")]
+position = Vector2(216, 52)
+half_cycle_seconds = 1.55
+
+[node name="LowerTorch" parent="." instance=ExtResource("1_torch")]
+position = Vector2(160, 256)
+half_cycle_seconds = 1.75

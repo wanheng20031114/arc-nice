@@ -551,6 +551,14 @@ func _test_normal_combat_schema_two_compatibility(fixture: Dictionary) -> void:
 	)
 	host.route_board.complete_entry_reveal()
 	var combat_node_id := int(fixture["combat_node_id"])
+	var expected_config := host.resolve_normal_combat_config_for_node(
+		combat_node_id
+	)
+	_expect(expected_config != null, "普通作战节点必须能稳定解析池内配置。")
+	if expected_config == null:
+		_cleanup_route(host)
+		await process_frame
+		return
 	var before := host.export_state_snapshot()
 	var unified_starts: Array[Dictionary] = []
 	var legacy_starts: Array[bool] = []
@@ -583,11 +591,53 @@ func _test_normal_combat_schema_two_compatibility(fixture: Dictionary) -> void:
 		and StringName(presented.get("source_kind", &""))
 		== RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT
 		and StringName(presented.get("combat_config_id", &""))
-		== &"narrow_road_01"
+		== expected_config.encounter_id
 		and str(presented.get("source_encounter_occurrence_key", "")).is_empty()
 		and host.node_briefing.can_cancel(),
-		"普通作战必须继续使用 schema 2 default_combat，并保持可取消。"
+		"普通作战必须继续使用 schema 2 default_combat，并携带种子选中的配置且保持可取消。"
 	)
+	var forged_presented := presented.duplicate(true)
+	forged_presented["combat_config_id"] = (
+		"underground_church_01"
+		if expected_config.encounter_id == &"narrow_road_01"
+		else "narrow_road_01"
+	)
+	_expect(
+		not bool(host.call(
+			"_validate_briefing_state_against",
+			forged_presented,
+			host.get("_route_graph"),
+			host.get("_runtime_state"),
+			host.export_encounter_snapshot()
+		)),
+		"普通作战简报必须拒绝池内有效但不属于该节点种子结果的 config_id。"
+	)
+	var valid_client := _new_route(false)
+	var forged_client := _new_route(false)
+	await process_frame
+	var presented_state := host.export_state_snapshot()
+	var forged_state := presented_state.duplicate(true)
+	(forged_state["briefing_state"] as Dictionary)["combat_config_id"] = (
+		forged_presented["combat_config_id"]
+	)
+	_expect(
+		valid_client.apply_full_snapshot(
+			host.export_layout_snapshot(),
+			presented_state
+		)
+		and valid_client.node_briefing.visible
+		and StringName(valid_client.export_briefing_state_snapshot().get(
+			"combat_config_id",
+			&""
+		)) == expected_config.encounter_id
+		and not forged_client.apply_full_snapshot(
+			host.export_layout_snapshot(),
+			forged_state
+		),
+		"普通作战完整快照必须以包内图布局复算池选配置，并拒绝伪造 ID。"
+	)
+	_cleanup_route(valid_client)
+	_cleanup_route(forged_client)
 	host.combat_scene_transition.visible = true
 	host.call("_on_node_briefing_confirmed")
 	var entering := host.export_briefing_state_snapshot()
@@ -602,11 +652,11 @@ func _test_normal_combat_schema_two_compatibility(fixture: Dictionary) -> void:
 		and legacy_starts.size() == 1
 		and int(unified_starts[0].get("node_id", -1)) == combat_node_id
 		and StringName(unified_starts[0].get("combat_config_id", &""))
-		== &"narrow_road_01"
+		== expected_config.encounter_id
 		and int(host.export_state_snapshot().get("action_points", -1))
 		== int(before.get("action_points", -1))
 		- host.generation_config.move_action_cost,
-		"普通狭路相逢仍须同时发出统一/兼容信号，并按原规则移动与扣 AP。"
+		"池选普通作战仍须同时发出统一/兼容信号，并按原规则移动与扣 AP。"
 	)
 	_cleanup_route(host)
 	await process_frame

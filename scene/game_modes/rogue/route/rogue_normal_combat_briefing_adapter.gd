@@ -1,9 +1,6 @@
 extends "res://scene/game_modes/rogue/route/rogue_route_node_briefing_adapter.gd"
 class_name RogueNormalCombatBriefingAdapter
 
-const DEFAULT_HERO_VISUAL_PATH := (
-	"res://resources/texture/rogue_route/normal_combat_briefing_visual.png"
-)
 const COMMON_COLLECTIBLE_REWARD_TEXT := "随机 1 件普通收藏品"
 const PRIMARY_ACTION_TEXT := "进入作战"
 
@@ -17,11 +14,6 @@ func _init(
 ) -> void:
 	encounter_config = new_encounter_config
 	hero_visual = new_hero_visual
-	if (
-		hero_visual == null
-		and ResourceLoader.exists(DEFAULT_HERO_VISUAL_PATH, "Texture2D")
-	):
-		hero_visual = load(DEFAULT_HERO_VISUAL_PATH) as Texture2D
 
 
 func get_node_type() -> int:

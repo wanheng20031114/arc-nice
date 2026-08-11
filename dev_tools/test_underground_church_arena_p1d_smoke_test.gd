@@ -60,6 +60,7 @@ func _run() -> void:
 
 	_test_scene_contract(arena)
 	_test_authored_map_contract(arena)
+	_test_torch_layout_contract(arena)
 	_test_navigation_wall_contract(arena)
 	_test_spawn_and_home_routes(arena)
 	_test_campaign_contract(SINGLEPLAYER_CAMPAIGN, "单人")
@@ -91,14 +92,14 @@ func _test_scene_contract(arena: TestGrassArena) -> void:
 	_expect(
 		arena.test_scene_label == "P1D"
 		and arena.test_entry_announcement_text == "测试场景 P1D"
-		and arena.test_environment_title == "地下教堂测试场景"
+		and arena.test_environment_title == "地下教会测试场景"
 		and not arena.day_phase_announcements_enabled
 		and arena.sandbox_free_building_enabled,
 		"P1D 必须保留 P1 测试运行时，并显示地下教堂环境标题。"
 	)
 	_expect(
 		arena.test_controls_hint.text.begins_with(
-			"地下教堂测试场景 P1D｜当前：白天"
+			"地下教会测试场景 P1D｜当前：白天"
 		),
 		"P1D 控制提示不得继续显示草地环境名。"
 	)
@@ -167,6 +168,40 @@ func _test_authored_map_contract(arena: TestGrassArena) -> void:
 		home_controller.get_home_gate_cells() == EXPECTED_HOME_GATE_CELLS,
 		"P1D 逻辑核心门必须 authored 在墙内侧的(2,7)/(2,8)。"
 	)
+
+
+func _test_torch_layout_contract(arena: TestGrassArena) -> void:
+	var layout := arena.get_node_or_null(
+		"UndergroundChurchWallTorchLayout"
+	) as Node2D
+	_expect(layout != null, "P1D 必须复用正式地下教会三火把布局。")
+	if layout == null:
+		return
+	var expected: Dictionary[StringName, Array] = {
+		&"UpperLeftTorch": [Vector2(104, 52), 1.35],
+		&"UpperRightTorch": [Vector2(216, 52), 1.55],
+		&"LowerTorch": [Vector2(160, 256), 1.75],
+	}
+	_expect(layout.get_child_count() == 3, "P1D 必须恰好实例化三盏火把。")
+	for torch_name in expected:
+		var torch := layout.get_node_or_null(
+			NodePath(String(torch_name))
+		) as UndergroundChurchWallTorch
+		var authored: Array = expected[torch_name]
+		_expect(
+			torch != null
+			and torch.position.is_equal_approx(authored[0] as Vector2)
+			and is_equal_approx(
+				torch.half_cycle_seconds,
+				float(authored[1]),
+			),
+			"P1D 火把 %s 必须保持正式布局坐标和异步周期。" % torch_name,
+		)
+		if torch != null:
+			_expect(
+				is_zero_approx(torch.night_light.energy),
+				"P1D 默认白天时火把 %s 的光源必须关闭。" % torch_name,
+			)
 
 
 func _test_navigation_wall_contract(arena: TestGrassArena) -> void:

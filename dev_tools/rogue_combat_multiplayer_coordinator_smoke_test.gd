@@ -3,8 +3,17 @@ extends SceneTree
 const COORDINATOR := preload(
 	"res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd"
 )
+const SINGLE_COORDINATOR := preload(
+	"res://scene/game_modes/rogue/combat/rogue_combat_singleplayer_coordinator.gd"
+)
 const FORMAL_CONFIG := preload(
 	"res://resources/config/rogue_combat/encounter_01.tres"
+)
+const UNDERGROUND_CHURCH_CONFIG := preload(
+	"res://resources/config/rogue_combat/underground_church_01.tres"
+)
+const ROUTE_SCENE := preload(
+	"res://scene/game_modes/rogue/route/rogue_route_game.tscn"
 )
 
 var _failures: PackedStringArray = []
@@ -16,6 +25,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_confirmed_formal_config_is_enabled()
+	_test_floor_pool_enables_coordinator_without_bootstrap()
 	_test_occurrence_campaign_is_isolated()
 	_test_kill_reward_policy_is_explicit()
 	_test_config_signature_uses_complete_runtime_contract()
@@ -28,6 +38,43 @@ func _run() -> void:
 	for failure in _failures:
 		push_error(failure)
 	quit(1)
+
+
+func _test_floor_pool_enables_coordinator_without_bootstrap() -> void:
+	var route := ROUTE_SCENE.instantiate() as RogueRouteGame
+	_expect(
+		route != null
+		and COORDINATOR._has_enabled_multiplayer_combat_pool(route),
+		"多人协调器必须由楼层普通作战池启用。"
+	)
+	_expect(
+		route != null
+		and SINGLE_COORDINATOR._has_enabled_singleplayer_combat_pool(route),
+		"单人协调器必须由楼层普通作战池启用。"
+	)
+	_expect(
+		COORDINATOR.is_config_enabled_for_multiplayer(UNDERGROUND_CHURCH_CONFIG),
+		"地下教会配置必须支持多人作战。"
+	)
+	var source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/rogue/combat/rogue_combat_multiplayer_coordinator.gd"
+	)
+	var single_source := FileAccess.get_file_as_string(
+		"res://scene/game_modes/rogue/combat/rogue_combat_singleplayer_coordinator.gd"
+	)
+	_expect(
+		not source.contains("DEFAULT_ENCOUNTER_CONFIG")
+		and not source.contains("@export var encounter_config")
+		and not source.contains("else encounter_config"),
+		"多人协调器不得保留单一默认配置、编辑器导出或协议回退。"
+	)
+	_expect(
+		not single_source.contains("@export var encounter_config")
+		and not single_source.contains("default_combat_config"),
+		"单人协调器不得保留单一作战配置门禁或默认作战回退。"
+	)
+	if route != null:
+		route.free()
 
 
 func _test_confirmed_formal_config_is_enabled() -> void:

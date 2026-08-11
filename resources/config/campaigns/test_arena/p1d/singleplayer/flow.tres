@@ -5,6 +5,6 @@
 
 [resource]
 script = ExtResource("1_flow_script")
-graph_name = "地下教堂测试场景 P1D / 单人流程"
+graph_name = "地下教会测试场景 P1D / 单人流程"
 start_step = ExtResource("2_wave")
 steps = Array[Resource]([ExtResource("2_wave")])

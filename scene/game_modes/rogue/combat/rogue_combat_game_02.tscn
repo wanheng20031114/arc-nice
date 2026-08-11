@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://h0u3jdtkqy1b"]
 
 [ext_resource type="Script" uid="uid://ctfnnphhg0fm" path="res://scene/game_modes/rogue/combat/rogue_combat_game.gd" id="1_cb4l3"]
-[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres" id="2_kmxr7"]
+[ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_church_01/campaign.tres" id="2_kmxr7"]
 [ext_resource type="PackedScene" uid="uid://b2h7qgwej5n3a" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="3_wtrxt"]
 [ext_resource type="PackedScene" uid="uid://bwy4m8w6x0rae" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="4_0brre"]
 [ext_resource type="PackedScene" uid="uid://cx8r7t2j4p5ma" path="res://scene/game_modes/rogue/combat/player/rogue_player_roster_coordinator.tscn" id="5_738tg"]
@@ -26,6 +26,7 @@
 [ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="25_ririg"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_hud.tscn" id="26_b52ek"]
 [ext_resource type="PackedScene" uid="uid://d4jmq3n7wpx2a" path="res://scene/ui/shared/player_life_status_hud.tscn" id="27_g74xf"]
+[ext_resource type="PackedScene" path="res://scene/lighting/underground_church_wall_torch_layout.tscn" id="28_torch_layout"]
 
 [sub_resource type="Environment" id="Environment_revive_glow"]
 glow_enabled = true
@@ -67,7 +68,7 @@ size = Vector2(67, 32)
 [node name="RogueCombatGame02" type="Node2D" unique_id=20737211]
 position = Vector2(1, 0)
 script = ExtResource("1_cb4l3")
-event_title = "地下教堂"
+event_title = "地下教会"
 singleplayer_campaign = ExtResource("2_kmxr7")
 multiplayer_campaign = ExtResource("2_kmxr7")
 pre_wave_duration = 3.0
@@ -108,6 +109,8 @@ z_index = -10
 texture_filter = 1
 position = Vector2(160, 128)
 texture = ExtResource("11_2vcqc")
+
+[node name="UndergroundChurchWallTorchLayout" parent="." instance=ExtResource("28_torch_layout")]
 
 [node name="GroundTileMapLayer" parent="." instance=ExtResource("12_church_nav")]
 

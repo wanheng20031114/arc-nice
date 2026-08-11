@@ -242,7 +242,9 @@ static func register_common_visual_effect_pools(pool: SessionObjectPool) -> void
 
 
 static func register_combat_robot_gunner_bullet_pool(
-	pool: SessionObjectPool
+	pool: SessionObjectPool,
+	prewarm_count: int = -1,
+	retained_capacity: int = -1
 ) -> void:
 	if pool == null:
 		return
@@ -254,10 +256,20 @@ static func register_combat_robot_gunner_bullet_pool(
 	if projectile_scene == null:
 		push_error("无法加载持枪战斗机器人弹丸池场景。")
 		return
+	var resolved_prewarm_count := (
+		combat_robot_gunner_bullet_pool_prewarm_count
+		if prewarm_count < 0
+		else prewarm_count
+	)
+	var resolved_retained_capacity := (
+		combat_robot_gunner_bullet_pool_retained_capacity
+		if retained_capacity < 0
+		else retained_capacity
+	)
 	pool.register_scene(
 		projectile_scene,
-		maxi(combat_robot_gunner_bullet_pool_prewarm_count, 0),
-		maxi(combat_robot_gunner_bullet_pool_retained_capacity, 1)
+		maxi(resolved_prewarm_count, 0),
+		maxi(resolved_retained_capacity, 1)
 	)
 
 

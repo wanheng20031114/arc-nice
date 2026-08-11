@@ -1,14 +1,16 @@
-[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" load_steps=4 format=3 uid="uid://bgo01u0bqbesa"]
+[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" load_steps=5 format=3 uid="uid://bgo01u0bqbesa"]
 
 [ext_resource type="Script" uid="uid://cvx2f5hh6lh4n" path="res://resources/config/rogue_combat/rogue_combat_encounter_config.gd" id="1_config_script"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/encounter_01/campaign.tres" id="2_campaign"]
 [ext_resource type="Resource" path="res://resources/config/rogue_combat/reward_encounter_01.tres" id="3_reward"]
+[ext_resource type="Texture2D" uid="uid://bfwhhd0u8f6ke" path="res://resources/texture/rogue_route/normal_combat_briefing_visual.png" id="4_briefing"]
 
 [resource]
 script = ExtResource("1_config_script")
 encounter_id = &"narrow_road_01"
 event_title = "狭路相逢"
 objective_text = "击败全部战斗机器人"
+briefing_visual = ExtResource("4_briefing")
 combat_scene_path = "res://scene/game_modes/rogue/combat/rogue_combat_game_01.tscn"
 campaign = ExtResource("2_campaign")
 preparation_seconds = 3

@@ -11,7 +11,7 @@ count = 1000
 
 [resource]
 script = ExtResource("3_wave_script")
-wave_name = "第1波 地下教堂纸箱怪测试（多人）"
+wave_name = "第1波 地下教会纸箱怪测试（多人）"
 enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_cardboard_monster_entry")])
 spawn_point_mask = 7
 spawn_order = 1

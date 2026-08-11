@@ -34,6 +34,7 @@ const REQUIRED_SCENE_SPAWN_POINT_MASK := (
 @export var encounter_id: StringName = DEFAULT_ENCOUNTER_ID
 @export var event_title: String = DEFAULT_EVENT_TITLE
 @export var objective_text: String = DEFAULT_OBJECTIVE_TEXT
+@export var briefing_visual: Texture2D
 @export_file("*.tscn") var combat_scene_path: String = DEFAULT_COMBAT_SCENE_PATH
 @export var campaign: WaveCampaignConfig
 @export_range(1, 3600, 1, "or_greater")
@@ -214,6 +215,10 @@ func _validate_content_fields(errors: PackedStringArray) -> void:
 		errors.append("Rouge 战斗配置缺少事件标题。")
 	if objective_text.strip_edges().is_empty():
 		errors.append("Rouge 战斗配置缺少作战目标文本。")
+	if briefing_visual == null:
+		errors.append("Rouge 战斗配置缺少作战简报视觉。")
+	elif briefing_visual.get_width() <= 0 or briefing_visual.get_height() <= 0:
+		errors.append("Rouge 战斗简报视觉尺寸无效。")
 	if combat_scene_path.strip_edges().is_empty():
 		errors.append("Rouge 战斗配置缺少战斗场景路径。")
 	elif not ResourceLoader.exists(combat_scene_path, "PackedScene"):

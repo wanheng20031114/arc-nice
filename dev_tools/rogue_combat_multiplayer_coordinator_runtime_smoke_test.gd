@@ -18,6 +18,9 @@ const FAKE_EMBEDDED_RUNTIME := preload(
 const WOOD_MATERIAL: PickupConfig = preload(
 	"res://resources/config/materials/material_wood.tres"
 )
+const FORMAL_CONFIG: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/encounter_01.tres"
+)
 const SUITCASE_CONFIG: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/suitcase_battle.tres"
 )
@@ -127,6 +130,7 @@ func _init() -> void:
 
 func _run() -> void:
 	await _create_fixture()
+	_test_prepare_requires_route_resolved_config()
 	_test_terminal_safe_releases_protocol_but_keeps_result()
 	_test_next_prepare_collects_stale_result()
 	_test_new_layout_clears_combat_idempotency_caches()
@@ -165,6 +169,43 @@ func _run() -> void:
 	quit(1)
 
 
+func _test_prepare_requires_route_resolved_config() -> void:
+	_reset_fixture_state()
+	var participants := PackedInt32Array([1])
+	var entry_xirang := {1: 500}
+	_expect(
+		not _coordinator._begin_protocol(
+			90,
+			9001,
+			"combat:runtime:missing-config:90",
+			participants,
+			entry_xirang,
+			false,
+			&"",
+			null
+		),
+		"多人 prepare 缺少路线解析配置时必须拒绝，不能回退到默认作战。"
+	)
+	_expect(
+		not _coordinator._begin_protocol(
+			91,
+			9101,
+			"combat:runtime:mismatched-config:91",
+			participants,
+			entry_xirang,
+			false,
+			&"underground_church_01",
+			FORMAL_CONFIG
+		),
+		"多人 prepare 的配置 ID 与已解析资源不一致时必须拒绝。"
+	)
+	_expect(
+		_coordinator._phase == COORDINATOR.ProtocolPhase.IDLE
+		and _coordinator._active_encounter_config == null,
+		"被拒绝的配置不得冻结协议状态。"
+	)
+
+
 func _create_fixture() -> void:
 	_fixture_root = Node2D.new()
 	_fixture_root.name = "RogueCombatCoordinatorRuntimeFixture"
@@ -188,8 +229,8 @@ func _create_fixture() -> void:
 		root.get_node("RunState") as RunStateStore
 	)
 	_expect(
-		_coordinator.encounter_config.is_ready_to_enable(),
-		"正式 encounter_01 配置应处于已确认、可启用状态。"
+		FORMAL_CONFIG.is_ready_to_enable(),
+		"普通作战池中的 encounter_01 配置应处于已确认、可启用状态。"
 	)
 	_expect(
 		_coordinator.is_enabled(),
@@ -269,7 +310,9 @@ func _test_next_prepare_collects_stale_result() -> void:
 		new_occurrence_key,
 		PackedInt32Array([1]),
 		{1: 450},
-		false
+		false,
+		FORMAL_CONFIG.encounter_id,
+		FORMAL_CONFIG
 	)
 
 	_expect(began, "下一次 prepare 应能启动新的协议 occurrence。")
@@ -523,7 +566,7 @@ func _test_real_reward_mutation_rolls_back_after_commit_failure() -> void:
 	var revision_before := int(inventory_before.get("revision", -1))
 	var rollback_state := _coordinator._capture_host_reward_rollback_state()
 	battle_player.grant_xirang_reward(
-		_coordinator.encounter_config.extra_xirang,
+		FORMAL_CONFIG.extra_xirang,
 		false
 	)
 	var reward_result := RogueCombatRewardResolver.resolve_reward(
@@ -531,7 +574,7 @@ func _test_real_reward_mutation_rolls_back_after_commit_failure() -> void:
 		StringName(occurrence_key),
 		_coordinator._active_content_seed,
 		1,
-		_coordinator.encounter_config.extra_xirang,
+		FORMAL_CONFIG.extra_xirang,
 		true,
 		battle_player
 	)
@@ -574,7 +617,7 @@ func _test_real_reward_mutation_rolls_back_after_commit_failure() -> void:
 	var inventory_after := run_state.export_inventory_snapshot_for_peer(1)
 	_expect(
 		int(attempted_xirang.get(1, -1))
-		== xirang_before + _coordinator.encounter_config.extra_xirang
+		== xirang_before + FORMAL_CONFIG.extra_xirang
 		and int(attempted_inventory.get("revision", -1)) > revision_before,
 		"失败注入必须发生在真实息壤与收藏品奖励已经写入之后。"
 	)
@@ -890,7 +933,9 @@ func _test_prepare_barrier_timeout_aborts_entry() -> void:
 			occurrence_key,
 			PackedInt32Array([1, 2]),
 			{1: 500, 2: 500},
-			false
+			false,
+			FORMAL_CONFIG.encounter_id,
+			FORMAL_CONFIG
 		),
 		"prepare timeout 夹具必须进入 PREPARING。"
 	)
@@ -1378,7 +1423,9 @@ func _test_prepared_barrier_reveals_before_single_activation() -> void:
 			occurrence_key,
 			PackedInt32Array([1, 2]),
 			{1: 500, 2: 500},
-			false
+			false,
+			FORMAL_CONFIG.encounter_id,
+			FORMAL_CONFIG
 		),
 		"入口 reveal 夹具必须先进入 PREPARING。"
 	)
@@ -1496,7 +1543,9 @@ func _test_abort_during_entry_reveal_clears_cover() -> void:
 			occurrence_key,
 			PackedInt32Array([1]),
 			{1: 700},
-			false
+			false,
+			FORMAL_CONFIG.encounter_id,
+			FORMAL_CONFIG
 		),
 		"入口 abort 夹具必须先进入 PREPARING。"
 	)
@@ -1591,7 +1640,9 @@ func _test_authoritative_prepare_failure_aborts_safely() -> void:
 		occurrence_key,
 		PackedInt32Array([1]),
 		{1: 500},
-		false
+		false,
+		FORMAL_CONFIG.encounter_id,
+		FORMAL_CONFIG
 	)
 	_expect(not began, "运行时创建失败时 _begin_protocol 必须返回 false。")
 
@@ -1611,7 +1662,9 @@ func _test_authoritative_config_failure_aborts_safely() -> void:
 		occurrence_key,
 		PackedInt32Array([1]),
 		{1: 600},
-		false
+		false,
+		FORMAL_CONFIG.encounter_id,
+		FORMAL_CONFIG
 	)
 	_expect(began, "config 失败用例应先进入 PREPARING。")
 	var invalid_runtime := (
@@ -1643,7 +1696,9 @@ func _test_authoritative_activation_failure_aborts_safely() -> void:
 		occurrence_key,
 		PackedInt32Array([1]),
 		{1: 700},
-		false
+		false,
+		FORMAL_CONFIG.encounter_id,
+		FORMAL_CONFIG
 	)
 	_expect(began, "activate 失败用例应先进入 PREPARING。")
 	var failing_runtime := (

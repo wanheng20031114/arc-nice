@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="RogueCombatPoolConfig" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_pool_config.gd" id="1_pool_script"]
+[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_pool_entry.gd" id="2_entry_script"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/encounter_01.tres" id="3_narrow_road"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/underground_church_01.tres" id="4_underground_church"]
+
+[sub_resource type="Resource" id="NarrowRoadEntry"]
+script = ExtResource("2_entry_script")
+combat_config = ExtResource("3_narrow_road")
+selection_weight = 10
+
+[sub_resource type="Resource" id="UndergroundChurchEntry"]
+script = ExtResource("2_entry_script")
+combat_config = ExtResource("4_underground_church")
+selection_weight = 90
+
+[resource]
+script = ExtResource("1_pool_script")
+pool_id = &"normal_combat"
+entries = Array[RogueCombatPoolEntry]([SubResource("NarrowRoadEntry"), SubResource("UndergroundChurchEntry")])

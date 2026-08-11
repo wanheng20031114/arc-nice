@@ -1,6 +1,6 @@
 extends SceneTree
 
-## 真双进程 Rouge「狭路相逢」LAN E2E 端点。
+## 真双进程 Rouge「地下教会」LAN E2E 端点。
 ##
 ## 由 run_rogue_combat_lan_e2e.ps1 启动 Host + Client。两进程通过正式
 ## NetManager / MpRogueRoute / RogueCombatMultiplayerCoordinator 协议通信；
@@ -8,16 +8,18 @@ extends SceneTree
 
 const WRAPPER_SCENE := preload("res://scene/multiplayer/mp_rogue_route.tscn")
 const FORMAL_CONFIG := preload(
-	"res://resources/config/rogue_combat/encounter_01.tres"
+	"res://resources/config/rogue_combat/underground_church_01.tres"
 )
-const COMBAT_ROBOT_CONFIG_PATH := (
-	"res://resources/config/enemies/combat_robot.tres"
-)
-const COMBAT_ROBOT_DRONE_OPERATOR_CONFIG_PATH := (
-	"res://resources/config/enemies/combat_robot_drone_operator.tres"
+const CARDBOARD_MONSTER_CONFIG_PATH := (
+	"res://resources/config/enemies/cardboard_monster.tres"
 )
 const COMBAT_ROBOT_GUNNER_CONFIG_PATH := (
 	"res://resources/config/enemies/combat_robot_gunner.tres"
+)
+const SLIME_CONFIG_PATH := "res://resources/config/enemies/slime.tres"
+const EXPECTED_COMBAT_CONFIG_ID := &"underground_church_01"
+const EXPECTED_COMBAT_SCENE_PATH := (
+	"res://scene/game_modes/rogue/combat/rogue_combat_game_02.tscn"
 )
 const STATE_LOADING_GAME := NetManagerStore.ConnectionState.LOADING_GAME
 const STATE_IN_GAME := NetManagerStore.ConnectionState.IN_GAME
@@ -25,17 +27,17 @@ const PLAYER_COUNT := 2
 const ROUTE_SEED_SEARCH_LIMIT := 4096
 const NETWORK_TIMEOUT_SECONDS := 30.0
 const COMBAT_TIMEOUT_SECONDS := 55.0
-const EXPECTED_ENEMY_COUNT := 22
-const EXPECTED_MAX_ALIVE_ENEMIES := 10
-const EXPECTED_SPAWN_INTERVAL_MSEC := 300
+const EXPECTED_ENEMY_COUNT := 70
+const EXPECTED_MAX_ALIVE_ENEMIES := 20
+const EXPECTED_SPAWN_INTERVAL_MSEC := 200
 const SPAWN_INTERVAL_SCHEDULING_TOLERANCE_MSEC := 75
-const EXPECTED_SPAWN_BATCH_TARGETS: Array[int] = [10, 20, 22]
+const EXPECTED_SPAWN_BATCH_TARGETS: Array[int] = [20, 40, 60, 70]
 const EXPECTED_CONFIG_COUNTS := {
-	COMBAT_ROBOT_CONFIG_PATH: 10,
-	COMBAT_ROBOT_DRONE_OPERATOR_CONFIG_PATH: 4,
-	COMBAT_ROBOT_GUNNER_CONFIG_PATH: 8,
+	CARDBOARD_MONSTER_CONFIG_PATH: 20,
+	COMBAT_ROBOT_GUNNER_CONFIG_PATH: 20,
+	SLIME_CONFIG_PATH: 30,
 }
-const EXPECTED_KILL_XIRANG := 220
+const EXPECTED_KILL_XIRANG := 290
 const EXPECTED_EXTRA_XIRANG := 500
 const EXPECTED_TOTAL_XIRANG_DELTA := (
 	EXPECTED_KILL_XIRANG + EXPECTED_EXTRA_XIRANG
@@ -131,9 +133,12 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	if not route.is_route_ready():
 		_fail("Host route was not generated")
 		return
-	var fixture := _find_adjacent_normal_combat_fixture(route.generation_config)
+	var fixture := _find_adjacent_normal_combat_fixture(
+		route.generation_config,
+		route.floor_definition
+	)
 	if fixture.is_empty():
-		_fail("Could not find an adjacent NORMAL_COMBAT seed")
+		_fail("Could not find an adjacent underground-church NORMAL_COMBAT seed")
 		return
 	var route_seed := int(fixture["seed"])
 	var combat_node_id := int(fixture["combat_node_id"])
@@ -141,10 +146,20 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 	if not route.start_authoritative_session(route_seed, true):
 		_fail("Host could not install the deterministic combat route")
 		return
+	var selected_config := route.resolve_normal_combat_config_for_node(
+		combat_node_id
+	)
+	if (
+		selected_config == null
+		or selected_config.encounter_id != EXPECTED_COMBAT_CONFIG_ID
+	):
+		_fail("Host formal combat pool did not resolve underground_church_01")
+		return
 	if not _write_marker("host_route.json", JSON.stringify({
 		"route_seed": route_seed,
 		"combat_node_id": combat_node_id,
 		"content_seed": content_seed,
+		"combat_config_id": String(selected_config.encounter_id),
 	})):
 		return
 	if not await _wait_for_marker("client_route_ready", NETWORK_TIMEOUT_SECONDS):
@@ -262,6 +277,7 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 		return
 	var expected_loot := _capture_expected_loot(
 		game,
+		coordinator,
 		peer_ids,
 		occurrence_key,
 		content_seed
@@ -320,10 +336,14 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 		return
 	print(
 		(
-			"ROGUE_COMBAT_LAN_HOST_SPAWN occurrence=%s count=22 "
-			+ "types=10/4/8 max_alive=10 interval_ms=%d"
+			"ROGUE_COMBAT_LAN_HOST_SPAWN occurrence=%s config=%s count=70 "
+			+ "types=20/20/30 max_alive=20 interval_ms=%d"
 		)
-		% [occurrence_key, _get_minimum_adjacent_spawn_interval_msec()]
+		% [
+			occurrence_key,
+			String(EXPECTED_COMBAT_CONFIG_ID),
+			_get_minimum_adjacent_spawn_interval_msec(),
+		]
 	)
 	if not await _wait_until(
 		func() -> bool:
@@ -334,7 +354,7 @@ func _run_host(net_manager: NetManagerStore, port: int) -> void:
 		12.0
 	):
 		_fail(
-			"Host robots did not fully resolve: defeated=%d network=%d"
+			"Host enemies did not fully resolve: defeated=%d network=%d"
 			% [game.current_wave_defeated, game.multiplayer_enemies_by_net_id.size()]
 		)
 		return
@@ -425,6 +445,9 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	var route_seed := int(route_marker.get("route_seed", 0))
 	var combat_node_id := int(route_marker.get("combat_node_id", -1))
 	var content_seed := int(route_marker.get("content_seed", 0))
+	var expected_config_id := StringName(
+		route_marker.get("combat_config_id", "")
+	)
 	if not await _wait_until(
 		func() -> bool:
 			return (
@@ -451,6 +474,16 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 		or int(content_seeds[combat_node_id]) != content_seed
 	):
 		_fail("Client deterministic route marker does not describe NORMAL_COMBAT")
+		return
+	var selected_config := route.resolve_normal_combat_config_for_node(
+		combat_node_id
+	)
+	if (
+		expected_config_id != EXPECTED_COMBAT_CONFIG_ID
+		or selected_config == null
+		or selected_config.encounter_id != expected_config_id
+	):
+		_fail("Client combat-pool resolution differs from Host underground church")
 		return
 	var peer_ids := _get_sorted_peer_ids(net_manager)
 	if peer_ids.size() != PLAYER_COUNT:
@@ -552,17 +585,17 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 	if route.get_normal_combat_occurrence_key() != occurrence_key:
 		_fail("Client and Host combat occurrence keys differ")
 		return
+	if route.get_active_combat_config_id() != expected_config_id:
+		_fail("Client route froze a combat config different from Host")
+		return
 	var game := await _wait_for_combat_game(coordinator, "Client")
 	if game == null:
 		return
-	var expected_loot := _capture_expected_loot(
-		game,
-		peer_ids,
-		occurrence_key,
-		content_seed
-	)
-	if expected_loot.size() != PLAYER_COUNT:
-		return
+	# 收藏品现由Host按稳定玩家身份权威抽取；Client不再按本地可见身份
+	# 预演远端玩家结果，只验证收到的权威奖励合同与背包快照。
+	var expected_loot := {}
+	for peer_id in peer_ids:
+		expected_loot[peer_id] = ""
 	var observed_ids: Dictionary[int, bool] = {}
 	var observed_config_counts: Dictionary[String, int] = {}
 	var observed_door_counts: Array[int] = [0, 0, 0]
@@ -637,11 +670,12 @@ func _run_client(net_manager: NetManagerStore, port: int) -> void:
 		return
 	print(
 		(
-			"ROGUE_COMBAT_LAN_CLIENT_SPAWN occurrence=%s count=22 "
-			+ "types=10/4/8 doors=%s ids_match=true interval_ms=%d"
+			"ROGUE_COMBAT_LAN_CLIENT_SPAWN occurrence=%s config=%s count=70 "
+			+ "types=20/20/30 doors=%s ids_match=true interval_ms=%d"
 		)
 		% [
 			occurrence_key,
+			String(EXPECTED_COMBAT_CONFIG_ID),
 			observed_door_counts,
 			_get_minimum_interval_from_ticks(final_host_spawn_ticks),
 		]
@@ -741,12 +775,18 @@ func _wait_for_combat_game(
 		_fail("%s combat prepare barrier never activated" % label)
 		return null
 	if (
-		game.event_title != "狭路相逢"
+		coordinator.get("_active_combat_config_id")
+		!= EXPECTED_COMBAT_CONFIG_ID
+		or game.scene_file_path != EXPECTED_COMBAT_SCENE_PATH
+		or game.event_title != "地下教会"
 		or not is_equal_approx(game.pre_wave_duration, 3.0)
 		or not is_equal_approx(game.combat_time_limit_seconds, 90.0)
 		or game.deadline_start != RogueCombatGame.DeadlineStart.WAVE_START
 	):
-		_fail("%s combat runtime does not carry the formal 3s/90s contract" % label)
+		_fail(
+			"%s combat runtime does not carry the formal church/config/3s/90s contract"
+			% label
+		)
 		return null
 	if not _validate_fixed_underground_night(game, label):
 		return null
@@ -802,7 +842,7 @@ func _on_host_enemy_spawned(
 		)
 		if host_peak_alive_count > EXPECTED_MAX_ALIVE_ENEMIES:
 			_fail(
-				"Host exceeded the configured ten-enemy alive cap: %d"
+				"Host exceeded the configured twenty-enemy alive cap: %d"
 				% host_peak_alive_count
 			)
 
@@ -819,7 +859,7 @@ func _wait_for_host_spawn_target(
 		var active_count := game.multiplayer_enemies_by_net_id.size()
 		if active_count > EXPECTED_MAX_ALIVE_ENEMIES:
 			_fail(
-				"Host exceeded the configured ten-enemy alive cap: %d"
+				"Host exceeded the configured twenty-enemy alive cap: %d"
 				% active_count
 			)
 			return false
@@ -853,7 +893,7 @@ func _defeat_host_enemy_batch(
 	for enemy_id in batch_ids:
 		var enemy := game.get_enemy_for_net_id(enemy_id) as Enemy
 		if enemy == null or not is_instance_valid(enemy):
-			_fail("Host robot disappeared before authoritative defeat: %d" % enemy_id)
+			_fail("Host enemy disappeared before authoritative defeat: %d" % enemy_id)
 			continue
 		if not enemy.apply_damage(
 			99999,
@@ -861,7 +901,14 @@ func _defeat_host_enemy_batch(
 			EnemyConfig.DamageType.PHYSICAL,
 			false
 		):
-			_fail("Host could not apply lethal damage to robot %d" % enemy_id)
+			_fail("Host could not apply lethal damage to enemy %d" % enemy_id)
+			continue
+		# 纸箱怪使用每次命中固定1点的受伤规则；测试需要结算整批，而不是
+		# 绕过 defeated 信号直接释放尚未死亡的实例。
+		if not enemy.is_dead:
+			enemy.call("_die")
+		if not enemy.is_dead:
+			_fail("Host could not authoritatively defeat enemy %d" % enemy_id)
 			continue
 		if enemy.has_method("_finish_after_death_animation"):
 			enemy.call_deferred("_finish_after_death_animation")
@@ -882,28 +929,28 @@ func _defeat_host_enemy_batch(
 
 func _validate_host_spawn_contract(game: RogueCombatGame) -> bool:
 	if game.current_wave_total != EXPECTED_ENEMY_COUNT:
-		_fail("Host formal wave total is not twenty-two")
+		_fail("Host formal wave total is not seventy")
 		return false
 	if host_spawn_ids.size() != _unique_int_count(host_spawn_ids):
 		_fail("Host spawn sequence contains duplicate network IDs")
 		return false
 	if host_spawn_ids.size() != EXPECTED_ENEMY_COUNT:
-		_fail("Host did not emit all twenty-two network enemy IDs")
+		_fail("Host did not emit all seventy network enemy IDs")
 		return false
 	var wave := game.current_flow_step as WaveConfig
 	if (
 		wave == null
-		or not is_equal_approx(wave.spawn_interval, 0.3)
+		or not is_equal_approx(wave.spawn_interval, 0.2)
 		or wave.spawn_count_per_tick != 1
 		or wave.max_alive_enemies != EXPECTED_MAX_ALIVE_ENEMIES
 		or wave.spawn_point_order
 		!= WaveConfig.SpawnPointOrder.BALANCED_SHUFFLE_BAG
 	):
-		_fail("Host formal wave does not use 0.3s/one/ten/balanced spawn policy")
+		_fail("Host formal wave does not use 0.2s/one/twenty/balanced spawn policy")
 		return false
 	if host_peak_alive_count != EXPECTED_MAX_ALIVE_ENEMIES:
 		_fail(
-			"Host peak alive count must reach but never exceed ten: %d"
+			"Host peak alive count must reach but never exceed twenty: %d"
 			% host_peak_alive_count
 		)
 		return false
@@ -917,7 +964,7 @@ func _validate_host_spawn_contract(game: RogueCombatGame) -> bool:
 			return false
 		config_counts[config_path] = config_counts.get(config_path, 0) + 1
 	if not _config_counts_match_expected(config_counts):
-		_fail("Host enemy composition is not 10 combat / 4 drone / 8 gunner")
+		_fail("Host enemy composition is not 20 cardboard / 20 gunner / 30 slime")
 		return false
 	var door_positions: Array[Vector2] = []
 	for marker in game.active_wave_spawn_points:
@@ -935,7 +982,7 @@ func _validate_host_spawn_contract(game: RogueCombatGame) -> bool:
 				found_door_index = door_index
 				break
 		if found_door_index < 0:
-			_fail("Host robot did not originate at an active red door")
+			_fail("Host enemy did not originate at an active red door")
 			return false
 		door_counts[found_door_index] += 1
 	if _int_count_spread(door_counts) > 1:
@@ -1009,7 +1056,7 @@ func _wait_for_client_enemy_batch(
 		)
 		return false
 	if game.multiplayer_enemies_by_net_id.size() > EXPECTED_MAX_ALIVE_ENEMIES:
-		_fail("Client observed more than ten simultaneous enemy proxies")
+		_fail("Client observed more than twenty simultaneous enemy proxies")
 		return false
 	return true
 
@@ -1048,7 +1095,7 @@ func _validate_client_spawn_contract(
 	game: RogueCombatGame
 ) -> bool:
 	if observed_ids.size() != EXPECTED_ENEMY_COUNT:
-		_fail("Client did not observe twenty-two unique network enemy IDs")
+		_fail("Client did not observe seventy unique network enemy IDs")
 		return false
 	var client_ids: Array[int] = []
 	for enemy_id in observed_ids.keys():
@@ -1059,13 +1106,13 @@ func _validate_client_spawn_contract(
 		or host_ids.size() != _unique_int_count(host_ids)
 		or client_ids != host_ids
 	):
-		_fail("Client cumulative enemy IDs differ from Host's twenty-two IDs")
+		_fail("Client cumulative enemy IDs differ from Host's seventy IDs")
 		return false
 	if not _config_counts_match_expected(config_counts):
-		_fail("Client enemy composition is not 10 combat / 4 drone / 8 gunner")
+		_fail("Client enemy composition is not 20 cardboard / 20 gunner / 30 slime")
 		return false
 	if host_spawn_positions.size() != EXPECTED_ENEMY_COUNT:
-		_fail("Client did not receive twenty-two authoritative spawn positions")
+		_fail("Client did not receive seventy authoritative spawn positions")
 		return false
 	var client_door_positions := _get_authored_red_door_positions(game)
 	if client_door_positions.size() != 3:
@@ -1085,7 +1132,7 @@ func _validate_client_spawn_contract(
 		_fail("Client red-door spawn distribution is not balanced: %s" % [door_counts])
 		return false
 	if host_spawn_ticks.size() != EXPECTED_ENEMY_COUNT:
-		_fail("Client did not receive twenty-two authoritative spawn timestamps")
+		_fail("Client did not receive seventy authoritative spawn timestamps")
 		return false
 	var minimum_interval := _get_minimum_interval_from_ticks(host_spawn_ticks)
 	if minimum_interval < (
@@ -1139,23 +1186,48 @@ func _client_spawn_ready_marker_name(target_count: int) -> String:
 
 func _capture_expected_loot(
 	game: RogueCombatGame,
+	coordinator: RogueCombatMultiplayerCoordinator,
 	peer_ids: Array[int],
 	occurrence_key: String,
 	content_seed: int
 ) -> Dictionary:
 	var result := {}
+	var stable_keys := coordinator.get("_participant_stable_keys") as Dictionary
 	for peer_id in peer_ids:
 		var player := game.get_player_for_peer(peer_id) as Player
-		var item := RogueCombatRewardResolver.roll_common_collectible(
-			StringName(occurrence_key),
-			content_seed,
-			peer_id,
-			true,
-			player
+		var pool: Array[PickupConfig] = []
+		for candidate in CollectibleRegistry.get_by_rarity(
+			PickupConfig.CollectibleRarity.COMMON
+		):
+			if (
+				candidate.can_store_in_inventory
+				and player != null
+				and player.is_collectible_compatible(candidate)
+			):
+				pool.append(candidate)
+		pool.sort_custom(
+			func(left: PickupConfig, right: PickupConfig) -> bool:
+				return left.resource_path < right.resource_path
 		)
-		if item == null:
+		var identity := str(stable_keys.get(peer_id, "")).strip_edges()
+		if identity.is_empty():
+			identity = "peer:%d" % peer_id
+		var chosen_index := RogueEncounterRandom.choose_index(
+			content_seed,
+			StringName(
+				"rogue_combat_collectible_batch|occurrence:%s|identity:%s|contract:%s|roll:0"
+				% [
+					occurrence_key,
+					identity,
+					FORMAL_CONFIG.reward_config.compute_runtime_contract_hash(),
+				]
+			),
+			pool.size()
+		)
+		if chosen_index < 0:
 			_fail("No compatible common collectible for peer %d" % peer_id)
 			return {}
+		var item := pool[chosen_index]
 		result[peer_id] = item.resource_path
 	return result
 
@@ -1316,7 +1388,7 @@ func _validate_victory_settlement(
 		var route_player := route.get_player_for_peer(peer_id) as Player
 		if int(final_xirang.get(peer_id, -1)) != expected_final_xirang:
 			_fail(
-				"%s peer %d did not receive 220 kill + 500 extra Xirang"
+				"%s peer %d did not receive 290 kill + 500 extra Xirang"
 				% [label, peer_id]
 			)
 		if route_player == null or route_player.get_xirang() != expected_final_xirang:
@@ -1329,7 +1401,11 @@ func _validate_victory_settlement(
 			or not str(loot.get("failure_reason", "")).is_empty()
 			or int(loot.get("rarity", -1))
 			!= PickupConfig.CollectibleRarity.COMMON
-			or str(loot.get("config_path", "")) != str(expected_loot[peer_id])
+			or (
+				not str(expected_loot[peer_id]).is_empty()
+				and str(loot.get("config_path", ""))
+				!= str(expected_loot[peer_id])
+			)
 		):
 			_fail("%s peer %d did not receive its deterministic common loot" % [label, peer_id])
 		if _snapshot_item_total(authoritative_snapshot) != (
@@ -1361,19 +1437,35 @@ func _validate_victory_settlement(
 
 
 func _find_adjacent_normal_combat_fixture(
-	config: RogueRouteGenerationConfig
+	config: RogueRouteGenerationConfig,
+	floor_definition: RogueRouteFloorDefinition
 ) -> Dictionary:
+	if floor_definition == null or floor_definition.normal_combat_pool == null:
+		return {}
 	for seed in range(1, ROUTE_SEED_SEARCH_LIMIT + 1):
 		var graph := RogueRouteGenerator.generate(config, seed)
 		if graph == null:
 			continue
 		for neighbor_id in graph.get_neighbors(graph.start_node_id):
-			if graph.get_node_type(neighbor_id) == RogueRouteGraph.NodeType.NORMAL_COMBAT:
-				return {
-					"seed": seed,
-					"combat_node_id": int(neighbor_id),
-					"content_seed": graph.get_node_content_seed(neighbor_id),
-				}
+			if (
+				graph.get_node_type(neighbor_id)
+				!= RogueRouteGraph.NodeType.NORMAL_COMBAT
+			):
+				continue
+			var content_seed := graph.get_node_content_seed(neighbor_id)
+			var selected_config := floor_definition.select_normal_combat_config(
+				content_seed
+			)
+			if (
+				selected_config == null
+				or selected_config.encounter_id != EXPECTED_COMBAT_CONFIG_ID
+			):
+				continue
+			return {
+				"seed": seed,
+				"combat_node_id": int(neighbor_id),
+				"content_seed": content_seed,
+			}
 	return {}
 
 

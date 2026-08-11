@@ -6,6 +6,9 @@ const GAME_01 := preload(
 const GAME_02 := preload(
 	"res://scene/game_modes/rogue/combat/rogue_combat_game_02.tscn"
 )
+const UNDERGROUND_CHURCH_CAMPAIGN := preload(
+	"res://resources/config/campaigns/rogue_combat/underground_church_01/campaign.tres"
+)
 const BACKGROUND_PATH := (
 	"res://resources/texture/rogue_combat/underground_church/"
 	+ "underground_church_background.png"
@@ -39,6 +42,7 @@ func _run() -> void:
 
 	_test_authored_scene_structure(game)
 	_test_background_contract(game)
+	_test_torch_layout_contract(game)
 	_test_navigation_authoring_contract(game)
 	_test_navigation_binding_contract(game)
 	_test_spawn_wall_clearance(game)
@@ -57,7 +61,12 @@ func _test_authored_scene_structure(game: RogueCombatGame) -> void:
 	# game02 的三扇门已画入完整背景，不再重复叠加 game01 的瓦片门。
 	expected_names.erase(&"OverlayTileMapLayer")
 	for child in game.get_children():
-		if child.name in [&"UndergroundChurchBackground", &"WorldBounds", &"Player"]:
+		if child.name in [
+			&"UndergroundChurchBackground",
+			&"UndergroundChurchWallTorchLayout",
+			&"WorldBounds",
+			&"Player",
+		]:
 			continue
 		_expect(
 			expected_names.erase(child.name),
@@ -66,7 +75,12 @@ func _test_authored_scene_structure(game: RogueCombatGame) -> void:
 	_expect(expected_names.is_empty(), "game02 必须保留 game1 的全部运行时根节点。")
 	game_01.free()
 	_expect(game.name == &"RogueCombatGame02", "新场景根节点必须命名为 RogueCombatGame02。")
-	_expect(game.event_title == "地下教堂", "新场景的玩家可见备用名称必须为地下教堂。")
+	_expect(game.event_title == "地下教会", "新场景的玩家可见备用名称必须为地下教会。")
+	_expect(
+		game.singleplayer_campaign == UNDERGROUND_CHURCH_CAMPAIGN
+		and game.multiplayer_campaign == UNDERGROUND_CHURCH_CAMPAIGN,
+		"地下教会编辑器直跑必须使用自己的正式 Campaign。",
+	)
 	_expect(
 		game.get_node_or_null("OverlayTileMapLayer") == null,
 		"完整背景已包含门洞，地下教堂不应重复叠加 game01 的瓦片门。"
@@ -139,6 +153,35 @@ func _test_background_contract(game: RogueCombatGame) -> void:
 		camera.position.is_equal_approx(Vector2(160, 128)),
 		"新场景相机必须居中完整 320×320 世界区域。"
 	)
+
+
+func _test_torch_layout_contract(game: RogueCombatGame) -> void:
+	var layout := game.get_node_or_null(
+		"UndergroundChurchWallTorchLayout"
+	) as Node2D
+	_expect(layout != null, "地下教会必须实例化共享三火把布局。")
+	if layout == null:
+		return
+	var expected_positions: Dictionary[StringName, Vector2] = {
+		&"UpperLeftTorch": Vector2(104, 52),
+		&"UpperRightTorch": Vector2(216, 52),
+		&"LowerTorch": Vector2(160, 256),
+	}
+	_expect(layout.get_child_count() == 3, "地下教会必须恰好放置三盏火把。")
+	for torch_name in expected_positions:
+		var torch := layout.get_node_or_null(
+			NodePath(String(torch_name))
+		) as UndergroundChurchWallTorch
+		_expect(
+			torch != null
+			and torch.position.is_equal_approx(expected_positions[torch_name]),
+			"地下教会火把 %s 必须保持共享布局坐标。" % torch_name,
+		)
+		if torch != null:
+			_expect(
+				torch.night_light.energy > 0.0,
+				"固定夜晚下火把 %s 必须实际发光。" % torch_name,
+			)
 
 
 func _test_navigation_authoring_contract(game: RogueCombatGame) -> void:

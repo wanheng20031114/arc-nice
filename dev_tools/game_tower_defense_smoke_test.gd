@@ -186,7 +186,7 @@ func _test_main_menu_entry() -> void:
 		p1a_button.text == "进入 P1A 史莱姆测试"
 		and p1b_button.text == "进入 P1B 机器人测试"
 		and p1c_button.text == "进入 P1C 纸箱怪测试"
-		and p1d_button.text == "进入 P1D 地下教堂测试"
+		and p1d_button.text == "进入 P1D 地下教会测试"
 		and p2_button.text == "进入 P2 单日流程",
 		"Test selector must expose authored P1A, P1B, P1C, P1D and P2 actions."
 	)

@@ -470,16 +470,18 @@ class RelayCapacityTests(unittest.TestCase):
         self.assertIsNone(manager.get_room(room.id))
         launcher.stop_relay.assert_called_once_with(40055)
 
-    def test_relay_project_uses_capacity_argument_and_protocol_v59(self) -> None:
+    def test_relay_project_uses_capacity_argument_and_protocol_v60(self) -> None:
         relay_source = (
             Path(__file__).resolve().parents[1]
             / "relay_godot_project"
             / "relay_server.gd"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("const PROTOCOL_VERSION := 59", relay_source)
+        self.assertIn("const PROTOCOL_VERSION := 60", relay_source)
+        self.assertNotIn("const PROTOCOL_VERSION := 59", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 58", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 57", relay_source)
+        self.assertNotIn("const PROTOCOL_VERSION := 56", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 55", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 54", relay_source)
         self.assertNotIn("const PROTOCOL_VERSION := 53", relay_source)

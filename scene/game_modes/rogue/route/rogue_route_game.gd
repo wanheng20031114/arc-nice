@@ -85,9 +85,6 @@ const NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT := preload(
 const SPECIAL_COMBAT_BRIEFING_ADAPTER_SCRIPT := preload(
 	"res://scene/game_modes/rogue/route/rogue_special_combat_briefing_adapter.gd"
 )
-const DEFAULT_COMBAT_BRIEFING_VISUAL_PATH := (
-	"res://resources/texture/rogue_route/normal_combat_briefing_visual.png"
-)
 const SUITCASE_FOLLOWUP_COMBAT_ID := &"suitcase_battle"
 const SUITCASE_FOLLOWUP_RESULT_CODE := &"suitcase_robots_alerted"
 const SUITCASE_FOLLOWUP_PRESENTATION := &"pages"
@@ -200,7 +197,7 @@ var _briefing_expected_route_revision := -1
 var _briefing_source_kind: StringName = &""
 var _briefing_combat_config_id: StringName = &""
 var _briefing_source_encounter_occurrence_key := ""
-var _normal_combat_briefing_adapter: RefCounted = null
+var _normal_combat_briefing_adapters: Dictionary = {}
 var _special_combat_briefing_adapters: Dictionary = {}
 var player: Player = null
 var peer_players: Dictionary[int, Player] = {}
@@ -250,11 +247,7 @@ func _ready() -> void:
 	if not _floor_definition_applied:
 		_set_status("路线楼层定义无效，无法初始化路线。", true)
 		return
-	_normal_combat_briefing_adapter = (
-		NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT.new(
-			floor_definition.default_combat_config
-		)
-	)
+	_create_normal_combat_briefing_adapters()
 	_create_special_combat_briefing_adapters()
 	top_bar.set_floor_title(floor_definition.display_name)
 	_connect_runtime_activation_signal()
@@ -307,18 +300,14 @@ func _apply_floor_definition_before_children_ready() -> bool:
 	var background := get_node_or_null(
 		"World/Backdrop/RuinsBackground"
 	) as Sprite2D
-	var combat_coordinator := get_node_or_null(
-		"SingleplayerCombatCoordinator"
-	) as RogueCombatSingleplayerCoordinator
-	if board == null or background == null or combat_coordinator == null:
+	if board == null or background == null:
 		_report_floor_definition_error(
 			"RogueRouteGame 的楼层依赖节点结构不完整。"
 		)
 		return false
-	# 先清除子脚本默认值，失败路径也不得让协调器带着隐藏兜底启用。
+	# 先清除表现层依赖，失败路径不得留下隐藏兜底。
 	board.world_metrics = null
 	background.texture = null
-	combat_coordinator.encounter_config = null
 	if floor_definition == null:
 		_report_floor_definition_error("RogueRouteGame 缺少 floor_definition。")
 		return false
@@ -331,9 +320,6 @@ func _apply_floor_definition_before_children_ready() -> bool:
 		return false
 	board.world_metrics = floor_definition.world_metrics
 	background.texture = floor_definition.background_texture
-	combat_coordinator.encounter_config = (
-		floor_definition.default_combat_config
-	)
 	return true
 
 
@@ -901,6 +887,18 @@ func host_commit_briefing_entry(
 			_briefing_combat_config_id
 		)
 		return true
+	var expected_normal_config := resolve_normal_combat_config_for_node(
+		_briefing_node_id
+	)
+	if (
+		expected_normal_config == null
+		or _briefing_combat_config_id != expected_normal_config.encounter_id
+	):
+		call_deferred(
+			&"_recover_failed_briefing_entry",
+			"普通作战配置已经失效。"
+		)
+		return false
 	# 普通作战仅在首次踏入时允许提交。即便出现被篡改或过时的简报包，
 	# 已访问节点也不能再因该包扣行动力、转场或重开战斗。
 	if int(_runtime_state.visited_counts[_briefing_node_id]) != 0:
@@ -1390,6 +1388,35 @@ func resolve_combat_config(
 	return floor_definition.get_combat_config(combat_config_id)
 
 
+func resolve_normal_combat_config_for_node(
+	node_id: int,
+	validation_graph: RogueRouteGraph = null
+) -> RogueCombatEncounterConfig:
+	var graph := validation_graph if validation_graph != null else _route_graph
+	if (
+		floor_definition == null
+		or floor_definition.normal_combat_pool == null
+		or generation_config == null
+		or graph == null
+		or not graph.is_valid_node_id(node_id)
+		or graph.get_node_type(node_id)
+		!= RogueRouteGraph.NodeType.NORMAL_COMBAT
+	):
+		return null
+	var node_config := generation_config.get_type_config(
+		RogueRouteGraph.NodeType.NORMAL_COMBAT
+	)
+	if (
+		node_config == null
+		or node_config.content_pool_id
+		!= floor_definition.normal_combat_pool.pool_id
+	):
+		return null
+	return floor_definition.select_normal_combat_config(
+		graph.get_node_content_seed(node_id)
+	)
+
+
 func export_participant_stable_keys() -> Dictionary:
 	return _player_stable_keys.duplicate(true)
 
@@ -1443,8 +1470,10 @@ func apply_normal_combat_started(
 	combat_config_id: StringName = &""
 ) -> bool:
 	var resolved_config_id := combat_config_id
-	if resolved_config_id == &"" and floor_definition != null:
-		resolved_config_id = floor_definition.default_combat_config.encounter_id
+	if resolved_config_id == &"":
+		var resolved_config := resolve_normal_combat_config_for_node(node_id)
+		if resolved_config != null:
+			resolved_config_id = resolved_config.encounter_id
 	if _authority_enabled or not _validate_combat_start(
 		node_id,
 		content_seed,
@@ -2342,8 +2371,10 @@ func _begin_normal_combat_stage(
 	combat_config_id: StringName = &""
 ) -> void:
 	var resolved_config_id := combat_config_id
-	if resolved_config_id == &"" and floor_definition != null:
-		resolved_config_id = floor_definition.default_combat_config.encounter_id
+	if resolved_config_id == &"":
+		var resolved_config := resolve_normal_combat_config_for_node(node_id)
+		if resolved_config != null:
+			resolved_config_id = resolved_config.encounter_id
 	_normal_combat_active = true
 	_normal_combat_node_id = node_id
 	_normal_combat_content_seed = content_seed
@@ -2371,15 +2402,12 @@ func _validate_combat_start(
 	):
 		return false
 	var visit_count := int(_runtime_state.visited_counts[node_id])
-	if (
-		floor_definition != null
-		and floor_definition.default_combat_config != null
-		and combat_config_id
-		== floor_definition.default_combat_config.encounter_id
-	):
+	var expected_normal_config := resolve_normal_combat_config_for_node(node_id)
+	if expected_normal_config != null:
 		return (
 			_route_graph.get_node_type(node_id)
 			== RogueRouteGraph.NodeType.NORMAL_COMBAT
+			and combat_config_id == expected_normal_config.encounter_id
 			and visit_count == 1
 			and occurrence_key == _make_normal_combat_occurrence_key(
 				node_id,
@@ -2419,13 +2447,14 @@ func _validate_normal_combat_start(
 	content_seed: int,
 	occurrence_key: String
 ) -> bool:
-	if floor_definition == null or floor_definition.default_combat_config == null:
+	var config := resolve_normal_combat_config_for_node(node_id)
+	if config == null:
 		return false
 	return _validate_combat_start(
 		node_id,
 		content_seed,
 		occurrence_key,
-		floor_definition.default_combat_config.encounter_id
+		config.encounter_id
 	)
 
 
@@ -2604,11 +2633,13 @@ func _commit_host_briefing_state(
 			_route_graph.is_valid_node_id(node_id)
 			and _route_graph.get_node_type(node_id)
 			== RogueRouteGraph.NodeType.NORMAL_COMBAT
-			and floor_definition != null
-			and floor_definition.default_combat_config != null
 		):
-			source_kind = RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT
-			combat_config_id = floor_definition.default_combat_config.encounter_id
+			var resolved_config := resolve_normal_combat_config_for_node(node_id)
+			if resolved_config != null:
+				source_kind = (
+					RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT
+				)
+				combat_config_id = resolved_config.encounter_id
 	var snapshot := {
 		"schema_version": BRIEFING_SCHEMA_VERSION,
 		"layout_hash": _route_graph.compute_layout_hash(),
@@ -2742,10 +2773,14 @@ func _validate_briefing_state_against(
 			]
 		)
 		return occurrence_key == expected_followup_occurrence
+	var expected_normal_config := resolve_normal_combat_config_for_node(
+		node_id,
+		graph
+	)
 	if (
 		graph.get_node_type(node_id) != RogueRouteGraph.NodeType.NORMAL_COMBAT
-		or floor_definition.default_combat_config == null
-		or combat_config_id != floor_definition.default_combat_config.encounter_id
+		or expected_normal_config == null
+		or combat_config_id != expected_normal_config.encounter_id
 		or not source_encounter_occurrence_key.is_empty()
 	):
 		return false
@@ -2764,10 +2799,12 @@ func _validate_briefing_state_against(
 			return false
 		visit_count = 1
 		if (
-			_normal_combat_briefing_adapter == null
+			not _normal_combat_briefing_adapters.has(combat_config_id)
 			or _build_normal_combat_briefing_model(
 				node_id,
-				state.action_points
+				state.action_points,
+				combat_config_id,
+				graph
 			) == null
 		):
 			return false
@@ -2791,10 +2828,23 @@ func _validate_briefing_state_against(
 
 func _build_normal_combat_briefing_model(
 	node_id: int,
-	current_action_points: int
+	current_action_points: int,
+	combat_config_id: StringName = &"",
+	validation_graph: RogueRouteGraph = null
 ) -> RogueRouteNodeBriefingModel:
+	var config := resolve_normal_combat_config_for_node(
+		node_id,
+		validation_graph
+	)
+	var resolved_config_id := (
+		combat_config_id
+		if combat_config_id != &""
+		else config.encounter_id if config != null else &""
+	)
 	if (
-		_normal_combat_briefing_adapter == null
+		config == null
+		or resolved_config_id != config.encounter_id
+		or not _normal_combat_briefing_adapters.has(resolved_config_id)
 		or generation_config == null
 		or node_id < 0
 	):
@@ -2802,7 +2852,8 @@ func _build_normal_combat_briefing_model(
 	var node_config := generation_config.get_type_config(
 		RogueRouteGraph.NodeType.NORMAL_COMBAT
 	)
-	return _normal_combat_briefing_adapter.call(
+	var adapter := _normal_combat_briefing_adapters[resolved_config_id] as RefCounted
+	return adapter.call(
 		&"build_model",
 		node_config,
 		current_action_points,
@@ -2810,12 +2861,24 @@ func _build_normal_combat_briefing_model(
 	) as RogueRouteNodeBriefingModel
 
 
+func _create_normal_combat_briefing_adapters() -> void:
+	_normal_combat_briefing_adapters.clear()
+	if floor_definition == null:
+		return
+	for config in floor_definition.get_sorted_normal_combat_configs():
+		if config == null or not config.is_ready_to_enable():
+			continue
+		_normal_combat_briefing_adapters[config.encounter_id] = (
+			NORMAL_COMBAT_BRIEFING_ADAPTER_SCRIPT.new(
+				config,
+				config.briefing_visual
+			)
+		)
+
+
 func _create_special_combat_briefing_adapters() -> void:
 	_special_combat_briefing_adapters.clear()
 	if floor_definition == null:
-		return
-	var hero_visual := load(DEFAULT_COMBAT_BRIEFING_VISUAL_PATH) as Texture2D
-	if hero_visual == null:
 		return
 	for config in floor_definition.get_sorted_special_combat_configs():
 		if config == null or not config.is_ready_to_enable():
@@ -2823,7 +2886,7 @@ func _create_special_combat_briefing_adapters() -> void:
 		_special_combat_briefing_adapters[config.encounter_id] = (
 			SPECIAL_COMBAT_BRIEFING_ADAPTER_SCRIPT.new(
 				config,
-				hero_visual,
+				config.briefing_visual,
 				_build_special_combat_reward_summary(config)
 			)
 		)
@@ -2874,7 +2937,8 @@ func _build_current_briefing_model() -> RogueRouteNodeBriefingModel:
 	if _briefing_source_kind == RogueRouteNodeBriefingModel.SOURCE_KIND_DEFAULT_COMBAT:
 		return _build_normal_combat_briefing_model(
 			_briefing_node_id,
-			_runtime_state.action_points
+			_runtime_state.action_points,
+			_briefing_combat_config_id
 		)
 	if _briefing_source_kind == RogueRouteNodeBriefingModel.SOURCE_KIND_SPECIAL_COMBAT:
 		return _build_special_combat_briefing_model(
@@ -3164,7 +3228,10 @@ func _try_start_normal_combat_for_node(
 	)
 	if occurrence_key.is_empty():
 		return false
-	var combat_config_id := floor_definition.default_combat_config.encounter_id
+	var combat_config := resolve_normal_combat_config_for_node(node_id)
+	if combat_config == null:
+		return false
+	var combat_config_id := combat_config.encounter_id
 	_begin_normal_combat_stage(
 		node_id,
 		content_seed,

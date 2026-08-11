@@ -9,6 +9,12 @@ const BASE_ENCOUNTER_CONFIG := preload(
 const FLOOR_DEFINITION_SCRIPT := preload(
 	"res://resources/config/rogue_route/rogue_route_floor_definition.gd"
 )
+const COMBAT_POOL_SCRIPT := preload(
+	"res://resources/config/rogue_combat/rogue_combat_pool_config.gd"
+)
+const COMBAT_POOL_ENTRY_SCRIPT := preload(
+	"res://resources/config/rogue_combat/rogue_combat_pool_entry.gd"
+)
 const SHALLOW_MINE_FLOOR := preload(
 	"res://resources/config/rogue_route/shallow_mine_floor.tres"
 )
@@ -249,14 +255,19 @@ func _test_briefing_start_failure_cleanup() -> void:
 	route.route_board.node_pressed.emit(combat_node_id)
 	await process_frame
 	_expect(route.node_briefing.visible, "启动失败夹具必须先进入真实简报路径。")
-	# 简报展示后只替换协调器侧夹具，保持 FloorDefinition/Adapter 的合法
-	# 简报契约不变，从而覆盖“移动已提交、战场启动失败”的恢复分支。
-	var rejected_start_config := (
-		coordinator.encounter_config.duplicate(true)
-		as RogueCombatEncounterConfig
+	# 简报展示后把该节点选中配置指向“可加载但根类型错误”的场景；配置校验
+	# 仍然合法，从而覆盖“移动已提交、协调器实例化战场失败”的恢复分支。
+	var rejected_start_config := route.resolve_normal_combat_config_for_node(
+		combat_node_id
 	)
-	rejected_start_config.decisions_confirmed = false
-	coordinator.encounter_config = rejected_start_config
+	_expect(rejected_start_config != null, "启动失败夹具必须能解析池选配置。")
+	if rejected_start_config == null:
+		_cleanup_route(route)
+		await process_frame
+		return
+	rejected_start_config.combat_scene_path = (
+		"res://scene/game_modes/rogue/route/rogue_route_game.tscn"
+	)
 	route.node_briefing.confirm_button.pressed.emit()
 	route.node_briefing.confirm_button.pressed.emit()
 	_expect(
@@ -829,7 +840,13 @@ func _set_route_combat_config(
 	var floor_definition := (
 		SHALLOW_MINE_FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
 	)
-	floor_definition.default_combat_config = config
+	var pool := COMBAT_POOL_SCRIPT.new()
+	pool.pool_id = &"normal_combat"
+	var entry := COMBAT_POOL_ENTRY_SCRIPT.new()
+	entry.combat_config = config
+	entry.selection_weight = 1
+	pool.entries = [entry]
+	floor_definition.normal_combat_pool = pool
 	route.floor_definition = floor_definition
 
 

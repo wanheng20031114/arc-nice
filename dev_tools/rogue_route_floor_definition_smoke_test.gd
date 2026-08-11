@@ -12,6 +12,12 @@ const ROUTE_SCENE: PackedScene = preload(
 const SUITCASE_BATTLE: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/suitcase_battle.tres"
 )
+const NARROW_ROAD: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/encounter_01.tres"
+)
+const UNDERGROUND_CHURCH: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/underground_church_01.tres"
+)
 const ELITE_GUNNER: EnemyConfig = preload(
 	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
 )
@@ -48,8 +54,8 @@ func _test_definition_contract() -> void:
 		and FLOOR.generation_config != null
 		and FLOOR.world_metrics != null
 		and FLOOR.background_texture != null
-		and FLOOR.default_combat_config != null,
-		"FloorDefinition 必须集中持有楼层身份、生成、几何、背景与默认战斗配置。"
+		and FLOOR.normal_combat_pool != null,
+		"FloorDefinition 必须集中持有楼层身份、生成、几何、背景与普通作战池。"
 	)
 	_expect(
 		FLOOR.world_metrics.default_grid_size
@@ -65,9 +71,11 @@ func _test_definition_contract() -> void:
 		"楼层 runtime contract hash 必须是稳定的 64 位 SHA-256。"
 	)
 	_expect(
-		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 5
+		FLOOR_DEFINITION_SCRIPT.RUNTIME_CONTRACT_SCHEMA == 6
+		and FLOOR_DEFINITION_SCRIPT.CONTENT_CONTRACT_SCHEMA == 3
+		and RogueCombatPoolConfig.RUNTIME_CONTRACT_SCHEMA == 1
 		and RogueCombatEncounterConfig.RUNTIME_CONTRACT_SCHEMA == 3,
-		"楼层与作战运行契约必须分别升级至 schema5/schema3。"
+		"楼层、内容、作战池与作战运行契约版本必须准确。"
 	)
 	_expect(
 		content_hash.length() == 64
@@ -92,15 +100,26 @@ func _test_definition_contract() -> void:
 		"生成规则变化必须改变楼层运行契约。"
 	)
 	var changed_combat_floor := FLOOR.duplicate(false) as FLOOR_DEFINITION_SCRIPT
-	changed_combat_floor.default_combat_config = (
-		FLOOR.default_combat_config.duplicate(false) as RogueCombatEncounterConfig
+	changed_combat_floor.normal_combat_pool = (
+		FLOOR.normal_combat_pool.duplicate(false) as RogueCombatPoolConfig
 	)
-	changed_combat_floor.default_combat_config.campaign = (
-		FLOOR.default_combat_config.build_occurrence_campaign(
+	changed_combat_floor.normal_combat_pool.entries = (
+		FLOOR.normal_combat_pool.entries.duplicate()
+	)
+	var changed_entry := (
+		FLOOR.normal_combat_pool.entries[0].duplicate(false)
+		as RogueCombatPoolEntry
+	)
+	changed_combat_floor.normal_combat_pool.entries[0] = changed_entry
+	changed_entry.combat_config = (
+		changed_entry.combat_config.duplicate(false) as RogueCombatEncounterConfig
+	)
+	changed_entry.combat_config.campaign = (
+		changed_entry.combat_config.build_occurrence_campaign(
 			"combat:test:floor-contract"
 		)
 	)
-	changed_combat_floor.default_combat_config.campaign.get_waves()[0].max_alive_enemies = 9
+	changed_entry.combat_config.campaign.get_waves()[0].max_alive_enemies = 9
 	_expect(
 		changed_combat_floor.compute_runtime_contract_hash() != runtime_hash,
 		"作战 Wave 的场上敌人上限变化必须传导至楼层运行契约。"
@@ -130,15 +149,44 @@ func _test_definition_contract() -> void:
 
 
 func _test_special_combat_catalog() -> void:
+	var narrow_bucket_count := 0
+	var church_bucket_count := 0
+	for bucket in range(FLOOR.normal_combat_pool.get_total_selection_weight()):
+		var selected := FLOOR.normal_combat_pool.select_config_for_weight_bucket(
+			bucket
+		)
+		if selected == NARROW_ROAD:
+			narrow_bucket_count += 1
+		elif selected == UNDERGROUND_CHURCH:
+			church_bucket_count += 1
 	_expect(
-		FLOOR.special_combat_configs.size() == 1
-		and FLOOR.get_combat_config(
-			FLOOR.default_combat_config.encounter_id
-		) == FLOOR.default_combat_config
+		FLOOR.normal_combat_pool.pool_id == &"normal_combat"
+		and FLOOR.normal_combat_pool.entries.size() == 2
+		and FLOOR.normal_combat_pool.get_total_selection_weight() == 100
+		and narrow_bucket_count == 10
+		and church_bucket_count == 90
+		and FLOOR.normal_combat_pool.select_config_for_weight_bucket(-1) == null
+		and FLOOR.normal_combat_pool.select_config_for_weight_bucket(100) == null
+		and FLOOR.get_combat_config(&"narrow_road_01") == NARROW_ROAD
+		and FLOOR.get_combat_config(&"underground_church_01")
+		== UNDERGROUND_CHURCH
+		and FLOOR.special_combat_configs.size() == 1
 		and FLOOR.get_combat_config(&"suitcase_battle")
 		== SUITCASE_BATTLE
 		and FLOOR.get_combat_config(&"missing") == null,
-		"楼层必须按 config_id 统一解析默认作战与唯一的皮箱特殊作战。"
+		"楼层必须提供10/90普通池，并统一解析普通与特殊作战。"
+	)
+	var reordered_pool := (
+		FLOOR.normal_combat_pool.duplicate(false) as RogueCombatPoolConfig
+	)
+	reordered_pool.entries = FLOOR.normal_combat_pool.entries.duplicate()
+	reordered_pool.entries.reverse()
+	_expect(
+		reordered_pool.compute_runtime_contract_hash()
+		== FLOOR.normal_combat_pool.compute_runtime_contract_hash()
+		and reordered_pool.select_config(20260811)
+		== FLOOR.normal_combat_pool.select_config(20260811),
+		"普通作战池的 authored 顺序不得改变合同或同种子选择结果。"
 	)
 	_expect(
 		SUITCASE_BATTLE.is_ready_to_enable()
@@ -218,9 +266,7 @@ func _test_floor_application() -> void:
 	var top_bar := route.get_node_or_null(
 		"HUD/Root/TopBar"
 	) as RogueRouteTopBar
-	var adapter := route.get(
-		"_normal_combat_briefing_adapter"
-	) as RogueNormalCombatBriefingAdapter
+	var adapters := route.get("_normal_combat_briefing_adapters") as Dictionary
 	_expect(
 		route.floor_definition == FLOOR
 		and route.generation_config == FLOOR.generation_config,
@@ -246,11 +292,16 @@ func _test_floor_application() -> void:
 	)
 	_expect(
 		coordinator != null
-		and adapter != null
-		and coordinator.encounter_config == FLOOR.default_combat_config
-		and adapter.encounter_config == FLOOR.default_combat_config
-		and coordinator.encounter_config == adapter.encounter_config,
-		"单人战斗协调器与战斗简报必须共享 FloorDefinition 的同一配置实例。"
+		and adapters.size() == 2
+		and (adapters[&"narrow_road_01"] as RogueNormalCombatBriefingAdapter).encounter_config
+		== NARROW_ROAD
+		and (adapters[&"narrow_road_01"] as RogueNormalCombatBriefingAdapter).hero_visual
+		== NARROW_ROAD.briefing_visual
+		and (adapters[&"underground_church_01"] as RogueNormalCombatBriefingAdapter).encounter_config
+		== UNDERGROUND_CHURCH
+		and (adapters[&"underground_church_01"] as RogueNormalCombatBriefingAdapter).hero_visual
+		== UNDERGROUND_CHURCH.briefing_visual,
+		"协调器不得保留默认兜底，普通作战池中的每项必须建立专属简报适配器。"
 	)
 	_expect(
 		top_bar != null
@@ -303,14 +354,13 @@ func _test_invalid_floor_is_atomic() -> void:
 		and background != null
 		and background.texture == null
 		and coordinator != null
-		and coordinator.encounter_config == null
 		and not coordinator.is_enabled()
 		and title != null
 		and title.text.is_empty(),
 		"子场景默认值必须为空，不得绕过 FloorDefinition 留下隐藏兜底。"
 	)
 	_expect(
-		route.get("_normal_combat_briefing_adapter") == null,
+		(route.get("_normal_combat_briefing_adapters") as Dictionary).is_empty(),
 		"无效楼层不得创建带默认兜底配置的战斗简报适配器。"
 	)
 	route.free()
