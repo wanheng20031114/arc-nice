@@ -1,0 +1,47 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" uid="uid://b3bjc1o0cesxc" path="res://scene/enemy/enemy.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scene/enemy/artificial_creation/cardboard_monster_large.gd" id="2_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/cardboard_monster_large.tres" id="3_frames"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+resource_local_to_scene = true
+size = Vector2(20, 18)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_touch"]
+resource_local_to_scene = true
+size = Vector2(20, 18)
+
+[node name="CardboardMonsterLarge" instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+touch_damage_interval = 0.5
+sprite_faces_left_by_default = false
+path_refresh_interval = 0.25
+waypoint_arrival_distance = 4.0
+direct_chase_extra_distance = 2.0
+
+[node name="AnimatedSprite2D" parent="." index="0"]
+texture_filter = 1
+sprite_frames = ExtResource("3_frames")
+animation = &"move"
+flip_h = false
+
+[node name="CollisionShape2D" parent="." index="1"]
+position = Vector2(0, -1)
+shape = SubResource("RectangleShape2D_body")
+
+[node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0"]
+position = Vector2(0, -1)
+shape = SubResource("RectangleShape2D_touch")
+
+[node name="WindupWarning" type="Polygon2D" parent="." index="5"]
+visible = false
+z_index = 3
+color = Color(1, 0.38, 0.32, 0.08)
+polygon = PackedVector2Array(20.78461, -12, 21.751387, -10.142838, 22.552623, -8.208483, 23.18222, -6.211657, 23.635386, -4.167556, 23.908673, -2.091738, 24, 0, 23.908673, 2.091738, 23.635386, 4.167556, 23.18222, 6.211657, 22.552623, 8.208483, 21.751387, 10.142838, 20.78461, 12, 5.196152, 3, 5.437847, 2.53571, 5.638156, 2.052121, 5.795555, 1.552914, 5.908847, 1.041889, 5.977168, 0.522934, 6, 0, 5.977168, -0.522934, 5.908847, -1.041889, 5.795555, -1.552914, 5.638156, -2.052121, 5.437847, -2.53571, 5.196152, -3)
+
+[node name="AttackAudio" type="AudioStreamPlayer2D" parent="." index="6"]
+bus = &"SFX"
+volume_db = -18.0
+max_distance = 128.0
+max_polyphony = 1

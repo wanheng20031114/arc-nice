@@ -20,6 +20,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
 	preload("res://resources/config/enemies/cardboard_monster.tres"),
+	preload("res://resources/config/enemies/cardboard_monster_large.tres"),
 	preload("res://resources/config/enemies/combat_robot.tres"),
 	preload("res://resources/config/enemies/combat_robot_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_gunner.tres"),
@@ -131,6 +132,7 @@ const ARTIFICIAL_CREATION_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_golem.tres"),
 	preload("res://resources/config/enemies/stone_golem_elite.tres"),
 	preload("res://resources/config/enemies/cardboard_monster.tres"),
+	preload("res://resources/config/enemies/cardboard_monster_large.tres"),
 ]
 const MECHANICAL_LIFE_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot.tres"),
@@ -437,8 +439,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the six normal and elite fire, frost, and lightning configs must carry the sorcerer category tag."
 	)
 	_expect(
-		int(category_counts["artificial_creation"]) == 3,
-		"Exactly the two stone golems and cardboard monster must carry the artificial_creation category tag."
+		int(category_counts["artificial_creation"]) == 4,
+		"Exactly the two stone golems and two cardboard monsters must carry the artificial_creation category tag."
 	)
 	_expect(
 		int(category_counts["mechanical_life"]) == 10,

@@ -12,8 +12,11 @@ const MULTIPLAYER_CAMPAIGN := preload(
 const CARDBOARD_CONFIG := preload(
 	"res://resources/config/enemies/cardboard_monster.tres"
 )
-const CARDBOARD_CONFIG_PATH := (
-	"res://resources/config/enemies/cardboard_monster.tres"
+const LARGE_CARDBOARD_CONFIG := preload(
+	"res://resources/config/enemies/cardboard_monster_large.tres"
+)
+const LARGE_CARDBOARD_CONFIG_PATH := (
+	"res://resources/config/enemies/cardboard_monster_large.tres"
 )
 const ZERO_DIRECT_REFERENCE_ROOTS := {
 	"正式标准单人": "res://resources/config/campaigns/standard/singleplayer",
@@ -26,6 +29,7 @@ const ZERO_DIRECT_REFERENCE_ROOTS := {
 	"P1A单人": "res://resources/config/campaigns/test_arena/singleplayer",
 	"P1A多人": "res://resources/config/campaigns/test_arena/multiplayer",
 	"P1B": "res://resources/config/campaigns/test_arena/p1b",
+	"P1D": "res://resources/config/campaigns/test_arena/p1d",
 	"P2": "res://resources/config/campaigns/test_arena/p2",
 	"P3": "res://resources/config/rogue_route",
 }
@@ -96,7 +100,7 @@ func _test_scene_and_catalog_contract(arena: TestGrassArena) -> void:
 		is_zero_approx(arena.progression_config.enemy_count_per_extra_player_ratio)
 		and arena.progression_config.get_scaled_enemy_count(EXPECTED_ENEMY_COUNT, 8)
 		== EXPECTED_ENEMY_COUNT,
-		"P1C 的1000只纸箱怪不得随多人房间人数缩放。"
+		"P1C 的1000只大小纸箱怪不得随多人房间人数缩放。"
 	)
 
 
@@ -112,11 +116,13 @@ func _test_campaign_contract(
 	var wave := waves[0] as WaveConfig
 	_expect(
 		wave != null
-		and wave.enemy_entries.size() == 1
+		and wave.enemy_entries.size() == 2
 		and wave.enemy_entries[0].enemy_config == CARDBOARD_CONFIG
-		and wave.enemy_entries[0].count == EXPECTED_ENEMY_COUNT
+		and wave.enemy_entries[0].count == 500
+		and wave.enemy_entries[1].enemy_config == LARGE_CARDBOARD_CONFIG
+		and wave.enemy_entries[1].count == 500
 		and wave.get_total_enemy_count() == EXPECTED_ENEMY_COUNT,
-		"P1C %s波次必须只登记1000只纸箱怪。" % mode_label
+		"P1C %s波次必须按普通500→大型500登记1000只纸箱怪。" % mode_label
 	)
 	_expect(
 		is_equal_approx(wave.spawn_interval, 3.0)
@@ -136,11 +142,11 @@ func _test_zero_direct_references() -> void:
 	for label: String in ZERO_DIRECT_REFERENCE_ROOTS:
 		var references := _find_text_references(
 			ZERO_DIRECT_REFERENCE_ROOTS[label],
-			CARDBOARD_CONFIG_PATH
+			LARGE_CARDBOARD_CONFIG_PATH
 		)
 		_expect(
 			references.is_empty(),
-			"%s不得直接引用纸箱怪：%s。" % [label, references]
+			"%s不得直接引用大纸箱怪：%s。" % [label, references]
 		)
 
 

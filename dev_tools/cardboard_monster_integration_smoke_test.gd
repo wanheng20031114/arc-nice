@@ -44,20 +44,20 @@ func _test_codex_contract() -> void:
 		"纸箱怪必须只属于人工造物。"
 	)
 	_expect(
-		EnemyCodexRegistry.ENTRY_COUNT == 62
+		EnemyCodexRegistry.ENTRY_COUNT == 63
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.NORMAL
-		] == 50
+		] == 51
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.ELITE
 		] == 11
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.BOSS
 		] == 1
-		and EnemyCodexRegistry.EXPECTED_FAMILY_COUNTS[&"artificial_creation"] == 3
+		and EnemyCodexRegistry.EXPECTED_FAMILY_COUNTS[&"artificial_creation"] == 4
 		and EnemyCodexRegistry.EXPECTED_FAMILY_COUNTS[&"mechanical_life"] == 10
 		and EnemyCodexRegistry.validate_contract(),
-		"图鉴计数必须为62/50/11/1，人工造物3、机械生命10。"
+		"图鉴计数必须为63/51/11/1，人工造物4、机械生命10。"
 	)
 
 
@@ -72,10 +72,10 @@ func _test_registry_and_texture_counts() -> void:
 		"res://resources/texture/enemy/mechanical_life"
 	)
 	_expect(
-		enemy_png_count == 86
-		and artificial_png_count == 3
+		enemy_png_count == 87
+		and artificial_png_count == 4
 		and mechanical_png_count == 20,
-		"敌人纹理必须为86张，人工造物3张，机械生命20张；实际%d/%d/%d。"
+		"敌人纹理必须为87张，人工造物4张，机械生命20张；实际%d/%d/%d。"
 		% [enemy_png_count, artificial_png_count, mechanical_png_count]
 	)
 
@@ -90,11 +90,11 @@ func _test_fate_and_wire_boundaries() -> void:
 		"命运精英映射必须保持10项，纸箱怪不得拥有精英替换。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 60
+		NET_CONSTANTS.PROTOCOL_VERSION == 61
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18,
-		"协议v60必须保留P1C/P1D wire，同时保持8通道与攻击来源末尾ID18。"
+		"协议v61必须保留P1C/P1D wire，同时保持8通道与攻击来源末尾ID18。"
 	)
 
 

@@ -85,17 +85,17 @@ func _test_codex_and_fate() -> void:
 		"res://resources/config/encyclopedia/codex_catalog.gd"
 	)
 	_expect(
-		registry_text.contains("const ENTRY_COUNT := 62")
+		registry_text.contains("const ENTRY_COUNT := 63")
 		and registry_text.contains("&\"mechanical_life\": 10")
-		and registry_text.contains("&\"artificial_creation\": 3")
-		and registry_text.contains("EnemyCodexEntryConfig.Rank.NORMAL: 50")
+		and registry_text.contains("&\"artificial_creation\": 4")
+		and registry_text.contains("EnemyCodexEntryConfig.Rank.NORMAL: 51")
 		and registry_text.contains("EnemyCodexEntryConfig.Rank.ELITE: 11")
 		and registry_text.contains("EnemyCodexEntryConfig.Rank.BOSS: 1")
 		and registry_text.count(
 			"resources/config/encyclopedia/enemies/combat_robot_shield_bearer_elite.tres"
 		) == 1
-		and catalog_text.contains("CodexSection.ENEMY: 62"),
-		"图鉴计数必须为62/50/11/1、机械生命10、人工造物3，且精英盾兵仅注册一次。"
+		and catalog_text.contains("CodexSection.ENEMY: 63"),
+		"图鉴计数必须为63/51/11/1、机械生命10、人工造物4，且精英盾兵仅注册一次。"
 	)
 
 	var fate_coordinator := FATE_COORDINATOR_SCRIPT.new()
@@ -110,7 +110,7 @@ func _test_codex_and_fate() -> void:
 
 
 func _test_protocol_attack_registry_and_pool_absence() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 60, "精英盾兵资源合同必须保留在协议v60中。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 61, "精英盾兵资源合同必须保留在协议v61中。")
 	_expect(
 		CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET == 18
 		and CombatAttackRegistry.encode_player_hit_source(

@@ -191,16 +191,16 @@ func _test_registry_and_fate_contract() -> void:
 		"res://resources/config/encyclopedia/codex_catalog.gd"
 	)
 	_expect(
-		registry_text.contains("const ENTRY_COUNT := 62")
+		registry_text.contains("const ENTRY_COUNT := 63")
 		and registry_text.contains("&\"mechanical_life\": 10")
-		and registry_text.contains("EnemyCodexEntryConfig.Rank.NORMAL: 50")
+		and registry_text.contains("EnemyCodexEntryConfig.Rank.NORMAL: 51")
 		and registry_text.contains("EnemyCodexEntryConfig.Rank.ELITE: 11")
 		and registry_text.contains("EnemyCodexEntryConfig.Rank.BOSS: 1")
 		and registry_text.count(
 			"resources/config/encyclopedia/enemies/combat_robot_drone_operator_elite.tres"
 		) == 1
-		and catalog_text.contains("CodexSection.ENEMY: 62"),
-		"图鉴计数必须保持62总数、50普通、11精英、1 Boss、10机械生命。"
+		and catalog_text.contains("CodexSection.ENEMY: 63"),
+		"图鉴计数必须保持63总数、51普通、11精英、1 Boss、10机械生命。"
 	)
 
 	var fate_coordinator := FATE_COORDINATOR_SCRIPT.new()

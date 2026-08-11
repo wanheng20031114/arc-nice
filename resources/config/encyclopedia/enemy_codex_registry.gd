@@ -1,19 +1,19 @@
 extends RefCounted
 class_name EnemyCodexRegistry
 
-const ENTRY_COUNT := 62
+const ENTRY_COUNT := 63
 const SORCERER_ENTRY_COUNT := 6
 const EXPECTED_FAMILY_COUNTS := {
 	&"yuanshi_insect": 16,
 	&"slime": 10,
 	&"capoo": 16,
 	&"sorcerer": 6,
-	&"artificial_creation": 3,
+	&"artificial_creation": 4,
 	&"mechanical_life": 10,
 	&"boss": 1,
 }
 const EXPECTED_RANK_COUNTS := {
-	EnemyCodexEntryConfig.Rank.NORMAL: 50,
+	EnemyCodexEntryConfig.Rank.NORMAL: 51,
 	EnemyCodexEntryConfig.Rank.ELITE: 11,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
@@ -70,6 +70,7 @@ const ENTRIES: Array[EnemyCodexEntryConfig] = [
 	preload("res://resources/config/encyclopedia/enemies/stone_golem.tres"),
 	preload("res://resources/config/encyclopedia/enemies/stone_golem_elite.tres"),
 	preload("res://resources/config/encyclopedia/enemies/cardboard_monster.tres"),
+	preload("res://resources/config/encyclopedia/enemies/cardboard_monster_large.tres"),
 	preload("res://resources/config/encyclopedia/enemies/combat_robot.tres"),
 	preload("res://resources/config/encyclopedia/enemies/combat_robot_elite.tres"),
 	preload("res://resources/config/encyclopedia/enemies/combat_robot_gunner.tres"),

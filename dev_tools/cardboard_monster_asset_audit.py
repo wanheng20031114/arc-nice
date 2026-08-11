@@ -24,7 +24,8 @@ STABILITY = enemy_asset_report_path("cardboard_monster_final_candidate_stability
 
 ATLAS_SHA256 = "73bad923829c873b83c808954d610735826884e2786a5fb1da21a04240578f2c"
 ATLAS_RGBA_SHA256 = "81e4a17fc6288a6204df5e67af864b4fc02e3644eaef92d1ca01b6b7504a44cf"
-ANIMATION_SHA256 = "ac9c1e6e1cf3b718dcebf9f21dda04fc3c506c1697b7d181e02ca3b7977ff311"
+# HEAD 38e07796 re-saved the unchanged SpriteFrames contract with Godot UIDs.
+ANIMATION_SHA256 = "97d509d94e6de9c0c2ea605142e34d9b5f1582d0f67992e1abfa18e938e54742"
 INTEGRATED_STAGE = "final_candidate_approved_runtime_written"
 APPROVED_STAGE = "final_candidate_third_human_gate_approved"
 
@@ -55,58 +56,106 @@ def main() -> None:
         raise AssertionError("Cardboard SpriteFrames SHA drifted")
     if animation_text.count("filter_clip = true") != 24:
         raise AssertionError("Every cardboard AtlasTexture must enable filter_clip")
-    expected_regions = []
-    for column in range(8):
-        expected_regions.append((column * 32, 0))
-    for column in range(8):
-        expected_regions.append((column * 32, 32))
-    for column in range(8):
-        expected_regions.append((column * 32, 64))
-    regions = [
-        (int(x), int(y))
-        for x, y in re.findall(r"region = Rect2\((\d+), (\d+), 32, 32\)", animation_text)
-    ]
-    if regions != expected_regions:
-        raise AssertionError("Cardboard AtlasTexture regions drifted")
-    for name, fps, loop in (
-        ("move", "12.0", "true"),
-        ("windup", "9.0", "false"),
-        ("slash", "15.0", "false"),
-        ("death", "8.0", "false"),
-    ):
-        if f'"name": &"{name}"' not in animation_text or f'"speed": {fps}' not in animation_text:
+    atlas_regions = {
+        resource_id: (int(x), int(y))
+        for resource_id, x, y in re.findall(
+            r'\[sub_resource type="AtlasTexture" id="([^"]+)"\]\n'
+            r'(?:(?!\n\[).)*?region = Rect2\((\d+), (\d+), 32, 32\)',
+            animation_text,
+            re.DOTALL,
+        )
+    }
+    animation_matches = re.findall(
+        r'"frames": \[\{(.*?)\}\],\n'
+        r'"loop": (true|false),\n'
+        r'"name": &"([^"]+)",\n'
+        r'"speed": ([\d.]+)',
+        animation_text,
+        re.DOTALL,
+    )
+    animations = {
+        name: {
+            "frames": re.findall(r'SubResource\("([^"]+)"\)', frames),
+            "loop": loop,
+            "speed": speed,
+        }
+        for frames, loop, name, speed in animation_matches
+    }
+    expected_animations = {
+        "move": {
+            "frames": [(column * 32, 0) for column in range(8)],
+            "loop": "true",
+            "speed": "12.0",
+        },
+        "windup": {
+            "frames": [(column * 32, 32) for column in range(3)],
+            "loop": "false",
+            "speed": "9.0",
+        },
+        "slash": {
+            "frames": [(column * 32, 32) for column in range(3, 8)],
+            "loop": "false",
+            "speed": "15.0",
+        },
+        "death": {
+            "frames": [(column * 32, 64) for column in range(8)],
+            "loop": "false",
+            "speed": "8.0",
+        },
+    }
+    if set(animations) != set(expected_animations):
+        raise AssertionError("Cardboard animation set drifted")
+    if set(atlas_regions) != {
+        resource_id
+        for animation in animations.values()
+        for resource_id in animation["frames"]
+    }:
+        raise AssertionError("Cardboard AtlasTexture references drifted")
+    for name, expected in expected_animations.items():
+        actual = animations[name]
+        actual_regions = [atlas_regions[resource_id] for resource_id in actual["frames"]]
+        if actual_regions != expected["frames"]:
+            raise AssertionError(f"Cardboard animation regions drifted: {name}")
+        if actual["loop"] != expected["loop"] or actual["speed"] != expected["speed"]:
             raise AssertionError(f"Cardboard animation timing drifted: {name}")
-        pattern = rf'"loop": {loop},\n"name": &"{name}"'
-        if re.search(pattern, animation_text) is None:
-            raise AssertionError(f"Cardboard animation loop contract drifted: {name}")
 
     import_text = TEXTURE_IMPORT.read_text(encoding="utf-8")
     for marker in ('importer="texture"', 'compress/mode=0', 'mipmaps/generate=false'):
         if marker not in import_text:
             raise AssertionError(f"Cardboard texture import contract lost {marker}")
 
-    report = json.loads(REPORT.read_text(encoding="utf-8"))
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    stability = json.loads(STABILITY.read_text(encoding="utf-8"))
-    for payload in (report, manifest):
+    certificate_paths = (REPORT, MANIFEST, STABILITY)
+    if not all(is_enemy_asset_report_path(path) for path in certificate_paths):
+        raise AssertionError("Cardboard disposable certificate path escaped the ignored report directory")
+    certificate_presence = tuple(path.is_file() for path in certificate_paths)
+    if any(certificate_presence) and not all(certificate_presence):
+        raise AssertionError("Cardboard disposable certificate chain is only partially present")
+
+    certificate_mode = "disposable_reports_absent"
+    if all(certificate_presence):
+        report = json.loads(REPORT.read_text(encoding="utf-8"))
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        stability = json.loads(STABILITY.read_text(encoding="utf-8"))
+        for payload in (report, manifest):
+            if (
+                payload.get("stage") != INTEGRATED_STAGE
+                or payload.get("third_human_approved") is not True
+                or payload.get("final_human_approved") is not True
+                or payload.get("runtime_written") is not True
+            ):
+                raise AssertionError("Cardboard runtime certificate flags drifted")
+        if stability.get("stage") != APPROVED_STAGE or stability.get("runtime_written") is not False:
+            raise AssertionError("Cardboard approved preview stability evidence drifted")
+        runtime_animation = manifest.get("runtime_assets", {}).get("animation", {})
+        slash_contract = runtime_animation.get("animations", {}).get("slash", {})
         if (
-            payload.get("stage") != INTEGRATED_STAGE
-            or payload.get("third_human_approved") is not True
-            or payload.get("final_human_approved") is not True
-            or payload.get("runtime_written") is not True
+            slash_contract.get("frames") != 5
+            or slash_contract.get("damage_frame_local_index") != 1
+            or slash_contract.get("damage_frame_source_cell") != {"row": 1, "column": 4}
         ):
-            raise AssertionError("Cardboard runtime certificate flags drifted")
-    if stability.get("stage") != APPROVED_STAGE or stability.get("runtime_written") is not False:
-        raise AssertionError("Cardboard approved preview stability evidence drifted")
-    runtime_animation = manifest.get("runtime_assets", {}).get("animation", {})
-    slash_contract = runtime_animation.get("animations", {}).get("slash", {})
-    if (
-        slash_contract.get("frames") != 5
-        or slash_contract.get("damage_frame_local_index") != 1
-        or slash_contract.get("damage_frame_source_cell") != {"row": 1, "column": 4}
-    ):
-        raise AssertionError("Cardboard runtime slash damage-frame certificate drifted")
-    print("CARDBOARD_MONSTER_ASSET_AUDIT_OK")
+            raise AssertionError("Cardboard runtime slash damage-frame certificate drifted")
+        certificate_mode = "strict"
+    print(f"CARDBOARD_MONSTER_ASSET_AUDIT_OK certificate_mode={certificate_mode}")
 
 
 if __name__ == "__main__":

@@ -475,6 +475,16 @@ func _test_elite_runtime_facing() -> void:
 
 func _test_slash_geometry() -> void:
 	await _expect_slash_result(Vector2(42.0, 0.0), true, "Knight slash did not hit a target in front.")
+	await _expect_slash_result(
+		Vector2.RIGHT.rotated(deg_to_rad(30.0)) * 42.0,
+		true,
+		"Knight slash must include the exact +30-degree half-angle boundary."
+	)
+	await _expect_slash_result(
+		Vector2.RIGHT.rotated(deg_to_rad(30.01)) * 42.0,
+		false,
+		"Knight slash must reject a target clearly outside the +30-degree half-angle."
+	)
 	await _expect_slash_result(Vector2(5.0, 0.0), false, "Knight slash hit inside its inner dead zone.")
 	await _expect_slash_result(Vector2(52.0, 0.0), false, "Knight slash hit outside its outer radius.")
 	await _expect_slash_result(Vector2(36.0, 36.0), false, "Knight slash hit outside its 60-degree arc.")

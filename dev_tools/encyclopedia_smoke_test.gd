@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 62,
+	CodexSection.ENEMY: 63,
 	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 16,
 }
@@ -33,12 +33,12 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"slime": 10,
 	&"capoo": 16,
 	&"sorcerer": 6,
-	&"artificial_creation": 3,
+	&"artificial_creation": 4,
 	&"mechanical_life": 10,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
-	EnemyCodexEntryConfig.Rank.NORMAL: 50,
+	EnemyCodexEntryConfig.Rank.NORMAL: 51,
 	EnemyCodexEntryConfig.Rank.ELITE: 11,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }

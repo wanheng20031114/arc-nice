@@ -1,0 +1,2 @@
+extends CardboardMonsterConfig
+class_name CardboardMonsterLargeConfig

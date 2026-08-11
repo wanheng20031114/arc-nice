@@ -10,6 +10,7 @@ const ENEMY_ATTACK_AUDIO_LIMITER := preload(
 	"res://scene/combat/audio/enemy_attack_audio_limiter.gd"
 )
 const WINDUP_WARNING_SEGMENTS := 12
+const SLASH_ANGLE_EPSILON_RADIANS := 0.000001
 
 enum CombatState {
 	CHASE,
@@ -285,7 +286,11 @@ func _apply_slash_damage() -> void:
 			knight_config.slash_outer_radius
 		):
 			continue
-		if offset == Vector2.ZERO or abs(slash_direction.angle_to(offset.normalized())) > half_angle:
+		if (
+			offset == Vector2.ZERO
+			or abs(slash_direction.angle_to(offset.normalized()))
+				> half_angle + SLASH_ANGLE_EPSILON_RADIANS
+		):
 			continue
 		hit_targets[target_id] = true
 		if player != null:

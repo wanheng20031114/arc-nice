@@ -1,21 +1,28 @@
-[gd_resource type="Resource" script_class="WaveConfig" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="WaveConfig" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
 [ext_resource type="Resource" path="res://resources/config/enemies/cardboard_monster.tres" id="2_cardboard_monster"]
 [ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="3_wave_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/cardboard_monster_large.tres" id="4_cardboard_monster_large"]
 
 [sub_resource type="Resource" id="Resource_cardboard_monster_entry"]
 script = ExtResource("1_entry_script")
 enemy_config = ExtResource("2_cardboard_monster")
-count = 1000
+count = 500
+
+[sub_resource type="Resource" id="Resource_cardboard_monster_large_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("4_cardboard_monster_large")
+count = 500
 
 [resource]
 script = ExtResource("3_wave_script")
-wave_name = "第1波 纸箱怪压力测试（多人）"
-enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_cardboard_monster_entry")])
+wave_name = "第1波 大小纸箱怪轮转测试（多人）"
+enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_cardboard_monster_entry"), SubResource("Resource_cardboard_monster_large_entry")])
 spawn_point_mask = 3
 spawn_order = 1
 spawn_interval = 3.0
+spawn_count_per_tick = 1
 max_alive_enemies = 1000
 step_id = &"wave_01"
-display_name = "第1波 纸箱怪连续生成（1000只）"
+display_name = "第1波 大小纸箱怪严格轮转（各500只）"

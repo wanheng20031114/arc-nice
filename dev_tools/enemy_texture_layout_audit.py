@@ -12,12 +12,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEXTURE_ROOT = ROOT / "resources" / "texture"
 ENEMY_ROOT = TEXTURE_ROOT / "enemy"
-EXPECTED_TOTAL_PNG_COUNT = 86
+EXPECTED_TOTAL_PNG_COUNT = 87
 EXPECTED_MECHANICAL_LIFE_PNG_COUNT = 20
 
 EXPECTED_PNGS: dict[str, tuple[str, ...]] = {
     "artificial_creation": (
         "cardboard_monster.png",
+        "cardboard_monster_large.png",
         "stone_golem.png",
         "stone_golem_elite.png",
     ),

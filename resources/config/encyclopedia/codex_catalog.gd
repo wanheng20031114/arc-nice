@@ -20,7 +20,7 @@ const BUILDING_FILTER_KEYS: Array[StringName] = [
 ## Authored catalog contract used by navigation before any section is materialized.
 ## The encyclopedia smoke test verifies these counts against the full registries.
 const REGISTERED_ENTRY_COUNTS := {
-	CodexSection.ENEMY: 62,
+	CodexSection.ENEMY: 63,
 	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 16,
 }
