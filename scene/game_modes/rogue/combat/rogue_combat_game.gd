@@ -114,6 +114,27 @@ func validate_encounter_scene_contract(
 		errors.append("地下 Rouge 作战场景必须使用塔防标准黑夜环境色。")
 	if get_node_or_null("NightVfxFlashPool") as NightVfxFlashPool == null:
 		errors.append("地下 Rouge 作战场景缺少塔防同款夜间闪光池。")
+
+	var obstacle_layer := get_node_or_null(
+		"GroundTileMapLayer"
+	) as TileMapLayer
+	if obstacle_layer == null:
+		errors.append("Rouge 作战场景缺少 GroundTileMapLayer。")
+	elif (
+		obstacle_layer.tile_set == null
+		or not obstacle_layer.get_used_rect().has_area()
+	):
+		errors.append("Rouge 作战场景的 GroundTileMapLayer 缺少有效导航格。")
+	var pathfinder := get_node_or_null("GridPathfinder") as GridPathfinder
+	if pathfinder == null:
+		errors.append("Rouge 作战场景缺少 GridPathfinder。")
+	elif pathfinder.obstacle_tile_layer_path.is_empty():
+		errors.append("Rouge 作战场景的 GridPathfinder 未绑定障碍层。")
+	elif (
+		pathfinder.get_node_or_null(pathfinder.obstacle_tile_layer_path)
+		as TileMapLayer
+	) != obstacle_layer:
+		errors.append("Rouge 作战场景的 GridPathfinder 未绑定 GroundTileMapLayer。")
 	if (
 		expected_spawn_point_mask <= 0
 		or expected_spawn_point_mask & ~WaveConfig.ALL_SPAWN_POINT_MASK
