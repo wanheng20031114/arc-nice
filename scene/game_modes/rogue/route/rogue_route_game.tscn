@@ -1,4 +1,4 @@
-[gd_scene load_steps=36 format=3]
+[gd_scene load_steps=37 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/rogue/route/rogue_route_game.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/route/rogue_route_board.tscn" id="2_board"]
@@ -26,6 +26,7 @@
 [ext_resource type="Script" path="res://scene/game_modes/rogue/rare_chest/domain/rogue_rare_chest_economy_coordinator.gd" id="30_rare_chest_economy"]
 [ext_resource type="Script" path="res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_session.gd" id="31_rare_chest_session"]
 [ext_resource type="PackedScene" path="res://scene/game_modes/rogue/rare_chest/rogue_rare_chest_overlay.tscn" id="32_rare_chest_overlay"]
+[ext_resource type="AudioStream" path="res://resources/audio/rogue_route_cave.ogg" id="33_route_music"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape_vertical"]
 size = Vector2(16, 16)
@@ -135,6 +136,12 @@ glow_levels/7 = 0.0
 physics_interpolation_mode = 2
 script = ExtResource("1_script")
 floor_definition = ExtResource("3_floor")
+
+[node name="RouteMusicPlayer" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("33_route_music")
+volume_db = -6.0
+autoplay = false
+bus = &"Music"
 
 [node name="RouteBeaconGlowEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_route_beacon_hdr")

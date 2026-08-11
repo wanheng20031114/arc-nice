@@ -130,6 +130,7 @@ const ROUTE_PRESENTATION_FULL_HIDE_MASK := (
 @export var initial_generation_seed := AUTO_SEED
 
 @onready var world: RogueRouteWorld = $World
+@onready var route_music_player: AudioStreamPlayer = $RouteMusicPlayer
 @onready var route_board: RogueRouteBoard = $World/RouteBoard
 @onready var player_container: Node2D = $World/Players
 @onready var map_camera: Camera2D = $World/Camera2D
@@ -1691,6 +1692,7 @@ func _try_play_route_entry_reveal() -> void:
 	var loader := get_node_or_null("/root/GameLoadCoordinator")
 	if loader != null and bool(loader.call("is_loading")):
 		return
+	_try_start_route_music()
 	if is_encounter_active():
 		route_board.complete_entry_reveal()
 		_set_route_reveal_input_locked(false)
@@ -1699,6 +1701,14 @@ func _try_play_route_entry_reveal() -> void:
 		return
 	_set_route_reveal_input_locked(true)
 	route_board.play_entry_reveal()
+
+
+## 路线音乐与入场揭示共用加载门禁。重复激活、重连快照或路线重建只会
+## 保持当前播放头，不会从头重播。
+func _try_start_route_music() -> void:
+	if route_music_player.playing:
+		return
+	route_music_player.play()
 
 
 func _on_route_entry_reveal_finished() -> void:
@@ -3973,6 +3983,9 @@ func _apply_route_presentation_leases() -> void:
 	if not is_node_ready():
 		return
 	var active_leases := _route_presentation_leases
+	route_music_player.stream_paused = (
+		active_leases & RoutePresentationLease.COMBAT
+	) != 0
 	var route_world_hidden := active_leases != 0
 	var full_hud_hidden := (
 		active_leases & ROUTE_PRESENTATION_FULL_HIDE_MASK
