@@ -16,6 +16,8 @@ const XIAOCONG_DIALOGUE_DESIRED_LEFT := 40.0
 const XIAOCONG_DIALOGUE_MIN_LEFT := 12.0
 const XIAOCONG_DIALOGUE_PANEL_WIDTH := 308.0
 const XIAOCONG_DIALOGUE_PANEL_GAP := 4.0
+const DETAIL_PRICE_COLOR := Color(1.0, 0.84, 0.52, 1.0)
+const DETAIL_INSUFFICIENT_PRICE_COLOR := Color(0.86, 0.32, 0.29, 1.0)
 
 enum ShopTab {
 	BUY,
@@ -67,6 +69,8 @@ var _sell_slots: Array = []
 var _selected_payload: Dictionary = {}
 var _selected_card_index := -1
 var _transaction_pending := false
+var _current_xirang_balance := 0
+var _balance_peer_id := 0
 
 
 func _ready() -> void:
@@ -81,6 +85,16 @@ func _ready() -> void:
 		run_state.quick_use_binding_changed.connect(
 			_on_quick_use_binding_changed
 		)
+	if not run_state.party_xirang_ledger_changed.is_connected(
+		_on_party_xirang_ledger_changed
+	):
+		run_state.party_xirang_ledger_changed.connect(
+			_on_party_xirang_ledger_changed
+		)
+	_balance_peer_id = run_state.active_multiplayer_peer_id
+	_current_xirang_balance = run_state.get_party_xirang_balance(
+		_balance_peer_id
+	)
 	if not root_control.resized.is_connected(_layout_xiaocong_dialogue):
 		root_control.resized.connect(_layout_xiaocong_dialogue)
 	_layout_xiaocong_dialogue()
@@ -126,9 +140,23 @@ func present_buy_offers(offers: Array) -> void:
 
 
 func present_shop_snapshot(snapshot: Dictionary) -> void:
+	if typeof(snapshot.get("target_peer_id")) == TYPE_INT:
+		_balance_peer_id = int(snapshot["target_peer_id"])
+	if typeof(snapshot.get("xirang_balance")) == TYPE_INT:
+		_current_xirang_balance = maxi(int(snapshot["xirang_balance"]), 0)
 	var offers := snapshot.get("offers", snapshot.get("target_offers", [])) as Array
 	if offers != null:
 		present_buy_offers(offers)
+	else:
+		_refresh_affordability_presentation()
+
+
+func set_xirang_balance(balance: int) -> void:
+	var normalized_balance := maxi(balance, 0)
+	if normalized_balance == _current_xirang_balance:
+		return
+	_current_xirang_balance = normalized_balance
+	_refresh_affordability_presentation()
 
 
 func present_sell_inventory(slots: Array) -> void:
@@ -268,7 +296,10 @@ func _refresh_grid() -> void:
 			if offer.is_empty():
 				item_cards[index].clear_card()
 				continue
-			item_cards[index].present_buy_offer(offer)
+			item_cards[index].present_buy_offer(
+				offer,
+				_current_xirang_balance
+			)
 		page_label.text = ""
 		return
 
@@ -305,6 +336,26 @@ func _on_quick_use_binding_changed(
 		and _active_tab == ShopTab.SELL
 	):
 		_refresh_grid()
+
+
+func _on_party_xirang_ledger_changed(snapshot: Dictionary) -> void:
+	var values := snapshot.get("values", {}) as Dictionary
+	if values == null:
+		return
+	var balance_value: Variant = values.get(
+		_balance_peer_id,
+		values.get(str(_balance_peer_id), null)
+	)
+	if typeof(balance_value) == TYPE_INT:
+		set_xirang_balance(int(balance_value))
+
+
+func _refresh_affordability_presentation() -> void:
+	if _active_tab == ShopTab.BUY:
+		for card in item_cards:
+			card.refresh_buy_affordability(_current_xirang_balance)
+	if detail_overlay.visible and not _selected_payload.is_empty():
+		_refresh_detail_price_color()
 
 
 func _refresh_or_close_detail() -> void:
@@ -401,6 +452,7 @@ func _present_detail(payload: Dictionary) -> void:
 	)
 	detail_price_title.text = "回收价" if is_sell else "价格"
 	detail_price.text = str(maxi(price, 0))
+	_refresh_detail_price_color()
 	detail_action_label.text = "出售" if is_sell else "购买"
 	var count := maxi(
 		int(payload.get(
@@ -421,6 +473,33 @@ func _present_detail(payload: Dictionary) -> void:
 		else bool(payload.get("disabled", false))
 	)
 	detail_action_button.disabled = _transaction_pending or cannot_sell
+
+
+func _refresh_detail_price_color() -> void:
+	var is_sell := _active_tab == ShopTab.SELL
+	var resolved_price := int(
+		_selected_payload.get(
+			"sell_price",
+			_selected_payload.get(
+				"recycle_price",
+				_selected_payload.get("price", 0)
+			)
+		)
+	)
+	var insufficient := (
+		not is_sell
+		and not bool(
+			_selected_payload.get(
+				"purchased",
+				_selected_payload.get("sold_out", false)
+			)
+		)
+		and _current_xirang_balance < maxi(resolved_price, 0)
+	)
+	detail_price.add_theme_color_override(
+		"font_color",
+		DETAIL_INSUFFICIENT_PRICE_COLOR if insufficient else DETAIL_PRICE_COLOR
+	)
 
 
 func _resolve_item(payload: Dictionary) -> PickupConfig:

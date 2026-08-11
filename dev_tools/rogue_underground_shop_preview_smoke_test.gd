@@ -35,6 +35,7 @@ func _run() -> void:
 	if view != null:
 		_audit_authored_scene(view)
 		_audit_dialogue_interaction(view)
+		_audit_affordability_events(view, run_state)
 		_audit_buy_interaction(view)
 		_audit_sell_interaction(view, run_state)
 		await _audit_responsive_layout(view)
@@ -81,6 +82,11 @@ func _audit_source_boundaries() -> void:
 			"res://dev_tools/visual_prototypes/underground_shop/underground_shop_product_card_preview.tscn"
 		),
 		"旧 10 格商品卡原型必须退役，避免与正式布局漂移。"
+	)
+	_expect(
+		not view_script_source.contains("func _process")
+		and not view_script_source.contains("Timer"),
+		"购买力颜色必须由快照和息壤账本信号刷新，不得轮询。"
 	)
 
 
@@ -218,6 +224,73 @@ func _audit_dialogue_interaction(view: RogueUndergroundShopView) -> void:
 	view.open_session()
 
 
+func _audit_affordability_events(
+	view: RogueUndergroundShopView,
+	run_state: RunStateStore
+) -> void:
+	view.show_buy_tab()
+	var offers: Array[Dictionary] = []
+	for card in view.get_item_cards():
+		offers.append(card.get_payload())
+	var target_price := int(offers[0].get("price", 0))
+	_expect(target_price > 0, "购买力颜色测试必须选择正价商品。")
+	view.present_shop_snapshot({
+		"target_peer_id": 0,
+		"xirang_balance": target_price - 1,
+		"offers": offers,
+	})
+	var target_card := view.get_item_cards()[0]
+	var price_label := target_card.get_node("PriceLabel") as Label
+	_expect(
+		price_label.get_theme_color("font_color")
+		== RogueUndergroundShopItemCard.INSUFFICIENT_PRICE_COLOR
+		and not target_card.disabled,
+		"余额不足时只应把购买价格改为克制红色，不得禁用商品。"
+	)
+	target_card.pressed.emit()
+	var detail_price := view.get_node(
+		"Root/DetailOverlay/DetailFrame/DetailPrice"
+	) as Label
+	var detail_action := view.get_node(
+		"Root/DetailOverlay/DetailFrame/DetailActionButton"
+	) as TextureButton
+	_expect(
+		detail_price.get_theme_color("font_color")
+		== RogueUndergroundShopView.DETAIL_INSUFFICIENT_PRICE_COLOR
+		and not detail_action.disabled,
+		"余额不足的购买详情应同步标红价格，但仍允许提交以取得权威结果。"
+	)
+	view.close_detail()
+	_expect(
+		run_state.set_party_xirang_balance(0, target_price),
+		"购买力事件测试必须能够更新个人息壤账本。"
+	)
+	_expect(
+		price_label.get_theme_color("font_color")
+		== RogueUndergroundShopItemCard.PRICE_COLOR,
+		"息壤账本信号达到足额时，价格必须立即恢复正常金色。"
+	)
+	var sold_out_offers := offers.duplicate(true)
+	sold_out_offers[0]["purchased"] = true
+	view.present_shop_snapshot({
+		"target_peer_id": 0,
+		"xirang_balance": 0,
+		"offers": sold_out_offers,
+	})
+	_expect(
+		target_card.disabled
+		and (target_card.get_node("StateLabel") as Label).text == "售罄"
+		and price_label.get_theme_color("font_color")
+		== RogueUndergroundShopItemCard.PRICE_COLOR,
+		"售罄状态必须优先于购买力提示，保留售罄遮罩并恢复普通价格色。"
+	)
+	view.present_shop_snapshot({
+		"target_peer_id": 0,
+		"xirang_balance": target_price,
+		"offers": offers,
+	})
+
+
 func _audit_buy_interaction(view: RogueUndergroundShopView) -> void:
 	var cards := view.get_item_cards()
 	var detail := view.get_node("Root/DetailOverlay") as Control
@@ -290,6 +363,12 @@ func _audit_sell_interaction(
 	_expect(
 		first_count.visible and first_count.text == "×1",
 		"可堆叠出售物品必须显示玩家实际持有数，即使当前仅1件。"
+	)
+	_expect(
+		(view.get_item_cards()[0].get_node("PriceLabel") as Label).get_theme_color(
+			"font_color"
+		) == RogueUndergroundShopItemCard.PRICE_COLOR,
+		"出售回收价不得套用购买余额不足的红色状态。"
 	)
 	var second_count := view.get_item_cards()[1].get_node("CountLabel") as Label
 	_expect(second_count.visible and second_count.text == "×2", "出售卡必须显示实际堆叠数。")

@@ -8,6 +8,9 @@ enum PresentationMode {
 	SELL,
 }
 
+const PRICE_COLOR := Color(0.91, 0.8, 0.57, 1.0)
+const INSUFFICIENT_PRICE_COLOR := Color(0.86, 0.32, 0.29, 1.0)
+
 @onready var item_icon: TextureRect = %ItemIcon
 @onready var quick_use_badge: TextureRect = %QuickUseBadge
 @onready var xirang_icon: TextureRect = %XirangIcon
@@ -25,7 +28,7 @@ func _ready() -> void:
 	clear_card()
 
 
-func present_buy_offer(offer: Dictionary) -> void:
+func present_buy_offer(offer: Dictionary, xirang_balance: int = 0) -> void:
 	_mode = PresentationMode.BUY
 	_payload = offer.duplicate(true)
 	_apply_common_payload(offer, int(offer.get("price", 0)))
@@ -36,6 +39,7 @@ func present_buy_offer(offer: Dictionary) -> void:
 	state_label.visible = sold_out
 	state_shade.visible = sold_out
 	disabled = sold_out or bool(offer.get("disabled", false))
+	refresh_buy_affordability(xirang_balance)
 	tooltip_text = _build_tooltip(offer, disabled)
 	visible = true
 
@@ -64,6 +68,7 @@ func present_sell_slot(slot: Dictionary, quick_use_bound: bool = false) -> void:
 	state_label.visible = cannot_sell
 	state_shade.visible = cannot_sell
 	disabled = cannot_sell
+	_set_price_color(false)
 	tooltip_text = _build_tooltip(slot, cannot_sell)
 	visible = true
 
@@ -76,6 +81,7 @@ func clear_card() -> void:
 		quick_use_badge.hide()
 	if price_label != null:
 		price_label.text = ""
+		_set_price_color(false)
 	if xirang_icon != null:
 		xirang_icon.hide()
 	if count_label != null:
@@ -95,6 +101,16 @@ func get_payload() -> Dictionary:
 
 func get_presentation_mode() -> int:
 	return _mode
+
+
+func refresh_buy_affordability(xirang_balance: int) -> void:
+	if _mode != PresentationMode.BUY or _payload.is_empty():
+		return
+	var sold_out := bool(
+		_payload.get("purchased", _payload.get("sold_out", false))
+	)
+	var price := maxi(int(_payload.get("price", 0)), 0)
+	_set_price_color(not sold_out and maxi(xirang_balance, 0) < price)
 
 
 static func get_disabled_reason_text(reason: String) -> String:
@@ -130,6 +146,13 @@ func _apply_common_payload(payload: Dictionary, price: int) -> void:
 	item_icon.texture = texture
 	price_label.text = str(maxi(price, 0))
 	xirang_icon.show()
+
+
+func _set_price_color(insufficient: bool) -> void:
+	price_label.add_theme_color_override(
+		"font_color",
+		INSUFFICIENT_PRICE_COLOR if insufficient else PRICE_COLOR
+	)
 
 
 func _resolve_item(payload: Dictionary) -> PickupConfig:
