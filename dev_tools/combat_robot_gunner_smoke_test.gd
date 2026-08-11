@@ -44,12 +44,11 @@ class DirectPathfinder:
 		}
 
 
-class GunnerTestRoot:
-	extends Node2D
+class GunnerTestGateway:
+	extends MultiplayerGameplayGateway
 
 	var enemy_actions: Array[Dictionary] = []
 	var registered_projectiles: Array[Dictionary] = []
-	var force_next_pool_failure := false
 
 	func broadcast_enemy_action(
 		net_id: int,
@@ -66,16 +65,6 @@ class GunnerTestRoot:
 			"action_id": action_id,
 		})
 
-	func has_session_object_pool_scene(_scene: PackedScene) -> bool:
-		return force_next_pool_failure
-
-	func acquire_session_object(
-		_scene: PackedScene,
-		_defer_enable: bool
-	) -> Node:
-		force_next_pool_failure = false
-		return null
-
 	func register_local_projectile(
 		projectile: Node,
 		projectile_type: StringName,
@@ -84,7 +73,10 @@ class GunnerTestRoot:
 		direction: Vector2,
 		damage: int,
 		speed: float,
-		lifetime: float
+		lifetime: float,
+		_pierces_enemies: bool = false,
+		_target_peer_id: int = 0,
+		_target_enemy_net_id: int = 0
 	) -> void:
 		registered_projectiles.append({
 			"projectile": projectile,
@@ -95,6 +87,47 @@ class GunnerTestRoot:
 			"speed": speed,
 			"lifetime": lifetime,
 		})
+
+
+class GunnerTestRoot:
+	extends PlayerTestCombatRuntime
+
+	var force_next_pool_failure := false
+	var recording_gateway: GunnerTestGateway = null
+	var enemy_actions: Array[Dictionary]:
+		get:
+			return recording_gateway.enemy_actions
+	var registered_projectiles: Array[Dictionary]:
+		get:
+			return recording_gateway.registered_projectiles
+
+
+	func _init() -> void:
+		super()
+		var motion_placeholder := get_node("CapooProjectileMotionSystem")
+		remove_child(motion_placeholder)
+		motion_placeholder.free()
+		var motion_system := CapooProjectileMotionSystem.new()
+		motion_system.name = "CapooProjectileMotionSystem"
+		add_child(motion_system)
+
+		var gateway_placeholder := get_node("MultiplayerGameplayGateway")
+		remove_child(gateway_placeholder)
+		gateway_placeholder.free()
+		recording_gateway = GunnerTestGateway.new()
+		recording_gateway.name = "MultiplayerGameplayGateway"
+		add_child(recording_gateway)
+
+
+	func has_session_object_pool_scene(scene: PackedScene) -> bool:
+		return force_next_pool_failure or super(scene)
+
+
+	func acquire_session_object(scene: PackedScene, strict: bool = false) -> Node:
+		if force_next_pool_failure:
+			force_next_pool_failure = false
+			return null
+		return super(scene, strict)
 
 
 var failures: Array[String] = []
@@ -669,7 +702,7 @@ func _spawn_gunner(
 	var gunner := GUNNER_SCENE.instantiate() as CombatRobotGunner
 	test_root.add_child(gunner)
 	gunner.global_position = spawn_position
-	gunner.setup(GUNNER_CONFIG, player, shared_pathfinder)
+	gunner.setup(GUNNER_CONFIG, player, shared_pathfinder, test_root)
 	gunner.set_physics_process(false)
 	return gunner
 

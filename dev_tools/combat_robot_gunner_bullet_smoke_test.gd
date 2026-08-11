@@ -326,12 +326,18 @@ func _test_client_view_plant_hit_consumes_visual_without_damage() -> void:
 
 
 func _test_live_plant_behind_dead_plant_is_still_hit() -> void:
-	var fixture := _create_fixture("GunnerBulletDeadThenLivePlantFixture")
+	var fixture := _create_authoritative_fixture(
+		"GunnerBulletDeadThenLivePlantFixture"
+	)
 	var dead_plant := _add_plant(fixture, Vector2(20.0, 0.0))
 	dead_plant.is_dead = true
 	var live_plant := _add_plant(fixture, Vector2(40.0, 0.0))
 	var initial_health := live_plant.current_health
 	var bullet := await _spawn_stationary_test_bullet(fixture)
+	bullet.bind_gameplay_context(
+		fixture,
+		fixture.get_multiplayer_gameplay_gateway()
+	)
 	bullet.simulate_compensated_motion(TEST_COMPENSATION_AGE)
 	_expect(
 		bullet.has_hit and bullet.global_position.x > 30.0,
@@ -413,6 +419,16 @@ func _create_client_view_fixture(fixture_name: String) -> Node2D:
 	var gameplay_gateway := ClientViewGateway.new()
 	gameplay_gateway.name = "MultiplayerGameplayGateway"
 	fixture.add_child(gameplay_gateway)
+	root.add_child(fixture)
+	current_scene = fixture
+	return fixture
+
+
+func _create_authoritative_fixture(
+	fixture_name: String
+) -> PlayerTestCombatRuntime:
+	var fixture := PlayerTestCombatRuntime.new()
+	fixture.name = fixture_name
 	root.add_child(fixture)
 	current_scene = fixture
 	return fixture

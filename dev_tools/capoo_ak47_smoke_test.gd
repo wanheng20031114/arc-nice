@@ -10,7 +10,7 @@ const WAVE_06 := preload("res://resources/config/waves/wave_06.tres")
 const WAVE_07 := preload("res://resources/config/waves/wave_07.tres")
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: PlayerTestCombatRuntime
 var spawned_projectiles: Array[CapooAK47Bullet] = []
 
 
@@ -19,7 +19,13 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = PlayerTestCombatRuntime.new()
+	var motion_placeholder := test_root.get_node("CapooProjectileMotionSystem")
+	test_root.remove_child(motion_placeholder)
+	motion_placeholder.free()
+	var motion_system := CapooProjectileMotionSystem.new()
+	motion_system.name = "CapooProjectileMotionSystem"
+	test_root.add_child(motion_system)
 	test_root.name = "CapooAK47SmokeTest"
 	root.add_child(test_root)
 	current_scene = test_root
@@ -766,7 +772,7 @@ func _spawn_capoo_with_config(
 	var enemy := CAPOO_SCENE.instantiate() as CapooAK47
 	test_root.add_child(enemy)
 	enemy.global_position = position
-	enemy.setup(enemy_config, player)
+	enemy.setup(enemy_config, player, null, test_root)
 	return enemy
 
 
@@ -782,6 +788,10 @@ func _spawn_projectile(position: Vector2, direction: Vector2) -> CapooAK47Bullet
 	var projectile := BULLET_SCENE.instantiate() as CapooAK47Bullet
 	test_root.add_child(projectile)
 	projectile.global_position = position
+	projectile.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	projectile.setup(direction, 1, CAPOO_CONFIG.projectile_speed, CAPOO_CONFIG.projectile_lifetime)
 	return projectile
 
