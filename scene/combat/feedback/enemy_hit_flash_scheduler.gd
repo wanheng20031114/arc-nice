@@ -4,9 +4,16 @@ extends Node
 ## One weak state is retained per currently flashing enemy; idle sessions have
 ## no process callback, per-enemy Timer/Tween or duplicated ShaderMaterial.
 const FLASH_DURATION_SECONDS := 0.07
-const FLASH_HOLD_SECONDS := 0.025
-const FLASH_FADE_SECONDS := FLASH_DURATION_SECONDS - FLASH_HOLD_SECONDS
-const FLASH_PEAK_STRENGTH := 0.84
+const FLASH_FADE_IN_SECONDS := 0.01
+const FLASH_PEAK_HOLD_SECONDS := 0.02
+const FLASH_FADE_OUT_START_SECONDS := (
+	FLASH_FADE_IN_SECONDS + FLASH_PEAK_HOLD_SECONDS
+)
+const FLASH_FADE_OUT_SECONDS := (
+	FLASH_DURATION_SECONDS - FLASH_FADE_OUT_START_SECONDS
+)
+const FLASH_ENTRY_STRENGTH := 0.08
+const FLASH_PEAK_STRENGTH := 0.56
 
 
 class FlashState:
@@ -14,6 +21,9 @@ class FlashState:
 	var target_ref: WeakRef = null
 	var elapsed_seconds := 0.0
 	var trigger_process_frame := 0
+	var peak_process_frame := -1
+	var hitch_tail_process_frame := -1
+	var entry_strength := 0.0
 
 
 var _states_by_target_id: Dictionary[int, FlashState] = {}
@@ -40,9 +50,16 @@ func trigger(target: Enemy) -> bool:
 		state.target_id = target_id
 		state.target_ref = weakref(target)
 		_states_by_target_id[target_id] = state
+	state.entry_strength = clampf(
+		maxf(target.direct_hit_flash_strength, FLASH_ENTRY_STRENGTH),
+		FLASH_ENTRY_STRENGTH,
+		FLASH_PEAK_STRENGTH
+	)
 	state.elapsed_seconds = 0.0
 	state.trigger_process_frame = Engine.get_process_frames()
-	target.call("_set_direct_hit_flash_strength", FLASH_PEAK_STRENGTH)
+	state.peak_process_frame = -1
+	state.hitch_tail_process_frame = -1
+	target.call("_set_direct_hit_flash_strength", state.entry_strength)
 	set_process(true)
 	return true
 
@@ -104,27 +121,73 @@ func _advance(delta: float, force_render_frame_advanced: bool) -> void:
 			completed_target_ids.append(target_id)
 			continue
 		# A hit can be triggered from physics immediately before this process pass.
-		# Keep the peak through at least one render opportunity even after a hitch.
+		# Keep the visible entry through at least one render opportunity even after a hitch.
 		if (
 			not force_render_frame_advanced
 			and current_process_frame <= state.trigger_process_frame
 		):
+			target.call("_set_direct_hit_flash_strength", state.entry_strength)
+			continue
+		if (
+			not force_render_frame_advanced
+			and state.hitch_tail_process_frame >= 0
+		):
+			if current_process_frame <= state.hitch_tail_process_frame:
+				target.call("_set_direct_hit_flash_strength", FLASH_ENTRY_STRENGTH)
+				continue
+			target.call("_set_direct_hit_flash_strength", 0.0)
+			completed_target_ids.append(target_id)
+			continue
+		if (
+			not force_render_frame_advanced
+			and state.peak_process_frame >= 0
+			and current_process_frame <= state.peak_process_frame
+		):
 			target.call("_set_direct_hit_flash_strength", FLASH_PEAK_STRENGTH)
 			continue
-		state.elapsed_seconds += delta
+		var next_elapsed_seconds := state.elapsed_seconds + delta
+		if (
+			not force_render_frame_advanced
+			and state.peak_process_frame < 0
+			and next_elapsed_seconds >= FLASH_FADE_IN_SECONDS
+		):
+			state.elapsed_seconds = next_elapsed_seconds
+			state.peak_process_frame = current_process_frame
+			target.call("_set_direct_hit_flash_strength", FLASH_PEAK_STRENGTH)
+			continue
+		state.elapsed_seconds = next_elapsed_seconds
 		if state.elapsed_seconds >= FLASH_DURATION_SECONDS:
+			if (
+				not force_render_frame_advanced
+				and target.direct_hit_flash_strength > FLASH_ENTRY_STRENGTH
+			):
+				state.hitch_tail_process_frame = current_process_frame
+				target.call("_set_direct_hit_flash_strength", FLASH_ENTRY_STRENGTH)
+				continue
 			target.call("_set_direct_hit_flash_strength", 0.0)
 			completed_target_ids.append(target_id)
 			continue
 		var strength := FLASH_PEAK_STRENGTH
-		if state.elapsed_seconds > FLASH_HOLD_SECONDS:
-			var fade_progress := clampf(
-				(state.elapsed_seconds - FLASH_HOLD_SECONDS)
-				/ FLASH_FADE_SECONDS,
+		if state.elapsed_seconds < FLASH_FADE_IN_SECONDS:
+			var fade_in_progress := clampf(
+				state.elapsed_seconds / FLASH_FADE_IN_SECONDS,
 				0.0,
 				1.0
 			)
-			strength *= 1.0 - smoothstep(0.0, 1.0, fade_progress)
+			var fade_in_eased := smoothstep(0.0, 1.0, fade_in_progress)
+			strength = lerpf(
+				state.entry_strength,
+				FLASH_PEAK_STRENGTH,
+				fade_in_eased
+			)
+		elif state.elapsed_seconds > FLASH_FADE_OUT_START_SECONDS:
+			var fade_out_progress := clampf(
+				(state.elapsed_seconds - FLASH_FADE_OUT_START_SECONDS)
+				/ FLASH_FADE_OUT_SECONDS,
+				0.0,
+				1.0
+			)
+			strength *= 1.0 - smoothstep(0.0, 1.0, fade_out_progress)
 		target.call("_set_direct_hit_flash_strength", strength)
 	for target_id in completed_target_ids:
 		_states_by_target_id.erase(target_id)

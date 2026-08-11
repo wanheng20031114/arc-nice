@@ -12,6 +12,12 @@ const STATUS_SHADER_PATH := (
 	"res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 )
 const FLASH_PARAMETER := &"direct_hit_flash_strength"
+const EXPECTED_FLASH_ENTRY_STRENGTH := 0.08
+const EXPECTED_FLASH_PEAK_STRENGTH := 0.56
+const EXPECTED_FLASH_FADE_IN_SECONDS := 0.01
+const EXPECTED_FLASH_HOLD_SECONDS := 0.02
+const EXPECTED_FLASH_FADE_OUT_SECONDS := 0.04
+const EXPECTED_FLASH_DURATION_SECONDS := 0.07
 const STRESS_ENEMY_COUNT := 1000
 const STRESS_FLASH_COUNT := 256
 
@@ -39,6 +45,7 @@ func _run() -> void:
 	_test_shader_contract()
 	await _test_direct_and_suppressed_damage_contract()
 	await _test_scheduler_timing_and_retrigger_contract()
+	await _test_peak_render_frame_guard_contract()
 	await _test_reparent_during_flash_contract()
 	await _test_periodic_status_contract()
 	await _test_lethal_and_proxy_contract()
@@ -77,12 +84,12 @@ func _test_shader_contract() -> void:
 		"instance uniform float direct_hit_flash_strength"
 	)
 	var flash_color := source.find(
-		"direct_hit_flash_color : source_color = vec4(1.15, 0.06, 0.04, 1.0)"
+		"direct_hit_flash_color : source_color = vec4(1.0, 0.24, 0.26, 1.0)"
 	)
 	var flash_block := source.find("if (direct_hit_flash_strength")
 	var revive_block := source.find("vec4 pre_revive_color")
 	_expect(flash_uniform >= 0, "Direct-hit strength must be an instance uniform.")
-	_expect(flash_color >= 0, "Direct-hit flash must use the approved saturated red.")
+	_expect(flash_color >= 0, "Direct-hit flash must use the approved pale blood red.")
 	_expect(
 		flash_block >= 0 and flash_block < revive_block,
 		"Direct-hit red must compose after persistent statuses and before revive outline handling."
@@ -105,8 +112,11 @@ func _test_direct_and_suppressed_damage_contract() -> void:
 	_expect(
 		direct_result.accepted
 		and direct_result.applied_damage > 0
-		and is_equal_approx(enemy.direct_hit_flash_strength, 0.84),
-		"An accepted direct hit must start the approved peak red flash even when particles are suppressed."
+		and is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		),
+		"An accepted direct hit must start the approved pale-red entry transition even when particles are suppressed."
 	)
 	_expect(
 		enemy.animated_sprite.material == enemy.status_visual_material,
@@ -120,7 +130,10 @@ func _test_direct_and_suppressed_damage_contract() -> void:
 	var zero_direction_result := enemy.apply_combat_damage(zero_direction_request)
 	_expect(
 		zero_direction_result.accepted
-		and is_equal_approx(enemy.direct_hit_flash_strength, 0.84),
+		and is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		),
 		"A directionless but explicit attack must still flash."
 	)
 	hit_flash_scheduler.call("clear_target", enemy, true)
@@ -155,6 +168,10 @@ func _test_direct_and_suppressed_damage_contract() -> void:
 
 
 func _test_scheduler_timing_and_retrigger_contract() -> void:
+	_expect(
+		EXPECTED_FLASH_HOLD_SECONDS >= 1.0 / 60.0,
+		"The peak window must span at least one complete 60 Hz frame."
+	)
 	var enemy := _spawn_enemy(BASIC_CONFIG)
 	if enemy == null:
 		return
@@ -162,33 +179,162 @@ func _test_scheduler_timing_and_retrigger_contract() -> void:
 		Vector2.ZERO,
 		CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
 	)
-	hit_flash_scheduler.call("advance_for_test", 0.02)
 	_expect(
-		is_equal_approx(enemy.direct_hit_flash_strength, 0.84),
-		"The first 0.025 seconds must retain the full flash peak."
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		),
+		"A direct hit must begin at the low-opacity entry strength."
 	)
-	hit_flash_scheduler.call("advance_for_test", 0.02)
+	# advance_for_test() intentionally bypasses this safeguard, so exercise the
+	# real path with a hitch-sized delta in the same Engine process frame.
+	hit_flash_scheduler.call("_advance", 1.0, false)
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		)
+		and int(hit_flash_scheduler.call("get_active_target_count")) == 1,
+		"A same-frame hitch must preserve the entry flash through at least one render opportunity."
+	)
+	hit_flash_scheduler.call(
+		"advance_for_test",
+		EXPECTED_FLASH_FADE_IN_SECONDS * 0.5
+	)
+	var entering_strength := enemy.direct_hit_flash_strength
+	_expect(
+		entering_strength > EXPECTED_FLASH_ENTRY_STRENGTH
+		and entering_strength < EXPECTED_FLASH_PEAK_STRENGTH,
+		"The first 0.01 seconds must rise smoothly from the low-opacity entry."
+	)
+	hit_flash_scheduler.call(
+		"advance_for_test",
+		EXPECTED_FLASH_FADE_IN_SECONDS * 0.5
+	)
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_PEAK_STRENGTH
+		),
+		"The fade-in must reach the reduced peak at 0.01 seconds."
+	)
+	hit_flash_scheduler.call(
+		"advance_for_test",
+		EXPECTED_FLASH_HOLD_SECONDS
+	)
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_PEAK_STRENGTH
+		),
+		"The peak must remain stable for the 0.02-second hold."
+	)
+	hit_flash_scheduler.call(
+		"advance_for_test",
+		EXPECTED_FLASH_FADE_OUT_SECONDS * 0.5
+	)
 	var fading_strength := enemy.direct_hit_flash_strength
 	_expect(
-		fading_strength > 0.0 and fading_strength < 0.84,
-		"The final 0.045 seconds must fade smoothly from the peak."
+		fading_strength > 0.0
+		and fading_strength < EXPECTED_FLASH_PEAK_STRENGTH,
+		"The final 0.04 seconds must fade smoothly from the reduced peak."
 	)
 	enemy.play_multiplayer_damage_feedback(
 		Vector2.ZERO,
 		CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
 	)
 	_expect(
-		is_equal_approx(enemy.direct_hit_flash_strength, 0.84)
+		enemy.direct_hit_flash_strength >= fading_strength
 		and int(hit_flash_scheduler.call("get_active_target_count")) == 1,
-		"Rapid re-hits must restart one existing state without stacking scheduler entries."
+		"Rapid re-hits must restart one existing state without dimming or stacking scheduler entries."
 	)
-	hit_flash_scheduler.call("advance_for_test", 0.07)
+	hit_flash_scheduler.call(
+		"advance_for_test",
+		EXPECTED_FLASH_FADE_IN_SECONDS
+	)
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_PEAK_STRENGTH
+		),
+		"A rapid re-hit must rise back to the approved peak."
+	)
+	hit_flash_scheduler.call(
+		"advance_for_test",
+		EXPECTED_FLASH_DURATION_SECONDS
+	)
 	_expect(
 		is_zero_approx(enemy.direct_hit_flash_strength)
 		and enemy.animated_sprite.material == null
 		and int(hit_flash_scheduler.call("get_active_target_count")) == 0
 		and not hit_flash_scheduler.is_processing(),
-		"At 0.07 seconds the flash must clear and restore the unmaterialed batching path."
+		"After the 0.07-second transition the flash must clear and restore the unmaterialed batching path."
+	)
+	enemy.queue_free()
+	await process_frame
+
+
+func _test_peak_render_frame_guard_contract() -> void:
+	var enemy := _spawn_enemy(BASIC_CONFIG)
+	if enemy == null:
+		return
+	enemy.play_multiplayer_damage_feedback(
+		Vector2.ZERO,
+		CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+	)
+	# Drive the real-path guard manually so a hitch-sized delta cannot skip from
+	# the entry directly to clear. Disabling automatic processing keeps the
+	# render-frame boundaries deterministic for this contract test.
+	hit_flash_scheduler.set_process(false)
+	hit_flash_scheduler.call("_advance", 1.0, false)
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		),
+		"The trigger frame must retain the visible entry even during a hitch."
+	)
+	await process_frame
+	hit_flash_scheduler.call("_advance", 1.0, false)
+	hit_flash_scheduler.set_process(false)
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_PEAK_STRENGTH
+		)
+		and int(hit_flash_scheduler.call("get_active_target_count")) == 1,
+		"The first frame after a hitch must present the peak instead of skipping it."
+	)
+	await process_frame
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_PEAK_STRENGTH
+		),
+		"The guarded peak must survive one complete render opportunity."
+	)
+	hit_flash_scheduler.call("_advance", 1.0, false)
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		)
+		and int(hit_flash_scheduler.call("get_active_target_count")) == 1,
+		"A hitch that skips the fade must present one low-strength tail instead of dropping directly from peak to clear."
+	)
+	await process_frame
+	_expect(
+		is_equal_approx(
+			enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		),
+		"The hitch tail must survive one complete render opportunity."
+	)
+	hit_flash_scheduler.call("_advance", 1.0, false)
+	_expect(
+		is_zero_approx(enemy.direct_hit_flash_strength)
+		and int(hit_flash_scheduler.call("get_active_target_count")) == 0,
+		"After the guarded peak and tail have rendered, a later frame may finish the flash."
 	)
 	enemy.queue_free()
 	await process_frame
@@ -234,7 +380,10 @@ func _test_periodic_status_contract() -> void:
 	var direct_request := DamageRequest.new(1)
 	direct_request.with_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES)
 	enemy.apply_combat_damage(direct_request)
-	hit_flash_scheduler.call("advance_for_test", 0.07)
+	hit_flash_scheduler.call(
+		"advance_for_test",
+		EXPECTED_FLASH_DURATION_SECONDS
+	)
 	_expect(
 		is_zero_approx(enemy.direct_hit_flash_strength)
 		and enemy.burn_overlay_strength > 0.0
@@ -272,9 +421,12 @@ func _test_lethal_and_proxy_contract() -> void:
 	_expect(
 		lethal_result.lethal
 		and lethal_enemy.is_dead
-		and is_equal_approx(lethal_enemy.direct_hit_flash_strength, 0.84)
+		and is_equal_approx(
+			lethal_enemy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		)
 		and lethal_enemy.animated_sprite.material == lethal_enemy.status_visual_material,
-		"A lethal direct hit must remain red during the start of the death animation."
+		"A lethal direct hit must begin its pale-red transition during the start of the death animation."
 	)
 	hit_flash_scheduler.call("clear_target", lethal_enemy, true)
 
@@ -295,7 +447,10 @@ func _test_lethal_and_proxy_contract() -> void:
 		CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
 	)
 	_expect(
-		is_equal_approx(proxy.direct_hit_flash_strength, 0.84),
+		is_equal_approx(
+			proxy.direct_hit_flash_strength,
+			EXPECTED_FLASH_ENTRY_STRENGTH
+		),
 		"A proxy must flash when the authoritative presentation flag arrives."
 	)
 	hit_flash_scheduler.call("clear_target", proxy, true)
@@ -331,7 +486,10 @@ func _test_all_enemy_scene_contract() -> void:
 			CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
 		)
 		_expect(
-			is_equal_approx(enemy.direct_hit_flash_strength, 0.84),
+			is_equal_approx(
+				enemy.direct_hit_flash_strength,
+				EXPECTED_FLASH_ENTRY_STRENGTH
+			),
 			"%s must accept the shared direct-hit flash." % file_name
 		)
 		hit_flash_scheduler.call("clear_target", enemy, true)
@@ -374,7 +532,21 @@ func _test_idle_and_concurrent_stress_contract() -> void:
 		int(hit_flash_scheduler.call("get_active_target_count")) == STRESS_FLASH_COUNT,
 		"Concurrent flashes must allocate exactly one weak state per affected enemy."
 	)
-	hit_flash_scheduler.call("advance_for_test", 0.07)
+	for index in range(STRESS_FLASH_COUNT):
+		_expect(
+			enemies[index].status_visual_material == shared_material
+			and enemies[index].animated_sprite.material == shared_material,
+			"Every concurrently flashing enemy must bind the one shared status material."
+		)
+	for index in range(STRESS_FLASH_COUNT, STRESS_ENEMY_COUNT):
+		_expect(
+			enemies[index].animated_sprite.material == null,
+			"Enemies outside the flashing cohort must remain on the unmaterialed batching path."
+		)
+	hit_flash_scheduler.call(
+		"advance_for_test",
+		EXPECTED_FLASH_DURATION_SECONDS
+	)
 	_expect(
 		int(hit_flash_scheduler.call("get_active_target_count")) == 0
 		and not hit_flash_scheduler.is_processing(),
