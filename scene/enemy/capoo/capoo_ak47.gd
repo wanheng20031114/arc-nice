@@ -323,6 +323,10 @@ func _fire_locked_bullet() -> bool:
 	var outgoing_damage := get_effective_attack_damage(capoo_config.attack_damage)
 	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.top_level = true
+	if projectile.get_parent() == null:
+		spawn_parent.add_child(projectile)
+	elif projectile.get_parent() != spawn_parent:
+		projectile.reparent(spawn_parent)
 	projectile.setup(
 		burst_shot_direction,
 		outgoing_damage,
@@ -331,10 +335,6 @@ func _fire_locked_bullet() -> bool:
 		pathfinder as GridPathfinder,
 		projectile_motion_system
 	)
-	if projectile.get_parent() == null:
-		spawn_parent.add_child(projectile)
-	elif projectile.get_parent() != spawn_parent:
-		projectile.reparent(spawn_parent)
 	projectile.global_position = global_position + burst_shot_direction * capoo_config.projectile_spawn_distance
 	projectile.reset_physics_interpolation()
 	gameplay_gateway.register_local_projectile(

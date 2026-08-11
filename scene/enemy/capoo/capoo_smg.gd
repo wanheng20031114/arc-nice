@@ -268,6 +268,10 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 	)
 	projectile.bind_gameplay_context(combat_runtime, gameplay_gateway)
 	projectile.top_level = true
+	if projectile.get_parent() == null:
+		spawn_parent.add_child(projectile)
+	elif projectile.get_parent() != spawn_parent:
+		projectile.reparent(spawn_parent)
 	projectile.setup(
 		shoot_direction,
 		outgoing_damage,
@@ -276,10 +280,6 @@ func _fire_bullet(shoot_direction: Vector2) -> bool:
 		pathfinder as GridPathfinder,
 		projectile_motion_system
 	)
-	if projectile.get_parent() == null:
-		spawn_parent.add_child(projectile)
-	elif projectile.get_parent() != spawn_parent:
-		projectile.reparent(spawn_parent)
 	projectile.global_position = (
 		global_position
 		+ shoot_direction * smg_config_cache.projectile_spawn_distance

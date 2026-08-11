@@ -397,6 +397,10 @@ func _fire_locked_bullet() -> bool:
 			projectile.queue_free()
 		return false
 	gunner_bullet.bind_gameplay_context(combat_runtime, gameplay_gateway)
+	if projectile.get_parent() == null:
+		spawn_parent.add_child(projectile)
+	elif projectile.get_parent() != spawn_parent:
+		projectile.reparent(spawn_parent)
 	projectile.setup(
 		shot_direction,
 		outgoing_damage,
@@ -405,10 +409,6 @@ func _fire_locked_bullet() -> bool:
 		pathfinder as GridPathfinder,
 		projectile_motion_system
 	)
-	if projectile.get_parent() == null:
-		spawn_parent.add_child(projectile)
-	elif projectile.get_parent() != spawn_parent:
-		projectile.reparent(spawn_parent)
 	projectile.global_position = projectile_spawn_position
 	projectile.reset_physics_interpolation()
 	gameplay_gateway.register_local_projectile(
