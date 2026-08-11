@@ -268,7 +268,7 @@ func net_enemy_damage_feedback_batch(
 	damage_values: PackedInt32Array,
 	directions: PackedVector2Array,
 	damage_types: PackedByteArray,
-	particle_flags: PackedByteArray
+	presentation_flags: PackedByteArray
 ) -> void:
 	pass
 
@@ -281,7 +281,7 @@ func net_enemy_damage_applied(
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: int = 0,
-	show_hit_particles: bool = true
+	presentation_flags: int = 0
 ) -> void:
 	pass
 
@@ -432,7 +432,7 @@ func net_enemy_terminal(
 	confirmed_damage: int = 0,
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: int = 0,
-	show_hit_particles: bool = false
+	presentation_flags: int = 0
 ) -> void:
 	pass
 

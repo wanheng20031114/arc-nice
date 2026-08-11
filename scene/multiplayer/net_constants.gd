@@ -91,7 +91,10 @@ extends RefCounted
 ## v61：新增大纸箱怪的运行资源、图鉴合同，并将 P1C 调整为普通/大纸箱怪各500只
 ## 的严格轮转压力波次。RPC 表面、攻击来源 ID 与 8 个 ENet 通道均不变；v60
 ## 客户端缺少大纸箱怪资源，无法加载新的 P1C Campaign 波次。
-const PROTOCOL_VERSION := 61
+## v62：敌人伤害反馈由单一粒子布尔值升级为表现位集，Host 可独立同步命中粒子
+## 与直接命中闪红；聚合伤害和可靠致死事件统一使用该位集。v61 客户端会把新的
+## int 表现位误解为旧 bool，无法保持直接命中与持续伤害表现一致。
+const PROTOCOL_VERSION := 62
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

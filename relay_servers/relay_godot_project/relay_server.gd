@@ -11,7 +11,7 @@ const MIN_CLIENTS := 2
 const MAX_CLIENTS := 8
 const DEFAULT_MAX_CLIENTS := MAX_CLIENTS
 const CHANNEL_COUNT := 8
-const PROTOCOL_VERSION := 61
+const PROTOCOL_VERSION := 62
 
 var _port: int = DEFAULT_PORT
 var _idle_timeout_sec: float = DEFAULT_IDLE_TIMEOUT_SEC

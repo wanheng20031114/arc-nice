@@ -115,9 +115,9 @@ func _test_static_boundaries() -> void:
 		"Profile 五个请求必须静态直连既有 Standard adapter。"
 	)
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 61
+		NET_CONSTANTS.PROTOCOL_VERSION == 62
 		and GameModeCatalog.MODE_STANDARD == 0,
-		"Standard wire=0 与协议 v61 必须保持冻结。"
+		"Standard wire=0 与协议 v62 必须保持冻结。"
 	)
 	var mp_game_script := load(MP_GAME_SOURCE_PATH) as Script
 	_expect(mp_game_script != null, "MpGame 脚本必须可加载。")

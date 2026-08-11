@@ -310,33 +310,54 @@ func _attach_enemy_coordinator(
 	coordinator.name = "EnemyCoordinator"
 	mp_game.add_child(coordinator)
 	mp_game.enemy_coordinator = coordinator
+	coordinator.lifecycle_rpc_broadcast_requested.connect(
+		mp_game._on_enemy_lifecycle_rpc_broadcast_requested
+	)
 	return coordinator
 
 
 func _test_host_terminal_pairing_cache() -> void:
-	var mp_game := RecordingMpGame.new()
-	var enemy_coordinator := _attach_enemy_coordinator(mp_game)
-	mp_game._broadcast_enemy_terminal(1, ENEMY_TERMINAL_DEFEATED, Vector2.ZERO)
-	mp_game._broadcast_enemy_terminal(1, ENEMY_TERMINAL_DEFEATED, Vector2.ZERO)
+	var enemy_coordinator := MpEnemyCoordinator.new()
+	var sent_reasons: Array[int] = []
+	var terminal := enemy_coordinator.build_host_terminal_event(
+		1,
+		ENEMY_TERMINAL_DEFEATED,
+		Vector2.ZERO
+	)
+	if not terminal.is_empty():
+		sent_reasons.append(int(terminal.get("reason", -1)))
+	terminal = enemy_coordinator.build_host_terminal_event(
+		1,
+		ENEMY_TERMINAL_DEFEATED,
+		Vector2.ZERO
+	)
+	if not terminal.is_empty():
+		sent_reasons.append(int(terminal.get("reason", -1)))
 	_expect(
-		mp_game.sent_reasons == [ENEMY_TERMINAL_DEFEATED],
+		sent_reasons == [ENEMY_TERMINAL_DEFEATED],
 		"Duplicate defeated event must remain suppressed while removal is pending."
 	)
-	mp_game._broadcast_enemy_terminal(1, ENEMY_TERMINAL_REMOVED, Vector2.ZERO)
+	enemy_coordinator.build_host_terminal_event(
+		1,
+		ENEMY_TERMINAL_REMOVED,
+		Vector2.ZERO
+	)
 	_expect(
 		enemy_coordinator.host_terminal_enemy_ids.is_empty(),
 		"Generic removal must consume the pending defeated marker."
 	)
 
-	mp_game.sent_reasons.clear()
+	sent_reasons.clear()
 	for event_index in range(PRESSURE_EVENT_COUNT):
 		var net_id := event_index + 10
-		mp_game._broadcast_enemy_terminal(
+		terminal = enemy_coordinator.build_host_terminal_event(
 			net_id,
 			ENEMY_TERMINAL_DEFEATED,
 			Vector2.ZERO
 		)
-		mp_game._broadcast_enemy_terminal(
+		if not terminal.is_empty():
+			sent_reasons.append(int(terminal.get("reason", -1)))
+		enemy_coordinator.build_host_terminal_event(
 			net_id,
 			ENEMY_TERMINAL_REMOVED,
 			Vector2.ZERO
@@ -346,24 +367,36 @@ func _test_host_terminal_pairing_cache() -> void:
 		"Thousands of defeated→removed pairs must leave no Host terminal IDs."
 	)
 	_expect(
-		mp_game.sent_reasons.size() == PRESSURE_EVENT_COUNT,
+		sent_reasons.size() == PRESSURE_EVENT_COUNT,
 		"Defeated→removed pairs must send only the defeated terminal event."
 	)
 
-	mp_game.sent_reasons.clear()
+	sent_reasons.clear()
 	for event_index in range(PRESSURE_EVENT_COUNT):
 		var net_id := event_index + 20_000
-		mp_game._broadcast_enemy_terminal(net_id, ENEMY_TERMINAL_REMOVED, Vector2.ZERO)
-		mp_game._broadcast_enemy_terminal(net_id, ENEMY_TERMINAL_ESCAPED, Vector2.ZERO)
+		terminal = enemy_coordinator.build_host_terminal_event(
+			net_id,
+			ENEMY_TERMINAL_REMOVED,
+			Vector2.ZERO
+		)
+		if not terminal.is_empty():
+			sent_reasons.append(int(terminal.get("reason", -1)))
+		terminal = enemy_coordinator.build_host_terminal_event(
+			net_id,
+			ENEMY_TERMINAL_ESCAPED,
+			Vector2.ZERO
+		)
+		if not terminal.is_empty():
+			sent_reasons.append(int(terminal.get("reason", -1)))
 	_expect(
 		enemy_coordinator.host_terminal_enemy_ids.is_empty(),
 		"Direct removed/escaped terminals must never allocate Host tombstones."
 	)
 	_expect(
-		mp_game.sent_reasons.size() == PRESSURE_EVENT_COUNT * 2,
+		sent_reasons.size() == PRESSURE_EVENT_COUNT * 2,
 		"Direct removed/escaped terminal sends must remain intact."
 	)
-	mp_game.free()
+	enemy_coordinator.free()
 
 
 func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
@@ -400,8 +433,7 @@ func _test_client_escape_compatibility_has_no_tombstone_cache() -> void:
 
 
 func _test_reliable_terminal_feedback_payload() -> void:
-	var mp_game := RecordingMpGame.new()
-	var enemy_coordinator := _attach_enemy_coordinator(mp_game)
+	var enemy_coordinator := MpEnemyCoordinator.new()
 	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new() as TowerDefenseGame
 	_prepare_runtime_boundaries(runtime)
 	var enemy := Enemy.new()
@@ -418,79 +450,79 @@ func _test_reliable_terminal_feedback_payload() -> void:
 	enemy.current_health = 0
 	enemy.is_dead = true
 	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
-	mp_game.game = runtime
 	enemy_coordinator.bind_runtime(runtime)
 	enemy_coordinator.pending_enemy_damage_feedback[net_id] = {
 		"current_health": 10,
 		"damage": 15,
 		"impact_direction": Vector2.LEFT,
 		"damage_type": int(EnemyConfig.DamageType.MAGIC),
-		"show_hit_particles": false,
+		"presentation_flags": CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH,
 	}
 	enemy_coordinator.active_enemy_damage_feedback_context[net_id] = {
 		"impact_direction": Vector2.RIGHT,
 		"damage_type": int(EnemyConfig.DamageType.PHYSICAL),
-		"show_hit_particles": true,
+		"presentation_flags": (
+			CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+			| CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+		),
 	}
-	mp_game._broadcast_enemy_terminal(
+	var terminal := enemy_coordinator.build_host_terminal_event(
 		net_id,
 		ENEMY_TERMINAL_DEFEATED,
 		Vector2(12.0, 8.0)
 	)
-	var args := mp_game.last_terminal_args
 	_expect(
-		args.size() == 9
-		and int(args[0]) == net_id
-		and int(args[1]) == ENEMY_TERMINAL_DEFEATED
-		and args[2] == Vector2(12.0, 8.0)
-		and int(args[3]) == 0
-		and int(args[4]) == enemy.health_revision
-		and int(args[5]) == 40
-		and args[6] == Vector2.RIGHT
-		and int(args[7]) == int(EnemyConfig.DamageType.PHYSICAL)
-		and bool(args[8]),
-		"可靠终结事件必须合并未发送的15点反馈与最后25点致死伤害，并携带最终方向、类型和粒子标记。"
+		int(terminal.get("net_id", 0)) == net_id
+		and int(terminal.get("reason", -1)) == ENEMY_TERMINAL_DEFEATED
+		and terminal.get("event_position", Vector2.ZERO) == Vector2(12.0, 8.0)
+		and int(terminal.get("current_health", -1)) == 0
+		and int(terminal.get("health_revision", -1)) == enemy.health_revision
+		and int(terminal.get("damage", 0)) == 40
+		and terminal.get("impact_direction", Vector2.ZERO) == Vector2.RIGHT
+		and int(terminal.get("damage_type", -1))
+		== int(EnemyConfig.DamageType.PHYSICAL)
+		and int(terminal.get("presentation_flags", 0)) == 3,
+		"可靠终结事件必须合并未发送的15点反馈与最后25点致死伤害，并携带最终方向、类型和粒子/闪红表现位。"
 	)
 	_expect(
 		not enemy_coordinator.pending_enemy_damage_feedback.has(net_id),
 		"致死反馈并入可靠终结事件后必须从不可靠批队列移除，避免重复浮字。"
 	)
 	runtime.multiplayer_enemies_by_net_id.clear()
+	enemy_coordinator.clear_active_damage_feedback_context(net_id)
 	enemy.free()
 	runtime.free()
-	mp_game.free()
+	enemy_coordinator.free()
 
 
 func _test_real_batch_damage_terminal_chain() -> void:
-	var mp_game := RecordingMpGame.new()
-	var enemy_coordinator := _attach_enemy_coordinator(mp_game)
-	var keepalive_request := HTTPRequest.new()
-	keepalive_request.name = "PublicRoomKeepaliveRequest"
-	mp_game.add_child(keepalive_request)
-	root.add_child(mp_game)
+	var enemy_coordinator := MpEnemyCoordinator.new()
+	root.add_child(enemy_coordinator)
 	var net_manager_stub := HostNetManagerStub.new()
-	mp_game.net_manager = net_manager_stub
 	var runtime := TOWER_DEFENSE_GAME_SCRIPT.new()
 	var gateway := _prepare_runtime_boundaries(runtime)
 	runtime.runtime_mode = HOST_AUTHORITY
-	mp_game.game = runtime
 	enemy_coordinator.bind_runtime(runtime)
-	mp_game._mode_adapter = runtime.get_multiplayer_mode_adapter()
-	mp_game.tower_mode_adapter = (
-		mp_game._mode_adapter as TowerDefenseMultiplayerModeAdapter
+	enemy_coordinator.bind_lifecycle_dependencies(
+		net_manager_stub,
+		gateway,
+		func() -> float: return 0.0
 	)
-	gateway.enemy_defeated.connect(
-		mp_game._on_host_enemy_defeated
+	var terminal_capture: Dictionary = {"args": []}
+	enemy_coordinator.lifecycle_rpc_broadcast_requested.connect(
+		func(method_name: StringName, arguments: Array) -> void:
+			if method_name == &"net_enemy_terminal":
+				terminal_capture["args"] = arguments.duplicate(true)
 	)
 	var enemy := ENEMY_SCENE.instantiate() as Enemy
 	if enemy == null:
 		_expect(false, "真实批伤终结链必须能实例化敌人。")
-		root.remove_child(mp_game)
-		mp_game.free()
+		root.remove_child(enemy_coordinator)
+		enemy_coordinator.free()
 		runtime.free()
 		net_manager_stub.free()
 		return
-	mp_game.add_child(enemy)
+	root.add_child(enemy)
 	var lethal_config := ENEMY_CONFIG.duplicate(true) as EnemyConfig
 	lethal_config.max_health = 40
 	lethal_config.physical_defense = 0
@@ -507,21 +539,28 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	runtime.multiplayer_enemies_by_net_id[net_id] = enemy
 	enemy.defeated.connect(
 		func(defeated_enemy: Enemy) -> void:
-			runtime.enemy_coordinator.emit_multiplayer_enemy_defeated(defeated_enemy)
+			gateway.enemy_defeated.emit(net_id, defeated_enemy.global_position)
 	)
-	var accepted := (
-		mp_game.apply_authoritative_plant_enemy_damage_batch(
-			9901,
-			enemy,
-			PackedInt64Array([40]),
-			PackedInt32Array([1]),
-			Vector2.RIGHT,
-			EnemyConfig.DamageType.PHYSICAL
+	enemy_coordinator.set_active_damage_feedback_context(
+		net_id,
+		Vector2.RIGHT,
+		EnemyConfig.DamageType.PHYSICAL,
+		(
+			CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+			| CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
 		)
 	)
-	var args := mp_game.last_terminal_args
+	var lethal_batch := DamageBatchRequest.new(
+		PackedInt64Array([40]),
+		PackedInt32Array([1]),
+		CombatTypes.DamageType.PHYSICAL
+	)
+	lethal_batch.with_directions(Vector2.RIGHT)
+	var result := enemy.apply_combat_damage(lethal_batch)
+	enemy_coordinator.clear_active_damage_feedback_context(net_id)
+	var args := terminal_capture.get("args", []) as Array
 	_expect(
-		accepted
+		result.accepted
 		and enemy.is_dead
 		and args.size() == 9
 		and int(args[0]) == net_id
@@ -530,7 +569,8 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		and int(args[4]) == enemy.health_revision
 		and int(args[5]) == 40
 		and args[6] == Vector2.RIGHT
-		and int(args[7]) == int(EnemyConfig.DamageType.PHYSICAL),
+		and int(args[7]) == int(EnemyConfig.DamageType.PHYSICAL)
+		and int(args[8]) == 3,
 		"真实apply_damage_batch→defeated信号→可靠terminal链必须携带最后40点致死反馈。"
 	)
 	_expect(
@@ -538,25 +578,23 @@ func _test_real_batch_damage_terminal_chain() -> void:
 		and not enemy_coordinator.active_enemy_damage_feedback_context.has(net_id),
 		"真实致死批伤结束后不得遗留不可靠反馈或活动伤害上下文。"
 	)
-	var client_mp_game := RecordingMpGame.new()
-	var client_enemy_coordinator := _attach_enemy_coordinator(client_mp_game)
-	var client_net_manager := ClientNetManagerStub.new()
+	if args.size() != 9:
+		runtime.multiplayer_enemies_by_net_id.clear()
+		runtime.multiplayer_enemy_ids_by_instance.clear()
+		root.remove_child(enemy)
+		enemy.free()
+		root.remove_child(enemy_coordinator)
+		enemy_coordinator.free()
+		runtime.free()
+		net_manager_stub.free()
+		return
+	var client_enemy_coordinator := MpEnemyCoordinator.new()
 	var client_runtime := TerminalTowerRuntime.new()
 	_prepare_runtime_boundaries(client_runtime)
 	client_runtime.runtime_mode = CLIENT_VIEW
-	client_mp_game.net_manager = client_net_manager
-	client_mp_game.game = client_runtime
 	client_enemy_coordinator.bind_runtime(client_runtime)
-	client_mp_game._mode_adapter = client_runtime.get_multiplayer_mode_adapter()
-	client_mp_game.tower_mode_adapter = (
-		client_mp_game._mode_adapter as TowerDefenseMultiplayerModeAdapter
-	)
-	var client_keepalive_request := HTTPRequest.new()
-	client_keepalive_request.name = "PublicRoomKeepaliveRequest"
-	client_mp_game.add_child(client_keepalive_request)
-	root.add_child(client_mp_game)
 	var client_enemy := ENEMY_SCENE.instantiate() as Enemy
-	client_mp_game.add_child(client_enemy)
+	root.add_child(client_enemy)
 	client_enemy.setup(lethal_config, null, null, client_runtime)
 	client_enemy.configure_multiplayer_proxy()
 	client_enemy.set_meta(&"net_id", net_id)
@@ -565,7 +603,17 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	client_runtime.multiplayer_enemy_ids_by_instance[
 		client_enemy.get_instance_id()
 	] = net_id
-	client_mp_game.callv("net_enemy_terminal", args)
+	client_enemy_coordinator.receive_enemy_terminal(
+		int(args[0]),
+		int(args[1]),
+		args[2] as Vector2,
+		int(args[3]),
+		int(args[4]),
+		int(args[5]),
+		args[6] as Vector2,
+		int(args[7]),
+		int(args[8])
+	)
 	_expect(
 		client_enemy.is_dead
 		and client_enemy.current_health == 0
@@ -579,21 +627,18 @@ func _test_real_batch_damage_terminal_chain() -> void:
 	)
 	runtime.multiplayer_enemies_by_net_id.clear()
 	runtime.multiplayer_enemy_ids_by_instance.clear()
-	mp_game.remove_child(enemy)
+	root.remove_child(enemy)
 	enemy.free()
-	# This tree-less fixture never binds tower warehouse state. Disable that
-	# unrelated exit capture before removing the MpGame node from the SceneTree.
-	mp_game.tower_mode_adapter = null
-	root.remove_child(mp_game)
-	mp_game.free()
+	root.remove_child(enemy_coordinator)
+	enemy_coordinator.free()
 	runtime.free()
 	net_manager_stub.free()
-	client_mp_game.remove_child(client_enemy)
-	client_enemy.free()
+	if is_instance_valid(client_enemy):
+		if client_enemy.get_parent() != null:
+			client_enemy.get_parent().remove_child(client_enemy)
+		client_enemy.free()
 	client_runtime.free()
-	root.remove_child(client_mp_game)
-	client_mp_game.free()
-	client_net_manager.free()
+	client_enemy_coordinator.free()
 
 
 func _prepare_runtime_boundaries(

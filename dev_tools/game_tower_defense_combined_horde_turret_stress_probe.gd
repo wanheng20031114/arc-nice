@@ -767,7 +767,7 @@ func _measure_synchronized_corn_stage_attribution() -> void:
 			if particle_target != null:
 				particle_target.play_multiplayer_damage_feedback(
 					directions[corn_index],
-					true
+					CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
 				)
 		particle_samples.append(float(Time.get_ticks_usec() - started_usec) / 1000.0)
 

@@ -9,6 +9,8 @@ const BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER := &"bleed_overlay_strength"
 const ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER := (
 	&"electric_attachment_overlay_strength"
 )
+const DIRECT_HIT_FLASH_STRENGTH_SHADER_PARAMETER := &"direct_hit_flash_strength"
+const HIT_FLASH_SCHEDULER_NAME := &"EnemyHitFlashScheduler"
 const PATH_DIRECTION_PROBE_DISTANCE := 1.0
 # Home objectives are static, so distant enemies can approach them with a cheap,
 # collision-tested normalized step instead of requesting the shared flow field
@@ -270,6 +272,7 @@ var slow_overlay_strength := 0.0
 var burn_overlay_strength := 0.0
 var bleed_overlay_strength := 0.0
 var electric_attachment_overlay_strength := 0.0
+var direct_hit_flash_strength := 0.0
 var speed_trail_effect: Node2D = null
 var speed_trail_owner_pool: SessionObjectPool = null
 var combat_target_index_binding: CombatTargetIndex = null
@@ -555,6 +558,7 @@ func setup(
 	shared_pathfinder: Node = null,
 	runtime_context: CombatRuntimeBase = null
 ) -> void:
+	_clear_direct_hit_flash()
 	if runtime_context != null:
 		bind_combat_runtime(runtime_context)
 	clear_cold_status()
@@ -1106,7 +1110,7 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 	show_damage_number(result.applied_damage, impact_direction, damage_type)
 	play_multiplayer_damage_feedback(
 		impact_direction,
-		not request.has_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES)
+		_build_damage_feedback_flags(request, result)
 	)
 	_on_combat_damage_applied(result)
 
@@ -1157,10 +1161,71 @@ func show_damage_number(
 
 func play_multiplayer_damage_feedback(
 	impact_direction: Vector2 = Vector2.ZERO,
-	show_hit_particles: bool = true
+	feedback_flags: int = (
+		CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+		| CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+	)
 ) -> void:
-	if show_hit_particles:
+	if CombatTypes.has_flag(
+		feedback_flags,
+		CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+	):
 		_play_hit_particles(impact_direction)
+	if CombatTypes.has_flag(
+		feedback_flags,
+		CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+	):
+		_trigger_direct_hit_flash()
+
+
+func _build_damage_feedback_flags(
+	request: DamageRequest,
+	result: DamageResult
+) -> int:
+	if request == null or result == null or not result.accepted:
+		return 0
+	var feedback_flags := 0
+	if (
+		request.get_safe_impact_direction() != Vector2.ZERO
+		and not request.has_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES)
+	):
+		feedback_flags |= CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+	if (
+		result.applied_damage > 0
+		and not request.has_flag(CombatTypes.DamageFlag.PERIODIC)
+		and not request.has_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_FLASH)
+	):
+		feedback_flags |= CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+	return feedback_flags
+
+
+func _trigger_direct_hit_flash() -> void:
+	var scheduler := _get_hit_flash_scheduler()
+	if scheduler == null:
+		if is_inside_tree():
+			push_error("EnemyHitFlashScheduler autoload is missing.")
+		return
+	scheduler.call("trigger", self)
+
+
+func _clear_direct_hit_flash() -> void:
+	var scheduler := _get_hit_flash_scheduler()
+	if (
+		scheduler == null
+		or not bool(scheduler.call("clear_target", self, true))
+	):
+		_set_direct_hit_flash_strength(0.0)
+
+
+func _get_hit_flash_scheduler() -> Node:
+	if not is_inside_tree():
+		return null
+	var scene_tree := get_tree()
+	if scene_tree == null:
+		return null
+	return scene_tree.root.get_node_or_null(
+		NodePath(String(HIT_FLASH_SCHEDULER_NAME))
+	)
 
 
 func play_multiplayer_death_sequence() -> void:
@@ -1553,6 +1618,10 @@ func _release_speed_trail_effect() -> void:
 
 
 func _exit_tree() -> void:
+	var hit_flash_scheduler := _get_hit_flash_scheduler()
+	if hit_flash_scheduler != null:
+		hit_flash_scheduler.call("clear_target", self, false)
+	_set_direct_hit_flash_strength(0.0)
 	clear_cold_status()
 	clear_collectible_statuses()
 	clear_electric_surge_state()
@@ -1602,6 +1671,13 @@ func _set_bleed_overlay_strength(strength: float) -> void:
 func _set_electric_attachment_overlay_strength(strength: float) -> void:
 	_set_visual_shader_parameter(
 		ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER,
+		clampf(strength, 0.0, 1.0)
+	)
+
+
+func _set_direct_hit_flash_strength(strength: float) -> void:
+	_set_visual_shader_parameter(
+		DIRECT_HIT_FLASH_STRENGTH_SHADER_PARAMETER,
 		clampf(strength, 0.0, 1.0)
 	)
 
@@ -1820,6 +1896,7 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 		and parameter_name != BURN_OVERLAY_STRENGTH_SHADER_PARAMETER
 		and parameter_name != BLEED_OVERLAY_STRENGTH_SHADER_PARAMETER
 		and parameter_name != ELECTRIC_ATTACHMENT_OVERLAY_STRENGTH_SHADER_PARAMETER
+		and parameter_name != DIRECT_HIT_FLASH_STRENGTH_SHADER_PARAMETER
 	):
 		if animated_sprite.material == null:
 			animated_sprite.material = status_visual_material
@@ -1844,6 +1921,10 @@ func _set_visual_shader_parameter(parameter_name: StringName, value: Variant) ->
 			if is_equal_approx(electric_attachment_overlay_strength, strength):
 				return
 			electric_attachment_overlay_strength = strength
+		DIRECT_HIT_FLASH_STRENGTH_SHADER_PARAMETER:
+			if is_equal_approx(direct_hit_flash_strength, strength):
+				return
+			direct_hit_flash_strength = strength
 		_:
 			return
 
@@ -1870,6 +1951,7 @@ func _has_active_visual_shader_effect() -> bool:
 		or burn_overlay_strength > 0.0
 		or bleed_overlay_strength > 0.0
 		or electric_attachment_overlay_strength > 0.0
+		or direct_hit_flash_strength > 0.0
 		or _has_variant_visual_shader_effect()
 	)
 
@@ -2089,7 +2171,20 @@ func _advance_collectible_status_effects_to(target_time: float) -> void:
 				== int(EnemyConfig.DamageType.PHYSICAL)
 			):
 				tick_damage_type = EnemyConfig.DamageType.PHYSICAL
-			apply_damage(tick_damage, Vector2.ZERO, tick_damage_type)
+			var tick_request := DamageRequest.new(
+				tick_damage,
+				int(tick_damage_type)
+			)
+			tick_request.with_source(
+				null,
+				int(status.get("source_id", 0)),
+				&"periodic_status"
+			)
+			tick_request.with_flag(CombatTypes.DamageFlag.PERIODIC)
+			tick_request.with_flag(
+				CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES
+			)
+			apply_combat_damage(tick_request)
 			if is_dead:
 				break
 

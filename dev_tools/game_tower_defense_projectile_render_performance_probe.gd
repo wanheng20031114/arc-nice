@@ -544,7 +544,10 @@ func _drive_hits_on_new_physics_frame(previous_physics_frame: int) -> int:
 		var enemy := enemies[hit_pressure_cursor % enemies.size()]
 		hit_pressure_cursor = (hit_pressure_cursor + 1) % enemies.size()
 		if enemy != null and is_instance_valid(enemy):
-			enemy.play_multiplayer_damage_feedback(Vector2.RIGHT, true)
+			enemy.play_multiplayer_damage_feedback(
+				Vector2.RIGHT,
+				CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+			)
 	return current_physics_frame
 
 

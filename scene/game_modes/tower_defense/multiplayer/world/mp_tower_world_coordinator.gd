@@ -2084,16 +2084,21 @@ func _apply_authoritative_plant_damage_request(
 	if enemy_net_id <= 0:
 		return false
 	request.with_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES, false)
+	var presentation_flags := CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+	if impact_direction != Vector2.ZERO:
+		presentation_flags |= CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
 	_enemy_coordinator.set_active_damage_feedback_context(
 		enemy_net_id,
 		impact_direction,
 		damage_type,
-		true
+		presentation_flags
 	)
 	var result := enemy.apply_combat_damage(request)
 	_enemy_coordinator.clear_active_damage_feedback_context(enemy_net_id)
 	if not result.accepted:
 		return false
+	if result.applied_damage <= 0:
+		presentation_flags = 0
 	if result.lethal:
 		# The synchronous defeated signal already carries the final confirmed hit.
 		return true
@@ -2105,7 +2110,7 @@ func _apply_authoritative_plant_damage_request(
 			result.applied_damage,
 			impact_direction,
 			damage_type,
-			true
+			presentation_flags
 		)
 	return true
 

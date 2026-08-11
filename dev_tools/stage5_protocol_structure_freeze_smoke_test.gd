@@ -18,7 +18,7 @@ const EXPECTED_MP_GAME_RPC_NAME_HASH := (
 	"a46021f28a7b751d4d14ab568deac088bf47b615c265a4ef1cc4d8d75fabfa27"
 )
 const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
-	"fa6c2ea251939a8eb218217e152262e19626ec506a7ab03285927ad046ed5354"
+	"843a1906f90fa51404c7fbf42c9ad7412757a931b42145da23086d3d467dcf0c"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
 	"96e6b2976861a125f91888717319b7e26d1596b1a0c42a0c641e9932648163b8"
@@ -319,8 +319,8 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 61, "多人协议必须保持 v61。")
-	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v61 必须保持 8 个 ENet 信道。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 62, "多人协议必须保持 v62。")
+	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v62 必须保持 8 个 ENet 信道。")
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1 == 2, "test_arena_p1 wire value 必须保持 2。")

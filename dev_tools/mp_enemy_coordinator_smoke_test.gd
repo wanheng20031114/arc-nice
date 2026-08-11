@@ -60,6 +60,21 @@ class ProbeNetManager:
 		return client_mode
 
 
+class FeedbackProbeEnemy:
+	extends Enemy
+	var feedback_count := 0
+	var last_feedback_flags := 0
+	var last_impact_direction := Vector2.INF
+
+	func play_multiplayer_damage_feedback(
+		impact_direction: Vector2 = Vector2.ZERO,
+		feedback_flags: int = 0
+	) -> void:
+		feedback_count += 1
+		last_feedback_flags = feedback_flags
+		last_impact_direction = impact_direction
+
+
 var failures: Array[String] = []
 var _probe_net_time := 30.0
 var _lifecycle_broadcasts: Array[Dictionary] = []
@@ -230,7 +245,7 @@ func _run() -> void:
 		12,
 		Vector2.LEFT,
 		EnemyConfig.DamageType.PHYSICAL,
-		false
+		CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
 	)
 	coordinator.queue_damage_feedback(
 		7,
@@ -239,7 +254,10 @@ func _run() -> void:
 		15,
 		Vector2.RIGHT,
 		EnemyConfig.DamageType.MAGIC,
-		true
+		(
+			CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+			| CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+		)
 	)
 	var feedback_batches := coordinator.drain_damage_feedback_batches()
 	_expect(
@@ -251,9 +269,36 @@ func _run() -> void:
 		and feedback_batches[0].damage_types == PackedByteArray([
 			EnemyConfig.DamageType.MAGIC
 		])
-		and feedback_batches[0].particle_flags == PackedByteArray([1]),
-		"同一敌人的不可靠伤害反馈必须合并最终生命、revision、总伤害与粒子标记。"
+		and feedback_batches[0].presentation_flags == PackedByteArray([3]),
+		"同一敌人的不可靠伤害反馈必须合并最终生命、revision、总伤害与表现位集。"
 	)
+	coordinator.pending_enemy_damage_feedback[808] = {
+		"current_health": 10,
+		"health_revision": 3,
+		"damage": 9,
+		"impact_direction": Vector2.LEFT,
+		"damage_type": int(EnemyConfig.DamageType.MAGIC),
+		"presentation_flags": CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH,
+	}
+	coordinator.active_enemy_damage_feedback_context[808] = {
+		"impact_direction": Vector2.RIGHT,
+		"damage_type": int(EnemyConfig.DamageType.PHYSICAL),
+		"presentation_flags": (
+			CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+			| CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+		),
+	}
+	var frozen_terminal_feedback := coordinator.collect_terminal_feedback(808)
+	_expect(
+		int(frozen_terminal_feedback.get("presentation_flags", 0)) == 3
+		and frozen_terminal_feedback.get("impact_direction", Vector2.ZERO)
+		== Vector2.RIGHT
+		and int(frozen_terminal_feedback.get("damage_type", -1))
+		== int(EnemyConfig.DamageType.PHYSICAL)
+		and not coordinator.pending_enemy_damage_feedback.has(808),
+		"可靠致死反馈必须冻结并合并待发送记录与活动命中上下文的表现位。"
+	)
+	coordinator.clear_active_damage_feedback_context(808)
 	if enemy_config != null:
 		var damage_enemy := Enemy.new()
 		damage_enemy.config = enemy_config
@@ -296,8 +341,13 @@ func _run() -> void:
 		_expect(
 			_damage_broadcasts.size() == 1
 			and StringName(_damage_broadcasts[0].get("method", &""))
-			== &"net_enemy_damage_feedback_batch",
-			"已确认敌人伤害必须按既有 50ms 节流汇入一次批广播。"
+			== &"net_enemy_damage_feedback_batch"
+			and (_damage_broadcasts[0].get("arguments", []) as Array).size() == 7
+			and (
+				(_damage_broadcasts[0].get("arguments", []) as Array)[6]
+				as PackedByteArray
+			) == PackedByteArray([3]),
+			"已确认敌人伤害必须按50ms节流汇入一次同时携带粒子与闪红表现位的批广播。"
 		)
 		runtime.multiplayer_enemies_by_net_id.erase(950)
 		damage_enemy.free()
@@ -305,6 +355,31 @@ func _run() -> void:
 	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
 	net_manager.host_mode = false
 	net_manager.client_mode = true
+	var feedback_probe := FeedbackProbeEnemy.new()
+	coordinator.net_enemies[951] = feedback_probe
+	coordinator.apply_damage_feedback_batch(
+		PackedInt32Array([951]),
+		PackedInt32Array([90]),
+		PackedInt32Array([1]),
+		PackedInt32Array([10]),
+		PackedVector2Array([Vector2.ZERO]),
+		PackedByteArray([EnemyConfig.DamageType.PHYSICAL]),
+		PackedByteArray([3])
+	)
+	_expect(
+		feedback_probe.feedback_count == 1
+		and feedback_probe.last_feedback_flags
+		== CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+		and feedback_probe.last_impact_direction == Vector2.ZERO,
+		"零方向权威命中必须保留闪红并剥离定向粒子表现位。"
+	)
+	coordinator.apply_network_health(feedback_probe, 80, 2)
+	_expect(
+		feedback_probe.feedback_count == 1,
+		"纯血量快照必须只更新状态，不得推断或重放命中闪红。"
+	)
+	coordinator.net_enemies.erase(951)
+	feedback_probe.free()
 	coordinator.receive_enemy_lightning_chain(
 		PackedVector2Array([Vector2.ZERO, Vector2(4.0, 4.0)])
 	)
@@ -357,7 +432,7 @@ func _run() -> void:
 		0,
 		Vector2.ZERO,
 		EnemyConfig.DamageType.PHYSICAL,
-		false
+		0
 	)
 	coordinator.receive_enemy_action(
 		401,

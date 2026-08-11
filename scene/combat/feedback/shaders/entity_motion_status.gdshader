@@ -25,6 +25,8 @@ uniform vec4 bleed_overlay_color : source_color = vec4(0.95, 0.02, 0.08, 0.58);
 uniform float bleed_outline_width : hint_range(1.0, 5.0) = 2.0;
 instance uniform float electric_attachment_overlay_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 electric_attachment_overlay_color : source_color = vec4(0.2, 1.18, 1.32, 0.72);
+instance uniform float direct_hit_flash_strength : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 direct_hit_flash_color : source_color = vec4(1.15, 0.06, 0.04, 1.0);
 uniform float revive_glow_strength : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 revive_glow_color : source_color = vec4(3.2, 3.2, 3.2, 1.0);
 uniform float revive_glow_outline_width : hint_range(1.0, 8.0) = 4.5;
@@ -228,6 +230,16 @@ void fragment() {
 			color.rgb = min(color.rgb + bleed_overlay_color.rgb * edge_mask * 0.04, vec3(1.0));
 			color.a = max(color.a, COLOR.a);
 		}
+	}
+
+	if (direct_hit_flash_strength > 0.0 && texture_color.a > 0.0) {
+		float mask = clamp(
+			direct_hit_flash_strength * texture_color.a,
+			0.0,
+			1.0
+		);
+		color.rgb = mix(color.rgb, direct_hit_flash_color.rgb, mask);
+		color.a = max(color.a, COLOR.a);
 	}
 
 	vec4 pre_revive_color = color;

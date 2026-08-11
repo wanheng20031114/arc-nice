@@ -2930,7 +2930,7 @@ func net_enemy_damage_feedback_batch(
 	damage_values: PackedInt32Array,
 	directions: PackedVector2Array,
 	damage_types: PackedByteArray,
-	particle_flags: PackedByteArray
+	presentation_flags: PackedByteArray
 ) -> void:
 	enemy_coordinator.apply_damage_feedback_batch(
 		net_ids,
@@ -2939,7 +2939,7 @@ func net_enemy_damage_feedback_batch(
 		damage_values,
 		directions,
 		damage_types,
-		particle_flags
+		presentation_flags
 	)
 
 
@@ -2952,7 +2952,7 @@ func net_enemy_damage_applied(
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
-	show_hit_particles: bool = true
+	presentation_flags: int = 0
 ) -> void:
 	enemy_coordinator.apply_damage_event(
 		enemy_net_id,
@@ -2962,7 +2962,7 @@ func net_enemy_damage_applied(
 		confirmed_damage,
 		impact_direction,
 		damage_type,
-		show_hit_particles
+		presentation_flags
 	)
 
 
@@ -3947,7 +3947,7 @@ func net_enemy_terminal(
 	confirmed_damage: int = 0,
 	impact_direction: Vector2 = Vector2.ZERO,
 	damage_type: int = EnemyConfig.DamageType.PHYSICAL,
-	show_hit_particles: bool = false
+	presentation_flags: int = 0
 ) -> void:
 	enemy_coordinator.receive_enemy_terminal(
 		net_id,
@@ -3958,7 +3958,7 @@ func net_enemy_terminal(
 		confirmed_damage,
 		impact_direction,
 		damage_type,
-		show_hit_particles
+		presentation_flags
 	)
 
 

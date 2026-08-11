@@ -16,6 +16,14 @@ enum DamageFlag {
 	BYPASS_MITIGATION = 1 << 4,
 	NO_HIT_INVINCIBILITY = 1 << 5,
 	SUPPRESS_HIT_PARTICLES = 1 << 6,
+	SUPPRESS_HIT_FLASH = 1 << 7,
+}
+
+## Compact wire/presentation flags emitted only after authoritative damage is
+## accepted. Keep values explicit: multiplayer batches serialize one byte.
+enum DamageFeedbackFlag {
+	HIT_PARTICLES = 1 << 0,
+	DIRECT_HIT_FLASH = 1 << 1,
 }
 
 enum RoundingMode {

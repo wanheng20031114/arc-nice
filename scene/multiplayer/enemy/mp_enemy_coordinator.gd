@@ -20,6 +20,10 @@ const CLIENT_PROXY_VISUAL_BUDGET_MARGIN := 192.0
 const ENEMY_SPAWN_BATCH_MAX_RECORDS := 16
 const COMBAT_FEEDBACK_MAX_RECORDS_PER_PACKET := 40
 const COMBAT_FEEDBACK_FLUSH_INTERVAL_SECONDS := 0.05
+const DAMAGE_PRESENTATION_FLAGS_MASK := (
+	CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+	| CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+)
 const CLIENT_PENDING_ENEMY_ACTION_MAX_ENTRIES := 512
 const CLIENT_PENDING_ENEMY_ACTION_MAX_AGE_SECONDS := 5.0
 const CLIENT_TERMINAL_ENEMY_TOMBSTONE_MAX_ENTRIES := 512
@@ -104,7 +108,7 @@ class DamageFeedbackBatch:
 	var damage_values := PackedInt32Array()
 	var directions := PackedVector2Array()
 	var damage_types := PackedByteArray()
-	var particle_flags := PackedByteArray()
+	var presentation_flags := PackedByteArray()
 
 	func is_empty() -> bool:
 		return net_ids.is_empty()
@@ -908,6 +912,9 @@ func build_host_terminal_event(
 			"damage_type",
 			EnemyConfig.DamageType.PHYSICAL
 		)))
+		or not _is_valid_damage_presentation_flags(
+			int(feedback.get("presentation_flags", 0))
+		)
 	):
 		return {}
 	match reason:
@@ -926,7 +933,7 @@ func build_host_terminal_event(
 		"damage": int(feedback.get("damage", 0)),
 		"impact_direction": feedback.get("impact_direction", Vector2.ZERO),
 		"damage_type": int(feedback.get("damage_type", EnemyConfig.DamageType.PHYSICAL)),
-		"show_hit_particles": bool(feedback.get("show_hit_particles", false)),
+		"presentation_flags": int(feedback.get("presentation_flags", 0)),
 	}
 
 
@@ -951,7 +958,7 @@ func broadcast_host_terminal(
 			int(terminal.get("damage", 0)),
 			terminal.get("impact_direction", Vector2.ZERO) as Vector2,
 			int(terminal.get("damage_type", EnemyConfig.DamageType.PHYSICAL)),
-			bool(terminal.get("show_hit_particles", false)),
+			int(terminal.get("presentation_flags", 0)),
 		]
 	)
 
@@ -965,7 +972,7 @@ func receive_enemy_terminal(
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: int,
-	show_hit_particles: bool
+	presentation_flags: int
 ) -> void:
 	if (
 		not is_client_view()
@@ -975,6 +982,7 @@ func receive_enemy_terminal(
 		or not event_position.is_finite()
 		or not impact_direction.is_finite()
 		or not _is_valid_damage_type(damage_type)
+		or not _is_valid_damage_presentation_flags(presentation_flags)
 		or not _NetConstants.is_valid_network_combat_value(current_health)
 		or not _NetConstants.is_valid_network_combat_value(health_revision)
 		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
@@ -993,10 +1001,14 @@ func receive_enemy_terminal(
 						impact_direction,
 						damage_type as EnemyConfig.DamageType
 					)
-					if impact_direction != Vector2.ZERO:
+					var safe_presentation_flags := _normalize_damage_presentation_flags(
+						presentation_flags,
+						impact_direction
+					)
+					if safe_presentation_flags != 0:
 						enemy.play_multiplayer_damage_feedback(
 							impact_direction,
-							show_hit_particles
+							safe_presentation_flags
 						)
 			remove_client_enemy(net_id, true)
 		ENEMY_TERMINAL_ESCAPED:
@@ -1583,11 +1595,16 @@ func apply_confirmed_enemy_damage(
 		CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES,
 		not show_hit_particles
 	)
+	var active_presentation_flags := _get_damage_presentation_flags(
+		request,
+		impact_direction,
+		damage
+	)
 	set_active_damage_feedback_context(
 		enemy_net_id,
 		impact_direction,
 		damage_type,
-		show_hit_particles
+		active_presentation_flags
 	)
 	var result := enemy.apply_combat_damage(request)
 	clear_active_damage_feedback_context(enemy_net_id)
@@ -1596,6 +1613,11 @@ func apply_confirmed_enemy_damage(
 	if result.lethal:
 		# 同步 defeated 信号已经把最终一击纳入可靠 terminal 事件。
 		return true
+	var presentation_flags := _get_damage_presentation_flags(
+		request,
+		impact_direction,
+		result.applied_damage
+	)
 	_queue_host_damage_feedback(
 		enemy_net_id,
 		result.health_after,
@@ -1603,7 +1625,7 @@ func apply_confirmed_enemy_damage(
 		result.applied_damage,
 		impact_direction,
 		damage_type,
-		show_hit_particles
+		presentation_flags
 	)
 	return true
 
@@ -1615,7 +1637,7 @@ func _queue_host_damage_feedback(
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
-	show_hit_particles: bool
+	presentation_flags: int
 ) -> void:
 	if (
 		not is_inside_tree()
@@ -1632,7 +1654,7 @@ func _queue_host_damage_feedback(
 		confirmed_damage,
 		impact_direction,
 		damage_type,
-		show_hit_particles
+		presentation_flags
 	)
 
 
@@ -1657,7 +1679,7 @@ func update_damage_feedback(delta: float) -> void:
 				batch.damage_values,
 				batch.directions,
 				batch.damage_types,
-				batch.particle_flags,
+				batch.presentation_flags,
 			]
 		)
 
@@ -1669,7 +1691,7 @@ func apply_damage_feedback_batch(
 	damage_values: PackedInt32Array,
 	directions: PackedVector2Array,
 	damage_types: PackedByteArray,
-	particle_flags: PackedByteArray
+	presentation_flags: PackedByteArray
 ) -> void:
 	var record_count := mini(
 		net_ids.size(),
@@ -1679,7 +1701,7 @@ func apply_damage_feedback_batch(
 				health_revisions.size(),
 				mini(
 					damage_values.size(),
-					mini(directions.size(), mini(damage_types.size(), particle_flags.size()))
+					mini(directions.size(), mini(damage_types.size(), presentation_flags.size()))
 				)
 			)
 		)
@@ -1690,6 +1712,7 @@ func apply_damage_feedback_batch(
 			or not _NetConstants.is_valid_network_combat_value(health_values[record_index])
 			or not _NetConstants.is_valid_network_combat_value(health_revisions[record_index])
 			or not _NetConstants.is_valid_network_combat_value(damage_values[record_index])
+			or not _is_valid_damage_presentation_flags(presentation_flags[record_index])
 		):
 			continue
 		var enemy := get_valid_client_enemy(net_ids[record_index])
@@ -1705,10 +1728,14 @@ func apply_damage_feedback_batch(
 			directions[record_index],
 			int(damage_types[record_index]) as EnemyConfig.DamageType
 		)
-		if directions[record_index] != Vector2.ZERO:
+		var safe_presentation_flags := _normalize_damage_presentation_flags(
+			presentation_flags[record_index],
+			directions[record_index]
+		)
+		if safe_presentation_flags != 0:
 			enemy.play_multiplayer_damage_feedback(
 				directions[record_index],
-				particle_flags[record_index] != 0
+				safe_presentation_flags
 			)
 
 
@@ -1720,13 +1747,14 @@ func apply_damage_event(
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: int,
-	show_hit_particles: bool
+	presentation_flags: int
 ) -> void:
 	if (
 		enemy_net_id <= 0
 		or not _NetConstants.is_valid_network_combat_value(current_health)
 		or not _NetConstants.is_valid_network_combat_value(health_revision)
 		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+		or not _is_valid_damage_presentation_flags(presentation_flags)
 	):
 		return
 	var enemy := get_valid_client_enemy(enemy_net_id)
@@ -1738,8 +1766,12 @@ func apply_damage_event(
 		impact_direction,
 		damage_type as EnemyConfig.DamageType
 	)
-	if impact_direction != Vector2.ZERO:
-		enemy.play_multiplayer_damage_feedback(impact_direction, show_hit_particles)
+	var safe_presentation_flags := _normalize_damage_presentation_flags(
+		presentation_flags,
+		impact_direction
+	)
+	if safe_presentation_flags != 0:
+		enemy.play_multiplayer_damage_feedback(impact_direction, safe_presentation_flags)
 	if is_dead:
 		remove_client_enemy(enemy_net_id, true)
 
@@ -1748,12 +1780,12 @@ func set_active_damage_feedback_context(
 	enemy_net_id: int,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
-	show_hit_particles: bool
+	presentation_flags: int
 ) -> void:
 	active_enemy_damage_feedback_context[enemy_net_id] = {
 		"impact_direction": impact_direction,
 		"damage_type": int(damage_type),
-		"show_hit_particles": show_hit_particles,
+		"presentation_flags": presentation_flags,
 	}
 
 
@@ -1768,7 +1800,7 @@ func queue_damage_feedback(
 	confirmed_damage: int,
 	impact_direction: Vector2,
 	damage_type: EnemyConfig.DamageType,
-	show_hit_particles: bool
+	presentation_flags: int
 ) -> void:
 	if enemy_net_id <= 0:
 		return
@@ -1776,6 +1808,7 @@ func queue_damage_feedback(
 		not _NetConstants.is_valid_network_combat_value(current_health)
 		or not _NetConstants.is_valid_network_combat_value(health_revision)
 		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+		or not _is_valid_damage_presentation_flags(presentation_flags)
 	):
 		push_error("MpEnemyCoordinator: 敌人战斗反馈含越界 int32 值。")
 		return
@@ -1787,7 +1820,7 @@ func queue_damage_feedback(
 			"damage": 0,
 			"impact_direction": impact_direction,
 			"damage_type": int(damage_type),
-			"show_hit_particles": show_hit_particles,
+			"presentation_flags": 0,
 		}
 	feedback["current_health"] = current_health
 	feedback["health_revision"] = health_revision
@@ -1796,11 +1829,15 @@ func queue_damage_feedback(
 		push_error("MpEnemyCoordinator: 敌人战斗反馈聚合值超过 signed int32。")
 		return
 	feedback["damage"] = combined_damage
-	feedback["impact_direction"] = impact_direction
-	feedback["damage_type"] = int(damage_type)
-	feedback["show_hit_particles"] = (
-		bool(feedback.get("show_hit_particles", false)) or show_hit_particles
+	var previous_flags := int(feedback.get("presentation_flags", 0))
+	feedback["impact_direction"] = _merge_damage_feedback_direction(
+		feedback.get("impact_direction", Vector2.ZERO) as Vector2,
+		previous_flags,
+		impact_direction,
+		presentation_flags
 	)
+	feedback["damage_type"] = int(damage_type)
+	feedback["presentation_flags"] = previous_flags | presentation_flags
 	pending_enemy_damage_feedback[enemy_net_id] = feedback
 
 
@@ -1837,9 +1874,7 @@ func drain_damage_feedback_batches() -> Array[DamageFeedbackBatch]:
 			batch.damage_values.append(confirmed_damage)
 			batch.directions.append(feedback.get("impact_direction", Vector2.ZERO) as Vector2)
 			batch.damage_types.append(int(feedback.get("damage_type", 0)))
-			batch.particle_flags.append(
-				1 if bool(feedback.get("show_hit_particles", false)) else 0
-			)
+			batch.presentation_flags.append(int(feedback.get("presentation_flags", 0)))
 		if not batch.is_empty():
 			batches.append(batch)
 	pending_enemy_damage_feedback.clear()
@@ -1860,7 +1895,7 @@ func collect_terminal_feedback(enemy_net_id: int) -> Dictionary:
 	var damage_type := int(
 		pending_feedback.get("damage_type", EnemyConfig.DamageType.PHYSICAL)
 	)
-	var show_hit_particles := bool(pending_feedback.get("show_hit_particles", false))
+	var presentation_flags := int(pending_feedback.get("presentation_flags", 0))
 	if enemy != null and is_instance_valid(enemy):
 		current_health = maxi(enemy.current_health, 0)
 		health_revision = enemy.health_revision
@@ -1868,26 +1903,97 @@ func collect_terminal_feedback(enemy_net_id: int) -> Dictionary:
 		if lethal_result != null and lethal_result.accepted and lethal_result.lethal:
 			confirmed_damage += lethal_result.applied_damage
 			if lethal_result.request != null:
-				impact_direction = lethal_result.request.get_safe_impact_direction()
-				damage_type = lethal_result.request.damage_type
-				show_hit_particles = not lethal_result.request.has_flag(
-					CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES
+				var lethal_impact_direction := (
+					lethal_result.request.get_safe_impact_direction()
 				)
+				damage_type = lethal_result.request.damage_type
+				var lethal_presentation_flags := _get_damage_presentation_flags(
+					lethal_result.request,
+					lethal_impact_direction,
+					lethal_result.applied_damage
+				)
+				impact_direction = _merge_damage_feedback_direction(
+					impact_direction,
+					presentation_flags,
+					lethal_impact_direction,
+					lethal_presentation_flags
+				)
+				presentation_flags |= lethal_presentation_flags
 	if not active_context.is_empty():
-		impact_direction = active_context.get("impact_direction", impact_direction) as Vector2
-		damage_type = int(active_context.get("damage_type", damage_type))
-		show_hit_particles = (
-			show_hit_particles
-			or bool(active_context.get("show_hit_particles", false))
+		var active_presentation_flags := int(active_context.get("presentation_flags", 0))
+		impact_direction = _merge_damage_feedback_direction(
+			impact_direction,
+			presentation_flags,
+			active_context.get("impact_direction", impact_direction) as Vector2,
+			active_presentation_flags
 		)
+		damage_type = int(active_context.get("damage_type", damage_type))
+		presentation_flags |= active_presentation_flags
 	return {
 		"current_health": current_health,
 		"health_revision": health_revision,
 		"damage": confirmed_damage,
 		"impact_direction": impact_direction,
 		"damage_type": damage_type,
-		"show_hit_particles": show_hit_particles,
+		"presentation_flags": presentation_flags,
 	}
+
+
+func _get_damage_presentation_flags(
+	request: DamageRequest,
+	impact_direction: Vector2,
+	applied_damage: int
+) -> int:
+	if request == null or applied_damage <= 0:
+		return 0
+	var presentation_flags := 0
+	if (
+		impact_direction != Vector2.ZERO
+		and not request.has_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES)
+	):
+		presentation_flags |= CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+	if (
+		not request.has_flag(CombatTypes.DamageFlag.PERIODIC)
+		and not request.has_flag(CombatTypes.DamageFlag.SUPPRESS_HIT_FLASH)
+	):
+		presentation_flags |= CombatTypes.DamageFeedbackFlag.DIRECT_HIT_FLASH
+	return presentation_flags
+
+
+func _is_valid_damage_presentation_flags(presentation_flags: int) -> bool:
+	return (
+		presentation_flags >= 0
+		and (presentation_flags & ~DAMAGE_PRESENTATION_FLAGS_MASK) == 0
+	)
+
+
+func _normalize_damage_presentation_flags(
+	presentation_flags: int,
+	impact_direction: Vector2
+) -> int:
+	var normalized := presentation_flags & DAMAGE_PRESENTATION_FLAGS_MASK
+	if impact_direction == Vector2.ZERO:
+		normalized &= ~CombatTypes.DamageFeedbackFlag.HIT_PARTICLES
+	return normalized
+
+
+func _merge_damage_feedback_direction(
+	current_direction: Vector2,
+	current_flags: int,
+	incoming_direction: Vector2,
+	incoming_flags: int
+) -> Vector2:
+	if (
+		(incoming_flags & CombatTypes.DamageFeedbackFlag.HIT_PARTICLES) != 0
+		and incoming_direction != Vector2.ZERO
+	):
+		return incoming_direction
+	if (
+		(current_flags & CombatTypes.DamageFeedbackFlag.HIT_PARTICLES) != 0
+		and current_direction != Vector2.ZERO
+	):
+		return current_direction
+	return incoming_direction
 
 
 func get_host_enemy(enemy_net_id: int) -> Enemy:
