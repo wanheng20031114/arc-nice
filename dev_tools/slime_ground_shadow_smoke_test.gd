@@ -14,10 +14,10 @@ const SLIME_CONFIGS: Array[SlimeConfig] = [
 	preload("res://resources/config/enemies/stone_eroded_slime_green.tres"),
 ]
 
-const EXPECTED_SHADOW_POSITION := Vector2(0.0, 6.0)
-const EXPECTED_SHADOW_SIZE := Vector2i(24, 9)
+const EXPECTED_SHADOW_POSITION := Vector2(0.0, 5.5)
+const EXPECTED_SHADOW_SIZE := Vector2i(26, 5)
 const EXPECTED_GRADIENT_OFFSETS := [0.0, 0.5, 0.78, 1.0]
-const EXPECTED_GRADIENT_ALPHAS := [0.30, 0.24, 0.09, 0.0]
+const EXPECTED_GRADIENT_ALPHAS := [0.66, 0.50, 0.20, 0.0]
 const EXPECTED_GRADIENT_RGB := Vector3(0.02, 0.025, 0.035)
 const STRESS_INSTANCE_COUNT := 1000
 
@@ -67,9 +67,10 @@ func _test_base_authored_contract() -> GradientTexture2D:
 	_expect(shadow.owner == slime, "GroundShadow 必须直接保存在史莱姆 PackedScene 中。")
 	_expect(
 		shadow.position.is_equal_approx(EXPECTED_SHADOW_POSITION),
-		"GroundShadow 必须锚定在史莱姆脚底 (0, 6)。"
+		"GroundShadow 横向中线必须锚定在普通移动帧最低像素中心 (0, 5.5)。"
 	)
-	_expect(shadow.scale.is_equal_approx(Vector2.ONE), "GroundShadow 必须保持24×9原生尺寸。")
+	_test_move_frame_baseline(slime, shadow)
+	_expect(shadow.scale.is_equal_approx(Vector2.ONE), "GroundShadow 必须保持26×5原生尺寸。")
 	_expect(shadow.z_index == 1, "GroundShadow 必须位于地板 z0 与敌人主体 z2 之间。")
 	_expect(
 		shadow.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
@@ -95,11 +96,57 @@ func _test_base_authored_contract() -> GradientTexture2D:
 	return texture
 
 
+func _test_move_frame_baseline(slime: Slime, shadow: Sprite2D) -> void:
+	var body := slime.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	_expect(body != null, "普通行动基线检查必须取得史莱姆主体。")
+	if body == null:
+		return
+	_expect(
+		body.centered
+		and body.position.is_zero_approx()
+		and body.offset.is_zero_approx()
+		and body.scale.is_equal_approx(Vector2.ONE),
+		"普通行动基线换算要求主体保持居中、零偏移与原生缩放。"
+	)
+	var frames := body.sprite_frames
+	_expect(
+		frames != null
+		and frames.has_animation(&"move")
+		and frames.get_frame_count(&"move") > 0,
+		"史莱姆必须保留可分析的普通 move 动画。"
+	)
+	if frames == null or not frames.has_animation(&"move"):
+		return
+	for frame_index in range(frames.get_frame_count(&"move")):
+		var texture := frames.get_frame_texture(&"move", frame_index)
+		var image := texture.get_image() if texture != null else null
+		_expect(
+			image != null and not image.is_empty(),
+			"move 第%d帧必须可读取像素。" % frame_index
+		)
+		if image == null or image.is_empty():
+			continue
+		var lowest_alpha_row := -1
+		for y in range(image.get_height()):
+			for x in range(image.get_width()):
+				if image.get_pixel(x, y).a > 0.0:
+					lowest_alpha_row = maxi(lowest_alpha_row, y)
+		var lowest_pixel_center_y := (
+			float(lowest_alpha_row) + 0.5 - float(image.get_height()) * 0.5
+		)
+		_expect(
+			lowest_alpha_row >= 0
+			and is_equal_approx(shadow.position.y, lowest_pixel_center_y),
+			"GroundShadow 中线必须穿过 move 第%d帧最低Alpha像素中心 y=%.1f。"
+			% [frame_index, lowest_pixel_center_y]
+		)
+
+
 func _test_gradient_contract(texture: GradientTexture2D) -> void:
 	_expect(
 		texture.width == EXPECTED_SHADOW_SIZE.x
 		and texture.height == EXPECTED_SHADOW_SIZE.y,
-		"GroundShadow 渐变纹理必须精确为24×9。"
+		"GroundShadow 渐变纹理必须精确为26×5。"
 	)
 	_expect(
 		texture.fill == GradientTexture2D.FILL_RADIAL,
@@ -160,6 +207,7 @@ func _test_family_inheritance_and_resource_sharing(
 					shared_texture != null and shadow.texture == shared_texture,
 					"%s 必须共享同一阴影纹理资源，禁止逐实例复制。" % slime_config.display_name
 				)
+				_test_move_frame_baseline(slime, shadow)
 		slime.free()
 
 
