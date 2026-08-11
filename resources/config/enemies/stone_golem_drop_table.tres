@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="EnemyDropTable" format=3]
+[gd_resource type="Resource" script_class="EnemyDropTable" format=3 uid="uid://ck1ioaxs1jujq"]
 
 [ext_resource type="Script" uid="uid://jr4vkrpwk146" path="res://resources/config/enemies/enemy_drop_table.gd" id="1_table"]
 [ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_base"]

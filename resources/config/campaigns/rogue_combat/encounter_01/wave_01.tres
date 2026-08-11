@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="WaveConfig" load_steps=7 format=3 uid="uid://c56oaktqgvssu"]
+[gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://c56oaktqgvssu"]
 
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
 [ext_resource type="Resource" path="res://resources/config/enemies/combat_robot.tres" id="2_combat_robot"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="3_wave_script"]
 [ext_resource type="AudioStream" uid="uid://dvxl8ixgmll4p" path="res://resources/audio/1-28 Journey of the Prairie King (The Outlaw).mp3" id="4_music"]
 [ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_gunner.tres" id="5_gunner"]
+[ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="5_xjiph"]
 
 [sub_resource type="Resource" id="CombatRobotEntry"]
 script = ExtResource("1_entry_script")
@@ -28,10 +29,7 @@ wave_name = "狭路相逢"
 enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("CombatRobotEntry"), SubResource("CombatRobotDroneOperatorEntry"), SubResource("CombatRobotGunnerEntry")])
 spawn_point_mask = 7
 spawn_point_order = 1
-spawn_order = 0
 spawn_interval = 0.3
-spawn_count_per_tick = 1
-max_alive_enemies = 10
 music = ExtResource("4_music")
 step_id = &"wave_01"
 display_name = "狭路相逢：击败全部战斗机器人"
