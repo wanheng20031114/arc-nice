@@ -50,7 +50,7 @@ shape = SubResource("CapsuleShape2D_body")
 [node name="GroundShadow" parent="." index="5" unique_id=1842765391]
 visible = true
 position = Vector2(0, 5.5)
-scale = Vector2(1, 1)
+scale = Vector2(0.9230769, 1)
 
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
 rotation = 1.5707964

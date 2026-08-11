@@ -16,6 +16,9 @@ const SLIME_CONFIGS: Array[SlimeConfig] = [
 
 const EXPECTED_SHADOW_POSITION := Vector2(0.0, 5.5)
 const EXPECTED_SHADOW_SIZE := Vector2i(26, 5)
+const EXPECTED_SHADOW_SCALE := Vector2(24.0 / 26.0, 1.0)
+const EXPECTED_EFFECTIVE_SHADOW_WIDTH := 24.0
+const EXPECTED_MOVE_ALPHA_WIDTHS := [18, 20, 18]
 const EXPECTED_GRADIENT_OFFSETS := [0.0, 0.5, 0.78, 1.0]
 const EXPECTED_GRADIENT_ALPHAS := [0.66, 0.50, 0.20, 0.0]
 const EXPECTED_GRADIENT_RGB := Vector3(0.02, 0.025, 0.035)
@@ -69,8 +72,23 @@ func _test_base_authored_contract() -> GradientTexture2D:
 		shadow.position.is_equal_approx(EXPECTED_SHADOW_POSITION),
 		"GroundShadow 横向中线必须锚定在普通移动帧最低像素中心 (0, 5.5)。"
 	)
-	_test_move_frame_baseline(slime, shadow)
-	_expect(shadow.scale.is_equal_approx(Vector2.ONE), "GroundShadow 必须保持26×5原生尺寸。")
+	var move_alpha_widths := _test_move_frame_baseline(slime, shadow)
+	_expect(
+		Array(move_alpha_widths) == EXPECTED_MOVE_ALPHA_WIDTHS,
+		"普通史莱姆 move 三帧 Alpha 包围盒宽度必须保持18/20/18像素。"
+	)
+	_expect(
+		shadow.scale.is_equal_approx(EXPECTED_SHADOW_SCALE),
+		"史莱姆 GroundShadow 必须只将共享26像素宽纹理横向收窄到24像素。"
+	)
+	_expect(
+		shadow.texture != null
+		and is_equal_approx(
+			shadow.texture.get_size().x * absf(shadow.scale.x),
+			EXPECTED_EFFECTIVE_SHADOW_WIDTH
+		),
+		"史莱姆 GroundShadow 的有效横向宽度必须精确为24像素。"
+	)
 	_expect(shadow.z_index == 1, "GroundShadow 必须位于地板 z0 与敌人主体 z2 之间。")
 	_expect(
 		shadow.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR,
@@ -96,11 +114,12 @@ func _test_base_authored_contract() -> GradientTexture2D:
 	return texture
 
 
-func _test_move_frame_baseline(slime: Slime, shadow: Sprite2D) -> void:
+func _test_move_frame_baseline(slime: Slime, shadow: Sprite2D) -> PackedInt32Array:
+	var alpha_widths := PackedInt32Array()
 	var body := slime.get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 	_expect(body != null, "普通行动基线检查必须取得史莱姆主体。")
 	if body == null:
-		return
+		return alpha_widths
 	_expect(
 		body.centered
 		and body.position.is_zero_approx()
@@ -116,7 +135,7 @@ func _test_move_frame_baseline(slime: Slime, shadow: Sprite2D) -> void:
 		"史莱姆必须保留可分析的普通 move 动画。"
 	)
 	if frames == null or not frames.has_animation(&"move"):
-		return
+		return alpha_widths
 	for frame_index in range(frames.get_frame_count(&"move")):
 		var texture := frames.get_frame_texture(&"move", frame_index)
 		var image := texture.get_image() if texture != null else null
@@ -127,10 +146,15 @@ func _test_move_frame_baseline(slime: Slime, shadow: Sprite2D) -> void:
 		if image == null or image.is_empty():
 			continue
 		var lowest_alpha_row := -1
+		var leftmost_alpha_column := image.get_width()
+		var rightmost_alpha_column := -1
 		for y in range(image.get_height()):
 			for x in range(image.get_width()):
 				if image.get_pixel(x, y).a > 0.0:
 					lowest_alpha_row = maxi(lowest_alpha_row, y)
+					leftmost_alpha_column = mini(leftmost_alpha_column, x)
+					rightmost_alpha_column = maxi(rightmost_alpha_column, x)
+		alpha_widths.append(rightmost_alpha_column - leftmost_alpha_column + 1)
 		var lowest_pixel_center_y := (
 			float(lowest_alpha_row) + 0.5 - float(image.get_height()) * 0.5
 		)
@@ -140,6 +164,7 @@ func _test_move_frame_baseline(slime: Slime, shadow: Sprite2D) -> void:
 			"GroundShadow 中线必须穿过 move 第%d帧最低Alpha像素中心 y=%.1f。"
 			% [frame_index, lowest_pixel_center_y]
 		)
+	return alpha_widths
 
 
 func _test_gradient_contract(texture: GradientTexture2D) -> void:
@@ -206,6 +231,11 @@ func _test_family_inheritance_and_resource_sharing(
 				_expect(
 					shared_texture != null and shadow.texture == shared_texture,
 					"%s 必须共享同一阴影纹理资源，禁止逐实例复制。" % slime_config.display_name
+				)
+				_expect(
+					shadow.scale.is_equal_approx(EXPECTED_SHADOW_SCALE),
+					"%s 必须继承史莱姆家族统一的24像素有效阴影宽度。"
+					% slime_config.display_name
 				)
 				_test_move_frame_baseline(slime, shadow)
 		slime.free()
