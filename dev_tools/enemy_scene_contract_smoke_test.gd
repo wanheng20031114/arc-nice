@@ -169,6 +169,9 @@ const LINGLAN_BOSS_CONFIG: EnemyConfig = preload(
 )
 const ENEMY_VISUAL_SHADER_PATH := "res://scene/combat/feedback/shaders/entity_motion_status.gdshader"
 const PLAYER_BULLET_SCENE := preload("res://scene/combat/projectiles/bullet.tscn")
+const TEST_RUNTIME_SCENE := preload(
+	"res://dev_tools/fixtures/enemy_gameplay_gateway_test_runtime.tscn"
+)
 const CAPOO_AK47_BULLET_SCENE := preload(
 	"res://scene/enemy/capoo/capoo_ak47_bullet.tscn"
 )
@@ -195,7 +198,7 @@ const PLAYER_BODY_VISUAL_Z_INDEX := 1
 const ENEMY_BODY_VISUAL_Z_INDEX := 2
 
 var failures: Array[String] = []
-var test_root: Node2D
+var test_root: EnemyGameplayGatewayTestRuntime
 
 
 func _init() -> void:
@@ -203,8 +206,9 @@ func _init() -> void:
 
 
 func _run() -> void:
-	test_root = Node2D.new()
+	test_root = TEST_RUNTIME_SCENE.instantiate() as EnemyGameplayGatewayTestRuntime
 	test_root.name = "EnemySceneContractSmokeTest"
+	test_root.runtime_mode = CombatRuntimeBase.RuntimeMode.SINGLEPLAYER
 	root.add_child(test_root)
 	current_scene = test_root
 
@@ -379,7 +383,7 @@ func _test_enemy_drop_and_category_contract() -> void:
 		and STONE_GOLEM_DROP_TABLE.rules[0].pickup_config.resource_path
 		== "res://resources/config/materials/material_small_stone.tres"
 		and is_equal_approx(STONE_GOLEM_DROP_TABLE.rules[0].chance, 0.5)
-		and STONE_GOLEM_DROP_TABLE.rules[0].required_tags.is_empty(),
+		and STONE_GOLEM_DROP_TABLE.rules[0].required_tags == PackedStringArray(),
 		"Stone golems must extend the shared default table with only the 50% small-stone rule."
 	)
 	for enemy_config in all_drop_configs:
@@ -583,7 +587,7 @@ func _test_enemy_scene_contract(enemy_config: EnemyConfig) -> void:
 	)
 
 	test_root.add_child(enemy)
-	enemy.setup(enemy_config, null, null)
+	enemy.setup(enemy_config, null, null, test_root)
 	await process_frame
 	_expect(
 		touch_damage_area.area_entered.get_connections().is_empty(),
@@ -628,12 +632,16 @@ func _test_player_bullet_body_hit_path() -> void:
 	if enemy == null or bullet == null:
 		return
 	test_root.add_child(enemy)
-	enemy.setup(ENEMY_CONFIGS[0], null, null)
+	enemy.setup(ENEMY_CONFIGS[0], null, null, test_root)
 	enemy.set_physics_process(false)
 	enemy.global_position = Vector2.ZERO
 	var starting_health := enemy.current_health
 	bullet.speed = 0.0
 	bullet.global_position = enemy.global_position
+	bullet.bind_gameplay_context(
+		test_root,
+		test_root.get_multiplayer_gameplay_gateway()
+	)
 	test_root.add_child(bullet)
 	bullet.setup(Vector2.RIGHT, 5)
 	await physics_frame
