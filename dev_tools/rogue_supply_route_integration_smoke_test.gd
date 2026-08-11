@@ -176,12 +176,276 @@ func _run() -> void:
 		and run_state.get_inventory_revision() == discard_revision + 1,
 		"收藏品选择期间的整理背包必须由Host按revision与物品指纹权威丢弃。"
 	)
+
+	# 先领取本地第二个节点的收藏品并完成 Session，为双人断线夹具清场。
+	state = route.supply_session.export_state()
+	_expect(
+		route.host_submit_supply_collectible_choice(
+			0,
+			str(state["occurrence_key"]),
+			int(state["revision"]),
+			0
+		),
+		"本地收藏品领取必须成功。"
+	)
+	state = route.supply_session.export_state()
+	_expect(
+		StringName(state.get("phase", &"")) == RogueSupplySession.PHASE_RESULT
+		and route.host_submit_encounter_result_ack(
+			0,
+			str(state["occurrence_key"]),
+			int(state["revision"])
+		),
+		"领取完成后必须能结束第二个物资节点。"
+	)
+
+	# 合法多人交叠：玩家2在收藏品阶段断线，玩家0完成节点后可继续路线；
+	# 玩家2的 completed+pending 奖励必须跨作战/商店暂压并在最后 lease
+	# 释放后从 Session 快照完整恢复，不能丢失或盖住外部场景。
+	run_state.set_party_light_stone_amount(1)
+	run_state.ensure_multiplayer_peer_state(2)
+	_expect(
+		route.supply_session.start_for_node(
+			79,
+			collectible_seed,
+			[0, 2]
+		),
+		"双人物资断线夹具必须能启动。"
+	)
+	state = route.supply_session.export_state()
+	for peer_id in [0, 2]:
+		_expect(
+			route.host_submit_encounter_intro_ack(
+				peer_id,
+				str(state["occurrence_key"]),
+				int(state["revision"])
+			),
+			"双人物资夹具的引导确认必须成功。"
+		)
+		state = route.supply_session.export_state()
+	for peer_id in [0, 2]:
+		_expect(
+			route.host_submit_encounter_vote(
+				peer_id,
+				str(state["occurrence_key"]),
+				int(state["revision"]),
+				RogueSupplyRegistry.OPTION_LIGHT_STONE_COLLECTIBLES
+			),
+			"双人物资夹具必须能一致选择收藏品奖励。"
+		)
+		state = route.supply_session.export_state()
+	_expect(
+		StringName(state.get("phase", &""))
+		== RogueSupplySession.PHASE_COLLECTIBLE_CHOICE,
+		"双人投票后必须进入个人收藏品选择阶段。"
+	)
+	route.host_remove_encounter_peer(2)
+	state = route.supply_session.export_state()
+	_expect(
+		(route.supply_session.has_pending_collectible_for_peer(2))
+		and (state.get("disconnected_peer_ids", []) as Array).has(2),
+		"玩家2断线后必须保留其私有收藏品 offer。"
+	)
+	_expect(
+		route.host_submit_supply_collectible_choice(
+			0,
+			str(state["occurrence_key"]),
+			int(state["revision"]),
+			0
+		),
+		"仍在线玩家必须能完成自己的收藏品选择。"
+	)
+	state = route.supply_session.export_state()
+	_expect(
+		StringName(state.get("phase", &"")) == RogueSupplySession.PHASE_RESULT
+		and route.host_submit_encounter_result_ack(
+			0,
+			str(state["occurrence_key"]),
+			int(state["revision"])
+		),
+		"在线玩家确认后节点必须进入 completed，不能等待断线玩家。"
+	)
+	state = route.supply_session.export_state()
+	_expect(
+		route.supply_session.get_phase() == RogueSupplySession.PHASE_COMPLETED
+		and route.supply_session.has_pending_collectible_for_peer(2),
+		"completed 终态必须继续保存玩家2的待领取奖励。"
+	)
+
+	# 模拟玩家2重连并首次收到 completed 快照：Supply 抢占已打开 Profile，
+	# 但只派生本地输入锁，不重新把全局 encounter active 标为 true。
+	route.player_profile_panel.open()
+	route.set("_local_peer_id", 2)
+	route.set("_local_supply_modal_owner_active", false)
+	route.call(&"_configure_supply_overlay_context")
+	route.call(&"_on_supply_state_changed", state)
+	await process_frame
+	_expect(
+		not route.player_profile_panel.is_open()
+		and route.supply_overlay.visible
+		and route.supply_overlay.rendered_phase
+		== RogueSupplySession.PHASE_COMPLETED
+		and route.supply_overlay.collectible_modal.visible
+		and bool(route.call(&"_is_route_input_locked"))
+		and not bool(route.get("_encounter_input_locked")),
+		"重连玩家的 completed+pending Supply 必须关闭旧 Profile、显示领取层并仅锁本地路线输入。"
+	)
+
+	# Stage 的直接结束与 ResultOverlay 自身关闭都是独立 owner 释放边界；
+	# 不能假设协调器随后一定还会释放 lease 或再次调用 hide_result。
+	route.set("_normal_combat_active", true)
+	route.set("_normal_combat_occurrence_key", "combat:direct-complete")
+	route.call(&"_reconcile_local_modal_presentations")
+	_expect(
+		not route.supply_overlay.visible
+		and route.complete_normal_combat("combat:direct-complete")
+		and route.supply_overlay.visible,
+		"直接结束作战 stage 必须在同一事件边界恢复 pending Supply。"
+	)
+	_expect(
+		route.show_combat_result({
+			"victory": false,
+			"failure_reason": "测试结算",
+		})
+		and not route.supply_overlay.visible,
+		"作战结算展示期间必须暂压 pending Supply。"
+	)
+	route.combat_result_overlay.call(&"_on_close_button_pressed")
+	await process_frame
+	_expect(
+		not route.combat_result_overlay.visible
+		and route.supply_overlay.visible,
+		"结算面板自行 dismiss 后必须直接恢复 pending Supply。"
+	)
+
+	# 作战与商店 lease 可乱序交叠；重复 full-state 回放不能让 Supply 在
+	# 高优先级场景上方重开。只有最后 owner 释放才从 export_state 恢复。
+	route.set_route_presentation_enabled(false)
+	route.call(&"_set_shop_route_presentation_active", false)
+	route.call(&"_on_supply_state_changed", state)
+	_expect(
+		not route.supply_overlay.visible
+		and route.supply_session.has_pending_collectible_for_peer(2),
+		"作战/商店期间重放 Supply 快照必须保持隐藏且不能消费待领取奖励。"
+	)
+	route.set_route_presentation_enabled(true)
+	_expect(
+		not route.supply_overlay.visible,
+		"仍有商店 lease 时释放作战不得提前恢复 Supply。"
+	)
+	route.call(&"_set_shop_route_presentation_active", true)
+	await process_frame
+	_expect(
+		route.supply_overlay.visible
+		and route.supply_overlay.rendered_phase
+		== RogueSupplySession.PHASE_COMPLETED
+		and route.supply_overlay.collectible_modal.visible
+		and bool(route.call(&"_is_route_input_locked")),
+		"最后 lease 释放后必须从 Session 快照恢复完整待领取层与输入 owner。"
+	)
+
+	# Supply 显式背包入口仍可用；新的 exclusive owner 会关闭 Profile，
+	# 返回路线后只恢复领取层，不能重开陈旧 Profile。
+	route.call(&"_on_supply_inventory_requested")
+	_expect(route.player_profile_panel.is_open(), "Supply 必须仍能显式打开整理背包。")
+	route.call(&"_set_shop_route_presentation_active", false)
+	_expect(
+		not route.player_profile_panel.is_open()
+		and not route.supply_overlay.visible,
+		"商店 owner 必须同时关闭 Supply 显式 Profile 并暂压领取层。"
+	)
+	route.call(&"_set_shop_route_presentation_active", true)
+	_expect(
+		not route.player_profile_panel.is_open()
+		and route.supply_overlay.visible,
+		"商店退出只能恢复仍有效的 Supply Session，不能恢复陈旧 Profile。"
+	)
+
+	var pending_occurrence := (
+		route.supply_session.get_pending_collectible_occurrence_for_peer(2)
+	)
+	_expect(
+		route.host_submit_supply_collectible_choice(
+			2,
+			pending_occurrence,
+			route.supply_session.get_revision(),
+			0
+		),
+		"重连玩家必须能在 completed 终态领取保留的收藏品。"
+	)
+	await process_frame
+	_expect(
+		not route.supply_session.has_pending_collectible_for_peer(2)
+		and not route.supply_overlay.visible
+		and not bool(route.call(&"_is_route_input_locked")),
+		"领取完成后必须释放本地 Supply owner 与路线输入锁。"
+	)
+
+	# Profile 已打开时远端 Rare Chest 首帧到达也必须立即抢占，避免 layer25
+	# 盖住限时选择层；重置后不留下陈旧输入 owner。
+	route.set("_local_peer_id", 0)
+	route.call(&"_configure_supply_overlay_context")
+	route.player_profile_panel.open()
+	_expect(
+		route.rare_chest_session.start_for_node(
+			80,
+			0x8055,
+			[0],
+			{0: "singleplayer:local"}
+		),
+		"Rare Chest Profile 抢占夹具必须能启动。"
+	)
+	await process_frame
+	_expect(
+		not route.player_profile_panel.is_open()
+		and route.rare_chest_overlay.visible,
+		"Rare Chest active 快照必须关闭已打开的 Profile。"
+	)
+	route.call(&"_reset_rare_chest_runtime", true)
+
+	# Briefing PRESENTED/ENTERING 过去只手工锁 board/player，Profile 的全局
+	# Bag 门禁会陈旧。通过统一 refresh 后，Briefing 期间 Bag 不得重开面板。
+	route.player_profile_panel.open()
+	var runtime_state := route.get("_runtime_state") as RogueRouteRuntimeState
+	route.set("_briefing_phase", RogueRouteGame.BriefingPhase.ENTERING)
+	route.set("_briefing_node_id", runtime_state.current_node_id)
+	route.set("_briefing_expected_route_revision", runtime_state.state_revision)
+	route.set("_briefing_occurrence_key", "briefing-input-owner-test")
+	route.set("_briefing_revision", 1)
+	route.combat_scene_transition.visible = true
+	route.call(&"_sync_briefing_presentation", RogueRouteGame.BriefingPhase.NONE)
+	await _send_bag_action()
+	_expect(
+		not route.player_profile_panel.is_open()
+		and not route.player_profile_panel.is_processing_unhandled_input()
+		and bool(route.call(&"_is_route_input_locked")),
+		"Briefing ENTERING 必须关闭 Profile、禁用 Bag 重开并保持统一路线锁。"
+	)
+	route.set("_briefing_phase", RogueRouteGame.BriefingPhase.NONE)
+	route.call(
+		&"_sync_briefing_presentation",
+		RogueRouteGame.BriefingPhase.ENTERING
+	)
+	await process_frame
 	_complete_test()
 
 
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _send_bag_action() -> void:
+	var pressed := InputEventAction.new()
+	pressed.action = &"bag"
+	pressed.pressed = true
+	Input.parse_input_event(pressed)
+	await process_frame
+	var released := InputEventAction.new()
+	released.action = &"bag"
+	released.pressed = false
+	Input.parse_input_event(released)
+	await process_frame
 
 
 func _complete_test() -> void:

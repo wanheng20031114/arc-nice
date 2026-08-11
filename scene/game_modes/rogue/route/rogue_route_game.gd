@@ -110,6 +110,19 @@ enum BriefingPhase {
 	ENTERING,
 }
 
+## 会独占路线世界表现的三个生命周期 owner。位掩码允许完整快照、重连
+## 与连续节点转场在短时间内交叠；每个子系统只能释放自己持有的 lease。
+enum RoutePresentationLease {
+	COMBAT = 1,
+	MAGICAL_ENCOUNTER = 2,
+	UNDERGROUND_SHOP = 4,
+}
+
+const ROUTE_PRESENTATION_FULL_HIDE_MASK := (
+	RoutePresentationLease.COMBAT
+	| RoutePresentationLease.MAGICAL_ENCOUNTER
+)
+
 @export var floor_definition: FLOOR_DEFINITION_SCRIPT
 @export var auto_initialize := true
 @export var manage_return_locally := true
@@ -211,7 +224,9 @@ var _encounter_presented_active := false
 var _encounter_presentation_serial := 0
 var _local_result_hold_completed_occurrence_key := ""
 var _last_supply_ap_broadcast_occurrence_key := ""
+var _local_supply_modal_owner_active := false
 var _rare_chest_presented_active := false
+var _rare_chest_presentation_dismiss_pending := false
 var _rare_chest_presentation_serial := 0
 var _rare_chest_local_offer_seen_occurrences: Dictionary = {}
 var _rare_chest_local_heal_applied_occurrences: Dictionary = {}
@@ -222,8 +237,7 @@ var _normal_combat_visit_count := 0
 var _normal_combat_occurrence_key := ""
 var _normal_combat_config_id: StringName = &""
 var _route_presentation_enabled := true
-var _route_presentation_restore_state: Dictionary = {}
-var _shop_route_presentation_restore_state: Dictionary = {}
+var _route_presentation_leases := 0
 var _player_names: Dictionary = {}
 var _player_character_ids: Dictionary = {}
 var _player_stable_keys: Dictionary = {SINGLEPLAYER_PEER_ID: "singleplayer:local"}
@@ -254,6 +268,8 @@ func _ready() -> void:
 	_create_encounter_runtime()
 	_create_supply_runtime()
 	_create_rare_chest_runtime()
+	if not player_profile_panel.opened.is_connected(_on_player_profile_opened):
+		player_profile_panel.opened.connect(_on_player_profile_opened)
 	if not player_profile_panel.closed.is_connected(_on_player_profile_closed):
 		player_profile_panel.closed.connect(_on_player_profile_closed)
 	if not player_profile_panel.multiplayer_inventory_item_discard_requested.is_connected(
@@ -1516,6 +1532,10 @@ func complete_normal_combat(occurrence_key: String) -> bool:
 	):
 		return false
 	_clear_normal_combat_state()
+	# 直接拒绝重放、启动失败与测试/恢复路径都可能只结束 stage，未必紧接
+	# presentation lease 的 release。状态 owner 消失的事件边界必须自行
+	# reconcile，避免 completed+pending Supply 永久保持被压制状态。
+	_reconcile_local_modal_presentations()
 	_set_encounter_input_locked(
 		(encounter_session != null and encounter_session.is_active())
 		or (supply_session != null and supply_session.is_active())
@@ -1528,52 +1548,11 @@ func complete_normal_combat(occurrence_key: String) -> bool:
 func set_route_presentation_enabled(enabled: bool) -> void:
 	if not is_node_ready():
 		return
-	if enabled == _route_presentation_enabled:
-		# 另一个 Camera2D 可能在路线可见期间取得过同一 Viewport；即使
-		# presentation 布尔值未改变，返回路线仍必须重新声明 current。
-		if enabled and map_camera.enabled:
-			_restore_route_camera_after_external_scene()
-		return
 	_route_presentation_enabled = enabled
-	if not enabled:
-		_route_presentation_restore_state = {
-			"world_visible": world.visible,
-			"hud_visible": ($HUD as CanvasLayer).visible,
-			"move_confirmation_visible": move_confirmation.visible,
-			"encounter_overlay_visible": encounter_overlay.visible,
-			"camera_enabled": map_camera.enabled,
-		}
-		world.visible = false
-		($HUD as CanvasLayer).visible = false
-		move_confirmation.visible = false
-		encounter_overlay.visible = false
-		map_camera.enabled = false
-		_camera_drag_active = false
-		return
-	world.visible = bool(
-		_route_presentation_restore_state.get("world_visible", true)
+	_set_route_presentation_lease(
+		RoutePresentationLease.COMBAT,
+		not enabled
 	)
-	($HUD as CanvasLayer).visible = bool(
-		_route_presentation_restore_state.get("hud_visible", true)
-	)
-	move_confirmation.visible = bool(
-		_route_presentation_restore_state.get(
-			"move_confirmation_visible",
-			false
-		)
-	)
-	encounter_overlay.visible = bool(
-		_route_presentation_restore_state.get(
-			"encounter_overlay_visible",
-			false
-		)
-	)
-	map_camera.enabled = bool(
-		_route_presentation_restore_state.get("camera_enabled", true)
-	)
-	_route_presentation_restore_state.clear()
-	if map_camera.enabled:
-		_restore_route_camera_after_external_scene()
 
 
 func _restore_route_camera_after_external_scene() -> void:
@@ -1595,6 +1574,7 @@ func show_combat_result(result: Dictionary) -> bool:
 		if typeof(failure_reason_value) not in [TYPE_STRING, TYPE_STRING_NAME]:
 			return false
 		combat_result_overlay.show_failure(str(failure_reason_value))
+		_reconcile_local_modal_presentations()
 		_refresh_route_input_lock()
 		return true
 	if typeof(result.get("extra_xirang")) != TYPE_INT:
@@ -1622,6 +1602,7 @@ func show_combat_result(result: Dictionary) -> bool:
 		loot_config.icon_texture if loot_config != null else null,
 		inventory_full
 	)
+	_reconcile_local_modal_presentations()
 	_refresh_route_input_lock()
 	return true
 
@@ -1629,6 +1610,7 @@ func show_combat_result(result: Dictionary) -> bool:
 func hide_combat_result() -> void:
 	if combat_result_overlay != null:
 		combat_result_overlay.hide_immediately()
+	_reconcile_local_modal_presentations()
 	_refresh_route_input_lock()
 
 
@@ -2072,6 +2054,7 @@ func _on_shop_controller_exit_ack_requested(
 
 
 func _on_shop_controller_presentation_state_changed() -> void:
+	_reconcile_local_modal_presentations()
 	_refresh_route_input_lock()
 
 
@@ -2080,47 +2063,10 @@ func _on_shop_controller_presentation_state_changed() -> void:
 
 
 func _set_shop_route_presentation_active(active: bool) -> void:
-	if not is_node_ready():
-		return
-	var bottom_bar := $HUD/Root/BottomBar as Control
-	if not active:
-		if _shop_route_presentation_restore_state.is_empty():
-			_shop_route_presentation_restore_state = {
-				"world_visible": world.visible,
-				"world_process_mode": world.process_mode,
-				"bottom_bar_visible": bottom_bar.visible,
-				"camera_enabled": map_camera.enabled,
-			}
-		if move_confirmation.visible:
-			move_confirmation.dismiss()
-		world.hide()
-		world.process_mode = Node.PROCESS_MODE_DISABLED
-		bottom_bar.hide()
-		map_camera.enabled = false
-		_camera_drag_active = false
-		return
-	if _shop_route_presentation_restore_state.is_empty():
-		return
-	world.visible = bool(
-		_shop_route_presentation_restore_state.get("world_visible", true)
+	_set_route_presentation_lease(
+		RoutePresentationLease.UNDERGROUND_SHOP,
+		not active
 	)
-	world.process_mode = int(
-		_shop_route_presentation_restore_state.get(
-			"world_process_mode",
-			Node.PROCESS_MODE_INHERIT
-		)
-	)
-	bottom_bar.visible = bool(
-		_shop_route_presentation_restore_state.get(
-			"bottom_bar_visible",
-			true
-		)
-	)
-	map_camera.enabled = bool(
-		_shop_route_presentation_restore_state.get("camera_enabled", true)
-	)
-	_shop_route_presentation_restore_state.clear()
-	world.reset_physics_interpolation()
 
 
 func _is_local_shop_presentation_active() -> bool:
@@ -2187,6 +2133,7 @@ func _create_encounter_runtime() -> void:
 
 
 func _reset_encounter_runtime(authority: bool) -> void:
+	_reset_run_defeat_presentation()
 	_encounter_presentation_serial += 1
 	_encounter_presented_active = false
 	_local_result_hold_completed_occurrence_key = ""
@@ -2250,6 +2197,7 @@ func _create_supply_runtime() -> void:
 
 func _reset_supply_runtime(authority: bool) -> void:
 	_last_supply_ap_broadcast_occurrence_key = ""
+	_local_supply_modal_owner_active = false
 	if player_profile_panel != null and player_profile_panel.is_open():
 		player_profile_panel.close()
 	if supply_overlay != null:
@@ -2260,6 +2208,8 @@ func _reset_supply_runtime(authority: bool) -> void:
 			supply_economy,
 			_get_active_encounter_peer_ids()
 		)
+	_reconcile_local_modal_presentations()
+	_refresh_route_input_lock()
 
 
 func _create_rare_chest_runtime() -> void:
@@ -2309,6 +2259,7 @@ func _reset_rare_chest_runtime(
 		and _rare_chest_presented_active
 	)
 	_rare_chest_presented_active = preserve_presented_active
+	_rare_chest_presentation_dismiss_pending = false
 	_rare_chest_presentation_serial += 1
 	_rare_chest_local_offer_seen_occurrences.clear()
 	_rare_chest_local_heal_applied_occurrences.clear()
@@ -2325,6 +2276,8 @@ func _reset_rare_chest_runtime(
 	_create_rare_chest_runtime()
 	if authority:
 		rare_chest_session.reset_authority(rare_chest_economy)
+	_reconcile_local_modal_presentations()
+	_refresh_route_input_lock()
 
 
 func _reset_normal_combat_stage(restore_presentation: bool) -> void:
@@ -2381,6 +2334,7 @@ func _begin_normal_combat_stage(
 	_normal_combat_visit_count = int(_runtime_state.visited_counts[node_id])
 	_normal_combat_occurrence_key = occurrence_key
 	_normal_combat_config_id = resolved_config_id
+	_reconcile_local_modal_presentations()
 	_set_encounter_input_locked(true)
 
 
@@ -2962,6 +2916,7 @@ func _sync_briefing_presentation(previous_phase: int) -> void:
 		_pending_node_id = INVALID_NODE_ID
 		_pending_revision = -1
 		route_board.clear_selection()
+		_reconcile_local_modal_presentations()
 		_refresh_route_input_lock()
 		return
 	_pending_node_id = _briefing_node_id
@@ -2970,6 +2925,11 @@ func _sync_briefing_presentation(previous_phase: int) -> void:
 	route_board.set_interaction_locked(true)
 	_set_local_player_controls_locked(true)
 	_camera_drag_active = false
+	# Briefing 是显式的路线 Modal owner。无论 PRESENTED 还是 ENTERING，
+	# 都必须立即刷新统一输入门禁，并暂压已完成 Supply 的本地待领取层；
+	# 不能只依赖上面两处手工 board/player 锁。
+	_reconcile_local_modal_presentations()
+	_refresh_route_input_lock()
 	if _briefing_phase == BriefingPhase.PRESENTED:
 		var model := _build_current_briefing_model()
 		if model == null:
@@ -3416,6 +3376,7 @@ func _on_supply_inventory_requested() -> void:
 		supply_session == null
 		or not supply_session.has_pending_collectible_for_peer(peer_id)
 		or player_profile_panel == null
+		or _has_modal_priority_over_supply()
 	):
 		return
 	player_profile_panel.configure_multiplayer_requests(not manage_return_locally)
@@ -3475,6 +3436,11 @@ func _on_rare_chest_state_changed(snapshot: Dictionary) -> void:
 		and _rare_chest_presented_active
 		and local_phase == RogueRareChestSession.PHASE_COMPLETED
 	)
+	# Rare Chest 的权威 active 状态优先于路线 Profile 与 completed Supply
+	# 待领取层。先收敛低优先级 Modal，再让本帧的宝箱快照呈现。
+	if active:
+		_rare_chest_presentation_dismiss_pending = false
+	_reconcile_local_modal_presentations()
 	# Completed 是可重放的权威终态。只有本机确实呈现过这一 occurrence 时
 	# 才展示最后 0.8 秒；迟到旁观者和后续同 revision 快照不能重新打开界面。
 	if rare_chest_overlay != null:
@@ -3491,6 +3457,9 @@ func _on_rare_chest_state_changed(snapshot: Dictionary) -> void:
 		_set_encounter_input_locked(true)
 	elif _rare_chest_presented_active:
 		_rare_chest_presented_active = false
+		_rare_chest_presentation_dismiss_pending = (
+			local_phase == RogueRareChestSession.PHASE_COMPLETED
+		)
 		_rare_chest_presentation_serial += 1
 		var presentation_serial := _rare_chest_presentation_serial
 		var occurrence_key := str(local_snapshot.get("occurrence_key", ""))
@@ -3503,6 +3472,8 @@ func _on_rare_chest_state_changed(snapshot: Dictionary) -> void:
 			)
 		else:
 			_hide_rare_chest_presentation(presentation_serial)
+	_reconcile_local_modal_presentations()
+	_refresh_route_input_lock()
 	if _authority_enabled:
 		_emit_host_encounter_snapshot()
 
@@ -3526,8 +3497,10 @@ func _finish_rare_chest_presentation(
 func _hide_rare_chest_presentation(presentation_serial: int) -> void:
 	if presentation_serial != _rare_chest_presentation_serial:
 		return
+	_rare_chest_presentation_dismiss_pending = false
 	if rare_chest_overlay != null:
 		rare_chest_overlay.hide_rare_chest_immediately()
+	_reconcile_local_modal_presentations()
 	_set_encounter_input_locked(
 		(encounter_session != null and encounter_session.is_active())
 		or (supply_session != null and supply_session.is_active())
@@ -3572,29 +3545,26 @@ func _apply_remote_rare_chest_local_health_reward(
 
 
 func _on_supply_state_changed(snapshot: Dictionary) -> void:
-	if supply_overlay != null:
-		supply_overlay.apply_state(snapshot)
-	var phase := StringName(snapshot.get("phase", &"idle"))
-	var active := phase not in [&"idle", &"completed"]
-	var local_has_pending_collectible := (
-		supply_session != null
-		and supply_session.has_pending_collectible_for_peer(
-			_get_local_encounter_peer_id()
-		)
+	var local_modal_owner := _is_local_supply_modal_owner()
+	var newly_acquired_local_owner := (
+		local_modal_owner and not _local_supply_modal_owner_active
 	)
-	if active:
-		_set_encounter_input_locked(true)
-		if supply_overlay != null:
-			supply_overlay.show_supply()
-	elif phase == &"completed":
-		if supply_overlay != null and local_has_pending_collectible:
-			supply_overlay.show_supply()
-		elif supply_overlay != null:
-			supply_overlay.hide_supply_immediately()
-		_set_encounter_input_locked(
-			(encounter_session != null and encounter_session.is_active())
-			or (rare_chest_session != null and rare_chest_session.is_active())
-		)
+	_local_supply_modal_owner_active = local_modal_owner
+	# 远端 Supply 首帧可能在玩家 Profile 已打开时到达；Supply 是限时/待
+	# 领取 Session owner，进入边界必须抢占 Profile。之后玩家从 Supply 内
+	# 显式打开背包时不再重复关闭它。
+	if (
+		newly_acquired_local_owner
+		and player_profile_panel != null
+		and player_profile_panel.is_open()
+	):
+		player_profile_panel.close()
+	_reconcile_local_modal_presentations()
+	_set_encounter_input_locked(
+		(supply_session != null and supply_session.is_active())
+		or (encounter_session != null and encounter_session.is_active())
+		or (rare_chest_session != null and rare_chest_session.is_active())
+	)
 	var result := snapshot.get("result", {}) as Dictionary
 	var occurrence_key := str(snapshot.get("occurrence_key", ""))
 	if (
@@ -3631,6 +3601,9 @@ func _on_encounter_state_changed(snapshot: Dictionary) -> void:
 		)
 	var phase := StringName(snapshot.get("phase", &"idle"))
 	var encounter_active := phase not in [&"idle", &"completed"]
+	# 权威遭遇阶段先于异步 cover 取得表现所有权；在等待转场的这一帧就要
+	# 压住低优先级 Supply/Profile，不能等到 route lease 真正取得后再处理。
+	_reconcile_local_modal_presentations()
 	if encounter_active and not _encounter_presented_active:
 		_encounter_presented_active = true
 		_local_result_hold_completed_occurrence_key = ""
@@ -3639,6 +3612,12 @@ func _on_encounter_state_changed(snapshot: Dictionary) -> void:
 		_present_encounter(_encounter_presentation_serial)
 	elif phase == &"completed" and _encounter_presented_active:
 		_try_dismiss_locally_completed_encounter()
+	elif phase == &"completed" and bool(snapshot.get("run_failed", false)):
+		# 重连或迟到完整快照可能第一次就落在 completed 终态，本机从未
+		# 展示过遭遇，因此没有可等待的退场动画；仍必须恢复权威败局 UI。
+		_show_run_defeat()
+	_reconcile_local_modal_presentations()
+	_refresh_route_input_lock()
 	if _authority_enabled:
 		_emit_host_encounter_snapshot()
 
@@ -3786,8 +3765,16 @@ func _show_run_defeat() -> void:
 	if _run_failure_presented or run_defeat_overlay == null:
 		return
 	_run_failure_presented = true
+	_reconcile_local_modal_presentations()
 	_set_encounter_input_locked(true)
 	run_defeat_overlay.show_defeat(not manage_return_locally)
+
+
+func _reset_run_defeat_presentation() -> void:
+	_run_failure_presented = false
+	if run_defeat_overlay != null:
+		run_defeat_overlay.hide_immediately()
+	_reconcile_local_modal_presentations()
 
 
 func _on_run_defeat_confirmed() -> void:
@@ -3822,12 +3809,85 @@ func _set_route_reveal_input_locked(locked: bool) -> void:
 	_refresh_route_input_lock()
 
 
+## Supply completed 后仍可能只对某个重连玩家保留待领取收藏品。这个状态
+## 不再阻塞 Host 推进路线，但对该本地玩家仍是一个持久 Modal owner。
+func _is_local_supply_modal_owner() -> bool:
+	if supply_session == null:
+		return false
+	return (
+		supply_session.is_active()
+		or supply_session.has_pending_collectible_for_peer(
+			_get_local_encounter_peer_id()
+		)
+	)
+
+
+## 这里列出比 Supply 更高的明确表现 owner；不读取旧 visible 快照，也不
+## 保存/恢复 UI 可见性。这样乱序 release 或 full snapshot 只能影响自己的
+## 状态，最终表现始终由当前权威 Session/lease 重新推导。
+func _has_modal_priority_over_supply() -> bool:
+	return (
+		_route_presentation_leases != 0
+		or _normal_combat_active
+		or _briefing_phase != BriefingPhase.NONE
+		or _run_failure_presented
+		or _encounter_presented_active
+		or (
+			encounter_session != null
+			and encounter_session.is_active()
+		)
+		or _rare_chest_presented_active
+		or _rare_chest_presentation_dismiss_pending
+		or (
+			rare_chest_session != null
+			and rare_chest_session.is_active()
+		)
+		or _is_local_shop_presentation_active()
+		or (
+			combat_result_overlay != null
+			and combat_result_overlay.visible
+		)
+	)
+
+
+## 本地 Modal 的单一 reconcile 边界。高优先级 owner 只暂压 Supply，不
+## 修改 Session；owner 释放后必须从 Session 完整快照重新 apply，因为
+## hide_supply_immediately() 会有意把 Overlay 的 rendered_phase 清为 idle。
+func _reconcile_local_modal_presentations() -> void:
+	if not is_node_ready():
+		return
+	var higher_priority_owner := _has_modal_priority_over_supply()
+	if (
+		higher_priority_owner
+		and player_profile_panel != null
+		and player_profile_panel.is_open()
+	):
+		player_profile_panel.close()
+	if supply_overlay == null:
+		return
+	if higher_priority_owner or not _is_local_supply_modal_owner():
+		if supply_overlay.visible:
+			supply_overlay.hide_supply_immediately()
+		return
+	var supply_state := supply_session.export_state()
+	if StringName(supply_state.get("phase", &"idle")) == &"idle":
+		supply_overlay.hide_supply_immediately()
+		return
+	supply_overlay.apply_state(supply_state)
+
+
 func _is_route_input_locked() -> bool:
 	return (
-		_encounter_input_locked
+		_route_presentation_leases != 0
+		or _encounter_input_locked
 		or _route_reveal_input_locked
 		or _briefing_phase != BriefingPhase.NONE
+		or _is_local_supply_modal_owner()
 		or _is_local_shop_presentation_active()
+		or (
+			player_profile_panel != null
+			and player_profile_panel.is_open()
+		)
 		or (
 			combat_result_overlay != null
 			and combat_result_overlay.visible
@@ -3844,6 +3904,13 @@ func _refresh_route_input_lock() -> void:
 	)
 	route_board.set_interaction_locked(locked)
 	_set_local_player_controls_locked(locked)
+	# Profile 自己监听全局 bag。关闭状态下若路线已被其他 owner 锁定，
+	# 必须同时停止它的 unhandled input，避免在商店/作战/遭遇上方重开；
+	# Supply 显式 open 后则保留输入，以便玩家仍可用 Bag/Esc 关闭。
+	if player_profile_panel != null:
+		player_profile_panel.set_process_unhandled_input(
+			player_profile_panel.is_open() or not locked
+		)
 	_update_authority_ui()
 
 
@@ -3867,19 +3934,76 @@ func _cancel_shop_departure_for_failed_move() -> void:
 
 
 func _set_route_presentation_active(active: bool) -> void:
-	if not is_node_ready():
+	_set_route_presentation_lease(
+		RoutePresentationLease.MAGICAL_ENCOUNTER,
+		not active
+	)
+
+
+func _set_route_presentation_lease(lease: int, acquired: bool) -> void:
+	if lease not in [
+		RoutePresentationLease.COMBAT,
+		RoutePresentationLease.MAGICAL_ENCOUNTER,
+		RoutePresentationLease.UNDERGROUND_SHOP,
+	]:
+		push_error("RogueRouteGame: 未知路线表现 lease：%d。" % lease)
 		return
-	if active:
-		world.process_mode = Node.PROCESS_MODE_INHERIT
-		world.show()
-		route_hud.visible = true
-		world.reset_physics_interpolation()
-		return
+	if acquired and lease == RoutePresentationLease.COMBAT:
+		_close_stale_route_modals_for_combat()
+	if acquired:
+		_route_presentation_leases |= lease
+	else:
+		_route_presentation_leases &= ~lease
+	# 重复 release 也必须 reconcile：重连重放或暂留战场相机可能在
+	# owner 已释放后再次改写 Viewport current，但绝不能清除其他 owner。
+	_apply_route_presentation_leases()
+
+
+## 作战取得完整屏幕所有权时只直接收起 Route 自己持有的瞬时 Modal。
+## Session Overlay 的压制/恢复统一交给 _reconcile_local_modal_presentations，
+## 由权威状态重建，不保存旧 visible 快照。
+func _close_stale_route_modals_for_combat() -> void:
 	if move_confirmation.visible:
 		move_confirmation.dismiss()
-	route_hud.visible = false
-	world.hide()
-	world.process_mode = Node.PROCESS_MODE_DISABLED
+	if node_briefing.visible:
+		node_briefing.dismiss()
+
+
+func _apply_route_presentation_leases() -> void:
+	if not is_node_ready():
+		return
+	var active_leases := _route_presentation_leases
+	var route_world_hidden := active_leases != 0
+	var full_hud_hidden := (
+		active_leases & ROUTE_PRESENTATION_FULL_HIDE_MASK
+	) != 0
+	var shop_hides_bottom_bar := (
+		active_leases & RoutePresentationLease.UNDERGROUND_SHOP
+	) != 0
+	var bottom_bar := $HUD/Root/BottomBar as Control
+
+	_camera_drag_active = false
+	if route_world_hidden and player_profile_panel.is_open():
+		player_profile_panel.close()
+	if route_world_hidden and move_confirmation.visible:
+		move_confirmation.dismiss()
+
+	world.process_mode = (
+		Node.PROCESS_MODE_DISABLED
+		if route_world_hidden
+		else Node.PROCESS_MODE_INHERIT
+	)
+	world.visible = not route_world_hidden
+	route_hud.visible = not full_hud_hidden
+	bottom_bar.visible = not shop_hides_bottom_bar
+	map_camera.enabled = not route_world_hidden
+
+	if not route_world_hidden:
+		world.reset_physics_interpolation()
+		if player != null and is_instance_valid(player):
+			_restore_route_camera_after_external_scene()
+	_reconcile_local_modal_presentations()
+	_refresh_route_input_lock()
 
 
 func _bind_runtime_state(
@@ -4104,6 +4228,9 @@ func _on_runtime_move_committed(delta: Dictionary) -> void:
 
 
 func _on_combat_result_overlay_dismissed() -> void:
+	# Overlay 会在发出 dismissed 前自行 hide；协调器可能已经完成返回生命周期，
+	# 因此不能依赖它再次调用 hide_combat_result() 才恢复被结算层暂压的 Modal。
+	_reconcile_local_modal_presentations()
 	_refresh_route_input_lock()
 	combat_result_dismissed.emit()
 
@@ -4697,6 +4824,10 @@ func _attach_camera_to_local_player() -> void:
 	if map_camera == null or player == null:
 		return
 	world.attach_camera_to_player(player)
+	# 重连身份迁移或完整快照可能在表现 lease 期间重建本地 Player。
+	# attach_camera_to_player 会原生启用并 make_current，必须立刻重新应用
+	# owner 推导状态，禁止绕过统一协调器抢回隐藏中的路线相机。
+	_apply_route_presentation_leases()
 
 
 func _configure_camera_world_bounds() -> void:
@@ -4724,8 +4855,16 @@ func _on_recenter_button_pressed() -> void:
 
 
 func _on_route_inventory_bag_requested() -> void:
-	if player_profile_panel != null:
+	if (
+		player_profile_panel != null
+		and not _is_route_input_locked()
+		and _pending_node_id == INVALID_NODE_ID
+	):
 		player_profile_panel.open()
+
+
+func _on_player_profile_opened() -> void:
+	_refresh_route_input_lock()
 
 
 func _on_player_profile_closed() -> void:

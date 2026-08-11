@@ -102,16 +102,11 @@ func reset_runtime(
 		player_character_ids,
 		participant_stable_keys
 	)
-	_presentation_serial += 1
 	_local_snapshot.clear()
 	_local_occurrence_key = ""
 	_local_exit_requested = false
 	_last_purchase_success_audio_signature = ""
-	_transition_active = false
-	transition.hide_immediately()
-	view.close_immediately()
-	route_presentation_requested.emit(true)
-	presentation_state_changed.emit()
+	_abort_presentation_transfer()
 	_disconnect_session()
 	_session = RogueUndergroundShopSession.new()
 	_connect_session()
@@ -691,6 +686,8 @@ func _sync_local_presentation(snapshot: Dictionary) -> void:
 		return
 	var occurrence_key := str(snapshot.get("occurrence_key", ""))
 	if occurrence_key != _local_occurrence_key:
+		if _transition_active:
+			_abort_presentation_transfer()
 		_local_occurrence_key = occurrence_key
 		_local_exit_requested = false
 		_last_purchase_success_audio_signature = ""
@@ -720,7 +717,9 @@ func _sync_local_presentation(snapshot: Dictionary) -> void:
 	var target_exited := bool(snapshot.get("target_exited", false))
 	if target_exited:
 		_local_exit_requested = true
-		if view.visible and not _transition_active:
+		if _transition_active:
+			_abort_presentation_transfer()
+		elif view.visible:
 			view.close_immediately()
 			route_presentation_requested.emit(true)
 			presentation_state_changed.emit()
@@ -766,8 +765,8 @@ func _enter_presentation(occurrence_key: String) -> void:
 	_transition_active = true
 	presentation_state_changed.emit()
 	if not await transition.cover():
-		_transition_active = false
-		presentation_state_changed.emit()
+		if serial == _presentation_serial:
+			_abort_presentation_transfer()
 		return
 	if (
 		serial != _presentation_serial
@@ -802,8 +801,8 @@ func _on_view_exit_requested() -> void:
 	view.set_transaction_pending(true, "正在离开商店…")
 	presentation_state_changed.emit()
 	if not await transition.cover():
-		_transition_active = false
-		presentation_state_changed.emit()
+		if serial == _presentation_serial:
+			_abort_presentation_transfer()
 		return
 	if serial != _presentation_serial:
 		return
@@ -815,6 +814,18 @@ func _on_view_exit_requested() -> void:
 	_transition_active = false
 	presentation_state_changed.emit()
 	_submit_local_exit_ack()
+
+
+## 任意权威快照、重连或 occurrence 切换只要中断正在 await 的转场，
+## 必须在同一个事件边界撤销黑幕、关闭商店 View 并释放 SHOP lease。
+## serial 使旧协程醒来后只读退出，不得覆盖新转场的 _transition_active。
+func _abort_presentation_transfer() -> void:
+	_presentation_serial += 1
+	_transition_active = false
+	transition.hide_immediately()
+	view.close_immediately()
+	route_presentation_requested.emit(true)
+	presentation_state_changed.emit()
 
 
 func _on_view_purchase_requested(offer_index: int) -> void:

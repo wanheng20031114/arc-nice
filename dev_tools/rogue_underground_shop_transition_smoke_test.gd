@@ -3,6 +3,12 @@ extends SceneTree
 const TRANSITION_SCENE := preload(
 	"res://scene/game_modes/rogue/shop/ui/rogue_underground_shop_transition.tscn"
 )
+const CONTROLLER_SCENE := preload(
+	"res://scene/game_modes/rogue/shop/rogue_underground_shop_controller.tscn"
+)
+const SHOP_CONFIG: RogueUndergroundShopConfig = preload(
+	"res://resources/config/rogue_shop/shallow_mine_underground_shop.tres"
+)
 const SHADER_PATH := (
 	"res://resources/shader/rogue_underground_shop_diamond_transition.gdshader"
 )
@@ -60,7 +66,160 @@ func _run() -> void:
 	transition.hide_immediately()
 	root.remove_child(transition)
 	transition.free()
+	await _audit_controller_interruption_contracts()
 	call_deferred("_finish")
+
+
+func _audit_controller_interruption_contracts() -> void:
+	var run_state := RunStateStore.new()
+	run_state.begin_new_run(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID, false)
+	var controller := CONTROLLER_SCENE.instantiate() as RogueUndergroundShopController
+	root.add_child(controller)
+	await process_frame
+	_expect(
+		controller.configure(SHOP_CONFIG, run_state),
+		"商店转场中断测试控制器必须完成配置。"
+	)
+	controller.set_identity_context(
+		false,
+		1,
+		{1: "玩家A"},
+		{1: PlayerCharacterRegistry.DEFAULT_CHARACTER_ID},
+		{1: "rogue-participant:v1:transition-race"}
+	)
+	var route_events: Array[bool] = []
+	controller.route_presentation_requested.connect(
+		func(active: bool) -> void: route_events.append(active)
+	)
+
+	# target_exited 在进入 cover 的 await 中到达时，必须立即撤销黑幕与
+	# transition_active；旧协程稍后醒来不能再次改写状态。
+	_start_controller_entry(controller, "shop:cover-target-exited")
+	await create_timer(0.06).timeout
+	_expect(
+		bool(controller.get("_transition_active"))
+		and controller.transition.visible,
+		"进入商店 cover 期间必须处于可观测的活动转场状态。"
+	)
+	_apply_controller_snapshot(
+		controller,
+		_make_controller_snapshot("shop:cover-target-exited", true)
+	)
+	_expect_controller_transfer_cleared(
+		controller,
+		route_events,
+		"cover 期间收到 target_exited"
+	)
+	await create_timer(RogueSceneTransition.COVER_DURATION_SECONDS + 0.05).timeout
+	_expect_controller_transfer_cleared(
+		controller,
+		route_events,
+		"被取消的 cover 协程醒来后"
+	)
+
+	# occurrence 切换模拟重连全量快照：旧 cover 取消后新 occurrence 可立刻
+	# 接管，旧协程的失败分支不得把新转场的 active 标志清掉。
+	_start_controller_entry(controller, "shop:old-occurrence")
+	await create_timer(0.06).timeout
+	_apply_controller_snapshot(
+		controller,
+		_make_controller_snapshot("shop:reconnected-occurrence", false)
+	)
+	await process_frame
+	await process_frame
+	_expect(
+		str(controller.get("_local_occurrence_key"))
+		== "shop:reconnected-occurrence"
+		and bool(controller.get("_transition_active")),
+		"重连 occurrence 必须在旧 cover 取消后启动自己的转场。"
+	)
+	await create_timer(RogueSceneTransition.COVER_DURATION_SECONDS + 0.04).timeout
+	_expect(
+		bool(controller.get("_transition_active")),
+		"旧 cover 协程醒来不得清除新 occurrence 的活动转场。"
+	)
+	_apply_controller_snapshot(
+		controller,
+		_make_controller_snapshot("shop:reconnected-occurrence", true)
+	)
+	_expect_controller_transfer_cleared(
+		controller,
+		route_events,
+		"重连 occurrence 退出时"
+	)
+
+	# reset/full snapshot 在 cover 中到达同样必须清理；reset 只发布恢复路线，
+	# 不得留下最高 CanvasLayer 黑幕。
+	_start_controller_entry(controller, "shop:reset-during-cover")
+	await create_timer(0.06).timeout
+	_expect(
+		controller.reset_runtime(
+			false,
+			1,
+			{1: "玩家A"},
+			{1: PlayerCharacterRegistry.DEFAULT_CHARACTER_ID},
+			{1: "rogue-participant:v1:transition-race"}
+		),
+		"cover 期间 runtime reset 必须成功重建商店会话。"
+	)
+	_expect_controller_transfer_cleared(
+		controller,
+		route_events,
+		"cover 期间 runtime reset 后"
+	)
+	await create_timer(RogueSceneTransition.COVER_DURATION_SECONDS + 0.05).timeout
+
+	controller.queue_free()
+	await process_frame
+	await process_frame
+	run_state.free()
+
+
+func _start_controller_entry(
+	controller: RogueUndergroundShopController,
+	occurrence_key: String
+) -> void:
+	var snapshot := _make_controller_snapshot(occurrence_key, false)
+	controller.set("_local_snapshot", snapshot.duplicate(true))
+	controller.set("_local_occurrence_key", occurrence_key)
+	controller.set("_local_exit_requested", false)
+	controller.call_deferred(&"_enter_presentation", occurrence_key)
+
+
+func _apply_controller_snapshot(
+	controller: RogueUndergroundShopController,
+	snapshot: Dictionary
+) -> void:
+	controller.set("_local_snapshot", snapshot.duplicate(true))
+	controller.call(&"_sync_local_presentation", snapshot)
+
+
+func _make_controller_snapshot(
+	occurrence_key: String,
+	target_exited: bool
+) -> Dictionary:
+	return {
+		"occurrence_key": occurrence_key,
+		"phase": RogueUndergroundShopSession.Phase.SHOPPING,
+		"target_exited": target_exited,
+		"offers": [],
+		"sell_slots": [],
+	}
+
+
+func _expect_controller_transfer_cleared(
+	controller: RogueUndergroundShopController,
+	route_events: Array[bool],
+	context: String
+) -> void:
+	_expect(
+		not bool(controller.get("_transition_active"))
+		and not controller.transition.visible
+		and not controller.view.visible
+		and not route_events.is_empty()
+		and route_events.back(),
+		"%s必须清除转场、关闭商店并恢复路线表现。" % context
+	)
 
 
 func _audit_shader_source() -> void:
