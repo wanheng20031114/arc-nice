@@ -30,6 +30,11 @@ flip_h = false
 position = Vector2(0, -1)
 shape = SubResource("RectangleShape2D_body")
 
+[node name="GroundShadow" parent="." index="5" unique_id=1842765391]
+visible = true
+position = Vector2(0, 11.5)
+scale = Vector2(1.5384616, 1.2)
+
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0"]
 position = Vector2(0, -1)
 shape = SubResource("RectangleShape2D_touch")

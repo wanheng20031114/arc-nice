@@ -28,6 +28,11 @@ animation = &"move"
 [node name="CollisionShape2D" parent="." index="1"]
 shape = SubResource("RectangleShape2D_body")
 
+[node name="GroundShadow" parent="." index="5" unique_id=1842765391]
+visible = true
+position = Vector2(0, 18.5)
+scale = Vector2(1.5384616, 1.2)
+
 [node name="CollisionShape2D" parent="TouchDamageArea" index="0"]
 shape = SubResource("RectangleShape2D_touch")
 

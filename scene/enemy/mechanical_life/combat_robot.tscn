@@ -35,6 +35,11 @@ frame_progress = 0.45677757
 position = Vector2(0, 2.5)
 shape = SubResource("RectangleShape2D_82cvi")
 
+[node name="GroundShadow" parent="." index="5" unique_id=1842765391]
+visible = true
+position = Vector2(0, 11.5)
+scale = Vector2(0.9230769, 1)
+
 [node name="SwordCollisionShape2D" type="CollisionShape2D" parent="." index="2" unique_id=1867632121]
 position = Vector2(7.5, 7)
 shape = SubResource("RectangleShape2D_sword_body")

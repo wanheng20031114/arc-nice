@@ -102,6 +102,11 @@ frame_progress = 0.85000134
 visible = false
 shape = SubResource("CapsuleShape2D_7m0sc")
 
+[node name="GroundShadow" parent="." index="5" unique_id=1842765391]
+visible = true
+position = Vector2(0, 11.5)
+scale = Vector2(1.2307693, 1)
+
 [node name="TouchDamageArea" parent="." index="2" unique_id=738698124]
 visible = false
 

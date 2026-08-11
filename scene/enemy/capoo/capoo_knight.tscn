@@ -44,6 +44,11 @@ flip_h = true
 position = Vector2(0.5, 3)
 shape = SubResource("RectangleShape2D_l7sr7")
 
+[node name="GroundShadow" parent="." index="5" unique_id=1842765391]
+visible = true
+position = Vector2(0, 12)
+scale = Vector2(1.0769231, 1)
+
 [node name="CollisionShape2D2" type="CollisionShape2D" parent="." index="2" unique_id=1420263056]
 position = Vector2(2, 5)
 shape = SubResource("RectangleShape2D_jd8bp")

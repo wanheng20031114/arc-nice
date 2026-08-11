@@ -46,6 +46,11 @@ frame_progress = 0.0
 [node name="CollisionShape2D" parent="." index="1" unique_id=1687096047]
 shape = SubResource("CapsuleShape2D_buikk")
 
+[node name="GroundShadow" parent="." index="5" unique_id=1842765391]
+visible = true
+position = Vector2(0, 9.25)
+scale = Vector2(1.2307693, 1)
+
 [node name="CollisionShape2D" parent="TouchDamageArea" parent_id_path=PackedInt32Array(738698124) index="0" unique_id=1983778379]
 shape = SubResource("CapsuleShape2D_wc5ww")
 

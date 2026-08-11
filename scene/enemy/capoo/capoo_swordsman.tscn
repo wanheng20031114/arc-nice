@@ -44,6 +44,11 @@ animation = &"move"
 position = Vector2(-2, 1.5)
 shape = SubResource("RectangleShape2D_lmhry")
 
+[node name="GroundShadow" parent="." index="5" unique_id=1842765391]
+visible = true
+position = Vector2(0, 10)
+scale = Vector2(1.1538461, 1)
+
 [node name="CollisionShape2D2" type="CollisionShape2D" parent="." index="2" unique_id=2001689211]
 scale = Vector2(0.5, 0.5)
 shape = SubResource("SegmentShape2D_x5ltk")
