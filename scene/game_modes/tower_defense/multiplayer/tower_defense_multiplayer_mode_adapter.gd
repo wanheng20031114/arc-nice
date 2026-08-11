@@ -204,6 +204,7 @@ func accepts_game_mode_id(mode_id: int) -> bool:
 		GameModeCatalog.MODE_TEST_ARENA_P2,
 		GameModeCatalog.MODE_TEST_ARENA_P1B,
 		GameModeCatalog.MODE_TEST_ARENA_P1C,
+		GameModeCatalog.MODE_TEST_ARENA_P1D,
 	]
 
 

@@ -138,6 +138,7 @@ func _test_loading_scene_contract() -> void:
 	var test_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn"
 	var test_p1b_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1b.tscn"
 	var test_p1c_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1c.tscn"
+	var test_p1d_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1d.tscn"
 	var test_p2_scene_path := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_scene_path))
@@ -167,6 +168,13 @@ func _test_loading_scene_contract() -> void:
 		and bool(coordinator.call("_uses_tower_defense_runtime", test_p1c_scene_path))
 		and float(coordinator.call("_get_resource_weight", test_p1c_scene_path)) == 7.0,
 		"Test-arena P1C loading must use its cardboard campaign and tower-defense profile."
+	)
+	_expect(
+		str(coordinator.call("_get_singleplayer_campaign_path", test_p1d_scene_path))
+		== "res://resources/config/campaigns/test_arena/p1d/singleplayer/campaign.tres"
+		and bool(coordinator.call("_uses_tower_defense_runtime", test_p1d_scene_path))
+		and float(coordinator.call("_get_resource_weight", test_p1d_scene_path)) == 7.0,
+		"Test-arena P1D loading must use its underground-church cardboard campaign and tower-defense profile."
 	)
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_p2_scene_path))
@@ -206,6 +214,11 @@ func _test_loading_scene_contract() -> void:
 			NetManagerStore.GameMode.TEST_ARENA_P1C,
 			test_p1c_scene_path,
 			"res://resources/config/campaigns/test_arena/p1c/multiplayer/campaign.tres",
+		],
+		[
+			NetManagerStore.GameMode.TEST_ARENA_P1D,
+			test_p1d_scene_path,
+			"res://resources/config/campaigns/test_arena/p1d/multiplayer/campaign.tres",
 		],
 		[
 			NetManagerStore.GameMode.TEST_ARENA_P2,
@@ -317,7 +330,8 @@ func _test_mode_specific_mp_game_source() -> void:
 	_expect(
 		source.contains("@onready var projectile_coordinator:")
 		and source.contains("$ProjectileCoordinator")
-		and source.contains("projectile_coordinator.receive_projectile_fired(")
+		and source.contains("projectile_coordinator.handle_client_projectile_fired(")
+		and source.contains("projectile_coordinator.apply_authority_projectile_fired(")
 		and not source.contains("func instantiate_projectile("),
 		"MpGame must expose only a thin façade over the static ProjectileCoordinator."
 	)
@@ -521,7 +535,8 @@ func _test_singleplayer_coordinator_flow() -> void:
 		and p2_runtime.supports_tower_defense()
 		and p2_runtime.is_runtime_preparation_complete()
 		and p2_runtime.runtime_activated
-		and p2_runtime.active_campaign == p2_runtime.singleplayer_campaign,
+		and p2_runtime.campaign_coordinator.active_campaign
+		== p2_runtime.singleplayer_campaign,
 		"P2 loading must retain its dedicated Campaign and activate the inherited tower runtime."
 	)
 
@@ -581,6 +596,11 @@ func _test_mp_game_preparation_barrier() -> void:
 			"res://resources/config/campaigns/test_arena/p1c/multiplayer/campaign.tres",
 		],
 		[
+			NetManagerStore.GameMode.TEST_ARENA_P1D,
+			"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1d.tscn",
+			"res://resources/config/campaigns/test_arena/p1d/multiplayer/campaign.tres",
+		],
+		[
 			NetManagerStore.GameMode.TEST_ARENA_P2,
 			"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn",
 			"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres",
@@ -616,8 +636,9 @@ func _test_mp_game_preparation_barrier() -> void:
 			and net_manager.get_room_max_players() == 2
 			and test_runtime != null
 			and test_runtime.scene_file_path == expected_scene_path
-			and test_runtime.active_campaign != null
-			and test_runtime.active_campaign.resource_path == expected_campaign_path
+			and test_runtime.campaign_coordinator.active_campaign != null
+			and test_runtime.campaign_coordinator.active_campaign.resource_path
+			== expected_campaign_path
 			and test_runtime.is_runtime_preparation_complete()
 			and test_runtime.runtime_activated
 			and is_zero_approx(

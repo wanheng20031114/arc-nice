@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 58,
-		"协议v58必须隔离P1C与纸箱怪资源，保留遭遇跟随作战、狭路相逢波次资源合同、稀有宝箱私人快照及既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 59,
+		"协议v59必须隔离P1D地下教堂与纸箱怪资源，保留遭遇跟随作战、狭路相逢波次资源合同、稀有宝箱私人快照及既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
@@ -47,7 +47,7 @@ func _run() -> void:
 	var room_capacity_label := lobby.get_node_or_null(
 		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel"
 	) as Label
-	_expect(selector != null and selector.item_count == 7, "Lobby must expose all seven native mode options.")
+	_expect(selector != null and selector.item_count == 8, "Lobby must expose all eight native mode options.")
 	_expect(room_mode_label != null, "Room wait panel must display the synchronized mode.")
 	_expect(room_capacity_label != null, "Room wait panel must display synchronized room capacity.")
 	if selector != null:
@@ -61,6 +61,7 @@ func _run() -> void:
 				NetManagerStore.GameMode.TEST_ARENA_P1,
 				NetManagerStore.GameMode.TEST_ARENA_P1B,
 				NetManagerStore.GameMode.TEST_ARENA_P1C,
+				NetManagerStore.GameMode.TEST_ARENA_P1D,
 				NetManagerStore.GameMode.TEST_ARENA_P2,
 				NetManagerStore.GameMode.TEST_ARENA_P3,
 			],
@@ -126,6 +127,14 @@ func _run() -> void:
 			"game_mode": "test_arena_p2",
 		},
 		{
+			"id": "test-p1d-room",
+			"name": "Test P1D",
+			"host_name": "H",
+			"player_count": 2,
+			"max_players": 6,
+			"game_mode": "test_arena_p1d",
+		},
+		{
 			"id": "test-p3-room",
 			"name": "Test P3",
 			"host_name": "E",
@@ -134,8 +143,8 @@ func _run() -> void:
 			"game_mode": "test_arena_p3",
 		},
 	])
-	_expect(room_list.get_child_count() == 7, "Room list must retain all seven valid game modes.")
-	if room_list.get_child_count() == 7:
+	_expect(room_list.get_child_count() == 8, "Room list must retain all eight valid game modes.")
+	if room_list.get_child_count() == 8:
 		_expect(
 			(room_list.get_child(0) as Button).text.contains("普通模式")
 			and (room_list.get_child(1) as Button).text.contains("塔防模式")
@@ -143,7 +152,8 @@ func _run() -> void:
 			and (room_list.get_child(3) as Button).text.contains("测试场景 P1B")
 			and (room_list.get_child(4) as Button).text.contains("测试场景 P1C")
 			and (room_list.get_child(5) as Button).text.contains("测试场景 P2")
-			and (room_list.get_child(6) as Button).text.contains("测试场景 P3"),
+			and (room_list.get_child(6) as Button).text.contains("测试场景 P1D")
+			and (room_list.get_child(7) as Button).text.contains("测试场景 P3"),
 			"Room buttons must visibly identify every game mode."
 		)
 

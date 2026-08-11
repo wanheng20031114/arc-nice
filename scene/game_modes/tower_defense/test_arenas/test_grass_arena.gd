@@ -18,6 +18,7 @@ const FORMAL_PROGRESSION := preload(
 
 @export var test_scene_label := "P1A"
 @export var test_entry_announcement_text := "测试场景 P1A"
+@export var test_environment_title := "草地测试场景"
 
 @onready var test_controls_hint: Label = $TestControlsHint/Hint
 
@@ -155,6 +156,10 @@ func _update_test_controls_hint() -> void:
 		)
 	)
 	test_controls_hint.text = (
-		"草地测试场景 %s｜当前：%s\n"
+		"%s %s｜当前：%s\n"
 		+ controls_text
-	) % [test_scene_label, "夜晚" if manual_night_enabled else "白天"]
+	) % [
+		test_environment_title,
+		test_scene_label,
+		"夜晚" if manual_night_enabled else "白天",
+	]

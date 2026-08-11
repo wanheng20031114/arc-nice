@@ -13,6 +13,9 @@ const TEST_ARENA_P1B_SCENE_PATH := (
 const TEST_ARENA_P1C_SCENE_PATH := (
 	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1c.tscn"
 )
+const TEST_ARENA_P1D_SCENE_PATH := (
+	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1d.tscn"
+)
 const TEST_ARENA_P2_SCENE_PATH := "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn"
 const STANDARD_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/standard/multiplayer/campaign.tres"
@@ -28,6 +31,9 @@ const TEST_ARENA_P1B_MULTIPLAYER_CAMPAIGN_PATH := (
 )
 const TEST_ARENA_P1C_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/p1c/multiplayer/campaign.tres"
+)
+const TEST_ARENA_P1D_MULTIPLAYER_CAMPAIGN_PATH := (
+	"res://resources/config/campaigns/test_arena/p1d/multiplayer/campaign.tres"
 )
 const TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH := (
 	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
@@ -110,6 +116,7 @@ func _run() -> void:
 		"test_arena_p1",
 		"test_arena_p1b",
 		"test_arena_p1c",
+		"test_arena_p1d",
 		"test_arena_p2",
 	]:
 		_fail("Unsupported probe game mode: %s" % probe_game_mode)
@@ -423,6 +430,7 @@ func _uses_tower_defense_runtime() -> bool:
 		"test_arena_p1",
 		"test_arena_p1b",
 		"test_arena_p1c",
+		"test_arena_p1d",
 		"test_arena_p2",
 	]
 
@@ -446,6 +454,8 @@ func _get_expected_runtime_scene_path() -> String:
 			return TEST_ARENA_P1B_SCENE_PATH
 		"test_arena_p1c":
 			return TEST_ARENA_P1C_SCENE_PATH
+		"test_arena_p1d":
+			return TEST_ARENA_P1D_SCENE_PATH
 		"test_arena_p2":
 			return TEST_ARENA_P2_SCENE_PATH
 		_:
@@ -462,6 +472,8 @@ func _get_expected_multiplayer_campaign_path() -> String:
 			return TEST_ARENA_P1B_MULTIPLAYER_CAMPAIGN_PATH
 		"test_arena_p1c":
 			return TEST_ARENA_P1C_MULTIPLAYER_CAMPAIGN_PATH
+		"test_arena_p1d":
+			return TEST_ARENA_P1D_MULTIPLAYER_CAMPAIGN_PATH
 		"test_arena_p2":
 			return TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN_PATH
 		_:
@@ -512,6 +524,11 @@ func _validate_exact_mode_runtime(game: CombatRuntimeBase) -> void:
 				game is TestGrassArena
 				and not (game is TestGrassArenaP2)
 			)
+		"test_arena_p1d":
+			has_exact_runtime_type = (
+				game is TestGrassArena
+				and not (game is TestGrassArenaP2)
+			)
 		"test_arena_p2":
 			has_exact_runtime_type = game is TestGrassArenaP2
 		_:
@@ -524,6 +541,7 @@ func _validate_exact_mode_runtime(game: CombatRuntimeBase) -> void:
 		"test_arena_p1",
 		"test_arena_p1b",
 		"test_arena_p1c",
+		"test_arena_p1d",
 		"test_arena_p2",
 	]:
 		return
@@ -558,6 +576,7 @@ func _run_mode_contract_probe(
 		"test_arena_p1",
 		"test_arena_p1b",
 		"test_arena_p1c",
+		"test_arena_p1d",
 		"test_arena_p2",
 	]:
 		var test_arena := game as TestGrassArena

@@ -54,6 +54,7 @@ const EXPECTED_MODE_WIRE_KEYS := {
 	4: &"test_arena_p3",
 	5: &"test_arena_p1b",
 	6: &"test_arena_p1c",
+	7: &"test_arena_p1d",
 }
 
 const STANDARD_GAME_SCENE_PATH := (
@@ -318,8 +319,8 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 58, "多人协议必须保持 v58。")
-	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v58 必须保持 8 个 ENet 信道。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 59, "多人协议必须保持 v59。")
+	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v59 必须保持 8 个 ENet 信道。")
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1 == 2, "test_arena_p1 wire value 必须保持 2。")
@@ -327,6 +328,7 @@ func _test_protocol_and_wire_values() -> void:
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P3 == 4, "test_arena_p3 wire value 必须保持 4。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1B == 5, "test_arena_p1b wire value 必须保持 5。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1C == 6, "test_arena_p1c wire value 必须保持 6。")
+	_expect(GameModeCatalog.MODE_TEST_ARENA_P1D == 7, "test_arena_p1d wire value 必须保持 7。")
 	_expect(NetManagerStore.GameMode.STANDARD == 0, "NetManager standard wire value 改变。")
 	_expect(NetManagerStore.GameMode.TOWER_DEFENSE == 1, "NetManager tower wire value 改变。")
 	_expect(NetManagerStore.GameMode.TEST_ARENA_P3 == 4, "NetManager Rogue wire value 改变。")

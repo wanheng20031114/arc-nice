@@ -12,9 +12,15 @@ const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 const GAME_SCENE := preload("res://scene/game_modes/standard/standard_game.tscn")
 const TOWER_DEFENSE_GAME_SCENE := preload("res://scene/game_modes/tower_defense/tower_defense_game.tscn")
 const TEST_ARENA_SCENE := preload("res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn")
+const TEST_ARENA_P1D_SCENE := preload(
+	"res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1d.tscn"
+)
 const TEST_ARENA_P2_SCENE := preload("res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p2.tscn")
 const TEST_ARENA_MULTIPLAYER_CAMPAIGN := preload(
 	"res://resources/config/campaigns/test_arena/multiplayer/campaign.tres"
+)
+const TEST_ARENA_P1D_MULTIPLAYER_CAMPAIGN := preload(
+	"res://resources/config/campaigns/test_arena/p1d/multiplayer/campaign.tres"
 )
 const TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN := preload(
 	"res://resources/config/campaigns/test_arena/p2/multiplayer/campaign.tres"
@@ -175,6 +181,11 @@ func _test_scene_instantiation() -> void:
 			"name": "P1",
 		},
 		{
+			"scene": TEST_ARENA_P1D_SCENE,
+			"campaign": TEST_ARENA_P1D_MULTIPLAYER_CAMPAIGN,
+			"name": "P1D",
+		},
+		{
 			"scene": TEST_ARENA_P2_SCENE,
 			"campaign": TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN,
 			"name": "P2",
@@ -279,8 +290,8 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 58, "The multiplayer protocol version must be 58.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v58 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 59, "The multiplayer protocol version must be 59.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v59 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
@@ -339,7 +350,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v58 must reject v57 and all older or unversioned clients."
+		"Protocol v59 must reject v58 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -424,8 +435,9 @@ func _test_net_manager_game_mode_authority() -> void:
 		and int(NetManagerStore.GameMode.TEST_ARENA_P2) == 3
 		and int(NetManagerStore.GameMode.TEST_ARENA_P3) == 4
 		and int(NetManagerStore.GameMode.TEST_ARENA_P1B) == 5
-		and int(NetManagerStore.GameMode.TEST_ARENA_P1C) == 6,
-		"P1B/P1C must append wire values 5/6 without renumbering existing game modes."
+		and int(NetManagerStore.GameMode.TEST_ARENA_P1C) == 6
+		and int(NetManagerStore.GameMode.TEST_ARENA_P1D) == 7,
+		"P1B/P1C/P1D must append wire values 5/6/7 without renumbering existing game modes."
 	)
 	for mode_contract in [
 		[NetManagerStore.GameMode.STANDARD, "standard", "普通模式"],
@@ -435,6 +447,7 @@ func _test_net_manager_game_mode_authority() -> void:
 		[NetManagerStore.GameMode.TEST_ARENA_P3, "test_arena_p3", "测试场景 P3 · 肉鸽路线"],
 		[NetManagerStore.GameMode.TEST_ARENA_P1B, "test_arena_p1b", "测试场景 P1B"],
 		[NetManagerStore.GameMode.TEST_ARENA_P1C, "test_arena_p1c", "测试场景 P1C"],
+		[NetManagerStore.GameMode.TEST_ARENA_P1D, "test_arena_p1d", "测试场景 P1D"],
 	]:
 		var mode := int(mode_contract[0]) as NetManagerStore.GameMode
 		var key := str(mode_contract[1])
@@ -4546,6 +4559,13 @@ func _test_test_arena_multiplayer_runtime_modes() -> void:
 			"enemy_count": 1000,
 		},
 		{
+			"scene": TEST_ARENA_P1D_SCENE,
+			"campaign": TEST_ARENA_P1D_MULTIPLAYER_CAMPAIGN,
+			"runtime_class": "TestGrassArenaP1D",
+			"enemy_count": 1000,
+			"spawn_interval": 3.0,
+		},
+		{
 			"scene": TEST_ARENA_P2_SCENE,
 			"campaign": TEST_ARENA_P2_MULTIPLAYER_CAMPAIGN,
 			"runtime_class": "TestGrassArenaP2",
@@ -4571,9 +4591,10 @@ func _test_test_arena_multiplayer_runtime_modes() -> void:
 		root.add_child(arena)
 		await process_frame
 		await physics_frame
-		var waves: Array[WaveConfig] = arena.active_campaign.get_waves()
+		var active_campaign := arena.campaign_coordinator.active_campaign
+		var waves: Array[WaveConfig] = active_campaign.get_waves()
 		_expect(
-			arena.active_campaign == arena_contract["campaign"]
+			active_campaign == arena_contract["campaign"]
 			and arena.multiplayer_campaign == arena_contract["campaign"],
 			"%s must select its exact multiplayer Campaign."
 			% arena_contract["runtime_class"]
@@ -4584,6 +4605,17 @@ func _test_test_arena_multiplayer_runtime_modes() -> void:
 			"%s multiplayer Campaign must retain its authored enemy count."
 			% arena_contract["runtime_class"]
 		)
+		if arena_contract.has("spawn_interval") and waves.size() == 1:
+			_expect(
+				is_equal_approx(
+					waves[0].spawn_interval,
+					float(arena_contract["spawn_interval"])
+				)
+				and waves[0].spawn_count_per_tick == 1
+				and waves[0].spawn_point_mask == 7,
+				"%s multiplayer Campaign must spawn one enemy every three seconds from all three doors."
+				% arena_contract["runtime_class"]
+			)
 		_expect(
 			is_zero_approx(
 				arena.progression_config.enemy_count_per_extra_player_ratio

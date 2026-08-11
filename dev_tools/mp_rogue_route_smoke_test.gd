@@ -150,9 +150,9 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 58,
+		NetConstants.PROTOCOL_VERSION == 59,
 		(
-			"协议 v58 必须同时承载遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
+			"协议 v59 必须同时承载P1D、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
 			+ "狭路相逢波次资源合同，并隔离 P1C 与纸箱怪资源、"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
@@ -290,12 +290,12 @@ func _test_lobby_contract() -> void:
 	var character_overlay := lobby.get_node(
 		"PlayerCharacterChoiceOverlay"
 	) as PlayerCharacterChoiceOverlay
-	_expect(selector.item_count == 7, "多人大厅必须暴露七个模式选项。")
+	_expect(selector.item_count == 8, "多人大厅必须暴露八个模式选项。")
 	_expect(
-		selector.get_item_id(6) == NetManagerStore.GameMode.TEST_ARENA_P3
-		and selector.get_item_text(6).contains("P3")
-		and selector.get_item_icon(6) != null,
-		"大厅第七项必须是带图标的 P3 肉鸽路线。"
+		selector.get_item_id(7) == NetManagerStore.GameMode.TEST_ARENA_P3
+		and selector.get_item_text(7).contains("P3")
+		and selector.get_item_icon(7) != null,
+		"大厅第八项必须是带图标的 P3 肉鸽路线。"
 	)
 	lobby.call("_update_choose_character_button")
 	_expect(choose_button.visible, "P3 房间必须允许玩家选择并确认角色。")
@@ -306,7 +306,7 @@ func _test_lobby_contract() -> void:
 		"_on_net_game_mode_changed",
 		NetManagerStore.GameMode.TEST_ARENA_P2
 	)
-	_expect(character_overlay.is_open(), "P1A/P1B/P1C/P2/标准模式同步不得误关角色选择。")
+	_expect(character_overlay.is_open(), "P1A/P1B/P1C/P1D/P2/标准模式同步不得误关角色选择。")
 	character_overlay.close()
 	net_manager.set_host_game_mode(NetManagerStore.GameMode.TEST_ARENA_P3)
 	character_overlay.open(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID)

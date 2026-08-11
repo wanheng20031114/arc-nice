@@ -84,7 +84,9 @@ extends RefCounted
 ## v58：新增“疯穿箱子”神奇遭遇、遭遇跟随强制作战及按 combat_config_id
 ## 解析的作战准备协议，并把奖励列表纳入皮箱之战结算合同。v57 客户端无法
 ## 解释 Briefing schema 2、Encounter Session schema 4 或新的作战准备参数。
-const PROTOCOL_VERSION := 58
+## v59：新增测试场景 P1D 的稳定 wire 游戏模式值 7，并加入地下教堂地图与
+## 独立纸箱怪 Campaign 资源合同。v58 客户端无法识别 P1D 房间或加载对应资源。
+const PROTOCOL_VERSION := 59
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

@@ -3,7 +3,7 @@ class_name GameModeCatalog
 
 const CATALOG_RESOURCE_PATH := "res://scene/game_modes/game_mode_catalog.tres"
 
-# These values remain part of the v57 room/wire contract. Keep every assignment
+# These values remain part of the v59 room/wire contract. Keep every assignment
 # explicit so inserting or reordering a lobby item can never renumber a mode.
 const MODE_STANDARD := 0
 const MODE_TOWER_DEFENSE := 1
@@ -12,6 +12,7 @@ const MODE_TEST_ARENA_P2 := 3
 const MODE_TEST_ARENA_P3 := 4
 const MODE_TEST_ARENA_P1B := 5
 const MODE_TEST_ARENA_P1C := 6
+const MODE_TEST_ARENA_P1D := 7
 const DEFAULT_MODE_ID := MODE_STANDARD
 const TOWER_DEFENSE_PRELOAD_PROFILE := &"tower_defense"
 
@@ -197,8 +198,8 @@ func validate_definitions() -> PackedStringArray:
 	var seen_ids := {}
 	var seen_keys := {}
 	var seen_orders := {}
-	if definitions.size() != 7:
-		errors.append("catalog must contain exactly 7 frozen v57 modes")
+	if definitions.size() != 8:
+		errors.append("catalog must contain exactly 8 frozen v59 modes")
 	for definition in definitions:
 		if definition == null:
 			errors.append("catalog contains a null definition")
@@ -243,6 +244,7 @@ func validate_definitions() -> PackedStringArray:
 		MODE_TEST_ARENA_P3,
 		MODE_TEST_ARENA_P1B,
 		MODE_TEST_ARENA_P1C,
+		MODE_TEST_ARENA_P1D,
 	]:
 		if not seen_ids.has(expected_mode_id):
 			errors.append("missing frozen mode id: %d" % expected_mode_id)
