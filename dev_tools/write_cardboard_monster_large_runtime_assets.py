@@ -70,7 +70,7 @@ ANIMATIONS = (
     ("move", 0, tuple(range(8)), 9.0, True),
     ("windup", 1, (0, 1, 2), 9.0, False),
     ("slash", 1, (3, 4, 5, 6, 7), 15.0, False),
-    ("death", 2, tuple(range(8)), 8.0, False),
+    ("death", 2, tuple(range(8)), 12.0, False),
 )
 
 
@@ -284,7 +284,7 @@ def runtime_asset_records() -> dict[str, object]:
                     "damage_frame_local_index": 1,
                     "damage_frame_source_cell": {"row": 1, "column": 4},
                 },
-                "death": {"frames": 8, "fps": 8.0, "loop": False, "row": 2},
+                "death": {"frames": 8, "fps": 12.0, "loop": False, "row": 2},
             },
         },
         "config_script": {"path": rel(CONFIG_SCRIPT), "sha256": CORE_FILE_LOCKS[CONFIG_SCRIPT]},

@@ -151,7 +151,7 @@ func _test_resource_and_scene_contract() -> void:
 		&"move": [8, 12.0, true],
 		&"windup": [3, 9.0, false],
 		&"slash": [5, 15.0, false],
-		&"death": [8, 8.0, false],
+		&"death": [8, 12.0, false],
 	}
 	for animation_name in expected:
 		var contract: Array = expected[animation_name]

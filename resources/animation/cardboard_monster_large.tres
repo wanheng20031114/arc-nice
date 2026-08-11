@@ -214,5 +214,5 @@ animations = [{
 }],
 "loop": false,
 "name": &"death",
-"speed": 8.0
+"speed": 12.0
 }]
