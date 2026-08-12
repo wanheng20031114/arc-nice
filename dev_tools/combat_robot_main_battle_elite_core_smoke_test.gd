@@ -39,6 +39,7 @@ func _run() -> void:
 	await _test_attack_frame_timing_and_target_selection()
 	await _test_airborne_direct_damage_and_periodic_contract()
 	await _test_skill_lock_tracking_and_collision_toggle()
+	await _test_skill2_warning_and_fan_vfx_contract()
 	await _test_proxy_action_and_status_contract()
 	await _test_dedicated_audio_state_contract()
 	await _test_proxy_audio_offset_and_culling_contract()
@@ -130,8 +131,34 @@ func _test_config_and_runtime_visual_contract() -> void:
 		and enemy.get_node_or_null("Skill1WarningLine") is Line2D
 		and enemy.get_node_or_null("Skill1CircleRing") is Line2D
 		and enemy.get_node_or_null("Skill2CrossMarker/Horizontal") is Line2D
-		and enemy.get_node_or_null("Skill2FanWarning") is Polygon2D,
+		and enemy.get_node_or_null("Skill2FanWarning") is Polygon2D
+		and enemy.get_node_or_null("FanSlashVFX/AttackUpper") is GPUParticles2D
+		and enemy.get_node_or_null("FanSlashVFX/AttackLower") is GPUParticles2D
+		and enemy.get_node_or_null("FanSlashVFX/Skill2Upper") is GPUParticles2D
+		and enemy.get_node_or_null("FanSlashVFX/Skill2Lower") is GPUParticles2D,
 		"All gameplay indicators must be authored as static scene nodes."
+	)
+	var fan_particle_total := 0
+	for particles in enemy.attack_fan_particles + enemy.skill2_fan_particles:
+		fan_particle_total += particles.amount
+		_expect(
+			particles.one_shot
+			and not particles.emitting
+			and particles.process_material is ParticleProcessMaterial
+			and not particles.local_coords,
+			"Fan-slash particles must be static one-shot world-space GPU emitters."
+		)
+	_expect(
+		fan_particle_total == 52
+		and is_equal_approx(
+			(enemy.attack_fan_particles[0].process_material as ParticleProcessMaterial).spread,
+			45.0
+		)
+		and is_equal_approx(
+			(enemy.skill2_fan_particles[0].process_material as ParticleProcessMaterial).spread,
+			60.0
+		),
+		"Fan VFX must keep its bounded dual-sword particle budget and authored fan angles."
 	)
 	var attack_polygon := (
 		enemy.get_node("AttackWarning") as Polygon2D
@@ -408,6 +435,124 @@ func _test_skill_lock_tracking_and_collision_toggle() -> void:
 	)
 	enemy.queue_free()
 	player.queue_free()
+	await process_frame
+
+
+func _test_skill2_warning_and_fan_vfx_contract() -> void:
+	var player := _spawn_player(Vector2(48.0, 0.0))
+	var enemy := _spawn_enemy(Vector2.ZERO, player)
+	var cross := enemy.skill2_cross_marker
+	_expect(
+		is_equal_approx(float(enemy.call("_get_skill2_cross_flash_alpha", 1.0)), 1.0)
+		and is_equal_approx(
+			float(enemy.call("_get_skill2_cross_flash_alpha", 0.775)),
+			CombatRobotMainBattleElite.SKILL2_CROSS_DIM_ALPHA
+		)
+		and is_equal_approx(float(enemy.call("_get_skill2_cross_flash_alpha", 0.35)), 1.0)
+		and is_equal_approx(
+			float(enemy.call("_get_skill2_cross_flash_alpha", 0.30)),
+			CombatRobotMainBattleElite.SKILL2_CROSS_DIM_ALPHA
+		),
+		"Skill2 cross must stay steady, then flash at 4Hz and accelerate to 8Hz before landing."
+	)
+	enemy.call("_set_skill2_cross_visible", true)
+	enemy.call("_update_skill2_cross_flash", 0.30)
+	_expect(
+		cross.visible
+		and is_equal_approx(
+			cross.modulate.a,
+			CombatRobotMainBattleElite.SKILL2_CROSS_DIM_ALPHA
+		),
+		"Host warning marker must apply the shared landing-soon flash alpha."
+	)
+	enemy.call("_set_skill2_cross_visible", false)
+	_expect(
+		not cross.visible and is_equal_approx(cross.modulate.a, 1.0),
+		"Hiding the cross for DROP/cancel/death must restore its neutral alpha."
+	)
+
+	enemy.locked_direction = Vector2.RIGHT
+	enemy.call("_start_attack_slash")
+	enemy.call("_update_attack_slash", 0.459)
+	_expect(
+		not enemy.attack_fan_particles[0].emitting
+		and not enemy.attack_fan_particles[1].emitting,
+		"Normal dual-sword particles must not fire before the authored 0.46s swing cue."
+	)
+	enemy.call("_update_attack_slash", 0.002)
+	_expect(
+		enemy.attack_fan_particles[0].emitting
+		and enemy.attack_fan_particles[1].emitting
+		and is_equal_approx(enemy.fan_slash_vfx.rotation, 0.0),
+		"Normal attack must fire both sword emitters at the down-swing cue."
+	)
+	enemy.call("_stop_fan_slash_vfx")
+	enemy.committed_target = player
+	enemy.call("_start_skill2_drop")
+	enemy.call("_update_skill2_drop", ENEMY_CONFIG.skill2_drop_duration - 0.001)
+	_expect(
+		not enemy.skill2_fan_particles[0].emitting
+		and not enemy.skill2_fan_particles[1].emitting,
+		"Drop particles must wait for the 0.18s landing/damage frame."
+	)
+	enemy.call("_update_skill2_drop", 0.002)
+	_expect(
+		enemy.skill2_fan_particles[0].emitting
+		and enemy.skill2_fan_particles[1].emitting,
+		"Landing must fire the stronger symmetric dual-sword particle fan."
+	)
+	enemy.queue_free()
+	player.queue_free()
+	await process_frame
+
+	var proxy_player := _spawn_player(Vector2(48.0, 0.0))
+	var proxy := _spawn_enemy(Vector2.ZERO, proxy_player)
+	proxy.configure_multiplayer_proxy()
+	var takeoff_track_total := (
+		ENEMY_CONFIG.skill2_takeoff_duration
+		+ ENEMY_CONFIG.skill2_tracking_duration
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL2_TAKEOFF,
+		Vector2.RIGHT,
+		proxy.global_position,
+		1,
+		takeoff_track_total - 0.775
+	)
+	proxy.apply_multiplayer_visual_status_mask(
+		CombatRobotMainBattleElite.AIRBORNE_VISUAL_STATUS_MASK
+	)
+	_expect(
+		proxy.skill2_cross_marker.visible
+		and is_equal_approx(
+			proxy.skill2_cross_marker.modulate.a,
+			CombatRobotMainBattleElite.SKILL2_CROSS_DIM_ALPHA
+		),
+		"Late proxy TAKEOFF must reconstruct the same urgent flash phase from action_elapsed."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL2_DROP,
+		Vector2.LEFT,
+		proxy.global_position,
+		2,
+		ENEMY_CONFIG.skill2_drop_duration
+	)
+	_expect(
+		not proxy.skill2_cross_marker.visible
+		and is_equal_approx(proxy.skill2_cross_marker.modulate.a, 1.0)
+		and proxy.skill2_fan_particles[0].emitting
+		and proxy.skill2_fan_particles[1].emitting
+		and is_equal_approx(absf(proxy.fan_slash_vfx.rotation), PI),
+		"Proxy DROP must clear the cross and seek both fan emitters to the landing cue."
+	)
+	proxy.set_multiplayer_proxy_visual_active(false)
+	_expect(
+		not proxy.skill2_fan_particles[0].emitting
+		and not proxy.skill2_fan_particles[1].emitting,
+		"Culling a proxy must immediately stop active fan particles without replay on restore."
+	)
+	proxy.queue_free()
+	proxy_player.queue_free()
 	await process_frame
 
 

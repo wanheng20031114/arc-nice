@@ -26,6 +26,14 @@ const ACTION_EXPIRY_TOLERANCE_SECONDS := 0.05
 const MOVE_STOMP_FRAME_INDICES := [4, 7]
 const PITCH_VARIATION_MIN := 0.98
 const PITCH_VARIATION_MAX := 1.02
+const SKILL2_CROSS_URGENT_WINDOW_SECONDS := 0.9
+const SKILL2_CROSS_CRITICAL_WINDOW_SECONDS := 0.4
+const SKILL2_CROSS_URGENT_HALF_CYCLE_SECONDS := 0.125
+const SKILL2_CROSS_CRITICAL_HALF_CYCLE_SECONDS := 0.0625
+const SKILL2_CROSS_DIM_ALPHA := 0.18
+const ATTACK_FAN_VFX_LEAD_SECONDS := 0.08
+const ATTACK_FAN_VFX_LIFETIME_SECONDS := 0.24
+const SKILL2_FAN_VFX_LIFETIME_SECONDS := 0.30
 
 const ACTION_ATTACK_WINDUP := &"main_battle_attack_windup"
 const ACTION_ATTACK_SLASH := &"main_battle_attack_slash"
@@ -66,6 +74,15 @@ enum CombatState {
 @onready var skill1_circle_ring: Line2D = $Skill1CircleRing
 @onready var skill2_cross_marker: Node2D = $Skill2CrossMarker
 @onready var skill2_fan_warning: Polygon2D = $Skill2FanWarning
+@onready var fan_slash_vfx: Node2D = $FanSlashVFX
+@onready var attack_fan_particles: Array[GPUParticles2D] = [
+	$FanSlashVFX/AttackUpper,
+	$FanSlashVFX/AttackLower,
+]
+@onready var skill2_fan_particles: Array[GPUParticles2D] = [
+	$FanSlashVFX/Skill2Upper,
+	$FanSlashVFX/Skill2Lower,
+]
 @onready var move_stomp_audio: AudioStreamPlayer2D = $MoveStompAudio
 @onready var attack_windup_audio: AudioStreamPlayer2D = $AttackWindupAudio
 @onready var attack_slash_audio: AudioStreamPlayer2D = $AttackSlashAudio
@@ -98,6 +115,10 @@ var action_damage_done := false
 var move_stomp_variant_index := 0
 var hit_variant_index := 0
 var actual_motion_since_last_stomp := false
+var attack_slash_vfx_started := false
+var skill2_drop_vfx_started := false
+var proxy_skill2_cross_flash_tween: Tween = null
+var proxy_fan_vfx_tween: Tween = null
 
 var target_query := PhysicsShapeQueryParameters2D.new()
 var target_query_shape := CircleShape2D.new()
@@ -200,6 +221,10 @@ func _apply_config() -> void:
 	move_stomp_variant_index = 0
 	hit_variant_index = 0
 	actual_motion_since_last_stomp = false
+	attack_slash_vfx_started = false
+	skill2_drop_vfx_started = false
+	_stop_proxy_skill2_cross_flash()
+	_stop_pending_fan_vfx()
 	_bind_dedicated_audio_streams()
 	if main_config != null:
 		target_query.shape = target_query_shape
@@ -276,6 +301,7 @@ func _start_attack_slash() -> void:
 	combat_state = CombatState.ATTACK_SLASH
 	state_time_left = maxf(main_config.attack_slash_duration, 0.01)
 	action_damage_done = false
+	attack_slash_vfx_started = false
 	_restart_scene_animation(main_config.attack_animation_name)
 	_set_attack_warning(0.0, locked_direction)
 	_start_action_audio(attack_slash_audio)
@@ -286,6 +312,13 @@ func _update_attack_slash(delta: float) -> void:
 	velocity = Vector2.ZERO
 	state_time_left = maxf(state_time_left - delta, 0.0)
 	var elapsed := main_config.attack_slash_duration - state_time_left
+	var vfx_cue := maxf(
+		main_config.attack_damage_delay - ATTACK_FAN_VFX_LEAD_SECONDS,
+		0.0
+	)
+	if not attack_slash_vfx_started and elapsed >= vfx_cue:
+		_play_fan_slash_particles(attack_fan_particles, locked_direction)
+		attack_slash_vfx_started = true
 	if not action_damage_done and elapsed >= main_config.attack_damage_delay:
 		_apply_fan_damage(
 			main_config.attack_range,
@@ -403,6 +436,7 @@ func _update_skill2_takeoff(delta: float) -> void:
 	if animated_sprite != null:
 		animated_sprite.visible = false
 	_set_skill2_cross_visible(true)
+	_update_skill2_cross_flash(state_time_left)
 
 
 func _update_skill2_tracking(delta: float) -> void:
@@ -419,6 +453,7 @@ func _update_skill2_tracking(delta: float) -> void:
 			maxf(main_config.skill2_cross_speed, 0.0) * delta
 		)
 	state_time_left = maxf(state_time_left - delta, 0.0)
+	_update_skill2_cross_flash(state_time_left)
 	if state_time_left <= 0.0:
 		_start_skill2_drop()
 
@@ -439,6 +474,7 @@ func _start_skill2_drop() -> void:
 		locked_direction = _get_facing_direction()
 	combat_state = CombatState.SKILL2_DROP
 	state_time_left = maxf(main_config.skill2_drop_duration, 0.01)
+	skill2_drop_vfx_started = false
 	_update_facing(locked_direction)
 	_set_skill2_cross_visible(false)
 	if animated_sprite != null:
@@ -451,6 +487,10 @@ func _start_skill2_drop() -> void:
 
 func _update_skill2_drop(delta: float) -> void:
 	state_time_left = maxf(state_time_left - delta, 0.0)
+	var elapsed := main_config.skill2_drop_duration - state_time_left
+	if not skill2_drop_vfx_started and elapsed >= main_config.skill2_drop_duration:
+		_play_fan_slash_particles(skill2_fan_particles, locked_direction)
+		skill2_drop_vfx_started = true
 	if state_time_left > 0.0:
 		return
 	_apply_fan_damage(
@@ -613,6 +653,8 @@ func _dispatch_target_damage(
 
 func _finish_to_chase() -> void:
 	_stop_action_audio()
+	_stop_proxy_skill2_cross_flash()
+	_stop_pending_fan_vfx()
 	combat_state = CombatState.CHASE
 	state_time_left = 0.0
 	committed_target = null
@@ -636,6 +678,8 @@ func _die() -> void:
 	airborne = false
 	latest_proxy_action_id += 1
 	_stop_all_presentation_audio(false)
+	_stop_proxy_skill2_cross_flash()
+	_stop_fan_slash_vfx()
 	_hide_all_action_indicators()
 	# Skill 2 intentionally hides the body during tracking. A periodic status
 	# can still kill the enemy in that window, so restore the body before the
@@ -656,6 +700,8 @@ func play_multiplayer_death_sequence() -> void:
 	latest_proxy_action_id += 1
 	var should_play_death := multiplayer_proxy_visual_active
 	_stop_all_presentation_audio(false)
+	_stop_proxy_skill2_cross_flash()
+	_stop_fan_slash_vfx()
 	_hide_all_action_indicators()
 	if animated_sprite != null:
 		animated_sprite.visible = multiplayer_proxy_visual_active
@@ -704,21 +750,29 @@ func set_multiplayer_proxy_visual_active(active: bool) -> void:
 	if not active:
 		actual_motion_since_last_stomp = false
 		_stop_all_presentation_audio(true)
+		_stop_proxy_skill2_cross_flash()
+		_stop_fan_slash_vfx()
 	_apply_proxy_airborne_visual(proxy_airborne_from_snapshot)
 
 
 func configure_multiplayer_proxy() -> void:
 	super.configure_multiplayer_proxy()
 	_stop_all_presentation_audio(true)
+	_stop_proxy_skill2_cross_flash()
+	_stop_fan_slash_vfx()
 
 
 func remove_for_home_escape() -> bool:
 	_stop_all_presentation_audio(true)
+	_stop_proxy_skill2_cross_flash()
+	_stop_fan_slash_vfx()
 	return super.remove_for_home_escape()
 
 
 func _exit_tree() -> void:
 	_stop_all_presentation_audio(true)
+	_stop_proxy_skill2_cross_flash()
+	_stop_fan_slash_vfx()
 	super._exit_tree()
 
 
@@ -847,6 +901,10 @@ func _play_proxy_action(
 		return
 	var safe_direction := direction.normalized() if direction != Vector2.ZERO else _get_facing_direction()
 	var safe_elapsed := maxf(elapsed, 0.0)
+	_stop_pending_fan_vfx()
+	_stop_fan_slash_particles()
+	if action_name != ACTION_SKILL2_TAKEOFF:
+		_stop_proxy_skill2_cross_flash()
 	_update_facing(safe_direction)
 	_play_proxy_action_audio(action_name, safe_elapsed)
 	match action_name:
@@ -859,6 +917,18 @@ func _play_proxy_action(
 			)
 			_restart_scene_animation(main_config.attack_animation_name)
 			_set_attack_warning(0.0, safe_direction)
+			_schedule_proxy_fan_slash_vfx(
+				action_id,
+				safe_direction,
+				safe_elapsed,
+				maxf(
+					main_config.attack_damage_delay
+						- ATTACK_FAN_VFX_LEAD_SECONDS,
+					0.0
+				),
+				ATTACK_FAN_VFX_LIFETIME_SECONDS,
+				attack_fan_particles
+			)
 		ACTION_SKILL1_WINDUP:
 			_play_multiplayer_proxy_action_animation(
 				main_config.skill1_windup_animation_name,
@@ -893,6 +963,7 @@ func _play_proxy_action(
 			else:
 				_clear_proxy_visual_override(action_id)
 				_apply_proxy_airborne_visual(true)
+			_begin_proxy_skill2_cross_flash(action_id, safe_elapsed)
 		ACTION_SKILL2_DROP:
 			_begin_proxy_drop_visual(action_id, safe_elapsed)
 			_play_multiplayer_proxy_action_animation(
@@ -910,6 +981,14 @@ func _play_proxy_action(
 				main_config.skill2_drop_duration,
 				action_id,
 				safe_elapsed
+			)
+			_schedule_proxy_fan_slash_vfx(
+				action_id,
+				safe_direction,
+				safe_elapsed,
+				main_config.skill2_drop_duration,
+				SKILL2_FAN_VFX_LIFETIME_SECONDS,
+				skill2_fan_particles
 			)
 
 
@@ -1223,6 +1302,137 @@ func _queue_indicator_hide(
 	)
 
 
+func _get_skill2_cross_flash_alpha(tracking_remaining: float) -> float:
+	var safe_remaining := maxf(tracking_remaining, 0.0)
+	if safe_remaining > SKILL2_CROSS_URGENT_WINDOW_SECONDS:
+		return 1.0
+	var half_cycle := SKILL2_CROSS_URGENT_HALF_CYCLE_SECONDS
+	var stage_elapsed := SKILL2_CROSS_URGENT_WINDOW_SECONDS - safe_remaining
+	if safe_remaining <= SKILL2_CROSS_CRITICAL_WINDOW_SECONDS:
+		half_cycle = SKILL2_CROSS_CRITICAL_HALF_CYCLE_SECONDS
+		stage_elapsed = SKILL2_CROSS_CRITICAL_WINDOW_SECONDS - safe_remaining
+	var phase := floori(stage_elapsed / maxf(half_cycle, 0.001))
+	return 1.0 if phase % 2 == 0 else SKILL2_CROSS_DIM_ALPHA
+
+
+func _update_skill2_cross_flash(tracking_remaining: float) -> void:
+	if skill2_cross_marker == null:
+		return
+	var marker_modulate := skill2_cross_marker.modulate
+	marker_modulate.a = _get_skill2_cross_flash_alpha(tracking_remaining)
+	skill2_cross_marker.modulate = marker_modulate
+
+
+func _begin_proxy_skill2_cross_flash(action_id: int, action_elapsed: float) -> void:
+	_stop_proxy_skill2_cross_flash()
+	if main_config == null:
+		return
+	var takeoff_duration := maxf(main_config.skill2_takeoff_duration, 0.0)
+	var total_duration := takeoff_duration + maxf(
+		main_config.skill2_tracking_duration,
+		0.0
+	)
+	var safe_elapsed := clampf(action_elapsed, 0.0, total_duration)
+	_update_skill2_cross_flash(
+		total_duration - maxf(safe_elapsed, takeoff_duration)
+	)
+	var remaining := maxf(total_duration - safe_elapsed, 0.0)
+	if remaining <= 0.0:
+		return
+	proxy_skill2_cross_flash_tween = create_tween()
+	proxy_skill2_cross_flash_tween.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
+	proxy_skill2_cross_flash_tween.tween_method(
+		func(total_elapsed: float) -> void:
+			if action_id != latest_proxy_action_id or is_dead:
+				return
+			_update_skill2_cross_flash(
+				total_duration - maxf(total_elapsed, takeoff_duration)
+			),
+		safe_elapsed,
+		total_duration,
+		remaining
+	)
+
+
+func _stop_proxy_skill2_cross_flash() -> void:
+	if proxy_skill2_cross_flash_tween != null:
+		proxy_skill2_cross_flash_tween.kill()
+		proxy_skill2_cross_flash_tween = null
+
+
+func _schedule_proxy_fan_slash_vfx(
+	action_id: int,
+	direction: Vector2,
+	action_elapsed: float,
+	cue_time: float,
+	effect_lifetime: float,
+	emitters: Array[GPUParticles2D]
+) -> void:
+	var effect_elapsed := action_elapsed - cue_time
+	if effect_elapsed >= effect_lifetime:
+		return
+	if effect_elapsed >= 0.0:
+		_play_fan_slash_particles(emitters, direction, effect_elapsed)
+		return
+	proxy_fan_vfx_tween = create_tween()
+	proxy_fan_vfx_tween.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
+	proxy_fan_vfx_tween.tween_interval(-effect_elapsed)
+	proxy_fan_vfx_tween.tween_callback(
+		func() -> void:
+			if (
+				action_id == latest_proxy_action_id
+				and not is_dead
+				and multiplayer_proxy_visual_active
+			):
+				_play_fan_slash_particles(emitters, direction)
+	)
+
+
+func _play_fan_slash_particles(
+	emitters: Array[GPUParticles2D],
+	direction: Vector2,
+	from_position: float = 0.0
+) -> void:
+	if (
+		is_dead
+		or not visible
+		or (is_multiplayer_proxy and not multiplayer_proxy_visual_active)
+	):
+		return
+	var safe_direction := (
+		direction.normalized() if direction != Vector2.ZERO else _get_facing_direction()
+	)
+	fan_slash_vfx.rotation = safe_direction.angle()
+	for particles in emitters:
+		if particles == null:
+			continue
+		particles.emitting = false
+		particles.restart(true)
+		particles.emitting = true
+		if from_position > 0.0:
+			particles.request_particles_process(from_position)
+
+
+func _stop_pending_fan_vfx() -> void:
+	if proxy_fan_vfx_tween != null:
+		proxy_fan_vfx_tween.kill()
+		proxy_fan_vfx_tween = null
+
+
+func _stop_fan_slash_particles() -> void:
+	for particles in attack_fan_particles + skill2_fan_particles:
+		if particles == null:
+			continue
+		particles.emitting = false
+		particles.restart(true)
+		particles.emitting = false
+
+
+func _stop_fan_slash_vfx() -> void:
+	_stop_pending_fan_vfx()
+	_stop_fan_slash_particles()
+
+
 func _set_airborne(active: bool, update_physics_shapes: bool) -> void:
 	airborne = active
 	if not update_physics_shapes or is_multiplayer_proxy:
@@ -1346,6 +1556,8 @@ func _hide_skill1_circle_ring() -> void:
 func _set_skill2_cross_visible(active: bool) -> void:
 	if skill2_cross_marker != null:
 		skill2_cross_marker.visible = active
+		if not active:
+			skill2_cross_marker.modulate = Color.WHITE
 
 
 func _set_skill2_fan_warning(active: bool, direction: Vector2) -> void:
@@ -1356,6 +1568,7 @@ func _set_skill2_fan_warning(active: bool, direction: Vector2) -> void:
 
 
 func _hide_all_action_indicators() -> void:
+	_stop_proxy_skill2_cross_flash()
 	_set_attack_warning(0.0, Vector2.RIGHT)
 	_hide_skill1_warning_line()
 	_hide_skill1_circle_ring()

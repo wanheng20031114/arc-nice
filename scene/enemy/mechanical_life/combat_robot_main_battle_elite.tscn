@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd" id="2_script"]
@@ -13,6 +13,7 @@
 [ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_circle_slash.wav" id="11_skill1_circle"]
 [ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill2_takeoff.wav" id="12_skill2_takeoff"]
 [ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill2_drop_bilateral_slash.wav" id="13_skill2_drop"]
+[ext_resource type="Material" path="res://resources/shader/night_vfx_emission_additive.tres" id="14_fan_emission"]
 
 [sub_resource type="RectangleShape2D" id="BodyShape"]
 resource_local_to_scene = true
@@ -21,6 +22,57 @@ size = Vector2(18, 18)
 [sub_resource type="RectangleShape2D" id="TouchShape"]
 resource_local_to_scene = true
 size = Vector2(18, 18)
+
+[sub_resource type="Gradient" id="Gradient_fan_slash_texture"]
+offsets = PackedFloat32Array(0, 0.16, 0.5, 0.84, 1)
+colors = PackedColorArray(1, 0.3, 0.04, 0, 1, 0.52, 0.08, 0.72, 1, 0.93, 0.54, 1, 1, 0.38, 0.05, 0.7, 1, 0.18, 0.02, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_fan_slash"]
+gradient = SubResource("Gradient_fan_slash_texture")
+width = 3
+height = 18
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
+[sub_resource type="Gradient" id="Gradient_attack_fan_lifetime"]
+offsets = PackedFloat32Array(0, 0.22, 0.68, 1)
+colors = PackedColorArray(1, 0.9, 0.48, 0.96, 1, 0.52, 0.08, 0.94, 0.94, 0.18, 0.025, 0.62, 0.62, 0.035, 0.01, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_attack_fan_lifetime"]
+gradient = SubResource("Gradient_attack_fan_lifetime")
+width = 24
+
+[sub_resource type="Gradient" id="Gradient_skill2_fan_lifetime"]
+offsets = PackedFloat32Array(0, 0.18, 0.62, 1)
+colors = PackedColorArray(1, 1, 0.7, 1, 1, 0.66, 0.12, 1, 1, 0.24, 0.025, 0.72, 0.72, 0.045, 0.01, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_skill2_fan_lifetime"]
+gradient = SubResource("Gradient_skill2_fan_lifetime")
+width = 24
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_attack_fan"]
+particle_flag_disable_z = true
+particle_flag_align_y = true
+direction = Vector3(1, 0, 0)
+spread = 45.0
+initial_velocity_min = 105.0
+initial_velocity_max = 145.0
+gravity = Vector3(0, 0, 0)
+scale_min = 0.45
+scale_max = 0.72
+color_ramp = SubResource("GradientTexture1D_attack_fan_lifetime")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_skill2_fan"]
+particle_flag_disable_z = true
+particle_flag_align_y = true
+direction = Vector3(1, 0, 0)
+spread = 60.0
+initial_velocity_min = 125.0
+initial_velocity_max = 170.0
+gravity = Vector3(0, 0, 0)
+scale_min = 0.55
+scale_max = 0.85
+color_ramp = SubResource("GradientTexture1D_skill2_fan_lifetime")
 
 [node name="CombatRobotMainBattleElite" instance=ExtResource("1_base")]
 script = ExtResource("2_script")
@@ -152,5 +204,90 @@ volume_db = -6.0
 max_distance = 220.0
 max_polyphony = 1
 bus = &"SFX"
+
+[node name="FanSlashVFX" type="Node2D" parent="." index="19"]
+z_index = 3
+
+[node name="AttackUpper" type="GPUParticles2D" parent="FanSlashVFX"]
+texture_filter = 2
+position = Vector2(0, -4.5)
+rotation = -0.12
+material = ExtResource("14_fan_emission")
+emitting = false
+amount = 11
+texture = SubResource("GradientTexture2D_fan_slash")
+lifetime = 0.24
+one_shot = true
+explosiveness = 0.96
+randomness = 0.16
+local_coords = false
+fixed_fps = 60
+interpolate = true
+use_fixed_seed = true
+seed = 11032026
+visibility_rect = Rect2(-48, -48, 96, 96)
+process_material = SubResource("ParticleProcessMaterial_attack_fan")
+
+[node name="AttackLower" type="GPUParticles2D" parent="FanSlashVFX"]
+texture_filter = 2
+position = Vector2(0, 4.5)
+rotation = 0.12
+material = ExtResource("14_fan_emission")
+emitting = false
+amount = 11
+texture = SubResource("GradientTexture2D_fan_slash")
+lifetime = 0.24
+one_shot = true
+explosiveness = 0.96
+randomness = 0.16
+local_coords = false
+fixed_fps = 60
+interpolate = true
+use_fixed_seed = true
+seed = 11032027
+visibility_rect = Rect2(-48, -48, 96, 96)
+process_material = SubResource("ParticleProcessMaterial_attack_fan")
+
+[node name="Skill2Upper" type="GPUParticles2D" parent="FanSlashVFX"]
+texture_filter = 2
+position = Vector2(0, -5.5)
+rotation = -0.16
+material = ExtResource("14_fan_emission")
+self_modulate = Color(1.2, 1.02, 0.76, 1)
+emitting = false
+amount = 15
+texture = SubResource("GradientTexture2D_fan_slash")
+lifetime = 0.3
+one_shot = true
+explosiveness = 0.97
+randomness = 0.14
+local_coords = false
+fixed_fps = 60
+interpolate = true
+use_fixed_seed = true
+seed = 22042026
+visibility_rect = Rect2(-64, -64, 128, 128)
+process_material = SubResource("ParticleProcessMaterial_skill2_fan")
+
+[node name="Skill2Lower" type="GPUParticles2D" parent="FanSlashVFX"]
+texture_filter = 2
+position = Vector2(0, 5.5)
+rotation = 0.16
+material = ExtResource("14_fan_emission")
+self_modulate = Color(1.2, 1.02, 0.76, 1)
+emitting = false
+amount = 15
+texture = SubResource("GradientTexture2D_fan_slash")
+lifetime = 0.3
+one_shot = true
+explosiveness = 0.97
+randomness = 0.14
+local_coords = false
+fixed_fps = 60
+interpolate = true
+use_fixed_seed = true
+seed = 22042027
+visibility_rect = Rect2(-64, -64, 128, 128)
+process_material = SubResource("ParticleProcessMaterial_skill2_fan")
 
 [connection signal="frame_changed" from="AnimatedSprite2D" to="." method="_on_main_battle_animation_frame_changed"]
