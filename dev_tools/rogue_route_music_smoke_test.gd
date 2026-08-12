@@ -43,12 +43,12 @@ func _run() -> void:
 	if ogg_stream != null:
 		_expect(ogg_stream.loop, "路线 OGG 必须启用原生循环。")
 		_expect(
-			absf(ogg_stream.loop_offset - 13.26194) <= 0.001,
-			"路线 OGG 的首次引子结束点必须为 13.26194 秒。"
+			is_zero_approx(ogg_stream.loop_offset),
+			"完整路线 BGM 必须从曲首开始下一轮播放。"
 		)
 		_expect(
-			absf(ogg_stream.get_length() - 53.373083) <= 0.01,
-			"路线 OGG 的处理后总时长必须约为 53.373 秒。"
+			absf(ogg_stream.get_length() - 153.16) <= 0.01,
+			"路线 OGG 的处理后总时长必须约为 153.16 秒。"
 		)
 	_expect(
 		route.start_authoritative_session(0xCA7E, false),
