@@ -197,6 +197,9 @@ func _test_config_scene_and_asset_contracts() -> void:
 	) as CollisionShape2D
 	var aura_rectangle := aura_shape.shape as RectangleShape2D
 	var ground_rings := tower.get_node("GroundRings") as GPUParticles2D
+	var visibility_notifiers := tower.find_children(
+		"*", "VisibleOnScreenNotifier2D", true, false
+	)
 	var night_light := tower.get_node(
 		"ChamberNightLight"
 	) as NightPointLight2D
@@ -370,8 +373,13 @@ func _test_config_scene_and_asset_contracts() -> void:
 		and ground_rings.lifetime <= 1.2
 		and ground_rings.fixed_fps == 30
 		and ground_rings.visibility_rect == Rect2(-40, -40, 80, 80)
+		and ground_rings.process_mode == Node.PROCESS_MODE_INHERIT
 		and ground_rings.local_coords,
 		"常驻柑橘环粒子必须维持8粒子、30FPS与紧凑可见区域预算。"
+	)
+	_expect(
+		visibility_notifiers.is_empty(),
+		"橘充能塔粒子必须仅依赖原生visibility_rect，避免重复裁剪与进屏重启。"
 	)
 	_expect(
 		night_light.color.is_equal_approx(Color(1.0, 0.42, 0.08, 1.0))
@@ -517,6 +525,7 @@ func _test_player_exact_range_stacking_and_lifecycle() -> void:
 		is_zero_approx(player.get_skill_charge_rate_modifier_total())
 		and constructing.get_node("PlayerReconcileTimer").is_stopped()
 		and not constructing.ground_rings.emitting
+		and constructing.ground_rings.process_mode == Node.PROCESS_MODE_INHERIT
 		and not constructing.chamber_night_light.is_emission_allowed(),
 		"拆除开始必须同步清理玩家来源、确认计时、粒子与夜灯。"
 	)

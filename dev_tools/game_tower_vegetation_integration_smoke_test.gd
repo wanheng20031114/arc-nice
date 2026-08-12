@@ -95,6 +95,10 @@ func _test_vegetation_stake_scene_contract() -> void:
 	_expect(top_glow != null and top_glow.texture != null, "植被桩必须预置独立顶部发光层。")
 	_expect(glow_motes != null and glow_motes.amount > 0, "植被桩必须预置少量GPU飘光粒子。")
 	_expect(
+		stake.find_children("*", "VisibleOnScreenNotifier2D", true, false).is_empty(),
+		"植被桩必须仅依赖GPUParticles2D原生visibility_rect，避免重复裁剪与进屏重启。"
+	)
+	_expect(
 		stake.get_node_or_null("CoreNightLight") == null
 		and stake.get_node_or_null("NightRingLight") == null
 		and ring_light != null
@@ -137,6 +141,10 @@ func _test_vegetation_stake_scene_contract() -> void:
 		config.max_health - 100,
 		4,
 		config.max_health
+	)
+	_expect(
+		glow_motes != null and glow_motes.emitting and glow_motes.visible,
+		"已完成建造的植被桩必须发射飘光，并由粒子原生可见矩形处理离屏冻结。"
 	)
 	_expect(
 		health_bar != null

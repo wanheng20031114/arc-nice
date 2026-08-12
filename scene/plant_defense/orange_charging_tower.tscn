@@ -163,9 +163,6 @@ texture_scale = 0.26
 night_energy = 0.68
 starts_emitting = false
 
-[node name="RingVisibilityNotifier" type="VisibleOnScreenNotifier2D" parent="."]
-rect = Rect2(-48, -48, 96, 96)
-
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, 1.5)
 shape = SubResource("RectangleShape2D_body")
@@ -200,5 +197,3 @@ damage_trail_color = Color(1, 0.43, 0.08, 1)
 [connection signal="body_entered" from="PlayerAuraArea" to="." method="_on_player_aura_body_entered"]
 [connection signal="body_exited" from="PlayerAuraArea" to="." method="_on_player_aura_body_exited"]
 [connection signal="timeout" from="PlayerReconcileTimer" to="." method="_on_player_reconcile_timer_timeout"]
-[connection signal="screen_entered" from="RingVisibilityNotifier" to="." method="_on_ring_visibility_screen_entered"]
-[connection signal="screen_exited" from="RingVisibilityNotifier" to="." method="_on_ring_visibility_screen_exited"]

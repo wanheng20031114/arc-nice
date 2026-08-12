@@ -6,6 +6,40 @@
 [ext_resource type="Material" path="res://resources/shader/plant_lifecycle_material.tres" id="4_lifecycle_material"]
 [ext_resource type="PackedScene" uid="uid://by1igl2yc3ch0" path="res://scene/plant_defense/ui/plant_health_bar.tscn" id="5_health_bar"]
 
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_heart_mote"]
+light_mode = 1
+
+[sub_resource type="Gradient" id="Gradient_heart_mote_texture"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_heart_mote"]
+gradient = SubResource("Gradient_heart_mote_texture")
+width = 1
+height = 1
+fill_to = Vector2(1, 1)
+
+[sub_resource type="Gradient" id="Gradient_heart_mote_alpha"]
+offsets = PackedFloat32Array(0, 0.78, 0.9, 1)
+colors = PackedColorArray(1, 1, 1, 0.94, 1, 1, 1, 0.94, 1, 1, 1, 0.35, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_heart_mote_alpha"]
+gradient = SubResource("Gradient_heart_mote_alpha")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_heart_motes"]
+particle_flag_disable_z = true
+emission_shape_offset = Vector3(0, -4, 0)
+emission_shape = 3
+emission_box_extents = Vector3(7, 3, 0)
+direction = Vector3(0, -1, 0)
+spread = 65.0
+initial_velocity_min = 4.0
+initial_velocity_max = 7.0
+radial_velocity_min = 2.0
+radial_velocity_max = 4.0
+gravity = Vector3(0, -0.5, 0)
+color = Color(0.956863, 0.184314, 0.058824, 1)
+color_ramp = SubResource("GradientTexture1D_heart_mote_alpha")
+
 [sub_resource type="Animation" id="Animation_heart_bob_reset"]
 resource_name = "RESET"
 length = 0.001
@@ -77,6 +111,16 @@ z_index = 4
 texture_filter = 1
 material = ExtResource("4_lifecycle_material")
 texture = ExtResource("3_heart_foreground")
+
+[node name="HeartMotes" type="GPUParticles2D" parent="VisualRoot/HeartBobRoot" unique_id=694004668]
+z_index = 3
+texture_filter = 1
+material = SubResource("CanvasItemMaterial_heart_mote")
+texture = SubResource("GradientTexture2D_heart_mote")
+lifetime = 0.8
+randomness = 0.35
+visibility_rect = Rect2(-18, -18, 36, 30)
+process_material = SubResource("ParticleProcessMaterial_heart_motes")
 
 [node name="HeartBobAnimationPlayer" type="AnimationPlayer" parent="." unique_id=2002294644]
 libraries/ = SubResource("AnimationLibrary_heart_bob")

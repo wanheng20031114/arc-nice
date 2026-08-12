@@ -55,12 +55,16 @@ func _run() -> void:
 	var heart := tower.get_node(
 		"VisualRoot/HeartBobRoot/HeartForeground"
 	) as Sprite2D
+	var heart_motes := tower.get_node(
+		"VisualRoot/HeartBobRoot/HeartMotes"
+	) as GPUParticles2D
 	var player := tower.get_node("HeartBobAnimationPlayer") as AnimationPlayer
 	var health_bar := tower.get_node("HealthBar") as PlantHealthBar
 	_assert(visual_root != null, "VisualRoot is missing.")
 	_assert(lower_body != null, "LowerBody is missing.")
 	_assert(heart_root != null, "HeartBobRoot is missing.")
 	_assert(heart != null, "HeartForeground is missing.")
+	_assert(heart_motes != null, "HeartMotes is missing.")
 	_assert(player != null, "HeartBobAnimationPlayer is missing.")
 	_assert(health_bar != null, "HealthBar is missing.")
 	_assert(visual_root.scale == Vector2(0.5, 0.5), "VisualRoot scale must be 0.5.")
@@ -70,6 +74,89 @@ func _run() -> void:
 	_assert(heart.texture.get_size() == Vector2(64, 64), "Heart must be 64x64.")
 	_assert(lower_body.z_index == 0, "LowerBody z_index must be 0.")
 	_assert(heart.z_index == 4, "Heart z_index must be 4.")
+	_assert(
+		tower.find_children("*", "GPUParticles2D", true, false).size() == 1
+		and tower.find_children("*", "CPUParticles2D", true, false).is_empty(),
+		"Life Tower must use exactly one GPU emitter and no CPU emitters."
+	)
+	_assert(
+		tower.find_children(
+			"*", "VisibleOnScreenNotifier2D", true, false
+		).is_empty(),
+		"Heart motes must rely on their native visibility_rect without a duplicate notifier."
+	)
+	var mote_material := heart_motes.process_material as ParticleProcessMaterial
+	var mote_alpha_texture := mote_material.color_ramp as GradientTexture1D
+	var mote_alpha_gradient := mote_alpha_texture.gradient
+	_assert(
+		heart_motes.get_parent() == heart_root
+		and heart_motes.z_index == 3
+		and not heart_motes.local_coords
+		and heart_motes.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
+		"Heart motes must follow the heart emitter, render behind it, and keep nearest sampling."
+	)
+	_assert(
+		heart_motes.texture != null
+		and heart_motes.texture.get_size() == Vector2.ONE
+		and heart_motes.texture.get_size() * visual_root.scale == Vector2(0.5, 0.5),
+		"Heart motes must match exactly one native pixel in the 64x64 heart artwork."
+	)
+	_assert(
+		heart_motes.amount == 8
+		and is_equal_approx(heart_motes.lifetime, 0.8)
+		and heart_motes.preprocess == 0.0
+		and heart_motes.fixed_fps == 30
+		and heart_motes.process_mode == Node.PROCESS_MODE_INHERIT
+		and heart_motes.visibility_rect.size == Vector2(36, 30),
+		"Heart mote emitter must stay within the authored particle budget."
+	)
+	var second_tower := packed_scene.instantiate() as LifeTower
+	_assert(second_tower != null, "Second Life Tower particle fixture failed to instantiate.")
+	var second_heart_motes := second_tower.get_node(
+		"VisualRoot/HeartBobRoot/HeartMotes"
+	) as GPUParticles2D
+	_assert(
+		second_heart_motes != null
+		and second_heart_motes.emitting
+		and second_heart_motes.visible
+		and second_heart_motes.process_mode == Node.PROCESS_MODE_INHERIT
+		and second_heart_motes.process_material == heart_motes.process_material
+		and second_heart_motes.texture == heart_motes.texture,
+		"The authored scene must preview shared heart mote resources in the editor."
+	)
+	second_tower.free()
+	_assert(
+		mote_material != null
+		and mote_material.emission_shape
+		== ParticleProcessMaterial.EMISSION_SHAPE_BOX
+		and mote_material.emission_shape_offset == Vector3(0, -4, 0)
+		and mote_material.emission_box_extents == Vector3(7, 3, 0)
+		and is_equal_approx(mote_material.spread, 65.0)
+		and is_equal_approx(mote_material.initial_velocity_min, 4.0)
+		and is_equal_approx(mote_material.initial_velocity_max, 7.0)
+		and mote_material.gravity == Vector3(0, -0.5, 0)
+		and is_equal_approx(mote_material.radial_velocity_min, 2.0)
+		and is_equal_approx(mote_material.radial_velocity_max, 4.0)
+		and mote_material.direction.y < 0.0,
+		"Heart motes must emerge from behind the upper heart edge in an outward fan."
+	)
+	_assert(
+		mote_material.color.is_equal_approx(Color(0.956863, 0.184314, 0.058824, 1))
+		and mote_alpha_gradient != null
+		and mote_alpha_gradient.offsets == PackedFloat32Array([0, 0.78, 0.9, 1])
+		and is_equal_approx(mote_alpha_gradient.colors[0].a, 0.94)
+		and is_equal_approx(mote_alpha_gradient.colors[1].a, 0.94)
+		and is_equal_approx(mote_alpha_gradient.colors[2].a, 0.35)
+		and is_zero_approx(mote_alpha_gradient.colors[3].a),
+		"Heart motes must match the heart red and use a short final fade."
+	)
+	_assert(
+		is_equal_approx(
+			heart_motes.lifetime * (1.0 - mote_alpha_gradient.offsets[1]),
+			0.176,
+		),
+		"Heart mote fade must finish within the final 0.176 seconds."
+	)
 	_assert(
 		health_bar.custom_minimum_size == Vector2(24, 4)
 		and health_bar.size == Vector2(24, 4),
@@ -90,6 +177,22 @@ func _run() -> void:
 	_assert(
 		heart.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST,
 		"Heart must use nearest filtering."
+	)
+	_assert(
+		heart_motes.emitting and heart_motes.visible,
+		"A completed Life Tower must emit and rely on native visibility_rect off screen."
+	)
+	tower.call("_on_construction_started")
+	_assert(
+		not heart_motes.emitting
+		and not heart_motes.visible,
+		"Life Tower construction must suspend heart motes."
+	)
+	tower.call("_on_construction_finished", false)
+	_assert(
+		heart_motes.emitting
+		and heart_motes.visible,
+		"Heart motes must resume after construction and use visibility_rect for off-screen culling."
 	)
 
 	var animation := player.get_animation(&"heart_bob")
@@ -133,6 +236,12 @@ func _run() -> void:
 	_assert(tower.current_health == 2300, "Life Tower damage handling is invalid.")
 	_assert(health_bar.max_health_value == 2400, "Health bar maximum is invalid.")
 	_assert(health_bar.visible, "Health bar must appear after the tower takes damage.")
+	tower.begin_removal(PlantDefense.RemovalMode.SILENT)
+	_assert(
+		not heart_motes.emitting
+		and not heart_motes.visible,
+		"Life Tower removal must stop particle simulation immediately."
+	)
 
 	print("LIFE_TOWER_SCENE_SMOKE_OK")
 	print("period_seconds=2.0")

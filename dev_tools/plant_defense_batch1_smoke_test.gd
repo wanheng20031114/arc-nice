@@ -588,6 +588,7 @@ func _test_config_and_scene_contracts() -> void:
 				and glow_motes.amount == 16
 				and glow_motes.position == Vector2(0, -3.25)
 				and glow_motes.visibility_rect == Rect2(-5.5, -2.5, 11, 3.5)
+				and glow_motes.process_mode == Node.PROCESS_MODE_INHERIT
 				and mote_material != null
 				and mote_material.emission_box_extents == Vector3(4.75, 0.5, 1)
 				and mote_material.direction == Vector3(0, -1, 0)
@@ -597,6 +598,12 @@ func _test_config_and_scene_contracts() -> void:
 				and mote_material.scale_min >= 0.5
 				and mote_material.scale_max <= 1.0,
 				"植被桩飘光必须横向覆盖顶部核心，并向下多覆盖一个屏幕像素。"
+			)
+			_expect(
+				vegetation_stake.find_children(
+					"*", "VisibleOnScreenNotifier2D", true, false
+				).is_empty(),
+				"植被桩飘光必须仅依赖自身visibility_rect，避免重复离屏门控。"
 			)
 		if stake_health_bar != null:
 			_expect(

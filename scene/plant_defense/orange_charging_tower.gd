@@ -9,9 +9,6 @@ const VISUAL_CYCLE_DURATION_SECONDS := 2.4
 @onready var glass_cycle_glow: Sprite2D = $VisualRoot/GlassCycleGlow
 @onready var chamber_night_light: NightPointLight2D = $ChamberNightLight
 @onready var ground_rings: NightSelfEmissionParticles2D = $GroundRings
-@onready var ring_visibility_notifier: VisibleOnScreenNotifier2D = (
-	$RingVisibilityNotifier
-)
 @onready var player_aura_area: Area2D = $PlayerAuraArea
 @onready var player_aura_shape: CollisionShape2D = (
 	$PlayerAuraArea/CollisionShape2D
@@ -24,13 +21,10 @@ var plant_system: PlantSystem = null
 var player_charge_source_id := 0
 var player_candidates: Dictionary[Player, bool] = {}
 var buffed_players: Dictionary[Player, bool] = {}
-var ring_is_on_screen := false
 
 
 func _ready() -> void:
 	super._ready()
-	ring_is_on_screen = ring_visibility_notifier.is_on_screen()
-	_stop_ground_rings()
 	chamber_night_light.set_emission_allowed(false)
 
 
@@ -104,7 +98,7 @@ func _on_construction_started() -> void:
 
 func _on_construction_finished(_was_animated: bool) -> void:
 	chamber_night_light.set_emission_allowed(true)
-	_refresh_ground_ring_emission()
+	_start_ground_rings()
 
 
 func _on_operational_started() -> void:
@@ -146,16 +140,6 @@ func _on_player_aura_body_exited(body: Node2D) -> void:
 
 func _on_player_reconcile_timer_timeout() -> void:
 	_reconcile_player_candidates()
-
-
-func _on_ring_visibility_screen_entered() -> void:
-	ring_is_on_screen = true
-	_refresh_ground_ring_emission()
-
-
-func _on_ring_visibility_screen_exited() -> void:
-	ring_is_on_screen = false
-	_stop_ground_rings()
 
 
 func _configure_player_aura_shape() -> void:
@@ -249,25 +233,16 @@ func _refresh_player_reconcile_timer() -> void:
 		player_reconcile_timer.start(PLAYER_RECONCILE_SECONDS)
 
 
-func _refresh_ground_ring_emission() -> void:
-	var should_emit := (
-		ring_is_on_screen
-		and is_operational
-		and not is_dead
-		and not is_removing
-	)
-	if not should_emit:
-		_stop_ground_rings()
+func _start_ground_rings() -> void:
+	if not is_operational or is_dead or is_removing:
 		return
 	if not ground_rings.emitting:
-		ground_rings.process_mode = Node.PROCESS_MODE_INHERIT
 		ground_rings.restart()
 		ground_rings.emitting = true
 
 
 func _stop_ground_rings() -> void:
 	ground_rings.emitting = false
-	ground_rings.process_mode = Node.PROCESS_MODE_DISABLED
 
 
 func _make_player_charge_source_id() -> int:
