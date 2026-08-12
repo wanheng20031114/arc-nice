@@ -17,6 +17,7 @@
 [ext_resource type="Resource" path="res://resources/config/production/excavator_assembly.tres" id="15_excavator_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/gambler_ticket_assembly.tres" id="16_ticket_recipe"]
 [ext_resource type="Resource" path="res://resources/config/production/wooden_core_to_life_tower.tres" id="17_life_tower_recipe"]
+[ext_resource type="Resource" uid="uid://btu6d5wgn6na7" path="res://resources/config/production/wooden_core_to_speed_tower.tres" id="18_speed_tower_recipe"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_production_border"]
 shader = ExtResource("8_border_shader")
@@ -91,7 +92,7 @@ outline_color = Color(0.055, 0.027, 0.012, 1)
 collision_layer = 512
 collision_mask = 0
 script = ExtResource("1_script")
-recipes = Array[ExtResource("7_recipe_script")]([ExtResource("6_recipe"), ExtResource("9_core_recipe"), ExtResource("16_ticket_recipe"), ExtResource("10_water_collector_recipe"), ExtResource("11_planting_base_recipe"), ExtResource("12_cultivation_center_recipe"), ExtResource("13_research_center_recipe"), ExtResource("15_excavator_recipe"), ExtResource("17_life_tower_recipe")])
+recipes = Array[ExtResource("7_recipe_script")]([ExtResource("6_recipe"), ExtResource("9_core_recipe"), ExtResource("16_ticket_recipe"), ExtResource("10_water_collector_recipe"), ExtResource("11_planting_base_recipe"), ExtResource("12_cultivation_center_recipe"), ExtResource("13_research_center_recipe"), ExtResource("15_excavator_recipe"), ExtResource("17_life_tower_recipe"), ExtResource("18_speed_tower_recipe")])
 enemy_approach_depth = 2.0
 lifecycle_visual_paths = Array[NodePath]([NodePath("MainSprite")])
 lifecycle_effect_top_y = -9.0

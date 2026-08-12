@@ -57,7 +57,7 @@ func _run() -> void:
 	screen.call("_apply_section", CodexSection.BUILDING)
 	await _wait_for_build_complete(screen)
 	var building_cards := screen.get("_cards") as Array
-	var only_buildings := building_cards.size() == 17
+	var only_buildings := building_cards.size() == 18
 	for card_variant in building_cards:
 		var card := card_variant as EncyclopediaEntryCard
 		if card.entry_data.section != CodexSection.BUILDING:

@@ -227,6 +227,13 @@ func _test_config_and_scene_contracts() -> void:
 		life_tower_config != null and life_tower_config.is_valid(),
 		"生命强化塔配置必须有效。"
 	)
+	var speed_tower_config := PlantDefenseRegistry.get_config(
+		&"speed_tower"
+	) as SpeedTowerConfig
+	_expect(
+		speed_tower_config != null and speed_tower_config.is_valid(),
+		"移速强化塔配置必须有效。"
+	)
 	var excavator_config := PlantDefenseRegistry.get_config(&"excavator")
 	_expect(
 		excavator_config != null and excavator_config.is_valid(),
@@ -249,13 +256,14 @@ func _test_config_and_scene_contracts() -> void:
 		or grape_arc_config == null
 		or orange_charging_config == null
 		or life_tower_config == null
+		or speed_tower_config == null
 		or excavator_config == null
 		or simple_fence_config == null
 	):
 		return
 	var registered_configs := PlantDefenseRegistry.get_all_configs()
 	_expect(
-		registered_configs.size() == 17
+		registered_configs.size() == 18
 		and registered_configs.has(agave_config)
 		and registered_configs.has(bamboo_mortar_config)
 		and registered_configs.has(corn_config)
@@ -271,6 +279,7 @@ func _test_config_and_scene_contracts() -> void:
 		and registered_configs.has(grape_arc_config)
 		and registered_configs.has(orange_charging_config)
 		and registered_configs.has(life_tower_config)
+		and registered_configs.has(speed_tower_config)
 		and registered_configs.has(excavator_config)
 		and registered_configs.has(simple_fence_config)
 		and bamboo_mortar_config.building_category
@@ -281,7 +290,7 @@ func _test_config_and_scene_contracts() -> void:
 		== PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING
 		and simple_fence_config.building_category
 		== PlantDefenseConfig.BuildingCategory.FENCE,
-		"植物注册表必须公开全部17种建筑，并以显式语义分类取代历史数组下标契约。"
+		"植物注册表必须公开全部18种建筑，并以显式语义分类取代历史数组下标契约。"
 	)
 	_expect(
 		orange_charging_config.max_health == 3000
@@ -320,6 +329,19 @@ func _test_config_and_scene_contracts() -> void:
 		and life_tower_config.supports_multiplayer
 		and is_equal_approx(life_tower_config.max_health_bonus_ratio, 0.10),
 		"生命强化塔配置必须声明2×2占地、2400生命、5物防、0法防与每塔10%生命上限加成。"
+	)
+	_expect(
+		speed_tower_config.max_health == 2400
+		and speed_tower_config.physical_defense == 5
+		and speed_tower_config.magic_defense == 0
+		and speed_tower_config.footprint_size == Vector2i(2, 2)
+		and speed_tower_config.building_category
+		== PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER
+		and speed_tower_config.placement_surface
+		== PlantDefenseConfig.PlacementSurface.GRASS_ONLY
+		and speed_tower_config.supports_multiplayer
+		and is_equal_approx(speed_tower_config.move_speed_bonus, 10.0),
+		"移速强化塔配置必须声明2×2占地、2400生命、5物防、0法防与每塔10点移速加成。"
 	)
 	_expect(
 		bamboo_mortar_config.max_health == 2000
@@ -1545,7 +1567,7 @@ func _test_realtime_selection_and_cancel() -> void:
 	_expect(controller.is_selecting(), "打开后状态必须为SELECTING。")
 	_expect(controller.selection_hud.is_open(), "真实plant动作输入必须显示植物选择界面。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 17
+		controller.selection_hud.available_configs.size() == 18
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1583,13 +1605,19 @@ func _test_realtime_selection_and_cancel() -> void:
 			PlantDefenseRegistry.get_config(&"orange_charging_tower")
 		)
 		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"life_tower")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"speed_tower")
+		)
+		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		)
-		and controller.selection_hud.cards.size() == 17,
-		"单人T键调试界面必须显示包括生命强化塔在内的全部17种建筑。"
+		and controller.selection_hud.cards.size() == 18,
+		"单人T键调试界面必须显示包括生命、移速强化塔在内的全部18种建筑。"
 	)
 	var agave_card: PlantSelectionCard = null
 	var bamboo_mortar_card: PlantSelectionCard = null
@@ -1839,7 +1867,7 @@ func _test_multiplayer_authority_contracts() -> void:
 	controller.set_multiplayer_request_mode(true)
 	_expect(controller.open_selection(), "多人植物选择必须仍可打开。")
 	_expect(
-		controller.selection_hud.available_configs.size() == 17
+		controller.selection_hud.available_configs.size() == 18
 		and controller.selection_hud.available_configs.has(agave_config)
 		and controller.selection_hud.available_configs.has(
 			bamboo_mortar_config
@@ -1877,13 +1905,19 @@ func _test_multiplayer_authority_contracts() -> void:
 			PlantDefenseRegistry.get_config(&"orange_charging_tower")
 		)
 		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"life_tower")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"speed_tower")
+		)
+		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
 		)
-		and controller.selection_hud.cards.size() == 17,
-		"多人T键调试界面必须显示包括生命强化塔在内的全部17种支持联机建筑。"
+		and controller.selection_hud.cards.size() == 18,
+		"多人T键调试界面必须显示包括生命、移速强化塔在内的全部18种支持联机建筑。"
 	)
 	controller.cancel_placement()
 	var placement_requests: Array[Dictionary] = []

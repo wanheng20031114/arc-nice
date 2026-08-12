@@ -8,6 +8,7 @@ const EXPECTED_SORTED_IDS: Array[StringName] = [
 	&"hydrangea_rain_tower",
 	&"orange_charging_tower",
 	&"life_tower",
+	&"speed_tower",
 	&"wood_processing_station",
 	&"water_collector",
 	&"planting_base",
@@ -27,6 +28,7 @@ const EXPECTED_CATEGORY_BY_ID := {
 	&"hydrangea_rain_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
 	&"orange_charging_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
 	&"life_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
+	&"speed_tower": PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER,
 	&"wood_processing_station": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
 	&"water_collector": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
 	&"planting_base": PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING,
@@ -46,6 +48,7 @@ const EXPECTED_SURFACE_BY_ID := {
 	&"hydrangea_rain_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"orange_charging_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"life_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
+	&"speed_tower": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
 	&"wood_processing_station": PlantDefenseConfig.PlacementSurface.ANY_LAND,
 	&"water_collector": PlantDefenseConfig.PlacementSurface.WATER_ONLY,
 	&"planting_base": PlantDefenseConfig.PlacementSurface.GRASS_ONLY,
@@ -65,6 +68,7 @@ const EXPECTED_MENU_ORDER_BY_ID := {
 	&"hydrangea_rain_tower": 10,
 	&"orange_charging_tower": 20,
 	&"life_tower": 30,
+	&"speed_tower": 40,
 	&"wood_processing_station": 10,
 	&"water_collector": 20,
 	&"planting_base": 30,
@@ -84,10 +88,11 @@ const EXPECTED_TOWER_PHYSICAL_DEFENSE_BY_ID := {
 	&"hydrangea_rain_tower": 10,
 	&"orange_charging_tower": 10,
 	&"life_tower": 5,
+	&"speed_tower": 5,
 }
 const EXPECTED_CATEGORY_COUNTS := {
 	PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER: 4,
-	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 3,
+	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 4,
 	PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING: 6,
 	PlantDefenseConfig.BuildingCategory.TECHNOLOGY_BUILDING: 1,
 	PlantDefenseConfig.BuildingCategory.FENCE: 1,
@@ -193,14 +198,14 @@ func _test_registry_semantics() -> void:
 				== int(EXPECTED_TOWER_PHYSICAL_DEFENSE_BY_ID[config.plant_id]),
 				"炮台基础物防不符合数值契约：%s。" % config.plant_id
 			)
-	_expect(configs.size() == 17, "正式建筑注册表必须恰好包含17项。")
+	_expect(configs.size() == 18, "正式建筑注册表必须恰好包含18项。")
 	_expect(
 		actual_ids == EXPECTED_SORTED_IDS,
 		"注册表必须按类别、类内顺序、ID确定性排序。actual=%s" % [actual_ids]
 	)
 	_expect(
 		category_counts == EXPECTED_CATEGORY_COUNTS,
-		"七类建筑数量必须固定为4/3/6/1/1/1/1。actual=%s" % [category_counts]
+		"七类建筑数量必须固定为4/4/6/1/1/1/1。actual=%s" % [category_counts]
 	)
 	var life_tower := PlantDefenseRegistry.get_config(&"life_tower") as LifeTowerConfig
 	_expect(
@@ -212,6 +217,17 @@ func _test_registry_semantics() -> void:
 		and life_tower.supports_multiplayer
 		and is_equal_approx(life_tower.max_health_bonus_ratio, 0.10),
 		"生命强化塔必须声明2×2占地、2400生命、5物防、0法防与每塔10%生命上限加成。"
+	)
+	var speed_tower := PlantDefenseRegistry.get_config(&"speed_tower") as SpeedTowerConfig
+	_expect(
+		speed_tower != null
+		and speed_tower.max_health == 2400
+		and speed_tower.physical_defense == 5
+		and speed_tower.magic_defense == 0
+		and speed_tower.footprint_size == Vector2i(2, 2)
+		and speed_tower.supports_multiplayer
+		and is_equal_approx(speed_tower.move_speed_bonus, 10.0),
+		"移速强化塔必须声明2×2占地、2400生命、5物防、0法防与每塔10点移速加成。"
 	)
 
 
@@ -276,11 +292,18 @@ func _test_surface_semantics() -> void:
 func _test_building_item_and_acquisition_closure() -> void:
 	_expect(
 		BuildingItemRegistry.validate_contract(),
-		"建筑物品必须与17个plant_id形成一一对应，且每项至少有一条获取路线。"
+		"建筑物品必须与18个plant_id形成一一对应，且每项至少有一条获取路线。"
 	)
 	_expect(
-		BuildingItemRegistry.get_all_items().size() == 17,
-		"建筑物品Registry必须恰好公开17项。"
+		BuildingItemRegistry.get_all_items().size() == 18,
+		"建筑物品Registry必须恰好公开18项。"
+	)
+	_expect(
+		BuildingItemRegistry.SPEED_TOWER_ITEM != null
+		and not BuildingItemRegistry.SPEED_TOWER_ITEM.stackable
+		and BuildingItemRegistry.SPEED_TOWER_ITEM.inventory_stack_limit == 1
+		and BuildingItemRegistry.SPEED_TOWER_ITEM.placeable_plant_id == &"speed_tower",
+		"移速强化塔建筑物品必须与生命强化塔一样保持不可堆叠、单格上限1并绑定正确plant_id。"
 	)
 	var reachable_recipe_paths := {}
 	for recipe in SimpleCraftingRegistry.get_all_recipes():
@@ -359,6 +382,20 @@ func _test_building_item_and_acquisition_closure() -> void:
 		and is_equal_approx(life_recipe.duration_seconds, 30.0)
 		and life_recipe.outputs_to_player_inventory(),
 		"生命强化塔必须在木头加工站消耗10个木板和2棵树苗，并组装30秒。"
+	)
+	var speed_recipe := BuildingItemRegistry.get_primary_acquisition_recipe(
+		&"speed_tower"
+	)
+	_expect(
+		speed_recipe != null
+		and speed_recipe.display_name == "移速强化塔组装"
+		and speed_recipe.input_items == [PLANK, SAPLING]
+		and speed_recipe.input_amounts == [10, 2]
+		and speed_recipe.output_items == [BuildingItemRegistry.SPEED_TOWER_ITEM]
+		and speed_recipe.output_amounts == [1]
+		and is_equal_approx(speed_recipe.duration_seconds, 30.0)
+		and speed_recipe.outputs_to_player_inventory(),
+		"移速强化塔必须在木头加工站消耗10个木板和2棵树苗，并组装30秒。"
 	)
 
 

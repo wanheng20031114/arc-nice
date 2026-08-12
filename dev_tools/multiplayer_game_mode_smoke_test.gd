@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 65,
-		"协议v65必须隔离P1E入口、神奇遭遇本局历史、P1D地下教堂与大小纸箱怪资源，保留普通作战池、遭遇跟随作战、狭路相逢、稀有宝箱及既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 66,
+		"协议v66必须隔离移速强化塔合同、P1E入口、神奇遭遇本局历史、P1D地下教堂与大小纸箱怪资源，保留普通作战池、遭遇跟随作战、狭路相逢、稀有宝箱及既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),

@@ -53,7 +53,7 @@ func collect(
 			1.0
 		)
 		state.effective_move_speed_multiplier = (
-			player_instance.get_authoritative_move_speed_multiplier()
+			player_instance.get_authoritative_effective_move_speed_ratio()
 		)
 		state.void_battery_charged = player_instance.has_void_battery_charge()
 		_output.append(state)

@@ -107,8 +107,8 @@ func _run() -> void:
 	for definition in [tower_definition, p1_definition, p1b_definition, p1c_definition, p1d_definition, p1e_definition, p2_definition]:
 		var preload_paths := GameModeCatalog.get_preload_resource_paths(definition)
 		_expect(
-			preload_paths.size() == 53,
-			"Tower-defense preload profile must contain exactly 53 paths."
+			preload_paths.size() == 55,
+			"Tower-defense preload profile must contain exactly 55 paths."
 		)
 		_expect(
 			preload_paths.has(
@@ -124,6 +124,15 @@ func _run() -> void:
 				"res://scene/plant_defense/life_tower.tscn"
 			),
 			"Tower-defense preload profile must include the Life Tower config and scene."
+		)
+		_expect(
+			preload_paths.has(
+				"res://resources/config/plant_defense/speed_tower.tres"
+			)
+			and preload_paths.has(
+				"res://scene/plant_defense/speed_tower.tscn"
+			),
+			"Tower-defense preload profile must include the Speed Tower config and scene."
 		)
 	var rogue_definition := GameModeCatalog.get_definition(4)
 	_expect(

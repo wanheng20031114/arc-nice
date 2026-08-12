@@ -320,8 +320,8 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 65, "多人协议必须保持 v65。")
-	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v65 必须保持 8 个 ENet 信道。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 66, "多人协议必须保持 v66。")
+	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v66 必须保持 8 个 ENet 信道。")
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1 == 2, "test_arena_p1 wire value 必须保持 2。")

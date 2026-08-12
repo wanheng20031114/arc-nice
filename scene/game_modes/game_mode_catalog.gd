@@ -61,6 +61,8 @@ const TOWER_DEFENSE_PRELOAD_RESOURCE_PATHS := [
 	"res://scene/plant_defense/orange_charging_tower.tscn",
 	"res://resources/config/plant_defense/life_tower.tres",
 	"res://scene/plant_defense/life_tower.tscn",
+	"res://resources/config/plant_defense/speed_tower.tres",
+	"res://scene/plant_defense/speed_tower.tscn",
 	"res://resources/config/plant_defense/wood_processing_station.tres",
 	"res://resources/config/plant_defense/water_collector.tres",
 	"res://scene/plant_defense/water_collector.tscn",

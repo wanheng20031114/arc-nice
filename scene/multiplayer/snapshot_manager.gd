@@ -108,7 +108,8 @@ class PlayerState:
 	var primary_cooldown_ratio: float = 0.0
 	## 每帧绝对发送，收敛物品事务与技能确认跨 ENet 频道的乱序。
 	var void_battery_charged: bool = false
-	## Host 权威的最终移动倍率；包含角色形态与收藏品等运行时修正。
+	## Host 权威的最终有效移速相对角色稳定初始移速的倍率；包含平铺属性、
+	## 支援塔、角色形态与收藏品等运行时修正。保持既有 u16 定点字段，不扩包。
 	var effective_move_speed_multiplier: float = 1.0
 
 

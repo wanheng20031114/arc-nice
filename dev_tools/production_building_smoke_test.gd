@@ -40,6 +40,9 @@ const EXCAVATOR_ITEM := preload(
 const LIFE_TOWER_ITEM := preload(
 	"res://resources/config/buildings/building_life_tower.tres"
 )
+const SPEED_TOWER_ITEM := preload(
+	"res://resources/config/buildings/building_speed_tower.tres"
+)
 
 var failures: PackedStringArray = []
 
@@ -200,7 +203,8 @@ func _run() -> void:
 		and panel.has_node("Overlay/PanelRoot/MaterialList")
 		and panel.has_node("Overlay/PanelRoot/ToggleButton")
 		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow8")
-		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow9"),
+		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow9")
+		and panel.has_node("Overlay/PanelRoot/RecipeScroll/RecipeRows/RecipeRow10"),
 		"生产面板必须原生搭建左右各3个候选槽位、物资列表与右上角开关。"
 	)
 	_expect(
@@ -224,6 +228,7 @@ func _run() -> void:
 		and panel.recipe_rows[6].icon == RESEARCH_CENTER_ITEM.icon_texture
 		and panel.recipe_rows[7].icon == EXCAVATOR_ITEM.icon_texture
 		and panel.recipe_rows[8].icon == LIFE_TOWER_ITEM.icon_texture
+		and panel.recipe_rows[9].icon == SPEED_TOWER_ITEM.icon_texture
 		and panel.recipe_rows.all(func(row: Button) -> bool: return row.visible)
 		and panel.recipe_rows[2].text.contains("赌怪专用券制作")
 		and panel.recipe_rows[3].text.contains("水源采集器组装")
@@ -232,9 +237,11 @@ func _run() -> void:
 		and panel.recipe_rows[6].text.contains("科研中心组装")
 		and panel.recipe_rows[7].text.contains("挖土装置组装")
 		and panel.recipe_rows[8].text.contains("生命强化塔组装")
+		and panel.recipe_rows[9].text.contains("移速强化塔组装")
 		and panel.recipe_rows[3].text.contains("30秒")
-		and panel.recipe_rows[8].text.contains("30秒"),
-		"右侧九条配方必须显示正确产物图标，六种功能建筑统一标明30秒。"
+		and panel.recipe_rows[8].text.contains("30秒")
+		and panel.recipe_rows[9].text.contains("30秒"),
+		"右侧十条配方必须显示正确产物图标，七种功能建筑统一标明30秒。"
 	)
 	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[8])
 	await process_frame
@@ -255,6 +262,26 @@ func _run() -> void:
 		and panel.output_slots[0].visible
 		and panel.output_slots[0].item == LIFE_TOWER_ITEM,
 		"滚动到第九条配方后必须能选择生命强化塔，并显示10木板、2树苗与背包产物。"
+	)
+	panel.recipe_scroll.ensure_control_visible(panel.recipe_rows[9])
+	await process_frame
+	await _click_panel_control(panel.recipe_rows[9])
+	_expect(
+		panel.recipe_scroll.get_global_rect().encloses(
+			panel.recipe_rows[9].get_global_rect()
+		)
+		and station.active_recipe_id == &"wooden_core_to_speed_tower"
+		and panel.recipe_rows[9].button_pressed
+		and panel.input_slots[0].visible
+		and panel.input_slots[0].item == PLANK
+		and panel.input_slots[0].stack_count == 10
+		and panel.input_slots[1].visible
+		and panel.input_slots[1].item == SAPLING
+		and panel.input_slots[1].stack_count == 2
+		and not panel.input_slots[2].visible
+		and panel.output_slots[0].visible
+		and panel.output_slots[0].item == SPEED_TOWER_ITEM,
+		"滚动到第十条配方后必须能选择移速强化塔，并显示10木板、2树苗与背包产物。"
 	)
 	panel.call("_on_recipe_row_pressed", 0)
 	_expect(
@@ -343,7 +370,7 @@ func _run() -> void:
 		"所有建筑面板必须通过统一关闭规则支持第二次交互键关闭。"
 	)
 	_expect(
-		station.recipes.size() == 9
+		station.recipes.size() == 10
 		and _recipe_matches(
 			station.recipes[0],
 			&"wood_to_plank",
@@ -433,8 +460,18 @@ func _run() -> void:
 			1,
 			30.0,
 			true
+		)
+		and _recipe_matches(
+			station.recipes[9],
+			&"wooden_core_to_speed_tower",
+			[PLANK, SAPLING],
+			[10, 2],
+			SPEED_TOWER_ITEM,
+			1,
+			30.0,
+			true
 		),
-		"加工站必须按固定顺序提供三条材料配方与六条30秒功能建筑配方。"
+		"加工站必须按固定顺序提供三条材料配方与七条30秒功能建筑配方。"
 	)
 	_expect(
 		_is_valid_building_item(WATER_COLLECTOR_ITEM, &"water_collector")
@@ -445,8 +482,9 @@ func _run() -> void:
 		)
 		and _is_valid_building_item(RESEARCH_CENTER_ITEM, &"research_center")
 		and _is_valid_building_item(EXCAVATOR_ITEM, &"excavator")
-		and _is_valid_building_item(LIFE_TOWER_ITEM, &"life_tower"),
-		"六种功能建筑物品必须复用原图、缩放至32×32且指向有效建筑配置。"
+		and _is_valid_building_item(LIFE_TOWER_ITEM, &"life_tower")
+		and _is_valid_building_item(SPEED_TOWER_ITEM, &"speed_tower"),
+		"七种功能建筑物品必须复用原图、缩放至32×32且指向有效建筑配置。"
 	)
 
 	station.set_production_enabled(false)
@@ -800,6 +838,13 @@ func _test_utility_building_recipe_transactions(
 			"input_items": [PLANK, SAPLING],
 			"input_amounts": [10, 2],
 			"output_item": LIFE_TOWER_ITEM,
+		},
+		{
+			"recipe_id": &"wooden_core_to_speed_tower",
+			"display_name": "移速强化塔",
+			"input_items": [PLANK, SAPLING],
+			"input_amounts": [10, 2],
+			"output_item": SPEED_TOWER_ITEM,
 		},
 	]
 	for recipe_case in recipe_cases:

@@ -7,7 +7,7 @@ const DEFAULT_VIEWPORT := Vector2i(1152, 648)
 const SMALL_VIEWPORT := Vector2i(800, 480)
 const EXPECTED_CATEGORY_COUNTS := {
 	PlantDefenseConfig.BuildingCategory.DEFENSE_TOWER: 4,
-	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 3,
+	PlantDefenseConfig.BuildingCategory.SUPPORT_TOWER: 4,
 	PlantDefenseConfig.BuildingCategory.PRODUCTION_BUILDING: 6,
 	PlantDefenseConfig.BuildingCategory.TECHNOLOGY_BUILDING: 1,
 	PlantDefenseConfig.BuildingCategory.FENCE: 1,
@@ -62,10 +62,10 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	await _wait_layout_frames(3)
 	_expect(
 		hud.is_open()
-		and hud.available_configs.size() == 17
-		and hud.cards.size() == 17
+		and hud.available_configs.size() == 18
+		and hud.cards.size() == 18
 		and not hud.free_placement_mode,
-		"Formal catalog must show all 17 buildings in inventory mode."
+		"Formal catalog must show all 18 buildings in inventory mode."
 	)
 	for category_variant in EXPECTED_CATEGORY_COUNTS:
 		var category := int(category_variant)
@@ -79,9 +79,11 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 	var agave := PlantDefenseRegistry.get_config(PlantDefenseRegistry.AGAVE_CANNON_ID)
 	var corn := PlantDefenseRegistry.get_config(PlantDefenseRegistry.CORN_MACHINE_GUN_ID)
 	var life_tower := PlantDefenseRegistry.get_config(PlantDefenseRegistry.LIFE_TOWER_ID)
+	var speed_tower := PlantDefenseRegistry.get_config(PlantDefenseRegistry.SPEED_TOWER_ID)
 	var stone_mill := PlantDefenseRegistry.get_config(PlantDefenseRegistry.STONE_MILL_ID)
 	var corn_card := _find_card(hud, corn)
 	var life_tower_card := _find_card(hud, life_tower)
+	var speed_tower_card := _find_card(hud, speed_tower)
 	_expect(
 		hud.cards.all(
 			func(card: PlantSelectionCard) -> bool: return card.owned_count == 0
@@ -101,6 +103,12 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 		and life_tower_card.owned_count == 0
 		and life_tower_card.select_button.disabled,
 		"Life Tower must be visible in the T catalog and disabled only while inventory count is zero."
+	)
+	_expect(
+		speed_tower_card != null
+		and speed_tower_card.owned_count == 0
+		and speed_tower_card.select_button.disabled,
+		"Speed Tower must be visible in the T catalog and disabled only while inventory count is zero."
 	)
 
 	hud.call("_select_config", corn)
@@ -143,14 +151,56 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 		"HUD-local selection and outer vertical position must survive reopen."
 	)
 
+	await _place_formal_catalog_building(
+		game,
+		run_state,
+		controller,
+		hud,
+		life_tower,
+		"Life Tower"
+	)
+	await _place_formal_catalog_building(
+		game,
+		run_state,
+		controller,
+		hud,
+		speed_tower,
+		"Speed Tower"
+	)
+
+	current_scene = null
+	game.queue_free()
+	await _wait_until_freed(game)
+
+
+func _place_formal_catalog_building(
+	game: TowerDefenseGame,
+	run_state: RunStateStore,
+	controller: PlantPlacementController,
+	hud: PlantSelectionHUD,
+	config: PlantDefenseConfig,
+	label: String
+) -> void:
+	if not controller.is_selecting():
+		_expect(
+			controller.open_selection(),
+			"%s placement fixture must reopen the formal T catalog." % label
+		)
+		await _wait_layout_frames(3)
+	var item := BuildingItemRegistry.get_item(config.plant_id)
+	_expect(item != null, "%s must have a registered building item." % label)
+	if item == null:
+		return
 	_expect(
-		run_state.try_add_item(
-			BuildingItemRegistry.get_item(PlantDefenseRegistry.LIFE_TOWER_ID)
-		),
-		"Placement fixture must explicitly add one Life Tower after validating the empty building catalog."
+		run_state.try_add_item(item),
+		"Placement fixture must explicitly add one %s building item." % label
 	)
 	await process_frame
-	hud.call("_select_config", life_tower)
+	_expect(
+		run_state.get_inventory_item_total(item) == 1,
+		"%s fixture must expose exactly one owned item in the T catalog." % label
+	)
+	hud.call("_select_config", config)
 	hud.call("_confirm_selection")
 	await process_frame
 	_expect(
@@ -158,46 +208,41 @@ func _test_formal_inventory_catalog_and_placement() -> void:
 		and controller.placement_source
 		== PlantPlacementController.PlacementSource.INVENTORY_ITEM
 		and controller.inventory_slot_index >= 0,
-		"Formal confirmation must enter the existing inventory placement path."
+		"%s confirmation must enter the inventory placement path." % label
 	)
 	_expect(
 		not controller.valid_anchors.is_empty(),
-		"Explicitly injected Life Tower fixture must have a valid formal placement anchor."
+		"Explicitly injected %s fixture must have a valid 2x2 placement anchor."
+		% label
 	)
-	if not controller.valid_anchors.is_empty():
-		var anchor := controller.valid_anchors[0]
-		var footprint_cells := game.plant_system.get_footprint_cells(
-			anchor,
-			life_tower
+	if controller.valid_anchors.is_empty():
+		controller.cancel_placement()
+		return
+	var anchor := controller.valid_anchors[0]
+	var footprint_cells := game.plant_system.get_footprint_cells(anchor, config)
+	controller.call("_set_hovered_anchor", anchor, true)
+	var plant_container := game.get_node("PlantContainer") as Node2D
+	var plant_count_before: int = plant_container.get_child_count()
+	controller.call("_try_place_hovered")
+	await process_frame
+	var placed_building := game.plant_system.get_plant_at_cell(anchor)
+	var all_footprint_cells_registered := true
+	for cell in footprint_cells:
+		all_footprint_cells_registered = (
+			all_footprint_cells_registered
+			and game.plant_system.get_plant_at_cell(cell) == placed_building
 		)
-		controller.call("_set_hovered_anchor", anchor, true)
-		var plant_container := game.get_node("PlantContainer") as Node2D
-		var plant_count_before: int = plant_container.get_child_count()
-		controller.call("_try_place_hovered")
-		await process_frame
-		var placed_life_tower := game.plant_system.get_plant_at_cell(anchor)
-		var all_footprint_cells_registered := true
-		for cell in footprint_cells:
-			all_footprint_cells_registered = (
-				all_footprint_cells_registered
-				and game.plant_system.get_plant_at_cell(cell) == placed_life_tower
-			)
-		_expect(
-			plant_container.get_child_count() == plant_count_before + 1
-			and footprint_cells.size() == 4
-			and placed_life_tower != null
-			and placed_life_tower.config == life_tower
-			and placed_life_tower.footprint_cells == footprint_cells
-			and all_footprint_cells_registered
-			and run_state.get_inventory_item_total(
-				BuildingItemRegistry.get_item(PlantDefenseRegistry.LIFE_TOWER_ID)
-			) == 0,
-			"Formal T placement must occupy all four Life Tower cells and atomically consume its building item."
-		)
-
-	current_scene = null
-	game.queue_free()
-	await _wait_until_freed(game)
+	_expect(
+		plant_container.get_child_count() == plant_count_before + 1
+		and footprint_cells.size() == 4
+		and placed_building != null
+		and placed_building.config == config
+		and placed_building.footprint_cells == footprint_cells
+		and all_footprint_cells_registered
+		and run_state.get_inventory_item_total(item) == 0,
+		"Formal T placement must register all four %s cells and atomically consume one item."
+		% label
+	)
 
 
 func _test_catalog_layout(viewport_size: Vector2i) -> void:

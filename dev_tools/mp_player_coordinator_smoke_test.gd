@@ -68,6 +68,7 @@ class ProbePlayer:
 	var snapshot_motion_apply_count := 0
 	var realtime_snapshot_apply_count := 0
 	var move_speed_multiplier_apply_count := 0
+	var last_move_speed_multiplier := 0.0
 	var primary_cooldown_apply_count := 0
 
 	func set_multiplayer_health_state(new_health: int, new_is_dead: bool) -> void:
@@ -156,9 +157,10 @@ class ProbePlayer:
 		invincibility_time_left = new_invincibility_time_left
 
 	func apply_multiplayer_effective_move_speed_multiplier(
-		_multiplier: float
+		multiplier: float
 	) -> void:
 		move_speed_multiplier_apply_count += 1
+		last_move_speed_multiplier = multiplier
 
 	func apply_multiplayer_primary_cooldown_ratio(_ratio: float) -> void:
 		primary_cooldown_apply_count += 1
@@ -1396,6 +1398,7 @@ func _run_realtime_orchestration_smoke() -> void:
 	host_state.velocity = Vector2(12.0, 0.0)
 	host_state.current_health = 75
 	host_state.max_health = 100
+	host_state.effective_move_speed_multiplier = 1.25
 	runtime.probe_player_snapshot_states = [host_state]
 	coordinator.sync_snapshot_cohort_readiness([2])
 	_expect(
@@ -1434,8 +1437,10 @@ func _run_realtime_orchestration_smoke() -> void:
 		coordinator.interpolate_client_players()
 		_expect(
 			remote_player.realtime_snapshot_apply_count == 1
-			and remote_player.snapshot_motion_apply_count == 1,
-			"客户端玩家快照必须应用实时状态并进入远端插值。"
+			and remote_player.snapshot_motion_apply_count == 1
+			and remote_player.move_speed_multiplier_apply_count == 1
+			and is_equal_approx(remote_player.last_move_speed_multiplier, 1.25),
+			"客户端玩家快照必须应用权威最终移速倍率、实时状态并进入远端插值。"
 		)
 		_expect(
 			_probe_stale_player_ids == [5],

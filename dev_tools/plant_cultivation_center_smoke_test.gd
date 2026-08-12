@@ -115,7 +115,7 @@ func _run() -> void:
 		"植物培育中心必须占2×2格，拥有1500生命、10物防、10法防并支持联机。"
 	)
 	_expect(
-		PlantDefenseRegistry.get_all_configs().size() == 17
+		PlantDefenseRegistry.get_all_configs().size() == 18
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -127,8 +127,11 @@ func _run() -> void:
 		)
 		and PlantDefenseRegistry.get_all_configs().has(
 			PlantDefenseRegistry.get_config(&"life_tower")
+		)
+		and PlantDefenseRegistry.get_all_configs().has(
+			PlantDefenseRegistry.get_config(&"speed_tower")
 		),
-		"公共注册表必须包含生命强化塔与既有全部正式建筑，共17种建筑。"
+		"公共注册表必须包含生命、移速强化塔与既有全部正式建筑，共18种建筑。"
 	)
 	if config == null:
 		_finish(test_root)
@@ -482,6 +485,7 @@ func _run() -> void:
 		and not panel.recipe_rows[6].visible
 		and not panel.recipe_rows[7].visible
 		and not panel.recipe_rows[8].visible
+		and not panel.recipe_rows[9].visible
 		and progress_fill != null
 		and progress_fill.bg_color.g > 0.75,
 		"培育中心UI必须使用植物面板、嫩绿进度条，并只显示六条耗时正确的培育配方。"
@@ -973,7 +977,7 @@ func _test_inventory_placement_request(
 	)
 	_expect(
 		controller.open_selection()
-		and controller.selection_hud.available_configs.size() == 17
+		and controller.selection_hud.available_configs.size() == 18
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"excavator")
 		)
@@ -982,8 +986,11 @@ func _test_inventory_placement_request(
 		)
 		and controller.selection_hud.available_configs.has(
 			PlantDefenseRegistry.get_config(&"simple_fence")
+		)
+		and controller.selection_hud.available_configs.has(
+			PlantDefenseRegistry.get_config(&"speed_tower")
 		),
-		"T键免费调试入口必须展示包括生命强化塔在内的全部17种建筑。"
+		"T键免费调试入口必须展示包括生命、移速强化塔在内的全部18种建筑。"
 	)
 	controller.cancel_placement()
 

@@ -93,6 +93,7 @@ const COLLECTIBLE_SAKURA_ROCKET_SCENE_PATH := (
 const NORMAL_ANIMATION_PREFIX := &"normal"
 const DEFAULT_FIRE_RATE_MULTIPLIER := 1.0
 const DEFAULT_MOVE_SPEED_MULTIPLIER := 1.0
+const MAX_NETWORK_EFFECTIVE_MOVE_SPEED_RATIO := 65.535
 const CHEAT_XIRANG_AMOUNT := 1000
 const BASE_SKILL1_CHARGE_PER_SECOND := 1.0
 const SKILL1_UPGRADE_CHARGE_REDUCTION := 2.0
@@ -243,6 +244,7 @@ var timed_move_slow_multiplier := 1.0
 var network_effective_move_speed_multiplier_override: float = 0.0
 var tower_defense_fate_max_health_multiplier: float = 1.0
 var tower_defense_life_tower_bonus_ratio: float = 0.0
+var tower_defense_speed_tower_bonus: float = 0.0
 var tower_defense_fate_move_speed_multiplier: float = 1.0
 var tower_defense_fate_dash_cooldown_reduction: float = 0.0
 var tower_defense_fate_low_health_ratio := 0.0
@@ -1860,6 +1862,21 @@ func get_tower_defense_life_tower_bonus_ratio() -> float:
 	return tower_defense_life_tower_bonus_ratio
 
 
+## Applies the absolute team-wide Speed Tower bonus. Sources are aggregated by
+## the tower-defense coordinator, so repeated calls replace instead of stack.
+func set_tower_defense_speed_tower_bonus(total_bonus: float) -> void:
+	var safe_bonus := maxf(total_bonus, 0.0) if is_finite(total_bonus) else 0.0
+	if is_equal_approx(tower_defense_speed_tower_bonus, safe_bonus):
+		return
+	tower_defense_speed_tower_bonus = safe_bonus
+	if _base_stats_initialized and is_node_ready():
+		_refresh_collectible_stats()
+
+
+func get_tower_defense_speed_tower_bonus() -> float:
+	return tower_defense_speed_tower_bonus
+
+
 ## Applies the tower-defense fate modifiers as absolute run state. Calling this
 ## repeatedly is idempotent and never mutates the shared character resource.
 func configure_tower_defense_fate_modifiers(
@@ -3371,7 +3388,8 @@ func _refresh_collectible_stats(emit_changes: bool = true) -> void:
 		_base_move_speed
 		+ move_speed_bonus
 		+ research_global_move_speed_bonus
-		+ _run_move_speed_bonus,
+		+ _run_move_speed_bonus
+		+ tower_defense_speed_tower_bonus,
 		0.0
 	)
 	physical_defense = maxi(
@@ -5011,7 +5029,13 @@ func _on_dash_cooldown_timer_timeout() -> void:
 # 获取当前实际移动速度（受移速加成影响）
 func _get_effective_move_speed() -> float:
 	if network_effective_move_speed_multiplier_override > 0.0:
-		return move_speed * network_effective_move_speed_multiplier_override
+		# Snapshots express final speed relative to the character's stable starting
+		# speed. This prevents reliable tower events from briefly double-applying or
+		# omitting additive bonuses when they cross the snapshot channel.
+		return (
+			maxf(_base_move_speed, 0.0)
+			* network_effective_move_speed_multiplier_override
+		)
 	return move_speed * get_authoritative_move_speed_multiplier()
 
 
@@ -5041,6 +5065,20 @@ func get_authoritative_move_speed_multiplier() -> float:
 	)
 
 
+## Final authoritative movement speed expressed against the character's stable
+## starting speed. Snapshots use this ratio so additive stats (including Speed
+## Towers) and transient multipliers converge through one fixed-width field.
+func get_authoritative_effective_move_speed_ratio() -> float:
+	var stable_base_speed := maxf(_base_move_speed, 0.0)
+	if stable_base_speed <= 0.0:
+		return 0.0
+	return maxf(
+		move_speed * get_authoritative_move_speed_multiplier()
+		/ stable_base_speed,
+		0.0
+	)
+
+
 func _activate_tower_defense_fate_hurt_speed_penalty() -> void:
 	tower_defense_fate_hurt_speed_time_left = (
 		tower_defense_fate_hurt_move_speed_duration
@@ -5060,7 +5098,11 @@ func _update_tower_defense_fate_effects(delta: float) -> void:
 
 
 func apply_multiplayer_effective_move_speed_multiplier(multiplier: float) -> void:
-	network_effective_move_speed_multiplier_override = clampf(multiplier, 0.05, 8.0)
+	network_effective_move_speed_multiplier_override = clampf(
+		multiplier,
+		0.05,
+		MAX_NETWORK_EFFECTIVE_MOVE_SPEED_RATIO
+	)
 	_update_movement_status_visuals(Vector2.ZERO)
 
 

@@ -104,7 +104,11 @@ extends RefCounted
 ## v65：开放 P1E 的正式测试入口；神奇遭遇新增本局已遭遇历史、按历史过滤的确定性
 ## 抽取及全部耗尽后的鬼影回退。Encounter Session schema 升为 5，party economy
 ## schema 升为 7 并携带遭遇历史账本。v64 客户端无法解析新的会话与经济快照。
-const PROTOCOL_VERSION := 65
+## v66：新增塔防移速强化塔的资源与植物注册合同；玩家快照中既有移速 u16
+## 定点字段改为“Host 最终有效移速 ÷ 角色稳定初始移速”，以收敛支援塔等加法
+## 属性与瞬时倍率。包宽、RPC 表面与 8 个 ENet 通道不变；v65 客户端既缺少
+## speed_tower 资源，也会把该字段当作纯运行时倍率并重复计入加法属性，不能安全加入。
+const PROTOCOL_VERSION := 66
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

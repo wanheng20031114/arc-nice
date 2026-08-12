@@ -260,7 +260,7 @@ func _legacy_collect(peer_players: Dictionary) -> Array[SnapshotManager.PlayerSt
 			player_instance.get_primary_cooldown_ratio(), 0.0, 1.0
 		)
 		state.effective_move_speed_multiplier = (
-			player_instance.get_authoritative_move_speed_multiplier()
+			player_instance.get_authoritative_effective_move_speed_ratio()
 		)
 		states.append(state)
 	return states
