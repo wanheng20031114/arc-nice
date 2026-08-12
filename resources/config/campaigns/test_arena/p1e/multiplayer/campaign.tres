@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="WaveCampaignConfig" load_steps=3 format=3]
+
+[ext_resource type="Resource" path="res://resources/config/campaigns/test_arena/p1e/multiplayer/flow.tres" id="1_flow"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_campaign_config.gd" id="2_campaign_script"]
+
+[resource]
+script = ExtResource("2_campaign_script")
+campaign_id = &"test_grass_arena_p1e_multiplayer"
+flow_graph = ExtResource("1_flow")

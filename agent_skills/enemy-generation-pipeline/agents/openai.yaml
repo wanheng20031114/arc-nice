@@ -1,4 +1,4 @@
 interface:
   display_name: "新敌人制作 Pipeline"
-  short_description: "从视觉确认到运行时、联机与测试交付的新敌人流水线"
-  default_prompt: "使用 $enemy-generation-pipeline 规划、制作并接入一个按影响面分阶段确认和验证的新 Godot 敌人。"
+  short_description: "像素优先、分门确认并完成运行时与联机接入的敌人流水线"
+  default_prompt: "使用 $enemy-generation-pipeline 以像素优先素材、分阶段人工确认和可复现验证制作并接入一个新的 Godot 敌人。"

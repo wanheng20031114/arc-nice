@@ -74,6 +74,15 @@ const TIYI_HIGH_NOON_MAX_TARGETS := 25
 const FIRE_SLIME_TOUCH_TYPE: StringName = &"fire_slime_touch"
 const FROST_SLIME_TOUCH_TYPE: StringName = &"frost_slime_touch"
 const FROST_SORCERER_ICE_SPIKE_TYPE: StringName = &"frost_sorcerer_ice_spike"
+## Protocol-v62 appends these presentation/status acknowledgements to the
+## existing reliable player-damage confirmation. They are deliberately scoped
+## to the main-battle robot because the payload carries no arbitrary source id.
+const CONFIRMED_STATUS_MAIN_BATTLE_BURN := 1 << 0
+const CONFIRMED_STATUS_MAIN_BATTLE_SLOW := 1 << 1
+const CONFIRMED_STATUS_MASK_KNOWN := (
+	CONFIRMED_STATUS_MAIN_BATTLE_BURN
+	| CONFIRMED_STATUS_MAIN_BATTLE_SLOW
+)
 const TANGO_ELECTRIC_SURGE_FIELD_SCENE := preload(
 	"res://scene/player/tango/tango_electric_surge_field.tscn"
 )
@@ -2977,6 +2986,15 @@ func apply_player_hit_report(
 		impact_direction,
 		CombatTypes.has_flag(damage_flags, CombatTypes.DamageFlag.RANGED)
 	)
+	if (
+		_net_manager == null
+		or not is_instance_valid(_net_manager)
+		or not _net_manager.is_host()
+	):
+		return DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.NOT_AUTHORITY
+		)
 	if not has_life_dependencies() or source_id <= 0 or player_peer_id <= 0:
 		return DamageResult.rejected(
 			request,
@@ -3087,17 +3105,39 @@ func apply_player_hit_report(
 		else EnemyConfig.DamageType.PHYSICAL
 	)
 	var confirmed_cold_applied := false
+	var confirmed_status_mask := 0
 	if result.accepted and confirmed_damage > 0 and not confirmed_dead:
 		var burn_family := CombatAttackRegistry.get_burn_family(source_type)
 		var burn_level := CombatAttackRegistry.get_burn_tick_damage(burn_family)
 		if burn_family != &"" and burn_level > 0:
-			player_node.apply_burn_status(
+			var burn_applied := player_node.apply_burn_status(
 				burn_family,
 				CombatAttackRegistry.get_burn_duration(burn_family),
 				burn_level
 			)
+			if (
+				burn_applied
+				and burn_family
+					== CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY
+			):
+				confirmed_status_mask |= CONFIRMED_STATUS_MAIN_BATTLE_BURN
 		if CombatAttackRegistry.applies_cold(source_type):
 			confirmed_cold_applied = player_node.apply_cold_status()
+		var slow_family := (
+			CombatAttackRegistry.get_timed_move_slow_family(source_type)
+		)
+		if slow_family != &"":
+			var slow_applied := player_node.apply_timed_move_slow(
+				slow_family,
+				CombatAttackRegistry.get_timed_move_slow_duration(source_type),
+				CombatAttackRegistry.get_timed_move_slow_multiplier(source_type)
+			)
+			if (
+				slow_applied
+				and slow_family
+					== CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY
+			):
+				confirmed_status_mask |= CONFIRMED_STATUS_MAIN_BATTLE_SLOW
 	_show_confirmed_player_damage_number(
 		player_node,
 		confirmed_damage,
@@ -3129,6 +3169,7 @@ func apply_player_hit_report(
 			result.accepted and not confirmed_dead,
 			confirmed_cold_applied,
 			result.rejection_reason,
+			confirmed_status_mask,
 		]
 	)
 	apply_player_damage_confirmation(
@@ -3141,7 +3182,8 @@ func apply_player_hit_report(
 		int(confirmed_damage_type),
 		result.accepted and not confirmed_dead,
 		confirmed_cold_applied,
-		result.rejection_reason
+		result.rejection_reason,
+		confirmed_status_mask
 	)
 	return result
 
@@ -3156,13 +3198,15 @@ func apply_player_damage_confirmation(
 	damage_type: int,
 	grant_hit_invincibility: bool = true,
 	apply_confirmed_cold: bool = false,
-	combat_outcome: int = 0
+	combat_outcome: int = 0,
+	confirmed_status_mask: int = 0
 ) -> void:
 	if (
 		player_peer_id <= 0
 		or not _NetConstants.is_valid_network_combat_value(current_health)
 		or not _NetConstants.is_valid_network_combat_value(health_revision)
 		or not _NetConstants.is_valid_network_combat_value(confirmed_damage)
+		or not _NetConstants.is_valid_network_combat_value(confirmed_status_mask)
 		or not is_bound()
 	):
 		return
@@ -3189,6 +3233,32 @@ func apply_player_damage_confirmation(
 		player_node.play_confirmed_dodge_feedback()
 	if apply_confirmed_cold and confirmed_damage > 0 and not is_dead:
 		player_node.apply_cold_status()
+	if (
+		applied_life_state
+		and confirmed_damage > 0
+		and not is_dead
+		and _net_manager != null
+		and _net_manager.is_client()
+	):
+		var trusted_status_mask := (
+			confirmed_status_mask & CONFIRMED_STATUS_MASK_KNOWN
+		)
+		if (
+			trusted_status_mask & CONFIRMED_STATUS_MAIN_BATTLE_BURN
+		) != 0:
+			player_node.apply_burn_status(
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY,
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_DURATION_SECONDS,
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_TICK_DAMAGE
+			)
+		if (
+			trusted_status_mask & CONFIRMED_STATUS_MAIN_BATTLE_SLOW
+		) != 0:
+			player_node.apply_timed_move_slow(
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY,
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_DURATION_SECONDS,
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_MULTIPLIER
+			)
 	_show_confirmed_player_damage_number(
 		player_node,
 		clampi(confirmed_damage, 0, player_node.max_health),

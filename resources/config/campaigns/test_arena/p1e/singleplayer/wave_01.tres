@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="WaveConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_main_battle_elite.tres" id="2_main_battle"]
+[ext_resource type="Script" path="res://resources/config/waves/wave_config.gd" id="3_wave_script"]
+
+[sub_resource type="Resource" id="Resource_main_battle_entry"]
+script = ExtResource("1_entry_script")
+enemy_config = ExtResource("2_main_battle")
+count = 100
+
+[resource]
+script = ExtResource("3_wave_script")
+wave_name = "第1波 主战机器人精英测试"
+enemy_entries = Array[ExtResource("1_entry_script")]([SubResource("Resource_main_battle_entry")])
+spawn_point_mask = 3
+spawn_point_order = 1
+spawn_order = 1
+spawn_interval = 5.0
+spawn_count_per_tick = 1
+max_alive_enemies = 20
+step_id = &"wave_01"
+display_name = "第1波 主战机器人连续生成（100只）"

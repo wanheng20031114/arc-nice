@@ -159,6 +159,9 @@ const STATUS_EFFECT_EXPIRY_SCHEDULER_PATH := NodePath("/root/StatusEffectExpiryS
 const BURN_STATUS_SCHEDULER_PATH := NodePath("/root/BurnStatusScheduler")
 const BLEED_STATUS_SCHEDULER_PATH := NodePath("/root/BleedStatusScheduler")
 const COLD_STATUS_SCHEDULER_PATH := NodePath("/root/ColdStatusScheduler")
+const TIMED_MOVE_SLOW_SCHEDULER_PATH := NodePath(
+	"/root/PlayerTimedMoveSlowScheduler"
+)
 const BURN_STATUS_ID := &"burn"
 const BLEED_STATUS_ID := &"bleed"
 const DEFAULT_BLEED_TICK_INTERVAL_SECONDS := 0.5
@@ -236,6 +239,7 @@ var collectible_swift_time_left: float = 0.0
 var collectible_swift_move_speed_multiplier: float = 1.0
 var cold_stack_count := 0
 var cold_move_speed_multiplier := 1.0
+var timed_move_slow_multiplier := 1.0
 var network_effective_move_speed_multiplier_override: float = 0.0
 var tower_defense_fate_max_health_multiplier: float = 1.0
 var tower_defense_fate_move_speed_multiplier: float = 1.0
@@ -459,6 +463,7 @@ func _exit_tree() -> void:
 	potion_hide_time_left = 0.0
 	clear_damage_over_time_statuses()
 	clear_cold_status()
+	clear_timed_move_slows()
 
 
 func _apply_terrain_collision_profile() -> void:
@@ -1372,6 +1377,53 @@ func _apply_cold_runtime_state(stack_count: int, multiplier: float) -> void:
 		return
 	cold_stack_count = safe_stack_count
 	cold_move_speed_multiplier = safe_multiplier
+	_update_movement_status_visuals(Vector2.ZERO)
+
+
+func apply_timed_move_slow(
+	source_family: StringName,
+	duration: float,
+	multiplier: float
+) -> bool:
+	if (
+		is_dead
+		or not is_inside_tree()
+		or source_family == &""
+		or duration <= 0.0
+		or multiplier < 0.0
+		or multiplier >= 1.0
+	):
+		return false
+	var scheduler := get_node_or_null(TIMED_MOVE_SLOW_SCHEDULER_PATH)
+	if scheduler == null:
+		push_error("PlayerTimedMoveSlowScheduler autoload is missing.")
+		return false
+	return bool(scheduler.call(
+		"apply_slow",
+		self,
+		Callable(self, "_apply_timed_move_slow_runtime_state"),
+		source_family,
+		duration,
+		multiplier
+	))
+
+
+func clear_timed_move_slows() -> void:
+	var scheduler := (
+		get_node_or_null(TIMED_MOVE_SLOW_SCHEDULER_PATH)
+		if is_inside_tree()
+		else null
+	)
+	if scheduler != null and bool(scheduler.call("clear_target", self)):
+		return
+	_apply_timed_move_slow_runtime_state(1.0)
+
+
+func _apply_timed_move_slow_runtime_state(multiplier: float) -> void:
+	var safe_multiplier := clampf(multiplier, 0.0, 1.0)
+	if is_equal_approx(timed_move_slow_multiplier, safe_multiplier):
+		return
+	timed_move_slow_multiplier = safe_multiplier
 	_update_movement_status_visuals(Vector2.ZERO)
 
 
@@ -2486,6 +2538,7 @@ func revive_multiplayer(revive_position: Vector2, revived_health: int = -1, invi
 	var was_dead := is_dead
 	clear_damage_over_time_statuses()
 	clear_cold_status()
+	clear_timed_move_slows()
 	tower_defense_death_presentation_active = false
 	global_position = revive_position
 	reset_physics_interpolation()
@@ -2537,6 +2590,7 @@ func apply_multiplayer_death_state() -> void:
 	night_light.set_emission_allowed(false)
 	clear_damage_over_time_statuses()
 	clear_cold_status()
+	clear_timed_move_slows()
 	controls_locked = true
 	_finish_dash()
 	_stop_remote_dash_visual()
@@ -4951,12 +5005,17 @@ func get_authoritative_move_speed_multiplier() -> float:
 			* tower_defense_fate_hurt_move_speed_multiplier
 			/ move_speed
 		)
-	return (
+	var base_multiplier := (
 		current_move_speed_multiplier
 		* potion_move_speed_multiplier
 		* collectible_swift_move_speed_multiplier
-		* cold_move_speed_multiplier
 		* tower_defense_fate_move_speed_multiplier
+	)
+	# Cold and short timed slows are alternative movement constraints. Taking the
+	# lower multiplier avoids multiplying two slows into an unintended hard root.
+	return base_multiplier * minf(
+		cold_move_speed_multiplier,
+		timed_move_slow_multiplier
 	)
 
 
@@ -5222,6 +5281,7 @@ func _update_movement_status_visuals(move_direction: Vector2) -> void:
 	var is_slowed := (
 		tower_defense_fate_hurt_speed_time_left > 0.0
 		or cold_stack_count > 0
+		or timed_move_slow_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
 		or (
 			speed_buff_time_left > 0.0
 			and current_move_speed_multiplier < DEFAULT_MOVE_SPEED_MULTIPLIER
@@ -5637,6 +5697,7 @@ func _die() -> void:
 	night_light.set_emission_allowed(false)
 	clear_damage_over_time_statuses()
 	clear_cold_status()
+	clear_timed_move_slows()
 	_finish_dash()
 	_stop_remote_dash_visual()
 	multiplayer_dash_protection_time_left = 0.0

@@ -1,0 +1,29 @@
+{
+  "builder_sha256": "4bad9f54f8c9f5cd66e52419d693d3fd154be62421f2799614c11f0a686258c8",
+  "certificate_owner": "dev_tools/audit_combat_robot_main_battle_elite_animation_release.py",
+  "current_snapshot": {
+    "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_selection.json": "a90d894e19f286244e198ff4c276e2ac09495b428a670d3cc7d3728f3333328c",
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_animation_native_eligibility_report.json": "ae4607217d7c202de28dbc5a7538059c7b03df8e0c20383e26a550d50f350866",
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_legacy_animation_materials_invalid.json": "1e19233d95f3229f152c5d10255f7df1785cdb540aa004dc6679f10f3b331259"
+  },
+  "drift_count": 0,
+  "enemy_id": "combat_robot_main_battle_elite",
+  "passes": 2,
+  "runtime_paths": [],
+  "runtime_written": false,
+  "schema_version": 1,
+  "snapshot_1": {
+    "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_selection.json": "a90d894e19f286244e198ff4c276e2ac09495b428a670d3cc7d3728f3333328c",
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_animation_native_eligibility_report.json": "ae4607217d7c202de28dbc5a7538059c7b03df8e0c20383e26a550d50f350866",
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_legacy_animation_materials_invalid.json": "1e19233d95f3229f152c5d10255f7df1785cdb540aa004dc6679f10f3b331259"
+  },
+  "snapshot_2": {
+    "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_selection.json": "a90d894e19f286244e198ff4c276e2ac09495b428a670d3cc7d3728f3333328c",
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_animation_native_eligibility_report.json": "ae4607217d7c202de28dbc5a7538059c7b03df8e0c20383e26a550d50f350866",
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_legacy_animation_materials_invalid.json": "1e19233d95f3229f152c5d10255f7df1785cdb540aa004dc6679f10f3b331259"
+  },
+  "snapshot_exclusions": {
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_animation_native_eligibility_stability.json": "self-referential stability certificate"
+  },
+  "stage": "animation_approved_runtime_texture_blocked_grid_unproven"
+}

@@ -31,6 +31,7 @@ StatusEffectExpiryScheduler="*res://scene/combat/status/status_effect_expiry_sch
 BurnStatusScheduler="*res://scene/combat/status/burn_status_scheduler.gd"
 BleedStatusScheduler="*res://scene/combat/status/bleed_status_scheduler.gd"
 ColdStatusScheduler="*res://scene/combat/status/cold_status_scheduler.gd"
+PlayerTimedMoveSlowScheduler="*res://scene/combat/status/player_timed_move_slow_scheduler.gd"
 EnemyCollectibleStatusScheduler="*res://scene/combat/status/enemy_collectible_status_scheduler.gd"
 EnemyHitFlashScheduler="*res://scene/combat/feedback/enemy_hit_flash_scheduler.gd"
 

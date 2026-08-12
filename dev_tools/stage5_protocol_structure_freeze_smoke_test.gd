@@ -18,7 +18,7 @@ const EXPECTED_MP_GAME_RPC_NAME_HASH := (
 	"a46021f28a7b751d4d14ab568deac088bf47b615c265a4ef1cc4d8d75fabfa27"
 )
 const EXPECTED_MP_GAME_RPC_SIGNATURE_HASH := (
-	"843a1906f90fa51404c7fbf42c9ad7412757a931b42145da23086d3d467dcf0c"
+	"6f899f2c464a3cd7eddae293b28bf3f9a5d2db5a8081a80fd3c5fa4dae9adc17"
 )
 const EXPECTED_MP_GAME_RPC_ANNOTATION_HASH := (
 	"96e6b2976861a125f91888717319b7e26d1596b1a0c42a0c641e9932648163b8"
@@ -55,6 +55,7 @@ const EXPECTED_MODE_WIRE_KEYS := {
 	5: &"test_arena_p1b",
 	6: &"test_arena_p1c",
 	7: &"test_arena_p1d",
+	8: &"test_arena_p1e",
 }
 
 const STANDARD_GAME_SCENE_PATH := (
@@ -319,8 +320,8 @@ func _strip_quotes(value: String) -> String:
 
 
 func _test_protocol_and_wire_values() -> void:
-	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 63, "多人协议必须保持 v63。")
-	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v63 必须保持 8 个 ENet 信道。")
+	_expect(NET_CONSTANTS.PROTOCOL_VERSION == 64, "多人协议必须保持 v64。")
+	_expect(NET_CONSTANTS.CHANNEL_COUNT == 8, "v64 必须保持 8 个 ENet 信道。")
 	_expect(GameModeCatalog.MODE_STANDARD == 0, "standard wire value 必须保持 0。")
 	_expect(GameModeCatalog.MODE_TOWER_DEFENSE == 1, "tower_defense wire value 必须保持 1。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1 == 2, "test_arena_p1 wire value 必须保持 2。")
@@ -329,6 +330,7 @@ func _test_protocol_and_wire_values() -> void:
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1B == 5, "test_arena_p1b wire value 必须保持 5。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1C == 6, "test_arena_p1c wire value 必须保持 6。")
 	_expect(GameModeCatalog.MODE_TEST_ARENA_P1D == 7, "test_arena_p1d wire value 必须保持 7。")
+	_expect(GameModeCatalog.MODE_TEST_ARENA_P1E == 8, "test_arena_p1e wire value 必须保持 8。")
 	_expect(NetManagerStore.GameMode.STANDARD == 0, "NetManager standard wire value 改变。")
 	_expect(NetManagerStore.GameMode.TOWER_DEFENSE == 1, "NetManager tower wire value 改变。")
 	_expect(NetManagerStore.GameMode.TEST_ARENA_P3 == 4, "NetManager Rogue wire value 改变。")

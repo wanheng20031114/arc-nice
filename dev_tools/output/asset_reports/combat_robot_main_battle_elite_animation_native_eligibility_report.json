@@ -1,0 +1,502 @@
+{
+  "audit_scope": "seven SHA-locked user-approved raw ImageGen animation sheets",
+  "block_reason": "neither direct_native nor exact_integer_display has positive evidence for every approved raw; keyed immutable-alpha phase gcd is 1 for every sheet",
+  "builder_sha256": "4bad9f54f8c9f5cd66e52419d693d3fd154be62421f2799614c11f0a686258c8",
+  "canonical_approval": {
+    "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_selection.json",
+    "sha256": "a90d894e19f286244e198ff4c276e2ac09495b428a670d3cc7d3728f3333328c"
+  },
+  "certificate_owner": "dev_tools/audit_combat_robot_main_battle_elite_animation_release.py",
+  "determinism": {
+    "drift_count": 0,
+    "passes": 2
+  },
+  "direct_native_all_sources": false,
+  "enemy_id": "combat_robot_main_battle_elite",
+  "exact_integer_display_all_sources": false,
+  "forbidden_techniques_not_executed": [
+    "resize",
+    "downsample",
+    "resample",
+    "nearest-neighbor source reduction",
+    "cell vote",
+    "majority vote",
+    "coverage vote",
+    "per-frame scale fitting",
+    "per-frame phase fitting",
+    "semantic redraw"
+  ],
+  "grid_evidence_mode": null,
+  "human_approval_is_not_native_qualification": true,
+  "legacy_invalid_marker": {
+    "path": "dev_tools/output/asset_reports/combat_robot_main_battle_elite_legacy_animation_materials_invalid.json",
+    "sha256": "1e19233d95f3229f152c5d10255f7df1785cdb540aa004dc6679f10f3b331259"
+  },
+  "native_eligible": false,
+  "project_grid_diagnostic": {
+    "all_sources_detection_mode": "native_or_unknown",
+    "all_sources_grid_cell_size": 1,
+    "command": "python dev_tools/pixel_grid_analyzer.py <approved_raw> --json",
+    "note": "diagnostic output agrees with the stricter immutable-alpha phase proof but cannot itself grant admission",
+    "tool_path": "dev_tools/pixel_grid_analyzer.py",
+    "tool_sha256": "504ad297311e67d001aee99d73f8c939372b7e83695a909c5c0a72a9c132e3b5"
+  },
+  "runtime_paths": [],
+  "runtime_written": false,
+  "schema_version": 1,
+  "shared_grid_phase": null,
+  "shared_square_integer_scale": null,
+  "sources": {
+    "c2_circle_slash": {
+      "declared_frame_count": 8,
+      "declared_layout": [
+        4,
+        2
+      ],
+      "decoded_mode": "RGBA",
+      "decoded_rgba_sha256": "caee111cbb386c8d369671b815b9e30fe5d0d400142c21d64a2714c99d98141e",
+      "decoded_size": [
+        1536,
+        1024
+      ],
+      "direct_native": {
+        "eligible": false,
+        "reason": "raw input is a large multi-frame ImageGen review sheet, not direct 64x64 frame data; no zero-resampling direct-native lineage exists",
+        "target_frame_size": [
+          64,
+          64
+        ]
+      },
+      "exact_integer_display": {
+        "diagnostic_only_hard_chroma_predicate": "G-R>=35 and G-B>=25 and G>=70",
+        "eligible": false,
+        "keyed_alpha_transition_coordinates": {
+          "x": 933,
+          "y": 545
+        },
+        "keyed_alpha_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "max_common_square_integer_scale_from_immutable_alpha": 1,
+        "mixed_cell_certificate": null,
+        "positive_evidence": false,
+        "raw_rgba_transition_coordinates": {
+          "x": 1535,
+          "y": 1023
+        },
+        "raw_rgba_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "reason": "immutable foreground/background transitions have phase gcd 1 on both axes, so no scale >1 is possible without per-frame phase fitting or many-to-one sampling",
+        "shared_frame_canvas_origin_certificate": null,
+        "shared_grid_phase_certificate": null
+      },
+      "file_sha256": "b97cbc83d003d24f3971517153fae7ef63449a17c4eaec7d415a39b17863d450",
+      "generation_record": {
+        "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_anim_c2_circle_slash_user_anchor_only_v1_prompt.md",
+        "sha256": "3379fa0afbbacc1cadcbd036ad5456244dbe152d6ca19f1bc5dc6e5327d0e947"
+      },
+      "motion": "C2 开花圆斩",
+      "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_anim_c2_circle_slash_user_anchor_only_v1_imagegen.png",
+      "project_pixel_grid_analyzer_diagnostic": {
+        "admission_evidence": false,
+        "confidence": 0.017,
+        "detection_mode": "native_or_unknown",
+        "grid_cell_height": 1.0,
+        "grid_cell_width": 1.0,
+        "tool_path": "dev_tools/pixel_grid_analyzer.py",
+        "tool_sha256": "504ad297311e67d001aee99d73f8c939372b7e83695a909c5c0a72a9c132e3b5"
+      }
+    },
+    "c2_windup_dash": {
+      "declared_frame_count": 8,
+      "declared_layout": [
+        4,
+        2
+      ],
+      "decoded_mode": "RGBA",
+      "decoded_rgba_sha256": "5eb03eb179ded3da322686779a44a68e8b2f45df9e54b639c307b1193e1159b2",
+      "decoded_size": [
+        1536,
+        1024
+      ],
+      "direct_native": {
+        "eligible": false,
+        "reason": "raw input is a large multi-frame ImageGen review sheet, not direct 64x64 frame data; no zero-resampling direct-native lineage exists",
+        "target_frame_size": [
+          64,
+          64
+        ]
+      },
+      "exact_integer_display": {
+        "diagnostic_only_hard_chroma_predicate": "G-R>=35 and G-B>=25 and G>=70",
+        "eligible": false,
+        "keyed_alpha_transition_coordinates": {
+          "x": 823,
+          "y": 465
+        },
+        "keyed_alpha_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "max_common_square_integer_scale_from_immutable_alpha": 1,
+        "mixed_cell_certificate": null,
+        "positive_evidence": false,
+        "raw_rgba_transition_coordinates": {
+          "x": 1535,
+          "y": 1023
+        },
+        "raw_rgba_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "reason": "immutable foreground/background transitions have phase gcd 1 on both axes, so no scale >1 is possible without per-frame phase fitting or many-to-one sampling",
+        "shared_frame_canvas_origin_certificate": null,
+        "shared_grid_phase_certificate": null
+      },
+      "file_sha256": "02a9008d3acbc04fe5eb37f08d13d55fe4419a6febe8183a17f1d1a2f3b90250",
+      "generation_record": {
+        "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_anim_c2_windup_dash_user_anchor_only_v1_prompt.md",
+        "sha256": "58cf18565b9497a995ec4b2e62ee4b4e12293cca9ea86231da81a78e695a43f5"
+      },
+      "motion": "C2 交叉护胸前摇与冲锋",
+      "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_anim_c2_windup_dash_user_anchor_only_v1_imagegen.png",
+      "project_pixel_grid_analyzer_diagnostic": {
+        "admission_evidence": false,
+        "confidence": 0.026,
+        "detection_mode": "native_or_unknown",
+        "grid_cell_height": 1.0,
+        "grid_cell_width": 1.0,
+        "tool_path": "dev_tools/pixel_grid_analyzer.py",
+        "tool_sha256": "504ad297311e67d001aee99d73f8c939372b7e83695a909c5c0a72a9c132e3b5"
+      }
+    },
+    "d1": {
+      "declared_frame_count": 8,
+      "declared_layout": [
+        4,
+        2
+      ],
+      "decoded_mode": "RGBA",
+      "decoded_rgba_sha256": "843ab6fa52e7ad3e1c8f7d66c508fa9d0cb0c776eb0478c0759e9bd706a0a127",
+      "decoded_size": [
+        1536,
+        1024
+      ],
+      "direct_native": {
+        "eligible": false,
+        "reason": "raw input is a large multi-frame ImageGen review sheet, not direct 64x64 frame data; no zero-resampling direct-native lineage exists",
+        "target_frame_size": [
+          64,
+          64
+        ]
+      },
+      "exact_integer_display": {
+        "diagnostic_only_hard_chroma_predicate": "G>=R+12 and G>=B+12",
+        "eligible": false,
+        "keyed_alpha_transition_coordinates": {
+          "x": 1254,
+          "y": 555
+        },
+        "keyed_alpha_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "max_common_square_integer_scale_from_immutable_alpha": 1,
+        "mixed_cell_certificate": null,
+        "positive_evidence": false,
+        "raw_rgba_transition_coordinates": {
+          "x": 1535,
+          "y": 1023
+        },
+        "raw_rgba_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "reason": "immutable foreground/background transitions have phase gcd 1 on both axes, so no scale >1 is possible without per-frame phase fitting or many-to-one sampling",
+        "shared_frame_canvas_origin_certificate": null,
+        "shared_grid_phase_certificate": null
+      },
+      "file_sha256": "a3b13792973dd7faabffbb82f5aed8411542af43a0de446e8004114184465754",
+      "generation_record": {
+        "path": "dev_assets/source_images/combat_robot_main_battle_elite/death_animation_drafts/combat_robot_main_battle_elite_death_d1_user_anchor_only_v1_prompt.md",
+        "sha256": "a02485a7bd0c4f607d5a1bb6f15f6ae0cda7b3c43e271266f48c201a98028f1c"
+      },
+      "motion": "D1 熄灭跪倒解体",
+      "path": "dev_assets/source_images/combat_robot_main_battle_elite/death_animation_drafts/combat_robot_main_battle_elite_death_d1_user_anchor_only_v1_imagegen.png",
+      "project_pixel_grid_analyzer_diagnostic": {
+        "admission_evidence": false,
+        "confidence": 0.02,
+        "detection_mode": "native_or_unknown",
+        "grid_cell_height": 1.0,
+        "grid_cell_width": 1.0,
+        "tool_path": "dev_tools/pixel_grid_analyzer.py",
+        "tool_sha256": "504ad297311e67d001aee99d73f8c939372b7e83695a909c5c0a72a9c132e3b5"
+      }
+    },
+    "j1_drop_slash": {
+      "declared_frame_count": 8,
+      "declared_layout": [
+        4,
+        2
+      ],
+      "decoded_mode": "RGBA",
+      "decoded_rgba_sha256": "2fd6bdd74959e61c46c98872a702b0b7b9ec83bd9105e2f6e1ecb817e2a81679",
+      "decoded_size": [
+        1536,
+        1024
+      ],
+      "direct_native": {
+        "eligible": false,
+        "reason": "raw input is a large multi-frame ImageGen review sheet, not direct 64x64 frame data; no zero-resampling direct-native lineage exists",
+        "target_frame_size": [
+          64,
+          64
+        ]
+      },
+      "exact_integer_display": {
+        "diagnostic_only_hard_chroma_predicate": "G-R>=35 and G-B>=25 and G>=70",
+        "eligible": false,
+        "keyed_alpha_transition_coordinates": {
+          "x": 1071,
+          "y": 512
+        },
+        "keyed_alpha_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "max_common_square_integer_scale_from_immutable_alpha": 1,
+        "mixed_cell_certificate": null,
+        "positive_evidence": false,
+        "raw_rgba_transition_coordinates": {
+          "x": 1535,
+          "y": 1023
+        },
+        "raw_rgba_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "reason": "immutable foreground/background transitions have phase gcd 1 on both axes, so no scale >1 is possible without per-frame phase fitting or many-to-one sampling",
+        "shared_frame_canvas_origin_certificate": null,
+        "shared_grid_phase_certificate": null
+      },
+      "file_sha256": "bc4d1b46132a2f3ba54de24f71698e3334daf919231a820cd94d005e7e011371",
+      "generation_record": {
+        "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_anim_j1_drop_bilateral_slash_user_anchor_only_v6_independent_prompt.md",
+        "sha256": "f55296c788b81a8de07e8e785636aa0603ae29edd361a34fffe950c78c22f481"
+      },
+      "motion": "J1 落地瞬间双剑对称挥斩",
+      "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_anim_j1_drop_bilateral_slash_user_anchor_only_v6_independent_imagegen.png",
+      "project_pixel_grid_analyzer_diagnostic": {
+        "admission_evidence": false,
+        "confidence": 0.02,
+        "detection_mode": "native_or_unknown",
+        "grid_cell_height": 1.0,
+        "grid_cell_width": 1.0,
+        "tool_path": "dev_tools/pixel_grid_analyzer.py",
+        "tool_sha256": "504ad297311e67d001aee99d73f8c939372b7e83695a909c5c0a72a9c132e3b5"
+      }
+    },
+    "j1_takeoff": {
+      "declared_frame_count": 5,
+      "declared_layout": [
+        5,
+        1
+      ],
+      "decoded_mode": "RGBA",
+      "decoded_rgba_sha256": "c61839d18210c9b14a2e4da6754af002448652ffb417ec403c39e6726d0c568f",
+      "decoded_size": [
+        1774,
+        887
+      ],
+      "direct_native": {
+        "eligible": false,
+        "reason": "raw input is a large multi-frame ImageGen review sheet, not direct 64x64 frame data; no zero-resampling direct-native lineage exists",
+        "target_frame_size": [
+          64,
+          64
+        ]
+      },
+      "exact_integer_display": {
+        "diagnostic_only_hard_chroma_predicate": "G-R>=35 and G-B>=25 and G>=70",
+        "eligible": false,
+        "keyed_alpha_transition_coordinates": {
+          "x": 782,
+          "y": 403
+        },
+        "keyed_alpha_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "max_common_square_integer_scale_from_immutable_alpha": 1,
+        "mixed_cell_certificate": null,
+        "positive_evidence": false,
+        "raw_rgba_transition_coordinates": {
+          "x": 1773,
+          "y": 886
+        },
+        "raw_rgba_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "reason": "immutable foreground/background transitions have phase gcd 1 on both axes, so no scale >1 is possible without per-frame phase fitting or many-to-one sampling",
+        "shared_frame_canvas_origin_certificate": null,
+        "shared_grid_phase_certificate": null
+      },
+      "file_sha256": "9ad07d220650c5a85f6c05f3561469cbef9bc6fbeaa943a11c88113d8788800e",
+      "generation_record": {
+        "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_anim_j1_takeoff_user_anchor_only_v1_prompt.md",
+        "sha256": "a5b48a671b28fee8cbd65bbd662b8a9ed81da6fb7a6df53d88b149542bac7926"
+      },
+      "motion": "J1 收膝弹射起跳",
+      "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_anim_j1_takeoff_user_anchor_only_v1_imagegen.png",
+      "project_pixel_grid_analyzer_diagnostic": {
+        "admission_evidence": false,
+        "confidence": 0.021,
+        "detection_mode": "native_or_unknown",
+        "grid_cell_height": 1.0,
+        "grid_cell_width": 1.0,
+        "tool_path": "dev_tools/pixel_grid_analyzer.py",
+        "tool_sha256": "504ad297311e67d001aee99d73f8c939372b7e83695a909c5c0a72a9c132e3b5"
+      }
+    },
+    "m1": {
+      "declared_frame_count": 8,
+      "declared_layout": [
+        4,
+        2
+      ],
+      "decoded_mode": "RGBA",
+      "decoded_rgba_sha256": "a919593cdcd1660f27c16a0559af0d14d7b990c8d95c02f0216da5c3ef5c1b0e",
+      "decoded_size": [
+        1536,
+        1024
+      ],
+      "direct_native": {
+        "eligible": false,
+        "reason": "raw input is a large multi-frame ImageGen review sheet, not direct 64x64 frame data; no zero-resampling direct-native lineage exists",
+        "target_frame_size": [
+          64,
+          64
+        ]
+      },
+      "exact_integer_display": {
+        "diagnostic_only_hard_chroma_predicate": "G>=R+8 and G>=B+8",
+        "eligible": false,
+        "keyed_alpha_transition_coordinates": {
+          "x": 1319,
+          "y": 583
+        },
+        "keyed_alpha_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "max_common_square_integer_scale_from_immutable_alpha": 1,
+        "mixed_cell_certificate": null,
+        "positive_evidence": false,
+        "raw_rgba_transition_coordinates": {
+          "x": 1535,
+          "y": 1023
+        },
+        "raw_rgba_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "reason": "immutable foreground/background transitions have phase gcd 1 on both axes, so no scale >1 is possible without per-frame phase fitting or many-to-one sampling",
+        "shared_frame_canvas_origin_certificate": null,
+        "shared_grid_phase_certificate": null
+      },
+      "file_sha256": "cae3be91dec538c919c7337eeb53f189316592891c084cf90f911ecdd7301942",
+      "generation_record": {
+        "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_m1_user_anchor_only_v4_v5_upper_body_y_lineage.md",
+        "sha256": "19b76d63b82fab361e6ea8b971e31c6673bde1304b2a64fb6be967e5ce483f11"
+      },
+      "motion": "M1 重踏换脚",
+      "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_m1_user_anchor_only_v5_upper_body_y_targeted_regen_imagegen.png",
+      "project_pixel_grid_analyzer_diagnostic": {
+        "admission_evidence": false,
+        "confidence": 0.247,
+        "detection_mode": "native_or_unknown",
+        "grid_cell_height": 1.0,
+        "grid_cell_width": 1.0,
+        "tool_path": "dev_tools/pixel_grid_analyzer.py",
+        "tool_sha256": "504ad297311e67d001aee99d73f8c939372b7e83695a909c5c0a72a9c132e3b5"
+      }
+    },
+    "n2": {
+      "declared_frame_count": 8,
+      "declared_layout": [
+        4,
+        2
+      ],
+      "decoded_mode": "RGBA",
+      "decoded_rgba_sha256": "fe711db35c75ec638378256eb45923c99dd3c1d625ab24e2b023c3a314e0e1fd",
+      "decoded_size": [
+        1536,
+        1024
+      ],
+      "direct_native": {
+        "eligible": false,
+        "reason": "raw input is a large multi-frame ImageGen review sheet, not direct 64x64 frame data; no zero-resampling direct-native lineage exists",
+        "target_frame_size": [
+          64,
+          64
+        ]
+      },
+      "exact_integer_display": {
+        "diagnostic_only_hard_chroma_predicate": "G>=R+8 and G>=B+8",
+        "eligible": false,
+        "keyed_alpha_transition_coordinates": {
+          "x": 899,
+          "y": 520
+        },
+        "keyed_alpha_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "max_common_square_integer_scale_from_immutable_alpha": 1,
+        "mixed_cell_certificate": null,
+        "positive_evidence": false,
+        "raw_rgba_transition_coordinates": {
+          "x": 1535,
+          "y": 1023
+        },
+        "raw_rgba_transition_phase_gcd": {
+          "x": 1,
+          "y": 1
+        },
+        "reason": "immutable foreground/background transitions have phase gcd 1 on both axes, so no scale >1 is possible without per-frame phase fitting or many-to-one sampling",
+        "shared_frame_canvas_origin_certificate": null,
+        "shared_grid_phase_certificate": null
+      },
+      "file_sha256": "7cb231104872f4e8b6079733faab764094665ca725cdd8902badb780d4e8e68f",
+      "generation_record": {
+        "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_n2_parallel_heavy_press_anchor_only_v3_independent_prompt.md",
+        "sha256": "30c9ce7be4971ee4c18ec7981f03c3b42e6ec235c38178f8387ef0571bb19ea6"
+      },
+      "motion": "N2 并行重压",
+      "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_n2_parallel_heavy_press_anchor_only_v3_independent_imagegen.png",
+      "project_pixel_grid_analyzer_diagnostic": {
+        "admission_evidence": false,
+        "confidence": 0.074,
+        "detection_mode": "native_or_unknown",
+        "grid_cell_height": 1.0,
+        "grid_cell_width": 1.0,
+        "tool_path": "dev_tools/pixel_grid_analyzer.py",
+        "tool_sha256": "504ad297311e67d001aee99d73f8c939372b7e83695a909c5c0a72a9c132e3b5"
+      }
+    }
+  },
+  "stage": "animation_approved_runtime_texture_blocked_grid_unproven",
+  "target_atlas_size": [
+    512,
+    448
+  ],
+  "target_native_frame_size": [
+    64,
+    64
+  ],
+  "third_gate_preview_written": false
+}

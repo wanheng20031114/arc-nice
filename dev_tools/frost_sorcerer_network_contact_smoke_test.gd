@@ -442,13 +442,14 @@ func _test_host_authoritative_damage_and_cold_guards() -> void:
 		and hit_player.last_damage_taken == 16
 		and not hit_player.is_dead
 		and _get_cold_stack_count(hit_player) == 1
-		and damage_event_arguments.size() == 10
+		and damage_event_arguments.size() == 11
 		and int(damage_event_arguments[4]) == 16
 		and int(damage_event_arguments[6])
 			== int(EnemyConfig.DamageType.MAGIC)
 		and bool(damage_event_arguments[8])
 		and int(damage_event_arguments[9])
-			== CombatTypes.DamageRejectionReason.NONE,
+			== CombatTypes.DamageRejectionReason.NONE
+		and int(damage_event_arguments[10]) == 0,
 		"Host Frost contact must replace forged 999 physical damage with the recorded 20 magic damage, apply the 20-percent magic-defense result once, and add exactly L1 cold while the player survives."
 	)
 

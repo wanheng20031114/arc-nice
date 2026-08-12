@@ -151,7 +151,7 @@ func _test_main_menu_entry() -> void:
 		and test_choice_overlay.arena_selected.is_connected(
 			Callable(main_menu, "_on_test_arena_selected")
 		),
-		"Main menu must own and connect the P1A/P1B/P1C/P1D/P2/P3 test-arena selector."
+		"Main menu must own and connect the P1A/P1B/P1C/P1D/P1E/P2/P3 test-arena selector."
 	)
 	if test_choice_overlay == null or character_overlay == null:
 		return
@@ -173,6 +173,9 @@ func _test_main_menu_entry() -> void:
 	var p1d_button := test_choice_overlay.get_node(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1D/PageMargin/Content/EnterButton"
 	) as Button
+	var p1e_button := test_choice_overlay.get_node(
+		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1E/PageMargin/Content/EnterButton"
+	) as Button
 	var p1b_description := test_choice_overlay.get_node(
 		"Root/Center/Panel/PanelMargin/Layout/Tabs/P1B/PageMargin/Content/Description"
 	) as Label
@@ -187,8 +190,15 @@ func _test_main_menu_entry() -> void:
 		and p1b_button.text == "进入 P1B 机器人测试"
 		and p1c_button.text == "进入 P1C 纸箱怪测试"
 		and p1d_button.text == "进入 P1D 地下教会测试"
+		and p1e_button.text == "进入 P1E 主战机器人测试"
 		and p2_button.text == "进入 P2 单日流程",
-		"Test selector must expose authored P1A, P1B, P1C, P1D and P2 actions."
+		"Test selector may retain the authored P1E page while publication is gated."
+	)
+	_expect(
+		test_choice_overlay.tabs.is_tab_hidden(
+			TestArenaChoiceOverlay.P1E_TAB_INDEX
+		),
+		"The selector must hide P1E until its native runtime visuals are published."
 	)
 	_expect(
 		p1b_description.text
@@ -243,6 +253,13 @@ func _test_main_menu_entry() -> void:
 	)
 	test_choice_overlay.close()
 	await process_frame
+
+	main_menu.call("_on_test_arena_selected", MainMenu.TEST_ARENA_P1E_ID)
+	_expect(
+		not character_overlay.is_open()
+		and main_menu.pending_test_arena_id != MainMenu.TEST_ARENA_P1E_ID,
+		"MainMenu must reject a direct P1E selection attempt that bypasses the hidden tab."
+	)
 
 	test_arena_button.pressed.emit()
 	await process_frame

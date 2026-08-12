@@ -1,7 +1,7 @@
 extends SceneTree
 
 const CATALOG_PATH := "res://scene/game_modes/game_mode_catalog.tres"
-const EXPECTED_MODE_IDS := [0, 1, 2, 3, 4, 5, 6, 7]
+const EXPECTED_MODE_IDS := [0, 1, 2, 3, 4, 5, 6, 7, 8]
 const EXPECTED_WIRE_KEYS := [
 	"standard",
 	"tower_defense",
@@ -11,6 +11,7 @@ const EXPECTED_WIRE_KEYS := [
 	"test_arena_p1b",
 	"test_arena_p1c",
 	"test_arena_p1d",
+	"test_arena_p1e",
 ]
 const EXPECTED_LOBBY_ORDER := [0, 1, 2, 5, 6, 7, 3, 4]
 
@@ -67,6 +68,13 @@ func _run() -> void:
 		GameModeCatalog.resolve_wire_key_or_default("unknown") == 0,
 		"Unknown wire keys must resolve to standard mode."
 	)
+	_expect(
+		GameModeCatalog.is_valid_mode_id(GameModeCatalog.MODE_TEST_ARENA_P1E)
+		and not GameModeCatalog.is_mode_selectable(
+			GameModeCatalog.MODE_TEST_ARENA_P1E
+		),
+		"P1E must remain known to v62 while its unpublished runtime is not selectable."
+	)
 
 	var lobby_mode_ids := PackedInt32Array()
 	for definition in GameModeCatalog.get_lobby_definitions():
@@ -80,6 +88,7 @@ func _run() -> void:
 	var p1b_definition := GameModeCatalog.get_definition(5)
 	var p1c_definition := GameModeCatalog.get_definition(6)
 	var p1d_definition := GameModeCatalog.get_definition(7)
+	var p1e_definition := GameModeCatalog.get_definition(8)
 	var p2_definition := GameModeCatalog.get_definition(3)
 	var standard_definition := GameModeCatalog.get_definition(0)
 	_expect(
@@ -88,14 +97,14 @@ func _run() -> void:
 		== "res://scene/game_modes/standard/multiplayer/standard_multiplayer_session.tscn",
 		"Standard mode must own its multiplayer session entry."
 	)
-	for definition in [tower_definition, p1_definition, p1b_definition, p1c_definition, p1d_definition, p2_definition]:
+	for definition in [tower_definition, p1_definition, p1b_definition, p1c_definition, p1d_definition, p1e_definition, p2_definition]:
 		_expect(
 			definition != null
 			and definition.multiplayer_entry_scene_path
 			== "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_session.tscn",
 			"Tower-defense modes must share the tower-defense session entry."
 		)
-	for definition in [tower_definition, p1_definition, p1b_definition, p1c_definition, p1d_definition, p2_definition]:
+	for definition in [tower_definition, p1_definition, p1b_definition, p1c_definition, p1d_definition, p1e_definition, p2_definition]:
 		var preload_paths := GameModeCatalog.get_preload_resource_paths(definition)
 		_expect(
 			preload_paths.size() == 51,

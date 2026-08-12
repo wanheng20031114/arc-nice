@@ -1,0 +1,56 @@
+[gd_resource type="Resource" script_class="CombatRobotMainBattleEliteConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/enemies/combat_robot_main_battle_elite_config.gd" id="1_config"]
+[ext_resource type="Resource" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_drop"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_config")
+display_name = "主战机器人"
+category_tags = PackedStringArray("mechanical_life")
+enemy_scene = ExtResource("3_scene")
+max_health = 800
+attack_damage = 80
+physical_defense = 40
+magic_defense = 35
+move_speed = 28.0
+home_damage = 2
+xirang_kill_reward = 10
+drop_table = ExtResource("2_drop")
+attack_animation_name = &"attack"
+attack_range = 32.0
+attack_angle_degrees = 90.0
+attack_windup = 0.35
+attack_damage_delay = 0.0666667
+attack_slash_duration = 0.333333
+attack_cooldown = 1.33
+skill1_windup_animation_name = &"skill1_windup"
+skill1_dash_animation_name = &"skill1_dash"
+skill1_circle_animation_name = &"skill1_circle_slash"
+skill1_initial_delay = 1.5
+skill1_trigger_range = 160.0
+skill1_windup = 0.5
+skill1_dash_speed = 240.0
+skill1_dash_duration = 0.75
+skill1_circle_radius = 36.0
+skill1_damage_multiplier = 1.2
+skill1_recovery = 0.4
+skill1_cooldown = 10.0
+skill2_takeoff_animation_name = &"skill2_takeoff"
+skill2_drop_animation_name = &"skill2_drop_slash"
+skill2_initial_delay = 4.0
+skill2_trigger_range = 220.0
+skill2_takeoff_duration = 0.15
+skill2_tracking_duration = 3.0
+skill2_cross_speed = 50.0
+skill2_drop_duration = 0.18
+skill2_fan_range = 48.0
+skill2_fan_angle_degrees = 120.0
+skill2_damage_multiplier = 1.5
+skill2_recovery = 0.333333
+skill2_cooldown = 8.0
+burn_duration = 5.0
+burn_level = 5
+skill2_slow_duration = 1.0
+skill2_slow_multiplier = 0.75
+shape_query_batch_size = 64

@@ -7,6 +7,7 @@ const TEST_ARENA_P1_ID := TEST_ARENA_P1A_ID
 const TEST_ARENA_P1B_ID := &"p1b"
 const TEST_ARENA_P1C_ID := &"p1c"
 const TEST_ARENA_P1D_ID := &"p1d"
+const TEST_ARENA_P1E_ID := &"p1e"
 const TEST_ARENA_P2_ID := &"p2"
 const TEST_ARENA_P3_ID := &"p3"
 const TEST_ARENA_MODE_IDS := {
@@ -14,6 +15,7 @@ const TEST_ARENA_MODE_IDS := {
 	TEST_ARENA_P1B_ID: GameModeCatalog.MODE_TEST_ARENA_P1B,
 	TEST_ARENA_P1C_ID: GameModeCatalog.MODE_TEST_ARENA_P1C,
 	TEST_ARENA_P1D_ID: GameModeCatalog.MODE_TEST_ARENA_P1D,
+	TEST_ARENA_P1E_ID: GameModeCatalog.MODE_TEST_ARENA_P1E,
 	TEST_ARENA_P2_ID: GameModeCatalog.MODE_TEST_ARENA_P2,
 	TEST_ARENA_P3_ID: GameModeCatalog.MODE_TEST_ARENA_P3,
 }
@@ -144,6 +146,10 @@ func _on_test_arena_selected(arena_id: StringName) -> void:
 	if not TEST_ARENA_MODE_IDS.has(arena_id):
 		push_error("Main menu received an invalid test arena: %s" % arena_id)
 		return
+	var mode_id := int(TEST_ARENA_MODE_IDS[arena_id])
+	if not GameModeCatalog.is_mode_selectable(mode_id):
+		push_warning("Main menu rejected an unpublished test arena: %s" % arena_id)
+		return
 	pending_test_arena_id = arena_id
 	_open_singleplayer_character_selection(SingleplayerDestination.TEST_ARENA)
 
@@ -164,7 +170,10 @@ func _on_character_confirmed(character_id: StringName) -> void:
 		push_error("Main menu received an invalid character selection: %s" % character_id)
 		return
 	var definition := _get_pending_singleplayer_definition()
-	if definition == null:
+	if (
+		definition == null
+		or not GameModeCatalog.is_mode_selectable(definition.mode_id)
+	):
 		push_error("Main menu could not resolve the selected game mode.")
 		return
 	run_state.begin_new_run(character_id, definition.include_starting_inventory)
@@ -172,6 +181,15 @@ func _on_character_confirmed(character_id: StringName) -> void:
 
 
 func _begin_singleplayer_load(scene_path: String) -> void:
+	var definition := GameModeCatalog.get_definition_by_singleplayer_entry(
+		scene_path
+	)
+	if (
+		definition == null
+		or not GameModeCatalog.is_mode_selectable(definition.mode_id)
+	):
+		push_warning("Main menu rejected an unpublished singleplayer scene: %s" % scene_path)
+		return
 	var load_coordinator := get_node_or_null("/root/GameLoadCoordinator")
 	if load_coordinator != null and load_coordinator.has_method("begin_singleplayer"):
 		load_coordinator.call("begin_singleplayer", scene_path)

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyCodexEntryConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://resources/config/encyclopedia/enemy_codex_entry_config.gd" id="1_entry"]
+[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_main_battle_elite.tres" id="2_enemy"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_main_battle_elite.tres" id="3_preview"]
+
+[resource]
+script = ExtResource("1_entry")
+entry_id = &"combat_robot_main_battle_elite"
+enemy_config = ExtResource("2_enemy")
+family_id = &"mechanical_life"
+family_label = "机械生命"
+rank = 1
+sort_order = 570
+visible_in_codex = true
+description = "双持重剑的精英主战机器人。它会锁定方向高速冲锋并以双剑圆斩点燃周围目标，也会短暂升空，以限速移动的十字追踪目标后落地发动双剑扇斩。"
+traits = PackedStringArray("精英", "双持重剑", "冲锋落砸")
+preview_frames = ExtResource("3_preview")
+preview_animation = &"move"
+preview_scale = Vector2(1, 1)
+preview_offset = Vector2(0, 0)

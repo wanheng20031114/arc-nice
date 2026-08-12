@@ -64,6 +64,9 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_eroded_slime_frost.tres"),
 	preload("res://resources/config/enemies/stone_eroded_slime_green.tres"),
 ]
+const UNPUBLISHED_ENEMY_CONFIG_FILE_NAMES := [
+	"combat_robot_main_battle_elite.tres",
+]
 const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
@@ -448,7 +451,7 @@ func _test_enemy_drop_and_category_contract() -> void:
 	)
 	_expect(
 		int(category_counts["mechanical_life"]) == 10,
-		"Exactly the ten normal and elite combat robot configs must carry the mechanical_life category tag."
+		"Exactly the ten published normal and elite combat robot configs must carry the mechanical_life category tag."
 	)
 	_expect(
 		int(category_counts["slime"]) == 10,
@@ -492,6 +495,8 @@ func _get_authored_enemy_config_paths() -> Array[String]:
 		"res://resources/config/enemies"
 	):
 		if not file_name.ends_with(".tres"):
+			continue
+		if file_name in UNPUBLISHED_ENEMY_CONFIG_FILE_NAMES:
 			continue
 		var resource_path := (
 			"res://resources/config/enemies/" + file_name

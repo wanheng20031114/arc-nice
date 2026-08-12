@@ -3,7 +3,7 @@ class_name GameModeCatalog
 
 const CATALOG_RESOURCE_PATH := "res://scene/game_modes/game_mode_catalog.tres"
 
-# These values remain part of the v61 room/wire contract. Keep every assignment
+# These values remain part of the v62 room/wire contract. Keep every assignment
 # explicit so inserting or reordering a lobby item can never renumber a mode.
 const MODE_STANDARD := 0
 const MODE_TOWER_DEFENSE := 1
@@ -13,6 +13,7 @@ const MODE_TEST_ARENA_P3 := 4
 const MODE_TEST_ARENA_P1B := 5
 const MODE_TEST_ARENA_P1C := 6
 const MODE_TEST_ARENA_P1D := 7
+const MODE_TEST_ARENA_P1E := 8
 const DEFAULT_MODE_ID := MODE_STANDARD
 const TOWER_DEFENSE_PRELOAD_PROFILE := &"tower_defense"
 
@@ -119,6 +120,14 @@ static func is_valid_mode_id(mode_id: int) -> bool:
 	return get_definition(mode_id) != null
 
 
+## Returns whether a known wire mode is currently safe to expose and enter.
+## P1E remains frozen in the v62 catalog while its native runtime art release is
+## blocked, so callers must use this gate rather than treating "known" as
+## "published".
+static func is_mode_selectable(mode_id: int) -> bool:
+	return is_valid_mode_id(mode_id) and mode_id != MODE_TEST_ARENA_P1E
+
+
 static func resolve_wire_key_or_default(wire_key: String) -> int:
 	var definition := get_definition_by_wire_key(wire_key)
 	return definition.mode_id if definition != null else DEFAULT_MODE_ID
@@ -185,7 +194,7 @@ func find_definition_by_singleplayer_entry(
 func list_lobby_definitions() -> Array[GameModeDefinition]:
 	var result: Array[GameModeDefinition] = []
 	for definition in definitions:
-		if definition != null:
+		if definition != null and is_mode_selectable(definition.mode_id):
 			result.append(definition)
 	result.sort_custom(func(a: GameModeDefinition, b: GameModeDefinition) -> bool:
 		return a.lobby_order < b.lobby_order
@@ -198,8 +207,8 @@ func validate_definitions() -> PackedStringArray:
 	var seen_ids := {}
 	var seen_keys := {}
 	var seen_orders := {}
-	if definitions.size() != 8:
-		errors.append("catalog must contain exactly 8 frozen v61 modes")
+	if definitions.size() != 9:
+		errors.append("catalog must contain exactly 9 frozen v62 modes")
 	for definition in definitions:
 		if definition == null:
 			errors.append("catalog contains a null definition")
@@ -245,6 +254,7 @@ func validate_definitions() -> PackedStringArray:
 		MODE_TEST_ARENA_P1B,
 		MODE_TEST_ARENA_P1C,
 		MODE_TEST_ARENA_P1D,
+		MODE_TEST_ARENA_P1E,
 	]:
 		if not seen_ids.has(expected_mode_id):
 			errors.append("missing frozen mode id: %d" % expected_mode_id)

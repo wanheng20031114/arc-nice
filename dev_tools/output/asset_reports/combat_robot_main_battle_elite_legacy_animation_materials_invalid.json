@@ -1,0 +1,26 @@
+{
+  "blocked_legacy_builders": [
+    "dev_tools/build_combat_robot_main_battle_elite_animation_draft_previews.py",
+    "dev_tools/build_combat_robot_main_battle_elite_native_candidate.py"
+  ],
+  "canonical_approval": {
+    "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_selection.json",
+    "sha256": "a90d894e19f286244e198ff4c276e2ac09495b428a670d3cc7d3728f3333328c"
+  },
+  "certificate_valid": false,
+  "enemy_id": "combat_robot_main_battle_elite",
+  "invalidated_archived_direct_native_tree": "dev_assets/rejected_previews/combat_robot_main_battle_elite/direct_native_rejected_20260812",
+  "invalidated_certificates": [
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_animdraft_manifest.json",
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_animdraft_report.json",
+    "dev_tools/output/asset_reports/combat_robot_main_battle_elite_animdraft_stability.json"
+  ],
+  "invalidated_output_glob": "dev_assets/generated_previews/combat_robot_main_battle_elite_animdraft_*",
+  "promotion_forbidden": true,
+  "reason": "old animdraft previews/certificates used superseded or compressed/non-integer material and cannot be promoted or regenerated as canonical outputs",
+  "recoverable_by_rerun": false,
+  "runtime_paths": [],
+  "runtime_written": false,
+  "schema_version": 1,
+  "stage": "legacy_animation_materials_invalid"
+}

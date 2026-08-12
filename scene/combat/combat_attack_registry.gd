@@ -31,6 +31,22 @@ const FIRE_SORCERER_ELITE_VOLLEY := &"fire_sorcerer_elite_fireball_volley"
 const FIRE_SLIME_TOUCH := &"fire_slime_touch"
 const FROST_SLIME_TOUCH := &"frost_slime_touch"
 const FROST_SORCERER_ICE_SPIKE := &"frost_sorcerer_ice_spike"
+const COMBAT_ROBOT_MAIN_BATTLE_SKILL1 := (
+	&"combat_robot_main_battle_elite_skill1_circle"
+)
+const COMBAT_ROBOT_MAIN_BATTLE_SKILL2 := (
+	&"combat_robot_main_battle_elite_skill2_drop"
+)
+const COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY := (
+	&"combat_robot_main_battle_elite_burn"
+)
+const COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY := (
+	&"combat_robot_main_battle_elite_skill2_slow"
+)
+const COMBAT_ROBOT_MAIN_BATTLE_BURN_DURATION_SECONDS := 5.0
+const COMBAT_ROBOT_MAIN_BATTLE_BURN_TICK_DAMAGE := 5
+const COMBAT_ROBOT_MAIN_BATTLE_SLOW_DURATION_SECONDS := 1.0
+const COMBAT_ROBOT_MAIN_BATTLE_SLOW_MULTIPLIER := 0.75
 const FIRE_SLIME_BURN_DURATION_SECONDS := 3.0
 const FIRE_SLIME_BURN_TICK_DAMAGE := 10
 const FIRE_SORCERER_CONFIG: FireSorcererConfig = preload(
@@ -165,6 +181,12 @@ static func is_ranged(wire_id: int) -> bool:
 static func get_burn_family(source_type: StringName) -> StringName:
 	if source_type == FIRE_SLIME_TOUCH:
 		return FIRE_SLIME_TOUCH
+	if source_type in [
+		COMBAT_ROBOT_MAIN_BATTLE_SKILL1,
+		COMBAT_ROBOT_MAIN_BATTLE_SKILL2,
+		COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY,
+	]:
+		return COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY
 	match source_type:
 		&"fire_sorcerer_fireball_a", \
 		&"fire_sorcerer_fireball_b", \
@@ -188,6 +210,8 @@ static func get_burn_duration(source_type: StringName) -> float:
 			return FIRE_SORCERER_CONFIG.burn_duration
 		FIRE_SORCERER_ELITE_VOLLEY:
 			return FIRE_SORCERER_ELITE_CONFIG.burn_duration
+		COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY:
+			return COMBAT_ROBOT_MAIN_BATTLE_BURN_DURATION_SECONDS
 		_:
 			return 0.0
 
@@ -200,6 +224,8 @@ static func get_burn_tick_damage(source_type: StringName) -> int:
 			return FIRE_SORCERER_CONFIG.burn_level
 		FIRE_SORCERER_ELITE_VOLLEY:
 			return FIRE_SORCERER_ELITE_CONFIG.burn_level
+		COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY:
+			return COMBAT_ROBOT_MAIN_BATTLE_BURN_TICK_DAMAGE
 		_:
 			return 0
 
@@ -208,4 +234,30 @@ static func applies_cold(source_type: StringName) -> bool:
 	return (
 		source_type == FROST_SLIME_TOUCH
 		or source_type == FROST_SORCERER_ICE_SPIKE
+	)
+
+
+## Host-only melee/area attacks use semantic source names but deliberately own
+## no untrusted player-hit wire ID.
+static func get_timed_move_slow_family(source_type: StringName) -> StringName:
+	return (
+		COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY
+		if source_type == COMBAT_ROBOT_MAIN_BATTLE_SKILL2
+		else &""
+	)
+
+
+static func get_timed_move_slow_duration(source_type: StringName) -> float:
+	return (
+		COMBAT_ROBOT_MAIN_BATTLE_SLOW_DURATION_SECONDS
+		if get_timed_move_slow_family(source_type) != &""
+		else 0.0
+	)
+
+
+static func get_timed_move_slow_multiplier(source_type: StringName) -> float:
+	return (
+		COMBAT_ROBOT_MAIN_BATTLE_SLOW_MULTIPLIER
+		if get_timed_move_slow_family(source_type) != &""
+		else 1.0
 	)

@@ -1093,6 +1093,16 @@ func apply_combat_damage(request: DamageRequest) -> DamageResult:
 			current_health
 		)
 		return last_damage_result
+	if (
+		is_temporarily_direct_damage_immune()
+		and not request.has_flag(CombatTypes.DamageFlag.PERIODIC)
+	):
+		last_damage_result = DamageResult.rejected(
+			request,
+			CombatTypes.DamageRejectionReason.INVULNERABLE,
+			current_health
+		)
+		return last_damage_result
 
 	var result := DamageResolver.resolve(
 		request,
@@ -1981,6 +1991,13 @@ func _on_combat_damage_applied(_result: DamageResult) -> void:
 	pass
 
 
+## Variant hook for short states that must reject newly arriving direct hits.
+## Periodic status requests deliberately bypass this hook so already-established
+## burn/bleed timelines can still kill an untargetable enemy.
+func is_temporarily_direct_damage_immune() -> bool:
+	return false
+
+
 func apply_collectible_status(
 	status_id: StringName,
 	source_id: int,
@@ -2180,9 +2197,11 @@ func _advance_collectible_status_effects_to(target_time: float) -> void:
 				int(status.get("source_id", 0)),
 				&"periodic_status"
 			)
-			tick_request.with_flag(CombatTypes.DamageFlag.PERIODIC)
-			tick_request.with_flag(
-				CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES
+			tick_request.flags = (
+				CombatTypes.DamageFlag.PERIODIC
+				| CombatTypes.DamageFlag.BYPASS_INVULNERABILITY
+				| CombatTypes.DamageFlag.NO_HIT_INVINCIBILITY
+				| CombatTypes.DamageFlag.SUPPRESS_HIT_PARTICLES
 			)
 			apply_combat_damage(tick_request)
 			if is_dead:

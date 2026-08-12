@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scene/game_modes/tower_defense/test_arenas/test_grass_arena.tscn" id="1_p1a"]
+[ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1e.tres" id="2_mode_definition"]
+
+[node name="TestGrassArenaP1E" instance=ExtResource("1_p1a")]
+mode_definition = ExtResource("2_mode_definition")
+test_scene_label = "P1E"
+test_entry_announcement_text = "测试场景 P1E"
+test_environment_title = "主战机器人测试场景"
+
+[node name="Hint" parent="TestControlsHint" index="0"]
+text = "草地测试场景 P1E｜主战机器人精英压力测试\nT：自由放置植物　L：切换昼夜　Del：摧毁周围3格植物"

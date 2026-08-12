@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="GameModeCatalog" load_steps=10 format=3]
+[gd_resource type="Resource" script_class="GameModeCatalog" load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scene/game_modes/game_mode_catalog.gd" id="1_catalog"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/standard.tres" id="2_standard"]
@@ -7,9 +7,10 @@
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1b.tres" id="5_p1b"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1c.tres" id="6_p1c"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1d.tres" id="7_p1d"]
+[ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p1e.tres" id="10_p1e"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p2.tres" id="8_p2"]
 [ext_resource type="Resource" path="res://scene/game_modes/definitions/test_arena_p3.tres" id="9_p3"]
 
 [resource]
 script = ExtResource("1_catalog")
-definitions = Array[Resource]([ExtResource("2_standard"), ExtResource("3_tower"), ExtResource("4_p1"), ExtResource("5_p1b"), ExtResource("6_p1c"), ExtResource("7_p1d"), ExtResource("8_p2"), ExtResource("9_p3")])
+definitions = Array[Resource]([ExtResource("2_standard"), ExtResource("3_tower"), ExtResource("4_p1"), ExtResource("5_p1b"), ExtResource("6_p1c"), ExtResource("7_p1d"), ExtResource("10_p1e"), ExtResource("8_p2"), ExtResource("9_p3")])

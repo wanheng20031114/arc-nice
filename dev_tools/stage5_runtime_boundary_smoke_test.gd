@@ -253,10 +253,11 @@ func _test_mode_adapters_fail_closed() -> void:
 		GameModeCatalog.MODE_TEST_ARENA_P1B,
 		GameModeCatalog.MODE_TEST_ARENA_P1C,
 		GameModeCatalog.MODE_TEST_ARENA_P1D,
+		GameModeCatalog.MODE_TEST_ARENA_P1E,
 	]:
 		_expect(
 			tower_adapter.accepts_game_mode_id(tower_mode_id),
-			"塔防适配器必须接纳塔防及 P1/P2/P1B/P1C/P1D 测试场 wire id。"
+			"塔防适配器必须接纳塔防及 P1/P2/P1B/P1C/P1D/P1E 测试场 wire id。"
 		)
 	_expect(
 		not tower_adapter.accepts_game_mode_id(

@@ -43,6 +43,7 @@ enum GameMode {
 	TEST_ARENA_P1B = GameModeCatalog.MODE_TEST_ARENA_P1B,
 	TEST_ARENA_P1C = GameModeCatalog.MODE_TEST_ARENA_P1C,
 	TEST_ARENA_P1D = GameModeCatalog.MODE_TEST_ARENA_P1D,
+	TEST_ARENA_P1E = GameModeCatalog.MODE_TEST_ARENA_P1E,
 }
 enum ConnectionState {
 	DISCONNECTED,
@@ -1596,7 +1597,7 @@ func _set_current_game_mode(game_mode: GameMode) -> void:
 
 
 func _is_valid_game_mode(game_mode: int) -> bool:
-	return GameModeCatalog.is_valid_mode_id(game_mode)
+	return GameModeCatalog.is_mode_selectable(game_mode)
 
 
 func _is_valid_room_max_players(max_players: int) -> bool:

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="GameModeDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scene/game_modes/game_mode_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+mode_id = 8
+wire_key = &"test_arena_p1e"
+display_name = "测试场景 P1E"
+lobby_label = "测试场 P1E"
+lobby_icon_path = "res://resources/texture/ui/multiplayer/mode_test_p1.png"
+lobby_order = 6
+singleplayer_entry_scene_path = "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1e.tscn"
+multiplayer_entry_scene_path = "res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_session.tscn"
+multiplayer_runtime_scene_path = "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1e.tscn"
+singleplayer_campaign_path = "res://resources/config/campaigns/test_arena/p1e/singleplayer/campaign.tres"
+multiplayer_campaign_path = "res://resources/config/campaigns/test_arena/p1e/multiplayer/campaign.tres"
+preload_profile = &"tower_defense"
+runtime_load_weight = 7.0
+entry_load_weight = 4.0

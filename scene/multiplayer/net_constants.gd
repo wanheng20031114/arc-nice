@@ -97,7 +97,11 @@ extends RefCounted
 ## v63：新增“隐形海参”神奇遭遇、海参消耗品与五秒隐藏表现；玩家持久属性
 ## 账本追加冲刺冷却减秒字段，party status / economy schema 分别升为 3 / 6。
 ## v62 客户端缺少新资源、option_id 和固定账本字段，不能安全加入。
-const PROTOCOL_VERSION := 63
+## v64：登记主战机器人精英与 P1E 测试场景的稳定 wire 游戏模式值 8，并在既有
+## 玩家伤害确认 RPC 尾部追加 Host 确认的燃烧/减速状态位。运行视觉尚未通过原生
+## 像素资格门，因此 P1E 在正式菜单、大厅和加载入口保持不可选择。v63 客户端既
+## 无法识别该模式，也无法解析扩展后的确认载荷，不能安全加入。
+const PROTOCOL_VERSION := 64
 
 ## 固定宽度网络战斗值契约。运行时仍使用 GDScript signed int64；只有在
 ## 进入固定宽度快照或 PackedArray 之前才应用此边界，越界值必须拒绝。

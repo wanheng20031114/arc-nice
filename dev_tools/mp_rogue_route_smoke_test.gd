@@ -150,9 +150,9 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 63,
+		NetConstants.PROTOCOL_VERSION == 64,
 		(
-			"协议 v63 必须同时承载P1D、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
+			"协议 v64 必须同时承载P1D/P1E、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
 			+ "狭路相逢波次资源合同，并隔离 P1C 与纸箱怪资源、"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
@@ -290,7 +290,7 @@ func _test_lobby_contract() -> void:
 	var character_overlay := lobby.get_node(
 		"PlayerCharacterChoiceOverlay"
 	) as PlayerCharacterChoiceOverlay
-	_expect(selector.item_count == 8, "多人大厅必须暴露八个模式选项。")
+	_expect(selector.item_count == 8, "多人大厅必须只暴露八个已发布模式选项。")
 	_expect(
 		selector.get_item_id(7) == NetManagerStore.GameMode.TEST_ARENA_P3
 		and selector.get_item_text(7).contains("P3")

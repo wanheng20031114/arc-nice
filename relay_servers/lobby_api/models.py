@@ -30,6 +30,7 @@ class GameMode(str, Enum):
     TEST_ARENA_P1B = "test_arena_p1b"
     TEST_ARENA_P1C = "test_arena_p1c"
     TEST_ARENA_P1D = "test_arena_p1d"
+    TEST_ARENA_P1E = "test_arena_p1e"
 
 
 @dataclass

@@ -306,7 +306,8 @@ func net_player_damage_applied(
 	damage_type: int,
 	grant_hit_invincibility: bool = true,
 	apply_confirmed_cold: bool = false,
-	combat_outcome: int = 0
+	combat_outcome: int = 0,
+	confirmed_status_mask: int = 0
 ) -> void:
 	pass
 

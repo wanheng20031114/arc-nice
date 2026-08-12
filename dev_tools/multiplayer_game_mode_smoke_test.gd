@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 63,
-		"协议v63必须隔离P1D地下教堂与大小纸箱怪资源，保留地下教会正式普通作战池、遭遇跟随作战、狭路相逢波次资源合同、稀有宝箱私人快照及既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 64,
+		"协议v64必须隔离P1D地下教堂、P1E主战机器人与大小纸箱怪资源，保留地下教会正式普通作战池、遭遇跟随作战、狭路相逢波次资源合同、稀有宝箱私人快照及既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
@@ -47,7 +47,7 @@ func _run() -> void:
 	var room_capacity_label := lobby.get_node_or_null(
 		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel"
 	) as Label
-	_expect(selector != null and selector.item_count == 8, "Lobby must expose all eight native mode options.")
+	_expect(selector != null and selector.item_count == 8, "Lobby must expose only the eight published mode options.")
 	_expect(room_mode_label != null, "Room wait panel must display the synchronized mode.")
 	_expect(room_capacity_label != null, "Room wait panel must display synchronized room capacity.")
 	if selector != null:
@@ -127,6 +127,14 @@ func _run() -> void:
 			"game_mode": "test_arena_p2",
 		},
 		{
+			"id": "test-p1e-room",
+			"name": "Test P1E",
+			"host_name": "I",
+			"player_count": 2,
+			"max_players": 6,
+			"game_mode": "test_arena_p1e",
+		},
+		{
 			"id": "test-p1d-room",
 			"name": "Test P1D",
 			"host_name": "H",
@@ -143,7 +151,10 @@ func _run() -> void:
 			"game_mode": "test_arena_p3",
 		},
 	])
-	_expect(room_list.get_child_count() == 8, "Room list must retain all eight valid game modes.")
+	_expect(
+		room_list.get_child_count() == 8,
+		"Public room list must filter the known but unpublished P1E mode."
+	)
 	if room_list.get_child_count() == 8:
 		_expect(
 			(room_list.get_child(0) as Button).text.contains("普通模式")
@@ -154,7 +165,7 @@ func _run() -> void:
 			and (room_list.get_child(5) as Button).text.contains("测试场景 P2")
 			and (room_list.get_child(6) as Button).text.contains("测试场景 P1D")
 			and (room_list.get_child(7) as Button).text.contains("测试场景 P3"),
-			"Room buttons must visibly identify every game mode."
+			"Room buttons must identify every published game mode and omit P1E."
 		)
 
 	net_manager.disconnect_from_game()

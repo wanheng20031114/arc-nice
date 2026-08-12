@@ -9,6 +9,7 @@ const ARENA_P1_ID: StringName = ARENA_P1A_ID
 const ARENA_P1B_ID: StringName = &"p1b"
 const ARENA_P1C_ID: StringName = &"p1c"
 const ARENA_P1D_ID: StringName = &"p1d"
+const ARENA_P1E_ID: StringName = &"p1e"
 const ARENA_P2_ID: StringName = &"p2"
 const ARENA_P3_ID: StringName = &"p3"
 const P1A_TAB_INDEX := 0
@@ -16,8 +17,9 @@ const P1_TAB_INDEX := P1A_TAB_INDEX
 const P1B_TAB_INDEX := 1
 const P1C_TAB_INDEX := 2
 const P1D_TAB_INDEX := 3
-const P2_TAB_INDEX := 4
-const P3_TAB_INDEX := 5
+const P1E_TAB_INDEX := 4
+const P2_TAB_INDEX := 5
+const P3_TAB_INDEX := 6
 const OPEN_FADE_DURATION := 0.14
 const OPEN_PANEL_DURATION := 0.18
 
@@ -37,6 +39,9 @@ const OPEN_PANEL_DURATION := 0.18
 @onready var p1d_enter_button: Button = (
 	$Root/Center/Panel/PanelMargin/Layout/Tabs/P1D/PageMargin/Content/EnterButton
 )
+@onready var p1e_enter_button: Button = (
+	$Root/Center/Panel/PanelMargin/Layout/Tabs/P1E/PageMargin/Content/EnterButton
+)
 @onready var p2_enter_button: Button = (
 	$Root/Center/Panel/PanelMargin/Layout/Tabs/P2/PageMargin/Content/EnterButton
 )
@@ -48,6 +53,10 @@ var open_tween: Tween
 
 
 func _ready() -> void:
+	tabs.set_tab_hidden(
+		P1E_TAB_INDEX,
+		not GameModeCatalog.is_mode_selectable(GameModeCatalog.MODE_TEST_ARENA_P1E)
+	)
 	visible = false
 	root_control.hide()
 	set_process_unhandled_input(false)
@@ -98,6 +107,10 @@ func _on_p1d_pressed() -> void:
 	_choose_arena(ARENA_P1D_ID)
 
 
+func _on_p1e_pressed() -> void:
+	_choose_arena(ARENA_P1E_ID)
+
+
 func _on_p2_pressed() -> void:
 	_choose_arena(ARENA_P2_ID)
 
@@ -116,6 +129,13 @@ func _on_tab_changed(_tab_index: int) -> void:
 
 func _choose_arena(arena_id: StringName) -> void:
 	if not is_open():
+		return
+	if (
+		arena_id == ARENA_P1E_ID
+		and not GameModeCatalog.is_mode_selectable(
+			GameModeCatalog.MODE_TEST_ARENA_P1E
+		)
+	):
 		return
 	_hide_overlay(false)
 	arena_selected.emit(arena_id)
@@ -142,6 +162,14 @@ func _select_tab(arena_id: StringName) -> void:
 			tabs.current_tab = P1C_TAB_INDEX
 		ARENA_P1D_ID:
 			tabs.current_tab = P1D_TAB_INDEX
+		ARENA_P1E_ID:
+			tabs.current_tab = (
+				P1E_TAB_INDEX
+				if GameModeCatalog.is_mode_selectable(
+					GameModeCatalog.MODE_TEST_ARENA_P1E
+				)
+				else P1A_TAB_INDEX
+			)
 		ARENA_P2_ID:
 			tabs.current_tab = P2_TAB_INDEX
 		ARENA_P3_ID:
@@ -160,6 +188,8 @@ func _focus_current_action() -> void:
 			p1c_enter_button.grab_focus()
 		P1D_TAB_INDEX:
 			p1d_enter_button.grab_focus()
+		P1E_TAB_INDEX:
+			p1e_enter_button.grab_focus()
 		P2_TAB_INDEX:
 			p2_enter_button.grab_focus()
 		P3_TAB_INDEX:

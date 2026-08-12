@@ -3074,7 +3074,8 @@ func net_player_damage_applied(
 	damage_type: int,
 	grant_hit_invincibility: bool = true,
 	apply_confirmed_cold: bool = false,
-	combat_outcome: int = 0
+	combat_outcome: int = 0,
+	confirmed_status_mask: int = 0
 ) -> void:
 	player_coordinator.apply_player_damage_confirmation(
 		player_peer_id,
@@ -3086,7 +3087,8 @@ func net_player_damage_applied(
 		damage_type,
 		grant_hit_invincibility,
 		apply_confirmed_cold,
-		combat_outcome
+		combat_outcome,
+		confirmed_status_mask
 	)
 
 
