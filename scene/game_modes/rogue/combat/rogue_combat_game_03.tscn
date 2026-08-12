@@ -1,0 +1,253 @@
+[gd_scene format=3 uid="uid://bq7m3yakn2v5a"]
+
+[ext_resource type="Script" uid="uid://ctfnnphhg0fm" path="res://scene/game_modes/rogue/combat/rogue_combat_game.gd" id="1_game"]
+[ext_resource type="PackedScene" uid="uid://b2h7qgwej5n3a" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="2_gateway"]
+[ext_resource type="PackedScene" uid="uid://bwy4m8w6x0rae" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="3_adapter"]
+[ext_resource type="PackedScene" uid="uid://cx8r7t2j4p5ma" path="res://scene/game_modes/rogue/combat/player/rogue_player_roster_coordinator.tscn" id="4_roster"]
+[ext_resource type="PackedScene" uid="uid://d5w9j2n7r4c8p" path="res://scene/game_modes/rogue/combat/pickup/rogue_pickup_registry.tscn" id="5_pickups"]
+[ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="6_day_night"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="7_night_vfx"]
+[ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="8_countdown"]
+[ext_resource type="AudioStream" uid="uid://ds2eyww1uhhr8" path="res://resources/audio/ui/wave_start.wav" id="9_wave_start"]
+[ext_resource type="Texture2D" uid="uid://bdmproifte20h" path="res://resources/texture/rogue_combat/abandoned_mine/abandoned_mine_background.png" id="10_background"]
+[ext_resource type="Script" uid="uid://dd4fk5ef1owl" path="res://scene/combat/navigation/grid_pathfinder.gd" id="11_pathfinder"]
+[ext_resource type="PackedScene" path="res://scene/ui/shared/hud/currency_hud.tscn" id="12_currency_hud"]
+[ext_resource type="PackedScene" uid="uid://bgq6oak2w4x7m" path="res://scene/game_modes/rogue/ui/rogue_player_profile_panel.tscn" id="13_profile"]
+[ext_resource type="PackedScene" path="res://scene/settings/settings_panel.tscn" id="14_settings"]
+[ext_resource type="PackedScene" path="res://scene/ui/shared/debug/debug_collectible_window.tscn" id="15_debug_collectibles"]
+[ext_resource type="Script" uid="uid://i1yhvo6yryuc" path="res://scene/combat/feedback/damage_number_pool.gd" id="16_damage_pool"]
+[ext_resource type="Script" uid="uid://dfuccjc7ww0jj" path="res://scene/enemy/capoo/capoo_sniper_lock_visual_coordinator.gd" id="17_sniper_visuals"]
+[ext_resource type="Script" uid="uid://c53fvlhqiuysa" path="res://scene/combat/pooling/session_object_pool.gd" id="18_session_pool"]
+[ext_resource type="PackedScene" path="res://scene/enemy/capoo/capoo_projectile_motion_system.tscn" id="19_capoo_motion"]
+[ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_drone_motion_system.tscn" id="20_drone_motion"]
+[ext_resource type="PackedScene" path="res://scene/enemy/yuanshi_insect/guardian_aura_system.tscn" id="21_guardian_aura"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_hud.tscn" id="22_combat_hud"]
+[ext_resource type="PackedScene" uid="uid://d4jmq3n7wpx2a" path="res://scene/ui/shared/player_life_status_hud.tscn" id="23_life_hud"]
+[ext_resource type="PackedScene" path="res://scene/lighting/night_point_light.tscn" id="24_night_light"]
+[ext_resource type="PackedScene" path="res://scene/game_modes/rogue/combat/rogue_combat_game_03_navigation.tscn" id="25_navigation"]
+
+[sub_resource type="Environment" id="Environment_revive_glow"]
+glow_enabled = true
+glow_bloom = 0.08
+glow_hdr_scale = 1.6
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_44cox"]
+size = Vector2(46, 321)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_u4u22"]
+size = Vector2(335, 51)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_b0is5"]
+size = Vector2(33, 301)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_gb401"]
+size = Vector2(310, 54)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_0huts"]
+size = Vector2(52.887062, 125.86338)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_2x4lu"]
+size = Vector2(34, 110)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_1crgl"]
+size = Vector2(19.725647, 33.57614)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_nnyfu"]
+size = Vector2(21, 20)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_61i6c"]
+size = Vector2(33, 20)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_jodsq"]
+size = Vector2(37.403336, 12)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_1xpgs"]
+size = Vector2(86, 38.59294)
+
+[node name="RogueCombatGame03" type="Node2D" unique_id=1620409750]
+position = Vector2(1, 0)
+script = ExtResource("1_game")
+event_title = "废弃矿场"
+pre_wave_duration = 3.0
+auto_start_waves = false
+world_lighting_policy = 2
+
+[node name="MultiplayerGameplayGateway" parent="." unique_id=315314879 instance=ExtResource("2_gateway")]
+
+[node name="MultiplayerModeAdapter" parent="." unique_id=840404953 instance=ExtResource("3_adapter")]
+
+[node name="PlayerRosterCoordinator" parent="." unique_id=879956879 instance=ExtResource("4_roster")]
+
+[node name="PickupRegistry" parent="." unique_id=915235117 instance=ExtResource("5_pickups")]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1900418582]
+environment = SubResource("Environment_revive_glow")
+
+[node name="DayNightController" parent="." unique_id=1014174050 instance=ExtResource("6_day_night")]
+
+[node name="NightVfxFlashPool" parent="." unique_id=273756655 instance=ExtResource("7_night_vfx")]
+
+[node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=275929379]
+volume_db = -6.0
+bus = &"Music"
+
+[node name="CountdownAudio" type="AudioStreamPlayer" parent="." unique_id=1328135928]
+stream = ExtResource("8_countdown")
+volume_db = -13.0
+bus = &"SFX"
+
+[node name="WaveStartAudio" type="AudioStreamPlayer" parent="." unique_id=377592265]
+stream = ExtResource("9_wave_start")
+volume_db = -12.0
+bus = &"SFX"
+
+[node name="AbandonedMineBackground" type="Sprite2D" parent="." unique_id=1958592043]
+z_index = -10
+texture_filter = 1
+position = Vector2(160, 128)
+texture = ExtResource("10_background")
+
+[node name="GroundTileMapLayer" parent="." instance=ExtResource("25_navigation")]
+
+[node name="GridPathfinder" type="Node" parent="." unique_id=1493614202]
+script = ExtResource("11_pathfinder")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=291714126]
+position = Vector2(160, 128)
+zoom = Vector2(2, 2)
+
+[node name="PlayerSpawn" type="Marker2D" parent="." unique_id=365636720]
+position = Vector2(160, 128)
+
+[node name="CurrencyHUD" parent="." unique_id=152311728 instance=ExtResource("12_currency_hud")]
+visible = false
+
+[node name="PlayerProfilePanel" parent="." unique_id=1650384449 instance=ExtResource("13_profile")]
+
+[node name="SettingsLayer" type="CanvasLayer" parent="." unique_id=1572303652]
+layer = 30
+
+[node name="SettingsPanel" parent="SettingsLayer" unique_id=1443019577 instance=ExtResource("14_settings")]
+
+[node name="DebugCollectibleWindow" parent="SettingsLayer" unique_id=813276937 instance=ExtResource("15_debug_collectibles")]
+
+[node name="DamageNumberPool" type="Node2D" parent="." unique_id=2031978660]
+z_index = 100
+script = ExtResource("16_damage_pool")
+
+[node name="SniperLockVisualCoordinator" type="Node" parent="." unique_id=12315047]
+script = ExtResource("17_sniper_visuals")
+
+[node name="SessionObjectPool" type="Node2D" parent="." unique_id=1499860587]
+script = ExtResource("18_session_pool")
+
+[node name="CapooProjectileMotionSystem" parent="." unique_id=371610980 instance=ExtResource("19_capoo_motion")]
+
+[node name="CombatRobotDroneMotionSystem" parent="." unique_id=611055006 instance=ExtResource("20_drone_motion")]
+
+[node name="BossContainer" type="Node2D" parent="." unique_id=697202094]
+
+[node name="EnemyContainer" type="Node2D" parent="." unique_id=594796717]
+
+[node name="GuardianAuraSystem" parent="." unique_id=1898542200 instance=ExtResource("21_guardian_aura")]
+
+[node name="EnemySpawnPoints" type="Node2D" parent="." unique_id=314247607]
+
+[node name="Spawn1" type="Marker2D" parent="EnemySpawnPoints" unique_id=714756352]
+position = Vector2(160, 222)
+metadata/_edit_group_ = true
+
+[node name="NightLight" parent="EnemySpawnPoints/Spawn1" unique_id=1146986493 instance=ExtResource("24_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
+
+[node name="Spawn2" type="Marker2D" parent="EnemySpawnPoints" unique_id=1628746438]
+position = Vector2(162, 43)
+metadata/_edit_group_ = true
+
+[node name="NightLight" parent="EnemySpawnPoints/Spawn2" unique_id=930490752 instance=ExtResource("24_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
+
+[node name="Spawn3" type="Marker2D" parent="EnemySpawnPoints" unique_id=477042993]
+position = Vector2(251, 91)
+metadata/_edit_group_ = true
+
+[node name="NightLight" parent="EnemySpawnPoints/Spawn3" unique_id=715382341 instance=ExtResource("24_night_light")]
+texture_scale = 0.3375
+night_energy = 0.3
+
+[node name="EnemySpawnTimer" type="Timer" parent="." unique_id=1390034129]
+
+[node name="StateTimer" type="Timer" parent="." unique_id=1388281677]
+
+[node name="CombatDeadlineTimer" type="Timer" parent="." unique_id=1062958813]
+
+[node name="RogueCombatHUD" parent="." unique_id=1614099057 instance=ExtResource("22_combat_hud")]
+
+[node name="PlayerLifeStatusLayer" type="CanvasLayer" parent="." unique_id=1355560009]
+layer = 90
+
+[node name="PlayerLifeStatusHUD" parent="PlayerLifeStatusLayer" unique_id=757447709 instance=ExtResource("23_life_hud")]
+visible = false
+
+[node name="WorldBounds" type="Node2D" parent="." unique_id=920377507]
+
+[node name="Wall" type="StaticBody2D" parent="WorldBounds" unique_id=1545134239]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=926481105]
+position = Vector2(13, 125.5)
+shape = SubResource("RectangleShape2D_44cox")
+
+[node name="CollisionShape2D2" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=940431952]
+position = Vector2(155, 263.5)
+shape = SubResource("RectangleShape2D_u4u22")
+
+[node name="CollisionShape2D3" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=2024527596]
+position = Vector2(302.5, 116.5)
+shape = SubResource("RectangleShape2D_b0is5")
+
+[node name="CollisionShape2D4" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=1537845415]
+position = Vector2(170, -6)
+shape = SubResource("RectangleShape2D_gb401")
+
+[node name="CollisionShape2D5" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=1559518344]
+position = Vector2(57.803387, 33.43617)
+rotation = 0.97389364
+scale = Vector2(0.9999999, 0.9999999)
+shape = SubResource("RectangleShape2D_0huts")
+
+[node name="CollisionShape2D6" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=1125018847]
+position = Vector2(276, 185)
+shape = SubResource("RectangleShape2D_2x4lu")
+
+[node name="CollisionShape2D7" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=392950257]
+position = Vector2(256.76364, 214.84357)
+rotation = 0.91629785
+shape = SubResource("RectangleShape2D_1crgl")
+
+[node name="CollisionShape2D8" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=1890393537]
+position = Vector2(247.5, 228)
+shape = SubResource("RectangleShape2D_nnyfu")
+
+[node name="CollisionShape2D9" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=141523424]
+position = Vector2(44, 147)
+shape = SubResource("RectangleShape2D_61i6c")
+
+[node name="CollisionShape2D10" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=2126809044]
+position = Vector2(41, 132)
+rotation = -2.576106
+shape = SubResource("RectangleShape2D_jodsq")
+
+[node name="CollisionShape2D11" type="CollisionShape2D" parent="WorldBounds/Wall" unique_id=1228804503]
+position = Vector2(270.4045, 29.942677)
+rotation = 0.6981317
+scale = Vector2(0.99999994, 0.99999994)
+shape = SubResource("RectangleShape2D_1xpgs")
+
+[connection signal="multiplayer_inventory_item_discard_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_discard_requested"]
+[connection signal="multiplayer_inventory_item_use_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_inventory_item_use_requested"]
+[connection signal="multiplayer_simple_crafting_cancel_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_cancel_requested"]
+[connection signal="multiplayer_simple_crafting_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_simple_crafting_requested"]
+[connection signal="multiplayer_upgrade_requested" from="PlayerProfilePanel" to="MultiplayerModeAdapter" method="handle_profile_upgrade_requested"]
+[connection signal="timeout" from="CombatDeadlineTimer" to="." method="_on_combat_deadline_timer_timeout"]
