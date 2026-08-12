@@ -2097,7 +2097,7 @@ func _get_shop_waiting_player_names() -> PackedStringArray:
 func _create_encounter_runtime() -> void:
 	var run_state := get_node_or_null("/root/RunState") as RunStateStore
 	encounter_economy.reset_runtime(run_state, _player_character_ids)
-	encounter_session.reset_remote(encounter_economy)
+	encounter_session.reset_remote(encounter_economy, run_state)
 	if not encounter_session.state_changed.is_connected(
 		_on_encounter_state_changed
 	):
@@ -2155,7 +2155,8 @@ func _reset_encounter_runtime(authority: bool) -> void:
 	if authority:
 		encounter_session.reset_authority(
 			encounter_economy,
-			_get_active_encounter_peer_ids()
+			_get_active_encounter_peer_ids(),
+			_run_state
 		)
 
 

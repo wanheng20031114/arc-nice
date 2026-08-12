@@ -155,7 +155,7 @@ func _test_default_ledger(run_state: RunStateStore) -> void:
 		int(status.get("schema_version", 0))
 		== RunStateStore.PARTY_STATUS_LEDGER_SCHEMA_VERSION
 		and RunStateStore.PARTY_STATUS_LEDGER_SCHEMA_VERSION == 3
-		and RunStateStore.PARTY_ECONOMY_SCHEMA_VERSION == 6
+		and RunStateStore.PARTY_ECONOMY_SCHEMA_VERSION == 7
 		and local_bonuses.size() == RunStateStore.PLAYER_STAT_BONUS_KEYS.size(),
 		"状态账本schema3必须携带本地玩家的八项零值奖励。"
 	)

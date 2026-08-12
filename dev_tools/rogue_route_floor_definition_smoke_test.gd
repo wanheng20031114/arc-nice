@@ -18,6 +18,9 @@ const NARROW_ROAD: RogueCombatEncounterConfig = preload(
 const UNDERGROUND_CHURCH: RogueCombatEncounterConfig = preload(
 	"res://resources/config/rogue_combat/underground_church_01.tres"
 )
+const ABANDONED_MINE: RogueCombatEncounterConfig = preload(
+	"res://resources/config/rogue_combat/abandoned_mine_01.tres"
+)
 const ELITE_GUNNER: EnemyConfig = preload(
 	"res://resources/config/enemies/combat_robot_gunner_elite.tres"
 )
@@ -151,6 +154,7 @@ func _test_definition_contract() -> void:
 func _test_special_combat_catalog() -> void:
 	var narrow_bucket_count := 0
 	var church_bucket_count := 0
+	var abandoned_mine_bucket_count := 0
 	for bucket in range(FLOOR.normal_combat_pool.get_total_selection_weight()):
 		var selected := FLOOR.normal_combat_pool.select_config_for_weight_bucket(
 			bucket
@@ -159,22 +163,27 @@ func _test_special_combat_catalog() -> void:
 			narrow_bucket_count += 1
 		elif selected == UNDERGROUND_CHURCH:
 			church_bucket_count += 1
+		elif selected == ABANDONED_MINE:
+			abandoned_mine_bucket_count += 1
 	_expect(
 		FLOOR.normal_combat_pool.pool_id == &"normal_combat"
-		and FLOOR.normal_combat_pool.entries.size() == 2
-		and FLOOR.normal_combat_pool.get_total_selection_weight() == 100
-		and narrow_bucket_count == 10
-		and church_bucket_count == 90
+		and FLOOR.normal_combat_pool.entries.size() == 3
+		and FLOOR.normal_combat_pool.get_total_selection_weight() == 3
+		and narrow_bucket_count == 1
+		and church_bucket_count == 1
+		and abandoned_mine_bucket_count == 1
 		and FLOOR.normal_combat_pool.select_config_for_weight_bucket(-1) == null
-		and FLOOR.normal_combat_pool.select_config_for_weight_bucket(100) == null
+		and FLOOR.normal_combat_pool.select_config_for_weight_bucket(3) == null
 		and FLOOR.get_combat_config(&"narrow_road_01") == NARROW_ROAD
 		and FLOOR.get_combat_config(&"underground_church_01")
 		== UNDERGROUND_CHURCH
+		and FLOOR.get_combat_config(&"abandoned_mine_01")
+		== ABANDONED_MINE
 		and FLOOR.special_combat_configs.size() == 1
 		and FLOOR.get_combat_config(&"suitcase_battle")
 		== SUITCASE_BATTLE
 		and FLOOR.get_combat_config(&"missing") == null,
-		"楼层必须提供10/90普通池，并统一解析普通与特殊作战。"
+		"楼层必须提供三项等权普通池，并统一解析普通与特殊作战。"
 	)
 	var reordered_pool := (
 		FLOOR.normal_combat_pool.duplicate(false) as RogueCombatPoolConfig
@@ -292,7 +301,7 @@ func _test_floor_application() -> void:
 	)
 	_expect(
 		coordinator != null
-		and adapters.size() == 2
+		and adapters.size() == 3
 		and (adapters[&"narrow_road_01"] as RogueNormalCombatBriefingAdapter).encounter_config
 		== NARROW_ROAD
 		and (adapters[&"narrow_road_01"] as RogueNormalCombatBriefingAdapter).hero_visual
@@ -300,7 +309,11 @@ func _test_floor_application() -> void:
 		and (adapters[&"underground_church_01"] as RogueNormalCombatBriefingAdapter).encounter_config
 		== UNDERGROUND_CHURCH
 		and (adapters[&"underground_church_01"] as RogueNormalCombatBriefingAdapter).hero_visual
-		== UNDERGROUND_CHURCH.briefing_visual,
+		== UNDERGROUND_CHURCH.briefing_visual
+		and (adapters[&"abandoned_mine_01"] as RogueNormalCombatBriefingAdapter).encounter_config
+		== ABANDONED_MINE
+		and (adapters[&"abandoned_mine_01"] as RogueNormalCombatBriefingAdapter).hero_visual
+		== ABANDONED_MINE.briefing_visual,
 		"协调器不得保留默认兜底，普通作战池中的每项必须建立专属简报适配器。"
 	)
 	_expect(

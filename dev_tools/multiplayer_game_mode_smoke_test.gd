@@ -19,8 +19,8 @@ func _run() -> void:
 
 	net_manager.disconnect_from_game()
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 64,
-		"协议v64必须隔离P1D地下教堂、P1E主战机器人与大小纸箱怪资源，保留地下教会正式普通作战池、遭遇跟随作战、狭路相逢波次资源合同、稀有宝箱私人快照及既有模式接线。"
+		NetConstants.PROTOCOL_VERSION == 65,
+		"协议v65必须隔离P1E入口、神奇遭遇本局历史、P1D地下教堂与大小纸箱怪资源，保留普通作战池、遭遇跟随作战、狭路相逢、稀有宝箱及既有模式接线。"
 	)
 	_expect(
 		net_manager.set_host_game_mode(NetManagerStore.GameMode.TOWER_DEFENSE),
@@ -47,7 +47,7 @@ func _run() -> void:
 	var room_capacity_label := lobby.get_node_or_null(
 		"LobbyCenter/RoomWaitPanel/MarginContainer/VBoxContainer/RoomCapacityLabel"
 	) as Label
-	_expect(selector != null and selector.item_count == 8, "Lobby must expose only the eight published mode options.")
+	_expect(selector != null and selector.item_count == 9, "Lobby must expose all nine catalog mode options.")
 	_expect(room_mode_label != null, "Room wait panel must display the synchronized mode.")
 	_expect(room_capacity_label != null, "Room wait panel must display synchronized room capacity.")
 	if selector != null:
@@ -62,6 +62,7 @@ func _run() -> void:
 				NetManagerStore.GameMode.TEST_ARENA_P1B,
 				NetManagerStore.GameMode.TEST_ARENA_P1C,
 				NetManagerStore.GameMode.TEST_ARENA_P1D,
+				NetManagerStore.GameMode.TEST_ARENA_P1E,
 				NetManagerStore.GameMode.TEST_ARENA_P2,
 				NetManagerStore.GameMode.TEST_ARENA_P3,
 			],
@@ -152,10 +153,10 @@ func _run() -> void:
 		},
 	])
 	_expect(
-		room_list.get_child_count() == 8,
-		"Public room list must filter the known but unpublished P1E mode."
+		room_list.get_child_count() == 9,
+		"Public room list must expose every catalog game mode."
 	)
-	if room_list.get_child_count() == 8:
+	if room_list.get_child_count() == 9:
 		_expect(
 			(room_list.get_child(0) as Button).text.contains("普通模式")
 			and (room_list.get_child(1) as Button).text.contains("塔防模式")
@@ -163,9 +164,10 @@ func _run() -> void:
 			and (room_list.get_child(3) as Button).text.contains("测试场景 P1B")
 			and (room_list.get_child(4) as Button).text.contains("测试场景 P1C")
 			and (room_list.get_child(5) as Button).text.contains("测试场景 P2")
-			and (room_list.get_child(6) as Button).text.contains("测试场景 P1D")
-			and (room_list.get_child(7) as Button).text.contains("测试场景 P3"),
-			"Room buttons must identify every published game mode and omit P1E."
+			and (room_list.get_child(6) as Button).text.contains("测试场景 P1E")
+			and (room_list.get_child(7) as Button).text.contains("测试场景 P1D")
+			and (room_list.get_child(8) as Button).text.contains("测试场景 P3"),
+			"Room buttons must identify every published game mode, including P1E."
 		)
 
 	net_manager.disconnect_from_game()

@@ -30,7 +30,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var fixture := _find_adjacent_underground_church_fixture()
-	_expect(not fixture.is_empty(), "正式90%普通作战池必须能找到相邻地下教会夹具。")
+	_expect(not fixture.is_empty(), "正式等概率普通作战池必须能找到相邻地下教会夹具。")
 	if fixture.is_empty():
 		_finish()
 		return

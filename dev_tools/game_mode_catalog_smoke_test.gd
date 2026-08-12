@@ -13,7 +13,7 @@ const EXPECTED_WIRE_KEYS := [
 	"test_arena_p1d",
 	"test_arena_p1e",
 ]
-const EXPECTED_LOBBY_ORDER := [0, 1, 2, 5, 6, 7, 3, 4]
+const EXPECTED_LOBBY_ORDER := [0, 1, 2, 5, 6, 7, 8, 3, 4]
 
 var failures := PackedStringArray()
 
@@ -70,10 +70,10 @@ func _run() -> void:
 	)
 	_expect(
 		GameModeCatalog.is_valid_mode_id(GameModeCatalog.MODE_TEST_ARENA_P1E)
-		and not GameModeCatalog.is_mode_selectable(
+		and GameModeCatalog.is_mode_selectable(
 			GameModeCatalog.MODE_TEST_ARENA_P1E
 		),
-		"P1E must remain known to v62 while its unpublished runtime is not selectable."
+		"P1E must remain known to v62 and expose its authored test entry."
 	)
 
 	var lobby_mode_ids := PackedInt32Array()

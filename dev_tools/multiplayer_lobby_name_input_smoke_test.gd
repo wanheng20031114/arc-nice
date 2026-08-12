@@ -66,7 +66,7 @@ func _run() -> void:
 	_expect(room_mode_label != null, "Room wait panel must expose the synchronized mode label.")
 	_expect(room_capacity_label != null, "Room wait panel must expose synchronized room capacity.")
 	if game_mode_selector != null:
-		_expect(game_mode_selector.item_count == 8, "The lobby must expose only the eight published modes.")
+		_expect(game_mode_selector.item_count == 9, "The lobby must expose all nine catalog modes.")
 		_expect(
 			game_mode_selector.get_item_id(0) == NetManagerStore.GameMode.STANDARD
 			and game_mode_selector.get_item_id(1) == NetManagerStore.GameMode.TOWER_DEFENSE,
@@ -77,16 +77,18 @@ func _run() -> void:
 			and game_mode_selector.get_item_id(3) == NetManagerStore.GameMode.TEST_ARENA_P1B
 			and game_mode_selector.get_item_id(4) == NetManagerStore.GameMode.TEST_ARENA_P1C
 			and game_mode_selector.get_item_id(5) == NetManagerStore.GameMode.TEST_ARENA_P1D
-			and game_mode_selector.get_item_id(6) == NetManagerStore.GameMode.TEST_ARENA_P2
-			and game_mode_selector.get_item_id(7) == NetManagerStore.GameMode.TEST_ARENA_P3,
+			and game_mode_selector.get_item_id(6) == NetManagerStore.GameMode.TEST_ARENA_P1E
+			and game_mode_selector.get_item_id(7) == NetManagerStore.GameMode.TEST_ARENA_P2
+			and game_mode_selector.get_item_id(8) == NetManagerStore.GameMode.TEST_ARENA_P3,
 			"Test-arena selector ids must match the network enum."
 		)
 		_expect(
 			game_mode_selector.get_item_text(2) == "测试场 P1A"
 			and game_mode_selector.get_item_text(3) == "测试场 P1B"
 			and game_mode_selector.get_item_text(4) == "测试场 P1C"
-			and game_mode_selector.get_item_text(5) == "测试场 P1D",
-			"The lobby must preserve P1A-P1D while unpublished P1E stays hidden."
+			and game_mode_selector.get_item_text(5) == "测试场 P1D"
+			and game_mode_selector.get_item_text(6) == "测试场 P1E",
+			"The lobby must expose the complete P1A-P1E test sequence."
 		)
 		for item_index in range(game_mode_selector.item_count):
 			_expect(

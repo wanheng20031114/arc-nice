@@ -5,6 +5,7 @@ var failures: Array[String] = []
 
 func _init() -> void:
 	_test_pool_and_deterministic_selection()
+	_test_run_unique_selection_and_ghost_fallback()
 	_test_content_configs()
 	if failures.is_empty():
 		print("ROGUE_ENCOUNTER_REGISTRY_SMOKE_TEST_OK")
@@ -50,6 +51,49 @@ func _test_pool_and_deterministic_selection() -> void:
 		and selected.has(RogueEncounterRegistry.SUITCASE_FRENZY)
 		and selected.has(RogueEncounterRegistry.INVISIBLE_SEA_CUCUMBER),
 		"固定seed样本必须能够覆盖池中的六种遭遇。"
+	)
+
+
+func _test_run_unique_selection_and_ghost_fallback() -> void:
+	var pool := RogueEncounterRegistry.get_pool_entries(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+	)
+	var history: Array[StringName] = []
+	for step in pool.size():
+		var selected := RogueEncounterRegistry.select_encounter_for_run(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			10_000 + step,
+			history
+		)
+		_expect(
+			not selected.is_empty() and not history.has(selected),
+			"神奇遭遇池耗尽前不得重复已经遭遇过的事件。"
+		)
+		history.append(selected)
+	_expect(history.size() == pool.size(), "一次 run 应能无重复耗尽全部事件。")
+	for seed_value in [1, 2, 999_999]:
+		_expect(
+			RogueEncounterRegistry.select_encounter_for_run(
+				RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+				seed_value,
+				history
+			) == RogueEncounterRegistry.GHOST_SHADOW,
+			"全部事件遭遇过后必须忽略 seed 并固定触发鬼影。"
+		)
+	var same_seed := 424_242
+	var first := RogueEncounterRegistry.select_encounter_for_run(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+		same_seed,
+		[]
+	)
+	var first_seen: Array[StringName] = [first]
+	_expect(
+		RogueEncounterRegistry.select_encounter_for_run(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			same_seed,
+			first_seen
+		) != first,
+		"相同 seed 必须由本局历史过滤已遭遇事件。"
 	)
 
 

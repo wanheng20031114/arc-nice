@@ -20,6 +20,7 @@ func _run() -> void:
 	_test_session_personal_progress_and_timeout()
 	_test_deterministic_tie_and_no_vote()
 	_test_snapshot_replay_and_peer_migration()
+	_test_run_history_persistence_and_exhausted_fallback()
 	_test_dynamic_option_availability()
 	_test_settled_result_and_spectator_migration()
 	_test_slime_session_options_and_result_pages()
@@ -397,6 +398,88 @@ func _test_snapshot_replay_and_peer_migration() -> void:
 	run_state.free()
 
 
+func _test_run_history_persistence_and_exhausted_fallback() -> void:
+	var host_run_state := _new_run_state()
+	var host_economy := RogueEncounterEconomyCoordinator.new()
+	host_economy.configure(host_run_state)
+	var host_session := RogueEncounterSession.new()
+	host_session.initialize_authority(host_economy, [1], host_run_state)
+	var pool := RogueEncounterRegistry.get_pool_entries(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+	)
+	for encounter_id in pool:
+		if encounter_id == RogueEncounterRegistry.GHOST_SHADOW:
+			continue
+		_expect(
+			host_run_state.record_rogue_encounter(encounter_id),
+			"测试前置应能写入本局神奇遭遇历史。"
+		)
+	# Session 重建必须从同一个 RunState 恢复历史，而不是回到空池。
+	host_session.reset_authority(host_economy, [1], host_run_state)
+	_expect(
+		host_session.start_for_node(
+			991,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			12345,
+			[1]
+		),
+		"只剩鬼影时应能从持久历史启动最后一个事件。"
+	)
+	var last_unique := host_session.export_state()
+	_expect(
+		StringName(last_unique.get("encounter_id", &""))
+		== RogueEncounterRegistry.GHOST_SHADOW
+		and host_run_state.get_rogue_encountered_ids().size() == pool.size(),
+		"RunState 应记录完整六种遭遇且 Session 快照应选择鬼影。"
+	)
+	var client_run_state := _new_run_state()
+	var client_economy := RogueEncounterEconomyCoordinator.new()
+	client_economy.configure(client_run_state)
+	var client_session := RogueEncounterSession.new()
+	client_session.initialize_remote(client_economy, client_run_state)
+	var forged_history := last_unique.duplicate(true)
+	forged_history["encountered_encounter_ids"] = []
+	_expect(
+		not client_session.apply_remote_state(forged_history)
+		and client_run_state.get_rogue_encountered_ids().is_empty(),
+		"Session 历史与复合 RunState 快照不一致时必须原子拒绝。"
+	)
+	_expect(
+		client_session.apply_remote_state(last_unique)
+		and client_run_state.get_rogue_encountered_ids()
+		== host_run_state.get_rogue_encountered_ids(),
+		"重连快照必须原子恢复客户端 RunState 的完整遭遇历史。"
+	)
+	# Host 恢复/节点切换后历史仍耗尽，任意 seed 都固定重复鬼影。
+	host_session.reset_authority(host_economy, [1], host_run_state)
+	_expect(
+		host_session.start_for_node(
+			992,
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			987654,
+			[1]
+		)
+		and StringName(host_session.export_state().get("encounter_id", &""))
+		== RogueEncounterRegistry.GHOST_SHADOW,
+		"全部遭遇耗尽后重建 Session 也必须固定重复鬼影。"
+	)
+	host_run_state.begin_new_run(&"weishidaier", false)
+	_expect(
+		host_run_state.get_rogue_encountered_ids().is_empty()
+		and int(host_run_state.export_rogue_encounter_history_ledger().get(
+			"revision",
+			-1
+		)) == 0,
+		"开始新 run 必须清空神奇遭遇历史及其 revision。"
+	)
+	client_session.free()
+	client_economy.free()
+	client_run_state.free()
+	host_session.free()
+	host_economy.free()
+	host_run_state.free()
+
+
 func _test_dynamic_option_availability() -> void:
 	var run_state := _new_run_state()
 	run_state.ensure_multiplayer_peer_state(51)
@@ -687,7 +770,7 @@ func _test_slime_session_options_and_result_pages() -> void:
 	_expect(
 		remote_session.apply_remote_state(result)
 		and remote_session.export_state() == result,
-		"v3 Session 快照必须无损同步三选项与 result_pages。"
+		"v5 Session 快照必须无损同步三选项与 result_pages。"
 	)
 	var malformed := result.duplicate(true)
 	malformed["revision"] = int(result["revision"]) + 1
@@ -932,7 +1015,7 @@ func _test_suitcase_frenzy_results_and_safe_timeout() -> void:
 	var fight_payload := fight_result.get("economy_result", {}) as Dictionary
 	var fight_pages := fight_result.get("result_pages", []) as Array
 	_expect(
-		int(fight_result.get("schema_version", -1)) == 4
+		int(fight_result.get("schema_version", -1)) == 5
 		and fight_session.get_phase() == RogueEncounterSession.PHASE_RESULT
 		and fight_pages.size() == 1
 		and str((fight_pages[0] as Dictionary).get("text", ""))
@@ -1034,7 +1117,7 @@ func _test_suitcase_frenzy_results_and_safe_timeout() -> void:
 	_expect(
 		remote_session.apply_remote_state(timeout_result)
 		and remote_session.export_state() == timeout_result,
-		"schema 4必须允许无结果页的immediate终局快照无损同步。"
+		"schema 5必须允许无结果页的immediate终局快照无损同步。"
 	)
 	_expect(
 		economy.export_snapshot([81, 82]) == economy_before,
@@ -1092,7 +1175,7 @@ func _test_fluorescent_pit_multiround_session() -> void:
 	_expect(
 		StringName(first_result.get("phase", &""))
 		== RogueEncounterSession.PHASE_RESULT
-		and int(first_result.get("schema_version", -1)) == 4
+		and int(first_result.get("schema_version", -1)) == 5
 		and int(first_result.get("round_index", -1)) == 0
 		and int(first_result.get("result_sequence", -1)) == 1
 		and not bool(first_result.get("terminal_result", true))
@@ -1200,7 +1283,7 @@ func _test_fluorescent_pit_multiround_session() -> void:
 	_expect(
 		remote_session.apply_remote_state(completed)
 		and remote_session.export_state() == completed,
-		"schema 4多轮终局快照必须可无损同步。"
+		"schema 5多轮终局快照必须可无损同步。"
 	)
 	remote_session.free()
 	remote_economy.free()

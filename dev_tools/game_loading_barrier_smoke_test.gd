@@ -184,42 +184,44 @@ func _test_loading_scene_contract() -> void:
 		and float(coordinator.call("_get_resource_weight", test_p1e_scene_path)) == 7.0,
 		"Test-arena P1E loading must use its main-battle campaign and tower-defense profile."
 	)
-	var p1e_load_errors: Array[String] = []
-	var p1e_failure_callback := func(message: String) -> void:
-		p1e_load_errors.append(message)
-	coordinator.loading_failed.connect(p1e_failure_callback)
-	coordinator.begin_singleplayer(test_p1e_scene_path)
-	coordinator.loading_failed.disconnect(p1e_failure_callback)
-	_expect(
-		p1e_load_errors.size() == 1
-		and p1e_load_errors[0].contains("运行素材尚未发布")
-		and not coordinator.is_loading(),
-		"GameLoadCoordinator must reject direct P1E single-player entry bypasses."
+	var p1e_singleplayer_manifest: Array = coordinator.call(
+		"_build_singleplayer_manifest",
+		test_p1e_scene_path
 	)
-	coordinator.set("_state", 0)
-	(coordinator.get_node("Overlay") as Control).hide()
+	_expect(
+		GameModeCatalog.is_mode_selectable(GameModeCatalog.MODE_TEST_ARENA_P1E)
+		and p1e_singleplayer_manifest.has(test_p1e_scene_path)
+		and p1e_singleplayer_manifest.has(
+			"res://resources/config/campaigns/test_arena/p1e/singleplayer/campaign.tres"
+		),
+		"GameLoadCoordinator must accept P1E and build its single-player manifest."
+	)
 	var net_manager := root.get_node_or_null("NetManager") as NetManagerStore
 	if net_manager != null:
-		p1e_load_errors.clear()
 		net_manager.disconnect_from_game()
 		net_manager.set(
 			"current_game_mode",
 			NetManagerStore.GameMode.TEST_ARENA_P1E
 		)
-		coordinator.loading_failed.connect(p1e_failure_callback)
-		coordinator.begin_multiplayer()
-		coordinator.loading_failed.disconnect(p1e_failure_callback)
+		var p1e_multiplayer_manifest: Array = coordinator.call(
+			"_build_multiplayer_manifest",
+			int(NetManagerStore.GameMode.TEST_ARENA_P1E),
+			net_manager
+		)
 		_expect(
-			p1e_load_errors.size() == 1
-			and not coordinator.is_loading(),
-			"GameLoadCoordinator must reject P1E multiplayer entry even if session state is tampered."
+			p1e_multiplayer_manifest.has(
+				"res://scene/game_modes/tower_defense/multiplayer/tower_defense_multiplayer_session.tscn"
+			)
+			and p1e_multiplayer_manifest.has(test_p1e_scene_path)
+			and p1e_multiplayer_manifest.has(
+				"res://resources/config/campaigns/test_arena/p1e/multiplayer/campaign.tres"
+			),
+			"GameLoadCoordinator must build the complete P1E multiplayer manifest."
 		)
 		net_manager.set(
 			"current_game_mode",
 			NetManagerStore.GameMode.STANDARD
 		)
-		coordinator.set("_state", 0)
-		(coordinator.get_node("Overlay") as Control).hide()
 	_expect(
 		str(coordinator.call("_get_singleplayer_campaign_path", test_p2_scene_path))
 		== "res://resources/config/campaigns/test_arena/p2/singleplayer/campaign.tres",

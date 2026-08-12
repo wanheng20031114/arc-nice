@@ -290,14 +290,15 @@ func _test_net_manager_protocol_version_gate() -> void:
 		return
 
 	net_manager.disconnect_from_game()
-	_expect(NetConstants.PROTOCOL_VERSION == 64, "The multiplayer protocol version must be 64.")
-	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v64 must retain eight ENet channels.")
+	_expect(NetConstants.PROTOCOL_VERSION == 65, "The multiplayer protocol version must be 65.")
+	_expect(NetConstants.CHANNEL_COUNT == 8, "Protocol v65 must retain eight ENet channels.")
 	_expect(
 		bool(net_manager.call("_is_protocol_version_compatible", NetConstants.PROTOCOL_VERSION)),
 		"NetManager must accept the current protocol version."
 	)
 	_expect(
-		not bool(net_manager.call("_is_protocol_version_compatible", 63))
+		not bool(net_manager.call("_is_protocol_version_compatible", 64))
+		and not bool(net_manager.call("_is_protocol_version_compatible", 63))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 62))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 61))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 60))
@@ -357,7 +358,7 @@ func _test_net_manager_protocol_version_gate() -> void:
 		and not bool(net_manager.call("_is_protocol_version_compatible", 3))
 		and not bool(net_manager.call("_is_protocol_version_compatible", 2))
 		and not bool(net_manager.call("_is_protocol_version_compatible", -1)),
-		"Protocol v64 must reject v63 and all older or unversioned clients."
+		"Protocol v65 must reject v64 and all older or unversioned clients."
 	)
 
 	var rejection_reasons: Array[String] = []
@@ -467,12 +468,12 @@ func _test_net_manager_game_mode_authority() -> void:
 			"Every multiplayer mode must round-trip through its stable key and display name."
 		)
 	_expect(
-		not net_manager.set_pending_game_mode(
+		net_manager.set_pending_game_mode(
 			NetManagerStore.GameMode.TEST_ARENA_P1E
 		)
 		and net_manager.get_current_game_mode()
-		== NetManagerStore.GameMode.TOWER_DEFENSE,
-		"NetManager must preserve the P1E wire key but reject it as an unpublished selection."
+		== NetManagerStore.GameMode.TEST_ARENA_P1E,
+		"NetManager must accept P1E through its stable wire mode."
 	)
 	net_manager.set("net_role", NetManagerStore.NetRole.CLIENT)
 	net_manager.set("connection_state", NetManagerStore.ConnectionState.CONNECTED_IN_LOBBY)
@@ -481,7 +482,7 @@ func _test_net_manager_game_mode_authority() -> void:
 		"A connected client must not overwrite the Host-authoritative game mode."
 	)
 	_expect(
-		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TOWER_DEFENSE,
+		net_manager.get_current_game_mode() == NetManagerStore.GameMode.TEST_ARENA_P1E,
 		"Rejected client mode edits must preserve the Host-selected mode."
 	)
 	net_manager.disconnect_from_game()

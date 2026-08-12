@@ -1,21 +1,27 @@
-[gd_resource type="Resource" script_class="RogueCombatPoolConfig" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="RogueCombatPoolConfig" format=3 uid="uid://dvcw8eh3de6fo"]
 
-[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_pool_config.gd" id="1_pool_script"]
-[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_pool_entry.gd" id="2_entry_script"]
-[ext_resource type="Resource" path="res://resources/config/rogue_combat/encounter_01.tres" id="3_narrow_road"]
-[ext_resource type="Resource" path="res://resources/config/rogue_combat/underground_church_01.tres" id="4_underground_church"]
+[ext_resource type="Script" uid="uid://2vydes0ejsij" path="res://resources/config/rogue_combat/rogue_combat_pool_config.gd" id="1_pool_script"]
+[ext_resource type="Script" uid="uid://dwe55wgjtl4yq" path="res://resources/config/rogue_combat/rogue_combat_pool_entry.gd" id="2_entry_script"]
+[ext_resource type="Resource" uid="uid://bgo01u0bqbesa" path="res://resources/config/rogue_combat/encounter_01.tres" id="3_narrow_road"]
+[ext_resource type="Resource" uid="uid://b58vexewqaqrb" path="res://resources/config/rogue_combat/underground_church_01.tres" id="4_underground_church"]
+[ext_resource type="Resource" path="res://resources/config/rogue_combat/abandoned_mine_01.tres" id="5_abandoned_mine"]
 
 [sub_resource type="Resource" id="NarrowRoadEntry"]
 script = ExtResource("2_entry_script")
 combat_config = ExtResource("3_narrow_road")
-selection_weight = 10
+selection_weight = 1
 
 [sub_resource type="Resource" id="UndergroundChurchEntry"]
 script = ExtResource("2_entry_script")
 combat_config = ExtResource("4_underground_church")
-selection_weight = 90
+selection_weight = 1
+
+[sub_resource type="Resource" id="AbandonedMineEntry"]
+script = ExtResource("2_entry_script")
+combat_config = ExtResource("5_abandoned_mine")
+selection_weight = 1
 
 [resource]
 script = ExtResource("1_pool_script")
 pool_id = &"normal_combat"
-entries = Array[RogueCombatPoolEntry]([SubResource("NarrowRoadEntry"), SubResource("UndergroundChurchEntry")])
+entries = Array[ExtResource("2_entry_script")]([SubResource("NarrowRoadEntry"), SubResource("UndergroundChurchEntry"), SubResource("AbandonedMineEntry")])

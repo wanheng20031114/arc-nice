@@ -13,13 +13,15 @@ signal shared_warehouse_ledger_changed(snapshot: Dictionary)
 signal party_xirang_ledger_changed(snapshot: Dictionary)
 signal party_light_stone_ledger_changed(snapshot: Dictionary)
 signal party_status_ledger_changed(snapshot: Dictionary)
+signal rogue_encounter_history_changed(snapshot: Dictionary)
 
 const INVENTORY_CAPACITY := 20
-const PARTY_ECONOMY_SCHEMA_VERSION := 6
+const PARTY_ECONOMY_SCHEMA_VERSION := 7
 const SHARED_WAREHOUSE_LEDGER_SCHEMA_VERSION := 1
 const PARTY_XIRANG_LEDGER_SCHEMA_VERSION := 1
 const PARTY_LIGHT_STONE_LEDGER_SCHEMA_VERSION := 1
 const PARTY_STATUS_LEDGER_SCHEMA_VERSION := 3
+const ROGUE_ENCOUNTER_HISTORY_LEDGER_SCHEMA_VERSION := 1
 const DEFAULT_PARTY_CORE_HEALTH := 100
 const PLAYER_STAT_BONUS_KEYS: Array[StringName] = [
 	&"max_health",
@@ -114,6 +116,10 @@ var max_health_penalties: Dictionary = {}
 ## 固定八字段字典，避免重连、重复快照或换场时再次按 delta 叠加。
 var player_stat_bonuses: Dictionary = {}
 var party_status_ledger_revision: int = 0
+## 本局已经启动过的神奇遭遇稳定 ID。该历史属于整局共享状态，不按玩家
+## 拆分；房主只在成功启动节点时追加，客户端只能通过权威快照恢复。
+var rogue_encounter_history_revision: int = 0
+var rogue_encounter_ids: Dictionary = {}
 var selected_character_id: StringName = PlayerCharacterRegistry.DEFAULT_CHARACTER_ID
 var _include_starting_inventory_for_new_peers := true
 
@@ -171,6 +177,8 @@ func begin_new_run(
 	max_health_penalties = {0: 0}
 	player_stat_bonuses = {0: _make_empty_player_stat_bonuses()}
 	party_status_ledger_revision = 0
+	rogue_encounter_history_revision = 0
+	rogue_encounter_ids.clear()
 	run_started = true
 	inventory_changed.emit()
 	upgrade_changed.emit()
@@ -180,6 +188,52 @@ func ensure_run_started() -> void:
 	if run_started:
 		return
 	begin_new_run(selected_character_id)
+
+
+func record_rogue_encounter(encounter_id: StringName) -> bool:
+	ensure_run_started()
+	if (
+		encounter_id.is_empty()
+		or not RogueEncounterRegistry.has_encounter(encounter_id)
+		or not RogueEncounterRegistry.get_pool_entries(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+		).has(encounter_id)
+	):
+		return false
+	if rogue_encounter_ids.has(encounter_id):
+		return true
+	rogue_encounter_ids[encounter_id] = true
+	rogue_encounter_history_revision += 1
+	rogue_encounter_history_changed.emit(export_rogue_encounter_history_ledger())
+	return true
+
+
+func has_rogue_encountered(encounter_id: StringName) -> bool:
+	ensure_run_started()
+	return rogue_encounter_ids.has(encounter_id)
+
+
+func get_rogue_encountered_ids() -> Array[StringName]:
+	ensure_run_started()
+	var result: Array[StringName] = []
+	for encounter_id in RogueEncounterRegistry.get_pool_entries(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+	):
+		if rogue_encounter_ids.has(encounter_id):
+			result.append(encounter_id)
+	return result
+
+
+func export_rogue_encounter_history_ledger() -> Dictionary:
+	ensure_run_started()
+	var encounter_ids: Array[String] = []
+	for encounter_id in get_rogue_encountered_ids():
+		encounter_ids.append(String(encounter_id))
+	return {
+		"schema_version": ROGUE_ENCOUNTER_HISTORY_LEDGER_SCHEMA_VERSION,
+		"revision": rogue_encounter_history_revision,
+		"encounter_ids": encounter_ids,
+	}
 
 
 func try_add_item(item: PickupConfig) -> bool:
@@ -2181,6 +2235,9 @@ func export_party_economy_snapshot(
 		"xirang_ledger": export_party_xirang_ledger(),
 		"light_stone_ledger": export_party_light_stone_ledger(),
 		"party_status_ledger": export_party_status_ledger(),
+		"rogue_encounter_history_ledger": (
+			export_rogue_encounter_history_ledger()
+		),
 	}
 
 
@@ -2671,6 +2728,51 @@ func _decode_player_stat_bonuses(source: Dictionary) -> Dictionary:
 	return decoded
 
 
+func _decode_rogue_encounter_history_ledger(
+	ledger: Dictionary,
+	minimum_revision: int
+) -> Dictionary:
+	if (
+		typeof(ledger.get("schema_version")) != TYPE_INT
+		or int(ledger["schema_version"])
+		!= ROGUE_ENCOUNTER_HISTORY_LEDGER_SCHEMA_VERSION
+		or typeof(ledger.get("revision")) != TYPE_INT
+		or int(ledger["revision"]) < maxi(minimum_revision, 0)
+		or typeof(ledger.get("encounter_ids")) != TYPE_ARRAY
+	):
+		return {}
+	var decoded_ids: Dictionary = {}
+	var magical_pool := RogueEncounterRegistry.get_pool_entries(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+	)
+	for raw_id in ledger["encounter_ids"]:
+		if typeof(raw_id) != TYPE_STRING:
+			return {}
+		var encounter_id := StringName(raw_id)
+		if (
+			encounter_id.is_empty()
+			or decoded_ids.has(encounter_id)
+			or not RogueEncounterRegistry.has_encounter(encounter_id)
+			or not magical_pool.has(encounter_id)
+		):
+			return {}
+		decoded_ids[encounter_id] = true
+	var canonical_ids: Array[String] = []
+	for encounter_id in magical_pool:
+		if decoded_ids.has(encounter_id):
+			canonical_ids.append(String(encounter_id))
+	var raw_ids: Array = Array(ledger["encounter_ids"])
+	if (
+		canonical_ids != raw_ids
+		or int(ledger["revision"]) != decoded_ids.size()
+	):
+		return {}
+	return {
+		"revision": int(ledger["revision"]),
+		"encounter_ids": decoded_ids,
+	}
+
+
 func _prepare_party_economy_snapshot(
 	snapshot: Dictionary,
 	allow_revision_rewind: bool,
@@ -2690,6 +2792,8 @@ func _prepare_party_economy_snapshot(
 		or typeof(snapshot.get("xirang_ledger")) != TYPE_DICTIONARY
 		or typeof(snapshot.get("light_stone_ledger")) != TYPE_DICTIONARY
 		or typeof(snapshot.get("party_status_ledger")) != TYPE_DICTIONARY
+		or typeof(snapshot.get("rogue_encounter_history_ledger"))
+		!= TYPE_DICTIONARY
 	):
 		return {}
 	if (
@@ -2782,6 +2886,29 @@ func _prepare_party_economy_snapshot(
 		and incoming_status_revision != party_status_ledger_revision + 1
 	):
 		return {}
+	var decoded_encounter_history := _decode_rogue_encounter_history_ledger(
+		snapshot["rogue_encounter_history_ledger"] as Dictionary,
+		-1 if allow_revision_rewind else rogue_encounter_history_revision
+	)
+	if decoded_encounter_history.is_empty():
+		return {}
+	var incoming_encounter_history_revision := int(
+		decoded_encounter_history["revision"]
+	)
+	if (
+		require_single_revision_step
+		and incoming_encounter_history_revision
+		!= rogue_encounter_history_revision
+	):
+		return {}
+	if (
+		not allow_revision_rewind
+		and incoming_encounter_history_revision
+		== rogue_encounter_history_revision
+		and decoded_encounter_history["encounter_ids"]
+		!= rogue_encounter_ids
+	):
+		return {}
 	if (
 		not allow_revision_rewind
 		and incoming_status_revision == party_status_ledger_revision
@@ -2842,10 +2969,14 @@ func _prepare_party_economy_snapshot(
 		"expected_xirang_revision": party_xirang_ledger_revision,
 		"expected_status_revision": party_status_ledger_revision,
 		"expected_light_stone_revision": party_light_stone_ledger_revision,
+		"expected_encounter_history_revision": (
+			rogue_encounter_history_revision
+		),
 		"warehouse_ledger": decoded_ledger,
 		"xirang_ledger": decoded_xirang_ledger,
 		"light_stone_ledger": decoded_light_stone_ledger,
 		"party_status_ledger": decoded_status_ledger,
+		"rogue_encounter_history_ledger": decoded_encounter_history,
 		"inventories": prepared_inventories,
 	}
 
@@ -2861,6 +2992,8 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		!= party_status_ledger_revision
 		or int(prepared.get("expected_light_stone_revision", -1))
 		!= party_light_stone_ledger_revision
+		or int(prepared.get("expected_encounter_history_revision", -1))
+		!= rogue_encounter_history_revision
 	):
 		return false
 	var prepared_inventories := prepared.get("inventories", {}) as Dictionary
@@ -2921,6 +3054,21 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		prepared_status_ledger["player_stat_bonuses"] as Dictionary
 	).duplicate(true)
 	party_status_ledger_revision = int(prepared_status_ledger["revision"])
+	var prepared_encounter_history := (
+		prepared["rogue_encounter_history_ledger"] as Dictionary
+	)
+	var encounter_history_changed: bool = (
+		int(prepared_encounter_history["revision"])
+		!= rogue_encounter_history_revision
+		or prepared_encounter_history["encounter_ids"]
+		!= rogue_encounter_ids
+	)
+	rogue_encounter_ids = (
+		prepared_encounter_history["encounter_ids"] as Dictionary
+	).duplicate(true)
+	rogue_encounter_history_revision = int(
+		prepared_encounter_history["revision"]
+	)
 
 	var any_inventory_changed := false
 	for raw_peer_id in prepared_inventories.keys():
@@ -2963,6 +3111,10 @@ func _commit_prepared_party_economy_snapshot(prepared: Dictionary) -> bool:
 		party_light_stone_ledger_changed.emit(export_party_light_stone_ledger())
 	if status_changed:
 		party_status_ledger_changed.emit(export_party_status_ledger())
+	if encounter_history_changed:
+		rogue_encounter_history_changed.emit(
+			export_rogue_encounter_history_ledger()
+		)
 	return true
 
 

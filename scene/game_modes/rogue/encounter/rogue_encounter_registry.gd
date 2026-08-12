@@ -288,6 +288,31 @@ static func select_encounter(
 	return StringName(entries[index])
 
 
+## 房主基于本局权威历史抽取尚未遭遇过的内容。候选始终沿注册表稳定顺序
+## 过滤，因而相同 seed 与相同历史跨平台可复算；全部耗尽后固定回退鬼影。
+static func select_encounter_for_run(
+	content_pool_id: StringName,
+	node_content_seed: int,
+	encountered_ids: Array[StringName]
+) -> StringName:
+	var available: Array[StringName] = []
+	for encounter_id in get_pool_entries(content_pool_id):
+		if not encountered_ids.has(encounter_id):
+			available.append(encounter_id)
+	if available.is_empty():
+		return (
+			GHOST_SHADOW
+			if content_pool_id == MAGICAL_ENCOUNTER_POOL
+			else &""
+		)
+	var index := RogueEncounterRandom.choose_index(
+		node_content_seed,
+		&"content_selection",
+		available.size()
+	)
+	return available[index]
+
+
 static func has_pool(content_pool_id: StringName) -> bool:
 	return _POOLS.has(content_pool_id)
 

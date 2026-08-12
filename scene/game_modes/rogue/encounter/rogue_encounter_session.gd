@@ -6,7 +6,7 @@ signal encounter_started(snapshot: Dictionary)
 signal encounter_finished(snapshot: Dictionary)
 signal economy_changed(snapshot: Dictionary)
 
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 const VOTING_TIMEOUT_SECONDS := 60.0
 const MAX_RESULT_PAGE_COUNT := 4
 
@@ -27,6 +27,7 @@ const _VALID_PHASES := [
 ]
 
 var _economy: RogueEncounterEconomyCoordinator
+var _run_state: RunStateStore
 var _is_authority := false
 var _revision := 0
 var _phase: StringName = PHASE_IDLE
@@ -60,41 +61,54 @@ var _run_failed := false
 var _personal_result_pages: Dictionary = {}
 var _economy_snapshot: Dictionary = {}
 var _resolved_node_ids: Dictionary = {}
+var _encountered_encounter_ids: Array[StringName] = []
 var _settlement_committed := false
 
 
 func initialize_authority(
 	economy: RogueEncounterEconomyCoordinator,
-	peer_ids: Array[int]
+	peer_ids: Array[int],
+	run_state: RunStateStore = null
 ) -> void:
-	reset_authority(economy, peer_ids)
+	reset_authority(economy, peer_ids, run_state)
 
 
-func initialize_remote(economy: RogueEncounterEconomyCoordinator) -> void:
-	reset_remote(economy)
+func initialize_remote(
+	economy: RogueEncounterEconomyCoordinator,
+	run_state: RunStateStore = null
+) -> void:
+	reset_remote(economy, run_state)
 
 
 func reset_authority(
 	economy: RogueEncounterEconomyCoordinator,
-	peer_ids: Array[int]
+	peer_ids: Array[int],
+	run_state: RunStateStore = null
 ) -> void:
-	_reset_runtime_state(economy)
+	_reset_runtime_state(economy, run_state)
 	_is_authority = true
 	_authority_peer_ids = _normalize_peer_ids(peer_ids)
 
 
-func reset_remote(economy: RogueEncounterEconomyCoordinator) -> void:
-	_reset_runtime_state(economy)
+func reset_remote(
+	economy: RogueEncounterEconomyCoordinator,
+	run_state: RunStateStore = null
+) -> void:
+	_reset_runtime_state(economy, run_state)
 	_is_authority = false
 
 
-func _reset_runtime_state(economy: RogueEncounterEconomyCoordinator) -> void:
+func _reset_runtime_state(
+	economy: RogueEncounterEconomyCoordinator,
+	run_state: RunStateStore
+) -> void:
 	if (
 		_economy != null
 		and _economy.economy_changed.is_connected(_on_economy_changed)
 	):
 		_economy.economy_changed.disconnect(_on_economy_changed)
 	_economy = economy
+	_run_state = run_state
 	_revision = 0
 	_phase = PHASE_IDLE
 	_node_id = -1
@@ -127,6 +141,10 @@ func _reset_runtime_state(economy: RogueEncounterEconomyCoordinator) -> void:
 	_personal_result_pages.clear()
 	_economy_snapshot.clear()
 	_resolved_node_ids.clear()
+	_encountered_encounter_ids.clear()
+	if _run_state != null:
+		_run_state.ensure_run_started()
+		_encountered_encounter_ids = _run_state.get_rogue_encountered_ids()
 	_settlement_committed = false
 	if _economy != null and not _economy.economy_changed.is_connected(
 		_on_economy_changed
@@ -143,18 +161,10 @@ func start_for_node(
 	if (
 		not _is_authority
 		or _economy == null
+		or not _economy.is_configured()
 		or is_active()
 		or node_id < 0
 		or is_node_resolved(node_id)
-	):
-		return false
-	var encounter_id := RogueEncounterRegistry.select_encounter(
-		content_pool_id,
-		node_content_seed
-	)
-	if (
-		encounter_id.is_empty()
-		or not RogueEncounterRegistry.has_encounter(encounter_id)
 	):
 		return false
 	var participants := _normalize_peer_ids(
@@ -162,6 +172,26 @@ func start_for_node(
 	)
 	if participants.is_empty():
 		return false
+	if _run_state != null:
+		_encountered_encounter_ids = _run_state.get_rogue_encountered_ids()
+	var encounter_id := RogueEncounterRegistry.select_encounter_for_run(
+		content_pool_id,
+		node_content_seed,
+		_encountered_encounter_ids
+	)
+	if (
+		encounter_id.is_empty()
+		or not RogueEncounterRegistry.has_encounter(encounter_id)
+	):
+		return false
+	# 选择与参与者均已验证，且尚未写入任何 Session 阶段字段；此时提交
+	# RunState，失败会干净返回，不留下半启动的 active Session。
+	if _run_state != null:
+		if not _run_state.record_rogue_encounter(encounter_id):
+			return false
+		_encountered_encounter_ids = _run_state.get_rogue_encountered_ids()
+	elif not _encountered_encounter_ids.has(encounter_id):
+		_encountered_encounter_ids.append(encounter_id)
 
 	_node_id = node_id
 	_content_pool_id = content_pool_id
@@ -421,6 +451,9 @@ func submit_result_ack(
 
 
 func export_state() -> Dictionary:
+	var encountered_ids := _encountered_encounter_ids
+	if _run_state != null:
+		encountered_ids = _run_state.get_rogue_encountered_ids()
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"revision": _revision,
@@ -456,6 +489,9 @@ func export_state() -> Dictionary:
 		"personal_result_pages": _personal_result_pages.duplicate(true),
 		"economy_snapshot": _economy_snapshot.duplicate(true),
 		"resolved_node_ids": _dictionary_int_keys(_resolved_node_ids),
+		"encountered_encounter_ids": _string_name_array_to_strings(
+			encountered_ids
+		),
 		"settlement_committed": _settlement_committed,
 	}
 
@@ -480,6 +516,14 @@ func apply_remote_state(snapshot: Dictionary) -> bool:
 		_economy != null
 		and not incoming_economy.is_empty()
 		and not _economy.apply_remote_snapshot(incoming_economy)
+	):
+		return false
+	var decoded_encounter_history: Array[StringName] = []
+	decoded_encounter_history.assign(decoded["encountered_encounter_ids"])
+	if (
+		_run_state != null
+		and _run_state.get_rogue_encountered_ids()
+		!= decoded_encounter_history
 	):
 		return false
 	_revision = incoming_revision
@@ -513,6 +557,7 @@ func apply_remote_state(snapshot: Dictionary) -> bool:
 	_personal_result_pages = decoded["personal_result_pages"] as Dictionary
 	_economy_snapshot = incoming_economy
 	_resolved_node_ids = decoded["resolved_node_ids"] as Dictionary
+	_encountered_encounter_ids = decoded_encounter_history
 	_settlement_committed = bool(decoded["settlement_committed"])
 	var applied_snapshot := export_state()
 	state_changed.emit(applied_snapshot)
@@ -537,10 +582,20 @@ func validate_remote_state(snapshot: Dictionary) -> bool:
 	):
 		return false
 	var incoming_economy := decoded["economy_snapshot"] as Dictionary
+	var decoded_encounter_history: Array[StringName] = []
+	decoded_encounter_history.assign(decoded["encountered_encounter_ids"])
 	return (
-		_economy == null
-		or incoming_economy.is_empty()
-		or _economy.validate_remote_snapshot(incoming_economy)
+		(
+			_run_state == null
+			or not incoming_economy.is_empty()
+			or _run_state.get_rogue_encountered_ids()
+			== decoded_encounter_history
+		)
+		and (
+			_economy == null
+			or incoming_economy.is_empty()
+			or _economy.validate_remote_snapshot(incoming_economy)
+		)
 	)
 
 
@@ -857,6 +912,9 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 	var resolved_node_ids: Variant = _decode_nonnegative_int_array(
 		snapshot.get("resolved_node_ids")
 	)
+	var encountered_encounter_ids: Variant = _decode_encounter_id_array(
+		snapshot.get("encountered_encounter_ids")
+	)
 	var disabled_option_ids: Variant = _decode_option_id_array(
 		snapshot.get("disabled_option_ids"),
 		decoded_encounter_id
@@ -871,6 +929,7 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		or round_recipient_ids == null
 		or result_ack_ids == null
 		or resolved_node_ids == null
+		or encountered_encounter_ids == null
 		or disabled_option_ids == null
 	):
 		return {}
@@ -918,6 +977,16 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		or typeof(snapshot.get("settlement_committed")) != TYPE_BOOL
 	):
 		return {}
+	var typed_encountered_ids: Array[StringName] = []
+	typed_encountered_ids.assign(encountered_encounter_ids)
+	if (
+		_run_state != null
+		and not _encounter_history_matches_economy_snapshot(
+			typed_encountered_ids,
+			snapshot["economy_snapshot"] as Dictionary
+		)
+	):
+		return {}
 	return {
 		"revision": int(snapshot["revision"]),
 		"phase": String(decoded_phase),
@@ -961,6 +1030,7 @@ func _decode_state(snapshot: Dictionary) -> Dictionary:
 		"resolved_node_ids": _int_array_to_dictionary(
 			resolved_node_ids as Array[int]
 		),
+		"encountered_encounter_ids": encountered_encounter_ids,
 		"settlement_committed": bool(snapshot["settlement_committed"]),
 	}
 
@@ -1088,6 +1158,52 @@ func _decode_option_id_array(
 		result.append(option_id)
 	result.sort()
 	return result
+
+
+func _decode_encounter_id_array(value: Variant) -> Variant:
+	if typeof(value) != TYPE_ARRAY:
+		return null
+	var decoded: Array[StringName] = []
+	for raw_encounter_id in value:
+		if typeof(raw_encounter_id) != TYPE_STRING:
+			return null
+		var encounter_id := StringName(raw_encounter_id)
+		if (
+			decoded.has(encounter_id)
+			or not RogueEncounterRegistry.has_encounter(encounter_id)
+		):
+			return null
+		decoded.append(encounter_id)
+	var canonical: Array[StringName] = []
+	for encounter_id in RogueEncounterRegistry.get_pool_entries(
+		RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL
+	):
+		if decoded.has(encounter_id):
+			canonical.append(encounter_id)
+	return canonical if canonical == decoded else null
+
+
+func _encounter_history_matches_economy_snapshot(
+	encounter_ids: Array[StringName],
+	economy_snapshot: Dictionary
+) -> bool:
+	# 线路视图发送时会暂时清空经济字段；路由层在预检前会把独立经济包
+	# 原子合回。Session 自身的空经济快照仍允许用于本地初始状态。
+	if economy_snapshot.is_empty():
+		return true
+	var party_economy := economy_snapshot.get("party_economy", {}) as Dictionary
+	var history_ledger := party_economy.get(
+		"rogue_encounter_history_ledger",
+		{}
+	) as Dictionary
+	var decoded: Variant = _decode_encounter_id_array(
+		history_ledger.get("encounter_ids")
+	)
+	if decoded == null:
+		return false
+	var decoded_ids: Array[StringName] = []
+	decoded_ids.assign(decoded)
+	return decoded_ids == encounter_ids
 
 
 func _normalize_peer_ids(peer_ids: Array[int]) -> Array[int]:

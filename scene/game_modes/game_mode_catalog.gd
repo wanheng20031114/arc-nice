@@ -120,12 +120,9 @@ static func is_valid_mode_id(mode_id: int) -> bool:
 	return get_definition(mode_id) != null
 
 
-## Returns whether a known wire mode is currently safe to expose and enter.
-## P1E remains frozen in the v62 catalog while its native runtime art release is
-## blocked, so callers must use this gate rather than treating "known" as
-## "published".
+## Returns whether a known wire mode is currently exposed and enterable.
 static func is_mode_selectable(mode_id: int) -> bool:
-	return is_valid_mode_id(mode_id) and mode_id != MODE_TEST_ARENA_P1E
+	return is_valid_mode_id(mode_id)
 
 
 static func resolve_wire_key_or_default(wire_key: String) -> int:

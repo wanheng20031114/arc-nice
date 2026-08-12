@@ -55,7 +55,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_staged_enemy_contract()
 	_test_runtime_visual_release_block()
-	_test_known_but_unselectable_p1e_contract()
+	_test_selectable_p1e_entry_contract()
 	_test_protocol_boundaries()
 	_test_live_registry_and_texture_counts()
 	_test_zero_direct_references()
@@ -137,7 +137,7 @@ func _test_runtime_visual_release_block() -> void:
 	)
 
 
-func _test_known_but_unselectable_p1e_contract() -> void:
+func _test_selectable_p1e_entry_contract() -> void:
 	var definition := GameModeCatalog.get_definition(
 		GameModeCatalog.MODE_TEST_ARENA_P1E
 	)
@@ -147,33 +147,33 @@ func _test_known_but_unselectable_p1e_contract() -> void:
 		and GameModeCatalog.resolve_wire_key_or_default(&"test_arena_p1e") == 8
 		and definition != null
 		and definition.wire_key == &"test_arena_p1e"
-		and not GameModeCatalog.is_mode_selectable(8),
-		"P1E必须保留v62 mode=8/wire键，但在运行素材发布前不可选择。"
+		and GameModeCatalog.is_mode_selectable(8),
+		"P1E必须保留v62 mode=8/wire键，并开放已搭建的测试入口。"
 	)
 	var lobby_ids: Array[int] = []
 	for lobby_definition in GameModeCatalog.get_lobby_definitions():
 		lobby_ids.append(lobby_definition.mode_id)
 	_expect(
-		lobby_ids == [0, 1, 2, 5, 6, 7, 3, 4]
-		and not lobby_ids.has(GameModeCatalog.MODE_TEST_ARENA_P1E),
-		"P1E不得出现在正式大厅选项中。"
+		lobby_ids == [0, 1, 2, 5, 6, 7, 8, 3, 4]
+		and lobby_ids.has(GameModeCatalog.MODE_TEST_ARENA_P1E),
+		"P1E必须出现在多人大厅选项中。"
 	)
 	var net_manager := root.get_node_or_null("NetManager") as NetManagerStore
 	if net_manager != null:
 		net_manager.disconnect_from_game()
 		_expect(
-			not net_manager.set_pending_game_mode(
+			net_manager.set_pending_game_mode(
 				NetManagerStore.GameMode.TEST_ARENA_P1E
 			)
 			and net_manager.get_current_game_mode()
-			== NetManagerStore.GameMode.STANDARD,
-			"NetManager必须拒绝通过已知wire值绕过P1E发布门。"
+			== NetManagerStore.GameMode.TEST_ARENA_P1E,
+			"NetManager必须允许通过稳定wire值选择P1E。"
 		)
 
 
 func _test_protocol_boundaries() -> void:
 	_expect(
-		NET_CONSTANTS.PROTOCOL_VERSION == 64
+		NET_CONSTANTS.PROTOCOL_VERSION == 65
 		and NET_CONSTANTS.CHANNEL_COUNT == 8
 		and CombatAttackRegistry.PlayerHitWireId.COMBAT_ROBOT_GUNNER_ELITE_BULLET
 		== 18
@@ -181,7 +181,7 @@ func _test_protocol_boundaries() -> void:
 			&"combat_robot_main_battle_elite"
 		) == CombatAttackRegistry.PlayerHitWireId.INVALID
 		and CombatAttackRegistry.decode_player_hit_source(19) == &"",
-		"协议v64必须保留P1E键和确认状态尾字段，同时保持8通道和攻击来源末尾ID18。"
+		"协议v65必须保留P1E键和确认状态尾字段，同时保持8通道和攻击来源末尾ID18。"
 	)
 
 

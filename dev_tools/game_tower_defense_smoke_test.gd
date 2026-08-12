@@ -192,13 +192,13 @@ func _test_main_menu_entry() -> void:
 		and p1d_button.text == "进入 P1D 地下教会测试"
 		and p1e_button.text == "进入 P1E 主战机器人测试"
 		and p2_button.text == "进入 P2 单日流程",
-		"Test selector may retain the authored P1E page while publication is gated."
+		"Test selector must expose every authored P1 test entry."
 	)
 	_expect(
-		test_choice_overlay.tabs.is_tab_hidden(
+		not test_choice_overlay.tabs.is_tab_hidden(
 			TestArenaChoiceOverlay.P1E_TAB_INDEX
 		),
-		"The selector must hide P1E until its native runtime visuals are published."
+		"The selector must expose the P1E test entry."
 	)
 	_expect(
 		p1b_description.text
@@ -254,12 +254,28 @@ func _test_main_menu_entry() -> void:
 	test_choice_overlay.close()
 	await process_frame
 
-	main_menu.call("_on_test_arena_selected", MainMenu.TEST_ARENA_P1E_ID)
+	test_arena_button.pressed.emit()
+	await process_frame
+	tabs.current_tab = TestArenaChoiceOverlay.P1E_TAB_INDEX
+	await process_frame
+	p1e_button.pressed.emit()
+	await process_frame
 	_expect(
-		not character_overlay.is_open()
-		and main_menu.pending_test_arena_id != MainMenu.TEST_ARENA_P1E_ID,
-		"MainMenu must reject a direct P1E selection attempt that bypasses the hidden tab."
+		character_overlay.is_open()
+		and main_menu.pending_test_arena_id == MainMenu.TEST_ARENA_P1E_ID
+		and str(main_menu.call("_get_pending_singleplayer_scene_path"))
+		== "res://scene/game_modes/tower_defense/test_arenas/test_grass_arena_p1e.tscn",
+		"Selecting P1E must route character confirmation to its authored arena."
 	)
+	character_overlay.close()
+	await process_frame
+	_expect(
+		test_choice_overlay.is_open()
+		and test_choice_overlay.tabs.current_tab == TestArenaChoiceOverlay.P1E_TAB_INDEX,
+		"Backing out of P1E character selection must restore the P1E tab."
+	)
+	test_choice_overlay.close()
+	await process_frame
 
 	test_arena_button.pressed.emit()
 	await process_frame

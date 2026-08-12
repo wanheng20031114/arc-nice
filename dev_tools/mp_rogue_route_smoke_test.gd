@@ -150,9 +150,9 @@ func _run() -> void:
 
 func _test_mode_and_loading_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 64,
+		NetConstants.PROTOCOL_VERSION == 65,
 		(
-			"协议 v64 必须同时承载P1D/P1E、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
+			"协议 v65 必须同时承载P1E入口、神奇遭遇本局历史、地下教会正式普通作战池、遭遇跟随作战、目标玩家私有的地下商店与稀有宝箱会话、"
 			+ "狭路相逢波次资源合同，并隔离 P1C 与纸箱怪资源、"
 			+ "精英战斗机器人、精英持枪机器人弹丸与消耗品资源合同，且保留"
 			+ "精英操作员无人机、精英盾兵、物资节点共享光石/行动力状态、"
@@ -290,12 +290,12 @@ func _test_lobby_contract() -> void:
 	var character_overlay := lobby.get_node(
 		"PlayerCharacterChoiceOverlay"
 	) as PlayerCharacterChoiceOverlay
-	_expect(selector.item_count == 8, "多人大厅必须只暴露八个已发布模式选项。")
+	_expect(selector.item_count == 9, "多人大厅必须暴露全部九个目录模式选项。")
 	_expect(
-		selector.get_item_id(7) == NetManagerStore.GameMode.TEST_ARENA_P3
-		and selector.get_item_text(7).contains("P3")
-		and selector.get_item_icon(7) != null,
-		"大厅第八项必须是带图标的 P3 肉鸽路线。"
+		selector.get_item_id(8) == NetManagerStore.GameMode.TEST_ARENA_P3
+		and selector.get_item_text(8).contains("P3")
+		and selector.get_item_icon(8) != null,
+		"大厅第九项必须是带图标的 P3 肉鸽路线。"
 	)
 	lobby.call("_update_choose_character_button")
 	_expect(choose_button.visible, "P3 房间必须允许玩家选择并确认角色。")
@@ -306,7 +306,7 @@ func _test_lobby_contract() -> void:
 		"_on_net_game_mode_changed",
 		NetManagerStore.GameMode.TEST_ARENA_P2
 	)
-	_expect(character_overlay.is_open(), "P1A/P1B/P1C/P1D/P2/标准模式同步不得误关角色选择。")
+	_expect(character_overlay.is_open(), "P1A/P1B/P1C/P1D/P1E/P2/标准模式同步不得误关角色选择。")
 	character_overlay.close()
 	net_manager.set_host_game_mode(NetManagerStore.GameMode.TEST_ARENA_P3)
 	character_overlay.open(PlayerCharacterRegistry.DEFAULT_CHARACTER_ID)
@@ -1192,15 +1192,26 @@ func _test_encounter_network_contract(
 		PackedInt64Array()
 	) as PackedInt64Array
 	var magical_node_id := -1
+	var run_state := root.get_node_or_null("RunState") as RunStateStore
+	var encountered_ids: Array[StringName] = (
+		run_state.get_rogue_encountered_ids()
+		if run_state != null
+		else []
+	)
 	for node_id in node_types.size():
+		var selected_encounter := RogueEncounterRegistry.select_encounter_for_run(
+			RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
+			int(node_content_seeds[node_id]) if node_id < node_content_seeds.size() else 0,
+			encountered_ids
+		)
 		if (
 			int(node_types[node_id])
 			== RogueRouteGraph.NodeType.MAGICAL_ENCOUNTER
 			and node_id < node_content_seeds.size()
-			and RogueEncounterRegistry.select_encounter(
-				RogueEncounterRegistry.MAGICAL_ENCOUNTER_POOL,
-				int(node_content_seeds[node_id])
-			) != RogueEncounterRegistry.FLUORESCENT_PIT
+			and selected_encounter != RogueEncounterRegistry.FLUORESCENT_PIT
+			and not RogueEncounterRegistry.requires_result_ack(
+				selected_encounter
+			)
 		):
 			magical_node_id = node_id
 			break
@@ -2113,15 +2124,16 @@ func _test_incremental_avatar_reconnect(
 	var authoritative_economy := (
 		host_route.export_encounter_economy_snapshot(collision_peer_id)
 	)
+	var reconnect_full_applied := bool(reconnect_wrapper.call(
+		"_apply_full_snapshot_from_peer",
+		fake_net_manager.host_peer_id,
+		host_route.export_layout_snapshot(),
+		host_route.export_state_snapshot(),
+		host_route.export_encounter_snapshot(collision_peer_id),
+		authoritative_economy
+	))
 	_expect(
-		bool(reconnect_wrapper.call(
-			"_apply_full_snapshot_from_peer",
-			fake_net_manager.host_peer_id,
-			host_route.export_layout_snapshot(),
-			host_route.export_state_snapshot(),
-			host_route.export_encounter_snapshot(collision_peer_id),
-			authoritative_economy
-		))
+		reconnect_full_applied
 		and not shared_run_state.has_multiplayer_peer_state(
 			reconnecting_client_old_peer_id
 		)

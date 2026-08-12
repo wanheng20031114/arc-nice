@@ -35,9 +35,9 @@ func _run() -> void:
 
 func _test_protocol_and_compensation_contract() -> void:
 	_expect(
-		NetConstants.PROTOCOL_VERSION == 64
+		NetConstants.PROTOCOL_VERSION == 65
 		and NetConstants.CHANNEL_COUNT == 8,
-		"精英无人机资源合同与v63新增语义必须保留在协议v64中，且不能增加ENet频道。"
+		"精英无人机资源合同与v63新增语义必须保留在协议v65中，且不能增加ENet频道。"
 	)
 	_expect(
 		MpProjectileCoordinatorScript._is_combat_robot_suicide_drone_type(
