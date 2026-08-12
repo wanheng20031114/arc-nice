@@ -182,6 +182,36 @@ func _test_player_movement_status_visuals() -> void:
 		"Tempura must no longer apply the slow overlay."
 	)
 
+	# A final-speed snapshot can remain above the character baseline when enough
+	# additive tower speed offsets a real timed slow. The snapshot must continue
+	# to own movement while the separately confirmed slow still owns presentation.
+	player.apply_multiplayer_effective_move_speed_multiplier(1.125)
+	var expected_network_speed := float(player.get("_base_move_speed")) * 1.125
+	player.call("_apply_timed_move_slow_runtime_state", 0.75)
+	player.call("_update_movement_status_visuals", Vector2.RIGHT)
+	_expect(
+		is_equal_approx(
+			float(player.call("_get_effective_move_speed")),
+			expected_network_speed
+		)
+		and _get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER) > 0.0,
+		"An above-baseline authoritative speed must not hide a separately confirmed timed-slow overlay."
+	)
+	player.call("_apply_timed_move_slow_runtime_state", 1.0)
+	player.call("_update_movement_status_visuals", Vector2.RIGHT)
+	_expect(
+		is_equal_approx(
+			float(player.call("_get_effective_move_speed")),
+			expected_network_speed
+		)
+		and is_equal_approx(
+			_get_instance_shader_float(sprite, SLOW_OVERLAY_PARAMETER),
+			0.0
+		),
+		"Clearing the timed slow must remove its overlay without changing the authoritative speed."
+	)
+	player.network_effective_move_speed_multiplier_override = 0.0
+
 	player.queue_free()
 	await process_frame
 

@@ -3233,9 +3233,11 @@ func apply_player_damage_confirmation(
 		player_node.play_confirmed_dodge_feedback()
 	if apply_confirmed_cold and confirmed_damage > 0 and not is_dead:
 		player_node.apply_cold_status()
+	# Health snapshots and reliable damage confirmations use independent revision
+	# watermarks. A newer snapshot may already own life state while this first
+	# reliable confirmation still owns its exactly-once presentation statuses.
 	if (
-		applied_life_state
-		and confirmed_damage > 0
+		confirmed_damage > 0
 		and not is_dead
 		and _net_manager != null
 		and _net_manager.is_client()

@@ -622,15 +622,15 @@ func _dispatch_target_damage(
 		if accepted and player.last_damage_taken > 0 and not player.is_dead:
 			if apply_burn:
 				player.apply_burn_status(
-					CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY,
-					main_config.burn_duration,
-					main_config.burn_level
+					CombatAttackRegistry.get_burn_family(source_type),
+					CombatAttackRegistry.get_burn_duration(source_type),
+					CombatAttackRegistry.get_burn_tick_damage(source_type)
 				)
 			if apply_slow:
 				player.apply_timed_move_slow(
-					CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY,
-					main_config.skill2_slow_duration,
-					main_config.skill2_slow_multiplier
+					CombatAttackRegistry.get_timed_move_slow_family(source_type),
+					CombatAttackRegistry.get_timed_move_slow_duration(source_type),
+					CombatAttackRegistry.get_timed_move_slow_multiplier(source_type)
 				)
 		return accepted
 	var plant := target as PlantDefense
@@ -644,9 +644,9 @@ func _dispatch_target_damage(
 	)
 	if accepted and not plant.is_dead and not plant.is_removing and apply_burn:
 		plant.apply_burn_status(
-			CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY,
-			main_config.burn_duration,
-			main_config.burn_level
+			CombatAttackRegistry.get_burn_family(source_type),
+			CombatAttackRegistry.get_burn_duration(source_type),
+			CombatAttackRegistry.get_burn_tick_damage(source_type)
 		)
 	return accepted
 
@@ -850,7 +850,7 @@ func _accept_proxy_action(
 		return false
 	latest_proxy_action_id = action_id
 	if not is_finite(action_elapsed) or action_elapsed < 0.0:
-		_stop_action_audio()
+		_retire_proxy_action_presentation()
 		return false
 	var lifetime := _get_proxy_action_lifetime(action_name)
 	var accepted := (
@@ -858,8 +858,18 @@ func _accept_proxy_action(
 		and action_elapsed <= lifetime + ACTION_EXPIRY_TOLERANCE_SECONDS
 	)
 	if not accepted:
-		_stop_action_audio()
+		# The expired/invalid action still advances the reliable action watermark.
+		# Any older delayed hide callback is therefore stale too, so retire its
+		# presentation here instead of allowing an indicator to remain forever.
+		_retire_proxy_action_presentation()
 	return accepted
+
+
+func _retire_proxy_action_presentation() -> void:
+	_stop_action_audio()
+	_stop_pending_fan_vfx()
+	_stop_fan_slash_particles()
+	_hide_all_action_indicators()
 
 
 func _get_proxy_action_lifetime(action_name: StringName) -> float:
@@ -903,8 +913,9 @@ func _play_proxy_action(
 	var safe_elapsed := maxf(elapsed, 0.0)
 	_stop_pending_fan_vfx()
 	_stop_fan_slash_particles()
-	if action_name != ACTION_SKILL2_TAKEOFF:
-		_stop_proxy_skill2_cross_flash()
+	# 每个已接受的新动作都完整接管代理表现。旧动作的延迟回调会因
+	# action_id 水位失效，因此必须在此主动清除其预警，避免永久残留。
+	_hide_all_action_indicators()
 	_update_facing(safe_direction)
 	_play_proxy_action_audio(action_name, safe_elapsed)
 	match action_name:

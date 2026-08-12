@@ -67,6 +67,7 @@ func _run() -> void:
 	var player := _spawn_player(TEST_PEER_ID)
 	_test_client_direct_sink_fails_closed(player)
 	_test_host_confirmed_main_battle_statuses(player)
+	_test_client_cross_channel_status_confirmation_ordering(player)
 
 	root.get_node("BurnStatusScheduler").call("clear_all")
 	root.get_node("PlayerTimedMoveSlowScheduler").call("clear_all")
@@ -262,6 +263,141 @@ func _test_host_confirmed_main_battle_statuses(player: Player) -> void:
 		))
 		and is_equal_approx(player.timed_move_slow_multiplier, 1.0),
 		"Client burn presentation ticks must remain non-authoritative while the one-second slow restores locally."
+	)
+
+
+func _test_client_cross_channel_status_confirmation_ordering(
+	player: Player
+) -> void:
+	net_manager.net_role = NetManagerStore.NetRole.CLIENT
+	runtime.runtime_mode = CombatRuntimeBase.RuntimeMode.CLIENT_VIEW
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	var slow_scheduler := root.get_node("PlayerTimedMoveSlowScheduler")
+	burn_scheduler.call("clear_target", player)
+	slow_scheduler.call("clear_target", player)
+
+	# Model CH2 snapshot revision 5 arriving before the first CH5 reliable
+	# confirmation at revision 4. The snapshot life value must win, while the
+	# reliable event still owns its one-shot status acknowledgements.
+	var authoritative_health := player.current_health
+	coordinator.set_applied_health_revision(player.peer_id, 5)
+	coordinator.apply_player_damage_confirmation(
+		player.peer_id,
+		authoritative_health - 37,
+		false,
+		4,
+		37,
+		Vector2.LEFT,
+		int(EnemyConfig.DamageType.PHYSICAL),
+		true,
+		false,
+		CombatTypes.DamageRejectionReason.NONE,
+		(
+			MpPlayerCoordinator.CONFIRMED_STATUS_MAIN_BATTLE_BURN
+			| MpPlayerCoordinator.CONFIRMED_STATUS_MAIN_BATTLE_SLOW
+		)
+	)
+	_expect(
+		player.current_health == authoritative_health
+		and coordinator.get_applied_health_revision(player.peer_id) == 5
+		and bool(burn_scheduler.call(
+			"has_burn",
+			player,
+			CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY
+		))
+		and bool(slow_scheduler.call(
+			"has_slow",
+			player,
+			CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY
+		)),
+		"A newer CH2 health snapshot must prevent rollback without swallowing the first older CH5 burn/slow confirmation."
+	)
+
+	# Reliable confirmation revision is the exactly-once boundary. Replaying the
+	# same revision after clocks advance must not refresh either duration.
+	burn_scheduler.call("_advance_active_burns", 0.25)
+	slow_scheduler.call("_advance_active_slows", 0.25)
+	var burn_before_duplicate := burn_scheduler.call(
+		"get_source_snapshot",
+		player,
+		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY
+	) as Dictionary
+	var slow_before_duplicate := slow_scheduler.call(
+		"get_source_snapshot",
+		player,
+		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY
+	) as Dictionary
+	coordinator.apply_player_damage_confirmation(
+		player.peer_id,
+		authoritative_health - 37,
+		false,
+		4,
+		37,
+		Vector2.LEFT,
+		int(EnemyConfig.DamageType.PHYSICAL),
+		true,
+		false,
+		CombatTypes.DamageRejectionReason.NONE,
+		(
+			MpPlayerCoordinator.CONFIRMED_STATUS_MAIN_BATTLE_BURN
+			| MpPlayerCoordinator.CONFIRMED_STATUS_MAIN_BATTLE_SLOW
+		)
+	)
+	var burn_after_duplicate := burn_scheduler.call(
+		"get_source_snapshot",
+		player,
+		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY
+	) as Dictionary
+	var slow_after_duplicate := slow_scheduler.call(
+		"get_source_snapshot",
+		player,
+		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY
+	) as Dictionary
+	_expect(
+		player.current_health == authoritative_health
+		and not burn_before_duplicate.is_empty()
+		and not slow_before_duplicate.is_empty()
+		and float(burn_after_duplicate.get("time_left", 0.0))
+			<= float(burn_before_duplicate.get("time_left", 0.0)) + 0.001
+		and float(slow_after_duplicate.get("time_left", 0.0))
+			<= float(slow_before_duplicate.get("time_left", 0.0)) + 0.001,
+		"A duplicate reliable confirmation revision must neither roll back health nor refresh burn/slow durations."
+	)
+
+	# A terminal confirmation may carry a non-zero mask on the wire, but dead
+	# players must never acquire or retain either status.
+	burn_scheduler.call("clear_target", player)
+	slow_scheduler.call("clear_target", player)
+	coordinator.apply_player_damage_confirmation(
+		player.peer_id,
+		0,
+		true,
+		6,
+		authoritative_health,
+		Vector2.LEFT,
+		int(EnemyConfig.DamageType.PHYSICAL),
+		false,
+		false,
+		CombatTypes.DamageRejectionReason.NONE,
+		(
+			MpPlayerCoordinator.CONFIRMED_STATUS_MAIN_BATTLE_BURN
+			| MpPlayerCoordinator.CONFIRMED_STATUS_MAIN_BATTLE_SLOW
+		)
+	)
+	_expect(
+		player.is_dead
+		and player.current_health == 0
+		and not bool(burn_scheduler.call(
+			"has_burn",
+			player,
+			CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY
+		))
+		and not bool(slow_scheduler.call(
+			"has_slow",
+			player,
+			CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY
+		)),
+		"A dead reliable confirmation must not apply main-battle burn or slow even when its mask is non-zero."
 	)
 
 

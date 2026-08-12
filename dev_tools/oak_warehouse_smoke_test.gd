@@ -9,10 +9,7 @@ const HEALING_POTION := preload(
 	"res://resources/config/consumables/healing_potion.tres"
 )
 const PLANT_HEALTH_BAR_SCRIPT := preload("res://scene/plant_defense/ui/plant_health_bar.gd")
-const MP_GAME_SCRIPT := preload("res://scene/multiplayer/mp_game.gd")
-const OAK_WAREHOUSE_CONFIG := preload(
-	"res://resources/config/plant_defense/oak_warehouse.tres"
-)
+const MP_GAME_SCENE := preload("res://scene/multiplayer/mp_game.tscn")
 
 var failures: Array[String] = []
 
@@ -34,16 +31,35 @@ class HostNetManagerStub:
 		return false
 
 
-class AuthoritativePlantSystemStub:
-	extends PlantSystem
+class AuthoritativeTowerAdapterStub:
+	extends TowerDefenseMultiplayerModeAdapter
+
+	var plants_by_net_id: Dictionary[int, PlantDefense] = {}
 
 	func register_warehouse(net_id: int, warehouse: OakWarehouse) -> void:
 		plants_by_net_id[net_id] = warehouse
-		_register_plant_footprint(
-			warehouse,
-			[Vector2i.ZERO],
-			OAK_WAREHOUSE_CONFIG
-		)
+
+	func get_multiplayer_plant_node(net_id: int) -> PlantDefense:
+		return plants_by_net_id.get(net_id) as PlantDefense
+
+	func find_nearest_operational_interaction_building(
+		world_position: Vector2,
+		maximum_distance: float
+	) -> PlantDefense:
+		var nearest: PlantDefense = null
+		var nearest_distance_squared := maximum_distance * maximum_distance
+		for plant_variant in plants_by_net_id.values():
+			var plant := plant_variant as PlantDefense
+			if not PlantDefense.is_operational_interaction_candidate(plant):
+				continue
+			var distance_squared := world_position.distance_squared_to(
+				plant.global_position
+			)
+			if distance_squared > nearest_distance_squared:
+				continue
+			nearest = plant
+			nearest_distance_squared = distance_squared
+		return nearest
 
 
 func _init() -> void:
@@ -597,11 +613,25 @@ func _test_shared_panel_rebinding(
 func _test_detail_layout(panel: OakWarehousePanel) -> void:
 	var storage_title := panel.get_node("Overlay/PanelRoot/StorageTitle") as Label
 	var player_title := panel.get_node("Overlay/PanelRoot/PlayerTitle") as Label
+	# The authored title rect is 30 pixels tall, but the 21px font plus 5px
+	# outline has a 32px native minimum. Godot preserves the authored top edge and
+	# expands the bottom after theme metrics resolve, so the runtime contract must
+	# validate the stable authored position separately from native minimum height.
 	_expect(
-		Rect2(storage_title.position, storage_title.size)
-		== Rect2(45.0, 78.0, 285.0, 30.0)
-		and Rect2(player_title.position, player_title.size)
-		== Rect2(394.0, 78.0, 285.0, 30.0),
+		storage_title.position == Vector2(45.0, 78.0)
+		and player_title.position == Vector2(394.0, 78.0)
+		and is_equal_approx(storage_title.size.x, 285.0)
+		and is_equal_approx(player_title.size.x, 285.0)
+		and storage_title.size.y >= 30.0
+		and player_title.size.y >= 30.0
+		and is_equal_approx(
+			storage_title.size.y,
+			storage_title.get_combined_minimum_size().y
+		)
+		and is_equal_approx(
+			player_title.size.y,
+			player_title.get_combined_minimum_size().y
+		),
 		"仓库与背包标题必须同步下移3像素，并保持栏内水平对齐。"
 	)
 	var item_detail := panel.get_node("Overlay/PanelRoot/ItemDetail") as Control
@@ -1174,9 +1204,17 @@ func _test_drag_and_controller_slot_moves(
 
 
 func _test_authoritative_warehouse_candidate_filter(warehouse: OakWarehouse) -> void:
-	var mp_game := MP_GAME_SCRIPT.new()
+	var mp_game := MP_GAME_SCENE.instantiate()
+	var tower_economy := (
+		mp_game.get_node_or_null("TowerEconomyCoordinator")
+		as MpTowerEconomyCoordinator
+	)
+	_expect(tower_economy != null, "MpGame必须静态实例化塔防经济协调器。")
+	if tower_economy == null:
+		mp_game.free()
+		return
 	_expect(
-		bool(mp_game.call(
+		bool(tower_economy.call(
 			"_is_authoritative_warehouse_interaction_candidate",
 			warehouse
 		)),
@@ -1184,7 +1222,7 @@ func _test_authoritative_warehouse_candidate_filter(warehouse: OakWarehouse) -> 
 	)
 	warehouse.is_operational = false
 	_expect(
-		not bool(mp_game.call(
+		not bool(tower_economy.call(
 			"_is_authoritative_warehouse_interaction_candidate",
 			warehouse
 		)),
@@ -1193,7 +1231,7 @@ func _test_authoritative_warehouse_candidate_filter(warehouse: OakWarehouse) -> 
 	warehouse.is_operational = true
 	warehouse.is_removing = true
 	_expect(
-		not bool(mp_game.call(
+		not bool(tower_economy.call(
 			"_is_authoritative_warehouse_interaction_candidate",
 			warehouse
 		)),
@@ -1209,16 +1247,27 @@ func _test_authoritative_warehouse_sender_guard(
 	peer_id: int,
 	warehouse_net_id: int
 ) -> void:
-	var mp_game := MP_GAME_SCRIPT.new()
+	var mp_game := MP_GAME_SCENE.instantiate()
+	var tower_economy := (
+		mp_game.get_node_or_null("TowerEconomyCoordinator")
+		as MpTowerEconomyCoordinator
+	)
+	_expect(tower_economy != null, "仓库Host事务测试必须取得真实塔防经济协调器。")
+	if tower_economy == null:
+		mp_game.free()
+		return
 	var net_manager_stub := HostNetManagerStub.new()
 	var game_stub := TowerDefenseGame.new()
-	var plant_system_stub := AuthoritativePlantSystemStub.new()
-	mp_game.net_manager = net_manager_stub
-	mp_game.run_state = run_state
-	mp_game.game = game_stub
-	game_stub.plant_system = plant_system_stub
+	var tower_adapter_stub := AuthoritativeTowerAdapterStub.new()
 	game_stub.peer_players[peer_id] = warehouse.owner_player
-	plant_system_stub.register_warehouse(warehouse_net_id, warehouse)
+	tower_adapter_stub.register_warehouse(warehouse_net_id, warehouse)
+	tower_economy.bind_runtime(
+		game_stub,
+		tower_adapter_stub,
+		run_state,
+		net_manager_stub,
+		0.0
+	)
 	var inventory_before := run_state.export_inventory_snapshot_for_peer(peer_id)
 	var storage_before := warehouse.export_storage_snapshot()
 	var legitimate_command := OakWarehouseProtocol.make_transfer_command(
@@ -1259,7 +1308,7 @@ func _test_authoritative_warehouse_sender_guard(
 		warehouse.get_storage_revision()
 	)
 	original_cached_result["cache_sentinel"] = &"legitimate_result"
-	mp_game.call(
+	tower_economy.call(
 		"_cache_warehouse_transaction_result",
 		peer_id,
 		warehouse_net_id,
@@ -1276,8 +1325,8 @@ func _test_authoritative_warehouse_sender_guard(
 		run_state.get_inventory_revision_for_peer(peer_id),
 		warehouse.get_storage_revision()
 	)
-	mp_game.call("_apply_authoritative_warehouse_command", peer_id, forged_command)
-	var cached_result := mp_game.call(
+	tower_economy.handle_authoritative_warehouse_command(peer_id, forged_command)
+	var cached_result := tower_economy.call(
 		"_get_cached_warehouse_transaction_result",
 		peer_id,
 		warehouse_net_id,
@@ -1293,14 +1342,13 @@ func _test_authoritative_warehouse_sender_guard(
 	var warehouse_position_before := warehouse.global_position
 	warehouse.owner_player.global_position = warehouse_position_before + Vector2(256.0, 0.0)
 	_expect(
-		not bool(mp_game.call(
-			"_handle_authoritative_warehouse_snapshot_request",
+		not tower_economy.handle_authoritative_warehouse_snapshot_request(
 			peer_id,
 			warehouse_net_id
-		)),
+		),
 		"远离仓库的客户端不得主动索取仓库与背包权威快照。"
 	)
-	var snapshot_rate_buckets := mp_game.get(
+	var snapshot_rate_buckets := tower_economy.get(
 		"_warehouse_snapshot_request_rate_buckets"
 	) as Dictionary
 	var snapshot_rate_bucket := snapshot_rate_buckets.get(peer_id, {}) as Dictionary
@@ -1312,36 +1360,35 @@ func _test_authoritative_warehouse_sender_guard(
 	warehouse.owner_player.global_position = warehouse_position_before
 	warehouse.is_operational = false
 	_expect(
-		not bool(mp_game.call(
-			"_handle_authoritative_warehouse_snapshot_request",
+		not tower_economy.handle_authoritative_warehouse_snapshot_request(
 			peer_id,
 			warehouse_net_id
-		)),
+		),
 		"尚未完成搭建的仓库不得响应客户端快照请求。"
 	)
 	warehouse.is_operational = true
 	warehouse.is_removing = true
 	_expect(
-		not bool(mp_game.call(
-			"_handle_authoritative_warehouse_snapshot_request",
+		not tower_economy.handle_authoritative_warehouse_snapshot_request(
 			peer_id,
 			warehouse_net_id
-		)),
+		),
 		"正在拆除的仓库不得响应客户端快照请求。"
 	)
 	warehouse.is_removing = false
 	_expect(
-		not bool(mp_game.call(
-			"_handle_authoritative_warehouse_snapshot_request",
+		not tower_economy.handle_authoritative_warehouse_snapshot_request(
 			peer_id,
 			warehouse_net_id
-		))
+		)
 		and net_manager_stub.peer_send_ready_checks == 1,
 		"合法近距仓库快照请求必须通过交互授权并抵达发送就绪检查。"
 	)
 	warehouse.owner_player.global_position = player_position_before
-	plant_system_stub.plants_by_net_id.clear()
-	plant_system_stub.free()
+	tower_economy.unbind_runtime(game_stub)
+	tower_adapter_stub.plants_by_net_id.clear()
+	tower_adapter_stub.free()
+	game_stub.peer_players.clear()
 	game_stub.free()
 	net_manager_stub.free()
 	mp_game.free()

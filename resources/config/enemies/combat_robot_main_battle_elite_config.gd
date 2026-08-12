@@ -53,9 +53,5 @@ class_name CombatRobotMainBattleEliteConfig
 @export_range(0.0, 5.0, 0.01, "or_greater") var skill2_recovery := 0.58
 @export_range(0.0, 60.0, 0.01, "or_greater") var skill2_cooldown := 8.0
 
-@export_group("命中状态与查询")
-@export_range(0.05, 30.0, 0.05, "or_greater") var burn_duration := 5.0
-@export_range(1, 1000, 1, "or_greater") var burn_level := 5
-@export_range(0.05, 30.0, 0.05, "or_greater") var skill2_slow_duration := 1.0
-@export_range(0.0, 1.0, 0.01) var skill2_slow_multiplier := 0.75
+@export_group("命中查询")
 @export_range(1, 256, 1, "or_greater") var shape_query_batch_size := 64

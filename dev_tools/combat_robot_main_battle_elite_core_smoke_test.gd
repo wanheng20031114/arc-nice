@@ -41,6 +41,7 @@ func _run() -> void:
 	await _test_skill_lock_tracking_and_collision_toggle()
 	await _test_skill2_warning_and_fan_vfx_contract()
 	await _test_proxy_action_and_status_contract()
+	await _test_proxy_indicator_supersession_contract()
 	await _test_dedicated_audio_state_contract()
 	await _test_proxy_audio_offset_and_culling_contract()
 	_test_host_only_registry_contract()
@@ -209,13 +210,29 @@ func _test_damage_geometry_and_statuses() -> void:
 		96,
 		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SKILL1
 	)
+	var burn_scheduler := root.get_node("BurnStatusScheduler")
+	var burn_snapshot := burn_scheduler.call(
+		"get_source_snapshot",
+		front,
+		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY
+	) as Dictionary
 	_expect(
 		front.current_health == front_before - 96
-		and bool(root.get_node("BurnStatusScheduler").call(
+		and bool(burn_scheduler.call(
 			"has_burn",
 			front,
 			CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_BURN_FAMILY
-		)),
+		))
+		and is_equal_approx(
+			float(burn_snapshot.get("time_left", 0.0)),
+			CombatAttackRegistry.get_burn_duration(
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SKILL1
+			)
+		)
+		and int(burn_snapshot.get("tick_damage", 0))
+			== CombatAttackRegistry.get_burn_tick_damage(
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SKILL1
+			),
 		"Skill1 circle must deal 96 and register one shared 5x5 burn family."
 	)
 
@@ -231,13 +248,30 @@ func _test_damage_geometry_and_statuses() -> void:
 		true
 	)
 	var slow_scheduler := root.get_node("PlayerTimedMoveSlowScheduler")
+	var slow_snapshot := slow_scheduler.call(
+		"get_source_snapshot",
+		front,
+		CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SLOW_FAMILY
+	) as Dictionary
 	_expect(
 		front.current_health == front_before - 120
 		and is_equal_approx(float(slow_scheduler.call(
 			"get_effective_multiplier",
 			front
 		)), 0.75)
-		and int(slow_scheduler.call("get_source_count", front)) == 1,
+		and int(slow_scheduler.call("get_source_count", front)) == 1
+		and is_equal_approx(
+			float(slow_snapshot.get("time_left", 0.0)),
+			CombatAttackRegistry.get_timed_move_slow_duration(
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SKILL2
+			)
+		)
+		and is_equal_approx(
+			float(slow_snapshot.get("multiplier", 1.0)),
+			CombatAttackRegistry.get_timed_move_slow_multiplier(
+				CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SKILL2
+			)
+		),
 		"Skill2 fan must deal 120 and apply one 1-second 0.75 slow."
 	)
 	front.apply_timed_move_slow(
@@ -703,6 +737,159 @@ func _test_proxy_action_and_status_contract() -> void:
 	await process_frame
 
 
+func _test_proxy_indicator_supersession_contract() -> void:
+	var player := _spawn_player(Vector2(60.0, 0.0))
+	var proxy := _spawn_enemy(Vector2.ZERO, player)
+	proxy.configure_multiplayer_proxy()
+
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL1_CIRCLE,
+		Vector2.RIGHT,
+		proxy.global_position,
+		1,
+		0.0
+	)
+	_expect(
+		proxy.skill1_circle_ring.visible,
+		"Proxy circle action must first expose its own warning ring."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_WINDUP,
+		Vector2.RIGHT,
+		proxy.global_position,
+		2,
+		0.1
+	)
+	_expect(
+		proxy.attack_warning.visible
+		and not proxy.skill1_warning_line.visible
+		and not proxy.skill1_circle_ring.visible
+		and not proxy.skill2_cross_marker.visible
+		and not proxy.skill2_fan_warning.visible,
+		"A newer attack windup must replace every stale proxy indicator."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_SLASH,
+		Vector2.RIGHT,
+		proxy.global_position,
+		3,
+		0.0
+	)
+	_expect(
+		_all_action_indicators_hidden(proxy),
+		"Attack slash must clear its preceding windup without reviving older warnings."
+	)
+
+	proxy.play_multiplayer_enemy_target_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL1_WINDUP,
+		player,
+		proxy.global_position,
+		4,
+		0.0
+	)
+	_expect(
+		proxy.skill1_warning_line.visible,
+		"Proxy skill-one windup must expose only its tracking line."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL1_CIRCLE,
+		Vector2.RIGHT,
+		proxy.global_position,
+		5,
+		0.0
+	)
+	_expect(
+		not proxy.skill1_warning_line.visible
+		and proxy.skill1_circle_ring.visible,
+		"Skill-one circle must replace its windup line with the circle ring."
+	)
+
+	proxy.play_multiplayer_enemy_target_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL2_TAKEOFF,
+		player,
+		proxy.global_position,
+		6,
+		0.0
+	)
+	_expect(
+		_all_action_indicators_hidden(proxy),
+		"Skill-two takeoff must clear the preceding circle while its body is rising."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL2_DROP,
+		Vector2.LEFT,
+		proxy.global_position,
+		7,
+		0.0
+	)
+	_expect(
+		proxy.skill2_fan_warning.visible
+		and not proxy.attack_warning.visible
+		and not proxy.skill1_warning_line.visible
+		and not proxy.skill1_circle_ring.visible
+		and not proxy.skill2_cross_marker.visible,
+		"Skill-two drop must replace takeoff tracking with only its landing fan."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL1_CIRCLE,
+		Vector2.RIGHT,
+		proxy.global_position,
+		8,
+		0.0
+	)
+	_expect(
+		proxy.skill1_circle_ring.visible
+		and not proxy.skill2_fan_warning.visible,
+		"A newer circle action must clear a stale landing fan warning."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_WINDUP,
+		Vector2.RIGHT,
+		proxy.global_position,
+		9,
+		ENEMY_CONFIG.attack_windup + 1.0
+	)
+	_expect(
+		proxy.latest_proxy_action_id == 9
+		and _all_action_indicators_hidden(proxy),
+		"An expired action that advances the watermark must retire every older indicator."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL1_CIRCLE,
+		Vector2.RIGHT,
+		proxy.global_position,
+		8,
+		0.0
+	)
+	_expect(
+		_all_action_indicators_hidden(proxy),
+		"An out-of-order action must not revive presentation retired by a newer expired watermark."
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_SKILL1_CIRCLE,
+		Vector2.RIGHT,
+		proxy.global_position,
+		10,
+		0.0
+	)
+	proxy.play_multiplayer_enemy_action_with_context(
+		CombatRobotMainBattleElite.ACTION_ATTACK_WINDUP,
+		Vector2.RIGHT,
+		proxy.global_position,
+		11,
+		-0.1
+	)
+	_expect(
+		proxy.latest_proxy_action_id == 11
+		and _all_action_indicators_hidden(proxy),
+		"An invalid elapsed time that advances the watermark must also retire older presentation."
+	)
+
+	proxy.queue_free()
+	player.queue_free()
+	await process_frame
+
+
 func _test_dedicated_audio_state_contract() -> void:
 	var player := _spawn_player(Vector2(24.0, 0.0))
 	var enemy := _spawn_enemy(Vector2.ZERO, player)
@@ -996,6 +1183,17 @@ func _any_action_audio_playing(enemy: CombatRobotMainBattleElite) -> bool:
 
 
 func _test_host_only_registry_contract() -> void:
+	for duplicated_property in [
+		&"burn_duration",
+		&"burn_level",
+		&"skill2_slow_duration",
+		&"skill2_slow_multiplier",
+	]:
+		_expect(
+			not _object_has_property(ENEMY_CONFIG, duplicated_property),
+			"Main-battle status tuning must not have a second config source: %s."
+			% duplicated_property
+		)
 	_expect(
 		CombatAttackRegistry.encode_player_hit_source(
 			CombatAttackRegistry.COMBAT_ROBOT_MAIN_BATTLE_SKILL1
@@ -1055,6 +1253,23 @@ func _all_shapes_disabled(shapes: Array[CollisionShape2D]) -> bool:
 		if shape == null or not shape.disabled:
 			return false
 	return true
+
+
+func _all_action_indicators_hidden(enemy: CombatRobotMainBattleElite) -> bool:
+	return (
+		not enemy.attack_warning.visible
+		and not enemy.skill1_warning_line.visible
+		and not enemy.skill1_circle_ring.visible
+		and not enemy.skill2_cross_marker.visible
+		and not enemy.skill2_fan_warning.visible
+	)
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property_info in object.get_property_list():
+		if StringName(property_info.get("name", &"")) == property_name:
+			return true
+	return false
 
 
 func _expect(condition: bool, message: String) -> void:

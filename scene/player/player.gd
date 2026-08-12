@@ -5371,8 +5371,11 @@ func _update_movement_status_visuals(move_direction: Vector2) -> void:
 		)
 	)
 	if network_effective_move_speed_multiplier_override > 0.0:
+		# The snapshot carries the final authoritative speed, not the presentation
+		# reason behind it. Keep locally confirmed slow states visible even when an
+		# additive bonus (for example, Speed Towers) lifts the final ratio above 1.
 		is_slowed = (
-			cold_stack_count > 0
+			is_slowed
 			or network_effective_move_speed_multiplier_override
 				< DEFAULT_MOVE_SPEED_MULTIPLIER
 		)
