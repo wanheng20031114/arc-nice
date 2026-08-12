@@ -1,20 +1,20 @@
-[gd_resource type="Resource" script_class="CombatRobotMainBattleEliteConfig" load_steps=16 format=3]
+[gd_resource type="Resource" script_class="CombatRobotMainBattleEliteConfig" format=3 uid="uid://ciuehevtcc43j"]
 
-[ext_resource type="Script" path="res://resources/config/enemies/combat_robot_main_battle_elite_config.gd" id="1_config"]
-[ext_resource type="Resource" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_drop"]
+[ext_resource type="Script" uid="uid://buobfs2h4wy11" path="res://resources/config/enemies/combat_robot_main_battle_elite_config.gd" id="1_config"]
+[ext_resource type="Resource" uid="uid://rd6tadya5wqs" path="res://resources/config/enemies/default_enemy_drop_table.tres" id="2_drop"]
 [ext_resource type="PackedScene" path="res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.tscn" id="3_scene"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_stomp_a.wav" id="4_stomp_a"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_stomp_b.wav" id="5_stomp_b"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_hit_a.wav" id="6_hit_a"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_hit_b.wav" id="7_hit_b"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_normal_windup.wav" id="8_attack_windup"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_normal_double_slash.wav" id="9_attack_slash"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_charge.wav" id="10_skill1_charge"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_dash.wav" id="11_skill1_dash"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill1_circle_slash.wav" id="12_skill1_circle"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill2_takeoff.wav" id="13_skill2_takeoff"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_skill2_drop_bilateral_slash.wav" id="14_skill2_drop"]
-[ext_resource type="AudioStream" path="res://resources/audio/combat_robot_main_battle_elite_death.wav" id="15_death"]
+[ext_resource type="AudioStream" uid="uid://bub35ngkgx667" path="res://resources/audio/combat_robot_main_battle_elite_stomp_a.wav" id="4_stomp_a"]
+[ext_resource type="AudioStream" uid="uid://rs2te4hdlhof" path="res://resources/audio/combat_robot_main_battle_elite_stomp_b.wav" id="5_stomp_b"]
+[ext_resource type="AudioStream" uid="uid://ce0lp4r51nou8" path="res://resources/audio/combat_robot_main_battle_elite_hit_a.wav" id="6_hit_a"]
+[ext_resource type="AudioStream" uid="uid://s17b07myjk3q" path="res://resources/audio/combat_robot_main_battle_elite_hit_b.wav" id="7_hit_b"]
+[ext_resource type="AudioStream" uid="uid://xqkpnylvj8b7" path="res://resources/audio/combat_robot_main_battle_elite_normal_windup.wav" id="8_attack_windup"]
+[ext_resource type="AudioStream" uid="uid://c4hm6554is6jb" path="res://resources/audio/combat_robot_main_battle_elite_normal_double_slash.wav" id="9_attack_slash"]
+[ext_resource type="AudioStream" uid="uid://qrhsxs7y3ey1" path="res://resources/audio/combat_robot_main_battle_elite_skill1_charge.wav" id="10_skill1_charge"]
+[ext_resource type="AudioStream" uid="uid://6iakhslhaopv" path="res://resources/audio/combat_robot_main_battle_elite_skill1_dash.wav" id="11_skill1_dash"]
+[ext_resource type="AudioStream" uid="uid://dlyi072rcn8sy" path="res://resources/audio/combat_robot_main_battle_elite_skill1_circle_slash.wav" id="12_skill1_circle"]
+[ext_resource type="AudioStream" uid="uid://dy6i7646c3051" path="res://resources/audio/combat_robot_main_battle_elite_skill2_takeoff.wav" id="13_skill2_takeoff"]
+[ext_resource type="AudioStream" uid="uid://mttgyii6uejj" path="res://resources/audio/combat_robot_main_battle_elite_skill2_drop_bilateral_slash.wav" id="14_skill2_drop"]
+[ext_resource type="AudioStream" uid="uid://cyx5inbroc51n" path="res://resources/audio/combat_robot_main_battle_elite_death.wav" id="15_death"]
 
 [resource]
 script = ExtResource("1_config")
@@ -40,41 +40,3 @@ magic_defense = 35
 move_speed = 28.0
 home_damage = 2
 xirang_kill_reward = 10
-drop_table = ExtResource("2_drop")
-attack_animation_name = &"attack"
-attack_range = 32.0
-attack_angle_degrees = 90.0
-attack_windup = 0.35
-attack_damage_delay = 0.54
-attack_slash_duration = 1.1
-attack_cooldown = 1.33
-skill1_windup_animation_name = &"skill1_windup"
-skill1_dash_animation_name = &"skill1_dash"
-skill1_circle_animation_name = &"skill1_circle_slash"
-skill1_initial_delay = 1.5
-skill1_trigger_range = 160.0
-skill1_windup = 0.56
-skill1_dash_speed = 240.0
-skill1_dash_duration = 0.75
-skill1_circle_radius = 36.0
-skill1_damage_multiplier = 1.2
-skill1_recovery = 0.78
-skill1_cooldown = 10.0
-skill2_takeoff_animation_name = &"skill2_takeoff"
-skill2_drop_animation_name = &"skill2_drop_slash"
-skill2_initial_delay = 4.0
-skill2_trigger_range = 220.0
-skill2_takeoff_duration = 0.46
-skill2_tracking_duration = 3.0
-skill2_cross_speed = 50.0
-skill2_drop_duration = 0.18
-skill2_fan_range = 48.0
-skill2_fan_angle_degrees = 120.0
-skill2_damage_multiplier = 1.5
-skill2_recovery = 0.58
-skill2_cooldown = 8.0
-burn_duration = 5.0
-burn_level = 5
-skill2_slow_duration = 1.0
-skill2_slow_multiplier = 0.75
-shape_query_batch_size = 64

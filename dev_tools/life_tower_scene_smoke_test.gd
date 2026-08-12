@@ -60,6 +60,11 @@ func _run() -> void:
 	) as GPUParticles2D
 	var player := tower.get_node("HeartBobAnimationPlayer") as AnimationPlayer
 	var health_bar := tower.get_node("HealthBar") as PlantHealthBar
+	var body_collision := tower.get_node("CollisionShape2D") as CollisionShape2D
+	var player_core := tower.get_node("PlayerCoreBody") as StaticBody2D
+	var player_core_collision := tower.get_node(
+		"PlayerCoreBody/CollisionShape2D"
+	) as CollisionShape2D
 	_assert(visual_root != null, "VisualRoot is missing.")
 	_assert(lower_body != null, "LowerBody is missing.")
 	_assert(heart_root != null, "HeartBobRoot is missing.")
@@ -67,6 +72,28 @@ func _run() -> void:
 	_assert(heart_motes != null, "HeartMotes is missing.")
 	_assert(player != null, "HeartBobAnimationPlayer is missing.")
 	_assert(health_bar != null, "HealthBar is missing.")
+	_assert(body_collision != null, "Life Tower body collision is missing.")
+	_assert(player_core != null, "Life Tower player core is missing.")
+	_assert(player_core_collision != null, "Life Tower player core collision is missing.")
+	var body_shape := body_collision.shape as RectangleShape2D
+	var player_core_shape := player_core_collision.shape as CapsuleShape2D
+	_assert(
+		body_collision.position == Vector2(0, 5.5)
+		and body_shape != null
+		and body_shape.size == Vector2(24, 17),
+		"Life Tower body collision must preserve the authored 24x17 footprint."
+	)
+	_assert(
+		player_core.position == Vector2(0, 1)
+		and player_core.collision_layer == 1024
+		and player_core.collision_mask == 2
+		and player_core_collision.position == Vector2(0, 7)
+		and is_equal_approx(player_core_collision.rotation, PI / 2.0)
+		and player_core_shape != null
+		and is_equal_approx(player_core_shape.radius, 4.0)
+		and is_equal_approx(player_core_shape.height, 16.0),
+		"Life Tower player core collision must preserve the authored 16x8 capsule."
+	)
 	_assert(visual_root.scale == Vector2(0.5, 0.5), "VisualRoot scale must be 0.5.")
 	_assert(lower_body.texture != null, "LowerBody texture is not imported.")
 	_assert(heart.texture != null, "Heart texture is not imported.")
@@ -164,9 +191,9 @@ func _run() -> void:
 	)
 	_assert(
 		health_bar.offset_left == -12.0
-		and health_bar.offset_top == -10.0
+		and health_bar.offset_top == -11.0
 		and health_bar.offset_right == 12.0
-		and health_bar.offset_bottom == -6.0
+		and health_bar.offset_bottom == -7.0
 		and health_bar.scale == Vector2.ONE,
 		"Life Tower health bar must keep its authored top edge and integer layout."
 	)

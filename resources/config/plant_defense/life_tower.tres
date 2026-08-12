@@ -1,8 +1,8 @@
-[gd_resource type="Resource" script_class="LifeTowerConfig" format=3]
+[gd_resource type="Resource" script_class="LifeTowerConfig" format=3 uid="uid://cy75fli6hyik4"]
 
-[ext_resource type="Script" path="res://resources/config/plant_defense/life_tower_config.gd" id="1_config"]
+[ext_resource type="Script" uid="uid://bxux2rv7b5dsu" path="res://resources/config/plant_defense/life_tower_config.gd" id="1_config"]
 [ext_resource type="Texture2D" uid="uid://cfqha8kovspbb" path="res://resources/texture/plant_defense/life_tower/life_tower.png" id="2_icon"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/life_tower.tscn" id="3_scene"]
+[ext_resource type="PackedScene" uid="uid://b7qajdy24nb1n" path="res://scene/plant_defense/life_tower.tscn" id="3_scene"]
 
 [resource]
 script = ExtResource("1_config")
@@ -17,6 +17,3 @@ placement_surface = 1
 menu_order = 30
 max_health = 2400
 physical_defense = 5
-magic_defense = 0
-footprint_size = Vector2i(2, 2)
-max_health_bonus_ratio = 0.1

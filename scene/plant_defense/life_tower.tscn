@@ -87,7 +87,7 @@ size = Vector2(24, 17)
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player_core"]
 resource_local_to_scene = true
 radius = 4.0
-height = 20.0
+height = 16.0
 
 [node name="LifeTower" type="StaticBody2D" unique_id=106494045]
 collision_layer = 512
@@ -129,7 +129,7 @@ autoplay = &"heart_bob"
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1317831653]
 position = Vector2(0, 5.5)
 shape = SubResource("RectangleShape2D_body")
-debug_color = Color(0.87058824, 0.47058824, 0.654902, 0.12941177)
+debug_color = Color(0.87058824, 0.47058824, 0.654902, 0.05882353)
 
 [node name="PlayerCoreBody" type="StaticBody2D" parent="." unique_id=1312384718]
 position = Vector2(0, 1)
@@ -144,6 +144,6 @@ shape = SubResource("CapsuleShape2D_player_core")
 [node name="HealthBar" parent="." unique_id=964922228 instance=ExtResource("5_health_bar")]
 custom_minimum_size = Vector2(24, 4)
 offset_left = -12.0
-offset_top = -10.0
+offset_top = -11.0
 offset_right = 12.0
-offset_bottom = -6.0
+offset_bottom = -7.0

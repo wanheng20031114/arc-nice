@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="WaveConfig" format=3 uid="uid://cxn355lbd0pko"]
 
 [ext_resource type="Script" uid="uid://x110ar7nhdqa" path="res://resources/config/waves/wave_enemy_entry.gd" id="1_entry_script"]
-[ext_resource type="Resource" path="res://resources/config/enemies/combat_robot_main_battle_elite.tres" id="2_main_battle"]
+[ext_resource type="Resource" uid="uid://ciuehevtcc43j" path="res://resources/config/enemies/combat_robot_main_battle_elite.tres" id="2_main_battle"]
 [ext_resource type="Script" uid="uid://blcjxtu575ki5" path="res://resources/config/flow/flow_exit_config.gd" id="3_0od26"]
 [ext_resource type="Script" uid="uid://bqlv2yysi01t3" path="res://resources/config/waves/wave_config.gd" id="3_wave_script"]
 

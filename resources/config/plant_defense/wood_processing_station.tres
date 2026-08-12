@@ -1,8 +1,8 @@
-[gd_resource type="Resource" script_class="PlantDefenseConfig" format=3]
+[gd_resource type="Resource" script_class="PlantDefenseConfig" format=3 uid="uid://d343fmx1me78x"]
 
-[ext_resource type="Script" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
-[ext_resource type="Texture2D" path="res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png" id="2_icon"]
-[ext_resource type="PackedScene" path="res://scene/plant_defense/wood_processing_station.tscn" id="3_scene"]
+[ext_resource type="Script" uid="uid://b5ngq5py6eyrp" path="res://resources/config/plant_defense/plant_defense_config.gd" id="1_config"]
+[ext_resource type="Texture2D" uid="uid://etkyjri3jk8w" path="res://resources/texture/plant_defense/wood_processing_station/wood_processing_station.png" id="2_icon"]
+[ext_resource type="PackedScene" uid="uid://b5tdindv58eg5" path="res://scene/plant_defense/wood_processing_station.tscn" id="3_scene"]
 
 [resource]
 script = ExtResource("1_config")
@@ -14,11 +14,6 @@ plant_scene = ExtResource("3_scene")
 supports_multiplayer = true
 building_category = 3
 placement_surface = 2
-menu_order = 10
 max_health = 2000
 physical_defense = 10
-magic_defense = 0
-attack_damage = 0
-attack_speed = 0.0
-attack_range = 0.0
 footprint_size = Vector2i(1, 1)

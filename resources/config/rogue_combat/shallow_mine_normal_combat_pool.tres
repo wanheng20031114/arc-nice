@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://dwe55wgjtl4yq" path="res://resources/config/rogue_combat/rogue_combat_pool_entry.gd" id="2_entry_script"]
 [ext_resource type="Resource" uid="uid://bgo01u0bqbesa" path="res://resources/config/rogue_combat/encounter_01.tres" id="3_narrow_road"]
 [ext_resource type="Resource" uid="uid://b58vexewqaqrb" path="res://resources/config/rogue_combat/underground_church_01.tres" id="4_underground_church"]
-[ext_resource type="Resource" path="res://resources/config/rogue_combat/abandoned_mine_01.tres" id="5_abandoned_mine"]
+[ext_resource type="Resource" uid="uid://ceubwgnmnekfg" path="res://resources/config/rogue_combat/abandoned_mine_01.tres" id="5_abandoned_mine"]
 
 [sub_resource type="Resource" id="NarrowRoadEntry"]
 script = ExtResource("2_entry_script")
