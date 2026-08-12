@@ -1,4 +1,4 @@
-[gd_resource type="GradientTexture2D" load_steps=2 format=3]
+[gd_resource type="GradientTexture2D" format=3 uid="uid://b452qxrs83pdw"]
 
 [sub_resource type="Gradient" id="Gradient_enemy_ground_shadow"]
 offsets = PackedFloat32Array(0, 0.5, 0.78, 1)

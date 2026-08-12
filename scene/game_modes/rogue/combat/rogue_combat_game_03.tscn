@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://b2h7qgwej5n3a" path="res://scene/multiplayer/gameplay/multiplayer_gameplay_gateway.tscn" id="2_gateway"]
 [ext_resource type="PackedScene" uid="uid://bwy4m8w6x0rae" path="res://scene/game_modes/rogue/multiplayer/rogue_multiplayer_mode_adapter.tscn" id="3_adapter"]
 [ext_resource type="PackedScene" uid="uid://cx8r7t2j4p5ma" path="res://scene/game_modes/rogue/combat/player/rogue_player_roster_coordinator.tscn" id="4_roster"]
-[ext_resource type="PackedScene" uid="uid://d5w9j2n7r4c8p" path="res://scene/game_modes/rogue/combat/pickup/rogue_pickup_registry.tscn" id="5_pickups"]
+[ext_resource type="PackedScene" uid="uid://bjex0qx7whhx" path="res://scene/game_modes/rogue/combat/pickup/rogue_pickup_registry.tscn" id="5_pickups"]
 [ext_resource type="PackedScene" path="res://scene/lighting/day_night_controller.tscn" id="6_day_night"]
 [ext_resource type="PackedScene" path="res://scene/lighting/night_vfx_flash_pool.tscn" id="7_night_vfx"]
 [ext_resource type="AudioStream" uid="uid://dtds82oklhy8w" path="res://resources/audio/ui/countdown_tick.wav" id="8_countdown"]
@@ -110,7 +110,7 @@ texture_filter = 1
 position = Vector2(160, 128)
 texture = ExtResource("10_background")
 
-[node name="GroundTileMapLayer" parent="." instance=ExtResource("25_navigation")]
+[node name="GroundTileMapLayer" parent="." unique_id=138658962 instance=ExtResource("25_navigation")]
 
 [node name="GridPathfinder" type="Node" parent="." unique_id=1493614202]
 script = ExtResource("11_pathfinder")

@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="RogueCombatEncounterConfig" format=3 uid="uid://b58vexewqaqrb"]
 
-[ext_resource type="Script" path="res://resources/config/rogue_combat/rogue_combat_encounter_config.gd" id="1_config_script"]
+[ext_resource type="Script" uid="uid://cvx2f5hh6lh4n" path="res://resources/config/rogue_combat/rogue_combat_encounter_config.gd" id="1_config_script"]
 [ext_resource type="Resource" path="res://resources/config/campaigns/rogue_combat/underground_church_01/campaign.tres" id="2_campaign"]
 [ext_resource type="Resource" path="res://resources/config/rogue_combat/reward_encounter_01.tres" id="3_reward"]
 [ext_resource type="Texture2D" uid="uid://d18lghok7cs8w" path="res://resources/texture/rogue_combat/underground_church/underground_church_background.png" id="4_briefing_atlas"]
@@ -17,9 +17,6 @@ objective_text = "击败全部敌人"
 briefing_visual = SubResource("AtlasTexture_briefing")
 combat_scene_path = "res://scene/game_modes/rogue/combat/rogue_combat_game_02.tscn"
 campaign = ExtResource("2_campaign")
-preparation_seconds = 3
-combat_limit_seconds = 90
-extra_xirang = 500
 reward_config = ExtResource("3_reward")
 decisions_confirmed = true
 deadline_start = 2

@@ -1,86 +1,6 @@
-[gd_resource type="SpriteFrames" load_steps=26 format=3]
+[gd_resource type="SpriteFrames" format=3 uid="uid://cqxcydxr0qr62"]
 
-[ext_resource type="Texture2D" path="res://resources/texture/enemy/artificial_creation/cardboard_monster_large.png" id="1_texture"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
-atlas = ExtResource("1_texture")
-region = Rect2(0, 0, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_1"]
-atlas = ExtResource("1_texture")
-region = Rect2(48, 0, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_2"]
-atlas = ExtResource("1_texture")
-region = Rect2(96, 0, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_3"]
-atlas = ExtResource("1_texture")
-region = Rect2(144, 0, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_4"]
-atlas = ExtResource("1_texture")
-region = Rect2(192, 0, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_5"]
-atlas = ExtResource("1_texture")
-region = Rect2(240, 0, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_6"]
-atlas = ExtResource("1_texture")
-region = Rect2(288, 0, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_move_7"]
-atlas = ExtResource("1_texture")
-region = Rect2(336, 0, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_windup_0"]
-atlas = ExtResource("1_texture")
-region = Rect2(0, 48, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_windup_1"]
-atlas = ExtResource("1_texture")
-region = Rect2(48, 48, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_windup_2"]
-atlas = ExtResource("1_texture")
-region = Rect2(96, 48, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_slash_0"]
-atlas = ExtResource("1_texture")
-region = Rect2(144, 48, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_slash_1"]
-atlas = ExtResource("1_texture")
-region = Rect2(192, 48, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_slash_2"]
-atlas = ExtResource("1_texture")
-region = Rect2(240, 48, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_slash_3"]
-atlas = ExtResource("1_texture")
-region = Rect2(288, 48, 48, 48)
-filter_clip = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_slash_4"]
-atlas = ExtResource("1_texture")
-region = Rect2(336, 48, 48, 48)
-filter_clip = true
+[ext_resource type="Texture2D" uid="uid://4ioxd5hr720g" path="res://resources/texture/enemy/artificial_creation/cardboard_monster_large.png" id="1_texture"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_death_0"]
 atlas = ExtResource("1_texture")
@@ -122,8 +42,117 @@ atlas = ExtResource("1_texture")
 region = Rect2(336, 96, 48, 48)
 filter_clip = true
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 0, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(48, 0, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(96, 0, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(144, 0, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_4"]
+atlas = ExtResource("1_texture")
+region = Rect2(192, 0, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_5"]
+atlas = ExtResource("1_texture")
+region = Rect2(240, 0, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_6"]
+atlas = ExtResource("1_texture")
+region = Rect2(288, 0, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_move_7"]
+atlas = ExtResource("1_texture")
+region = Rect2(336, 0, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(144, 48, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(192, 48, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(240, 48, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_3"]
+atlas = ExtResource("1_texture")
+region = Rect2(288, 48, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_slash_4"]
+atlas = ExtResource("1_texture")
+region = Rect2(336, 48, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_0"]
+atlas = ExtResource("1_texture")
+region = Rect2(0, 48, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_1"]
+atlas = ExtResource("1_texture")
+region = Rect2(48, 48, 48, 48)
+filter_clip = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_windup_2"]
+atlas = ExtResource("1_texture")
+region = Rect2(96, 48, 48, 48)
+filter_clip = true
+
 [resource]
 animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_death_7")
+}],
+"loop": false,
+"name": &"death",
+"speed": 12.0
+}, {
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_move_0")
@@ -155,20 +184,6 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_windup_0")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_windup_1")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_windup_2")
-}],
-"loop": false,
-"name": &"windup",
-"speed": 9.0
-}, {
-"frames": [{
-"duration": 1.0,
 "texture": SubResource("AtlasTexture_slash_0")
 }, {
 "duration": 1.0,
@@ -189,30 +204,15 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_death_0")
+"texture": SubResource("AtlasTexture_windup_0")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_death_1")
+"texture": SubResource("AtlasTexture_windup_1")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_death_2")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_death_3")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_death_4")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_death_5")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_death_6")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_death_7")
+"texture": SubResource("AtlasTexture_windup_2")
 }],
 "loop": false,
-"name": &"death",
-"speed": 12.0
+"name": &"windup",
+"speed": 9.0
 }]

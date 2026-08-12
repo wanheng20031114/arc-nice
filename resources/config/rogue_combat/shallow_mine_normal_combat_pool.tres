@@ -9,17 +9,14 @@
 [sub_resource type="Resource" id="NarrowRoadEntry"]
 script = ExtResource("2_entry_script")
 combat_config = ExtResource("3_narrow_road")
-selection_weight = 1
 
 [sub_resource type="Resource" id="UndergroundChurchEntry"]
 script = ExtResource("2_entry_script")
 combat_config = ExtResource("4_underground_church")
-selection_weight = 1
 
 [sub_resource type="Resource" id="AbandonedMineEntry"]
 script = ExtResource("2_entry_script")
 combat_config = ExtResource("5_abandoned_mine")
-selection_weight = 1
 
 [resource]
 script = ExtResource("1_pool_script")
