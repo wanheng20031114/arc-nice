@@ -5,7 +5,7 @@
   ],
   "canonical_approval": {
     "path": "dev_assets/source_images/combat_robot_main_battle_elite/combat_robot_main_battle_elite_animation_selection.json",
-    "sha256": "a90d894e19f286244e198ff4c276e2ac09495b428a670d3cc7d3728f3333328c"
+    "sha256": "b0f68e2736c7a5e55db751fc81005d659fd30ac1b97ba073deb9e9d3600d906e"
   },
   "certificate_valid": false,
   "enemy_id": "combat_robot_main_battle_elite",
@@ -19,8 +19,7 @@
   "promotion_forbidden": true,
   "reason": "old animdraft previews/certificates used superseded or compressed/non-integer material and cannot be promoted or regenerated as canonical outputs",
   "recoverable_by_rerun": false,
-  "runtime_paths": [],
-  "runtime_written": false,
+  "runtime_release_scope": "not_applicable_legacy_invalidation_only",
   "schema_version": 1,
   "stage": "legacy_animation_materials_invalid"
 }

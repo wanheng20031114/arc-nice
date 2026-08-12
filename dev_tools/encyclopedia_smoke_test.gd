@@ -8,7 +8,7 @@ const DETAIL_PANEL_SCENE := preload("res://scene/encyclopedia/detail_panel.tscn"
 const BASE_VIEWPORT := Vector2i(1152, 648)
 const EXPECTED_LEGENDARY_COLOR := Color("ffae32")
 const EXPECTED_SECTION_COUNTS := {
-	CodexSection.ENEMY: 63,
+	CodexSection.ENEMY: 64,
 	CodexSection.COLLECTIBLE: 125,
 	CodexSection.BUILDING: 16,
 }
@@ -34,12 +34,12 @@ const EXPECTED_ENEMY_FAMILY_COUNTS := {
 	&"capoo": 16,
 	&"sorcerer": 6,
 	&"artificial_creation": 4,
-	&"mechanical_life": 10,
+	&"mechanical_life": 11,
 	&"boss": 1,
 }
 const EXPECTED_ENEMY_RANK_COUNTS := {
 	EnemyCodexEntryConfig.Rank.NORMAL: 51,
-	EnemyCodexEntryConfig.Rank.ELITE: 11,
+	EnemyCodexEntryConfig.Rank.ELITE: 12,
 	EnemyCodexEntryConfig.Rank.BOSS: 1,
 }
 const ATTACK_STAT_LABELS := [
@@ -112,7 +112,7 @@ func _run() -> void:
 func _test_catalog_counts_and_unique_ids(catalog: CodexCatalog) -> void:
 	_expect(
 		EnemyCodexRegistry.validate_contract(),
-		"EnemyCodexRegistry must expose 63 valid, ordered and unique enemies."
+		"EnemyCodexRegistry must expose 64 valid, ordered and unique enemies."
 	)
 	var globally_seen_ids: Dictionary = {}
 	for section_variant in CodexSection.ALL:
@@ -266,6 +266,7 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 	var saw_combat_robot_shield_bearer_elite := false
 	var saw_combat_robot_ninja := false
 	var saw_combat_robot_ninja_elite := false
+	var saw_combat_robot_main_battle_elite := false
 	var saw_linglan := false
 	for entry in catalog.get_entries(CodexSection.ENEMY):
 		var source := entry.source_resource as EnemyCodexEntryConfig
@@ -662,6 +663,25 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 				),
 				"Ninja robot must keep its normal-rank mechanical codex contract."
 			)
+		if config is CombatRobotMainBattleEliteConfig:
+			saw_combat_robot_main_battle_elite = true
+			_expect(
+				source.entry_id == &"combat_robot_main_battle_elite"
+				and source.sort_order == 570
+				and source.family_id == &"mechanical_life"
+				and source.rank == EnemyCodexEntryConfig.Rank.ELITE
+				and entry.primary_badge == "机械生命"
+				and entry.secondary_badge == "精英"
+				and source.preview_animation == &"move"
+				and source.preview_scale.is_equal_approx(Vector2(0.125, 0.125))
+				and entry.preview_scale.is_equal_approx(source.preview_scale)
+				and source.description
+				== "双持重剑的精英主战机器人。它会锁定方向高速冲锋并以双剑圆斩点燃周围目标，也会短暂升空，以限速移动的十字追踪目标后落地发动双剑扇斩。"
+				and entry.notes == PackedStringArray(
+					["精英", "双持重剑", "冲锋落砸"]
+				),
+				"Main battle robot must keep its released elite mechanical codex contract."
+			)
 		if config is CombatRobotEliteConfig:
 			saw_combat_robot_elite = true
 			var elite_robot := config as CombatRobotEliteConfig
@@ -746,8 +766,9 @@ func _test_enemy_stat_contract(catalog: CodexCatalog) -> void:
 		and saw_combat_robot_shield_bearer_elite
 		and saw_combat_robot_ninja
 		and saw_combat_robot_ninja_elite
+		and saw_combat_robot_main_battle_elite
 		and saw_linglan,
-		"Enemy stat contract must cover regeneration, aura, normal and elite dash, normal and elite burst-fire, normal and elite drone deployment, normal and elite projectile shields, normal and elite ninja boosts, and Boss adapters."
+		"Enemy stat contract must cover regeneration, aura, all released mechanical enemies including the main battle robot, and Boss adapters."
 	)
 
 

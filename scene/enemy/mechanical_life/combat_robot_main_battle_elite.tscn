@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="PackedScene" path="res://scene/enemy/enemy.tscn" id="1_base"]
 [ext_resource type="Script" path="res://scene/enemy/mechanical_life/combat_robot_main_battle_elite.gd" id="2_script"]
+[ext_resource type="SpriteFrames" path="res://resources/animation/combat_robot_main_battle_elite.tres" id="3_frames"]
 
 [sub_resource type="RectangleShape2D" id="BodyShape"]
 resource_local_to_scene = true
@@ -13,12 +14,15 @@ size = Vector2(18, 18)
 
 [node name="CombatRobotMainBattleElite" instance=ExtResource("1_base")]
 script = ExtResource("2_script")
-metadata/runtime_visual_release_blocked = true
-metadata/expected_runtime_sprite_frames = "res://resources/animation/combat_robot_main_battle_elite.tres"
+metadata/runtime_visual_strategy = "high_resolution_source_preserved_linear_display"
+metadata/runtime_visual_native64_eligible = false
 
 [node name="AnimatedSprite2D" parent="." index="0"]
-visible = false
-texture_filter = 1
+texture_filter = 2
+position = Vector2(0, -17)
+scale = Vector2(0.125, 0.125)
+sprite_frames = ExtResource("3_frames")
+animation = &"move"
 
 [node name="CollisionShape2D" parent="." index="1"]
 position = Vector2(0, 3)

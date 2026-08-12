@@ -12,8 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEXTURE_ROOT = ROOT / "resources" / "texture"
 ENEMY_ROOT = TEXTURE_ROOT / "enemy"
-EXPECTED_TOTAL_PNG_COUNT = 87
-EXPECTED_MECHANICAL_LIFE_PNG_COUNT = 20
+EXPECTED_TOTAL_PNG_COUNT = 88
+EXPECTED_MECHANICAL_LIFE_PNG_COUNT = 21
 
 EXPECTED_PNGS: dict[str, tuple[str, ...]] = {
     "artificial_creation": (
@@ -51,6 +51,7 @@ EXPECTED_PNGS: dict[str, tuple[str, ...]] = {
         "combat_robot_gunner_bullet.png",
         "combat_robot_gunner_elite.png",
         "combat_robot_gunner_elite_bullet.png",
+        "combat_robot_main_battle_elite.png",
         "combat_robot_ninja.png",
         "combat_robot_ninja_elite.png",
         "combat_robot_shield_bearer.png",

@@ -79,20 +79,20 @@ func _test_codex_and_counts() -> void:
 		"大纸箱怪必须为15生命、40攻击、22移速且只属于人工造物。"
 	)
 	_expect(
-		EnemyCodexRegistry.ENTRY_COUNT == 63
+		EnemyCodexRegistry.ENTRY_COUNT == 64
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.NORMAL
 		] == 51
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.ELITE
-		] == 11
+		] == 12
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.BOSS
 		] == 1
 		and EnemyCodexRegistry.EXPECTED_FAMILY_COUNTS[&"artificial_creation"] == 4
-		and EnemyCodexRegistry.EXPECTED_FAMILY_COUNTS[&"mechanical_life"] == 10
+		and EnemyCodexRegistry.EXPECTED_FAMILY_COUNTS[&"mechanical_life"] == 11
 		and EnemyCodexRegistry.validate_contract(),
-		"图鉴计数必须为63/51/11/1，人工造物4、机械生命10。"
+		"图鉴计数必须为64/51/12/1，人工造物4、机械生命11。"
 	)
 
 
@@ -105,8 +105,8 @@ func _test_texture_counts() -> void:
 		"res://resources/texture/enemy/mechanical_life"
 	)
 	_expect(
-		all_enemy_pngs == 87 and artificial_pngs == 4 and mechanical_pngs == 20,
-		"敌人纹理必须为87张、人工造物4张、机械生命20张；实际%d/%d/%d。"
+		all_enemy_pngs == 88 and artificial_pngs == 4 and mechanical_pngs == 21,
+		"敌人纹理必须为88张、人工造物4张、机械生命21张；实际%d/%d/%d。"
 		% [all_enemy_pngs, artificial_pngs, mechanical_pngs]
 	)
 	var texture := Image.load_from_file(LARGE_TEXTURE_PATH)

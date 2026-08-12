@@ -53,8 +53,8 @@ func _init() -> void:
 
 
 func _run() -> void:
-	_test_staged_enemy_contract()
-	_test_runtime_visual_release_block()
+	_test_released_enemy_contract()
+	_test_runtime_visual_release_contract()
 	_test_selectable_p1e_entry_contract()
 	_test_protocol_boundaries()
 	_test_live_registry_and_texture_counts()
@@ -62,7 +62,7 @@ func _run() -> void:
 	_finish()
 
 
-func _test_staged_enemy_contract() -> void:
+func _test_released_enemy_contract() -> void:
 	_expect(
 		MAIN_CONFIG.display_name == "主战机器人"
 		and MAIN_CONFIG.enemy_scene == MAIN_SCENE
@@ -75,10 +75,10 @@ func _test_staged_enemy_contract() -> void:
 		and MAIN_CONFIG.home_damage == 2
 		and MAIN_CONFIG.xirang_kill_reward == 10
 		and MAIN_CONFIG.drop_table == DEFAULT_DROP_TABLE,
-		"主战机器人暂存配置必须保持独立场景与800/80/40/35/28/2/10数值。"
+		"主战机器人正式配置必须保持独立场景与800/80/40/35/28/2/10数值。"
 	)
 	for wave in P1E_WAVES:
-		_expect(wave != null, "P1E暂存单/多人波次都必须可加载。")
+		_expect(wave != null, "P1E单/多人波次都必须可加载。")
 		if wave == null:
 			continue
 		_expect(
@@ -94,46 +94,67 @@ func _test_staged_enemy_contract() -> void:
 			and is_equal_approx(wave.spawn_interval, 5.0)
 			and wave.spawn_count_per_tick == 1
 			and wave.max_alive_enemies == 1,
-			"P1E暂存流程必须整场只排入1台、终点无出口、单批生成且存活上限为1。"
+			"P1E流程必须整场只排入1台、终点无出口、单批生成且存活上限为1。"
 		)
 
 
-func _test_runtime_visual_release_block() -> void:
+func _test_runtime_visual_release_contract() -> void:
 	var scene_text := FileAccess.get_file_as_string(MAIN_SCENE_PATH)
 	var codex_text := FileAccess.get_file_as_string(STAGED_CODEX_PATH)
+	var enemy := MAIN_SCENE.instantiate() as CombatRobotMainBattleElite
+	if enemy != null:
+		root.add_child(enemy)
 	_expect(
-		scene_text.contains("metadata/runtime_visual_release_blocked = true")
-		and scene_text.contains("visible = false")
+		not scene_text.contains("metadata/runtime_visual_release_blocked")
+		and scene_text.contains(
+			"metadata/runtime_visual_strategy = \"high_resolution_source_preserved_linear_display\""
+		)
+		and scene_text.contains("texture_filter = 2")
+		and scene_text.contains("scale = Vector2(0.125, 0.125)")
 		and scene_text.contains(MAIN_ANIMATION_PATH),
-		"敌人场景必须显式保持运行视觉封锁且不得以空动画冒充发布。"
+		"敌人场景必须绑定高分辨率保真SpriteFrames、统一0.125缩放和线性过滤。"
 	)
 	_expect(
 		FileAccess.file_exists(STAGED_CODEX_PATH)
 		and codex_text.contains("sort_order = 570")
-		and codex_text.contains(MAIN_ANIMATION_PATH),
-		"图鉴条目可保留为暂存记录，但必须继续依赖尚未发布的原生动画资源。"
+		and codex_text.contains(MAIN_ANIMATION_PATH)
+		and codex_text.contains("preview_scale = Vector2(0.125, 0.125)"),
+		"正式图鉴条目必须绑定同一SpriteFrames与0.125预览缩放。"
 	)
 	_expect(
-		not ResourceLoader.exists(MAIN_ANIMATION_PATH)
-		and not FileAccess.file_exists(MAIN_TEXTURE_PATH),
-		"运行SpriteFrames与图集必须在原生资格通过前保持未发布。"
+		ResourceLoader.exists(MAIN_ANIMATION_PATH)
+		and FileAccess.file_exists(MAIN_TEXTURE_PATH)
+		and enemy != null
+		and enemy.has_released_runtime_visuals()
+		and (enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D).visible
+		and (enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D).texture_filter
+		== CanvasItem.TEXTURE_FILTER_LINEAR,
+		"53帧高分辨率运行图集必须可加载、可见并通过精确动画合同。"
 	)
+	if enemy != null:
+		enemy.free()
 	var selection := _read_json_dictionary(SELECTION_PATH)
 	var report := _read_json_dictionary(ELIGIBILITY_REPORT_PATH)
 	_expect(
 		bool(selection.get("human_approved", false))
-		and not bool(selection.get("runtime_written", true))
+		and bool(selection.get("runtime_written", false))
 		and str(selection.get("stage", ""))
-		== "animation_approved_runtime_texture_blocked_grid_unproven",
-		"用户批准的动作选择证书必须保留，并明确与运行资格分离。"
+		== "high_resolution_runtime_released_native64_ineligible"
+		and str((selection.get("runtime_release", {}) as Dictionary).get(
+			"strategy", ""
+		)) == "high_resolution_source_preserved_linear_display",
+		"用户批准证书必须记录高分辨率保真运行发布，同时保持native64门独立。"
 	)
 	_expect(
 		not bool(report.get("native_eligible", true))
-		and not bool(report.get("runtime_written", true))
-		and (report.get("runtime_paths", []) as Array).is_empty()
+		and bool(report.get("runtime_written", false))
+		and (report.get("runtime_paths", []) as Array).size() == 2
 		and not bool(report.get("direct_native_all_sources", true))
-		and not bool(report.get("exact_integer_display_all_sources", true)),
-		"原生资格证书必须继续封锁所有运行路径。"
+		and not bool(report.get("exact_integer_display_all_sources", true))
+		and str((report.get("runtime_release", {}) as Dictionary).get(
+			"strategy", ""
+		)) == "high_resolution_source_preserved_linear_display",
+		"原生64资格必须继续为false，但经授权的高分辨率保真运行路径必须发布。"
 	)
 
 
@@ -187,28 +208,31 @@ func _test_protocol_boundaries() -> void:
 
 func _test_live_registry_and_texture_counts() -> void:
 	_expect(
-		EnemyCodexRegistry.ENTRY_COUNT == 63
+		EnemyCodexRegistry.ENTRY_COUNT == 64
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.NORMAL
 		] == 51
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.ELITE
-		] == 11
+		] == 12
 		and EnemyCodexRegistry.EXPECTED_RANK_COUNTS[
 			EnemyCodexEntryConfig.Rank.BOSS
 		] == 1
-		and EnemyCodexRegistry.EXPECTED_FAMILY_COUNTS[&"mechanical_life"] == 10
-		and EnemyCodexRegistry.get_entry(&"combat_robot_main_battle_elite") == null
+		and EnemyCodexRegistry.EXPECTED_FAMILY_COUNTS[&"mechanical_life"] == 11
+		and EnemyCodexRegistry.get_entry(&"combat_robot_main_battle_elite") != null
+		and EnemyCodexRegistry.get_entry(
+			&"combat_robot_main_battle_elite"
+		).enemy_config == MAIN_CONFIG
 		and EnemyCodexRegistry.validate_contract(),
-		"正式图鉴必须保持63/51/11/1、机械生命10，且不注册未发布P1E敌人。"
+		"正式图鉴必须保持64/51/12/1、机械生命11，并唯一注册主战机器人。"
 	)
 	var all_enemy_pngs := _count_pngs_recursive("res://resources/texture/enemy")
 	var mechanical_pngs := _count_pngs_recursive(
 		"res://resources/texture/enemy/mechanical_life"
 	)
 	_expect(
-		all_enemy_pngs == 87 and mechanical_pngs == 20,
-		"正式敌人纹理必须保持87张、机械生命20张；实际%d/%d。"
+		all_enemy_pngs == 88 and mechanical_pngs == 21,
+		"正式敌人纹理必须保持88张、机械生命21张；实际%d/%d。"
 		% [all_enemy_pngs, mechanical_pngs]
 	)
 	var mappings := FateCoordinator.ELITE_ENEMY_CONFIG_PATH_BY_BASE_PATH
@@ -216,7 +240,7 @@ func _test_live_registry_and_texture_counts() -> void:
 		mappings.size() == 10
 		and not mappings.has(MAIN_CONFIG_PATH)
 		and MAIN_CONFIG_PATH not in mappings.values(),
-		"Fate必须保持10项，未发布主战机器人不得加入替换映射。"
+		"Fate必须保持10项，主战机器人不得加入无普通基型的替换映射。"
 	)
 
 
@@ -226,7 +250,7 @@ func _test_zero_direct_references() -> void:
 	_expect(
 		references == EXPECTED_DIRECT_CONFIG_REFERENCES,
 		(
-			"主战机器人仅可由P1E暂存单/多人波次与暂存图鉴直引；"
+			"主战机器人仅可由P1E单/多人波次与正式图鉴直引；"
 			+ "正式敌人池必须保持零直引：%s。"
 		)
 		% [references]

@@ -20,7 +20,8 @@
 ### 身份与视觉
 
 - 稳定 ID、显示名、分类和阶级；
-- 世界体量、原生帧尺寸、注册点和默认朝向；
+- 世界体量、运行表示、帧/共享虚拟画布尺寸、注册点和默认朝向；运行表示只能从 `native`、`exact_integer_display_to_native` 或用户明确批准的 `highres_source_preserved` 中选择；
+- 选择 `highres_source_preserved` 时，记录批准证据、源尺寸、统一运行 scale、filter、透明 guard、脚底基线，并断言 `native_eligible=false`、不得称为 `native64`；
 - 核心轮廓、材质、主色、功能色、持物和禁止元素；
 - 新敌人还是派生版本；若为派生版本，列出必须逐字节或逐行为继承的内容；
 - 需要的人审门：主视觉、动画、可选特效、最终候选。
@@ -117,6 +118,10 @@ outputs:
     decoded_sha256: <sha-if-raster>
 runtime:
   written: <true-or-false>
+  representation: <native-or-highres_source_preserved>
+  native_eligible: <true-or-false>
+  uniform_scale: <x,y-or-null>
+  texture_filter: <nearest-linear-or-null>
   paths:
     - path: <project-relative-path>
       file_sha256: <sha>
@@ -126,9 +131,11 @@ build:
   builder_sha256: <sha>
   deterministic_passes: <count>
   drift_count: <count>
+  spatial_resample_count: <count>
+  rgba_conservation_failures: <count-or-null>
 ~~~
 
-字段名可以适配现有工具，但必须能回答：批准了什么、基于哪份输入、生成了什么、是否写过运行时。
+字段名可以适配现有工具，但必须能回答：批准了什么、基于哪份输入、生成了什么、使用哪种运行表示、是否写过运行时。高分辨率原图保真分支必须令 `spatial_resample_count=0`、`rgba_conservation_failures=0`，并记录共享虚拟画布、整数帧偏移和透明 guard；不能复用 native 资格字段暗示其为原生低分辨率素材。
 
 Canonical manifest 只由 `certificate_owner` 更新。Preview builder 和 runtime writer 分别输出不可变的阶段报告或发布报告，再由证书所有者顺序吸收；两者不得直接并发改写 canonical manifest。
 
@@ -161,20 +168,21 @@ Report 不能代替用户批准，也不能把没有验证的预期写成通过�
 每案单独提供：
 
 - ImageGen 原稿及来源哈希；
-- 像素目标的原稿必须本身为最终 native 像素画，或能证明为统一整数倍展示；提供 native 1:1 与整数倍 nearest-neighbor 视图，高细节概念图不能代替像素锚点；
-- `grid_evidence_mode` 只能是 `direct_native` 或 `exact_integer_display`。前者记录原稿/最终尺寸及零空间重采样证明；后者记录最终 native 尺寸、全帧共用的方形整数倍率、逻辑画布、格距、格相位、主体逻辑 bbox、每格 Alpha/调色板唯一性、源格与 native 格基数、`max_sources_per_native=1`、`dropped=0`、`duplicated=0` 和分析工具 SHA；
-- 明确断言所有帧使用相同倍率和相位。逐帧 scale/origin、固定 scale 整格投票、覆盖率/多数票、`bounded_jitter_partition`、边缘拟合、最小特征宽度、地标评分与拓扑相似只能写入诊断报告，不能写成发布证据；`native_or_unknown` 也不能代替正向整数格证明；
-- 发生逻辑像素超标或整数格失败重绘时，记录 `derived_from`，并证明实际 ImageGen 调用默认只携带已批准主视觉锚点；动作由完整逐帧 prompt 重新声明，不得传入失败动作稿。保存输入的文件/解码 SHA、实际 prompt、输出 SHA 和 lineage；若用户明确授权第二张动作参考，再逐项记录授权与用途。Prompt 必须要求严格一致的 native 画布、格距、格相位、主体尺度与脚底锚点；旧下游候选与证书失效，新稿回到 pending 并重走人工门；
+- 像素目标的原稿必须本身使用已批准的像素语言，并先声明运行表示。原生分支必须是最终 native 像素画或能证明为统一整数倍展示，提供 native 1:1 与整数倍 nearest-neighbor 视图；高分辨率原图保真分支提供源图 1:1 与标注统一 scale/filter 的实际运行预览。高细节概念图不能代替任一分支的像素锚点；
+- 原生分支的 `grid_evidence_mode` 只能是 `direct_native` 或 `exact_integer_display`。前者记录原稿/最终尺寸及零空间重采样证明；后者记录最终 native 尺寸、全帧共用的方形整数倍率、逻辑画布、格距、格相位、主体逻辑 bbox、每格 Alpha/调色板唯一性、源格与 native 格基数、`max_sources_per_native=1`、`dropped=0`、`duplicated=0` 和分析工具 SHA。高分辨率原图保真分支不用伪造 `grid_evidence_mode`，改记录 `runtime_representation=highres_source_preserved`、`native_eligible=false`、批准证据和 source-preservation 合同；
+- 原生分支明确断言所有帧使用相同倍率和相位。逐帧 scale/origin、固定 scale 整格投票、覆盖率/多数票、`bounded_jitter_partition`、边缘拟合、最小特征宽度、地标评分与拓扑相似只能写入诊断报告，不能写成发布证据；`native_or_unknown` 也不能代替正向整数格证明。高分辨率原图保真分支仍禁止逐帧 scale/origin，但以共享虚拟画布、整数偏移和统一运行 scale 证明锚点一致；
+- 原生分支发生逻辑像素超标或整数格失败重绘时，记录 `derived_from`，并证明实际 ImageGen 调用默认只携带已批准主视觉锚点；动作由完整逐帧 prompt 重新声明，不得传入失败动作稿。保存输入的文件/解码 SHA、实际 prompt、输出 SHA 和 lineage；若用户明确授权第二张动作参考，再逐项记录授权与用途。Prompt 必须要求严格一致的 native 画布、格距、格相位、主体尺度与脚底锚点；旧下游候选与证书失效，新稿回到 pending 并重走人工门。只有用户明确批准改走高分辨率原图保真分支时，才以该分支的共享虚拟画布和 source-preservation 合同替代 native 证明；
 - 透明或规范化参考；
-- 原生候选和严格整数倍最近邻放大；所有审阅板与 GIF 禁止非整数展示缩放；
-- 原稿到原生候选的空间操作清单与逐像素差异记录。直接 native 不得空间重采样；统一整数展示只能把已证明颜色/Alpha 一致的整数块逐格一对一解码，不得调用 resize/downsample；
-- 记录头/眼、手/握点、脚底、透明分隔和武器端点的原稿→native 状态。地标与拓扑审计只在整数格通过后检查语义正确性，不能补救或放行混合格；
-- 分开记录严格整数格证明与 padding/裁切覆盖率；后者不能作为像素周期、格距或相位证明；
+- 原生分支提供原生候选和严格整数倍最近邻放大，所有审阅板与 GIF 禁止非整数展示缩放。高分辨率原图保真分支保留源图 1:1 证据，并允许用声明的统一运行 scale 与线性过滤制作独立审阅预览；预览必须标注非 canonical，且不得被 runtime writer 读取；
+- 原稿到运行候选的空间操作清单与逐像素差异记录。直接 native 不得空间重采样；统一整数展示只能把已证明颜色/Alpha 一致的整数块逐格一对一解码，不得调用 resize/downsample；高分辨率原图保真分支只允许硬 chroma 抠图、透明裁切、整数平移、透明补边和无损打包，记录被抠除背景与所有保留像素的 RGBA 守恒；
+- 原生分支记录头/眼、手/握点、脚底、透明分隔和武器端点的原稿→native 状态；地标与拓扑审计只在整数格通过后检查语义正确性，不能补救或放行混合格。高分辨率原图保真分支记录同一组地标的 source→虚拟画布→atlas 坐标和像素守恒；
+- 原生分支分开记录严格整数格证明与 padding/裁切覆盖率，后者不能作为像素周期、格距或相位证明；高分辨率原图保真分支分开记录背景透明化、纯透明裁切、透明 padding 与可见像素守恒；
 - 分开审计 Alpha 与描边：Alpha 不得由覆盖率/多数票补回，描边只能在已有 Alpha 边界上按来源证据规范化；分别列出外轮廓和封闭负空间边界，禁止用降低阈值或膨胀掩盖破损；
 - 成对功能色提供左右局部 ROI/mask/色族合同；禁止盲镜像。任何人审 recolor-only 例外必须数据驱动、SHA 锁定、before/after 明确且 Alpha 变化为 0；
 - 正向与精确镜像；
 - 轮廓、注册点、身体碰撞和攻击范围叠加；
 - 与项目内相近体型单位的尺寸对照。
+- 高分辨率原图保真分支额外提供共享 `virtual_frame_size`、每帧整数偏移、统一中心/脚底基线、透明 guard、atlas region/margin、uniform scale、filter 和裁切零损失报告；任何可见像素被裁、遗漏或改色都必须 fail closed。
 
 多案必须有实际轮廓、比例、面部或持物差异，不能只换颜色。
 多手或多武器角色还必须逐件记录手、握点、武器所在身体侧和连接关系；“数量正确”或“整体连通”不能代替空间关系正确。
@@ -187,11 +195,11 @@ Report 不能代替用户批准，也不能把没有验证的预期写成通过�
 - 未输入旧动画 sheet、压缩稿、native 尝试、点表稿或其他动作的否定断言。若用户明确批准额外动作参考，逐项记录授权和用途；
 - 跨多个 sheet 的同一动作分别记录每次调用，同时证明它们锁定同一主视觉 SHA、身份、镜头尺度与帧语义；
 - 未经空间处理的 ImageGen raw 人工审阅图；在 raw 获批前不得把压缩、下采样、补点或重画结果列为候选；
-- 原生 strip 或逐帧资源；
-- 正向和镜像 GIF，全部使用 native 或严格整数倍 nearest-neighbor 展示；
+- 运行 strip、atlas 或逐帧资源；高分辨率原图保真分支必须直接保留批准源像素，不得生成缩放后的中间帧；
+- 正向和镜像 GIF：原生分支全部使用 native 或严格整数倍 nearest-neighbor 展示；高分辨率原图保真分支同时提供源图 1:1 证据和标注 scale/filter 的线性运行预览；
 - 相对批准锚点的逐帧差分；
 - 主体稳定、附件连接和帧唯一性报告；
-- 动画所有帧的统一 native 画布、整数倍率、格距和格相位证书；直接 native 分支记录零空间重采样；
+- 原生分支提供动画所有帧的统一 native 画布、整数倍率、格距和格相位证书；直接 native 分支记录零空间重采样。高分辨率原图保真分支改为提供共享虚拟画布/注册点、整数偏移、逐帧 RGBA 守恒、裁切零损失、uniform scale 和声明 filter 证书；
 - 运行 FPS、GIF 审阅时基和循环方式的独立记录。
 
 检查“看起来在走”或“挥击有力”等审美问题时，必须观看实际 GIF；检查帧数、FPS 和伤害时刻时，必须读取运行资源。
@@ -204,8 +212,8 @@ Report 不能代替用户批准，也不能把没有验证的预期写成通过�
 - 攻击跟踪与锁向示意；
 - 左右碰撞/查询叠加；
 - 世界尺寸对照；
-- source-to-final 零差异或白名单差异证书。
-- 所有 atlas、GIF、串联和对照板使用 native 或整数倍 nearest-neighbor；禁止把诊断 resize 产物混入最终候选。
+- source-to-final 零差异或白名单差异证书；高分辨率原图保真分支的白名单只能包含已批准背景透明化、透明裁切/补边、整数平移和 atlas 布局变化，保留像素 RGBA 变化必须为 0。
+- 原生分支的所有 atlas、GIF、串联和对照板使用 native 或整数倍 nearest-neighbor。高分辨率原图保真分支的 atlas 保留源像素，GIF/串联/对照板可使用标注统一 scale/filter 的线性运行预览；禁止把任何预览 resize 产物混入最终候选或运行资源。
 
 最终候选仍是 preview。批准前 runtime.written 必须为 false。
 
@@ -233,6 +241,7 @@ Report 不能代替用户批准，也不能把没有验证的预期写成通过�
 - 持久状态切换要冻结身体、接触区、查询、预警和视觉节点的启停顺序；
 - AnimatedSprite2D 的默认朝向与原生素材一致；
 - Atlas 边缘帧使用 filter_clip，避免串帧。
+- 高分辨率原图保真分支在 `.tscn` 中静态声明全动作共用的 uniform scale 和批准的 `texture_filter`；线性过滤时验证透明 guard。禁止脚本按动画/帧改 scale，也禁止把运行缩放烘焙为额外 PNG。
 
 ### 方向与伤害时序
 
@@ -289,7 +298,7 @@ Report 不能代替用户批准，也不能把没有验证的预期写成通过�
 
 | 层级 | 启用条件 | 检查内容 |
 | --- | --- | --- |
-| 素材 | 纹理、动画或导入变化 | 尺寸、帧数、FPS、loop、alpha、调色板、锚点、安全区、连通、镜像、导入 |
+| 素材 | 纹理、动画或导入变化 | 尺寸、帧数、FPS、loop、alpha、调色板、锚点、安全区、连通、镜像、导入；高分辨率原图保真分支还检查空间重采样为 0、RGBA 守恒、共享虚拟画布、裁切零损失、uniform scale、filter、透明 guard、`native_eligible=false` |
 | 属性 | 配置、分类、奖励或掉落变化 | 配置值、分类、奖励、掉落和派生关系 |
 | 行为 | 状态机、攻击或冷却变化 | 状态切换、冷却、范围、伤害帧、取消、死亡清理 |
 | 承伤 | 伤害结算或特殊承伤变化 | 物理、法术、DoT、批量、倍率、无视、防御后零伤、致死、死后请求 |
@@ -309,10 +318,12 @@ Report 不能代替用户批准，也不能把没有验证的预期写成通过�
 - 用户选择不明确或证书仍为 pending；
 - 多个进程正在写同一产物；
 - builder、report、manifest 或输入哈希漂移；
-- ImageGen 参考像素未经批准进入原生运行素材；
-- 像素目标的原稿本身不是清晰像素画，或原生候选依赖对概念稿的主观重画；
-- 原稿既不是直接 native，也不能证明所有帧共享同一方形整数倍率、逻辑画布、格距和格相位；
-- 任一帧需要独立 scale/origin、存在 mixed-cell/边缘跨格，或构建依赖 resize、downsample、整格投票、固定比例适配或 many-to-one；即使特征、地标和拓扑看似保留也必须停止；
+- ImageGen 参考像素未经批准进入任何运行素材；
+- 像素目标的原稿本身不是清晰像素画，或运行候选依赖对概念稿的主观重画；
+- 原生分支的原稿既不是直接 native，也不能证明所有帧共享同一方形整数倍率、逻辑画布、格距和格相位；用户未明确批准时不得据此擅自改走高分辨率原图保真分支；
+- 原生分支任一帧需要独立 scale/origin、存在 mixed-cell/边缘跨格，或构建依赖 resize、downsample、整格投票、固定比例适配或 many-to-one；即使特征、地标和拓扑看似保留也必须停止；
+- 高分辨率原图保真分支缺少明确用户批准、把自身称为 native/native64、从审阅 GIF 或缩放图取源，或 writer 产生了任何缩放后的中间/运行纹理；
+- 高分辨率原图保真分支出现可见像素被裁、保留像素 RGBA/Alpha 变化、soft alpha、非整数帧平移、逐帧 scale/origin、非 uniform scale、虚拟画布/注册点/脚底基线不一致、atlas guard 不足或过滤方式未声明；
 - ImageGen 重绘没有实际携带已批准主视觉锚点、擅自传入失败动画/压缩稿，或新稿尚未重新通过人工门；
 - 单点采样、颜色量化或 Alpha 处理使头/眼、手/握点、脚、武器、透明分隔或轮廓发生变化；
 - 运行 FPS 与 GIF 时基混用；

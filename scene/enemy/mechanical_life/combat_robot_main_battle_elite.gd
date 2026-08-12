@@ -25,6 +25,16 @@ const ACTION_SKILL1_DASH := &"main_battle_skill1_dash"
 const ACTION_SKILL1_CIRCLE := &"main_battle_skill1_circle"
 const ACTION_SKILL2_TAKEOFF := &"main_battle_skill2_takeoff"
 const ACTION_SKILL2_DROP := &"main_battle_skill2_drop"
+const RUNTIME_ANIMATION_FRAME_COUNTS := {
+	&"move": 8,
+	&"attack": 8,
+	&"skill1_windup": 4,
+	&"skill1_dash": 4,
+	&"skill1_circle_slash": 8,
+	&"skill2_takeoff": 5,
+	&"skill2_drop_slash": 8,
+	&"death": 8,
+}
 
 
 enum CombatState {
@@ -591,6 +601,11 @@ func _die() -> void:
 	airborne = false
 	latest_proxy_action_id += 1
 	_hide_all_action_indicators()
+	# Skill 2 intentionally hides the body during tracking. A periodic status
+	# can still kill the enemy in that window, so restore the body before the
+	# inherited death sequence starts instead of playing death invisibly.
+	if animated_sprite != null:
+		animated_sprite.visible = true
 	super._die()
 
 
@@ -599,8 +614,13 @@ func play_multiplayer_death_sequence() -> void:
 		return
 	airborne = false
 	proxy_airborne_from_snapshot = false
+	proxy_takeoff_visual_override = false
+	proxy_drop_visual_override = false
+	proxy_grounded_after_drop_latched = false
 	latest_proxy_action_id += 1
 	_hide_all_action_indicators()
+	if animated_sprite != null:
+		animated_sprite.visible = multiplayer_proxy_visual_active
 	super.play_multiplayer_death_sequence()
 
 
@@ -1144,19 +1164,13 @@ func _restart_scene_animation(animation_name: StringName) -> bool:
 func has_released_runtime_visuals() -> bool:
 	if animated_sprite == null or animated_sprite.sprite_frames == null:
 		return false
-	for animation_name in [
-		&"move",
-		&"attack",
-		&"skill1_windup",
-		&"skill1_dash",
-		&"skill1_circle_slash",
-		&"skill2_takeoff",
-		&"skill2_drop_slash",
-		&"death",
-	]:
+	for animation_name: StringName in RUNTIME_ANIMATION_FRAME_COUNTS:
 		if (
 			not animated_sprite.sprite_frames.has_animation(animation_name)
-			or animated_sprite.sprite_frames.get_frame_count(animation_name) <= 0
+			or animated_sprite.sprite_frames.get_frame_count(animation_name)
+			!= int(RUNTIME_ANIMATION_FRAME_COUNTS[animation_name])
+			or animated_sprite.sprite_frames.get_animation_loop(animation_name)
+			!= (animation_name in [&"move", &"skill1_dash"])
 		):
 			return false
 	return true

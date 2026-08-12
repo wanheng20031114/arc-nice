@@ -6,14 +6,18 @@
 
 - **像素优先原生分支（默认）**：ImageGen 原稿从一开始就是最终 native 像素画，或所有帧都能证明为同一逻辑画布的统一整数倍展示。确定性处理只能抠底、按已证明整数格逐格一对一还原、整数像素裁切/补边并做有限修边；不得依据高细节概念图或空间重采样重新设计一个不同的原生精灵。
 - **代码原生像素分支**：只有用户明确要求代码/点表创作，或已有批准的逻辑像素设计时使用。点表本身就是美术源，不得把概念渲染当作批准像素稿的替代品。
-- **批准后直接使用分支**：只有用户明确批准直接使用生成的 alpha/sheet 时，干净源图才可成为 canonical texture，并执行本参考中的锚点切分与导入审计。
+- **高分辨率原图保真运行时分支**：只有用户明确批准直接使用生成的高分辨率 alpha/sheet 时启用。SHA 锁定的批准源图是 canonical source；只允许硬 chroma 抠图、透明裁切、整数平移、透明补边和无损 atlas 打包。缩放仅由运行时统一 transform 完成，过滤方式必须显式声明；该分支始终是非 native，禁止标记为 `native64`。
 
-后文提到保留 alpha 源图时，均只适用于“批准后直接使用分支”；像素优先分支以直接 native 原稿或从统一整数展示块一对一解码的原生帧为 canonical texture，并保留原稿到原生帧的差异证据。
+后文提到保留 alpha 源图时，均只适用于“高分辨率原图保真运行时分支”；像素优先分支以直接 native 原稿或从统一整数展示块一对一解码的原生帧为 canonical texture，并保留原稿到原生帧的差异证据。两种分支的证书不得混用：高分辨率分支报告 `runtime_representation=highres_source_preserved` 与 `native_eligible=false`。
 
 ## 目录
 
 - 成功模式
 - 设计阶段
+- 统一整数逻辑格硬门
+- 高分辨率原图保真运行时合同
+- ImageGen 低密度重绘
+- Alpha、描边与成对强调色
 - 主体锚点策略
 - 背景色选择
 - 动画 Sheet Prompt 契约
@@ -29,7 +33,7 @@
 
 一次非均匀动画 sheet 替换成功的关键，是不再把整张图当成普通固定网格，而是把每一帧当成“由主体锚点控制的 sprite”：
 
-- 直接使用分支保留干净 alpha 源图作为 canonical texture；像素确定性分支只保留直接 native 或由统一整数展示块一对一解码的原生帧。
+- 高分辨率原图保真分支保留批准源图的像素数据作为 canonical source；像素确定性分支只保留直接 native 或由统一整数展示块一对一解码的原生帧。
 - 每帧独立测量。
 - 从稳定主体部位提取脚底/身体锚点，不从武器、帽子、投射物或 VFX 提取。
 - 所有帧使用一致的逻辑帧尺寸。
@@ -41,10 +45,10 @@
 
 ## 设计阶段
 
-先生成一个在最终 native 分辨率下可直接使用和判断的像素单帧，再生成动画 sheet。“高质量”指像素簇、轮廓和动作关系清楚，不指高细节概念渲染。必须同时检查 native 1:1 和整数倍最近邻预览：
+先声明运行表示，再生成可直接使用和判断的像素单帧，然后生成动画 sheet。“高质量”指像素簇、轮廓和动作关系清楚，不指高细节概念渲染。像素优先原生分支必须同时检查 native 1:1 和整数倍最近邻预览；高分辨率原图保真分支必须同时检查源图 1:1 和标注统一 scale/filter 的实际运行预览：
 
 - 敌人在游戏实际缩放下是否可读。
-- 原稿是否已经使用硬方形像素、有限视觉色阶和一致像素密度，而不是抗锯齿、渐变、平滑曲线或缩小后糊成一团的高分辨率绘画。ImageGen 产生的同色微小 RGB 漂移可在规范化阶段量化，但不能构成额外纹理或软边。
+- 原稿是否已经使用硬方形像素、有限视觉色阶和一致像素密度，而不是抗锯齿、渐变、平滑曲线或缩小后糊成一团的高分辨率绘画。ImageGen 产生的同色微小 RGB 漂移必须量化；原生分支只有在整数格证明通过后才可按冻结调色板规范化，高分辨率原图保真分支只能记录、不能改色。
 - 轮廓是否足够清楚，不依赖过细细节。
 - 主体颜色是否能和服装、武器、发光、投射物、背景分离。
 - 武器、帽子、背包、法杖、尾巴、法阵等可以伸出 idle 外形，但主体必须作为尺寸基准。
@@ -53,7 +57,7 @@
 
 单帧样例弱、只有放大后才勉强可读，或需要后处理重新设计轮廓/持物关系时直接重生图，不要因为已经有产物就勉强进入处理阶段。
 
-像素单帧 prompt 至少写清：最终 native 画布、角色预期占用范围、有限视觉色阶、硬方形像素、无抗锯齿/渐变/平滑笔触、默认朝向、脚底和中心、每只手与附件所在身体侧。优先要求 ImageGen 直接输出最终 native；工具只能输出大画布时，必须要求整张输出是同一 native 画布按单一整数倍率、单一格距和单一格相位最近邻展示。报告要区分“视觉色阶”与原始 PNG 的精确 RGB 数量。
+像素单帧 prompt 至少写清：所选运行表示、角色预期占用范围、有限视觉色阶、硬方形像素、无抗锯齿/渐变/平滑笔触、默认朝向、脚底和中心、每只手与附件所在身体侧。原生分支优先要求 ImageGen 直接输出最终 native；工具只能输出大画布时，必须要求整张输出是同一 native 画布按单一整数倍率、单一格距和单一格相位最近邻展示。高分辨率原图保真分支声明源画布、共享虚拟画布、预计统一运行 scale 与过滤方式，不要求把源图压成低分辨率。报告要区分“视觉色阶”与原始 PNG 的精确 RGB 数量。
 
 ## 统一整数逻辑格硬门
 
@@ -70,7 +74,22 @@
 - GCD、边缘拟合、`bounded_jitter_partition`、逐帧 phase、最小特征宽度、地标评分和拓扑比较可以定位失败原因，但不能替代统一整数格证明，也不能让结果进入 native 候选。
 - `native_or_unknown`、高相似度、连通块不变或人工认为“看起来没坏”都不是通过结论。只要缺少上述正向证据，就返回 ImageGen。
 
-任何 resize、nearest downscale、固定比例适配或 many-to-one 只能生成带醒目标记的诊断图；不得把它写入候选 atlas、GIF、manifest 的可批准输出或运行资源。非像素高分素材只有在用户明确选择“批准后直接使用分支”时，才按该分支独立处理，不能冒充 native 像素稿。
+任何 resize、nearest downscale、固定比例适配或 many-to-one 只能生成带醒目标记的诊断图；不得把它写入原生候选 atlas、manifest 的可批准输出或运行资源。高分辨率原图只有在用户明确选择“高分辨率原图保真运行时分支”时才按下节独立处理，不能冒充 native 像素稿；该分支的线性缩放 GIF 是运行采样预览，不是原生候选，也不能回写为纹理。
+
+## 高分辨率原图保真运行时合同
+
+此分支解决“源图视觉像素语言已获批准，但无法无损压成低分辨率 native”的情况。它不是整数格硬门的例外证书，也不把高分图重新命名为 native。
+
+构建合同：
+
+1. 锁定每张批准原图的文件 SHA、解码像素 SHA、帧语义、源格和背景谓词；未批准图或审阅 GIF 不得成为 source。
+2. 只允许硬 chroma 抠图、透明 bbox 裁切、整数像素平移、透明补边和无损 atlas 打包。禁止 resize/downsample、旋转、非整数平移、重绘、形态学补轮廓、羽化、soft matte 和调色板量化。
+3. 先声明所有动作共用的 `virtual_frame_size`、主体中心、脚底基线与注册点，再以整数偏移放入该画布。任何帧越界、触边、需要独立 scale 或需要裁掉可见像素时 fail closed。
+4. 硬抠图只能透明化符合已批准背景谓词的像素，并将其 RGB 清零。对每帧记录源/抠图后/虚拟画布/atlas 可见像素数、保留像素 RGBA 哈希和 bbox；除已证明背景像素外，颜色与 Alpha 必须逐像素守恒。
+5. Atlas 可裁掉纯透明外边距，但必须用 `AtlasTexture.margin` 恢复统一虚拟画布；为线性采样保留足够透明 guard，启用 `filter_clip`，并证明 region 在 atlas 内且邻帧颜色不会渗入。
+6. `AnimatedSprite2D` 只能使用全帧共用的正数 uniform scale；左右方向通过镜像表达，不得按动作或帧改变 scale。显式声明 `texture_filter`；用户批准时允许线性过滤。过滤只发生在运行采样和审阅预览中，不得烘焙出缩放后的 canonical/runtime PNG。
+7. 预览同时提供源图 1:1 帧和标注 `runtime_representation`、scale、filter 的实际运行尺度动画。线性预览可非整数缩放，但必须与源/atlas 产物分目录、分哈希，不能被后续 writer 读取。
+8. 连续构建两次，比较 atlas、`SpriteFrames`、逐帧 margin/逻辑尺寸、像素守恒报告与文件哈希。任何漂移、像素损失、颜色变化、soft alpha 或锚点变化都停止发布。
 
 ## ImageGen 低密度重绘
 
@@ -84,6 +103,8 @@
 关键地标、主体/负空间拓扑、武器端点、落地点和动作相位仍要审计，但它们只是在整数格通过后的附加正确性检查，不能把失败的空间采样变成“无损”。
 
 ## Alpha、描边与成对强调色
+
+本节中的调色板规范化与 recolor 只适用于原生分支。高分辨率原图保真分支除按批准背景谓词硬置透明并清零透明 RGB 外，所有保留像素 RGBA 必须不变；本节任何规则都不能放宽该约束。
 
 - 先冻结 Alpha，再处理描边颜色。不得为了保住黑边而降低 Alpha 阈值、按覆盖率补实体、做形态学 closing/dilation，或把设计好的关节、腿缝、手臂缝和武器间隙涂实。统一整数展示块映射后只要同时含透明与不透明状态就直接失败，不得投票补回。
 - 对已经存在的 Alpha 边界，只有源格存在描边色族证据时才可规范为固定描边色。审计时把四邻域 Alpha 边界拆成“与画布边缘连通透明区相邻的外轮廓”与“封闭负空间边界”，分别记录像素数；整体 8 连通不能证明轮廓无破口。
@@ -138,14 +159,14 @@
 - 实际需要的网格行列，例如 `[列数]列 x [行数]行`。
 - 实际动作名和行/列语义，例如 `idle`、`move`、`attack`、`death`，或中文 `站立`、`横向移动`、`举杖攻击`、`死亡`。
 - 每格一个完整帧，帧之间不重叠、不串格。
-- 明确最终 native 单帧尺寸；优先直接输出该尺寸，只能大画布输出时声明全 sheet 唯一整数展示倍率与各格共同相位。
+- 明确运行表示。原生分支写最终 native 单帧尺寸，优先直接输出该尺寸，只能大画布输出时声明全 sheet 唯一整数展示倍率与各格共同相位；高分辨率原图保真分支写源格尺寸、共享虚拟画布、预计统一运行 scale/filter，并要求保持高分辨率源像素，不要求压成 native。
 - 同一镜头距离，同一主体人物像素大小，同一身体高度和宽度。
 - 主体脚底锚点和身体中心在每格中的相对位置一致。
 - 武器、尾巴、帽子、法杖、道具、VFX 可以移动或扩大，但不能改变主体缩放。
 - 每格必须给所有可见元素留安全框，不能裁掉尾巴、法杖、帽子、武器或特效。
 - 透明 alpha，或测量后选择的纯平 chroma 背景。
 
-通用中文模板：
+以下通用中文模板适用于原生分支：
 
 ```text
 使用内置 image_gen 生成像素风敌人动画源图。
@@ -161,6 +182,8 @@
 ```
 
 如果必须使用英文 prompt，也要保留等价约束：`same body pixel size`, `same body center`, `same feet/body anchor`, `large safe padding inside every cell`, `props and VFX fully inside the cell`, `no cropped tail/staff/effects`。
+
+高分辨率原图保真分支沿用身份、锚点和安全框约束，但把 native/整数格要求替换为：`preserve the approved high-resolution pixel-art source language; identical source pixel density and camera scale in every frame; no per-frame resizing; all visible pixels fully inside each source cell`。生成的 raw 仍须先原样人工批准，代码侧不得靠缩放或补轮廓使其合格。
 
 ## 攻击动作 Prompt 复盘
 
@@ -198,7 +221,7 @@
 
 不要相信粗网格本身已经足够；粗网格只负责给出每帧的大致源格子。
 
-每格处理顺序：
+每格处理顺序（高分辨率原图保真分支与已证明统一整数格的原生分支均适用，但不得在步骤中执行空间重采样）：
 
 1. 按粗网格裁出当前源格子。
 2. 找可见 alpha bbox。
@@ -240,17 +263,19 @@ sprite_position = desired_world_anchor - local_anchor_offset
 
 如果碰撞体居中且下沿是脚底，`desired_world_anchor.y` 通常接近碰撞体半高。最终用锚点十字预览和 Godot smoke test 验证。
 
+高分辨率原图保真分支的 `logical_frame_size` 是共享虚拟画布的高分辨率尺寸，`sprite_scale` 必须是全动作共用的 uniform 值。允许线性过滤仅意味着 Godot 在绘制时采样这张高分纹理；公式、注册点和原始 atlas 像素不因此改变。测试必须拒绝任一动作/帧覆盖 scale 或使用非统一 x/y 比例。
+
 ## 压缩与导入
 
 像素图规则：
 
 - native 像素候选禁止任何 resize/downsample；仅允许直接 native，或把已证明统一的整数展示块逐格一对一解码。
-- nearest-neighbor 只用于把 native 预览放大为整数倍，不得用于把未知或过密源图缩成 native。审阅板和 GIF 也不得使用非整数展示缩放。
-- 直接使用分支优先保留干净 alpha 源图；像素确定性分支以批准后的直接 native 或严格整数格解码图为 canonical texture。
+- nearest-neighbor 只用于把 native 预览放大为整数倍，不得用于把未知或过密源图缩成 native。原生分支的审阅板和 GIF 不得使用非整数展示缩放。
+- 高分辨率原图保真分支优先保留干净 alpha 源图；只允许用声明的统一运行 scale/filter 制作非 canonical 审阅预览。像素确定性分支以批准后的直接 native 或严格整数格解码图为 canonical texture。
 - 只做无损 PNG 优化。
-- 除非人工检查过，否则不要做会改变 alpha 边缘的 palette conversion。
+- 原生分支除非人工检查过，否则不要做会改变 alpha 边缘的 palette conversion；高分辨率原图保真分支禁止 palette conversion。
 - Godot 小像素精灵默认关闭 mipmaps，除非项目有明确缩放 pipeline。
-- 沿用项目既有 `texture_filter` 约定。
+- 原生分支沿用项目既有 `texture_filter` 约定；高分辨率原图保真分支必须显式写出用户批准的 filter，允许使用线性过滤，并配合透明 guard 与 `filter_clip` 防止 atlas 串色。
 
 ## Godot 接入 Checklist
 
@@ -269,13 +294,14 @@ sprite_position = desired_world_anchor - local_anchor_offset
   - region 是否在 atlas 内；
   - `AnimatedSprite2D.position`；
   - `AnimatedSprite2D.scale`。
+- 高分辨率原图保真分支还要检查：`runtime_representation=highres_source_preserved`、`native_eligible=false`、全动作 uniform scale、声明的 filter、透明 guard、源到 atlas 的逐帧 RGBA 守恒，以及不存在缩放后的中间 PNG。
 - 最后检查并清理验证用 Godot 进程，尤其是 `--headless`、`--check-only`、`--import`。
 
 ## 什么时候重生图
 
 这些情况优先重生图：
 
-- 无法证明所有帧共享统一整数倍率、格距和格相位，存在 mixed-cell、边缘跨格、逐帧比例/相位漂移，或源图不是直接 native；此时默认只携带已批准主视觉锚点回 ImageGen 独立重生本套动作，不传失败动作稿，也不做强制压缩或固定比例适配。
+- 原生分支无法证明所有帧共享统一整数倍率、格距和格相位，存在 mixed-cell、边缘跨格、逐帧比例/相位漂移，或源图不是直接 native；此时默认只携带已批准主视觉锚点回 ImageGen 独立重生本套动作，不传失败动作稿，也不做强制压缩或固定比例适配。只有用户明确改选高分辨率原图保真运行时，才可转入独立的非 native 合同。
 - 原稿不是目标像素语言，而是概念渲染、平滑插画或强 3D 图。
 - 原稿在目标逻辑 1:1 下不可读，必须依赖主观重画才能得到原生帧。
 - 手、脚、握点、武器侧别或附件连接与需求不一致。
@@ -285,6 +311,7 @@ sprite_position = desired_world_anchor - local_anchor_offset
 - chroma 色出现在眼睛、主体细节或关键特效里。
 - 同一格里出现多个姿势重叠。
 - 游戏实际缩放下不可读。
+- 高分辨率原图保真分支出现可见像素触边/被裁、保留像素 RGBA 变化、软 alpha、逐帧 scale、虚拟画布或脚底基线不一致。
 
 这些情况适合代码处理：
 
@@ -293,3 +320,4 @@ sprite_position = desired_world_anchor - local_anchor_offset
 - 主体锚点稳定，但粗网格不准。
 - 背景能用边缘连通 chroma 移除。
 - 只需要轻微 despill 或 alpha 清理。
+- 高分辨率原图已获批准，只需按该分支硬抠背景、透明裁切、整数平移、透明补边、无损 atlas 打包和统一运行 transform；不得把“适合代码处理”理解为允许 resize 或补画轮廓。

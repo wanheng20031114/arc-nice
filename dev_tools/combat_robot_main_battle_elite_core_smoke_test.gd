@@ -31,7 +31,7 @@ func _run() -> void:
 	root.get_node("BurnStatusScheduler").call("clear_all")
 	root.get_node("PlayerTimedMoveSlowScheduler").call("clear_all")
 
-	_test_config_and_fail_closed_visual_contract()
+	_test_config_and_runtime_visual_contract()
 	await _test_damage_geometry_and_statuses()
 	await _test_attack_frame_timing_and_target_selection()
 	await _test_airborne_direct_damage_and_periodic_contract()
@@ -55,7 +55,7 @@ func _run() -> void:
 	quit(1)
 
 
-func _test_config_and_fail_closed_visual_contract() -> void:
+func _test_config_and_runtime_visual_contract() -> void:
 	_expect(
 		ENEMY_CONFIG.display_name == "主战机器人"
 		and ENEMY_CONFIG.category_tags == PackedStringArray(["mechanical_life"])
@@ -66,20 +66,60 @@ func _test_config_and_fail_closed_visual_contract() -> void:
 		and is_equal_approx(ENEMY_CONFIG.move_speed, 28.0)
 		and ENEMY_CONFIG.home_damage == 2
 		and ENEMY_CONFIG.xirang_kill_reward == 10
-		and ENEMY_CONFIG.drop_table == DEFAULT_DROP_TABLE,
+		and ENEMY_CONFIG.drop_table == DEFAULT_DROP_TABLE
+		and is_equal_approx(ENEMY_CONFIG.attack_damage_delay, 0.54)
+		and is_equal_approx(ENEMY_CONFIG.attack_slash_duration, 1.1)
+		and is_equal_approx(ENEMY_CONFIG.skill1_windup, 0.56)
+		and is_equal_approx(ENEMY_CONFIG.skill1_recovery, 0.78)
+		and is_equal_approx(ENEMY_CONFIG.skill2_takeoff_duration, 0.46)
+		and is_equal_approx(ENEMY_CONFIG.skill2_recovery, 0.58),
 		"Main-battle robot stats/tags/drop contract mismatch."
 	)
 	var enemy := ENEMY_SCENE.instantiate() as CombatRobotMainBattleElite
 	_expect(enemy != null, "Main-battle scene must instantiate its strong type.")
 	if enemy == null:
 		return
+	runtime.add_child(enemy)
+	var sprite := enemy.get_node("AnimatedSprite2D") as AnimatedSprite2D
 	_expect(
-		bool(enemy.get_meta("runtime_visual_release_blocked", false))
-		and String(enemy.get_meta("expected_runtime_sprite_frames", ""))
-			== CombatRobotMainBattleElite.EXPECTED_RUNTIME_SPRITE_FRAMES_PATH
-		and not enemy.has_released_runtime_visuals(),
-		"Missing approved native SpriteFrames must remain explicit and fail closed."
+		String(enemy.get_meta("runtime_visual_strategy", ""))
+		== "high_resolution_source_preserved_linear_display"
+		and not bool(enemy.get_meta("runtime_visual_native64_eligible", true))
+		and enemy.has_released_runtime_visuals()
+		and sprite.visible
+		and sprite.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR
+		and sprite.scale.is_equal_approx(Vector2(0.125, 0.125))
+		and sprite.position.is_equal_approx(Vector2(0.0, -17.0)),
+		"Released high-resolution SpriteFrames must use one shared transform and linear display filtering without claiming native64."
 	)
+	var expected_frame_counts := {
+		&"move": 8,
+		&"attack": 8,
+		&"skill1_windup": 4,
+		&"skill1_dash": 4,
+		&"skill1_circle_slash": 8,
+		&"skill2_takeoff": 5,
+		&"skill2_drop_slash": 8,
+		&"death": 8,
+	}
+	for animation_name: StringName in expected_frame_counts:
+		_expect(
+			sprite.sprite_frames.get_frame_count(animation_name)
+			== int(expected_frame_counts[animation_name]),
+			"Released animation %s must keep its exact approved frame count."
+			% animation_name
+		)
+		for frame_index in sprite.sprite_frames.get_frame_count(animation_name):
+			var frame_texture := (
+				sprite.sprite_frames.get_frame_texture(animation_name, frame_index)
+				as AtlasTexture
+			)
+			_expect(
+				frame_texture != null
+				and frame_texture.filter_clip
+				and frame_texture.get_size().is_equal_approx(Vector2(512.0, 688.0)),
+				"Every released frame must preserve the shared 512x688 virtual canvas."
+			)
 	_expect(
 		enemy.get_node_or_null("AttackWarning") is Polygon2D
 		and enemy.get_node_or_null("Skill1WarningLine") is Line2D
@@ -211,17 +251,10 @@ func _test_attack_frame_timing_and_target_selection() -> void:
 	enemy.call("_set_airborne", false, true)
 	enemy.call("_finish_to_chase")
 
-	var test_frames := SpriteFrames.new()
-	test_frames.add_animation(ENEMY_CONFIG.attack_animation_name)
-	test_frames.set_animation_speed(ENEMY_CONFIG.attack_animation_name, 15.0)
-	test_frames.set_animation_loop(ENEMY_CONFIG.attack_animation_name, false)
-	for _frame_index in range(5):
-		test_frames.add_frame(ENEMY_CONFIG.attack_animation_name, null)
-	enemy.animated_sprite.sprite_frames = test_frames
 	enemy.call("_start_attack_windup", near_player)
 	_expect(
 		enemy.animated_sprite.animation != ENEMY_CONFIG.attack_animation_name,
-		"The 0.35-second warning must not consume the five slash frames."
+		"The 0.35-second warning must not consume the eight slash frames."
 	)
 	near_player.invincibility_time_left = 0.0
 	var health_before := near_player.current_health
@@ -238,12 +271,12 @@ func _test_attack_frame_timing_and_target_selection() -> void:
 	)
 	_expect(
 		near_player.current_health == health_before,
-		"Normal slash must not damage before the second 15 FPS frame."
+		"Normal slash must not damage before the approved impact frame."
 	)
 	enemy.call("_update_attack_slash", 0.002)
 	_expect(
 		near_player.current_health == health_before - 80,
-		"Normal slash must resolve exactly once when frame 1 begins."
+		"Normal slash must resolve exactly once when the approved impact frame begins."
 	)
 	_expect(
 		not bool(enemy.call("_uses_inherited_touch_damage")),
@@ -290,6 +323,20 @@ func _test_airborne_direct_damage_and_periodic_contract() -> void:
 	_expect(
 		enemy.current_health < health_before,
 		"An established burn must continue ticking while the robot is airborne."
+	)
+	enemy.clear_collectible_statuses()
+	enemy.current_health = 5
+	enemy.combat_state = CombatRobotMainBattleElite.CombatState.SKILL2_TRACK
+	enemy.animated_sprite.visible = false
+	var lethal_periodic := DamageRequest.new(10, EnemyConfig.DamageType.MAGIC)
+	lethal_periodic.flags = CombatTypes.DamageFlag.PERIODIC
+	var lethal_result := enemy.apply_combat_damage(lethal_periodic)
+	_expect(
+		lethal_result.accepted
+		and enemy.is_dead
+		and enemy.animated_sprite.visible
+		and enemy.animated_sprite.animation == &"death",
+		"A periodic kill during hidden skill2 tracking must restore and play the death animation."
 	)
 	enemy.queue_free()
 	player.queue_free()
@@ -489,6 +536,17 @@ func _test_proxy_action_and_status_contract() -> void:
 		proxy.latest_proxy_action_id == 10
 		and proxy.attack_warning.visible == warning_was_visible,
 		"Expired actions must advance the watermark while duplicate/out-of-order actions remain visually inert."
+	)
+	proxy.apply_multiplayer_visual_status_mask(
+		CombatRobotMainBattleElite.AIRBORNE_VISUAL_STATUS_MASK
+	)
+	proxy.play_multiplayer_death_sequence()
+	_expect(
+		proxy.is_dead
+		and proxy.animated_sprite.visible
+		and proxy.animated_sprite.animation == &"death"
+		and not proxy.get_node("Skill2CrossMarker").visible,
+		"A proxy death during hidden skill2 tracking must restore the body and clear the cross."
 	)
 	proxy.queue_free()
 	player.queue_free()

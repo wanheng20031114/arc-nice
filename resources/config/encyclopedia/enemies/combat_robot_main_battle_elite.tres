@@ -17,5 +17,5 @@ description = "双持重剑的精英主战机器人。它会锁定方向高速�
 traits = PackedStringArray("精英", "双持重剑", "冲锋落砸")
 preview_frames = ExtResource("3_preview")
 preview_animation = &"move"
-preview_scale = Vector2(1, 1)
+preview_scale = Vector2(0.125, 0.125)
 preview_offset = Vector2(0, 0)

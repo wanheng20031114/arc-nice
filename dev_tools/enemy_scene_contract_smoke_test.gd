@@ -31,6 +31,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot_shield_bearer_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_ninja.tres"),
 	preload("res://resources/config/enemies/combat_robot_ninja_elite.tres"),
+	preload("res://resources/config/enemies/combat_robot_main_battle_elite.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer.tres"),
 	preload("res://resources/config/enemies/fire_sorcerer_elite.tres"),
 	preload("res://resources/config/enemies/frost_sorcerer.tres"),
@@ -64,9 +65,7 @@ const ENEMY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/stone_eroded_slime_frost.tres"),
 	preload("res://resources/config/enemies/stone_eroded_slime_green.tres"),
 ]
-const UNPUBLISHED_ENEMY_CONFIG_FILE_NAMES := [
-	"combat_robot_main_battle_elite.tres",
-]
+const UNPUBLISHED_ENEMY_CONFIG_FILE_NAMES: Array[String] = []
 const STANDARD_YUANSHI_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/yuanshi_insect_basic.tres"),
 	preload("res://resources/config/enemies/yuanshi_insect_fast.tres"),
@@ -148,6 +147,7 @@ const MECHANICAL_LIFE_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/combat_robot_shield_bearer_elite.tres"),
 	preload("res://resources/config/enemies/combat_robot_ninja.tres"),
 	preload("res://resources/config/enemies/combat_robot_ninja_elite.tres"),
+	preload("res://resources/config/enemies/combat_robot_main_battle_elite.tres"),
 ]
 const SLIME_CATEGORY_CONFIGS: Array[EnemyConfig] = [
 	preload("res://resources/config/enemies/slime.tres"),
@@ -450,8 +450,8 @@ func _test_enemy_drop_and_category_contract() -> void:
 		"Exactly the two stone golems and two cardboard monsters must carry the artificial_creation category tag."
 	)
 	_expect(
-		int(category_counts["mechanical_life"]) == 10,
-		"Exactly the ten published normal and elite combat robot configs must carry the mechanical_life category tag."
+		int(category_counts["mechanical_life"]) == 11,
+		"Exactly the eleven published combat robot configs must carry the mechanical_life category tag."
 	)
 	_expect(
 		int(category_counts["slime"]) == 10,
